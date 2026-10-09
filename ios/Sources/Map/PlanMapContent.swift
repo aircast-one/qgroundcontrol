@@ -593,7 +593,7 @@ struct PlanMapContent: View {
                 } label: {
                     Label("Done", systemImage: Icon.check.rawValue)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.filled)
             }
             .padding(.leading, 12)
             .padding(.trailing, 4)
@@ -1414,7 +1414,7 @@ private struct PlanUploadButton<Content: View>: View {
 
     var body: some View {
         if emphasised {
-            Button(action: onClick, label: content).buttonStyle(.borderedProminent).disabled(!enabled)
+            Button(action: onClick, label: content).buttonStyle(.filled).disabled(!enabled)
         } else {
             Button(action: onClick, label: content).buttonStyle(.bordered).disabled(!enabled)
         }

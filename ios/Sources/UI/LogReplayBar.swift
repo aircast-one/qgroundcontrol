@@ -147,7 +147,7 @@ struct LogReplayBar: View {
                     .buttonStyle(.bordered)
                 }
                 Button(replay.playing ? "Pause" : "Play") { act(LOG_REPLAY_TOGGLE) }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.filled)
                     .disabled(!replay.loaded)
             }
         }

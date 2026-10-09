@@ -324,7 +324,7 @@ private struct CalibrationPanel: View {
                 if cal.oneSidedVisible {
                     Button("One-Sided") { onStep("oneSided") }.buttonStyle(.bordered)
                 }
-                Button(cal.nextText) { onStep("next") }.buttonStyle(.borderedProminent).disabled(!cal.nextEnabled)
+                Button(cal.nextText) { onStep("next") }.buttonStyle(.filled).disabled(!cal.nextEnabled)
             }
         }
     }

@@ -94,7 +94,7 @@ struct Px4AirframeScreen: View {
         VStack(alignment: .leading, spacing: 12) {
             Text(read.customText)
             Button("Reset") { act(PX4_AIRFRAME_RESET) }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.filled)
                 .frame(maxWidth: .infinity)
             if let refusal {
                 Text(refusal).foregroundStyle(theme.colors.error)
@@ -111,7 +111,7 @@ struct Px4AirframeScreen: View {
             HStack(spacing: 12) {
                 Text(read.heading).font(.bodyMedium).frame(maxWidth: .infinity, alignment: .leading)
                 Button(read.applyTitle) { confirming = true }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.filled)
                     .disabled(chosen == nil)
             }
             .padding(16)

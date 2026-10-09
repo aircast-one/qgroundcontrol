@@ -350,7 +350,7 @@ struct SetupScreen: View {
                 }
                 if waiting.downloadOffered {
                     Button("Download parameters") { offMain { _ = Qgc.invoke(PARAMETER_REFRESH) } }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.filled)
                 }
             }
         } else {
@@ -611,7 +611,7 @@ private struct ComponentPage: View {
                     title: "\(sentenceCase(first)) first",
                     text: prerequisiteText(first, open.name)
                 )
-                Button("Set up \(sentenceCase(first))") { onOpen(first) }.buttonStyle(.borderedProminent)
+                Button("Set up \(sentenceCase(first))") { onOpen(first) }.buttonStyle(.filled)
                 Spacer(minLength: 0)
             }
             .frame(maxWidth: .infinity)

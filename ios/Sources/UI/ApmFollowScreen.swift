@@ -107,7 +107,7 @@ struct ApmFollowScreen: View {
                 }
                 if !follow.supported {
                     Text(follow.unsupportedText).foregroundStyle(theme.colors.error).padding(.vertical, 8)
-                    Button("Reset to supported settings") { act(APM_FOLLOW_RESET) }.buttonStyle(.borderedProminent)
+                    Button("Reset to supported settings") { act(APM_FOLLOW_RESET) }.buttonStyle(.filled)
                 }
                 if follow.showSettings {
                     SectionHeader(text: "Follow me settings")

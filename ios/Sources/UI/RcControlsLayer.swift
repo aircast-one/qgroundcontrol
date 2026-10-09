@@ -174,7 +174,7 @@ private struct RcMomentary: View {
 
     var body: some View {
         Button(control.label) {}
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.filled)
             .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
             .simultaneousGesture(
                 DragGesture(minimumDistance: 0).updating($press) { drag, press, _ in press = momentaryPress(press, drag.location, size) }
@@ -224,7 +224,7 @@ struct RcControlsLayer: View {
                                 .font(.labelMedium)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             Button("Give back") { releaseOverrides() }
-                                .buttonStyle(.borderedProminent)
+                                .buttonStyle(.filled)
                         }
                     }
                 }

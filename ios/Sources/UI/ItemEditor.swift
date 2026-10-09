@@ -433,7 +433,7 @@ private struct ItemEditorContent: View {
             } label: {
                 Text("Done").frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.filled)
         }
         .padding(.horizontal, Space.s5)
         .padding(.vertical, Space.s2)

@@ -146,7 +146,7 @@ struct ApmSubMotorsScreen: View {
                     Text("Automatic motor direction detection").font(.titleMedium)
                     Text(state.autoDetectHelp).font(.bodySmall)
                     Button("Auto-Detect Directions") { act("apmSubMotors.autoDetect") }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.filled)
                         .disabled(state.detecting)
                     if !state.detectionMessages.isBlank {
                         Text(state.detectionMessages).font(.bodySmall)

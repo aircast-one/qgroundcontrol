@@ -409,6 +409,7 @@ struct FlightActions<Center: View>: View {
     @Environment(\.theme) private var theme
     @Environment(FlyScreenState.self) private var flyScreen
     @Environment(FlyMapEdits.self) private var mapEdits
+    @Environment(\.LocalRailFloor) private var railFloor
     @QgcPath(FLY_STATE) private var stateJson
     @QgcPath(MAP_CLICK_PATH) private var mapClickJson
     @QgcPath(PREFLIGHT) private var preflightJson
@@ -607,16 +608,12 @@ struct FlightActions<Center: View>: View {
         if layout == .Rail {
             ZStack {
                 if !deciding {
-                    VStack(spacing: Space.s2) {
-                        ForEach(deck, id: \.0) { id, primary in
-                            if let entry = deckEntries.first(where: { $0.id == id }) {
-                                RailDeckButton(entry: entry, primary: primary, labelled: armed)
-                            }
-                        }
-                        RailDeckButton(entry: more, primary: false)
+                    ViewThatFits(in: .vertical) {
+                        railColumn(deck, deckEntries, more, labelled: armed)
+                        railColumn(deck, deckEntries, more, labelled: false)
                     }
                     .padding(.leading, Space.s3)
-                    .padding(.bottom, RAIL_LIFT)
+                    .padding(.bottom, max(RAIL_LIFT, railFloor))
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 }
                 if flyScreen.refusal != nil || actions.pending != nil || showingSent {
@@ -662,6 +659,17 @@ struct FlightActions<Center: View>: View {
                 }
             }
             .padding(Space.s4)
+        }
+    }
+
+    private func railColumn(_ deck: [(String, Bool)], _ deckEntries: [DeckEntry], _ more: DeckEntry, labelled: Bool) -> some View {
+        VStack(spacing: Space.s2) {
+            ForEach(deck, id: \.0) { id, primary in
+                if let entry = deckEntries.first(where: { $0.id == id }) {
+                    RailDeckButton(entry: entry, primary: primary, labelled: labelled)
+                }
+            }
+            RailDeckButton(entry: more, primary: false)
         }
     }
 

@@ -161,7 +161,7 @@ struct AppLogPage: View {
             .overlay(alignment: .top) {
                 if !atBottom && !entries.isEmpty {
                     Button("Show latest") { following = true }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.filled)
                         .padding(.top, Space.s2)
                 }
             }

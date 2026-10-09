@@ -100,7 +100,7 @@ private struct StartDialog: View {
                 confirm()
                 onDismiss()
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.filled)
         }
         .onChange(of: offersFast != nil, initial: true) { _, offered in
             fastChoice = offered ? offersFast.map { initialFastCompassChoice($0) } : nil
@@ -227,7 +227,7 @@ private struct RunningCalibration: View {
                     Button("Cancel") { offMain { _ = Qgc.invoke("\(CAL).cancelCalibration") } }
                         .disabled(!state.cancelEnabled)
                     Button("Next") { offMain { _ = Qgc.invoke("\(CAL).nextClicked") } }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.filled)
                         .disabled(!state.nextEnabled)
                 }
                 if state.waitingForCancel {
@@ -295,7 +295,7 @@ struct SensorsScreen: View {
             SetupDialog(title: state.settingsDialogTitle.ifBlank(state.settingsTitle)) {
                 SensorSettingsBlock(calibrating: false, showCompasses: true)
             } buttons: {
-                Button("OK") { showSettings = false }.buttonStyle(.borderedProminent)
+                Button("OK") { showSettings = false }.buttonStyle(.filled)
             }
         }
         .sheet(isPresented: presented($pending)) {
@@ -347,7 +347,7 @@ struct SensorsScreen: View {
                     rebootPrompt = nil
                     offMain { _ = Qgc.invoke(REBOOT_VEHICLE) }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.filled)
             }
         }
     }

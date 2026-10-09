@@ -153,7 +153,7 @@ struct GimbalIndicatorCell: View {
                     Button { act("gimbal.control", .bool(!state.haveControl)) } label: {
                         Text(state.controlLabel).frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.filled)
                 }
                 if let refusal {
                     Text(refusal).foregroundStyle(theme.colors.error)

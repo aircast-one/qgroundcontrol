@@ -346,7 +346,7 @@ struct ActuatorsScreen: View {
                         if let refused { failure = plainMessage(refused) } else { confirming = plainMessage(message) }
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.filled)
                 .disabled(!outputs.assignment.enabled || testing)
             }
             if outputs.assignment.active {

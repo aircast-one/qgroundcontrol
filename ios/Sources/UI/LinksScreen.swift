@@ -679,7 +679,7 @@ private struct PageFrame<Content: View>: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             Button(action: onAction) { Text(action).frame(maxWidth: .infinity, minHeight: 52) }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.filled)
                 .disabled(!actionEnabled)
                 .padding(16)
         }
@@ -1163,7 +1163,7 @@ struct LinksScreen<Footer: View>: View {
                             Text("Add link\u{2026}")
                         }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.filled)
                     .padding(.horizontal, 20)
                     .padding(.vertical, 8)
                     AdvancedToggle(open: advanced) { advanced.toggle() }

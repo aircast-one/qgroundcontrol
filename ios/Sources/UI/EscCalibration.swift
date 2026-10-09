@@ -29,7 +29,7 @@ struct EscCalibrationDialog: View {
                 offMain { _ = SetupCommands.closeEscCalibration() }
                 onClose()
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.filled)
             .disabled(state?.running != false)
         }
         .interactiveDismissDisabled()

@@ -129,7 +129,7 @@ private struct FirstRunPage: View {
                 }
                 HStack {
                     Spacer()
-                    Button("Continue", action: onClose).buttonStyle(.borderedProminent)
+                    Button("Continue", action: onClose).buttonStyle(.filled)
                 }
                 .padding(.horizontal, 16)
             }

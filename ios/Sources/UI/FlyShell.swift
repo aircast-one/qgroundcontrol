@@ -28,6 +28,7 @@ private var flyStore: UserDefaults { UserDefaults(suiteName: FLY_STORE) ?? .stan
 extension EnvironmentValues {
     @Entry var LocalRootSize: CGSize = .zero
     @Entry var LocalAvoidedByVideoMessage = false
+    @Entry var LocalRailFloor: CGFloat = 0
 }
 
 enum MiniMap: String, CaseIterable {
@@ -401,6 +402,12 @@ struct FlyScreen: View {
     private func flyChrome(_ box: CGSize, _ safe: EdgeInsets, _ cutout: EdgeInsets, mapIsPip: Bool, videoIsPip: Bool, videoShown: Bool) -> some View {
         let inner = CGSize(width: max(box.width - cutout.leading - cutout.trailing, 0), height: box.height)
         let videoMessage = videoShown && !videoIsPip && videoReading(videoJson)?.decoding != true
+        let videoPipOpen = hasVideo && pipExpanded
+        let layersBottom = PIP_TOGGLE_SIZE + Space.s3 * 2
+        let railFloor = mapIsPip ? miniHeight(mini) + Space.s3 + Space.s2
+            : !videoIsPip ? 0
+            : videoPipOpen ? MINIMAP_HEIGHT + Space.s3 + Space.s2
+            : layersBottom + MAP_LAYERS_BUTTON + Space.s2
         ZStack(alignment: .topLeading) {
             if view == .Map {
                 LayoutWidget(key: "mapLayers", hideable: false) {
@@ -413,8 +420,8 @@ struct FlyScreen: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("Map layers")
                 }
-                .padding(.leading, Space.s3)
-                .padding(.bottom, (hasVideo && pipExpanded ? MINIMAP_HEIGHT : PIP_TOGGLE_SIZE) + Space.s3 * 2)
+                .padding(.leading, videoPipOpen ? Space.s3 * 2 + MINIMAP_WIDTH : Space.s3)
+                .padding(.bottom, videoPipOpen ? Space.s3 + MINIMAP_HEIGHT - MAP_LAYERS_BUTTON : layersBottom)
                 .frame(width: inner.width, height: inner.height, alignment: .bottomLeading)
             }
             FlyChromeLayout(
@@ -465,6 +472,7 @@ struct FlyScreen: View {
                 .zIndex(1)
             actions(.Rail)
                 .environment(\.flyOsd, view == .Video)
+                .environment(\.LocalRailFloor, railFloor)
                 .padding(.top, STATUS_ROW_HEIGHT + Space.s4)
                 .frame(width: inner.width, height: inner.height)
                 .zIndex(2)

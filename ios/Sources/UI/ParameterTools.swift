@@ -335,7 +335,7 @@ private struct ReviewDialog: View {
             Button("Cancel", action: onCancel)
             if sendableCount(review) > 0 {
                 Button("Ok", action: onApply)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.filled)
                     .disabled(chosen.isEmpty)
             }
         }

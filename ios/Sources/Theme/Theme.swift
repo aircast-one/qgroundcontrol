@@ -163,6 +163,23 @@ private struct ScaledType: ViewModifier {
     func body(content: Content) -> some View { content.font(scale.font(size)) }
 }
 
+struct FilledButtonStyle: PrimitiveButtonStyle {
+    @Environment(\.theme) private var theme
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        Button(role: configuration.role, action: configuration.trigger) {
+            configuration.label.foregroundStyle(isEnabled ? theme.colors.onPrimary : theme.colors.onSurface.opacity(0.38))
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(theme.colors.primary)
+    }
+}
+
+extension PrimitiveButtonStyle where Self == FilledButtonStyle {
+    static var filled: FilledButtonStyle { FilledButtonStyle() }
+}
+
 struct AircastTheme<Content: View>: View {
     var dark: Bool? = nil
     @ViewBuilder let content: () -> Content

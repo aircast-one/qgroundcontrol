@@ -178,13 +178,24 @@ private struct KeptOnScreen: ViewModifier {
 
 private struct HoldToEditLayout: ViewModifier {
     @Environment(FlyScreenState.self) private var flyScreen
+    @State private var heldIntoEditing = false
+    @GestureState private var pressing = false
 
     func body(content: Content) -> some View {
         let layout = flyScreen.layout
-        content.simultaneousGesture(
-            LongPressGesture(minimumDuration: HOLD_TO_EDIT_SECONDS).onEnded { _ in layout.startEditing() },
-            including: layout.editing || layout.locked ? .subviews : .all
-        )
+        content
+            .disabled(heldIntoEditing)
+            .simultaneousGesture(
+                LongPressGesture(minimumDuration: HOLD_TO_EDIT_SECONDS)
+                    .onEnded { _ in
+                        heldIntoEditing = true
+                        layout.startEditing()
+                    }
+                    .sequenced(before: DragGesture(minimumDistance: 0))
+                    .updating($pressing) { _, pressing, _ in pressing = true },
+                including: layout.locked || (layout.editing && !heldIntoEditing) ? .subviews : .all
+            )
+            .onChange(of: pressing) { _, now in if !now { heldIntoEditing = false } }
     }
 }
 
@@ -359,7 +370,7 @@ private struct OverlayEditBarContent: View {
             .foregroundStyle(armed ? theme.colors.error : theme.colors.primary)
             Spacer(minLength: 0)
             Button("Done") { layout.editing = false }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.filled)
         }
         .font(.labelLarge)
         .padding(.horizontal, 8)

@@ -108,8 +108,6 @@ private func sidesAround(_ room: CGRect, _ obstacle: CGRect, _ gap: CGFloat) -> 
 struct VideoSurface: View {
     var expanded: Bool = false
     var fullScreen: Bool = false
-    var onClick: () -> Void = {}
-    var onDoubleTap: () -> Void = {}
     @Environment(\.theme) private var theme
     @QgcPath(VIDEO_VIEW) private var videoJson
     @QgcPath(CAMERA_VIEW) private var cameraJson
@@ -159,25 +157,7 @@ struct VideoSurface: View {
         }
         .clipped()
         .contentShape(Rectangle())
-        .modifier(SurfaceTaps(expanded: expanded, decoding: decoding, zoomable: cameraReading(cameraJson)?.hasZoom == true, onClick: onClick, onDoubleTap: onDoubleTap))
-    }
-}
-
-private struct SurfaceTaps: ViewModifier {
-    let expanded: Bool
-    let decoding: Bool
-    let zoomable: Bool
-    let onClick: () -> Void
-    let onDoubleTap: () -> Void
-
-    func body(content: Content) -> some View {
-        if expanded && decoding {
-            content.modifier(PinchZoom(enabled: zoomable)).onTapGesture(count: 2) { onDoubleTap() }
-        } else if expanded {
-            content.modifier(PinchZoom(enabled: zoomable))
-        } else {
-            content.onTapGesture { onClick() }
-        }
+        .modifier(PinchZoom(enabled: expanded && cameraReading(cameraJson)?.hasZoom == true))
     }
 }
 

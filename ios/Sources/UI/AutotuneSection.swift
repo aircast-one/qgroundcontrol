@@ -23,7 +23,7 @@ struct AutotuneSection: View {
         if let state = autotuneState(view) {
             VStack(alignment: .leading, spacing: 8) {
                 Button("Start AutoTune") { confirming = true }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.filled)
                     .disabled(!state.canStart)
                 Text(state.status)
                 ProgressView(value: Double(min(max(state.progress, 0), 1)))

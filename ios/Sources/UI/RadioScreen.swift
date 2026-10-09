@@ -61,7 +61,7 @@ private struct CalibrationStep: View {
             if cal.running { StickDiagram(positions: cal.stickPositions, single: false) }
             HStack(spacing: Space.s2) {
                 Button(cal.nextText.ifBlank("Next")) { onAction("nextButtonClicked") }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.filled)
                     .disabled(!cal.nextEnabled)
                 if cal.skipEnabled {
                     Button("Skip") { onAction("skipButtonClicked") }.buttonStyle(.bordered)
@@ -130,7 +130,7 @@ private struct ConfirmDialog: View {
                 onConfirm(choice)
                 onDismiss()
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.filled)
         }
         .onChange(of: prompt, initial: true) { _, shown in choice = shown.choices.indices.last }
     }
@@ -186,7 +186,7 @@ private struct CalibrationStart: View {
                         onAction("nextButtonClicked")
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.filled)
                 .disabled(!view.calibration.nextEnabled)
                 Text(view.summary).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
             }

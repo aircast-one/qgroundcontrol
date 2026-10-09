@@ -82,7 +82,7 @@ struct RcToParamDialog: View {
                     if answer == nil { onDismiss() }
                 }
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.filled)
             .disabled(entered == nil)
         }
         .task(id: fact.name) {

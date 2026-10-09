@@ -128,7 +128,7 @@ struct RcControlsEditor: View {
             Button("Add control") {
                 draft = Draft(index: -1, label: "", channel: String(firstFreeChannel(json, reserved)), type: .Slider)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.filled)
             .padding(Space.s4)
         }
         .task(id: undo) {

@@ -213,7 +213,7 @@ struct OfflineMapsSection: View {
                 .onTapGesture { shown = set }
                 Divider()
             }
-            Button("Add new set") { adding = true }.buttonStyle(.borderedProminent)
+            Button("Add new set") { adding = true }.buttonStyle(.filled)
             TileSetTransfer(sets: read.sets) {
                 refusal = $0
                 polls += 1
@@ -465,7 +465,7 @@ private struct OfflineSetEditor: View {
                 Button("Download") {
                     if let region, let mapType { onDownload(chosenName.trimmed, mapType, region, minZoom, maxZoom, fetchElevation) }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.filled)
                 .disabled(region == nil || mapType == nil || estimate == nil || estimate?.tooMany == true || nameTaken || chosenName.isBlank)
                 Button("Cancel", action: onDismiss).buttonStyle(.bordered)
             }

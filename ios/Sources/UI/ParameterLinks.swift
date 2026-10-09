@@ -182,7 +182,7 @@ struct ParameterEditDialog: View {
                         if let loaded = fact, !loaded.readOnly || forced, let value = defaultValue {
                             Button("Reset to default") { reset(loaded, value) }
                         }
-                        Button("Done", action: onDismiss).buttonStyle(.borderedProminent)
+                        Button("Done", action: onDismiss).buttonStyle(.filled)
                     }
                 }
                 .padding(.horizontal, Space.s6)
@@ -327,7 +327,7 @@ struct ValueDetailsSheet: View {
                         if let value = defaultValue {
                             Button("Reset to default") { reset(value) }
                         }
-                        Button("Done", action: onDismiss).buttonStyle(.borderedProminent)
+                        Button("Done", action: onDismiss).buttonStyle(.filled)
                     }
                 }
                 .padding(.horizontal, Space.s6)

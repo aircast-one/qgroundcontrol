@@ -67,7 +67,7 @@ struct OfflineStatusSheet: View {
                         } label: {
                             Text("Add link\u{2026}").frame(maxWidth: .infinity)
                         }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(.filled)
                         .padding(.horizontal, Space.s5)
                         .padding(.vertical, Space.s2)
                     }

@@ -59,7 +59,7 @@ struct MissionCompleteDialog: View {
                 } label: {
                     Text("Remove plan from vehicle").frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.filled)
                 Button { close(notice) } label: {
                     Text("Leave plan on vehicle").frame(maxWidth: .infinity)
                 }

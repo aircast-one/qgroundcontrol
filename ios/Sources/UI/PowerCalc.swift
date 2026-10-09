@@ -77,7 +77,7 @@ struct PowerCalcDialog: View {
                     refusal = answer
                 }
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.filled)
             .disabled(!available)
         }
         .task(id: calculator) {

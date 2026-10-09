@@ -257,39 +257,51 @@ struct MoreActionsSheet<Footer: View>: View {
     let tiles: [MoreTile]
     let onDismiss: () -> Void
     @ViewBuilder let footer: () -> Footer
-    @Environment(\.theme) private var theme
 
     var body: some View {
         AircastSheet(onDismissRequest: onDismiss) {
-            ScrollView {
-                VStack(alignment: .leading, spacing: Space.s3) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text("More actions").font(.titleLarge)
-                        Text("Everything that changes what the drone does")
-                            .font(.bodyMedium)
-                            .foregroundStyle(theme.colors.onSurfaceVariant)
-                    }
-                    .padding(.horizontal, Space.s2)
-                    ForEach(Array(stride(from: 0, to: tiles.count, by: MORE_COLUMNS)), id: \.self) { start in
-                        let row = Array(tiles[start..<min(start + MORE_COLUMNS, tiles.count)])
-                        HStack(spacing: Space.s3) {
-                            ForEach(row.indices, id: \.self) { at in tile(row[at]) }
-                            ForEach(0..<(MORE_COLUMNS - row.count), id: \.self) { _ in Color.clear.frame(maxWidth: .infinity, maxHeight: 1) }
-                        }
-                    }
-                    footer()
-                }
-                .padding(.leading, Space.s4)
-                .padding(.trailing, Space.s4)
-                .padding(.bottom, Space.s6)
-            }
+            MoreTiles(tiles: tiles, onDismiss: onDismiss, footer: footer)
         }
+    }
+}
+
+private struct MoreTiles<Footer: View>: View {
+    let tiles: [MoreTile]
+    let onDismiss: () -> Void
+    let footer: () -> Footer
+    @Environment(\.theme) private var theme
+    @State private var chosen: MoreTile?
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: Space.s3) {
+                VStack(alignment: .leading, spacing: 0) {
+                    Text("More actions").font(.titleLarge)
+                    Text("Everything that changes what the drone does")
+                        .font(.bodyMedium)
+                        .foregroundStyle(theme.colors.onSurfaceVariant)
+                }
+                .padding(.horizontal, Space.s2)
+                ForEach(Array(stride(from: 0, to: tiles.count, by: MORE_COLUMNS)), id: \.self) { start in
+                    let row = Array(tiles[start..<min(start + MORE_COLUMNS, tiles.count)])
+                    HStack(spacing: Space.s3) {
+                        ForEach(row.indices, id: \.self) { at in tile(row[at]) }
+                        ForEach(0..<(MORE_COLUMNS - row.count), id: \.self) { _ in Color.clear.frame(maxWidth: .infinity, maxHeight: 1) }
+                    }
+                }
+                footer()
+            }
+            .padding(.leading, Space.s4)
+            .padding(.trailing, Space.s4)
+            .padding(.bottom, Space.s6)
+        }
+        .onDisappear { chosen?.onClick() }
     }
 
     private func tile(_ tile: MoreTile) -> some View {
         Button {
+            chosen = tile
             onDismiss()
-            tile.onClick()
         } label: {
             VStack(spacing: Space.s2) {
                 Image(tile.icon).font(.system(size: 20)).frame(width: 24, height: 24)

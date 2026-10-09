@@ -318,7 +318,7 @@ private struct CameraSheet: View {
                         }
                         Spacer()
                         Button("Cancel", action: onDismiss)
-                        Button("Save", action: save).buttonStyle(.borderedProminent).disabled(!canSave)
+                        Button("Save", action: save).buttonStyle(.filled).disabled(!canSave)
                     }
                     if !others.isEmpty {
                         Text("Other sources")

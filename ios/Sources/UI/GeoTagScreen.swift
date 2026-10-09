@@ -116,7 +116,7 @@ struct GeoTagScreen: View {
             } label: {
                 Text(geoTagButton(current)).frame(maxWidth: .infinity)
             }
-            .buttonStyle(.borderedProminent)
+            .buttonStyle(.filled)
             .disabled(!(current.inProgress || (!run.busy && !current.logFile.isBlank && !current.imageDirectory.isBlank)))
             if !current.images.isEmpty {
                 Text("Images (\(current.images.count))").font(.titleSmall)

@@ -52,7 +52,7 @@ struct RemoteSupportScreen: View {
                     HStack {
                         Spacer()
                         Button("Connect") { offMain { LinkCommands.createSupportForwarding() } }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(.filled)
                             .disabled(forwarding || verdict?.valid != true)
                     }
                     .padding(.horizontal, 16)

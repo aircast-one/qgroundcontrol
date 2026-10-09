@@ -203,7 +203,7 @@ struct AircastShell: View {
         .onChange(of: PlanInbox.shared.received != nil, initial: true) { _, waiting in if waiting && tab != .Plan { selectTab(.Plan) } }
         .onChange(of: FlyArming(armed: flyNow?.armed, state: flyNow?.state), initial: true) { armingChanged() }
         .onChange(of: vehiclesJson, initial: true) { _, json in vehiclesChanged(json) }
-        .onChange(of: fullScreen) { _, now in if !now { videoFullScreen = false } }
+        .onChange(of: videoFullScreen && !fullScreen) { _, stray in if stray { videoFullScreen = false } }
         .onReceive(NotificationCenter.default.publisher(for: DebugUi.commands)) { note in (note.object as? DebugCommand).map(debugApplied) }
         .onChange(of: debugState(landscape), initial: true) { _, now in DebugUi.state = now }
     }
@@ -323,12 +323,7 @@ struct AircastShell: View {
             })
         }
         let video: (Bool) -> AnyView = { expanded in
-            AnyView(VideoSurface(
-                expanded: expanded,
-                fullScreen: videoFullScreen,
-                onClick: { flyView = flyViewSwapped(flyView) },
-                onDoubleTap: { videoFullScreen.toggle() }
-            ))
+            AnyView(VideoSurface(expanded: expanded, fullScreen: videoFullScreen))
         }
         let map: () -> AnyView = { AnyView(flyMap) }
         let actions: (FlyDeckLayout) -> AnyView = { layout in AnyView(FlightActions(layout: layout) { CameraShutters() }) }

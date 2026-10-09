@@ -85,11 +85,14 @@ private struct NoVideoLayout: View {
                 Image(.videocamOff).font(.system(size: 18)).foregroundStyle(theme.colors.onSurfaceVariant)
                 Text(compactTitle ?? title).font(.labelLarge).foregroundStyle(theme.colors.onSurface).lineLimit(1).padding(.vertical, 12)
                 if let primary {
-                    Button(primary.label, action: primary.onClick).buttonStyle(.borderless).lineLimit(1).fixedSize()
+                    Button(action: primary.onClick) {
+                        Text(primary.label).lineLimit(1).fixedSize().padding(.horizontal, 12).frame(minWidth: 58, minHeight: 40)
+                    }
+                    .buttonStyle(.borderless)
                 }
             }
             .padding(.leading, 12)
-            .padding(.trailing, 4)
+            .padding(.trailing, primary == nil ? 16 : 4)
             .background(osdBackdrop(theme.colors.surfaceContainerHigh, osd), in: Capsule())
         case .Full:
             VStack(spacing: 8) {

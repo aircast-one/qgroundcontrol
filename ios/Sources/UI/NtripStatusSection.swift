@@ -129,7 +129,7 @@ struct NtripStatusSection: View {
                         onWrite()
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.filled)
                 .disabled(!status.buttonEnabled)
             }
             if status.status != "disconnected" {
