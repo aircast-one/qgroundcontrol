@@ -648,6 +648,7 @@ mod deps_cover_reads {
             ("logreplay", include_str!("logreplay.rs")),
             ("mockcal", include_str!("mockcal.rs")),
             ("mocklog", include_str!("mocklog.rs")),
+            ("workpool", include_str!("workpool.rs")),
             ("mockcamera", include_str!("mockcamera.rs")),
             ("mockgimbal", include_str!("mockgimbal.rs")),
             ("mocklink", include_str!("mocklink.rs")),

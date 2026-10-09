@@ -232,7 +232,7 @@ pub unsafe extern "C" fn qgc_map_tile_fetch(map_type: *const c_char, x: c_int, y
     let Some(handler) = handler else { return };
     let provider = read(map_type);
     let context = context as usize;
-    std::thread::spawn(move || {
+    let queued = TILE_QUEUE.get_or_init(|| crate::workpool::worker_pool("qgc-tiles", TILE_WORKERS)).send(Box::new(move || {
         let cache = crate::terrainservice::cache_path().and_then(|path| crate::tilecache::Cache::open(&path).ok());
         let persist = !crate::settingsstore::raw_setting("settings.appSettings.disableAllPersistence").and_then(|v| v.as_bool()).unwrap_or(false);
         let image = crate::maptiles::fetch_remembered(&provider, x, y, zoom, cache.as_ref(), persist).or_else(|| cache.as_ref().and_then(|cache| offline_tile(cache, x, y, zoom)));
@@ -240,8 +240,15 @@ pub unsafe extern "C" fn qgc_map_tile_fetch(map_type: *const c_char, x: c_int, y
             Some(image) => unsafe { handler(image.as_ptr(), c_int::try_from(image.len()).unwrap_or(0), context as *mut c_void) },
             None => unsafe { handler(std::ptr::null(), 0, context as *mut c_void) },
         }
-    });
+    }));
+    if queued.is_err() {
+        unsafe { handler(std::ptr::null(), 0, context as *mut c_void) }
+    }
 }
+
+const TILE_WORKERS: usize = 6;
+
+static TILE_QUEUE: OnceLock<std::sync::mpsc::Sender<crate::workpool::Job>> = OnceLock::new();
 
 static OFFLINE_PROVIDER: OnceLock<Option<i32>> = OnceLock::new();
 
