@@ -14,6 +14,7 @@ QGC_LOGGING_CATEGORY(GStreamerTestLog, "Video.GStreamer.GStreamerTest")
 #include <QtCore/QScopeGuard>
 #include <QtCore/QStandardPaths>
 #include <QtCore/QTemporaryDir>
+#include <QtCore/QtEndian>
 #include <QtNetwork/QUdpSocket>
 #include <QtTest/QSignalSpy>
 #include <atomic>
@@ -160,6 +161,53 @@ RecordingOverlay* makeRecordingOverlay()
 guintptr windowOf(void* window)
 {
     return reinterpret_cast<guintptr>(window);
+}
+
+int playableFrames(const QByteArray& file)
+{
+    std::atomic<int> frames{0};
+    GstElement* const pipeline =
+        gst_parse_launch("filesrc name=file ! qtdemux ! h264parse ! fakesink name=played", nullptr);
+    if (!pipeline) {
+        return 0;
+    }
+    const auto teardown = qScopeGuard([pipeline] {
+        (void) gst_element_set_state(pipeline, GST_STATE_NULL);
+        gst_object_unref(pipeline);
+    });
+    GstElement* const source = gst_bin_get_by_name(GST_BIN(pipeline), "file");
+    g_object_set(source, "location", file.constData(), nullptr);
+    gst_object_unref(source);
+    GstElement* const sink = gst_bin_get_by_name(GST_BIN(pipeline), "played");
+    GstPad* const sinkPad = gst_element_get_static_pad(sink, "sink");
+    (void) gst_pad_add_probe(sinkPad, GST_PAD_PROBE_TYPE_BUFFER, countBufferProbe, &frames, nullptr);
+    gst_object_unref(sinkPad);
+    gst_object_unref(sink);
+    (void) gst_element_set_state(pipeline, GST_STATE_PLAYING);
+    QString failure;
+    (void) waitForPipelineEos(pipeline, failure);
+    return frames.load();
+}
+
+QList<QByteArray> topLevelBoxes(const QByteArray& path)
+{
+    QFile file(QString::fromUtf8(path));
+    if (!file.open(QIODevice::ReadOnly)) {
+        return {};
+    }
+    QList<QByteArray> boxes;
+    for (qint64 offset = 0; offset + 8 <= file.size() && file.seek(offset);) {
+        const QByteArray header = file.read(16);
+        const quint64 compact = qFromBigEndian<quint32>(header.constData());
+        const quint64 size =
+            (compact == 1 && header.size() == 16) ? qFromBigEndian<quint64>(header.constData() + 8) : compact;
+        boxes.append(header.mid(4, 4));
+        if (size < 8) {
+            break;
+        }
+        offset += static_cast<qint64>(size);
+    }
+    return boxes;
 }
 
 }
@@ -741,6 +789,37 @@ void GStreamerTest::_testStopEndsAPipelineWhoseUriWasCleared()
     QVERIFY(!running());
 }
 
+void GStreamerTest::_testARecordingCutOffMidwayStillPlays()
+{
+    for (const char* factoryName : {"videotestsrc", "x264enc", "h264parse", "avdec_h264", "mp4mux", "qtdemux"}) {
+        GstElementFactory* const factory = gst_element_factory_find(factoryName);
+        if (!factory) {
+            QSKIP(qPrintable(
+                QStringLiteral("Required GStreamer factory is unavailable: %1").arg(QString::fromLatin1(factoryName))));
+        }
+        gst_object_unref(factory);
+    }
+    QTemporaryDir tempDir;
+    QVERIFY(tempDir.isValid());
+    const QByteArray file = QDir(tempDir.path()).filePath(QStringLiteral("flight.mp4")).toUtf8();
+    const auto teardown = qScopeGuard([] { qgc_video_stop(QGC_VIDEO_MAIN); });
+
+    QVERIFY(qgc_video_start(QGC_VIDEO_MAIN,
+                            "videotestsrc is-live=true ! video/x-raw,width=320,height=240,framerate=30/1 "
+                            "! x264enc tune=zerolatency key-int-max=15 ! h264parse ! tee name=nativerec "
+                            "! queue ! avdec_h264 ! videoconvert ! appsink name=nativesink"));
+    QVERIFY(qgc_video_start_recording(QGC_VIDEO_MAIN, file.constData(), VideoReceiver::FILE_FORMAT_MP4));
+
+    QTRY_VERIFY_WITH_TIMEOUT(playableFrames(file) > 0, 10000);
+    const int cutOff = playableFrames(file);
+
+    qgc_video_stop_recording(QGC_VIDEO_MAIN);
+    const QList<QByteArray> boxes = topLevelBoxes(file);
+    QVERIFY2(!boxes.contains("moof"), qPrintable(QString::fromLatin1(boxes.join(' '))));
+    QCOMPARE(boxes.last(), QByteArray("moov"));
+    QVERIFY(playableFrames(file) >= cutOff);
+}
+
 void GStreamerTest::_testRecordingSinkAcceptsElementaryStreams_data()
 {
     QTest::addColumn<QString>("capsString");
@@ -1018,6 +1097,7 @@ QGC_GST_SKIP_TEST(_testNativeSinkPlaysOnTheChannelItIsAttachedTo)
 QGC_GST_SKIP_TEST(_testASinkReplacedOnItsChannelStopsDrawingThere)
 QGC_GST_SKIP_TEST(_testAnOverlaySinkLeavingAChannelLetsGoOfItsWindow)
 QGC_GST_SKIP_TEST(_testStopEndsAPipelineWhoseUriWasCleared)
+QGC_GST_SKIP_TEST(_testARecordingCutOffMidwayStillPlays)
 
 void GStreamerTest::_testRecordingSinkAcceptsElementaryStreams_data()
 {

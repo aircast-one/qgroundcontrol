@@ -28,6 +28,7 @@ private slots:
     void _testASinkReplacedOnItsChannelStopsDrawingThere();
     void _testAnOverlaySinkLeavingAChannelLetsGoOfItsWindow();
     void _testStopEndsAPipelineWhoseUriWasCleared();
+    void _testARecordingCutOffMidwayStillPlays();
     void _testRecordingSinkAcceptsElementaryStreams_data();
     void _testRecordingSinkAcceptsElementaryStreams();
     void _testRecordingSinkFinalizesMidStreamH265Mp4();

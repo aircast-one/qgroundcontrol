@@ -30,6 +30,7 @@ namespace {
 #ifdef QGC_GST_STREAMING
 constexpr const char *kRecordingTee = "nativerec";
 constexpr auto kRecordingDrain = std::chrono::seconds(3);
+constexpr guint kRecordingFragmentMs = 1000;
 
 struct Recording {
     GstElement *queue = nullptr;
@@ -781,6 +782,10 @@ bool qgc_video_start_recording(int channel, const char *file, int format)
         return false;
     }
     g_object_set(recording.file, "location", file, "async", FALSE, nullptr);
+    if (!g_str_equal(muxer, "matroskamux")) {
+        g_object_set(recording.mux, "fragment-duration", kRecordingFragmentMs, nullptr);
+        gst_util_set_object_arg(G_OBJECT(recording.mux), "fragment-mode", "first-moov-then-finalise");
+    }
     gst_bin_add_many(GST_BIN(target->pipeline), recording.queue, recording.parse, recording.mux, recording.file, nullptr);
     g_signal_connect(recording.parse, "pad-added", G_CALLBACK(onParsedPad), target);
     const bool linked = gst_element_link(recording.queue, recording.parse) && gst_element_link(recording.mux, recording.file);
