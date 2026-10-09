@@ -14,8 +14,10 @@ struct SilentSeconds<Content: View>: View {
     }
 
     var body: some View {
-        TimelineView(.periodic(from: .now, by: since == nil ? 3600 : 1)) { context in
-            content(since.map { Int64(max(0, context.date.timeIntervalSince($0))) })
+        ZStack(alignment: .topLeading) {
+            TimelineView(.periodic(from: .now, by: since == nil ? 3600 : 1)) { context in
+                content(since.map { Int64(max(0, context.date.timeIntervalSince($0))) })
+            }
         }
         .onChange(of: lost) { _, now in since = now ? Date() : nil }
     }

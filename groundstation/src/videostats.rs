@@ -53,4 +53,13 @@ mod tests {
         assert_eq!(fps_between((0, 100), (1000, 130)), 30);
         assert_eq!(fps_between((0, 100), (2000, 159)), 30);
     }
+
+    #[test]
+    fn every_head_samples_the_stats_through_its_native_video_report() {
+        sample(true, 1, 720, 0);
+        sample(true, 31, 720, SAMPLE_MS);
+        assert_eq!(STATS.lock().unwrap_or_else(PoisonError::into_inner).text, "30 fps · 720p");
+        crate::videohost::invoke("video.reportNative", &json!([false, 0, 0, 0, "", null, false, crate::videohost::MAIN_CHANNEL]).to_string());
+        assert_eq!(STATS.lock().unwrap_or_else(PoisonError::into_inner).text, "", "a stopped main channel clears the pill on iOS and macOS too, not only through the Android driver");
+    }
 }

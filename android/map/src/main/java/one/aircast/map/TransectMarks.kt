@@ -71,7 +71,7 @@ private fun chevron(): Bitmap {
 
 private const val GIMBAL_WEDGE_SOURCE = "aircast-gimbal-wedges"
 private const val GIMBAL_WEDGE_LAYER = "aircast-gimbal-wedge-layer"
-private const val GIMBAL_WEDGE_IMAGE = "aircast-gimbal-wedge"
+private const val GIMBAL_WEDGE_IMAGE = "aircast-mission-gimbal-wedge"
 private const val GIMBAL_WEDGE_PX = 72
 private const val GIMBAL_WEDGE_SWEEP = 90f
 

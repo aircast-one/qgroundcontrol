@@ -70,7 +70,7 @@ struct TileSetTransfer: View {
                 },
                 onCancellation: {
                     try? FileManager.default.removeItem(at: staging(EXPORT_NAME))
-                    finish(nil)
+                    running = nil
                 }
             )
             if let running {

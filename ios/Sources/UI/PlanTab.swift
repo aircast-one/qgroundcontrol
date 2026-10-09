@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 private let NOTICE_MILLIS = 4000
 
@@ -30,22 +31,95 @@ func applyAltitudePrompt(_ view: JSON?) -> AltitudePrompt? {
     return AltitudePrompt(title: prompt["title"].string, text: prompt["text"].string)
 }
 
-struct ApplyAltitudePromptAlert: ViewModifier {
-    let prompt: AltitudePrompt?
+struct CorePromptChoice: Equatable {
+    let label: String
+    let invoke: String
+    var cancel = false
+}
 
-    func body(content: Content) -> some View {
-        content.alert(
-            sentenceCase(prompt?.title ?? ""),
-            isPresented: Binding(get: { prompt != nil }, set: { _ in }),
-            presenting: prompt
-        ) { _ in
-            Button("Yes") { offMain { Qgc.invoke(APPLY_DEFAULT_ALTITUDE) } }
-            Button("No", role: .cancel) { offMain { Qgc.invoke(DISMISS_ALTITUDE_PROMPT) } }
-        } message: { prompt in
-            Text(prompt.text)
+struct CorePrompt: Equatable {
+    let title: String
+    let text: String
+    let choices: [CorePromptChoice]
+}
+
+func corePrompt(_ view: JSON?) -> CorePrompt? {
+    let vehicle = vehicleChangePrompt(view).map { prompt in
+        CorePrompt(title: sentenceCase(prompt.title), text: prompt.text, choices: [
+            CorePromptChoice(label: sentenceCase(prompt.loadText), invoke: LOAD_VEHICLE_PLAN),
+            CorePromptChoice(label: sentenceCase(prompt.keepText), invoke: KEEP_CURRENT_PLAN),
+        ])
+    }
+    return vehicle ?? applyAltitudePrompt(view).map { prompt in
+        CorePrompt(title: sentenceCase(prompt.title), text: prompt.text, choices: [
+            CorePromptChoice(label: "Yes", invoke: APPLY_DEFAULT_ALTITUDE),
+            CorePromptChoice(label: "No", invoke: DISMISS_ALTITUDE_PROMPT, cancel: true),
+        ])
+    }
+}
+
+private final class CorePromptAlert: UIAlertController {
+    var prompt: CorePrompt?
+    var onGone: () -> Void = {}
+
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        onGone()
+    }
+}
+
+private func topmostController() -> UIViewController? {
+    let windows = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap(\.windows)
+    let root = (windows.first(where: \.isKeyWindow) ?? windows.first)?.rootViewController
+    return root.flatMap { Array(sequence(first: $0, next: \.presentedViewController)).last { !$0.isBeingDismissed } }
+}
+
+@MainActor
+private final class TopmostPrompter {
+    private var wanted: CorePrompt?
+    private var answered: CorePrompt?
+    private var shown: CorePromptAlert?
+
+    func show(_ prompt: CorePrompt?) {
+        wanted = prompt
+        if prompt != answered { answered = nil }
+        guard prompt != shown?.prompt else { return }
+        shown.map { alert in
+            alert.onGone = {}
+            alert.dismiss(animated: true)
+        }
+        shown = nil
+        guard let prompt, prompt != answered, let top = topmostController() else { return }
+        let alert = CorePromptAlert(title: prompt.title, message: prompt.text, preferredStyle: .alert)
+        alert.prompt = prompt
+        prompt.choices.forEach { choice in
+            alert.addAction(UIAlertAction(title: choice.label, style: choice.cancel ? .cancel : .default) { [weak self] _ in
+                self?.answer(prompt)
+                offMain { Qgc.invoke(choice.invoke) }
+            })
+        }
+        alert.onGone = { [weak self, weak alert] in self?.gone(alert) }
+        top.present(alert, animated: true)
+        shown = alert
+    }
+
+    private func answer(_ prompt: CorePrompt) {
+        answered = prompt
+        shown?.onGone = {}
+        shown = nil
+    }
+
+    private func gone(_ alert: CorePromptAlert?) {
+        guard let alert, alert === shown else { return }
+        shown = nil
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(PROMPT_REPRESENT_MILLIS))
+            show(wanted)
         }
     }
 }
+
+private let PROMPT_REPRESENT_MILLIS = 400
 
 struct PlanTab: View {
     @Environment(\.theme) private var theme
@@ -57,6 +131,8 @@ struct PlanTab: View {
     @State private var showTransform = false
     @State private var undrawn: [String] = []
     @State private var centre: (Double, Double)?
+    @State private var prompter = TopmostPrompter()
+    @State private var incoming: URL?
 
     var body: some View {
         let containsItems = planContainsItems(planStatus)
@@ -82,7 +158,12 @@ struct PlanTab: View {
         .background { dialogs }
         .modifier(PlanFileDialogs(files: files, onResult: { notice = $0 }))
         .onAppear { offMainInOrder { PlanCommands.setUndoTracking(true) } }
-        .onDisappear { offMainInOrder { PlanCommands.setUndoTracking(false) } }
+        .onDisappear {
+            offMainInOrder { PlanCommands.setUndoTracking(false) }
+            prompter.show(nil)
+        }
+        .onChange(of: corePrompt(planStatus), initial: true) { _, prompt in prompter.show(prompt) }
+        .onChange(of: PlanInbox.shared.received, initial: true) { _, url in receive(url) }
         .task(id: [String(syncing), String(containsItems), files.documentName() ?? ""]) {
             undrawn = await offMain { undrawnItemNames(visualItems()) }
         }
@@ -103,28 +184,17 @@ struct PlanTab: View {
                 PlanTransformDialog { showTransform = false }
             }
             Color.clear.frame(width: 0, height: 0).alert(
-                sentenceCase(vehicleChangePrompt(planStatus)?.title ?? ""),
-                isPresented: Binding(get: { vehicleChangePrompt(planStatus) != nil }, set: { _ in }),
-                presenting: vehicleChangePrompt(planStatus)
-            ) { prompt in
-                Button(sentenceCase(prompt.loadText)) { offMain { Qgc.invoke(LOAD_VEHICLE_PLAN) } }
-                Button(sentenceCase(prompt.keepText)) { offMain { Qgc.invoke(KEEP_CURRENT_PLAN) } }
-            } message: { prompt in
-                Text(prompt.text)
-            }
-            Color.clear.frame(width: 0, height: 0)
-                .modifier(ApplyAltitudePromptAlert(prompt: showDefaults ? nil : applyAltitudePrompt(planStatus)))
-            Color.clear.frame(width: 0, height: 0).alert(
                 pending.map { confirmCopy($0).title } ?? "",
-                isPresented: Binding(get: { pending != nil }, set: { if !$0 { pending = nil } }),
+                isPresented: Binding(get: { pending != nil }, set: { if !$0 { cancelPending() } }),
                 presenting: pending
             ) { kind in
                 let copy = confirmCopy(kind)
+                let received = incoming
                 Button(copy.confirm, role: copy.destructive ? .destructive : nil) {
-                    pending = nil
-                    act(kind)
+                    cancelPending()
+                    act(kind, received)
                 }
-                Button("Keep editing", role: .cancel) { pending = nil }
+                Button("Keep editing", role: .cancel) { cancelPending() }
             } message: { kind in
                 Text(confirmCopy(kind).body)
             }
@@ -141,9 +211,29 @@ struct PlanTab: View {
         }
     }
 
-    private func act(_ kind: PlanConfirm) {
+    private func cancelPending() {
+        pending = nil
+        incoming = nil
+    }
+
+    private func receive(_ url: URL?) {
+        guard let url else { return }
+        PlanInbox.shared.received = nil
+        guard url.pathExtension.lowercased() != KML_EXTENSION else { return files.chooseBoundary([url]) }
+        Task {
+            if await offMain({ planIsDirty(Qgc.get("view.plan")) }) {
+                incoming = url
+                pending = .Open
+            } else {
+                files.openFrom(url)
+            }
+        }
+    }
+
+    private func act(_ kind: PlanConfirm, _ received: URL?) {
         switch kind {
-        case .Open: files.open()
+        case .Open:
+            if let received { files.openFrom(received) } else { files.open() }
         case .NewPlan: files.newPlan()
         case .ClearMission: files.clearMission()
         case .Download: files.download()

@@ -51,7 +51,7 @@ struct ConnectingCard: View {
 }
 
 let LOOKING_TITLE = "Looking for your aircraft"
-let LOOKING_HINT = "Turn on the aircraft. A USB cable or telemetry radio connects by itself; for Wi-Fi, add a link."
+let LOOKING_HINT = "Turn on the aircraft. For Wi-Fi or a network connection, add a link."
 private let CONNECTION_SETTINGS = "Connections"
 private let LOOKING_MAX_WIDTH: CGFloat = 360
 

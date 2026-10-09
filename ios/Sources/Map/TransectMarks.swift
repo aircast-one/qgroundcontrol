@@ -57,7 +57,7 @@ private func chevron() -> UIImage {
 
 private let GIMBAL_WEDGE_SOURCE = "aircast-gimbal-wedges"
 private let GIMBAL_WEDGE_LAYER = "aircast-gimbal-wedge-layer"
-private let GIMBAL_WEDGE_IMAGE = "aircast-gimbal-wedge"
+private let GIMBAL_WEDGE_IMAGE = "aircast-mission-gimbal-wedge"
 private let GIMBAL_WEDGE_PX: CGFloat = 72
 private let GIMBAL_WEDGE_SWEEP: CGFloat = 90
 

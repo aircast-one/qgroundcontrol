@@ -59,13 +59,14 @@ struct AppMessageDialog: View {
         Color.clear
             .frame(width: 0, height: 0)
             .accessibilityHidden(true)
-            .alert(message.title, isPresented: Binding(get: { true }, set: { shown in if !shown { onDismiss() } })) {
+            .alert(message.title, isPresented: .constant(true)) {
                 Button(message.action == OPEN_SETUP_ACTION ? "Open Setup" : "OK") {
                     if message.action == REBOOT_VEHICLE_ACTION { offMain { Qgc.invoke(REBOOT_VEHICLE) } }
                     if message.action == OPEN_SETUP_ACTION { onOpenSetup() }
+                    onDismiss()
                 }
-                if message.action == REBOOT_VEHICLE_ACTION { Button("Cancel", role: .cancel) {} }
-                if message.action == OPEN_SETUP_ACTION { Button("Later", role: .cancel) {} }
+                if message.action == REBOOT_VEHICLE_ACTION { Button("Cancel", role: .cancel, action: onDismiss) }
+                if message.action == OPEN_SETUP_ACTION { Button("Later", role: .cancel, action: onDismiss) }
             } message: {
                 Text(message.text)
             }

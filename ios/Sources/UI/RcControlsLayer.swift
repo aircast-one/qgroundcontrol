@@ -129,18 +129,26 @@ private struct RcSwitch3: View {
     }
 }
 
+enum MomentaryPress { case idle, held, cancelled }
+
+func momentaryPress(_ press: MomentaryPress, _ location: CGPoint, _ size: CGSize) -> MomentaryPress {
+    press != .cancelled && CGRect(origin: .zero, size: size).contains(location) ? .held : .cancelled
+}
+
 private struct RcMomentary: View {
     let control: RcControl
-    @GestureState private var pressed = false
+    @GestureState private var press = MomentaryPress.idle
     @State private var everPressed = false
+    @State private var size = CGSize.zero
 
     var body: some View {
         Button(control.label) {}
             .buttonStyle(.borderedProminent)
+            .onGeometryChange(for: CGSize.self) { $0.size } action: { size = $0 }
             .simultaneousGesture(
-                DragGesture(minimumDistance: 0).updating($pressed) { _, down, _ in down = true }
+                DragGesture(minimumDistance: 0).updating($press) { drag, press, _ in press = momentaryPress(press, drag.location, size) }
             )
-            .onChange(of: pressed) { _, down in
+            .onChange(of: press == .held) { _, down in
                 if down {
                     everPressed = true
                     sendRcOverride(control.channel, PWM_MAX)

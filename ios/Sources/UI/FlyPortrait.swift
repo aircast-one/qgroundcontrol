@@ -181,6 +181,7 @@ struct FlyPortrait: View {
                         .padding(.horizontal, Space.s3)
                         .padding(.bottom, Space.s2)
                 }
+                .background(TrafficSheetHost())
                 .frame(width: box.width)
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { chromeHeight = $0 }
             }

@@ -3,7 +3,7 @@ import XCTest
 
 final class QgcTileSourceTests: XCTestCase {
     private func pathFor(_ mapType: String, _ z: Int, _ x: Int, _ y: Int) -> String {
-        qgcTileUrl(mapType).removingPrefix("https://\(qgcTileHost)")
+        qgcTileUrl(mapType).removingPrefix("https://\(QGC_TILE_HOST)")
             .replacingOccurrences(of: "{z}", with: "\(z)").replacingOccurrences(of: "{x}", with: "\(x)").replacingOccurrences(of: "{y}", with: "\(y)")
     }
 

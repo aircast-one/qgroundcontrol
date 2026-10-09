@@ -43,7 +43,7 @@ struct ControlRequestPrompt: View {
             .frame(width: 0, height: 0)
             .onChange(of: prompt.incoming == nil, initial: true) { _, gone in if gone { ignored = nil } }
             .onChange(of: prompt.revertMs == nil, initial: true) { _, gone in if gone { revertIgnored = false } }
-            .sheet(item: Binding(get: { incoming }, set: { if $0 == nil, let shown = incoming { ignored = shown.systemId } })) { asked in
+            .queuedSheet(item: Binding(get: { incoming }, set: { if $0 == nil, let shown = incoming { ignored = shown.systemId } })) { asked in
                 VStack(alignment: .leading, spacing: Space.s4) {
                     Text("GCS \(asked.systemId) is requesting control").font(.headlineSmall)
                     VStack(alignment: .leading, spacing: Space.s2) {

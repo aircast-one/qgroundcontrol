@@ -8,9 +8,10 @@ func choosesPlanVehicle(_ connected: Bool, _ plan: JSON?) -> Bool {
 }
 
 private func offlineClassFacts() -> [(String, Fact)] {
-    OFFLINE_CLASSES.map { name, label in
-        let read = Qgc.get("\(APP_SETTINGS).\(name)")
-        return (label, Qgc.fact(APP_SETTINGS, .object((read.object ?? [:]).merging(["name": .string(name)]) { $1 })))
+    OFFLINE_CLASSES.compactMap { name, label in
+        Qgc.get("\(APP_SETTINGS).\(name)").object.map { read in
+            (label, Qgc.fact(APP_SETTINGS, .object(read.merging(["name": .string(name)]) { $1 })))
+        }
     }
 }
 

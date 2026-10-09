@@ -124,7 +124,6 @@ struct AircastShell: View {
     @State private var alerts = SnackbarHostState()
     @State private var acknowledgedThrough: Int64 = -1
     @State private var shownAt: [String: Int64] = [:]
-    @State private var appMessages: [AppMessage] = []
     @State private var wasArmed = false
     @State private var flewWhileArmed = false
     @State private var armedBattery: Int?
@@ -188,7 +187,7 @@ struct AircastShell: View {
         .background { HostNoticeWatch(acknowledgedThrough: acknowledgedThrough, onNotices: noticesArrived) }
         .environment(\.theme, darkBars ? .darkTheme : .lightTheme)
         .tint((darkBars ? Theme.darkTheme : Theme.lightTheme).colors.primary)
-        .preferredColorScheme(systemPalette ? nil : darkBars ? .dark : .light)
+        .windowStyle(paletteWindowStyle(systemPalette, darkBars))
         .onChange(of: tab) { _, now in if now != .Fly { flyScreen.layout.editing = false } }
         .onChange(of: navigation.setupPage, initial: true) { _, page in if page != nil { navigation.openAircraft() } }
         .onChange(of: navigation.settingsPage, initial: true) { _, page in if page != nil { navigation.settingsOpen = true } }
@@ -201,6 +200,7 @@ struct AircastShell: View {
             hadVehicle = now
         }
         .onChange(of: flyView) { _, now in saveFlyView(now) }
+        .onChange(of: PlanInbox.shared.received != nil, initial: true) { _, waiting in if waiting && tab != .Plan { selectTab(.Plan) } }
         .onChange(of: FlyArming(armed: flyNow?.armed, state: flyNow?.state), initial: true) { armingChanged() }
         .onChange(of: vehiclesJson, initial: true) { _, json in vehiclesChanged(json) }
         .onChange(of: fullScreen) { _, now in if !now { videoFullScreen = false } }
@@ -258,15 +258,13 @@ struct AircastShell: View {
                     RoiSheet(at: at) { roiTapped = nil }
                 }
             }
-            MissionCompleteDialog()
             if onFly {
                 ResumeFailedPrompt(dismissed: resumeDismissed) { resumeDismissed = $0 }
             }
+            PreflightChecklistReset(checklist: flyScreen.checklist, available: vehicleNow)
             FirstRunDialog()
             GimbalTakeControlDialog()
-            if let shown = appMessages.first {
-                AppMessageDialog(message: shown, onOpenSetup: { navigation.openAircraft() }) { appMessages = Array(appMessages.dropFirst()) }
-            }
+            AppDialogsHost()
             Group {
                 switch tab {
                 case .Plan:
@@ -422,8 +420,9 @@ struct AircastShell: View {
         let now = Int64(Date().timeIntervalSince1970 * 1000)
         let banners = quietBanners(batch.banners, shownAt, now)
         shownAt = shownAt.merging(banners.map { ($0, now) }) { _, latest in latest }
-        let queued = appMessages + batch.dialogs
-        appMessages = queued.enumerated().filter { at, message in queued.firstIndex(of: message) == at }.map(\.element)
+        let dialogs = AppDialogsState.shared
+        let queued = dialogs.appMessages + batch.dialogs
+        dialogs.appMessages = queued.enumerated().filter { at, message in queued.firstIndex(of: message) == at }.map(\.element)
         let through = batch.through
         let critical = criticalBanner(banners.filter { batch.errorBanners.contains($0) }).flatMap { tab != .Fly ? $0 : nil }
         let ordinary = banners.filter { !batch.errorBanners.contains($0) }
@@ -475,6 +474,72 @@ struct AircastShell: View {
         if let notice {
             let host = snackbars
             Task { await host.showSnackbar(notice) }
+        }
+    }
+}
+
+@MainActor
+@Observable
+final class AppDialogsState {
+    static let shared = AppDialogsState()
+
+    var appMessages: [AppMessage] = []
+}
+
+enum AppAlert: Equatable {
+    case Gimbal
+    case Message(AppMessage)
+}
+
+func appAlert(_ gimbalAsking: Bool, _ messages: [AppMessage]) -> AppAlert? {
+    gimbalAsking ? .Gimbal : messages.first.map(AppAlert.Message)
+}
+
+private struct AlertSlot: Equatable {
+    let alert: AppAlert?
+    let here: Bool
+}
+
+struct AppDialogsHost: View {
+    @Environment(\.sheetDepth) private var level
+    @Environment(AppNavigationState.self) private var navigation: AppNavigationState?
+    @State private var probe = PresenterProbe()
+    @State private var alertReady = false
+
+    var body: some View {
+        let stack = SheetStack.shared
+        let alert = appAlert(gimbalAsksForControl.value, AppDialogsState.shared.appMessages)
+        let here = stack.level(dialogs: true) == level
+        ZStack(alignment: .topLeading) {
+            if stack.level(dialogs: false) == level {
+                MissionCompleteDialog()
+            }
+            if here, alertReady, let alert {
+                alertView(alert)
+            }
+        }
+        .frame(width: 0, height: 0)
+        .accessibilityHidden(true)
+        .background(PresenterProbeView(probe: probe).allowsHitTesting(false))
+        .task(id: AlertSlot(alert: alert, here: here)) {
+            alertReady = false
+            guard alert != nil, here else { return }
+            while !Task.isCancelled, !presenterFree(probe.controller) {
+                try? await Task.sleep(for: .milliseconds(SHEET_POLL_MS))
+            }
+            alertReady = !Task.isCancelled
+        }
+    }
+
+    @ViewBuilder
+    private func alertView(_ alert: AppAlert) -> some View {
+        switch alert {
+        case .Gimbal:
+            GimbalTakeControlAlert()
+        case .Message(let message):
+            AppMessageDialog(message: message, onOpenSetup: { navigation?.openAircraft() }) {
+                AppDialogsState.shared.appMessages = Array(AppDialogsState.shared.appMessages.dropFirst())
+            }
         }
     }
 }

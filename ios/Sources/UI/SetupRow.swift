@@ -98,6 +98,7 @@ struct SetupRow: View {
 struct PageHeading {
     let title: String
     let back: () -> Void
+    var owner: UUID? = nil
 }
 
 @Observable final class PageHeadingSlot {
@@ -113,12 +114,13 @@ struct OverridePageHeading: View {
     let title: String
     let onBack: () -> Void
     @Environment(\.LocalPageHeading) private var host
+    @State private var owner = UUID()
 
     var body: some View {
         Color.clear
             .frame(width: 0, height: 0)
-            .onChange(of: title, initial: true) { host?.value = PageHeading(title: title, back: onBack) }
-            .onDisappear { host?.value = nil }
+            .onChange(of: title, initial: true) { host?.value = PageHeading(title: title, back: onBack, owner: owner) }
+            .onDisappear { if host?.value?.owner == owner { host?.value = nil } }
     }
 }
 

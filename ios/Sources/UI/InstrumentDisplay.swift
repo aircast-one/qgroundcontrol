@@ -272,7 +272,7 @@ struct ValueDisplayDialog<Extra: View>: View {
         SwiftUI.Color.clear
             .frame(width: 0, height: 0)
             .accessibilityHidden(true)
-            .sheet(isPresented: Binding(get: { true }, set: { shown in if !shown { onDismiss() } })) {
+            .queuedSheet(isPresented: Binding(get: { true }, set: { shown in if !shown { onDismiss() } })) {
                 ValueDisplayForm(label: label, initial: initial, onDismiss: onDismiss, extra: extra, onDone: onDone)
             }
     }
@@ -365,7 +365,7 @@ private struct ValueDisplayForm<Extra: View>: View {
         }
         .presentationDetents([.medium, .large])
         .presentationDragIndicator(.visible)
-        .sheet(item: $picking) { request in
+        .queuedSheet(item: $picking) { request in
             IconPickerDialog(names: names, chosen: request.current, onDismiss: { picking = nil }) { name in
                 request.chosen(name)
                 picking = nil

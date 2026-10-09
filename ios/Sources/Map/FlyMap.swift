@@ -48,6 +48,10 @@ private struct FlownPlan {
 
 private let FLY_MISSION_ITEMS = "view.flyMissionItems(geometry)"
 
+private enum FlyMapStyle {
+    nonisolated(unsafe) static var last = ""
+}
+
 func otherMissions(_ view: JSON?) -> [OtherMission] {
     guard let others = view?["others"].arrayOrNil else { return [] }
     return others.filter { $0.object != nil }.map { OtherMission(items: missionItems($0), linkStartToHome: linksStartToHome($0)) }
@@ -126,7 +130,7 @@ struct FlyMap: View {
     @Environment(\.theme) private var theme
     @Environment(\.scenePhase) private var scenePhase
     @MapBool("view.control(settings.flyViewSettings.keepMapCenteredOnVehicle)") private var keepCentered
-    @State private var style = ""
+    @State private var style = FlyMapStyle.last
     @State private var plan = FlownPlan()
     @State private var centre: TrackPoint?
     @State private var zoom = 0.0
@@ -189,17 +193,20 @@ struct FlyMap: View {
         .task(id: scenePhase == .active) {
             guard scenePhase == .active else { return }
             while !Task.isCancelled {
-                let known = style
-                let next = await offMain { (flownPlan(), planMapStyle()) }
-                if next.1 != known { style = next.1 }
-                if missionArrived(plan.items, next.0.items, shape) { fitRequest += 1 }
-                if centresOnOperator(FlightMapPosition.operatorCentred, next.0.operator, next.0.vehiclePlaced) {
+                let mapStyle = await offMain { planMapStyle() }
+                if mapStyle != style {
+                    style = mapStyle
+                    FlyMapStyle.last = mapStyle
+                }
+                let next = await offMain { flownPlan() }
+                if missionArrived(plan.items, next.items, shape) { fitRequest += 1 }
+                if centresOnOperator(FlightMapPosition.operatorCentred, next.operator, next.vehiclePlaced) {
                     FlightMapPosition.operatorCentred = true
-                    camera.centreOn = next.0.operator
+                    camera.centreOn = next.operator
                     camera.centreZoom = nil
                     camera.centreRequest += 1
                 }
-                plan = next.0
+                plan = next
                 try? await Task.sleep(for: .milliseconds(FLY_POLL_MS))
             }
         }
@@ -224,7 +231,7 @@ struct FlyMap: View {
     }
 }
 
-private let SCALE_ABOVE_LOGO: CGFloat = 40
+private let SCALE_ABOVE_LOGO: CGFloat = 46
 private let SCALE_BAR_HEIGHT: CGFloat = 32
 
 let MAP_SCALE_CLEARANCE: CGFloat = SCALE_ABOVE_LOGO + SCALE_BAR_HEIGHT

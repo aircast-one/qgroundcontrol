@@ -177,7 +177,7 @@ struct AnalyzeScreen: View {
                         AnalyzePageList(onSelect: { onSelect($0) })
                     }
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .background(theme.colors.surface)
                 .environment(\.LocalTwoPane, wide)
             }

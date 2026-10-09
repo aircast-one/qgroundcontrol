@@ -35,6 +35,10 @@ let DEMO_STYLE_URL = "https://demotiles.maplibre.org/style.json"
 
 let OSM_TILE_URL = "https://tile.openstreetmap.org/{z}/{x}/{y}.png"
 
+private let BLANK_STYLE = """
+{ "version": 8, "sources": {}, "glyphs": "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf", "layers": [] }
+"""
+
 let OSM_RASTER_STYLE = """
 {
   "version": 8,
@@ -624,6 +628,12 @@ final class VehicleMapModel: NSObject, ObservableObject, MLNMapViewDelegate {
         DispatchQueue.main.async { self.mapReady = true }
     }
 
+    fileprivate func initialStyleURL(_ mapStyle: String) -> URL? {
+        let url = mapStyle.isBlank ? nil : styleURL(mapStyle)
+        appliedStyle = url == nil ? "" : mapStyle
+        return url ?? styleURL(BLANK_STYLE)
+    }
+
     fileprivate func applyStyle(_ mapStyle: String, _ view: MLNMapView) {
         guard mapStyle != appliedStyle, !mapStyle.isBlank, let url = styleURL(mapStyle) else { return }
         appliedStyle = mapStyle
@@ -813,7 +823,7 @@ private struct VehicleMapView: UIViewRepresentable {
     let gestures: Bool
 
     func makeUIView(context: Context) -> MLNMapView {
-        let view = MLNMapView(frame: .zero)
+        let view = MLNMapView(frame: .zero, styleURL: model.initialStyleURL(mapStyle))
         view.automaticallyAdjustsContentInset = false
         model.inputs = inputs
         model.attach(view)
@@ -829,17 +839,19 @@ private struct VehicleMapView: UIViewRepresentable {
         if view.contentInset != inset {
             view.setContentInset(inset, animated: false, completionHandler: nil)
         }
-        let bottom = bottomInsetPx + LOGO_EDGE_MARGIN_PX
+        let safe = view.safeAreaInsets
+        let bottom = max(0, bottomInsetPx + LOGO_EDGE_MARGIN_PX - safe.bottom)
         if let end = logoEndInsetPx {
             view.logoViewPosition = .bottomRight
             view.attributionButtonPosition = .bottomRight
-            view.attributionButtonMargins = CGPoint(x: end, y: bottom)
-            view.logoViewMargins = CGPoint(x: end + ATTRIBUTION_CLEARANCE, y: bottom)
+            view.attributionButtonMargins = CGPoint(x: max(0, end - safe.right), y: bottom)
+            view.logoViewMargins = CGPoint(x: max(0, end + ATTRIBUTION_CLEARANCE - safe.right), y: bottom)
         } else {
+            let left = max(0, leftInsetPx + LOGO_EDGE_MARGIN_PX - safe.left)
             view.logoViewPosition = .bottomLeft
             view.attributionButtonPosition = .bottomLeft
-            view.logoViewMargins = CGPoint(x: leftInsetPx + LOGO_EDGE_MARGIN_PX, y: bottom)
-            view.attributionButtonMargins = CGPoint(x: leftInsetPx + LOGO_EDGE_MARGIN_PX + view.logoView.bounds.width + Space.s1, y: bottom)
+            view.logoViewMargins = CGPoint(x: left, y: bottom)
+            view.attributionButtonMargins = CGPoint(x: left + view.logoView.bounds.width + Space.s1, y: bottom)
         }
         if model.appliedGestures != gestures {
             model.appliedGestures = gestures

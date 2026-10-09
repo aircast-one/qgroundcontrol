@@ -1,3 +1,4 @@
+import UIKit
 import XCTest
 @testable import Aircast
 
@@ -7,6 +8,13 @@ final class PaletteTests: XCTestCase {
         XCTAssertFalse(paletteIsDark(0, true))
         XCTAssertTrue(paletteIsDark(2, true))
         XCTAssertFalse(paletteIsDark(2, false))
+    }
+
+    func testSystemLeavesTheWindowToTheDeviceSoLaterAppearanceChangesShow() {
+        XCTAssertEqual(paletteWindowStyle(true, true), .unspecified)
+        XCTAssertEqual(paletteWindowStyle(true, false), .unspecified)
+        XCTAssertEqual(paletteWindowStyle(false, true), .dark)
+        XCTAssertEqual(paletteWindowStyle(false, false), .light)
     }
 
     func testDarkWhileTheSettingIsUnread() {

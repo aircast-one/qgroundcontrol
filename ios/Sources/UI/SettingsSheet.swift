@@ -256,7 +256,8 @@ private struct SettingsPager<Content: View>: View {
             }
             .scrollTargetLayout()
         }
-        .scrollTargetBehavior(.paging)
+        .scrollTargetBehavior(.viewAligned(limitBehavior: .always))
+        .mask { Rectangle().ignoresSafeArea(.container, edges: .vertical) }
         .scrollIndicators(.hidden)
         .scrollPosition(id: $position)
         .environment(\.isScrollEnabled, swipeable)

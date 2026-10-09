@@ -714,6 +714,7 @@ private struct FactTitle: View {
                 .fontWeight(settingsList ? .medium : nil)
                 .foregroundStyle(color ?? theme.colors.onSurface)
                 .lineLimit(maxLines)
+                .fixedSize(horizontal: false, vertical: true)
             if let helpOpen {
                 Button(action: onHelp) {
                     Image(.help)
@@ -970,7 +971,7 @@ struct FactRow: View {
                 .contentShape(Rectangle())
                 .onTapGesture { if rowToggles { toggleRow() } }
                 if beside { Segments(fact: fact, write: write) }
-                if !segmented { trailing.frame(maxWidth: 190, alignment: .trailing) }
+                if !segmented { CappedWidth(limit: TRAILING_MAX_WIDTH) { trailing } }
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
@@ -1040,6 +1041,7 @@ let SEGMENT_LABEL_BUDGET = 28
 let SEGMENTS_BESIDE_MIN_WIDTH: CGFloat = 560
 let NUMBER_VALUE_WIDTH: CGFloat = 160
 let CHOICE_VALUE_WIDTH: CGFloat = 220
+private let TRAILING_MAX_WIDTH: CGFloat = 190
 
 private let SECONDS: Set<String> = ["s", "sec", "secs", "second", "seconds"]
 

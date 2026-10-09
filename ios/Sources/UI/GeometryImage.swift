@@ -74,12 +74,17 @@ struct GeometryImage: View {
     var highlighted: Set<Int> = []
     var onMotor: (Int) -> Void = { _ in }
     @Environment(\.theme) private var theme
+    @Environment(\.displayScale) private var displayScale
 
     var body: some View {
         let ink = theme.colors.onSurface
+        let density = displayScale
         GeometryReader { geo in
-            Canvas { context, size in
+            Canvas { drawing, extent in
+                let size = CGSize(width: extent.width * density, height: extent.height * density)
                 guard let layout = geometryLayout(motors, size.width, size.height) else { return }
+                var context = drawing
+                context.scaleBy(x: 1 / density, y: 1 / density)
                 layout.motors.filter { !$0.coax }.forEach { drawn in
                     context.stroke(Path { $0.move(to: layout.origin); $0.addLine(to: drawn.center) }, with: .color(FRAME), lineWidth: FRAME_WIDTH)
                 }
@@ -103,8 +108,8 @@ struct GeometryImage: View {
             }
             .contentShape(Rectangle())
             .onTapGesture { at in
-                guard let layout = geometryLayout(motors, geo.size.width, geo.size.height) else { return }
-                if let motor = motorAt(layout, at, highlighted) { onMotor(motor) }
+                guard let layout = geometryLayout(motors, geo.size.width * density, geo.size.height * density) else { return }
+                if let motor = motorAt(layout, CGPoint(x: at.x * density, y: at.y * density), highlighted) { onMotor(motor) }
             }
         }
         .aspectRatio(IMAGE_ASPECT, contentMode: .fit)

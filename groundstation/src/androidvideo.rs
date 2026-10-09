@@ -159,9 +159,6 @@ impl Channel {
             return;
         }
         let (running, frames, width, height) = unsafe { ((video.running)(channel), (video.frames)(channel), (video.width)(channel), (video.height)(channel)) };
-        if channel == crate::videohost::MAIN_CHANNEL as c_int {
-            crate::videostats::sample(running, frames, i64::from(height), crate::hub::now_ms());
-        }
         if frames > 0 && !std::mem::replace(&mut self.decoding, true) {
             log::info!("Video channel {channel} decoding {width}x{height}");
         }

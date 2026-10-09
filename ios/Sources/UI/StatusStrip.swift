@@ -136,13 +136,14 @@ struct StatusPill: View {
                     readings(narrow: true)
                 } else {
                     ViewThatFits(in: .horizontal) {
-                        readings(narrow: false)
+                        readings(narrow: false).frame(idealWidth: NARROW_PILL_WIDTH)
                         readings(narrow: true)
                     }
                 }
             }
             .foregroundStyle(theme.aircast.outdoorForeground)
             .background(osdBackdrop(Color.black.opacity(0.45), flyOsd), in: Capsule())
+            .layoutPriority(1)
         }
     }
 
@@ -157,6 +158,7 @@ struct StatusPill: View {
 
 private let STRIP_GAP: CGFloat = 14
 private let NARROW_STRIP_GAP: CGFloat = 6
+private let NARROW_PILL_WIDTH: CGFloat = 120
 private let NARROW_STATUS_CELLS = 1
 
 private func stripGap(_ narrow: Bool) -> CGFloat { narrow ? NARROW_STRIP_GAP : STRIP_GAP }
@@ -203,6 +205,7 @@ private struct VehicleStatusReadings: View {
     @State private var allStatus = false
     @State private var batteryDisplay = false
     @State private var rtkSettings = false
+    @State private var contentWidth: CGFloat?
 
     var body: some View {
         let state = flyState(stateJson)
@@ -237,9 +240,10 @@ private struct VehicleStatusReadings: View {
                         .accessibilityAddTraits(.isButton)
                 }
             }
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { contentWidth = $0 }
         }
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
-        .fixedSize(horizontal: compact, vertical: false)
+        .frame(maxWidth: contentWidth)
         .opacity(live ? 1 : 0.45)
         .background {
             OpenOnRequest(name: "status-all", open: { allStatus = true })

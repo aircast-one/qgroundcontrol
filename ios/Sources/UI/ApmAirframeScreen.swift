@@ -120,13 +120,15 @@ private struct FrameClassTile: View {
         } label: {
             ZStack {
                 VStack(spacing: 4) {
-                    if let asset = airframeImageAsset(card.image) {
-                        Color.clear
-                            .aspectRatio(1, contentMode: .fit)
-                            .frame(maxWidth: .infinity)
-                            .overlay { Image(asset).resizable().scaledToFit() }
-                            .accessibilityLabel(card.name)
-                    }
+                    Color.clear
+                        .aspectRatio(1, contentMode: .fit)
+                        .frame(maxWidth: .infinity)
+                        .overlay {
+                            if let asset = airframeImageAsset(card.image) {
+                                Image(asset).resizable().scaledToFit()
+                            }
+                        }
+                        .accessibilityLabel(card.name)
                     Text(card.name).font(.labelLarge).lineLimit(1)
                 }
                 .padding(8)

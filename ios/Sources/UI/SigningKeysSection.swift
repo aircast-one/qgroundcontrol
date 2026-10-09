@@ -142,11 +142,8 @@ struct SigningKeysSection: View {
         } message: {
             Text("Key copied to clipboard. Store it securely — it will be cleared from the clipboard in 30 seconds.")
         }
-        .sheet(isPresented: $adding) {
-            AddKeyDialog(minPassphrase: read?.minPassphraseLength ?? 8) {
-                adding = false
-                revision += 1
-            }
+        .sheet(isPresented: $adding, onDismiss: { revision += 1 }) {
+            AddKeyDialog(minPassphrase: read?.minPassphraseLength ?? 8) { adding = false }
         }
     }
 

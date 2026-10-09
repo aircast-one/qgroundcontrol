@@ -11,6 +11,7 @@ enum VideoDriver {
     private static var played: [Int32: Channel] = [:]
     private static var recording: JSON?
     private static var recordingReported = false
+    private static var restarts: Set<Int32> = []
 
     private struct Channel {
         var driven: String?
@@ -23,14 +24,18 @@ enum VideoDriver {
     static func start() {
         queue.async {
             guard timer == nil, qgc_video_available() else { return }
-            Qgc.invoke("video.setNativeRendering", true)
-            Qgc.invoke("video.initNative")
+            VideoCommands.setNativeRendering(true)
+            VideoCommands.initNative()
             let made = DispatchSource.makeTimerSource(queue: queue)
             made.schedule(deadline: .now() + interval, repeating: interval)
             made.setEventHandler(handler: step)
             made.resume()
             timer = made
         }
+    }
+
+    static func restart(_ channel: Int) {
+        queue.async { restarts.insert(Int32(channel)) }
     }
 
     private static func step() {
@@ -46,7 +51,8 @@ enum VideoDriver {
     }
 
     private static func stopChanged(_ channel: Int32, _ wanted: String?) {
-        guard let driven = played[channel]?.driven, wanted != driven else { return }
+        let restart = restarts.remove(channel) != nil
+        guard let driven = played[channel]?.driven, restart || wanted != driven else { return }
         qgc_video_stop(channel)
         log.info("Video channel \(channel) stopped")
         played[channel]?.driven = nil

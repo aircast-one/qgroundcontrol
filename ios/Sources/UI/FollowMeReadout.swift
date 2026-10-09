@@ -9,14 +9,15 @@ struct FollowMeReadout: View {
         let reading = followMeReading(view)
         if let label = followMeLabel(reading) {
             let sending = reading?.wouldSend == true
-            Text(label)
-                .font(.labelLarge)
-                .lineLimit(2)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 6)
-                .background(osdBackdrop((sending ? theme.colors.secondaryContainer : theme.colors.surfaceVariant).opacity(0.92), flyOsd))
-                .frame(maxWidth: 300, alignment: .leading)
+            CappedWidth(limit: 300) {
+                Text(label)
+                    .font(.labelLarge)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 6)
+            }
+            .background(osdBackdrop((sending ? theme.colors.secondaryContainer : theme.colors.surfaceVariant).opacity(0.92), flyOsd))
         }
     }
 }

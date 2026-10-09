@@ -276,9 +276,6 @@ struct SensorsScreen: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-        .onDisappear {
-            if stillRunning { offMain { _ = Qgc.invoke("\(CAL).cancelCalibration") } }
-        }
     }
 
     @ViewBuilder
@@ -315,6 +312,9 @@ struct SensorsScreen: View {
             }
             wasInProgress = inProgress
             stillRunning = inProgress
+        }
+        .onDisappear {
+            if stillRunning { offMain { _ = Qgc.invoke("\(CAL).cancelCalibration") } }
         }
         .alert("Factory reset", isPresented: $confirmFactoryReset) {
             Button("Cancel", role: .cancel) {}

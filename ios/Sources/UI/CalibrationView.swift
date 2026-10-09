@@ -54,6 +54,12 @@ struct CompassResult: Equatable {
     var yellow: Double
     var range: Double
     var position: Double
+
+    static func == (a: CompassResult, b: CompassResult) -> Bool {
+        let same = { (x: Double, y: Double) in x == y || (x.isNaN && y.isNaN) }
+        return a.compass == b.compass && same(a.green, b.green) && same(a.yellow, b.yellow)
+            && same(a.range, b.range) && same(a.position, b.position)
+    }
 }
 
 private func list<T>(_ view: JSON, _ key: String, _ item: (JSON) -> T) -> [T] {

@@ -54,6 +54,7 @@ struct MissionProgressCard: View {
                     SetWaypointSheet(sequence: next, onDismiss: { skipTarget = nil })
                 }
             }
+            .onDisappear { skipTarget = nil }
         }
     }
 }

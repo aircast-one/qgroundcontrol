@@ -106,8 +106,8 @@ private struct NoVideoLayout: View {
                     .padding(.top, 8)
                 }
             }
-            .frame(maxWidth: PANEL_MAX_WIDTH)
             .padding(.horizontal, 24)
+            .frame(maxWidth: PANEL_MAX_WIDTH)
         }
     }
 }

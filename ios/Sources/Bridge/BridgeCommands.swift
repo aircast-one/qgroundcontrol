@@ -43,7 +43,6 @@ private let escCalibrationStart = "escCalibration.start"
 private let escCalibrationClose = "escCalibration.close"
 private let subMotorsOpen = "apmSubMotors.open"
 private let subMotorsTest = "apmSubMotors.test"
-private let packetRadioRefresh = "packetRadio.refreshAdapters"
 private let inspectorMessageInterval = "mavlinkInspector.setMessageInterval"
 private let inspectorActiveSystem = "mavlinkInspector.setActiveSystem"
 private let gimbalControl = "gimbal.control"
@@ -91,7 +90,10 @@ enum VideoCommands {
     @discardableResult static func initNative() -> Bool { Qgc.invoke(videoInitNative) }
     @discardableResult static func setActiveSource(_ slot: Int) -> Bool { Qgc.invoke(videoActiveSource, slot) }
     @discardableResult static func setRecording(_ recording: Bool) -> Bool { Qgc.invoke(recording ? videoStartRecording : videoStopRecording) }
-    @discardableResult static func restart() -> Bool { Qgc.invoke(videoRestart) }
+    @discardableResult static func restart() -> Bool {
+        VideoDriver.restart(MAIN_VIDEO_CHANNEL)
+        return Qgc.invoke(videoRestart)
+    }
     @discardableResult static func setDeviceCameraRotation(_ degrees: Int) -> Bool { Qgc.invoke(videoDeviceCameraRotation, degrees) }
     @discardableResult static func setPictureInPicture(_ shown: Bool) -> Bool { Qgc.set(videoPictureInPicture, shown) }
     @discardableResult static func setPipShown(_ shown: Bool) -> Bool { Qgc.invoke(videoPipShown, shown) }
@@ -112,7 +114,6 @@ enum SetupCommands {
     @discardableResult static func closeEscCalibration() -> Bool { Qgc.invoke(escCalibrationClose) }
     @discardableResult static func openSubMotors() -> Bool { Qgc.invoke(subMotorsOpen) }
     @discardableResult static func testSubMotor(_ motor: Int, _ value: Double) -> Bool { Qgc.invoke(subMotorsTest, motor, value) }
-    @discardableResult static func refreshPacketRadios() -> Bool { Qgc.invoke(packetRadioRefresh) }
     @discardableResult static func setInspectorMessageInterval(_ rate: Int) -> Bool { Qgc.invoke(inspectorMessageInterval, rate) }
     @discardableResult static func setInspectorSystem(_ system: Int) -> Bool { Qgc.invoke(inspectorActiveSystem, system) }
     static func takeGimbalControlRefusal() -> String? { Qgc.refusalOf(gimbalControl, true) }

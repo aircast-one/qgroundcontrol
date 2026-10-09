@@ -17,7 +17,7 @@ struct MapLayersSheet: View {
                         .font(.bodyMedium)
                         .foregroundStyle(theme.colors.onSurfaceVariant)
                 }
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: Space.s2, alignment: .leading)], alignment: .leading, spacing: Space.s2) {
+                PlanFlowRow(spacing: Space.s2, lineSpacing: Space.s2) {
                     ForEach(listed?.types ?? [], id: \.self) { type in
                         MapTypeChip(type: type, selected: type == listed?.current) { choose(type) }
                     }

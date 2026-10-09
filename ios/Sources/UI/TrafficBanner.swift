@@ -5,25 +5,19 @@ private let TRAFFIC_BANNER_CORNER: CGFloat = 12
 
 struct TrafficBanner: View {
     @QgcPath(TRAFFIC_VIEW) private var view
-    @State private var listed = false
+    @Environment(FlyScreenState.self) private var flyScreen
     @Environment(\.theme) private var theme
 
     var body: some View {
-        let reading = trafficReading(view)
-        ZStack {
-            OpenOnRequest(name: TRAFFIC_SHEET) { listed = true }
-            if let reading, listed {
-                TrafficSheet(reading: reading) { listed = false }
-            }
-            if let reading, let alert = trafficAlert(reading) {
-                banner(reading, alert)
-            }
+        if let reading = trafficReading(view), let alert = trafficAlert(reading) {
+            banner(reading, alert)
         }
     }
 
     private func banner(_ reading: TrafficReading, _ alert: TrafficAlert) -> some View {
         let urgent = alert.level >= .Warning
-        return Button { listed = true } label: {
+        let listable = !reading.contacts.isEmpty
+        return Button { if listable { flyScreen.requestedSheet = TRAFFIC_SHEET } } label: {
             HStack(spacing: Space.s3) {
                 Image(urgent ? .flight : .warning)
                     .resizable()
@@ -44,9 +38,31 @@ struct TrafficBanner: View {
             .foregroundStyle(urgent ? theme.colors.onErrorContainer : theme.colors.onSurface)
             .background(urgent ? theme.colors.errorContainer : theme.aircast.warningContainer, in: RoundedRectangle(cornerRadius: TRAFFIC_BANNER_CORNER))
         }
-        .buttonStyle(.plain)
-        .allowsHitTesting(!reading.contacts.isEmpty)
+        .buttonStyle(TrafficBannerPress(enabled: listable))
+        .accessibilityRemoveTraits(listable ? [] : .isButton)
         .frame(maxWidth: TRAFFIC_BANNER_MAX_WIDTH)
+    }
+}
+
+private struct TrafficBannerPress: ButtonStyle {
+    let enabled: Bool
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.opacity(enabled && configuration.isPressed ? 0.7 : 1)
+    }
+}
+
+struct TrafficSheetHost: View {
+    @QgcPath(TRAFFIC_VIEW) private var view
+    @State private var listed = false
+
+    var body: some View {
+        ZStack {
+            OpenOnRequest(name: TRAFFIC_SHEET) { listed = true }
+            if let reading = trafficReading(view), listed {
+                TrafficSheet(reading: reading) { listed = false }
+            }
+        }
     }
 }
 

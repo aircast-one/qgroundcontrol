@@ -15,6 +15,7 @@ struct SupportForwardingCell: View {
                 .font(.labelMedium)
                 .foregroundStyle(theme.aircast.success)
                 .onTapGesture { open = true }
+                .accessibilityAddTraits(.isButton)
                 .background {
                     if open {
                         AircastSheet(onDismissRequest: { open = false }) {

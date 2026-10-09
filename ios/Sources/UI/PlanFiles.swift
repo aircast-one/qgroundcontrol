@@ -10,8 +10,15 @@ private let PLAN_STATUS_VIEW = "view.plan"
 private let MISSION_ITEMS_VIEW = "view.missionItems"
 
 let PLAN_OPEN_TYPES: [UTType] = [.item]
-let PLAN_FILE_TYPE = UTType(filenameExtension: PLAN_EXTENSION, conformingTo: .json) ?? .json
-let KML_FILE_TYPE = UTType(filenameExtension: KML_EXTENSION, conformingTo: .xml) ?? .xml
+let PLAN_FILE_TYPE = UTType(exportedAs: "one.aircast.plan", conformingTo: .json)
+let KML_FILE_TYPE = UTType(importedAs: "com.google.earth.kml", conformingTo: .xml)
+
+@MainActor
+@Observable
+final class PlanInbox {
+    static let shared = PlanInbox()
+    var received: URL?
+}
 
 struct PatternChoice {
     let options: () -> [String]
@@ -86,6 +93,18 @@ private func lastDocument() -> URL? {
 
 private func rememberDocument(_ uri: URL) {
     UserDefaults(suiteName: FILES_STORE)?.set(uri.absoluteString, forKey: LAST_DOCUMENT_KEY)
+}
+
+private func suffixed(_ uri: URL, _ extension: String) -> URL {
+    let shown = displayName(uri)
+    let wanted = withExtension(shown, `extension`)
+    guard wanted != shown else { return uri }
+    let scoped = uri.startAccessingSecurityScopedResource()
+    defer { if scoped { uri.stopAccessingSecurityScopedResource() } }
+    guard let bookmark = try? uri.bookmarkData(),
+          (try? FileManager.default.moveItem(at: uri, to: uri.deletingLastPathComponent().appending(path: wanted))) != nil else { return uri }
+    var stale = false
+    return (try? URL(resolvingBookmarkData: bookmark, bookmarkDataIsStale: &stale)) ?? uri
 }
 
 private let DOWNLOAD_POLL_MS = 200
@@ -297,7 +316,7 @@ final class PlanFileActions {
             if let message = await offMain({ writePlan(target) }) {
                 onResult(message)
             } else {
-                adopt(target)
+                adopt(await offMain { suffixed(target, PLAN_EXTENSION) })
                 onResult("Plan saved.")
             }
         }
@@ -319,7 +338,7 @@ final class PlanFileActions {
         }
     }
 
-    private func openFrom(_ chosen: URL) {
+    func openFrom(_ chosen: URL) {
         Task {
             let (failure, loaded) = await offMain { loadStaged(chosen) }
             guard loaded else {
@@ -332,7 +351,7 @@ final class PlanFileActions {
         }
     }
 
-    private func chooseBoundary(_ chosen: [URL]) {
+    func chooseBoundary(_ chosen: [URL]) {
         Task {
             let names = await offMain { patternNames() }
             if names.isEmpty {

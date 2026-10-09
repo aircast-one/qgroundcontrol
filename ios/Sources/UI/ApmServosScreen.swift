@@ -182,6 +182,7 @@ private struct RepeatButton: View {
     let onStep: () -> Void
     @Environment(\.theme) private var theme
     @State private var repeating: Task<Void, Never>?
+    @GestureState private var pressing = false
 
     var body: some View {
         Text(label)
@@ -191,6 +192,7 @@ private struct RepeatButton: View {
             .contentShape(Rectangle())
             .gesture(
                 DragGesture(minimumDistance: 0)
+                    .updating($pressing) { _, state, _ in state = true }
                     .onChanged { _ in
                         guard repeating == nil else { return }
                         onStep()
@@ -202,15 +204,16 @@ private struct RepeatButton: View {
                             }
                         }
                     }
-                    .onEnded { _ in
-                        repeating?.cancel()
-                        repeating = nil
-                    }
+                    .onEnded { _ in stop() }
             )
-            .onDisappear {
-                repeating?.cancel()
-                repeating = nil
-            }
+            .onChange(of: pressing) { if !pressing { stop() } }
+            .onDisappear(perform: stop)
             .accessibilityAddTraits(.isButton)
+            .accessibilityAction { onStep() }
+    }
+
+    private func stop() {
+        repeating?.cancel()
+        repeating = nil
     }
 }

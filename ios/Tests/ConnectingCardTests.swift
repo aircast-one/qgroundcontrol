@@ -14,5 +14,6 @@ final class ConnectingCardTests: XCTestCase {
     func testTheEmptyFlyViewSaysWhatToDoNext() {
         XCTAssertEqual(LOOKING_TITLE, "Looking for your aircraft")
         XCTAssertTrue(LOOKING_HINT.hasPrefix("Turn on the aircraft"))
+        XCTAssertFalse(LOOKING_HINT.contains("USB"), "iOS has no USB serial links, so the hint must not promise one")
     }
 }

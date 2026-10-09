@@ -739,7 +739,11 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
             let size = |i: usize| u32::try_from(number(i)).unwrap_or(0);
             match usize::try_from(number(7)).ok().filter(|channel| *channel < VIDEO_CHANNELS) {
                 Some(channel) => {
-                    report(host, channel, given.get(0).and_then(Value::as_bool).unwrap_or(false), number(1), size(2), size(3), given.get(5).and_then(Value::as_i64), given.get(6).and_then(Value::as_bool).unwrap_or(false), given.get(4).and_then(Value::as_str).unwrap_or_default(), crate::hub::now_ms());
+                    let running = given.get(0).and_then(Value::as_bool).unwrap_or(false);
+                    if channel == MAIN_CHANNEL {
+                        crate::videostats::sample(running, number(1), number(3), crate::hub::now_ms());
+                    }
+                    report(host, channel, running, number(1), size(2), size(3), given.get(5).and_then(Value::as_i64), given.get(6).and_then(Value::as_bool).unwrap_or(false), given.get(4).and_then(Value::as_str).unwrap_or_default(), crate::hub::now_ms());
                     Some(json!({ "ok": true }))
                 }
                 None => Some(json!({ "ok": false, "reason": "no such video channel" })),

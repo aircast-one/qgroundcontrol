@@ -243,6 +243,7 @@ private struct TelemetryReadings: View {
     @QgcPath private var view: JSON?
     @QgcPath(GCS_POSITION) private var gcsJson
     @QgcPath(FLY_STATE) private var stateJson
+    @ScaledMetric(relativeTo: .body) private var telemetrySize = TypeScale.telemetry.size
 
     init(path: String?, chosen: [String], displays: [String: ValueDisplay], columns: Int?, valuesShown: Bool, chooser: Bool, compact: Bool, stacked: Bool, onStyle: @escaping (Instrument) -> Void) {
         self.chosen = chosen
@@ -303,7 +304,7 @@ private struct TelemetryReadings: View {
         } else {
             ViewThatFits(in: .horizontal) {
                 HStack(spacing: Space.s4) { ForEach(Array(shown.enumerated()), id: \.offset) { osdReading($0.element, .titleMedium) } }
-                PlanFlowRow(spacing: Space.s4, lineSpacing: 2) { ForEach(Array(shown.enumerated()), id: \.offset) { osdReading($0.element, .titleMedium) } }
+                PlanFlowRow(spacing: Space.s4, lineSpacing: 2, alignment: .center) { ForEach(Array(shown.enumerated()), id: \.offset) { osdReading($0.element, .titleMedium) } }
             }
             .opacity(silent ? 0.45 : 1)
         }
@@ -345,7 +346,7 @@ private struct TelemetryReadings: View {
                 ValueLabel(display: display, raw: instrument.raw, label: instrument.label.uppercased(), fallback: theme.colors.onSurfaceVariant)
                 HStack(alignment: .lastTextBaseline, spacing: 3) {
                     Text(instrument.value)
-                        .font(scaledNumber(flyScreen.layout.valueSize.scale))
+                        .font(scaledNumber(flyScreen.layout.valueSize.scale, base: telemetrySize))
                         .foregroundStyle(displayColour(display, instrument.raw).map(argbColor) ?? theme.colors.onSurface)
                     if display.showUnits && !instrument.units.isBlank {
                         Text(instrument.units).font(.labelMedium).foregroundStyle(theme.colors.onSurfaceVariant)
@@ -365,8 +366,8 @@ private struct TelemetryReadings: View {
     }
 }
 
-func scaledNumber(_ scale: Double) -> Font {
-    TypeScale.telemetry.font(TypeScale.telemetry.size * scale)
+func scaledNumber(_ scale: Double, base: CGFloat = TypeScale.telemetry.size) -> Font {
+    TypeScale.telemetry.font(base * scale)
 }
 
 struct FlightActions<Center: View>: View {
@@ -386,10 +387,10 @@ struct FlightActions<Center: View>: View {
     @State private var showMore = false
     @State private var showGripper = false
     @State private var editingLoiter: LoiterOffer?
-    @State private var checklist = PreflightChecklistState()
     @State private var missionReady: Set<String>?
     @State private var popupDue: GuidedOffer?
 
+    private var checklist: PreflightChecklistState { flyScreen.checklist }
     private var state: FlyState? { flyState(stateJson) }
     private var armed: Bool { state?.armed == true }
     private var offers: [String: GuidedOffer] { guidedOffers(actionsJson) }

@@ -428,6 +428,7 @@ struct FlyScreen: View {
                                 HStack(spacing: Space.s2) { keyRow() }
                             }
                         }
+                        .background(TrafficSheetHost())
                         .padding(.top, safe.top)
                         .padding(.horizontal, Space.s3)
                         .padding(.vertical, Space.s2)

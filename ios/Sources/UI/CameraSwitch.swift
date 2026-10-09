@@ -173,7 +173,7 @@ private struct CameraSwitchButton: View {
     }
 }
 
-private struct CappedWidth: Layout {
+struct CappedWidth: Layout {
     let limit: CGFloat
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {

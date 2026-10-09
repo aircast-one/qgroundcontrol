@@ -8,6 +8,7 @@ final class PreflightChecklistState {
     var shown = false
     var popupShownFor: Int?
     var stateSent: Bool?
+    var vehicleId: Int?
 
     func open() {
         shown = true
@@ -26,6 +27,7 @@ struct PreflightChecklistReset: View {
                 guard !now else { return }
                 checklist.ticked = []
                 checklist.popupShownFor = nil
+                checklist.vehicleId = nil
             }
     }
 }
@@ -56,7 +58,9 @@ struct PreflightChecklist: View {
         Color.clear
             .frame(width: 0, height: 0)
             .accessibilityHidden(true)
-            .onChange(of: vehicleId, initial: true) {
+            .onChange(of: vehicleId, initial: true) { _, now in
+                guard checklist.vehicleId != now else { return }
+                checklist.vehicleId = now
                 checklist.ticked = []
                 checklist.stateSent = nil
             }
@@ -84,7 +88,7 @@ struct PreflightChecklist: View {
                 checklist.popupShownFor = id
                 checklist.shown = true
             }
-            .sheet(isPresented: Binding(get: { checklist.shown }, set: { checklist.shown = $0 })) {
+            .queuedSheet(isPresented: Binding(get: { checklist.shown }, set: { checklist.shown = $0 })) {
                 NavigationStack {
                     PreflightScreen(ticked: checklist.ticked, onTicked: { checklist.ticked = $0 })
                         .navigationTitle("Pre-flight checklist")

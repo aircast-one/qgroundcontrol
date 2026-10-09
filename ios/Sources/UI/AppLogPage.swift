@@ -111,6 +111,11 @@ private struct PollKey: Equatable {
     let cleared: Int
 }
 
+private struct FollowKey: Equatable {
+    let count: Int
+    let following: Bool
+}
+
 private let LOG_END = "log-end"
 
 struct AppLogPage: View {
@@ -121,7 +126,7 @@ struct AppLogPage: View {
     @State private var cleared = 0
     @State private var notice: String?
     @State private var atBottom = true
-    @State private var showLatest = 0
+    @State private var following = true
     @State private var showCategories = false
     @State private var saveName = appLogFileName(nil)
     @State private var saving: AppLogDocument?
@@ -147,18 +152,18 @@ struct AppLogPage: View {
                                 .onDisappear { atBottom = false }
                         }
                     }
-                    .onChange(of: entries.count) { before, now in
-                        if now > 0 && (atBottom || before == 0) { proxy.scrollTo(LOG_END, anchor: .bottom) }
+                    .onChange(of: FollowKey(count: entries.count, following: following)) {
+                        if following && !entries.isEmpty { proxy.scrollTo(LOG_END, anchor: .bottom) }
                     }
-                    .onChange(of: showLatest) { proxy.scrollTo(LOG_END, anchor: .bottom) }
                 }
                 if !atBottom && !entries.isEmpty {
-                    Button("Show latest") { showLatest += 1 }
+                    Button("Show latest") { following = true }
                         .buttonStyle(.borderedProminent)
                         .padding(.top, Space.s2)
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .onChange(of: atBottom) { if !atBottom { following = false } }
             Divider()
             AppLogFilterBar(
                 filter: filter,

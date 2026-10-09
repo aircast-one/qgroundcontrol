@@ -59,4 +59,13 @@ final class RcSendRateTests: XCTestCase {
     func testTheFirstSendOfADragIsNeverThrottled() {
         XCTAssertTrue(rcSendDue(5_000, 0, false))
     }
+
+    func testAMomentaryPressLetsGoOnceTheFingerSlidesOffAndStaysLetGo() {
+        let size = CGSize(width: 100, height: 40)
+        let held = momentaryPress(.idle, CGPoint(x: 50, y: 20), size)
+        let slidOff = momentaryPress(held, CGPoint(x: 150, y: 20), size)
+        XCTAssertEqual(held, .held)
+        XCTAssertEqual(slidOff, .cancelled)
+        XCTAssertEqual(momentaryPress(slidOff, CGPoint(x: 50, y: 20), size), .cancelled)
+    }
 }

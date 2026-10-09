@@ -21,7 +21,13 @@ struct AircastApp: App {
     var body: some Scene {
         WindowGroup {
             AircastRoot()
-                .onOpenURL { url in if !DebugUiReceiver.onReceive(url) { CoreHost.handleDeepLink(url) } }
+                .onOpenURL { url in
+                    if url.isFileURL {
+                        PlanInbox.shared.received = url
+                    } else if !DebugUiReceiver.onReceive(url) {
+                        CoreHost.handleDeepLink(url)
+                    }
+                }
         }
     }
 }

@@ -2,10 +2,10 @@ import Foundation
 import MapLibre
 import QGCCore
 
-let qgcTileHost = "qgc.tiles"
-private let mapProviderPath = "settings.flightMapSettings.mapProvider.rawValue"
-private let mapTypePath = "settings.flightMapSettings.mapType.rawValue"
-private let pngMagic: [UInt8] = [0x89, 0x50, 0x4E, 0x47]
+let QGC_TILE_HOST = "qgc.tiles"
+private let MAP_PROVIDER = "settings.flightMapSettings.mapProvider.rawValue"
+private let MAP_TYPE = "settings.flightMapSettings.mapType.rawValue"
+private let PNG_MAGIC: [UInt8] = [0x89, 0x50, 0x4E, 0x47]
 
 struct TileAddress: Equatable {
     let mapType: String
@@ -23,7 +23,7 @@ func tileAddress(_ path: String) -> TileAddress? {
 
 func qgcTileUrl(_ mapType: String) -> String {
     let encoded = mapType.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? mapType
-    return "https://\(qgcTileHost)/\(encoded)/{z}/{x}/{y}"
+    return "https://\(QGC_TILE_HOST)/\(encoded)/{z}/{x}/{y}"
 }
 
 func osmTileUrl(_ address: TileAddress) -> String {
@@ -37,7 +37,7 @@ func mapTypeName(_ provider: String, _ type: String) -> String {
 }
 
 func currentMapType() -> String {
-    mapTypeName(Qgc.get(mapProviderPath)["value"].string, Qgc.get(mapTypePath)["value"].string)
+    mapTypeName(Qgc.get(MAP_PROVIDER)["value"].string, Qgc.get(MAP_TYPE)["value"].string)
 }
 
 func qgcRasterStyle(_ mapType: String) -> String {
@@ -78,7 +78,7 @@ final class QgcTileProtocol: URLProtocol {
     }
 
     override class func canInit(with request: URLRequest) -> Bool {
-        request.url?.host == qgcTileHost
+        request.url?.host == QGC_TILE_HOST
     }
 
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
@@ -111,7 +111,7 @@ final class QgcTileProtocol: URLProtocol {
 
     private func respond(_ data: Data) {
         guard let url = request.url else { return }
-        let png = data.prefix(pngMagic.count).elementsEqual(pngMagic)
+        let png = data.prefix(PNG_MAGIC.count).elementsEqual(PNG_MAGIC)
         let response = HTTPURLResponse(url: url, statusCode: 200, httpVersion: "HTTP/1.1",
                                        headerFields: ["Content-Type": png ? "image/png" : "image/jpeg"])
         response.map { client?.urlProtocol(self, didReceive: $0, cacheStoragePolicy: .notAllowed) }

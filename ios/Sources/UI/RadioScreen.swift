@@ -291,7 +291,7 @@ struct RadioScreen: View {
                 )
             }
         }
-        .onChange(of: reversed) { reversedSeen = false }
+        .onChange(of: reversed, initial: true) { reversedSeen = false }
         .alert(THROTTLE_REVERSED_TITLE, isPresented: Binding(get: { reversed && !reversedSeen }, set: { if !$0 { reversedSeen = true } })) {
             Button("OK") { reversedSeen = true }
         } message: {

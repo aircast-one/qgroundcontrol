@@ -244,9 +244,9 @@ private struct CameraRow: View {
                 Image(.chevronRight).foregroundStyle(theme.colors.onSurfaceVariant)
             }
         }
-        .frame(minHeight: ROW_MIN_HEIGHT)
         .padding(.horizontal, ROW_PAD_HORIZONTAL)
         .padding(.vertical, ROW_PAD_VERTICAL)
+        .frame(minHeight: ROW_MIN_HEIGHT)
         .contentShape(Rectangle())
         if let onEdit {
             Button(action: onEdit) { row }.buttonStyle(.plain)

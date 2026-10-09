@@ -15,6 +15,7 @@ struct ObstacleReadout: View {
                 .padding(.horizontal, 10)
                 .padding(.vertical, 6)
                 .background(osdBackdrop(warning.close ? theme.colors.errorContainer : theme.colors.surfaceVariant, flyOsd))
+                .contentShape(Rectangle())
         }
     }
 }

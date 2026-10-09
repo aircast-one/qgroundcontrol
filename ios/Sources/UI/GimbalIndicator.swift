@@ -74,8 +74,6 @@ struct GimbalTakeControlDialog: View {
 
     var body: some View {
         let serial = view?["askSerial"].int64 ?? -1
-        let shown = gimbalAsksForControl.value
-        let asking = Binding(get: { shown }, set: { gimbalAsksForControl.value = $0 })
         Color.clear
             .frame(width: 0, height: 0)
             .accessibilityHidden(true)
@@ -83,7 +81,15 @@ struct GimbalTakeControlDialog: View {
                 if serialAsks(seen, now) { gimbalAsksForControl.value = true }
                 if now >= 0 { seen = now }
             }
-            .alert("Request Gimbal Control?", isPresented: asking) {
+    }
+}
+
+struct GimbalTakeControlAlert: View {
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+            .alert("Request Gimbal Control?", isPresented: .constant(true)) {
                 Button("Yes") {
                     gimbalAsksForControl.value = false
                     offMain { _ = SetupCommands.takeGimbalControlRefusal() }

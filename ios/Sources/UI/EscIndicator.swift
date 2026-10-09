@@ -45,12 +45,15 @@ func escSummary(_ view: JSON?) -> EscSummary? {
     )
 }
 
+private let ESC_LIST_MAX_HEIGHT: CGFloat = 420
+
 func escCellText(_ summary: EscSummary) -> String { "ESC \(summary.onlineCount) \(summary.healthText)" }
 
 struct EscIndicatorCell: View {
     @Environment(\.theme) private var theme
     @QgcPath(ESC_PATH) private var view
     @State private var open = false
+    @State private var motorsHeight: CGFloat?
 
     var body: some View {
         if let summary = escSummary(view) {
@@ -69,9 +72,9 @@ struct EscIndicatorCell: View {
                                 Text("Healthy Motors  \(summary.healthyMotorsText)").font(.bodyMedium)
                                 Text("Total Errors  \(summary.totalErrors)").font(.bodyMedium)
                                 ScrollView {
-                                    LazyVStack(alignment: .leading, spacing: 0) {
+                                    VStack(alignment: .leading, spacing: 0) {
                                         ForEach(summary.motors, id: \.title) { motor in
-                                            VStack(alignment: .leading) {
+                                            VStack(alignment: .leading, spacing: 0) {
                                                 Text(motor.title).font(.titleSmall).foregroundStyle(motor.healthy ? good : bad)
                                                 ForEach(motor.rows.filter { !$0.1.isBlank }, id: \.0) { label, value in
                                                     Text("\(label)  \(value)").font(.bodySmall)
@@ -80,8 +83,10 @@ struct EscIndicatorCell: View {
                                             .padding(.vertical, 6)
                                         }
                                     }
+                                    .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { motorsHeight = $0 }
                                 }
-                                .frame(maxHeight: 420)
+                                .scrollBounceBehavior(.basedOnSize)
+                                .frame(maxHeight: min(motorsHeight ?? ESC_LIST_MAX_HEIGHT, ESC_LIST_MAX_HEIGHT))
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(.horizontal, Space.s5)

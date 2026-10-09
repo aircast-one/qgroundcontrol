@@ -197,9 +197,9 @@ struct PlanMapContent: View {
                         followChip
                         if let overlay {
                             overlay()
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
                                 .padding(.leading, sidePanel ? SIDE_PANEL_WIDTH : 0)
                                 .padding(.bottom, sidePanel ? 0 : controlsHeight)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity)
                         }
                         summary(sidePanel: sidePanel, width: geometry.size.width)
                         addWaypointButton
@@ -458,6 +458,7 @@ struct PlanMapContent: View {
     @ViewBuilder
     private func summary(sidePanel: Bool, width: CGFloat) -> some View {
         let listedInPanel = sidePanel && layer == .Mission && worthListing(allItems)
+        let leading = sidePanel ? SIDE_PANEL_WIDTH + 8 : 8
         if busy != nil || !summaryHidden {
             VStack(alignment: .leading, spacing: 0) {
                 if busy != nil || !listedInPanel {
@@ -484,8 +485,8 @@ struct PlanMapContent: View {
                         .padding(.top, 8)
                 }
             }
-            .frame(maxWidth: width * SUMMARY_MAX_FRACTION, alignment: .leading)
-            .padding(.leading, sidePanel ? SIDE_PANEL_WIDTH + 8 : 8)
+            .frame(maxWidth: max(width - leading - 8, 0) * SUMMARY_MAX_FRACTION, alignment: .leading)
+            .padding(.leading, leading)
             .padding([.top, .trailing, .bottom], 8)
         }
     }
@@ -841,7 +842,7 @@ struct PlanMapContent: View {
         }
         let fenceHit: (polygon: Int, vertex: Int)? = if case .FenceVertex(let polygon, let vertex) = selected { (polygon, vertex) } else { nil }
         let surveyHit: (item: Int, vertex: Int)? = if case .SurveyVertex(let item, let vertex) = selected { (item, vertex) } else { nil }
-        let rallyHit = selectedRally
+        let rallyHit: Int? = if case .Rally(let index) = selected { index } else { nil }
         let circle = selectedCircle
         if survey != nil || waypoint != nil || fenceHit != nil || shapeFence != nil || rallyHit != nil || circle != nil {
             PlanFlowRow(spacing: 4, lineSpacing: 4) {
@@ -957,8 +958,8 @@ struct PlanMapContent: View {
                     circleTools(circle)
                 }
 
-                if let point = rallyHit {
-                    rallyTools(point)
+                if let index = rallyHit {
+                    rallyTools(index)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -1107,7 +1108,19 @@ struct PlanMapContent: View {
     }
 
     @ViewBuilder
-    private func rallyTools(_ point: RallyPoint) -> some View {
+    private func rallyTools(_ index: Int) -> some View {
+        if let point = rally.first(where: { $0.index == index }) {
+            rallyFields(point)
+        }
+        Button("Delete rally point") {
+            let count = rally.count
+            onBridge(then: { selected = rallyAfterRemove(index, count) }) { FenceBridge.removeRallyPoint(index) }
+        }
+        .buttonStyle(.borderless)
+    }
+
+    @ViewBuilder
+    private func rallyFields(_ point: RallyPoint) -> some View {
         PlanTextField(label: "Latitude", text: $rallyLatitudeTyped, width: 150) {
             if let entered = parsedCoordinate(rallyLatitudeTyped, LATITUDE_LIMIT) {
                 onBridge("Moving rally point") { FenceBridge.moveRallyPoint(point.index, entered, point.longitude, point.altitudeMetres) }
@@ -1131,11 +1144,6 @@ struct PlanMapContent: View {
                 }
             }
         }
-        Button("Delete rally point") {
-            let count = rally.count
-            onBridge(then: { selected = rallyAfterRemove(point.index, count) }) { FenceBridge.removeRallyPoint(point.index) }
-        }
-        .buttonStyle(.borderless)
     }
 
     @ViewBuilder
@@ -1898,6 +1906,7 @@ struct PlanMenuField: View {
 struct PlanFlowRow: Layout {
     var spacing: CGFloat = 8
     var lineSpacing: CGFloat = 8
+    var alignment: HorizontalAlignment = .leading
 
     private func rows(_ maxWidth: CGFloat, _ sizes: [CGSize]) -> [[Int]] {
         sizes.indices.reduce(into: [[Int]]()) { rows, index in
@@ -1937,7 +1946,9 @@ struct PlanFlowRow: Layout {
         let lines = rows(bounds.width, measured)
         _ = lines.reduce(bounds.minY) { top, row in
             let height = lineHeight(row, measured)
-            _ = row.reduce(bounds.minX) { left, index in
+            let slack = bounds.width - lineWidth(row, measured)
+            let start = bounds.minX + (alignment == .center ? slack / 2 : 0)
+            _ = row.reduce(start) { left, index in
                 subviews[index].place(at: CGPoint(x: left, y: top + (height - measured[index].height) / 2), proposal: ProposedViewSize(measured[index]))
                 return left + measured[index].width + spacing
             }

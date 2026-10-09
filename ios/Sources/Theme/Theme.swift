@@ -166,8 +166,9 @@ private struct ScaledType: ViewModifier {
 struct AircastTheme<Content: View>: View {
     var dark: Bool? = nil
     @ViewBuilder let content: () -> Content
+    @Environment(\.colorScheme) private var scheme
 
-    var body: some View { content().aircastTheme(dark: dark ?? SystemAppearance.shared.dark) }
+    var body: some View { content().aircastTheme(dark: dark ?? (scheme == .dark)) }
 }
 
 extension View {
@@ -175,7 +176,6 @@ extension View {
 
     func aircastTheme(dark: Bool) -> some View {
         environment(\.theme, dark ? .darkTheme : .lightTheme)
-            .preferredColorScheme(dark ? .dark : .light)
             .tint((dark ? Theme.darkTheme : Theme.lightTheme).colors.primary)
     }
 }

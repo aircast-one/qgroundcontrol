@@ -31,7 +31,7 @@ struct MissionCompleteDialog: View {
         Color.clear
             .frame(width: 0, height: 0)
             .accessibilityHidden(true)
-            .sheet(isPresented: Binding(get: { notice != nil }, set: { shown in if !shown, let notice { close(notice) } })) {
+            .queuedSheet(isPresented: Binding(get: { notice != nil }, set: { shown in if !shown, let notice { close(notice) } }), dialog: true) {
                 if let notice { content(notice) }
             }
     }

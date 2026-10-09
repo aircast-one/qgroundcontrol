@@ -49,6 +49,7 @@ struct TerrainProgress: View {
                     }
                     .padding(6)
                     .background(osdBackdrop(theme.colors.surface.opacity(0.85), flyOsd), in: RoundedRectangle(cornerRadius: Corner.medium))
+                    .contentShape(RoundedRectangle(cornerRadius: Corner.medium))
                 }
             }
             .task(id: TerrainCount(loaded: load.loaded, pending: load.pending)) {

@@ -71,7 +71,7 @@ struct ConsoleScreen: View {
                     .padding(16)
                 }
                 .background(theme.colors.surfaceContainerLowest)
-                .onChange(of: lines.count) { before, now in
+                .onChange(of: lines.count, initial: true) { before, now in
                     if now > 0 && shouldFollowTail(visible.max(), before) { proxy.scrollTo(now - 1, anchor: .bottom) }
                 }
                 .onChange(of: scrollRequest) {

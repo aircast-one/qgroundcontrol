@@ -37,30 +37,35 @@ private enum PaletteDefault {
     static var awaiting = false
 }
 
-@MainActor
-@Observable
-final class SystemAppearance {
-    static let shared = SystemAppearance()
-    private(set) var dark: Bool
+func paletteWindowStyle(_ followsSystem: Bool, _ dark: Bool) -> UIUserInterfaceStyle {
+    followsSystem ? .unspecified : dark ? .dark : .light
+}
 
-    private init() {
-        let scene = UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.first
-        dark = scene?.traitCollection.userInterfaceStyle == .dark
-        _ = scene?.registerForTraitChanges([UITraitUserInterfaceStyle.self]) { [weak self] (changed: UIWindowScene, _: UITraitCollection) in
-            self?.dark = changed.traitCollection.userInterfaceStyle == .dark
-        }
+@MainActor
+private func applyPaletteWindowStyle(_ style: UIUserInterfaceStyle) {
+    UIApplication.shared.connectedScenes
+        .compactMap { $0 as? UIWindowScene }
+        .flatMap(\.windows)
+        .forEach { $0.overrideUserInterfaceStyle = style }
+}
+
+extension View {
+    func windowStyle(_ style: UIUserInterfaceStyle) -> some View {
+        onChange(of: style, initial: true) { _, now in applyPaletteWindowStyle(now) }
     }
 }
 
 @propertyWrapper
 struct AppDarkTheme: DynamicProperty {
     @QgcPath(settingControl(PALETTE_SETTING)) private var control
+    @Environment(\.colorScheme) private var scheme
 
     var wrappedValue: Bool {
         let value = control?["value"].int
+        let systemDark = scheme == .dark
         return MainActor.assumeIsolated {
             let pending = PaletteDefault.awaiting && value != PALETTE_INDOOR
-            return paletteIsDark(pending ? PALETTE_INDOOR : value, SystemAppearance.shared.dark)
+            return paletteIsDark(pending ? PALETTE_INDOOR : value, systemDark)
         }
     }
 
