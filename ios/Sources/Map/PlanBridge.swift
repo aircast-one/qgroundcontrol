@@ -227,8 +227,6 @@ enum PlanBridge {
 
     @discardableResult static func loadFromVehicle() -> Bool { invokeOk("\(PLAN_ROOT).loadFromVehicle") }
 
-    @discardableResult static func clearPlan() -> Bool { invokeOk("\(PLAN_ROOT).removeAll") }
-
     @discardableResult static func sendToVehicle() -> Bool { invokeOk("\(PLAN_ROOT).sendToVehicle") }
 
     @discardableResult static func pauseVehicle() -> Bool { invokeOk("vehicle.pauseVehicle") }

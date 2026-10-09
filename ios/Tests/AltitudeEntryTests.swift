@@ -22,11 +22,11 @@ final class AltitudeEntryTests: XCTestCase {
     }
 
     func testTheFieldKeepsTheDecimalsQGCShowsSoDoneOnAnUntouchedFieldWritesTheSameHeightBack() {
-        XCTAssertEqual(altitudeFieldText(75, WAYPOINT_ALTITUDE_DECIMALS), "75")
-        XCTAssertEqual(altitudeFieldText(45.5, WAYPOINT_ALTITUDE_DECIMALS), "45.5")
+        XCTAssertEqual(altitudeFieldText(75, 1), "75")
+        XCTAssertEqual(altitudeFieldText(45.5, 1), "45.5")
         XCTAssertEqual(altitudeFieldText(164.0420, RALLY_ALTITUDE_DECIMALS), "164.04")
-        XCTAssertEqual(altitudeFieldText(.nan, WAYPOINT_ALTITUDE_DECIMALS), "")
-        XCTAssertEqual(altitudeFieldText(-0.04, WAYPOINT_ALTITUDE_DECIMALS), "0")
+        XCTAssertEqual(altitudeFieldText(.nan, 1), "")
+        XCTAssertEqual(altitudeFieldText(-0.04, 1), "0")
     }
 
     func testASurveyKeepsCameraCalcsTenthOfAMetreFloorAboveTheSurface() throws {

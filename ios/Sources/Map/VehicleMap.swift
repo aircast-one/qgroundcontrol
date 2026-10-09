@@ -272,6 +272,7 @@ struct VehicleMap: View {
     var circledShapes: Set<String> = []
     var firmwareFence: FirmwareFence? = nil
     var onAdd: (Double, Double) -> Void = { _, _ in }
+    var onBlankTap: ((Double, Double) -> Void)? = nil
     var onMove: (MapHit, Double, Double) -> Void = { _, _, _ in }
     var onWaypointSelected: (MapHit?) -> Void = { _ in }
     var onMoved: (MapHit, Double, Double) -> Void = { _, _, _ in }
@@ -393,6 +394,7 @@ private struct VehicleMapScene {
             longitude: longitude,
             topInsetPx: map.topInsetPx,
             bottomInsetPx: map.bottomInsetPx,
+            leftInsetPx: map.leftInsetPx,
             cameraBottomPx: map.cameraBottomPx,
             editable: map.editable,
             missionItems: map.missionItems,
@@ -403,6 +405,7 @@ private struct VehicleMapScene {
             onRoiClick: map.onRoiClick,
             onTrafficClick: map.onTrafficClick,
             onAdd: map.onAdd,
+            onBlankTap: map.onBlankTap,
             onMove: map.onMove,
             onWaypointSelected: map.onWaypointSelected,
             onMoved: map.onMoved,
@@ -499,7 +502,7 @@ private struct VehicleMapPlan: ViewModifier {
                 if let style { applyPip(style, map.pip) }
             }
             .onChange(of: Keys(model.mapReady, map.centreRequest), initial: true) {
-                model.centre(map.centreRequest, map.centreOn, map.centreZoom)
+                model.centre(map.centreRequest, map.centreOn, map.centreZoom, UIEdgeInsets(top: map.topInsetPx, left: map.leftInsetPx, bottom: map.bottomInsetPx, right: 0))
             }
             .onChange(of: map.fitRequest) {
                 guard map.fitRequest != 0 else { return }
@@ -574,6 +577,7 @@ struct VehicleMapInputs {
     var longitude = Double.nan
     var topInsetPx: CGFloat = 0
     var bottomInsetPx: CGFloat = 0
+    var leftInsetPx: CGFloat = 0
     var cameraBottomPx: CGFloat = 0
     var editable = false
     var missionItems: [MissionItem] = []
@@ -584,6 +588,7 @@ struct VehicleMapInputs {
     var onRoiClick: ((TrackPoint) -> Void)?
     var onTrafficClick: (() -> Void)?
     var onAdd: (Double, Double) -> Void = { _, _ in }
+    var onBlankTap: ((Double, Double) -> Void)?
     var onMove: (MapHit, Double, Double) -> Void = { _, _, _ in }
     var onWaypointSelected: (MapHit?) -> Void = { _ in }
     var onMoved: (MapHit, Double, Double) -> Void = { _, _, _ in }
@@ -690,13 +695,12 @@ final class VehicleMapModel: NSObject, ObservableObject, MLNMapViewDelegate {
 
     private func reportCentre(_ mapView: MLNMapView) {
         inputs.onCentreChanged(TrackPoint(mapView.centerCoordinate), mapView.zoomLevel)
-        let seen = mapView.visibleCoordinateBounds
-        inputs.onViewChanged([
-            TrackPoint(latitude: seen.ne.latitude, longitude: seen.sw.longitude),
-            TrackPoint(latitude: seen.ne.latitude, longitude: seen.ne.longitude),
-            TrackPoint(latitude: seen.sw.latitude, longitude: seen.ne.longitude),
-            TrackPoint(latitude: seen.sw.latitude, longitude: seen.sw.longitude),
-        ])
+        let right = mapView.bounds.width
+        let left = min(max(inputs.leftInsetPx, 0), right)
+        let bottom = max(mapView.bounds.height - inputs.bottomInsetPx, 0)
+        let seen = [CGPoint(x: left, y: 0), CGPoint(x: right, y: 0), CGPoint(x: right, y: bottom), CGPoint(x: left, y: bottom)]
+            .map { TrackPoint(mapView.convert($0, toCoordinateFrom: mapView)) }
+        inputs.onViewChanged(clearWindow(seen))
     }
 
     private func attachGestures(_ mapView: MLNMapView, _ style: MLNStyle) {
@@ -724,7 +728,11 @@ final class VehicleMapModel: NSObject, ObservableObject, MLNMapViewDelegate {
                 onSelected: { [weak self] hit in self?.inputs.onWaypointSelected(hit) },
                 onMoved: { [weak self] hit, latitude, longitude in self?.inputs.onMoved(hit, latitude, longitude) },
                 onDragging: { [weak self] hit in self?.draggingVertex = hit },
-                canDrag: { [weak self] hit in self?.inputs.canDrag(hit) ?? true }
+                canDrag: { [weak self] hit in self?.inputs.canDrag(hit) ?? true },
+                onBlankTap: { [weak self] latitude, longitude in
+                    guard let self else { return }
+                    if let blank = self.inputs.onBlankTap { blank(latitude, longitude) } else { self.inputs.onWaypointSelected(nil) }
+                }
             )
         }
     }
@@ -768,12 +776,14 @@ final class VehicleMapModel: NSObject, ObservableObject, MLNMapViewDelegate {
         }
     }
 
-    fileprivate func centre(_ request: Int, _ centreOn: TrackPoint?, _ centreZoom: Double?) {
+    fileprivate func centre(_ request: Int, _ centreOn: TrackPoint?, _ centreZoom: Double?, _ insets: UIEdgeInsets) {
         guard request != 0, let at = centreOn, isPlottable(at.latitude, at.longitude), let mapView else { return }
         if let centreZoom {
             mapView.setCenter(at.location, zoomLevel: centreZoom, animated: false)
         } else if mapView.zoomLevel > 1.0 {
-            mapView.setCenter(at.location, animated: true)
+            let point = mapView.convert(at.location, toPointTo: mapView)
+            let clear = CGPoint(x: point.x - insets.left / 2, y: point.y - clearAreaLift(insets.top, insets.bottom))
+            mapView.setCenter(mapView.convert(clear, toCoordinateFrom: mapView), animated: true)
         } else {
             mapView.setCenter(at.location, zoomLevel: DEFAULT_ZOOM, animated: true)
         }

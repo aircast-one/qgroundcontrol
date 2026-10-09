@@ -33,11 +33,6 @@ final class PlanItemsTests: XCTestCase {
         XCTAssertEqual("50 m \u{00b7} 1043 photos", sheetDetail(survey, nil))
     }
 
-    func testTheDeleteButtonNamesTheKindOfItemItRemoves() {
-        XCTAssertEqual("Delete waypoint", deleteLabel(item(2, 2, "Waypoint")))
-        XCTAssertEqual("Delete item", deleteLabel(item(2, 2, "")))
-    }
-
     func testTheSheetPlacesAnItemAmongTheListedOnesAndNamesTheLegFromTheOneBefore() {
         let home = item(0, 0, "Home")
         let takeoff = item(1, 1, "Takeoff")
@@ -247,7 +242,7 @@ final class AddingAfterTextTests: XCTestCase {
     ]
 
     func testTheLineNamesTheSequenceTheOperatorSeesOnTheMarker() {
-        XCTAssertEqual("Adding after #5", addingAfterText(.Waypoint(index: 2), plan))
+        XCTAssertEqual("Tap the map to add after #5", addingAfterText(.Waypoint(index: 2), plan))
     }
 
     func testWithNothingSelectedTheInsertionPointIsTheEndAndNeedsNoLine() {

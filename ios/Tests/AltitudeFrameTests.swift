@@ -38,23 +38,7 @@ final class AltitudeFrameTests: XCTestCase {
         XCTAssertEqual("#2 at 50.0 m", selectionText(.Waypoint(index: 2), [item("")], [], []))
     }
 
-    func testTheFieldBeingTypedIntoNamesItsFrameBeingTheFurthestThingFromTheChip() {
-        XCTAssertEqual("Alt m", altitudeFieldLabel(item("")))
-        XCTAssertEqual("Alt m AMSL", altitudeFieldLabel(item("AMSL")))
-        XCTAssertEqual("Alt m AGL", altitudeFieldLabel(item("AGL")))
-        XCTAssertEqual("Alt m SEABED", altitudeFieldLabel(item("SEABED")))
-    }
-
     func testAFrameNeitherHeadHasHeardOfIsShownNotSwallowedIntoTheDefault() {
         XCTAssertEqual("50.0 m SEABED", altitudeWithFrame(item("SEABED")))
-    }
-
-    func testTheFieldBeingTypedIntoNamesTheUnitQgcCookedTheNumberInto() {
-        XCTAssertEqual("Alt ft", altitudeFieldLabel(item("", editUnits: "ft")))
-        XCTAssertEqual("Alt ft AMSL", altitudeFieldLabel(item("AMSL", editUnits: "ft")))
-    }
-
-    func testACoreThatSaysNothingLeavesMetresWhichIsWhatTheBridgeTakes() {
-        XCTAssertEqual("Alt m", altitudeFieldLabel(item("")))
     }
 }

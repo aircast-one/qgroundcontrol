@@ -6,13 +6,13 @@ func planMapStyle() -> String {
 }
 
 struct PlanMapScreen: View {
-    var onClear: (() -> Void)? = nil
     var onCentre: ((Double, Double) -> Void)? = nil
-    var itemEditor: ((Int, TrackPoint?, @escaping () -> Void, @escaping () -> Void) -> AnyView)? = nil
-    var header: ((PlanUpload) -> AnyView)? = nil
+    var itemPanel: ((Int, TrackPoint?, @escaping () -> Void) -> AnyView)? = nil
+    var header: ((PlanBar) -> AnyView)? = nil
+    var primary: ((PlanUpload) -> AnyView)? = nil
+    var routeSettings: (() -> AnyView)? = nil
     var fitKey: Int = 0
-    var overlay: (() -> AnyView)? = nil
-    var summaryHidden: Bool = false
+    var onTemplates: (() -> Void)? = nil
     @State private var style: String?
     @Environment(\.theme) private var theme
 
@@ -22,13 +22,13 @@ struct PlanMapScreen: View {
             if let style {
                 PlanMapContent(
                     mapStyle: style,
-                    onClear: onClear,
                     onCentre: onCentre,
-                    itemEditor: itemEditor,
+                    itemPanel: itemPanel,
                     header: header,
+                    primary: primary,
+                    routeSettings: routeSettings,
                     fitKey: fitKey,
-                    overlay: overlay,
-                    summaryHidden: summaryHidden
+                    onTemplates: onTemplates
                 )
             }
         }

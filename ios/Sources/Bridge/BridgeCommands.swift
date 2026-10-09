@@ -15,7 +15,6 @@ private let accountApiBase = "account.apiBase"
 private let accountSignIn = "account.signIn"
 private let accountSignOut = "account.signOut"
 private let accountCancelSignIn = "account.cancelSignIn"
-private let planUndo = "plan.undo"
 private let planRedo = "plan.redo"
 private let planUndoTracking = "plan.undoTracking"
 private let planRemoveAllFromVehicle = "plan.removeAllFromVehicle"
@@ -72,7 +71,6 @@ enum AccountCommands {
 }
 
 enum PlanCommands {
-    @discardableResult static func undo() -> Bool { Qgc.invoke(planUndo) }
     @discardableResult static func redo() -> Bool { Qgc.invoke(planRedo) }
     @discardableResult static func setUndoTracking(_ tracking: Bool) -> Bool { Qgc.set(planUndoTracking, tracking) }
     @discardableResult static func removeAllFromVehicle() -> Bool { Qgc.invoke(planRemoveAllFromVehicle) }
@@ -133,6 +131,8 @@ func coordinateJson(_ at: TrackPoint) -> [String: Double] { coordinateJson(at.la
 
 @discardableResult
 func setOk(_ path: String, _ value: Any?) -> Bool { Qgc.set(path, value) }
+
+let PLAN_UNDO = "plan.undo"
 
 @discardableResult
 func invokeOk(_ path: String, _ args: Any?...) -> Bool { Qgc.call(path, arguments: args)?["ok"].bool ?? false }

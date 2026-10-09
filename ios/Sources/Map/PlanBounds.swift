@@ -75,3 +75,18 @@ func centersOnVehicleAtEntry(_ alreadyCentred: Bool, _ vehicleKnown: Bool, _ fit
 }
 
 func stillFirstRead(_ firstRead: Bool, _ planRead: Bool) -> Bool { firstRead && !planRead }
+
+func clearWindow(_ corners: [TrackPoint]) -> [TrackPoint] {
+    let latitudes = corners.map(\.latitude)
+    let longitudes = corners.map(\.longitude)
+    let north = latitudes.max() ?? .nan
+    let south = latitudes.min() ?? .nan
+    let west = longitudes.min() ?? .nan
+    let east = longitudes.max() ?? .nan
+    return [
+        TrackPoint(latitude: north, longitude: west),
+        TrackPoint(latitude: north, longitude: east),
+        TrackPoint(latitude: south, longitude: east),
+        TrackPoint(latitude: south, longitude: west),
+    ]
+}

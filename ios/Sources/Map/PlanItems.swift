@@ -24,11 +24,6 @@ func altitudeWithFrame(_ item: MissionItem) -> String? {
     return item.altitudeFrameText.isBlank ? height : "\(height) \(item.altitudeFrameText)"
 }
 
-func altitudeFieldLabel(_ item: MissionItem) -> String {
-    let unit = item.altitudeEditUnits.ifBlank("m")
-    return item.altitudeFrameText.isBlank ? "Alt \(unit)" : "Alt \(unit) \(item.altitudeFrameText)"
-}
-
 func rallyAltitudeLabel(_ point: RallyPoint) -> String { "Alt \(point.altitudeUnits.ifBlank("m"))" }
 
 func rallyAltitudeIsEditable(_ point: RallyPoint) -> Bool { !point.altitude.isNaN && !point.altitudePath.isBlank }
@@ -63,8 +58,6 @@ func sheetDetail(_ item: MissionItem, _ stats: SurveyStats?) -> String {
     bare.cameraShots = 0
     return itemDetail(bare, stats.map { var cleared = $0; cleared.areaText = ""; return cleared })
 }
-
-func deleteLabel(_ item: MissionItem) -> String { "Delete \(item.command.ifBlank("item").lowercased())" }
 
 func itemRows(_ items: [MissionItem], _ stats: [Int: SurveyStats] = [:]) -> [ItemRow] {
     items.map { item in
@@ -122,7 +115,7 @@ func selectionSequence(_ selected: MapHit?, _ items: [MissionItem]) -> Int? {
 }
 
 func addingAfterText(_ selected: MapHit?, _ items: [MissionItem]) -> String? {
-    missionItemIndex(selected).flatMap { index in items.first { $0.index == index } }.map { "Adding after #\($0.sequence)" }
+    missionItemIndex(selected).flatMap { index in items.first { $0.index == index } }.map { "Tap the map to add after #\($0.sequence)" }
 }
 
 func legText(_ item: MissionItem) -> String? {

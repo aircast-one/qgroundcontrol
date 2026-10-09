@@ -177,4 +177,12 @@ final class FitsPlanOnEntryTests: XCTestCase {
         XCTAssertFalse(centersOnVehicleAtEntry(false, true, 1), "a mission fitted on entry wins")
         XCTAssertFalse(centersOnVehicleAtEntry(false, false, 0))
     }
+
+    func testTheClearWindowSquaresOffARotatedViewSoANewFenceLandsWhereTheOperatorCanSeeIt() {
+        let rotated = [TrackPoint(41.002, 44.0), TrackPoint(41.001, 44.003), TrackPoint(40.998, 44.002), TrackPoint(40.999, 43.999)]
+        XCTAssertEqual(
+            [TrackPoint(41.002, 43.999), TrackPoint(41.002, 44.003), TrackPoint(40.998, 44.003), TrackPoint(40.998, 43.999)],
+            clearWindow(rotated)
+        )
+    }
 }

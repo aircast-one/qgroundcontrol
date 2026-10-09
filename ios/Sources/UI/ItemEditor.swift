@@ -180,6 +180,12 @@ func radioChoices(_ view: JSON?) -> [String: RadioChoice] {
     return Dictionary(rows, uniquingKeysWith: { _, last in last })
 }
 
+private let HOLD_LABEL = "Hold"
+
+func withoutHeroFields(_ fields: [Fact], _ view: JSON?) -> [Fact] {
+    view?["hold"].object == nil ? fields : fields.filter { $0.description != HOLD_LABEL }
+}
+
 func itemFields(_ view: JSON?) -> [Fact] {
     (view?["fields"].arrayOrNil ?? []).filter { $0.object != nil }.compactMap { factFromControl($0) }
 }
@@ -214,14 +220,11 @@ struct ItemEditor: View {
     let index: Int
     let at: TrackPoint?
     let mapCentre: (Double, Double)?
-    let onDismiss: () -> Void
     let onRemove: () -> Void
 
     var body: some View {
-        AircastSheet(onDismissRequest: onDismiss) {
-            ItemEditorContent(index: index, at: at, mapCentre: mapCentre, onRemove: onRemove)
-                .id(index)
-        }
+        ItemEditorContent(index: index, at: at, mapCentre: mapCentre, onRemove: onRemove)
+            .id(index)
     }
 }
 
@@ -243,88 +246,83 @@ private struct ItemEditorContent: View {
     @State private var presetsFirst: Bool?
 
     var body: some View {
-        let fields = withLandingFrameUnits(itemFields(view), altitudesRelative(view))
+        let fields = withoutHeroFields(withLandingFrameUnits(itemFields(view), altitudesRelative(view)), view)
         let sections = sectionStarts(view)
         let choices = radioChoices(view)
         let raw = rawEdit(view)
         let camera = cameraCalc(view)
         let wizard = wizardLines(view)
         let positionStart = at ?? (mapCentre ?? previousCoordinate(view)).map { TrackPoint(latitude: $0.0, longitude: $0.1) }
-        ScrollView {
-            VStack(alignment: .leading, spacing: 0) {
-                header(positionStart)
-                if !wizard.isEmpty { wizardBlock(wizard, fields) }
-                if index == 0 { missionStart }
-                if wizard.isEmpty, let relative = altitudesRelative(view) {
-                    Toggle(isOn: Binding(get: { relative }, set: { wanted in run { PlanCommands.setAltitudesRelative(index, wanted) } })) {
-                        Text("Altitudes relative to launch").font(.bodyMedium)
+        VStack(alignment: .leading, spacing: 0) {
+            header(positionStart)
+            if !wizard.isEmpty { wizardBlock(wizard, fields) }
+            if index == 0 { missionStart }
+            if wizard.isEmpty, let relative = altitudesRelative(view) {
+                Toggle(isOn: Binding(get: { relative }, set: { wanted in run { PlanCommands.setAltitudesRelative(index, wanted) } })) {
+                    Text("Altitudes relative to launch").font(.bodyMedium)
+                }
+                .padding(.horizontal, Space.s5)
+            }
+            if let hint = altitudeHint(view) {
+                note(hint).padding(.vertical, Space.s1)
+            }
+            if advanced, let current = raw {
+                Toggle(isOn: Binding(get: { current.on }, set: { wanted in
+                    if let stuck = rawEditRefusal(current) {
+                        refusal = stuck
+                        revision += 1
+                    } else {
+                        run { Qgc.writeRefusal(itemRawEditPath(index), wanted) }
                     }
-                    .padding(.horizontal, Space.s5)
+                })) {
+                    Text("Show all values").font(.bodyMedium)
                 }
-                if let hint = altitudeHint(view) {
-                    note(hint).padding(.vertical, Space.s1)
+                .padding(.horizontal, Space.s5)
+            }
+            if let line = itemNote(view, rawOn: raw?.on == true) { note(line) }
+            if let refusal {
+                Text(refusal).foregroundStyle(theme.colors.error).padding(.horizontal, Space.s5)
+            }
+            if itemIsLandingPattern(view) && connected && wizard.isEmpty {
+                HStack(spacing: Space.s2) {
+                    Button("Set to vehicle heading") { run { setToVehicleHeading(index) } }
+                    Button("Set to vehicle location") { run { setToVehicleLocation(index) } }
                 }
-                if advanced, let current = raw {
-                    Toggle(isOn: Binding(get: { current.on }, set: { wanted in
-                        if let stuck = rawEditRefusal(current) {
-                            refusal = stuck
-                            revision += 1
-                        } else {
-                            run { Qgc.writeRefusal(itemRawEditPath(index), wanted) }
-                        }
-                    })) {
-                        Text("Show all values").font(.bodyMedium)
-                    }
-                    .padding(.horizontal, Space.s5)
-                }
-                if let line = itemNote(view, rawOn: raw?.on == true) { note(line) }
-                if let refusal {
-                    Text(refusal).foregroundStyle(theme.colors.error).padding(.horizontal, Space.s5)
-                }
-                if itemIsLandingPattern(view) && connected && wizard.isEmpty {
-                    HStack(spacing: Space.s2) {
-                        Button("Set to vehicle heading") { run { setToVehicleHeading(index) } }
-                        Button("Set to vehicle location") { run { setToVehicleLocation(index) } }
-                    }
-                    .padding(.horizontal, Space.s5)
-                }
-                if wizard.isEmpty {
-                    ForEach(landingNotes(view), id: \.self) { line in
-                        Text(line).font(.bodySmall).foregroundStyle(theme.aircast.warning).padding(.horizontal, Space.s5)
-                    }
-                }
-                if let help = areaHelp(view) {
-                    Text(help).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant)
-                        .padding(.horizontal, Space.s5).padding(.vertical, Space.s3)
-                }
-                if areaHelp(view) == nil && wizard.isEmpty, let presetsFirst {
-                    LazyVStack(alignment: .leading, spacing: 0) {
-                        if presetsFirst { presets }
-                        ForEach(fields) { fact in fieldRow(fact, sections[fact.path], choices[fact.path]) }
-                        ItemCameraSection(index: index) { revision += 1 }
-                            .padding(.horizontal, Space.s5)
-                        if let camera {
-                            CameraCalcHeader(block: camera) { path, value in run { Qgc.writeRefusal(path, value) } }
-                            ForEach(shownCameraFacts(camera)) { fact in FactRow(fact: fact, onWrite: { revision += 1 }) }
-                        }
-                        if let line = gridNote(view) { note(line).padding(.vertical, Space.s1) }
-                        if let entry = entryPoint(view) { entryRow(entry) }
-                        if let stats { statistics(stats) }
-                        if !presetsFirst { presets }
-                        if let speed = speedSection(view) {
-                            SpeedSectionRow(speed: speed) { written in run(written) }
-                        }
-                    }
-                }
-                if itemDeletable(index) {
-                    Button(DELETE_ITEM_LABEL, role: .destructive, action: onRemove)
-                        .foregroundStyle(theme.colors.error)
-                        .padding(.horizontal, Space.s2)
-                        .padding(.vertical, Space.s2)
+                .padding(.horizontal, Space.s5)
+            }
+            if wizard.isEmpty {
+                ForEach(landingNotes(view), id: \.self) { line in
+                    Text(line).font(.bodySmall).foregroundStyle(theme.aircast.warning).padding(.horizontal, Space.s5)
                 }
             }
-            .padding(.bottom, Space.s6)
+            if let help = areaHelp(view) {
+                Text(help).font(.bodyMedium).foregroundStyle(theme.colors.onSurfaceVariant)
+                    .padding(.horizontal, Space.s5).padding(.vertical, Space.s3)
+            }
+            if areaHelp(view) == nil && wizard.isEmpty, let presetsFirst {
+                VStack(alignment: .leading, spacing: 0) {
+                    if presetsFirst { presets }
+                    ForEach(fields) { fact in fieldRow(fact, sections[fact.path], choices[fact.path]) }
+                    ItemCameraSection(index: index) { revision += 1 }
+                        .padding(.horizontal, Space.s5)
+                    if let camera {
+                        CameraCalcHeader(block: camera) { path, value in run { Qgc.writeRefusal(path, value) } }
+                        ForEach(shownCameraFacts(camera)) { fact in FactRow(fact: fact, onWrite: { revision += 1 }) }
+                    }
+                    if let line = gridNote(view) { note(line).padding(.vertical, Space.s1) }
+                    if let entry = entryPoint(view) { entryRow(entry) }
+                    if let stats { statistics(stats) }
+                    if !presetsFirst { presets }
+                }
+            }
+            if itemDeletable(index) {
+                Button(DELETE_ITEM_LABEL, role: .destructive, action: onRemove)
+                    .foregroundStyle(theme.colors.error)
+                    .padding(.horizontal, Space.s2)
+                    .padding(.vertical, Space.s2)
+            }
         }
+        .padding(.bottom, Space.s2)
         .background {
             if let fact = fields.first(where: { $0.path == detailsPath }) {
                 ValueDetailsSheet(fact: fact, onWrite: { revision += 1 }, onDismiss: { detailsPath = nil })
@@ -391,7 +389,7 @@ private struct ItemEditorContent: View {
     @ViewBuilder
     private func header(_ positionStart: TrackPoint?) -> some View {
         HStack {
-            Text(itemEditorTitle(view, index)).font(.titleMedium).frame(maxWidth: .infinity, alignment: .leading)
+            Text("More settings").font(.titleSmall).frame(maxWidth: .infinity, alignment: .leading)
             if at != nil || view?["specifiesCoordinate"].bool == true {
                 let previous = previousCoordinate(view)
                 Menu("Position") {
@@ -915,10 +913,4 @@ private struct PositionField: View {
                 .textFieldStyle(.roundedBorder)
         }
     }
-}
-
-func itemEditorTitle(_ view: JSON?, _ index: Int) -> String {
-    let name = view.flatMap { $0["commandName"].string.isBlank ? nil : $0["commandName"].string }
-    let sequence = view.flatMap { $0.has("sequenceNumber") ? $0["sequenceNumber"].int(0) : nil }
-    return [sequence.map { "#\($0)" }, name].compactMap { $0 }.joined(separator: " ").ifBlank("Item \(index)")
 }

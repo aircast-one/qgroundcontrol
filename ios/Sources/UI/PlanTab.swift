@@ -2,6 +2,10 @@ import SwiftUI
 import UIKit
 
 private let NOTICE_MILLIS = 4000
+private let HEADER_ALPHA = 0.94
+private let DISABLED_PILL_ALPHA = 0.38
+private let PILL_HEIGHT: CGFloat = 48
+private let HEADER_CORNER: CGFloat = 20
 
 let APPLY_DEFAULT_ALTITUDE = "core.plan.applyDefaultAltitude"
 let DISMISS_ALTITUDE_PROMPT = "core.plan.dismissAltitudePrompt"
@@ -163,26 +167,22 @@ struct PlanTab: View {
     @State private var prompter = TopmostPrompter()
     @State private var incoming: URL?
     @State private var menuOpen = false
+    @State private var newPlanOpen = false
+    @State private var startFrom: String?
 
     var body: some View {
         let containsItems = planContainsItems(planStatus)
         let syncing = planIsSyncing(planStatus)
         PlanMapScreen(
             onCentre: { lat, lon in centre = (lat, lon) },
-            itemEditor: { index, at, close, remove in
-                AnyView(ItemEditor(index: index, at: at, mapCentre: centre, onDismiss: close, onRemove: remove))
+            itemPanel: { index, at, remove in
+                AnyView(ItemEditor(index: index, at: at, mapCentre: centre, onRemove: remove))
             },
-            header: { upload in AnyView(header(upload)) },
+            header: { bar in AnyView(header(bar)) },
+            primary: { upload in AnyView(primary(upload)) },
+            routeSettings: { AnyView(RouteSettings(plan: planStatus)) },
             fitKey: files.opened(),
-            overlay: {
-                AnyView(
-                    PlanTemplates(planStatus: planStatus, centre: centre, onRefused: { notice = $0 })
-                        .padding(.bottom, Space.s6)
-                        .padding(.horizontal, Space.s4)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
-                )
-            },
-            summaryHidden: planTemplates(planStatus)?.show == true
+            onTemplates: { newPlanOpen = true }
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .background { dialogs }
@@ -213,6 +213,14 @@ struct PlanTab: View {
             if showTransform {
                 PlanTransformDialog { showTransform = false }
             }
+            if newPlanOpen {
+                let containsItems = planContainsItems(planStatus)
+                NewPlanDialog(state: planTemplates(planStatus), replacing: containsItems, onDismiss: { newPlanOpen = false }) { template in
+                    newPlanOpen = false
+                    startFrom = template
+                    if containsItems { pending = .NewPlan } else { startPlan(template) }
+                }
+            }
             Color.clear.frame(width: 0, height: 0).alertWhenPresenterFree(
                 Binding(get: { pending }, set: { if $0 == nil { cancelPending() } }),
                 title: { confirmCopy($0).title }
@@ -241,6 +249,16 @@ struct PlanTab: View {
         }
     }
 
+    private func startPlan(_ template: String?) {
+        guard let template else { return files.newPlan() }
+        guard let (lat, lon) = centre else { return notice = "The map has not reported its centre yet." }
+        Task {
+            if let refused = await offMain({ Qgc.refusalOf(CREATE_FROM_TEMPLATE, template, lat, lon) }) {
+                notice = refused
+            }
+        }
+    }
+
     private func cancelPending() {
         pending = nil
         incoming = nil
@@ -264,39 +282,43 @@ struct PlanTab: View {
         switch kind {
         case .Open:
             if let received { files.openFrom(received) } else { files.open() }
-        case .NewPlan: files.newPlan()
+        case .NewPlan: startPlan(startFrom)
         case .ClearMission: files.clearMission()
         case .Download: files.download()
         }
     }
 
     @ViewBuilder
-    private func header(_ upload: PlanUpload) -> some View {
+    private func header(_ bar: PlanBar) -> some View {
         let history = planHistory(planStatus)
         let can = planActions(planStatus)
         let dirty = planIsDirty(planStatus)
         let containsItems = planContainsItems(planStatus)
         let title = planTitle(files.documentName())
-        VStack(spacing: 0) {
-            HStack(spacing: Space.s1) {
+        VStack(alignment: .leading, spacing: Space.s2) {
+            HStack(spacing: Space.s2) {
                 VStack(alignment: .leading, spacing: 0) {
-                    Text(title).font(.titleLarge).lineLimit(1).truncationMode(.tail)
-                    let line = notice ?? planStatusText(planStatus)
+                    Text(title).font(.titleSmall).lineLimit(1).truncationMode(.tail)
+                    let line = notice ?? headerLine(planStatusText(planStatus), planIsSyncing(planStatus), bar.stats)
                     if !line.isBlank && line != title {
                         Text(line)
-                            .font(.bodySmall)
+                            .font(.labelSmall)
                             .foregroundStyle(theme.colors.onSurfaceVariant)
                             .lineLimit(notice == nil ? 1 : 3)
                             .truncationMode(.tail)
                     }
                 }
+                .padding(.horizontal, Space.s4)
+                .padding(.vertical, 6)
+                .frame(minHeight: 40)
+                .background(theme.colors.surfaceContainer.opacity(HEADER_ALPHA), in: RoundedRectangle(cornerRadius: HEADER_CORNER))
                 .frame(maxWidth: .infinity, alignment: .leading)
-                if upload.shown { uploadButton(upload) }
                 Button { menuOpen = true } label: {
-                    Image(.moreVert).frame(width: 48, height: 48).contentShape(Rectangle())
+                    Image(.moreVert).frame(width: 40, height: 40).contentShape(Circle())
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(theme.colors.onSurface)
+                .background(theme.colors.surfaceContainer.opacity(HEADER_ALPHA), in: Circle())
                 .accessibilityLabel("Plan menu")
                 .popover(isPresented: $menuOpen) {
                     ViewThatFits(in: .vertical) {
@@ -308,24 +330,46 @@ struct PlanTab: View {
                     .presentationBackground(theme.colors.surfaceContainer)
                 }
             }
-            .frame(minHeight: 64)
-            .padding(.leading, Space.s4)
-            .padding(.trailing, Space.s1)
             if let warning = undrawnItemsWarning(undrawn) {
                 Text(warning)
                     .font(.bodySmall)
                     .foregroundStyle(theme.colors.onErrorContainer)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.horizontal, Space.s3)
+                    .padding(.horizontal, Space.s4)
                     .padding(.vertical, Space.s2)
-                    .background(theme.colors.errorContainer)
+                    .background(theme.colors.errorContainer, in: RoundedRectangle(cornerRadius: HEADER_CORNER))
             }
+        }
+        .padding(Space.s2)
+    }
+
+    @ViewBuilder
+    private func primary(_ upload: PlanUpload) -> some View {
+        let dirty = planIsDirty(planStatus)
+        if upload.shown {
+            PlanActionPill(
+                label: upload.label,
+                icon: upload.done ? .checkCircle : .upload,
+                enabled: upload.enabled,
+                container: upload.done ? theme.aircast.success : upload.emphasised ? theme.colors.primary : theme.colors.surfaceContainerHighest,
+                content: upload.done ? theme.aircast.onSuccess : upload.emphasised ? theme.colors.onPrimary : theme.colors.onSurface,
+                progress: planIsSyncing(planStatus) ? planSyncProgress(planStatus) : nil,
+                onClick: upload.onClick
+            )
+        } else if planContainsItems(planStatus) {
+            PlanActionPill(
+                label: dirty ? "Save" : "Saved",
+                icon: dirty ? .download : .checkCircle,
+                enabled: planActions(planStatus).save && dirty,
+                container: dirty ? theme.colors.primary : theme.colors.surfaceContainerHighest,
+                content: dirty ? theme.colors.onPrimary : theme.colors.onSurface,
+                progress: nil,
+                onClick: { files.save() }
+            )
         }
     }
 
     private func planMenu(_ history: PlanHistory, _ can: PlanActions, _ dirty: Bool, _ containsItems: Bool) -> some View {
         VStack(alignment: .leading, spacing: 0) {
-            menuItem("Undo", .undo, enabled: history.canUndo) { offMainInOrder { PlanCommands.undo() } }
             menuItem("Redo", .redo, enabled: history.canRedo) { offMainInOrder { PlanCommands.redo() } }
             menuDivider
             menuItem("Open plan…", .description, enabled: can.open) { if dirty { pending = .Open } else { files.open() } }
@@ -337,7 +381,7 @@ struct PlanTab: View {
             menuItem("Defaults…", .tune) { showDefaults = true }
             menuItem("Transform…", .straighten, enabled: containsItems) { showTransform = true }
             menuDivider
-            menuItem("New plan…", .add, enabled: can.newPlan) { if containsItems { pending = .NewPlan } else { files.newPlan() } }
+            menuItem("New plan…", .add, enabled: can.newPlan) { newPlanOpen = true }
             menuItem("Load from vehicle", .upload, enabled: can.download) { if dirty { pending = .Download } else { files.download() } }
             menuItem("Clear mission", .delete, enabled: can.clearFromVehicle, destructive: true) { pending = .ClearMission }
         }
@@ -370,32 +414,55 @@ struct PlanTab: View {
         .disabled(!enabled)
         .opacity(enabled ? 1 : DISABLED_MENU_ALPHA)
     }
+}
 
-    private func uploadButton(_ upload: PlanUpload) -> some View {
-        let fill = upload.done ? theme.aircast.success : upload.emphasised ? theme.colors.primary : theme.colors.surfaceContainerHighest
-        let ink = upload.done ? theme.aircast.onSuccess : upload.emphasised ? theme.colors.onPrimary : theme.colors.onSurface
-        let progress = planSyncProgress(planStatus)
-        return Button(action: upload.onClick) {
+func planStatsLine(_ stats: [PlanStat]) -> String {
+    stats.compactMap { stat -> String? in
+        switch stat.label {
+        case "Items": stat.value == "0" ? nil : "\(stat.value) \(stat.value == "1" ? "item" : "items")"
+        case "Max alt": "max \(stat.value)"
+        default: stat.value
+        }
+    }
+    .joined(separator: " \u{00b7} ")
+}
+
+func headerLine(_ status: String, _ syncing: Bool, _ stats: [PlanStat]) -> String {
+    syncing ? status : planStatsLine(stats).ifBlank(status)
+}
+
+private struct PlanActionPill: View {
+    let label: String
+    let icon: Icon
+    let enabled: Bool
+    let container: Color
+    let content: Color
+    let progress: Double?
+    let onClick: () -> Void
+
+    var body: some View {
+        Button(action: onClick) {
             HStack(spacing: Space.s2) {
-                Image(upload.done ? .checkCircle : .upload).font(.system(size: 20))
-                Text(upload.label).font(.labelLarge)
+                Image(icon).font(.system(size: 20))
+                Text(label).font(.labelLarge)
             }
-            .padding(.leading, Space.s4)
-            .padding(.trailing, Space.s5)
-            .frame(height: 40)
-            .foregroundStyle(ink)
+            .padding(.leading, Space.s5)
+            .padding(.trailing, Space.s6)
+            .frame(height: PILL_HEIGHT)
+            .foregroundStyle(content)
             .background(alignment: .leading) {
-                if planIsSyncing(planStatus) {
+                if let progress {
                     GeometryReader { geo in
-                        Rectangle().fill(ink.opacity(0.28)).frame(width: geo.size.width * progress)
+                        Rectangle().fill(content.opacity(0.28)).frame(width: geo.size.width * progress)
                     }
                 }
             }
-            .background(fill)
+            .background(container)
             .clipShape(Capsule())
+            .shadow(color: .black.opacity(0.25), radius: 4, y: 2)
         }
         .buttonStyle(.plain)
-        .disabled(!upload.enabled)
-        .opacity(upload.enabled ? 1 : 0.38)
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : DISABLED_PILL_ALPHA)
     }
 }

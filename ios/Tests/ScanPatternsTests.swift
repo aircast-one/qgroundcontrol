@@ -2,13 +2,6 @@ import XCTest
 @testable import Aircast
 
 final class ScanPatternsTests: XCTestCase {
-    func testTheEmptyPlanNamesTheItemThatCanActuallyBeAdded() {
-        let blocked = planSummary(0, [], [], [], [], [], [], "", nil, offline: true, canAddByHand: false)
-        let open = planSummary(0, [], [], [], [], [], [], "", nil, offline: true, canAddByHand: true)
-        XCTAssertEqual("Empty plan \u{00b7} add a takeoff to start", blocked)
-        XCTAssertEqual("Empty plan \u{00b7} long press to add", open)
-    }
-
     private let served = JSON.parse(#"{"kind":"object","kinds":[{"id":"waypoint","simple":true,"complexName":null,"enabled":true},{"id":"roi","simple":true,"complexName":null,"enabled":true},{"id":"survey","simple":false,"complexName":"Survey","enabled":true,"disabledReason":""},{"id":"corridor","simple":false,"complexName":"Corridor Scan","enabled":true,"disabledReason":""},{"id":"structure","simple":false,"complexName":"Structure Scan","enabled":false,"disabledReason":"This mission starts from the ground, so a takeoff has to come first."}]}"#)
 
     func testOnlyThePatternsAreOfferedAndByTheCoresOwnNames() {

@@ -123,15 +123,32 @@ func attachMissionEditing(
     onSelected: @escaping (MapHit?) -> Void = { _ in },
     onMoved: @escaping (MapHit, Double, Double) -> Void = { _, _, _ in },
     onDragging: @escaping (MapHit?) -> Void = { _ in },
-    canDrag: @escaping (MapHit) -> Bool = { _ in true }
+    canDrag: @escaping (MapHit) -> Bool = { _ in true },
+    onBlankTap: ((Double, Double) -> Void)? = nil
 ) {
     mapView.gestureRecognizers?.filter { $0 is MissionEditingGesture }.forEach(mapView.removeGestureRecognizer)
-    let editing = MissionEditingGesture(map: map, onAdd: onAdd, onMove: onMove, onSelected: onSelected, onMoved: onMoved, onDragging: onDragging, canDrag: canDrag)
+    let editing = MissionEditingGesture(
+        map: map,
+        onAdd: onAdd,
+        onMove: onMove,
+        onSelected: onSelected,
+        onMoved: onMoved,
+        onDragging: onDragging,
+        canDrag: canDrag,
+        onBlankTap: onBlankTap ?? { _, _ in onSelected(nil) }
+    )
     let longPress = UILongPressGestureRecognizer(target: editing, action: #selector(MissionEditingGesture.longPressed(_:)))
     longPress.delegate = editing
     editing.longPress = longPress
+    let click = UITapGestureRecognizer(target: editing, action: #selector(MissionEditingGesture.clicked(_:)))
+    mapView.gestureRecognizers?
+        .compactMap { $0 as? UITapGestureRecognizer }
+        .filter { $0.numberOfTapsRequired == 2 }
+        .forEach(click.require(toFail:))
+    click.delegate = editing
     mapView.addGestureRecognizer(editing)
     mapView.addGestureRecognizer(longPress)
+    mapView.addGestureRecognizer(click)
 }
 
 private final class MissionEditingGesture: UIGestureRecognizer, UIGestureRecognizerDelegate {
@@ -142,6 +159,7 @@ private final class MissionEditingGesture: UIGestureRecognizer, UIGestureRecogni
     private let onMoved: (MapHit, Double, Double) -> Void
     private let onDragging: (MapHit?) -> Void
     private let canDrag: (MapHit) -> Bool
+    private let onBlankTap: (Double, Double) -> Void
     weak var longPress: UILongPressGestureRecognizer?
 
     private var dragging: MapHit?
@@ -158,7 +176,8 @@ private final class MissionEditingGesture: UIGestureRecognizer, UIGestureRecogni
         onSelected: @escaping (MapHit?) -> Void,
         onMoved: @escaping (MapHit, Double, Double) -> Void,
         onDragging: @escaping (MapHit?) -> Void,
-        canDrag: @escaping (MapHit) -> Bool
+        canDrag: @escaping (MapHit) -> Bool,
+        onBlankTap: @escaping (Double, Double) -> Void
     ) {
         self.map = map
         self.onAdd = onAdd
@@ -167,6 +186,7 @@ private final class MissionEditingGesture: UIGestureRecognizer, UIGestureRecogni
         self.onMoved = onMoved
         self.onDragging = onDragging
         self.canDrag = canDrag
+        self.onBlankTap = onBlankTap
         super.init(target: nil, action: nil)
         cancelsTouchesInView = false
         delaysTouchesBegan = false
@@ -187,6 +207,14 @@ private final class MissionEditingGesture: UIGestureRecognizer, UIGestureRecogni
             let at = map.convert(press.location(in: map), toCoordinateFrom: map)
             onAdd(at.latitude, at.longitude)
         }
+    }
+
+    @objc func clicked(_ click: UITapGestureRecognizer) {
+        guard click.state == .ended, !addedInGesture, let map else { return }
+        let at = click.location(in: map)
+        guard hitTest(map, Float(at.x), Float(at.y)) == nil else { return }
+        let coordinate = map.convert(at, toCoordinateFrom: map)
+        onBlankTap(coordinate.latitude, coordinate.longitude)
     }
 
     private func pixels(_ point: CGPoint) -> (Float, Float) {
@@ -262,7 +290,7 @@ private final class MissionEditingGesture: UIGestureRecognizer, UIGestureRecogni
         let tap = tapped
         tapped = nil
         guard let hit else {
-            if !addedInGesture && released && withinTap(dx, dy) { onSelected(tap) }
+            if let tap, !addedInGesture, released, withinTap(dx, dy) { onSelected(tap) }
             state = .failed
             return
         }
