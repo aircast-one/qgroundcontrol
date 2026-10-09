@@ -83,6 +83,7 @@ struct SettingStepper: View {
 
     var body: some View {
         let decimals = stepperDecimals(shown, step)
+        let entered = typed
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 0) {
                 VStack(alignment: .leading, spacing: 0) {
@@ -141,7 +142,7 @@ struct SettingStepper: View {
         }
         .alert(label, isPresented: $typing) {
             TextField(unit, text: $text).keyboardType(.decimalPad)
-            Button("Set") { typed.map(set) }.disabled(typed == nil)
+            Button("Set") { entered.map(set) }.disabled(entered == nil)
             Button("Cancel", role: .cancel) {}
         }
     }

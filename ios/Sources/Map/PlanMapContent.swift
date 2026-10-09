@@ -1340,6 +1340,7 @@ private struct MapTypeMenu: View {
     @State private var listed: MapTypes?
 
     var body: some View {
+        let types = listed
         RailButton(icon: .layers, label: "Map", onClick: {
             Task { @MainActor in
                 listed = await offMain { mapTypes(MapBridge.read(MAP_TYPES_VIEW)) }
@@ -1347,9 +1348,9 @@ private struct MapTypeMenu: View {
             }
         })
         .confirmationDialog("Map type", isPresented: $open) {
-            ForEach(listed?.types ?? [], id: \.self) { type in
-                Button(type == listed?.current ? "\(type) ✓" : type) {
-                    guard let path = listed?.path else { return }
+            ForEach(types?.types ?? [], id: \.self) { type in
+                Button(type == types?.current ? "\(type) ✓" : type) {
+                    guard let path = types?.path else { return }
                     Task { @MainActor in
                         let style = await offMain { () -> String in
                             setOk(path, type)

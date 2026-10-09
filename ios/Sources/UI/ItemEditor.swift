@@ -541,17 +541,19 @@ private struct CommandPicker: View {
     @State private var commands: [CommandChoice] = []
 
     var body: some View {
+        let listedCategories = categories
+        let listedCommands = commands
         PlanDialog(title: "Select mission command", onDismiss: onDismiss) {
             VStack(alignment: .leading, spacing: Space.s2) {
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: Space.s1) {
-                        ForEach(categories, id: \.self) { name in
+                        ForEach(listedCategories, id: \.self) { name in
                             PlanChip(label: sentenceCase(name), selected: name == category) { category = name }
                         }
                     }
                 }
                 LazyVStack(alignment: .leading, spacing: 0) {
-                    ForEach(commands) { command in
+                    ForEach(listedCommands) { command in
                         Button { onChosen(command.id) } label: {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(sentenceCase(command.name)).font(.bodyLarge).foregroundStyle(theme.colors.onSurface)

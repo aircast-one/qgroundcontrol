@@ -9,6 +9,7 @@ struct MapLayersSheet: View {
     private var obstacles: Bool { obstacleJson?["value"].bool == true }
 
     var body: some View {
+        let types = listed
         AircastSheet(onDismissRequest: onDismiss) {
             VStack(alignment: .leading, spacing: Space.s3) {
                 VStack(alignment: .leading, spacing: 0) {
@@ -18,8 +19,8 @@ struct MapLayersSheet: View {
                         .foregroundStyle(theme.colors.onSurfaceVariant)
                 }
                 PlanFlowRow(spacing: Space.s2, lineSpacing: 0) {
-                    ForEach(listed?.types ?? [], id: \.self) { type in
-                        MapTypeChip(type: type, selected: type == listed?.current) { choose(type) }
+                    ForEach(types?.types ?? [], id: \.self) { type in
+                        MapTypeChip(type: type, selected: type == types?.current) { choose(type) }
                     }
                 }
                 Button {

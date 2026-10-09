@@ -49,8 +49,9 @@ struct OfflineStatusSheet: View {
     @State private var status: OfflineStatus?
 
     var body: some View {
+        let current = status
         AircastSheet(onDismissRequest: onDismiss) {
-            if let shown = status {
+            if let shown = current {
                 VStack(alignment: .leading, spacing: Space.s1) {
                     Text(shown.title).font(.titleMedium).padding(.horizontal, Space.s5)
                     HStack(spacing: Space.s2) {

@@ -167,6 +167,7 @@ struct ParameterToolsMenu: View {
 
     var body: some View {
         let tools = parameterTools(view)
+        let reviewed = review
         if !tools.isEmpty {
             Menu("Tools") {
                 ForEach(tools, id: \.path) { tool in
@@ -187,7 +188,7 @@ struct ParameterToolsMenu: View {
                 Text(shown)
             }
             .sheet(isPresented: presented($review)) {
-                if let shown = review {
+                if let shown = reviewed {
                     ReviewDialog(review: shown, chosen: $chosen, onCancel: { review = nil }, onApply: { apply(shown) })
                 }
             }

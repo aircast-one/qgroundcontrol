@@ -282,6 +282,8 @@ struct SensorsScreen: View {
 
     @ViewBuilder
     private func screen(_ state: CalibrationState) -> some View {
+        let prompt = rebootPrompt
+        let picked = pending
         Group {
             if state.inProgress {
                 RunningCalibration(name: runningName, state: state)
@@ -290,7 +292,7 @@ struct SensorsScreen: View {
             }
         }
         .background { BlocksNavigation(blocking: state.inProgress && state.px4, reason: CALIBRATION_BLOCK) }
-        .sheet(isPresented: presented($rebootPrompt)) { rebootDialog(state) }
+        .sheet(isPresented: presented($rebootPrompt)) { rebootDialog(state, prompt) }
         .sheet(isPresented: $showSettings) {
             SetupDialog(title: state.settingsDialogTitle.ifBlank(state.settingsTitle)) {
                 SensorSettingsBlock(calibrating: false, showCompasses: true)
@@ -299,7 +301,7 @@ struct SensorsScreen: View {
             }
         }
         .sheet(isPresented: presented($pending)) {
-            if let calibration = pending {
+            if let calibration = picked {
                 StartDialog(
                     calibration: calibration,
                     fast: state.fastCompass,
@@ -333,8 +335,8 @@ struct SensorsScreen: View {
     }
 
     @ViewBuilder
-    private func rebootDialog(_ state: CalibrationState) -> some View {
-        if let prompt = rebootPrompt {
+    private func rebootDialog(_ state: CalibrationState, _ shown: String?) -> some View {
+        if let prompt = shown {
             SetupDialog(title: postCalibrationTitle(ranRoutine, state.px4)) {
                 Text(prompt)
                 if !state.px4 && state.completed == COMPASS_ROUTINE {

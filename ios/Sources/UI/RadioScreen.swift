@@ -142,6 +142,7 @@ private struct AdditionalSetup: View {
     @State private var prompt: RadioPrompt?
 
     var body: some View {
+        let shown = prompt
         VStack(alignment: .leading, spacing: Space.s2) {
             Divider()
             ViewThatFits(in: .horizontal) {
@@ -151,7 +152,7 @@ private struct AdditionalSetup: View {
         }
         .padding(Space.s1)
         .sheet(isPresented: presented($prompt)) {
-            if let asked = prompt {
+            if let asked = shown {
                 ConfirmDialog(prompt: asked, onDismiss: { prompt = nil }, onConfirm: { onInvoke(asked.action, $0) })
             }
         }

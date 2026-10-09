@@ -56,6 +56,7 @@ struct TileSetTransfer: View {
     @State private var exported: URL?
 
     var body: some View {
+        let picked = chosen
         VStack(alignment: .leading, spacing: Space.s1) {
             ActionLine(label: "Import map tiles", button: "Import…", enabled: running == nil) { choosingMode = true }
             .fileImporter(isPresented: $importing, allowedContentTypes: [.item]) { result in
@@ -90,7 +91,7 @@ struct TileSetTransfer: View {
         }
         .background(PresenterProbeView(probe: probe).allowsHitTesting(false))
         .onDisappear { scope.cancel() }
-        .sheet(isPresented: $choosingSets) { exportChooser }
+        .sheet(isPresented: $choosingSets) { exportChooser(picked) }
         .confirmationDialog("Import tile sets", isPresented: $choosingMode, titleVisibility: .visible) {
             Button("Append to existing sets") { pickImport(false) }
             Button("Replace existing sets") { pickImport(true) }
@@ -98,11 +99,11 @@ struct TileSetTransfer: View {
         }
     }
 
-    private var exportChooser: some View {
+    private func exportChooser(_ picked: Set<Int64>) -> some View {
         NavigationStack {
             List(sets, id: \.id) { set in
                 Toggle(set.name, isOn: Binding(
-                    get: { chosen.contains(set.id) },
+                    get: { picked.contains(set.id) },
                     set: { chosen = $0 ? chosen.union([set.id]) : chosen.subtracting([set.id]) }
                 ))
             }
@@ -115,7 +116,7 @@ struct TileSetTransfer: View {
                         choosingSets = false
                         startExport()
                     }
-                    .disabled(chosen.isEmpty)
+                    .disabled(picked.isEmpty)
                 }
             }
         }
