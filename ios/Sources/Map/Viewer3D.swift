@@ -354,6 +354,8 @@ private struct PathKey: Equatable {
     let selected: Set<Int>
 }
 
+private let ORNAMENT_MARGIN: CGFloat = 8
+
 private struct Viewer3DMap: UIViewRepresentable {
     let sceneKey: JSON?
     let buildings: [Building3D]
@@ -388,6 +390,12 @@ private struct Viewer3DMap: UIViewRepresentable {
     func updateUIView(_ view: MLNMapView, context: Context) {
         context.coordinator.parent = self
         context.coordinator.apply(view)
+        let slack = max(0, (MINIMUM_TOUCH_TARGET - view.attributionButton.intrinsicContentSize.width) / 2)
+        view.attributionButtonMargins = CGPoint(x: ORNAMENT_MARGIN - slack, y: ORNAMENT_MARGIN - slack)
+        view.updateConstraintsIfNeeded()
+        view.attributionButton.constraints
+            .filter { $0.firstAttribute == .width || $0.firstAttribute == .height }
+            .forEach { $0.constant = MINIMUM_TOUCH_TARGET }
     }
 
     final class Coordinator: NSObject, MLNMapViewDelegate, UIGestureRecognizerDelegate {
