@@ -461,6 +461,10 @@ pub fn camera(survey: &Value, item: &str, units: &Units, terrain_frame: bool) ->
     })
 }
 
+pub fn knows(suffix: &str) -> bool {
+    matches!(suffix, "cameraCalc.cameraBrand" | "cameraCalc.cameraModel") || target(suffix).is_some()
+}
+
 fn target(suffix: &str) -> Option<(&'static str, String)> {
     let transect = ["TurnAroundDistance", "CameraTriggerInTurnAround", "HoverAndCapture", "Refly90Degrees", "TerrainAdjustTolerance", "TerrainAdjustMaxDescentRate", "TerrainAdjustMaxClimbRate"];
     let capital = |s: &str| s.chars().next().map(|c| c.to_ascii_uppercase().to_string() + &s[c.len_utf8()..]).unwrap_or_default();
@@ -1014,6 +1018,8 @@ mod tests {
         let spaced = set(&fixture["structure"], "entranceAlt", &json!(" 42.5 "), &metric()).unwrap();
         assert_eq!(spaced["EntranceAltitude"].as_f64(), Some(42.5));
         assert!(["", "abc"].iter().all(|text| set(&fixture["structure"], "entranceAlt", &json!(text), &metric()).is_none()), "text that is no number is refused, not stored as a string");
+        assert!(knows("entranceAlt") && knows("corridorWidth") && knows("cameraCalc.cameraBrand"), "a refused value on a known field is a bad value, not a missing field");
+        assert!(!knows("noSuchField"));
     }
 
     #[test]

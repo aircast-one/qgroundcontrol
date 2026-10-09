@@ -1739,7 +1739,9 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
                     remember_item(backend, index as i64);
                     answered
                 }
-                None => refused(format!("The survey has no field {property}.")),
+                None if !crate::surveydoc::knows(property) => refused(format!("The survey has no field {property}.")),
+                None if crate::factwrite::number(&value).is_none() => refused(crate::factwrite::INVALID_NUMBER),
+                None => refused(format!("{property} cannot take that value.")),
             });
         }
     }
