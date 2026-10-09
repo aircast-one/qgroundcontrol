@@ -50,8 +50,16 @@ internal fun failsafeCountdown(seconds: Long?, failsafe: LossFailsafe?): String?
     if (left == null) action else "$action in ${silenceDuration(left)}"
 }
 
-internal fun signalLostTitle(seconds: Long?, failsafe: LossFailsafe? = null): String =
-    listOfNotNull(SIGNAL_LOST, seconds?.let(::silenceDuration), failsafeCountdown(seconds, failsafe)).joinToString(" \u00b7 ")
+private const val LOST = "Lost"
+
+internal const val LOST_LINK_HINT = "Point the antenna at the aircraft or move closer."
+
+internal fun signalLostTitle(seconds: Long?, failsafe: LossFailsafe? = null, compact: Boolean = false): String =
+    listOfNotNull(
+        if (compact) listOfNotNull(LOST, seconds?.let(::silenceDuration)).joinToString(" ") else SIGNAL_LOST,
+        seconds?.takeUnless { compact }?.let(::silenceDuration),
+        failsafeCountdown(seconds, failsafe),
+    ).joinToString(" \u00b7 ")
 
 private val CRITICAL_CHARGE_STATES = 3..6
 

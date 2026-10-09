@@ -150,10 +150,14 @@ internal fun deckIds(shown: Set<String>, armed: Boolean): List<Pair<String, Bool
 @Composable
 internal fun DeckButton(entry: DeckEntry, primary: Boolean, modifier: Modifier = Modifier) {
     Surface(
-        modifier = modifier.height(DECK_BUTTON_HEIGHT).alpha(if (entry.enabled) 1f else DISABLED_ALPHA),
+        modifier = modifier.height(DECK_BUTTON_HEIGHT),
         shape = MaterialTheme.shapes.large,
-        color = if (primary) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
-        contentColor = if (primary) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface,
+        color = if (primary && entry.enabled) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+        contentColor = when {
+            !entry.enabled -> MaterialTheme.colorScheme.onSurface.copy(alpha = DISABLED_ALPHA)
+            primary -> MaterialTheme.colorScheme.onPrimaryContainer
+            else -> MaterialTheme.colorScheme.onSurface
+        },
     ) {
         DeckPress(entry) {
             Column(

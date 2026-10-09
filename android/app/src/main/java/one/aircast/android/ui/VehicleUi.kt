@@ -276,20 +276,20 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null, valuesShow
                     style = style.copy(fontFeatureSettings = "tnum"),
                     maxLines = 1,
                     softWrap = false,
-                    color = if (silent) MaterialTheme.colorScheme.outline else displayColour(displayFor(displays, instrument), instrument.raw)?.let { Color(it) } ?: MaterialTheme.aircast.outdoorForeground,
+                    color = if (silent) MaterialTheme.colorScheme.onSurfaceVariant else displayColour(displayFor(displays, instrument), instrument.raw)?.let { Color(it) } ?: MaterialTheme.aircast.outdoorForeground,
                     modifier = Modifier.alignByBaseline(),
                 )
             }
         }
         if (stacked) {
             val (speeds, places) = shown.partition { osdIsSpeed(it.label) }
-            Column(modifier.alpha(if (silent) 0.45f else 1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+            Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
                 if (speeds.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s4)) { speeds.map { reading(it, MaterialTheme.typography.labelLarge) } }
                 if (places.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s4)) { places.map { reading(it, MaterialTheme.typography.titleLarge) } }
             }
         } else {
             FlowRow(
-                modifier.alpha(if (silent) 0.45f else 1f),
+                modifier,
                 horizontalArrangement = Arrangement.spacedBy(AircastSpace.s4, Alignment.CenterHorizontally),
                 verticalArrangement = Arrangement.spacedBy(2.dp),
             ) {

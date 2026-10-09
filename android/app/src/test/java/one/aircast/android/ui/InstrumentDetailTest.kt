@@ -73,6 +73,7 @@ class InstrumentDetailTest {
         assertEquals("Signal lost \u00b7 7 s \u00b7 Return home in 3 s", signalLostTitle(7, home))
         assertEquals("Signal lost \u00b7 12 s \u00b7 Return home", signalLostTitle(12, home))
         assertEquals("Signal lost \u00b7 7 s \u00b7 No failsafe", signalLostTitle(7, LossFailsafe("No failsafe", null)))
+        assertEquals("the portrait chip keeps the countdown and shortens the rest", "Lost 2 s \u00b7 Return home in 8 s", signalLostTitle(2, home, compact = true))
     }
 
     @Test

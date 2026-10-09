@@ -4,6 +4,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.ui.res.painterResource
@@ -207,7 +208,7 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(painterResource(R.drawable.ic_flight), null, Modifier.size(24.dp))
-        val title = if (lost) signalLostTitle(silentFor, failsafe) else activeVehicleTitle(choices, subtitle)
+        val title = if (lost) signalLostTitle(silentFor, failsafe, compact = !statusBar) else activeVehicleTitle(choices, subtitle)
         Text(
             text = if (statusBar) osdModeText(title) else title,
             style = if (statusBar) MaterialTheme.typography.titleMedium else MaterialTheme.typography.labelLarge,
@@ -258,6 +259,12 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
             onClick = {},
             enabled = false,
         )
+        androidx.compose.material3.DropdownMenuItem(
+            text = { Text(LOST_LINK_HINT, style = MaterialTheme.typography.bodySmall, modifier = Modifier.widthIn(max = 280.dp)) },
+            onClick = {},
+            enabled = false,
+        )
+        androidx.compose.material3.HorizontalDivider()
         androidx.compose.material3.DropdownMenuItem(
             text = { Text("Disconnect", color = MaterialTheme.colorScheme.error) },
             onClick = {
