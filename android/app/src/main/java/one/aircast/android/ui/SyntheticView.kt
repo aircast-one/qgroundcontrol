@@ -18,7 +18,6 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
@@ -39,13 +38,9 @@ internal const val SYNTHETIC_LABEL = "Synthetic view"
 private const val SYNTHETIC_PAGE = "https://${WebViewAssetLoader.DEFAULT_DOMAIN}/assets/synthetic/index.html"
 private val ANY_ORIGIN = mapOf("Access-Control-Allow-Origin" to "*")
 
-internal val LocalSyntheticBehind = staticCompositionLocalOf { false }
-
 internal fun syntheticAvailable(view: JSONObject?): Boolean = view?.optBoolean("available") == true
 
 internal fun syntheticPoseScript(view: JSONObject): String = "window.aircast && window.aircast.pose($view)"
-
-internal fun syntheticPillTitle(title: String, behind: Boolean): String = if (behind) "$SYNTHETIC_LABEL · $title" else title
 
 @Composable
 internal fun rememberSyntheticAvailable(): Boolean {
@@ -82,13 +77,16 @@ internal fun SyntheticView(modifier: Modifier = Modifier, labelled: Boolean = tr
     LaunchedEffect(view) { view?.let { web.evaluateJavascript(syntheticPoseScript(it), null) } }
     Box(modifier) {
         AndroidView({ web }, Modifier.fillMaxSize())
-        if (labelled) {
-            Text(
-                SYNTHETIC_LABEL,
-                Modifier.align(Alignment.TopStart).padding(6.dp).background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
-                color = Color.White,
-                style = MaterialTheme.typography.labelSmall,
-            )
-        }
+        if (labelled) SyntheticTag(Modifier.align(Alignment.TopEnd).padding(6.dp))
     }
+}
+
+@Composable
+internal fun SyntheticTag(modifier: Modifier = Modifier) {
+    Text(
+        SYNTHETIC_LABEL,
+        modifier.background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
+        color = Color.White,
+        style = MaterialTheme.typography.labelSmall,
+    )
 }

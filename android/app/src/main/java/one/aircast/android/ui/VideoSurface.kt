@@ -22,6 +22,7 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -79,11 +80,14 @@ internal fun FlyNoVideoMessage() {
     }
     val videoJson by qgcPath(VIDEO_VIEW)
     val video = remember(videoJson) { videoReading(videoJson) }
-    val synthetic = rememberSyntheticAvailable()
+    if (rememberSyntheticAvailable()) {
+        Box(Modifier.fillMaxSize().padding(8.dp), contentAlignment = Alignment.TopEnd) { SyntheticTag() }
+        return
+    }
     BoxWithConstraints(Modifier.fillMaxSize()) {
-        val compact = synthetic || maxHeight < NO_VIDEO_FULL_HEIGHT || maxWidth < NO_VIDEO_FULL_WIDTH
+        val compact = maxHeight < NO_VIDEO_FULL_HEIGHT || maxWidth < NO_VIDEO_FULL_WIDTH
         Box(Modifier.fillMaxSize(), contentAlignment = if (compact) Alignment.TopEnd else Alignment.Center) {
-            CompositionLocalProvider(LocalNoVideoSize provides if (compact) NoVideoSize.Pill else NoVideoSize.Full, LocalSyntheticBehind provides synthetic) { NoVideoPanel(video) }
+            CompositionLocalProvider(LocalNoVideoSize provides if (compact) NoVideoSize.Pill else NoVideoSize.Full) { NoVideoPanel(video) }
         }
     }
 }

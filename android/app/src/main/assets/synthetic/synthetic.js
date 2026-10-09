@@ -78,6 +78,7 @@ const widget = new Cesium.CesiumWidget("view", {
   scene3DOnly: true,
   creditContainer: "credits",
   targetFrameRate: FRAME_RATE,
+  useBrowserRecommendedResolution: false,
 });
 const scene = widget.scene;
 scene.screenSpaceCameraController.enableInputs = false;

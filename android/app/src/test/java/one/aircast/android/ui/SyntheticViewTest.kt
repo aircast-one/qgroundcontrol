@@ -1,7 +1,6 @@
 package one.aircast.android.ui
 
 import org.json.JSONObject
-import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -19,11 +18,5 @@ class SyntheticViewTest {
         val script = syntheticPoseScript(JSONObject("""{"available":true,"heading":90}"""))
         assertTrue(script.startsWith("window.aircast && window.aircast.pose("))
         assertTrue(script.contains(""""heading":90"""))
-    }
-
-    @Test
-    fun `the no-video pill says the picture behind it is synthetic`() {
-        assertEquals("Synthetic view · No video", syntheticPillTitle("No video", behind = true))
-        assertEquals("No video", syntheticPillTitle("No video", behind = false))
     }
 }
