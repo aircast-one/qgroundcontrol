@@ -25,6 +25,7 @@ import org.json.JSONObject
 
 private const val SPEECH_VIEW = "view.speech"
 private const val SPEECH_POLL_MS = 500L
+private const val BATTERY_VIEW = "view.battery"
 private val LOST_BUZZ = longArrayOf(0, 400, 150, 400, 150, 400)
 private val REGAINED_BUZZ = longArrayOf(0, 120)
 
@@ -68,6 +69,18 @@ fun VoiceAlerts() {
         }
     }
     LinkLossBuzz(context)
+    ReturnHomeAlert(context, voice)
+}
+
+@Composable
+private fun ReturnHomeAlert(context: Context, voice: TextToSpeech?) {
+    val batteryJson by qgcPath(BATTERY_VIEW)
+    val returnNow = remember(batteryJson) { batteryHeadline(batteryJson)?.returnNow == true }
+    LaunchedEffect(returnNow) {
+        if (!returnNow) return@LaunchedEffect
+        voice?.speak(RETURN_NOW_SPOKEN, TextToSpeech.QUEUE_ADD, null, "return-now")
+        context.getSystemService(Vibrator::class.java)?.takeIf { it.hasVibrator() }?.vibrate(VibrationEffect.createWaveform(linkBuzz(true), -1))
+    }
 }
 
 @Composable

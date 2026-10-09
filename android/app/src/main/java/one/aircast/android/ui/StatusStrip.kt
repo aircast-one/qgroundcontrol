@@ -46,6 +46,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.takeOrElse
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.layout.height
+import androidx.compose.ui.text.drawText
+import kotlin.math.roundToInt
 import androidx.compose.foundation.layout.offset
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -192,6 +195,7 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
 
     val batteryJson by qgcPath(BATTERY)
     val batteries = remember(batteryJson) { batteryReadings(batteryJson) }
+    val timeLeft = remember(batteryJson) { batteryHeadline(batteryJson)?.timeLeft.orEmpty() }
     val linksJson by qgcPath(VEHICLE_LINKS)
     val links = remember(linksJson) { linkCell(vehicleLinks(linksJson)) }
     val gpsJson by qgcPath(GPS_VIEW)
@@ -220,6 +224,12 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
                         if (LocalCompactStatus.current) BatteryRing(it.text, colour, if (LocalNarrowStatus.current) "" else packCountText(it.packs)) { detail = StripDetail.Battery }
                         else InlineCell(listOf(it.text, packCountText(it.packs)).filter(String::isNotEmpty).joinToString(" "), colour, R.drawable.ic_battery_5_bar) { detail = StripDetail.Battery }
                     }
+                    if (timeLeft.isNotEmpty() && batteries.isNotEmpty() && !LocalNarrowStatus.current) Text(
+                        timeLeft,
+                        style = MaterialTheme.typography.labelLarge.copy(fontFeatureSettings = "tnum"),
+                        color = if (live) MaterialTheme.aircast.outdoorForeground else MaterialTheme.colorScheme.outline,
+                        modifier = Modifier.clickable(onClickLabel = "Battery") { detail = StripDetail.Battery }.semantics { contentDescription = "$timeLeft flight time left" },
+                    )
                 }
             },
             "flightTime" to { if (LocalCompactStatus.current) FlightTimeCell() },
@@ -326,6 +336,64 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
     if (batteryDisplay) {
         AircastSheet(onDismissRequest = { batteryDisplay = false }) {
             BatteryDisplaySettings()
+        }
+    }
+}
+
+internal enum class BarTone { Fine, ReturnNow, Reserve }
+
+internal fun barTone(headline: BatteryHeadline): BarTone = when {
+    (headline.percent ?: 100.0) <= headline.reserve -> BarTone.Reserve
+    headline.returnNow -> BarTone.ReturnNow
+    else -> BarTone.Fine
+}
+
+internal fun batteryBarDescription(headline: BatteryHeadline): String =
+    listOfNotNull(
+        headline.percent?.let { "Battery ${it.roundToInt()}%" },
+        headline.returnAt?.let { "return home needed at ${it.roundToInt()}%" },
+        RETURN_NOW_SPOKEN.takeIf { headline.returnNow },
+    ).joinToString(", ")
+
+private val BATTERY_BAR_HEIGHT = 4.dp
+private val BATTERY_BAR_ROOM = 14.dp
+private val RETURN_MARKER = 12.dp
+private const val BATTERY_BAR_TRACK_ALPHA = 0.25f
+private const val PERCENT = 100f
+
+@Composable
+internal fun BatteryReturnBar(modifier: Modifier = Modifier) {
+    val batteryJson by qgcPath(BATTERY)
+    val stateJson by qgcPath(FLY_STATE)
+    val headline = remember(batteryJson) { batteryHeadline(batteryJson) } ?: return
+    val percent = headline.percent ?: return
+    val live = remember(stateJson) { flyState(stateJson)?.staleNotice.isNullOrBlank() }
+    val fill = when {
+        !live -> MaterialTheme.colorScheme.outline
+        else -> when (barTone(headline)) {
+            BarTone.Fine -> MaterialTheme.aircast.success
+            BarTone.ReturnNow -> MaterialTheme.aircast.warning
+            BarTone.Reserve -> MaterialTheme.colorScheme.error
+        }
+    }
+    val track = MaterialTheme.aircast.outdoorForeground.copy(alpha = BATTERY_BAR_TRACK_ALPHA)
+    val reserveZone = MaterialTheme.colorScheme.error
+    val home = MaterialTheme.aircast.success
+    val homeText = MaterialTheme.aircast.onSuccess
+    val measurer = androidx.compose.ui.text.rememberTextMeasurer()
+    val letter = androidx.compose.ui.text.TextStyle(color = homeText, fontSize = 8.sp, fontWeight = FontWeight.Bold)
+    androidx.compose.foundation.Canvas(modifier.fillMaxWidth().height(BATTERY_BAR_ROOM).semantics { contentDescription = batteryBarDescription(headline) }) {
+        val bar = BATTERY_BAR_HEIGHT.toPx()
+        val top = (size.height - bar) / 2f
+        val at = { share: Double -> size.width * (share.toFloat() / PERCENT).coerceIn(0f, 1f) }
+        drawRoundRect(track, androidx.compose.ui.geometry.Offset(0f, top), androidx.compose.ui.geometry.Size(size.width, bar), androidx.compose.ui.geometry.CornerRadius(bar / 2f))
+        drawRoundRect(fill, androidx.compose.ui.geometry.Offset(0f, top), androidx.compose.ui.geometry.Size(at(percent), bar), androidx.compose.ui.geometry.CornerRadius(bar / 2f))
+        drawRect(reserveZone, androidx.compose.ui.geometry.Offset(0f, top), androidx.compose.ui.geometry.Size(at(headline.reserve), bar))
+        headline.returnAt?.let { share ->
+            val centre = androidx.compose.ui.geometry.Offset(at(share), size.height / 2f)
+            drawCircle(home, RETURN_MARKER.toPx() / 2f, centre)
+            val h = measurer.measure("H", letter)
+            drawText(h, topLeft = centre - androidx.compose.ui.geometry.Offset(h.size.width / 2f, h.size.height / 2f))
         }
     }
 }

@@ -336,6 +336,7 @@ internal fun FlyPortrait(
                     verticalAlignment = Alignment.CenterVertically,
                     content = status,
                 )
+                BatteryReturnBar(Modifier.padding(horizontal = AircastSpace.s3))
                 TrafficBanner(Modifier.padding(start = AircastSpace.s3, end = AircastSpace.s3, bottom = AircastSpace.s2))
             }
             }

@@ -54,6 +54,17 @@ class InstrumentDetailTest {
     }
 
     @Test
+    fun `the bar turns amber at the turn-back point and red in the reserve`() {
+        val view = battery(pack(), headline = """{"text":"41%","detail":"","severity":0,"percent":41.0,"timeLeft":"6:09","reserve":7.0,"returnAt":26.0,"returnNow":false}""")
+        val calm = batteryHeadline(view)!!
+        assertEquals(Triple(41.0, "6:09", 26.0), Triple(calm.percent, calm.timeLeft, calm.returnAt))
+        assertEquals(BarTone.Fine, barTone(calm))
+        assertEquals(BarTone.ReturnNow, barTone(calm.copy(percent = 25.0, returnNow = true)))
+        assertEquals(BarTone.Reserve, barTone(calm.copy(percent = 6.0, returnNow = true)))
+        assertEquals("Battery 41%, return home needed at 26%", batteryBarDescription(calm))
+    }
+
+    @Test
     fun `silence reads in seconds, then minutes`() {
         assertEquals("No data from the aircraft for 12 s", silenceText(12))
         assertEquals("No data from the aircraft for 2 min", silenceText(150))

@@ -10027,8 +10027,13 @@
             "index": "number",
             "level": "string",
             "margin": "string",
+            "percent": "number|null",
+            "reserve": "number",
+            "returnAt": "number|null",
+            "returnNow": "bool",
             "severity": "number",
-            "text": "string"
+            "text": "string",
+            "timeLeft": "string|null"
         },
         "indicatorPacks": [
             {

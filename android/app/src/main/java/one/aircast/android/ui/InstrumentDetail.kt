@@ -15,14 +15,30 @@ internal data class BatteryHeadline(
     val level: BatteryLevel = BatteryLevel.Normal,
     val margin: String = "",
     val index: Int = 0,
+    val percent: Double? = null,
+    val timeLeft: String = "",
+    val reserve: Double = 0.0,
+    val returnAt: Double? = null,
+    val returnNow: Boolean = false,
 )
 
 internal fun batteryHeadline(view: JSONObject?): BatteryHeadline? =
     view?.takeIf { it.optBoolean("available") }?.optJSONObject("headline")?.let {
-        BatteryHeadline(it.optText("text"), it.optText("detail"), it.optInt("severity"), batteryLevelOf(it.optText("level")), it.optText("margin"), it.optInt("index"))
+        BatteryHeadline(
+            it.optText("text"), it.optText("detail"), it.optInt("severity"), batteryLevelOf(it.optText("level")), it.optText("margin"), it.optInt("index"),
+            percent = it.optNumber("percent"),
+            timeLeft = it.optText("timeLeft"),
+            reserve = it.optDouble("reserve", 0.0),
+            returnAt = it.optNumber("returnAt"),
+            returnNow = it.optBoolean("returnNow"),
+        )
     }
 
 private const val LIMITING_PACK = "lowest"
+
+private fun JSONObject.optNumber(key: String): Double? = if (isNull(key)) null else optDouble(key).takeIf { it.isFinite() }
+
+internal const val RETURN_NOW_SPOKEN = "Battery needed to return home. Return now."
 
 internal fun batteryDetail(view: JSONObject?): List<DetailRow> {
     val packs = view?.takeIf { it.optBoolean("available") }?.optJSONArray("packs") ?: return emptyList()

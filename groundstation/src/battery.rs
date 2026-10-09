@@ -217,6 +217,41 @@ pub fn margin_text(action: Option<i64>, low: Option<f64>, critical: Option<f64>,
     Some(to_go.map_or(rule.clone(), |go| format!("{rule}  \u{00b7}  {go}")))
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct ReturnTrip {
+    pub distance_m: f64,
+    pub altitude_m: f64,
+    pub return_altitude_m: f64,
+    pub cruise_mps: f64,
+    pub climb_mps: f64,
+    pub descent_mps: f64,
+}
+
+pub fn return_seconds(trip: ReturnTrip) -> Option<f64> {
+    let speeds_known = [trip.cruise_mps, trip.climb_mps, trip.descent_mps].iter().all(|s| s.is_finite() && *s > 0.0);
+    let place_known = [trip.distance_m, trip.altitude_m].iter().all(|v| v.is_finite());
+    let flown_at = trip.altitude_m.max(trip.return_altitude_m.max(0.0));
+    (speeds_known && place_known).then(|| (flown_at - trip.altitude_m) / trip.climb_mps + trip.distance_m / trip.cruise_mps + flown_at.max(0.0) / trip.descent_mps)
+}
+
+pub fn return_charge(percent: f64, seconds_left: f64, reserve_percent: f64, trip_seconds: f64) -> Option<f64> {
+    (percent > 0.0 && seconds_left > 0.0).then(|| (reserve_percent + trip_seconds * percent / seconds_left).min(100.0))
+}
+
+const CM: f64 = 100.0;
+
+fn return_trip(backend: &dyn Backend) -> Option<ReturnTrip> {
+    let raw = |name: &str| parameter_value(backend, name, "rawValue");
+    let fact = |path: &str| value_number(&backend.value(&format!("{path}.rawValue")));
+    let (distance_m, altitude_m) = (fact("vehicle.distanceToHome")?, fact("vehicle.altitudeRelative").unwrap_or(0.0));
+    let px4 = || Some(ReturnTrip { distance_m, altitude_m, return_altitude_m: raw("RTL_RETURN_ALT")?, cruise_mps: raw("MPC_XY_CRUISE")?, climb_mps: raw("MPC_Z_V_AUTO_UP")?, descent_mps: raw("MPC_LAND_SPEED")? });
+    let apm = || {
+        let rtl = raw("RTL_SPEED").filter(|s| *s > 0.0).or_else(|| raw("WPNAV_SPEED"))?;
+        Some(ReturnTrip { distance_m, altitude_m, return_altitude_m: raw("RTL_ALT")? / CM, cruise_mps: rtl / CM, climb_mps: raw("WPNAV_SPEED_UP")? / CM, descent_mps: raw("LAND_SPEED")? / CM })
+    };
+    px4().or_else(apm)
+}
+
 fn parameter_value(backend: &dyn Backend, name: &str, field: &str) -> Option<f64> {
     value_number(&backend.value(&format!("vehicle.parameterManager.getParameter(-1,{name}).{field}")))
 }
@@ -324,14 +359,22 @@ pub fn battery_view(backend: &dyn Backend, _args: &[String]) -> Value {
             let index = shown["index"].as_u64().unwrap_or(0) as usize;
             let limiting = &popup_packs[index];
             shown["level"] = described.get(index).map_or(Value::Null, |pack| pack["level"].clone());
+            let critical = parameter_value(backend, "BAT_CRIT_THR", "value");
             shown["margin"] = margin_text(
                 parameter_value(backend, "COM_LOW_BAT_ACT", "rawValue").map(|v| v as i64),
                 parameter_value(backend, "BAT_LOW_THR", "value"),
-                parameter_value(backend, "BAT_CRIT_THR", "value"),
+                critical,
                 limiting.percent,
                 limiting.time_remaining,
             )
             .map_or(Value::Null, Value::String);
+            let reserve = critical.unwrap_or(0.0);
+            let return_at = limiting.percent.zip(limiting.time_remaining).zip(return_trip(backend).and_then(return_seconds)).and_then(|((percent, left), trip)| return_charge(percent, left, reserve, trip));
+            shown["percent"] = limiting.percent.map_or(Value::Null, |p| json!(p));
+            shown["timeLeft"] = limiting.time_remaining.map(duration_text).filter(|t| !t.is_empty()).map_or(Value::Null, Value::String);
+            shown["reserve"] = json!(reserve);
+            shown["returnAt"] = return_at.map_or(Value::Null, |at| json!(at));
+            shown["returnNow"] = json!(return_at.zip(limiting.percent).is_some_and(|(at, percent)| percent <= at));
             shown
         }),
     })
@@ -387,6 +430,16 @@ mod tests {
     fn two_healthy_packs_lead_with_the_lower_one_and_say_so() {
         let both = headline(&[popup(1, "Ok", Some(90.0), Some(810.0)), popup(1, "Ok", Some(79.0), Some(711.0))]).unwrap();
         assert_eq!((both["text"].as_str(), both["detail"].as_str(), both["index"].as_u64()), (Some("79%"), Some("11:51 left  \u{00b7}  lowest of 2"), Some(1)));
+    }
+
+    #[test]
+    fn the_turn_back_point_is_the_charge_the_flight_home_costs_on_top_of_the_reserve() {
+        let trip = ReturnTrip { distance_m: 600.0, altitude_m: 40.0, return_altitude_m: 60.0, cruise_mps: 5.0, climb_mps: 2.0, descent_mps: 1.0 };
+        assert_eq!(return_seconds(trip), Some(10.0 + 120.0 + 60.0), "climb to the return altitude, fly home, then descend at landing speed the whole way");
+        assert_eq!(return_seconds(ReturnTrip { altitude_m: 90.0, ..trip }), Some(0.0 + 120.0 + 90.0), "already above the return altitude it comes home where it is");
+        assert_eq!(return_seconds(ReturnTrip { cruise_mps: 0.0, ..trip }), None, "an unknown speed promises nothing");
+        assert_eq!(return_charge(60.0, 600.0, 7.0, 190.0), Some(7.0 + 19.0), "190 s at 0.1 %/s costs 19 % on top of the 7 % the aircraft lands at");
+        assert_eq!(return_charge(60.0, 0.0, 7.0, 190.0), None);
     }
 
     #[test]

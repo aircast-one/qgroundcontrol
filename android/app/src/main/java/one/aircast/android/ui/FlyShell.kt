@@ -489,6 +489,7 @@ internal fun FlyScreen(
                                 content = status,
                             )
                         }
+                        BatteryReturnBar()
                         TrafficBanner()
                         Row(
                             Modifier.horizontalScroll(rememberScrollState()),
