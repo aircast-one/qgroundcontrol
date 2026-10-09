@@ -15,7 +15,6 @@ enum VideoDriver {
     private static var played: [Int32: Channel] = [:]
     private static var recording: JSON?
     private static var recordingReported = false
-    private static var restarts: Set<Int32> = []
 
     private struct Channel {
         var driven: String?
@@ -49,8 +48,7 @@ enum VideoDriver {
 
     @discardableResult
     static func restart() -> Bool {
-        queue.async { restarts.insert(main) }
-        return VideoCommands.restart()
+        VideoCommands.restart()
     }
 
     fileprivate static func finishRecording() {
@@ -70,7 +68,7 @@ enum VideoDriver {
     }
 
     private static func stopChanged(_ channel: Int32, _ wanted: String?) {
-        let restart = restarts.remove(channel) != nil
+        let restart = qgc_core_video_take_restart(channel)
         guard let driven = played[channel]?.driven, restart || wanted != driven else { return }
         qgc_video_stop(channel)
         log.info("Video channel \(channel) stopped")

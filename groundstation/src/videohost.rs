@@ -519,7 +519,11 @@ pub fn native_recording() -> Option<Value> {
     Some(json!({ "file": file, "format": recording_format() }))
 }
 
-pub static RESTART: [std::sync::atomic::AtomicBool; VIDEO_CHANNELS] = [const { std::sync::atomic::AtomicBool::new(false) }; VIDEO_CHANNELS];
+static RESTART: [std::sync::atomic::AtomicBool; VIDEO_CHANNELS] = [const { std::sync::atomic::AtomicBool::new(false) }; VIDEO_CHANNELS];
+
+pub fn take_restart(channel: usize) -> bool {
+    RESTART.get(channel).is_some_and(|flag| flag.swap(false, std::sync::atomic::Ordering::Relaxed))
+}
 
 pub fn unbuildable_outcome(uri: &str) -> Outcome {
     if uri.trim().is_empty() { Outcome::InvalidUrl } else { Outcome::Failed }
@@ -1061,5 +1065,14 @@ mod tests {
         let header = include_str!("../../src/Bridge/QGCVideoC.h");
         ["#define QGC_VIDEO_MAIN 0", "#define QGC_VIDEO_PIP 1", "#define QGC_VIDEO_CHANNELS 2", "int qgc_video_abi_version(void);"].iter().for_each(|line| assert!(header.contains(line), "QGCVideoC.h no longer says {line}"));
         assert_eq!(CHANNEL_RECEIVERS, [MAIN_RECEIVER, PIP_RECEIVER]);
+    }
+
+    #[test]
+    fn a_restart_the_core_asks_for_is_taken_by_the_head_exactly_once() {
+        RESTART[MAIN_CHANNEL].store(true, std::sync::atomic::Ordering::Relaxed);
+        assert!(take_restart(MAIN_CHANNEL), "the head sees the restart a stall or Retry asked for");
+        assert!(!take_restart(MAIN_CHANNEL), "and taking it clears it, so the pipeline restarts once rather than on every poll");
+        assert!(!take_restart(VIDEO_CHANNELS), "a channel the core does not have never restarts");
+        assert!(include_str!("../../src/Bridge/QGCCoreC.h").contains("bool qgc_core_video_take_restart(int channel);"), "the iOS head reaches it through QGCCoreC.h");
     }
 }

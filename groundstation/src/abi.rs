@@ -647,6 +647,11 @@ pub extern "C" fn qgc_core_gcs_position_error(code: i64) {
 }
 
 #[unsafe(no_mangle)]
+pub extern "C" fn qgc_core_video_take_restart(channel: i32) -> bool {
+    usize::try_from(channel).is_ok_and(crate::videohost::take_restart)
+}
+
+#[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_core_set_map_cache_path(path: *const c_char) {
     let path = text(path);
     crate::terrainservice::set_cache_path((!path.is_empty()).then(|| std::path::PathBuf::from(path)));

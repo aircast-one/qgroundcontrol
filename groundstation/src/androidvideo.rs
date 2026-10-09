@@ -132,7 +132,7 @@ struct Channel {
 
 impl Channel {
     fn stop_changed(&mut self, video: &Video, channel: c_int, wanted: &Option<String>) {
-        let restart = crate::videohost::RESTART[channel as usize].swap(false, std::sync::atomic::Ordering::Relaxed);
+        let restart = crate::videohost::take_restart(channel as usize);
         if self.driven.is_some() && (restart || *wanted != self.driven) {
             unsafe { (video.stop)(channel) };
             log::info!("Video channel {channel} stopped");

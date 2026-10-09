@@ -32,6 +32,7 @@ void qgc_core_qt_host_present(void);
 void qgc_core_gcs_position_source(const char *token);
 void qgc_core_gcs_position_update(double latitude, double longitude, double altitude, double horizontal_accuracy_m, double vertical_accuracy_m, double direction_deg, double direction_accuracy_deg);
 void qgc_core_gcs_position_error(int64_t code);
+bool qgc_core_video_take_restart(int channel);
 
 char *qgc_core_tile_open(const char *path);
 void qgc_core_tile_close(void);
