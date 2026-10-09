@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::time::{Duration, Instant};
 
+use crate::mockcal::Calibration;
 use crate::mockcamera::{Cameras, StreamKind, Video, Where};
 use crate::mockgimbal::Gimbal;
 use crate::transport::{Owner, Registry};
@@ -327,6 +328,7 @@ pub struct Sim {
     upload: Option<Upload>,
     cameras: Option<Cameras>,
     gimbal: Option<Gimbal>,
+    calibration: Calibration,
     adsb: Vec<Adsb>,
     battery: [i8; 2],
     greeted: bool,
@@ -366,6 +368,7 @@ impl Sim {
             upload: None,
             cameras: options.enable_camera.then(|| Cameras::new(Video { requested: options.video, served })),
             gimbal: options.enable_gimbal.then(Gimbal::default),
+            calibration: Calibration::default(),
             adsb: (0..ADSB_VEHICLES)
                 .map(|i| {
                     let step = i as f64 * 0.001;
@@ -445,6 +448,10 @@ impl Sim {
                 let params = [m.param1, m.param2, m.param3, m.param4, m.x as f32, m.y as f32, m.z];
                 let position = (if m.x == 0 { f64::NAN } else { degrees(m.x) }, if m.y == 0 { f64::NAN } else { degrees(m.y) }, f64::from(m.z));
                 self.command(from, m.target_component, m.command, params, position, m.frame)
+            }
+            MavMessage::COMMAND_ACK(m) => {
+                self.calibration.acked(m.command);
+                Vec::new()
             }
             MavMessage::SET_MODE(m) if self.mine(m.target_system) => {
                 self.set_mode(m.base_mode as u8, m.custom_mode);
@@ -597,8 +604,8 @@ impl Sim {
                 _ => (MavResult::MAV_RESULT_UNSUPPORTED, Vec::new()),
             },
             MavCmd::MAV_CMD_SET_MESSAGE_INTERVAL if PID_TUNING_MESSAGES.contains(&(params[0] as u32)) => accepted(Vec::new()),
+            MavCmd::MAV_CMD_PREFLIGHT_CALIBRATION | MavCmd::MAV_CMD_DO_START_MAG_CAL | MavCmd::MAV_CMD_DO_CANCEL_MAG_CAL => self.calibration.command(self.options.vehicle.apm(), command, params),
             MavCmd::MAV_CMD_MISSION_START
-            | MavCmd::MAV_CMD_PREFLIGHT_CALIBRATION
             | MavCmd::MAV_CMD_DO_MOTOR_TEST
             | MavCmd::MAV_CMD_PREFLIGHT_STORAGE
             | MavCmd::MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN => accepted(Vec::new()),
@@ -689,8 +696,10 @@ impl Sim {
         let here = Where { lat: e7(self.lat), lon: e7(self.lon), alt_mm: ((HOME_ALT_M + self.alt) * 1000.0) as i32 };
         let fast = vec![self.global_position(elapsed_ms), self.attitude(elapsed_ms), self.vfr_hud()];
         let cameras = self.cameras.as_mut().map(|cameras| cameras.tick(elapsed_ms, &here)).unwrap_or_default();
+        let (calibration, stored) = self.calibration.tick();
+        self.params = std::mem::take(&mut self.params).into_iter().map(|p| Param { value: stored.iter().find(|(name, _)| *name == p.name).map_or(p.value, |(_, value)| *value), ..p }).collect();
         let every_second = if slow { self.once_a_second(elapsed_ms) } else { Vec::new() };
-        fast.into_iter().chain(cameras).chain(every_second).collect()
+        fast.into_iter().chain(cameras).chain(calibration).chain(every_second).collect()
     }
 
     fn once_a_second(&mut self, elapsed_ms: u64) -> Vec<Out> {
@@ -1177,6 +1186,27 @@ mod tests {
         let other = MavMessage::PARAM_REQUEST_LIST(PARAM_REQUEST_LIST_DATA { target_system: 7, target_component: 1 });
         quiet.receive(gcs(), &other);
         assert!(quiet.pump().is_empty(), "a request for another system is not ours to answer");
+    }
+
+    #[test]
+    fn calibration_texts_precede_the_ack_and_ardupilot_accel_offsets_land_in_the_parameters() {
+        let mut sim = Sim::new(Options { apm_start_fresh_params: true, ..options(Vehicle::Copter) }, 128, None);
+        let started = command(&mut sim, MavCmd::MAV_CMD_PREFLIGHT_CALIBRATION, [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
+        assert!(matches!(&started[..], [(_, MavMessage::STATUSTEXT(t)), (_, MavMessage::COMMAND_ACK(a))] if text_of(&t.text) == "[cal] calibration started: 2 gyro" && a.result == MavResult::MAV_RESULT_ACCEPTED));
+        command(&mut sim, MavCmd::MAV_CMD_PREFLIGHT_CALIBRATION, [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0]);
+        let next = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_ACCELCAL_VEHICLE_POS, result: MavResult::MAV_RESULT_TEMPORARILY_REJECTED, ..Default::default() });
+        let asked: Vec<u32> = (0..7)
+            .flat_map(|n| {
+                let sent = sim.tick(n * 100);
+                sim.receive(gcs(), &next);
+                sent.into_iter().filter_map(|(_, m)| match m {
+                    MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_ACCELCAL_VEHICLE_POS => Some(c.param1 as u32),
+                    _ => None,
+                })
+            })
+            .collect();
+        assert_eq!(asked, [1, 2, 3, 4, 5, 6, AccelcalVehiclePos::ACCELCAL_VEHICLE_POS_SUCCESS as u32]);
+        assert_eq!(sim.params.iter().find(|p| p.name == "INS_ACCOFFS_Z").map(|p| p.value), Some(0.1));
     }
 
     #[test]

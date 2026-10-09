@@ -643,6 +643,7 @@ mod deps_cover_reads {
             ("apmsubmotors", include_str!("apmsubmotors.rs")),
             ("apmservos", include_str!("apmservos.rs")),
             ("logreplay", include_str!("logreplay.rs")),
+            ("mockcal", include_str!("mockcal.rs")),
             ("mockcamera", include_str!("mockcamera.rs")),
             ("mockgimbal", include_str!("mockgimbal.rs")),
             ("mocklink", include_str!("mocklink.rs")),
