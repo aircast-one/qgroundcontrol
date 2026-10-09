@@ -54,6 +54,20 @@ private func tileMimeType(_ tile: Data) -> String {
     tile.starts(with: PNG_SIGNATURE) ? "image/png" : "image/jpeg"
 }
 
+func syntheticWebView(_ delegate: WKNavigationDelegate) -> WKWebView {
+    let configuration = WKWebViewConfiguration()
+    configuration.setURLSchemeHandler(SyntheticSchemeHandler(), forURLScheme: SYNTHETIC_SCHEME)
+    let web = WKWebView(frame: .zero, configuration: configuration)
+    web.isOpaque = false
+    web.backgroundColor = .black
+    web.scrollView.isScrollEnabled = false
+    web.isUserInteractionEnabled = false
+    web.isInspectable = CoreHost.isDebugBuild
+    web.navigationDelegate = delegate
+    URL(string: SYNTHETIC_PAGE).map { web.load(URLRequest(url: $0)) }
+    return web
+}
+
 private final class SyntheticSchemeHandler: NSObject, WKURLSchemeHandler {
     private var tickets: [ObjectIdentifier: UInt64] = [:]
 
@@ -94,17 +108,8 @@ private struct SyntheticWebView: UIViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeUIView(context: Context) -> WKWebView {
-        let configuration = WKWebViewConfiguration()
-        configuration.setURLSchemeHandler(SyntheticSchemeHandler(), forURLScheme: SYNTHETIC_SCHEME)
-        let web = WKWebView(frame: .zero, configuration: configuration)
-        web.isOpaque = false
-        web.backgroundColor = .black
-        web.scrollView.isScrollEnabled = false
-        web.isUserInteractionEnabled = false
-        web.isInspectable = CoreHost.isDebugBuild
-        web.navigationDelegate = context.coordinator
+        let web = syntheticWebView(context.coordinator)
         context.coordinator.web = web
-        URL(string: SYNTHETIC_PAGE).map { web.load(URLRequest(url: $0)) }
         return web
     }
 
