@@ -94,6 +94,90 @@
             "label": "Comma separated list of hidden flight modes for Airship"
         },
         {
+            "name": "px4PinnedFlightModesMultiRotor",
+            "shortDesc": "Comma separated list of flight modes pinned to the quick list for MultiRotor",
+            "type": "string",
+            "default": "",
+            "label": "Comma separated list of flight modes pinned to the quick list for MultiRotor"
+        },
+        {
+            "name": "px4PinnedFlightModesFixedWing",
+            "shortDesc": "Comma separated list of flight modes pinned to the quick list for FixedWing",
+            "type": "string",
+            "default": "",
+            "label": "Comma separated list of flight modes pinned to the quick list for FixedWing"
+        },
+        {
+            "name": "px4PinnedFlightModesVTOL",
+            "shortDesc": "Comma separated list of flight modes pinned to the quick list for VTOL",
+            "type": "string",
+            "default": "",
+            "label": "Comma separated list of flight modes pinned to the quick list for VTOL"
+        },
+        {
+            "name": "px4PinnedFlightModesRoverBoat",
+            "shortDesc": "Comma separated list of flight modes pinned to the quick list for RoverBoat",
+            "type": "string",
+            "default": "",
+            "label": "Comma separated list of flight modes pinned to the quick list for RoverBoat"
+        },
+        {
+            "name": "px4PinnedFlightModesSub",
+            "shortDesc": "Comma separated list of flight modes pinned to the quick list for Sub",
+            "type": "string",
+            "default": "",
+            "label": "Comma separated list of flight modes pinned to the quick list for Sub"
+        },
+        {
+            "name": "px4PinnedFlightModesAirship",
+            "shortDesc": "Comma separated list of flight modes pinned to the quick list for Airship",
+            "type": "string",
+            "default": "",
+            "label": "Comma separated list of flight modes pinned to the quick list for Airship"
+        },
+        {
+            "name": "apmPinnedFlightModesMultiRotor",
+            "shortDesc": "Comma separated list of flight modes pinned to the quick list for MultiRotor",
+            "type": "string",
+            "default": "",
+            "label": "Comma separated list of flight modes pinned to the quick list for MultiRotor"
+        },
+        {
+            "name": "apmPinnedFlightModesFixedWing",
+            "shortDesc": "Comma separated list of flight modes pinned to the quick list for FixedWing",
+            "type": "string",
+            "default": "",
+            "label": "Comma separated list of flight modes pinned to the quick list for FixedWing"
+        },
+        {
+            "name": "apmPinnedFlightModesVTOL",
+            "shortDesc": "Comma separated list of flight modes pinned to the quick list for VTOL",
+            "type": "string",
+            "default": "",
+            "label": "Comma separated list of flight modes pinned to the quick list for VTOL"
+        },
+        {
+            "name": "apmPinnedFlightModesRoverBoat",
+            "shortDesc": "Comma separated list of flight modes pinned to the quick list for RoverBoat",
+            "type": "string",
+            "default": "",
+            "label": "Comma separated list of flight modes pinned to the quick list for RoverBoat"
+        },
+        {
+            "name": "apmPinnedFlightModesSub",
+            "shortDesc": "Comma separated list of flight modes pinned to the quick list for Sub",
+            "type": "string",
+            "default": "",
+            "label": "Comma separated list of flight modes pinned to the quick list for Sub"
+        },
+        {
+            "name": "apmPinnedFlightModesAirship",
+            "shortDesc": "Comma separated list of flight modes pinned to the quick list for Airship",
+            "type": "string",
+            "default": "",
+            "label": "Comma separated list of flight modes pinned to the quick list for Airship"
+        },
+        {
             "name": "requireModeChangeConfirmation",
             "shortDesc": "Require confirmation when changing flight modes",
             "type": "bool",

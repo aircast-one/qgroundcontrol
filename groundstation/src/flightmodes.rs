@@ -18,6 +18,8 @@ pub const DEPS: &[&str] = &[
     "vehicle.rover",
     "vehicle.sub",
     "vehicle.airship",
+    "vehicle.gps.telemetryAvailable",
+    "vehicle.gps.lock",
     "settings.flightModeSettings.px4HiddenFlightModesMultiRotor",
     "settings.flightModeSettings.px4HiddenFlightModesFixedWing",
     "settings.flightModeSettings.px4HiddenFlightModesVTOL",
@@ -30,9 +32,39 @@ pub const DEPS: &[&str] = &[
     "settings.flightModeSettings.apmHiddenFlightModesRoverBoat",
     "settings.flightModeSettings.apmHiddenFlightModesSub",
     "settings.flightModeSettings.apmHiddenFlightModesAirship",
+    "settings.flightModeSettings.px4PinnedFlightModesMultiRotor",
+    "settings.flightModeSettings.px4PinnedFlightModesFixedWing",
+    "settings.flightModeSettings.px4PinnedFlightModesVTOL",
+    "settings.flightModeSettings.px4PinnedFlightModesRoverBoat",
+    "settings.flightModeSettings.px4PinnedFlightModesSub",
+    "settings.flightModeSettings.px4PinnedFlightModesAirship",
+    "settings.flightModeSettings.apmPinnedFlightModesMultiRotor",
+    "settings.flightModeSettings.apmPinnedFlightModesFixedWing",
+    "settings.flightModeSettings.apmPinnedFlightModesVTOL",
+    "settings.flightModeSettings.apmPinnedFlightModesRoverBoat",
+    "settings.flightModeSettings.apmPinnedFlightModesSub",
+    "settings.flightModeSettings.apmPinnedFlightModesAirship",
 ];
 
 const VEHICLE_CLASSES: &[(&str, &str)] = &[("vtol", "VTOL"), ("fixedWing", "FixedWing"), ("multiRotor", "MultiRotor"), ("rover", "RoverBoat"), ("sub", "Sub"), ("airship", "Airship")];
+
+const QUICK_SLOTS: &[(&str, &[&[&str]])] = &[
+    ("MultiRotor", &[&["Position", "Position Hold", "Loiter"], &["Altitude", "Altitude Hold"], &["Stabilized", "Stabilize", "Manual"], &["Mission", "Auto"]]),
+    ("FixedWing", &[&["Position", "Cruise"], &["Altitude", "FBW A"], &["Hold", "Loiter"], &["Mission", "Auto"]]),
+    ("VTOL", &[&["Position", "QuadPlane Loiter"], &["Altitude", "QuadPlane Hover"], &["Stabilized", "Cruise"], &["Mission", "Auto"]]),
+    ("RoverBoat", &[&["Position", "Steering"], &["Hold"], &["Manual"], &["Mission", "Auto"]]),
+    ("Sub", &[&["Position Hold"], &["Depth Hold"], &["Stabilize", "Stabilized"], &["Manual"]]),
+];
+const QUICK_COUNT: usize = 4;
+const QUICK_MINIMUM: usize = 2;
+
+const GPS_MODES: &[&str] = &[
+    "Position", "Position Hold", "Loiter", "QuadPlane Loiter", "Hold", "Brake", "Mission", "Auto", "Guided", "RTL", "Return", "Return to Groundstation",
+    "Smart RTL", "AutoRTL", "QuadPlane RTL", "Circle", "Orbit", "Follow", "Follow Me", "Drift", "ZigZag", "Takeoff",
+];
+const GPS_3D_FIX: i64 = 3;
+const NEEDS_GPS: &str = "Needs GPS";
+const CANNOT_SET: &str = "This vehicle does not accept a flight mode change from here.";
 
 const DESCRIPTIONS: &[(&str, &str)] = &[
     ("Stabilize", "You fly it by hand, it only levels itself"),
@@ -125,17 +157,52 @@ pub fn needs_confirming(mode: &str, armed: bool, flying: bool) -> bool {
     section(mode) == "return" && armed && flying
 }
 
-pub fn hidden_modes_setting(vehicle: &Value) -> Option<String> {
+fn vehicle_class(vehicle: &Value) -> Option<&'static str> {
+    VEHICLE_CLASSES.iter().find(|(field, _)| flag(vehicle, field)).map(|(_, class)| *class)
+}
+
+fn mode_list_setting(vehicle: &Value, list: &str) -> Option<String> {
     let firmware = match (flag(vehicle, "px4Firmware"), flag(vehicle, "apmFirmware")) {
         (true, _) => "px4",
         (false, true) => "apm",
         _ => return None,
     };
-    let class = VEHICLE_CLASSES.iter().find(|(field, _)| flag(vehicle, field)).map(|(_, class)| *class)?;
-    Some(format!("settings.flightModeSettings.{firmware}HiddenFlightModes{class}"))
+    Some(format!("settings.flightModeSettings.{firmware}{list}FlightModes{}", vehicle_class(vehicle)?))
 }
 
-fn hidden_modes(backend: &dyn Backend, setting: Option<&str>) -> Vec<String> {
+pub fn hidden_modes_setting(vehicle: &Value) -> Option<String> {
+    mode_list_setting(vehicle, "Hidden")
+}
+
+pub fn pinned_modes_setting(vehicle: &Value) -> Option<String> {
+    mode_list_setting(vehicle, "Pinned")
+}
+
+pub fn needs_gps(mode: &str, class: Option<&str>) -> bool {
+    match class {
+        Some("Sub") => false,
+        Some("RoverBoat") => mode != "Hold" && GPS_MODES.contains(&mode),
+        _ => GPS_MODES.contains(&mode),
+    }
+}
+
+pub fn quick_modes(all: &[String], advanced: &[String], pinned: &[String], class: Option<&str>) -> Vec<String> {
+    let pins: Vec<String> = pinned.iter().filter(|name| all.contains(name)).cloned().collect();
+    let slots = QUICK_SLOTS.iter().find(|(name, _)| Some(*name) == class).map(|(_, slots)| *slots).unwrap_or(QUICK_SLOTS[0].1);
+    let picked: Vec<String> = slots.iter().filter_map(|names| names.iter().find(|name| all.iter().any(|mode| mode.as_str() == **name)).map(|name| name.to_string())).collect();
+    let everyday = || all.iter().filter(|name| !advanced.contains(name) && section(name) == "normal").take(QUICK_COUNT).cloned().collect();
+    match () {
+        _ if !pins.is_empty() => pins,
+        _ if picked.len() >= QUICK_MINIMUM => picked,
+        _ => everyday(),
+    }
+}
+
+fn no_gps_fix(backend: &dyn Backend) -> bool {
+    backend.value("vehicle.gps.telemetryAvailable")["value"] == true && backend.value("vehicle.gps.lock")["value"].as_i64().is_some_and(|lock| lock < GPS_3D_FIX)
+}
+
+fn listed_modes(backend: &dyn Backend, setting: Option<&str>) -> Vec<String> {
     let listed = setting.map(|path| text(&backend.value(path), "value")).unwrap_or_default();
     listed.split(',').filter(|mode| !mode.is_empty()).map(str::to_string).collect()
 }
@@ -143,12 +210,17 @@ fn hidden_modes(backend: &dyn Backend, setting: Option<&str>) -> Vec<String> {
 pub fn flight_modes_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let vehicle = backend.value_fields("vehicle", "flightMode,flightModes,advancedFlightModes,armed,flying,flightModeSetAvailable,px4Firmware,apmFirmware,vtol,fixedWing,multiRotor,rover,sub,airship");
     let hidden_setting = hidden_modes_setting(&vehicle);
-    let hidden = hidden_modes(backend, hidden_setting.as_deref());
+    let hidden = listed_modes(backend, hidden_setting.as_deref());
+    let pinned_setting = pinned_modes_setting(&vehicle);
+    let pinned = listed_modes(backend, pinned_setting.as_deref());
+    let class = vehicle_class(&vehicle);
     let connected = vehicle.get("kind").and_then(Value::as_str) == Some("object");
     let strings = |key: &str| -> Vec<String> { vehicle.get(key).and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default() };
     let (all, advanced) = (strings("flightModes"), strings("advancedFlightModes"));
     let current = text(&vehicle, "flightMode");
     let (armed, flying) = (flag(&vehicle, "armed"), flag(&vehicle, "flying"));
+    let quick = quick_modes(&all, &advanced, &pinned, class);
+    let gps_missing = connected && no_gps_fix(backend);
     let modes: Vec<Value> = all
         .iter()
         .map(|name| {
@@ -160,6 +232,8 @@ pub fn flight_modes_view(backend: &dyn Backend, _args: &[String]) -> Value {
                 "summary": description(name),
                 "needsConfirm": needs_confirming(name, armed, flying),
                 "section": section(name),
+                "quick": quick.contains(name),
+                "caution": if gps_missing && needs_gps(name, class) { NEEDS_GPS } else { "" },
             })
         })
         .collect::<Vec<_>>()
@@ -171,11 +245,14 @@ pub fn flight_modes_view(backend: &dyn Backend, _args: &[String]) -> Value {
         .collect::<std::collections::BTreeMap<_, _>>()
         .into_values()
         .collect();
+    let can_set = connected && flag(&vehicle, "flightModeSetAvailable");
+    let quick_list: Vec<Value> = quick.iter().filter_map(|name| modes.iter().find(|m| m["name"] == name.as_str()).cloned()).collect();
     json!({
         "kind": "object",
         "class": "FlightModes",
         "available": connected && !all.is_empty(),
-        "canSet": connected && flag(&vehicle, "flightModeSetAvailable"),
+        "canSet": can_set,
+        "cannotSetNotice": if connected && !all.is_empty() && !can_set { CANNOT_SET } else { "" },
         "current": current,
         "currentSummary": description(&current),
         "unknownModeNotice": unknown_mode_notice(connected, &current, &all),
@@ -183,6 +260,8 @@ pub fn flight_modes_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "folded": modes.iter().filter(|m| folded(m)).cloned().collect::<Vec<_>>(),
         "hiddenSetting": hidden_setting,
         "hidden": hidden,
+        "pinnedSetting": pinned_setting,
+        "quick": quick_list,
         "modes": modes,
         "modeAck": crate::hub::lock().active().and_then(|v| v.mode_ack).map(|(result, serial)| json!({ "serial": serial, "accepted": result == RESULT_ACCEPTED, "wording": rejection_wording(result) })),
     })
@@ -216,7 +295,7 @@ fn mode_refusal(view: &Value, asked: Option<&str>) -> Option<(&'static str, Stri
     let listed = view["modes"].as_array().is_some_and(|modes| modes.iter().any(|m| m["name"] == asked));
     match () {
         _ if view["available"] != true => Some(("noVehicle", "No vehicle with flight modes is connected.".to_string())),
-        _ if view["canSet"] != true => Some(("cannotSet", "This vehicle does not accept a flight mode change from here.".to_string())),
+        _ if view["canSet"] != true => Some(("cannotSet", CANNOT_SET.to_string())),
         _ if !listed => Some(("unknownMode", format!("{asked} is not one of this vehicle's flight modes."))),
         _ => None,
     }
@@ -297,8 +376,11 @@ mod tests {
         struct Px4Copter;
         impl Backend for Px4Copter {
             fn get(&self, p: &str) -> String {
-                assert_eq!(p, "settings.flightModeSettings.px4HiddenFlightModesMultiRotor");
-                json!({ "value": "Manual,Offboard,Hold" }).to_string()
+                match p {
+                    "settings.flightModeSettings.px4HiddenFlightModesMultiRotor" => json!({ "value": "Manual,Offboard,Hold" }).to_string(),
+                    "settings.flightModeSettings.px4PinnedFlightModesMultiRotor" => json!({ "value": "" }).to_string(),
+                    _ => String::new(),
+                }
             }
             fn get_fields(&self, _p: &str, _f: &str) -> String {
                 json!({ "kind": "object", "flightMode": "Hold", "flightModes": ["Hold", "Position", "Manual", "Offboard"], "advancedFlightModes": [], "flying": false, "flightModeSetAvailable": true, "px4Firmware": true, "multiRotor": true }).to_string()
@@ -312,10 +394,69 @@ mod tests {
         assert_eq!(names("everyday"), ["Hold", "Position"], "the current mode stays listed even when hidden");
         assert_eq!(names("folded"), ["Manual", "Offboard"]);
         assert_eq!(view["hiddenSetting"], "settings.flightModeSettings.px4HiddenFlightModesMultiRotor");
+        assert_eq!(view["pinnedSetting"], "settings.flightModeSettings.px4PinnedFlightModesMultiRotor");
+        assert_eq!(names("quick"), ["Position", "Manual"], "a hidden mode still fills its slot: hiding shortens QGC's list, the quick list is its own");
 
         assert_eq!(hidden_modes_setting(&json!({ "apmFirmware": true, "vtol": true, "fixedWing": true })).as_deref(), Some("settings.flightModeSettings.apmHiddenFlightModesVTOL"));
         assert_eq!(hidden_modes_setting(&json!({ "px4Firmware": true })), None, "a generic vehicle has no list to edit, so QGC turns editing off");
         assert_eq!(hidden_modes_setting(&json!({ "multiRotor": true })), None);
+    }
+
+    fn names(list: &[&str]) -> Vec<String> {
+        list.iter().map(|name| name.to_string()).collect()
+    }
+
+    #[test]
+    fn the_quick_list_holds_the_four_modes_each_kind_of_vehicle_flies_in() {
+        let quick = |all: &[&str], advanced: &[&str], class: &str| quick_modes(&names(all), &names(advanced), &[], Some(class));
+        let apm_copter = ["Stabilize", "Acro", "Altitude Hold", "Auto", "Guided", "Loiter", "RTL", "Circle", "Land", "Position Hold", "Brake", "Smart RTL"];
+        assert_eq!(quick(&apm_copter, &[], "MultiRotor"), ["Position Hold", "Altitude Hold", "Stabilize", "Auto"]);
+        assert_eq!(quick(&["Manual", "Stabilized", "Acro", "Altitude", "Position", "Mission", "Hold", "Return", "Land"], &[], "MultiRotor"), ["Position", "Altitude", "Stabilized", "Mission"]);
+        let apm_plane = ["Manual", "Circle", "Stabilize", "Training", "Acro", "FBW A", "FBW B", "Cruise", "Autotune", "Auto", "RTL", "Loiter", "Takeoff", "Guided"];
+        assert_eq!(quick(&apm_plane, &[], "FixedWing"), ["Cruise", "FBW A", "Loiter", "Auto"], "a plane pilot flies FBW A and Cruise, which a copter vocabulary never offered");
+        let quadplane = ["Manual", "Stabilize", "FBW A", "Cruise", "Auto", "RTL", "Loiter", "QuadPlane Stabilize", "QuadPlane Hover", "QuadPlane Loiter", "QuadPlane Land", "QuadPlane RTL"];
+        assert_eq!(quick(&quadplane, &[], "VTOL"), ["QuadPlane Loiter", "QuadPlane Hover", "Cruise", "Auto"]);
+        assert_eq!(quick(&["Manual", "Acro", "Steering", "Hold", "Loiter", "Auto", "RTL", "Smart RTL", "Guided"], &[], "RoverBoat"), ["Steering", "Hold", "Manual", "Auto"]);
+        assert_eq!(quick(&["Manual", "Stabilize", "Depth Hold", "Position Hold", "Auto", "Surface"], &[], "Sub"), ["Position Hold", "Depth Hold", "Stabilize", "Manual"]);
+        assert_eq!(quick(&["Ready", "Takeoff", "Hold", "Track", "Return"], &["Track"], "Airship"), ["Ready", "Takeoff", "Hold"], "with no known vocabulary the vehicle's own everyday modes fill it, never a return mode");
+    }
+
+    #[test]
+    fn pinned_modes_replace_the_defaults_in_the_order_they_were_pinned() {
+        let all = names(&["Stabilize", "Acro", "Altitude Hold", "Auto", "Loiter", "Position Hold"]);
+        assert_eq!(quick_modes(&all, &[], &names(&["Acro", "Gone", "Loiter"]), Some("MultiRotor")), ["Acro", "Loiter"], "a pin the vehicle does not offer is skipped");
+        assert_eq!(quick_modes(&all, &[], &names(&["Gone"]), Some("MultiRotor")), ["Position Hold", "Altitude Hold", "Stabilize", "Auto"]);
+        assert_eq!(pinned_modes_setting(&json!({ "apmFirmware": true, "vtol": true, "fixedWing": true })).as_deref(), Some("settings.flightModeSettings.apmPinnedFlightModesVTOL"));
+    }
+
+    #[test]
+    fn a_mode_that_needs_a_position_fix_says_so_while_there_is_none() {
+        assert!(needs_gps("Position", Some("MultiRotor")));
+        assert!(needs_gps("Loiter", Some("FixedWing")));
+        assert!(!needs_gps("Altitude Hold", Some("MultiRotor")));
+        assert!(!needs_gps("Cruise", Some("FixedWing")), "Cruise flies on without GPS, like FBW B");
+        assert!(!needs_gps("Hold", Some("RoverBoat")), "a rover stops in Hold with or without a fix, and Hold is how a pilot stops it");
+        assert!(!needs_gps("Position Hold", Some("Sub")), "a sub holds position on its DVL");
+
+        struct NoFix(i64);
+        impl Backend for NoFix {
+            fn get(&self, p: &str) -> String {
+                match p {
+                    "vehicle.gps.telemetryAvailable" => json!({ "kind": "fact", "value": true }).to_string(),
+                    "vehicle.gps.lock" => json!({ "kind": "fact", "value": self.0 }).to_string(),
+                    _ => String::new(),
+                }
+            }
+            fn get_fields(&self, _p: &str, _f: &str) -> String {
+                json!({ "kind": "object", "flightMode": "Altitude Hold", "flightModes": ["Stabilize", "Altitude Hold", "Loiter", "Auto"], "advancedFlightModes": [], "flying": true, "flightModeSetAvailable": true, "apmFirmware": true, "multiRotor": true }).to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let cautions = |lock: i64| flight_modes_view(&NoFix(lock), &[])["modes"].as_array().unwrap().iter().map(|m| (m["name"].as_str().unwrap().to_string(), m["caution"].as_str().unwrap().to_string())).collect::<Vec<_>>();
+        assert_eq!(cautions(1), [("Stabilize", ""), ("Altitude Hold", ""), ("Loiter", "Needs GPS"), ("Auto", "Needs GPS")].map(|(n, c)| (n.to_string(), c.to_string())));
+        assert!(cautions(3).iter().all(|(_, caution)| caution.is_empty()), "a 3D fix clears it");
     }
 
     #[test]
@@ -375,6 +516,8 @@ mod tests {
         let listed = flight_modes_view(&Watching, &[]);
         assert_eq!(listed["available"], true, "the modes are worth showing even when this link may not set one");
         assert_eq!(listed["canSet"], false, "the vehicle says the set is unavailable, and offering it anyway is a command that silently does nothing");
+        assert_eq!(listed["cannotSetNotice"], CANNOT_SET, "the menu says why every row is greyed");
+        assert_eq!(view["cannotSetNotice"], "");
         assert_eq!(view["currentSummary"], "Sticks set rotation rate, no self-levelling");
     }
 }

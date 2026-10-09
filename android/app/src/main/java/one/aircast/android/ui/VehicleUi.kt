@@ -37,6 +37,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Slider
@@ -67,12 +68,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.draw.alpha
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.CoroutineScope
@@ -494,7 +490,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                     color = MaterialTheme.colorScheme.surfaceContainerLow,
                 ) {
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        refusal?.let { message -> Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error) }
+                        refusal?.let { message -> RefusalLine(message) { refusal = null } }
                         if (confirming != null) {
                             ConfirmTrack(
                                 action = confirming,
@@ -514,14 +510,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
         }
     } else Column(modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 
-        refusal?.let { message ->
-            Text(
-                text = message,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.error,
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
+        refusal?.let { message -> RefusalLine(message) { refusal = null } }
 
         if (confirming != null) {
             ConfirmTrack(
@@ -697,22 +686,18 @@ internal const val LATE_CONFIRM_POLL_MS = 500L
 
 internal fun withdrawn(shown: String?, late: String): String? = if (shown == late) null else shown
 
+@Composable
+private fun RefusalLine(message: String, onDismiss: () -> Unit) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error, modifier = Modifier.weight(1f))
+        IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, contentDescription = "Dismiss") }
+    }
+}
+
 internal fun commandRefusal(action: String, confirmed: Boolean): String? =
     if (confirmed) null else "$action was not confirmed by the aircraft."
 
 internal const val FLIGHT_MODE_SETTINGS_PAGE = "Flight Mode Settings"
-
-private fun Modifier.longPress(key: Any?, action: () -> Unit): Modifier =
-    if (key == null) this else pointerInput(key) {
-        awaitEachGesture {
-            awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
-            val released = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) { waitForUpOrCancellation(PointerEventPass.Initial); true }
-            if (released == null) {
-                action()
-                waitForUpOrCancellation(PointerEventPass.Initial)?.consume()
-            }
-        }
-    }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -725,19 +710,23 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
     val fly = remember(flyJson) { flyState(flyJson) }
     val setupJson by qgcPath(SETUP)
     val hasModesPage = remember(setupJson) { setupComponents(setupJson).any { it.name == FLIGHT_MODES_PAGE } }
-    val onRefusal: (String?) -> Unit = { flyScreen.refusal = it }
-    val onWithdraw: (String) -> Unit = { flyScreen.refusal = withdrawn(flyScreen.refusal, it) }
     var showFolded by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
     var confirming by remember { mutableStateOf<FlightModeOption?>(null) }
     var settings by remember { mutableStateOf(false) }
+    var modeRefusal by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    LaunchedEffect(modes?.current) {
+        modeRefusal?.let { flyScreen.refusal = withdrawn(flyScreen.refusal, it) }
+        modeRefusal = null
+    }
 
     if (modes == null) return
 
     fun send(mode: FlightModeOption) {
         scope.launch {
-            onRefusal(null)
+            modeRefusal?.let { flyScreen.refusal = withdrawn(flyScreen.refusal, it) }
+            modeRefusal = null
             flyScreen.pendingMode = mode.name
             val before = withContext(Dispatchers.Default) { modeAck(Qgc.get(FLIGHT_MODES)) }
             withContext(Dispatchers.Default) { VehicleCommands.setFlightMode(mode.name) }
@@ -751,17 +740,9 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
             }
             flyScreen.pendingMode = null
             (outcome as? ModeOutcome.Rejected)?.let { rejected ->
-                onRefusal(rejected.text)
-                delay(MODE_REJECTION_MS)
-                onWithdraw(rejected.text)
+                flyScreen.refusal = rejected.text
+                modeRefusal = rejected.text
             }
-        }
-    }
-
-    fun toggleHidden(name: String) {
-        val setting = modes.hiddenSetting ?: return
-        scope.launch(Dispatchers.Default) {
-            flightModesView(Qgc.get(FLIGHT_MODES))?.let { now -> Qgc.set(setting, hiddenModesAfter(now.hidden, name, name !in now.hidden)) }
         }
     }
 
@@ -805,11 +786,9 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
         onDismissRequest = { onDismiss(); showFolded = false; editing = false },
         shape = MaterialTheme.shapes.large,
     ) {
-        val modeRow: @Composable (FlightModeOption, Boolean) -> Unit = { mode, dimmed ->
+        val modeRow: @Composable (FlightModeOption) -> Unit = { mode ->
             DropdownMenuItem(
-                modifier = (if (mode.current) Modifier.background(MaterialTheme.colorScheme.secondaryContainer) else Modifier)
-                    .alpha(if (dimmed && !mode.current) HIDDEN_MODE_ALPHA else 1f)
-                    .longPress(modes.hiddenSetting?.takeIf { showFolded }?.let { setting -> mode.name to setting }) { toggleHidden(mode.name) },
+                modifier = if (mode.current) Modifier.background(MaterialTheme.colorScheme.secondaryContainer) else Modifier,
                 leadingIcon = { Icon(painterResource(flightModeIcon(mode.name)), null) },
                 trailingIcon = if (mode.current) {
                     { Icon(Icons.Filled.Check, contentDescription = "Current mode", tint = MaterialTheme.colorScheme.primary) }
@@ -817,7 +796,9 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
                 text = {
                     Column(Modifier.widthIn(max = MODE_TEXT_WIDTH)) {
                         Text(mode.name, style = MaterialTheme.typography.titleSmall)
-                        mode.summary.ifBlank { null }?.let {
+                        mode.caution.ifBlank { null }?.let {
+                            Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.aircast.warning)
+                        } ?: mode.summary.takeIf { mode.current && !showFolded }?.ifBlank { null }?.let {
                             Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                         }
                     }
@@ -826,7 +807,7 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
                 onClick = { if (!mode.current) choose(mode) else onDismiss() },
             )
         }
-        modes.unknownModeNotice.ifBlank { null }?.let { notice ->
+        listOf(modes.cannotSetNotice, modes.unknownModeNotice).filter { it.isNotBlank() }.forEach { notice ->
             Text(
                 notice,
                 Modifier.padding(horizontal = 16.dp, vertical = 8.dp).widthIn(max = MODE_TEXT_WIDTH),
@@ -834,11 +815,10 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
                 color = MaterialTheme.aircast.warning,
             )
         }
-        val setting = modes.hiddenSetting
+        val setting = modes.pinnedSetting
         if (!showFolded) {
-            val primary = primaryModes(modes.all)
-            modes.all.firstOrNull { it.current && it !in primary }?.let { now -> modeRow(now, false) }
-            primary.forEach { mode -> modeRow(mode, false) }
+            modes.all.firstOrNull { it.current && !it.quick }?.let { now -> modeRow(now) }
+            modes.quick.forEach { mode -> modeRow(mode) }
             HorizontalDivider()
             DropdownMenuItem(
                 text = { Text(ALL_MODES) },
@@ -848,7 +828,7 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
         } else {
             Row(Modifier.padding(start = 16.dp, end = 4.dp).widthIn(max = MODE_TEXT_WIDTH + 16.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text(
-                    modeHeading(modes) ?: ALL_MODES,
+                    if (editing) QUICK_LIST_HINT else modeHeading(modes) ?: ALL_MODES,
                     Modifier.weight(1f).padding(vertical = 8.dp),
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -859,9 +839,9 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
                 modes.all.forEach { mode ->
                     DropdownMenuItem(
                         text = { Text(mode.name, style = MaterialTheme.typography.bodyMedium) },
-                        trailingIcon = { Switch(checked = !mode.hidden, onCheckedChange = null) },
+                        trailingIcon = { Switch(checked = mode.quick, onCheckedChange = null) },
                         onClick = {
-                            val value = hiddenModesAfter(modes.hidden, mode.name, !mode.hidden)
+                            val value = pinsAfter(modes.quick.map { it.name }, mode.name, !mode.quick)
                             scope.launch(Dispatchers.Default) { Qgc.set(setting, value) }
                         },
                     )
@@ -869,7 +849,7 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
             } else {
                 modes.all.forEachIndexed { index, mode ->
                     if (startsSection(modes.all, index)) HorizontalDivider()
-                    modeRow(mode, mode.hidden)
+                    modeRow(mode)
                 }
             }
             HorizontalDivider()
@@ -897,20 +877,7 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
 
 private val MODE_TEXT_WIDTH = 260.dp
 internal const val ALL_MODES = "All modes"
-
-private val POSITION_MODES = listOf("Position", "Position Hold", "PosHold", "Loiter", "Hold")
-private val ALTITUDE_MODES = listOf("Altitude", "Altitude Hold", "AltHold")
-private val MANUAL_MODES = listOf("Stabilized", "Stabilize", "Manual")
-private val MISSION_MODES = listOf("Mission", "Auto")
-private const val PRIMARY_MODE_COUNT = 4
-
-internal fun primaryModes(all: List<FlightModeOption>): List<FlightModeOption> {
-    val offered = all.filterNot { it.hidden }
-    val picked = listOf(POSITION_MODES, ALTITUDE_MODES, MANUAL_MODES, MISSION_MODES).mapNotNull { names ->
-        names.firstNotNullOfOrNull { name -> offered.firstOrNull { it.name.equals(name, ignoreCase = true) } }
-    }
-    return if (picked.size >= 2) picked else offered.take(PRIMARY_MODE_COUNT)
-}
+private const val QUICK_LIST_HINT = "Shown first when you tap the mode"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable

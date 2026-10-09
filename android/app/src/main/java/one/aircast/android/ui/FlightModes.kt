@@ -10,8 +10,9 @@ internal data class FlightModeOption(
     val summary: String,
     val current: Boolean,
     val needsConfirm: Boolean,
-    val hidden: Boolean,
     val section: String = "normal",
+    val quick: Boolean = false,
+    val caution: String = "",
 )
 
 internal data class FlightModesView(
@@ -19,9 +20,10 @@ internal data class FlightModesView(
     val current: String,
     val currentSummary: String,
     val all: List<FlightModeOption>,
-    val hidden: List<String>,
-    val hiddenSetting: String?,
+    val quick: List<FlightModeOption>,
+    val pinnedSetting: String?,
     val unknownModeNotice: String = "",
+    val cannotSetNotice: String = "",
 )
 
 private fun options(view: JSONObject?, key: String): List<FlightModeOption> {
@@ -33,8 +35,9 @@ private fun options(view: JSONObject?, key: String): List<FlightModeOption> {
                 summary = mode.optText("summary"),
                 current = mode.optBoolean("current"),
                 needsConfirm = mode.optBoolean("needsConfirm"),
-                hidden = mode.optBoolean("hidden"),
                 section = mode.optText("section").ifBlank { "normal" },
+                quick = mode.optBoolean("quick"),
+                caution = mode.optText("caution"),
             )
         }
     }
@@ -47,9 +50,10 @@ internal fun flightModesView(view: JSONObject?): FlightModesView? {
         current = view.optText("current"),
         currentSummary = view.optText("currentSummary"),
         all = options(view, "modes"),
-        hidden = view.optJSONArray("hidden")?.let { list -> (0 until list.length()).map { list.optString(it) } }.orEmpty(),
-        hiddenSetting = view.optText("hiddenSetting").ifBlank { null },
+        quick = options(view, "quick"),
+        pinnedSetting = view.optText("pinnedSetting").ifBlank { null },
         unknownModeNotice = view.optText("unknownModeNotice"),
+        cannotSetNotice = view.optText("cannotSetNotice"),
     )
 }
 
@@ -59,7 +63,6 @@ internal fun modeAck(view: JSONObject?): ModeAck? =
     view?.optJSONObject("modeAck")?.let { ModeAck(it.optLong("serial"), it.optBoolean("accepted"), it.optText("wording")) }
 
 internal const val MODE_REPLY_MS = 3000L
-internal const val MODE_REJECTION_MS = 2500L
 
 internal sealed interface ModeOutcome {
     data object Pending : ModeOutcome
@@ -74,13 +77,12 @@ internal fun modeOutcome(mode: String, before: ModeAck?, now: ModeAck?, reached:
     else -> ModeOutcome.Pending
 }
 
-internal fun hiddenModesAfter(hidden: List<String>, mode: String, hide: Boolean): String =
-    (hidden.filter { it != mode } + listOfNotNull(mode.takeIf { hide })).joinToString(",")
+internal fun pinsAfter(quick: List<String>, mode: String, pin: Boolean): String =
+    (quick.filter { it != mode } + listOfNotNull(mode.takeIf { pin })).joinToString(",")
 
 internal fun startsSection(shown: List<FlightModeOption>, index: Int): Boolean =
     index > 0 && shown[index - 1].section != shown[index].section
 
-internal const val HIDDEN_MODE_ALPHA = 0.55f
 
 internal fun modeHeading(modes: FlightModesView?): String? {
     val summary = modes?.currentSummary?.ifBlank { null } ?: return null

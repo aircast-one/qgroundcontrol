@@ -50,16 +50,30 @@ class FlightModesTest {
     }
 
     @Test
-    fun `the popover offers one mode per job, in the order a pilot reaches for them`() {
-        val option = { name: String -> FlightModeOption(name, "", current = false, needsConfirm = false, hidden = false) }
-        val copter = listOf("Stabilize", "Altitude Hold", "Auto", "Guided", "Loiter", "Position Hold", "RTL", "Land").map(option)
-        assertEquals(listOf("Position Hold", "Altitude Hold", "Stabilize", "Auto"), primaryModes(copter).map { it.name })
-        val px4 = listOf("Manual", "Stabilized", "Altitude", "Position", "Mission", "Return").map(option)
-        assertEquals(listOf("Position", "Altitude", "Stabilized", "Mission"), primaryModes(px4).map { it.name })
-        val hiddenHold = copter.map { if (it.name == "Position Hold") it.copy(hidden = true) else it }
-        assertEquals("Loiter", primaryModes(hiddenHold).first().name)
-        val unknown = listOf("Wander", "Drift", "Glide", "Soar", "Dive").map(option)
-        assertEquals(listOf("Wander", "Drift", "Glide", "Soar"), primaryModes(unknown).map { it.name })
+    fun `the popover lists the core's quick modes with their cautions`() {
+        val modes = flightModesView(
+            JSONObject("""{"available":true,"canSet":true,"current":"Stabilize",
+                "pinnedSetting":"settings.flightModeSettings.apmPinnedFlightModesFixedWing",
+                "quick":[
+                  {"name":"Cruise","quick":true,"caution":""},
+                  {"name":"Loiter","quick":true,"caution":"Needs GPS"}],
+                "modes":[
+                  {"name":"Stabilize","current":true},
+                  {"name":"Cruise","quick":true},
+                  {"name":"Loiter","quick":true,"caution":"Needs GPS"}]}"""),
+        )!!
+
+        assertEquals(listOf("Cruise", "Loiter"), modes.quick.map { it.name })
+        assertEquals("Needs GPS", modes.quick.last().caution)
+        assertEquals(listOf(false, true, true), modes.all.map { it.quick })
+        assertEquals("settings.flightModeSettings.apmPinnedFlightModesFixedWing", modes.pinnedSetting)
+    }
+
+    @Test
+    fun `the core's reason for refusing every mode change is carried to the menu`() {
+        val refused = flightModesView(JSONObject("""{"available":true,"canSet":false,"cannotSetNotice":"This vehicle does not accept a flight mode change from here."}"""))!!
+        assertEquals("This vehicle does not accept a flight mode change from here.", refused.cannotSetNotice)
+        assertEquals("", flightModesView(JSONObject("""{"available":true,"canSet":true}"""))!!.cannotSetNotice)
     }
 
     @Test
@@ -83,7 +97,7 @@ class ModeHeadingTest {
     private fun modes(current: String, summary: String) = flightModesView(
         JSONObject(
             """{"kind":"object","class":"FlightModes","available":true,"canSet":true,"current":$current,
-               "currentSummary":$summary,"everyday":[],"folded":[]}""",
+               "currentSummary":$summary}""",
         ),
     )
 
@@ -103,11 +117,11 @@ class ModeHeadingTest {
     }
 
     @Test
-    fun `hiding a mode appends it to the list and showing it takes it out, the way QGC writes the setting`() {
-        assertEquals("Manual,Offboard,Acro", hiddenModesAfter(listOf("Manual", "Offboard"), "Acro", hide = true))
-        assertEquals("Offboard", hiddenModesAfter(listOf("Manual", "Offboard"), "Manual", hide = false))
-        assertEquals("", hiddenModesAfter(listOf("Manual"), "Manual", hide = false))
-        assertEquals("Manual", hiddenModesAfter(listOf("Manual"), "Manual", hide = true))
+    fun `pinning starts from the quick list on show and adds or drops one mode`() {
+        assertEquals("Cruise,FBW A,Acro", pinsAfter(listOf("Cruise", "FBW A"), "Acro", pin = true))
+        assertEquals("FBW A", pinsAfter(listOf("Cruise", "FBW A"), "Cruise", pin = false))
+        assertEquals("", pinsAfter(listOf("Cruise"), "Cruise", pin = false))
+        assertEquals("Cruise", pinsAfter(listOf("Cruise"), "Cruise", pin = true))
     }
 
     @org.junit.Test

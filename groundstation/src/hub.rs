@@ -3294,6 +3294,9 @@ impl Vehicle {
                     self.guided.on_command_result(a.command as u32 as u16, a.result == mavlink::dialects::ardupilotmega::MavResult::MAV_RESULT_ACCEPTED);
                     if a.command == mavlink::dialects::ardupilotmega::MavCmd::MAV_CMD_DO_SET_MODE {
                         self.mode_ack = Some((a.result as u8, self.mode_ack.map_or(1, |(_, serial)| serial + 1)));
+                        if a.result != mavlink::dialects::ardupilotmega::MavResult::MAV_RESULT_ACCEPTED {
+                            crate::speech::say(&format!("{} flight mode change {}", self.speech_prefix, crate::flightmodes::rejection_wording(a.result as u8)).to_lowercase());
+                        }
                     }
                 }
                 if a.result == mavlink::dialects::ardupilotmega::MavResult::MAV_RESULT_ACCEPTED {
@@ -5670,6 +5673,10 @@ mod tests {
         let ack = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_DO_SET_MODE, result: MavResult::MAV_RESULT_ACCEPTED, ..Default::default() });
         assert!(hub.on_frame(origin(4), &autopilot, &ack, 1_300_000, 1300).is_empty());
         assert_eq!(hub.active().unwrap().mode_ack, Some((0, 1)), "the DO_SET_MODE ack is kept for the mode indicator");
+        assert!(!crate::speech::spoken_lines().iter().any(|line| line.contains("flight mode change")));
+        let refused_mode = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_DO_SET_MODE, result: MavResult::MAV_RESULT_DENIED, ..Default::default() });
+        hub.on_frame(origin(4), &autopilot, &refused_mode, 1_350_000, 1350);
+        assert!(crate::speech::spoken_lines().iter().any(|line| line.trim() == "flight mode change denied"), "a pilot looking at the aircraft hears the refusal: {:?}", crate::speech::spoken_lines());
         let armed = hub.on_frame(origin(4), &autopilot, &copter_heartbeat(4, false), 2_000_000, 2000);
         let arming: Vec<(MavCmd, f32)> = armed.iter().filter_map(|(_, bytes)| match decode(bytes) { MavMessage::COMMAND_LONG(c) => Some((c.command, c.param1)), _ => None }).collect();
         assert!(arming.contains(&(MavCmd::MAV_CMD_COMPONENT_ARM_DISARM, 1.0)), "{arming:?}");
