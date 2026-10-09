@@ -50,9 +50,12 @@ pub const DEPS: &[&str] = &[
     "planFly.missionController.resumeMissionIndex",
     "settings.appSettings.useChecklist",
     "settings.appSettings.enforceChecklist",
+    "vehicle.vehicleLinkManager.communicationLost",
+    "vehicle.vehicleLinkManager.communicationLostEnabled",
 ];
 
 const CHECKLIST_PASSED: i64 = 1;
+pub const NO_SIGNAL: &str = "No signal from the aircraft.";
 
 #[derive(Default, PartialEq, Debug, Clone)]
 pub struct GuidedState {
@@ -91,6 +94,7 @@ pub struct GuidedState {
     pub was_flying: bool,
     pub takeoff_with_altitude: bool,
     pub smart_rtl_supported: bool,
+    pub contact_lost: bool,
 }
 
 impl GuidedState {
@@ -258,6 +262,9 @@ impl Action {
     }
 
     fn gate(self, s: &GuidedState) -> Option<&'static str> {
+        if s.contact_lost && matches!(self, Action::Arm | Action::Takeoff | Action::StartMission) {
+            return Some(NO_SIGNAL);
+        }
         let passes = match self {
             Action::Arm => s.can_arm,
             Action::Takeoff => s.can_takeoff,
@@ -376,7 +383,9 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
     let fixed_wing = flag(&vehicle, "fixedWing");
     let vtol_in_fwd_flight = flag(&vehicle, "vtolInFwdFlight");
     let forward_flight = vtol_in_fwd_flight || fixed_wing;
+    let link = backend.value_fields("vehicle.vehicleLinkManager", "communicationLost,communicationLostEnabled");
     GuidedState {
+        contact_lost: flag(&link, "communicationLostEnabled") && flag(&link, "communicationLost"),
         connected: true,
         armed: flag(&vehicle, "armed"),
         flying: flag(&vehicle, "flying"),
@@ -831,6 +840,9 @@ mod tests {
         let checklist = GuidedState { can_arm: false, checklist_passed: false, ..ready_on_ground() };
         assert_eq!(invoke_refusal(&[Action::Arm], &checklist).map(|(_, r)| r).as_deref(), Some("The pre-flight checklist has not been completed."));
         assert_eq!(offer_of(&checks, Action::Takeoff), "ready");
+        let silent = GuidedState { contact_lost: true, ..checks.clone() };
+        assert_eq!((offer_of(&silent, Action::Takeoff), Action::Takeoff.offer(&silent).reason), ("hidden", NO_SIGNAL), "a ground action sent into a silent link would launch an aircraft nobody can watch");
+        assert_eq!(offer_of(&silent, Action::Arm), "hidden");
         assert_eq!(offer_of(&GuidedState { can_takeoff: false, ..ready_on_ground() }, Action::Takeoff), "hidden");
         assert_eq!(offer_of(&GuidedState { can_start_mission: false, mission_available: true, ..ready_on_ground() }, Action::StartMission), "hidden");
     }

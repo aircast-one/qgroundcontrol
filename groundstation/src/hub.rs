@@ -2622,7 +2622,7 @@ impl Vehicle {
             crate::speech::say(&format!("{prefix} {}", if armed { "armed" } else { "disarmed" }).to_lowercase());
         }
         if lost != last_lost && (lost || self.link_states.len() <= 1) {
-            crate::speech::say(&format!("{prefix}{}", if lost { "Communication lost" } else { "Communication regained" }).to_lowercase());
+            crate::speech::say(&format!("{prefix}{}", if lost { "Signal lost" } else { "Signal regained" }).to_lowercase());
         }
         self.announced = (if mode.is_empty() { last_mode } else { Some(mode) }, armed, lost);
     }

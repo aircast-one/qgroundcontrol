@@ -67,6 +67,15 @@ class FlyStateTest {
     }
 
     @Test
+    fun `a silent aircraft makes no readiness claims, and take off says why it cannot`() {
+        val silentButUnready = JSONObject(lost.toString()).put("nominal", false).put("summaryDetail", "GPS turned off. Everything else reports normal.")
+        assertEquals(null, readinessWarning(flyState(silentButUnready)))
+        val noSignal = GuidedOffer("takeoff", "Takeoff", "hidden", NO_SIGNAL_REASON, "", false, true)
+        assertEquals(NO_LINK, takeoffLabel(noSignal, null))
+        assertEquals(HOLD_TO_TAKE_OFF, takeoffLabel(noSignal.copy(offer = "ready", reason = ""), null))
+    }
+
+    @Test
     fun `the notice uses the core's dash, not an ascii hyphen`() {
         assertTrue(flyState(lost)!!.staleNotice.contains("—"))
         assertFalse(flyState(lost)!!.staleNotice.contains(" - "))

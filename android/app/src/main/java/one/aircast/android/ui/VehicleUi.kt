@@ -276,7 +276,7 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null, valuesShow
                     style = style.copy(fontFeatureSettings = "tnum"),
                     maxLines = 1,
                     softWrap = false,
-                    color = displayColour(displayFor(displays, instrument), instrument.raw)?.let { Color(it) } ?: MaterialTheme.aircast.outdoorForeground,
+                    color = if (silent) MaterialTheme.colorScheme.outline else displayColour(displayFor(displays, instrument), instrument.raw)?.let { Color(it) } ?: MaterialTheme.aircast.outdoorForeground,
                     modifier = Modifier.alignByBaseline(),
                 )
             }
@@ -1018,7 +1018,7 @@ internal fun flightDeckEntries(deck: FlightDeckContext): List<DeckEntry> = with(
         }.takeIf { armAction?.shown == true },
         DeckEntry(
             "takeoff",
-            if (readiness == null) HOLD_TO_TAKE_OFF else TAKE_OFF,
+            takeoffLabel(offers["takeoff"], readiness),
             R.drawable.ic_flight_takeoff,
             offers["takeoff"]?.ready == true,
             onHold = if (readiness != null) null else fun() {
@@ -1047,7 +1047,7 @@ internal fun flightDeckEntries(deck: FlightDeckContext): List<DeckEntry> = with(
                 return@DeckEntry
             }
             openValue(takeoffValue(offers["takeoff"]))
-        }.takeIf { offers["takeoff"]?.shown == true },
+        }.takeIf { offers["takeoff"]?.let { it.shown || it.reason == NO_SIGNAL_REASON } == true },
         DeckEntry(PAUSE, offers[PAUSE]?.title ?: "Pause", R.drawable.ic_pause, offers[PAUSE]?.ready == true) {
             openValue(altitudeValue(true))
         }.takeIf { offers[PAUSE]?.shown == true },

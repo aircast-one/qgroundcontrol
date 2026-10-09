@@ -65,7 +65,7 @@ const val HEADING_PROPERTY = "heading"
 const val ACTIVE_PROPERTY = "active"
 const val STALE_PROPERTY = "stale"
 const val VEHICLE_LABEL_PROPERTY = "vehicleLabel"
-private const val VEHICLE_LABEL_LAYER = "aircast-vehicle-label"
+internal const val VEHICLE_LABEL_LAYER = "aircast-vehicle-label"
 private const val TRAIL_SOURCE = "aircast-trail"
 private const val HOME_SOURCE = "aircast-home"
 private const val HOME_LAYER = "aircast-home-layer"
@@ -749,7 +749,7 @@ private fun installVehicleLayer(style: Style) {
                 PropertyFactory.textOffset(arrayOf(0f, 1.6f)),
                 PropertyFactory.textAnchor(Property.TEXT_ANCHOR_TOP),
                 PropertyFactory.textAllowOverlap(true),
-                PropertyFactory.textIgnorePlacement(true),
+                PropertyFactory.textIgnorePlacement(false),
             ).withFilter(Expression.has(VEHICLE_LABEL_PROPERTY)),
         )
     }

@@ -103,7 +103,7 @@ fun installTrafficLayer(style: Style) {
     style.addImage(ALERT_IMAGE, aircraft(android.graphics.Color.parseColor("#FF5252")))
     style.addImage(AWARENESS_IMAGE, aircraft(android.graphics.Color.WHITE))
     style.addSource(GeoJsonSource(TRAFFIC_SOURCE))
-    style.addLayer(
+    val traffic =
         SymbolLayer(TRAFFIC_LAYER, TRAFFIC_SOURCE).withProperties(
             PropertyFactory.iconImage(Expression.switchCase(Expression.get(ALERT), Expression.literal(ALERT_IMAGE), Expression.literal(AWARENESS_IMAGE))),
             PropertyFactory.iconRotate(Expression.get(HEADING)),
@@ -117,7 +117,8 @@ fun installTrafficLayer(style: Style) {
             PropertyFactory.textHaloWidth(1.5f),
             PropertyFactory.textAnchor(Property.TEXT_ANCHOR_TOP),
             PropertyFactory.textOffset(arrayOf(0f, 1.6f)),
-            PropertyFactory.textAllowOverlap(true),
-        ),
-    )
+            PropertyFactory.textAllowOverlap(false),
+            PropertyFactory.textOptional(true),
+        )
+    if (style.getLayer(VEHICLE_LABEL_LAYER) != null) style.addLayerBelow(traffic, VEHICLE_LABEL_LAYER) else style.addLayer(traffic)
 }

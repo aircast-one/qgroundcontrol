@@ -34,7 +34,7 @@ impl State {
     pub fn line(self) -> &'static str {
         match self {
             State::NotConnected => "Not connected",
-            State::ContactLost => "Comms Lost",
+            State::ContactLost => "Signal lost",
             State::Flying => "Flying",
             State::Landing => "Landing",
             State::Armed => "Armed",
@@ -361,7 +361,7 @@ mod tests {
     #[test]
     fn lost_contact_outranks_every_flight_state() {
         let view = read(aloft(true, true, false), true);
-        assert_eq!((view["state"].as_str(), view["stateText"].as_str()), (Some("contactLost"), Some("Comms Lost")), "a vehicle that stopped answering is not known to still be flying");
+        assert_eq!((view["state"].as_str(), view["stateText"].as_str()), (Some("contactLost"), Some("Signal lost")), "a vehicle that stopped answering is not known to still be flying");
         assert_eq!(view["staleNotice"], STALE_NOTICE);
         assert_eq!((view["armed"].as_bool(), view["flying"].as_bool()), (Some(true), Some(true)), "the last known state is still served, it just no longer names the line");
     }
