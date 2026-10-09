@@ -242,11 +242,9 @@ struct FlyPortrait: View {
                 .padding(.trailing, Space.s3)
                 .padding(.top, buttonsTop)
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
-            rail(split)
-                .frame(minHeight: 0, alignment: .top)
-                .padding(.trailing, Space.s3)
-                .padding(.bottom, MAP_SCALE_CLEARANCE + railLift)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+            RailPlacement(top: buttonsTop + MAP_BUTTON_SIZE + Space.s2, clearance: MAP_SCALE_CLEARANCE, lift: railLift) {
+                rail(split).padding(.trailing, Space.s3)
+            }
         }
     }
 
@@ -288,6 +286,24 @@ struct FlyPortrait: View {
                 holding = false
             }
         )
+    }
+}
+
+private struct RailPlacement: Layout {
+    let top: CGFloat
+    let clearance: CGFloat
+    let lift: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        proposal.replacingUnspecifiedDimensions()
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        guard let rail = subviews.first else { return }
+        let fitted = ProposedViewSize(width: bounds.width, height: nil)
+        let floor = bounds.maxY - lift - rail.sizeThatFits(fitted).height
+        let y = min(max(floor - clearance, bounds.minY + top), floor)
+        rail.place(at: CGPoint(x: bounds.maxX, y: y), anchor: .topTrailing, proposal: fitted)
     }
 }
 

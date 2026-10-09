@@ -127,19 +127,23 @@ struct VehicleMessageBanner: View {
         let urgent = shown.contains { $0.level == .Error }
         let shape = urgent ? AnyShape(RoundedRectangle(cornerRadius: ALERT_CORNER)) : AnyShape(Capsule())
         let content = urgent ? osdTint(theme.colors.onErrorContainer, theme.colors.error, flyOsd) : osdTint(theme.colors.onSurface, theme.aircast.warning, flyOsd)
+        let text = bannerText(shown) ?? messageCountText(shown.count)
+        let open = {
+            showing = true
+            offMain { VehicleCommands.resetAllMessages() }
+        }
         return HStack(spacing: 10) {
             HStack(spacing: 10) {
                 Image(urgent ? .error : .warning)
                     .font(.system(size: 20))
                     .foregroundStyle(urgent ? content : theme.aircast.warning)
                     .frame(width: 24, height: 24)
-                    .accessibilityHidden(true)
-                Text(bannerText(shown) ?? messageCountText(shown.count))
+                Text(text)
                     .font(.labelLarge)
                     .lineLimit(2)
                     .truncationMode(.tail)
             }
-            .accessibilityElement(children: .combine)
+            .accessibilityHidden(true)
             Button { offMain { VehicleCommands.resetAllMessages() } } label: {
                 Image(.close).font(.system(size: 16)).frame(width: 32, height: 32).minimumTouchTarget()
             }
@@ -150,13 +154,15 @@ struct VehicleMessageBanner: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 6)
         .frame(minHeight: 40)
-        .background(osdBackdrop(urgent ? theme.colors.errorContainer : theme.aircast.warningContainer, flyOsd), in: shape)
-        .contentShape(shape)
-        .onTapGesture {
-            showing = true
-            offMain { VehicleCommands.resetAllMessages() }
+        .background {
+            shape.fill(osdBackdrop(urgent ? theme.colors.errorContainer : theme.aircast.warningContainer, flyOsd))
+                .accessibilityElement()
+                .accessibilityLabel(text)
+                .accessibilityAddTraits(.isButton)
+                .accessibilityAction { open() }
         }
-        .accessibilityAddTraits(.isButton)
+        .contentShape(shape)
+        .onTapGesture(perform: open)
     }
 }
 

@@ -117,6 +117,7 @@ private struct GimbalTiltSlider: View {
         VStack(spacing: 0) {
             Text("\(Int(shown.rounded()))\u{00B0}")
                 .font(.labelMedium)
+                .minimumTouchTarget()
                 .onTapGesture { wake += 1 }
                 .accessibilityAddTraits(.isButton)
                 .accessibilityHint("Tilt the gimbal")

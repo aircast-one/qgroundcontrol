@@ -140,7 +140,8 @@ private struct CameraSwitchButton: View {
             .foregroundStyle(white)
             .background(osdBackdrop(Color.black.opacity(SWITCH_SCRIM_ALPHA), flyOsd), in: Capsule())
             .overlay(Capsule().stroke(white.opacity(SWITCH_BORDER_ALPHA), lineWidth: SWITCH_BORDER))
-            .contentShape(Capsule())
+            .frame(minHeight: MINIMUM_TOUCH_TARGET)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Switch camera, showing \(state.shown.title)")

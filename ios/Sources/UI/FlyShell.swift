@@ -75,6 +75,7 @@ private struct PipToggle: View {
                 .foregroundStyle(theme.colors.onSurface)
                 .frame(width: PIP_TOGGLE_SIZE, height: PIP_TOGGLE_SIZE)
                 .background(theme.colors.surfaceContainerHigh, in: Circle())
+                .minimumTouchTarget()
         }
         .buttonStyle(.plain)
         .accessibilityLabel(expanded ? "Hide picture-in-picture" : "Show picture-in-picture")
@@ -363,6 +364,7 @@ struct FlyScreen: View {
                             .foregroundStyle(theme.colors.onSurface)
                             .frame(width: PIP_TOGGLE_SIZE, height: PIP_TOGGLE_SIZE)
                             .background(theme.colors.surfaceContainerHigh, in: Circle())
+                            .minimumTouchTarget()
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("Show the compass")
@@ -386,20 +388,21 @@ struct FlyScreen: View {
     private func videoPip(_ panes: FlyPanes) -> some View {
         if pipExpanded {
             bottomStart(panes) {
-                ZStack(alignment: .topLeading) {
-                    Color.clear.contentShape(Rectangle())
-                    PipToggle(expanded: true, onToggle: togglePip)
-                    LayoutPipEditor(key: VIDEO_PIP_KEY, shape: AnyShape(pipShape))
-                }
-                .frame(width: MINIMAP_WIDTH, height: MINIMAP_HEIGHT)
-                .clipShape(pipShape)
-                .videoGestures(pipHandlers(videoKey))
-                .layoutPlacement(VIDEO_PIP_KEY, keepOnScreen: true)
-                .accessibilityElement(children: .contain)
-                .accessibilityLabel("Video picture-in-picture")
-                .accessibilityAction(named: "Show the video large") { onView(.Video) }
-                .accessibilityAction(named: "Show the video full screen") { onFullScreen() }
-                .accessibilityAction(named: "Hide the video") { togglePip() }
+                Color.clear
+                    .contentShape(Rectangle())
+                    .videoGestures(pipHandlers(videoKey))
+                    .overlay(alignment: .topLeading) {
+                        PipToggle(expanded: true, onToggle: togglePip)
+                        LayoutPipEditor(key: VIDEO_PIP_KEY, shape: AnyShape(pipShape))
+                    }
+                    .frame(width: MINIMAP_WIDTH, height: MINIMAP_HEIGHT)
+                    .clipShape(pipShape)
+                    .layoutPlacement(VIDEO_PIP_KEY, keepOnScreen: true)
+                    .accessibilityElement(children: .contain)
+                    .accessibilityLabel("Video picture-in-picture")
+                    .accessibilityAction(named: "Show the video large") { onView(.Video) }
+                    .accessibilityAction(named: "Show the video full screen") { onFullScreen() }
+                    .accessibilityAction(named: "Hide the video") { togglePip() }
             }
             .zIndex(3)
         } else {

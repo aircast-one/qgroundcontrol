@@ -182,7 +182,7 @@ struct SliderValueRow<Title: View>: View {
                     .foregroundStyle(theme.colors.onSurfaceVariant)
                     .padding(.horizontal, 4)
                     .padding(.vertical, 8)
-                    .contentShape(Rectangle())
+                    .minimumTouchTarget()
             }
             .buttonStyle(.plain)
             .accessibilityHint("Set exactly")

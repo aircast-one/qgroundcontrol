@@ -236,11 +236,13 @@ private struct VehicleStatusReadings: View {
                 .onGeometryChange(for: CGSize.self) { $0.size } action: { contentSize = $0 }
                 .frame(minHeight: MINIMUM_TOUCH_TARGET)
                 .padding(.top, MINIMUM_TOUCH_TARGET / 2)
+                .padding(.trailing, stripGap(narrow))
             }
             .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
             .padding(.vertical, min(0, ((contentSize?.height ?? MINIMUM_TOUCH_TARGET) - MINIMUM_TOUCH_TARGET) / 2))
             .padding(.top, -MINIMUM_TOUCH_TARGET / 2)
-            .frame(maxWidth: contentSize?.width)
+            .frame(maxWidth: contentSize.map { $0.width + stripGap(narrow) })
+            .padding(.trailing, -stripGap(narrow))
             if compact && !narrow {
                 Image(.chevronRight)
                     .minimumTouchTarget()
