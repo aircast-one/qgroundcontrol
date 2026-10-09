@@ -104,6 +104,12 @@ const HIDDEN: &[&str] = &[
     "showGimbalOnlyWhenSet",
 ];
 const DESKTOP_ONLY: &[(&str, &str)] = &[("rcControls", "on-screen RC controls")];
+const IOS: bool = cfg!(target_os = "ios");
+const IOS_HIDDEN: &[&str] = &["autoConnectPixhawk", "autoConnectSiKRadio", "autoConnectRTKGPS", "autoConnectLibrePilot", "nmeaSource", "autoConnectNmeaPort", "autoConnectNmeaBaud"];
+
+fn user_visible(name: &str, ios: bool) -> bool {
+    !HIDDEN.contains(&name) && !DESKTOP_ONLY.iter().any(|(d, _)| *d == name) && !(MOBILE && name == "savePath") && !(ios && IOS_HIDDEN.contains(&name))
+}
 
 fn choices_json(fact: &Value, labels: Vec<String>, raws: Vec<Value>) -> Value {
     let current = fact.get("value").cloned().unwrap_or(Value::Null);
@@ -579,7 +585,7 @@ fn section_json(title: &str, slice: &str, backend: Option<&dyn Backend>) -> Valu
             let named = f.get("name").and_then(Value::as_str).unwrap_or_default();
             SHOWN_WHEN_VALUE.iter().filter(|(shown, _, _, _)| *shown == named).all(|(_, requires, value, equal)| number_of(&facts, requires).is_none_or(|v| (v == *value) == *equal))
         })
-        .filter(|f| f.get("name").and_then(Value::as_str).is_some_and(|n| !HIDDEN.contains(&n) && !DESKTOP_ONLY.iter().any(|(d, _)| *d == n) && !(MOBILE && n == "savePath")))
+        .filter(|f| f.get("name").and_then(Value::as_str).is_some_and(|n| user_visible(n, IOS)))
         .filter(|f| {
             let maker = facts.iter().find(|other| other.get("name").and_then(Value::as_str) == Some("baseReceiverManufacturers")).and_then(|other| other.get("value")).and_then(Value::as_i64).unwrap_or(MANUFACTURER_ALL);
             group != "rtkSettings" || shown_for_manufacturer(f.get("name").and_then(Value::as_str).unwrap_or_default(), maker)
@@ -754,6 +760,14 @@ mod tests {
         let titles: Vec<String> = subsections("gimbalControllerSettings", &controls).iter().map(|s| s["title"].as_str().unwrap().to_string()).collect();
         assert_eq!(titles, ["On-Screen Control", "Zoom speed", ""]);
         assert!(HIDDEN_WHEN.contains(&("cameraSlideSpeed", "clickAndDrag", false)), "GimbalIndicator.qml shows the slide speed only for click-and-drag");
+    }
+
+    #[test]
+    fn ios_hides_the_serial_auto_connect_rows_like_autoconnectsettings() {
+        let serial = ["autoConnectPixhawk", "autoConnectSiKRadio", "autoConnectRTKGPS", "autoConnectLibrePilot", "nmeaSource", "autoConnectNmeaPort", "autoConnectNmeaBaud"];
+        assert!(serial.iter().all(|n| !user_visible(n, true)), "Q_OS_IOS sets these userVisible(false): there is no serial port to connect");
+        assert!(serial.iter().all(|n| user_visible(n, false)), "every other platform keeps them");
+        assert!(user_visible("autoConnectUDP", true) && user_visible("nmeaUdpPort", true), "UDP still works on iOS");
     }
 
     #[test]
@@ -960,6 +974,7 @@ mod tests {
             .iter()
             .copied()
             .chain(DESKTOP_ONLY.iter().map(|(name, _)| *name))
+            .chain(IOS_HIDDEN.iter().copied())
             .chain(GATED.iter().flat_map(|(gated, requires, _, _)| [*gated, *requires]))
             .chain(HIDDEN_WHEN.iter().flat_map(|(hidden, requires, _)| [*hidden, *requires]))
             .chain(SHOWN_WHEN_VALUE.iter().flat_map(|(shown, requires, _, _)| [*shown, *requires]))
