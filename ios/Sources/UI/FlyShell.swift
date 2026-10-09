@@ -228,11 +228,12 @@ struct FlyScreen: View {
         let gimbal = gimbalDrags
         let stepper = cameras
         let expanded = pipExpanded
+        let full = fullScreen
         return VideoGestureHandlers(
             owned: { false },
             claimsSwipe: { moved in sideways(moved) && !gimbal },
             onTap: {},
-            onDoubleTap: {},
+            onDoubleTap: { full ? onExitFullScreen() : onFullScreen() },
             onSwipe: { moved in cameraStep(videoSwipe(moved, VIDEO_SWIPE_DISTANCE)).map(stepper.step) },
             onHold: { at in
                 guard !pipNow else { return false }

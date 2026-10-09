@@ -141,12 +141,13 @@ private struct VideoGesturesModifier: ViewModifier {
             handlers.onSwipe(drag.translation)
         case .secondTap:
             handlers.onDoubleTap()
-        case .pressing where finished?.owned == true:
+        case .pressing:
+            let owned = finished?.owned == true
             tapTimer = Task { @MainActor in
                 try? await Task.sleep(for: .milliseconds(DOUBLE_TAP_MS))
                 guard !Task.isCancelled else { return }
                 tapTimer = nil
-                handlers.onTap()
+                if owned { handlers.onTap() }
             }
         default:
             break

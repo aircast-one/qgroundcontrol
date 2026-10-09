@@ -226,11 +226,12 @@ struct FlyPortrait: View {
         let stepper = cameras
         let gimbal = gimbalDrags
         let screen = flyScreen
+        let full = fullScreen
         return VideoGestureHandlers(
             owned: { !split },
             claimsSwipe: { moved in sideways(moved) && !gimbal },
             onTap: { onView(.Video) },
-            onDoubleTap: { onFullScreen() },
+            onDoubleTap: { full ? onExitFullScreen() : onFullScreen() },
             onSwipe: { moved in
                 let swipe = videoSwipe(moved, VIDEO_SWIPE_DISTANCE)
                 switch swipe {
