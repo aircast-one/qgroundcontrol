@@ -1608,7 +1608,7 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
     let (index, property) = rest.split_once('.')?;
     let index: usize = index.parse().ok()?;
     let given = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").cloned());
-    let number = given.as_ref().and_then(Value::as_f64);
+    let number = given.as_ref().and_then(crate::factwrite::number);
     let answer = |edited: Result<Document, String>| match edited {
         Ok(changed) => edit(|_| Ok(changed)),
         Err(reason) => refused(reason),

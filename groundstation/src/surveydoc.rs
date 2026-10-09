@@ -578,9 +578,14 @@ pub fn regenerate_item(item: &Value) -> Value {
 pub fn set(survey: &Value, suffix: &str, value: &Value, units: &Units) -> Option<Value> {
     let calc = calc_of(survey);
     let raw = |key: &str| {
-        let unit = [CAMERA_META, CAMERA_SPEC_META, TRANSECT_META, SURVEY_META, CORRIDOR_META, STRUCTURE_META].iter().find_map(|file| meta(file, key)).and_then(|m| cooked(m.units.as_deref().unwrap_or(""), units));
-        match (unit, value.as_f64()) {
+        let found = [CAMERA_META, CAMERA_SPEC_META, TRANSECT_META, SURVEY_META, CORRIDOR_META, STRUCTURE_META].iter().find_map(|file| meta(file, key));
+        let unit = found.as_ref().and_then(|m| cooked(m.units.as_deref().unwrap_or(""), units));
+        let typed = found.as_ref().filter(|m| !matches!(m.value_type, crate::factmeta::ValueType::String | crate::factmeta::ValueType::Bool)).and_then(|_| crate::factwrite::number(value));
+        let whole = found.as_ref().is_some_and(|m| integer_typed(&m.value_type));
+        match (unit, typed.or_else(|| value.as_f64())) {
             (Some(u), Some(v)) => json!(u.meters(v)),
+            (None, Some(v)) if typed.is_some() && whole && v.fract() == 0.0 => json!(v as i64),
+            (None, Some(v)) if typed.is_some() => json!(v),
             _ => value.clone(),
         }
     };
@@ -1001,6 +1006,15 @@ mod tests {
         assert!(fields(&camera, "i", crate::cmdinfo::VehicleClass::MultiRotor, &metric()).iter().all(|f| f["pathSuffix"] != "gimbalPitch"), "and StructureScanEditor shows it only for a manual camera");
         let shown = fields(&pitched, "i", crate::cmdinfo::VehicleClass::MultiRotor, &metric()).into_iter().find(|f| f["pathSuffix"] == "gimbalPitch").unwrap();
         assert_eq!((shown["value"].as_f64(), shown["minimum"].as_f64(), shown["maximum"].as_f64(), shown["units"].as_str()), (Some(45.0), Some(0.0), Some(90.0), Some("deg")));
+    }
+
+    #[test]
+    fn a_number_typed_as_text_is_stored_as_a_number_like_fact_set_cooked_value() {
+        let fixture: Value = serde_json::from_str(include_str!("../tests/fixtures/structure-inserted-by-qt.json")).unwrap();
+        let typed = set(&fixture["structure"], "entranceAlt", &json!("100"), &metric()).unwrap();
+        assert_eq!(typed["EntranceAltitude"].as_f64(), Some(100.0), "the heads write a text field's text; a stored string reads back blank and empties the scan");
+        let spaced = set(&fixture["structure"], "entranceAlt", &json!(" 42.5 "), &metric()).unwrap();
+        assert_eq!(spaced["EntranceAltitude"].as_f64(), Some(42.5));
     }
 
     #[test]

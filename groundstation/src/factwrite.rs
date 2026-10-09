@@ -10,7 +10,7 @@ pub fn owns(path: &str) -> bool {
     FACT_ROOTS.iter().any(|root| path.starts_with(root)) && !path.ends_with(".rawValue")
 }
 
-fn number(value: &Value) -> Option<f64> {
+pub fn number(value: &Value) -> Option<f64> {
     value.as_f64().or_else(|| value.as_str().and_then(|s| s.trim().parse().ok())).filter(|v| v.is_finite())
 }
 
