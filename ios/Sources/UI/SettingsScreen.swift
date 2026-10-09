@@ -718,6 +718,7 @@ private struct FactTitle: View {
                         .font(.system(size: 14))
                         .foregroundStyle(helpOpen ? theme.colors.primary : theme.colors.onSurfaceVariant)
                         .frame(width: 40, height: 40)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityLabel(helpOpen ? "Hide help" : "Help")

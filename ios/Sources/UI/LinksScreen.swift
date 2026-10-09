@@ -1292,7 +1292,7 @@ private struct ServerList: View {
             }
             HStack(alignment: .bottom) {
                 LinkTextField(label: "Also send to", value: typed, placeholder: "127.0.0.1:14550", keyboard: .URL, onSubmit: { if !typed.isBlank { add() } }) { typed = $0 }
-                Button(action: add) { Image(.add).frame(width: 44, height: 36) }
+                Button(action: add) { Image(.add).frame(width: 44, height: 36).contentShape(Rectangle()) }
                     .buttonStyle(.borderless)
                     .disabled(typed.isBlank)
                     .accessibilityLabel("Add address")

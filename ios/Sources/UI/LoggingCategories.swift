@@ -144,6 +144,7 @@ private struct CategorySwitch: View {
                 Button(action: onExpand) {
                     Image(opened ? Icon.arrowDropDown : Icon.chevronRight)
                         .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.borderless)
                 .accessibilityLabel(opened ? "Collapse" : "Expand")

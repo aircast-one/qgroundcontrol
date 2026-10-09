@@ -488,6 +488,7 @@ private struct CheckboxGlyph: View {
             Image(isOn.wrappedValue ? .checkBox : .checkBoxOutline)
                 .font(.title3)
                 .frame(width: CHECKBOX_SIZE, height: CHECKBOX_SIZE)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
     }
