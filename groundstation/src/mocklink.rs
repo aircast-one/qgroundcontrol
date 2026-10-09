@@ -371,7 +371,7 @@ impl Sim {
             cameras: options.enable_camera.then(|| Cameras::new(Video { requested: options.video, served })),
             gimbal: options.enable_gimbal.then(Gimbal::default),
             calibration: Calibration::default(),
-            logs: Logs::default(),
+            logs: Logs::new(options.vehicle.apm()),
             adsb: (0..ADSB_VEHICLES)
                 .map(|i| {
                     let step = i as f64 * 0.001;

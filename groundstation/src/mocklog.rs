@@ -3,24 +3,28 @@ use mavlink::dialects::ardupilotmega::*;
 use crate::mocklink::{AUTOPILOT, Out};
 use crate::onboardlogs::LOG_DATA_LEN;
 
-const LOG_ID: u16 = 0;
 const LOG_SIZE: u32 = 1000;
 const CHUNKS_PER_POLL: u32 = 12;
 
 #[derive(Default)]
 pub struct Logs {
+    id: u16,
     erased: bool,
     sending: Option<(u32, u32)>,
 }
 
 impl Logs {
+    pub fn new(apm: bool) -> Logs {
+        Logs { id: u16::from(apm), ..Logs::default() }
+    }
+
     pub fn listed(&self) -> Out {
         let count = u16::from(!self.erased);
-        (AUTOPILOT, MavMessage::LOG_ENTRY(LOG_ENTRY_DATA { id: LOG_ID, num_logs: count, last_log_num: count, time_utc: 0, size: if self.erased { 0 } else { LOG_SIZE } }))
+        (AUTOPILOT, MavMessage::LOG_ENTRY(LOG_ENTRY_DATA { id: self.id, num_logs: count, last_log_num: count, time_utc: 0, size: if self.erased { 0 } else { LOG_SIZE } }))
     }
 
     pub fn requested(&mut self, request: &LOG_REQUEST_DATA_DATA) {
-        let served = !self.erased && request.id == LOG_ID && request.ofs < LOG_SIZE;
+        let served = !self.erased && request.id == self.id && request.ofs < LOG_SIZE;
         self.sending = served.then(|| (request.ofs, request.count.min(LOG_SIZE - request.ofs))).or(self.sending);
     }
 
@@ -35,13 +39,13 @@ impl Logs {
         let chunks: Vec<(u32, u32)> = (0..CHUNKS_PER_POLL).map(|i| ofs + i * LOG_DATA_LEN).take_while(|at| *at < end).map(|at| (at, LOG_DATA_LEN.min(end - at))).collect();
         let sent: u32 = chunks.iter().map(|(_, count)| count).sum();
         self.sending = (sent < remaining).then(|| (ofs + sent, remaining - sent));
-        chunks.into_iter().map(|(at, count)| data(at, count)).collect()
+        chunks.into_iter().map(|(at, count)| data(self.id, at, count)).collect()
     }
 }
 
-fn data(ofs: u32, count: u32) -> Out {
+fn data(id: u16, ofs: u32, count: u32) -> Out {
     let data = std::array::from_fn(|i| if (i as u32) < count { byte_at(ofs + i as u32) } else { 0 });
-    (AUTOPILOT, MavMessage::LOG_DATA(LOG_DATA_DATA { ofs, id: LOG_ID, count: count as u8, data }))
+    (AUTOPILOT, MavMessage::LOG_DATA(LOG_DATA_DATA { ofs, id, count: count as u8, data }))
 }
 
 fn byte_at(at: u32) -> u8 {
@@ -76,6 +80,11 @@ mod tests {
         assert_eq!(entry(&logs), (0, 1, 1000));
         logs.erase();
         assert_eq!(entry(&logs), (0, 0, 0));
+
+        let mut ardupilot = Logs::new(true);
+        assert_eq!(entry(&ardupilot), (1, 1, 1000), "ArduPilot numbers its logs from 1, and the controller subtracts that offset back out");
+        ardupilot.requested(&request(0, 100, 1));
+        assert!(drained(&mut ardupilot).iter().all(|c| c.id == 1));
     }
 
     #[test]

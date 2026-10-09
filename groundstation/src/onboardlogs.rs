@@ -134,6 +134,7 @@ fn local_time(seconds: u32) -> Option<chrono::DateTime<chrono::Local>> {
 pub struct OnboardLogs {
     pub entries: Vec<Entry>,
     pub listing: bool,
+    answered: bool,
     pub downloading: bool,
     pub sort_ascending: bool,
     appended: bool,
@@ -193,6 +194,7 @@ impl OnboardLogs {
             return Vec::new();
         }
         self.entries.clear();
+        self.answered = false;
         match self.ftp_capable && !self.ftp_disabled {
             true => {
                 self.use_ftp = true;
@@ -272,7 +274,7 @@ impl OnboardLogs {
             Some(dir) => vec![Out::FtpList(format!("{}/{dir}", self.ftp.root))],
             None if time_unsupported => self.fall_back_to_messages(now_ms),
             None => {
-                self.finish_listing();
+                self.answer();
                 Vec::new()
             }
         }
@@ -313,6 +315,11 @@ impl OnboardLogs {
         });
     }
 
+    fn answer(&mut self) {
+        self.answered |= self.listing;
+        self.finish_listing();
+    }
+
     fn finish_listing(&mut self) {
         self.due = None;
         if self.listing {
@@ -338,11 +345,11 @@ impl OnboardLogs {
                 }
             }
             true => {}
-            false => self.finish_listing(),
+            false => self.answer(),
         }
         self.retries = 0;
         match self.entries.iter().all(|e| e.received) {
-            true => self.finish_listing(),
+            true => self.answer(),
             false => self.due = Some(now_ms + TIMEOUT_MS),
         }
     }
@@ -778,6 +785,7 @@ impl OnboardLogs {
             "kind": "object",
             "objectName": "",
             "requestingList": self.listing,
+            "listAnswered": self.answered,
             "selectedCount": self.selected_count(),
             "sortAscending": self.sort_ascending,
             "transport": self.transport(),
@@ -802,6 +810,18 @@ mod tests {
         assert!(!logs.listing);
         assert_eq!(logs.entries.iter().map(|e| e.id).collect::<Vec<_>>(), vec![2, 1, 0], "entries sort newest first by time");
         assert_eq!(logs.entries[0].status_id(), "available");
+    }
+
+    #[test]
+    fn an_empty_answer_counts_as_answered_and_silence_or_a_new_refresh_does_not() {
+        let mut logs = OnboardLogs::default();
+        logs.refresh(0);
+        logs.on_entry(false, 0, 0, 0, 0, 10);
+        assert_eq!((logs.listing, logs.answered), (false, true), "requestingList can go true and false between two looks at it, so the answer has to be held where it arrives");
+        logs.refresh(20);
+        assert!(!logs.answered);
+        assert_eq!(logs.on_timeout(20 + LIST_TIMEOUT_MS), vec![]);
+        assert_eq!((logs.listing, logs.answered), (false, false), "a request nobody answered is not a vehicle with no logs");
     }
 
     #[test]

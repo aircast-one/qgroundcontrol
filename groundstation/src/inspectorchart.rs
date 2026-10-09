@@ -59,6 +59,10 @@ fn charted(held: &[Chart; CHART_COUNT], system: u8, component: u8, message: u32,
     held.iter().position(|chart| chart.plots.iter().any(|p| p.system == system && p.component == component && p.message == message && p.instance == instance && p.field == field))
 }
 
+pub fn forget_system(system: u8) {
+    charts().iter_mut().for_each(|chart| chart.plots.retain(|p| p.system != system));
+}
+
 pub fn charts_message(system: u8, component: u8, message: u32, instance: &str) -> bool {
     charts().iter().any(|chart| chart.plots.iter().any(|p| p.system == system && p.component == component && p.message == message && p.instance == instance))
 }
@@ -178,6 +182,15 @@ mod tests {
         assert_eq!(y_range(&chart, &[vec![(0, 3.0)]]), Some((2.0, 4.0)));
         assert_eq!(y_range(&chart, &[vec![]]), None);
         assert_eq!(y_range(&Chart { range_y: 3, ..chart }, &[vec![]]), Some((-100.0, 100.0)));
+    }
+
+    #[test]
+    fn a_vehicle_that_goes_away_takes_its_plots_with_it() {
+        charts()[1].plots.extend([Plot { system: 201, ..plot(&[]) }, Plot { system: 202, ..plot(&[]) }]);
+        forget_system(201);
+        let left: Vec<u8> = charts()[1].plots.iter().map(|p| p.system).filter(|s| *s > 200).collect();
+        forget_system(202);
+        assert_eq!(left, vec![202], "a plot keyed to a system that is gone matches no toggle, so it could never be turned off");
     }
 
     #[test]

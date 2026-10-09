@@ -411,6 +411,7 @@ impl Inspector {
     }
 
     pub fn vehicle_added(&mut self, id: u8) {
+        crate::inspectorchart::forget_system(id);
         match self.systems.iter_mut().find(|s| s.id == id) {
             Some(system) => system.messages.clear(),
             None => self.systems.push(System { id, ..System::default() }),
@@ -418,6 +419,7 @@ impl Inspector {
     }
 
     pub fn vehicle_removed(&mut self, id: u8) {
+        crate::inspectorchart::forget_system(id);
         self.systems.retain(|s| s.id != id);
         if self.active == Some(id) {
             self.active = None;
