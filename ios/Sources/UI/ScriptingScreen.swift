@@ -145,11 +145,11 @@ struct ScriptingScreen: View {
                         Button("Download") { download(name) }.disabled(!usable)
                         Button("Delete") { confirmDelete = name }.disabled(!usable)
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.text)
                 }
                 if page.busy {
                     HStack(spacing: 12) {
-                        Button("Cancel operation") { cancel() }.buttonStyle(.borderless)
+                        Button("Cancel operation") { cancel() }.buttonStyle(.text)
                         Text("Transferring... \(Int((page.progress * 100).rounded()))%")
                     }
                     ProgressView(value: page.progress)

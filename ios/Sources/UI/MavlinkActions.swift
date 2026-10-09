@@ -117,7 +117,7 @@ struct FlyViewMavlinkActions: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .padding(.vertical, Space.s2)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.text)
             }
         }
         .task { read = await offMain { mavlinkActions(Qgc.get(MAVLINK_ACTIONS_VIEW)) } }

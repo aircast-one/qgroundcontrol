@@ -136,7 +136,7 @@ private struct OfflinePilotSettings: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if offersLink {
                     Button("Add a link") { navigation.settingsPage = CONNECTIONS_PAGE }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(.text)
                 }
             }
             .padding(EdgeInsets(top: Space.s3, leading: Space.s4, bottom: 0, trailing: Space.s2))
@@ -214,7 +214,7 @@ struct SensorChecks: View {
                                 .foregroundStyle(sensorHealthy(routine) ? theme.colors.onSurfaceVariant : theme.colors.error)
                             if !sensorHealthy(routine) {
                                 Button("Calibrate", action: onCalibrate)
-                                    .buttonStyle(.borderless)
+                                    .buttonStyle(.text)
                                     .disabled(!routine.enabled)
                             }
                         }

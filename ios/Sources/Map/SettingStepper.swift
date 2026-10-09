@@ -115,7 +115,7 @@ struct SettingStepper: View {
                         .foregroundStyle(theme.colors.onSurface)
                         .frame(minWidth: VALUE_MIN_WIDTH)
                         .padding(.horizontal, Space.s1)
-                        .contentShape(Rectangle())
+                        .minimumTouchTarget()
                     }
                     .buttonStyle(.plain)
                     .disabled(!enabled)

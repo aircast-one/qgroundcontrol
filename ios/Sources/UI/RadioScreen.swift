@@ -68,7 +68,7 @@ private struct CalibrationStep: View {
                 }
                 Spacer(minLength: 0)
                 if cal.cancelEnabled {
-                    Button("Cancel") { onAction("cancelButtonClicked") }.buttonStyle(.borderless)
+                    Button("Cancel") { onAction("cancelButtonClicked") }.buttonStyle(.text)
                 }
             }
             .frame(minHeight: 48)

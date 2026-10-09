@@ -14,6 +14,7 @@ struct SupportForwardingCell: View {
             Text("Support")
                 .font(.labelMedium)
                 .foregroundStyle(theme.aircast.success)
+                .minimumTouchTarget()
                 .onTapGesture { open = true }
                 .accessibilityAddTraits(.isButton)
                 .background {

@@ -198,7 +198,7 @@ struct TelemetryRow: View {
                             }
                             Button("Remove") { change(vehicleClass, removedInstrument(picked, index)) }
                         }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(.text)
                     }
                 },
                 onDone: { display in
@@ -844,7 +844,7 @@ struct FlightModeMenu: View {
                                     settings = false
                                     navigation.setupPage = FLIGHT_MODES_PAGE
                                 }
-                                .buttonStyle(.borderless)
+                                .buttonStyle(.text)
                                 .padding(Space.s2)
                             }
                         }
@@ -934,7 +934,7 @@ struct FlightModeMenu: View {
                         .padding(.vertical, Space.s2)
                         .frame(maxWidth: .infinity, alignment: .leading)
                     if setting != nil {
-                        Button(editing ? "Done" : "Edit") { editing.toggle() }.buttonStyle(.borderless)
+                        Button(editing ? "Done" : "Edit") { editing.toggle() }.buttonStyle(.text)
                     }
                 }
                 .padding(.leading, Space.s4)

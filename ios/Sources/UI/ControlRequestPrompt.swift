@@ -105,7 +105,7 @@ struct ControlRequestDialog: View {
                     }
                 }
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.text)
         }
         .padding(Space.s6)
         .modifier(FittedDetent())

@@ -88,7 +88,7 @@ private struct NoVideoLayout: View {
                     Button(action: primary.onClick) {
                         Text(primary.label).lineLimit(1).fixedSize().padding(.horizontal, 12).frame(minWidth: 58, minHeight: 40)
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.text)
                 }
             }
             .padding(.leading, 12)
@@ -104,7 +104,7 @@ private struct NoVideoLayout: View {
                 if primary != nil || secondary != nil {
                     HStack(spacing: 8) {
                         if let primary { Button(primary.label, action: primary.onClick).buttonStyle(.bordered) }
-                        if let secondary { Button(secondary.label, action: secondary.onClick).buttonStyle(.borderless) }
+                        if let secondary { Button(secondary.label, action: secondary.onClick).buttonStyle(.text) }
                     }
                     .padding(.top, 8)
                 }

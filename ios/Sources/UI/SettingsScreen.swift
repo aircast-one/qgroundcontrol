@@ -1364,7 +1364,7 @@ private struct FactTextField: View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 8) {
                 if secret {
-                    Button(revealed ? "Hide" : "Show") { revealed.toggle() }.buttonStyle(.borderless)
+                    Button(revealed ? "Hide" : "Show") { revealed.toggle() }.buttonStyle(.text)
                 }
                 Group {
                     if secret && !revealed {
@@ -1393,7 +1393,7 @@ private struct FactTextField: View {
                     Text(shownUnits(fact.units)).foregroundStyle(theme.colors.onSurfaceVariant)
                 }
                 if pending != nil {
-                    Button("Set", action: commit).buttonStyle(.borderless)
+                    Button("Set", action: commit).buttonStyle(.text)
                 }
             }
             .padding(12)

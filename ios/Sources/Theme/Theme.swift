@@ -182,6 +182,21 @@ extension PrimitiveButtonStyle where Self == FilledButtonStyle {
     static var filled: FilledButtonStyle { FilledButtonStyle() }
 }
 
+struct TextButtonStyle: PrimitiveButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Button(role: configuration.role, action: configuration.trigger) {
+            configuration.label
+                .frame(minWidth: MINIMUM_TOUCH_TARGET, minHeight: MINIMUM_TOUCH_TARGET)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.borderless)
+    }
+}
+
+extension PrimitiveButtonStyle where Self == TextButtonStyle {
+    static var text: TextButtonStyle { TextButtonStyle() }
+}
+
 extension View {
     func font(_ scale: TypeScale) -> some View { modifier(ScaledType(scale)) }
 
@@ -189,4 +204,16 @@ extension View {
         environment(\.theme, dark ? .darkTheme : .lightTheme)
             .tint((dark ? Theme.darkTheme : Theme.lightTheme).colors.primary)
     }
+}
+
+let MINIMUM_TOUCH_TARGET: CGFloat = 48
+
+struct MinimumTouchTarget: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path(rect.insetBy(dx: min(0, (rect.width - MINIMUM_TOUCH_TARGET) / 2), dy: min(0, (rect.height - MINIMUM_TOUCH_TARGET) / 2)))
+    }
+}
+
+extension View {
+    func minimumTouchTarget() -> some View { contentShape(MinimumTouchTarget()) }
 }

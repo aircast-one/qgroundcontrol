@@ -182,6 +182,7 @@ struct SliderValueRow<Title: View>: View {
                     .foregroundStyle(theme.colors.onSurfaceVariant)
                     .padding(.horizontal, 4)
                     .padding(.vertical, 8)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .accessibilityHint("Set exactly")
@@ -467,6 +468,7 @@ struct ValueControls<TypedEntry: View>: View {
                         .font(.headlineSmall)
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
+                        .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
                 .accessibilityHint("Type a value")
@@ -479,9 +481,9 @@ struct ValueControls<TypedEntry: View>: View {
             if disablesAtZero(fact) {
                 let limit = offLabel(fact) == VALUE_NO_LIMIT
                 if shown == 0 {
-                    Button(limit ? "Set a limit" : "Turn on") { write(turnOnValue(fact)) }.buttonStyle(.borderless)
+                    Button(limit ? "Set a limit" : "Turn on") { write(turnOnValue(fact)) }.buttonStyle(.text)
                 } else {
-                    Button(limit ? "Remove the limit" : "Turn off") { write(0) }.buttonStyle(.borderless)
+                    Button(limit ? "Remove the limit" : "Turn off") { write(0) }.buttonStyle(.text)
                 }
             }
             if typing { typedEntry() }

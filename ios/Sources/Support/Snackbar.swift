@@ -136,7 +136,7 @@ struct Snackbar: View {
                 Button(action) { data.performAction() }
                     .font(.labelLarge)
                     .foregroundStyle(theme.dark ? Theme.lightTheme.colors.primary : Theme.darkTheme.colors.primary)
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.text)
             }
             if data.withDismissAction {
                 Button { data.dismiss() } label: { Image(.close) }

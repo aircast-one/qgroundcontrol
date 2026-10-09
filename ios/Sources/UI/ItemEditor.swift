@@ -241,7 +241,7 @@ private struct ItemEditorContent: View {
             }
             if let onRemove {
                 Button(DELETE_LABEL, action: onRemove)
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.text)
                     .font(.labelLarge)
                     .foregroundStyle(theme.colors.error)
                     .frame(minHeight: 40)
@@ -388,16 +388,19 @@ private struct ItemEditorContent: View {
             Spacer()
             if at != nil || view?["specifiesCoordinate"].bool == true {
                 let previous = previousCoordinate(view)
-                Menu("Position") {
+                Menu {
                     Button("Move to Vehicle Position") { moveTo(nil) }.disabled(!connected)
                     Button("Move to Previous Item") { moveTo(previous) }.disabled(previous == nil)
                     Button("Edit position…") { editingPosition = true }.disabled(positionStart == nil)
+                } label: {
+                    Text("Position").frame(minHeight: MINIMUM_TOUCH_TARGET).contentShape(Rectangle())
                 }
             }
             if commandEditable(view) {
                 Button("Change command") { choosing = true }
             }
         }
+        .buttonStyle(.text)
         .padding(.horizontal, Space.s5)
         .padding(.vertical, Space.s2)
     }

@@ -124,6 +124,7 @@ struct RtkIndicatorCell: View {
         if let shown = status {
             Text("RTK")
                 .font(.labelMedium)
+                .minimumTouchTarget()
                 .onTapGesture { open = true }
                 .accessibilityAddTraits(.isButton)
                 .background {

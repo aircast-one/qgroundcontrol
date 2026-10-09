@@ -41,6 +41,7 @@ struct PlanDialog<Content: View, Buttons: View>: View {
                     Spacer()
                     buttons()
                 }
+                .buttonStyle(.text)
                 .padding(.horizontal, Space.s6)
                 .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { buttonsHeight = $0 }
             }

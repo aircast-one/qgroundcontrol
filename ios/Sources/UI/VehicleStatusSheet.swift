@@ -55,7 +55,7 @@ struct VehicleStatusSheet: View {
                     StatusMessages()
                     OverallStatus()
                     Button(AIRCRAFT_SETUP) { open(SETUP_OVERVIEW_PAGE) }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(.text)
                         .padding(.horizontal, Space.s3)
                     ParameterForm(page: STATUS_SETTINGS_PAGE)
                         .frame(maxHeight: 360)
@@ -105,7 +105,7 @@ struct VehicleStatusSheet: View {
             let normal = reading.sensors.filter { $0.state == SENSOR_HEALTHY_STATE }.count
             if normal > 0 {
                 Button(showAll ? "Show less" : "Show \(normal) more") { showAll.toggle() }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.text)
                     .padding(.horizontal, Space.s3)
             }
         }
@@ -123,12 +123,12 @@ private struct StatusMessages: View {
                 HStack {
                     Text("Messages").font(.titleSmall).frame(maxWidth: .infinity, alignment: .leading)
                     if shown {
-                        Button("Clear") { offMain { VehicleCommands.clearMessages() } }.buttonStyle(.borderless)
+                        Button("Clear") { offMain { VehicleCommands.clearMessages() } }.buttonStyle(.text)
                     }
                 }
                 .padding(.horizontal, Space.s5)
                 Button(messagesToggleText(shown)) { shown.toggle() }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.text)
                     .padding(.horizontal, Space.s3)
                 if shown {
                     ScrollView {
@@ -235,7 +235,7 @@ private struct ArmSection: View {
                     Text("Arming may be refused.").font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
                 }
                 if controls.forceLink {
-                    Button("Force arm…") { forceOpen = true }.buttonStyle(.borderless)
+                    Button("Force arm…") { forceOpen = true }.buttonStyle(.text)
                 }
                 if controls.forceHold {
                     HoldToConfirm(label: "Hold to force arm", destructive: true) { request(FORCE_ARM_REQUEST) }

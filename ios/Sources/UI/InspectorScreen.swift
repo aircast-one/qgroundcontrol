@@ -129,6 +129,8 @@ private struct RatePicker: View {
                 }
             } label: {
                 Text(current.isBlank ? "Set Rate:" : "Rate: \(current)")
+                    .frame(minHeight: 48)
+                    .contentShape(Rectangle())
             }
             .buttonStyle(.borderless)
             .padding(8)

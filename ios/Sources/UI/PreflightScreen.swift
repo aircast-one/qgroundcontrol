@@ -33,7 +33,7 @@ struct PreflightScreen: View {
                     onTicked([])
                     collapsed = []
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.text)
                 .disabled(ticked.isEmpty)
             }
             .padding(.leading, Space.s4)

@@ -41,7 +41,7 @@ struct MissionProgressCard: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                     if let next = progress.skipTo {
                         Button("Skip") { skipTarget = next }
-                            .buttonStyle(.borderless)
+                            .buttonStyle(.text)
                     }
                 }
                 ProgressView(value: min(max(progress.fraction, 0), 1))

@@ -141,7 +141,7 @@ struct ConsoleScreen: View {
                     .background(theme.colors.surfaceContainerHighest, in: Capsule())
                 ForEach([("historyUp", "\u{2191}"), ("historyDown", "\u{2193}")], id: \.0) { step, arrow in
                     Button(arrow) { recall(step) }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(.text)
                         .frame(width: 40, height: 40)
                 }
                 Button(action: send) {

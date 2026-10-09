@@ -366,7 +366,7 @@ private struct CameraSheet: View {
                 .onSubmit(save)
             }
         } else {
-            Button("Add a name") { naming = true }.buttonStyle(.borderless)
+            Button("Add a name") { naming = true }.buttonStyle(.text)
         }
     }
 

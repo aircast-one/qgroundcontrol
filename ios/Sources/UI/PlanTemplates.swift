@@ -37,7 +37,7 @@ struct NewPlanDialog: View {
                     .foregroundStyle(theme.colors.onSurfaceVariant)
                 ForEach(templateChoices(state), id: \.0) { name, label in
                     Button(label) { onPick(name) }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(.text)
                         .frame(minHeight: 40)
                         .disabled(!(name == nil || state?.enabled == true))
                 }

@@ -71,7 +71,7 @@ struct LoggingCategoriesDialog: View {
                             .textFieldStyle(.roundedBorder)
                             .autocorrectionDisabled()
                             .textInputAutocapitalization(.never)
-                        Button("Clear") { search = "" }.buttonStyle(.borderless)
+                        Button("Clear") { search = "" }.buttonStyle(.text)
                     }
                     Text("Active categories").font(.titleSmall)
                     ForEach(read?.active ?? [], id: \.self) { name in

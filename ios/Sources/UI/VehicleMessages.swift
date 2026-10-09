@@ -220,7 +220,7 @@ private struct VehicleMessageLog: View {
                     }
                     Button("Close", action: onDismiss)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.text)
                 .padding(.top, 8)
                 if let name = editing {
                     ParameterEditDialog(name: name, title: EDIT_PARAMETER_TITLE, onDismiss: { editing = nil })
@@ -250,7 +250,7 @@ struct VehicleMessagesPage: View {
                         }
                         HStack {
                             Spacer()
-                            Button("Clear") { offMain { VehicleCommands.clearMessages() } }.buttonStyle(.borderless)
+                            Button("Clear") { offMain { VehicleCommands.clearMessages() } }.buttonStyle(.text)
                         }
                     }
                     .padding(.horizontal, 16)

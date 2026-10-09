@@ -189,7 +189,7 @@ private struct SectionHits: View {
     var body: some View {
         ForEach(titles, id: \.self) { title in
             Button(sentenceCase(title)) { onOpen(title) }
-                .buttonStyle(.borderless)
+                .buttonStyle(.text)
                 .padding(.leading, 56)
                 .padding(.vertical, Space.s2)
                 .frame(maxWidth: .infinity, alignment: .leading)

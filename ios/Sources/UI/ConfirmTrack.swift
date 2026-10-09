@@ -106,7 +106,7 @@ struct ConfirmTrack: View {
             }
             .padding(.top, Space.s2)
             Button("Cancel", action: onCancel)
-                .buttonStyle(.borderless)
+                .buttonStyle(.text)
                 .frame(maxWidth: .infinity)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -141,7 +141,7 @@ struct HoldOrCancel: View {
         VStack(spacing: Space.s1) {
             HoldToConfirm(label: holdLabel(label), onConfirm: onConfirm)
                 .padding(.top, Space.s2)
-            Button("Cancel", action: onCancel).buttonStyle(.borderless)
+            Button("Cancel", action: onCancel).buttonStyle(.text)
         }
         .frame(maxWidth: .infinity)
     }

@@ -440,7 +440,7 @@ private struct GeometrySection: View {
             HStack {
                 Text(geometry.title).font(.titleMedium).frame(maxWidth: .infinity, alignment: .leading)
                 if !geometry.helpUrl.isEmpty, let url = URL(string: geometry.helpUrl) {
-                    Button("?") { openURL(url) }.buttonStyle(.borderless)
+                    Button("?") { openURL(url) }.buttonStyle(.text)
                 }
             }
             if geometry.motors.count > 1 {

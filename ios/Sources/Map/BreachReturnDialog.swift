@@ -18,7 +18,7 @@ struct BreachReturnDialog: View {
                 Button(action: onRemove) {
                     Text("Remove breach return point").foregroundStyle(theme.colors.error)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.text)
             }
         } buttons: {
             Button("Close", action: onDismiss)

@@ -278,7 +278,7 @@ struct LogDownloadScreen: View {
                                 Text(progress).font(.labelMedium).foregroundStyle(theme.colors.onSurfaceVariant)
                             }
                             if logs.canCancel {
-                                Button("Cancel") { invoke("cancel") }.buttonStyle(.borderless)
+                                Button("Cancel") { invoke("cancel") }.buttonStyle(.text)
                             }
                         }
                         IndeterminateBar()

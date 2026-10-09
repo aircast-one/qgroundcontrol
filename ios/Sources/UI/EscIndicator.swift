@@ -63,6 +63,7 @@ struct EscIndicatorCell: View {
                 .font(.labelMedium)
                 .foregroundStyle(summary.healthy ? good : bad)
                 .lineLimit(1)
+                .minimumTouchTarget()
                 .onTapGesture { open = true }
                 .background {
                     if open {

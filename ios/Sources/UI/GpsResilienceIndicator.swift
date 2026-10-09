@@ -65,7 +65,7 @@ struct GpsResilienceCell: View {
                     Text("AUTH").font(.labelMedium).foregroundStyle(markColour(resilience.authentication.colour, theme))
                 }
             }
-            .contentShape(Rectangle())
+            .minimumTouchTarget()
             .onTapGesture { open = true }
             .background {
                 if open {

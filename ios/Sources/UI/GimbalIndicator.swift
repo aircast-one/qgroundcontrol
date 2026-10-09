@@ -112,7 +112,7 @@ struct GimbalIndicatorCell: View {
                 .font(.labelMedium)
                 .foregroundStyle(theme.colors.onSurfaceVariant)
                 .lineLimit(1)
-                .contentShape(Rectangle())
+                .minimumTouchTarget()
                 .onTapGesture { open = true }
                 .accessibilityAddTraits(.isButton)
                 .background {

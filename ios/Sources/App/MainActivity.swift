@@ -303,10 +303,11 @@ struct AircastShell: View {
                 FlyTabMenu(destinations: tabs.map { entry in MenuDestination(label: entry.label, icon: entry.icon, current: entry == .Fly) { selectTab(entry) } }
                     + [MenuDestination(label: "Settings", icon: .settings, current: false) { navigation.settingsOpen = true }])
                 LayoutWidget(key: "vehicleState", movable: false, hideable: false) { VehicleStateChip() }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .modifier(TakesLeftoverWidth())
                 LayoutWidget(key: "vtolState", movable: false, hideable: false) { VtolStateCell() }
                 ControlRequestPrompt()
                 LayoutWidget(key: "statusPill", movable: false, hideable: false) { StatusPill() }
+                    .layoutPriority(1)
                 FlySettingsButton()
             })
         }
@@ -540,6 +541,18 @@ struct AppDialogsHost: View {
         case .ResumeFailed(let index):
             ResumeFailedDialog(index: index) { AppDialogsState.shared.resumeDismissed = index }
         }
+    }
+}
+
+private struct TakesLeftoverWidth: ViewModifier {
+    @State private var room = true
+
+    func body(content: Content) -> some View {
+        content
+            .frame(minWidth: 0, maxWidth: .infinity, alignment: .leading)
+            .onGeometryChange(for: Bool.self) { $0.size.width > 0 } action: { room = $0 }
+            .opacity(room ? 1 : 0)
+            .mask { Rectangle().padding(.vertical, -Space.s4).padding(.leading, -Space.s4) }
     }
 }
 

@@ -158,6 +158,7 @@ struct VehicleStateChip: View {
                 Image(.arrowDropDown)
                     .accessibilityLabel(lost ? SIGNAL_LOST : "Change flight mode")
                     .accessibilityAddTraits(.isButton)
+                    .minimumTouchTarget()
                     .onTapGesture { if lost { lostMenu = true } else { modeMenu = true } }
             }
             if let progress = loading, !lost {
@@ -172,7 +173,12 @@ struct VehicleStateChip: View {
         .frame(minHeight: 32)
         .foregroundStyle(statusBar ? theme.aircast.outdoorForeground : contentColour(tone))
         .background(statusBar ? Color.clear : osdBackdrop(containerColour(tone), flyOsd), in: RoundedRectangle(cornerRadius: Corner.small))
+        .background {
+            FlightModeMenu(expanded: modeMenu && !disconnected, onDismiss: { modeMenu = false }, onStatus: { statusSettings = true }, onMessages: { why = true })
+        }
+        .frame(minHeight: MINIMUM_TOUCH_TARGET)
         .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
         .accessibilityAddTraits(.isButton)
         .onTapGesture {
             if lost {
@@ -186,9 +192,6 @@ struct VehicleStateChip: View {
             } else {
                 modeMenu = true
             }
-        }
-        .background {
-            FlightModeMenu(expanded: modeMenu && !disconnected, onDismiss: { modeMenu = false }, onStatus: { statusSettings = true }, onMessages: { why = true })
         }
         .confirmationDialog(
             silentFor.map(silenceText) ?? SIGNAL_LOST,
@@ -292,7 +295,7 @@ struct VehicleStateChip: View {
                                 statusSettings = true
                             }
                         }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(.text)
                         .padding(.horizontal, Space.s4)
                     }
                     ControlHolderNote(station: station, vehicleId: activeVehicleId(vehiclesJson), onRefusal: { refusal = $0 })
@@ -330,7 +333,7 @@ private struct FleetControls: View {
                     Button("Deselect all") { offMain { _ = FleetBridge.deselectAll() } }
                         .disabled(!choices.canDeselectAll)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.text)
                 .padding(.horizontal, Space.s4)
                 Text("Multi vehicle actions")
                     .font(.titleSmall)
@@ -561,7 +564,7 @@ private struct ControlHolderNote: View {
                         }
                     }
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.text)
                 .disabled(!acquireEnabled(holder, requestEndsAt != nil))
                 .padding(.horizontal, Space.s4)
             }
@@ -690,7 +693,7 @@ private struct InControlNote: View {
                 guard let wanted = allow else { return }
                 Task { onRefusal(await offMain { changeTakeover(wanted) }) }
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.text)
             .disabled(!takeoverChangeable(holder, allow))
             .padding(.horizontal, Space.s4)
             SettingFactRow(path: GCS_SYSTEM_ID_PATH, title: "This GCS MAVLink system ID")

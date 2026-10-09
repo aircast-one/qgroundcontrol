@@ -68,6 +68,7 @@ struct StatusCellSheet<Label: View, Sheet: View>: View {
 
     var body: some View {
         label()
+            .minimumTouchTarget()
             .onTapGesture { open = true }
             .background {
                 if open {

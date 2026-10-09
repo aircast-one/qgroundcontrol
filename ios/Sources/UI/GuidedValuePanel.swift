@@ -49,12 +49,12 @@ struct GuidedValuePanel<Content: View>: View {
             .frame(maxHeight: contentHeight > 0 ? contentHeight : nil)
             if portrait {
                 HoldToConfirm(label: hold, enabled: holdEnabled, onConfirm: onCommit)
-                Button("Cancel", action: onCancel).buttonStyle(.borderless)
+                Button("Cancel", action: onCancel).buttonStyle(.text)
             } else {
                 HStack(spacing: Space.s2) {
                     HoldToConfirm(label: hold, enabled: holdEnabled, onConfirm: onCommit)
                         .frame(maxWidth: .infinity)
-                    Button("Cancel", action: onCancel).buttonStyle(.borderless)
+                    Button("Cancel", action: onCancel).buttonStyle(.text)
                 }
             }
         }

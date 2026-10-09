@@ -178,10 +178,10 @@ struct EmptyMissionStrip: View {
             if onTemplates != nil || onDownload != nil {
                 HStack(spacing: Space.s4) {
                     if let onTemplates {
-                        Button("Templates", action: onTemplates).buttonStyle(.borderless)
+                        Button("Templates", action: onTemplates).buttonStyle(.text)
                     }
                     if let onDownload {
-                        Button("Download from vehicle", action: onDownload).buttonStyle(.borderless)
+                        Button("Download from vehicle", action: onDownload).buttonStyle(.text)
                     }
                 }
                 .font(.labelLarge)
@@ -220,7 +220,7 @@ struct SelectionHeader: View {
                     }
                 }
                 .foregroundStyle(theme.colors.onSurface)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                .frame(maxWidth: .infinity, minHeight: MINIMUM_TOUCH_TARGET, alignment: .leading)
                 .padding(.leading, 12)
                 .contentShape(Rectangle())
             }

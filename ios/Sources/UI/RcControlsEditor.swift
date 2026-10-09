@@ -79,12 +79,12 @@ struct RcControlsEditor: View {
                     Button("Edit") {
                         draft = Draft(index: index, label: control.label, channel: String(control.channel), type: control.type)
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.text)
                     Button("Remove") {
                         undo = Undo(name: control.label, previous: json)
                         save(rcControlsRemoved(json, index))
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.text)
                 }
                 .padding(.horizontal, Space.s4)
                 .padding(.vertical, 10)
@@ -97,7 +97,7 @@ struct RcControlsEditor: View {
                         save(undo.previous)
                         self.undo = nil
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.text)
                 }
                 .padding(.horizontal, Space.s4)
                 .padding(.vertical, Space.s1)

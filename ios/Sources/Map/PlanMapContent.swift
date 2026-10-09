@@ -643,7 +643,7 @@ struct PlanMapContent: View {
                             .frame(width: 32, height: 4)
                             .frame(maxWidth: .infinity)
                             .frame(height: 24)
-                            .contentShape(Rectangle())
+                            .minimumTouchTarget()
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel(panelOpen ? "Fold the panel" : "Open the panel")
@@ -1164,7 +1164,7 @@ struct PlanMapContent: View {
                             patternWanted = []
                             addMissionItem(kind.id, "Adding \(kind.label.lowercased())", placeAt(), insertAfter(selected, allItems))
                         }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(.text)
                         .disabled(!addablePattern(kind))
                     }
                 }

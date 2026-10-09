@@ -143,7 +143,6 @@ struct StatusPill: View {
             }
             .foregroundStyle(theme.aircast.outdoorForeground)
             .background(osdBackdrop(Color.black.opacity(0.45), flyOsd), in: Capsule())
-            .layoutPriority(1)
         }
     }
 
@@ -207,7 +206,7 @@ private struct VehicleStatusReadings: View {
     @State private var allStatus = false
     @State private var batteryDisplay = false
     @State private var rtkSettings = false
-    @State private var contentWidth: CGFloat?
+    @State private var contentSize: CGSize?
 
     var body: some View {
         let state = flyState(stateJson)
@@ -234,17 +233,19 @@ private struct VehicleStatusReadings: View {
                 }
                 if compact && !narrow {
                     Image(.chevronRight)
-                        .padding(.leading, STRIP_GAP)
-                        .contentShape(Rectangle())
+                        .minimumTouchTarget()
                         .onTapGesture { allStatus = true }
                         .accessibilityLabel("All status")
                         .accessibilityAddTraits(.isButton)
+                        .padding(.leading, STRIP_GAP)
                 }
             }
-            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { contentWidth = $0 }
+            .onGeometryChange(for: CGSize.self) { $0.size } action: { contentSize = $0 }
+            .frame(minHeight: MINIMUM_TOUCH_TARGET)
         }
         .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
-        .frame(maxWidth: contentWidth)
+        .padding(.vertical, min(0, ((contentSize?.height ?? MINIMUM_TOUCH_TARGET) - MINIMUM_TOUCH_TARGET) / 2))
+        .frame(maxWidth: contentSize?.width)
         .opacity(live ? 1 : 0.45)
         .onChange(of: navigation.settingsOpen) { _, open in if open { allStatus = false } }
         .background {
@@ -555,8 +556,10 @@ private struct InlineCell: View {
             }
         }
         .foregroundStyle(tint)
-        .contentShape(Rectangle())
+        .minimumTouchTarget()
         .onTapGesture { onClick?() }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(text)
         .accessibilityAddTraits(onClick == nil ? [] : .isButton)
     }
 }
@@ -636,8 +639,9 @@ private struct BatteryRing: View {
                 }
             }
             .padding(.trailing, count.isEmpty ? 0 : BATTERY_COUNT_ROOM)
-            .contentShape(Rectangle())
+            .minimumTouchTarget()
             .onTapGesture(perform: onClick)
+            .accessibilityElement(children: .ignore)
             .accessibilityLabel(count.isEmpty ? "Battery \(percent)%" : "Lowest of \(count) batteries \(percent)%")
             .accessibilityAddTraits(.isButton)
         } else {
@@ -693,7 +697,7 @@ private struct BatteryReturnButton: View {
             Button { confirming = true } label: {
                 Text("Return").foregroundStyle(theme.colors.error)
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.text)
             .disabled(!rtl.ready)
             .padding(.horizontal, Space.s3)
             .alert("Return", isPresented: $confirming) {

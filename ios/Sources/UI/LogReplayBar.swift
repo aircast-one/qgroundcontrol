@@ -159,7 +159,7 @@ struct LogReplayBar: View {
             }
             HStack(spacing: 8) {
                 Spacer()
-                Button("Close") { act(LOG_REPLAY_CLOSE) }.buttonStyle(.borderless)
+                Button("Close") { act(LOG_REPLAY_CLOSE) }.buttonStyle(.text)
                 if !replay.loaded {
                     Button("Load telemetry log") {
                         if replay.canLoad { picking = true } else { message = replay.loadRefusal }

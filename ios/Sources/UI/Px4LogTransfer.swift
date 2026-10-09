@@ -222,7 +222,7 @@ struct Px4LogTransferPage: View {
                         .disabled(!(!selected.isEmpty && idle && !uploadedSelected))
                     }
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.text)
                 .font(.labelLarge)
                 if !log.message.isBlank {
                     Text(log.message).font(.bodySmall).foregroundStyle(theme.colors.error)

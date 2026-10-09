@@ -340,7 +340,7 @@ private struct AutoLinkItem: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             Text(autoLinkStatus(link)).font(.labelMedium).foregroundStyle(link.heard ? theme.aircast.success : theme.colors.onSurfaceVariant)
             if let onStop {
-                Button("Stop", action: onStop).buttonStyle(.borderless)
+                Button("Stop", action: onStop).buttonStyle(.text)
             }
         }
         .padding(.horizontal, 16)

@@ -81,7 +81,7 @@ struct MissionCompleteDialog: View {
                 }
                 HStack {
                     Spacer()
-                    Button("Close") { close(notice) }.buttonStyle(.borderless)
+                    Button("Close") { close(notice) }.buttonStyle(.text)
                 }
             }
             .padding(Space.s6)

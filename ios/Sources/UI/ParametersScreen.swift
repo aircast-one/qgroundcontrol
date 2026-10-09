@@ -191,7 +191,7 @@ private struct ParameterRow: View {
                 .multilineTextAlignment(.trailing)
                 .frame(maxWidth: 160, alignment: .trailing)
             if offersRcToParam && !loaded.readOnly && !name.contains(":") {
-                Button("RC") { mapping = true }.buttonStyle(.borderless)
+                Button("RC") { mapping = true }.buttonStyle(.text)
             }
         }
         .padding(.horizontal, Space.s4)

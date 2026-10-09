@@ -71,7 +71,7 @@ struct GeoTagScreen: View {
             if !logs.isEmpty && editable {
                 VStack(alignment: .leading) {
                     ForEach(logs, id: \.self) { log in
-                        Button(log.lastPathComponent) { run.pickDownloadedLog(log.path) }.buttonStyle(.borderless)
+                        Button(log.lastPathComponent) { run.pickDownloadedLog(log.path) }.buttonStyle(.text)
                     }
                 }
                 .padding(.leading, 40)

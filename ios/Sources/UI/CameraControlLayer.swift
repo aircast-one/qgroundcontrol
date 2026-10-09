@@ -417,7 +417,7 @@ private struct TrackingToggle: View {
         }
         .font(.labelLarge)
         .lineLimit(1)
-        .buttonStyle(.borderless)
+        .buttonStyle(.text)
         .foregroundStyle(theme.aircast.outdoorForeground)
     }
 }
@@ -602,7 +602,7 @@ private struct CameraDetailsSheet: View {
                 Text(sentenceCase(action.label)).font(.bodyLarge)
                 Spacer()
                 Button(action.button) { confirming = action }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.text)
                     .foregroundStyle(theme.colors.error)
                     .disabled(!action.ready)
             }

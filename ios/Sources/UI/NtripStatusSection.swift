@@ -252,7 +252,7 @@ struct NtripMountpointBrowser: View {
                             onWrite()
                         }
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.text)
                     .disabled(row.selected)
                 }
                 .padding(.vertical, Space.s1)

@@ -83,6 +83,7 @@ struct GcsBatteryCell: View {
                 .font(.labelMedium)
                 .foregroundStyle(batteryColour(shown.state, theme))
                 .lineLimit(1)
+                .minimumTouchTarget()
                 .onTapGesture { open = true }
                 .accessibilityLabel("\(shown.title) \(shown.levelText)")
                 .accessibilityHint(shown.heading)

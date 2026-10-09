@@ -41,7 +41,7 @@ struct ConnectingCard: View {
             }
             ProgressView(value: Double(progress))
             Button("Fly now, finish loading in background") { dismissed = true }
-                .buttonStyle(.borderless)
+                .buttonStyle(.text)
         }
         .padding(24)
         .frame(maxWidth: .infinity)
@@ -73,7 +73,7 @@ struct LookingForAircraft: View {
                 .foregroundStyle(theme.aircast.outdoorForeground)
                 .multilineTextAlignment(.center)
             Button("Add a link") { navigation.settingsPage = CONNECTION_SETTINGS }
-                .buttonStyle(.borderless)
+                .buttonStyle(.text)
         }
         .frame(maxWidth: LOOKING_MAX_WIDTH)
         .padding(16)

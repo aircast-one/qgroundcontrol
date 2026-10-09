@@ -189,7 +189,7 @@ struct SigningKeysSection: View {
                 Button("Delete") { confirmDelete = key.name }
             }
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(.text)
     }
 
     private func change(_ path: String, _ args: Any?...) {
@@ -255,7 +255,7 @@ private struct AddKeyDialog: View {
                             Button("Generate") {
                                 scope.launch { hex = await offMain { Qgc.invokeResult(SIGNING_GENERATE).textOrNil } ?? "" }
                             }
-                            .buttonStyle(.borderless)
+                            .buttonStyle(.text)
                         }
                         if !hex.isEmpty && hex.count != RAW_KEY_HEX_LENGTH {
                             Text("\(hex.count)/\(RAW_KEY_HEX_LENGTH) hex characters").font(.bodySmall).foregroundStyle(theme.colors.error)

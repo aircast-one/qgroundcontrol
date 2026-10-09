@@ -278,7 +278,7 @@ struct RcCameraControls: View {
                         let state = state
                         Task { state.gimbalRefused = await offMain { gimbalRefusal(Qgc.call("gimbal.center")) } }
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.text)
                 }
                 if rcGimbal {
                     Button("Recenter") {
@@ -287,7 +287,7 @@ struct RcCameraControls: View {
                         send(channels.tilt, PWM_CENTER)
                         send(channels.pan, PWM_CENTER)
                     }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.text)
                 }
             }
             if let gimbalRefused {

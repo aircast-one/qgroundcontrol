@@ -136,7 +136,7 @@ struct AdvancedToggle: View {
                 Image(open ? .arrowUp : .arrowDropDown)
             }
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(.text)
         .padding(8)
     }
 }

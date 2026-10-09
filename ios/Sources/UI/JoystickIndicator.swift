@@ -39,6 +39,7 @@ struct JoystickIndicatorCell: View {
                 .font(.labelMedium)
                 .foregroundOrInherited(tint)
                 .lineLimit(1)
+                .minimumTouchTarget()
                 .onTapGesture { open = true }
                 .background {
                     if open {

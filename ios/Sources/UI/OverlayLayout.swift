@@ -9,6 +9,7 @@ private let JIGGLE_DEGREES = 1.2
 private let JIGGLE_MILLIS = 120
 private let JIGGLE_SPREAD = 0x1f
 private let BADGE_SIZE: CGFloat = 24
+private let BADGE_TOUCH: CGFloat = 44
 private let HOLD_TO_EDIT_SECONDS = 0.5
 let RESET_ARM_MILLIS: Int64 = 4000
 
@@ -318,6 +319,7 @@ struct LayoutWidget<Content: View>: View {
                     .frame(width: BADGE_SIZE, height: BADGE_SIZE)
                     .background(hidden ? theme.colors.primary : theme.colors.inverseSurface, in: Circle())
                     .shadow(radius: 2)
+                    .contentShape(Rectangle().size(width: BADGE_TOUCH, height: BADGE_TOUCH).offset(y: BADGE_SIZE - BADGE_TOUCH))
             }
             .buttonStyle(.plain)
             .accessibilityLabel(hidden ? "Show" : "Hide")
@@ -353,13 +355,13 @@ private struct OverlayEditBarContent: View {
                 layout.valueSize = nextValueSize(layout.valueSize)
                 writeValueSize(instrumentVehicleClass(classView), layout.valueSize)
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.text)
             Button(resetPillText(armed)) {
                 let tap = resetTap(armed)
                 if tap.reset { layout.reset() }
                 armed = tap.armed
             }
-            .buttonStyle(.borderless)
+            .buttonStyle(.text)
             .foregroundStyle(armed ? theme.colors.error : theme.colors.primary)
             Spacer(minLength: 0)
             Button("Done") { layout.editing = false }

@@ -182,7 +182,7 @@ struct SettingsSheet: View {
                         .focused($searching)
                         .frame(maxWidth: .infinity)
                         .onAppear { searching = true }
-                    Button("Cancel") { query = nil }.buttonStyle(.borderless)
+                    Button("Cancel") { query = nil }.buttonStyle(.text)
                 } else {
                     if let drilledTitle {
                         Button(action: setupOpen ? setupBack : pageBack) { Image(.arrowBack).frame(width: 48, height: 48).contentShape(Rectangle()) }
@@ -369,6 +369,7 @@ struct FlySettingsButton: View {
                 .foregroundStyle(theme.aircast.outdoorForeground)
                 .osdShadow()
                 .frame(width: 48, height: 48)
+                .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Settings")
