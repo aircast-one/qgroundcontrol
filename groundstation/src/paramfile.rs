@@ -6,6 +6,7 @@ use crate::router::Backend;
 pub const FILE_SAVE: &str = "parameterFile.save";
 pub const FILE_REVIEW: &str = "parameterFile.review";
 pub const FILE_APPLY: &str = "parameterFile.apply";
+pub const HEADER_FIELDS: &str = "id,firmwareType,vehicleType,firmwareMajorVersion,firmwareMinorVersion,firmwarePatchVersion,firmwareVersionTypeString,gitHash";
 
 const MAV_PARAM_TYPE_REAL32: u8 = 9;
 const MAV_PARAM_TYPE_REAL64: u8 = 10;
@@ -99,7 +100,7 @@ fn names(backend: &dyn Backend, component: i64) -> Vec<String> {
 }
 
 pub fn save(backend: &dyn Backend) -> Value {
-    let vehicle = backend.value_fields("vehicle", "id,firmwareType,vehicleType,firmwareMajorVersion,firmwareMinorVersion,firmwarePatchVersion,firmwareVersionTypeString,gitHash");
+    let vehicle = backend.value_fields("vehicle", HEADER_FIELDS);
     let Some(id) = integer(&vehicle, "id") else { return json!({ "ok": false, "reason": "No vehicle is connected." }) };
     let whole = |key: &str| integer(&vehicle, key).unwrap_or(0);
     let header = [

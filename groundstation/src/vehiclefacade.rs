@@ -230,6 +230,7 @@ fn motor_count(mav_type: u8, sub_frame: Option<f64>) -> Option<i64> {
 
 fn firmware_fields(autopilot: u8, firmware: Option<crate::connect::Firmware>) -> Value {
     let custom = firmware.as_ref().and_then(|f| f.custom);
+    let git_hash = firmware.as_ref().map(|f| f.git_hash.clone()).unwrap_or_default();
     let version = firmware.and_then(|f| f.version);
     let part = |pick: fn((u8, u8, u8, u8)) -> u8| version.map_or(-1, |v| i64::from(pick(v)));
     let custom_part = |pick: fn((u8, u8, u8)) -> u8| custom.map_or(-1, |c| i64::from(pick(c)));
@@ -252,6 +253,7 @@ fn firmware_fields(autopilot: u8, firmware: Option<crate::connect::Firmware>) ->
             Some(192) => "rc",
             _ => "",
         },
+        "gitHash": git_hash,
     })
 }
 
@@ -622,6 +624,8 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         (fields, _) => fields,
     };
     let described = json!({
+        "firmwareType": v.autopilot,
+        "vehicleType": v.vehicle_type,
         "vehicleTypeString": mav_type_text(v.vehicle_type),
         "airship": v.vehicle_type == 7,
     });
@@ -2037,6 +2041,14 @@ mod tests {
     }
 
     #[test]
+    fn the_core_alone_answers_a_parameter_file_header() {
+        let known = super::known_of(&crate::hub::Vehicle::heard(1));
+        let (answered, missing) = super::answer_fields("vehicle", crate::paramfile::HEADER_FIELDS, &known);
+        assert!(missing.is_empty(), "with no Qt host a fall-through turns the whole vehicle null: {missing:?}");
+        assert_eq!(answered.get("id"), Some(&serde_json::json!(1)));
+    }
+
+    #[test]
     fn one_render_pass_builds_a_vehicles_facts_once_and_forgets_them_after() {
         let vehicle = crate::hub::Vehicle::heard(1);
         let (first, second, nested) = super::one_pass(|| (super::known(&vehicle), super::known(&vehicle), super::one_pass(|| super::known(&vehicle))));
@@ -2155,8 +2167,9 @@ mod tests {
         assert_eq!(motor_count(12, sub_frame(None, true)), Some(6), "a sub with no FRAME_CONFIG, as PX4 sends, reads frame 0 the way Qt's missing parameter does");
         let unknown = firmware_fields(3, None);
         assert_eq!((unknown["firmwareMajorVersion"].as_i64(), unknown["firmwareVersionTypeString"].as_str(), unknown["firmwareTypeString"].as_str()), (Some(-1), Some(""), Some("ArduPilot")));
-        let beta = firmware_fields(12, Some(crate::connect::Firmware { version: Some((1, 15, 2, 128)), custom: None, git_hash: String::new() }));
-        assert_eq!((beta["firmwareMinorVersion"].as_i64(), beta["firmwareVersionTypeString"].as_str(), beta["firmwareTypeString"].as_str()), (Some(15), Some("beta"), Some("PX4 Pro")));
+        let beta = firmware_fields(12, Some(crate::connect::Firmware { version: Some((1, 15, 2, 128)), custom: None, git_hash: "9f3c0a1b".to_string() }));
+        assert_eq!((beta["firmwareMinorVersion"].as_i64(), beta["firmwareVersionTypeString"].as_str(), beta["firmwareTypeString"].as_str(), beta["gitHash"].as_str()), (Some(15), Some("beta"), Some("PX4 Pro"), Some("9f3c0a1b")));
+        assert_eq!(unknown["gitHash"].as_str(), Some(""), "Vehicle::gitHash is empty until AUTOPILOT_VERSION arrives");
     }
 
     #[test]
