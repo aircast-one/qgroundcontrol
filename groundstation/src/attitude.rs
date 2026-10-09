@@ -13,7 +13,11 @@ pub const DEPS: &[&str] = &[
     "vehicle.gps.courseOverGround",
     "settings.flyViewSettings.showAdditionalIndicatorsCompass",
     "settings.flyViewSettings.lockNoseUpCompass",
+    "vehicle.coordinate",
+    "positionManager.gcsPosition",
 ];
+
+const SAME_SPOT_M: f64 = 2.0;
 
 const COG_MINIMUM_SPEED: f64 = 0.5;
 
@@ -25,6 +29,17 @@ fn raw(backend: &dyn Backend, path: &str) -> Option<f64> {
 fn setting(backend: &dyn Backend, name: &str) -> bool {
     let fact = backend.value(&format!("settings.flyViewSettings.{name}"));
     fact.get("value").is_some_and(|v| v.as_bool().unwrap_or_else(|| v.as_f64().is_some_and(|n| n != 0.0)))
+}
+
+fn point(backend: &dyn Backend, path: &str) -> Option<(f64, f64)> {
+    let at = backend.value(path);
+    let valid = at.get("valid").and_then(Value::as_bool).unwrap_or(true);
+    Some((at.get("latitude")?.as_f64()?, at.get("longitude")?.as_f64()?)).filter(|(lat, lon)| valid && lat.is_finite() && lon.is_finite() && (*lat, *lon) != (0.0, 0.0))
+}
+
+pub fn pilot_bearing(aircraft: Option<(f64, f64)>, pilot: Option<(f64, f64)>) -> Option<f64> {
+    let (from, to) = (aircraft?, pilot?);
+    (crate::track::distance_m(from, to) >= SAME_SPOT_M).then(|| crate::track::azimuth_deg(from, to))
 }
 
 pub fn heading_text(heading: f64) -> String {
@@ -51,6 +66,8 @@ pub fn attitude_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "headingToHome": shown(raw(backend, "vehicle.headingToHome"), additional),
         "headingToNextWaypoint": shown(raw(backend, "vehicle.headingToNextWP"), additional),
         "noseUp": setting(backend, "lockNoseUpCompass"),
+        "homeBearing": raw(backend, "vehicle.headingToHome").map_or(Value::Null, |v| json!(v)),
+        "pilotBearing": pilot_bearing(point(backend, "vehicle.coordinate"), point(backend, "positionManager.gcsPosition")).map_or(Value::Null, |v| json!(v)),
     })
 }
 
@@ -98,6 +115,15 @@ mod tests {
         assert_eq!(view["headingToNextWaypoint"], Value::Null, "a NaN bearing (no next waypoint) hides its pointer");
         let slow = vehicle(&[("settings.flyViewSettings.showAdditionalIndicatorsCompass", json!(true)), ("vehicle.groundSpeed", json!(0.4))]);
         assert_eq!(attitude_view(&slow, &[])["courseOverGround"], Value::Null, "course over ground means nothing below 0.5 m/s, so QGC hides it");
+    }
+
+    #[test]
+    fn the_dial_always_knows_home_and_points_at_the_pilot() {
+        assert_eq!(attitude_view(&vehicle(&[]), &[])["homeBearing"], 190.0, "home shows on the flight dial whatever the QGC compass setting, as DJI's navigation display does");
+        let east = pilot_bearing(Some((41.7, 44.8)), Some((41.7, 44.801))).unwrap();
+        assert!((east - 90.0).abs() < 0.5, "a pilot due east is at 90 degrees, got {east}");
+        assert_eq!(pilot_bearing(Some((41.7, 44.8)), Some((41.7, 44.8))), None, "standing on the aircraft there is no direction to point");
+        assert_eq!(pilot_bearing(None, Some((41.7, 44.8))), None);
     }
 
     #[test]

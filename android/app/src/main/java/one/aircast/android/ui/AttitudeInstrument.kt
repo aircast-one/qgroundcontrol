@@ -43,6 +43,8 @@ internal data class Attitude(
     val headingToHome: Float?,
     val headingToNextWaypoint: Float?,
     val noseUp: Boolean,
+    val homeBearing: Float? = null,
+    val pilotBearing: Float? = null,
 )
 
 private fun JSONObject.optAngle(key: String): Float? =
@@ -61,6 +63,8 @@ internal fun attitude(view: JSONObject?): Attitude? =
             headingToHome = it.optAngle("headingToHome"),
             headingToNextWaypoint = it.optAngle("headingToNextWaypoint"),
             noseUp = it.optBoolean("noseUp"),
+            homeBearing = it.optAngle("homeBearing"),
+            pilotBearing = it.optAngle("pilotBearing"),
         )
     }
 
@@ -79,6 +83,7 @@ private const val OSD_CHEVRON_TIP = 0.42f
 private const val OSD_CHEVRON_WING = 0.3f
 private const val OSD_CHEVRON_NOTCH = 0.14f
 private val OSD_NORTH = Color(0xFFFF4D4D)
+private val ROOMY_DIAL = 96.dp
 
 @Composable
 internal fun OsdCompassDial(size: androidx.compose.ui.unit.Dp, modifier: Modifier = Modifier) {
@@ -89,6 +94,8 @@ internal fun OsdCompassDial(size: androidx.compose.ui.unit.Dp, modifier: Modifie
     val home = MaterialTheme.aircast.success
     val north = TextStyle(color = OSD_NORTH, fontSize = 11.sp, fontWeight = FontWeight.Bold)
     val homeStyle = TextStyle(color = MaterialTheme.aircast.onSuccess, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+    val pilot = MaterialTheme.colorScheme.primary
+    val roomy = size >= ROOMY_DIAL
     val headingStyle = TextStyle(color = white, fontSize = 11.sp, fontWeight = FontWeight.Bold)
     Canvas(modifier.size(size).semantics { contentDescription = "Heading ${reading.headingText}" }) {
         val radius = this.size.minDimension / 2f
@@ -109,10 +116,15 @@ internal fun OsdCompassDial(size: androidx.compose.ui.unit.Dp, modifier: Modifie
                 strokeWidth = 1.5.dp.toPx(),
             )
         }
+        reading.pilotBearing?.let { bearing ->
+            val at = pointOnRing(center, radius - 8.dp.toPx(), bearing)
+            drawCircle(white, radius = 5.dp.toPx(), center = at)
+            drawCircle(pilot, radius = 3.5.dp.toPx(), center = at)
+        }
         val n = measurer.measure("N", north)
         val northAt = pointOnRing(center, radius - 15.dp.toPx(), 0f)
         drawText(n, topLeft = northAt - Offset(n.size.width / 2f, n.size.height / 2f))
-        reading.headingToHome?.let { bearing ->
+        (reading.homeBearing ?: reading.headingToHome)?.let { bearing ->
             val at = pointOnRing(center, radius - 8.dp.toPx(), bearing)
             val letter = measurer.measure("H", homeStyle)
             drawCircle(home, radius = 7.dp.toPx(), center = at)
@@ -129,7 +141,7 @@ internal fun OsdCompassDial(size: androidx.compose.ui.unit.Dp, modifier: Modifie
             drawPath(chevron, white)
             drawPath(chevron, Color.Black.copy(alpha = OSD_DIAL_SCRIM), style = Stroke(1.dp.toPx()))
         }
-        if (reading.headingText.isNotBlank()) {
+        if (roomy && reading.headingText.isNotBlank()) {
             val text = measurer.measure(reading.headingText, headingStyle)
             drawText(text, topLeft = Offset(center.x - text.size.width / 2f, center.y + radius * 0.5f))
         }

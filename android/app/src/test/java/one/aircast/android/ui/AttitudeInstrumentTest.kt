@@ -31,6 +31,14 @@ class AttitudeInstrumentTest {
     }
 
     @Test
+    fun `the dial reads home and the pilot whatever the compass setting`() {
+        val read = attitude(JSONObject("""{"available":true,"heading":10,"homeBearing":190,"pilotBearing":45.5,"headingToHome":null}"""))!!
+        assertEquals(190f, read.homeBearing)
+        assertEquals(45.5f, read.pilotBearing)
+        assertNull(attitude(JSONObject("""{"available":true,"heading":10,"homeBearing":null,"pilotBearing":null}"""))!!.pilotBearing)
+    }
+
+    @Test
     fun `pitch moves the horizon by the span QGC uses`() {
         assertEquals(40f, pitchOffset(45f, 20f))
         assertEquals(0f, pitchOffset(0f, 20f))

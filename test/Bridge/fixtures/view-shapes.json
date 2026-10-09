@@ -10002,8 +10002,10 @@
         "headingText": "string",
         "headingToHome": "null",
         "headingToNextWaypoint": "null",
+        "homeBearing": "number|null",
         "kind": "string",
         "noseUp": "bool",
+        "pilotBearing": "number|null",
         "pitch": "number",
         "roll": "number"
     },
