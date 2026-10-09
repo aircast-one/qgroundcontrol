@@ -60,6 +60,14 @@ class CamerasTest {
     }
 
     @Test
+    fun `the synthetic view is offered by its own name, not as one of the phone's cameras`() {
+        val synthetic = CameraKind(raw = SYNTHETIC_SOURCE, label = SYNTHETIC_SOURCE, group = "This device", needsUrl = false, hint = "")
+        assertEquals("Synthetic view", otherSourceLabel(synthetic))
+        assertEquals("it is added under its own name rather than as Camera N", "Synthetic view", otherSourceName(synthetic))
+        assertEquals("", otherSourceName(synthetic.copy(raw = "Front Camera")))
+    }
+
+    @Test
     fun `an address is classified by the core, and an ambiguous one lets the operator pick`() {
         val ambiguous = cameraGuess(
             JSONObject(

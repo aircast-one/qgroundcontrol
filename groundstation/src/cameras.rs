@@ -3,7 +3,7 @@ use std::sync::{Mutex, PoisonError};
 use serde_json::{Value, json};
 
 use crate::router::Backend;
-use crate::videostate::{DEVICE_CAMERAS, SIGNAL_IDLE, SOURCE_DISABLED, SOURCE_MPEGTS, SOURCE_RTSP, SOURCE_TCP, SOURCE_UDP_H264, SOURCE_UDP_H265, SOURCE_WEBRTC, URL_SOURCES, needs_url, source_usable};
+use crate::videostate::{DEVICE_CAMERAS, SIGNAL_IDLE, SIGNAL_LIVE, SOURCE_SYNTHETIC, SOURCE_DISABLED, SOURCE_MPEGTS, SOURCE_RTSP, SOURCE_TCP, SOURCE_UDP_H264, SOURCE_UDP_H265, SOURCE_WEBRTC, URL_SOURCES, needs_url, source_usable};
 
 pub const CAMERAS_FACT: &str = "cameras";
 pub const ACTIVE_FACT: &str = "activeVideoSource";
@@ -176,7 +176,7 @@ fn inferred(source: &str, url: &str) -> Result<String, &'static str> {
 
 fn group(source: &str) -> &'static str {
     match () {
-        _ if DEVICE_CAMERAS.contains(&source) => GROUP_DEVICE,
+        _ if DEVICE_CAMERAS.contains(&source) || source == SOURCE_SYNTHETIC => GROUP_DEVICE,
         _ if needs_url(source) => GROUP_STREAMS,
         _ => GROUP_PRESETS,
     }
@@ -455,7 +455,7 @@ pub fn view_of(video: &Value, stored: Option<Vec<Camera>>, stored_active: i64, p
                 "problem": (!from_drone).then(|| problem(&camera.source, &camera.url)).flatten(),
                 "fromDrone": from_drone,
                 "active": *slot as i64 == active,
-                "status": signals.get(*slot).map_or(SIGNAL_IDLE, String::as_str),
+                "status": if camera.source == SOURCE_SYNTHETIC { SIGNAL_LIVE } else { signals.get(*slot).map_or(SIGNAL_IDLE, String::as_str) },
             })
         })
         .collect();
@@ -594,6 +594,16 @@ mod tests {
         assert_eq!(rows.iter().map(|row| (row["title"].clone(), row["stored"].clone(), row["fromDrone"].clone(), row["active"].clone())).collect::<Vec<_>>(), vec![(json!("Front"), json!(0), json!(false), json!(false)), (json!("SIYI A8"), Value::Null, json!(true), json!(true))]);
         let unreadable = view_of(&video, None, 0, false);
         assert_eq!((unreadable["readable"].clone(), unreadable["reason"].clone(), unreadable["cameras"].as_array().map(Vec::len)), (json!(false), json!(UNREADABLE), Some(1)), "drone cameras still show while the operator's list cannot be read");
+    }
+
+    #[test]
+    fn a_synthetic_view_is_a_camera_drawn_here_that_streams_nothing() {
+        let video = json!({ "activeVideoSource": 0, "cameraSignals": ["noSignal"] });
+        let row = view_of(&video, Some(vec![cam("Synthetic", SOURCE_SYNTHETIC, "")]), 0, false)["cameras"][0].clone();
+        assert_eq!(row["status"].as_str(), Some(SIGNAL_LIVE), "it is drawn on this device, so it is always ready");
+        assert_eq!(group(SOURCE_SYNTHETIC), GROUP_DEVICE);
+        assert!(source_usable(SOURCE_SYNTHETIC, "") && !needs_url(SOURCE_SYNTHETIC));
+        assert_eq!(crate::videostate::source_uri(SOURCE_SYNTHETIC, ""), "", "no pipeline starts for it, so the head draws it where the picture would be");
     }
 
     #[test]

@@ -34,6 +34,7 @@ pub const SOURCE_HERELINK_HOTSPOT: &str = "Herelink Hotspot";
 pub const SOURCE_BACK_CAMERA: &str = "Back Camera";
 pub const SOURCE_FRONT_CAMERA: &str = "Front Camera";
 pub const DEVICE_CAMERAS: &[&str] = &[SOURCE_BACK_CAMERA, SOURCE_FRONT_CAMERA];
+pub const SOURCE_SYNTHETIC: &str = "Synthetic View";
 pub const DEVICE_CAMERA_SCHEME: &str = "ahc://";
 
 pub const STREAM_SOURCES: &[&str] = &[
@@ -98,6 +99,7 @@ pub fn source_token(source: &str) -> &'static str {
         SOURCE_HERELINK_HOTSPOT => "herelinkHotspot",
         SOURCE_BACK_CAMERA => "backCamera",
         SOURCE_FRONT_CAMERA => "frontCamera",
+        SOURCE_SYNTHETIC => "synthetic",
         SOURCE_DISABLED => "disabled",
         SOURCE_NO_VIDEO => "noVideo",
         _ => "unknown",
@@ -116,7 +118,7 @@ pub fn source_usable(source: &str, url: &str) -> bool {
     match source {
         SOURCE_NO_VIDEO | SOURCE_DISABLED => false,
         _ if needs_url(source) => !url.is_empty(),
-        SOURCE_HERELINK_AIR_UNIT | SOURCE_HERELINK_HOTSPOT | SOURCE_BACK_CAMERA | SOURCE_FRONT_CAMERA => true,
+        SOURCE_HERELINK_AIR_UNIT | SOURCE_HERELINK_HOTSPOT | SOURCE_BACK_CAMERA | SOURCE_FRONT_CAMERA | SOURCE_SYNTHETIC => true,
         _ => false,
     }
 }

@@ -35,6 +35,7 @@ import org.json.JSONObject
 
 internal const val SYNTHETIC_VIEW = "view.syntheticView"
 internal const val SYNTHETIC_LABEL = "Synthetic view"
+internal const val SYNTHETIC_SOURCE = "Synthetic View"
 private const val SYNTHETIC_PAGE = "https://${WebViewAssetLoader.DEFAULT_DOMAIN}/assets/synthetic/index.html"
 private val ANY_ORIGIN = mapOf("Access-Control-Allow-Origin" to "*")
 

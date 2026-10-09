@@ -135,8 +135,13 @@ internal fun otherSources(reading: CamerasReading?): List<CameraKind> =
         .filter { kind -> !kind.needsUrl && reading?.stored.orEmpty().none { it.source == kind.raw } }
         .sortedBy { it.group != CAMERA_GROUP_DEVICE }
 
-internal fun otherSourceLabel(kind: CameraKind): String =
-    if (kind.group == CAMERA_GROUP_DEVICE) "This phone's ${kindLabel(kind.label).lowercase()}" else kindLabel(kind.label)
+internal fun otherSourceLabel(kind: CameraKind): String = when {
+    kind.raw == SYNTHETIC_SOURCE -> SYNTHETIC_LABEL
+    kind.group == CAMERA_GROUP_DEVICE -> "This phone's ${kindLabel(kind.label).lowercase()}"
+    else -> kindLabel(kind.label)
+}
+
+internal fun otherSourceName(kind: CameraKind): String = if (kind.raw == SYNTHETIC_SOURCE) SYNTHETIC_LABEL else ""
 
 internal fun kindLabel(label: String): String = sentenceCase(label.removeSuffix(" Video Stream").ifBlank { label })
 

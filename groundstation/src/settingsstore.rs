@@ -975,7 +975,7 @@ const STREAM_SOURCE_ORDER: [&str; 6] = ["RTSP Video Stream", "UDP h.264 Video St
 const FIXED_SOURCES: [&str; 4] = [crate::videostate::SOURCE_3DR_SOLO, crate::videostate::SOURCE_PARROT_DISCOVERY, crate::videostate::SOURCE_YUNEEC_MANTIS_G, crate::videostate::SOURCE_HERELINK_HOTSPOT];
 
 #[cfg(target_os = "android")]
-const PLATFORM_CAMERAS: &[&str] = crate::videostate::DEVICE_CAMERAS;
+const PLATFORM_CAMERAS: &[&str] = &[crate::videostate::SOURCE_BACK_CAMERA, crate::videostate::SOURCE_FRONT_CAMERA, crate::videostate::SOURCE_SYNTHETIC];
 #[cfg(not(target_os = "android"))]
 const PLATFORM_CAMERAS: &[&str] = &[];
 
