@@ -22,18 +22,27 @@ internal fun phoneSsid(raw: String?): String? =
 private fun legacySsid(context: Context): String? =
     runCatching { context.applicationContext.getSystemService(WifiManager::class.java)?.connectionInfo?.ssid }.getOrNull()
 
+internal data class PhoneWifi(val ssid: String?, val secured: Boolean?)
+
+internal fun securedFrom(securityType: Int): Boolean? = when (securityType) {
+    WifiInfo.SECURITY_TYPE_UNKNOWN -> null
+    WifiInfo.SECURITY_TYPE_OPEN, WifiInfo.SECURITY_TYPE_OWE -> false
+    else -> true
+}
+
 @Composable
-internal fun rememberPhoneSsid(): State<String?> {
+internal fun rememberPhoneWifi(): State<PhoneWifi> {
     val context = LocalContext.current
-    return produceState<String?>(initialValue = null, context) {
+    return produceState(initialValue = PhoneWifi(null, null), context) {
         val connectivity = context.getSystemService(ConnectivityManager::class.java)
         if (connectivity == null || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-            value = phoneSsid(legacySsid(context))
+            value = PhoneWifi(phoneSsid(legacySsid(context)), null)
             return@produceState
         }
         val callback = object : ConnectivityManager.NetworkCallback(FLAG_INCLUDE_LOCATION_INFO) {
             override fun onCapabilitiesChanged(network: Network, capabilities: NetworkCapabilities) {
-                value = phoneSsid((capabilities.transportInfo as? WifiInfo)?.ssid) ?: value
+                val info = capabilities.transportInfo as? WifiInfo ?: return
+                value = PhoneWifi(phoneSsid(info.ssid) ?: value.ssid, securedFrom(info.currentSecurityType))
             }
         }
         val request = NetworkRequest.Builder().addTransportType(NetworkCapabilities.TRANSPORT_WIFI).build()

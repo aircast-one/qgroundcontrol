@@ -1,5 +1,7 @@
 package one.aircast.android.ui
 
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -36,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -47,6 +50,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import one.aircast.android.BuildConfig
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainInOrder
 import one.aircast.map.aircast
@@ -71,6 +75,16 @@ internal const val FLASHER_DISK_POLL_MS = 2_000L
 internal const val FLASHER_PASSWORD_MODE = "password"
 internal val FLASHER_FINISHED = setOf("done", "failed", "cancelled")
 internal val FLASHER_SETUP_FIELDS = setOf("hostname", "ssid", "wifiPassword", "devicePassword", "authorizedKey", "controlServer")
+internal val FLASHER_MORE_FIELDS = setOf("authorizedKey", "controlServer")
+internal val FLASHER_FIELD_LABELS = mapOf(
+    "hostname" to "Drone name",
+    "ssid" to "WiFi network",
+    "wifiPassword" to "WiFi password",
+    "devicePassword" to "Password for pi",
+    "authorizedKey" to "SSH public key",
+    "controlServer" to "Headscale server",
+)
+internal val FLASHER_MORE_ROWS = setOf("Image", "Remote access")
 
 internal enum class FlasherStep(val title: String) { Card("Card"), Setup("Setup"), Write("Write") }
 
@@ -119,6 +133,9 @@ internal data class FlasherState(
     val hostname: String,
     val canStart: Boolean,
     val blocked: String,
+    val firstProblemField: String = "",
+    val firstProblem: String = "",
+    val remainingText: String = "",
 )
 
 private fun JSONArray?.objects(): List<JSONObject> = this?.let { array -> (0 until array.length()).mapNotNull(array::optJSONObject) }.orEmpty()
@@ -190,6 +207,9 @@ internal fun flasherState(json: JSONObject?): FlasherState? {
         hostname = job?.optText("hostname").orEmpty(),
         canStart = view.optBoolean("canStart"),
         blocked = view.optText("blocked"),
+        firstProblemField = view.optJSONObject("firstProblem")?.optText("field").orEmpty(),
+        firstProblem = view.optJSONObject("firstProblem")?.optText("message").orEmpty(),
+        remainingText = job?.optText("remainingText").orEmpty(),
     )
 }
 
@@ -222,13 +242,38 @@ internal fun meteredNote(release: FlasherRelease?, downloadState: String, metere
 
 internal val FLASHER_SSH_MODES = listOf("password" to "Password", "key-only" to "SSH key", "disabled" to "Off")
 
+internal fun problemNote(state: FlasherState): String =
+    state.firstProblem.takeIf { it.isNotBlank() }?.let { message -> FLASHER_FIELD_LABELS[state.firstProblemField]?.let { "$it: $message" } ?: message }.orEmpty()
+
+internal fun problemInMoreOptions(state: FlasherState): Boolean = state.firstProblemField in FLASHER_MORE_FIELDS
+
+internal fun previousStep(step: FlasherStep, busy: Boolean, phase: String): FlasherStep? =
+    step.takeIf { it != FlasherStep.Card && !busy && phase !in FLASHER_FINISHED }?.let { FlasherStep.entries[it.ordinal - 1] }
+
+internal fun showsChannels(debug: Boolean, channel: String): Boolean = debug || channel != "stable"
+
+internal fun keepsScreenOn(state: FlasherState?): Boolean = state != null && (state.busy || state.downloadState == "running")
+
+internal fun nextSteps(ssid: String, hostname: String, noWifi: Boolean): List<String> = listOf(
+    "Unplug the reader, put the card in the drone and power it on.",
+    when {
+        noWifi -> "Give it about 3 minutes for its first boot on Ethernet or cellular."
+        else -> "Give it about 3 minutes for its first boot. It joins $ssid by itself."
+    },
+    hostname.takeIf { it.isNotBlank() }?.let { "Open http://$it.local on a phone or computer on the same network to see the drone and its links." }
+        ?: "Find it on your network under the image's default name.",
+)
+
 private fun patch(key: String, value: Any) = offMainInOrder { Qgc.refusalOf(FLASHER_FORM, JSONObject().put(key, value)) }
 
 @Composable
 fun FlasherScreen(modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
     val context = LocalContext.current
-    val phoneSsid by rememberPhoneSsid()
+    val phoneWifi by rememberPhoneWifi()
+    val phoneSsid = phoneWifi.ssid
+    val view = LocalView.current
+    var more by remember { mutableStateOf(false) }
     var state by remember { mutableStateOf<FlasherState?>(null) }
     var form by remember { mutableStateOf<FlasherForm?>(null) }
     var step by remember { mutableStateOf(FlasherStep.Card) }
@@ -269,11 +314,22 @@ fun FlasherScreen(modifier: Modifier = Modifier) {
             patch("ssid", ssid)
         }
     }
+    LaunchedEffect(phoneWifi, form == null) {
+        if (form != null) patch("securedSsid", phoneWifi.ssid?.takeIf { phoneWifi.secured == true }.orEmpty())
+    }
+    val awake = keepsScreenOn(state)
+    DisposableEffect(awake) {
+        view.keepScreenOn = awake
+        onDispose { view.keepScreenOn = false }
+    }
     val busy by rememberUpdatedState(state?.busy == true)
     DisposableEffect(Unit) {
         onDispose { if (busy) offMainInOrder { Qgc.invoke(FLASHER_CANCEL) } }
     }
     BlocksNavigation(state?.busy == true, "Wait for the card to finish writing or cancel it first")
+    val back = previousStep(step, state?.busy == true, state?.phase.orEmpty())
+    BackHandler(enabled = back != null) { back?.let { step = it } }
+    if (back != null) OverridePageHeading(FLASHER_PAGE) { step = back }
 
     val command: (String, Array<Any>) -> Unit = { path, args ->
         scope.launch { refusal = withContext(Dispatchers.Default) { Qgc.refusalOf(path, *args) }.orEmpty() }
@@ -288,7 +344,7 @@ fun FlasherScreen(modifier: Modifier = Modifier) {
     val current = state
     val fields = form
     Column(modifier.fillMaxSize()) {
-        StepHeader(step)
+        StepHeader(step, onStep = { chosen -> if (back != null && chosen.ordinal < step.ordinal) step = chosen })
         HorizontalDivider()
         if (current == null || fields == null) {
             Text("Loading…", Modifier.padding(16.dp))
@@ -306,6 +362,8 @@ fun FlasherScreen(modifier: Modifier = Modifier) {
                     state = current,
                     form = fields,
                     phoneSsid = phoneSsid,
+                    more = more,
+                    onMore = { more = !more },
                     problems = visibleProblems(current.problems, touched, showAllProblems),
                     meteredNote = meteredNote(release, current.downloadState, metered),
                     edit = edit,
@@ -313,7 +371,10 @@ fun FlasherScreen(modifier: Modifier = Modifier) {
                     onChannel = { command(FLASHER_CHANNEL, arrayOf(it)) },
                     onDownload = startDownload,
                 )
-                FlasherStep.Write -> WriteStep(current, meteredNote(release, current.downloadState, metered))
+                FlasherStep.Write -> WriteStep(current, fields, meteredNote(release, current.downloadState, metered), onChange = { row ->
+                    if (row in FLASHER_MORE_ROWS) more = true
+                    step = if (row == "Card") FlasherStep.Card else FlasherStep.Setup
+                })
             }
         }
         HorizontalDivider()
@@ -321,6 +382,7 @@ fun FlasherScreen(modifier: Modifier = Modifier) {
             step = step,
             state = current,
             refusal = refusal,
+            setupNote = if (showAllProblems) problemNote(current) else "",
             onBack = {
                 refusal = ""
                 step = FlasherStep.entries[step.ordinal - 1]
@@ -334,6 +396,7 @@ fun FlasherScreen(modifier: Modifier = Modifier) {
                     }
                     FlasherStep.Setup -> {
                         showAllProblems = true
+                        if (problemInMoreOptions(current)) more = true
                         if (setupComplete(current.problems)) step = FlasherStep.Write
                     }
                     FlasherStep.Write -> command(FLASHER_START, emptyArray())
@@ -361,11 +424,12 @@ fun FlasherScreen(modifier: Modifier = Modifier) {
 }
 
 @Composable
-private fun StepHeader(step: FlasherStep) {
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 12.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+private fun StepHeader(step: FlasherStep, onStep: (FlasherStep) -> Unit) {
+    Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 4.dp), horizontalArrangement = Arrangement.SpaceBetween) {
         FlasherStep.entries.forEach { each ->
             Text(
                 "${if (each.ordinal < step.ordinal) "✓" else "${each.ordinal + 1}"}  ${each.title}",
+                modifier = Modifier.clickable(enabled = each.ordinal < step.ordinal) { onStep(each) }.padding(horizontal = 8.dp, vertical = 8.dp),
                 style = MaterialTheme.typography.labelLarge,
                 fontWeight = if (each == step) FontWeight.Bold else FontWeight.Normal,
                 color = if (each.ordinal <= step.ordinal) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
@@ -375,10 +439,11 @@ private fun StepHeader(step: FlasherStep) {
 }
 
 @Composable
-private fun StepActions(step: FlasherStep, state: FlasherState, refusal: String, onBack: () -> Unit, onContinue: () -> Unit, onCancel: () -> Unit, onAgain: () -> Unit) {
+private fun StepActions(step: FlasherStep, state: FlasherState, refusal: String, setupNote: String, onBack: () -> Unit, onContinue: () -> Unit, onCancel: () -> Unit, onAgain: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         val note = when {
             refusal.isNotBlank() -> refusal
+            step == FlasherStep.Setup && setupNote.isNotBlank() -> setupNote
             step == FlasherStep.Write && !state.busy && state.phase !in FLASHER_FINISHED -> state.blocked
             else -> ""
         }
@@ -453,6 +518,8 @@ private fun SetupStep(
     state: FlasherState,
     form: FlasherForm,
     phoneSsid: String?,
+    more: Boolean,
+    onMore: () -> Unit,
     problems: Map<String, String>,
     meteredNote: String?,
     edit: (FlasherForm, String, Any) -> Unit,
@@ -460,11 +527,10 @@ private fun SetupStep(
     onChannel: (String) -> Unit,
     onDownload: () -> Unit,
 ) {
-    var more by remember { mutableStateOf(false) }
     Heading("Set up the drone", "These are applied on the drone's first boot, so it joins your network by itself.")
     Field("Drone name", form.hostname, problems["hostname"], help = form.hostname.takeIf { it.isNotBlank() }?.let { "It answers at $it.local" }) { edit(form.copy(hostname = it), "hostname", it) }
     if (!form.noWifi) {
-        Field("WiFi network", form.ssid, problems["ssid"]) { edit(form.copy(ssid = it), "ssid", it) }
+        Field("WiFi network", form.ssid, problems["ssid"], help = "This phone's current network".takeIf { phoneSsid != null && form.ssid == phoneSsid }) { edit(form.copy(ssid = it), "ssid", it) }
         phoneSsid?.takeIf { it != form.ssid }?.let { ssid ->
             AssistChip(onClick = { edit(form.copy(ssid = ssid), "ssid", ssid) }, label = { Text("Use $ssid") }, modifier = Modifier.padding(horizontal = 16.dp))
         }
@@ -477,10 +543,10 @@ private fun SetupStep(
         modifier = Modifier.selectable(selected = form.noWifi, onClick = { edit(form.copy(noWifi = !form.noWifi), "noWifi", !form.noWifi) }),
     )
     if (form.sshMode == FLASHER_PASSWORD_MODE) {
-        Field("Password for pi", form.devicePassword, problems["devicePassword"], help = "Leave empty to keep the image's default login", secret = true) { edit(form.copy(devicePassword = it), "devicePassword", it) }
+        Field("Password for pi", form.devicePassword, problems["devicePassword"], help = "At least 8 characters. You sign in to the drone as pi with it.", secret = true) { edit(form.copy(devicePassword = it), "devicePassword", it) }
     }
     DownloadLine(state, meteredNote, onDownload)
-    TextButton(onClick = { more = !more }, modifier = Modifier.padding(horizontal = 8.dp)) { Text(if (more) "Fewer options" else "More options") }
+    TextButton(onClick = onMore, modifier = Modifier.padding(horizontal = 8.dp)) { Text(if (more) "Fewer options" else "More options") }
     if (more) MoreOptions(state, form, problems, edit, onSelect, onChannel)
 }
 
@@ -508,7 +574,7 @@ private fun MoreOptions(state: FlasherState, form: FlasherForm, problems: Map<St
         )
     }
     if (state.releasesState == "failed") Text(state.releasesError, color = MaterialTheme.aircast.warning, modifier = Modifier.padding(horizontal = 16.dp))
-    Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    if (showsChannels(BuildConfig.DEBUG, state.channel)) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         state.channels.forEach { channel ->
             FilterChip(selected = channel == state.channel, onClick = { onChannel(channel) }, label = { Text(channel.replaceFirstChar { it.titlecase(Locale.ROOT) }) })
         }
@@ -539,19 +605,21 @@ private fun SubHeading(text: String) {
 }
 
 @Composable
-private fun WriteStep(state: FlasherState, meteredNote: String?) {
+private fun WriteStep(state: FlasherState, form: FlasherForm, meteredNote: String?, onChange: (String) -> Unit) {
     when {
         state.busy -> Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
             Text(flasherPhaseLabel(state.phase), style = MaterialTheme.typography.titleLarge)
             LinearProgressIndicator(progress = { state.percent / 100f }, modifier = Modifier.fillMaxWidth())
-            Text(listOf("${state.percent.toInt()}%", state.speedText).filter { it.isNotBlank() }.joinToString(" · "), style = MaterialTheme.typography.bodyMedium)
+            Text(listOf("${state.percent.toInt()}%", state.speedText, state.remainingText).filter { it.isNotBlank() }.joinToString(" · "), style = MaterialTheme.typography.bodyMedium)
             Text("Keep the card reader plugged in until this finishes.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        state.phase == "done" -> Heading(
-            "Card ready",
-            "Unplug the reader, put the card in the drone and power it on. It joins the network as " +
-                (state.hostname.takeIf { it.isNotBlank() }?.let { "$it.local" } ?: "the image's default name") + " within a few minutes.",
-        )
+        state.phase == "done" -> Column(Modifier.fillMaxWidth()) {
+            Heading("Card ready", "The card is written and checked. It's safe to unplug the reader.")
+            SubHeading("What happens next")
+            nextSteps(form.ssid.trim(), state.hostname, form.noWifi).forEachIndexed { index, line ->
+                Text("${index + 1}. $line", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))
+            }
+        }
         state.phase == "failed" -> Column(Modifier.fillMaxWidth()) {
             Heading("Writing failed", "The card is not usable as it is. Fix the problem below and write it again.")
             Text(state.jobError, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.aircast.warning, modifier = Modifier.padding(horizontal = 16.dp))
@@ -560,14 +628,16 @@ private fun WriteStep(state: FlasherState, meteredNote: String?) {
         else -> {
             Heading("Check and write", "Everything on the card is replaced.")
             state.summary.forEach { row ->
-                Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-                    Text(row.label, style = MaterialTheme.typography.bodyMedium)
+                Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Text(row.label, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                     Text(row.value, style = MaterialTheme.typography.bodyMedium, color = if (row.warn) MaterialTheme.aircast.warning else MaterialTheme.colorScheme.onSurface)
+                    TextButton(onClick = { onChange(row.label) }) { Text("Change") }
                 }
             }
-            Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text("Card", style = MaterialTheme.typography.bodyMedium)
+            Row(Modifier.fillMaxWidth().padding(start = 16.dp, end = 4.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Card", style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
                 Text(state.cardText.ifBlank { "Not connected" }, style = MaterialTheme.typography.bodyMedium, color = if (state.cardState == "ready") MaterialTheme.colorScheme.onSurface else MaterialTheme.aircast.warning)
+                TextButton(onClick = { onChange("Card") }) { Text("Change") }
             }
             state.downloadText.takeIf { state.downloadState != "ready" && it.isNotBlank() }?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp))

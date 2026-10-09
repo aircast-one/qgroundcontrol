@@ -18,7 +18,8 @@ class FlasherScreenTest {
          "disks":[{"id":"/dev/bus/usb/001/004","name":"Generic SD Reader"}],
          "card":{"state":"ready","id":"/dev/bus/usb/001/004","label":"Generic SD","capacity":16000000000,"capacityText":"16.0 GB"},
          "download":{"state":"running","version":"v0.3.5","done":10,"total":40,"percent":25.0},
-         "job":{"phase":"writing","busy":true,"cancellable":true,"done":1,"total":4,"percent":25.0,"speed":12300000,"speedText":"12 MB/s","error":null,"hostname":"falcon-01"},
+         "job":{"phase":"writing","busy":true,"cancellable":true,"done":1,"total":4,"percent":25.0,"speed":12300000,"speedText":"12 MB/s","remainingText":"about 4 min left","error":null,"hostname":"falcon-01"},
+         "firstProblem":{"field":"ssid","message":"Enter the WiFi network name, or choose no WiFi."},
          "canStart":false,"blocked":"A card is being written"}
         """.trimIndent(),
     )
@@ -115,5 +116,55 @@ class FlasherScreenTest {
         assertNull(phoneSsid("<unknown ssid>"))
         assertNull(phoneSsid("\"\""))
         assertNull(phoneSsid(null))
+    }
+
+    @Test
+    fun the_first_problem_is_named_by_its_field_and_opens_more_options_when_it_lives_there() {
+        val parsed = flasherState(view)!!
+        assertEquals("WiFi network: Enter the WiFi network name, or choose no WiFi.", problemNote(parsed))
+        assertEquals(false, problemInMoreOptions(parsed))
+        assertEquals(true, problemInMoreOptions(parsed.copy(firstProblemField = "controlServer")))
+        assertEquals("", problemNote(parsed.copy(firstProblem = "")))
+        assertEquals("about 4 min left", parsed.remainingText)
+    }
+
+    @Test
+    fun internal_channels_stay_out_of_customer_builds() {
+        assertEquals(false, showsChannels(debug = false, channel = "stable"))
+        assertEquals(true, showsChannels(debug = true, channel = "stable"))
+        assertEquals(true, showsChannels(debug = false, channel = "staging"))
+    }
+
+    @Test
+    fun the_screen_stays_on_while_downloading_or_writing() {
+        assertEquals(true, keepsScreenOn(state(phase = "writing", busy = true)))
+        assertEquals(true, keepsScreenOn(flasherState(view)!!.copy(busy = false, phase = "idle", downloadState = "running")))
+        assertEquals(false, keepsScreenOn(flasherState(view)!!.copy(busy = false, phase = "idle", downloadState = "ready")))
+        assertEquals(false, keepsScreenOn(null))
+    }
+
+    @Test
+    fun the_ending_says_what_happens_next() {
+        val steps = nextSteps("field-net", "falcon-01", noWifi = false)
+        assertEquals(3, steps.size)
+        assert(steps[1].contains("joins field-net")) { steps[1] }
+        assert(steps[2].contains("http://falcon-01.local")) { steps[2] }
+        assert(nextSteps("", "falcon-01", noWifi = true)[1].contains("Ethernet or cellular"))
+    }
+
+    @Test
+    fun only_an_open_network_counts_as_unsecured() {
+        assertEquals(false, securedFrom(android.net.wifi.WifiInfo.SECURITY_TYPE_OPEN))
+        assertEquals(true, securedFrom(android.net.wifi.WifiInfo.SECURITY_TYPE_PSK))
+        assertNull(securedFrom(android.net.wifi.WifiInfo.SECURITY_TYPE_UNKNOWN))
+    }
+
+    @Test
+    fun back_returns_to_the_previous_step_unless_writing_or_finished() {
+        assertEquals(FlasherStep.Setup, previousStep(FlasherStep.Write, busy = false, phase = "idle"))
+        assertEquals(FlasherStep.Card, previousStep(FlasherStep.Setup, busy = false, phase = "idle"))
+        assertNull(previousStep(FlasherStep.Card, busy = false, phase = "idle"))
+        assertNull(previousStep(FlasherStep.Write, busy = true, phase = "writing"))
+        assertNull(previousStep(FlasherStep.Write, busy = false, phase = "done"))
     }
 }

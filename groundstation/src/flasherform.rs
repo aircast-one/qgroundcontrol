@@ -27,6 +27,7 @@ pub struct Form {
     pub device_password: String,
     pub auth_key: String,
     pub control_server: String,
+    pub secured_ssid: String,
 }
 
 impl Default for Form {
@@ -42,6 +43,7 @@ impl Default for Form {
             device_password: String::new(),
             auth_key: String::new(),
             control_server: String::new(),
+            secured_ssid: String::new(),
         }
     }
 }
@@ -171,14 +173,19 @@ pub fn provision(form: &Form) -> ProvisionConfig {
     }
 }
 
-pub fn problems(form: &Form) -> Vec<(&'static str, &'static str)> {
+pub fn problems(form: &Form) -> Vec<(&'static str, String)> {
+    let ssid = form.ssid.trim();
+    let mode = ssh_mode(form);
     [
-        (!form.hostname.trim().is_empty() && !valid_hostname(&form.hostname)).then_some(("hostname", "Use lowercase letters, digits and dashes, up to 63 characters.")),
-        needs_ssid(form).then_some(("ssid", "Enter the WiFi network name, or choose no WiFi.")),
-        (!form.no_wifi && invalid_wifi_password(&form.wifi_password)).then_some(("wifiPassword", "A WiFi password is 8 to 63 characters, or a 64-digit hex key.")),
-        (ssh_mode(form) == SshMode::KeyOnly && invalid_ssh_key(&form.authorized_key)).then_some(("authorizedKey", "That does not look like an SSH public key.")),
-        (ssh_mode(form) == SshMode::Password && weak_device_password(&form.device_password)).then_some(("devicePassword", "Use at least 8 characters.")),
-        (!valid_control_server(&form.control_server)).then_some(("controlServer", "A control server is a URL starting with https://")),
+        (!form.hostname.trim().is_empty() && !valid_hostname(&form.hostname)).then(|| ("hostname", "Use lowercase letters, digits and dashes, up to 63 characters.".to_string())),
+        needs_ssid(form).then(|| ("ssid", "Enter the WiFi network name, or choose no WiFi.".to_string())),
+        (!form.no_wifi && invalid_wifi_password(&form.wifi_password)).then(|| ("wifiPassword", "A WiFi password is 8 to 63 characters, or a 64-digit hex key.".to_string())),
+        (!form.no_wifi && form.wifi_password.is_empty() && !ssid.is_empty() && ssid == form.secured_ssid.trim()).then(|| ("wifiPassword", format!("{ssid} needs its password. This phone uses one to join it."))),
+        (mode == SshMode::KeyOnly && form.authorized_key.trim().is_empty()).then(|| ("authorizedKey", "Paste your public key, or sign in with a password instead.".to_string())),
+        (mode == SshMode::KeyOnly && invalid_ssh_key(&form.authorized_key)).then(|| ("authorizedKey", "That does not look like an SSH public key.".to_string())),
+        (mode == SshMode::Password && form.device_password.is_empty()).then(|| ("devicePassword", "Set a password for pi, or turn SSH off under More options.".to_string())),
+        (mode == SshMode::Password && weak_device_password(&form.device_password)).then(|| ("devicePassword", "Use at least 8 characters.".to_string())),
+        (!valid_control_server(&form.control_server)).then(|| ("controlServer", "A control server is a URL starting with https://".to_string())),
     ]
     .into_iter()
     .flatten()
@@ -217,7 +224,8 @@ pub fn summary(image: &str, form: &Form) -> Vec<SummaryRow> {
         match (form.no_wifi, ssid.is_empty()) {
             (true, _) => SummaryRow { label: "WiFi", value: "Ethernet or cellular only".into(), warn: false },
             (false, true) => SummaryRow { label: "WiFi", value: "Not configured".into(), warn: true },
-            (false, false) => SummaryRow { label: "WiFi", value: ssid.to_string(), warn: false },
+            (false, false) if form.wifi_password.is_empty() => SummaryRow { label: "WiFi", value: format!("{ssid} · no password"), warn: true },
+            (false, false) => SummaryRow { label: "WiFi", value: format!("{ssid} · password set"), warn: false },
         },
         SummaryRow { label: "Remote access", value: remote, warn: remote_warn },
         SummaryRow { label: "Device access", warn: access == IMAGE_DEFAULT_LOGIN, value: access },
@@ -268,6 +276,10 @@ mod tests {
 
     fn base() -> Form {
         Form { hostname: "falcon-01".into(), ssid: "field-net".into(), ..Form::default() }
+    }
+
+    fn complete() -> Form {
+        Form { wifi_password: "hunter22".into(), ssh_mode: "password".into(), device_password: "s3cret-pass".into(), ..base() }
     }
 
     fn row(form: &Form, label: &str) -> SummaryRow {
@@ -368,8 +380,30 @@ mod tests {
 
     #[test]
     fn says_when_wifi_is_not_configured_and_flags_it() {
-        assert_eq!(row(&base(), "WiFi"), SummaryRow { label: "WiFi", value: "field-net".into(), warn: false });
+        assert_eq!(row(&complete(), "WiFi"), SummaryRow { label: "WiFi", value: "field-net · password set".into(), warn: false });
         assert_eq!(row(&Form { ssid: "".into(), ..base() }, "WiFi"), SummaryRow { label: "WiFi", value: "Not configured".into(), warn: true });
+    }
+
+    #[test]
+    fn a_network_with_no_password_is_called_out_before_writing() {
+        assert_eq!(row(&base(), "WiFi"), SummaryRow { label: "WiFi", value: "field-net · no password".into(), warn: true });
+    }
+
+    #[test]
+    fn a_secured_network_the_phone_is_on_needs_its_password() {
+        let fields = |form: Form| problems(&form).into_iter().map(|(field, _)| field).collect::<Vec<_>>();
+        assert_eq!(fields(Form { secured_ssid: "field-net".into(), ..complete() }), Vec::<&str>::new());
+        let missing = Form { secured_ssid: "field-net".into(), wifi_password: "".into(), ..complete() };
+        assert_eq!(problems(&missing), vec![("wifiPassword", "field-net needs its password. This phone uses one to join it.".to_string())]);
+        assert_eq!(fields(Form { secured_ssid: "other-net".into(), wifi_password: "".into(), ..complete() }), Vec::<&str>::new(), "an open network the phone is not on stays allowed");
+    }
+
+    #[test]
+    fn the_image_default_login_cannot_survive_a_flash() {
+        let fields = |form: Form| problems(&form).into_iter().map(|(field, _)| field).collect::<Vec<_>>();
+        assert_eq!(fields(Form { ssh_mode: "password".into(), device_password: "".into(), ..complete() }), vec!["devicePassword"]);
+        assert_eq!(fields(Form { ssh_mode: "key-only".into(), authorized_key: "".into(), ..complete() }), vec!["authorizedKey"]);
+        assert_eq!(fields(Form { ssh_mode: "disabled".into(), device_password: "".into(), ..complete() }), Vec::<&str>::new());
     }
 
     #[test]
@@ -448,14 +482,14 @@ mod tests {
 
     #[test]
     fn problems_name_the_field_that_blocks_writing() {
-        assert_eq!(problems(&base()), vec![]);
+        assert_eq!(problems(&complete()), vec![]);
         let fields = |form: Form| problems(&form).into_iter().map(|(field, _)| field).collect::<Vec<_>>();
-        assert_eq!(fields(Form { hostname: "Bad Name".into(), ..base() }), vec!["hostname"]);
-        assert_eq!(fields(Form { ssid: "".into(), ..base() }), vec!["ssid"]);
-        assert_eq!(fields(Form { ssid: "".into(), no_wifi: true, ..base() }), Vec::<&str>::new());
-        assert_eq!(fields(Form { wifi_password: "short".into(), ..base() }), vec!["wifiPassword"]);
-        assert_eq!(fields(Form { authorized_key: "hello".into(), ..base() }), vec!["authorizedKey"]);
-        assert_eq!(fields(Form { ssh_mode: "password".into(), device_password: "short".into(), ..base() }), vec!["devicePassword"]);
+        assert_eq!(fields(Form { hostname: "Bad Name".into(), ..complete() }), vec!["hostname"]);
+        assert_eq!(fields(Form { ssid: "".into(), ..complete() }), vec!["ssid"]);
+        assert_eq!(fields(Form { ssid: "".into(), no_wifi: true, ..complete() }), Vec::<&str>::new());
+        assert_eq!(fields(Form { wifi_password: "short".into(), ..complete() }), vec!["wifiPassword"]);
+        assert_eq!(fields(Form { ssh_mode: "key-only".into(), authorized_key: "hello".into(), ..complete() }), vec!["authorizedKey"]);
+        assert_eq!(fields(Form { device_password: "short".into(), ..complete() }), vec!["devicePassword"]);
     }
 
     #[test]

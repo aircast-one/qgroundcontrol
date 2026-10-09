@@ -384,7 +384,7 @@ internal val DETAIL_PANE_MAX_WIDTH = 720.dp
 @Composable
 private fun SettingsTab(group: SettingsGroup, everyPage: List<SettingsPageEntry>, modifier: Modifier, onOpenSetup: (String?) -> Unit, onOpen: (String) -> Unit) {
     val linksJson by qgcPath("view.links")
-    val pages = remember(group, everyPage) { tabPages(group, everyPage) }
+    val pages = remember(group, everyPage) { tabPages(group, everyPage).filterNot { it.showsFlasher } }
     var advancedOpen by rememberSaveable(group) { mutableStateOf(false) }
     val foldsInline = group == SettingsGroup.Safety
     val drawnInline: (SettingsPageEntry) -> Boolean = { page -> pageLook(page.title).inline || pageLook(page.title).group != group }
@@ -403,7 +403,10 @@ private fun SettingsTab(group: SettingsGroup, everyPage: List<SettingsPageEntry>
         }
     }
     Column(modifier.verticalScroll(rememberScrollState())) {
-        if (group == SettingsGroup.General) AircraftSetupRow(onOpenSetup)
+        if (group == SettingsGroup.General) {
+            AircraftSetupRow(onOpenSetup)
+            SetupRow(title = FLASHER_PAGE, status = "Set up an SD card for a new drone", icon = R.drawable.ic_usb, onClick = { onOpen(FLASHER_PAGE) })
+        }
         PilotSettings(group)
         if (group == SettingsGroup.Safety) SensorChecks { onOpenSetup(SENSORS) }
         if (foldsInline) {

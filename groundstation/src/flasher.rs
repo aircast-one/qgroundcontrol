@@ -405,7 +405,7 @@ fn required_bytes(s: &State) -> u64 {
 }
 
 fn blocked(s: &State) -> Option<String> {
-    let problem = flasherform::problems(&s.form).first().map(|(_, message)| message.to_string());
+    let problem = flasherform::problems(&s.form).first().map(|(_, message)| message.clone());
     let card = match &s.card {
         CardState::None => Some("Connect a USB card reader with the card in it, then choose it".to_string()),
         CardState::Opening(_) => Some("Checking the card reader…".to_string()),
@@ -639,6 +639,16 @@ pub fn size_text(bytes: u64) -> String {
     }
 }
 
+pub fn remaining_text(done: u64, total: u64, speed: u64) -> String {
+    match (speed, total.saturating_sub(done)) {
+        (0, _) | (_, 0) => String::new(),
+        (bps, left) => match left / bps {
+            secs if secs < 60 => "less than a minute left".to_string(),
+            secs => format!("about {} min left", secs.div_ceil(60)),
+        },
+    }
+}
+
 fn percent(done: u64, total: u64) -> f64 {
     match total {
         0 => 0.0,
@@ -692,7 +702,8 @@ fn render(s: &State) -> Value {
         "releases": { "state": releases_state, "items": items, "error": releases_error },
         "selected": s.selected,
         "form": s.form,
-        "problems": flasherform::problems(&s.form).into_iter().map(|(field, message)| (field.to_string(), json!(message))).collect::<serde_json::Map<String, Value>>(),
+        "problems": flasherform::problems(&s.form).into_iter().rev().map(|(field, message)| (field.to_string(), json!(message))).collect::<serde_json::Map<String, Value>>(),
+        "firstProblem": flasherform::problems(&s.form).first().map(|(field, message)| json!({ "field": field, "message": message })),
         "keyIdentity": flasherform::identify_key(&s.form.authorized_key),
         "summary": flasherform::summary(&image, &s.form),
         "disks": s.disks.iter().map(|d| json!({ "id": d.id, "name": d.name })).collect::<Vec<_>>(),
@@ -707,6 +718,7 @@ fn render(s: &State) -> Value {
             "percent": percent(s.job.done, s.job.total),
             "speed": s.job.speed,
             "speedText": if s.job.speed > 0 { format!("{}/s", size_text(s.job.speed)) } else { String::new() },
+            "remainingText": remaining_text(s.job.done, s.job.total, s.job.speed),
             "error": s.job.error,
             "hostname": s.job.hostname,
         },
@@ -743,7 +755,7 @@ mod tests {
             channel: "stable".into(),
             releases: Releases::Ready(vec![release("v0.3.5", false)]),
             selected: Some("v0.3.5".into()),
-            form: Form { hostname: "falcon-01".into(), ssid: "field-net".into(), ..Form::default() },
+            form: Form { hostname: "falcon-01".into(), ssid: "field-net".into(), wifi_password: "hunter22".into(), ssh_mode: "password".into(), device_password: "s3cret-pass".into(), ..Form::default() },
             card: CardState::Ready { id: "/dev/bus/usb/001/004".into(), label: "Generic SD".into(), capacity: 16_000_000_000 },
             ..State::default()
         }
@@ -835,6 +847,21 @@ mod tests {
             token.store(true, Ordering::Relaxed);
         }
         *state() = State::default();
+    }
+
+    #[test]
+    fn time_left_rounds_up_to_whole_minutes_and_hides_without_a_speed() {
+        assert_eq!(remaining_text(0, 3_000_000_000, 10_000_000), "about 5 min left");
+        assert_eq!(remaining_text(2_950_000_000, 3_000_000_000, 10_000_000), "less than a minute left");
+        assert_eq!(remaining_text(0, 3_000_000_000, 0), "");
+        assert_eq!(remaining_text(10, 10, 5), "");
+    }
+
+    #[test]
+    fn the_first_problem_names_its_field() {
+        let view = render(&State { form: Form { wifi_password: "".into(), secured_ssid: "field-net".into(), ..ready_state().form }, ..ready_state() });
+        assert_eq!(view["firstProblem"]["field"], "wifiPassword");
+        assert_eq!(render(&ready_state())["firstProblem"], Value::Null);
     }
 
     #[test]
