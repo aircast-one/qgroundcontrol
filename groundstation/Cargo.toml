@@ -55,9 +55,19 @@ image = { version = "0.25.10", default-features = false, features = ["bmp", "gif
 x509-parser = { version = "0.18.1", features = ["verify"] }
 rustls-webpki = "0.103"
 quick_cache = { version = "0.7.0", default-features = false }
+sha1 = "0.11"
+fatfs = "0.3"
+fscommon = "0.1"
+mbrman = "0.5"
+
+[target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
+libc = "0.2"
 
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 serialport = "4.10.1"
+
+[dev-dependencies]
+serde_norway = "0.9"
 
 [build-dependencies]
 flate2 = "1.1.10"

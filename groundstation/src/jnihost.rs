@@ -10,6 +10,7 @@ const BRIDGE_CLASS: &str = "org/mavlink/qgroundcontrol/QGCBridge";
 const USB_SERIAL_CLASS: &str = "org/mavlink/qgroundcontrol/QGCUsbSerialManager";
 const BLUETOOTH_CLASS: &str = "one/aircast/android/BluetoothLinks";
 const WFB_USB_CLASS: &str = "one/aircast/android/WfbUsb";
+const USB_DISKS_CLASS: &str = "one/aircast/android/UsbDisks";
 const WFB_LIBRARY: &CStr = c"libqgc_wfb.so";
 const RTLD_NOW: std::ffi::c_int = 2;
 const USB_WRITE_TIMEOUT_MS: i32 = 1000;
@@ -20,6 +21,7 @@ static BRIDGE: OnceLock<GlobalRef> = OnceLock::new();
 static USB_SERIAL: OnceLock<GlobalRef> = OnceLock::new();
 static BLUETOOTH: OnceLock<GlobalRef> = OnceLock::new();
 static WFB_USB: OnceLock<GlobalRef> = OnceLock::new();
+static USB_DISKS: OnceLock<GlobalRef> = OnceLock::new();
 
 unsafe extern "C" {
     fn dlopen(name: *const c_char, flags: std::ffi::c_int) -> *mut c_void;
@@ -237,6 +239,21 @@ fn wfb_library() -> Option<crate::wfbhost::FdLibrary> {
     })
 }
 
+fn disk_list() -> Vec<crate::platformdisk::Disk> {
+    let (Some(vm), Some(class)) = (VM.get(), USB_DISKS.get()) else { return Vec::new() };
+    string_array(vm, class, "devices").iter().filter_map(|line| line.split_once('\t')).map(|(id, name)| crate::platformdisk::Disk { id: id.to_string(), name: name.to_string() }).collect()
+}
+
+fn disk_open(id: &str) -> i32 {
+    USB_DISKS.get().and_then(|class| static_call(class, "open", "(Ljava/lang/String;)I", &[Arg::Text(id)])).and_then(|value| value.i().ok()).unwrap_or(-1)
+}
+
+fn disk_close(id: &str) {
+    if let Some(class) = USB_DISKS.get() {
+        static_call(class, "close", "(Ljava/lang/String;)V", &[Arg::Text(id)]);
+    }
+}
+
 fn usb_ports() -> Vec<crate::boards::PortInfo> {
     let (Some(vm), Some(class)) = (VM.get(), USB_SERIAL.get()) else { return Vec::new() };
     string_array(vm, class, "availableDevicesInfo").iter().filter_map(|line| crate::platformserial::port_from_info(line)).collect()
@@ -265,6 +282,13 @@ pub extern "system" fn JNI_OnLoad(vm: JavaVM, _reserved: *mut c_void) -> jint {
                 opened: Mutex::new(None),
             });
         }
+    }
+    if env.exception_check().unwrap_or(false) {
+        let _ = env.exception_clear();
+    }
+    if let Some(disks) = env.find_class(USB_DISKS_CLASS).ok().and_then(|class| env.new_global_ref(class).ok()) {
+        let _ = USB_DISKS.set(disks);
+        crate::platformdisk::install(crate::platformdisk::Hooks { disks: disk_list, open: disk_open, close: disk_close });
     }
     if env.exception_check().unwrap_or(false) {
         let _ = env.exception_clear();
