@@ -32,7 +32,6 @@ private val CHIP_SIZE = 40.dp
 private const val FEET = "ft"
 private const val ALTITUDE_CEILING_METRES = 500.0
 private const val ALTITUDE_CEILING_FEET = 1640.0
-private const val HOLD_CEILING_SECONDS = 3600.0
 private const val SPEED_STEP = 0.5
 internal val SPEED_RANGE = 0.0..30.0
 
@@ -42,7 +41,7 @@ internal fun altitudeRange(units: String): ClosedFloatingPointRange<Double> =
 internal fun stripRows(rows: List<ItemRow>): List<ItemRow> = rows.filter { it.index != HOME_ITEM }
 
 @Composable
-internal fun WaypointStrip(rows: List<ItemRow>, selected: Int?, onPick: (Int) -> Unit, modifier: Modifier = Modifier) {
+internal fun WaypointStrip(rows: List<ItemRow>, altitudes: Map<Int, String>, selected: Int?, onPick: (Int) -> Unit, modifier: Modifier = Modifier) {
     val shown = stripRows(rows)
     val list = rememberLazyListState()
     LaunchedEffect(selected) {
@@ -52,6 +51,7 @@ internal fun WaypointStrip(rows: List<ItemRow>, selected: Int?, onPick: (Int) ->
         items(shown, key = { it.index }) { row ->
             val chosen = row.index == selected
             val ink = runCatching { Color(android.graphics.Color.parseColor(row.colour)) }.getOrDefault(MaterialTheme.colorScheme.primary)
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Surface(
                 onClick = { onPick(row.index) },
                 shape = CircleShape,
@@ -66,6 +66,8 @@ internal fun WaypointStrip(rows: List<ItemRow>, selected: Int?, onPick: (Int) ->
                 Box(contentAlignment = Alignment.Center) {
                     Text(row.number, style = MaterialTheme.typography.labelLarge, maxLines = 1)
                 }
+            }
+            Text(altitudes[row.index].orEmpty(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1)
             }
         }
     }
@@ -106,16 +108,6 @@ internal fun WaypointSettings(
                 } else null,
             )
         }
-        waypointHold(json)?.let { hold ->
-            SettingStepper(
-                label = "Hold",
-                value = hold.seconds,
-                unit = hold.units,
-                step = 1.0,
-                range = 0.0..HOLD_CEILING_SECONDS,
-                onSet = { seconds -> onWrite(null) { setOk(hold.path, settingJson("$seconds")) } },
-            )
-        }
         if (!item.altitude.isNaN() && itemReferenceShown(globalFrame) && item.index != HOME_ITEM) {
             Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Altitude mode", style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
@@ -126,8 +118,6 @@ internal fun WaypointSettings(
                 )
             }
         }
-        legText(item)?.let {
-            Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(vertical = 4.dp))
-        }
+        if (item.index != HOME_ITEM) WaypointActions(item.index, waypointHold(json), waypointYaw(json))
     }
 }

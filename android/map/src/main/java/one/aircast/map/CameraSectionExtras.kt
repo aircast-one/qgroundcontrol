@@ -23,7 +23,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 
-private val CAMERA_MODES = listOf("Photo", "Video", "Survey")
+internal val CAMERA_MODES = listOf("Photo", "Video", "Survey")
 
 @Composable
 private fun NumberEntry(label: String, value: Double, enabled: Boolean = true, onDone: (Double) -> Unit) {

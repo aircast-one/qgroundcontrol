@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.Button
@@ -59,6 +60,7 @@ internal fun selectionTitle(selected: MapHit, items: List<MissionItem>): String 
 @Composable
 internal fun WaypointStripBar(
     rows: List<ItemRow>,
+    altitudes: Map<Int, String>,
     selected: Int?,
     onPick: (Int) -> Unit,
     onList: (() -> Unit)?,
@@ -66,7 +68,7 @@ internal fun WaypointStripBar(
     onProfile: () -> Unit,
 ) {
     Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-        WaypointStrip(rows, selected, onPick, Modifier.weight(1f))
+        WaypointStrip(rows, altitudes, selected, onPick, Modifier.weight(1f))
         onList?.let { IconButton(onClick = it) { Icon(Icons.AutoMirrored.Filled.List, contentDescription = "Show the plan as a list") } }
         profileShown?.let { shown ->
             IconButton(onClick = onProfile) {
@@ -94,11 +96,14 @@ internal fun EmptyMissionStrip(homeSet: Boolean, onTemplates: (() -> Unit)?, onD
 }
 
 @Composable
-internal fun SelectionHeader(title: String, detail: String?, onDone: () -> Unit) {
+internal fun SelectionHeader(title: String, detail: String?, onDelete: (() -> Unit)?, onDone: () -> Unit) {
     Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
         Column(Modifier.weight(1f).padding(start = 12.dp)) {
             Text(title, style = MaterialTheme.typography.titleLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
-            detail?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 2) }
+            detail?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis) }
+        }
+        onDelete?.let {
+            IconButton(onClick = it) { Icon(Icons.Filled.Delete, contentDescription = "Delete $title", tint = MaterialTheme.colorScheme.error) }
         }
         Button(onClick = onDone, contentPadding = ButtonDefaults.ButtonWithIconContentPadding, modifier = Modifier.padding(end = 4.dp)) {
             Icon(Icons.Filled.Check, contentDescription = null, modifier = Modifier.size(ButtonDefaults.IconSize))

@@ -30,6 +30,9 @@ const val MISSION_SOURCE = "aircast-mission"
 const val MISSION_LAYER = "aircast-mission-layer"
 const val MISSION_DOT_LAYER = "aircast-mission-dot-layer"
 const val MISSION_PATH_SOURCE = "aircast-mission-path"
+const val LEG_LABEL_SOURCE = "aircast-leg-labels"
+const val LEG_LABEL_LAYER = "aircast-leg-labels-layer"
+const val LEG_LABEL_PROPERTY = "leg"
 const val MISSION_PATH_LAYER = "aircast-mission-path-layer"
 private const val COLLISION_LEG_SOURCE = "aircast-collision-legs"
 private const val COLLISION_LEG_LAYER = "aircast-collision-leg-layer"
@@ -87,6 +90,21 @@ fun installMissionLayers(style: Style) {
             ),
         )
     }
+    if (style.getSource(LEG_LABEL_SOURCE) == null) {
+        style.addSource(GeoJsonSource(LEG_LABEL_SOURCE))
+        style.addLayer(
+            SymbolLayer(LEG_LABEL_LAYER, LEG_LABEL_SOURCE).withProperties(
+                PropertyFactory.textField("{$LEG_LABEL_PROPERTY}"),
+                PropertyFactory.textFont(arrayOf("Noto Sans Regular")),
+                PropertyFactory.textSize(11f),
+                PropertyFactory.textColor("#FFFFFF"),
+                PropertyFactory.textHaloColor("#37474F"),
+                PropertyFactory.textHaloWidth(2f),
+                PropertyFactory.textOffset(arrayOf(0f, 1.2f)),
+                PropertyFactory.textAllowOverlap(false),
+            ),
+        )
+    }
     if (style.getSource(COLLISION_LEG_SOURCE) == null) {
         style.addSource(GeoJsonSource(COLLISION_LEG_SOURCE))
         style.addLayer(
@@ -141,6 +159,15 @@ fun installMissionLayers(style: Style) {
 }
 
 fun crowded(itemCount: Int): Boolean = itemCount > CROWDED_ITEMS
+
+fun legLabels(items: List<MissionItem>): List<Pair<TrackPoint, String>> =
+    if (crowded(items.size)) emptyList()
+    else items.filter { it.placed }.sortedBy { it.index }.zipWithNext()
+        .filter { (_, to) -> !to.legBroken && to.distanceText.isNotBlank() && to.distance > 0.0 }
+        .map { (from, to) ->
+            val start = from.exit ?: TrackPoint(from.latitude, from.longitude)
+            TrackPoint((start.latitude + to.latitude) / 2, (start.longitude + to.longitude) / 2) to to.distanceText
+        }
 
 fun waypointLabel(sequence: Int, crowded: Boolean, abbreviation: String = ""): String = when {
     crowded -> ""
@@ -257,7 +284,15 @@ fun renderMission(
     selectedIndex: Int? = null,
     others: List<OtherMission> = emptyList(),
     landings: List<LandingPattern> = emptyList(),
+    legs: Boolean = false,
 ) {
+    (style.getSource(LEG_LABEL_SOURCE) as? GeoJsonSource)?.setGeoJson(
+        FeatureCollection.fromFeatures(
+            legLabels(items).takeIf { legs }.orEmpty().map { (at, text) ->
+                Feature.fromGeometry(Point.fromLngLat(at.longitude, at.latitude)).also { it.addStringProperty(LEG_LABEL_PROPERTY, text) }
+            },
+        ),
+    )
     val otherMarkers = others.flatMap { other ->
         missionFeatures(other.items).features().orEmpty().onEach { it.addNumberProperty(WAYPOINT_ID_PROPERTY, OTHER_VEHICLE_WAYPOINT) }
     }

@@ -56,7 +56,7 @@ import one.aircast.map.PlanMapScreen
 private const val NOTICE_MILLIS = 4000L
 private const val HEADER_ALPHA = 0.94f
 private const val DISABLED_PILL_ALPHA = 0.38f
-private val PILL_HEIGHT = 48.dp
+private val PILL_HEIGHT = 40.dp
 private val HEADER_CORNER = 20.dp
 
 internal const val APPLY_DEFAULT_ALTITUDE = "core.plan.applyDefaultAltitude"
@@ -217,40 +217,9 @@ fun PlanTab(modifier: Modifier = Modifier) {
             Modifier.fillMaxSize(),
             fitKey = files.opened(),
             onCentre = { lat, lon -> centre = lat to lon },
-            itemPanel = { index, at, remove -> ItemEditor(index, at, centre, remove) },
+            itemPanel = { index, at, leg -> ItemEditor(index, at, centre, leg) },
             routeSettings = { RouteSettings(planStatus) },
             onTemplates = { newPlanOpen = true },
-            primary = { upload ->
-                if (upload.shown) {
-                    PlanActionPill(
-                        label = upload.label,
-                        icon = if (upload.done) R.drawable.ic_check_circle else R.drawable.ic_upload,
-                        enabled = upload.enabled,
-                        container = when {
-                            upload.done -> MaterialTheme.aircast.success
-                            upload.emphasised -> MaterialTheme.colorScheme.primary
-                            else -> MaterialTheme.colorScheme.surfaceContainerHighest
-                        },
-                        content = when {
-                            upload.done -> MaterialTheme.aircast.onSuccess
-                            upload.emphasised -> MaterialTheme.colorScheme.onPrimary
-                            else -> MaterialTheme.colorScheme.onSurface
-                        },
-                        progress = syncProgress.takeIf { syncing },
-                        onClick = upload.onClick,
-                    )
-                } else if (containsItems) {
-                    PlanActionPill(
-                        label = if (dirty) "Save" else "Saved",
-                        icon = if (dirty) R.drawable.ic_download else R.drawable.ic_check_circle,
-                        enabled = can.save && dirty,
-                        container = if (dirty) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
-                        content = if (dirty) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
-                        progress = null,
-                        onClick = { files.save() },
-                    )
-                }
-            },
             header = { bar ->
                 Column(Modifier.padding(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Row(
@@ -279,6 +248,35 @@ fun PlanTab(modifier: Modifier = Modifier) {
                                     }
                                 }
                             }
+                        }
+                        if (bar.upload.shown) {
+                            PlanActionPill(
+                                label = bar.upload.label,
+                                icon = if (bar.upload.done) R.drawable.ic_check_circle else R.drawable.ic_upload,
+                                enabled = bar.upload.enabled,
+                                container = when {
+                                    bar.upload.done -> MaterialTheme.aircast.success
+                                    bar.upload.emphasised -> MaterialTheme.colorScheme.primary
+                                    else -> MaterialTheme.colorScheme.surfaceContainerHighest
+                                },
+                                content = when {
+                                    bar.upload.done -> MaterialTheme.aircast.onSuccess
+                                    bar.upload.emphasised -> MaterialTheme.colorScheme.onPrimary
+                                    else -> MaterialTheme.colorScheme.onSurface
+                                },
+                                progress = syncProgress.takeIf { syncing },
+                                onClick = bar.upload.onClick,
+                            )
+                        } else if (containsItems) {
+                            PlanActionPill(
+                                label = if (dirty) "Save" else "Saved",
+                                icon = if (dirty) R.drawable.ic_download else R.drawable.ic_check_circle,
+                                enabled = can.save && dirty,
+                                container = if (dirty) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHighest,
+                                content = if (dirty) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                                progress = null,
+                                onClick = { files.save() },
+                            )
                         }
                         Surface(shape = CircleShape, color = MaterialTheme.colorScheme.surfaceContainer.copy(alpha = HEADER_ALPHA)) {
                             IconButton(onClick = { menuOpen = true }, modifier = Modifier.size(40.dp)) { Icon(painterResource(R.drawable.ic_more_vert), "Plan menu") }
@@ -409,7 +407,6 @@ private fun PlanActionPill(
         shape = CircleShape,
         color = container,
         contentColor = content,
-        shadowElevation = 4.dp,
     ) {
         Box(Modifier.height(PILL_HEIGHT)) {
             progress?.let { done ->

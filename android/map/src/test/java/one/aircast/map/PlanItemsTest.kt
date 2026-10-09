@@ -34,18 +34,6 @@ class PlanItemsTest {
     }
 
     @Test
-    fun `the sheet places an item among the listed ones and names the leg from the one before`() {
-        val home = item(0, 0, "Home")
-        val takeoff = item(1, 1, "Takeoff")
-        val second = item(2, 2, "Waypoint").copy(distance = 130.0, distanceText = "130 m")
-        val items = listOf(home, takeoff, second)
-
-        assertEquals("Item 2 of 2 \u00b7 130 m from item 1", itemPlace(second, items))
-        assertEquals("Item 1 of 2", itemPlace(takeoff, items))
-        assertNull(itemPlace(home, items))
-    }
-
-    @Test
     fun `a row carries the number, the name, the altitude and the marker colour`() {
         val rows = itemRows(listOf(item(1, 1, "Waypoint", altitude = 49.6)))
 

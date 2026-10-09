@@ -1771,6 +1771,7 @@ fn item_write(backend: &dyn Backend, path: &str, value: &str) -> Option<Value> {
                 }),
         ),
         "loiterRadius" => answer(number.ok_or_else(|| "A radius is a number.".to_string()).and_then(|v| plandoc::set_loiter_radius(&current, index, v).ok_or_else(|| format!("Item {index} is not a loiter.")))),
+        "yaw" => answer(plandoc::set_param(&current, index, usize::from(YAW_PARAM), number.filter(|v| v.is_finite()).unwrap_or(f64::NAN)).ok_or_else(|| format!("Item {index} has no heading."))),
         "hold" => answer(
             number
                 .filter(|v| v.is_finite() && *v >= 0.0)
@@ -2237,6 +2238,17 @@ mod tests {
         assert_eq!(hold_field(&waypoint(Some(5.0)), info, true, "x"), Value::Null, "raw edit already shows Param1");
         let takeoff = plandoc::Simple { command: 22, ..waypoint(Some(5.0)) };
         assert_eq!(hold_field(&takeoff, commands.get(&22), false, "x"), Value::Null);
+    }
+
+    #[test]
+    fn a_waypoint_offers_its_heading_unset_until_the_operator_turns_the_aircraft() {
+        let waypoint = |yaw: Option<f64>| plandoc::Simple { command: 16, frame: 3, params: [Some(0.0), Some(0.0), Some(0.0), yaw, Some(47.0), Some(8.0), Some(30.0)], auto_continue: true, altitude: None, sections: vec![] };
+        let commands = crate::cmdinfo::tree(crate::cmdinfo::Firmware::ArduPilot, crate::cmdinfo::VehicleClass::MultiRotor);
+        let info = commands.get(&16);
+        assert_eq!(yaw_field(&waypoint(Some(90.0)), info, false, "plan.missionController.visualItems.2"), json!({ "value": 90.0, "units": "deg", "path": "plan.missionController.visualItems.2.yaw" }));
+        assert_eq!(yaw_field(&waypoint(Some(f64::NAN)), info, false, "x")["value"], Value::Null, "NaN is MAV_CMD_NAV_WAYPOINT's keep-the-heading, so the action reads as off");
+        assert_eq!(yaw_field(&waypoint(Some(90.0)), info, true, "x"), Value::Null, "raw edit already shows Param4");
+        assert_eq!(yaw_field(&plandoc::Simple { command: 22, ..waypoint(Some(90.0)) }, commands.get(&22), false, "x"), Value::Null);
     }
 
     #[test]
@@ -2785,6 +2797,16 @@ fn simple_fields(simple: &plandoc::Simple, commands: &std::collections::BTreeMap
 
 const HOLD_PARAM: u8 = 1;
 
+const YAW_PARAM: u8 = 4;
+
+fn yaw_field(simple: &plandoc::Simple, info: Option<&crate::cmdinfo::Command>, raw: bool, item: &str) -> Value {
+    let label = info.and_then(|c| c.params.get(&YAW_PARAM)).and_then(|p| p.get("label")).and_then(Value::as_str);
+    match (raw, simple.command, label) {
+        (false, 16, Some("Yaw")) => json!({ "value": simple.params[usize::from(YAW_PARAM) - 1].filter(|v| v.is_finite()), "units": "deg", "path": format!("{item}.yaw") }),
+        _ => Value::Null,
+    }
+}
+
 fn hold_field(simple: &plandoc::Simple, info: Option<&crate::cmdinfo::Command>, raw: bool, item: &str) -> Value {
     let label = info.and_then(|c| c.params.get(&HOLD_PARAM)).and_then(|p| p.get("label")).and_then(Value::as_str);
     match (raw, simple.command, label) {
@@ -2910,7 +2932,7 @@ fn document_facts(document: &Document, index: usize, hover: f64, cruise: f64, un
                     let hint = s.altitude.as_ref().and_then(|a| {
                         crate::itemfacts::altitude_hint(land, Some(a.mode), a.amsl_above_terrain.filter(|v| v.is_finite()).map(|metres| units.0.label(metres)))
                     });
-                    Value::Object(fields.into_iter().chain([("rawEdit".to_string(), json!(raw)), ("friendlyEditAllowed".to_string(), json!(friendly_edit_allowed(s, info))), ("altitudeHint".to_string(), json!(hint)), ("hold".to_string(), hold_field(s, info, raw, &item))]).collect())
+                    Value::Object(fields.into_iter().chain([("rawEdit".to_string(), json!(raw)), ("friendlyEditAllowed".to_string(), json!(friendly_edit_allowed(s, info))), ("altitudeHint".to_string(), json!(hint)), ("hold".to_string(), hold_field(s, info, raw, &item)), ("yaw".to_string(), yaw_field(s, info, raw, &item))]).collect())
                 }
                 other => other,
             }

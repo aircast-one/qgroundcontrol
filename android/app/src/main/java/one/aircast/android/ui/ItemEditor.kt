@@ -4,6 +4,7 @@ import one.aircast.map.aircast
 import one.aircast.android.bridge.PlanCommands
 import one.aircast.android.bridge.VehicleCommands
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Column
@@ -55,6 +56,8 @@ import org.json.JSONObject
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material3.Icon
 
@@ -115,10 +118,6 @@ private fun setToVehicleLocation(index: Int): String? {
 internal fun areaHelp(view: JSONObject?): String? = view?.optText("areaHelp")?.takeIf { it.isNotBlank() }
 
 internal fun gridNote(view: JSONObject?): String? = view?.optText("gridNote")?.takeIf { it.isNotBlank() }
-
-internal const val DELETE_ITEM_LABEL = "Delete waypoint"
-
-internal fun itemDeletable(index: Int): Boolean = index > 0
 
 internal data class RawEdit(val on: Boolean, val friendlyAllowed: Boolean)
 
@@ -204,7 +203,7 @@ internal fun itemFields(view: JSONObject?): List<one.aircast.android.bridge.Fact
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, onRemove: () -> Unit) {
+fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, legDetail: String?) {
     var revision by remember(index) { mutableIntStateOf(0) }
     var view by remember(index) { mutableStateOf<JSONObject?>(null) }
     var choosing by remember(index) { mutableStateOf(false) }
@@ -234,12 +233,28 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
     fields.firstOrNull { it.path == detailsPath }?.let { fact ->
         ValueDetailsSheet(fact, onWrite = { revision++ }, onDismiss = { detailsPath = null })
     }
+    val simple = view?.optBoolean("simple") == true
+    var advanced by remember(index) { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth().padding(bottom = 8.dp)) {
+        if (simple) {
+            Row(
+                Modifier.fillMaxWidth().clickable { advanced = !advanced }.heightIn(min = 48.dp).padding(horizontal = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text("Advanced", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                Icon(
+                    if (advanced) Icons.Filled.KeyboardArrowUp else Icons.Filled.KeyboardArrowDown,
+                    contentDescription = if (advanced) "Hide advanced settings" else "Show advanced settings",
+                )
+            }
+        }
+        if (!simple || advanced) {
+            legDetail?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) }
             Row(
                 Modifier.fillMaxWidth().padding(horizontal = 20.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                Text("More settings", style = MaterialTheme.typography.titleSmall, modifier = Modifier.weight(1f))
+                Spacer(Modifier.weight(1f))
                 if (at != null || view?.optBoolean("specifiesCoordinate") == true) {
                     Box {
                         TextButton(onClick = { positionMenu = true }) { Text("Position") }
@@ -367,7 +382,7 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
                         }
                     }
                 }
-                one.aircast.map.ItemCameraSection(index, Modifier.fillMaxWidth().padding(horizontal = 20.dp)) { revision++ }
+                if (!simple) one.aircast.map.ItemCameraSection(index, Modifier.fillMaxWidth().padding(horizontal = 20.dp)) { revision++ }
                 camera?.let { block ->
                     CameraCalcHeader(block) { path, value ->
                         scope.launch {
@@ -419,13 +434,7 @@ fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, on
                 }
                 if (presetsFirst == false) presets()
             }
-            if (itemDeletable(index)) {
-                TextButton(
-                    onClick = onRemove,
-                    colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.colorScheme.error),
-                    modifier = Modifier.padding(horizontal = 8.dp),
-                ) { Text(DELETE_ITEM_LABEL) }
-            }
+        }
     }
 
     if (editingPosition && positionStart != null) {

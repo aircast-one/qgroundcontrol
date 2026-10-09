@@ -77,7 +77,6 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -94,7 +93,6 @@ private const val SIDE_PANEL_MIN_WIDTH_DP = 840
 internal const val SUMMARY_MAX_FRACTION = 0.74f
 
 private const val WAITING_FOR_QGC = "Waiting for QGroundControl"
-private val RAIL_MENU_OFFSET = DpOffset(RAIL_WIDTH, 0.dp)
 
 private fun sendPlan(
     scope: CoroutineScope,
@@ -150,9 +148,8 @@ class PlanBar(val upload: PlanUpload, val stats: List<PlanStat>)
 internal fun PlanMapContent(
     mapStyle: String,
     onCentre: ((Double, Double) -> Unit)? = null,
-    itemPanel: (@Composable (Int, TrackPoint?, () -> Unit) -> Unit)? = null,
+    itemPanel: (@Composable (Int, TrackPoint?, String?) -> Unit)? = null,
     header: (@Composable (PlanBar) -> Unit)? = null,
-    primary: (@Composable (PlanUpload) -> Unit)? = null,
     routeSettings: (@Composable () -> Unit)? = null,
     fitKey: Int = 0,
     onTemplates: (() -> Unit)? = null,
@@ -685,7 +682,9 @@ internal fun PlanMapContent(
                     placeAt()?.let { addRallyAt(it.latitude, it.longitude) }
                 })
             }
-            RailDivider()
+        }
+
+        PlanRail(Modifier.align(Alignment.TopEnd).padding(end = 8.dp, top = headerHeight + 8.dp, bottom = if (sidePanel) 8.dp else panelHeight + 8.dp)) {
             RailButton(R.drawable.plan_undo, "Undo", enabled = canUndo, onClick = { onBridge { invokeOk(PLAN_UNDO) } })
             CenterMenu(
                 launch = allItems.firstOrNull { it.sequence == 0 }?.let { TrackPoint(it.latitude, it.longitude) },
@@ -703,14 +702,9 @@ internal fun PlanMapContent(
                 missionPoints = missionFitPoints(allItems),
                 following = follow,
                 onFollow = { follow = !follow },
-                menuOffset = RAIL_MENU_OFFSET,
                 anchor = { open -> RailButton(R.drawable.plan_my_location, "Centre", chosen = follow, onClick = open) },
             )
             MapTypeMenu { shownStyle = it }
-        }
-
-        primary?.let { action ->
-            Box(Modifier.align(Alignment.BottomEnd).padding(end = 16.dp, bottom = (if (sidePanel) 0.dp else panelHeight) + 16.dp)) { action(planUpload) }
         }
 
         if (loadArmed) {
@@ -822,6 +816,7 @@ internal fun PlanMapContent(
                 if (layer == PlanLayer.Mission && itemCount > 0 && layerOf(chosen) in setOf(null, PlanLayer.Mission)) {
                     WaypointStripBar(
                         rows = itemRows(allItems, surveyStatsMap),
+                        altitudes = allItems.associate { it.index to it.altitudeText },
                         selected = chosenItem?.index,
                         onPick = ::focusItem,
                         onList = { listOpen = true }.takeIf { !sidePanel },
@@ -832,12 +827,14 @@ internal fun PlanMapContent(
                 when {
                     chosenItem != null -> SelectionHeader(
                         title = "${sentenceCase(chosenItem.command.ifBlank { "Item" })} ${sequenceLabel(chosenItem)}",
-                        detail = listOfNotNull(itemPlace(chosenItem, allItems), sheetDetail(chosenItem, surveyStatsMap[chosenItem.index]).ifBlank { null }).joinToString(" · ").ifBlank { null },
+                        detail = sheetDetail(chosenItem, surveyStatsMap[chosenItem.index]).takeIf { chosenItem.complexPattern }?.ifBlank { null },
+                        onDelete = { removeItem(chosenItem) }.takeIf { chosenItem.index > HOME_ITEM },
                         onDone = { selected = null },
                     )
                     chosen != null -> SelectionHeader(
                         title = selectionTitle(chosen, allItems),
                         detail = selectionText(chosen, allItems, circles, fences),
+                        onDelete = null,
                         onDone = { selected = null },
                     )
                 }
@@ -1214,7 +1211,7 @@ internal fun PlanMapContent(
                     }
 
                     chosenItem?.let { item ->
-                        itemPanel?.invoke(item.index, TrackPoint(item.latitude, item.longitude).takeIf { item.placed }) { removeItem(item) }
+                        itemPanel?.invoke(item.index, TrackPoint(item.latitude, item.longitude).takeIf { item.placed }, legText(item))
                     }
                 }
             }
@@ -1303,7 +1300,7 @@ private fun MapTypeMenu(onStyle: (String) -> Unit) {
                 open = true
             }
         })
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }, offset = RAIL_MENU_OFFSET) {
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             listed?.types?.forEach { type ->
                 DropdownMenuItem(
                     text = { Text(type) },
@@ -1384,7 +1381,6 @@ fun CenterMenu(
     onFit: (List<TrackPoint>?) -> Unit = {},
     following: Boolean? = null,
     onFollow: () -> Unit = {},
-    menuOffset: DpOffset = DpOffset.Zero,
     anchor: @Composable (open: () -> Unit) -> Unit = { open -> FilledTonalButton(onClick = open) { Text("Center map") } },
 ) {
     var open by remember { mutableStateOf(false) }
@@ -1395,7 +1391,7 @@ fun CenterMenu(
         ?.let { TrackPoint(it.latitude, it.longitude) }
     Box {
         anchor { open = true }
-        DropdownMenu(expanded = open, onDismissRequest = { open = false }, offset = menuOffset) {
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
             following?.let { on ->
                 DropdownMenuItem(
                     text = { Text("Follow vehicle") },
