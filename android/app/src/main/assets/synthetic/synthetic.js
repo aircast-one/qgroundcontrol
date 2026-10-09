@@ -10,6 +10,9 @@ const REANCHOR_MS = 10000;
 const ANCHOR_DEADLINE_MS = 5000;
 const FOLLOW = 0.25;
 const FRAME_RATE = 30;
+const SOFTWARE_GPU = /SwiftShader|llvmpipe|softpipe|Software|Emulator/i;
+const SOFTWARE_FRAME_RATE = 5;
+const SOFTWARE_RESOLUTION = 0.5;
 const EARTH_RADIUS_M = 6371000;
 const WALL_FOOT_M = 100;
 const CIRCLE_STEPS = 64;
@@ -85,15 +88,24 @@ const terrain = new Cesium.CustomHeightmapTerrainProvider({
   credit: "Terrain: Mapzen, AWS Open Data",
 });
 
+const rendererName = () => {
+  const gl = document.createElement("canvas").getContext("webgl");
+  const info = gl && gl.getExtension("WEBGL_debug_renderer_info");
+  return gl ? String(gl.getParameter(info ? info.UNMASKED_RENDERER_WEBGL : gl.RENDERER)) : "";
+};
+
+const softwareGpu = SOFTWARE_GPU.test(rendererName());
+
 const widget = new Cesium.CesiumWidget("view", {
   baseLayer: false,
   terrainProvider: terrain,
   skyBox: false,
   scene3DOnly: true,
   creditContainer: "credits",
-  targetFrameRate: FRAME_RATE,
-  useBrowserRecommendedResolution: false,
+  targetFrameRate: softwareGpu ? SOFTWARE_FRAME_RATE : FRAME_RATE,
+  useBrowserRecommendedResolution: softwareGpu,
 });
+widget.resolutionScale = softwareGpu ? SOFTWARE_RESOLUTION : 1;
 const scene = widget.scene;
 scene.screenSpaceCameraController.enableInputs = false;
 scene.globe.showGroundAtmosphere = true;
