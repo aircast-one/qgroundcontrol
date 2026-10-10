@@ -146,19 +146,7 @@ private struct SyntheticWebView: UIViewRepresentable {
     }
 }
 
-struct SyntheticTag: View {
-    var body: some View {
-        Text(SYNTHETIC_LABEL)
-            .font(.labelSmall)
-            .foregroundStyle(.white)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 2)
-            .background(Color.black.opacity(0.45), in: RoundedRectangle(cornerRadius: 4))
-    }
-}
-
 struct SyntheticView: View {
-    var labelled = true
     var aimable = false
     @QgcPath(SYNTHETIC_VIEW) private var view
     @QgcPath(SYNTHETIC_OVERLAYS) private var overlays
@@ -169,10 +157,7 @@ struct SyntheticView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            ZStack(alignment: .topTrailing) {
-                SyntheticWebView(pose: view, overlays: overlays)
-                if labelled { SyntheticTag().padding(6) }
-            }
+            SyntheticWebView(pose: view, overlays: overlays)
             .contentShape(Rectangle())
             .gesture(aiming(geometry.size), including: canAim ? .all : .none)
             .simultaneousGesture(TapGesture(count: 2).onEnded { if canAim { aim(DEFAULT_TILT_DEG, 0) } }, including: canAim ? .all : .none)

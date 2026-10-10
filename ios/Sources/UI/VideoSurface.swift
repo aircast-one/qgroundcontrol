@@ -49,9 +49,7 @@ struct FlyNoVideoMessage: View {
         if !hasVehicle {
             LookingForAircraft()
         } else if syntheticAvailable(syntheticJson) {
-            SyntheticTag()
-                .padding(8)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+            EmptyView()
         } else {
             let video = videoReading(videoJson)
             GeometryReader { geometry in
@@ -122,7 +120,7 @@ struct VideoSurface: View {
         let video = videoReading(videoJson)
         if video?.available == false {
             if expanded && syntheticAvailable(syntheticJson) {
-                SyntheticView(labelled: fullScreen, aimable: true)
+                SyntheticView(aimable: true)
             } else if expanded {
                 NoVideoArea(underFlyChrome: expanded && !fullScreen, thumb: false, video: video)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -153,7 +151,7 @@ struct VideoSurface: View {
                 }
                 .frame(width: shown.0, height: shown.1)
                 if !decoding && syntheticAvailable(syntheticJson) {
-                    SyntheticView(labelled: !expanded || fullScreen, aimable: expanded)
+                    SyntheticView(aimable: expanded)
                 } else if !decoding {
                     NoVideoArea(underFlyChrome: expanded && !fullScreen, thumb: !expanded, video: video)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
