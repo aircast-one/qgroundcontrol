@@ -647,7 +647,30 @@ fn address(path: &str) -> Option<Addressed> {
     Some(Addressed { group, fact, field, meta })
 }
 
+static DESCRIBED: LazyLock<Mutex<(u64, HashMap<String, Value>)>> = LazyLock::new(|| Mutex::new((u64::MAX, HashMap::new())));
+
 fn described(backend: &dyn Backend, at: &Addressed, path: &str) -> Value {
+    let fact_path = path.split('.').take(3).collect::<Vec<_>>().join(".");
+    if crate::qthost::present() {
+        return built(backend, at, &fact_path);
+    }
+    let now = revision();
+    let cached = {
+        let cache = DESCRIBED.lock().unwrap_or_else(PoisonError::into_inner);
+        (cache.0 == now).then(|| cache.1.get(&fact_path).cloned()).flatten()
+    };
+    cached.unwrap_or_else(|| {
+        let fact = built(backend, at, &fact_path);
+        let mut cache = DESCRIBED.lock().unwrap_or_else(PoisonError::into_inner);
+        if cache.0 != now {
+            *cache = (now, HashMap::new());
+        }
+        cache.1.insert(fact_path, fact.clone());
+        fact
+    })
+}
+
+fn built(backend: &dyn Backend, at: &Addressed, fact_path: &str) -> Value {
     let hidden = !crate::qthost::present() && hidden_on_this_platform(at.group, &at.fact);
     let value = match (hidden, &at.meta.default) {
         (true, Some(default)) => default.clone(),
@@ -658,10 +681,9 @@ fn described(backend: &dyn Backend, at: &Addressed, path: &str) -> Value {
         mine["userVisible"] = json!(false);
         mine["visible"] = json!(false);
     }
-    let fact_path = path.split('.').take(3).collect::<Vec<_>>().join(".");
-    match crate::qthost::present().then(|| runtime_fields(&fact_path)).flatten() {
+    match crate::qthost::present().then(|| runtime_fields(fact_path)).flatten() {
         Some(keys) => {
-            let host = backend.value_fields(&fact_path, &keys.join(","));
+            let host = backend.value_fields(fact_path, &keys.join(","));
             let mut merged = mine;
             keys.iter().filter_map(|k| host.get(*k).map(|v| (*k, v.clone()))).for_each(|(k, v)| merged[k] = v);
             merged
