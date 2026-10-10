@@ -22,7 +22,6 @@ import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
@@ -80,10 +79,7 @@ internal fun FlyNoVideoMessage() {
     }
     val videoJson by qgcPath(VIDEO_VIEW)
     val video = remember(videoJson) { videoReading(videoJson) }
-    if (rememberSyntheticAvailable()) {
-        Box(Modifier.fillMaxSize().padding(8.dp), contentAlignment = Alignment.TopEnd) { SyntheticTag() }
-        return
-    }
+    if (rememberSyntheticAvailable()) return
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val compact = maxHeight < NO_VIDEO_FULL_HEIGHT || maxWidth < NO_VIDEO_FULL_WIDTH
         Box(Modifier.fillMaxSize(), contentAlignment = if (compact) Alignment.TopEnd else Alignment.Center) {
@@ -132,7 +128,7 @@ fun VideoSurface(
     if (video?.available == false) {
         if (!expanded) return
         if (synthetic) {
-            SyntheticView(modifier.fillMaxSize(), labelled = fullScreen, aimable = true)
+            SyntheticView(modifier.fillMaxSize(), aimable = true)
             return
         }
         Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceVariant) {
@@ -168,7 +164,7 @@ fun VideoSurface(
         }
 
         if (video?.decoding != true && synthetic) {
-            SyntheticView(Modifier.fillMaxSize(), labelled = !expanded || fullScreen, aimable = expanded)
+            SyntheticView(Modifier.fillMaxSize(), aimable = expanded)
         } else if (video?.decoding != true) {
             Surface(
                 Modifier.fillMaxSize(),
