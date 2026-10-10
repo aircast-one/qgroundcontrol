@@ -32,4 +32,11 @@ final class FlyDeckTests: XCTestCase {
     func testTheRailLabelsDropTheHoldInstruction() {
         XCTAssertEqual(["Hold to land", "Return", "Hold to take off"].map(railLabel), ["Land", "Return", "Take off"])
     }
+
+    func testSlidingAcrossMostOfTheButtonConfirmsAsSurelyAsHoldingIt() {
+        XCTAssertEqual(slideProgress(300, 1000), 0.5, accuracy: 1e-9)
+        XCTAssertEqual(slideProgress(600, 1000), 1, accuracy: 1e-9)
+        XCTAssertEqual(slideProgress(900, 1000), 1, accuracy: 1e-9)
+        XCTAssertEqual(slideProgress(-200, 1000), 0, accuracy: 1e-9, "sliding back the other way never confirms")
+    }
 }

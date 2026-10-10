@@ -13,7 +13,6 @@ struct HoldToConfirm: View {
     let onConfirm: () -> Void
     @Environment(\.theme) private var theme
     @State private var progress = 0.0
-    @State private var held = 0
 
     var body: some View {
         let accent = destructive ? theme.colors.error : theme.colors.primary
@@ -31,24 +30,6 @@ struct HoldToConfirm: View {
         .clipShape(Capsule())
         .opacity(enabled ? 1 : DISABLED_ALPHA)
         .contentShape(Capsule())
-        .onLongPressGesture(minimumDuration: Double(DECK_HOLD_MS) / 1000, maximumDistance: TRACK_HEIGHT / 2) {
-            guard enabled else { return }
-            held += 1
-            onConfirm()
-        } onPressingChanged: { pressing in
-            if pressing && enabled {
-                withAnimation(.linear(duration: Double(DECK_HOLD_MS) / 1000)) { progress = 1 }
-            } else {
-                withAnimation(nil) { progress = 0 }
-            }
-        }
-        .sensoryFeedback(.impact(weight: .heavy), trigger: held)
-        .accessibilityElement(children: .combine)
-        .accessibilityAddTraits(.isButton)
-        .accessibilityAction(named: Text(label)) {
-            guard enabled else { return }
-            onConfirm()
-        }
-        .id(label)
+        .rememberHold(label, enabled, onTap: {}, onHold: onConfirm, label: label, progress: $progress)
     }
 }

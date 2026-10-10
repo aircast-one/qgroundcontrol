@@ -6,7 +6,8 @@ import androidx.compose.animation.core.LinearEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -84,6 +85,9 @@ internal fun takeoffLabel(offer: GuidedOffer?, readiness: Readiness?): String = 
     else -> TAKE_OFF
 }
 internal const val DECK_HOLD_MS = 1500
+private const val SLIDE_SPAN = 0.6f
+
+internal fun slideProgress(slidPx: Float, widthPx: Int): Float = (slidPx / (widthPx.coerceAtLeast(1) * SLIDE_SPAN)).coerceIn(0f, 1f)
 private const val DECK_HOLD_FILL_ALPHA = 0.3f
 private const val NANOS_PER_MILLI = 1_000_000L
 
@@ -100,20 +104,43 @@ internal fun rememberHold(key: Any, enabled: Boolean, onTap: () -> Unit, onHold:
     val gesture = when {
         onHold != null && enabled -> Modifier
             .pointerInput(key) {
-                detectTapGestures(onPress = {
+                awaitEachGesture {
+                    val down = awaitFirstDown()
                     val pressedAt = System.nanoTime()
+                    var fired = false
+                    val fire = {
+                        if (!fired) {
+                            fired = true
+                            haptics.performHapticFeedback(HapticFeedbackType.LongPress)
+                            hold?.invoke()
+                        }
+                    }
                     val fill = scope.launch {
                         progress.animateTo(1f, tween(DECK_HOLD_MS, easing = LinearEasing))
-                        haptics.performHapticFeedback(HapticFeedbackType.LongPress)
-                        hold?.invoke()
+                        fire()
                     }
-                    val released = tryAwaitRelease()
-                    val fired = fill.isCompleted && !fill.isCancelled
+                    var sliding = false
+                    var released = false
+                    while (!released && !fired) {
+                        val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id }
+                        released = change == null || !change.pressed
+                        val slid = change?.let { it.position.x - down.position.x } ?: 0f
+                        if (!released && !sliding && slid > viewConfiguration.touchSlop) {
+                            sliding = true
+                            fill.cancel()
+                        }
+                        if (!released && sliding) {
+                            change?.consume()
+                            val reached = slideProgress(slid, size.width)
+                            scope.launch { progress.snapTo(reached) }
+                            if (reached >= 1f) fire()
+                        }
+                    }
                     fill.cancel()
-                    progress.snapTo(0f)
+                    scope.launch { progress.snapTo(0f) }
                     val quick = (System.nanoTime() - pressedAt) / NANOS_PER_MILLI < viewConfiguration.longPressTimeoutMillis
-                    if (released && !fired && quick) tap()
-                })
+                    if (released && !fired && !sliding && quick) tap()
+                }
             }
             .semantics(mergeDescendants = true) {
                 role = Role.Button

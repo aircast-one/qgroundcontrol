@@ -32,6 +32,10 @@ func takeoffLabel(_ offer: GuidedOffer?, _ readiness: Readiness?) -> String {
 let DECK_HOLD_MS = 1500
 private let DECK_HOLD_FILL_ALPHA = 0.3
 private let LONG_PRESS_TIMEOUT_SECONDS = 0.4
+private let SLIDE_SPAN = 0.6
+private let SLIDE_START: CGFloat = 10
+
+func slideProgress(_ slid: Double, _ width: Double) -> Double { min(1, max(0, slid / (max(width, 1) * SLIDE_SPAN))) }
 
 func holdTakeoffHeight(_ takeoff: GuidedTakeoff?) -> Double? {
     takeoffRangeUsable(takeoff) ? takeoff?.initial : nil
@@ -48,6 +52,7 @@ private struct HoldPress: ViewModifier {
     @State private var fill: Task<Void, Never>?
     @State private var fired = false
     @State private var held = 0
+    @State private var sliding = false
     @State private var size = CGSize.zero
     @GestureState private var touching = false
 
@@ -59,16 +64,22 @@ private struct HoldPress: ViewModifier {
         withAnimation(.linear(duration: Double(DECK_HOLD_MS) / 1000)) { progress = 1 }
         fill = Task { @MainActor in
             guard (try? await Task.sleep(for: .milliseconds(DECK_HOLD_MS))) != nil else { return }
-            fired = true
-            held += 1
-            onHold()
+            fire(onHold)
         }
+    }
+
+    private func fire(_ onHold: () -> Void) {
+        guard !fired else { return }
+        fired = true
+        held += 1
+        onHold()
     }
 
     private func release() {
         fill?.cancel()
         fill = nil
         pressedAt = nil
+        sliding = false
         withTransaction(\.disablesAnimations, true) { progress = 0 }
     }
 
@@ -105,7 +116,16 @@ private struct HoldPress: ViewModifier {
                     .updating($touching) { _, state, _ in state = true }
                     .onChanged { drag in
                         guard !cancelled else { return }
-                        if !inside(drag.location) {
+                        if !sliding && drag.translation.width > SLIDE_START {
+                            sliding = true
+                            fill?.cancel()
+                            fill = nil
+                        }
+                        if sliding {
+                            let reached = slideProgress(drag.translation.width, size.width)
+                            withTransaction(\.disablesAnimations, true) { progress = reached }
+                            if reached >= 1 { fire(onHold) }
+                        } else if !inside(drag.location) {
                             cancelled = true
                             release()
                         } else if pressedAt == nil {
@@ -114,7 +134,7 @@ private struct HoldPress: ViewModifier {
                     }
                     .onEnded { drag in
                         let quick = pressedAt.map { Date().timeIntervalSince($0) < LONG_PRESS_TIMEOUT_SECONDS } ?? false
-                        let tap = !cancelled && !fired && quick && inside(drag.location)
+                        let tap = !cancelled && !fired && !sliding && quick && inside(drag.location)
                         cancelled = false
                         release()
                         if tap { onTap() }
