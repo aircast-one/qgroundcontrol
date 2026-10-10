@@ -220,7 +220,7 @@ mod tests {
         assert_eq!(empty_text(false, false, Some(false)), "Connect a vehicle to list its logs.");
         assert_eq!(empty_text(true, true, Some(false)), "Asking the vehicle for its logs\u{2026}");
         assert_eq!(empty_text(true, false, Some(false)), "No logs listed yet. Refresh to ask the vehicle.");
-        assert_eq!(empty_text(true, false, None), "No logs listed. Refresh to ask the vehicle.", "Qt's LogDownloadController keeps no listAnswered, so with Qt answering an empty list is neither claimed unasked nor claimed answered");
+        assert_eq!(empty_text(true, false, None), "No logs listed. Refresh to ask the vehicle.", "a controller that reports no listAnswered leaves an empty list neither claimed unasked nor claimed answered");
         assert_eq!(empty_text(true, false, Some(true)), "This vehicle has no logs.", "one line stood for both, so an operator whose vehicle had answered was told to redo the request that had already produced the true answer");
     }
 
@@ -284,7 +284,7 @@ mod tests {
         assert_eq!(asking["canCancel"], true);
         assert_eq!(asking["canSort"], false);
         assert_eq!(asking["emptyText"], "Asking the vehicle for its logs\u{2026}");
-        assert_eq!(logs_view(&Fake { connected: true, requesting: false, entries: json!([]) }, &[])["emptyText"], "No logs listed. Refresh to ask the vehicle.", "a controller with no listAnswered, as Qt's is");
+        assert_eq!(logs_view(&Fake { connected: true, requesting: false, entries: json!([]) }, &[])["emptyText"], "No logs listed. Refresh to ask the vehicle.", "a controller that reports no listAnswered");
         let none = logs_view(&Fake { connected: false, requesting: false, entries: json!([]) }, &[]);
         assert_eq!(none["emptyText"], "Connect a vehicle to list its logs.");
         assert_eq!(none["canErase"], false);

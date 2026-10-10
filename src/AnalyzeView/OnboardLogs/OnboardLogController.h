@@ -26,6 +26,7 @@ class OnboardLogController : public QObject
 
     Q_PROPERTY(QmlObjectListModel *model               READ _getModel                                           CONSTANT)
     Q_PROPERTY(bool               requestingList       READ _getRequestingList                                  NOTIFY requestingListChanged)
+    Q_PROPERTY(bool               listAnswered         READ listAnswered                                        NOTIFY listAnsweredChanged)
     Q_PROPERTY(bool               downloadingLogs      READ _getDownloadingLogs                                 NOTIFY downloadingLogsChanged)
     Q_PROPERTY(bool               allLogsSelected      READ allLogsSelected                                     NOTIFY selectionChanged)
     Q_PROPERTY(int                selectedCount        READ selectedCount                                       NOTIFY selectionChanged)
@@ -70,6 +71,7 @@ public:
 
 signals:
     void requestingListChanged();
+    void listAnsweredChanged();
     void downloadingLogsChanged();
     void transportChanged();
     void selectionChanged();
@@ -99,6 +101,7 @@ private:
 
     QmlObjectListModel *_getModel() const { return _logEntriesModel; }
     bool _getRequestingList() const { return _requestingLogEntries; }
+    bool listAnswered() const { return _listAnswered; }
     bool _getDownloadingLogs() const { return _downloadingLogs; }
 
     bool _chunkComplete() const;
@@ -116,6 +119,7 @@ private:
     void _resetSelection(bool canceled = false);
     void _setDownloading(bool active);
     void _setListing(bool active);
+    void _setListAnswered(bool answered);
     void _updateDataRate();
 
     void _sortEntriesByTimestamp();
@@ -139,6 +143,7 @@ private:
 
     bool _downloadingLogs = false;
     bool _requestingLogEntries = false;
+    bool _listAnswered = false;
     int _apmOffset = 0;
     int _retries = 0;
     std::unique_ptr<OnboardLogDownloadData> _downloadData;

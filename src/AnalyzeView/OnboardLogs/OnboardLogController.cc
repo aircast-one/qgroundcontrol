@@ -160,6 +160,7 @@ void OnboardLogController::_setActiveVehicle(Vehicle *vehicle)
         }
         _setDownloading(false);
         _setListing(false);
+        _setListAnswered(false);
 
         _logEntriesModel->clearAndDeleteContents();
         (void) disconnect(_vehicle, &Vehicle::logEntry, this, &OnboardLogController::_logEntry);
@@ -204,6 +205,8 @@ void OnboardLogController::_logEntry(uint32_t time_utc, uint32_t size, uint16_t 
     if (!_requestingLogEntries || (_transport != Transport::Messages)) {
         return;
     }
+
+    _setListAnswered(true);
 
     if ((_logEntriesModel->count() == 0) && (num_logs > 0)) {
         if (_vehicle->firmwareType() == MAV_AUTOPILOT_ARDUPILOTMEGA) {
@@ -503,6 +506,7 @@ void OnboardLogController::refresh()
 
     _logEntriesModel->clearAndDeleteContents();
     emit selectionChanged();
+    _setListAnswered(false);
 
     if (_vehicle && !_ftpDisabled && _vehicle->capabilitiesKnown() && (_vehicle->capabilityBits() & MAV_PROTOCOL_CAPABILITY_FTP)) {
         qCDebug(OnboardLogControllerLog) << "refresh: using ftp transport";
@@ -929,6 +933,14 @@ void OnboardLogController::_setListing(bool active)
     }
 }
 
+void OnboardLogController::_setListAnswered(bool answered)
+{
+    if (_listAnswered != answered) {
+        _listAnswered = answered;
+        emit listAnsweredChanged();
+    }
+}
+
 void OnboardLogController::_setTransport(Transport transport)
 {
     if (_transport != transport) {
@@ -1129,6 +1141,7 @@ void OnboardLogController::_ftpFinishListing()
         return;
     }
 
+    _setListAnswered(true);
     _setListing(false);
 }
 

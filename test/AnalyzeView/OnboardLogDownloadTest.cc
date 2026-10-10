@@ -69,8 +69,10 @@ void OnboardLogDownloadTest::_downloadTest()
     OnboardLogController* const controller = new OnboardLogController(this);
     MultiSignalSpy* multiSpy = new MultiSignalSpy(this);
     QVERIFY(multiSpy->init(controller));
+    QVERIFY(!controller->listAnswered());
 
     QVERIFY(refreshAndWaitForListComplete(controller, multiSpy));
+    QVERIFY(controller->listAnswered());
 
     // MockLink does not advertise FTP capability by default so the message transport must be used
     QCOMPARE(controller->transport(), QStringLiteral("messages"));
@@ -249,6 +251,7 @@ void OnboardLogFtpDownloadTest::_ftpListAndDownloadTest()
     QVERIFY(multiSpy->init(controller));
 
     QVERIFY(refreshAndWaitForListComplete(controller, multiSpy));
+    QVERIFY(controller->listAnswered());
 
     QCOMPARE(controller->transport(), QStringLiteral("ftp"));
 
