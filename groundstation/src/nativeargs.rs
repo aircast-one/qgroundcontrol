@@ -25,6 +25,7 @@ pub struct Options {
     pub debug_port: Option<u16>,
     pub application_version: Option<String>,
     pub debug_build: bool,
+    pub device: Option<String>,
 }
 
 fn default_settings_path(application: &str) -> std::path::PathBuf {
@@ -50,6 +51,7 @@ pub fn options(arguments: &[String]) -> Options {
         debug_port: option("--port").or_else(|| std::env::var("QGC_DEBUG_API_PORT").ok()).and_then(|p| p.parse().ok()),
         application_version: option("--app-version"),
         debug_build: arguments.iter().any(|a| a == "--debug-build"),
+        device: option("--device"),
         application,
     }
 }

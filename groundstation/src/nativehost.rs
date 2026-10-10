@@ -150,6 +150,7 @@ pub unsafe extern "C" fn qgc_start(argc: c_int, argv: *const *const c_char) -> c
         crate::abi::qgc_core_gcs_position_source(text(&chosen.position_source).as_ptr());
     }
     crate::settingsstore::establish_save_path(chosen.save_path.as_deref(), chosen.removable_save_path.as_deref(), &chosen.application);
+    crate::hostdevice::adopt(chosen.device.as_deref());
     crate::telemetrylog::recover_lost();
     if let Some(version) = &chosen.application_version {
         crate::mavlinklog::set_application_version(version);

@@ -67,6 +67,12 @@ fn allowed(settings: &Settings, board: BoardType, rtk_connected: bool) -> bool {
     }
 }
 
+pub fn built_in(radio: Option<crate::hostdevice::BuiltInRadio>, connected_ports: &[String]) -> Option<Action> {
+    radio
+        .filter(|radio| !connected_ports.iter().any(|c| c.trim() == radio.port))
+        .map(|radio| Action::OpenSerial { name: crate::hostdevice::BUILT_IN_RADIO_NAME.to_string(), port: radio.port.to_string(), baud: radio.baud, usb_direct: false })
+}
+
 impl AutoConnect {
     pub fn network(&self, settings: &Settings, open_udp_names: &[String]) -> Vec<Action> {
         let missing = |name: &str| !open_udp_names.iter().any(|n| n == name);
@@ -185,5 +191,14 @@ mod tests {
         assert_eq!(auto.serial(&table, &settings(), &host, Vec::new(), &[], ""), vec![Action::DisconnectRtk]);
         assert_eq!(auto.network(&settings(), &[]), vec![Action::OpenUdp { name: DEFAULT_UDP_LINK_NAME.into() }]);
         assert!(auto.network(&settings(), &[DEFAULT_UDP_LINK_NAME.to_string()]).is_empty());
+    }
+
+    #[test]
+    fn a_built_in_radio_opens_by_itself_until_its_link_is_up() {
+        let radio = crate::hostdevice::BuiltInRadio { port: "/dev/ttyS1", baud: 460_800 };
+        let open = Action::OpenSerial { name: crate::hostdevice::BUILT_IN_RADIO_NAME.into(), port: "/dev/ttyS1".into(), baud: 460_800, usb_direct: false };
+        assert_eq!(built_in(Some(radio), &[]), Some(open));
+        assert_eq!(built_in(Some(radio), &["/dev/ttyS1".to_string()]), None, "an open link is left alone");
+        assert_eq!(built_in(None, &[]), None, "a device without a built-in radio opens nothing");
     }
 }

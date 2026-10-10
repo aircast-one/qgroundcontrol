@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.widthIn
+import one.aircast.android.hostDevice
 import one.aircast.map.aircast
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -26,6 +27,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -87,6 +89,16 @@ internal fun ConnectingCard(modifier: Modifier = Modifier) {
 
 internal const val LOOKING_TITLE = "Looking for your aircraft"
 internal const val LOOKING_HINT = "Turn on the aircraft. A USB cable or telemetry radio connects by itself; for Wi-Fi, add a link."
+internal const val BUILT_IN_LOOKING_HINT = "Turn on the aircraft. The built-in radio connects by itself."
+
+internal fun lookingHint(device: String?): String = if (device != null) BUILT_IN_LOOKING_HINT else LOOKING_HINT
+
+@Composable
+internal fun rememberLookingHint(): String {
+    val context = LocalContext.current
+    return remember { lookingHint(hostDevice(context)) }
+}
+
 private const val CONNECTION_SETTINGS = "Connections"
 
 @Composable
@@ -100,7 +112,7 @@ internal fun LookingForAircraft() {
         ) {
             androidx.compose.material3.CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 3.dp, color = MaterialTheme.aircast.outdoorForeground)
             Text(LOOKING_TITLE, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.aircast.outdoorForeground, textAlign = TextAlign.Center)
-            Text(LOOKING_HINT, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.aircast.outdoorForeground, textAlign = TextAlign.Center)
+            Text(rememberLookingHint(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.aircast.outdoorForeground, textAlign = TextAlign.Center)
             TextButton(onClick = { navigation.settingsPage = CONNECTION_SETTINGS }) { Text("Add a link") }
             TextButton(onClick = { navigation.settingsPage = FLASHER_PAGE }) { Text("New drone? Flash an Aircast card") }
         }

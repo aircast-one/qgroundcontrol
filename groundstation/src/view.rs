@@ -714,6 +714,7 @@ mod deps_cover_reads {
             ("settingsorder", include_str!("settingsorder.rs")),
             ("platformdisk", include_str!("platformdisk.rs")),
             ("platformserial", include_str!("platformserial.rs")),
+            ("hostdevice", include_str!("hostdevice.rs")),
             ("presets", include_str!("presets.rs")),
             ("rctoparam", include_str!("rctoparam.rs")),
             ("planselect", include_str!("planselect.rs")),

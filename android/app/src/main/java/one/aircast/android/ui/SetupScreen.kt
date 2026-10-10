@@ -293,7 +293,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
 
     if (!hasVehicle) {
         Column(modifier.fillMaxWidth(), horizontalAlignment = Alignment.CenterHorizontally) {
-            EmptyState(R.drawable.ic_build, LOOKING_TITLE, LOOKING_HINT)
+            EmptyState(R.drawable.ic_build, LOOKING_TITLE, rememberLookingHint())
             OutlinedButton(onClick = { navigation.settingsPage = "Connections" }) { Text("Set up connection") }
         }
         return

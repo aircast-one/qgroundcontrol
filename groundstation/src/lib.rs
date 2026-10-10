@@ -162,6 +162,7 @@ pub mod usbmsc;
 pub mod usbfs;
 pub mod firmwarecatalog;
 pub mod platformserial;
+pub mod hostdevice;
 pub mod presets;
 pub mod rctoparam;
 pub mod planselect;

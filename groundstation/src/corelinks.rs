@@ -672,7 +672,6 @@ fn add_dynamic(entry: &Entry) {
 }
 
 fn autoconnect_serial(live: &[(crate::transport::LinkId, LinkConfig)]) {
-    let Some(boards) = BOARDS.as_ref() else { return };
     let connected: Vec<String> = live.iter().filter_map(|(_, c)| match &c.kind {
         Kind::Serial { port_name, .. } => Some(port_name.clone()),
         _ => None,
@@ -682,8 +681,9 @@ fn autoconnect_serial(live: &[(crate::transport::LinkId, LinkConfig)]) {
         _ => String::new(),
     };
     let host = crate::autoconnect::Host { android: cfg!(target_os = "android"), windows: cfg!(target_os = "windows") };
-    let actions = SERIAL_AUTO.lock().unwrap_or_else(PoisonError::into_inner).serial(boards, &autoconnect_settings(), &host, serial_ports(), &connected, &nmea);
-    actions.into_iter().for_each(|action| match action {
+    let boards = BOARDS.as_ref().map(|boards| SERIAL_AUTO.lock().unwrap_or_else(PoisonError::into_inner).serial(boards, &autoconnect_settings(), &host, serial_ports(), &connected, &nmea));
+    let actions = crate::autoconnect::built_in(crate::hostdevice::built_in_radio(), &connected).into_iter().chain(boards.unwrap_or_default());
+    actions.for_each(|action| match action {
         crate::autoconnect::Action::OpenSerial { name, port, baud, usb_direct } => {
             crate::linkhost::mark_usb_direct(&port, usb_direct);
             let entry = serial_entry(&name, &port, baud);

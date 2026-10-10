@@ -34,7 +34,7 @@ object HostPlatform {
             "--map-cache", File(mapCache, "qgcMapCache.db").absolutePath,
             "--save-path", File(activity.getExternalFilesDir(null) ?: activity.filesDir, application).absolutePath,
             "--app-version", BuildConfig.VERSION_NAME,
-        ) + removableSavePath(activity, application) + if (BuildConfig.DEBUG) listOf("--port", DEBUG_API_PORT, "--debug-build") else emptyList()
+        ) + removableSavePath(activity, application) + hostDevice(activity)?.let { listOf("--device", it) }.orEmpty() + if (BuildConfig.DEBUG) listOf("--port", DEBUG_API_PORT, "--debug-build") else emptyList()
         QGCBridge.start(arguments.toTypedArray())
         val tileCache = File(mapCache, "qgcMapCache.db").absolutePath
         MapTileHost.fetch = { mapType, x, y, zoom -> QGCBridge.mapTile(mapType, x, y, zoom, tileCache) }

@@ -494,6 +494,10 @@ pub fn entries_under(group: &str) -> BTreeMap<String, Setting> {
     stored().as_ref().map(|values| values.iter().filter(|(key, _)| key.starts_with(&prefix)).map(|(k, v)| (k.clone(), v.clone())).collect()).unwrap_or_default()
 }
 
+pub fn is_stored(path: &str) -> bool {
+    address(path).is_some_and(|at| stored().as_ref().is_some_and(|values| values.contains_key(&key(at.group, &at.fact))))
+}
+
 pub fn stored_text(key: &str) -> Option<String> {
     match stored().as_ref()?.get(key)? {
         Setting::Text(text) => Some(text.clone()),
