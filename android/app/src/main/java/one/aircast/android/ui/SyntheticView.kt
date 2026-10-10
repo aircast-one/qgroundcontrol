@@ -47,7 +47,7 @@ internal const val SYNTHETIC_SOURCE = "Synthetic View"
 internal const val SYNTHETIC_AIM = "syntheticView.aim"
 private const val TILT_SPAN_DEG = 90.0
 private const val DEFAULT_TILT_DEG = -15.0
-private const val DEFAULT_FOV_DEG = 70.0
+private const val PAN_SPAN_DEG = 360.0
 private const val SYNTHETIC_PAGE = "https://${WebViewAssetLoader.DEFAULT_DOMAIN}/assets/synthetic/index.html"
 private const val SYNTHETIC_TILES = "/assets/synthetic/tiles"
 
@@ -62,8 +62,8 @@ internal fun syntheticOverlaysScript(view: JSONObject): String = "window.aircast
 internal fun syntheticTilt(from: Double, draggedPx: Float, heightPx: Int): Double =
     (from + draggedPx.toDouble() / heightPx.coerceAtLeast(1) * TILT_SPAN_DEG).coerceIn(-TILT_SPAN_DEG, 0.0)
 
-internal fun syntheticPan(from: Double, draggedPx: Float, widthPx: Int, fovDeg: Double): Double =
-    ((from - draggedPx.toDouble() / widthPx.coerceAtLeast(1) * fovDeg + 180.0).mod(360.0)) - 180.0
+internal fun syntheticPan(from: Double, draggedPx: Float, widthPx: Int): Double =
+    ((from - draggedPx.toDouble() / widthPx.coerceAtLeast(1) * PAN_SPAN_DEG + 180.0).mod(360.0)) - 180.0
 
 @Composable
 internal fun rememberSyntheticAvailable(): Boolean {
@@ -94,7 +94,7 @@ private fun syntheticWebView(context: Context, onLoaded: () -> Unit): WebView {
 }
 
 @Composable
-internal fun SyntheticView(modifier: Modifier = Modifier, labelled: Boolean = true, aimable: Boolean = false) {
+internal fun SyntheticView(modifier: Modifier = Modifier, aimable: Boolean = false) {
     val view by qgcPath(SYNTHETIC_VIEW)
     val context = LocalContext.current
     val overlays by qgcPath(SYNTHETIC_OVERLAYS)
@@ -106,34 +106,26 @@ internal fun SyntheticView(modifier: Modifier = Modifier, labelled: Boolean = tr
     val canAim = aimable && view?.optBoolean("aimable") == true
     val pitch by rememberUpdatedState(view?.optDouble("pitch", DEFAULT_TILT_DEG) ?: DEFAULT_TILT_DEG)
     val pan by rememberUpdatedState(view?.optDouble("pan", 0.0) ?: 0.0)
-    val fov by rememberUpdatedState(view?.optDouble("fov", DEFAULT_FOV_DEG) ?: DEFAULT_FOV_DEG)
+    val sent = remember(canAim) { mutableStateOf<Pair<Double, Double>?>(null) }
+    val send = { tilt: Double, turned: Double ->
+        sent.value = tilt to turned
+        offMainInOrder { Qgc.invoke(SYNTHETIC_AIM, tilt, turned) }
+    }
     val aiming = Modifier
         .pointerInput(canAim) {
             if (!canAim) return@pointerInput
             var aim = pitch to pan
-            detectDragGestures(onDragStart = { aim = pitch to pan }) { change, dragged ->
+            detectDragGestures(onDragStart = { aim = sent.value ?: (pitch to pan) }) { change, dragged ->
                 change.consume()
-                aim = syntheticTilt(aim.first, dragged.y, size.height) to syntheticPan(aim.second, dragged.x, size.width, fov)
-                val (tilt, turned) = aim
-                offMainInOrder { Qgc.invoke(SYNTHETIC_AIM, tilt, turned) }
+                aim = syntheticTilt(aim.first, dragged.y, size.height) to syntheticPan(aim.second, dragged.x, size.width)
+                send(aim.first, aim.second)
             }
         }
         .pointerInput(canAim) {
             if (!canAim) return@pointerInput
-            detectTapGestures(onDoubleTap = { offMainInOrder { Qgc.invoke(SYNTHETIC_AIM, DEFAULT_TILT_DEG, 0.0) } })
+            detectTapGestures(onDoubleTap = { send(DEFAULT_TILT_DEG, 0.0) })
         }
     Box(modifier.then(aiming)) {
         AndroidView({ web }, Modifier.fillMaxSize())
-        if (labelled) SyntheticTag(Modifier.align(Alignment.TopEnd).padding(6.dp))
     }
-}
-
-@Composable
-internal fun SyntheticTag(modifier: Modifier = Modifier) {
-    Text(
-        SYNTHETIC_LABEL,
-        modifier.background(Color.Black.copy(alpha = 0.45f), RoundedCornerShape(4.dp)).padding(horizontal = 6.dp, vertical = 2.dp),
-        color = Color.White,
-        style = MaterialTheme.typography.labelSmall,
-    )
 }

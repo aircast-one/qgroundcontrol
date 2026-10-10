@@ -14,7 +14,7 @@ private let SYNTHETIC_TILES = "/synthetic/tiles"
 private let SYNTHETIC_CESIUM = "/synthetic/Cesium/"
 private let TILT_SPAN_DEG = 90.0
 private let DEFAULT_TILT_DEG = -15.0
-private let DEFAULT_FOV_DEG = 70.0
+private let PAN_SPAN_DEG = 360.0
 private let PNG_SIGNATURE: [UInt8] = [0x89, 0x50, 0x4E, 0x47]
 private let HTTP_OK = 200
 private let HTTP_NOT_FOUND = 404
@@ -41,8 +41,8 @@ func syntheticTilt(_ from: Double, _ dragged: Double, _ height: Double) -> Doubl
     min(0, max(-TILT_SPAN_DEG, from + dragged / max(height, 1) * TILT_SPAN_DEG))
 }
 
-func syntheticPan(_ from: Double, _ dragged: Double, _ width: Double, _ fov: Double) -> Double {
-    let turned = (from - dragged / max(width, 1) * fov + 180).truncatingRemainder(dividingBy: 360)
+func syntheticPan(_ from: Double, _ dragged: Double, _ width: Double) -> Double {
+    let turned = (from - dragged / max(width, 1) * PAN_SPAN_DEG + 180).truncatingRemainder(dividingBy: 360)
     return (turned < 0 ? turned + 360 : turned) - 180
 }
 
@@ -163,6 +163,7 @@ struct SyntheticView: View {
     @QgcPath(SYNTHETIC_VIEW) private var view
     @QgcPath(SYNTHETIC_OVERLAYS) private var overlays
     @State private var dragStart: (tilt: Double, pan: Double)?
+    @State private var sent: (tilt: Double, pan: Double)?
 
     private var canAim: Bool { aimable && view?["aimable"].bool == true }
 
@@ -181,15 +182,15 @@ struct SyntheticView: View {
     private func aiming(_ size: CGSize) -> some Gesture {
         DragGesture(minimumDistance: 4)
             .onChanged { drag in
-                let start = dragStart ?? (view?["pitch"].double ?? DEFAULT_TILT_DEG, view?["pan"].double ?? 0)
+                let start = dragStart ?? sent ?? (view?["pitch"].double ?? DEFAULT_TILT_DEG, view?["pan"].double ?? 0)
                 dragStart = start
-                let fov = view?["fov"].double ?? DEFAULT_FOV_DEG
-                aim(syntheticTilt(start.tilt, drag.translation.height, size.height), syntheticPan(start.pan, drag.translation.width, size.width, fov))
+                aim(syntheticTilt(start.tilt, drag.translation.height, size.height), syntheticPan(start.pan, drag.translation.width, size.width))
             }
             .onEnded { _ in dragStart = nil }
     }
 
     private func aim(_ tilt: Double, _ pan: Double) {
+        sent = (tilt, pan)
         offMainInOrder { _ = Qgc.invoke(SYNTHETIC_AIM, tilt, pan) }
     }
 }

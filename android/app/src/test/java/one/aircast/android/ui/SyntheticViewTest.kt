@@ -23,10 +23,11 @@ class SyntheticViewTest {
     }
 
     @Test
-    fun `dragging sideways turns the view so the scene follows the finger`() {
-        assertEquals(-35.0, syntheticPan(0.0, draggedPx = 500f, widthPx = 1000, fovDeg = 70.0), 1e-9)
-        assertEquals(35.0, syntheticPan(0.0, draggedPx = -500f, widthPx = 1000, fovDeg = 70.0), 1e-9)
-        assertEquals(-170.0, syntheticPan(170.0, draggedPx = -2000f, widthPx = 1000, fovDeg = 10.0), 1e-9)
+    fun `a full-width swipe turns the view all the way round, as a full-height one covers the whole tilt`() {
+        assertEquals(-90.0, syntheticPan(0.0, draggedPx = 250f, widthPx = 1000), 1e-9)
+        assertEquals(90.0, syntheticPan(0.0, draggedPx = -250f, widthPx = 1000), 1e-9)
+        assertEquals(30.0, syntheticPan(30.0, draggedPx = 1000f, widthPx = 1000), 1e-9)
+        assertEquals(-154.0, syntheticPan(170.0, draggedPx = -100f, widthPx = 1000), 1e-9)
     }
 
     @Test
