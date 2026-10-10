@@ -156,7 +156,7 @@ internal fun MapClickMenu(point: MapPoint, onDismiss: () -> Unit) {
         LaunchedEffect(point) { onDismiss() }
         return
     }
-    var confirming by remember(point) { mutableStateOf<MapClickAction?>(null) }
+    var confirming by remember(point, rememberActiveVehicleId()) { mutableStateOf<MapClickAction?>(null) }
     LaunchedEffect(actions) {
         val gone = confirming?.takeIf { pending -> actions.none { it.id == pending.id } }
         if (gone?.id == ORBIT_ACTION) onDismiss() else if (gone != null) confirming = null

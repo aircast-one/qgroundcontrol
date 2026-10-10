@@ -368,12 +368,13 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     val readiness = remember(state) { guidedReadiness(state) }
     val available = state?.connected == true
     val armed = state?.armed == true
-    var pending by remember { mutableStateOf<GuidedAction?>(null) }
+    val activeId = rememberActiveVehicleId()
+    var pending by remember(activeId) { mutableStateOf<GuidedAction?>(null) }
     var sentName by remember { mutableStateOf<String?>(null) }
     var sentSnapshot by remember { mutableStateOf<String?>(null) }
     var refusal by flyScreen::refusal
     val scope = rememberCoroutineScope()
-    var guidedValue by remember { mutableStateOf<OpenGuidedValue?>(null) }
+    var guidedValue by remember(activeId) { mutableStateOf<OpenGuidedValue?>(null) }
     var showMore by remember { mutableStateOf(false) }
     var showGripper by remember { mutableStateOf(false) }
     var deckRest by remember { mutableStateOf<List<DeckEntry>>(emptyList()) }
@@ -447,6 +448,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             openValue = openValue,
             report = { refusal = it },
             withdraw = { refusal = withdrawn(refusal, it) },
+            showing = { refusal == it },
             openChecklist = checklist::open.takeIf { useChecklist },
             readiness = readiness,
         ),
@@ -660,6 +662,7 @@ private fun CoroutineScope.attemptCommand(
     action: String,
     report: (String?) -> Unit,
     withdraw: (String) -> Unit,
+    showing: (String) -> Boolean,
     reached: () -> Boolean,
     call: () -> Unit,
 ) {
@@ -674,7 +677,7 @@ private fun CoroutineScope.attemptCommand(
         } == true
         val refused = commandRefusal(action, confirmed) ?: return@launch
         report(refused)
-        while (!withContext(Dispatchers.Default) { reached() }) {
+        while (showing(refused) && !withContext(Dispatchers.Default) { reached() }) {
             delay(LATE_CONFIRM_POLL_MS)
         }
         withdraw(refused)
@@ -712,7 +715,7 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
     val hasModesPage = remember(setupJson) { setupComponents(setupJson).any { it.name == FLIGHT_MODES_PAGE } }
     var showFolded by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
-    var confirming by remember { mutableStateOf<FlightModeOption?>(null) }
+    var confirming by remember(rememberActiveVehicleId()) { mutableStateOf<FlightModeOption?>(null) }
     var settings by remember { mutableStateOf(false) }
     var modeRefusal by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
@@ -962,6 +965,7 @@ internal class FlightDeckContext(
     val openValue: (GuidedValueKind) -> Unit,
     val report: (String?) -> Unit,
     val withdraw: (String) -> Unit,
+    val showing: (String) -> Boolean,
     val openChecklist: (() -> Unit)?,
     val readiness: Readiness? = null,
 )
@@ -991,6 +995,7 @@ internal fun flightDeckEntries(deck: FlightDeckContext): List<DeckEntry> = with(
                     action = if (target) "Arm" else "Disarm",
                     report = report,
                     withdraw = withdraw,
+                    showing = showing,
                     reached = { armedNow() == target },
                 ) { VehicleCommands.setArmed(target) }
             })

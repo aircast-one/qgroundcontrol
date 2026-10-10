@@ -211,11 +211,13 @@ internal fun GuidedStepper(
                     LaunchedEffect(Unit) { focus.requestFocus() }
                     OutlinedTextField(
                         value = typed,
-                        onValueChange = { typing = it },
+                        onValueChange = { text ->
+                            typing = text
+                            guidedTyped(text, minimum, maximum, unit)?.let(onValue)
+                        },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
                         keyboardActions = KeyboardActions(onDone = {
-                            guidedTyped(typed, minimum, maximum, unit)?.let(onValue)
                             focusManager.clearFocus()
                             typing = null
                         }),

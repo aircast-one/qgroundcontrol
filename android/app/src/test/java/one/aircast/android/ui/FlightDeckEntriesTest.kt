@@ -18,6 +18,7 @@ class FlightDeckEntriesTest {
             openValue = { opened += it.offerId },
             report = {},
             withdraw = {},
+            showing = { false },
             openChecklist = openChecklist,
             readiness = readiness,
         )

@@ -121,23 +121,26 @@ internal fun rememberHold(key: Any, enabled: Boolean, onTap: () -> Unit, onHold:
                     }
                     var sliding = false
                     var released = false
-                    while (!released && !fired) {
-                        val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id }
-                        released = change == null || !change.pressed
-                        val slid = change?.let { it.position.x - down.position.x } ?: 0f
-                        if (!released && !sliding && slid > viewConfiguration.touchSlop) {
-                            sliding = true
-                            fill.cancel()
+                    try {
+                        while (!released && !fired) {
+                            val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id }
+                            released = change == null || !change.pressed
+                            val slid = change?.let { it.position.x - down.position.x } ?: 0f
+                            if (!released && !sliding && slid > viewConfiguration.touchSlop) {
+                                sliding = true
+                                fill.cancel()
+                            }
+                            if (!released && sliding) {
+                                change?.consume()
+                                val reached = slideProgress(slid, size.width)
+                                scope.launch { progress.snapTo(reached) }
+                                if (reached >= 1f) fire()
+                            }
                         }
-                        if (!released && sliding) {
-                            change?.consume()
-                            val reached = slideProgress(slid, size.width)
-                            scope.launch { progress.snapTo(reached) }
-                            if (reached >= 1f) fire()
-                        }
+                    } finally {
+                        fill.cancel()
+                        scope.launch { progress.snapTo(0f) }
                     }
-                    fill.cancel()
-                    scope.launch { progress.snapTo(0f) }
                     val quick = (System.nanoTime() - pressedAt) / NANOS_PER_MILLI < viewConfiguration.longPressTimeoutMillis
                     if (released && !fired && !sliding && quick) tap()
                 }
