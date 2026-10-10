@@ -1992,7 +1992,7 @@ impl Vehicle {
             return Vec::new();
         }
         released.iter().for_each(|channel| {
-            self.rc_override.insert(*channel, 0);
+            self.rc_override.insert(*channel, if *channel <= 8 { 0 } else { u16::MAX - 1 });
             self.rc_releasing.insert(*channel, RC_OVERRIDE_RELEASE_TICKS);
         });
         self.send_rc_override()
@@ -5011,7 +5011,7 @@ mod tests {
         hub.set_active(Some(1));
         hub.vehicles.get_mut(&1).unwrap().start_guided(&json!({ "action": "rcOverride", "channel": 9, "pwm": 2000 }), 1_000).unwrap();
         hub.set_active(Some(2));
-        assert_eq!(hub.vehicles[&1].rc_override.get(&9), Some(&0), "the on-screen controls now drive vehicle 2, so nothing would ever release vehicle 1's switch");
+        assert_eq!(hub.vehicles[&1].rc_override.get(&9), Some(&(u16::MAX - 1)), "the on-screen controls now drive vehicle 2, so nothing would ever release vehicle 1's switch; channels 9-18 release with UINT16_MAX-1, as 0 means ignore there");
         let released: Vec<_> = [1_200, 1_400, 1_600, 1_800].into_iter().flat_map(|t| hub.vehicles.get_mut(&1).unwrap().tick_rc_override(t)).collect();
         assert_eq!(released.len(), 3);
         assert!(hub.vehicles[&1].rc_override.is_empty());

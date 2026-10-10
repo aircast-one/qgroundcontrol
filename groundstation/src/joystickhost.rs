@@ -237,6 +237,7 @@ struct Host {
     joysticks: BTreeMap<String, Joystick>,
     calibration: Option<(String, StickCal)>,
     setup_state: Option<(Option<String>, bool)>,
+    driven: Option<(u8, u32)>,
 }
 
 fn axis_group(joystick: &str) -> String {
@@ -535,6 +536,12 @@ fn sync_polling(now_ms: u64) {
     ACTIVE_UNCALIBRATED.store(active.is_some() && !calibrated, std::sync::atomic::Ordering::Relaxed);
     let joystick_changed = host.setup_state.replace((active.clone(), calibrated)).is_some_and(|before| before != (active.clone(), calibrated));
     let names: Vec<String> = host.joysticks.keys().cloned().collect();
+    let driving = vehicle.map(|(id, link, ..)| (id, link));
+    let left = std::mem::replace(&mut host.driven, driving).filter(|before| Some(*before) != driving);
+    let released: Vec<Out> = match left {
+        Some(_) => names.iter().flat_map(|name| host.joysticks.get_mut(name).map(|j| j.stop(now_ms)).unwrap_or_default()).collect(),
+        None => Vec::new(),
+    };
     let outs: Vec<Out> = names
         .iter()
         .flat_map(|name| {
@@ -550,6 +557,9 @@ fn sync_polling(now_ms: u64) {
     drop(host);
     if joystick_changed {
         crate::hub::lock().recheck_setup_everywhere();
+    }
+    if let Some(old) = left {
+        send(old, released);
     }
     if let Some((id, link, ..)) = vehicle {
         send((id, link), outs);

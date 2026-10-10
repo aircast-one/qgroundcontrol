@@ -97,6 +97,10 @@ fn can_duplicate(command: u16) -> bool {
     matches!(command, CMD_DO_MOTOR_TEST | CMD_SET_MESSAGE_INTERVAL)
 }
 
+fn emergency_stop(command: &Command) -> bool {
+    command.command == crate::guidedcmd::CMD_COMPONENT_ARM_DISARM && command.params[0] == 0.0 && command.params[1] == crate::guidedcmd::ARM_MAGIC
+}
+
 fn result_text(command: u16, result: u8) -> Option<String> {
     let verb = match result {
         1 => "temporarily rejected",
@@ -145,6 +149,16 @@ impl Commands {
     }
 
     pub fn send(&mut self, command: Command, now_ms: u64) -> Vec<Out> {
+        if emergency_stop(&command) {
+            let (superseded, kept): (Vec<Entry>, Vec<Entry>) = std::mem::take(&mut self.entries).into_iter().partition(|e| e.command.component == command.component && e.command.command == command.command);
+            self.entries = kept;
+            let failed = superseded.into_iter().map(|e| Out::Result { tag: e.command.tag, component: e.command.component, command: e.command.command, result: RESULT_FAILED, failure: Failure::ResultOnly });
+            return failed.chain(self.enqueue(command, now_ms)).collect();
+        }
+        self.enqueue(command, now_ms)
+    }
+
+    fn enqueue(&mut self, command: Command, now_ms: u64) -> Vec<Out> {
         let all = command.component == COMP_ID_ALL;
         if all || (self.pending(command.component, command.command) && !can_duplicate(command.command)) {
             let failure = if all { Failure::ResultOnly } else { Failure::Duplicate };
@@ -344,6 +358,17 @@ mod tests {
 
     fn arm(tag: u64) -> Command {
         Command { component: 1, command: 400, command_int: false, frame: 0, params: [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], show_error: true, tag }
+    }
+
+    #[test]
+    fn an_emergency_stop_goes_out_while_an_arm_is_still_waiting_for_its_ack() {
+        let mut commands = Commands::default();
+        commands.send(arm(7), 0);
+        let stop = Command { params: [0.0, crate::guidedcmd::ARM_MAGIC, 0.0, 0.0, 0.0, 0.0, 0.0], ..arm(8) };
+        let out = commands.send(stop, 10);
+        assert_eq!(out[0], Out::Result { tag: 7, component: 1, command: 400, result: RESULT_FAILED, failure: Failure::ResultOnly }, "the pending arm gives way");
+        assert!(matches!(out[1], Out::Send { command: 400, params, .. } if params[1] == crate::guidedcmd::ARM_MAGIC));
+        assert!(matches!(commands.send(arm(9), 20).as_slice(), [Out::Result { failure: Failure::Duplicate, .. }, ..]), "a plain arm still waits on the stop");
     }
 
     #[test]
