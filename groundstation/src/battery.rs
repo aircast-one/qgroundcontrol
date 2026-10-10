@@ -243,7 +243,7 @@ pub fn return_charge(percent: f64, seconds_left: f64, reserve_percent: f64, trip
 
 const CM: f64 = 100.0;
 
-fn return_trip(backend: &dyn Backend) -> Option<ReturnTrip> {
+pub fn return_trip(backend: &dyn Backend) -> Option<ReturnTrip> {
     let raw = |name: &str| parameter_value(backend, name, "rawValue");
     let fact = |path: &str| value_number(&backend.value(&format!("{path}.rawValue")));
     let (distance_m, altitude_m) = (fact("vehicle.distanceToHome")?, fact("vehicle.altitudeRelative")?);
@@ -388,6 +388,7 @@ fn limiting_pack_extras(backend: &dyn Backend, mut shown: Value, popup_packs: &[
     shown["level"] = described.get(index).map_or(Value::Null, |pack| pack["level"].clone());
     shown["margin"] = margin_text(action, parameter_value(backend, "BAT_LOW_THR", "value"), critical, limiting.percent, limiting.time_remaining).map_or(Value::Null, Value::String);
     shown["percent"] = limiting.percent.map_or(Value::Null, |p| json!(p));
+    shown["secondsLeft"] = limiting.time_remaining.map_or(Value::Null, |s| json!(s));
     shown["timeLeft"] = limiting.time_remaining.map(duration_text).filter(|t| !t.is_empty()).map_or(Value::Null, Value::String);
     shown["reserve"] = json!(reserve);
     shown["returnAt"] = return_at.map_or(Value::Null, |at| json!(at));

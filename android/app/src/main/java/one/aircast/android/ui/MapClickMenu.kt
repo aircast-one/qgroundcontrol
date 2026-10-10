@@ -44,6 +44,7 @@ import one.aircast.map.MINIMUM_CIRCLE_RADIUS_METRES
 import one.aircast.map.OrbitCircle
 import one.aircast.map.loiterEditNumber
 import one.aircast.map.optText
+import one.aircast.map.aircast
 import one.aircast.map.TrackPoint
 import org.json.JSONObject
 import java.util.Locale
@@ -53,6 +54,24 @@ internal const val MAP_CLICK_PATH = "view.mapClick"
 internal data class MapPoint(val latitude: Double, val longitude: Double)
 
 internal const val ORBIT_ACTION = "Orbit"
+
+internal const val RETURN_HOME_INSTEAD = "Return home instead"
+
+internal const val MAP_HOLD_HINT = "Press and hold the map to fly there"
+
+enum class MapHoldHint { Unseen, Due, Learned }
+
+internal data class GotoPreview(val distance: String, val height: String, val verdict: String, val pastReturnPoint: Boolean)
+
+internal fun gotoPreviewPath(point: MapPoint): String = String.format(Locale.US, "view.gotoPreview(%.7f,%.7f)", point.latitude, point.longitude)
+
+internal fun gotoPreview(view: JSONObject?): GotoPreview? =
+    view?.takeIf { it.optBoolean("available") }?.let {
+        GotoPreview(it.optText("distanceText"), it.optText("heightText"), it.optText("verdict"), it.optBoolean("pastReturnPoint"))
+    }
+
+internal fun gotoPreviewLines(preview: GotoPreview?, fallback: String): List<String> =
+    preview?.let { listOf(listOf(it.distance, it.height).filter(String::isNotBlank).joinToString(" \u00b7 "), it.verdict).filter(String::isNotBlank) }?.ifEmpty { null } ?: listOf(fallback)
 internal const val GOTO_ACTION = "GoTo"
 
 private val COMPASS_POINTS = listOf("north", "north-east", "east", "south-east", "south", "south-west", "west", "north-west")
@@ -146,6 +165,14 @@ internal fun MapClickMenu(point: MapPoint, onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
 
     val defaults = remember(view) { orbitDefaults(view) }
+    val mapEdits = one.aircast.map.LocalFlyMapEdits.current
+    val previewing = confirming?.id == GOTO_ACTION
+    DisposableEffect(previewing, point) {
+        mapEdits.gotoPreview = if (previewing) TrackPoint(point.latitude, point.longitude) else null
+        onDispose { mapEdits.gotoPreview = null }
+    }
+    val previewJson by qgcPath(if (previewing) gotoPreviewPath(point) else MAP_CLICK_PATH)
+    val preview = remember(previewJson, previewing) { gotoPreview(previewJson).takeIf { previewing } }
 
     fun run(action: MapClickAction) {
         scope.launch {
@@ -180,7 +207,26 @@ internal fun MapClickMenu(point: MapPoint, onDismiss: () -> Unit) {
                     Text(sentenceCase(pending.title), style = MaterialTheme.typography.titleLarge)
                     val vehicleAt = geoOf(vehicleCoordinate)?.let { (lat, lon) -> MapPoint(lat, lon) }
                     val away = vehicleAt?.takeIf { pending.id == GOTO_ACTION }?.let { goHereText(it, point, defaults.unit, defaults.metresPerUnit) }
-                    Text(away ?: pending.message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    val lines = if (preview != null) gotoPreviewLines(preview.copy(distance = away ?: preview.distance), pending.message) else listOf(away ?: pending.message)
+                    val warn = preview?.pastReturnPoint == true
+                    lines.forEachIndexed { index, line ->
+                        Text(
+                            line,
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = if (warn && index == lines.lastIndex) MaterialTheme.aircast.warning else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    if (warn) {
+                        androidx.compose.material3.Button(
+                            onClick = {
+                                scope.launch {
+                                    withContext(Dispatchers.Default) { one.aircast.android.bridge.VehicleCommands.returnToLaunch(false) }
+                                    onDismiss()
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) { Text(RETURN_HOME_INSTEAD) }
+                    }
                     HoldOrCancel(pending.title, onConfirm = { run(pending) }, onCancel = { confirming = null })
                 }
             }

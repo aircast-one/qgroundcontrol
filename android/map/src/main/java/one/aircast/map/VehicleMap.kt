@@ -201,6 +201,7 @@ fun VehicleMap(
     pip: Boolean = false,
     fitRequest: Int = 0,
     fitOnly: List<TrackPoint>? = null,
+    fitBottomShare: Float = 0f,
     onFitFailed: () -> Unit = {},
     centreRequest: Int = 0,
     centreOn: TrackPoint? = null,
@@ -231,7 +232,7 @@ fun VehicleMap(
     val latestRoi by rememberUpdatedState(roi)
     val latestRoiClick by rememberUpdatedState(onRoiClick)
     val latestTrafficClick by rememberUpdatedState(onTrafficClick)
-    val shownGoto = editedGoto(goto, mapEdits.gotoLoiter)
+    val shownGoto = editedGoto(previewGoto(goto, mapEdits.gotoPreview), mapEdits.gotoLoiter)
     val gotoEditing = mapEdits.gotoLoiter != null && shownGoto?.loiterRadiusMetres != null
     val latestGoto by rememberUpdatedState(shownGoto)
     val latestItems by rememberUpdatedState(missionItems)
@@ -437,9 +438,10 @@ fun VehicleMap(
         val markerStyle = style ?: return@LaunchedEffect
         renderClickMarker(markerStyle, clickMarker.takeIf { orbitPreview == null })
     }
-    LaunchedEffect(style, shownGoto, gotoEditing) {
+    LaunchedEffect(style, shownGoto, gotoEditing, mapEdits.gotoPreview, latitude, longitude) {
         val gotoStyle = style ?: return@LaunchedEffect
         renderGoto(gotoStyle, shownGoto, gotoEditing)
+        renderGotoPath(gotoStyle, gotoPath(TrackPoint(latitude, longitude), mapEdits.gotoPreview))
     }
     LaunchedEffect(style, roi) {
         val roiStyle = style ?: return@LaunchedEffect
@@ -611,7 +613,7 @@ fun VehicleMap(
                 FIT_PADDING_PIXELS + leftInsetPx,
                 FIT_PADDING_PIXELS + topInsetPx,
                 FIT_PADDING_PIXELS,
-                FIT_PADDING_PIXELS + bottomInsetPx,
+                FIT_PADDING_PIXELS + bottomInsetPx + (mapView.height * fitBottomShare).toInt(),
             ),
         )
     }

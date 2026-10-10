@@ -37,8 +37,25 @@ private const val ARROW_BEARING = "bearing"
 private const val GOTO_HANDLE_SOURCE = "aircast-goto-handle"
 private const val GOTO_HANDLE_LAYER = "aircast-goto-handle-layer"
 private const val GOTO_COLOUR = "#2E7D32"
+private const val GOTO_PATH_SOURCE = "aircast-goto-path"
+private const val GOTO_PATH_LAYER = "aircast-goto-path-layer"
+private const val PATH_DASH = 2f
+private const val PATH_GAP = 1.5f
 
-data class GotoLocation(val at: TrackPoint, val loiterRadiusMetres: Double?, val loiterRadiusText: String = "", val loiterClockwise: Boolean = true)
+fun previewGoto(confirmed: GotoLocation?, preview: TrackPoint?): GotoLocation? =
+    preview?.let { GotoLocation(it, null) } ?: confirmed?.takeUnless { it.arrived }
+
+fun gotoPath(from: TrackPoint?, preview: TrackPoint?): List<TrackPoint> =
+    listOfNotNull(from?.takeIf { isPlottable(it.latitude, it.longitude) }, preview).takeIf { it.size == 2 }.orEmpty()
+
+data class GotoLocation(
+    val at: TrackPoint,
+    val loiterRadiusMetres: Double?,
+    val loiterRadiusText: String = "",
+    val loiterClockwise: Boolean = true,
+    val arrived: Boolean = false,
+    val progressText: String = "",
+)
 
 fun gotoLocation(view: JSONObject?): GotoLocation? =
     view?.optJSONObject("gotoLocation")?.let { json ->
@@ -47,6 +64,8 @@ fun gotoLocation(view: JSONObject?): GotoLocation? =
             json.optDouble("loiterRadiusMetres").takeIf { !it.isNaN() && it > 0 },
             json.optText("loiterRadiusText"),
             json.optBoolean("loiterClockwise", true),
+            arrived = json.optBoolean("arrived"),
+            progressText = json.optText("progressText"),
         )
     }?.takeIf { isPlottable(it.at.latitude, it.at.longitude) }
 
@@ -157,6 +176,14 @@ fun installGotoLayer(style: Style) {
     style.addSource(GeoJsonSource(GOTO_RADIUS_SOURCE))
     style.addSource(GeoJsonSource(GOTO_ARROW_SOURCE))
     style.addSource(GeoJsonSource(GOTO_HANDLE_SOURCE))
+    style.addSource(GeoJsonSource(GOTO_PATH_SOURCE))
+    style.addLayer(
+        LineLayer(GOTO_PATH_LAYER, GOTO_PATH_SOURCE).withProperties(
+            PropertyFactory.lineColor(GOTO_COLOUR),
+            PropertyFactory.lineWidth(3f),
+            PropertyFactory.lineDasharray(arrayOf(PATH_DASH, PATH_GAP)),
+        ),
+    )
     style.addLayer(
         LineLayer(GOTO_RING_LAYER, GOTO_RING_SOURCE).withProperties(
             PropertyFactory.lineColor(GOTO_COLOUR),
@@ -212,6 +239,14 @@ fun installGotoLayer(style: Style) {
             PropertyFactory.textAnchor(Property.TEXT_ANCHOR_TOP),
             PropertyFactory.textAllowOverlap(true),
             PropertyFactory.textIgnorePlacement(true),
+        ),
+    )
+}
+
+fun renderGotoPath(style: Style, path: List<TrackPoint>) {
+    (style.getSource(GOTO_PATH_SOURCE) as? GeoJsonSource)?.setGeoJson(
+        FeatureCollection.fromFeatures(
+            listOfNotNull(path.takeIf { it.size >= 2 }?.let { line -> Feature.fromGeometry(LineString.fromLngLats(line.map { Point.fromLngLat(it.longitude, it.latitude) })) }),
         ),
     )
 }

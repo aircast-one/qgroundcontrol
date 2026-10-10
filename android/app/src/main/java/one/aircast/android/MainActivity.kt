@@ -91,6 +91,8 @@ import one.aircast.android.ui.FlightActions
 import one.aircast.android.ui.FollowMeReadout
 import one.aircast.android.ui.MapClickMenu
 import one.aircast.android.ui.MapPoint
+import one.aircast.android.ui.MapHoldHint
+import one.aircast.android.ui.MAP_HOLD_HINT
 import one.aircast.android.ui.FirstRunDialog
 import one.aircast.android.ui.MissionCompleteDialog
 import one.aircast.android.ui.SetWaypointSheet
@@ -301,6 +303,7 @@ fun AircastShell(hostView: android.view.View?) {
         }
     }
     var mapClickAt by remember { mutableStateOf<MapPoint?>(null) }
+    var mapHoldHint by remember { mutableStateOf(MapHoldHint.Unseen) }
     var waypointTapped by remember { mutableStateOf<Int?>(null) }
     var roiTapped by remember { mutableStateOf<TrackPoint?>(null) }
     val flyMap = remember {
@@ -312,7 +315,11 @@ fun AircastShell(hostView: android.view.View?) {
                 bottomInsetPx = if (flyView == one.aircast.android.ui.FlyView.Map || flyIsPortrait()) flyScreen.mapInsets.bottom else 0,
                 logoEndInsetPx = with(androidx.compose.ui.platform.LocalDensity.current) { one.aircast.android.ui.MAP_LAYERS_CLEARANCE.roundToPx() }.takeIf { flyView == one.aircast.android.ui.FlyView.Map || flyIsPortrait() },
                 pip = flyView == one.aircast.android.ui.FlyView.Video && !flyIsPortrait(),
-                onMapClick = { lat, lon -> mapClickAt = MapPoint(lat, lon) },
+                onMapClick = { lat, lon ->
+                    mapHoldHint = MapHoldHint.Learned
+                    mapClickAt = MapPoint(lat, lon)
+                },
+                onPlainTap = { if (mapHoldHint == MapHoldHint.Unseen) mapHoldHint = MapHoldHint.Due },
                 onMissionItemClick = { waypointTapped = it },
                 onRoiClick = { roiTapped = it },
                 onTrafficClick = { flyScreen.requestedSheet = one.aircast.android.ui.TRAFFIC_SHEET },
@@ -328,6 +335,11 @@ fun AircastShell(hostView: android.view.View?) {
     val flyRcControlsLayer = remember { movableContentOf { LayoutWidget("rcControls") { RcControlsLayer() } } }
 
     val snackbars = remember { SnackbarHostState() }
+    LaunchedEffect(mapHoldHint) {
+        if (mapHoldHint != MapHoldHint.Due) return@LaunchedEffect
+        snackbars.showSnackbar(MAP_HOLD_HINT)
+        mapHoldHint = MapHoldHint.Learned
+    }
     val alerts = remember { SnackbarHostState() }
     var acknowledgedThrough by remember { mutableLongStateOf(-1L) }
     val notices by one.aircast.android.bridge.qgcPath(one.aircast.android.ui.hostNoticesPath(acknowledgedThrough))

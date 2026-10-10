@@ -44,4 +44,16 @@ class GotoMarkerTest {
         assertEquals(MINIMUM_CIRCLE_RADIUS_METRES, draggedGotoRadius(committed, committed.at), 0.0)
         assertNull(gotoRadiusHandle(committed.copy(loiterRadiusMetres = null)))
     }
+
+    @Test
+    fun `while confirming the target shows with a path, and an arrived target is no longer drawn`() {
+        val target = TrackPoint(47.398, 8.546)
+        val aircraft = TrackPoint(47.397, 8.545)
+        assertEquals(target, previewGoto(null, target)?.at)
+        assertEquals(listOf(aircraft, target), gotoPath(aircraft, target))
+        assertEquals(emptyList<TrackPoint>(), gotoPath(aircraft, null))
+        val arrived = gotoLocation(JSONObject("""{"gotoLocation":{"latitude":47.398,"longitude":8.546,"arrived":true,"progressText":"Arrived"}}"""))
+        assertEquals("Arrived", arrived?.progressText)
+        assertNull(previewGoto(arrived, null))
+    }
 }

@@ -8,6 +8,7 @@ import androidx.compose.runtime.staticCompositionLocalOf
 class FlyMapEdits {
     var orbit by mutableStateOf<OrbitCircle?>(null)
     var gotoLoiter by mutableStateOf<LoiterEdit?>(null)
+    var gotoPreview by mutableStateOf<TrackPoint?>(null)
 }
 
 val LocalFlyMapEdits = staticCompositionLocalOf<FlyMapEdits> { error("FlyMapEdits is provided by the screen that hosts the map") }

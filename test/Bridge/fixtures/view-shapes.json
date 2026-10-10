@@ -10031,6 +10031,7 @@
             "reserve": "number",
             "returnAt": "number|null",
             "returnNow": "bool",
+            "secondsLeft": "number|null",
             "severity": "number",
             "text": "string",
             "timeLeft": "string|null"
@@ -11878,6 +11879,15 @@
         "minimumMeters": "null|number",
         "unit": "string"
     },
+    "view.gotoPreview(47.398,8.546)": {
+        "available": "bool",
+        "class": "string",
+        "distanceText": "string",
+        "heightText": "string|null",
+        "kind": "string",
+        "pastReturnPoint": "bool",
+        "verdict": "string|null"
+    },
     "view.guidedTakeoff(10)": {
         "available": "bool",
         "class": "string",
@@ -12702,7 +12712,15 @@
             }
         ],
         "class": "string",
-        "gotoLocation": "null",
+        "gotoLocation": {
+            "arrived": "bool",
+            "latitude": "number",
+            "loiterClockwise": "bool|null",
+            "loiterRadiusMetres": "number|null",
+            "loiterRadiusText": "string|null",
+            "longitude": "number",
+            "progressText": "string|null"
+        },
         "kind": "string",
         "loiter": "null",
         "offered": "bool",

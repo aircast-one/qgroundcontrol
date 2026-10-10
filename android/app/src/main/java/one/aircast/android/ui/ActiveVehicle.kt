@@ -144,6 +144,8 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
     val silentFor = silentSeconds(lost)
     val linksJson by qgcPath(VEHICLE_LINKS)
     val failsafe = remember(linksJson) { vehicleLinks(linksJson)?.failsafe }
+    val mapClickJson by qgcPath(MAP_CLICK_PATH)
+    val gotoProgress = remember(mapClickJson) { one.aircast.map.gotoLocation(mapClickJson)?.progressText.orEmpty() }
     var lostMenu by remember { mutableStateOf(false) }
     val offlineJson by qgcPath(OFFLINE_STATUS_VIEW)
     val warningsJson by qgcPath(WARNINGS)
@@ -208,7 +210,11 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(painterResource(R.drawable.ic_flight), null, Modifier.size(24.dp))
-        val title = if (lost) signalLostTitle(silentFor, failsafe, compact = !statusBar) else activeVehicleTitle(choices, subtitle)
+        val title = when {
+            lost -> signalLostTitle(silentFor, failsafe, compact = !statusBar)
+            gotoProgress.isNotEmpty() && !choices.ambiguous -> gotoProgress
+            else -> activeVehicleTitle(choices, subtitle)
+        }
         Text(
             text = if (statusBar) osdModeText(title) else title,
             style = if (statusBar) MaterialTheme.typography.titleMedium else MaterialTheme.typography.labelLarge,

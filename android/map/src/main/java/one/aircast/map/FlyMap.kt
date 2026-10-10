@@ -1,5 +1,10 @@
 package one.aircast.map
 
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -80,6 +85,8 @@ internal fun <T, K> missionArrived(before: List<T>, after: List<T>, key: (T) -> 
 
 private fun shape(item: MissionItem) = listOf(item.sequence, item.latitude, item.longitude, item.command)
 
+private const val PREVIEW_SHEET_SHARE = 0.75f
+
 @Composable
 fun FlyMap(
     modifier: Modifier = Modifier,
@@ -89,6 +96,7 @@ fun FlyMap(
     logoEndInsetPx: Int? = null,
     pip: Boolean = false,
     onMapClick: ((Double, Double) -> Unit)? = null,
+    onPlainTap: (() -> Unit)? = null,
     onMissionItemClick: ((Int) -> Unit)? = null,
     onRoiClick: ((TrackPoint) -> Unit)? = null,
     onTrafficClick: (() -> Unit)? = null,
@@ -100,6 +108,10 @@ fun FlyMap(
     var centre by remember { mutableStateOf<TrackPoint?>(null) }
     var zoom by remember { mutableDoubleStateOf(0.0) }
     var fitRequest by remember { mutableIntStateOf(0) }
+    val gotoPreview = LocalFlyMapEdits.current.gotoPreview
+    val fleetJson by mapPath(VEHICLES_VIEW)
+    val aircraft = remember(fleetJson) { vehicleChoices(fleetJson).active?.let { TrackPoint(it.latitude, it.longitude) } }
+    LaunchedEffect(gotoPreview) { if (gotoPreview != null) fitRequest++ }
     val saved = remember(context) { readCamera(context) }
     var centreRequest by remember { mutableIntStateOf(if (saved != null) 1 else 0) }
     var centreOn by remember { mutableStateOf(saved?.centre) }
@@ -169,7 +181,7 @@ fun FlyMap(
     Surface(modifier, color = MaterialTheme.colorScheme.surface) {
         Box(Modifier.fillMaxSize()) {
         VehicleMap(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier.fillMaxSize().plainTaps(onPlainTap),
             mapStyle = style,
             follow = true,
             keepCentered = keepCentered || pip,
@@ -206,6 +218,8 @@ fun FlyMap(
             selectedWaypoint = plan.current,
             otherMissions = plan.others,
             fitRequest = fitRequest,
+            fitOnly = gotoPreview?.let { listOfNotNull(aircraft, it) },
+            fitBottomShare = if (gotoPreview != null) PREVIEW_SHEET_SHARE else 0f,
             centreRequest = centreRequest,
             centreOn = centreOn,
             centreZoom = centreZoom,
@@ -243,4 +257,14 @@ internal fun pipZoom(mainZoom: Double, pip: Boolean): Double? = when {
     !pip -> mainZoom
     mainZoom > 3 -> mainZoom - 3
     else -> null
+}
+
+fun Modifier.plainTaps(onTap: (() -> Unit)?): Modifier = if (onTap == null) this else pointerInput(onTap) {
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial)
+        val up = waitForUpOrCancellation(pass = PointerEventPass.Initial) ?: return@awaitEachGesture
+        val quick = up.uptimeMillis - down.uptimeMillis < viewConfiguration.longPressTimeoutMillis
+        val still = (up.position - down.position).getDistance() < viewConfiguration.touchSlop
+        if (quick && still) onTap()
+    }
 }

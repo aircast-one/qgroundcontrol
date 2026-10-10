@@ -47,9 +47,95 @@ pub const DEPS: &[&str] = &[
     "vehicle.orbitActive",
     "vehicle.fixedWing",
     "vehicle.vtolInFwdFlight",
+    "vehicle.coordinate",
+    "vehicle.groundSpeed",
+    "vehicle.altitudeRelative",
+    "settings.unitsSettings.verticalDistanceUnits",
 ];
 
 const ORBIT_DEFAULT_RADIUS_METRES: f64 = 30.0;
+const ARRIVED_METRES: f64 = 5.0;
+const SETTLED_MPS: f64 = 0.5;
+const PERCENT: f64 = 100.0;
+
+pub const PREVIEW_DEPS: &[&str] = &[
+    "vehicles.activeVehicleAvailable",
+    "vehicle.coordinate",
+    "vehicle.homePosition",
+    "vehicle.altitudeRelative",
+    "vehicle.distanceToHome",
+    "vehicle.flying",
+    "vehicle.batteries.count",
+    "settings.unitsSettings.horizontalDistanceUnits",
+    "settings.unitsSettings.verticalDistanceUnits",
+];
+
+fn place(backend: &dyn Backend, path: &str) -> Option<(f64, f64)> {
+    let at = backend.value(path);
+    let valid = at.get("valid").and_then(Value::as_bool).unwrap_or(true);
+    Some((at.get("latitude")?.as_f64()?, at.get("longitude")?.as_f64()?)).filter(|(lat, lon)| valid && lat.is_finite() && lon.is_finite() && (*lat, *lon) != (0.0, 0.0))
+}
+
+fn raw(backend: &dyn Backend, path: &str) -> Option<f64> {
+    crate::read::value_number(&backend.value(&format!("{path}.rawValue")))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GotoBudget {
+    pub landing_percent: f64,
+    pub past_return_point: bool,
+}
+
+pub fn goto_budget(percent: f64, seconds_left: f64, reserve: f64, there_seconds: f64, home_seconds: f64) -> Option<GotoBudget> {
+    (percent > 0.0 && seconds_left > 0.0).then(|| {
+        let landing_percent = (percent - (there_seconds + home_seconds) * percent / seconds_left).max(0.0);
+        GotoBudget { landing_percent, past_return_point: landing_percent <= reserve }
+    })
+}
+
+pub fn goto_verdict(budget: GotoBudget) -> String {
+    match budget.past_return_point {
+        true => "Past your return point. Return home instead?".to_string(),
+        false => format!("About {}% left on landing", budget.landing_percent.round() as i64),
+    }
+}
+
+pub fn goto_progress(remaining_m: f64, ground_speed: f64, distance: &str, height: &str) -> (bool, String) {
+    let arrived = remaining_m <= ARRIVED_METRES && ground_speed < SETTLED_MPS;
+    let eta = (ground_speed >= SETTLED_MPS).then(|| crate::battery::duration_text(remaining_m / ground_speed)).filter(|t| !t.is_empty());
+    let text = match arrived {
+        true => format!("Arrived \u{00b7} holding at {height}"),
+        false => std::iter::once(format!("Going to point \u{00b7} {distance}")).chain(eta).collect::<Vec<_>>().join(" \u{00b7} "),
+    };
+    (arrived, text)
+}
+
+pub fn goto_preview_view(backend: &dyn Backend, args: &[String]) -> Value {
+    let target = args.first().zip(args.get(1)).and_then(|(lat, lon)| Some((lat.trim().parse::<f64>().ok()?, lon.trim().parse::<f64>().ok()?)));
+    let (Some(target), Some(aircraft)) = (target, place(backend, "vehicle.coordinate")) else {
+        return json!({ "kind": "object", "class": "GotoPreview", "available": false });
+    };
+    let (horizontal, vertical) = (crate::read::Unit::horizontal(backend), crate::read::Unit::vertical(backend));
+    let height = raw(backend, "vehicle.altitudeRelative");
+    let headline = crate::battery::battery_view(backend, &[])["headline"].clone();
+    let trip = crate::battery::return_trip(backend);
+    let budget = (|| {
+        let trip = trip?;
+        let home = place(backend, "vehicle.homePosition")?;
+        let there = crate::track::distance_m(aircraft, target) / trip.cruise_mps;
+        let back = crate::battery::return_seconds(crate::battery::ReturnTrip { distance_m: crate::track::distance_m(target, home), ..trip })?;
+        goto_budget(headline["percent"].as_f64()?, headline["secondsLeft"].as_f64()?, headline["reserve"].as_f64().unwrap_or(0.0), there, back)
+    })();
+    json!({
+        "kind": "object",
+        "class": "GotoPreview",
+        "available": true,
+        "heightText": height.map(|h| format!("at {:.0} {} (current height)", vertical.show(h), vertical.name)),
+        "pastReturnPoint": budget.is_some_and(|b| b.past_return_point),
+        "verdict": budget.map(goto_verdict),
+        "distanceText": format!("{:.0} {}", horizontal.show(crate::track::distance_m(aircraft, target)), horizontal.name),
+    })
+}
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct GotoMark {
@@ -105,7 +191,15 @@ fn goto_location(backend: &dyn Backend) -> Option<Value> {
     goto_shown(in_goto_mode).map(|mark| {
         let radius = loiter_circle_shown(backend, &vehicle).then_some(mark.radius.abs());
         let unit = crate::read::Unit::horizontal(backend);
+        let vertical = crate::read::Unit::vertical(backend);
+        let remaining = place(backend, "vehicle.coordinate").map(|at| crate::track::distance_m(at, (mark.latitude, mark.longitude)));
+        let progress = remaining.filter(|_| in_goto_mode).map(|metres| {
+            let height = raw(backend, "vehicle.altitudeRelative").map_or(String::new(), |h| format!("{:.0} {}", vertical.show(h), vertical.name));
+            goto_progress(metres, raw(backend, "vehicle.groundSpeed").unwrap_or(0.0), &format!("{:.0} {}", unit.show(metres), unit.name), &height)
+        });
         json!({
+            "arrived": progress.as_ref().is_some_and(|(arrived, _)| *arrived),
+            "progressText": progress.map(|(_, text)| text),
             "latitude": mark.latitude,
             "longitude": mark.longitude,
             "loiterRadiusMetres": radius,
@@ -263,6 +357,25 @@ pub fn send(backend: &dyn Backend, click: Click, path: &str, args: &str) -> Valu
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_go_to_preview_says_what_is_left_on_landing_or_that_it_is_past_the_return_point() {
+        let fine = goto_budget(60.0, 600.0, 7.0, 60.0, 120.0).unwrap();
+        assert_eq!(fine.landing_percent, 42.0, "180 s at 0.1 %/s");
+        assert!(!fine.past_return_point);
+        assert_eq!(goto_verdict(fine), "About 42% left on landing");
+        let late = goto_budget(13.0, 120.0, 7.0, 16.0, 40.0).unwrap();
+        assert!(late.past_return_point, "13 % with 56 s of flying at 0.108 %/s lands under the 7 % reserve");
+        assert_eq!(goto_verdict(late), "Past your return point. Return home instead?");
+        assert_eq!(goto_budget(13.0, 0.0, 7.0, 16.0, 40.0), None);
+    }
+
+    #[test]
+    fn a_go_to_in_progress_counts_down_and_then_says_it_has_arrived() {
+        assert_eq!(goto_progress(45.0, 5.0, "45 m", "20 m"), (false, "Going to point \u{00b7} 45 m \u{00b7} 9 sec".to_string()));
+        assert_eq!(goto_progress(3.0, 0.1, "3 m", "20 m"), (true, "Arrived \u{00b7} holding at 20 m".to_string()));
+        assert_eq!(goto_progress(30.0, 0.1, "30 m", "20 m").0, false, "stopped short of the point is not arrived");
+    }
     use std::cell::RefCell;
 
     #[test]

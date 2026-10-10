@@ -91,4 +91,14 @@ class MapClickMenuTest {
         assertEquals("76 m east", goHereText(from, MapPoint(47.0, 8.001), "m", 1.0))
         assertEquals(null, goHereText(from, MapPoint(47.001, 8.0), "", 1.0))
     }
+
+    @Test
+    fun `the go-to preview names height and battery, and warns past the return point`() {
+        val view = org.json.JSONObject("""{"available":true,"distanceText":"81 m","heightText":"at 20 m (current height)","verdict":"Past your return point. Return home instead?","pastReturnPoint":true}""")
+        val preview = gotoPreview(view)!!
+        assertEquals(true, preview.pastReturnPoint)
+        assertEquals(listOf("81 m north-west \u00b7 at 20 m (current height)", "Past your return point. Return home instead?"), gotoPreviewLines(preview.copy(distance = "81 m north-west"), "Move the vehicle"))
+        assertEquals(listOf("Move the vehicle"), gotoPreviewLines(null, "Move the vehicle"))
+        assertEquals("view.gotoPreview(47.3980000,8.5460000)", gotoPreviewPath(MapPoint(47.398, 8.546)))
+    }
 }
