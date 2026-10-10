@@ -325,6 +325,7 @@ ACCEPTED = {
     "opacities": "InstrumentDisplay.kt reads back the value display style JSON its own displayJson writes to settings, not a view",
     "icons": "InstrumentDisplay.kt reads back the value display style JSON its own displayJson writes to settings, not a view",
     "serial": "view.flightModes modeAck is null until a mode change is acknowledged, and the rig records none; flightmodes.rs serves serial with accepted and wording",
+    "arrived": "view.mapClick gotoLocation is null until a go-to is under way, and the rig flies none; mapclick.rs serves arrived with progressText",
     "size": "view.mavlinkLog files lists saved MAVLink logs and the rig records none; mavlinklog.rs serves size per file",
     "timeoutMs": "view.operatorControl incomingRequest is null until another GCS asks for control, and the rig has none; operatorcontrol.rs incoming_json serves it",
     "remainingMs": "view.operatorControl incomingRequest is null until another GCS asks for control, and the rig has none; operatorcontrol.rs incoming_json serves it",

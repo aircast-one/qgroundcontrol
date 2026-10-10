@@ -67,6 +67,12 @@ pub const NULLABLE_UNWITNESSED: &[&str] = &[
     "view.obstacle.ringIncrement",
     "view.obstacle.rangeMinMetres",
     "view.obstacle.rangeMaxMetres",
+    "view.battery.headline.percent",
+    "view.battery.headline.secondsLeft",
+    "view.battery.headline.timeLeft",
+    "view.gotoPreview(47.398,8.546).heightText",
+    "view.vehicleLinks.lossAction",
+    "view.vehicleLinks.lossAfter",
 ];
 
 pub fn contract_view(_backend: &dyn Backend, _args: &[String]) -> Value {
