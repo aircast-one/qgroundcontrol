@@ -262,10 +262,10 @@ fn network_config_v2(wifi: &WifiConfig) -> String {
          optional: true\n    \
          regulatory-domain: \"{country}\"\n    \
          access-points:\n      \
-         \"{ssid}\":\n        \
+         {ssid}:\n        \
          password: \"{key}\"\n",
         country = wifi.country,
-        ssid = wifi.ssid,
+        ssid = serde_json::Value::from(wifi.ssid.as_str()),
     )
 }
 
@@ -289,14 +289,14 @@ fn firstrun_wifi(wifi: &WifiConfig) -> String {
          update_config=1\n\
          country={country}\n\
          network={{\n\
-         \x20  ssid=\"{ssid}\"\n\
+         \x20  ssid={ssid}\n\
          \x20  psk={key}\n\
          }}\n\
          WPAEOF\n\
          rfkill unblock wifi\n\
          for f in /var/lib/systemd/rfkill/*:wlan ; do echo 0 >\"$f\" 2>/dev/null || true ; done\n\n",
         country = wifi.country,
-        ssid = wifi.ssid,
+        ssid = wifi.ssid.bytes().map(|b| format!("{b:02x}")).collect::<String>(),
     )
 }
 
@@ -420,6 +420,13 @@ mod tests {
         assert!(script.contents.contains("set_hostname aircast"));
         assert!(script.contents.contains(&format!("psk={IEEE_PSK}")));
         assert!(cmdline_append.contains("systemd.run=/boot/firstrun.sh"));
+    }
+
+    #[test]
+    fn an_ssid_with_quotes_or_backslashes_survives_both_wifi_configs() {
+        let wifi = WifiConfig { ssid: "Ole\"s \\ net".into(), password: "password".into(), country: "US".into() };
+        assert!(network_config_v2(&wifi).contains(r#""Ole\"s \\ net":"#), "a YAML double-quoted key escapes like JSON");
+        assert!(firstrun_wifi(&wifi).contains("ssid=4f6c652273205c206e6574\n"), "wpa_supplicant takes an unquoted hex SSID");
     }
 
     #[test]

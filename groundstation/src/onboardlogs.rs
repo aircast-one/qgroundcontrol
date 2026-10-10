@@ -100,7 +100,7 @@ impl Download {
     }
 
     fn log_complete(&self) -> bool {
-        self.chunk_complete() && self.chunk + 1 == self.chunks()
+        self.chunk_complete() && self.chunk + 1 >= self.chunks()
     }
 
     fn advance(&mut self) {
@@ -546,8 +546,8 @@ impl OnboardLogs {
     }
 
     fn find_missing_data(&mut self, now_ms: u64) -> Vec<Out> {
-        let complete = self.download.as_ref().is_some_and(Download::log_complete);
-        if complete {
+        if let Some(id) = self.download.as_ref().filter(|d| d.log_complete()).map(|d| d.id) {
+            self.set_status(id, "Downloaded");
             return self.next_download(now_ms);
         }
         let Some(download) = self.download.as_mut() else { return Vec::new() };
@@ -848,6 +848,20 @@ mod tests {
         assert_eq!((logs.downloading, logs.entries[0].status.as_str()), (false, "Downloaded"));
         let written = std::fs::read(folder.join("log_0_UnknownDate.bin")).unwrap();
         assert_eq!((written.len(), written[0], written[90]), (180, 1, 2));
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn an_empty_log_finishes_instead_of_asking_for_nothing_forever() {
+        let folder = std::env::temp_dir().join(format!("qgc-onboard-empty-log-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let mut logs = OnboardLogs::default();
+        logs.refresh(0);
+        logs.on_entry(false, 0, 0, 0, 1, 0);
+        logs.select(0, true);
+        logs.download(&folder, ".bin", 0);
+        logs.on_timeout(TIMEOUT_MS + 1);
+        assert_eq!((logs.downloading, logs.entries[0].status.as_str()), (false, "Downloaded"));
         std::fs::remove_dir_all(&folder).unwrap();
     }
 

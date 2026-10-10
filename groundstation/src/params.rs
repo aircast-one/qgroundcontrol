@@ -256,7 +256,7 @@ pub fn parse_pack(bytes: &[u8]) -> Result<Vec<PackEntry>, String> {
     }
     let mut entries = Vec::new();
     let mut at = 6;
-    let mut previous = String::new();
+    let mut previous: Vec<u8> = Vec::new();
     loop {
         while bytes.get(at) == Some(&0) {
             at += 1;
@@ -269,7 +269,8 @@ pub fn parse_pack(bytes: &[u8]) -> Result<Vec<PackEntry>, String> {
             return Err("the parameter file has a malformed name".to_string());
         }
         let tail = bytes.get(at + 2..at + 2 + name_len).ok_or("the parameter file ends inside a name")?;
-        let name = format!("{}{}", &previous[..common_len], String::from_utf8_lossy(tail));
+        let raw = [&previous[..common_len], tail].concat();
+        let name = String::from_utf8_lossy(&raw).into_owned();
         at += 2 + name_len;
         let (value, width) = pack_value(ptype, &bytes[at..]).ok_or_else(|| format!("{name} has type {ptype}, which the parameter file cannot carry"))?;
         at += width;
@@ -281,7 +282,7 @@ pub fn parse_pack(bytes: &[u8]) -> Result<Vec<PackEntry>, String> {
             }
             false => None,
         };
-        previous = name.clone();
+        previous = raw;
         entries.push(PackEntry { name, value, default });
     }
     match entries.len() == usize::from(count) {
@@ -808,6 +809,17 @@ mod tests {
         let ready = params.load_pack(1, &parse_pack(&pack).unwrap());
         assert!(params.ready() && ready.contains(&Action::Ready { missing: false }));
         assert_eq!(params.value(1, "RTL_SPEED"), Some(ParamValue::F32(2.5)));
+    }
+
+    #[test]
+    fn a_pack_name_with_a_stray_high_byte_does_not_panic_the_next_shared_prefix() {
+        let mut pack = vec![0x1C, 0x67, 2, 0, 2, 0];
+        pack.extend([0x01, 2 << 4, b'A', 0xE9, b'B']);
+        pack.push(1);
+        pack.extend([0x01, 1 << 4 | 2, b'C', b'D']);
+        pack.push(2);
+        let names: Vec<String> = parse_pack(&pack).unwrap().into_iter().map(|e| e.name).collect();
+        assert_eq!(names, vec!["A\u{FFFD}B".to_string(), "A\u{FFFD}CD".to_string()]);
     }
 
     fn expire(params: &mut Params) -> Vec<Action> {

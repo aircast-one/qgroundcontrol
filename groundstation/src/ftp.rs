@@ -110,6 +110,10 @@ pub fn parse_uri(from_component: u8, uri: &str) -> Result<(String, u8), String> 
     Ok((path, component))
 }
 
+fn seq_before(seq: u16, expected: u16) -> bool {
+    (seq.wrapping_sub(expected) as i16) < 0
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Out {
     Send(Request),
@@ -346,7 +350,7 @@ impl Download {
         }
         match reply.opcode {
             RSP_ACK => {
-                if reply.seq < self.expected_seq {
+                if seq_before(reply.seq, self.expected_seq) {
                     return vec![Out::StopTimer];
                 }
                 if !self.within_file(reply.offset, reply.data.len()) {
@@ -548,7 +552,7 @@ impl Listing {
         }
         match reply.opcode {
             RSP_ACK => {
-                if reply.seq < self.expected_seq {
+                if seq_before(reply.seq, self.expected_seq) {
                     return vec![ListOut::StopTimer];
                 }
                 let entries: Vec<String> = reply.data.split(|b| *b == 0).filter(|e| !e.is_empty()).map(|e| String::from_utf8_lossy(e).into_owned()).collect();
@@ -713,7 +717,7 @@ impl FileOp {
             return Vec::new();
         }
         let current = match self.step {
-            Step::Write => reply.session == self.session && reply.seq >= self.expected_seq,
+            Step::Write => reply.session == self.session && !seq_before(reply.seq, self.expected_seq),
             _ => reply.seq == self.expected_seq,
         };
         if !current {
@@ -749,6 +753,14 @@ impl FileOp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_burst_sequence_compares_across_the_16_bit_wrap() {
+        assert!(seq_before(65535, 0), "65535 came before 0");
+        assert!(!seq_before(0, 65535), "0 after a lost 65535 is new data, not a stale reply");
+        assert!(!seq_before(5, 5));
+        assert!(seq_before(4, 5));
+    }
 
     fn sent(out: &[Out]) -> Request {
         out.iter().find_map(|o| match o { Out::Send(r) => Some(r.clone()), _ => None }).expect("a request was sent")
