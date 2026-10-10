@@ -456,6 +456,15 @@ int VideoSettings::videoSourceCount()
     return _allCameras().size();
 }
 
+bool VideoSettings::_vehiclePreset(const QString &source)
+{
+    static const QStringList presets = {
+        videoSource3DRSolo, videoSourceParrotDiscovery, videoSourceYuneecMantisG,
+        videoSourceHerelinkAirUnit, videoSourceHerelinkHotspot,
+    };
+    return presets.contains(source);
+}
+
 bool VideoSettings::_sourceNeedsUrl(const QString &source)
 {
     static const QStringList urlSources = {
@@ -486,10 +495,7 @@ bool VideoSettings::sourceUsable(int index)
 
 bool VideoSettings::offeredSource(const QString &source)
 {
-    if (_sourceNeedsUrl(source)) {
-        return true;
-    }
-    if ((source == QString::fromUtf8(videoSourceHerelinkAirUnit)) || (source == QString::fromUtf8(videoSourceHerelinkHotspot))) {
+    if (_sourceNeedsUrl(source) || _vehiclePreset(source)) {
         return true;
     }
 #ifndef QGC_HEADLESS_CORE
@@ -548,7 +554,7 @@ int VideoSettings::pipCameraIndex()
 
 bool VideoSettings::pipCapable(const QString &source)
 {
-    return _sourceNeedsUrl(source) || (source == QString::fromUtf8(videoSourceHerelinkAirUnit)) || (source == QString::fromUtf8(videoSourceHerelinkHotspot));
+    return _sourceNeedsUrl(source) || _vehiclePreset(source);
 }
 
 QString VideoSettings::streamUri(const QString &source, const QString &url)

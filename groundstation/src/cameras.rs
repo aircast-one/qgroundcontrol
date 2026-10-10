@@ -36,7 +36,6 @@ const QT_STORE_CAMERAS: &str = "video.storeCameras";
 const UNREADABLE: &str = "The camera list is not a readable list, so its cameras cannot be shown. Changing it now would replace it.";
 const NO_SUCH_CAMERA: &str = "There is no camera at that position.";
 const NEEDS_KIND: &str = "Pick the kind of stream this camera sends.";
-const CANNOT_PLAY: &str = "This kind of camera cannot show video in this app.";
 const NEEDS_ADDRESS: &str = "This kind of stream needs an address.";
 const RTSP_SCHEME: &str = "An RTSP address starts with rtsp://.";
 const WHEP_SCHEME: &str = "A WebRTC address starts with http:// or https://.";
@@ -47,6 +46,7 @@ const NEEDS_DIAL_PORT: &str = "Type the address as host:port, like 192.168.1.10:
 const NEEDS_HOST: &str = "The address has no host. Add the camera's IP address or name after the scheme.";
 const SCHEME_ADDED: [&str; 4] = [SOURCE_UDP_H264, SOURCE_UDP_H265, SOURCE_MPEGTS, SOURCE_TCP];
 
+const LISTEN_DEFAULT: &str = "0.0.0.0:5600";
 const GROUP_STREAMS: &str = "Video streams";
 const GROUP_DEVICE: &str = "This device";
 const GROUP_PRESETS: &str = "Vehicle and radio presets";
@@ -87,11 +87,8 @@ pub fn encode(cameras: &[Camera]) -> String {
 }
 
 pub fn problem(source: &str, url: &str) -> Option<&'static str> {
-    let offered = kind_names().iter().any(|kind| kind == source);
-    let known = source != SOURCE_DISABLED && crate::settingsstore::camera_sources().iter().any(|kind| kind == source);
     match () {
-        _ if !offered && known => Some(CANNOT_PLAY),
-        _ if !offered => Some(NEEDS_KIND),
+        _ if !kind_names().iter().any(|kind| kind == source) => Some(NEEDS_KIND),
         _ if needs_url(source) && url.is_empty() => Some(NEEDS_ADDRESS),
         _ if source == SOURCE_RTSP && scheme_of(source, url).is_none() => Some(RTSP_SCHEME),
         _ if source == SOURCE_WEBRTC && url.contains("://") && scheme_of(source, url).is_none() => Some(WHEP_SCHEME),
@@ -187,15 +184,36 @@ fn hint(source: &str) -> &'static str {
         SOURCE_RTSP => "rtsp://192.168.1.10:8554/live",
         SOURCE_WEBRTC => "http://192.168.1.10:8889/cam/whep",
         SOURCE_TCP => "192.168.1.10:5600",
-        SOURCE_UDP_H264 | SOURCE_UDP_H265 | SOURCE_MPEGTS => "0.0.0.0:5600",
+        SOURCE_UDP_H264 | SOURCE_UDP_H265 | SOURCE_MPEGTS => LISTEN_DEFAULT,
         _ => "",
+    }
+}
+
+fn default_address(source: &str) -> &'static str {
+    match source {
+        SOURCE_UDP_H264 | SOURCE_UDP_H265 | SOURCE_MPEGTS => LISTEN_DEFAULT,
+        _ => "",
+    }
+}
+
+fn description(source: &str) -> String {
+    match source {
+        SOURCE_RTSP => "An rtsp:// address from an IP camera or video server".to_string(),
+        SOURCE_UDP_H264 => "H.264 over RTP, sent to a port on this device".to_string(),
+        SOURCE_UDP_H265 => "H.265 over RTP, sent to a port on this device".to_string(),
+        SOURCE_TCP => "An MPEG-2 stream this device connects to".to_string(),
+        SOURCE_MPEGTS => "An MPEG transport stream sent to a port on this device".to_string(),
+        SOURCE_WEBRTC => "A WHEP address, like a MediaMTX server".to_string(),
+        SOURCE_SYNTHETIC => "A 3D view drawn from the map and telemetry".to_string(),
+        _ if DEVICE_CAMERAS.contains(&source) => format!("This device's {}", source.to_lowercase()),
+        _ => crate::videostate::source_uri(source, ""),
     }
 }
 
 pub fn kinds() -> Vec<Value> {
     kind_names()
         .into_iter()
-        .map(|source| json!({ "raw": source, "label": source, "group": group(&source), "needsUrl": needs_url(&source), "hint": hint(&source) }))
+        .map(|source| json!({ "raw": source, "label": source, "group": group(&source), "needsUrl": needs_url(&source), "hint": hint(&source), "description": description(&source), "defaultAddress": default_address(&source) }))
         .collect()
 }
 
@@ -466,7 +484,7 @@ pub fn view_of(video: &Value, stored: Option<Vec<Camera>>, stored_active: i64, p
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::videostate::{SOURCE_3DR_SOLO, SOURCE_BACK_CAMERA, SOURCE_HERELINK_HOTSPOT};
+    use crate::videostate::{SOURCE_3DR_SOLO, SOURCE_BACK_CAMERA, SOURCE_HERELINK_HOTSPOT, SOURCE_PARROT_DISCOVERY, SOURCE_YUNEEC_MANTIS_G};
 
     fn cam(name: &str, source: &str, url: &str) -> Camera {
         Camera::new(name, source, url)
@@ -525,9 +543,22 @@ mod tests {
         let rtsp = listed.iter().find(|kind| kind["raw"] == SOURCE_RTSP).unwrap();
         assert_eq!((rtsp["group"].as_str(), rtsp["needsUrl"].as_bool(), rtsp["hint"].as_str()), (Some(GROUP_STREAMS), Some(true), Some("rtsp://192.168.1.10:8554/live")));
         assert!(listed.iter().all(|kind| kind["raw"] != SOURCE_DISABLED), "no camera is of kind disabled");
-        assert!(listed.iter().all(|kind| kind["raw"] != SOURCE_3DR_SOLO), "a kind that can never start is not offered");
-        assert_eq!(problem(SOURCE_3DR_SOLO, ""), Some(CANNOT_PLAY), "nor accepted when asked for directly, and the reason says the kind cannot play rather than that none was picked");
         assert_eq!(problem("No such kind", ""), Some(NEEDS_KIND));
+    }
+
+    #[test]
+    fn every_kind_the_old_app_listed_is_offered_with_a_line_saying_what_it_is() {
+        let listed = kinds();
+        let raws: Vec<&str> = listed.iter().filter_map(|kind| kind["raw"].as_str()).collect();
+        let old_app = [SOURCE_RTSP, SOURCE_UDP_H264, SOURCE_UDP_H265, SOURCE_TCP, SOURCE_MPEGTS, SOURCE_WEBRTC, SOURCE_3DR_SOLO, SOURCE_PARROT_DISCOVERY, SOURCE_YUNEEC_MANTIS_G, SOURCE_HERELINK_HOTSPOT];
+        assert!(old_app.iter().all(|source| raws.contains(source)), "{raws:?}");
+        let solo = listed.iter().find(|kind| kind["raw"] == SOURCE_3DR_SOLO).unwrap();
+        assert_eq!((solo["group"].as_str(), solo["needsUrl"].as_bool(), solo["description"].as_str()), (Some(GROUP_PRESETS), Some(false), Some("udp://0.0.0.0:5600")), "a preset says the address it listens on");
+        assert_eq!(problem(SOURCE_3DR_SOLO, ""), None);
+        assert!(listed.iter().all(|kind| !kind["description"].as_str().unwrap_or_default().is_empty()));
+        let udp = listed.iter().find(|kind| kind["raw"] == SOURCE_UDP_H265).unwrap();
+        assert_eq!(udp["defaultAddress"], "0.0.0.0:5600", "a listening stream starts filled with the port most radios send to");
+        assert_eq!(listed.iter().find(|kind| kind["raw"] == SOURCE_RTSP).unwrap()["defaultAddress"], "", "an address to dial has no sensible default");
     }
 
     #[test]

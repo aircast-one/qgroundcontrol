@@ -15,10 +15,11 @@ class CamerasTest {
            {"slot":1,"stored":1,"title":"Camera 2","short":"Cam 2","name":"","source":"Back Camera","url":"","problem":"This kind of camera cannot show video in this app.","fromDrone":false,"active":false,"status":"bogus"},
            {"slot":2,"stored":null,"title":"SIYI A8","short":"SIYI","name":"SIYI A8","source":"UDP h.264 Video Stream","url":"0.0.0.0:5600","problem":null,"fromDrone":true,"active":true,"status":"live"}],
          "kinds":[
-           {"raw":"RTSP Video Stream","label":"RTSP Video Stream","group":"Video streams","needsUrl":true,"hint":"rtsp://192.168.1.10:8554/live"},
-           {"raw":"Herelink Hotspot","label":"Herelink Hotspot","group":"Vehicle and radio presets","needsUrl":false,"hint":""},
-           {"raw":"Back Camera","label":"Back Camera","group":"This device","needsUrl":false,"hint":""},
-           {"raw":"Front Camera","label":"Front Camera","group":"This device","needsUrl":false,"hint":""}]}
+           {"raw":"Front Camera","label":"Front Camera","group":"This device","needsUrl":false,"hint":"","description":"This device's front camera"},
+           {"raw":"RTSP Video Stream","label":"RTSP Video Stream","group":"Video streams","needsUrl":true,"hint":"rtsp://192.168.1.10:8554/live","description":"An rtsp:// address from an IP camera or video server"},
+           {"raw":"UDP h.265 Video Stream","label":"UDP h.265 Video Stream","group":"Video streams","needsUrl":true,"hint":"0.0.0.0:5600","defaultAddress":"0.0.0.0:5600"},
+           {"raw":"Herelink Hotspot","label":"Herelink Hotspot","group":"Vehicle and radio presets","needsUrl":false,"hint":"","description":"rtsp://192.168.43.1:8554/fpv_stream"},
+           {"raw":"Back Camera","label":"Back Camera","group":"This device","needsUrl":false,"hint":""}]}
         """.trimIndent(),
     )
 
@@ -31,7 +32,9 @@ class CamerasTest {
         assertEquals(true, reading.cameras[2].fromDrone)
         assertEquals("This kind of camera cannot show video in this app.", reading.cameras[1].problem)
         assertNull(reading.cameras[0].problem)
-        assertEquals("rtsp://192.168.1.10:8554/live", reading.kinds.first().hint)
+        assertEquals("rtsp://192.168.1.10:8554/live", reading.kinds[1].hint)
+        assertEquals("An rtsp:// address from an IP camera or video server", reading.kinds[1].description)
+        assertEquals("0.0.0.0:5600", reading.kinds[2].defaultAddress)
         assertNull(camerasReading(JSONObject("""{"class":"Video"}""")))
     }
 
@@ -46,116 +49,55 @@ class CamerasTest {
     }
 
     @Test
-    fun `a row names its address, or that the drone brought it`() {
+    fun `a row names its type beside an address that does not spell it, or that the drone brought it`() {
         val cameras = camerasReading(view)!!.cameras
         assertEquals(listOf("rtsp://10.0.0.5:8554/front", "Back camera", "From the drone"), cameras.map(::cameraDetail))
+        assertEquals("UDP h.265 · 0.0.0.0:5600", cameraDetail(cameras[0].copy(source = "UDP h.265 Video Stream", url = "0.0.0.0:5600")))
     }
 
     @Test
-    fun `the add sheet offers this phone's cameras first, then presets, never one already listed`() {
+    fun `the type list puts streams first, then presets, then this phone, never a fixed camera already listed`() {
         val reading = camerasReading(view)!!
-        assertEquals(listOf("Front Camera", "Herelink Hotspot"), otherSources(reading).map { it.raw })
-        assertEquals(listOf("This phone's front camera", "Herelink Hotspot"), otherSources(reading).map(::otherSourceLabel))
-        assertEquals(emptyList<CameraKind>(), otherSources(null))
+        assertEquals(listOf("RTSP Video Stream", "UDP h.265 Video Stream", "Herelink Hotspot", "Front Camera"), addableKinds(reading).map { it.raw })
+        assertEquals("an edit may keep the fixed camera it already is", true, addableKinds(reading, keeping = "Back Camera").any { it.raw == "Back Camera" })
+        assertEquals(listOf("RTSP", "UDP h.265", "Herelink Hotspot", "Front camera"), addableKinds(reading).map(::kindTitle))
+        assertEquals(emptyList<CameraKind>(), addableKinds(null))
     }
 
     @Test
-    fun `the synthetic view is offered by its own name, not as one of the phone's cameras`() {
+    fun `the synthetic view is offered by its own name`() {
         val synthetic = CameraKind(raw = SYNTHETIC_SOURCE, label = SYNTHETIC_SOURCE, group = "This device", needsUrl = false, hint = "")
-        assertEquals("Synthetic view", otherSourceLabel(synthetic))
-        assertEquals("it is added under its own name rather than as Camera N", "Synthetic view", otherSourceName(synthetic))
-        assertEquals("", otherSourceName(synthetic.copy(raw = "Front Camera")))
+        assertEquals("Synthetic view", kindTitle(synthetic))
+        assertEquals("it is added under its own name rather than as Camera N", "Synthetic view", addedName(synthetic))
+        assertEquals("", addedName(synthetic.copy(raw = "Front Camera")))
+    }
+
+    private val udp = CameraKind(raw = "UDP h.265 Video Stream", label = "UDP h.265 Video Stream", group = "Video streams", needsUrl = true, hint = "0.0.0.0:5600", defaultAddress = "0.0.0.0:5600")
+    private val rtsp = CameraKind(raw = "RTSP Video Stream", label = "RTSP Video Stream", group = "Video streams", needsUrl = true, hint = "rtsp://192.168.1.10:8554/live")
+    private val hotspot = CameraKind(raw = "Herelink Hotspot", label = "Herelink Hotspot", group = "Vehicle and radio presets", needsUrl = false, hint = "")
+
+    @Test
+    fun `picking a type starts the address where most radios send, and keeps one already typed`() {
+        val udpDraft = pickedKind(NEW_CAMERA_DRAFT, udp)
+        assertEquals(CameraDraft(stored = null, title = "", name = "", source = udp.raw, url = "0.0.0.0:5600"), udpDraft)
+        assertEquals("an address to dial starts empty", "", pickedKind(NEW_CAMERA_DRAFT, rtsp).url)
+        assertEquals("switching type keeps the typed address", "0.0.0.0:5600", pickedKind(udpDraft.copy(choosingKind = true), rtsp).url)
+        val preset = pickedKind(udpDraft, hotspot)
+        assertEquals("a preset has no address of its own to keep", Pair(false, ""), preset.needsUrl to preset.url)
     }
 
     @Test
-    fun `an address is classified by the core, and an ambiguous one lets the operator pick`() {
-        val ambiguous = cameraGuess(
-            JSONObject(
-                """{"ok":true,"address":"0.0.0.0:5600","kind":"UDP h.264 Video Stream","choices":["UDP h.264 Video Stream","UDP h.265 Video Stream","MPEG-TS Video Stream","TCP-MPEG2 Video Stream"],"ambiguous":true,"problem":null}""",
-            ),
-        )!!
-        assertEquals("UDP h.264 Video Stream", ambiguous.kind)
-        assertEquals(4, ambiguous.choices.size)
-        assertEquals("Which kind of stream is it?", guessText(ambiguous))
-        assertEquals("the default choice when nothing is picked", "UDP h.264 Video Stream", chosenKind(ambiguous, null, ""))
-        assertEquals("UDP h.265 Video Stream", chosenKind(ambiguous, "UDP h.265 Video Stream", ""))
-        assertEquals("a pick the address does not allow falls back to the guess", "UDP h.264 Video Stream", chosenKind(ambiguous, "RTSP Video Stream", ""))
-
-        val rtsp = cameraGuess(JSONObject("""{"ok":true,"address":"rtsp://cam/live","kind":"RTSP Video Stream","choices":["RTSP Video Stream"],"ambiguous":false,"problem":null}"""))!!
-        assertEquals("RTSP stream", guessText(rtsp))
-
-        val refused = cameraGuess(JSONObject("""{"ok":true,"address":"ftp://x","kind":null,"choices":[],"ambiguous":false,"problem":"Start the address with rtsp://, http://, udp:// or tcp://, or type it as host:port."}"""))!!
-        assertNull(refused.kind)
-        assertEquals(refused.problem, guessText(refused))
-
-        assertEquals("no guess yet leaves the core to infer", "", chosenKind(null, null, ""))
-        assertEquals("", guessText(null))
-        assertNull(cameraGuess(JSONObject("""{"ok":false,"reason":"no"}""")))
-        assertNull(cameraGuess(null))
-    }
-
-    @Test
-    fun `renaming a working camera keeps its kind even where its address alone reads as another`() {
-        val webrtc = "WebRTC (WHEP) Video Stream"
-        val hostPort = cameraGuess(
-            JSONObject(
-                """{"ok":true,"address":"192.168.1.10:8889","kind":"UDP h.264 Video Stream","choices":["UDP h.264 Video Stream","UDP h.265 Video Stream","MPEG-TS Video Stream","TCP-MPEG2 Video Stream"],"ambiguous":true,"problem":null}""",
-            ),
-        )
-        val kept = keptGuess(hostPort, webrtc, "192.168.1.10:8889", "192.168.1.10:8889")!!
-        assertEquals(CameraGuess(webrtc, listOf(webrtc), ambiguous = false, problem = null), kept)
-        assertEquals(webrtc, chosenKind(kept, webrtc, webrtc))
-
-        val unknown = cameraGuess(JSONObject("""{"ok":true,"address":"cam:8889/whep","kind":null,"choices":[],"ambiguous":false,"problem":"Start the address with rtsp://, http://, udp:// or tcp://, or type it as host:port."}"""))
-        assertEquals("an address the classifier cannot read still saves under its kind", webrtc, keptGuess(unknown, webrtc, "cam:8889/whep ", "cam:8889/whep")!!.kind)
-
-        assertEquals("a changed address is guessed afresh", hostPort, keptGuess(hostPort, webrtc, "192.168.1.10:8890", "192.168.1.10:8889"))
-        assertEquals("a broken or new camera has nothing to keep", hostPort, keptGuess(hostPort, webrtc, "192.168.1.10:8889", null))
-        assertEquals("a kind among the choices stays a choice", hostPort, keptGuess(hostPort, "MPEG-TS Video Stream", "192.168.1.10:8889", "192.168.1.10:8889"))
-        assertNull(keptGuess(null, webrtc, "192.168.1.10:8889", "192.168.1.10:8889"))
-    }
-
-    private val rtspGuess = CameraGuess("RTSP Video Stream", listOf("RTSP Video Stream"), ambiguous = false, problem = null)
-    private val unreadable = CameraGuess(null, emptyList(), ambiguous = false, problem = "Start the address with rtsp://, http://, udp:// or tcp://, or type it as host:port.")
-    private val newDraft = CameraDraft(stored = null, title = "", name = "Belly", source = "", url = "rtsp://cam/live")
-    private val editDraft = CameraDraft(stored = 0, title = "Front gimbal", name = "Front gimbal", source = "RTSP Video Stream", url = "ftp://cam", picked = "RTSP Video Stream", kept = "rtsp://10.0.0.5:8554/front")
-
-    @Test
-    fun `saving before the typed address was classified classifies it on the spot`() {
-        val asked = mutableListOf<String>()
-        val save = cameraSave(newDraft, shown = null) { address -> asked += address; rtspGuess }
-        assertEquals(listOf("rtsp://cam/live"), asked)
-        assertEquals(CameraSave.Add("Belly", "RTSP Video Stream", "rtsp://cam/live"), save)
-    }
-
-    @Test
-    fun `a guess already on screen is saved as shown, without asking again`() {
-        val save = cameraSave(newDraft, rtspGuess) { error("classified twice") }
-        assertEquals(CameraSave.Add("Belly", "RTSP Video Stream", "rtsp://cam/live"), save)
-    }
-
-    @Test
-    fun `an edit to an address the core cannot read is refused before anything is written`() {
-        assertEquals(CameraSave.Refused(unreadable.problem!!), cameraSave(editDraft, unreadable) { error("classified twice") })
-        assertEquals(CameraSave.Refused(unreadable.problem!!), cameraSave(editDraft, shown = null) { unreadable })
-    }
-
-    @Test
-    fun `a new address the classifier cannot read is still handed to the core, which names the problem`() {
-        assertEquals(CameraSave.Add("Belly", "", "rtsp://cam/live"), cameraSave(newDraft, unreadable) { error("classified twice") })
-    }
-
-    @Test
-    fun `an edit keeps the camera's kind for its old address, and a camera with no address is renamed without classifying`() {
-        val kept = editDraft.copy(url = "rtsp://10.0.0.5:8554/front")
-        assertEquals(CameraSave.Update(0, "Front gimbal", "RTSP Video Stream", "rtsp://10.0.0.5:8554/front"), cameraSave(kept, shown = null) { unreadable })
-        val phone = CameraDraft(stored = 1, title = "Camera 2", name = "Phone", source = "Back Camera", url = "", needsUrl = false)
-        assertEquals(CameraSave.Update(1, "Phone", "Back Camera", ""), cameraSave(phone, shown = null) { error("nothing to classify") })
+    fun `a new camera is added with the type picked, an edit updates its slot`() {
+        assertEquals(CameraSave.Add("Belly", udp.raw, "0.0.0.0:5600"), cameraSave(pickedKind(NEW_CAMERA_DRAFT, udp).copy(name = "Belly")))
+        val front = camerasReading(view)!!.cameras[0]
+        val edited = pickedKind(editDraft(front, camerasReading(view)!!.kinds)!!, udp).copy(url = "0.0.0.0:5601")
+        assertEquals(CameraSave.Update(0, "Front gimbal", udp.raw, "0.0.0.0:5601"), cameraSave(edited))
+        assertEquals("a drone camera is not the operator's to edit", null, editDraft(camerasReading(view)!!.cameras[2], emptyList()))
     }
 
     @Test
     fun `a refused save lands in the sheet as it is now, and never reopens a sheet the operator closed`() {
-        val typedWhileSaving = newDraft.copy(name = "Belly cam")
+        val typedWhileSaving = pickedKind(NEW_CAMERA_DRAFT, udp).copy(name = "Belly cam")
         assertEquals(typedWhileSaving.copy(refusal = "No"), refusedDraft(typedWhileSaving, "No"))
         assertNull("a cancelled sheet stays closed", refusedDraft(null, "No"))
         assertNull("a save that went through closes the sheet", refusedDraft(typedWhileSaving, null))

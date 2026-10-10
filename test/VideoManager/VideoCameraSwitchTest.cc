@@ -274,7 +274,7 @@ void VideoCameraSwitchTest::_pipSkipsCamerasOnlyThisComputerCanOpen()
     QVERIFY(VideoSettings::pipCapable(QString::fromUtf8(VideoSettings::videoSourceWebRTC)));
     QVERIFY(VideoSettings::pipCapable(QString::fromUtf8(VideoSettings::videoSourceHerelinkHotspot)));
     QVERIFY(!VideoSettings::pipCapable(QStringLiteral("FaceTime HD Camera")));
-    QVERIFY(!VideoSettings::pipCapable(QString::fromUtf8(VideoSettings::videoSource3DRSolo)));
+    QVERIFY(VideoSettings::pipCapable(QString::fromUtf8(VideoSettings::videoSource3DRSolo)));
 }
 
 void VideoCameraSwitchTest::_pipSlotNamesThePipChoice()
@@ -445,8 +445,8 @@ void VideoCameraSwitchTest::_currentCameraFallsBackToTheFirstUsable()
     ThreeCameraFixture fixture;
     VideoSettings *settings = fixture.settings();
     settings->storeCameras(QJsonArray{
-        VideoSettings::camera(QStringLiteral("solo"), QString::fromUtf8(VideoSettings::videoSource3DRSolo), QString()),
         VideoSettings::camera(QStringLiteral("odd"), QStringLiteral("Not A Source"), QString()),
+        VideoSettings::camera(QStringLiteral("blank"), QString::fromUtf8(VideoSettings::videoSourceRTSP), QString()),
         VideoSettings::camera(QStringLiteral("rtsp"), QString::fromUtf8(VideoSettings::videoSourceRTSP), QStringLiteral("rtsp://two")),
     }, 0);
 
@@ -454,11 +454,11 @@ void VideoCameraSwitchTest::_currentCameraFallsBackToTheFirstUsable()
     QVERIFY(!settings->sourceUsable(1));
     QCOMPARE(settings->currentIndex(), 2);
     QCOMPARE(settings->switchableIndices(), QList<int>{2});
-    QCOMPARE(settings->storedActiveSourceName(), QString::fromUtf8(VideoSettings::videoSource3DRSolo));
+    QCOMPARE(settings->storedActiveSourceName(), QStringLiteral("Not A Source"));
 
     settings->storeCameras(QJsonArray{VideoSettings::camera(QStringLiteral("solo"), QString::fromUtf8(VideoSettings::videoSource3DRSolo), QString())}, 0);
     QCOMPARE(settings->currentIndex(), 0);
-    QVERIFY(!settings->streamConfigured());
+    QVERIFY(settings->streamConfigured());
 }
 
 void VideoCameraSwitchTest::_adoptingReplacesTheSameCamera()
@@ -566,24 +566,25 @@ void VideoCameraSwitchTest::_unreadableListIsLeftAlone()
     QCOMPARE(settings->cameras()->rawValue().toString(), QStringLiteral("{not a list"));
 }
 
-void VideoCameraSwitchTest::_onlyPlayableKindsAreOffered()
+void VideoCameraSwitchTest::_everyKindTheOldAppListedIsOffered()
 {
     ThreeCameraFixture fixture;
     VideoSettings *settings = fixture.settings();
     const QStringList offered = settings->offeredSources();
     QVERIFY(offered.contains(QString::fromUtf8(VideoSettings::videoSourceRTSP)));
     QVERIFY(offered.contains(QString::fromUtf8(VideoSettings::videoSourceUDPH264)));
-    QVERIFY(!offered.contains(QString::fromUtf8(VideoSettings::videoSource3DRSolo)));
-    QVERIFY(!offered.contains(QString::fromUtf8(VideoSettings::videoSourceParrotDiscovery)));
-    QVERIFY(!offered.contains(QString::fromUtf8(VideoSettings::videoSourceYuneecMantisG)));
+    QVERIFY(offered.contains(QString::fromUtf8(VideoSettings::videoSource3DRSolo)));
+    QVERIFY(offered.contains(QString::fromUtf8(VideoSettings::videoSourceParrotDiscovery)));
+    QVERIFY(offered.contains(QString::fromUtf8(VideoSettings::videoSourceYuneecMantisG)));
     QVERIFY(!offered.contains(QString::fromUtf8(VideoSettings::videoDisabled)));
 
-    const QString unplayable = QStringLiteral("This kind of camera cannot show video in this app.");
-    QCOMPARE(settings->addCamera(QStringLiteral("solo"), QString::fromUtf8(VideoSettings::videoSource3DRSolo), QString()), unplayable);
-    QCOMPARE(settings->videoSourceCount(), 3);
+    QCOMPARE(settings->addCamera(QStringLiteral("solo"), QString::fromUtf8(VideoSettings::videoSource3DRSolo), QString()), QString());
+    QCOMPARE(settings->videoSourceCount(), 4);
+    QVERIFY(settings->sourceUsable(3));
+    QCOMPARE(VideoSettings::streamUri(QString::fromUtf8(VideoSettings::videoSourceParrotDiscovery), QString()), QStringLiteral("udp://0.0.0.0:8888"));
 
-    QCOMPARE(settings->updateCamera(0, QStringLiteral("cam1"), QString::fromUtf8(VideoSettings::videoSource3DRSolo), QString()), unplayable);
-    QCOMPARE(settings->videoSourceNameAt(0), QString::fromUtf8(VideoSettings::videoSourceRTSP));
+    QCOMPARE(settings->updateCamera(0, QStringLiteral("cam1"), QString::fromUtf8(VideoSettings::videoSourceYuneecMantisG), QString()), QString());
+    QCOMPARE(settings->videoSourceNameAt(0), QString::fromUtf8(VideoSettings::videoSourceYuneecMantisG));
     QCOMPARE(settings->addCamera(QStringLiteral("off"), QString::fromUtf8(VideoSettings::videoDisabled), QString()), QStringLiteral("Pick the kind of stream this camera sends."));
 }
 

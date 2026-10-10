@@ -27,7 +27,7 @@ private slots:
     void _listEditsKeepTheCameraOnScreen();
     void _droneCameraIsLiveOnly();
     void _unreadableListIsLeftAlone();
-    void _onlyPlayableKindsAreOffered();
+    void _everyKindTheOldAppListedIsOffered();
     void _addressesAreCheckedAndCleanedLikeTheCore();
     void _droneCameraNamesFollowTheCore();
     void _storedListAndIndexAreSeenTogether();

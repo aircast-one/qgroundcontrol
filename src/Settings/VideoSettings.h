@@ -129,6 +129,7 @@ private:
     QJsonObject _cameraAt           (int index);
     QJsonArray _allCameras          ();
     static bool _sourceNeedsUrl     (const QString &source);
+    static bool _vehiclePreset      (const QString &source);
     static QString _streamIdentity  (const QString &uri);
     static std::optional<QString> _listenPort(const QString &uri);
     int _nextAfterCurrent           (const std::function<bool(int)> &eligible);

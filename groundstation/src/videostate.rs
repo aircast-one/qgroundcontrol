@@ -118,7 +118,7 @@ pub fn source_usable(source: &str, url: &str) -> bool {
     match source {
         SOURCE_NO_VIDEO | SOURCE_DISABLED => false,
         _ if needs_url(source) => !url.is_empty(),
-        SOURCE_HERELINK_AIR_UNIT | SOURCE_HERELINK_HOTSPOT | SOURCE_BACK_CAMERA | SOURCE_FRONT_CAMERA | SOURCE_SYNTHETIC => true,
+        SOURCE_3DR_SOLO | SOURCE_PARROT_DISCOVERY | SOURCE_YUNEEC_MANTIS_G | SOURCE_HERELINK_AIR_UNIT | SOURCE_HERELINK_HOTSPOT | SOURCE_BACK_CAMERA | SOURCE_FRONT_CAMERA | SOURCE_SYNTHETIC => true,
         _ => false,
     }
 }
@@ -1010,16 +1010,11 @@ mod tests {
     }
 
     #[test]
-    fn a_source_that_can_never_start_says_so_instead_of_looking_ready() {
+    fn a_vehicle_preset_plays_its_fixed_address_and_no_source_never_looks_ready() {
         let solo = wire(only(cam(SOURCE_3DR_SOLO, "", "")), &[MAIN_RECEIVER]);
-        assert!(!solo.has_video(), "the three fixed-address sources outside herelink are not accepted by streamConfigured, so they never produce a frame");
-        assert!(solo.configured(0), "they need no url, so the configured question answers yes");
-        assert!(!solo.usable(0), "usable is the per-slot mirror of streamConfigured, so one row can no longer contradict hasVideo");
-        assert_eq!(solo.camera_status(0), Status::UnsupportedSource, "a source that is offered but can never start has to be named");
-        let view = solo.snapshot(0);
-        assert_eq!(view["cameras"][0]["usable"], false);
-        assert_eq!(view["cameras"][0]["status"], "unsupportedSource");
-        assert_eq!(view["hasVideo"], false);
+        assert!(solo.has_video() && solo.usable(0), "3DR Solo, Parrot Discovery and Yuneec Mantis G play the fixed address QGC always gave them");
+        assert_eq!(source_uri(SOURCE_PARROT_DISCOVERY, ""), "udp://0.0.0.0:8888");
+        assert!(source_usable(SOURCE_YUNEEC_MANTIS_G, ""));
         let blank = wire(only(cam(SOURCE_NO_VIDEO, "", "")), &[MAIN_RECEIVER]);
         assert!(!blank.usable(0) && blank.snapshot(0)["cameras"][0]["usable"] == false, "no-video and disabled are unusable too, where configured alone called them ready");
         assert!(wired().usable(1), "a configured udp camera stays usable");
@@ -1591,7 +1586,7 @@ mod tests {
         assert_eq!(udp["startTimeoutSeconds"], 3, "the plain start budget is the cpp's three seconds, pinned as a number rather than through the constant the code reads");
         let solo = video_source_view(&NoBackend, &[SOURCE_3DR_SOLO.to_string()]);
         assert_eq!(solo["configured"], true);
-        assert_eq!(solo["usable"], false, "solo needs no url and still cannot start, and only usable says so");
+        assert_eq!((&solo["usable"], &solo["uri"]), (&json!(true), &json!("udp://0.0.0.0:5600")), "solo needs no url and starts on the port it always used");
         assert!(video_source_view(&NoBackend, &[])["reason"].is_string(), "a view that refuses its arguments says what it wanted");
     }
 }

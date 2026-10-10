@@ -38,7 +38,6 @@ private const val CAMERAS_ADD = "cameras.add"
 private const val CAMERAS_UPDATE = "cameras.update"
 private const val CAMERAS_REMOVE = "cameras.remove"
 private const val CAMERAS_MOVE = "cameras.move"
-private const val CAMERAS_CLASSIFY = "cameras.classify"
 private const val VEHICLE_FIELDS = "vehicle"
 private const val ESC_CALIBRATION_START = "escCalibration.start"
 private const val ESC_CALIBRATION_CLOSE = "escCalibration.close"
@@ -103,7 +102,6 @@ internal object CameraCommands {
     fun update(slot: Int, name: String, source: String, url: String): String? = Qgc.refusalOf(CAMERAS_UPDATE, slot, name, source, url)
     fun remove(slot: Int): String? = Qgc.refusalOf(CAMERAS_REMOVE, slot)
     fun move(from: Int, to: Int): String? = Qgc.refusalOf(CAMERAS_MOVE, from, to)
-    fun classify(address: String): JSONObject? = Qgc.call(CAMERAS_CLASSIFY, address)
 }
 
 internal object SetupCommands {

@@ -1,12 +1,13 @@
 package one.aircast.android.ui
 
 import one.aircast.map.optText
-import org.json.JSONArray
 import org.json.JSONObject
 
 internal const val CAMERAS_VIEW = "view.cameras"
 internal const val VIDEO_SOURCES_PAGE = "Video sources"
+private const val CAMERA_GROUP_STREAMS = "Video streams"
 private const val CAMERA_GROUP_DEVICE = "This device"
+private val CAMERA_GROUP_ORDER = listOf(CAMERA_GROUP_STREAMS, "Vehicle and radio presets", CAMERA_GROUP_DEVICE)
 private const val FROM_THE_DRONE = "From the drone"
 
 internal enum class CameraStatus(val token: String, val label: String) {
@@ -22,6 +23,8 @@ internal data class CameraKind(
     val group: String,
     val needsUrl: Boolean,
     val hint: String,
+    val description: String = "",
+    val defaultAddress: String = "",
 )
 
 internal data class CameraEntry(
@@ -50,17 +53,8 @@ internal data class CamerasReading(
     val stored: List<CameraEntry> get() = cameras.filter { it.stored != null }
 }
 
-internal data class CameraGuess(
-    val kind: String?,
-    val choices: List<String>,
-    val ambiguous: Boolean,
-    val problem: String?,
-)
-
 private fun JSONObject.objects(key: String): List<JSONObject> =
     optJSONArray(key)?.let { array -> (0 until array.length()).mapNotNull { array.optJSONObject(it) } }.orEmpty()
-
-private fun JSONArray?.texts(): List<String> = this?.let { array -> (0 until array.length()).map { array.optString(it) } }.orEmpty()
 
 private fun JSONObject.textOrNull(key: String): String? = takeUnless { it.isNull(key) }?.optText(key)?.takeIf { it.isNotBlank() }
 
@@ -95,53 +89,28 @@ internal fun camerasReading(view: JSONObject?): CamerasReading? {
                 group = kind.optText("group"),
                 needsUrl = kind.optBoolean("needsUrl"),
                 hint = kind.optText("hint"),
+                description = kind.optText("description"),
+                defaultAddress = kind.optText("defaultAddress"),
             )
         },
     )
 }
 
-internal fun cameraGuess(reply: JSONObject?): CameraGuess? = reply?.takeIf { it.optBoolean("ok") }?.let { guess ->
-    CameraGuess(
-        kind = guess.textOrNull("kind"),
-        choices = guess.optJSONArray("choices").texts(),
-        ambiguous = guess.optBoolean("ambiguous"),
-        problem = guess.textOrNull("problem"),
-    )
-}
-
-internal fun keptGuess(guess: CameraGuess?, source: String, address: String, keptAddress: String?): CameraGuess? =
-    guess?.takeIf { address.trim() == keptAddress && source !in it.choices }
-        ?.copy(kind = source, choices = listOf(source), ambiguous = false, problem = null)
-        ?: guess
-
-internal fun chosenKind(guess: CameraGuess?, picked: String?, fallback: String): String =
-    picked?.takeIf { guess != null && it in guess.choices } ?: guess?.kind ?: fallback
-
-internal fun guessText(guess: CameraGuess?): String = when {
-    guess == null -> ""
-    guess.problem != null -> guess.problem
-    guess.ambiguous -> "Which kind of stream is it?"
-    else -> guess.kind?.let { "${kindLabel(it)} stream" }.orEmpty()
-}
-
 internal fun cameraDetail(camera: CameraEntry): String = when {
     camera.fromDrone -> FROM_THE_DRONE
-    camera.url.isNotBlank() -> camera.url
+    camera.url.contains("://") -> camera.url
+    camera.url.isNotBlank() -> "${kindLabel(camera.source)} · ${camera.url}"
     else -> kindLabel(camera.source)
 }
 
-internal fun otherSources(reading: CamerasReading?): List<CameraKind> =
+internal fun addableKinds(reading: CamerasReading?, keeping: String? = null): List<CameraKind> =
     reading?.kinds.orEmpty()
-        .filter { kind -> !kind.needsUrl && reading?.stored.orEmpty().none { it.source == kind.raw } }
-        .sortedBy { it.group != CAMERA_GROUP_DEVICE }
+        .filter { kind -> kind.needsUrl || kind.raw == keeping || reading?.stored.orEmpty().none { it.source == kind.raw } }
+        .sortedBy { kind -> CAMERA_GROUP_ORDER.indexOf(kind.group).let { if (it < 0) CAMERA_GROUP_ORDER.size else it } }
 
-internal fun otherSourceLabel(kind: CameraKind): String = when {
-    kind.raw == SYNTHETIC_SOURCE -> SYNTHETIC_LABEL
-    kind.group == CAMERA_GROUP_DEVICE -> "This phone's ${kindLabel(kind.label).lowercase()}"
-    else -> kindLabel(kind.label)
-}
+internal fun kindTitle(kind: CameraKind): String = if (kind.raw == SYNTHETIC_SOURCE) SYNTHETIC_LABEL else kindLabel(kind.label)
 
-internal fun otherSourceName(kind: CameraKind): String = if (kind.raw == SYNTHETIC_SOURCE) SYNTHETIC_LABEL else ""
+internal fun addedName(kind: CameraKind): String = if (kind.raw == SYNTHETIC_SOURCE) SYNTHETIC_LABEL else ""
 
 internal fun kindLabel(label: String): String = sentenceCase(label.removeSuffix(" Video Stream").ifBlank { label })
 
