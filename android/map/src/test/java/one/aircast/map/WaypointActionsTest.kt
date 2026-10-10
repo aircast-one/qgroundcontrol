@@ -66,4 +66,12 @@ class WaypointActionsTest {
         assertEquals(44.001, legs.single().first.longitude, 1e-9)
         assertEquals(41.0, legs.single().first.latitude, 1e-9)
     }
+
+    @Test
+    fun `a leg past an ROI is labelled between the waypoints it joins, not from the ROI`() {
+        val first = MissionItem(1, 1, 41.0, 44.0, "Waypoint", true, 50.0)
+        val roi = MissionItem(2, 2, 42.0, 45.0, "ROI", true, Double.NaN, routed = false)
+        val next = MissionItem(3, 3, 41.0, 44.002, "Waypoint", true, 50.0, distance = 168.0, distanceText = "168 m")
+        assertEquals(44.001, legLabels(listOf(first, roi, next)).single().first.longitude, 1e-9)
+    }
 }

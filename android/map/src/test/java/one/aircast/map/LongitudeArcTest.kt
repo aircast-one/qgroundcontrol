@@ -17,6 +17,12 @@ class LongitudeArcTest {
     }
 
     @Test
+    fun `a fit across the antimeridian hands MapLibre an east past 180, never one below west`() {
+        assertEquals(190.0, PlanBounds(south = 0.0, west = 170.0, north = 1.0, east = -170.0).unwrappedEast, 1e-9)
+        assertEquals(20.0, PlanBounds(south = 0.0, west = 10.0, north = 1.0, east = 20.0).unwrappedEast, 1e-9)
+    }
+
+    @Test
     fun `an ordinary plan spans west to east the obvious way`() {
         assertEquals(10.0 to 20.0, longitudeArc(listOf(20.0, 10.0)))
         assertEquals(-20.0 to -10.0, longitudeArc(listOf(-10.0, -20.0)))

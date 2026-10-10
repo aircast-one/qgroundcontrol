@@ -115,11 +115,18 @@ fun hitTest(map: MapLibreMap, x: Float, y: Float): MapHit? {
         .firstNotNullOfOrNull { it.getNumberProperty(CIRCLE_INDEX_PROPERTY)?.toInt() }
         ?.let { return MapHit.Circle(it) }
 
-    return nearest(map, map.queryRenderedFeatures(box, MISSION_DOT_LAYER, MISSION_LAYER), x, y)
+    return nearestMissionMarker(map, box, x, y)
         ?.getNumberProperty(WAYPOINT_ID_PROPERTY)
         ?.toInt()
         ?.let { MapHit.Waypoint(it) }
 }
+
+private fun nearestMissionMarker(map: MapLibreMap, box: RectF, x: Float, y: Float) =
+    nearest(map, map.queryRenderedFeatures(box, MISSION_DOT_LAYER, MISSION_LAYER), x, y)
+
+private fun exitMarkerAt(map: MapLibreMap, x: Float, y: Float): Boolean =
+    nearestMissionMarker(map, RectF(x - HIT_RADIUS_PX, y - HIT_RADIUS_PX, x + HIT_RADIUS_PX, y + HIT_RADIUS_PX), x, y)
+        ?.getBooleanProperty(WAYPOINT_EXIT_PROPERTY) == true
 
 internal fun withinHit(dx: Float, dy: Float): Boolean =
     kotlin.math.abs(dx) <= HIT_RADIUS_PX && kotlin.math.abs(dy) <= HIT_RADIUS_PX
@@ -131,7 +138,6 @@ internal fun withinTap(dx: Float, dy: Float): Boolean =
 fun attachMissionEditing(
     mapView: MapView,
     map: MapLibreMap,
-    style: Style,
     onAdd: (Double, Double) -> Unit,
     onMove: (MapHit, Double, Double) -> Unit,
     onSelected: (MapHit?) -> Unit = {},
@@ -169,7 +175,7 @@ fun attachMissionEditing(
                 downY = event.y
                 moved = false
                 addedInGesture = false
-                tapped = hit?.takeIf { !canDrag(it) }
+                tapped = hit?.takeIf { !canDrag(it) || (it is MapHit.Waypoint && exitMarkerAt(map, event.x, event.y)) }
                 if (hit == null || tapped != null) {
                     map.uiSettings.setAllGesturesEnabled(true)
                     false

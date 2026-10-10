@@ -48,6 +48,7 @@ fun renderCollisionLegs(style: Style, legs: List<Pair<TrackPoint, TrackPoint>>) 
 }
 
 const val WAYPOINT_ID_PROPERTY = "waypointId"
+const val WAYPOINT_EXIT_PROPERTY = "waypointExit"
 internal const val WAYPOINT_LABEL_PROPERTY = "label"
 internal const val WAYPOINT_SIDE_LABEL_PROPERTY = "sideLabel"
 private const val MISSION_SIDE_LABEL_LAYER = "aircast-mission-side-label-layer"
@@ -162,7 +163,7 @@ fun crowded(itemCount: Int): Boolean = itemCount > CROWDED_ITEMS
 
 fun legLabels(items: List<MissionItem>): List<Pair<TrackPoint, String>> =
     if (crowded(items.size)) emptyList()
-    else items.filter { it.placed }.sortedBy { it.index }.zipWithNext()
+    else items.filter { it.placed && (it.routed || it.index == HOME_ITEM) }.sortedBy { it.index }.zipWithNext()
         .filter { (_, to) -> !to.legBroken && to.distanceText.isNotBlank() && to.distance > 0.0 }
         .map { (from, to) ->
             val start = from.exit ?: TrackPoint(from.latitude, from.longitude)
@@ -230,6 +231,7 @@ fun missionFeatures(items: List<MissionItem>, selectedIndex: Int? = null, landin
             )
             addStringProperty(WAYPOINT_COLOUR_PROPERTY, waypointColour(item.kind, item.commandId))
             addBooleanProperty(WAYPOINT_SELECTED_PROPERTY, item.index == selectedIndex)
+            addBooleanProperty(WAYPOINT_EXIT_PROPERTY, exit)
         }
     }
     return FeatureCollection.fromFeatures(features)

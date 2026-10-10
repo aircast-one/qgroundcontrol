@@ -16,7 +16,7 @@ internal fun planMapStyle(context: Context): String {
     if (!tileSourceInstalled) {
         MapBridge.start()
         MapLibre.getInstance(context)
-        installQgcTileSource(context)
+        installQgcTileSource()
         tileSourceInstalled = true
     }
     return qgcRasterStyle(currentMapType())

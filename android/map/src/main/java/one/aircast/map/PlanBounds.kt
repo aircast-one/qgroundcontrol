@@ -10,6 +10,8 @@ data class PlanBounds(
 
     val longitudeSpan: Double get() = if (east >= west) east - west else east - west + 360.0
 
+    val unwrappedEast: Double get() = west + longitudeSpan
+
     val spanDegrees: Double get() = maxOf(north - south, longitudeSpan)
 }
 

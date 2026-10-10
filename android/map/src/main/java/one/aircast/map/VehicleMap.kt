@@ -306,7 +306,7 @@ fun VehicleMap(
     val latestBottomInset by rememberUpdatedState(bottomInsetPx)
     val latestTopInset by rememberUpdatedState(topInsetPx)
     val latestRightInset by rememberUpdatedState(rightInsetPx)
-    DisposableEffect(mapView, mapStyle) {
+    DisposableEffect(mapView) {
         mapView.getMapAsync { loaded ->
             map = loaded
             fun reportCentre() {
@@ -332,6 +332,53 @@ fun VehicleMap(
             loaded.addOnCameraMoveStartedListener { reason ->
                 if (reason == MapLibreMap.OnCameraMoveStartedListener.REASON_API_GESTURE) panning = true
             }
+            if (!editable && onMapClick != null) {
+                loaded.addOnMapClickListener { at ->
+                    val screen = loaded.projection.toScreenLocation(at)
+                    val slop = TAP_SLOP_DP * mapView.resources.displayMetrics.density
+                    val near = android.graphics.RectF(screen.x - slop, screen.y - slop, screen.x + slop, screen.y + slop)
+                    val trafficClick = latestTrafficClick
+                    if (trafficClick != null && loaded.queryRenderedFeatures(near, TRAFFIC_LAYER).isNotEmpty()) {
+                        trafficClick()
+                        return@addOnMapClickListener true
+                    }
+                    val roiTapped = latestRoi?.takeIf {
+                        loaded.queryRenderedFeatures(near, ROI_LAYER).isNotEmpty()
+                    }
+                    if (roiTapped != null && latestRoiClick != null) {
+                        latestRoiClick?.invoke(roiTapped)
+                        return@addOnMapClickListener true
+                    }
+                    val item = (hitTest(loaded, screen.x, screen.y) as? MapHit.Waypoint)
+                        ?.let { hit -> latestItems.firstOrNull { it.index == hit.index } }
+                    val itemClick = latestItemClick
+                    if (item != null && itemClick != null) itemClick(item.sequence)
+                    item != null && itemClick != null
+                }
+                loaded.addOnMapLongClickListener { at ->
+                    latestMapClick?.invoke(at.latitude, at.longitude)
+                    latestMapClick != null
+                }
+                attachGotoRadiusDrag(mapView, loaded, mapEdits) { latestGoto }
+            }
+            if (editable) {
+                attachMissionEditing(
+                    mapView, loaded,
+                    onAdd = { latitude, longitude -> latestOnAdd(latitude, longitude) },
+                    onMove = { hit, latitude, longitude -> latestOnMove(hit, latitude, longitude) },
+                    onSelected = { hit -> latestOnSelected(hit) },
+                    onMoved = { hit, latitude, longitude -> latestOnMoved(hit, latitude, longitude) },
+                    onDragging = { draggingVertex = it },
+                    canDrag = { hit -> latestCanDrag(hit) },
+                    onBlankTap = { latitude, longitude -> latestOnBlankTap?.invoke(latitude, longitude) ?: latestOnSelected(null) },
+                )
+            }
+        }
+        onDispose { }
+    }
+
+    DisposableEffect(mapView, mapStyle) {
+        mapView.getMapAsync { loaded ->
             val builder = if (mapStyle.trimStart().startsWith("{")) {
                 Style.Builder().fromJson(mapStyle)
             } else {
@@ -355,47 +402,6 @@ fun VehicleMap(
                 installClickMarker(loadedStyle)
                 installOrbitLayer(loadedStyle)
                 installVehicleLayer(loadedStyle)
-                if (!editable && onMapClick != null) {
-                    loaded.addOnMapClickListener { at ->
-                        val screen = loaded.projection.toScreenLocation(at)
-                        val slop = TAP_SLOP_DP * mapView.resources.displayMetrics.density
-                        val near = android.graphics.RectF(screen.x - slop, screen.y - slop, screen.x + slop, screen.y + slop)
-                        val trafficClick = latestTrafficClick
-                        if (trafficClick != null && loaded.queryRenderedFeatures(near, TRAFFIC_LAYER).isNotEmpty()) {
-                            trafficClick()
-                            return@addOnMapClickListener true
-                        }
-                        val roiTapped = latestRoi?.takeIf {
-                            loaded.queryRenderedFeatures(near, ROI_LAYER).isNotEmpty()
-                        }
-                        if (roiTapped != null && latestRoiClick != null) {
-                            latestRoiClick?.invoke(roiTapped)
-                            return@addOnMapClickListener true
-                        }
-                        val item = (hitTest(loaded, screen.x, screen.y) as? MapHit.Waypoint)
-                            ?.let { hit -> latestItems.firstOrNull { it.index == hit.index } }
-                        val itemClick = latestItemClick
-                        if (item != null && itemClick != null) itemClick(item.sequence)
-                        item != null && itemClick != null
-                    }
-                    loaded.addOnMapLongClickListener { at ->
-                        latestMapClick?.invoke(at.latitude, at.longitude)
-                        latestMapClick != null
-                    }
-                    attachGotoRadiusDrag(mapView, loaded, mapEdits) { latestGoto }
-                }
-                if (editable) {
-                    attachMissionEditing(
-                        mapView, loaded, loadedStyle,
-                        onAdd = { latitude, longitude -> latestOnAdd(latitude, longitude) },
-                        onMove = { hit, latitude, longitude -> latestOnMove(hit, latitude, longitude) },
-                        onSelected = { hit -> latestOnSelected(hit) },
-                        onMoved = { hit, latitude, longitude -> latestOnMoved(hit, latitude, longitude) },
-                        onDragging = { draggingVertex = it },
-                        canDrag = { hit -> latestCanDrag(hit) },
-                        onBlankTap = { latitude, longitude -> latestOnBlankTap?.invoke(latitude, longitude) ?: latestOnSelected(null) },
-                    )
-                }
                 draggingVertex = null
                 style = loadedStyle
             }
@@ -609,7 +615,7 @@ fun VehicleMap(
 
         currentMap.animateCamera(
             CameraUpdateFactory.newLatLngBounds(
-                LatLngBounds.from(bounds.north, bounds.east, bounds.south, bounds.west),
+                LatLngBounds.from(bounds.north, bounds.unwrappedEast, bounds.south, bounds.west),
                 FIT_PADDING_PIXELS + leftInsetPx,
                 FIT_PADDING_PIXELS + topInsetPx,
                 FIT_PADDING_PIXELS,

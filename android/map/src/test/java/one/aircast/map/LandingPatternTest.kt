@@ -192,6 +192,13 @@ class IsLandingPatternTest {
         assertEquals("exitCoordinateSameAsEntry: the core sends no exit, both labels sit on the entry", listOf(scan.latitude, scan.latitude), structureScanLabels(listOf(scan.copy(exit = null))).map { it.at.latitude })
     }
 
+    @Test
+    fun `a pattern's exit marker is flagged so dragging it never moves the entry`() {
+        val scan = MissionItem(index = 2, sequence = 2, latitude = 47.0, longitude = 8.0, command = "", selected = false, kind = KIND_STRUCTURE, exit = TrackPoint(47.1, 8.0), complexPattern = true)
+        val marks = missionFeatures(listOf(scan)).features()!!.map { it.getNumberProperty(WAYPOINT_ID_PROPERTY).toInt() to it.getBooleanProperty(WAYPOINT_EXIT_PROPERTY) }
+        assertEquals(listOf(2 to false, 2 to true), marks)
+    }
+
     @org.junit.Test
     fun `a colliding glide slope and loiter circle turn red like their QGC visuals`() {
         val slope = LandingPattern(index = 3, landing = TrackPoint(47.0, 8.0), slopeStart = TrackPoint(47.01, 8.0), finalApproach = TrackPoint(47.02, 8.0), loiterRadiusMetres = 80.0, loiterClockwise = true, collides = true)

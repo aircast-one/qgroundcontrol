@@ -1,6 +1,5 @@
 package one.aircast.map
 
-import android.content.Context
 import okhttp3.Interceptor
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
@@ -12,6 +11,8 @@ import org.maplibre.android.module.http.HttpRequestUtil
 import org.mavlink.qgroundcontrol.QGCBridge
 import java.net.URLDecoder
 import java.net.URLEncoder
+
+const val QGC_TILE_HOST = "qgc.tiles"
 
 private val TILE_PATH = Regex("""^/([^/]+)/(\d+)/(\d+)/(\d+)$""")
 private val PNG_MAGIC = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47)
@@ -67,10 +68,7 @@ fun qgcRasterStyle(mapType: String): String = """
 }
 """
 
-class QgcTileInterceptor(
-    private val cache: QgcTileCache?,
-    private val cachedPrefix: String?,
-) : Interceptor {
+class QgcTileInterceptor : Interceptor {
 
     private fun served(request: okhttp3.Request, tile: ByteArray): Response =
         Response.Builder()
@@ -90,10 +88,10 @@ class QgcTileInterceptor(
             ?: return Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(404).message("Not a tile")
                 .body(ByteArray(0).toResponseBody("image/png".toMediaType())).build()
 
-        val fromCore = coreTile(request.url.encodedPath)
-        val tile = fromCore ?: cachedPrefix?.let { prefix -> runCatching { cache?.tile(prefix, address.z, address.x, address.y) }.getOrNull() }
-        if (tile != null) {
-            return served(request, tile)
+        coreTile(request.url.encodedPath)?.let { return served(request, it) }
+        if (MapTileHost.fetch != null) {
+            return Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(404).message("No tile")
+                .body(ByteArray(0).toResponseBody("image/png".toMediaType())).build()
         }
         return runCatching { chain.proceed(request.newBuilder().url(osmTileUrl(address)).build()) }.getOrNull()
             ?: Response.Builder().request(request).protocol(Protocol.HTTP_1_1).code(404).message("No tile")
@@ -101,12 +99,10 @@ class QgcTileInterceptor(
     }
 }
 
-fun installQgcTileSource(context: Context) {
-    val cache = QgcTileCache.open(context)
-    val prefix = cache?.providers()?.firstOrNull { it.count > 0 }?.prefix
+fun installQgcTileSource() {
     HttpRequestUtil.setOkHttpClient(
         OkHttpClient.Builder()
-            .addInterceptor(QgcTileInterceptor(cache, prefix))
+            .addInterceptor(QgcTileInterceptor())
             .build(),
     )
 }
