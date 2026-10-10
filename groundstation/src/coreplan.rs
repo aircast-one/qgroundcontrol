@@ -253,7 +253,7 @@ fn edit(change: impl FnOnce(&Document) -> Result<Document, String>) -> Value {
         let before = home_of(Some(&current));
         let gate = plandoc::firmware(current.firmware_type) == crate::cmdinfo::Firmware::Px4 && crate::settingsstore::raw_setting("settings.planViewSettings.useConditionGate").and_then(|v| v.as_bool()).unwrap_or(false);
         crate::surveyitems::CONDITION_GATE_SUPPORTED.store(gate, std::sync::atomic::Ordering::Relaxed);
-        match change(&current) {
+        match change(&current).map(|changed| plandoc::above_terrain(&changed, &terrain_height)) {
             Ok(changed) => {
                 let count = changed.items.len();
                 shift_raw_edits(&current.items, &changed.items);
@@ -444,8 +444,12 @@ fn with_flight_speed(doc: &Document, item: Value) -> Value {
 
 const WAITING_ON_TERRAIN: &str = "Plan is waiting on terrain data from server for correct altitude values.";
 
+fn terrain_height(latitude: f64, longitude: f64) -> Option<f64> {
+    crate::terrainservice::cached_height(latitude, longitude).flatten()
+}
+
 fn waiting_on_terrain(document: &Document) -> bool {
-    document.items.iter().any(|item| matches!(item, plandoc::Item::Complex { json, .. } if crate::surveydoc::waiting_for_terrain(json)))
+    plandoc::awaiting_terrain(document) || document.items.iter().any(|item| matches!(item, plandoc::Item::Complex { json, .. } if crate::surveydoc::waiting_for_terrain(json)))
 }
 
 pub fn terrain_arrived() {
@@ -463,7 +467,7 @@ pub fn terrain_arrived() {
                 other => other.clone(),
             })
             .collect();
-        let refreshed = Document { items, ..current };
+        let refreshed = plandoc::above_terrain(&Document { items, ..current }, &terrain_height);
         let changed_any = state.document.as_ref() != Some(&refreshed);
         state.document = Some(refreshed);
         changed_any

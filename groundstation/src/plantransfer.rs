@@ -284,6 +284,9 @@ impl Transfer {
         }
         let skip_first = self.skip_first;
         let first = usize::from(skip_first && !items.is_empty());
+        if items.len() - first > usize::from(u16::MAX) {
+            return vec![Out::Done { success: false, error: format!("The plan has {} items; MAVLink carries at most {}.", items.len() - first, u16::MAX) }];
+        }
         self.writing = items
             .into_iter()
             .skip(first)
@@ -508,6 +511,15 @@ mod tests {
         let mut unrequested = Transfer::new(true, PLAN_MISSION);
         unrequested.write(vec![waypoint(0, 0.0)]);
         assert!(matches!(unrequested.on_ack(1).last(), Some(Out::Done { error, .. }) if error == "Unspecified error."), "before any request there is no item to name");
+    }
+
+    #[test]
+    fn a_plan_too_long_for_a_mission_count_is_refused_not_truncated() {
+        let mut transfer = Transfer::new(true, PLAN_MISSION);
+        let out = transfer.write(vec![waypoint(0, 0.0); usize::from(u16::MAX) + 2]);
+        assert!(matches!(out.as_slice(), [Out::Done { success: false, .. }]));
+        assert!(!transfer.in_progress());
+        assert!(transfer.write(vec![waypoint(0, 0.0); usize::from(u16::MAX)]).contains(&Out::SendCount(u16::MAX)));
     }
 
     #[test]

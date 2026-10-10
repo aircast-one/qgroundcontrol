@@ -23,12 +23,14 @@ pub fn flight_polygon(structure: &[Point], distance_to_surface: f64) -> Option<V
     crate::mappolygon::offset(&crate::mappolygon::wound_clockwise(structure), distance_to_surface)
 }
 
+const MAX_LAYER_COUNT: i64 = 1000;
+
 pub fn layer_count(structure_height: f64, scan_bottom_alt: f64, adjusted_frontal: f64) -> i64 {
     if adjusted_frontal <= 0.0 {
         return 1;
     }
     let surface = (structure_height - scan_bottom_alt).max(0.0);
-    ((surface / adjusted_frontal).ceil() as i64).max(1)
+    ((surface / adjusted_frontal).ceil() as i64).clamp(1, MAX_LAYER_COUNT)
 }
 
 pub fn perimeter(flight: &[Point]) -> f64 {
@@ -256,6 +258,7 @@ mod tests {
     fn a_layer_is_added_for_every_camera_height_of_structure() {
         assert_eq!(layer_count(50.0, 10.0, 20.0), 2, "forty metres of structure at twenty metres a layer is two layers");
         assert_eq!(layer_count(51.0, 10.0, 20.0), 3, "a partial layer is still flown, so the count rounds up");
+        assert_eq!(layer_count(1000.0, 0.0, 1e-9), 1000, "a near-zero layer height is capped like a survey's transects, not a trillion layers");
         assert_eq!(layer_count(10.0, 10.0, 20.0), 1, "a structure with no height is still scanned once");
         assert_eq!(layer_count(5.0, 10.0, 20.0), 1, "a bottom above the top is no height rather than a negative one");
         assert_eq!(layer_count(50.0, 10.0, 0.0), 1, "a camera that sees nothing would ask for endless layers, so it asks for one");
