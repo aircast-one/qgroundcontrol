@@ -9,10 +9,14 @@ const CLEARANCE_M = 2;
 const REANCHOR_MS = 10000;
 const ANCHOR_DEADLINE_MS = 5000;
 const FOLLOW = 0.25;
+const SETTLED_DEGREES = 5e-7;
+const SETTLED_METRES = 0.05;
+const SETTLED_ANGLE = 0.05;
 const FRAME_RATE = 30;
 const SOFTWARE_GPU = /SwiftShader|llvmpipe|softpipe|Software|Emulator/i;
 const SOFTWARE_FRAME_RATE = 5;
 const SOFTWARE_RESOLUTION = 0.5;
+const HARDWARE_RESOLUTION = 0.5;
 const EARTH_RADIUS_M = 6371000;
 const WALL_FOOT_M = 100;
 const CIRCLE_STEPS = 64;
@@ -104,8 +108,10 @@ const widget = new Cesium.CesiumWidget("view", {
   creditContainer: "credits",
   targetFrameRate: softwareGpu ? SOFTWARE_FRAME_RATE : FRAME_RATE,
   useBrowserRecommendedResolution: softwareGpu,
+  requestRenderMode: true,
+  maximumRenderTimeChange: Number.POSITIVE_INFINITY,
 });
-widget.resolutionScale = softwareGpu ? SOFTWARE_RESOLUTION : 1;
+widget.resolutionScale = softwareGpu ? SOFTWARE_RESOLUTION : HARDWARE_RESOLUTION;
 const scene = widget.scene;
 scene.screenSpaceCameraController.enableInputs = false;
 scene.globe.showGroundAtmosphere = true;
@@ -170,6 +176,7 @@ const drawOverlays = () => {
   plan.circles.map((circle) => drawn.add(wall(ring(circle), circle.inclusion, ground, plan.fenceTop)));
   scene.primitives.add(drawn);
   state.drawn = drawn;
+  scene.requestRender();
 };
 
 const showImagery = (name) => {
@@ -178,6 +185,7 @@ const showImagery = (name) => {
   scene.imageryLayers.addImageryProvider(
     new Cesium.UrlTemplateImageryProvider({ url: `${TILES}/${encodeURIComponent(name)}/{z}/{x}/{y}`, maximumLevel: 19, credit: name }),
   );
+  scene.requestRender();
 };
 
 const anchorHome = (pose) => {
@@ -214,6 +222,12 @@ const toward = (from, to) => ({
   fov: to.fov,
 });
 
+const settled = (from, to) =>
+  Math.abs(to.longitude - from.longitude) < SETTLED_DEGREES &&
+  Math.abs(to.latitude - from.latitude) < SETTLED_DEGREES &&
+  Math.abs(to.height - from.height) < SETTLED_METRES &&
+  [wrapped(to.heading - from.heading), to.pitch - from.pitch, to.roll - from.roll, to.fov - from.fov].every((turn) => Math.abs(turn) < SETTLED_ANGLE);
+
 const goal = (target) => {
   const ground = scene.globe.getHeight(Cesium.Cartographic.fromDegrees(target.longitude, target.latitude));
   const aboveHome = state.homeGround + target.aboveHome;
@@ -240,6 +254,7 @@ const place = (pose) => {
 scene.preRender.addEventListener(() => {
   const next = state.target && state.homeGround !== undefined ? goal(state.target) : undefined;
   state.shown = next && (state.shown ? toward(state.shown, next) : next);
+  next && !settled(state.shown, next) && scene.requestRender();
   return state.shown && place(state.shown);
 });
 
@@ -250,6 +265,7 @@ window.aircast = {
   },
   pose: (pose) => {
     state.target = pose.available ? pose : undefined;
+    (!state.target || !state.shown || state.homeGround === undefined || !settled(state.shown, goal(state.target))) && scene.requestRender();
     return pose.available && [
       pose.imagery !== state.imagery && showImagery(pose.imagery),
       `${pose.homeLatitude},${pose.homeLongitude}` !== state.home && anchorHome(pose),
