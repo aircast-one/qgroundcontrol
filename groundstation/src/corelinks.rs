@@ -544,6 +544,10 @@ fn open_entry(entry: &Entry) -> bool {
             errors.remove(&entry.config.name);
             true
         }
+        Err(failure) if entry.config.name == crate::hostdevice::BUILT_IN_RADIO_NAME => {
+            errors.insert(entry.config.name.clone(), (crate::hostdevice::problem(&failure.0), failure.1));
+            false
+        }
         Err(failure) => {
             if !retried_silently(entry) {
                 errors.insert(entry.config.name.clone(), failure);

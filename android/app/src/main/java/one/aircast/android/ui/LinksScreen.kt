@@ -69,7 +69,7 @@ import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcPath
 import one.aircast.map.optText
 
-private const val LINKS_VIEW = "view.links"
+internal const val LINKS_VIEW = "view.links"
 private const val LINKS_PATH = "links.linkConfigurations"
 private const val DEFAULT_PORT = "14550"
 private const val DEFAULT_TCP_PORT = "5760"

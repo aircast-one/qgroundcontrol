@@ -28,7 +28,7 @@ impl Quantity {
     }
 }
 
-fn raw_per_base(raw_units: &str) -> Option<f64> {
+pub fn raw_per_base(raw_units: &str) -> Option<f64> {
     match raw_units.trim().to_lowercase().as_str() {
         "cm" | "cm/s" => Some(100.0),
         "m" | "meter" | "meters" | "vertical m" | "m/s" => Some(1.0),

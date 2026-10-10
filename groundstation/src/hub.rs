@@ -74,6 +74,8 @@ const MSG_HOME_POSITION_ID: u32 = 242;
 const MSG_EXTENDED_SYS_STATE_ID: u32 = 245;
 const STREAM_INTERVAL_US: f64 = 1_000_000.0;
 const STREAM_REINIT_MS: u64 = 10_000;
+const VERSION_ASK_MS: u64 = 10_000;
+const CMD_REQUEST_MESSAGE: u16 = 512;
 const APM_STREAMS: [(u8, &str, i64); 7] = [
     (1, "streamRateRawSensors", 2),
     (2, "streamRateExtendedStatus", 2),
@@ -347,6 +349,7 @@ pub struct Vehicle {
     pub landing: bool,
     pub replay: bool,
     pub autopilot_version: Option<AutopilotVersion>,
+    version_asked_ms: Option<u64>,
     pub flight_modes: Vec<FlightMode>,
     pub connect_progress: f64,
     pub connected: bool,
@@ -575,6 +578,7 @@ impl Vehicle {
             landing: false,
             replay,
             autopilot_version: None,
+            version_asked_ms: None,
             flight_modes: Vec::new(),
             connect_progress: 0.0,
             connected: false,
@@ -1520,6 +1524,14 @@ impl Vehicle {
         }
     }
 
+    fn tick_version_ask(&mut self, now_ms: u64) -> Option<Vec<u8>> {
+        let settled = self.autopilot_version.is_some() || self.replay || self.commands.high_latency || !matches!(self.autopilot, crate::modes::AUTOPILOT_PX4 | crate::modes::AUTOPILOT_ARDUPILOT);
+        let asked = *self.version_asked_ms.get_or_insert(now_ms);
+        (!settled && now_ms.saturating_sub(asked) >= VERSION_ASK_MS).then_some(())?;
+        self.version_asked_ms = Some(now_ms);
+        self.encode(&Outbound::RawCommandLong { target: (self.id, self.component), command: CMD_REQUEST_MESSAGE, params: [f64::from(MSG_AUTOPILOT_VERSION), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] })
+    }
+
     fn step_done(&mut self, step: connect::Step, now_ms: u64) -> Vec<Vec<u8>> {
         if self.connect.current() != Some(step) {
             return Vec::new();
@@ -2439,6 +2451,7 @@ impl Vehicle {
         bytes.extend(self.cancel_calibration_left_behind(now_ms));
         bytes.extend(self.tick_airframe_reboot(now_ms));
         bytes.extend(self.tick_stream_rates(now_ms));
+        bytes.extend(self.tick_version_ask(now_ms));
         bytes.extend(self.tick_autotune(now_ms));
         self.tick_above_terrain(now_ms);
         let event_retry = self.events.receiver.on_tick(now_ms);
@@ -3394,10 +3407,12 @@ impl Vehicle {
                     }
                 }
                 let outs = self.commands.on_message(header.component_id, MSG_AUTOPILOT_VERSION, now_ms);
-                if outs.is_empty() {
+                if outs.is_empty() && header.component_id != self.component {
                     return Vec::new();
                 }
-                self.capabilities = v.capabilities.bits();
+                if !outs.is_empty() {
+                    self.capabilities = v.capabilities.bits();
+                }
                 self.autopilot_version = Some(AutopilotVersion { capabilities: v.capabilities.bits(), flight_sw_version: v.flight_sw_version, flight_custom_version: v.flight_custom_version, uid: v.uid, vendor_id: v.vendor_id, product_id: v.product_id });
                 return self.handle(outs, now_ms);
             }
@@ -5871,6 +5886,28 @@ mod tests {
     }
 
     #[test]
+    fn an_autopilot_version_that_comes_after_its_request_failed_still_names_the_firmware() {
+        use mavlink::dialects::ardupilotmega::{AUTOPILOT_VERSION_DATA, COMMAND_ACK_DATA, MavCmd, MavResult};
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let camera = MavHeader { component_id: 100, ..autopilot };
+        let mut hub = Hub::default();
+        hub.on_frame(origin(4), &autopilot, &copter_heartbeat(5, false), 1_000_000, 1_000);
+        let failed = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_REQUEST_MESSAGE, result: MavResult::MAV_RESULT_FAILED, ..Default::default() });
+        hub.on_frame(origin(4), &autopilot, &failed, 1_100_000, 1_100);
+        assert!(hub.snapshot()["vehicle"]["firmware"].is_null(), "the request was lost, as it is on a lossy ELRS link");
+        let asks = |out: Vec<(LinkId, Vec<u8>)>| out.iter().filter(|(_, b)| matches!(decode(b), MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_REQUEST_MESSAGE && c.param1 == 148.0)).count();
+        assert_eq!(asks(hub.tick(1_200)), 0);
+        assert_eq!(asks(hub.tick(11_300)), 1, "ArduPilot only answers when asked, so an unknown version is asked for again");
+        assert_eq!(asks(hub.tick(12_000)), 0, "not every tick");
+        let version = MavMessage::AUTOPILOT_VERSION(AUTOPILOT_VERSION_DATA { flight_sw_version: 0x04050700, ..Default::default() });
+        hub.on_frame(origin(4), &camera, &version, 1_200_000, 1_200);
+        assert!(hub.snapshot()["vehicle"]["firmware"].is_null(), "another component's version is not the autopilot's");
+        hub.on_frame(origin(4), &autopilot, &version, 1_300_000, 1_300);
+        assert_eq!(hub.snapshot()["vehicle"]["firmware"]["version"], "4.5.7 (0)", "Vehicle::_handleAutopilotVersion takes it whenever it comes, so 4.7 parameter names map back");
+        assert_eq!(asks(hub.tick(40_000)), 0, "a known version is never asked for again");
+    }
+
+    #[test]
     fn a_new_copter_is_walked_through_the_connect_sequence_down_to_its_parameters() {
         use mavlink::dialects::ardupilotmega::{AUTOPILOT_VERSION_DATA, COMMAND_ACK_DATA, MavCmd, MavProtocolCapability, MavResult};
         let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
@@ -6716,6 +6753,7 @@ mod tests {
         let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
         let mut hub = Hub::default();
         connect_copter(&mut hub, &autopilot);
+        hub.on_frame(origin(4), &autopilot, &MavMessage::AUTOPILOT_VERSION(mavlink::dialects::ardupilotmega::AUTOPILOT_VERSION_DATA { flight_sw_version: 0x04050700, ..Default::default() }), 8_000, 8);
         hub.vehicles.get_mut(&1).unwrap().streams_watched_ms = None;
         let settings = remoteid::Settings { region: remoteid::REGION_FAA, operator_id: "FIN87astrdge12k8".into(), operator_id_type: 0, operator_id_valid: false, send_operator_id: true, basic_id: "1234".into(), basic_id_type: 1, basic_id_ua_type: 2, send_basic_id: true, send_self_id: false, self_id_type: 0, self_id_free: "Survey".into(), self_id_emergency: "Emergency".into(), self_id_extended: "Extended".into(), location_type: remoteid::LOCATION_LIVE, classification_type: 0, latitude_fixed: 0.0, longitude_fixed: 0.0, altitude_fixed: 0.0, category_eu: 0, class_eu: 0 };
         assert!(hub.remote_inputs_due(30_000), "the pump fills the inputs before any view asks for them");

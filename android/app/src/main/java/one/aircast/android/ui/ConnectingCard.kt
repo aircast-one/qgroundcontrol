@@ -34,7 +34,9 @@ import androidx.compose.ui.unit.dp
 import one.aircast.android.R
 import one.aircast.android.bridge.qgcPath
 import one.aircast.map.VEHICLES_VIEW
+import one.aircast.map.optText
 import one.aircast.map.vehicleChoices
+import org.json.JSONObject
 
 
 internal fun connectingTitle(name: String?): String =
@@ -91,12 +93,22 @@ internal const val LOOKING_TITLE = "Looking for your aircraft"
 internal const val LOOKING_HINT = "Turn on the aircraft. A USB cable or telemetry radio connects by itself; for Wi-Fi, add a link."
 internal const val BUILT_IN_LOOKING_HINT = "Turn on the aircraft. The built-in radio connects by itself."
 
-internal fun lookingHint(device: String?): String = if (device != null) BUILT_IN_LOOKING_HINT else LOOKING_HINT
+internal const val BUILT_IN_RADIO = "Built-in radio"
+
+internal fun builtInRadioProblem(links: JSONObject?): String? =
+    links?.optJSONArray("links")?.let { all -> (0 until all.length()).mapNotNull(all::optJSONObject) }
+        ?.firstOrNull { it.optText("name") == BUILT_IN_RADIO }
+        ?.optText("lastError")?.ifBlank { null }
+
+internal fun lookingHint(device: String?, problem: String?): String =
+    problem ?: if (device != null) BUILT_IN_LOOKING_HINT else LOOKING_HINT
 
 @Composable
 internal fun rememberLookingHint(): String {
     val context = LocalContext.current
-    return remember { lookingHint(hostDevice(context)) }
+    val device = remember { hostDevice(context) }
+    val links by qgcPath(LINKS_VIEW)
+    return lookingHint(device, builtInRadioProblem(links))
 }
 
 private const val CONNECTION_SETTINGS = "Connections"

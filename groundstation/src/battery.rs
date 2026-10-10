@@ -241,22 +241,33 @@ pub fn return_charge(percent: f64, seconds_left: f64, reserve_percent: f64, trip
     (percent > 0.0 && seconds_left > 0.0).then(|| (reserve_percent + trip_seconds * percent / seconds_left).min(100.0))
 }
 
-const CM: f64 = 100.0;
-
 pub fn return_trip(backend: &dyn Backend) -> Option<ReturnTrip> {
-    let raw = |name: &str| parameter_value(backend, name, "rawValue");
+    let si = |names: &[&str]| parameter_si(backend, names);
     let fact = |path: &str| value_number(&backend.value(&format!("{path}.rawValue")));
     let (distance_m, altitude_m) = (fact("vehicle.distanceToHome")?, fact("vehicle.altitudeRelative")?);
-    let px4 = || Some(ReturnTrip { distance_m, altitude_m, return_altitude_m: raw("RTL_RETURN_ALT")?, cruise_mps: raw("MPC_XY_CRUISE")?, climb_mps: raw("MPC_Z_V_AUTO_UP")?, descent_mps: raw("MPC_LAND_SPEED")? });
+    let px4 = || Some(ReturnTrip { distance_m, altitude_m, return_altitude_m: si(&["RTL_RETURN_ALT"])?, cruise_mps: si(&["MPC_XY_CRUISE"])?, climb_mps: si(&["MPC_Z_V_AUTO_UP"])?, descent_mps: si(&["MPC_LAND_SPEED"])? });
     let apm = || {
-        let rtl = raw("RTL_SPEED").filter(|s| *s > 0.0).or_else(|| raw("WPNAV_SPEED"))?;
-        Some(ReturnTrip { distance_m, altitude_m, return_altitude_m: raw("RTL_ALT")? / CM, cruise_mps: rtl / CM, climb_mps: raw("WPNAV_SPEED_UP")? / CM, descent_mps: raw("LAND_SPEED")? / CM })
+        let rtl = si(&["RTL_SPEED_MS", "RTL_SPEED"]).filter(|s| *s > 0.0).or_else(|| si(&["WP_SPD", "WPNAV_SPEED"]))?;
+        Some(ReturnTrip { distance_m, altitude_m, return_altitude_m: si(&["RTL_ALT_M", "RTL_ALT"])?, cruise_mps: rtl, climb_mps: si(&["WP_SPD_UP", "WPNAV_SPEED_UP"])?, descent_mps: si(&["LAND_SPD_MS", "LAND_SPEED"])? })
     };
     px4().or_else(apm)
 }
 
+fn parameter(backend: &dyn Backend, name: &str) -> Option<Value> {
+    let fact = backend.value(&format!("vehicle.parameterManager.getParameter(-1,{name})"));
+    fact.get("name").and_then(Value::as_str).is_some_and(|n| !n.is_empty()).then_some(fact)
+}
+
 fn parameter_value(backend: &dyn Backend, name: &str, field: &str) -> Option<f64> {
-    value_number(&backend.value(&format!("vehicle.parameterManager.getParameter(-1,{name}).{field}")))
+    parameter(backend, name)?.get(field).and_then(Value::as_f64)
+}
+
+fn parameter_si(backend: &dyn Backend, names: &[&str]) -> Option<f64> {
+    names.iter().find_map(|name| {
+        let fact = parameter(backend, name)?;
+        let per_base = crate::pilotunits::raw_per_base(fact.get("rawUnits").and_then(Value::as_str).unwrap_or_default())?;
+        Some(fact.get("rawValue")?.as_f64()? / per_base)
+    })
 }
 
 pub fn popup_rows(pack: &PopupPack) -> Vec<Value> {
@@ -462,7 +473,17 @@ mod tests {
     impl Backend for Params {
         fn get(&self, path: &str) -> String {
             let name = path.trim_end_matches(".rawValue").trim_start_matches("vehicle.parameterManager.getParameter(-1,").trim_end_matches(')');
-            self.0.iter().find(|(n, _)| *n == name).map_or(json!({ "kind": "null" }), |(_, v)| json!({ "kind": "fact", "value": v })).to_string()
+            let units = match name {
+                "RTL_ALT" => "cm",
+                "RTL_SPEED" | "WPNAV_SPEED" | "WPNAV_SPEED_UP" | "LAND_SPEED" => "cm/s",
+                "RTL_RETURN_ALT" | "RTL_ALT_M" => "m",
+                _ => "m/s",
+            };
+            let absent = match path.starts_with("vehicle.parameterManager.") {
+                true => json!({ "kind": "fact", "name": "", "value": 0, "rawValue": 0, "rawUnits": "" }),
+                false => json!({ "kind": "null" }),
+            };
+            self.0.iter().find(|(n, _)| *n == name).map_or(absent, |(n, v)| json!({ "kind": "fact", "name": n, "value": v, "rawValue": v, "rawUnits": units })).to_string()
         }
         fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
         fn set(&self, _p: &str, _v: &str) -> String { String::new() }
@@ -476,7 +497,9 @@ mod tests {
         let px4 = Params(place.into_iter().chain([("RTL_RETURN_ALT", 60.0), ("MPC_XY_CRUISE", 5.0), ("MPC_Z_V_AUTO_UP", 2.0), ("MPC_LAND_SPEED", 1.0)]).collect());
         assert_eq!(return_trip(&px4).and_then(return_seconds), Some(190.0));
         let apm = Params(place.into_iter().chain([("RTL_ALT", 6000.0), ("RTL_SPEED", 0.0), ("WPNAV_SPEED", 500.0), ("WPNAV_SPEED_UP", 200.0), ("LAND_SPEED", 100.0)]).collect());
-        assert_eq!(return_trip(&apm).and_then(return_seconds), Some(190.0), "ArduPilot speaks centimetres, and RTL_SPEED 0 means fly home at WPNAV_SPEED");
+        assert_eq!(return_trip(&apm).and_then(return_seconds), Some(190.0), "ArduPilot speaks centimetres, and RTL_SPEED 0 means fly home at WPNAV_SPEED; the PX4 names it lacks read as absent, not 0");
+        let copter_4_7 = Params(place.into_iter().chain([("RTL_ALT_M", 60.0), ("RTL_SPEED_MS", 0.0), ("WP_SPD", 5.0), ("WP_SPD_UP", 2.0), ("LAND_SPD_MS", 1.0)]).collect());
+        assert_eq!(return_trip(&copter_4_7).and_then(return_seconds), Some(190.0), "ArduCopter 4.7 renamed these into metres");
         let unplaced = Params(vec![("vehicle.distanceToHome", 600.0), ("RTL_RETURN_ALT", 60.0), ("MPC_XY_CRUISE", 5.0), ("MPC_Z_V_AUTO_UP", 2.0), ("MPC_LAND_SPEED", 1.0)]);
         assert_eq!(return_trip(&unplaced), None, "an unknown height is not guessed as the ground");
     }
