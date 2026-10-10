@@ -19,6 +19,13 @@ pub fn unescape_key(key: &str) -> String {
     while at < key.len() {
         let rest = &key[at..];
         if rest.starts_with("%U") {
+            let low = key.get(at + 6..).is_some_and(|next| next.starts_with("%U")).then(|| key_code(key, at + 8, 4)).flatten();
+            let paired = key_code(key, at + 2, 4).zip(low).and_then(|(high, low)| char::decode_utf16([high as u16, low as u16]).next()?.ok());
+            if let Some(code) = paired {
+                out.push(code);
+                at += 12;
+                continue;
+            }
             if let Some(code) = key_code(key, at + 2, 4).and_then(char::from_u32) {
                 out.push(code);
                 at += 6;
@@ -181,15 +188,12 @@ fn escape_key(key: &str) -> String {
             '[' | ']' | '=' => format!("%{:02X}", c as u32),
             c if c.is_ascii_graphic() || c == ' ' => c.to_string(),
             c if (c as u32) < 0x100 => format!("%{:02X}", c as u32),
-            c => format!("%U{:04X}", c as u32),
+            c => c.encode_utf16(&mut [0; 2]).iter().map(|unit| format!("%U{unit:04X}")).collect(),
         })
         .collect()
 }
 
 fn escaped_body(item: &str) -> String {
-    // A \xNN escape consumes hex digits greedily on the way back in, so "bell\x7end" reads as
-    // \x7e followed by "nd". Closing and reopening the quotes ends the escape without adding a
-    // character: QSettings concatenates adjacent quoted runs, and so does the reader above.
     let chars: Vec<char> = item.chars().collect();
     chars
         .iter()
@@ -270,6 +274,8 @@ mod tests {
         assert_eq!(settings["savedFile"], Setting::Invalid);
         assert_eq!(unescape_key("My%20Key\\sub"), "My Key/sub");
         assert_eq!(unescape_key("Gro%DCp%U00E9"), "GroÜpé");
+        assert_eq!(unescape_key(&escape_key("Survey 🚁")), "Survey 🚁", "past U+FFFF a key is two UTF-16 units, as QSettings writes it");
+        assert_eq!(escape_key("🚁"), "%UD83D%UDE81");
     }
 
     #[test]

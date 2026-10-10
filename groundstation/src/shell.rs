@@ -37,7 +37,10 @@ impl Shell {
             let idx = newline.unwrap_or(self.incoming.len());
             let mut fragment = self.incoming[..idx].to_vec();
             if !self.process_ansi(&mut fragment) {
-                return;
+                if newline.is_none() {
+                    return;
+                }
+                fragment.retain(|b| *b != 0x1B);
             }
             let text: Vec<char> = String::from_utf8_lossy(&fragment).chars().collect();
             self.write_line(self.cursor_y, &text);
@@ -123,6 +126,14 @@ mod tests {
         shell.receive(b"nsh> ver\r\nHW arch: PX4\n");
         shell.receive(b"nsh> ");
         assert_eq!(shell.lines(), vec!["nsh> ver\r", "HW arch: PX4", "nsh> "]);
+    }
+
+    #[test]
+    fn an_escape_cut_off_by_a_newline_is_dropped_instead_of_freezing_the_console() {
+        let mut shell = Shell::default();
+        shell.receive(b"cut\x1b[\n");
+        shell.receive(b"next\n");
+        assert_eq!(shell.lines(), vec!["cut[", "next", ""]);
     }
 
     #[test]

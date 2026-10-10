@@ -194,7 +194,8 @@ pub fn apm_url(entries: &[Entry], board_id: u32, build: Build, vehicle: Vehicle,
 }
 
 pub fn download(url: &str) -> Result<Vec<u8>, String> {
-    let mut response = ureq::get(url).call().map_err(|e| format!("Download of {url} failed: {e}"))?;
+    let request = ureq::get(url).config().timeout_connect(Some(std::time::Duration::from_secs(10))).timeout_recv_response(Some(std::time::Duration::from_secs(30))).timeout_recv_body(Some(std::time::Duration::from_secs(600))).build();
+    let mut response = request.call().map_err(|e| format!("Download of {url} failed: {e}"))?;
     let bytes = response.body_mut().with_config().limit(64 * 1024 * 1024).read_to_vec().map_err(|e| format!("Download of {url} failed: {e}"))?;
     match url.ends_with(".gz") {
         true => {

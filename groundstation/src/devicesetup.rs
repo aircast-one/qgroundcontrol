@@ -49,7 +49,8 @@ pub fn cloud_link(host: &str, config: &Value) -> Option<(String, LinkConfig)> {
 }
 
 pub fn fetch(host: &str, path: &str) -> Option<Value> {
-    serde_json::from_str(&ureq::get(&format!("http://{host}{path}")).call().ok()?.body_mut().read_to_string().ok()?).ok()
+    let request = ureq::get(&format!("http://{host}{path}")).config().timeout_global(Some(std::time::Duration::from_secs(10))).build();
+    serde_json::from_str(&request.call().ok()?.body_mut().read_to_string().ok()?).ok()
 }
 
 #[cfg(test)]

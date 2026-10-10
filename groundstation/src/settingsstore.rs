@@ -410,6 +410,7 @@ fn changing() -> Changing {
 }
 
 static PATH: Mutex<Option<std::path::PathBuf>> = Mutex::new(None);
+static SAVING: Mutex<()> = Mutex::new(());
 
 pub fn written(key: &str, text: &str) {
     if let Some(values) = changing().as_mut() {
@@ -447,7 +448,11 @@ pub fn settings_reset_notice(application: &str) -> String {
 }
 
 pub fn open(path: &std::path::Path) {
-    let read = crate::settingsini::read(&std::fs::read_to_string(path).unwrap_or_default());
+    let (text, writable) = match std::fs::read(path) {
+        Ok(bytes) => (String::from_utf8_lossy(&bytes).into_owned(), true),
+        Err(error) => (String::new(), error.kind() == std::io::ErrorKind::NotFound),
+    };
+    let read = crate::settingsini::read(&text);
     if clear_asked(&read)
         && let Some(cache) = crate::paramcache::folder_for(path)
     {
@@ -464,7 +469,7 @@ pub fn open(path: &std::path::Path) {
         crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &settings_reset_notice(&crate::noticeboard::application_name()));
     }
     *changing() = Some(values);
-    *PATH.lock().unwrap_or_else(PoisonError::into_inner) = Some(path.to_path_buf());
+    *PATH.lock().unwrap_or_else(PoisonError::into_inner) = writable.then(|| path.to_path_buf());
     persist();
 }
 
@@ -472,10 +477,15 @@ pub fn persist() {
     if crate::qthost::present() {
         return;
     }
+    let _saving = SAVING.lock().unwrap_or_else(PoisonError::into_inner);
     let Some(path) = PATH.lock().unwrap_or_else(PoisonError::into_inner).clone() else { return };
     let Some(text) = stored().as_ref().map(crate::settingsini::write) else { return };
     let staged = path.with_extension("ini.saving");
-    if std::fs::write(&staged, text).is_ok() {
+    let written = std::fs::File::create(&staged).and_then(|mut file| {
+        std::io::Write::write_all(&mut file, text.as_bytes())?;
+        file.sync_all()
+    });
+    if written.is_ok() {
         let _ = std::fs::rename(&staged, &path);
     }
 }

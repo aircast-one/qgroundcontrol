@@ -43,7 +43,8 @@ enum Entry {
 static STORE: Mutex<BTreeMap<(u8, u8), Entry>> = Mutex::new(BTreeMap::new());
 
 pub fn cache_file_name(vendor: &str, model: &str, version: u16) -> String {
-    format!("{vendor}_{model}_{version:03}.xml")
+    let safe = |name: &str| name.replace(['/', '\\', ':'], "_").replace("..", "_");
+    format!("{}_{}_{version:03}.xml", safe(vendor), safe(model))
 }
 
 fn cache_path(vendor: &str, model: &str, version: u16) -> Option<std::path::PathBuf> {
@@ -338,6 +339,7 @@ mod tests {
     #[test]
     fn the_cache_file_is_named_like_qgcs() {
         assert_eq!(cache_file_name("Yuneec", "E90", 7), "Yuneec_E90_007.xml");
+        assert!(!cache_file_name("../../files/x", "a/b", 1).contains(['/', '\\']), "a camera's names never leave the cache folder");
     }
 
     #[test]

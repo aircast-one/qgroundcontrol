@@ -9,6 +9,7 @@ use crate::nativeargs::{deep_link_device, deep_link_writes, options};
 
 static QUIT: (Mutex<bool>, Condvar) = (Mutex::new(false), Condvar::new());
 static DEBUG_SERVER: OnceLock<u16> = OnceLock::new();
+static DEBUG_BUILD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(cfg!(debug_assertions));
 
 fn given(text: &str) -> *mut c_char {
     CString::new(text).unwrap_or_default().into_raw()
@@ -143,6 +144,7 @@ pub unsafe extern "C" fn qgc_start(argc: c_int, argv: *const *const c_char) -> c
     let arguments: Vec<String> = (0..usize::try_from(argc).unwrap_or(0)).map(|i| read(if argv.is_null() { std::ptr::null() } else { unsafe { *argv.add(i) } })).collect();
     let chosen = options(&arguments);
     crate::mocklink::set_available(cfg!(debug_assertions) || chosen.debug_build);
+    DEBUG_BUILD.fetch_or(chosen.debug_build, std::sync::atomic::Ordering::Relaxed);
     crate::applog::install();
     unsafe {
         crate::abi::qgc_core_set_application_name(text(&chosen.application).as_ptr());
@@ -214,7 +216,7 @@ pub unsafe extern "C" fn qgc_handle_deep_link(link: *const c_char) {
         std::thread::spawn(move || setup_from_device(&host));
     }
     let Some((debug, camera)) = deep_link_writes(&link) else { return };
-    if let Some(port) = debug {
+    if let Some(port) = debug.filter(|_| DEBUG_BUILD.load(std::sync::atomic::Ordering::Relaxed)) {
         start_debug_server(port);
     }
     if let Some(camera) = camera {
@@ -258,10 +260,10 @@ pub extern "C" fn qgc_map_tile_cancel(ticket: u64) {
 static TILE_WORKERS: once_cell::sync::OnceCell<crate::maptiles::TileWorkers> = once_cell::sync::OnceCell::new();
 static TILE_TICKETS: crate::maptiles::Tickets = crate::maptiles::Tickets::new();
 
-static OFFLINE_PROVIDER: OnceLock<Option<i32>> = OnceLock::new();
+static OFFLINE_PROVIDER: OnceLock<i32> = OnceLock::new();
 
 fn offline_tile(cache: &crate::tilecache::Cache, x: c_int, y: c_int, zoom: c_int) -> Option<Vec<u8>> {
-    let provider = (*OFFLINE_PROVIDER.get_or_init(|| cache.busiest_provider().ok().flatten()))?;
+    let provider = OFFLINE_PROVIDER.get().copied().or_else(|| cache.busiest_provider().ok().flatten().map(|found| *OFFLINE_PROVIDER.get_or_init(|| found)))?;
     cache.tile(&crate::tilecache::tile_hash(provider, x, y, zoom)).ok().flatten().map(|tile| tile.image)
 }
 

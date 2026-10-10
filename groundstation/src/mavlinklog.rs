@@ -206,6 +206,10 @@ fn send(path: &Path, feedback: &str, cancel: &AtomicBool) -> Result<(), String> 
     let response = ureq::post(&from_user_input(&text("uploadURL")))
         .header("Content-Type", &format!("multipart/form-data; boundary={BOUNDARY}"))
         .header("Content-Length", &length.to_string())
+        .config()
+        .timeout_connect(Some(std::time::Duration::from_secs(10)))
+        .timeout_recv_response(Some(std::time::Duration::from_secs(60)))
+        .build()
         .send(ureq::SendBody::from_reader(&mut sending))
         .map_err(|e| format!("Log Upload Error: {e}"))?;
     match response.status().as_u16() {
