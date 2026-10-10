@@ -205,8 +205,8 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
         },
     ) {
     Row(
-        Modifier.heightIn(min = 32.dp).padding(horizontal = 8.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        Modifier.heightIn(min = 44.dp).padding(horizontal = 12.dp, vertical = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
         Icon(painterResource(R.drawable.ic_flight), null, Modifier.size(24.dp))
@@ -234,7 +234,7 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
                     ChipTone.Success -> MaterialTheme.aircast.success
                 },
             ) {
-                Text(note, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp))
+                Text(note, style = MaterialTheme.typography.labelLarge, maxLines = 1, overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis, modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp))
             }
         }
         if (flyScreen.pendingMode != null) {
