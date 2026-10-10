@@ -122,7 +122,7 @@ internal fun LookingForAircraft() {
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
-            androidx.compose.material3.CircularProgressIndicator(Modifier.size(28.dp), strokeWidth = 3.dp, color = MaterialTheme.aircast.outdoorForeground)
+            Icon(painterResource(R.drawable.ic_flight), null, Modifier.size(28.dp), tint = MaterialTheme.aircast.outdoorForeground)
             Text(LOOKING_TITLE, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.aircast.outdoorForeground, textAlign = TextAlign.Center)
             Text(rememberLookingHint(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.aircast.outdoorForeground, textAlign = TextAlign.Center)
             TextButton(onClick = { navigation.settingsPage = CONNECTION_SETTINGS }) { Text("Add a link") }
