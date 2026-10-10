@@ -1196,13 +1196,17 @@ fn parameter_definition_of(vehicle: &crate::hub::Vehicle, name: &str, value_type
     }
 }
 
-fn parameter_address(vehicle: &crate::hub::Vehicle, call: &str) -> Option<(u8, String)> {
-    let (component, name) = call.split_once(',')?;
+fn parameter_address(vehicle: &crate::hub::Vehicle, call: &str) -> Option<(u8, String, Option<crate::pilotunits::Quantity>)> {
+    let (component, rest) = call.split_once(',')?;
+    let (name, quantity) = match rest.split_once(',') {
+        Some((name, quantity)) => (name, Some(crate::pilotunits::Quantity::named(quantity)?)),
+        None => (rest, None),
+    };
     let component = match component.trim().parse::<i64>().ok()? {
         -1 => vehicle.component,
         id => u8::try_from(id).ok()?,
     };
-    Some((component, vehicle.parameter_name(name.trim())))
+    Some((component, vehicle.parameter_name(name.trim()), quantity))
 }
 
 pub fn parameter_write(path: &str, value: &str) -> Option<Value> {
@@ -1222,15 +1226,13 @@ pub fn parameter_write(path: &str, value: &str) -> Option<Value> {
     let (vehicle_id, component, name, raw) = {
         let hub = crate::hub::lock();
         let vehicle = hub.active()?;
-        let (component, name) = parameter_address(vehicle, call)?;
+        let (component, name, quantity) = parameter_address(vehicle, call)?;
         let known = vehicle.parameter_exact(component, &name)?;
-        let raw = match raw_given {
-            true => number,
-            false => {
-                let value_type = crate::factmeta::ValueType::from_param_type(known.param_type())?;
-                let meta = parameter_definition_of(vehicle, &name, value_type)?;
-                crate::units::for_fact(&meta, crate::units::cooking).map_or(number, |conversion| (conversion.base)(number))
-            }
+        let meta = crate::factmeta::ValueType::from_param_type(known.param_type()).and_then(|value_type| parameter_definition_of(vehicle, &name, value_type));
+        let raw = match (quantity.zip(meta.as_ref()).and_then(|(quantity, meta)| crate::pilotunits::Pilot::new(quantity, meta)), raw_given) {
+            (Some(pilot), raw_given) => pilot.raw(number, !raw_given),
+            (None, true) => number,
+            (None, false) => crate::units::for_fact(&meta?, crate::units::cooking).map_or(number, |conversion| (conversion.base)(number)),
         };
         (vehicle.id, component, name, raw)
     };
@@ -1243,7 +1245,7 @@ fn answer_parameter(path: &str) -> Option<Value> {
     let vehicle = hub.active()?;
     let ardupilot = vehicle.autopilot == crate::modes::AUTOPILOT_ARDUPILOT;
     (ardupilot || vehicle.autopilot == crate::modes::AUTOPILOT_PX4).then_some(())?;
-    let (component, name) = parameter_address(vehicle, call)?;
+    let (component, name, quantity) = parameter_address(vehicle, call)?;
     let name = name.as_str();
     let Some(value) = vehicle.parameter_exact(component, name) else {
         return vehicle.parameters_ready().then(|| field_of(absent_parameter(), rest)).flatten();
@@ -1257,7 +1259,8 @@ fn answer_parameter(path: &str) -> Option<Value> {
     let raw = number(value);
     let firmware_default = (component == vehicle.component).then(|| vehicle.parameter_defaults.get(name).copied()).flatten();
     let meta = crate::factmeta::MetaData { default: firmware_default.map(number).or(definition.default.clone()), ..definition };
-    let mut described = crate::vehiclefact::fact(&meta, &raw, None);
+    let pilot = quantity.and_then(|quantity| crate::pilotunits::Pilot::new(quantity, &meta)).zip(raw.as_f64());
+    let mut described = pilot.map_or_else(|| crate::vehiclefact::fact(&meta, &raw, None), |(pilot, raw)| pilot.fact(raw));
     described["mavType"] = json!(value.param_type());
     described["componentId"] = json!(component);
     if described["typeIsInteger"] == true {

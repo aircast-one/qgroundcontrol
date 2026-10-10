@@ -50,9 +50,9 @@ internal data class ParameterRows(
 internal fun sectionMatches(rows: ParameterRows, search: String): Boolean =
     search.trim().lowercase().let { query -> query.isEmpty() || (listOf(rows.title) + rows.keywords).any { it.lowercase().contains(query) } }
 
-internal fun factFromParameter(name: String, json: JSONObject): Fact? =
+internal fun factFromParameter(name: String, json: JSONObject, quantity: String? = null): Fact? =
     if (json.optText("kind") == "fact" && json.optText("name").isNotEmpty()) {
-        Qgc.factAt(parameterPath(name), json).copy(name = name)
+        Qgc.factAt(parameterPath(name, quantity), json).copy(name = name)
     } else {
         null
     }

@@ -40,9 +40,10 @@ private const val DEFAULT_COMPONENT = -1
 
 private const val AUTOPILOT_COMPONENT = 1
 
-internal fun parameterPath(key: String): String {
+internal fun parameterPath(key: String, quantity: String? = null): String {
     val component = key.substringBefore(':', "").toIntOrNull()
-    return "$PARAMETER_MANAGER.getParameter(${component ?: DEFAULT_COMPONENT},${if (component == null) key else key.substringAfter(':')})"
+    val name = if (component == null) key else key.substringAfter(':')
+    return "$PARAMETER_MANAGER.getParameter(${component ?: DEFAULT_COMPONENT},$name${quantity?.let { ",$it" }.orEmpty()})"
 }
 
 internal fun parameterKeys(namesByComponent: Map<Int, List<String>>): List<String> =
@@ -245,8 +246,8 @@ private fun parameterSummary(names: List<String>): ParameterSummary {
     )
 }
 
-internal fun parameterFact(name: String): Fact? =
-    factFromParameter(name, Qgc.get(parameterPath(name)))
+internal fun parameterFact(name: String, quantity: String? = null): Fact? =
+    factFromParameter(name, Qgc.get(parameterPath(name, quantity)), quantity)
 
 @Composable
 private fun ChoiceButton(shown: String, options: List<String>, onPick: (String) -> Unit) {

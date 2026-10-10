@@ -31,9 +31,11 @@ class PilotSettingsTest {
     @Test
     fun `a pilot setting uses whichever firmware parameter the aircraft reports, under the pilot's word`() {
         val px4 = firstReported(returnHome) { name -> parameter(name).takeIf { name == "RTL_RETURN_ALT" } }
-        val ardupilot = firstReported(returnHome) { name -> parameter(name).takeIf { name == "RTL_ALT" } }
+        val ardupilot = firstReported(returnHome) { name -> parameter(name).takeIf { name == "RTL_ALT_M" } }
+        val versionless = firstReported(returnHome) { name -> parameter(name).takeIf { name == "RTL_ALT" } }
         assertEquals("RTL_RETURN_ALT", px4?.name)
-        assertEquals("RTL_ALT", ardupilot?.name)
+        assertEquals("the 4.7 name, which the core also reads as RTL_ALT on older ArduCopter", "RTL_ALT_M", ardupilot?.name)
+        assertEquals("the old name still answers before the firmware version is known", "RTL_ALT", versionless?.name)
         assertEquals("Return-to-home altitude", px4?.heading)
     }
 

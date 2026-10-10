@@ -23,26 +23,29 @@ import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Fact
 import one.aircast.android.bridge.qgcPath
 
-internal data class PilotSetting(val label: String, val parameters: List<String>, val section: String, val hint: String, val whenUnlimited: String? = null)
+internal data class PilotSetting(val label: String, val parameters: List<String>, val section: String, val hint: String, val whenUnlimited: String? = null, val quantity: String? = null)
 
 private const val RETURN_HOME = "Return to home"
 private const val FLIGHT_PROTECTION = "Flight protection"
 private const val FAILSAFES = "If something goes wrong"
 private const val FLIGHT_LIMITS = "Flight limits"
+private const val ALTITUDE = "altitude"
+private const val DISTANCE = "distance"
+private const val SPEED = "speed"
 
 internal fun pilotSettings(group: SettingsGroup): List<PilotSetting> = when (group) {
     SettingsGroup.Safety -> listOf(
-        PilotSetting("Return-to-home altitude", listOf("RTL_RETURN_ALT", "RTL_ALT"), RETURN_HOME, "Climbs to this height before flying home."),
-        PilotSetting("Max altitude", listOf("GF_MAX_VER_DIST", "FENCE_ALT_MAX"), FLIGHT_PROTECTION, "The aircraft will not climb above this.", "Most countries cap flights at 120 m."),
-        PilotSetting("Max distance", listOf("GF_MAX_HOR_DIST", "FENCE_RADIUS"), FLIGHT_PROTECTION, "The aircraft will not fly farther from home than this."),
+        PilotSetting("Return-to-home altitude", listOf("RTL_RETURN_ALT", "RTL_ALT_M", "RTL_ALT"), RETURN_HOME, "Climbs to this height before flying home.", quantity = ALTITUDE),
+        PilotSetting("Max altitude", listOf("GF_MAX_VER_DIST", "FENCE_ALT_MAX"), FLIGHT_PROTECTION, "The aircraft will not climb above this.", "Most countries cap flights at 120 m.", ALTITUDE),
+        PilotSetting("Max distance", listOf("GF_MAX_HOR_DIST", "FENCE_RADIUS"), FLIGHT_PROTECTION, "The aircraft will not fly farther from home than this.", quantity = DISTANCE),
         PilotSetting("Signal lost", listOf("NAV_DLL_ACT", "FS_GCS_ENABLE"), FAILSAFES, "When the link to this app drops."),
         PilotSetting("Remote controller lost", listOf("NAV_RCL_ACT", "FS_THR_ENABLE"), FAILSAFES, "When the remote controller drops."),
         PilotSetting("Low battery", listOf("COM_LOW_BAT_ACT", "BATT_FS_LOW_ACT"), FAILSAFES, "When the battery runs low."),
     )
     SettingsGroup.Control -> listOf(
-        PilotSetting("Max horizontal speed", listOf("MPC_XY_VEL_MAX", "LOIT_SPEED"), FLIGHT_LIMITS, "Fastest the aircraft flies forward and sideways."),
-        PilotSetting("Max climb speed", listOf("MPC_Z_VEL_MAX_UP", "PILOT_SPEED_UP"), FLIGHT_LIMITS, "Fastest the aircraft climbs."),
-        PilotSetting("Max descent speed", listOf("MPC_Z_VEL_MAX_DN", "PILOT_SPEED_DN"), FLIGHT_LIMITS, "Fastest the aircraft descends."),
+        PilotSetting("Max horizontal speed", listOf("MPC_XY_VEL_MAX", "LOIT_SPEED_MS", "LOIT_SPEED"), FLIGHT_LIMITS, "Fastest the aircraft flies forward and sideways.", quantity = SPEED),
+        PilotSetting("Max climb speed", listOf("MPC_Z_VEL_MAX_UP", "PILOT_SPD_UP", "PILOT_SPEED_UP"), FLIGHT_LIMITS, "Fastest the aircraft climbs.", quantity = SPEED),
+        PilotSetting("Max descent speed", listOf("MPC_Z_VEL_MAX_DN", "PILOT_SPD_DN", "PILOT_SPEED_DN"), FLIGHT_LIMITS, "Fastest the aircraft descends.", "At 0 it descends as fast as it climbs.", SPEED),
     )
     else -> emptyList()
 }
@@ -69,7 +72,7 @@ internal fun PilotSettings(settings: List<PilotSetting>) {
     val setup by qgcPath(SETUP)
     if (!parametersReady(setup)) return OfflinePilotSettings(settings, LOADING_PILOT_NOTE, offersLink = false)
     val shown by produceState(emptyList<ShownPilotSetting>(), settings, setup) {
-        value = withContext(Dispatchers.Default) { settings.mapNotNull { setting -> firstReported(setting, ::parameterFact)?.let { ShownPilotSetting(setting, it) } } }
+        value = withContext(Dispatchers.Default) { settings.mapNotNull { setting -> firstReported(setting) { parameterFact(it, setting.quantity) }?.let { ShownPilotSetting(setting, it) } } }
     }
     shown.groupBy { it.setting.section }.map { (section, rows) ->
         SectionHeader(section)
@@ -156,9 +159,9 @@ internal fun SensorChecks(onCalibrate: () -> Unit) {
 private fun PilotFactRow(shown: Fact, setting: PilotSetting) {
     val name = shown.name
     var revision by remember { mutableIntStateOf(0) }
-    val live by qgcPath(parameterPath(name))
+    val live by qgcPath(parameterPath(name, setting.quantity))
     val fact by produceState(shown, name, live, revision) {
-        value = withContext(Dispatchers.Default) { parameterFact(name)?.copy(shortLabel = shown.shortLabel) } ?: shown
+        value = withContext(Dispatchers.Default) { parameterFact(name, setting.quantity)?.copy(shortLabel = shown.shortLabel) } ?: shown
     }
     FactRow(pilotChoices(fact), subtitle = setting.hint, warning = setting.whenUnlimited?.takeIf { factNumber(fact) == 0f }, onWrite = { revision++ })
 }
