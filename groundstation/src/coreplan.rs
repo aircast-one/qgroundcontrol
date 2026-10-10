@@ -1046,7 +1046,7 @@ fn load(id: u8, kind: &str) -> bool {
     match started {
         Ok(outbound) => {
             deliver(outbound);
-            settle(id, kind)
+            settle(id, kind) && crate::hub::lock().vehicle(id).is_some_and(|v| v.mission_snapshot()[kind]["error"].is_null())
         }
         Err(_) => false,
     }

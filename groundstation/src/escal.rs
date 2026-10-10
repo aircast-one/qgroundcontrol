@@ -9,6 +9,7 @@ pub const ESC_CAL_CLOSE: &str = "escCalibration.close";
 const CAL_PREFIX: &str = "[cal] ";
 const ESC_CAL_PARAM7: f64 = 1.0;
 const FAILED: &str = "ESC Calibration failed. ";
+const SILENCE_MS: u64 = 60_000;
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Status {
@@ -16,6 +17,7 @@ pub struct Status {
     pub highlight: String,
     pub text: String,
     pub running: bool,
+    pub heard_ms: u64,
 }
 
 static STATUS: Mutex<Option<Status>> = Mutex::new(None);
@@ -41,7 +43,23 @@ pub fn on_text(vehicle: u8, message: &str) {
     let mut held = STATUS.lock().unwrap_or_else(PoisonError::into_inner);
     let next = held.as_ref().filter(|status| status.vehicle == vehicle && status.running).and_then(|status| advance(status, message));
     if next.is_some() {
-        *held = next;
+        *held = next.map(|status| Status { heard_ms: crate::hub::now_ms(), ..status });
+    }
+}
+
+pub fn refused(status: &Status, command: u16, result: u8) -> Option<Status> {
+    (status.running && command == crate::sensorcal::CMD_PREFLIGHT_CALIBRATION && !matches!(result, crate::mavcmd::RESULT_ACCEPTED | crate::mavcmd::RESULT_IN_PROGRESS))
+        .then(|| Status { highlight: FAILED.to_string(), text: format!("The calibration was {} by the vehicle.", crate::flightmodes::rejection_wording(result)), running: false, ..status.clone() })
+}
+
+pub fn expired(status: &Status, now_ms: u64) -> Option<Status> {
+    (status.running && now_ms.saturating_sub(status.heard_ms) >= SILENCE_MS).then(|| Status { highlight: FAILED.to_string(), text: "The vehicle stopped answering.".to_string(), running: false, ..status.clone() })
+}
+
+pub fn on_ack(vehicle: u8, command: u16, result: u8) {
+    let mut held = STATUS.lock().unwrap_or_else(PoisonError::into_inner);
+    if let Some(next) = held.as_ref().filter(|status| status.vehicle == vehicle).and_then(|status| refused(status, command, result)) {
+        *held = Some(next);
     }
 }
 
@@ -53,7 +71,10 @@ pub fn esc_calibration_view(_backend: &dyn Backend, _args: &[String]) -> Value {
         let mut held = STATUS.lock().unwrap_or_else(PoisonError::into_inner);
         *held = held.take().map(|s| Status { highlight: FAILED.to_string(), text: "The vehicle disconnected.".to_string(), running: false, ..s });
     }
-    let held = STATUS.lock().unwrap_or_else(PoisonError::into_inner);
+    let mut held = STATUS.lock().unwrap_or_else(PoisonError::into_inner);
+    if let Some(next) = held.as_ref().and_then(|status| expired(status, crate::hub::now_ms())) {
+        *held = Some(next);
+    }
     json!({
         "kind": "object",
         "class": "EscCalibration",
@@ -71,12 +92,12 @@ pub fn owns(path: &str) -> bool {
 pub fn run(backend: &dyn Backend, path: &str) -> Value {
     match path {
         ESC_CAL_START => {
-            let failed = |vehicle: u8, reason: &str| Some(Status { vehicle, highlight: FAILED.to_string(), text: reason.to_string(), running: false });
+            let failed = |vehicle: u8, reason: &str| Some(Status { vehicle, highlight: FAILED.to_string(), text: reason.to_string(), running: false, heard_ms: crate::hub::now_ms() });
             let Some(vehicle) = crate::guided::active_id(backend).and_then(|id| u8::try_from(id).ok()) else {
                 *STATUS.lock().unwrap_or_else(PoisonError::into_inner) = failed(0, NO_VEHICLE);
                 return json!({ "ok": false, "reason": NO_VEHICLE });
             };
-            *STATUS.lock().unwrap_or_else(PoisonError::into_inner) = Some(Status { vehicle, highlight: String::new(), text: "Starting ESC calibration...".to_string(), running: true });
+            *STATUS.lock().unwrap_or_else(PoisonError::into_inner) = Some(Status { vehicle, highlight: String::new(), text: "Starting ESC calibration...".to_string(), running: true, heard_ms: crate::hub::now_ms() });
             let params = [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, ESC_CAL_PARAM7];
             let sent = crate::guided::dispatch(backend, Some(json!({ "action": "mavlinkCommand", "command": crate::sensorcal::CMD_PREFLIGHT_CALIBRATION, "params": params })), crate::guided::active_id(backend), "", "[]");
             if sent.get("ok").and_then(Value::as_bool) != Some(true) {
@@ -129,5 +150,15 @@ mod tests {
         assert_eq!(advance(&start, "Some other text"), None);
         assert_eq!(advance(&start, "[cal] calibration started: 2 esc"), None, "a well-formed start changes nothing");
         assert_eq!(advance(&start, "[cal] calibration started: 2"), None, "PowerComponentController only emits incorrectFirmwareRevReporting, which no QML connects, so the calibration keeps listening");
+    }
+
+    #[test]
+    fn a_refused_or_silent_calibration_ends_so_the_dialog_can_close() {
+        let start = Status { vehicle: 1, running: true, heard_ms: 1_000, ..Status::default() };
+        assert_eq!(refused(&start, crate::sensorcal::CMD_PREFLIGHT_CALIBRATION, crate::mavcmd::RESULT_ACCEPTED), None);
+        let denied = refused(&start, crate::sensorcal::CMD_PREFLIGHT_CALIBRATION, 2).unwrap();
+        assert_eq!((denied.running, denied.text.as_str()), (false, "The calibration was denied by the vehicle."));
+        assert_eq!(expired(&start, 1_000 + SILENCE_MS - 1), None);
+        assert!(!expired(&start, 1_000 + SILENCE_MS).unwrap().running);
     }
 }

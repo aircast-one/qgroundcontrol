@@ -1,11 +1,11 @@
 use socket2::{Domain, Protocol, Socket, Type};
-use std::collections::BTreeSet;
+use std::collections::{BTreeMap, BTreeSet};
 use std::io;
 use std::net::{Ipv4Addr, SocketAddr, SocketAddrV4, ToSocketAddrs, UdpSocket};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 pub fn local_addresses() -> BTreeSet<Ipv4Addr> {
     if_addrs::get_if_addrs().map(|list| list.into_iter().filter_map(|i| match i.ip() { std::net::IpAddr::V4(v4) => Some(v4), _ => None }).collect()).unwrap_or_default()
@@ -14,6 +14,7 @@ pub fn local_addresses() -> BTreeSet<Ipv4Addr> {
 pub const MULTICAST_GROUP: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 1);
 const READ_TIMEOUT: Duration = Duration::from_millis(200);
 const MAX_DATAGRAM: usize = 65535;
+const PEER_SILENCE: Duration = Duration::from_secs(30);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct UdpConfig {
@@ -24,7 +25,7 @@ pub struct UdpConfig {
 pub struct UdpLink {
     socket: UdpSocket,
     configured: Mutex<Vec<SocketAddr>>,
-    session: Arc<Mutex<BTreeSet<SocketAddr>>>,
+    session: Arc<Mutex<BTreeMap<SocketAddr, Instant>>>,
     stop: Arc<AtomicBool>,
     reader: Mutex<Option<JoinHandle<()>>>,
 }
@@ -42,6 +43,10 @@ fn normalise(sender: SocketAddr, local: &BTreeSet<Ipv4Addr>) -> SocketAddr {
         SocketAddr::V4(v4) if v4.ip().is_loopback() || local.contains(v4.ip()) => SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, v4.port())),
         other => other,
     }
+}
+
+fn still_heard(heard: Instant, now: Instant) -> bool {
+    now.saturating_duration_since(heard) < PEER_SILENCE
 }
 
 fn transient(error: &io::Error) -> bool {
@@ -68,7 +73,7 @@ impl UdpLink {
     pub fn open(config: &UdpConfig, local_addresses: BTreeSet<Ipv4Addr>, mut sink: impl FnMut(&[u8]) + Send + 'static, lost: impl FnOnce(String) + Send + 'static) -> io::Result<UdpLink> {
         let socket = bind_shared(config.local_port)?;
         let configured = Mutex::new(resolved(&config.targets));
-        let session = Arc::new(Mutex::new(BTreeSet::new()));
+        let session = Arc::new(Mutex::new(BTreeMap::new()));
         let stop = Arc::new(AtomicBool::new(false));
         let reader = {
             let socket = socket.try_clone()?;
@@ -80,7 +85,10 @@ impl UdpLink {
                     |buffer| socket.recv_from(buffer),
                     |bytes, sender| {
                         if !bytes.is_empty() {
-                            session.lock().unwrap().insert(normalise(sender, &local_addresses));
+                            let now = Instant::now();
+                            let mut peers = session.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                            peers.insert(normalise(sender, &local_addresses), now);
+                            peers.retain(|_, heard| still_heard(*heard, now));
                             sink(bytes);
                         }
                     },
@@ -104,7 +112,8 @@ impl UdpLink {
 
     pub fn targets(&self) -> Vec<SocketAddr> {
         let configured = self.configured.lock().unwrap().clone();
-        let session = self.session.lock().unwrap();
+        let now = Instant::now();
+        let session: Vec<SocketAddr> = self.session.lock().unwrap_or_else(std::sync::PoisonError::into_inner).iter().filter(|(_, heard)| still_heard(**heard, now)).map(|(peer, _)| *peer).collect();
         configured.iter().filter(|c| !session.contains(c)).copied().chain(session.iter().copied()).collect()
     }
 
@@ -190,6 +199,13 @@ mod tests {
         assert_eq!(link.targets().len(), 1);
         assert_eq!(link.write(&frame), 1);
         link.close();
+    }
+
+    #[test]
+    fn a_peer_silent_for_thirty_seconds_is_no_longer_written_to() {
+        let now = Instant::now();
+        assert!(still_heard(now, now + Duration::from_secs(29)));
+        assert!(!still_heard(now, now + PEER_SILENCE), "a NAT port that moved on stops getting every frame");
     }
 
     #[test]

@@ -494,6 +494,10 @@ impl Calibration {
     }
 
     pub fn on_ack(&mut self, command: u16, result: u8, now_ms: u64) -> Vec<Action> {
+        if self.px4 && self.running.is_some() && !self.visual && command == CMD_PREFLIGHT_CALIBRATION && !matches!(result, RESULT_ACCEPTED | RESULT_IN_PROGRESS) {
+            self.note(format!("Calibration {} by the vehicle", crate::flightmodes::rejection_wording(result)));
+            return self.stop(Outcome::Failed);
+        }
         if self.px4 || self.running.is_none() {
             return Vec::new();
         }
@@ -838,6 +842,15 @@ mod tests {
         assert!(cal.sides.iter().all(|s| s.stage == Stage::Done));
         assert_eq!(cal.snapshot()["routines"].as_array().unwrap().len(), 5, "PX4 has no CompassMot");
         assert!(cal.snapshot()["routines"][0]["enabled"].as_bool().unwrap());
+    }
+
+    #[test]
+    fn a_px4_calibration_the_vehicle_refuses_ends_instead_of_waiting_ten_minutes() {
+        let mut cal = Calibration::new(true);
+        cal.start(Kind::Gyro, Inputs::default(), 0).unwrap();
+        assert!(cal.on_ack(CMD_PREFLIGHT_CALIBRATION, RESULT_IN_PROGRESS, 10).is_empty(), "in progress is not a refusal");
+        cal.on_ack(CMD_PREFLIGHT_CALIBRATION, 1, 20);
+        assert_eq!((cal.snapshot()["outcome"].as_str(), cal.snapshot()["busy"].as_bool()), (Some("failed"), Some(false)));
     }
 
     #[test]

@@ -3302,7 +3302,7 @@ impl Vehicle {
                     self.vtol_in_forward_flight = e.vtol_state as u8 == VTOL_STATE_FW;
                 }
             }
-            MavMessage::COMMAND_ACK(a) => {
+            MavMessage::COMMAND_ACK(a) if mavout::for_us(a.target_system) => {
                 if from == (self.id, self.component) {
                     self.guided.on_command_result(a.command as u32 as u16, a.result == mavlink::dialects::ardupilotmega::MavResult::MAV_RESULT_ACCEPTED);
                     if a.command == mavlink::dialects::ardupilotmega::MavCmd::MAV_CMD_DO_SET_MODE {
@@ -3332,6 +3332,7 @@ impl Vehicle {
                     }
                     false => Vec::new(),
                 };
+                crate::escal::on_ack(self.id, a.command as u32 as u16, a.result as u8);
                 let calibration = self.calibrate.on_ack(a.command as u32 as u16, a.result as u8, now_ms);
                 let announced = self.follow_calibration(calibration, now_ms);
                 let outs = self.commands.on_ack(header.component_id, a.command as u32 as u16, a.result as u8, now_ms);
@@ -4528,7 +4529,7 @@ impl Hub {
                     vehicle.integrity_heard_ms = Some(now_ms());
                 }
             }
-            (COMMAND_ACK_ID, _, _) => {
+            (COMMAND_ACK_ID, _, _) if mavout::for_us(payload.get(8).copied().unwrap_or(0)) => {
                 let command = payload.get(0..2).and_then(|b| b.try_into().ok()).map_or(0, u16::from_le_bytes);
                 let result = payload.get(2).copied().unwrap_or(0);
                 if command == crate::operatorcontrol::REQUEST_OPERATOR_CONTROL || command == guidedcmd::CMD_DO_SET_GLOBAL_ORIGIN {
@@ -5450,6 +5451,21 @@ mod tests {
         let mut reread = reads(hub.tick(1_100));
         reread.sort();
         assert_eq!(reread, ["CAL_ACC0_ID", "SENS_BOARD_ROT"], "only CAL_* and SENS_* are bulk-refreshed");
+    }
+
+    #[test]
+    fn a_command_ack_meant_for_another_ground_station_settles_nothing_here() {
+        use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, MavCmd, MavResult};
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 0);
+        let arm = crate::mavcmd::Command { component: 1, command: 400, command_int: false, frame: 0, params: [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], show_error: false, tag: 0 };
+        hub.vehicles.get_mut(&1).unwrap().commands.send(arm, 0);
+        let ack = |target_system| MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_COMPONENT_ARM_DISARM, result: MavResult::MAV_RESULT_ACCEPTED, target_system, ..Default::default() });
+        hub.on_frame(origin(0), &header, &ack(7), 0, 10);
+        assert!(hub.vehicles[&1].commands.pending(1, 400), "another GCS's arm ack is not ours");
+        hub.on_frame(origin(0), &header, &ack(crate::mavout::DEFAULT_GCS_SYSTEM), 0, 20);
+        assert!(!hub.vehicles[&1].commands.pending(1, 400));
     }
 
     #[test]
