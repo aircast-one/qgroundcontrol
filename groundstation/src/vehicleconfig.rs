@@ -855,7 +855,7 @@ fn labelled(mut decoded: Value, control: &Value, enabled: bool) -> Value {
         _ => range,
     };
     if let Some((from, to)) = range {
-        decoded["slider"] = json!({ "from": from, "to": to, "step": control["majorTickStepSize"].as_f64(), "decimals": control["decimalPlaces"].as_i64() });
+        decoded["slider"] = json!({ "from": from, "to": to, "step": control["majorTickStepSize"].as_f64(), "decimals": control["decimalPlaces"].as_i64().or(decoded["decimalPlaces"].as_i64()) });
     }
     if control["firstEntryIsAll"] == true {
         decoded["firstEntryIsAll"] = json!(true);
@@ -1287,6 +1287,8 @@ mod tests {
         assert_eq!(labelled(json!({}), &json!({ "control": "slider" }), true)["slider"], Value::Null, "with no range there is no slider");
         let bounded = labelled(json!({ "minimum": 0.0, "maximum": 10000.0 }), &json!({ "control": "slider" }), true);
         assert_eq!((bounded["slider"]["from"].as_f64(), bounded["slider"]["to"].as_f64()), (Some(0.0), Some(10000.0)), "allowUsingMinMax: a plain slider falls back to the fact's own bounds");
+        let whole = labelled(json!({ "decimalPlaces": 0 }), &json!({ "control": "slider", "sliderMin": 0, "sliderMax": 30000 }), true);
+        assert_eq!(whole["slider"]["decimals"], json!(0), "FactTextFieldSlider steps by the fact's decimalPlaces when the control names none");
         let mixed = labelled(json!({ "minimum": -1.0, "maximum": 15.0 }), &json!({ "control": "slider", "sliderMax": 5 }), true);
         assert_eq!((mixed["slider"]["from"].as_f64(), mixed["slider"]["to"].as_f64()), (Some(-1.0), Some(5.0)), "each end falls back on its own");
         assert_eq!(labelled(json!({ "minimum": 0.0, "maximum": 1.0 }), &json!({ "control": "factslider" }), true)["slider"], Value::Null, "factslider has no such fallback");

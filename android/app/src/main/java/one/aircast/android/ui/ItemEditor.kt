@@ -203,9 +203,17 @@ internal fun itemFields(view: JSONObject?): List<one.aircast.android.bridge.Fact
     return (0 until listed.length()).mapNotNull { listed.optJSONObject(it)?.let(::factFromControl) }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ItemEditor(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, legDetail: String?, onRemove: (() -> Unit)?) {
+    var removing by remember(index) { mutableStateOf(false) }
+    androidx.compose.runtime.CompositionLocalProvider(LocalTypedDiscarded provides { removing }) {
+        ItemEditorBody(index, at, mapCentre, legDetail, onRemove?.let { remove -> { removing = true; remove() } })
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ItemEditorBody(index: Int, at: TrackPoint?, mapCentre: Pair<Double, Double>?, legDetail: String?, onRemove: (() -> Unit)?) {
     var revision by remember(index) { mutableIntStateOf(0) }
     var view by remember(index) { mutableStateOf<JSONObject?>(null) }
     var choosing by remember(index) { mutableStateOf(false) }

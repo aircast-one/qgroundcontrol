@@ -196,10 +196,12 @@ internal fun PlanMapContent(
     BackHandler(enabled = selected != null) { selected = null }
     var busy by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
+    var removals by remember { mutableIntStateOf(0) }
     val removeItem: (MissionItem) -> Unit = { item ->
         scope.launch {
             busy = "Removing #${item.sequence}"
             val outcome = withContext(Dispatchers.Default) { removeMissionItem(item.index) }
+            if (outcome.ok) removals++
             selected = if (outcome.ok) selectionAfterRemove(item.index, allItems.size) else null
             busy = outcome.reason.takeIf { !outcome.ok }
             if (!outcome.ok) {
@@ -1301,7 +1303,7 @@ internal fun PlanMapContent(
                     }
 
                     chosenItem?.let { item ->
-                        itemPanel?.invoke(item.index, TrackPoint(item.latitude, item.longitude).takeIf { item.placed }, advancedDetail(item), { removeItem(item) }.takeIf { item.index > HOME_ITEM })
+                        androidx.compose.runtime.key(removals) { itemPanel?.invoke(item.index, TrackPoint(item.latitude, item.longitude).takeIf { item.placed }, advancedDetail(item), { removeItem(item) }.takeIf { item.index > HOME_ITEM }) }
                     }
                 }
             }

@@ -295,7 +295,7 @@ private fun FactSliderRow(fact: Fact, slider: FactSlider, onWrite: () -> Unit) {
         }
         Slider(
             value = shown,
-            onValueChange = { shown = it },
+            onValueChange = { shown = sliderSnapped(it, slider.decimals) },
             valueRange = slider.from..slider.to,
             enabled = fact.enabled && !fact.readOnly,
             onValueChangeFinished = {
@@ -310,6 +310,9 @@ private fun FactSliderRow(fact: Fact, slider: FactSlider, onWrite: () -> Unit) {
 }
 
 internal fun sliderTitle(fact: Fact): String = sentenceCase(fact.description.ifBlank { fact.heading })
+
+internal fun sliderSnapped(value: Float, decimals: Int): Float =
+    java.math.BigDecimal(value.toDouble()).setScale(decimals.coerceIn(0, 6), java.math.RoundingMode.HALF_UP).toFloat()
 
 internal fun sliderValue(value: Float, decimals: Int, units: String): String =
     listOf("%.${decimals.coerceIn(0, 6)}f".format(java.util.Locale.ROOT, value), units).filter { it.isNotBlank() }.joinToString(" ")

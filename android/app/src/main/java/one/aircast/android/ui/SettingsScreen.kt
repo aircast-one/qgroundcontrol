@@ -672,6 +672,8 @@ internal val LocalRunInertNote = compositionLocalOf<String?> { null }
 
 internal val LocalSettingsList = compositionLocalOf { false }
 
+internal val LocalTypedDiscarded = compositionLocalOf { { false } }
+
 internal const val SUBTITLE_SEPARATOR = " · "
 
 internal data class ShownSubtitle(val text: String, val hasHelp: Boolean)
@@ -726,7 +728,7 @@ internal fun FieldSlider(value: Float?, slider: FactSlider, enabled: Boolean, on
     var shown by remember(slider, held) { mutableStateOf(held.coerceIn(slider.from, slider.to)) }
     Slider(
         value = shown,
-        onValueChange = { shown = it },
+        onValueChange = { shown = sliderSnapped(it, slider.decimals) },
         valueRange = slider.from..slider.to,
         enabled = enabled,
         onValueChangeFinished = { onWrite(shown.toDouble()) },
@@ -1203,12 +1205,13 @@ private fun FactTextField(fact: Fact, onWrite: () -> Unit, onRejected: () -> Uni
     }
     val latestCommit by rememberUpdatedState(commit)
     val latestPending by rememberUpdatedState(pending)
+    val discarded = LocalTypedDiscarded.current
     LaunchedEffect(interaction) {
-        snapshotFlow { focused }.drop(1).filter { !it }.collect { latestCommit() }
+        snapshotFlow { focused }.drop(1).filter { !it && !discarded() }.collect { latestCommit() }
     }
     DisposableEffect(fact.path) {
         onDispose {
-            latestPending?.let { typed ->
+            latestPending?.takeIf { !discarded() }?.let { typed ->
                 val committed = storedText(fact, typed)
                 offMainDetached { if (blockingRejection(fact, committed) == null) Qgc.writeRefusal(fact.path, committed) }
             }

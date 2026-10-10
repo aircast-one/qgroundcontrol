@@ -385,4 +385,10 @@ class ControlBoundsTest {
         assertEquals("0.135", sliderValue(0.1349f, 3, ""))
         assertEquals("38 %", sliderValue(38f, 0, "%"))
     }
+
+    @Test
+    fun `a slider over a whole-number fact lands on whole numbers`() {
+        assertEquals(12346f, sliderSnapped(12345.68f, 0))
+        assertEquals(0.14f, sliderSnapped(0.1351f, 2))
+    }
 }

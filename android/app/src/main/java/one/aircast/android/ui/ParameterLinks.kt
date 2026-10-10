@@ -124,6 +124,7 @@ internal fun ParameterEditDialog(name: String, title: String = name, onDismiss: 
     var rejected by remember { mutableStateOf(false) }
     var forcedText by remember { mutableStateOf("") }
     var forceRefusal by remember { mutableStateOf<String?>(null) }
+    var resetting by remember { mutableStateOf(false) }
     val forceAllowed = advancedUiShown()
     val scope = rememberCoroutineScope()
     val fact by produceState<Fact?>(null, name, revision) {
@@ -147,7 +148,7 @@ internal fun ParameterEditDialog(name: String, title: String = name, onDismiss: 
                         Text(it, style = MaterialTheme.typography.bodySmall, color = if (forced) MaterialTheme.aircast.warning else MaterialTheme.colorScheme.onSurface)
                     }
                     val shown = loaded.let { if (manual) manualEntryFact(it) else it }
-                    androidx.compose.runtime.CompositionLocalProvider(LocalBlockRebootNote provides factRebootNote(loaded)) {
+                    androidx.compose.runtime.CompositionLocalProvider(LocalBlockRebootNote provides factRebootNote(loaded), LocalTypedDiscarded provides { resetting }) {
                         FactRow(fact = shown, title = loaded.heading.ifBlank { "Value" }, subtitle = "", fieldModifier = Modifier.fillMaxWidth().padding(vertical = 8.dp), onWrite = { revision++ }, onRejected = { rejected = true })
                     }
                     parameterRangeLine(loaded).takeIf { it.isNotBlank() }?.let {
@@ -183,6 +184,7 @@ internal fun ParameterEditDialog(name: String, title: String = name, onDismiss: 
                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
                     fact?.takeIf { (!it.readOnly || forced) && default != null }?.let { loaded ->
                         TextButton(onClick = {
+                            resetting = true
                             scope.launch {
                                 forceRefusal = withContext(Dispatchers.Default) { if (forced) Qgc.writeForcedRefusal(loaded.path, default) else Qgc.writeRefusal(loaded.path, default) }
                                 if (forceRefusal == null) onDismiss()
@@ -213,9 +215,10 @@ internal fun valueDetailsNotes(fact: Fact): List<String> = listOfNotNull(
 internal fun ValueDetailsSheet(fact: Fact, title: String = VALUE_DETAILS_TITLE, onWrite: () -> Unit, onDismiss: () -> Unit) {
     val scope = rememberCoroutineScope()
     var refusal by remember(fact.path) { mutableStateOf<String?>(null) }
+    var resetting by remember(fact.path) { mutableStateOf(false) }
     val default = fact.defaultValueString.toDoubleOrNull()?.takeIf { !fact.readOnly }
     AircastSheet(onDismissRequest = onDismiss) {
-        androidx.compose.runtime.CompositionLocalProvider(LocalSettingsList provides false) {
+        androidx.compose.runtime.CompositionLocalProvider(LocalSettingsList provides false, LocalTypedDiscarded provides { resetting }) {
         Column(
             Modifier.fillMaxWidth().verticalScroll(rememberScrollState()).navigationBarsPadding().padding(horizontal = 24.dp).padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -231,6 +234,7 @@ internal fun ValueDetailsSheet(fact: Fact, title: String = VALUE_DETAILS_TITLE, 
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End)) {
                 default?.let { value ->
                     TextButton(onClick = {
+                        resetting = true
                         scope.launch {
                             refusal = withContext(Dispatchers.Default) { Qgc.writeRefusal(fact.path, value) }
                             if (refusal == null) {
