@@ -194,26 +194,11 @@ pub extern "C" fn qgc_shutdown() {
     crate::settingsstore::persist();
 }
 
-fn setup_from_device(host: &str) {
-    if let Some(config) = crate::devicesetup::fetch(host, crate::devicesetup::STREAM_CONFIG) {
-        let via = crate::devicesetup::fetch(host, crate::devicesetup::WATCH_VIA).unwrap_or(Value::Null);
-        crate::cameras::adopt_device(crate::devicesetup::bare_host(host), crate::devicesetup::device_cameras(host, &config, &via));
-    }
-    let Some(telemetry) = crate::devicesetup::fetch(host, crate::devicesetup::TELEMETRY_CONFIG) else { return };
-    if let Some((api_base, link)) = crate::devicesetup::cloud_link(host, &telemetry) {
-        crate::account::set_api_base(&api_base);
-        crate::corelinks::replace_and_connect(link);
-    }
-    if let Some(link) = crate::devicesetup::telemetry_link(host, &telemetry) {
-        crate::corelinks::replace_and_connect(link);
-    }
-}
-
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_handle_deep_link(link: *const c_char) {
     let link = read(link);
     if let Some(host) = deep_link_device(&link) {
-        std::thread::spawn(move || setup_from_device(&host));
+        crate::deeplinksetup::offer(&host);
     }
     let Some((debug, camera)) = deep_link_writes(&link) else { return };
     if let Some(port) = debug.filter(|_| DEBUG_BUILD.load(std::sync::atomic::Ordering::Relaxed)) {

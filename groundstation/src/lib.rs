@@ -212,6 +212,7 @@ pub mod attitude;
 pub mod synthview;
 pub mod escview;
 pub mod gcsbattery;
+pub mod deeplinksetup;
 pub mod firstrun;
 pub mod advancedui;
 pub mod applog;

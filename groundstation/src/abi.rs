@@ -250,76 +250,84 @@ pub(crate) fn start_pump() {
             .name("groundstation-pump".to_string())
             .spawn(|| loop {
                 std::thread::sleep(PUMP_PERIOD);
-                let (open, kinds) = {
-                    let transports = crate::linkhost::TRANSPORTS.lock().unwrap();
-                    let open = transports.open_ids();
-                    let cloud: Vec<_> = open.iter().copied().filter(|id| transports.config(*id).is_some_and(|c| matches!(c.kind, crate::linkconfig::Kind::AircastCloud { .. }))).collect();
-                    let high_latency: Vec<_> = open.iter().copied().filter(|id| transports.config(*id).is_some_and(|c| c.high_latency)).collect();
-                    let usb_direct: Vec<_> = open.iter().copied().filter(|id| transports.config(*id).is_some_and(|c| matches!(&c.kind, crate::linkconfig::Kind::Serial { port_name, .. } if crate::linkhost::is_usb_direct(port_name)))).collect();
-                    (open, crate::hub::LinkKinds { cloud, high_latency, usb_direct, down: transports.down_ids() })
-                };
-                let outbound = {
-                    let mut hub = crate::hub::lock();
-                    hub.retain_links(&open);
-                    hub.check_links(crate::hub::now_ms(), &kinds);
-                    hub.tick_with(crate::hub::now_ms(), crate::hub::now_us() / 1_000_000)
-                };
-                deliver(outbound);
-                let v1_links = crate::hub::lock().take_v1_reports();
-                v1_links.into_iter().for_each(|link| {
-                    let name = crate::linkhost::TRANSPORTS.lock().unwrap().describe(link).map_or_else(|| "unknown".to_string(), |(name, _, _)| name);
-                    crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &crate::hub::mavlink_v1_notice(&name, &crate::noticeboard::application_name()));
-                });
-                crate::hub::lock().take_notices().iter().for_each(|(kind, body)| {
-                    crate::noticeboard::post_from_vehicle(kind, body);
-                });
-                announce_notices();
-                crate::corelinks::tick(crate::hub::now_ms());
-                crate::nmea::maintain();
-                crate::applog::flush_to_disk();
-                crate::signingkeys::tick(crate::hub::now_ms());
-                if crate::vehiclefacade::switched_on() {
-                    if crate::hub::lock().remote_inputs_due(crate::hub::now_ms()) {
-                        let (settings, fix) = crate::remoteidview::inputs(&crate::settingsstore::Owner(crate::vehiclefacade::Facade(QtBackend)), crate::hub::now_us() / 1000);
-                        crate::hub::lock().set_remote_inputs(settings, fix, crate::hub::now_ms());
-                    }
-                    crate::telemetrylog::vehicles(crate::hub::lock().vehicle_ids().len());
-                    crate::mavlinklog::tick();
-                    let logged: Vec<crate::csvlog::Logged> = {
-                        let hub = crate::hub::lock();
-                        let count = hub.listed_count().unwrap_or_else(|| hub.vehicle_ids().len());
-                        (0..count).filter_map(|listed| hub.listed(listed).map(|vehicle| crate::csvlog::Logged { id: vehicle.id, listed, armed: vehicle.armed(), sub: vehicle.is_ardusub() })).collect()
+                let ticked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                    let (open, kinds) = {
+                        let transports = crate::linkhost::TRANSPORTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                        let open = transports.open_ids();
+                        let cloud: Vec<_> = open.iter().copied().filter(|id| transports.config(*id).is_some_and(|c| matches!(c.kind, crate::linkconfig::Kind::AircastCloud { .. }))).collect();
+                        let high_latency: Vec<_> = open.iter().copied().filter(|id| transports.config(*id).is_some_and(|c| c.high_latency)).collect();
+                        let usb_direct: Vec<_> = open.iter().copied().filter(|id| transports.config(*id).is_some_and(|c| matches!(&c.kind, crate::linkconfig::Kind::Serial { port_name, .. } if crate::linkhost::is_usb_direct(port_name)))).collect();
+                        (open, crate::hub::LinkKinds { cloud, high_latency, usb_direct, down: transports.down_ids() })
                     };
-                    crate::csvlog::tick(&crate::settingsstore::Owner(crate::vehiclefacade::Facade(QtBackend)), &logged, crate::hub::now_ms());
-                    crate::subtitles::tick(&crate::settingsstore::Owner(crate::vehiclefacade::Facade(QtBackend)), crate::hub::now_ms());
-                    crate::forwarding::maintain();
-                    crate::ntrip::sync();
-                    crate::joystickhost::tick(crate::hub::now_ms());
-                    crate::wfbhost::tick(crate::hub::now_ms());
-                    crate::camsettings::tick(crate::hub::now_ms());
-                    crate::gcsheartbeat::tick(crate::hub::now_ms());
-                    crate::followme::tick(&crate::settingsstore::Owner(crate::vehiclefacade::Facade(QtBackend)), crate::hub::now_ms());
-                    let gimbals_live = crate::hub::lock().any_gimbals();
-                    if crate::gimbal::announce_due(crate::hub::now_ms(), gimbals_live) {
-                        CORE.on_event(crate::gimbal::GIMBAL_CHANGED, "null").iter().for_each(|(path, json)| announce(path, json));
+                    let outbound = {
+                        let mut hub = crate::hub::lock();
+                        hub.retain_links(&open);
+                        hub.check_links(crate::hub::now_ms(), &kinds);
+                        hub.tick_with(crate::hub::now_ms(), crate::hub::now_us() / 1_000_000)
+                    };
+                    deliver(outbound);
+                    let v1_links = crate::hub::lock().take_v1_reports();
+                    v1_links.into_iter().for_each(|link| {
+                        let name = crate::linkhost::TRANSPORTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).describe(link).map_or_else(|| "unknown".to_string(), |(name, _, _)| name);
+                        crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &crate::hub::mavlink_v1_notice(&name, &crate::noticeboard::application_name()));
+                    });
+                    crate::hub::lock().take_notices().iter().for_each(|(kind, body)| {
+                        crate::noticeboard::post_from_vehicle(kind, body);
+                    });
+                    announce_notices();
+                    crate::corelinks::tick(crate::hub::now_ms());
+                    crate::nmea::maintain();
+                    crate::applog::flush_to_disk();
+                    crate::signingkeys::tick(crate::hub::now_ms());
+                    if crate::vehiclefacade::switched_on() {
+                        if crate::hub::lock().remote_inputs_due(crate::hub::now_ms()) {
+                            let (settings, fix) = crate::remoteidview::inputs(&crate::settingsstore::Owner(crate::vehiclefacade::Facade(QtBackend)), crate::hub::now_us() / 1000);
+                            crate::hub::lock().set_remote_inputs(settings, fix, crate::hub::now_ms());
+                        }
+                        crate::telemetrylog::vehicles(crate::hub::lock().vehicle_ids().len());
+                        crate::mavlinklog::tick();
+                        let logged: Vec<crate::csvlog::Logged> = {
+                            let hub = crate::hub::lock();
+                            let count = hub.listed_count().unwrap_or_else(|| hub.vehicle_ids().len());
+                            (0..count).filter_map(|listed| hub.listed(listed).map(|vehicle| crate::csvlog::Logged { id: vehicle.id, listed, armed: vehicle.armed(), sub: vehicle.is_ardusub() })).collect()
+                        };
+                        crate::csvlog::tick(&crate::settingsstore::Owner(crate::vehiclefacade::Facade(QtBackend)), &logged, crate::hub::now_ms());
+                        crate::subtitles::tick(&crate::settingsstore::Owner(crate::vehiclefacade::Facade(QtBackend)), crate::hub::now_ms());
+                        crate::forwarding::maintain();
+                        crate::ntrip::sync();
+                        crate::joystickhost::tick(crate::hub::now_ms());
+                        crate::wfbhost::tick(crate::hub::now_ms());
+                        crate::camsettings::tick(crate::hub::now_ms());
+                        crate::gcsheartbeat::tick(crate::hub::now_ms());
+                        crate::followme::tick(&crate::settingsstore::Owner(crate::vehiclefacade::Facade(QtBackend)), crate::hub::now_ms());
+                        let gimbals_live = crate::hub::lock().any_gimbals();
+                        if crate::gimbal::announce_due(crate::hub::now_ms(), gimbals_live) {
+                            CORE.on_event(crate::gimbal::GIMBAL_CHANGED, "null").iter().for_each(|(path, json)| announce(path, json));
+                        }
+                        if crate::mavinspect::lock().tick(crate::hub::now_ms()) {
+                            CORE.on_event(crate::mavinspect::INSPECTOR_CHANGED, "null").iter().for_each(|(path, json)| announce(path, json));
+                        }
                     }
-                    if crate::mavinspect::lock().tick(crate::hub::now_ms()) {
-                        CORE.on_event(crate::mavinspect::INSPECTOR_CHANGED, "null").iter().for_each(|(path, json)| announce(path, json));
+                    announce_guided();
+                    if crate::viewer3d::take_parsed() {
+                        CORE.on_event(crate::viewer3d::VIEWER3D_CHANGED, "null").iter().for_each(|(path, json)| announce(path, json));
                     }
-                }
-                announce_guided();
-                if crate::viewer3d::take_parsed() {
-                    CORE.on_event(crate::viewer3d::VIEWER3D_CHANGED, "null").iter().for_each(|(path, json)| announce(path, json));
-                }
-                if crate::synthview::take_changed() {
-                    CORE.on_event(crate::synthview::SYNTHETIC_CHANGED, "null").iter().for_each(|(path, json)| announce(path, json));
-                }
-                crate::adsb::pump(crate::hub::now_ms());
-                if !crate::qthost::present() && poll_due() {
-                    CORE.poll().iter().for_each(|(path, json)| announce(path, json));
-                }
-                if crate::detections::lock().went_stale(crate::hub::now_ms()) {
-                    announce_detections();
+                    if crate::deeplinksetup::take_changed() {
+                        CORE.on_event(crate::deeplinksetup::SETUP_CHANGED, "null").iter().for_each(|(path, json)| announce(path, json));
+                    }
+                    if crate::synthview::take_changed() {
+                        CORE.on_event(crate::synthview::SYNTHETIC_CHANGED, "null").iter().for_each(|(path, json)| announce(path, json));
+                    }
+                    crate::adsb::pump(crate::hub::now_ms());
+                    if !crate::qthost::present() && poll_due() {
+                        CORE.poll().iter().for_each(|(path, json)| announce(path, json));
+                    }
+                    if crate::detections::lock().went_stale(crate::hub::now_ms()) {
+                        announce_detections();
+                    }
+                }));
+                if ticked.is_err() {
+                    log::error!("the core's pump tick panicked; it carries on with the next tick");
                 }
             })
             .expect("pump thread");

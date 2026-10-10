@@ -646,6 +646,7 @@ fun AircastShell(hostView: android.view.View?) {
                 var resumeDismissed by remember { mutableStateOf<Int?>(null) }
                 if (onFly) ResumeFailedPrompt(resumeDismissed) { resumeDismissed = it }
                 FirstRunDialog()
+                one.aircast.android.ui.DeepLinkSetupPrompt()
 
                 key(popEpoch) {
                     when (tab) {
