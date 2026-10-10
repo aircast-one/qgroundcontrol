@@ -12,6 +12,15 @@ final class NoVideoPanelTests: XCTestCase {
         XCTAssertEqual(elapsedText(3900), "1 h 5 min")
     }
 
+    func testASetUpCameraShowsItsOwnStateWhileNoAircraftIsConnected() {
+        var unavailable = video
+        unavailable.available = false
+        XCTAssertFalse(looksForAircraft(connected: false, video: video))
+        XCTAssertTrue(looksForAircraft(connected: false, video: unavailable))
+        XCTAssertTrue(looksForAircraft(connected: false, video: nil))
+        XCTAssertFalse(looksForAircraft(connected: true, video: nil))
+    }
+
     func testAStalledStreamSaysWhyInsteadOfHowLong() {
         let reason = "No answer from 192.168.1.50:8889. Check the address and that this device is on the drone's network."
         var stalled = video

@@ -40,18 +40,20 @@ private struct NoVideoArea: View {
     }
 }
 
+func looksForAircraft(connected: Bool, video: VideoReading?) -> Bool { !connected && video?.available != true }
+
 struct FlyNoVideoMessage: View {
     @HasVehicle private var hasVehicle
     @QgcPath(VIDEO_VIEW) private var videoJson
     @QgcPath(SYNTHETIC_VIEW) private var syntheticJson
 
     var body: some View {
-        if !hasVehicle {
+        let video = videoReading(videoJson)
+        if looksForAircraft(connected: hasVehicle, video: video) {
             LookingForAircraft()
         } else if syntheticAvailable(syntheticJson) {
             EmptyView()
         } else {
-            let video = videoReading(videoJson)
             GeometryReader { geometry in
                 let compact = geometry.size.height < NO_VIDEO_FULL_HEIGHT || geometry.size.width < NO_VIDEO_FULL_WIDTH
                 NoVideoPanel(video: video)

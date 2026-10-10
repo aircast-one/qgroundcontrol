@@ -15,6 +15,14 @@ class NoVideoPanelTest {
     }
 
     @Test
+    fun `a set-up camera shows its own state while no aircraft is connected`() {
+        assertEquals(false, looksForAircraft(connected = false, video = video))
+        assertEquals(true, looksForAircraft(connected = false, video = video.copy(available = false)))
+        assertEquals(true, looksForAircraft(connected = false, video = null))
+        assertEquals(false, looksForAircraft(connected = true, video = null))
+    }
+
+    @Test
     fun `a stalled stream says why instead of how long`() {
         val reason = "No answer from 192.168.1.50:8889. Check the address and that this device is on the drone's network."
         assertEquals(reason, noVideoDetail(video.copy(noVideoReason = reason), 70))
