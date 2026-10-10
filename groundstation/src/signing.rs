@@ -3,13 +3,14 @@ use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use mavlink::dialects::ardupilotmega::{MavMessage, MavSeverity, SETUP_SIGNING_DATA};
-use mavlink::{MAVLinkV2MessageRaw, MavHeader, MavlinkVersion, SigningConfig, SigningData};
+use mavlink::{MAVLinkV2MessageRaw, SigningConfig, SigningData};
 
 use crate::signingkeys::Key;
 use crate::transport::LinkId;
 
 const SIGNING_EPOCH_UNIX_SECONDS: u64 = 1_420_070_400;
 const SIGNED_FLAG: u8 = 0x01;
+const V2_HEADER_BYTES: usize = 9;
 const V2_MAGIC: u8 = 0xFD;
 const RAW_FRAME_BYTES: usize = 1 + 9 + 255 + 2 + 13;
 const CONFIRM_TIMEOUT_MS: u64 = 5000;
@@ -80,9 +81,14 @@ impl Channel {
     }
 
     fn sign(&mut self, bytes: &[u8]) -> Option<Vec<u8>> {
-        let (header, message): (MavHeader, MavMessage) = crate::tlog::decode_frame(bytes, MavlinkVersion::V2)?;
-        let mut raw = MAVLinkV2MessageRaw::new();
-        raw.serialize_message_for_signing(header, &message);
+        let mut raw = raw_frame(bytes)?;
+        let body = 1 + V2_HEADER_BYTES + usize::from(raw.payload_length());
+        if bytes.len() < body + 2 {
+            return None;
+        }
+        *raw.incompatibility_flags_mut() |= SIGNED_FLAG;
+        let crc = mavlink::calculate_crc(&raw.as_slice()[1..body], <MavMessage as mavlink::Message>::extra_crc(raw.message_id()));
+        raw.as_mut_slice()[body..body + 2].copy_from_slice(&crc.to_le_bytes());
         self.timestamp = self.timestamp.max(signing_timestamp(SystemTime::now()));
         raw.signature_timestamp_bytes_mut().copy_from_slice(&self.timestamp.to_le_bytes()[..6]);
         *raw.signature_link_id_mut() = self.link_id;
@@ -127,7 +133,10 @@ pub fn is_signed(bytes: &[u8]) -> bool {
 }
 
 fn msgid(bytes: &[u8]) -> u32 {
-    bytes.get(7..10).map_or(u32::MAX, |b| u32::from(b[0]) | (u32::from(b[1]) << 8) | (u32::from(b[2]) << 16))
+    match bytes.first() {
+        Some(&V2_MAGIC) => bytes.get(7..10).map_or(u32::MAX, |b| u32::from(b[0]) | (u32::from(b[1]) << 8) | (u32::from(b[2]) << 16)),
+        _ => bytes.get(5).map_or(u32::MAX, |id| u32::from(*id)),
+    }
 }
 
 pub fn verifies(key: Key, bytes: &[u8]) -> bool {
@@ -172,6 +181,13 @@ impl Signing {
         channel.policy = Policy::Pending;
         channel.op = Op::Disable { system: target.0, target, due_ms: now_ms + CONFIRM_TIMEOUT_MS, retry_ms: now_ms + RETRANSMIT_MS, unsigned_seen: false };
         Ok(setup_signing(None, target, SystemTime::now(), 0))
+    }
+
+    pub fn accepts_undecoded(&self, link: LinkId, bytes: &[u8]) -> bool {
+        self.channels.get(&link).is_none_or(|channel| {
+            let verified = is_signed(bytes) && raw_frame(bytes).is_some_and(|raw| channel.data.verify_signature(&raw));
+            verified || channel.policy.accepts_unsigned(msgid(bytes))
+        })
     }
 
     pub fn inbound(&mut self, link: LinkId, system: u8, bytes: &[u8], message: &MavMessage, stored: &dyn Fn() -> Vec<(String, Key, u64)>, now_ms: u64) -> Inbound {
@@ -333,6 +349,7 @@ pub fn lock() -> MutexGuard<'static, Signing> {
 mod tests {
     use super::*;
     use mavlink::dialects::ardupilotmega::{HEARTBEAT_DATA, STATUSTEXT_DATA};
+    use mavlink::{MavHeader, MavlinkVersion};
 
     const KEY: Key = [7; 32];
 
@@ -384,6 +401,41 @@ mod tests {
         assert!(!signing.inbound(3, 1, &frame(&heartbeat(), None), &heartbeat(), &no_keys, 30).accept, "once on, unsigned traffic is refused");
         let alerts: Vec<String> = (31..40).flat_map(|t| signing.inbound(3, 1, &frame(&heartbeat(), None), &heartbeat(), &no_keys, t).notices).collect();
         assert!(alerts.is_empty(), "unsigned telemetry is dropped quietly: the pinned mavlink_parse_char returns nothing for it, so QGC's bad-signature burst never counts it and enabling raises no false key-mismatch alert");
+    }
+
+    #[test]
+    fn a_command_the_dialect_cannot_decode_is_still_signed() {
+        let mut signing = Signing::default();
+        signing.begin_enable(3, (1, 1), "field", KEY, 0, 0).unwrap();
+        signing.inbound(3, 1, &frame(&heartbeat(), Some(KEY)), &heartbeat(), &no_keys, 20);
+        let mut unknown = frame(&MavMessage::COMMAND_LONG(mavlink::dialects::ardupilotmega::COMMAND_LONG_DATA::default()), None);
+        let body = 10 + usize::from(unknown[1]);
+        unknown.resize(body.max(10 + 30), 0);
+        unknown[1] = 30;
+        unknown[10 + 28..10 + 30].copy_from_slice(&32100u16.to_le_bytes());
+        let crc = mavlink::calculate_crc(&unknown[1..40], <MavMessage as mavlink::Message>::extra_crc(76));
+        unknown.truncate(40);
+        unknown.extend(crc.to_le_bytes());
+        assert!(crate::tlog::decode_frame(&unknown, MavlinkVersion::V2).is_none(), "MAV_CMD 32100 is not in the dialect");
+        let out = signing.outbound(3, &unknown);
+        assert!(is_signed(&out) && verifies(KEY, &out), "operator control requests go out signed");
+    }
+
+    #[test]
+    fn an_undecodable_frame_on_a_signing_link_must_carry_the_signature() {
+        let mut signing = Signing::default();
+        let ack = MavMessage::MISSION_ACK(mavlink::dialects::ardupilotmega::MISSION_ACK_DATA::default());
+        assert!(signing.accepts_undecoded(3, &frame(&ack, None)), "a link that does not sign takes anything");
+        signing.begin_enable(3, (1, 1), "field", KEY, 0, 0).unwrap();
+        signing.inbound(3, 1, &frame(&heartbeat(), Some(KEY)), &heartbeat(), &no_keys, 20);
+        assert!(!signing.accepts_undecoded(3, &frame(&ack, None)), "an injected unsigned MISSION_ACK is dropped");
+        assert!(signing.accepts_undecoded(3, &frame(&ack, Some(KEY))));
+    }
+
+    #[test]
+    fn a_v1_frame_reads_its_message_id_from_byte_five() {
+        assert_eq!(msgid(&[0xFE, 9, 0, 1, 1, 0, 0, 0, 0x6D, 0, 0]), 0, "a v1 HEARTBEAT is id 0 whatever its payload holds");
+        assert_eq!(msgid(&[0xFE, 9, 0, 1, 1, 109]), 109);
     }
 
     #[test]

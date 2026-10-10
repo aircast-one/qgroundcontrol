@@ -96,21 +96,22 @@ fn play(generation: u64, deliver: impl Fn(&[u8])) {
         let batch = {
             let mut controller = lock();
             let Some(session) = controller.session.as_mut().filter(|s| s.generation == generation) else { return };
+            let now_ms = crate::hub::now_ms();
             match session.replay.is_playing() {
-                false => None,
-                true => {
-                    let batch = session.replay.tick(crate::hub::now_ms());
+                true if session.replay.due_in_ms(now_ms) <= 0 => {
+                    let batch = session.replay.tick(now_ms);
                     session.playhead_s = batch.log_time_s;
                     session.percent = batch.percent;
                     Some(batch)
                 }
+                _ => None,
             }
         };
         match batch {
             None => std::thread::sleep(IDLE_POLL),
             Some(batch) => {
                 batch.frames.iter().for_each(|frame| deliver(frame));
-                std::thread::sleep(Duration::from_millis(batch.wait_ms.max(1)));
+                std::thread::sleep(Duration::from_millis(batch.wait_ms.clamp(1, IDLE_POLL.as_millis() as u64)));
             }
         }
     }

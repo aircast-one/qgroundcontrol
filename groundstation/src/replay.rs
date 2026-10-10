@@ -79,6 +79,11 @@ impl Replay {
         self.percent()
     }
 
+    pub fn due_in_ms(&self, now_ms: u64) -> i64 {
+        let movement_ms = ((self.current_us.saturating_sub(self.playback_start_log_us) / 1000) as f64 / self.speed) as u64;
+        (self.playback_start_ms + movement_ms) as i64 - now_ms as i64
+    }
+
     pub fn tick(&mut self, now_ms: u64) -> Batch {
         let mut frames = Vec::new();
         let mut wait = 0i64;
@@ -94,8 +99,7 @@ impl Replay {
                 return Batch { frames, wait_ms: 0, percent: 100.0, log_time_s: self.duration_us / 1_000_000, at_end: true };
             };
             self.current_us = *next_us;
-            let movement_ms = ((self.current_us.saturating_sub(self.playback_start_log_us) / 1000) as f64 / self.speed) as u64;
-            wait = (self.playback_start_ms + movement_ms) as i64 - now_ms as i64;
+            wait = self.due_in_ms(now_ms);
         }
         Batch { frames, wait_ms: wait as u64, percent: self.percent(), log_time_s: self.current_us.saturating_sub(self.start_log_us) / 1_000_000, at_end: false }
     }

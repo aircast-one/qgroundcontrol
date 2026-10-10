@@ -443,6 +443,9 @@ fn install_hub_sink() {
         });
         crate::linkhost::TRANSPORTS.lock().unwrap().set_frame_sink(Some(sink));
         let extra: crate::linkhost::ExtraSink = std::sync::Arc::new(|extra: &crate::transport::Extra| {
+            if !crate::signing::lock().accepts_undecoded(extra.link, &extra.raw) {
+                return;
+            }
             let outbound = crate::hub::lock().on_extra(&extra.header, extra.msgid, &crate::mavinspect::payload(&extra.raw, extra.v2));
             deliver(outbound);
             if crate::vehiclefacade::switched_on() {

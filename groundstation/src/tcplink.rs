@@ -26,6 +26,7 @@ pub struct TcpLink {
     stop: Arc<AtomicBool>,
     reader: Mutex<Option<JoinHandle<()>>>,
     peer: SocketAddr,
+    writing: Mutex<()>,
 }
 
 impl TcpLink {
@@ -62,7 +63,7 @@ impl TcpLink {
                 }
             })?
         };
-        Ok(TcpLink { stream, stop, reader: Mutex::new(Some(reader)), peer })
+        Ok(TcpLink { stream, stop, reader: Mutex::new(Some(reader)), peer, writing: Mutex::new(()) })
     }
 
     pub fn peer(&self) -> SocketAddr {
@@ -73,7 +74,10 @@ impl TcpLink {
         if bytes.is_empty() {
             return Err(io::Error::new(io::ErrorKind::InvalidInput, "Data to Send is Empty"));
         }
-        (&self.stream).write_all(bytes).map(|_| bytes.len())
+        let _writing = self.writing.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        (&self.stream).write_all(bytes).map(|_| bytes.len()).inspect_err(|_| {
+            let _ = self.stream.shutdown(Shutdown::Both);
+        })
     }
 
     pub fn close(&self) {
