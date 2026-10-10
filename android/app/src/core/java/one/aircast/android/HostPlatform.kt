@@ -3,6 +3,7 @@ package one.aircast.android
 import android.app.Activity
 import android.view.View
 import java.io.File
+import kotlin.system.exitProcess
 import one.aircast.map.MapTileHost
 import org.mavlink.qgroundcontrol.QGCBridge
 import org.mavlink.qgroundcontrol.QGCUsbSerialManager
@@ -54,5 +55,6 @@ object HostPlatform {
         SpeechOut.stop()
         QGCBridge.shutdown()
         QGCUsbSerialManager.cleanup(activity)
+        exitProcess(0)
     }
 }

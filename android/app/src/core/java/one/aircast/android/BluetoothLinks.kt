@@ -72,7 +72,7 @@ object BluetoothLinks {
         val adapter = adapter() ?: throw IOException("This phone has no Bluetooth adapter.")
         adapter.cancelDiscovery()
         val socket = adapter.getRemoteDevice(address).createRfcommSocketToServiceRecord(SERIAL_PORT_SERVICE)
-        socket.connect()
+        runCatching { socket.connect() }.onFailure { socket.close() }.getOrThrow()
         sockets[id] = socket
         Thread({ read(id, socket) }, "bluetooth-link-$id").start()
         true
