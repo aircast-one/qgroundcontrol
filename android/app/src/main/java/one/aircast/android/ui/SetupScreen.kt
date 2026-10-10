@@ -180,6 +180,12 @@ internal fun splitDesktopOnly(components: List<SetupComponent>, opensHere: (Setu
 internal fun remainingSetup(components: List<SetupComponent>): List<SetupComponent> =
     components.filterNot { it.needsAttention }
 
+@Composable
+internal fun hasSetupPage(name: String): Boolean {
+    val setupJson by qgcPath(SETUP)
+    return remember(setupJson) { setupComponents(setupJson).any { it.name == name } }
+}
+
 internal fun setupComponents(view: JSONObject?): List<SetupComponent> {
     val listed = view?.optJSONArray("components") ?: return emptyList()
     return (0 until listed.length()).mapNotNull { index ->

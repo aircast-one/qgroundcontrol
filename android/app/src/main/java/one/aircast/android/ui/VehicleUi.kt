@@ -711,8 +711,6 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
     val modes = remember(json) { flightModesView(json) }
     val flyJson by qgcPath(FLY_STATE)
     val fly = remember(flyJson) { flyState(flyJson) }
-    val setupJson by qgcPath(SETUP)
-    val hasModesPage = remember(setupJson) { setupComponents(setupJson).any { it.name == FLIGHT_MODES_PAGE } }
     var showFolded by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
     var confirming by remember(rememberActiveVehicleId()) { mutableStateOf<FlightModeOption?>(null) }
@@ -758,7 +756,7 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
     if (settings) {
         AircastSheet(onDismissRequest = { settings = false }) {
             ParameterForm(FLIGHT_MODE_SETTINGS_PAGE)
-            if (hasModesPage && advancedUiShown()) {
+            if (advancedUiShown() && hasSetupPage(FLIGHT_MODES_PAGE)) {
                 TextButton(
                     onClick = {
                         settings = false

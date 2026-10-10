@@ -214,8 +214,6 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
     var batteryDisplay by remember { mutableStateOf(false) }
     var rtkSettings by remember { mutableStateOf(false) }
     val layout = LocalFlyScreenState.current.layout
-    val setupJson by qgcPath(SETUP)
-    val hasPowerSetup = remember(setupJson) { setupComponents(setupJson).any { it.name == POWER_SETUP_PAGE } }
 
     Row(
         modifier.alpha(if (live) 1f else 0.45f).horizontalScroll(rememberScrollState()),
@@ -309,7 +307,7 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
             {
                 TextButton(onClick = { detail = null; batterySettings = true }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Battery failsafes") }
                 TextButton(onClick = { detail = null; batteryDisplay = true }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Battery display") }
-                if (hasPowerSetup && advancedUiShown()) TextButton(onClick = { detail = null; navigation.setupPage = POWER_SETUP_PAGE }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Power setup") }
+                if (advancedUiShown() && hasSetupPage(POWER_SETUP_PAGE)) TextButton(onClick = { detail = null; navigation.setupPage = POWER_SETUP_PAGE }, modifier = Modifier.padding(horizontal = 12.dp)) { Text("Power setup") }
             }
         } else null, action = if (battery) {
             {
@@ -332,6 +330,7 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
 
     if (batterySettings) {
         AircastSheet(onDismissRequest = { batterySettings = false }) {
+            val setupJson by qgcPath(SETUP)
             indicatorParameterWait(setupJson)?.let {
                 Text(it, Modifier.padding(horizontal = 24.dp, vertical = 16.dp))
             } ?: ParameterForm(BATTERY_SETTINGS_PAGE)
