@@ -209,7 +209,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         PHOTO | RECORD | MODE | STOP_PHOTO => camera(backend, path, args),
         UNDO | REDO => step(backend, path),
         crate::firstrun::MARK_SHOWN => crate::firstrun::mark_shown(backend),
-        _ if crate::deeplinksetup::owns(path) => crate::deeplinksetup::run(path, |host| crate::deeplinksetup::setup_from_device(&host)),
+        _ if crate::deeplinksetup::owns(path) => crate::deeplinksetup::run(path, args, |host| crate::deeplinksetup::setup_from_device(&host)),
         crate::advancedui::SET_ADVANCED_UI => crate::advancedui::set(args),
         crate::applog::LOG_CLEAR => crate::applog::clear(backend),
         _ if crate::offlinemaps::owns(path) => crate::offlinemaps::run(path, args),

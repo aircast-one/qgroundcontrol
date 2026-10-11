@@ -250,7 +250,7 @@ pub(crate) fn start_pump() {
             .name("groundstation-pump".to_string())
             .spawn(|| loop {
                 std::thread::sleep(PUMP_PERIOD);
-                let ticked = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                crate::pumpguard::guarded("hub", || {
                     let (open, kinds) = {
                         let transports = crate::linkhost::TRANSPORTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
                         let open = transports.open_ids();
@@ -275,7 +275,14 @@ pub(crate) fn start_pump() {
                         crate::noticeboard::post_from_vehicle(kind, body);
                     });
                     announce_notices();
-                    crate::corelinks::tick(crate::hub::now_ms());
+                });
+                crate::pumpguard::guarded("links", || crate::corelinks::tick(crate::hub::now_ms()));
+                crate::pumpguard::guarded("heartbeat", || {
+                    if crate::vehiclefacade::switched_on() {
+                        crate::gcsheartbeat::tick(crate::hub::now_ms());
+                    }
+                });
+                crate::pumpguard::guarded("rest", || {
                     crate::nmea::maintain();
                     crate::applog::flush_to_disk();
                     crate::signingkeys::tick(crate::hub::now_ms());
@@ -298,7 +305,6 @@ pub(crate) fn start_pump() {
                         crate::joystickhost::tick(crate::hub::now_ms());
                         crate::wfbhost::tick(crate::hub::now_ms());
                         crate::camsettings::tick(crate::hub::now_ms());
-                        crate::gcsheartbeat::tick(crate::hub::now_ms());
                         crate::followme::tick(&crate::settingsstore::Owner(crate::vehiclefacade::Facade(QtBackend)), crate::hub::now_ms());
                         let gimbals_live = crate::hub::lock().any_gimbals();
                         if crate::gimbal::announce_due(crate::hub::now_ms(), gimbals_live) {
@@ -325,10 +331,7 @@ pub(crate) fn start_pump() {
                     if crate::detections::lock().went_stale(crate::hub::now_ms()) {
                         announce_detections();
                     }
-                }));
-                if ticked.is_err() {
-                    log::error!("the core's pump tick panicked; it carries on with the next tick");
-                }
+                });
             })
             .expect("pump thread");
     });
@@ -449,7 +452,7 @@ fn install_hub_sink() {
                 crate::mavinspect::lock().observe(frame, &vehicles, active);
             }
         });
-        crate::linkhost::TRANSPORTS.lock().unwrap().set_frame_sink(Some(sink));
+        crate::linkhost::TRANSPORTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).set_frame_sink(Some(sink));
         let extra: crate::linkhost::ExtraSink = std::sync::Arc::new(|extra: &crate::transport::Extra| {
             if !crate::signing::lock().accepts_undecoded(extra.link, &extra.raw) {
                 return;
@@ -464,7 +467,7 @@ fn install_hub_sink() {
                 crate::mavinspect::lock().observe_extra(extra, &vehicles, active);
             }
         });
-        crate::linkhost::TRANSPORTS.lock().unwrap().set_extra_sink(Some(extra));
+        crate::linkhost::TRANSPORTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).set_extra_sink(Some(extra));
     });
 }
 
@@ -542,7 +545,7 @@ pub unsafe extern "C" fn qgc_core_set_link_writer(writer: LinkWriterFn, user: *m
         let holder = user;
         std::sync::Arc::new(move |id: u32, bytes: &[u8]| unsafe { w(id, bytes.as_ptr(), bytes.len(), holder.ptr()) }) as crate::linkhost::Writer
     });
-    crate::linkhost::TRANSPORTS.lock().unwrap().set_writer(boxed);
+    crate::linkhost::TRANSPORTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).set_writer(boxed);
 }
 
 fn announce(path: &str, json: &str) {
@@ -558,7 +561,7 @@ fn announce_plan() {
 }
 
 fn announce_transports() {
-    let snapshot = crate::linkhost::TRANSPORTS.lock().unwrap().snapshot().to_string();
+    let snapshot = crate::linkhost::TRANSPORTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).snapshot().to_string();
     announce("view.transports", &snapshot);
 }
 
@@ -579,7 +582,7 @@ type LinkStateSinkFn = Option<unsafe extern "C" fn(u32, bool, *const c_char, *mu
 pub unsafe extern "C" fn qgc_core_set_link_bytes_sink(sink: LinkBytesSinkFn, user: *mut std::ffi::c_void) {
     let holder = WriterUser(user);
     let boxed: Option<crate::linkhost::BytesSink> = sink.map(|f| std::sync::Arc::new(move |id: u32, bytes: &[u8]| unsafe { f(id, bytes.as_ptr(), bytes.len(), holder.ptr()) }) as crate::linkhost::BytesSink);
-    crate::linkhost::TRANSPORTS.lock().unwrap().set_bytes_sink(boxed);
+    crate::linkhost::TRANSPORTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).set_bytes_sink(boxed);
 }
 
 #[unsafe(no_mangle)]
@@ -591,12 +594,12 @@ pub unsafe extern "C" fn qgc_core_set_link_state_sink(sink: LinkStateSinkFn, use
             unsafe { f(id, open, reason.as_ptr(), holder.ptr()) }
         }) as crate::linkhost::StateSink
     });
-    crate::linkhost::TRANSPORTS.lock().unwrap().set_state_sink(boxed);
+    crate::linkhost::TRANSPORTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).set_state_sink(boxed);
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_core_link_announce_on_state() {
-    crate::linkhost::TRANSPORTS.lock().unwrap().set_state_hook(Some(std::sync::Arc::new(announce_transports)));
+    crate::linkhost::TRANSPORTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).set_state_hook(Some(std::sync::Arc::new(announce_transports)));
 }
 
 static TILE_CACHE: std::sync::Mutex<Option<crate::tilecache::Cache>> = std::sync::Mutex::new(None);
@@ -729,4 +732,5 @@ pub unsafe extern "C" fn qgc_core_tile_hash(provider: i32, x: i32, y: i32, z: i3
 pub unsafe extern "C" fn qgc_core_tile_provider(name: *const c_char) -> i32 {
     crate::tilecache::provider_hash(&text(name)).unwrap_or(0)
 }
+
 

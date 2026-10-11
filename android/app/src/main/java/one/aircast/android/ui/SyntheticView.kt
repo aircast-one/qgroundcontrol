@@ -58,14 +58,14 @@ internal fun syntheticTilt(from: Double, draggedPx: Float, heightPx: Int): Doubl
 internal fun syntheticPan(from: Double, draggedPx: Float, widthPx: Int): Double =
     ((from - draggedPx.toDouble() / widthPx.coerceAtLeast(1) * PAN_SPAN_DEG + 180.0).mod(360.0)) - 180.0
 
-internal fun syntheticAims(view: JSONObject?, video: VideoReading?): Boolean =
-    syntheticAvailable(view) && view?.optBoolean("aimable") == true && video?.decoding != true
+internal fun syntheticAims(view: JSONObject?, cameras: CamerasReading?): Boolean =
+    syntheticAvailable(view) && view?.optBoolean("aimable") == true && cameras?.cameras?.any { it.active && it.source == SYNTHETIC_SOURCE } == true
 
 @Composable
 internal fun rememberSyntheticAims(): Boolean {
     val view by qgcPath(SYNTHETIC_VIEW)
-    val videoJson by qgcPath(VIDEO_VIEW)
-    return remember(view, videoJson) { syntheticAims(view, videoReading(videoJson)) }
+    val camerasJson by qgcPath(CAMERAS_VIEW)
+    return remember(view, camerasJson) { syntheticAims(view, camerasReading(camerasJson)) }
 }
 
 @Composable

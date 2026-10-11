@@ -153,7 +153,8 @@ struct FlyScreen: View {
     @QgcPath(FLY_STATE) private var flyJson
     @HasVehicle private var hasVehicle
     @CameraStepper private var cameras
-    @VideoDrags private var videoDrags
+    @GimbalDrags private var gimbalDrags
+    @SyntheticAims private var syntheticAims
     @State private var mini = loadMiniMap()
     @State private var holding = false
     @State private var layers = false
@@ -236,13 +237,14 @@ struct FlyScreen: View {
 
     private func videoHandlers(_ videoKey: String, _ pipNow: Bool, _ pipHome: CGPoint, _ target: CGRect) -> VideoGestureHandlers {
         let layout = flyScreen.layout
-        let dragging = videoDrags
+        let gimbal = gimbalDrags
+        let synthetic = syntheticAims
         let stepper = cameras
         let expanded = pipExpanded
         let full = fullScreen
         return VideoGestureHandlers(
             owned: { false },
-            claimsSwipe: { moved in sideways(moved) && !dragging },
+            claimsSwipe: { moved in sideways(moved) && !gimbal && !(synthetic && !pipNow) },
             onTap: {},
             onDoubleTap: { full ? onExitFullScreen() : onFullScreen() },
             onSwipe: { moved in cameraStep(videoSwipe(moved, VIDEO_SWIPE_DISTANCE)).map(stepper.step) },

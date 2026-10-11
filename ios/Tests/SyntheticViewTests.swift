@@ -41,13 +41,12 @@ final class SyntheticViewTests: XCTestCase {
         XCTAssertEqual(otherSourceName(synthetic), "Synthetic view")
     }
 
-    func testAnAimableSyntheticViewOnScreenKeepsSidewaysDragsFromSwitchingTheCamera() {
+    func testSidewaysDragsAimOnlyASyntheticViewPickedAsTheCamera() {
         let aimable = JSON.parse(#"{"available":true,"aimable":true}"#)
-        let idle = videoReading(JSON.parse(#"{"class":"Video","available":true,"decoding":false}"#))
-        let live = videoReading(JSON.parse(#"{"class":"Video","available":true,"decoding":true}"#))
-        XCTAssertTrue(syntheticAims(aimable, idle))
-        XCTAssertTrue(syntheticAims(aimable, nil))
-        XCTAssertFalse(syntheticAims(aimable, live))
-        XCTAssertFalse(syntheticAims(JSON.parse(#"{"available":true,"aimable":false}"#), idle))
+        let cameras = { (source: String) in camerasReading(JSON.parse(#"{"class":"Cameras","cameras":[{"slot":0,"source":"\#(source)","active":true}]}"#)) }
+        XCTAssertTrue(syntheticAims(aimable, cameras(SYNTHETIC_SOURCE)))
+        XCTAssertFalse(syntheticAims(aimable, cameras("RTSP Video Stream")), "a dropped stream's synthetic fallback still lets a swipe switch cameras")
+        XCTAssertFalse(syntheticAims(JSON.parse(#"{"available":true,"aimable":false}"#), cameras(SYNTHETIC_SOURCE)))
+        XCTAssertFalse(syntheticAims(aimable, nil))
     }
 }

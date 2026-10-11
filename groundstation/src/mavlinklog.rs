@@ -208,6 +208,7 @@ fn send(path: &Path, feedback: &str, cancel: &AtomicBool) -> Result<(), String> 
         .header("Content-Length", &length.to_string())
         .config()
         .timeout_connect(Some(std::time::Duration::from_secs(10)))
+        .timeout_send_body(Some(std::time::Duration::from_secs(600)))
         .timeout_recv_response(Some(std::time::Duration::from_secs(60)))
         .build()
         .send(ureq::SendBody::from_reader(&mut sending))

@@ -227,6 +227,13 @@ mod tests {
         let now = Instant::now();
         assert!(still_heard(now, now + Duration::from_secs(29)));
         assert!(!still_heard(now, now + PEER_SILENCE), "a NAT port that moved on stops getting every frame");
+        let link = UdpLink::open(&UdpConfig { local_port: 0, targets: vec![] }, BTreeSet::new(), |_| {}, |_| {}).unwrap();
+        let (stale, fresh) = (SocketAddr::from(([10, 0, 0, 1], 14550)), SocketAddr::from(([10, 0, 0, 2], 14550)));
+        let long_ago = now.checked_sub(PEER_SILENCE + Duration::from_secs(1)).unwrap_or(now);
+        link.session.lock().unwrap().extend([(stale, long_ago), (fresh, now)]);
+        assert_eq!(link.targets(), if long_ago == now { vec![stale, fresh] } else { vec![fresh] });
+        link.session.lock().unwrap().insert(stale, Instant::now());
+        assert_eq!(link.targets(), vec![stale, fresh], "a peer heard again is written to again");
     }
 
     #[test]

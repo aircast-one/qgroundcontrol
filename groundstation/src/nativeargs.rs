@@ -58,13 +58,20 @@ pub fn options(arguments: &[String]) -> Options {
 
 pub fn deep_link_device(link: &str) -> Option<String> {
     let parsed = url::Url::parse(link).ok().filter(|u| u.scheme() == DEEP_LINK_SCHEME)?;
-    parsed.query_pairs().find(|(k, _)| k == "host").map(|(_, v)| v.into_owned()).filter(|v| !v.is_empty())
+    parsed.query_pairs().find(|(k, _)| k == "host").and_then(|(_, v)| device_authority(&v))
 }
 
-pub fn deep_link_writes(link: &str) -> Option<(Option<u16>, Option<crate::cameras::Camera>)> {
+fn device_authority(raw: &str) -> Option<String> {
+    let url = url::Url::parse(&format!("http://{raw}")).ok()?;
+    let plain = url.username().is_empty() && url.password().is_none() && url.path() == "/" && url.query().is_none() && url.fragment().is_none();
+    let host = url.host_str().filter(|_| plain)?;
+    Some(url.port().map_or_else(|| host.to_string(), |port| format!("{host}:{port}")))
+}
+
+pub fn deep_link_writes(link: &str, debug_build: bool) -> Option<(Option<u16>, Option<crate::cameras::Camera>)> {
     let parsed = url::Url::parse(link).ok().filter(|u| u.scheme() == DEEP_LINK_SCHEME)?;
     let query = |key: &str| parsed.query_pairs().find(|(k, _)| k == key).map(|(_, v)| v.into_owned()).filter(|v| !v.is_empty());
-    let debug = query("debug").and_then(|p| p.parse::<u16>().ok()).filter(|p| *p != 0);
+    let debug = query("debug").and_then(|p| p.parse::<u16>().ok()).filter(|p| *p != 0 && debug_build);
     if query("host").is_some() {
         return Some((debug, None));
     }
@@ -83,14 +90,18 @@ mod tests {
 
     #[test]
     fn a_deep_link_sets_the_video_source_and_the_debug_port_as_qgc_application_does() {
-        let (debug, writes) = deep_link_writes("aircast-qgc://open?whep=https%3A%2F%2Fcam%2Fwhep&name=Front&debug=8777").unwrap();
+        let (debug, writes) = deep_link_writes("aircast-qgc://open?whep=https%3A%2F%2Fcam%2Fwhep&name=Front&debug=8777", true).unwrap();
         assert_eq!(debug, Some(8777));
+        assert_eq!(deep_link_writes("aircast-qgc://open?debug=8777", false), Some((None, None)), "a release build never opens the debug API from a link a web page can fire");
         assert_eq!(writes, Some(crate::cameras::Camera::new("Front", VIDEO_SOURCE_WEBRTC, "https://cam/whep")));
-        assert_eq!(deep_link_writes("aircast-qgc://open?rtsp=rtsp%3A%2F%2Fh%3A8554%2Flive").unwrap().1.unwrap().source, VIDEO_SOURCE_RTSP);
-        assert_eq!(deep_link_writes("https://example.com/?whep=x"), None, "only the app's own scheme is honoured");
-        assert_eq!(deep_link_writes("aircast-qgc://open?debug=0"), Some((None, None)));
-        assert_eq!(deep_link_writes("aircast-qgc://open?host=10.0.0.5%3A8080&whep=x"), Some((None, None)), "a device host sets up from the device and ignores a stream given alongside it");
+        assert_eq!(deep_link_writes("aircast-qgc://open?rtsp=rtsp%3A%2F%2Fh%3A8554%2Flive", true).unwrap().1.unwrap().source, VIDEO_SOURCE_RTSP);
+        assert_eq!(deep_link_writes("https://example.com/?whep=x", true), None, "only the app's own scheme is honoured");
+        assert_eq!(deep_link_writes("aircast-qgc://open?debug=0", true), Some((None, None)));
+        assert_eq!(deep_link_writes("aircast-qgc://open?host=10.0.0.5%3A8080&whep=x", true), Some((None, None)), "a device host sets up from the device and ignores a stream given alongside it");
         assert_eq!(deep_link_device("aircast-qgc://open?host=10.0.0.5%3A8080").as_deref(), Some("10.0.0.5:8080"));
+        assert_eq!(deep_link_device("aircast-qgc://open?host=192.168.1.10%40evil.example"), None, "a userinfo host would show one address and connect to another");
+        assert_eq!(deep_link_device("aircast-qgc://open?host=10.0.0.5%2Fx%3Fy"), None);
+        assert_eq!(deep_link_device("aircast-qgc://open?host="), None);
     }
 
     #[test]

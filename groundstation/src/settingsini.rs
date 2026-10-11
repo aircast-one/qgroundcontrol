@@ -20,7 +20,10 @@ pub fn unescape_key(key: &str) -> String {
         let rest = &key[at..];
         if rest.starts_with("%U") {
             let low = key.get(at + 6..).is_some_and(|next| next.starts_with("%U")).then(|| key_code(key, at + 8, 4)).flatten();
-            let paired = key_code(key, at + 2, 4).zip(low).and_then(|(high, low)| char::decode_utf16([high as u16, low as u16]).next()?.ok());
+            let paired = key_code(key, at + 2, 4)
+                .zip(low)
+                .filter(|(high, low)| (0xD800..0xDC00).contains(high) && (0xDC00..0xE000).contains(low))
+                .and_then(|(high, low)| char::decode_utf16([high as u16, low as u16]).next()?.ok());
             if let Some(code) = paired {
                 out.push(code);
                 at += 12;
@@ -276,6 +279,7 @@ mod tests {
         assert_eq!(unescape_key("Gro%DCp%U00E9"), "GroÜpé");
         assert_eq!(unescape_key(&escape_key("Survey 🚁")), "Survey 🚁", "past U+FFFF a key is two UTF-16 units, as QSettings writes it");
         assert_eq!(escape_key("🚁"), "%UD83D%UDE81");
+        assert_eq!(unescape_key(&escape_key("Привет 手柄")), "Привет 手柄", "two BMP letters in a row are two characters, not a surrogate pair");
     }
 
     #[test]

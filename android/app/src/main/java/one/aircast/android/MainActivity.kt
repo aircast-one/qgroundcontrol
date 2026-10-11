@@ -144,6 +144,7 @@ enum class Tab(val label: String, @DrawableRes val icon: Int) {
 class MainActivity : ComponentActivity(), QGCBridge.Host {
     companion object {
         private var live: MainActivity? = null
+        private val instances = java.util.concurrent.atomic.AtomicInteger()
     }
 
     private var multicastLock: WifiManager.MulticastLock? = null
@@ -156,6 +157,7 @@ class MainActivity : ComponentActivity(), QGCBridge.Host {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         live = this
+        instances.incrementAndGet()
 
         QGCBridge.setHost(this)
         Qgc.start()
@@ -219,7 +221,7 @@ class MainActivity : ComponentActivity(), QGCBridge.Host {
     override fun onDestroy() {
         if (live === this) live = null
         if (BuildConfig.DEBUG) unregisterReceiver(debugUiReceiver)
-        HostPlatform.stop(this)
+        HostPlatform.stop(this, last = instances.decrementAndGet() == 0)
         multicastLock?.takeIf { it.isHeld }?.release()
         super.onDestroy()
     }

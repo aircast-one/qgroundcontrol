@@ -200,8 +200,8 @@ pub unsafe extern "C" fn qgc_handle_deep_link(link: *const c_char) {
     if let Some(host) = deep_link_device(&link) {
         crate::deeplinksetup::offer(&host);
     }
-    let Some((debug, camera)) = deep_link_writes(&link) else { return };
-    if let Some(port) = debug.filter(|_| DEBUG_BUILD.load(std::sync::atomic::Ordering::Relaxed)) {
+    let Some((debug, camera)) = deep_link_writes(&link, DEBUG_BUILD.load(std::sync::atomic::Ordering::Relaxed)) else { return };
+    if let Some(port) = debug {
         start_debug_server(port);
     }
     if let Some(camera) = camera {

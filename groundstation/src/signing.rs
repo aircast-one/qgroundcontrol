@@ -86,8 +86,10 @@ impl Channel {
         if bytes.len() < body + 2 {
             return None;
         }
+        let sent = u16::from_le_bytes([bytes[body], bytes[body + 1]]);
+        let extra = (0..=u8::MAX).find(|extra| mavlink::calculate_crc(&bytes[1..body], *extra) == sent)?;
         *raw.incompatibility_flags_mut() |= SIGNED_FLAG;
-        let crc = mavlink::calculate_crc(&raw.as_slice()[1..body], <MavMessage as mavlink::Message>::extra_crc(raw.message_id()));
+        let crc = mavlink::calculate_crc(&raw.as_slice()[1..body], extra);
         raw.as_mut_slice()[body..body + 2].copy_from_slice(&crc.to_le_bytes());
         self.timestamp = self.timestamp.max(signing_timestamp(SystemTime::now()));
         raw.signature_timestamp_bytes_mut().copy_from_slice(&self.timestamp.to_le_bytes()[..6]);
@@ -419,6 +421,11 @@ mod tests {
         assert!(crate::tlog::decode_frame(&unknown, MavlinkVersion::V2).is_none(), "MAV_CMD 32100 is not in the dialect");
         let out = signing.outbound(3, &unknown);
         assert!(is_signed(&out) && verifies(KEY, &out), "operator control requests go out signed");
+        assert_eq!(u16::from_le_bytes([out[40], out[41]]), mavlink::calculate_crc(&out[1..40], <MavMessage as mavlink::Message>::extra_crc(76)), "and with a CRC the vehicle accepts");
+        let mut foreign = vec![V2_MAGIC, 2, 0, 0, 0, 255, 190, 0x60, 0xEA, 0x00, 7, 9];
+        foreign.extend(mavlink::calculate_crc(&foreign[1..12], 42).to_le_bytes());
+        let signed = signing.outbound(3, &foreign);
+        assert_eq!(u16::from_le_bytes([signed[12], signed[13]]), mavlink::calculate_crc(&signed[1..12], 42), "a message from another dialect keeps its own CRC extra");
     }
 
     #[test]

@@ -494,7 +494,7 @@ impl Calibration {
     }
 
     pub fn on_ack(&mut self, command: u16, result: u8, now_ms: u64) -> Vec<Action> {
-        if self.px4 && self.running.is_some() && !self.visual && command == CMD_PREFLIGHT_CALIBRATION && !matches!(result, RESULT_ACCEPTED | RESULT_IN_PROGRESS) {
+        if self.px4 && self.running.is_some() && !self.visual && !self.waiting_for_cancel && command == CMD_PREFLIGHT_CALIBRATION && !matches!(result, RESULT_ACCEPTED | RESULT_IN_PROGRESS) {
             self.note(format!("Calibration {} by the vehicle", crate::flightmodes::rejection_wording(result)));
             return self.stop(Outcome::Failed);
         }

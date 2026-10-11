@@ -527,6 +527,10 @@ fn send(vehicle: (u8, u32), outs: Vec<Out>) {
     crate::hub::send_for(id, link, &outbound);
 }
 
+fn left_vehicle(before: Option<(u8, u32)>, now: Option<(u8, u32)>) -> Option<(u8, u32)> {
+    before.filter(|(id, _)| now.is_none_or(|(driving, _)| driving != *id))
+}
+
 fn sync_polling(now_ms: u64) {
     let vehicle = active_vehicle();
     let enabled = enabled_vehicles();
@@ -537,7 +541,7 @@ fn sync_polling(now_ms: u64) {
     let joystick_changed = host.setup_state.replace((active.clone(), calibrated)).is_some_and(|before| before != (active.clone(), calibrated));
     let names: Vec<String> = host.joysticks.keys().cloned().collect();
     let driving = vehicle.map(|(id, link, ..)| (id, link));
-    let left = std::mem::replace(&mut host.driven, driving).filter(|before| Some(*before) != driving);
+    let left = left_vehicle(std::mem::replace(&mut host.driven, driving), driving);
     let released: Vec<Out> = match left {
         Some(_) => names.iter().flat_map(|name| host.joysticks.get_mut(name).map(|j| j.stop(now_ms)).unwrap_or_default()).collect(),
         None => Vec::new(),
@@ -858,6 +862,14 @@ pub fn joystick_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_joystick_lets_go_of_a_vehicle_it_leaves_but_not_of_one_whose_link_fails_over() {
+        assert_eq!(left_vehicle(Some((1, 7)), Some((2, 9))), Some((1, 7)));
+        assert_eq!(left_vehicle(Some((1, 7)), None), Some((1, 7)));
+        assert_eq!(left_vehicle(Some((1, 7)), Some((1, 9))), None, "a primary-link failover keeps flying the same vehicle, throttle and all");
+        assert_eq!(left_vehicle(None, Some((1, 7))), None);
+    }
     use crate::joystick::{Function, OPTIONAL};
 
     #[test]

@@ -10,7 +10,7 @@ class DeepLinkSetupPromptTest {
     fun `a device link is shown only while the core holds one`() {
         assertNull(deepLinkSetup(JSONObject("""{"show":false,"host":null}""")))
         assertNull(deepLinkSetup(null))
-        val shown = deepLinkSetup(JSONObject("""{"show":true,"title":"Set up from this device?","text":"from 10.0.0.5","accept":"Set up","decline":"Ignore"}"""))
-        assertEquals(DeepLinkSetup("Set up from this device?", "from 10.0.0.5", "Set up", "Ignore"), shown)
+        val shown = deepLinkSetup(JSONObject("""{"show":true,"host":"10.0.0.5","title":"Set up from this device?","text":"from 10.0.0.5","accept":"Set up","decline":"Ignore"}"""))
+        assertEquals(DeepLinkSetup("10.0.0.5", "Set up from this device?", "from 10.0.0.5", "Set up", "Ignore"), shown)
     }
 }

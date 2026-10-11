@@ -640,6 +640,7 @@ mod deps_cover_reads {
             ("csvlog", include_str!("csvlog.rs")),
             ("firstrun", include_str!("firstrun.rs")),
             ("deeplinksetup", include_str!("deeplinksetup.rs")),
+            ("pumpguard", include_str!("pumpguard.rs")),
             ("advancedui", include_str!("advancedui.rs")),
             ("applog", include_str!("applog.rs")),
             ("offlinemaps", include_str!("offlinemaps.rs")),

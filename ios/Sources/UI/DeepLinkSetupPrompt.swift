@@ -5,6 +5,7 @@ private let ACCEPT = "deepLinkSetup.accept"
 private let DECLINE = "deepLinkSetup.decline"
 
 struct DeepLinkSetup: Equatable {
+    let host: String
     let title: String
     let text: String
     let accept: String
@@ -13,25 +14,41 @@ struct DeepLinkSetup: Equatable {
 
 func deepLinkSetup(_ view: JSON?) -> DeepLinkSetup? {
     guard let view, view["show"].bool else { return nil }
-    return DeepLinkSetup(title: view["title"].string, text: view["text"].string, accept: view["accept"].string, decline: view["decline"].string)
+    return DeepLinkSetup(host: view["host"].string, title: view["title"].string, text: view["text"].string, accept: view["accept"].string, decline: view["decline"].string)
 }
 
 struct DeepLinkSetupPrompt: View {
     @QgcPath(DEEP_LINK_SETUP_PATH) private var view
+    @State private var lastShown: DeepLinkSetup?
 
     var body: some View {
         let setup = deepLinkSetup(view)
         Color.clear
             .invisibleAnchor()
-            .alert(setup?.title ?? "", isPresented: Binding(get: { setup != nil }, set: { _ in })) {
-                Button(setup?.accept ?? "") { answer(ACCEPT) }
-                Button(setup?.decline ?? "", role: .cancel) { answer(DECLINE) }
-            } message: {
-                Text(setup?.text ?? "")
+            .onChange(of: setup, initial: true) { _, now in if let now { lastShown = now } }
+            .queuedSheet(isPresented: Binding(get: { setup != nil }, set: { shown in if !shown, let setup { answer(DECLINE, setup) } }), dialog: true) {
+                if let shown = setup ?? lastShown { content(shown) }
             }
     }
 
-    private func answer(_ path: String) {
-        offMain { _ = Qgc.invoke(path) }
+    private func content(_ setup: DeepLinkSetup) -> some View {
+        VStack(alignment: .leading, spacing: Space.s4) {
+            Text(setup.title).font(.headlineSmall)
+            Text(setup.text).font(.bodyMedium)
+            HStack {
+                Spacer()
+                Button(setup.decline) { answer(DECLINE, setup) }
+                Button(setup.accept) { answer(ACCEPT, setup) }
+            }
+            .buttonStyle(.text)
+        }
+        .padding(Space.s6)
+        .fixedSize(horizontal: false, vertical: true)
+        .presentationDetents([.medium])
+    }
+
+    private func answer(_ path: String, _ setup: DeepLinkSetup) {
+        let host = setup.host
+        offMain { _ = Qgc.invoke(path, host) }
     }
 }

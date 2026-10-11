@@ -214,6 +214,7 @@ pub mod videoar;
 pub mod escview;
 pub mod gcsbattery;
 pub mod deeplinksetup;
+pub mod pumpguard;
 pub mod firstrun;
 pub mod advancedui;
 pub mod applog;

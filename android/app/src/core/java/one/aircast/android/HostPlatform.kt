@@ -49,8 +49,8 @@ object HostPlatform {
             ?.let { listOf("--removable-save-path", File(it, application).absolutePath) }
             .orEmpty()
 
-    fun stop(activity: Activity) {
-        if (!activity.isFinishing) return
+    fun stop(activity: Activity, last: Boolean) {
+        if (!activity.isFinishing || !last) return
         GcsLocation.stop()
         SpeechOut.stop()
         QGCBridge.shutdown()

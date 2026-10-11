@@ -30,7 +30,7 @@ pub fn is_cube_black(port_description: &str) -> bool {
 }
 
 fn serial_port_description(link: crate::transport::LinkId) -> Option<String> {
-    let config = crate::linkhost::TRANSPORTS.lock().unwrap().config(link)?;
+    let config = crate::linkhost::TRANSPORTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).config(link)?;
     let crate::linkconfig::Kind::Serial { port_name, .. } = config.kind else { return None };
     crate::corelinks::port_infos().into_iter().find(|port| port.system_location == port_name).map(|port| port.description)
 }

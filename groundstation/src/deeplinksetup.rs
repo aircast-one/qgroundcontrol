@@ -24,7 +24,11 @@ fn replace(next: Option<String>) -> Option<String> {
 }
 
 pub fn offer(host: &str) {
-    replace(Some(host.to_string()));
+    let mut held = pending();
+    if held.is_none() {
+        *held = Some(host.to_string());
+        DIRTY.store(true, Ordering::Relaxed);
+    }
 }
 
 pub fn take_changed() -> bool {
@@ -67,14 +71,21 @@ pub fn setup_from_device(host: &str) {
     }
 }
 
-pub fn run(path: &str, setup: impl FnOnce(String) + Send + 'static) -> Value {
-    match (path, replace(None)) {
-        (ACCEPT, Some(host)) => {
+pub fn run(path: &str, args: &str, setup: impl FnOnce(String) + Send + 'static) -> Value {
+    let shown = serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0)?.as_str().map(str::to_string));
+    let waiting = pending().clone();
+    match (path, waiting) {
+        (ACCEPT, Some(host)) if shown.as_deref() == Some(host.as_str()) => {
+            replace(None);
             std::thread::spawn(move || setup(host));
             json!({ "ok": true })
         }
+        (ACCEPT, Some(_)) => json!({ "ok": false, "reason": "The device waiting to set up is not the one that was shown." }),
         (ACCEPT, None) => json!({ "ok": false, "reason": "There is no device setup waiting." }),
-        _ => json!({ "ok": true }),
+        _ => {
+            replace(None);
+            json!({ "ok": true })
+        }
     }
 }
 
@@ -89,12 +100,15 @@ mod tests {
         assert_eq!((shown["show"].as_bool(), shown["host"].as_str()), (Some(true), Some("10.0.0.5")));
         offer("evil.example");
         assert!(take_changed());
-        assert_eq!(run(DECLINE, |_| panic!("a declined link sets nothing up")), json!({ "ok": true }));
+        assert_eq!(run(DECLINE, "[]", |_| panic!("a declined link sets nothing up")), json!({ "ok": true }));
         assert!(pending().is_none());
-        assert_eq!(run(ACCEPT, |_| panic!("nothing is waiting"))["ok"], false);
+        assert_eq!(run(ACCEPT, r#"["10.0.0.5"]"#, |_| panic!("nothing is waiting"))["ok"], false);
         offer("10.0.0.5");
+        offer("evil.example");
+        assert_eq!(pending().as_deref(), Some("10.0.0.5"), "a second link never replaces the one on screen");
+        assert_eq!(run(ACCEPT, r#"["evil.example"]"#, |_| panic!("only the host shown is accepted"))["ok"], false);
         let (sent, got) = std::sync::mpsc::channel();
-        assert_eq!(run(ACCEPT, move |host| sent.send(host).unwrap())["ok"], true);
+        assert_eq!(run(ACCEPT, r#"["10.0.0.5"]"#, move |host| sent.send(host).unwrap())["ok"], true);
         assert_eq!(got.recv_timeout(std::time::Duration::from_secs(2)).unwrap(), "10.0.0.5");
     }
 }

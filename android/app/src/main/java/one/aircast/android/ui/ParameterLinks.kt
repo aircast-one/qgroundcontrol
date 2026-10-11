@@ -187,6 +187,7 @@ internal fun ParameterEditDialog(name: String, title: String = name, onDismiss: 
                             resetting = true
                             scope.launch {
                                 forceRefusal = withContext(Dispatchers.Default) { if (forced) Qgc.writeForcedRefusal(loaded.path, default) else Qgc.writeRefusal(loaded.path, default) }
+                                resetting = forceRefusal == null
                                 if (forceRefusal == null) onDismiss()
                             }
                         }) { Text("Reset to default") }
@@ -237,6 +238,7 @@ internal fun ValueDetailsSheet(fact: Fact, title: String = VALUE_DETAILS_TITLE, 
                         resetting = true
                         scope.launch {
                             refusal = withContext(Dispatchers.Default) { Qgc.writeRefusal(fact.path, value) }
+                            resetting = refusal == null
                             if (refusal == null) {
                                 onWrite()
                                 onDismiss()

@@ -661,8 +661,7 @@ pub fn set_altitude_mode(doc: &Document, visual_index: usize, mode: i64) -> Opti
         _ => return None,
     };
     let calculated = mode == crate::altitudemodes::CALC_ABOVE_TERRAIN;
-    let param7 = if calculated { f64::NAN } else { held.altitude };
-    let params: [Option<f64>; 7] = std::array::from_fn(|i| if i == 6 { Some(param7) } else { current.params[i] });
+    let params: [Option<f64>; 7] = std::array::from_fn(|i| if i == 6 { (!calculated).then_some(held.altitude) } else { current.params[i] });
     let amsl_above_terrain = if calculated { None } else { held.amsl_above_terrain };
     Some(replaced(doc, at, Simple { frame, params, altitude: Some(Altitude { mode, amsl_above_terrain, ..held.clone() }), ..current.clone() }))
 }
@@ -683,7 +682,7 @@ fn simple_above_terrain(simple: &Simple, terrain: &dyn Fn(f64, f64) -> Option<f6
     match (&simple.altitude, simple.params[4], simple.params[5]) {
         (Some(held), Some(latitude), Some(longitude)) if held.mode == crate::altitudemodes::CALC_ABOVE_TERRAIN => {
             let amsl = terrain(latitude, longitude).filter(|ground| ground.is_finite()).map(|ground| ground + held.altitude);
-            let params: [Option<f64>; 7] = std::array::from_fn(|i| if i == 6 { Some(amsl.unwrap_or(f64::NAN)) } else { simple.params[i] });
+            let params: [Option<f64>; 7] = std::array::from_fn(|i| if i == 6 { amsl } else { simple.params[i] });
             Simple { params, altitude: Some(Altitude { amsl_above_terrain: amsl, ..held.clone() }), ..simple.clone() }
         }
         _ => simple.clone(),
@@ -1381,7 +1380,7 @@ mod tests {
         assert_eq!((simple(&terrain).frame, simple(&terrain).altitude.unwrap().mode, simple(&terrain).params[6]), (FRAME_GLOBAL_TERRAIN_ALT, crate::altitudemodes::TERRAIN_FRAME, Some(shown)));
         let calc = set_altitude_mode(&terrain, at, crate::altitudemodes::CALC_ABOVE_TERRAIN).unwrap();
         assert_eq!(simple(&calc).frame, FRAME_GLOBAL);
-        assert!(simple(&calc).params[6].unwrap().is_nan(), "_altitudeFrameChanged clears param7 until terrain answers");
+        assert_eq!(simple(&calc).params[6], None, "_altitudeFrameChanged clears param7 until terrain answers");
         let relative = set_altitude_mode(&calc, at, crate::altitudemodes::RELATIVE).unwrap();
         assert_eq!((simple(&relative).frame, simple(&relative).params[6]), (FRAME_GLOBAL_RELATIVE_ALT, Some(shown)));
         assert_eq!(set_altitude_mode(&doc, at, crate::altitudemodes::MIXED), None);
@@ -1394,7 +1393,8 @@ mod tests {
         let simple = |d: &Document| match &d.items[at - 1] { Item::Simple(s) => s.clone(), _ => unreachable!() };
         let calc = set_altitude(&set_altitude_mode(&doc, at, crate::altitudemodes::CALC_ABOVE_TERRAIN).unwrap(), at, 50.0).unwrap();
         let unknown = above_terrain(&calc, &|_, _| None);
-        assert!(simple(&unknown).params[6].unwrap().is_nan(), "50 m above ground is never sent as 50 m AMSL");
+        assert_eq!(simple(&unknown).params[6], None, "50 m above ground is never sent as 50 m AMSL");
+        assert_eq!(unknown, above_terrain(&calc, &|_, _| None), "a plan waiting on terrain still equals itself, so undo and change checks see no change");
         assert!(awaiting_terrain(&unknown), "upload waits for terrain");
         let known = above_terrain(&calc, &|_, _| Some(500.0));
         assert_eq!((simple(&known).params[6], simple(&known).frame), (Some(550.0), FRAME_GLOBAL));

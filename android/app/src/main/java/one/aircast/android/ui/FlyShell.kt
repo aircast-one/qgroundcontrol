@@ -265,7 +265,8 @@ internal fun FlyScreen(
         var holding by remember { mutableStateOf(false) }
         val frame = rememberVideoFrame(videoTarget, holding)
         val cameras = rememberCameraStepper()
-        val videoDrags by rememberUpdatedState(rememberGimbalDrags() || rememberSyntheticAims())
+        val gimbalDrags by rememberUpdatedState(rememberGimbalDrags())
+        val syntheticAims by rememberUpdatedState(rememberSyntheticAims())
         val swipeDistance = with(density) { VIDEO_SWIPE_DISTANCE.toPx() }
         val latestPip by rememberUpdatedState(pipNow)
         val latestHome by rememberUpdatedState(pipHome)
@@ -280,7 +281,7 @@ internal fun FlyScreen(
             Modifier.videoGestures(
                 VideoGestureHandlers(
                     owned = { false },
-                    claimsSwipe = { moved -> sideways(moved) && !videoDrags },
+                    claimsSwipe = { moved -> sideways(moved) && !gimbalDrags && !(syntheticAims && !latestPip) },
                     onTap = {},
                     onDoubleTap = { if (latestInFullScreen) latestExitFullScreen() else latestEnterFullScreen() },
                     onSwipe = { moved -> cameraStep(videoSwipe(moved, swipeDistance))?.let(cameras.step) },

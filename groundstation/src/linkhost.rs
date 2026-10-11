@@ -529,7 +529,7 @@ pub fn qt_udp_ports(backend: &dyn crate::router::Backend) -> Vec<u16> {
 }
 
 pub fn transports_view(backend: &dyn crate::router::Backend, _args: &[String]) -> Value {
-    let mut snapshot = TRANSPORTS.lock().unwrap().snapshot();
+    let mut snapshot = TRANSPORTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).snapshot();
     let qt = qt_links(backend);
     snapshot["qtOpenCount"] = json!(qt.iter().filter(|l| l["state"] == "open").count());
     if let Some(links) = snapshot.get_mut("links").and_then(Value::as_array_mut) {

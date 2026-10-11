@@ -17,7 +17,7 @@ object HostPlatform {
         return QtQuickView(activity, QML_URI, QML_LIBRARY, arrayOf("qrc:/qml"))
     }
 
-    fun stop(activity: Activity) {
+    fun stop(activity: Activity, @Suppress("UNUSED_PARAMETER") last: Boolean) {
         if (activity.isChangingConfigurations) QtRelaunchGuard.forgetActivity(activity)
         runCatching { QGCSDLManager.cleanup() }
         runCatching { QGCUsbSerialManager.cleanup(activity) }

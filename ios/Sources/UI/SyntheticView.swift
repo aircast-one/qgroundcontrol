@@ -23,8 +23,8 @@ func syntheticAvailable(_ view: JSON?) -> Bool { view?["available"].bool == true
 
 func syntheticChosen(_ reading: CamerasReading?) -> Bool { reading?.cameras.first(where: \.active)?.source == SYNTHETIC_SOURCE }
 
-func syntheticAims(_ view: JSON?, _ video: VideoReading?) -> Bool {
-    syntheticAvailable(view) && view?["aimable"].bool == true && video?.decoding != true
+func syntheticAims(_ view: JSON?, _ cameras: CamerasReading?) -> Bool {
+    syntheticAvailable(view) && view?["aimable"].bool == true && cameras?.cameras.contains { $0.active && $0.source == SYNTHETIC_SOURCE } == true
 }
 
 func syntheticPoseScript(_ view: JSON) -> String { "window.aircast && window.aircast.pose(\(view.text))" }

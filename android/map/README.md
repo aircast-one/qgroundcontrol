@@ -416,15 +416,11 @@ evidence is that the picker then offers Vehicle 1, which comes from `vehicle.id`
 
 ## Tiles
 
-`QgcTileCache` reads QGroundControl's SQLite cache directly and serves tiles through an OkHttp
-interceptor on a private host, so the map works offline on imagery already downloaded. Tiles are
-keyed by a 29 character hash: a 10 digit provider hash then x, y and z zero padded to 8, 8 and 3.
-
-QGroundControl writes that database while the map reads it, and a read-only connection cannot roll
-back a journal it finds mid-write. The exception lands on OkHttp's thread and takes the process
-down, so a failed tile read yields no tile instead.
-
-Falls back to OpenStreetMap when the cache is empty. That style is for development only.
+The map style points at a private host, `qgc.tiles`, and an OkHttp interceptor answers each tile
+from the core (`MapTileHost.fetch`), which downloads, caches and serves offline tile sets for every
+map type. When the core has no tile the map shows none rather than another provider's imagery.
+Only a build without the core (`MapTileHost.fetch` unset) falls back to OpenStreetMap, for
+development.
 
 ## Seen in the app's Plan tab
 

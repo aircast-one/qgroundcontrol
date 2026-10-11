@@ -248,7 +248,7 @@ const settled = (from, to) =>
   Math.abs(to.longitude - from.longitude) < SETTLED_DEGREES &&
   Math.abs(to.latitude - from.latitude) < SETTLED_DEGREES &&
   Math.abs(to.height - from.height) < SETTLED_METRES &&
-  [wrapped(to.heading - from.heading), to.pitch - from.pitch, to.roll - from.roll, to.fov - from.fov].every((turn) => Math.abs(turn) < SETTLED_ANGLE);
+  [to.heading - from.heading, to.pitch - from.pitch, to.roll - from.roll, to.fov - from.fov].every((turn) => Math.abs(turn) < SETTLED_ANGLE);
 
 const goal = (target) => {
   const ground = scene.globe.getHeight(Cesium.Cartographic.fromDegrees(target.longitude, target.latitude));

@@ -259,14 +259,22 @@ struct CameraSwiper: DynamicProperty {
 }
 
 @propertyWrapper
-struct VideoDrags: DynamicProperty {
+struct GimbalDrags: DynamicProperty {
     @QgcPath(GIMBAL_INDICATOR_PATH) private var view
-    @QgcPath(SYNTHETIC_VIEW) private var synthetic
-    @QgcPath(VIDEO_VIEW) private var video
 
     init() {}
 
-    var wrappedValue: Bool { onScreenGimbal(view) != nil || syntheticAims(synthetic, videoReading(video)) }
+    var wrappedValue: Bool { onScreenGimbal(view) != nil }
+}
+
+@propertyWrapper
+struct SyntheticAims: DynamicProperty {
+    @QgcPath(SYNTHETIC_VIEW) private var synthetic
+    @QgcPath(CAMERAS_VIEW) private var cameras
+
+    init() {}
+
+    var wrappedValue: Bool { syntheticAims(synthetic, camerasReading(cameras)) }
 }
 
 struct CameraChip: View {

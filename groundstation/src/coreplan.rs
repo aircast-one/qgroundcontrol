@@ -1041,12 +1041,16 @@ fn settle(id: u8, kind: &str) -> bool {
         .unwrap_or(false)
 }
 
+fn read_succeeded(snapshot: &Value, kind: &str) -> bool {
+    snapshot[kind]["error"].is_null()
+}
+
 fn load(id: u8, kind: &str) -> bool {
     let started = crate::hub::lock().mission_request(Some(id), &json!({ "action": "load", "plan": kind }), crate::hub::now_ms());
     match started {
         Ok(outbound) => {
             deliver(outbound);
-            settle(id, kind) && crate::hub::lock().vehicle(id).is_some_and(|v| v.mission_snapshot()[kind]["error"].is_null())
+            settle(id, kind) && crate::hub::lock().vehicle(id).is_some_and(|v| read_succeeded(&v.mission_snapshot(), kind))
         }
         Err(_) => false,
     }
@@ -1442,7 +1446,7 @@ fn step(undoing: bool) -> Value {
             return json!({ "ok": false, "reason": format!("Nothing to {word}."), "refusal": "nothingTo" });
         };
         forget_raw_edits();
-        let current = state.document.replace(restored);
+        let current = state.document.replace(plandoc::above_terrain(&restored, &terrain_height));
         match undoing {
             true => state.redo.extend(current),
             false => state.undo.extend(current),
@@ -2232,6 +2236,12 @@ mod tests {
         let body = include_str!("coreplan.rs").split("#[cfg(test)]\nmod tests").next().unwrap_or("");
         let held_across: Vec<&str> = body.lines().filter(|line| line.contains("held()") && line.contains("(backend")).collect();
         assert!(held_across.is_empty(), "a held() temporary lives to the end of its statement, and a backend read can route back into controller_fields, which takes the same lock: {held_across:?}");
+    }
+
+    #[test]
+    fn a_download_that_failed_is_never_adopted_over_the_plan() {
+        assert!(read_succeeded(&json!({ "mission": { "inProgress": false, "error": null, "items": [] } }), "mission"));
+        assert!(!read_succeeded(&json!({ "mission": { "inProgress": false, "error": "Link lost", "items": [] } }), "mission"), "a dropped link leaves no items, which must not replace the plan");
     }
 
     #[test]

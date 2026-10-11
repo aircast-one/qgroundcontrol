@@ -468,11 +468,24 @@ pub fn settings_reset_notice(application: &str) -> String {
     format!("The format for {application} saved settings has been modified. Your saved settings have been reset to defaults.")
 }
 
+pub fn settings_unsaved_notice(error: &std::io::Error) -> String {
+    format!("Saved settings could not be read ({error}). Changes made now will not be saved, so the file is left as it is.")
+}
+
+fn settings_text(read: std::io::Result<Vec<u8>>) -> (String, Result<(), std::io::Error>) {
+    match read {
+        Ok(bytes) => (String::from_utf8_lossy(&bytes).into_owned(), Ok(())),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => (String::new(), Ok(())),
+        Err(error) => (String::new(), Err(error)),
+    }
+}
+
 pub fn open(path: &std::path::Path) {
-    let (text, writable) = match std::fs::read(path) {
-        Ok(bytes) => (String::from_utf8_lossy(&bytes).into_owned(), true),
-        Err(error) => (String::new(), error.kind() == std::io::ErrorKind::NotFound),
-    };
+    let (text, readable) = settings_text(std::fs::read(path));
+    if let Err(error) = &readable {
+        crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &settings_unsaved_notice(error));
+    }
+    let writable = readable.is_ok();
     let read = crate::settingsini::read(&text);
     if clear_asked(&read)
         && let Some(cache) = crate::paramcache::folder_for(path)
@@ -1185,6 +1198,14 @@ mod tests {
     }
 
     use super::*;
+
+    #[test]
+    fn a_settings_file_that_cannot_be_read_is_never_overwritten_and_a_stray_byte_keeps_the_rest() {
+        let (text, ok) = settings_text(Ok(b"[App]\nname=caf\xe9\nkept=1\n".to_vec()));
+        assert!(ok.is_ok() && text.contains("kept=1"), "one non-UTF-8 byte no longer reads as an empty file");
+        assert!(settings_text(Err(std::io::Error::from(std::io::ErrorKind::NotFound))).1.is_ok(), "a first run has no file and saves a new one");
+        assert!(settings_text(Err(std::io::Error::from(std::io::ErrorKind::PermissionDenied))).1.is_err(), "a file that exists but cannot be read is left alone");
+    }
 
     #[test]
     fn data_goes_to_the_sd_card_unless_told_not_to_or_it_cannot_be_written() {
