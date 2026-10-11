@@ -438,6 +438,12 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     val liveActions = actionsJson?.toString()
     val confirming = pending
     val showingSent = sentIsStillShowing(sentName, sentSnapshot, liveActions)
+    LaunchedEffect(sentName) {
+        if (sentName != null) {
+            delay(SENT_SHOWN_MS)
+            sentName = null
+        }
+    }
 
     val entries = flightDeckEntries(
         FlightDeckContext(
@@ -447,8 +453,6 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             confirm = { pending = it },
             openValue = openValue,
             report = { refusal = it },
-            withdraw = { refusal = withdrawn(refusal, it) },
-            showing = { refusal == it },
             openChecklist = checklist::open.takeIf { useChecklist },
             readiness = readiness,
         ),
@@ -654,38 +658,7 @@ private fun Offered(offer: GuidedOffer?, content: @Composable () -> Unit) {
     }
 }
 
-private fun armedNow(): Boolean = flyState(Qgc.get(FLY_STATE))?.armed == true
-
 private fun flightModeNow(): String = flyState(Qgc.get(FLY_STATE))?.mode.orEmpty()
-
-private fun CoroutineScope.attemptCommand(
-    action: String,
-    report: (String?) -> Unit,
-    withdraw: (String) -> Unit,
-    showing: (String) -> Boolean,
-    reached: () -> Boolean,
-    call: () -> Unit,
-) {
-    launch {
-        report(null)
-        withContext(Dispatchers.Default) { call() }
-        val confirmed = withTimeoutOrNull(COMMAND_SETTLE_MS) {
-            while (!withContext(Dispatchers.Default) { reached() }) {
-                delay(200)
-            }
-            true
-        } == true
-        val refused = commandRefusal(action, confirmed) ?: return@launch
-        report(refused)
-        while (showing(refused) && !withContext(Dispatchers.Default) { reached() }) {
-            delay(LATE_CONFIRM_POLL_MS)
-        }
-        withdraw(refused)
-    }
-}
-
-internal const val COMMAND_SETTLE_MS = 4000L
-internal const val LATE_CONFIRM_POLL_MS = 500L
 
 internal fun withdrawn(shown: String?, late: String): String? = if (shown == late) null else shown
 
@@ -696,9 +669,6 @@ private fun RefusalLine(message: String, onDismiss: () -> Unit) {
         IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, contentDescription = "Dismiss") }
     }
 }
-
-internal fun commandRefusal(action: String, confirmed: Boolean): String? =
-    if (confirmed) null else "$action was not confirmed by the aircraft."
 
 internal const val FLIGHT_MODE_SETTINGS_PAGE = "Flight Mode Settings"
 
@@ -962,8 +932,6 @@ internal class FlightDeckContext(
     val confirm: (GuidedAction) -> Unit,
     val openValue: (GuidedValueKind) -> Unit,
     val report: (String?) -> Unit,
-    val withdraw: (String) -> Unit,
-    val showing: (String) -> Boolean,
     val openChecklist: (() -> Unit)?,
     val readiness: Readiness? = null,
 )
@@ -989,13 +957,7 @@ internal fun flightDeckEntries(deck: FlightDeckContext): List<DeckEntry> = with(
                 destructive = armAction?.destructive ?: true,
             ) {
                 val target = !armed
-                scope.attemptCommand(
-                    action = if (target) "Arm" else "Disarm",
-                    report = report,
-                    withdraw = withdraw,
-                    showing = showing,
-                    reached = { armedNow() == target },
-                ) { VehicleCommands.setArmed(target) }
+                offMainDetached { VehicleCommands.setArmed(target) }
             })
         }.takeIf { armAction?.shown == true },
         DeckEntry(

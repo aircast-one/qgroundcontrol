@@ -6,6 +6,8 @@ func sentIsStillShowing(_ name: String?, _ snapshotAtSend: String?, _ live: Stri
 
 func sentText(_ name: String) -> String { "Sent \u{00B7} \(name)" }
 
+let SENT_SHOWN_MS = 3_000
+
 let LAND_FROM = "view.instruments(altitudeRelative)"
 
 func landFrom(_ view: JSON?) -> (String, String)? {

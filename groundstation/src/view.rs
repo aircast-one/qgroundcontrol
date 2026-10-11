@@ -728,6 +728,7 @@ mod deps_cover_reads {
             ("platformserial", include_str!("platformserial.rs")),
             ("hostdevice", include_str!("hostdevice.rs")),
             ("pilotunits", include_str!("pilotunits.rs")),
+            ("refusal", include_str!("refusal.rs")),
             ("presets", include_str!("presets.rs")),
             ("rctoparam", include_str!("rctoparam.rs")),
             ("planselect", include_str!("planselect.rs")),

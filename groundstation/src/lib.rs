@@ -129,6 +129,7 @@ pub mod missionkinds;
 pub mod missionsummary;
 pub mod modes;
 pub mod modeslots;
+pub mod refusal;
 pub mod obstacle;
 pub mod onboardlogs;
 pub mod plan;

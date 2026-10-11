@@ -53,6 +53,7 @@ pub enum Out {
     Result { tag: u64, component: u8, command: u16, result: u8, failure: Failure },
     Progress { tag: u64, component: u8, command: u16 },
     ShowError(String),
+    ArmRefused { arming: bool, unanswered: bool },
     RequestResult { tag: u64, component: u8, message_id: u32, result: u8, failure: RequestFailure },
 }
 
@@ -100,6 +101,13 @@ fn can_duplicate(command: u16) -> bool {
 
 fn emergency_stop(command: &Command) -> bool {
     command.command == crate::guidedcmd::CMD_COMPONENT_ARM_DISARM && command.params[0] == 0.0 && command.params[1] == crate::guidedcmd::ARM_MAGIC
+}
+
+fn failure_shown(command: &Command, unanswered: bool, text: String) -> Out {
+    match command.command == crate::guidedcmd::CMD_COMPONENT_ARM_DISARM {
+        true => Out::ArmRefused { arming: command.params[0] != 0.0, unanswered },
+        false => Out::ShowError(text),
+    }
 }
 
 fn result_text(command: u16, result: u8) -> Option<String> {
@@ -185,11 +193,8 @@ impl Commands {
         if entry.tries > entry.max_tries {
             let entry = self.entries.remove(index);
             let c = entry.command;
-            let mut out = vec![Out::Result { tag: c.tag, component: c.component, command: c.command, result: RESULT_FAILED, failure: Failure::NoResponse }];
-            if c.show_error {
-                out.push(Out::ShowError(format!("Vehicle did not respond to command: {}", friendly_text(c.command))));
-            }
-            return out;
+            let out = Out::Result { tag: c.tag, component: c.component, command: c.command, result: RESULT_FAILED, failure: Failure::NoResponse };
+            return std::iter::once(out).chain(c.show_error.then(|| failure_shown(&c, true, format!("Vehicle did not respond to command: {}", friendly_text(c.command))))).collect();
         }
         if entry.tries > 1 && !self.px4 && entry.command.command == CMD_START_RX_PAIR {
             return Vec::new();
@@ -231,9 +236,7 @@ impl Commands {
         let c = entry.command;
         let mut out = vec![Out::Result { tag: c.tag, component, command, result, failure: Failure::ResultOnly }];
         if c.show_error {
-            if let Some(text) = result_text(command, result) {
-                out.push(Out::ShowError(text));
-            }
+            out.extend(result_text(command, result).map(|text| failure_shown(&c, false, text)));
         }
         if command == CMD_REQUEST_MESSAGE {
             out.extend(self.request_acked(component, c.params[0] as u32, result, now_ms, c.tag));
@@ -386,13 +389,13 @@ mod tests {
         let sent = commands.send(arm(7), 0);
         assert!(matches!(sent.as_slice(), [Out::Send { component: 1, command: 400, command_int: false, .. }]));
         assert!(commands.pending(1, 400));
-        assert_eq!(commands.on_ack(1, 400, 2, 10), vec![Out::Result { tag: 7, component: 1, command: 400, result: 2, failure: Failure::ResultOnly }, Out::ShowError("Arm/Disarm (MAV_CMD_COMPONENT_ARM_DISARM) command denied".into())]);
+        assert_eq!(commands.on_ack(1, 400, 2, 10), vec![Out::Result { tag: 7, component: 1, command: 400, result: 2, failure: Failure::ResultOnly }, Out::ArmRefused { arming: true, unanswered: false }], "the hub words an arm refusal itself, with the autopilot's reason");
         assert_eq!(command_text(9999), "MAV_CMD(9999) (MAV_CMD(9999))", "MissionCommandTree names an unknown command MAV_CMD(n) for both halves");
         assert!(!commands.pending(1, 400));
         assert!(commands.on_ack(1, 400, 0, 10).is_empty());
         let unretried = commands.send(arm(8), 100);
         assert_eq!(unretried.len(), 1);
-        assert_eq!(commands.tick(100 + ACK_TIMEOUT_MS + 1), vec![Out::Result { tag: 8, component: 1, command: 400, result: RESULT_FAILED, failure: Failure::NoResponse }, Out::ShowError("Vehicle did not respond to command: Arm/Disarm".into())]);
+        assert_eq!(commands.tick(100 + ACK_TIMEOUT_MS + 1), vec![Out::Result { tag: 8, component: 1, command: 400, result: RESULT_FAILED, failure: Failure::NoResponse }, Out::ArmRefused { arming: true, unanswered: true }]);
     }
 
     #[test]

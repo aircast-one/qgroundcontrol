@@ -358,6 +358,8 @@ pub struct Vehicle {
     pub params_progress: f64,
     commands: Commands,
     guided: Executor,
+    arming_texts: Vec<(u64, String)>,
+    refusal_due: Option<(u64, bool)>,
     connect: Connect,
     modes: StandardModes,
     params: Params,
@@ -588,6 +590,8 @@ impl Vehicle {
             params_progress: 0.0,
             commands: Commands::for_firmware(autopilot == crate::modes::AUTOPILOT_PX4),
             guided: Executor::default(),
+            arming_texts: Vec::new(),
+            refusal_due: None,
             connect: Connect::default(),
             modes: StandardModes::default(),
             params: Params::new(component, autopilot == crate::modes::AUTOPILOT_PX4),
@@ -2261,6 +2265,23 @@ impl Vehicle {
         }
     }
 
+    fn tell_refusal(&mut self, arming: bool, unanswered: bool, now_ms: u64) {
+        let text = crate::refusal::arming(arming, unanswered, &self.recent_arming_texts(now_ms), &self.flight_mode(), crate::modes::vehicle_class(self.vehicle_type));
+        self.pending_notices.push((crate::noticeboard::BRIEF, text.clone()));
+        self.note(text);
+    }
+
+    fn tell_due_refusal(&mut self, now_ms: u64) {
+        if let Some((_, arming)) = self.refusal_due.filter(|(due, _)| now_ms >= *due) {
+            self.refusal_due = None;
+            self.tell_refusal(arming, false, now_ms);
+        }
+    }
+
+    fn recent_arming_texts(&self, now_ms: u64) -> Vec<String> {
+        self.arming_texts.iter().filter(|(at, _)| now_ms.saturating_sub(*at) <= crate::refusal::REASON_WINDOW_MS).map(|(_, text)| text.clone()).collect()
+    }
+
     fn note(&mut self, error: String) {
         self.errors.push(error);
         let excess = self.errors.len().saturating_sub(MAX_ERRORS);
@@ -2359,6 +2380,15 @@ impl Vehicle {
                     self.note(text);
                     Vec::new()
                 }
+                Out::ArmRefused { arming, unanswered: true } => {
+                    self.tell_refusal(arming, true, now_ms);
+                    Vec::new()
+                }
+                Out::ArmRefused { arming, unanswered: false } => {
+                    let told = self.recent_arming_texts(now_ms).iter().any(|text| crate::refusal::is_response_text(text));
+                    self.refusal_due = (!told).then_some((now_ms + crate::refusal::REPLY_WAIT_MS, arming));
+                    Vec::new()
+                }
                 Out::Result { tag, component, result: RESULT_ACCEPTED, failure: Failure::ResultOnly, .. } if (INSPECTOR_RATE_TAG..INSPECTOR_RATE_TAG + (1 << 32)).contains(&tag) => {
                     let message = (tag - INSPECTOR_RATE_TAG) as u32;
                     if self.intervals_unsupported.contains(&(component, message)) {
@@ -2452,6 +2482,7 @@ impl Vehicle {
 
     fn pump_with(&mut self, now_ms: u64, remote_inputs: Option<&RemoteInputs>, now_s: u64) -> Vec<Vec<u8>> {
         let ticked = self.commands.tick(now_ms);
+        self.tell_due_refusal(now_ms);
         self.control.tick(now_ms);
         let mut bytes = self.handle(ticked, now_ms);
         if self.control.revert_due(now_ms, mavout::gcs_system()) {
@@ -2652,6 +2683,9 @@ impl Vehicle {
     }
 
     fn take_status(&mut self, status: StatusText, now_ms: u64) -> Vec<Vec<u8>> {
+        if crate::refusal::is_arming_text(&status.text) {
+            self.arming_texts = self.arming_texts.iter().filter(|(at, _)| now_ms.saturating_sub(*at) <= crate::refusal::REASON_WINDOW_MS).cloned().chain([(now_ms, status.text.clone())]).collect();
+        }
         if let Some(spoken) = self.spoken_status(&status, now_ms) {
             crate::speech::say(&spoken.to_lowercase());
         }
@@ -2917,8 +2951,13 @@ impl Vehicle {
     fn log_status(&mut self, status: &StatusText) {
         let px4 = self.autopilot == crate::modes::AUTOPILOT_PX4;
         if let Some(text) = crate::messagelog::admitted(px4, self.events.supports_checks(status.component), status.severity, &status.text) {
-            if status.severity <= SEVERITY_ERROR {
-                self.pending_notices.push((crate::noticeboard::VEHICLE_ERROR, text.clone()));
+            match crate::refusal::from_text(&status.text, &self.flight_mode(), crate::modes::vehicle_class(self.vehicle_type)) {
+                Some(plain) => {
+                    self.refusal_due = None;
+                    self.pending_notices.push((crate::noticeboard::BRIEF, plain));
+                }
+                None if status.severity <= SEVERITY_ERROR => self.pending_notices.push((crate::noticeboard::VEHICLE_ERROR, text.clone())),
+                None => {}
             }
             self.message_log.record(status.component, status.severity, text, crate::messagelog::clock_now());
         }
@@ -5691,6 +5730,40 @@ mod tests {
         let in_mode = hub.on_frame(origin(4), &autopilot, &copter_heartbeat(4, false), 2_000_000, 2000);
         let arming: Vec<(MavCmd, f32)> = in_mode.iter().filter_map(|(_, bytes)| match decode(bytes) { MavMessage::COMMAND_LONG(c) => Some((c.command, c.param1)), _ => None }).collect();
         assert!(arming.contains(&(MavCmd::MAV_CMD_COMPONENT_ARM_DISARM, 1.0)), "{arming:?}");
+    }
+
+    #[test]
+    fn an_arm_the_autopilot_refuses_is_told_once_in_plain_words_with_its_reason() {
+        use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, MavCmd, MavResult, MavSeverity, STATUSTEXT_DATA};
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &autopilot);
+        let mode = hub.active().unwrap().flight_mode();
+        hub.guided(None, &json!({ "action": "arm", "arm": true }), 1_000).unwrap();
+        let refused = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_COMPONENT_ARM_DISARM, result: MavResult::MAV_RESULT_FAILED, ..Default::default() });
+        hub.on_frame(origin(4), &autopilot, &refused, 1_100_000, 1_100);
+        let reason = MavMessage::STATUSTEXT(STATUSTEXT_DATA { severity: MavSeverity::MAV_SEVERITY_CRITICAL, text: mavout::chars(&format!("Arm: {} mode not armable", mode.to_uppercase())), ..Default::default() });
+        hub.on_frame(origin(4), &autopilot, &reason, 1_150_000, 1_150);
+        hub.tick(1_100 + crate::refusal::REPLY_WAIT_MS + 1);
+        let told: Vec<(&str, String)> = hub.active().unwrap().pending_notices.iter().filter(|(_, text)| text.to_lowercase().contains("arm")).cloned().collect();
+        assert_eq!(told, [(crate::noticeboard::BRIEF, format!("Can't arm in {mode} mode. Switch to Loiter or Guided first."))], "ArduCopter 4.5 sends its reason after the refusal; one brief notice carries it, not the raw text and not a reasonless refusal");
+    }
+
+    #[test]
+    fn a_refused_arm_with_no_reason_still_says_so_once_the_reply_wait_is_over() {
+        use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, MavCmd, MavResult, MavSeverity, STATUSTEXT_DATA};
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &autopilot);
+        let stale = MavMessage::STATUSTEXT(STATUSTEXT_DATA { severity: MavSeverity::MAV_SEVERITY_CRITICAL, text: mavout::chars("PreArm: Compass not calibrated"), ..Default::default() });
+        hub.on_frame(origin(4), &autopilot, &stale, 1_000_000, 1_000);
+        hub.guided(None, &json!({ "action": "arm", "arm": true }), 9_000).unwrap();
+        let refused = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_COMPONENT_ARM_DISARM, result: MavResult::MAV_RESULT_DENIED, ..Default::default() });
+        hub.on_frame(origin(4), &autopilot, &refused, 9_100_000, 9_100);
+        let quiet = |hub: &Hub| !hub.active().unwrap().pending_notices.iter().any(|(_, text)| text.contains("refused to arm"));
+        assert!(quiet(&hub), "the reason may still be on its way");
+        hub.tick(9_100 + crate::refusal::REPLY_WAIT_MS);
+        assert!(!quiet(&hub), "a PreArm line older than the window is not blamed, but the refusal is still told");
     }
 
     #[test]

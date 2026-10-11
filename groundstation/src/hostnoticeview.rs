@@ -26,6 +26,7 @@ pub fn host_notices_view(backend: &dyn Backend, args: &[String]) -> Value {
                     let kind = text("kind");
                     Some(json!({
                         "id": id,
+                        "brief": n.get("brief").and_then(Value::as_bool).unwrap_or(false),
                         "kind": kind,
                         "known": crate::contract::NOTICE_KINDS.contains(&kind.as_str()),
                         "title": text("title"),
@@ -40,13 +41,13 @@ pub fn host_notices_view(backend: &dyn Backend, args: &[String]) -> Value {
     let destination = after.iter().rev().find(|n| n["kind"] == NAVIGATION_NOTICE).and_then(|n| n["title"].as_str()).filter(|t| !t.trim().is_empty());
     let banners: Vec<String> = after
         .iter()
-        .filter(|n| n["kind"] != NAVIGATION_NOTICE && n["kind"] != crate::noticeboard::MESSAGE)
+        .filter(|n| n["kind"] != NAVIGATION_NOTICE && (n["kind"] != crate::noticeboard::MESSAGE || n["brief"] == true))
         .filter_map(|n| n["banner"].as_str())
         .filter(|line| !line.is_empty())
         .fold(Vec::new(), |kept, line| if kept.iter().any(|k: &String| k == line) { kept } else { kept.into_iter().chain(std::iter::once(line.to_string())).collect() });
     let dialogs: Vec<Value> = after
         .iter()
-        .filter(|n| n["kind"] == crate::noticeboard::MESSAGE)
+        .filter(|n| n["kind"] == crate::noticeboard::MESSAGE && n["brief"] != true)
         .map(|n| {
             let title = n["title"].as_str().filter(|t| !t.trim().is_empty()).map(str::to_string).unwrap_or_else(|| app.clone());
             let text = n["text"].as_str().unwrap_or_default();
@@ -122,6 +123,18 @@ mod tests {
         let app = crate::noticeboard::application_name();
         assert_eq!(view["dialogs"], json!([{ "title": app, "text": "Parameters could not be loaded", "action": "" }, { "title": "Links", "text": "Connect not allowed", "action": "" }]));
         assert_eq!(view["banners"], json!(["EKF failure"]));
+    }
+
+    #[test]
+    fn a_brief_message_is_a_banner_that_clears_itself_not_a_dialog_to_dismiss() {
+        let app = crate::noticeboard::application_name();
+        let host = Host(json!({ "kind": "object", "dropped": 0, "notices": [
+            { "id": 1, "kind": "message", "title": app, "text": "Can't arm in Land mode. Switch to Loiter or Guided first.", "brief": true },
+            { "id": 2, "kind": "message", "title": "", "text": "Parameters could not be loaded" },
+        ] }));
+        let view = host_notices_view(&host, &[]);
+        assert_eq!(view["banners"], json!(["Can't arm in Land mode. Switch to Loiter or Guided first."]));
+        assert_eq!(view["dialogs"].as_array().unwrap().len(), 1, "an ordinary app message stays a dialog");
     }
 
     #[test]

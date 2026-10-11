@@ -422,6 +422,11 @@ struct FlightActions<Center: View>: View {
 
     var body: some View {
         flightActions
+            .task(id: actions.sentName) {
+                guard actions.sentName != nil else { return }
+                try? await Task.sleep(for: .milliseconds(SENT_SHOWN_MS))
+                if !Task.isCancelled { actions.sentName = nil }
+            }
             .onAppear { actions.mounted += 1 }
             .onDisappear { left() }
     }
@@ -481,7 +486,6 @@ struct FlightActions<Center: View>: View {
             confirm: { actions.pending = $0 },
             openValue: openValue,
             report: { flyScreen.refusal = $0 },
-            withdraw: { flyScreen.refusal = withdrawn(flyScreen.refusal, $0) },
             openChecklist: preflightOffered(preflightJson) ? { checklist.open() } : nil,
             readiness: readiness
         ))
@@ -750,41 +754,9 @@ struct RangeHint: View {
     }
 }
 
-private func armedNow() -> Bool { flyState(Qgc.get(FLY_STATE))?.armed == true }
-
 private func flightModeNow() -> String { flyState(Qgc.get(FLY_STATE))?.mode ?? "" }
 
-private func reachedWithin(_ reached: @escaping @Sendable () -> Bool, _ timeoutMs: Int?, _ pollMs: Int) async -> Bool {
-    let started = Date()
-    while !Task.isCancelled {
-        if await offMain(reached) { return true }
-        if let timeoutMs, Date().timeIntervalSince(started) * 1000 >= Double(timeoutMs) { return false }
-        try? await Task.sleep(for: .milliseconds(pollMs))
-    }
-    return false
-}
-
-@MainActor
-private func attemptCommand(_ scope: ViewScope, _ action: String, report: @escaping (String?) -> Void, withdraw: @escaping (String) -> Void, reached: @escaping @Sendable () -> Bool, call: @escaping @Sendable () -> Void) {
-    scope.launch {
-        report(nil)
-        _ = await offMain(call)
-        let confirmed = await reachedWithin(reached, COMMAND_SETTLE_MS, 200)
-        guard let refused = commandRefusal(action, confirmed) else { return }
-        report(refused)
-        guard await reachedWithin(reached, nil, LATE_CONFIRM_POLL_MS) else { return }
-        withdraw(refused)
-    }
-}
-
-let COMMAND_SETTLE_MS = 4000
-let LATE_CONFIRM_POLL_MS = 500
-
 func withdrawn(_ shown: String?, _ late: String) -> String? { shown == late ? nil : shown }
-
-func commandRefusal(_ action: String, _ confirmed: Bool) -> String? {
-    confirmed ? nil : "\(action) was not confirmed by the aircraft."
-}
 
 let FLIGHT_MODE_SETTINGS_PAGE = "Flight Mode Settings"
 
@@ -1115,18 +1087,16 @@ final class FlightDeckContext {
     let confirm: (GuidedAction) -> Void
     let openValue: (GuidedValueKind) -> Void
     let report: (String?) -> Void
-    let withdraw: (String) -> Void
     let openChecklist: (() -> Void)?
     let readiness: Readiness?
 
-    init(offers: [String: GuidedOffer], armed: Bool, scope: ViewScope = ViewScope(), confirm: @escaping (GuidedAction) -> Void, openValue: @escaping (GuidedValueKind) -> Void, report: @escaping (String?) -> Void, withdraw: @escaping (String) -> Void, openChecklist: (() -> Void)?, readiness: Readiness? = nil) {
+    init(offers: [String: GuidedOffer], armed: Bool, scope: ViewScope = ViewScope(), confirm: @escaping (GuidedAction) -> Void, openValue: @escaping (GuidedValueKind) -> Void, report: @escaping (String?) -> Void, openChecklist: (() -> Void)?, readiness: Readiness? = nil) {
         self.offers = offers
         self.armed = armed
         self.scope = scope
         self.confirm = confirm
         self.openValue = openValue
         self.report = report
-        self.withdraw = withdraw
         self.openChecklist = openChecklist
         self.readiness = readiness
     }
@@ -1150,7 +1120,7 @@ func flightDeckEntries(_ deck: FlightDeckContext) -> [DeckEntry] {
                 offerId: armed ? "disarm" : "arm",
                 run: {
                     let target = !armed
-                    attemptCommand(deck.scope, target ? "Arm" : "Disarm", report: deck.report, withdraw: deck.withdraw, reached: { armedNow() == target }, call: { VehicleCommands.setArmed(target) })
+                    offMain { VehicleCommands.setArmed(target) }
                 }
             ))
         }) : nil,

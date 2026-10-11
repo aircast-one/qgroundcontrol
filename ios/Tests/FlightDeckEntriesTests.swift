@@ -18,7 +18,6 @@ final class FlightDeckEntriesTests: XCTestCase {
             confirm: { _ in },
             openValue: { opened.ids.append($0.offerId) },
             report: { _ in },
-            withdraw: { _ in },
             openChecklist: openChecklist,
             readiness: readiness
         )

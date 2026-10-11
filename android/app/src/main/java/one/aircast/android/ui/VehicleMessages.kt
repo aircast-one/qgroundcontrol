@@ -62,12 +62,15 @@ data class VehicleMessage(
 )
 
 private const val PREARM_PREFIX = "PreArm:"
+private val ARM_REPLY_PREFIXES = listOf("Arm:", "Arming denied:", "Disarming denied:")
+
+internal fun isArmReply(text: String): Boolean = text.trimStart().let { trimmed -> ARM_REPLY_PREFIXES.any { trimmed.startsWith(it) } }
 
 internal fun chipBlocker(blocker: String): String =
     blocker.trim().removePrefix(PREARM_PREFIX).trim().substringBefore(". ").trimEnd('.')
 
 internal fun bannerMessages(unread: List<VehicleMessage>): List<VehicleMessage> =
-    unread.filter { (it.level == MessageSeverity.Error || it.level == MessageSeverity.Warning) && !it.text.trimStart().startsWith(PREARM_PREFIX) }
+    unread.filter { (it.level == MessageSeverity.Error || it.level == MessageSeverity.Warning) && !it.text.trimStart().startsWith(PREARM_PREFIX) && !isArmReply(it.text) }
 
 internal fun bannerText(messages: List<VehicleMessage>): String? {
     if (messages.isEmpty()) return null

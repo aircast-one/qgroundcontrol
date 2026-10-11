@@ -43,6 +43,9 @@ private enum ShellStart {
     static var started = false
 }
 
+private let FLY_NOTICE_TOP: CGFloat = 76
+private let FLY_NOTICE_MAX_WIDTH: CGFloat = 560
+
 struct MainActivity: View {
     @State private var flyScreen = FlyScreenState(layout: OverlayLayoutState(overlayLayoutStore()))
     @State private var navigation = AppNavigationState()
@@ -292,9 +295,10 @@ struct AircastShell: View {
                     .zIndex(10)
             }
         }
-        .overlay(alignment: .bottom) {
+        .overlay(alignment: onFly ? .top : .bottom) {
             SnackbarHost(hostState: snackbars) { AppSnackbar(data: $0) }
-                .padding(.bottom, onFly && portrait ? flyScreen.mapInsets.bottom : 0)
+                .frame(maxWidth: onFly ? FLY_NOTICE_MAX_WIDTH : nil)
+                .padding(.top, onFly ? FLY_NOTICE_TOP : 0)
         }
     }
 

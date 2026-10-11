@@ -6,6 +6,7 @@ use serde_json::{Value, json};
 pub const NOTICES_CHANGED: &str = "core.notices@changed";
 pub const MESSAGE: &str = "message";
 pub const VEHICLE_ERROR: &str = "vehicleError";
+pub const BRIEF: &str = "brief";
 pub const REBOOT_VEHICLE_TEXT: &str = "Reboot vehicle for changes to take effect.";
 pub const RESTART_APPLICATION_TEXT: &str = "Restart application for changes to take effect.";
 const REBOOT_DEBOUNCE_MS: i64 = 2 * 60 * 1000;
@@ -45,6 +46,7 @@ struct Notice {
     repeated: i64,
     at: i64,
     last_at: i64,
+    brief: bool,
 }
 
 #[derive(Debug)]
@@ -62,6 +64,10 @@ impl Default for Board {
 
 impl Board {
     pub fn post(&mut self, kind: &str, title: &str, text: &str, now_ms: i64) -> bool {
+        self.post_with(kind, title, text, false, now_ms)
+    }
+
+    pub fn post_with(&mut self, kind: &str, title: &str, text: &str, brief: bool, now_ms: i64) -> bool {
         if !KINDS.contains(&kind) {
             return false;
         }
@@ -74,7 +80,7 @@ impl Board {
             self.notices.remove(KEEP_OLDEST.min(self.notices.len() - 1));
             self.dropped += 1;
         }
-        self.notices.push(Notice { id: self.next_id, kind: kind.to_string(), title: title.to_string(), text: text.to_string(), repeated: 0, at: now_ms, last_at: now_ms });
+        self.notices.push(Notice { id: self.next_id, kind: kind.to_string(), title: title.to_string(), text: text.to_string(), repeated: 0, at: now_ms, last_at: now_ms, brief });
         self.next_id += 1;
         true
     }
@@ -95,7 +101,7 @@ impl Board {
         let notices: Vec<Value> = self
             .notices
             .iter()
-            .map(|n| json!({ "id": n.id, "kind": n.kind, "repeated": n.repeated, "title": n.title, "text": n.text, "at": n.at, "lastAt": n.last_at }))
+            .map(|n| json!({ "id": n.id, "kind": n.kind, "repeated": n.repeated, "title": n.title, "text": n.text, "at": n.at, "lastAt": n.last_at, "brief": n.brief }))
             .collect();
         json!({ "kind": "object", "notices": notices, "count": self.notices.len(), "dropped": self.dropped, "order": "oldestFirst" })
     }
@@ -119,7 +125,7 @@ fn silenced(kind: &str, text: &str) -> bool {
 
 pub fn post_from_vehicle(kind: &str, text: &str) -> bool {
     let title = application_name();
-    !crate::qthost::present() && !silenced(kind, text) && post(kind, &title, text)
+    !crate::qthost::present() && !silenced(kind, text) && if kind == BRIEF { post_with(MESSAGE, &title, text, true) } else { post(kind, &title, text) }
 }
 
 pub fn lock() -> MutexGuard<'static, Board> {
@@ -135,7 +141,11 @@ pub fn take_changed() -> bool {
 }
 
 pub fn post(kind: &str, title: &str, text: &str) -> bool {
-    let posted = lock().post(kind, title, text, chrono::Utc::now().timestamp_millis());
+    post_with(kind, title, text, false)
+}
+
+fn post_with(kind: &str, title: &str, text: &str, brief: bool) -> bool {
+    let posted = lock().post_with(kind, title, text, brief, chrono::Utc::now().timestamp_millis());
     if posted {
         mark_changed();
     }

@@ -118,6 +118,10 @@ private val KEY_ROW_STOP_GAP = 24.dp
 
 private val RAIL_SHUTTER_ROOM = 56.dp
 
+private val FLY_NOTICE_TOP = 76.dp
+
+private val FLY_NOTICE_MAX_WIDTH = 560.dp
+
 private const val MULTICAST_LOCK_TAG = "Aircast"
 
 
@@ -514,10 +518,7 @@ fun AircastShell(hostView: android.view.View?) {
         }
         Scaffold(
             modifier = Modifier.weight(1f),
-            snackbarHost = {
-                val aboveDeck = if (onFly && flyIsPortrait()) with(androidx.compose.ui.platform.LocalDensity.current) { flyScreen.mapInsets.bottom.toDp() } else 0.dp
-                SnackbarHost(snackbars, Modifier.padding(bottom = aboveDeck)) { one.aircast.android.ui.AppSnackbar(it) }
-            },
+            snackbarHost = { if (!onFly) SnackbarHost(snackbars) { one.aircast.android.ui.AppSnackbar(it) } },
             topBar = { if (!onFly) SnackbarHost(alerts, Modifier.statusBarsPadding()) { one.aircast.android.ui.AppSnackbar(it) } },
             contentWindowInsets = if (onFly) WindowInsets(0) else androidx.compose.material3.ScaffoldDefaults.contentWindowInsets,
             bottomBar = {
@@ -620,6 +621,7 @@ fun AircastShell(hostView: android.view.View?) {
                     }
                 }
                 if (onFly) one.aircast.android.ui.ConnectingCard(Modifier.align(Alignment.Center))
+                if (onFly) SnackbarHost(snackbars, Modifier.align(Alignment.TopCenter).statusBarsPadding().padding(top = FLY_NOTICE_TOP).widthIn(max = FLY_NOTICE_MAX_WIDTH)) { one.aircast.android.ui.AppSnackbar(it) }
 
                 mapClickAt?.takeIf { tab == Tab.Fly }?.let { point ->
                     MapClickMenu(point) { mapClickAt = null }

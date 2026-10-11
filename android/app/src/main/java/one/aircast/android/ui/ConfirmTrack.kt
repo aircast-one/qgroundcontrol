@@ -28,6 +28,8 @@ internal fun sentIsStillShowing(name: String?, snapshotAtSend: String?, live: St
 
 internal fun sentText(name: String): String = "Sent · $name"
 
+internal const val SENT_SHOWN_MS = 3_000L
+
 internal const val LAND_FROM = "view.instruments(altitudeRelative)"
 
 internal fun landFrom(view: org.json.JSONObject?): Pair<String, String>? =
