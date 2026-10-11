@@ -85,6 +85,7 @@ pub struct Commands {
     entries: Vec<Entry>,
     requests: BTreeMap<(u8, u32), Request>,
     queued: BTreeMap<u8, Vec<Queued>>,
+    superseded: std::collections::BTreeSet<(u8, u16)>,
     pub px4: bool,
     pub high_latency: bool,
 }
@@ -152,6 +153,9 @@ impl Commands {
         if emergency_stop(&command) {
             let (superseded, kept): (Vec<Entry>, Vec<Entry>) = std::mem::take(&mut self.entries).into_iter().partition(|e| e.command.component == command.component && e.command.command == command.command);
             self.entries = kept;
+            if !superseded.is_empty() {
+                self.superseded.insert((command.component, command.command));
+            }
             let failed = superseded.into_iter().map(|e| Out::Result { tag: e.command.tag, component: e.command.component, command: e.command.command, result: RESULT_FAILED, failure: Failure::ResultOnly });
             return failed.chain(self.enqueue(command, now_ms)).collect();
         }
@@ -208,6 +212,9 @@ impl Commands {
     }
 
     pub fn on_ack(&mut self, component: u8, command: u16, result: u8, now_ms: u64) -> Vec<Out> {
+        if self.superseded.remove(&(component, command)) {
+            return Vec::new();
+        }
         let Some(index) = self.index(component, command) else { return Vec::new() };
         if result == RESULT_IN_PROGRESS {
             let entry = if self.px4 && command == CMD_DO_AUTOTUNE_ENABLE {
@@ -369,6 +376,8 @@ mod tests {
         assert_eq!(out[0], Out::Result { tag: 7, component: 1, command: 400, result: RESULT_FAILED, failure: Failure::ResultOnly }, "the pending arm gives way");
         assert!(matches!(out[1], Out::Send { command: 400, params, .. } if params[1] == crate::guidedcmd::ARM_MAGIC));
         assert!(matches!(commands.send(arm(9), 20).as_slice(), [Out::Result { failure: Failure::Duplicate, .. }, ..]), "a plain arm still waits on the stop");
+        assert!(commands.on_ack(1, 400, 2, 30).is_empty(), "the vehicle answers the arm it was sent first; that late denial is not the stop's");
+        assert!(matches!(commands.on_ack(1, 400, RESULT_ACCEPTED, 40).as_slice(), [Out::Result { tag: 8, result: RESULT_ACCEPTED, .. }]), "the next answer is the stop's");
     }
 
     #[test]
