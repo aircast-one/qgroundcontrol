@@ -190,7 +190,7 @@ fun CamerasEditor(modifier: Modifier = Modifier) {
             onChange = { draft = it },
             onDismiss = { draft = null },
             onSave = { change({ written(cameraSave(current)) }, closed) },
-            onAddFixed = { kind -> change({ CameraCommands.add(addedName(kind), kind.raw, "") }, closed) },
+            onAddFixed = { kind -> change({ CameraCommands.add("", kind.raw, "") }, closed) },
             onRemove = current.stored?.let { slot ->
                 cameras.firstOrNull { it.stored == slot }?.let { entry ->
                     {

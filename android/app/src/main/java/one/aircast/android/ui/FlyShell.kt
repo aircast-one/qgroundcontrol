@@ -114,9 +114,6 @@ private const val TOP_SCRIM_ALPHA = 0.6f
 private val PIP_TOGGLE_SIZE = 28.dp
 private const val MINI_MAP_KEY = "LandscapeMiniMap"
 private val MINIMAP_THUMB = 56.dp
-private const val CAMERA_PIP_KEY = "cameraPip"
-private val CAMERA_PIP_WIDTH = 112.dp
-private val CAMERA_PIP_HEIGHT = 63.dp
 private const val FULL_SCREEN_LAYER = 10f
 private const val DECISION_LAYER = 4f
 private val MAP_SCALE_CLEARANCE = 88.dp
@@ -436,20 +433,6 @@ internal fun FlyScreen(
             } else {
                 PipToggle(false, togglePip, Modifier.zIndex(3f).align(pipAlign).windowInsetsPadding(WindowInsets.displayCutout).padding(AircastSpace.s3).verticalSwipe(swipeDistance) { if (it == VideoSwipe.Up) togglePip() })
             }
-        }
-        if (mapIsPip) shownPipCamera()?.let { camera ->
-            CameraPipThumbnail(
-                camera,
-                Modifier
-                    .zIndex(3f)
-                    .align(pipAlign)
-                    .windowInsetsPadding(WindowInsets.displayCutout)
-                    .padding(start = ACTION_RAIL_CLEARANCE, bottom = miniHeight(mini) + AircastSpace.s3 * 2)
-                    .then(layoutPlacement(CAMERA_PIP_KEY, keepOnScreen = true))
-                    .size(CAMERA_PIP_WIDTH, CAMERA_PIP_HEIGHT)
-                    .avoidedByVideoMessage(CAMERA_PIP_KEY)
-                    .holdToEditLayout(),
-            ) { LayoutPipEditor(CAMERA_PIP_KEY, MaterialTheme.shapes.medium, Modifier.fillMaxSize()) }
         }
         val settingsOver = LocalAppNavigation.current.settingsOpen
         Box(Modifier.zIndex(1f).fillMaxSize().graphicsLayer { alpha = if (settingsOver) 0f else 1f }.windowInsetsPadding(WindowInsets.displayCutout)) {

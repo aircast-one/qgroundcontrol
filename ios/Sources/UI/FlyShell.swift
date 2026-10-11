@@ -17,9 +17,6 @@ private let TOP_SCRIM_ALPHA = 0.6
 private let PIP_TOGGLE_SIZE: CGFloat = 28
 private let MINI_MAP_KEY = "LandscapeMiniMap"
 private let MINIMAP_THUMB: CGFloat = 56
-private let CAMERA_PIP_KEY = "cameraPip"
-private let CAMERA_PIP_WIDTH: CGFloat = 112
-private let CAMERA_PIP_HEIGHT: CGFloat = 63
 private let FULL_SCREEN_LAYER: Double = 10
 private let MAP_LAYERS_BUTTON: CGFloat = 48
 private let COMPASS_TOGGLE_GLYPH: CGFloat = 13
@@ -157,7 +154,6 @@ struct FlyScreen: View {
     @HasVehicle private var hasVehicle
     @CameraStepper private var cameras
     @GimbalDrags private var gimbalDrags
-    @ShownPipCamera private var pipCamera
     @State private var mini = loadMiniMap()
     @State private var holding = false
     @State private var layers = false
@@ -308,9 +304,6 @@ struct FlyScreen: View {
         if panes.videoIsPip && hasVideo {
             videoPip(panes)
         }
-        if panes.mapIsPip, let camera = pipCamera {
-            cameraPip(camera, panes)
-        }
         flyChrome(panes)
             .opacity(navigation.settingsOpen ? 0 : 1)
             .zIndex(flyScreen.flightActions.deciding ? 4 : 1)
@@ -412,20 +405,6 @@ struct FlyScreen: View {
             }
             .zIndex(3)
         }
-    }
-
-    private func cameraPip(_ camera: CameraEntry, _ panes: FlyPanes) -> some View {
-        CameraPipThumbnail(camera: camera) {
-            LayoutPipEditor(key: CAMERA_PIP_KEY, shape: AnyShape(pipShape))
-        }
-        .frame(width: CAMERA_PIP_WIDTH, height: CAMERA_PIP_HEIGHT)
-        .avoidedByVideoMessage(CAMERA_PIP_KEY)
-        .holdToEditLayout()
-        .layoutPlacement(CAMERA_PIP_KEY, keepOnScreen: true)
-        .padding(.leading, panes.cutout.leading + ACTION_RAIL_CLEARANCE)
-        .padding(.bottom, miniHeight(mini) + Space.s3 * 2)
-        .frame(width: panes.box.width, height: panes.box.height, alignment: .bottomLeading)
-        .zIndex(3)
     }
 
     @ViewBuilder

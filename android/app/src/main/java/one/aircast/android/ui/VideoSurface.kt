@@ -7,6 +7,15 @@ import android.view.SurfaceHolder
 import android.view.SurfaceView
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Text
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.semantics.contentDescription
+import one.aircast.map.AircastSpace
 import androidx.compose.foundation.gestures.detectTapGestures
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.offMainInOrder
@@ -139,6 +148,19 @@ fun VideoSurface(
         return
     }
 
+    val second = if (expanded) shownSecondCamera() else null
+    if (second == null) {
+        MainPane(video, synthetic, modifier, expanded, fullScreen, onClick, onDoubleTap)
+        return
+    }
+    Row(modifier) {
+        MainPane(video, synthetic, Modifier.weight(1f).fillMaxHeight(), expanded, fullScreen, onClick, onDoubleTap)
+        SecondPane(second, if (second.status == CameraStatus.Live) Modifier.weight(1f).fillMaxHeight() else Modifier.width(HIDDEN_PANE_WIDTH).fillMaxHeight())
+    }
+}
+
+@Composable
+private fun MainPane(video: VideoReading?, synthetic: Boolean, modifier: Modifier, expanded: Boolean, fullScreen: Boolean, onClick: () -> Unit, onDoubleTap: () -> Unit) {
     val cameraJson by qgcPath(CAMERA_VIEW)
     val zoomable = remember(cameraJson) { cameraReading(cameraJson)?.hasZoom == true }
     val showGrid by qgcBool(settingControl("settings.videoSettings.gridLines"))
@@ -156,6 +178,7 @@ fun VideoSurface(
 
         if (video?.decoding == true) {
             if (showGrid && !fullScreen) VideoGrid(Modifier.fillMaxSize())
+            if (expanded) VideoArOverlay(Modifier.fillMaxSize())
             ProximityRadarOverlay(Modifier.fillMaxSize())
             ObstacleVideoOverlay(Modifier.fillMaxSize(), showText = expanded)
             if (expanded) GimbalScreenControl(Modifier.fillMaxSize())
@@ -178,6 +201,29 @@ fun VideoSurface(
 
     }
 }
+
+@Composable
+private fun SecondPane(camera: CameraEntry, modifier: Modifier) {
+    Box(
+        modifier
+            .padding(start = PANE_DIVIDER)
+            .clickable(onClickLabel = "Make ${camera.title} the main view") { showCamera(camera.slot) }
+            .semantics { contentDescription = "Second camera, ${camera.title}" },
+    ) {
+        VideoChannelSurface(PIP_VIDEO_CHANNEL, Modifier.fillMaxSize())
+        Row(
+            Modifier.align(Alignment.TopStart).padding(AircastSpace.s2).osdShadow(),
+            horizontalArrangement = Arrangement.spacedBy(AircastSpace.s1),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CameraStatusDot(camera.status)
+            Text(camera.short, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.aircast.outdoorForeground, maxLines = 1)
+        }
+    }
+}
+
+private val HIDDEN_PANE_WIDTH = 1.dp
+private val PANE_DIVIDER = 2.dp
 
 internal const val MAIN_VIDEO_CHANNEL = 0
 internal const val PIP_VIDEO_CHANNEL = 1

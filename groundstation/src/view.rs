@@ -211,6 +211,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.attitude", deps: attitude::DEPS, compute: attitude::attitude_view },
     View { path: "view.syntheticView", deps: crate::synthview::DEPS, compute: crate::synthview::synthetic_view },
     View { path: "view.syntheticOverlays", deps: crate::synthview::OVERLAY_DEPS, compute: crate::synthview::overlays_view },
+    View { path: "view.videoAr", deps: crate::videoar::DEPS, compute: crate::videoar::video_ar_view },
     View { path: "view.mapClick", deps: mapclick::DEPS, compute: mapclick::map_click_view },
     View { path: "view.gotoPreview", deps: mapclick::PREVIEW_DEPS, compute: mapclick::goto_preview_view },
     View { path: "view.firstRun", deps: firstrun::DEPS, compute: firstrun::first_run_view },
@@ -445,6 +446,7 @@ impl View {
             "view.closeChecks" => closechecks::deps(),
             "view.viewer3dVehicle" => viewer3d::vehicle_deps(),
             "view.syntheticOverlays" => crate::synthview::overlay_deps(),
+            "view.videoAr" => crate::videoar::deps(),
             _ => self.deps.iter().map(|d| d.to_string()).collect(),
         }
     }
@@ -691,6 +693,7 @@ mod deps_cover_reads {
             ("obstacle", include_str!("obstacle.rs")),
             ("attitude", include_str!("attitude.rs")),
             ("synthview", include_str!("synthview.rs")),
+            ("videoar", include_str!("videoar.rs")),
             ("operatorcontrol", include_str!("operatorcontrol.rs")),
             ("operatorrequest", include_str!("operatorrequest.rs")),
             ("orbit", include_str!("orbit.rs")),

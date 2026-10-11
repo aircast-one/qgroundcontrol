@@ -35,8 +35,6 @@ import org.json.JSONObject
 
 internal const val SYNTHETIC_VIEW = "view.syntheticView"
 internal const val SYNTHETIC_OVERLAYS = "view.syntheticOverlays"
-internal const val SYNTHETIC_LABEL = "Synthetic view"
-internal const val SYNTHETIC_SOURCE = "Synthetic View"
 internal const val SYNTHETIC_AIM = "syntheticView.aim"
 private const val TILT_SPAN_DEG = 90.0
 private const val DEFAULT_TILT_DEG = -15.0

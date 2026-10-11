@@ -327,7 +327,7 @@ fun AircastShell(hostView: android.view.View?) {
             )
         }
     }
-    val flyCameraSwitch = remember { movableContentOf<Boolean, Modifier> { thumbnailRoom, gap -> LayoutWidget("cameraSwitch") { CameraSwitch(thumbnailRoom, gap) } } }
+    val flyCameraSwitch = remember { movableContentOf<Boolean, Modifier> { splitRoom, gap -> LayoutWidget("cameraSwitch") { CameraSwitch(splitRoom, gap) } } }
     val flyCameraControlLayer = remember { movableContentOf { LayoutWidget("cameraControl") { CameraControlLayer(shutters = !flyIsPortrait()) } } }
     val flyObstacleArc = remember { movableContentOf { LayoutWidget("obstacleArc") { ObstacleArc() } } }
     val flyOrbitReadout = remember { movableContentOf { LayoutWidget("orbit") { OrbitReadout() } } }
@@ -560,15 +560,12 @@ fun AircastShell(hostView: android.view.View?) {
                     val flyKeyRow: @Composable () -> Unit = {
                         flyObstacleArc()
                     }
-                    val flyRail: @Composable (Boolean, Boolean) -> Unit = { stacked, thumbnailRoom ->
+                    val flyRail: @Composable (Boolean, Boolean) -> Unit = { stacked, splitRoom ->
                         if (stacked) {
-                            Column(horizontalAlignment = Alignment.End) {
-                                flyCameraSwitch(thumbnailRoom, Modifier.padding(bottom = AircastSpace.s2))
-                                flyCameraControlLayer()
-                            }
+                            flyCameraControlLayer()
                         } else {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                flyCameraSwitch(thumbnailRoom, Modifier.padding(end = AircastSpace.s2))
+                                flyCameraSwitch(splitRoom, Modifier.padding(end = AircastSpace.s2))
                                 Box(Modifier.widthIn(min = RAIL_SHUTTER_ROOM), contentAlignment = Alignment.Center) { flyCameraControlLayer() }
                             }
                         }
@@ -591,7 +588,7 @@ fun AircastShell(hostView: android.view.View?) {
                             video = { mod, expanded -> flyVideo(mod, expanded) },
                             map = { mod -> flyMap(mod) },
                             keyRow = flyKeyRow,
-                            rail = { thumbnailRoom -> flyRail(false, thumbnailRoom) },
+                            rail = { splitRoom -> flyRail(false, splitRoom) },
                             overlays = flyOverlays,
                             actions = { layout -> flightActions(layout) },
                             fullScreen = fullScreen,
@@ -609,7 +606,7 @@ fun AircastShell(hostView: android.view.View?) {
                             video = { mod, expanded -> flyVideo(mod, expanded) },
                             map = { mod -> flyMap(mod) },
                             keyRow = flyKeyRow,
-                            rail = { thumbnailRoom -> flyRail(true, thumbnailRoom) },
+                            rail = { splitRoom -> flyRail(true, splitRoom) },
                             overlays = flyOverlays,
                             actions = { layout -> flightActions(layout) },
                             fullScreen = fullScreen,

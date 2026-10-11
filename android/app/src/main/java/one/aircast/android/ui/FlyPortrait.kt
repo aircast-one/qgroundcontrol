@@ -94,8 +94,6 @@ private const val PIP_BORDER_ALPHA = 0.5f
 private const val DECK_SCRIM_START = 0.4f
 private val MAP_BUTTON_SIZE = 40.dp
 private val MAP_ATTRIBUTION_CLEARANCE = 28.dp
-private val PORTRAIT_CAMERA_PIP_WIDTH = 96.dp
-private val PORTRAIT_CAMERA_PIP_HEIGHT = 54.dp
 
 internal fun portraitSplit(view: FlyView, hasVideo: Boolean): Boolean = view == FlyView.Video && hasVideo
 
@@ -258,11 +256,13 @@ internal fun FlyPortrait(
                             Modifier.padding(AircastSpace.s2).horizontalScroll(rememberScrollState()),
                             horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
                             verticalAlignment = Alignment.CenterVertically,
-                        ) { keyRow() }
+                        ) {
+                            CameraSwitch(splitRoom = true)
+                            keyRow()
+                        }
                     }
                 }
             }
-            if (split) shownPipCamera()?.let { camera -> CameraPipThumbnail(camera, Modifier.padding(top = videoTop).padding(AircastSpace.s2).size(PORTRAIT_CAMERA_PIP_WIDTH, PORTRAIT_CAMERA_PIP_HEIGHT)) }
             ControlsAboveDeck(
                 controls = {
                     Box(Modifier.fillMaxSize().padding(top = controlsTop)) {

@@ -108,9 +108,7 @@ internal fun addableKinds(reading: CamerasReading?, keeping: String? = null): Li
         .filter { kind -> kind.needsUrl || kind.raw == keeping || reading?.stored.orEmpty().none { it.source == kind.raw } }
         .sortedBy { kind -> CAMERA_GROUP_ORDER.indexOf(kind.group).let { if (it < 0) CAMERA_GROUP_ORDER.size else it } }
 
-internal fun kindTitle(kind: CameraKind): String = if (kind.raw == SYNTHETIC_SOURCE) SYNTHETIC_LABEL else kindLabel(kind.label)
-
-internal fun addedName(kind: CameraKind): String = if (kind.raw == SYNTHETIC_SOURCE) SYNTHETIC_LABEL else ""
+internal fun kindTitle(kind: CameraKind): String = kindLabel(kind.label)
 
 internal fun kindLabel(label: String): String = sentenceCase(label.removeSuffix(" Video Stream").ifBlank { label })
 

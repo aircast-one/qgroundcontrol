@@ -11,8 +11,6 @@ private let PIP_BORDER_ALPHA = 0.5
 private let DECK_SCRIM_START = 0.4
 private let MAP_BUTTON_SIZE: CGFloat = 40
 private let MAP_ATTRIBUTION_CLEARANCE: CGFloat = 28
-private let PORTRAIT_CAMERA_PIP_WIDTH: CGFloat = 96
-private let PORTRAIT_CAMERA_PIP_HEIGHT: CGFloat = 54
 
 func portraitSplit(_ view: FlyView, _ hasVideo: Bool) -> Bool { view == .Video && hasVideo }
 
@@ -41,7 +39,6 @@ struct FlyPortrait: View {
     @QgcPath(VIDEO_VIEW) private var videoJson
     @CameraStepper private var cameras
     @GimbalDrags private var gimbalDrags
-    @ShownPipCamera private var pipCamera
     @State private var chromeHeight: CGFloat = 0
     @State private var deckHeight: CGFloat = 0
     @State private var pipDrag = CGSize.zero
@@ -150,7 +147,10 @@ struct FlyPortrait: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: Space.s2) { keyRow() }
+                HStack(spacing: Space.s2) {
+                    CameraSwitch(splitRoom: true)
+                    keyRow()
+                }
             }
             .padding(Space.s2)
             .environment(\.flyOsd, true)
@@ -158,12 +158,6 @@ struct FlyPortrait: View {
         .frame(width: width, height: videoHeight)
         .offset(y: videoTop)
         .transition(.opacity)
-        if let camera = pipCamera {
-            CameraPipThumbnail(camera: camera)
-                .frame(width: PORTRAIT_CAMERA_PIP_WIDTH, height: PORTRAIT_CAMERA_PIP_HEIGHT)
-                .padding(Space.s2)
-                .offset(y: videoTop)
-        }
     }
 
     private func deck(_ safeBottom: CGFloat) -> some View {

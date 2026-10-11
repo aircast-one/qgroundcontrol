@@ -345,7 +345,7 @@ struct AircastShell: View {
                 video: video,
                 map: map,
                 keyRow: keyRow,
-                rail: { thumbnailRoom in flyRail(true, thumbnailRoom) },
+                rail: { splitRoom in flyRail(true, splitRoom) },
                 overlays: overlays,
                 actions: actions,
                 fullScreen: fullScreen,
@@ -360,7 +360,7 @@ struct AircastShell: View {
                 video: video,
                 map: map,
                 keyRow: keyRow,
-                rail: { thumbnailRoom in flyRail(false, thumbnailRoom) },
+                rail: { splitRoom in flyRail(false, splitRoom) },
                 overlays: overlays,
                 actions: actions,
                 fullScreen: fullScreen,
@@ -386,14 +386,11 @@ struct AircastShell: View {
         )
     }
 
-    private func flyRail(_ stacked: Bool, _ thumbnailRoom: Bool) -> AnyView {
-        let cameraSwitch = LayoutWidget(key: "cameraSwitch") { CameraSwitch(thumbnailRoom: thumbnailRoom) }
+    private func flyRail(_ stacked: Bool, _ splitRoom: Bool) -> AnyView {
+        let cameraSwitch = LayoutWidget(key: "cameraSwitch") { CameraSwitch(splitRoom: splitRoom) }
         let cameraControl = LayoutWidget(key: "cameraControl") { CameraControlLayer(shutters: !portrait) }
         if stacked {
-            return AnyView(VStack(alignment: .trailing, spacing: 0) {
-                cameraSwitch.padding(.bottom, Space.s2)
-                cameraControl
-            })
+            return AnyView(cameraControl)
         }
         return AnyView(HStack(spacing: 0) {
             cameraSwitch.padding(.trailing, Space.s2)

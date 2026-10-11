@@ -117,6 +117,7 @@ struct VideoSurface: View {
     @QgcBool(settingControl("settings.videoSettings.gridLines")) private var showGrid
     @QgcValue(settingControl("settings.videoSettings.videoFit")) private var fitMode
     @QgcValue(settingControl("settings.videoSettings.aspectRatio")) private var aspectSetting
+    @ShownSecondCamera private var secondCamera
 
     var body: some View {
         let video = videoReading(videoJson)
@@ -127,6 +128,12 @@ struct VideoSurface: View {
                 NoVideoArea(underFlyChrome: expanded && !fullScreen, thumb: false, video: video)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(theme.colors.surfaceVariant)
+            }
+        } else if expanded, let second = secondCamera {
+            HStack(spacing: PANE_DIVIDER) {
+                playing(video)
+                SecondPane(camera: second)
+                    .frame(maxWidth: second.status == .Live ? .infinity : HIDDEN_PANE_WIDTH)
             }
         } else {
             playing(video)
@@ -143,6 +150,7 @@ struct VideoSurface: View {
                     VideoChannelSurface(channel: MAIN_VIDEO_CHANNEL)
                     if decoding {
                         if showGrid && !fullScreen { VideoGrid() }
+                        if expanded { VideoArOverlay() }
                         ProximityRadarOverlay()
                         ObstacleVideoOverlay(showText: expanded)
                         if expanded { GimbalScreenControl() }
@@ -167,6 +175,34 @@ struct VideoSurface: View {
         .modifier(PinchZoom(enabled: expanded && cameraReading(cameraJson)?.hasZoom == true))
     }
 }
+
+private struct SecondPane: View {
+    let camera: CameraEntry
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            VideoChannelSurface(channel: PIP_VIDEO_CHANNEL)
+            HStack(spacing: Space.s1) {
+                CameraStatusDot(status: camera.status)
+                Text(camera.short).font(.labelMedium).foregroundStyle(theme.aircast.outdoorForeground).lineLimit(1)
+            }
+            .padding(Space.s2)
+            .osdShadow()
+            .allowsHitTesting(false)
+        }
+        .background(Color.black)
+        .contentShape(Rectangle())
+        .onTapGesture { showCamera(camera.slot) }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("Second camera, \(camera.title)")
+        .accessibilityAddTraits(.isButton)
+        .accessibilityAction(named: "Make \(camera.title) the main view") { showCamera(camera.slot) }
+    }
+}
+
+private let HIDDEN_PANE_WIDTH: CGFloat = 1
+private let PANE_DIVIDER: CGFloat = 2
 
 let MAIN_VIDEO_CHANNEL = 0
 let PIP_VIDEO_CHANNEL = 1

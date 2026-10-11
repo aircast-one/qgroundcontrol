@@ -34,10 +34,4 @@ final class SyntheticViewTests: XCTestCase {
         XCTAssertEqual(cameraBeam(view).count, 5)
         XCTAssertTrue(cameraBeam(JSON.parse(#"{"available":false,"beam":[]}"#)).isEmpty)
     }
-
-    func testTheSyntheticSourceIsOfferedAndAddedUnderItsOwnName() {
-        let synthetic = CameraKind(raw: SYNTHETIC_SOURCE, label: SYNTHETIC_SOURCE, group: "This device", needsUrl: false, hint: "")
-        XCTAssertEqual(otherSourceLabel(synthetic), "Synthetic view")
-        XCTAssertEqual(otherSourceName(synthetic), "Synthetic view")
-    }
 }

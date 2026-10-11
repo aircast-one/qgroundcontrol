@@ -210,6 +210,7 @@ pub mod rccal;
 pub mod shp;
 pub mod attitude;
 pub mod synthview;
+pub mod videoar;
 pub mod escview;
 pub mod gcsbattery;
 pub mod deeplinksetup;
