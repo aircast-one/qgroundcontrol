@@ -6,7 +6,15 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.os.BatteryManager
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import one.aircast.android.R
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -95,15 +103,16 @@ internal fun rememberGcsBattery(): GcsBatteryReading? {
 internal fun GcsBatteryCell(reading: GcsBatteryReading?) {
     var open by remember { mutableStateOf(false) }
     val shown = reading ?: return
-    Text(
-        shown.levelText,
-        style = MaterialTheme.typography.labelMedium,
-        color = batteryColour(shown.state),
-        maxLines = 1,
-        modifier = Modifier
+    Row(
+        Modifier
             .clickable(onClickLabel = shown.heading) { open = true }
-            .semantics { contentDescription = "${shown.title} ${shown.levelText}" },
-    )
+            .clearAndSetSemantics { contentDescription = "${shown.title} ${shown.levelText}" },
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(2.dp),
+    ) {
+        Icon(painterResource(R.drawable.ic_smartphone), null, Modifier.size(14.dp), tint = batteryColour(shown.state))
+        Text(shown.levelText, style = MaterialTheme.typography.labelMedium, color = batteryColour(shown.state), maxLines = 1)
+    }
 
     if (open) {
         AircastSheet(onDismissRequest = { open = false }) {

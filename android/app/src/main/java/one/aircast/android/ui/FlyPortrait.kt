@@ -89,6 +89,10 @@ private val PORTRAIT_PIP_WIDTH = 160.dp
 private val PORTRAIT_PIP_HEIGHT = 90.dp
 private val PORTRAIT_DIAL_SIZE = 72.dp
 private val PORTRAIT_BAR_HEIGHT = 64.dp
+private val PORTRAIT_STRIP_HEIGHT = 60.dp
+private val PORTRAIT_STRIP_DIAL = 48.dp
+private const val PLACEHOLDER_ALPHA = 0.6f
+private val PLACEHOLDER_READINGS = listOf("H", "D", "H.S", "V.S")
 private const val SCRIM_ALPHA = 0.7f
 private const val PIP_BORDER_ALPHA = 0.5f
 private const val DECK_SCRIM_START = 0.4f
@@ -135,7 +139,7 @@ internal fun FlyPortrait(
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
     val videoHeight = screenWidth / VIDEO_ASPECT
     val videoTop = barTop
-    val mapTop = if (split) barTop + videoHeight else 0.dp
+    val mapTop = if (split) barTop + videoHeight + PORTRAIT_STRIP_HEIGHT else 0.dp
     val controlsTop = if (split) mapTop else barTop
     val thumbnail = portraitVideoThumbnail(split, reading)
     val pipRoom = pipRoom(thumbnail, flyScreen.videoTucked)
@@ -275,7 +279,7 @@ internal fun FlyPortrait(
                             verticalArrangement = Arrangement.SpaceBetween,
                         ) {
                             Column(Modifier.weight(1f, fill = false).clipToBounds(), verticalArrangement = Arrangement.spacedBy(AircastSpace.s2)) { overlays() }
-                            OsdCompassDial(PORTRAIT_DIAL_SIZE, Modifier.padding(top = AircastSpace.s2))
+                            if (!split) OsdCompassDial(PORTRAIT_DIAL_SIZE, Modifier.padding(top = AircastSpace.s2))
                         }
                         MapButtons(
                             view = view,
@@ -297,7 +301,7 @@ internal fun FlyPortrait(
                                 .fillMaxWidth()
                                 .background(Brush.verticalGradient(0f to Color.Transparent, DECK_SCRIM_START to Color.Black.copy(alpha = SCRIM_ALPHA)))
                                 .windowInsetsPadding(WindowInsets.navigationBars),
-                        ) { actions(FlyDeckLayout.Bottom) }
+                        ) { CompositionLocalProvider(LocalDeckTelemetry provides !split) { actions(FlyDeckLayout.Bottom) } }
                     }
                 },
             )
@@ -322,7 +326,7 @@ internal fun FlyPortrait(
                 enter = fadeIn(),
                 exit = fadeOut(),
             ) {
-                SplitHandle(
+                TelemetryStrip(
                     swipeDistance,
                     onSmaller = { flyScreen.videoTucked = false; onView(FlyView.Map) },
                     onFullScreen = onFullScreen,
@@ -353,9 +357,6 @@ internal fun FlyPortrait(
 
 internal val VIDEO_TAB_HEIGHT = 36.dp
 private const val FULL_SCREEN_LAYER = 1f
-private val HANDLE_TOUCH = DpSize(96.dp, 28.dp)
-private val HANDLE_BAR = DpSize(40.dp, 4.dp)
-private const val HANDLE_ALPHA = 0.8f
 
 internal fun cornerAlignment(corner: PipCorner): Alignment = when (corner) {
     PipCorner.TopStart -> Alignment.TopStart
@@ -420,21 +421,38 @@ private fun VideoTab(swipeDistance: Float, showSwipe: VideoSwipe, onShow: () -> 
 }
 
 @Composable
-private fun SplitHandle(swipeDistance: Float, onSmaller: () -> Unit, onFullScreen: () -> Unit) {
-    Box(
+private fun TelemetryStrip(swipeDistance: Float, onSmaller: () -> Unit, onFullScreen: () -> Unit) {
+    Row(
         Modifier
-            .size(HANDLE_TOUCH)
+            .fillMaxWidth()
+            .height(PORTRAIT_STRIP_HEIGHT)
+            .background(MaterialTheme.aircast.outdoorBackground)
             .verticalSwipe(swipeDistance) { swipe -> if (swipe == VideoSwipe.Up) onSmaller() else onFullScreen() }
             .semantics {
-                contentDescription = "Video size"
                 customActions = listOf(
                     CustomAccessibilityAction("Make the video small") { onSmaller(); true },
                     CustomAccessibilityAction("Show the video full screen") { onFullScreen(); true },
                 )
-            },
-        contentAlignment = Alignment.Center,
+            }
+            .padding(horizontal = AircastSpace.s3),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(AircastSpace.s3),
     ) {
-        Box(Modifier.size(HANDLE_BAR).background(MaterialTheme.aircast.outdoorForeground.copy(alpha = HANDLE_ALPHA), CircleShape).osdShadow())
+        OsdCompassDial(PORTRAIT_STRIP_DIAL)
+        Box(Modifier.weight(1f).clipToBounds(), contentAlignment = Alignment.Center) {
+            CompositionLocalProvider(LocalFlyOsd provides true) {
+                if (hasVehicle()) TelemetryRow(valuesShown = true, chooser = false, compact = true) else TelemetryPlaceholder()
+            }
+        }
+    }
+}
+
+@Composable
+private fun TelemetryPlaceholder() {
+    Row(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s4)) {
+        PLACEHOLDER_READINGS.map { label ->
+            Text("$label —", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.aircast.outdoorForeground.copy(alpha = PLACEHOLDER_ALPHA), maxLines = 1)
+        }
     }
 }
 

@@ -418,7 +418,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     PreflightChecklistReset(checklist, available)
 
     if (!available) {
-        if (layout != FlyDeckLayout.Rail) Text("Connect a vehicle to enable flight controls.", modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (layout != FlyDeckLayout.Rail) Text("Connect a vehicle to enable flight controls.", modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.aircast.outdoorForeground)
         return
     }
 
@@ -532,7 +532,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             SentNotice(sentName.orEmpty(), onDismiss = { sentName = null })
         }
 
-        Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { TelemetryRow(valuesShown = true, chooser = false, compact = true) }
+        if (LocalDeckTelemetry.current) Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) { TelemetryRow(valuesShown = true, chooser = false, compact = true) }
 
         if (!deciding) readiness?.let { DeckReadiness(it) }
 
@@ -604,6 +604,8 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
 
 
 }
+
+internal val LocalDeckTelemetry = androidx.compose.runtime.compositionLocalOf { true }
 
 private val DECISION_CARD_WIDTH = 460.dp
 private const val OSD_LABEL_ALPHA = 0.75f
