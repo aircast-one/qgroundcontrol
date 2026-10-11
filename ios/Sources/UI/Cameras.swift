@@ -150,7 +150,9 @@ func otherSources(_ reading: CamerasReading?) -> [CameraKind] {
     }
 }
 
-func otherSourceLabel(_ kind: CameraKind) -> String { kindLabel(kind.label) }
+func otherSourceLabel(_ kind: CameraKind) -> String { kind.raw == SYNTHETIC_SOURCE ? SYNTHETIC_LABEL : kindLabel(kind.label) }
+
+func otherSourceName(_ kind: CameraKind) -> String { kind.raw == SYNTHETIC_SOURCE ? SYNTHETIC_LABEL : "" }
 
 func kindLabel(_ label: String) -> String {
     sentenceCase(label.removingSuffix(" Video Stream").ifBlank(label))

@@ -5,6 +5,8 @@ import WebKit
 let SYNTHETIC_VIEW = "view.syntheticView"
 let SYNTHETIC_OVERLAYS = "view.syntheticOverlays"
 let SYNTHETIC_AIM = "syntheticView.aim"
+let SYNTHETIC_LABEL = "Synthetic view"
+let SYNTHETIC_SOURCE = "Synthetic View"
 private let SYNTHETIC_SCHEME = "aircast"
 private let SYNTHETIC_PAGE = "aircast://app/synthetic/index.html"
 private let SYNTHETIC_FOLDER = "/synthetic/"

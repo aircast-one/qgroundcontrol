@@ -178,7 +178,7 @@ struct CamerasEditor: View {
                 onChange: { next in if draft != nil { draft = next } },
                 onDismiss: { draft = nil },
                 onSave: { guess in change(storedNow, { saved(current, guess) }, closed) },
-                onPick: { kind in change(storedNow, { CameraCommands.add("", source: kind.raw, url: "") }, closed) },
+                onPick: { kind in change(storedNow, { CameraCommands.add(otherSourceName(kind), source: kind.raw, url: "") }, closed) },
                 onRemove: current.stored.flatMap { slot in
                     cameras.first { $0.stored == slot }.map { entry -> () -> Void in
                         {

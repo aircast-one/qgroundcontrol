@@ -182,7 +182,11 @@ private struct SecondPane: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            VideoChannelSurface(channel: PIP_VIDEO_CHANNEL)
+            if camera.source == SYNTHETIC_SOURCE {
+                SyntheticView()
+            } else {
+                VideoChannelSurface(channel: PIP_VIDEO_CHANNEL)
+            }
             HStack(spacing: Space.s1) {
                 CameraStatusDot(status: camera.status)
                 Text(camera.short).font(.labelMedium).foregroundStyle(theme.aircast.outdoorForeground).lineLimit(1)

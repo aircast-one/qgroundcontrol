@@ -64,6 +64,14 @@ class CamerasTest {
         assertEquals(emptyList<CameraKind>(), addableKinds(null))
     }
 
+    @Test
+    fun `the synthetic view is offered by its own name`() {
+        val synthetic = CameraKind(raw = SYNTHETIC_SOURCE, label = SYNTHETIC_SOURCE, group = "This device", needsUrl = false, hint = "")
+        assertEquals("Synthetic view", kindTitle(synthetic))
+        assertEquals("it is added under its own name rather than as Camera N", "Synthetic view", addedName(synthetic))
+        assertEquals("", addedName(synthetic.copy(raw = "Front Camera")))
+    }
+
     private val udp = CameraKind(raw = "UDP h.265 Video Stream", label = "UDP h.265 Video Stream", group = "Video streams", needsUrl = true, hint = "0.0.0.0:5600", defaultAddress = "0.0.0.0:5600")
     private val rtsp = CameraKind(raw = "RTSP Video Stream", label = "RTSP Video Stream", group = "Video streams", needsUrl = true, hint = "rtsp://192.168.1.10:8554/live")
     private val hotspot = CameraKind(raw = "Herelink Hotspot", label = "Herelink Hotspot", group = "Vehicle and radio presets", needsUrl = false, hint = "")

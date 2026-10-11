@@ -210,7 +210,7 @@ private fun SecondPane(camera: CameraEntry, modifier: Modifier) {
             .clickable(onClickLabel = "Make ${camera.title} the main view") { showCamera(camera.slot) }
             .semantics { contentDescription = "Second camera, ${camera.title}" },
     ) {
-        VideoChannelSurface(PIP_VIDEO_CHANNEL, Modifier.fillMaxSize())
+        if (camera.source == SYNTHETIC_SOURCE) SyntheticView(Modifier.fillMaxSize(), aimable = false) else VideoChannelSurface(PIP_VIDEO_CHANNEL, Modifier.fillMaxSize())
         Row(
             Modifier.align(Alignment.TopStart).padding(AircastSpace.s2).osdShadow(),
             horizontalArrangement = Arrangement.spacedBy(AircastSpace.s1),
