@@ -4,6 +4,7 @@ private let linksCommit = "links.commitLinkConfigurations"
 private let linksBluetoothScan = "links.bluetoothScan"
 private let linksConnect = "links.createConnectedLink"
 private let linksRemove = "links.removeConfiguration"
+private let linksConfigurations = "links.linkConfigurations"
 private let linksCreateCloud = "links.createAircastCloudLink"
 private let linksCreateReplay = "links.createLogReplayConfiguration"
 private let linksCreateBluetooth = "links.createBluetoothLink"
@@ -54,8 +55,9 @@ private let hostAcknowledge = "host.acknowledgeThrough"
 enum LinkCommands {
     @discardableResult static func commitConfigurations() -> Bool { Qgc.invoke(linksCommit) }
     @discardableResult static func scanBluetooth(_ scanning: Bool) -> Bool { Qgc.invoke(linksBluetoothScan, scanning) }
-    @discardableResult static func connect(_ configuration: String) -> Bool { Qgc.invoke(linksConnect, configuration) }
-    @discardableResult static func remove(_ configuration: String) -> Bool { Qgc.invoke(linksRemove, configuration) }
+    @discardableResult static func connect(_ configuration: String) -> String? { Qgc.refusalOf(linksConnect, configuration) }
+    @discardableResult static func remove(_ configuration: String) -> String? { Qgc.refusalOf(linksRemove, configuration) }
+    @discardableResult static func disconnect(_ index: Int) -> String? { Qgc.refusalOf("\(linksConfigurations).\(index).link.disconnect") }
     @discardableResult static func createAircastCloud(_ name: String, apiBase: String, deviceId: String) -> Bool { Qgc.invokeResult(linksCreateCloud, name, apiBase, deviceId) == .bool(true) }
     @discardableResult static func createLogReplay(_ name: String, log: String) -> Bool { Qgc.invokeResult(linksCreateReplay, name, log) == .bool(true) }
     @discardableResult static func createBluetooth(_ name: String, deviceName: String, address: String) -> Bool { Qgc.invokeResult(linksCreateBluetooth, name, deviceName, address) == .bool(true) }

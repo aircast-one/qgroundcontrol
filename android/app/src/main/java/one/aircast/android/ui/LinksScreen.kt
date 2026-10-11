@@ -1069,16 +1069,16 @@ fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = 
     }
     var advanced by androidx.compose.runtime.saveable.rememberSaveable { mutableStateOf(false) }
 
-    fun attempt(action: String, settled: () -> Boolean, call: () -> Boolean) {
+    fun attempt(action: String, settled: () -> Boolean, call: () -> String?) {
         scope.launch {
-            val dispatched = withContext(Dispatchers.Default) { call() }
-            val done = dispatched && withTimeoutOrNull(LINK_SETTLE_MS) {
+            val refused = withContext(Dispatchers.Default) { call() }
+            val done = refused == null && withTimeoutOrNull(LINK_SETTLE_MS) {
                 while (!withContext(Dispatchers.Default) { settled() }) {
                     delay(150)
                 }
                 true
             } == true
-            notice = linkFailure(action, done)
+            notice = refused ?: linkFailure(action, done)
         }
     }
     var confirmingDisconnect by remember { mutableStateOf<LinkRow?>(null) }
@@ -1136,7 +1136,7 @@ fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = 
                             attempt(
                                 action = "disconnect",
                                 settled = { currentRows().getOrNull(row.index)?.connected != true },
-                            ) { Qgc.invoke("$LINKS_PATH.${row.index}.link.disconnect") }
+                            ) { LinkCommands.disconnect(row.index) }
                         }
                     },
                     onRemove = { confirmingRemove = row },
@@ -1150,7 +1150,7 @@ fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = 
                         attempt(
                             action = "stop",
                             settled = { autoLinks(Qgc.get(LINKS_VIEW)).none { it.name == link.name } },
-                        ) { Qgc.invoke("$LINKS_PATH.${link.index}.link.disconnect") }
+                        ) { LinkCommands.disconnect(link.index) }
                     }.takeIf { link.type == LinkType.Mock },
                 )
             }
@@ -1185,7 +1185,7 @@ fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = 
                     attempt(
                         action = "disconnect",
                         settled = { currentRows().getOrNull(row.index)?.connected != true },
-                    ) { Qgc.invoke("$LINKS_PATH.${row.index}.link.disconnect") }
+                    ) { LinkCommands.disconnect(row.index) }
                     confirmingDisconnect = null
                 }) { Text("Disconnect") }
             },

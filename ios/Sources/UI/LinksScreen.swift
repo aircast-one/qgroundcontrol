@@ -1219,19 +1219,19 @@ struct LinksScreen<Footer: View>: View {
 
     private func disconnect(_ row: LinkRow) {
         let index = row.index
-        attempt("disconnect", { rowConnected(index) != true }) { Qgc.invoke("\(LINKS_PATH).\(index).link.disconnect") }
+        attempt("disconnect", { rowConnected(index) != true }) { LinkCommands.disconnect(index) }
     }
 
     private func stop(_ link: AutoLink) {
         let name = link.name, index = link.index
-        attempt("stop", { !autoLinks(Qgc.get(LINKS_VIEW)).contains { $0.name == name } }) { Qgc.invoke("\(LINKS_PATH).\(index).link.disconnect") }
+        attempt("stop", { !autoLinks(Qgc.get(LINKS_VIEW)).contains { $0.name == name } }) { LinkCommands.disconnect(index) }
     }
 
-    private func attempt(_ action: String, _ settled: @escaping @Sendable () -> Bool, _ call: @escaping @Sendable () -> Bool) {
+    private func attempt(_ action: String, _ settled: @escaping @Sendable () -> Bool, _ call: @escaping @Sendable () -> String?) {
         Task { @MainActor in
-            let dispatched = await offMain { call() }
-            let done = await settles(dispatched, settled)
-            notice = linkFailure(action, done)
+            let refused = await offMain { call() }
+            let done = await settles(refused == nil, settled)
+            notice = refused ?? linkFailure(action, done)
         }
     }
 }
