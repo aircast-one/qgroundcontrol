@@ -80,4 +80,10 @@ class FlyPortraitTest {
         org.junit.Assert.assertEquals(PlaceholderUnits("ft", "ft", "mph"), placeholderUnits(distance = 0, height = 0, speed = 2))
         org.junit.Assert.assertEquals(PlaceholderUnits("m", "m", "m/s"), placeholderUnits(distance = null, height = null, speed = null))
     }
+
+    @Test
+    fun `the video area says what it will show once the aircraft connects`() {
+        org.junit.Assert.assertEquals("Synthetic view starts when your aircraft connects", awaitingAircraftText(syntheticChosen = true))
+        org.junit.Assert.assertEquals("Video starts when your aircraft connects", awaitingAircraftText(syntheticChosen = false))
+    }
 }

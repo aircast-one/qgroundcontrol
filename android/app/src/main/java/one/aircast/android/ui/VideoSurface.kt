@@ -9,6 +9,11 @@ import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.Icon
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextAlign
+import one.aircast.android.R
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
@@ -87,7 +92,11 @@ internal fun looksForAircraft(connected: Boolean, video: VideoReading?, syntheti
 internal fun FlyNoVideoMessage() {
     val videoJson by qgcPath(VIDEO_VIEW)
     val video = remember(videoJson) { videoReading(videoJson) }
-    if (looksForAircraft(hasVehicle(), video, rememberSyntheticChosen())) return
+    val syntheticChosen = rememberSyntheticChosen()
+    if (looksForAircraft(hasVehicle(), video, syntheticChosen)) {
+        AwaitingAircraftLine(syntheticChosen)
+        return
+    }
     if (rememberSyntheticAvailable()) return
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val compact = maxHeight < NO_VIDEO_FULL_HEIGHT || maxWidth < NO_VIDEO_FULL_WIDTH
@@ -96,6 +105,21 @@ internal fun FlyNoVideoMessage() {
         }
     }
 }
+
+internal fun awaitingAircraftText(syntheticChosen: Boolean): String =
+    if (syntheticChosen) "Synthetic view starts when your aircraft connects" else "Video starts when your aircraft connects"
+
+@Composable
+private fun AwaitingAircraftLine(syntheticChosen: Boolean) {
+    Box(Modifier.fillMaxSize().padding(horizontal = 16.dp), contentAlignment = Alignment.Center) {
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Icon(painterResource(R.drawable.ic_videocam), null, Modifier.size(18.dp), tint = MaterialTheme.aircast.outdoorForeground.copy(alpha = AWAITING_ALPHA))
+            Text(awaitingAircraftText(syntheticChosen), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.aircast.outdoorForeground.copy(alpha = AWAITING_ALPHA), textAlign = TextAlign.Center)
+        }
+    }
+}
+
+private const val AWAITING_ALPHA = 0.7f
 
 internal fun centredRegion(region: Rect, centreX: Float, minWidth: Float): Rect {
     val half = minOf(centreX - region.left, region.right - centreX)
