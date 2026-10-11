@@ -106,13 +106,33 @@ const widget = new Cesium.CesiumWidget("view", {
   skyBox: false,
   scene3DOnly: true,
   creditContainer: "credits",
-  targetFrameRate: softwareGpu ? SOFTWARE_FRAME_RATE : FRAME_RATE,
+  useDefaultRenderLoop: false,
   useBrowserRecommendedResolution: softwareGpu,
   requestRenderMode: true,
   maximumRenderTimeChange: Number.POSITIVE_INFINITY,
 });
 widget.resolutionScale = softwareGpu ? SOFTWARE_RESOLUTION : HARDWARE_RESOLUTION;
 const scene = widget.scene;
+const FRAME_MS = 1000 / (softwareGpu ? SOFTWARE_FRAME_RATE : FRAME_RATE);
+const loop = { running: false, wanted: false, last: 0 };
+
+const tick = (now) => {
+  const due = now - loop.last >= FRAME_MS;
+  loop.last = due ? now : loop.last;
+  loop.wanted = loop.wanted && !due;
+  due && widget.resize();
+  due && widget.render();
+  loop.running = loop.wanted || !scene.globe.tilesLoaded;
+  return loop.running && requestAnimationFrame(tick);
+};
+
+const wake = () => {
+  scene.requestRender();
+  loop.wanted = true;
+  return !loop.running && (loop.running = true) && requestAnimationFrame(tick);
+};
+
+window.addEventListener("resize", wake);
 scene.screenSpaceCameraController.enableInputs = false;
 scene.globe.showGroundAtmosphere = true;
 scene.backgroundColor = Cesium.Color.BLACK;
@@ -176,7 +196,7 @@ const drawOverlays = () => {
   plan.circles.map((circle) => drawn.add(wall(ring(circle), circle.inclusion, ground, plan.fenceTop)));
   scene.primitives.add(drawn);
   state.drawn = drawn;
-  scene.requestRender();
+  wake();
 };
 
 const showImagery = (name) => {
@@ -185,7 +205,7 @@ const showImagery = (name) => {
   scene.imageryLayers.addImageryProvider(
     new Cesium.UrlTemplateImageryProvider({ url: `${TILES}/${encodeURIComponent(name)}/{z}/{x}/{y}`, maximumLevel: 19, credit: name }),
   );
-  scene.requestRender();
+  wake();
 };
 
 const anchorHome = (pose) => {
@@ -254,7 +274,7 @@ const place = (pose) => {
 scene.preRender.addEventListener(() => {
   const next = state.target && state.homeGround !== undefined ? goal(state.target) : undefined;
   state.shown = next && (state.shown ? toward(state.shown, next) : next);
-  next && !settled(state.shown, next) && scene.requestRender();
+  next && !settled(state.shown, next) && wake();
   return state.shown && place(state.shown);
 });
 
@@ -265,10 +285,12 @@ window.aircast = {
   },
   pose: (pose) => {
     state.target = pose.available ? pose : undefined;
-    (!state.target || !state.shown || state.homeGround === undefined || !settled(state.shown, goal(state.target))) && scene.requestRender();
+    (!state.target || !state.shown || state.homeGround === undefined || !settled(state.shown, goal(state.target))) && wake();
     return pose.available && [
       pose.imagery !== state.imagery && showImagery(pose.imagery),
       `${pose.homeLatitude},${pose.homeLongitude}` !== state.home && anchorHome(pose),
     ];
   },
 };
+
+wake();
