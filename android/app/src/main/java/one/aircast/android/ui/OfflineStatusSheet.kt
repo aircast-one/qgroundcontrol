@@ -64,6 +64,13 @@ internal fun offlineStatus(view: JSONObject?): OfflineStatus? =
         )
     }
 
+internal const val OFFLINE_SHEET = "offline"
+
+internal fun openAddLink(navigation: AppNavigationState) {
+    navigation.addLinkRequested = true
+    navigation.settingsPage = CONNECTIONS_SETTINGS_PAGE
+}
+
 private fun openConnectionSettings(navigation: AppNavigationState, onDismiss: () -> Unit) {
     navigation.settingsPage = CONNECTIONS_SETTINGS_PAGE
     onDismiss()
@@ -94,7 +101,7 @@ internal fun OfflineStatusSheet(onDismiss: () -> Unit) {
                 Text(shown.footnote, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (shown.noLinks) {
-                Button(onClick = { navigation.addLinkRequested = true; openConnectionSettings(navigation, onDismiss) }, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) { Text("Add link\u2026") }
+                Button(onClick = { openAddLink(navigation); onDismiss() }, modifier = Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 8.dp)) { Text("Add link\u2026") }
             }
             shown.links.forEach { link ->
                 ListItem(

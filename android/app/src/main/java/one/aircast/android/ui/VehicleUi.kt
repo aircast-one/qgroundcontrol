@@ -418,9 +418,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     PreflightChecklistReset(checklist, available)
 
     if (!available) {
-        if (layout != FlyDeckLayout.Rail) Row(modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            OFFLINE_DECK.map { entry -> DeckButton(entry, primary = false, Modifier.weight(1f)) }
-        }
+        if (layout != FlyDeckLayout.Rail) OfflineDeck(modifier)
         return
     }
 
@@ -611,6 +609,21 @@ private val OFFLINE_DECK = listOf(
     DeckEntry("takeoff", TAKE_OFF, R.drawable.ic_flight_takeoff, enabled = false) {},
     DeckEntry("rtl", "Return", R.drawable.ic_home, enabled = false) {},
 )
+
+@Composable
+private fun OfflineDeck(modifier: Modifier) {
+    val navigation = LocalAppNavigation.current
+    val flyScreen = LocalFlyScreenState.current
+    Row(modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        OFFLINE_DECK.map { entry ->
+            Box(Modifier.weight(1f)) {
+                DeckButton(entry, primary = false)
+                Box(Modifier.matchParentSize().clickable(onClickLabel = "Find out how to connect") { flyScreen.requestedSheet = OFFLINE_SHEET })
+            }
+        }
+        DeckButton(DeckEntry("addLink", "Add a link", R.drawable.ic_link, enabled = true) { openAddLink(navigation) }, primary = true, Modifier.weight(1f))
+    }
+}
 
 internal val LocalDeckTelemetry = androidx.compose.runtime.compositionLocalOf { true }
 

@@ -126,6 +126,7 @@ private fun NoVideoLayout(title: String, detail: String = "", primary: NoVideoBu
 @Composable
 internal fun NoVideoPanel(video: VideoReading?) {
     flyWait(hasVehicle(), video, rememberSyntheticChosen(), rememberSyntheticAvailable())?.let { wait ->
+        if (wait == FlyWait.Aircraft && LocalNoVideoSize.current != NoVideoSize.Full) return
         NoVideoLayout(wait.title, wait.detail, compactTitle = wait.short, icon = R.drawable.ic_flight)
         return
     }

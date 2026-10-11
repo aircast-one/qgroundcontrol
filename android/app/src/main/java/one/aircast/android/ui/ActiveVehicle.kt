@@ -1,6 +1,8 @@
 package one.aircast.android.ui
 
 import androidx.compose.foundation.clickable
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
@@ -76,8 +78,8 @@ import androidx.compose.ui.graphics.Color
 private const val STATUS_BAR_SCRIM_ALPHA = 0.55f
 
 @Composable
-private fun statusTitleColour(tone: ChipTone, disconnected: Boolean): Color = when {
-    disconnected || tone == ChipTone.Error -> MaterialTheme.colorScheme.error
+private fun statusTitleColour(tone: ChipTone, linkFailed: Boolean): Color = when {
+    linkFailed || tone == ChipTone.Error -> MaterialTheme.colorScheme.error
     tone == ChipTone.Warning -> MaterialTheme.aircast.warning
     tone == ChipTone.Success -> MaterialTheme.aircast.success
     else -> MaterialTheme.aircast.outdoorForeground
@@ -170,6 +172,8 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
     var modeMenu by remember { mutableStateOf(false) }
     OpenOnRequest("status") { statusSettings = true }
     OpenOnRequest("modes") { modeMenu = true }
+    OpenOnRequest(OFFLINE_SHEET) { if (fly?.connected != true) offline = true }
+    val offlineNow = remember(offlineJson) { offlineStatus(offlineJson) }
     val disconnected = fly?.connected != true
     val scope = rememberCoroutineScope()
     var refusal by remember { mutableStateOf<String?>(null) }
@@ -197,8 +201,15 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        val titleColour = statusTitleColour(tone, disconnected)
-        Icon(painterResource(R.drawable.ic_flight), null, Modifier.size(24.dp), tint = titleColour)
+        val titleColour = statusTitleColour(tone, disconnected && offlineNow?.links.orEmpty().any { it.failed })
+        val searching = disconnected && offlineNow?.busy == true
+        if (searching) {
+            Box(Modifier.size(24.dp), contentAlignment = Alignment.Center) {
+                androidx.compose.material3.CircularProgressIndicator(Modifier.size(18.dp).semantics { contentDescription = "Searching" }, strokeWidth = 2.dp, color = titleColour)
+            }
+        } else {
+            Icon(painterResource(R.drawable.ic_flight), null, Modifier.size(24.dp), tint = titleColour)
+        }
         val title = when {
             lost -> signalLostTitle(silentFor, failsafe, compact = narrow)
             gotoProgress.isNotEmpty() && !choices.ambiguous -> gotoProgress
@@ -235,7 +246,9 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
                 painter = painterResource(if (alarm == null) R.drawable.ic_arrow_drop_down else R.drawable.ic_warning),
                 contentDescription = alarm ?: "Choose which vehicle to fly",
             )
-        } else if (!disconnected) {
+        } else if (disconnected) {
+            Icon(painterResource(R.drawable.ic_chevron_right), contentDescription = "How to connect", tint = titleColour)
+        } else {
             Icon(
                 painterResource(R.drawable.ic_arrow_drop_down),
                 contentDescription = if (lost) SIGNAL_LOST else "Change flight mode",

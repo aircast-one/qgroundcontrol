@@ -58,11 +58,10 @@ pub fn offline(links: &[Value], watched: &[&str], stalled_for: impl FnOnce(&str)
         (true, false) => "Connection Failed",
         (true, true) => "Not Connected",
     };
-    let main_status = match (connecting.is_empty(), failed_name.is_empty(), no_links) {
-        (false, ..) => "Connecting…",
-        (true, false, _) => "Can't Connect",
-        (true, true, true) => "Connect a Vehicle",
-        (true, true, false) => "Not Connected",
+    let main_status = match (connecting.is_empty(), failed_name.is_empty()) {
+        (false, _) => "Connecting…",
+        (true, false) => "Can't Connect",
+        (true, true) => "Not Connected",
     };
     let footnote = match () {
         _ if !connecting.is_empty() && stalled => format!("No telemetry from {connecting} yet. Check the port is the drone's MAVLink port."),
@@ -150,8 +149,7 @@ mod tests {
     #[test]
     fn the_toolbar_status_follows_main_status_indicator() {
         let status = |links: &[Value]| offline(links, &["USB"], |_| false).main_status;
-        assert_eq!(status(&[]), "Connect a Vehicle");
-        assert_eq!(status(&[json!({ "name": "UDP", "dynamic": true, "connected": true })]), "Connect a Vehicle", "dynamic links are not user links");
+        assert_eq!(status(&[]), "Not Connected", "a state, not an instruction");
         assert_eq!(status(&[link("Drone", false, "", "")]), "Not Connected");
         assert_eq!(status(&[link("Drone", true, "", "")]), "Connecting…");
         assert_eq!(status(&[link("Drone", false, "timeout", "retry")]), "Can't Connect");
