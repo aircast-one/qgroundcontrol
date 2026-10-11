@@ -98,7 +98,7 @@ final class CamerasTests: XCTestCase {
             return rtspGuess
         }
         XCTAssertEqual(asked, ["rtsp://cam/live"])
-        XCTAssertEqual(save, .Add(name: "Belly", source: "RTSP Video Stream", url: "rtsp://cam/live"))
+        XCTAssertEqual(save, .Add(name: "Belly", source: "RTSP Video Stream", url: "rtsp://cam/live", tilt: nil))
     }
 
     func testAGuessAlreadyOnScreenIsSavedAsShownWithoutAskingAgain() {
@@ -106,7 +106,7 @@ final class CamerasTests: XCTestCase {
             XCTFail("classified twice")
             return nil
         }
-        XCTAssertEqual(save, .Add(name: "Belly", source: "RTSP Video Stream", url: "rtsp://cam/live"))
+        XCTAssertEqual(save, .Add(name: "Belly", source: "RTSP Video Stream", url: "rtsp://cam/live", tilt: nil))
     }
 
     func testAnEditToAnAddressTheCoreCannotReadIsRefusedBeforeAnythingIsWritten() {
@@ -115,15 +115,30 @@ final class CamerasTests: XCTestCase {
     }
 
     func testANewAddressTheClassifierCannotReadIsStillHandedToTheCoreWhichNamesTheProblem() {
-        XCTAssertEqual(cameraSave(newDraft, unreadable) { _ in XCTFail("classified twice"); return nil }, .Add(name: "Belly", source: "", url: "rtsp://cam/live"))
+        XCTAssertEqual(cameraSave(newDraft, unreadable) { _ in XCTFail("classified twice"); return nil }, .Add(name: "Belly", source: "", url: "rtsp://cam/live", tilt: nil))
     }
 
     func testAnEditKeepsTheCamerasKindForItsOldAddressAndACameraWithNoAddressIsRenamedWithoutClassifying() {
         var kept = editDraft
         kept.url = "rtsp://10.0.0.5:8554/front"
-        XCTAssertEqual(cameraSave(kept, nil) { _ in unreadable }, .Update(slot: 0, name: "Front gimbal", source: "RTSP Video Stream", url: "rtsp://10.0.0.5:8554/front"))
+        XCTAssertEqual(cameraSave(kept, nil) { _ in unreadable }, .Update(slot: 0, name: "Front gimbal", source: "RTSP Video Stream", url: "rtsp://10.0.0.5:8554/front", tilt: nil))
         let phone = CameraDraft(stored: 1, title: "Camera 2", name: "Phone", source: "Back Camera", url: "", needsUrl: false)
-        XCTAssertEqual(cameraSave(phone, nil) { _ in XCTFail("nothing to classify"); return nil }, .Update(slot: 1, name: "Phone", source: "Back Camera", url: ""))
+        XCTAssertEqual(cameraSave(phone, nil) { _ in XCTFail("nothing to classify"); return nil }, .Update(slot: 1, name: "Phone", source: "Back Camera", url: "", tilt: nil))
+    }
+
+    func testACameraFixedToTheFrameIsSavedWithItsTiltAndAnEmptyTiltLeavesItToTheGimbal() {
+        let tilted = camerasReading(JSON.parse(#"{"class":"Cameras","cameras":[{"slot":0,"stored":0,"tilt":-90},{"slot":1,"stored":1,"tilt":null}]}"#))!
+        XCTAssertEqual(tilted.cameras.map(\.tilt), [-90, nil])
+        XCTAssertEqual(tiltText(-90), "-90")
+        XCTAssertEqual(tiltText(-12.5), "-12.5")
+        XCTAssertEqual(tiltText(nil), "")
+        let phone = CameraDraft(stored: 1, title: "Camera 2", name: "Phone", source: "Back Camera", url: "", tilt: " -12,5 ", needsUrl: false)
+        XCTAssertEqual(cameraSave(phone, nil) { _ in nil }, .Update(slot: 1, name: "Phone", source: "Back Camera", url: "", tilt: -12.5))
+        var cleared = phone
+        cleared.tilt = ""
+        XCTAssertEqual(cameraSave(cleared, nil) { _ in nil }, .Update(slot: 1, name: "Phone", source: "Back Camera", url: "", tilt: nil))
+        XCTAssertTrue(tiltReadable(""))
+        XCTAssertFalse(tiltReadable("down"), "a tilt that is not a number keeps Save off")
     }
 
     func testARefusedSaveLandsInTheSheetAsItIsNowAndNeverReopensASheetTheOperatorClosed() {

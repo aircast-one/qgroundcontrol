@@ -10,6 +10,9 @@ private let ROW_GAP: CGFloat = 14
 private let ROW_LINE_GAP: CGFloat = 2
 private let SHEET_PAD = Space.s6
 private let SHEET_GAP = Space.s3
+private let GIMBAL_AIMED = "Aimed by a gimbal"
+private let TILT_HELP = "For a camera fixed to the frame: 0 looks straight ahead, -90 straight down. Leave empty when a gimbal aims it. Used to place home and the plan on the video."
+private let TILT_UNREADABLE = "Type the tilt as a number of degrees, like -30."
 
 struct CameraDraft: Equatable {
     var stored: Int?
@@ -17,6 +20,7 @@ struct CameraDraft: Equatable {
     var name: String
     var source: String
     var url: String
+    var tilt: String = ""
     var needsUrl: Bool = true
     var picked: String? = nil
     var kept: String? = nil
@@ -28,12 +32,13 @@ private struct RemovedCamera: Equatable {
     let name: String
     let source: String
     let url: String
+    let tilt: Double?
     let title: String
     let active: Bool
 }
 
 private func undoRemoval(_ gone: RemovedCamera, _ storedCount: Int) -> String? {
-    let restored = CameraCommands.add(gone.name, source: gone.source, url: gone.url)
+    let restored = CameraCommands.add(gone.name, source: gone.source, url: gone.url, tilt: gone.tilt)
         ?? (gone.slot < storedCount ? CameraCommands.move(storedCount, to: gone.slot) : nil)
     if restored == nil && gone.active { VideoCommands.setActiveSource(gone.slot) }
     return restored
@@ -47,6 +52,7 @@ private func editDraft(_ camera: CameraEntry, _ kinds: [CameraKind]) -> CameraDr
             name: camera.name,
             source: camera.source,
             url: camera.url,
+            tilt: tiltText(camera.tilt),
             needsUrl: !kinds.contains { $0.raw == camera.source && !$0.needsUrl },
             picked: camera.source,
             kept: camera.problem == nil ? camera.url : nil
@@ -58,29 +64,42 @@ private func draftGuess(_ draft: CameraDraft, _ guess: CameraGuess?) -> CameraGu
     keptGuess(guess, draft.source, draft.url, draft.kept)
 }
 
+func tiltText(_ tilt: Double?) -> String {
+    tilt.map { $0.rounded() == $0 ? String(Int($0)) : String($0) } ?? ""
+}
+
+func typedTilt(_ text: String) -> Double? {
+    Double(text.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: "."))
+}
+
+func tiltReadable(_ text: String) -> Bool {
+    text.isBlank || typedTilt(text) != nil
+}
+
 enum CameraSave: Equatable {
-    case Add(name: String, source: String, url: String)
-    case Update(slot: Int, name: String, source: String, url: String)
+    case Add(name: String, source: String, url: String, tilt: Double?)
+    case Update(slot: Int, name: String, source: String, url: String, tilt: Double?)
     case Refused(problem: String)
 }
 
 func cameraSave(_ draft: CameraDraft, _ shown: CameraGuess?, _ classify: (String) -> CameraGuess?) -> CameraSave {
     if let stored = draft.stored, !draft.needsUrl {
-        return .Update(slot: stored, name: draft.name, source: draft.source, url: draft.url)
+        return .Update(slot: stored, name: draft.name, source: draft.source, url: draft.url, tilt: typedTilt(draft.tilt))
     }
     return savedAs(draft, shown ?? draftGuess(draft, classify(draft.url)))
 }
 
 private func savedAs(_ draft: CameraDraft, _ guess: CameraGuess?) -> CameraSave {
-    guard let stored = draft.stored else { return .Add(name: draft.name, source: chosenKind(guess, draft.picked, ""), url: draft.url) }
+    let tilt = typedTilt(draft.tilt)
+    guard let stored = draft.stored else { return .Add(name: draft.name, source: chosenKind(guess, draft.picked, ""), url: draft.url, tilt: tilt) }
     if let guess, guess.kind == nil, let problem = guess.problem { return .Refused(problem: problem) }
-    return .Update(slot: stored, name: draft.name, source: chosenKind(guess, draft.picked, draft.source), url: draft.url)
+    return .Update(slot: stored, name: draft.name, source: chosenKind(guess, draft.picked, draft.source), url: draft.url, tilt: tilt)
 }
 
 private func written(_ save: CameraSave) -> String? {
     switch save {
-    case .Add(let name, let source, let url): CameraCommands.add(name, source: source, url: url)
-    case .Update(let slot, let name, let source, let url): CameraCommands.update(slot, name: name, source: source, url: url)
+    case .Add(let name, let source, let url, let tilt): CameraCommands.add(name, source: source, url: url, tilt: tilt)
+    case .Update(let slot, let name, let source, let url, let tilt): CameraCommands.update(slot, name: name, source: source, url: url, tilt: tilt)
     case .Refused(let problem): problem
     }
 }
@@ -99,6 +118,7 @@ private struct StoredCamera: Equatable {
     let name: String
     let source: String
     let url: String
+    let tilt: Double?
 }
 
 struct CamerasEditor: View {
@@ -115,7 +135,7 @@ struct CamerasEditor: View {
         let cameras = reading?.cameras ?? []
         let kinds = reading?.kinds ?? []
         let editable = reading?.readable == true
-        let storedNow = reading?.stored.map { StoredCamera(name: $0.name, source: $0.source, url: $0.url) }
+        let storedNow = reading?.stored.map { StoredCamera(name: $0.name, source: $0.source, url: $0.url, tilt: $0.tilt) }
         let busy = pending || (settlingFrom != nil && settlingFrom == storedNow)
         ScrollView {
             VStack(alignment: .leading, spacing: 0) {
@@ -178,14 +198,14 @@ struct CamerasEditor: View {
                 onChange: { next in if draft != nil { draft = next } },
                 onDismiss: { draft = nil },
                 onSave: { guess in change(storedNow, { saved(current, guess) }, closed) },
-                onPick: { kind in change(storedNow, { CameraCommands.add(otherSourceName(kind), source: kind.raw, url: "") }, closed) },
+                onPick: { kind in change(storedNow, { CameraCommands.add(otherSourceName(kind), source: kind.raw, url: "", tilt: nil) }, closed) },
                 onRemove: current.stored.flatMap { slot in
                     cameras.first { $0.stored == slot }.map { entry -> () -> Void in
                         {
                             change(storedNow, { CameraCommands.remove(slot) }) { refusal in
                                 notice = refusal
                                 if refusal == nil {
-                                    removed = RemovedCamera(slot: slot, name: entry.name, source: entry.source, url: entry.url, title: entry.title, active: entry.active)
+                                    removed = RemovedCamera(slot: slot, name: entry.name, source: entry.source, url: entry.url, tilt: entry.tilt, title: entry.title, active: entry.active)
                                 }
                                 draft = nil
                             }
@@ -297,7 +317,7 @@ private struct CameraSheet: View {
     var body: some View {
         let guess = draftGuess(draft, guessed.flatMap { $0.url == draft.url ? $0.guess : nil })
         let problem = draft.refusal ?? (draft.url.isBlank ? nil : guess?.problem)
-        let canSave = !busy && (!draft.url.isBlank || !draft.needsUrl)
+        let canSave = !busy && (!draft.url.isBlank || !draft.needsUrl) && tiltReadable(draft.tilt)
         let save = { if canSave { onSave(guess) } }
         AircastSheet(onDismissRequest: onDismiss, skipPartiallyExpanded: true) {
             ScrollView {
@@ -313,6 +333,7 @@ private struct CameraSheet: View {
                         }
                     }
                     if draft.stored == nil { nameField(save) }
+                    tiltField(save)
                     HStack {
                         if let onRemove {
                             Button("Remove", action: onRemove).foregroundStyle(theme.colors.error).buttonStyle(.text).disabled(busy)
@@ -397,6 +418,20 @@ private struct CameraSheet: View {
                 }
             }
         }
+    }
+
+    @ViewBuilder private func tiltField(_ save: @escaping () -> Void) -> some View {
+        let readable = tiltReadable(draft.tilt)
+        field("Tilt (°)") {
+            TextField("Tilt", text: Binding(get: { draft.tilt }, set: { typed in
+                onChange(withChanges(draft) { $0.tilt = typed; $0.refusal = nil })
+            }), prompt: Text(GIMBAL_AIMED))
+            .keyboardType(.numbersAndPunctuation)
+            .autocorrectionDisabled()
+            .submitLabel(.done)
+            .onSubmit(save)
+        }
+        Text(readable ? TILT_HELP : TILT_UNREADABLE).font(.bodySmall).foregroundStyle(readable ? theme.colors.onSurfaceVariant : theme.colors.error)
     }
 
     private func field<Field: View>(_ label: String, @ViewBuilder _ input: () -> Field) -> some View {

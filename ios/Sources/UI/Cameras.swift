@@ -42,6 +42,7 @@ struct CameraEntry: Equatable, Identifiable {
     let name: String
     let source: String
     let url: String
+    let tilt: Double?
     let problem: String?
     let fromDrone: Bool
     let active: Bool
@@ -96,6 +97,7 @@ func camerasReading(_ view: JSON?) -> CamerasReading? {
                 name: camera["name"].string,
                 source: camera["source"].string,
                 url: camera["url"].string,
+                tilt: camera["tilt"].double,
                 problem: textOrNull(camera, "problem"),
                 fromDrone: camera["fromDrone"].bool,
                 active: camera["active"].bool,

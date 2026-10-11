@@ -105,8 +105,8 @@ enum VideoCommands {
 }
 
 enum CameraCommands {
-    static func add(_ name: String, source: String, url: String) -> String? { Qgc.refusalOf(camerasAdd, name, source, url) }
-    static func update(_ slot: Int, name: String, source: String, url: String) -> String? { Qgc.refusalOf(camerasUpdate, slot, name, source, url) }
+    static func add(_ name: String, source: String, url: String, tilt: Double?) -> String? { Qgc.refusalOf(camerasAdd, name, source, url, tilt) }
+    static func update(_ slot: Int, name: String, source: String, url: String, tilt: Double?) -> String? { Qgc.refusalOf(camerasUpdate, slot, name, source, url, tilt) }
     static func remove(_ slot: Int) -> String? { Qgc.refusalOf(camerasRemove, slot) }
     static func move(_ from: Int, to: Int) -> String? { Qgc.refusalOf(camerasMove, from, to) }
     static func classify(_ address: String) -> JSON? { Qgc.call(camerasClassify, address) }

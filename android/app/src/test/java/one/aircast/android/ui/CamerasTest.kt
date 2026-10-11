@@ -88,11 +88,24 @@ class CamerasTest {
 
     @Test
     fun `a new camera is added with the type picked, an edit updates its slot`() {
-        assertEquals(CameraSave.Add("Belly", udp.raw, "0.0.0.0:5600"), cameraSave(pickedKind(NEW_CAMERA_DRAFT, udp).copy(name = "Belly")))
+        assertEquals(CameraSave.Add("Belly", udp.raw, "0.0.0.0:5600", null), cameraSave(pickedKind(NEW_CAMERA_DRAFT, udp).copy(name = "Belly")))
         val front = camerasReading(view)!!.cameras[0]
         val edited = pickedKind(editDraft(front, camerasReading(view)!!.kinds)!!, udp).copy(url = "0.0.0.0:5601")
-        assertEquals(CameraSave.Update(0, "Front gimbal", udp.raw, "0.0.0.0:5601"), cameraSave(edited))
+        assertEquals(CameraSave.Update(0, "Front gimbal", udp.raw, "0.0.0.0:5601", null), cameraSave(edited))
         assertEquals("a drone camera is not the operator's to edit", null, editDraft(camerasReading(view)!!.cameras[2], emptyList()))
+    }
+
+    @Test
+    fun `a camera fixed to the frame is saved with its tilt, and an empty tilt leaves it to the gimbal`() {
+        val front = camerasReading(view)!!.cameras[0]
+        assertEquals(null, front.tilt)
+        val fixed = front.copy(tilt = -30.0)
+        assertEquals("-30", editDraft(fixed, emptyList())!!.tilt)
+        assertEquals(CameraSave.Update(0, "Front gimbal", front.source, front.url, -12.5), cameraSave(editDraft(front, emptyList())!!.copy(tilt = " -12,5 ")))
+        assertEquals(CameraSave.Update(0, "Front gimbal", front.source, front.url, null), cameraSave(editDraft(fixed, emptyList())!!.copy(tilt = "")))
+        assertEquals(true, tiltReadable(""))
+        assertEquals("a tilt that is not a number keeps Save off", false, tiltReadable("down"))
+        assertEquals(-90.0, camerasReading(JSONObject(view.toString().replace("\"url\":\"rtsp://10.0.0.5:8554/front\",", "\"url\":\"rtsp://10.0.0.5:8554/front\",\"tilt\":-90,")))!!.cameras[0].tilt)
     }
 
     @Test

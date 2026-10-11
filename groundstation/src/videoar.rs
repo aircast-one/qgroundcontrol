@@ -10,6 +10,12 @@ pub const DEPS: &[&str] = &[
     "vehicle.coordinate",
     "vehicle.homePosition",
     "vehicle.altitudeRelative",
+    "vehicle.heading",
+    "vehicle.pitch",
+    "vehicle.roll",
+    "video.activeVideoSource",
+    crate::cameras::CAMERAS_PATH,
+    crate::cameras::ACTIVE_PATH,
     "settings.unitsSettings.horizontalDistanceUnits",
     "settings.gimbalControllerSettings.cameraHFov",
     crate::gimbal::GIMBAL_CHANGED,
@@ -109,18 +115,26 @@ pub fn ar(drone: (f64, f64), drone_above: f64, camera: Camera, overlays: &Value,
     json!({ "kind": "object", "class": "VideoAr", "available": true, "home": home, "waypoints": waypoints, "route": legs })
 }
 
-pub fn camera(backend: &dyn Backend, gimbals: &Value) -> Option<Camera> {
+pub fn camera(backend: &dyn Backend, gimbals: &Value, fixed_tilt: Option<f64>) -> Option<Camera> {
     let fov = value_number(&backend.value(CAMERA_HFOV)).filter(|fov| *fov > 0.0 && *fov < 180.0)?;
-    crate::synthview::gimbal_aim(gimbals).map(|(heading, pitch)| Camera { heading, pitch, roll: 0.0, fov })
+    match fixed_tilt {
+        Some(tilt) => Some(Camera {
+            heading: raw(backend, "vehicle.heading")?,
+            pitch: raw(backend, "vehicle.pitch").unwrap_or(0.0) + tilt,
+            roll: raw(backend, "vehicle.roll").unwrap_or(0.0),
+            fov,
+        }),
+        None => crate::synthview::gimbal_aim(gimbals).map(|(heading, pitch)| Camera { heading, pitch, roll: 0.0, fov }),
+    }
 }
 
 fn unavailable() -> Value {
     json!({ "kind": "object", "class": "VideoAr", "available": false })
 }
 
-pub fn video_ar(backend: &dyn Backend, gimbals: &Value, overlays: &Value) -> Value {
+pub fn video_ar(backend: &dyn Backend, gimbals: &Value, overlays: &Value, fixed_tilt: Option<f64>) -> Value {
     let placed = point(backend, "vehicle.coordinate").zip(point(backend, "vehicle.homePosition")).zip(raw(backend, "vehicle.altitudeRelative"));
-    let Some((((drone, _), drone_above), camera)) = placed.zip(camera(backend, gimbals)) else {
+    let Some((((drone, _), drone_above), camera)) = placed.zip(camera(backend, gimbals, fixed_tilt)) else {
         return unavailable();
     };
     let unit = Unit::horizontal(backend);
@@ -129,7 +143,7 @@ pub fn video_ar(backend: &dyn Backend, gimbals: &Value, overlays: &Value) -> Val
 }
 
 pub fn video_ar_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    video_ar(backend, &crate::gimbal::gimbal_view(backend, &[]), &crate::synthview::overlays_view(backend, &[]))
+    video_ar(backend, &crate::gimbal::gimbal_view(backend, &[]), &crate::synthview::overlays_view(backend, &[]), crate::cameras::active_tilt(backend))
 }
 
 #[cfg(test)]
@@ -194,18 +208,26 @@ mod tests {
 
     #[test]
     fn the_gimbal_aims_the_camera_and_the_operators_field_of_view_frames_it() {
-        assert_eq!(camera(&flying(Some(62.0)), &gimbal(200.0, -30.0)), Some(Camera { heading: 200.0, pitch: -30.0, roll: 0.0, fov: 62.0 }));
-        assert_eq!(camera(&flying(Some(62.0)), &json!({ "gimbals": [] })), None, "a camera fixed to the frame reports no tilt, so nothing could be placed truthfully");
-        assert_eq!(camera(&flying(None), &gimbal(200.0, -30.0)), None, "without a field of view the marks cannot be scaled to the picture");
-        assert_eq!(camera(&flying(Some(0.0)), &gimbal(200.0, -30.0)), None);
+        assert_eq!(camera(&flying(Some(62.0)), &gimbal(200.0, -30.0), None), Some(Camera { heading: 200.0, pitch: -30.0, roll: 0.0, fov: 62.0 }));
+        assert_eq!(camera(&flying(Some(62.0)), &json!({ "gimbals": [] }), None), None, "a camera with no gimbal and no tilt set could only be guessed at");
+        assert_eq!(camera(&flying(None), &gimbal(200.0, -30.0), None), None, "without a field of view the marks cannot be scaled to the picture");
+        assert_eq!(camera(&flying(Some(0.0)), &gimbal(200.0, -30.0), None), None);
+    }
+
+    #[test]
+    fn a_camera_fixed_to_the_frame_turns_with_the_drone_at_its_set_tilt() {
+        let banked = Fake(flying(Some(80.0)).0.into_iter().chain([("vehicle.heading", json!(90.0)), ("vehicle.pitch", json!(5.0)), ("vehicle.roll", json!(-10.0))]).collect());
+        assert_eq!(camera(&banked, &json!({ "gimbals": [] }), Some(-30.0)), Some(Camera { heading: 90.0, pitch: -25.0, roll: -10.0, fov: 80.0 }));
+        assert_eq!(camera(&banked, &gimbal(200.0, -45.0), Some(-30.0)).map(|aimed| aimed.heading), Some(90.0), "a tilt set on the camera on screen means it is not the one on the gimbal");
+        assert_eq!(camera(&flying(Some(80.0)), &json!({ "gimbals": [] }), Some(-30.0)), None, "without a heading a fixed camera cannot be pointed");
     }
 
     #[test]
     fn the_marks_are_withheld_until_the_drone_its_home_and_the_camera_are_known() {
         let overlays = json!({ "home": { "latitude": -35.001, "longitude": 149.0 } });
-        assert_eq!(video_ar(&Fake(BTreeMap::new()), &gimbal(180.0, -20.0), &overlays)["available"], false);
-        assert_eq!(video_ar(&flying(Some(80.0)), &json!({ "gimbals": [] }), &overlays)["available"], false);
-        let shown = video_ar(&flying(Some(80.0)), &gimbal(180.0, -20.0), &overlays);
+        assert_eq!(video_ar(&Fake(BTreeMap::new()), &gimbal(180.0, -20.0), &overlays, None)["available"], false);
+        assert_eq!(video_ar(&flying(Some(80.0)), &json!({ "gimbals": [] }), &overlays, None)["available"], false);
+        let shown = video_ar(&flying(Some(80.0)), &gimbal(180.0, -20.0), &overlays, None);
         assert_eq!((shown["available"].as_bool(), shown["home"]["label"].as_str()), (Some(true), Some(HOME_LABEL)), "home behind the drone shows once the gimbal looks back at it");
     }
 

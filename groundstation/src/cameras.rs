@@ -46,6 +46,8 @@ const UNKNOWN_ADDRESS: &str = "Start the address with rtsp://, http://, udp:// o
 const NEEDS_LISTEN_PORT: &str = "Type the address as host:port, like 0.0.0.0:5600.";
 const NEEDS_DIAL_PORT: &str = "Type the address as host:port, like 192.168.1.10:5600.";
 const NEEDS_HOST: &str = "The address has no host. Add the camera's IP address or name after the scheme.";
+const BAD_TILT: &str = "Tilt is an angle from -90 (straight down) to 90 (straight up).";
+const MAX_TILT_DEG: f64 = 90.0;
 const SCHEME_ADDED: [&str; 4] = [SOURCE_UDP_H264, SOURCE_UDP_H265, SOURCE_MPEGTS, SOURCE_TCP];
 
 const LISTEN_DEFAULT: &str = "0.0.0.0:5600";
@@ -58,11 +60,23 @@ pub struct Camera {
     pub name: String,
     pub source: String,
     pub url: String,
+    pub tilt: Option<f64>,
 }
 
 impl Camera {
     pub fn new(name: &str, source: &str, url: &str) -> Camera {
-        Camera { name: name.trim().to_string(), source: source.trim().to_string(), url: url.trim().to_string() }
+        Camera { name: name.trim().to_string(), source: source.trim().to_string(), url: url.trim().to_string(), tilt: None }
+    }
+
+    pub fn tilted(self, tilt: Option<f64>) -> Camera {
+        Camera { tilt, ..self }
+    }
+}
+
+fn tilt_of(value: Option<&Value>) -> Result<Option<f64>, &'static str> {
+    match value {
+        None | Some(Value::Null) => Ok(None),
+        Some(given) => given.as_f64().filter(|tilt| tilt.abs() <= MAX_TILT_DEG).map(Some).ok_or(BAD_TILT),
     }
 }
 
@@ -80,12 +94,21 @@ pub fn parse(text: &str) -> Option<Vec<Camera>> {
         trimmed => serde_json::from_str::<Value>(trimmed)
             .ok()?
             .as_array()
-            .map(|entries| entries.iter().map(|entry| Camera { name: field(entry, "name"), source: field(entry, "source"), url: field(entry, "url") }).collect()),
+            .map(|entries| entries.iter().map(|entry| Camera { name: field(entry, "name"), source: field(entry, "source"), url: field(entry, "url"), tilt: tilt_of(entry.get("tilt")).ok().flatten() }).collect()),
     }
 }
 
 pub fn encode(cameras: &[Camera]) -> String {
-    Value::Array(cameras.iter().map(|camera| json!({ "name": camera.name, "source": camera.source, "url": camera.url })).collect()).to_string()
+    Value::Array(
+        cameras
+            .iter()
+            .map(|camera| match camera.tilt {
+                Some(tilt) => json!({ "name": camera.name, "source": camera.source, "url": camera.url, "tilt": tilt }),
+                None => json!({ "name": camera.name, "source": camera.source, "url": camera.url }),
+            })
+            .collect(),
+    )
+    .to_string()
 }
 
 pub fn problem(source: &str, url: &str) -> Option<&'static str> {
@@ -295,6 +318,12 @@ pub fn stored() -> Option<Vec<Camera>> {
     listed().0
 }
 
+pub fn active_tilt(backend: &dyn Backend) -> Option<f64> {
+    let (cameras, stored_active) = listed();
+    let active = crate::read::integer(&backend.value_fields("video", "activeVideoSource"), "activeVideoSource").unwrap_or(stored_active);
+    cameras?.get(usize::try_from(active).ok()?)?.tilt
+}
+
 pub fn edit<T>(backend: Option<&dyn Backend>, change: impl FnOnce(&[Camera], i64) -> (Option<(Vec<Camera>, i64)>, T)) -> Option<T> {
     let (answer, written) = {
         let _editing = EDITING.lock().unwrap_or_else(PoisonError::into_inner);
@@ -366,16 +395,17 @@ fn changed(path: &str, given: &Value, cameras: &[Camera], active: i64) -> Change
         None => write(camera),
     };
     match path {
-        CAMERAS_ADD => match inferred(&text_arg(given, 1), &text_arg(given, 2)) {
+        CAMERAS_ADD => match inferred(&text_arg(given, 1), &text_arg(given, 2)).and_then(|source| Ok((source, tilt_of(given.get(3))?))) {
             Err(reason) => refusal(reason),
-            Ok(source) => checked(normalized(Camera::new(&text_arg(given, 0), &source, &text_arg(given, 2))), &|camera| {
+            Ok((source, tilt)) => checked(normalized(Camera::new(&text_arg(given, 0), &source, &text_arg(given, 2)).tilted(tilt)), &|camera| {
                 let next = cameras.iter().cloned().chain(std::iter::once(camera)).collect();
                 (Some((next, active_after_add(active, cameras.len()))), json!({ "ok": true, "slot": cameras.len() }))
             }),
         },
-        CAMERAS_UPDATE => match index_arg(given, 0, cameras.len()) {
-            None => refusal(NO_SUCH_CAMERA),
-            Some(at) => checked(normalized(Camera::new(&text_arg(given, 1), &text_arg(given, 2), &text_arg(given, 3))), &|camera| {
+        CAMERAS_UPDATE => match (index_arg(given, 0, cameras.len()), tilt_of(given.get(4))) {
+            (None, _) => refusal(NO_SUCH_CAMERA),
+            (_, Err(reason)) => refusal(reason),
+            (Some(at), Ok(tilt)) => checked(normalized(Camera::new(&text_arg(given, 1), &text_arg(given, 2), &text_arg(given, 3)).tilted(tilt)), &|camera| {
                 let next = cameras.iter().enumerate().map(|(index, existing)| if index == at { camera.clone() } else { existing.clone() }).collect();
                 (Some((next, active)), json!({ "ok": true, "slot": at }))
             }),
@@ -472,6 +502,7 @@ pub fn view_of(video: &Value, stored: Option<Vec<Camera>>, stored_active: i64, p
                 "name": camera.name,
                 "source": camera.source,
                 "url": camera.url,
+                "tilt": camera.tilt,
                 "summary": summary(camera),
                 "problem": (!from_drone).then(|| problem(&camera.source, &camera.url)).flatten(),
                 "fromDrone": from_drone,
@@ -503,6 +534,24 @@ mod tests {
         assert_eq!(parse(&encode(&list)), Some(list));
         assert_eq!(parse(""), Some(Vec::new()), "nothing stored is no cameras");
         assert_eq!(parse("{not a list"), None, "a list that cannot be read must not be mistaken for an empty one and overwritten");
+    }
+
+    #[test]
+    fn a_fixed_camera_keeps_its_tilt_and_a_gimbal_camera_has_none() {
+        let fixed = cam("Belly", SOURCE_RTSP, "rtsp://a/belly").tilted(Some(-90.0));
+        let stored = encode(&[fixed.clone(), cam("Gimbal", SOURCE_RTSP, "rtsp://a/gimbal")]);
+        assert!(!stored.contains("null"), "a camera without a tilt is stored as before");
+        assert_eq!(parse(&stored).map(|list| list.iter().map(|camera| camera.tilt).collect::<Vec<_>>()), Some(vec![Some(-90.0), None]));
+        let three = vec![cam("Front", SOURCE_RTSP, "rtsp://a/front")];
+        let (write, _) = changed(CAMERAS_ADD, &json!(["Belly", SOURCE_RTSP, "rtsp://a/belly", -90]), &three, 0);
+        assert_eq!(write.map(|(next, _)| next[1].tilt), Some(Some(-90.0)));
+        let (write, _) = changed(CAMERAS_UPDATE, &json!([0, "Front", SOURCE_RTSP, "rtsp://a/front", -10.5]), &three, 0);
+        assert_eq!(write.map(|(next, _)| next[0].tilt), Some(Some(-10.5)));
+        let (write, _) = changed(CAMERAS_UPDATE, &json!([0, "Front", SOURCE_RTSP, "rtsp://a/front", null]), &[fixed.clone()], 0);
+        assert_eq!(write.map(|(next, _)| next[0].tilt), Some(None), "clearing the tilt hands the aim back to the gimbal");
+        assert_eq!(changed(CAMERAS_UPDATE, &json!([0, "Front", SOURCE_RTSP, "rtsp://a/front", -120]), &three, 0), (None, refused(BAD_TILT)));
+        assert_eq!(changed(CAMERAS_ADD, &json!(["Nose", SOURCE_RTSP, "rtsp://a/nose", "down"]), &three, 0), (None, refused(BAD_TILT)));
+        assert_eq!(view_of(&json!({}), Some(vec![fixed]), 0, false, false)["cameras"][0]["tilt"], json!(-90.0));
     }
 
     #[test]

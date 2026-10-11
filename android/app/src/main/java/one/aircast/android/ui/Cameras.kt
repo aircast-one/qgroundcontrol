@@ -35,6 +35,7 @@ internal data class CameraEntry(
     val name: String,
     val source: String,
     val url: String,
+    val tilt: Double?,
     val problem: String?,
     val fromDrone: Boolean,
     val active: Boolean,
@@ -60,6 +61,8 @@ private fun JSONObject.textOrNull(key: String): String? = takeUnless { it.isNull
 
 private fun JSONObject.intOrNull(key: String): Int? = takeUnless { it.isNull(key) }?.optInt(key)
 
+private fun JSONObject.doubleOrNull(key: String): Double? = takeUnless { it.isNull(key) }?.optDouble(key)?.takeUnless { it.isNaN() }
+
 internal fun camerasReading(view: JSONObject?): CamerasReading? {
     if (view == null || view.optText("class") != "Cameras") return null
     val pip = view.optJSONObject("pip")
@@ -76,6 +79,7 @@ internal fun camerasReading(view: JSONObject?): CamerasReading? {
                 name = camera.optText("name"),
                 source = camera.optText("source"),
                 url = camera.optText("url"),
+                tilt = camera.doubleOrNull("tilt"),
                 problem = camera.textOrNull("problem"),
                 fromDrone = camera.optBoolean("fromDrone"),
                 active = camera.optBoolean("active"),

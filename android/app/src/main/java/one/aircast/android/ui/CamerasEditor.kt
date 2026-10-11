@@ -58,6 +58,9 @@ private val ROW_GAP = 14.dp
 private val ROW_LINE_GAP = 2.dp
 private val SHEET_PAD = AircastSpace.s6
 private val SHEET_GAP = AircastSpace.s3
+private const val GIMBAL_AIMED = "Aimed by a gimbal"
+private const val TILT_HELP = "For a camera fixed to the frame: 0 looks straight ahead, -90 straight down. Leave empty when a gimbal aims it. Used to place home and the plan on the video."
+private const val TILT_UNREADABLE = "Type the tilt as a number of degrees, like -30."
 
 internal data class CameraDraft(
     val stored: Int?,
@@ -65,15 +68,16 @@ internal data class CameraDraft(
     val name: String,
     val source: String,
     val url: String,
+    val tilt: String = "",
     val needsUrl: Boolean = true,
     val choosingKind: Boolean = false,
     val refusal: String? = null,
 )
 
-private data class RemovedCamera(val slot: Int, val name: String, val source: String, val url: String, val title: String, val active: Boolean)
+private data class RemovedCamera(val slot: Int, val name: String, val source: String, val url: String, val tilt: Double?, val title: String, val active: Boolean)
 
 private fun undoRemoval(gone: RemovedCamera, storedCount: Int): String? {
-    val restored = CameraCommands.add(gone.name, gone.source, gone.url)
+    val restored = CameraCommands.add(gone.name, gone.source, gone.url, gone.tilt)
         ?: if (gone.slot < storedCount) CameraCommands.move(storedCount, gone.slot) else null
     if (restored == null && gone.active) VideoCommands.setActiveSource(gone.slot)
     return restored
@@ -88,9 +92,16 @@ internal fun editDraft(camera: CameraEntry, kinds: List<CameraKind>): CameraDraf
         name = camera.name,
         source = camera.source,
         url = camera.url,
+        tilt = tiltText(camera.tilt),
         needsUrl = kinds.none { it.raw == camera.source && !it.needsUrl },
     )
 }
+
+internal fun tiltText(tilt: Double?): String = tilt?.let { if (it % 1.0 == 0.0) it.toInt().toString() else it.toString() }.orEmpty()
+
+internal fun typedTilt(text: String): Double? = text.trim().replace(',', '.').toDoubleOrNull()
+
+internal fun tiltReadable(text: String): Boolean = text.isBlank() || typedTilt(text) != null
 
 internal fun pickedKind(draft: CameraDraft, kind: CameraKind): CameraDraft = draft.copy(
     source = kind.raw,
@@ -101,16 +112,16 @@ internal fun pickedKind(draft: CameraDraft, kind: CameraKind): CameraDraft = dra
 )
 
 internal sealed interface CameraSave {
-    data class Add(val name: String, val source: String, val url: String) : CameraSave
-    data class Update(val slot: Int, val name: String, val source: String, val url: String) : CameraSave
+    data class Add(val name: String, val source: String, val url: String, val tilt: Double?) : CameraSave
+    data class Update(val slot: Int, val name: String, val source: String, val url: String, val tilt: Double?) : CameraSave
 }
 
 internal fun cameraSave(draft: CameraDraft): CameraSave =
-    draft.stored?.let { CameraSave.Update(it, draft.name, draft.source, draft.url) } ?: CameraSave.Add(draft.name, draft.source, draft.url)
+    typedTilt(draft.tilt).let { tilt -> draft.stored?.let { CameraSave.Update(it, draft.name, draft.source, draft.url, tilt) } ?: CameraSave.Add(draft.name, draft.source, draft.url, tilt) }
 
 private fun written(save: CameraSave): String? = when (save) {
-    is CameraSave.Add -> CameraCommands.add(save.name, save.source, save.url)
-    is CameraSave.Update -> CameraCommands.update(save.slot, save.name, save.source, save.url)
+    is CameraSave.Add -> CameraCommands.add(save.name, save.source, save.url, save.tilt)
+    is CameraSave.Update -> CameraCommands.update(save.slot, save.name, save.source, save.url, save.tilt)
 }
 
 internal fun refusedDraft(current: CameraDraft?, refusal: String?): CameraDraft? = refusal?.let { current?.copy(refusal = it) }
@@ -127,8 +138,8 @@ fun CamerasEditor(modifier: Modifier = Modifier) {
     var notice by remember { mutableStateOf<String?>(null) }
     var removed by remember { mutableStateOf<RemovedCamera?>(null) }
     var pending by remember { mutableStateOf(false) }
-    var settlingFrom by remember { mutableStateOf<List<Triple<String, String, String>>?>(null) }
-    val storedNow = reading?.stored?.map { Triple(it.name, it.source, it.url) }
+    var settlingFrom by remember { mutableStateOf<List<List<Any?>>?>(null) }
+    val storedNow = reading?.stored?.map { listOf(it.name, it.source, it.url, it.tilt) }
     val busy = pending || (settlingFrom != null && settlingFrom == storedNow)
     val change: (() -> String?, (String?) -> Unit) -> Unit = { action, after ->
         val before = storedNow
@@ -190,13 +201,13 @@ fun CamerasEditor(modifier: Modifier = Modifier) {
             onChange = { draft = it },
             onDismiss = { draft = null },
             onSave = { change({ written(cameraSave(current)) }, closed) },
-            onAddFixed = { kind -> change({ CameraCommands.add(addedName(kind), kind.raw, "") }, closed) },
+            onAddFixed = { kind -> change({ CameraCommands.add(addedName(kind), kind.raw, "", null) }, closed) },
             onRemove = current.stored?.let { slot ->
                 cameras.firstOrNull { it.stored == slot }?.let { entry ->
                     {
                         change({ CameraCommands.remove(slot) }) { refusal ->
                             notice = refusal
-                            if (refusal == null) removed = RemovedCamera(slot, entry.name, entry.source, entry.url, entry.title, entry.active)
+                            if (refusal == null) removed = RemovedCamera(slot, entry.name, entry.source, entry.url, entry.tilt, entry.title, entry.active)
                             draft = null
                         }
                     }
@@ -300,7 +311,7 @@ private fun CameraForm(
 ) {
     var naming by remember { mutableStateOf(draft.stored != null) }
     val typeTitle = kind?.let(::kindTitle) ?: kindLabel(draft.source)
-    val canSave = !busy && (draft.url.isNotBlank() || !draft.needsUrl)
+    val canSave = !busy && (draft.url.isNotBlank() || !draft.needsUrl) && tiltReadable(draft.tilt)
     val save = { if (canSave) onSave() }
     Text(if (draft.stored == null) typeTitle else draft.title, style = MaterialTheme.typography.titleMedium)
     Row(
@@ -343,6 +354,18 @@ private fun CameraForm(
         kind?.description?.ifBlank { null }?.let { Text(it, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
         draft.refusal?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
     }
+    OutlinedTextField(
+        value = draft.tilt,
+        onValueChange = { typed -> onChange(draft.copy(tilt = typed, refusal = null)) },
+        label = { Text("Tilt (°)") },
+        placeholder = { Text(GIMBAL_AIMED) },
+        singleLine = true,
+        isError = !tiltReadable(draft.tilt),
+        supportingText = { Text(if (tiltReadable(draft.tilt)) TILT_HELP else TILT_UNREADABLE) },
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal, imeAction = ImeAction.Done),
+        keyboardActions = KeyboardActions(onDone = { save() }),
+        modifier = Modifier.fillMaxWidth(),
+    )
     Row(verticalAlignment = Alignment.CenterVertically) {
         onRemove?.let { remove -> TextButton(onClick = remove, enabled = !busy) { Text("Remove", color = MaterialTheme.colorScheme.error) } }
         Spacer(Modifier.weight(1f))

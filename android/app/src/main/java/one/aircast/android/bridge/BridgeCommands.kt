@@ -101,8 +101,8 @@ internal object VideoCommands {
 }
 
 internal object CameraCommands {
-    fun add(name: String, source: String, url: String): String? = Qgc.refusalOf(CAMERAS_ADD, name, source, url)
-    fun update(slot: Int, name: String, source: String, url: String): String? = Qgc.refusalOf(CAMERAS_UPDATE, slot, name, source, url)
+    fun add(name: String, source: String, url: String, tilt: Double?): String? = Qgc.refusalOf(CAMERAS_ADD, name, source, url, tilt)
+    fun update(slot: Int, name: String, source: String, url: String, tilt: Double?): String? = Qgc.refusalOf(CAMERAS_UPDATE, slot, name, source, url, tilt)
     fun remove(slot: Int): String? = Qgc.refusalOf(CAMERAS_REMOVE, slot)
     fun move(from: Int, to: Int): String? = Qgc.refusalOf(CAMERAS_MOVE, from, to)
 }
