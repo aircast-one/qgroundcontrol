@@ -145,7 +145,7 @@ private fun CameraMenu(state: CameraSwitchState) {
             state.cameras.map { camera ->
                 DropdownMenuItem(
                     text = { Text(camera.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
-                    leadingIcon = { CameraStatusDot(shownCameraStatus(camera, camera.slot == state.shown.slot, syntheticDrawn())) },
+                    leadingIcon = { CameraStatusDot(shownCameraStatus(camera, camera.slot == state.shown.slot, syntheticPage())) },
                     onClick = {
                         open = false
                         if (camera.slot != state.shown.slot) showCamera(camera.slot)
@@ -173,7 +173,7 @@ private fun CameraSegment(camera: CameraEntry, selected: Boolean, menu: Boolean 
             horizontalArrangement = Arrangement.spacedBy(SEGMENT_GAP),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            CameraStatusDot(shownCameraStatus(camera, selected, syntheticDrawn()))
+            CameraStatusDot(shownCameraStatus(camera, selected, syntheticPage()))
             Text(
                 camera.short,
                 Modifier.widthIn(max = SEGMENT_LABEL_MAX),

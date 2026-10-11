@@ -34,11 +34,19 @@ class SyntheticViewTest {
     fun `the synthetic camera reads live only once the page has drawn it`() {
         val camera = { source: String, status: String -> camerasReading(JSONObject("""{"class":"Cameras","cameras":[{"slot":0,"title":"Synthetic","short":"Synthetic","source":"$source","active":true,"status":"$status"}]}"""))!!.cameras.single() }
         val synthetic = camera(SYNTHETIC_SOURCE, "live")
-        assertEquals("a green dot over a black pane told the pilot a blank view was working", CameraStatus.Connecting, shownCameraStatus(synthetic, showing = true, drawn = false))
-        assertEquals(CameraStatus.Live, shownCameraStatus(synthetic, showing = true, drawn = true))
-        assertEquals("a synthetic view that is not on screen has no page to wait for, so it keeps the core's word", CameraStatus.Live, shownCameraStatus(synthetic, showing = false, drawn = false))
-        assertEquals(CameraStatus.Idle, shownCameraStatus(camera(SYNTHETIC_SOURCE, "idle"), showing = true, drawn = false))
-        assertEquals(CameraStatus.Live, shownCameraStatus(camera("RTSP Video Stream", "live"), showing = true, drawn = false))
+        assertEquals("a green dot over a black pane told the pilot a blank view was working", CameraStatus.Connecting, shownCameraStatus(synthetic, showing = true, page = SyntheticDraw.Loading))
+        assertEquals(CameraStatus.Live, shownCameraStatus(synthetic, showing = true, page = SyntheticDraw.Drawn))
+        assertEquals("a page that failed to start is no picture, not one on its way", CameraStatus.NoSignal, shownCameraStatus(synthetic, showing = true, page = SyntheticDraw.Failed))
+        assertEquals("a synthetic view that is not on screen has no page to wait for, so it keeps the core's word", CameraStatus.Live, shownCameraStatus(synthetic, showing = false, page = SyntheticDraw.Loading))
+        assertEquals(CameraStatus.Idle, shownCameraStatus(camera(SYNTHETIC_SOURCE, "idle"), showing = true, page = SyntheticDraw.Failed))
+        assertEquals(CameraStatus.Live, shownCameraStatus(camera("RTSP Video Stream", "live"), showing = true, page = SyntheticDraw.Loading))
+    }
+
+    @Test
+    fun `any page that has drawn wins, and a failure shows only when none has`() {
+        assertEquals(SyntheticDraw.Drawn, pageOf(listOf(SyntheticDraw.Failed, SyntheticDraw.Drawn)))
+        assertEquals(SyntheticDraw.Failed, pageOf(listOf(SyntheticDraw.Loading, SyntheticDraw.Failed)))
+        assertEquals(SyntheticDraw.Loading, pageOf(emptyList()))
     }
 
     @Test

@@ -120,7 +120,7 @@ private struct SyntheticWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ web: WKWebView, context: Context) {
-        context.coordinator.show(pose: pose.flatMap { syntheticAvailable($0) ? $0 : nil }, overlays: overlays)
+        context.coordinator.show(pose: pose, overlays: overlays)
     }
 
     static func dismantleUIView(_ web: WKWebView, coordinator: Coordinator) {

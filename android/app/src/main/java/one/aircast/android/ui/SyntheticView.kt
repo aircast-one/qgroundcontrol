@@ -20,7 +20,7 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberUpdatedState
@@ -65,12 +65,22 @@ internal enum class SyntheticDraw(val note: String?) {
     Failed("3D view failed to start"),
 }
 
-private val drawnPages = mutableIntStateOf(0)
+private val pages = mutableStateMapOf<WebView, SyntheticDraw>()
 
-internal fun syntheticDrawn(): Boolean = drawnPages.intValue > 0
+internal fun pageOf(draws: Collection<SyntheticDraw>): SyntheticDraw = when {
+    SyntheticDraw.Drawn in draws -> SyntheticDraw.Drawn
+    SyntheticDraw.Failed in draws -> SyntheticDraw.Failed
+    else -> SyntheticDraw.Loading
+}
 
-internal fun shownCameraStatus(camera: CameraEntry, showing: Boolean, drawn: Boolean): CameraStatus =
-    if (showing && camera.source == SYNTHETIC_SOURCE && camera.status == CameraStatus.Live && !drawn) CameraStatus.Connecting else camera.status
+internal fun syntheticPage(): SyntheticDraw = pageOf(pages.values)
+
+internal fun shownCameraStatus(camera: CameraEntry, showing: Boolean, page: SyntheticDraw): CameraStatus = when {
+    !showing || camera.source != SYNTHETIC_SOURCE || camera.status != CameraStatus.Live -> camera.status
+    page == SyntheticDraw.Drawn -> CameraStatus.Live
+    page == SyntheticDraw.Failed -> CameraStatus.NoSignal
+    else -> CameraStatus.Connecting
+}
 
 internal fun syntheticTilePath(path: String?): String? = path?.takeIf { it.startsWith("$SYNTHETIC_TILES/") }?.removePrefix(SYNTHETIC_TILES)
 
@@ -143,10 +153,9 @@ internal fun SyntheticView(modifier: Modifier = Modifier, aimable: Boolean = fal
     var draw by remember { mutableStateOf(SyntheticDraw.Loading) }
     val web = remember { syntheticWebView(context, onLoaded = { loaded = true }, onDraw = { draw = it }) }
     DisposableEffect(web) { onDispose { web.destroy() } }
-    DisposableEffect(draw == SyntheticDraw.Drawn) {
-        val drawn = draw == SyntheticDraw.Drawn
-        if (drawn) drawnPages.intValue += 1
-        onDispose { if (drawn) drawnPages.intValue -= 1 }
+    DisposableEffect(web, draw) {
+        pages[web] = draw
+        onDispose { pages.remove(web) }
     }
     LaunchedEffect(view, loaded) { view?.takeIf { loaded }?.let { web.evaluateJavascript(syntheticPoseScript(it), null) } }
     LaunchedEffect(overlays, loaded) { overlays?.takeIf { loaded }?.let { web.evaluateJavascript(syntheticOverlaysScript(it), null) } }

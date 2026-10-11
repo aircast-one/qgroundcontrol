@@ -215,6 +215,15 @@ val buildCoreVideo = coreBuildTypes.associateWith { buildType ->
 
 tasks.named("preBuild") { dependsOn(copyInstrumentIcons, copyAirframeImages, copySectionImages, copyCesium) }
 
+val testSyntheticPage by tasks.registering(Exec::class) {
+    inputs.dir("src/main/assets/synthetic")
+    inputs.dir("src/test/synthetic")
+    outputs.upToDateWhen { false }
+    commandLine("node", "--test", "src/test/synthetic/")
+}
+
+tasks.withType<Test>().configureEach { dependsOn(testSyntheticPage) }
+
 androidComponents {
     onVariants(selector().withFlavor("host" to "core")) { variant ->
         val video = buildCoreVideo.getValue(variant.buildType ?: error("variant ${variant.name} has no build type"))

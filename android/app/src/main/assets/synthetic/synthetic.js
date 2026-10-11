@@ -211,34 +211,13 @@ const buildingTiles = new Map();
 
 const buildingsSettling = () => [...buildingTiles.values()].some((tile) => tile.primitive && !tile.primitive.ready);
 
-const tileOf = (longitude, latitude) => {
-  const span = 2 ** BUILDING_LEVEL;
-  const rad = Cesium.Math.toRadians(latitude);
-  return {
-    x: Math.floor(((longitude + 180) / 360) * span),
-    y: Math.floor(((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * span),
-  };
-};
-
-const longitudeAt = (x) => (x / 2 ** BUILDING_LEVEL) * 360 - 180;
-
-const latitudeAt = (y) => Cesium.Math.toDegrees(Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / 2 ** BUILDING_LEVEL))));
-
-const tilesAround = (longitude, latitude) => {
-  const across = Cesium.Math.toDegrees(BUILDING_REACH_M / EARTH_RADIUS_M);
-  const along = across / Math.cos(Cesium.Math.toRadians(latitude));
-  const [from, to] = [tileOf(longitude - along, latitude + across), tileOf(longitude + along, latitude - across)];
-  return Array.from({ length: to.x - from.x + 1 }, (_, column) => Array.from({ length: to.y - from.y + 1 }, (_, row) => `${from.x + column}/${from.y + row}`)).flat();
-};
-
-const corners = (ring) => Array.from({ length: ring.length / 2 }, (_, at) => [ring[2 * at], ring[2 * at + 1]]);
-
 const buildingPrimitive = (tile, x, y, pixels) => {
   const toPixel = TILE_PX / tile.extent;
   const ground = (outline) => (pixels ? Math.min(...outline.map(([u, v]) => sampled(pixels, u * toPixel, v * toPixel))) : 0);
-  const positions = (ring) => Cesium.Cartesian3.fromDegreesArray(ring.flatMap(([u, v]) => [longitudeAt(x + u / tile.extent), latitudeAt(y + v / tile.extent)]));
+  const positions = (ring) =>
+    Cesium.Cartesian3.fromDegreesArray(ring.flatMap(([u, v]) => [SyntheticTiles.longitudeAt(x + u / tile.extent, BUILDING_LEVEL), SyntheticTiles.latitudeAt(y + v / tile.extent, BUILDING_LEVEL)]));
   const instances = tile.buildings.map((building) => {
-    const [outline, ...holes] = building.rings.map(corners);
+    const [outline, ...holes] = building.rings.map(SyntheticTiles.corners);
     const foot = ground(outline);
     return new Cesium.GeometryInstance({
       geometry: new Cesium.PolygonGeometry({
@@ -278,16 +257,16 @@ const loadBuildings = (key) => {
 };
 
 const showBuildingsAround = (pose) => {
-  const wanted = tilesAround(pose.longitude, pose.latitude);
-  const retry = (key) => buildingTiles.get(key).failedAt !== undefined && performance.now() - buildingTiles.get(key).failedAt > BUILDING_RETRY_MS;
-  wanted.filter((key) => buildingTiles.has(key) && retry(key)).map(dropBuildings);
+  const wanted = SyntheticTiles.around(pose.longitude, pose.latitude, BUILDING_REACH_M, BUILDING_LEVEL);
+  const now = performance.now();
+  wanted.filter((key) => buildingTiles.has(key) && SyntheticTiles.retryDue(buildingTiles.get(key).failedAt, now, BUILDING_RETRY_MS)).map(dropBuildings);
   wanted.filter((key) => !buildingTiles.has(key)).map(loadBuildings);
   wanted.map((key) => {
     const tile = buildingTiles.get(key);
     buildingTiles.delete(key);
     return buildingTiles.set(key, tile);
   });
-  [...buildingTiles.keys()].filter((key) => !wanted.includes(key)).slice(0, Math.max(0, buildingTiles.size - KEPT_BUILDING_TILES)).map(dropBuildings);
+  SyntheticTiles.evicted([...buildingTiles.keys()], wanted, KEPT_BUILDING_TILES).map(dropBuildings);
 };
 
 widget.creditDisplay.addStaticCredit(new Cesium.Credit(BUILDING_CREDIT));
