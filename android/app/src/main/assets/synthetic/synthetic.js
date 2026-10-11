@@ -232,11 +232,13 @@ const anchorHome = (pose) => {
 
 const wrapped = (degrees) => ((((degrees + 180) % 360) + 360) % 360) - 180;
 
+const continuing = (previous, heading) => (previous ? previous.heading + wrapped(heading - previous.heading) : heading);
+
 const toward = (from, to) => ({
   longitude: from.longitude + (to.longitude - from.longitude) * FOLLOW,
   latitude: from.latitude + (to.latitude - from.latitude) * FOLLOW,
   height: from.height + (to.height - from.height) * FOLLOW,
-  heading: from.heading + wrapped(to.heading - from.heading) * FOLLOW,
+  heading: from.heading + (to.heading - from.heading) * FOLLOW,
   pitch: from.pitch + (to.pitch - from.pitch) * FOLLOW,
   roll: from.roll + (to.roll - from.roll) * FOLLOW,
   fov: to.fov,
@@ -284,7 +286,7 @@ window.aircast = {
     drawOverlays();
   },
   pose: (pose) => {
-    state.target = pose.available ? pose : undefined;
+    state.target = pose.available ? { ...pose, heading: continuing(state.target ?? state.shown, pose.heading) } : undefined;
     (!state.target || !state.shown || state.homeGround === undefined || !settled(state.shown, goal(state.target))) && wake();
     return pose.available && [
       pose.imagery !== state.imagery && showImagery(pose.imagery),
