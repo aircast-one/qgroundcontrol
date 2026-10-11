@@ -27,6 +27,14 @@ const HOME_COLOUR = Cesium.Color.fromCssColorString("#4CAF50");
 const INCLUSION_COLOUR = Cesium.Color.fromCssColorString("#FF8A65").withAlpha(0.25);
 const EXCLUSION_COLOUR = Cesium.Color.fromCssColorString("#E53935").withAlpha(0.3);
 const ALWAYS_SHOWN = Number.POSITIVE_INFINITY;
+const BUILDINGS = `${TILES}/Buildings`;
+const BUILDING_LEVEL = 14;
+const BUILDING_REACH_M = 1000;
+const KEPT_BUILDING_TILES = 9;
+const BUILDING_RETRY_MS = 10000;
+const BUILDING_SINK_M = 1;
+const BUILDING_COLOUR = Cesium.Color.fromCssColorString("#D9D3C7");
+const BUILDING_CREDIT = "OpenFreeMap © OpenMapTiles Data from OpenStreetMap";
 
 const decoded = new Map();
 
@@ -122,7 +130,7 @@ const tick = (now) => {
   loop.wanted = loop.wanted && !due;
   due && widget.resize();
   due && widget.render();
-  loop.running = loop.wanted || !scene.globe.tilesLoaded;
+  loop.running = loop.wanted || !scene.globe.tilesLoaded || buildingsSettling();
   return loop.running && requestAnimationFrame(tick);
 };
 
@@ -198,6 +206,91 @@ const drawOverlays = () => {
   state.drawn = drawn;
   wake();
 };
+
+const buildingTiles = new Map();
+
+const buildingsSettling = () => [...buildingTiles.values()].some((tile) => tile.primitive && !tile.primitive.ready);
+
+const tileOf = (longitude, latitude) => {
+  const span = 2 ** BUILDING_LEVEL;
+  const rad = Cesium.Math.toRadians(latitude);
+  return {
+    x: Math.floor(((longitude + 180) / 360) * span),
+    y: Math.floor(((1 - Math.log(Math.tan(rad) + 1 / Math.cos(rad)) / Math.PI) / 2) * span),
+  };
+};
+
+const longitudeAt = (x) => (x / 2 ** BUILDING_LEVEL) * 360 - 180;
+
+const latitudeAt = (y) => Cesium.Math.toDegrees(Math.atan(Math.sinh(Math.PI * (1 - (2 * y) / 2 ** BUILDING_LEVEL))));
+
+const tilesAround = (longitude, latitude) => {
+  const across = Cesium.Math.toDegrees(BUILDING_REACH_M / EARTH_RADIUS_M);
+  const along = across / Math.cos(Cesium.Math.toRadians(latitude));
+  const [from, to] = [tileOf(longitude - along, latitude + across), tileOf(longitude + along, latitude - across)];
+  return Array.from({ length: to.x - from.x + 1 }, (_, column) => Array.from({ length: to.y - from.y + 1 }, (_, row) => `${from.x + column}/${from.y + row}`)).flat();
+};
+
+const corners = (ring) => Array.from({ length: ring.length / 2 }, (_, at) => [ring[2 * at], ring[2 * at + 1]]);
+
+const buildingPrimitive = (tile, x, y, pixels) => {
+  const toPixel = TILE_PX / tile.extent;
+  const ground = (outline) => (pixels ? Math.min(...outline.map(([u, v]) => sampled(pixels, u * toPixel, v * toPixel))) : 0);
+  const positions = (ring) => Cesium.Cartesian3.fromDegreesArray(ring.flatMap(([u, v]) => [longitudeAt(x + u / tile.extent), latitudeAt(y + v / tile.extent)]));
+  const instances = tile.buildings.map((building) => {
+    const [outline, ...holes] = building.rings.map(corners);
+    const foot = ground(outline);
+    return new Cesium.GeometryInstance({
+      geometry: new Cesium.PolygonGeometry({
+        polygonHierarchy: new Cesium.PolygonHierarchy(positions(outline), holes.map((hole) => new Cesium.PolygonHierarchy(positions(hole)))),
+        height: foot + building.base - (building.base > 0 ? 0 : BUILDING_SINK_M),
+        extrudedHeight: foot + building.height,
+        vertexFormat: Cesium.PerInstanceColorAppearance.VERTEX_FORMAT,
+      }),
+      attributes: { color: Cesium.ColorGeometryInstanceAttribute.fromColor((building.colour && Cesium.Color.fromCssColorString(building.colour)) || BUILDING_COLOUR) },
+    });
+  });
+  return new Cesium.Primitive({ geometryInstances: instances, appearance: new Cesium.PerInstanceColorAppearance({ translucent: false, closed: true }) });
+};
+
+const dropBuildings = (key) => {
+  const tile = buildingTiles.get(key);
+  tile && tile.primitive && scene.primitives.remove(tile.primitive);
+  buildingTiles.delete(key);
+};
+
+const loadBuildings = (key) => {
+  const [x, y] = key.split("/").map(Number);
+  const tile = { primitive: undefined, failedAt: undefined };
+  buildingTiles.set(key, tile);
+  Promise.all([
+    fetch(`${BUILDINGS}/${BUILDING_LEVEL}/${key}`).then((response) => (response.ok ? response.json() : Promise.reject(new Error(`buildings ${key}: ${response.status}`)))),
+    terrariumTile(BUILDING_LEVEL, x, y).catch(() => undefined),
+  ])
+    .then(([served, pixels]) => {
+      const current = buildingTiles.get(key) === tile;
+      tile.primitive = current && served.buildings.length > 0 ? scene.primitives.add(buildingPrimitive(served, x, y, pixels)) : undefined;
+      wake();
+    })
+    .catch(() => {
+      tile.failedAt = performance.now();
+    });
+};
+
+const showBuildingsAround = (pose) => {
+  const wanted = tilesAround(pose.longitude, pose.latitude);
+  const retry = (key) => buildingTiles.get(key).failedAt !== undefined && performance.now() - buildingTiles.get(key).failedAt > BUILDING_RETRY_MS;
+  wanted.filter((key) => buildingTiles.has(key) && retry(key)).map(dropBuildings);
+  wanted.filter((key) => !buildingTiles.has(key)).map(loadBuildings);
+  wanted.map((key) => {
+    const tile = buildingTiles.get(key);
+    buildingTiles.delete(key);
+    return buildingTiles.set(key, tile);
+  });
+  [...buildingTiles.keys()].filter((key) => !wanted.includes(key)).slice(0, Math.max(0, buildingTiles.size - KEPT_BUILDING_TILES)).map(dropBuildings);
+};
+
+widget.creditDisplay.addStaticCredit(new Cesium.Credit(BUILDING_CREDIT));
 
 const showImagery = (name) => {
   state.imagery = name;
@@ -291,6 +384,7 @@ window.aircast = {
     state.target = pose.available ? { ...pose, heading: continuing(state.target ?? state.shown, pose.heading) } : undefined;
     (!state.target || !state.shown || state.homeGround === undefined || !settled(state.shown, goal(state.target))) && wake();
     return pose.available && [
+      showBuildingsAround(pose),
       pose.imagery !== state.imagery && showImagery(pose.imagery),
       `${pose.homeLatitude},${pose.homeLongitude}` !== state.home && anchorHome(pose),
     ];

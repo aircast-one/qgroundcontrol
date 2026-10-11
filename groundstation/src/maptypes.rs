@@ -27,6 +27,9 @@ pub const ELEVATION_PROVIDERS: &[&str] = &["Copernicus"];
 pub const TERRAIN_TILES: &str = "Terrarium";
 pub const TERRAIN_TILES_MAX_ZOOM: i32 = 15;
 
+pub const BUILDING_TILES: &str = "Buildings";
+pub const BUILDING_TILES_ZOOM: i32 = 14;
+
 pub fn map_provider_list() -> Vec<String> {
     QGC_ORDER
         .iter()

@@ -102,6 +102,7 @@ pub mod flowimage;
 pub mod maptypes;
 pub mod mapurls;
 pub mod maptiles;
+pub mod buildings;
 pub mod cloudlink;
 pub mod commandtree;
 pub mod components;

@@ -68,7 +68,7 @@ pub struct TileSet {
     pub default_set: bool,
 }
 
-pub const CORE_ONLY_PROVIDERS: &[(&str, i32)] = &[(crate::maptypes::TERRAIN_TILES, 41)];
+pub const CORE_ONLY_PROVIDERS: &[(&str, i32)] = &[(crate::maptypes::TERRAIN_TILES, 41), (crate::maptypes::BUILDING_TILES, 42)];
 
 pub fn provider_hash(name: &str) -> Option<i32> {
     PROVIDERS.iter().chain(CORE_ONLY_PROVIDERS).find(|(known, _)| *known == name).map(|(_, hash)| *hash)
@@ -554,6 +554,8 @@ mod tests {
         assert_eq!(provider_hash(crate::maptypes::TERRAIN_TILES), Some(41));
         assert_eq!(provider_named(41), Some(crate::maptypes::TERRAIN_TILES));
         assert!(PROVIDERS.iter().all(|(name, hash)| *name != crate::maptypes::TERRAIN_TILES && *hash != 41), "the key must not collide with a provider Qt serves");
+        assert_eq!((provider_hash(crate::maptypes::BUILDING_TILES), provider_named(42)), (Some(42), Some(crate::maptypes::BUILDING_TILES)));
+        assert!(PROVIDERS.iter().all(|(name, hash)| *name != crate::maptypes::BUILDING_TILES && *hash != 42), "buildings get a key of their own as well");
     }
 
     #[test]

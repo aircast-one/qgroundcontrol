@@ -30,6 +30,7 @@ const AVERAGE_SIZES: &[(&str, u64)] = &[
     ("Bing Hybrid", 19597),
     ("Bing Road", 1297),
     ("Bing Satellite", 19597),
+    (crate::maptypes::BUILDING_TILES, 42084),
     ("Copernicus", 2786),
     (crate::maptypes::TERRAIN_TILES, 50000),
     ("Google Hybrid", 56887),
@@ -215,7 +216,7 @@ pub fn offline_maps_view(backend: &dyn Backend, args: &[String]) -> Value {
             let fetch_elevation = args.get(7).is_none_or(|flag| flag != "false") && !crate::maptypes::ELEVATION_PROVIDERS.contains(&provider.as_str());
             let elevation_count = if fetch_elevation { crate::terrainquery::region_tiles((region.top_left_lat, region.top_left_lon), (region.bottom_right_lat, region.bottom_right_lon)).len() as u64 } else { 0 };
             let elevation_size = elevation_count * average_size(crate::maptypes::ELEVATION_PROVIDERS[0]);
-            let (terrain_count, terrain_size) = if fetch_elevation { terrain_estimate(&region, max_zoom as i32) } else { (0, 0) };
+            let (terrain_count, terrain_size) = if fetch_elevation { companions_estimate(&region, max_zoom as i32) } else { (0, 0) };
             let (count, size) = (image_count + elevation_count + terrain_count, image_size + elevation_size + terrain_size);
             json!({ "tileCount": count, "tileCountText": grouped(count), "tileSizeText": size_text(size), "tooMany": count > limit })
         }
@@ -257,7 +258,7 @@ fn download(set: i64, provider: String, cancel: Arc<AtomicBool>) {
         }
         let fetched: Vec<(String, Option<(String, Vec<u8>)>)> = fetched_until_cancelled(&batch, &cancel, |(hash, x, y, z)| match crate::maptypes::ELEVATION_PROVIDERS.contains(&provider.as_str()) {
             true => (hash.clone(), crate::terrainquery::fetched_tile(*x, *y, &crate::terrainquery::fetch_over_http)),
-            false => (hash.clone(), crate::maptiles::fetch(&provider, *x, *y, *z, &keys, None, false, &crate::maptiles::fetch_over_http).and_then(|image| Some((crate::maptiles::image_format(&image)?.to_string(), image)))),
+            false => (hash.clone(), crate::maptiles::fetch(&provider, *x, *y, *z, &keys, None, false, &crate::maptiles::fetch_over_http).and_then(|image| Some((crate::maptiles::tile_format(&provider, &image)?.to_string(), image)))),
         });
         fetched.iter().for_each(|(hash, image)| {
             let stored = image.as_ref().and_then(|(format, image)| cache.complete(set, &Tile { hash: hash.clone(), format: format.clone(), image: image.clone(), kind }).ok());
@@ -332,7 +333,7 @@ pub fn start_download(args: &str) -> Value {
             start(id, &provider);
             if fetch_elevation && !crate::maptypes::ELEVATION_PROVIDERS.contains(&provider.as_str()) {
                 create_elevation_set(&name, &region);
-                create_terrain_set(&name, &region, max_zoom);
+                companions(max_zoom).into_iter().for_each(|companion| create_companion_set(&name, &region, companion));
             }
             json!({ "ok": true, "result": id })
         }
@@ -340,30 +341,42 @@ pub fn start_download(args: &str) -> Value {
     }
 }
 
-pub fn terrain_estimate(region: &Region, max_zoom: i32) -> (u64, u64) {
-    estimate(crate::maptypes::TERRAIN_TILES, region, 0, max_zoom.min(crate::maptypes::TERRAIN_TILES_MAX_ZOOM))
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Companion {
+    provider: &'static str,
+    label: &'static str,
+    min_zoom: i32,
+    max_zoom: i32,
 }
 
-fn create_terrain_set(name: &str, region: &Region, max_zoom: i32) {
-    let provider = crate::maptypes::TERRAIN_TILES;
-    let Some(kind) = provider_hash(provider) else { return };
-    let top = max_zoom.min(crate::maptypes::TERRAIN_TILES_MAX_ZOOM);
-    let tiles = tiles(region, 0, top);
+fn companions(max_zoom: i32) -> Vec<Companion> {
+    let terrain = Companion { provider: crate::maptypes::TERRAIN_TILES, label: "Terrain", min_zoom: 0, max_zoom: max_zoom.min(crate::maptypes::TERRAIN_TILES_MAX_ZOOM) };
+    let buildings = Companion { provider: crate::maptypes::BUILDING_TILES, label: "Buildings", min_zoom: crate::maptypes::BUILDING_TILES_ZOOM, max_zoom: crate::maptypes::BUILDING_TILES_ZOOM };
+    std::iter::once(terrain).chain((max_zoom >= crate::maptypes::BUILDING_TILES_ZOOM).then_some(buildings)).collect()
+}
+
+fn companions_estimate(region: &Region, max_zoom: i32) -> (u64, u64) {
+    companions(max_zoom).iter().map(|companion| estimate(companion.provider, region, companion.min_zoom, companion.max_zoom)).fold((0, 0), |(count, size), (more, bigger)| (count + more, size + bigger))
+}
+
+fn create_companion_set(name: &str, region: &Region, companion: Companion) {
+    let Some(kind) = provider_hash(companion.provider) else { return };
+    let tiles = tiles(region, companion.min_zoom, companion.max_zoom);
     let set = TileSet {
         id: 0,
-        name: format!("{name} Terrain"),
-        type_str: provider.to_string(),
+        name: format!("{name} {}", companion.label),
+        type_str: companion.provider.to_string(),
         top_left: (region.top_left_lat, region.top_left_lon),
         bottom_right: (region.bottom_right_lat, region.bottom_right_lon),
-        min_zoom: 0,
-        max_zoom: top,
+        min_zoom: companion.min_zoom,
+        max_zoom: companion.max_zoom,
         kind,
         tiles: tiles.len() as i64,
         default_set: false,
     };
     match open_cache().and_then(|cache| cache.create_set(&set, &tiles).map_err(|error| error.to_string())) {
-        Ok(id) => start(id, provider),
-        Err(reason) => log::warn!("Offline terrain set for \"{name}\" was not created: {reason}"),
+        Ok(id) => start(id, companion.provider),
+        Err(reason) => log::warn!("Offline {} set for \"{name}\" was not created: {reason}", companion.label.to_lowercase()),
     }
 }
 
@@ -643,7 +656,20 @@ mod tests {
     #[test]
     fn terrain_for_the_synthetic_view_is_saved_from_zoom_0_up_to_the_finest_it_has() {
         let region = Region { top_left_lon: 8.50, top_left_lat: 47.40, bottom_right_lon: 8.60, bottom_right_lat: 47.35 };
-        assert_eq!(terrain_estimate(&region, 18).0, tiles(&region, 0, crate::maptypes::TERRAIN_TILES_MAX_ZOOM).len() as u64, "terrain stops at zoom 15, where the elevation tiles end");
-        assert_eq!(terrain_estimate(&region, 12).0, tiles(&region, 0, 12).len() as u64, "a coarser map set only needs terrain as fine as itself");
+        let terrain = |max_zoom: i32| companions(max_zoom)[0];
+        assert_eq!((terrain(18).min_zoom, terrain(18).max_zoom), (0, crate::maptypes::TERRAIN_TILES_MAX_ZOOM), "terrain stops at zoom 15, where the elevation tiles end");
+        assert_eq!(terrain(12).max_zoom, 12, "a coarser map set only needs terrain as fine as itself");
+        assert_eq!(companions_estimate(&region, 12).0, tiles(&region, 0, 12).len() as u64);
+    }
+
+    #[test]
+    fn buildings_for_the_synthetic_view_are_saved_at_the_one_zoom_that_carries_them() {
+        let region = Region { top_left_lon: 44.70, top_left_lat: 41.80, bottom_right_lon: 44.90, bottom_right_lat: 41.65 };
+        let buildings = companions(18).into_iter().find(|companion| companion.provider == crate::maptypes::BUILDING_TILES).expect("a fine map set brings buildings");
+        assert_eq!((buildings.min_zoom, buildings.max_zoom, buildings.label), (14, 14, "Buildings"), "OpenFreeMap carries buildings only at zoom 13 and 14, and 14 holds every one");
+        assert!(companions(13).iter().all(|companion| companion.provider != crate::maptypes::BUILDING_TILES), "a coarser map set leaves buildings out like it leaves out fine terrain");
+        let terrain = estimate(crate::maptypes::TERRAIN_TILES, &region, 0, 15);
+        let building = estimate(crate::maptypes::BUILDING_TILES, &region, 14, 14);
+        assert_eq!(companions_estimate(&region, 18), (terrain.0 + building.0, terrain.1 + building.1), "the size shown before a download counts the buildings too");
     }
 }

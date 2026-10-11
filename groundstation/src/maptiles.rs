@@ -95,7 +95,21 @@ static MEMORY: LazyLock<MemoryCache> = LazyLock::new(|| {
 });
 
 pub fn fetch_remembered(provider: &str, x: i32, y: i32, zoom: i32, cache: Option<&Cache>, persist: bool) -> Option<Vec<u8>> {
-    MEMORY.through(provider, x, y, zoom, || fetch(provider, x, y, zoom, &crate::mapurls::keys_from_settings(), cache, persist, &fetch_over_http))
+    MEMORY.through(provider, x, y, zoom, || fetch(provider, x, y, zoom, &crate::mapurls::keys_from_settings(), cache, persist, &fetch_over_http).and_then(|tile| served(provider, tile)))
+}
+
+fn served(provider: &str, tile: Vec<u8>) -> Option<Vec<u8>> {
+    match provider == crate::maptypes::BUILDING_TILES {
+        true => crate::buildings::tile_json(&tile),
+        false => Some(tile),
+    }
+}
+
+pub fn tile_format(provider: &str, tile: &[u8]) -> Option<&'static str> {
+    match provider == crate::maptypes::BUILDING_TILES {
+        true => (!tile.is_empty()).then_some("pbf"),
+        false => image_format(tile),
+    }
 }
 
 pub fn image_format(image: &[u8]) -> Option<&'static str> {
@@ -116,7 +130,7 @@ pub fn fetch(provider: &str, x: i32, y: i32, zoom: i32, keys: &Keys, cache: Opti
     if provider.starts_with("Bing") && image == BING_NO_TILE {
         return None;
     }
-    let format = image_format(&image)?;
+    let format = tile_format(provider, &image)?;
     if let Some(cache) = cache.filter(|_| persist)
         && cache.save(&Tile { hash, format: format.to_string(), image: image.clone(), kind }, None).unwrap_or(false)
     {
@@ -293,6 +307,20 @@ mod tests {
         assert_eq!(fetch("Esri World Street", 1, 1, 3, &keys(), None, true, &text), None);
         assert_eq!(image_format(b"\xff\xd8\xff\xe0"), Some("jpg"));
         assert_eq!(fetch("Copernicus", 1, 1, 3, &keys(), None, true, &text), None, "elevation tiles are terrain data, not map images");
+    }
+
+    #[test]
+    fn building_tiles_are_cached_as_vector_tiles_and_served_as_footprints() {
+        let raw = std::fs::read(format!("{}/../test/Bridge/fixtures/openfreemap-14-10240-6105.pbf", env!("CARGO_MANIFEST_DIR"))).unwrap();
+        let cache = Cache::open_in_memory().unwrap();
+        let network = |_: &TileRequest| Ok(raw.clone());
+        assert_eq!(fetch(crate::maptypes::BUILDING_TILES, 10240, 6105, 14, &keys(), Some(&cache), true, &network), Some(raw.clone()), "a vector tile is not an image, and was dropped as an unknown format");
+        let kind = provider_hash(crate::maptypes::BUILDING_TILES).unwrap();
+        assert_eq!(cache.tile(&tile_hash(kind, 10240, 6105, 14)).unwrap().map(|tile| tile.format), Some("pbf".to_string()), "the raw tile is what offline sets keep");
+        let shown: serde_json::Value = serde_json::from_slice(&served(crate::maptypes::BUILDING_TILES, raw.clone()).unwrap()).unwrap();
+        assert!(!shown["buildings"].as_array().unwrap().is_empty(), "the page is handed footprints, not protobuf");
+        assert_eq!(served("Google Satellite", PNG.to_vec()), Some(PNG.to_vec()), "imagery passes through untouched");
+        assert_eq!(tile_format(crate::maptypes::BUILDING_TILES, &[]), None, "OpenFreeMap answers past zoom 14 with an empty body");
     }
 
     #[test]

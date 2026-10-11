@@ -151,6 +151,7 @@ fn source(provider: &str, x: i32, y: i32, zoom: i32, keys: &Keys) -> Option<(&'s
             keys.custom_url.replace("{x}", &xs).replace("{y}", &ys).replace("{z}", &zs).replace("{zoom}", &zs),
         )),
         crate::maptypes::TERRAIN_TILES => Some(("", format!("https://s3.amazonaws.com/elevation-tiles-prod/terrarium/{zs}/{xs}/{ys}.png"))),
+        crate::maptypes::BUILDING_TILES => Some(("", format!("https://tiles.openfreemap.org/planet/latest/{zs}/{xs}/{ys}.pbf"))),
         "Copernicus" => Some((
             "https://terrain-ce.suite.auterion.com",
             chain(COPERNICUS, &[&corner(y, 90.0), &corner(x, 180.0), &corner(y + 1, 90.0), &corner(x + 1, 180.0)]),
@@ -423,6 +424,7 @@ mod tests {
     #[test]
     fn terrain_tiles_come_from_the_open_terrarium_set() {
         assert_eq!(url(crate::maptypes::TERRAIN_TILES, 29961, 19829, 15).as_deref(), Some("https://s3.amazonaws.com/elevation-tiles-prod/terrarium/15/29961/19829.png"));
+        assert_eq!(url(crate::maptypes::BUILDING_TILES, 10240, 6105, 14).as_deref(), Some("https://tiles.openfreemap.org/planet/latest/14/10240/6105.pbf"));
     }
 
     #[test]

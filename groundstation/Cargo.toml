@@ -61,6 +61,8 @@ fscommon = "0.1"
 mbrman = "0.5"
 rayon-core = "1.13.0"
 once_cell = "1.21.4"
+mvt-reader = { version = "2.5.0", default-features = false }
+geo-types = "0.7.20"
 
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
 libc = "0.2"

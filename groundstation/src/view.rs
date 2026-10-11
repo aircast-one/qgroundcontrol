@@ -526,6 +526,7 @@ mod deps_cover_reads {
             ("autoconnect", include_str!("autoconnect.rs")),
             ("battery", include_str!("battery.rs")),
             ("batteryfacts", include_str!("batteryfacts.rs")),
+            ("buildings", include_str!("buildings.rs")),
             ("boards", include_str!("boards.rs")),
             ("calibration", include_str!("calibration.rs")),
             ("cameracalc", include_str!("cameracalc.rs")),
