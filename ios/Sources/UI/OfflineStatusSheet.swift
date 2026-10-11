@@ -77,7 +77,7 @@ struct OfflineStatusSheet: View {
                         Button {
                             offMain {
                                 if link.connected {
-                                    Qgc.invoke("\(OFFLINE_LINKS_PATH).\(link.index).link.disconnect")
+                                    LinkCommands.disconnect(link.index)
                                 } else {
                                     LinkCommands.connect("@\(OFFLINE_LINKS_PATH).\(link.index)")
                                 }

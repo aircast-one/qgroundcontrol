@@ -1093,8 +1093,7 @@ private func currentRows() -> [LinkRow] { linkRows(Qgc.get(LINKS_VIEW)) }
 
 private func connectNamed(_ name: String) -> Bool {
     guard let row = currentRows().first(where: { $0.name == name }) else { return false }
-    LinkCommands.connect("@\(LINKS_PATH).\(row.index)")
-    return true
+    return LinkCommands.connect("@\(LINKS_PATH).\(row.index)") == nil
 }
 
 private func settles(_ dispatched: Bool, _ settled: @escaping @Sendable () -> Bool) async -> Bool {
@@ -1185,7 +1184,7 @@ struct LinksScreen<Footer: View>: View {
         ) { row in
             Button("Remove", role: .destructive) {
                 let name = row.name, configuration = "@\(LINKS_PATH).\(row.index)"
-                attempt("remove", { !currentRows().contains { $0.name == name } }) { LinkCommands.remove(configuration) }
+                attempt("remove", { !currentRows().contains { $0.name == name } }) { LinkCommands.remove(configuration, name: name) }
             }
             Button("Cancel", role: .cancel) {}
         } message: { row in

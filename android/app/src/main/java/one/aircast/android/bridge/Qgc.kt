@@ -225,7 +225,8 @@ object Qgc {
 
     fun invokeResult(path: String, vararg args: Any?): Any? = call(path, *args)?.opt("result")
 
-    fun refusalOf(path: String, vararg args: Any?): String? = refusal(call(path, *args))
+    fun refusalOf(path: String, vararg args: Any?, subject: String = VEHICLE_SUBJECT): String? =
+        refusal(call(path, *args), subject)?.also { Log.w(TAG, "$path refused: $it") }
 
     fun call(path: String, vararg args: Any?): JSONObject? {
         val array = JSONArray().apply { args.forEach { put(it) } }
@@ -286,8 +287,10 @@ object Qgc {
     }
 }
 
-internal fun refusal(answer: org.json.JSONObject?): String? = when {
-    answer == null -> "The vehicle did not answer."
+private const val VEHICLE_SUBJECT = "The vehicle"
+
+internal fun refusal(answer: org.json.JSONObject?, subject: String = VEHICLE_SUBJECT): String? = when {
+    answer == null -> "$subject did not answer."
     answer.optBoolean("ok") -> null
-    else -> answer.optText("reason").takeIf { it.isNotBlank() } ?: "The vehicle refused."
+    else -> answer.optText("reason").takeIf { it.isNotBlank() } ?: "$subject refused."
 }

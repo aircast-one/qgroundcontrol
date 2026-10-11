@@ -28,6 +28,7 @@ final class BridgeTests: XCTestCase {
         XCTAssertEqual(refusal(JSON.parse(#"{"ok":false,"reason":"Not armed"}"#)), "Not armed")
         XCTAssertEqual(refusal(JSON.parse(#"{"ok":false}"#)), "The vehicle refused.")
         XCTAssertEqual(refusal(nil), "The vehicle did not answer.")
+        XCTAssertEqual(refusal(JSON.parse(#"{"ok":false}"#), subject: "The link"), "The link refused.", "a command that is not the vehicle's names what refused it")
     }
 
     func testFactReadsCoreMetadata() {

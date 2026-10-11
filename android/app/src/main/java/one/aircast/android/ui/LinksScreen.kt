@@ -1046,8 +1046,7 @@ private fun currentRows(): List<LinkRow> = linkRows(Qgc.get(LINKS_VIEW))
 
 private fun connectNamed(name: String): Boolean {
     val row = currentRows().firstOrNull { it.name == name } ?: return false
-    LinkCommands.connect("@$LINKS_PATH.${row.index}")
-    return true
+    return LinkCommands.connect("@$LINKS_PATH.${row.index}") == null
 }
 
 @Composable
@@ -1214,7 +1213,7 @@ fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = 
                     attempt(
                         action = "remove",
                         settled = { currentRows().none { it.name == row.name } },
-                    ) { LinkCommands.remove("@$LINKS_PATH.${row.index}") }
+                    ) { LinkCommands.remove("@$LINKS_PATH.${row.index}", row.name) }
                     confirmingRemove = null
                 }) { Text("Remove") }
             },

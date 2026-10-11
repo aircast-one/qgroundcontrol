@@ -155,12 +155,14 @@ enum Qgc {
         call(path, arguments: args)?["result"] ?? .null
     }
 
-    static func refusalOf(_ path: String, _ args: Any?...) -> String? {
-        refusalOf(path, arguments: args)
+    static func refusalOf(_ path: String, _ args: Any?..., subject: String = VEHICLE_SUBJECT) -> String? {
+        refusalOf(path, arguments: args, subject: subject)
     }
 
-    static func refusalOf(_ path: String, arguments args: [Any?]) -> String? {
-        refusal(call(path, arguments: args))
+    static func refusalOf(_ path: String, arguments args: [Any?], subject: String = VEHICLE_SUBJECT) -> String? {
+        let reason = refusal(call(path, arguments: args), subject: subject)
+        if let reason { log.warning("\(path, privacy: .public) refused: \(reason, privacy: .public)") }
+        return reason
     }
 
     static func call(_ path: String, _ args: Any?...) -> JSON? {
@@ -217,10 +219,12 @@ enum Qgc {
     }
 }
 
-func refusal(_ answer: JSON?) -> String? {
-    guard let answer else { return "The vehicle did not answer." }
+let VEHICLE_SUBJECT = "The vehicle"
+
+func refusal(_ answer: JSON?, subject: String = VEHICLE_SUBJECT) -> String? {
+    guard let answer else { return "\(subject) did not answer." }
     if answer["ok"].bool { return nil }
-    return answer["reason"].string.ifBlank("The vehicle refused.")
+    return answer["reason"].string.ifBlank("\(subject) refused.")
 }
 
 func settingControl(_ factPath: String) -> String { "view.control(\(factPath))" }

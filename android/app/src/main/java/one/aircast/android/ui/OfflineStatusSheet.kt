@@ -107,7 +107,7 @@ internal fun OfflineStatusSheet(onDismiss: () -> Unit) {
                     },
                     modifier = Modifier.clickable {
                         offMainDetached {
-                            if (link.connected) Qgc.invoke("$OFFLINE_LINKS_PATH.${link.index}.link.disconnect")
+                            if (link.connected) LinkCommands.disconnect(link.index)
                             else LinkCommands.connect("@$OFFLINE_LINKS_PATH.${link.index}")
                         }
                     },

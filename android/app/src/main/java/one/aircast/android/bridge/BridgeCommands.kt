@@ -7,6 +7,7 @@ private const val LINKS_BLUETOOTH_SCAN = "links.bluetoothScan"
 private const val LINKS_CONNECT = "links.createConnectedLink"
 private const val LINKS_REMOVE = "links.removeConfiguration"
 private const val LINKS_CONFIGURATIONS = "links.linkConfigurations"
+private const val LINK_SUBJECT = "The link"
 private const val LINKS_CREATE_CLOUD = "links.createAircastCloudLink"
 private const val LINKS_CREATE_REPLAY = "links.createLogReplayConfiguration"
 private const val LINKS_CREATE_BLUETOOTH = "links.createBluetoothLink"
@@ -55,9 +56,9 @@ private const val HOST_ACKNOWLEDGE = "host.acknowledgeThrough"
 internal object LinkCommands {
     fun commitConfigurations(): Boolean = Qgc.invoke(LINKS_COMMIT)
     fun scanBluetooth(scanning: Boolean): Boolean = Qgc.invoke(LINKS_BLUETOOTH_SCAN, scanning)
-    fun connect(configuration: String): String? = Qgc.refusalOf(LINKS_CONNECT, configuration)
-    fun remove(configuration: String): String? = Qgc.refusalOf(LINKS_REMOVE, configuration)
-    fun disconnect(index: Int): String? = Qgc.refusalOf("$LINKS_CONFIGURATIONS.$index.link.disconnect")
+    fun connect(configuration: String): String? = Qgc.refusalOf(LINKS_CONNECT, configuration, subject = LINK_SUBJECT)
+    fun remove(configuration: String, name: String): String? = Qgc.refusalOf(LINKS_REMOVE, configuration, name, subject = LINK_SUBJECT)
+    fun disconnect(index: Int): String? = Qgc.refusalOf("$LINKS_CONFIGURATIONS.$index.link.disconnect", subject = LINK_SUBJECT)
     fun createAircastCloud(name: String, apiBase: String, deviceId: String): Boolean = Qgc.invokeResult(LINKS_CREATE_CLOUD, name, apiBase, deviceId) == true
     fun createLogReplay(name: String, log: String): Boolean = Qgc.invokeResult(LINKS_CREATE_REPLAY, name, log) == true
     fun createBluetooth(name: String, deviceName: String, address: String): Boolean = Qgc.invokeResult(LINKS_CREATE_BLUETOOTH, name, deviceName, address) == true
