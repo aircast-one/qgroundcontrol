@@ -384,6 +384,27 @@ pub fn revision() -> u64 {
     REVISION.load(std::sync::atomic::Ordering::Acquire)
 }
 
+pub struct SettingsMemo<K, V>(quick_cache::sync::Cache<(u64, K), V>);
+
+impl<K: Eq + std::hash::Hash, V: Clone> SettingsMemo<K, V> {
+    pub fn new(capacity: usize) -> Self {
+        Self(quick_cache::sync::Cache::new(capacity))
+    }
+
+    pub fn get_or(&self, key: K, build: impl FnOnce() -> V) -> V {
+        self.at(revision(), key, build)
+    }
+
+    fn at(&self, revision: u64, key: K, build: impl FnOnce() -> V) -> V {
+        let key = (revision, key);
+        self.0.get(&key).unwrap_or_else(|| {
+            let value = build();
+            self.0.insert(key, value.clone());
+            value
+        })
+    }
+}
+
 struct Changing(std::sync::MutexGuard<'static, Option<BTreeMap<String, Setting>>>);
 
 impl std::ops::Deref for Changing {
@@ -647,27 +668,14 @@ fn address(path: &str) -> Option<Addressed> {
     Some(Addressed { group, fact, field, meta })
 }
 
-static DESCRIBED: LazyLock<Mutex<(u64, HashMap<String, Value>)>> = LazyLock::new(|| Mutex::new((u64::MAX, HashMap::new())));
+static DESCRIBED: LazyLock<SettingsMemo<String, Value>> = LazyLock::new(|| SettingsMemo::new(1024));
 
 fn described(backend: &dyn Backend, at: &Addressed, path: &str) -> Value {
     let fact_path = path.split('.').take(3).collect::<Vec<_>>().join(".");
-    if crate::qthost::present() {
-        return built(backend, at, &fact_path);
+    match crate::qthost::present() {
+        true => built(backend, at, &fact_path),
+        false => DESCRIBED.get_or(fact_path.clone(), || built(backend, at, &fact_path)),
     }
-    let now = revision();
-    let cached = {
-        let cache = DESCRIBED.lock().unwrap_or_else(PoisonError::into_inner);
-        (cache.0 == now).then(|| cache.1.get(&fact_path).cloned()).flatten()
-    };
-    cached.unwrap_or_else(|| {
-        let fact = built(backend, at, &fact_path);
-        let mut cache = DESCRIBED.lock().unwrap_or_else(PoisonError::into_inner);
-        if cache.0 != now {
-            *cache = (now, HashMap::new());
-        }
-        cache.1.insert(fact_path, fact.clone());
-        fact
-    })
 }
 
 fn built(backend: &dyn Backend, at: &Addressed, fact_path: &str) -> Value {
@@ -696,30 +704,14 @@ fn unexposed(path: &str) -> bool {
     path.strip_prefix("settings.").is_some_and(|short| UNEXPOSED.iter().any(|name| short == *name || short.starts_with(&format!("{name}."))))
 }
 
-static ANSWERED: LazyLock<Mutex<(u64, HashMap<String, Option<Value>>)>> = LazyLock::new(|| Mutex::new((u64::MAX, HashMap::new())));
-const ANSWERED_LIMIT: usize = 1024;
+static ANSWERED: LazyLock<SettingsMemo<String, Option<Value>>> = LazyLock::new(|| SettingsMemo::new(1024));
 
 pub fn get(backend: &dyn Backend, path: &str) -> Option<Value> {
-    if !path.starts_with("settings.") {
-        return None;
+    match (path.starts_with("settings."), crate::qthost::present()) {
+        (false, _) => None,
+        (true, true) => answered(backend, path),
+        (true, false) => ANSWERED.get_or(path.to_string(), || answered(backend, path)),
     }
-    if crate::qthost::present() {
-        return answered(backend, path);
-    }
-    let now = revision();
-    let remembered = {
-        let memo = ANSWERED.lock().unwrap_or_else(PoisonError::into_inner);
-        (memo.0 == now).then(|| memo.1.get(path).cloned()).flatten()
-    };
-    remembered.unwrap_or_else(|| {
-        let answer = answered(backend, path);
-        let mut memo = ANSWERED.lock().unwrap_or_else(PoisonError::into_inner);
-        if memo.0 != now || memo.1.len() >= ANSWERED_LIMIT {
-            *memo = (now, HashMap::new());
-        }
-        memo.1.insert(path.to_string(), answer.clone());
-        answer
-    })
 }
 
 fn answered(backend: &dyn Backend, path: &str) -> Option<Value> {
@@ -1223,6 +1215,21 @@ mod tests {
         assert_eq!(follow_ups("FlightMap", "mapProvider", &json!("Bing")), vec![("mapType", "Road".to_string())], "MapSettings sets mapType to mapTypeList(provider)[0]");
         assert!(follow_ups("FlightMap", "mapProvider", &json!("Nope")).is_empty());
         assert_eq!(text_enums(vec!["Google".into()])[0].value, json!("Google"));
+    }
+
+    #[test]
+    fn a_settings_memo_builds_once_per_settings_revision() {
+        let memo = SettingsMemo::new(8);
+        let builds = std::cell::Cell::new(0);
+        let build = |answer: i32| {
+            builds.set(builds.get() + 1);
+            answer
+        };
+        assert_eq!(memo.at(1, "units", || build(10)), 10);
+        assert_eq!(memo.at(1, "units", || build(11)), 10, "the same settings give the remembered answer");
+        assert_eq!(memo.at(1, "speed", || build(20)), 20, "another key is its own entry");
+        assert_eq!(memo.at(2, "units", || build(12)), 12, "a settings write makes every entry stale");
+        assert_eq!(builds.get(), 3);
     }
 
     struct Silent;

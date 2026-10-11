@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-use std::sync::{LazyLock, Mutex, PoisonError};
+use std::sync::LazyLock;
 
 use serde_json::{Value, json};
 
@@ -97,28 +96,12 @@ fn battery_raw(id: u8, battery: &BatteryFacts, name: &str) -> Value {
     }
 }
 
-type FactKey = (usize, String, Option<String>, String);
+type FactKey = (&'static str, String, Option<String>, String);
 
-static FACT_MEMO: LazyLock<Mutex<(u64, HashMap<FactKey, Value>)>> = LazyLock::new(|| Mutex::new((u64::MAX, HashMap::new())));
-const FACT_MEMO_LIMIT: usize = 512;
+static FACT_MEMO: LazyLock<crate::settingsstore::SettingsMemo<FactKey, Option<Value>>> = LazyLock::new(|| crate::settingsstore::SettingsMemo::new(512));
 
 fn memo_fact(file: &'static str, name: &str, raw: &Value, property: Option<&str>) -> Option<Value> {
-    let key = (file.as_ptr() as usize, name.to_string(), property.map(str::to_string), raw.to_string());
-    let now = crate::settingsstore::revision();
-    let hit = {
-        let memo = FACT_MEMO.lock().unwrap_or_else(PoisonError::into_inner);
-        (memo.0 == now).then(|| memo.1.get(&key).cloned()).flatten()
-    };
-    hit.or_else(|| {
-        let meta = crate::factmeta::fact(file, name)?;
-        let built = fact(&meta, raw, property);
-        let mut memo = FACT_MEMO.lock().unwrap_or_else(PoisonError::into_inner);
-        if memo.0 != now || memo.1.len() >= FACT_MEMO_LIMIT {
-            *memo = (now, HashMap::new());
-        }
-        memo.1.insert(key, built.clone());
-        Some(built)
-    })
+    FACT_MEMO.get_or((file, name.to_string(), property.map(str::to_string), raw.to_string()), || Some(fact(&crate::factmeta::fact(file, name)?, raw, property)))
 }
 
 pub fn battery_fact(id: u8, battery: &BatteryFacts, name: &str, property: Option<&str>) -> Option<Value> {

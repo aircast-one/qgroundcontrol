@@ -557,6 +557,8 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
     let sensors = json!({ "sensorNames": ordered.names, "sensorStatus": ordered.status, "sensorEnabled": ordered.enabled, "sensorHealthy": ordered.healthy });
     let class = crate::plandoc::vehicle_class(i64::from(v.vehicle_type));
     use crate::cmdinfo::VehicleClass::{FixedWing, MultiRotor, Rover, Sub, Vtol};
+    let home = home_facts(v.facts.coordinate, v.home);
+    let gcs = gcs_relation(v.facts.coordinate);
     let facts: Vec<(&'static str, Value)> = vec![
         ("rcRSSI", json!(v.rc_rssi.shown)),
         ("heading", json!(v.facts.heading)),
@@ -578,16 +580,16 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         ("altitudeTuning", json!(v.facts.altitude_tuning)),
         ("altitudeTuningSetpoint", json!(v.facts.altitude_tuning_setpoint)),
         ("rangeFinderDist", json!(v.facts.range_finder_dist)),
-        ("timeToHome", json!(crate::vehiclefacts::time_to_home(Some(home_facts(v.facts.coordinate, v.home).0), v.facts.ground_speed).filter(|t| t.is_finite()))),
+        ("timeToHome", json!(crate::vehiclefacts::time_to_home(Some(home.0), v.facts.ground_speed).filter(|t| t.is_finite()))),
         ("imuTemp", json!(v.facts.imu_temp)),
         ("missionItemIndex", json!(mission_item_index(v.mission_current, !v.sends_home()))),
-        ("distanceToGCS", json!(gcs_relation(v.facts.coordinate).0)),
-        ("headingFromGCS", json!(gcs_relation(v.facts.coordinate).1)),
+        ("distanceToGCS", json!(gcs.0)),
+        ("headingFromGCS", json!(gcs.1)),
         ("flightDistance", json!(crate::track::flight_distance(i64::from(v.id)).unwrap_or(0.0))),
         ("headingToNextWP", json!(heading_to_next_wp(v.facts.coordinate, v.mission_items(), v.mission_current))),
-        ("distanceToHome", json!(home_facts(v.facts.coordinate, v.home).0)),
-        ("headingToHome", json!(home_facts(v.facts.coordinate, v.home).1)),
-        ("headingFromHome", json!(home_facts(v.facts.coordinate, v.home).2)),
+        ("distanceToHome", json!(home.0)),
+        ("headingToHome", json!(home.1)),
+        ("headingFromHome", json!(home.2)),
         ("flightTime", json!(v.flight_time(crate::hub::now_ms()))),
         ("hobbs", json!(hobbs_meter(v.autopilot == crate::modes::AUTOPILOT_PX4, |name| v.parameter(v.component, name).map(|p| p.as_f64())))),
     ];
@@ -1261,10 +1263,24 @@ pub fn parameter_write(path: &str, value: &str) -> Option<Value> {
     Some(json!({ "action": "paramSet", "vehicle": vehicle_id, "component": component, "name": format!("{}{name}", crate::paramremap::NO_REMAP), "value": raw }))
 }
 
-type ParameterKey = (u8, String, String, bool);
+#[derive(Debug, PartialEq, Eq, Hash)]
+struct ParameterKey {
+    vehicle: u8,
+    autopilot: u8,
+    vehicle_type: u8,
+    own_component: u8,
+    firmware: Option<(u8, u8, u8, u8)>,
+    metadata: u64,
+    call: String,
+    value: (u8, u64),
+    default: Option<(u8, u64)>,
+}
 
-static PARAMETER_MEMO: std::sync::LazyLock<std::sync::Mutex<(u64, HashMap<ParameterKey, Option<Value>>)>> = std::sync::LazyLock::new(|| std::sync::Mutex::new((u64::MAX, HashMap::new())));
-const PARAMETER_MEMO_LIMIT: usize = 256;
+fn parameter_identity(value: crate::params::ParamValue) -> (u8, u64) {
+    (value.param_type(), value.as_f64().to_bits())
+}
+
+static PARAMETER_MEMO: std::sync::LazyLock<crate::settingsstore::SettingsMemo<ParameterKey, Option<Value>>> = std::sync::LazyLock::new(|| crate::settingsstore::SettingsMemo::new(1024));
 
 fn answer_parameter(path: &str) -> Option<Value> {
     let (call, rest) = path.strip_prefix("vehicle.parameterManager.getParameter(")?.split_once(')')?;
@@ -1277,26 +1293,30 @@ fn answer_parameter(path: &str) -> Option<Value> {
     let Some(value) = vehicle.parameter_exact(component, name) else {
         return vehicle.parameters_ready().then(|| field_of(absent_parameter(), rest)).flatten();
     };
-    let described = (vehicle.firmware().and_then(|f| f.version), vehicle.parameter_metadata_loaded(), vehicle.parameter_defaults.len());
-    let key = (vehicle.id, path.to_string(), format!("{value:?}|{described:?}"), vehicle.parameters_ready());
-    let now = crate::settingsstore::revision();
-    let remembered = {
-        let memo = PARAMETER_MEMO.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        (memo.0 == now).then(|| memo.1.get(&key).cloned()).flatten()
-    };
-    if let Some(answer) = remembered {
-        return answer;
-    }
-    let answer = described_parameter(vehicle, component, name, quantity, value, rest);
-    let mut memo = PARAMETER_MEMO.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    if memo.0 != now || memo.1.len() >= PARAMETER_MEMO_LIMIT {
-        *memo = (now, HashMap::new());
-    }
-    memo.1.insert(key, answer.clone());
-    answer
+    let default = default_of(vehicle, component, name);
+    let described = PARAMETER_MEMO.get_or(parameter_key(vehicle, call, value, default), || described_parameter(vehicle, component, name, quantity, value, default));
+    field_of(described?, rest)
 }
 
-fn described_parameter(vehicle: &crate::hub::Vehicle, component: u8, name: &str, quantity: Option<crate::pilotunits::Quantity>, value: crate::params::ParamValue, rest: &str) -> Option<Value> {
+fn default_of(vehicle: &crate::hub::Vehicle, component: u8, name: &str) -> Option<crate::params::ParamValue> {
+    (component == vehicle.component).then(|| vehicle.parameter_defaults.get(name).copied()).flatten()
+}
+
+fn parameter_key(vehicle: &crate::hub::Vehicle, call: &str, value: crate::params::ParamValue, default: Option<crate::params::ParamValue>) -> ParameterKey {
+    ParameterKey {
+        vehicle: vehicle.id,
+        autopilot: vehicle.autopilot,
+        vehicle_type: vehicle.vehicle_type,
+        own_component: vehicle.component,
+        firmware: vehicle.firmware().and_then(|f| f.version),
+        metadata: vehicle.parameter_metadata_generation(),
+        call: call.to_string(),
+        value: parameter_identity(value),
+        default: default.map(parameter_identity),
+    }
+}
+
+fn described_parameter(vehicle: &crate::hub::Vehicle, component: u8, name: &str, quantity: Option<crate::pilotunits::Quantity>, value: crate::params::ParamValue, firmware_default: Option<crate::params::ParamValue>) -> Option<Value> {
     let value_type = crate::factmeta::ValueType::from_param_type(value.param_type())?;
     let definition = parameter_definition_of(vehicle, name, value_type)?;
     let number = |value: crate::params::ParamValue| match value {
@@ -1304,7 +1324,6 @@ fn described_parameter(vehicle: &crate::hub::Vehicle, component: u8, name: &str,
         other => json!(other.as_f64() as i64),
     };
     let raw = number(value);
-    let firmware_default = (component == vehicle.component).then(|| vehicle.parameter_defaults.get(name).copied()).flatten();
     let meta = crate::factmeta::MetaData { default: firmware_default.map(number).or(definition.default.clone()), ..definition };
     let pilot = quantity.and_then(|quantity| crate::pilotunits::Pilot::new(quantity, &meta)).zip(raw.as_f64());
     let mut described = pilot.map_or_else(|| crate::vehiclefact::fact(&meta, &raw, None), |(pilot, raw)| pilot.fact(raw));
@@ -1313,7 +1332,7 @@ fn described_parameter(vehicle: &crate::hub::Vehicle, component: u8, name: &str,
     if described["typeIsInteger"] == true {
         [("minString", &meta.min), ("maxString", &meta.max)].into_iter().filter_map(|(key, bound)| Some((key, bound.as_ref()?.as_f64()?))).for_each(|(key, bound)| described[key] = json!(crate::control::qt_shortest(bound)));
     }
-    field_of(described, rest)
+    Some(described)
 }
 
 fn absent_parameter() -> Value {
@@ -2114,6 +2133,29 @@ mod tests {
         assert!(!std::rc::Rc::ptr_eq(&super::known(&vehicle), &super::known(&vehicle)), "outside a pass every read sees the vehicle as it is now");
         let (outer, nested) = super::one_pass(|| (super::pass_number(), super::one_pass(super::pass_number)));
         assert!(outer.is_some() && outer == nested && super::pass_number().is_none() && super::one_pass(super::pass_number) != outer, "a nested pass is the same pass, and the next pass is a new one");
+    }
+
+    #[test]
+    fn a_remembered_parameter_description_is_reused_only_for_the_same_vehicle_metadata_and_value() {
+        use crate::params::ParamValue;
+        let ardupilot = |vehicle_type: u8| {
+            let mut vehicle = crate::hub::Vehicle::heard(1);
+            vehicle.autopilot = crate::modes::AUTOPILOT_ARDUPILOT;
+            vehicle.vehicle_type = vehicle_type;
+            vehicle
+        };
+        let key = |vehicle: &crate::hub::Vehicle, value: ParamValue| parameter_key(vehicle, "-1,RTL_ALT", value, default_of(vehicle, 1, "RTL_ALT"));
+        let copter = ardupilot(2);
+        assert_eq!(key(&copter, ParamValue::I32(1500)), key(&ardupilot(2), ParamValue::I32(1500)));
+        assert_ne!(key(&copter, ParamValue::I32(1500)), key(&ardupilot(1), ParamValue::I32(1500)), "a plane with the same system ID and firmware version reads another metadata file");
+        assert_ne!(key(&copter, ParamValue::I32(1500)), key(&copter, ParamValue::I32(1600)));
+        assert_ne!(key(&copter, ParamValue::I32(1500)), key(&copter, ParamValue::F32(1500.0)), "the same number in another type is another fact");
+        let defaulted = {
+            let mut vehicle = ardupilot(2);
+            vehicle.parameter_defaults.insert("RTL_ALT".to_string(), ParamValue::I32(1500));
+            vehicle
+        };
+        assert_ne!(key(&copter, ParamValue::I32(1500)), key(&defaulted, ParamValue::I32(1500)), "a firmware default changes what the fact says about its value");
     }
 
     #[test]

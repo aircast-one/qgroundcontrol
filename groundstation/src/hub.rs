@@ -27,6 +27,8 @@ use crate::statustext::{Handler, StatusText};
 use crate::sysstatus::SysStatusSensors;
 use crate::vehiclefacts::VehicleFacts;
 
+static PARAMETER_METADATA_GENERATIONS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 pub const TYPE_GCS: u8 = 6;
 const TYPE_GENERIC: u8 = 0;
 const AUTOPILOT_GENERIC: u8 = 0;
@@ -368,6 +370,7 @@ pub struct Vehicle {
     terrain_due: Option<u64>,
     metadata_types: BTreeMap<u8, Uris>,
     parameter_metadata: Option<ComponentParameters>,
+    parameter_metadata_generation: u64,
     pub parameter_download_skipped: bool,
     parameters_announce_due: bool,
     setup_recheck: crate::components::Recheck,
@@ -597,6 +600,7 @@ impl Vehicle {
             terrain_due: None,
             metadata_types: BTreeMap::new(),
             parameter_metadata: None,
+            parameter_metadata_generation: 0,
             parameter_download_skipped: false,
             parameters_announce_due: false,
             setup_recheck: crate::components::Recheck::default(),
@@ -1351,7 +1355,10 @@ impl Vehicle {
             }
             _ => {
                 match crate::compinfo::parse(&text) {
-                    Ok(parsed) => self.parameter_metadata = Some(parsed),
+                    Ok(parsed) => {
+                        self.parameter_metadata = Some(parsed);
+                        self.parameter_metadata_generation = PARAMETER_METADATA_GENERATIONS.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+                    }
                     Err(reason) => self.note(format!("Parameter metadata could not be parsed: {reason}")),
                 }
                 self.after_parameter_metadata(now_ms)
@@ -1359,8 +1366,8 @@ impl Vehicle {
         }
     }
 
-    pub fn parameter_metadata_loaded(&self) -> bool {
-        self.parameter_metadata.is_some()
+    pub fn parameter_metadata_generation(&self) -> u64 {
+        self.parameter_metadata_generation
     }
 
     pub fn parameter_definition(&self, name: &str, value_type: crate::factmeta::ValueType) -> crate::factmeta::MetaData {
