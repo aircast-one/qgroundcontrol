@@ -343,6 +343,8 @@ pub struct Vehicle {
     pub errors: Vec<String>,
     pub connection_lost: bool,
     pub flying: bool,
+    stick_deflected_since: Option<u64>,
+    stick_takeover_after: u64,
     pub parameter_defaults: BTreeMap<String, ParamValue>,
     ardupilot_components: std::collections::BTreeSet<u8>,
     pub vtol_in_forward_flight: bool,
@@ -575,6 +577,8 @@ impl Vehicle {
             errors: Vec::new(),
             connection_lost: false,
             flying: false,
+            stick_deflected_since: None,
+            stick_takeover_after: 0,
             parameter_defaults: BTreeMap::new(),
             ardupilot_components: std::collections::BTreeSet::new(),
             vtol_in_forward_flight: false,
@@ -1797,6 +1801,7 @@ impl Vehicle {
             "rtl" => guidedcmd::rtl(&state, flag("smart")),
             "land" => guidedcmd::land(&state),
             "speed" => guidedcmd::change_speed(flag("ground"), number("metresPerSecond")),
+            "arm" if flag("arm") && !flag("force") && on_screen_sticks() => guidedcmd::stick_arm(&state, self.facts.coordinate.is_some()),
             "arm" => Plan::Steps(vec![guidedcmd::arm(flag("arm"), flag("force"))]),
             "startMission" => guidedcmd::start_mission(&state, flag("flying")),
             "emergencyStop" => guidedcmd::emergency_stop(),
@@ -1977,13 +1982,32 @@ impl Vehicle {
         }
     }
 
-    fn virtual_joystick(&mut self, action: &Value) -> Vec<Vec<u8>> {
+    fn virtual_joystick(&mut self, action: &Value, now_ms: u64) -> Vec<Vec<u8>> {
         if self.commands.high_latency {
             return Vec::new();
         }
-        let axis = |key: &str| (action.get(key).and_then(Value::as_f64).unwrap_or(0.0) as f32 * MANUAL_CONTROL_SCALE) as i16;
+        let value = |key: &str| action.get(key).and_then(Value::as_f64).unwrap_or(0.0);
+        let axis = |key: &str| (value(key) as f32 * MANUAL_CONTROL_SCALE) as i16;
         let control = Outbound::ManualControl { target: self.id, x: axis("pitch"), y: axis("roll"), z: axis("thrust"), r: axis("yaw") };
-        self.encode(&control).into_iter().collect()
+        let deflected = crate::virtualjoystick::stick_deflected(value("roll"), value("pitch"), value("yaw"), value("thrust"), self.flying);
+        let takeover = self.stick_takeover(deflected, now_ms);
+        self.encode(&control).into_iter().chain(takeover).collect()
+    }
+
+    fn stick_takeover(&mut self, deflected: bool, now_ms: u64) -> Vec<Vec<u8>> {
+        self.stick_deflected_since = deflected.then(|| self.stick_deflected_since.unwrap_or(now_ms));
+        let held = self.stick_deflected_since.is_some_and(|since| now_ms.saturating_sub(since) >= crate::virtualjoystick::TAKEOVER_HOLD_MS);
+        if !held || now_ms < self.stick_takeover_after || self.guided.running() {
+            return Vec::new();
+        }
+        let Some(steps) = guidedcmd::stick_takeover(&self.planning_state()) else {
+            return Vec::new();
+        };
+        self.stick_takeover_after = now_ms + crate::virtualjoystick::TAKEOVER_RETRY_MS;
+        self.errors.clear();
+        self.pending_notices.push((crate::noticeboard::BRIEF, format!("Sticks took over: {}", guidedcmd::STICK_HOLD_MODE)));
+        let emits = self.guided.start(steps, &self.observed(), now_ms);
+        self.carry(emits, now_ms)
     }
 
     pub fn set_rc_override(&mut self, channel: u8, pwm: i64, now_ms: u64) -> Result<Vec<Vec<u8>>, String> {
@@ -2045,7 +2069,7 @@ impl Vehicle {
                 let channel = action.get("channel").and_then(Value::as_i64).and_then(|c| u8::try_from(c).ok()).ok_or("An RC release takes a channel number.")?;
                 return Ok(self.release_rc_overrides(&[channel]));
             }
-            Some("virtualJoystick") => return Ok(self.virtual_joystick(action)),
+            Some("virtualJoystick") => return Ok(self.virtual_joystick(action, now_ms)),
             Some("reboot") => return Ok(self.send_tagged(guidedcmd::CMD_PREFLIGHT_REBOOT_SHUTDOWN, [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], false, REBOOT_TAG, now_ms)),
             Some("factoryReset") => return Ok(self.send_tagged(guidedcmd::CMD_PREFLIGHT_STORAGE, [STORAGE_RESET_FACTORY, STORAGE_MISSION_UNTOUCHED, 0.0, 0.0, 0.0, 0.0, 0.0], true, FACTORY_RESET_TAG, now_ms)),
             Some("espBridge") => {
@@ -4653,6 +4677,10 @@ pub fn failure_text(operation: &str, name: &str, label: &str, error: Option<u8>)
     }
 }
 
+fn on_screen_sticks() -> bool {
+    crate::settingsstore::raw_setting("settings.appSettings.virtualJoystick").and_then(|v| v.as_bool()).unwrap_or(false)
+}
+
 pub fn skips_download(armed: bool, skip_when_flying: bool) -> bool {
     skip_when_flying && armed
 }
@@ -5086,6 +5114,24 @@ mod tests {
         assert_eq!(vehicle.rc_override.keys().copied().collect::<Vec<_>>(), vec![9]);
         assert!(vehicle.rc_due.is_some(), "the held channel keeps being sent");
         assert!(vehicle.start_guided(&json!({ "action": "rcReleaseChannel", "channel": 6 }), 2_000).unwrap().is_empty(), "a channel nobody holds has nothing to release");
+    }
+
+    #[test]
+    fn holding_the_sticks_off_centre_in_guided_switches_the_copter_to_loiter_once() {
+        use mavlink::dialects::ardupilotmega::MavCmd;
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(4, true), 0, 0);
+        let vehicle = hub.vehicles.get_mut(&1).unwrap();
+        let mode_changes = |bytes: &[Vec<u8>]| bytes.iter().filter(|b| matches!(decode(b), MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_DO_SET_MODE && c.param2 == 5.0)).count();
+        let push = |vehicle: &mut Vehicle, pitch: f64, at: u64| vehicle.start_guided(&json!({ "action": "virtualJoystick", "roll": 0.0, "pitch": pitch, "yaw": 0.0, "thrust": 0.5 }), at).unwrap();
+        assert_eq!(mode_changes(&push(vehicle, -0.8, 1_000)), 0, "a stick has to be held, not flicked");
+        assert_eq!(mode_changes(&push(vehicle, 0.0, 1_100)), 0);
+        assert_eq!(mode_changes(&push(vehicle, -0.8, 1_200)), 0, "letting go starts the hold again");
+        assert_eq!(mode_changes(&push(vehicle, -0.8, 1_400)), 0);
+        assert_eq!(mode_changes(&push(vehicle, -0.8, 1_500)), 1, "held for 300 ms, Loiter is asked for");
+        assert_eq!(mode_changes(&push(vehicle, -0.8, 1_540)), 0, "and asked for once");
+        assert!(vehicle.pending_notices.iter().any(|(_, text)| text == "Sticks took over: Loiter"));
     }
 
     #[test]

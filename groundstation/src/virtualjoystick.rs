@@ -14,6 +14,16 @@ pub const DEPS: &[&str] = &[
 
 pub const JOYSTICK_VALUE: &str = "vehicle.virtualTabletJoystickValue";
 pub const SEND_PERIOD_MS: u64 = 40;
+pub const TAKEOVER_DEFLECTION: f64 = 0.3;
+pub const TAKEOVER_HOLD_MS: u64 = 300;
+pub const TAKEOVER_RETRY_MS: u64 = 5000;
+const THROTTLE_CENTRE: f64 = 0.5;
+
+pub fn stick_deflected(roll: f64, pitch: f64, yaw: f64, thrust: f64, flying: bool) -> bool {
+    [roll, pitch, yaw].iter().any(|axis| axis.abs() > TAKEOVER_DEFLECTION)
+        || thrust - THROTTLE_CENTRE > TAKEOVER_DEFLECTION
+        || (flying && THROTTLE_CENTRE - thrust > TAKEOVER_DEFLECTION)
+}
 
 fn setting(backend: &dyn Backend, name: &str) -> bool {
     backend.value(&format!("settings.appSettings.{name}")).get("value").and_then(Value::as_bool).unwrap_or(false)
@@ -63,6 +73,17 @@ pub fn send(backend: &dyn Backend, args: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_stick_pushed_well_off_centre_is_the_pilot_taking_over() {
+        assert!(!stick_deflected(0.0, 0.0, 0.0, 0.5, true), "sticks at rest");
+        assert!(!stick_deflected(0.2, -0.25, 0.1, 0.7, true), "small corrections and a brush of the throttle do not count");
+        assert!(stick_deflected(0.0, -0.6, 0.0, 0.5, true), "pitch forward");
+        assert!(stick_deflected(0.0, 0.0, 0.5, 0.5, true), "a turn");
+        assert!(stick_deflected(0.0, 0.0, 0.0, 0.95, false), "climbing");
+        assert!(stick_deflected(0.0, 0.0, 0.0, 0.0, true), "pulling the throttle down to descend");
+        assert!(!stick_deflected(0.0, 0.0, 0.0, 0.0, false), "on the ground the throttle rests at the bottom");
+    }
     use std::cell::RefCell;
 
     struct Rig {
