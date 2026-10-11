@@ -31,6 +31,17 @@ class SyntheticViewTest {
     }
 
     @Test
+    fun `the synthetic camera reads live only once the page has drawn it`() {
+        val camera = { source: String, status: String -> camerasReading(JSONObject("""{"class":"Cameras","cameras":[{"slot":0,"title":"Synthetic","short":"Synthetic","source":"$source","active":true,"status":"$status"}]}"""))!!.cameras.single() }
+        val synthetic = camera(SYNTHETIC_SOURCE, "live")
+        assertEquals("a green dot over a black pane told the pilot a blank view was working", CameraStatus.Connecting, shownCameraStatus(synthetic, showing = true, drawn = false))
+        assertEquals(CameraStatus.Live, shownCameraStatus(synthetic, showing = true, drawn = true))
+        assertEquals("a synthetic view that is not on screen has no page to wait for, so it keeps the core's word", CameraStatus.Live, shownCameraStatus(synthetic, showing = false, drawn = false))
+        assertEquals(CameraStatus.Idle, shownCameraStatus(camera(SYNTHETIC_SOURCE, "idle"), showing = true, drawn = false))
+        assertEquals(CameraStatus.Live, shownCameraStatus(camera("RTSP Video Stream", "live"), showing = true, drawn = false))
+    }
+
+    @Test
     fun `the page asks for tiles beside itself and the core answers them`() {
         assertEquals("/Bing%20Satellite/15/29961/19829", syntheticTilePath("/assets/synthetic/tiles/Bing%20Satellite/15/29961/19829"))
         assertEquals(null, syntheticTilePath("/assets/synthetic/Cesium/Cesium.js"))

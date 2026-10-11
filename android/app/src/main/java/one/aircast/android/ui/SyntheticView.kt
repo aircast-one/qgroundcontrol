@@ -3,16 +3,24 @@ package one.aircast.android.ui
 import android.annotation.SuppressLint
 import android.content.Context
 import android.view.ViewGroup
+import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.size
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberUpdatedState
@@ -21,8 +29,12 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainInOrder
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
+import one.aircast.map.AircastSpace
+import one.aircast.map.aircast
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.webkit.WebViewAssetLoader
@@ -43,6 +55,22 @@ private const val DEFAULT_TILT_DEG = -15.0
 private const val PAN_SPAN_DEG = 360.0
 private const val SYNTHETIC_PAGE = "https://${WebViewAssetLoader.DEFAULT_DOMAIN}/assets/synthetic/index.html"
 private const val SYNTHETIC_TILES = "/assets/synthetic/tiles"
+private const val SYNTHETIC_HOST = "aircastHost"
+private val NOTE_SPINNER = 16.dp
+private val NOTE_SPINNER_STROKE = 2.dp
+
+internal enum class SyntheticDraw(val note: String?) {
+    Loading("Loading 3D view…"),
+    Drawn(null),
+    Failed("3D view failed to start"),
+}
+
+private val drawnPages = mutableIntStateOf(0)
+
+internal fun syntheticDrawn(): Boolean = drawnPages.intValue > 0
+
+internal fun shownCameraStatus(camera: CameraEntry, showing: Boolean, drawn: Boolean): CameraStatus =
+    if (showing && camera.source == SYNTHETIC_SOURCE && camera.status == CameraStatus.Live && !drawn) CameraStatus.Connecting else camera.status
 
 internal fun syntheticTilePath(path: String?): String? = path?.takeIf { it.startsWith("$SYNTHETIC_TILES/") }?.removePrefix(SYNTHETIC_TILES)
 
@@ -81,13 +109,21 @@ private fun tileResponse(encodedPath: String): WebResourceResponse =
         ?: WebResourceResponse("image/png", null, 404, "No tile", emptyMap(), ByteArray(0).inputStream())
 
 @SuppressLint("SetJavaScriptEnabled")
-private fun syntheticWebView(context: Context, onLoaded: () -> Unit): WebView {
+private fun syntheticWebView(context: Context, onLoaded: () -> Unit, onDraw: (SyntheticDraw) -> Unit): WebView {
     val assets = WebViewAssetLoader.Builder().addPathHandler("/assets/", WebViewAssetLoader.AssetsPathHandler(context)).build()
     WebView.setWebContentsDebuggingEnabled(BuildConfig.DEBUG)
     return WebView(context).apply {
         layoutParams = ViewGroup.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT)
         setBackgroundColor(android.graphics.Color.BLACK)
         settings.javaScriptEnabled = true
+        addJavascriptInterface(
+            object {
+                @JavascriptInterface fun placed() { post { onDraw(SyntheticDraw.Drawn) } }
+
+                @JavascriptInterface fun failed() { post { onDraw(SyntheticDraw.Failed) } }
+            },
+            SYNTHETIC_HOST,
+        )
         webViewClient = object : WebViewClientCompat() {
             override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? =
                 syntheticTilePath(request.url.encodedPath)?.let(::tileResponse) ?: assets.shouldInterceptRequest(request.url)
@@ -104,8 +140,14 @@ internal fun SyntheticView(modifier: Modifier = Modifier, aimable: Boolean = fal
     val context = LocalContext.current
     val overlays by qgcPath(SYNTHETIC_OVERLAYS)
     var loaded by remember { mutableStateOf(false) }
-    val web = remember { syntheticWebView(context) { loaded = true } }
+    var draw by remember { mutableStateOf(SyntheticDraw.Loading) }
+    val web = remember { syntheticWebView(context, onLoaded = { loaded = true }, onDraw = { draw = it }) }
     DisposableEffect(web) { onDispose { web.destroy() } }
+    DisposableEffect(draw == SyntheticDraw.Drawn) {
+        val drawn = draw == SyntheticDraw.Drawn
+        if (drawn) drawnPages.intValue += 1
+        onDispose { if (drawn) drawnPages.intValue -= 1 }
+    }
     LaunchedEffect(view) { view?.let { web.evaluateJavascript(syntheticPoseScript(it), null) } }
     LaunchedEffect(overlays, loaded) { overlays?.takeIf { loaded }?.let { web.evaluateJavascript(syntheticOverlaysScript(it), null) } }
     val canAim = aimable && view?.optBoolean("aimable") == true
@@ -132,5 +174,14 @@ internal fun SyntheticView(modifier: Modifier = Modifier, aimable: Boolean = fal
         }
     Box(modifier.then(aiming)) {
         AndroidView({ web }, Modifier.fillMaxSize())
+        draw.note?.let { note -> SyntheticNote(note, loading = draw == SyntheticDraw.Loading, Modifier.align(Alignment.Center)) }
+    }
+}
+
+@Composable
+private fun SyntheticNote(note: String, loading: Boolean, modifier: Modifier) {
+    Row(modifier.osdShadow(), horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2), verticalAlignment = Alignment.CenterVertically) {
+        if (loading) CircularProgressIndicator(Modifier.size(NOTE_SPINNER), color = MaterialTheme.aircast.outdoorForeground, strokeWidth = NOTE_SPINNER_STROKE)
+        Text(note, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.aircast.outdoorForeground, maxLines = 1)
     }
 }

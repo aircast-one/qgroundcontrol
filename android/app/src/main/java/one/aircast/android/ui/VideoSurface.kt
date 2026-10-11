@@ -218,7 +218,7 @@ private fun SecondPane(camera: CameraEntry, modifier: Modifier) {
             horizontalArrangement = Arrangement.spacedBy(AircastSpace.s1),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            CameraStatusDot(camera.status)
+            CameraStatusDot(shownCameraStatus(camera, showing = true, drawn = syntheticDrawn()))
             Text(camera.short, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.aircast.outdoorForeground, maxLines = 1)
         }
     }

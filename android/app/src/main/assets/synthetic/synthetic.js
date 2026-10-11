@@ -270,7 +270,9 @@ const place = (pose) => {
     orientation: { heading: Cesium.Math.toRadians(pose.heading), pitch: Cesium.Math.toRadians(pose.pitch), roll: Cesium.Math.toRadians(pose.roll) },
   });
   widget.camera.frustum.fov = Cesium.Math.toRadians(pose.fov);
+  const first = !document.body.classList.contains("placed");
   document.body.classList.add("placed");
+  first && window.aircastHost && window.aircastHost.placed();
 };
 
 scene.preRender.addEventListener(() => {
