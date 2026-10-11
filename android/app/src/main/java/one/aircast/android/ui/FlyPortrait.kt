@@ -91,8 +91,7 @@ private val PORTRAIT_PIP_WIDTH = 160.dp
 private val PORTRAIT_PIP_HEIGHT = 90.dp
 private val PORTRAIT_DIAL_SIZE = 72.dp
 private val PORTRAIT_BAR_HEIGHT = 64.dp
-private val PORTRAIT_STRIP_HEIGHT = 60.dp
-private val PORTRAIT_STRIP_DIAL = 48.dp
+private val PORTRAIT_OSD_DIAL = 48.dp
 private const val PLACEHOLDER_ALPHA = 0.6f
 private const val SCRIM_ALPHA = 0.7f
 private const val PIP_BORDER_ALPHA = 0.5f
@@ -140,7 +139,7 @@ internal fun FlyPortrait(
     val screenWidth = LocalConfiguration.current.screenWidthDp.dp
     val videoHeight = screenWidth / VIDEO_ASPECT
     val videoTop = barTop
-    val mapTop = if (split) barTop + videoHeight + PORTRAIT_STRIP_HEIGHT else 0.dp
+    val mapTop = if (split) barTop + videoHeight else 0.dp
     val controlsTop = if (split) mapTop else barTop
     val thumbnail = portraitVideoThumbnail(split, reading)
     val pipRoom = pipRoom(thumbnail, flyScreen.videoTucked)
@@ -255,9 +254,6 @@ internal fun FlyPortrait(
             if (!fullScreen) {
             androidx.compose.animation.AnimatedVisibility(split, enter = fadeIn(), exit = fadeOut()) {
                 Column(Modifier.padding(top = videoTop).fillMaxWidth().height(videoHeight)) {
-                    Box(Modifier.fillMaxWidth().weight(1f)) {
-                        if (reading?.decoding != true) Box(Modifier.matchParentSize().osdShadow()) { FlyNoVideoMessage() }
-                    }
                     CompositionLocalProvider(LocalFlyOsd provides true) {
                         Row(
                             Modifier.padding(AircastSpace.s2).horizontalScroll(rememberScrollState()),
@@ -268,6 +264,14 @@ internal fun FlyPortrait(
                             keyRow()
                         }
                     }
+                    Box(Modifier.fillMaxWidth().weight(1f)) {
+                        if (reading?.decoding != true) Box(Modifier.matchParentSize().osdShadow()) { FlyNoVideoMessage() }
+                    }
+                    TelemetryOsd(
+                        swipeDistance,
+                        onSmaller = { flyScreen.videoTucked = false; onView(FlyView.Map) },
+                        onFullScreen = onFullScreen,
+                    )
                 }
             }
             ControlsAboveDeck(
@@ -320,18 +324,6 @@ internal fun FlyPortrait(
                 exit = fadeOut() + slideOutVertically { if (corner.bottom) it else -it },
             ) {
                 VideoTab(swipeDistance, growingSwipe(corner)) { flyScreen.videoTucked = false }
-            }
-            androidx.compose.animation.AnimatedVisibility(
-                visible = split && !fullScreen,
-                modifier = Modifier.align(Alignment.TopCenter).padding(top = videoTop + videoHeight),
-                enter = fadeIn(),
-                exit = fadeOut(),
-            ) {
-                TelemetryStrip(
-                    swipeDistance,
-                    onSmaller = { flyScreen.videoTucked = false; onView(FlyView.Map) },
-                    onFullScreen = onFullScreen,
-                )
             }
             Column(Modifier.fillMaxWidth().onSizeChanged { chromeHeightPx = it.height }) {
                 Row(
@@ -422,12 +414,11 @@ private fun VideoTab(swipeDistance: Float, showSwipe: VideoSwipe, onShow: () -> 
 }
 
 @Composable
-private fun TelemetryStrip(swipeDistance: Float, onSmaller: () -> Unit, onFullScreen: () -> Unit) {
+private fun TelemetryOsd(swipeDistance: Float, onSmaller: () -> Unit, onFullScreen: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
-            .height(PORTRAIT_STRIP_HEIGHT)
-            .background(MaterialTheme.aircast.outdoorBackground)
+            .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = SCRIM_ALPHA))))
             .verticalSwipe(swipeDistance) { swipe -> if (swipe == VideoSwipe.Up) onSmaller() else onFullScreen() }
             .semantics {
                 customActions = listOf(
@@ -435,12 +426,12 @@ private fun TelemetryStrip(swipeDistance: Float, onSmaller: () -> Unit, onFullSc
                     CustomAccessibilityAction("Show the video full screen") { onFullScreen(); true },
                 )
             }
-            .padding(horizontal = AircastSpace.s3),
+            .padding(horizontal = AircastSpace.s3, vertical = AircastSpace.s2),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(AircastSpace.s3),
     ) {
-        OsdCompassDial(PORTRAIT_STRIP_DIAL)
-        Box(Modifier.weight(1f).clipToBounds(), contentAlignment = Alignment.CenterStart) {
+        OsdCompassDial(PORTRAIT_OSD_DIAL)
+        Box(Modifier.weight(1f).clipToBounds().osdShadow(), contentAlignment = Alignment.CenterStart) {
             CompositionLocalProvider(LocalFlyOsd provides true) {
                 if (hasVehicle()) TelemetryRow(valuesShown = true, chooser = false, compact = true, stacked = true) else TelemetryPlaceholder()
             }
