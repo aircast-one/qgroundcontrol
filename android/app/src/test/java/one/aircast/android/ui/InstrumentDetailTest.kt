@@ -61,6 +61,7 @@ class InstrumentDetailTest {
         assertEquals(BarTone.Fine, barTone(calm))
         assertEquals(BarTone.ReturnNow, barTone(calm.copy(percent = 25.0, returnNow = true)))
         assertEquals(BarTone.Reserve, barTone(calm.copy(percent = 6.0, returnNow = true)))
+        assertEquals("a pack at the red battery threshold tints the bar above the reserve too, or a nearly empty bar reads as a neutral grey line", BarTone.Low, barTone(calm.copy(percent = 12.0, level = BatteryLevel.Warning)))
         assertEquals("Battery 41%, return home needed at 26%", batteryBarDescription(calm))
     }
 

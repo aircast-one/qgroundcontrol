@@ -5,6 +5,10 @@ use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.armed", "vehicle.flying", "vehicle.landing", "vehicle.flightMode", "vehicle.vehicleLinkManager.communicationLost", "vehicle.vehicleLinkManager.communicationLostEnabled", "planFly.missionController.currentMissionIndex", "vehicle.rcRSSI", "vehicle.rcChannelOverrideActive", "vehicle.radioStatus.lrssi", "vehicle.radioStatus.rrssi", "vehicle.radioStatus.lNoise", "vehicle.radioStatus.rNoise", "vehicle.radioStatus.rxErrors", "vehicle.radioStatus.fixed", "vehicle.radioStatus.txBuffer", "vehicle.healthAndArmingCheckReport.supported", "vehicle.healthAndArmingCheckReport.canArm", "vehicle.healthAndArmingCheckReport.hasWarningsOrErrors", "vehicle.sysStatusSensorInfo.sensorNames", "vehicle.sysStatusSensorInfo.sensorEnabled", "vehicle.sysStatusSensorInfo.sensorHealthy", "vehicle.readyToFlyAvailable", "vehicle.readyToFly", "vehicle.allSensorsHealthy", crate::setup::COMPONENTS];
 
+pub fn deps() -> Vec<String> {
+    DEPS.iter().map(|d| d.to_string()).chain(crate::battery::deps()).collect()
+}
+
 pub const STALE_NOTICE: &str = "No contact — these are the last values the vehicle sent.";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -119,6 +123,8 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let state = state_of(connected, contact_lost, flag(&vehicle, "armed"), flag(&vehicle, "flying"), flag(&vehicle, "landing"));
     let health = health(backend);
     let ready = state == State::Disarmed && disarmed_ready(backend);
+    let low_battery = (state == State::Disarmed).then(|| crate::battery::low_charge(backend)).flatten();
+    let nominal = health.nominal() && low_battery.is_none();
     json!({
         "kind": "object",
         "class": "FlyState",
@@ -128,12 +134,12 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "landing": flag(&vehicle, "landing"),
         "contactLost": reported,
         "state": state.token(),
-        "stateText": state_line(state, ready, health.nominal()),
+        "stateText": state_line(state, ready, nominal),
         "readyToFly": ready,
-        "nominal": health.nominal(),
+        "nominal": nominal,
         "fault": health.fault(),
         "canArm": flag(&vehicle, "armed") || health.report.is_none_or(|(can_arm, _)| can_arm),
-        "summaryDetail": connected.then(|| summary_detail(flag(&vehicle, "armed"), flag(&vehicle, "flying") || flag(&vehicle, "landing"), health.check_issues, &health.sensors)),
+        "summaryDetail": connected.then(|| summary_detail(flag(&vehicle, "armed"), flag(&vehicle, "flying") || flag(&vehicle, "landing"), health.check_issues, &health.sensors, low_battery.as_deref())),
         "staleNotice": if contact_lost { STALE_NOTICE } else { "" },
         "mode": text(&vehicle, "flightMode"),
         "flyingToSequence": flying_to(backend),
@@ -146,6 +152,12 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "rcOverride": connected.then(|| flag(&vehicle, "rcChannelOverrideActive")),
         "telemetry": telemetry(&radio),
     })
+}
+
+pub const OPTIONAL_WHEN_OFF: &[&str] = &["Geofence", "Logging"];
+
+pub fn counts_against_readiness(name: &str, enabled: bool) -> bool {
+    enabled || !OPTIONAL_WHEN_OFF.contains(&name)
 }
 
 struct Health {
@@ -166,7 +178,12 @@ fn health(backend: &dyn Backend) -> Health {
         report: supported.then(|| (flag(&report, "canArm"), flag(&report, "hasWarningsOrErrors"))),
         sensors: match supported {
             true => Vec::new(),
-            false => names.into_iter().enumerate().map(|(i, name)| (name, enabled.get(i).copied().unwrap_or(false), healthy.get(i).copied().unwrap_or(false))).collect(),
+            false => names
+                .into_iter()
+                .enumerate()
+                .map(|(i, name)| (name, enabled.get(i).copied().unwrap_or(false), healthy.get(i).copied().unwrap_or(false)))
+                .filter(|(name, enabled, _)| counts_against_readiness(name, *enabled))
+                .collect(),
         },
         check_issues: problems.unwrap_or(0),
     }
@@ -182,7 +199,7 @@ impl Health {
     }
 }
 
-pub fn summary_detail(armed: bool, in_air: bool, check_issues: usize, sensors: &[(String, bool, bool)]) -> String {
+pub fn summary_detail(armed: bool, in_air: bool, check_issues: usize, sensors: &[(String, bool, bool)], low_battery: Option<&str>) -> String {
     let listed = |pick: fn(bool, bool) -> bool| sensors.iter().filter(|(_, enabled, healthy)| pick(*enabled, *healthy)).map(|(name, ..)| name.as_str()).collect::<Vec<_>>().join(", ");
     let (faults, disabled) = (listed(|enabled, healthy| enabled && !healthy), listed(|enabled, _| !enabled));
     match (armed, in_air) {
@@ -190,6 +207,7 @@ pub fn summary_detail(armed: bool, in_air: bool, check_issues: usize, sensors: &
         (true, false) => "Motors are armed. Keep clear of the propellers.".to_string(),
         _ if check_issues > 0 => format!("{check_issues} check(s) need attention before arming."),
         _ if !faults.is_empty() => format!("{faults} not working. Position modes and Return to Launch may not work."),
+        _ if let Some(low) = low_battery => format!("{low} Charge or swap it before flight."),
         _ if !disabled.is_empty() => format!("{disabled} turned off. Everything else reports normal."),
         _ => "All checks passed.".to_string(),
     }
@@ -265,12 +283,16 @@ mod tests {
     #[test]
     fn summary_detail_reads_like_main_status_indicator() {
         let sensors = |list: &[(&str, bool, bool)]| list.iter().map(|(n, e, h)| (n.to_string(), *e, *h)).collect::<Vec<_>>();
-        assert_eq!(summary_detail(true, true, 3, &[]), "Motors are armed and the vehicle is in the air.");
-        assert_eq!(summary_detail(true, false, 0, &[]), "Motors are armed. Keep clear of the propellers.");
-        assert_eq!(summary_detail(false, false, 2, &sensors(&[("GPS", true, false)])), "2 check(s) need attention before arming.");
-        assert_eq!(summary_detail(false, false, 0, &sensors(&[("GPS", true, false), ("Gyro", true, false), ("Mag", false, false)])), "GPS, Gyro not working. Position modes and Return to Launch may not work.");
-        assert_eq!(summary_detail(false, false, 0, &sensors(&[("GPS", true, true), ("Mag", false, false)])), "Mag turned off. Everything else reports normal.");
-        assert_eq!(summary_detail(false, false, 0, &sensors(&[("GPS", true, true)])), "All checks passed.");
+        assert_eq!(summary_detail(true, true, 3, &[], None), "Motors are armed and the vehicle is in the air.");
+        assert_eq!(summary_detail(true, false, 0, &[], None), "Motors are armed. Keep clear of the propellers.");
+        assert_eq!(summary_detail(false, false, 2, &sensors(&[("GPS", true, false)]), None), "2 check(s) need attention before arming.");
+        assert_eq!(summary_detail(false, false, 0, &sensors(&[("GPS", true, false), ("Gyro", true, false), ("Mag", false, false)]), None), "GPS, Gyro not working. Position modes and Return to Launch may not work.");
+        assert_eq!(summary_detail(false, false, 0, &sensors(&[("GPS", true, true), ("Mag", false, false)]), None), "Mag turned off. Everything else reports normal.");
+        assert_eq!(summary_detail(false, false, 0, &sensors(&[("GPS", true, true)]), None), "All checks passed.");
+        assert_eq!(summary_detail(false, false, 0, &sensors(&[("Mag", false, false)]), Some("Battery at 0%.")), "Battery at 0%. Charge or swap it before flight.", "a flat battery outranks a switched-off sensor; the banner said everything else reports normal over a 0% pack");
+        assert_eq!(summary_detail(false, false, 0, &sensors(&[("GPS", true, false)]), Some("Battery at 0%.")), "GPS not working. Position modes and Return to Launch may not work.", "a fault keeps the line it shares with the red chip");
+        assert_eq!(summary_detail(false, false, 1, &[], Some("Battery at 0%.")), "1 check(s) need attention before arming.", "the refusal to arm stays attached to the checks that cause it");
+        assert_eq!(summary_detail(true, false, 0, &[], Some("Battery at 0%.")), "Motors are armed. Keep clear of the propellers.");
     }
 
     #[test]
@@ -289,6 +311,14 @@ mod tests {
         assert!(!status_nominal(None, &[(true, true), (false, false)]), "a disabled sensor is a caution");
         assert!(!status_nominal(None, &[(true, false)]));
         assert!(status_nominal(None, &[(true, true)]));
+    }
+
+    #[test]
+    fn geofence_and_logging_switched_off_are_not_a_readiness_caution() {
+        assert!(!counts_against_readiness("Logging", false), "ArduPilot logs only once armed by default, so every disarmed vehicle read Not Fully Ready");
+        assert!(!counts_against_readiness("Geofence", false), "an unset fence is a choice, not a fault");
+        assert!(counts_against_readiness("GPS", false), "a switched-off GPS still costs position modes and Return to Launch");
+        assert!(counts_against_readiness("Logging", true), "an enabled subsystem is still judged on its health");
     }
 
     #[test]

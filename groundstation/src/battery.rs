@@ -373,6 +373,15 @@ pub fn battery_view(backend: &dyn Backend, _args: &[String]) -> Value {
     })
 }
 
+pub fn low_charge_text(level: &str, percent: Option<f64>) -> Option<String> {
+    matches!(level, "warning" | "critical").then(|| percent.map_or_else(|| "Battery low.".to_string(), |p| format!("Battery at {}%.", p.round() as i64)))
+}
+
+pub fn low_charge(backend: &dyn Backend) -> Option<String> {
+    let view = battery_view(backend, &[]);
+    low_charge_text(view["level"].as_str().unwrap_or_default(), view["headline"]["percent"].as_f64())
+}
+
 pub fn failsafe_reserve(action: Option<i64>, critical: Option<f64>) -> f64 {
     match action {
         Some(PX4_LOW_BATTERY_RETURN | PX4_LOW_BATTERY_LAND | PX4_LOW_BATTERY_RETURN_THEN_LAND) => critical.unwrap_or(0.0),
@@ -410,6 +419,14 @@ fn limiting_pack_extras(backend: &dyn Backend, mut shown: Value, popup_packs: &[
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_battery_at_the_red_threshold_is_named_for_the_readiness_line() {
+        assert_eq!(low_charge_text("warning", Some(0.2)), Some("Battery at 0%.".to_string()));
+        assert_eq!(low_charge_text("critical", None), Some("Battery low.".to_string()), "a pack with only a charge state still reads as low");
+        assert_eq!(low_charge_text("caution", Some(70.0)), None, "the yellow band is not a reason to hold a takeoff");
+        assert_eq!(low_charge_text("normal", Some(90.0)), None);
+    }
 
     #[test]
     fn a_render_reads_each_battery_fact_once_however_many_rows_spell_it() {

@@ -344,11 +344,12 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
     }
 }
 
-internal enum class BarTone { Fine, ReturnNow, Reserve }
+internal enum class BarTone { Fine, Low, ReturnNow, Reserve }
 
 internal fun barTone(headline: BatteryHeadline): BarTone = when {
     (headline.percent ?: 100.0) <= headline.reserve -> BarTone.Reserve
     headline.returnNow -> BarTone.ReturnNow
+    headline.level >= BatteryLevel.Warning -> BarTone.Low
     else -> BarTone.Fine
 }
 
@@ -372,15 +373,17 @@ internal fun BatteryReturnBar(modifier: Modifier = Modifier) {
     val headline = remember(batteryJson) { batteryHeadline(batteryJson) } ?: return
     val percent = headline.percent ?: return
     val live = remember(stateJson) { flyState(stateJson)?.staleNotice.isNullOrBlank() }
+    val tone = barTone(headline)
     val fill = when {
         !live -> MaterialTheme.colorScheme.outline
-        else -> when (barTone(headline)) {
+        else -> when (tone) {
             BarTone.Fine -> MaterialTheme.aircast.success
+            BarTone.Low -> batteryLevelColour(headline.level)
             BarTone.ReturnNow -> MaterialTheme.aircast.warning
             BarTone.Reserve -> MaterialTheme.colorScheme.error
         }
     }
-    val track = MaterialTheme.aircast.outdoorForeground.copy(alpha = BATTERY_BAR_TRACK_ALPHA)
+    val track = (if (live && tone != BarTone.Fine) fill else MaterialTheme.aircast.outdoorForeground).copy(alpha = BATTERY_BAR_TRACK_ALPHA)
     val reserveZone = MaterialTheme.colorScheme.error
     val home = MaterialTheme.aircast.success
     val homeText = MaterialTheme.aircast.onSuccess
@@ -555,8 +558,9 @@ private fun FlightTimeCell() {
 @Composable
 private fun BatteryRing(text: String, colour: Color, count: String, onClick: () -> Unit) {
     val percent = batteryPercent(text) ?: return InlineCell(text, colour, R.drawable.ic_battery_5_bar, onClick)
-    val ring = if (colour == Color.Unspecified) MaterialTheme.aircast.success else colour
-    val track = MaterialTheme.aircast.outdoorForeground.copy(alpha = BATTERY_RING_TRACK_ALPHA)
+    val alarm = colour.takeIf { it != Color.Unspecified }
+    val ring = alarm ?: MaterialTheme.aircast.success
+    val track = (alarm ?: MaterialTheme.aircast.outdoorForeground).copy(alpha = BATTERY_RING_TRACK_ALPHA)
     Box(
         Modifier
             .clickable(onClickLabel = "Battery") { onClick() }
@@ -572,7 +576,7 @@ private fun BatteryRing(text: String, colour: Color, count: String, onClick: () 
                 drawArc(track, 0f, 360f, false, topLeft = topLeft, size = arcSize, style = stroke)
                 drawArc(ring, -90f, 360f * percent / 100f, false, topLeft = topLeft, size = arcSize, style = stroke)
             }
-            Text("$percent", style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"), color = MaterialTheme.aircast.outdoorForeground)
+            Text("$percent", style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"), color = alarm ?: MaterialTheme.aircast.outdoorForeground)
         }
         if (count.isNotEmpty()) {
             Text(

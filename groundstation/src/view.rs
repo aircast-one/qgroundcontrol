@@ -439,6 +439,7 @@ impl View {
             "view.instruments" => instruments::deps_for(args),
             "view.surveyStats" => survey::deps_for(args),
             "view.battery" => battery::deps(),
+            "view.flyState" => flystate::deps(),
             "view.coreRemoteId" => crate::remoteidview::deps(),
             "view.remoteIdStatus" => crate::remoteidview::status_deps(),
             "view.vehicles" => vehicles::deps(),
