@@ -132,6 +132,10 @@ object Qgc {
 
     internal fun watchedPathsForTest(): Set<String> = watched.keys
 
+    internal fun publishForTest(path: String, json: JSONObject?) {
+        held(path).value = json
+    }
+
     @Synchronized
     fun watch(paths: Collection<String>) {
         val next = retained(watched, paths)
