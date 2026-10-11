@@ -74,4 +74,10 @@ class FlyPortraitTest {
         org.junit.Assert.assertEquals(0f, pipRoom(thumbnail = false, tucked = false).value)
         assertTrue(pipRoom(thumbnail = true, tucked = true) < pipRoom(thumbnail = true, tucked = false))
     }
+
+    @Test
+    fun `empty telemetry shows the units the pilot chose`() {
+        org.junit.Assert.assertEquals(PlaceholderUnits("ft", "ft", "mph"), placeholderUnits(distance = 0, height = 0, speed = 2))
+        org.junit.Assert.assertEquals(PlaceholderUnits("m", "m", "m/s"), placeholderUnits(distance = null, height = null, speed = null))
+    }
 }

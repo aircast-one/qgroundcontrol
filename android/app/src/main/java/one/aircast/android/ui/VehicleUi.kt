@@ -418,7 +418,9 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     PreflightChecklistReset(checklist, available)
 
     if (!available) {
-        if (layout != FlyDeckLayout.Rail) Text("Connect a vehicle to enable flight controls.", modifier.padding(16.dp), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.aircast.outdoorForeground)
+        if (layout != FlyDeckLayout.Rail) Row(modifier.padding(16.dp), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            OFFLINE_DECK.map { entry -> DeckButton(entry, primary = false, Modifier.weight(1f)) }
+        }
         return
     }
 
@@ -604,6 +606,11 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
 
 
 }
+
+private val OFFLINE_DECK = listOf(
+    DeckEntry("takeoff", TAKE_OFF, R.drawable.ic_flight_takeoff, enabled = false) {},
+    DeckEntry("rtl", "Return", R.drawable.ic_home, enabled = false) {},
+)
 
 internal val LocalDeckTelemetry = androidx.compose.runtime.compositionLocalOf { true }
 

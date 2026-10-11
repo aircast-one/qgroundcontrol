@@ -87,10 +87,7 @@ internal fun looksForAircraft(connected: Boolean, video: VideoReading?, syntheti
 internal fun FlyNoVideoMessage() {
     val videoJson by qgcPath(VIDEO_VIEW)
     val video = remember(videoJson) { videoReading(videoJson) }
-    if (looksForAircraft(hasVehicle(), video, rememberSyntheticChosen())) {
-        LookingForAircraft()
-        return
-    }
+    if (looksForAircraft(hasVehicle(), video, rememberSyntheticChosen())) return
     if (rememberSyntheticAvailable()) return
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val compact = maxHeight < NO_VIDEO_FULL_HEIGHT || maxWidth < NO_VIDEO_FULL_WIDTH
@@ -143,7 +140,7 @@ fun VideoSurface(
             SyntheticView(modifier.fillMaxSize(), aimable = true)
             return
         }
-        Surface(modifier.fillMaxSize(), color = MaterialTheme.colorScheme.surfaceVariant) {
+        Surface(modifier.fillMaxSize(), color = Color.Black) {
             NoVideoArea(expanded && !fullScreen, thumb = false, video = video)
         }
         return
@@ -190,7 +187,7 @@ private fun MainPane(video: VideoReading?, synthetic: Boolean, modifier: Modifie
         } else if (video?.decoding != true) {
             Surface(
                 Modifier.fillMaxSize(),
-                color = if (expanded) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.aircast.outdoorBackground,
+                color = if (expanded) Color.Black else MaterialTheme.aircast.outdoorBackground,
             ) {
                 NoVideoArea(expanded && !fullScreen, thumb = !expanded, video = video)
             }

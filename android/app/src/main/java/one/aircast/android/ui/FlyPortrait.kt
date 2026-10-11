@@ -78,6 +78,8 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.unit.dp
 import one.aircast.android.R
 import one.aircast.android.bridge.qgcPath
+import one.aircast.android.bridge.qgcValue
+import one.aircast.android.bridge.settingControl
 import one.aircast.map.AircastSpace
 import one.aircast.map.MapLayersSheet
 import one.aircast.map.Viewer3DPane
@@ -92,7 +94,6 @@ private val PORTRAIT_BAR_HEIGHT = 64.dp
 private val PORTRAIT_STRIP_HEIGHT = 60.dp
 private val PORTRAIT_STRIP_DIAL = 48.dp
 private const val PLACEHOLDER_ALPHA = 0.6f
-private val PLACEHOLDER_READINGS = listOf("H", "D", "H.S", "V.S")
 private const val SCRIM_ALPHA = 0.7f
 private const val PIP_BORDER_ALPHA = 0.5f
 private const val DECK_SCRIM_START = 0.4f
@@ -439,9 +440,9 @@ private fun TelemetryStrip(swipeDistance: Float, onSmaller: () -> Unit, onFullSc
         horizontalArrangement = Arrangement.spacedBy(AircastSpace.s3),
     ) {
         OsdCompassDial(PORTRAIT_STRIP_DIAL)
-        Box(Modifier.weight(1f).clipToBounds(), contentAlignment = Alignment.Center) {
+        Box(Modifier.weight(1f).clipToBounds(), contentAlignment = Alignment.CenterStart) {
             CompositionLocalProvider(LocalFlyOsd provides true) {
-                if (hasVehicle()) TelemetryRow(valuesShown = true, chooser = false, compact = true) else TelemetryPlaceholder()
+                if (hasVehicle()) TelemetryRow(valuesShown = true, chooser = false, compact = true, stacked = true) else TelemetryPlaceholder()
             }
         }
     }
@@ -449,12 +450,41 @@ private fun TelemetryStrip(swipeDistance: Float, onSmaller: () -> Unit, onFullSc
 
 @Composable
 private fun TelemetryPlaceholder() {
-    Row(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s4)) {
-        PLACEHOLDER_READINGS.map { label ->
-            Text("$label —", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.aircast.outdoorForeground.copy(alpha = PLACEHOLDER_ALPHA), maxLines = 1)
+    val distance by qgcValue(settingControl("settings.unitsSettings.horizontalDistanceUnits"))
+    val height by qgcValue(settingControl("settings.unitsSettings.verticalDistanceUnits"))
+    val speed by qgcValue(settingControl("settings.unitsSettings.speedUnits"))
+    val units = placeholderUnits(enumIndex(distance), enumIndex(height), enumIndex(speed))
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Row(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s4)) {
+            PlaceholderReading("H.S", units.speed, MaterialTheme.typography.labelLarge)
+            PlaceholderReading("V.S", units.speed, MaterialTheme.typography.labelLarge)
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s4)) {
+            PlaceholderReading("D", units.distance, MaterialTheme.typography.titleLarge)
+            PlaceholderReading("H", units.height, MaterialTheme.typography.titleLarge)
         }
     }
 }
+
+@Composable
+private fun PlaceholderReading(label: String, unit: String, style: androidx.compose.ui.text.TextStyle) {
+    Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(AircastSpace.s1)) {
+        Text(label, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.aircast.outdoorForeground.copy(alpha = PLACEHOLDER_ALPHA), maxLines = 1, modifier = Modifier.alignByBaseline())
+        Text("— $unit", style = style, color = MaterialTheme.aircast.outdoorForeground.copy(alpha = PLACEHOLDER_ALPHA), maxLines = 1, modifier = Modifier.alignByBaseline())
+    }
+}
+
+internal data class PlaceholderUnits(val distance: String, val height: String, val speed: String)
+
+private val SPEED_UNITS = listOf("ft/s", "m/s", "mph", "km/h", "kn")
+
+private fun enumIndex(value: Any?): Int? = (value as? Number)?.toInt() ?: value?.toString()?.toIntOrNull()
+
+internal fun placeholderUnits(distance: Int?, height: Int?, speed: Int?): PlaceholderUnits = PlaceholderUnits(
+    distance = if (distance == 0) "ft" else "m",
+    height = if (height == 0) "ft" else "m",
+    speed = SPEED_UNITS.getOrNull(speed ?: 1) ?: "m/s",
+)
 
 @Composable
 private fun ControlsAboveDeck(controls: @Composable () -> Unit, deck: @Composable () -> Unit) {

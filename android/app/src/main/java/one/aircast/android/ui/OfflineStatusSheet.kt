@@ -84,6 +84,7 @@ internal fun OfflineStatusSheet(onDismiss: () -> Unit) {
         val shown = status ?: return@AircastSheet
         Column(Modifier.fillMaxWidth().padding(bottom = 24.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
             Text(shown.title, style = MaterialTheme.typography.titleMedium, modifier = Modifier.padding(horizontal = 20.dp))
+            Text(rememberLookingHint(), style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(horizontal = 20.dp))
             Row(
                 Modifier.padding(horizontal = 20.dp).let { if (shown.editAddress) it.clickable { openConnectionSettings(navigation, onDismiss) } else it },
                 verticalAlignment = Alignment.CenterVertically,
@@ -117,6 +118,10 @@ internal fun OfflineStatusSheet(onDismiss: () -> Unit) {
             ListItem(
                 headlineContent = { Text("Connection settings") },
                 modifier = Modifier.clickable { openConnectionSettings(navigation, onDismiss) },
+            )
+            ListItem(
+                headlineContent = { Text("New drone? Flash an Aircast card") },
+                modifier = Modifier.clickable { navigation.settingsPage = FLASHER_PAGE; onDismiss() },
             )
         }
     }

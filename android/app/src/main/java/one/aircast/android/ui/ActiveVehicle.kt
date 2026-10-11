@@ -75,6 +75,14 @@ import androidx.compose.ui.graphics.Color
 
 private const val STATUS_BAR_SCRIM_ALPHA = 0.55f
 
+@Composable
+private fun statusTitleColour(tone: ChipTone, disconnected: Boolean): Color = when {
+    disconnected || tone == ChipTone.Error -> MaterialTheme.colorScheme.error
+    tone == ChipTone.Warning -> MaterialTheme.aircast.warning
+    tone == ChipTone.Success -> MaterialTheme.aircast.success
+    else -> MaterialTheme.aircast.outdoorForeground
+}
+
 internal fun osdModeText(title: String): String = title.substringBefore(" \u00b7 ")
 
 internal fun osdStatusNote(title: String): String? = title.substringAfter(" \u00b7 ", "").ifBlank { null }
@@ -169,31 +177,11 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
     androidx.compose.foundation.layout.Box(modifier) {
     FlightModeMenu(expanded = modeMenu && !disconnected, onDismiss = { modeMenu = false }, onStatus = { statusSettings = true })
     val tone = if (blocker != null) ChipTone.Error else chipTone(fly, lost)
-    val statusBar = !flyIsPortrait()
+    val narrow = flyIsPortrait()
     androidx.compose.material3.Surface(
         shape = MaterialTheme.shapes.small,
-        color = if (statusBar) {
-            Color.Transparent
-        } else {
-            osdBackdrop(
-                when (tone) {
-                    ChipTone.Error -> MaterialTheme.colorScheme.errorContainer
-                    ChipTone.Neutral -> MaterialTheme.colorScheme.surfaceContainerHigh
-                    ChipTone.Warning -> MaterialTheme.aircast.warningContainer
-                    ChipTone.Success -> MaterialTheme.aircast.successContainer
-                },
-            )
-        },
-        contentColor = if (statusBar) {
-            MaterialTheme.aircast.outdoorForeground
-        } else {
-            when (tone) {
-                ChipTone.Error -> osdTint(MaterialTheme.colorScheme.onErrorContainer, MaterialTheme.colorScheme.error)
-                ChipTone.Neutral -> MaterialTheme.colorScheme.onSurface
-                ChipTone.Warning -> MaterialTheme.aircast.warning
-                ChipTone.Success -> MaterialTheme.aircast.success
-            }
-        },
+        color = Color.Transparent,
+        contentColor = MaterialTheme.aircast.outdoorForeground,
         onClick = {
             when {
                 lost -> lostMenu = true
@@ -209,20 +197,22 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
         horizontalArrangement = Arrangement.spacedBy(8.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(painterResource(R.drawable.ic_flight), null, Modifier.size(24.dp))
+        val titleColour = statusTitleColour(tone, disconnected)
+        Icon(painterResource(R.drawable.ic_flight), null, Modifier.size(24.dp), tint = titleColour)
         val title = when {
-            lost -> signalLostTitle(silentFor, failsafe, compact = !statusBar)
+            lost -> signalLostTitle(silentFor, failsafe, compact = narrow)
             gotoProgress.isNotEmpty() && !choices.ambiguous -> gotoProgress
             else -> activeVehicleTitle(choices, subtitle)
         }
         Text(
-            text = if (statusBar) osdModeText(title) else title,
-            style = if (statusBar) MaterialTheme.typography.titleMedium else MaterialTheme.typography.labelLarge,
+            text = osdModeText(title),
+            style = MaterialTheme.typography.titleMedium,
+            color = titleColour,
             maxLines = 1,
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f, fill = false),
         )
-        if (statusBar) osdStatusNote(title)?.let { note ->
+        osdStatusNote(title)?.let { note ->
             androidx.compose.material3.Surface(
                 onClick = { if (blocker != null) why = true else statusSettings = true },
                 shape = MaterialTheme.shapes.small,

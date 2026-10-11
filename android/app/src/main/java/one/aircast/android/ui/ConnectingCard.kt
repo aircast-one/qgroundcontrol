@@ -4,12 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
-import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.widthIn
 import one.aircast.android.hostDevice
 import one.aircast.map.aircast
 import androidx.compose.foundation.layout.padding
@@ -112,38 +108,3 @@ internal fun rememberLookingHint(): String {
     val links by qgcPath(LINKS_VIEW)
     return lookingHint(device, builtInRadioProblem(links))
 }
-
-private const val CONNECTION_SETTINGS = "Connections"
-
-@Composable
-internal fun LookingForAircraft() {
-    val navigation = LocalAppNavigation.current
-    BoxWithConstraints(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        if (maxHeight < LOOKING_FULL_HEIGHT) {
-            Row(
-                Modifier.padding(horizontal = 16.dp).semantics(mergeDescendants = true) {},
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Icon(painterResource(R.drawable.ic_flight), null, Modifier.size(18.dp), tint = MaterialTheme.aircast.outdoorForeground)
-                Text(LOOKING_TITLE, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.aircast.outdoorForeground, maxLines = 1)
-                TextButton(onClick = { navigation.settingsPage = CONNECTION_SETTINGS }) { Text("Add a link") }
-            }
-            return@BoxWithConstraints
-        }
-        Column(
-            Modifier.widthIn(max = LOOKING_MAX_WIDTH).padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            Icon(painterResource(R.drawable.ic_flight), null, Modifier.size(28.dp), tint = MaterialTheme.aircast.outdoorForeground)
-            Text(LOOKING_TITLE, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.aircast.outdoorForeground, textAlign = TextAlign.Center)
-            Text(rememberLookingHint(), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.aircast.outdoorForeground, textAlign = TextAlign.Center)
-            TextButton(onClick = { navigation.settingsPage = CONNECTION_SETTINGS }) { Text("Add a link") }
-            TextButton(onClick = { navigation.settingsPage = FLASHER_PAGE }) { Text("New drone? Flash an Aircast card") }
-        }
-    }
-}
-
-private val LOOKING_MAX_WIDTH = 360.dp
-private val LOOKING_FULL_HEIGHT = 240.dp
