@@ -216,8 +216,8 @@ pub fn offline_maps_view(backend: &dyn Backend, args: &[String]) -> Value {
             let fetch_elevation = args.get(7).is_none_or(|flag| flag != "false") && !crate::maptypes::ELEVATION_PROVIDERS.contains(&provider.as_str());
             let elevation_count = if fetch_elevation { crate::terrainquery::region_tiles((region.top_left_lat, region.top_left_lon), (region.bottom_right_lat, region.bottom_right_lon)).len() as u64 } else { 0 };
             let elevation_size = elevation_count * average_size(crate::maptypes::ELEVATION_PROVIDERS[0]);
-            let (terrain_count, terrain_size) = if fetch_elevation { companions_estimate(&region, max_zoom as i32) } else { (0, 0) };
-            let (count, size) = (image_count + elevation_count + terrain_count, image_size + elevation_size + terrain_size);
+            let (companion_count, companion_size) = if fetch_elevation { companions_estimate(&region, max_zoom as i32) } else { (0, 0) };
+            let (count, size) = (image_count + elevation_count + companion_count, image_size + elevation_size + companion_size);
             json!({ "tileCount": count, "tileCountText": grouped(count), "tileSizeText": size_text(size), "tooMany": count > limit })
         }
         _ => Value::Null,
@@ -341,7 +341,7 @@ pub fn start_download(args: &str) -> Value {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq)]
+#[derive(Clone, Copy)]
 struct Companion {
     provider: &'static str,
     label: &'static str,

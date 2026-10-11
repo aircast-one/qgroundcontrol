@@ -1,10 +1,14 @@
+use std::sync::atomic::{AtomicBool, Ordering};
+
 use geo_types::{Geometry, LineString, Polygon};
 use mvt_reader::Reader;
 use mvt_reader::feature::{Feature, Value as Property};
 use serde_json::{Value, json};
 
 const LAYER: &str = "building";
-const HEIGHT_STEP: f64 = 10.0;
+const DECIMETRES_PER_METRE: f64 = 10.0;
+const DEFAULT_EXTENT: u32 = 4096;
+static UNREADABLE_SEEN: AtomicBool = AtomicBool::new(false);
 
 fn number(feature: &Feature, name: &str) -> Option<f64> {
     match feature.properties.as_ref()?.get(name)? {
@@ -41,7 +45,7 @@ fn polygons(geometry: &Geometry<f32>) -> Vec<&Polygon<f32>> {
 }
 
 fn rounded(metres: f64) -> f64 {
-    (metres * HEIGHT_STEP).round() / HEIGHT_STEP
+    (metres * DECIMETRES_PER_METRE).round() / DECIMETRES_PER_METRE
 }
 
 fn enclosing(ring: &[i32]) -> bool {
@@ -57,12 +61,24 @@ fn building(feature: &Feature, polygon: &Polygon<f32>) -> Option<Value> {
     Some(Value::Object(fields.map(|(name, value)| (name.to_string(), value)).collect()))
 }
 
+fn readable<T>(raw: &[u8], read: Result<T, impl std::fmt::Display>) -> Option<T> {
+    read.map_err(|error| {
+        if !UNREADABLE_SEEN.swap(true, Ordering::Relaxed) {
+            log::warn!("A {}-byte building tile could not be read as a vector tile: {error}", raw.len());
+        }
+    })
+    .ok()
+}
+
 pub fn tile_json(raw: &[u8]) -> Option<Vec<u8>> {
-    let reader = Reader::new(raw.to_vec()).ok()?;
-    let layers = reader.get_layer_metadata().ok()?;
+    let reader = readable(raw, Reader::new(raw.to_vec()))?;
+    let layers = readable(raw, reader.get_layer_metadata())?;
     let found = layers.iter().find(|layer| layer.name == LAYER);
-    let extent = found.map_or(4096, |layer| layer.extent);
-    let features = found.map(|layer| reader.get_features(layer.layer_index).unwrap_or_default()).unwrap_or_default();
+    let extent = found.map_or(DEFAULT_EXTENT, |layer| layer.extent);
+    let features = match found {
+        Some(layer) => readable(raw, reader.get_features(layer.layer_index))?,
+        None => Vec::new(),
+    };
     let buildings: Vec<Value> = features
         .iter()
         .filter(|feature| !hidden(feature))

@@ -228,7 +228,7 @@ pub unsafe extern "C" fn qgc_map_tile_fetch_cancellable(map_type: *const c_char,
     let fetch = move || {
         let cache = crate::terrainservice::cache_path().and_then(|path| crate::tilecache::Cache::open(&path).ok());
         let persist = !crate::settingsstore::raw_setting("settings.appSettings.disableAllPersistence").and_then(|v| v.as_bool()).unwrap_or(false);
-        crate::maptiles::fetch_remembered(&provider, x, y, zoom, cache.as_ref(), persist).or_else(|| cache.as_ref().and_then(|cache| offline_tile(cache, x, y, zoom)))
+        crate::maptiles::fetch_remembered(&provider, x, y, zoom, cache.as_ref(), persist).or_else(|| cache.as_ref().filter(|_| !crate::tilecache::core_only(&provider)).and_then(|cache| offline_tile(cache, x, y, zoom)))
     };
     let reply = move |image: Option<Vec<u8>>| match image {
         Some(image) => unsafe { handler(image.as_ptr(), c_int::try_from(image.len()).unwrap_or(0), context as *mut c_void) },

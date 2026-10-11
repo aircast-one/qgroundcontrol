@@ -70,6 +70,10 @@ pub struct TileSet {
 
 pub const CORE_ONLY_PROVIDERS: &[(&str, i32)] = &[(crate::maptypes::TERRAIN_TILES, 41), (crate::maptypes::BUILDING_TILES, 42)];
 
+pub fn core_only(name: &str) -> bool {
+    CORE_ONLY_PROVIDERS.iter().any(|(known, _)| *known == name)
+}
+
 pub fn provider_hash(name: &str) -> Option<i32> {
     PROVIDERS.iter().chain(CORE_ONLY_PROVIDERS).find(|(known, _)| *known == name).map(|(_, hash)| *hash)
 }
@@ -556,6 +560,7 @@ mod tests {
         assert!(PROVIDERS.iter().all(|(name, hash)| *name != crate::maptypes::TERRAIN_TILES && *hash != 41), "the key must not collide with a provider Qt serves");
         assert_eq!((provider_hash(crate::maptypes::BUILDING_TILES), provider_named(42)), (Some(42), Some(crate::maptypes::BUILDING_TILES)));
         assert!(PROVIDERS.iter().all(|(name, hash)| *name != crate::maptypes::BUILDING_TILES && *hash != 42), "buildings get a key of their own as well");
+        assert!(core_only(crate::maptypes::TERRAIN_TILES) && core_only(crate::maptypes::BUILDING_TILES) && !core_only("Bing Satellite"), "data tiles must never be stood in for by a cached map image");
     }
 
     #[test]
