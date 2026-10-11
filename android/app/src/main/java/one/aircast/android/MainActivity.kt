@@ -67,7 +67,6 @@ import one.aircast.android.ui.VehicleStateChip
 import one.aircast.android.ui.ControlRequestPrompt
 import one.aircast.android.ui.VtolStateCell
 import one.aircast.android.ui.ResumeFailedPrompt
-import one.aircast.android.ui.VirtualJoystick
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.unit.dp
@@ -118,8 +117,6 @@ import org.mavlink.qgroundcontrol.QGCBridge
 private val KEY_ROW_STOP_GAP = 24.dp
 
 private val RAIL_SHUTTER_ROOM = 56.dp
-
-private val VIRTUAL_JOYSTICK_BOTTOM_MARGIN = 96.dp
 
 private const val MULTICAST_LOCK_TAG = "Aircast"
 
@@ -619,15 +616,6 @@ fun AircastShell(hostView: android.view.View?) {
                     }
                 }
                 if (onFly) one.aircast.android.ui.ConnectingCard(Modifier.align(Alignment.Center))
-
-                if (tab == Tab.Fly) {
-                    VirtualJoystick(
-                        Modifier
-                            .align(Alignment.BottomCenter)
-                            .padding(horizontal = 12.dp)
-                            .padding(bottom = VIRTUAL_JOYSTICK_BOTTOM_MARGIN),
-                    )
-                }
 
                 mapClickAt?.takeIf { tab == Tab.Fly }?.let { point ->
                     MapClickMenu(point) { mapClickAt = null }

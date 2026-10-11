@@ -1,5 +1,7 @@
 package one.aircast.android.ui
 
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.dp
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -39,5 +41,24 @@ class VirtualJoystickTest {
         org.junit.Assert.assertTrue(sticksReset(null, null))
         org.junit.Assert.assertFalse(sticksReset(shown, shown.copy(sending = false)))
         org.junit.Assert.assertFalse(sticksReset(shown, shown.copy(leftHandedMode = true)))
+    }
+
+    @Test
+    fun `a pad is a third of the short side, never too small to steer or so big it crowds the screen`() {
+        assertEquals(123.3f, stickPad(411.dp).value, 0.1f)
+        assertEquals(96.dp, stickPad(240.dp))
+        assertEquals(140.dp, stickPad(800.dp))
+    }
+
+    @Test
+    fun `the knob follows the thumb one to one and stays inside the ring`() {
+        val travel = knobTravel(100f)
+        assertEquals(34f, travel, 0.001f)
+        assertEquals(Offset(0.5f, 0.5f), dragged(Offset(0.5f, 0.5f), Offset.Zero, travel))
+        assertEquals("a thumb moved the full travel deflects the stick fully", Offset(1f, 0.5f), dragged(Offset(0.5f, 0.5f), Offset(travel, 0f), travel))
+        assertEquals(Offset(0f, 1f), dragged(Offset(0.5f, 0.5f), Offset(-500f, 500f), travel))
+        assertEquals(Offset(travel, 0f), knobOffset(Offset(1f, 0.5f), travel))
+        val corner = knobOffset(Offset(1f, 0f), travel)
+        assertEquals("a corner deflection draws on the ring, not outside it", travel, corner.getDistance(), 0.001f)
     }
 }

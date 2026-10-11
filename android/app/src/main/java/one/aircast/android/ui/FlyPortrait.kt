@@ -122,6 +122,7 @@ internal fun FlyPortrait(
     val hasVideo = portraitShowsCamera(reading)
     val split = portraitSplit(view, hasVideo)
     val flyScreen = LocalFlyScreenState.current
+    val stickPad = shownStickPad()
     var chromeHeightPx by remember { mutableIntStateOf(0) }
     val barTop = maxOf(
         WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + PORTRAIT_BAR_HEIGHT,
@@ -288,13 +289,15 @@ internal fun FlyPortrait(
                     }
                 },
                 deck = {
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .onSizeChanged { deckHeightPx = it.height }
-                            .background(Brush.verticalGradient(0f to Color.Transparent, DECK_SCRIM_START to Color.Black.copy(alpha = SCRIM_ALPHA)))
-                            .windowInsetsPadding(WindowInsets.navigationBars),
-                    ) { actions(FlyDeckLayout.Bottom) }
+                    Column(Modifier.fillMaxWidth().onSizeChanged { deckHeightPx = it.height }) {
+                        stickPad?.let { VirtualJoystick(it, Modifier.padding(horizontal = AircastSpace.s3)) }
+                        Box(
+                            Modifier
+                                .fillMaxWidth()
+                                .background(Brush.verticalGradient(0f to Color.Transparent, DECK_SCRIM_START to Color.Black.copy(alpha = SCRIM_ALPHA)))
+                                .windowInsetsPadding(WindowInsets.navigationBars),
+                        ) { actions(FlyDeckLayout.Bottom) }
+                    }
                 },
             )
             androidx.compose.animation.AnimatedVisibility(
@@ -339,6 +342,9 @@ internal fun FlyPortrait(
                 BatteryReturnBar(Modifier.padding(horizontal = AircastSpace.s3))
                 TrafficBanner(Modifier.padding(start = AircastSpace.s3, end = AircastSpace.s3, bottom = AircastSpace.s2))
             }
+            }
+            if (fullScreen) stickPad?.let { pad ->
+                VirtualJoystick(pad, Modifier.zIndex(FULL_SCREEN_LAYER + 1f).align(Alignment.BottomCenter).windowInsetsPadding(WindowInsets.navigationBars).padding(AircastSpace.s3))
             }
         }
     }

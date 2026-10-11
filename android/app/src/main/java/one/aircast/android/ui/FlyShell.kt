@@ -51,6 +51,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.width
@@ -215,6 +216,9 @@ internal fun FlyScreen(
     val pipExpanded = mini != MiniMap.Thumb
     val togglePip: () -> Unit = { showMini(if (pipExpanded) MiniMap.Thumb else MiniMap.Map) }
     val layout = LocalFlyScreenState.current.layout
+    val stickPad = shownStickPad()
+    val stickLead = stickPad?.let { ACTION_RAIL_CLEARANCE + it } ?: 0.dp
+    val stickRoom = stickPad?.let { it + AircastSpace.s3 } ?: 0.dp
     val flyJson by one.aircast.android.bridge.qgcPath(FLY_STATE)
     val armed = flyState(flyJson)?.armed == true
     LaunchedEffect(armed) { layout.lockWhileArmed(armed) }
@@ -237,6 +241,7 @@ internal fun FlyScreen(
                         .zIndex(1f)
                         .align(pipAlign)
                         .windowInsetsPadding(WindowInsets.displayCutout)
+                        .padding(start = stickLead)
                         .padding(AircastSpace.s3)
                         .then(layoutPlacement(MAP_PIP_KEY, keepOnScreen = false))
                         .then(mapPipSize)
@@ -252,7 +257,7 @@ internal fun FlyScreen(
         val videoKey = orientedKey(VIDEO_PIP_KEY, landscape = true)
         val videoMoved = layout.offsets[videoKey] ?: (0f to 0f)
         val pipHome = with(density) {
-            Offset(cutout.getLeft(this, LocalLayoutDirection.current) + AircastSpace.s3.toPx(), boxSize.height - cutout.getBottom(this) - AircastSpace.s3.toPx() - MINIMAP_HEIGHT.toPx())
+            Offset(cutout.getLeft(this, LocalLayoutDirection.current) + (AircastSpace.s3 + stickLead).toPx(), boxSize.height - cutout.getBottom(this) - AircastSpace.s3.toPx() - MINIMAP_HEIGHT.toPx())
         }
         val pipFrame = with(density) { Rect(pipHome + Offset(videoMoved.first.dp.toPx(), videoMoved.second.dp.toPx()), Size(MINIMAP_WIDTH.toPx(), MINIMAP_HEIGHT.toPx())) }
         val pipNow = videoIsPip && !fullScreen
@@ -333,6 +338,7 @@ internal fun FlyScreen(
                         .zIndex(2f)
                         .align(pipAlign)
                         .windowInsetsPadding(WindowInsets.displayCutout)
+                        .padding(start = stickLead)
                         .padding(AircastSpace.s3)
                         .then(layoutPlacement(MAP_PIP_KEY, keepOnScreen = false))
                         .then(mapPipSize)
@@ -347,6 +353,7 @@ internal fun FlyScreen(
                         .zIndex(3f)
                         .align(Alignment.BottomStart)
                         .windowInsetsPadding(WindowInsets.displayCutout)
+                        .padding(start = stickLead)
                         .padding(AircastSpace.s3)
                         .avoidedByVideoMessage(COMPASS_DIAL_KEY)
                         .clip(CircleShape)
@@ -359,6 +366,7 @@ internal fun FlyScreen(
                     .zIndex(3f)
                     .align(pipAlign)
                         .windowInsetsPadding(WindowInsets.displayCutout)
+                    .padding(start = stickLead)
                     .padding(AircastSpace.s3)
                     .then(layoutPlacement(MAP_PIP_KEY, keepOnScreen = true))
                     .then(pipSize)
@@ -413,6 +421,7 @@ internal fun FlyScreen(
                         .zIndex(3f)
                         .align(pipAlign)
                         .windowInsetsPadding(WindowInsets.displayCutout)
+                        .padding(start = stickLead)
                         .padding(AircastSpace.s3)
                         .then(layoutPlacement(VIDEO_PIP_KEY, keepOnScreen = true))
                         .then(pipSize)
@@ -431,14 +440,14 @@ internal fun FlyScreen(
                     LayoutPipEditor(VIDEO_PIP_KEY, MaterialTheme.shapes.medium, Modifier.matchParentSize())
                 }
             } else {
-                PipToggle(false, togglePip, Modifier.zIndex(3f).align(pipAlign).windowInsetsPadding(WindowInsets.displayCutout).padding(AircastSpace.s3).verticalSwipe(swipeDistance) { if (it == VideoSwipe.Up) togglePip() })
+                PipToggle(false, togglePip, Modifier.zIndex(3f).align(pipAlign).windowInsetsPadding(WindowInsets.displayCutout).padding(start = stickLead).padding(AircastSpace.s3).verticalSwipe(swipeDistance) { if (it == VideoSwipe.Up) togglePip() })
             }
         }
         val settingsOver = LocalAppNavigation.current.settingsOpen
         Box(Modifier.zIndex(1f).fillMaxSize().graphicsLayer { alpha = if (settingsOver) 0f else 1f }.windowInsetsPadding(WindowInsets.displayCutout)) {
         if (view == FlyView.Map) {
             var layers by remember { mutableStateOf(false) }
-            Box(Modifier.align(Alignment.BottomEnd).padding(end = AircastSpace.s3, bottom = MAP_SCALE_CLEARANCE)) {
+            Box(Modifier.align(Alignment.BottomEnd).padding(end = AircastSpace.s3, bottom = MAP_SCALE_CLEARANCE + stickRoom)) {
                 LayoutWidget("mapLayers", hideable = false) {
                     Surface(
                         onClick = { layers = true },
@@ -492,9 +501,7 @@ internal fun FlyScreen(
                         }
                     }
                 },
-                bottom = {
-
-                },
+                bottom = { Spacer(Modifier.height(stickRoom)) },
                 bottomAlignment = Alignment.End,
                 overlaysAboveBottom = true,
                 message = if (videoMessage) ({ Box(Modifier.osdShadow()) { FlyNoVideoMessage() } }) else null,
@@ -508,7 +515,7 @@ internal fun FlyScreen(
                     .fillMaxHeight()
                     .align(Alignment.CenterEnd)
                     .windowInsetsPadding(WindowInsets.statusBars)
-                    .padding(vertical = RAIL_CLEARANCE, horizontal = 0.dp)
+                    .padding(top = RAIL_CLEARANCE, bottom = maxOf(RAIL_CLEARANCE, stickRoom + AircastSpace.s3))
                     .padding(end = AircastSpace.s3),
                 contentAlignment = Alignment.Center,
             ) {
@@ -520,7 +527,7 @@ internal fun FlyScreen(
                 Modifier
                     .zIndex(2f)
                     .align(Alignment.BottomStart)
-                    .padding(start = besideMini + AircastSpace.s3 * 2, bottom = AircastSpace.s3)
+                    .padding(start = stickLead + besideMini + AircastSpace.s3 * 2, bottom = AircastSpace.s3)
                     .osdShadow(),
             ) {
                 CompositionLocalProvider(LocalFlyOsd provides true) { TelemetryRow(valuesShown = true, chooser = false, compact = true, stacked = true) }
@@ -539,6 +546,18 @@ internal fun FlyScreen(
                     .padding(top = STATUS_ROW_HEIGHT + AircastSpace.s4, bottom = 0.dp),
             ) { actions(FlyDeckLayout.Rail) }
         }
+        }
+        stickPad?.let { pad ->
+            val settingsOver = LocalAppNavigation.current.settingsOpen
+            VirtualJoystick(
+                pad,
+                Modifier
+                    .zIndex(FULL_SCREEN_LAYER + 1f)
+                    .align(Alignment.BottomCenter)
+                    .graphicsLayer { alpha = if (settingsOver) 0f else 1f }
+                    .windowInsetsPadding(WindowInsets.displayCutout)
+                    .padding(start = if (fullScreen) AircastSpace.s3 else ACTION_RAIL_CLEARANCE, end = AircastSpace.s3, bottom = AircastSpace.s3),
+            )
         }
     }
 }
