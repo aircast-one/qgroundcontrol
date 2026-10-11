@@ -515,7 +515,7 @@ internal fun FlyScreen(
                     .fillMaxHeight()
                     .align(Alignment.CenterEnd)
                     .windowInsetsPadding(WindowInsets.statusBars)
-                    .padding(top = RAIL_CLEARANCE, bottom = maxOf(RAIL_CLEARANCE, stickRoom + AircastSpace.s3))
+                    .padding(top = RAIL_CLEARANCE + AircastSpace.s3, bottom = maxOf(RAIL_CLEARANCE, stickRoom + AircastSpace.s3))
                     .padding(end = AircastSpace.s3),
                 contentAlignment = Alignment.Center,
             ) {

@@ -8,6 +8,8 @@ private let SEGMENT_PAD_HORIZONTAL: CGFloat = 10
 private let SEGMENT_PAD_VERTICAL: CGFloat = 6
 private let SEGMENT_GAP: CGFloat = 6
 private let SEGMENT_LABEL_MAX: CGFloat = 72
+private let SEGMENT_INSET: CGFloat = 6
+let MAX_SEGMENTS = 3
 private let SPLIT_BUTTON_SIZE: CGFloat = 40
 private let SPLIT_GLYPH: CGFloat = 17
 private let CHIP_HEIGHT: CGFloat = 32
@@ -22,6 +24,8 @@ func cameraSwitchState(_ reading: CamerasReading?) -> CameraSwitchState? {
     guard let shown = cameras.first(where: \.active) ?? cameras.first, cameras.count > 1 else { return nil }
     return CameraSwitchState(shown: shown, cameras: cameras)
 }
+
+func pickedFromMenu(_ state: CameraSwitchState) -> Bool { state.cameras.count > MAX_SEGMENTS }
 
 func pipCamera(_ reading: CamerasReading?, _ streamOn: Bool) -> CameraEntry? {
     guard streamOn, let pip = reading?.pip, pip.enabled, let slot = pip.slot else { return nil }
@@ -103,12 +107,14 @@ private struct CameraSegments: View {
     var body: some View {
         let white = theme.aircast.outdoorForeground
         Group {
-            if across {
-                HStack(spacing: 0) { segments }
+            if pickedFromMenu(state) {
+                CameraMenu(state: state).padding(.horizontal, SEGMENT_INSET)
+            } else if across {
+                HStack(spacing: 0) { segments }.padding(.horizontal, SEGMENT_INSET)
             } else {
                 ViewThatFits(in: .vertical) {
-                    VStack(spacing: 0) { segments }
-                    ScrollView(.vertical, showsIndicators: false) { VStack(spacing: 0) { segments } }
+                    VStack(spacing: 0) { segments }.padding(.vertical, SEGMENT_INSET)
+                    ScrollView(.vertical, showsIndicators: false) { VStack(spacing: 0) { segments }.padding(.vertical, SEGMENT_INSET) }
                         .fixedSize(horizontal: true, vertical: false)
                 }
             }
@@ -126,26 +132,52 @@ private struct CameraSegments: View {
     }
 }
 
-private struct CameraSegment: View {
+private struct CameraMenu: View {
+    let state: CameraSwitchState
+
+    var body: some View {
+        Menu {
+            ForEach(state.cameras) { camera in
+                Button { if camera.slot != state.shown.slot { showCamera(camera.slot) } } label: { Text(camera.title) }
+            }
+        } label: {
+            SegmentLabel(camera: state.shown, selected: true, menu: true)
+        }
+        .accessibilityLabel("Choose a camera, showing \(state.shown.title)")
+    }
+}
+
+private struct SegmentLabel: View {
     let camera: CameraEntry
     let selected: Bool
+    var menu = false
     @Environment(\.theme) private var theme
 
     var body: some View {
         let white = theme.aircast.outdoorForeground
-        Button { if !selected { showCamera(camera.slot) } } label: {
-            HStack(spacing: SEGMENT_GAP) {
-                CameraStatusDot(status: camera.status)
-                CappedWidth(limit: SEGMENT_LABEL_MAX) {
-                    Text(camera.short).font(.labelLarge).lineLimit(1).truncationMode(.tail)
-                }
+        HStack(spacing: SEGMENT_GAP) {
+            CameraStatusDot(status: camera.status)
+            CappedWidth(limit: SEGMENT_LABEL_MAX) {
+                Text(camera.short).font(.labelLarge).lineLimit(1).truncationMode(.tail)
             }
-            .padding(.horizontal, SEGMENT_PAD_HORIZONTAL)
-            .padding(.vertical, SEGMENT_PAD_VERTICAL)
-            .foregroundStyle(selected ? Color.black : white)
-            .background(selected ? white : Color.clear, in: Capsule())
-            .frame(minHeight: MINIMUM_TOUCH_TARGET)
-            .contentShape(Rectangle())
+            if menu { Image(.arrowDropDown).font(.system(size: 12, weight: .semibold)) }
+        }
+        .padding(.horizontal, SEGMENT_PAD_HORIZONTAL)
+        .padding(.vertical, SEGMENT_PAD_VERTICAL)
+        .foregroundStyle(selected ? Color.black : white)
+        .background(selected ? white : Color.clear, in: Capsule())
+        .frame(minHeight: MINIMUM_TOUCH_TARGET)
+        .contentShape(Rectangle())
+    }
+}
+
+private struct CameraSegment: View {
+    let camera: CameraEntry
+    let selected: Bool
+
+    var body: some View {
+        Button { if !selected { showCamera(camera.slot) } } label: {
+            SegmentLabel(camera: camera, selected: selected)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(camera.title)

@@ -59,4 +59,16 @@ final class CameraSwitchTests: XCTestCase {
         XCTAssertEqual(neighbourCamera(cameraSwitchState(reading(camera(0), camera(1), camera(2, active: true))), 1)?.slot, 0)
         XCTAssertNil(neighbourCamera(cameraSwitchState(reading(camera(0, active: true))), 1), "one camera has nowhere to swipe to")
     }
+
+    func testPastThreeCamerasThePickerIsOneChipWithAMenuSoItNeverRunsOffTheScreen() throws {
+        XCTAssertFalse(pickedFromMenu(try XCTUnwrap(cameraSwitchState(reading(camera(0, active: true), camera(1), camera(2))))))
+        XCTAssertTrue(pickedFromMenu(try XCTUnwrap(cameraSwitchState(reading(camera(0, active: true), camera(1), camera(2), camera(3))))))
+    }
+
+    func testTheSyntheticCameraCountsAsChosenOnlyWhenItIsTheOneOnScreen() {
+        let synthetic = #"{"slot":1,"title":"Synthetic","short":"Synthetic","source":"Synthetic View","active":true,"status":"idle","problem":null}"#
+        XCTAssertTrue(syntheticChosen(reading(camera(0), synthetic)))
+        XCTAssertFalse(syntheticChosen(reading(camera(0, active: true), synthetic.replacingOccurrences(of: #""active":true"#, with: #""active":false"#))))
+        XCTAssertFalse(syntheticChosen(nil))
+    }
 }

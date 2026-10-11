@@ -929,7 +929,7 @@ mod tests {
             let on = hosted(THREE, *active, true);
             assert!(pipeline_for(&on, 1).is_some_and(|played| played.contains(port)), "active {active}: the next camera round plays in the picture in picture");
             let pip = on.state.settings.camera_index_for_receiver(PIP_RECEIVER);
-            let view = crate::cameras::view_of(&object(&on), crate::cameras::parse(THREE), *active, true);
+            let view = crate::cameras::view_of(&object(&on), crate::cameras::parse(THREE), *active, true, true);
             assert_eq!(view["pip"]["slot"].as_u64().map(|slot| slot as usize), pip, "active {active}: view.cameras names the camera channel 1 plays");
         });
         set_multi_view(&mut host, false);

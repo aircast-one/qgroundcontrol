@@ -102,6 +102,17 @@ final class NoVideoPanelTests: XCTestCase {
         XCTAssertNil(messageRegion(rect(0, 100, 1000, 600), [rect(0, 100, 950, 600)], 10, 200, 50))
         XCTAssertNil(messageRegion(rect(0, 0, 150, 600), [], 10, 200, 50))
     }
+
+    func testTheSyntheticViewWaitsForTheAircraftInsteadOfOfferingToRetryAStreamItNeverHad() {
+        var decoding = video
+        decoding.decoding = true
+        XCTAssertTrue(looksForAircraft(connected: false, video: video, syntheticChosen: true))
+        XCTAssertEqual(flyWait(connected: false, video: video, syntheticChosen: true, syntheticReady: false), .Aircraft)
+        XCTAssertEqual(flyWait(connected: true, video: video, syntheticChosen: true, syntheticReady: false), .Position)
+        XCTAssertNil(flyWait(connected: true, video: video, syntheticChosen: true, syntheticReady: true))
+        XCTAssertNil(flyWait(connected: false, video: video, syntheticChosen: false, syntheticReady: false), "a stream camera keeps saying why it has no picture")
+        XCTAssertNil(flyWait(connected: false, video: decoding, syntheticChosen: true, syntheticReady: false))
+    }
 }
 
 final class CentredRegionTests: XCTestCase {

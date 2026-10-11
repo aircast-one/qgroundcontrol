@@ -60,4 +60,18 @@ class CameraSwitchTest {
         assertEquals(0, neighbourCamera(cameraSwitchState(reading(camera(0), camera(1), camera(2, active = true))), 1)?.slot)
         assertNull("one camera has nowhere to swipe to", neighbourCamera(cameraSwitchState(reading(camera(0, active = true))), 1))
     }
+
+    @Test
+    fun `past three cameras the picker is one chip with a menu, so it never runs off the screen`() {
+        assertEquals(false, pickedFromMenu(cameraSwitchState(reading(camera(0, active = true), camera(1), camera(2)))!!))
+        assertEquals(true, pickedFromMenu(cameraSwitchState(reading(camera(0, active = true), camera(1), camera(2), camera(3)))!!))
+    }
+
+    @Test
+    fun `the synthetic camera counts as chosen only when it is the one on screen`() {
+        val synthetic = """{"slot":1,"title":"Synthetic","short":"Synthetic","source":"$SYNTHETIC_SOURCE","active":true,"status":"idle","problem":null}"""
+        assertEquals(true, syntheticChosen(reading(camera(0), synthetic)))
+        assertEquals(false, syntheticChosen(reading(camera(0, active = true), synthetic.replace("\"active\":true", "\"active\":false"))))
+        assertEquals(false, syntheticChosen(null))
+    }
 }

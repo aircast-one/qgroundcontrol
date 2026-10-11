@@ -71,6 +71,11 @@ internal fun rememberSyntheticAims(): Boolean {
 @Composable
 internal fun rememberSyntheticAvailable(): Boolean = one.aircast.android.bridge.qgcDerived(SYNTHETIC_VIEW, ::syntheticAvailable).value
 
+internal fun syntheticChosen(reading: CamerasReading?): Boolean = reading?.cameras?.firstOrNull { it.active }?.source == SYNTHETIC_SOURCE
+
+@Composable
+internal fun rememberSyntheticChosen(): Boolean = one.aircast.android.bridge.qgcDerived(CAMERAS_VIEW) { syntheticChosen(camerasReading(it)) }.value
+
 private fun tileResponse(encodedPath: String): WebResourceResponse =
     coreTile(encodedPath)?.let { WebResourceResponse(tileMimeType(it), null, 200, "OK", emptyMap(), it.inputStream()) }
         ?: WebResourceResponse("image/png", null, 404, "No tile", emptyMap(), ByteArray(0).inputStream())

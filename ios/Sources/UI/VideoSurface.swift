@@ -40,16 +40,19 @@ private struct NoVideoArea: View {
     }
 }
 
-func looksForAircraft(connected: Bool, video: VideoReading?) -> Bool { !connected && video?.available != true }
+func looksForAircraft(connected: Bool, video: VideoReading?, syntheticChosen: Bool = false) -> Bool {
+    !connected && (video?.available != true || syntheticChosen)
+}
 
 struct FlyNoVideoMessage: View {
     @HasVehicle private var hasVehicle
     @QgcPath(VIDEO_VIEW) private var videoJson
     @QgcPath(SYNTHETIC_VIEW) private var syntheticJson
+    @QgcPath(CAMERAS_VIEW) private var camerasJson
 
     var body: some View {
         let video = videoReading(videoJson)
-        if looksForAircraft(connected: hasVehicle, video: video) {
+        if looksForAircraft(connected: hasVehicle, video: video, syntheticChosen: syntheticChosen(camerasReading(camerasJson))) {
             LookingForAircraft()
         } else if syntheticAvailable(syntheticJson) {
             EmptyView()
@@ -58,7 +61,7 @@ struct FlyNoVideoMessage: View {
                 let compact = geometry.size.height < NO_VIDEO_FULL_HEIGHT || geometry.size.width < NO_VIDEO_FULL_WIDTH
                 NoVideoPanel(video: video)
                     .environment(\.noVideoSize, compact ? .Pill : .Full)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: compact ? .topTrailing : .center)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             }
         }
     }

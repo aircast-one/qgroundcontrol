@@ -9,6 +9,10 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -53,6 +57,9 @@ private val SEGMENT_GAP = 6.dp
 private val SEGMENT_LABEL_MAX = 72.dp
 private val SPLIT_BUTTON_SIZE = 40.dp
 private val SPLIT_GLYPH = 20.dp
+private val SEGMENT_INSET = 6.dp
+private val MENU_ARROW = 18.dp
+internal const val MAX_SEGMENTS = 3
 
 internal data class CameraSwitchState(val shown: CameraEntry, val cameras: List<CameraEntry>)
 
@@ -64,6 +71,8 @@ internal fun cameraSwitchState(reading: CamerasReading?): CameraSwitchState? {
 
 internal fun pipCamera(reading: CamerasReading?, streamOn: Boolean): CameraEntry? =
     reading?.pip?.takeIf { streamOn && it.enabled }?.slot?.let { slot -> reading.cameras.firstOrNull { it.slot == slot } }
+
+internal fun pickedFromMenu(state: CameraSwitchState): Boolean = state.cameras.size > MAX_SEGMENTS
 
 internal fun splitToggleTarget(reading: CamerasReading?, room: Boolean, streamOn: Boolean): Boolean? =
     reading?.pip?.takeIf { streamOn && room && it.slot != null }?.let { !it.enabled }
@@ -118,16 +127,41 @@ private fun CameraSegments(state: CameraSwitchState, across: Boolean) {
         border = BorderStroke(SWITCH_BORDER, white.copy(alpha = SWITCH_BORDER_ALPHA)),
         modifier = Modifier.semantics { contentDescription = "Cameras, showing ${state.shown.title}" },
     ) {
-        if (across) Row { segments() } else Column(Modifier.verticalScroll(rememberScrollState())) { segments() }
+        when {
+            pickedFromMenu(state) -> CameraMenu(state)
+            across -> Row(Modifier.padding(horizontal = SEGMENT_INSET)) { segments() }
+            else -> Column(Modifier.verticalScroll(rememberScrollState()).padding(vertical = SEGMENT_INSET)) { segments() }
+        }
     }
 }
 
 @Composable
-private fun CameraSegment(camera: CameraEntry, selected: Boolean) {
+private fun CameraMenu(state: CameraSwitchState) {
+    var open by remember { mutableStateOf(false) }
+    Box(Modifier.padding(horizontal = SEGMENT_INSET)) {
+        CameraSegment(state.shown, selected = true, menu = true)
+        Box(Modifier.matchParentSize().clickable(onClickLabel = "Choose a camera") { open = true })
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            state.cameras.map { camera ->
+                DropdownMenuItem(
+                    text = { Text(camera.title, maxLines = 1, overflow = TextOverflow.Ellipsis) },
+                    leadingIcon = { CameraStatusDot(camera.status) },
+                    onClick = {
+                        open = false
+                        if (camera.slot != state.shown.slot) showCamera(camera.slot)
+                    },
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun CameraSegment(camera: CameraEntry, selected: Boolean, menu: Boolean = false) {
     val white = MaterialTheme.aircast.outdoorForeground
     Box(
         Modifier
-            .selectable(selected = selected, role = Role.Tab, onClick = { if (!selected) showCamera(camera.slot) })
+            .then(if (menu) Modifier else Modifier.selectable(selected = selected, role = Role.Tab, onClick = { if (!selected) showCamera(camera.slot) }))
             .minimumInteractiveComponentSize(),
         contentAlignment = Alignment.Center,
     ) {
@@ -148,6 +182,7 @@ private fun CameraSegment(camera: CameraEntry, selected: Boolean) {
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
             )
+            if (menu) Icon(painterResource(R.drawable.ic_arrow_drop_down), contentDescription = null, tint = Color.Black, modifier = Modifier.size(MENU_ARROW))
         }
     }
 }

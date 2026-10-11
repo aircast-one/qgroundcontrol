@@ -107,6 +107,16 @@ class NoVideoPanelTest {
         assertNull(messageRegion(free, listOf(rect(0f, 100f, 950f, 600f)), 10f, 200f, 50f))
         assertNull(messageRegion(rect(0f, 0f, 150f, 600f), emptyList(), 10f, 200f, 50f))
     }
+
+    @Test
+    fun `the synthetic view waits for the aircraft instead of offering to retry a stream it never had`() {
+        assertEquals(true, looksForAircraft(connected = false, video = video, syntheticChosen = true))
+        assertEquals(FlyWait.Aircraft, flyWait(connected = false, video = video, syntheticChosen = true, syntheticReady = false))
+        assertEquals(FlyWait.Position, flyWait(connected = true, video = video, syntheticChosen = true, syntheticReady = false))
+        assertNull(flyWait(connected = true, video = video, syntheticChosen = true, syntheticReady = true))
+        assertNull("a stream camera keeps saying why it has no picture", flyWait(connected = false, video = video, syntheticChosen = false, syntheticReady = false))
+        assertNull(flyWait(connected = false, video = video.copy(decoding = true), syntheticChosen = true, syntheticReady = false))
+    }
 }
 
 class CentredRegionTest {

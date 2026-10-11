@@ -80,20 +80,21 @@ private fun NoVideoArea(underFlyChrome: Boolean, thumb: Boolean, video: VideoRea
     }
 }
 
-internal fun looksForAircraft(connected: Boolean, video: VideoReading?): Boolean = !connected && video?.available != true
+internal fun looksForAircraft(connected: Boolean, video: VideoReading?, syntheticChosen: Boolean = false): Boolean =
+    !connected && (video?.available != true || syntheticChosen)
 
 @Composable
 internal fun FlyNoVideoMessage() {
     val videoJson by qgcPath(VIDEO_VIEW)
     val video = remember(videoJson) { videoReading(videoJson) }
-    if (looksForAircraft(hasVehicle(), video)) {
+    if (looksForAircraft(hasVehicle(), video, rememberSyntheticChosen())) {
         LookingForAircraft()
         return
     }
     if (rememberSyntheticAvailable()) return
     BoxWithConstraints(Modifier.fillMaxSize()) {
         val compact = maxHeight < NO_VIDEO_FULL_HEIGHT || maxWidth < NO_VIDEO_FULL_WIDTH
-        Box(Modifier.fillMaxSize(), contentAlignment = if (compact) Alignment.TopEnd else Alignment.Center) {
+        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
             CompositionLocalProvider(LocalNoVideoSize provides if (compact) NoVideoSize.Pill else NoVideoSize.Full) { NoVideoPanel(video) }
         }
     }

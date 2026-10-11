@@ -50,6 +50,18 @@ internal fun noVideoDetail(video: VideoReading, seconds: Int): String = when {
     else -> "${video.noVideoText} for ${elapsedText(seconds)}"
 }
 
+internal enum class FlyWait(val title: String, val detail: String, val short: String) {
+    Aircraft(LOOKING_TITLE, "", "Not connected"),
+    Position("Waiting for the aircraft's position", "The synthetic view draws once the aircraft has a GPS fix and a home.", "Waiting for position"),
+}
+
+internal fun flyWait(connected: Boolean, video: VideoReading?, syntheticChosen: Boolean, syntheticReady: Boolean): FlyWait? = when {
+    video?.decoding == true || !syntheticChosen -> null
+    !connected -> FlyWait.Aircraft
+    !syntheticReady -> FlyWait.Position
+    else -> null
+}
+
 internal enum class NoVideoAction { None, SetUp, Settings, TurnOn }
 
 internal data class NoVideoState(val title: String, val detail: String, val action: NoVideoAction)
@@ -76,10 +88,10 @@ internal enum class NoVideoSize { Full, Pill, Thumb }
 internal val LocalNoVideoSize = staticCompositionLocalOf { NoVideoSize.Full }
 
 @Composable
-private fun NoVideoLayout(title: String, detail: String = "", primary: NoVideoButton? = null, secondary: NoVideoButton? = null, compactTitle: String = title) {
+private fun NoVideoLayout(title: String, detail: String = "", primary: NoVideoButton? = null, secondary: NoVideoButton? = null, compactTitle: String = title, icon: Int = R.drawable.ic_videocam_off) {
     if (LocalNoVideoSize.current == NoVideoSize.Thumb) {
         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            Icon(painterResource(R.drawable.ic_videocam_off), contentDescription = null, modifier = Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(24.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
             Text(compactTitle, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
         return
@@ -87,7 +99,7 @@ private fun NoVideoLayout(title: String, detail: String = "", primary: NoVideoBu
     if (LocalNoVideoSize.current == NoVideoSize.Pill) {
         Surface(shape = MaterialTheme.shapes.extraLarge, color = osdBackdrop(MaterialTheme.colorScheme.surfaceContainerHigh)) {
             Row(Modifier.padding(start = 12.dp, end = 4.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Icon(painterResource(R.drawable.ic_videocam_off), contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(20.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 Text(compactTitle, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false).padding(vertical = 12.dp))
                 primary?.let { TextButton(onClick = it.onClick) { Text(it.label, maxLines = 1, softWrap = false) } }
             }
@@ -99,7 +111,7 @@ private fun NoVideoLayout(title: String, detail: String = "", primary: NoVideoBu
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Icon(painterResource(R.drawable.ic_videocam_off), contentDescription = null, modifier = Modifier.size(40.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Icon(painterResource(icon), contentDescription = null, modifier = Modifier.size(40.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface, textAlign = TextAlign.Center)
         if (detail.isNotBlank()) Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.Center)
         if (primary != null || secondary != null) {
@@ -113,6 +125,10 @@ private fun NoVideoLayout(title: String, detail: String = "", primary: NoVideoBu
 
 @Composable
 internal fun NoVideoPanel(video: VideoReading?) {
+    flyWait(hasVehicle(), video, rememberSyntheticChosen(), rememberSyntheticAvailable())?.let { wait ->
+        NoVideoLayout(wait.title, wait.detail, compactTitle = wait.short, icon = R.drawable.ic_flight)
+        return
+    }
     val videoSources = videoSourcesButton(LocalAppNavigation.current)
     val flyJson by qgcPath(FLY_STATE)
     val armed = remember(flyJson) { flyState(flyJson)?.armed == true }

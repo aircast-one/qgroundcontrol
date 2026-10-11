@@ -21,6 +21,8 @@ private let HTTP_NOT_FOUND = 404
 
 func syntheticAvailable(_ view: JSON?) -> Bool { view?["available"].bool == true }
 
+func syntheticChosen(_ reading: CamerasReading?) -> Bool { reading?.cameras.first(where: \.active)?.source == SYNTHETIC_SOURCE }
+
 func syntheticAims(_ view: JSON?, _ video: VideoReading?) -> Bool {
     syntheticAvailable(view) && view?["aimable"].bool == true && video?.decoding != true
 }

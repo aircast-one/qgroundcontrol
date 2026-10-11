@@ -23,6 +23,8 @@ pub const DEPS: &[&str] = &[
     "video.cameraNames",
     "video.cameraSources",
     "video.cameraUrls",
+    "vehicles.activeVehicleAvailable",
+    "vehicle.homePosition",
 ];
 
 pub const CAMERAS_ADD: &str = "cameras.add";
@@ -439,10 +441,11 @@ pub fn cameras_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let video = backend.value_fields("video", "activeVideoSource,cameraSignals,cameraFromDrone,cameraNames,cameraSources,cameraUrls,pipSlot");
     let switched = |path: &str, default: bool| backend.value(path).get("value").and_then(Value::as_bool).unwrap_or(default);
     let (cameras, active) = listed();
-    view_of(&video, cameras, active, switched(MULTI_VIEW_PATH, false) && switched(STREAM_ENABLED_PATH, true))
+    let synthetic_ready = crate::read::flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable") && crate::attitude::point(backend, "vehicle.homePosition").is_some();
+    view_of(&video, cameras, active, switched(MULTI_VIEW_PATH, false) && switched(STREAM_ENABLED_PATH, true), synthetic_ready)
 }
 
-pub fn view_of(video: &Value, stored: Option<Vec<Camera>>, stored_active: i64, pip_enabled: bool) -> Value {
+pub fn view_of(video: &Value, stored: Option<Vec<Camera>>, stored_active: i64, pip_enabled: bool, synthetic_ready: bool) -> Value {
     let strings = |key: &str| -> Vec<String> { video.get(key).and_then(Value::as_array).map(|a| a.iter().map(|v| v.as_str().unwrap_or("").to_string()).collect()).unwrap_or_default() };
     let drones: Vec<bool> = video.get("cameraFromDrone").and_then(Value::as_array).map(|a| a.iter().map(|v| v.as_bool().unwrap_or(false)).collect()).unwrap_or_default();
     let active = crate::read::integer(video, "activeVideoSource").unwrap_or(stored_active);
@@ -473,7 +476,11 @@ pub fn view_of(video: &Value, stored: Option<Vec<Camera>>, stored_active: i64, p
                 "problem": (!from_drone).then(|| problem(&camera.source, &camera.url)).flatten(),
                 "fromDrone": from_drone,
                 "active": *slot as i64 == active,
-                "status": if camera.source == SOURCE_SYNTHETIC { SIGNAL_LIVE } else { signals.get(*slot).map_or(SIGNAL_IDLE, String::as_str) },
+                "status": match (camera.source == SOURCE_SYNTHETIC, synthetic_ready) {
+                    (true, true) => SIGNAL_LIVE,
+                    (true, false) => SIGNAL_IDLE,
+                    (false, _) => signals.get(*slot).map_or(SIGNAL_IDLE, String::as_str),
+                },
             })
         })
         .collect();
@@ -620,18 +627,19 @@ mod tests {
     #[test]
     fn the_view_lists_drone_cameras_after_the_operators_and_says_when_the_list_is_unreadable() {
         let video = json!({ "activeVideoSource": 1, "cameraFromDrone": [false, true], "cameraNames": ["Front", "SIYI A8"], "cameraSources": [SOURCE_RTSP, SOURCE_UDP_H264], "cameraUrls": ["rtsp://a/front", "0.0.0.0:5600"] });
-        let shown = view_of(&video, Some(vec![cam("Front", SOURCE_RTSP, "rtsp://a/front")]), 0, false);
+        let shown = view_of(&video, Some(vec![cam("Front", SOURCE_RTSP, "rtsp://a/front")]), 0, false, true);
         let rows = shown["cameras"].as_array().unwrap();
         assert_eq!(rows.iter().map(|row| (row["title"].clone(), row["stored"].clone(), row["fromDrone"].clone(), row["active"].clone())).collect::<Vec<_>>(), vec![(json!("Front"), json!(0), json!(false), json!(false)), (json!("SIYI A8"), Value::Null, json!(true), json!(true))]);
-        let unreadable = view_of(&video, None, 0, false);
+        let unreadable = view_of(&video, None, 0, false, true);
         assert_eq!((unreadable["readable"].clone(), unreadable["reason"].clone(), unreadable["cameras"].as_array().map(Vec::len)), (json!(false), json!(UNREADABLE), Some(1)), "drone cameras still show while the operator's list cannot be read");
     }
 
     #[test]
     fn a_synthetic_view_is_a_camera_drawn_here_that_streams_nothing() {
         let video = json!({ "activeVideoSource": 0, "cameraSignals": ["noSignal"] });
-        let row = view_of(&video, Some(vec![cam("Synthetic", SOURCE_SYNTHETIC, "")]), 0, false)["cameras"][0].clone();
-        assert_eq!(row["status"].as_str(), Some(SIGNAL_LIVE), "it is drawn on this device, so it is always ready");
+        let status = |ready: bool| view_of(&video, Some(vec![cam("Synthetic", SOURCE_SYNTHETIC, "")]), 0, false, ready)["cameras"][0]["status"].clone();
+        assert_eq!(status(true), SIGNAL_LIVE, "it is drawn on this device once the aircraft is placed");
+        assert_eq!(status(false), SIGNAL_IDLE, "with no aircraft, or no home yet, there is nothing to draw, so it is not shown as live");
         assert_eq!(group(SOURCE_SYNTHETIC), GROUP_DEVICE);
         assert!(source_usable(SOURCE_SYNTHETIC, "") && !needs_url(SOURCE_SYNTHETIC));
         assert_eq!(crate::videostate::source_uri(SOURCE_SYNTHETIC, ""), "", "no pipeline starts for it, so the head draws it where the picture would be");
@@ -656,7 +664,7 @@ mod tests {
         assert_eq!(labelled(&["Gimbal Left", "Gimbal Right"]), vec!["Left", "Right"], "a name that fits only once cut reads by the word that ends it");
         assert_eq!(labelled(&["Downward-looking belly"]), vec!["belly"]);
         let video = json!({ "activeVideoSource": 0, "cameraFromDrone": [false, true], "cameraNames": ["", ""], "cameraSources": [SOURCE_RTSP, SOURCE_UDP_H264], "cameraUrls": ["rtsp://a/front", "0.0.0.0:5600"] });
-        let rows = view_of(&video, Some(vec![cam("", SOURCE_RTSP, "rtsp://a/front")]), 0, false)["cameras"].clone();
+        let rows = view_of(&video, Some(vec![cam("", SOURCE_RTSP, "rtsp://a/front")]), 0, false, true)["cameras"].clone();
         assert_eq!((rows[0]["short"].clone(), rows[1]["short"].clone()), (json!("Cam 1"), json!("Cam 2")));
     }
 
@@ -674,13 +682,13 @@ mod tests {
             assert_eq!(labels.iter().collect::<std::collections::HashSet<_>>().len(), names.len(), "{names:?} came out as {labels:?}");
         });
         let video = json!({ "activeVideoSource": 0, "cameraFromDrone": [false, true], "cameraNames": ["SIYI A8", "SIYI ZR10"], "cameraSources": [SOURCE_RTSP, SOURCE_UDP_H264], "cameraUrls": ["rtsp://a/front", "0.0.0.0:5600"] });
-        let rows = view_of(&video, Some(vec![cam("SIYI A8", SOURCE_RTSP, "rtsp://a/front")]), 0, false)["cameras"].clone();
+        let rows = view_of(&video, Some(vec![cam("SIYI A8", SOURCE_RTSP, "rtsp://a/front")]), 0, false, true)["cameras"].clone();
         assert_eq!((rows[0]["short"].clone(), rows[1]["short"].clone()), (json!("SIYI A8"), json!("SIYI ZR10")), "a drone camera is counted among the operator's");
     }
 
     fn statuses(video: Value) -> Vec<Value> {
         let three = vec![cam("A", SOURCE_RTSP, "rtsp://a/0"), cam("B", SOURCE_RTSP, "rtsp://a/1"), cam("C", SOURCE_RTSP, "rtsp://a/2")];
-        view_of(&video, Some(three), 0, true)["cameras"].as_array().unwrap().iter().map(|row| row["status"].clone()).collect()
+        view_of(&video, Some(three), 0, true, true)["cameras"].as_array().unwrap().iter().map(|row| row["status"].clone()).collect()
     }
 
     #[test]
@@ -694,7 +702,7 @@ mod tests {
 
     fn pip(video: Value, pip_enabled: bool) -> Value {
         let three = vec![cam("A", SOURCE_RTSP, "rtsp://a/0"), cam("B", SOURCE_RTSP, "rtsp://a/1"), cam("C", SOURCE_RTSP, "rtsp://a/2")];
-        view_of(&video, Some(three), 0, pip_enabled)["pip"].clone()
+        view_of(&video, Some(three), 0, pip_enabled, true)["pip"].clone()
     }
 
     #[test]

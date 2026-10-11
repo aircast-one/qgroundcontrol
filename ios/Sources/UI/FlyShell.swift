@@ -479,7 +479,7 @@ struct FlyScreen: View {
             rail(mapIsPip)
                 .environment(\.LocalAvoidedByVideoMessage, true)
                 .environment(\.flyOsd, view == .Video)
-                .padding(.top, panes.safe.top + RAIL_CLEARANCE)
+                .padding(.top, panes.safe.top + RAIL_CLEARANCE + Space.s3)
                 .padding(.bottom, RAIL_CLEARANCE)
                 .padding(.trailing, Space.s3)
                 .frame(width: inner.width, height: inner.height, alignment: .trailing)
