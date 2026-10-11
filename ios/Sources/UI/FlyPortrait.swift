@@ -148,7 +148,7 @@ struct FlyPortrait: View {
             .frame(maxWidth: .infinity, maxHeight: .infinity)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: Space.s2) {
-                    CameraSwitch(splitRoom: true)
+                    LayoutWidget(key: "cameraSwitch", movable: false) { CameraSwitch(splitRoom: true) }
                     keyRow()
                 }
             }

@@ -390,7 +390,10 @@ struct AircastShell: View {
         let cameraSwitch = LayoutWidget(key: "cameraSwitch") { CameraSwitch(splitRoom: splitRoom) }
         let cameraControl = LayoutWidget(key: "cameraControl") { CameraControlLayer(shutters: !portrait) }
         if stacked {
-            return AnyView(cameraControl)
+            return AnyView(VStack(alignment: .trailing, spacing: 0) {
+                if !splitRoom { cameraSwitch.padding(.bottom, Space.s2) }
+                cameraControl
+            })
         }
         return AnyView(HStack(spacing: 0) {
             cameraSwitch.padding(.trailing, Space.s2)

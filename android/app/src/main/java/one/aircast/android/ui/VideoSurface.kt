@@ -6,10 +6,10 @@ import one.aircast.map.aircast
 import android.view.SurfaceHolder
 import android.view.SurfaceView
 import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Text
@@ -148,14 +148,10 @@ fun VideoSurface(
         return
     }
 
-    val second = if (expanded) shownSecondCamera() else null
-    if (second == null) {
-        MainPane(video, synthetic, modifier, expanded, fullScreen, onClick, onDoubleTap)
-        return
-    }
+    val second = shownSecondCamera().takeIf { expanded }
     Row(modifier) {
         MainPane(video, synthetic, Modifier.weight(1f).fillMaxHeight(), expanded, fullScreen, onClick, onDoubleTap)
-        SecondPane(second, if (second.status == CameraStatus.Live) Modifier.weight(1f).fillMaxHeight() else Modifier.width(HIDDEN_PANE_WIDTH).fillMaxHeight())
+        second?.let { SecondPane(it, Modifier.weight(1f).fillMaxHeight()) }
     }
 }
 
@@ -211,6 +207,11 @@ private fun SecondPane(camera: CameraEntry, modifier: Modifier) {
             .semantics { contentDescription = "Second camera, ${camera.title}" },
     ) {
         if (camera.source == SYNTHETIC_SOURCE) SyntheticView(Modifier.fillMaxSize(), aimable = false) else VideoChannelSurface(PIP_VIDEO_CHANNEL, Modifier.fillMaxSize())
+        if (camera.status != CameraStatus.Live) {
+            Box(Modifier.matchParentSize().background(MaterialTheme.aircast.outdoorBackground), contentAlignment = Alignment.Center) {
+                Text(camera.status.label, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.aircast.outdoorForeground)
+            }
+        }
         Row(
             Modifier.align(Alignment.TopStart).padding(AircastSpace.s2).osdShadow(),
             horizontalArrangement = Arrangement.spacedBy(AircastSpace.s1),
@@ -222,7 +223,6 @@ private fun SecondPane(camera: CameraEntry, modifier: Modifier) {
     }
 }
 
-private val HIDDEN_PANE_WIDTH = 1.dp
 private val PANE_DIVIDER = 2.dp
 
 internal const val MAIN_VIDEO_CHANNEL = 0

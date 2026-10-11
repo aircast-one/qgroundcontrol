@@ -129,14 +129,13 @@ struct VideoSurface: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .background(theme.colors.surfaceVariant)
             }
-        } else if expanded, let second = secondCamera {
+        } else {
             HStack(spacing: PANE_DIVIDER) {
                 playing(video)
-                SecondPane(camera: second)
-                    .frame(maxWidth: second.status == .Live ? .infinity : HIDDEN_PANE_WIDTH)
+                if expanded, let second = secondCamera {
+                    SecondPane(camera: second)
+                }
             }
-        } else {
-            playing(video)
         }
     }
 
@@ -187,6 +186,10 @@ private struct SecondPane: View {
             } else {
                 VideoChannelSurface(channel: PIP_VIDEO_CHANNEL)
             }
+            if camera.status != .Live {
+                theme.aircast.outdoorBackground
+                    .overlay(Text(camera.status.label).font(.labelLarge).foregroundStyle(theme.aircast.outdoorForeground))
+            }
             HStack(spacing: Space.s1) {
                 CameraStatusDot(status: camera.status)
                 Text(camera.short).font(.labelMedium).foregroundStyle(theme.aircast.outdoorForeground).lineLimit(1)
@@ -205,7 +208,6 @@ private struct SecondPane: View {
     }
 }
 
-private let HIDDEN_PANE_WIDTH: CGFloat = 1
 private let PANE_DIVIDER: CGFloat = 2
 
 let MAIN_VIDEO_CHANNEL = 0

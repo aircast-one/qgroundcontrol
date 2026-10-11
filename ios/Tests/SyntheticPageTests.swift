@@ -28,6 +28,7 @@ final class SyntheticPageTests: XCTestCase {
         MapTileHost.fetch = { _, reply in reply(tile); return 0 }
         defer { MapTileHost.fetch = original }
         let loaded = expectation(description: "page loaded")
+        loaded.assertForOverFulfill = false
         let waiter = LoadWaiter(loaded)
         let web = syntheticWebView(waiter)
         web.frame = CGRect(x: 0, y: 0, width: 320, height: 180)

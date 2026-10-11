@@ -1,6 +1,7 @@
 use serde_json::{Value, json};
 
 use crate::attitude::{point, raw};
+use crate::read::value_number;
 use crate::read::{Unit, format_measure};
 use crate::router::Backend;
 
@@ -9,16 +10,15 @@ pub const DEPS: &[&str] = &[
     "vehicle.coordinate",
     "vehicle.homePosition",
     "vehicle.altitudeRelative",
-    "vehicle.heading",
-    "vehicle.roll",
-    "vehicle.pitch",
     "settings.unitsSettings.horizontalDistanceUnits",
+    "settings.gimbalControllerSettings.cameraHFov",
     crate::gimbal::GIMBAL_CHANGED,
 ];
 
 const EARTH_RADIUS_M: f64 = 6_371_000.0;
 const NEAR_M: f64 = 1.0;
 const HOME_LABEL: &str = "H";
+const CAMERA_HFOV: &str = "settings.gimbalControllerSettings.cameraHFov.rawValue";
 
 type Space = (f64, f64, f64);
 
@@ -90,9 +90,8 @@ pub fn ar(drone: (f64, f64), drone_above: f64, camera: Camera, overlays: &Value,
     });
     let waypoints: Vec<Value> = overlays["waypoints"]
         .as_array()
-        .cloned()
-        .unwrap_or_default()
-        .iter()
+        .into_iter()
+        .flatten()
         .filter_map(|point| {
             let (at, above) = spot_of(point)?;
             ahead(looked(at, above)).map(|mut shown| {
@@ -101,7 +100,7 @@ pub fn ar(drone: (f64, f64), drone_above: f64, camera: Camera, overlays: &Value,
             })
         })
         .collect();
-    let route: Vec<Space> = overlays["route"].as_array().cloned().unwrap_or_default().iter().filter_map(spot_of).map(|(at, above)| looked(at, above)).collect();
+    let route: Vec<Space> = overlays["route"].as_array().into_iter().flatten().filter_map(spot_of).map(|(at, above)| looked(at, above)).collect();
     let legs: Vec<Value> = route
         .windows(2)
         .filter_map(|leg| clipped(leg[0], leg[1]))
@@ -110,31 +109,61 @@ pub fn ar(drone: (f64, f64), drone_above: f64, camera: Camera, overlays: &Value,
     json!({ "kind": "object", "class": "VideoAr", "available": true, "home": home, "waypoints": waypoints, "route": legs })
 }
 
-pub fn camera(backend: &dyn Backend, gimbals: &Value) -> Camera {
-    match crate::synthview::gimbal_aim(gimbals) {
-        Some((heading, pitch)) => Camera { heading, pitch, roll: 0.0, fov: crate::synthview::CAMERA_FOV_DEG },
-        None => Camera {
-            heading: raw(backend, "vehicle.heading").unwrap_or(0.0),
-            pitch: raw(backend, "vehicle.pitch").unwrap_or(0.0) + crate::synthview::FIXED_CAMERA_TILT_DEG,
-            roll: raw(backend, "vehicle.roll").unwrap_or(0.0),
-            fov: crate::synthview::CAMERA_FOV_DEG,
-        },
-    }
+pub fn camera(backend: &dyn Backend, gimbals: &Value) -> Option<Camera> {
+    let fov = value_number(&backend.value(CAMERA_HFOV)).filter(|fov| *fov > 0.0 && *fov < 180.0)?;
+    crate::synthview::gimbal_aim(gimbals).map(|(heading, pitch)| Camera { heading, pitch, roll: 0.0, fov })
 }
 
-pub fn video_ar_view(backend: &dyn Backend, _args: &[String]) -> Value {
+fn unavailable() -> Value {
+    json!({ "kind": "object", "class": "VideoAr", "available": false })
+}
+
+pub fn video_ar(backend: &dyn Backend, gimbals: &Value, overlays: &Value) -> Value {
     let placed = point(backend, "vehicle.coordinate").zip(point(backend, "vehicle.homePosition")).zip(raw(backend, "vehicle.altitudeRelative"));
-    let Some(((drone, _), drone_above)) = placed else {
-        return json!({ "kind": "object", "class": "VideoAr", "available": false });
+    let Some((((drone, _), drone_above), camera)) = placed.zip(camera(backend, gimbals)) else {
+        return unavailable();
     };
     let unit = Unit::horizontal(backend);
     let distance = |metres: f64| format_measure(unit.show(metres), &unit.name);
-    ar(drone, drone_above, camera(backend, &crate::gimbal::gimbal_view(backend, &[])), &crate::synthview::overlays_view(backend, &[]), &distance)
+    ar(drone, drone_above, camera, overlays, &distance)
+}
+
+pub fn video_ar_view(backend: &dyn Backend, _args: &[String]) -> Value {
+    video_ar(backend, &crate::gimbal::gimbal_view(backend, &[]), &crate::synthview::overlays_view(backend, &[]))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
+
+    struct Fake(BTreeMap<&'static str, Value>);
+
+    impl Backend for Fake {
+        fn get(&self, path: &str) -> String {
+            self.0.get(path).map_or_else(|| json!({ "kind": "null" }), |v| match v {
+                Value::Object(_) => v.clone(),
+                _ => json!({ "kind": "fact", "rawValue": v, "value": v }),
+            }).to_string()
+        }
+        fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
+        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    fn flying(fov: Option<f64>) -> Fake {
+        let base = [
+            ("vehicle.coordinate", json!({ "latitude": -35.0, "longitude": 149.0, "valid": true })),
+            ("vehicle.homePosition", json!({ "latitude": -35.001, "longitude": 149.0, "valid": true })),
+            ("vehicle.altitudeRelative", json!(50.0)),
+        ];
+        Fake(base.into_iter().chain(fov.map(|fov| (CAMERA_HFOV, json!(fov)))).collect())
+    }
+
+    fn gimbal(yaw: f64, pitch: f64) -> Value {
+        json!({ "gimbals": [{ "active": true, "absoluteYaw": yaw, "pitch": pitch }] })
+    }
 
     const LEVEL_NORTH: Camera = Camera { heading: 0.0, pitch: 0.0, roll: 0.0, fov: 90.0 };
 
@@ -161,6 +190,32 @@ mod tests {
         assert!((east.2 - 100.0).abs() < 1e-9, "turning to 90 looks east");
         let rolled = in_camera(Camera { roll: 90.0, ..LEVEL_NORTH }, (0.0, 100.0, 50.0));
         assert!((rolled.0 + 50.0).abs() < 1e-9, "rolled right wing down a quarter turn, what was above now shows to the left");
+    }
+
+    #[test]
+    fn the_gimbal_aims_the_camera_and_the_operators_field_of_view_frames_it() {
+        assert_eq!(camera(&flying(Some(62.0)), &gimbal(200.0, -30.0)), Some(Camera { heading: 200.0, pitch: -30.0, roll: 0.0, fov: 62.0 }));
+        assert_eq!(camera(&flying(Some(62.0)), &json!({ "gimbals": [] })), None, "a camera fixed to the frame reports no tilt, so nothing could be placed truthfully");
+        assert_eq!(camera(&flying(None), &gimbal(200.0, -30.0)), None, "without a field of view the marks cannot be scaled to the picture");
+        assert_eq!(camera(&flying(Some(0.0)), &gimbal(200.0, -30.0)), None);
+    }
+
+    #[test]
+    fn the_marks_are_withheld_until_the_drone_its_home_and_the_camera_are_known() {
+        let overlays = json!({ "home": { "latitude": -35.001, "longitude": 149.0 } });
+        assert_eq!(video_ar(&Fake(BTreeMap::new()), &gimbal(180.0, -20.0), &overlays)["available"], false);
+        assert_eq!(video_ar(&flying(Some(80.0)), &json!({ "gimbals": [] }), &overlays)["available"], false);
+        let shown = video_ar(&flying(Some(80.0)), &gimbal(180.0, -20.0), &overlays);
+        assert_eq!((shown["available"].as_bool(), shown["home"]["label"].as_str()), (Some(true), Some(HOME_LABEL)), "home behind the drone shows once the gimbal looks back at it");
+    }
+
+    #[test]
+    fn a_wider_field_of_view_draws_the_same_point_nearer_the_middle() {
+        let point = (100.0, 100.0, 0.0);
+        let narrow = framed(LEVEL_NORTH, in_camera(LEVEL_NORTH, point));
+        let wide = Camera { fov: 120.0, ..LEVEL_NORTH };
+        let widened = framed(wide, in_camera(wide, point));
+        assert!(widened["x"].as_f64().unwrap() < narrow["x"].as_f64().unwrap());
     }
 
     #[test]

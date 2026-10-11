@@ -16,6 +16,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
+import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -87,7 +88,6 @@ internal fun showCamera(slot: Int, onRefused: () -> Unit = {}) = offMainInOrder 
 
 @Composable
 internal fun CameraSwitch(splitRoom: Boolean, modifier: Modifier = Modifier) {
-    if (!splitRoom) return
     val portrait = flyIsPortrait()
     val json by qgcPath(CAMERAS_VIEW)
     val reading = remember(json) { camerasReading(json) }
@@ -125,24 +125,30 @@ private fun CameraSegments(state: CameraSwitchState, across: Boolean) {
 @Composable
 private fun CameraSegment(camera: CameraEntry, selected: Boolean) {
     val white = MaterialTheme.aircast.outdoorForeground
-    Row(
+    Box(
         Modifier
-            .clip(MaterialTheme.shapes.large)
-            .background(if (selected) white else Color.Transparent)
             .selectable(selected = selected, role = Role.Tab, onClick = { if (!selected) showCamera(camera.slot) })
-            .padding(horizontal = SEGMENT_PAD_HORIZONTAL, vertical = SEGMENT_PAD_VERTICAL),
-        horizontalArrangement = Arrangement.spacedBy(SEGMENT_GAP),
-        verticalAlignment = Alignment.CenterVertically,
+            .minimumInteractiveComponentSize(),
+        contentAlignment = Alignment.Center,
     ) {
-        CameraStatusDot(camera.status)
-        Text(
-            camera.short,
-            Modifier.widthIn(max = SEGMENT_LABEL_MAX),
-            style = MaterialTheme.typography.labelLarge,
-            color = if (selected) Color.Black else white,
-            maxLines = 1,
-            overflow = TextOverflow.Ellipsis,
-        )
+        Row(
+            Modifier
+                .clip(MaterialTheme.shapes.large)
+                .background(if (selected) white else Color.Transparent)
+                .padding(horizontal = SEGMENT_PAD_HORIZONTAL, vertical = SEGMENT_PAD_VERTICAL),
+            horizontalArrangement = Arrangement.spacedBy(SEGMENT_GAP),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            CameraStatusDot(camera.status)
+            Text(
+                camera.short,
+                Modifier.widthIn(max = SEGMENT_LABEL_MAX),
+                style = MaterialTheme.typography.labelLarge,
+                color = if (selected) Color.Black else white,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+        }
     }
 }
 
@@ -166,9 +172,8 @@ private fun SplitButton(shown: Boolean, onToggle: () -> Unit) {
 
 @Composable
 internal fun shownSecondCamera(): CameraEntry? {
-    val json by qgcPath(CAMERAS_VIEW)
     val streamOn = streamOn()
-    return remember(json, streamOn) { pipCamera(camerasReading(json), streamOn) }
+    return qgcDerived(CAMERAS_VIEW) { pipCamera(camerasReading(it), streamOn) }.value
 }
 
 internal fun neighbourCamera(state: CameraSwitchState?, step: Int): CameraEntry? =

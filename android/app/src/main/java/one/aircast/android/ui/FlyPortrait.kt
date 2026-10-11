@@ -258,7 +258,7 @@ internal fun FlyPortrait(
                             horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            CameraSwitch(splitRoom = true)
+                            LayoutWidget("cameraSwitch", movable = false) { CameraSwitch(splitRoom = true) }
                             keyRow()
                         }
                     }

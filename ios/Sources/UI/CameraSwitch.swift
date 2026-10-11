@@ -75,7 +75,7 @@ struct CameraSwitch: View {
         let reading = camerasReading(json)
         let switchState = cameraSwitchState(reading)
         let splitTo = splitToggleTarget(reading, splitRoom, streamOn)
-        if splitRoom, switchState != nil || splitTo != nil {
+        if switchState != nil || splitTo != nil {
             if portrait {
                 HStack(spacing: Space.s2) { parts(switchState, splitTo) }
             } else {
@@ -106,7 +106,11 @@ private struct CameraSegments: View {
             if across {
                 HStack(spacing: 0) { segments }
             } else {
-                ScrollView(.vertical, showsIndicators: false) { VStack(spacing: 0) { segments } }.fixedSize()
+                ViewThatFits(in: .vertical) {
+                    VStack(spacing: 0) { segments }
+                    ScrollView(.vertical, showsIndicators: false) { VStack(spacing: 0) { segments } }
+                        .fixedSize(horizontal: true, vertical: false)
+                }
             }
         }
         .background(osdBackdrop(Color.black.opacity(SWITCH_SCRIM_ALPHA), flyOsd), in: Capsule())

@@ -324,7 +324,6 @@ fun AircastShell(hostView: android.view.View?) {
             )
         }
     }
-    val flyCameraSwitch = remember { movableContentOf<Boolean, Modifier> { splitRoom, gap -> LayoutWidget("cameraSwitch") { CameraSwitch(splitRoom, gap) } } }
     val flyCameraControlLayer = remember { movableContentOf { LayoutWidget("cameraControl") { CameraControlLayer(shutters = !flyIsPortrait()) } } }
     val flyObstacleArc = remember { movableContentOf { LayoutWidget("obstacleArc") { ObstacleArc() } } }
     val flyOrbitReadout = remember { movableContentOf { LayoutWidget("orbit") { OrbitReadout() } } }
@@ -559,10 +558,13 @@ fun AircastShell(hostView: android.view.View?) {
                     }
                     val flyRail: @Composable (Boolean, Boolean) -> Unit = { stacked, splitRoom ->
                         if (stacked) {
-                            flyCameraControlLayer()
+                            Column(horizontalAlignment = Alignment.End) {
+                                if (!splitRoom) LayoutWidget("cameraSwitch") { CameraSwitch(splitRoom = false, Modifier.padding(bottom = AircastSpace.s2)) }
+                                flyCameraControlLayer()
+                            }
                         } else {
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                flyCameraSwitch(splitRoom, Modifier.padding(end = AircastSpace.s2))
+                                LayoutWidget("cameraSwitch") { CameraSwitch(splitRoom, Modifier.padding(end = AircastSpace.s2)) }
                                 Box(Modifier.widthIn(min = RAIL_SHUTTER_ROOM), contentAlignment = Alignment.Center) { flyCameraControlLayer() }
                             }
                         }
