@@ -98,8 +98,8 @@ object VirtualStickSender {
         scope.launch(Dispatchers.IO) {
             Qgc.watch(listOf(VIRTUAL_JOYSTICK_PATH))
             try {
-                Qgc.values
-                    .map { virtualJoystick(it[VIRTUAL_JOYSTICK_PATH]) }
+                Qgc.path(VIRTUAL_JOYSTICK_PATH)
+                    .map { virtualJoystick(it) }
                     .distinctUntilChanged()
                     .runningFold(StickStates(null, null)) { states, next -> StickStates(states.current, next) }
                     .collectLatest { states ->

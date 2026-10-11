@@ -58,7 +58,6 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.MutableState
-import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.ui.semantics.Role
@@ -471,8 +470,7 @@ internal fun SettingsSearch(query: String, modifier: Modifier = Modifier, onOpen
         if (searching) Qgc.watch(pagePaths)
         onDispose { if (searching) Qgc.unwatch(pagePaths) }
     }
-    val values by Qgc.values.collectAsState()
-    val served by remember(pagePaths) { derivedStateOf { pagePaths.map { values[it] } } }
+    val served by remember(pagePaths) { kotlinx.coroutines.flow.combine(pagePaths.map(Qgc::path)) { it.toList() } }.collectAsState(emptyList())
 
     LaunchedEffect(query, pages, served) {
         if (!searching) {

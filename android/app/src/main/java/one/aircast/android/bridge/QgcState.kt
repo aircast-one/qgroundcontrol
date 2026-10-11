@@ -7,11 +7,10 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import org.json.JSONObject
 import one.aircast.map.optText
 
-// A setting read through view.control carries the same value key as the raw fact, decoded by the
-// core that also checks writes to it, so qgcValue and the typed readers below take either.
 fun settingControl(factPath: String): String = "view.control($factPath)"
 
 @Composable
@@ -20,8 +19,14 @@ fun qgcPath(path: String): State<JSONObject?> {
         Qgc.watch(listOf(path))
         onDispose { Qgc.unwatch(listOf(path)) }
     }
-    val values by Qgc.values.collectAsState()
-    return remember(path) { derivedStateOf { values[path] } }
+    return remember(path) { Qgc.path(path) }.collectAsState()
+}
+
+@Composable
+fun <T> qgcDerived(path: String, read: (JSONObject?) -> T): State<T> {
+    val json = qgcPath(path)
+    val reader by rememberUpdatedState(read)
+    return remember(path) { derivedStateOf { reader(json.value) } }
 }
 
 @Composable

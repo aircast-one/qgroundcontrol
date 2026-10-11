@@ -664,10 +664,7 @@ internal fun activeVehicleId(view: JSONObject?): Int? =
     view?.takeIf { !it.isNull("activeId") }?.optInt("activeId", -1)?.takeIf { it > 0 }
 
 @Composable
-internal fun rememberActiveVehicleId(): Int? {
-    val vehiclesJson by qgcPath(one.aircast.map.VEHICLES_VIEW)
-    return remember(vehiclesJson) { activeVehicleId(vehiclesJson) }
-}
+internal fun rememberActiveVehicleId(): Int? = one.aircast.android.bridge.qgcDerived(one.aircast.map.VEHICLES_VIEW, ::activeVehicleId).value
 
 private val ROW_COMPASS_SIZE = 28.dp
 private val ROW_HEADING_COLOUR = androidx.compose.ui.graphics.Color(0xFFEE3424)

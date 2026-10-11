@@ -59,10 +59,7 @@ internal fun syntheticPan(from: Double, draggedPx: Float, widthPx: Int): Double 
     ((from - draggedPx.toDouble() / widthPx.coerceAtLeast(1) * PAN_SPAN_DEG + 180.0).mod(360.0)) - 180.0
 
 @Composable
-internal fun rememberSyntheticAvailable(): Boolean {
-    val view by qgcPath(SYNTHETIC_VIEW)
-    return syntheticAvailable(view)
-}
+internal fun rememberSyntheticAvailable(): Boolean = one.aircast.android.bridge.qgcDerived(SYNTHETIC_VIEW, ::syntheticAvailable).value
 
 private fun tileResponse(encodedPath: String): WebResourceResponse =
     coreTile(encodedPath)?.let { WebResourceResponse(tileMimeType(it), null, 200, "OK", emptyMap(), it.inputStream()) }

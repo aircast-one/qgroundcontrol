@@ -133,7 +133,4 @@ internal fun vehicleSubtitle(state: FlyState?, offline: String? = null): String 
 }
 
 @Composable
-internal fun hasVehicle(): Boolean {
-    val view by qgcPath(FLY_STATE)
-    return remember(view) { flyState(view)?.connected == true }
-}
+internal fun hasVehicle(): Boolean = one.aircast.android.bridge.qgcDerived(FLY_STATE) { flyState(it)?.connected == true }.value

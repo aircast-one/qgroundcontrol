@@ -383,13 +383,14 @@ fun AircastShell(hostView: android.view.View?) {
         }
     }
 
-    val flyStateJson by one.aircast.android.bridge.qgcPath(one.aircast.android.ui.FLY_STATE)
-    val flyNow = remember(flyStateJson) { one.aircast.android.ui.flyState(flyStateJson) }
+    val flyNow by one.aircast.android.bridge.qgcDerived(one.aircast.android.ui.FLY_STATE) { json ->
+        one.aircast.android.ui.flyState(json)?.let { ShellFly(it.connected, it.armed, it.state) }
+    }
     var wasArmed by remember { mutableStateOf(false) }
     var flewWhileArmed by remember { mutableStateOf(false) }
     var armedBattery by remember { mutableStateOf<Int?>(null) }
     LaunchedEffect(flyNow?.armed, flyNow?.state) {
-        val armedNow = flyNow?.connected == true && flyNow.armed
+        val armedNow = flyNow?.let { it.connected && it.armed } == true
         if (armedNow && !wasArmed) noticeScope.launch { armedBattery = withContext(Dispatchers.Default) { one.aircast.android.ui.batteryPercentNow() } }
         one.aircast.android.ui.disarmNotice(wasArmed, flewWhileArmed, armedNow)?.let { said ->
             val landed = flewWhileArmed
@@ -408,23 +409,25 @@ fun AircastShell(hostView: android.view.View?) {
         flewWhileArmed = armedNow && (flewWhileArmed || flyNow?.state == "flying" || flyNow?.state == "landing")
         wasArmed = armedNow
     }
-    val flyVideoJson by one.aircast.android.bridge.qgcPath(one.aircast.android.ui.VIDEO_VIEW)
-    val noVideoSource = remember(flyVideoJson) { one.aircast.android.ui.videoReading(flyVideoJson)?.let { !it.available && !it.sourceChosen } == true }
+    val noVideoSource by one.aircast.android.bridge.qgcDerived(one.aircast.android.ui.VIDEO_VIEW) { json ->
+        one.aircast.android.ui.videoReading(json)?.let { !it.available && !it.sourceChosen } == true
+    }
     val shownFlyView = one.aircast.android.ui.flyViewShown(flyView, armed = flyNow?.armed == true, noVideoSource = noVideoSource)
 
-    val vehiclesJson by one.aircast.android.bridge.qgcPath(one.aircast.map.VEHICLES_VIEW)
+    val vehicles = one.aircast.android.bridge.qgcPath(one.aircast.map.VEHICLES_VIEW)
     var lastVehicles by remember {
         mutableStateOf<one.aircast.map.VehicleChoices?>(null)
     }
 
-    LaunchedEffect(vehiclesJson) {
-        val now = one.aircast.map.vehicleChoices(vehiclesJson)
-        val notice = one.aircast.map.handoverNotice(lastVehicles, now, one.aircast.map.VehicleBridge.lastAsked)
-        if (one.aircast.map.activeChanged(lastVehicles, now)) {
-            one.aircast.map.VehicleBridge.forget()
+    LaunchedEffect(Unit) {
+        androidx.compose.runtime.snapshotFlow { one.aircast.map.vehicleChoices(vehicles.value) }.collect { now ->
+            val notice = one.aircast.map.handoverNotice(lastVehicles, now, one.aircast.map.VehicleBridge.lastAsked)
+            if (one.aircast.map.activeChanged(lastVehicles, now)) {
+                one.aircast.map.VehicleBridge.forget()
+            }
+            lastVehicles = one.aircast.map.rememberedChoices(lastVehicles, now)
+            notice?.let { said -> noticeScope.launch { snackbars.showSnackbar(said) } }
         }
-        lastVehicles = one.aircast.map.rememberedChoices(lastVehicles, now)
-        notice?.let { said -> noticeScope.launch { snackbars.showSnackbar(said) } }
     }
 
     LaunchedEffect(Unit) {
@@ -446,9 +449,9 @@ fun AircastShell(hostView: android.view.View?) {
         }
     }
 
-    val fullScreenVideoJson by qgcPath(VIDEO_VIEW)
+    val videoDecoding by one.aircast.android.bridge.qgcDerived(VIDEO_VIEW) { videoReading(it)?.decoding == true }
     val syntheticOnScreen = one.aircast.android.ui.rememberSyntheticAvailable()
-    val fullScreen = videoFullScreen && tab == Tab.Fly && videoExpanded && (videoReading(fullScreenVideoJson)?.decoding == true || syntheticOnScreen)
+    val fullScreen = videoFullScreen && tab == Tab.Fly && videoExpanded && (videoDecoding || syntheticOnScreen)
     LaunchedEffect(fullScreen, videoFullScreen) { if (!fullScreen) videoFullScreen = false }
     BackHandler(enabled = fullScreen) { videoFullScreen = false }
 
@@ -665,3 +668,5 @@ fun AircastShell(hostView: android.view.View?) {
         }
     }
 }
+
+private data class ShellFly(val connected: Boolean, val armed: Boolean, val state: String?)
