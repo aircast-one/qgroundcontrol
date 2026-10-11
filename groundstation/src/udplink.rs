@@ -86,9 +86,11 @@ impl UdpLink {
                     |bytes, sender| {
                         if !bytes.is_empty() {
                             let now = Instant::now();
-                            let mut peers = session.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-                            peers.insert(normalise(sender, &local_addresses), now);
-                            peers.retain(|_, heard| still_heard(*heard, now));
+                            {
+                                let mut peers = session.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+                                peers.insert(normalise(sender, &local_addresses), now);
+                                peers.retain(|_, heard| still_heard(*heard, now));
+                            }
                             sink(bytes);
                         }
                     },
@@ -163,6 +165,25 @@ mod tests {
         let (len, from) = peer.recv_from(&mut back).unwrap();
         assert_eq!((&back[..len], from.port()), (frame.as_slice(), port));
         link.close();
+    }
+
+    #[test]
+    fn a_reply_written_while_a_frame_is_delivered_reaches_the_peer() {
+        let link: Arc<std::sync::OnceLock<UdpLink>> = Arc::new(std::sync::OnceLock::new());
+        let replying = Arc::clone(&link);
+        let opened = UdpLink::open(&UdpConfig { local_port: 0, targets: vec![] }, BTreeSet::new(), move |bytes| {
+            replying.get().map(|link| link.write(bytes));
+        }, |_| {}).unwrap();
+        let port = opened.local_port();
+        assert!(link.set(opened).is_ok());
+        let peer = UdpSocket::bind("127.0.0.1:0").unwrap();
+        peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+        let frame = heartbeat();
+        peer.send_to(&frame, ("127.0.0.1", port)).unwrap();
+        let mut back = [0u8; 64];
+        let (len, _) = peer.recv_from(&mut back).expect("the hub answers a frame from inside its delivery, so the link must not hold its peer list while delivering");
+        assert_eq!(&back[..len], frame.as_slice());
+        link.get().unwrap().close();
     }
 
     #[test]
