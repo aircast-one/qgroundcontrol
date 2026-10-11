@@ -452,7 +452,11 @@ impl View {
     }
 
     pub fn render(&self, backend: &dyn Backend, path: &str) -> String {
-        (self.compute)(backend, &split(path).1).to_string()
+        self.value(backend, path).to_string()
+    }
+
+    pub fn value(&self, backend: &dyn Backend, path: &str) -> Value {
+        (self.compute)(backend, &split(path).1)
     }
 
     pub fn render_fields(&self, backend: &dyn Backend, path: &str, fields: &str) -> String {

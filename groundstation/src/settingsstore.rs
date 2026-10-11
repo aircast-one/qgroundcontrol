@@ -696,7 +696,33 @@ fn unexposed(path: &str) -> bool {
     path.strip_prefix("settings.").is_some_and(|short| UNEXPOSED.iter().any(|name| short == *name || short.starts_with(&format!("{name}."))))
 }
 
+static ANSWERED: LazyLock<Mutex<(u64, HashMap<String, Option<Value>>)>> = LazyLock::new(|| Mutex::new((u64::MAX, HashMap::new())));
+const ANSWERED_LIMIT: usize = 1024;
+
 pub fn get(backend: &dyn Backend, path: &str) -> Option<Value> {
+    if !path.starts_with("settings.") {
+        return None;
+    }
+    if crate::qthost::present() {
+        return answered(backend, path);
+    }
+    let now = revision();
+    let remembered = {
+        let memo = ANSWERED.lock().unwrap_or_else(PoisonError::into_inner);
+        (memo.0 == now).then(|| memo.1.get(path).cloned()).flatten()
+    };
+    remembered.unwrap_or_else(|| {
+        let answer = answered(backend, path);
+        let mut memo = ANSWERED.lock().unwrap_or_else(PoisonError::into_inner);
+        if memo.0 != now || memo.1.len() >= ANSWERED_LIMIT {
+            *memo = (now, HashMap::new());
+        }
+        memo.1.insert(path.to_string(), answer.clone());
+        answer
+    })
+}
+
+fn answered(backend: &dyn Backend, path: &str) -> Option<Value> {
     if unexposed(path) {
         return Some(json!({ "found": false, "kind": "value", "value": null }));
     }

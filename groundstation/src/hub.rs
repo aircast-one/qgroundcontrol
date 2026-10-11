@@ -1359,6 +1359,10 @@ impl Vehicle {
         }
     }
 
+    pub fn parameter_metadata_loaded(&self) -> bool {
+        self.parameter_metadata.is_some()
+    }
+
     pub fn parameter_definition(&self, name: &str, value_type: crate::factmeta::ValueType) -> crate::factmeta::MetaData {
         match &self.parameter_metadata {
             Some(described) => described.metadata_for(name, value_type, self.component),

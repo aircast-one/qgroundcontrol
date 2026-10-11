@@ -1,7 +1,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::sync::Mutex;
 
-use serde_json::json;
+use serde_json::{Value, json};
 
 use crate::view;
 
@@ -23,10 +23,17 @@ pub trait Backend {
     fn remember_setting(&self, _key: &str, _value: &serde_json::Value) {}
 }
 
+enum Rendered {
+    Same,
+    View(Value),
+    Json(String),
+}
+
 #[derive(Default)]
 struct Watching {
     clients: BTreeMap<String, BTreeSet<String>>,
     last: BTreeMap<String, String>,
+    shown: BTreeMap<String, Value>,
     inputs: BTreeMap<String, Vec<crate::changedriven::Input>>,
     upstream: Vec<String>,
 }
@@ -116,6 +123,7 @@ impl<B: Backend> Core<B> {
             };
             let asked = watching.asked();
             watching.last.retain(|path, _| asked.contains(path));
+            watching.shown.retain(|path, _| asked.contains(path));
             watching.inputs.retain(|path, _| asked.contains(path));
             let fresh = paths.iter().filter(|path| !held.contains(*path) && view::lookup(path).is_some()).cloned().collect();
             (asked, fresh)
@@ -124,6 +132,7 @@ impl<B: Backend> Core<B> {
         let mut watching = self.watching.lock().unwrap();
         fresh.iter().for_each(|path| {
             watching.last.remove(path);
+            watching.shown.remove(path);
             watching.inputs.remove(path);
         });
     }
@@ -153,39 +162,46 @@ impl<B: Backend> Core<B> {
 
     pub fn poll(&self) -> Vec<(String, String)> {
         crate::connectnotices::announce(&self.backend);
-        let (asked, kept): (BTreeSet<String>, BTreeMap<String, (String, Vec<crate::changedriven::Input>)>) = {
+        let (asked, kept): (BTreeSet<String>, BTreeMap<String, Vec<crate::changedriven::Input>>) = {
             let watching = self.watching.lock().unwrap();
-            let kept = watching.inputs.iter().filter_map(|(path, inputs)| Some((path.clone(), (watching.last.get(path)?.clone(), inputs.clone())))).collect();
+            let kept = watching.inputs.iter().filter(|(path, _)| watching.shown.contains_key(*path)).map(|(path, inputs)| (path.clone(), inputs.clone())).collect();
             (watching.asked(), kept)
         };
-        let rendered: Vec<(String, String, Option<Vec<crate::changedriven::Input>>)> = crate::vehiclefacade::one_pass(|| {
+        let rendered: Vec<(String, Rendered, Option<Vec<crate::changedriven::Input>>)> = crate::vehiclefacade::one_pass(|| {
             asked
                 .iter()
                 .map(|path| match view::lookup(path) {
-                    Some(v) if crate::changedriven::gated(path) => match kept.get(path).filter(|(_, inputs)| crate::changedriven::unchanged(inputs)) {
-                        Some((json, inputs)) => (path.clone(), json.clone(), Some(inputs.clone())),
+                    Some(v) if crate::changedriven::gated(path) => match kept.get(path).filter(|inputs| crate::changedriven::unchanged(inputs)) {
+                        Some(inputs) => (path.clone(), Rendered::Same, Some(inputs.clone())),
                         None => {
                             let recorder = crate::changedriven::Recorder::new(&self.backend);
-                            let json = v.render(&recorder, path);
-                            (path.clone(), json, recorder.inputs())
+                            let value = v.value(&recorder, path);
+                            (path.clone(), Rendered::View(value), recorder.inputs())
                         }
                     },
-                    Some(v) => (path.clone(), v.render(&self.backend, path), None),
-                    None => (path.clone(), self.get(path), None),
+                    Some(v) => (path.clone(), Rendered::View(v.value(&self.backend, path)), None),
+                    None => (path.clone(), Rendered::Json(self.get(path)), None),
                 })
                 .collect()
         });
         let mut watching = self.watching.lock().unwrap();
         rendered
             .into_iter()
-            .filter(|(path, json, inputs)| {
+            .filter_map(|(path, rendered, inputs)| {
                 match inputs {
-                    Some(inputs) => watching.inputs.insert(path.clone(), inputs.clone()),
-                    None => watching.inputs.remove(path),
+                    Some(inputs) => watching.inputs.insert(path.clone(), inputs),
+                    None => watching.inputs.remove(&path),
                 };
-                watching.last.insert(path.clone(), json.clone()).as_deref() != Some(json.as_str())
+                match rendered {
+                    Rendered::Same => None,
+                    Rendered::View(value) => (watching.shown.get(&path) != Some(&value)).then(|| {
+                        let json = value.to_string();
+                        watching.shown.insert(path.clone(), value);
+                        (path, json)
+                    }),
+                    Rendered::Json(json) => (watching.last.insert(path.clone(), json.clone()).as_deref() != Some(json.as_str())).then_some((path, json)),
+                }
             })
-            .map(|(path, json, _)| (path, json))
             .collect()
     }
 
@@ -205,15 +221,19 @@ impl<B: Backend> Core<B> {
                     .collect(),
             )
         };
-        let recomputed: Vec<(String, String)> =
-            crate::vehiclefacade::one_pass(|| dependents.iter().map(|(asked_path, v)| (asked_path.clone(), v.render(&self.backend, asked_path))).collect());
+        let recomputed: Vec<(String, Value)> =
+            crate::vehiclefacade::one_pass(|| dependents.iter().map(|(asked_path, v)| (asked_path.clone(), v.value(&self.backend, asked_path))).collect());
         let (changed, asked): (Vec<(String, String)>, BTreeSet<String>) = {
             let mut watching = self.watching.lock().unwrap();
             let changed = recomputed
                 .into_iter()
-                .filter(|(p, j)| {
-                    watching.inputs.remove(p);
-                    watching.last.insert(p.clone(), j.clone()).as_deref() != Some(j.as_str())
+                .filter_map(|(p, value)| {
+                    watching.inputs.remove(&p);
+                    (watching.shown.get(&p) != Some(&value)).then(|| {
+                        let json = value.to_string();
+                        watching.shown.insert(p.clone(), value);
+                        (p, json)
+                    })
                 })
                 .collect();
             (changed, watching.asked())
