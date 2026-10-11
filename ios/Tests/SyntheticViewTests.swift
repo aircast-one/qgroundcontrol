@@ -40,4 +40,14 @@ final class SyntheticViewTests: XCTestCase {
         XCTAssertEqual(otherSourceLabel(synthetic), "Synthetic view")
         XCTAssertEqual(otherSourceName(synthetic), "Synthetic view")
     }
+
+    func testAnAimableSyntheticViewOnScreenKeepsSidewaysDragsFromSwitchingTheCamera() {
+        let aimable = JSON.parse(#"{"available":true,"aimable":true}"#)
+        let idle = videoReading(JSON.parse(#"{"class":"Video","available":true,"decoding":false}"#))
+        let live = videoReading(JSON.parse(#"{"class":"Video","available":true,"decoding":true}"#))
+        XCTAssertTrue(syntheticAims(aimable, idle))
+        XCTAssertTrue(syntheticAims(aimable, nil))
+        XCTAssertFalse(syntheticAims(aimable, live))
+        XCTAssertFalse(syntheticAims(JSON.parse(#"{"available":true,"aimable":false}"#), idle))
+    }
 }

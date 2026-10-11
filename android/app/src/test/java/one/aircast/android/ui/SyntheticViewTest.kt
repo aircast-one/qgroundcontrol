@@ -44,4 +44,15 @@ class SyntheticViewTest {
         assertTrue(script.contains(""""heading":90"""))
         assertTrue(syntheticOverlaysScript(JSONObject("""{"route":[]}""")).startsWith("window.aircast && window.aircast.overlays("))
     }
+
+    @Test
+    fun `an aimable synthetic view on screen keeps sideways drags from switching the camera`() {
+        val aimable = JSONObject("""{"available":true,"aimable":true}""")
+        val idle = videoReading(JSONObject("""{"class":"Video","available":true,"decoding":false}"""))
+        val live = videoReading(JSONObject("""{"class":"Video","available":true,"decoding":true}"""))
+        assertTrue(syntheticAims(aimable, idle))
+        assertTrue(syntheticAims(aimable, null))
+        assertFalse("live video covers the synthetic view, so a swipe switches cameras again", syntheticAims(aimable, live))
+        assertFalse(syntheticAims(JSONObject("""{"available":true,"aimable":false}"""), idle))
+    }
 }

@@ -38,7 +38,7 @@ struct FlyPortrait: View {
     @Environment(FlyScreenState.self) private var flyScreen
     @QgcPath(VIDEO_VIEW) private var videoJson
     @CameraStepper private var cameras
-    @GimbalDrags private var gimbalDrags
+    @VideoDrags private var videoDrags
     @State private var chromeHeight: CGFloat = 0
     @State private var deckHeight: CGFloat = 0
     @State private var pipDrag = CGSize.zero
@@ -246,12 +246,12 @@ struct FlyPortrait: View {
 
     private func handlers(_ split: Bool, _ target: CGRect, _ geometry: PipGeometry) -> VideoGestureHandlers {
         let stepper = cameras
-        let gimbal = gimbalDrags
+        let dragging = videoDrags
         let screen = flyScreen
         let full = fullScreen
         return VideoGestureHandlers(
             owned: { !split },
-            claimsSwipe: { moved in sideways(moved) && !gimbal },
+            claimsSwipe: { moved in sideways(moved) && !dragging },
             onTap: { onView(.Video) },
             onDoubleTap: { full ? onExitFullScreen() : onFullScreen() },
             onSwipe: { moved in

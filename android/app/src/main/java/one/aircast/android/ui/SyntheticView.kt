@@ -58,6 +58,16 @@ internal fun syntheticTilt(from: Double, draggedPx: Float, heightPx: Int): Doubl
 internal fun syntheticPan(from: Double, draggedPx: Float, widthPx: Int): Double =
     ((from - draggedPx.toDouble() / widthPx.coerceAtLeast(1) * PAN_SPAN_DEG + 180.0).mod(360.0)) - 180.0
 
+internal fun syntheticAims(view: JSONObject?, video: VideoReading?): Boolean =
+    syntheticAvailable(view) && view?.optBoolean("aimable") == true && video?.decoding != true
+
+@Composable
+internal fun rememberSyntheticAims(): Boolean {
+    val view by qgcPath(SYNTHETIC_VIEW)
+    val videoJson by qgcPath(VIDEO_VIEW)
+    return remember(view, videoJson) { syntheticAims(view, videoReading(videoJson)) }
+}
+
 @Composable
 internal fun rememberSyntheticAvailable(): Boolean = one.aircast.android.bridge.qgcDerived(SYNTHETIC_VIEW, ::syntheticAvailable).value
 

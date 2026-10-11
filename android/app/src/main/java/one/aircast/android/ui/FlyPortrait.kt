@@ -175,13 +175,13 @@ internal fun FlyPortrait(
     val latestOnView by rememberUpdatedState(onView)
     val latestFullScreen by rememberUpdatedState(onFullScreen)
     val cameras = rememberCameraStepper()
-    val gimbalDrags by rememberUpdatedState(rememberGimbalDrags())
+    val videoDrags by rememberUpdatedState(rememberGimbalDrags() || rememberSyntheticAims())
     val swipeDistance = with(density) { VIDEO_SWIPE_DISTANCE.toPx() }
     val gestures = remember {
         Modifier.videoGestures(
             VideoGestureHandlers(
                 owned = { !latestSplit },
-                claimsSwipe = { moved -> sideways(moved) && !gimbalDrags },
+                claimsSwipe = { moved -> sideways(moved) && !videoDrags },
                 onTap = { latestOnView(FlyView.Video) },
                 onDoubleTap = { if (latestInFullScreen) latestExitFullScreen() else latestFullScreen() },
                 onSwipe = { moved ->

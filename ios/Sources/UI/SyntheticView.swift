@@ -21,6 +21,10 @@ private let HTTP_NOT_FOUND = 404
 
 func syntheticAvailable(_ view: JSON?) -> Bool { view?["available"].bool == true }
 
+func syntheticAims(_ view: JSON?, _ video: VideoReading?) -> Bool {
+    syntheticAvailable(view) && view?["aimable"].bool == true && video?.decoding != true
+}
+
 func syntheticPoseScript(_ view: JSON) -> String { "window.aircast && window.aircast.pose(\(view.text))" }
 
 func syntheticOverlaysScript(_ view: JSON) -> String { "window.aircast && window.aircast.overlays(\(view.text))" }
