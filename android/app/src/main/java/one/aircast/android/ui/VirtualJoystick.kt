@@ -86,20 +86,36 @@ internal data class StickAxes(val x: Double, val y: Double)
 
 internal data class StickStates(val previous: VirtualJoystickState?, val current: VirtualJoystickState?)
 
+internal data class Sticks(val left: Offset, val right: Offset)
+
+internal val CENTRED = Offset(0.5f, 0.5f)
+
+private val GROUND_STATES = setOf("disarmed", "armed")
+
 internal fun sticksReset(previous: VirtualJoystickState?, current: VirtualJoystickState?): Boolean =
-    current?.show != true || current.autoCenterThrottle != previous?.autoCenterThrottle
+    current?.show != true || current.autoCenterThrottle != previous?.autoCenterThrottle || current.leftHandedMode != previous.leftHandedMode
 
-internal fun restingLeft(autoCenterThrottle: Boolean): Offset = Offset(0.5f, restingY(autoCenterThrottle))
+internal fun onTheGround(fly: FlyState?): Boolean = fly?.connected == true && fly.state in GROUND_STATES
 
-internal val RESTING_RIGHT = Offset(0.5f, 0.5f)
+internal fun throttleOnLeft(state: VirtualJoystickState): Boolean = !state.leftHandedMode
 
-internal fun released(stick: Offset, reCenterY: Boolean): Offset = Offset(0.5f, if (reCenterY) 0.5f else stick.y)
+internal fun throttleParked(state: VirtualJoystickState, grounded: Boolean): Boolean =
+    grounded && if (throttleOnLeft(state)) state.leftPositiveOnly else state.rightPositiveOnly
 
-internal fun stickValues(state: VirtualJoystickState, left: Offset?, right: Offset?): List<Double> {
-    val l = left ?: restingLeft(state.autoCenterThrottle)
-    val r = right ?: RESTING_RIGHT
-    return joystickValues(stickAxes(l.x, l.y, state.leftPositiveOnly), stickAxes(r.x, r.y, state.rightPositiveOnly), state.leftHandedMode)
+internal fun released(stick: Offset, throttle: Boolean, autoCenter: Boolean, parked: Boolean): Offset =
+    Offset(0.5f, if (!throttle || autoCenter || parked) 0.5f else stick.y)
+
+internal fun shownSticks(state: VirtualJoystickState, left: Offset?, right: Offset?, grounded: Boolean, leftHeld: Boolean, rightHeld: Boolean): Sticks {
+    val throttleLeft = throttleOnLeft(state)
+    val parked = throttleParked(state, grounded)
+    val park = { stick: Offset, held: Boolean -> if (parked && !held) Offset(stick.x, 1f) else stick }
+    val l = left ?: CENTRED
+    val r = right ?: CENTRED
+    return if (throttleLeft) Sticks(park(l, leftHeld), r) else Sticks(l, park(r, rightHeld))
 }
+
+internal fun stickValues(state: VirtualJoystickState, sticks: Sticks): List<Double> =
+    joystickValues(stickAxes(sticks.left.x, sticks.left.y, state.leftPositiveOnly), stickAxes(sticks.right.x, sticks.right.y, state.rightPositiveOnly), state.leftHandedMode)
 
 object VirtualStickSender {
     @Volatile
@@ -108,9 +124,18 @@ object VirtualStickSender {
     @Volatile
     internal var right: Offset? = null
 
+    @Volatile
+    internal var layout: Pair<Boolean, Boolean>? = null
+
+    @Volatile
+    internal var leftHeld: Boolean = false
+
+    @Volatile
+    internal var rightHeld: Boolean = false
+
     fun start(scope: kotlinx.coroutines.CoroutineScope) {
         scope.launch(Dispatchers.IO) {
-            Qgc.watch(listOf(VIRTUAL_JOYSTICK_PATH))
+            Qgc.watch(listOf(VIRTUAL_JOYSTICK_PATH, FLY_STATE))
             try {
                 Qgc.path(VIRTUAL_JOYSTICK_PATH)
                     .map { virtualJoystick(it) }
@@ -122,14 +147,16 @@ object VirtualStickSender {
                             right = null
                         }
                         states.current?.takeIf { it.show && it.sending }?.let { sending ->
+                            val fly = Qgc.path(FLY_STATE)
                             while (isActive) {
-                                Qgc.invoke(VIRTUAL_JOYSTICK_VALUE, *stickValues(sending, left, right).toTypedArray())
+                                val sticks = shownSticks(sending, left, right, onTheGround(flyState(fly.value)), leftHeld, rightHeld)
+                                Qgc.invoke(VIRTUAL_JOYSTICK_VALUE, *stickValues(sending, sticks).toTypedArray())
                                 delay(sending.periodMs)
                             }
                         }
                     }
             } finally {
-                Qgc.unwatch(listOf(VIRTUAL_JOYSTICK_PATH))
+                Qgc.unwatch(listOf(VIRTUAL_JOYSTICK_PATH, FLY_STATE))
             }
         }
     }
@@ -142,8 +169,6 @@ internal fun stickAxes(fractionX: Float, fractionY: Float, positiveOnly: Boolean
         y = if (positiveOnly) pctUp else pctUp * 2.0 - 1.0,
     )
 }
-
-internal fun restingY(reCenter: Boolean): Float = if (reCenter) 0.5f else 1f
 
 internal fun joystickValues(left: StickAxes, right: StickAxes, leftHanded: Boolean): List<Double> =
     if (leftHanded) {
@@ -176,41 +201,74 @@ internal fun shownStickPad(): Dp? {
 fun VirtualJoystick(pad: Dp, modifier: Modifier = Modifier) {
     val view by qgcPath(VIRTUAL_JOYSTICK_PATH)
     val state = virtualJoystick(view)?.takeIf { it.show } ?: return
+    val grounded by qgcDerived(FLY_STATE) { onTheGround(flyState(it)) }
 
-    var left by remember(state.autoCenterThrottle) { mutableStateOf(VirtualStickSender.left ?: restingLeft(state.autoCenterThrottle)) }
-    var right by remember { mutableStateOf(VirtualStickSender.right ?: RESTING_RIGHT) }
-    val autoCenter by rememberUpdatedState(state.autoCenterThrottle)
-    LaunchedEffect(left, right) {
+    val layout = state.autoCenterThrottle to state.leftHandedMode
+    val kept = VirtualStickSender.layout == layout
+    var left by remember(layout) { mutableStateOf(VirtualStickSender.left?.takeIf { kept } ?: CENTRED) }
+    var right by remember(layout) { mutableStateOf(VirtualStickSender.right?.takeIf { kept } ?: CENTRED) }
+    var leftHeld by remember { mutableStateOf(false) }
+    var rightHeld by remember { mutableStateOf(false) }
+    val latestState by rememberUpdatedState(state)
+    val parked = throttleParked(state, grounded)
+    val latestParked by rememberUpdatedState(parked)
+    LaunchedEffect(layout, left, right, leftHeld, rightHeld) {
+        VirtualStickSender.layout = layout
         VirtualStickSender.left = left
         VirtualStickSender.right = right
+        VirtualStickSender.leftHeld = leftHeld
+        VirtualStickSender.rightHeld = rightHeld
     }
     DisposableEffect(Unit) {
         onDispose {
-            VirtualStickSender.left = VirtualStickSender.left?.let { released(it, autoCenter) }
-            VirtualStickSender.right = VirtualStickSender.right?.let { released(it, true) }
+            val throttleLeft = throttleOnLeft(latestState)
+            VirtualStickSender.left = VirtualStickSender.left?.let { released(it, throttleLeft, latestState.autoCenterThrottle, latestParked) }
+            VirtualStickSender.right = VirtualStickSender.right?.let { released(it, !throttleLeft, latestState.autoCenterThrottle, latestParked) }
+            VirtualStickSender.leftHeld = false
+            VirtualStickSender.rightHeld = false
         }
     }
 
+    val shown = shownSticks(state, left, right, grounded, leftHeld, rightHeld)
+    val release = { stick: Offset, throttle: Boolean -> released(stick, throttle, latestState.autoCenterThrottle, latestParked) }
     Row(modifier.fillMaxWidth()) {
-        ThumbPad(stick = left, reCenterY = state.autoCenterThrottle, description = "Left virtual stick", size = pad, onMove = { left = it })
+        ThumbPad(
+            stick = shown.left,
+            description = "Left virtual stick",
+            size = pad,
+            onHeld = { leftHeld = it },
+            onMove = { left = it },
+            onRelease = { left = release(it, throttleOnLeft(latestState)) },
+        )
         Spacer(Modifier.weight(1f))
-        ThumbPad(stick = right, reCenterY = true, description = "Right virtual stick", size = pad, onMove = { right = it })
+        ThumbPad(
+            stick = shown.right,
+            description = "Right virtual stick",
+            size = pad,
+            onHeld = { rightHeld = it },
+            onMove = { right = it },
+            onRelease = { right = release(it, !throttleOnLeft(latestState)) },
+        )
     }
 }
 
 @Composable
-private fun ThumbPad(stick: Offset, reCenterY: Boolean, description: String, size: Dp, onMove: (Offset) -> Unit) {
+private fun ThumbPad(stick: Offset, description: String, size: Dp, onHeld: (Boolean) -> Unit, onMove: (Offset) -> Unit, onRelease: (Offset) -> Unit) {
     val ink = MaterialTheme.aircast.outdoorForeground
     val latestStick by rememberUpdatedState(stick)
+    val latestHeld by rememberUpdatedState(onHeld)
+    val latestMove by rememberUpdatedState(onMove)
+    val latestRelease by rememberUpdatedState(onRelease)
     var held by remember { mutableStateOf(false) }
     Canvas(
         Modifier
             .size(size)
             .semantics { contentDescription = description }
-            .pointerInput(reCenterY) {
+            .pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown()
                     held = true
+                    latestHeld(true)
                     val origin = down.position
                     val start = latestStick
                     val travel = knobTravel(this.size.width.toFloat())
@@ -218,10 +276,11 @@ private fun ThumbPad(stick: Offset, reCenterY: Boolean, description: String, siz
                         val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id }
                         if (change == null || !change.pressed) break
                         change.consume()
-                        onMove(dragged(start, change.position - origin, travel))
+                        latestMove(dragged(start, change.position - origin, travel))
                     }
                     held = false
-                    onMove(released(latestStick, reCenterY))
+                    latestHeld(false)
+                    latestRelease(latestStick)
                 }
             },
     ) {

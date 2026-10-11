@@ -281,8 +281,8 @@ fun TelemetryRow(modifier: Modifier = Modifier, columns: Int? = null, valuesShow
         if (stacked) {
             val (speeds, places) = shown.partition { osdIsSpeed(it.label) }
             Column(modifier, verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                if (speeds.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s4)) { speeds.map { reading(it, MaterialTheme.typography.labelLarge) } }
-                if (places.isNotEmpty()) Row(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s4)) { places.map { reading(it, MaterialTheme.typography.titleLarge) } }
+                if (speeds.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s4), verticalArrangement = Arrangement.spacedBy(2.dp)) { speeds.map { reading(it, MaterialTheme.typography.labelLarge) } }
+                if (places.isNotEmpty()) FlowRow(horizontalArrangement = Arrangement.spacedBy(AircastSpace.s4), verticalArrangement = Arrangement.spacedBy(2.dp)) { places.map { reading(it, MaterialTheme.typography.titleLarge) } }
             }
         } else {
             FlowRow(

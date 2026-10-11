@@ -217,7 +217,7 @@ internal fun FlyScreen(
     val togglePip: () -> Unit = { showMini(if (pipExpanded) MiniMap.Thumb else MiniMap.Map) }
     val layout = LocalFlyScreenState.current.layout
     val stickPad = shownStickPad()
-    val stickLead = stickPad?.let { ACTION_RAIL_CLEARANCE + it } ?: 0.dp
+    val bottomLead = ACTION_RAIL_CLEARANCE - AircastSpace.s3 + (stickPad?.let { it + AircastSpace.s3 } ?: 0.dp)
     val stickRoom = stickPad?.let { it + AircastSpace.s3 } ?: 0.dp
     val flyJson by one.aircast.android.bridge.qgcPath(FLY_STATE)
     val armed = flyState(flyJson)?.armed == true
@@ -241,7 +241,7 @@ internal fun FlyScreen(
                         .zIndex(1f)
                         .align(pipAlign)
                         .windowInsetsPadding(WindowInsets.displayCutout)
-                        .padding(start = stickLead)
+                        .padding(start = bottomLead)
                         .padding(AircastSpace.s3)
                         .then(layoutPlacement(MAP_PIP_KEY, keepOnScreen = false))
                         .then(mapPipSize)
@@ -257,7 +257,7 @@ internal fun FlyScreen(
         val videoKey = orientedKey(VIDEO_PIP_KEY, landscape = true)
         val videoMoved = layout.offsets[videoKey] ?: (0f to 0f)
         val pipHome = with(density) {
-            Offset(cutout.getLeft(this, LocalLayoutDirection.current) + (AircastSpace.s3 + stickLead).toPx(), boxSize.height - cutout.getBottom(this) - AircastSpace.s3.toPx() - MINIMAP_HEIGHT.toPx())
+            Offset(cutout.getLeft(this, LocalLayoutDirection.current) + (AircastSpace.s3 + bottomLead).toPx(), boxSize.height - cutout.getBottom(this) - AircastSpace.s3.toPx() - MINIMAP_HEIGHT.toPx())
         }
         val pipFrame = with(density) { Rect(pipHome + Offset(videoMoved.first.dp.toPx(), videoMoved.second.dp.toPx()), Size(MINIMAP_WIDTH.toPx(), MINIMAP_HEIGHT.toPx())) }
         val pipNow = videoIsPip && !fullScreen
@@ -338,7 +338,7 @@ internal fun FlyScreen(
                         .zIndex(2f)
                         .align(pipAlign)
                         .windowInsetsPadding(WindowInsets.displayCutout)
-                        .padding(start = stickLead)
+                        .padding(start = bottomLead)
                         .padding(AircastSpace.s3)
                         .then(layoutPlacement(MAP_PIP_KEY, keepOnScreen = false))
                         .then(mapPipSize)
@@ -353,7 +353,7 @@ internal fun FlyScreen(
                         .zIndex(3f)
                         .align(Alignment.BottomStart)
                         .windowInsetsPadding(WindowInsets.displayCutout)
-                        .padding(start = stickLead)
+                        .padding(start = bottomLead)
                         .padding(AircastSpace.s3)
                         .avoidedByVideoMessage(COMPASS_DIAL_KEY)
                         .clip(CircleShape)
@@ -366,7 +366,7 @@ internal fun FlyScreen(
                     .zIndex(3f)
                     .align(pipAlign)
                         .windowInsetsPadding(WindowInsets.displayCutout)
-                    .padding(start = stickLead)
+                    .padding(start = bottomLead)
                     .padding(AircastSpace.s3)
                     .then(layoutPlacement(MAP_PIP_KEY, keepOnScreen = true))
                     .then(pipSize)
@@ -421,7 +421,7 @@ internal fun FlyScreen(
                         .zIndex(3f)
                         .align(pipAlign)
                         .windowInsetsPadding(WindowInsets.displayCutout)
-                        .padding(start = stickLead)
+                        .padding(start = bottomLead)
                         .padding(AircastSpace.s3)
                         .then(layoutPlacement(VIDEO_PIP_KEY, keepOnScreen = true))
                         .then(pipSize)
@@ -440,7 +440,7 @@ internal fun FlyScreen(
                     LayoutPipEditor(VIDEO_PIP_KEY, MaterialTheme.shapes.medium, Modifier.matchParentSize())
                 }
             } else {
-                PipToggle(false, togglePip, Modifier.zIndex(3f).align(pipAlign).windowInsetsPadding(WindowInsets.displayCutout).padding(start = stickLead).padding(AircastSpace.s3).verticalSwipe(swipeDistance) { if (it == VideoSwipe.Up) togglePip() })
+                PipToggle(false, togglePip, Modifier.zIndex(3f).align(pipAlign).windowInsetsPadding(WindowInsets.displayCutout).padding(start = bottomLead).padding(AircastSpace.s3).verticalSwipe(swipeDistance) { if (it == VideoSwipe.Up) togglePip() })
             }
         }
         val settingsOver = LocalAppNavigation.current.settingsOpen
@@ -527,7 +527,7 @@ internal fun FlyScreen(
                 Modifier
                     .zIndex(2f)
                     .align(Alignment.BottomStart)
-                    .padding(start = stickLead + besideMini + AircastSpace.s3 * 2, bottom = AircastSpace.s3)
+                    .padding(start = bottomLead + besideMini + AircastSpace.s3 * 2, end = stickRoom + AircastSpace.s3, bottom = AircastSpace.s3)
                     .osdShadow(),
             ) {
                 CompositionLocalProvider(LocalFlyOsd provides true) { TelemetryRow(valuesShown = true, chooser = false, compact = true, stacked = true) }
