@@ -27,12 +27,24 @@ fn pack_fact_path(index: usize, name: &str) -> String {
     format!("vehicle.batteries.{index}.{name}")
 }
 
-fn pack_paths() -> Vec<String> {
-    (0..PACKS_SEEN.load(Ordering::Relaxed).clamp(1, MAX_PACKS)).flat_map(|i| PACK_FACTS.iter().map(move |name| pack_fact_path(i, name))).collect()
+fn pack_paths(facts: &'static [&'static str]) -> Vec<String> {
+    (0..PACKS_SEEN.load(Ordering::Relaxed).clamp(1, MAX_PACKS)).flat_map(|i| facts.iter().map(move |name| pack_fact_path(i, name))).collect()
 }
 
 pub fn deps() -> Vec<String> {
-    DEPS.iter().map(|d| d.to_string()).chain(pack_paths()).collect()
+    DEPS.iter().map(|d| d.to_string()).chain(pack_paths(&PACK_FACTS)).collect()
+}
+
+const CHARGE_DEPS: &[&str] = &[
+    "vehicles.activeVehicleAvailable",
+    "vehicle.batteries.count",
+    "settings.batteryIndicatorSettings.threshold1",
+    "settings.batteryIndicatorSettings.threshold2",
+];
+const CHARGE_FACTS: [&str; 2] = ["percentRemaining", "chargeState"];
+
+pub fn charge_deps() -> Vec<String> {
+    CHARGE_DEPS.iter().map(|d| d.to_string()).chain(pack_paths(&CHARGE_FACTS)).collect()
 }
 
 const CHARGE_UNDEFINED: i64 = 0;
@@ -53,17 +65,24 @@ pub struct Pack {
     pub time_remaining_text: Option<String>,
 }
 
+const BATTERY_LEVELS: [&str; 4] = ["critical", "warning", "caution", "normal"];
+
+fn rank(level: &str) -> usize {
+    BATTERY_LEVELS.iter().position(|known| *known == level).unwrap_or(BATTERY_LEVELS.len() - 1)
+}
+
 pub fn level(charge_state: i64, percent: Option<f64>, threshold1: f64, threshold2: f64) -> &'static str {
-    match (charge_state, percent) {
-        (CHARGE_OK, _) => "normal",
-        (CHARGE_UNDEFINED, None) => "normal",
-        (CHARGE_UNDEFINED, Some(p)) if p > threshold1 => "normal",
-        (CHARGE_UNDEFINED, Some(p)) if p > threshold2 => "caution",
-        (CHARGE_UNDEFINED, Some(_)) => "warning",
-        (CHARGE_LOW, _) => "warning",
-        (3..=6, _) => "critical",
+    let by_charge = match charge_state {
+        CHARGE_LOW => "warning",
+        3..=6 => "critical",
         _ => "normal",
-    }
+    };
+    let by_percent = match percent {
+        Some(p) if p <= threshold2 => "warning",
+        Some(p) if p <= threshold1 => "caution",
+        _ => "normal",
+    };
+    [by_charge, by_percent].into_iter().min_by_key(|shown| rank(shown)).unwrap_or(by_charge)
 }
 
 pub fn text(pack: &Pack) -> String {
@@ -306,7 +325,14 @@ const COMBINE_PACKS: &str = "settings.batteryIndicatorSettings.consolidateMultip
 const COMBINE_PACKS_UNSET: bool = true;
 
 fn severity_rank(level: &Value) -> usize {
-    ["critical", "warning", "caution", "normal"].iter().position(|l| level == *l).unwrap_or(3)
+    rank(level.as_str().unwrap_or_default())
+}
+
+fn thresholds(backend: &dyn Backend) -> (f64, f64) {
+    (
+        value_number(&backend.value("settings.batteryIndicatorSettings.threshold1.rawValue")).unwrap_or(80.0),
+        value_number(&backend.value("settings.batteryIndicatorSettings.threshold2.rawValue")).unwrap_or(60.0),
+    )
 }
 
 pub fn indicator_packs(described: &[Value], combine: bool) -> Vec<Value> {
@@ -329,8 +355,7 @@ pub fn battery_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let readers: Vec<_> = (0..pack_count(backend)).map(|index| remembered(backend, index)).collect();
     let packs: Vec<Pack> = readers.iter().map(|read| pack(read)).collect();
     let popup_packs: Vec<PopupPack> = readers.iter().map(|read| popup_pack(read)).collect();
-    let threshold1 = value_number(&backend.value("settings.batteryIndicatorSettings.threshold1.rawValue")).unwrap_or(80.0);
-    let threshold2 = value_number(&backend.value("settings.batteryIndicatorSettings.threshold2.rawValue")).unwrap_or(60.0);
+    let (threshold1, threshold2) = thresholds(backend);
     let value_display = value_number(&backend.value("settings.batteryIndicatorSettings.valueDisplay.rawValue")).map(|v| v as i64).unwrap_or(0);
     let numbered = packs.len() > 1;
     let described: Vec<Value> = packs
@@ -373,13 +398,29 @@ pub fn battery_view(backend: &dyn Backend, _args: &[String]) -> Value {
     })
 }
 
-pub fn low_charge_text(level: &str, percent: Option<f64>) -> Option<String> {
-    matches!(level, "warning" | "critical").then(|| percent.map_or_else(|| "Battery low.".to_string(), |p| format!("Battery at {}%.", p.round() as i64)))
+fn low_charge_text(percent: Option<f64>) -> String {
+    percent.map_or_else(|| "Battery low.".to_string(), |p| format!("Battery at {}%.", p.round() as i64))
+}
+
+pub fn lowest_charge(packs: &[(i64, Option<f64>)], threshold1: f64, threshold2: f64) -> Option<String> {
+    let low = rank("warning");
+    packs
+        .iter()
+        .map(|(state, percent)| (rank(level(*state, *percent, threshold1, threshold2)), *percent))
+        .filter(|(severity, _)| *severity <= low)
+        .min_by(|(a, pa), (b, pb)| a.cmp(b).then(pa.unwrap_or(f64::INFINITY).total_cmp(&pb.unwrap_or(f64::INFINITY))))
+        .map(|(_, percent)| low_charge_text(percent))
+}
+
+fn charge_of(backend: &dyn Backend, index: usize) -> (i64, Option<f64>) {
+    let fact = |name: &str| backend.value(&pack_fact_path(index, name));
+    (fact("chargeState").get("value").and_then(Value::as_i64).unwrap_or(CHARGE_UNDEFINED), value_number(&fact("percentRemaining")))
 }
 
 pub fn low_charge(backend: &dyn Backend) -> Option<String> {
-    let view = battery_view(backend, &[]);
-    low_charge_text(view["level"].as_str().unwrap_or_default(), view["headline"]["percent"].as_f64())
+    let (threshold1, threshold2) = thresholds(backend);
+    let packs: Vec<(i64, Option<f64>)> = (0..pack_count(backend)).map(|index| charge_of(backend, index)).collect();
+    lowest_charge(&packs, threshold1, threshold2)
 }
 
 pub fn failsafe_reserve(action: Option<i64>, critical: Option<f64>) -> f64 {
@@ -421,11 +462,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn a_battery_at_the_red_threshold_is_named_for_the_readiness_line() {
-        assert_eq!(low_charge_text("warning", Some(0.2)), Some("Battery at 0%.".to_string()));
-        assert_eq!(low_charge_text("critical", None), Some("Battery low.".to_string()), "a pack with only a charge state still reads as low");
-        assert_eq!(low_charge_text("caution", Some(70.0)), None, "the yellow band is not a reason to hold a takeoff");
-        assert_eq!(low_charge_text("normal", Some(90.0)), None);
+    fn the_readiness_line_names_the_lowest_pack_with_its_own_percent() {
+        assert_eq!(lowest_charge(&[(CHARGE_OK, Some(0.2))], 80.0, 60.0), Some("Battery at 0%.".to_string()), "OK at 0% is the SITL case the readiness line missed");
+        assert_eq!(lowest_charge(&[(3, None)], 80.0, 60.0), Some("Battery low.".to_string()), "a pack with only a charge state still reads as low");
+        assert_eq!(lowest_charge(&[(CHARGE_OK, Some(70.0))], 80.0, 60.0), None, "the yellow band is not a reason to hold a takeoff");
+        assert_eq!(lowest_charge(&[(CHARGE_OK, Some(55.0)), (CHARGE_LOW, Some(80.0)), (CHARGE_OK, Some(40.0))], 80.0, 60.0), Some("Battery at 40%.".to_string()), "the worst pack is picked once, so the percent named is that pack's own");
+        assert_eq!(lowest_charge(&[(3, Some(90.0)), (CHARGE_OK, Some(10.0))], 80.0, 60.0), Some("Battery at 90%.".to_string()), "a critical charge state outranks a low percent elsewhere");
+        assert_eq!(lowest_charge(&[], 80.0, 60.0), None);
     }
 
     #[test]
@@ -604,14 +647,18 @@ mod tests {
     }
 
     #[test]
-    fn the_indicator_rule_matches_qgcs_own() {
-        assert_eq!(level(CHARGE_OK, Some(5.0), 80.0, 60.0), "normal");
+    fn the_indicator_thresholds_apply_whatever_charge_state_the_vehicle_reports() {
+        assert_eq!(level(CHARGE_OK, Some(0.0), 80.0, 60.0), "warning", "ArduPilot reports OK until a low-battery failsafe trips, and SITL drained to 0% by consumption never trips one; QGC's rule drew that as a normal pack");
+        assert_eq!(level(CHARGE_OK, Some(70.0), 80.0, 60.0), "caution");
+        assert_eq!(level(CHARGE_OK, Some(95.0), 80.0, 60.0), "normal");
+        assert_eq!(level(CHARGE_OK, None, 80.0, 60.0), "normal");
+        assert_eq!(level(7, Some(10.0), 80.0, 60.0), "warning", "a pack on charge is still nearly empty");
         assert_eq!(level(CHARGE_UNDEFINED, Some(85.0), 80.0, 60.0), "normal");
         assert_eq!(level(CHARGE_UNDEFINED, Some(70.0), 80.0, 60.0), "caution");
         assert_eq!(level(CHARGE_UNDEFINED, Some(55.0), 80.0, 60.0), "warning");
         assert_eq!(level(CHARGE_UNDEFINED, None, 80.0, 60.0), "normal");
         assert_eq!(level(CHARGE_LOW, Some(90.0), 80.0, 60.0), "warning");
-        assert_eq!(level(3, Some(90.0), 80.0, 60.0), "critical");
+        assert_eq!(level(3, Some(90.0), 80.0, 60.0), "critical", "a charge state can only make the reading worse than the percent says");
         assert_eq!(level(6, None, 80.0, 60.0), "critical");
         assert_eq!(level(7, None, 80.0, 60.0), "normal");
     }

@@ -6,7 +6,7 @@ use crate::router::Backend;
 pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.armed", "vehicle.flying", "vehicle.landing", "vehicle.flightMode", "vehicle.vehicleLinkManager.communicationLost", "vehicle.vehicleLinkManager.communicationLostEnabled", "planFly.missionController.currentMissionIndex", "vehicle.rcRSSI", "vehicle.rcChannelOverrideActive", "vehicle.radioStatus.lrssi", "vehicle.radioStatus.rrssi", "vehicle.radioStatus.lNoise", "vehicle.radioStatus.rNoise", "vehicle.radioStatus.rxErrors", "vehicle.radioStatus.fixed", "vehicle.radioStatus.txBuffer", "vehicle.healthAndArmingCheckReport.supported", "vehicle.healthAndArmingCheckReport.canArm", "vehicle.healthAndArmingCheckReport.hasWarningsOrErrors", "vehicle.sysStatusSensorInfo.sensorNames", "vehicle.sysStatusSensorInfo.sensorEnabled", "vehicle.sysStatusSensorInfo.sensorHealthy", "vehicle.readyToFlyAvailable", "vehicle.readyToFly", "vehicle.allSensorsHealthy", crate::setup::COMPONENTS];
 
 pub fn deps() -> Vec<String> {
-    DEPS.iter().map(|d| d.to_string()).chain(crate::battery::deps()).collect()
+    DEPS.iter().map(|d| d.to_string()).chain(crate::battery::charge_deps()).collect()
 }
 
 pub const STALE_NOTICE: &str = "No contact — these are the last values the vehicle sent.";
@@ -154,9 +154,9 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
     })
 }
 
-pub const OPTIONAL_WHEN_OFF: &[&str] = &["Geofence", "Logging"];
+const OPTIONAL_WHEN_OFF: &[&str] = &["Geofence", "Logging"];
 
-pub fn counts_against_readiness(name: &str, enabled: bool) -> bool {
+fn counts_against_readiness(name: &str, enabled: bool) -> bool {
     enabled || !OPTIONAL_WHEN_OFF.contains(&name)
 }
 
@@ -258,6 +258,7 @@ mod tests {
                 "vehicle.supports" => self.vehicle.get("supports").cloned().unwrap_or_else(|| json!({ "kind": "null" })).to_string(),
                 "planFly.missionController" => json!({ "kind": "object", "currentMissionIndex": self.flying_to }).to_string(),
                 "vehicle.vehicleLinkManager" => json!({ "kind": "object", "communicationLost": self.lost, "communicationLostEnabled": true }).to_string(),
+                battery if battery.starts_with("vehicle.batteries.") => self.vehicle["batteries"].get(&battery["vehicle.batteries.".len()..]).cloned().unwrap_or_else(|| json!({ "kind": "null" })).to_string(),
                 _ => json!({ "kind": "null" }).to_string(),
             }
         }
@@ -311,6 +312,25 @@ mod tests {
         assert!(!status_nominal(None, &[(true, true), (false, false)]), "a disabled sensor is a caution");
         assert!(!status_nominal(None, &[(true, false)]));
         assert!(status_nominal(None, &[(true, true)]));
+    }
+
+    #[test]
+    fn a_parked_pack_that_reports_ok_at_zero_holds_readiness_on_the_battery() {
+        let pack = |armed: bool| {
+            let mut vehicle = aloft(armed, false, false);
+            vehicle["batteries"] = json!({
+                "count": { "kind": "fact", "name": "count", "value": 1 },
+                "0.chargeState": { "kind": "fact", "name": "chargeState", "value": 1 },
+                "0.percentRemaining": { "kind": "fact", "name": "percentRemaining", "value": 0.0 },
+            });
+            read(vehicle, false)
+        };
+        let parked = pack(false);
+        assert_eq!(parked["summaryDetail"], "Battery at 0%. Charge or swap it before flight.", "ArduPilot SITL reports charge state OK at 0%, and the line said everything else reports normal");
+        assert_eq!(parked["nominal"], false);
+        assert_eq!(pack(true)["nominal"], true, "once armed the battery is the return-home gauge's business, not readiness");
+        assert!(deps().iter().any(|dep| dep == "vehicle.batteries.0.percentRemaining"), "the view wakes when the pack drains");
+        assert!(deps().iter().all(|dep| !dep.ends_with(".voltage") && dep != "vehicle.distanceToHome"), "and not on every voltage or position tick");
     }
 
     #[test]
