@@ -120,8 +120,7 @@ private struct SyntheticWebView: UIViewRepresentable {
     }
 
     func updateUIView(_ web: WKWebView, context: Context) {
-        if let pose, syntheticAvailable(pose) { web.evaluateJavaScript(syntheticPoseScript(pose)) }
-        context.coordinator.show(overlays)
+        context.coordinator.show(pose: pose.flatMap { syntheticAvailable($0) ? $0 : nil }, overlays: overlays)
     }
 
     static func dismantleUIView(_ web: WKWebView, coordinator: Coordinator) {
@@ -131,6 +130,7 @@ private struct SyntheticWebView: UIViewRepresentable {
     final class Coordinator: NSObject, WKNavigationDelegate {
         weak var web: WKWebView?
         private var loaded = false
+        private var pose: JSON?
         private var overlays: JSON?
         private var sent: JSON?
 
@@ -139,13 +139,16 @@ private struct SyntheticWebView: UIViewRepresentable {
             push()
         }
 
-        func show(_ next: JSON?) {
-            overlays = next
+        func show(pose nextPose: JSON?, overlays nextOverlays: JSON?) {
+            pose = nextPose
+            overlays = nextOverlays
             push()
         }
 
         private func push() {
-            guard loaded, let web, let overlays, overlays != sent else { return }
+            guard loaded, let web else { return }
+            if let pose { web.evaluateJavaScript(syntheticPoseScript(pose)) }
+            guard let overlays, overlays != sent else { return }
             sent = overlays
             web.evaluateJavaScript(syntheticOverlaysScript(overlays))
         }

@@ -148,7 +148,7 @@ internal fun SyntheticView(modifier: Modifier = Modifier, aimable: Boolean = fal
         if (drawn) drawnPages.intValue += 1
         onDispose { if (drawn) drawnPages.intValue -= 1 }
     }
-    LaunchedEffect(view) { view?.let { web.evaluateJavascript(syntheticPoseScript(it), null) } }
+    LaunchedEffect(view, loaded) { view?.takeIf { loaded }?.let { web.evaluateJavascript(syntheticPoseScript(it), null) } }
     LaunchedEffect(overlays, loaded) { overlays?.takeIf { loaded }?.let { web.evaluateJavascript(syntheticOverlaysScript(it), null) } }
     val canAim = aimable && view?.optBoolean("aimable") == true
     val pitch by rememberUpdatedState(view?.optDouble("pitch", DEFAULT_TILT_DEG) ?: DEFAULT_TILT_DEG)
