@@ -1,3 +1,6 @@
+use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex, PoisonError};
+
 use serde_json::{Value, json};
 
 use crate::batteryfacts::BatteryFacts;
@@ -94,9 +97,32 @@ fn battery_raw(id: u8, battery: &BatteryFacts, name: &str) -> Value {
     }
 }
 
+type FactKey = (usize, String, Option<String>, String);
+
+static FACT_MEMO: LazyLock<Mutex<(u64, HashMap<FactKey, Value>)>> = LazyLock::new(|| Mutex::new((u64::MAX, HashMap::new())));
+const FACT_MEMO_LIMIT: usize = 512;
+
+fn memo_fact(file: &'static str, name: &str, raw: &Value, property: Option<&str>) -> Option<Value> {
+    let key = (file.as_ptr() as usize, name.to_string(), property.map(str::to_string), raw.to_string());
+    let now = crate::settingsstore::revision();
+    let hit = {
+        let memo = FACT_MEMO.lock().unwrap_or_else(PoisonError::into_inner);
+        (memo.0 == now).then(|| memo.1.get(&key).cloned()).flatten()
+    };
+    hit.or_else(|| {
+        let meta = crate::factmeta::fact(file, name)?;
+        let built = fact(&meta, raw, property);
+        let mut memo = FACT_MEMO.lock().unwrap_or_else(PoisonError::into_inner);
+        if memo.0 != now || memo.1.len() >= FACT_MEMO_LIMIT {
+            *memo = (now, HashMap::new());
+        }
+        memo.1.insert(key, built.clone());
+        Some(built)
+    })
+}
+
 pub fn battery_fact(id: u8, battery: &BatteryFacts, name: &str, property: Option<&str>) -> Option<Value> {
-    let meta = crate::factmeta::fact(BATTERY_META, name)?;
-    Some(fact(&meta, &battery_raw(id, battery, name), property))
+    memo_fact(BATTERY_META, name, &battery_raw(id, battery, name), property)
 }
 
 fn group(class: &str, fact_names: &[&str], facts: Vec<Value>, telemetry: bool) -> Value {
@@ -929,8 +955,7 @@ pub fn instrument_catalogue(sub: bool) -> (Vec<(&'static str, Value)>, Value) {
 }
 
 pub fn vehicle_fact(name: &str, raw: &Value) -> Option<Value> {
-    let meta = crate::factmeta::fact(VEHICLE_META, name)?;
-    Some(fact(&meta, raw, None))
+    memo_fact(VEHICLE_META, name, raw, None)
 }
 
 pub fn compact(full: &Value, property: &str) -> Value {
@@ -1016,8 +1041,7 @@ fn gps_raw(gps: &crate::gpsfacts::GpsFacts, name: &str) -> Option<Value> {
 
 pub fn gps_fact(gps: &crate::gpsfacts::GpsFacts, name: &str) -> Option<Value> {
     GPS_ANSWERED.contains(&name).then_some(())?;
-    let meta = crate::factmeta::fact(GPS_META, name)?;
-    Some(fact(&meta, &gps_raw(gps, name)?, None))
+    memo_fact(GPS_META, name, &gps_raw(gps, name)?, None)
 }
 
 pub fn integrity_stale(heard_ms: Option<u64>, now_ms: u64) -> bool {
