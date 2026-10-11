@@ -284,7 +284,7 @@ ACCEPTED_ON = {
     ("view.sensorSettings", "rebootRequired"): "the core posts QGC's reboot prompt itself after an accepted write (factwrite hook, 4093b4abe), so no head acts on the flag",
     ("view.sensorSettings", "valueMeters"): "the geometry half of value; FactRow round-trips the cooked value through Qgc.set",
     ("view.settings", "rebootRequired"): "the core posts QGC's reboot prompt itself after an accepted write (factwrite hook, 4093b4abe), so no head acts on the flag",
-    ("view.terrainDownload", "started"): "total > 0; TerrainProgress shows loaded of total",
+    ("view.terrainDownload", "started"): "total > 0; TerrainDataWarning only watches whether loaded moves while pending > 0",
     ("view.terrainProfile", "collidingItems"): "read by collidingItems(view) in TerrainProfile.kt, whose key is a default argument the read pattern cannot see",
     ("view.vehicles", "missionFlightMode"): "an input to vehicles.rs action gating; the fleet panel shows no mission mode, like MultiVehicleList",
     ("view.vehicles", "pauseSupported"): "an input to vehicles.rs mvPause gating, which the fleet actions already obey",

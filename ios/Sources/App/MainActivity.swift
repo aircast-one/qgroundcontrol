@@ -320,7 +320,7 @@ struct AircastShell: View {
                 LayoutWidget(key: "fleet") { FleetCard() }
                 LayoutWidget(key: "missionProgress") { MissionProgressCard() }
                 LayoutWidget(key: "obstacleReadout") { ObstacleReadout() }
-                LayoutWidget(key: "terrainProgress") { TerrainProgress() }
+                LayoutWidget(key: "terrainData") { TerrainDataWarning() }
                 LayoutWidget(key: "orbit") { OrbitReadout() }
                 LayoutWidget(key: "followMe") { FollowMeReadout() }
                 LayoutWidget(key: "rcControls") { RcControlsLayer() }

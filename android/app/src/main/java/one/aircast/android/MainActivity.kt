@@ -98,7 +98,7 @@ import one.aircast.android.ui.SetWaypointSheet
 import one.aircast.android.ui.RoiSheet
 import one.aircast.android.ui.ObstacleArc
 import one.aircast.android.ui.ObstacleReadout
-import one.aircast.android.ui.TerrainProgress
+import one.aircast.android.ui.TerrainDataWarning
 import one.aircast.android.ui.OrbitReadout
 import one.aircast.android.ui.PlanTab
 import one.aircast.android.ui.RcControlsLayer
@@ -574,7 +574,7 @@ fun AircastShell(hostView: android.view.View?) {
                         LayoutWidget("fleet") { one.aircast.android.ui.FleetCard() }
                         LayoutWidget("missionProgress") { one.aircast.android.ui.MissionProgressCard() }
                         LayoutWidget("obstacleReadout") { ObstacleReadout() }
-                        LayoutWidget("terrainProgress") { TerrainProgress() }
+                        LayoutWidget("terrainData") { TerrainDataWarning() }
                         flyOrbitReadout()
                         flyFollowMeReadout()
                         flyRcControlsLayer()
