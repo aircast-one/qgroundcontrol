@@ -1,12 +1,16 @@
 use std::cell::OnceCell;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::mpsc::{self, Receiver, Sender};
-use std::sync::{Arc, Mutex, PoisonError};
+use std::sync::{Arc, LazyLock, Mutex, PoisonError};
+use std::time::Duration;
 
 use url::Url;
 
 const MAX_BODY_BYTES: u64 = 64 * 1024 * 1024;
 const NO_PERSISTENCE: &str = "settings.appSettings.disableAllPersistence";
+const FETCH_TIMEOUT: Duration = Duration::from_secs(20);
+
+static AGENT: LazyLock<ureq::Agent> = LazyLock::new(|| ureq::Agent::config_builder().timeout_global(Some(FETCH_TIMEOUT)).build().into());
 
 pub trait Fetcher: Send + Sync {
     fn url(&self, url: &Url) -> Result<Vec<u8>, String>;
@@ -22,7 +26,7 @@ thread_local! {
 
 impl Fetcher for Network {
     fn url(&self, url: &Url) -> Result<Vec<u8>, String> {
-        ureq::get(url.as_str()).call().map_err(|error| error.to_string())?.body_mut().with_config().limit(MAX_BODY_BYTES).read_to_vec().map_err(|error| error.to_string())
+        AGENT.get(url.as_str()).call().map_err(|error| error.to_string())?.body_mut().with_config().limit(MAX_BODY_BYTES).read_to_vec().map_err(|error| error.to_string())
     }
 
     fn map(&self, provider: &str, z: u32, x: u32, y: u32) -> Result<Vec<u8>, String> {

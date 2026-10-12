@@ -15,6 +15,9 @@ pub const RETRY_AFTER: Duration = Duration::from_secs(10);
 pub const UNLOAD_AFTER: Duration = Duration::from_secs(30);
 const UNLOAD_SWEEP_EVERY: Duration = Duration::from_secs(1);
 const MAXIMUM_SCREEN_SPACE_ERROR: f64 = 16.0;
+const DETAIL_PIXELS: f64 = 1280.0 * 720.0;
+const MAX_LOADED_TILES: usize = 500;
+const SEEN_LATELY: Duration = Duration::from_secs(2);
 const LOWEST_GROUND_M: f64 = 1_000.0;
 const OCCLUDER_RADII: DVec3 = DVec3::new(6_378_137.0 - LOWEST_GROUND_M, 6_378_137.0 - LOWEST_GROUND_M, 6_356_752.314_245 - LOWEST_GROUND_M);
 
@@ -157,6 +160,25 @@ fn unload(tile: &mut Tile, now: Instant) {
     tile.children.iter_mut().for_each(|child| unload(child, now));
 }
 
+pub(super) fn cutoff(mut used: Vec<Instant>, most: usize) -> Option<Instant> {
+    (used.len() > most && most > 0).then(|| *used.select_nth_unstable_by(most - 1, |a, b| b.cmp(a)).1)
+}
+
+fn used_meshes(tile: &Tile) -> Vec<Instant> {
+    tile.used.filter(|_| matches!(tile.content, Content::Meshes(_))).into_iter().chain(tile.children.iter().flat_map(used_meshes)).collect()
+}
+
+fn evict(tile: &mut Tile, cutoff: Instant, now: Instant) {
+    if matches!(tile.content, Content::Meshes(_)) && tile.url.is_some() && !tile.used.is_some_and(|used| used > cutoff || now.duration_since(used) < SEEN_LATELY) {
+        tile.content = Content::Pending;
+    }
+    tile.children.iter_mut().for_each(|child| evict(child, cutoff, now));
+}
+
+fn refine_above(camera: &Camera) -> f64 {
+    MAXIMUM_SCREEN_SPACE_ERROR * (camera.height_px * camera.height_px * camera.aspect / DETAIL_PIXELS).sqrt().max(1.0)
+}
+
 fn loaded(tile: &Tile) -> usize {
     usize::from(matches!(tile.content, Content::Meshes(_))) + tile.children.iter().map(loaded).sum::<usize>()
 }
@@ -189,6 +211,9 @@ impl Tileset {
         if self.swept.is_none_or(|swept| now.duration_since(swept) >= UNLOAD_SWEEP_EVERY) {
             unload(&mut root, now);
             self.swept = Some(now);
+        }
+        if let Some(oldest) = cutoff(used_meshes(&root), MAX_LOADED_TILES) {
+            evict(&mut root, oldest, now);
         }
         self.root = root;
         (drawn, wanted)
@@ -231,7 +256,7 @@ impl Tileset {
         }
         tile.used = Some(now);
         self.request(tile, path, budget, wanted, now);
-        let refine = camera.screen_space_error(tile.geometric_error, tile.bounds.distance(camera.eye)) > MAXIMUM_SCREEN_SPACE_ERROR;
+        let refine = camera.screen_space_error(tile.geometric_error, tile.bounds.distance(camera.eye)) > refine_above(camera);
         let external = matches!(tile.content, Content::External);
         let children = (refine || external) && !tile.children.is_empty();
         let below: Option<Vec<Arc<Mesh>>> = match children {
@@ -286,6 +311,29 @@ mod tests {
         let shown = Arc::new(mesh());
         let root = Tile { bounds: ahead(camera, 200.0), geometric_error: 1000.0, url: None, content: Content::Meshes(vec![shown.clone()]), children: vec![leaf(camera, "a"), leaf(camera, "b")], used: None };
         (Tileset::new(root, &Url::parse("https://x/root.json").unwrap()), shown)
+    }
+
+    #[test]
+    fn past_the_tile_budget_the_least_recently_seen_go_but_what_is_drawn_stays() {
+        let camera = camera();
+        let now = Instant::now();
+        let seen = |name: &str, ago: u64| Tile { content: Content::Meshes(vec![Arc::new(mesh())]), used: Some(now - Duration::from_secs(ago)), ..leaf(&camera, name) };
+        let mut root = Tile { content: Content::None, url: None, children: vec![seen("a", 5), seen("b", 0), seen("c", 9)], ..leaf(&camera, "root") };
+        let oldest = cutoff(used_meshes(&root), 1).expect("three tiles is over a budget of one");
+        evict(&mut root, oldest, now);
+        assert_eq!(root.children.iter().map(|tile| matches!(tile.content, Content::Meshes(_))).collect::<Vec<_>>(), [false, true, false], "the tile drawn this frame stays");
+        let mut probed = Tile { content: Content::None, url: None, children: vec![seen("view", 1), seen("old", 9)], ..leaf(&camera, "root") };
+        let oldest = cutoff(used_meshes(&probed), 1).expect("over budget");
+        evict(&mut probed, oldest, now);
+        assert!(matches!(probed.children[0].content, Content::Meshes(_)), "the ground probe selects through the same tiles; what the view drew a moment ago is not its to drop");
+    }
+
+    #[test]
+    fn a_phone_screen_asks_for_the_tiles_a_720p_one_would() {
+        let sized = |width: u32, height: u32| refine_above(&Camera::new(&Pose { latitude: 0.0, longitude: 0.0, height: 100.0, heading: 0.0, pitch: 0.0, roll: 0.0, fov: 60.0 }, width, height));
+        assert!((sized(1280, 720) - MAXIMUM_SCREEN_SPACE_ERROR).abs() < 1e-9);
+        assert_eq!(sized(640, 360), MAXIMUM_SCREEN_SPACE_ERROR, "a small view keeps full detail");
+        assert!((sized(2560, 1440) - MAXIMUM_SCREEN_SPACE_ERROR * 2.0).abs() < 1e-9, "four times the pixels of 720p; at full detail a 2280x1080 phone needed 2250 tiles and 5 GB");
     }
 
     #[test]
