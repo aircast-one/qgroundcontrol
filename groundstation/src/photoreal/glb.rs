@@ -13,6 +13,8 @@ const Y_UP_TO_Z_UP: DMat4 = DMat4::from_cols_array(&[1.0, 0.0, 0.0, 0.0, 0.0, 0.
 
 pub struct Mesh {
     pub to_ecef: DMat4,
+    pub low: [f32; 3],
+    pub high: [f32; 3],
     pub positions: Vec<[f32; 3]>,
     pub uvs: Vec<[f32; 2]>,
     pub indices: Vec<u32>,
@@ -142,9 +144,14 @@ fn primitives(glb: &Glb, mesh: u64, to_ecef: DMat4) -> Vec<Mesh> {
                 Some(accessor) => indices(glb, accessor)?,
                 None => (0..positions.len() as u32).collect(),
             };
-            Some(Mesh { to_ecef, positions, uvs, indices, texture: texture(glb, number(primitive, "material"))? })
+            let (low, high) = bounds(&positions);
+            Some(Mesh { to_ecef, low, high, positions, uvs, indices, texture: texture(glb, number(primitive, "material"))? })
         })
         .collect()
+}
+
+pub fn bounds(positions: &[[f32; 3]]) -> ([f32; 3], [f32; 3]) {
+    positions.iter().fold(([f32::MAX; 3], [f32::MIN; 3]), |(low, high), p| (std::array::from_fn(|axis| low[axis].min(p[axis])), std::array::from_fn(|axis| high[axis].max(p[axis]))))
 }
 
 fn walk(glb: &Glb, node: u64, parent: DMat4) -> Vec<Mesh> {

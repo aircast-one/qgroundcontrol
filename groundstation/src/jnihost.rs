@@ -390,6 +390,17 @@ pub extern "system" fn Java_org_mavlink_qgroundcontrol_QGCBridge_videoSetSurface
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_org_mavlink_qgroundcontrol_QGCBridge_photorealSetSurface(env: JNIEnv, _class: JClass, surface: JObject) -> jboolean {
+    #[cfg(feature = "photoreal")]
+    return jboolean::from(crate::photoreal::host::set_surface(env.get_raw(), surface.as_raw()));
+    #[cfg(not(feature = "photoreal"))]
+    {
+        let _ = (env, surface);
+        0
+    }
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_org_mavlink_qgroundcontrol_QGCUsbSerialManager_nativeDeviceNewData(env: JNIEnv, _class: JClass, pointer: jlong, data: JByteArray) {
     if let Ok(bytes) = env.convert_byte_array(&data) {
         crate::platformserial::received(pointer as u32, bytes);

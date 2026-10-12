@@ -330,6 +330,15 @@
             "keywords": "token,api key,openaip"
         },
         {
+            "name": "photorealToken",
+            "shortDesc": "Your own Google Map Tiles API key or Cesium ion token for the photorealistic synthetic view.",
+            "longDesc": "Paste a Google Map Tiles API key or a free Cesium ion token. The synthetic view then draws Google's photorealistic 3D tiles on this device; the requests are billed to your key. Leave it empty for the OpenStreetMap view.",
+            "type": "string",
+            "default": "",
+            "label": "Photorealistic 3D",
+            "keywords": "token,api key,google,cesium,ion,photorealistic,3d tiles,synthetic"
+        },
+        {
             "name": "followTarget",
             "shortDesc": "Streams the ground station GPS location to the vehicle for Follow Me mode.",
             "type": "uint32",

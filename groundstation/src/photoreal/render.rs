@@ -144,6 +144,21 @@ impl Renderer {
         self.queue.submit([encoder.finish()]);
     }
 
+    pub fn clear(&mut self, target: &wgpu::TextureView, depth: &wgpu::TextureView) {
+        let mut encoder = self.device.create_command_encoder(&Default::default());
+        drop(encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+            label: Some("photoreal sky"),
+            color_attachments: &[Some(wgpu::RenderPassColorAttachment { view: target, depth_slice: None, resolve_target: None, ops: wgpu::Operations { load: wgpu::LoadOp::Clear(SKY), store: wgpu::StoreOp::Store } })],
+            depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment { view: depth, depth_ops: Some(wgpu::Operations { load: wgpu::LoadOp::Clear(0.0), store: wgpu::StoreOp::Store }), stencil_ops: None }),
+            ..Default::default()
+        }));
+        self.queue.submit([encoder.finish()]);
+    }
+
+    pub fn present(&self, frame: wgpu::SurfaceTexture) {
+        self.queue.present(frame);
+    }
+
     pub fn depth(&self, width: u32, height: u32) -> wgpu::TextureView {
         self.device
             .create_texture(&wgpu::TextureDescriptor { label: Some("photoreal depth"), size: wgpu::Extent3d { width, height, depth_or_array_layers: 1 }, mip_level_count: 1, sample_count: 1, dimension: wgpu::TextureDimension::D2, format: DEPTH, usage: wgpu::TextureUsages::RENDER_ATTACHMENT, view_formats: &[] })

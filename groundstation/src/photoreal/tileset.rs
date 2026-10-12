@@ -218,7 +218,7 @@ mod tests {
     fn a_parent_stays_drawn_until_every_visible_child_has_loaded() {
         let camera = camera();
         let at = |metres: f64| Obb { center: camera.eye + camera.forward * metres, half: [DVec3::X * 50.0, DVec3::Y * 50.0, DVec3::Z * 50.0] };
-        let parent_mesh = Arc::new(Mesh { to_ecef: DMat4::IDENTITY, positions: Vec::new(), uvs: Vec::new(), indices: Vec::new(), texture: image::RgbaImage::new(1, 1) });
+        let parent_mesh = Arc::new(Mesh { to_ecef: DMat4::IDENTITY, low: [0.0; 3], high: [0.0; 3], positions: Vec::new(), uvs: Vec::new(), indices: Vec::new(), texture: image::RgbaImage::new(1, 1) });
         let child = |path: &str| Tile { bounds: at(200.0), geometric_error: 1.0, content: Content::Pending(Url::parse(&format!("https://x/{path}.glb")).unwrap()), children: Vec::new() };
         let root = Tile { bounds: at(200.0), geometric_error: 1000.0, content: Content::Meshes(vec![parent_mesh.clone()]), children: vec![child("a"), child("b")] };
         let mut tiles = Tileset::new(root, &Url::parse("https://x/root.json").unwrap());

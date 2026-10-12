@@ -19,7 +19,7 @@ required-features = ["photoreal"]
 [features]
 native-host = []
 jni-host = ["native-host", "dep:jni"]
-photoreal = ["dep:wgpu", "dep:glam", "dep:pollster"]
+photoreal = ["dep:wgpu", "dep:glam", "dep:pollster", "dep:earcut"]
 
 [dependencies]
 mavlink = { version = "0.18", default-features = false, features = ["dialect-ardupilotmega", "std", "mav2-message-signing", "mav2-message-extensions"] }
@@ -71,6 +71,7 @@ geo-types = "0.7.20"
 wgpu = { version = "30.0.1", optional = true }
 glam = { version = "0.34.1", optional = true }
 pollster = { version = "1.0.1", optional = true }
+earcut = { version = "0.4.11", optional = true }
 
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
 libc = "0.2"

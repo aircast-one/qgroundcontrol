@@ -130,8 +130,13 @@ pub fn synthetic(backend: &dyn Backend, gimbals: &Value, aim: (f64, f64)) -> Val
         "pan": if gimbal.is_none() { pan } else { 0.0 },
         "fov": CAMERA_FOV_DEG,
         "imagery": imagery(&provider),
+        "photoreal": photoreal(),
         "beam": beam((latitude, longitude), above_home, heading, pitch, CAMERA_FOV_DEG).iter().map(|(lat, lon)| json!({ "latitude": lat, "longitude": lon })).collect::<Vec<_>>(),
     })
+}
+
+fn photoreal() -> bool {
+    cfg!(all(feature = "photoreal", feature = "jni-host"))
 }
 
 pub fn overlay_deps() -> Vec<String> {

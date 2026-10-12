@@ -88,6 +88,10 @@ fn take(ptr: *mut c_char) -> String {
     owned
 }
 
+pub(crate) fn core_get(path: &str) -> String {
+    CORE.get(path)
+}
+
 fn give(text: String) -> *mut c_char {
     c(&text).into_raw()
 }

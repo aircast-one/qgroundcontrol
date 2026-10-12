@@ -9,6 +9,7 @@ import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
@@ -65,7 +66,7 @@ internal enum class SyntheticDraw(val note: String?) {
     Failed("3D view failed to start"),
 }
 
-private val pages = mutableStateMapOf<WebView, SyntheticDraw>()
+private val pages = mutableStateMapOf<Any, SyntheticDraw>()
 
 internal fun pageOf(draws: Collection<SyntheticDraw>): SyntheticDraw = when {
     SyntheticDraw.Drawn in draws -> SyntheticDraw.Drawn
@@ -145,8 +146,7 @@ private fun syntheticWebView(context: Context, onLoaded: () -> Unit, onDraw: (Sy
 }
 
 @Composable
-internal fun SyntheticView(modifier: Modifier = Modifier, aimable: Boolean = false) {
-    val view by qgcPath(SYNTHETIC_VIEW)
+private fun BoxScope.SyntheticPage(view: JSONObject?) {
     val context = LocalContext.current
     val overlays by qgcPath(SYNTHETIC_OVERLAYS)
     var loaded by remember { mutableStateOf(false) }
@@ -159,6 +159,23 @@ internal fun SyntheticView(modifier: Modifier = Modifier, aimable: Boolean = fal
     }
     LaunchedEffect(view, loaded) { view?.takeIf { loaded }?.let { web.evaluateJavascript(syntheticPoseScript(it), null) } }
     LaunchedEffect(overlays, loaded) { overlays?.takeIf { loaded }?.let { web.evaluateJavascript(syntheticOverlaysScript(it), null) } }
+    AndroidView({ web }, Modifier.fillMaxSize())
+    draw.note?.let { note -> SyntheticNote(note, loading = draw == SyntheticDraw.Loading, Modifier.align(Alignment.Center)) }
+}
+
+@Composable
+private fun PhotorealPage() {
+    val shown = remember { Any() }
+    DisposableEffect(shown) {
+        pages[shown] = SyntheticDraw.Drawn
+        onDispose { pages.remove(shown) }
+    }
+    PhotorealSurface(Modifier.fillMaxSize())
+}
+
+@Composable
+internal fun SyntheticView(modifier: Modifier = Modifier, aimable: Boolean = false) {
+    val view by qgcPath(SYNTHETIC_VIEW)
     val canAim = aimable && view?.optBoolean("aimable") == true
     val pitch by rememberUpdatedState(view?.optDouble("pitch", DEFAULT_TILT_DEG) ?: DEFAULT_TILT_DEG)
     val pan by rememberUpdatedState(view?.optDouble("pan", 0.0) ?: 0.0)
@@ -182,8 +199,7 @@ internal fun SyntheticView(modifier: Modifier = Modifier, aimable: Boolean = fal
             detectTapGestures(onDoubleTap = { send(DEFAULT_TILT_DEG, 0.0) })
         }
     Box(modifier.then(aiming)) {
-        AndroidView({ web }, Modifier.fillMaxSize())
-        draw.note?.let { note -> SyntheticNote(note, loading = draw == SyntheticDraw.Loading, Modifier.align(Alignment.Center)) }
+        if (photorealChosen(view)) PhotorealPage() else SyntheticPage(view)
     }
 }
 

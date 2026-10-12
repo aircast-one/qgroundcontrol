@@ -174,7 +174,7 @@ val buildCoreLibrary by tasks.registering(NativeLibs::class) {
     val triple = coreTriples[abi] ?: error("no Rust target for the $abi ABI")
     workingDir = coreCrate
     environment("ANDROID_NDK_HOME", android.ndkDirectory.absolutePath)
-    commandLine("cargo", "ndk", "--target", abi, "--platform", qgc("minSdk"), "rustc", "--lib", "--release", "--features", "jni-host", "--crate-type", "cdylib")
+    commandLine("cargo", "ndk", "--target", abi, "--platform", qgc("minSdk"), "rustc", "--lib", "--release", "--features", "jni-host,photoreal", "--crate-type", "cdylib")
     outputs.upToDateWhen { false }
     doLast {
         copy {

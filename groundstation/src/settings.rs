@@ -373,7 +373,7 @@ const HIDDEN_WHEN: &[(&str, &str, bool)] = &[
 
 const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
     (MAP_PROVIDERS, &[
-        ("Tokens", &["mapboxToken", "esriToken", "vworldToken", "tiandituToken", "openaipToken"]),
+        ("Tokens", &["mapboxToken", "esriToken", "vworldToken", "tiandituToken", "openaipToken", "photorealToken"]),
         ("Mapbox Login", &["mapboxAccount", "mapboxStyle"]),
         ("Custom Map URL", &["customURL"]),
     ]),
@@ -561,7 +561,7 @@ pub fn video_row_shown(name: &str, stream_source: bool) -> bool {
 const MAP_PROVIDERS: &str = "appSettings#mapProviders";
 const APP_LOG_VIEWER: &str = "appSettings#logViewer";
 const APP_LOG_VIEWER_ROWS: [&str; 1] = ["showAppLogTimestampAsElapsedTime"];
-const MAP_PROVIDER_ROWS: [&str; 8] = ["mapboxToken", "esriToken", "vworldToken", "tiandituToken", "openaipToken", "mapboxAccount", "mapboxStyle", "customURL"];
+const MAP_PROVIDER_ROWS: [&str; 9] = ["mapboxToken", "esriToken", "vworldToken", "tiandituToken", "openaipToken", "photorealToken", "mapboxAccount", "mapboxStyle", "customURL"];
 
 pub fn slice_shows(slice: &str, name: &str) -> bool {
     match slice {
