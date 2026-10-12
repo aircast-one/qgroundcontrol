@@ -15,14 +15,14 @@ use super::tileset::{self, GOOGLE_ROOT, ION_GOOGLE_ASSET, Parsed, Request, Tiles
 
 const WORKERS: usize = 8;
 const MAX_IN_FLIGHT: usize = 24;
+const PROBE_SLOTS: usize = 4;
 const CLEARANCE_M: f64 = 2.0;
 const FOLLOW_AT_60_HZ: f64 = 0.25;
 const LONGEST_STEP: Duration = Duration::from_millis(100);
 const PROBE_EVERY: Duration = Duration::from_millis(500);
 const RESELECT_EVERY: Duration = Duration::from_secs(1);
-const PROBE_ABOVE_M: f64 = 400.0;
-const FIRST_PROBE_HEIGHT_M: f64 = 9_000.0;
-const PROBE_FOV: f64 = 20.0;
+const PROBE_HEIGHT_M: f64 = 9_000.0;
+const PROBE_FOV: f64 = 1.0;
 const PROBE_PX: u32 = 256;
 const UNKNOWN_GROUND_M: f64 = 1_000.0;
 const SETTLED_DEGREES: f64 = 5e-7;
@@ -376,8 +376,7 @@ impl Session {
     }
 
     fn google_ground(&mut self, latitude: f64, longitude: f64, known: Option<f64>, now: Instant) -> Option<f64> {
-        let height = known.map_or(FIRST_PROBE_HEIGHT_M, |ground| ground + PROBE_ABOVE_M);
-        let camera = Camera::new(&Pose { latitude, longitude, height, heading: 0.0, pitch: -90.0, roll: 0.0, fov: PROBE_FOV }, PROBE_PX, PROBE_PX);
+        let camera = Camera::new(&Pose { latitude, longitude, height: PROBE_HEIGHT_M, heading: 0.0, pitch: -90.0, roll: 0.0, fov: PROBE_FOV }, PROBE_PX, PROBE_PX);
         let room = self.room();
         let Source::Google(Some(tiles)) = &mut self.source else { return known };
         let (meshes, wanted) = tiles.select(&camera, room, now);
@@ -413,7 +412,7 @@ impl Session {
     }
 
     fn select(&mut self, camera: &Camera, target: &Target, now: Instant) -> bool {
-        let room = self.room();
+        let room = self.room().saturating_sub(PROBE_SLOTS);
         let ground = self.under.height.or(self.home.height).unwrap_or(0.0);
         let (meshes, jobs) = match &mut self.source {
             Source::Google(Some(tiles)) => {

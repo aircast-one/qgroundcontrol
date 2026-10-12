@@ -6,6 +6,7 @@ use super::geo::{east_north_up, ecef};
 use super::mesh::Mesh;
 
 const PROBE_HEIGHT_M: f64 = 10_000.0;
+const EARTHLY_M: std::ops::RangeInclusive<f64> = -1_000.0..=9_000.0;
 
 fn hit_box(origin: Vec3, direction: Vec3, low: [f32; 3], high: [f32; 3]) -> bool {
     let (near, far) = (0..3).fold((f32::MIN, f32::MAX), |(near, far), axis| {
@@ -48,7 +49,7 @@ fn distance_along(mesh: &Mesh, origin: DVec3, direction: DVec3) -> Option<f64> {
 pub fn height_at(meshes: &[Arc<Mesh>], latitude: f64, longitude: f64) -> Option<f64> {
     let origin = ecef(latitude, longitude, PROBE_HEIGHT_M);
     let down = -east_north_up(latitude, longitude).z_axis;
-    meshes.iter().filter_map(|mesh| distance_along(mesh, origin, down)).min_by(f64::total_cmp).map(|metres| PROBE_HEIGHT_M - metres)
+    meshes.iter().filter_map(|mesh| distance_along(mesh, origin, down)).min_by(f64::total_cmp).map(|metres| PROBE_HEIGHT_M - metres).filter(|height| EARTHLY_M.contains(height))
 }
 
 #[cfg(test)]
@@ -67,5 +68,17 @@ mod tests {
         let found = height_at(std::slice::from_ref(&mesh), latitude, longitude).expect("a hit");
         assert!((found - ground).abs() < 0.01, "found {found}");
         assert_eq!(height_at(&[mesh], latitude + 0.01, longitude), None, "a kilometre away there is no ground loaded");
+    }
+
+    #[test]
+    fn a_coarse_tile_far_below_the_real_surface_is_no_ground_to_stand_on() {
+        let (latitude, longitude) = (47.397, 8.5455);
+        let frame = east_north_up(latitude, longitude);
+        let chord = |depth: f64| {
+            let to_ecef = DMat4::from_mat3_translation(DMat3::from_cols(frame.x_axis, frame.y_axis, frame.z_axis), ecef(latitude, longitude, depth));
+            Arc::new(Mesh::new(to_ecef, vec![[-5e5, -5e5, 0.0], [5e5, -5e5, 0.0], [0.0, 5e5, 0.0]], vec![[0.0; 2]; 3], vec![0, 1, 2], image::RgbaImage::new(1, 1), Layer::Opaque))
+        };
+        assert_eq!(height_at(&[chord(-22_600.0)], latitude, longitude), None, "the flat face of a globe-sized tile sags 22 km under Zurich; standing on it puts the camera inside the earth");
+        assert_eq!(height_at(&[chord(-12_700_000.0)], latitude, longitude), None, "nor the far side of the planet");
     }
 }
