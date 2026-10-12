@@ -4,6 +4,9 @@ import android.os.SystemClock
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
@@ -52,6 +55,7 @@ import one.aircast.android.bridge.settingControl
 private const val FLY_VIEW_SETTINGS = "settings.flyViewSettings"
 private val RAIL_SLIDER_LENGTH = 140.dp
 private val RAIL_SLIDER_THICKNESS = 40.dp
+private val RAIL_SLIDER_SHORTEST = 64.dp
 
 private fun Modifier.railSlider(): Modifier = this
     .width(RAIL_SLIDER_THICKNESS)
@@ -67,6 +71,13 @@ private fun Modifier.railSlider(): Modifier = this
         layout(placeable.height, placeable.width) { placeable.place(-placeable.width, 0) }
     }
 private const val GIMBAL_VIEW = "view.gimbalIndicator"
+
+@Composable
+private fun ColumnScope.RailSlot(content: @Composable BoxScope.() -> Unit) {
+    BoxWithConstraints(Modifier.weight(1f, fill = false).width(RAIL_SLIDER_THICKNESS).height(RAIL_SLIDER_LENGTH)) {
+        if (maxHeight >= RAIL_SLIDER_SHORTEST) content()
+    }
+}
 
 internal data class RcCameraChannels(val tilt: Int, val pan: Int, val zoom: Int, val light: Int, val record: Int) {
     val any: Boolean get() = listOf(tilt, pan, zoom, light, record).any { it > 0 }
@@ -91,6 +102,7 @@ private fun PwmSlider(label: String, channel: Int, pwm: Int, onPwm: (Int) -> Uni
     var lastSent by remember(channel) { mutableLongStateOf(0L) }
     val latest by rememberUpdatedState(pwm)
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        RailSlot {
         Slider(
             value = pwm.toFloat(),
             onValueChange = { raw ->
@@ -106,6 +118,7 @@ private fun PwmSlider(label: String, channel: Int, pwm: Int, onPwm: (Int) -> Uni
             valueRange = PWM_MIN.toFloat()..PWM_MAX.toFloat(),
             modifier = Modifier.railSlider(),
         )
+        }
         Text(label, style = MaterialTheme.typography.labelMedium)
     }
 }
@@ -124,7 +137,7 @@ private const val GIMBAL_TRACK_ALPHA = 0.8f
 private const val GIMBAL_REST_ALPHA = 0.25f
 
 @Composable
-private fun GimbalTiltSlider(pitch: Double?) {
+private fun GimbalTiltSlider(pitch: Double?, onRecenter: (() -> Unit)?) {
     var dragging by remember { mutableStateOf<Float?>(null) }
     var lastSent by remember { mutableLongStateOf(0L) }
     val shown = dragging ?: (pitch?.toFloat() ?: 0f).coerceIn(GIMBAL_TILT_MIN, GIMBAL_TILT_MAX)
@@ -138,12 +151,8 @@ private fun GimbalTiltSlider(pitch: Double?) {
         }
     }
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        Text(
-            "${kotlin.math.round(shown).toInt()}\u00b0",
-            style = MaterialTheme.typography.labelMedium,
-            modifier = Modifier.clickable(onClickLabel = "Tilt the gimbal") { wake++ },
-        )
-        Box(Modifier.width(RAIL_SLIDER_THICKNESS).height(RAIL_SLIDER_LENGTH)) {
+        TiltReadout(shown.toDouble(), onRecenter, onTap = { wake++ }, tapLabel = "Tilt the gimbal")
+        RailSlot {
         if (!active) Box(Modifier.matchParentSize().clickable(onClickLabel = "Tilt the gimbal") { wake++ })
         androidx.compose.animation.AnimatedVisibility(visible = active, enter = androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.fadeOut()) {
         Slider(
@@ -188,15 +197,20 @@ fun RcCameraControls(modifier: Modifier = Modifier) {
     val vehiclesJson by qgcPath(one.aircast.map.VEHICLES_VIEW)
     val vehicleId = activeVehicleId(vehiclesJson)
     val streamRecording by qgcBool(VIDEO_RECORDING_STATE)
+    val syntheticAims = rememberSyntheticAims()
+    val syntheticJson by qgcPath(SYNTHETIC_VIEW)
     var tilt by remember(vehicleId) { mutableIntStateOf(PWM_CENTER) }
     var pan by remember(vehicleId) { mutableIntStateOf(PWM_CENTER) }
     var zoom by remember(vehicleId) { mutableIntStateOf(PWM_CENTER) }
     var lightOn by remember(vehicleId) { mutableStateOf(false) }
     var channelRecording by remember(vehicleId) { mutableStateOf(false) }
     DisposableEffect(vehicleId) { onDispose { cameraRcControls.release() } }
-    if (!hasVehicle() || (!channels.any && !gimbalManager)) return
+    if (!hasVehicle() || (!channels.any && !gimbalManager && !syntheticAims)) return
     val gimbal = remember(gimbalJson) { gimbalIndicator(gimbalJson) }
     var gimbalRefused by remember { mutableStateOf<String?>(null) }
+    val syntheticTilt = syntheticJson?.optDouble("tilt")?.takeIf(Double::isFinite)
+    val target = recenterTarget(syntheticAims, syntheticTilt, syntheticJson?.optDouble("pan")?.takeIf(Double::isFinite), gimbal)
+    val onRecenter = { aimed: RecenterTarget -> { recenter(aimed) { gimbalRefused = it } }.takeIf { target == aimed } }
     var options by remember { mutableStateOf(false) }
     OpenOnRequest("gimbal") { options = true }
     LaunchedEffect(gimbalRefused) {
@@ -212,8 +226,9 @@ fun RcCameraControls(modifier: Modifier = Modifier) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            if (gimbal != null) GimbalTiltSlider(gimbal.pitchDegrees)
+        if (syntheticAims) TiltReadout(syntheticTilt ?: DEFAULT_TILT_DEG, onRecenter(RecenterTarget.Synthetic))
+        Row(Modifier.weight(1f, fill = false), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+            if (gimbal != null) GimbalTiltSlider(gimbal.pitchDegrees, onRecenter(RecenterTarget.Gimbal))
             if (!gimbalManager && channels.tilt > 0) PwmSlider("Tilt", channels.tilt, tilt) { tilt = it }
             if (!gimbalManager && channels.pan > 0) PwmSlider("Pan", channels.pan, pan) { pan = it }
             if (channels.zoom > 0) PwmSlider("Zoom", channels.zoom, zoom) { zoom = it }

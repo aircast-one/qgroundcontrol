@@ -36,6 +36,7 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.WindowInsets
@@ -286,16 +287,17 @@ internal fun FlyPortrait(
                             Column(Modifier.weight(1f, fill = false).clipToBounds(), verticalArrangement = Arrangement.spacedBy(AircastSpace.s2)) { overlays() }
                             if (!split) OsdCompassDial(PORTRAIT_DIAL_SIZE, Modifier.padding(top = AircastSpace.s2))
                         }
-                        MapButtons(
-                            view = view,
-                            split = split,
-                            hasVideo = hasVideo,
-                            onView = onView,
-                            modifier = Modifier
+                        Column(
+                            Modifier
                                 .align(Alignment.TopEnd)
-                                .padding(end = AircastSpace.s3, top = buttonsTop),
-                        )
-                        Box(Modifier.align(Alignment.BottomEnd).padding(end = AircastSpace.s3, bottom = MAP_SCALE_CLEARANCE + railLift)) { rail(split) }
+                                .fillMaxHeight()
+                                .padding(end = AircastSpace.s3, top = buttonsTop, bottom = MAP_SCALE_CLEARANCE + railLift),
+                            horizontalAlignment = Alignment.End,
+                        ) {
+                            MapButtons(view = view, split = split, hasVideo = hasVideo, onView = onView, modifier = Modifier)
+                            Spacer(Modifier.weight(1f))
+                            Box(Modifier.padding(top = AircastSpace.s2)) { rail(split) }
+                        }
                     }
                 },
                 deck = {

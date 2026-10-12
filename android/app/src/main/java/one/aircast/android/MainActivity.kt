@@ -558,7 +558,6 @@ fun AircastShell(hostView: android.view.View?) {
                     }
                     val flyKeyRow: @Composable () -> Unit = {
                         flyObstacleArc()
-                        one.aircast.android.ui.RecenterCamera()
                     }
                     val flyRail: @Composable (Boolean, Boolean) -> Unit = { stacked, splitRoom ->
                         if (stacked) {
@@ -567,7 +566,7 @@ fun AircastShell(hostView: android.view.View?) {
                                 flyCameraControlLayer()
                             }
                         } else {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(verticalAlignment = Alignment.Top) {
                                 LayoutWidget("cameraSwitch") { CameraSwitch(splitRoom, Modifier.padding(end = AircastSpace.s2)) }
                                 Box(Modifier.widthIn(min = RAIL_SHUTTER_ROOM), contentAlignment = Alignment.Center) { flyCameraControlLayer() }
                             }

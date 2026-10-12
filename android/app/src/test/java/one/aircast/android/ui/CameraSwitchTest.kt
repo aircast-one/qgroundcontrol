@@ -62,9 +62,11 @@ class CameraSwitchTest {
     }
 
     @Test
-    fun `past three cameras the picker is one chip with a menu, so it never runs off the screen`() {
-        assertEquals(false, pickedFromMenu(cameraSwitchState(reading(camera(0, active = true), camera(1), camera(2)))!!))
-        assertEquals(true, pickedFromMenu(cameraSwitchState(reading(camera(0, active = true), camera(1), camera(2), camera(3)))!!))
+    fun `the chip names the camera on screen, or the first one when none is`() {
+        assertEquals(1, chipCamera(reading(camera(0), camera(1, active = true)))?.slot)
+        assertEquals(0, chipCamera(reading(camera(0), camera(1)))?.slot)
+        assertNull(chipCamera(reading()))
+        assertNull(chipCamera(null))
     }
 
     @Test
