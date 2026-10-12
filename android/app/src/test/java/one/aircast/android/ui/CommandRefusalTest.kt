@@ -2,22 +2,19 @@ package one.aircast.android.ui
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CommandRefusalTest {
 
     @Test
-    fun `a late confirmation withdraws only its own sentence`() {
-        val late = "Loiter was not confirmed by the aircraft."
-        assertNull(withdrawn(late, late))
-        assertEquals(
-            "a newer refusal shown since belongs to another command and stays",
-            "Altitude Hold was not confirmed by the aircraft.",
-            withdrawn("Altitude Hold was not confirmed by the aircraft.", late),
-        )
-        assertNull(withdrawn(null, late))
+    fun `the aircraft's reply to a mode change is told once by the core, not repeated in the banner`() {
+        assertTrue(isModeReply("No such mode 26"))
+        assertTrue(isModeReply("Mode change to AUTO failed: requires position"))
+        assertFalse(isModeReply("Arm: Mode not armable"))
+        val reply = VehicleMessage(0, "12:00:00", "Warning", MessageSeverity.Warning, "No such mode 26")
+        val fence = reply.copy(index = 1, text = "Fence breached")
+        assertEquals(listOf(fence), bannerMessages(listOf(reply, fence)))
     }
 
     @Test

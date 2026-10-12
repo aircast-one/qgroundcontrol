@@ -6,6 +6,37 @@ const RESPONSES: [&str; 3] = ["Arm: ", "Arming denied: ", "Disarming denied: "];
 const DISARM_RESPONSE: &str = "Disarming denied: ";
 const MODE_NOT_ARMABLE: &str = "mode not armable";
 pub const REPLY_WAIT_MS: u64 = 800;
+const NO_SUCH_MODE: &str = "No such mode ";
+const MODE_CHANGE_TO: &str = "Mode change to ";
+const MODE_REPLIES: [&str; 3] = [NO_SUCH_MODE, MODE_CHANGE_TO, "Flight mode change failed"];
+const NOT_IN_FIRMWARE: &str = "this aircraft's firmware doesn't have it";
+
+pub fn is_mode_reply(text: &str) -> bool {
+    MODE_REPLIES.iter().any(|prefix| text.starts_with(prefix))
+}
+
+pub fn missing_mode(text: &str) -> Option<u32> {
+    text.strip_prefix(NO_SUCH_MODE)?.trim().parse().ok()
+}
+
+fn mode_reason(text: &str) -> Option<String> {
+    match missing_mode(text) {
+        Some(_) => Some(NOT_IN_FIRMWARE.to_string()),
+        None => text.strip_prefix(MODE_CHANGE_TO).and_then(|rest| rest.split_once(": ").or_else(|| rest.split_once(", "))).map(|(_, reason)| sentence(reason.trim().trim_end_matches('.'))),
+    }
+}
+
+pub fn mode_change(asked: &str, unanswered: bool, reasons: &[String], current: &str) -> String {
+    let still = match current.trim() {
+        "" => String::new(),
+        mode => format!(" Still in {mode}."),
+    };
+    match (unanswered, reasons.iter().find_map(|text| mode_reason(text))) {
+        (true, _) => format!("The aircraft didn't answer the switch to {asked}. Check the link and try again."),
+        (false, Some(reason)) => format!("Can't switch to {asked}: {reason}.{still}"),
+        (false, None) => format!("The aircraft refused {asked}.{still}"),
+    }
+}
 
 pub fn is_arming_text(text: &str) -> bool {
     PREFIXES.iter().any(|prefix| text.starts_with(prefix))
@@ -86,6 +117,23 @@ mod tests {
     fn with_no_reason_it_still_says_what_happened() {
         assert_eq!(arming(true, false, &[], "Loiter", VehicleClass::MultiRotor), "The aircraft refused to arm. The readiness list may say why.");
         assert_eq!(arming(true, true, &said(&["Arm: Mode not armable"]), "Land", VehicleClass::MultiRotor), "The aircraft didn't answer the arm command. Check the link and try again.");
+    }
+
+    #[test]
+    fn a_refused_mode_change_says_why_and_what_the_aircraft_is_still_doing() {
+        assert_eq!(mode_change("Autoland", false, &said(&["No such mode 26"]), "RTL"), "Can't switch to Autoland: this aircraft's firmware doesn't have it. Still in RTL.");
+        assert_eq!(mode_change("Auto", false, &said(&["Mode change to AUTO failed: requires position"]), "Stabilize"), "Can't switch to Auto: requires position. Still in Stabilize.");
+        assert_eq!(mode_change("Guided", false, &said(&["Mode change to GUIDED denied, in fence recovery"]), "RTL"), "Can't switch to Guided: in fence recovery. Still in RTL.");
+        assert_eq!(mode_change("Cruise", false, &said(&["Flight mode change failed"]), "FBW A"), "The aircraft refused Cruise. Still in FBW A.");
+        assert_eq!(mode_change("Loiter", false, &[], ""), "The aircraft refused Loiter.");
+        assert_eq!(mode_change("Loiter", true, &[], "RTL"), "The aircraft didn't answer the switch to Loiter. Check the link and try again.");
+    }
+
+    #[test]
+    fn the_autopilots_reply_to_a_mode_change_is_recognised_and_a_missing_mode_is_named() {
+        assert!(is_mode_reply("No such mode 26") && is_mode_reply("Mode change to AUTO failed: requires position") && is_mode_reply("Flight mode change failed"));
+        assert!(!is_mode_reply("Arm: Mode not armable"));
+        assert_eq!((missing_mode("No such mode 26"), missing_mode("Mode change to AUTO failed: x")), (Some(26), None));
     }
 
     #[test]

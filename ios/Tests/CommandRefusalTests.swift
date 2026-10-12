@@ -2,15 +2,13 @@ import XCTest
 @testable import Aircast
 
 final class CommandRefusalTests: XCTestCase {
-    func testALateConfirmationWithdrawsOnlyItsOwnSentence() {
-        let late = "Loiter was not confirmed by the aircraft."
-        XCTAssertNil(withdrawn(late, late))
-        XCTAssertEqual(
-            withdrawn("Altitude Hold was not confirmed by the aircraft.", late),
-            "Altitude Hold was not confirmed by the aircraft.",
-            "a newer refusal shown since belongs to another command and stays"
-        )
-        XCTAssertNil(withdrawn(nil, late))
+    func testTheAircraftsReplyToAModeChangeIsToldOnceByTheCoreNotRepeatedInTheBanner() {
+        XCTAssertTrue(isModeReply("No such mode 26"))
+        XCTAssertTrue(isModeReply("Mode change to AUTO failed: requires position"))
+        XCTAssertFalse(isModeReply("Arm: Mode not armable"))
+        let reply = VehicleMessage(index: 0, time: "12:00:00", severity: "Warning", level: .Warning, text: "No such mode 26")
+        let fence = VehicleMessage(index: 1, time: "12:00:00", severity: "Warning", level: .Warning, text: "Fence breached")
+        XCTAssertEqual(bannerMessages([reply, fence]), [fence])
     }
 
     func testTheAircraftsReplyToAnArmAttemptIsToldOnceByTheCoreNotRepeatedInTheBanner() {

@@ -24,7 +24,7 @@ pub struct Observed {
 enum Wait {
     #[default]
     None,
-    Mode { since_ms: u64, tries: u32 },
+    Mode { since_ms: u64, tries: u32, answered: bool },
     Armed { since_ms: u64 },
     Accepted { command: u16, since_ms: u64, failure: Option<String> },
 }
@@ -87,6 +87,20 @@ impl Executor {
         if matches!(self.wait, Wait::Accepted { command: waited, .. } if waited == command) {
             self.acked = Some((command, accepted));
         }
+        if let Wait::Mode { since_ms, tries, answered: false } = self.wait
+            && command == guidedcmd::CMD_DO_SET_MODE
+        {
+            match accepted {
+                true => self.wait = Wait::Mode { since_ms, tries, answered: true },
+                false => {
+                    let mode = match self.steps.get(self.at) {
+                        Some(Step::SetMode { mode, .. } | Step::WaitForMode(mode)) => mode.clone(),
+                        _ => String::new(),
+                    };
+                    self.fail(format!("Unable to change to {mode} mode."));
+                }
+            }
+        }
     }
 
     fn finish(&mut self) {
@@ -104,7 +118,7 @@ impl Executor {
         let mut out = Vec::new();
         while self.running() {
             match self.wait.clone() {
-                Wait::Mode { since_ms, tries } => {
+                Wait::Mode { since_ms, tries, .. } => {
                     let wanted = matches!(self.steps.get(self.at), Some(Step::SetMode { mode, .. } | Step::WaitForMode(mode)) if *mode == observed.flight_mode);
                     if wanted {
                         self.wait = Wait::None;
@@ -118,7 +132,7 @@ impl Executor {
                     match (tries < MODE_TRIES, resend) {
                         (true, Some(emit)) => {
                             out.push(emit);
-                            self.wait = Wait::Mode { since_ms: now_ms, tries: tries + 1 };
+                            self.wait = Wait::Mode { since_ms: now_ms, tries: tries + 1, answered: false };
                         }
                         _ => {
                             let mode = match self.steps.get(self.at) {
@@ -171,9 +185,9 @@ impl Executor {
                 Step::SetMode { mode, .. } | Step::WaitForMode(mode) if mode == observed.flight_mode => self.at += 1,
                 Step::SetMode { .. } => {
                     out.extend(mode_emit(&step));
-                    self.wait = Wait::Mode { since_ms: now_ms, tries: 1 };
+                    self.wait = Wait::Mode { since_ms: now_ms, tries: 1, answered: false };
                 }
-                Step::WaitForMode(_) => self.wait = Wait::Mode { since_ms: now_ms, tries: MODE_TRIES },
+                Step::WaitForMode(_) => self.wait = Wait::Mode { since_ms: now_ms, tries: MODE_TRIES, answered: true },
                 Step::Arm | Step::WaitArmed if observed.armed => self.at += 1,
                 Step::Arm => {
                     out.push(match guidedcmd::arm(true, false) {
@@ -272,6 +286,21 @@ mod tests {
         assert!(executor.advance(&observed("Loiter", true), 3900).is_empty());
         assert_eq!(executor.snapshot()["state"], "failed");
         assert_eq!(executor.snapshot()["reason"], "Unable to change to RTL mode.");
+    }
+
+    #[test]
+    fn a_mode_the_vehicle_refuses_is_not_asked_for_again() {
+        let mut executor = Executor::default();
+        let plan = steps(guidedcmd::rtl(&copter(), false));
+        assert_eq!(executor.start(plan, &observed("Loiter", true), 0).len(), 1);
+        executor.on_command_result(guidedcmd::CMD_DO_SET_MODE, false);
+        assert!(executor.advance(&observed("Loiter", true), 1300).is_empty(), "a refusal is an answer; asking twice more only repeats it");
+        assert_eq!(executor.snapshot()["reason"], "Unable to change to RTL mode.");
+        let mut accepted = Executor::default();
+        accepted.start(steps(guidedcmd::rtl(&copter(), false)), &observed("Loiter", true), 0);
+        accepted.on_command_result(guidedcmd::CMD_DO_SET_MODE, true);
+        accepted.on_command_result(guidedcmd::CMD_DO_SET_MODE, false);
+        assert_eq!(accepted.snapshot()["state"], "running", "once the vehicle took the change, a later refusal answers some other request");
     }
 
     #[test]

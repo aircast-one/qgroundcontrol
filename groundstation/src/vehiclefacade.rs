@@ -287,7 +287,7 @@ fn has_gripper(autopilot: u8, parameter: impl Fn(&str) -> Option<f64>) -> bool {
 }
 
 pub fn mission_flight_mode(autopilot: u8, vehicle_type: u8, available: &[crate::standardmodes::FlightMode]) -> String {
-    mode_fields(autopilot, vehicle_type, available).get("missionFlightMode").and_then(Value::as_str).unwrap_or_default().to_string()
+    mode_fields(autopilot, vehicle_type, available, &[]).get("missionFlightMode").and_then(Value::as_str).unwrap_or_default().to_string()
 }
 
 pub fn px4_mode_airframes(custom_mode: u32, given: (bool, bool)) -> (bool, bool) {
@@ -313,14 +313,14 @@ fn px4_offered(listed: &[(String, u32, bool, bool, (bool, bool))], class: crate:
         .collect()
 }
 
-fn mode_fields(autopilot: u8, vehicle_type: u8, available: &[crate::standardmodes::FlightMode]) -> serde_json::Map<String, Value> {
+fn mode_fields(autopilot: u8, vehicle_type: u8, available: &[crate::standardmodes::FlightMode], missing: &[u32]) -> serde_json::Map<String, Value> {
     use crate::modes::{AUTOPILOT_ARDUPILOT, AUTOPILOT_PX4, VehicleClass, px4};
     let flagged: Vec<(String, u32, bool, bool, (bool, bool))> = if available.is_empty() {
         crate::modes::table(autopilot, vehicle_type).iter().map(|m| (m.name.to_string(), m.custom_mode, m.can_be_set, m.advanced, (false, true))).collect()
     } else {
         available.iter().map(|m| (m.name.clone(), m.custom_mode, m.can_be_set, m.advanced, (m.fixed_wing, m.multi_rotor))).collect()
     };
-    let listed: Vec<(String, u32, bool, bool)> = flagged.iter().map(|m| (m.0.clone(), m.1, m.2, m.3)).collect();
+    let listed: Vec<(String, u32, bool, bool)> = flagged.iter().map(|m| (m.0.clone(), m.1, m.2 && !missing.contains(&m.1), m.3)).collect();
     let named = |custom: Option<u32>, fallback: &str| custom.and_then(|c| listed.iter().find(|m| m.1 == c)).map_or_else(|| fallback.to_string(), |m| m.0.clone());
     let names = |advanced_only: bool| listed.iter().filter(|m| m.2 && (!advanced_only || m.3)).map(|m| m.0.clone()).collect::<Vec<_>>();
     let apm = |guided: u32, rtl: Option<u32>, smart: Option<u32>, mission: Option<u32>, land: (Option<u32>, &str), pause: (Option<u32>, &str), follow: (Option<u32>, &str), stabilized: (u32, &str)| {
@@ -664,7 +664,7 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
             .chain(object(described))
             .chain(object(firmware_fields(v.autopilot, v.firmware())))
             .chain(motors)
-            .chain(mode_fields(v.autopilot, v.vehicle_type, &v.flight_modes))
+            .chain(mode_fields(v.autopilot, v.vehicle_type, &v.flight_modes, &v.missing_modes))
             .chain([("sensorsPresentBits".to_string(), json!(v.status_bits.present))])
             .collect(),
     );
@@ -2283,27 +2283,35 @@ mod tests {
 
     #[test]
     fn mode_names_come_from_the_firmware_class_and_what_the_vehicle_announced() {
-        let copter = mode_fields(3, 2, &[]);
+        let copter = mode_fields(3, 2, &[], &[]);
         assert_eq!((copter["pauseFlightMode"].as_str(), copter["landFlightMode"].as_str(), copter["missionFlightMode"].as_str()), (Some("Brake"), Some("Land"), Some("Auto")));
         assert_eq!(copter["followFlightMode"], "Follow");
         assert!(copter["advancedFlightModes"].as_array().unwrap().contains(&json!("Brake")));
         assert!(!copter["advancedFlightModes"].as_array().unwrap().contains(&json!("Loiter")));
-        let plane = mode_fields(3, 1, &[]);
+        let plane = mode_fields(3, 1, &[], &[]);
         assert!(!plane["flightModes"].as_array().unwrap().contains(&json!("Initializing")), "a mode the vehicle only reports is never offered");
         assert_eq!((plane["smartRTLFlightMode"].as_str(), plane["landFlightMode"].as_str()), (Some("RTL"), Some("")), "a plane's smart RTL is its RTL and it has no land mode");
-        assert_eq!(mode_fields(3, 12, &[])["rtlFlightMode"], "RTL", "a sub has no RTL number, so the name falls back");
+        assert_eq!(mode_fields(3, 12, &[], &[])["rtlFlightMode"], "RTL", "a sub has no RTL number, so the name falls back");
         assert_eq!((copter["gotoFlightMode"].as_str(), plane["gotoFlightMode"].as_str()), (Some("Guided"), Some("Guided")), "APMFirmwarePlugin::gotoFlightMode is guidedFlightMode");
         let renamed = crate::standardmodes::FlightMode { name: "Return Home".into(), standard_mode: 0, custom_mode: 6, can_be_set: true, advanced: false, fixed_wing: false, multi_rotor: true };
-        let announced = mode_fields(3, 2, &[renamed]);
+        let announced = mode_fields(3, 2, &[renamed], &[]);
         assert_eq!((announced["rtlFlightMode"].as_str(), announced["pauseFlightMode"].as_str()), (Some("Return Home"), Some("Brake")), "an announced list replaces the table and a missing mode falls back");
-        let quad = mode_fields(12, 2, &[]);
+        let quad = mode_fields(12, 2, &[], &[]);
         assert!(quad["flightModes"].as_array().unwrap().contains(&json!("Position")) && !quad["flightModes"].as_array().unwrap().contains(&json!("Land")), "a mode is offered when it can be set and suits the airframe");
-        let fixed = mode_fields(12, 1, &[]);
+        let fixed = mode_fields(12, 1, &[], &[]);
         assert!(!fixed["flightModes"].as_array().unwrap().contains(&json!("Precision Land")), "PX4FirmwarePlugin::updateAvailableFlightModes takes precision land off fixed wings");
         assert!(quad["flightModes"].as_array().unwrap().contains(&json!("Precision Land")));
-        let vtol = mode_fields(12, 22, &[]);
+        let vtol = mode_fields(12, 22, &[], &[]);
         assert!(vtol["flightModes"].as_array().unwrap().contains(&json!("Precision Land")), "a VTOL is neither fixedWing nor multiRotor in QGCMAVLink, so PX4FirmwarePlugin offers it every settable mode");
-        assert!(mode_fields(0, 2, &[]).is_empty());
+        assert!(mode_fields(0, 2, &[], &[]).is_empty());
+    }
+
+    #[test]
+    fn a_mode_the_firmware_lacks_is_not_offered() {
+        let offered = |missing: &[u32]| mode_fields(3, 1, &[], missing)["flightModes"].as_array().unwrap().clone();
+        assert!(!offered(&[]).contains(&json!("Autoland")), "only ArduPlane 4.7 has Autoland, and it reports its own modes, so the fallback table never offers it");
+        assert!(offered(&[]).contains(&json!("Thermal")));
+        assert!(!offered(&[24]).contains(&json!("Thermal")), "a mode the plane answered 'No such mode' to is taken off the list");
     }
 
     #[test]

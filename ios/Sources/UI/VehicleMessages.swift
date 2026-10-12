@@ -16,10 +16,16 @@ struct VehicleMessage: Equatable, Hashable {
 
 private let PREARM_PREFIX = "PreArm:"
 private let ARM_REPLY_PREFIXES = ["Arm:", "Arming denied:", "Disarming denied:"]
+private let MODE_REPLY_PREFIXES = ["No such mode ", "Mode change to ", "Flight mode change failed"]
 
 func isArmReply(_ text: String) -> Bool {
     let trimmed = text.trimmingLeading(" ", "\t", "\n")
     return ARM_REPLY_PREFIXES.contains { trimmed.hasPrefix($0) }
+}
+
+func isModeReply(_ text: String) -> Bool {
+    let trimmed = text.trimmingLeading(" ", "\t", "\n")
+    return MODE_REPLY_PREFIXES.contains { trimmed.hasPrefix($0) }
 }
 
 func chipBlocker(_ blocker: String) -> String {
@@ -29,7 +35,7 @@ func chipBlocker(_ blocker: String) -> String {
 }
 
 func bannerMessages(_ unread: [VehicleMessage]) -> [VehicleMessage] {
-    unread.filter { ($0.level == .Error || $0.level == .Warning) && !$0.text.trimmingLeading(" ", "\t", "\n").hasPrefix(PREARM_PREFIX) && !isArmReply($0.text) }
+    unread.filter { ($0.level == .Error || $0.level == .Warning) && !$0.text.trimmingLeading(" ", "\t", "\n").hasPrefix(PREARM_PREFIX) && !isArmReply($0.text) && !isModeReply($0.text) }
 }
 
 func bannerText(_ messages: [VehicleMessage]) -> String? {

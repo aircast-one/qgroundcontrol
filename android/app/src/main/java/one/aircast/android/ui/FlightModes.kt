@@ -57,23 +57,23 @@ internal fun flightModesView(view: JSONObject?): FlightModesView? {
     )
 }
 
-internal data class ModeAck(val serial: Long, val accepted: Boolean, val wording: String)
+internal data class ModeAck(val serial: Long, val accepted: Boolean)
 
 internal fun modeAck(view: JSONObject?): ModeAck? =
-    view?.optJSONObject("modeAck")?.let { ModeAck(it.optLong("serial"), it.optBoolean("accepted"), it.optText("wording")) }
+    view?.optJSONObject("modeAck")?.let { ModeAck(it.optLong("serial"), it.optBoolean("accepted")) }
 
 internal const val MODE_REPLY_MS = 3000L
 
 internal sealed interface ModeOutcome {
     data object Pending : ModeOutcome
     data object Settled : ModeOutcome
-    data class Rejected(val text: String) : ModeOutcome
+    data object Unsettled : ModeOutcome
 }
 
-internal fun modeOutcome(mode: String, before: ModeAck?, now: ModeAck?, reached: Boolean, elapsedMs: Long): ModeOutcome = when {
+internal fun modeOutcome(before: ModeAck?, now: ModeAck?, reached: Boolean, elapsedMs: Long): ModeOutcome = when {
     reached -> ModeOutcome.Settled
-    now != null && now.serial != before?.serial && !now.accepted -> ModeOutcome.Rejected("$mode ${now.wording}")
-    elapsedMs >= MODE_REPLY_MS -> ModeOutcome.Rejected("$mode: no reply")
+    now != null && now.serial != before?.serial && !now.accepted -> ModeOutcome.Unsettled
+    elapsedMs >= MODE_REPLY_MS -> ModeOutcome.Unsettled
     else -> ModeOutcome.Pending
 }
 

@@ -54,6 +54,7 @@ pub enum Out {
     Progress { tag: u64, component: u8, command: u16 },
     ShowError(String),
     ArmRefused { arming: bool, unanswered: bool },
+    ModeRefused { custom_mode: u32, unanswered: bool },
     RequestResult { tag: u64, component: u8, message_id: u32, result: u8, failure: RequestFailure },
 }
 
@@ -104,9 +105,10 @@ fn emergency_stop(command: &Command) -> bool {
 }
 
 fn failure_shown(command: &Command, unanswered: bool, text: String) -> Out {
-    match command.command == crate::guidedcmd::CMD_COMPONENT_ARM_DISARM {
-        true => Out::ArmRefused { arming: command.params[0] != 0.0, unanswered },
-        false => Out::ShowError(text),
+    match command.command {
+        crate::guidedcmd::CMD_COMPONENT_ARM_DISARM => Out::ArmRefused { arming: command.params[0] != 0.0, unanswered },
+        crate::guidedcmd::CMD_DO_SET_MODE => Out::ModeRefused { custom_mode: command.params[1] as u32, unanswered },
+        _ => Out::ShowError(text),
     }
 }
 

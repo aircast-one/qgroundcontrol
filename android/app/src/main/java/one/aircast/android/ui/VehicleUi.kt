@@ -682,8 +682,6 @@ private fun Offered(offer: GuidedOffer?, content: @Composable () -> Unit) {
 
 private fun flightModeNow(): String = flyState(Qgc.get(FLY_STATE))?.mode.orEmpty()
 
-internal fun withdrawn(shown: String?, late: String): String? = if (shown == late) null else shown
-
 @Composable
 private fun RefusalLine(message: String, onDismiss: () -> Unit) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -707,19 +705,12 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
     var editing by remember { mutableStateOf(false) }
     var confirming by remember(rememberActiveVehicleId()) { mutableStateOf<FlightModeOption?>(null) }
     var settings by remember { mutableStateOf(false) }
-    var modeRefusal by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-    LaunchedEffect(modes?.current) {
-        modeRefusal?.let { flyScreen.refusal = withdrawn(flyScreen.refusal, it) }
-        modeRefusal = null
-    }
 
     if (modes == null) return
 
     fun send(mode: FlightModeOption) {
         scope.launch {
-            modeRefusal?.let { flyScreen.refusal = withdrawn(flyScreen.refusal, it) }
-            modeRefusal = null
             flyScreen.pendingMode = mode.name
             val before = withContext(Dispatchers.Default) { modeAck(Qgc.get(FLIGHT_MODES)) }
             withContext(Dispatchers.Default) { VehicleCommands.setFlightMode(mode.name) }
@@ -728,14 +719,10 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
             while (outcome == ModeOutcome.Pending) {
                 delay(200)
                 outcome = withContext(Dispatchers.Default) {
-                    modeOutcome(mode.name, before, modeAck(Qgc.get(FLIGHT_MODES)), flightModeNow() == mode.name, System.currentTimeMillis() - started)
+                    modeOutcome(before, modeAck(Qgc.get(FLIGHT_MODES)), flightModeNow() == mode.name, System.currentTimeMillis() - started)
                 }
             }
             flyScreen.pendingMode = null
-            (outcome as? ModeOutcome.Rejected)?.let { rejected ->
-                flyScreen.refusal = rejected.text
-                modeRefusal = rejected.text
-            }
         }
     }
 

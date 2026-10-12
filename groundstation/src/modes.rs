@@ -122,7 +122,7 @@ pub const PLANE_MODES: [Mode; 26] = [
     Mode { name: "QuadPlane Acro", custom_mode: 23, can_be_set: true, advanced: true },
     Mode { name: "Thermal", custom_mode: 24, can_be_set: true, advanced: true },
     Mode { name: "Loiter to QLand", custom_mode: 25, can_be_set: true, advanced: true },
-    Mode { name: "Autoland", custom_mode: 26, can_be_set: true, advanced: true },
+    Mode { name: "Autoland", custom_mode: 26, can_be_set: false, advanced: true },
 ];
 
 pub const ROVER_MODES: [Mode; 15] = [

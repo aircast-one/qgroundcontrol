@@ -56,27 +56,25 @@ func flightModesView(_ view: JSON?) -> FlightModesView? {
 struct ModeAck: Equatable {
     let serial: Int64
     let accepted: Bool
-    let wording: String
 }
 
 func modeAck(_ view: JSON?) -> ModeAck? {
     guard let ack = view?["modeAck"], ack.object != nil else { return nil }
-    return ModeAck(serial: ack["serial"].int64 ?? 0, accepted: ack["accepted"].bool, wording: ack["wording"].string)
+    return ModeAck(serial: ack["serial"].int64 ?? 0, accepted: ack["accepted"].bool)
 }
 
 let MODE_REPLY_MS: Int64 = 3000
-let MODE_REJECTION_MS: Int64 = 2500
 
 enum ModeOutcome: Equatable {
     case Pending
     case Settled
-    case Rejected(String)
+    case Unsettled
 }
 
-func modeOutcome(_ mode: String, _ before: ModeAck?, _ now: ModeAck?, _ reached: Bool, _ elapsedMs: Int64) -> ModeOutcome {
+func modeOutcome(_ before: ModeAck?, _ now: ModeAck?, _ reached: Bool, _ elapsedMs: Int64) -> ModeOutcome {
     if reached { return .Settled }
-    if let now, now.serial != before?.serial, !now.accepted { return .Rejected("\(mode) \(now.wording)") }
-    if elapsedMs >= MODE_REPLY_MS { return .Rejected("\(mode): no reply") }
+    if let now, now.serial != before?.serial, !now.accepted { return .Unsettled }
+    if elapsedMs >= MODE_REPLY_MS { return .Unsettled }
     return .Pending
 }
 

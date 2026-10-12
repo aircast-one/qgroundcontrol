@@ -64,13 +64,17 @@ data class VehicleMessage(
 private const val PREARM_PREFIX = "PreArm:"
 private val ARM_REPLY_PREFIXES = listOf("Arm:", "Arming denied:", "Disarming denied:")
 
+private val MODE_REPLY_PREFIXES = listOf("No such mode ", "Mode change to ", "Flight mode change failed")
+
 internal fun isArmReply(text: String): Boolean = text.trimStart().let { trimmed -> ARM_REPLY_PREFIXES.any { trimmed.startsWith(it) } }
+
+internal fun isModeReply(text: String): Boolean = text.trimStart().let { trimmed -> MODE_REPLY_PREFIXES.any { trimmed.startsWith(it) } }
 
 internal fun chipBlocker(blocker: String): String =
     blocker.trim().removePrefix(PREARM_PREFIX).trim().substringBefore(". ").trimEnd('.')
 
 internal fun bannerMessages(unread: List<VehicleMessage>): List<VehicleMessage> =
-    unread.filter { (it.level == MessageSeverity.Error || it.level == MessageSeverity.Warning) && !it.text.trimStart().startsWith(PREARM_PREFIX) && !isArmReply(it.text) }
+    unread.filter { (it.level == MessageSeverity.Error || it.level == MessageSeverity.Warning) && !it.text.trimStart().startsWith(PREARM_PREFIX) && !isArmReply(it.text) && !isModeReply(it.text) }
 
 internal fun bannerText(messages: List<VehicleMessage>): String? {
     if (messages.isEmpty()) return null

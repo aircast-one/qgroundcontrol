@@ -751,8 +751,6 @@ struct RangeHint: View {
 
 private func flightModeNow() -> String { flyState(Qgc.get(FLY_STATE))?.mode ?? "" }
 
-func withdrawn(_ shown: String?, _ late: String) -> String? { shown == late ? nil : shown }
-
 let FLIGHT_MODE_SETTINGS_PAGE = "Flight Mode Settings"
 
 private func modeSettled(_ mode: String, _ before: ModeAck?) async -> ModeOutcome {
@@ -760,7 +758,7 @@ private func modeSettled(_ mode: String, _ before: ModeAck?) async -> ModeOutcom
     while !Task.isCancelled {
         try? await Task.sleep(for: .milliseconds(200))
         let elapsed = Int64(Date().timeIntervalSince(started) * 1000)
-        let outcome = await offMain { modeOutcome(mode, before, modeAck(Qgc.get(FLIGHT_MODES)), flightModeNow() == mode, elapsed) }
+        let outcome = await offMain { modeOutcome(before, modeAck(Qgc.get(FLIGHT_MODES)), flightModeNow() == mode, elapsed) }
         if case .Pending = outcome { continue }
         return outcome
     }
@@ -837,23 +835,13 @@ struct FlightModeMenu: View {
         }
     }
 
-    private func onRefusal(_ text: String?) { flyScreen.refusal = text }
-
-    private func onWithdraw(_ text: String) { flyScreen.refusal = withdrawn(flyScreen.refusal, text) }
-
     private func send(_ mode: FlightModeOption) {
         Task {
-            onRefusal(nil)
             flyScreen.pendingMode = mode.name
             let before = await offMain { modeAck(Qgc.get(FLIGHT_MODES)) }
             _ = await offMain { VehicleCommands.setFlightMode(mode.name) }
-            let outcome = await modeSettled(mode.name, before)
+            _ = await modeSettled(mode.name, before)
             flyScreen.pendingMode = nil
-            if case .Rejected(let text) = outcome {
-                onRefusal(text)
-                try? await Task.sleep(for: .milliseconds(MODE_REJECTION_MS))
-                onWithdraw(text)
-            }
         }
     }
 

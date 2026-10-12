@@ -362,6 +362,9 @@ pub struct Vehicle {
     guided: Executor,
     arming_texts: Vec<(u64, String)>,
     refusal_due: Option<(u64, bool)>,
+    mode_texts: Vec<(u64, String)>,
+    mode_refusal_due: Option<(u64, u32)>,
+    pub missing_modes: Vec<u32>,
     connect: Connect,
     modes: StandardModes,
     params: Params,
@@ -596,6 +599,9 @@ impl Vehicle {
             guided: Executor::default(),
             arming_texts: Vec::new(),
             refusal_due: None,
+            mode_texts: Vec::new(),
+            mode_refusal_due: None,
+            missing_modes: Vec::new(),
             connect: Connect::default(),
             modes: StandardModes::default(),
             params: Params::new(component, autopilot == crate::modes::AUTOPILOT_PX4),
@@ -1736,6 +1742,10 @@ impl Vehicle {
         announced.map_or_else(|| crate::modes::name(self.autopilot, self.vehicle_type, self.base_mode, self.custom_mode), |m| m.name.clone())
     }
 
+    fn mode_named(&self, custom_mode: u32) -> String {
+        self.flight_modes.iter().find(|m| m.custom_mode == custom_mode).map_or_else(|| crate::modes::name(self.autopilot, self.vehicle_type, crate::modes::FLAG_CUSTOM, custom_mode), |m| m.name.clone())
+    }
+
     pub fn drone_streams(&self) -> Vec<(String, u8, u8, String)> {
         self.cameras.video_streams()
     }
@@ -2296,6 +2306,20 @@ impl Vehicle {
         self.note(text);
     }
 
+    fn tell_mode_refusal(&mut self, custom_mode: u32, unanswered: bool, now_ms: u64) {
+        self.mode_refusal_due = None;
+        let reasons: Vec<String> = self.mode_texts.iter().filter(|(at, _)| now_ms.saturating_sub(*at) <= crate::refusal::REASON_WINDOW_MS).map(|(_, text)| text.clone()).collect();
+        let text = crate::refusal::mode_change(&self.mode_named(custom_mode), unanswered, &reasons, &self.flight_mode());
+        self.pending_notices.push((crate::noticeboard::BRIEF, text.clone()));
+        self.note(text);
+    }
+
+    fn tell_due_mode_refusal(&mut self, now_ms: u64) {
+        if let Some((_, custom_mode)) = self.mode_refusal_due.filter(|(due, _)| now_ms >= *due) {
+            self.tell_mode_refusal(custom_mode, false, now_ms);
+        }
+    }
+
     fn tell_due_refusal(&mut self, now_ms: u64) {
         if let Some((_, arming)) = self.refusal_due.filter(|(due, _)| now_ms >= *due) {
             self.refusal_due = None;
@@ -2405,6 +2429,18 @@ impl Vehicle {
                     self.note(text);
                     Vec::new()
                 }
+                Out::ModeRefused { custom_mode, unanswered: true } => {
+                    self.tell_mode_refusal(custom_mode, true, now_ms);
+                    Vec::new()
+                }
+                Out::ModeRefused { custom_mode, unanswered: false } => {
+                    let told = self.mode_texts.iter().any(|(at, _)| now_ms.saturating_sub(*at) <= crate::refusal::REASON_WINDOW_MS);
+                    match told {
+                        true => self.tell_mode_refusal(custom_mode, false, now_ms),
+                        false => self.mode_refusal_due = Some((now_ms + crate::refusal::REPLY_WAIT_MS, custom_mode)),
+                    }
+                    Vec::new()
+                }
                 Out::ArmRefused { arming, unanswered: true } => {
                     self.tell_refusal(arming, true, now_ms);
                     Vec::new()
@@ -2508,6 +2544,7 @@ impl Vehicle {
     fn pump_with(&mut self, now_ms: u64, remote_inputs: Option<&RemoteInputs>, now_s: u64) -> Vec<Vec<u8>> {
         let ticked = self.commands.tick(now_ms);
         self.tell_due_refusal(now_ms);
+        self.tell_due_mode_refusal(now_ms);
         self.control.tick(now_ms);
         let mut bytes = self.handle(ticked, now_ms);
         if self.control.revert_due(now_ms, mavout::gcs_system()) {
@@ -2710,6 +2747,15 @@ impl Vehicle {
     fn take_status(&mut self, status: StatusText, now_ms: u64) -> Vec<Vec<u8>> {
         if crate::refusal::is_arming_text(&status.text) {
             self.arming_texts = self.arming_texts.iter().filter(|(at, _)| now_ms.saturating_sub(*at) <= crate::refusal::REASON_WINDOW_MS).cloned().chain([(now_ms, status.text.clone())]).collect();
+        }
+        if crate::refusal::is_mode_reply(&status.text) {
+            self.mode_texts = self.mode_texts.iter().filter(|(at, _)| now_ms.saturating_sub(*at) <= crate::refusal::REASON_WINDOW_MS).cloned().chain([(now_ms, status.text.clone())]).collect();
+            if let Some(missing) = crate::refusal::missing_mode(&status.text).filter(|mode| !self.missing_modes.contains(mode)) {
+                self.missing_modes.push(missing);
+            }
+            if let Some((_, custom_mode)) = self.mode_refusal_due {
+                self.tell_mode_refusal(custom_mode, false, now_ms);
+            }
         }
         if let Some(spoken) = self.spoken_status(&status, now_ms) {
             crate::speech::say(&spoken.to_lowercase());
@@ -5825,6 +5871,27 @@ mod tests {
         hub.tick(1_100 + crate::refusal::REPLY_WAIT_MS + 1);
         let told: Vec<(&str, String)> = hub.active().unwrap().pending_notices.iter().filter(|(_, text)| text.to_lowercase().contains("arm")).cloned().collect();
         assert_eq!(told, [(crate::noticeboard::BRIEF, format!("Can't arm in {mode} mode. Switch to Loiter or Guided first."))], "ArduCopter 4.5 sends its reason after the refusal; one brief notice carries it, not the raw text and not a reasonless refusal");
+    }
+
+    #[test]
+    fn a_refused_mode_change_is_one_brief_line_with_its_reason_and_a_missing_mode_leaves_the_list() {
+        use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, MavCmd, MavResult, MavSeverity, STATUSTEXT_DATA};
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &autopilot);
+        let mode = hub.active().unwrap().flight_mode();
+        hub.guided(None, &json!({ "action": "setMode", "mode": "Flow Hold" }), 1_000).unwrap();
+        let missing = MavMessage::STATUSTEXT(STATUSTEXT_DATA { severity: MavSeverity::MAV_SEVERITY_WARNING, text: mavout::chars("No such mode 22"), ..Default::default() });
+        hub.on_frame(origin(4), &autopilot, &missing, 1_050_000, 1_050);
+        let refused = MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_DO_SET_MODE, result: MavResult::MAV_RESULT_FAILED, ..Default::default() });
+        hub.on_frame(origin(4), &autopilot, &refused, 1_100_000, 1_100);
+        (1..=5).for_each(|step| {
+            hub.tick(1_100 + step * crate::guidedexec::MODE_WAIT_MS);
+        });
+        let vehicle = hub.active().unwrap();
+        let told: Vec<(&str, String)> = vehicle.pending_notices.iter().filter(|(_, text)| text.contains("Flow Hold") || text.contains("MAV_CMD_DO_SET_MODE")).cloned().collect();
+        assert_eq!(told, [(crate::noticeboard::BRIEF, format!("Can't switch to Flow Hold: this aircraft's firmware doesn't have it. Still in {mode}."))], "no dialog, no retries, one line that says why and that nothing changed");
+        assert_eq!(vehicle.missing_modes, [22], "the plane said it has no such mode, so the list stops offering it");
     }
 
     #[test]
