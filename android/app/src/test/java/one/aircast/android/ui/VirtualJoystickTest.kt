@@ -9,7 +9,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class VirtualJoystickTest {
-    private val copter = VirtualJoystickState(show = true, sending = true, autoCenterThrottle = true, leftHandedMode = false, leftPositiveOnly = true, rightPositiveOnly = false, periodMs = 40)
+    private val copter = VirtualJoystickState(enabled = true, show = true, sending = true, autoCenterThrottle = true, leftHandedMode = false, leftPositiveOnly = true, rightPositiveOnly = false, periodMs = 40)
 
     private fun fly(state: String, connected: Boolean = true) = flyState(JSONObject().put("class", "FlyState").put("connected", connected).put("state", state))
 
@@ -77,9 +77,10 @@ class VirtualJoystickTest {
     }
 
     @Test
-    fun `held sticks are dropped when the joystick hides or its layout changes, and kept otherwise`() {
+    fun `held sticks are dropped when the joystick is turned off or its layout changes, and kept otherwise`() {
         val shown = copter.copy(autoCenterThrottle = false)
-        assertTrue(sticksReset(shown, shown.copy(show = false)))
+        assertTrue(sticksReset(shown, shown.copy(enabled = false)))
+        assertFalse("sticks hidden while the autopilot flies keep their released positions", sticksReset(shown, shown.copy(show = false)))
         assertTrue(sticksReset(shown, shown.copy(autoCenterThrottle = true)))
         assertTrue("a throttle held low must not become a full pitch on the other hand", sticksReset(shown, shown.copy(leftHandedMode = true)))
         assertTrue(sticksReset(null, null))

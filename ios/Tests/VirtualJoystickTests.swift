@@ -2,7 +2,7 @@ import XCTest
 @testable import Aircast
 
 final class VirtualJoystickTests: XCTestCase {
-    private let shown = VirtualJoystickState(show: true, sending: true, autoCenterThrottle: false, leftHandedMode: false, leftPositiveOnly: true, rightPositiveOnly: false, periodMs: 40)
+    private let shown = VirtualJoystickState(enabled: true, show: true, sending: true, autoCenterThrottle: false, leftHandedMode: false, leftPositiveOnly: true, rightPositiveOnly: false, periodMs: 40)
 
     private func changed(_ change: (inout VirtualJoystickState) -> Void) -> VirtualJoystickState {
         var next = shown
@@ -37,8 +37,9 @@ final class VirtualJoystickTests: XCTestCase {
         XCTAssertEqual(released(held, false), CGPoint(x: 0.5, y: 0.3), "a released throttle stays where it was without auto-centre")
     }
 
-    func testHeldSticksAreDroppedWhenTheJoystickHidesOrThrottleAutoCentreFlipsAndKeptOtherwise() {
-        XCTAssertTrue(sticksReset(shown, changed { $0.show = false }))
+    func testHeldSticksAreDroppedWhenTheJoystickIsTurnedOffOrThrottleAutoCentreFlipsAndKeptOtherwise() {
+        XCTAssertTrue(sticksReset(shown, changed { $0.enabled = false }))
+        XCTAssertFalse(sticksReset(shown, changed { $0.show = false }))
         XCTAssertTrue(sticksReset(shown, changed { $0.autoCenterThrottle = true }))
         XCTAssertTrue(sticksReset(nil, nil))
         XCTAssertFalse(sticksReset(shown, changed { $0.sending = false }))

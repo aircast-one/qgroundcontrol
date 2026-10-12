@@ -10,7 +10,16 @@ pub const DEPS: &[&str] = &[
     "vehicles.activeVehicleAvailable",
     "vehicle.rover",
     "vehicle.initialConnectComplete",
+    "vehicle.flightMode",
+    "vehicle.apmFirmware",
+    "vehicle.multiRotor",
 ];
+
+const FLIES_ITSELF: &[&str] = &[
+    "Auto", "Mission", "RTL", "Return", "Return to Groundstation", "Smart RTL", "AutoRTL", "QuadPlane RTL", "Land", "QuadPlane Land", "Precision Land",
+    "Precision Landing", "Takeoff", "Hold", "Brake", "Follow", "Follow Me", "Throw", "Avoid ADSB", "Guided No GPS", "Offboard", "AutoRotate",
+];
+const TAKEN_OVER_FROM: &str = "Guided";
 
 pub const JOYSTICK_VALUE: &str = "vehicle.virtualTabletJoystickValue";
 pub const SEND_PERIOD_MS: u64 = 40;
@@ -35,15 +44,25 @@ fn sending(backend: &dyn Backend) -> bool {
     flag(&vehicles, "activeVehicleAvailable") && flag(&backend.value_fields("vehicle", "initialConnectComplete"), "initialConnectComplete")
 }
 
+fn flown_by_sticks(vehicle: &Value) -> bool {
+    match vehicle.get("flightMode").and_then(Value::as_str) {
+        Some(TAKEN_OVER_FROM) => flag(vehicle, "apmFirmware") && flag(vehicle, "multiRotor"),
+        Some(mode) => !FLIES_ITSELF.contains(&mode),
+        None => true,
+    }
+}
+
 pub fn virtual_joystick_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let vehicle = backend.value_fields("vehicle", "rover");
+    let vehicle = backend.value_fields("vehicle", "rover,flightMode,apmFirmware,multiRotor");
     let connected = flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable");
     let rover = connected && flag(&vehicle, "rover");
     let left_handed = setting(backend, "virtualJoystickLeftHandedMode");
+    let enabled = setting(backend, "virtualJoystick");
     json!({
         "kind": "object",
         "class": "VirtualJoystick",
-        "show": setting(backend, "virtualJoystick"),
+        "enabled": enabled,
+        "show": enabled && (!connected || flown_by_sticks(&vehicle)),
         "sending": sending(backend),
         "autoCenterThrottle": setting(backend, "virtualJoystickAutoCenterThrottle"),
         "leftHandedMode": left_handed,
@@ -91,6 +110,8 @@ mod tests {
         rover: bool,
         left_handed: bool,
         connected: bool,
+        mode: &'static str,
+        apm_copter: bool,
         invoked: RefCell<Vec<String>>,
     }
 
@@ -106,7 +127,7 @@ mod tests {
         fn get_fields(&self, path: &str, _fields: &str) -> String {
             match path {
                 "vehicles" => json!({ "activeVehicleAvailable": self.connected }),
-                _ => json!({ "rover": self.rover, "initialConnectComplete": self.connected }),
+                _ => json!({ "rover": self.rover, "initialConnectComplete": self.connected, "flightMode": self.mode, "apmFirmware": self.apm_copter, "multiRotor": self.apm_copter }),
             }
             .to_string()
         }
@@ -121,7 +142,21 @@ mod tests {
     }
 
     fn rig(rover: bool, left_handed: bool, connected: bool) -> Rig {
-        Rig { rover, left_handed, connected, invoked: RefCell::new(Vec::new()) }
+        Rig { rover, left_handed, connected, mode: "Loiter", apm_copter: true, invoked: RefCell::new(Vec::new()) }
+    }
+
+    #[test]
+    fn the_sticks_hide_while_the_autopilot_flies_itself_but_keep_sending_centred() {
+        let view = |mode: &'static str, apm_copter: bool| virtual_joystick_view(&Rig { mode, apm_copter, ..rig(false, false, true) }, &[]);
+        assert_eq!(view("Loiter", true)["show"], json!(true));
+        assert_eq!(view("Stabilize", true)["show"], json!(true));
+        assert_eq!(view("RTL", true)["show"], json!(false), "returning home ignores the sticks, so they are not offered");
+        assert_eq!(view("Mission", false)["show"], json!(false));
+        assert_eq!(view("Land", true)["show"], json!(false));
+        assert_eq!(view("Guided", true)["show"], json!(true), "a copter in Guided hands over to Loiter when a stick moves");
+        assert_eq!(view("Guided", false)["show"], json!(false), "nothing takes over from Guided on other vehicles");
+        assert_eq!(view("RTL", true)["enabled"], json!(true), "hidden sticks still stream centred, so the override link never drops mid-flight");
+        assert_eq!(virtual_joystick_view(&Rig { mode: "RTL", ..rig(false, false, false) }, &[])["show"], json!(true), "with no vehicle the setting alone decides");
     }
 
     #[test]

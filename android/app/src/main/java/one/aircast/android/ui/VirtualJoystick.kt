@@ -60,6 +60,7 @@ private val CHEVRON_INSET = 11.dp
 private val CHEVRON_ANGLES = listOf(0f, 90f, 180f, 270f)
 
 internal data class VirtualJoystickState(
+    val enabled: Boolean,
     val show: Boolean,
     val sending: Boolean,
     val autoCenterThrottle: Boolean,
@@ -72,6 +73,7 @@ internal data class VirtualJoystickState(
 internal fun virtualJoystick(view: JSONObject?): VirtualJoystickState? =
     view?.takeIf { it.optString("class") == "VirtualJoystick" }?.let {
         VirtualJoystickState(
+            enabled = it.optBoolean("enabled"),
             show = it.optBoolean("show"),
             sending = it.optBoolean("sending"),
             autoCenterThrottle = it.optBoolean("autoCenterThrottle"),
@@ -93,7 +95,7 @@ internal val CENTRED = Offset(0.5f, 0.5f)
 private val GROUND_STATES = setOf("disarmed", "armed")
 
 internal fun sticksReset(previous: VirtualJoystickState?, current: VirtualJoystickState?): Boolean =
-    current?.show != true || current.autoCenterThrottle != previous?.autoCenterThrottle || current.leftHandedMode != previous.leftHandedMode
+    current?.enabled != true || current.autoCenterThrottle != previous?.autoCenterThrottle || current.leftHandedMode != previous.leftHandedMode
 
 internal fun onTheGround(fly: FlyState?): Boolean = fly?.connected == true && fly.state in GROUND_STATES
 
@@ -146,7 +148,7 @@ object VirtualStickSender {
                             left = null
                             right = null
                         }
-                        states.current?.takeIf { it.show && it.sending }?.let { sending ->
+                        states.current?.takeIf { it.enabled && it.sending }?.let { sending ->
                             val fly = Qgc.path(FLY_STATE)
                             while (isActive) {
                                 val sticks = shownSticks(sending, left, right, onTheGround(flyState(fly.value)), leftHeld, rightHeld)

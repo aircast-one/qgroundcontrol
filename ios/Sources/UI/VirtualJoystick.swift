@@ -9,6 +9,7 @@ private let PAD_HEIGHT_FRACTION: CGFloat = 0.25
 private let DEFAULT_PERIOD_MS: Int64 = 40
 
 struct VirtualJoystickState: Equatable, Sendable {
+    var enabled: Bool
     var show: Bool
     var sending: Bool
     var autoCenterThrottle: Bool
@@ -21,6 +22,7 @@ struct VirtualJoystickState: Equatable, Sendable {
 func virtualJoystick(_ view: JSON?) -> VirtualJoystickState? {
     guard let view, view["class"].string == "VirtualJoystick" else { return nil }
     return VirtualJoystickState(
+        enabled: view["enabled"].bool,
         show: view["show"].bool,
         sending: view["sending"].bool,
         autoCenterThrottle: view["autoCenterThrottle"].bool,
@@ -42,7 +44,7 @@ struct StickStates: Equatable {
 }
 
 func sticksReset(_ previous: VirtualJoystickState?, _ current: VirtualJoystickState?) -> Bool {
-    current?.show != true || current?.autoCenterThrottle != previous?.autoCenterThrottle
+    current?.enabled != true || current?.autoCenterThrottle != previous?.autoCenterThrottle
 }
 
 func restingLeft(_ autoCenterThrottle: Bool) -> CGPoint { CGPoint(x: 0.5, y: restingY(autoCenterThrottle)) }
@@ -84,7 +86,7 @@ enum VirtualStickSender {
                     right = nil
                 }
                 sender?.cancel()
-                sender = states.current.flatMap { $0.show && $0.sending ? $0 : nil }.map { sending in
+                sender = states.current.flatMap { $0.enabled && $0.sending ? $0 : nil }.map { sending in
                     Task.detached(priority: .userInitiated) {
                         while !Task.isCancelled {
                             _ = Qgc.call(VIRTUAL_JOYSTICK_VALUE, arguments: stickValues(sending, left, right))
