@@ -15,6 +15,8 @@ pub const RETRY_AFTER: Duration = Duration::from_secs(10);
 pub const UNLOAD_AFTER: Duration = Duration::from_secs(30);
 const UNLOAD_SWEEP_EVERY: Duration = Duration::from_secs(1);
 const MAXIMUM_SCREEN_SPACE_ERROR: f64 = 16.0;
+const LOWEST_GROUND_M: f64 = 1_000.0;
+const OCCLUDER_RADII: DVec3 = DVec3::new(6_378_137.0 - LOWEST_GROUND_M, 6_378_137.0 - LOWEST_GROUND_M, 6_356_752.314_245 - LOWEST_GROUND_M);
 
 #[derive(Clone, Copy, Debug)]
 pub struct Obb {
@@ -41,10 +43,39 @@ impl Obb {
             .sqrt()
     }
 
+    fn corners(&self) -> [DVec3; 8] {
+        std::array::from_fn(|corner| {
+            let sign = |bit: usize| if corner & bit == 0 { -1.0 } else { 1.0 };
+            self.center + self.half[0] * sign(1) + self.half[1] * sign(2) + self.half[2] * sign(4)
+        })
+    }
+
     pub fn outside(&self, plane: DVec4, eye: DVec3) -> bool {
         let normal = plane.truncate();
         let reach: f64 = self.half.iter().map(|axis| normal.dot(*axis).abs()).sum();
         normal.dot(self.center - eye) + plane.w < -reach
+    }
+}
+
+struct Horizon {
+    eye: DVec3,
+    beyond: f64,
+}
+
+impl Horizon {
+    fn from(eye: DVec3) -> Self {
+        let scaled = eye / OCCLUDER_RADII;
+        Self { eye: scaled, beyond: scaled.length_squared() - 1.0 }
+    }
+
+    fn hides_point(&self, point: DVec3) -> bool {
+        let towards = point / OCCLUDER_RADII - self.eye;
+        let along = -towards.dot(self.eye);
+        self.beyond > 0.0 && along > self.beyond && along * along / towards.length_squared() > self.beyond
+    }
+
+    fn hides(&self, bounds: &Obb) -> bool {
+        bounds.corners().iter().all(|corner| self.hides_point(*corner))
     }
 }
 
@@ -151,9 +182,10 @@ impl Tileset {
 
     pub fn select(&mut self, camera: &Camera, budget: usize, now: Instant) -> (Vec<Arc<Mesh>>, Vec<Request>) {
         let planes = frustum(camera.culling());
+        let horizon = Horizon::from(camera.eye);
         let mut wanted = Vec::new();
         let mut root = std::mem::replace(&mut self.root, empty());
-        let drawn = self.visit(&mut root, &mut Vec::new(), camera, &planes, budget, &mut wanted, now).unwrap_or_default();
+        let drawn = self.visit(&mut root, &mut Vec::new(), camera, (&planes, &horizon), budget, &mut wanted, now).unwrap_or_default();
         if self.swept.is_none_or(|swept| now.duration_since(swept) >= UNLOAD_SWEEP_EVERY) {
             unload(&mut root, now);
             self.swept = Some(now);
@@ -192,8 +224,9 @@ impl Tileset {
     }
 
     #[allow(clippy::too_many_arguments)]
-    fn visit(&mut self, tile: &mut Tile, path: &mut Vec<usize>, camera: &Camera, planes: &[DVec4; 5], budget: usize, wanted: &mut Vec<Request>, now: Instant) -> Option<Vec<Arc<Mesh>>> {
-        if planes.iter().any(|plane| tile.bounds.outside(*plane, camera.eye)) {
+    fn visit(&mut self, tile: &mut Tile, path: &mut Vec<usize>, camera: &Camera, sight: (&[DVec4; 5], &Horizon), budget: usize, wanted: &mut Vec<Request>, now: Instant) -> Option<Vec<Arc<Mesh>>> {
+        let (planes, horizon) = sight;
+        if planes.iter().any(|plane| tile.bounds.outside(*plane, camera.eye)) || horizon.hides(&tile.bounds) {
             return Some(Vec::new());
         }
         tile.used = Some(now);
@@ -208,7 +241,7 @@ impl Tileset {
                 .enumerate()
                 .map(|(index, child)| {
                     path.push(index);
-                    let drawn = self.visit(child, path, camera, planes, budget, wanted, now);
+                    let drawn = self.visit(child, path, camera, sight, budget, wanted, now);
                     path.pop();
                     drawn
                 })
@@ -253,6 +286,18 @@ mod tests {
         let shown = Arc::new(mesh());
         let root = Tile { bounds: ahead(camera, 200.0), geometric_error: 1000.0, url: None, content: Content::Meshes(vec![shown.clone()]), children: vec![leaf(camera, "a"), leaf(camera, "b")], used: None };
         (Tileset::new(root, &Url::parse("https://x/root.json").unwrap()), shown)
+    }
+
+    #[test]
+    fn a_tile_behind_the_curve_of_the_earth_is_neither_drawn_nor_fetched() {
+        let camera = camera();
+        let horizon = Horizon::from(camera.eye);
+        let small = [DVec3::X * 50.0, DVec3::Y * 50.0, DVec3::Z * 50.0];
+        assert!(!horizon.hides(&ahead(&camera, 200.0)));
+        assert!(!horizon.hides(&Obb { center: crate::synthetic::geo::ecef(0.2, 0.0, 0.0), half: small }), "22 km away is still above the horizon from 100 m");
+        assert!(horizon.hides(&Obb { center: crate::synthetic::geo::ecef(9.0, 0.0, 0.0), half: small }), "1000 km away is below it");
+        assert!(horizon.hides(&Obb { center: -camera.eye, half: small }), "the far side of the planet was being drawn through the ground");
+        assert!(!horizon.hides(&Obb { center: DVec3::ZERO, half: [DVec3::X * 7e6, DVec3::Y * 7e6, DVec3::Z * 7e6] }), "a tile around the whole globe holds what is in view");
     }
 
     #[test]
