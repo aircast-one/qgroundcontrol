@@ -2,6 +2,14 @@ import XCTest
 @testable import Aircast
 
 final class SyntheticViewTests: XCTestCase {
+    func testTheSyntheticViewSaysWhichCameraItStandsInForOnceItHasDrawn() {
+        let standIn = "No video from SITL camera · showing synthetic view"
+        XCTAssertEqual(shownNote(.Loading, standIn), "Loading 3D view…")
+        XCTAssertEqual(shownNote(.Drawn, standIn), standIn)
+        XCTAssertNil(shownNote(.Drawn, ""), "the synthetic view chosen as the camera says nothing")
+        XCTAssertNil(shownNote(.Drawn, nil))
+    }
+
     func testThePageAsksForTilesBesideItselfAndTheCoreAnswersThem() {
         XCTAssertEqual(syntheticTilePath("/synthetic/tiles/Bing%20Satellite/15/29961/19829"), "/Bing%20Satellite/15/29961/19829")
         XCTAssertNil(syntheticTilePath("/synthetic/Cesium/Cesium.js"))

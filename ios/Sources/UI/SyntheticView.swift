@@ -167,14 +167,19 @@ private struct SyntheticWebView: UIViewRepresentable {
     }
 }
 
+func shownNote(_ draw: SyntheticDraw, _ standIn: String?) -> String? {
+    draw.note ?? standIn.flatMap { $0.isEmpty ? nil : $0 }
+}
+
 private struct NativePage: View {
     let view: JSON?
+    let standIn: String?
 
     var body: some View {
         let draw = nativeDraw(view)
         ZStack {
             SyntheticSurface()
-            if let note = draw.note { SyntheticNote(note: note, loading: draw == .Loading) }
+            if let note = shownNote(draw, standIn) { SyntheticNote(note: note, loading: draw == .Loading) }
         }
     }
 }
@@ -187,14 +192,16 @@ private struct SyntheticNote: View {
     var body: some View {
         HStack(spacing: Space.s2) {
             if loading { ProgressView().controlSize(.small).tint(theme.aircast.outdoorForeground) }
-            Text(note).font(.labelLarge).foregroundStyle(theme.aircast.outdoorForeground).lineLimit(1)
+            Text(note).font(.labelLarge).foregroundStyle(theme.aircast.outdoorForeground).multilineTextAlignment(.center).lineLimit(2)
         }
+        .padding(.horizontal, Space.s4)
         .osdShadow()
     }
 }
 
 struct SyntheticView: View {
     var aimable = false
+    var standIn: String?
     @QgcPath(SYNTHETIC_VIEW) private var view
     @QgcPath(SYNTHETIC_OVERLAYS) private var overlays
     @State private var dragStart: (tilt: Double, pan: Double)?
@@ -205,7 +212,12 @@ struct SyntheticView: View {
     var body: some View {
         GeometryReader { geometry in
             ZStack {
-                if nativeChosen(view) { NativePage(view: view) } else { SyntheticWebView(pose: view, overlays: overlays) }
+                if nativeChosen(view) {
+                    NativePage(view: view, standIn: standIn)
+                } else {
+                    SyntheticWebView(pose: view, overlays: overlays)
+                    if let note = shownNote(.Drawn, standIn) { SyntheticNote(note: note, loading: false) }
+                }
             }
             .contentShape(Rectangle())
             .gesture(aiming(geometry.size), including: canAim ? .all : .none)

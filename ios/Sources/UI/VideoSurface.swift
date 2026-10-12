@@ -186,7 +186,7 @@ struct VideoSurface: View {
                 }
                 .frame(width: shown.0, height: shown.1)
                 if !decoding && syntheticAvailable(syntheticJson) {
-                    SyntheticView(aimable: expanded)
+                    SyntheticView(aimable: expanded, standIn: expanded ? video?.standIn : nil)
                 } else if !decoding {
                     NoVideoArea(underFlyChrome: expanded && !fullScreen, thumb: !expanded, video: video)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)

@@ -3,10 +3,20 @@ package one.aircast.android.ui
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class SyntheticViewTest {
+    @Test
+    fun `the synthetic view says which camera it stands in for once it has drawn`() {
+        val standIn = "No video from SITL camera · showing synthetic view"
+        assertEquals("Loading 3D view…", shownNote(SyntheticDraw.Loading, standIn))
+        assertEquals(standIn, shownNote(SyntheticDraw.Drawn, standIn))
+        assertNull("the synthetic view chosen as the camera says nothing", shownNote(SyntheticDraw.Drawn, ""))
+        assertNull(shownNote(SyntheticDraw.Drawn, null))
+    }
+
     @Test
     fun `the view is drawn only when the core can place the camera`() {
         assertTrue(syntheticAvailable(JSONObject("""{"available":true,"latitude":1.0}""")))

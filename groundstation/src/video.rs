@@ -14,6 +14,14 @@ pub fn no_video_text(source: &str, url: &str) -> String {
         _ => format!("No video from {url}"),
     }
 }
+pub fn stand_in_text(source: &str, title: &str, decoding: bool, connecting: bool) -> String {
+    match (source.is_empty() || source == crate::videostate::SOURCE_SYNTHETIC || decoding, connecting) {
+        (true, _) => String::new(),
+        (false, true) => format!("Connecting to {title} · showing synthetic view"),
+        (false, false) => format!("No video from {title} · showing synthetic view"),
+    }
+}
+
 pub const CAMERA_FIELDS: &str = "modelName,vendor,cameraMode,capturePhotosState,captureVideoState,recordTimeStr,storageStatus,storageFreeStr,capturesPhotos,capturesVideo,hasVideoStream,hasModes,photosInVideoMode,videoInPhotoMode,photoCaptureMode,photoLapse,photoLapseCount,batteryRemaining,hasZoom,zoomLevel,hasTracking,thermalMode,thermalOpacity,thermalStreamInstance,trackingEnabled,trackingImageIsActive,trackingImageRect,supportsTrackingRect,supportsTrackingPoint,streamLabels,currentStream";
 pub const CAMERA_DEPS: &[&str] = &[
     "vehicles.activeVehicleAvailable",
@@ -99,6 +107,7 @@ pub fn video_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let (configured_flags, drone_flags, names, sources, urls) = (flags("cameraConfigured"), flags("cameraFromDrone"), strings("cameraNames"), strings("cameraSources"), strings("cameraUrls"));
     let active = integer(&video, "activeVideoSource").unwrap_or(0);
     let at = |list: &Vec<String>| usize::try_from(active).ok().and_then(|index| list.get(index).cloned()).unwrap_or_default();
+    let active_slot = usize::try_from(active).unwrap_or(0);
     let cameras: Vec<Value> = statuses
         .iter()
         .enumerate()
@@ -145,6 +154,7 @@ pub fn video_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "sourceChosen": !statuses.is_empty(),
         "noVideoReason": crate::videohost::stream_problem_text(),
         "noVideoText": no_video_text(&at(&sources), &at(&urls)),
+        "standIn": stand_in_text(&at(&sources), &crate::cameras::title(&at(&names), active_slot), decoding, connecting.get(active_slot).copied().unwrap_or(false)),
         "cameras": cameras,
         "nativePipeline": crate::videohost::native_pipeline(),
         "pipPipeline": crate::videohost::pip_pipeline(),
@@ -349,6 +359,14 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
 mod tests {
     use super::*;
 
+    #[test]
+    fn the_synthetic_view_standing_in_for_a_camera_says_which_camera_has_no_video() {
+        assert_eq!(stand_in_text("RTSP Video Stream", "SITL camera", false, false), "No video from SITL camera · showing synthetic view");
+        assert_eq!(stand_in_text("RTSP Video Stream", "SITL camera", false, true), "Connecting to SITL camera · showing synthetic view");
+        assert_eq!(stand_in_text("RTSP Video Stream", "SITL camera", true, false), "", "a playing camera needs no stand-in");
+        assert_eq!(stand_in_text(crate::videostate::SOURCE_SYNTHETIC, "Synthetic view", false, false), "", "the synthetic view chosen as the camera is not standing in for anything");
+        assert_eq!(stand_in_text("", "Camera 1", false, false), "", "with no camera there is nothing to stand in for");
+    }
     #[test]
     fn no_video_names_the_port_or_url_the_source_listens_on() {
         assert_eq!(no_video_text("UDP h.264 Video Stream", "0.0.0.0:5600"), "No video on UDP port 5600");
@@ -585,6 +603,7 @@ mod tests {
         assert_eq!((view["cameras"][0]["title"].clone(), view["cameras"][1]["title"].clone()), (json!("Nose"), json!("Camera 2")), "an unnamed camera is named by its place in the list");
         assert_eq!(view["cameras"][2]["fromDrone"], true, "a camera the drone announced is marked so the operator knows where it came from");
         assert_eq!(view["noVideoText"], "No video on UDP port 5600", "the no-video sentence describes the camera on screen, whichever it is");
+        assert_eq!(view["standIn"], "No video from SIYI A8 · showing synthetic view", "when the 3D view stands in for a camera, the pilot is told which camera is down");
         assert_eq!(view["sourceChosen"], true);
         assert_eq!(view["configuredCount"], 1);
         assert_eq!(view["summary"], "Waiting for a stream.");

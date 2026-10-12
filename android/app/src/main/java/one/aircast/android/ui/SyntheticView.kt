@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -35,6 +36,7 @@ import one.aircast.android.bridge.offMainInOrder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import one.aircast.map.AircastSpace
 import one.aircast.map.aircast
@@ -148,7 +150,7 @@ private fun syntheticWebView(context: Context, onLoaded: () -> Unit, onDraw: (Sy
 }
 
 @Composable
-private fun BoxScope.SyntheticPage(view: JSONObject?) {
+private fun BoxScope.SyntheticPage(view: JSONObject?, standIn: String?) {
     val context = LocalContext.current
     val overlays by qgcPath(SYNTHETIC_OVERLAYS)
     var loaded by remember { mutableStateOf(false) }
@@ -162,11 +164,11 @@ private fun BoxScope.SyntheticPage(view: JSONObject?) {
     LaunchedEffect(view, loaded) { view?.takeIf { loaded }?.let { web.evaluateJavascript(syntheticPoseScript(it), null) } }
     LaunchedEffect(overlays, loaded) { overlays?.takeIf { loaded }?.let { web.evaluateJavascript(syntheticOverlaysScript(it), null) } }
     AndroidView({ web }, Modifier.fillMaxSize())
-    draw.note?.let { note -> SyntheticNote(note, loading = draw == SyntheticDraw.Loading, Modifier.align(Alignment.Center)) }
+    shownNote(draw, standIn)?.let { note -> SyntheticNote(note, loading = draw == SyntheticDraw.Loading, Modifier.align(Alignment.Center)) }
 }
 
 @Composable
-private fun BoxScope.NativePage(view: JSONObject?) {
+private fun BoxScope.NativePage(view: JSONObject?, standIn: String?) {
     val shown = remember { Any() }
     val draw = nativeDraw(view)
     DisposableEffect(shown, draw) {
@@ -174,8 +176,10 @@ private fun BoxScope.NativePage(view: JSONObject?) {
         onDispose { pages.remove(shown) }
     }
     SyntheticSurface(Modifier.fillMaxSize())
-    draw.note?.let { note -> SyntheticNote(note, loading = draw == SyntheticDraw.Loading, Modifier.align(Alignment.Center)) }
+    shownNote(draw, standIn)?.let { note -> SyntheticNote(note, loading = draw == SyntheticDraw.Loading, Modifier.align(Alignment.Center)) }
 }
+
+internal fun shownNote(draw: SyntheticDraw, standIn: String?): String? = draw.note ?: standIn?.takeIf { it.isNotEmpty() }
 
 internal fun gimbalAimsSynthetic(view: JSONObject?, aimable: Boolean): Boolean =
     aimable && syntheticAvailable(view) && view?.optBoolean("aimable", true) == false
@@ -196,7 +200,7 @@ internal fun gimbalAim(view: JSONObject?): Pair<Double, Double>? =
         ?.let { it.optDouble("pitch") to it.optDouble("bodyYaw") }
 
 @Composable
-internal fun SyntheticView(modifier: Modifier = Modifier, aimable: Boolean = false) {
+internal fun SyntheticView(modifier: Modifier = Modifier, aimable: Boolean = false, standIn: String? = null) {
     val view by qgcPath(SYNTHETIC_VIEW)
     val canAim = aimable && view?.optBoolean("aimable") == true
     val pitch by rememberUpdatedState(view?.optDouble("pitch", DEFAULT_TILT_DEG) ?: DEFAULT_TILT_DEG)
@@ -257,14 +261,14 @@ internal fun SyntheticView(modifier: Modifier = Modifier, aimable: Boolean = fal
             detectTapGestures(onDoubleTap = { offMainInOrder { gimbalRefusal(Qgc.call(GIMBAL_CENTER_COMMAND)) } })
         }
     Box(modifier.then(aiming)) {
-        if (nativeChosen(view)) NativePage(view) else SyntheticPage(view)
+        if (nativeChosen(view)) NativePage(view, standIn) else SyntheticPage(view, standIn)
     }
 }
 
 @Composable
 private fun SyntheticNote(note: String, loading: Boolean, modifier: Modifier) {
-    Row(modifier.osdShadow(), horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2), verticalAlignment = Alignment.CenterVertically) {
+    Row(modifier.padding(horizontal = AircastSpace.s4).osdShadow(), horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2), verticalAlignment = Alignment.CenterVertically) {
         if (loading) CircularProgressIndicator(Modifier.size(NOTE_SPINNER), color = MaterialTheme.aircast.outdoorForeground, strokeWidth = NOTE_SPINNER_STROKE)
-        Text(note, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.aircast.outdoorForeground, maxLines = 1)
+        Text(note, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.aircast.outdoorForeground, textAlign = TextAlign.Center, maxLines = 2)
     }
 }

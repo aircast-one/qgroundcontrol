@@ -207,7 +207,7 @@ private fun MainPane(video: VideoReading?, synthetic: Boolean, modifier: Modifie
         }
 
         if (video?.decoding != true && synthetic) {
-            SyntheticView(Modifier.fillMaxSize(), aimable = expanded)
+            SyntheticView(Modifier.fillMaxSize(), aimable = expanded, standIn = video?.standIn?.takeIf { expanded })
         } else if (video?.decoding != true) {
             Surface(
                 Modifier.fillMaxSize(),
