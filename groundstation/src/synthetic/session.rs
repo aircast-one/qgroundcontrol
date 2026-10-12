@@ -28,6 +28,10 @@ const UNKNOWN_GROUND_M: f64 = 1_000.0;
 const SETTLED_DEGREES: f64 = 5e-7;
 const SETTLED_METRES: f64 = 0.05;
 const SETTLED_ANGLE: f64 = 0.05;
+const TURN_EVERY_GUESS: Duration = Duration::from_millis(90);
+const TURN_SHORTEST: Duration = Duration::from_millis(30);
+const TURN_LONGEST: Duration = Duration::from_millis(300);
+const TURN_STRETCH: f64 = 1.3;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Target {
@@ -188,11 +192,38 @@ pub struct Session {
     ticked: Option<Instant>,
     selected: Option<Instant>,
     seen: Option<Target>,
+    turn: Option<Turn>,
     ground_meshes: Vec<Arc<Mesh>>,
 }
 
 fn wrapped(degrees: f64) -> f64 {
     (degrees + 180.0).rem_euclid(360.0) - 180.0
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Turn {
+    from: f64,
+    to: f64,
+    at: Instant,
+    every: Duration,
+}
+
+impl Turn {
+    pub fn heading_at(&self, now: Instant) -> f64 {
+        let progress = (now.saturating_duration_since(self.at).as_secs_f64() / (self.every.as_secs_f64() * TURN_STRETCH)).min(1.0);
+        self.from + wrapped(self.to - self.from) * progress
+    }
+}
+
+pub fn turned(turn: Option<Turn>, heading: f64, now: Instant) -> Turn {
+    match turn {
+        None => Turn { from: heading, to: heading, at: now, every: TURN_EVERY_GUESS },
+        Some(turn) if wrapped(heading - turn.to).abs() < SETTLED_ANGLE => turn,
+        Some(turn) => {
+            let gap = now.saturating_duration_since(turn.at).clamp(TURN_SHORTEST, TURN_LONGEST);
+            Turn { from: turn.heading_at(now), to: heading, at: now, every: (turn.every + gap) / 2 }
+        }
+    }
 }
 
 fn toward(from: Pose, to: Pose, alpha: f64) -> Pose {
@@ -240,7 +271,7 @@ impl Session {
             pool.send(Job::Root(token.to_string()));
         }
         let source = if google { Source::Google(None) } else { Source::Open(OpenScene::new()) };
-        Ok(Self { token: token.to_string(), source, pool, bytes, stats: Stats::default(), home: Probe::default(), under: Probe::default(), probed: None, shown: None, ticked: None, selected: None, seen: None, ground_meshes: Vec::new() })
+        Ok(Self { token: token.to_string(), source, pool, bytes, stats: Stats::default(), home: Probe::default(), under: Probe::default(), probed: None, shown: None, ticked: None, selected: None, seen: None, turn: None, ground_meshes: Vec::new() })
     }
 
     pub fn token(&self) -> &str {
@@ -381,7 +412,9 @@ impl Session {
             return None;
         }
         self.probe(target, now);
-        let goal = Pose { latitude: target.latitude, longitude: target.longitude, height: camera_height(target, self.home.height, self.under.height), heading: target.heading, pitch: target.pitch, roll: target.roll, fov: target.fov };
+        let turn = turned(self.turn, target.heading, now);
+        self.turn = Some(turn);
+        let goal = Pose { latitude: target.latitude, longitude: target.longitude, height: camera_height(target, self.home.height, self.under.height), heading: turn.heading_at(now), pitch: target.pitch, roll: target.roll, fov: target.fov };
         let alpha = self.ticked.map_or(1.0, |at| follow(now.duration_since(at)));
         self.ticked = Some(now);
         let pose = self.shown.map_or(goal, |shown| toward(shown, goal, alpha));
@@ -434,6 +467,29 @@ mod tests {
             .map(|round| (round, session.frame(Some(target), 640, 360, start + Duration::from_millis(round * 50)), session.in_flight()))
             .find(|(round, frame, in_flight)| *round > 20 && *in_flight == 0 && frame.as_ref().is_some_and(|frame| !frame.ground.is_empty()))
             .and_then(|(_, frame, _)| frame)
+    }
+
+    #[test]
+    fn a_turn_glides_between_heading_readings_instead_of_jumping_to_each() {
+        let start = Instant::now();
+        let at = |ms: u64| start + Duration::from_millis(ms);
+        let first = turned(None, 100.0, at(0));
+        assert_eq!(first.heading_at(at(50)), 100.0);
+        let second = turned(Some(first), 108.0, at(90));
+        let halfway = second.heading_at(at(90 + 58));
+        assert!(halfway > 102.0 && halfway < 106.0, "half an interval later the view is part way there, not at 108 ({halfway})");
+        assert_eq!(second.heading_at(at(90 + 300)), 108.0, "and it arrives");
+        let early = turned(Some(second), 116.0, at(150));
+        assert!((early.heading_at(at(150)) - second.heading_at(at(150))).abs() < 1e-9, "a reading that lands mid-glide starts from where the view is, so nothing jumps");
+        assert_eq!(turned(Some(second), 108.0, at(200)), second, "the same heading again changes nothing, so the glide finishes");
+    }
+
+    #[test]
+    fn a_turn_through_north_goes_the_short_way() {
+        let start = Instant::now();
+        let turn = turned(Some(turned(None, 355.0, start)), 5.0, start + Duration::from_millis(90));
+        let midway = turn.heading_at(start + Duration::from_millis(90 + 60));
+        assert!((midway - 355.0).rem_euclid(360.0) < 10.0, "from 355 to 5 is ten degrees through north, not 350 back round ({midway})");
     }
 
     #[test]
