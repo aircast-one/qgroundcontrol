@@ -16,8 +16,9 @@ import androidx.compose.ui.unit.dp
 
 internal val LocalFlyOsd = compositionLocalOf { false }
 
-private val OSD_SHADOW_BLUR = 3.dp
-private val OSD_SHADOW_DROP = 1.dp
+private val OSD_SHADOW_BLUR = 1.5.dp
+private val OSD_SHADOW_DROP = 0.5.dp
+private const val OSD_SHADOW_ALPHA = 0.6f
 
 @Composable
 internal fun osdBackdrop(color: Color): Color = if (LocalFlyOsd.current) Color.Transparent else color
@@ -36,10 +37,9 @@ private fun osdShadowEffect(blur: Float, drop: Float): androidx.compose.ui.graph
         RenderEffect.createBlurEffect(
             blur,
             blur,
-            RenderEffect.createColorFilterEffect(BlendModeColorFilter(android.graphics.Color.BLACK, BlendMode.SRC_IN)),
+            RenderEffect.createColorFilterEffect(BlendModeColorFilter(android.graphics.Color.argb(OSD_SHADOW_ALPHA, 0f, 0f, 0f), BlendMode.SRC_IN)),
             Shader.TileMode.DECAL,
         ),
     )
-    val doubled = RenderEffect.createBlendModeEffect(halo, halo, BlendMode.SRC_OVER)
-    return RenderEffect.createBlendModeEffect(doubled, RenderEffect.createOffsetEffect(0f, 0f), BlendMode.SRC_OVER).asComposeRenderEffect()
+    return RenderEffect.createBlendModeEffect(halo, RenderEffect.createOffsetEffect(0f, 0f), BlendMode.SRC_OVER).asComposeRenderEffect()
 }
