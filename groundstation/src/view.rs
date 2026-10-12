@@ -363,7 +363,7 @@ pub fn owns(path: &str) -> bool {
     path.split(['.', '[']).next() == Some("view")
 }
 
-pub const MOTION_VIEWS: &[&str] = &["view.syntheticView", "view.vehicles", "view.attitude", "view.videoAr"];
+pub const MOTION_VIEWS: &[&str] = &["view.syntheticView", "view.vehicles", "view.attitude", "view.videoAr", "view.gimbal"];
 
 pub fn moves(path: &str) -> bool {
     MOTION_VIEWS.contains(&split(path).0)

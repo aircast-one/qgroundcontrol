@@ -21,6 +21,7 @@ pub const GIMBAL_CONTROL: &str = "gimbal.control";
 pub const GIMBAL_SELECT: &str = "gimbal.select";
 pub const GIMBAL_ON_SCREEN: &str = "gimbal.onScreen";
 pub const GIMBAL_PITCH: &str = "gimbal.pitch";
+pub const GIMBAL_AIM: &str = "gimbal.aim";
 
 fn setting(backend: &dyn Backend, name: &str) -> bool {
     let fact = backend.value(&format!("settings.gimbalControllerSettings.{name}"));
@@ -105,7 +106,7 @@ pub fn azimuth_view(backend: &dyn Backend, _args: &[String]) -> Value {
 }
 
 pub fn owns(path: &str) -> bool {
-    [GIMBAL_CENTER, GIMBAL_TILT_90, GIMBAL_POINT_HOME, GIMBAL_RETRACT, GIMBAL_YAW_LOCK, GIMBAL_CONTROL, GIMBAL_SELECT, GIMBAL_ON_SCREEN, GIMBAL_PITCH].contains(&path)
+    [GIMBAL_CENTER, GIMBAL_TILT_90, GIMBAL_POINT_HOME, GIMBAL_RETRACT, GIMBAL_YAW_LOCK, GIMBAL_CONTROL, GIMBAL_SELECT, GIMBAL_ON_SCREEN, GIMBAL_PITCH, GIMBAL_AIM].contains(&path)
 }
 
 fn qt_path(method: &str) -> String {
@@ -136,6 +137,10 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
                 crate::guided::dispatch(backend, Some(op("pitch", json!({ "pitch": pitch }))), vehicle, &qt_path("sendPitchBodyYaw"), &qt_args)
             }
             None => json!({ "ok": false, "refusal": "badPitch", "reason": "A tilt is a number of degrees." }),
+        },
+        GIMBAL_AIM => match (given.get(0).and_then(Value::as_f64).filter(|v| v.is_finite()), given.get(1).and_then(Value::as_f64).filter(|v| v.is_finite())) {
+            (Some(pitch), Some(body_yaw)) => crate::guided::dispatch(backend, Some(op("aim", json!({ "pitch": pitch, "bodyYaw": body_yaw }))), vehicle, &qt_path("sendPitchBodyYaw"), &json!([pitch, body_yaw, false]).to_string()),
+            _ => json!({ "ok": false, "refusal": "badAim", "reason": "An aim is a tilt and a yaw from the nose, in degrees." }),
         },
         GIMBAL_RETRACT => crate::guided::dispatch(backend, Some(op("retract", Value::Null)), vehicle, &qt_path("setGimbalRetract"), "[true]"),
         GIMBAL_YAW_LOCK => crate::guided::dispatch(backend, Some(op("yawLock", json!({ "lock": on }))), vehicle, &qt_path("setGimbalYawLock"), &json!([on]).to_string()),

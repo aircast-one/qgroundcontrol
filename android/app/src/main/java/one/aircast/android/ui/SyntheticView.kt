@@ -28,6 +28,8 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.ui.input.pointer.pointerInput
+import android.os.SystemClock
+import androidx.compose.ui.geometry.Offset
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainInOrder
 import androidx.compose.ui.Alignment
@@ -175,6 +177,24 @@ private fun BoxScope.NativePage(view: JSONObject?) {
     draw.note?.let { note -> SyntheticNote(note, loading = draw == SyntheticDraw.Loading, Modifier.align(Alignment.Center)) }
 }
 
+internal fun gimbalAimsSynthetic(view: JSONObject?, aimable: Boolean): Boolean =
+    aimable && syntheticAvailable(view) && view?.optBoolean("aimable", true) == false
+
+private const val GIMBAL_STATE = "view.gimbal"
+private const val GIMBAL_AIM_COMMAND = "gimbal.aim"
+private const val GIMBAL_CENTER_COMMAND = "gimbal.center"
+private const val GIMBAL_AIM_EVERY_MS = 50L
+private const val GIMBAL_AIM_SETTLES_MS = 1000L
+
+internal fun dragStart(reported: Pair<Double, Double>?, sent: Pair<Double, Double>?, sentAgoMs: Long): Pair<Double, Double> =
+    sent?.takeIf { sentAgoMs < GIMBAL_AIM_SETTLES_MS } ?: reported ?: (0.0 to 0.0)
+
+internal fun gimbalAim(view: JSONObject?): Pair<Double, Double>? =
+    view?.optJSONArray("gimbals")
+        ?.let { list -> (0 until list.length()).mapNotNull(list::optJSONObject) }
+        ?.firstOrNull { it.optBoolean("active") && !it.isNull("pitch") && !it.isNull("bodyYaw") }
+        ?.let { it.optDouble("pitch") to it.optDouble("bodyYaw") }
+
 @Composable
 internal fun SyntheticView(modifier: Modifier = Modifier, aimable: Boolean = false) {
     val view by qgcPath(SYNTHETIC_VIEW)
@@ -185,6 +205,16 @@ internal fun SyntheticView(modifier: Modifier = Modifier, aimable: Boolean = fal
     val send = { tilt: Double, turned: Double ->
         sent.value = tilt to turned
         offMainInOrder { Qgc.invoke(SYNTHETIC_AIM, tilt, turned) }
+    }
+    val steersGimbal = gimbalAimsSynthetic(view, aimable)
+    val gimbalJson by qgcPath(GIMBAL_STATE)
+    val gimbalAt by rememberUpdatedState(gimbalAim(gimbalJson))
+    val lastAim = remember { mutableStateOf<Pair<Double, Double>?>(null) }
+    val lastAimAt = remember { mutableStateOf(0L) }
+    val aimGimbal = { tilt: Double, yaw: Double ->
+        lastAim.value = tilt to yaw
+        lastAimAt.value = SystemClock.uptimeMillis()
+        offMainInOrder { gimbalRefusal(Qgc.call(GIMBAL_AIM_COMMAND, tilt, yaw)) }
     }
     val aiming = Modifier
         .pointerInput(canAim) {
@@ -199,6 +229,32 @@ internal fun SyntheticView(modifier: Modifier = Modifier, aimable: Boolean = fal
         .pointerInput(canAim) {
             if (!canAim) return@pointerInput
             detectTapGestures(onDoubleTap = { send(DEFAULT_TILT_DEG, 0.0) })
+        }
+        .pointerInput(steersGimbal) {
+            if (!steersGimbal) return@pointerInput
+            var start = 0.0 to 0.0
+            var moved = Offset.Zero
+            var sentAt = 0L
+            val target = { syntheticTilt(start.first, moved.y, size.height) to syntheticPan(start.second, moved.x, size.width) }
+            detectDragGestures(
+                onDragStart = {
+                    start = dragStart(gimbalAt, lastAim.value, SystemClock.uptimeMillis() - lastAimAt.value)
+                    moved = Offset.Zero
+                },
+                onDragEnd = { target().let { (tilt, yaw) -> aimGimbal(tilt, yaw) } },
+            ) { change, dragged ->
+                change.consume()
+                moved += dragged
+                val now = SystemClock.uptimeMillis()
+                if (now - sentAt >= GIMBAL_AIM_EVERY_MS) {
+                    sentAt = now
+                    target().let { (tilt, yaw) -> aimGimbal(tilt, yaw) }
+                }
+            }
+        }
+        .pointerInput(steersGimbal) {
+            if (!steersGimbal) return@pointerInput
+            detectTapGestures(onDoubleTap = { offMainInOrder { gimbalRefusal(Qgc.call(GIMBAL_CENTER_COMMAND)) } })
         }
     Box(modifier.then(aiming)) {
         if (nativeChosen(view)) NativePage(view) else SyntheticPage(view)

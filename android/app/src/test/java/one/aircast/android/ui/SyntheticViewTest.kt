@@ -43,6 +43,32 @@ class SyntheticViewTest {
     }
 
     @Test
+    fun `with a gimbal aiming the view a finger drag steers the gimbal, without one it looks around`() {
+        val gimballed = JSONObject("""{"available":true,"aimable":false}""")
+        assertTrue("the view follows the gimbal, so a drag has to move the gimbal or it does nothing", gimbalAimsSynthetic(gimballed, aimable = true))
+        assertFalse("free look keeps its own drag", gimbalAimsSynthetic(JSONObject("""{"available":true,"aimable":true}"""), aimable = true))
+        assertFalse("a thumbnail or second pane never takes the drag", gimbalAimsSynthetic(gimballed, aimable = false))
+        assertFalse(gimbalAimsSynthetic(JSONObject("""{"available":false,"aimable":false}"""), aimable = true))
+    }
+
+    @Test
+    fun `a drag starts from where the active gimbal points`() {
+        val view = JSONObject("""{"gimbals":[{"active":false,"pitch":-80.0,"bodyYaw":90.0},{"active":true,"pitch":-12.5,"bodyYaw":30.0}]}""")
+        assertEquals(-12.5 to 30.0, gimbalAim(view))
+        assertEquals("a gimbal that has not reported its attitude gives no start", null, gimbalAim(JSONObject("""{"gimbals":[{"active":true,"pitch":null,"bodyYaw":null}]}""")))
+        assertEquals(null, gimbalAim(null))
+    }
+
+    @Test
+    fun `a second drag carries on from the first instead of snapping back to a stale report`() {
+        val reported = -2.0 to 0.0
+        val sent = -20.0 to 75.0
+        assertEquals("the gimbal is still on its way to the last aim, so that is where the finger left it", sent, dragStart(reported, sent, sentAgoMs = 300))
+        assertEquals("long after, the gimbal's own report wins, in case something else moved it", reported, dragStart(reported, sent, sentAgoMs = 5000))
+        assertEquals(0.0 to 0.0, dragStart(null, null, sentAgoMs = 0))
+    }
+
+    @Test
     fun `any page that has drawn wins, and a failure shows only when none has`() {
         assertEquals(SyntheticDraw.Drawn, pageOf(listOf(SyntheticDraw.Failed, SyntheticDraw.Drawn)))
         assertEquals(SyntheticDraw.Failed, pageOf(listOf(SyntheticDraw.Loading, SyntheticDraw.Failed)))

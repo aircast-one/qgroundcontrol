@@ -3832,6 +3832,7 @@ impl Vehicle {
             .filter_map(|out| match out {
                 Out::Command { component, command, params, .. } => Some(Outbound::CommandLong { target: (target, component), command, params }),
                 Out::SetAttitudeRates { component, flags, device_id, pitch_rate, yaw_rate } => Some(Outbound::GimbalAttitudeRates { target: (target, component), flags, device_id, pitch_rate, yaw_rate }),
+                Out::SetPitchYaw { component, flags, device_id, pitch, yaw } => Some(Outbound::GimbalPitchYaw { target: (target, component), flags, device_id, pitch, yaw }),
                 Out::RequestMessage { component, message } => Some(Outbound::CommandLong { target: (target, component), command: MAV_CMD_REQUEST_MESSAGE, params: [f64::from(message), 0.0, 0.0, 0.0, 0.0, 0.0, 0.0] }),
                 Out::MessageInterval { component, message, interval_us } => Some(Outbound::CommandLong { target: (target, component), command: MAV_CMD_SET_MESSAGE_INTERVAL, params: [f64::from(message), interval_us, 0.0, 0.0, 0.0, 0.0, 0.0] }),
                 _ => None,
@@ -3851,6 +3852,10 @@ impl Vehicle {
                 "pitch" => {
                     let body_yaw = gimbals.active().and_then(|pair| gimbals.get(pair)).and_then(|g| g.attitude).map_or(0.0, |a| a.body_yaw);
                     gimbals.send_pitch_body_yaw(action.get("pitch").and_then(Value::as_f64).unwrap_or(0.0) as f32, body_yaw, false, now_ms)
+                }
+                "aim" => {
+                    let degrees = |key: &str| action.get(key).and_then(Value::as_f64).unwrap_or(0.0) as f32;
+                    gimbals.aim(degrees("pitch"), degrees("bodyYaw"), now_ms)
                 }
                 "retract" => gimbals.set_retract(true, now_ms),
                 "yawLock" => gimbals.set_yaw_lock(flag("lock"), now_ms),
@@ -4882,6 +4887,27 @@ mod tests {
         assert_eq!(hub.vehicle(1).unwrap().gimbals.pairs(), vec![pair]);
         assert!(hub.vehicle(2).unwrap().gimbals.pairs().is_empty(), "another vehicle's gimbal is not this vehicle's");
         assert_eq!(hub.vehicle(1).unwrap().gimbals.get(pair).and_then(|g| g.attitude).map(|a| a.absolute_yaw), Some(90.0), "the absolute yaw adds this vehicle's own heading");
+    }
+
+    #[test]
+    fn a_finger_drag_on_the_synthetic_view_aims_the_gimbal_at_a_tilt_and_a_yaw_from_the_nose() {
+        use mavlink::dialects::ardupilotmega::{GIMBAL_DEVICE_ATTITUDE_STATUS_DATA, GIMBAL_MANAGER_INFORMATION_DATA, GIMBAL_MANAGER_STATUS_DATA};
+        let mut hub = Hub::default();
+        let from = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        hub.on_frame(origin(0), &from, &copter_heartbeat(0, false), 0, 0);
+        hub.vehicles.values_mut().for_each(|v| v.connected = true);
+        hub.on_frame(origin(0), &from, &copter_heartbeat(0, false), 0, 0);
+        hub.on_frame(origin(0), &from, &MavMessage::GIMBAL_MANAGER_INFORMATION(GIMBAL_MANAGER_INFORMATION_DATA { gimbal_device_id: 1, ..Default::default() }), 0, 0);
+        hub.on_frame(origin(0), &from, &MavMessage::GIMBAL_MANAGER_STATUS(GIMBAL_MANAGER_STATUS_DATA { gimbal_device_id: 1, ..Default::default() }), 0, 0);
+        hub.on_frame(origin(0), &from, &MavMessage::GIMBAL_DEVICE_ATTITUDE_STATUS(GIMBAL_DEVICE_ATTITUDE_STATUS_DATA { gimbal_device_id: 1, q: [1.0, 0.0, 0.0, 0.0], ..Default::default() }), 0, 0);
+        let vehicle = hub.vehicles.get_mut(&1).unwrap();
+        let aimed = |frames: Vec<Vec<u8>>, pitch: f32, yaw: f32| {
+            frames.iter().map(|bytes| decode(bytes)).any(|message| matches!(message, MavMessage::GIMBAL_MANAGER_SET_PITCHYAW(m) if (m.pitch.to_degrees() - pitch).abs() < 1e-2 && (m.yaw.to_degrees() - yaw).abs() < 1e-2 && m.yaw_rate.is_nan()))
+        };
+        let first = vehicle.gimbal_action(&json!({ "action": "gimbal", "op": "aim", "pitch": -30.0, "bodyYaw": 45.0 }), 0).expect("the aim is sent");
+        let second = vehicle.gimbal_action(&json!({ "action": "gimbal", "op": "aim", "pitch": -31.0, "bodyYaw": 60.0 }), 50).expect("and the next one");
+        assert!(aimed(first, -30.0, 45.0), "both angles reach the gimbal manager together, so the view follows the finger on both axes");
+        assert!(aimed(second, -31.0, 60.0), "a drag streams aims 50 ms apart; as COMMAND_LONGs every one after the first was refused as a duplicate until the ack came back, and the gimbal stalled after 5 degrees");
     }
 
     #[test]

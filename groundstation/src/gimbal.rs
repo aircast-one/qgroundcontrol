@@ -185,6 +185,7 @@ pub enum Out {
     MessageInterval { component: u8, message: u32, interval_us: f64 },
     Command { component: u8, command: u16, params: [f64; 7], show_error: bool },
     SetAttitudeRates { component: u8, flags: u32, device_id: u8, pitch_rate: f32, yaw_rate: f32 },
+    SetPitchYaw { component: u8, flags: u32, device_id: u8, pitch: f32, yaw: f32 },
     StartRateRepeat,
     StopRateRepeat,
     ActiveGimbal(PairId),
@@ -541,6 +542,14 @@ impl Gimbals {
 
     pub fn send_pitch_body_yaw(&mut self, pitch: f32, yaw: f32, show_error: bool, now_ms: u64) -> Vec<Out> {
         self.send_angles(FLAG_ROLL_LOCK | FLAG_PITCH_LOCK | FLAG_YAW_IN_VEHICLE_FRAME, pitch, wrap180(yaw), show_error, now_ms)
+    }
+
+    pub fn aim(&mut self, pitch: f32, body_yaw: f32, now_ms: u64) -> Vec<Out> {
+        let stop = self.stop_rates();
+        let (target, control) = self.control(now_ms);
+        let flags = FLAG_ROLL_LOCK | FLAG_PITCH_LOCK | FLAG_YAW_IN_VEHICLE_FRAME;
+        let aimed = target.map(|pair| Out::SetPitchYaw { component: pair.manager_compid, flags, device_id: pair.device_id, pitch: pitch.to_radians(), yaw: wrap180(body_yaw).to_radians() });
+        control.into_iter().chain(stop).chain(aimed).collect()
     }
 
     pub fn send_pitch_absolute_yaw(&mut self, pitch: f32, yaw: f32, show_error: bool, now_ms: u64) -> Vec<Out> {
