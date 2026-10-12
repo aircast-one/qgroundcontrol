@@ -5,7 +5,6 @@ use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
     "settings.appSettings.virtualJoystick",
-    "settings.appSettings.virtualJoystickAutoCenterThrottle",
     "settings.appSettings.virtualJoystickLeftHandedMode",
     "vehicles.activeVehicleAvailable",
     "vehicle.rover",
@@ -13,6 +12,7 @@ pub const DEPS: &[&str] = &[
     "vehicle.flightMode",
     "vehicle.apmFirmware",
     "vehicle.multiRotor",
+    "vehicle.sub",
 ];
 
 const FLIES_ITSELF: &[&str] = &[
@@ -20,6 +20,9 @@ const FLIES_ITSELF: &[&str] = &[
     "Precision Landing", "Takeoff", "Hold", "Brake", "Follow", "Follow Me", "Throw", "Avoid ADSB", "Guided No GPS", "Offboard", "AutoRotate",
 ];
 const TAKEN_OVER_FROM: &str = "Guided";
+const FREE_THROTTLE: &[&str] = &[
+    "Stabilize", "Stabilized", "Manual", "Acro", "Rattitude", "Drift", "Flip", "Training", "FBW A", "FBW B", "Cruise", "QuadPlane Stabilize", "QuadPlane Acro",
+];
 
 pub const JOYSTICK_VALUE: &str = "vehicle.virtualTabletJoystickValue";
 pub const SEND_PERIOD_MS: u64 = 40;
@@ -52,8 +55,13 @@ fn flown_by_sticks(vehicle: &Value) -> bool {
     }
 }
 
+fn throttle_springs_back(vehicle: &Value) -> bool {
+    let free = vehicle.get("flightMode").and_then(Value::as_str).is_some_and(|mode| FREE_THROTTLE.contains(&mode));
+    !free || flag(vehicle, "rover") || flag(vehicle, "sub")
+}
+
 pub fn virtual_joystick_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let vehicle = backend.value_fields("vehicle", "rover,flightMode,apmFirmware,multiRotor");
+    let vehicle = backend.value_fields("vehicle", "rover,sub,flightMode,apmFirmware,multiRotor");
     let connected = flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable");
     let rover = connected && flag(&vehicle, "rover");
     let left_handed = setting(backend, "virtualJoystickLeftHandedMode");
@@ -64,7 +72,7 @@ pub fn virtual_joystick_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "enabled": enabled,
         "show": enabled && (!connected || flown_by_sticks(&vehicle)),
         "sending": sending(backend),
-        "autoCenterThrottle": setting(backend, "virtualJoystickAutoCenterThrottle"),
+        "autoCenterThrottle": !connected || throttle_springs_back(&vehicle),
         "leftHandedMode": left_handed,
         "leftPositiveOnly": connected && !rover && !left_handed,
         "rightPositiveOnly": connected && !rover && left_handed,
@@ -118,7 +126,7 @@ mod tests {
     impl Backend for Rig {
         fn get(&self, path: &str) -> String {
             let value = match path {
-                "settings.appSettings.virtualJoystick" | "settings.appSettings.virtualJoystickAutoCenterThrottle" => true,
+                "settings.appSettings.virtualJoystick" => true,
                 "settings.appSettings.virtualJoystickLeftHandedMode" => self.left_handed,
                 _ => false,
             };
@@ -143,6 +151,16 @@ mod tests {
 
     fn rig(rover: bool, left_handed: bool, connected: bool) -> Rig {
         Rig { rover, left_handed, connected, mode: "Loiter", apm_copter: true, invoked: RefCell::new(Vec::new()) }
+    }
+
+    #[test]
+    fn the_throttle_springs_back_where_the_autopilot_holds_height_and_stays_put_where_the_pilot_sets_it() {
+        let throttle = |rig: Rig| virtual_joystick_view(&rig, &[])["autoCenterThrottle"].clone();
+        assert_eq!(throttle(Rig { mode: "Loiter", ..rig(false, false, true) }), json!(true), "like a DJI, letting go holds height");
+        assert_eq!(throttle(Rig { mode: "Altitude Hold", ..rig(false, false, true) }), json!(true));
+        assert_eq!(throttle(Rig { mode: "Stabilize", ..rig(false, false, true) }), json!(false), "the stick is the throttle, so it stays where the pilot leaves it");
+        assert_eq!(throttle(Rig { mode: "Acro", ..rig(false, false, true) }), json!(false));
+        assert_eq!(throttle(Rig { mode: "Manual", ..rig(true, false, true) }), json!(true), "a rover let go of stops");
     }
 
     #[test]

@@ -48,6 +48,7 @@ const PAGES: &[Page] = &[
 ];
 
 const HIDDEN: &[&str] = &[
+    "virtualJoystickAutoCenterThrottle",
     "androidUsePosixSerial",
     "keepSceneAlive",
     "qLocaleLanguage",
@@ -198,7 +199,6 @@ const GATED: &[(&str, &str, bool, &str)] = &[
     ("diskLoggingMaxBackupFiles", "diskLoggingEnabled", true, DISK_LOGGING_OFF),
     ("enforceChecklist", "useChecklist", true, CHECKLIST_OFF),
 
-    ("virtualJoystickAutoCenterThrottle", "virtualJoystick", true, VIRTUAL_JOYSTICK_OFF),
     ("virtualJoystickLeftHandedMode", "virtualJoystick", true, VIRTUAL_JOYSTICK_OFF),
     ("ntripServerHostAddress", "ntripServerConnectEnabled", false, NTRIP_ACTIVE),
     ("ntripServerPort", "ntripServerConnectEnabled", false, NTRIP_ACTIVE),
@@ -412,7 +412,7 @@ const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
         ("Appearance", &["indoorPalette", "appFontPointSize", "overlayGlassFrost", "qLocaleLanguage"]),
         ("Sound", &["audioMuted", "batteryPercentRemainingAnnounce"]),
         ("Preflight checklist", &["useChecklist", "enforceChecklist"]),
-        ("On-screen sticks", &["virtualJoystick", "virtualJoystickAutoCenterThrottle", "virtualJoystickLeftHandedMode"]),
+        ("On-screen sticks", &["virtualJoystick", "virtualJoystickLeftHandedMode"]),
         ("Planning defaults", &["defaultMissionItemAltitude", "offlineEditingFirmwareClass", "offlineEditingVehicleClass", "offlineEditingCruiseSpeed", "offlineEditingHoverSpeed", "offlineEditingAscentSpeed", "offlineEditingDescentSpeed"]),
         ("AirLink", &["loginAirLink", "passAirLink"]),
         ("Ground station position", &["followTarget"]),
