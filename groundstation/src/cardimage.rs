@@ -9,7 +9,7 @@ use sha2::{Digest, Sha256};
 
 pub const MIN_CARD_BYTES: u64 = 3_500_000_000;
 pub const CANCELLED_BY_USER: &str = "Cancelled";
-pub const RELEASE_CHANNELS: [(&str, &str); 3] = [("stable", "downloads.aircast.one"), ("staging", "downloads.stage.aircast.one"), ("development", "downloads-dev.aircast.one")];
+pub const RELEASE_CHANNELS: [(&str, &str); 1] = [("stable", "downloads.aircast.one")];
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const ATTEMPT_LIMIT: Duration = Duration::from_secs(60);
 const ATTEMPTS: u32 = 30;
@@ -330,7 +330,8 @@ mod tests {
     #[test]
     fn every_channel_has_a_releases_url_and_unknown_ones_do_not() {
         assert_eq!(releases_url("stable").as_deref(), Some("https://downloads.aircast.one/lite/releases.json"));
-        assert_eq!(releases_url("development").as_deref(), Some("https://downloads-dev.aircast.one/lite/releases.json"));
+        assert_eq!(releases_url("development"), None);
+        assert_eq!(releases_url("staging"), None);
         assert_eq!(releases_url("nightly"), None);
     }
 

@@ -10,12 +10,10 @@ on:
     tags:
       - "aircast-v[0-9]+.[0-9]+.[0-9]+"
       - "aircast-v*-beta.*"
-      - "aircast-v*-staging.*"
-      - "aircast-v*-dev.*"
   workflow_dispatch:
     inputs:
       version:
-        description: "Existing tag to (re)release (e.g. aircast-v5.0.9, aircast-v5.0.9-dev.1)"
+        description: "Existing tag to (re)release (e.g. aircast-v5.0.9, aircast-v5.0.9-beta.1)"
         required: true
         type: string
 
@@ -48,15 +46,12 @@ jobs:
           if [[ "$VERSION" =~ ^aircast-v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "is_production=true" >> "$GITHUB_OUTPUT"
             echo "environment=production" >> "$GITHUB_OUTPUT"
-          elif [[ "$VERSION" =~ -beta\. ]]; then
+          elif [[ "$VERSION" =~ ^aircast-v[0-9]+\.[0-9]+\.[0-9]+-beta\.[0-9]+$ ]]; then
             echo "is_production=false" >> "$GITHUB_OUTPUT"
             echo "environment=beta" >> "$GITHUB_OUTPUT"
-          elif [[ "$VERSION" =~ -staging\. ]]; then
-            echo "is_production=false" >> "$GITHUB_OUTPUT"
-            echo "environment=staging" >> "$GITHUB_OUTPUT"
           else
-            echo "is_production=false" >> "$GITHUB_OUTPUT"
-            echo "environment=development" >> "$GITHUB_OUTPUT"
+            echo "::error::Invalid version $VERSION (expected aircast-vX.Y.Z or aircast-vX.Y.Z-beta.N)"
+            exit 1
           fi
           echo "Release: $VERSION"
 
@@ -779,12 +774,8 @@ jobs:
 
           if [ "$IS_PRODUCTION" == "true" ]; then
             TAG_PATTERN='^aircast-v[0-9]+\\.[0-9]+\\.[0-9]+$'
-          elif [ "$ENV" == "beta" ]; then
-            TAG_PATTERN='^aircast-v.*-beta\\..*$'
-          elif [ "$ENV" == "staging" ]; then
-            TAG_PATTERN='^aircast-v.*-staging\\..*$'
           else
-            TAG_PATTERN='^aircast-v.*-dev\\..*$'
+            TAG_PATTERN='^aircast-v.*-beta\\..*$'
           fi
 
           RELEASES=$(gh api "repos/$REPO/releases" \

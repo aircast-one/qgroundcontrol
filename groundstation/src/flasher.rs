@@ -202,7 +202,7 @@ fn open() -> Value {
         if !s.loaded {
             let remembered = remembered();
             s.form = flasherform::form_from(&remembered);
-            s.channel = Some(remembered.channel.clone()).filter(|c| !c.is_empty()).unwrap_or_else(|| DEFAULT_CHANNEL.into());
+            s.channel = Some(remembered.channel.clone()).filter(|c| cardimage::releases_url(c).is_some()).unwrap_or_else(|| DEFAULT_CHANNEL.into());
             s.remembered = remembered;
             s.loaded = true;
         }

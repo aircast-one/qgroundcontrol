@@ -8,7 +8,7 @@ import org.junit.Test
 class FlasherScreenTest {
     private val view = JSONObject(
         """
-        {"available":true,"channel":"stable","channels":["stable","staging","development"],
+        {"available":true,"channel":"stable","channels":["stable"],
          "releases":{"state":"ready","error":null,"items":[{"version":"v0.3.5","label":"Aircast OS v0.3.5","prerelease":false,"published":"2026-08-22","size":576627168,"sizeText":"577 MB"}]},
          "selected":"v0.3.5",
          "form":{"hostname":"falcon-01","ssid":"field-net","wifiPassword":"","noWifi":false,"country":"GE","sshMode":"key-only","authorizedKey":"","devicePassword":"","authKey":"","controlServer":""},
@@ -126,13 +126,6 @@ class FlasherScreenTest {
         assertEquals(true, problemInMoreOptions(parsed.copy(firstProblemField = "controlServer")))
         assertEquals("", problemNote(parsed.copy(firstProblem = "")))
         assertEquals("about 4 min left", parsed.remainingText)
-    }
-
-    @Test
-    fun internal_channels_stay_out_of_customer_builds() {
-        assertEquals(false, showsChannels(debug = false, channel = "stable"))
-        assertEquals(true, showsChannels(debug = true, channel = "stable"))
-        assertEquals(true, showsChannels(debug = false, channel = "staging"))
     }
 
     @Test
