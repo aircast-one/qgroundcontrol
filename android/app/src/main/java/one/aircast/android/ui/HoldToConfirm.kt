@@ -21,7 +21,7 @@ private val TRACK_HEIGHT = 64.dp
 
 private const val HOLD_TRACK_FILL_ALPHA = 0.45f
 
-internal fun holdLabel(name: String): String = name.ifBlank { null }?.let { "Hold to ${it.lowercase()}" } ?: "Hold to confirm"
+internal fun holdLabel(name: String): String = name.ifBlank { null }?.let { "Slide to ${it.lowercase()}" } ?: "Slide to confirm"
 
 @Composable
 fun HoldToConfirm(

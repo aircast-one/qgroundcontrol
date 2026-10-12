@@ -21,7 +21,7 @@ struct ArmControls: Equatable {
 
 func armControls(_ state: FlyState, _ forceOpen: Bool) -> ArmControls {
     ArmControls(
-        holdText: state.armed ? "Hold to disarm" : "Hold to arm",
+        holdText: state.armed ? "Slide to disarm" : "Slide to arm",
         holdEnabled: state.canArm,
         mayBeRefused: !state.armed && !state.nominal && state.canArm && !forceOpen,
         forceLink: !state.armed && !forceOpen && (!state.canArm || state.fault),
@@ -238,7 +238,7 @@ private struct ArmSection: View {
                     Button("Force arm…") { forceOpen = true }.buttonStyle(.text)
                 }
                 if controls.forceHold {
-                    HoldToConfirm(label: "Hold to force arm", destructive: true) { request(FORCE_ARM_REQUEST) }
+                    HoldToConfirm(label: "Slide to force arm", destructive: true) { request(FORCE_ARM_REQUEST) }
                 }
             }
             .padding(.horizontal, Space.s5)

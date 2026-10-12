@@ -30,7 +30,7 @@ final class FlyDeckTests: XCTestCase {
     }
 
     func testTheRailLabelsDropTheHoldInstruction() {
-        XCTAssertEqual(["Hold to land", "Return", "Hold to take off"].map(railLabel), ["Land", "Return", "Take off"])
+        XCTAssertEqual(["Slide to land", "Return", "Slide to take off"].map(railLabel), ["Land", "Return", "Take off"])
     }
 
     func testSlidingAcrossMostOfTheButtonConfirmsAsSurelyAsHoldingIt() {

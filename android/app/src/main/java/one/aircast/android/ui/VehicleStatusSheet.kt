@@ -55,7 +55,7 @@ internal data class ArmControls(
 )
 
 internal fun armControls(state: FlyState, forceOpen: Boolean): ArmControls = ArmControls(
-    holdText = if (state.armed) "Hold to disarm" else "Hold to arm",
+    holdText = if (state.armed) "Slide to disarm" else "Slide to arm",
     holdEnabled = state.canArm,
     mayBeRefused = !state.armed && !state.nominal && state.canArm && !forceOpen,
     forceLink = !state.armed && !forceOpen && (!state.canArm || state.fault),
@@ -218,7 +218,7 @@ private fun ArmSection(onDismiss: () -> Unit) {
             TextButton(onClick = { forceOpen = true }) { Text("Force arm…") }
         }
         if (controls.forceHold) {
-            HoldToConfirm("Hold to force arm", destructive = true) { request(FORCE_ARM_REQUEST) }
+            HoldToConfirm("Slide to force arm", destructive = true) { request(FORCE_ARM_REQUEST) }
         }
     }
 }
