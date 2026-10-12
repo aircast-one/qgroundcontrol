@@ -20,7 +20,7 @@ struct DeckEntry {
     let onClick: () -> Void
 }
 
-let HOLD_TO_TAKE_OFF = "Slide to take off"
+let HOLD_TO_TAKE_OFF = "Hold to take off"
 let TAKE_OFF = "Take off"
 let NO_LINK = "No link"
 let NO_SIGNAL_CODE = "noSignal"
@@ -221,7 +221,7 @@ private let RAIL_BUTTON_SIZE: CGFloat = 48
 private let RAIL_ICON_SIZE: CGFloat = 24
 private let RAIL_PRIMARY_ICON_SIZE: CGFloat = 32
 
-func railLabel(_ label: String) -> String { label.removingPrefix("Slide to ").capitalizedFirst }
+func railLabel(_ label: String) -> String { label.removingPrefix("Hold to ").capitalizedFirst }
 
 struct RailDeckButton: View {
     let entry: DeckEntry

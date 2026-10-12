@@ -37,9 +37,9 @@ final class ConfirmTrackTests: XCTestCase {
         XCTAssertEqual(missionIdentity(edited, summary).title, MISSION_ON_DRONE)
         XCTAssertTrue(missionIdentity(edited, summary).warning!.hasPrefix("ridge has changes"))
         XCTAssertEqual(missionIdentity(JSON.parse(#"{"hasMissionItems":false}"#), summary).title, MISSION_ON_DRONE)
-        XCTAssertEqual(holdLabel("Start mission"), "Slide to start mission")
-        XCTAssertEqual(holdLabel("Land"), "Slide to land")
-        XCTAssertEqual(holdLabel(""), "Slide to confirm")
+        XCTAssertEqual(holdLabel("Start mission"), "Hold to start mission")
+        XCTAssertEqual(holdLabel("Land"), "Hold to land")
+        XCTAssertEqual(holdLabel(""), "Hold to confirm")
         XCTAssertFalse(MISSION_ACTIONS.contains("land"))
     }
 

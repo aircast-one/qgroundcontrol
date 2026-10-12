@@ -74,7 +74,7 @@ internal class DeckEntry(
     val onClick: () -> Unit,
 )
 
-internal const val HOLD_TO_TAKE_OFF = "Slide to take off"
+internal const val HOLD_TO_TAKE_OFF = "Hold to take off"
 internal const val TAKE_OFF = "Take off"
 internal const val NO_LINK = "No link"
 internal const val NO_SIGNAL_CODE = "noSignal"
@@ -205,7 +205,7 @@ private val RAIL_BUTTON_SIZE = 48.dp
 private val RAIL_ICON_SIZE = 24.dp
 private val RAIL_PRIMARY_ICON_SIZE = 32.dp
 
-internal fun railLabel(label: String): String = label.removePrefix("Slide to ").replaceFirstChar { it.uppercase() }
+internal fun railLabel(label: String): String = label.removePrefix("Hold to ").replaceFirstChar { it.uppercase() }
 
 @Composable
 internal fun RailDeckButton(entry: DeckEntry, primary: Boolean, labelled: Boolean = false) {

@@ -4,7 +4,7 @@ private let TRACK_HEIGHT: CGFloat = 64
 
 private let HOLD_TRACK_FILL_ALPHA = 0.45
 
-func holdLabel(_ name: String) -> String { name.isBlank ? "Slide to confirm" : "Slide to \(name.lowercased())" }
+func holdLabel(_ name: String) -> String { name.isBlank ? "Hold to confirm" : "Hold to \(name.lowercased())" }
 
 struct HoldToConfirm: View {
     let label: String

@@ -17,6 +17,7 @@ pub const SEND_PERIOD_MS: u64 = 40;
 pub const TAKEOVER_DEFLECTION: f64 = 0.3;
 pub const TAKEOVER_HOLD_MS: u64 = 300;
 pub const TAKEOVER_RETRY_MS: u64 = 5000;
+pub const YAW_EXPO_PCT: f64 = 50.0;
 const THROTTLE_CENTRE: f64 = 0.5;
 
 pub fn stick_deflected(roll: f64, pitch: f64, yaw: f64, thrust: f64, flying: bool) -> bool {

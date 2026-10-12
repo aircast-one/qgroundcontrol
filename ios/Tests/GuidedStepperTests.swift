@@ -6,7 +6,7 @@ final class GuidedStepperTests: XCTestCase {
         XCTAssertEqual(guidedCommitLabel("Take off \u{00B7} 3.0 m", nil), "Take off \u{00B7} 3.0 m")
         XCTAssertEqual(guidedCommitLabel("Take off \u{00B7} 3.0 m", Readiness(text: "GPS off", blocks: false)), "Take off anyway \u{00B7} 3.0 m")
         XCTAssertEqual(guidedCommitLabel("Take off \u{00B7} 3.0 m", Readiness(text: "GPS off", blocks: true)), "Take off \u{00B7} 3.0 m")
-        XCTAssertEqual(holdLabel(guidedCommitLabel("Take off \u{00B7} 3.0 m", Readiness(text: "GPS off", blocks: false))), "Slide to take off anyway \u{00B7} 3.0 m")
+        XCTAssertEqual(holdLabel(guidedCommitLabel("Take off \u{00B7} 3.0 m", Readiness(text: "GPS off", blocks: false))), "Hold to take off anyway \u{00B7} 3.0 m")
     }
 
     func testTakeoffPresetsAreTheCommonHeightsTheVehicleAllows() {

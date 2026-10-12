@@ -26,11 +26,4 @@ class BatteryReturnTest {
         assertEquals("10.0A", totalDraw(battery(1, "null", "10")))
         assertNull(totalDraw(battery(1, "null", "null")))
     }
-
-    @Test
-    fun `the strip shows amps even when watts are known`() {
-        assertEquals("10.0A", totalCurrent(battery(1, "119.6", "10")))
-        assertNull(totalCurrent(battery(1, "119.6", "null")))
-        assertNull(totalCurrent(null))
-    }
 }

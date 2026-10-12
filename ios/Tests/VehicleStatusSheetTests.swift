@@ -22,11 +22,11 @@ final class VehicleStatusSheetTests: XCTestCase {
     }
 
     func testTheStatusDrawersArmControlsFollowMainStatusIndicator() {
-        XCTAssertEqual(armControls(state(), false), ArmControls(holdText: "Slide to arm", holdEnabled: true, mayBeRefused: false, forceLink: false, forceHold: false))
-        XCTAssertEqual(armControls(state(armed: true), false), ArmControls(holdText: "Slide to disarm", holdEnabled: true, mayBeRefused: false, forceLink: false, forceHold: false))
-        XCTAssertEqual(armControls(state(nominal: false), false), ArmControls(holdText: "Slide to arm", holdEnabled: true, mayBeRefused: true, forceLink: false, forceHold: false))
-        XCTAssertEqual(armControls(state(nominal: false, fault: true, canArm: false), false), ArmControls(holdText: "Slide to arm", holdEnabled: false, mayBeRefused: false, forceLink: true, forceHold: false))
-        XCTAssertEqual(armControls(state(canArm: false), true), ArmControls(holdText: "Slide to arm", holdEnabled: false, mayBeRefused: false, forceLink: false, forceHold: true))
+        XCTAssertEqual(armControls(state(), false), ArmControls(holdText: "Hold to arm", holdEnabled: true, mayBeRefused: false, forceLink: false, forceHold: false))
+        XCTAssertEqual(armControls(state(armed: true), false), ArmControls(holdText: "Hold to disarm", holdEnabled: true, mayBeRefused: false, forceLink: false, forceHold: false))
+        XCTAssertEqual(armControls(state(nominal: false), false), ArmControls(holdText: "Hold to arm", holdEnabled: true, mayBeRefused: true, forceLink: false, forceHold: false))
+        XCTAssertEqual(armControls(state(nominal: false, fault: true, canArm: false), false), ArmControls(holdText: "Hold to arm", holdEnabled: false, mayBeRefused: false, forceLink: true, forceHold: false))
+        XCTAssertEqual(armControls(state(canArm: false), true), ArmControls(holdText: "Hold to arm", holdEnabled: false, mayBeRefused: false, forceLink: false, forceHold: true))
     }
 
     func testASlideTheDeckCannotActOnSaysWhyInsteadOfClosingSilently() {

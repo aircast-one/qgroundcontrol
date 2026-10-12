@@ -10,7 +10,7 @@ class GuidedStepperTest {
         assertEquals("Take off \u00b7 3.0 m", guidedCommitLabel("Take off \u00b7 3.0 m", null))
         assertEquals("Take off anyway \u00b7 3.0 m", guidedCommitLabel("Take off \u00b7 3.0 m", Readiness("GPS off", blocks = false)))
         assertEquals("Take off \u00b7 3.0 m", guidedCommitLabel("Take off \u00b7 3.0 m", Readiness("GPS off", blocks = true)))
-        assertEquals("Slide to take off anyway \u00b7 3.0 m", holdLabel(guidedCommitLabel("Take off \u00b7 3.0 m", Readiness("GPS off", blocks = false))))
+        assertEquals("Hold to take off anyway \u00b7 3.0 m", holdLabel(guidedCommitLabel("Take off \u00b7 3.0 m", Readiness("GPS off", blocks = false))))
     }
 
     @Test

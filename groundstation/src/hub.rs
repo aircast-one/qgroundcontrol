@@ -1988,7 +1988,8 @@ impl Vehicle {
         }
         let value = |key: &str| action.get(key).and_then(Value::as_f64).unwrap_or(0.0);
         let axis = |key: &str| (value(key) as f32 * MANUAL_CONTROL_SCALE) as i16;
-        let control = Outbound::ManualControl { target: self.id, x: axis("pitch"), y: axis("roll"), z: axis("thrust"), r: axis("yaw") };
+        let yaw = crate::joystick::exponential(value("yaw") as f32, crate::virtualjoystick::YAW_EXPO_PCT);
+        let control = Outbound::ManualControl { target: self.id, x: axis("pitch"), y: axis("roll"), z: axis("thrust"), r: (yaw * MANUAL_CONTROL_SCALE) as i16 };
         let deflected = crate::virtualjoystick::stick_deflected(value("roll"), value("pitch"), value("yaw"), value("thrust"), self.flying);
         let takeover = self.stick_takeover(deflected, now_ms);
         self.encode(&control).into_iter().chain(takeover).collect()
@@ -5140,13 +5141,18 @@ mod tests {
         let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
         hub.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 0);
         let vehicle = hub.vehicles.get_mut(&1).unwrap();
-        let sent = vehicle.start_guided(&json!({ "action": "virtualJoystick", "roll": 0.25, "pitch": -0.5, "yaw": 1.0, "thrust": 0.5 }), 1_000).unwrap();
-        let control = sent.iter().find_map(|b| match decode(b) {
-            MavMessage::MANUAL_CONTROL(m) => Some(m),
-            _ => None,
-        }).expect("a MANUAL_CONTROL frame");
-        assert_eq!((control.target, control.x, control.y, control.z, control.r), (1, -500, 250, 500, 1000), "pitch is x, roll y, thrust z, yaw r, each times 1000");
-        assert_eq!((control.buttons, control.enabled_extensions), (0, 0));
+        let mut control = |yaw: f64, at: u64| {
+            let sent = vehicle.start_guided(&json!({ "action": "virtualJoystick", "roll": 0.25, "pitch": -0.5, "yaw": yaw, "thrust": 0.5 }), at).unwrap();
+            sent.iter().find_map(|b| match decode(b) {
+                MavMessage::MANUAL_CONTROL(m) => Some(m),
+                _ => None,
+            }).expect("a MANUAL_CONTROL frame")
+        };
+        let full = control(1.0, 1_000);
+        assert_eq!((full.target, full.x, full.y, full.z, full.r), (1, -500, 250, 500, 1000), "pitch is x, roll y, thrust z, yaw r, each times 1000");
+        assert_eq!((full.buttons, full.enabled_extensions), (0, 0));
+        assert_eq!(control(0.5, 1_040).r, 312, "half a yaw stick turns at under a third of the full rate, so a thumb pushing throttle barely turns the nose");
+        assert_eq!(control(-0.1, 1_080).r, -50);
     }
 
     #[test]

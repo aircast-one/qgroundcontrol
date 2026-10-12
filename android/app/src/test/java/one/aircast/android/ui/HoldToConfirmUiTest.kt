@@ -22,11 +22,11 @@ class HoldToConfirmUiTest {
     @Test
     fun `holding for the full time confirms once`() {
         var fired by mutableIntStateOf(0)
-        rule.setContent { MaterialTheme { HoldToConfirm("Slide to land") { fired++ } } }
+        rule.setContent { MaterialTheme { HoldToConfirm("Hold to land") { fired++ } } }
         rule.mainClock.autoAdvance = false
-        rule.onNodeWithText("Slide to land").performTouchInput { down(center) }
+        rule.onNodeWithText("Hold to land").performTouchInput { down(center) }
         rule.mainClock.advanceTimeBy(DECK_HOLD_MS.toLong() + 200)
-        rule.onNodeWithText("Slide to land").performTouchInput { up() }
+        rule.onNodeWithText("Hold to land").performTouchInput { up() }
         rule.mainClock.advanceTimeBy(100)
         assertEquals(1, fired)
     }
@@ -34,14 +34,14 @@ class HoldToConfirmUiTest {
     @Test
     fun `a hold whose action changes mid-press never fires the new action`() {
         var fired by mutableIntStateOf(0)
-        var label by mutableStateOf("Slide to take off")
+        var label by mutableStateOf("Hold to take off")
         rule.setContent { MaterialTheme { HoldToConfirm(label) { fired++ } } }
         rule.mainClock.autoAdvance = false
-        rule.onNodeWithText("Slide to take off").performTouchInput { down(center) }
+        rule.onNodeWithText("Hold to take off").performTouchInput { down(center) }
         rule.mainClock.advanceTimeBy(DECK_HOLD_MS.toLong() / 2)
-        label = "Slide to take off anyway"
+        label = "Hold to take off anyway"
         rule.mainClock.advanceTimeBy(DECK_HOLD_MS.toLong() * 2)
-        rule.onNodeWithText("Slide to take off anyway").performTouchInput { up() }
+        rule.onNodeWithText("Hold to take off anyway").performTouchInput { up() }
         rule.mainClock.advanceTimeBy(100)
         assertEquals("the pilot let go after reading the warning, so nothing is sent", 0, fired)
     }
