@@ -1,25 +1,20 @@
 use glam::{DMat4, DQuat, DVec3};
 use serde_json::Value;
 
+use super::mesh::{Layer, Mesh, solid};
+
 const GLB_MAGIC: u32 = 0x4654_6C67;
 const JSON_CHUNK: u32 = 0x4E4F_534A;
 const BIN_CHUNK: u32 = 0x004E_4942;
 const FLOAT: u64 = 5126;
+const BYTE: u64 = 5120;
 const UNSIGNED_BYTE: u64 = 5121;
+const SHORT: u64 = 5122;
 const UNSIGNED_SHORT: u64 = 5123;
 const UNSIGNED_INT: u64 = 5125;
+const UNTEXTURED: [u8; 4] = [255, 255, 255, 255];
 
 const Y_UP_TO_Z_UP: DMat4 = DMat4::from_cols_array(&[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]);
-
-pub struct Mesh {
-    pub to_ecef: DMat4,
-    pub low: [f32; 3],
-    pub high: [f32; 3],
-    pub positions: Vec<[f32; 3]>,
-    pub uvs: Vec<[f32; 2]>,
-    pub indices: Vec<u32>,
-    pub texture: image::RgbaImage,
-}
 
 struct Glb<'a> {
     json: Value,
@@ -54,19 +49,25 @@ fn view_bytes<'a>(glb: &'a Glb, view: u64) -> Option<(&'a [u8], usize)> {
     Some((glb.bin.get(start..start + length)?, number(view, "byteStride").unwrap_or(0) as usize))
 }
 
+fn scaled(value: f32, normalized: bool, range: f32) -> f32 {
+    if normalized { (value / range).max(-1.0) } else { value }
+}
+
 fn component(bytes: &[u8], kind: u64, normalized: bool) -> Option<f32> {
     match kind {
         FLOAT => Some(f32::from_le_bytes(bytes.get(..4)?.try_into().ok()?)),
-        UNSIGNED_SHORT => Some(f32::from(u16::from_le_bytes(bytes.get(..2)?.try_into().ok()?)) / if normalized { 65535.0 } else { 1.0 }),
-        UNSIGNED_BYTE => Some(f32::from(*bytes.first()?) / if normalized { 255.0 } else { 1.0 }),
+        UNSIGNED_SHORT => Some(scaled(f32::from(u16::from_le_bytes(bytes.get(..2)?.try_into().ok()?)), normalized, 65535.0)),
+        SHORT => Some(scaled(f32::from(i16::from_le_bytes(bytes.get(..2)?.try_into().ok()?)), normalized, 32767.0)),
+        UNSIGNED_BYTE => Some(scaled(f32::from(*bytes.first()?), normalized, 255.0)),
+        BYTE => Some(scaled(f32::from(i8::from_le_bytes([*bytes.first()?])), normalized, 127.0)),
         _ => None,
     }
 }
 
 fn component_size(kind: u64) -> usize {
     match kind {
-        UNSIGNED_BYTE => 1,
-        UNSIGNED_SHORT => 2,
+        BYTE | UNSIGNED_BYTE => 1,
+        SHORT | UNSIGNED_SHORT => 2,
         _ => 4,
     }
 }
@@ -139,19 +140,18 @@ fn primitives(glb: &Glb, mesh: u64, to_ecef: DMat4) -> Vec<Mesh> {
         .filter_map(|primitive| {
             let attributes = primitive.get("attributes")?;
             let positions = floats::<3>(glb, number(attributes, "POSITION")?)?;
-            let uvs = floats::<2>(glb, number(attributes, "TEXCOORD_0")?)?;
+            let uvs = match number(attributes, "TEXCOORD_0") {
+                Some(accessor) => floats::<2>(glb, accessor)?,
+                None => vec![[0.0, 0.0]; positions.len()],
+            };
             let indices = match number(primitive, "indices") {
                 Some(accessor) => indices(glb, accessor)?,
                 None => (0..positions.len() as u32).collect(),
             };
-            let (low, high) = bounds(&positions);
-            Some(Mesh { to_ecef, low, high, positions, uvs, indices, texture: texture(glb, number(primitive, "material"))? })
+            let picture = texture(glb, number(primitive, "material")).unwrap_or_else(|| solid(UNTEXTURED));
+            Some(Mesh::new(to_ecef, positions, uvs, indices, picture, Layer::Opaque))
         })
         .collect()
-}
-
-pub fn bounds(positions: &[[f32; 3]]) -> ([f32; 3], [f32; 3]) {
-    positions.iter().fold(([f32::MAX; 3], [f32::MIN; 3]), |(low, high), p| (std::array::from_fn(|axis| low[axis].min(p[axis])), std::array::from_fn(|axis| high[axis].max(p[axis]))))
 }
 
 fn walk(glb: &Glb, node: u64, parent: DMat4) -> Vec<Mesh> {
@@ -227,7 +227,14 @@ mod tests {
         assert!((origin - DVec3::new(-4_471_593.497_109_432, 2_669_273.854_156_598, -3_671_137.465_224_134)).length() < 1e-6, "the tile's origin sits at its ECEF spot to the millimetre, got {origin}");
         assert_eq!(mesh.indices, vec![0, 1, 2]);
         assert_eq!(mesh.uvs[1], [1.0, 0.0]);
-        assert_eq!(mesh.texture.get_pixel(1, 1).0, [10, 20, 30, 255]);
+        assert_eq!(mesh.take_texture().expect("texture")[0].get_pixel(1, 1).0, [10, 20, 30, 255]);
+    }
+
+    #[test]
+    fn signed_normalized_components_read_into_minus_one_to_one() {
+        assert_eq!(component(&(-32767i16).to_le_bytes(), SHORT, true), Some(-1.0));
+        assert_eq!(component(&[127], BYTE, true), Some(1.0));
+        assert_eq!(component(&(-5i16).to_le_bytes(), SHORT, false), Some(-5.0));
     }
 
     #[test]

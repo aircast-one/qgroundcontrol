@@ -706,7 +706,7 @@ mod deps_cover_reads {
             ("obstacle", include_str!("obstacle.rs")),
             ("attitude", include_str!("attitude.rs")),
             ("synthview", include_str!("synthview.rs")),
-            ("photoreal", include_str!("photoreal/host.rs")),
+            ("synthetic", include_str!("synthetic/host.rs")),
             ("videoar", include_str!("videoar.rs")),
             ("operatorcontrol", include_str!("operatorcontrol.rs")),
             ("operatorrequest", include_str!("operatorrequest.rs")),

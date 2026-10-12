@@ -40,9 +40,23 @@ pub const DEFAULT_AIM: (f64, f64) = (FIXED_CAMERA_TILT_DEG, 0.0);
 
 static AIM: Mutex<(f64, f64)> = Mutex::new(DEFAULT_AIM);
 static CHANGED: AtomicBool = AtomicBool::new(false);
+static DRAW: Mutex<&'static str> = Mutex::new(DRAW_LOADING);
+const DRAW_LOADING: &str = "loading";
 
 pub fn take_changed() -> bool {
     CHANGED.swap(false, Ordering::SeqCst)
+}
+
+pub fn set_draw(state: &'static str) {
+    let mut draw = DRAW.lock().unwrap_or_else(PoisonError::into_inner);
+    if *draw != state {
+        *draw = state;
+        CHANGED.store(true, Ordering::SeqCst);
+    }
+}
+
+fn drawn() -> &'static str {
+    *DRAW.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
 pub fn owns(path: &str) -> bool {
@@ -108,7 +122,7 @@ pub fn beam(at: (f64, f64), height: f64, heading: f64, pitch: f64, fov: f64) -> 
 pub fn synthetic(backend: &dyn Backend, gimbals: &Value, aim: (f64, f64)) -> Value {
     let placed = point(backend, "vehicle.coordinate").zip(point(backend, "vehicle.homePosition")).zip(raw(backend, "vehicle.altitudeRelative"));
     let Some((((latitude, longitude), (home_latitude, home_longitude)), above_home)) = placed else {
-        return json!({ "kind": "object", "class": "SyntheticView", "available": false });
+        return json!({ "kind": "object", "class": "SyntheticView", "available": false, "native": native(), "draw": drawn() });
     };
     let gimbal = gimbal_aim(gimbals);
     let (tilt, pan) = aim;
@@ -130,13 +144,14 @@ pub fn synthetic(backend: &dyn Backend, gimbals: &Value, aim: (f64, f64)) -> Val
         "pan": if gimbal.is_none() { pan } else { 0.0 },
         "fov": CAMERA_FOV_DEG,
         "imagery": imagery(&provider),
-        "photoreal": photoreal(),
+        "native": native(),
+        "draw": drawn(),
         "beam": beam((latitude, longitude), above_home, heading, pitch, CAMERA_FOV_DEG).iter().map(|(lat, lon)| json!({ "latitude": lat, "longitude": lon })).collect::<Vec<_>>(),
     })
 }
 
-fn photoreal() -> bool {
-    cfg!(all(feature = "photoreal", feature = "jni-host"))
+fn native() -> bool {
+    cfg!(all(feature = "synthetic", feature = "jni-host"))
 }
 
 pub fn overlay_deps() -> Vec<String> {

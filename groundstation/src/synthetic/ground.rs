@@ -3,7 +3,7 @@ use std::sync::Arc;
 use glam::{DVec3, Vec3};
 
 use super::geo::{east_north_up, ecef};
-use super::glb::Mesh;
+use super::mesh::Mesh;
 
 const PROBE_HEIGHT_M: f64 = 10_000.0;
 
@@ -54,7 +54,7 @@ pub fn height_at(meshes: &[Arc<Mesh>], latitude: f64, longitude: f64) -> Option<
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::photoreal::glb::bounds;
+    use crate::synthetic::mesh::Layer;
     use glam::{DMat3, DMat4};
 
     #[test]
@@ -63,9 +63,8 @@ mod tests {
         let frame = east_north_up(latitude, longitude);
         let to_ecef = DMat4::from_mat3_translation(DMat3::from_cols(frame.x_axis, frame.y_axis, frame.z_axis), ecef(latitude, longitude, ground));
         let positions = vec![[-50.0, -50.0, 0.0], [50.0, -50.0, 0.0], [0.0, 50.0, 0.0]];
-        let (low, high) = bounds(&positions);
-        let mesh = Arc::new(Mesh { to_ecef, low, high, positions, uvs: vec![[0.0; 2]; 3], indices: vec![0, 1, 2], texture: image::RgbaImage::new(1, 1) });
-        let found = height_at(&[mesh.clone()], latitude, longitude).expect("a hit");
+        let mesh = Arc::new(Mesh::new(to_ecef, positions, vec![[0.0; 2]; 3], vec![0, 1, 2], image::RgbaImage::new(1, 1), Layer::Opaque));
+        let found = height_at(std::slice::from_ref(&mesh), latitude, longitude).expect("a hit");
         assert!((found - ground).abs() < 0.01, "found {found}");
         assert_eq!(height_at(&[mesh], latitude + 0.01, longitude), None, "a kilometre away there is no ground loaded");
     }

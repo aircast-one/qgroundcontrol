@@ -87,7 +87,8 @@ public final class QGCBridge {
 
     public static native boolean videoSetSurface(int channel, android.view.Surface surface);
 
-    public static native boolean photorealSetSurface(android.view.Surface surface);
+    public static native boolean syntheticAttach(android.view.Surface surface);
+    public static native void syntheticRelease(android.view.Surface surface);
 
     public static native byte[] mapTile(String mapType, int x, int y, int zoom, String cacheFile);
 

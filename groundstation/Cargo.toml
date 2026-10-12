@@ -13,13 +13,13 @@ name = "corehost"
 required-features = ["native-host"]
 
 [[example]]
-name = "photoreal_shot"
-required-features = ["photoreal"]
+name = "synthetic_shot"
+required-features = ["synthetic"]
 
 [features]
 native-host = []
 jni-host = ["native-host", "dep:jni"]
-photoreal = ["dep:wgpu", "dep:glam", "dep:pollster", "dep:earcut"]
+synthetic = ["dep:wgpu", "dep:glam", "dep:pollster", "dep:earcut"]
 
 [dependencies]
 mavlink = { version = "0.18", default-features = false, features = ["dialect-ardupilotmega", "std", "mav2-message-signing", "mav2-message-extensions"] }

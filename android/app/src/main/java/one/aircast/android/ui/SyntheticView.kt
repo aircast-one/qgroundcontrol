@@ -164,13 +164,15 @@ private fun BoxScope.SyntheticPage(view: JSONObject?) {
 }
 
 @Composable
-private fun PhotorealPage() {
+private fun BoxScope.NativePage(view: JSONObject?) {
     val shown = remember { Any() }
-    DisposableEffect(shown) {
-        pages[shown] = SyntheticDraw.Drawn
+    val draw = nativeDraw(view)
+    DisposableEffect(shown, draw) {
+        pages[shown] = draw
         onDispose { pages.remove(shown) }
     }
-    PhotorealSurface(Modifier.fillMaxSize())
+    SyntheticSurface(Modifier.fillMaxSize())
+    draw.note?.let { note -> SyntheticNote(note, loading = draw == SyntheticDraw.Loading, Modifier.align(Alignment.Center)) }
 }
 
 @Composable
@@ -199,7 +201,7 @@ internal fun SyntheticView(modifier: Modifier = Modifier, aimable: Boolean = fal
             detectTapGestures(onDoubleTap = { send(DEFAULT_TILT_DEG, 0.0) })
         }
     Box(modifier.then(aiming)) {
-        if (photorealChosen(view)) PhotorealPage() else SyntheticPage(view)
+        if (nativeChosen(view)) NativePage(view) else SyntheticPage(view)
     }
 }
 

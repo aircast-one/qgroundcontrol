@@ -389,15 +389,48 @@ pub extern "system" fn Java_org_mavlink_qgroundcontrol_QGCBridge_videoSetSurface
     jboolean::from(unsafe { (video.set_surface)(env.get_raw(), channel, surface.as_raw()) })
 }
 
+#[cfg(feature = "synthetic")]
+struct CoreFeed;
+
+#[cfg(feature = "synthetic")]
+const SYNTHETIC_TOKEN: &str = "settings.appSettings.photorealToken";
+
+#[cfg(feature = "synthetic")]
+impl crate::synthetic::host::Feed for CoreFeed {
+    fn pose(&self) -> Option<serde_json::Value> {
+        serde_json::from_str(&crate::abi::core_get("view.syntheticView")).ok()
+    }
+
+    fn overlays(&self) -> Option<serde_json::Value> {
+        serde_json::from_str(&crate::abi::core_get("view.syntheticOverlays")).ok()
+    }
+
+    fn token(&self) -> String {
+        crate::settingsstore::raw_setting(SYNTHETIC_TOKEN).and_then(|value| value.as_str().map(str::trim).map(str::to_string)).unwrap_or_default()
+    }
+
+    fn report(&self, draw: crate::synthetic::host::Draw) {
+        crate::synthview::set_draw(draw.name());
+    }
+}
+
 #[unsafe(no_mangle)]
-pub extern "system" fn Java_org_mavlink_qgroundcontrol_QGCBridge_photorealSetSurface(env: JNIEnv, _class: JClass, surface: JObject) -> jboolean {
-    #[cfg(feature = "photoreal")]
-    return jboolean::from(crate::photoreal::host::set_surface(env.get_raw(), surface.as_raw()));
-    #[cfg(not(feature = "photoreal"))]
+pub extern "system" fn Java_org_mavlink_qgroundcontrol_QGCBridge_syntheticAttach(env: JNIEnv, _class: JClass, surface: JObject) -> jboolean {
+    #[cfg(feature = "synthetic")]
+    return jboolean::from(crate::synthetic::host::attach(env.get_raw(), surface.as_raw(), std::sync::Arc::new(CoreFeed)));
+    #[cfg(not(feature = "synthetic"))]
     {
         let _ = (env, surface);
         0
     }
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_mavlink_qgroundcontrol_QGCBridge_syntheticRelease(env: JNIEnv, _class: JClass, surface: JObject) {
+    #[cfg(feature = "synthetic")]
+    crate::synthetic::host::release(env.get_raw(), surface.as_raw());
+    #[cfg(not(feature = "synthetic"))]
+    let _ = (env, surface);
 }
 
 #[unsafe(no_mangle)]
