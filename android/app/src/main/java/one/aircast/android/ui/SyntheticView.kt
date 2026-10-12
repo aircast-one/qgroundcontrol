@@ -203,7 +203,7 @@ internal fun gimbalAim(view: JSONObject?): Pair<Double, Double>? =
 internal fun SyntheticView(modifier: Modifier = Modifier, aimable: Boolean = false, standIn: String? = null) {
     val view by qgcPath(SYNTHETIC_VIEW)
     val canAim = aimable && view?.optBoolean("aimable") == true
-    val pitch by rememberUpdatedState(view?.optDouble("pitch", DEFAULT_TILT_DEG) ?: DEFAULT_TILT_DEG)
+    val aimedTilt by rememberUpdatedState(view?.optDouble("tilt", DEFAULT_TILT_DEG) ?: DEFAULT_TILT_DEG)
     val pan by rememberUpdatedState(view?.optDouble("pan", 0.0) ?: 0.0)
     val sent = remember(canAim) { mutableStateOf<Pair<Double, Double>?>(null) }
     val send = { tilt: Double, turned: Double ->
@@ -223,8 +223,8 @@ internal fun SyntheticView(modifier: Modifier = Modifier, aimable: Boolean = fal
     val aiming = Modifier
         .pointerInput(canAim) {
             if (!canAim) return@pointerInput
-            var aim = pitch to pan
-            detectDragGestures(onDragStart = { aim = sent.value ?: (pitch to pan) }) { change, dragged ->
+            var aim = aimedTilt to pan
+            detectDragGestures(onDragStart = { aim = sent.value ?: (aimedTilt to pan) }) { change, dragged ->
                 change.consume()
                 aim = syntheticTilt(aim.first, dragged.y, size.height) to syntheticPan(aim.second, dragged.x, size.width)
                 send(aim.first, aim.second)

@@ -228,7 +228,7 @@ struct SyntheticView: View {
     private func aiming(_ size: CGSize) -> some Gesture {
         DragGesture(minimumDistance: 4)
             .onChanged { drag in
-                let start = dragStart ?? sent ?? (view?["pitch"].double ?? DEFAULT_TILT_DEG, view?["pan"].double ?? 0)
+                let start = dragStart ?? sent ?? (view?["tilt"].double ?? DEFAULT_TILT_DEG, view?["pan"].double ?? 0)
                 dragStart = start
                 aim(syntheticTilt(start.tilt, drag.translation.height, size.height), syntheticPan(start.pan, drag.translation.width, size.width))
             }
