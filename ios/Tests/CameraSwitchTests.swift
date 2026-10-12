@@ -60,9 +60,11 @@ final class CameraSwitchTests: XCTestCase {
         XCTAssertNil(neighbourCamera(cameraSwitchState(reading(camera(0, active: true))), 1), "one camera has nowhere to swipe to")
     }
 
-    func testPastThreeCamerasThePickerIsOneChipWithAMenuSoItNeverRunsOffTheScreen() throws {
-        XCTAssertFalse(pickedFromMenu(try XCTUnwrap(cameraSwitchState(reading(camera(0, active: true), camera(1), camera(2))))))
-        XCTAssertTrue(pickedFromMenu(try XCTUnwrap(cameraSwitchState(reading(camera(0, active: true), camera(1), camera(2), camera(3))))))
+    func testTheChipNamesTheCameraOnScreenOrTheFirstOneWhenNoneIs() {
+        XCTAssertEqual(chipCamera(reading(camera(0), camera(1, active: true)))?.slot, 1)
+        XCTAssertEqual(chipCamera(reading(camera(0), camera(1)))?.slot, 0)
+        XCTAssertNil(chipCamera(reading()))
+        XCTAssertNil(chipCamera(nil))
     }
 
     func testTheSyntheticCameraCountsAsChosenOnlyWhenItIsTheOneOnScreen() {

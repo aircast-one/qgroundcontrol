@@ -298,7 +298,7 @@ private struct RailPlacement: Layout {
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
         guard let rail = subviews.first else { return }
-        let fitted = ProposedViewSize(width: bounds.width, height: nil)
+        let fitted = ProposedViewSize(width: bounds.width, height: max(0, bounds.height - lift - top))
         let floor = bounds.maxY - lift - rail.sizeThatFits(fitted).height
         let y = min(max(floor - clearance, bounds.minY + top), floor)
         rail.place(at: CGPoint(x: bounds.maxX, y: y), anchor: .topTrailing, proposal: fitted)

@@ -4,14 +4,12 @@ private let SWITCH_SCRIM_ALPHA = 0.55
 private let SWITCH_BORDER_ALPHA = 0.4
 private let SWITCH_DOT: CGFloat = 8
 private let SWITCH_BORDER: CGFloat = 1
-private let SEGMENT_PAD_HORIZONTAL: CGFloat = 10
-private let SEGMENT_PAD_VERTICAL: CGFloat = 6
-private let SEGMENT_GAP: CGFloat = 6
-private let SEGMENT_LABEL_MAX: CGFloat = 72
-private let SEGMENT_INSET: CGFloat = 6
-let MAX_SEGMENTS = 3
-private let SPLIT_BUTTON_SIZE: CGFloat = 40
-private let SPLIT_GLYPH: CGFloat = 17
+private let CHIP_PAD_HORIZONTAL: CGFloat = 12
+private let CHIP_PAD_VERTICAL: CGFloat = 8
+private let CHIP_GAP: CGFloat = 6
+private let CHIP_LABEL_MAX: CGFloat = 96
+private let CHIP_GLYPH: CGFloat = 14
+private let CHIP_ARROW: CGFloat = 12
 private let CHIP_HEIGHT: CGFloat = 32
 private let CHIP_CHECK_SIZE: CGFloat = 12
 struct CameraSwitchState: Equatable {
@@ -25,7 +23,7 @@ func cameraSwitchState(_ reading: CamerasReading?) -> CameraSwitchState? {
     return CameraSwitchState(shown: shown, cameras: cameras)
 }
 
-func pickedFromMenu(_ state: CameraSwitchState) -> Bool { state.cameras.count > MAX_SEGMENTS }
+func chipCamera(_ reading: CamerasReading?) -> CameraEntry? { reading.flatMap { $0.cameras.first(where: \.active) ?? $0.cameras.first } }
 
 func pipCamera(_ reading: CamerasReading?, _ streamOn: Bool) -> CameraEntry? {
     guard streamOn, let pip = reading?.pip, pip.enabled, let slot = pip.slot else { return nil }
@@ -73,139 +71,52 @@ struct CameraSwitch: View {
     let splitRoom: Bool
     @QgcPath(CAMERAS_VIEW) private var json
     @StreamOn private var streamOn
-    @FlyIsPortrait private var portrait
+    @Environment(\.theme) private var theme
+    @Environment(\.flyOsd) private var flyOsd
 
     var body: some View {
         let reading = camerasReading(json)
         let switchState = cameraSwitchState(reading)
         let splitTo = splitToggleTarget(reading, splitRoom, streamOn)
-        if switchState != nil || splitTo != nil {
-            if portrait {
-                HStack(spacing: Space.s2) { parts(switchState, splitTo) }
-            } else {
-                VStack(spacing: Space.s2) { parts(switchState, splitTo) }
-            }
-        }
-    }
-
-    @ViewBuilder private func parts(_ switchState: CameraSwitchState?, _ splitTo: Bool?) -> some View {
-        if let switchState {
-            CameraSegments(state: switchState, across: portrait)
-        }
-        if let next = splitTo {
-            SplitButton(shown: !next) { offMainInOrder { VideoCommands.setPictureInPicture(next) } }
-        }
-    }
-}
-
-private struct CameraSegments: View {
-    let state: CameraSwitchState
-    let across: Bool
-    @Environment(\.theme) private var theme
-    @Environment(\.flyOsd) private var flyOsd
-
-    var body: some View {
-        let white = theme.aircast.outdoorForeground
-        Group {
-            if pickedFromMenu(state) {
-                CameraMenu(state: state).padding(.horizontal, SEGMENT_INSET)
-            } else if across {
-                HStack(spacing: 0) { segments }.padding(.horizontal, SEGMENT_INSET)
-            } else {
-                ViewThatFits(in: .vertical) {
-                    VStack(spacing: 0) { segments }.padding(.vertical, SEGMENT_INSET)
-                    ScrollView(.vertical, showsIndicators: false) { VStack(spacing: 0) { segments }.padding(.vertical, SEGMENT_INSET) }
-                        .fixedSize(horizontal: true, vertical: false)
+        if let shown = switchState?.shown ?? chipCamera(reading), switchState != nil || splitTo != nil {
+            Menu {
+                if let cameras = switchState?.cameras {
+                    Picker("Camera", selection: Binding(get: { shown.slot }, set: { slot in if slot != shown.slot { showCamera(slot) } })) {
+                        ForEach(cameras) { camera in Text(camera.title).tag(camera.slot) }
+                    }
+                    .pickerStyle(.inline)
                 }
+                if let next = splitTo {
+                    Toggle(isOn: Binding(get: { !next }, set: { _ in offMainInOrder { VideoCommands.setPictureInPicture(next) } })) {
+                        Label("Split view", systemImage: Icon.splitView.rawValue)
+                    }
+                }
+            } label: {
+                chip(shown, splitOn: splitTo == false)
             }
+            .menuStyle(.button)
+            .buttonStyle(.plain)
+            .accessibilityLabel("Cameras, showing \(shown.title)")
         }
+    }
+
+    private func chip(_ shown: CameraEntry, splitOn: Bool) -> some View {
+        let white = theme.aircast.outdoorForeground
+        return HStack(spacing: CHIP_GAP) {
+            CameraStatusDot(status: shown.status)
+            CappedWidth(limit: CHIP_LABEL_MAX) {
+                Text(shown.short).font(.labelLarge).lineLimit(1).truncationMode(.tail)
+            }
+            if splitOn { Image(.splitView).font(.system(size: CHIP_GLYPH)) }
+            Image(.arrowDropDown).font(.system(size: CHIP_ARROW, weight: .semibold))
+        }
+        .padding(.horizontal, CHIP_PAD_HORIZONTAL)
+        .padding(.vertical, CHIP_PAD_VERTICAL)
+        .foregroundStyle(white)
         .background(osdBackdrop(Color.black.opacity(SWITCH_SCRIM_ALPHA), flyOsd), in: Capsule())
         .overlay(Capsule().stroke(white.opacity(SWITCH_BORDER_ALPHA), lineWidth: SWITCH_BORDER))
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Cameras, showing \(state.shown.title)")
-    }
-
-    private var segments: some View {
-        ForEach(state.cameras) { camera in
-            CameraSegment(camera: camera, selected: camera.slot == state.shown.slot)
-        }
-    }
-}
-
-private struct CameraMenu: View {
-    let state: CameraSwitchState
-
-    var body: some View {
-        Menu {
-            ForEach(state.cameras) { camera in
-                Button { if camera.slot != state.shown.slot { showCamera(camera.slot) } } label: { Text(camera.title) }
-            }
-        } label: {
-            SegmentLabel(camera: state.shown, selected: true, menu: true)
-        }
-        .accessibilityLabel("Choose a camera, showing \(state.shown.title)")
-    }
-}
-
-private struct SegmentLabel: View {
-    let camera: CameraEntry
-    let selected: Bool
-    var menu = false
-    @Environment(\.theme) private var theme
-
-    var body: some View {
-        let white = theme.aircast.outdoorForeground
-        HStack(spacing: SEGMENT_GAP) {
-            CameraStatusDot(status: camera.status)
-            CappedWidth(limit: SEGMENT_LABEL_MAX) {
-                Text(camera.short).font(.labelLarge).lineLimit(1).truncationMode(.tail)
-            }
-            if menu { Image(.arrowDropDown).font(.system(size: 12, weight: .semibold)) }
-        }
-        .padding(.horizontal, SEGMENT_PAD_HORIZONTAL)
-        .padding(.vertical, SEGMENT_PAD_VERTICAL)
-        .foregroundStyle(selected ? Color.black : white)
-        .background(selected ? white : Color.clear, in: Capsule())
         .frame(minHeight: MINIMUM_TOUCH_TARGET)
         .contentShape(Rectangle())
-    }
-}
-
-private struct CameraSegment: View {
-    let camera: CameraEntry
-    let selected: Bool
-
-    var body: some View {
-        Button { if !selected { showCamera(camera.slot) } } label: {
-            SegmentLabel(camera: camera, selected: selected)
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel(camera.title)
-        .accessibilityAddTraits(selected ? [.isButton, .isSelected] : .isButton)
-    }
-}
-
-private struct SplitButton: View {
-    let shown: Bool
-    let onToggle: () -> Void
-    @Environment(\.theme) private var theme
-    @Environment(\.flyOsd) private var flyOsd
-
-    var body: some View {
-        let white = theme.aircast.outdoorForeground
-        Button(action: onToggle) {
-            Image(.splitView)
-                .font(.system(size: SPLIT_GLYPH))
-                .foregroundStyle(shown ? theme.colors.onPrimary : white)
-                .frame(width: SPLIT_BUTTON_SIZE, height: SPLIT_BUTTON_SIZE)
-                .background(shown ? theme.colors.primary : osdBackdrop(Color.black.opacity(SWITCH_SCRIM_ALPHA), flyOsd), in: Circle())
-                .overlay(Circle().stroke(shown ? Color.clear : white.opacity(SWITCH_BORDER_ALPHA), lineWidth: SWITCH_BORDER))
-                .contentShape(Circle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Show two cameras side by side")
-        .accessibilityValue(shown ? "On" : "Off")
-        .accessibilityAddTraits(.isToggle)
     }
 }
 

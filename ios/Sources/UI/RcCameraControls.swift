@@ -3,12 +3,25 @@ import SwiftUI
 private let FLY_VIEW_SETTINGS = "settings.flyViewSettings"
 private let RAIL_SLIDER_LENGTH: CGFloat = 140
 private let RAIL_SLIDER_THICKNESS: CGFloat = 40
+private let RAIL_SLIDER_SHORTEST: CGFloat = 64
 
 private extension View {
-    func railSlider() -> some View {
-        frame(width: RAIL_SLIDER_LENGTH)
+    func railSlider(_ length: CGFloat) -> some View {
+        frame(width: length)
             .rotationEffect(.degrees(-90))
-            .frame(width: RAIL_SLIDER_THICKNESS, height: RAIL_SLIDER_LENGTH)
+            .frame(width: RAIL_SLIDER_THICKNESS, height: length)
+    }
+}
+
+private struct RailSlot<Content: View>: View {
+    @ViewBuilder let content: (CGFloat) -> Content
+
+    var body: some View {
+        GeometryReader { geometry in
+            if geometry.size.height >= RAIL_SLIDER_SHORTEST { content(geometry.size.height) }
+        }
+        .frame(width: RAIL_SLIDER_THICKNESS)
+        .frame(minHeight: 0, idealHeight: RAIL_SLIDER_LENGTH, maxHeight: RAIL_SLIDER_LENGTH)
     }
 }
 
@@ -66,6 +79,7 @@ private struct PwmSlider: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            RailSlot { length in
             Slider(
                 value: Binding(get: { Double(pwm) }, set: { raw in
                     let next = Int(raw)
@@ -79,7 +93,8 @@ private struct PwmSlider: View {
                 in: Double(PWM_MIN)...Double(PWM_MAX),
                 onEditingChanged: { editing in if !editing { send(channel, pwm) } }
             )
-            .railSlider()
+            .railSlider(length)
+            }
             Text(label).font(.labelMedium)
         }
         .onChange(of: channel) { lastSent = 0 }
@@ -107,6 +122,7 @@ private struct TiltWake: Equatable {
 
 private struct GimbalTiltSlider: View {
     let pitch: Double?
+    let onRecenter: (() -> Void)?
     @State private var dragging: Double?
     @State private var lastSent: Int64 = 0
     @State private var active = true
@@ -115,12 +131,8 @@ private struct GimbalTiltSlider: View {
     var body: some View {
         let shown = dragging ?? (pitch ?? 0).clamped(to: GIMBAL_TILT_MIN...GIMBAL_TILT_MAX)
         VStack(spacing: 0) {
-            Text("\(Int(shown.rounded()))\u{00B0}")
-                .font(.labelMedium)
-                .minimumTouchTarget()
-                .onTapGesture { wake += 1 }
-                .accessibilityAddTraits(.isButton)
-                .accessibilityHint("Tilt the gimbal")
+            TiltReadout(degrees: shown, onRecenter: onRecenter, onTap: { wake += 1 }, tapHint: "Tilt the gimbal")
+            RailSlot { length in
             ZStack {
                 if !active {
                     Color.clear
@@ -147,13 +159,14 @@ private struct GimbalTiltSlider: View {
                     )
                     .tint(Color.white.opacity(GIMBAL_TRACK_ALPHA))
                     .background(Capsule().fill(Color.white.opacity(GIMBAL_REST_ALPHA)).frame(height: 4))
-                    .railSlider()
+                    .railSlider(length)
                     .accessibilityLabel("Gimbal tilt")
                     .transition(.opacity)
                 }
             }
-            .frame(width: RAIL_SLIDER_THICKNESS, height: RAIL_SLIDER_LENGTH)
+            .frame(width: RAIL_SLIDER_THICKNESS, height: length)
             .animation(.default, value: active)
+            }
         }
         .task(id: TiltWake(shown: shown, dragging: dragging, wake: wake)) {
             active = true
@@ -172,6 +185,8 @@ struct RcCameraControls: View {
     @QgcPath(GIMBAL_INDICATOR_PATH) private var gimbalJson
     @QgcPath(VEHICLES_VIEW) private var vehiclesJson
     @QgcBool(VIDEO_RECORDING_STATE) private var streamRecording
+    @SyntheticAims private var syntheticAims
+    @QgcPath(SYNTHETIC_VIEW) private var syntheticJson
     @State private var tilt = PWM_CENTER
     @State private var pan = PWM_CENTER
     @State private var zoom = PWM_CENTER
@@ -186,7 +201,7 @@ struct RcCameraControls: View {
         let gimbalManager = gimbalJson?["shown"].bool == true
         let vehicleId = activeVehicleId(vehiclesJson)
         ZStack {
-            if hasVehicle && (channels.any || gimbalManager) {
+            if hasVehicle && (channels.any || gimbalManager || syntheticAims) {
                 controls(channels, gimbalManager)
             }
         }
@@ -220,9 +235,17 @@ struct RcCameraControls: View {
         let gimbal = gimbalIndicator(gimbalJson)
         let recording = cameraRecording(recordChannel: channels.record, channelRecording: channelRecording, streamRecording: streamRecording)
         let rcGimbal = !gimbalManager && (channels.tilt > 0 || channels.pan > 0)
+        let syntheticTilt = syntheticJson?["tilt"].double.flatMap { $0.isFinite ? $0 : nil }
+        let syntheticPan = syntheticJson?["pan"].double.flatMap { $0.isFinite ? $0 : nil }
+        let target = recenterTarget(syntheticAims: syntheticAims, syntheticTilt: syntheticTilt, syntheticPan: syntheticPan, gimbal: gimbal)
+        let state = state
+        let onRecenter = { (aimed: RecenterTarget) -> (() -> Void)? in
+            target == aimed ? { recenter(aimed) { state.gimbalRefused = $0 } } : nil
+        }
         return VStack(spacing: 4) {
+            if syntheticAims { TiltReadout(degrees: syntheticTilt ?? DEFAULT_TILT_DEG, onRecenter: onRecenter(.Synthetic)) }
             HStack(spacing: 4) {
-                if let gimbal { GimbalTiltSlider(pitch: gimbal.pitchDegrees) }
+                if let gimbal { GimbalTiltSlider(pitch: gimbal.pitchDegrees, onRecenter: onRecenter(.Gimbal)) }
                 if !gimbalManager && channels.tilt > 0 { PwmSlider(label: "Tilt", channel: channels.tilt, pwm: tilt) { tilt = $0 } }
                 if !gimbalManager && channels.pan > 0 { PwmSlider(label: "Pan", channel: channels.pan, pwm: pan) { pan = $0 } }
                 if channels.zoom > 0 { PwmSlider(label: "Zoom", channel: channels.zoom, pwm: zoom) { zoom = $0 } }

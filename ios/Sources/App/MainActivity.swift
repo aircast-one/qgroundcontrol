@@ -399,7 +399,7 @@ struct AircastShell: View {
                 cameraControl
             })
         }
-        return AnyView(HStack(spacing: 0) {
+        return AnyView(HStack(alignment: .top, spacing: 0) {
             cameraSwitch.padding(.trailing, Space.s2)
             cameraControl.frame(minWidth: RAIL_SHUTTER_ROOM)
         })
