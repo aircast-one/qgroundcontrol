@@ -99,7 +99,7 @@ internal fun syntheticTilt(from: Double, draggedPx: Float, heightPx: Int): Doubl
     (from + draggedPx.toDouble() / heightPx.coerceAtLeast(1) * TILT_SPAN_DEG).coerceIn(-TILT_SPAN_DEG, 0.0)
 
 internal fun syntheticPan(from: Double, draggedPx: Float, widthPx: Int): Double =
-    ((from - draggedPx.toDouble() / widthPx.coerceAtLeast(1) * PAN_SPAN_DEG + 180.0).mod(360.0)) - 180.0
+    ((from + draggedPx.toDouble() / widthPx.coerceAtLeast(1) * PAN_SPAN_DEG + 180.0).mod(360.0)) - 180.0
 
 internal fun syntheticAims(view: JSONObject?, cameras: CamerasReading?): Boolean =
     syntheticAvailable(view) && view?.optBoolean("aimable") == true && cameras?.cameras?.any { it.active && it.source == SYNTHETIC_SOURCE } == true

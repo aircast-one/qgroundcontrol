@@ -25,9 +25,9 @@ final class SyntheticViewTests: XCTestCase {
         XCTAssertEqual(syntheticTilt(-15, -500, 1000), -60, accuracy: 1e-9)
         XCTAssertEqual(syntheticTilt(-15, 900, 1000), 0, accuracy: 1e-9)
         XCTAssertEqual(syntheticTilt(-15, -2000, 1000), -90, accuracy: 1e-9)
-        XCTAssertEqual(syntheticPan(0, 250, 1000), -90, accuracy: 1e-9)
+        XCTAssertEqual(syntheticPan(0, 250, 1000), 90, accuracy: 1e-9)
         XCTAssertEqual(syntheticPan(30, 1000, 1000), 30, accuracy: 1e-9)
-        XCTAssertEqual(syntheticPan(170, -100, 1000), -154, accuracy: 1e-9)
+        XCTAssertEqual(syntheticPan(170, -100, 1000), 134, accuracy: 1e-9)
     }
 
     func testTheViewIsDrawnOnlyWhenTheCoreCanPlaceTheCamera() {

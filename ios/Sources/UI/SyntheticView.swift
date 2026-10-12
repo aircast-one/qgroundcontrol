@@ -60,7 +60,7 @@ func syntheticTilt(_ from: Double, _ dragged: Double, _ height: Double) -> Doubl
 }
 
 func syntheticPan(_ from: Double, _ dragged: Double, _ width: Double) -> Double {
-    let turned = (from - dragged / max(width, 1) * PAN_SPAN_DEG + 180).truncatingRemainder(dividingBy: 360)
+    let turned = (from + dragged / max(width, 1) * PAN_SPAN_DEG + 180).truncatingRemainder(dividingBy: 360)
     return (turned < 0 ? turned + 360 : turned) - 180
 }
 

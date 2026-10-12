@@ -34,10 +34,10 @@ class SyntheticViewTest {
 
     @Test
     fun `a full-width swipe turns the view all the way round, as a full-height one covers the whole tilt`() {
-        assertEquals(-90.0, syntheticPan(0.0, draggedPx = 250f, widthPx = 1000), 1e-9)
-        assertEquals(90.0, syntheticPan(0.0, draggedPx = -250f, widthPx = 1000), 1e-9)
+        assertEquals(90.0, syntheticPan(0.0, draggedPx = 250f, widthPx = 1000), 1e-9)
+        assertEquals(-90.0, syntheticPan(0.0, draggedPx = -250f, widthPx = 1000), 1e-9)
         assertEquals(30.0, syntheticPan(30.0, draggedPx = 1000f, widthPx = 1000), 1e-9)
-        assertEquals(-154.0, syntheticPan(170.0, draggedPx = -100f, widthPx = 1000), 1e-9)
+        assertEquals(134.0, syntheticPan(170.0, draggedPx = -100f, widthPx = 1000), 1e-9)
     }
 
     @Test
