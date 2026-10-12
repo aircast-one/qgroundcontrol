@@ -304,7 +304,7 @@ const anchorHome = (pose) => {
 
 const wrapped = (degrees) => ((((degrees + 180) % 360) + 360) % 360) - 180;
 
-const continuing = (previous, heading) => (previous ? previous.heading + wrapped(heading - previous.heading) : heading);
+const continuing = (previous, key, degrees) => (previous ? previous[key] + wrapped(degrees - previous[key]) : degrees);
 
 const toward = (from, to) => ({
   longitude: from.longitude + (to.longitude - from.longitude) * FOLLOW,
@@ -360,7 +360,7 @@ window.aircast = {
     drawOverlays();
   },
   pose: (pose) => {
-    state.target = pose.available ? { ...pose, heading: continuing(state.target ?? state.shown, pose.heading) } : undefined;
+    state.target = pose.available ? { ...pose, heading: continuing(state.target ?? state.shown, "heading", pose.heading), roll: continuing(state.target ?? state.shown, "roll", pose.roll) } : undefined;
     (!state.target || !state.shown || state.homeGround === undefined || !settled(state.shown, goal(state.target))) && wake();
     return pose.available && [
       showBuildingsAround(pose),

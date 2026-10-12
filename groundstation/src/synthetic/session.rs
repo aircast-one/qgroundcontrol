@@ -250,7 +250,7 @@ fn toward(from: Pose, to: Pose, alpha: f64) -> Pose {
         height: step(from.height, to.height),
         heading: from.heading + wrapped(to.heading - from.heading) * alpha,
         pitch: step(from.pitch, to.pitch),
-        roll: step(from.roll, to.roll),
+        roll: from.roll + wrapped(to.roll - from.roll) * alpha,
         fov: to.fov,
     }
 }
@@ -275,7 +275,7 @@ fn settled(a: &Pose, b: &Pose) -> bool {
     (a.latitude - b.latitude).abs() < SETTLED_DEGREES
         && (a.longitude - b.longitude).abs() < SETTLED_DEGREES
         && (a.height - b.height).abs() < SETTLED_METRES
-        && [wrapped(a.heading - b.heading), a.pitch - b.pitch, a.roll - b.roll].iter().all(|turn| turn.abs() < SETTLED_ANGLE)
+        && [wrapped(a.heading - b.heading), a.pitch - b.pitch, wrapped(a.roll - b.roll)].iter().all(|turn| turn.abs() < SETTLED_ANGLE)
 }
 
 pub fn camera_height(target: &Target, home_ground: Option<f64>, under_ground: Option<f64>) -> f64 {
@@ -576,6 +576,14 @@ mod tests {
     fn smoothing_covers_the_same_ground_per_second_at_any_frame_rate() {
         let per_second = |hz: u32| (0..hz).fold(0.0, |done: f64, _| done + (1.0 - done) * follow(Duration::from_secs_f64(1.0 / f64::from(hz))));
         assert!((per_second(30) - per_second(60)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_roll_through_upside_down_goes_the_short_way() {
+        let level = Pose { latitude: 0.0, longitude: 0.0, height: 30.0, heading: 0.0, pitch: 0.0, roll: 170.0, fov: 70.0 };
+        let rolled = toward(level, Pose { roll: -170.0, ..level }, 0.5).roll;
+        assert!((wrapped(rolled) - 180.0).abs() < 1e-9 || (wrapped(rolled) + 180.0).abs() < 1e-9, "from 170 to -170 the view passes upside down, not back through level ({rolled})");
+        assert!(settled(&Pose { roll: 180.0, ..level }, &Pose { roll: -180.0, ..level }));
     }
 
     #[test]

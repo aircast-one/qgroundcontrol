@@ -13,6 +13,8 @@ pub const DEPS: &[&str] = &[
     "vehicle.homePosition",
     "vehicle.altitudeRelative",
     "vehicle.heading",
+    "vehicle.pitch",
+    "vehicle.roll",
     "settings.flightMapSettings.mapProvider",
     crate::gimbal::GIMBAL_CHANGED,
     SYNTHETIC_CHANGED,
@@ -126,7 +128,11 @@ pub fn synthetic(backend: &dyn Backend, gimbals: &Value, aim: (f64, f64)) -> Val
     };
     let gimbal = gimbal_aim(gimbals);
     let (tilt, pan) = aim;
-    let (heading, pitch) = gimbal.unwrap_or(((raw(backend, "vehicle.heading").unwrap_or(0.0) + pan).rem_euclid(360.0), tilt));
+    let attitude = |path: &str| raw(backend, path).unwrap_or(0.0);
+    let (heading, pitch, roll) = gimbal.map_or_else(
+        || ((attitude("vehicle.heading") + pan).rem_euclid(360.0), attitude("vehicle.pitch") + tilt, attitude("vehicle.roll")),
+        |(heading, pitch)| (heading, pitch, 0.0),
+    );
     let provider = crate::read::value_string(&backend.value("settings.flightMapSettings.mapProvider.rawValue"));
     json!({
         "kind": "object",
@@ -139,7 +145,7 @@ pub fn synthetic(backend: &dyn Backend, gimbals: &Value, aim: (f64, f64)) -> Val
         "homeLongitude": home_longitude,
         "heading": heading,
         "pitch": pitch,
-        "roll": 0.0,
+        "roll": roll,
         "aimable": gimbal.is_none(),
         "pan": if gimbal.is_none() { pan } else { 0.0 },
         "fov": CAMERA_FOV_DEG,
@@ -268,6 +274,15 @@ mod tests {
         assert_eq!(view["heading"].as_f64(), Some(90.0), "without a gimbal the camera looks where the nose points");
         assert_eq!(view["aimable"], true, "and the pilot aims it from the view");
         assert_eq!(view["imagery"], "Esri World Satellite");
+    }
+
+    #[test]
+    fn without_a_gimbal_the_view_is_fixed_to_the_frame_and_banks_and_pitches_with_the_drone() {
+        let banked = flying(&[("vehicle.pitch", json!(-20.0)), ("vehicle.roll", json!(35.0))]);
+        let view = synthetic(&banked, &no_gimbal(), DEFAULT_AIM);
+        assert_eq!((view["pitch"].as_f64(), view["roll"].as_f64()), (Some(-20.0 + FIXED_CAMERA_TILT_DEG), Some(35.0)), "nose down 20 and banked 35, the horizon rises and tilts as it would on a camera bolted to the frame");
+        let stabilised = synthetic(&banked, &json!({ "gimbals": [{ "active": true, "absoluteYaw": 90.0, "pitch": -30.0 }] }), DEFAULT_AIM);
+        assert_eq!((stabilised["pitch"].as_f64(), stabilised["roll"].as_f64()), (Some(-30.0), Some(0.0)), "a gimbal holds the horizon level whatever the drone does");
     }
 
     #[test]

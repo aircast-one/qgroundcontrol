@@ -25,7 +25,7 @@ fn main() {
         home_longitude: number("--home-lng", 149.165237),
         heading: number("--heading", 200.0),
         pitch: number("--pitch", -15.0),
-        roll: 0.0,
+        roll: number("--roll", 0.0),
         fov: number("--fov", 70.0),
         imagery: arg("--imagery").unwrap_or_else(|| "Bing Satellite".into()),
     };

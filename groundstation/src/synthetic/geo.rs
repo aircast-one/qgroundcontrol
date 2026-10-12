@@ -47,7 +47,7 @@ impl Camera {
         let forward = DVec3::new(heading.sin() * pitch.cos(), heading.cos() * pitch.cos(), pitch.sin());
         let level_right = DVec3::new(heading.cos(), -heading.sin(), 0.0);
         let level_up = level_right.cross(forward);
-        let up = level_up * roll.cos() - level_right * roll.sin();
+        let up = level_up * roll.cos() + level_right * roll.sin();
         let aspect = f64::from(width_px) / f64::from(height_px.max(1));
         Self {
             eye: ecef(pose.latitude, pose.longitude, pose.height),
@@ -95,6 +95,12 @@ mod tests {
         let camera = Camera::new(&Pose { latitude: 0.0, longitude: 0.0, height: 0.0, heading: 90.0, pitch: 0.0, roll: 0.0, fov: 60.0 }, 1280, 720);
         assert!((camera.forward - DVec3::Y).length() < 1e-9, "east at the origin is +Y in ECEF, got {}", camera.forward);
         assert!((camera.up - DVec3::X).length() < 1e-9, "up at the origin is +X in ECEF, got {}", camera.up);
+    }
+
+    #[test]
+    fn banked_right_the_top_of_the_frame_leans_right_so_the_horizon_rises_on_the_right() {
+        let camera = Camera::new(&Pose { latitude: 0.0, longitude: 0.0, height: 0.0, heading: 0.0, pitch: 0.0, roll: 90.0, fov: 60.0 }, 1280, 720);
+        assert!((camera.up - DVec3::Y).length() < 1e-9, "facing north with the right wing straight down, the top of the frame points east (+Y in ECEF), got {}", camera.up);
     }
 
     #[test]
