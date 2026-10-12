@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use super::fetch::Network;
 use super::overlay::Overlays;
-use super::render::Renderer;
+use super::render::{Renderer, Targets};
 use super::session::{Frame, Session, Stats, Target};
 use super::window::Window;
 
@@ -122,14 +122,14 @@ impl Gpu {
 struct Shown {
     surface: wgpu::Surface<'static>,
     size: (u32, u32),
-    depth: Option<wgpu::TextureView>,
+    targets: Option<Targets>,
     drawn: bool,
     window: Window,
 }
 
 impl Shown {
     fn new(window: Window, surface: wgpu::Surface<'static>) -> Self {
-        Self { surface, size: (0, 0), depth: None, drawn: false, window }
+        Self { surface, size: (0, 0), targets: None, drawn: false, window }
     }
 
     fn fit(&mut self, gpu: &Gpu) {
@@ -139,13 +139,13 @@ impl Shown {
         }
         let Some(config) = self.surface.get_default_config(&gpu.adapter, size.0, size.1) else { return };
         self.surface.configure(&gpu.device, &wgpu::SurfaceConfiguration { format: gpu.format, present_mode: wgpu::PresentMode::Fifo, ..config });
-        self.depth = Some(gpu.renderer.depth(size.0, size.1));
+        self.targets = Some(gpu.renderer.targets(size.0, size.1));
         self.size = size;
         self.drawn = false;
     }
 
     fn paint(&mut self, gpu: &mut Gpu, frame: Option<&Frame>, overlays: Option<&Overlays>) -> Result<bool, String> {
-        if self.depth.is_none() {
+        if self.targets.is_none() {
             return Ok(false);
         }
         let texture = match self.surface.get_current_texture() {
@@ -162,16 +162,16 @@ impl Shown {
             }
             wgpu::CurrentSurfaceTexture::Validation => return Err("the surface refused a frame".to_string()),
         };
-        let Some(depth) = self.depth.as_ref() else { return Ok(false) };
+        let Some(targets) = self.targets.as_ref() else { return Ok(false) };
         let view = texture.texture.create_view(&Default::default());
         let pictured = match frame {
             Some(frame) => {
                 let (camera, meshes) = frame.view(overlays, self.size.0, self.size.1);
-                gpu.renderer.draw(&view, depth, &camera, &meshes);
+                gpu.renderer.draw(&view, targets, &camera, &meshes);
                 !frame.ground.is_empty()
             }
             None => {
-                gpu.renderer.clear(&view, depth);
+                gpu.renderer.clear(&view, targets);
                 false
             }
         };

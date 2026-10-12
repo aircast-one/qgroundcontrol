@@ -19,6 +19,7 @@ pub struct Mesh {
     pub high: [f32; 3],
     pub positions: Vec<[f32; 3]>,
     pub uvs: Vec<[f32; 2]>,
+    pub normals: Vec<[f32; 3]>,
     pub indices: Vec<u32>,
     pub layer: Layer,
     texture: Mutex<Option<Vec<image::RgbaImage>>>,
@@ -43,7 +44,11 @@ pub fn solid(colour: [u8; 4]) -> image::RgbaImage {
 impl Mesh {
     pub fn new(to_ecef: DMat4, positions: Vec<[f32; 3]>, uvs: Vec<[f32; 2]>, indices: Vec<u32>, texture: image::RgbaImage, layer: Layer) -> Self {
         let (low, high) = bounds(&positions);
-        Self { id: NEXT_ID.fetch_add(1, Ordering::Relaxed), to_ecef, low, high, positions, uvs, indices, layer, texture: Mutex::new(Some(mip_chain(texture))) }
+        Self { id: NEXT_ID.fetch_add(1, Ordering::Relaxed), to_ecef, low, high, positions, uvs, normals: Vec::new(), indices, layer, texture: Mutex::new(Some(mip_chain(texture))) }
+    }
+
+    pub fn with_normals(self, normals: Vec<[f32; 3]>) -> Self {
+        Self { normals, ..self }
     }
 
     pub fn take_texture(&self) -> Option<Vec<image::RgbaImage>> {

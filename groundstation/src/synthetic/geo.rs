@@ -3,6 +3,7 @@ use glam::{DMat3, DMat4, DVec3};
 
 const WGS84_A: f64 = 6_378_137.0;
 const WGS84_E2: f64 = 6.694_379_990_14e-3;
+const SUN_EAST_NORTH_UP: DVec3 = DVec3::new(-0.6, 0.8, 1.0);
 
 pub fn ecef(latitude: f64, longitude: f64, height: f64) -> DVec3 {
     let (lat, lng) = (latitude.to_radians(), longitude.to_radians());
@@ -35,6 +36,8 @@ pub struct Camera {
     pub eye: DVec3,
     pub forward: DVec3,
     pub up: DVec3,
+    pub zenith: DVec3,
+    pub sun: DVec3,
     pub fovy: f64,
     pub aspect: f64,
     pub height_px: f64,
@@ -53,6 +56,8 @@ impl Camera {
             eye: ecef(pose.latitude, pose.longitude, pose.height),
             forward: frame * forward,
             up: frame * up,
+            zenith: frame * DVec3::Z,
+            sun: (frame * SUN_EAST_NORTH_UP).normalize(),
             fovy: 2.0 * ((pose.fov.to_radians() / 2.0).tan() / aspect).atan(),
             aspect,
             height_px: f64::from(height_px),
@@ -61,6 +66,10 @@ impl Camera {
 
     pub fn view(&self) -> DMat4 {
         view::look_to_mat4(DVec3::ZERO, self.forward, self.up)
+    }
+
+    pub fn unproject(&self) -> DMat4 {
+        (self.projection() * self.view()).inverse()
     }
 
     pub fn projection(&self) -> DMat4 {
@@ -95,6 +104,21 @@ mod tests {
         let camera = Camera::new(&Pose { latitude: 0.0, longitude: 0.0, height: 0.0, heading: 90.0, pitch: 0.0, roll: 0.0, fov: 60.0 }, 1280, 720);
         assert!((camera.forward - DVec3::Y).length() < 1e-9, "east at the origin is +Y in ECEF, got {}", camera.forward);
         assert!((camera.up - DVec3::X).length() < 1e-9, "up at the origin is +X in ECEF, got {}", camera.up);
+    }
+
+    #[test]
+    fn the_sun_shines_from_high_in_the_north_west_wherever_the_camera_is() {
+        let camera = Camera::new(&Pose { latitude: 0.0, longitude: 0.0, height: 0.0, heading: 0.0, pitch: 0.0, roll: 0.0, fov: 60.0 }, 1280, 720);
+        assert!((camera.zenith - DVec3::X).length() < 1e-9, "straight up at the origin is +X in ECEF, got {}", camera.zenith);
+        assert!((camera.sun.dot(camera.zenith) - std::f64::consts::FRAC_1_SQRT_2).abs() < 1e-9, "45 degrees above the horizon");
+        assert!(camera.sun.y < 0.0 && camera.sun.z > 0.0, "west (-Y) and north (+Z) at the origin, got {}", camera.sun);
+    }
+
+    #[test]
+    fn looking_back_through_the_screen_finds_the_way_the_camera_faces() {
+        let camera = Camera::new(&Pose { latitude: 0.0, longitude: 0.0, height: 0.0, heading: 90.0, pitch: 0.0, roll: 0.0, fov: 60.0 }, 1280, 720);
+        let through = camera.unproject() * glam::DVec4::new(0.0, 0.0, 0.5, 1.0);
+        assert!(((through.truncate() / through.w).normalize() - camera.forward).length() < 1e-9, "the middle of the screen looks along the camera's forward");
     }
 
     #[test]

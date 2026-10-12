@@ -14,7 +14,8 @@ use super::tileset::{RETRY_AFTER, frustum};
 pub const TERRAIN: &str = "Terrarium";
 pub const BUILDINGS: &str = "Buildings";
 const TERRAIN_ZOOM: u32 = 15;
-const MAX_ZOOM: u32 = 18;
+const MAX_ZOOM: u32 = 19;
+const BORROWED_LEVELS: u32 = 3;
 const GRID: usize = 16;
 const TEXELS: f64 = 256.0;
 const MAX_TEXEL_PX: f64 = 1.5;
@@ -31,10 +32,9 @@ const MAX_TERRAIN_TILES: usize = 800;
 const MAX_HEIGHT_TILES: usize = 500;
 const UNIMAGED: [u8; 4] = [118, 124, 104, 255];
 const ROOF: [u8; 4] = [217, 211, 199, 255];
-const WALLS: [[u8; 4]; 3] = [[200, 194, 182, 255], [170, 164, 152, 255], [140, 135, 125, 255]];
-const LIGHT_EAST: f64 = -0.6;
-const LIGHT_NORTH: f64 = 0.8;
-const SUNLIT: f64 = 0.33;
+const WALL: [u8; 4] = [200, 194, 182, 255];
+const ROOF_U: f32 = 0.25;
+const WALL_U: f32 = 0.75;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub struct TileKey {
@@ -151,9 +151,9 @@ impl Want {
         match self {
             Want::Heights(key) => Built::Heights(key, fetcher.map(TERRAIN, key.z, key.x, key.y).and_then(|png| Heights::from_terrarium(&png))),
             Want::Terrain { key, imagery, patch } => {
-                let picture = fetcher.map(&imagery, key.z, key.x, key.y).ok().and_then(|bytes| image::load_from_memory(&bytes).ok()).map(|image| image.to_rgba8());
-                let imaged = picture.is_some();
-                Built::Terrain { key, imagery, zoom: patch.zoom, mesh: Ok((terrain_mesh(key, Some(&patch), picture), imaged)) }
+                let found = picture(fetcher, &imagery, key);
+                let imaged = found.as_ref().is_some_and(|(_, own)| *own);
+                Built::Terrain { key, imagery, zoom: patch.zoom, mesh: Ok((terrain_mesh(key, Some(&patch), found.map(|(picture, _)| picture)), imaged)) }
             }
             Want::Houses { key, patch } => Built::Houses(key, fetcher.map(BUILDINGS, key.z, key.x, key.y).map(|json| building_mesh(key, &json, Some(&patch)))),
         }
@@ -274,6 +274,17 @@ fn frame_at(latitude: f64, longitude: f64) -> (DMat4, DMat3, DVec3) {
     (DMat4::from_mat3_translation(enu, origin), enu.transpose(), origin)
 }
 
+fn picture(fetcher: &dyn Fetcher, imagery: &str, key: TileKey) -> Option<(image::RgbaImage, bool)> {
+    (0..=BORROWED_LEVELS.min(key.z)).find_map(|up| {
+        let (source, du, dv, span) = key.ancestor(key.z - up);
+        let whole = image::load_from_memory(&fetcher.map(imagery, source.z, source.x, source.y).ok()?).ok()?.to_rgba8();
+        let (width, height) = whole.dimensions();
+        let pixels = |t: f64, size: u32| (t * f64::from(size)).round() as u32;
+        let part = image::imageops::crop_imm(&whole, pixels(du, width), pixels(dv, height), pixels(span, width).max(1), pixels(span, height).max(1)).to_image();
+        Some((part, up == 0))
+    })
+}
+
 fn terrain_mesh(key: TileKey, patch: Option<&Patch>, picture: Option<image::RgbaImage>) -> Mesh {
     let height_at = |u: f64, v: f64| patch.map_or(0.0, |patch| patch.at(u, v));
     let (to_ecef, to_local, origin) = frame_at(key.latitude(0.5), key.longitude(0.5));
@@ -296,24 +307,22 @@ fn terrain_mesh(key: TileKey, patch: Option<&Patch>, picture: Option<image::Rgba
     });
     let indices: Vec<u32> = cells.chain(skirts).map(|i| i as u32).collect();
     let (positions, uvs): (Vec<[f32; 3]>, Vec<[f32; 2]>) = grid.iter().copied().chain(lowered).unzip();
-    Mesh::new(to_ecef, positions, uvs, indices, picture.unwrap_or_else(|| solid(UNIMAGED)), Layer::Opaque)
+    let step = 1.0 / GRID as f64;
+    let point = |u: f64, v: f64| DVec3::from_array(local(u, v, height_at(u, v)).map(f64::from));
+    let upward: Vec<[f32; 3]> = (0..steps * steps).map(at).map(|(u, v)| (point(u, v + step) - point(u, v - step)).cross(point(u + step, v) - point(u - step, v)).normalize_or_zero().as_vec3().to_array()).collect();
+    let normals = upward.iter().copied().chain(edge.iter().map(|&index| upward[index])).collect();
+    Mesh::new(to_ecef, positions, uvs, indices, picture.unwrap_or_else(|| solid(UNIMAGED)), Layer::Opaque).with_normals(normals)
 }
 
 fn palette() -> image::RgbaImage {
-    image::RgbaImage::from_fn(4, 1, |x, _| image::Rgba(if x == 0 { ROOF } else { WALLS[(x - 1) as usize] }))
-}
-
-fn wall_shade(east: f64, north: f64) -> f32 {
-    let length = east.hypot(north).max(1e-9);
-    let facing = (east * LIGHT_EAST + north * LIGHT_NORTH) / length;
-    let band = if facing > SUNLIT { 0 } else if facing > -SUNLIT { 1 } else { 2 };
-    (band as f32 + 1.5) / 4.0
+    image::RgbaImage::from_fn(2, 1, |x, _| image::Rgba(if x == 0 { ROOF } else { WALL }))
 }
 
 #[derive(Default)]
 struct Part {
     positions: Vec<[f32; 3]>,
     uvs: Vec<[f32; 2]>,
+    normals: Vec<[f32; 3]>,
     indices: Vec<u32>,
 }
 
@@ -323,6 +332,7 @@ fn joined(parts: impl Iterator<Item = Part>) -> Part {
         Part {
             positions: whole.positions.into_iter().chain(part.positions).collect(),
             uvs: whole.uvs.into_iter().chain(part.uvs).collect(),
+            normals: whole.normals.into_iter().chain(part.normals).collect(),
             indices: whole.indices.into_iter().chain(part.indices.into_iter().map(|i| i + offset)).collect(),
         }
     })
@@ -331,7 +341,8 @@ fn joined(parts: impl Iterator<Item = Part>) -> Part {
 fn wall(a: DVec3, b: DVec3, low: f64, high: f64) -> Part {
     let up = |p: DVec3, h: f64| (p + DVec3::Z * h).as_vec3().to_array();
     let along = b - a;
-    Part { positions: vec![up(a, low), up(b, low), up(b, high), up(a, high)], uvs: vec![[wall_shade(along.y, -along.x), 0.5]; 4], indices: vec![0, 1, 2, 0, 2, 3] }
+    let outward = DVec3::new(-along.y, along.x, 0.0).normalize_or_zero().as_vec3().to_array();
+    Part { positions: vec![up(a, low), up(b, low), up(b, high), up(a, high)], uvs: vec![[WALL_U, 0.5]; 4], normals: vec![outward; 4], indices: vec![0, 1, 2, 0, 2, 3] }
 }
 
 fn roof(rings: &[Vec<DVec3>], height: f64) -> Part {
@@ -345,7 +356,7 @@ fn roof(rings: &[Vec<DVec3>], height: f64) -> Part {
     .collect();
     let mut triangles: Vec<u32> = Vec::new();
     earcut::Earcut::<f64>::new().earcut(flat.iter().copied(), &holes, &mut triangles);
-    Part { positions: rings.iter().flatten().map(|p| (*p + DVec3::Z * height).as_vec3().to_array()).collect(), uvs: vec![[0.125, 0.5]; flat.len()], indices: triangles }
+    Part { positions: rings.iter().flatten().map(|p| (*p + DVec3::Z * height).as_vec3().to_array()).collect(), uvs: vec![[ROOF_U, 0.5]; flat.len()], normals: vec![[0.0, 0.0, 1.0]; flat.len()], indices: triangles }
 }
 
 fn building_mesh(key: TileKey, json: &[u8], patch: Option<&Patch>) -> Option<Mesh> {
@@ -365,7 +376,7 @@ fn building_mesh(key: TileKey, json: &[u8], patch: Option<&Patch>) -> Option<Mes
         Some(joined(walls.chain(std::iter::once(roof(&placed, floor + top)))))
     });
     let whole = joined(parts);
-    (!whole.indices.is_empty()).then(|| Mesh::new(to_ecef, whole.positions, whole.uvs, whole.indices, palette(), Layer::Opaque))
+    (!whole.indices.is_empty()).then(|| Mesh::new(to_ecef, whole.positions, whole.uvs, whole.indices, palette(), Layer::Opaque).with_normals(whole.normals))
 }
 
 impl Default for OpenScene {
@@ -698,6 +709,40 @@ mod tests {
     }
 
     #[test]
+    fn flat_ground_faces_straight_up_and_a_slope_leans_downhill() {
+        let flat = terrain_mesh(TileKey { z: 15, x: 29961, y: 19806 }, None, None);
+        assert_eq!(flat.normals.len(), flat.positions.len(), "every vertex, skirt included, has a normal");
+        assert!(flat.normals.iter().all(|n| n[2] > 0.999), "flat ground faces up");
+        let rising_east = Heights { size: 2, metres: vec![0.0, 1000.0, 0.0, 1000.0] };
+        let patch = Patch { heights: Arc::new(rising_east), zoom: 15, du: 0.0, dv: 0.0, span: 1.0 };
+        let slope = terrain_mesh(TileKey { z: 15, x: 29961, y: 19806 }, Some(&patch), None);
+        let middle = slope.normals[(GRID + 1) * (GRID / 2) + GRID / 2];
+        assert!(middle[0] < -0.5 && middle[2] > 0.0 && middle[1].abs() < 1e-3, "ground rising to the east faces up and west, got {middle:?}");
+    }
+
+    #[test]
+    fn a_tile_with_no_imagery_of_its_own_borrows_the_matching_corner_of_its_parent() {
+        struct ParentOnly;
+        impl Fetcher for ParentOnly {
+            fn url(&self, _: &url::Url) -> Result<Vec<u8>, String> {
+                Err("offline".into())
+            }
+            fn map(&self, _: &str, z: u32, _: u32, _: u32) -> Result<Vec<u8>, String> {
+                let mut png = std::io::Cursor::new(Vec::new());
+                let quarters = image::RgbaImage::from_fn(4, 4, |x, y| image::Rgba([if x < 2 { 10 } else { 200 }, if y < 2 { 10 } else { 200 }, 0, 255]));
+                (z == 18).then_some(()).ok_or("no imagery")?;
+                quarters.write_to(&mut png, image::ImageFormat::Png).map_err(|e| e.to_string())?;
+                Ok(png.into_inner())
+            }
+        }
+        let (borrowed, own) = picture(&ParentOnly, "Bing Satellite", TileKey { z: 19, x: 3, y: 2 }).expect("the parent's picture");
+        assert!(!own, "a borrowed picture is retried later");
+        assert_eq!(borrowed.dimensions(), (2, 2));
+        assert_eq!(borrowed.get_pixel(0, 0).0, [200, 10, 0, 255], "x 3 is the right half, y 2 the top half of parent 1/1");
+        assert!(picture(&ParentOnly, "Bing Satellite", TileKey { z: 22, x: 0, y: 0 }).is_none(), "nothing within three levels up");
+    }
+
+    #[test]
     fn standing_inside_a_building_footprint_puts_the_ground_on_its_roof() {
         let mut scene = OpenScene::new();
         let now = Instant::now();
@@ -725,5 +770,10 @@ mod tests {
         assert_eq!(mesh.indices.len(), 4 * 6 + 2 * 3);
         assert!((mesh.high[2] - 9.0).abs() < 0.5, "the roof sits at the building's height, got {}", mesh.high[2]);
         assert!(mesh.indices.iter().all(|&i| (i as usize) < mesh.positions.len()));
+        let facing: Vec<[f32; 3]> = mesh.normals.chunks(4).take(4).map(|wall| wall[0]).collect();
+        let centre = |axis: usize| (mesh.low[axis] + mesh.high[axis]) / 2.0;
+        let middles: Vec<[f32; 2]> = mesh.positions.chunks(4).take(4).map(|wall| [(wall[0][0] + wall[1][0]) / 2.0 - centre(0), (wall[0][1] + wall[1][1]) / 2.0 - centre(1)]).collect();
+        assert!(facing.iter().zip(&middles).all(|(n, m)| n[0] * m[0] + n[1] * m[1] > 0.0 && n[2] == 0.0), "each wall faces away from the middle of the building: {facing:?}");
+        assert!(mesh.normals[16..].iter().all(|n| *n == [0.0, 0.0, 1.0]), "the roof faces up");
     }
 }
