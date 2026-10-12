@@ -223,7 +223,7 @@ fun VehicleStateChip(modifier: Modifier = Modifier) {
             overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
             modifier = Modifier.weight(1f, fill = false),
         )
-        osdStatusNote(title)?.let { note ->
+        osdStatusNote(title)?.takeUnless { narrow }?.let { note ->
             androidx.compose.material3.Surface(
                 onClick = { if (blocker != null) why = true else statusSettings = true },
                 shape = MaterialTheme.shapes.small,

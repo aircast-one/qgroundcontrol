@@ -61,6 +61,7 @@ pub fn indicator(snapshot: &Value, show_azimuth: bool, show_control: bool, on_sc
         "statusText": status_text(&active),
         "pitchText": angle(&active["pitch"]).map(|v| format!("P: {v}")),
         "pitchDegrees": active["pitch"].as_f64(),
+        "bodyYawDegrees": active["bodyYaw"].as_f64(),
         "yawText": yaw,
         "yawLockLabel": if flag(&active, "yawLock") { "Yaw Follow" } else { "Yaw Lock" },
         "yawLocked": flag(&active, "yawLock"),
@@ -201,6 +202,7 @@ mod tests {
         assert_eq!(shown["statusText"], "Yaw follow");
         assert_eq!(shown["pitchText"], "P: -12.3");
         assert_eq!(shown["yawText"], "Y: 5.0");
+        assert_eq!(shown["bodyYawDegrees"], 5.0, "a recenter offer needs the yaw as a number");
         assert_eq!(shown["yawLockLabel"], "Yaw Lock");
         assert_eq!(shown["controlLabel"], "Acquire Control");
         assert_eq!(shown["onScreen"]["enabled"], true);

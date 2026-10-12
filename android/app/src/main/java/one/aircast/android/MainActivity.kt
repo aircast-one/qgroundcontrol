@@ -558,6 +558,7 @@ fun AircastShell(hostView: android.view.View?) {
                     }
                     val flyKeyRow: @Composable () -> Unit = {
                         flyObstacleArc()
+                        one.aircast.android.ui.RecenterCamera()
                     }
                     val flyRail: @Composable (Boolean, Boolean) -> Unit = { stacked, splitRoom ->
                         if (stacked) {

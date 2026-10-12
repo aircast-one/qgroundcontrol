@@ -74,6 +74,7 @@ internal data class GimbalIndicatorState(
     val haveControl: Boolean,
     val gimbals: List<GimbalChoice>,
     val pitchDegrees: Double? = null,
+    val yawDegrees: Double? = null,
 )
 
 internal fun gimbalIndicator(view: JSONObject?): GimbalIndicatorState? =
@@ -91,6 +92,7 @@ internal fun gimbalIndicator(view: JSONObject?): GimbalIndicatorState? =
             controlLabel = it.optText("controlLabel"),
             haveControl = it.optBoolean("haveControl"),
             pitchDegrees = it.optDouble("pitchDegrees", Double.NaN).takeIf(Double::isFinite),
+            yawDegrees = it.optDouble("bodyYawDegrees", Double.NaN).takeIf(Double::isFinite),
             gimbals = (0 until (listed?.length() ?: 0)).mapNotNull { index ->
                 listed!!.optJSONObject(index)?.let { g ->
                     GimbalChoice(g.optText("name"), g.optInt("managerCompid"), g.optInt("deviceId"), g.optBoolean("active"))
