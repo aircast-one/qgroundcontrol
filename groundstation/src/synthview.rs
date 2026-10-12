@@ -151,7 +151,7 @@ pub fn synthetic(backend: &dyn Backend, gimbals: &Value, aim: (f64, f64)) -> Val
 }
 
 fn native() -> bool {
-    cfg!(all(feature = "synthetic", feature = "jni-host"))
+    cfg!(native_synthetic)
 }
 
 pub fn overlay_deps() -> Vec<String> {

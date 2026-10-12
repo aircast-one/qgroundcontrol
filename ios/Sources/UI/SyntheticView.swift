@@ -19,6 +19,18 @@ private let PNG_SIGNATURE: [UInt8] = [0x89, 0x50, 0x4E, 0x47]
 private let HTTP_OK = 200
 private let HTTP_NOT_FOUND = 404
 
+enum SyntheticDraw {
+    case Loading, Drawn, Failed
+
+    var note: String? {
+        switch self {
+        case .Loading: "Loading 3D view…"
+        case .Drawn: nil
+        case .Failed: "3D view failed to start"
+        }
+    }
+}
+
 func syntheticAvailable(_ view: JSON?) -> Bool { view?["available"].bool == true }
 
 func syntheticChosen(_ reading: CamerasReading?) -> Bool { reading?.cameras.first(where: \.active)?.source == SYNTHETIC_SOURCE }
@@ -155,6 +167,32 @@ private struct SyntheticWebView: UIViewRepresentable {
     }
 }
 
+private struct NativePage: View {
+    let view: JSON?
+
+    var body: some View {
+        let draw = nativeDraw(view)
+        ZStack {
+            SyntheticSurface()
+            if let note = draw.note { SyntheticNote(note: note, loading: draw == .Loading) }
+        }
+    }
+}
+
+private struct SyntheticNote: View {
+    let note: String
+    let loading: Bool
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        HStack(spacing: Space.s2) {
+            if loading { ProgressView().controlSize(.small).tint(theme.aircast.outdoorForeground) }
+            Text(note).font(.labelLarge).foregroundStyle(theme.aircast.outdoorForeground).lineLimit(1)
+        }
+        .osdShadow()
+    }
+}
+
 struct SyntheticView: View {
     var aimable = false
     @QgcPath(SYNTHETIC_VIEW) private var view
@@ -166,7 +204,9 @@ struct SyntheticView: View {
 
     var body: some View {
         GeometryReader { geometry in
-            SyntheticWebView(pose: view, overlays: overlays)
+            ZStack {
+                if nativeChosen(view) { NativePage(view: view) } else { SyntheticWebView(pose: view, overlays: overlays) }
+            }
             .contentShape(Rectangle())
             .gesture(aiming(geometry.size), including: canAim ? .all : .none)
             .simultaneousGesture(TapGesture(count: 2).onEnded { if canAim { aim(DEFAULT_TILT_DEG, 0) } }, including: canAim ? .all : .none)

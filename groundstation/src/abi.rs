@@ -88,7 +88,7 @@ fn take(ptr: *mut c_char) -> String {
     owned
 }
 
-#[cfg(all(feature = "jni-host", feature = "synthetic"))]
+#[cfg(native_synthetic)]
 pub(crate) fn core_get(path: &str) -> String {
     CORE.get(path)
 }

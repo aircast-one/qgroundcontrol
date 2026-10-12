@@ -242,6 +242,33 @@ pub extern "C" fn qgc_map_tile_cancel(ticket: u64) {
     TILE_TICKETS.cancel(ticket);
 }
 
+#[cfg(target_os = "ios")]
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qgc_synthetic_attach(layer: *mut c_void, width: c_int, height: c_int) -> c_int {
+    #[cfg(native_synthetic)]
+    return match unsafe { crate::synthetic::window::Window::from_layer(layer, (u32::try_from(width).unwrap_or(0), u32::try_from(height).unwrap_or(0))) } {
+        Some(window) => c_int::from(crate::synthetic::host::attach(window, std::sync::Arc::new(crate::synthetic::corefeed::CoreFeed))),
+        None => {
+            log::error!(target: "synthetic", "event=attach_failed reason=\"no layer\"");
+            0
+        }
+    };
+    #[cfg(not(native_synthetic))]
+    {
+        let _ = (layer, width, height);
+        0
+    }
+}
+
+#[cfg(target_os = "ios")]
+#[unsafe(no_mangle)]
+pub extern "C" fn qgc_synthetic_release(layer: *mut c_void) {
+    #[cfg(native_synthetic)]
+    crate::synthetic::host::release(layer as usize);
+    #[cfg(not(native_synthetic))]
+    let _ = layer;
+}
+
 static TILE_WORKERS: once_cell::sync::OnceCell<crate::maptiles::TileWorkers> = once_cell::sync::OnceCell::new();
 static TILE_TICKETS: crate::maptiles::Tickets = crate::maptiles::Tickets::new();
 

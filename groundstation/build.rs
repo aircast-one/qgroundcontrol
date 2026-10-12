@@ -3,7 +3,17 @@ use std::path::Path;
 
 const EXCLUDED: [&str; 5] = ["AP_Periph-", "Blimp-", "Copter-3.", "Plane-3.", "Rover-3."];
 
+fn native_synthetic() {
+    let target = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    let feature = |name: &str| std::env::var_os(format!("CARGO_FEATURE_{name}")).is_some();
+    println!("cargo:rustc-check-cfg=cfg(native_synthetic)");
+    if feature("SYNTHETIC") && ((target == "android" && feature("JNI_HOST")) || (target == "ios" && feature("NATIVE_HOST"))) {
+        println!("cargo:rustc-cfg=native_synthetic");
+    }
+}
+
 fn main() {
+    native_synthetic();
     println!("cargo:rerun-if-env-changed=QGC_APM_PARAMS_DIR");
     let out = std::env::var("OUT_DIR").expect("OUT_DIR");
     let cache = concat!(env!("CARGO_MANIFEST_DIR"), "/../.cache/CPM/ardupilotparams");

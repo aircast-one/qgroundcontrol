@@ -7,6 +7,7 @@ use glam::{DMat3, DMat4, DVec3, DVec4};
 
 use super::fetch::Fetcher;
 use super::geo::{Camera, east_north_up, ecef};
+use super::ground;
 use super::mesh::{Layer, Mesh, solid};
 use super::tileset::{RETRY_AFTER, frustum};
 
@@ -401,8 +402,10 @@ impl OpenScene {
     pub fn ground(&mut self, latitude: f64, longitude: f64, budget: usize, now: Instant) -> (Option<f64>, Vec<Want>) {
         let (key, u, v) = TileKey::containing(latitude, longitude, TERRAIN_ZOOM);
         let mut candidates = Vec::new();
-        let found = self.patch(key, &mut candidates, now).map(|patch| patch.at(u, v));
-        (found, self.issue(candidates, budget, now))
+        let terrain = self.patch(key, &mut candidates, now).map(|patch| patch.at(u, v));
+        let houses: Vec<Arc<Mesh>> = self.houses.values().filter_map(|entry| entry.mesh.clone()).collect();
+        let roof = ground::height_at(&houses, latitude, longitude);
+        (terrain.map(|terrain| roof.map_or(terrain, |roof| roof.max(terrain))), self.issue(candidates, budget, now))
     }
 
     fn terrain(&mut self, key: TileKey, wanted: &mut Vec<Want>, now: Instant) -> Option<Arc<Mesh>> {
@@ -599,6 +602,27 @@ mod tests {
         assert_eq!(mesh.positions.len(), (GRID + 1) * (GRID + 1) + 4 * GRID);
         assert_eq!(mesh.indices.len(), GRID * GRID * 6 + 4 * GRID * 6);
         assert!(mesh.indices.iter().all(|&i| (i as usize) < mesh.positions.len()));
+    }
+
+    #[test]
+    fn standing_inside_a_building_footprint_puts_the_ground_on_its_roof() {
+        let mut scene = OpenScene::new();
+        let now = Instant::now();
+        let key = TileKey { z: BUILDING_ZOOM, x: 8580, y: 5733 };
+        let flat = || {
+            let mut png = std::io::Cursor::new(Vec::new());
+            image::RgbImage::from_pixel(2, 2, image::Rgb([130, 92, 0])).write_to(&mut png, image::ImageFormat::Png).unwrap();
+            Heights::from_terrarium(&png.into_inner()).unwrap()
+        };
+        scene.heights.put(key, Ok(flat()), now);
+        let patch = Patch { heights: Arc::new(flat()), zoom: BUILDING_ZOOM, du: 0.0, dv: 0.0, span: 1.0 };
+        let json = serde_json::json!({ "extent": 4096, "buildings": [{ "rings": [[1000, 1000, 3000, 1000, 3000, 3000, 1000, 3000]], "height": 9.0 }] });
+        let house = building_mesh(key, &serde_json::to_vec(&json).unwrap(), Some(&patch)).expect("a building");
+        scene.houses.insert(key, HouseEntry { mesh: Some(Arc::new(house)), loaded: true, asked: None, used: now });
+        let ground = |scene: &mut OpenScene, u: f64| scene.ground(key.latitude(u), key.longitude(u), 8, now).0.expect("a height");
+        let roof = ground(&mut scene, 0.5);
+        assert!((roof - 613.0).abs() < 0.1, "on the roof, 9 m above the 604 m street, got {roof}");
+        assert!((ground(&mut scene, 0.1) - 604.0).abs() < 0.1, "beside the building, the street");
     }
 
     #[test]

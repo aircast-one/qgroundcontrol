@@ -11,4 +11,4 @@ esac
 cd "$(dirname "$0")/../groundstation"
 exec env -i HOME="$HOME" PATH="$HOME/.cargo/bin:/usr/bin:/bin:/usr/sbin:/sbin" \
     IPHONEOS_DEPLOYMENT_TARGET="${IPHONEOS_DEPLOYMENT_TARGET:-17.0}" \
-    cargo build --lib --release --features native-host --target "$triple"
+    cargo build --lib --release --features native-host,synthetic --target "$triple"
