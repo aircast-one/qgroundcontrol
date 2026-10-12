@@ -82,6 +82,6 @@ class StreamShutterTest {
 class RailLabelTest {
     @Test
     fun `rail labels drop the hold instruction`() {
-        assertEquals(listOf("Land", "Return", "Take off"), listOf("Hold to land", "Return", "Hold to take off").map(::railLabel))
+        assertEquals(listOf("Land", "Return", "Take off"), listOf("Slide to land", "Return", "Slide to take off").map(::railLabel))
     }
 }

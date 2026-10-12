@@ -201,6 +201,7 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
     val batteryJson by qgcPath(BATTERY_VIEW)
     val batteries = remember(batteryJson) { batteryReadings(batteryJson) }
     val timeLeft = remember(batteryJson) { batteryHeadline(batteryJson)?.timeLeft.orEmpty() }
+    val current = remember(batteryJson) { totalCurrent(batteryJson).orEmpty() }
     val linksJson by qgcPath(VEHICLE_LINKS)
     val links = remember(linksJson) { linkCell(vehicleLinks(linksJson)) }
     val gpsJson by qgcPath(GPS_VIEW)
@@ -227,12 +228,14 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
                         if (LocalCompactStatus.current) BatteryRing(it.text, colour, if (LocalNarrowStatus.current) "" else packCountText(it.packs)) { detail = StripDetail.Battery }
                         else InlineCell(listOf(it.text, packCountText(it.packs)).filter(String::isNotEmpty).joinToString(" "), colour, R.drawable.ic_battery_5_bar) { detail = StripDetail.Battery }
                     }
-                    if (timeLeft.isNotEmpty() && batteries.isNotEmpty() && !LocalNarrowStatus.current) Text(
-                        timeLeft,
-                        style = MaterialTheme.typography.labelLarge.copy(fontFeatureSettings = "tnum"),
-                        color = if (live) MaterialTheme.aircast.outdoorForeground else MaterialTheme.colorScheme.outline,
-                        modifier = Modifier.clickable(onClickLabel = "Battery") { detail = StripDetail.Battery }.semantics { contentDescription = "$timeLeft flight time left" },
-                    )
+                    if (batteries.isNotEmpty() && !LocalNarrowStatus.current) listOf(timeLeft to "flight time left", current to "current draw").filter { it.first.isNotEmpty() }.map { (value, meaning) ->
+                        Text(
+                            value,
+                            style = MaterialTheme.typography.labelLarge.copy(fontFeatureSettings = "tnum"),
+                            color = if (live) MaterialTheme.aircast.outdoorForeground else MaterialTheme.colorScheme.outline,
+                            modifier = Modifier.clickable(onClickLabel = "Battery") { detail = StripDetail.Battery }.semantics { contentDescription = "$value $meaning" },
+                        )
+                    }
                 }
             },
             "flightTime" to { if (LocalCompactStatus.current) FlightTimeCell() },

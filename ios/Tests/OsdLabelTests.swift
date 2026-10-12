@@ -75,6 +75,6 @@ final class StreamShutterTests: XCTestCase {
 
 final class RailLabelTests: XCTestCase {
     func testRailLabelsDropTheHoldInstruction() {
-        XCTAssertEqual(["Hold to land", "Return", "Hold to take off"].map(railLabel), ["Land", "Return", "Take off"])
+        XCTAssertEqual(["Slide to land", "Return", "Slide to take off"].map(railLabel), ["Land", "Return", "Take off"])
     }
 }
