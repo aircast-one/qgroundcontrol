@@ -13,6 +13,7 @@ build_type := env_var_or_default("BUILD_TYPE", "Debug")
 build_dir := "build"
 # Use all cores by default; override with JOBS=N.
 jobs := env_var_or_default("JOBS", `python3 -c "import os; print(os.cpu_count() or 4)" 2>/dev/null || echo 4`)
+aircast_tokens := "4eb3949e84347783ed9e0c37ae03427c698e39cb"
 
 # Default: show available commands
 default:
@@ -129,6 +130,11 @@ ios-checks:
     ./ios/fetch-deps.sh
     cd ios && xcodegen generate
     cd ios && xcodebuild -project Aircast.xcodeproj -scheme Aircast -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath {{justfile_directory()}}/build-ios/dd test
+
+# Regenerate the Android and iOS colour schemes from the pinned aircast-tokens commit
+tokens:
+    GOWORK=off go run github.com/aircast-one/aircast-tokens/cmd/aircast-tokens@{{aircast_tokens}} -format kotlin -package one.aircast.map > android/map/src/main/java/one/aircast/map/AircastTokens.kt
+    GOWORK=off go run github.com/aircast-one/aircast-tokens/cmd/aircast-tokens@{{aircast_tokens}} -format swift > ios/Sources/Theme/AircastTokens.swift
 
 # Build documentation
 docs:
