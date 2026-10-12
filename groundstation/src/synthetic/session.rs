@@ -205,27 +205,39 @@ fn wrapped(degrees: f64) -> f64 {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Aim {
+    pub heading: f64,
+    pub pitch: f64,
+}
+
+impl Aim {
+    fn apart(&self, other: &Aim) -> f64 {
+        wrapped(other.heading - self.heading).abs().max((other.pitch - self.pitch).abs())
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Turn {
-    from: f64,
-    to: f64,
+    from: Aim,
+    to: Aim,
     at: Instant,
     every: Duration,
 }
 
 impl Turn {
-    pub fn heading_at(&self, now: Instant) -> f64 {
+    pub fn aim_at(&self, now: Instant) -> Aim {
         let progress = (now.saturating_duration_since(self.at).as_secs_f64() / (self.every.as_secs_f64() * TURN_STRETCH)).min(1.0);
-        self.from + wrapped(self.to - self.from) * progress
+        Aim { heading: self.from.heading + wrapped(self.to.heading - self.from.heading) * progress, pitch: self.from.pitch + (self.to.pitch - self.from.pitch) * progress }
     }
 }
 
-pub fn turned(turn: Option<Turn>, heading: f64, now: Instant) -> Turn {
+pub fn turned(turn: Option<Turn>, aim: Aim, now: Instant) -> Turn {
     match turn {
-        None => Turn { from: heading, to: heading, at: now, every: TURN_EVERY_GUESS },
-        Some(turn) if wrapped(heading - turn.to).abs() < SETTLED_ANGLE => turn,
+        None => Turn { from: aim, to: aim, at: now, every: TURN_EVERY_GUESS },
+        Some(turn) if aim.apart(&turn.to) < SETTLED_ANGLE => turn,
         Some(turn) => {
             let gap = now.saturating_duration_since(turn.at).clamp(TURN_SHORTEST, TURN_LONGEST);
-            Turn { from: turn.heading_at(now), to: heading, at: now, every: (turn.every + gap) / 2 }
+            Turn { from: turn.aim_at(now), to: aim, at: now, every: (turn.every + gap) / 2 }
         }
     }
 }
@@ -428,9 +440,10 @@ impl Session {
             return None;
         }
         self.probe(target, now);
-        let turn = turned(self.turn, target.heading, now);
+        let turn = turned(self.turn, Aim { heading: target.heading, pitch: target.pitch }, now);
         self.turn = Some(turn);
-        let goal = Pose { latitude: target.latitude, longitude: target.longitude, height: camera_height(target, self.home.height, self.under.height), heading: turn.heading_at(now), pitch: target.pitch, roll: target.roll, fov: target.fov };
+        let aim = turn.aim_at(now);
+        let goal = Pose { latitude: target.latitude, longitude: target.longitude, height: camera_height(target, self.home.height, self.under.height), heading: aim.heading, pitch: aim.pitch, roll: target.roll, fov: target.fov };
         let elapsed = self.ticked.map(|at| now.duration_since(at));
         let alpha = elapsed.map_or(1.0, follow);
         self.ticked = Some(now);
@@ -487,19 +500,34 @@ mod tests {
             .and_then(|(_, frame, _)| frame)
     }
 
+    fn heading(degrees: f64) -> Aim {
+        Aim { heading: degrees, pitch: -15.0 }
+    }
+
     #[test]
     fn a_turn_glides_between_heading_readings_instead_of_jumping_to_each() {
         let start = Instant::now();
         let at = |ms: u64| start + Duration::from_millis(ms);
-        let first = turned(None, 100.0, at(0));
-        assert_eq!(first.heading_at(at(50)), 100.0);
-        let second = turned(Some(first), 108.0, at(90));
-        let halfway = second.heading_at(at(90 + 58));
+        let first = turned(None, heading(100.0), at(0));
+        assert_eq!(first.aim_at(at(50)).heading, 100.0);
+        let second = turned(Some(first), heading(108.0), at(90));
+        let halfway = second.aim_at(at(90 + 58)).heading;
         assert!(halfway > 102.0 && halfway < 106.0, "half an interval later the view is part way there, not at 108 ({halfway})");
-        assert_eq!(second.heading_at(at(90 + 300)), 108.0, "and it arrives");
-        let early = turned(Some(second), 116.0, at(150));
-        assert!((early.heading_at(at(150)) - second.heading_at(at(150))).abs() < 1e-9, "a reading that lands mid-glide starts from where the view is, so nothing jumps");
-        assert_eq!(turned(Some(second), 108.0, at(200)), second, "the same heading again changes nothing, so the glide finishes");
+        assert_eq!(second.aim_at(at(90 + 300)).heading, 108.0, "and it arrives");
+        let early = turned(Some(second), heading(116.0), at(150));
+        assert!((early.aim_at(at(150)).heading - second.aim_at(at(150)).heading).abs() < 1e-9, "a reading that lands mid-glide starts from where the view is, so nothing jumps");
+        assert_eq!(turned(Some(second), heading(108.0), at(200)), second, "the same heading again changes nothing, so the glide finishes");
+    }
+
+    #[test]
+    fn a_tilt_glides_between_gimbal_readings_too() {
+        let start = Instant::now();
+        let at = |ms: u64| start + Duration::from_millis(ms);
+        let level = turned(None, Aim { heading: 30.0, pitch: -23.0 }, at(0));
+        let tilted = turned(Some(level), Aim { heading: 30.0, pitch: -15.0 }, at(330));
+        let midway = tilted.aim_at(at(330 + 150)).pitch;
+        assert!(midway > -21.0 && midway < -17.0, "a gimbal reporting 8 degrees of tilt every third of a second is drawn part way between, not in steps ({midway})");
+        assert_eq!(tilted.aim_at(at(330 + 600)), Aim { heading: 30.0, pitch: -15.0 }, "and it arrives");
     }
 
     #[test]
@@ -516,8 +544,8 @@ mod tests {
     #[test]
     fn a_turn_through_north_goes_the_short_way() {
         let start = Instant::now();
-        let turn = turned(Some(turned(None, 355.0, start)), 5.0, start + Duration::from_millis(90));
-        let midway = turn.heading_at(start + Duration::from_millis(90 + 60));
+        let turn = turned(Some(turned(None, heading(355.0), start)), heading(5.0), start + Duration::from_millis(90));
+        let midway = turn.aim_at(start + Duration::from_millis(90 + 60)).heading;
         assert!((midway - 355.0).rem_euclid(360.0) < 10.0, "from 355 to 5 is ten degrees through north, not 350 back round ({midway})");
     }
 
