@@ -11,4 +11,11 @@ final class OfflineStatusTests: XCTestCase {
         XCTAssertEqual(status?.links, [OfflineLink(index: 2, text: "Connect to Drone", description: "TCP\nrefused", retry: true, failed: true, connected: false)])
         XCTAssertNil(offlineStatus(JSON.parse("{}")))
     }
+
+    func testAddALinkOpensTheConnectionsPageStraightIntoTheNewLinkForm() {
+        let navigation = AppNavigationState()
+        openAddLink(navigation)
+        XCTAssertTrue(navigation.addLinkRequested)
+        XCTAssertEqual(navigation.settingsPage, "Connections")
+    }
 }

@@ -1044,6 +1044,8 @@ internal fun linkFailure(action: String, done: Boolean): String? =
 
 private fun currentRows(): List<LinkRow> = linkRows(Qgc.get(LINKS_VIEW))
 
+internal fun rowConnected(rows: List<LinkRow>, index: Int): Boolean? = rows.firstOrNull { it.index == index }?.connected
+
 private fun connectNamed(name: String): Boolean {
     val row = currentRows().firstOrNull { it.name == name } ?: return false
     return LinkCommands.connect("@$LINKS_PATH.${row.index}") == null
@@ -1125,7 +1127,7 @@ fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = 
                     onConnect = {
                         attempt(
                             action = "connect",
-                            settled = { currentRows().getOrNull(row.index)?.connected == true },
+                            settled = { rowConnected(currentRows(), row.index) == true },
                         ) { LinkCommands.connect("@$LINKS_PATH.${row.index}") }
                     },
                     onDisconnect = {
@@ -1134,7 +1136,7 @@ fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = 
                         } else {
                             attempt(
                                 action = "disconnect",
-                                settled = { currentRows().getOrNull(row.index)?.connected != true },
+                                settled = { rowConnected(currentRows(), row.index) != true },
                             ) { LinkCommands.disconnect(row.index) }
                         }
                     },
@@ -1183,7 +1185,7 @@ fun LinksScreen(modifier: Modifier = Modifier, footer: @Composable () -> Unit = 
                 Button(onClick = {
                     attempt(
                         action = "disconnect",
-                        settled = { currentRows().getOrNull(row.index)?.connected != true },
+                        settled = { rowConnected(currentRows(), row.index) != true },
                     ) { LinkCommands.disconnect(row.index) }
                     confirmingDisconnect = null
                 }) { Text("Disconnect") }

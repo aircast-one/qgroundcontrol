@@ -37,6 +37,13 @@ func offlineStatus(_ view: JSON?) -> OfflineStatus? {
     )
 }
 
+let OFFLINE_SHEET = "offline"
+
+func openAddLink(_ navigation: AppNavigationState) {
+    navigation.addLinkRequested = true
+    navigation.settingsPage = CONNECTIONS_SETTINGS_PAGE
+}
+
 private func openConnectionSettings(_ navigation: AppNavigationState, _ onDismiss: () -> Void) {
     navigation.settingsPage = CONNECTIONS_SETTINGS_PAGE
     onDismiss()
@@ -54,6 +61,7 @@ struct OfflineStatusSheet: View {
             if let shown = current {
                 VStack(alignment: .leading, spacing: Space.s1) {
                     Text(shown.title).font(.titleMedium).padding(.horizontal, Space.s5)
+                    Text(LOOKING_HINT).font(.bodyMedium).padding(.horizontal, Space.s5)
                     HStack(spacing: Space.s2) {
                         if shown.busy { ProgressView().controlSize(.small) }
                         Text(shown.footnote).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
@@ -64,8 +72,8 @@ struct OfflineStatusSheet: View {
                     .accessibilityAddTraits(shown.editAddress ? .isButton : [])
                     if shown.noLinks {
                         Button {
-                            navigation.addLinkRequested = true
-                            openConnectionSettings(navigation, onDismiss)
+                            openAddLink(navigation)
+                            onDismiss()
                         } label: {
                             Text("Add link\u{2026}").frame(maxWidth: .infinity)
                         }

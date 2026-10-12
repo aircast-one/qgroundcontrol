@@ -448,12 +448,7 @@ struct FlightActions<Center: View>: View {
         let rail = layout == .Rail
         return ZStack(alignment: .topLeading) {
             if !available {
-                if !rail {
-                    Text("Connect a vehicle to enable flight controls.")
-                        .font(.bodyMedium)
-                        .foregroundStyle(theme.colors.onSurfaceVariant)
-                        .padding(Space.s4)
-                }
+                if !rail { OfflineDeck() }
             } else {
                 deck
                     .background { hosts }
@@ -1197,4 +1192,33 @@ func flightDeckEntries(_ deck: FlightDeckContext) -> [DeckEntry] {
         }) : nil,
     ]
     return entries.compactMap { $0 }
+}
+
+private let OFFLINE_DECK = [
+    DeckEntry(id: "takeoff", label: TAKE_OFF, icon: .flightTakeoff, enabled: false) {},
+    DeckEntry(id: "rtl", label: "Return", icon: .home, enabled: false) {},
+]
+
+private struct OfflineDeck: View {
+    @Environment(AppNavigationState.self) private var navigation
+    @Environment(FlyScreenState.self) private var flyScreen
+
+    var body: some View {
+        HStack(spacing: 10) {
+            ForEach(OFFLINE_DECK, id: \.id) { entry in
+                DeckButton(entry: entry, primary: false)
+                    .frame(maxWidth: .infinity)
+                    .overlay {
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture { flyScreen.requestedSheet = OFFLINE_SHEET }
+                            .accessibilityLabel("Find out how to connect")
+                            .accessibilityAddTraits(.isButton)
+                    }
+            }
+            DeckButton(entry: DeckEntry(id: "addLink", label: "Add a link", icon: .link, enabled: true) { openAddLink(navigation) }, primary: true)
+                .frame(maxWidth: .infinity)
+        }
+        .padding(Space.s4)
+    }
 }

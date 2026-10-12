@@ -22,6 +22,14 @@ class LinksScreenTest {
             "heardVehicle":false,"lastError":"Connection refused"}"""
 
     @Test
+    fun `a link's connected state is read by its core index, not its place in the list`() {
+        val rows = linkRows(view(waitingUdp, idle))
+        assertEquals(true, rowConnected(rows, 2))
+        assertEquals(false, rowConnected(rows, 3))
+        assertNull(rowConnected(rows, 0))
+    }
+
+    @Test
     fun `a udp link's server addresses and a serial link's framing are read from the row`() {
         val udp = """{"index":4,"name":"U","statusLine":"","connected":false,"heardVehicle":false,"lastError":"","hostList":["10.0.0.2:14550"]}"""
         val serial = """{"index":5,"name":"S","statusLine":"","connected":false,"heardVehicle":false,"lastError":"","dataBits":7,"stopBits":2,"parity":3,"flowControl":1}"""

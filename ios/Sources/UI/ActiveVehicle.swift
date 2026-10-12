@@ -103,6 +103,7 @@ struct VehicleStateChip: View {
         .background {
             OpenOnRequest(name: "status", open: { statusSettings = true })
             OpenOnRequest(name: "modes", open: { modeMenu = true })
+            OpenOnRequest(name: OFFLINE_SHEET, open: { if fly?.connected != true { offline = true } })
             if offline {
                 OfflineStatusSheet { offline = false }
             }

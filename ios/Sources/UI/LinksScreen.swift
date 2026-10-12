@@ -887,6 +887,7 @@ private struct AddLinkPage: View {
     let onDismiss: () -> Void
     let onAdded: () -> Void
     @State private var type: LinkType?
+    @State private var picks = 0
     @State private var cloudOffered = false
     @QgcPath(LINKS_VIEW) private var linksJson
     @Environment(\.LocalPageHeading) private var pageHeading
@@ -900,6 +901,7 @@ private struct AddLinkPage: View {
         Group {
             if let chosen = type {
                 AddLinkDetails(type: chosen, onBack: { type = nil }, onAdded: { if type == chosen { onAdded() } })
+                    .id(picks)
             } else {
                 picker
             }
@@ -929,7 +931,7 @@ private struct AddLinkPage: View {
     }
 
     private func row(_ kind: LinkKind) -> some View {
-        SetupRow(title: kind.title, onClick: { type = kind.type }, icon: linkIcon(kind.type), subtitle: kind.detail)
+        SetupRow(title: kind.title, onClick: { picks += 1; type = kind.type }, icon: linkIcon(kind.type), subtitle: kind.detail)
     }
 }
 
@@ -1120,17 +1122,20 @@ struct LinksScreen<Footer: View>: View {
     @State private var confirmingDisconnect: LinkRow?
     @State private var confirmingRemove: LinkRow?
     @State private var editing: LinkRow?
+    @State private var opened = 0
 
     var body: some View {
         Group {
             if adding {
-                AddLinkPage(onDismiss: { adding = false }, onAdded: { adding = false })
+                AddLinkPage(onDismiss: { adding = false }, onAdded: { adding = false }).id(opened)
             } else if let row = editing {
-                EditLinkPage(row: row, onDismiss: { editing = nil }, onSaved: { if editing == row { editing = nil } })
+                EditLinkPage(row: row, onDismiss: { editing = nil }, onSaved: { if editing == row { editing = nil } }).id(opened)
             } else {
                 list
             }
         }
+        .onChange(of: adding) { _, now in if now { opened += 1 } }
+        .onChange(of: editing) { _, now in if now != nil { opened += 1 } }
         .onChange(of: navigation.addLinkRequested, initial: true) { _, requested in
             guard requested else { return }
             adding = true

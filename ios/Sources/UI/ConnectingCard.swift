@@ -70,31 +70,3 @@ struct ConnectingCard: View {
 
 let LOOKING_TITLE = "Looking for your aircraft"
 let LOOKING_HINT = "Turn on the aircraft. For Wi-Fi or a network connection, add a link."
-private let CONNECTION_SETTINGS = "Connections"
-private let LOOKING_MAX_WIDTH: CGFloat = 360
-
-struct LookingForAircraft: View {
-    @Environment(AppNavigationState.self) private var navigation
-    @Environment(\.theme) private var theme
-
-    var body: some View {
-        VStack(spacing: 10) {
-            ProgressView()
-                .tint(theme.aircast.outdoorForeground)
-                .frame(width: 28, height: 28)
-            Text(LOOKING_TITLE)
-                .font(.titleMedium)
-                .foregroundStyle(theme.aircast.outdoorForeground)
-                .multilineTextAlignment(.center)
-            Text(LOOKING_HINT)
-                .font(.bodyMedium)
-                .foregroundStyle(theme.aircast.outdoorForeground)
-                .multilineTextAlignment(.center)
-            Button("Add a link") { navigation.settingsPage = CONNECTION_SETTINGS }
-                .buttonStyle(.text)
-        }
-        .frame(maxWidth: LOOKING_MAX_WIDTH)
-        .padding(16)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-}

@@ -52,8 +52,9 @@ struct FlyNoVideoMessage: View {
 
     var body: some View {
         let video = videoReading(videoJson)
-        if looksForAircraft(connected: hasVehicle, video: video, syntheticChosen: syntheticChosen(camerasReading(camerasJson))) {
-            LookingForAircraft()
+        let chosen = syntheticChosen(camerasReading(camerasJson))
+        if looksForAircraft(connected: hasVehicle, video: video, syntheticChosen: chosen) {
+            AwaitingAircraftLine(syntheticChosen: chosen)
         } else if syntheticAvailable(syntheticJson) {
             EmptyView()
         } else {
@@ -64,6 +65,28 @@ struct FlyNoVideoMessage: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
             }
         }
+    }
+}
+
+func awaitingAircraftText(syntheticChosen: Bool) -> String {
+    syntheticChosen ? "Synthetic view starts when your aircraft connects" : "Video starts when your aircraft connects"
+}
+
+private let AWAITING_ALPHA = 0.7
+private let AWAITING_ICON_SIZE: CGFloat = 15
+
+private struct AwaitingAircraftLine: View {
+    let syntheticChosen: Bool
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        HStack(spacing: Space.s2) {
+            Image(.videocam).font(.system(size: AWAITING_ICON_SIZE))
+            Text(awaitingAircraftText(syntheticChosen: syntheticChosen)).font(.bodyMedium).multilineTextAlignment(.center)
+        }
+        .foregroundStyle(theme.aircast.outdoorForeground.opacity(AWAITING_ALPHA))
+        .padding(.horizontal, Space.s4)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 

@@ -18,4 +18,9 @@ final class VideoSurfaceTests: XCTestCase {
         XCTAssertEqual(DecodedFrame.capacity(width: 16, height: 2), 128)
         XCTAssertEqual(DecodedFrame.capacity(width: 0, height: 2), 0)
     }
+
+    func testWhileDisconnectedTheVideoAreaNamesWhatStartsWhenTheAircraftConnects() {
+        XCTAssertEqual(awaitingAircraftText(syntheticChosen: true), "Synthetic view starts when your aircraft connects")
+        XCTAssertEqual(awaitingAircraftText(syntheticChosen: false), "Video starts when your aircraft connects")
+    }
 }
