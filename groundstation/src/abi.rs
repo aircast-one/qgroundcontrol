@@ -325,8 +325,9 @@ pub(crate) fn start_pump() {
                         CORE.on_event(crate::synthview::SYNTHETIC_CHANGED, "null").iter().for_each(|(path, json)| announce(path, json));
                     }
                     crate::adsb::pump(crate::hub::now_ms());
-                    if !crate::qthost::present() && poll_due() {
-                        CORE.poll().iter().for_each(|(path, json)| announce(path, json));
+                    if !crate::qthost::present() {
+                        let changed = if poll_due() { CORE.poll() } else { CORE.poll_motion() };
+                        changed.iter().for_each(|(path, json)| announce(path, json));
                     }
                     if crate::detections::lock().went_stale(crate::hub::now_ms()) {
                         announce_detections();

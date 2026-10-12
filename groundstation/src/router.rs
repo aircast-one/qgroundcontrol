@@ -162,6 +162,14 @@ impl<B: Backend> Core<B> {
 
     pub fn poll(&self) -> Vec<(String, String)> {
         crate::connectnotices::announce(&self.backend);
+        self.poll_where(|_| true)
+    }
+
+    pub fn poll_motion(&self) -> Vec<(String, String)> {
+        self.poll_where(view::moves)
+    }
+
+    fn poll_where(&self, wanted: impl Fn(&str) -> bool) -> Vec<(String, String)> {
         let (asked, kept): (BTreeSet<String>, BTreeMap<String, Vec<crate::changedriven::Input>>) = {
             let watching = self.watching.lock().unwrap();
             let kept = watching.inputs.iter().filter(|(path, _)| watching.shown.contains_key(*path)).map(|(path, inputs)| (path.clone(), inputs.clone())).collect();
@@ -170,6 +178,7 @@ impl<B: Backend> Core<B> {
         let rendered: Vec<(String, Rendered, Option<Vec<crate::changedriven::Input>>)> = crate::vehiclefacade::one_pass(|| {
             asked
                 .iter()
+                .filter(|path| wanted(path))
                 .map(|path| match view::lookup(path) {
                     Some(v) if crate::changedriven::gated(path) => match kept.get(path).filter(|inputs| crate::changedriven::unchanged(inputs)) {
                         Some(inputs) => (path.clone(), Rendered::Same, Some(inputs.clone())),
@@ -377,6 +386,15 @@ mod tests {
         core.on_event("vehicle.batteries.count", "{\"kind\":\"value\",\"value\":3}");
         let after = core.backend.watched.borrow().clone();
         assert!(after.contains(&"vehicle.batteries.2.voltage".to_string()), "the third pack's facts joined the watch after the count moved");
+    }
+
+    #[test]
+    fn the_motion_poll_refreshes_only_the_views_that_draw_the_aircraft_moving() {
+        let core = Core::new(Fake::default());
+        core.watch("", &["view.attitude".to_string(), "vehicle.armed".to_string()]);
+        let moving: Vec<String> = core.poll_motion().into_iter().map(|(path, _)| path).collect();
+        assert_eq!(moving, vec!["view.attitude".to_string()], "the 100 ms lane leaves everything else to the 250 ms poll");
+        assert_eq!(core.poll().into_iter().map(|(path, _)| path).collect::<Vec<_>>(), vec!["vehicle.armed".to_string()], "and the full poll still delivers the rest, without repeating what the fast lane sent");
     }
 
     #[test]

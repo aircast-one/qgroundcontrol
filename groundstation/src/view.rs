@@ -363,6 +363,12 @@ pub fn owns(path: &str) -> bool {
     path.split(['.', '[']).next() == Some("view")
 }
 
+pub const MOTION_VIEWS: &[&str] = &["view.syntheticView", "view.vehicles", "view.attitude", "view.videoAr"];
+
+pub fn moves(path: &str) -> bool {
+    MOTION_VIEWS.contains(&split(path).0)
+}
+
 pub fn lookup(path: &str) -> Option<&'static View> {
     let (base, _) = split(path);
     VIEWS.iter().find(|view| view.path == base)
