@@ -16,7 +16,7 @@ pub const DEPS: &[&str] = &[
 ];
 
 const FLIES_ITSELF: &[&str] = &[
-    "Auto", "Mission", "RTL", "Return", "Return to Groundstation", "Smart RTL", "AutoRTL", "QuadPlane RTL", "Land", "QuadPlane Land", "Precision Land",
+    "Auto", "Mission", "RTL", "Return", "Return to Groundstation", "Smart RTL", "AutoRTL", "QuadPlane RTL", "QuadPlane Land", "Precision Land",
     "Precision Landing", "Takeoff", "Hold", "Brake", "Follow", "Follow Me", "Throw", "Avoid ADSB", "Guided No GPS", "Offboard", "AutoRotate",
 ];
 const TAKEN_OVER_FROM: &str = "Guided";
@@ -152,7 +152,7 @@ mod tests {
         assert_eq!(view("Stabilize", true)["show"], json!(true));
         assert_eq!(view("RTL", true)["show"], json!(false), "returning home ignores the sticks, so they are not offered");
         assert_eq!(view("Mission", false)["show"], json!(false));
-        assert_eq!(view("Land", true)["show"], json!(false));
+        assert_eq!(view("Land", true)["show"], json!(true), "sticks nudge a landing sideways");
         assert_eq!(view("Guided", true)["show"], json!(true), "a copter in Guided hands over to Loiter when a stick moves");
         assert_eq!(view("Guided", false)["show"], json!(false), "nothing takes over from Guided on other vehicles");
         assert_eq!(view("RTL", true)["enabled"], json!(true), "hidden sticks still stream centred, so the override link never drops mid-flight");
