@@ -12,9 +12,14 @@ crate-type = ["staticlib", "rlib"]
 name = "corehost"
 required-features = ["native-host"]
 
+[[example]]
+name = "photoreal_shot"
+required-features = ["photoreal"]
+
 [features]
 native-host = []
 jni-host = ["native-host", "dep:jni"]
+photoreal = ["dep:wgpu", "dep:glam", "dep:pollster"]
 
 [dependencies]
 mavlink = { version = "0.18", default-features = false, features = ["dialect-ardupilotmega", "std", "mav2-message-signing", "mav2-message-extensions"] }
@@ -63,6 +68,9 @@ rayon-core = "1.13.0"
 once_cell = "1.21.4"
 mvt-reader = { version = "2.5.0", default-features = false }
 geo-types = "0.7.20"
+wgpu = { version = "30.0.1", optional = true }
+glam = { version = "0.34.1", optional = true }
+pollster = { version = "1.0.1", optional = true }
 
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
 libc = "0.2"

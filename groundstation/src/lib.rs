@@ -7,6 +7,8 @@ pub mod nativehost;
 mod androidvideo;
 #[cfg(all(feature = "jni-host", not(test)))]
 mod jnihost;
+#[cfg(feature = "photoreal")]
+pub mod photoreal;
 pub mod account;
 pub mod actions;
 pub mod adsb;
