@@ -250,6 +250,8 @@ internal fun problemInMoreOptions(state: FlasherState): Boolean = state.firstPro
 internal fun previousStep(step: FlasherStep, busy: Boolean, phase: String): FlasherStep? =
     step.takeIf { it != FlasherStep.Card && !busy && phase !in FLASHER_FINISHED }?.let { FlasherStep.entries[it.ordinal - 1] }
 
+internal fun showsChannels(debug: Boolean, channel: String): Boolean = debug || channel != "stable"
+
 internal fun keepsScreenOn(state: FlasherState?): Boolean = state != null && (state.busy || state.downloadState == "running")
 
 internal fun nextSteps(ssid: String, hostname: String, noWifi: Boolean): List<String> = listOf(
@@ -572,7 +574,7 @@ private fun MoreOptions(state: FlasherState, form: FlasherForm, problems: Map<St
         )
     }
     if (state.releasesState == "failed") Text(state.releasesError, color = MaterialTheme.aircast.warning, modifier = Modifier.padding(horizontal = 16.dp))
-    if (BuildConfig.DEBUG) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    if (showsChannels(BuildConfig.DEBUG, state.channel)) Row(Modifier.fillMaxWidth().padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         state.channels.forEach { channel ->
             FilterChip(selected = channel == state.channel, onClick = { onChannel(channel) }, label = { Text(channel.replaceFirstChar { it.titlecase(Locale.ROOT) }) })
         }
