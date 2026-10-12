@@ -8,6 +8,7 @@ private let REGAINED_BUZZ: [Int64] = [0, 120]
 struct SpokenLine: Equatable {
     let sequence: Int64
     let text: String
+    let clip: String
     let volume: Float
 }
 
@@ -21,7 +22,7 @@ func speechBatch(_ view: JSON?) -> SpeechBatch? {
     return SpeechBatch(
         last: speech["last"].int64 ?? 0,
         lines: speech["lines"].objects.map {
-            SpokenLine(sequence: $0["sequence"].int64 ?? 0, text: $0["text"].string, volume: Float($0["volume"].double(1.0)))
+            SpokenLine(sequence: $0["sequence"].int64 ?? 0, text: $0["text"].string, clip: $0["clip"].string, volume: Float($0["volume"].double(1.0)))
         }
     )
 }
@@ -60,7 +61,7 @@ private struct ReturnHomeAlert: View {
                 let next = returnAlert(alerted, returnNow, flying)
                 alerted = next.alerted
                 guard next.speak else { return }
-                SpeechOut.say(RETURN_NOW_SPOKEN)
+                SpeechOut.say(RETURN_NOW_SPOKEN, RETURN_NOW_CLIP)
                 LinkHaptics.play(linkBuzz(true), lost: true)
             }
     }

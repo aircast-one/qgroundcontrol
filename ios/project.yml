@@ -32,6 +32,9 @@ targets:
       - path: ../android/app/src/main/assets/synthetic
         type: folder
         buildPhase: resources
+      - path: ../android/app/src/main/res/raw
+        type: folder
+        buildPhase: resources
       - path: Vendor/Cesium
         type: folder
         buildPhase: resources

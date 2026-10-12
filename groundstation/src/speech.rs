@@ -36,10 +36,11 @@ static NEGATIVE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"-\s*(\d)").expe
 static DECIMAL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"([0-9]+)\.([0-9]+)").expect("decimal pattern"));
 static METERS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"([0-9]*\.?[0-9])\s?m([^A-Za-z]|$)").expect("meters pattern"));
 static MILLISECONDS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"([0-9]+)ms").expect("milliseconds pattern"));
+static CLIP: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[^a-z0-9]+").expect("clip pattern"));
 
 struct Queue {
     next: u64,
-    spoken: VecDeque<(u64, String, f64)>,
+    spoken: VecDeque<(u64, String, String, f64)>,
 }
 
 static QUEUE: Mutex<Queue> = Mutex::new(Queue { next: 1, spoken: VecDeque::new() });
@@ -82,6 +83,10 @@ fn convert_milliseconds(text: &str) -> String {
     }
 }
 
+pub fn clip_name(text: &str) -> String {
+    CLIP.replace_all(&text.to_lowercase(), "_").trim_matches('_').to_string()
+}
+
 pub fn fix_text(text: &str) -> String {
     let negatives = NEGATIVE.replace_all(&replace_abbreviations(text), "negative $1").into_owned();
     let meters = METERS.replace_all(&replace_decimal_points(&negatives), "$1 meters$2").into_owned();
@@ -104,7 +109,7 @@ pub fn say(text: &str) {
     if silenced() {
         return;
     }
-    enqueue(&fix_text(text), volume() / 100.0);
+    enqueue(&fix_text(text), &clip_name(text), volume() / 100.0);
 }
 
 #[cfg(test)]
@@ -112,7 +117,7 @@ thread_local! {
     static HEARD_HERE: std::cell::RefCell<Vec<String>> = const { std::cell::RefCell::new(Vec::new()) };
 }
 
-fn enqueue(text: &str, volume: f64) {
+fn enqueue(text: &str, clip: &str, volume: f64) {
     if text.trim().is_empty() {
         return;
     }
@@ -121,7 +126,7 @@ fn enqueue(text: &str, volume: f64) {
     let mut queue = QUEUE.lock().unwrap_or_else(PoisonError::into_inner);
     let sequence = queue.next;
     queue.next += 1;
-    queue.spoken.push_back((sequence, text.to_string(), volume));
+    queue.spoken.push_back((sequence, text.to_string(), clip.to_string(), volume));
     if queue.spoken.len() > MAX_QUEUED {
         queue.spoken.pop_front();
     }
@@ -147,7 +152,7 @@ pub fn speech_view(_backend: &dyn Backend, args: &[String]) -> Value {
         "class": "Speech",
         "last": queue.next - 1,
         "muted": silenced(),
-        "lines": queue.spoken.iter().filter(|(sequence, _, _)| *sequence > after).map(|(sequence, text, volume)| json!({ "sequence": sequence, "text": text, "volume": volume })).collect::<Vec<_>>(),
+        "lines": queue.spoken.iter().filter(|(sequence, ..)| *sequence > after).map(|(sequence, text, clip, volume)| json!({ "sequence": sequence, "text": text, "clip": clip, "volume": volume })).collect::<Vec<_>>(),
     })
 }
 
@@ -176,15 +181,23 @@ mod tests {
     }
 
     #[test]
+    fn a_line_names_its_recorded_clip_from_the_words_before_they_are_spelled_out() {
+        assert_eq!(clip_name(" RTL flight mode"), "rtl_flight_mode");
+        assert_eq!(clip_name(" battery  level low "), "battery_level_low");
+        assert_eq!(clip_name("Communication lost on primary link."), "communication_lost_on_primary_link");
+        assert_eq!(clip_name("Battery needed to return home. Return now."), "battery_needed_to_return_home_return_now");
+    }
+
+    #[test]
     fn lines_are_numbered_and_read_after_a_sequence() {
-        enqueue("first line", 1.0);
-        enqueue("  ", 1.0);
-        enqueue("second line", 0.5);
+        enqueue("first line", "first_line", 1.0);
+        enqueue("  ", "", 1.0);
+        enqueue("second line", "second_line", 0.5);
         let view = speech_view(&NoBackend, &[]);
         let lines = view["lines"].as_array().unwrap();
         let first = lines.iter().find(|l| l["text"] == "first line").unwrap()["sequence"].as_u64().unwrap();
         let after = speech_view(&NoBackend, &[first.to_string()]);
-        assert!(after["lines"].as_array().unwrap().iter().any(|l| l["text"] == "second line" && l["volume"] == 0.5));
+        assert!(after["lines"].as_array().unwrap().iter().any(|l| l["text"] == "second line" && l["clip"] == "second_line" && l["volume"] == 0.5));
         assert!(!after["lines"].as_array().unwrap().iter().any(|l| l["text"] == "first line"));
         assert_eq!(vehicle_prefix(2, 2), "Vehicle 2 ");
         assert_eq!(vehicle_prefix(2, 1), "");

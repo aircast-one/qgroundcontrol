@@ -41,6 +41,7 @@ private const val LIMITING_PACK = "lowest"
 private fun JSONObject.optNumber(key: String): Double? = if (isNull(key)) null else optDouble(key).takeIf { it.isFinite() }
 
 internal const val RETURN_NOW_SPOKEN = "Battery needed to return home. Return now."
+internal const val RETURN_NOW_CLIP = "battery_needed_to_return_home_return_now"
 
 internal fun batteryDetail(view: JSONObject?): List<DetailRow> {
     val packs = view?.takeIf { it.optBoolean("available") }?.optJSONArray("packs") ?: return emptyList()

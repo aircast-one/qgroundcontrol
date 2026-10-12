@@ -87,8 +87,8 @@ final class InstrumentDetailTests: XCTestCase {
     }
 
     func testTheCoresSpokenLinesAreReadInOrderAfterTheLastOneHeard() {
-        let batch = speechBatch(JSON.parse(#"{"class":"Speech","last":4,"lines":[{"sequence":3,"text":"communication lost","volume":0.5},{"sequence":4,"text":"armed","volume":1}]}"#))
-        XCTAssertEqual(batch, SpeechBatch(last: 4, lines: [SpokenLine(sequence: 3, text: "communication lost", volume: 0.5), SpokenLine(sequence: 4, text: "armed", volume: 1)]))
+        let batch = speechBatch(JSON.parse(#"{"class":"Speech","last":4,"lines":[{"sequence":3,"text":"communication lost","clip":"communication_lost","volume":0.5},{"sequence":4,"text":"armed","clip":"armed","volume":1}]}"#))
+        XCTAssertEqual(batch, SpeechBatch(last: 4, lines: [SpokenLine(sequence: 3, text: "communication lost", clip: "communication_lost", volume: 0.5), SpokenLine(sequence: 4, text: "armed", clip: "armed", volume: 1)]))
         XCTAssertEqual(speechPath(4), "view.speech(4)")
         XCTAssertNil(speechBatch(nil))
     }

@@ -1,5 +1,6 @@
 package one.aircast.android
 
+import android.annotation.SuppressLint
 import android.content.Context
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
@@ -10,13 +11,16 @@ import java.util.concurrent.ScheduledExecutorService
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import one.aircast.android.bridge.Qgc
+import one.aircast.android.ui.SPEECH_VIEW
+import one.aircast.android.ui.speechBatch
+import one.aircast.android.ui.speechPath
 
 object SpeechOut {
     private const val POLL_MS = 500L
-    private const val SPEECH_VIEW = "view.speech"
     private const val MAX_TEXT_QUEUE = 20
 
     private var engine: TextToSpeech? = null
+    private var appContext: Context? = null
     @Volatile private var initialised = false
     private var ready = false
     private var poller: ScheduledExecutorService? = null
@@ -44,6 +48,7 @@ object SpeechOut {
 
     fun start(context: Context) {
         if (engine != null) return
+        appContext = context.applicationContext
         engine = TextToSpeech(context.applicationContext) { status ->
             initialised = status == TextToSpeech.SUCCESS
         }
@@ -52,26 +57,33 @@ object SpeechOut {
         }
     }
 
+    fun say(text: String, clip: String) {
+        poller?.execute { if (ready && !muted) speak(text, clip, 1f) }
+    }
+
     private fun poll() {
         if (initialised && !ready) {
             engine?.language = Locale.US
             engine?.setOnUtteranceProgressListener(progress)
             ready = true
         }
-        val view = runCatching { Qgc.get(after?.let { "$SPEECH_VIEW($it)" } ?: SPEECH_VIEW) }.getOrNull() ?: return
+        val batch = speechBatch(runCatching { Qgc.get(after?.let(::speechPath) ?: SPEECH_VIEW) }.getOrNull()) ?: return
         val seen = after
-        after = view.optLong("last", seen ?: 0L)
-        val nowMuted = view.optBoolean("muted")
-        if (nowMuted && !muted && ready) flush()
-        muted = nowMuted
+        after = batch.last
+        if (batch.muted && !muted && ready) flush()
+        muted = batch.muted
         if (seen == null || !ready) return
-        val lines = view.optJSONArray("lines") ?: return
-        (0 until lines.length()).mapNotNull { lines.optJSONObject(it) }.forEach { line ->
-            if (waiting.get() >= MAX_TEXT_QUEUE) flush()
-            val volume = Bundle().apply { putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, line.optDouble("volume", 1.0).toFloat()) }
-            engine?.speak(line.optString("text"), TextToSpeech.QUEUE_ADD, volume, "qgc-${generation.get()}-${line.optLong("sequence")}")
-                ?.takeIf { it == TextToSpeech.SUCCESS }?.let { waiting.incrementAndGet() }
-        }
+        batch.lines.filter { it.sequence > seen }.forEach { speak(it.text, it.clip, it.volume) }
+    }
+
+    @SuppressLint("DiscouragedApi")
+    private fun speak(text: String, clip: String, volume: Float) {
+        if (waiting.get() >= MAX_TEXT_QUEUE) flush()
+        val context = appContext ?: return
+        context.resources.getIdentifier(clip, "raw", context.packageName).takeIf { it != 0 }?.let { engine?.addSpeech(text, context.packageName, it) }
+        val params = Bundle().apply { putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, volume) }
+        engine?.speak(text, TextToSpeech.QUEUE_ADD, params, "qgc-${generation.get()}-$clip")
+            ?.takeIf { it == TextToSpeech.SUCCESS }?.let { waiting.incrementAndGet() }
     }
 
     fun stop() {
@@ -79,6 +91,7 @@ object SpeechOut {
         poller = null
         engine?.shutdown()
         engine = null
+        appContext = null
         initialised = false
         ready = false
         after = null

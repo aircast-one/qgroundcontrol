@@ -1,7 +1,7 @@
 import AVFoundation
 import Foundation
 
-final class SpeechOut: NSObject, AVSpeechSynthesizerDelegate, @unchecked Sendable {
+final class SpeechOut: NSObject, AVSpeechSynthesizerDelegate, AVAudioPlayerDelegate, @unchecked Sendable {
     private static let pollInterval = 0.5
     private static let maxTextQueue = 20
     static let sessionOptions: AVAudioSession.CategoryOptions = [.mixWithOthers]
@@ -10,7 +10,8 @@ final class SpeechOut: NSObject, AVSpeechSynthesizerDelegate, @unchecked Sendabl
     private let synthesizer = AVSpeechSynthesizer()
     private var timer: DispatchSourceTimer?
     private var after: Int64?
-    private var waiting = 0
+    private var pending: [SpokenLine] = []
+    private var sounding: AnyObject?
     private var muted = false
     private let queue = DispatchQueue(label: "one.aircast.speech")
 
@@ -32,19 +33,21 @@ final class SpeechOut: NSObject, AVSpeechSynthesizerDelegate, @unchecked Sendabl
         speech.queue.sync {
             speech.timer?.cancel()
             speech.timer = nil
+            speech.flush()
         }
-        speech.synthesizer.stopSpeaking(at: .immediate)
         shared = nil
     }
 
-    static func say(_ text: String) {
+    static func say(_ text: String, _ clip: String) {
         guard let speech = shared else { return }
-        speech.queue.async { if !speech.muted { speech.speak(text, 1) } }
+        speech.queue.async { if !speech.muted { speech.enqueue(SpokenLine(sequence: 0, text: text, clip: clip, volume: 1)) } }
     }
 
     private func flush() {
+        pending = []
+        (sounding as? AVAudioPlayer)?.stop()
+        sounding = nil
         synthesizer.stopSpeaking(at: .immediate)
-        waiting = 0
     }
 
     private func poll() {
@@ -56,23 +59,52 @@ final class SpeechOut: NSObject, AVSpeechSynthesizerDelegate, @unchecked Sendabl
         if nowMuted && !muted { flush() }
         muted = nowMuted
         guard let seen else { return }
-        batch.lines.filter { $0.sequence > seen }.forEach { speak($0.text, $0.volume) }
+        batch.lines.filter { $0.sequence > seen }.forEach(enqueue)
     }
 
-    private func speak(_ text: String, _ volume: Float) {
-        if waiting >= SpeechOut.maxTextQueue { flush() }
-        let utterance = AVSpeechUtterance(string: text)
-        utterance.volume = volume
-        utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
-        waiting += 1
-        synthesizer.speak(utterance)
+    private func enqueue(_ line: SpokenLine) {
+        if pending.count >= SpeechOut.maxTextQueue { flush() }
+        pending = pending + [line]
+        if sounding == nil { next() }
+    }
+
+    private func next() {
+        guard let line = pending.first else {
+            sounding = nil
+            return
+        }
+        pending = Array(pending.dropFirst())
+        guard let url = Bundle.main.url(forResource: line.clip, withExtension: "m4a", subdirectory: "raw"), let player = try? AVAudioPlayer(contentsOf: url) else {
+            let utterance = AVSpeechUtterance(string: line.text)
+            utterance.volume = line.volume
+            utterance.voice = AVSpeechSynthesisVoice(language: "en-US")
+            sounding = utterance
+            synthesizer.speak(utterance)
+            return
+        }
+        player.volume = line.volume
+        player.delegate = self
+        sounding = player
+        if !player.play() { next() }
+    }
+
+    private func finished(_ item: AnyObject) {
+        queue.async { if self.sounding === item { self.next() } }
     }
 
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
-        queue.async { self.waiting = max(0, self.waiting - 1) }
+        finished(utterance)
     }
 
     func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didCancel utterance: AVSpeechUtterance) {
-        queue.async { self.waiting = max(0, self.waiting - 1) }
+        finished(utterance)
+    }
+
+    func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
+        finished(player)
+    }
+
+    func audioPlayerDecodeErrorDidOccur(_ player: AVAudioPlayer, error: Error?) {
+        finished(player)
     }
 }

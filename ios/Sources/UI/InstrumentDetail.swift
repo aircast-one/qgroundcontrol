@@ -46,6 +46,7 @@ private let LIMITING_PACK = "lowest"
 private func optNumber(_ value: JSON) -> Double? { value.double.flatMap { $0.isFinite ? $0 : nil } }
 
 let RETURN_NOW_SPOKEN = "Battery needed to return home. Return now."
+let RETURN_NOW_CLIP = "battery_needed_to_return_home_return_now"
 
 func batteryDetail(_ view: JSON?) -> [DetailRow] {
     guard let view, view["available"].bool, let packs = view["packs"].arrayOrNil else { return [] }
