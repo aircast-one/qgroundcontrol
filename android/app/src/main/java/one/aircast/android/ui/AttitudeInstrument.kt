@@ -111,36 +111,34 @@ internal fun OsdCompassDial(size: androidx.compose.ui.unit.Dp, modifier: Modifie
         (0 until 360 step 30).map { degrees ->
             drawLine(
                 white.copy(alpha = OSD_DIAL_RING_ALPHA),
-                pointOnRing(center, radius - 2.dp.toPx(), degrees.toFloat()),
-                pointOnRing(center, radius - (if (degrees % 90 == 0) 8.dp else 5.dp).toPx(), degrees.toFloat()),
+                pointOnRing(center, radius - 2.dp.toPx(), degrees - reading.heading),
+                pointOnRing(center, radius - (if (degrees % 90 == 0) 8.dp else 5.dp).toPx(), degrees - reading.heading),
                 strokeWidth = 1.5.dp.toPx(),
             )
         }
         reading.pilotBearing?.let { bearing ->
-            val at = pointOnRing(center, radius - 8.dp.toPx(), bearing)
+            val at = pointOnRing(center, radius - 8.dp.toPx(), bearing - reading.heading)
             drawCircle(white, radius = 5.dp.toPx(), center = at)
             drawCircle(pilot, radius = 3.5.dp.toPx(), center = at)
         }
         val n = measurer.measure("N", north)
-        val northAt = pointOnRing(center, radius - 15.dp.toPx(), 0f)
+        val northAt = pointOnRing(center, radius - 15.dp.toPx(), -reading.heading)
         drawText(n, topLeft = northAt - Offset(n.size.width / 2f, n.size.height / 2f))
         (reading.homeBearing ?: reading.headingToHome)?.let { bearing ->
-            val at = pointOnRing(center, radius - 8.dp.toPx(), bearing)
+            val at = pointOnRing(center, radius - 8.dp.toPx(), bearing - reading.heading)
             val letter = measurer.measure("H", homeStyle)
             drawCircle(home, radius = 7.dp.toPx(), center = at)
             drawText(letter, topLeft = at - Offset(letter.size.width / 2f, letter.size.height / 2f))
         }
-        rotate(reading.heading) {
-            val chevron = Path().apply {
-                moveTo(center.x, center.y - radius * OSD_CHEVRON_TIP)
-                lineTo(center.x + radius * OSD_CHEVRON_WING, center.y + radius * OSD_CHEVRON_WING)
-                lineTo(center.x, center.y + radius * OSD_CHEVRON_NOTCH)
-                lineTo(center.x - radius * OSD_CHEVRON_WING, center.y + radius * OSD_CHEVRON_WING)
-                close()
-            }
-            drawPath(chevron, white)
-            drawPath(chevron, Color.Black.copy(alpha = OSD_DIAL_SCRIM), style = Stroke(1.dp.toPx()))
+        val chevron = Path().apply {
+            moveTo(center.x, center.y - radius * OSD_CHEVRON_TIP)
+            lineTo(center.x + radius * OSD_CHEVRON_WING, center.y + radius * OSD_CHEVRON_WING)
+            lineTo(center.x, center.y + radius * OSD_CHEVRON_NOTCH)
+            lineTo(center.x - radius * OSD_CHEVRON_WING, center.y + radius * OSD_CHEVRON_WING)
+            close()
         }
+        drawPath(chevron, white)
+        drawPath(chevron, Color.Black.copy(alpha = OSD_DIAL_SCRIM), style = Stroke(1.dp.toPx()))
         if (roomy && reading.headingText.isNotBlank()) {
             val text = measurer.measure(reading.headingText, headingStyle)
             drawText(text, topLeft = Offset(center.x - text.size.width / 2f, center.y + radius * 0.5f))

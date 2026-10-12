@@ -89,41 +89,36 @@ struct OsdCompassDial: View {
             context.stroke(
                 Path { path in
                     stride(from: 0, to: 360, by: 30).forEach { degrees in
-                        path.move(to: pointOnRing(center, radius - 2, Double(degrees)))
-                        path.addLine(to: pointOnRing(center, radius - (degrees % 90 == 0 ? 8 : 5), Double(degrees)))
+                        path.move(to: pointOnRing(center, radius - 2, Double(degrees) - reading.heading))
+                        path.addLine(to: pointOnRing(center, radius - (degrees % 90 == 0 ? 8 : 5), Double(degrees) - reading.heading))
                     }
                 },
                 with: .color(ring),
                 lineWidth: 1.5
             )
             if let bearing = reading.pilotBearing {
-                let at = pointOnRing(center, radius - 8, bearing)
+                let at = pointOnRing(center, radius - 8, bearing - reading.heading)
                 context.fill(Path(ellipseIn: CGRect(x: at.x - 5, y: at.y - 5, width: 10, height: 10)), with: .color(.white))
                 context.fill(Path(ellipseIn: CGRect(x: at.x - 3.5, y: at.y - 3.5, width: 7, height: 7)), with: .color(pilot))
             }
             context.draw(
                 Text("N").font(.system(size: 11, weight: .bold)).foregroundStyle(OSD_NORTH),
-                at: pointOnRing(center, radius - 15, 0)
+                at: pointOnRing(center, radius - 15, -reading.heading)
             )
             if let bearing = reading.homeBearing ?? reading.headingToHome {
-                let at = pointOnRing(center, radius - 8, bearing)
+                let at = pointOnRing(center, radius - 8, bearing - reading.heading)
                 context.fill(Path(ellipseIn: CGRect(x: at.x - 7, y: at.y - 7, width: 14, height: 14)), with: .color(home))
                 context.draw(Text("H").font(.system(size: 9, weight: .bold)).foregroundStyle(onHome), at: at)
             }
-            context.drawLayer { nose in
-                nose.translateBy(x: center.x, y: center.y)
-                nose.rotate(by: .degrees(reading.heading))
-                nose.translateBy(x: -center.x, y: -center.y)
-                let chevron = Path { path in
-                    path.move(to: CGPoint(x: center.x, y: center.y - radius * OSD_CHEVRON_TIP))
-                    path.addLine(to: CGPoint(x: center.x + radius * OSD_CHEVRON_WING, y: center.y + radius * OSD_CHEVRON_WING))
-                    path.addLine(to: CGPoint(x: center.x, y: center.y + radius * OSD_CHEVRON_NOTCH))
-                    path.addLine(to: CGPoint(x: center.x - radius * OSD_CHEVRON_WING, y: center.y + radius * OSD_CHEVRON_WING))
-                    path.closeSubpath()
-                }
-                nose.fill(chevron, with: .color(.white))
-                nose.stroke(chevron, with: .color(.black.opacity(OSD_DIAL_SCRIM)), lineWidth: 1)
+            let chevron = Path { path in
+                path.move(to: CGPoint(x: center.x, y: center.y - radius * OSD_CHEVRON_TIP))
+                path.addLine(to: CGPoint(x: center.x + radius * OSD_CHEVRON_WING, y: center.y + radius * OSD_CHEVRON_WING))
+                path.addLine(to: CGPoint(x: center.x, y: center.y + radius * OSD_CHEVRON_NOTCH))
+                path.addLine(to: CGPoint(x: center.x - radius * OSD_CHEVRON_WING, y: center.y + radius * OSD_CHEVRON_WING))
+                path.closeSubpath()
             }
+            context.fill(chevron, with: .color(.white))
+            context.stroke(chevron, with: .color(.black.opacity(OSD_DIAL_SCRIM)), lineWidth: 1)
             if roomy && !reading.headingText.isBlank {
                 context.draw(
                     Text(reading.headingText).font(.system(size: 11, weight: .bold)).foregroundStyle(.white),
