@@ -32,6 +32,9 @@ const TURN_EVERY_GUESS: Duration = Duration::from_millis(90);
 const TURN_SHORTEST: Duration = Duration::from_millis(30);
 const TURN_LONGEST: Duration = Duration::from_millis(300);
 const TURN_STRETCH: f64 = 1.3;
+const DEG_S_PER_DETAIL_STEP: f64 = 15.0;
+const COARSEST_WHILE_TURNING: f64 = 3.0;
+const SPIN_SMOOTHING: f64 = 0.3;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Target {
@@ -193,6 +196,7 @@ pub struct Session {
     selected: Option<Instant>,
     seen: Option<Target>,
     turn: Option<Turn>,
+    spin: f64,
     ground_meshes: Vec<Arc<Mesh>>,
 }
 
@@ -239,6 +243,18 @@ fn toward(from: Pose, to: Pose, alpha: f64) -> Pose {
     }
 }
 
+pub fn turn_detail(spin_deg_s: f64) -> f64 {
+    (1.0 + spin_deg_s.max(0.0) / DEG_S_PER_DETAIL_STEP).min(COARSEST_WHILE_TURNING)
+}
+
+pub fn spin_of(before: &Pose, after: &Pose, elapsed: Duration) -> f64 {
+    wrapped(after.heading - before.heading).hypot(after.pitch - before.pitch) / elapsed.as_secs_f64().max(1e-3)
+}
+
+fn spun(previous: f64, latest: Option<f64>) -> f64 {
+    latest.map_or(previous, |rate| previous + (rate - previous) * SPIN_SMOOTHING)
+}
+
 pub fn follow(elapsed: Duration) -> f64 {
     1.0 - (1.0 - FOLLOW_AT_60_HZ).powf(elapsed.min(LONGEST_STEP).as_secs_f64() * 60.0)
 }
@@ -271,7 +287,7 @@ impl Session {
             pool.send(Job::Root(token.to_string()));
         }
         let source = if google { Source::Google(None) } else { Source::Open(OpenScene::new()) };
-        Ok(Self { token: token.to_string(), source, pool, bytes, stats: Stats::default(), home: Probe::default(), under: Probe::default(), probed: None, shown: None, ticked: None, selected: None, seen: None, turn: None, ground_meshes: Vec::new() })
+        Ok(Self { token: token.to_string(), source, pool, bytes, stats: Stats::default(), home: Probe::default(), under: Probe::default(), probed: None, shown: None, ticked: None, selected: None, seen: None, turn: None, spin: 0.0, ground_meshes: Vec::new() })
     }
 
     pub fn token(&self) -> &str {
@@ -393,7 +409,7 @@ impl Session {
                 (meshes, wanted.into_iter().map(Job::Tile).collect())
             }
             Source::Open(scene) => {
-                let (meshes, wanted) = scene.select(camera, &target.imagery, ground, target.latitude, target.longitude, room, now);
+                let (meshes, wanted) = scene.select(camera, &target.imagery, ground, target.latitude, target.longitude, turn_detail(self.spin), room, now);
                 (meshes, wanted.into_iter().map(Job::Open).collect())
             }
             Source::Google(None) => (Vec::new(), Vec::new()),
@@ -415,10 +431,12 @@ impl Session {
         let turn = turned(self.turn, target.heading, now);
         self.turn = Some(turn);
         let goal = Pose { latitude: target.latitude, longitude: target.longitude, height: camera_height(target, self.home.height, self.under.height), heading: turn.heading_at(now), pitch: target.pitch, roll: target.roll, fov: target.fov };
-        let alpha = self.ticked.map_or(1.0, |at| follow(now.duration_since(at)));
+        let elapsed = self.ticked.map(|at| now.duration_since(at));
+        let alpha = elapsed.map_or(1.0, follow);
         self.ticked = Some(now);
         let pose = self.shown.map_or(goal, |shown| toward(shown, goal, alpha));
         let moving = self.shown.is_none_or(|before| !settled(&before, &pose));
+        self.spin = spun(self.spin, self.shown.zip(elapsed).map(|(before, elapsed)| spin_of(&before, &pose, elapsed)));
         self.shown = Some(pose);
         let fresh = self.seen.as_ref() != Some(target);
         self.seen = Some(target.clone());
@@ -482,6 +500,17 @@ mod tests {
         let early = turned(Some(second), 116.0, at(150));
         assert!((early.heading_at(at(150)) - second.heading_at(at(150))).abs() < 1e-9, "a reading that lands mid-glide starts from where the view is, so nothing jumps");
         assert_eq!(turned(Some(second), 108.0, at(200)), second, "the same heading again changes nothing, so the glide finishes");
+    }
+
+    #[test]
+    fn the_view_draws_coarser_while_it_turns_fast_and_full_detail_once_it_stops() {
+        assert_eq!(turn_detail(0.0), 1.0);
+        assert_eq!(turn_detail(15.0), 2.0);
+        assert_eq!(turn_detail(90.0), COARSEST_WHILE_TURNING, "a fast yaw does not keep coarsening without end");
+        let pose = |heading: f64| Pose { latitude: 0.0, longitude: 0.0, height: 30.0, heading, pitch: -15.0, roll: 0.0, fov: 70.0 };
+        assert!((spin_of(&pose(358.0), &pose(2.0), Duration::from_millis(100)) - 40.0).abs() < 1e-9, "four degrees through north in 100 ms is 40 deg/s");
+        let settling = (0..20).fold(45.0, |spin, _| spun(spin, Some(0.0)));
+        assert!(turn_detail(settling) < 1.01, "a stopped turn is back to full detail within a second of frames ({settling} deg/s left)");
     }
 
     #[test]

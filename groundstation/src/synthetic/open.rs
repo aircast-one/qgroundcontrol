@@ -27,6 +27,8 @@ const DEFAULT_EXTENT: f64 = 4096.0;
 const KEEP_TERRAIN_FOR: Duration = Duration::from_secs(20);
 const KEEP_HOUSES_FOR: Duration = Duration::from_secs(60);
 const KEEP_DATA_FOR: Duration = Duration::from_secs(120);
+const MAX_TERRAIN_TILES: usize = 800;
+const MAX_HEIGHT_TILES: usize = 500;
 const UNIMAGED: [u8; 4] = [118, 124, 104, 255];
 const ROOF: [u8; 4] = [217, 211, 199, 255];
 const WALLS: [[u8; 4]; 3] = [[200, 194, 182, 255], [170, 164, 152, 255], [140, 135, 125, 255]];
@@ -218,9 +220,23 @@ impl<T> Store<T> {
         self.slots.insert(key, (value.map_or(Slot::Failed(now), |value| Slot::Have(Arc::new(value))), now));
     }
 
-    fn trim(&mut self, now: Instant, keep: Duration) {
+    fn trim(&mut self, now: Instant, keep: Duration, most: usize) {
         self.slots.retain(|_, (slot, used)| matches!(slot, Slot::Asked) || now.duration_since(*used) < keep);
+        let oldest = cutoff(self.slots.values().map(|(_, used)| *used).collect(), most);
+        oldest.into_iter().for_each(|at| self.slots.retain(|_, (slot, used)| matches!(slot, Slot::Asked) || kept(*used, at, now)));
     }
+}
+
+fn cutoff(mut used: Vec<Instant>, most: usize) -> Option<Instant> {
+    (used.len() > most && most > 0).then(|| *used.select_nth_unstable_by(most - 1, |a, b| b.cmp(a)).1)
+}
+
+fn kept(used: Instant, cutoff: Instant, now: Instant) -> bool {
+    used > cutoff || used == now
+}
+
+fn awaited(asked: Option<Instant>, now: Instant) -> bool {
+    asked.is_some_and(|at| now.duration_since(at) < RETRY_AFTER)
 }
 
 struct TerrainEntry {
@@ -236,6 +252,13 @@ struct HouseEntry {
     loaded: bool,
     asked: Option<Instant>,
     used: Instant,
+}
+
+struct Sight<'a> {
+    camera: &'a Camera,
+    planes: [DVec4; 5],
+    ground: f64,
+    detail: f64,
 }
 
 pub struct OpenScene {
@@ -436,15 +459,14 @@ impl OpenScene {
         inside.then_some((distance - radius).max(1.0))
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn visit(&mut self, key: TileKey, camera: &Camera, planes: &[DVec4; 5], ground: f64, wanted: &mut Vec<Want>, now: Instant) -> Option<Vec<Arc<Mesh>>> {
-        let Some(distance) = self.visible(key, camera, planes, ground, now) else { return Some(Vec::new()) };
-        let refine = key.z < MAX_ZOOM && camera.screen_space_error(key.width_m() / TEXELS, distance) > MAX_TEXEL_PX;
+    fn visit(&mut self, key: TileKey, sight: &Sight, wanted: &mut Vec<Want>, now: Instant) -> Option<Vec<Arc<Mesh>>> {
+        let Some(distance) = self.visible(key, sight.camera, &sight.planes, sight.ground, now) else { return Some(Vec::new()) };
+        let refine = key.z < MAX_ZOOM && sight.camera.screen_space_error(key.width_m() / TEXELS, distance) > MAX_TEXEL_PX * sight.detail;
         let own = self.terrain(key, wanted, now);
         let below = refine.then(|| {
             key.children()
                 .iter()
-                .map(|child| self.visit(*child, camera, planes, ground, wanted, now))
+                .map(|child| self.visit(*child, sight, wanted, now))
                 .collect::<Vec<_>>()
                 .into_iter()
                 .collect::<Option<Vec<_>>>()
@@ -483,19 +505,21 @@ impl OpenScene {
     }
 
     #[allow(clippy::too_many_arguments)]
-    pub fn select(&mut self, camera: &Camera, imagery: &str, ground: f64, latitude: f64, longitude: f64, budget: usize, now: Instant) -> (Vec<Arc<Mesh>>, Vec<Want>) {
+    pub fn select(&mut self, camera: &Camera, imagery: &str, ground: f64, latitude: f64, longitude: f64, detail: f64, budget: usize, now: Instant) -> (Vec<Arc<Mesh>>, Vec<Want>) {
         if imagery != self.imagery {
             self.imagery = imagery.to_string();
             self.terrain.clear();
         }
-        let planes = frustum(camera.culling());
+        let sight = Sight { camera, planes: frustum(camera.culling()), ground, detail };
         let mut candidates = Vec::new();
-        let ground_meshes = self.visit(TileKey { z: 0, x: 0, y: 0 }, camera, &planes, ground, &mut candidates, now).unwrap_or_default();
+        let ground_meshes = self.visit(TileKey { z: 0, x: 0, y: 0 }, &sight, &mut candidates, now).unwrap_or_default();
         let houses = self.houses_around(latitude, longitude, &mut candidates, now);
         let wanted = self.issue(candidates, budget, now);
         self.terrain.retain(|_, entry| now.duration_since(entry.used) < KEEP_TERRAIN_FOR);
+        let oldest = cutoff(self.terrain.values().map(|entry| entry.used).collect(), MAX_TERRAIN_TILES);
+        oldest.into_iter().for_each(|at| self.terrain.retain(|_, entry| kept(entry.used, at, now) || awaited(entry.asked, now)));
         self.houses.retain(|_, entry| now.duration_since(entry.used) < KEEP_HOUSES_FOR);
-        self.heights.trim(now, KEEP_DATA_FOR);
+        self.heights.trim(now, KEEP_DATA_FOR, MAX_HEIGHT_TILES);
         (ground_meshes.into_iter().chain(houses).collect(), wanted)
     }
 }
@@ -531,11 +555,80 @@ mod tests {
         (0..rounds)
             .map(|round| {
                 let now = start + Duration::from_millis(round as u64 * 100);
-                let (meshes, wanted) = scene.select(camera, "Bing Satellite", 300.0, -35.36213, 149.16514, 24, now);
+                let (meshes, wanted) = scene.select(camera, "Bing Satellite", 300.0, -35.36213, 149.16514, 1.0, 24, now);
                 wanted.into_iter().map(|want| want.build(&Offline)).for_each(|built| scene.deliver(built, now));
                 meshes
             })
             .collect()
+    }
+
+    struct Served;
+
+    impl Fetcher for Served {
+        fn url(&self, _: &url::Url) -> Result<Vec<u8>, String> {
+            Err("offline".into())
+        }
+        fn map(&self, provider: &str, z: u32, x: u32, y: u32) -> Result<Vec<u8>, String> {
+            let mut png = std::io::Cursor::new(Vec::new());
+            match provider {
+                TERRAIN => image::RgbImage::from_pixel(4, 4, image::Rgb([130, 92, 0])).write_to(&mut png, image::ImageFormat::Png).map_err(|e| e.to_string())?,
+                BUILDINGS => return Err(format!("no buildings {z}/{x}/{y}")),
+                _ => image::RgbImage::from_pixel(1, 1, image::Rgb([90, 110, 70])).write_to(&mut png, image::ImageFormat::Png).map_err(|e| e.to_string())?,
+            }
+            Ok(png.into_inner())
+        }
+    }
+
+    fn low_camera(heading: f64) -> Camera {
+        let ground = 130.0 * 256.0 + 92.0 - 32_768.0;
+        Camera::new(&Pose { latitude: -35.36213, longitude: 149.16514, height: ground + 30.0, heading, pitch: -15.0, roll: 0.0, fov: 70.0 }, 2280, 1080)
+    }
+
+    fn turn_once_round(scene: &mut OpenScene, detail: f64, start: Instant) -> usize {
+        let ground = 130.0 * 256.0 + 92.0 - 32_768.0;
+        (0..180u64).fold(0, |requested, frame| {
+            let now = start + Duration::from_millis(frame * 45);
+            let (_, wanted) = scene.select(&low_camera(frame as f64 * 2.0), "Bing Satellite", ground, -35.36213, 149.16514, detail, 24, now);
+            let terrain = wanted.iter().filter(|want| matches!(want, Want::Terrain { .. })).count();
+            wanted.into_iter().map(|want| want.build(&Served)).for_each(|built| scene.deliver(built, now));
+            requested + terrain
+        })
+    }
+
+    #[test]
+    fn a_full_turn_keeps_tile_memory_bounded_without_dropping_what_the_frame_uses() {
+        let mut scene = OpenScene::new();
+        let begun = Instant::now();
+        turn_once_round(&mut scene, 1.0, begun);
+        let last = begun + Duration::from_millis(179 * 45);
+        let in_use = scene.terrain.values().filter(|entry| entry.used == last).count();
+        assert!(scene.terrain.len() <= MAX_TERRAIN_TILES.max(in_use), "a 360 degree turn kept {} terrain tiles with {in_use} in use; before the cap it kept about 5000", scene.terrain.len());
+        assert!(scene.heights.slots.len() <= MAX_HEIGHT_TILES, "and {} height tiles; before the cap about 1300", scene.heights.slots.len());
+        let now = Instant::now() + Duration::from_secs(9);
+        let ground = 130.0 * 256.0 + 92.0 - 32_768.0;
+        let (drawn, _) = scene.select(&low_camera(0.0), "Bing Satellite", ground, -35.36213, 149.16514, 1.0, 24, now);
+        assert!(drawn.iter().all(|mesh| scene.terrain.values().any(|entry| entry.mesh.as_ref().is_some_and(|kept| kept.id == mesh.id))), "every mesh the frame draws is still held");
+    }
+
+    #[test]
+    fn a_fast_turn_asks_for_far_fewer_fine_tiles() {
+        let still = turn_once_round(&mut OpenScene::new(), 1.0, Instant::now());
+        let turning = turn_once_round(&mut OpenScene::new(), 3.0, Instant::now());
+        assert!(turning * 2 < still, "coarser detail while turning asked for {turning} tiles against {still}");
+    }
+
+    #[test]
+    fn the_cap_keeps_the_newest_and_always_the_tiles_this_frame_uses() {
+        let start = Instant::now();
+        let at = |ms: u64| start + Duration::from_millis(ms);
+        assert_eq!(cutoff(vec![at(1), at(5), at(3)], 2), Some(at(3)));
+        assert_eq!(cutoff(vec![at(1), at(2)], 5), None);
+        assert!(kept(at(9), at(9), at(9)), "a tile used in this frame stays even when this frame alone is past the cap");
+        assert!(!kept(at(4), at(4), at(9)), "an older frame's tiles at the cutoff go, so the cap is not overshot by a whole frame");
+        assert!(kept(at(5), at(4), at(9)));
+        assert!(awaited(Some(at(9)), at(9) + Duration::from_secs(1)), "a tile still on its way is not evicted, or the next frame asks for it again");
+        assert!(!awaited(Some(at(9)), at(9) + RETRY_AFTER), "one asked so long ago it would be retried anyway can go");
+        assert!(!awaited(None, at(9)));
     }
 
     #[test]
