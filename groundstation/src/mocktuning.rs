@@ -19,6 +19,7 @@ pub struct Tuning {
     pub rtl_alt: f64,
     pub arrive: f64,
     pub loiter_radius: f64,
+    pub circle_radius: f64,
     pub bank: f64,
     pub capacity_mah: f64,
     pub cells: f64,
@@ -96,6 +97,7 @@ pub fn tuning(read: &dyn Fn(&str) -> Option<f64>, vehicle: Vehicle) -> Tuning {
         rtl_alt: get(&[("RTL_ALT_M", 1.0), ("RTL_ALT", 0.01), ("RTL_RETURN_ALT", 1.0), ("RTL_ALTITUDE", 1.0), ("ALT_HOLD_RTL", 0.01)], 0.0),
         arrive: get(&[("WP_RADIUS_M", 1.0), ("WPNAV_RADIUS", 0.01), ("NAV_ACC_RAD", 1.0), ("WP_RADIUS", 1.0)], if plane { 90.0 } else { 1.0 }),
         loiter_radius: read("WP_LOITER_RAD").map(f64::abs).filter(|radius| *radius > 0.0).unwrap_or(60.0),
+        circle_radius: get(&[("CIRCLE_RADIUS_M", 1.0), ("CIRCLE_RADIUS", 0.01)], 5.0),
         bank: get(&[("ROLL_LIMIT_DEG", 1.0), ("LIM_ROLL_CD", 0.01)], 45.0),
         capacity_mah: get(&[("BATT_CAPACITY", 1.0), ("BAT1_CAPACITY", 1.0)], 5000.0),
         cells,
@@ -224,7 +226,7 @@ mod tests {
     fn speeds_come_from_whichever_firmware_generation_named_them() {
         let new = tuning(&reading(&[("WP_SPD", 10.0), ("LAND_SPD_MS", 0.5), ("RTL_ALT_M", 15.0), ("BATT_LOW_VOLT", 10.5)]), Vehicle::Copter);
         let old = tuning(&reading(&[("WPNAV_SPEED", 1000.0), ("LAND_SPEED", 50.0), ("RTL_ALT", 1500.0), ("MOT_BAT_VOLT_MAX", 25.2)]), Vehicle::Copter);
-        assert_eq!((new.cruise, new.land, new.rtl_alt, new.cells), (10.0, 0.5, 15.0, 3.0), "ArduCopter 4.7 names, in metres");
+        assert_eq!((new.cruise, new.land, new.rtl_alt, new.cells, new.circle_radius), (10.0, 0.5, 15.0, 3.0, 5.0), "ArduCopter 4.7 names, in metres");
         assert_eq!((old.cruise, old.land, old.rtl_alt, old.cells), (10.0, 0.5, 15.0, 6.0), "ArduCopter 4.5 names, in centimetres");
         let plane = tuning(&reading(&[("AIRSPEED_CRUISE", 22.0), ("WP_LOITER_RAD", -80.0)]), Vehicle::Plane);
         assert_eq!((plane.cruise, plane.loiter_radius, plane.arrive), (22.0, 80.0, 90.0), "a counter-clockwise loiter radius is still a radius");

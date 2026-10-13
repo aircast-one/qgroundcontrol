@@ -321,8 +321,8 @@ impl Host for CoreOnly {
     fn silence_mock_links(&self, silent: bool) -> usize {
         crate::linkhost::silence_mocks(&crate::linkhost::TRANSPORTS, silent)
     }
-    fn change_mock_conditions(&self, change: &crate::mocklink::Change) -> usize {
-        crate::linkhost::change_mock_conditions(&crate::linkhost::TRANSPORTS, change)
+    fn change_mock_conditions(&self, changes: &[crate::mocklink::Change]) -> usize {
+        crate::linkhost::change_mock_conditions(&crate::linkhost::TRANSPORTS, changes)
     }
     fn vehicle_connected(&self) -> bool {
         serde_json::from_str::<Value>(&self.bridge_get("vehicles.activeVehicleAvailable")).ok().and_then(|v| v["value"].as_bool()).unwrap_or(false)

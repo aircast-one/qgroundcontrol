@@ -139,7 +139,7 @@ pub trait Host {
     fn mock_links_available(&self) -> bool;
     fn mock_link_present(&self) -> bool;
     fn silence_mock_links(&self, silent: bool) -> usize;
-    fn change_mock_conditions(&self, change: &crate::mocklink::Change) -> usize;
+    fn change_mock_conditions(&self, changes: &[crate::mocklink::Change]) -> usize;
     fn vehicle_connected(&self) -> bool;
 }
 
@@ -186,36 +186,53 @@ fn either(pairs: &[(String, String)], key: &str, on: &str, off: &str) -> Result<
     }
 }
 
-fn mock_change(pairs: &[(String, String)]) -> Result<crate::mocklink::Change, String> {
-    let wind = numbers(pairs, "wind", &[1, 2], "wind must be speed,from-degrees in m/s, or 0 for calm")?;
-    let endurance = numbers(pairs, "endurance", &[1], "endurance must be the minutes a full pack hovers for")?;
-    let home = numbers(pairs, "home", &[2], "home must be latitude,longitude")?;
-    if endurance.as_ref().is_some_and(|minutes| minutes[0] <= 0.0) {
-        return Err("endurance must be the minutes a full pack hovers for".into());
-    }
-    Ok(crate::mocklink::Change {
-        prearm: present(pairs, "prearm").then(|| given(pairs, "prearm").map(str::to_string)),
-        wind: present(pairs, "wind").then(|| wind.map_or((0.0, 0.0), |values| (values[0], values.get(1).copied().unwrap_or(0.0)))),
-        gps_lost: either(pairs, "gps", "lost", "ok")?,
-        motor_failed: either(pairs, "motor", "failed", "ok")?,
-        endurance_min: endurance.map(|minutes| minutes[0]),
-        home: home.map(|place| (place[0], place[1])),
-    })
-}
+const WIND_USAGE: &str = "wind must be speed,from-degrees with a speed of 0 m/s or more, or 0 for calm";
+const ENDURANCE_USAGE: &str = "endurance must be the minutes a full pack hovers for";
+const HOME_USAGE: &str = "home must be latitude,longitude within ±90 and ±180";
 
-fn applied(change: &crate::mocklink::Change) -> Value {
-    let fields: serde_json::Map<String, Value> = [
-        change.prearm.as_ref().map(|reason| ("prearm", json!(reason))),
-        change.wind.map(|(speed, from)| ("wind", json!({ "speed": speed, "from": from }))),
-        change.gps_lost.map(|lost| ("gpsLost", json!(lost))),
-        change.motor_failed.map(|failed| ("motorFailed", json!(failed))),
-        change.endurance_min.map(|minutes| ("enduranceMin", json!(minutes))),
-        change.home.map(|(lat, lon)| ("home", json!([lat, lon]))),
+fn mock_change(pairs: &[(String, String)]) -> Result<Vec<crate::mocklink::Change>, String> {
+    use crate::mocklink::Change;
+    let wind = numbers(pairs, "wind", &[1, 2], WIND_USAGE)?;
+    let endurance = numbers(pairs, "endurance", &[1], ENDURANCE_USAGE)?;
+    let home = numbers(pairs, "home", &[2], HOME_USAGE)?;
+    let checks = [
+        (wind.as_ref().is_some_and(|values| values[0] < 0.0), WIND_USAGE),
+        (endurance.as_ref().is_some_and(|minutes| minutes[0] <= 0.0), ENDURANCE_USAGE),
+        (home.as_ref().is_some_and(|place| place[0].abs() > 90.0 || place[1].abs() > 180.0), HOME_USAGE),
+    ];
+    if let Some((_, usage)) = checks.iter().find(|(failed, _)| *failed) {
+        return Err(usage.to_string());
+    }
+    Ok([
+        present(pairs, "prearm").then(|| Change::Prearm(given(pairs, "prearm").map(str::to_string))),
+        present(pairs, "wind").then(|| {
+            let values = wind.unwrap_or_default();
+            Change::Wind { speed: values.first().copied().unwrap_or(0.0), from: values.get(1).copied().unwrap_or(0.0) }
+        }),
+        either(pairs, "gps", "lost", "ok")?.map(Change::GpsLost),
+        either(pairs, "motor", "failed", "ok")?.map(Change::MotorFailed),
+        endurance.map(|minutes| Change::Endurance(minutes[0])),
+        home.map(|place| Change::Home(place[0], place[1])),
     ]
     .into_iter()
     .flatten()
-    .map(|(key, value)| (key.to_string(), value))
-    .collect();
+    .collect())
+}
+
+fn applied(changes: &[crate::mocklink::Change]) -> Value {
+    use crate::mocklink::Change;
+    let fields: serde_json::Map<String, Value> = changes
+        .iter()
+        .map(|change| match change {
+            Change::Prearm(reason) => ("prearm", json!(reason)),
+            Change::Wind { speed, from } => ("wind", json!({ "speed": speed, "from": from })),
+            Change::GpsLost(lost) => ("gpsLost", json!(lost)),
+            Change::MotorFailed(failed) => ("motorFailed", json!(failed)),
+            Change::Endurance(minutes) => ("enduranceMin", json!(minutes)),
+            Change::Home(lat, lon) => ("home", json!([lat, lon])),
+        })
+        .map(|(key, value)| (key.to_string(), value))
+        .collect();
     Value::Object(fields)
 }
 
@@ -445,7 +462,7 @@ impl DebugApi {
         }
         if MOCK_CONDITIONS.iter().any(|key| present(pairs, key)) {
             return match mock_change(pairs) {
-                Ok(change) => ok(json!({ "changed": applied(&change), "links": host.change_mock_conditions(&change) })),
+                Ok(changes) => ok(json!({ "changed": applied(&changes), "links": host.change_mock_conditions(&changes) })),
                 Err(reason) => refuse(reason),
             };
         }
@@ -671,8 +688,8 @@ mod tests {
             self.note(format!("silence {silent}"));
             usize::from(self.mock_present)
         }
-        fn change_mock_conditions(&self, change: &crate::mocklink::Change) -> usize {
-            self.note(format!("conditions {change:?}"));
+        fn change_mock_conditions(&self, changes: &[crate::mocklink::Change]) -> usize {
+            self.note(format!("conditions {changes:?}"));
             usize::from(self.mock_present)
         }
         fn vehicle_connected(&self) -> bool {
@@ -935,7 +952,10 @@ mod tests {
         assert_eq!(weather["changed"], json!({ "wind": { "speed": 8.0, "from": 270.0 }, "gpsLost": true, "enduranceMin": 20.0, "home": [41.7, 44.8] }));
         assert_eq!(get(&api, &host, "/links/mocklink", "wind=0").body["changed"]["wind"], json!({ "speed": 0.0, "from": 0.0 }), "zero wind is calm");
         assert_eq!(get(&api, &host, "/links/mocklink", "motor=broken").body["error"], "motor must be failed or ok, got: broken");
-        assert_eq!(get(&api, &host, "/links/mocklink", "home=41.7").body["error"], "home must be latitude,longitude");
+        assert_eq!(get(&api, &host, "/links/mocklink", "home=41.7").body["error"], HOME_USAGE);
+        assert_eq!(get(&api, &host, "/links/mocklink", "home=91,44").body["error"], HOME_USAGE, "a latitude past the pole is refused");
+        assert_eq!(get(&api, &host, "/links/mocklink", "wind=-3,90").body["error"], WIND_USAGE, "a negative wind speed is refused");
+        assert_eq!(get(&api, &host, "/links/mocklink", "endurance=0").body["error"], ENDURANCE_USAGE);
         assert_eq!(host.calls().len(), 4, "a refused change reaches no link");
     }
 
@@ -1163,7 +1183,7 @@ mod tests {
         fn silence_mock_links(&self, _silent: bool) -> usize {
             0
         }
-        fn change_mock_conditions(&self, _change: &crate::mocklink::Change) -> usize {
+        fn change_mock_conditions(&self, _changes: &[crate::mocklink::Change]) -> usize {
             0
         }
         fn vehicle_connected(&self) -> bool {

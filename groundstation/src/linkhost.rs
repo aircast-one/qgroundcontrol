@@ -68,10 +68,10 @@ impl Owned {
         }
     }
 
-    fn change_conditions(&self, change: &crate::mocklink::Change) -> bool {
+    fn change_conditions(&self, changes: &[crate::mocklink::Change]) -> bool {
         match self {
             Owned::Mock(link) => {
-                link.change(change);
+                link.change(changes);
                 true
             }
             _ => false,
@@ -333,7 +333,7 @@ fn build(shared: &Shared, id: LinkId, config: &LinkConfig) -> Result<Owned, Fail
         Kind::Mock { .. } if crate::mocklink::available() => {
             let options = crate::mocklink::Options::from_kind(&config.kind).ok_or_else(|| Failure::retry("not a mock link"))?;
             let shared = shared.clone();
-            crate::mocklink::MockLink::open(options, move |bytes| shared.deliver(id, bytes)).map(Owned::Mock).map_err(Failure::retry)
+            crate::mocklink::MockLink::open(options, crate::mocklink::World::live(), move |bytes| shared.deliver(id, bytes)).map(Owned::Mock).map_err(Failure::retry)
         }
         other => Err(Failure::retry(format!("the core does not own {other:?} links on this platform"))),
     }
@@ -425,8 +425,8 @@ pub fn silence_mocks(transports: &Mutex<Transports>, silent: bool) -> usize {
     transports.lock().unwrap().owned.values().filter(|link| link.silence(silent)).count()
 }
 
-pub fn change_mock_conditions(transports: &Mutex<Transports>, change: &crate::mocklink::Change) -> usize {
-    transports.lock().unwrap().owned.values().filter(|link| link.change_conditions(change)).count()
+pub fn change_mock_conditions(transports: &Mutex<Transports>, changes: &[crate::mocklink::Change]) -> usize {
+    transports.lock().unwrap().owned.values().filter(|link| link.change_conditions(changes)).count()
 }
 
 pub fn host_open(transports: &Mutex<Transports>, kind: &str, name: &str) -> LinkId {

@@ -552,7 +552,7 @@ pub enum Valued {
     Resume,
 }
 
-const GRIPPER_RELEASE: i64 = 0;
+pub(crate) const GRIPPER_RELEASE: i64 = 0;
 const GRIPPER_GRAB: i64 = 1;
 const GRIPPER_HOLD: i64 = 2;
 
