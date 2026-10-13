@@ -25,7 +25,7 @@ internal data class VideoReading(
     val noVideoText: String = "",
     val noVideoReason: String = "",
     val sourceChosen: Boolean = true,
-    val standIn: String = "",
+    val standIn: String? = null,
 )
 
 internal fun videoReading(view: JSONObject?): VideoReading? {
@@ -46,7 +46,7 @@ internal fun videoReading(view: JSONObject?): VideoReading? {
         noVideoText = view.optText("noVideoText"),
         noVideoReason = view.optText("noVideoReason"),
         sourceChosen = view.optBoolean("sourceChosen", true),
-        standIn = view.optText("standIn"),
+        standIn = view.optString("standIn").takeUnless { view.isNull("standIn") },
         cameras = (0 until (cameras?.length() ?: 0)).mapNotNull { index ->
             cameras?.optJSONObject(index)?.let { camera ->
                 VideoCamera(

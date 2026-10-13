@@ -93,18 +93,23 @@ pub const STICK_ALTITUDE_MODE: &str = "Altitude Hold";
 const RAW_STICK_MODES: [&str; 2] = ["Stabilize", "Acro"];
 const GUIDED: &str = "Guided";
 
+fn in_mode(state: &VehicleState, names: &[&str]) -> bool {
+    let current = state.announced_modes.iter().find(|(name, _)| *name == state.flight_mode).map(|(_, custom)| *custom).or_else(|| modes::custom_mode_for(state.autopilot, state.vehicle_type, &state.flight_mode));
+    current.is_some_and(|custom| names.iter().any(|name| modes::custom_mode_for(state.autopilot, state.vehicle_type, name) == Some(custom)))
+}
+
 fn ardupilot_copter(state: &VehicleState) -> bool {
     state.autopilot == AUTOPILOT_ARDUPILOT && modes::vehicle_class(state.vehicle_type) == VehicleClass::MultiRotor
 }
 
 pub fn stick_arm(state: &VehicleState, position_known: bool) -> Plan {
     let mode = if position_known { STICK_HOLD_MODE } else { STICK_ALTITUDE_MODE };
-    let switch = (ardupilot_copter(state) && RAW_STICK_MODES.contains(&state.flight_mode.as_str())).then(|| set_mode(state, mode)).flatten().unwrap_or_default();
+    let switch = (ardupilot_copter(state) && in_mode(state, &RAW_STICK_MODES)).then(|| set_mode(state, mode)).flatten().unwrap_or_default();
     Plan::Steps(switch.into_iter().chain([arm(true, false)]).collect())
 }
 
 pub fn stick_takeover(state: &VehicleState) -> Option<Vec<Step>> {
-    (ardupilot_copter(state) && state.armed && state.flight_mode == GUIDED).then(|| set_mode(state, STICK_HOLD_MODE)).flatten()
+    (ardupilot_copter(state) && state.armed && in_mode(state, &[GUIDED])).then(|| set_mode(state, STICK_HOLD_MODE)).flatten()
 }
 pub const CHANGE_HEADING_NOT_SUPPORTED: &str = "Change Heading not supported by Vehicle.";
 
@@ -511,6 +516,10 @@ mod tests {
         assert_eq!(stick_takeover(&VehicleState { armed: false, ..guided.clone() }), None, "not before it is armed");
         assert_eq!(stick_takeover(&VehicleState { flight_mode: "Auto".into(), ..guided.clone() }), None, "a mission is not interrupted by a bump");
         assert_eq!(stick_takeover(&VehicleState { flight_mode: "Guided".into(), ..px4() }), None, "PX4 takes over from the sticks itself");
+        let shouted = VehicleState { flight_mode: "GUIDED".into(), announced_modes: vec![("GUIDED".into(), 4), ("LOITER".into(), 5)], ..guided.clone() };
+        assert!(stick_takeover(&shouted).is_some(), "ArduPilot 4.7 names its own modes, in capitals; the mode number still says Guided");
+        let Plan::Steps(steps) = stick_arm(&VehicleState { flight_mode: "STABILIZE".into(), announced_modes: vec![("STABILIZE".into(), 0), ("LOITER".into(), 5)], ..copter() }, true) else { panic!() };
+        assert_eq!(steps.len(), 3, "arming from STABILIZE still switches to Loiter first");
     }
 
     fn command(step: &Step) -> (u16, [f64; 7], bool) {

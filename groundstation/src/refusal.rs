@@ -11,6 +11,12 @@ const MODE_CHANGE_TO: &str = "Mode change to ";
 const MODE_REPLIES: [&str; 3] = [NO_SUCH_MODE, MODE_CHANGE_TO, "Flight mode change failed"];
 const NOT_IN_FIRMWARE: &str = "this aircraft's firmware doesn't have it";
 
+const PREARM: &str = "PreArm:";
+
+pub fn told_elsewhere(text: &str) -> bool {
+    text.starts_with(PREARM) || is_response_text(text) || is_mode_reply(text)
+}
+
 pub fn is_mode_reply(text: &str) -> bool {
     MODE_REPLIES.iter().any(|prefix| text.starts_with(prefix))
 }
@@ -19,19 +25,19 @@ pub fn missing_mode(text: &str) -> Option<u32> {
     text.strip_prefix(NO_SUCH_MODE)?.trim().parse().ok()
 }
 
-fn mode_reason(text: &str) -> Option<String> {
+fn mode_reason(text: &str, asked_mode: u32) -> Option<String> {
     match missing_mode(text) {
-        Some(_) => Some(NOT_IN_FIRMWARE.to_string()),
+        Some(missing) => (missing == asked_mode).then(|| NOT_IN_FIRMWARE.to_string()),
         None => text.strip_prefix(MODE_CHANGE_TO).and_then(|rest| rest.split_once(": ").or_else(|| rest.split_once(", "))).map(|(_, reason)| sentence(reason.trim().trim_end_matches('.'))),
     }
 }
 
-pub fn mode_change(asked: &str, unanswered: bool, reasons: &[String], current: &str) -> String {
+pub fn mode_change(asked: &str, asked_mode: u32, unanswered: bool, reasons: &[String], current: &str) -> String {
     let still = match current.trim() {
         "" => String::new(),
         mode => format!(" Still in {mode}."),
     };
-    match (unanswered, reasons.iter().find_map(|text| mode_reason(text))) {
+    match (unanswered, reasons.iter().rev().find_map(|text| mode_reason(text, asked_mode))) {
         (true, _) => format!("The aircraft didn't answer the switch to {asked}. Check the link and try again."),
         (false, Some(reason)) => format!("Can't switch to {asked}: {reason}.{still}"),
         (false, None) => format!("The aircraft refused {asked}.{still}"),
@@ -121,12 +127,18 @@ mod tests {
 
     #[test]
     fn a_refused_mode_change_says_why_and_what_the_aircraft_is_still_doing() {
-        assert_eq!(mode_change("Autoland", false, &said(&["No such mode 26"]), "RTL"), "Can't switch to Autoland: this aircraft's firmware doesn't have it. Still in RTL.");
-        assert_eq!(mode_change("Auto", false, &said(&["Mode change to AUTO failed: requires position"]), "Stabilize"), "Can't switch to Auto: requires position. Still in Stabilize.");
-        assert_eq!(mode_change("Guided", false, &said(&["Mode change to GUIDED denied, in fence recovery"]), "RTL"), "Can't switch to Guided: in fence recovery. Still in RTL.");
-        assert_eq!(mode_change("Cruise", false, &said(&["Flight mode change failed"]), "FBW A"), "The aircraft refused Cruise. Still in FBW A.");
-        assert_eq!(mode_change("Loiter", false, &[], ""), "The aircraft refused Loiter.");
-        assert_eq!(mode_change("Loiter", true, &[], "RTL"), "The aircraft didn't answer the switch to Loiter. Check the link and try again.");
+        assert_eq!(mode_change("Autoland", 26, false, &said(&["No such mode 26"]), "RTL"), "Can't switch to Autoland: this aircraft's firmware doesn't have it. Still in RTL.");
+        assert_eq!(mode_change("Auto", 3, false, &said(&["Mode change to AUTO failed: requires position"]), "Stabilize"), "Can't switch to Auto: requires position. Still in Stabilize.");
+        assert_eq!(mode_change("Guided", 15, false, &said(&["Mode change to GUIDED denied, in fence recovery"]), "RTL"), "Can't switch to Guided: in fence recovery. Still in RTL.");
+        assert_eq!(mode_change("Cruise", 7, false, &said(&["Flight mode change failed"]), "FBW A"), "The aircraft refused Cruise. Still in FBW A.");
+        assert_eq!(mode_change("Loiter", 12, false, &[], ""), "The aircraft refused Loiter.");
+        assert_eq!(mode_change("Loiter", 12, true, &[], "RTL"), "The aircraft didn't answer the switch to Loiter. Check the link and try again.");
+    }
+
+    #[test]
+    fn a_refusal_is_explained_by_its_own_reply_not_one_from_a_moment_before() {
+        assert_eq!(mode_change("Thermal", 24, false, &said(&["No such mode 26"]), "RTL"), "The aircraft refused Thermal. Still in RTL.", "the plane said that about Autoland");
+        assert_eq!(mode_change("Auto", 10, false, &said(&["Mode change to AUTO failed: no mission", "Mode change to AUTO failed: requires position"]), "Manual"), "Can't switch to Auto: requires position. Still in Manual.", "the newest reply answers the newest request");
     }
 
     #[test]

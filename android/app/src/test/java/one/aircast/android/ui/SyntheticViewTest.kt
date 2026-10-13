@@ -13,8 +13,7 @@ class SyntheticViewTest {
         val standIn = "No video from SITL camera · showing synthetic view"
         assertEquals("Loading 3D view…", shownNote(SyntheticDraw.Loading, standIn))
         assertEquals(standIn, shownNote(SyntheticDraw.Drawn, standIn))
-        assertNull("the synthetic view chosen as the camera says nothing", shownNote(SyntheticDraw.Drawn, ""))
-        assertNull(shownNote(SyntheticDraw.Drawn, null))
+        assertNull("the synthetic view chosen as the camera says nothing", shownNote(SyntheticDraw.Drawn, null))
     }
 
     @Test

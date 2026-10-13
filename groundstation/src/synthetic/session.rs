@@ -417,6 +417,7 @@ impl Session {
         let (meshes, jobs) = match &mut self.source {
             Source::Google(Some(tiles)) => {
                 let (meshes, wanted) = tiles.select(camera, room, now);
+                tiles.trim(now, self.probed);
                 (meshes, wanted.into_iter().map(Job::Tile).collect())
             }
             Source::Open(scene) => {

@@ -1,30 +1,18 @@
 package one.aircast.android.ui
 
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class CommandRefusalTest {
 
     @Test
-    fun `the aircraft's reply to a mode change is told once by the core, not repeated in the banner`() {
-        assertTrue(isModeReply("No such mode 26"))
-        assertTrue(isModeReply("Mode change to AUTO failed: requires position"))
-        assertFalse(isModeReply("Arm: Mode not armable"))
-        val reply = VehicleMessage(0, "12:00:00", "Warning", MessageSeverity.Warning, "No such mode 26")
-        val fence = reply.copy(index = 1, text = "Fence breached")
+    fun `a reply the core already worded as a banner is not repeated in the message banner`() {
+        val reply = VehicleMessage(0, "12:00:00", "Warning", MessageSeverity.Warning, "No such mode 26", toldElsewhere = true)
+        val fence = VehicleMessage(1, "12:00:00", "Warning", MessageSeverity.Warning, "Fence breached")
         assertEquals(listOf(fence), bannerMessages(listOf(reply, fence)))
-    }
-
-    @Test
-    fun `the aircraft's reply to an arm attempt is told once by the core, not repeated in the banner`() {
-        assertTrue(isArmReply("Arm: Mode not armable"))
-        assertTrue(isArmReply("Arming denied: Flight mode not allowed"))
-        assertFalse(isArmReply("EKF3 IMU0 is using GPS"))
-        val reply = VehicleMessage(0, "12:00:00", "Critical", MessageSeverity.Error, "Arm: Mode not armable")
-        val crash = reply.copy(index = 1, text = "Crash: Disarming")
-        assertEquals(listOf(crash), bannerMessages(listOf(reply, crash)))
+        val read = vehicleMessages(JSONObject("""{"order":"oldestFirst","items":[{"index":0,"text":"Arm: Mode not armable","level":"error","toldElsewhere":true},{"index":1,"text":"Crash: Disarming","level":"error"}]}"""))
+        assertEquals("the core's flag travels into the head", listOf("Crash: Disarming"), bannerMessages(read).map { it.text })
     }
 
     @Test

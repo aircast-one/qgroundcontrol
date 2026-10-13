@@ -9,7 +9,7 @@ use super::fetch::Fetcher;
 use super::geo::{Camera, east_north_up, ecef};
 use super::ground;
 use super::mesh::{Layer, Mesh, solid};
-use super::tileset::{RETRY_AFTER, cutoff, frustum};
+use super::tileset::{RETRY_AFTER, cutoff, frustum, kept};
 
 pub const TERRAIN: &str = "Terrarium";
 pub const BUILDINGS: &str = "Buildings";
@@ -225,10 +225,6 @@ impl<T> Store<T> {
         let oldest = cutoff(self.slots.values().map(|(_, used)| *used).collect(), most);
         oldest.into_iter().for_each(|at| self.slots.retain(|_, (slot, used)| matches!(slot, Slot::Asked) || kept(*used, at, now)));
     }
-}
-
-fn kept(used: Instant, cutoff: Instant, now: Instant) -> bool {
-    used > cutoff || used == now
 }
 
 fn awaited(asked: Option<Instant>, now: Instant) -> bool {

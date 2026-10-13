@@ -14,11 +14,13 @@ pub fn no_video_text(source: &str, url: &str) -> String {
         _ => format!("No video from {url}"),
     }
 }
-pub fn stand_in_text(source: &str, title: &str, decoding: bool, connecting: bool) -> String {
+const STAND_IN: &str = "showing synthetic view";
+
+pub fn stand_in_text(source: &str, title: &str, decoding: bool, connecting: bool) -> Option<String> {
     match (source.is_empty() || source == crate::videostate::SOURCE_SYNTHETIC || decoding, connecting) {
-        (true, _) => String::new(),
-        (false, true) => format!("Connecting to {title} · showing synthetic view"),
-        (false, false) => format!("No video from {title} · showing synthetic view"),
+        (true, _) => None,
+        (false, true) => Some(format!("Connecting to {title} · {STAND_IN}")),
+        (false, false) => Some(format!("No video from {title} · {STAND_IN}")),
     }
 }
 
@@ -361,11 +363,11 @@ mod tests {
 
     #[test]
     fn the_synthetic_view_standing_in_for_a_camera_says_which_camera_has_no_video() {
-        assert_eq!(stand_in_text("RTSP Video Stream", "SITL camera", false, false), "No video from SITL camera · showing synthetic view");
-        assert_eq!(stand_in_text("RTSP Video Stream", "SITL camera", false, true), "Connecting to SITL camera · showing synthetic view");
-        assert_eq!(stand_in_text("RTSP Video Stream", "SITL camera", true, false), "", "a playing camera needs no stand-in");
-        assert_eq!(stand_in_text(crate::videostate::SOURCE_SYNTHETIC, "Synthetic view", false, false), "", "the synthetic view chosen as the camera is not standing in for anything");
-        assert_eq!(stand_in_text("", "Camera 1", false, false), "", "with no camera there is nothing to stand in for");
+        assert_eq!(stand_in_text("RTSP Video Stream", "SITL camera", false, false).as_deref(), Some("No video from SITL camera · showing synthetic view"));
+        assert_eq!(stand_in_text("RTSP Video Stream", "SITL camera", false, true).as_deref(), Some("Connecting to SITL camera · showing synthetic view"));
+        assert_eq!(stand_in_text("RTSP Video Stream", "SITL camera", true, false), None, "a playing camera needs no stand-in");
+        assert_eq!(stand_in_text(crate::videostate::SOURCE_SYNTHETIC, "Synthetic view", false, false), None, "the synthetic view chosen as the camera is not standing in for anything");
+        assert_eq!(stand_in_text("", "Camera 1", false, false), None, "with no camera there is nothing to stand in for");
     }
     #[test]
     fn no_video_names_the_port_or_url_the_source_listens_on() {

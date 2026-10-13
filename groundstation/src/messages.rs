@@ -8,6 +8,8 @@ pub struct Message {
     pub severity: String,
     pub level: &'static str,
     pub text: String,
+    #[serde(rename = "toldElsewhere")]
+    pub told_elsewhere: bool,
 }
 
 // StatusTextHandler prepends each new message, so the string arrives newest first. Every other
@@ -42,13 +44,15 @@ fn parse_one(chunk: &str) -> Option<Message> {
     let (time, component_tag) = head.split_once(' ').unwrap_or((head, ""));
     let component = component_tag.strip_prefix("COMP:").and_then(|id| id.parse().ok());
     let (severity, html) = rest.trim_start().split_once(": ").unwrap_or(("", rest.trim_start()));
+    let text = plain_text(html);
     Some(Message {
         index: 0,
         time: time.to_string(),
         component,
         severity: severity.to_string(),
         level: level_of(style),
-        text: plain_text(html),
+        told_elsewhere: crate::refusal::told_elsewhere(&text),
+        text,
     })
 }
 
@@ -89,6 +93,8 @@ mod tests {
         assert_eq!(parsed[0].component, Some(1));
         assert_eq!(parsed[0].level, "normal");
         assert_eq!(parsed[0].text, "ArduCopter V4.5.7");
+        assert_eq!((parsed[1].told_elsewhere, parsed[0].told_elsewhere), (true, false), "a PreArm line is in the readiness list, so the heads keep it out of the banner");
+        assert!(parse("<font style=\"<#I>\">[1:2:3.4 ] Warning: No such mode 26</font><br/>")[0].told_elsewhere, "the core already worded the refused mode change as a banner");
         assert_eq!(parse("<font style=\"<#E>\">[1:2:3.4 ] Fehler: kaputt</font><br/>")[0].level, "error", "a localized severity word still buckets by the token");
         assert_eq!(parse("<font style=\"<#I>\">[1:2:3.4 ] Notice: heads up</font><br/>")[0].level, "warning", "a notice buckets as a warning, as the Qt handler colours it");
     }

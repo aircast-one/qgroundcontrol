@@ -8,9 +8,13 @@ use url::Url;
 
 const MAX_BODY_BYTES: u64 = 64 * 1024 * 1024;
 const NO_PERSISTENCE: &str = "settings.appSettings.disableAllPersistence";
-const FETCH_TIMEOUT: Duration = Duration::from_secs(20);
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(10);
+const ANSWER_TIMEOUT: Duration = Duration::from_secs(20);
+const BODY_TIMEOUT: Duration = Duration::from_secs(120);
 
-static AGENT: LazyLock<ureq::Agent> = LazyLock::new(|| ureq::Agent::config_builder().timeout_global(Some(FETCH_TIMEOUT)).build().into());
+static AGENT: LazyLock<ureq::Agent> = LazyLock::new(|| {
+    ureq::Agent::config_builder().timeout_connect(Some(CONNECT_TIMEOUT)).timeout_recv_response(Some(ANSWER_TIMEOUT)).timeout_recv_body(Some(BODY_TIMEOUT)).build().into()
+});
 
 pub trait Fetcher: Send + Sync {
     fn url(&self, url: &Url) -> Result<Vec<u8>, String>;

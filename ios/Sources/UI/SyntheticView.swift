@@ -168,7 +168,7 @@ private struct SyntheticWebView: UIViewRepresentable {
 }
 
 func shownNote(_ draw: SyntheticDraw, _ standIn: String?) -> String? {
-    draw.note ?? standIn.flatMap { $0.isEmpty ? nil : $0 }
+    draw.note ?? standIn
 }
 
 private struct NativePage: View {

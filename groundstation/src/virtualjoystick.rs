@@ -1,28 +1,92 @@
 use serde_json::{Value, json};
 
-use crate::read::{flag, object};
+use crate::modes::{COPTER_MODES, Mode, PLANE_MODES, PX4_MODES, ROVER_MODES, SUB_MODES};
+use crate::read::{flag, object, value_number};
 use crate::router::Backend;
+
+const PX4_TAKEOVER: &str = "vehicle.parameterManager.getParameter(-1,COM_RC_OVERRIDE).rawValue";
 
 pub const DEPS: &[&str] = &[
     "settings.appSettings.virtualJoystick",
     "settings.appSettings.virtualJoystickLeftHandedMode",
     "vehicles.activeVehicleAvailable",
     "vehicle.rover",
-    "vehicle.initialConnectComplete",
-    "vehicle.flightMode",
-    "vehicle.apmFirmware",
-    "vehicle.multiRotor",
     "vehicle.sub",
+    "vehicle.multiRotor",
+    "vehicle.fixedWing",
+    "vehicle.vtol",
+    "vehicle.apmFirmware",
+    "vehicle.px4Firmware",
+    "vehicle.customMode",
+    "vehicle.initialConnectComplete",
+    PX4_TAKEOVER,
 ];
 
-const FLIES_ITSELF: &[&str] = &[
-    "Auto", "Mission", "RTL", "Return", "Return to Groundstation", "Smart RTL", "AutoRTL", "QuadPlane RTL", "QuadPlane Land", "Precision Land",
-    "Precision Landing", "Takeoff", "Hold", "Brake", "Follow", "Follow Me", "Throw", "Avoid ADSB", "Guided No GPS", "Offboard", "AutoRotate",
-];
-const TAKEN_OVER_FROM: &str = "Guided";
-const FREE_THROTTLE: &[&str] = &[
-    "Stabilize", "Stabilized", "Manual", "Acro", "Rattitude", "Drift", "Flip", "Training", "FBW A", "FBW B", "Cruise", "QuadPlane Stabilize", "QuadPlane Acro",
-];
+const COPTER_FLIES_ITSELF: [&str; 10] = ["Auto", "RTL", "Brake", "Throw", "Avoid ADSB", "Guided No GPS", "Smart RTL", "Follow", "AutoRotate", "AutoRTL"];
+const PLANE_FLIES_ITSELF: [&str; 8] = ["Auto", "RTL", "Takeoff", "Avoid ADSB", "Guided", "QuadPlane Land", "QuadPlane RTL", "Autoland"];
+const ROVER_FLIES_ITSELF: [&str; 7] = ["Hold", "Follow", "Dock", "Auto", "RTL", "Smart RTL", "Guided"];
+const SUB_FLIES_ITSELF: [&str; 3] = ["Auto", "Guided", "Surface"];
+const COPTER_FREE_THROTTLE: [&str; 4] = ["Stabilize", "Acro", "Drift", "Flip"];
+const PLANE_FREE_THROTTLE: [&str; 9] = ["Manual", "Stabilize", "Training", "Acro", "FBW A", "FBW B", "Cruise", "QuadPlane Stabilize", "QuadPlane Acro"];
+const PX4_FREE_THROTTLE: [&str; 4] = ["Manual", "Stabilized", "Acro", "Rattitude"];
+const PX4_AUTO: u32 = 4;
+const PX4_OFFBOARD: u32 = 6;
+const TAKEOVER_IN_AUTO: u32 = 1;
+const TAKEOVER_IN_OFFBOARD: u32 = 2;
+
+#[derive(Clone, Copy)]
+enum Airframe {
+    Copter,
+    Plane,
+    Rover,
+    Sub,
+    Px4,
+    Other,
+}
+
+fn airframe(vehicle: &Value) -> Airframe {
+    match (flag(vehicle, "px4Firmware"), flag(vehicle, "apmFirmware")) {
+        (true, _) => Airframe::Px4,
+        (_, true) if flag(vehicle, "multiRotor") => Airframe::Copter,
+        (_, true) if flag(vehicle, "fixedWing") || flag(vehicle, "vtol") => Airframe::Plane,
+        (_, true) if flag(vehicle, "rover") => Airframe::Rover,
+        (_, true) if flag(vehicle, "sub") => Airframe::Sub,
+        _ => Airframe::Other,
+    }
+}
+
+fn px4_main(custom_mode: u32) -> u32 {
+    (custom_mode >> 16) & 0xff
+}
+
+fn named(table: &[Mode], names: &[&str], custom_mode: u32) -> bool {
+    table.iter().any(|mode| mode.custom_mode == custom_mode && names.contains(&mode.name))
+}
+
+fn flown_by_sticks(airframe: Airframe, custom_mode: u32, takeover: u32) -> bool {
+    match airframe {
+        Airframe::Copter => !named(&COPTER_MODES, &COPTER_FLIES_ITSELF, custom_mode),
+        Airframe::Plane => !named(&PLANE_MODES, &PLANE_FLIES_ITSELF, custom_mode),
+        Airframe::Rover => !named(&ROVER_MODES, &ROVER_FLIES_ITSELF, custom_mode),
+        Airframe::Sub => !named(&SUB_MODES, &SUB_FLIES_ITSELF, custom_mode),
+        Airframe::Px4 => match px4_main(custom_mode) {
+            PX4_AUTO => takeover & TAKEOVER_IN_AUTO != 0,
+            PX4_OFFBOARD => takeover & TAKEOVER_IN_OFFBOARD != 0,
+            _ => true,
+        },
+        Airframe::Other => true,
+    }
+}
+
+fn throttle_free(airframe: Airframe, custom_mode: u32, driven: bool) -> bool {
+    !driven
+        && match airframe {
+            Airframe::Copter => named(&COPTER_MODES, &COPTER_FREE_THROTTLE, custom_mode),
+            Airframe::Plane => named(&PLANE_MODES, &PLANE_FREE_THROTTLE, custom_mode),
+            Airframe::Px4 => PX4_MODES.iter().any(|mode| PX4_FREE_THROTTLE.contains(&mode.name) && px4_main(mode.custom_mode) == px4_main(custom_mode)),
+            Airframe::Rover | Airframe::Sub | Airframe::Other => false,
+        }
+}
 
 pub const JOYSTICK_VALUE: &str = "vehicle.virtualTabletJoystickValue";
 pub const SEND_PERIOD_MS: u64 = 40;
@@ -47,32 +111,23 @@ fn sending(backend: &dyn Backend) -> bool {
     flag(&vehicles, "activeVehicleAvailable") && flag(&backend.value_fields("vehicle", "initialConnectComplete"), "initialConnectComplete")
 }
 
-fn flown_by_sticks(vehicle: &Value) -> bool {
-    match vehicle.get("flightMode").and_then(Value::as_str) {
-        Some(TAKEN_OVER_FROM) => flag(vehicle, "apmFirmware") && flag(vehicle, "multiRotor"),
-        Some(mode) => !FLIES_ITSELF.contains(&mode),
-        None => true,
-    }
-}
-
-fn throttle_springs_back(vehicle: &Value) -> bool {
-    let free = vehicle.get("flightMode").and_then(Value::as_str).is_some_and(|mode| FREE_THROTTLE.contains(&mode));
-    !free || flag(vehicle, "rover") || flag(vehicle, "sub")
-}
-
 pub fn virtual_joystick_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let vehicle = backend.value_fields("vehicle", "rover,sub,flightMode,apmFirmware,multiRotor");
+    let vehicle = backend.value_fields("vehicle", "rover,sub,multiRotor,fixedWing,vtol,apmFirmware,px4Firmware,customMode");
     let connected = flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable");
     let rover = connected && flag(&vehicle, "rover");
+    let driven = rover || flag(&vehicle, "sub");
+    let frame = airframe(&vehicle);
+    let mode = connected.then(|| vehicle.get("customMode").and_then(Value::as_u64).and_then(|custom| u32::try_from(custom).ok())).flatten();
+    let takeover = matches!(frame, Airframe::Px4).then(|| value_number(&backend.value(PX4_TAKEOVER))).flatten().map_or(TAKEOVER_IN_AUTO, |bits| bits as u32);
     let left_handed = setting(backend, "virtualJoystickLeftHandedMode");
     let enabled = setting(backend, "virtualJoystick");
     json!({
         "kind": "object",
         "class": "VirtualJoystick",
         "enabled": enabled,
-        "show": enabled && (!connected || flown_by_sticks(&vehicle)),
+        "show": enabled && mode.is_none_or(|custom| flown_by_sticks(frame, custom, takeover)),
         "sending": sending(backend),
-        "autoCenterThrottle": !connected || throttle_springs_back(&vehicle),
+        "autoCenterThrottle": !mode.is_some_and(|custom| throttle_free(frame, custom, driven)),
         "leftHandedMode": left_handed,
         "leftPositiveOnly": connected && !rover && !left_handed,
         "rightPositiveOnly": connected && !rover && left_handed,
@@ -112,30 +167,36 @@ mod tests {
         assert!(stick_deflected(0.0, 0.0, 0.0, 0.0, true), "pulling the throttle down to descend");
         assert!(!stick_deflected(0.0, 0.0, 0.0, 0.0, false), "on the ground the throttle rests at the bottom");
     }
+    use crate::modes::px4;
     use std::cell::RefCell;
 
     struct Rig {
-        rover: bool,
+        kind: &'static str,
         left_handed: bool,
         connected: bool,
-        mode: &'static str,
-        apm_copter: bool,
+        custom: u32,
+        takeover: Option<f64>,
         invoked: RefCell<Vec<String>>,
     }
 
     impl Backend for Rig {
         fn get(&self, path: &str) -> String {
-            let value = match path {
-                "settings.appSettings.virtualJoystick" => true,
-                "settings.appSettings.virtualJoystickLeftHandedMode" => self.left_handed,
-                _ => false,
-            };
-            json!({ "kind": "fact", "value": value }).to_string()
+            match path {
+                "settings.appSettings.virtualJoystick" => json!({ "kind": "fact", "value": true }),
+                "settings.appSettings.virtualJoystickLeftHandedMode" => json!({ "kind": "fact", "value": self.left_handed }),
+                PX4_TAKEOVER => self.takeover.map_or(json!({ "kind": "null" }), |bits| json!({ "kind": "value", "value": bits })),
+                _ => json!({ "kind": "fact", "value": false }),
+            }
+            .to_string()
         }
         fn get_fields(&self, path: &str, _fields: &str) -> String {
+            let is = |kind: &str| self.kind == kind;
             match path {
                 "vehicles" => json!({ "activeVehicleAvailable": self.connected }),
-                _ => json!({ "rover": self.rover, "initialConnectComplete": self.connected, "flightMode": self.mode, "apmFirmware": self.apm_copter, "multiRotor": self.apm_copter }),
+                _ => json!({
+                    "rover": is("rover"), "multiRotor": is("copter") || is("px4"), "fixedWing": is("plane"), "apmFirmware": !is("px4"), "px4Firmware": is("px4"),
+                    "initialConnectComplete": self.connected, "customMode": self.custom, "flightMode": "SHOUTED BY THE VEHICLE",
+                }),
             }
             .to_string()
         }
@@ -149,32 +210,64 @@ mod tests {
         fn watch(&self, _paths: &[String]) {}
     }
 
+    fn on(kind: &'static str, mode: &str) -> Rig {
+        let table: &[Mode] = match kind {
+            "plane" => &PLANE_MODES,
+            "rover" => &ROVER_MODES,
+            "px4" => &PX4_MODES,
+            _ => &COPTER_MODES,
+        };
+        let custom = table.iter().find(|entry| entry.name == mode).map(|entry| entry.custom_mode).expect("a mode of that firmware");
+        Rig { kind, left_handed: false, connected: true, custom, takeover: None, invoked: RefCell::new(Vec::new()) }
+    }
+
     fn rig(rover: bool, left_handed: bool, connected: bool) -> Rig {
-        Rig { rover, left_handed, connected, mode: "Loiter", apm_copter: true, invoked: RefCell::new(Vec::new()) }
+        let (kind, mode) = if rover { ("rover", "Manual") } else { ("copter", "Loiter") };
+        Rig { left_handed, connected, ..on(kind, mode) }
     }
 
     #[test]
     fn the_throttle_springs_back_where_the_autopilot_holds_height_and_stays_put_where_the_pilot_sets_it() {
         let throttle = |rig: Rig| virtual_joystick_view(&rig, &[])["autoCenterThrottle"].clone();
-        assert_eq!(throttle(Rig { mode: "Loiter", ..rig(false, false, true) }), json!(true), "like a DJI, letting go holds height");
-        assert_eq!(throttle(Rig { mode: "Altitude Hold", ..rig(false, false, true) }), json!(true));
-        assert_eq!(throttle(Rig { mode: "Stabilize", ..rig(false, false, true) }), json!(false), "the stick is the throttle, so it stays where the pilot leaves it");
-        assert_eq!(throttle(Rig { mode: "Acro", ..rig(false, false, true) }), json!(false));
-        assert_eq!(throttle(Rig { mode: "Manual", ..rig(true, false, true) }), json!(true), "a rover let go of stops");
+        assert_eq!(throttle(on("copter", "Loiter")), json!(true), "like a DJI, letting go holds height");
+        assert_eq!(throttle(on("copter", "Altitude Hold")), json!(true));
+        assert_eq!(throttle(on("copter", "Stabilize")), json!(false), "the stick is the throttle, so it stays where the pilot leaves it");
+        assert_eq!(throttle(on("copter", "Acro")), json!(false));
+        assert_eq!(throttle(on("plane", "FBW A")), json!(false));
+        assert_eq!(throttle(on("px4", "Manual")), json!(false));
+        assert_eq!(throttle(on("px4", "Position")), json!(true));
+        assert_eq!(throttle(on("rover", "Manual")), json!(true), "a rover let go of stops");
     }
 
     #[test]
     fn the_sticks_hide_while_the_autopilot_flies_itself_but_keep_sending_centred() {
-        let view = |mode: &'static str, apm_copter: bool| virtual_joystick_view(&Rig { mode, apm_copter, ..rig(false, false, true) }, &[]);
-        assert_eq!(view("Loiter", true)["show"], json!(true));
-        assert_eq!(view("Stabilize", true)["show"], json!(true));
-        assert_eq!(view("RTL", true)["show"], json!(false), "returning home ignores the sticks, so they are not offered");
-        assert_eq!(view("Mission", false)["show"], json!(false));
-        assert_eq!(view("Land", true)["show"], json!(true), "sticks nudge a landing sideways");
-        assert_eq!(view("Guided", true)["show"], json!(true), "a copter in Guided hands over to Loiter when a stick moves");
-        assert_eq!(view("Guided", false)["show"], json!(false), "nothing takes over from Guided on other vehicles");
-        assert_eq!(view("RTL", true)["enabled"], json!(true), "hidden sticks still stream centred, so the override link never drops mid-flight");
-        assert_eq!(virtual_joystick_view(&Rig { mode: "RTL", ..rig(false, false, false) }, &[])["show"], json!(true), "with no vehicle the setting alone decides");
+        let shown = |rig: Rig| virtual_joystick_view(&rig, &[])["show"].clone();
+        assert_eq!(shown(on("copter", "Loiter")), json!(true));
+        assert_eq!(shown(on("copter", "Stabilize")), json!(true));
+        assert_eq!(shown(on("copter", "RTL")), json!(false), "returning home ignores the sticks, so they are not offered");
+        assert_eq!(shown(on("copter", "Land")), json!(true), "sticks nudge a landing sideways");
+        assert_eq!(shown(on("copter", "Guided")), json!(true), "a copter in Guided hands over to Loiter when a stick moves");
+        assert_eq!(shown(on("plane", "Guided")), json!(false), "nothing takes over from Guided on other vehicles");
+        assert_eq!(shown(on("plane", "Auto")), json!(false));
+        assert_eq!(virtual_joystick_view(&on("copter", "RTL"), &[])["enabled"], json!(true), "hidden sticks still stream centred, so the override link never drops mid-flight");
+        assert_eq!(shown(Rig { connected: false, ..on("copter", "RTL") }), json!(true), "with no vehicle the setting alone decides");
+    }
+
+    #[test]
+    fn modes_are_told_apart_by_number_so_a_vehicle_naming_them_itself_changes_nothing() {
+        let view = virtual_joystick_view(&on("copter", "Auto"), &[]);
+        assert_eq!((view["show"].clone(), view["autoCenterThrottle"].clone()), (json!(false), json!(true)), "ArduPilot 4.7 announces AUTO and STABILIZE in capitals");
+    }
+
+    #[test]
+    fn a_px4_pilot_takes_over_a_mission_by_moving_a_stick_unless_the_vehicle_forbids_it() {
+        let shown = |rig: Rig| virtual_joystick_view(&rig, &[])["show"].clone();
+        assert_eq!(shown(on("px4", "Mission")), json!(true), "COM_RC_OVERRIDE defaults to taking over in auto modes");
+        assert_eq!(shown(on("px4", "Hold")), json!(true));
+        assert_eq!(shown(Rig { takeover: Some(0.0), ..on("px4", "Mission") }), json!(false));
+        assert_eq!(shown(on("px4", "Offboard")), json!(false), "offboard is only taken over when the vehicle allows it");
+        assert_eq!(shown(Rig { takeover: Some(3.0), ..on("px4", "Offboard") }), json!(true));
+        assert_eq!(px4(4, 4) >> 16 & 0xff, PX4_AUTO);
     }
 
     #[test]

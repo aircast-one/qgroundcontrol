@@ -2308,8 +2308,8 @@ impl Vehicle {
 
     fn tell_mode_refusal(&mut self, custom_mode: u32, unanswered: bool, now_ms: u64) {
         self.mode_refusal_due = None;
-        let reasons: Vec<String> = self.mode_texts.iter().filter(|(at, _)| now_ms.saturating_sub(*at) <= crate::refusal::REASON_WINDOW_MS).map(|(_, text)| text.clone()).collect();
-        let text = crate::refusal::mode_change(&self.mode_named(custom_mode), unanswered, &reasons, &self.flight_mode());
+        let reasons: Vec<String> = std::mem::take(&mut self.mode_texts).into_iter().filter(|(at, _)| now_ms.saturating_sub(*at) <= crate::refusal::REASON_WINDOW_MS).map(|(_, text)| text).collect();
+        let text = crate::refusal::mode_change(&self.mode_named(custom_mode), custom_mode, unanswered, &reasons, &self.flight_mode());
         self.pending_notices.push((crate::noticeboard::BRIEF, text.clone()));
         self.note(text);
     }

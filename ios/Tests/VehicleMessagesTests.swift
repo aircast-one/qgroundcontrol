@@ -24,7 +24,7 @@ final class VehicleMessagesTests: XCTestCase {
 
     func testTheBannerOnlyInterruptsForWarningsAndErrorsTheChipIsNotAlreadySaying() {
         let unread = [
-            VehicleMessage(index: 0, time: "", severity: "", level: .Error, text: "PreArm: GPS 1: not healthy"),
+            VehicleMessage(index: 0, time: "", severity: "", level: .Error, text: "PreArm: GPS 1: not healthy", toldElsewhere: true),
             VehicleMessage(index: 0, time: "", severity: "", level: .Normal, text: "EKF3 IMU0 is using GPS"),
             VehicleMessage(index: 0, time: "", severity: "", level: .Warning, text: "Battery low"),
         ]

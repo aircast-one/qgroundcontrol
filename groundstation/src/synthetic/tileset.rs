@@ -17,7 +17,6 @@ const UNLOAD_SWEEP_EVERY: Duration = Duration::from_secs(1);
 const MAXIMUM_SCREEN_SPACE_ERROR: f64 = 16.0;
 const DETAIL_PIXELS: f64 = 1280.0 * 720.0;
 const MAX_LOADED_TILES: usize = 500;
-const SEEN_LATELY: Duration = Duration::from_secs(2);
 const LOWEST_GROUND_M: f64 = 1_000.0;
 const OCCLUDER_RADII: DVec3 = DVec3::new(6_378_137.0 - LOWEST_GROUND_M, 6_378_137.0 - LOWEST_GROUND_M, 6_356_752.314_245 - LOWEST_GROUND_M);
 
@@ -168,11 +167,15 @@ fn used_meshes(tile: &Tile) -> Vec<Instant> {
     tile.used.filter(|_| matches!(tile.content, Content::Meshes(_))).into_iter().chain(tile.children.iter().flat_map(used_meshes)).collect()
 }
 
-fn evict(tile: &mut Tile, cutoff: Instant, now: Instant) {
-    if matches!(tile.content, Content::Meshes(_)) && tile.url.is_some() && !tile.used.is_some_and(|used| used > cutoff || now.duration_since(used) < SEEN_LATELY) {
+pub(super) fn kept(used: Instant, cutoff: Instant, now: Instant) -> bool {
+    used > cutoff || used == now
+}
+
+fn evict(tile: &mut Tile, cutoff: Instant, seen: &[Instant]) {
+    if matches!(tile.content, Content::Meshes(_)) && tile.url.is_some() && !tile.used.is_some_and(|used| seen.iter().any(|at| kept(used, cutoff, *at))) {
         tile.content = Content::Pending;
     }
-    tile.children.iter_mut().for_each(|child| evict(child, cutoff, now));
+    tile.children.iter_mut().for_each(|child| evict(child, cutoff, seen));
 }
 
 fn refine_above(camera: &Camera) -> f64 {
@@ -212,11 +215,14 @@ impl Tileset {
             unload(&mut root, now);
             self.swept = Some(now);
         }
-        if let Some(oldest) = cutoff(used_meshes(&root), MAX_LOADED_TILES) {
-            evict(&mut root, oldest, now);
-        }
         self.root = root;
         (drawn, wanted)
+    }
+
+    pub fn trim(&mut self, now: Instant, probed: Option<Instant>) {
+        if let Some(oldest) = cutoff(used_meshes(&self.root), MAX_LOADED_TILES) {
+            evict(&mut self.root, oldest, &[Some(now), probed].into_iter().flatten().collect::<Vec<_>>());
+        }
     }
 
     pub fn deliver(&mut self, path: &[usize], parsed: Result<Parsed, String>, now: Instant) {
@@ -320,12 +326,12 @@ mod tests {
         let seen = |name: &str, ago: u64| Tile { content: Content::Meshes(vec![Arc::new(mesh())]), used: Some(now - Duration::from_secs(ago)), ..leaf(&camera, name) };
         let mut root = Tile { content: Content::None, url: None, children: vec![seen("a", 5), seen("b", 0), seen("c", 9)], ..leaf(&camera, "root") };
         let oldest = cutoff(used_meshes(&root), 1).expect("three tiles is over a budget of one");
-        evict(&mut root, oldest, now);
+        evict(&mut root, oldest, &[now]);
         assert_eq!(root.children.iter().map(|tile| matches!(tile.content, Content::Meshes(_))).collect::<Vec<_>>(), [false, true, false], "the tile drawn this frame stays");
-        let mut probed = Tile { content: Content::None, url: None, children: vec![seen("view", 1), seen("old", 9)], ..leaf(&camera, "root") };
+        let mut probed = Tile { content: Content::None, url: None, children: vec![seen("view", 0), seen("probe", 1), seen("old", 9)], ..leaf(&camera, "root") };
         let oldest = cutoff(used_meshes(&probed), 1).expect("over budget");
-        evict(&mut probed, oldest, now);
-        assert!(matches!(probed.children[0].content, Content::Meshes(_)), "the ground probe selects through the same tiles; what the view drew a moment ago is not its to drop");
+        evict(&mut probed, oldest, &[now, now - Duration::from_secs(1)]);
+        assert_eq!(probed.children.iter().map(|tile| matches!(tile.content, Content::Meshes(_))).collect::<Vec<_>>(), [true, true, false], "the ground probe's tiles from its last look stay as well");
     }
 
     #[test]

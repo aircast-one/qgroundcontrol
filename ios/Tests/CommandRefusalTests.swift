@@ -2,22 +2,12 @@ import XCTest
 @testable import Aircast
 
 final class CommandRefusalTests: XCTestCase {
-    func testTheAircraftsReplyToAModeChangeIsToldOnceByTheCoreNotRepeatedInTheBanner() {
-        XCTAssertTrue(isModeReply("No such mode 26"))
-        XCTAssertTrue(isModeReply("Mode change to AUTO failed: requires position"))
-        XCTAssertFalse(isModeReply("Arm: Mode not armable"))
-        let reply = VehicleMessage(index: 0, time: "12:00:00", severity: "Warning", level: .Warning, text: "No such mode 26")
+    func testAReplyTheCoreAlreadyWordedAsABannerIsNotRepeatedInTheMessageBanner() {
+        let reply = VehicleMessage(index: 0, time: "12:00:00", severity: "Warning", level: .Warning, text: "No such mode 26", toldElsewhere: true)
         let fence = VehicleMessage(index: 1, time: "12:00:00", severity: "Warning", level: .Warning, text: "Fence breached")
         XCTAssertEqual(bannerMessages([reply, fence]), [fence])
-    }
-
-    func testTheAircraftsReplyToAnArmAttemptIsToldOnceByTheCoreNotRepeatedInTheBanner() {
-        XCTAssertTrue(isArmReply("Arm: Mode not armable"))
-        XCTAssertTrue(isArmReply("Arming denied: Flight mode not allowed"))
-        XCTAssertFalse(isArmReply("EKF3 IMU0 is using GPS"))
-        let reply = VehicleMessage(index: 0, time: "12:00:00", severity: "Critical", level: .Error, text: "Arm: Mode not armable")
-        let crash = VehicleMessage(index: 1, time: "12:00:00", severity: "Critical", level: .Error, text: "Crash: Disarming")
-        XCTAssertEqual(bannerMessages([reply, crash]), [crash])
+        let read = vehicleMessages(JSON.parse(#"{"order":"oldestFirst","items":[{"index":0,"text":"Arm: Mode not armable","level":"error","toldElsewhere":true},{"index":1,"text":"Crash: Disarming","level":"error"}]}"#))
+        XCTAssertEqual(bannerMessages(read).map(\.text), ["Crash: Disarming"], "the core's flag travels into the head")
     }
 
     func testSentIsABriefAcknowledgementGoneBeforeARefusalCouldSitUnderIt() {

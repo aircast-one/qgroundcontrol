@@ -6,8 +6,7 @@ final class SyntheticViewTests: XCTestCase {
         let standIn = "No video from SITL camera · showing synthetic view"
         XCTAssertEqual(shownNote(.Loading, standIn), "Loading 3D view…")
         XCTAssertEqual(shownNote(.Drawn, standIn), standIn)
-        XCTAssertNil(shownNote(.Drawn, ""), "the synthetic view chosen as the camera says nothing")
-        XCTAssertNil(shownNote(.Drawn, nil))
+        XCTAssertNil(shownNote(.Drawn, nil), "the synthetic view chosen as the camera says nothing")
     }
 
     func testThePageAsksForTilesBesideItselfAndTheCoreAnswersThem() {

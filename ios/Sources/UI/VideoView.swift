@@ -25,7 +25,7 @@ struct VideoReading: Equatable {
     var noVideoText: String = ""
     var noVideoReason: String = ""
     var sourceChosen: Bool = true
-    var standIn: String = ""
+    var standIn: String?
 }
 
 func videoReading(_ view: JSON?) -> VideoReading? {
@@ -47,7 +47,7 @@ func videoReading(_ view: JSON?) -> VideoReading? {
         noVideoText: view["noVideoText"].string,
         noVideoReason: view["noVideoReason"].string,
         sourceChosen: view["sourceChosen"].bool(true),
-        standIn: view["standIn"].string
+        standIn: view["standIn"].stringOrNil
     )
 }
 

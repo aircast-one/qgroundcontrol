@@ -195,6 +195,12 @@ class MainActivity : ComponentActivity(), QGCBridge.Host {
         }
         GamepadInput.start(this, lifecycleScope)
         one.aircast.android.ui.VirtualStickSender.start(lifecycleScope)
+        VehicleLinkKeeper.start(this)
+    }
+
+    override fun onStart() {
+        super.onStart()
+        VehicleLinkKeeper.foregrounded(this)
     }
 
     override fun dispatchGenericMotionEvent(event: MotionEvent): Boolean =

@@ -179,7 +179,7 @@ private fun BoxScope.NativePage(view: JSONObject?, standIn: String?) {
     shownNote(draw, standIn)?.let { note -> SyntheticNote(note, loading = draw == SyntheticDraw.Loading, Modifier.align(Alignment.Center)) }
 }
 
-internal fun shownNote(draw: SyntheticDraw, standIn: String?): String? = draw.note ?: standIn?.takeIf { it.isNotEmpty() }
+internal fun shownNote(draw: SyntheticDraw, standIn: String?): String? = draw.note ?: standIn
 
 internal fun gimbalAimsSynthetic(view: JSONObject?, aimable: Boolean): Boolean =
     aimable && syntheticAvailable(view) && view?.optBoolean("aimable", true) == false

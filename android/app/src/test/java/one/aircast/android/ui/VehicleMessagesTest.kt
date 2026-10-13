@@ -29,7 +29,7 @@ class VehicleMessagesTest {
     fun `the banner only interrupts for warnings and errors the chip is not already saying`() {
         fun message(level: MessageSeverity, text: String) = VehicleMessage(0, "", "", level, text)
         val unread = listOf(
-            message(MessageSeverity.Error, "PreArm: GPS 1: not healthy"),
+            VehicleMessage(0, "", "", MessageSeverity.Error, "PreArm: GPS 1: not healthy", toldElsewhere = true),
             message(MessageSeverity.Normal, "EKF3 IMU0 is using GPS"),
             message(MessageSeverity.Warning, "Battery low"),
         )
