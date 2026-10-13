@@ -19,6 +19,7 @@ const MAXIMUM_SCREEN_SPACE_ERROR: f64 = 16.0;
 const DETAIL_PIXELS: f64 = 1280.0 * 720.0;
 const MAX_LOADED_TILES: usize = 500;
 const NEAR_M: f64 = 1_500.0;
+const FALLBACK_TOO_COARSE: f64 = 8.0;
 const LOWEST_GROUND_M: f64 = 1_000.0;
 const OCCLUDER_RADII: DVec3 = DVec3::new(6_378_137.0 - LOWEST_GROUND_M, 6_378_137.0 - LOWEST_GROUND_M, 6_356_752.314_245 - LOWEST_GROUND_M);
 
@@ -308,9 +309,8 @@ impl Tileset {
         let refine = error > 1.0;
         let external = matches!(tile.content, Content::External);
         let children = (refine || external) && !tile.children.is_empty();
-        let below: Option<Vec<Arc<Mesh>>> = match children {
-            true => tile
-                .children
+        let parts: Option<Vec<Option<Vec<Arc<Mesh>>>>> = children.then(|| {
+            tile.children
                 .iter_mut()
                 .enumerate()
                 .map(|(index, child)| {
@@ -319,21 +319,24 @@ impl Tileset {
                     path.pop();
                     drawn
                 })
-                .collect::<Vec<Option<Vec<Arc<Mesh>>>>>()
-                .into_iter()
-                .collect::<Option<Vec<_>>>()
-                .map(|lists| lists.into_iter().flatten().collect()),
-            false => None,
-        };
+                .collect()
+        });
+        let below: Option<Vec<Arc<Mesh>>> = parts.as_ref().and_then(|parts| parts.iter().cloned().collect::<Option<Vec<_>>>()).map(|lists| lists.into_iter().flatten().collect());
         let own = match &tile.content {
             Content::Meshes(meshes) => Some(meshes.clone()),
             Content::None if !children => Some(Vec::new()),
             _ => None,
         };
-        if refine && !tile.children.is_empty() && below.is_none() && tile.bounds.distance(camera.eye) < NEAR_M && own.as_ref().is_some_and(|meshes| !meshes.is_empty()) {
+        let partial = parts.map(|parts| parts.into_iter().flatten().flatten().collect::<Vec<_>>()).filter(|meshes| !meshes.is_empty());
+        let loaded_parent = below.is_none() && own.as_ref().is_some_and(|meshes| !meshes.is_empty());
+        if loaded_parent && refine && !tile.children.is_empty() && tile.bounds.distance(camera.eye) < NEAR_M {
             self.coarsest = self.coarsest.max(error);
         }
-        below.or(own)
+        let stands_in = loaded_parent && (error <= FALLBACK_TOO_COARSE || partial.is_none());
+        match stands_in {
+            true => own,
+            false => below.or(partial).or(own),
+        }
     }
 }
 
@@ -361,7 +364,7 @@ mod tests {
 
     fn parent(camera: &Camera) -> (Tileset, Arc<Mesh>) {
         let shown = Arc::new(mesh());
-        let root = Tile { bounds: ahead(camera, 200.0), geometric_error: 1000.0, url: None, content: Content::Meshes(vec![shown.clone()]), children: vec![leaf(camera, "a"), leaf(camera, "b")], used: None };
+        let root = Tile { bounds: ahead(camera, 200.0), geometric_error: 6.0, url: None, content: Content::Meshes(vec![shown.clone()]), children: vec![leaf(camera, "a"), leaf(camera, "b")], used: None };
         (Tileset::new(root, &Url::parse("https://x/root.json").unwrap()), shown)
     }
 
@@ -393,6 +396,38 @@ mod tests {
         assert_eq!(tiles.select_measured(&camera, 8, start).coarsest, 0.0, "leaves that need no finer tile are full detail");
         let away = Camera::new(&Pose { heading: 180.0, ..Pose { latitude: 0.0, longitude: 0.0, height: 100.0, heading: 0.0, pitch: 0.0, roll: 0.0, fov: 60.0 } }, 1280, 720);
         assert_eq!(tiles.select_measured(&away, 8, start).coarsest, f64::INFINITY, "nothing drawn is not ready");
+    }
+
+    #[test]
+    fn a_tile_with_nothing_of_its_own_draws_the_children_it_has_instead_of_nothing() {
+        let camera = camera();
+        let shown = Arc::new(mesh());
+        let ready = Tile { content: Content::Meshes(vec![shown.clone()]), ..leaf(&camera, "ready") };
+        let index = Tile { bounds: ahead(&camera, 200.0), geometric_error: 1000.0, url: None, content: Content::None, children: vec![ready, leaf(&camera, "coming")], used: None };
+        let mut tiles = Tileset::new(index, &Url::parse("https://x/root.json").unwrap());
+        let (drawn, wanted) = tiles.select(&camera, 8, Instant::now());
+        assert!(drawn.len() == 1 && Arc::ptr_eq(&drawn[0], &shown), "one tile still loading blanked every loaded sibling, and climbing showed haze for 24 s");
+        assert_eq!(wanted.len(), 1, "the missing one is still asked for");
+    }
+
+    #[test]
+    fn a_far_too_coarse_parent_does_not_replace_the_children_it_has_but_a_close_enough_one_covers_the_gap() {
+        let camera = camera();
+        let child = Arc::new(mesh());
+        let parent_mesh = Arc::new(mesh());
+        let tree = |geometric_error: f64| Tile {
+            bounds: ahead(&camera, 200.0),
+            geometric_error,
+            url: Some(Url::parse("https://x/parent.glb").unwrap()),
+            content: Content::Meshes(vec![parent_mesh.clone()]),
+            children: vec![Tile { content: Content::Meshes(vec![child.clone()]), ..leaf(&camera, "ready") }, leaf(&camera, "coming")],
+            used: None,
+        };
+        let drawn = |geometric_error: f64| Tileset::new(tree(geometric_error), &Url::parse("https://x/root.json").unwrap()).select(&camera, 8, Instant::now()).0;
+        let globe = drawn(1_000_000.0);
+        assert!(globe.len() == 1 && Arc::ptr_eq(&globe[0], &child), "a globe-sized tile under the camera is haze; the city it would replace stays");
+        let close = drawn(3.0);
+        assert!(close.len() == 1 && Arc::ptr_eq(&close[0], &parent_mesh), "a parent nearly fine enough covers the gap rather than leave a hole");
     }
 
     #[test]

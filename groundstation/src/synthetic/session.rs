@@ -224,6 +224,7 @@ pub struct Session {
     first_frame: Option<Instant>,
     handed_over_after: Option<Duration>,
     warming: Option<usize>,
+    root_due: Option<Instant>,
 }
 
 fn wrapped(degrees: f64) -> f64 {
@@ -353,6 +354,7 @@ impl Session {
             first_frame: None,
             handed_over_after: None,
             warming: None,
+            root_due: None,
         })
     }
 
@@ -422,7 +424,10 @@ impl Session {
                     *tiles = Some(Tileset::new(root, &url));
                 }
             }
-            Done::Root(Err(error)) => self.failed(format!("tileset root: {error}")),
+            Done::Root(Err(error)) => {
+                self.failed(format!("tileset root: {error}"));
+                self.root_due = Some(now + tileset::RETRY_AFTER);
+            }
             Done::Tile(path, parsed) => {
                 match &parsed {
                     Ok(_) => self.stats.loaded += 1,
@@ -551,6 +556,10 @@ impl Session {
 
     pub fn frame(&mut self, target: Option<&Target>, width: u32, height: u32, now: Instant) -> Option<Frame> {
         let delivered = self.collect(now);
+        if matches!(self.source, Source::Google(None)) && self.root_due.is_some_and(|due| now >= due) {
+            self.root_due = None;
+            self.pool.send(Job::Root(self.token.clone()));
+        }
         let target = target?;
         let started = *self.first_frame.get_or_insert(now);
         if self.fallback.is_some() && google_ready(matches!(self.source, Source::Google(Some(_))), self.coarsest, self.home.height, self.warming) {
@@ -761,6 +770,17 @@ mod tests {
         assert_eq!(session.showing(), "open_fallback");
         assert_eq!(session.handover(), None);
         assert!(session.take_stats().errors.keys().any(|error| error.starts_with("tileset root")), "the Google failure is still reported");
+    }
+
+    #[test]
+    fn an_unanswered_google_root_is_asked_for_again_instead_of_leaving_the_stand_in_forever() {
+        let mut session = Session::new("eyJtoken", Arc::new(Fake)).expect("workers");
+        let (start, deadline) = (Instant::now(), Instant::now() + Duration::from_secs(10));
+        let retried = (0u64..).take_while(|_| Instant::now() < deadline).any(|round| {
+            session.frame(Some(&target("Bing Satellite")), 640, 360, start + Duration::from_secs(round * 2));
+            session.stats.errors.iter().filter(|(error, _)| error.starts_with("tileset root")).map(|(_, count)| *count).sum::<u64>() >= 2
+        });
+        assert!(retried, "one failed root request left Google off for the whole session: {:?}", session.stats.errors);
     }
 
     #[test]
