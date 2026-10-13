@@ -57,6 +57,7 @@ SPOKEN = {
     "zigzag": "zig zag",
     "surftrak": "surf track",
     "gps": "G P S",
+    "flip": "Flip,",
 }
 
 
