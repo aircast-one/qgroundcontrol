@@ -68,10 +68,10 @@ impl Owned {
         }
     }
 
-    fn refuse_arming(&self, reason: &Option<String>) -> bool {
+    fn change_conditions(&self, change: &crate::mocklink::Change) -> bool {
         match self {
             Owned::Mock(link) => {
-                link.set_prearm(reason.clone());
+                link.change(change);
                 true
             }
             _ => false,
@@ -425,8 +425,8 @@ pub fn silence_mocks(transports: &Mutex<Transports>, silent: bool) -> usize {
     transports.lock().unwrap().owned.values().filter(|link| link.silence(silent)).count()
 }
 
-pub fn refuse_mock_arming(transports: &Mutex<Transports>, reason: Option<String>) -> usize {
-    transports.lock().unwrap().owned.values().filter(|link| link.refuse_arming(&reason)).count()
+pub fn change_mock_conditions(transports: &Mutex<Transports>, change: &crate::mocklink::Change) -> usize {
+    transports.lock().unwrap().owned.values().filter(|link| link.change_conditions(change)).count()
 }
 
 pub fn host_open(transports: &Mutex<Transports>, kind: &str, name: &str) -> LinkId {

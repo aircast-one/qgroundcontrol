@@ -80,7 +80,7 @@ pub const ROUTES: &[(&str, Route, &str)] = &[
     ("/links", Route::Links, ""),
     ("/links/connect", Route::LinkConnect, "host,port,name"),
     ("/links/disconnect", Route::LinkDisconnect, "name"),
-    ("/links/mocklink", Route::MockLink, "autopilot,add,camera,gimbal,proximity,statustext,video,pattern,silent,prearm"),
+    ("/links/mocklink", Route::MockLink, "autopilot,add,camera,gimbal,proximity,statustext,video,pattern,silent,prearm,wind,gps,motor,endurance,home"),
     ("/mission/upload", Route::MissionUpload, "file"),
     ("/mission/download", Route::MissionDownload, "file"),
     ("/logging", Route::Logging, "rules"),
@@ -139,7 +139,7 @@ pub trait Host {
     fn mock_links_available(&self) -> bool;
     fn mock_link_present(&self) -> bool;
     fn silence_mock_links(&self, silent: bool) -> usize;
-    fn refuse_mock_arming(&self, reason: Option<String>) -> usize;
+    fn change_mock_conditions(&self, change: &crate::mocklink::Change) -> usize;
     fn vehicle_connected(&self) -> bool;
 }
 
@@ -164,6 +164,59 @@ pub const MOCK_VIDEO_STREAMS: &[(&str, i64)] = &[("none", 0), ("h264", 1), ("h26
 
 fn mock_video_stream(name: &str) -> Option<i64> {
     MOCK_VIDEO_STREAMS.iter().find(|(known, _)| known.eq_ignore_ascii_case(name)).map(|(_, kind)| *kind)
+}
+
+const MOCK_CONDITIONS: [&str; 6] = ["prearm", "wind", "gps", "motor", "endurance", "home"];
+
+fn numbers(pairs: &[(String, String)], key: &str, counts: &[usize], usage: &str) -> Result<Option<Vec<f64>>, String> {
+    let parsed = given(pairs, key).map(|text| text.split(',').map(|value| value.trim().parse::<f64>()).collect::<Result<Vec<f64>, _>>());
+    match parsed {
+        None => Ok(None),
+        Some(Ok(values)) if counts.contains(&values.len()) && values.iter().all(|v| v.is_finite()) => Ok(Some(values)),
+        Some(_) => Err(usage.to_string()),
+    }
+}
+
+fn either(pairs: &[(String, String)], key: &str, on: &str, off: &str) -> Result<Option<bool>, String> {
+    match given(pairs, key).map(str::to_ascii_lowercase) {
+        None => Ok(None),
+        Some(value) if value == on => Ok(Some(true)),
+        Some(value) if value == off => Ok(Some(false)),
+        Some(value) => Err(format!("{key} must be {on} or {off}, got: {value}")),
+    }
+}
+
+fn mock_change(pairs: &[(String, String)]) -> Result<crate::mocklink::Change, String> {
+    let wind = numbers(pairs, "wind", &[1, 2], "wind must be speed,from-degrees in m/s, or 0 for calm")?;
+    let endurance = numbers(pairs, "endurance", &[1], "endurance must be the minutes a full pack hovers for")?;
+    let home = numbers(pairs, "home", &[2], "home must be latitude,longitude")?;
+    if endurance.as_ref().is_some_and(|minutes| minutes[0] <= 0.0) {
+        return Err("endurance must be the minutes a full pack hovers for".into());
+    }
+    Ok(crate::mocklink::Change {
+        prearm: present(pairs, "prearm").then(|| given(pairs, "prearm").map(str::to_string)),
+        wind: present(pairs, "wind").then(|| wind.map_or((0.0, 0.0), |values| (values[0], values.get(1).copied().unwrap_or(0.0)))),
+        gps_lost: either(pairs, "gps", "lost", "ok")?,
+        motor_failed: either(pairs, "motor", "failed", "ok")?,
+        endurance_min: endurance.map(|minutes| minutes[0]),
+        home: home.map(|place| (place[0], place[1])),
+    })
+}
+
+fn applied(change: &crate::mocklink::Change) -> Value {
+    let fields: serde_json::Map<String, Value> = [
+        change.prearm.as_ref().map(|reason| ("prearm", json!(reason))),
+        change.wind.map(|(speed, from)| ("wind", json!({ "speed": speed, "from": from }))),
+        change.gps_lost.map(|lost| ("gpsLost", json!(lost))),
+        change.motor_failed.map(|failed| ("motorFailed", json!(failed))),
+        change.endurance_min.map(|minutes| ("enduranceMin", json!(minutes))),
+        change.home.map(|(lat, lon)| ("home", json!([lat, lon]))),
+    ]
+    .into_iter()
+    .flatten()
+    .map(|(key, value)| (key.to_string(), value))
+    .collect();
+    Value::Object(fields)
 }
 
 fn switched_on(pairs: &[(String, String)], key: &str) -> bool {
@@ -390,9 +443,11 @@ impl DebugApi {
             let silent = switched_on(pairs, "silent");
             return ok(json!({ "silent": silent, "links": host.silence_mock_links(silent) }));
         }
-        if present(pairs, "prearm") {
-            let reason = given(pairs, "prearm").map(str::to_string);
-            return ok(json!({ "prearm": reason.clone(), "links": host.refuse_mock_arming(reason) }));
+        if MOCK_CONDITIONS.iter().any(|key| present(pairs, key)) {
+            return match mock_change(pairs) {
+                Ok(change) => ok(json!({ "changed": applied(&change), "links": host.change_mock_conditions(&change) })),
+                Err(reason) => refuse(reason),
+            };
         }
         let Some(autopilot) = given(pairs, "autopilot").map(str::to_lowercase) else {
             return refuse("autopilot must be px4 or apm");
@@ -616,8 +671,8 @@ mod tests {
             self.note(format!("silence {silent}"));
             usize::from(self.mock_present)
         }
-        fn refuse_mock_arming(&self, reason: Option<String>) -> usize {
-            self.note(format!("prearm {reason:?}"));
+        fn change_mock_conditions(&self, change: &crate::mocklink::Change) -> usize {
+            self.note(format!("conditions {change:?}"));
             usize::from(self.mock_present)
         }
         fn vehicle_connected(&self) -> bool {
@@ -870,13 +925,18 @@ mod tests {
     }
 
     #[test]
-    fn a_mock_link_can_be_told_to_refuse_arming_and_to_stop() {
+    fn a_mock_link_takes_conditions_and_changes_only_the_ones_named() {
         let api = DebugApi::new();
         let host = Fake { mock_available: true, mock_present: true, ..Fake::default() };
         let refusing = get(&api, &host, "/links/mocklink", "prearm=Compass%20not%20calibrated").body;
-        assert_eq!((refusing["prearm"].clone(), refusing["links"].clone()), (json!("Compass not calibrated"), json!(1)));
-        assert_eq!(get(&api, &host, "/links/mocklink", "prearm=").body["prearm"], Value::Null, "an empty reason lets it arm again");
-        assert_eq!(host.calls(), vec!["prearm Some(\"Compass not calibrated\")".to_string(), "prearm None".to_string()]);
+        assert_eq!((refusing["changed"].clone(), refusing["links"].clone()), (json!({ "prearm": "Compass not calibrated" }), json!(1)));
+        assert_eq!(get(&api, &host, "/links/mocklink", "prearm=").body["changed"]["prearm"], Value::Null, "an empty reason lets it arm again");
+        let weather = get(&api, &host, "/links/mocklink", "wind=8,270&gps=lost&endurance=20&home=41.7,44.8").body;
+        assert_eq!(weather["changed"], json!({ "wind": { "speed": 8.0, "from": 270.0 }, "gpsLost": true, "enduranceMin": 20.0, "home": [41.7, 44.8] }));
+        assert_eq!(get(&api, &host, "/links/mocklink", "wind=0").body["changed"]["wind"], json!({ "speed": 0.0, "from": 0.0 }), "zero wind is calm");
+        assert_eq!(get(&api, &host, "/links/mocklink", "motor=broken").body["error"], "motor must be failed or ok, got: broken");
+        assert_eq!(get(&api, &host, "/links/mocklink", "home=41.7").body["error"], "home must be latitude,longitude");
+        assert_eq!(host.calls().len(), 4, "a refused change reaches no link");
     }
 
     #[test]
@@ -1103,7 +1163,7 @@ mod tests {
         fn silence_mock_links(&self, _silent: bool) -> usize {
             0
         }
-        fn refuse_mock_arming(&self, _reason: Option<String>) -> usize {
+        fn change_mock_conditions(&self, _change: &crate::mocklink::Change) -> usize {
             0
         }
         fn vehicle_connected(&self) -> bool {
