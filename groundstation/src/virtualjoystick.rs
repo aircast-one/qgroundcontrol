@@ -233,22 +233,24 @@ pub struct StickWindow {
     sends: u64,
     refused: BTreeMap<&'static str, u64>,
     touch_to_send_ms: Vec<u64>,
+    handling_ms: Vec<u64>,
     gap_max: Duration,
     rate_mode: bool,
 }
 
 impl StickWindow {
     pub fn opened(now: Instant) -> Self {
-        Self { since: now, last: now, sends: 0, refused: BTreeMap::new(), touch_to_send_ms: Vec::new(), gap_max: Duration::ZERO, rate_mode: false }
+        Self { since: now, last: now, sends: 0, refused: BTreeMap::new(), touch_to_send_ms: Vec::new(), handling_ms: Vec::new(), gap_max: Duration::ZERO, rate_mode: false }
     }
 
-    pub fn recorded(&self, now: Instant, touch_age_ms: Option<u64>, refusal: Option<&'static str>, rate_mode: bool) -> Self {
+    pub fn recorded(&self, now: Instant, touch_age_ms: Option<u64>, handling: Duration, refusal: Option<&'static str>, rate_mode: bool) -> Self {
         Self {
             since: self.since,
             last: now,
             sends: self.sends + 1,
             refused: self.refused.iter().map(|(reason, count)| (*reason, *count)).chain(refusal.map(|reason| (reason, self.refused.get(reason).copied().unwrap_or(0) + 1))).collect(),
             touch_to_send_ms: self.touch_to_send_ms.iter().copied().chain(touch_age_ms).collect(),
+            handling_ms: self.handling_ms.iter().copied().chain(std::iter::once(u64::try_from(handling.as_millis()).unwrap_or(u64::MAX))).collect(),
             gap_max: self.gap_max.max(now.saturating_duration_since(self.last)),
             rate_mode: self.rate_mode || rate_mode,
         }
@@ -260,7 +262,7 @@ impl StickWindow {
 
     pub fn line(&self) -> String {
         format!(
-            "event=sticks seconds={} sends={} refused={} refusals={} moves={} touch_to_send_p50_ms={} touch_to_send_max_ms={} send_gap_max_ms={} rate_mode={}",
+            "event=sticks seconds={} sends={} refused={} refusals={} moves={} touch_to_send_p50_ms={} touch_to_send_max_ms={} handling_p50_ms={} handling_max_ms={} send_gap_max_ms={} rate_mode={}",
             self.last.saturating_duration_since(self.since).as_secs(),
             self.sends,
             self.refused.values().sum::<u64>(),
@@ -271,6 +273,8 @@ impl StickWindow {
             self.touch_to_send_ms.len(),
             crate::stats::shown(crate::stats::median(&self.touch_to_send_ms)),
             crate::stats::shown(self.touch_to_send_ms.iter().copied().max()),
+            crate::stats::shown(crate::stats::median(&self.handling_ms)),
+            crate::stats::shown(self.handling_ms.iter().copied().max()),
             self.gap_max.as_millis(),
             self.rate_mode,
         )
@@ -289,10 +293,11 @@ fn closed(held: Option<StickWindow>, now: Instant) -> Option<StickWindow> {
     }
 }
 
-fn note_send(now: Instant, touch_age_ms: Option<u64>, refusal: Option<&'static str>, rate_mode: bool) {
+fn note_send(entered: Instant, touch_age_ms: Option<u64>, refusal: Option<&'static str>, rate_mode: bool) {
+    let now = Instant::now();
     let mut held = STICKS.lock().unwrap_or_else(PoisonError::into_inner);
     let window = closed(held.take(), now).unwrap_or_else(|| StickWindow::opened(now));
-    *held = Some(window.recorded(now, touch_age_ms, refusal, rate_mode));
+    *held = Some(window.recorded(now, touch_age_ms, now.saturating_duration_since(entered), refusal, rate_mode));
 }
 
 pub fn flush(now: Instant) {
@@ -300,20 +305,21 @@ pub fn flush(now: Instant) {
     *held = closed(held.take(), now);
 }
 
-fn refused(reason: &'static str, said: &str, touch_age_ms: Option<u64>) -> Value {
-    note_send(Instant::now(), touch_age_ms, Some(reason), false);
+fn refused(entered: Instant, reason: &'static str, said: &str, touch_age_ms: Option<u64>) -> Value {
+    note_send(entered, touch_age_ms, Some(reason), false);
     json!({ "ok": false, "reason": said })
 }
 
 pub fn send(backend: &dyn Backend, args: &str) -> Value {
+    let entered = Instant::now();
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
     let touch_age_ms = given.get(4).and_then(Value::as_u64);
     let axis = |i: usize| given.get(i).and_then(Value::as_f64).filter(|v| v.is_finite()).map(|v| v.clamp(-1.0, 1.0));
     let (Some(roll), Some(pitch), Some(yaw), Some(thrust)) = (axis(0), axis(1), axis(2), axis(3)) else {
-        return refused("bad_axes", "The virtual joystick sends roll, pitch, yaw and thrust, each from -1 to 1.", touch_age_ms);
+        return refused(entered, "bad_axes", "The virtual joystick sends roll, pitch, yaw and thrust, each from -1 to 1.", touch_age_ms);
     };
     if !sending(backend) {
-        return refused("not_connected", "No vehicle has finished connecting.", touch_age_ms);
+        return refused(entered, "not_connected", "No vehicle has finished connecting.", touch_age_ms);
     }
     let vehicle = backend.value_fields("vehicle", VEHICLE_FIELDS);
     let rate = rate_mode_now(&vehicle);
@@ -324,15 +330,12 @@ pub fn send(backend: &dyn Backend, args: &str) -> Value {
     };
     let active = crate::hub::lock().active_id();
     if active.is_some_and(crate::joystickhost::drives) {
-        return refused("joystick_active", "A joystick is enabled for this vehicle, so the on-screen sticks do not send.", touch_age_ms);
+        return refused(entered, "joystick_active", "A joystick is enabled for this vehicle, so the on-screen sticks do not send.", touch_age_ms);
     }
+    remember(StickSample { at: entered, roll, pitch, yaw: yaw_sent(yaw), thrust, touched: touch_age_ms.and_then(|age| entered.checked_sub(Duration::from_millis(age))) });
     let action = json!({ "action": "virtualJoystick", "roll": roll, "pitch": pitch, "yaw": yaw, "thrust": thrust });
     let dispatched = crate::rcoverride::on_core(backend, action).unwrap_or_else(|| flag(&object(&backend.invoke(JOYSTICK_VALUE, &json!([roll, pitch, yaw, thrust]).to_string())), "ok"));
-    let now = Instant::now();
-    if dispatched {
-        remember(StickSample { at: now, roll, pitch, yaw: yaw_sent(yaw), thrust, touched: touch_age_ms.and_then(|age| now.checked_sub(Duration::from_millis(age))) });
-    }
-    note_send(now, touch_age_ms, (!dispatched).then_some("dispatch_failed"), rate);
+    note_send(entered, touch_age_ms, (!dispatched).then_some("dispatch_failed"), rate);
     json!({ "ok": dispatched })
 }
 
@@ -355,9 +358,9 @@ mod tests {
         let at = |ms: u64| start + Duration::from_millis(ms);
         let window = [(0, Some(12), None), (20, None, Some("not_connected")), (60, Some(30), Some("dispatch_failed")), (80, None, Some("not_connected")), (100, Some(8), None)]
             .into_iter()
-            .fold(StickWindow::opened(at(0)), |window, (ms, age, refusal)| window.recorded(at(ms), age, refusal, false));
-        assert_eq!(window.line(), "event=sticks seconds=0 sends=5 refused=3 refusals=dispatch_failed:1,not_connected:2 moves=3 touch_to_send_p50_ms=12 touch_to_send_max_ms=30 send_gap_max_ms=40 rate_mode=false");
-        assert!(StickWindow::opened(at(0)).recorded(at(5), None, None, true).line().contains("refused=0 refusals=none"), "a clean window says so");
+            .fold(StickWindow::opened(at(0)), |window, (ms, age, refusal)| window.recorded(at(ms), age, Duration::from_millis(ms / 20), refusal, false));
+        assert_eq!(window.line(), "event=sticks seconds=0 sends=5 refused=3 refusals=dispatch_failed:1,not_connected:2 moves=3 touch_to_send_p50_ms=12 touch_to_send_max_ms=30 handling_p50_ms=3 handling_max_ms=5 send_gap_max_ms=40 rate_mode=false");
+        assert!(StickWindow::opened(at(0)).recorded(at(5), None, Duration::ZERO, None, true).line().contains("refused=0 refusals=none"), "a clean window says so");
         assert!(!window.closes(at(500)), "still sending");
         assert!(window.closes(at(1_100)), "a second without a send ends the window, so a pause is not counted as a gap");
         assert!(window.closes(at(10_000)));

@@ -1214,8 +1214,8 @@ fn parameter_definition_of(vehicle: &crate::hub::Vehicle, name: &str, value_type
     match vehicle.autopilot == crate::modes::AUTOPILOT_ARDUPILOT {
         true => {
             let version = vehicle.firmware().and_then(|f| f.version).map_or((-1, -1), |(major, minor, _, _)| (i64::from(major), i64::from(minor)));
-            let definitions = crate::apmmeta::load(crate::apmmeta::vehicle_file_name(vehicle.vehicle_type)?, version.0, version.1)?;
-            Some(crate::apmmeta::json_metadata(&definitions, name, value_type))
+            let definitions = crate::apmmeta::vehicle_file_name(vehicle.vehicle_type).and_then(|file| crate::apmmeta::load(file, version.0, version.1));
+            Some(definitions.map_or_else(|| crate::factmeta::MetaData { name: name.to_string(), ..crate::px4meta::bare(value_type) }, |definitions| crate::apmmeta::json_metadata(&definitions, name, value_type)))
         }
         false => Some(vehicle.parameter_definition(name, value_type)),
     }
@@ -2134,6 +2134,15 @@ mod tests {
         assert!(!std::rc::Rc::ptr_eq(&super::known(&vehicle), &super::known(&vehicle)), "outside a pass every read sees the vehicle as it is now");
         let (outer, nested) = super::one_pass(|| (super::pass_number(), super::one_pass(super::pass_number)));
         assert!(outer.is_some() && outer == nested && super::pass_number().is_none() && super::one_pass(super::pass_number) != outer, "a nested pass is the same pass, and the next pass is a new one");
+    }
+
+    #[test]
+    fn an_ardupilot_parameter_without_its_metadata_file_is_still_served_by_its_value() {
+        let mut unknown_frame = crate::hub::Vehicle::heard(1);
+        unknown_frame.autopilot = crate::modes::AUTOPILOT_ARDUPILOT;
+        unknown_frame.vehicle_type = 200;
+        let described = described_parameter(&unknown_frame, 1, "PILOT_Y_RATE", None, crate::params::ParamValue::F32(150.0), None).expect("a parameter the vehicle sent is served");
+        assert_eq!((described["rawValue"].as_f64(), described["name"].as_str()), (Some(150.0), Some("PILOT_Y_RATE")), "like QGC, a parameter with no metadata keeps its value with bare metadata instead of reading as null");
     }
 
     #[test]

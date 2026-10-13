@@ -361,11 +361,14 @@ struct Summary {
     slowest: Duration,
     reading_ages_ms: Vec<u64>,
     stick_to_frame_ms: Vec<u64>,
+    pose_read_ms: Vec<u64>,
+    frame_ms: Vec<u64>,
+    paint_ms: Vec<u64>,
 }
 
 impl Summary {
     fn new(since: Instant) -> Self {
-        Self { since, painted: 0, idle: 0, slowest: Duration::ZERO, reading_ages_ms: Vec::new(), stick_to_frame_ms: Vec::new() }
+        Self { since, painted: 0, idle: 0, slowest: Duration::ZERO, reading_ages_ms: Vec::new(), stick_to_frame_ms: Vec::new(), pose_read_ms: Vec::new(), frame_ms: Vec::new(), paint_ms: Vec::new() }
     }
 
     fn report(&self, session: Option<&mut Session>, gpu: &Gpu, shown: &mut [Shown], draw: Draw) {
@@ -384,7 +387,7 @@ impl Summary {
         let Stats { requested, loaded, failed, bytes, from_disk, errors } = stats;
         log::info!(
             target: "synthetic",
-            "event=summary seconds={} source={source} showing={showing} handover_ms={handover} warming={warming} surfaces={surfaces} present={present} draw={} painted={} idle_ticks={} slowest_paint_ms={} acquire_slowest_ms={} draw_slowest_ms={} reading_age_p50_ms={} reading_age_max_ms={} stick_to_frame_p50_ms={} stick_to_frame_max_ms={} stick_frames={} requested={requested} loaded={loaded} failed={failed} bytes={bytes} from_disk={from_disk} tiles={tiles} in_flight={in_flight} resident={} uploads={} errors={errors:?}",
+            "event=summary seconds={} source={source} showing={showing} handover_ms={handover} warming={warming} surfaces={surfaces} present={present} draw={} painted={} idle_ticks={} slowest_paint_ms={} acquire_slowest_ms={} draw_slowest_ms={} reading_age_p50_ms={} reading_age_max_ms={} stick_to_frame_p50_ms={} stick_to_frame_max_ms={} stick_frames={} pose_read_p50_ms={} pose_read_max_ms={} frame_p50_ms={} frame_max_ms={} paint_p50_ms={} requested={requested} loaded={loaded} failed={failed} bytes={bytes} from_disk={from_disk} tiles={tiles} in_flight={in_flight} resident={} uploads={} errors={errors:?}",
             self.since.elapsed().as_secs(),
             draw.name(),
             self.painted,
@@ -397,10 +400,19 @@ impl Summary {
             crate::stats::shown(crate::stats::median(&self.stick_to_frame_ms)),
             crate::stats::shown(self.stick_to_frame_ms.iter().copied().max()),
             self.stick_to_frame_ms.len(),
+            crate::stats::shown(crate::stats::median(&self.pose_read_ms)),
+            crate::stats::shown(self.pose_read_ms.iter().copied().max()),
+            crate::stats::shown(crate::stats::median(&self.frame_ms)),
+            crate::stats::shown(self.frame_ms.iter().copied().max()),
+            crate::stats::shown(crate::stats::median(&self.paint_ms)),
             gpu.renderer.resident(),
             gpu.renderer.uploads,
         );
     }
+}
+
+fn millis(spent: Duration) -> u64 {
+    u64::try_from(spent.as_millis()).unwrap_or(u64::MAX)
 }
 
 fn start_session(token: &str) -> Option<Session> {
@@ -454,16 +466,22 @@ fn show(first: Window, kept: Option<Kept>, commands: &Receiver<Command>, feed: &
             session = start_session(token.value.as_deref().unwrap_or_default());
         }
         let restyled = overlays.refresh(now, || feed.overlays().as_ref().and_then(Overlays::from_view));
+        let reading = Instant::now();
         let target = feed.pose().as_ref().and_then(Target::from_view);
         let sticks = feed.sticks();
+        summary.pose_read_ms.push(millis(reading.elapsed()));
         let largest = shown.iter().map(|surface| surface.size).max_by_key(|(width, height)| u64::from(*width) * u64::from(*height)).unwrap_or_default();
+        let building = Instant::now();
         let mut frame = session.as_mut().filter(|_| largest.0 > 0 && largest.1 > 0).and_then(|session: &mut Session| session.frame(target.as_ref(), &sticks, largest.0, largest.1, now));
+        summary.frame_ms.push(millis(building.elapsed()));
         if let Some((frame, session)) = frame.as_mut().zip(session.as_mut()) {
             session.warmed(gpu.renderer.warm(std::mem::take(&mut frame.warm), WARM_PER_TICK));
         }
         let redraw = rekeyed || restyled || frame.as_ref().is_some_and(|frame| frame.changed) || frame.is_some() != framed;
         framed = frame.is_some();
+        let painting = Instant::now();
         let painted: Vec<Result<bool, String>> = shown.iter_mut().filter(|surface| redraw || !surface.drawn).map(|surface| surface.paint(&mut gpu, frame.as_ref(), overlays.value.as_ref())).collect();
+        summary.paint_ms.extend((!painted.is_empty()).then(|| millis(painting.elapsed())));
         painted.iter().filter_map(|result| result.as_ref().err()).for_each(|reason| log::error!(target: "synthetic", "event=paint_failed reason=\"{reason}\""));
         visit.paint_failures += painted.iter().filter(|result| result.is_err()).count();
         let state = match (session.is_some(), painted.iter().any(|result| result == &Ok(true))) {
