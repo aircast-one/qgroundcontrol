@@ -5223,8 +5223,8 @@ mod tests {
         let full = control(1.0, 1_000);
         assert_eq!((full.target, full.x, full.y, full.z, full.r), (1, -500, 250, 500, 1000), "pitch is x, roll y, thrust z, yaw r, each times 1000");
         assert_eq!((full.buttons, full.enabled_extensions), (0, 0));
-        assert_eq!(control(0.5, 1_040).r, 312, "half a yaw stick turns at under a third of the full rate, so a thumb pushing throttle barely turns the nose");
-        assert_eq!(control(-0.1, 1_080).r, -50);
+        assert_eq!(control(0.5, 1_040).r, 425, "half a yaw stick turns at a bit under half the full rate, so a thumb pushing throttle turns the nose only gently");
+        assert_eq!(control(-0.1, 1_080).r, -80);
     }
 
     #[test]
