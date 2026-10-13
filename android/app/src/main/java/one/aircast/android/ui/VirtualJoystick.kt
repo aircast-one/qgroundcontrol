@@ -22,6 +22,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.AwaitPointerEventScope
+import androidx.compose.ui.input.pointer.PointerId
+import androidx.compose.ui.input.pointer.PointerInputChange
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -261,9 +264,9 @@ fun VirtualJoystick(pad: Dp, modifier: Modifier = Modifier, trailing: @Composabl
                 left = stick
                 VirtualStickSender.moveLeft(stick, at)
             },
-            onRelease = {
-                left = release(it, throttleOnLeft(latestState))
-                VirtualStickSender.moveLeft(left, SystemClock.uptimeMillis())
+            onRelease = { stick, at ->
+                left = release(stick, throttleOnLeft(latestState))
+                VirtualStickSender.moveLeft(left, at)
             },
         )
         Spacer(Modifier.weight(1f))
@@ -277,17 +280,28 @@ fun VirtualJoystick(pad: Dp, modifier: Modifier = Modifier, trailing: @Composabl
                 right = stick
                 VirtualStickSender.moveRight(stick, at)
             },
-            onRelease = {
-                right = release(it, !throttleOnLeft(latestState))
-                VirtualStickSender.moveRight(right, SystemClock.uptimeMillis())
+            onRelease = { stick, at ->
+                right = release(stick, !throttleOnLeft(latestState))
+                VirtualStickSender.moveRight(right, at)
             },
         )
         trailing()
     }
 }
 
+private tailrec suspend fun AwaitPointerEventScope.liftedAt(pointer: PointerId, onDrag: (PointerInputChange) -> Unit): Long {
+    val change = awaitPointerEvent().changes.firstOrNull { it.id == pointer }
+    return if (change == null || !change.pressed) {
+        change?.uptimeMillis ?: SystemClock.uptimeMillis()
+    } else {
+        change.consume()
+        onDrag(change)
+        liftedAt(pointer, onDrag)
+    }
+}
+
 @Composable
-private fun ThumbPad(stick: Offset, description: String, size: Dp, modifier: Modifier, onHeld: (Boolean) -> Unit, onMove: (Offset, Long) -> Unit, onRelease: (Offset) -> Unit) {
+private fun ThumbPad(stick: Offset, description: String, size: Dp, modifier: Modifier, onHeld: (Boolean) -> Unit, onMove: (Offset, Long) -> Unit, onRelease: (Offset, Long) -> Unit) {
     val ink = MaterialTheme.aircast.outdoorForeground
     val latestStick by rememberUpdatedState(stick)
     val latestHeld by rememberUpdatedState(onHeld)
@@ -306,15 +320,10 @@ private fun ThumbPad(stick: Offset, description: String, size: Dp, modifier: Mod
                     val origin = down.position
                     val start = latestStick
                     val travel = knobTravel(this.size.width.toFloat())
-                    while (true) {
-                        val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id }
-                        if (change == null || !change.pressed) break
-                        change.consume()
-                        latestMove(dragged(start, change.position - origin, travel), change.uptimeMillis)
-                    }
+                    val liftedAt = liftedAt(down.id) { change -> latestMove(dragged(start, change.position - origin, travel), change.uptimeMillis) }
                     held = false
                     latestHeld(false)
-                    latestRelease(latestStick)
+                    latestRelease(latestStick, liftedAt)
                 }
             },
     ) {

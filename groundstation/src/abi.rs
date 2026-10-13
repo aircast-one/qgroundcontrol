@@ -262,7 +262,9 @@ pub(crate) fn start_pump() {
                         let cloud: Vec<_> = open.iter().copied().filter(|id| transports.config(*id).is_some_and(|c| matches!(c.kind, crate::linkconfig::Kind::AircastCloud { .. }))).collect();
                         let high_latency: Vec<_> = open.iter().copied().filter(|id| transports.config(*id).is_some_and(|c| c.high_latency)).collect();
                         let usb_direct: Vec<_> = open.iter().copied().filter(|id| transports.config(*id).is_some_and(|c| matches!(&c.kind, crate::linkconfig::Kind::Serial { port_name, .. } if crate::linkhost::is_usb_direct(port_name)))).collect();
-                        (open, crate::hub::LinkKinds { cloud, high_latency, usb_direct, down: transports.down_ids() })
+                        let radio: Vec<_> = open.iter().copied().filter(|id| transports.config(*id).is_some_and(|c| matches!(&c.kind, crate::linkconfig::Kind::Serial { port_name, .. } if !crate::linkhost::is_usb_direct(port_name)))).collect();
+                        let labels = open.iter().filter_map(|id| transports.describe(*id).map(|(name, kind, _)| (*id, (name, kind)))).collect();
+                        (open, crate::hub::LinkKinds { cloud, high_latency, usb_direct, radio, labels, down: transports.down_ids() })
                     };
                     let outbound = {
                         let mut hub = crate::hub::lock();
@@ -287,6 +289,7 @@ pub(crate) fn start_pump() {
                         crate::gcsheartbeat::tick(crate::hub::now_ms());
                     }
                 });
+                crate::pumpguard::guarded("sticks", || crate::virtualjoystick::flush(std::time::Instant::now()));
                 crate::pumpguard::guarded("rest", || {
                     crate::nmea::maintain();
                     crate::applog::flush_to_disk();

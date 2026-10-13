@@ -1,4 +1,5 @@
 use serde_json::{Value, json};
+use std::collections::BTreeMap;
 use std::sync::{Mutex, PoisonError};
 use std::time::{Duration, Instant};
 
@@ -177,7 +178,7 @@ pub struct StickWindow {
     since: Instant,
     last: Instant,
     sends: u64,
-    refused: u64,
+    refused: BTreeMap<&'static str, u64>,
     touch_to_send_ms: Vec<u64>,
     gap_max: Duration,
     rate_mode: bool,
@@ -185,15 +186,15 @@ pub struct StickWindow {
 
 impl StickWindow {
     pub fn opened(now: Instant) -> Self {
-        Self { since: now, last: now, sends: 0, refused: 0, touch_to_send_ms: Vec::new(), gap_max: Duration::ZERO, rate_mode: false }
+        Self { since: now, last: now, sends: 0, refused: BTreeMap::new(), touch_to_send_ms: Vec::new(), gap_max: Duration::ZERO, rate_mode: false }
     }
 
-    pub fn recorded(&self, now: Instant, touch_age_ms: Option<u64>, sent: bool, rate_mode: bool) -> Self {
+    pub fn recorded(&self, now: Instant, touch_age_ms: Option<u64>, refusal: Option<&'static str>, rate_mode: bool) -> Self {
         Self {
             since: self.since,
             last: now,
             sends: self.sends + 1,
-            refused: self.refused + u64::from(!sent),
+            refused: self.refused.iter().map(|(reason, count)| (*reason, *count)).chain(refusal.map(|reason| (reason, self.refused.get(reason).copied().unwrap_or(0) + 1))).collect(),
             touch_to_send_ms: self.touch_to_send_ms.iter().copied().chain(touch_age_ms).collect(),
             gap_max: self.gap_max.max(now.saturating_duration_since(self.last)),
             rate_mode: self.rate_mode || rate_mode,
@@ -206,13 +207,17 @@ impl StickWindow {
 
     pub fn line(&self) -> String {
         format!(
-            "event=sticks seconds={} sends={} refused={} moves={} touch_to_send_p50_ms={} touch_to_send_max_ms={} send_gap_max_ms={} rate_mode={}",
+            "event=sticks seconds={} sends={} refused={} refusals={} moves={} touch_to_send_p50_ms={} touch_to_send_max_ms={} send_gap_max_ms={} rate_mode={}",
             self.last.saturating_duration_since(self.since).as_secs(),
             self.sends,
-            self.refused,
+            self.refused.values().sum::<u64>(),
+            match self.refused.is_empty() {
+                true => "none".to_string(),
+                false => self.refused.iter().map(|(reason, count)| format!("{reason}:{count}")).collect::<Vec<_>>().join(","),
+            },
             self.touch_to_send_ms.len(),
-            crate::linkhealth::shown(crate::linkhealth::median(&self.touch_to_send_ms)),
-            crate::linkhealth::shown(self.touch_to_send_ms.iter().copied().max()),
+            crate::stats::shown(crate::stats::median(&self.touch_to_send_ms)),
+            crate::stats::shown(self.touch_to_send_ms.iter().copied().max()),
             self.gap_max.as_millis(),
             self.rate_mode,
         )
@@ -221,27 +226,41 @@ impl StickWindow {
 
 static STICKS: Mutex<Option<StickWindow>> = Mutex::new(None);
 
-fn note_send(now: Instant, touch_age_ms: Option<u64>, sent: bool, rate_mode: bool) {
-    let mut held = STICKS.lock().unwrap_or_else(PoisonError::into_inner);
-    let window = match held.take() {
+fn closed(held: Option<StickWindow>, now: Instant) -> Option<StickWindow> {
+    match held {
         Some(open) if open.closes(now) => {
             log::info!(target: "sticks", "{}", open.line());
-            StickWindow::opened(now)
+            None
         }
-        Some(open) => open,
-        None => StickWindow::opened(now),
-    };
-    *held = Some(window.recorded(now, touch_age_ms, sent, rate_mode));
+        kept => kept,
+    }
+}
+
+fn note_send(now: Instant, touch_age_ms: Option<u64>, refusal: Option<&'static str>, rate_mode: bool) {
+    let mut held = STICKS.lock().unwrap_or_else(PoisonError::into_inner);
+    let window = closed(held.take(), now).unwrap_or_else(|| StickWindow::opened(now));
+    *held = Some(window.recorded(now, touch_age_ms, refusal, rate_mode));
+}
+
+pub fn flush(now: Instant) {
+    let mut held = STICKS.lock().unwrap_or_else(PoisonError::into_inner);
+    *held = closed(held.take(), now);
+}
+
+fn refused(reason: &'static str, said: &str, touch_age_ms: Option<u64>) -> Value {
+    note_send(Instant::now(), touch_age_ms, Some(reason), false);
+    json!({ "ok": false, "reason": said })
 }
 
 pub fn send(backend: &dyn Backend, args: &str) -> Value {
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
+    let touch_age_ms = given.get(4).and_then(Value::as_u64);
     let axis = |i: usize| given.get(i).and_then(Value::as_f64).filter(|v| v.is_finite()).map(|v| v.clamp(-1.0, 1.0));
     let (Some(roll), Some(pitch), Some(yaw), Some(thrust)) = (axis(0), axis(1), axis(2), axis(3)) else {
-        return json!({ "ok": false, "reason": "The virtual joystick sends roll, pitch, yaw and thrust, each from -1 to 1." });
+        return refused("bad_axes", "The virtual joystick sends roll, pitch, yaw and thrust, each from -1 to 1.", touch_age_ms);
     };
     if !sending(backend) {
-        return json!({ "ok": false, "reason": "No vehicle has finished connecting." });
+        return refused("not_connected", "No vehicle has finished connecting.", touch_age_ms);
     }
     let vehicle = backend.value_fields("vehicle", VEHICLE_FIELDS);
     let rate = rate_mode_now(&vehicle);
@@ -252,11 +271,11 @@ pub fn send(backend: &dyn Backend, args: &str) -> Value {
     };
     let active = crate::hub::lock().active_id();
     if active.is_some_and(crate::joystickhost::drives) {
-        return json!({ "ok": false, "reason": "A joystick is enabled for this vehicle, so the on-screen sticks do not send." });
+        return refused("joystick_active", "A joystick is enabled for this vehicle, so the on-screen sticks do not send.", touch_age_ms);
     }
     let action = json!({ "action": "virtualJoystick", "roll": roll, "pitch": pitch, "yaw": yaw, "thrust": thrust });
     let dispatched = crate::rcoverride::on_core(backend, action).unwrap_or_else(|| flag(&object(&backend.invoke(JOYSTICK_VALUE, &json!([roll, pitch, yaw, thrust]).to_string())), "ok"));
-    note_send(Instant::now(), given.get(4).and_then(Value::as_u64), dispatched, rate);
+    note_send(Instant::now(), touch_age_ms, (!dispatched).then_some("dispatch_failed"), rate);
     json!({ "ok": dispatched })
 }
 
@@ -268,14 +287,17 @@ mod tests {
     fn a_stick_window_reports_touch_to_send_times_and_closes_on_a_pause() {
         let start = Instant::now();
         let at = |ms: u64| start + Duration::from_millis(ms);
-        let window = [(0, Some(12), true), (20, None, true), (60, Some(30), false), (100, Some(8), true)]
+        let window = [(0, Some(12), None), (20, None, Some("not_connected")), (60, Some(30), Some("dispatch_failed")), (80, None, Some("not_connected")), (100, Some(8), None)]
             .into_iter()
-            .fold(StickWindow::opened(at(0)), |window, (ms, age, sent)| window.recorded(at(ms), age, sent, false));
-        assert_eq!(window.line(), "event=sticks seconds=0 sends=4 refused=1 moves=3 touch_to_send_p50_ms=12 touch_to_send_max_ms=30 send_gap_max_ms=40 rate_mode=false");
+            .fold(StickWindow::opened(at(0)), |window, (ms, age, refusal)| window.recorded(at(ms), age, refusal, false));
+        assert_eq!(window.line(), "event=sticks seconds=0 sends=5 refused=3 refusals=dispatch_failed:1,not_connected:2 moves=3 touch_to_send_p50_ms=12 touch_to_send_max_ms=30 send_gap_max_ms=40 rate_mode=false");
+        assert!(StickWindow::opened(at(0)).recorded(at(5), None, None, true).line().contains("refused=0 refusals=none"), "a clean window says so");
         assert!(!window.closes(at(500)), "still sending");
         assert!(window.closes(at(1_100)), "a second without a send ends the window, so a pause is not counted as a gap");
         assert!(window.closes(at(10_000)));
         assert!(!StickWindow::opened(at(0)).closes(at(20_000)), "an empty window has nothing to report");
+        assert_eq!(closed(Some(window.clone()), at(1_100)), None, "the pump flushes a window once the sticks go quiet, so the last one of a flight is not lost");
+        assert_eq!(closed(Some(window.clone()), at(500)), Some(window), "a window still in use stays open");
     }
 
     #[test]

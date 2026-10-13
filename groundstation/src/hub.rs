@@ -78,14 +78,14 @@ const STREAM_INTERVAL_US: f64 = 1_000_000.0;
 const STREAM_REINIT_MS: u64 = 10_000;
 const VERSION_ASK_MS: u64 = 10_000;
 const CMD_REQUEST_MESSAGE: u16 = 512;
-const APM_STREAMS: [(u8, &str, i64); 7] = [
-    (1, "streamRateRawSensors", 2),
-    (2, "streamRateExtendedStatus", 2),
-    (3, "streamRateRCChannels", 2),
-    (6, "streamRatePosition", 10),
-    (10, "streamRateExtra1", 20),
-    (11, "streamRateExtra2", 10),
-    (12, "streamRateExtra3", 3),
+const APM_STREAMS: [(u8, &str, i64, i64); 7] = [
+    (1, "streamRateRawSensors", 2, 2),
+    (2, "streamRateExtendedStatus", 2, 2),
+    (3, "streamRateRCChannels", 2, 2),
+    (6, "streamRatePosition", 10, 3),
+    (10, "streamRateExtra1", 20, 10),
+    (11, "streamRateExtra2", 10, 10),
+    (12, "streamRateExtra3", 3, 3),
 ];
 const CMD_CONFIGURE_ACTUATOR: u16 = 311;
 const ACTUATOR_ACTION_TIMEOUT_MS: u64 = 3000;
@@ -1525,11 +1525,16 @@ impl Vehicle {
         }
         self.streams_watched_ms = Some((now_ms, now_ms));
         let target = (self.id, self.component);
+        let radio = self.link_kinds.radio.contains(&self.link);
         let requests: Vec<Outbound> = match crate::settingsstore::raw_setting("settings.mavlinkSettings.apmStartMavlinkStreams").and_then(|v| v.as_bool()).unwrap_or(true) {
             true => APM_STREAMS
                 .iter()
-                .filter_map(|(stream, name, default)| {
-                    let rate = crate::settingsstore::raw_setting(&format!("settings.apmMavlinkStreamRateSettings.{name}")).and_then(|v| v.as_i64()).unwrap_or(*default);
+                .filter_map(|(stream, name, default, radio_default)| {
+                    let path = format!("settings.apmMavlinkStreamRateSettings.{name}");
+                    let rate = match radio && !crate::settingsstore::is_stored(&path) {
+                        true => *radio_default,
+                        false => crate::settingsstore::raw_setting(&path).and_then(|v| v.as_i64()).unwrap_or(*default),
+                    };
                     (rate >= 0).then_some(Outbound::RequestDataStream { target, stream: *stream, rate: rate as u16 })
                 })
                 .collect(),
@@ -2543,10 +2548,14 @@ impl Vehicle {
         self.pump_with(now_ms, None, 0)
     }
 
-    fn report_link_health(&mut self, now_ms: u64) {
-        if let Some(line) = self.link_health.report(now_ms, self.id, self.link).filter(|_| !self.replay && self.connected) {
-            log::info!(target: "link", "{line}");
-        }
+    fn route(&self) -> crate::linkhealth::Route {
+        let (name, kind) = self.link_kinds.labels.get(&self.link).cloned().unwrap_or_else(|| ("unknown".to_string(), "unknown".to_string()));
+        crate::linkhealth::Route { id: self.link, name, kind, radio: self.link_kinds.radio.contains(&self.link) }
+    }
+
+    fn link_health_line(&mut self, now_ms: u64) -> Option<String> {
+        let route = self.route();
+        self.link_health.report(now_ms, self.id, &route, crate::linkhealth::pings_sent).filter(|_| !self.replay && self.connected)
     }
 
     fn pump_with(&mut self, now_ms: u64, remote_inputs: Option<&RemoteInputs>, now_s: u64) -> Vec<Vec<u8>> {
@@ -2560,7 +2569,9 @@ impl Vehicle {
             bytes.extend(self.encode(&revert));
         }
         bytes.extend(self.tick_rc_override(now_ms));
-        self.report_link_health(now_ms);
+        if let Some(line) = self.link_health_line(now_ms) {
+            log::info!(target: "link", "{line}");
+        }
         bytes.extend(self.cancel_calibration_left_behind(now_ms));
         bytes.extend(self.tick_airframe_reboot(now_ms));
         bytes.extend(self.tick_stream_rates(now_ms));
@@ -4002,6 +4013,8 @@ pub struct LinkKinds {
     pub cloud: Vec<LinkId>,
     pub high_latency: Vec<LinkId>,
     pub usb_direct: Vec<LinkId>,
+    pub radio: Vec<LinkId>,
+    pub labels: BTreeMap<LinkId, (String, String)>,
     pub down: Vec<LinkId>,
 }
 
@@ -5323,7 +5336,7 @@ mod tests {
     fn a_live_direct_link_takes_the_primary_from_the_cloud_relay() {
         let mut hub = Hub::default();
         let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
-        let kinds = LinkKinds { cloud: vec![1], high_latency: vec![3], usb_direct: vec![4], down: Vec::new() };
+        let kinds = LinkKinds { cloud: vec![1], high_latency: vec![3], usb_direct: vec![4], ..LinkKinds::default() };
         hub.on_frame(Origin { link: 1, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 0);
         hub.check_links(100, &kinds);
         hub.on_frame(Origin { link: 2, replay: false, v2: true }, &header, &copter_heartbeat(0, false), 0, 200);
@@ -6160,6 +6173,36 @@ mod tests {
         hub.on_frame(origin(4), &autopilot, &version, 1_300_000, 1_300);
         assert_eq!(hub.snapshot()["vehicle"]["firmware"]["version"], "4.5.7 (0)", "Vehicle::_handleAutopilotVersion takes it whenever it comes, so 4.7 parameter names map back");
         assert_eq!(asks(hub.tick(40_000)), 0, "a known version is never asked for again");
+    }
+
+    #[test]
+    fn a_telemetry_radio_keeps_the_lighter_stream_rates() {
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let mut hub = Hub::default();
+        hub.check_links(0, &LinkKinds { radio: vec![4], ..LinkKinds::default() });
+        let first = hub.on_frame(origin(4), &autopilot, &copter_heartbeat(5, false), 1_000_000, 1_000);
+        let streams: Vec<(u8, u16)> = first.iter().filter_map(|(_, b)| match decode(b) { MavMessage::REQUEST_DATA_STREAM(r) => Some((r.req_stream_id, r.req_message_rate)), _ => None }).collect();
+        assert_eq!(streams, [(1, 2), (2, 2), (3, 2), (6, 3), (10, 10), (11, 10), (12, 3)], "a SiK radio keeps QGC's 3 Hz position and 10 Hz attitude; the faster defaults are for IP links");
+    }
+
+    #[test]
+    fn only_the_autopilots_timesync_replies_count_and_a_vehicle_still_connecting_reports_nothing() {
+        use mavlink::dialects::ardupilotmega::TIMESYNC_DATA;
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let camera = MavHeader { system_id: 1, component_id: 100, sequence: 0 };
+        let mut hub = Hub::default();
+        hub.check_links(0, &LinkKinds { labels: BTreeMap::from([(4, ("TCP local".to_string(), "TCP".to_string()))]), ..LinkKinds::default() });
+        hub.on_frame(origin(4), &autopilot, &copter_heartbeat(5, false), 1_000_000, 1_000);
+        let reply = |sent_ms: u64| MavMessage::TIMESYNC(TIMESYNC_DATA { tc1: 1, ts1: crate::linkhealth::ping_stamp(sent_ms), target_system: 255, target_component: 0 });
+        assert_eq!(hub.vehicles.get_mut(&1).unwrap().link_health_line(1_000), None, "the first pump opens the window");
+        assert_eq!(hub.vehicles.get_mut(&1).unwrap().link_health_line(11_000), None, "a vehicle still connecting stays quiet");
+        hub.vehicles.get_mut(&1).unwrap().connected = true;
+        hub.on_frame(origin(4), &autopilot, &reply(11_950), 12_000_000, 12_000);
+        hub.on_frame(origin(4), &camera, &reply(11_950), 12_010_000, 12_010);
+        let line = hub.vehicles.get_mut(&1).unwrap().link_health_line(21_000).expect("a connected vehicle reports");
+        assert!(line.contains("link=4 link_name=\"TCP local\" link_kind=\"TCP\" radio=false") && line.contains("rtt_p50_ms=50 rtt_max_ms=50") && line.contains("pings_answered=1 "), "a camera's reply is not the autopilot's round trip: {line}");
+        hub.vehicles.get_mut(&1).unwrap().replay = true;
+        assert_eq!(hub.vehicles.get_mut(&1).unwrap().link_health_line(31_000), None, "a replayed log has no live link to report");
     }
 
     #[test]

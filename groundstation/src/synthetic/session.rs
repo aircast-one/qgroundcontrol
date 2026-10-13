@@ -63,7 +63,28 @@ pub struct Target {
     pub roll_rate: f64,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Telemetry {
+    latitude: f64,
+    longitude: f64,
+    above_home: f64,
+    velocity: (f64, f64, f64),
+    rates: (Option<f64>, Option<f64>, f64),
+    roll: f64,
+}
+
 impl Target {
+    pub fn telemetry(&self) -> Telemetry {
+        Telemetry {
+            latitude: self.latitude,
+            longitude: self.longitude,
+            above_home: self.above_home,
+            velocity: (self.north_speed, self.east_speed, self.climb_speed),
+            rates: (self.heading_rate, self.pitch_rate, self.roll_rate),
+            roll: self.roll,
+        }
+    }
+
     pub fn from_view(view: &serde_json::Value) -> Option<Self> {
         let number = |key: &str| view.get(key).and_then(serde_json::Value::as_f64).filter(|v| v.is_finite());
         (view.get("available").and_then(serde_json::Value::as_bool) == Some(true)).then_some(())?;
@@ -236,7 +257,7 @@ pub struct Session {
     ticked: Option<Instant>,
     selected: Option<Instant>,
     seen: Option<Target>,
-    seen_at: Option<Instant>,
+    telemetry_since: Option<(Telemetry, Instant)>,
     turn: Option<Turn>,
     spot_since: Option<((f64, f64), Instant)>,
     height_since: Option<(f64, Instant)>,
@@ -437,7 +458,7 @@ impl Session {
             ticked: None,
             selected: None,
             seen: None,
-            seen_at: None,
+            telemetry_since: None,
             turn: None,
             spot_since: None,
             height_since: None,
@@ -698,6 +719,8 @@ impl Session {
             Some(fallback) => (fallback.home.height, fallback.under.height),
             None => (self.home.height, self.under.height),
         };
+        let telemetry = since(self.telemetry_since, target.telemetry(), now, self.ticked);
+        self.telemetry_since = Some(telemetry);
         let spot = since(self.spot_since, (target.latitude, target.longitude), now, self.ticked);
         let altitude = since(self.height_since, target.above_home, now, self.ticked);
         let attitude = since(self.attitude_since, (target.heading, target.pitch, target.roll), now, self.ticked);
@@ -723,14 +746,13 @@ impl Session {
         self.shown = Some(pose);
         let fresh = self.seen.as_ref() != Some(target);
         self.seen = Some(target.clone());
-        let seen_at = *self.seen_at.insert(self.seen_at.filter(|_| !fresh).unwrap_or(now));
         let due = self.selected.is_none_or(|at| now.duration_since(at) >= RESELECT_EVERY);
         let reselected = (delivered > 0 || moving || fresh || due) && self.select(&Camera::new(&pose, width, height), target, now);
         let warm = match &mut self.source {
             Source::Google(Some(tiles)) => tiles.take_fresh(),
             _ => Vec::new(),
         };
-        Some(Frame { pose, ground: self.ground_meshes.clone(), backfill: self.backfill.clone(), warm, home_ground, changed: moving || fresh || reselected, reading_age: now.saturating_duration_since(seen_at) })
+        Some(Frame { pose, ground: self.ground_meshes.clone(), backfill: self.backfill.clone(), warm, home_ground, changed: moving || fresh || reselected, reading_age: now.saturating_duration_since(telemetry.1) })
     }
 }
 
@@ -846,6 +868,19 @@ mod tests {
         let mut missing = view.clone();
         missing.as_object_mut().unwrap().remove("fov");
         assert_eq!(Target::from_view(&missing), None, "a pose without a field of view is refused, not guessed");
+    }
+
+    #[test]
+    fn the_reading_age_follows_telemetry_not_the_pilots_tilt() {
+        let mut session = Session::new("", Arc::new(Fake)).expect("workers");
+        let reading = target("Bing Satellite");
+        let start = Instant::now();
+        let at = |ms: u64| start + Duration::from_millis(ms);
+        session.frame(Some(&reading), 640, 360, at(0)).expect("a frame");
+        let tilted = Target { pitch: -40.0, ..reading.clone() };
+        assert_eq!(session.frame(Some(&tilted), 640, 360, at(500)).expect("a frame").reading_age, Duration::from_millis(500), "dragging the tilt is not new telemetry");
+        let moved = Target { north_speed: 1.5, ..tilted };
+        assert_eq!(session.frame(Some(&moved), 640, 360, at(516)).expect("a frame").reading_age, Duration::from_millis(8), "a new velocity is, dated midway between the ticks that saw it");
     }
 
     #[test]

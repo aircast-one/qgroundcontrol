@@ -269,7 +269,11 @@ impl Shown {
             true => wgpu::PresentMode::Mailbox,
             false => wgpu::PresentMode::Fifo,
         };
-        self.surface.configure(&gpu.device, &wgpu::SurfaceConfiguration { format: gpu.format, present_mode: self.present, desired_maximum_frame_latency: 1, ..config });
+        let desired_maximum_frame_latency = match self.present {
+            wgpu::PresentMode::Mailbox => 1,
+            _ => config.desired_maximum_frame_latency,
+        };
+        self.surface.configure(&gpu.device, &wgpu::SurfaceConfiguration { format: gpu.format, present_mode: self.present, desired_maximum_frame_latency, ..config });
         self.targets = Some(gpu.renderer.targets(size.0, size.1));
         self.size = size;
         self.drawn = false;
@@ -377,8 +381,8 @@ impl Summary {
             self.slowest.as_millis(),
             acquire_slowest.as_millis(),
             draw_slowest.as_millis(),
-            crate::linkhealth::shown(crate::linkhealth::median(&self.reading_ages_ms)),
-            crate::linkhealth::shown(self.reading_ages_ms.iter().copied().max()),
+            crate::stats::shown(crate::stats::median(&self.reading_ages_ms)),
+            crate::stats::shown(self.reading_ages_ms.iter().copied().max()),
             gpu.renderer.resident(),
             gpu.renderer.uploads,
         );
