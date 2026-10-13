@@ -509,6 +509,14 @@ impl OpenScene {
 
     #[allow(clippy::too_many_arguments)]
     pub fn select(&mut self, camera: &Camera, imagery: &str, ground: f64, latitude: f64, longitude: f64, detail: f64, budget: usize, now: Instant) -> (Vec<Arc<Mesh>>, Vec<Want>) {
+        self.pick(camera, imagery, ground, Some((latitude, longitude)), detail, budget, now)
+    }
+
+    pub fn select_terrain(&mut self, camera: &Camera, imagery: &str, ground: f64, detail: f64, budget: usize, now: Instant) -> (Vec<Arc<Mesh>>, Vec<Want>) {
+        self.pick(camera, imagery, ground, None, detail, budget, now)
+    }
+
+    fn pick(&mut self, camera: &Camera, imagery: &str, ground: f64, houses_at: Option<(f64, f64)>, detail: f64, budget: usize, now: Instant) -> (Vec<Arc<Mesh>>, Vec<Want>) {
         if imagery != self.imagery {
             self.imagery = imagery.to_string();
             self.terrain.clear();
@@ -516,7 +524,7 @@ impl OpenScene {
         let sight = Sight { camera, planes: frustum(camera.culling()), ground, detail };
         let mut candidates = Vec::new();
         let ground_meshes = self.visit(TileKey { z: 0, x: 0, y: 0 }, &sight, &mut candidates, now).unwrap_or_default();
-        let houses = self.houses_around(latitude, longitude, &mut candidates, now);
+        let houses = houses_at.map(|(latitude, longitude)| self.houses_around(latitude, longitude, &mut candidates, now)).unwrap_or_default();
         let wanted = self.issue(candidates, budget, now);
         self.terrain.retain(|_, entry| now.duration_since(entry.used) < KEEP_TERRAIN_FOR);
         let oldest = cutoff(self.terrain.values().map(|entry| entry.used).collect(), MAX_TERRAIN_TILES);

@@ -20,6 +20,7 @@ const DETAIL_PIXELS: f64 = 1280.0 * 720.0;
 const MAX_LOADED_TILES: usize = 500;
 const NEAR_M: f64 = 1_500.0;
 const FALLBACK_TOO_COARSE: f64 = 8.0;
+const BACKFILL_TOO_COARSE: f64 = 64.0;
 const LOWEST_GROUND_M: f64 = 1_000.0;
 const OCCLUDER_RADII: DVec3 = DVec3::new(6_378_137.0 - LOWEST_GROUND_M, 6_378_137.0 - LOWEST_GROUND_M, 6_356_752.314_245 - LOWEST_GROUND_M);
 
@@ -132,12 +133,14 @@ pub struct Tileset {
     trimmed: Option<Instant>,
     coarsest: f64,
     fresh: Vec<Arc<Mesh>>,
+    backfill: Vec<(usize, Vec<Arc<Mesh>>)>,
 }
 
 pub struct Selection {
     pub meshes: Vec<Arc<Mesh>>,
     pub wanted: Vec<Request>,
     pub coarsest: f64,
+    pub backfill: Vec<Arc<Mesh>>,
 }
 
 fn query(url: &Url) -> Vec<(String, String)> {
@@ -212,7 +215,7 @@ fn loaded(tile: &Tile) -> usize {
 
 impl Tileset {
     pub fn new(root: Tile, url: &Url) -> Self {
-        Self { root, session: None, keep: query(url), swept: None, trimmed: None, coarsest: f64::INFINITY, fresh: Vec::new() }
+        Self { root, session: None, keep: query(url), swept: None, trimmed: None, coarsest: f64::INFINITY, fresh: Vec::new(), backfill: Vec::new() }
     }
 
     fn signed(&mut self, url: &Url) -> Url {
@@ -240,6 +243,7 @@ impl Tileset {
 
     pub fn select_measured(&mut self, camera: &Camera, budget: usize, now: Instant) -> Selection {
         self.coarsest = 0.0;
+        self.backfill.clear();
         let planes = frustum(camera.culling());
         let horizon = Horizon::from(camera.eye);
         let mut wanted = Vec::new();
@@ -251,7 +255,10 @@ impl Tileset {
         }
         self.root = root;
         let coarsest = if drawn.is_empty() { f64::INFINITY } else { self.coarsest };
-        Selection { meshes: drawn, wanted, coarsest }
+        let mut layered = std::mem::take(&mut self.backfill);
+        layered.sort_by_key(|(depth, _)| *depth);
+        let backfill = layered.into_iter().flat_map(|(_, meshes)| meshes).collect();
+        Selection { meshes: drawn, wanted, coarsest, backfill }
     }
 
     pub fn trim(&mut self, now: Instant, probed: Option<Instant>) {
@@ -333,7 +340,11 @@ impl Tileset {
             self.coarsest = self.coarsest.max(error);
         }
         let stands_in = loaded_parent && (error <= FALLBACK_TOO_COARSE || partial.is_none());
+        if loaded_parent && !stands_in && partial.is_some() && error <= BACKFILL_TOO_COARSE {
+            self.backfill.push((path.len(), own.clone().unwrap_or_default()));
+        }
         match stands_in {
+            true if error > BACKFILL_TOO_COARSE => Some(Vec::new()),
             true => own,
             false => below.or(partial).or(own),
         }
@@ -423,11 +434,18 @@ mod tests {
             children: vec![Tile { content: Content::Meshes(vec![child.clone()]), ..leaf(&camera, "ready") }, leaf(&camera, "coming")],
             used: None,
         };
-        let drawn = |geometric_error: f64| Tileset::new(tree(geometric_error), &Url::parse("https://x/root.json").unwrap()).select(&camera, 8, Instant::now()).0;
-        let globe = drawn(1_000_000.0);
-        assert!(globe.len() == 1 && Arc::ptr_eq(&globe[0], &child), "a globe-sized tile under the camera is haze; the city it would replace stays");
-        let close = drawn(3.0);
-        assert!(close.len() == 1 && Arc::ptr_eq(&close[0], &parent_mesh), "a parent nearly fine enough covers the gap rather than leave a hole");
+        let selected = |geometric_error: f64| Tileset::new(tree(geometric_error), &Url::parse("https://x/root.json").unwrap()).select_measured(&camera, 8, Instant::now());
+        let coarse = selected(100.0);
+        assert!(coarse.meshes.len() == 1 && Arc::ptr_eq(&coarse.meshes[0], &child), "a much coarser parent does not replace the city it would cover");
+        assert!(coarse.backfill.len() == 1 && Arc::ptr_eq(&coarse.backfill[0], &parent_mesh), "it fills the hole the missing child leaves, drawn behind everything");
+        let globe = selected(1_000_000.0);
+        assert!(globe.meshes.len() == 1 && Arc::ptr_eq(&globe.meshes[0], &child));
+        assert!(globe.backfill.is_empty(), "a globe tile's flat chord runs kilometres under the ground and hazes to sky, so it fills nothing");
+        let mut nothing_below = Tileset::new(Tile { children: vec![leaf(&camera, "a"), leaf(&camera, "b")], ..tree(1_000_000.0) }, &Url::parse("https://x/root.json").unwrap());
+        assert!(nothing_below.select(&camera, 8, Instant::now()).0.is_empty(), "with no child loaded it is not drawn either; the open-data terrain shows instead of a sky-coloured slab");
+        let close = selected(3.0);
+        assert!(close.meshes.len() == 1 && Arc::ptr_eq(&close.meshes[0], &parent_mesh), "a parent nearly fine enough covers the gap rather than leave a hole");
+        assert!(close.backfill.is_empty());
     }
 
     #[test]

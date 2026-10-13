@@ -249,11 +249,13 @@ struct Shown {
     targets: Option<Targets>,
     drawn: bool,
     window: Window,
+    acquire_slowest: Duration,
+    draw_slowest: Duration,
 }
 
 impl Shown {
     fn new(window: Window, surface: wgpu::Surface<'static>) -> Self {
-        Self { surface, size: (0, 0), targets: None, drawn: false, window }
+        Self { surface, size: (0, 0), targets: None, drawn: false, window, acquire_slowest: Duration::ZERO, draw_slowest: Duration::ZERO }
     }
 
     fn fit(&mut self, gpu: &Gpu) {
@@ -272,7 +274,10 @@ impl Shown {
         if self.targets.is_none() {
             return Ok(false);
         }
-        let texture = match self.surface.get_current_texture() {
+        let acquiring = Instant::now();
+        let acquired = self.surface.get_current_texture();
+        self.acquire_slowest = self.acquire_slowest.max(acquiring.elapsed());
+        let texture = match acquired {
             wgpu::CurrentSurfaceTexture::Success(texture) | wgpu::CurrentSurfaceTexture::Suboptimal(texture) => texture,
             wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => return Ok(false),
             wgpu::CurrentSurfaceTexture::Outdated => {
@@ -287,11 +292,12 @@ impl Shown {
             wgpu::CurrentSurfaceTexture::Validation => return Err("the surface refused a frame".to_string()),
         };
         let Some(targets) = self.targets.as_ref() else { return Ok(false) };
+        let drawing = Instant::now();
         let view = texture.texture.create_view(&Default::default());
         let pictured = match frame {
             Some(frame) => {
                 let (camera, meshes) = frame.view(overlays, self.size.0, self.size.1);
-                gpu.renderer.draw(&view, targets, &camera, &meshes);
+                gpu.renderer.draw(&view, targets, &camera, &frame.backfill, &meshes);
                 !frame.ground.is_empty()
             }
             None => {
@@ -300,6 +306,7 @@ impl Shown {
             }
         };
         gpu.renderer.present(texture);
+        self.draw_slowest = self.draw_slowest.max(drawing.elapsed());
         self.drawn = true;
         Ok(pictured)
     }
@@ -340,7 +347,14 @@ impl Summary {
         Self { since, painted: 0, idle: 0, slowest: Duration::ZERO }
     }
 
-    fn report(&self, session: Option<&mut Session>, gpu: &Gpu, surfaces: usize, draw: Draw) {
+    fn report(&self, session: Option<&mut Session>, gpu: &Gpu, shown: &mut [Shown], draw: Draw) {
+        let surfaces = shown.len();
+        let acquire_slowest = shown.iter().map(|surface| surface.acquire_slowest).max().unwrap_or_default();
+        let draw_slowest = shown.iter().map(|surface| surface.draw_slowest).max().unwrap_or_default();
+        shown.iter_mut().for_each(|surface| {
+            surface.acquire_slowest = Duration::ZERO;
+            surface.draw_slowest = Duration::ZERO;
+        });
         let (source, tiles, in_flight) = world(session.as_deref());
         let (showing, handover) = handing_over(session.as_deref());
         let warming = session.as_deref().and_then(Session::warming).map_or_else(|| "none".to_string(), |left| left.to_string());
@@ -348,12 +362,14 @@ impl Summary {
         let Stats { requested, loaded, failed, bytes, errors } = stats;
         log::info!(
             target: "synthetic",
-            "event=summary seconds={} source={source} showing={showing} handover_ms={handover} warming={warming} surfaces={surfaces} draw={} painted={} idle_ticks={} slowest_paint_ms={} requested={requested} loaded={loaded} failed={failed} bytes={bytes} tiles={tiles} in_flight={in_flight} resident={} uploads={} errors={errors:?}",
+            "event=summary seconds={} source={source} showing={showing} handover_ms={handover} warming={warming} surfaces={surfaces} draw={} painted={} idle_ticks={} slowest_paint_ms={} acquire_slowest_ms={} draw_slowest_ms={} requested={requested} loaded={loaded} failed={failed} bytes={bytes} tiles={tiles} in_flight={in_flight} resident={} uploads={} errors={errors:?}",
             self.since.elapsed().as_secs(),
             draw.name(),
             self.painted,
             self.idle,
             self.slowest.as_millis(),
+            acquire_slowest.as_millis(),
+            draw_slowest.as_millis(),
             gpu.renderer.resident(),
             gpu.renderer.uploads,
         );
@@ -444,7 +460,7 @@ fn show(first: Window, kept: Option<Kept>, commands: &Receiver<Command>, feed: &
             }
         }
         if summary.since.elapsed() >= SUMMARY_EVERY {
-            summary.report(session.as_mut(), &gpu, shown.len(), draw);
+            summary.report(session.as_mut(), &gpu, &mut shown, draw);
             summary = Summary::new(Instant::now());
         }
         match commands.recv_timeout(TICK.saturating_sub(now.elapsed())) {

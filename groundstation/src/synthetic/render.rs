@@ -133,6 +133,7 @@ pub struct Renderer {
     queue: wgpu::Queue,
     format: wgpu::TextureFormat,
     pipelines: [wgpu::RenderPipeline; 3],
+    backfill: wgpu::RenderPipeline,
     sky: wgpu::RenderPipeline,
     layout: wgpu::BindGroupLayout,
     scene: wgpu::Buffer,
@@ -161,6 +162,7 @@ fn multisample() -> wgpu::MultisampleState {
 
 fn pipeline(device: &wgpu::Device, layout: &wgpu::PipelineLayout, shader: &wgpu::ShaderModule, color: wgpu::TextureFormat, layer: Layer) -> wgpu::RenderPipeline {
     let (depth_write, compare, blend, fragment) = match layer {
+        Layer::Backfill => (false, wgpu::CompareFunction::Always, None, "fs"),
         Layer::Opaque => (true, wgpu::CompareFunction::Greater, None, "fs"),
         Layer::Translucent => (false, wgpu::CompareFunction::Greater, Some(wgpu::BlendState::ALPHA_BLENDING), "fs"),
         Layer::OnTop => (false, wgpu::CompareFunction::Always, Some(wgpu::BlendState::ALPHA_BLENDING), "fs_plain"),
@@ -219,11 +221,12 @@ impl Renderer {
         let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: Some("synthetic"), bind_group_layouts: &[Some(&scene_layout), Some(&layout)], immediate_size: 0 });
         let sky_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: Some("synthetic sky"), bind_group_layouts: &[Some(&scene_layout)], immediate_size: 0 });
         let pipelines = LAYERS.map(|layer| pipeline(&device, &pipeline_layout, &shader, format, layer));
+        let backfill = pipeline(&device, &pipeline_layout, &shader, format, Layer::Backfill);
         let sky = sky_pipeline(&device, &sky_layout, &shader, format);
         let scene = device.create_buffer(&wgpu::BufferDescriptor { label: Some("synthetic scene"), size: SCENE_BYTES, usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
         let scene_bind = device.create_bind_group(&wgpu::BindGroupDescriptor { label: Some("synthetic scene"), layout: &scene_layout, entries: &[wgpu::BindGroupEntry { binding: 0, resource: scene.as_entire_binding() }] });
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor { mag_filter: wgpu::FilterMode::Linear, min_filter: wgpu::FilterMode::Linear, mipmap_filter: wgpu::MipmapFilterMode::Linear, address_mode_u: wgpu::AddressMode::ClampToEdge, address_mode_v: wgpu::AddressMode::ClampToEdge, anisotropy_clamp: ANISOTROPY, ..Default::default() });
-        Self { device, queue, format, pipelines, sky, layout, scene, scene_bind, sampler, resident: Resident::default(), uploads: 0, to_upload: Vec::new() }
+        Self { device, queue, format, pipelines, backfill, sky, layout, scene, scene_bind, sampler, resident: Resident::default(), uploads: 0, to_upload: Vec::new() }
     }
 
     fn upload(device: &wgpu::Device, queue: &wgpu::Queue, layout: &wgpu::BindGroupLayout, sampler: &wgpu::Sampler, mesh: &Mesh) -> GpuMesh {
@@ -294,13 +297,15 @@ impl Renderer {
         self.to_upload.len()
     }
 
-    pub fn draw(&mut self, target: &wgpu::TextureView, targets: &Targets, camera: &Camera, meshes: &[Arc<Mesh>]) {
+    pub fn draw(&mut self, target: &wgpu::TextureView, targets: &Targets, camera: &Camera, backfill: &[Arc<Mesh>], meshes: &[Arc<Mesh>]) {
         let (device, queue, layout, sampler) = (&self.device, &self.queue, &self.layout, &self.sampler);
-        self.uploads += self.resident.ensure(meshes, |mesh| Self::upload(device, queue, layout, sampler, mesh));
+        let everything: Vec<Arc<Mesh>> = backfill.iter().chain(meshes).cloned().collect();
+        self.uploads += self.resident.ensure(&everything, |mesh| Self::upload(device, queue, layout, sampler, mesh));
         self.resident.evict();
         let view_projection = camera.projection() * camera.view();
         let drawable: Vec<(&Arc<Mesh>, &GpuMesh)> = meshes.iter().filter_map(|mesh| Some((mesh, self.resident.get(mesh.id)?))).collect();
-        drawable.iter().for_each(|(mesh, gpu)| {
+        let behind: Vec<(&Arc<Mesh>, &GpuMesh)> = backfill.iter().filter_map(|mesh| Some((mesh, self.resident.get(mesh.id)?))).collect();
+        drawable.iter().chain(&behind).for_each(|(mesh, gpu)| {
             let model = camera.relative(mesh.to_ecef);
             self.queue.write_buffer(&gpu.matrix, 0, &bytes((view_projection * model).as_mat4().to_cols_array().into_iter().chain(model.as_mat4().to_cols_array())));
         });
@@ -312,6 +317,13 @@ impl Renderer {
             pass.set_bind_group(0, &self.scene_bind, &[]);
             pass.set_pipeline(&self.sky);
             pass.draw(0..3, 0..1);
+            pass.set_pipeline(&self.backfill);
+            behind.iter().for_each(|(_, gpu)| {
+                pass.set_bind_group(1, &gpu.bind, &[]);
+                pass.set_vertex_buffer(0, gpu.vertices.slice(..));
+                pass.set_index_buffer(gpu.indices.slice(..), wgpu::IndexFormat::Uint32);
+                pass.draw_indexed(0..gpu.count, 0, 0..1);
+            });
             LAYERS.iter().zip(&self.pipelines).for_each(|(layer, pipeline)| {
                 pass.set_pipeline(pipeline);
                 drawable.iter().filter(|(mesh, _)| mesh.layer == *layer).for_each(|(_, gpu)| {
@@ -353,11 +365,11 @@ impl Renderer {
         Targets { samples: attachment("synthetic samples", self.format), depth: attachment("synthetic depth", DEPTH) }
     }
 
-    pub fn picture(&mut self, camera: &Camera, meshes: &[Arc<Mesh>], width: u32, height: u32) -> Result<image::RgbaImage, String> {
+    pub fn picture(&mut self, camera: &Camera, backfill: &[Arc<Mesh>], meshes: &[Arc<Mesh>], width: u32, height: u32) -> Result<image::RgbaImage, String> {
         let size = wgpu::Extent3d { width, height, depth_or_array_layers: 1 };
         let target = self.device.create_texture(&wgpu::TextureDescriptor { label: Some("synthetic picture"), size, mip_level_count: 1, sample_count: 1, dimension: wgpu::TextureDimension::D2, format: COLOR, usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::COPY_SRC, view_formats: &[] });
         let targets = self.targets(width, height);
-        self.draw(&target.create_view(&Default::default()), &targets, camera, meshes);
+        self.draw(&target.create_view(&Default::default()), &targets, camera, backfill, meshes);
         let row = (4 * width).div_ceil(wgpu::COPY_BYTES_PER_ROW_ALIGNMENT) * wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
         let readback = self.device.create_buffer(&wgpu::BufferDescriptor { label: None, size: u64::from(row * height), usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ, mapped_at_creation: false });
         let mut encoder = self.device.create_command_encoder(&Default::default());

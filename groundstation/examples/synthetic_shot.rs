@@ -37,11 +37,12 @@ fn main() {
         drawn = session.frame(Some(&target), width, height, Instant::now()).or(drawn);
         std::thread::sleep(Duration::from_millis(100));
     }
-    let (camera, meshes) = drawn.expect("something to draw").view(None, width, height);
+    let frame = drawn.expect("something to draw");
+    let (camera, meshes) = frame.view(None, width, height);
     println!("{:?}", session.take_stats());
     println!("{} meshes after {:.1} s", meshes.len(), started.elapsed().as_secs_f64());
     let mut renderer = Renderer::new().expect("a GPU adapter");
-    let picture = renderer.picture(&camera, &meshes, width, height).expect("rendered picture");
+    let picture = renderer.picture(&camera, &frame.backfill, &meshes, width, height).expect("rendered picture");
     let out = arg("--out").unwrap_or_else(|| "synthetic.png".into());
     picture.save(&out).expect("saved picture");
     println!("wrote {out}");

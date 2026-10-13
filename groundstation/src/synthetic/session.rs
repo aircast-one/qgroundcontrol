@@ -38,6 +38,8 @@ const SPIN_SMOOTHING: f64 = 0.3;
 const GOOGLE_READY_COARSEST: f64 = 1_000.0;
 const STAND_IN_WORKERS: usize = 3;
 const STAND_IN_IN_FLIGHT: usize = 6;
+const TERRAIN_UNDER_EVERY: Duration = Duration::from_millis(500);
+const TERRAIN_UNDER_COARSER: f64 = 4.0;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Target {
@@ -166,6 +168,8 @@ struct Fallback {
     pool: Pool<Job, Done>,
     home: Probe,
     under: Probe,
+    terrain: Vec<Arc<Mesh>>,
+    picked: Option<Instant>,
 }
 
 impl Fallback {
@@ -190,6 +194,7 @@ pub struct Stats {
 pub struct Frame {
     pub pose: Pose,
     pub ground: Vec<Arc<Mesh>>,
+    pub backfill: Vec<Arc<Mesh>>,
     pub warm: Vec<Arc<Mesh>>,
     pub home_ground: Option<f64>,
     pub changed: bool,
@@ -219,6 +224,7 @@ pub struct Session {
     turn: Option<Turn>,
     spin: f64,
     ground_meshes: Vec<Arc<Mesh>>,
+    backfill: Vec<Arc<Mesh>>,
     fallback: Option<Fallback>,
     coarsest: f64,
     first_frame: Option<Instant>,
@@ -330,7 +336,7 @@ impl Session {
         }
         let source = if google { Source::Google(None) } else { Source::Open(OpenScene::new()) };
         let fallback = match google {
-            true => Some(Fallback { scene: OpenScene::new(), pool: workers(STAND_IN_WORKERS, "synthetic-stand-in", fetcher, bytes.clone())?, home: Probe::default(), under: Probe::default() }),
+            true => Some(Fallback { scene: OpenScene::new(), pool: workers(STAND_IN_WORKERS, "synthetic-stand-in", fetcher, bytes.clone())?, home: Probe::default(), under: Probe::default(), terrain: Vec::new(), picked: None }),
             false => None,
         };
         Ok(Self {
@@ -349,6 +355,7 @@ impl Session {
             turn: None,
             spin: 0.0,
             ground_meshes: Vec::new(),
+            backfill: Vec::new(),
             fallback,
             coarsest: f64::INFINITY,
             first_frame: None,
@@ -370,11 +377,15 @@ impl Session {
     }
 
     pub fn showing(&self) -> &'static str {
-        match (&self.source, self.fallback.is_some()) {
+        match (&self.source, self.fallback.is_some() && !self.handed_over()) {
             (Source::Google(_), true) => "open_fallback",
             (Source::Google(_), false) => "google",
             (Source::Open(_), _) => "open",
         }
+    }
+
+    fn handed_over(&self) -> bool {
+        self.handed_over_after.is_some()
     }
 
     pub fn coarsest(&self) -> f64 {
@@ -498,7 +509,9 @@ impl Session {
     }
 
     fn probe(&mut self, target: &Target, now: Instant) {
-        self.probe_fallback(target, now);
+        if !self.handed_over() {
+            self.probe_fallback(target, now);
+        }
         let open = matches!(self.source, Source::Open(_));
         self.home.for_spot(target.home_latitude, target.home_longitude);
         self.under.for_spot(target.latitude, target.longitude);
@@ -520,31 +533,50 @@ impl Session {
     fn select(&mut self, camera: &Camera, target: &Target, now: Instant) -> bool {
         let room = self.room().saturating_sub(PROBE_SLOTS);
         let detail = turn_detail(self.spin);
+        let handed_over = self.handed_over();
+        let google_ground = self.under.height.or(self.home.height);
         let (stand_in, stand_in_jobs) = match self.fallback.as_mut() {
             Some(fallback) => {
-                let ground = fallback.under.height.or(fallback.home.height).unwrap_or(0.0);
                 let room = fallback.room();
-                let (meshes, wanted) = fallback.scene.select(camera, &target.imagery, ground, target.latitude, target.longitude, detail, room, now);
+                let (meshes, wanted) = match handed_over {
+                    true if fallback.picked.is_some_and(|at| now.duration_since(at) < TERRAIN_UNDER_EVERY) => (fallback.terrain.clone(), Vec::new()),
+                    true => {
+                        let (terrain, wanted) = fallback.scene.select_terrain(camera, &target.imagery, google_ground.unwrap_or(0.0), detail * TERRAIN_UNDER_COARSER, room, now);
+                        fallback.terrain = terrain.clone();
+                        fallback.picked = Some(now);
+                        (terrain, wanted)
+                    }
+                    false => {
+                        let ground = fallback.under.height.or(fallback.home.height).unwrap_or(0.0);
+                        fallback.scene.select(camera, &target.imagery, ground, target.latitude, target.longitude, detail, room, now)
+                    }
+                };
                 (Some(meshes), wanted)
             }
             None => (None, Vec::new()),
         };
         let ground = self.under.height.or(self.home.height).unwrap_or(0.0);
-        let (meshes, jobs, coarsest) = match &mut self.source {
+        let (meshes, jobs, coarsest, backfill) = match &mut self.source {
             Source::Google(Some(tiles)) => {
-                let Selection { meshes, wanted, coarsest } = tiles.select_measured(camera, room, now);
+                let Selection { meshes, wanted, coarsest, backfill } = tiles.select_measured(camera, room, now);
                 tiles.trim(now, self.probed);
-                (meshes, wanted.into_iter().map(Job::Tile).collect(), coarsest)
+                (meshes, wanted.into_iter().map(Job::Tile).collect(), coarsest, backfill)
             }
             Source::Open(scene) => {
                 let (meshes, wanted) = scene.select(camera, &target.imagery, ground, target.latitude, target.longitude, detail, room, now);
-                (meshes, wanted.into_iter().map(Job::Open).collect(), 0.0)
+                (meshes, wanted.into_iter().map(Job::Open).collect(), 0.0, Vec::new())
             }
-            Source::Google(None) => (Vec::new(), Vec::new(), f64::INFINITY),
+            Source::Google(None) => (Vec::new(), Vec::new(), f64::INFINITY, Vec::new()),
         };
         self.coarsest = coarsest;
-        let drawn = stand_in.unwrap_or(meshes);
-        let different = drawn.len() != self.ground_meshes.len() || drawn.iter().zip(&self.ground_meshes).any(|(a, b)| a.id != b.id);
+        let (drawn, underneath) = match (stand_in, handed_over) {
+            (Some(terrain), true) => (meshes, terrain.into_iter().chain(backfill).collect()),
+            (Some(stand_in), false) => (stand_in, Vec::new()),
+            (None, _) => (meshes, backfill),
+        };
+        let changed = |now: &[Arc<Mesh>], before: &[Arc<Mesh>]| now.len() != before.len() || now.iter().zip(before).any(|(a, b)| a.id != b.id);
+        let different = changed(&drawn, &self.ground_meshes) || changed(&underneath, &self.backfill);
+        self.backfill = underneath;
         self.ground_meshes = drawn;
         self.selected = Some(now);
         self.stand_in(stand_in_jobs);
@@ -562,8 +594,7 @@ impl Session {
         }
         let target = target?;
         let started = *self.first_frame.get_or_insert(now);
-        if self.fallback.is_some() && google_ready(matches!(self.source, Source::Google(Some(_))), self.coarsest, self.home.height, self.warming) {
-            self.fallback = None;
+        if self.fallback.is_some() && !self.handed_over() && google_ready(matches!(self.source, Source::Google(Some(_))), self.coarsest, self.home.height, self.warming) {
             self.shown = None;
             self.handed_over_after = Some(now.saturating_duration_since(started));
         }
@@ -574,7 +605,10 @@ impl Session {
         let turn = turned(self.turn, Aim { heading: target.heading, pitch: target.pitch }, now);
         self.turn = Some(turn);
         let aim = turn.aim_at(now);
-        let (home_ground, under_ground) = self.fallback.as_ref().map_or((self.home.height, self.under.height), |fallback| (fallback.home.height, fallback.under.height));
+        let (home_ground, under_ground) = match self.fallback.as_ref().filter(|_| !self.handed_over()) {
+            Some(fallback) => (fallback.home.height, fallback.under.height),
+            None => (self.home.height, self.under.height),
+        };
         let goal = Pose { latitude: target.latitude, longitude: target.longitude, height: camera_height(target, home_ground, under_ground), heading: aim.heading, pitch: aim.pitch, roll: target.roll, fov: target.fov };
         let elapsed = self.ticked.map(|at| now.duration_since(at));
         let alpha = elapsed.map_or(1.0, follow);
@@ -591,7 +625,7 @@ impl Session {
             Source::Google(Some(tiles)) => tiles.take_fresh(),
             _ => Vec::new(),
         };
-        Some(Frame { pose, ground: self.ground_meshes.clone(), warm, home_ground, changed: moving || fresh || reselected })
+        Some(Frame { pose, ground: self.ground_meshes.clone(), backfill: self.backfill.clone(), warm, home_ground, changed: moving || fresh || reselected })
     }
 }
 
