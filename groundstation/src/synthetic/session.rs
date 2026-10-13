@@ -212,6 +212,7 @@ pub struct Frame {
     pub warm: Vec<Arc<Mesh>>,
     pub home_ground: Option<f64>,
     pub changed: bool,
+    pub reading_age: Duration,
 }
 
 impl Frame {
@@ -235,6 +236,7 @@ pub struct Session {
     ticked: Option<Instant>,
     selected: Option<Instant>,
     seen: Option<Target>,
+    seen_at: Option<Instant>,
     turn: Option<Turn>,
     spot_since: Option<((f64, f64), Instant)>,
     height_since: Option<(f64, Instant)>,
@@ -435,6 +437,7 @@ impl Session {
             ticked: None,
             selected: None,
             seen: None,
+            seen_at: None,
             turn: None,
             spot_since: None,
             height_since: None,
@@ -720,13 +723,14 @@ impl Session {
         self.shown = Some(pose);
         let fresh = self.seen.as_ref() != Some(target);
         self.seen = Some(target.clone());
+        let seen_at = *self.seen_at.insert(self.seen_at.filter(|_| !fresh).unwrap_or(now));
         let due = self.selected.is_none_or(|at| now.duration_since(at) >= RESELECT_EVERY);
         let reselected = (delivered > 0 || moving || fresh || due) && self.select(&Camera::new(&pose, width, height), target, now);
         let warm = match &mut self.source {
             Source::Google(Some(tiles)) => tiles.take_fresh(),
             _ => Vec::new(),
         };
-        Some(Frame { pose, ground: self.ground_meshes.clone(), backfill: self.backfill.clone(), warm, home_ground, changed: moving || fresh || reselected })
+        Some(Frame { pose, ground: self.ground_meshes.clone(), backfill: self.backfill.clone(), warm, home_ground, changed: moving || fresh || reselected, reading_age: now.saturating_duration_since(seen_at) })
     }
 }
 

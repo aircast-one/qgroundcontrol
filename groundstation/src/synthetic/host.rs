@@ -251,11 +251,12 @@ struct Shown {
     window: Window,
     acquire_slowest: Duration,
     draw_slowest: Duration,
+    present: wgpu::PresentMode,
 }
 
 impl Shown {
     fn new(window: Window, surface: wgpu::Surface<'static>) -> Self {
-        Self { surface, size: (0, 0), targets: None, drawn: false, window, acquire_slowest: Duration::ZERO, draw_slowest: Duration::ZERO }
+        Self { surface, size: (0, 0), targets: None, drawn: false, window, acquire_slowest: Duration::ZERO, draw_slowest: Duration::ZERO, present: wgpu::PresentMode::Fifo }
     }
 
     fn fit(&mut self, gpu: &Gpu) {
@@ -264,7 +265,11 @@ impl Shown {
             return;
         }
         let Some(config) = self.surface.get_default_config(&gpu.adapter, size.0, size.1) else { return };
-        self.surface.configure(&gpu.device, &wgpu::SurfaceConfiguration { format: gpu.format, present_mode: wgpu::PresentMode::Fifo, ..config });
+        self.present = match self.surface.get_capabilities(&gpu.adapter).present_modes.contains(&wgpu::PresentMode::Mailbox) {
+            true => wgpu::PresentMode::Mailbox,
+            false => wgpu::PresentMode::Fifo,
+        };
+        self.surface.configure(&gpu.device, &wgpu::SurfaceConfiguration { format: gpu.format, present_mode: self.present, desired_maximum_frame_latency: 1, ..config });
         self.targets = Some(gpu.renderer.targets(size.0, size.1));
         self.size = size;
         self.drawn = false;
@@ -340,17 +345,19 @@ struct Summary {
     painted: u64,
     idle: u64,
     slowest: Duration,
+    reading_ages_ms: Vec<u64>,
 }
 
 impl Summary {
     fn new(since: Instant) -> Self {
-        Self { since, painted: 0, idle: 0, slowest: Duration::ZERO }
+        Self { since, painted: 0, idle: 0, slowest: Duration::ZERO, reading_ages_ms: Vec::new() }
     }
 
     fn report(&self, session: Option<&mut Session>, gpu: &Gpu, shown: &mut [Shown], draw: Draw) {
         let surfaces = shown.len();
         let acquire_slowest = shown.iter().map(|surface| surface.acquire_slowest).max().unwrap_or_default();
         let draw_slowest = shown.iter().map(|surface| surface.draw_slowest).max().unwrap_or_default();
+        let present = shown.first().map_or_else(|| "none".to_string(), |surface| format!("{:?}", surface.present).to_lowercase());
         shown.iter_mut().for_each(|surface| {
             surface.acquire_slowest = Duration::ZERO;
             surface.draw_slowest = Duration::ZERO;
@@ -362,7 +369,7 @@ impl Summary {
         let Stats { requested, loaded, failed, bytes, errors } = stats;
         log::info!(
             target: "synthetic",
-            "event=summary seconds={} source={source} showing={showing} handover_ms={handover} warming={warming} surfaces={surfaces} draw={} painted={} idle_ticks={} slowest_paint_ms={} acquire_slowest_ms={} draw_slowest_ms={} requested={requested} loaded={loaded} failed={failed} bytes={bytes} tiles={tiles} in_flight={in_flight} resident={} uploads={} errors={errors:?}",
+            "event=summary seconds={} source={source} showing={showing} handover_ms={handover} warming={warming} surfaces={surfaces} present={present} draw={} painted={} idle_ticks={} slowest_paint_ms={} acquire_slowest_ms={} draw_slowest_ms={} reading_age_p50_ms={} reading_age_max_ms={} requested={requested} loaded={loaded} failed={failed} bytes={bytes} tiles={tiles} in_flight={in_flight} resident={} uploads={} errors={errors:?}",
             self.since.elapsed().as_secs(),
             draw.name(),
             self.painted,
@@ -370,6 +377,8 @@ impl Summary {
             self.slowest.as_millis(),
             acquire_slowest.as_millis(),
             draw_slowest.as_millis(),
+            crate::linkhealth::shown(crate::linkhealth::median(&self.reading_ages_ms)),
+            crate::linkhealth::shown(self.reading_ages_ms.iter().copied().max()),
             gpu.renderer.resident(),
             gpu.renderer.uploads,
         );
@@ -455,6 +464,7 @@ fn show(first: Window, kept: Option<Kept>, commands: &Receiver<Command>, feed: &
             false => {
                 summary.painted += 1;
                 summary.slowest = summary.slowest.max(now.elapsed());
+                summary.reading_ages_ms.extend(frame.as_ref().map(|frame| u64::try_from(frame.reading_age.as_millis()).unwrap_or(u64::MAX)));
                 visit.painted += 1;
                 visit.slowest = visit.slowest.max(now.elapsed());
             }

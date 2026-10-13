@@ -31,6 +31,9 @@ fn main() {
         north_speed: 0.0,
         east_speed: 0.0,
         climb_speed: 0.0,
+        heading_rate: None,
+        pitch_rate: None,
+        roll_rate: 0.0,
     };
     let mut session = Session::new(&token, Arc::new(Network)).expect("fetch workers");
     let started = Instant::now();
