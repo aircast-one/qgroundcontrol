@@ -108,7 +108,11 @@ fn softened(axis: f64, rate: bool) -> f64 {
     }
 }
 
-const VEHICLE_FIELDS: &str = "rover,sub,multiRotor,fixedWing,vtol,apmFirmware,px4Firmware,customMode";
+pub const VEHICLE_FIELDS: &str = "rover,sub,multiRotor,fixedWing,vtol,apmFirmware,px4Firmware,customMode";
+
+pub fn rate_mode_now(vehicle: &Value) -> bool {
+    custom_mode(vehicle).is_some_and(|custom| rate_mode(airframe(vehicle), custom))
+}
 
 fn custom_mode(vehicle: &Value) -> Option<u32> {
     vehicle.get("customMode").and_then(Value::as_u64).and_then(|custom| u32::try_from(custom).ok())
@@ -172,7 +176,7 @@ pub fn send(backend: &dyn Backend, args: &str) -> Value {
         return json!({ "ok": false, "reason": "No vehicle has finished connecting." });
     }
     let vehicle = backend.value_fields("vehicle", VEHICLE_FIELDS);
-    let rate = custom_mode(&vehicle).is_some_and(|custom| rate_mode(airframe(&vehicle), custom));
+    let rate = rate_mode_now(&vehicle);
     let (roll, pitch) = (softened(roll, rate), softened(pitch, rate));
     let active = crate::hub::lock().active_id();
     if active.is_some_and(crate::joystickhost::drives) {

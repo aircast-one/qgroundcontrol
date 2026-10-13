@@ -15,6 +15,7 @@ pub const DEPS: &[&str] = &[
     "vehicle.heading",
     "vehicle.pitch",
     "vehicle.roll",
+    "vehicle.customMode",
     "settings.flightMapSettings.mapProvider",
     crate::gimbal::GIMBAL_CHANGED,
     SYNTHETIC_CHANGED,
@@ -130,7 +131,11 @@ pub fn synthetic(backend: &dyn Backend, gimbals: &Value, aim: (f64, f64)) -> Val
     let (tilt, pan) = aim;
     let attitude = |path: &str| raw(backend, path).unwrap_or(0.0);
     let (heading, aimed_pitch) = gimbal.unwrap_or(((attitude("vehicle.heading") + pan).rem_euclid(360.0), tilt));
-    let (pitch, roll) = (attitude("vehicle.pitch") + aimed_pitch, attitude("vehicle.roll"));
+    let frame_locked = crate::virtualjoystick::rate_mode_now(&backend.value_fields("vehicle", crate::virtualjoystick::VEHICLE_FIELDS));
+    let (pitch, roll) = match frame_locked {
+        true => (attitude("vehicle.pitch") + aimed_pitch, attitude("vehicle.roll")),
+        false => (aimed_pitch, 0.0),
+    };
     let provider = crate::read::value_string(&backend.value("settings.flightMapSettings.mapProvider.rawValue"));
     json!({
         "kind": "object",
@@ -275,14 +280,32 @@ mod tests {
         assert_eq!(view["imagery"], "Esri World Satellite");
     }
 
+    fn copter_in(custom_mode: u32) -> (&'static str, Value) {
+        ("vehicle", json!({ "kind": "object", "apmFirmware": true, "multiRotor": true, "customMode": custom_mode }))
+    }
+
+    const COPTER_ACRO: u32 = 1;
+    const COPTER_LOITER: u32 = 5;
+
     #[test]
-    fn the_view_banks_and_pitches_with_the_drone_so_the_pilot_always_sees_its_horizon() {
-        let banked = flying(&[("vehicle.pitch", json!(-20.0)), ("vehicle.roll", json!(35.0))]);
+    fn in_acro_the_view_banks_and_pitches_with_the_drone_so_the_pilot_sees_the_horizon_they_fly_by() {
+        let banked = flying(&[("vehicle.pitch", json!(-20.0)), ("vehicle.roll", json!(35.0)), copter_in(COPTER_ACRO)]);
         let view = synthetic(&banked, &no_gimbal(), DEFAULT_AIM);
         assert_eq!((view["pitch"].as_f64(), view["roll"].as_f64()), (Some(-20.0 + FIXED_CAMERA_TILT_DEG), Some(35.0)), "nose down 20 and banked 35, the horizon rises and tilts as it would on a camera bolted to the frame");
         assert_eq!(view["tilt"].as_f64(), Some(FIXED_CAMERA_TILT_DEG), "a drag starts from the pilot's tilt, not from where the nose happens to point");
         let gimballed = synthetic(&banked, &json!({ "gimbals": [{ "active": true, "absoluteYaw": 90.0, "pitch": -30.0 }] }), DEFAULT_AIM);
         assert_eq!((gimballed["heading"].as_f64(), gimballed["pitch"].as_f64(), gimballed["roll"].as_f64()), (Some(90.0), Some(-50.0), Some(35.0)), "a gimbal sets where the view looks, but the horizon still moves with the airframe");
+    }
+
+    #[test]
+    fn outside_rate_modes_the_view_holds_steady_like_a_gimbal_while_the_drone_leans_into_its_flight() {
+        let leaning = flying(&[("vehicle.pitch", json!(-20.0)), ("vehicle.roll", json!(35.0)), copter_in(COPTER_LOITER)]);
+        let view = synthetic(&leaning, &no_gimbal(), DEFAULT_AIM);
+        assert_eq!((view["pitch"].as_f64(), view["roll"].as_f64()), (Some(FIXED_CAMERA_TILT_DEG), Some(0.0)), "flying forward in Loiter tips the nose down, and the view keeps looking where it was");
+        let gimballed = synthetic(&leaning, &json!({ "gimbals": [{ "active": true, "absoluteYaw": 90.0, "pitch": -30.0 }] }), DEFAULT_AIM);
+        assert_eq!((gimballed["pitch"].as_f64(), gimballed["roll"].as_f64()), (Some(-30.0), Some(0.0)), "a gimbal's pitch is already measured from the horizon");
+        let unknown = synthetic(&flying(&[("vehicle.pitch", json!(-20.0)), ("vehicle.roll", json!(35.0))]), &no_gimbal(), DEFAULT_AIM);
+        assert_eq!(unknown["roll"].as_f64(), Some(0.0), "until the mode is known the view stays level");
     }
 
     #[test]
