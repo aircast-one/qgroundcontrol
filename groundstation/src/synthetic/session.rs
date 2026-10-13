@@ -41,6 +41,7 @@ const STAND_IN_IN_FLIGHT: usize = 6;
 const TERRAIN_UNDER_EVERY: Duration = Duration::from_millis(500);
 const TERRAIN_UNDER_COARSER: f64 = 4.0;
 const LONGEST_GUESS: Duration = Duration::from_secs(1);
+const LONGEST_TURN_GUESS: Duration = Duration::from_millis(300);
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Target {
@@ -57,6 +58,9 @@ pub struct Target {
     pub north_speed: f64,
     pub east_speed: f64,
     pub climb_speed: f64,
+    pub heading_rate: Option<f64>,
+    pub pitch_rate: Option<f64>,
+    pub roll_rate: f64,
 }
 
 impl Target {
@@ -77,6 +81,9 @@ impl Target {
             north_speed: number("northSpeed")?,
             east_speed: number("eastSpeed")?,
             climb_speed: number("climbSpeed")?,
+            heading_rate: number("headingRate"),
+            pitch_rate: number("pitchRate"),
+            roll_rate: number("rollRate")?,
         })
     }
 }
@@ -231,6 +238,7 @@ pub struct Session {
     turn: Option<Turn>,
     spot_since: Option<((f64, f64), Instant)>,
     height_since: Option<(f64, Instant)>,
+    attitude_since: Option<((f64, f64, f64), Instant)>,
     spin: f64,
     ground_meshes: Vec<Arc<Mesh>>,
     backfill: Vec<Arc<Mesh>>,
@@ -284,16 +292,70 @@ pub fn turned(turn: Option<Turn>, aim: Aim, now: Instant) -> Turn {
     }
 }
 
-fn since<T: PartialEq>(seen: Option<(T, Instant)>, reading: T, now: Instant) -> (T, Instant) {
-    let at = seen.as_ref().filter(|(before, _)| *before == reading).map_or(now, |(_, at)| *at);
+fn since<T: PartialEq>(seen: Option<(T, Instant)>, reading: T, now: Instant, ticked: Option<Instant>) -> (T, Instant) {
+    let noticed = now - ticked.map_or(Duration::ZERO, |before| now.saturating_duration_since(before).min(LONGEST_STEP) / 2);
+    let at = seen.as_ref().filter(|(before, _)| *before == reading).map_or(noticed, |(_, at)| *at);
     (reading, at)
 }
 
-pub fn ahead(target: &Target, spot_age: Duration, height_age: Duration) -> Target {
-    let seconds = |age: Duration| age.min(LONGEST_GUESS).as_secs_f64();
-    let (north, east) = (target.north_speed * seconds(spot_age), target.east_speed * seconds(spot_age));
-    let (latitude, longitude) = crate::surveygrid::at_distance_and_azimuth((target.latitude, target.longitude), north.hypot(east), east.atan2(north).to_degrees());
-    Target { latitude, longitude, above_home: target.above_home + target.climb_speed * seconds(height_age), ..target.clone() }
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Motion {
+    pub north: f64,
+    pub east: f64,
+    pub climb: f64,
+    pub heading: f64,
+    pub pitch: f64,
+    pub roll: f64,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Ages {
+    pub spot: Duration,
+    pub height: Duration,
+    pub attitude: Duration,
+}
+
+fn moved(at: (f64, f64), north: f64, east: f64) -> (f64, f64) {
+    crate::surveygrid::at_distance_and_azimuth(at, north.hypot(east), east.atan2(north).to_degrees())
+}
+
+pub fn ahead(target: &Target, ages: Ages) -> (Target, Motion) {
+    let seconds = |age: Duration, longest: Duration| age.min(longest).as_secs_f64();
+    let live = |rate: f64, age: Duration, longest: Duration| if age < longest { rate } else { 0.0 };
+    let (moving, climbing, turning) = (seconds(ages.spot, LONGEST_GUESS), seconds(ages.height, LONGEST_GUESS), seconds(ages.attitude, LONGEST_TURN_GUESS));
+    let (latitude, longitude) = moved((target.latitude, target.longitude), target.north_speed * moving, target.east_speed * moving);
+    let guess = Target {
+        latitude,
+        longitude,
+        above_home: target.above_home + target.climb_speed * climbing,
+        heading: target.heading + target.heading_rate.unwrap_or(0.0) * turning,
+        pitch: target.pitch + target.pitch_rate.unwrap_or(0.0) * turning,
+        roll: target.roll + target.roll_rate * turning,
+        ..target.clone()
+    };
+    let motion = Motion {
+        north: live(target.north_speed, ages.spot, LONGEST_GUESS),
+        east: live(target.east_speed, ages.spot, LONGEST_GUESS),
+        climb: live(target.climb_speed, ages.height, LONGEST_GUESS),
+        heading: live(target.heading_rate.unwrap_or(0.0), ages.attitude, LONGEST_TURN_GUESS),
+        pitch: live(target.pitch_rate.unwrap_or(0.0), ages.attitude, LONGEST_TURN_GUESS),
+        roll: live(target.roll_rate, ages.attitude, LONGEST_TURN_GUESS),
+    };
+    (guess, motion)
+}
+
+pub fn advanced(pose: Pose, motion: &Motion, elapsed: Duration) -> Pose {
+    let seconds = elapsed.min(LONGEST_STEP).as_secs_f64();
+    let (latitude, longitude) = moved((pose.latitude, pose.longitude), motion.north * seconds, motion.east * seconds);
+    Pose {
+        latitude,
+        longitude,
+        height: pose.height + motion.climb * seconds,
+        heading: (pose.heading + motion.heading * seconds).rem_euclid(360.0),
+        pitch: pose.pitch + motion.pitch * seconds,
+        roll: pose.roll + motion.roll * seconds,
+        fov: pose.fov,
+    }
 }
 
 fn toward(from: Pose, to: Pose, alpha: f64) -> Pose {
@@ -376,6 +438,7 @@ impl Session {
             turn: None,
             spot_since: None,
             height_since: None,
+            attitude_since: None,
             spin: 0.0,
             ground_meshes: Vec::new(),
             backfill: Vec::new(),
@@ -632,16 +695,26 @@ impl Session {
             Some(fallback) => (fallback.home.height, fallback.under.height),
             None => (self.home.height, self.under.height),
         };
-        let spot = since(self.spot_since, (target.latitude, target.longitude), now);
-        let altitude = since(self.height_since, target.above_home, now);
+        let spot = since(self.spot_since, (target.latitude, target.longitude), now, self.ticked);
+        let altitude = since(self.height_since, target.above_home, now, self.ticked);
+        let attitude = since(self.attitude_since, (target.heading, target.pitch, target.roll), now, self.ticked);
         self.spot_since = Some(spot);
         self.height_since = Some(altitude);
-        let guess = ahead(target, now.saturating_duration_since(spot.1), now.saturating_duration_since(altitude.1));
-        let goal = Pose { latitude: guess.latitude, longitude: guess.longitude, height: camera_height(&guess, home_ground, under_ground), heading: aim.heading, pitch: aim.pitch, roll: target.roll, fov: target.fov };
+        self.attitude_since = Some(attitude);
+        let age = |since: Instant| now.saturating_duration_since(since);
+        let (guess, motion) = ahead(target, Ages { spot: age(spot.1), height: age(altitude.1), attitude: age(attitude.1) });
+        let goal = Pose {
+            latitude: guess.latitude,
+            longitude: guess.longitude,
+            height: camera_height(&guess, home_ground, under_ground),
+            heading: target.heading_rate.map_or(aim.heading, |_| guess.heading),
+            pitch: target.pitch_rate.map_or(aim.pitch, |_| guess.pitch),
+            roll: guess.roll,
+            fov: target.fov,
+        };
         let elapsed = self.ticked.map(|at| now.duration_since(at));
-        let alpha = elapsed.map_or(1.0, follow);
         self.ticked = Some(now);
-        let pose = self.shown.map_or(goal, |shown| toward(shown, goal, alpha));
+        let pose = self.shown.zip(elapsed).map_or(goal, |(shown, elapsed)| toward(advanced(shown, &motion, elapsed), goal, follow(elapsed)));
         let moving = self.shown.is_none_or(|before| !settled(&before, &pose));
         self.spin = spun(self.spin, self.shown.zip(elapsed).map(|(before, elapsed)| spin_of(&before, &pose, elapsed)));
         self.shown = Some(pose);
@@ -686,7 +759,7 @@ mod tests {
     }
 
     fn target(imagery: &str) -> Target {
-        Target { latitude: -35.36213, longitude: 149.16514, above_home: 30.0, home_latitude: -35.363262, home_longitude: 149.165237, heading: 200.0, pitch: -15.0, roll: 0.0, fov: 70.0, imagery: imagery.to_string(), north_speed: 0.0, east_speed: 0.0, climb_speed: 0.0 }
+        Target { latitude: -35.36213, longitude: 149.16514, above_home: 30.0, home_latitude: -35.363262, home_longitude: 149.165237, heading: 200.0, pitch: -15.0, roll: 0.0, fov: 70.0, imagery: imagery.to_string(), north_speed: 0.0, east_speed: 0.0, climb_speed: 0.0, heading_rate: Some(0.0), pitch_rate: Some(0.0), roll_rate: 0.0 }
     }
 
     fn settle(session: &mut Session, target: &Target, start: Instant) -> Option<Frame> {
@@ -762,8 +835,9 @@ mod tests {
 
     #[test]
     fn the_view_reads_into_a_target_only_when_complete() {
-        let view = serde_json::json!({ "available": true, "latitude": -35.0, "longitude": 149.0, "aboveHome": 20.0, "homeLatitude": -35.1, "homeLongitude": 149.1, "heading": 90.0, "pitch": -15.0, "roll": 0.0, "fov": 70.0, "imagery": "Bing Satellite", "northSpeed": 3.0, "eastSpeed": -4.0, "climbSpeed": 1.0 });
+        let view = serde_json::json!({ "available": true, "latitude": -35.0, "longitude": 149.0, "aboveHome": 20.0, "homeLatitude": -35.1, "homeLongitude": 149.1, "heading": 90.0, "pitch": -15.0, "roll": 0.0, "fov": 70.0, "imagery": "Bing Satellite", "northSpeed": 3.0, "eastSpeed": -4.0, "climbSpeed": 1.0, "headingRate": 12.0, "pitchRate": null, "rollRate": 0.0 });
         assert_eq!(Target::from_view(&view).map(|t| (t.above_home, t.heading, t.north_speed, t.east_speed, t.climb_speed)), Some((20.0, 90.0, 3.0, -4.0, 1.0)));
+        assert_eq!(Target::from_view(&view).map(|t| (t.heading_rate, t.pitch_rate)), Some((Some(12.0), None)), "a gimbal-aimed axis has no rate, so it glides instead");
         assert_eq!(Target::from_view(&serde_json::json!({ "available": false })), None);
         let mut missing = view.clone();
         missing.as_object_mut().unwrap().remove("fov");
@@ -771,12 +845,38 @@ mod tests {
     }
 
     #[test]
+    fn between_attitude_readings_the_view_turns_on_at_the_reported_rate() {
+        let turning = Target { heading_rate: Some(50.0), ..target("Bing Satellite") };
+        let ages = |ms: u64| Ages { attitude: Duration::from_millis(ms), ..Ages::default() };
+        assert!((ahead(&turning, ages(200)).0.heading - 210.0).abs() < 1e-9, "a fifth of a second at 50 deg/s is 10 degrees on");
+        assert!((ahead(&turning, ages(5_000)).0.heading - 215.0).abs() < 1e-9, "a quiet link stops the turn after 300 ms rather than spinning the view");
+        assert_eq!(ahead(&turning, ages(5_000)).1.heading, 0.0, "and the drawn view stops turning with it");
+    }
+
+    #[test]
+    fn a_steady_turn_is_drawn_where_the_drone_points_now_not_where_it_pointed() {
+        let mut session = Session::new("", Arc::new(Fake)).expect("workers");
+        let start = Instant::now();
+        let errors: Vec<f64> = (0u64..120)
+            .map(|tick| {
+                let ms = tick * 16;
+                let reading = Target { heading: 200.0 + 60.0 * (ms / 50 * 50) as f64 / 1000.0, heading_rate: Some(60.0), ..target("Bing Satellite") };
+                let drawn = session.frame(Some(&reading), 640, 360, start + Duration::from_millis(ms)).expect("a frame").pose.heading;
+                wrapped(drawn - (200.0 + 60.0 * ms as f64 / 1000.0)).abs()
+            })
+            .collect();
+        let worst = errors[60..].iter().copied().fold(0.0, f64::max);
+        assert!(worst < 0.5, "a 60 deg/s turn read 20 times a second and drawn at 60 fps sits within half a degree of now, not ~8 degrees behind ({worst})");
+    }
+
+    #[test]
     fn between_position_readings_the_camera_flies_on_at_the_reported_velocity() {
         let flying = Target { north_speed: 10.0, east_speed: 0.0, climb_speed: 2.0, ..target("Bing Satellite") };
-        let half = ahead(&flying, Duration::from_millis(500), Duration::from_millis(500));
+        let both = |ms: u64| Ages { spot: Duration::from_millis(ms), height: Duration::from_millis(ms), attitude: Duration::ZERO };
+        let half = ahead(&flying, both(500)).0;
         assert!(((half.latitude - flying.latitude) * 111_195.0 - 5.0).abs() < 0.05, "half a second at 10 m/s north is 5 m north ({})", (half.latitude - flying.latitude) * 111_195.0);
         assert!((half.longitude - flying.longitude).abs() < 1e-9 && (half.above_home - 31.0).abs() < 1e-9);
-        let lost = ahead(&flying, Duration::from_secs(30), Duration::from_secs(30));
+        let lost = ahead(&flying, both(30_000)).0;
         assert!(((lost.latitude - flying.latitude) * 111_195.0 - 10.0).abs() < 0.1, "a link that goes quiet stops the guess after a second instead of flying the camera away");
     }
 

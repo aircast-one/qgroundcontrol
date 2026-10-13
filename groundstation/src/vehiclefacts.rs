@@ -108,6 +108,7 @@ impl VehicleFacts {
             MavMessage::ATTITUDE(d) => {
                 if from == self.vehicle && !self.receiving_quaternion {
                     self.set_attitude(d.roll as f64, d.pitch as f64, d.yaw as f64);
+                    (self.roll_rate, self.pitch_rate, self.yaw_rate) = (f64::from(d.rollspeed).to_degrees(), f64::from(d.pitchspeed).to_degrees(), f64::from(d.yawspeed).to_degrees());
                 }
                 true
             }
@@ -242,8 +243,10 @@ mod tests {
         data.roll = 0.5;
         data.pitch = -0.25;
         data.yaw = -1.5;
+        data.yawspeed = 0.5;
         facts.apply((1, 1), &MavMessage::ATTITUDE(data.clone()));
         assert!(near(facts.roll, 28.6479) && near(facts.pitch, -14.3239));
+        assert!(near(facts.yaw_rate, 28.6479) && facts.roll_rate == 0.0, "ArduPilot's plain ATTITUDE carries body rates too, so the yaw rate is not stuck at 0");
         assert_eq!(facts.heading, 274.0);
         data.yaw = 7.0;
         facts.apply((1, 1), &MavMessage::ATTITUDE(data));

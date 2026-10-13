@@ -40,6 +40,7 @@ const LOWEST_HEIGHT_M: f64 = 1.0;
 const NEEDS_DEGREES: &str = "Give the tilt, from 0 (level) to -90 (straight down), and the pan from the nose, in degrees.";
 
 pub const DEFAULT_AIM: (f64, f64) = (FIXED_CAMERA_TILT_DEG, 0.0);
+const FASTEST_TURN_DEG_S: f64 = 720.0;
 
 static AIM: Mutex<(f64, f64)> = Mutex::new(DEFAULT_AIM);
 static CHANGED: AtomicBool = AtomicBool::new(false);
@@ -106,6 +107,14 @@ pub fn gimbal_aim(gimbals: &Value) -> Option<(f64, f64)> {
         .filter(|(yaw, pitch)| yaw.is_finite() && pitch.is_finite())
 }
 
+pub fn euler_rates(roll: f64, pitch: f64, [p, q, r]: [f64; 3]) -> (f64, f64, f64) {
+    let (sin_roll, cos_roll) = roll.to_radians().sin_cos();
+    let pitch = pitch.to_radians();
+    let turning = q * sin_roll + r * cos_roll;
+    let bounded = |rate: f64| rate.clamp(-FASTEST_TURN_DEG_S, FASTEST_TURN_DEG_S);
+    (bounded(p + turning * pitch.tan()), bounded(q * cos_roll - r * sin_roll), bounded(turning / pitch.cos()))
+}
+
 fn ground_reach(height: f64, elevation_deg: f64) -> f64 {
     match elevation_deg < BELOW_HORIZON_DEG {
         true => (height / (-elevation_deg).to_radians().tan()).min(BEAM_REACH_M),
@@ -136,6 +145,11 @@ pub fn synthetic(backend: &dyn Backend, gimbals: &Value, aim: (f64, f64)) -> Val
         true => (reading("vehicle.pitch") + aimed_pitch, reading("vehicle.roll")),
         false => (aimed_pitch, 0.0),
     };
+    let (roll_rate, pitch_rate, heading_rate) = euler_rates(reading("vehicle.roll"), reading("vehicle.pitch"), [reading("vehicle.rollRate"), reading("vehicle.pitchRate"), reading("vehicle.yawRate")]);
+    let (pitch_rate, roll_rate) = match frame_locked {
+        true => (Some(pitch_rate), roll_rate),
+        false => (gimbal.is_none().then_some(0.0), 0.0),
+    };
     let provider = crate::read::value_string(&backend.value("settings.flightMapSettings.mapProvider.rawValue"));
     json!({
         "kind": "object",
@@ -157,6 +171,9 @@ pub fn synthetic(backend: &dyn Backend, gimbals: &Value, aim: (f64, f64)) -> Val
         "northSpeed": reading("vehicle.localPosition.vx"),
         "eastSpeed": reading("vehicle.localPosition.vy"),
         "climbSpeed": -reading("vehicle.localPosition.vz"),
+        "headingRate": gimbal.is_none().then_some(heading_rate),
+        "pitchRate": pitch_rate,
+        "rollRate": roll_rate,
         "native": native(),
         "draw": drawn(),
         "beam": beam((latitude, longitude), above_home, heading, pitch, CAMERA_FOV_DEG).iter().map(|(lat, lon)| json!({ "latitude": lat, "longitude": lon })).collect::<Vec<_>>(),
@@ -284,6 +301,19 @@ mod tests {
         assert_eq!((view["northSpeed"].as_f64(), view["climbSpeed"].as_f64()), (Some(0.0), Some(0.0)), "no local position yet, so no velocity to fly the view on with");
         let moving = synthetic(&flying(&[("vehicle.localPosition.vx", json!(3.0)), ("vehicle.localPosition.vy", json!(-4.0)), ("vehicle.localPosition.vz", json!(-1.5))]), &no_gimbal(), DEFAULT_AIM);
         assert_eq!((moving["northSpeed"].as_f64(), moving["eastSpeed"].as_f64(), moving["climbSpeed"].as_f64()), (Some(3.0), Some(-4.0), Some(1.5)), "the view carries the drone's NED velocity as north, east and up");
+        let turning = synthetic(&flying(&[("vehicle.yawRate", json!(30.0))]), &no_gimbal(), DEFAULT_AIM);
+        assert_eq!((turning["headingRate"].as_f64(), turning["pitchRate"].as_f64(), turning["rollRate"].as_f64()), (Some(30.0), Some(0.0), Some(0.0)), "level and turning, the view turns with the nose and keeps the pilot's tilt");
+        let gimballed = synthetic(&flying(&[("vehicle.yawRate", json!(30.0))]), &json!({ "gimbals": [{ "active": true, "absoluteYaw": 90.0, "pitch": -30.0 }] }), DEFAULT_AIM);
+        assert!(gimballed["headingRate"].is_null() && gimballed["pitchRate"].is_null(), "a gimbal aims the view, and its own readings are glided, not predicted from the airframe");
+    }
+
+    #[test]
+    fn body_rates_become_heading_pitch_and_roll_rates() {
+        let near = |a: (f64, f64, f64), b: (f64, f64, f64)| (a.0 - b.0).abs() < 1e-9 && (a.1 - b.1).abs() < 1e-9 && (a.2 - b.2).abs() < 1e-9;
+        assert!(near(euler_rates(0.0, 0.0, [5.0, 6.0, 7.0]), (5.0, 6.0, 7.0)), "level, body rates are the Euler rates");
+        let (_, pitch_rate, heading_rate) = euler_rates(90.0, 0.0, [0.0, 20.0, 0.0]);
+        assert!(pitch_rate.abs() < 1e-9 && (heading_rate - 20.0).abs() < 1e-9, "banked 90, pulling back turns the heading, it does not raise the nose");
+        assert_eq!(euler_rates(0.0, 90.0, [0.0, 0.0, 10.0]).2, FASTEST_TURN_DEG_S, "straight up the heading rate is unbounded, so it is capped");
     }
 
     fn copter_in(custom_mode: u32) -> (&'static str, Value) {

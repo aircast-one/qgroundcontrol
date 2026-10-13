@@ -9,7 +9,7 @@ use super::render::{Renderer, Targets};
 use super::session::{Frame, Session, Stats, Target};
 use super::window::Window;
 
-const TICK: Duration = Duration::from_millis(33);
+const TICK: Duration = Duration::from_millis(16);
 const TOKEN_EVERY: Duration = Duration::from_secs(1);
 const OVERLAYS_EVERY: Duration = Duration::from_millis(500);
 const SUMMARY_EVERY: Duration = Duration::from_secs(10);
