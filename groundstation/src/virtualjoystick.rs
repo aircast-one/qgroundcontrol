@@ -151,12 +151,13 @@ pub fn virtual_joystick_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let takeover = matches!(frame, Airframe::Px4).then(|| value_number(&backend.value(PX4_TAKEOVER))).flatten().map_or(TAKEOVER_IN_AUTO, |bits| bits as u32);
     let left_handed = setting(backend, "virtualJoystickLeftHandedMode");
     let enabled = setting(backend, "virtualJoystick");
+    let sending = sending(backend);
     json!({
         "kind": "object",
         "class": "VirtualJoystick",
         "enabled": enabled,
-        "show": enabled && mode.is_none_or(|custom| flown_by_sticks(frame, custom, takeover)),
-        "sending": sending(backend),
+        "show": enabled && sending && mode.is_none_or(|custom| flown_by_sticks(frame, custom, takeover)),
+        "sending": sending,
         "autoCenterThrottle": !mode.is_some_and(|custom| throttle_free(frame, custom, driven)),
         "softened": mode.is_some_and(|custom| rate_mode(frame, custom)),
         "leftHandedMode": left_handed,
@@ -288,7 +289,7 @@ mod tests {
         assert_eq!(shown(on("plane", "Guided")), json!(false), "nothing takes over from Guided on other vehicles");
         assert_eq!(shown(on("plane", "Auto")), json!(false));
         assert_eq!(virtual_joystick_view(&on("copter", "RTL"), &[])["enabled"], json!(true), "hidden sticks still stream centred, so the override link never drops mid-flight");
-        assert_eq!(shown(Rig { connected: false, ..on("copter", "RTL") }), json!(true), "with no vehicle the setting alone decides");
+        assert_eq!(shown(Rig { connected: false, ..on("copter", "Loiter") }), json!(false), "with no vehicle the sticks have nothing to fly");
     }
 
     #[test]
