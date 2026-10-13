@@ -14,6 +14,7 @@ pub const ION_GOOGLE_ASSET: u64 = 2_275_207;
 pub const RETRY_AFTER: Duration = Duration::from_secs(10);
 pub const UNLOAD_AFTER: Duration = Duration::from_secs(30);
 const UNLOAD_SWEEP_EVERY: Duration = Duration::from_secs(1);
+const TRIM_EVERY: Duration = Duration::from_secs(1);
 const MAXIMUM_SCREEN_SPACE_ERROR: f64 = 16.0;
 const DETAIL_PIXELS: f64 = 1280.0 * 720.0;
 const MAX_LOADED_TILES: usize = 500;
@@ -127,7 +128,9 @@ pub struct Tileset {
     session: Option<(String, String)>,
     keep: Vec<(String, String)>,
     swept: Option<Instant>,
+    trimmed: Option<Instant>,
     coarsest: f64,
+    fresh: Vec<Arc<Mesh>>,
 }
 
 pub struct Selection {
@@ -172,7 +175,19 @@ pub(super) fn cutoff(mut used: Vec<Instant>, most: usize) -> Option<Instant> {
 }
 
 fn used_meshes(tile: &Tile) -> Vec<Instant> {
-    tile.used.filter(|_| matches!(tile.content, Content::Meshes(_))).into_iter().chain(tile.children.iter().flat_map(used_meshes)).collect()
+    gather_used(tile, Vec::new())
+}
+
+fn gather_used(tile: &Tile, found: Vec<Instant>) -> Vec<Instant> {
+    let found = match (tile.used, &tile.content) {
+        (Some(used), Content::Meshes(_)) => {
+            let mut grown = found;
+            grown.push(used);
+            grown
+        }
+        _ => found,
+    };
+    tile.children.iter().fold(found, |found, child| gather_used(child, found))
 }
 
 pub(super) fn kept(used: Instant, cutoff: Instant, now: Instant) -> bool {
@@ -190,21 +205,13 @@ fn refine_above(camera: &Camera) -> f64 {
     MAXIMUM_SCREEN_SPACE_ERROR * (camera.height_px * camera.height_px * camera.aspect / DETAIL_PIXELS).sqrt().max(1.0)
 }
 
-fn meshes_in(tile: &Tile) -> Vec<Arc<Mesh>> {
-    let own = match &tile.content {
-        Content::Meshes(meshes) => meshes.clone(),
-        _ => Vec::new(),
-    };
-    own.into_iter().chain(tile.children.iter().flat_map(meshes_in)).collect()
-}
-
 fn loaded(tile: &Tile) -> usize {
     usize::from(matches!(tile.content, Content::Meshes(_))) + tile.children.iter().map(loaded).sum::<usize>()
 }
 
 impl Tileset {
     pub fn new(root: Tile, url: &Url) -> Self {
-        Self { root, session: None, keep: query(url), swept: None, coarsest: f64::INFINITY }
+        Self { root, session: None, keep: query(url), swept: None, trimmed: None, coarsest: f64::INFINITY, fresh: Vec::new() }
     }
 
     fn signed(&mut self, url: &Url) -> Url {
@@ -221,8 +228,8 @@ impl Tileset {
         loaded(&self.root)
     }
 
-    pub fn loaded_meshes(&self) -> Vec<Arc<Mesh>> {
-        meshes_in(&self.root)
+    pub fn take_fresh(&mut self) -> Vec<Arc<Mesh>> {
+        std::mem::take(&mut self.fresh)
     }
 
     pub fn select(&mut self, camera: &Camera, budget: usize, now: Instant) -> (Vec<Arc<Mesh>>, Vec<Request>) {
@@ -247,6 +254,10 @@ impl Tileset {
     }
 
     pub fn trim(&mut self, now: Instant, probed: Option<Instant>) {
+        if self.trimmed.is_some_and(|trimmed| now.duration_since(trimmed) < TRIM_EVERY) {
+            return;
+        }
+        self.trimmed = Some(now);
         if let Some(oldest) = cutoff(used_meshes(&self.root), MAX_LOADED_TILES) {
             evict(&mut self.root, oldest, &[Some(now), probed].into_iter().flatten().collect::<Vec<_>>());
         }
@@ -263,7 +274,11 @@ impl Tileset {
                 tile.children.push(*child);
                 Content::External
             }
-            Ok(Parsed::Meshes(meshes)) => Content::Meshes(meshes.into_iter().map(Arc::new).collect()),
+            Ok(Parsed::Meshes(meshes)) => {
+                let arrived: Vec<Arc<Mesh>> = meshes.into_iter().map(Arc::new).collect();
+                self.fresh.extend(arrived.iter().cloned());
+                Content::Meshes(arrived)
+            }
         };
     }
 
@@ -378,6 +393,17 @@ mod tests {
         assert_eq!(tiles.select_measured(&camera, 8, start).coarsest, 0.0, "leaves that need no finer tile are full detail");
         let away = Camera::new(&Pose { heading: 180.0, ..Pose { latitude: 0.0, longitude: 0.0, height: 100.0, heading: 0.0, pitch: 0.0, roll: 0.0, fov: 60.0 } }, 1280, 720);
         assert_eq!(tiles.select_measured(&away, 8, start).coarsest, f64::INFINITY, "nothing drawn is not ready");
+    }
+
+    #[test]
+    fn arrived_meshes_are_handed_out_once_for_upload_not_walked_every_frame() {
+        let camera = camera();
+        let (mut tiles, _) = parent(&camera);
+        let start = Instant::now();
+        tiles.select(&camera, 8, start);
+        tiles.deliver(&[0], Ok(Parsed::Meshes(vec![mesh(), mesh()])), start);
+        assert_eq!(tiles.take_fresh().len(), 2);
+        assert!(tiles.take_fresh().is_empty(), "walking every loaded tile each frame to find them cost a third of the phone's render thread");
     }
 
     #[test]

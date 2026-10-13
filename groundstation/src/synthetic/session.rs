@@ -578,8 +578,8 @@ impl Session {
         self.seen = Some(target.clone());
         let due = self.selected.is_none_or(|at| now.duration_since(at) >= RESELECT_EVERY);
         let reselected = (delivered > 0 || moving || fresh || due) && self.select(&Camera::new(&pose, width, height), target, now);
-        let warm = match &self.source {
-            Source::Google(Some(tiles)) => tiles.loaded_meshes(),
+        let warm = match &mut self.source {
+            Source::Google(Some(tiles)) => tiles.take_fresh(),
             _ => Vec::new(),
         };
         Some(Frame { pose, ground: self.ground_meshes.clone(), warm, home_ground, changed: moving || fresh || reselected })

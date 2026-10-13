@@ -412,9 +412,9 @@ fn show(first: Window, kept: Option<Kept>, commands: &Receiver<Command>, feed: &
         let restyled = overlays.refresh(now, || feed.overlays().as_ref().and_then(Overlays::from_view));
         let target = feed.pose().as_ref().and_then(Target::from_view);
         let largest = shown.iter().map(|surface| surface.size).max_by_key(|(width, height)| u64::from(*width) * u64::from(*height)).unwrap_or_default();
-        let frame = session.as_mut().filter(|_| largest.0 > 0 && largest.1 > 0).and_then(|session: &mut Session| session.frame(target.as_ref(), largest.0, largest.1, now));
-        if let Some((frame, session)) = frame.as_ref().filter(|frame| !frame.warm.is_empty()).zip(session.as_mut()) {
-            session.warmed(gpu.renderer.warm(&frame.warm, WARM_PER_TICK));
+        let mut frame = session.as_mut().filter(|_| largest.0 > 0 && largest.1 > 0).and_then(|session: &mut Session| session.frame(target.as_ref(), largest.0, largest.1, now));
+        if let Some((frame, session)) = frame.as_mut().zip(session.as_mut()) {
+            session.warmed(gpu.renderer.warm(std::mem::take(&mut frame.warm), WARM_PER_TICK));
         }
         let redraw = rekeyed || restyled || frame.as_ref().is_some_and(|frame| frame.changed) || frame.is_some() != framed;
         framed = frame.is_some();

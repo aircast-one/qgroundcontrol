@@ -140,6 +140,7 @@ pub struct Renderer {
     sampler: wgpu::Sampler,
     resident: Resident<GpuMesh>,
     pub uploads: usize,
+    to_upload: Vec<Weak<Mesh>>,
 }
 
 fn uniform(binding: u32, visibility: wgpu::ShaderStages) -> wgpu::BindGroupLayoutEntry {
@@ -222,7 +223,7 @@ impl Renderer {
         let scene = device.create_buffer(&wgpu::BufferDescriptor { label: Some("synthetic scene"), size: SCENE_BYTES, usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
         let scene_bind = device.create_bind_group(&wgpu::BindGroupDescriptor { label: Some("synthetic scene"), layout: &scene_layout, entries: &[wgpu::BindGroupEntry { binding: 0, resource: scene.as_entire_binding() }] });
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor { mag_filter: wgpu::FilterMode::Linear, min_filter: wgpu::FilterMode::Linear, mipmap_filter: wgpu::MipmapFilterMode::Linear, address_mode_u: wgpu::AddressMode::ClampToEdge, address_mode_v: wgpu::AddressMode::ClampToEdge, anisotropy_clamp: ANISOTROPY, ..Default::default() });
-        Self { device, queue, format, pipelines, sky, layout, scene, scene_bind, sampler, resident: Resident::default(), uploads: 0 }
+        Self { device, queue, format, pipelines, sky, layout, scene, scene_bind, sampler, resident: Resident::default(), uploads: 0, to_upload: Vec::new() }
     }
 
     fn upload(device: &wgpu::Device, queue: &wgpu::Queue, layout: &wgpu::BindGroupLayout, sampler: &wgpu::Sampler, mesh: &Mesh) -> GpuMesh {
@@ -283,11 +284,14 @@ impl Renderer {
         })
     }
 
-    pub fn warm(&mut self, meshes: &[Arc<Mesh>], most: usize) -> usize {
-        let missing: Vec<Arc<Mesh>> = meshes.iter().filter(|mesh| self.resident.get(mesh.id).is_none()).cloned().collect();
+    pub fn warm(&mut self, arrived: Vec<Arc<Mesh>>, most: usize) -> usize {
+        let queued = std::mem::take(&mut self.to_upload);
+        let missing: Vec<Arc<Mesh>> = queued.iter().filter_map(Weak::upgrade).chain(arrived).filter(|mesh| self.resident.get(mesh.id).is_none()).collect();
+        let (first, rest) = missing.split_at(missing.len().min(most));
         let (device, queue, layout, sampler) = (&self.device, &self.queue, &self.layout, &self.sampler);
-        self.uploads += self.resident.ensure(&missing[..missing.len().min(most)], |mesh| Self::upload(device, queue, layout, sampler, mesh));
-        missing.len().saturating_sub(most)
+        self.uploads += self.resident.ensure(first, |mesh| Self::upload(device, queue, layout, sampler, mesh));
+        self.to_upload = rest.iter().map(Arc::downgrade).collect();
+        self.to_upload.len()
     }
 
     pub fn draw(&mut self, target: &wgpu::TextureView, targets: &Targets, camera: &Camera, meshes: &[Arc<Mesh>]) {
