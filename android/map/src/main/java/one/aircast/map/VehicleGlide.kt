@@ -33,3 +33,9 @@ data class Glide(val from: VehiclePose, val to: VehiclePose, val startNs: Long, 
         fun settled(pose: VehiclePose, nowNs: Long): Glide = Glide(pose, pose, nowNs, nowNs, nowNs)
     }
 }
+
+fun Map<Int, Glide>.toward(fleet: List<VehicleChoice>, nowNs: Long): Map<Int, Glide> =
+    fleet.associate { it.id to (this[it.id] ?: Glide.settled(UNPLACED, 0L)).toward(VehiclePose(it.latitude, it.longitude, it.heading), nowNs) }
+
+fun List<VehicleChoice>.glidedAt(glides: Map<Int, Glide>, nowNs: Long): List<VehicleChoice> =
+    map { choice -> glides[choice.id]?.at(nowNs)?.let { choice.copy(latitude = it.latitude, longitude = it.longitude, heading = it.heading) } ?: choice }

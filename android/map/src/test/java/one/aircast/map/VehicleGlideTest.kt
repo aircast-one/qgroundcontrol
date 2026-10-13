@@ -40,6 +40,17 @@ class VehicleGlideTest {
     }
 
     @Test
+    fun `every vehicle in a fleet glides, not only the active one`() {
+        val lead = VehicleChoice(id = 1, name = "Lead", state = "", link = "", contactLost = false, active = true, latitude = 41.0, longitude = 44.0, heading = 0.0)
+        val wing = lead.copy(id = 2, name = "Wing", active = false, longitude = 45.0)
+        val moved = listOf(lead.copy(latitude = 41.001), wing.copy(latitude = 41.001))
+        val gliding = emptyMap<Int, Glide>().toward(listOf(lead, wing), 0).toward(moved, 400 * ms)
+
+        assertEquals(listOf(41.0005, 41.0005), moved.glidedAt(gliding, 600 * ms).map { it.latitude })
+        assertEquals(listOf(1), gliding.toward(moved.take(1), 500 * ms).keys.toList())
+    }
+
+    @Test
     fun `losing the position hides the marker at once`() {
         assertEquals(UNPLACED.latitude, flying.toward(UNPLACED, 500 * ms).at(500 * ms).latitude, 0.0)
     }

@@ -252,7 +252,7 @@ fun VehicleMap(
     val longitude = flown?.longitude ?: Double.NaN
     val heading = flown?.heading ?: Double.NaN
     val home = flown?.home
-    var glide by remember(flown?.id) { mutableStateOf(Glide.settled(UNPLACED, 0L)) }
+    var glides by remember { mutableStateOf(emptyMap<Int, Glide>()) }
 
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var style by remember { mutableStateOf<Style?>(null) }
@@ -479,7 +479,7 @@ fun VehicleMap(
     }
 
     fun recenterOnVehicle() {
-        val drawn = glide.at(System.nanoTime())
+        val drawn = flown?.let { glides[it.id] }?.at(System.nanoTime()) ?: UNPLACED
         val tracking = follow && isPlottable(drawn.latitude, drawn.longitude) && !panning && SystemClock.elapsedRealtime() >= trackingResumesAtMs
         val shown = map
         if (tracking && shown != null) {
@@ -501,8 +501,8 @@ fun VehicleMap(
 
     LaunchedEffect(style, latitude, longitude, heading, home, linkLost, fleet, lastSeen) {
         val currentStyle = style ?: return@LaunchedEffect
-        val segment = glide.toward(VehiclePose(latitude, longitude, heading), System.nanoTime())
-        glide = segment
+        val segments = glides.toward(fleet, System.nanoTime())
+        glides = segments
 
         (currentStyle.getSource(HOME_SOURCE) as? GeoJsonSource)?.setGeoJson(
             FeatureCollection.fromFeatures(
@@ -514,16 +514,15 @@ fun VehicleMap(
         recenterOnVehicle()
         do {
             val now = withFrameNanos { it }
-            val drawn = segment.at(now)
             (currentStyle.getSource(VEHICLE_SOURCE) as? GeoJsonSource)
                 ?.setGeoJson(
                     when {
-                        fleet.isEmpty() -> vehicleFeatures(drawn.latitude, drawn.longitude, drawn.heading, linkLost, lastSeen)
-                        else -> fleetFeatures(fleet.map { if (it.active) it.copy(latitude = drawn.latitude, longitude = drawn.longitude, heading = drawn.heading) else it }, lastSeen)
+                        fleet.isEmpty() -> vehicleFeatures(latitude, longitude, heading, linkLost, lastSeen)
+                        else -> fleetFeatures(fleet.glidedAt(segments, now), lastSeen)
                     },
                 )
             if (keepCentered) recenterOnVehicle()
-        } while (now < segment.endNs)
+        } while (segments.values.any { now < it.endNs })
     }
 
     LaunchedEffect(style, track) {
