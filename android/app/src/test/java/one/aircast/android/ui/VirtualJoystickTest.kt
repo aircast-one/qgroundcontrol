@@ -95,19 +95,6 @@ class VirtualJoystickTest {
         assertEquals("a pad shrinks to the room the layout has for it", 150.dp, stickPad(411.dp, 150.dp))
     }
 
-    @Test
-    fun `two pads and the stick monitor fit side by side across a portrait phone`() {
-        assertEquals(140.4f, padsBeside(411.dp).value, 0.1f)
-        assertTrue(stickPad(411.dp, padsBeside(411.dp)) < stickPad(411.dp))
-    }
-
-    @Test
-    fun `the monitor dot stays inside its box at full deflection`() {
-        assertEquals(5f, monitorDot(0f, 50f, 5f))
-        assertEquals(25f, monitorDot(0.5f, 50f, 5f))
-        assertEquals(45f, monitorDot(1f, 50f, 5f))
-        assertEquals(45f, monitorDot(2f, 50f, 5f))
-    }
 
     @Test
     fun `the knob follows the thumb one to one and stays inside the ring`() {

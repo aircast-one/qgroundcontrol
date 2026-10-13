@@ -51,6 +51,7 @@ private val CHIP_GAP = 6.dp
 private val CHIP_LABEL_MAX = 96.dp
 private val CHIP_GLYPH = 18.dp
 private val CHIP_ARROW = 18.dp
+private val CAMERA_MENU_SHEETS = listOf(CAMERA_SHEET to "Camera settings", GIMBAL_SHEET to "Gimbal settings")
 
 internal data class CameraSwitchState(val shown: CameraEntry, val cameras: List<CameraEntry>)
 
@@ -93,7 +94,9 @@ internal fun CameraSwitch(splitRoom: Boolean, modifier: Modifier = Modifier) {
     val switch = cameraSwitchState(reading)
     val splitTo = splitToggleTarget(reading, splitRoom, streamOn())
     val shown = switch?.shown ?: chipCamera(reading)
-    if ((switch == null && splitTo == null) || shown == null) return
+    val flyScreen = LocalFlyScreenState.current
+    val settings = CAMERA_MENU_SHEETS.filter { (sheet, _) -> sheet in flyScreen.offeredSheets }
+    if ((switch == null && splitTo == null && settings.isEmpty()) || shown == null) return
     var open by remember { mutableStateOf(false) }
     val white = MaterialTheme.aircast.outdoorForeground
     Box(modifier) {
@@ -140,6 +143,17 @@ internal fun CameraSwitch(splitRoom: Boolean, modifier: Modifier = Modifier) {
                         offMainInOrder { VideoCommands.setPictureInPicture(next) }
                     },
                     modifier = Modifier.semantics { role = Role.Switch },
+                )
+            }
+            if (settings.isNotEmpty() && (switch != null || splitTo != null)) HorizontalDivider()
+            settings.map { (sheet, label) ->
+                DropdownMenuItem(
+                    text = { Text(label) },
+                    leadingIcon = { Icon(painterResource(if (sheet == CAMERA_SHEET) R.drawable.ic_settings else R.drawable.ic_tune), null, Modifier.size(CHIP_GLYPH)) },
+                    onClick = {
+                        open = false
+                        flyScreen.requestedSheet = sheet
+                    },
                 )
             }
         }

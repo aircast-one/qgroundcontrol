@@ -21,7 +21,10 @@ import androidx.compose.ui.semantics.customActions
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.unit.toSize
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionOnScreen
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.unit.Dp
@@ -52,6 +55,9 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.calculateEndPadding
+import androidx.compose.foundation.layout.calculateStartPadding
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.width
@@ -225,12 +231,29 @@ internal fun FlyScreen(
     val togglePip: () -> Unit = { if (stickPad != null) onView(flyViewSwapped(view)) else showMini(if (pipExpanded) MiniMap.Thumb else MiniMap.Map) }
     val layout = LocalFlyScreenState.current.layout
     val bottomLead = ACTION_RAIL_CLEARANCE - AircastSpace.s3
-    val besideStick = stickPad?.let { it + AircastSpace.s3 } ?: 0.dp
+    val cutoutPadding = WindowInsets.displayCutout.asPaddingValues()
+    val direction = LocalLayoutDirection.current
+    val cutoutStart = cutoutPadding.calculateStartPadding(direction)
+    val cutoutEnd = cutoutPadding.calculateEndPadding(direction)
+    var controlsWidth by remember { mutableStateOf(0.dp) }
+    var letterbox by remember { mutableStateOf(Letterbox(0.dp, 0.dp)) }
+    val startGap = letterbox.start + cutoutStart
+    val endGap = letterbox.end + cutoutEnd
+    val stickEnd = cutoutEnd + AircastSpace.s3
+    val stickInset = if (fullScreen) maxOf(startGap, endGap) + AircastSpace.s3 else maxOf(startGap + ACTION_RAIL_CLEARANCE, endGap + AircastSpace.s3 + controlsWidth + AircastSpace.s2)
+    val overlaysStart = stickPad?.let { stickInset - startGap + it + AircastSpace.s3 } ?: ACTION_RAIL_CLEARANCE
+    val overlaysEnd = stickPad?.let { stickInset - endGap + it + AircastSpace.s3 } ?: AircastSpace.s3
+    val hostView = LocalView.current
+    val rootDensity = LocalDensity.current
+    val ornamentEnd = stickPad?.takeIf { !fullScreen }?.let { stickInset - letterbox.end + it + AircastSpace.s2 }
+    val shellState = LocalFlyScreenState.current
+    SideEffect { shellState.mapOrnamentEnd = ornamentEnd }
+    DisposableEffect(Unit) { onDispose { shellState.mapOrnamentEnd = null } }
     val cornerRoom = if (stickPad != null) MAP_LAYERS_CLEARANCE else 0.dp
     val flyJson by one.aircast.android.bridge.qgcPath(FLY_STATE)
     val armed = flyState(flyJson)?.armed == true
     LaunchedEffect(armed) { layout.lockWhileArmed(armed) }
-    Box(Modifier.fillMaxSize().onSizeChanged { boxSize = it }) {
+    Box(Modifier.fillMaxSize().onSizeChanged { boxSize = it }.onGloballyPositioned { letterbox = letterboxOf(hostView, it, rootDensity) }) {
         val mapIsPip = view == FlyView.Video
         val videoIsPip = view == FlyView.Map
         val mapShown = view == FlyView.Map || (mapIsPip && mini != MiniMap.Compass)
@@ -501,7 +524,7 @@ internal fun FlyScreen(
                 },
                 overlays = {
                     Column(
-                        Modifier.fillMaxWidth().clipToBounds().padding(start = ACTION_RAIL_CLEARANCE + besideStick, end = AircastSpace.s3 + besideStick + if (stickPad != null) RAIL_SHUTTER_ROOM else 0.dp),
+                        Modifier.fillMaxWidth().clipToBounds().padding(start = overlaysStart, end = overlaysEnd),
                         verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
                     ) {
                         CompositionLocalProvider(LocalAvoidedByVideoMessage provides true) {
@@ -579,11 +602,16 @@ internal fun FlyScreen(
                         .zIndex(if (underDecision) DECISION_LAYER - 0.5f else FULL_SCREEN_LAYER + 1f)
                         .align(Alignment.BottomCenter)
                         .graphicsLayer { alpha = if (settingsOver) 0f else 1f }
-                        .windowInsetsPadding(WindowInsets.displayCutout)
-                        .padding(start = if (fullScreen) AircastSpace.s3 else ACTION_RAIL_CLEARANCE, end = AircastSpace.s3, bottom = STICK_FLOOR)
+                        .padding(start = stickInset - letterbox.start, end = if (fullScreen) stickInset - letterbox.end else stickEnd, bottom = STICK_FLOOR)
                         .height(maxOf(stickBand, pad)),
                     trailing = {
-                        if (!fullScreen) Box(Modifier.fillMaxHeight().padding(start = AircastSpace.s2).widthIn(min = RAIL_SHUTTER_ROOM), contentAlignment = Alignment.Center) { cameraControls() }
+                        if (!fullScreen) Row(Modifier.fillMaxHeight()) {
+                            Spacer(Modifier.width((stickInset - letterbox.end - stickEnd - controlsWidth).coerceAtLeast(AircastSpace.s2)))
+                            Box(
+                                Modifier.fillMaxHeight().widthIn(min = RAIL_SHUTTER_ROOM).onSizeChanged { controlsWidth = with(density) { it.width.toDp() } },
+                                contentAlignment = Alignment.Center,
+                            ) { cameraControls() }
+                        }
                     },
                 )
             }
@@ -612,6 +640,23 @@ private val FLEET_CARD_MAX_HEIGHT = 320.dp
 private const val FLEET_CARD_MIN_SCREEN_DP = 600
 
 internal data class MapInsets(val top: Int, val bottom: Int)
+
+internal data class Letterbox(val start: Dp, val end: Dp)
+
+private fun letterboxOf(view: android.view.View, coordinates: LayoutCoordinates, density: androidx.compose.ui.unit.Density): Letterbox {
+    val left = coordinates.positionOnScreen().x
+    val right = screenWidthPx(view) - left - coordinates.size.width
+    val ltr = view.layoutDirection == android.view.View.LAYOUT_DIRECTION_LTR
+    return with(density) { Letterbox(start = (if (ltr) left else right).coerceAtLeast(0f).toDp(), end = (if (ltr) right else left).coerceAtLeast(0f).toDp()) }
+}
+
+private fun screenWidthPx(view: android.view.View): Float =
+    if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+        view.context.getSystemService(android.view.WindowManager::class.java).maximumWindowMetrics.bounds.width().toFloat()
+    } else {
+        @Suppress("DEPRECATION")
+        android.graphics.Point().also { view.display?.getRealSize(it) }.x.toFloat()
+    }
 
 internal val LocalAvoidedByVideoMessage = staticCompositionLocalOf { false }
 

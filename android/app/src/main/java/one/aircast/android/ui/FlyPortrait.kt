@@ -127,7 +127,7 @@ internal fun FlyPortrait(
     val hasVideo = portraitShowsCamera(reading)
     val split = portraitSplit(view, hasVideo)
     val flyScreen = LocalFlyScreenState.current
-    val stickPad = LocalConfiguration.current.screenWidthDp.dp.let { width -> shownStickPad(width, padsBeside(width)) }
+    val stickPad = shownStickPad(LocalConfiguration.current.screenWidthDp.dp)
     var chromeHeightPx by remember { mutableIntStateOf(0) }
     val barTop = maxOf(
         WindowInsets.statusBars.asPaddingValues().calculateTopPadding() + PORTRAIT_BAR_HEIGHT,

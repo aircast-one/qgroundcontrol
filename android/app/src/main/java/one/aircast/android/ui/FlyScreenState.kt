@@ -3,6 +3,7 @@ package one.aircast.android.ui
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -13,6 +14,7 @@ internal class FlyScreenState(val layout: OverlayLayoutState) {
     var refusal by mutableStateOf<String?>(null)
     var deckRequest by mutableStateOf<String?>(null)
     var requestedSheet by mutableStateOf<String?>(null)
+    val offeredSheets = mutableStateListOf<String>()
     var choosingReadings by mutableStateOf(false)
     var pendingMode by mutableStateOf<String?>(null)
     var instrumentEdits by mutableIntStateOf(0)
@@ -22,6 +24,7 @@ internal class FlyScreenState(val layout: OverlayLayoutState) {
     val mapEdits = FlyMapEdits()
     val obstacles = mutableStateMapOf<String, Rect>()
     var mapInsets by mutableStateOf(MapInsets(top = 0, bottom = 0))
+    var mapOrnamentEnd by mutableStateOf<androidx.compose.ui.unit.Dp?>(null)
     var videoTucked by mutableStateOf(false)
     var pipCorner by mutableStateOf(PipCorner.TopEnd)
 }
@@ -35,6 +38,10 @@ internal val REQUESTABLE_SHEETS = setOf("more", "readings", "camera", "gimbal", 
 @androidx.compose.runtime.Composable
 internal fun OpenOnRequest(name: String, open: () -> Unit) {
     val flyScreen = LocalFlyScreenState.current
+    androidx.compose.runtime.DisposableEffect(name) {
+        flyScreen.offeredSheets.add(name)
+        onDispose { flyScreen.offeredSheets.remove(name) }
+    }
     androidx.compose.runtime.LaunchedEffect(flyScreen.requestedSheet) {
         if (flyScreen.requestedSheet == name) {
             flyScreen.requestedSheet = null

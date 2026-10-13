@@ -10,13 +10,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import one.aircast.map.AircastSheet
-import androidx.compose.ui.res.painterResource
-import one.aircast.android.R
 import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.layout
@@ -70,6 +65,7 @@ internal fun Modifier.railSlider(): Modifier = this
         layout(placeable.height, placeable.width) { placeable.place(-placeable.width, 0) }
     }
 private const val GIMBAL_VIEW = "view.gimbalIndicator"
+internal const val GIMBAL_SHEET = "gimbal"
 
 @Composable
 internal fun ColumnScope.RailSlot(content: @Composable BoxScope.() -> Unit) {
@@ -139,7 +135,7 @@ private const val TILT_IDLE_ALPHA = 0.45f
 private fun aimSynthetic(tilt: Float, pan: Double) = offMainInOrder { Qgc.invoke(SYNTHETIC_AIM, tilt.toDouble(), pan) }
 
 @Composable
-private fun TiltSlider(pitch: Double?, onRecenter: (() -> Unit)?, onTilt: (Float) -> Unit) {
+private fun TiltSlider(pitch: Double?, onRecenter: (() -> Unit)?, slider: Boolean, onTilt: (Float) -> Unit) {
     var dragging by remember { mutableStateOf<Float?>(null) }
     var lastSent by remember { mutableLongStateOf(0L) }
     val shown = dragging ?: (pitch?.toFloat() ?: 0f).coerceIn(GIMBAL_TILT_MIN, GIMBAL_TILT_MAX)
@@ -153,8 +149,8 @@ private fun TiltSlider(pitch: Double?, onRecenter: (() -> Unit)?, onTilt: (Float
         }
     }
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        TiltReadout(shown.toDouble(), onRecenter, onTap = { wake++ }, tapLabel = "Tilt the camera")
-        RailSlot {
+        TiltReadout(shown.toDouble(), onRecenter, onTap = { wake += 1 }.takeIf { slider }, tapLabel = "Tilt the camera")
+        if (slider) RailSlot {
         Slider(
             value = shown,
             onValueChange = { next ->
@@ -183,7 +179,7 @@ private fun TiltSlider(pitch: Double?, onRecenter: (() -> Unit)?, onTilt: (Float
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun RcCameraControls(modifier: Modifier = Modifier) {
+fun RcCameraControls(modifier: Modifier = Modifier, tiltSlider: Boolean = true) {
     val channels = rcCameraChannels(
         tilt = channelSetting("gimbalTiltChannel"),
         pan = channelSetting("gimbalPanChannel"),
@@ -212,7 +208,6 @@ fun RcCameraControls(modifier: Modifier = Modifier) {
     val target = recenterTarget(syntheticAims, syntheticTilt, syntheticPan, gimbal)
     val onRecenter = { aimed: RecenterTarget -> { recenter(aimed) { gimbalRefused = it } }.takeIf { target == aimed } }
     var options by remember { mutableStateOf(false) }
-    OpenOnRequest("gimbal") { options = true }
     LaunchedEffect(gimbalRefused) {
         if (gimbalRefused != null) {
             kotlinx.coroutines.delay(GIMBAL_REFUSAL_MS)
@@ -221,14 +216,15 @@ fun RcCameraControls(modifier: Modifier = Modifier) {
     }
     val recording = cameraRecording(channels.record, channelRecording, streamRecording)
     val rcGimbal = !gimbalManager && (channels.tilt > 0 || channels.pan > 0)
+    if (channels.light > 0 || gimbal != null || rcGimbal) OpenOnRequest(GIMBAL_SHEET) { options = true }
     Column(
         modifier.padding(horizontal = 4.dp, vertical = 4.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         Row(Modifier.weight(1f, fill = false), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            if (syntheticAims) TiltSlider(syntheticTilt ?: DEFAULT_TILT_DEG, onRecenter(RecenterTarget.Synthetic)) { aimSynthetic(it, syntheticPan ?: 0.0) }
-            else if (gimbal != null) TiltSlider(gimbal.pitchDegrees, onRecenter(RecenterTarget.Gimbal), ::sendTilt)
+            if (syntheticAims) TiltSlider(syntheticTilt ?: DEFAULT_TILT_DEG, onRecenter(RecenterTarget.Synthetic), tiltSlider) { aimSynthetic(it, syntheticPan ?: 0.0) }
+            else if (gimbal != null) TiltSlider(gimbal.pitchDegrees, onRecenter(RecenterTarget.Gimbal), tiltSlider, ::sendTilt)
             if (!gimbalManager && channels.tilt > 0) PwmSlider("Tilt", channels.tilt, tilt) { tilt = it }
             if (!gimbalManager && channels.pan > 0) PwmSlider("Pan", channels.pan, pan) { pan = it }
             if (channels.zoom > 0) PwmSlider("Zoom", channels.zoom, zoom) { zoom = it }
@@ -240,11 +236,6 @@ fun RcCameraControls(modifier: Modifier = Modifier) {
                 send(channels.record, if (next) PWM_MAX else PWM_MIN)
                 offMainInOrder { one.aircast.android.bridge.VideoCommands.setRecording(next) }
             }, label = { Text("Record") })
-        }
-        if (channels.light > 0 || gimbal != null || rcGimbal) {
-            IconButton(onClick = { options = true }, modifier = Modifier.size(48.dp)) {
-                Icon(painterResource(R.drawable.ic_tune), "Gimbal options", Modifier.size(22.dp))
-            }
         }
         if (options) {
             AircastSheet(onDismissRequest = { options = false }) {

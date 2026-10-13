@@ -82,6 +82,7 @@ private const val REFUSAL_MS = 4000L
 private const val ZOOM_CHIP_BORDER_ALPHA = 0.4f
 
 private const val MANAGER = "vehicle.cameraManager"
+internal const val CAMERA_SHEET = "camera"
 
 internal const val SHOW_PHOTO_VIDEO_CONTROL = "settings.flyViewSettings.showPhotoVideoControl"
 private const val CAMERA_SCRIM_ALPHA = 0.55f
@@ -91,7 +92,6 @@ private val SHUTTER_DOT_SIZE = 26.dp
 private val SHUTTER_RING = 4.dp
 private val SHUTTER_STOP_CORNER = 4.dp
 private const val DISABLED_SHUTTER_ALPHA = 0.38f
-private val CAMERA_BUTTON_SIZE = 40.dp
 private val CAMERA_CLUSTER_GAP = 8.dp
 private const val ZOOM_IDLE_MS = 3000L
 private const val MODE_IDLE_ALPHA = 0.6f
@@ -109,7 +109,6 @@ fun CameraControlLayer(modifier: Modifier = Modifier, shutters: Boolean = true) 
     val camera = remember(cameraJson) { cameraReading(cameraJson) }
     var refused by remember { mutableStateOf<String?>(null) }
     var details by remember { mutableStateOf(false) }
-    OpenOnRequest("camera") { details = true }
 
     LaunchedEffect(refused) {
         if (refused != null) {
@@ -129,6 +128,7 @@ fun CameraControlLayer(modifier: Modifier = Modifier, shutters: Boolean = true) 
         }
         return
     }
+    OpenOnRequest(CAMERA_SHEET) { details = true }
 
     Surface(
         modifier = modifier,
@@ -141,10 +141,7 @@ fun CameraControlLayer(modifier: Modifier = Modifier, shutters: Boolean = true) 
                 ShutterCentredRail(
                     centre = if (panel.shutters.isNotEmpty()) SHUTTER_SIZE else 0.dp,
                     modifier = Modifier.padding(horizontal = 6.dp, vertical = 8.dp).widthIn(max = CAMERA_RAIL_MAX_WIDTH),
-                    above = {
-                        CameraSettingsButton { details = true }
-                        zoomText(camera)?.let { label -> ZoomChip(camera, label) }
-                    },
+                    above = { zoomText(camera)?.let { label -> ZoomChip(camera, label) } },
                     shutter = {
                         panel.shutters.map { shutter ->
                             ShutterButton(shutterCaption(panel, shutter), shutter) { offMainDetached { refused = shutter.action?.let(Qgc::refusalOf) } }
@@ -165,12 +162,9 @@ fun CameraControlLayer(modifier: Modifier = Modifier, shutters: Boolean = true) 
                 )
             }
         } else {
-            Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(CAMERA_CLUSTER_GAP)) {
-                Column(horizontalAlignment = Alignment.End, verticalArrangement = Arrangement.spacedBy(CAMERA_CLUSTER_GAP)) {
-                    CameraSettingsButton { details = true }
-                    zoomText(camera)?.let { label -> ZoomChip(camera, label) }
-                }
-                RcCameraControls()
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(CAMERA_CLUSTER_GAP)) {
+                zoomText(camera)?.let { label -> ZoomChip(camera, label) }
+                RcCameraControls(tiltSlider = false)
             }
         }
     }
@@ -188,19 +182,6 @@ fun CameraControlLayer(modifier: Modifier = Modifier, shutters: Boolean = true) 
             },
             onDismiss = { details = false },
         )
-    }
-}
-
-@Composable
-private fun CameraSettingsButton(onOpen: () -> Unit) {
-    Surface(
-        onClick = onOpen,
-        modifier = Modifier.size(CAMERA_BUTTON_SIZE),
-        shape = CircleShape,
-        color = osdBackdrop(Color.Black.copy(alpha = CAMERA_SCRIM_ALPHA)),
-        contentColor = MaterialTheme.aircast.outdoorForeground,
-    ) {
-        Box(contentAlignment = Alignment.Center) { Icon(painterResource(R.drawable.ic_settings), "Camera settings", Modifier.size(20.dp)) }
     }
 }
 
