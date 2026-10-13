@@ -765,6 +765,8 @@ private func modeSettled(_ mode: String, _ before: ModeAck?) async -> ModeOutcom
     return .Settled
 }
 
+let TAKEOFF_REQUEST = "takeoff"
+
 struct FlightModeMenu: View {
     let expanded: Bool
     let onDismiss: () -> Void
@@ -777,6 +779,7 @@ struct FlightModeMenu: View {
     @QgcPath(FLIGHT_MODES) private var json
     @QgcPath(FLY_STATE) private var flyJson
     @QgcPath(SETUP) private var setupJson
+    @QgcPath(GUIDED_ACTIONS) private var actionsJson
     @State private var showFolded = false
     @State private var editing = false
     @State private var confirming: FlightModeOption?
@@ -885,6 +888,10 @@ struct FlightModeMenu: View {
                 Text("Messages").font(.bodyMedium)
             }
             Divider()
+            if !editing, let takeoff = guidedOffers(actionsJson)[TAKEOFF_REQUEST], takeoff.shown {
+                takeoffRow(takeoff)
+                Divider()
+            }
             if heading != nil || setting != nil {
                 HStack {
                     Text(heading ?? "")
@@ -931,6 +938,24 @@ struct FlightModeMenu: View {
             }) { Text("Flight mode settings").font(.bodyMedium) }
         }
         .padding(.vertical, Space.s2)
+    }
+
+    private func takeoffRow(_ offer: GuidedOffer) -> some View {
+        menuRow(action: {
+            onDismiss()
+            flyScreen.deckRequest = TAKEOFF_REQUEST
+        }) {
+            Image(.flightTakeoff).foregroundStyle(theme.colors.onSurfaceVariant).frame(width: 24)
+            VStack(alignment: .leading, spacing: 0) {
+                Text(offer.title.isBlank ? TAKE_OFF : offer.title).font(.titleSmall)
+                if !offer.ready && !offer.reason.isBlank {
+                    Text(offer.reason).font(.labelSmall).foregroundStyle(theme.colors.onSurfaceVariant)
+                }
+            }
+            .frame(maxWidth: 280, alignment: .leading)
+        }
+        .disabled(!offer.ready)
+        .opacity(offer.ready ? 1 : DISABLED_ALPHA)
     }
 
     private func modeRow(_ mode: FlightModeOption, _ modes: FlightModesView) -> some View {

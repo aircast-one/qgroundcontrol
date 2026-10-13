@@ -701,6 +701,8 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
     val modes = remember(json) { flightModesView(json) }
     val flyJson by qgcPath(FLY_STATE)
     val fly = remember(flyJson) { flyState(flyJson) }
+    val actionsJson by qgcPath(GUIDED_ACTIONS)
+    val takeoff = remember(actionsJson) { guidedOffers(actionsJson)[TAKEOFF_REQUEST] }?.takeIf { it.shown }
     var showFolded by remember { mutableStateOf(false) }
     var editing by remember { mutableStateOf(false) }
     var confirming by remember(rememberActiveVehicleId()) { mutableStateOf<FlightModeOption?>(null) }
@@ -797,8 +799,30 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
         }
         val setting = modes.pinnedSetting
         if (!showFolded) {
+            takeoff?.let { offer ->
+                DropdownMenuItem(
+                    leadingIcon = { Icon(painterResource(R.drawable.ic_flight_takeoff), null) },
+                    text = {
+                        Column(Modifier.widthIn(max = MODE_TEXT_WIDTH)) {
+                            Text(offer.title.ifBlank { TAKE_OFF }, style = MaterialTheme.typography.titleSmall)
+                            offer.reason.takeIf { !offer.ready }?.ifBlank { null }?.let {
+                                Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                        }
+                    },
+                    enabled = offer.ready,
+                    onClick = {
+                        onDismiss()
+                        flyScreen.deckRequest = TAKEOFF_REQUEST
+                    },
+                )
+                HorizontalDivider()
+            }
             modes.all.firstOrNull { it.current && !it.quick }?.let { now -> modeRow(now) }
-            modes.quick.forEach { mode -> modeRow(mode) }
+            modes.quick.forEachIndexed { index, mode ->
+                if (startsSection(modes.quick, index)) HorizontalDivider()
+                modeRow(mode)
+            }
             HorizontalDivider()
             DropdownMenuItem(
                 text = { Text(ALL_MODES) },
@@ -857,6 +881,7 @@ internal fun FlightModeMenu(expanded: Boolean, onDismiss: () -> Unit, onStatus: 
 
 private val MODE_TEXT_WIDTH = 260.dp
 internal const val ALL_MODES = "All modes"
+internal const val TAKEOFF_REQUEST = "takeoff"
 private const val QUICK_LIST_HINT = "Shown first when you tap the mode"
 
 @OptIn(ExperimentalMaterial3Api::class)

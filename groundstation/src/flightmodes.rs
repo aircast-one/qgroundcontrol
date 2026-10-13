@@ -49,7 +49,7 @@ pub const DEPS: &[&str] = &[
 const VEHICLE_CLASSES: &[(&str, &str)] = &[("vtol", "VTOL"), ("fixedWing", "FixedWing"), ("multiRotor", "MultiRotor"), ("rover", "RoverBoat"), ("sub", "Sub"), ("airship", "Airship")];
 
 const QUICK_SLOTS: &[(&str, &[&[&str]])] = &[
-    ("MultiRotor", &[&["Position", "Position Hold", "Loiter"], &["Altitude", "Altitude Hold"], &["Stabilized", "Stabilize", "Manual"], &["Mission", "Auto"]]),
+    ("MultiRotor", &[&["Position", "Position Hold", "Loiter"], &["Altitude", "Altitude Hold"], &["Stabilized", "Stabilize", "Manual"], &["Mission", "Auto"], &["Return", "RTL"], &["Land"]]),
     ("FixedWing", &[&["Position", "Cruise"], &["Altitude", "FBW A"], &["Hold", "Loiter"], &["Mission", "Auto"]]),
     ("VTOL", &[&["Position", "QuadPlane Loiter"], &["Altitude", "QuadPlane Hover"], &["Stabilized", "Cruise"], &["Mission", "Auto"]]),
     ("RoverBoat", &[&["Position", "Steering"], &["Hold"], &["Manual"], &["Mission", "Auto"]]),
@@ -407,11 +407,11 @@ mod tests {
     }
 
     #[test]
-    fn the_quick_list_holds_the_four_modes_each_kind_of_vehicle_flies_in() {
+    fn the_quick_list_holds_the_modes_each_kind_of_vehicle_flies_in() {
         let quick = |all: &[&str], advanced: &[&str], class: &str| quick_modes(&names(all), &names(advanced), &[], Some(class));
         let apm_copter = ["Stabilize", "Acro", "Altitude Hold", "Auto", "Guided", "Loiter", "RTL", "Circle", "Land", "Position Hold", "Brake", "Smart RTL"];
-        assert_eq!(quick(&apm_copter, &[], "MultiRotor"), ["Position Hold", "Altitude Hold", "Stabilize", "Auto"]);
-        assert_eq!(quick(&["Manual", "Stabilized", "Acro", "Altitude", "Position", "Mission", "Hold", "Return", "Land"], &[], "MultiRotor"), ["Position", "Altitude", "Stabilized", "Mission"]);
+        assert_eq!(quick(&apm_copter, &[], "MultiRotor"), ["Position Hold", "Altitude Hold", "Stabilize", "Auto", "RTL", "Land"], "a copter pilot reaches for Return and Land as often as any mode");
+        assert_eq!(quick(&["Manual", "Stabilized", "Acro", "Altitude", "Position", "Mission", "Hold", "Return", "Land"], &[], "MultiRotor"), ["Position", "Altitude", "Stabilized", "Mission", "Return", "Land"]);
         let apm_plane = ["Manual", "Circle", "Stabilize", "Training", "Acro", "FBW A", "FBW B", "Cruise", "Autotune", "Auto", "RTL", "Loiter", "Takeoff", "Guided"];
         assert_eq!(quick(&apm_plane, &[], "FixedWing"), ["Cruise", "FBW A", "Loiter", "Auto"], "a plane pilot flies FBW A and Cruise, which a copter vocabulary never offered");
         let quadplane = ["Manual", "Stabilize", "FBW A", "Cruise", "Auto", "RTL", "Loiter", "QuadPlane Stabilize", "QuadPlane Hover", "QuadPlane Loiter", "QuadPlane Land", "QuadPlane RTL"];
@@ -425,7 +425,7 @@ mod tests {
     fn pinned_modes_replace_the_defaults_in_the_order_they_were_pinned() {
         let all = names(&["Stabilize", "Acro", "Altitude Hold", "Auto", "Loiter", "Position Hold"]);
         assert_eq!(quick_modes(&all, &[], &names(&["Acro", "Gone", "Loiter"]), Some("MultiRotor")), ["Acro", "Loiter"], "a pin the vehicle does not offer is skipped");
-        assert_eq!(quick_modes(&all, &[], &names(&["Gone"]), Some("MultiRotor")), ["Position Hold", "Altitude Hold", "Stabilize", "Auto"]);
+        assert_eq!(quick_modes(&all, &[], &names(&["Gone"]), Some("MultiRotor")), ["Position Hold", "Altitude Hold", "Stabilize", "Auto"], "a vehicle without RTL or Land fills only the slots it has");
         assert_eq!(pinned_modes_setting(&json!({ "apmFirmware": true, "vtol": true, "fixedWing": true })).as_deref(), Some("settings.flightModeSettings.apmPinnedFlightModesVTOL"));
     }
 
