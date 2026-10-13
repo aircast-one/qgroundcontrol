@@ -17,6 +17,7 @@ const UNLOAD_SWEEP_EVERY: Duration = Duration::from_secs(1);
 const MAXIMUM_SCREEN_SPACE_ERROR: f64 = 16.0;
 const DETAIL_PIXELS: f64 = 1280.0 * 720.0;
 const MAX_LOADED_TILES: usize = 500;
+const NEAR_M: f64 = 1_500.0;
 const LOWEST_GROUND_M: f64 = 1_000.0;
 const OCCLUDER_RADII: DVec3 = DVec3::new(6_378_137.0 - LOWEST_GROUND_M, 6_378_137.0 - LOWEST_GROUND_M, 6_356_752.314_245 - LOWEST_GROUND_M);
 
@@ -126,6 +127,13 @@ pub struct Tileset {
     session: Option<(String, String)>,
     keep: Vec<(String, String)>,
     swept: Option<Instant>,
+    coarsest: f64,
+}
+
+pub struct Selection {
+    pub meshes: Vec<Arc<Mesh>>,
+    pub wanted: Vec<Request>,
+    pub coarsest: f64,
 }
 
 fn query(url: &Url) -> Vec<(String, String)> {
@@ -188,7 +196,7 @@ fn loaded(tile: &Tile) -> usize {
 
 impl Tileset {
     pub fn new(root: Tile, url: &Url) -> Self {
-        Self { root, session: None, keep: query(url), swept: None }
+        Self { root, session: None, keep: query(url), swept: None, coarsest: f64::INFINITY }
     }
 
     fn signed(&mut self, url: &Url) -> Url {
@@ -206,6 +214,12 @@ impl Tileset {
     }
 
     pub fn select(&mut self, camera: &Camera, budget: usize, now: Instant) -> (Vec<Arc<Mesh>>, Vec<Request>) {
+        let Selection { meshes, wanted, .. } = self.select_measured(camera, budget, now);
+        (meshes, wanted)
+    }
+
+    pub fn select_measured(&mut self, camera: &Camera, budget: usize, now: Instant) -> Selection {
+        self.coarsest = 0.0;
         let planes = frustum(camera.culling());
         let horizon = Horizon::from(camera.eye);
         let mut wanted = Vec::new();
@@ -216,7 +230,8 @@ impl Tileset {
             self.swept = Some(now);
         }
         self.root = root;
-        (drawn, wanted)
+        let coarsest = if drawn.is_empty() { f64::INFINITY } else { self.coarsest };
+        Selection { meshes: drawn, wanted, coarsest }
     }
 
     pub fn trim(&mut self, now: Instant, probed: Option<Instant>) {
@@ -262,7 +277,8 @@ impl Tileset {
         }
         tile.used = Some(now);
         self.request(tile, path, budget, wanted, now);
-        let refine = camera.screen_space_error(tile.geometric_error, tile.bounds.distance(camera.eye)) > refine_above(camera);
+        let error = camera.screen_space_error(tile.geometric_error, tile.bounds.distance(camera.eye)) / refine_above(camera);
+        let refine = error > 1.0;
         let external = matches!(tile.content, Content::External);
         let children = (refine || external) && !tile.children.is_empty();
         let below: Option<Vec<Arc<Mesh>>> = match children {
@@ -287,6 +303,9 @@ impl Tileset {
             Content::None if !children => Some(Vec::new()),
             _ => None,
         };
+        if refine && !tile.children.is_empty() && below.is_none() && tile.bounds.distance(camera.eye) < NEAR_M && own.as_ref().is_some_and(|meshes| !meshes.is_empty()) {
+            self.coarsest = self.coarsest.max(error);
+        }
         below.or(own)
     }
 }
@@ -332,6 +351,21 @@ mod tests {
         let oldest = cutoff(used_meshes(&probed), 1).expect("over budget");
         evict(&mut probed, oldest, &[now, now - Duration::from_secs(1)]);
         assert_eq!(probed.children.iter().map(|tile| matches!(tile.content, Content::Meshes(_))).collect::<Vec<_>>(), [true, true, false], "the ground probe's tiles from its last look stay as well");
+    }
+
+    #[test]
+    fn a_parent_drawn_in_place_of_its_unloaded_children_is_measured_as_coarse_until_they_arrive() {
+        let camera = camera();
+        let (mut tiles, _) = parent(&camera);
+        let start = Instant::now();
+        let waiting = tiles.select_measured(&camera, 8, start);
+        assert_eq!(waiting.wanted.len(), 2);
+        assert!(waiting.coarsest > 1.0, "the parent wanted to refine and could not ({})", waiting.coarsest);
+        tiles.deliver(&[0], Ok(Parsed::Meshes(vec![mesh()])), start);
+        tiles.deliver(&[1], Ok(Parsed::Meshes(vec![mesh()])), start);
+        assert_eq!(tiles.select_measured(&camera, 8, start).coarsest, 0.0, "leaves that need no finer tile are full detail");
+        let away = Camera::new(&Pose { heading: 180.0, ..Pose { latitude: 0.0, longitude: 0.0, height: 100.0, heading: 0.0, pitch: 0.0, roll: 0.0, fov: 60.0 } }, 1280, 720);
+        assert_eq!(tiles.select_measured(&away, 8, start).coarsest, f64::INFINITY, "nothing drawn is not ready");
     }
 
     #[test]

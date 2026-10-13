@@ -11,7 +11,7 @@ use super::ground;
 use super::mesh::Mesh;
 use super::open::{Built, OpenScene, Want};
 use super::overlay::{self, Overlays};
-use super::tileset::{self, GOOGLE_ROOT, ION_GOOGLE_ASSET, Parsed, Request, Tileset};
+use super::tileset::{self, GOOGLE_ROOT, ION_GOOGLE_ASSET, Parsed, Request, Selection, Tileset};
 
 const WORKERS: usize = 8;
 const MAX_IN_FLIGHT: usize = 24;
@@ -35,6 +35,9 @@ const TURN_STRETCH: f64 = 1.3;
 const DEG_S_PER_DETAIL_STEP: f64 = 15.0;
 const COARSEST_WHILE_TURNING: f64 = 3.0;
 const SPIN_SMOOTHING: f64 = 0.3;
+const GOOGLE_READY_COARSEST: f64 = 1_000.0;
+const STAND_IN_WORKERS: usize = 3;
+const STAND_IN_IN_FLIGHT: usize = 6;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Target {
@@ -158,6 +161,23 @@ enum Source {
     Open(OpenScene),
 }
 
+struct Fallback {
+    scene: OpenScene,
+    pool: Pool<Job, Done>,
+    home: Probe,
+    under: Probe,
+}
+
+impl Fallback {
+    fn room(&self) -> usize {
+        self.pool.room(STAND_IN_IN_FLIGHT)
+    }
+}
+
+fn workers(count: usize, name: &str, fetcher: Arc<dyn Fetcher>, bytes: Arc<AtomicU64>) -> Result<Pool<Job, Done>, String> {
+    Pool::new(count, name, move |job: Job| work(job, &Counted { inner: fetcher.as_ref(), bytes: &bytes }), lost)
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct Stats {
     pub requested: u64,
@@ -198,6 +218,10 @@ pub struct Session {
     turn: Option<Turn>,
     spin: f64,
     ground_meshes: Vec<Arc<Mesh>>,
+    fallback: Option<Fallback>,
+    coarsest: f64,
+    first_frame: Option<Instant>,
+    handed_over_after: Option<Duration>,
 }
 
 fn wrapped(degrees: f64) -> f64 {
@@ -278,6 +302,10 @@ fn settled(a: &Pose, b: &Pose) -> bool {
         && [wrapped(a.heading - b.heading), a.pitch - b.pitch, wrapped(a.roll - b.roll)].iter().all(|turn| turn.abs() < SETTLED_ANGLE)
 }
 
+pub fn google_ready(loaded: bool, coarsest: f64, home_ground: Option<f64>) -> bool {
+    loaded && coarsest <= GOOGLE_READY_COARSEST && home_ground.is_some()
+}
+
 pub fn camera_height(target: &Target, home_ground: Option<f64>, under_ground: Option<f64>) -> f64 {
     let above_home = home_ground.map(|ground| ground + target.above_home);
     let clear = under_ground.map(|ground| ground + CLEARANCE_M);
@@ -292,14 +320,37 @@ pub fn camera_height(target: &Target, home_ground: Option<f64>, under_ground: Op
 impl Session {
     pub fn new(token: &str, fetcher: Arc<dyn Fetcher>) -> Result<Self, String> {
         let bytes = Arc::new(AtomicU64::new(0));
-        let counter = bytes.clone();
-        let mut pool = Pool::new(WORKERS, "synthetic-fetch", move |job: Job| work(job, &Counted { inner: fetcher.as_ref(), bytes: &counter }), lost)?;
+        let mut pool = workers(WORKERS, "synthetic-fetch", fetcher.clone(), bytes.clone())?;
         let google = !token.is_empty();
         if google {
             pool.send(Job::Root(token.to_string()));
         }
         let source = if google { Source::Google(None) } else { Source::Open(OpenScene::new()) };
-        Ok(Self { token: token.to_string(), source, pool, bytes, stats: Stats::default(), home: Probe::default(), under: Probe::default(), probed: None, shown: None, ticked: None, selected: None, seen: None, turn: None, spin: 0.0, ground_meshes: Vec::new() })
+        let fallback = match google {
+            true => Some(Fallback { scene: OpenScene::new(), pool: workers(STAND_IN_WORKERS, "synthetic-stand-in", fetcher, bytes.clone())?, home: Probe::default(), under: Probe::default() }),
+            false => None,
+        };
+        Ok(Self {
+            token: token.to_string(),
+            source,
+            pool,
+            bytes,
+            stats: Stats::default(),
+            home: Probe::default(),
+            under: Probe::default(),
+            probed: None,
+            shown: None,
+            ticked: None,
+            selected: None,
+            seen: None,
+            turn: None,
+            spin: 0.0,
+            ground_meshes: Vec::new(),
+            fallback,
+            coarsest: f64::INFINITY,
+            first_frame: None,
+            handed_over_after: None,
+        })
     }
 
     pub fn token(&self) -> &str {
@@ -313,8 +364,24 @@ impl Session {
         }
     }
 
+    pub fn showing(&self) -> &'static str {
+        match (&self.source, self.fallback.is_some()) {
+            (Source::Google(_), true) => "open_fallback",
+            (Source::Google(_), false) => "google",
+            (Source::Open(_), _) => "open",
+        }
+    }
+
+    pub fn coarsest(&self) -> f64 {
+        self.coarsest
+    }
+
+    pub fn handover(&self) -> Option<Duration> {
+        self.handed_over_after
+    }
+
     pub fn in_flight(&self) -> usize {
-        self.pool.in_flight()
+        self.pool.in_flight() + self.fallback.as_ref().map_or(0, |fallback| fallback.pool.in_flight())
     }
 
     pub fn loaded_tiles(&self) -> usize {
@@ -334,7 +401,8 @@ impl Session {
     }
 
     fn collect(&mut self, now: Instant) -> usize {
-        let finished = self.pool.finished();
+        let stood_in = self.fallback.as_mut().map(|fallback| fallback.pool.finished()).unwrap_or_default();
+        let finished: Vec<Done> = self.pool.finished().into_iter().chain(stood_in).collect();
         let count = finished.len();
         finished.into_iter().for_each(|done| match done {
             Done::Root(Ok((url, root))) => {
@@ -358,8 +426,10 @@ impl Session {
                     Some(error) => self.failed(error),
                     None => self.stats.loaded += 1,
                 }
-                if let Source::Open(scene) = &mut self.source {
-                    scene.deliver(built, now);
+                match (&mut self.source, &mut self.fallback) {
+                    (Source::Open(scene), _) => scene.deliver(built, now),
+                    (_, Some(fallback)) => fallback.scene.deliver(built, now),
+                    _ => {}
                 }
             }
         });
@@ -392,7 +462,27 @@ impl Session {
         found.or(known)
     }
 
+    fn stand_in(&mut self, jobs: Vec<Want>) {
+        self.stats.requested += jobs.len() as u64;
+        if let Some(fallback) = self.fallback.as_mut() {
+            jobs.into_iter().for_each(|want| fallback.pool.send(Job::Open(want)));
+        }
+    }
+
+    fn probe_fallback(&mut self, target: &Target, now: Instant) {
+        let Some(fallback) = self.fallback.as_mut() else { return };
+        let room = fallback.room();
+        fallback.home.for_spot(target.home_latitude, target.home_longitude);
+        fallback.under.for_spot(target.latitude, target.longitude);
+        let (home, home_wanted) = fallback.scene.ground(target.home_latitude, target.home_longitude, room, now);
+        let (under, under_wanted) = fallback.scene.ground(target.latitude, target.longitude, room.saturating_sub(home_wanted.len()), now);
+        fallback.home.height = home.or(fallback.home.height);
+        fallback.under.height = under.or(fallback.under.height);
+        self.stand_in(home_wanted.into_iter().chain(under_wanted).collect());
+    }
+
     fn probe(&mut self, target: &Target, now: Instant) {
+        self.probe_fallback(target, now);
         let open = matches!(self.source, Source::Open(_));
         self.home.for_spot(target.home_latitude, target.home_longitude);
         self.under.for_spot(target.latitude, target.longitude);
@@ -413,37 +503,59 @@ impl Session {
 
     fn select(&mut self, camera: &Camera, target: &Target, now: Instant) -> bool {
         let room = self.room().saturating_sub(PROBE_SLOTS);
+        let detail = turn_detail(self.spin);
+        let (stand_in, stand_in_jobs) = match self.fallback.as_mut() {
+            Some(fallback) => {
+                let ground = fallback.under.height.or(fallback.home.height).unwrap_or(0.0);
+                let room = fallback.room();
+                let (meshes, wanted) = fallback.scene.select(camera, &target.imagery, ground, target.latitude, target.longitude, detail, room, now);
+                (Some(meshes), wanted)
+            }
+            None => (None, Vec::new()),
+        };
         let ground = self.under.height.or(self.home.height).unwrap_or(0.0);
-        let (meshes, jobs) = match &mut self.source {
+        let (meshes, jobs, coarsest) = match &mut self.source {
             Source::Google(Some(tiles)) => {
-                let (meshes, wanted) = tiles.select(camera, room, now);
+                let Selection { meshes, wanted, coarsest } = tiles.select_measured(camera, room, now);
                 tiles.trim(now, self.probed);
-                (meshes, wanted.into_iter().map(Job::Tile).collect())
+                (meshes, wanted.into_iter().map(Job::Tile).collect(), coarsest)
             }
             Source::Open(scene) => {
-                let (meshes, wanted) = scene.select(camera, &target.imagery, ground, target.latitude, target.longitude, turn_detail(self.spin), room, now);
-                (meshes, wanted.into_iter().map(Job::Open).collect())
+                let (meshes, wanted) = scene.select(camera, &target.imagery, ground, target.latitude, target.longitude, detail, room, now);
+                (meshes, wanted.into_iter().map(Job::Open).collect(), 0.0)
             }
-            Source::Google(None) => (Vec::new(), Vec::new()),
+            Source::Google(None) => (Vec::new(), Vec::new(), f64::INFINITY),
         };
-        let different = meshes.len() != self.ground_meshes.len() || meshes.iter().zip(&self.ground_meshes).any(|(a, b)| a.id != b.id);
-        self.ground_meshes = meshes;
+        self.coarsest = coarsest;
+        let drawn = stand_in.unwrap_or(meshes);
+        let different = drawn.len() != self.ground_meshes.len() || drawn.iter().zip(&self.ground_meshes).any(|(a, b)| a.id != b.id);
+        self.ground_meshes = drawn;
         self.selected = Some(now);
+        self.stand_in(stand_in_jobs);
         self.send(jobs);
         different
     }
 
+
+
     pub fn frame(&mut self, target: Option<&Target>, width: u32, height: u32, now: Instant) -> Option<Frame> {
         let delivered = self.collect(now);
         let target = target?;
-        if let Source::Google(None) = self.source {
+        let started = *self.first_frame.get_or_insert(now);
+        if self.fallback.is_some() && google_ready(matches!(self.source, Source::Google(Some(_))), self.coarsest, self.home.height) {
+            self.fallback = None;
+            self.shown = None;
+            self.handed_over_after = Some(now.saturating_duration_since(started));
+        }
+        if matches!(self.source, Source::Google(None)) && self.fallback.is_none() {
             return None;
         }
         self.probe(target, now);
         let turn = turned(self.turn, Aim { heading: target.heading, pitch: target.pitch }, now);
         self.turn = Some(turn);
         let aim = turn.aim_at(now);
-        let goal = Pose { latitude: target.latitude, longitude: target.longitude, height: camera_height(target, self.home.height, self.under.height), heading: aim.heading, pitch: aim.pitch, roll: target.roll, fov: target.fov };
+        let (home_ground, under_ground) = self.fallback.as_ref().map_or((self.home.height, self.under.height), |fallback| (fallback.home.height, fallback.under.height));
+        let goal = Pose { latitude: target.latitude, longitude: target.longitude, height: camera_height(target, home_ground, under_ground), heading: aim.heading, pitch: aim.pitch, roll: target.roll, fov: target.fov };
         let elapsed = self.ticked.map(|at| now.duration_since(at));
         let alpha = elapsed.map_or(1.0, follow);
         self.ticked = Some(now);
@@ -455,7 +567,7 @@ impl Session {
         self.seen = Some(target.clone());
         let due = self.selected.is_none_or(|at| now.duration_since(at) >= RESELECT_EVERY);
         let reselected = (delivered > 0 || moving || fresh || due) && self.select(&Camera::new(&pose, width, height), target, now);
-        Some(Frame { pose, ground: self.ground_meshes.clone(), home_ground: self.home.height, changed: moving || fresh || reselected })
+        Some(Frame { pose, ground: self.ground_meshes.clone(), home_ground, changed: moving || fresh || reselected })
     }
 }
 
@@ -613,6 +725,25 @@ mod tests {
         assert!(!frame.changed, "nothing moved and nothing arrived, so the GPU can rest (drained {drained} frames)");
         let moved = Target { heading: 210.0, ..still };
         assert!(session.frame(Some(&moved), 640, 360, later).expect("a frame").changed, "a turn redraws");
+    }
+
+    #[test]
+    fn google_takes_over_once_its_near_tiles_are_real_geometry_not_globe_tiles() {
+        assert!(!google_ready(true, 31_974_277.8, Some(10.0)), "globe-level tiles under the camera are what drew haze and smears");
+        assert!(google_ready(true, 53.5, Some(10.0)), "a 1 km tile still refining is already a city on screen");
+        assert!(!google_ready(true, f64::INFINITY, Some(10.0)), "nothing drawn yet");
+        assert!(!google_ready(true, 2.0, None), "without home's ground the camera height is a guess");
+        assert!(!google_ready(false, 2.0, Some(10.0)));
+    }
+
+    #[test]
+    fn with_a_token_the_open_scene_stands_in_until_google_answers() {
+        let mut session = Session::new("eyJtoken", Arc::new(Fake)).expect("workers");
+        let frame = settle(&mut session, &target("Bing Satellite"), Instant::now()).expect("open terrain drawn while Google's root is unreachable");
+        assert!(!frame.ground.is_empty());
+        assert_eq!(session.showing(), "open_fallback");
+        assert_eq!(session.handover(), None);
+        assert!(session.take_stats().errors.keys().any(|error| error.starts_with("tileset root")), "the Google failure is still reported");
     }
 
     #[test]

@@ -111,6 +111,10 @@ fn world(session: Option<&Session>) -> (&'static str, usize, usize) {
     session.map_or(("none", 0, 0), |session| (session.source(), session.loaded_tiles(), session.in_flight()))
 }
 
+fn handing_over(session: Option<&Session>) -> (&'static str, String) {
+    session.map_or(("none", "none".to_string()), |session| (session.showing(), session.handover().map_or_else(|| "none".to_string(), |after| after.as_millis().to_string())))
+}
+
 fn serve(commands: &Receiver<Command>, feed: &dyn Feed) {
     let mut kept: Option<Kept> = None;
     loop {
@@ -183,9 +187,10 @@ impl Visit {
 
     fn report(&self, session: Option<&Session>, gpu: &Gpu, draw: Draw) {
         let (source, tiles, in_flight) = world(session);
+        let (showing, handover) = handing_over(session);
         log::info!(
             target: "synthetic",
-            "event=view_shown source={source} reused={} unseen_ms={} gpu_setup_ms={} first_picture_ms={} visible_ms={} attaches={} releases={} surfaces_peak={} painted={} slowest_paint_ms={} paint_failures={} tiles={tiles} in_flight={in_flight} resident={} uploads={} draw={} ended={}",
+            "event=view_shown source={source} showing={showing} handover_ms={handover} reused={} unseen_ms={} gpu_setup_ms={} first_picture_ms={} visible_ms={} attaches={} releases={} surfaces_peak={} painted={} slowest_paint_ms={} paint_failures={} tiles={tiles} in_flight={in_flight} resident={} uploads={} draw={} ended={}",
             self.unseen.is_some(),
             self.unseen.map_or(0, |unseen| unseen.as_millis()),
             self.gpu_setup.as_millis(),
@@ -336,11 +341,12 @@ impl Summary {
 
     fn report(&self, session: Option<&mut Session>, gpu: &Gpu, surfaces: usize, draw: Draw) {
         let (source, tiles, in_flight) = world(session.as_deref());
+        let (showing, handover) = handing_over(session.as_deref());
         let stats = session.map(Session::take_stats).unwrap_or_default();
         let Stats { requested, loaded, failed, bytes, errors } = stats;
         log::info!(
             target: "synthetic",
-            "event=summary seconds={} source={source} surfaces={surfaces} draw={} painted={} idle_ticks={} slowest_paint_ms={} requested={requested} loaded={loaded} failed={failed} bytes={bytes} tiles={tiles} in_flight={in_flight} resident={} uploads={} errors={errors:?}",
+            "event=summary seconds={} source={source} showing={showing} handover_ms={handover} surfaces={surfaces} draw={} painted={} idle_ticks={} slowest_paint_ms={} requested={requested} loaded={loaded} failed={failed} bytes={bytes} tiles={tiles} in_flight={in_flight} resident={} uploads={} errors={errors:?}",
             self.since.elapsed().as_secs(),
             draw.name(),
             self.painted,
