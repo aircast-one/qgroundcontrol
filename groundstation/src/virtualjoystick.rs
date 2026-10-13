@@ -178,6 +178,10 @@ pub fn send(backend: &dyn Backend, args: &str) -> Value {
     let vehicle = backend.value_fields("vehicle", VEHICLE_FIELDS);
     let rate = rate_mode_now(&vehicle);
     let (roll, pitch) = (softened(roll, rate), softened(pitch, rate));
+    let thrust = match rate {
+        true => THROTTLE_CENTRE + softened(2.0 * (thrust - THROTTLE_CENTRE), true) / 2.0,
+        false => thrust,
+    };
     let active = crate::hub::lock().active_id();
     if active.is_some_and(crate::joystickhost::drives) {
         return json!({ "ok": false, "reason": "A joystick is enabled for this vehicle, so the on-screen sticks do not send." });
@@ -323,7 +327,13 @@ mod tests {
         assert!((sent[0] - 0.1089).abs() < 1e-3, "30% roll is about 11% rate, ~40 deg/s of ArduCopter's 360 ({})", sent[0]);
         assert_eq!(sent[1], -1.0, "full stick is still full rate");
         assert_eq!(sent[2], 0.0, "yaw keeps the expo every mode gets");
-        assert_eq!(sent[3], 0.4, "the throttle is not shaped");
+        assert!((sent[3] - 0.4672).abs() < 1e-3, "10% below hover is ~3% below in thrust; a thumb twitch climbed or sank at 5 m/s ({})", sent[3]);
+        let ends = on("copter", "Acro");
+        send(&ends, "[0, 0, 0, 0]");
+        send(&ends, "[0, 0, 0, 1]");
+        send(&ends, "[0, 0, 0, 0.5]");
+        let thrusts: Vec<f64> = ends.invoked.borrow().iter().map(|call| serde_json::from_str::<Vec<f64>>(call.split_once(' ').expect("args").1).expect("axes")[3]).collect();
+        assert_eq!(thrusts, [0.0, 1.0, 0.5], "the bottom, top and hover points do not move");
         assert_eq!(virtual_joystick_view(&acro, &[])["softened"], json!(true));
         let loiter = on("copter", "Loiter");
         send(&loiter, "[0.3, -1.0, 0.0, 0.4]");
