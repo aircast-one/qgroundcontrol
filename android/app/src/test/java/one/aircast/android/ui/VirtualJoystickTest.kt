@@ -88,16 +88,31 @@ class VirtualJoystickTest {
     }
 
     @Test
-    fun `a pad is a third of the short side, never too small to steer or so big it crowds the screen`() {
-        assertEquals(123.3f, stickPad(411.dp).value, 0.1f)
-        assertEquals(96.dp, stickPad(240.dp))
-        assertEquals(140.dp, stickPad(800.dp))
+    fun `a pad is DJI sized, never too small to steer or so big it crowds the screen`() {
+        assertEquals(172.6f, stickPad(411.dp).value, 0.1f)
+        assertEquals(96.dp, stickPad(200.dp))
+        assertEquals(200.dp, stickPad(800.dp))
+        assertEquals("a pad shrinks to the room the layout has for it", 150.dp, stickPad(411.dp, 150.dp))
+    }
+
+    @Test
+    fun `two pads and the stick monitor fit side by side across a portrait phone`() {
+        assertEquals(140.4f, padsBeside(411.dp).value, 0.1f)
+        assertTrue(stickPad(411.dp, padsBeside(411.dp)) < stickPad(411.dp))
+    }
+
+    @Test
+    fun `the monitor dot stays inside its box at full deflection`() {
+        assertEquals(5f, monitorDot(0f, 50f, 5f))
+        assertEquals(25f, monitorDot(0.5f, 50f, 5f))
+        assertEquals(45f, monitorDot(1f, 50f, 5f))
+        assertEquals(45f, monitorDot(2f, 50f, 5f))
     }
 
     @Test
     fun `the knob follows the thumb one to one and stays inside the ring`() {
         val travel = knobTravel(100f)
-        assertEquals(34f, travel, 0.001f)
+        assertEquals(28f, travel, 0.001f)
         assertEquals(CENTRED, dragged(CENTRED, Offset.Zero, travel))
         assertEquals("a thumb moved the full travel deflects the stick fully", Offset(1f, 0.5f), dragged(CENTRED, Offset(travel, 0f), travel))
         assertEquals(Offset(0f, 1f), dragged(CENTRED, Offset(-500f, 500f), travel))

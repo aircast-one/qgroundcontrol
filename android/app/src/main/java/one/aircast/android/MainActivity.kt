@@ -116,7 +116,6 @@ import org.mavlink.qgroundcontrol.QGCBridge
 
 private val KEY_ROW_STOP_GAP = 24.dp
 
-private val RAIL_SHUTTER_ROOM = 56.dp
 
 private val FLY_NOTICE_TOP = 76.dp
 
@@ -559,17 +558,10 @@ fun AircastShell(hostView: android.view.View?) {
                     val flyKeyRow: @Composable () -> Unit = {
                         flyObstacleArc()
                     }
-                    val flyRail: @Composable (Boolean, Boolean) -> Unit = { stacked, splitRoom ->
-                        if (stacked) {
-                            Column(horizontalAlignment = Alignment.End) {
-                                if (!splitRoom) LayoutWidget("cameraSwitch") { CameraSwitch(splitRoom = false, Modifier.padding(bottom = AircastSpace.s2)) }
-                                flyCameraControlLayer()
-                            }
-                        } else {
-                            Row(verticalAlignment = Alignment.Top) {
-                                LayoutWidget("cameraSwitch") { CameraSwitch(splitRoom, Modifier.padding(end = AircastSpace.s2)) }
-                                Box(Modifier.widthIn(min = RAIL_SHUTTER_ROOM), contentAlignment = Alignment.Center) { flyCameraControlLayer() }
-                            }
+                    val flyRail: @Composable (Boolean) -> Unit = { splitRoom ->
+                        Column(horizontalAlignment = Alignment.End) {
+                            if (!splitRoom) LayoutWidget("cameraSwitch") { CameraSwitch(splitRoom = false, Modifier.padding(bottom = AircastSpace.s2)) }
+                            flyCameraControlLayer()
                         }
                     }
                     val flyOverlays: @Composable () -> Unit = {
@@ -590,7 +582,8 @@ fun AircastShell(hostView: android.view.View?) {
                             video = { mod, expanded -> flyVideo(mod, expanded) },
                             map = { mod -> flyMap(mod) },
                             keyRow = flyKeyRow,
-                            rail = { splitRoom -> flyRail(false, splitRoom) },
+                            cameraSwitch = { splitRoom, modifier -> LayoutWidget("cameraSwitch") { CameraSwitch(splitRoom, modifier) } },
+                            cameraControls = { flyCameraControlLayer() },
                             overlays = flyOverlays,
                             actions = { layout -> flightActions(layout) },
                             fullScreen = fullScreen,
@@ -608,7 +601,7 @@ fun AircastShell(hostView: android.view.View?) {
                             video = { mod, expanded -> flyVideo(mod, expanded) },
                             map = { mod -> flyMap(mod) },
                             keyRow = flyKeyRow,
-                            rail = { splitRoom -> flyRail(true, splitRoom) },
+                            rail = flyRail,
                             overlays = flyOverlays,
                             actions = { layout -> flightActions(layout) },
                             fullScreen = fullScreen,

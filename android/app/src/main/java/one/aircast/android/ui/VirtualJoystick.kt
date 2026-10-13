@@ -3,9 +3,12 @@ package one.aircast.android.ui
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -16,15 +19,13 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
@@ -40,24 +41,30 @@ import kotlinx.coroutines.launch
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.qgcDerived
 import one.aircast.android.bridge.qgcPath
+import one.aircast.map.AircastSpace
 import one.aircast.map.aircast
 import org.json.JSONObject
 
 internal const val VIRTUAL_JOYSTICK_PATH = "view.virtualJoystick"
 internal const val VIRTUAL_JOYSTICK_VALUE = "vehicle.virtualTabletJoystickValue"
 private const val DEFAULT_PERIOD_MS = 40L
-private const val STICK_PAD_FRACTION = 0.3f
+private const val STICK_PAD_FRACTION = 0.42f
 private val MIN_STICK_PAD = 96.dp
-private val MAX_STICK_PAD = 140.dp
-private const val KNOB_FRACTION = 0.16f
-private const val PAD_FILL_ALPHA = 0.3f
-private const val RING_ALPHA = 0.5f
-private const val HELD_RING_ALPHA = 0.9f
-private const val CHEVRON_ALPHA = 0.6f
-private const val KNOB_SHADOW_ALPHA = 0.35f
-private val CHEVRON_ARM = 5.dp
-private val CHEVRON_INSET = 11.dp
-private val CHEVRON_ANGLES = listOf(0f, 90f, 180f, 270f)
+private val MAX_STICK_PAD = 200.dp
+private const val KNOB_FRACTION = 0.22f
+private const val PAD_FILL_ALPHA = 0.12f
+private const val RING_ALPHA = 0.45f
+private const val HELD_RING_ALPHA = 0.8f
+private const val KNOB_ALPHA = 0.28f
+private const val HELD_KNOB_ALPHA = 0.45f
+private const val MONITOR_FRACTION = 0.3f
+private val MONITOR_GAP = 6.dp
+private const val MONITOR_FILL_ALPHA = 0.35f
+private const val MONITOR_LINE_ALPHA = 0.5f
+private val MONITOR_DOT = 3.5.dp
+private val MONITOR_CORNER = 4.dp
+private const val LEFT_STICK_KEY = "leftStick"
+private const val RIGHT_STICK_KEY = "rightStick"
 
 internal data class VirtualJoystickState(
     val enabled: Boolean,
@@ -179,7 +186,11 @@ internal fun joystickValues(left: StickAxes, right: StickAxes, leftHanded: Boole
         listOf(right.x, right.y, left.x, left.y)
     }
 
-internal fun stickPad(shortSide: Dp): Dp = (shortSide * STICK_PAD_FRACTION).coerceIn(MIN_STICK_PAD, MAX_STICK_PAD)
+internal fun stickPad(shortSide: Dp, room: Dp = Dp.Infinity): Dp = minOf(shortSide * STICK_PAD_FRACTION, room).coerceIn(MIN_STICK_PAD, MAX_STICK_PAD)
+
+internal fun padsBeside(width: Dp): Dp = (width - AircastSpace.s3 * 2 - AircastSpace.s2 * 2 - MONITOR_GAP) / (2f + 2f * MONITOR_FRACTION)
+
+internal fun monitorDot(fraction: Float, side: Float, dot: Float): Float = dot + fraction.coerceIn(0f, 1f) * (side - 2f * dot)
 
 internal fun knobTravel(pad: Float): Float = pad / 2f - pad * KNOB_FRACTION
 
@@ -193,14 +204,13 @@ internal fun dragged(start: Offset, moved: Offset, travel: Float): Offset =
     Offset((start.x + moved.x / (2f * travel)).coerceIn(0f, 1f), (start.y + moved.y / (2f * travel)).coerceIn(0f, 1f))
 
 @Composable
-internal fun shownStickPad(): Dp? {
+internal fun shownStickPad(shortSide: Dp, room: Dp): Dp? {
     val shown by qgcDerived(VIRTUAL_JOYSTICK_PATH) { virtualJoystick(it)?.show == true }
-    val configuration = LocalConfiguration.current
-    return stickPad(minOf(configuration.screenWidthDp, configuration.screenHeightDp).dp).takeIf { shown }
+    return stickPad(shortSide, room).takeIf { shown }
 }
 
 @Composable
-fun VirtualJoystick(pad: Dp, modifier: Modifier = Modifier) {
+fun VirtualJoystick(pad: Dp, modifier: Modifier = Modifier, trailing: @Composable () -> Unit = {}) {
     val view by qgcPath(VIRTUAL_JOYSTICK_PATH)
     val state = virtualJoystick(view)?.takeIf { it.show } ?: return
     val grounded by qgcDerived(FLY_STATE) { onTheGround(flyState(it)) }
@@ -233,29 +243,51 @@ fun VirtualJoystick(pad: Dp, modifier: Modifier = Modifier) {
 
     val shown = shownSticks(state, left, right, grounded, leftHeld, rightHeld)
     val release = { stick: Offset, throttle: Boolean -> released(stick, throttle, latestState.autoCenterThrottle, latestParked) }
-    Row(modifier.fillMaxWidth()) {
+    Row(modifier.fillMaxWidth(), verticalAlignment = Alignment.Bottom) {
         ThumbPad(
             stick = shown.left,
             description = "Left virtual stick",
             size = pad,
+            modifier = Modifier.avoidedByVideoMessage(LEFT_STICK_KEY),
             onHeld = { leftHeld = it },
             onMove = { left = it },
             onRelease = { left = release(it, throttleOnLeft(latestState)) },
         )
         Spacer(Modifier.weight(1f))
+        Box(Modifier.height(pad), contentAlignment = Alignment.BottomCenter) { StickMonitor(shown, pad * MONITOR_FRACTION) }
+        Spacer(Modifier.weight(1f))
         ThumbPad(
             stick = shown.right,
             description = "Right virtual stick",
             size = pad,
+            modifier = Modifier.avoidedByVideoMessage(RIGHT_STICK_KEY),
             onHeld = { rightHeld = it },
             onMove = { right = it },
             onRelease = { right = release(it, !throttleOnLeft(latestState)) },
         )
+        trailing()
     }
 }
 
 @Composable
-private fun ThumbPad(stick: Offset, description: String, size: Dp, onHeld: (Boolean) -> Unit, onMove: (Offset) -> Unit, onRelease: (Offset) -> Unit) {
+private fun StickMonitor(sticks: Sticks, box: Dp) {
+    val ink = MaterialTheme.aircast.outdoorForeground
+    Row(horizontalArrangement = Arrangement.spacedBy(MONITOR_GAP)) {
+        listOf(sticks.left, sticks.right).map { stick ->
+            Canvas(Modifier.size(box)) {
+                drawRoundRect(Color.Black.copy(alpha = MONITOR_FILL_ALPHA), cornerRadius = CornerRadius(MONITOR_CORNER.toPx()))
+                val line = ink.copy(alpha = MONITOR_LINE_ALPHA)
+                drawLine(line, Offset(center.x, 0f), Offset(center.x, size.height), 1.dp.toPx())
+                drawLine(line, Offset(0f, center.y), Offset(size.width, center.y), 1.dp.toPx())
+                val dot = MONITOR_DOT.toPx()
+                drawCircle(ink, dot, Offset(monitorDot(stick.x, size.width, dot), monitorDot(stick.y, size.height, dot)))
+            }
+        }
+    }
+}
+
+@Composable
+private fun ThumbPad(stick: Offset, description: String, size: Dp, modifier: Modifier, onHeld: (Boolean) -> Unit, onMove: (Offset) -> Unit, onRelease: (Offset) -> Unit) {
     val ink = MaterialTheme.aircast.outdoorForeground
     val latestStick by rememberUpdatedState(stick)
     val latestHeld by rememberUpdatedState(onHeld)
@@ -263,7 +295,7 @@ private fun ThumbPad(stick: Offset, description: String, size: Dp, onHeld: (Bool
     val latestRelease by rememberUpdatedState(onRelease)
     var held by remember { mutableStateOf(false) }
     Canvas(
-        Modifier
+        modifier
             .size(size)
             .semantics { contentDescription = description }
             .pointerInput(Unit) {
@@ -289,18 +321,7 @@ private fun ThumbPad(stick: Offset, description: String, size: Dp, onHeld: (Bool
         val radius = this.size.minDimension / 2f
         drawCircle(Color.Black.copy(alpha = PAD_FILL_ALPHA), radius)
         drawCircle(ink.copy(alpha = if (held) HELD_RING_ALPHA else RING_ALPHA), radius - 0.75.dp.toPx(), style = Stroke(1.5.dp.toPx()))
-        CHEVRON_ANGLES.map { angle -> rotate(angle) { chevron(ink.copy(alpha = CHEVRON_ALPHA), radius) } }
-        val knob = this.size.minDimension * KNOB_FRACTION
         val at = center + knobOffset(stick, knobTravel(this.size.minDimension))
-        drawCircle(Color.Black.copy(alpha = KNOB_SHADOW_ALPHA), knob + 2.dp.toPx(), at)
-        drawCircle(ink, if (held) knob * 1.1f else knob, at)
+        drawCircle(ink.copy(alpha = if (held) HELD_KNOB_ALPHA else KNOB_ALPHA), this.size.minDimension * KNOB_FRACTION, at)
     }
-}
-
-private fun DrawScope.chevron(color: Color, radius: Float) {
-    val tip = Offset(center.x, center.y - radius + CHEVRON_INSET.toPx())
-    val arm = CHEVRON_ARM.toPx()
-    val stroke = 2.dp.toPx()
-    drawLine(color, tip, tip + Offset(-arm, arm), stroke, StrokeCap.Round)
-    drawLine(color, tip, tip + Offset(arm, arm), stroke, StrokeCap.Round)
 }
