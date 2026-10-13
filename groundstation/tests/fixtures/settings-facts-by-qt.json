@@ -138,6 +138,7 @@
 "8 hz",
 "9 hz",
 "10 hz",
+"20 hz",
 "50 hz",
 "100 hz"
 ],
@@ -154,6 +155,7 @@
 8,
 9,
 10,
+20,
 50,
 100
 ],
@@ -189,11 +191,11 @@
 "bitmaskStrings": [],
 "bitmaskValues": [],
 "decimalPlaces": 3,
-"defaultValue": 10,
+"defaultValue": 20,
 "defaultValueAvailable": true,
-"defaultValueString": "10",
-"enumIndex": 11,
-"enumOrValueString": "10 hz",
+"defaultValueString": "20",
+"enumIndex": 12,
+"enumOrValueString": "20 hz",
 "enumStrings": [
 "Controlled By Vehicle",
 "0 hz",
@@ -207,6 +209,7 @@
 "8 hz",
 "9 hz",
 "10 hz",
+"20 hz",
 "50 hz",
 "100 hz"
 ],
@@ -223,6 +226,7 @@
 8,
 9,
 10,
+20,
 50,
 100
 ],
@@ -237,20 +241,20 @@
 "name": "streamRateExtra1",
 "qgcRebootRequired": false,
 "rawUnits": "",
-"rawValue": 10,
+"rawValue": 20,
 "readOnly": false,
 "shortDescription": "Frequency (Hz) for receiving extra1 telemetry from ArduPilot vehicles.",
 "typeIsBool": false,
 "typeIsInteger": true,
 "typeIsString": false,
 "units": "",
-"unknownEnumLabel": "Unknown: 10",
+"unknownEnumLabel": "Unknown: 20",
 "userMax": null,
 "userMin": null,
 "userVisible": true,
-"value": 10,
+"value": 20,
 "valueEqualsDefault": true,
-"valueString": "10",
+"valueString": "20",
 "vehicleRebootRequired": false,
 "visible": true
 },
@@ -276,6 +280,7 @@
 "8 hz",
 "9 hz",
 "10 hz",
+"20 hz",
 "50 hz",
 "100 hz"
 ],
@@ -292,6 +297,7 @@
 8,
 9,
 10,
+20,
 50,
 100
 ],
@@ -345,6 +351,7 @@
 "8 hz",
 "9 hz",
 "10 hz",
+"20 hz",
 "50 hz",
 "100 hz"
 ],
@@ -361,6 +368,7 @@
 8,
 9,
 10,
+20,
 50,
 100
 ],
@@ -414,6 +422,7 @@
 "8 hz",
 "9 hz",
 "10 hz",
+"20 hz",
 "50 hz",
 "100 hz"
 ],
@@ -430,6 +439,7 @@
 8,
 9,
 10,
+20,
 50,
 100
 ],
@@ -483,6 +493,7 @@
 "8 hz",
 "9 hz",
 "10 hz",
+"20 hz",
 "50 hz",
 "100 hz"
 ],
@@ -499,6 +510,7 @@
 8,
 9,
 10,
+20,
 50,
 100
 ],
@@ -552,6 +564,7 @@
 "8 hz",
 "9 hz",
 "10 hz",
+"20 hz",
 "50 hz",
 "100 hz"
 ],
@@ -568,6 +581,7 @@
 8,
 9,
 10,
+20,
 50,
 100
 ],
