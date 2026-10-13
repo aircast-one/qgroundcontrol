@@ -9,6 +9,7 @@ pub(crate) mod host;
 pub mod mesh;
 pub mod open;
 pub mod overlay;
+pub mod predict;
 pub mod render;
 pub mod session;
 pub mod tileset;

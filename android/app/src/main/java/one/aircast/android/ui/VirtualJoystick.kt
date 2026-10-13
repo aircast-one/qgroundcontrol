@@ -1,6 +1,8 @@
 package one.aircast.android.ui
 
+import android.os.Build
 import android.os.SystemClock
+import android.view.InputDevice
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -29,10 +31,10 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.Channel
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
@@ -50,7 +52,6 @@ import java.util.concurrent.atomic.AtomicLong
 internal const val VIRTUAL_JOYSTICK_PATH = "view.virtualJoystick"
 internal const val VIRTUAL_JOYSTICK_VALUE = "vehicle.virtualTabletJoystickValue"
 private const val DEFAULT_PERIOD_MS = 40L
-internal const val QUICKEST_RESEND_MS = 20L
 private const val STICK_PAD_FRACTION = 0.42f
 private val MIN_STICK_PAD = 96.dp
 private val MAX_STICK_PAD = 200.dp
@@ -173,8 +174,7 @@ object VirtualStickSender {
                                 val sticks = shownSticks(sending, left, right, onTheGround(flyState(fly.value)), leftHeld, rightHeld)
                                 val touchAge = touchedAt.getAndSet(0L).takeIf { it > 0L }?.let { SystemClock.uptimeMillis() - it }
                                 Qgc.invoke(VIRTUAL_JOYSTICK_VALUE, *(stickValues(sending, sticks) + listOfNotNull(touchAge)).toTypedArray())
-                                delay(QUICKEST_RESEND_MS)
-                                withTimeoutOrNull(sending.periodMs - QUICKEST_RESEND_MS) { moved.receive() }
+                                withTimeoutOrNull(sending.periodMs) { moved.receive() }
                             }
                         }
                     }
@@ -224,6 +224,13 @@ fun VirtualJoystick(pad: Dp, modifier: Modifier = Modifier, trailing: @Composabl
     val view by qgcPath(VIRTUAL_JOYSTICK_PATH)
     val state = virtualJoystick(view)?.takeIf { it.show } ?: return
     val grounded by qgcDerived(FLY_STATE) { onTheGround(flyState(it)) }
+    val hostView = LocalView.current
+    DisposableEffect(hostView) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) hostView.requestUnbufferedDispatch(InputDevice.SOURCE_CLASS_POINTER)
+        onDispose {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) hostView.requestUnbufferedDispatch(0)
+        }
+    }
 
     val layout = state.autoCenterThrottle to state.leftHandedMode
     val kept = VirtualStickSender.layout == layout

@@ -174,10 +174,48 @@ pub fn synthetic(backend: &dyn Backend, gimbals: &Value, aim: (f64, f64)) -> Val
         "headingRate": gimbal.is_none().then_some(heading_rate),
         "pitchRate": pitch_rate,
         "rollRate": roll_rate,
+        "response": response(backend, &backend.value_fields("vehicle", crate::virtualjoystick::VEHICLE_FIELDS)),
+        "roundTripMs": crate::linkhealth::recent_round_trip_ms(),
         "native": native(),
         "draw": drawn(),
         "beam": beam((latitude, longitude), above_home, heading, pitch, CAMERA_FOV_DEG).iter().map(|(lat, lon)| json!({ "latitude": lat, "longitude": lon })).collect::<Vec<_>>(),
     })
+}
+
+const PILOT_YAW_MODES: [&str; 6] = ["Stabilize", "AltHold", "Loiter", "PosHold", "Sport", "Drift"];
+const CLIMB_MODES: [&str; 3] = ["AltHold", "Loiter", "PosHold"];
+const RC_HALF_RANGE: f64 = 500.0;
+const CM_PER_M: f64 = 100.0;
+
+fn param(backend: &dyn Backend, name: &str) -> Option<f64> {
+    raw(backend, &format!("vehicle.parameterManager.getParameter(-1,{name})"))
+}
+
+fn gain(backend: &dyn Backend, full: &str, scale: f64, expo: Option<&str>, deadzone: &str) -> Value {
+    let read = || Some(json!({ "full": param(backend, full)? / scale, "expo": expo.map_or(Some(0.0), |name| param(backend, name))?, "deadzone": param(backend, deadzone)? / RC_HALF_RANGE }));
+    read().unwrap_or(Value::Null)
+}
+
+pub fn response(backend: &dyn Backend, vehicle: &Value) -> Value {
+    let Some(mode) = crate::virtualjoystick::copter_mode_now(vehicle) else { return json!({ "rateMode": false }) };
+    let acro = mode == "Acro";
+    let yaw = match (acro, PILOT_YAW_MODES.contains(&mode)) {
+        (true, _) => gain(backend, "ACRO_Y_RATE", 1.0, Some("ACRO_Y_EXPO"), "RC4_DZ"),
+        (false, true) => gain(backend, "PILOT_Y_RATE", 1.0, Some("PILOT_Y_EXPO"), "RC4_DZ"),
+        (false, false) => Value::Null,
+    };
+    let tilt = |deadzone: &str| if acro { gain(backend, "ACRO_RP_RATE", 1.0, Some("ACRO_RP_EXPO"), deadzone) } else { Value::Null };
+    let loiter = |deadzone: &str| if mode == "Loiter" { gain(backend, "LOIT_SPEED", CM_PER_M, None, deadzone) } else { Value::Null };
+    let climb = CLIMB_MODES
+        .contains(&mode)
+        .then(|| {
+            let up = param(backend, "PILOT_SPEED_UP")? / CM_PER_M;
+            let down = param(backend, "PILOT_SPEED_DN").filter(|down| *down > 0.0).map_or(up, |down| down / CM_PER_M);
+            Some(json!({ "up": up, "down": down, "deadzone": param(backend, "THR_DZ")? / RC_HALF_RANGE }))
+        })
+        .flatten()
+        .unwrap_or(Value::Null);
+    json!({ "yaw": yaw, "roll": tilt("RC1_DZ"), "pitch": tilt("RC2_DZ"), "forward": loiter("RC2_DZ"), "right": loiter("RC1_DZ"), "climb": climb, "rateMode": acro })
 }
 
 fn native() -> bool {
@@ -301,6 +339,15 @@ mod tests {
         assert_eq!((view["northSpeed"].as_f64(), view["climbSpeed"].as_f64()), (Some(0.0), Some(0.0)), "no local position yet, so no velocity to fly the view on with");
         let moving = synthetic(&flying(&[("vehicle.localPosition.vx", json!(3.0)), ("vehicle.localPosition.vy", json!(-4.0)), ("vehicle.localPosition.vz", json!(-1.5))]), &no_gimbal(), DEFAULT_AIM);
         assert_eq!((moving["northSpeed"].as_f64(), moving["eastSpeed"].as_f64(), moving["climbSpeed"].as_f64()), (Some(3.0), Some(-4.0), Some(1.5)), "the view carries the drone's NED velocity as north, east and up");
+        let params = |pairs: &[(&'static str, f64)]| pairs.iter().map(|(name, value)| (Box::leak(format!("vehicle.parameterManager.getParameter(-1,{name})").into_boxed_str()) as &'static str, json!(*value))).collect::<Vec<_>>();
+        let tuned = params(&[("PILOT_Y_RATE", 150.0), ("PILOT_Y_EXPO", 0.0), ("RC4_DZ", 20.0), ("LOIT_SPEED", 1250.0), ("RC1_DZ", 20.0), ("RC2_DZ", 20.0), ("PILOT_SPEED_UP", 250.0), ("PILOT_SPEED_DN", 0.0), ("THR_DZ", 100.0)]);
+        let loiter = synthetic(&flying(&[tuned.clone(), vec![copter_in(COPTER_LOITER)]].concat()), &no_gimbal(), DEFAULT_AIM);
+        assert_eq!(loiter["response"]["yaw"], json!({ "full": 150.0, "expo": 0.0, "deadzone": 0.04 }), "half a yaw stick asks for PILOT_Y_RATE through the RC deadzone");
+        assert_eq!(loiter["response"]["forward"], json!({ "full": 12.5, "expo": 0.0, "deadzone": 0.04 }), "Loiter flies the stick as a speed up to LOIT_SPEED");
+        assert_eq!(loiter["response"]["climb"], json!({ "up": 2.5, "down": 2.5, "deadzone": 0.2 }), "PILOT_SPEED_DN 0 means the climb rate both ways");
+        assert!(loiter["response"]["roll"].is_null() && loiter["response"]["rateMode"] == false);
+        let unknown = synthetic(&flying(&[copter_in(COPTER_LOITER)]), &no_gimbal(), DEFAULT_AIM);
+        assert!(unknown["response"]["yaw"].is_null() && unknown["response"]["forward"].is_null(), "without the parameters the view does not guess how the drone answers");
         let turning = synthetic(&flying(&[("vehicle.yawRate", json!(30.0))]), &no_gimbal(), DEFAULT_AIM);
         assert_eq!((turning["headingRate"].as_f64(), turning["pitchRate"].as_f64(), turning["rollRate"].as_f64()), (Some(30.0), Some(0.0), Some(0.0)), "level and turning, the view turns with the nose and keeps the pilot's tilt");
         let gimballed = synthetic(&flying(&[("vehicle.yawRate", json!(30.0))]), &json!({ "gimbals": [{ "active": true, "absoluteYaw": 90.0, "pitch": -30.0 }] }), DEFAULT_AIM);

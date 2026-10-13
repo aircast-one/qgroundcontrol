@@ -2005,7 +2005,7 @@ impl Vehicle {
         }
         let value = |key: &str| action.get(key).and_then(Value::as_f64).unwrap_or(0.0);
         let axis = |key: &str| (value(key) as f32 * MANUAL_CONTROL_SCALE) as i16;
-        let yaw = crate::joystick::exponential(value("yaw") as f32, crate::virtualjoystick::YAW_EXPO_PCT);
+        let yaw = crate::virtualjoystick::yaw_sent(value("yaw")) as f32;
         let control = Outbound::ManualControl { target: self.id, x: axis("pitch"), y: axis("roll"), z: axis("thrust"), r: (yaw * MANUAL_CONTROL_SCALE) as i16 };
         let deflected = crate::virtualjoystick::stick_deflected(value("roll"), value("pitch"), value("yaw"), value("thrust"), self.flying);
         let takeover = self.stick_takeover(deflected, now_ms);

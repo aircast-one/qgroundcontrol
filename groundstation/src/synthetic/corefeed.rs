@@ -17,6 +17,10 @@ impl Feed for CoreFeed {
         crate::settingsstore::raw_setting(SYNTHETIC_TOKEN).and_then(|value| value.as_str().map(str::trim).map(str::to_string)).unwrap_or_default()
     }
 
+    fn sticks(&self) -> Vec<crate::virtualjoystick::StickSample> {
+        crate::virtualjoystick::sent_sticks()
+    }
+
     fn report(&self, draw: Draw) {
         crate::synthview::set_draw(draw.name());
     }

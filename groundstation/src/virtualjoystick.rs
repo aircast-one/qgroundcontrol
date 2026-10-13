@@ -171,6 +171,59 @@ pub fn virtual_joystick_view(backend: &dyn Backend, _args: &[String]) -> Value {
 }
 
 const REPORT_EVERY: Duration = Duration::from_secs(10);
+const REMEMBERED: Duration = Duration::from_secs(2);
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct StickSample {
+    pub at: Instant,
+    pub roll: f64,
+    pub pitch: f64,
+    pub yaw: f64,
+    pub thrust: f64,
+    pub touched: Option<Instant>,
+}
+
+impl StickSample {
+    fn axes(&self) -> [f64; 4] {
+        [self.roll, self.pitch, self.yaw, self.thrust]
+    }
+}
+
+static SENT: Mutex<Vec<StickSample>> = Mutex::new(Vec::new());
+
+pub fn remembered(kept: &[StickSample], sample: StickSample) -> Vec<StickSample> {
+    kept.iter().copied().filter(|old| sample.at.saturating_duration_since(old.at) <= REMEMBERED).chain(std::iter::once(sample)).collect()
+}
+
+pub fn sent_sticks() -> Vec<StickSample> {
+    SENT.lock().unwrap_or_else(PoisonError::into_inner).clone()
+}
+
+fn remember(sample: StickSample) {
+    let moved = {
+        let mut kept = SENT.lock().unwrap_or_else(PoisonError::into_inner);
+        let moved = kept.last().is_none_or(|last| last.axes() != sample.axes());
+        *kept = remembered(&kept, sample);
+        moved
+    };
+    if moved {
+        wake_view();
+    }
+}
+
+fn wake_view() {
+    #[cfg(all(feature = "synthetic", native_synthetic, not(test)))]
+    crate::synthetic::host::wake();
+}
+
+pub fn yaw_sent(yaw: f64) -> f64 {
+    f64::from(crate::joystick::exponential(yaw as f32, YAW_EXPO_PCT))
+}
+
+pub fn copter_mode_now(vehicle: &Value) -> Option<&'static str> {
+    let custom = custom_mode(vehicle)?;
+    matches!(airframe(vehicle), Airframe::Copter).then(|| COPTER_MODES.iter().find(|mode| mode.custom_mode == custom).map(|mode| mode.name)).flatten()
+}
 const PAUSED: Duration = Duration::from_secs(1);
 
 #[derive(Debug, Clone, PartialEq)]
@@ -275,13 +328,26 @@ pub fn send(backend: &dyn Backend, args: &str) -> Value {
     }
     let action = json!({ "action": "virtualJoystick", "roll": roll, "pitch": pitch, "yaw": yaw, "thrust": thrust });
     let dispatched = crate::rcoverride::on_core(backend, action).unwrap_or_else(|| flag(&object(&backend.invoke(JOYSTICK_VALUE, &json!([roll, pitch, yaw, thrust]).to_string())), "ok"));
-    note_send(Instant::now(), touch_age_ms, (!dispatched).then_some("dispatch_failed"), rate);
+    let now = Instant::now();
+    if dispatched {
+        remember(StickSample { at: now, roll, pitch, yaw: yaw_sent(yaw), thrust, touched: touch_age_ms.and_then(|age| now.checked_sub(Duration::from_millis(age))) });
+    }
+    note_send(now, touch_age_ms, (!dispatched).then_some("dispatch_failed"), rate);
     json!({ "ok": dispatched })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn sent_sticks_are_remembered_for_two_seconds() {
+        let start = Instant::now();
+        let at = |ms: u64| StickSample { at: start + Duration::from_millis(ms), roll: 0.0, pitch: 0.0, yaw: 0.1, thrust: 0.5, touched: None };
+        let kept = [0, 500, 1_500].iter().fold(Vec::new(), |kept, ms| remembered(&kept, at(*ms)));
+        assert_eq!(remembered(&kept, at(2_400)).iter().map(|sample| sample.at).collect::<Vec<_>>(), [500, 1_500, 2_400].map(|ms| start + Duration::from_millis(ms)), "older than two seconds is dropped");
+        assert!((yaw_sent(0.5) - 0.425).abs() < 1e-6, "the history holds the yaw the vehicle was sent, after the expo");
+    }
 
     #[test]
     fn a_stick_window_reports_touch_to_send_times_and_closes_on_a_pause() {

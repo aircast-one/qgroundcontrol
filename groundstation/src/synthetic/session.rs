@@ -8,6 +8,8 @@ use url::Url;
 use super::fetch::{Fetcher, Pool};
 use super::geo::{Camera, Pose};
 use super::ground;
+use super::predict::{self, Gain, Lag, Predicted, Step};
+use crate::virtualjoystick::StickSample;
 use super::mesh::Mesh;
 use super::open::{Built, OpenScene, Want};
 use super::overlay::{self, Overlays};
@@ -41,7 +43,9 @@ const STAND_IN_IN_FLIGHT: usize = 6;
 const TERRAIN_UNDER_EVERY: Duration = Duration::from_millis(500);
 const TERRAIN_UNDER_COARSER: f64 = 4.0;
 const LONGEST_GUESS: Duration = Duration::from_secs(1);
-const LONGEST_TURN_GUESS: Duration = Duration::from_millis(300);
+const LONGEST_TURN_GUESS: Duration = Duration::from_millis(600);
+const DISPLAY_LEAD: Duration = Duration::from_millis(25);
+const STICKS_LIVE: Duration = Duration::from_millis(300);
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Target {
@@ -61,6 +65,43 @@ pub struct Target {
     pub heading_rate: Option<f64>,
     pub pitch_rate: Option<f64>,
     pub roll_rate: f64,
+    pub response: Response,
+    pub round_trip: Option<Duration>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Climb {
+    pub up: f64,
+    pub down: f64,
+    pub deadzone: f64,
+}
+
+impl Climb {
+    pub fn commanded(&self, thrust: f64) -> f64 {
+        let stick = (thrust - 0.5) * 2.0;
+        let past = (stick.abs() - self.deadzone).max(0.0) / (1.0 - self.deadzone).max(f64::EPSILON);
+        past.min(1.0) * if stick > 0.0 { self.up } else { -self.down }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq)]
+pub struct Response {
+    pub yaw: Option<Gain>,
+    pub roll: Option<Gain>,
+    pub pitch: Option<Gain>,
+    pub forward: Option<Gain>,
+    pub right: Option<Gain>,
+    pub climb: Option<Climb>,
+    pub rate_mode: bool,
+}
+
+impl Response {
+    pub fn from_view(view: &serde_json::Value) -> Self {
+        let number = |at: &serde_json::Value, key: &str| at.get(key).and_then(serde_json::Value::as_f64);
+        let gain = |key: &str| view.get(key).and_then(|at| Some(Gain { full: number(at, "full")?, expo: number(at, "expo")?, deadzone: number(at, "deadzone")? }));
+        let climb = view.get("climb").and_then(|at| Some(Climb { up: number(at, "up")?, down: number(at, "down")?, deadzone: number(at, "deadzone")? }));
+        Self { yaw: gain("yaw"), roll: gain("roll"), pitch: gain("pitch"), forward: gain("forward"), right: gain("right"), climb, rate_mode: view.get("rateMode").and_then(serde_json::Value::as_bool) == Some(true) }
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -105,6 +146,8 @@ impl Target {
             heading_rate: number("headingRate"),
             pitch_rate: number("pitchRate"),
             roll_rate: number("rollRate")?,
+            response: view.get("response").map(Response::from_view).unwrap_or_default(),
+            round_trip: view.get("roundTripMs").and_then(serde_json::Value::as_u64).map(Duration::from_millis),
         })
     }
 }
@@ -234,6 +277,7 @@ pub struct Frame {
     pub home_ground: Option<f64>,
     pub changed: bool,
     pub reading_age: Duration,
+    pub stick_to_frame: Option<Duration>,
 }
 
 impl Frame {
@@ -258,6 +302,7 @@ pub struct Session {
     selected: Option<Instant>,
     seen: Option<Target>,
     telemetry_since: Option<(Telemetry, Instant)>,
+    shown_touch: Option<Instant>,
     turn: Option<Turn>,
     spot_since: Option<((f64, f64), Instant)>,
     height_since: Option<(f64, Instant)>,
@@ -331,39 +376,56 @@ pub struct Motion {
     pub roll: f64,
 }
 
-#[derive(Clone, Copy, Debug, Default, PartialEq)]
-pub struct Ages {
-    pub spot: Duration,
-    pub height: Duration,
-    pub attitude: Duration,
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Reading {
+    pub spot: Instant,
+    pub height: Instant,
+    pub attitude: Instant,
 }
 
 fn moved(at: (f64, f64), north: f64, east: f64) -> (f64, f64) {
     crate::surveygrid::at_distance_and_azimuth(at, north.hypot(east), east.atan2(north).to_degrees())
 }
 
-pub fn ahead(target: &Target, ages: Ages) -> (Target, Motion) {
-    let seconds = |age: Duration, longest: Duration| age.min(longest).as_secs_f64();
-    let live = |rate: f64, age: Duration, longest: Duration| if age < longest { rate } else { 0.0 };
-    let (moving, climbing, turning) = (seconds(ages.spot, LONGEST_GUESS), seconds(ages.height, LONGEST_GUESS), seconds(ages.attitude, LONGEST_TURN_GUESS));
-    let (latitude, longitude) = moved((target.latitude, target.longitude), target.north_speed * moving, target.east_speed * moving);
+pub fn ahead(target: &Target, sticks: &[StickSample], read: Reading, now: Instant) -> (Target, Motion) {
+    let half = target.round_trip.map_or(Duration::ZERO, |trip| trip / 2);
+    let driven = sticks.last().is_some_and(|last| now.saturating_duration_since(last.at) < STICKS_LIVE);
+    let axis = |start: f64, read_at: Instant, longest: Duration, lag: Lag, command: Option<&dyn Fn(&StickSample) -> f64>| -> Predicted {
+        let from = read_at.checked_sub(half).unwrap_or(read_at);
+        let delay = half + lag.dead;
+        let steps: Vec<Step> = command.filter(|_| driven).map(|command| sticks.iter().map(|sample| Step { at: sample.at, value: command(sample) }).collect()).unwrap_or_default();
+        let until = now + DISPLAY_LEAD + if steps.is_empty() { Duration::ZERO } else { delay };
+        let capped = until.min(from + longest);
+        let ahead = predict::predicted(start, from, capped, &steps, delay, lag);
+        Predicted { value: if until > capped { 0.0 } else { ahead.value }, ..ahead }
+    };
+    let response = target.response;
+    let yaw_lag = if response.rate_mode { predict::ACRO_YAW } else { predict::LOITER_YAW };
+    let yaw = response.yaw.map(|gain| move |sample: &StickSample| gain.commanded(sample.yaw));
+    let roll = response.roll.map(|gain| move |sample: &StickSample| gain.commanded(sample.roll));
+    let pitch = response.pitch.map(|gain| move |sample: &StickSample| -gain.commanded(sample.pitch));
+    let (sin, cos) = target.heading.to_radians().sin_cos();
+    let along = response.forward.zip(response.right);
+    let north = along.map(|(forward, right)| move |sample: &StickSample| forward.commanded(sample.pitch) * cos - right.commanded(sample.roll) * sin);
+    let east = along.map(|(forward, right)| move |sample: &StickSample| forward.commanded(sample.pitch) * sin + right.commanded(sample.roll) * cos);
+    let climb = response.climb.map(|climb| move |sample: &StickSample| climb.commanded(sample.thrust));
+    let turning = axis(target.heading_rate.unwrap_or(0.0), read.attitude, LONGEST_TURN_GUESS, yaw_lag, yaw.as_ref().map(|f| f as &dyn Fn(&StickSample) -> f64));
+    let nodding = axis(target.pitch_rate.unwrap_or(0.0), read.attitude, LONGEST_TURN_GUESS, predict::ACRO_TILT, pitch.as_ref().map(|f| f as &dyn Fn(&StickSample) -> f64));
+    let banking = axis(target.roll_rate, read.attitude, LONGEST_TURN_GUESS, predict::ACRO_TILT, roll.as_ref().map(|f| f as &dyn Fn(&StickSample) -> f64));
+    let northing = axis(target.north_speed, read.spot, LONGEST_GUESS, predict::LOITER_SPEED, north.as_ref().map(|f| f as &dyn Fn(&StickSample) -> f64));
+    let easting = axis(target.east_speed, read.spot, LONGEST_GUESS, predict::LOITER_SPEED, east.as_ref().map(|f| f as &dyn Fn(&StickSample) -> f64));
+    let climbing = axis(target.climb_speed, read.height, LONGEST_GUESS, predict::CLIMB, climb.as_ref().map(|f| f as &dyn Fn(&StickSample) -> f64));
+    let (latitude, longitude) = moved((target.latitude, target.longitude), northing.travelled, easting.travelled);
     let guess = Target {
         latitude,
         longitude,
-        above_home: target.above_home + target.climb_speed * climbing,
-        heading: target.heading + target.heading_rate.unwrap_or(0.0) * turning,
-        pitch: target.pitch + target.pitch_rate.unwrap_or(0.0) * turning,
-        roll: target.roll + target.roll_rate * turning,
+        above_home: target.above_home + climbing.travelled,
+        heading: target.heading + turning.travelled,
+        pitch: target.pitch + nodding.travelled,
+        roll: target.roll + banking.travelled,
         ..target.clone()
     };
-    let motion = Motion {
-        north: live(target.north_speed, ages.spot, LONGEST_GUESS),
-        east: live(target.east_speed, ages.spot, LONGEST_GUESS),
-        climb: live(target.climb_speed, ages.height, LONGEST_GUESS),
-        heading: live(target.heading_rate.unwrap_or(0.0), ages.attitude, LONGEST_TURN_GUESS),
-        pitch: live(target.pitch_rate.unwrap_or(0.0), ages.attitude, LONGEST_TURN_GUESS),
-        roll: live(target.roll_rate, ages.attitude, LONGEST_TURN_GUESS),
-    };
+    let motion = Motion { north: northing.value, east: easting.value, climb: climbing.value, heading: turning.value, pitch: nodding.value, roll: banking.value };
     (guess, motion)
 }
 
@@ -459,6 +521,7 @@ impl Session {
             selected: None,
             seen: None,
             telemetry_since: None,
+            shown_touch: None,
             turn: None,
             spot_since: None,
             height_since: None,
@@ -696,7 +759,7 @@ impl Session {
 
 
 
-    pub fn frame(&mut self, target: Option<&Target>, width: u32, height: u32, now: Instant) -> Option<Frame> {
+    pub fn frame(&mut self, target: Option<&Target>, sticks: &[StickSample], width: u32, height: u32, now: Instant) -> Option<Frame> {
         let delivered = self.collect(now);
         if matches!(self.source, Source::Google(None)) && self.root_due.is_some_and(|due| now >= due) {
             self.root_due = None;
@@ -727,8 +790,9 @@ impl Session {
         self.spot_since = Some(spot);
         self.height_since = Some(altitude);
         self.attitude_since = Some(attitude);
-        let age = |since: Instant| now.saturating_duration_since(since);
-        let (guess, motion) = ahead(target, Ages { spot: age(spot.1), height: age(altitude.1), attitude: age(attitude.1) });
+        let (guess, motion) = ahead(target, sticks, Reading { spot: spot.1, height: altitude.1, attitude: attitude.1 }, now);
+        let touched = sticks.iter().rev().find_map(|sample| sample.touched).filter(|touched| self.shown_touch.is_none_or(|shown| *touched > shown));
+        self.shown_touch = touched.or(self.shown_touch);
         let goal = Pose {
             latitude: guess.latitude,
             longitude: guess.longitude,
@@ -752,7 +816,7 @@ impl Session {
             Source::Google(Some(tiles)) => tiles.take_fresh(),
             _ => Vec::new(),
         };
-        Some(Frame { pose, ground: self.ground_meshes.clone(), backfill: self.backfill.clone(), warm, home_ground, changed: moving || fresh || reselected, reading_age: now.saturating_duration_since(telemetry.1) })
+        Some(Frame { pose, ground: self.ground_meshes.clone(), backfill: self.backfill.clone(), warm, home_ground, changed: moving || fresh || reselected, reading_age: now.saturating_duration_since(telemetry.1), stick_to_frame: touched.map(|at| now.saturating_duration_since(at)) })
     }
 }
 
@@ -785,14 +849,14 @@ mod tests {
     }
 
     fn target(imagery: &str) -> Target {
-        Target { latitude: -35.36213, longitude: 149.16514, above_home: 30.0, home_latitude: -35.363262, home_longitude: 149.165237, heading: 200.0, pitch: -15.0, roll: 0.0, fov: 70.0, imagery: imagery.to_string(), north_speed: 0.0, east_speed: 0.0, climb_speed: 0.0, heading_rate: Some(0.0), pitch_rate: Some(0.0), roll_rate: 0.0 }
+        Target { latitude: -35.36213, longitude: 149.16514, above_home: 30.0, home_latitude: -35.363262, home_longitude: 149.165237, heading: 200.0, pitch: -15.0, roll: 0.0, fov: 70.0, imagery: imagery.to_string(), north_speed: 0.0, east_speed: 0.0, climb_speed: 0.0, heading_rate: Some(0.0), pitch_rate: Some(0.0), roll_rate: 0.0, response: Response::default(), round_trip: None }
     }
 
     fn settle(session: &mut Session, target: &Target, start: Instant) -> Option<Frame> {
         let deadline = Instant::now() + Duration::from_secs(10);
         (0u64..)
             .take_while(|_| Instant::now() < deadline)
-            .map(|round| (round, session.frame(Some(target), 640, 360, start + Duration::from_millis(round * 50)), session.in_flight()))
+            .map(|round| (round, session.frame(Some(target), &[], 640, 360, start + Duration::from_millis(round * 50)), session.in_flight()))
             .find(|(round, frame, in_flight)| *round > 20 && *in_flight == 0 && frame.as_ref().is_some_and(|frame| !frame.ground.is_empty()))
             .and_then(|(_, frame, _)| frame)
     }
@@ -876,20 +940,81 @@ mod tests {
         let reading = target("Bing Satellite");
         let start = Instant::now();
         let at = |ms: u64| start + Duration::from_millis(ms);
-        session.frame(Some(&reading), 640, 360, at(0)).expect("a frame");
+        session.frame(Some(&reading), &[], 640, 360, at(0)).expect("a frame");
         let tilted = Target { pitch: -40.0, ..reading.clone() };
-        assert_eq!(session.frame(Some(&tilted), 640, 360, at(500)).expect("a frame").reading_age, Duration::from_millis(500), "dragging the tilt is not new telemetry");
+        assert_eq!(session.frame(Some(&tilted), &[], 640, 360, at(500)).expect("a frame").reading_age, Duration::from_millis(500), "dragging the tilt is not new telemetry");
         let moved = Target { north_speed: 1.5, ..tilted };
-        assert_eq!(session.frame(Some(&moved), 640, 360, at(516)).expect("a frame").reading_age, Duration::from_millis(8), "a new velocity is, dated midway between the ticks that saw it");
+        assert_eq!(session.frame(Some(&moved), &[], 640, 360, at(516)).expect("a frame").reading_age, Duration::from_millis(8), "a new velocity is, dated midway between the ticks that saw it");
+    }
+
+    fn stick(at: Instant, roll: f64, pitch: f64, yaw: f64, thrust: f64) -> StickSample {
+        StickSample { at, roll, pitch, yaw, thrust, touched: None }
+    }
+
+    fn loiter() -> Response {
+        let speed = Gain { full: 12.5, expo: 0.0, deadzone: 0.0 };
+        Response { yaw: Some(Gain { full: 150.0, expo: 0.0, deadzone: 0.0 }), forward: Some(speed), right: Some(speed), climb: Some(Climb { up: 2.5, down: 2.5, deadzone: 0.0 }), ..Response::default() }
+    }
+
+    #[test]
+    fn the_view_turns_with_the_stick_before_telemetry_does() {
+        let start = Instant::now();
+        let at = |ms: u64| start + Duration::from_millis(ms);
+        let hovering = Target { response: loiter(), round_trip: Some(Duration::from_millis(40)), ..target("Bing Satellite") };
+        let read = Reading { spot: at(970), height: at(970), attitude: at(970) };
+        let still = [stick(at(500), 0.0, 0.0, 0.0, 0.5), stick(at(960), 0.0, 0.0, 0.0, 0.5)];
+        let pushed = [still[0], still[1], stick(at(1_000), 0.0, 0.0, 0.5, 0.5)];
+        let (resting, calm) = ahead(&hovering, &still, read, at(1_000));
+        let (turning, motion) = ahead(&hovering, &pushed, read, at(1_000));
+        assert_eq!((resting.heading, calm.heading), (200.0, 0.0));
+        assert!(motion.heading > 5.0 && turning.heading > resting.heading, "the frame drawn as the stick moves already turns, ahead of any telemetry: {motion:?}");
+        let (_, stale) = ahead(&hovering, &pushed, read, at(1_400));
+        assert_eq!(stale.heading, 0.0, "sticks that stopped sending 400 ms ago no longer steer the view");
+    }
+
+    #[test]
+    fn in_loiter_the_stick_flies_the_view_along_the_nose_and_up() {
+        let start = Instant::now();
+        let at = |ms: u64| start + Duration::from_millis(ms);
+        let east_facing = Target { heading: 90.0, response: loiter(), round_trip: Some(Duration::from_millis(40)), ..target("Bing Satellite") };
+        let read = Reading { spot: at(900), height: at(900), attitude: at(900) };
+        let pushed = [stick(at(500), 0.0, 0.0, 0.0, 0.5), stick(at(980), 0.0, 1.0, 0.0, 1.0)];
+        let (guess, motion) = ahead(&east_facing, &pushed, read, at(1_000));
+        assert!(motion.east > 0.1 && motion.north.abs() < 1e-6, "forward on a nose pointing east is east: {motion:?}");
+        assert!(guess.longitude > east_facing.longitude && motion.climb > 0.1, "{motion:?}");
+    }
+
+    #[test]
+    fn a_gimbal_aimed_or_unknown_vehicle_is_never_steered_by_the_sticks() {
+        let start = Instant::now();
+        let at = |ms: u64| start + Duration::from_millis(ms);
+        let unknown = Target { round_trip: Some(Duration::from_millis(40)), ..target("Bing Satellite") };
+        let read = Reading { spot: at(970), height: at(970), attitude: at(970) };
+        let pushed = [stick(at(500), 1.0, 1.0, 1.0, 1.0), stick(at(990), 1.0, 1.0, 1.0, 1.0)];
+        let (guess, motion) = ahead(&unknown, &pushed, read, at(1_000));
+        assert!((guess.heading - unknown.heading).abs() < 1e-9 && (guess.latitude - unknown.latitude).abs() < 1e-9 && (guess.above_home - unknown.above_home).abs() < 1e-9 && motion.heading == 0.0, "no known response, no feed-forward: {motion:?}");
+    }
+
+    #[test]
+    fn a_frame_reports_how_long_after_the_touch_it_was_drawn() {
+        let mut session = Session::new("", Arc::new(Fake)).expect("workers");
+        let start = Instant::now();
+        let at = |ms: u64| start + Duration::from_millis(ms);
+        let touched = [StickSample { touched: Some(at(990)), ..stick(at(995), 0.0, 0.0, 0.2, 0.5) }];
+        let first = session.frame(Some(&target("Bing Satellite")), &touched, 640, 360, at(1_000)).expect("a frame");
+        let next = session.frame(Some(&target("Bing Satellite")), &touched, 640, 360, at(1_016)).expect("a frame");
+        assert_eq!((first.stick_to_frame, next.stick_to_frame), (Some(Duration::from_millis(10)), None), "each touch is counted once, on the first frame that shows it");
     }
 
     #[test]
     fn between_attitude_readings_the_view_turns_on_at_the_reported_rate() {
         let turning = Target { heading_rate: Some(50.0), ..target("Bing Satellite") };
-        let ages = |ms: u64| Ages { attitude: Duration::from_millis(ms), ..Ages::default() };
-        assert!((ahead(&turning, ages(200)).0.heading - 210.0).abs() < 1e-9, "a fifth of a second at 50 deg/s is 10 degrees on");
-        assert!((ahead(&turning, ages(5_000)).0.heading - 215.0).abs() < 1e-9, "a quiet link stops the turn after 300 ms rather than spinning the view");
-        assert_eq!(ahead(&turning, ages(5_000)).1.heading, 0.0, "and the drawn view stops turning with it");
+        let start = Instant::now();
+        let read = Reading { spot: start, height: start, attitude: start };
+        let at = |ms: u64| start + Duration::from_millis(ms);
+        assert!((ahead(&turning, &[], read, at(175)).0.heading - 210.0).abs() < 1e-9, "a fifth of a second at 50 deg/s is 10 degrees on, counting the 25 ms the display takes");
+        assert!((ahead(&turning, &[], read, at(5_000)).0.heading - 230.0).abs() < 1e-9, "a quiet link stops the turn after 600 ms rather than spinning the view");
+        assert_eq!(ahead(&turning, &[], read, at(5_000)).1.heading, 0.0, "and the drawn view stops turning with it");
     }
 
     #[test]
@@ -900,22 +1025,23 @@ mod tests {
             .map(|tick| {
                 let ms = tick * 16;
                 let reading = Target { heading: 200.0 + 60.0 * (ms / 50 * 50) as f64 / 1000.0, heading_rate: Some(60.0), ..target("Bing Satellite") };
-                let drawn = session.frame(Some(&reading), 640, 360, start + Duration::from_millis(ms)).expect("a frame").pose.heading;
-                wrapped(drawn - (200.0 + 60.0 * ms as f64 / 1000.0)).abs()
+                let drawn = session.frame(Some(&reading), &[], 640, 360, start + Duration::from_millis(ms)).expect("a frame").pose.heading;
+                wrapped(drawn - (200.0 + 60.0 * (ms + 25) as f64 / 1000.0)).abs()
             })
             .collect();
         let worst = errors[60..].iter().copied().fold(0.0, f64::max);
-        assert!(worst < 0.5, "a 60 deg/s turn read 20 times a second and drawn at 60 fps sits within half a degree of now, not ~8 degrees behind ({worst})");
+        assert!(worst < 0.5, "a 60 deg/s turn read 20 times a second and drawn at 60 fps sits within half a degree of where it points when the frame reaches the screen ({worst})");
     }
 
     #[test]
     fn between_position_readings_the_camera_flies_on_at_the_reported_velocity() {
         let flying = Target { north_speed: 10.0, east_speed: 0.0, climb_speed: 2.0, ..target("Bing Satellite") };
-        let both = |ms: u64| Ages { spot: Duration::from_millis(ms), height: Duration::from_millis(ms), attitude: Duration::ZERO };
-        let half = ahead(&flying, both(500)).0;
+        let start = Instant::now();
+        let read = Reading { spot: start, height: start, attitude: start };
+        let half = ahead(&flying, &[], read, start + Duration::from_millis(475)).0;
         assert!(((half.latitude - flying.latitude) * 111_195.0 - 5.0).abs() < 0.05, "half a second at 10 m/s north is 5 m north ({})", (half.latitude - flying.latitude) * 111_195.0);
         assert!((half.longitude - flying.longitude).abs() < 1e-9 && (half.above_home - 31.0).abs() < 1e-9);
-        let lost = ahead(&flying, both(30_000)).0;
+        let lost = ahead(&flying, &[], read, start + Duration::from_secs(30)).0;
         assert!(((lost.latitude - flying.latitude) * 111_195.0 - 10.0).abs() < 0.1, "a link that goes quiet stops the guess after a second instead of flying the camera away");
     }
 
@@ -924,7 +1050,7 @@ mod tests {
         let mut session = Session::new("", Arc::new(Fake)).expect("workers");
         let flying = Target { north_speed: 10.0, ..target("Bing Satellite") };
         let start = Instant::now();
-        let frames: Vec<Frame> = (0..20).map(|tick| session.frame(Some(&flying), 640, 360, start + Duration::from_millis(tick * 16)).expect("a frame")).collect();
+        let frames: Vec<Frame> = (0..20).map(|tick| session.frame(Some(&flying), &[], 640, 360, start + Duration::from_millis(tick * 16)).expect("a frame")).collect();
         assert!(frames.windows(2).all(|pair| pair[1].pose.latitude > pair[0].pose.latitude && pair[1].changed), "one reading at 10 m/s keeps every frame moving north instead of settling on the reading");
     }
 
@@ -960,15 +1086,15 @@ mod tests {
         settle(&mut session, &still, start).expect("terrain drawn");
         let later = start + Duration::from_secs(2);
         let drained = std::iter::repeat_with(|| {
-            session.frame(Some(&still), 640, 360, later);
+            session.frame(Some(&still), &[], 640, 360, later);
             session.in_flight()
         })
         .take_while(|in_flight| *in_flight > 0)
         .count();
-        let frame = session.frame(Some(&still), 640, 360, later).expect("a frame");
+        let frame = session.frame(Some(&still), &[], 640, 360, later).expect("a frame");
         assert!(!frame.changed, "nothing moved and nothing arrived, so the GPU can rest (drained {drained} frames)");
         let moved = Target { heading: 210.0, ..still };
-        assert!(session.frame(Some(&moved), 640, 360, later).expect("a frame").changed, "a turn redraws");
+        assert!(session.frame(Some(&moved), &[], 640, 360, later).expect("a frame").changed, "a turn redraws");
     }
 
     #[test]
@@ -997,7 +1123,7 @@ mod tests {
         let mut session = Session::new("eyJtoken", Arc::new(Fake)).expect("workers");
         let (start, deadline) = (Instant::now(), Instant::now() + Duration::from_secs(10));
         let retried = (0u64..).take_while(|_| Instant::now() < deadline).any(|round| {
-            session.frame(Some(&target("Bing Satellite")), 640, 360, start + Duration::from_secs(round * 2));
+            session.frame(Some(&target("Bing Satellite")), &[], 640, 360, start + Duration::from_secs(round * 2));
             session.stats.errors.iter().filter(|(error, _)| error.starts_with("tileset root")).map(|(_, count)| *count).sum::<u64>() >= 2
         });
         assert!(retried, "one failed root request left Google off for the whole session: {:?}", session.stats.errors);
@@ -1008,7 +1134,7 @@ mod tests {
         let mut session = Session::new("", Arc::new(Fake)).expect("workers");
         let (start, deadline) = (Instant::now(), Instant::now() + Duration::from_secs(10));
         let settled = (0u64..).take_while(|_| Instant::now() < deadline).any(|round| {
-            session.frame(Some(&target("Panics")), 640, 360, start + Duration::from_millis(round * 50));
+            session.frame(Some(&target("Panics")), &[], 640, 360, start + Duration::from_millis(round * 50));
             round > 20 && session.in_flight() == 0 && session.stats.errors.keys().any(|error| error.contains("crashed"))
         });
         assert!(settled, "the crash is counted and every job comes back: {:?}", session.stats.errors);

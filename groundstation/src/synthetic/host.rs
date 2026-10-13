@@ -38,12 +38,14 @@ pub trait Feed: Send + Sync {
     fn pose(&self) -> Option<serde_json::Value>;
     fn overlays(&self) -> Option<serde_json::Value>;
     fn token(&self) -> String;
+    fn sticks(&self) -> Vec<crate::virtualjoystick::StickSample>;
     fn report(&self, draw: Draw);
 }
 
 enum Command {
     Attach(Window),
     Release(usize, SyncSender<()>),
+    Wake,
 }
 
 struct Running {
@@ -70,6 +72,12 @@ pub fn attach(window: Window, feed: Arc<dyn Feed>) -> bool {
         }
     }
     running.as_ref().is_some_and(|current| current.commands.send(Command::Attach(window)).is_ok())
+}
+
+pub fn wake() {
+    if let Some(current) = running().as_ref() {
+        current.commands.send(Command::Wake).ok();
+    }
 }
 
 pub fn release(key: usize) {
@@ -123,6 +131,7 @@ fn serve(commands: &Receiver<Command>, feed: &dyn Feed) {
         match next {
             Ok(Command::Attach(window)) => kept = show(window, kept.take(), commands, feed),
             Ok(Command::Release(_, done)) => acknowledge(&done),
+            Ok(Command::Wake) => {}
             Err(RecvTimeoutError::Timeout) => {
                 if let Some(expired) = kept.take() {
                     expired.drop_world("unseen", "");
@@ -183,6 +192,7 @@ impl Visit {
         match command {
             Command::Attach(_) => self.attaches += 1,
             Command::Release(..) => self.releases += 1,
+            Command::Wake => {}
         }
     }
 
@@ -350,11 +360,12 @@ struct Summary {
     idle: u64,
     slowest: Duration,
     reading_ages_ms: Vec<u64>,
+    stick_to_frame_ms: Vec<u64>,
 }
 
 impl Summary {
     fn new(since: Instant) -> Self {
-        Self { since, painted: 0, idle: 0, slowest: Duration::ZERO, reading_ages_ms: Vec::new() }
+        Self { since, painted: 0, idle: 0, slowest: Duration::ZERO, reading_ages_ms: Vec::new(), stick_to_frame_ms: Vec::new() }
     }
 
     fn report(&self, session: Option<&mut Session>, gpu: &Gpu, shown: &mut [Shown], draw: Draw) {
@@ -373,7 +384,7 @@ impl Summary {
         let Stats { requested, loaded, failed, bytes, errors } = stats;
         log::info!(
             target: "synthetic",
-            "event=summary seconds={} source={source} showing={showing} handover_ms={handover} warming={warming} surfaces={surfaces} present={present} draw={} painted={} idle_ticks={} slowest_paint_ms={} acquire_slowest_ms={} draw_slowest_ms={} reading_age_p50_ms={} reading_age_max_ms={} requested={requested} loaded={loaded} failed={failed} bytes={bytes} tiles={tiles} in_flight={in_flight} resident={} uploads={} errors={errors:?}",
+            "event=summary seconds={} source={source} showing={showing} handover_ms={handover} warming={warming} surfaces={surfaces} present={present} draw={} painted={} idle_ticks={} slowest_paint_ms={} acquire_slowest_ms={} draw_slowest_ms={} reading_age_p50_ms={} reading_age_max_ms={} stick_to_frame_p50_ms={} stick_to_frame_max_ms={} stick_frames={} requested={requested} loaded={loaded} failed={failed} bytes={bytes} tiles={tiles} in_flight={in_flight} resident={} uploads={} errors={errors:?}",
             self.since.elapsed().as_secs(),
             draw.name(),
             self.painted,
@@ -383,6 +394,9 @@ impl Summary {
             draw_slowest.as_millis(),
             crate::stats::shown(crate::stats::median(&self.reading_ages_ms)),
             crate::stats::shown(self.reading_ages_ms.iter().copied().max()),
+            crate::stats::shown(crate::stats::median(&self.stick_to_frame_ms)),
+            crate::stats::shown(self.stick_to_frame_ms.iter().copied().max()),
+            self.stick_to_frame_ms.len(),
             gpu.renderer.resident(),
             gpu.renderer.uploads,
         );
@@ -411,6 +425,7 @@ fn apply(command: Command, shown: &mut Vec<Shown>, gpu: &Gpu) {
             shown.retain(|existing| existing.window.key() != key);
             acknowledge(&done);
         }
+        Command::Wake => {}
     }
 }
 
@@ -440,8 +455,9 @@ fn show(first: Window, kept: Option<Kept>, commands: &Receiver<Command>, feed: &
         }
         let restyled = overlays.refresh(now, || feed.overlays().as_ref().and_then(Overlays::from_view));
         let target = feed.pose().as_ref().and_then(Target::from_view);
+        let sticks = feed.sticks();
         let largest = shown.iter().map(|surface| surface.size).max_by_key(|(width, height)| u64::from(*width) * u64::from(*height)).unwrap_or_default();
-        let mut frame = session.as_mut().filter(|_| largest.0 > 0 && largest.1 > 0).and_then(|session: &mut Session| session.frame(target.as_ref(), largest.0, largest.1, now));
+        let mut frame = session.as_mut().filter(|_| largest.0 > 0 && largest.1 > 0).and_then(|session: &mut Session| session.frame(target.as_ref(), &sticks, largest.0, largest.1, now));
         if let Some((frame, session)) = frame.as_mut().zip(session.as_mut()) {
             session.warmed(gpu.renderer.warm(std::mem::take(&mut frame.warm), WARM_PER_TICK));
         }
@@ -469,6 +485,7 @@ fn show(first: Window, kept: Option<Kept>, commands: &Receiver<Command>, feed: &
                 summary.painted += 1;
                 summary.slowest = summary.slowest.max(now.elapsed());
                 summary.reading_ages_ms.extend(frame.as_ref().map(|frame| u64::try_from(frame.reading_age.as_millis()).unwrap_or(u64::MAX)));
+                summary.stick_to_frame_ms.extend(frame.as_ref().and_then(|frame| frame.stick_to_frame).map(|touched| u64::try_from((touched + now.elapsed()).as_millis()).unwrap_or(u64::MAX)));
                 visit.painted += 1;
                 visit.slowest = visit.slowest.max(now.elapsed());
             }

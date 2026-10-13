@@ -1,5 +1,6 @@
 use mavlink::dialects::ardupilotmega::MavMessage;
 use std::collections::BTreeMap;
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{LazyLock, Mutex, PoisonError};
 
 use crate::stats::{median, shown};
@@ -11,6 +12,18 @@ const LONGEST_ROUND_TRIP_MS: u64 = 10_000;
 
 static NONCE: LazyLock<i64> = LazyLock::new(|| i64::from(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |since| since.subsec_nanos())) % NANOS_PER_MS);
 static PINGS_SENT: Mutex<BTreeMap<LinkId, u64>> = Mutex::new(BTreeMap::new());
+static RECENT_ROUND_TRIP_MS: AtomicU64 = AtomicU64::new(0);
+
+pub fn recent_round_trip_ms() -> Option<u64> {
+    Some(RECENT_ROUND_TRIP_MS.load(Ordering::Relaxed)).filter(|ms| *ms > 0)
+}
+
+fn smoothed(previous: u64, latest: u64) -> u64 {
+    match previous {
+        0 => latest.max(1),
+        _ => ((previous * 3 + latest) / 4).max(1),
+    }
+}
 
 pub fn stamp(now_ms: u64, nonce: i64) -> i64 {
     i64::try_from(now_ms).unwrap_or(i64::MAX / NANOS_PER_MS - 1) * NANOS_PER_MS + nonce
@@ -92,7 +105,13 @@ impl LinkHealth {
         match message {
             MavMessage::ATTITUDE(_) | MavMessage::ATTITUDE_QUATERNION(_) => self.attitude = self.attitude.noted(now_ms),
             MavMessage::GLOBAL_POSITION_INT(_) => self.position = self.position.noted(now_ms),
-            MavMessage::TIMESYNC(sync) if sync.tc1 != 0 && crate::mavout::for_us(sync.target_system) => self.round_trips.extend(round_trip_now(sync.ts1, now_ms)),
+            MavMessage::TIMESYNC(sync) if sync.tc1 != 0 && crate::mavout::for_us(sync.target_system) => {
+                let answered = round_trip_now(sync.ts1, now_ms);
+                answered.iter().for_each(|ms| {
+                    RECENT_ROUND_TRIP_MS.store(smoothed(RECENT_ROUND_TRIP_MS.load(Ordering::Relaxed), *ms), Ordering::Relaxed);
+                });
+                self.round_trips.extend(answered);
+            }
             _ => {}
         }
     }
@@ -139,6 +158,13 @@ mod tests {
 
     fn route(id: LinkId) -> Route {
         Route { id, name: "TCP local".to_string(), kind: "TCP".to_string(), radio: false }
+    }
+
+    #[test]
+    fn the_recent_round_trip_follows_replies_smoothly() {
+        assert_eq!(smoothed(0, 40), 40, "the first reply is taken as it is");
+        assert_eq!(smoothed(40, 80), 50, "later ones move it a quarter of the way");
+        assert_eq!(smoothed(0, 0), 1, "zero stays reserved for no reply yet");
     }
 
     #[test]
