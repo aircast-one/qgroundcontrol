@@ -7,6 +7,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import org.json.JSONObject
 import org.mavlink.qgroundcontrol.QGCBridge
+import kotlin.math.roundToInt
+
+internal const val RENDER_SCALE = 0.75f
+
+internal fun renderSize(viewPx: Int): Int = (viewPx * RENDER_SCALE).roundToInt().coerceAtLeast(1)
 
 internal fun nativeChosen(view: JSONObject?): Boolean = view?.optBoolean("native") == true
 
@@ -30,5 +35,12 @@ private val surfaceHandoff = object : SurfaceHolder.Callback {
 
 @Composable
 internal fun SyntheticSurface(modifier: Modifier = Modifier) {
-    AndroidView({ context -> SurfaceView(context).apply { holder.addCallback(surfaceHandoff) } }, modifier)
+    AndroidView({ context ->
+        SurfaceView(context).apply {
+            holder.addCallback(surfaceHandoff)
+            addOnLayoutChangeListener { _, left, top, right, bottom, _, _, _, _ ->
+                if (right > left && bottom > top) holder.setFixedSize(renderSize(right - left), renderSize(bottom - top))
+            }
+        }
+    }, modifier)
 }
