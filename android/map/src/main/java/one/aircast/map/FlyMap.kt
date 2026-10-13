@@ -227,7 +227,7 @@ fun FlyMap(
                 centre = at
                 zoom = level
                 FlightMapPosition.latest = at
-                if (level > 1.0 && !pip) {
+                if (keepsZoom(level, pip, zoomedForPip)) {
                     mainZoom = level
                     writeCamera(context, SavedCamera(at, level))
                 }
@@ -251,6 +251,8 @@ private val SCALE_ABOVE_LOGO = 40.dp
 private val SCALE_BAR_HEIGHT = 32.dp
 
 val MAP_SCALE_CLEARANCE: Dp = SCALE_ABOVE_LOGO + SCALE_BAR_HEIGHT
+
+internal fun keepsZoom(level: Double, pip: Boolean, zoomedOutForPip: Boolean): Boolean = level > 1.0 && !pip && !zoomedOutForPip
 
 internal fun pipZoom(mainZoom: Double, pip: Boolean): Double? = when {
     mainZoom <= 0.0 -> null

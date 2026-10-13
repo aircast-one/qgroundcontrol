@@ -302,7 +302,7 @@ internal fun FlyPortrait(
                 },
                 deck = {
                     Column(Modifier.fillMaxWidth().onSizeChanged { deckHeightPx = it.height }) {
-                        stickPad?.let { VirtualJoystick(it, Modifier.padding(horizontal = AircastSpace.s3)) }
+                        stickPad?.takeIf { !flyScreen.guidedPanelOpen }?.let { VirtualJoystick(it, Modifier.padding(horizontal = AircastSpace.s3)) }
                         Box(
                             Modifier
                                 .fillMaxWidth()
