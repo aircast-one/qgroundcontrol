@@ -1,4 +1,6 @@
 use serde_json::{Value, json};
+use std::sync::{Mutex, PoisonError};
+use std::time::{Duration, Instant};
 
 use crate::modes::{COPTER_MODES, Mode, PLANE_MODES, PX4_MODES, ROVER_MODES, SUB_MODES};
 use crate::read::{flag, object, value_number};
@@ -167,6 +169,71 @@ pub fn virtual_joystick_view(backend: &dyn Backend, _args: &[String]) -> Value {
     })
 }
 
+const REPORT_EVERY: Duration = Duration::from_secs(10);
+const PAUSED: Duration = Duration::from_secs(1);
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct StickWindow {
+    since: Instant,
+    last: Instant,
+    sends: u64,
+    refused: u64,
+    touch_to_send_ms: Vec<u64>,
+    gap_max: Duration,
+    rate_mode: bool,
+}
+
+impl StickWindow {
+    pub fn opened(now: Instant) -> Self {
+        Self { since: now, last: now, sends: 0, refused: 0, touch_to_send_ms: Vec::new(), gap_max: Duration::ZERO, rate_mode: false }
+    }
+
+    pub fn recorded(&self, now: Instant, touch_age_ms: Option<u64>, sent: bool, rate_mode: bool) -> Self {
+        Self {
+            since: self.since,
+            last: now,
+            sends: self.sends + 1,
+            refused: self.refused + u64::from(!sent),
+            touch_to_send_ms: self.touch_to_send_ms.iter().copied().chain(touch_age_ms).collect(),
+            gap_max: self.gap_max.max(now.saturating_duration_since(self.last)),
+            rate_mode: self.rate_mode || rate_mode,
+        }
+    }
+
+    pub fn closes(&self, now: Instant) -> bool {
+        self.sends > 0 && (now.saturating_duration_since(self.since) >= REPORT_EVERY || now.saturating_duration_since(self.last) >= PAUSED)
+    }
+
+    pub fn line(&self) -> String {
+        format!(
+            "event=sticks seconds={} sends={} refused={} moves={} touch_to_send_p50_ms={} touch_to_send_max_ms={} send_gap_max_ms={} rate_mode={}",
+            self.last.saturating_duration_since(self.since).as_secs(),
+            self.sends,
+            self.refused,
+            self.touch_to_send_ms.len(),
+            crate::linkhealth::shown(crate::linkhealth::median(&self.touch_to_send_ms)),
+            crate::linkhealth::shown(self.touch_to_send_ms.iter().copied().max()),
+            self.gap_max.as_millis(),
+            self.rate_mode,
+        )
+    }
+}
+
+static STICKS: Mutex<Option<StickWindow>> = Mutex::new(None);
+
+fn note_send(now: Instant, touch_age_ms: Option<u64>, sent: bool, rate_mode: bool) {
+    let mut held = STICKS.lock().unwrap_or_else(PoisonError::into_inner);
+    let window = match held.take() {
+        Some(open) if open.closes(now) => {
+            log::info!(target: "sticks", "{}", open.line());
+            StickWindow::opened(now)
+        }
+        Some(open) => open,
+        None => StickWindow::opened(now),
+    };
+    *held = Some(window.recorded(now, touch_age_ms, sent, rate_mode));
+}
+
 pub fn send(backend: &dyn Backend, args: &str) -> Value {
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
     let axis = |i: usize| given.get(i).and_then(Value::as_f64).filter(|v| v.is_finite()).map(|v| v.clamp(-1.0, 1.0));
@@ -189,12 +256,27 @@ pub fn send(backend: &dyn Backend, args: &str) -> Value {
     }
     let action = json!({ "action": "virtualJoystick", "roll": roll, "pitch": pitch, "yaw": yaw, "thrust": thrust });
     let dispatched = crate::rcoverride::on_core(backend, action).unwrap_or_else(|| flag(&object(&backend.invoke(JOYSTICK_VALUE, &json!([roll, pitch, yaw, thrust]).to_string())), "ok"));
+    note_send(Instant::now(), given.get(4).and_then(Value::as_u64), dispatched, rate);
     json!({ "ok": dispatched })
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_stick_window_reports_touch_to_send_times_and_closes_on_a_pause() {
+        let start = Instant::now();
+        let at = |ms: u64| start + Duration::from_millis(ms);
+        let window = [(0, Some(12), true), (20, None, true), (60, Some(30), false), (100, Some(8), true)]
+            .into_iter()
+            .fold(StickWindow::opened(at(0)), |window, (ms, age, sent)| window.recorded(at(ms), age, sent, false));
+        assert_eq!(window.line(), "event=sticks seconds=0 sends=4 refused=1 moves=3 touch_to_send_p50_ms=12 touch_to_send_max_ms=30 send_gap_max_ms=40 rate_mode=false");
+        assert!(!window.closes(at(500)), "still sending");
+        assert!(window.closes(at(1_100)), "a second without a send ends the window, so a pause is not counted as a gap");
+        assert!(window.closes(at(10_000)));
+        assert!(!StickWindow::opened(at(0)).closes(at(20_000)), "an empty window has nothing to report");
+    }
 
     #[test]
     fn a_stick_pushed_well_off_centre_is_the_pilot_taking_over() {

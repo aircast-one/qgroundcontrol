@@ -1,5 +1,6 @@
 package one.aircast.android.ui
 
+import android.os.SystemClock
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
@@ -41,6 +42,7 @@ import one.aircast.android.bridge.qgcDerived
 import one.aircast.android.bridge.qgcPath
 import one.aircast.map.aircast
 import org.json.JSONObject
+import java.util.concurrent.atomic.AtomicLong
 
 internal const val VIRTUAL_JOYSTICK_PATH = "view.virtualJoystick"
 internal const val VIRTUAL_JOYSTICK_VALUE = "vehicle.virtualTabletJoystickValue"
@@ -135,14 +137,17 @@ object VirtualStickSender {
     internal var rightHeld: Boolean = false
 
     private val moved = Channel<Unit>(Channel.CONFLATED)
+    private val touchedAt = AtomicLong(0L)
 
-    internal fun moveLeft(stick: Offset) {
+    internal fun moveLeft(stick: Offset, at: Long) {
         left = stick
+        touchedAt.compareAndSet(0L, at)
         moved.trySend(Unit)
     }
 
-    internal fun moveRight(stick: Offset) {
+    internal fun moveRight(stick: Offset, at: Long) {
         right = stick
+        touchedAt.compareAndSet(0L, at)
         moved.trySend(Unit)
     }
 
@@ -163,7 +168,8 @@ object VirtualStickSender {
                             val fly = Qgc.path(FLY_STATE)
                             while (isActive) {
                                 val sticks = shownSticks(sending, left, right, onTheGround(flyState(fly.value)), leftHeld, rightHeld)
-                                Qgc.invoke(VIRTUAL_JOYSTICK_VALUE, *stickValues(sending, sticks).toTypedArray())
+                                val touchAge = touchedAt.getAndSet(0L).takeIf { it > 0L }?.let { SystemClock.uptimeMillis() - it }
+                                Qgc.invoke(VIRTUAL_JOYSTICK_VALUE, *(stickValues(sending, sticks) + listOfNotNull(touchAge)).toTypedArray())
                                 delay(QUICKEST_RESEND_MS)
                                 withTimeoutOrNull(sending.periodMs - QUICKEST_RESEND_MS) { moved.receive() }
                             }
@@ -251,13 +257,13 @@ fun VirtualJoystick(pad: Dp, modifier: Modifier = Modifier, trailing: @Composabl
             size = pad,
             modifier = Modifier.avoidedByVideoMessage(LEFT_STICK_KEY),
             onHeld = { leftHeld = it },
-            onMove = {
-                left = it
-                VirtualStickSender.moveLeft(it)
+            onMove = { stick, at ->
+                left = stick
+                VirtualStickSender.moveLeft(stick, at)
             },
             onRelease = {
                 left = release(it, throttleOnLeft(latestState))
-                VirtualStickSender.moveLeft(left)
+                VirtualStickSender.moveLeft(left, SystemClock.uptimeMillis())
             },
         )
         Spacer(Modifier.weight(1f))
@@ -267,13 +273,13 @@ fun VirtualJoystick(pad: Dp, modifier: Modifier = Modifier, trailing: @Composabl
             size = pad,
             modifier = Modifier.avoidedByVideoMessage(RIGHT_STICK_KEY),
             onHeld = { rightHeld = it },
-            onMove = {
-                right = it
-                VirtualStickSender.moveRight(it)
+            onMove = { stick, at ->
+                right = stick
+                VirtualStickSender.moveRight(stick, at)
             },
             onRelease = {
                 right = release(it, !throttleOnLeft(latestState))
-                VirtualStickSender.moveRight(right)
+                VirtualStickSender.moveRight(right, SystemClock.uptimeMillis())
             },
         )
         trailing()
@@ -281,7 +287,7 @@ fun VirtualJoystick(pad: Dp, modifier: Modifier = Modifier, trailing: @Composabl
 }
 
 @Composable
-private fun ThumbPad(stick: Offset, description: String, size: Dp, modifier: Modifier, onHeld: (Boolean) -> Unit, onMove: (Offset) -> Unit, onRelease: (Offset) -> Unit) {
+private fun ThumbPad(stick: Offset, description: String, size: Dp, modifier: Modifier, onHeld: (Boolean) -> Unit, onMove: (Offset, Long) -> Unit, onRelease: (Offset) -> Unit) {
     val ink = MaterialTheme.aircast.outdoorForeground
     val latestStick by rememberUpdatedState(stick)
     val latestHeld by rememberUpdatedState(onHeld)
@@ -304,7 +310,7 @@ private fun ThumbPad(stick: Offset, description: String, size: Dp, modifier: Mod
                         val change = awaitPointerEvent().changes.firstOrNull { it.id == down.id }
                         if (change == null || !change.pressed) break
                         change.consume()
-                        latestMove(dragged(start, change.position - origin, travel))
+                        latestMove(dragged(start, change.position - origin, travel), change.uptimeMillis)
                     }
                     held = false
                     latestHeld(false)
