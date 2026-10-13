@@ -2,9 +2,12 @@ use std::cell::OnceCell;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, LazyLock, Mutex, PoisonError};
-use std::time::Duration;
+use std::time::{Duration, SystemTime};
 
+use ureq::http::{HeaderMap, Response};
 use url::Url;
+
+use super::httpcache::{Answer, HttpCache};
 
 const MAX_BODY_BYTES: u64 = 64 * 1024 * 1024;
 const NO_PERSISTENCE: &str = "settings.appSettings.disableAllPersistence";
@@ -13,6 +16,9 @@ const ANSWER_TIMEOUT: Duration = Duration::from_secs(20);
 const BODY_TIMEOUT: Duration = Duration::from_secs(120);
 const IDLE_PER_HOST: usize = 16;
 const IDLE_IN_ALL: usize = 32;
+const TILE_CACHE_FILE: &str = "synthetic-tiles.db";
+const TILE_CACHE_BYTES: u64 = 1024 * 1024 * 1024;
+const ROOT_REUSE: Duration = Duration::from_secs(60 * 60);
 
 static AGENT: LazyLock<ureq::Agent> = LazyLock::new(|| {
     ureq::Agent::config_builder()
@@ -28,6 +34,14 @@ static AGENT: LazyLock<ureq::Agent> = LazyLock::new(|| {
 pub trait Fetcher: Send + Sync {
     fn url(&self, url: &Url) -> Result<Vec<u8>, String>;
     fn map(&self, provider: &str, z: u32, x: u32, y: u32) -> Result<Vec<u8>, String>;
+
+    fn tile(&self, url: &Url) -> Result<(Vec<u8>, Answer), String> {
+        self.url(url).map(|bytes| (bytes, Answer::Downloaded))
+    }
+
+    fn root(&self, url: &Url) -> Result<Vec<u8>, String> {
+        self.url(url)
+    }
 }
 
 pub struct Network;
@@ -35,15 +49,27 @@ pub struct Network;
 thread_local! {
     #[allow(clippy::missing_const_for_thread_local)]
     static CACHE: OnceCell<Option<crate::tilecache::Cache>> = const { OnceCell::new() };
+    #[allow(clippy::missing_const_for_thread_local)]
+    static TILES: OnceCell<Option<HttpCache>> = const { OnceCell::new() };
+}
+
+fn persist() -> bool {
+    !crate::settingsstore::raw_setting(NO_PERSISTENCE).and_then(|value| value.as_bool()).unwrap_or(false)
+}
+
+fn send(url: &Url, headers: &HeaderMap) -> Result<Response<Vec<u8>>, String> {
+    let mut response = headers.iter().fold(AGENT.get(url.as_str()), |request, (name, value)| request.header(name, value)).call().map_err(|error| error.to_string())?;
+    let body = response.body_mut().with_config().limit(MAX_BODY_BYTES).read_to_vec().map_err(|error| error.to_string())?;
+    Ok(response.map(|_| body))
 }
 
 impl Fetcher for Network {
     fn url(&self, url: &Url) -> Result<Vec<u8>, String> {
-        AGENT.get(url.as_str()).call().map_err(|error| error.to_string())?.body_mut().with_config().limit(MAX_BODY_BYTES).read_to_vec().map_err(|error| error.to_string())
+        send(url, &HeaderMap::new()).map(Response::into_body)
     }
 
     fn map(&self, provider: &str, z: u32, x: u32, y: u32) -> Result<Vec<u8>, String> {
-        let persist = !crate::settingsstore::raw_setting(NO_PERSISTENCE).and_then(|value| value.as_bool()).unwrap_or(false);
+        let persist = persist();
         let signed = |value: u32| i32::try_from(value).map_err(|_| format!("tile coordinate {value} out of range"));
         let (sx, sy, sz) = (signed(x)?, signed(y)?, signed(z)?);
         CACHE.with(|cache| {
@@ -51,6 +77,24 @@ impl Fetcher for Network {
             crate::maptiles::fetch_remembered(provider, sx, sy, sz, cache.as_ref(), persist).ok_or_else(|| format!("no {provider} tile {z}/{x}/{y}"))
         })
     }
+
+    fn tile(&self, url: &Url) -> Result<(Vec<u8>, Answer), String> {
+        cached(url, Duration::MAX)
+    }
+
+    fn root(&self, url: &Url) -> Result<Vec<u8>, String> {
+        cached(url, ROOT_REUSE).map(|(bytes, _)| bytes)
+    }
+}
+
+fn cached(url: &Url, reuse_body_for: Duration) -> Result<(Vec<u8>, Answer), String> {
+    TILES.with(|tiles| {
+        let opened = || crate::terrainservice::cache_path().and_then(|path| HttpCache::open(&path.with_file_name(TILE_CACHE_FILE), TILE_CACHE_BYTES).ok());
+        match persist().then(|| tiles.get_or_init(opened).as_ref()).flatten() {
+            Some(cache) => cache.fetch(url, SystemTime::now(), reuse_body_for, |headers| send(url, headers)),
+            None => send(url, &HeaderMap::new()).map(|response| (response.into_body(), Answer::Downloaded)),
+        }
+    })
 }
 
 pub struct Pool<J, D> {

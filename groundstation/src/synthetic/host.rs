@@ -381,10 +381,10 @@ impl Summary {
         let (showing, handover) = handing_over(session.as_deref());
         let warming = session.as_deref().and_then(Session::warming).map_or_else(|| "none".to_string(), |left| left.to_string());
         let stats = session.map(Session::take_stats).unwrap_or_default();
-        let Stats { requested, loaded, failed, bytes, errors } = stats;
+        let Stats { requested, loaded, failed, bytes, from_disk, errors } = stats;
         log::info!(
             target: "synthetic",
-            "event=summary seconds={} source={source} showing={showing} handover_ms={handover} warming={warming} surfaces={surfaces} present={present} draw={} painted={} idle_ticks={} slowest_paint_ms={} acquire_slowest_ms={} draw_slowest_ms={} reading_age_p50_ms={} reading_age_max_ms={} stick_to_frame_p50_ms={} stick_to_frame_max_ms={} stick_frames={} requested={requested} loaded={loaded} failed={failed} bytes={bytes} tiles={tiles} in_flight={in_flight} resident={} uploads={} errors={errors:?}",
+            "event=summary seconds={} source={source} showing={showing} handover_ms={handover} warming={warming} surfaces={surfaces} present={present} draw={} painted={} idle_ticks={} slowest_paint_ms={} acquire_slowest_ms={} draw_slowest_ms={} reading_age_p50_ms={} reading_age_max_ms={} stick_to_frame_p50_ms={} stick_to_frame_max_ms={} stick_frames={} requested={requested} loaded={loaded} failed={failed} bytes={bytes} from_disk={from_disk} tiles={tiles} in_flight={in_flight} resident={} uploads={} errors={errors:?}",
             self.since.elapsed().as_secs(),
             draw.name(),
             self.painted,

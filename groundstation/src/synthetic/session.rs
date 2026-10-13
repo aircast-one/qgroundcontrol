@@ -6,6 +6,7 @@ use std::time::{Duration, Instant};
 use url::Url;
 
 use super::fetch::{Fetcher, Pool};
+use super::httpcache::Answer;
 use super::geo::{Camera, Pose};
 use super::ground;
 use super::predict::{self, Gain, Lag, Predicted, Step};
@@ -176,21 +177,40 @@ enum Done {
     Open(Built, Option<String>),
 }
 
+#[derive(Default)]
+struct Tally {
+    bytes: AtomicU64,
+    from_disk: AtomicU64,
+}
+
 struct Counted<'a> {
     inner: &'a dyn Fetcher,
-    bytes: &'a AtomicU64,
+    tally: &'a Tally,
 }
 
 impl Fetcher for Counted<'_> {
     fn url(&self, url: &Url) -> Result<Vec<u8>, String> {
         self.inner.url(url).inspect(|bytes| {
-            self.bytes.fetch_add(bytes.len() as u64, Ordering::Relaxed);
+            self.tally.bytes.fetch_add(bytes.len() as u64, Ordering::Relaxed);
+        })
+    }
+
+    fn tile(&self, url: &Url) -> Result<(Vec<u8>, Answer), String> {
+        self.inner.tile(url).inspect(|(bytes, answer)| {
+            self.tally.bytes.fetch_add(bytes.len() as u64, Ordering::Relaxed);
+            self.tally.from_disk.fetch_add(u64::from(*answer != Answer::Downloaded), Ordering::Relaxed);
+        })
+    }
+
+    fn root(&self, url: &Url) -> Result<Vec<u8>, String> {
+        self.inner.root(url).inspect(|bytes| {
+            self.tally.bytes.fetch_add(bytes.len() as u64, Ordering::Relaxed);
         })
     }
 
     fn map(&self, provider: &str, z: u32, x: u32, y: u32) -> Result<Vec<u8>, String> {
         self.inner.map(provider, z, x, y).inspect(|bytes| {
-            self.bytes.fetch_add(bytes.len() as u64, Ordering::Relaxed);
+            self.tally.bytes.fetch_add(bytes.len() as u64, Ordering::Relaxed);
         })
     }
 }
@@ -198,10 +218,10 @@ impl Fetcher for Counted<'_> {
 fn work(job: Job, fetcher: &dyn Fetcher) -> Done {
     match job {
         Job::Root(token) => Done::Root(root_url(&token, fetcher).and_then(|url| {
-            let json = fetcher.url(&url)?;
+            let json = fetcher.root(&url)?;
             tileset::root(&json, &url).map(|root| (url, root)).ok_or_else(|| "the root tileset was unreadable".to_string())
         })),
-        Job::Tile(request) => Done::Tile(request.path, fetcher.url(&request.url).and_then(|bytes| tileset::parse(&request.url, &bytes))),
+        Job::Tile(request) => Done::Tile(request.path, fetcher.tile(&request.url).and_then(|(bytes, _)| tileset::parse(&request.url, &bytes))),
         Job::Open(want) => {
             let what = want.describe();
             let built = want.build(fetcher);
@@ -256,8 +276,8 @@ impl Fallback {
     }
 }
 
-fn workers(count: usize, name: &str, fetcher: Arc<dyn Fetcher>, bytes: Arc<AtomicU64>) -> Result<Pool<Job, Done>, String> {
-    Pool::new(count, name, move |job: Job| work(job, &Counted { inner: fetcher.as_ref(), bytes: &bytes }), lost)
+fn workers(count: usize, name: &str, fetcher: Arc<dyn Fetcher>, tally: Arc<Tally>) -> Result<Pool<Job, Done>, String> {
+    Pool::new(count, name, move |job: Job| work(job, &Counted { inner: fetcher.as_ref(), tally: &tally }), lost)
 }
 
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -266,6 +286,7 @@ pub struct Stats {
     pub loaded: u64,
     pub failed: u64,
     pub bytes: u64,
+    pub from_disk: u64,
     pub errors: BTreeMap<String, u64>,
 }
 
@@ -292,7 +313,7 @@ pub struct Session {
     token: String,
     source: Source,
     pool: Pool<Job, Done>,
-    bytes: Arc<AtomicU64>,
+    tally: Arc<Tally>,
     stats: Stats,
     home: Probe,
     under: Probe,
@@ -496,22 +517,22 @@ pub fn camera_height(target: &Target, home_ground: Option<f64>, under_ground: Op
 
 impl Session {
     pub fn new(token: &str, fetcher: Arc<dyn Fetcher>) -> Result<Self, String> {
-        let bytes = Arc::new(AtomicU64::new(0));
-        let mut pool = workers(WORKERS, "synthetic-fetch", fetcher.clone(), bytes.clone())?;
+        let tally = Arc::new(Tally::default());
+        let mut pool = workers(WORKERS, "synthetic-fetch", fetcher.clone(), tally.clone())?;
         let google = !token.is_empty();
         if google {
             pool.send(Job::Root(token.to_string()));
         }
         let source = if google { Source::Google(None) } else { Source::Open(OpenScene::new()) };
         let fallback = match google {
-            true => Some(Fallback { scene: OpenScene::new(), pool: workers(STAND_IN_WORKERS, "synthetic-stand-in", fetcher, bytes.clone())?, home: Probe::default(), under: Probe::default(), terrain: Vec::new(), picked: None }),
+            true => Some(Fallback { scene: OpenScene::new(), pool: workers(STAND_IN_WORKERS, "synthetic-stand-in", fetcher, tally.clone())?, home: Probe::default(), under: Probe::default(), terrain: Vec::new(), picked: None }),
             false => None,
         };
         Ok(Self {
             token: token.to_string(),
             source,
             pool,
-            bytes,
+            tally,
             stats: Stats::default(),
             home: Probe::default(),
             under: Probe::default(),
@@ -589,7 +610,7 @@ impl Session {
     }
 
     pub fn take_stats(&mut self) -> Stats {
-        Stats { bytes: self.bytes.swap(0, Ordering::Relaxed), ..std::mem::take(&mut self.stats) }
+        Stats { bytes: self.tally.bytes.swap(0, Ordering::Relaxed), from_disk: self.tally.from_disk.swap(0, Ordering::Relaxed), ..std::mem::take(&mut self.stats) }
     }
 
     fn failed(&mut self, error: String) {
@@ -731,7 +752,7 @@ impl Session {
         let ground = self.under.height.or(self.home.height).unwrap_or(0.0);
         let (meshes, jobs, coarsest, backfill) = match &mut self.source {
             Source::Google(Some(tiles)) => {
-                let Selection { meshes, wanted, coarsest, backfill } = tiles.select_measured(camera, room, now);
+                let Selection { meshes, wanted, coarsest, backfill } = tiles.select_measured(camera, room, detail, now);
                 tiles.trim(now, self.probed);
                 (meshes, wanted.into_iter().map(Job::Tile).collect(), coarsest, backfill)
             }

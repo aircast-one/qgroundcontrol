@@ -6,6 +6,7 @@ pub mod glb;
 pub mod ground;
 #[cfg(all(native_synthetic, not(test)))]
 pub(crate) mod host;
+pub mod httpcache;
 pub mod mesh;
 pub mod open;
 pub mod overlay;

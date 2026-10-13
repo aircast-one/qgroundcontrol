@@ -34,6 +34,8 @@ const UNIMAGED: [u8; 4] = [118, 124, 104, 255];
 const ROOF: [u8; 4] = [217, 211, 199, 255];
 const WALL: [u8; 4] = [200, 194, 182, 255];
 const ROOF_U: f32 = 0.25;
+const BOUNDS_BLOCK: usize = 16;
+const NO_HEIGHTS: (f32, f32) = (f32::MAX, f32::MIN);
 const WALL_U: f32 = 0.75;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
@@ -80,9 +82,46 @@ impl TileKey {
 pub struct Heights {
     size: usize,
     metres: Vec<f32>,
+    bounds: Vec<Bounds>,
+}
+
+struct Bounds {
+    cells: usize,
+    low_high: Vec<(f32, f32)>,
+}
+
+fn widened(a: (f32, f32), b: (f32, f32)) -> (f32, f32) {
+    (a.0.min(b.0), a.1.max(b.1))
+}
+
+impl Bounds {
+    fn of_pixels(size: usize, metres: &[f32]) -> Self {
+        let cells = size.div_ceil(BOUNDS_BLOCK);
+        let pixels = |cell: usize| cell * BOUNDS_BLOCK..((cell + 1) * BOUNDS_BLOCK).min(size);
+        let low_high = (0..cells * cells)
+            .map(|cell| pixels(cell / cells).flat_map(|y| pixels(cell % cells).map(move |x| metres[y * size + x])).fold(NO_HEIGHTS, |bounds, h| widened(bounds, (h, h))))
+            .collect();
+        Self { cells, low_high }
+    }
+
+    fn halved(&self) -> Self {
+        let cells = self.cells.div_ceil(2);
+        let low_high = (0..cells * cells)
+            .map(|cell| {
+                let (cx, cy) = (cell % cells * 2, cell / cells * 2);
+                [(cx, cy), (cx + 1, cy), (cx, cy + 1), (cx + 1, cy + 1)].into_iter().filter(|(x, y)| *x < self.cells && *y < self.cells).map(|(x, y)| self.low_high[y * self.cells + x]).fold(NO_HEIGHTS, widened)
+            })
+            .collect();
+        Self { cells, low_high }
+    }
 }
 
 impl Heights {
+    fn new(size: usize, metres: Vec<f32>) -> Self {
+        let bounds = std::iter::successors(Some(Bounds::of_pixels(size, &metres)), |level| (level.cells > 1).then(|| level.halved())).collect();
+        Self { size, metres, bounds }
+    }
+
     pub fn from_terrarium(png: &[u8]) -> Result<Self, String> {
         let image = image::load_from_memory(png).map_err(|error| format!("terrarium tile: {error}"))?.to_rgb8();
         let size = image.width() as usize;
@@ -90,7 +129,7 @@ impl Heights {
             return Err(format!("terrarium tile is {}x{}, not square", image.width(), image.height()));
         }
         let metres = image.pixels().map(|p| f32::from(p[0]) * 256.0 + f32::from(p[1]) + f32::from(p[2]) / 256.0 - 32_768.0).collect();
-        Ok(Self { size, metres })
+        Ok(Self::new(size, metres))
     }
 
     pub fn at(&self, u: f64, v: f64) -> f64 {
@@ -107,7 +146,15 @@ impl Heights {
         let last = (self.size - 1) as f64;
         let pixel = |t: f64| ((t * last).round() as usize).min(self.size - 1);
         let (x0, x1, y0, y1) = (pixel(du), pixel(du + span), pixel(dv), pixel(dv + span));
-        (y0..=y1).flat_map(|y| (x0..=x1).map(move |x| f64::from(self.metres[y * self.size + x]))).fold((f64::MAX, f64::MIN), |(low, high), h| (low.min(h), high.max(h)))
+        let wide = (x1 - x0).max(y1 - y0) + 1;
+        let (low, high) = match self.bounds.iter().enumerate().rev().find(|(level, _)| BOUNDS_BLOCK << level <= wide / 2) {
+            Some((level, bounds)) => {
+                let cell = BOUNDS_BLOCK << level;
+                (y0 / cell..=y1 / cell).flat_map(|cy| (x0 / cell..=x1 / cell).map(move |cx| bounds.low_high[cy * bounds.cells + cx])).fold(NO_HEIGHTS, widened)
+            }
+            None => (y0..=y1).flat_map(|y| (x0..=x1).map(move |x| self.metres[y * self.size + x])).fold(NO_HEIGHTS, |bounds, h| widened(bounds, (h, h))),
+        };
+        (f64::from(low), f64::from(high))
     }
 }
 
@@ -666,6 +713,27 @@ mod tests {
     }
 
     #[test]
+    fn a_patch_range_read_from_the_bounds_pyramid_holds_every_height_in_the_patch() {
+        let size = 256;
+        let metres: Vec<f32> = (0..size * size).map(|i| ((i * 7919) % 4001) as f32 - 2000.0 + (i / size) as f32).collect();
+        let heights = Heights::new(size, metres.clone());
+        let exact = |du: f64, dv: f64, span: f64| {
+            let pixel = |t: f64| ((t * (size - 1) as f64).round() as usize).min(size - 1);
+            (pixel(dv)..=pixel(dv + span)).flat_map(|y| (pixel(du)..=pixel(du + span)).map(move |x| (y, x))).map(|(y, x)| f64::from(metres[y * size + x])).fold((f64::MAX, f64::MIN), |(low, high), h| (low.min(h), high.max(h)))
+        };
+        assert_eq!(heights.range(0.0, 0.0, 1.0), exact(0.0, 0.0, 1.0), "a whole tile reads its exact range");
+        (1..=6u32).for_each(|depth| {
+            let parts = 1u32 << depth;
+            let span = 1.0 / f64::from(parts);
+            (0..parts * parts).for_each(|part| {
+                let (du, dv) = (f64::from(part % parts) * span, f64::from(part / parts) * span);
+                let ((low, high), (true_low, true_high)) = (heights.range(du, dv, span), exact(du, dv, span));
+                assert!(low <= true_low && high >= true_high, "patch {du},{dv} span {span}: {low}..{high} misses {true_low}..{true_high}");
+            });
+        });
+    }
+
+    #[test]
     fn the_coarse_world_draws_first_then_finer_tiles_take_over_even_without_imagery() {
         let mut scene = OpenScene::new();
         let frames = run(&mut scene, &camera(), 40, Instant::now());
@@ -677,7 +745,7 @@ mod tests {
     #[test]
     fn coarse_tiles_are_asked_for_first_so_a_far_sibling_is_never_starved_by_near_detail() {
         let mut scene = OpenScene::new();
-        let patch = Patch { heights: Arc::new(Heights { size: 1, metres: vec![0.0] }), zoom: 9, du: 0.0, dv: 0.0, span: 1.0 };
+        let patch = Patch { heights: Arc::new(Heights::new(1, vec![0.0])), zoom: 9, du: 0.0, dv: 0.0, span: 1.0 };
         let terrain = |z, x, y| Want::Terrain { key: TileKey { z, x, y }, imagery: "Bing Satellite".to_string(), patch: patch.clone() };
         let candidates = vec![terrain(17, 5, 5), Want::Heights(TileKey { z: 9, x: 1, y: 1 }), terrain(9, 1, 1), terrain(9, 1, 1)];
         let chosen: Vec<String> = scene.issue(candidates, 2, Instant::now()).iter().map(Want::describe).collect();
@@ -713,7 +781,7 @@ mod tests {
         let flat = terrain_mesh(TileKey { z: 15, x: 29961, y: 19806 }, None, None);
         assert_eq!(flat.normals.len(), flat.positions.len(), "every vertex, skirt included, has a normal");
         assert!(flat.normals.iter().all(|n| n[2] > 0.999), "flat ground faces up");
-        let rising_east = Heights { size: 2, metres: vec![0.0, 1000.0, 0.0, 1000.0] };
+        let rising_east = Heights::new(2, vec![0.0, 1000.0, 0.0, 1000.0]);
         let patch = Patch { heights: Arc::new(rising_east), zoom: 15, du: 0.0, dv: 0.0, span: 1.0 };
         let slope = terrain_mesh(TileKey { z: 15, x: 29961, y: 19806 }, Some(&patch), None);
         let middle = slope.normals[(GRID + 1) * (GRID / 2) + GRID / 2];

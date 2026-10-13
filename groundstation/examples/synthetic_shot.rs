@@ -37,6 +37,7 @@ fn main() {
         response: groundstation::synthetic::session::Response::default(),
         round_trip: None,
     };
+    groundstation::terrainservice::set_cache_path(arg("--cache").map(std::path::PathBuf::from));
     let mut session = Session::new(&token, Arc::new(Network)).expect("fetch workers");
     let started = Instant::now();
     let seconds = Duration::from_secs_f64(number("--seconds", 40.0));
@@ -48,6 +49,7 @@ fn main() {
     let frame = drawn.expect("something to draw");
     let (camera, meshes) = frame.view(None, width, height);
     println!("{:?}", session.take_stats());
+    println!("google took over after {:?}", session.handover());
     println!("{} meshes after {:.1} s", meshes.len(), started.elapsed().as_secs_f64());
     let mut renderer = Renderer::new().expect("a GPU adapter");
     let picture = renderer.picture(&camera, &frame.backfill, &meshes, width, height).expect("rendered picture");

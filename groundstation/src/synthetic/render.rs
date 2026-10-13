@@ -166,7 +166,7 @@ fn uniform(binding: u32, visibility: wgpu::ShaderStages) -> wgpu::BindGroupLayou
 }
 
 fn bytes(values: impl IntoIterator<Item = f32>) -> Vec<u8> {
-    values.into_iter().flat_map(f32::to_le_bytes).collect()
+    bytemuck::cast_slice(&values.into_iter().collect::<Vec<f32>>()).to_vec()
 }
 
 fn depth_state(write: bool, compare: wgpu::CompareFunction) -> wgpu::DepthStencilState {
@@ -253,7 +253,7 @@ impl Renderer {
     fn upload(device: &wgpu::Device, queue: &wgpu::Queue, layout: &wgpu::BindGroupLayout, sampler: &wgpu::Sampler, mesh: &Mesh) -> GpuMesh {
         let normals = mesh.normals.iter().copied().chain(std::iter::repeat([0.0; 3]));
         let vertices: Vec<u8> = bytes(mesh.positions.iter().zip(&mesh.uvs).zip(normals).flat_map(|((p, uv), n)| p.iter().chain(uv).copied().chain(n)));
-        let indices: Vec<u8> = mesh.indices.iter().flat_map(|i| i.to_le_bytes()).collect();
+        let indices: &[u8] = bytemuck::cast_slice(&mesh.indices);
         let levels = mesh.take_texture().unwrap_or_else(|| vec![solid(MISSING_TEXTURE)]);
         let (width, height) = levels[0].dimensions();
         let texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -283,7 +283,7 @@ impl Renderer {
         });
         GpuMesh {
             vertices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: None, contents: &vertices, usage: wgpu::BufferUsages::VERTEX }),
-            indices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: None, contents: &indices, usage: wgpu::BufferUsages::INDEX }),
+            indices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: None, contents: indices, usage: wgpu::BufferUsages::INDEX }),
             count: mesh.indices.len() as u32,
             bind,
         }
@@ -326,16 +326,17 @@ impl Renderer {
             self.draws = Some(self.draw_buffer(draw_slots(slots)));
         }
         let Some(draws) = self.draws.as_ref() else { return };
-        let matrices: Vec<u8> = behind
+        let padding = ((stride - DRAW_BYTES) / 4) as usize;
+        let matrices: Vec<f32> = behind
             .iter()
             .chain(&drawable)
             .flat_map(|(mesh, _)| {
                 let model = camera.relative(mesh.to_ecef);
-                bytes((view_projection * model).as_mat4().to_cols_array().into_iter().chain(model.as_mat4().to_cols_array())).into_iter().chain(std::iter::repeat_n(0, (stride - DRAW_BYTES) as usize))
+                (view_projection * model).as_mat4().to_cols_array().into_iter().chain(model.as_mat4().to_cols_array()).chain(std::iter::repeat_n(0.0, padding))
             })
             .collect();
         if !matrices.is_empty() {
-            self.queue.write_buffer(&draws.buffer, 0, &matrices);
+            self.queue.write_buffer(&draws.buffer, 0, bytemuck::cast_slice(&matrices));
         }
         let offset = |slot: usize| (slot as u64 * stride) as u32;
         let direction = |v: glam::DVec3| v.as_vec3().extend(0.0).to_array();

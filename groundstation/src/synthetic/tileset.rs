@@ -132,6 +132,7 @@ pub struct Tileset {
     swept: Option<Instant>,
     trimmed: Option<Instant>,
     coarsest: f64,
+    refine_at: f64,
     fresh: Vec<Arc<Mesh>>,
     backfill: Vec<(usize, Vec<Arc<Mesh>>)>,
 }
@@ -215,7 +216,7 @@ fn loaded(tile: &Tile) -> usize {
 
 impl Tileset {
     pub fn new(root: Tile, url: &Url) -> Self {
-        Self { root, session: None, keep: query(url), swept: None, trimmed: None, coarsest: f64::INFINITY, fresh: Vec::new(), backfill: Vec::new() }
+        Self { root, session: None, keep: query(url), swept: None, trimmed: None, coarsest: f64::INFINITY, refine_at: MAXIMUM_SCREEN_SPACE_ERROR, fresh: Vec::new(), backfill: Vec::new() }
     }
 
     fn signed(&mut self, url: &Url) -> Url {
@@ -237,12 +238,13 @@ impl Tileset {
     }
 
     pub fn select(&mut self, camera: &Camera, budget: usize, now: Instant) -> (Vec<Arc<Mesh>>, Vec<Request>) {
-        let Selection { meshes, wanted, .. } = self.select_measured(camera, budget, now);
+        let Selection { meshes, wanted, .. } = self.select_measured(camera, budget, 1.0, now);
         (meshes, wanted)
     }
 
-    pub fn select_measured(&mut self, camera: &Camera, budget: usize, now: Instant) -> Selection {
+    pub fn select_measured(&mut self, camera: &Camera, budget: usize, detail: f64, now: Instant) -> Selection {
         self.coarsest = 0.0;
+        self.refine_at = refine_above(camera) * detail;
         self.backfill.clear();
         let planes = frustum(camera.culling());
         let horizon = Horizon::from(camera.eye);
@@ -312,7 +314,7 @@ impl Tileset {
         }
         tile.used = Some(now);
         self.request(tile, path, budget, wanted, now);
-        let error = camera.screen_space_error(tile.geometric_error, tile.bounds.distance(camera.eye)) / refine_above(camera);
+        let error = camera.screen_space_error(tile.geometric_error, tile.bounds.distance(camera.eye)) / self.refine_at;
         let refine = error > 1.0;
         let external = matches!(tile.content, Content::External);
         let children = (refine || external) && !tile.children.is_empty();
@@ -328,13 +330,17 @@ impl Tileset {
                 })
                 .collect()
         });
-        let below: Option<Vec<Arc<Mesh>>> = parts.as_ref().and_then(|parts| parts.iter().cloned().collect::<Option<Vec<_>>>()).map(|lists| lists.into_iter().flatten().collect());
+        let complete = parts.as_ref().is_some_and(|parts| parts.iter().all(Option::is_some));
+        let gathered = parts.map(|parts| parts.into_iter().flatten().flatten().collect::<Vec<_>>());
+        let (below, partial) = match complete {
+            true => (gathered, None),
+            false => (None, gathered.filter(|meshes| !meshes.is_empty())),
+        };
         let own = match &tile.content {
             Content::Meshes(meshes) => Some(meshes.clone()),
             Content::None if !children => Some(Vec::new()),
             _ => None,
         };
-        let partial = parts.map(|parts| parts.into_iter().flatten().flatten().collect::<Vec<_>>()).filter(|meshes| !meshes.is_empty());
         let loaded_parent = below.is_none() && own.as_ref().is_some_and(|meshes| !meshes.is_empty());
         if loaded_parent && refine && !tile.children.is_empty() && tile.bounds.distance(camera.eye) < NEAR_M {
             self.coarsest = self.coarsest.max(error);
@@ -399,14 +405,14 @@ mod tests {
         let camera = camera();
         let (mut tiles, _) = parent(&camera);
         let start = Instant::now();
-        let waiting = tiles.select_measured(&camera, 8, start);
+        let waiting = tiles.select_measured(&camera, 8, 1.0, start);
         assert_eq!(waiting.wanted.len(), 2);
         assert!(waiting.coarsest > 1.0, "the parent wanted to refine and could not ({})", waiting.coarsest);
         tiles.deliver(&[0], Ok(Parsed::Meshes(vec![mesh()])), start);
         tiles.deliver(&[1], Ok(Parsed::Meshes(vec![mesh()])), start);
-        assert_eq!(tiles.select_measured(&camera, 8, start).coarsest, 0.0, "leaves that need no finer tile are full detail");
+        assert_eq!(tiles.select_measured(&camera, 8, 1.0, start).coarsest, 0.0, "leaves that need no finer tile are full detail");
         let away = Camera::new(&Pose { heading: 180.0, ..Pose { latitude: 0.0, longitude: 0.0, height: 100.0, heading: 0.0, pitch: 0.0, roll: 0.0, fov: 60.0 } }, 1280, 720);
-        assert_eq!(tiles.select_measured(&away, 8, start).coarsest, f64::INFINITY, "nothing drawn is not ready");
+        assert_eq!(tiles.select_measured(&away, 8, 1.0, start).coarsest, f64::INFINITY, "nothing drawn is not ready");
     }
 
     #[test]
@@ -434,7 +440,7 @@ mod tests {
             children: vec![Tile { content: Content::Meshes(vec![child.clone()]), ..leaf(&camera, "ready") }, leaf(&camera, "coming")],
             used: None,
         };
-        let selected = |geometric_error: f64| Tileset::new(tree(geometric_error), &Url::parse("https://x/root.json").unwrap()).select_measured(&camera, 8, Instant::now());
+        let selected = |geometric_error: f64| Tileset::new(tree(geometric_error), &Url::parse("https://x/root.json").unwrap()).select_measured(&camera, 8, 1.0, Instant::now());
         let coarse = selected(100.0);
         assert!(coarse.meshes.len() == 1 && Arc::ptr_eq(&coarse.meshes[0], &child), "a much coarser parent does not replace the city it would cover");
         assert!(coarse.backfill.len() == 1 && Arc::ptr_eq(&coarse.backfill[0], &parent_mesh), "it fills the hole the missing child leaves, drawn behind everything");
@@ -538,5 +544,16 @@ mod tests {
         assert_eq!(tiles.loaded_tiles(), 1, "fetched tiles out of view for longer than the unload delay give their meshes back; the built-in root keeps its own");
         let (_, wanted) = tiles.select(&camera, 8, start + UNLOAD_AFTER + Duration::from_secs(2));
         assert_eq!(wanted.len(), 2, "coming back asks for them again");
+    }
+
+    #[test]
+    fn a_fast_turn_keeps_the_coarse_tile_it_has_instead_of_fetching_finer_ones() {
+        let camera = camera();
+        let (mut steady, _) = parent(&camera);
+        assert_eq!(steady.select_measured(&camera, 8, 1.0, Instant::now()).wanted.len(), 2, "held still, the view refines");
+        let (mut turning, shown) = parent(&camera);
+        let coarse = turning.select_measured(&camera, 8, 3.0, Instant::now());
+        assert!(coarse.wanted.is_empty(), "a yaw on the phone reloaded 2,500 tiles in 10 s because finer tiles were fetched and evicted every turn");
+        assert!(coarse.meshes.len() == 1 && Arc::ptr_eq(&coarse.meshes[0], &shown));
     }
 }
