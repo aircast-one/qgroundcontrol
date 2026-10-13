@@ -27,6 +27,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
@@ -34,6 +35,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.runningFold
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.qgcDerived
 import one.aircast.android.bridge.qgcPath
@@ -43,6 +45,7 @@ import org.json.JSONObject
 internal const val VIRTUAL_JOYSTICK_PATH = "view.virtualJoystick"
 internal const val VIRTUAL_JOYSTICK_VALUE = "vehicle.virtualTabletJoystickValue"
 private const val DEFAULT_PERIOD_MS = 40L
+internal const val QUICKEST_RESEND_MS = 20L
 private const val STICK_PAD_FRACTION = 0.42f
 private val MIN_STICK_PAD = 96.dp
 private val MAX_STICK_PAD = 200.dp
@@ -131,6 +134,18 @@ object VirtualStickSender {
     @Volatile
     internal var rightHeld: Boolean = false
 
+    private val moved = Channel<Unit>(Channel.CONFLATED)
+
+    internal fun moveLeft(stick: Offset) {
+        left = stick
+        moved.trySend(Unit)
+    }
+
+    internal fun moveRight(stick: Offset) {
+        right = stick
+        moved.trySend(Unit)
+    }
+
     fun start(scope: kotlinx.coroutines.CoroutineScope) {
         scope.launch(Dispatchers.IO) {
             Qgc.watch(listOf(VIRTUAL_JOYSTICK_PATH, FLY_STATE))
@@ -149,7 +164,8 @@ object VirtualStickSender {
                             while (isActive) {
                                 val sticks = shownSticks(sending, left, right, onTheGround(flyState(fly.value)), leftHeld, rightHeld)
                                 Qgc.invoke(VIRTUAL_JOYSTICK_VALUE, *stickValues(sending, sticks).toTypedArray())
-                                delay(sending.periodMs)
+                                delay(QUICKEST_RESEND_MS)
+                                withTimeoutOrNull(sending.periodMs - QUICKEST_RESEND_MS) { moved.receive() }
                             }
                         }
                     }
@@ -235,8 +251,14 @@ fun VirtualJoystick(pad: Dp, modifier: Modifier = Modifier, trailing: @Composabl
             size = pad,
             modifier = Modifier.avoidedByVideoMessage(LEFT_STICK_KEY),
             onHeld = { leftHeld = it },
-            onMove = { left = it },
-            onRelease = { left = release(it, throttleOnLeft(latestState)) },
+            onMove = {
+                left = it
+                VirtualStickSender.moveLeft(it)
+            },
+            onRelease = {
+                left = release(it, throttleOnLeft(latestState))
+                VirtualStickSender.moveLeft(left)
+            },
         )
         Spacer(Modifier.weight(1f))
         ThumbPad(
@@ -245,8 +267,14 @@ fun VirtualJoystick(pad: Dp, modifier: Modifier = Modifier, trailing: @Composabl
             size = pad,
             modifier = Modifier.avoidedByVideoMessage(RIGHT_STICK_KEY),
             onHeld = { rightHeld = it },
-            onMove = { right = it },
-            onRelease = { right = release(it, !throttleOnLeft(latestState)) },
+            onMove = {
+                right = it
+                VirtualStickSender.moveRight(it)
+            },
+            onRelease = {
+                right = release(it, !throttleOnLeft(latestState))
+                VirtualStickSender.moveRight(right)
+            },
         )
         trailing()
     }
