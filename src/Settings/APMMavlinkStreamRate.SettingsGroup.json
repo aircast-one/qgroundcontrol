@@ -43,7 +43,7 @@
             "type": "int32",
             "enumStrings": "QGC.MetaData.Defines.StreamRateEnumStrings",
             "enumValues": "QGC.MetaData.Defines.StreamRateEnumValues",
-            "default": 3,
+            "default": 10,
             "label": "Position",
             "keywords": "stream rate,position rate"
         },

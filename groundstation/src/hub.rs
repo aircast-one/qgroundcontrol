@@ -82,7 +82,7 @@ const APM_STREAMS: [(u8, &str, i64); 7] = [
     (1, "streamRateRawSensors", 2),
     (2, "streamRateExtendedStatus", 2),
     (3, "streamRateRCChannels", 2),
-    (6, "streamRatePosition", 3),
+    (6, "streamRatePosition", 10),
     (10, "streamRateExtra1", 20),
     (11, "streamRateExtra2", 10),
     (12, "streamRateExtra3", 3),
@@ -6162,7 +6162,7 @@ mod tests {
         let first = first[1..].to_vec();
         assert_eq!(request_of(&first[0].1), (512, 148.0), "the first thing asked of a new vehicle is its autopilot version");
         let streams: Vec<(u8, u16)> = first.iter().filter_map(|(_, b)| match decode(b) { MavMessage::REQUEST_DATA_STREAM(r) => Some((r.req_stream_id, r.req_message_rate)), _ => None }).collect();
-        assert_eq!(streams, [(1, 2), (2, 2), (3, 2), (6, 3), (10, 20), (11, 10), (12, 3)], "APMFirmwarePlugin::initializeStreamRates asks for every stream at its default rate");
+        assert_eq!(streams, [(1, 2), (2, 2), (3, 2), (6, 10), (10, 20), (11, 10), (12, 3)], "APMFirmwarePlugin::initializeStreamRates asks for every stream at its default rate");
         let intervals: Vec<f32> = first.iter().filter_map(|(_, b)| match decode(b) { MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_SET_MESSAGE_INTERVAL => Some(c.param1), _ => None }).collect();
         assert_eq!(intervals, [242.0, 245.0], "home position and extended sys state are streamed because ArduPilot does not by default");
         assert_eq!(first.len(), 10);
