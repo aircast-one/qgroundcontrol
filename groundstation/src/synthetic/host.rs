@@ -14,6 +14,7 @@ const TOKEN_EVERY: Duration = Duration::from_secs(1);
 const OVERLAYS_EVERY: Duration = Duration::from_millis(500);
 const SUMMARY_EVERY: Duration = Duration::from_secs(10);
 const RELEASE_WAIT: Duration = Duration::from_secs(2);
+const KEEP_UNSEEN: Duration = Duration::from_secs(60);
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Draw {
@@ -78,11 +79,21 @@ pub fn release(key: usize) {
     }
 }
 
+struct Kept {
+    gpu: Gpu,
+    session: Option<Session>,
+    token: Throttled<Option<String>>,
+}
+
 fn serve(commands: &Receiver<Command>, feed: &dyn Feed) {
-    while let Ok(command) = commands.recv() {
-        match command {
-            Command::Attach(window) => show(window, commands, feed),
-            Command::Release(_, done) => acknowledge(&done),
+    let mut kept: Option<Kept> = None;
+    loop {
+        let next = if kept.is_some() { commands.recv_timeout(KEEP_UNSEEN) } else { commands.recv().map_err(|_| RecvTimeoutError::Disconnected) };
+        match next {
+            Ok(Command::Attach(window)) => kept = show(window, kept.take(), commands, feed),
+            Ok(Command::Release(_, done)) => acknowledge(&done),
+            Err(RecvTimeoutError::Timeout) => kept = None,
+            Err(RecvTimeoutError::Disconnected) => return,
         }
     }
 }
@@ -259,19 +270,27 @@ fn apply(command: Command, shown: &mut Vec<Shown>, gpu: &Gpu) {
     }
 }
 
-fn show(first: Window, commands: &Receiver<Command>, feed: &dyn Feed) {
-    let (mut gpu, surface) = match Gpu::new(&first) {
-        Ok(ready) => ready,
+fn show(first: Window, kept: Option<Kept>, commands: &Receiver<Command>, feed: &dyn Feed) -> Option<Kept> {
+    let reused = kept.and_then(|kept| match surface_for(&kept.gpu.instance, &first) {
+        Ok(surface) => Some((kept, surface)),
         Err(reason) => {
-            log::error!(target: "synthetic", "event=gpu_failed reason=\"{reason}\"");
-            feed.report(Draw::Failed);
-            return;
+            log::warn!(target: "synthetic", "event=reuse_failed reason=\"{reason}\"");
+            None
         }
+    });
+    let (mut gpu, surface, mut session, mut token) = match reused {
+        Some((kept, surface)) => (kept.gpu, surface, kept.session, kept.token),
+        None => match Gpu::new(&first) {
+            Ok((gpu, surface)) => (gpu, surface, None, Throttled::new(TOKEN_EVERY, None::<String>)),
+            Err(reason) => {
+                log::error!(target: "synthetic", "event=gpu_failed reason=\"{reason}\"");
+                feed.report(Draw::Failed);
+                return None;
+            }
+        },
     };
     let mut shown = vec![Shown::new(first, surface)];
-    let mut token = Throttled::new(TOKEN_EVERY, None::<String>);
     let mut overlays = Throttled::new(OVERLAYS_EVERY, None::<Overlays>);
-    let mut session = None;
     let mut summary = Summary::new(Instant::now());
     let mut framed = false;
     let mut draw = Draw::Loading;
@@ -320,4 +339,5 @@ fn show(first: Window, commands: &Receiver<Command>, feed: &dyn Feed) {
         commands.try_iter().for_each(|command| apply(command, &mut shown, &gpu));
     }
     feed.report(Draw::Loading);
+    Some(Kept { gpu, session, token })
 }
