@@ -80,7 +80,7 @@ pub const ROUTES: &[(&str, Route, &str)] = &[
     ("/links", Route::Links, ""),
     ("/links/connect", Route::LinkConnect, "host,port,name"),
     ("/links/disconnect", Route::LinkDisconnect, "name"),
-    ("/links/mocklink", Route::MockLink, "autopilot,add,camera,gimbal,proximity,statustext,video,pattern,silent"),
+    ("/links/mocklink", Route::MockLink, "autopilot,add,camera,gimbal,proximity,statustext,video,pattern,silent,prearm"),
     ("/mission/upload", Route::MissionUpload, "file"),
     ("/mission/download", Route::MissionDownload, "file"),
     ("/logging", Route::Logging, "rules"),
@@ -139,6 +139,7 @@ pub trait Host {
     fn mock_links_available(&self) -> bool;
     fn mock_link_present(&self) -> bool;
     fn silence_mock_links(&self, silent: bool) -> usize;
+    fn refuse_mock_arming(&self, reason: Option<String>) -> usize;
     fn vehicle_connected(&self) -> bool;
 }
 
@@ -389,6 +390,10 @@ impl DebugApi {
             let silent = switched_on(pairs, "silent");
             return ok(json!({ "silent": silent, "links": host.silence_mock_links(silent) }));
         }
+        if present(pairs, "prearm") {
+            let reason = given(pairs, "prearm").map(str::to_string);
+            return ok(json!({ "prearm": reason.clone(), "links": host.refuse_mock_arming(reason) }));
+        }
         let Some(autopilot) = given(pairs, "autopilot").map(str::to_lowercase) else {
             return refuse("autopilot must be px4 or apm");
         };
@@ -609,6 +614,10 @@ mod tests {
         }
         fn silence_mock_links(&self, silent: bool) -> usize {
             self.note(format!("silence {silent}"));
+            usize::from(self.mock_present)
+        }
+        fn refuse_mock_arming(&self, reason: Option<String>) -> usize {
+            self.note(format!("prearm {reason:?}"));
             usize::from(self.mock_present)
         }
         fn vehicle_connected(&self) -> bool {
@@ -861,6 +870,16 @@ mod tests {
     }
 
     #[test]
+    fn a_mock_link_can_be_told_to_refuse_arming_and_to_stop() {
+        let api = DebugApi::new();
+        let host = Fake { mock_available: true, mock_present: true, ..Fake::default() };
+        let refusing = get(&api, &host, "/links/mocklink", "prearm=Compass%20not%20calibrated").body;
+        assert_eq!((refusing["prearm"].clone(), refusing["links"].clone()), (json!("Compass not calibrated"), json!(1)));
+        assert_eq!(get(&api, &host, "/links/mocklink", "prearm=").body["prearm"], Value::Null, "an empty reason lets it arm again");
+        assert_eq!(host.calls(), vec!["prearm Some(\"Compass not calibrated\")".to_string(), "prearm None".to_string()]);
+    }
+
+    #[test]
     fn a_mock_link_can_carry_a_camera_gimbal_and_test_video() {
         let api = DebugApi::new();
         let host = Fake { mock_available: true, ..Fake::default() };
@@ -1082,6 +1101,9 @@ mod tests {
             false
         }
         fn silence_mock_links(&self, _silent: bool) -> usize {
+            0
+        }
+        fn refuse_mock_arming(&self, _reason: Option<String>) -> usize {
             0
         }
         fn vehicle_connected(&self) -> bool {

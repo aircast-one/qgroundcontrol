@@ -34,6 +34,22 @@ const TICKS_PER_SECOND: u64 = 10;
 const CLIMB_MPS: f64 = 2.5;
 const DESCENT_MPS: f64 = 1.5;
 const CRUISE_MPS: f64 = 5.0;
+const ACCEL_MPS2: f64 = 2.5;
+const STICK_MPS: f64 = 10.0;
+const YAW_DPS: f64 = 90.0;
+const DRAG_PER_S: f64 = 0.3;
+const TILT_LAG_S: f64 = 0.3;
+const GRAVITY_MPS2: f64 = 9.81;
+const THROTTLE_DEADBAND: f64 = 0.1;
+const STICK_TIMEOUT_TICKS: u64 = 10;
+const PLANE_CRUISE_MPS: f64 = 18.0;
+const PLANE_LOITER_M: f64 = 60.0;
+const PLANE_ARRIVED_M: f64 = 90.0;
+const PLANE_ALT_SLACK_M: f64 = 5.0;
+const PLANE_BANK_DEG: f64 = 45.0;
+const PLANE_CLIMBOUT_M: f64 = 5.0;
+const PLANE_ROTATE_FRACTION: f64 = 0.8;
+const PREARM_REPEAT_S: u64 = 30;
 const ARRIVED_M: f64 = 1.0;
 const METRES_PER_DEG: f64 = 111_320.0;
 const PX4_TAKEOFF_ALT_M: f64 = 2.5;
@@ -49,6 +65,12 @@ const PX4_TAKEOFF: u32 = 2;
 const PX4_LOITER: u32 = 3;
 const PX4_RTL: u32 = 5;
 const PX4_LAND: u32 = 6;
+const PX4_ALTCTL: u32 = 2;
+const PX4_POSCTL: u32 = 3;
+const PX4_MISSION: u32 = 4;
+const APM_AUTO: u32 = 3;
+const APM_WHEELED_AUTO: u32 = 10;
+const COPTER_PILOT_MODES: [u32; 6] = [0, 1, 2, 5, 13, 16];
 const FTP_NAK: u8 = 129;
 const SET_MODE_ID: u32 = 11;
 const SET_MODE_LEN: usize = 6;
@@ -293,6 +315,40 @@ enum Phase {
     Landing,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+struct Sticks {
+    forward: f64,
+    right: f64,
+    up: f64,
+    yaw: f64,
+}
+
+impl Sticks {
+    fn from(m: &MANUAL_CONTROL_DATA) -> Sticks {
+        let axis = |v: i16| if v == i16::MAX { 0.0 } else { f64::from(v.clamp(-1000, 1000)) / 1000.0 };
+        let throttle = if m.z == i16::MAX { 0.0 } else { (f64::from(m.z.clamp(0, 1000)) - 500.0) / 500.0 };
+        let up = throttle.signum() * (throttle.abs() - THROTTLE_DEADBAND).max(0.0) / (1.0 - THROTTLE_DEADBAND);
+        Sticks { forward: axis(m.x), right: axis(m.y), up, yaw: axis(m.r) }
+    }
+
+    fn centred(&self) -> bool {
+        *self == Sticks::default()
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Mission {
+    current: u16,
+    state: MissionState,
+    arrived_at: Option<u64>,
+}
+
+impl Default for Mission {
+    fn default() -> Mission {
+        Mission { current: 0, state: MissionState::MISSION_STATE_NOT_STARTED, arrived_at: None }
+    }
+}
+
 struct Upload {
     kind: MavMissionType,
     count: u16,
@@ -314,9 +370,15 @@ pub struct Sim {
     lon: f64,
     alt: f64,
     heading: f64,
+    velocity: (f64, f64),
+    climb: f64,
+    yaw_rate: f64,
+    tilt: (f64, f64),
+    sticks: Option<(Sticks, u64)>,
     target: Option<Target>,
     phase: Phase,
     missions: BTreeMap<u8, Vec<MISSION_ITEM_INT_DATA>>,
+    mission: Mission,
     upload: Option<Upload>,
     cameras: Option<Cameras>,
     gimbal: Option<Gimbal>,
@@ -324,6 +386,9 @@ pub struct Sim {
     logs: Logs,
     adsb: Vec<Adsb>,
     battery: [i8; 2],
+    flown_s: f64,
+    prearm: Option<String>,
+    outbox: Vec<Out>,
     greeted: bool,
     ticks: u64,
 }
@@ -355,9 +420,15 @@ impl Sim {
             lon: home.1,
             alt: 0.0,
             heading: 0.0,
+            velocity: (0.0, 0.0),
+            climb: 0.0,
+            yaw_rate: 0.0,
+            tilt: (0.0, 0.0),
+            sticks: None,
             target: None,
             phase: Phase::Holding,
             missions: BTreeMap::new(),
+            mission: Mission::default(),
             upload: None,
             cameras: options.enable_camera.then(|| Cameras::new(Video { requested: options.video, served })),
             gimbal: options.enable_gimbal.then(Gimbal::default),
@@ -370,6 +441,9 @@ impl Sim {
                 })
                 .collect(),
             battery: [100, 100],
+            flown_s: 0.0,
+            prearm: None,
+            outbox: Vec::new(),
             greeted: false,
             ticks: 0,
         }
@@ -412,9 +486,13 @@ impl Sim {
             MavMessage::HEARTBEAT(_) if !self.greeted => {
                 self.greeted = true;
                 match self.options.send_status_text {
-                    true => STATUS_TEXTS.iter().map(|(severity, text)| (AUTOPILOT, MavMessage::STATUSTEXT(STATUSTEXT_DATA { severity: *severity, text: crate::mavout::chars(text), ..Default::default() }))).collect(),
+                    true => STATUS_TEXTS.iter().map(|(severity, text)| said(*severity, text)).collect(),
                     false => Vec::new(),
                 }
+            }
+            MavMessage::MANUAL_CONTROL(m) if self.mine(m.target) => {
+                self.sticks = Some((Sticks::from(m), self.ticks));
+                Vec::new()
             }
             MavMessage::PARAM_REQUEST_LIST(m) if self.mine(m.target_system) && matches!(m.target_component, 0 | AUTOPILOT) => {
                 self.queued = (0..self.params.len()).collect();
@@ -486,7 +564,7 @@ impl Sim {
                 let kind = m.mission_type;
                 match m.count {
                     0 => {
-                        self.missions.insert(kind as u8, Vec::new());
+                        self.store_mission(kind, Vec::new());
                         vec![mission_ack(from, kind, MavMissionResult::MAV_MISSION_ACCEPTED)]
                     }
                     count => {
@@ -502,7 +580,7 @@ impl Sim {
                     true => vec![request_item(from, upload.kind, upload.items.len() as u16)],
                     false => {
                         let done = self.upload.take().expect("an upload in progress");
-                        self.missions.insert(done.kind as u8, done.items);
+                        self.store_mission(done.kind, done.items);
                         vec![mission_ack(from, done.kind, MavMissionResult::MAV_MISSION_ACCEPTED)]
                     }
                 }
@@ -514,12 +592,12 @@ impl Sim {
             MavMessage::MISSION_REQUEST_INT(m) if self.mine(m.target_system) => self.mission_item(from, m.mission_type, m.seq),
             MavMessage::MISSION_REQUEST(m) if self.mine(m.target_system) => self.mission_item(from, m.mission_type, m.seq),
             MavMessage::MISSION_CLEAR_ALL(m) if self.mine(m.target_system) => {
-                self.missions.remove(&(m.mission_type as u8));
+                self.store_mission(m.mission_type, Vec::new());
                 vec![mission_ack(from, m.mission_type, MavMissionResult::MAV_MISSION_ACCEPTED)]
             }
             MavMessage::MISSION_SET_CURRENT(m) if self.mine(m.target_system) => {
-                let total = self.missions.get(&(MavMissionType::MAV_MISSION_TYPE_MISSION as u8)).map_or(0, Vec::len) as u16;
-                vec![(AUTOPILOT, MavMessage::MISSION_CURRENT(MISSION_CURRENT_DATA { seq: m.seq, total, ..Default::default() }))]
+                self.set_current(m.seq);
+                Vec::new()
             }
             MavMessage::FILE_TRANSFER_PROTOCOL(m) if self.mine(m.target_system) => {
                 let request = m.payload;
@@ -573,16 +651,37 @@ impl Sim {
     fn autopilot_command(&mut self, command: MavCmd, params: [f32; 7], position: (f64, f64, f64), frame: MavFrame) -> (MavResult, Vec<Out>) {
         let accepted = |extra: Vec<Out>| (MavResult::MAV_RESULT_ACCEPTED, extra);
         match command {
-            MavCmd::MAV_CMD_COMPONENT_ARM_DISARM => {
-                self.armed = params[0] != 0.0;
-                accepted(Vec::new())
-            }
+            MavCmd::MAV_CMD_COMPONENT_ARM_DISARM => match self.refusal().filter(|_| params[0] != 0.0) {
+                Some(reason) => self.refuse_arming(&reason),
+                None => {
+                    self.armed = params[0] != 0.0;
+                    if self.armed && self.custom_mode == self.auto_mode() {
+                        self.start_mission();
+                    }
+                    accepted(Vec::new())
+                }
+            },
             MavCmd::MAV_CMD_DO_SET_MODE => {
                 self.set_mode(params[0] as u8, params[1] as u32);
                 accepted(Vec::new())
             }
-            MavCmd::MAV_CMD_NAV_TAKEOFF => {
-                self.takeoff(f64::from(params[6]));
+            MavCmd::MAV_CMD_NAV_TAKEOFF => match self.refusal() {
+                Some(reason) => self.refuse_arming(&reason),
+                None => {
+                    self.takeoff(f64::from(params[6]));
+                    accepted(Vec::new())
+                }
+            },
+            MavCmd::MAV_CMD_MISSION_START if !self.armed => (MavResult::MAV_RESULT_FAILED, Vec::new()),
+            MavCmd::MAV_CMD_MISSION_START => {
+                self.set_mode(self.base_mode.bits(), self.auto_mode());
+                if self.mission.state != MissionState::MISSION_STATE_ACTIVE {
+                    self.start_mission();
+                }
+                accepted(Vec::new())
+            }
+            MavCmd::MAV_CMD_DO_SET_MISSION_CURRENT => {
+                self.set_current(params[0] as u16);
                 accepted(Vec::new())
             }
             MavCmd::MAV_CMD_NAV_LAND => {
@@ -616,28 +715,58 @@ impl Sim {
             },
             MavCmd::MAV_CMD_SET_MESSAGE_INTERVAL if PID_TUNING_MESSAGES.contains(&(params[0] as u32)) => accepted(Vec::new()),
             MavCmd::MAV_CMD_PREFLIGHT_CALIBRATION | MavCmd::MAV_CMD_DO_START_MAG_CAL | MavCmd::MAV_CMD_DO_CANCEL_MAG_CAL => self.calibration.command(self.options.vehicle.apm(), command, params),
-            MavCmd::MAV_CMD_MISSION_START
-            | MavCmd::MAV_CMD_DO_MOTOR_TEST
+            MavCmd::MAV_CMD_DO_MOTOR_TEST
             | MavCmd::MAV_CMD_PREFLIGHT_STORAGE
             | MavCmd::MAV_CMD_PREFLIGHT_REBOOT_SHUTDOWN => accepted(Vec::new()),
             _ => (MavResult::MAV_RESULT_UNSUPPORTED, Vec::new()),
         }
     }
 
+    fn auto_mode(&self) -> u32 {
+        match self.options.vehicle {
+            Vehicle::Px4 => px4_mode(PX4_AUTO, PX4_MISSION),
+            Vehicle::Plane | Vehicle::Rover => APM_WHEELED_AUTO,
+            _ => APM_AUTO,
+        }
+    }
+
+    fn phase_of(&self, custom: u32) -> Phase {
+        let (main, sub) = ((custom >> 16) & 0xFF, (custom >> 24) & 0xFF);
+        match self.options.vehicle {
+            Vehicle::Px4 if main == PX4_AUTO && sub == PX4_LAND => Phase::Landing,
+            Vehicle::Px4 if main == PX4_AUTO && sub == PX4_RTL => Phase::Returning,
+            Vehicle::Copter if custom == 9 => Phase::Landing,
+            Vehicle::Copter if matches!(custom, 6 | 21) => Phase::Returning,
+            Vehicle::Plane if custom == 20 => Phase::Landing,
+            Vehicle::Plane if matches!(custom, 11 | 21) => Phase::Returning,
+            Vehicle::Rover if matches!(custom, 11 | 12) => Phase::Returning,
+            _ => Phase::Holding,
+        }
+    }
+
+    fn piloted(&self) -> bool {
+        match self.options.vehicle {
+            Vehicle::Copter => COPTER_PILOT_MODES.contains(&self.custom_mode),
+            Vehicle::Px4 => [PX4_MANUAL, PX4_ALTCTL, PX4_POSCTL].contains(&((self.custom_mode >> 16) & 0xFF)),
+            _ => false,
+        }
+    }
+
     fn set_mode(&mut self, base: u8, custom: u32) {
         self.base_mode = MavModeFlag::from_bits_truncate(base) - MavModeFlag::MAV_MODE_FLAG_SAFETY_ARMED;
+        if custom == self.custom_mode {
+            return;
+        }
         self.custom_mode = custom;
-        let vehicle = self.options.vehicle;
-        let (main, sub) = ((custom >> 16) & 0xFF, (custom >> 24) & 0xFF);
-        match vehicle {
-            Vehicle::Px4 if main == PX4_AUTO && sub == PX4_LAND => self.phase = Phase::Landing,
-            Vehicle::Px4 if main == PX4_AUTO && sub == PX4_RTL => self.phase = Phase::Returning,
-            Vehicle::Px4 if main == PX4_AUTO && sub == PX4_TAKEOFF && self.armed => self.takeoff(f64::NAN),
-            Vehicle::Copter if custom == 9 => self.phase = Phase::Landing,
-            Vehicle::Copter if matches!(custom, 6 | 21) => self.phase = Phase::Returning,
-            Vehicle::Plane if custom == 20 => self.phase = Phase::Landing,
-            Vehicle::Plane if matches!(custom, 11 | 21) => self.phase = Phase::Returning,
-            Vehicle::Rover if matches!(custom, 11 | 12) => self.phase = Phase::Returning,
+        self.target = None;
+        self.phase = self.phase_of(custom);
+        if self.mission.state == MissionState::MISSION_STATE_ACTIVE {
+            self.mission.state = MissionState::MISSION_STATE_PAUSED;
+        }
+        match custom {
+            _ if !self.armed => {}
+            c if self.options.vehicle == Vehicle::Px4 && c == px4_mode(PX4_AUTO, PX4_TAKEOFF) => self.takeoff(f64::NAN),
+            c if c == self.auto_mode() => self.start_mission(),
             _ => {}
         }
     }
@@ -662,34 +791,225 @@ impl Sim {
         self.target = Some(target);
     }
 
-    fn step(&mut self, dt: f64) {
-        let destination = match self.phase {
+    fn refusal(&self) -> Option<String> {
+        self.prearm.clone().filter(|_| !self.armed)
+    }
+
+    fn refuse_arming(&mut self, reason: &str) -> (MavResult, Vec<Out>) {
+        match self.options.vehicle.apm() {
+            true => {
+                self.outbox.push(said(MavSeverity::MAV_SEVERITY_CRITICAL, &format!("PreArm: {reason}")));
+                (MavResult::MAV_RESULT_FAILED, Vec::new())
+            }
+            false => (MavResult::MAV_RESULT_TEMPORARILY_REJECTED, vec![said(MavSeverity::MAV_SEVERITY_CRITICAL, &format!("Preflight Fail: {reason}"))]),
+        }
+    }
+
+    fn mission_items(&self) -> Vec<MISSION_ITEM_INT_DATA> {
+        self.missions.get(&(MavMissionType::MAV_MISSION_TYPE_MISSION as u8)).cloned().unwrap_or_default()
+    }
+
+    fn store_mission(&mut self, kind: MavMissionType, items: Vec<MISSION_ITEM_INT_DATA>) {
+        if kind == MavMissionType::MAV_MISSION_TYPE_MISSION {
+            self.mission = Mission::default();
+        }
+        self.missions.insert(kind as u8, items);
+    }
+
+    fn start_mission(&mut self) {
+        let from = match self.mission.state {
+            MissionState::MISSION_STATE_COMPLETE => 0,
+            _ => self.mission.current,
+        };
+        self.begin(from);
+    }
+
+    fn set_current(&mut self, seq: u16) {
+        self.mission.current = seq;
+        match self.mission.state {
+            MissionState::MISSION_STATE_ACTIVE => self.begin(seq),
+            _ => self.outbox.push(self.mission_current()),
+        }
+    }
+
+    fn begin(&mut self, seq: u16) {
+        let items = self.mission_items();
+        let first = usize::from(seq).max(usize::from(self.options.vehicle.apm()));
+        let next = items.iter().enumerate().skip(first).find(|(_, item)| flies(item.command));
+        self.mission.arrived_at = None;
+        match next {
+            Some((at, item)) => {
+                self.mission.current = at as u16;
+                self.mission.state = MissionState::MISSION_STATE_ACTIVE;
+                self.fly_item(item);
+            }
+            None => {
+                self.mission.state = MissionState::MISSION_STATE_COMPLETE;
+                if self.options.vehicle == Vehicle::Px4 {
+                    self.custom_mode = px4_mode(PX4_AUTO, PX4_LOITER);
+                }
+            }
+        }
+        self.outbox.push(self.mission_current());
+    }
+
+    fn fly_item(&mut self, item: &MISSION_ITEM_INT_DATA) {
+        let at = |e7: i32, now: f64| if e7 == 0 { now } else { degrees(e7) };
+        let place = Target { lat: at(item.x, self.lat), lon: at(item.y, self.lon), alt: relative(item.frame, f64::from(item.z)) };
+        match item.command {
+            MavCmd::MAV_CMD_NAV_TAKEOFF | MavCmd::MAV_CMD_NAV_VTOL_TAKEOFF => self.fly_to(Target { lat: self.lat, lon: self.lon, ..place }),
+            MavCmd::MAV_CMD_NAV_LAND | MavCmd::MAV_CMD_NAV_VTOL_LAND => self.fly_to(Target { alt: self.alt, ..place }),
+            MavCmd::MAV_CMD_NAV_RETURN_TO_LAUNCH => {
+                self.phase = Phase::Returning;
+                self.mission.state = MissionState::MISSION_STATE_COMPLETE;
+            }
+            _ => self.fly_to(place),
+        }
+    }
+
+    fn progress(&mut self) {
+        let Some(item) = self.mission_items().get(usize::from(self.mission.current)).cloned() else { return };
+        if self.mission.arrived_at.is_none() {
+            self.mission.arrived_at = Some(self.ticks);
+            self.outbox.push((AUTOPILOT, MavMessage::MISSION_ITEM_REACHED(MISSION_ITEM_REACHED_DATA { seq: self.mission.current })));
+        }
+        let held = self.ticks.saturating_sub(self.mission.arrived_at.unwrap_or(self.ticks));
+        match item.command {
+            MavCmd::MAV_CMD_NAV_LAND | MavCmd::MAV_CMD_NAV_VTOL_LAND => {
+                self.phase = Phase::Landing;
+                self.mission.state = MissionState::MISSION_STATE_COMPLETE;
+            }
+            _ if held >= dwell_ticks(&item) => self.begin(self.mission.current.saturating_add(1)),
+            _ => {}
+        }
+    }
+
+    fn mission_current(&self) -> Out {
+        let total = self.missions.get(&(MavMissionType::MAV_MISSION_TYPE_MISSION as u8)).map_or(0, Vec::len) as u16;
+        let state = if total == 0 { MissionState::MISSION_STATE_NO_MISSION } else { self.mission.state };
+        (AUTOPILOT, MavMessage::MISSION_CURRENT(MISSION_CURRENT_DATA { seq: self.mission.current, total, mission_state: state, ..Default::default() }))
+    }
+
+    fn goal(&self) -> Option<Target> {
+        match self.phase {
             Phase::Returning => Some(Target { lat: self.home.0, lon: self.home.1, alt: self.alt.max(self.target.map_or(0.0, |t| t.alt)) }),
             Phase::Landing => Some(Target { lat: self.lat, lon: self.lon, alt: 0.0 }),
             Phase::Holding => self.target.filter(|_| self.armed),
-        };
-        let Some(goal) = destination else { return };
-        let north = (goal.lat - self.lat) * METRES_PER_DEG;
-        let east = (goal.lon - self.lon) * METRES_PER_DEG * self.lat.to_radians().cos();
-        let distance = north.hypot(east);
-        let travel = (CRUISE_MPS * dt).min(distance);
-        if distance > f64::EPSILON {
-            self.heading = east.atan2(north).to_degrees().rem_euclid(360.0);
-            self.lat += north / distance * travel / METRES_PER_DEG;
-            self.lon += east / distance * travel / (METRES_PER_DEG * self.lat.to_radians().cos());
         }
-        let rate = if goal.alt < self.alt { DESCENT_MPS } else { CLIMB_MPS };
-        self.alt += (goal.alt - self.alt).clamp(-rate * dt, rate * dt);
-        let arrived = distance - travel < ARRIVED_M && (goal.alt - self.alt).abs() < 0.05;
+    }
+
+    fn offset(&self, to: Target) -> (f64, f64) {
+        ((to.lat - self.lat) * METRES_PER_DEG, (to.lon - self.lon) * METRES_PER_DEG * self.lat.to_radians().cos())
+    }
+
+    fn reached(&self, goal: Target) -> bool {
+        let (north, east) = self.offset(goal);
+        let (radius, slack) = match self.options.vehicle {
+            Vehicle::Plane => (PLANE_ARRIVED_M, PLANE_ALT_SLACK_M),
+            _ => (ARRIVED_M, 0.05),
+        };
+        north.hypot(east) < radius && (goal.alt - self.alt).abs() < slack
+    }
+
+    fn sticks_in_command(&self) -> Option<Sticks> {
+        self.sticks
+            .filter(|(_, at)| self.ticks.saturating_sub(*at) <= STICK_TIMEOUT_TICKS)
+            .map(|(sticks, _)| sticks)
+            .filter(|sticks| !sticks.centred() && self.armed && self.phase == Phase::Holding && self.piloted())
+    }
+
+    fn step(&mut self, dt: f64) {
+        match self.options.vehicle {
+            Vehicle::Plane => self.glide(dt),
+            _ => self.hover(dt),
+        }
+        self.settle();
+    }
+
+    fn hover(&mut self, dt: f64) {
+        let sticks = self.sticks_in_command();
+        if sticks.is_some() {
+            self.target = None;
+        }
+        let goal = self.goal();
+        let airborne = self.airborne();
+        let (north, east) = goal.map_or((0.0, 0.0), |g| self.offset(g));
+        let distance = north.hypot(east);
+        let wanted = match (sticks, goal) {
+            (Some(s), _) if airborne => body_to_world(s.forward * STICK_MPS, s.right * STICK_MPS, self.heading),
+            (None, Some(_)) if distance > f64::EPSILON => {
+                let speed = CRUISE_MPS.min((2.0 * ACCEL_MPS2 * distance).sqrt());
+                (north / distance * speed, east / distance * speed)
+            }
+            _ => (0.0, 0.0),
+        };
+        let climb = match (sticks, goal) {
+            (Some(s), _) => s.up * if s.up > 0.0 { CLIMB_MPS } else { DESCENT_MPS },
+            (None, Some(g)) => (g.alt - self.alt).clamp(-DESCENT_MPS * dt, CLIMB_MPS * dt) / dt,
+            _ => 0.0,
+        };
+        let yaw_rate = match (sticks, goal) {
+            (Some(s), _) if airborne => s.yaw * YAW_DPS,
+            (None, Some(_)) if distance > ARRIVED_M => turn(self.heading, east.atan2(north).to_degrees(), YAW_DPS, dt),
+            _ => 0.0,
+        };
+        let velocity = accelerated(self.velocity, wanted, ACCEL_MPS2 * dt);
+        let push = ((velocity.0 - self.velocity.0) / dt + DRAG_PER_S * velocity.0, (velocity.1 - self.velocity.1) / dt + DRAG_PER_S * velocity.1);
+        let (forward, right) = world_to_body(push, self.heading);
+        let tilt = (right.atan2(GRAVITY_MPS2).to_degrees(), (-forward).atan2(GRAVITY_MPS2).to_degrees());
+        self.advance(velocity, climb, yaw_rate, tilt, dt);
+    }
+
+    fn glide(&mut self, dt: f64) {
+        let here = Target { lat: self.lat, lon: self.lon, alt: self.alt };
+        self.target = self.target.or_else(|| (self.airborne() && self.phase == Phase::Holding).then_some(here));
+        let goal = self.goal();
+        let cruising = self.airborne() || (self.armed && goal.is_some());
+        let was = self.velocity.0.hypot(self.velocity.1);
+        let speed = was + (if cruising { PLANE_CRUISE_MPS } else { 0.0 } - was).clamp(-ACCEL_MPS2 * dt, ACCEL_MPS2 * dt);
+        let course = goal.filter(|_| self.alt >= PLANE_CLIMBOUT_M && self.phase != Phase::Landing).map_or(self.heading, |g| {
+            let (north, east) = self.offset(g);
+            let distance = north.hypot(east);
+            let swing = match distance >= PLANE_LOITER_M {
+                true => 90.0 * PLANE_LOITER_M / distance,
+                false => 90.0 + 45.0 * (1.0 - distance / PLANE_LOITER_M),
+            };
+            east.atan2(north).to_degrees() - swing
+        });
+        let max_rate = (GRAVITY_MPS2 * PLANE_BANK_DEG.to_radians().tan() / speed.max(1.0)).to_degrees();
+        let yaw_rate = turn(self.heading, course, max_rate, dt);
+        let lifting = self.airborne() || speed >= PLANE_ROTATE_FRACTION * PLANE_CRUISE_MPS;
+        let climb = goal.filter(|_| lifting).map_or(0.0, |g| (g.alt - self.alt).clamp(-DESCENT_MPS * dt, CLIMB_MPS * dt) / dt);
+        let velocity = body_to_world(speed, 0.0, self.heading);
+        let tilt = ((speed * yaw_rate.to_radians()).atan2(GRAVITY_MPS2).to_degrees(), climb.atan2(speed.max(1.0)).to_degrees());
+        self.advance(velocity, climb, yaw_rate, tilt, dt);
+    }
+
+    fn advance(&mut self, velocity: (f64, f64), climb: f64, yaw_rate: f64, tilt: (f64, f64), dt: f64) {
+        let alt = (self.alt + climb * dt).max(0.0);
+        let lag = (dt / TILT_LAG_S).min(1.0);
+        self.lat += velocity.0 * dt / METRES_PER_DEG;
+        self.lon += velocity.1 * dt / (METRES_PER_DEG * self.lat.to_radians().cos());
+        self.climb = (alt - self.alt) / dt;
+        self.alt = alt;
+        self.heading = (self.heading + yaw_rate * dt).rem_euclid(360.0);
+        self.velocity = velocity;
+        self.yaw_rate = yaw_rate;
+        self.tilt = (self.tilt.0 + (tilt.0 - self.tilt.0) * lag, self.tilt.1 + (tilt.1 - self.tilt.1) * lag);
+    }
+
+    fn settle(&mut self) {
+        let arrived = self.goal().is_some_and(|goal| self.reached(goal));
         match self.phase {
-            Phase::Returning if arrived => self.phase = Phase::Landing,
-            Phase::Landing if self.alt <= 0.0 => {
+            Phase::Returning if arrived && self.options.vehicle != Vehicle::Plane => self.phase = Phase::Landing,
+            Phase::Landing if !self.airborne() => {
                 self.alt = 0.0;
                 self.armed = false;
                 self.target = None;
                 self.phase = Phase::Holding;
             }
             Phase::Holding if arrived && self.options.vehicle == Vehicle::Px4 && self.custom_mode == px4_mode(PX4_AUTO, PX4_TAKEOFF) => self.custom_mode = px4_mode(PX4_AUTO, PX4_LOITER),
+            Phase::Holding if arrived && self.mission.state == MissionState::MISSION_STATE_ACTIVE => self.progress(),
             _ => {}
         }
     }
@@ -698,11 +1018,14 @@ impl Sim {
         let count = PARAMS_PER_POLL.min(self.queued.len());
         let batch: Vec<usize> = self.queued.drain(..count).collect();
         let logs = self.logs.pump();
-        batch.into_iter().map(|at| self.param_value(at)).chain(logs).collect()
+        let outbox = std::mem::take(&mut self.outbox);
+        batch.into_iter().map(|at| self.param_value(at)).chain(logs).chain(outbox).collect()
     }
 
     pub fn tick(&mut self, elapsed_ms: u64) -> Vec<Out> {
-        self.step(TICK.as_secs_f64());
+        let dt = TICK.as_secs_f64();
+        self.step(dt);
+        self.flown_s += if self.armed { dt } else { 0.0 };
         let slow = self.ticks % TICKS_PER_SECOND == 0;
         self.ticks += 1;
         let here = Where { lat: e7(self.lat), lon: e7(self.lon), alt_mm: ((HOME_ALT_M + self.alt) * 1000.0) as i32 };
@@ -716,8 +1039,9 @@ impl Sim {
 
     fn once_a_second(&mut self, elapsed_ms: u64) -> Vec<Out> {
         let seconds = elapsed_ms / 1000;
-        self.battery = [drained(self.battery[0], seconds), drained(self.battery[1], seconds / 2)];
+        self.battery = [remaining(self.flown_s), remaining(self.flown_s / 2.0)];
         self.adsb = self.adsb.iter().enumerate().map(|(i, plane)| plane.advanced(i)).collect();
+        let reminder = self.refusal().filter(|_| self.options.vehicle.apm() && seconds.is_multiple_of(PREARM_REPEAT_S)).map(|reason| said(MavSeverity::MAV_SEVERITY_CRITICAL, &format!("PreArm: {reason}")));
         let core = vec![vibration(), self.battery_status(1), self.battery_status(2)]
             .into_iter()
             .chain(named_values(elapsed_ms))
@@ -725,10 +1049,11 @@ impl Sim {
             .chain(self.adsb.iter().enumerate().map(|(i, plane)| plane.message(i)))
             .chain((self.options.vehicle != Vehicle::Sub).then(remote_id_arm_status))
             .chain(self.options.enable_proximity.then(|| distance_sensors(elapsed_ms)).unwrap_or_default())
-            .chain([esc_info(elapsed_ms), esc_status(elapsed_ms), radio_status()]);
+            .chain([esc_info(elapsed_ms), esc_status(elapsed_ms), radio_status()])
+            .chain(reminder);
         let gimbal = self.gimbal.as_mut().map(|gimbal| gimbal.once_a_second(elapsed_ms)).unwrap_or_default();
         let cameras = self.cameras.as_ref().map(Cameras::heartbeats).unwrap_or_default();
-        let rest = vec![rc_channels(), self.home_position(), self.heartbeat(), self.gps(elapsed_ms), self.extended_state()];
+        let rest = vec![rc_channels(), self.home_position(), self.heartbeat(), self.gps(elapsed_ms), self.extended_state(), self.mission_current()];
         core.chain(gimbal).chain(cameras).chain(rest).collect()
     }
 
@@ -783,7 +1108,7 @@ impl Sim {
             alt: ((HOME_ALT_M + self.alt) * 1000.0) as i32,
             eph: 100,
             epv: 100,
-            vel: u16::MAX,
+            vel: (self.ground_speed() * 100.0) as u16,
             cog: (self.heading * 100.0) as u16,
             fix_type: GpsFixType::GPS_FIX_TYPE_3D_FIX,
             satellites_visible: 12,
@@ -798,24 +1123,36 @@ impl Sim {
             lon: e7(self.lon),
             alt: ((HOME_ALT_M + self.alt) * 1000.0) as i32,
             relative_alt: (self.alt * 1000.0) as i32,
+            vx: (self.velocity.0 * 100.0) as i16,
+            vy: (self.velocity.1 * 100.0) as i16,
+            vz: (-self.climb * 100.0) as i16,
             hdg: (self.heading * 100.0) as u16,
-            ..Default::default()
         }))
     }
 
     fn attitude(&self, elapsed_ms: u64) -> Out {
-        (AUTOPILOT, MavMessage::ATTITUDE(ATTITUDE_DATA { time_boot_ms: elapsed_ms as u32, yaw: self.heading.to_radians() as f32, ..Default::default() }))
+        (AUTOPILOT, MavMessage::ATTITUDE(ATTITUDE_DATA {
+            time_boot_ms: elapsed_ms as u32,
+            roll: self.tilt.0.to_radians() as f32,
+            pitch: self.tilt.1.to_radians() as f32,
+            yaw: self.heading.to_radians() as f32,
+            yawspeed: self.yaw_rate.to_radians() as f32,
+            ..Default::default()
+        }))
+    }
+
+    fn ground_speed(&self) -> f64 {
+        self.velocity.0.hypot(self.velocity.1)
     }
 
     fn vfr_hud(&self) -> Out {
-        let moving = self.armed && self.target.is_some_and(|t| (t.lat - self.lat).abs() + (t.lon - self.lon).abs() > 1e-7);
         (AUTOPILOT, MavMessage::VFR_HUD(VFR_HUD_DATA {
-            groundspeed: if moving { CRUISE_MPS as f32 } else { 0.0 },
-            airspeed: if moving { CRUISE_MPS as f32 } else { 0.0 },
+            groundspeed: self.ground_speed() as f32,
+            airspeed: self.ground_speed() as f32,
             alt: (HOME_ALT_M + self.alt) as f32,
+            climb: self.climb as f32,
             heading: self.heading as i16,
             throttle: if self.armed { 50 } else { 0 },
-            ..Default::default()
         }))
     }
 
@@ -851,6 +1188,57 @@ impl Sim {
 
 fn px4_mode(main: u32, sub: u32) -> u32 {
     (main << 16) | (sub << 24)
+}
+
+fn said(severity: MavSeverity, text: &str) -> Out {
+    (AUTOPILOT, MavMessage::STATUSTEXT(STATUSTEXT_DATA { severity, text: crate::mavout::chars(text), ..Default::default() }))
+}
+
+fn turn(from: f64, to: f64, max_dps: f64, dt: f64) -> f64 {
+    ((to - from + 540.0).rem_euclid(360.0) - 180.0).clamp(-max_dps * dt, max_dps * dt) / dt
+}
+
+fn accelerated(from: (f64, f64), to: (f64, f64), step: f64) -> (f64, f64) {
+    let change = (to.0 - from.0).hypot(to.1 - from.1);
+    let scale = if change > step { step / change } else { 1.0 };
+    (from.0 + (to.0 - from.0) * scale, from.1 + (to.1 - from.1) * scale)
+}
+
+fn body_to_world(forward: f64, right: f64, heading: f64) -> (f64, f64) {
+    let (sin, cos) = heading.to_radians().sin_cos();
+    (forward * cos - right * sin, forward * sin + right * cos)
+}
+
+fn world_to_body((north, east): (f64, f64), heading: f64) -> (f64, f64) {
+    let (sin, cos) = heading.to_radians().sin_cos();
+    (north * cos + east * sin, east * cos - north * sin)
+}
+
+fn flies(command: MavCmd) -> bool {
+    matches!(
+        command,
+        MavCmd::MAV_CMD_NAV_WAYPOINT
+            | MavCmd::MAV_CMD_NAV_SPLINE_WAYPOINT
+            | MavCmd::MAV_CMD_NAV_LOITER_UNLIM
+            | MavCmd::MAV_CMD_NAV_LOITER_TURNS
+            | MavCmd::MAV_CMD_NAV_LOITER_TIME
+            | MavCmd::MAV_CMD_NAV_LOITER_TO_ALT
+            | MavCmd::MAV_CMD_NAV_RETURN_TO_LAUNCH
+            | MavCmd::MAV_CMD_NAV_LAND
+            | MavCmd::MAV_CMD_NAV_TAKEOFF
+            | MavCmd::MAV_CMD_NAV_VTOL_TAKEOFF
+            | MavCmd::MAV_CMD_NAV_VTOL_LAND
+    )
+}
+
+fn dwell_ticks(item: &MISSION_ITEM_INT_DATA) -> u64 {
+    let seconds = match item.command {
+        MavCmd::MAV_CMD_NAV_LOITER_UNLIM => f64::INFINITY,
+        MavCmd::MAV_CMD_NAV_WAYPOINT | MavCmd::MAV_CMD_NAV_LOITER_TIME => f64::from(item.param1),
+        MavCmd::MAV_CMD_NAV_LOITER_TURNS => f64::from(item.param1) * std::f64::consts::TAU * f64::from(item.param3).abs().max(ARRIVED_M) / CRUISE_MPS,
+        _ => 0.0,
+    };
+    (seconds.max(0.0) * TICKS_PER_SECOND as f64) as u64
 }
 
 fn relative(frame: MavFrame, alt: f64) -> f64 {
@@ -893,11 +1281,8 @@ fn rc_channels() -> Out {
     }))
 }
 
-fn drained(percent: i8, seconds: u64) -> i8 {
-    match percent > 1 {
-        true => 100u64.saturating_sub(seconds) as i8,
-        false => percent,
-    }
+fn remaining(flown_s: f64) -> i8 {
+    (100.0 * (1.0 - flown_s / BATTERY_FULL_TIME_S)).clamp(0.0, 100.0).round() as i8
 }
 
 fn charge_state(percent: i8) -> MavBatteryChargeState {
@@ -1011,6 +1396,7 @@ pub struct MockLink {
     inbox: Sender<Vec<u8>>,
     alive: std::sync::Arc<AtomicBool>,
     silent: std::sync::Arc<AtomicBool>,
+    prearm: std::sync::Arc<std::sync::Mutex<Option<String>>>,
 }
 
 impl MockLink {
@@ -1024,6 +1410,8 @@ impl MockLink {
         let running = alive.clone();
         let silent = std::sync::Arc::new(AtomicBool::new(false));
         let muted = silent.clone();
+        let prearm = std::sync::Arc::new(std::sync::Mutex::new(None));
+        let refusing = prearm.clone();
         std::thread::Builder::new()
             .name("groundstation-mock-link".to_string())
             .spawn(move || {
@@ -1035,7 +1423,9 @@ impl MockLink {
                 let started = Instant::now();
                 let mut next_tick = started;
                 while running.load(Ordering::Relaxed) {
-                    let replies: Vec<Out> = match incoming.recv_timeout(POLL) {
+                    let received = incoming.recv_timeout(POLL);
+                    sim.prearm = refusing.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone();
+                    let replies: Vec<Out> = match received {
                         Ok(bytes) => {
                             let decoded: Vec<Out> = parser.bytes_in(link, &bytes).iter().flat_map(|frame| sim.receive(frame.header, &frame.message)).collect();
                             parser.take_extras(link).iter().for_each(|extra| sim.receive_undecoded(extra));
@@ -1058,7 +1448,7 @@ impl MockLink {
                 }
             })
             .map_err(|e| e.to_string())?;
-        Ok(MockLink { inbox, alive, silent })
+        Ok(MockLink { inbox, alive, silent, prearm })
     }
 
     pub fn write(&self, bytes: &[u8]) -> bool {
@@ -1071,6 +1461,10 @@ impl MockLink {
 
     pub fn set_silent(&self, silent: bool) {
         self.silent.store(silent, Ordering::Relaxed);
+    }
+
+    pub fn set_prearm(&self, reason: Option<String>) {
+        *self.prearm.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = reason;
     }
 }
 
@@ -1261,5 +1655,194 @@ mod tests {
             .find(|frame| matches!(&frame.message, MavMessage::PARAM_VALUE(v) if text_of(&v.param_id) == "FRAME_CLASS"));
         link.close();
         assert!(found.is_some());
+    }
+
+    fn item(seq: u16, command: MavCmd, at: Option<(f64, f64)>, alt: f32) -> MISSION_ITEM_INT_DATA {
+        let (x, y) = at.map_or((0, 0), |(lat, lon)| (e7(lat), e7(lon)));
+        MISSION_ITEM_INT_DATA { seq, command, x, y, z: alt, frame: MavFrame::MAV_FRAME_GLOBAL_RELATIVE_ALT_INT, target_system: 128, target_component: 1, ..Default::default() }
+    }
+
+    fn upload(sim: &mut Sim, items: &[MISSION_ITEM_INT_DATA]) {
+        sim.receive(gcs(), &MavMessage::MISSION_COUNT(MISSION_COUNT_DATA { count: items.len() as u16, target_system: 128, target_component: 1, ..Default::default() }));
+        items.iter().for_each(|item| {
+            sim.receive(gcs(), &MavMessage::MISSION_ITEM_INT(item.clone()));
+        });
+    }
+
+    fn heard(sim: &mut Sim, seconds: u64) -> Vec<MavMessage> {
+        (0..seconds * TICKS_PER_SECOND)
+            .flat_map(|_| {
+                let at = sim.ticks * 100;
+                let sent = sim.tick(at);
+                sent.into_iter().chain(sim.pump()).map(|(_, message)| message).collect::<Vec<_>>()
+            })
+            .collect()
+    }
+
+    fn reached(messages: &[MavMessage]) -> Vec<u16> {
+        messages.iter().filter_map(|m| if let MavMessage::MISSION_ITEM_REACHED(r) = m { Some(r.seq) } else { None }).collect()
+    }
+
+    fn steer(sim: &mut Sim, x: i16, y: i16, z: i16, r: i16, seconds: u64) {
+        (0..seconds * TICKS_PER_SECOND).for_each(|n| {
+            sim.receive(gcs(), &MavMessage::MANUAL_CONTROL(MANUAL_CONTROL_DATA { x, y, z, r, target: 128, ..Default::default() }));
+            sim.tick(n * 100);
+        });
+    }
+
+    fn metres_to(sim: &Sim, lat: f64, lon: f64) -> f64 {
+        let (north, east) = sim.offset(Target { lat, lon, alt: sim.alt });
+        north.hypot(east)
+    }
+
+    fn mode(sim: &mut Sim, custom: u32) {
+        command(sim, MavCmd::MAV_CMD_DO_SET_MODE, [1.0, custom as f32, 0.0, 0.0, 0.0, 0.0, 0.0]);
+    }
+
+    fn arm(sim: &mut Sim) -> Vec<Out> {
+        command(sim, MavCmd::MAV_CMD_COMPONENT_ARM_DISARM, [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])
+    }
+
+    fn acked(replies: &[Out]) -> Option<MavResult> {
+        replies.iter().find_map(|(_, m)| if let MavMessage::COMMAND_ACK(a) = m { Some(a.result) } else { None })
+    }
+
+    #[test]
+    fn a_copter_flies_an_uploaded_mission_item_by_item_and_lands_at_its_end() {
+        let mut sim = Sim::new(options(Vehicle::Copter), 128, None);
+        let (lat, lon) = (sim.home.0 + 0.0005, sim.home.1);
+        upload(&mut sim, &[
+            item(0, MavCmd::MAV_CMD_NAV_WAYPOINT, None, 0.0),
+            item(1, MavCmd::MAV_CMD_NAV_TAKEOFF, None, 10.0),
+            item(2, MavCmd::MAV_CMD_NAV_WAYPOINT, Some((lat, lon)), 10.0),
+            item(3, MavCmd::MAV_CMD_DO_CHANGE_SPEED, None, 0.0),
+            item(4, MavCmd::MAV_CMD_NAV_LAND, None, 0.0),
+        ]);
+        assert_eq!(acked(&command(&mut sim, MavCmd::MAV_CMD_MISSION_START, [0.0; 7])), Some(MavResult::MAV_RESULT_FAILED), "ArduPilot starts a mission only once armed");
+        mode(&mut sim, 4);
+        arm(&mut sim);
+        assert_eq!(acked(&command(&mut sim, MavCmd::MAV_CMD_MISSION_START, [0.0; 7])), Some(MavResult::MAV_RESULT_ACCEPTED));
+        assert_eq!(sim.custom_mode, APM_AUTO, "MISSION_START puts it in Auto");
+        let heard = heard(&mut sim, 40);
+        assert_eq!(reached(&heard), [1, 2, 4], "home is item 0 and the DO item is done in passing, not flown to");
+        assert!(metres_to(&sim, lat, lon) < ARRIVED_M, "it landed at the last waypoint, {} m off", metres_to(&sim, lat, lon));
+        assert_eq!((sim.alt, sim.armed, sim.mission.state), (0.0, false, MissionState::MISSION_STATE_COMPLETE));
+    }
+
+    #[test]
+    fn px4_starts_its_mission_on_arming_in_mission_mode_dwells_then_holds() {
+        let mut sim = Sim::new(options(Vehicle::Px4), 128, None);
+        let (lat, lon) = (sim.home.0, sim.home.1 + 0.0005);
+        upload(&mut sim, &[item(0, MavCmd::MAV_CMD_NAV_TAKEOFF, None, 5.0), MISSION_ITEM_INT_DATA { param1: 30.0, ..item(1, MavCmd::MAV_CMD_NAV_LOITER_TIME, Some((lat, lon)), 8.0) }]);
+        mode(&mut sim, px4_mode(PX4_AUTO, PX4_MISSION));
+        fly(&mut sim, 2);
+        assert_eq!(sim.alt, 0.0, "a disarmed vehicle waits in Mission mode");
+        arm(&mut sim);
+        let arrived = heard(&mut sim, 20);
+        assert_eq!((reached(&arrived), sim.mission.state), (vec![0, 1], MissionState::MISSION_STATE_ACTIVE), "it is loitering out its 30 s at the second item");
+        heard(&mut sim, 30);
+        assert_eq!((sim.mission.state, sim.custom_mode), (MissionState::MISSION_STATE_COMPLETE, px4_mode(PX4_AUTO, PX4_LOITER)), "PX4 holds once the mission is done");
+        assert!(sim.armed && (sim.alt - 8.0).abs() < 0.1 && metres_to(&sim, lat, lon) < ARRIVED_M);
+    }
+
+    #[test]
+    fn sticks_fly_a_copter_in_loiter_and_it_brakes_to_a_hover_when_they_go_quiet() {
+        let mut sim = Sim::new(options(Vehicle::Copter), 128, None);
+        mode(&mut sim, 5);
+        arm(&mut sim);
+        steer(&mut sim, 0, 0, 0, 0, 2);
+        assert_eq!(sim.alt, 0.0, "a parked throttle keeps it on the ground");
+        steer(&mut sim, 0, 0, 1000, 0, 2);
+        assert!((sim.alt - 2.0 * CLIMB_MPS).abs() < 0.1, "full throttle climbs at the pilot climb rate: {}", sim.alt);
+        steer(&mut sim, 0, 0, 500, 1000, 1);
+        assert!((sim.heading - YAW_DPS).abs() < 1.0 && (sim.alt - 2.0 * CLIMB_MPS).abs() < 0.1, "a full yaw stick turns at the pilot yaw rate and a centred throttle holds height");
+        assert!(matches!(sim.attitude(0), (_, MavMessage::ATTITUDE(a)) if (f64::from(a.yawspeed) - YAW_DPS.to_radians()).abs() < 1e-3), "ATTITUDE reports the yaw rate");
+        steer(&mut sim, 1000, 0, 500, 0, 3);
+        assert!(sim.velocity.1 > 5.0 && sim.velocity.0.abs() < 0.1, "forward stick flies the way the nose points: {:?}", sim.velocity);
+        assert!(matches!(sim.attitude(0), (_, MavMessage::ATTITUDE(a)) if a.pitch < -0.17 && a.roll.abs() < 0.01), "and the nose dips into it: {:?}", sim.tilt);
+        fly(&mut sim, 6);
+        assert!(sim.ground_speed() < 0.01 && sim.airborne(), "sticks that go quiet time out and it brakes to a hover: {:?}", sim.velocity);
+    }
+
+    #[test]
+    fn switching_to_loiter_mid_goto_stops_the_copter_where_it_is() {
+        let mut sim = Sim::new(options(Vehicle::Copter), 128, None);
+        mode(&mut sim, 4);
+        arm(&mut sim);
+        command(&mut sim, MavCmd::MAV_CMD_NAV_TAKEOFF, [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 10.0]);
+        fly(&mut sim, 5);
+        let (lat, lon) = (sim.home.0 + 0.002, sim.home.1);
+        sim.receive(gcs(), &MavMessage::COMMAND_INT(COMMAND_INT_DATA { command: MavCmd::MAV_CMD_DO_REPOSITION, x: e7(lat), y: e7(lon), z: 10.0, frame: MavFrame::MAV_FRAME_GLOBAL_RELATIVE_ALT_INT, param1: -1.0, target_system: 128, target_component: 1, ..Default::default() }));
+        fly(&mut sim, 6);
+        assert!(sim.ground_speed() > 4.0);
+        mode(&mut sim, 5);
+        fly(&mut sim, 6);
+        assert!(sim.ground_speed() < 0.01 && metres_to(&sim, lat, lon) > 100.0, "Loiter holds where it was, {} m short of the goto", metres_to(&sim, lat, lon));
+    }
+
+    #[test]
+    fn a_vehicle_told_to_refuse_arming_says_why_the_way_its_firmware_does() {
+        let mut apm = Sim::new(options(Vehicle::Copter), 128, None);
+        apm.prearm = Some("Compass not calibrated".into());
+        assert_eq!(acked(&arm(&mut apm)), Some(MavResult::MAV_RESULT_FAILED));
+        assert!(matches!(&apm.pump()[..], [(_, MavMessage::STATUSTEXT(t))] if text_of(&t.text) == "PreArm: Compass not calibrated"), "ArduPilot's reason trails the ack");
+        assert_eq!(acked(&command(&mut apm, MavCmd::MAV_CMD_NAV_TAKEOFF, [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 10.0])), Some(MavResult::MAV_RESULT_FAILED), "a takeoff does not arm it either");
+        apm.pump();
+        assert!(!apm.armed);
+        let reminders = |sim: &mut Sim, at: u64| sim.once_a_second(at).iter().filter(|(_, m)| matches!(m, MavMessage::STATUSTEXT(_))).count();
+        assert_eq!((reminders(&mut apm, 30_000), reminders(&mut apm, 31_000)), (1, 0), "ArduPilot repeats it every 30 s");
+        let mut px4 = Sim::new(options(Vehicle::Px4), 128, None);
+        px4.prearm = Some("Compass not calibrated".into());
+        assert!(matches!(&arm(&mut px4)[..], [(_, MavMessage::STATUSTEXT(t)), (_, MavMessage::COMMAND_ACK(a))] if text_of(&t.text) == "Preflight Fail: Compass not calibrated" && a.result == MavResult::MAV_RESULT_TEMPORARILY_REJECTED));
+        px4.prearm = None;
+        assert_eq!(acked(&arm(&mut px4)), Some(MavResult::MAV_RESULT_ACCEPTED));
+    }
+
+    #[test]
+    fn a_refusal_set_on_the_link_reaches_the_next_arm_request() {
+        let (sent, received) = mpsc::channel::<Vec<u8>>();
+        let link = MockLink::open(options(Vehicle::Copter), move |bytes| {
+            let _ = sent.send(bytes.to_vec());
+        })
+        .unwrap();
+        link.set_prearm(Some("Compass not calibrated".into()));
+        let mut request = Vec::new();
+        mavlink::write_v2_msg(&mut request, gcs(), &MavMessage::COMMAND_LONG(COMMAND_LONG_DATA { param1: 1.0, command: MavCmd::MAV_CMD_COMPONENT_ARM_DISARM, target_system: 0, target_component: 1, ..Default::default() })).unwrap();
+        assert!(link.write(&request));
+        let mut parser = Registry::default();
+        let id = parser.open(Owner::Core, "mock", "test");
+        let found = std::iter::from_fn(|| received.recv_timeout(Duration::from_secs(2)).ok())
+            .flat_map(|bytes| parser.bytes_in(id, &bytes))
+            .find(|frame| matches!(&frame.message, MavMessage::STATUSTEXT(t) if text_of(&t.text) == "PreArm: Compass not calibrated"));
+        link.close();
+        assert!(found.is_some());
+    }
+
+    #[test]
+    fn the_battery_drains_over_fifteen_minutes_of_flight_and_not_on_the_bench() {
+        let mut sim = Sim::new(options(Vehicle::Copter), 128, None);
+        fly(&mut sim, 60);
+        assert_eq!(sim.battery, [100, 100]);
+        arm(&mut sim);
+        fly(&mut sim, 91);
+        assert_eq!(sim.battery, [90, 95], "90 s armed is a tenth of a 15 minute pack, and the second pack drains at half the rate");
+    }
+
+    #[test]
+    fn a_plane_climbs_out_then_circles_and_loiters_over_home_on_rtl_rather_than_landing() {
+        let mut sim = Sim::new(options(Vehicle::Plane), 128, None);
+        let home = sim.home;
+        command(&mut sim, MavCmd::MAV_CMD_NAV_TAKEOFF, [0.0, 0.0, 0.0, 0.0, 0.0, 0.0, 30.0]);
+        fly(&mut sim, 7);
+        assert!(sim.airborne() && sim.heading == 0.0, "it climbs out on the runway heading");
+        fly(&mut sim, 80);
+        assert!((sim.alt - 30.0).abs() < 0.5 && (sim.ground_speed() - PLANE_CRUISE_MPS).abs() < 0.1, "at {} m and {} m/s", sim.alt, sim.ground_speed());
+        assert!((40.0..90.0).contains(&metres_to(&sim, home.0, home.1)) && sim.tilt.0 > 10.0, "it circles the takeoff point banked over: {} m, {:?}", metres_to(&sim, home.0, home.1), sim.tilt);
+        sim.receive(gcs(), &MavMessage::COMMAND_INT(COMMAND_INT_DATA { command: MavCmd::MAV_CMD_DO_REPOSITION, x: e7(home.0 + 0.005), y: e7(home.1), z: 30.0, frame: MavFrame::MAV_FRAME_GLOBAL_RELATIVE_ALT_INT, param1: -1.0, target_system: 128, target_component: 1, ..Default::default() }));
+        fly(&mut sim, 60);
+        assert!(metres_to(&sim, home.0 + 0.005, home.1) < PLANE_ARRIVED_M);
+        mode(&mut sim, 11);
+        fly(&mut sim, 90);
+        assert!(sim.armed && sim.airborne() && metres_to(&sim, home.0, home.1) < PLANE_ARRIVED_M, "ArduPlane RTL loiters over home: {} m, {} m up", metres_to(&sim, home.0, home.1), sim.alt);
     }
 }

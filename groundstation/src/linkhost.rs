@@ -68,6 +68,16 @@ impl Owned {
         }
     }
 
+    fn refuse_arming(&self, reason: &Option<String>) -> bool {
+        match self {
+            Owned::Mock(link) => {
+                link.set_prearm(reason.clone());
+                true
+            }
+            _ => false,
+        }
+    }
+
     fn close(&self) {
         match self {
             Owned::Udp(link) => link.close(),
@@ -413,6 +423,10 @@ pub fn reap(transports: &Mutex<Transports>) {
 
 pub fn silence_mocks(transports: &Mutex<Transports>, silent: bool) -> usize {
     transports.lock().unwrap().owned.values().filter(|link| link.silence(silent)).count()
+}
+
+pub fn refuse_mock_arming(transports: &Mutex<Transports>, reason: Option<String>) -> usize {
+    transports.lock().unwrap().owned.values().filter(|link| link.refuse_arming(&reason)).count()
 }
 
 pub fn host_open(transports: &Mutex<Transports>, kind: &str, name: &str) -> LinkId {
