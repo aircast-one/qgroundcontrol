@@ -16,6 +16,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.compose.LocalLifecycleOwner
@@ -251,6 +252,7 @@ fun VehicleMap(
     val longitude = flown?.longitude ?: Double.NaN
     val heading = flown?.heading ?: Double.NaN
     val home = flown?.home
+    var glide by remember(flown?.id) { mutableStateOf(Glide.settled(UNPLACED, 0L)) }
 
     var map by remember { mutableStateOf<MapLibreMap?>(null) }
     var style by remember { mutableStateOf<Style?>(null) }
@@ -477,10 +479,11 @@ fun VehicleMap(
     }
 
     fun recenterOnVehicle() {
-        val tracking = follow && isPlottable(latitude, longitude) && !panning && SystemClock.elapsedRealtime() >= trackingResumesAtMs
+        val drawn = glide.at(System.nanoTime())
+        val tracking = follow && isPlottable(drawn.latitude, drawn.longitude) && !panning && SystemClock.elapsedRealtime() >= trackingResumesAtMs
         val shown = map
         if (tracking && shown != null) {
-            val at = LatLng(latitude, longitude)
+            val at = LatLng(drawn.latitude, drawn.longitude)
             val zoomed = shown.cameraPosition.zoom > 1.0
             val point = shown.projection.toScreenLocation(at)
             val lift = clearAreaLift(topInsetPx.toFloat(), bottomInsetPx.toFloat()).coerceIn(-mapView.height / 4f, mapView.height / 4f)
@@ -498,14 +501,8 @@ fun VehicleMap(
 
     LaunchedEffect(style, latitude, longitude, heading, home, linkLost, fleet, lastSeen) {
         val currentStyle = style ?: return@LaunchedEffect
-
-        (currentStyle.getSource(VEHICLE_SOURCE) as? GeoJsonSource)
-            ?.setGeoJson(
-                when {
-                    fleet.isEmpty() -> vehicleFeatures(latitude, longitude, heading, linkLost, lastSeen)
-                    else -> fleetFeatures(fleet, lastSeen)
-                },
-            )
+        val segment = glide.toward(VehiclePose(latitude, longitude, heading), System.nanoTime())
+        glide = segment
 
         (currentStyle.getSource(HOME_SOURCE) as? GeoJsonSource)?.setGeoJson(
             FeatureCollection.fromFeatures(
@@ -515,6 +512,18 @@ fun VehicleMap(
         )
 
         recenterOnVehicle()
+        do {
+            val now = withFrameNanos { it }
+            val drawn = segment.at(now)
+            (currentStyle.getSource(VEHICLE_SOURCE) as? GeoJsonSource)
+                ?.setGeoJson(
+                    when {
+                        fleet.isEmpty() -> vehicleFeatures(drawn.latitude, drawn.longitude, drawn.heading, linkLost, lastSeen)
+                        else -> fleetFeatures(fleet.map { if (it.active) it.copy(latitude = drawn.latitude, longitude = drawn.longitude, heading = drawn.heading) else it }, lastSeen)
+                    },
+                )
+            if (keepCentered) recenterOnVehicle()
+        } while (now < segment.endNs)
     }
 
     LaunchedEffect(style, track) {
