@@ -13,6 +13,7 @@ const VERTEX_BYTES: u64 = 32;
 const DRAW_BYTES: u64 = 128;
 const SCENE_BYTES: u64 = 96;
 const SAMPLES: u32 = 4;
+const FIRST_DRAW_SLOTS: usize = 1024;
 const MISSING_TEXTURE: [u8; 4] = [255, 255, 255, 255];
 const LAYERS: [Layer; 3] = [Layer::Opaque, Layer::Translucent, Layer::OnTop];
 
@@ -21,9 +22,9 @@ const SHADER: &str = r"
 struct Scene { unproject: mat4x4<f32>, zenith: vec4<f32>, sun: vec4<f32> };
 struct Draw { mvp: mat4x4<f32>, model: mat4x4<f32> };
 @group(0) @binding(0) var<uniform> scene: Scene;
-@group(1) @binding(0) var<uniform> draw: Draw;
-@group(1) @binding(1) var picture: texture_2d<f32>;
-@group(1) @binding(2) var tile_sampler: sampler;
+@group(1) @binding(0) var picture: texture_2d<f32>;
+@group(1) @binding(1) var tile_sampler: sampler;
+@group(2) @binding(0) var<uniform> draw: Draw;
 struct In { @location(0) position: vec3<f32>, @location(1) uv: vec2<f32>, @location(2) normal: vec3<f32> };
 struct Out { @builtin(position) position: vec4<f32>, @location(0) uv: vec2<f32>, @location(1) seen: vec3<f32>, @location(2) normal: vec3<f32> };
 struct SkyOut { @builtin(position) position: vec4<f32>, @location(0) screen: vec2<f32> };
@@ -119,8 +120,21 @@ struct GpuMesh {
     vertices: wgpu::Buffer,
     indices: wgpu::Buffer,
     count: u32,
-    matrix: wgpu::Buffer,
     bind: wgpu::BindGroup,
+}
+
+struct Draws {
+    buffer: wgpu::Buffer,
+    bind: wgpu::BindGroup,
+    slots: usize,
+}
+
+fn draw_stride(alignment: u32) -> u64 {
+    DRAW_BYTES.div_ceil(u64::from(alignment)) * u64::from(alignment)
+}
+
+fn draw_slots(needed: usize) -> usize {
+    needed.max(FIRST_DRAW_SLOTS).next_power_of_two()
 }
 
 pub struct Targets {
@@ -136,6 +150,9 @@ pub struct Renderer {
     backfill: wgpu::RenderPipeline,
     sky: wgpu::RenderPipeline,
     layout: wgpu::BindGroupLayout,
+    draws_layout: wgpu::BindGroupLayout,
+    draws: Option<Draws>,
+    stride: u64,
     scene: wgpu::Buffer,
     scene_bind: wgpu::BindGroup,
     sampler: wgpu::Sampler,
@@ -213,12 +230,16 @@ impl Renderer {
         let layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("synthetic draw"),
             entries: &[
-                uniform(0, wgpu::ShaderStages::VERTEX),
-                wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Float { filterable: true }, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false }, count: None },
-                wgpu::BindGroupLayoutEntry { binding: 2, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering), count: None },
+                wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Texture { sample_type: wgpu::TextureSampleType::Float { filterable: true }, view_dimension: wgpu::TextureViewDimension::D2, multisampled: false }, count: None },
+                wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering), count: None },
             ],
         });
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: Some("synthetic"), bind_group_layouts: &[Some(&scene_layout), Some(&layout)], immediate_size: 0 });
+        let draws_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+            label: Some("synthetic draws"),
+            entries: &[wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::VERTEX, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: true, min_binding_size: wgpu::BufferSize::new(DRAW_BYTES) }, count: None }],
+        });
+        let stride = draw_stride(device.limits().min_uniform_buffer_offset_alignment);
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: Some("synthetic"), bind_group_layouts: &[Some(&scene_layout), Some(&layout), Some(&draws_layout)], immediate_size: 0 });
         let sky_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: Some("synthetic sky"), bind_group_layouts: &[Some(&scene_layout)], immediate_size: 0 });
         let pipelines = LAYERS.map(|layer| pipeline(&device, &pipeline_layout, &shader, format, layer));
         let backfill = pipeline(&device, &pipeline_layout, &shader, format, Layer::Backfill);
@@ -226,7 +247,7 @@ impl Renderer {
         let scene = device.create_buffer(&wgpu::BufferDescriptor { label: Some("synthetic scene"), size: SCENE_BYTES, usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
         let scene_bind = device.create_bind_group(&wgpu::BindGroupDescriptor { label: Some("synthetic scene"), layout: &scene_layout, entries: &[wgpu::BindGroupEntry { binding: 0, resource: scene.as_entire_binding() }] });
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor { mag_filter: wgpu::FilterMode::Linear, min_filter: wgpu::FilterMode::Linear, mipmap_filter: wgpu::MipmapFilterMode::Linear, address_mode_u: wgpu::AddressMode::ClampToEdge, address_mode_v: wgpu::AddressMode::ClampToEdge, anisotropy_clamp: ANISOTROPY, ..Default::default() });
-        Self { device, queue, format, pipelines, backfill, sky, layout, scene, scene_bind, sampler, resident: Resident::default(), uploads: 0, to_upload: Vec::new() }
+        Self { device, queue, format, pipelines, backfill, sky, layout, draws_layout, draws: None, stride, scene, scene_bind, sampler, resident: Resident::default(), uploads: 0, to_upload: Vec::new() }
     }
 
     fn upload(device: &wgpu::Device, queue: &wgpu::Queue, layout: &wgpu::BindGroupLayout, sampler: &wgpu::Sampler, mesh: &Mesh) -> GpuMesh {
@@ -255,21 +276,15 @@ impl Renderer {
             );
         });
         let view = texture.create_view(&Default::default());
-        let matrix = device.create_buffer(&wgpu::BufferDescriptor { label: None, size: DRAW_BYTES, usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
         let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout,
-            entries: &[
-                wgpu::BindGroupEntry { binding: 0, resource: matrix.as_entire_binding() },
-                wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::TextureView(&view) },
-                wgpu::BindGroupEntry { binding: 2, resource: wgpu::BindingResource::Sampler(sampler) },
-            ],
+            entries: &[wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&view) }, wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(sampler) }],
         });
         GpuMesh {
             vertices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: None, contents: &vertices, usage: wgpu::BufferUsages::VERTEX }),
             indices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: None, contents: &indices, usage: wgpu::BufferUsages::INDEX }),
             count: mesh.indices.len() as u32,
-            matrix,
             bind,
         }
     }
@@ -305,10 +320,24 @@ impl Renderer {
         let view_projection = camera.projection() * camera.view();
         let drawable: Vec<(&Arc<Mesh>, &GpuMesh)> = meshes.iter().filter_map(|mesh| Some((mesh, self.resident.get(mesh.id)?))).collect();
         let behind: Vec<(&Arc<Mesh>, &GpuMesh)> = backfill.iter().filter_map(|mesh| Some((mesh, self.resident.get(mesh.id)?))).collect();
-        drawable.iter().chain(&behind).for_each(|(mesh, gpu)| {
-            let model = camera.relative(mesh.to_ecef);
-            self.queue.write_buffer(&gpu.matrix, 0, &bytes((view_projection * model).as_mat4().to_cols_array().into_iter().chain(model.as_mat4().to_cols_array())));
-        });
+        let stride = self.stride;
+        let slots = behind.len() + drawable.len();
+        if self.draws.as_ref().is_none_or(|draws| draws.slots < slots) {
+            self.draws = Some(self.draw_buffer(draw_slots(slots)));
+        }
+        let Some(draws) = self.draws.as_ref() else { return };
+        let matrices: Vec<u8> = behind
+            .iter()
+            .chain(&drawable)
+            .flat_map(|(mesh, _)| {
+                let model = camera.relative(mesh.to_ecef);
+                bytes((view_projection * model).as_mat4().to_cols_array().into_iter().chain(model.as_mat4().to_cols_array())).into_iter().chain(std::iter::repeat_n(0, (stride - DRAW_BYTES) as usize))
+            })
+            .collect();
+        if !matrices.is_empty() {
+            self.queue.write_buffer(&draws.buffer, 0, &matrices);
+        }
+        let offset = |slot: usize| (slot as u64 * stride) as u32;
         let direction = |v: glam::DVec3| v.as_vec3().extend(0.0).to_array();
         self.queue.write_buffer(&self.scene, 0, &bytes(camera.unproject().as_mat4().to_cols_array().into_iter().chain(direction(camera.zenith)).chain(direction(camera.sun))));
         let mut encoder = self.device.create_command_encoder(&Default::default());
@@ -318,16 +347,18 @@ impl Renderer {
             pass.set_pipeline(&self.sky);
             pass.draw(0..3, 0..1);
             pass.set_pipeline(&self.backfill);
-            behind.iter().for_each(|(_, gpu)| {
+            behind.iter().enumerate().for_each(|(slot, (_, gpu))| {
                 pass.set_bind_group(1, &gpu.bind, &[]);
+                pass.set_bind_group(2, &draws.bind, &[offset(slot)]);
                 pass.set_vertex_buffer(0, gpu.vertices.slice(..));
                 pass.set_index_buffer(gpu.indices.slice(..), wgpu::IndexFormat::Uint32);
                 pass.draw_indexed(0..gpu.count, 0, 0..1);
             });
             LAYERS.iter().zip(&self.pipelines).for_each(|(layer, pipeline)| {
                 pass.set_pipeline(pipeline);
-                drawable.iter().filter(|(mesh, _)| mesh.layer == *layer).for_each(|(_, gpu)| {
+                drawable.iter().enumerate().filter(|(_, (mesh, _))| mesh.layer == *layer).for_each(|(slot, (_, gpu))| {
                     pass.set_bind_group(1, &gpu.bind, &[]);
+                    pass.set_bind_group(2, &draws.bind, &[offset(behind.len() + slot)]);
                     pass.set_vertex_buffer(0, gpu.vertices.slice(..));
                     pass.set_index_buffer(gpu.indices.slice(..), wgpu::IndexFormat::Uint32);
                     pass.draw_indexed(0..gpu.count, 0, 0..1);
@@ -335,6 +366,16 @@ impl Renderer {
             });
         }
         self.queue.submit([encoder.finish()]);
+    }
+
+    fn draw_buffer(&self, slots: usize) -> Draws {
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some("synthetic draws"), size: slots as u64 * self.stride, usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
+        let bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("synthetic draws"),
+            layout: &self.draws_layout,
+            entries: &[wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding { buffer: &buffer, offset: 0, size: wgpu::BufferSize::new(DRAW_BYTES) }) }],
+        });
+        Draws { buffer, bind, slots }
     }
 
     pub fn clear(&mut self, target: &wgpu::TextureView, targets: &Targets) {
@@ -394,6 +435,14 @@ mod tests {
 
     fn mesh() -> Arc<Mesh> {
         Arc::new(Mesh::new(DMat4::IDENTITY, Vec::new(), Vec::new(), Vec::new(), image::RgbaImage::new(1, 1), Layer::Opaque))
+    }
+
+    #[test]
+    fn every_draw_gets_its_own_aligned_slot_in_one_shared_buffer() {
+        assert_eq!(draw_stride(256), 256, "Adreno GL and most drivers align uniform offsets to 256 bytes");
+        assert_eq!(draw_stride(64), 128, "a smaller alignment packs the two matrices back to back");
+        assert_eq!(draw_slots(10), 1024, "the buffer starts big enough for a city");
+        assert_eq!(draw_slots(1100), 2048, "and doubles rather than growing a draw at a time");
     }
 
     #[test]
