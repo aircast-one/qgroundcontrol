@@ -653,6 +653,7 @@ mod deps_cover_reads {
             ("applog", include_str!("applog.rs")),
             ("offlinemaps", include_str!("offlinemaps.rs")),
             ("virtualjoystick", include_str!("virtualjoystick.rs")),
+            ("linkhealth", include_str!("linkhealth.rs")),
             ("plantemplates", include_str!("plantemplates.rs")),
             ("plantransform", include_str!("plantransform.rs")),
             ("px4tuning", include_str!("px4tuning.rs")),

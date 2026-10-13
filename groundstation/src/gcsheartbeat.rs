@@ -23,13 +23,16 @@ pub fn tick(now_ms: u64) {
     if !wanted() {
         return;
     }
-    let Some(bytes) = crate::mavout::encode_next(&crate::mavout::Outbound::GcsHeartbeat) else { return };
+    let Some(beat) = crate::mavout::encode_next(&crate::mavout::Outbound::GcsHeartbeat) else { return };
+    let ping = crate::mavout::encode_next(&crate::mavout::Outbound::Timesync { target: (0, 0), ts1: crate::linkhealth::ping_stamp(now_ms) });
     let targets: Vec<crate::transport::LinkId> = {
         let transports = crate::linkhost::TRANSPORTS.lock().unwrap_or_else(PoisonError::into_inner);
         transports.open_ids().into_iter().filter(|id| transports.describe(*id).is_some_and(|(_, _, high_latency)| !high_latency)).collect()
     };
     targets.into_iter().for_each(|id| {
-        crate::linkhost::write(&crate::linkhost::TRANSPORTS, id, &bytes);
+        std::iter::once(&beat).chain(ping.as_ref()).for_each(|bytes| {
+            crate::linkhost::write(&crate::linkhost::TRANSPORTS, id, bytes);
+        });
     });
 }
 

@@ -227,6 +227,7 @@ pub mod advancedui;
 pub mod applog;
 pub mod offlinemaps;
 pub mod virtualjoystick;
+pub mod linkhealth;
 pub mod plantemplates;
 pub mod plantransform;
 pub mod px4tuning;

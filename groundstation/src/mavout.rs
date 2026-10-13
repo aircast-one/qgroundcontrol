@@ -71,6 +71,7 @@ pub enum Outbound {
     SetupSigning { data: mavlink::dialects::ardupilotmega::SETUP_SIGNING_DATA },
     RequestDataStream { target: (u8, u8), stream: u8, rate: u16 },
     GcsHeartbeat,
+    Timesync { target: (u8, u8), ts1: i64 },
 }
 
 pub fn chars<const N: usize>(text: &str) -> CharArray<N> {
@@ -408,6 +409,7 @@ pub fn message(send: &Outbound) -> Option<MavMessage> {
                 target_component: target.1,
             }))
         }
+        Outbound::Timesync { target, ts1 } => Some(MavMessage::TIMESYNC(mavlink::dialects::ardupilotmega::TIMESYNC_DATA { tc1: 0, ts1: *ts1, target_system: target.0, target_component: target.1 })),
         Outbound::GcsHeartbeat => Some(MavMessage::HEARTBEAT(mavlink::dialects::ardupilotmega::HEARTBEAT_DATA {
             custom_mode: 0,
             mavtype: mavlink::dialects::ardupilotmega::MavType::MAV_TYPE_GCS,

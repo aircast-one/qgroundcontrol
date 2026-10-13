@@ -248,6 +248,7 @@ pub struct Vehicle {
     pub gps: GpsFacts,
     pub gps2: GpsFacts,
     streams_watched_ms: Option<(u64, u64)>,
+    link_health: crate::linkhealth::LinkHealth,
     pub integrity_heard_ms: Option<u64>,
     pub batteries: Batteries,
     pub facts: VehicleFacts,
@@ -485,6 +486,7 @@ impl Vehicle {
             gps: GpsFacts::default(),
             gps2: GpsFacts::default(),
             streams_watched_ms: None,
+            link_health: crate::linkhealth::LinkHealth::default(),
             integrity_heard_ms: None,
             batteries: Batteries::default(),
             facts: VehicleFacts::for_vehicle(id, component),
@@ -2541,6 +2543,12 @@ impl Vehicle {
         self.pump_with(now_ms, None, 0)
     }
 
+    fn report_link_health(&mut self, now_ms: u64) {
+        if let Some(line) = self.link_health.report(now_ms, self.id, self.link).filter(|_| !self.replay && self.connected) {
+            log::info!(target: "link", "{line}");
+        }
+    }
+
     fn pump_with(&mut self, now_ms: u64, remote_inputs: Option<&RemoteInputs>, now_s: u64) -> Vec<Vec<u8>> {
         let ticked = self.commands.tick(now_ms);
         self.tell_due_refusal(now_ms);
@@ -2552,6 +2560,7 @@ impl Vehicle {
             bytes.extend(self.encode(&revert));
         }
         bytes.extend(self.tick_rc_override(now_ms));
+        self.report_link_health(now_ms);
         bytes.extend(self.cancel_calibration_left_behind(now_ms));
         bytes.extend(self.tick_airframe_reboot(now_ms));
         bytes.extend(self.tick_stream_rates(now_ms));
@@ -3370,6 +3379,7 @@ impl Vehicle {
         (self.message_seq, self.messages_lost) = counted_loss(self.message_seq, self.messages_lost, header, matches!(message, MavMessage::HEARTBEAT(_)));
         *self.by_name.entry(message.message_name().to_string()).or_insert(0) += 1;
         let from = (header.system_id, header.component_id);
+        self.link_health.observe(message, from == (self.id, self.component), now_ms);
         if let MavMessage::HEARTBEAT(h) = message
             && header.system_id == self.id
         {
