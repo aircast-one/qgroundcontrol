@@ -190,6 +190,7 @@ pub struct Stats {
 pub struct Frame {
     pub pose: Pose,
     pub ground: Vec<Arc<Mesh>>,
+    pub warm: Vec<Arc<Mesh>>,
     pub home_ground: Option<f64>,
     pub changed: bool,
 }
@@ -222,6 +223,7 @@ pub struct Session {
     coarsest: f64,
     first_frame: Option<Instant>,
     handed_over_after: Option<Duration>,
+    warming: Option<usize>,
 }
 
 fn wrapped(degrees: f64) -> f64 {
@@ -302,8 +304,8 @@ fn settled(a: &Pose, b: &Pose) -> bool {
         && [wrapped(a.heading - b.heading), a.pitch - b.pitch, wrapped(a.roll - b.roll)].iter().all(|turn| turn.abs() < SETTLED_ANGLE)
 }
 
-pub fn google_ready(loaded: bool, coarsest: f64, home_ground: Option<f64>) -> bool {
-    loaded && coarsest <= GOOGLE_READY_COARSEST && home_ground.is_some()
+pub fn google_ready(loaded: bool, coarsest: f64, home_ground: Option<f64>, still_to_upload: Option<usize>) -> bool {
+    loaded && coarsest <= GOOGLE_READY_COARSEST && home_ground.is_some() && still_to_upload.is_none_or(|left| left == 0)
 }
 
 pub fn camera_height(target: &Target, home_ground: Option<f64>, under_ground: Option<f64>) -> f64 {
@@ -350,6 +352,7 @@ impl Session {
             coarsest: f64::INFINITY,
             first_frame: None,
             handed_over_after: None,
+            warming: None,
         })
     }
 
@@ -378,6 +381,14 @@ impl Session {
 
     pub fn handover(&self) -> Option<Duration> {
         self.handed_over_after
+    }
+
+    pub fn warming(&self) -> Option<usize> {
+        self.warming
+    }
+
+    pub fn warmed(&mut self, still_to_upload: usize) {
+        self.warming = Some(still_to_upload);
     }
 
     pub fn in_flight(&self) -> usize {
@@ -542,7 +553,7 @@ impl Session {
         let delivered = self.collect(now);
         let target = target?;
         let started = *self.first_frame.get_or_insert(now);
-        if self.fallback.is_some() && google_ready(matches!(self.source, Source::Google(Some(_))), self.coarsest, self.home.height) {
+        if self.fallback.is_some() && google_ready(matches!(self.source, Source::Google(Some(_))), self.coarsest, self.home.height, self.warming) {
             self.fallback = None;
             self.shown = None;
             self.handed_over_after = Some(now.saturating_duration_since(started));
@@ -567,7 +578,11 @@ impl Session {
         self.seen = Some(target.clone());
         let due = self.selected.is_none_or(|at| now.duration_since(at) >= RESELECT_EVERY);
         let reselected = (delivered > 0 || moving || fresh || due) && self.select(&Camera::new(&pose, width, height), target, now);
-        Some(Frame { pose, ground: self.ground_meshes.clone(), home_ground, changed: moving || fresh || reselected })
+        let warm = match &self.source {
+            Source::Google(Some(tiles)) => tiles.loaded_meshes(),
+            _ => Vec::new(),
+        };
+        Some(Frame { pose, ground: self.ground_meshes.clone(), warm, home_ground, changed: moving || fresh || reselected })
     }
 }
 
@@ -729,11 +744,13 @@ mod tests {
 
     #[test]
     fn google_takes_over_once_its_near_tiles_are_real_geometry_not_globe_tiles() {
-        assert!(!google_ready(true, 31_974_277.8, Some(10.0)), "globe-level tiles under the camera are what drew haze and smears");
-        assert!(google_ready(true, 53.5, Some(10.0)), "a 1 km tile still refining is already a city on screen");
-        assert!(!google_ready(true, f64::INFINITY, Some(10.0)), "nothing drawn yet");
-        assert!(!google_ready(true, 2.0, None), "without home's ground the camera height is a guess");
-        assert!(!google_ready(false, 2.0, Some(10.0)));
+        assert!(!google_ready(true, 31_974_277.8, Some(10.0), None), "globe-level tiles under the camera are what drew haze and smears");
+        assert!(google_ready(true, 53.5, Some(10.0), None), "a 1 km tile still refining is already a city on screen");
+        assert!(!google_ready(true, f64::INFINITY, Some(10.0), None), "nothing drawn yet");
+        assert!(!google_ready(true, 2.0, None, None), "without home's ground the camera height is a guess");
+        assert!(!google_ready(false, 2.0, Some(10.0), None));
+        assert!(!google_ready(true, 2.0, Some(10.0), Some(40)), "uploading 790 meshes in the handover frame froze the phone for 2 s");
+        assert!(google_ready(true, 2.0, Some(10.0), Some(0)), "once they are on the GPU the switch is one ordinary frame");
     }
 
     #[test]

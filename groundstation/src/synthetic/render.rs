@@ -283,6 +283,13 @@ impl Renderer {
         })
     }
 
+    pub fn warm(&mut self, meshes: &[Arc<Mesh>], most: usize) -> usize {
+        let missing: Vec<Arc<Mesh>> = meshes.iter().filter(|mesh| self.resident.get(mesh.id).is_none()).cloned().collect();
+        let (device, queue, layout, sampler) = (&self.device, &self.queue, &self.layout, &self.sampler);
+        self.uploads += self.resident.ensure(&missing[..missing.len().min(most)], |mesh| Self::upload(device, queue, layout, sampler, mesh));
+        missing.len().saturating_sub(most)
+    }
+
     pub fn draw(&mut self, target: &wgpu::TextureView, targets: &Targets, camera: &Camera, meshes: &[Arc<Mesh>]) {
         let (device, queue, layout, sampler) = (&self.device, &self.queue, &self.layout, &self.sampler);
         self.uploads += self.resident.ensure(meshes, |mesh| Self::upload(device, queue, layout, sampler, mesh));

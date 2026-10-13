@@ -15,6 +15,7 @@ const OVERLAYS_EVERY: Duration = Duration::from_millis(500);
 const SUMMARY_EVERY: Duration = Duration::from_secs(10);
 const RELEASE_WAIT: Duration = Duration::from_secs(2);
 const KEEP_UNSEEN: Duration = Duration::from_secs(60);
+const WARM_PER_TICK: usize = 6;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Draw {
@@ -342,11 +343,12 @@ impl Summary {
     fn report(&self, session: Option<&mut Session>, gpu: &Gpu, surfaces: usize, draw: Draw) {
         let (source, tiles, in_flight) = world(session.as_deref());
         let (showing, handover) = handing_over(session.as_deref());
+        let warming = session.as_deref().and_then(Session::warming).map_or_else(|| "none".to_string(), |left| left.to_string());
         let stats = session.map(Session::take_stats).unwrap_or_default();
         let Stats { requested, loaded, failed, bytes, errors } = stats;
         log::info!(
             target: "synthetic",
-            "event=summary seconds={} source={source} showing={showing} handover_ms={handover} surfaces={surfaces} draw={} painted={} idle_ticks={} slowest_paint_ms={} requested={requested} loaded={loaded} failed={failed} bytes={bytes} tiles={tiles} in_flight={in_flight} resident={} uploads={} errors={errors:?}",
+            "event=summary seconds={} source={source} showing={showing} handover_ms={handover} warming={warming} surfaces={surfaces} draw={} painted={} idle_ticks={} slowest_paint_ms={} requested={requested} loaded={loaded} failed={failed} bytes={bytes} tiles={tiles} in_flight={in_flight} resident={} uploads={} errors={errors:?}",
             self.since.elapsed().as_secs(),
             draw.name(),
             self.painted,
@@ -411,6 +413,9 @@ fn show(first: Window, kept: Option<Kept>, commands: &Receiver<Command>, feed: &
         let target = feed.pose().as_ref().and_then(Target::from_view);
         let largest = shown.iter().map(|surface| surface.size).max_by_key(|(width, height)| u64::from(*width) * u64::from(*height)).unwrap_or_default();
         let frame = session.as_mut().filter(|_| largest.0 > 0 && largest.1 > 0).and_then(|session: &mut Session| session.frame(target.as_ref(), largest.0, largest.1, now));
+        if let Some((frame, session)) = frame.as_ref().filter(|frame| !frame.warm.is_empty()).zip(session.as_mut()) {
+            session.warmed(gpu.renderer.warm(&frame.warm, WARM_PER_TICK));
+        }
         let redraw = rekeyed || restyled || frame.as_ref().is_some_and(|frame| frame.changed) || frame.is_some() != framed;
         framed = frame.is_some();
         let painted: Vec<Result<bool, String>> = shown.iter_mut().filter(|surface| redraw || !surface.drawn).map(|surface| surface.paint(&mut gpu, frame.as_ref(), overlays.value.as_ref())).collect();

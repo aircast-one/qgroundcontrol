@@ -190,6 +190,14 @@ fn refine_above(camera: &Camera) -> f64 {
     MAXIMUM_SCREEN_SPACE_ERROR * (camera.height_px * camera.height_px * camera.aspect / DETAIL_PIXELS).sqrt().max(1.0)
 }
 
+fn meshes_in(tile: &Tile) -> Vec<Arc<Mesh>> {
+    let own = match &tile.content {
+        Content::Meshes(meshes) => meshes.clone(),
+        _ => Vec::new(),
+    };
+    own.into_iter().chain(tile.children.iter().flat_map(meshes_in)).collect()
+}
+
 fn loaded(tile: &Tile) -> usize {
     usize::from(matches!(tile.content, Content::Meshes(_))) + tile.children.iter().map(loaded).sum::<usize>()
 }
@@ -211,6 +219,10 @@ impl Tileset {
 
     pub fn loaded_tiles(&self) -> usize {
         loaded(&self.root)
+    }
+
+    pub fn loaded_meshes(&self) -> Vec<Arc<Mesh>> {
+        meshes_in(&self.root)
     }
 
     pub fn select(&mut self, camera: &Camera, budget: usize, now: Instant) -> (Vec<Arc<Mesh>>, Vec<Request>) {
