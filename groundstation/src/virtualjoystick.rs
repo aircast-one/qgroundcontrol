@@ -29,6 +29,10 @@ const SUB_FLIES_ITSELF: [&str; 3] = ["Auto", "Guided", "Surface"];
 const COPTER_FREE_THROTTLE: [&str; 4] = ["Stabilize", "Acro", "Drift", "Flip"];
 const PLANE_FREE_THROTTLE: [&str; 9] = ["Manual", "Stabilize", "Training", "Acro", "FBW A", "FBW B", "Cruise", "QuadPlane Stabilize", "QuadPlane Acro"];
 const PX4_FREE_THROTTLE: [&str; 4] = ["Manual", "Stabilized", "Acro", "Rattitude"];
+const COPTER_RATE: [&str; 1] = ["Acro"];
+const PLANE_RATE: [&str; 2] = ["Acro", "QuadPlane Acro"];
+const PX4_RATE: [&str; 2] = ["Acro", "Rattitude"];
+pub const RATE_EXPO_PCT: f64 = 70.0;
 const PX4_AUTO: u32 = 4;
 const PX4_OFFBOARD: u32 = 6;
 const TAKEOVER_IN_AUTO: u32 = 1;
@@ -88,6 +92,28 @@ fn throttle_free(airframe: Airframe, custom_mode: u32, driven: bool) -> bool {
         }
 }
 
+fn rate_mode(airframe: Airframe, custom_mode: u32) -> bool {
+    match airframe {
+        Airframe::Copter => named(&COPTER_MODES, &COPTER_RATE, custom_mode),
+        Airframe::Plane => named(&PLANE_MODES, &PLANE_RATE, custom_mode),
+        Airframe::Px4 => PX4_MODES.iter().any(|mode| PX4_RATE.contains(&mode.name) && px4_main(mode.custom_mode) == px4_main(custom_mode)),
+        Airframe::Rover | Airframe::Sub | Airframe::Other => false,
+    }
+}
+
+fn softened(axis: f64, rate: bool) -> f64 {
+    match rate {
+        true => f64::from(crate::joystick::exponential(axis as f32, RATE_EXPO_PCT)),
+        false => axis,
+    }
+}
+
+const VEHICLE_FIELDS: &str = "rover,sub,multiRotor,fixedWing,vtol,apmFirmware,px4Firmware,customMode";
+
+fn custom_mode(vehicle: &Value) -> Option<u32> {
+    vehicle.get("customMode").and_then(Value::as_u64).and_then(|custom| u32::try_from(custom).ok())
+}
+
 pub const JOYSTICK_VALUE: &str = "vehicle.virtualTabletJoystickValue";
 pub const SEND_PERIOD_MS: u64 = 40;
 pub const TAKEOVER_DEFLECTION: f64 = 0.3;
@@ -112,12 +138,12 @@ fn sending(backend: &dyn Backend) -> bool {
 }
 
 pub fn virtual_joystick_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let vehicle = backend.value_fields("vehicle", "rover,sub,multiRotor,fixedWing,vtol,apmFirmware,px4Firmware,customMode");
+    let vehicle = backend.value_fields("vehicle", VEHICLE_FIELDS);
     let connected = flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable");
     let rover = connected && flag(&vehicle, "rover");
     let driven = rover || flag(&vehicle, "sub");
     let frame = airframe(&vehicle);
-    let mode = connected.then(|| vehicle.get("customMode").and_then(Value::as_u64).and_then(|custom| u32::try_from(custom).ok())).flatten();
+    let mode = connected.then(|| custom_mode(&vehicle)).flatten();
     let takeover = matches!(frame, Airframe::Px4).then(|| value_number(&backend.value(PX4_TAKEOVER))).flatten().map_or(TAKEOVER_IN_AUTO, |bits| bits as u32);
     let left_handed = setting(backend, "virtualJoystickLeftHandedMode");
     let enabled = setting(backend, "virtualJoystick");
@@ -128,6 +154,7 @@ pub fn virtual_joystick_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "show": enabled && mode.is_none_or(|custom| flown_by_sticks(frame, custom, takeover)),
         "sending": sending(backend),
         "autoCenterThrottle": !mode.is_some_and(|custom| throttle_free(frame, custom, driven)),
+        "softened": mode.is_some_and(|custom| rate_mode(frame, custom)),
         "leftHandedMode": left_handed,
         "leftPositiveOnly": connected && !rover && !left_handed,
         "rightPositiveOnly": connected && !rover && left_handed,
@@ -144,6 +171,9 @@ pub fn send(backend: &dyn Backend, args: &str) -> Value {
     if !sending(backend) {
         return json!({ "ok": false, "reason": "No vehicle has finished connecting." });
     }
+    let vehicle = backend.value_fields("vehicle", VEHICLE_FIELDS);
+    let rate = custom_mode(&vehicle).is_some_and(|custom| rate_mode(airframe(&vehicle), custom));
+    let (roll, pitch) = (softened(roll, rate), softened(pitch, rate));
     let active = crate::hub::lock().active_id();
     if active.is_some_and(crate::joystickhost::drives) {
         return json!({ "ok": false, "reason": "A joystick is enabled for this vehicle, so the on-screen sticks do not send." });
@@ -279,6 +309,24 @@ mod tests {
         let rover = virtual_joystick_view(&rig(true, false, true), &[]);
         assert_eq!(rover["leftPositiveOnly"], json!(false));
         assert_eq!(right_handed["show"], json!(true));
+    }
+
+    #[test]
+    fn in_acro_a_small_thumb_move_asks_for_a_slow_rotation_and_full_stick_still_full_rate() {
+        let acro = on("copter", "Acro");
+        assert_eq!(send(&acro, "[0.3, -1.0, 0.0, 0.4]")["ok"], json!(true));
+        let sent: Vec<f64> = serde_json::from_str(acro.invoked.borrow()[0].split_once(' ').expect("path and args").1).expect("four axes");
+        assert!((sent[0] - 0.1089).abs() < 1e-3, "30% roll is about 11% rate, ~40 deg/s of ArduCopter's 360 ({})", sent[0]);
+        assert_eq!(sent[1], -1.0, "full stick is still full rate");
+        assert_eq!(sent[2], 0.0, "yaw keeps the expo every mode gets");
+        assert_eq!(sent[3], 0.4, "the throttle is not shaped");
+        assert_eq!(virtual_joystick_view(&acro, &[])["softened"], json!(true));
+        let loiter = on("copter", "Loiter");
+        send(&loiter, "[0.3, -1.0, 0.0, 0.4]");
+        assert_eq!(loiter.invoked.borrow()[0], "vehicle.virtualTabletJoystickValue [0.3,-1.0,0.0,0.4]", "position modes keep the stick as it is");
+        assert_eq!(virtual_joystick_view(&on("copter", "Drift"), &[])["softened"], json!(false), "Drift levels itself");
+        assert_eq!(virtual_joystick_view(&on("px4", "Acro"), &[])["softened"], json!(true));
+        assert_eq!(virtual_joystick_view(&on("plane", "QuadPlane Acro"), &[])["softened"], json!(true));
     }
 
     #[test]
