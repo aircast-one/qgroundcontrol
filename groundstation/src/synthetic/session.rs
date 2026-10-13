@@ -40,6 +40,7 @@ const STAND_IN_WORKERS: usize = 3;
 const STAND_IN_IN_FLIGHT: usize = 6;
 const TERRAIN_UNDER_EVERY: Duration = Duration::from_millis(500);
 const TERRAIN_UNDER_COARSER: f64 = 4.0;
+const LONGEST_GUESS: Duration = Duration::from_secs(1);
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Target {
@@ -53,6 +54,9 @@ pub struct Target {
     pub roll: f64,
     pub fov: f64,
     pub imagery: String,
+    pub north_speed: f64,
+    pub east_speed: f64,
+    pub climb_speed: f64,
 }
 
 impl Target {
@@ -70,6 +74,9 @@ impl Target {
             roll: number("roll")?,
             fov: number("fov")?,
             imagery: view.get("imagery")?.as_str()?.to_string(),
+            north_speed: number("northSpeed")?,
+            east_speed: number("eastSpeed")?,
+            climb_speed: number("climbSpeed")?,
         })
     }
 }
@@ -222,6 +229,8 @@ pub struct Session {
     selected: Option<Instant>,
     seen: Option<Target>,
     turn: Option<Turn>,
+    spot_since: Option<((f64, f64), Instant)>,
+    height_since: Option<(f64, Instant)>,
     spin: f64,
     ground_meshes: Vec<Arc<Mesh>>,
     backfill: Vec<Arc<Mesh>>,
@@ -273,6 +282,18 @@ pub fn turned(turn: Option<Turn>, aim: Aim, now: Instant) -> Turn {
             Turn { from: turn.aim_at(now), to: aim, at: now, every: (turn.every + gap) / 2 }
         }
     }
+}
+
+fn since<T: PartialEq>(seen: Option<(T, Instant)>, reading: T, now: Instant) -> (T, Instant) {
+    let at = seen.as_ref().filter(|(before, _)| *before == reading).map_or(now, |(_, at)| *at);
+    (reading, at)
+}
+
+pub fn ahead(target: &Target, spot_age: Duration, height_age: Duration) -> Target {
+    let seconds = |age: Duration| age.min(LONGEST_GUESS).as_secs_f64();
+    let (north, east) = (target.north_speed * seconds(spot_age), target.east_speed * seconds(spot_age));
+    let (latitude, longitude) = crate::surveygrid::at_distance_and_azimuth((target.latitude, target.longitude), north.hypot(east), east.atan2(north).to_degrees());
+    Target { latitude, longitude, above_home: target.above_home + target.climb_speed * seconds(height_age), ..target.clone() }
 }
 
 fn toward(from: Pose, to: Pose, alpha: f64) -> Pose {
@@ -353,6 +374,8 @@ impl Session {
             selected: None,
             seen: None,
             turn: None,
+            spot_since: None,
+            height_since: None,
             spin: 0.0,
             ground_meshes: Vec::new(),
             backfill: Vec::new(),
@@ -609,7 +632,12 @@ impl Session {
             Some(fallback) => (fallback.home.height, fallback.under.height),
             None => (self.home.height, self.under.height),
         };
-        let goal = Pose { latitude: target.latitude, longitude: target.longitude, height: camera_height(target, home_ground, under_ground), heading: aim.heading, pitch: aim.pitch, roll: target.roll, fov: target.fov };
+        let spot = since(self.spot_since, (target.latitude, target.longitude), now);
+        let altitude = since(self.height_since, target.above_home, now);
+        self.spot_since = Some(spot);
+        self.height_since = Some(altitude);
+        let guess = ahead(target, now.saturating_duration_since(spot.1), now.saturating_duration_since(altitude.1));
+        let goal = Pose { latitude: guess.latitude, longitude: guess.longitude, height: camera_height(&guess, home_ground, under_ground), heading: aim.heading, pitch: aim.pitch, roll: target.roll, fov: target.fov };
         let elapsed = self.ticked.map(|at| now.duration_since(at));
         let alpha = elapsed.map_or(1.0, follow);
         self.ticked = Some(now);
@@ -658,7 +686,7 @@ mod tests {
     }
 
     fn target(imagery: &str) -> Target {
-        Target { latitude: -35.36213, longitude: 149.16514, above_home: 30.0, home_latitude: -35.363262, home_longitude: 149.165237, heading: 200.0, pitch: -15.0, roll: 0.0, fov: 70.0, imagery: imagery.to_string() }
+        Target { latitude: -35.36213, longitude: 149.16514, above_home: 30.0, home_latitude: -35.363262, home_longitude: 149.165237, heading: 200.0, pitch: -15.0, roll: 0.0, fov: 70.0, imagery: imagery.to_string(), north_speed: 0.0, east_speed: 0.0, climb_speed: 0.0 }
     }
 
     fn settle(session: &mut Session, target: &Target, start: Instant) -> Option<Frame> {
@@ -734,12 +762,31 @@ mod tests {
 
     #[test]
     fn the_view_reads_into_a_target_only_when_complete() {
-        let view = serde_json::json!({ "available": true, "latitude": -35.0, "longitude": 149.0, "aboveHome": 20.0, "homeLatitude": -35.1, "homeLongitude": 149.1, "heading": 90.0, "pitch": -15.0, "roll": 0.0, "fov": 70.0, "imagery": "Bing Satellite" });
-        assert_eq!(Target::from_view(&view).map(|t| (t.above_home, t.heading)), Some((20.0, 90.0)));
+        let view = serde_json::json!({ "available": true, "latitude": -35.0, "longitude": 149.0, "aboveHome": 20.0, "homeLatitude": -35.1, "homeLongitude": 149.1, "heading": 90.0, "pitch": -15.0, "roll": 0.0, "fov": 70.0, "imagery": "Bing Satellite", "northSpeed": 3.0, "eastSpeed": -4.0, "climbSpeed": 1.0 });
+        assert_eq!(Target::from_view(&view).map(|t| (t.above_home, t.heading, t.north_speed, t.east_speed, t.climb_speed)), Some((20.0, 90.0, 3.0, -4.0, 1.0)));
         assert_eq!(Target::from_view(&serde_json::json!({ "available": false })), None);
         let mut missing = view.clone();
         missing.as_object_mut().unwrap().remove("fov");
         assert_eq!(Target::from_view(&missing), None, "a pose without a field of view is refused, not guessed");
+    }
+
+    #[test]
+    fn between_position_readings_the_camera_flies_on_at_the_reported_velocity() {
+        let flying = Target { north_speed: 10.0, east_speed: 0.0, climb_speed: 2.0, ..target("Bing Satellite") };
+        let half = ahead(&flying, Duration::from_millis(500), Duration::from_millis(500));
+        assert!(((half.latitude - flying.latitude) * 111_195.0 - 5.0).abs() < 0.05, "half a second at 10 m/s north is 5 m north ({})", (half.latitude - flying.latitude) * 111_195.0);
+        assert!((half.longitude - flying.longitude).abs() < 1e-9 && (half.above_home - 31.0).abs() < 1e-9);
+        let lost = ahead(&flying, Duration::from_secs(30), Duration::from_secs(30));
+        assert!(((lost.latitude - flying.latitude) * 111_195.0 - 10.0).abs() < 0.1, "a link that goes quiet stops the guess after a second instead of flying the camera away");
+    }
+
+    #[test]
+    fn a_moving_drone_keeps_the_view_moving_between_its_position_readings() {
+        let mut session = Session::new("", Arc::new(Fake)).expect("workers");
+        let flying = Target { north_speed: 10.0, ..target("Bing Satellite") };
+        let start = Instant::now();
+        let frames: Vec<Frame> = (0..20).map(|tick| session.frame(Some(&flying), 640, 360, start + Duration::from_millis(tick * 16)).expect("a frame")).collect();
+        assert!(frames.windows(2).all(|pair| pair[1].pose.latitude > pair[0].pose.latitude && pair[1].changed), "one reading at 10 m/s keeps every frame moving north instead of settling on the reading");
     }
 
     #[test]

@@ -129,11 +129,11 @@ pub fn synthetic(backend: &dyn Backend, gimbals: &Value, aim: (f64, f64)) -> Val
     };
     let gimbal = gimbal_aim(gimbals);
     let (tilt, pan) = aim;
-    let attitude = |path: &str| raw(backend, path).unwrap_or(0.0);
-    let (heading, aimed_pitch) = gimbal.unwrap_or(((attitude("vehicle.heading") + pan).rem_euclid(360.0), tilt));
+    let reading = |path: &str| raw(backend, path).unwrap_or(0.0);
+    let (heading, aimed_pitch) = gimbal.unwrap_or(((reading("vehicle.heading") + pan).rem_euclid(360.0), tilt));
     let frame_locked = crate::virtualjoystick::rate_mode_now(&backend.value_fields("vehicle", crate::virtualjoystick::VEHICLE_FIELDS));
     let (pitch, roll) = match frame_locked {
-        true => (attitude("vehicle.pitch") + aimed_pitch, attitude("vehicle.roll")),
+        true => (reading("vehicle.pitch") + aimed_pitch, reading("vehicle.roll")),
         false => (aimed_pitch, 0.0),
     };
     let provider = crate::read::value_string(&backend.value("settings.flightMapSettings.mapProvider.rawValue"));
@@ -154,6 +154,9 @@ pub fn synthetic(backend: &dyn Backend, gimbals: &Value, aim: (f64, f64)) -> Val
         "tilt": if gimbal.is_none() { tilt } else { 0.0 },
         "fov": CAMERA_FOV_DEG,
         "imagery": imagery(&provider),
+        "northSpeed": reading("vehicle.localPosition.vx"),
+        "eastSpeed": reading("vehicle.localPosition.vy"),
+        "climbSpeed": -reading("vehicle.localPosition.vz"),
         "native": native(),
         "draw": drawn(),
         "beam": beam((latitude, longitude), above_home, heading, pitch, CAMERA_FOV_DEG).iter().map(|(lat, lon)| json!({ "latitude": lat, "longitude": lon })).collect::<Vec<_>>(),
@@ -278,6 +281,9 @@ mod tests {
         assert_eq!(view["heading"].as_f64(), Some(90.0), "without a gimbal the camera looks where the nose points");
         assert_eq!(view["aimable"], true, "and the pilot aims it from the view");
         assert_eq!(view["imagery"], "Esri World Satellite");
+        assert_eq!((view["northSpeed"].as_f64(), view["climbSpeed"].as_f64()), (Some(0.0), Some(0.0)), "no local position yet, so no velocity to fly the view on with");
+        let moving = synthetic(&flying(&[("vehicle.localPosition.vx", json!(3.0)), ("vehicle.localPosition.vy", json!(-4.0)), ("vehicle.localPosition.vz", json!(-1.5))]), &no_gimbal(), DEFAULT_AIM);
+        assert_eq!((moving["northSpeed"].as_f64(), moving["eastSpeed"].as_f64(), moving["climbSpeed"].as_f64()), (Some(3.0), Some(-4.0), Some(1.5)), "the view carries the drone's NED velocity as north, east and up");
     }
 
     fn copter_in(custom_mode: u32) -> (&'static str, Value) {

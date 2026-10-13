@@ -28,6 +28,9 @@ fn main() {
         roll: number("--roll", 0.0),
         fov: number("--fov", 70.0),
         imagery: arg("--imagery").unwrap_or_else(|| "Bing Satellite".into()),
+        north_speed: 0.0,
+        east_speed: 0.0,
+        climb_speed: 0.0,
     };
     let mut session = Session::new(&token, Arc::new(Network)).expect("fetch workers");
     let started = Instant::now();
