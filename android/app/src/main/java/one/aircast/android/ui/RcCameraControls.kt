@@ -2,8 +2,6 @@ package one.aircast.android.ui
 
 import android.os.SystemClock
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.ColumnScope
@@ -42,6 +40,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.graphics.Color
 import one.aircast.android.bridge.Qgc
@@ -57,7 +56,7 @@ private val RAIL_SLIDER_LENGTH = 140.dp
 private val RAIL_SLIDER_THICKNESS = 40.dp
 private val RAIL_SLIDER_SHORTEST = 64.dp
 
-private fun Modifier.railSlider(): Modifier = this
+internal fun Modifier.railSlider(): Modifier = this
     .width(RAIL_SLIDER_THICKNESS)
     .height(RAIL_SLIDER_LENGTH)
     .graphicsLayer {
@@ -73,7 +72,7 @@ private fun Modifier.railSlider(): Modifier = this
 private const val GIMBAL_VIEW = "view.gimbalIndicator"
 
 @Composable
-private fun ColumnScope.RailSlot(content: @Composable BoxScope.() -> Unit) {
+internal fun ColumnScope.RailSlot(content: @Composable BoxScope.() -> Unit) {
     BoxWithConstraints(Modifier.weight(1f, fill = false).width(RAIL_SLIDER_THICKNESS).height(RAIL_SLIDER_LENGTH)) {
         if (maxHeight >= RAIL_SLIDER_SHORTEST) content()
     }
@@ -135,9 +134,12 @@ internal const val GIMBAL_TILT_MAX = 30f
 private const val GIMBAL_IDLE_MS = 3000L
 private const val GIMBAL_TRACK_ALPHA = 0.8f
 private const val GIMBAL_REST_ALPHA = 0.25f
+private const val TILT_IDLE_ALPHA = 0.45f
+
+private fun aimSynthetic(tilt: Float, pan: Double) = offMainInOrder { Qgc.invoke(SYNTHETIC_AIM, tilt.toDouble(), pan) }
 
 @Composable
-private fun GimbalTiltSlider(pitch: Double?, onRecenter: (() -> Unit)?) {
+private fun TiltSlider(pitch: Double?, onRecenter: (() -> Unit)?, onTilt: (Float) -> Unit) {
     var dragging by remember { mutableStateOf<Float?>(null) }
     var lastSent by remember { mutableLongStateOf(0L) }
     val shown = dragging ?: (pitch?.toFloat() ?: 0f).coerceIn(GIMBAL_TILT_MIN, GIMBAL_TILT_MAX)
@@ -151,10 +153,8 @@ private fun GimbalTiltSlider(pitch: Double?, onRecenter: (() -> Unit)?) {
         }
     }
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        TiltReadout(shown.toDouble(), onRecenter, onTap = { wake++ }, tapLabel = "Tilt the gimbal")
+        TiltReadout(shown.toDouble(), onRecenter, onTap = { wake++ }, tapLabel = "Tilt the camera")
         RailSlot {
-        if (!active) Box(Modifier.matchParentSize().clickable(onClickLabel = "Tilt the gimbal") { wake++ })
-        androidx.compose.animation.AnimatedVisibility(visible = active, enter = androidx.compose.animation.fadeIn(), exit = androidx.compose.animation.fadeOut()) {
         Slider(
             value = shown,
             onValueChange = { next ->
@@ -162,11 +162,11 @@ private fun GimbalTiltSlider(pitch: Double?, onRecenter: (() -> Unit)?) {
                 val now = SystemClock.uptimeMillis()
                 if (rcSendDue(now, lastSent, finished = false)) {
                     lastSent = now
-                    sendTilt(next)
+                    onTilt(next)
                 }
             },
             onValueChangeFinished = {
-                dragging?.let(::sendTilt)
+                dragging?.let(onTilt)
                 dragging = null
             },
             valueRange = GIMBAL_TILT_MIN..GIMBAL_TILT_MAX,
@@ -175,9 +175,8 @@ private fun GimbalTiltSlider(pitch: Double?, onRecenter: (() -> Unit)?) {
                 activeTrackColor = Color.White.copy(alpha = GIMBAL_TRACK_ALPHA),
                 inactiveTrackColor = Color.White.copy(alpha = GIMBAL_REST_ALPHA),
             ),
-            modifier = Modifier.railSlider().semantics { contentDescription = "Gimbal tilt" },
+            modifier = Modifier.railSlider().alpha(if (active) 1f else TILT_IDLE_ALPHA).semantics { contentDescription = "Camera tilt" },
         )
-        }
         }
     }
 }
@@ -209,7 +208,8 @@ fun RcCameraControls(modifier: Modifier = Modifier) {
     val gimbal = remember(gimbalJson) { gimbalIndicator(gimbalJson) }
     var gimbalRefused by remember { mutableStateOf<String?>(null) }
     val syntheticTilt = syntheticJson?.optDouble("tilt")?.takeIf(Double::isFinite)
-    val target = recenterTarget(syntheticAims, syntheticTilt, syntheticJson?.optDouble("pan")?.takeIf(Double::isFinite), gimbal)
+    val syntheticPan = syntheticJson?.optDouble("pan")?.takeIf(Double::isFinite)
+    val target = recenterTarget(syntheticAims, syntheticTilt, syntheticPan, gimbal)
     val onRecenter = { aimed: RecenterTarget -> { recenter(aimed) { gimbalRefused = it } }.takeIf { target == aimed } }
     var options by remember { mutableStateOf(false) }
     OpenOnRequest("gimbal") { options = true }
@@ -226,9 +226,9 @@ fun RcCameraControls(modifier: Modifier = Modifier) {
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
-        if (syntheticAims) TiltReadout(syntheticTilt ?: DEFAULT_TILT_DEG, onRecenter(RecenterTarget.Synthetic))
         Row(Modifier.weight(1f, fill = false), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            if (gimbal != null) GimbalTiltSlider(gimbal.pitchDegrees, onRecenter(RecenterTarget.Gimbal))
+            if (syntheticAims) TiltSlider(syntheticTilt ?: DEFAULT_TILT_DEG, onRecenter(RecenterTarget.Synthetic)) { aimSynthetic(it, syntheticPan ?: 0.0) }
+            else if (gimbal != null) TiltSlider(gimbal.pitchDegrees, onRecenter(RecenterTarget.Gimbal), ::sendTilt)
             if (!gimbalManager && channels.tilt > 0) PwmSlider("Tilt", channels.tilt, tilt) { tilt = it }
             if (!gimbalManager && channels.pan > 0) PwmSlider("Pan", channels.pan, pan) { pan = it }
             if (channels.zoom > 0) PwmSlider("Zoom", channels.zoom, zoom) { zoom = it }

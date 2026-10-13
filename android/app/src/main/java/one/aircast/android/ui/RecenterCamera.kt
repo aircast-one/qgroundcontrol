@@ -3,8 +3,9 @@ package one.aircast.android.ui
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LocalMinimumInteractiveComponentSize
@@ -36,6 +37,7 @@ private const val RECENTER_SCRIM_ALPHA = 0.55f
 private val TILT_READOUT_WIDTH = 64.dp
 private val TILT_READOUT_HEIGHT = 32.dp
 private val RECENTER_GLYPH = 14.dp
+private val TILT_READOUT_PADDING = 8.dp
 
 internal enum class RecenterTarget { Synthetic, Gimbal }
 
@@ -59,7 +61,7 @@ internal fun TiltReadout(degrees: Double, onRecenter: (() -> Unit)?, onTap: (() 
     val text = tiltText(degrees)
     val action = onRecenter ?: onTap
     val look = Modifier
-        .width(TILT_READOUT_WIDTH)
+        .widthIn(min = TILT_READOUT_WIDTH)
         .height(TILT_READOUT_HEIGHT)
         .semantics {
             contentDescription = if (onRecenter != null) "Tilt $text, off centre" else "Tilt $text"
@@ -67,9 +69,9 @@ internal fun TiltReadout(degrees: Double, onRecenter: (() -> Unit)?, onTap: (() 
         }
     val color = if (onRecenter != null) Color.Black.copy(alpha = RECENTER_SCRIM_ALPHA) else Color.Transparent
     val content: @Composable () -> Unit = {
-        Row(horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(horizontal = TILT_READOUT_PADDING), horizontalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterHorizontally), verticalAlignment = Alignment.CenterVertically) {
             if (onRecenter != null) Icon(painterResource(R.drawable.ic_my_location), null, Modifier.size(RECENTER_GLYPH))
-            Text(text, style = MaterialTheme.typography.labelMedium, modifier = if (onRecenter == null) Modifier.osdShadow() else Modifier)
+            Text("Tilt $text", style = MaterialTheme.typography.labelMedium, modifier = if (onRecenter == null) Modifier.osdShadow() else Modifier)
         }
     }
     val white = MaterialTheme.aircast.outdoorForeground
