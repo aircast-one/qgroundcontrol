@@ -211,7 +211,7 @@ private fun ZoomChip(camera: CameraReading, label: String) {
 internal object BesideAnchor : PopupPositionProvider {
     override fun calculatePosition(anchorBounds: IntRect, windowSize: IntSize, layoutDirection: LayoutDirection, popupContentSize: IntSize): IntOffset =
         IntOffset(
-            (anchorBounds.left - popupContentSize.width).coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0)),
+            (if (layoutDirection == LayoutDirection.Ltr) anchorBounds.left - popupContentSize.width else anchorBounds.right).coerceIn(0, (windowSize.width - popupContentSize.width).coerceAtLeast(0)),
             (anchorBounds.center.y - popupContentSize.height / 2).coerceIn(0, (windowSize.height - popupContentSize.height).coerceAtLeast(0)),
         )
 }

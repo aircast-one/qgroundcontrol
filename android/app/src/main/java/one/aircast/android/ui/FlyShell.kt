@@ -237,15 +237,10 @@ internal fun FlyScreen(
     val cutoutEnd = cutoutPadding.calculateEndPadding(direction)
     var controlsWidth by remember { mutableStateOf(0.dp) }
     var letterbox by remember { mutableStateOf(Letterbox(0.dp, 0.dp)) }
-    val startGap = letterbox.start + cutoutStart
-    val endGap = letterbox.end + cutoutEnd
-    val stickEnd = cutoutEnd + AircastSpace.s3
-    val stickInset = if (fullScreen) maxOf(startGap, endGap) + AircastSpace.s3 else maxOf(startGap + ACTION_RAIL_CLEARANCE, endGap + AircastSpace.s3 + controlsWidth + AircastSpace.s2)
-    val overlaysStart = stickPad?.let { stickInset - startGap + it + AircastSpace.s3 } ?: ACTION_RAIL_CLEARANCE
-    val overlaysEnd = stickPad?.let { stickInset - endGap + it + AircastSpace.s3 } ?: AircastSpace.s3
+    val insets = stickInsets(stickPad, fullScreen, letterbox, cutoutStart, cutoutEnd, controlsWidth)
     val hostView = LocalView.current
     val rootDensity = LocalDensity.current
-    val ornamentEnd = stickPad?.takeIf { !fullScreen }?.let { stickInset - letterbox.end + it + AircastSpace.s2 }
+    val ornamentEnd = insets.ornamentEnd
     val shellState = LocalFlyScreenState.current
     SideEffect { shellState.mapOrnamentEnd = ornamentEnd }
     DisposableEffect(Unit) { onDispose { shellState.mapOrnamentEnd = null } }
@@ -524,7 +519,7 @@ internal fun FlyScreen(
                 },
                 overlays = {
                     Column(
-                        Modifier.fillMaxWidth().clipToBounds().padding(start = overlaysStart, end = overlaysEnd),
+                        Modifier.fillMaxWidth().clipToBounds().padding(start = insets.overlaysStart, end = insets.overlaysEnd),
                         verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
                     ) {
                         CompositionLocalProvider(LocalAvoidedByVideoMessage provides true) {
@@ -602,11 +597,11 @@ internal fun FlyScreen(
                         .zIndex(if (underDecision) DECISION_LAYER - 0.5f else FULL_SCREEN_LAYER + 1f)
                         .align(Alignment.BottomCenter)
                         .graphicsLayer { alpha = if (settingsOver) 0f else 1f }
-                        .padding(start = stickInset - letterbox.start, end = if (fullScreen) stickInset - letterbox.end else stickEnd, bottom = STICK_FLOOR)
+                        .padding(start = insets.rowStart, end = insets.rowEnd, bottom = STICK_FLOOR)
                         .height(maxOf(stickBand, pad)),
                     trailing = {
                         if (!fullScreen) Row(Modifier.fillMaxHeight()) {
-                            Spacer(Modifier.width((stickInset - letterbox.end - stickEnd - controlsWidth).coerceAtLeast(AircastSpace.s2)))
+                            Spacer(Modifier.width(insets.trailingGap))
                             Box(
                                 Modifier.fillMaxHeight().widthIn(min = RAIL_SHUTTER_ROOM).onSizeChanged { controlsWidth = with(density) { it.width.toDp() } },
                                 contentAlignment = Alignment.Center,
@@ -643,7 +638,26 @@ internal data class MapInsets(val top: Int, val bottom: Int)
 
 internal data class Letterbox(val start: Dp, val end: Dp)
 
+internal data class StickInsets(val rowStart: Dp, val rowEnd: Dp, val trailingGap: Dp, val overlaysStart: Dp, val overlaysEnd: Dp, val ornamentEnd: Dp?)
+
+internal fun stickInsets(pad: Dp?, fullScreen: Boolean, letterbox: Letterbox, cutoutStart: Dp, cutoutEnd: Dp, controlsWidth: Dp): StickInsets {
+    val startGap = letterbox.start + cutoutStart
+    val endGap = letterbox.end + cutoutEnd
+    val edge = cutoutEnd + AircastSpace.s3
+    val inset = if (fullScreen) maxOf(startGap, endGap) + AircastSpace.s3 else maxOf(startGap + ACTION_RAIL_CLEARANCE, endGap + AircastSpace.s3 + controlsWidth + AircastSpace.s2)
+    return StickInsets(
+        rowStart = inset - letterbox.start,
+        rowEnd = if (fullScreen) inset - letterbox.end else edge,
+        trailingGap = (inset - letterbox.end - edge - controlsWidth).coerceAtLeast(AircastSpace.s2),
+        overlaysStart = pad?.let { inset - startGap + it + AircastSpace.s3 } ?: ACTION_RAIL_CLEARANCE,
+        overlaysEnd = pad?.let { inset - endGap + it + AircastSpace.s3 } ?: AircastSpace.s3,
+        ornamentEnd = pad?.takeIf { !fullScreen }?.let { inset - letterbox.end + it + AircastSpace.s2 },
+    )
+}
+
 private fun letterboxOf(view: android.view.View, coordinates: LayoutCoordinates, density: androidx.compose.ui.unit.Density): Letterbox {
+    val activity = generateSequence(view.context) { (it as? android.content.ContextWrapper)?.baseContext }.filterIsInstance<android.app.Activity>().firstOrNull()
+    if (activity?.isInMultiWindowMode == true) return Letterbox(0.dp, 0.dp)
     val left = coordinates.positionOnScreen().x
     val right = screenWidthPx(view) - left - coordinates.size.width
     val ltr = view.layoutDirection == android.view.View.LAYOUT_DIRECTION_LTR
