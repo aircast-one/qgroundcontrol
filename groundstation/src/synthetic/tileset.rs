@@ -373,15 +373,16 @@ impl Tileset {
         if loaded_parent && !stands_in && partial.is_some() && error <= BACKFILL_TOO_COARSE {
             self.backfill.push((path.len(), own.clone().unwrap_or_default()));
         }
+        let too_coarse = children && error > BACKFILL_TOO_COARSE;
         let gap = match stands_in {
-            true => error > BACKFILL_TOO_COARSE,
+            true => too_coarse,
             false => below.is_none() && partial.is_some(),
         };
         if gap && distance < NEAR_M {
             self.holes += missing;
         }
         match stands_in {
-            true if error > BACKFILL_TOO_COARSE => Some(Vec::new()),
+            true if too_coarse => Some(Vec::new()),
             true => own,
             false => below.or(partial).or(own),
         }
@@ -498,6 +499,16 @@ mod tests {
         let close = selected(3.0);
         assert!(close.meshes.len() == 1 && Arc::ptr_eq(&close.meshes[0], &parent_mesh), "a parent nearly fine enough covers the gap rather than leave a hole");
         assert!(close.backfill.is_empty());
+    }
+
+    #[test]
+    fn the_finest_tile_under_a_landed_drone_is_drawn_however_close_the_camera_sits() {
+        let camera = camera();
+        let ground = Arc::new(mesh());
+        let under = Tile { bounds: Obb { center: camera.eye, half: [DVec3::X * 20.0, DVec3::Y * 20.0, DVec3::Z * 1.0] }, geometric_error: 2.0, content: Content::Meshes(vec![ground.clone()]), ..leaf(&camera, "under") };
+        let selected = Tileset::new(under, &Url::parse("https://x/root.json").unwrap()).select_measured(&camera, 8, 1.0, Instant::now());
+        assert!(selected.meshes.len() == 1 && Arc::ptr_eq(&selected.meshes[0], &ground), "a leaf within 2 m counted as far too coarse, so on the ground the tile under the drone vanished and the backfill showed");
+        assert_eq!(selected.holes, 0);
     }
 
     #[test]
