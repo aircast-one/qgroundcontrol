@@ -1054,6 +1054,10 @@ pub fn camera_sources() -> Vec<String> {
 
 pub struct Owner<B>(pub B);
 
+fn owned(backend: &dyn Backend, path: &str) -> Option<Value> {
+    enabled().then(|| crate::units::get(path).or_else(|| save_path(path)).or_else(|| get(backend, path))).flatten()
+}
+
 impl<B: Backend> Backend for Owner<B> {
     fn get(&self, path: &str) -> String {
         self.value(path).to_string()
@@ -1062,7 +1066,13 @@ impl<B: Backend> Backend for Owner<B> {
         self.value_fields(path, fields).to_string()
     }
     fn value(&self, path: &str) -> Value {
-        enabled().then(|| crate::units::get(path).or_else(|| save_path(path)).or_else(|| get(&self.0, path))).flatten().unwrap_or_else(|| self.0.value(path))
+        owned(&self.0, path).unwrap_or_else(|| self.0.value(path))
+    }
+    fn raw(&self, path: &str) -> Option<f64> {
+        owned(&self.0, path).map_or_else(|| self.0.raw(path), |answer| crate::router::raw_of(&answer))
+    }
+    fn point(&self, path: &str) -> Option<(f64, f64)> {
+        owned(&self.0, path).map_or_else(|| self.0.point(path), |answer| crate::router::point_of(&answer))
     }
     fn value_fields(&self, path: &str, fields: &str) -> Value {
         enabled().then(|| crate::units::fields(path, fields).or_else(|| get_fields(&self.0, path, fields))).flatten().unwrap_or_else(|| self.0.value_fields(path, fields))

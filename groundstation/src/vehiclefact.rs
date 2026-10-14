@@ -937,6 +937,10 @@ pub fn instrument_catalogue(sub: bool) -> (Vec<(&'static str, Value)>, Value) {
     (groups, if sub { sub_listing(vehicle) } else { vehicle })
 }
 
+pub fn described(name: &str) -> bool {
+    crate::factmeta::fact(VEHICLE_META, name).is_some()
+}
+
 pub fn vehicle_fact(name: &str, raw: &Value) -> Option<Value> {
     memo_fact(VEHICLE_META, name, raw, None)
 }

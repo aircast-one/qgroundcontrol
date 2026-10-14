@@ -5,6 +5,15 @@ use serde_json::{Value, json};
 
 use crate::view;
 
+pub fn raw_of(fact: &Value) -> Option<f64> {
+    fact.get("rawValue").or(fact.get("value")).and_then(Value::as_f64).filter(|v| v.is_finite())
+}
+
+pub fn point_of(at: &Value) -> Option<(f64, f64)> {
+    let valid = at.get("valid").and_then(Value::as_bool).unwrap_or(true);
+    Some((at.get("latitude")?.as_f64()?, at.get("longitude")?.as_f64()?)).filter(|(lat, lon)| valid && lat.is_finite() && lon.is_finite() && (*lat, *lon) != (0.0, 0.0))
+}
+
 pub trait Backend {
     fn get(&self, path: &str) -> String;
     fn get_fields(&self, path: &str, fields: &str) -> String;
@@ -16,6 +25,12 @@ pub trait Backend {
     }
     fn value_fields(&self, path: &str, fields: &str) -> serde_json::Value {
         crate::read::object(&self.get_fields(path, fields))
+    }
+    fn raw(&self, path: &str) -> Option<f64> {
+        raw_of(&self.value(path))
+    }
+    fn point(&self, path: &str) -> Option<(f64, f64)> {
+        point_of(&self.value(path))
     }
     fn core_guided(&self, _action: &serde_json::Value) -> Option<Result<(), String>> {
         None

@@ -1081,6 +1081,34 @@ fn merged(answered: serde_json::Map<String, Value>, host: Value) -> Value {
     }
 }
 
+static DESCRIBED_FACTS: std::sync::LazyLock<Vec<&'static str>> = std::sync::LazyLock::new(|| VEHICLE_FACTS.into_iter().filter(|name| crate::vehiclefact::described(name)).collect());
+
+fn quick<T>(path: &str, answer: impl FnOnce(&Known) -> Option<T>) -> Option<T> {
+    (switched_on() && !crate::qthost::present() && path.starts_with("vehicle.")).then_some(())?;
+    answer(&*carried()?)
+}
+
+fn quick_raw(path: &str, known: &Known) -> Option<Option<f64>> {
+    let number = |raw: &Value| raw.as_f64().filter(|v| v.is_finite());
+    match path.strip_prefix("vehicle.")?.split_once('.') {
+        None => {
+            let name = &path["vehicle.".len()..];
+            (DESCRIBED_FACTS.contains(&name) && known.fields.get(name).is_none()).then(|| known.facts.iter().find(|(key, _)| *key == name).and_then(|(_, raw)| number(raw)))
+        }
+        Some(("localPosition", property)) => crate::vehiclefact::LOCAL_POSITION.properties.iter().find(|(shown, _)| *shown == property).map(|(_, name)| number(&crate::vehiclefact::local_position_raw(&known.local, name))),
+        Some(_) => None,
+    }
+}
+
+fn quick_point(path: &str, known: &Known) -> Option<Option<(f64, f64)>> {
+    let spot = match path {
+        "vehicle.coordinate" => known.coordinate,
+        "vehicle.homePosition" => known.home,
+        _ => return None,
+    };
+    Some(spot.map(|(latitude, longitude, _)| (latitude, longitude)).filter(|(latitude, longitude)| latitude.is_finite() && longitude.is_finite() && (*latitude, *longitude) != (0.0, 0.0)))
+}
+
 fn answer_get(path: &str, known: &Known) -> Option<Value> {
     if let Some(group) = crate::vehiclefact::gimbal_answer(path, &known.gimbals) {
         return Some(group);
@@ -1612,6 +1640,12 @@ impl<B: Backend> Facade<B> {
 }
 
 impl<B: Backend> Backend for Facade<B> {
+    fn raw(&self, path: &str) -> Option<f64> {
+        quick(path, |known| quick_raw(path, known)).unwrap_or_else(|| crate::router::raw_of(&self.value(path)))
+    }
+    fn point(&self, path: &str) -> Option<(f64, f64)> {
+        quick(path, |known| quick_point(path, known)).unwrap_or_else(|| crate::router::point_of(&self.value(path)))
+    }
     fn value(&self, path: &str) -> Value {
         if path == "core.qtReads" {
             return tally();
@@ -2123,6 +2157,37 @@ mod tests {
             [json!(vehicle.id), json!(vehicle.autopilot), json!(vehicle.vehicle_type), json!(git_hash)].map(Some),
             "the header names the vehicle the file came from, so a load can refuse a file from another firmware or frame"
         );
+    }
+
+    #[test]
+    fn a_raw_read_skips_formatting_the_fact_but_answers_exactly_what_the_fact_says() {
+        let mut vehicle = crate::hub::Vehicle::heard(1);
+        vehicle.facts.heading = 271.5;
+        vehicle.facts.roll = -3.25;
+        vehicle.facts.pitch = 7.75;
+        vehicle.facts.roll_rate = 0.125;
+        vehicle.facts.pitch_rate = -0.5;
+        vehicle.facts.yaw_rate = f64::NAN;
+        vehicle.facts.altitude_relative = 59.0;
+        vehicle.facts.ground_speed = 12.0;
+        vehicle.facts.throttle_pct = 42;
+        vehicle.facts.coordinate = Some((-35.3633, 149.1652, 584.0));
+        vehicle.home = Some((-35.3632, 149.1652, 584.0));
+        vehicle.local = crate::sensorfacts::LocalPositionFacts { x: 1.0, y: 2.0, z: -59.0, vx: 11.5, vy: -0.75, vz: 0.25, seen: true };
+        let known = super::known_of(&vehicle);
+        let formatted = |path: &str| super::answer_get(path, &known).unwrap_or(Value::Null);
+        let paths: Vec<String> = super::VEHICLE_FACTS.iter().map(|name| format!("vehicle.{name}")).chain(crate::vehiclefact::LOCAL_POSITION.properties.iter().map(|(shown, _)| format!("vehicle.localPosition.{shown}"))).collect();
+        paths.iter().for_each(|path| assert!(super::quick_raw(path, &known).is_none_or(|quick| quick == crate::router::raw_of(&formatted(path))), "{path}"));
+        ["heading", "roll", "pitch", "rollRate", "pitchRate", "yawRate", "altitudeRelative", "localPosition.vx", "localPosition.vy", "localPosition.vz"]
+            .iter()
+            .for_each(|name| assert!(super::quick_raw(&format!("vehicle.{name}"), &known).is_some(), "the 3D view reads {name} on every frame"));
+        assert_eq!(super::quick_raw("vehicle.xTrackError", &known), None, "a fact without metadata reads as nothing, so it keeps the formatted path");
+        assert_eq!(super::quick_raw("vehicle.heading", &known), Some(Some(271.5)));
+        ["vehicle.coordinate", "vehicle.homePosition"].iter().for_each(|path| assert_eq!(super::quick_point(path, &known), Some(crate::router::point_of(&formatted(path))), "{path}"));
+        let nowhere = super::known_of(&crate::hub::Vehicle::heard(2));
+        assert_eq!(super::quick_point("vehicle.coordinate", &nowhere), Some(crate::router::point_of(&super::answer_get("vehicle.coordinate", &nowhere).unwrap_or(Value::Null))));
+        assert_eq!(super::quick_raw("vehicle.parameterManager.getParameter(-1,PILOT_Y_RATE)", &known), None, "anything else takes the formatted path");
+        assert_eq!(super::quick_raw("vehicle.armed", &known), None);
     }
 
     #[test]

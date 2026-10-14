@@ -22,8 +22,7 @@ const SAME_SPOT_M: f64 = 2.0;
 const COG_MINIMUM_SPEED: f64 = 0.5;
 
 pub(crate) fn raw(backend: &dyn Backend, path: &str) -> Option<f64> {
-    let fact = backend.value(path);
-    fact.get("rawValue").or(fact.get("value")).and_then(Value::as_f64).filter(|v| v.is_finite())
+    backend.raw(path)
 }
 
 fn setting(backend: &dyn Backend, name: &str) -> bool {
@@ -32,9 +31,7 @@ fn setting(backend: &dyn Backend, name: &str) -> bool {
 }
 
 pub(crate) fn point(backend: &dyn Backend, path: &str) -> Option<(f64, f64)> {
-    let at = backend.value(path);
-    let valid = at.get("valid").and_then(Value::as_bool).unwrap_or(true);
-    Some((at.get("latitude")?.as_f64()?, at.get("longitude")?.as_f64()?)).filter(|(lat, lon)| valid && lat.is_finite() && lon.is_finite() && (*lat, *lon) != (0.0, 0.0))
+    backend.point(path)
 }
 
 pub fn pilot_bearing(aircraft: Option<(f64, f64)>, pilot: Option<(f64, f64)>) -> Option<f64> {

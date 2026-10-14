@@ -1293,7 +1293,7 @@ fn camera_calc_index(path: &str) -> Option<usize> {
 }
 
 pub fn controller_fields(path: &str) -> Option<Value> {
-    if !enabled() {
+    if !enabled() || !path.starts_with("plan.") {
         return None;
     }
     let (document, selected) = {
