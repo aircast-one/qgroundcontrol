@@ -364,11 +364,12 @@ struct Summary {
     pose_read_ms: Vec<u64>,
     frame_ms: Vec<u64>,
     paint_ms: Vec<u64>,
+    holes: Vec<u64>,
 }
 
 impl Summary {
     fn new(since: Instant) -> Self {
-        Self { since, painted: 0, idle: 0, slowest: Duration::ZERO, reading_ages_ms: Vec::new(), stick_to_frame_ms: Vec::new(), pose_read_ms: Vec::new(), frame_ms: Vec::new(), paint_ms: Vec::new() }
+        Self { since, painted: 0, idle: 0, slowest: Duration::ZERO, reading_ages_ms: Vec::new(), stick_to_frame_ms: Vec::new(), pose_read_ms: Vec::new(), frame_ms: Vec::new(), paint_ms: Vec::new(), holes: Vec::new() }
     }
 
     fn report(&self, session: Option<&mut Session>, gpu: &Gpu, shown: &mut [Shown], draw: Draw) {
@@ -384,10 +385,10 @@ impl Summary {
         let (showing, handover) = handing_over(session.as_deref());
         let warming = session.as_deref().and_then(Session::warming).map_or_else(|| "none".to_string(), |left| left.to_string());
         let stats = session.map(Session::take_stats).unwrap_or_default();
-        let Stats { requested, loaded, failed, bytes, from_disk, errors } = stats;
+        let Stats { requested, loaded, failed, bytes, from_disk, errors, waits_ms } = stats;
         log::info!(
             target: "synthetic",
-            "event=summary seconds={} source={source} showing={showing} handover_ms={handover} warming={warming} surfaces={surfaces} present={present} draw={} painted={} idle_ticks={} slowest_paint_ms={} acquire_slowest_ms={} draw_slowest_ms={} reading_age_p50_ms={} reading_age_max_ms={} stick_to_frame_p50_ms={} stick_to_frame_max_ms={} stick_frames={} pose_read_p50_ms={} pose_read_max_ms={} frame_p50_ms={} frame_max_ms={} paint_p50_ms={} requested={requested} loaded={loaded} failed={failed} bytes={bytes} from_disk={from_disk} tiles={tiles} in_flight={in_flight} resident={} uploads={} errors={errors:?}",
+            "event=summary seconds={} source={source} showing={showing} handover_ms={handover} warming={warming} surfaces={surfaces} present={present} draw={} painted={} idle_ticks={} slowest_paint_ms={} acquire_slowest_ms={} draw_slowest_ms={} reading_age_p50_ms={} reading_age_max_ms={} stick_to_frame_p50_ms={} stick_to_frame_max_ms={} stick_frames={} pose_read_p50_ms={} pose_read_max_ms={} frame_p50_ms={} frame_max_ms={} paint_p50_ms={} holes_p50={} holes_max={} tile_wait_p50_ms={} tile_wait_p90_ms={} tile_wait_max_ms={} requested={requested} loaded={loaded} failed={failed} bytes={bytes} from_disk={from_disk} tiles={tiles} in_flight={in_flight} resident={} uploads={} errors={errors:?}",
             self.since.elapsed().as_secs(),
             draw.name(),
             self.painted,
@@ -405,6 +406,11 @@ impl Summary {
             crate::stats::shown(crate::stats::median(&self.frame_ms)),
             crate::stats::shown(self.frame_ms.iter().copied().max()),
             crate::stats::shown(crate::stats::median(&self.paint_ms)),
+            crate::stats::shown(crate::stats::median(&self.holes)),
+            crate::stats::shown(self.holes.iter().copied().max()),
+            crate::stats::shown(crate::stats::median(&waits_ms)),
+            crate::stats::shown(crate::stats::percentile(&waits_ms, 0.9)),
+            crate::stats::shown(waits_ms.iter().copied().max()),
             gpu.renderer.resident(),
             gpu.renderer.uploads,
         );
@@ -504,6 +510,7 @@ fn show(first: Window, kept: Option<Kept>, commands: &Receiver<Command>, feed: &
                 summary.slowest = summary.slowest.max(now.elapsed());
                 summary.reading_ages_ms.extend(frame.as_ref().map(|frame| u64::try_from(frame.reading_age.as_millis()).unwrap_or(u64::MAX)));
                 summary.stick_to_frame_ms.extend(frame.as_ref().and_then(|frame| frame.stick_to_frame).map(|touched| u64::try_from((touched + now.elapsed()).as_millis()).unwrap_or(u64::MAX)));
+                summary.holes.extend(session.as_ref().filter(|session| session.showing() == "google").map(|session| session.holes() as u64));
                 visit.painted += 1;
                 visit.slowest = visit.slowest.max(now.elapsed());
             }

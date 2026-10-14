@@ -289,6 +289,7 @@ pub struct Stats {
     pub bytes: u64,
     pub from_disk: u64,
     pub errors: BTreeMap<String, u64>,
+    pub waits_ms: Vec<u64>,
 }
 
 pub struct Frame {
@@ -334,6 +335,7 @@ pub struct Session {
     backfill: Vec<Arc<Mesh>>,
     fallback: Option<Fallback>,
     coarsest: f64,
+    holes: usize,
     first_frame: Option<Instant>,
     handed_over_after: Option<Duration>,
     warming: Option<usize>,
@@ -553,6 +555,7 @@ impl Session {
             backfill: Vec::new(),
             fallback,
             coarsest: f64::INFINITY,
+            holes: 0,
             first_frame: None,
             handed_over_after: None,
             warming: None,
@@ -585,6 +588,10 @@ impl Session {
 
     pub fn coarsest(&self) -> f64 {
         self.coarsest
+    }
+
+    pub fn holes(&self) -> usize {
+        self.holes
     }
 
     pub fn handover(&self) -> Option<Duration> {
@@ -640,7 +647,8 @@ impl Session {
                     Err(error) => self.failed(format!("google tile: {error}")),
                 }
                 if let Source::Google(Some(tiles)) = &mut self.source {
-                    tiles.deliver(&path, parsed, now);
+                    let waited = tiles.deliver(&path, parsed, now);
+                    self.stats.waits_ms.extend(waited.map(|waited| u64::try_from(waited.as_millis()).unwrap_or(u64::MAX)));
                 }
             }
             Done::Open(built, error) => {
@@ -751,19 +759,20 @@ impl Session {
             None => (None, Vec::new()),
         };
         let ground = self.under.height.or(self.home.height).unwrap_or(0.0);
-        let (meshes, jobs, coarsest, backfill) = match &mut self.source {
+        let (meshes, jobs, coarsest, holes, backfill) = match &mut self.source {
             Source::Google(Some(tiles)) => {
-                let Selection { meshes, wanted, coarsest, backfill } = tiles.select_measured(camera, room, if handed_over { detail } else { detail * COARSER_UNTIL_HANDOVER }, now);
+                let Selection { meshes, wanted, coarsest, holes, backfill } = tiles.select_measured(camera, room, if handed_over { detail } else { detail * COARSER_UNTIL_HANDOVER }, now);
                 tiles.trim(now, self.probed);
-                (meshes, wanted.into_iter().map(Job::Tile).collect(), coarsest, backfill)
+                (meshes, wanted.into_iter().map(Job::Tile).collect(), coarsest, holes, backfill)
             }
             Source::Open(scene) => {
                 let (meshes, wanted) = scene.select(camera, &target.imagery, ground, target.latitude, target.longitude, detail, room, now);
-                (meshes, wanted.into_iter().map(Job::Open).collect(), 0.0, Vec::new())
+                (meshes, wanted.into_iter().map(Job::Open).collect(), 0.0, 0, Vec::new())
             }
-            Source::Google(None) => (Vec::new(), Vec::new(), f64::INFINITY, Vec::new()),
+            Source::Google(None) => (Vec::new(), Vec::new(), f64::INFINITY, 0, Vec::new()),
         };
         self.coarsest = coarsest;
+        self.holes = holes;
         let (drawn, underneath) = match (stand_in, handed_over) {
             (Some(terrain), true) => (meshes, terrain.into_iter().chain(backfill).collect()),
             (Some(stand_in), false) => (stand_in, Vec::new()),

@@ -118,6 +118,12 @@ pub struct Tile {
     content: Content,
     children: Vec<Tile>,
     used: Option<Instant>,
+    wanted: Option<Instant>,
+}
+
+struct Candidate {
+    distance: f64,
+    path: Vec<usize>,
 }
 
 pub struct Request {
@@ -132,6 +138,7 @@ pub struct Tileset {
     swept: Option<Instant>,
     trimmed: Option<Instant>,
     coarsest: f64,
+    holes: usize,
     refine_at: f64,
     fresh: Vec<Arc<Mesh>>,
     backfill: Vec<(usize, Vec<Arc<Mesh>>)>,
@@ -141,6 +148,7 @@ pub struct Selection {
     pub meshes: Vec<Arc<Mesh>>,
     pub wanted: Vec<Request>,
     pub coarsest: f64,
+    pub holes: usize,
     pub backfill: Vec<Arc<Mesh>>,
 }
 
@@ -153,7 +161,7 @@ fn tile(value: &Value, base: &Url) -> Option<Tile> {
     let url = value.get("content").and_then(|content| content.get("uri").or_else(|| content.get("url"))).and_then(Value::as_str).and_then(|uri| base.join(uri).ok());
     let children = value.get("children").and_then(Value::as_array).map(|children| children.iter().filter_map(|child| tile(child, base)).collect()).unwrap_or_default();
     let content = if url.is_some() { Content::Pending } else { Content::None };
-    Some(Tile { bounds, geometric_error: value.get("geometricError").and_then(Value::as_f64).unwrap_or(0.0), url, content, children, used: None })
+    Some(Tile { bounds, geometric_error: value.get("geometricError").and_then(Value::as_f64).unwrap_or(0.0), url, content, children, used: None, wanted: None })
 }
 
 pub fn root(json: &[u8], url: &Url) -> Option<Tile> {
@@ -161,11 +169,14 @@ pub fn root(json: &[u8], url: &Url) -> Option<Tile> {
 }
 
 fn empty() -> Tile {
-    Tile { bounds: Obb { center: DVec3::ZERO, half: [DVec3::ZERO; 3] }, geometric_error: 0.0, url: None, content: Content::None, children: Vec::new(), used: None }
+    Tile { bounds: Obb { center: DVec3::ZERO, half: [DVec3::ZERO; 3] }, geometric_error: 0.0, url: None, content: Content::None, children: Vec::new(), used: None, wanted: None }
 }
 
 fn unload(tile: &mut Tile, now: Instant) {
     let stale = tile.used.is_none_or(|used| now.duration_since(used) > UNLOAD_AFTER);
+    if stale {
+        tile.wanted = None;
+    }
     if stale && tile.url.is_some() && matches!(tile.content, Content::Meshes(_) | Content::External) {
         if matches!(tile.content, Content::External) {
             tile.children.clear();
@@ -216,7 +227,7 @@ fn loaded(tile: &Tile) -> usize {
 
 impl Tileset {
     pub fn new(root: Tile, url: &Url) -> Self {
-        Self { root, session: None, keep: query(url), swept: None, trimmed: None, coarsest: f64::INFINITY, refine_at: MAXIMUM_SCREEN_SPACE_ERROR, fresh: Vec::new(), backfill: Vec::new() }
+        Self { root, session: None, keep: query(url), swept: None, trimmed: None, coarsest: f64::INFINITY, holes: 0, refine_at: MAXIMUM_SCREEN_SPACE_ERROR, fresh: Vec::new(), backfill: Vec::new() }
     }
 
     fn signed(&mut self, url: &Url) -> Url {
@@ -244,23 +255,35 @@ impl Tileset {
 
     pub fn select_measured(&mut self, camera: &Camera, budget: usize, detail: f64, now: Instant) -> Selection {
         self.coarsest = 0.0;
+        self.holes = 0;
         self.refine_at = refine_above(camera) * detail;
         self.backfill.clear();
         let planes = frustum(camera.culling());
         let horizon = Horizon::from(camera.eye);
         let mut wanted = Vec::new();
         let mut root = std::mem::replace(&mut self.root, empty());
-        let drawn = self.visit(&mut root, &mut Vec::new(), camera, (&planes, &horizon), budget, &mut wanted, now).unwrap_or_default();
+        let drawn = self.visit(&mut root, &mut Vec::new(), camera, (&planes, &horizon), &mut wanted, now).unwrap_or_default();
         if self.swept.is_none_or(|swept| now.duration_since(swept) >= UNLOAD_SWEEP_EVERY) {
             unload(&mut root, now);
             self.swept = Some(now);
         }
         self.root = root;
+        wanted.sort_by(|a, b| a.distance.total_cmp(&b.distance).then(a.path.len().cmp(&b.path.len())));
+        let wanted = wanted.into_iter().take(budget).filter_map(|candidate| self.claim(candidate.path)).collect();
         let coarsest = if drawn.is_empty() { f64::INFINITY } else { self.coarsest };
         let mut layered = std::mem::take(&mut self.backfill);
         layered.sort_by_key(|(depth, _)| *depth);
         let backfill = layered.into_iter().flat_map(|(_, meshes)| meshes).collect();
-        Selection { meshes: drawn, wanted, coarsest, backfill }
+        Selection { meshes: drawn, wanted, coarsest, holes: self.holes, backfill }
+    }
+
+    fn claim(&mut self, path: Vec<usize>) -> Option<Request> {
+        let url = {
+            let tile = path.iter().try_fold(&mut self.root, |tile, &child| tile.children.get_mut(child))?;
+            tile.content = Content::Requested;
+            tile.url.clone()?
+        };
+        Some(Request { url: self.signed(&url), path })
     }
 
     pub fn trim(&mut self, now: Instant, probed: Option<Instant>) {
@@ -273,11 +296,12 @@ impl Tileset {
         }
     }
 
-    pub fn deliver(&mut self, path: &[usize], parsed: Result<Parsed, String>, now: Instant) {
-        let Some(tile) = path.iter().try_fold(&mut self.root, |tile, &child| tile.children.get_mut(child)) else { return };
+    pub fn deliver(&mut self, path: &[usize], parsed: Result<Parsed, String>, now: Instant) -> Option<Duration> {
+        let tile = path.iter().try_fold(&mut self.root, |tile, &child| tile.children.get_mut(child))?;
         if !matches!(tile.content, Content::Requested) {
-            return;
+            return None;
         }
+        let waited = tile.wanted.take().map(|wanted| now.saturating_duration_since(wanted));
         tile.content = match parsed {
             Err(_) => Content::Failed(now),
             Ok(Parsed::External(child)) => {
@@ -290,31 +314,30 @@ impl Tileset {
                 Content::Meshes(arrived)
             }
         };
+        waited
     }
 
-    fn request(&mut self, tile: &mut Tile, path: &[usize], budget: usize, wanted: &mut Vec<Request>, now: Instant) {
+    fn consider(tile: &mut Tile, path: &[usize], distance: f64, wanted: &mut Vec<Candidate>, now: Instant) {
         if let Content::Failed(at) = tile.content
             && now.duration_since(at) >= RETRY_AFTER
         {
             tile.content = Content::Pending;
         }
-        let (Content::Pending, Some(url)) = (&tile.content, tile.url.clone()) else { return };
-        if wanted.len() >= budget {
-            return;
+        if matches!(tile.content, Content::Pending) && tile.url.is_some() {
+            tile.wanted.get_or_insert(now);
+            wanted.push(Candidate { distance, path: path.to_vec() });
         }
-        wanted.push(Request { path: path.to_vec(), url: self.signed(&url) });
-        tile.content = Content::Requested;
     }
 
-    #[allow(clippy::too_many_arguments)]
-    fn visit(&mut self, tile: &mut Tile, path: &mut Vec<usize>, camera: &Camera, sight: (&[DVec4; 5], &Horizon), budget: usize, wanted: &mut Vec<Request>, now: Instant) -> Option<Vec<Arc<Mesh>>> {
+    fn visit(&mut self, tile: &mut Tile, path: &mut Vec<usize>, camera: &Camera, sight: (&[DVec4; 5], &Horizon), wanted: &mut Vec<Candidate>, now: Instant) -> Option<Vec<Arc<Mesh>>> {
         let (planes, horizon) = sight;
         if planes.iter().any(|plane| tile.bounds.outside(*plane, camera.eye)) || horizon.hides(&tile.bounds) {
             return Some(Vec::new());
         }
         tile.used = Some(now);
-        self.request(tile, path, budget, wanted, now);
-        let error = camera.screen_space_error(tile.geometric_error, tile.bounds.distance(camera.eye)) / self.refine_at;
+        let distance = tile.bounds.distance(camera.eye);
+        Self::consider(tile, path, distance, wanted, now);
+        let error = camera.screen_space_error(tile.geometric_error, distance) / self.refine_at;
         let refine = error > 1.0;
         let external = matches!(tile.content, Content::External);
         let children = (refine || external) && !tile.children.is_empty();
@@ -324,13 +347,14 @@ impl Tileset {
                 .enumerate()
                 .map(|(index, child)| {
                     path.push(index);
-                    let drawn = self.visit(child, path, camera, sight, budget, wanted, now);
+                    let drawn = self.visit(child, path, camera, sight, wanted, now);
                     path.pop();
                     drawn
                 })
                 .collect()
         });
         let complete = parts.as_ref().is_some_and(|parts| parts.iter().all(Option::is_some));
+        let missing = parts.as_ref().map_or(0, |parts| parts.iter().filter(|part| part.is_none()).count());
         let gathered = parts.map(|parts| parts.into_iter().flatten().flatten().collect::<Vec<_>>());
         let (below, partial) = match complete {
             true => (gathered, None),
@@ -342,12 +366,19 @@ impl Tileset {
             _ => None,
         };
         let loaded_parent = below.is_none() && own.as_ref().is_some_and(|meshes| !meshes.is_empty());
-        if loaded_parent && refine && !tile.children.is_empty() && tile.bounds.distance(camera.eye) < NEAR_M {
+        if loaded_parent && refine && !tile.children.is_empty() && distance < NEAR_M {
             self.coarsest = self.coarsest.max(error);
         }
         let stands_in = loaded_parent && (error <= FALLBACK_TOO_COARSE || partial.is_none());
         if loaded_parent && !stands_in && partial.is_some() && error <= BACKFILL_TOO_COARSE {
             self.backfill.push((path.len(), own.clone().unwrap_or_default()));
+        }
+        let gap = match stands_in {
+            true => error > BACKFILL_TOO_COARSE,
+            false => below.is_none() && partial.is_some(),
+        };
+        if gap && distance < NEAR_M {
+            self.holes += missing;
         }
         match stands_in {
             true if error > BACKFILL_TOO_COARSE => Some(Vec::new()),
@@ -376,12 +407,12 @@ mod tests {
     }
 
     fn leaf(camera: &Camera, name: &str) -> Tile {
-        Tile { bounds: ahead(camera, 200.0), geometric_error: 1.0, url: Some(Url::parse(&format!("https://x/{name}.glb")).unwrap()), content: Content::Pending, children: Vec::new(), used: None }
+        Tile { bounds: ahead(camera, 200.0), geometric_error: 1.0, url: Some(Url::parse(&format!("https://x/{name}.glb")).unwrap()), content: Content::Pending, children: Vec::new(), used: None, wanted: None }
     }
 
     fn parent(camera: &Camera) -> (Tileset, Arc<Mesh>) {
         let shown = Arc::new(mesh());
-        let root = Tile { bounds: ahead(camera, 200.0), geometric_error: 6.0, url: None, content: Content::Meshes(vec![shown.clone()]), children: vec![leaf(camera, "a"), leaf(camera, "b")], used: None };
+        let root = Tile { bounds: ahead(camera, 200.0), geometric_error: 6.0, url: None, content: Content::Meshes(vec![shown.clone()]), children: vec![leaf(camera, "a"), leaf(camera, "b")], used: None, wanted: None };
         (Tileset::new(root, &Url::parse("https://x/root.json").unwrap()), shown)
     }
 
@@ -420,11 +451,25 @@ mod tests {
         let camera = camera();
         let shown = Arc::new(mesh());
         let ready = Tile { content: Content::Meshes(vec![shown.clone()]), ..leaf(&camera, "ready") };
-        let index = Tile { bounds: ahead(&camera, 200.0), geometric_error: 1000.0, url: None, content: Content::None, children: vec![ready, leaf(&camera, "coming")], used: None };
+        let index = Tile { bounds: ahead(&camera, 200.0), geometric_error: 1000.0, url: None, content: Content::None, children: vec![ready, leaf(&camera, "coming")], used: None, wanted: None };
         let mut tiles = Tileset::new(index, &Url::parse("https://x/root.json").unwrap());
-        let (drawn, wanted) = tiles.select(&camera, 8, Instant::now());
-        assert!(drawn.len() == 1 && Arc::ptr_eq(&drawn[0], &shown), "one tile still loading blanked every loaded sibling, and climbing showed haze for 24 s");
-        assert_eq!(wanted.len(), 1, "the missing one is still asked for");
+        let selected = tiles.select_measured(&camera, 8, 1.0, Instant::now());
+        assert!(selected.meshes.len() == 1 && Arc::ptr_eq(&selected.meshes[0], &shown), "one tile still loading blanked every loaded sibling, and climbing showed haze for 24 s");
+        assert_eq!(selected.wanted.len(), 1, "the missing one is still asked for");
+        assert_eq!(selected.holes, 1, "the missing one is counted as a hole in the picture");
+    }
+
+    #[test]
+    fn the_nearest_missing_tile_is_fetched_first_wherever_it_sits_in_the_tree() {
+        let camera = camera();
+        let far = Tile { bounds: ahead(&camera, 900.0), ..leaf(&camera, "far") };
+        let near = Tile { bounds: ahead(&camera, 100.0), ..leaf(&camera, "near") };
+        let index = Tile { bounds: ahead(&camera, 500.0), geometric_error: 1000.0, url: None, content: Content::None, children: vec![far, near], used: None, wanted: None };
+        let mut tiles = Tileset::new(index, &Url::parse("https://x/root.json").unwrap());
+        let (_, wanted) = tiles.select(&camera, 1, Instant::now());
+        assert_eq!(wanted.iter().map(|request| request.path.clone()).collect::<Vec<_>>(), vec![vec![1]], "in tree order, tiles in the first branches took every free slot and the ground ahead of a low, fast drone stayed missing");
+        let (_, wanted) = tiles.select(&camera, 1, Instant::now());
+        assert_eq!(wanted.iter().map(|request| request.path.clone()).collect::<Vec<_>>(), vec![vec![0]], "the far one follows once a slot frees up");
     }
 
     #[test]
@@ -439,6 +484,7 @@ mod tests {
             content: Content::Meshes(vec![parent_mesh.clone()]),
             children: vec![Tile { content: Content::Meshes(vec![child.clone()]), ..leaf(&camera, "ready") }, leaf(&camera, "coming")],
             used: None,
+            wanted: None,
         };
         let selected = |geometric_error: f64| Tileset::new(tree(geometric_error), &Url::parse("https://x/root.json").unwrap()).select_measured(&camera, 8, 1.0, Instant::now());
         let coarse = selected(100.0);
@@ -520,7 +566,8 @@ mod tests {
         assert!(drawn.len() == 1 && Arc::ptr_eq(&drawn[0], &shown), "with nothing loaded below, the coarse parent fills the view");
         assert_eq!(wanted.iter().map(|request| request.path.clone()).collect::<Vec<_>>(), vec![vec![0], vec![1]], "both children are asked for");
         tiles.deliver(&[0], Err("offline".into()), start);
-        tiles.deliver(&[1], Ok(Parsed::Meshes(vec![mesh()])), start);
+        assert_eq!(tiles.deliver(&[1], Ok(Parsed::Meshes(vec![mesh()])), start + Duration::from_millis(300)), Some(Duration::from_millis(300)), "the wait runs from the first frame that wanted the tile");
+        assert_eq!(tiles.deliver(&[1], Ok(Parsed::Meshes(vec![mesh()])), start), None, "a tile nobody asked for again is not measured");
         let (drawn, wanted) = tiles.select(&camera, 8, start + Duration::from_secs(1));
         assert!(drawn.len() == 1 && Arc::ptr_eq(&drawn[0], &shown) && wanted.is_empty(), "a failed child keeps the parent up and is not asked again at once");
         let (_, wanted) = tiles.select(&camera, 8, start + RETRY_AFTER);
