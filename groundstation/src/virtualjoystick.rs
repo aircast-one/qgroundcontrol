@@ -128,7 +128,14 @@ pub const TAKEOVER_HOLD_MS: u64 = 300;
 pub const TAKEOVER_RETRY_MS: u64 = 5000;
 pub const YAW_EXPO_PCT: f64 = 20.0;
 pub const YAW_DEADZONE: f64 = 0.15;
+pub const ARM_GESTURE_DEFLECTION: f64 = 0.8;
+pub const ARM_GESTURE_THROTTLE: f64 = 0.1;
+pub const ARM_HOLD_MS: u64 = 1000;
 const THROTTLE_CENTRE: f64 = 0.5;
+
+pub fn arm_gesture(roll: f64, pitch: f64, yaw: f64, thrust: f64) -> bool {
+    thrust <= ARM_GESTURE_THROTTLE && pitch <= -ARM_GESTURE_DEFLECTION && roll.abs() >= ARM_GESTURE_DEFLECTION && yaw.abs() >= ARM_GESTURE_DEFLECTION && roll.signum() != yaw.signum()
+}
 
 pub fn stick_deflected(roll: f64, pitch: f64, yaw: f64, thrust: f64, flying: bool) -> bool {
     [roll, pitch, yaw].iter().any(|axis| axis.abs() > TAKEOVER_DEFLECTION)
@@ -373,6 +380,16 @@ mod tests {
         assert!(!StickWindow::opened(at(0)).closes(at(20_000)), "an empty window has nothing to report");
         assert_eq!(closed(Some(window.clone()), at(1_100)), None, "the pump flushes a window once the sticks go quiet, so the last one of a flight is not lost");
         assert_eq!(closed(Some(window.clone()), at(500)), Some(window), "a window still in use stays open");
+    }
+
+    #[test]
+    fn both_sticks_pulled_into_the_bottom_corners_is_the_arming_gesture() {
+        assert!(arm_gesture(-1.0, -1.0, 1.0, 0.0), "inward, like a DJI");
+        assert!(arm_gesture(1.0, -1.0, -1.0, 0.0), "outward, which is also inward with the throttle on the right stick");
+        assert!(!arm_gesture(1.0, -1.0, 1.0, 0.0), "both sticks pointing the same way");
+        assert!(!arm_gesture(-1.0, -1.0, 1.0, 0.5), "throttle not down");
+        assert!(!arm_gesture(-1.0, 0.0, 1.0, 0.0), "the other stick not pulled down");
+        assert!(!arm_gesture(-0.5, -1.0, 1.0, 0.0), "short of the corner");
     }
 
     #[test]

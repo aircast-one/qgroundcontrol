@@ -346,6 +346,7 @@ pub struct Vehicle {
     pub flying: bool,
     stick_deflected_since: Option<u64>,
     stick_takeover_after: u64,
+    stick_arm_held: Option<(u64, bool)>,
     pub parameter_defaults: BTreeMap<String, ParamValue>,
     ardupilot_components: std::collections::BTreeSet<u8>,
     pub vtol_in_forward_flight: bool,
@@ -584,6 +585,7 @@ impl Vehicle {
             flying: false,
             stick_deflected_since: None,
             stick_takeover_after: 0,
+            stick_arm_held: None,
             parameter_defaults: BTreeMap::new(),
             ardupilot_components: std::collections::BTreeSet::new(),
             vtol_in_forward_flight: false,
@@ -2009,7 +2011,21 @@ impl Vehicle {
         let control = Outbound::ManualControl { target: self.id, x: axis("pitch"), y: axis("roll"), z: axis("thrust"), r: (yaw * MANUAL_CONTROL_SCALE) as i16 };
         let deflected = crate::virtualjoystick::stick_deflected(value("roll"), value("pitch"), value("yaw"), value("thrust"), self.flying);
         let takeover = self.stick_takeover(deflected, now_ms);
-        self.encode(&control).into_iter().chain(takeover).collect()
+        let arm = self.stick_arm(crate::virtualjoystick::arm_gesture(value("roll"), value("pitch"), value("yaw"), value("thrust")), now_ms);
+        self.encode(&control).into_iter().chain(takeover).chain(arm).collect()
+    }
+
+    fn stick_arm(&mut self, gesture: bool, now_ms: u64) -> Vec<Vec<u8>> {
+        let held = gesture.then(|| self.stick_arm_held.unwrap_or((now_ms, false)));
+        let due = held.is_some_and(|(since, fired)| !fired && now_ms.saturating_sub(since) >= crate::virtualjoystick::ARM_HOLD_MS) && !self.armed() && !self.flying;
+        self.stick_arm_held = held.map(|(since, fired)| (since, fired || due));
+        match due {
+            true => self.start_guided(&json!({ "action": "arm", "arm": true }), now_ms).unwrap_or_else(|reason| {
+                self.pending_notices.push((crate::noticeboard::BRIEF, reason));
+                Vec::new()
+            }),
+            false => Vec::new(),
+        }
     }
 
     fn stick_takeover(&mut self, deflected: bool, now_ms: u64) -> Vec<Vec<u8>> {
@@ -5228,6 +5244,23 @@ mod tests {
         assert_eq!(mode_changes(&push(vehicle, -0.8, 1_500)), 1, "held for 300 ms, Loiter is asked for");
         assert_eq!(mode_changes(&push(vehicle, -0.8, 1_540)), 0, "and asked for once");
         assert!(vehicle.pending_notices.iter().any(|(_, text)| text == "Sticks took over: Loiter"));
+    }
+
+    #[test]
+    fn holding_both_sticks_in_the_bottom_corners_arms_once_like_a_dji() {
+        use mavlink::dialects::ardupilotmega::MavCmd;
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(5, false), 0, 0);
+        let vehicle = hub.vehicles.get_mut(&1).unwrap();
+        let arms = |bytes: &[Vec<u8>]| bytes.iter().filter(|b| matches!(decode(b), MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_COMPONENT_ARM_DISARM && c.param1 == 1.0)).count();
+        let sticks = |vehicle: &mut Vehicle, roll: f64, at: u64| vehicle.start_guided(&json!({ "action": "virtualJoystick", "roll": roll, "pitch": -1.0, "yaw": 1.0, "thrust": 0.0 }), at).unwrap();
+        assert_eq!(arms(&sticks(vehicle, -1.0, 1_000)), 0, "a brush past the corners does not start the motors");
+        assert_eq!(arms(&sticks(vehicle, 0.0, 1_500)), 0);
+        assert_eq!(arms(&sticks(vehicle, -1.0, 1_600)), 0, "letting go starts the hold again");
+        assert_eq!(arms(&sticks(vehicle, -1.0, 2_560)), 0);
+        assert_eq!(arms(&sticks(vehicle, -1.0, 2_600)), 1, "held for a second, the motors start");
+        assert_eq!(arms(&sticks(vehicle, -1.0, 2_640)), 0, "and are asked to start once");
     }
 
     #[test]
