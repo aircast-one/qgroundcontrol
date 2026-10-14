@@ -50,6 +50,9 @@ final class GuidedStore: ObservableObject, Probeable, WriteReporting {
         range = built
         chosen = built?.initial ?? 0
         pending = offer
+        if !offer.confirm {
+            confirm()
+        }
     }
 
     func cancel() {

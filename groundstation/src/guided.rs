@@ -176,6 +176,7 @@ pub struct Offer {
     pub reason: &'static str,
     pub reason_code: &'static str,
     pub destructive: bool,
+    pub confirm: bool,
     pub carries_value: bool,
     pub option: &'static str,
 }
@@ -300,6 +301,7 @@ impl Action {
             reason,
             reason_code: if s.contact_lost && reason == NO_SIGNAL { NO_SIGNAL_CODE } else { "" },
             destructive: matches!(self, Action::EmergencyStop | Action::ForceArm),
+            confirm: self != Action::Disarm,
             carries_value: self.carries_value() && !(self == Action::Takeoff && !s.takeoff_with_altitude),
             option: match (self, s.smart_rtl_supported) {
                 (Action::Rtl, true) => "Smart RTL",
@@ -935,6 +937,17 @@ mod tests {
         assert!(!Action::Arm.offer(&ready).destructive, "the ordinary arm is not the destructive one");
         let armed = GuidedState { armed: true, can_arm: false, ..ready_on_ground() };
         assert_eq!(offer_of(&armed, Action::ForceArm), "hidden");
+    }
+
+    #[test]
+    fn only_a_disarm_on_the_ground_goes_out_without_a_hold_to_confirm() {
+        let landed = GuidedState { armed: true, ..ready_on_ground() };
+        let disarm = Action::Disarm.offer(&landed);
+        assert_eq!((disarm.offer, disarm.confirm), ("ready", false), "Disarm is only offered on the ground, where ArduCopter would disarm itself after DISARM_DELAY anyway");
+        let asking: Vec<Action> = ACTIONS.iter().copied().filter(|action| action.offer(&landed).confirm).collect();
+        assert_eq!(asking.len(), ACTIONS.len() - 1, "every other action still asks first");
+        assert!(Action::Arm.offer(&ready_on_ground()).confirm && Action::EmergencyStop.offer(&landed).confirm);
+        assert_eq!(serde_json::to_value(&disarm).unwrap()["confirm"], false, "heads read it as confirm");
     }
 
     #[test]

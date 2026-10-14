@@ -32,6 +32,20 @@ class GuidedActionsTest {
     }
 
     @Test
+    fun `a disarm the core marks as unconfirmed goes out on the tap, everything else still asks`() {
+        val offers = guidedOffers(JSONObject("""{"actions":[
+            {"id":"disarm","title":"Disarm","offer":"ready","prompt":"Disarm the vehicle","destructive":false,"confirm":false,"carriesValue":false},
+            {"id":"land","title":"Land","offer":"ready","prompt":"Land","destructive":false,"confirm":true,"carriesValue":false},
+            {"id":"rtl","title":"Return","offer":"ready","prompt":"Return","destructive":false,"carriesValue":false}]}"""))
+        val action = { id: String -> GuidedAction(name = id, confirm = "", destructive = false, offerId = id, run = {}) }
+
+        assertFalse(needsConfirm(action("disarm"), offers))
+        assertTrue(needsConfirm(action("land"), offers))
+        assertTrue("an offer that does not say asks first", needsConfirm(action("rtl"), offers))
+        assertTrue("an action with no offer behind it asks first", needsConfirm(action("gone"), offers))
+    }
+
+    @Test
     fun `no view is no offers rather than a crash`() {
         assertEquals(emptyMap<String, GuidedOffer>(), guidedOffers(null))
         assertEquals(emptyMap<String, GuidedOffer>(), guidedOffers(JSONObject("{}")))

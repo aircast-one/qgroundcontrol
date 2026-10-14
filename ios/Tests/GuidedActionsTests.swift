@@ -22,6 +22,20 @@ final class GuidedActionsTests: XCTestCase {
         XCTAssertTrue(offers["arm"]!.destructive)
     }
 
+    func testADisarmTheCoreMarksUnconfirmedGoesOutOnTheTapEverythingElseStillAsks() {
+        let offers = guidedOffers(JSON.parse(#"""
+            {"actions":[
+              {"id":"disarm","title":"Disarm","offer":"ready","prompt":"Disarm the vehicle","destructive":false,"confirm":false,"carriesValue":false},
+              {"id":"land","title":"Land","offer":"ready","prompt":"Land","destructive":false,"confirm":true,"carriesValue":false},
+              {"id":"rtl","title":"Return","offer":"ready","prompt":"Return","destructive":false,"carriesValue":false}]}
+            """#))
+        let action = { (id: String) in GuidedAction(name: id, confirm: "", destructive: false, offerId: id, run: {}) }
+        XCTAssertFalse(needsConfirm(action("disarm"), offers))
+        XCTAssertTrue(needsConfirm(action("land"), offers))
+        XCTAssertTrue(needsConfirm(action("rtl"), offers), "an offer that does not say asks first")
+        XCTAssertTrue(needsConfirm(action("gone"), offers), "an action with no offer behind it asks first")
+    }
+
     func testNoViewIsNoOffersRatherThanACrash() {
         XCTAssertEqual(guidedOffers(nil), [:])
         XCTAssertEqual(guidedOffers(JSON.parse("{}")), [:])

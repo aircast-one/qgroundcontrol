@@ -12,6 +12,7 @@ struct GuidedOffer: Equatable {
     var carriesValue: Bool
     var option: String = ""
     var reasonCode: String = ""
+    var confirm = true
     var order = 0
 
     var ready: Bool { offer == "ready" }
@@ -31,6 +32,7 @@ func guidedOffers(_ view: JSON?) -> [String: GuidedOffer] {
             carriesValue: action["carriesValue"].bool,
             option: action["option"].string,
             reasonCode: action["reasonCode"].string,
+            confirm: action["confirm"].bool(true),
             order: at
         )
     }

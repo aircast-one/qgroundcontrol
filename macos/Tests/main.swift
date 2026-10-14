@@ -6768,7 +6768,7 @@ func checkViewContract() {
          ["canSend", "canProceed", "pausesFirst", "heading", "proceedTitle", "refusal"]),
         ("view.guidedActions", [], ["connected", "missionActive", "actions"]),
         ("view.guidedActions", ["actions"],
-         ["id", "offer", "title", "prompt", "reason", "destructive", "carriesValue"]),
+         ["id", "offer", "title", "prompt", "reason", "destructive", "confirm", "carriesValue"]),
         ("view.guidedAltitude(30)", [],
          ["available", "minimum", "maximum", "current", "label", "unit", "sends", "deltaMeters",
           "sentence"]),
@@ -7149,6 +7149,11 @@ func checkGuidedOffers() {
     expect(invented?.shown == true,
            "but it is still drawn, because an action that exists and cannot be used is worth "
            + "showing greyed with a tooltip rather than hiding entirely")
+
+    expect(GuidedOffer(["id": "disarm", "offer": "ready", "confirm": false as NSNumber])?.confirm == false,
+           "a disarm the core marks unconfirmed is sent on the click, with no slide to confirm")
+    expect(GuidedOffer(["id": "land", "offer": "ready"])?.confirm == true,
+           "an offer that does not say still asks first")
 
     expect(GuidedOffer(["id": "takeoff", "offer": "ready", "carriesValue": true as NSNumber])?
         .carriesValue == true,

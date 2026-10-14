@@ -107,6 +107,9 @@ internal data class GuidedAction(
     val run: () -> Unit,
 )
 
+internal fun needsConfirm(action: GuidedAction, offers: Map<String, GuidedOffer>): Boolean =
+    offers[action.offerId]?.confirm != false
+
 internal const val CHECKLIST_PASSED = 1
 internal const val CHECKLIST_FAILED = 2
 
@@ -403,6 +406,15 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     }
 
     val latestOffers by rememberUpdatedState(offers)
+    val ask: (GuidedAction) -> Unit = { action ->
+        if (needsConfirm(action, latestOffers)) {
+            pending = action
+        } else {
+            action.run()
+            sentName = action.name
+            sentSnapshot = actionsJson?.toString()
+        }
+    }
     LaunchedEffect(popupDue) {
         val due = popupDue ?: return@LaunchedEffect
         delay(MISSION_POPUP_DELAY_MS)
@@ -410,7 +422,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
         val settled = latestOffers[due.id]?.takeIf { it.ready } ?: return@LaunchedEffect
         if (pending == null || popupReplacesOpenConfirm(settled.id)) {
             guidedCommand(settled.id, resumeFrom)?.let { command ->
-                pending = GuidedAction(name = settled.title, confirm = settled.prompt, destructive = settled.destructive, offerId = settled.id, run = command)
+                ask(GuidedAction(name = settled.title, confirm = settled.prompt, destructive = settled.destructive, offerId = settled.id, run = command))
             }
         }
     }
@@ -450,7 +462,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             offers = offers,
             armed = armed,
             scope = scope,
-            confirm = { pending = it },
+            confirm = ask,
             openValue = openValue,
             report = { refusal = it },
             openChecklist = checklist::open.takeIf { useChecklist },
@@ -468,7 +480,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                 ?: run { refusal = deckRequestRefusal(offers[if (armed) "disarm" else "arm"]) }
             else -> entries.firstOrNull { it.id == asked && it.enabled }?.onClick?.invoke() ?: offers[asked]?.takeIf { it.ready }?.let { offer ->
                 guidedCommand(offer.id, resumeFrom)?.let { command ->
-                    pending = GuidedAction(offerId = offer.id, name = offer.title, confirm = offer.prompt, destructive = offer.destructive, run = command)
+                    ask(GuidedAction(offerId = offer.id, name = offer.title, confirm = offer.prompt, destructive = offer.destructive, run = command))
                 }
             }
         }
@@ -580,12 +592,14 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                             openAltitude(true)
                         } else {
                             guidedCommand(offer.id, resumeFrom)?.let { command ->
-                                pending = GuidedAction(
-                                    offerId = offer.id,
-                                    name = offer.title,
-                                    confirm = offer.prompt,
-                                    destructive = offer.destructive,
-                                    run = command,
+                                ask(
+                                    GuidedAction(
+                                        offerId = offer.id,
+                                        name = offer.title,
+                                        confirm = offer.prompt,
+                                        destructive = offer.destructive,
+                                        run = command,
+                                    ),
                                 )
                             }
                         }

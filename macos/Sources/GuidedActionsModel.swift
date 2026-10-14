@@ -63,6 +63,7 @@ struct GuidedOffer: Identifiable, Equatable {
     let prompt: String
     let reason: String
     let destructive: Bool
+    let confirm: Bool
     let carriesValue: Bool
     let shown: Bool
     let ready: Bool
@@ -80,6 +81,7 @@ struct GuidedOffer: Identifiable, Equatable {
         prompt = (json["prompt"] as? String) ?? ""
         reason = (json["reason"] as? String) ?? ""
         destructive = (json["destructive"] as? NSNumber)?.boolValue ?? false
+        confirm = (json["confirm"] as? NSNumber)?.boolValue ?? true
         carriesValue = (json["carriesValue"] as? NSNumber)?.boolValue ?? false
         shown = offer != "hidden"
         ready = offer == "ready"

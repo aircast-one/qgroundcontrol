@@ -22,6 +22,10 @@ let CHECKLIST_FAILED = 2
 
 func checklistStateValue(_ passed: Bool) -> Int { passed ? CHECKLIST_PASSED : CHECKLIST_FAILED }
 
+func needsConfirm(_ action: GuidedAction, _ offers: [String: GuidedOffer]) -> Bool {
+    action.offerId.flatMap { offers[$0]?.confirm } ?? true
+}
+
 func offerWithdrawn(_ offerId: String?, _ offers: [String: GuidedOffer]) -> Bool {
     offerId.map { offers[$0]?.shown != true } ?? false
 }
@@ -478,7 +482,7 @@ struct FlightActions<Center: View>: View {
             offers: offers,
             armed: armed,
             scope: actions.scope,
-            confirm: { actions.pending = $0 },
+            confirm: ask,
             openValue: openValue,
             report: { flyScreen.refusal = $0 },
             openChecklist: preflightOffered(preflightJson) ? { checklist.open() } : nil,
@@ -491,6 +495,16 @@ struct FlightActions<Center: View>: View {
         actions.scope.launch {
             let opened = await openGuidedValue(kind)
             if let opened { actions.guidedValue = opened } else { flyScreen.refusal = kind.missingRange }
+        }
+    }
+
+    private func ask(_ action: GuidedAction) {
+        if needsConfirm(action, offers) {
+            actions.pending = action
+        } else {
+            action.run()
+            actions.sentName = action.name
+            actions.sentSnapshot = actionsJson?.text
         }
     }
 
@@ -515,7 +529,7 @@ struct FlightActions<Center: View>: View {
         actions.popupDue = nil
         guard let settled = offers[due.id], settled.ready else { return }
         if actions.pending == nil || popupReplacesOpenConfirm(settled.id), let action = guidedActionFor(settled) {
-            actions.pending = action
+            ask(action)
         }
     }
 
@@ -533,7 +547,7 @@ struct FlightActions<Center: View>: View {
         } else if let entry = deckEntries.first(where: { $0.id == asked && $0.enabled }) {
             entry.onClick()
         } else if let offer = offers[asked], offer.ready, let action = guidedActionFor(offer) {
-            actions.pending = action
+            ask(action)
         }
         flyScreen.deckRequest = nil
     }
@@ -579,7 +593,7 @@ struct FlightActions<Center: View>: View {
                 if offer.id == PAUSE {
                     openValue(altitudeValue(true))
                 } else if let action = guidedActionFor(offer) {
-                    actions.pending = action
+                    ask(action)
                 }
             })
         }
