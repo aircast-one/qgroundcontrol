@@ -2006,12 +2006,15 @@ impl Vehicle {
             return Vec::new();
         }
         let value = |key: &str| action.get(key).and_then(Value::as_f64).unwrap_or(0.0);
-        let axis = |key: &str| (value(key) as f32 * MANUAL_CONTROL_SCALE) as i16;
-        let yaw = crate::virtualjoystick::yaw_sent(value("yaw")) as f32;
+        let gesture = crate::virtualjoystick::arm_gesture(value("roll"), value("pitch"), value("yaw"), value("thrust"));
+        let resting = gesture && !self.flying;
+        let sent = |key: &str| if resting { 0.0 } else { value(key) };
+        let axis = |key: &str| (sent(key) as f32 * MANUAL_CONTROL_SCALE) as i16;
+        let yaw = crate::virtualjoystick::yaw_sent(sent("yaw")) as f32;
         let control = Outbound::ManualControl { target: self.id, x: axis("pitch"), y: axis("roll"), z: axis("thrust"), r: (yaw * MANUAL_CONTROL_SCALE) as i16 };
         let deflected = crate::virtualjoystick::stick_deflected(value("roll"), value("pitch"), value("yaw"), value("thrust"), self.flying);
         let takeover = self.stick_takeover(deflected, now_ms);
-        let arm = self.stick_arm(crate::virtualjoystick::arm_gesture(value("roll"), value("pitch"), value("yaw"), value("thrust")), now_ms);
+        let arm = self.stick_arm(gesture, now_ms);
         self.encode(&control).into_iter().chain(takeover).chain(arm).collect()
     }
 
@@ -5255,6 +5258,9 @@ mod tests {
         let vehicle = hub.vehicles.get_mut(&1).unwrap();
         let arms = |bytes: &[Vec<u8>]| bytes.iter().filter(|b| matches!(decode(b), MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_COMPONENT_ARM_DISARM && c.param1 == 1.0)).count();
         let sticks = |vehicle: &mut Vehicle, roll: f64, at: u64| vehicle.start_guided(&json!({ "action": "virtualJoystick", "roll": roll, "pitch": -1.0, "yaw": 1.0, "thrust": 0.0 }), at).unwrap();
+        let control = |bytes: &[Vec<u8>]| bytes.iter().find_map(|b| match decode(b) { MavMessage::MANUAL_CONTROL(m) => Some((m.x, m.y, m.z, m.r)), _ => None });
+        assert_eq!(control(&sticks(vehicle, -1.0, 900)), Some((0, 0, 0, 0)), "the vehicle sees centred sticks during the gesture; ArduCopter refused to arm with roll, pitch and yaw not neutral");
+        assert_eq!(control(&sticks(vehicle, 0.0, 950)), Some((-1000, 0, 0, 1000)), "anything short of the gesture goes through as it is");
         assert_eq!(arms(&sticks(vehicle, -1.0, 1_000)), 0, "a brush past the corners does not start the motors");
         assert_eq!(arms(&sticks(vehicle, 0.0, 1_500)), 0);
         assert_eq!(arms(&sticks(vehicle, -1.0, 1_600)), 0, "letting go starts the hold again");
