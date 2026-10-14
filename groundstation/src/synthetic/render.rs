@@ -1,7 +1,9 @@
-use std::collections::HashMap;
+use std::cell::Cell;
+use std::collections::{BTreeMap, HashMap};
+use std::ops::Range;
 use std::sync::{Arc, Weak};
 
-use wgpu::util::DeviceExt;
+use range_alloc::RangeAllocator;
 
 use super::geo::Camera;
 use super::mesh::{Layer, Mesh, solid};
@@ -10,6 +12,9 @@ const COLOR: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8UnormSrgb;
 const DEPTH: wgpu::TextureFormat = wgpu::TextureFormat::Depth32Float;
 const SKY: wgpu::Color = wgpu::Color { r: 0.3, g: 0.45, b: 0.66, a: 1.0 };
 const VERTEX_BYTES: u64 = 32;
+const INDEX_BYTES: u64 = 4;
+const ARENA_VERTICES: u32 = 1 << 19;
+const ARENA_INDICES: u32 = 1 << 21;
 const DRAW_BYTES: u64 = 128;
 const SCENE_BYTES: u64 = 96;
 const SAMPLES: u32 = 4;
@@ -20,12 +25,14 @@ const LAYERS: [Layer; 3] = [Layer::Opaque, Layer::Translucent, Layer::OnTop];
 const ANISOTROPY: u16 = 16;
 const SHADER: &str = r"
 struct Scene { unproject: mat4x4<f32>, zenith: vec4<f32>, sun: vec4<f32> };
-struct Draw { mvp: mat4x4<f32>, model: mat4x4<f32> };
 @group(0) @binding(0) var<uniform> scene: Scene;
 @group(1) @binding(0) var picture: texture_2d<f32>;
 @group(1) @binding(1) var tile_sampler: sampler;
-@group(2) @binding(0) var<uniform> draw: Draw;
 struct In { @location(0) position: vec3<f32>, @location(1) uv: vec2<f32>, @location(2) normal: vec3<f32> };
+struct Placed {
+    @location(3) mvp0: vec4<f32>, @location(4) mvp1: vec4<f32>, @location(5) mvp2: vec4<f32>, @location(6) mvp3: vec4<f32>,
+    @location(7) model0: vec4<f32>, @location(8) model1: vec4<f32>, @location(9) model2: vec4<f32>, @location(10) model3: vec4<f32>,
+};
 struct Out { @builtin(position) position: vec4<f32>, @location(0) uv: vec2<f32>, @location(1) seen: vec3<f32>, @location(2) normal: vec3<f32> };
 struct SkyOut { @builtin(position) position: vec4<f32>, @location(0) screen: vec2<f32> };
 
@@ -49,8 +56,10 @@ fn sunlit(colour: vec3<f32>, normal: vec3<f32>, seen: vec3<f32>) -> vec3<f32> {
     return colour * (skylight + (1.0 - AMBIENT) * max(dot(outward, scene.sun.xyz), 0.0)) / level;
 }
 
-@vertex fn vs(v: In) -> Out {
-    return Out(draw.mvp * vec4<f32>(v.position, 1.0), v.uv, (draw.model * vec4<f32>(v.position, 1.0)).xyz, (draw.model * vec4<f32>(v.normal, 0.0)).xyz);
+@vertex fn vs(v: In, placed: Placed) -> Out {
+    let mvp = mat4x4<f32>(placed.mvp0, placed.mvp1, placed.mvp2, placed.mvp3);
+    let model = mat4x4<f32>(placed.model0, placed.model1, placed.model2, placed.model3);
+    return Out(mvp * vec4<f32>(v.position, 1.0), v.uv, (model * vec4<f32>(v.position, 1.0)).xyz, (model * vec4<f32>(v.normal, 0.0)).xyz);
 }
 
 @fragment fn fs(f: Out) -> @location(0) vec4<f32> {
@@ -96,10 +105,8 @@ impl<T> Resident<T> {
         uploaded
     }
 
-    pub fn evict(&mut self) -> usize {
-        let before = self.entries.len();
-        self.entries.retain(|_, (mesh, _)| mesh.strong_count() > 0);
-        before - self.entries.len()
+    pub fn evict(&mut self) -> Vec<T> {
+        self.entries.extract_if(|_, (mesh, _)| mesh.strong_count() == 0).map(|(_, (_, resident))| resident).collect()
     }
 
     pub fn get(&self, id: u64) -> Option<&T> {
@@ -116,21 +123,79 @@ impl<T> Resident<T> {
 }
 
 
-struct GpuMesh {
+struct Arena<B> {
+    vertex_space: RangeAllocator<u32>,
+    index_space: RangeAllocator<u32>,
+    buffers: B,
+}
+
+struct ArenaBuffers {
     vertices: wgpu::Buffer,
     indices: wgpu::Buffer,
-    count: u32,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+struct Place {
+    arena: usize,
+    vertices: Range<u32>,
+    indices: Range<u32>,
+}
+
+fn place_in<B>(arenas: &mut Vec<Option<Arena<B>>>, vertices: u32, indices: u32, open: impl FnOnce(u32, u32) -> B) -> Option<Place> {
+    let fitted = arenas.iter_mut().enumerate().find_map(|(arena, slot)| {
+        let space = slot.as_mut()?;
+        let taken = space.vertex_space.allocate_range(vertices).ok()?;
+        match space.index_space.allocate_range(indices) {
+            Ok(indices) => Some(Place { arena, vertices: taken, indices }),
+            Err(_) => {
+                space.vertex_space.free_range(taken);
+                None
+            }
+        }
+    });
+    fitted.or_else(|| {
+        let arena = arenas.iter().position(Option::is_none).unwrap_or(arenas.len());
+        let (vertex_capacity, index_capacity) = (vertices.max(ARENA_VERTICES), indices.max(ARENA_INDICES));
+        let opened = Some(Arena { vertex_space: RangeAllocator::new(0..vertex_capacity), index_space: RangeAllocator::new(0..index_capacity), buffers: open(vertex_capacity, index_capacity) });
+        match arenas.get_mut(arena) {
+            Some(slot) => *slot = opened,
+            None => arenas.push(opened),
+        }
+        let space = arenas.get_mut(arena)?.as_mut()?;
+        Some(Place { arena, vertices: space.vertex_space.allocate_range(vertices).ok()?, indices: space.index_space.allocate_range(indices).ok()? })
+    })
+}
+
+fn release<B>(arenas: &mut [Option<Arena<B>>], place: Place) {
+    if let Some(space) = arenas.get_mut(place.arena).and_then(Option::as_mut) {
+        space.vertex_space.free_range(place.vertices);
+        space.index_space.free_range(place.indices);
+    }
+}
+
+fn close_empty<B>(arenas: &mut [Option<Arena<B>>]) {
+    arenas.iter_mut().skip(1).filter(|slot| slot.as_ref().is_some_and(|arena| arena.vertex_space.is_empty() && arena.index_space.is_empty())).for_each(|slot| *slot = None);
+}
+
+struct GpuMesh {
+    place: Option<Place>,
     bind: wgpu::BindGroup,
+}
+
+fn record(pass: &mut wgpu::RenderPass, arenas: &[Option<Arena<ArenaBuffers>>], bound: &Cell<Option<usize>>, gpu: &GpuMesh, instances: Range<u32>) {
+    let Some((place, arena)) = gpu.place.as_ref().and_then(|place| Some((place, arenas.get(place.arena)?.as_ref()?))) else { return };
+    if bound.get() != Some(place.arena) {
+        pass.set_vertex_buffer(0, arena.buffers.vertices.slice(..));
+        pass.set_index_buffer(arena.buffers.indices.slice(..), wgpu::IndexFormat::Uint32);
+        bound.set(Some(place.arena));
+    }
+    pass.set_bind_group(1, &gpu.bind, &[]);
+    pass.draw_indexed(place.indices.clone(), 0, instances);
 }
 
 struct Draws {
     buffer: wgpu::Buffer,
-    bind: wgpu::BindGroup,
     slots: usize,
-}
-
-fn draw_stride(alignment: u32) -> u64 {
-    DRAW_BYTES.div_ceil(u64::from(alignment)) * u64::from(alignment)
 }
 
 fn draw_slots(needed: usize) -> usize {
@@ -150,13 +215,12 @@ pub struct Renderer {
     backfill: wgpu::RenderPipeline,
     sky: wgpu::RenderPipeline,
     layout: wgpu::BindGroupLayout,
-    draws_layout: wgpu::BindGroupLayout,
     draws: Option<Draws>,
-    stride: u64,
     scene: wgpu::Buffer,
     scene_bind: wgpu::BindGroup,
     sampler: wgpu::Sampler,
     resident: Resident<GpuMesh>,
+    arenas: Vec<Option<Arena<ArenaBuffers>>>,
     pub uploads: usize,
     to_upload: Vec<Weak<Mesh>>,
 }
@@ -191,7 +255,14 @@ fn pipeline(device: &wgpu::Device, layout: &wgpu::PipelineLayout, shader: &wgpu:
             module: shader,
             entry_point: Some("vs"),
             compilation_options: Default::default(),
-            buffers: &[Some(wgpu::VertexBufferLayout { array_stride: VERTEX_BYTES, step_mode: wgpu::VertexStepMode::Vertex, attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2, 2 => Float32x3] })],
+            buffers: &[
+                Some(wgpu::VertexBufferLayout { array_stride: VERTEX_BYTES, step_mode: wgpu::VertexStepMode::Vertex, attributes: &wgpu::vertex_attr_array![0 => Float32x3, 1 => Float32x2, 2 => Float32x3] }),
+                Some(wgpu::VertexBufferLayout {
+                    array_stride: DRAW_BYTES,
+                    step_mode: wgpu::VertexStepMode::Instance,
+                    attributes: &wgpu::vertex_attr_array![3 => Float32x4, 4 => Float32x4, 5 => Float32x4, 6 => Float32x4, 7 => Float32x4, 8 => Float32x4, 9 => Float32x4, 10 => Float32x4],
+                }),
+            ],
         },
         primitive: wgpu::PrimitiveState { cull_mode: None, ..Default::default() },
         depth_stencil: Some(depth_state(depth_write, compare)),
@@ -234,12 +305,7 @@ impl Renderer {
                 wgpu::BindGroupLayoutEntry { binding: 1, visibility: wgpu::ShaderStages::FRAGMENT, ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering), count: None },
             ],
         });
-        let draws_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("synthetic draws"),
-            entries: &[wgpu::BindGroupLayoutEntry { binding: 0, visibility: wgpu::ShaderStages::VERTEX, ty: wgpu::BindingType::Buffer { ty: wgpu::BufferBindingType::Uniform, has_dynamic_offset: true, min_binding_size: wgpu::BufferSize::new(DRAW_BYTES) }, count: None }],
-        });
-        let stride = draw_stride(device.limits().min_uniform_buffer_offset_alignment);
-        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: Some("synthetic"), bind_group_layouts: &[Some(&scene_layout), Some(&layout), Some(&draws_layout)], immediate_size: 0 });
+        let pipeline_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: Some("synthetic"), bind_group_layouts: &[Some(&scene_layout), Some(&layout)], immediate_size: 0 });
         let sky_layout = device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor { label: Some("synthetic sky"), bind_group_layouts: &[Some(&scene_layout)], immediate_size: 0 });
         let pipelines = LAYERS.map(|layer| pipeline(&device, &pipeline_layout, &shader, format, layer));
         let backfill = pipeline(&device, &pipeline_layout, &shader, format, Layer::Backfill);
@@ -247,13 +313,12 @@ impl Renderer {
         let scene = device.create_buffer(&wgpu::BufferDescriptor { label: Some("synthetic scene"), size: SCENE_BYTES, usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
         let scene_bind = device.create_bind_group(&wgpu::BindGroupDescriptor { label: Some("synthetic scene"), layout: &scene_layout, entries: &[wgpu::BindGroupEntry { binding: 0, resource: scene.as_entire_binding() }] });
         let sampler = device.create_sampler(&wgpu::SamplerDescriptor { mag_filter: wgpu::FilterMode::Linear, min_filter: wgpu::FilterMode::Linear, mipmap_filter: wgpu::MipmapFilterMode::Linear, address_mode_u: wgpu::AddressMode::ClampToEdge, address_mode_v: wgpu::AddressMode::ClampToEdge, anisotropy_clamp: ANISOTROPY, ..Default::default() });
-        Self { device, queue, format, pipelines, backfill, sky, layout, draws_layout, draws: None, stride, scene, scene_bind, sampler, resident: Resident::default(), uploads: 0, to_upload: Vec::new() }
+        Self { device, queue, format, pipelines, backfill, sky, layout, draws: None, scene, scene_bind, sampler, resident: Resident::default(), arenas: Vec::new(), uploads: 0, to_upload: Vec::new() }
     }
 
-    fn upload(device: &wgpu::Device, queue: &wgpu::Queue, layout: &wgpu::BindGroupLayout, sampler: &wgpu::Sampler, mesh: &Mesh) -> GpuMesh {
+    fn upload(device: &wgpu::Device, queue: &wgpu::Queue, layout: &wgpu::BindGroupLayout, sampler: &wgpu::Sampler, arenas: &mut Vec<Option<Arena<ArenaBuffers>>>, mesh: &Mesh) -> GpuMesh {
         let normals = mesh.normals.iter().copied().chain(std::iter::repeat([0.0; 3]));
         let vertices: Vec<u8> = bytes(mesh.positions.iter().zip(&mesh.uvs).zip(normals).flat_map(|((p, uv), n)| p.iter().chain(uv).copied().chain(n)));
-        let indices: &[u8] = bytemuck::cast_slice(&mesh.indices);
         let levels = mesh.take_texture().unwrap_or_else(|| vec![solid(MISSING_TEXTURE)]);
         let (width, height) = levels[0].dimensions();
         let texture = device.create_texture(&wgpu::TextureDescriptor {
@@ -281,12 +346,18 @@ impl Renderer {
             layout,
             entries: &[wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::TextureView(&view) }, wgpu::BindGroupEntry { binding: 1, resource: wgpu::BindingResource::Sampler(sampler) }],
         });
-        GpuMesh {
-            vertices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: None, contents: &vertices, usage: wgpu::BufferUsages::VERTEX }),
-            indices: device.create_buffer_init(&wgpu::util::BufferInitDescriptor { label: None, contents: indices, usage: wgpu::BufferUsages::INDEX }),
-            count: mesh.indices.len() as u32,
-            bind,
+        let (vertex_count, index_count) = (u32::try_from(vertices.len() as u64 / VERTEX_BYTES).unwrap_or(0), u32::try_from(mesh.indices.len()).unwrap_or(0));
+        let opened = |vertices: u32, indices: u32| ArenaBuffers {
+            vertices: device.create_buffer(&wgpu::BufferDescriptor { label: Some("synthetic vertices"), size: u64::from(vertices) * VERTEX_BYTES, usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false }),
+            indices: device.create_buffer(&wgpu::BufferDescriptor { label: Some("synthetic indices"), size: u64::from(indices) * INDEX_BYTES, usage: wgpu::BufferUsages::INDEX | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false }),
+        };
+        let place = (vertex_count > 0 && index_count > 0).then(|| place_in(arenas, vertex_count, index_count, opened)).flatten();
+        if let Some((place, arena)) = place.as_ref().and_then(|place| Some((place, arenas.get(place.arena)?.as_ref()?))) {
+            let rebased: Vec<u32> = mesh.indices.iter().map(|index| index + place.vertices.start).collect();
+            queue.write_buffer(&arena.buffers.vertices, u64::from(place.vertices.start) * VERTEX_BYTES, &vertices);
+            queue.write_buffer(&arena.buffers.indices, u64::from(place.indices.start) * INDEX_BYTES, bytemuck::cast_slice(&rebased));
         }
+        GpuMesh { place, bind }
     }
 
     pub fn resident(&self) -> usize {
@@ -306,39 +377,47 @@ impl Renderer {
         let queued = std::mem::take(&mut self.to_upload);
         let missing: Vec<Arc<Mesh>> = queued.iter().filter_map(Weak::upgrade).chain(arrived).filter(|mesh| self.resident.get(mesh.id).is_none()).collect();
         let (first, rest) = missing.split_at(missing.len().min(most));
-        let (device, queue, layout, sampler) = (&self.device, &self.queue, &self.layout, &self.sampler);
-        self.uploads += self.resident.ensure(first, |mesh| Self::upload(device, queue, layout, sampler, mesh));
+        let (device, queue, layout, sampler, arenas) = (&self.device, &self.queue, &self.layout, &self.sampler, &mut self.arenas);
+        self.uploads += self.resident.ensure(first, |mesh| Self::upload(device, queue, layout, sampler, arenas, mesh));
         self.to_upload = rest.iter().map(Arc::downgrade).collect();
         self.to_upload.len()
     }
 
     pub fn draw(&mut self, target: &wgpu::TextureView, targets: &Targets, camera: &Camera, backfill: &[Arc<Mesh>], meshes: &[Arc<Mesh>]) {
-        let (device, queue, layout, sampler) = (&self.device, &self.queue, &self.layout, &self.sampler);
+        let (device, queue, layout, sampler, arenas) = (&self.device, &self.queue, &self.layout, &self.sampler, &mut self.arenas);
         let everything: Vec<Arc<Mesh>> = backfill.iter().chain(meshes).cloned().collect();
-        self.uploads += self.resident.ensure(&everything, |mesh| Self::upload(device, queue, layout, sampler, mesh));
-        self.resident.evict();
+        self.uploads += self.resident.ensure(&everything, |mesh| Self::upload(device, queue, layout, sampler, arenas, mesh));
+        self.resident.evict().into_iter().filter_map(|gone| gone.place).for_each(|place| release(&mut self.arenas, place));
+        close_empty(&mut self.arenas);
         let view_projection = camera.projection() * camera.view();
-        let drawable: Vec<(&Arc<Mesh>, &GpuMesh)> = meshes.iter().filter_map(|mesh| Some((mesh, self.resident.get(mesh.id)?))).collect();
+        let layer_of = |mesh: &Mesh| LAYERS.iter().position(|layer| *layer == mesh.layer).unwrap_or(LAYERS.len());
+        let arena_of = |mesh: &Mesh, gpu: &GpuMesh| gpu.place.as_ref().filter(|_| mesh.layer == Layer::Opaque).map_or(0, |place| place.arena);
+        let drawable: Vec<(&Arc<Mesh>, &GpuMesh)> = meshes
+            .iter()
+            .filter_map(|mesh| Some((mesh, self.resident.get(mesh.id)?)))
+            .enumerate()
+            .map(|(order, (mesh, gpu))| ((layer_of(mesh), arena_of(mesh, gpu), order), (mesh, gpu)))
+            .collect::<BTreeMap<_, _>>()
+            .into_values()
+            .collect();
         let behind: Vec<(&Arc<Mesh>, &GpuMesh)> = backfill.iter().filter_map(|mesh| Some((mesh, self.resident.get(mesh.id)?))).collect();
-        let stride = self.stride;
         let slots = behind.len() + drawable.len();
         if self.draws.as_ref().is_none_or(|draws| draws.slots < slots) {
             self.draws = Some(self.draw_buffer(draw_slots(slots)));
         }
         let Some(draws) = self.draws.as_ref() else { return };
-        let padding = ((stride - DRAW_BYTES) / 4) as usize;
         let matrices: Vec<f32> = behind
             .iter()
             .chain(&drawable)
             .flat_map(|(mesh, _)| {
                 let model = camera.relative(mesh.to_ecef);
-                (view_projection * model).as_mat4().to_cols_array().into_iter().chain(model.as_mat4().to_cols_array()).chain(std::iter::repeat_n(0.0, padding))
+                (view_projection * model).as_mat4().to_cols_array().into_iter().chain(model.as_mat4().to_cols_array())
             })
             .collect();
         if !matrices.is_empty() {
             self.queue.write_buffer(&draws.buffer, 0, bytemuck::cast_slice(&matrices));
         }
-        let offset = |slot: usize| (slot as u64 * stride) as u32;
+        let placed = |slot: usize| u32::try_from(slot).map_or(0..0, |slot| slot..slot + 1);
         let direction = |v: glam::DVec3| v.as_vec3().extend(0.0).to_array();
         self.queue.write_buffer(&self.scene, 0, &bytes(camera.unproject().as_mat4().to_cols_array().into_iter().chain(direction(camera.zenith)).chain(direction(camera.sun))));
         let mut encoder = self.device.create_command_encoder(&Default::default());
@@ -347,36 +426,21 @@ impl Renderer {
             pass.set_bind_group(0, &self.scene_bind, &[]);
             pass.set_pipeline(&self.sky);
             pass.draw(0..3, 0..1);
+            pass.set_vertex_buffer(1, draws.buffer.slice(..));
+            let bound = Cell::new(None);
             pass.set_pipeline(&self.backfill);
-            behind.iter().enumerate().for_each(|(slot, (_, gpu))| {
-                pass.set_bind_group(1, &gpu.bind, &[]);
-                pass.set_bind_group(2, &draws.bind, &[offset(slot)]);
-                pass.set_vertex_buffer(0, gpu.vertices.slice(..));
-                pass.set_index_buffer(gpu.indices.slice(..), wgpu::IndexFormat::Uint32);
-                pass.draw_indexed(0..gpu.count, 0, 0..1);
-            });
+            behind.iter().enumerate().for_each(|(slot, (_, gpu))| record(&mut pass, &self.arenas, &bound, gpu, placed(slot)));
             LAYERS.iter().zip(&self.pipelines).for_each(|(layer, pipeline)| {
                 pass.set_pipeline(pipeline);
-                drawable.iter().enumerate().filter(|(_, (mesh, _))| mesh.layer == *layer).for_each(|(slot, (_, gpu))| {
-                    pass.set_bind_group(1, &gpu.bind, &[]);
-                    pass.set_bind_group(2, &draws.bind, &[offset(behind.len() + slot)]);
-                    pass.set_vertex_buffer(0, gpu.vertices.slice(..));
-                    pass.set_index_buffer(gpu.indices.slice(..), wgpu::IndexFormat::Uint32);
-                    pass.draw_indexed(0..gpu.count, 0, 0..1);
-                });
+                drawable.iter().enumerate().filter(|(_, (mesh, _))| mesh.layer == *layer).for_each(|(slot, (_, gpu))| record(&mut pass, &self.arenas, &bound, gpu, placed(behind.len() + slot)));
             });
         }
         self.queue.submit([encoder.finish()]);
     }
 
     fn draw_buffer(&self, slots: usize) -> Draws {
-        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some("synthetic draws"), size: slots as u64 * self.stride, usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
-        let bind = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("synthetic draws"),
-            layout: &self.draws_layout,
-            entries: &[wgpu::BindGroupEntry { binding: 0, resource: wgpu::BindingResource::Buffer(wgpu::BufferBinding { buffer: &buffer, offset: 0, size: wgpu::BufferSize::new(DRAW_BYTES) }) }],
-        });
-        Draws { buffer, bind, slots }
+        let buffer = self.device.create_buffer(&wgpu::BufferDescriptor { label: Some("synthetic draws"), size: slots as u64 * DRAW_BYTES, usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST, mapped_at_creation: false });
+        Draws { buffer, slots }
     }
 
     pub fn clear(&mut self, target: &wgpu::TextureView, targets: &Targets) {
@@ -439,9 +503,7 @@ mod tests {
     }
 
     #[test]
-    fn every_draw_gets_its_own_aligned_slot_in_one_shared_buffer() {
-        assert_eq!(draw_stride(256), 256, "Adreno GL and most drivers align uniform offsets to 256 bytes");
-        assert_eq!(draw_stride(64), 128, "a smaller alignment packs the two matrices back to back");
+    fn every_draw_gets_its_own_slot_in_one_shared_buffer() {
         assert_eq!(draw_slots(10), 1024, "the buffer starts big enough for a city");
         assert_eq!(draw_slots(1100), 2048, "and doubles rather than growing a draw at a time");
     }
@@ -453,7 +515,7 @@ mod tests {
         assert_eq!(resident.ensure(&[kept.clone(), dropped.clone()], |mesh| mesh.id), 2);
         assert_eq!(resident.ensure(std::slice::from_ref(&kept), |mesh| mesh.id), 0, "not drawn this frame is not a reason to upload again");
         drop(dropped);
-        assert_eq!(resident.evict(), 1);
+        assert_eq!(resident.evict().len(), 1);
         assert_eq!(resident.get(kept.id), Some(&kept.id));
     }
 
@@ -469,5 +531,31 @@ mod tests {
         assert_eq!(resident.ensure(std::slice::from_ref(&second), |mesh| mesh.id), 1, "the new mesh gets its own upload");
         assert_eq!(resident.get(second.id), Some(&second.id));
         assert_eq!(resident.get(first_id), None);
+    }
+
+    #[test]
+    fn meshes_share_one_arena_and_an_emptied_extra_arena_gives_its_memory_back() {
+        let mut arenas: Vec<Option<Arena<()>>> = Vec::new();
+        let first = place_in(&mut arenas, 100, 300, |_, _| ()).expect("room");
+        let second = place_in(&mut arenas, 100, 300, |_, _| ()).expect("room");
+        assert_eq!((first.arena, second.arena, second.vertices.clone()), (0, 0, 100..200), "packed after the first in the same buffers");
+        let opened = Cell::new(0);
+        let big = place_in(&mut arenas, ARENA_VERTICES + 1, 3, |vertices, _| opened.set(vertices)).expect("room");
+        assert_eq!((big.arena, opened.get()), (1, ARENA_VERTICES + 1), "a mesh bigger than an arena gets one sized to fit");
+        release(&mut arenas, big);
+        close_empty(&mut arenas);
+        assert!(arenas[1].is_none(), "an emptied extra arena is freed");
+        assert_eq!(place_in(&mut arenas, ARENA_VERTICES, 3, |_, _| ()).map(|place| place.arena), Some(1), "and its slot is reused");
+        [first, second].into_iter().for_each(|place| release(&mut arenas, place));
+        close_empty(&mut arenas);
+        assert!(arenas[0].is_some(), "the first arena stays for the next tiles");
+    }
+
+    #[test]
+    fn an_arena_out_of_index_room_hands_back_the_vertices_it_tried() {
+        let mut arenas: Vec<Option<Arena<()>>> = Vec::new();
+        place_in(&mut arenas, 10, ARENA_INDICES, |_, _| ()).expect("room");
+        assert_eq!(place_in(&mut arenas, 10, 3, |_, _| ()).map(|place| place.arena), Some(1));
+        assert_eq!(arenas[0].as_ref().map(|arena| arena.vertex_space.total_available()), Some(ARENA_VERTICES - 10));
     }
 }

@@ -37,6 +37,7 @@ const TURN_LONGEST: Duration = Duration::from_millis(300);
 const TURN_STRETCH: f64 = 1.3;
 const DEG_S_PER_DETAIL_STEP: f64 = 15.0;
 const COARSEST_WHILE_TURNING: f64 = 3.0;
+const COARSER_UNTIL_HANDOVER: f64 = 4.0;
 const SPIN_SMOOTHING: f64 = 0.3;
 const GOOGLE_READY_COARSEST: f64 = 1_000.0;
 const STAND_IN_WORKERS: usize = 3;
@@ -752,7 +753,7 @@ impl Session {
         let ground = self.under.height.or(self.home.height).unwrap_or(0.0);
         let (meshes, jobs, coarsest, backfill) = match &mut self.source {
             Source::Google(Some(tiles)) => {
-                let Selection { meshes, wanted, coarsest, backfill } = tiles.select_measured(camera, room, detail, now);
+                let Selection { meshes, wanted, coarsest, backfill } = tiles.select_measured(camera, room, if handed_over { detail } else { detail * COARSER_UNTIL_HANDOVER }, now);
                 tiles.trim(now, self.probed);
                 (meshes, wanted.into_iter().map(Job::Tile).collect(), coarsest, backfill)
             }

@@ -866,6 +866,7 @@ dependencies = [
  "pollster",
  "px4-ulog",
  "quick_cache",
+ "range-alloc",
  "rayon-core",
  "regex",
  "roxmltree",
