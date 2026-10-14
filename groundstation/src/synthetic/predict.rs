@@ -8,8 +8,8 @@ pub struct Lag {
 }
 
 pub const LOITER_YAW: Lag = Lag { dead: Duration::from_millis(50), rising: Duration::from_millis(120), falling: Duration::from_millis(120) };
-pub const ACRO_YAW: Lag = Lag { dead: Duration::from_millis(70), rising: Duration::from_millis(130), falling: Duration::from_millis(130) };
-pub const ACRO_TILT: Lag = Lag { dead: Duration::from_millis(30), rising: Duration::from_millis(50), falling: Duration::from_millis(50) };
+pub const ACRO_YAW: Lag = Lag { dead: Duration::from_millis(40), rising: Duration::from_millis(115), falling: Duration::from_millis(115) };
+pub const ACRO_TILT: Lag = Lag { dead: Duration::from_millis(30), rising: Duration::from_millis(25), falling: Duration::from_millis(25) };
 pub const LOITER_SPEED: Lag = Lag { dead: Duration::from_millis(150), rising: Duration::from_millis(1_500), falling: Duration::from_millis(500) };
 pub const CLIMB: Lag = Lag { dead: Duration::from_millis(150), rising: Duration::from_millis(600), falling: Duration::from_millis(600) };
 
