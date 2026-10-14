@@ -90,7 +90,7 @@ pub fn set_mode(state: &VehicleState, mode: &str) -> Option<Vec<Step>> {
 pub const GUIDED_NOT_SUPPORTED: &str = "Guided mode not supported by Vehicle.";
 pub const STICK_HOLD_MODE: &str = "Loiter";
 pub const STICK_ALTITUDE_MODE: &str = "Altitude Hold";
-const RAW_STICK_MODES: [&str; 2] = ["Stabilize", "Acro"];
+const STICK_TAKEOFF_MODES: [&str; 5] = ["Loiter", "Altitude Hold", "Position Hold", "Sport", "Flow Hold"];
 const GUIDED: &str = "Guided";
 
 fn in_mode(state: &VehicleState, names: &[&str]) -> bool {
@@ -104,7 +104,7 @@ fn ardupilot_copter(state: &VehicleState) -> bool {
 
 pub fn stick_arm(state: &VehicleState, position_known: bool) -> Plan {
     let mode = if position_known { STICK_HOLD_MODE } else { STICK_ALTITUDE_MODE };
-    let switch = (ardupilot_copter(state) && in_mode(state, &RAW_STICK_MODES)).then(|| set_mode(state, mode)).flatten().unwrap_or_default();
+    let switch = (ardupilot_copter(state) && !in_mode(state, &STICK_TAKEOFF_MODES)).then(|| set_mode(state, mode)).flatten().unwrap_or_default();
     Plan::Steps(switch.into_iter().chain([arm(true, false)]).collect())
 }
 
@@ -498,12 +498,15 @@ mod tests {
     }
 
     #[test]
-    fn arming_for_the_on_screen_sticks_leaves_the_raw_modes_for_one_that_holds() {
+    fn arming_for_the_on_screen_sticks_switches_to_a_mode_the_throttle_takes_off_in() {
         let stabilize = VehicleState { flight_mode: "Stabilize".into(), ..copter() };
         assert_eq!(modes_in(&stick_arm(&stabilize, true)), vec![STICK_HOLD_MODE], "with a position the sticks fly it like a DJI in P mode");
         assert_eq!(modes_in(&stick_arm(&stabilize, false)), vec![STICK_ALTITUDE_MODE], "without one it holds its height, like ATTI");
         assert_eq!(modes_in(&stick_arm(&VehicleState { flight_mode: "Acro".into(), ..copter() }, true)), vec![STICK_HOLD_MODE]);
+        assert_eq!(modes_in(&stick_arm(&VehicleState { flight_mode: "Land".into(), ..copter() }, true)), vec![STICK_HOLD_MODE], "a failsafe left it in Land, which cannot arm; the sticks take off in Loiter");
+        assert_eq!(modes_in(&stick_arm(&VehicleState { flight_mode: "RTL".into(), ..copter() }, true)), vec![STICK_HOLD_MODE]);
         assert!(modes_in(&stick_arm(&VehicleState { flight_mode: "Altitude Hold".into(), ..copter() }, true)).is_empty(), "a mode the pilot picked is kept");
+        assert!(modes_in(&stick_arm(&VehicleState { flight_mode: "Position Hold".into(), ..copter() }, true)).is_empty());
         assert!(modes_in(&stick_arm(&VehicleState { flight_mode: "Stabilize".into(), ..px4() }, true)).is_empty(), "PX4 is left alone");
         let Plan::Steps(steps) = stick_arm(&stabilize, true) else { panic!() };
         assert_eq!(steps.last(), Some(&arm(true, false)), "it arms after the mode changes");
