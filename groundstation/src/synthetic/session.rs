@@ -7,6 +7,8 @@ use url::Url;
 
 use super::fetch::{Fetcher, Pool};
 use super::httpcache::Answer;
+use glam::{DQuat, DVec3, EulerRot};
+
 use super::geo::{Camera, Pose};
 use super::ground;
 use super::predict::{self, Gain, Lag, Predicted, Step};
@@ -446,9 +448,27 @@ pub fn ahead(target: &Target, sticks: &[StickSample], read: Reading, now: Instan
     let north = along.map(|(forward, right)| move |sample: &StickSample| forward.commanded(sample.pitch) * cos - right.commanded(sample.roll) * sin);
     let east = along.map(|(forward, right)| move |sample: &StickSample| forward.commanded(sample.pitch) * sin + right.commanded(sample.roll) * cos);
     let climb = response.climb.map(|climb| move |sample: &StickSample| climb.commanded(sample.thrust));
-    let turning = axis(target.heading_rate.unwrap_or(0.0), read.attitude, LONGEST_TURN_GUESS, yaw_lag, yaw.as_ref().map(|f| f as &dyn Fn(&StickSample) -> f64));
-    let nodding = axis(target.pitch_rate.unwrap_or(0.0), read.attitude, LONGEST_TURN_GUESS, predict::ACRO_TILT, pitch.as_ref().map(|f| f as &dyn Fn(&StickSample) -> f64));
-    let banking = axis(target.roll_rate, read.attitude, LONGEST_TURN_GUESS, predict::ACRO_TILT, roll.as_ref().map(|f| f as &dyn Fn(&StickSample) -> f64));
+    let yaw = yaw.as_ref().map(|f| f as &dyn Fn(&StickSample) -> f64);
+    let pitch = pitch.as_ref().map(|f| f as &dyn Fn(&StickSample) -> f64);
+    let roll = roll.as_ref().map(|f| f as &dyn Fn(&StickSample) -> f64);
+    let airframe = response.rate_mode.then(|| target.heading_rate.zip(target.pitch_rate)).flatten();
+    let ((heading, tilt, bank), (heading_rate, pitch_rate, roll_rate)) = match airframe {
+        Some((heading_rate, pitch_rate)) => {
+            let [p, q, r] = crate::synthview::body_rates(target.roll, target.pitch, (target.roll_rate, pitch_rate, heading_rate));
+            let spin = [
+                axis(p, read.attitude, LONGEST_TURN_GUESS, predict::ACRO_TILT, roll),
+                axis(q, read.attitude, LONGEST_TURN_GUESS, predict::ACRO_TILT, pitch),
+                axis(r, read.attitude, LONGEST_TURN_GUESS, yaw_lag, yaw),
+            ];
+            rotated(target, spin)
+        }
+        None => {
+            let turning = axis(target.heading_rate.unwrap_or(0.0), read.attitude, LONGEST_TURN_GUESS, yaw_lag, yaw);
+            let nodding = axis(target.pitch_rate.unwrap_or(0.0), read.attitude, LONGEST_TURN_GUESS, predict::ACRO_TILT, pitch);
+            let banking = axis(target.roll_rate, read.attitude, LONGEST_TURN_GUESS, predict::ACRO_TILT, roll);
+            ((target.heading + turning.travelled, target.pitch + nodding.travelled, target.roll + banking.travelled), (turning.value, nodding.value, banking.value))
+        }
+    };
     let northing = axis(target.north_speed, read.spot, LONGEST_GUESS, predict::LOITER_SPEED, north.as_ref().map(|f| f as &dyn Fn(&StickSample) -> f64));
     let easting = axis(target.east_speed, read.spot, LONGEST_GUESS, predict::LOITER_SPEED, east.as_ref().map(|f| f as &dyn Fn(&StickSample) -> f64));
     let climbing = axis(target.climb_speed, read.height, LONGEST_GUESS, predict::CLIMB, climb.as_ref().map(|f| f as &dyn Fn(&StickSample) -> f64));
@@ -457,13 +477,23 @@ pub fn ahead(target: &Target, sticks: &[StickSample], read: Reading, now: Instan
         latitude,
         longitude,
         above_home: target.above_home + climbing.travelled,
-        heading: target.heading + turning.travelled,
-        pitch: target.pitch + nodding.travelled,
-        roll: target.roll + banking.travelled,
+        heading,
+        pitch: tilt,
+        roll: bank,
         ..target.clone()
     };
-    let motion = Motion { north: northing.value, east: easting.value, climb: climbing.value, heading: turning.value, pitch: nodding.value, roll: banking.value };
+    let motion = Motion { north: northing.value, east: easting.value, climb: climbing.value, heading: heading_rate, pitch: pitch_rate, roll: roll_rate };
     (guess, motion)
+}
+
+fn rotated(target: &Target, [p, q, r]: [Predicted; 3]) -> ((f64, f64, f64), (f64, f64, f64)) {
+    let start = DQuat::from_euler(EulerRot::ZYX, target.heading.to_radians(), target.pitch.to_radians(), target.roll.to_radians());
+    let turned = start * DQuat::from_scaled_axis(DVec3::new(p.travelled, q.travelled, r.travelled) * std::f64::consts::PI / 180.0);
+    let (heading, pitch, roll) = turned.to_euler(EulerRot::ZYX);
+    let (pitch, roll) = (pitch.to_degrees(), roll.to_degrees());
+    let heading = target.heading + (heading.to_degrees() - target.heading + 180.0).rem_euclid(360.0) - 180.0;
+    let (roll_rate, pitch_rate, heading_rate) = crate::synthview::euler_rates(roll, pitch, [p.value, q.value, r.value]);
+    ((heading, pitch, roll), (heading_rate, pitch_rate, roll_rate))
 }
 
 pub fn advanced(pose: Pose, motion: &Motion, elapsed: Duration) -> Pose {
@@ -1038,6 +1068,29 @@ mod tests {
         assert!(motion.heading > 5.0 && turning.heading > resting.heading, "the frame drawn as the stick moves already turns, ahead of any telemetry: {motion:?}");
         let (_, stale) = ahead(&hovering, &pushed, read, at(1_400));
         assert_eq!(stale.heading, 0.0, "sticks that stopped sending 400 ms ago no longer steer the view");
+    }
+
+    #[test]
+    fn in_acro_a_yaw_while_banked_also_tips_the_nose_as_the_drone_does() {
+        let start = Instant::now();
+        let at = |ms: u64| start + Duration::from_millis(ms);
+        let gain = |full: f64| Some(Gain { full, expo: 0.0, deadzone: 0.0 });
+        let acro = Response { yaw: gain(200.0), roll: gain(360.0), pitch: gain(360.0), rate_mode: true, ..Response::default() };
+        let read = Reading { spot: at(970), height: at(970), attitude: at(970) };
+        let pushed = [stick(at(500), 0.0, 0.0, 0.0, 0.5), stick(at(900), 0.0, 0.0, 1.0, 0.5)];
+        let level = Target { pitch: 0.0, response: acro, round_trip: Some(Duration::from_millis(40)), ..target("Bing Satellite") };
+        let (flat, flat_motion) = ahead(&level, &pushed, read, at(1_000));
+        assert!(flat.heading > level.heading + 5.0 && flat.pitch.abs() < 1e-6 && flat_motion.pitch.abs() < 1e-6, "level, a yaw is only a turn: {flat_motion:?}");
+        let banked = Target { roll: 45.0, ..level.clone() };
+        let (guess, motion) = ahead(&banked, &pushed, read, at(1_000));
+        assert!(motion.pitch < -0.6 * motion.heading && guess.pitch < -3.0, "banked 45 deg, a body yaw drops the nose about as fast as it turns; drawing it as a pure turn snapped back at every reading: {guess:?} {motion:?}");
+        assert!(guess.heading > banked.heading && guess.heading - banked.heading < flat.heading - level.heading, "and turns the heading less than when level");
+    }
+
+    #[test]
+    fn body_and_euler_rates_convert_back_and_forth() {
+        let rates = crate::synthview::euler_rates(30.0, -20.0, crate::synthview::body_rates(30.0, -20.0, (10.0, -25.0, 40.0)));
+        assert!((rates.0 - 10.0).abs() < 1e-9 && (rates.1 + 25.0).abs() < 1e-9 && (rates.2 - 40.0).abs() < 1e-9, "{rates:?}");
     }
 
     #[test]

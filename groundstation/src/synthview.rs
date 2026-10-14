@@ -115,6 +115,12 @@ pub fn euler_rates(roll: f64, pitch: f64, [p, q, r]: [f64; 3]) -> (f64, f64, f64
     (bounded(p + turning * pitch.tan()), bounded(q * cos_roll - r * sin_roll), bounded(turning / pitch.cos()))
 }
 
+pub fn body_rates(roll: f64, pitch: f64, (roll_rate, pitch_rate, heading_rate): (f64, f64, f64)) -> [f64; 3] {
+    let (sin_roll, cos_roll) = roll.to_radians().sin_cos();
+    let (sin_pitch, cos_pitch) = pitch.to_radians().sin_cos();
+    [roll_rate - heading_rate * sin_pitch, pitch_rate * cos_roll + heading_rate * sin_roll * cos_pitch, heading_rate * cos_roll * cos_pitch - pitch_rate * sin_roll]
+}
+
 fn ground_reach(height: f64, elevation_deg: f64) -> f64 {
     match elevation_deg < BELOW_HORIZON_DEG {
         true => (height / (-elevation_deg).to_radians().tan()).min(BEAM_REACH_M),
