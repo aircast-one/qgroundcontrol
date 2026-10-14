@@ -127,6 +127,7 @@ pub const TAKEOVER_DEFLECTION: f64 = 0.3;
 pub const TAKEOVER_HOLD_MS: u64 = 300;
 pub const TAKEOVER_RETRY_MS: u64 = 5000;
 pub const YAW_EXPO_PCT: f64 = 20.0;
+pub const YAW_DEADZONE: f64 = 0.15;
 const THROTTLE_CENTRE: f64 = 0.5;
 
 pub fn stick_deflected(roll: f64, pitch: f64, yaw: f64, thrust: f64, flying: bool) -> bool {
@@ -214,6 +215,10 @@ fn remember(sample: StickSample) {
 fn wake_view() {
     #[cfg(all(feature = "synthetic", native_synthetic, not(test)))]
     crate::synthetic::host::wake();
+}
+
+fn past_deadzone(yaw: f64) -> f64 {
+    ((yaw.abs() - YAW_DEADZONE).max(0.0) / (1.0 - YAW_DEADZONE)).copysign(yaw)
 }
 
 pub fn yaw_sent(yaw: f64) -> f64 {
@@ -324,6 +329,7 @@ pub fn send(backend: &dyn Backend, args: &str) -> Value {
     let vehicle = backend.value_fields("vehicle", VEHICLE_FIELDS);
     let rate = rate_mode_now(&vehicle);
     let (roll, pitch) = (softened(roll, rate), softened(pitch, rate));
+    let yaw = past_deadzone(yaw);
     let thrust = match rate {
         true => THROTTLE_CENTRE + softened(2.0 * (thrust - THROTTLE_CENTRE), true) / 2.0,
         false => thrust,
@@ -518,10 +524,24 @@ mod tests {
     }
 
     #[test]
+    fn a_thumb_resting_on_the_yaw_stick_does_not_turn_the_aircraft_and_full_stick_is_still_full() {
+        let sent = |yaw: f64| {
+            let loiter = on("copter", "Loiter");
+            send(&loiter, &format!("[0.0, 0.0, {yaw}, 0.5]"));
+            let call = loiter.invoked.borrow()[0].clone();
+            serde_json::from_str::<Vec<f64>>(call.split_once(' ').expect("path and args").1).expect("four axes")[2]
+        };
+        assert_eq!(sent(0.12), 0.0, "a quarter of the stray yaw sent while sliding sideways was this small");
+        assert_eq!(sent(-0.15), 0.0);
+        assert!((sent(0.575) - 0.5).abs() < 1e-9, "past the dead zone the stick rescales ({})", sent(0.575));
+        assert_eq!((sent(1.0), sent(-1.0)), (1.0, -1.0));
+    }
+
+    #[test]
     fn values_go_to_the_vehicle_only_once_it_has_connected() {
         let up = rig(false, false, true);
-        assert_eq!(send(&up, "[0.1, 0.2, 0.3, 0.9]")["ok"], json!(true));
-        assert_eq!(up.invoked.borrow().as_slice(), ["vehicle.virtualTabletJoystickValue [0.1,0.2,0.3,0.9]"]);
+        assert_eq!(send(&up, "[0.1, 0.2, 1.0, 0.9]")["ok"], json!(true));
+        assert_eq!(up.invoked.borrow().as_slice(), ["vehicle.virtualTabletJoystickValue [0.1,0.2,1.0,0.9]"]);
         let down = rig(false, false, false);
         assert_eq!(send(&down, "[0, 0, 0, 0]")["ok"], json!(false));
         assert!(down.invoked.borrow().is_empty());
