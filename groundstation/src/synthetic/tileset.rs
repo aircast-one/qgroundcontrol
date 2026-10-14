@@ -1,3 +1,4 @@
+use std::collections::BTreeSet;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -135,6 +136,7 @@ pub struct Tileset {
     root: Tile,
     session: Option<(String, String)>,
     keep: Vec<(String, String)>,
+    held: BTreeSet<Vec<usize>>,
     swept: Option<Instant>,
     trimmed: Option<Instant>,
     coarsest: f64,
@@ -172,49 +174,42 @@ fn empty() -> Tile {
     Tile { bounds: Obb { center: DVec3::ZERO, half: [DVec3::ZERO; 3] }, geometric_error: 0.0, url: None, content: Content::None, children: Vec::new(), used: None, wanted: None }
 }
 
-fn unload(tile: &mut Tile, now: Instant) {
-    let stale = tile.used.is_none_or(|used| now.duration_since(used) > UNLOAD_AFTER);
-    if stale {
-        tile.wanted = None;
+fn holds(tile: &Tile) -> bool {
+    tile.url.is_some() && matches!(tile.content, Content::Meshes(_) | Content::External)
+}
+
+fn held_in(tile: &Tile, path: &mut Vec<usize>, found: &mut BTreeSet<Vec<usize>>) {
+    if holds(tile) {
+        found.insert(path.clone());
     }
-    if stale && tile.url.is_some() && matches!(tile.content, Content::Meshes(_) | Content::External) {
-        if matches!(tile.content, Content::External) {
-            tile.children.clear();
-        }
-        tile.content = Content::Pending;
+    tile.children.iter().enumerate().for_each(|(index, child)| {
+        path.push(index);
+        held_in(child, path, found);
+        path.pop();
+    });
+}
+
+fn at<'a>(root: &'a Tile, path: &[usize]) -> Option<&'a Tile> {
+    path.iter().try_fold(root, |tile, &child| tile.children.get(child))
+}
+
+fn at_mut<'a>(root: &'a mut Tile, path: &[usize]) -> Option<&'a mut Tile> {
+    path.iter().try_fold(root, |tile, &child| tile.children.get_mut(child))
+}
+
+fn release(tile: &mut Tile) {
+    if matches!(tile.content, Content::External) {
+        tile.children.clear();
     }
-    tile.children.iter_mut().for_each(|child| unload(child, now));
+    tile.content = Content::Pending;
 }
 
 pub(super) fn cutoff(mut used: Vec<Instant>, most: usize) -> Option<Instant> {
     (used.len() > most && most > 0).then(|| *used.select_nth_unstable_by(most - 1, |a, b| b.cmp(a)).1)
 }
 
-fn used_meshes(tile: &Tile) -> Vec<Instant> {
-    gather_used(tile, Vec::new())
-}
-
-fn gather_used(tile: &Tile, found: Vec<Instant>) -> Vec<Instant> {
-    let found = match (tile.used, &tile.content) {
-        (Some(used), Content::Meshes(_)) => {
-            let mut grown = found;
-            grown.push(used);
-            grown
-        }
-        _ => found,
-    };
-    tile.children.iter().fold(found, |found, child| gather_used(child, found))
-}
-
 pub(super) fn kept(used: Instant, cutoff: Instant, now: Instant) -> bool {
     used > cutoff || used == now
-}
-
-fn evict(tile: &mut Tile, cutoff: Instant, seen: &[Instant]) {
-    if matches!(tile.content, Content::Meshes(_)) && tile.url.is_some() && !tile.used.is_some_and(|used| seen.iter().any(|at| kept(used, cutoff, *at))) {
-        tile.content = Content::Pending;
-    }
-    tile.children.iter_mut().for_each(|child| evict(child, cutoff, seen));
 }
 
 fn refine_above(camera: &Camera) -> f64 {
@@ -227,7 +222,9 @@ fn loaded(tile: &Tile) -> usize {
 
 impl Tileset {
     pub fn new(root: Tile, url: &Url) -> Self {
-        Self { root, session: None, keep: query(url), swept: None, trimmed: None, coarsest: f64::INFINITY, holes: 0, refine_at: MAXIMUM_SCREEN_SPACE_ERROR, fresh: Vec::new(), backfill: Vec::new() }
+        let mut held = BTreeSet::new();
+        held_in(&root, &mut Vec::new(), &mut held);
+        Self { root, session: None, keep: query(url), held, swept: None, trimmed: None, coarsest: f64::INFINITY, holes: 0, refine_at: MAXIMUM_SCREEN_SPACE_ERROR, fresh: Vec::new(), backfill: Vec::new() }
     }
 
     fn signed(&mut self, url: &Url) -> Url {
@@ -263,11 +260,11 @@ impl Tileset {
         let mut wanted = Vec::new();
         let mut root = std::mem::replace(&mut self.root, empty());
         let drawn = self.visit(&mut root, &mut Vec::new(), camera, (&planes, &horizon), &mut wanted, now).unwrap_or_default();
+        self.root = root;
         if self.swept.is_none_or(|swept| now.duration_since(swept) >= UNLOAD_SWEEP_EVERY) {
-            unload(&mut root, now);
+            self.sweep(now);
             self.swept = Some(now);
         }
-        self.root = root;
         wanted.sort_by(|a, b| a.distance.total_cmp(&b.distance).then(a.path.len().cmp(&b.path.len())));
         let wanted = wanted.into_iter().take(budget).filter_map(|candidate| self.claim(candidate.path)).collect();
         let coarsest = if drawn.is_empty() { f64::INFINITY } else { self.coarsest };
@@ -286,14 +283,39 @@ impl Tileset {
         Some(Request { url: self.signed(&url), path })
     }
 
+    fn sweep(&mut self, now: Instant) {
+        let root = &mut self.root;
+        self.held.retain(|path| {
+            let Some(tile) = at_mut(root, path).filter(|tile| holds(tile)) else { return false };
+            let stale = tile.used.is_none_or(|used| now.duration_since(used) > UNLOAD_AFTER);
+            if stale {
+                release(tile);
+            }
+            !stale
+        });
+    }
+
     pub fn trim(&mut self, now: Instant, probed: Option<Instant>) {
         if self.trimmed.is_some_and(|trimmed| now.duration_since(trimmed) < TRIM_EVERY) {
             return;
         }
         self.trimmed = Some(now);
-        if let Some(oldest) = cutoff(used_meshes(&self.root), MAX_LOADED_TILES) {
-            evict(&mut self.root, oldest, &[Some(now), probed].into_iter().flatten().collect::<Vec<_>>());
-        }
+        self.trim_to(MAX_LOADED_TILES, &[Some(now), probed].into_iter().flatten().collect::<Vec<_>>());
+    }
+
+    fn trim_to(&mut self, most: usize, seen: &[Instant]) {
+        let meshed = |tile: &&Tile| matches!(tile.content, Content::Meshes(_));
+        let used = self.held.iter().filter_map(|path| at(&self.root, path)).filter(meshed).filter_map(|tile| tile.used).collect();
+        let Some(oldest) = cutoff(used, most) else { return };
+        let root = &mut self.root;
+        self.held.retain(|path| {
+            let Some(tile) = at_mut(root, path).filter(|tile| holds(tile)) else { return false };
+            let evicted = matches!(tile.content, Content::Meshes(_)) && !tile.used.is_some_and(|used| seen.iter().any(|at| kept(used, oldest, *at)));
+            if evicted {
+                tile.content = Content::Pending;
+            }
+            !evicted
+        });
     }
 
     pub fn deliver(&mut self, path: &[usize], parsed: Result<Parsed, String>, now: Instant) -> Option<Duration> {
@@ -302,6 +324,7 @@ impl Tileset {
             return None;
         }
         let waited = tile.wanted.take().map(|wanted| now.saturating_duration_since(wanted));
+        let fetched = parsed.is_ok() && tile.url.is_some();
         tile.content = match parsed {
             Err(_) => Content::Failed(now),
             Ok(Parsed::External(child)) => {
@@ -314,6 +337,9 @@ impl Tileset {
                 Content::Meshes(arrived)
             }
         };
+        if fetched {
+            self.held.insert(path.to_vec());
+        }
         waited
     }
 
@@ -333,6 +359,9 @@ impl Tileset {
         let (planes, horizon) = sight;
         if planes.iter().any(|plane| tile.bounds.outside(*plane, camera.eye)) || horizon.hides(&tile.bounds) {
             return Some(Vec::new());
+        }
+        if tile.used.is_some_and(|used| now.duration_since(used) > UNLOAD_AFTER) {
+            tile.wanted = None;
         }
         tile.used = Some(now);
         let distance = tile.bounds.distance(camera.eye);
@@ -422,14 +451,16 @@ mod tests {
         let camera = camera();
         let now = Instant::now();
         let seen = |name: &str, ago: u64| Tile { content: Content::Meshes(vec![Arc::new(mesh())]), used: Some(now - Duration::from_secs(ago)), ..leaf(&camera, name) };
-        let mut root = Tile { content: Content::None, url: None, children: vec![seen("a", 5), seen("b", 0), seen("c", 9)], ..leaf(&camera, "root") };
-        let oldest = cutoff(used_meshes(&root), 1).expect("three tiles is over a budget of one");
-        evict(&mut root, oldest, &[now]);
-        assert_eq!(root.children.iter().map(|tile| matches!(tile.content, Content::Meshes(_))).collect::<Vec<_>>(), [false, true, false], "the tile drawn this frame stays");
-        let mut probed = Tile { content: Content::None, url: None, children: vec![seen("view", 0), seen("probe", 1), seen("old", 9)], ..leaf(&camera, "root") };
-        let oldest = cutoff(used_meshes(&probed), 1).expect("over budget");
-        evict(&mut probed, oldest, &[now, now - Duration::from_secs(1)]);
-        assert_eq!(probed.children.iter().map(|tile| matches!(tile.content, Content::Meshes(_))).collect::<Vec<_>>(), [true, true, false], "the ground probe's tiles from its last look stay as well");
+        let url = Url::parse("https://x/root.json").unwrap();
+        let tree = |children: Vec<Tile>| Tileset::new(Tile { content: Content::None, url: None, children, ..leaf(&camera, "root") }, &url);
+        let meshed = |tiles: &Tileset| tiles.root.children.iter().map(|tile| matches!(tile.content, Content::Meshes(_))).collect::<Vec<_>>();
+        let mut drawn = tree(vec![seen("a", 5), seen("b", 0), seen("c", 9)]);
+        drawn.trim_to(1, &[now]);
+        assert_eq!(meshed(&drawn), [false, true, false], "the tile drawn this frame stays");
+        assert_eq!(drawn.held.len(), 1, "evicted tiles leave the index, so the next trim does not look at them");
+        let mut probed = tree(vec![seen("view", 0), seen("probe", 1), seen("old", 9)]);
+        probed.trim_to(1, &[now, now - Duration::from_secs(1)]);
+        assert_eq!(meshed(&probed), [true, true, false], "the ground probe's tiles from its last look stay as well");
     }
 
     #[test]
@@ -602,6 +633,23 @@ mod tests {
         assert_eq!(tiles.loaded_tiles(), 1, "fetched tiles out of view for longer than the unload delay give their meshes back; the built-in root keeps its own");
         let (_, wanted) = tiles.select(&camera, 8, start + UNLOAD_AFTER + Duration::from_secs(2));
         assert_eq!(wanted.len(), 2, "coming back asks for them again");
+    }
+
+    #[test]
+    fn an_unloaded_tileset_takes_the_tiles_under_it_out_of_the_index() {
+        let camera = camera();
+        let url = Url::parse("https://x/root.json").unwrap();
+        let external = Tile { url: Some(Url::parse("https://x/sub.json").unwrap()), ..leaf(&camera, "sub") };
+        let mut tiles = Tileset::new(Tile { content: Content::None, url: None, geometric_error: 1000.0, children: vec![external], ..leaf(&camera, "root") }, &url);
+        let start = Instant::now();
+        tiles.select(&camera, 8, start);
+        tiles.deliver(&[0], Ok(Parsed::External(Box::new(leaf(&camera, "inner")))), start);
+        tiles.select(&camera, 8, start);
+        tiles.deliver(&[0, 0], Ok(Parsed::Meshes(vec![mesh()])), start);
+        assert_eq!(tiles.held.len(), 2);
+        let away = Camera::new(&Pose { latitude: 50.0, longitude: 50.0, height: 100.0, heading: 0.0, pitch: 0.0, roll: 0.0, fov: 60.0 }, 1280, 720);
+        tiles.select(&away, 8, start + UNLOAD_AFTER + Duration::from_secs(1));
+        assert!(tiles.held.is_empty() && tiles.root.children[0].children.is_empty(), "walking the whole tree every second to find these took 20-44 ms a frame on the phone");
     }
 
     #[test]
