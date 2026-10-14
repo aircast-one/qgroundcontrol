@@ -53,6 +53,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.foundation.text.KeyboardOptions
@@ -666,6 +667,7 @@ private fun LinkHostField(value: String, error: String?, enabled: Boolean, onCha
         isError = error != null,
         supportingText = error?.let { { Text(it) } },
         singleLine = true,
+        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri, autoCorrectEnabled = false, imeAction = ImeAction.Next),
         modifier = Modifier.fillMaxWidth(),
     )
 }
@@ -754,26 +756,26 @@ private fun EditLinkPage(row: LinkRow, onDismiss: () -> Unit, onSaved: () -> Uni
             error?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
-        }
-        Button(
-            enabled = editable,
-            modifier = Modifier.fillMaxWidth().padding(16.dp).heightIn(min = 52.dp),
-            onClick = {
-                error = editError(row.editing, edit, udpDefault)
-                if (error == null) scope.launch {
-                    val rows = withContext(Dispatchers.Default) { currentRows() }
-                    if (rows.firstOrNull { it.index == row.index }?.connected != false) {
-                        error = EDIT_WHILE_CONNECTED
-                        return@launch
+            Button(
+                enabled = editable,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                onClick = {
+                    error = editError(row.editing, edit, udpDefault)
+                    if (error == null) scope.launch {
+                        val rows = withContext(Dispatchers.Default) { currentRows() }
+                        if (rows.firstOrNull { it.index == row.index }?.connected != false) {
+                            error = EDIT_WHILE_CONNECTED
+                            return@launch
+                        }
+                        val resolved = edit.name.trim().ifBlank { uniqueLinkName(editSuggestion(row, edit, device, ports), rows.filter { it.index != row.index }.map { it.name }) }
+                        val writes = editWrites(row.editing, resolved, edit.host, editedPort(row.editing, edit.port, udpDefault), edit.portName, edit.baud, edit.autoConnect, edit.highLatency, edit.framing, edit.logFile)
+                        withContext(Dispatchers.Default) { applyEdit(row.index, writes, device) }
+                        if (row.editing == LinkEditing.LogFile) withContext(Dispatchers.IO) { pruneReplayFolder(context, row.name, edit.logFile) }
+                        onSaved()
                     }
-                    val resolved = edit.name.trim().ifBlank { uniqueLinkName(editSuggestion(row, edit, device, ports), rows.filter { it.index != row.index }.map { it.name }) }
-                    val writes = editWrites(row.editing, resolved, edit.host, editedPort(row.editing, edit.port, udpDefault), edit.portName, edit.baud, edit.autoConnect, edit.highLatency, edit.framing, edit.logFile)
-                    withContext(Dispatchers.Default) { applyEdit(row.index, writes, device) }
-                    if (row.editing == LinkEditing.LogFile) withContext(Dispatchers.IO) { pruneReplayFolder(context, row.name, edit.logFile) }
-                    onSaved()
-                }
-            },
-        ) { Text("Save and connect") }
+                },
+            ) { Text("Save and connect") }
+        }
     }
 }
 
@@ -1015,25 +1017,25 @@ private fun AddLinkDetails(type: LinkType, onBack: () -> Unit, onAdded: () -> Un
             if (fieldError == null) error?.let {
                 Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             }
-        }
-        Button(
-            enabled = !busy,
-            modifier = Modifier.fillMaxWidth().padding(16.dp).heightIn(min = 52.dp),
-            onClick = {
-                cloudErrors = type == LinkType.AircastCloud
-                val invalid = draftError(draft, udpDefault, taken, ports.isNotEmpty())
-                error = invalid?.ifBlank { null }
-                if (invalid == null) {
-                    busy = true
-                    val name = draft.name.trim().ifBlank { uniqueLinkName(suggestedName, taken) }
-                    scope.launch {
-                        val outcome = withContext(Dispatchers.Default) { addLink(context, draft, name, udpDefault) }
-                        busy = false
-                        if (outcome == AddOutcome.Failed) error = addFailure(type) else onAdded()
+            Button(
+                enabled = !busy,
+                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
+                onClick = {
+                    cloudErrors = type == LinkType.AircastCloud
+                    val invalid = draftError(draft, udpDefault, taken, ports.isNotEmpty())
+                    error = invalid?.ifBlank { null }
+                    if (invalid == null) {
+                        busy = true
+                        val name = draft.name.trim().ifBlank { uniqueLinkName(suggestedName, taken) }
+                        scope.launch {
+                            val outcome = withContext(Dispatchers.Default) { addLink(context, draft, name, udpDefault) }
+                            busy = false
+                            if (outcome == AddOutcome.Failed) error = addFailure(type) else onAdded()
+                        }
                     }
-                }
-            },
-        ) { Text(if (busy) "Connecting…" else if (type == LinkType.Mock) "Start" else "Connect") }
+                },
+            ) { Text(if (busy) "Connecting…" else if (type == LinkType.Mock) "Start" else "Connect") }
+        }
     }
 }
 
