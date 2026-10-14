@@ -48,6 +48,10 @@ const LONGEST_GUESS: Duration = Duration::from_secs(1);
 const LONGEST_TURN_GUESS: Duration = Duration::from_millis(600);
 const DISPLAY_LEAD: Duration = Duration::from_millis(25);
 const STICKS_LIVE: Duration = Duration::from_millis(300);
+const SURROUND_EVERY: Duration = Duration::from_millis(500);
+const SURROUND_COARSER: f64 = 8.0;
+const SURROUND_SLOTS: usize = 4;
+const SURROUND_TURNS: [f64; 3] = [90.0, 180.0, 270.0];
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Target {
@@ -152,6 +156,14 @@ impl Target {
             round_trip: view.get("roundTripMs").and_then(serde_json::Value::as_u64).map(Duration::from_millis),
         })
     }
+}
+
+fn surround(tiles: &mut Tileset, pose: &Pose, width: u32, height: u32, budget: usize, now: Instant) -> Vec<Request> {
+    SURROUND_TURNS.iter().fold(Vec::new(), |found, turn| {
+        let camera = Camera::new(&Pose { heading: pose.heading + turn, ..*pose }, width, height);
+        let more = tiles.select_measured(&camera, budget.saturating_sub(found.len()), SURROUND_COARSER, now).wanted;
+        found.into_iter().chain(more).collect()
+    })
 }
 
 pub fn root_url(token: &str, fetcher: &dyn Fetcher) -> Result<Url, String> {
@@ -320,6 +332,7 @@ pub struct Session {
     home: Probe,
     under: Probe,
     probed: Option<Instant>,
+    surrounded: Option<Instant>,
     shown: Option<Pose>,
     ticked: Option<Instant>,
     selected: Option<Instant>,
@@ -540,6 +553,7 @@ impl Session {
             home: Probe::default(),
             under: Probe::default(),
             probed: None,
+            surrounded: None,
             shown: None,
             ticked: None,
             selected: None,
@@ -733,7 +747,8 @@ impl Session {
         };
     }
 
-    fn select(&mut self, camera: &Camera, target: &Target, now: Instant) -> bool {
+    fn select(&mut self, pose: &Pose, width: u32, height: u32, target: &Target, now: Instant) -> bool {
+        let camera = &Camera::new(pose, width, height);
         let room = self.room().saturating_sub(PROBE_SLOTS);
         let detail = turn_detail(self.spin);
         let handed_over = self.handed_over();
@@ -761,9 +776,16 @@ impl Session {
         let ground = self.under.height.or(self.home.height).unwrap_or(0.0);
         let (meshes, jobs, coarsest, holes, backfill) = match &mut self.source {
             Source::Google(Some(tiles)) => {
-                let Selection { meshes, wanted, coarsest, holes, backfill } = tiles.select_measured(camera, room, if handed_over { detail } else { detail * COARSER_UNTIL_HANDOVER }, now);
+                let due = handed_over && self.surrounded.is_none_or(|at| now.duration_since(at) >= SURROUND_EVERY);
+                let around = match due {
+                    true => surround(tiles, pose, width, height, room.min(SURROUND_SLOTS), now),
+                    false => Vec::new(),
+                };
+                self.surrounded = if due { Some(now) } else { self.surrounded };
+                let kept = if handed_over { SURROUND_SLOTS } else { 0 };
+                let Selection { meshes, wanted, coarsest, holes, backfill } = tiles.select_measured(camera, room.saturating_sub(kept), if handed_over { detail } else { detail * COARSER_UNTIL_HANDOVER }, now);
                 tiles.trim(now, self.probed);
-                (meshes, wanted.into_iter().map(Job::Tile).collect(), coarsest, holes, backfill)
+                (meshes, around.into_iter().chain(wanted).map(Job::Tile).collect(), coarsest, holes, backfill)
             }
             Source::Open(scene) => {
                 let (meshes, wanted) = scene.select(camera, &target.imagery, ground, target.latitude, target.longitude, detail, room, now);
@@ -842,7 +864,7 @@ impl Session {
         let fresh = self.seen.as_ref() != Some(target);
         self.seen = Some(target.clone());
         let due = self.selected.is_none_or(|at| now.duration_since(at) >= RESELECT_EVERY);
-        let reselected = (delivered > 0 || moving || fresh || due) && self.select(&Camera::new(&pose, width, height), target, now);
+        let reselected = (delivered > 0 || moving || fresh || due) && self.select(&pose, width, height, target, now);
         let warm = match &mut self.source {
             Source::Google(Some(tiles)) => tiles.take_fresh(),
             _ => Vec::new(),
@@ -894,6 +916,21 @@ mod tests {
 
     fn heading(degrees: f64) -> Aim {
         Aim { heading: degrees, pitch: -15.0 }
+    }
+
+    #[test]
+    fn ground_behind_the_camera_is_fetched_coarse_so_a_turn_has_something_to_show() {
+        let pose = Pose { latitude: 0.0, longitude: 0.0, height: 100.0, heading: 0.0, pitch: 0.0, roll: 0.0, fov: 70.0 };
+        let centre = |latitude: f64| crate::synthetic::geo::ecef(latitude, 0.0, 0.0);
+        let boxed = |at: glam::DVec3, half: f64| serde_json::json!([at.x, at.y, at.z, half, 0.0, 0.0, 0.0, half, 0.0, 0.0, 0.0, half]);
+        let leaf = |latitude: f64, name: &str| serde_json::json!({"boundingVolume": {"box": boxed(centre(latitude), 50.0)}, "geometricError": 1.0, "content": {"uri": format!("{name}.glb")}});
+        let json = serde_json::json!({"root": {"boundingVolume": {"box": boxed(centre(0.0), 5_000.0)}, "geometricError": 1e6, "children": [leaf(0.003, "ahead"), leaf(-0.003, "behind")]}});
+        let url = Url::parse("https://x/root.json").expect("url");
+        let mut tiles = Tileset::new(tileset::root(json.to_string().as_bytes(), &url).expect("tileset"), &url);
+        let paths = |wanted: Vec<Request>| wanted.into_iter().map(|request| request.url.path().to_string()).collect::<Vec<_>>();
+        let now = Instant::now();
+        assert_eq!(paths(tiles.select_measured(&Camera::new(&pose, 1280, 720), 8, 1.0, now).wanted), ["/ahead.glb"]);
+        assert_eq!(paths(surround(&mut tiles, &pose, 1280, 720, 8, now)), ["/behind.glb"], "a yaw on the phone swung onto ground never fetched and showed up to 13 holes");
     }
 
     #[test]
