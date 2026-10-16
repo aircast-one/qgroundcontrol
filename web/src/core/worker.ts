@@ -24,7 +24,24 @@ core.setSerialHost({
   },
   close: (id: number) => scope.postMessage({ serial: { op: 'close', id } }),
 });
-setInterval(core.pump, PUMP_MS);
+const settings: { revision: bigint | null } = { revision: null };
+
+const openSettings = (text: string) => {
+  const opened = core.settingsOpen(text);
+  settings.revision = core.settingsRevision();
+  return opened;
+};
+
+const pumpAndKeepSettings = () => {
+  core.pump();
+  if (settings.revision === null) return;
+  const revision = core.settingsRevision();
+  if (revision === settings.revision) return;
+  settings.revision = revision;
+  scope.postMessage({ settings: core.settingsText() });
+};
+
+setInterval(pumpAndKeepSettings, PUMP_MS);
 
 const calls = {
   get: core.get,
@@ -39,9 +56,7 @@ const calls = {
   hostLinkOpen: core.hostLinkOpen,
   hostLinkBytes: core.hostLinkBytes,
   hostLinkClosed: core.hostLinkClosed,
-  settingsOpen: core.settingsOpen,
-  settingsText: core.settingsText,
-  settingsRevision: core.settingsRevision,
+  settingsOpen: openSettings,
   setMockLinksAvailable: core.setMockLinksAvailable,
   setSerialPorts: core.setSerialPorts,
   serialReceived: core.serialReceived,

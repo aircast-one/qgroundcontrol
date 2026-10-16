@@ -2,7 +2,8 @@
   "compilerOptions": {
     "target": "ES2023",
     "lib": [
-      "ES2023"
+      "ES2023",
+      "DOM"
     ],
     "module": "ESNext",
     "moduleResolution": "bundler",
@@ -15,6 +16,8 @@
   },
   "include": [
     "vite.config.ts",
-    "scripts"
+    "playwright.config.ts",
+    "scripts",
+    "e2e"
   ]
 }

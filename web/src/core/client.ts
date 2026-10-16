@@ -1,5 +1,4 @@
 const SETTINGS_KEY = 'aircast.settings';
-const SETTINGS_SAVE_MS = 2000;
 const WEB_SERIAL_PREFIX = 'webserial-';
 
 type Reply = { id: string; result: unknown };
@@ -7,7 +6,7 @@ type SerialOp =
   | { op: 'open'; id: number; name: string; baud: number; dataBits: number; stopBits: number; parity: number }
   | { op: 'write'; id: number; bytes: Uint8Array }
   | { op: 'close'; id: number };
-type Message = { ready: true } | { event: { path: string; json: string } } | { write: { id: number; bytes: Uint8Array } } | { serial: SerialOp } | Reply;
+type Message = { ready: true } | { event: { path: string; json: string } } | { write: { id: number; bytes: Uint8Array } } | { serial: SerialOp } | { settings: string } | Reply;
 
 type EventListener = (path: string, json: string) => void;
 
@@ -28,6 +27,7 @@ const connect = (): Promise<Worker> => {
       if ('event' in data) return eventListeners.forEach((listener) => listener(data.event.path, data.event.json));
       if ('write' in data) return hostLinks.get(data.write.id)?.(data.write.bytes);
       if ('serial' in data) return void serialOp(data.serial);
+      if ('settings' in data) return store(data.settings);
       pending.get(data.id)?.(data.result);
       pending.delete(data.id);
     };
@@ -62,12 +62,6 @@ const store = (text: string) => {
     return;
   }
 };
-
-const keepSettings = (revision: bigint) => setTimeout(async () => {
-  const now = await call<bigint>('settingsRevision');
-  if (now !== revision) store(await call<string>('settingsText'));
-  keepSettings(now);
-}, SETTINGS_SAVE_MS);
 
 const serialAvailable = () => typeof navigator !== 'undefined' && 'serial' in navigator;
 
@@ -167,5 +161,4 @@ export const startCore = async (): Promise<void> => {
     navigator.serial.addEventListener('connect', () => void refreshSerialPorts());
     navigator.serial.addEventListener('disconnect', () => void refreshSerialPorts());
   }
-  keepSettings(await call<bigint>('settingsRevision'));
 };
