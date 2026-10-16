@@ -110,15 +110,11 @@ pub fn parse_params(text: &str) -> Vec<(String, f64)> {
 }
 
 fn fetch_params(file: &str) -> Result<String, String> {
-    let agent: ureq::Agent = ureq::Agent::config_builder().timeout_global(Some(PARAMS_TIMEOUT)).build().into();
-    let listing: Value = agent
-        .get(&format!("{GITHUB_PARAMS}/{file}?ref=master"))
-        .call()
-        .and_then(|mut r| r.body_mut().read_to_string())
+    let listing: Value = crate::http::get_text(&format!("{GITHUB_PARAMS}/{file}?ref=master"), PARAMS_TIMEOUT)
         .map_err(|e| format!("Param file github json download failed: {e}"))
         .and_then(|text| serde_json::from_str(&text).map_err(|e| format!("Unable to open json document: {e}")))?;
     let url = listing.get("download_url").and_then(Value::as_str).ok_or("Param file github json download failed: no download_url")?;
-    agent.get(url).call().and_then(|mut r| r.body_mut().read_to_string()).map_err(|e| format!("Param file download failed: {e}"))
+    crate::http::get_text(url, PARAMS_TIMEOUT).map_err(|e| format!("Param file download failed: {e}"))
 }
 
 fn apply(params: &[(String, f64)]) {

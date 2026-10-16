@@ -139,19 +139,13 @@ pub fn fetch(provider: &str, x: i32, y: i32, zoom: i32, keys: &Keys, cache: Opti
     Some(image)
 }
 
-fn agent(timeout: Duration) -> ureq::Agent {
-    ureq::Agent::config_builder().timeout_global(Some(timeout)).build().into()
-}
-
-static AGENT: LazyLock<ureq::Agent> = LazyLock::new(|| agent(TILE_TIMEOUT));
-
 pub fn fetch_over_http(request: &TileRequest) -> Result<Vec<u8>, String> {
-    fetch_through(&AGENT, request)
+    fetch_through(request, TILE_TIMEOUT)
 }
 
-fn fetch_through(agent: &ureq::Agent, request: &TileRequest) -> Result<Vec<u8>, String> {
-    let asked = request.headers.iter().fold(agent.get(&request.url), |asked, (name, value)| asked.header(name, value));
-    asked.call().map_err(|e| e.to_string())?.body_mut().read_to_vec().map_err(|e| e.to_string())
+fn fetch_through(request: &TileRequest, timeout: Duration) -> Result<Vec<u8>, String> {
+    let headers: Vec<(&str, &str)> = request.headers.iter().map(|(name, value)| (name.as_str(), value.as_str())).collect();
+    crate::http::get(&request.url, &headers, timeout)
 }
 
 pub struct TileWorkers {
@@ -396,12 +390,11 @@ mod tests {
 
     #[test]
     fn a_server_that_never_answers_holds_its_worker_only_until_the_timeout() {
-        assert_eq!(AGENT.config().timeouts().global, Some(TILE_TIMEOUT), "QGCTileFetchReply gives a tile ten seconds");
+        assert_eq!(TILE_TIMEOUT, Duration::from_secs(10), "QGCTileFetchReply gives a tile ten seconds");
         let silent = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
         let request = TileRequest { url: format!("http://{}/1/2/3.png", silent.local_addr().unwrap()), headers: Vec::new() };
-        let impatient = agent(Duration::from_millis(200));
         let started = Instant::now();
-        let answers = answered(&workers(1, 1), vec![Box::new(move || fetch_through(&impatient, &request).ok()), Box::new(|| Some(PNG.to_vec()))]);
+        let answers = answered(&workers(1, 1), vec![Box::new(move || fetch_through(&request, Duration::from_millis(200)).ok()), Box::new(|| Some(PNG.to_vec()))]);
         assert_eq!(answers.recv_timeout(Duration::from_secs(10)).unwrap(), None);
         assert_eq!(answers.recv_timeout(Duration::from_secs(10)).unwrap(), Some(PNG.to_vec()), "the next job gets the worker back");
         assert!(started.elapsed() < Duration::from_secs(5), "{:?}", started.elapsed());

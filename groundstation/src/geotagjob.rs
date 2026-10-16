@@ -30,6 +30,12 @@ impl Field {
     }
 }
 
+#[cfg(target_family = "wasm")]
+pub fn local_path(raw: &str) -> String {
+    raw.to_string()
+}
+
+#[cfg(not(target_family = "wasm"))]
 pub fn local_path(raw: &str) -> String {
     match url::Url::parse(raw).ok().filter(|u| u.scheme() == "file").and_then(|u| u.to_file_path().ok()) {
         Some(path) => path.to_string_lossy().into_owned(),

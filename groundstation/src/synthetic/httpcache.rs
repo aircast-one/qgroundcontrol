@@ -99,7 +99,7 @@ impl HttpCache {
         if policy.is_storable() {
             self.note(serde_json::to_string(&policy).map_err(|error| error.to_string()).and_then(|policy| {
                 self.db
-                    .execute("INSERT OR REPLACE INTO responses (key, policy, body, size, used, fetched) VALUES (?1, ?2, ?3, ?4, ?5, ?5)", params![key, policy, body, body.len(), seconds(now)])
+                    .execute("INSERT OR REPLACE INTO responses (key, policy, body, size, used, fetched) VALUES (?1, ?2, ?3, ?4, ?5, ?5)", params![key, policy, body, body.len() as i64, seconds(now)])
                     .map_err(|error| error.to_string())
             }));
             self.stored.set(self.stored.get() + 1);

@@ -83,8 +83,7 @@ fn refresh_status(ip: String, now_ms: u64) {
     let Some(reset) = due else { return };
     std::thread::spawn(move || {
         let url = format!("http://{ip}/status.json{}", if reset { "?r=1" } else { "" });
-        let agent: ureq::Agent = ureq::Agent::config_builder().timeout_global(Some(STATUS_TIMEOUT)).build().into();
-        let answer = agent.get(&url).call().ok().and_then(|mut r| r.body_mut().read_to_string().ok()).and_then(|t| serde_json::from_str::<Value>(&t).ok());
+        let answer = crate::http::get_text(&url, STATUS_TIMEOUT).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok());
         let mut status = STATUS.lock().unwrap_or_else(PoisonError::into_inner);
         match answer.filter(|a| a.get("errors").is_none()) {
             Some(counts) => {

@@ -151,6 +151,14 @@ fn changed() {
     }
 }
 
+#[cfg(target_family = "wasm")]
+fn follow(_source: Source, generation: u64) {
+    if lock().fail(generation, "Detections need the desktop or mobile app for now".to_string()) {
+        changed();
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
 fn follow(source: Source, generation: u64) {
     let agent: ureq::Agent = ureq::Agent::config_builder().timeout_connect(Some(CONNECT_TIMEOUT)).timeout_recv_body(Some(SILENCE_TIMEOUT)).build().into();
     while lock().generation == generation {

@@ -436,9 +436,9 @@ fn arming_checks() -> Option<Value> {
 fn links_field(name: &str) -> Option<Value> {
     match name {
         "mavlinkSupportForwardingEnabled" => Some(json!(crate::forwarding::support_enabled())),
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        #[cfg(not(hosted_serial))]
         _ => crate::seriallink::links_field(name),
-        #[cfg(any(target_os = "android", target_os = "ios"))]
+        #[cfg(hosted_serial)]
         _ => crate::platformserial::links_field(name),
     }
 }

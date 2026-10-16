@@ -61,8 +61,7 @@ fn text(url: &str) -> Option<String> {
         held.insert(url.to_string(), Fetch::Pending);
         let url = url.to_string();
         let _ = std::thread::Builder::new().name("firmware-versions".into()).spawn(move || {
-            let agent: ureq::Agent = ureq::Agent::config_builder().timeout_global(Some(VERSION_FETCH_TIMEOUT)).build().into();
-            let body = agent.get(&url).call().ok().and_then(|mut answer| answer.body_mut().read_to_string().ok());
+            let body = crate::http::get_text(&url, VERSION_FETCH_TIMEOUT).ok();
             fetched().insert(url, body.map_or_else(|| Fetch::Failed(Instant::now()), Fetch::Done));
         });
     }

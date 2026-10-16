@@ -1,4 +1,5 @@
 #![recursion_limit = "256"]
+#![cfg_attr(target_family = "wasm", allow(dead_code, unused_imports))]
 #[cfg(not(test))]
 mod abi;
 #[cfg(all(feature = "native-host", not(test)))]
@@ -192,7 +193,7 @@ pub mod replay;
 mod samplelog;
 pub mod sensorcal;
 pub mod sensors;
-#[cfg(not(target_os = "ios"))]
+#[cfg(not(any(target_os = "ios", target_family = "wasm")))]
 pub mod seriallink;
 pub mod sensorfacts;
 pub mod settings;
@@ -284,6 +285,7 @@ pub mod terraintile;
 pub mod terraindownload;
 pub mod tlog;
 pub mod track;
+pub mod http;
 pub mod transport;
 pub mod udplink;
 pub mod ulogstream;

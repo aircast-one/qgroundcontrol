@@ -60,16 +60,28 @@ pub fn parse_sha256(text: &str) -> Result<String, String> {
         .ok_or_else(|| "The checksum file does not hold a SHA-256 digest".to_string())
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn agent(limit: Option<Duration>) -> ureq::Agent {
     ureq::Agent::config_builder().timeout_connect(Some(CONNECT_TIMEOUT)).timeout_recv_body(limit).http_status_as_error(false).build().into()
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn text(url: &str) -> Result<String, String> {
     let mut answer = agent(Some(CONNECT_TIMEOUT)).get(url).call().map_err(|e| format!("{url}: {e}"))?;
     match answer.status().as_u16() {
         200 => answer.body_mut().read_to_string().map_err(|e| format!("{url}: {e}")),
         status => Err(format!("{url} answered HTTP {status}")),
     }
+}
+
+#[cfg(target_family = "wasm")]
+fn text(url: &str) -> Result<String, String> {
+    crate::http::get_text(url, CONNECT_TIMEOUT).map_err(|e| format!("{url}: {e}"))
+}
+
+#[cfg(target_family = "wasm")]
+fn fetch_into(url: &str, _part: &Path, _size_hint: u64, _cancelled: &dyn Fn() -> bool, _progress: &mut dyn FnMut(u64, u64)) -> Result<(), String> {
+    Err(format!("{url}: writing an Aircast card needs the desktop or mobile app"))
 }
 
 pub fn fetch_releases(channel: &str) -> Result<Vec<Release>, String> {
@@ -139,6 +151,7 @@ fn wait_unless_cancelled(total: Duration, cancelled: &dyn Fn() -> bool) {
     let _ = (0..total.as_millis() / step.as_millis()).take_while(|_| !cancelled()).for_each(|_| std::thread::sleep(step));
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn fetch_into(url: &str, part: &Path, size_hint: u64, cancelled: &dyn Fn() -> bool, progress: &mut dyn FnMut(u64, u64)) -> Result<(), String> {
     let start = std::fs::metadata(part).map(|m| m.len()).unwrap_or(0);
     let request = agent(Some(ATTEMPT_LIMIT)).get(url);

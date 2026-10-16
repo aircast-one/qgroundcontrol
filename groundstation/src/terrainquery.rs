@@ -65,8 +65,7 @@ pub fn elevation(latitude: f64, longitude: f64, cache: Option<&Cache>, fetch: &d
 const FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 pub fn fetch_over_http(url: &str) -> Result<String, String> {
-    let agent: ureq::Agent = ureq::Agent::config_builder().timeout_global(Some(FETCH_TIMEOUT)).build().into();
-    agent.get(url).call().map_err(|e| format!("The terrain server did not answer: {e}"))?.body_mut().read_to_string().map_err(|e| format!("The terrain answer could not be read: {e}"))
+    crate::http::get_text(url, FETCH_TIMEOUT).map_err(|e| format!("The terrain server did not answer: {e}"))
 }
 
 #[cfg(test)]

@@ -197,6 +197,12 @@ fn sent_fraction(sent: u64, total: usize) -> f64 {
     }
 }
 
+#[cfg(target_family = "wasm")]
+fn send(_path: &Path, _feedback: &str, _cancel: &AtomicBool) -> Result<(), String> {
+    Err("Log Upload Error: uploading needs the desktop or mobile app".to_string())
+}
+
+#[cfg(not(target_family = "wasm"))]
 fn send(path: &Path, feedback: &str, cancel: &AtomicBool) -> Result<(), String> {
     let bytes = std::fs::read(path).map_err(|e| format!("Could not read {}: {e}", path.display()))?;
     let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();

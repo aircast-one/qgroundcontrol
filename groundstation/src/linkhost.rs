@@ -32,9 +32,9 @@ fn forget_sequence(id: LinkId) {
 pub enum Owned {
     Udp(UdpLink),
     Tcp(TcpLink),
-    #[cfg(not(any(target_os = "android", target_os = "ios")))]
+    #[cfg(not(hosted_serial))]
     Serial(crate::seriallink::SerialLink),
-    #[cfg(any(target_os = "android", target_os = "ios"))]
+    #[cfg(hosted_serial)]
     PlatformSerial(crate::platformserial::PlatformSerial),
     PlatformBluetooth(crate::platformbluetooth::PlatformBluetooth),
     Cloud(crate::cloudlink::CloudLink),
@@ -47,9 +47,9 @@ impl Owned {
         match self {
             Owned::Udp(link) => link.write(bytes) > 0,
             Owned::Tcp(link) => link.write(bytes).is_ok(),
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            #[cfg(not(hosted_serial))]
             Owned::Serial(link) => link.write(bytes).is_ok(),
-            #[cfg(any(target_os = "android", target_os = "ios"))]
+            #[cfg(hosted_serial)]
             Owned::PlatformSerial(link) => link.write(bytes),
             Owned::PlatformBluetooth(link) => link.write(bytes),
             Owned::Cloud(link) => link.write(bytes),
@@ -82,9 +82,9 @@ impl Owned {
         match self {
             Owned::Udp(link) => link.close(),
             Owned::Tcp(link) => link.close(),
-            #[cfg(not(any(target_os = "android", target_os = "ios")))]
+            #[cfg(not(hosted_serial))]
             Owned::Serial(link) => link.close(),
-            #[cfg(any(target_os = "android", target_os = "ios"))]
+            #[cfg(hosted_serial)]
             Owned::PlatformSerial(link) => link.close(),
             Owned::PlatformBluetooth(link) => link.close(),
             Owned::Cloud(link) => link.close(),
@@ -287,7 +287,7 @@ fn build(shared: &Shared, id: LinkId, config: &LinkConfig) -> Result<Owned, Fail
             .map(Owned::Tcp)
             .map_err(|e| tcp_failure(&config.name, host, *port, &e))
         }
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        #[cfg(not(hosted_serial))]
         Kind::Serial { baud, data_bits, flow_control, stop_bits, parity, port_name, .. } => {
             let shared = shared.clone();
             crate::seriallink::SerialLink::open(
@@ -300,7 +300,7 @@ fn build(shared: &Shared, id: LinkId, config: &LinkConfig) -> Result<Owned, Fail
             .map(Owned::Serial)
             .map_err(|e| serial_failure(&config.name, port_name, &e.to_string()))
         }
-        #[cfg(any(target_os = "android", target_os = "ios"))]
+        #[cfg(hosted_serial)]
         Kind::Serial { baud, data_bits, stop_bits, parity, port_name, .. } => {
             let shared = shared.clone();
             crate::platformserial::PlatformSerial::open(id, port_name, *baud as u32, *data_bits, *stop_bits, *parity, move |event| match event {
@@ -611,7 +611,7 @@ mod tests {
             "Link Radio: (Port: ttyUSB0) Could not open port: Permission denied",
             "SerialLink.cc:264 wrapped by SerialLink::_onErrorOccurred"
         );
-        #[cfg(not(any(target_os = "android", target_os = "ios")))]
+        #[cfg(not(hosted_serial))]
         {
             let absent = open_json(&transports, r#"{"kind":"serial","name":"Gone","portName":"/dev/no-such-serial-port","baud":57600}"#, &[]).unwrap_err();
             assert!(absent.reason.starts_with("Link Gone: (Port: /dev/no-such-serial-port) Could not open port: "), "{}", absent.reason);

@@ -47,6 +47,8 @@ jobs:
 
       - name: Rust toolchain
         uses: ./.github/actions/rust-toolchain
+        with:
+          targets: wasm32-unknown-unknown
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -62,3 +64,7 @@ jobs:
       - name: Test
         working-directory: groundstation
         run: cargo test --locked
+
+      - name: Check the browser build
+        working-directory: groundstation
+        run: cargo check --locked --lib --target wasm32-unknown-unknown

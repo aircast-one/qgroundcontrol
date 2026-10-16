@@ -58,9 +58,7 @@ fn cached(path: Option<&std::path::Path>) -> Option<Vec<u8>> {
 }
 
 fn download(uri: &str) -> Result<Vec<u8>, String> {
-    let agent: ureq::Agent = ureq::Agent::config_builder().timeout_global(Some(DEFINITION_TIMEOUT)).build().into();
-    let mut answer = agent.get(uri).call().map_err(|e| format!("Camera definition ({uri}) download error: {e}"))?;
-    answer.body_mut().read_to_vec().map_err(|e| format!("Camera definition ({uri}) download error: {e}"))
+    crate::http::get(uri, &[], DEFINITION_TIMEOUT).map_err(|e| format!("Camera definition ({uri}) download error: {e}"))
 }
 
 #[derive(Clone)]

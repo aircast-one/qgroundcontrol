@@ -4,8 +4,11 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{Receiver, SyncSender, TryRecvError};
 use std::time::{Duration, Instant};
 
+#[cfg(not(target_family = "wasm"))]
 use tungstenite::Message;
+#[cfg(not(target_family = "wasm"))]
 use tungstenite::client::IntoClientRequest;
+#[cfg(not(target_family = "wasm"))]
 use tungstenite::stream::MaybeTlsStream;
 
 pub const ACCOUNT_GROUP: &str = "AircastAccount";
@@ -19,6 +22,8 @@ const RELAY_WRITE_TIMEOUT: Duration = Duration::from_secs(5);
 const PING_EVERY: Duration = Duration::from_secs(5);
 const RELAY_SILENT: Duration = Duration::from_secs(15);
 pub const RELAY_LOST: &str = "The Aircast relay connection was lost. Reconnecting.";
+#[cfg(target_family = "wasm")]
+const NO_BROWSER_RELAY: &str = "The Aircast cloud relay needs the desktop or mobile app for now.";
 
 pub fn relay_url(api_base: &str, device_id: &str) -> Option<String> {
     let parsed = url::Url::parse(api_base.trim()).ok().filter(|u| u.host_str().is_some_and(|h| !h.is_empty()))?;
@@ -48,6 +53,7 @@ pub struct CloudLink {
     connected: Arc<AtomicBool>,
 }
 
+#[cfg(not(target_family = "wasm"))]
 type Socket = tungstenite::WebSocket<MaybeTlsStream<TcpStream>>;
 
 fn reached(host: &str, port: u16) -> Result<TcpStream, String> {
@@ -58,6 +64,7 @@ fn reached(host: &str, port: u16) -> Result<TcpStream, String> {
     Ok(stream)
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn connect(url: &str, token: &str) -> Result<Socket, String> {
     let mut request = url.into_client_request().map_err(|e| e.to_string())?;
     request.headers_mut().insert("Authorization", format!("Bearer {token}").parse().map_err(|_| "the token is not a header value".to_string())?);
@@ -75,6 +82,7 @@ fn connect(url: &str, token: &str) -> Result<Socket, String> {
     Ok(socket)
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn pump(socket: &mut Socket, outbox: &Receiver<Vec<u8>>, wanted: &AtomicBool, deliver: &mut dyn FnMut(&[u8])) -> bool {
     let (mut heard, mut pinged) = (Instant::now(), Instant::now());
     while wanted.load(Ordering::SeqCst) {
@@ -116,6 +124,14 @@ fn pump(socket: &mut Socket, outbox: &Receiver<Vec<u8>>, wanted: &AtomicBool, de
 }
 
 impl CloudLink {
+    #[cfg(target_family = "wasm")]
+    pub fn open(_url: String, _token: String, _deliver: impl FnMut(&[u8]) + Send + 'static, relay: impl Fn(bool, &str) + Send + 'static) -> CloudLink {
+        relay(false, NO_BROWSER_RELAY);
+        let (outbox, _) = std::sync::mpsc::sync_channel(0);
+        CloudLink { outbox, wanted: Arc::new(AtomicBool::new(false)), connected: Arc::new(AtomicBool::new(false)) }
+    }
+
+    #[cfg(not(target_family = "wasm"))]
     pub fn open(url: String, token: String, mut deliver: impl FnMut(&[u8]) + Send + 'static, relay: impl Fn(bool, &str) + Send + 'static) -> CloudLink {
         let (sender, outbox) = std::sync::mpsc::sync_channel::<Vec<u8>>(OUTBOX_FRAMES);
         let wanted = Arc::new(AtomicBool::new(true));

@@ -12,8 +12,18 @@ fn native_synthetic() {
     }
 }
 
+fn hosted_serial() {
+    let target = std::env::var("CARGO_CFG_TARGET_OS").unwrap_or_default();
+    let family = std::env::var("CARGO_CFG_TARGET_FAMILY").unwrap_or_default();
+    println!("cargo:rustc-check-cfg=cfg(hosted_serial)");
+    if target == "android" || target == "ios" || family.split(',').any(|f| f == "wasm") {
+        println!("cargo:rustc-cfg=hosted_serial");
+    }
+}
+
 fn main() {
     native_synthetic();
+    hosted_serial();
     println!("cargo:rerun-if-env-changed=QGC_APM_PARAMS_DIR");
     let out = std::env::var("OUT_DIR").expect("OUT_DIR");
     let cache = concat!(env!("CARGO_MANIFEST_DIR"), "/../.cache/CPM/ardupilotparams");

@@ -138,10 +138,9 @@ pub fn set_api_base(base: &str) {
 }
 
 pub fn post_json(url: &str, body: &Value) -> Result<Value, String> {
-    let answer = ureq::post(url).header("Content-Type", "application/json").config().http_status_as_error(false).timeout_global(Some(std::time::Duration::from_secs(20))).build().send(body.to_string()).map_err(|e| e.to_string())?;
-    let status = answer.status();
-    let parsed: Value = serde_json::from_str(&answer.into_body().read_to_string().map_err(|e| e.to_string())?).unwrap_or(Value::Null);
-    match status.is_success() || parsed.get("error").is_some() {
+    let (status, answer) = crate::http::post(url, "application/json", body.to_string().as_bytes(), std::time::Duration::from_secs(20))?;
+    let parsed: Value = serde_json::from_slice(&answer).unwrap_or(Value::Null);
+    match (200..300).contains(&status) || parsed.get("error").is_some() {
         true => Ok(parsed),
         false => Err(format!("HTTP {status}")),
     }

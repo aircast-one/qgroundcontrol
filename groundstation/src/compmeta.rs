@@ -64,9 +64,7 @@ pub fn over_mavlink_ftp(uri: &str) -> bool {
 }
 
 pub fn download_over_http(uri: &str) -> Result<Vec<u8>, String> {
-    let agent: ureq::Agent = ureq::Agent::config_builder().timeout_global(Some(HTTP_TIMEOUT)).build().into();
-    let mut answer = agent.get(uri).call().map_err(|e| format!("Component metadata download failed: {e}"))?;
-    answer.body_mut().read_to_vec().map_err(|e| format!("Component metadata download failed: {e}"))
+    crate::http::get(uri, &[], HTTP_TIMEOUT).map_err(|e| format!("Component metadata download failed: {e}"))
 }
 
 pub fn cache_tag(kind: u8, crc: u64) -> String {

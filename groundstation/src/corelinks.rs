@@ -185,7 +185,7 @@ fn create_serial(name: &str, port_name: &str, baud: i64) -> bool {
 
 fn serial_display_name(location: &str) -> Option<String> {
     let port = serial_ports().into_iter().find(|p| p.system_location == location)?;
-    Some(if cfg!(any(target_os = "android", target_os = "ios")) { crate::platformserial::display_name(&port) } else { port.port_name })
+    Some(if cfg!(hosted_serial) { crate::platformserial::display_name(&port) } else { port.port_name })
 }
 
 fn create_bluetooth(name: &str, device_name: &str, address: &str) -> bool {
@@ -603,7 +603,7 @@ static SERIAL_AUTO: LazyLock<Mutex<crate::autoconnect::AutoConnect>> = LazyLock:
 static BOARDS: LazyLock<Option<crate::boards::BoardTable>> = LazyLock::new(|| crate::boards::BoardTable::bundled().ok());
 
 pub fn board_type_of(port: &crate::boards::PortInfo) -> Option<crate::boards::BoardType> {
-    BOARDS.as_ref()?.classify(port, cfg!(any(target_os = "android", target_os = "ios"))).map(|(board, _)| board)
+    BOARDS.as_ref()?.classify(port, cfg!(hosted_serial)).map(|(board, _)| board)
 }
 
 pub fn board_type_at(location: &str) -> Option<crate::boards::BoardType> {
@@ -631,7 +631,7 @@ fn autoconnect_settings() -> crate::autoconnect::Settings {
     }
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[cfg(not(hosted_serial))]
 fn serial_ports() -> Vec<crate::boards::PortInfo> {
     let found = serialport::available_ports().unwrap_or_default();
     let visible = crate::seriallink::visible_ports(&found.iter().map(|p| p.port_name.clone()).collect::<Vec<_>>());
@@ -656,7 +656,7 @@ fn serial_ports() -> Vec<crate::boards::PortInfo> {
         .collect()
 }
 
-#[cfg(any(target_os = "android", target_os = "ios"))]
+#[cfg(hosted_serial)]
 fn serial_ports() -> Vec<crate::boards::PortInfo> {
     crate::platformserial::ports()
 }

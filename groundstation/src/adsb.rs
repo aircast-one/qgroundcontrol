@@ -651,6 +651,7 @@ pub fn read_sbs1(mut reader: impl BufRead, current: impl Fn() -> bool, mut line:
 
 fn watched(stream: TcpStream) -> std::io::Result<TcpStream> {
     stream.set_read_timeout(Some(SBS1_READ_SLICE))?;
+    #[cfg(not(target_family = "wasm"))]
     socket2::SockRef::from(&stream).set_tcp_keepalive(&socket2::TcpKeepalive::new().with_time(SBS1_KEEPALIVE_IDLE).with_interval(SBS1_KEEPALIVE_INTERVAL))?;
     Ok(stream)
 }

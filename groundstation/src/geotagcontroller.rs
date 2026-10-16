@@ -483,6 +483,7 @@ fn tag_run(run: u64, job: &Job) -> Result<(i64, i64, i64), String> {
         true => Path::new(&job.image_directory).join("TAGGED"),
         false => PathBuf::from(&job.save_directory),
     };
+    #[cfg(not(target_family = "wasm"))]
     if !job.preview {
         let required = (calibration.image_indices.iter().filter_map(|i| std::fs::metadata(&images[*i]).ok()).map(|m| m.len()).sum::<u64>() as f64 * SPACE_MARGIN) as u64;
         let queried = if output.exists() { output.as_path() } else { output.parent().unwrap_or(&output) };

@@ -170,7 +170,7 @@ fn open_udp(port: u16) -> Option<Running> {
     Some(Running::Udp { running, dead })
 }
 
-#[cfg(any(target_os = "android", target_os = "ios"))]
+#[cfg(hosted_serial)]
 fn open_serial(port: &str, baud: u32) -> Option<Running> {
     let lines = Mutex::new(Lines::default());
     let dead = Arc::new(AtomicBool::new(false));
@@ -183,7 +183,7 @@ fn open_serial(port: &str, baud: u32) -> Option<Running> {
     Some(Running::Serial { close: Box::new(move || opened.close()), dead })
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[cfg(not(hosted_serial))]
 fn open_serial(port: &str, baud: u32) -> Option<Running> {
     let config = crate::seriallink::SerialConfig { port_name: port.to_string(), baud, data_bits: 8, parity: 0, stop_bits: 1, flow_control: 0, usb_direct: false };
     let mut lines = Lines::default();

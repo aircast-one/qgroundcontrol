@@ -13,7 +13,7 @@ use crate::sbfbase::SbfBase;
 use crate::ubxbase::{BaseDriver, Event, Transport, UbxBase};
 
 const CONFIGURE_RETRY_MS: u64 = 500;
-#[cfg(any(target_os = "android", target_os = "ios"))]
+#[cfg(hosted_serial)]
 const RTK_SERIAL_ID: u32 = 0xfff0_0001;
 
 static SESSION: LazyLock<Mutex<Session>> = LazyLock::new(|| Mutex::new(Session::default()));
@@ -63,7 +63,7 @@ trait Port: Send {
     fn close(&self);
 }
 
-#[cfg(any(target_os = "android", target_os = "ios"))]
+#[cfg(hosted_serial)]
 impl Port for crate::platformserial::PlatformSerial {
     fn write(&self, bytes: &[u8]) -> bool {
         crate::platformserial::PlatformSerial::write(self, bytes)
@@ -74,7 +74,7 @@ impl Port for crate::platformserial::PlatformSerial {
     }
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[cfg(not(hosted_serial))]
 impl Port for crate::seriallink::SerialLink {
     fn write(&self, bytes: &[u8]) -> bool {
         crate::seriallink::SerialLink::write(self, bytes).is_ok()
@@ -85,7 +85,7 @@ impl Port for crate::seriallink::SerialLink {
     }
 }
 
-#[cfg(any(target_os = "android", target_os = "ios"))]
+#[cfg(hosted_serial)]
 fn open_port(name: &str, baud: u32, sink: Sender<Incoming>) -> Result<Box<dyn Port>, String> {
     let sink = Mutex::new(sink);
     crate::platformserial::PlatformSerial::open(RTK_SERIAL_ID, name, baud, 8, 1, 0, move |event| {
@@ -98,7 +98,7 @@ fn open_port(name: &str, baud: u32, sink: Sender<Incoming>) -> Result<Box<dyn Po
     .map(|port| Box::new(port) as Box<dyn Port>)
 }
 
-#[cfg(not(any(target_os = "android", target_os = "ios")))]
+#[cfg(not(hosted_serial))]
 fn open_port(name: &str, baud: u32, sink: Sender<Incoming>) -> Result<Box<dyn Port>, String> {
     let config = crate::seriallink::SerialConfig { port_name: name.to_string(), baud, data_bits: 8, parity: 0, stop_bits: 1, flow_control: 0, usb_direct: false };
     crate::seriallink::SerialLink::open(&config, move |event| {

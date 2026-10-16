@@ -1,3 +1,4 @@
+#[cfg(not(target_family = "wasm"))]
 use socket2::{Domain, Protocol, Socket, Type};
 use std::collections::{BTreeMap, BTreeSet};
 use std::io;
@@ -7,8 +8,14 @@ use std::sync::{Arc, Mutex};
 use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
+#[cfg(not(target_family = "wasm"))]
 pub fn local_addresses() -> BTreeSet<Ipv4Addr> {
     if_addrs::get_if_addrs().map(|list| list.into_iter().filter_map(|i| match i.ip() { std::net::IpAddr::V4(v4) => Some(v4), _ => None }).collect()).unwrap_or_default()
+}
+
+#[cfg(target_family = "wasm")]
+pub fn local_addresses() -> BTreeSet<Ipv4Addr> {
+    BTreeSet::new()
 }
 
 pub const MULTICAST_GROUP: Ipv4Addr = Ipv4Addr::new(224, 0, 0, 1);
@@ -58,6 +65,7 @@ pub fn receive_until_lost<From>(running: impl Fn() -> bool, mut receive: impl Fn
     std::iter::from_fn(|| running().then(|| receive(&mut buffer).map(|(len, from)| deliver(&buffer[..len], from)))).find_map(|received| received.err().filter(|error| !transient(error)))
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn bind_shared(port: u16) -> io::Result<UdpSocket> {
     let socket = Socket::new(Domain::IPV4, Type::DGRAM, Some(Protocol::UDP))?;
     socket.set_reuse_address(true)?;
@@ -67,6 +75,11 @@ fn bind_shared(port: u16) -> io::Result<UdpSocket> {
     let _ = socket.join_multicast_v4(&MULTICAST_GROUP, &Ipv4Addr::UNSPECIFIED);
     socket.set_read_timeout(Some(READ_TIMEOUT))?;
     Ok(socket.into())
+}
+
+#[cfg(target_family = "wasm")]
+fn bind_shared(_port: u16) -> io::Result<UdpSocket> {
+    Err(io::Error::new(io::ErrorKind::Unsupported, "UDP links need the desktop or mobile app: a browser cannot open UDP sockets."))
 }
 
 impl UdpLink {

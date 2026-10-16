@@ -34,31 +34,22 @@ flate2 = "1.1.10"
 lzma-rs = "0.3.0"
 zip = { version = "8.6.0", default-features = false, features = ["deflate"] }
 regex = "1.13.1"
-socket2 = { version = "0.6.5", features = ["all"] }
-if-addrs = "0.15.0"
 num-traits = "0.2"
 log = "0.4.34"
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
-ureq = { version = "3", default-features = false, features = ["rustls"] }
-rustls = { version = "0.23.45", default-features = false, features = ["ring", "std", "logging"] }
-webpki-roots = "1.0.9"
 base64 = "0.23.1"
 url = "2"
-rusqlite = { version = "0.37.0", features = ["bundled"] }
 geoconvert = "1.0.2"
 geographiclib-rs = "0.2.7"
-tungstenite = { version = "0.30", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
+rusqlite = { version = "0.40.2", features = ["bundled"] }
 little_exif = "0.6.23"
 px4-ulog = "0.6.1"
 jni = { version = "0.21.1", optional = true }
 pbkdf2 = { version = "0.13.0", features = ["sha2"] }
 getrandom = "0.4.3"
 crc = "3.4.0"
-fs4 = { version = "0.13", features = ["sync"] }
 jpeg-encoder = "0.7.1"
 image = { version = "0.25.10", default-features = false, features = ["bmp", "gif", "ico", "jpeg", "png", "pnm"] }
-x509-parser = { version = "0.18.1", features = ["verify"] }
-rustls-webpki = "0.103"
 quick_cache = { version = "0.7.0", default-features = false }
 sha1 = "0.11"
 fatfs = "0.3"
@@ -75,11 +66,30 @@ earcut = { version = "0.4.11", optional = true }
 http-cache-semantics = { version = "3.0.0", optional = true }
 bytemuck = { version = "1.25.2", optional = true }
 range-alloc = { version = "0.1.5", optional = true }
+web-time = "1"
+
+[target.'cfg(not(target_family = "wasm"))'.dependencies]
+socket2 = { version = "0.6.5", features = ["all"] }
+if-addrs = "0.15.0"
+ureq = { version = "3", default-features = false, features = ["rustls"] }
+rustls = { version = "0.23.45", default-features = false, features = ["ring", "std", "logging"] }
+webpki-roots = "1.0.9"
+tungstenite = { version = "0.30", default-features = false, features = ["handshake", "rustls-tls-webpki-roots"] }
+fs4 = { version = "0.13", features = ["sync"] }
+x509-parser = { version = "0.18.1", features = ["verify"] }
+rustls-webpki = "0.103"
+
+[target.'cfg(target_family = "wasm")'.dependencies]
+getrandom = { version = "0.4.3", features = ["wasm_js"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "wasmbind"] }
+wasm-bindgen = "0.2.128"
+js-sys = "0.3.105"
+web-sys = { version = "0.3.105", features = ["XmlHttpRequest", "XmlHttpRequestResponseType"] }
 
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
 libc = "0.2"
 
-[target.'cfg(not(target_os = "ios"))'.dependencies]
+[target.'cfg(not(any(target_os = "ios", target_family = "wasm")))'.dependencies]
 serialport = "4.10.1"
 
 [dev-dependencies]
