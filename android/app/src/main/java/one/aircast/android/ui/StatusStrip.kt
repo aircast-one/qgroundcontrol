@@ -50,6 +50,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.ui.text.drawText
 import kotlin.math.roundToInt
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.drawscope.rotate
 import androidx.compose.ui.geometry.Size
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -227,7 +228,8 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
                     batteries.map {
                         val colour = if (live) batteryLevelColour(it.level) else MaterialTheme.colorScheme.outline
                         val zones = headline.takeIf { _ -> live && it === limiting }
-                        if (LocalCompactStatus.current) BatteryRing(it.text, colour, if (LocalNarrowStatus.current) "" else packCountText(it.packs), zones) { detail = StripDetail.Battery }
+                        val arc = if (!live) MaterialTheme.colorScheme.outline else if (it.level == BatteryLevel.Critical) MaterialTheme.colorScheme.error else MaterialTheme.aircast.success
+                        if (LocalCompactStatus.current) BatteryRing(it.text, colour, arc, if (LocalNarrowStatus.current) "" else packCountText(it.packs), zones) { detail = StripDetail.Battery }
                         else InlineCell(listOf(it.text, packCountText(it.packs)).filter(String::isNotEmpty).joinToString(" "), colour, R.drawable.ic_battery_5_bar) { detail = StripDetail.Battery }
                     }
                     if (batteries.isNotEmpty() && !LocalNarrowStatus.current) listOf(timeLeft to "flight time left", current to "current draw").filter { it.first.isNotEmpty() }.map { (value, meaning) ->
@@ -527,6 +529,8 @@ private val BATTERY_RING_STROKE = 3.dp
 private const val BATTERY_RING_TRACK_ALPHA = 0.25f
 private val RING_HOME_MARKER = 10.dp
 private val RING_HOME_LETTER = 7.sp
+private const val RING_ANIMATION_MS = 600
+private const val USAGE_BLEND = 0.6f
 
 internal enum class RingZone { Reserve, Return, Free, Usage }
 
@@ -576,13 +580,14 @@ private fun FlightTimeCell() {
 }
 
 @Composable
-private fun BatteryRing(text: String, colour: Color, count: String, zones: BatteryHeadline?, onClick: () -> Unit) {
+private fun BatteryRing(text: String, colour: Color, arc: Color, count: String, zones: BatteryHeadline?, onClick: () -> Unit) {
     val percent = batteryPercent(text) ?: return InlineCell(text, colour, R.drawable.ic_battery_5_bar, onClick)
     val alarm = colour.takeIf { it != Color.Unspecified }
-    val ring = alarm ?: MaterialTheme.aircast.success
-    val track = (alarm ?: MaterialTheme.aircast.outdoorForeground).copy(alpha = BATTERY_RING_TRACK_ALPHA)
-    val zoneColour = mapOf(RingZone.Reserve to MaterialTheme.colorScheme.error, RingZone.Return to MaterialTheme.aircast.warning, RingZone.Free to ring, RingZone.Usage to MaterialTheme.aircast.warning)
-    val segments = batteryRingSegments(percent.toDouble(), zones?.reserve ?: 0.0, zones?.returnAt, zones?.drainPerMinute)
+    val track = MaterialTheme.aircast.outdoorForeground.copy(alpha = BATTERY_RING_TRACK_ALPHA)
+    val zoneColour = mapOf(RingZone.Reserve to MaterialTheme.colorScheme.error, RingZone.Return to MaterialTheme.aircast.warning, RingZone.Free to arc, RingZone.Usage to MaterialTheme.aircast.warning)
+    val shownPercent by androidx.compose.animation.core.animateFloatAsState(percent.toFloat(), androidx.compose.animation.core.tween(RING_ANIMATION_MS), label = "charge")
+    val shownDrain by androidx.compose.animation.core.animateFloatAsState((zones?.drainPerMinute ?: 0.0).toFloat(), androidx.compose.animation.core.tween(RING_ANIMATION_MS), label = "drain")
+    val segments = batteryRingSegments(shownPercent.toDouble(), zones?.reserve ?: 0.0, zones?.returnAt, shownDrain.toDouble().takeIf { it > 0.0 })
     val home = MaterialTheme.aircast.success
     val measurer = rememberTextMeasurer()
     val letter = TextStyle(color = MaterialTheme.aircast.onSuccess, fontSize = RING_HOME_LETTER, fontWeight = FontWeight.Bold)
@@ -600,7 +605,16 @@ private fun BatteryRing(text: String, colour: Color, count: String, zones: Batte
                 val topLeft = androidx.compose.ui.geometry.Offset(inset, inset)
                 val angle = { share: Double -> (share / PERCENT * 360.0).toFloat() }
                 drawArc(track, 0f, 360f, false, topLeft = topLeft, size = arcSize, style = stroke)
-                segments.map { drawArc(zoneColour.getValue(it.zone), angle(it.from) - 90f, angle(it.to - it.from), false, topLeft = topLeft, size = arcSize, style = stroke) }
+                segments.map { segment ->
+                    val start = angle(segment.from) - 90f
+                    val sweep = angle(segment.to - segment.from)
+                    if (segment.zone == RingZone.Usage) {
+                        val blend = androidx.compose.ui.graphics.Brush.sweepGradient(0f to arc, sweep / 360f * USAGE_BLEND to zoneColour.getValue(RingZone.Usage), center = center)
+                        rotate(start, center) { drawArc(blend, 0f, sweep, false, topLeft = topLeft, size = arcSize, style = stroke) }
+                    } else {
+                        drawArc(zoneColour.getValue(segment.zone), start, sweep, false, topLeft = topLeft, size = arcSize, style = stroke)
+                    }
+                }
                 zones?.returnAt?.let { share ->
                     val radians = Math.toRadians(angle(share) - 90.0)
                     val radius = arcSize.width / 2f
