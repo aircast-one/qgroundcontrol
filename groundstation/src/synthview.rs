@@ -203,8 +203,8 @@ pub fn synthetic(backend: &dyn Backend, gimbals: &Value, aim: (f64, f64)) -> Val
     })
 }
 
-const PILOT_YAW_MODES: [&str; 6] = ["Stabilize", "AltHold", "Loiter", "PosHold", "Sport", "Drift"];
-const CLIMB_MODES: [&str; 3] = ["AltHold", "Loiter", "PosHold"];
+const PILOT_YAW_MODES: [&str; 6] = ["Stabilize", "Altitude Hold", "Loiter", "Position Hold", "Sport", "Drift"];
+const CLIMB_MODES: [&str; 3] = ["Altitude Hold", "Loiter", "Position Hold"];
 const RC_HALF_RANGE: f64 = 500.0;
 const CM_PER_M: f64 = 100.0;
 
@@ -367,6 +367,8 @@ mod tests {
         assert_eq!(loiter["response"]["forward"], json!({ "full": 12.5, "expo": 0.0, "deadzone": 0.04 }), "Loiter flies the stick as a speed up to LOIT_SPEED");
         assert_eq!(loiter["response"]["climb"], json!({ "up": 2.5, "down": 2.5, "deadzone": 0.2 }), "PILOT_SPEED_DN 0 means the climb rate both ways");
         assert!(loiter["response"]["roll"].is_null() && loiter["response"]["rateMode"] == false);
+        let position_hold = synthetic(&flying(&[tuned.clone(), vec![copter_in(COPTER_POSITION_HOLD)]].concat()), &no_gimbal(), DEFAULT_AIM);
+        assert!(position_hold["response"]["yaw"].is_object() && position_hold["response"]["climb"].is_object() && position_hold["response"]["forward"].is_null(), "Position Hold yaws and climbs like Loiter but leans by the stick, so only yaw and climb are predicted");
         let unknown = synthetic(&flying(&[copter_in(COPTER_LOITER)]), &no_gimbal(), DEFAULT_AIM);
         assert!(unknown["response"]["yaw"].is_null() && unknown["response"]["forward"].is_null(), "without the parameters the view does not guess how the drone answers");
         let turning = synthetic(&flying(&[("vehicle.yawRate", json!(30.0))]), &no_gimbal(), DEFAULT_AIM);
@@ -392,6 +394,7 @@ mod tests {
 
     const COPTER_ACRO: u32 = 1;
     const COPTER_LOITER: u32 = 5;
+    const COPTER_POSITION_HOLD: u32 = 16;
 
     #[test]
     fn in_acro_the_view_banks_and_pitches_with_the_drone_so_the_pilot_sees_the_horizon_they_fly_by() {
