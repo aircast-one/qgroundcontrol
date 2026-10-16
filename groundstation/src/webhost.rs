@@ -11,6 +11,7 @@ thread_local! {
     static LAST_HUB_MS: Cell<u64> = const { Cell::new(0) };
     static SERIAL_HOST: RefCell<Option<js_sys::Object>> = const { RefCell::new(None) };
     static SERIAL_PORTS: RefCell<Vec<crate::boards::PortInfo>> = const { RefCell::new(Vec::new()) };
+    static TILES: Option<crate::tilecache::Cache> = crate::tilecache::Cache::open_in_memory().ok();
 }
 
 fn c(text: &str) -> CString {
@@ -185,6 +186,26 @@ pub fn serial_received(id: u32, bytes: &[u8]) {
 #[wasm_bindgen(js_name = serialClosed)]
 pub fn serial_closed(id: u32, reason: &str) {
     crate::platformserial::closed(id, reason);
+}
+
+#[wasm_bindgen(js_name = mapTile)]
+pub fn map_tile(map_type: &str, x: i32, y: i32, zoom: i32) -> Option<Vec<u8>> {
+    TILES.with(|cache| crate::maptiles::fetch_remembered(map_type, x, y, zoom, cache.as_ref(), true))
+}
+
+#[wasm_bindgen(js_name = gcsPositionSource)]
+pub fn gcs_position_source(token: &str) {
+    unsafe { crate::abi::qgc_core_gcs_position_source(c(token).as_ptr()) }
+}
+
+#[wasm_bindgen(js_name = gcsPositionUpdate)]
+pub fn gcs_position_update(latitude: f64, longitude: f64, altitude: f64, horizontal_accuracy_m: f64, vertical_accuracy_m: f64, direction_deg: f64, direction_accuracy_deg: f64) {
+    crate::abi::qgc_core_gcs_position_update(latitude, longitude, altitude, horizontal_accuracy_m, vertical_accuracy_m, direction_deg, direction_accuracy_deg);
+}
+
+#[wasm_bindgen(js_name = gcsPositionError)]
+pub fn gcs_position_error(code: i32) {
+    crate::abi::qgc_core_gcs_position_error(i64::from(code));
 }
 
 #[wasm_bindgen]

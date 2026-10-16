@@ -160,7 +160,14 @@ const released = (counts: Map<string, number>, paths: string[]) =>
 
 const sameKeys = (a: Map<string, number>, b: Map<string, number>) => a.size === b.size && [...a.keys()].every((key) => b.has(key));
 
-const resend = () => coreCall('watchClient', CLIENT, [...registry.watched.keys()].join(','));
+const resend = (): boolean => {
+  try {
+    Qgc.sendWatch([...registry.watched.keys()].join(','));
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 const parsedReply = (text: unknown): Json | null => (typeof text === 'string' ? parseJson(text) : null);
 
@@ -190,20 +197,43 @@ export const Qgc = {
     return new Set(registry.watched.keys());
   },
 
+  forgetWatchesForTest(): void {
+    registry.watched = new Map();
+  },
+
+  sendWatch: (csv: string): void => {
+    void coreCall('watchClient', CLIENT, csv);
+  },
+
   watch(paths: string[]): void {
     const next = retained(registry.watched, paths);
-    const changed = !sameKeys(next, registry.watched);
+    if (sameKeys(next, registry.watched)) {
+      registry.watched = next;
+      return;
+    }
+    const previous = registry.watched;
     registry.watched = next;
-    if (changed) void resend();
+    if (!resend()) {
+      registry.watched = previous;
+      console.warn(`watch failed for ${paths.join(',')}, will retry`);
+    }
   },
 
   unwatch(paths: string[]): void {
     const next = released(registry.watched, paths);
     const dropped = [...registry.watched.keys()].filter((key) => !next.has(key));
+    if (dropped.length === 0) {
+      registry.watched = next;
+      return;
+    }
+    const previous = registry.watched;
     registry.watched = next;
-    if (dropped.length === 0) return;
-    void resend();
-    dropped.forEach((path) => publish(path, null));
+    if (resend()) {
+      dropped.forEach((path) => publish(path, null));
+    } else {
+      registry.watched = previous;
+      console.warn(`unwatch failed for ${paths.join(',')}, still watching them`);
+    }
   },
 
   async get(path: string): Promise<Json> {

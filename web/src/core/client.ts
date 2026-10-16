@@ -11,26 +11,32 @@ type Message = { ready: true } | { event: { path: string; json: string } } | { w
 
 type EventListener = (path: string, json: string) => void;
 
-const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
 const pending = new Map<string, (result: unknown) => void>();
 const eventListeners = new Set<EventListener>();
 const hostLinks = new Map<number, (bytes: Uint8Array) => void>();
 const serialPorts = new Map<string, SerialPort>();
 const serialSessions = new Map<number, { port: SerialPort; writer: Promise<WritableStreamDefaultWriter<Uint8Array> | null>; reader: ReadableStreamDefaultReader<Uint8Array> | null }>();
 
-export const ready = new Promise<void>((resolve) => {
-  worker.onmessage = ({ data }: MessageEvent<Message>) => {
-    if ('ready' in data) return resolve();
-    if ('event' in data) return eventListeners.forEach((listener) => listener(data.event.path, data.event.json));
-    if ('write' in data) return hostLinks.get(data.write.id)?.(data.write.bytes);
-    if ('serial' in data) return void serialOp(data.serial);
-    pending.get(data.id)?.(data.result);
-    pending.delete(data.id);
-  };
-});
+const connection: { worker: Worker | null; ready: Promise<Worker> | null } = { worker: null, ready: null };
+
+const connect = (): Promise<Worker> => {
+  connection.ready ??= new Promise<Worker>((resolve) => {
+    const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
+    connection.worker = worker;
+    worker.onmessage = ({ data }: MessageEvent<Message>) => {
+      if ('ready' in data) return resolve(worker);
+      if ('event' in data) return eventListeners.forEach((listener) => listener(data.event.path, data.event.json));
+      if ('write' in data) return hostLinks.get(data.write.id)?.(data.write.bytes);
+      if ('serial' in data) return void serialOp(data.serial);
+      pending.get(data.id)?.(data.result);
+      pending.delete(data.id);
+    };
+  });
+  return connection.ready;
+};
 
 export const call = <T = unknown>(name: string, ...args: unknown[]): Promise<T> =>
-  ready.then(() => new Promise<T>((resolve) => {
+  connect().then((worker) => new Promise<T>((resolve) => {
     const id = crypto.randomUUID();
     pending.set(id, resolve as (result: unknown) => void);
     worker.postMessage({ id, call: name, args });

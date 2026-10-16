@@ -46,6 +46,10 @@ const calls = {
   setSerialPorts: core.setSerialPorts,
   serialReceived: core.serialReceived,
   serialClosed: core.serialClosed,
+  mapTile: core.mapTile,
+  gcsPositionSource: core.gcsPositionSource,
+  gcsPositionUpdate: core.gcsPositionUpdate,
+  gcsPositionError: core.gcsPositionError,
 } as const;
 
 scope.onmessage = ({ data: { id, call, args } }) => {
