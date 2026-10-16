@@ -219,7 +219,7 @@ val testSyntheticPage by tasks.registering(Exec::class) {
     inputs.dir("src/main/assets/synthetic")
     inputs.dir("src/test/synthetic")
     outputs.upToDateWhen { false }
-    commandLine("node", "--test", "src/test/synthetic/")
+    commandLine("node", "--test", "src/test/synthetic/*.test.js")
 }
 
 tasks.withType<Test>().configureEach { dependsOn(testSyntheticPage) }
