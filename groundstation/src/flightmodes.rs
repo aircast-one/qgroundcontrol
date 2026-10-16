@@ -1,3 +1,6 @@
+use std::cmp::Reverse;
+use std::collections::{BTreeMap, BTreeSet};
+
 use serde_json::{Value, json};
 
 use crate::read::{flag, object, text};
@@ -44,12 +47,15 @@ pub const DEPS: &[&str] = &[
     "settings.flightModeSettings.apmPinnedFlightModesRoverBoat",
     "settings.flightModeSettings.apmPinnedFlightModesSub",
     "settings.flightModeSettings.apmPinnedFlightModesAirship",
+    MODE_USE,
 ];
+
+const MODE_USE: &str = "settings.flightModeSettings.flightModeUse";
 
 const VEHICLE_CLASSES: &[(&str, &str)] = &[("vtol", "VTOL"), ("fixedWing", "FixedWing"), ("multiRotor", "MultiRotor"), ("rover", "RoverBoat"), ("sub", "Sub"), ("airship", "Airship")];
 
 const QUICK_SLOTS: &[(&str, &[&[&str]])] = &[
-    ("MultiRotor", &[&["Position", "Position Hold", "Loiter"], &["Altitude", "Altitude Hold"], &["Stabilized", "Stabilize", "Manual"], &["Mission", "Auto"], &["Return", "RTL"], &["Land"]]),
+    ("MultiRotor", &[&["Position", "Loiter", "Position Hold"], &["Altitude", "Altitude Hold"], &["Stabilized", "Stabilize", "Manual"], &["Mission", "Auto"], &["Return", "RTL"], &["Land"]]),
     ("FixedWing", &[&["Position", "Cruise"], &["Altitude", "FBW A"], &["Hold", "Loiter"], &["Mission", "Auto"]]),
     ("VTOL", &[&["Position", "QuadPlane Loiter"], &["Altitude", "QuadPlane Hover"], &["Stabilized", "Cruise"], &["Mission", "Auto"]]),
     ("RoverBoat", &[&["Position", "Steering"], &["Hold"], &["Manual"], &["Mission", "Auto"]]),
@@ -161,13 +167,39 @@ fn vehicle_class(vehicle: &Value) -> Option<&'static str> {
     VEHICLE_CLASSES.iter().find(|(field, _)| flag(vehicle, field)).map(|(_, class)| *class)
 }
 
+fn firmware(vehicle: &Value) -> Option<&'static str> {
+    match (flag(vehicle, "px4Firmware"), flag(vehicle, "apmFirmware")) {
+        (true, _) => Some("px4"),
+        (false, true) => Some("apm"),
+        _ => None,
+    }
+}
+
 fn mode_list_setting(vehicle: &Value, list: &str) -> Option<String> {
-    let firmware = match (flag(vehicle, "px4Firmware"), flag(vehicle, "apmFirmware")) {
-        (true, _) => "px4",
-        (false, true) => "apm",
-        _ => return None,
-    };
-    Some(format!("settings.flightModeSettings.{firmware}{list}FlightModes{}", vehicle_class(vehicle)?))
+    Some(format!("settings.flightModeSettings.{}{list}FlightModes{}", firmware(vehicle)?, vehicle_class(vehicle)?))
+}
+
+fn use_key(vehicle: &Value) -> Option<String> {
+    Some(format!("{}{}", firmware(vehicle)?, vehicle_class(vehicle)?))
+}
+
+fn mode_use(backend: &dyn Backend) -> serde_json::Map<String, Value> {
+    serde_json::from_str::<Value>(&text(&backend.value(MODE_USE), "value")).ok().and_then(|table| table.as_object().cloned()).unwrap_or_default()
+}
+
+fn used_modes(backend: &dyn Backend, key: Option<&str>) -> BTreeMap<String, u64> {
+    let table = mode_use(backend);
+    let row = key.and_then(|key| table.get(key)).and_then(Value::as_object);
+    row.map(|row| row.iter().filter_map(|(mode, count)| Some((mode.clone(), count.as_u64()?))).collect()).unwrap_or_default()
+}
+
+fn remember_use(backend: &dyn Backend, key: &str, mode: &str) {
+    let table = mode_use(backend);
+    let row = table.get(key).and_then(Value::as_object).cloned().unwrap_or_default();
+    let count = row.get(mode).and_then(Value::as_u64).unwrap_or(0) + 1;
+    let row: serde_json::Map<String, Value> = row.into_iter().filter(|(name, _)| name != mode).chain([(mode.to_string(), json!(count))]).collect();
+    let table: serde_json::Map<String, Value> = table.into_iter().filter(|(name, _)| name != key).chain([(key.to_string(), Value::Object(row))]).collect();
+    backend.set(MODE_USE, &json!({ "value": Value::Object(table).to_string() }).to_string());
 }
 
 pub fn hidden_modes_setting(vehicle: &Value) -> Option<String> {
@@ -186,15 +218,18 @@ pub fn needs_gps(mode: &str, class: Option<&str>) -> bool {
     }
 }
 
-pub fn quick_modes(all: &[String], advanced: &[String], pinned: &[String], class: Option<&str>) -> Vec<String> {
+pub fn quick_modes(all: &[String], advanced: &[String], pinned: &[String], used: &BTreeMap<String, u64>, class: Option<&str>) -> Vec<String> {
     let pins: Vec<String> = pinned.iter().filter(|name| all.contains(name)).cloned().collect();
     let slots = QUICK_SLOTS.iter().find(|(name, _)| Some(*name) == class).map(|(_, slots)| *slots).unwrap_or(QUICK_SLOTS[0].1);
     let picked: Vec<String> = slots.iter().filter_map(|names| names.iter().find(|name| all.iter().any(|mode| mode.as_str() == **name)).map(|name| name.to_string())).collect();
     let everyday = || all.iter().filter(|name| !advanced.contains(name) && section(name) == "normal").take(QUICK_COUNT).cloned().collect();
-    match () {
-        _ if !pins.is_empty() => pins,
-        _ if picked.len() >= QUICK_MINIMUM => picked,
-        _ => everyday(),
+    let defaults: Vec<String> = if picked.len() >= QUICK_MINIMUM { picked } else { everyday() };
+    let rank = |name: &String| defaults.iter().position(|default| default == name).unwrap_or(usize::MAX);
+    let favourites: BTreeSet<(Reverse<u64>, usize, String)> = used.iter().filter(|(name, count)| **count > 0 && all.contains(name)).map(|(name, count)| (Reverse(*count), rank(name), name.clone())).collect();
+    let learned = favourites.into_iter().map(|(_, _, name)| name).chain(defaults.iter().cloned());
+    match pins.is_empty() {
+        false => pins,
+        true => learned.fold(Vec::new(), |list, name| if list.contains(&name) { list } else { list.into_iter().chain([name]).collect() }).into_iter().take(defaults.len()).collect(),
     }
 }
 
@@ -219,7 +254,7 @@ pub fn flight_modes_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let (all, advanced) = (strings("flightModes"), strings("advancedFlightModes"));
     let current = text(&vehicle, "flightMode");
     let (armed, flying) = (flag(&vehicle, "armed"), flag(&vehicle, "flying"));
-    let quick = quick_modes(&all, &advanced, &pinned, class);
+    let quick = quick_modes(&all, &advanced, &pinned, &used_modes(backend, use_key(&vehicle).as_deref()), class);
     let gps_missing = connected && no_gps_fix(backend);
     let modes: Vec<Value> = all
         .iter()
@@ -312,6 +347,9 @@ pub fn write_mode(backend: &dyn Backend, path: &str, value: &str) -> Value {
         return json!({ "ok": true, "result": true, "refusal": Value::Null, "unchanged": true, "reason": Value::Null });
     }
     let answered = flag(&object(&backend.set(path, &json!({ "value": asked }).to_string())), "ok");
+    if let Some(key) = use_key(&backend.value_fields("vehicle", "px4Firmware,apmFirmware,vtol,fixedWing,multiRotor,rover,sub,airship")).filter(|_| answered) {
+        remember_use(backend, &key, &asked);
+    }
     json!({
         "ok": answered,
         "result": answered,
@@ -408,9 +446,9 @@ mod tests {
 
     #[test]
     fn the_quick_list_holds_the_modes_each_kind_of_vehicle_flies_in() {
-        let quick = |all: &[&str], advanced: &[&str], class: &str| quick_modes(&names(all), &names(advanced), &[], Some(class));
+        let quick = |all: &[&str], advanced: &[&str], class: &str| quick_modes(&names(all), &names(advanced), &[], &BTreeMap::new(), Some(class));
         let apm_copter = ["Stabilize", "Acro", "Altitude Hold", "Auto", "Guided", "Loiter", "RTL", "Circle", "Land", "Position Hold", "Brake", "Smart RTL"];
-        assert_eq!(quick(&apm_copter, &[], "MultiRotor"), ["Position Hold", "Altitude Hold", "Stabilize", "Auto", "RTL", "Land"], "a copter pilot reaches for Return and Land as often as any mode");
+        assert_eq!(quick(&apm_copter, &[], "MultiRotor"), ["Loiter", "Altitude Hold", "Stabilize", "Auto", "RTL", "Land"], "a copter pilot reaches for Return and Land as often as any mode, and Loiter is ArduCopter's position hold");
         assert_eq!(quick(&["Manual", "Stabilized", "Acro", "Altitude", "Position", "Mission", "Hold", "Return", "Land"], &[], "MultiRotor"), ["Position", "Altitude", "Stabilized", "Mission", "Return", "Land"]);
         let apm_plane = ["Manual", "Circle", "Stabilize", "Training", "Acro", "FBW A", "FBW B", "Cruise", "Autotune", "Auto", "RTL", "Loiter", "Takeoff", "Guided"];
         assert_eq!(quick(&apm_plane, &[], "FixedWing"), ["Cruise", "FBW A", "Loiter", "Auto"], "a plane pilot flies FBW A and Cruise, which a copter vocabulary never offered");
@@ -424,9 +462,50 @@ mod tests {
     #[test]
     fn pinned_modes_replace_the_defaults_in_the_order_they_were_pinned() {
         let all = names(&["Stabilize", "Acro", "Altitude Hold", "Auto", "Loiter", "Position Hold"]);
-        assert_eq!(quick_modes(&all, &[], &names(&["Acro", "Gone", "Loiter"]), Some("MultiRotor")), ["Acro", "Loiter"], "a pin the vehicle does not offer is skipped");
-        assert_eq!(quick_modes(&all, &[], &names(&["Gone"]), Some("MultiRotor")), ["Position Hold", "Altitude Hold", "Stabilize", "Auto"], "a vehicle without RTL or Land fills only the slots it has");
+        let used = BTreeMap::from([("Auto".to_string(), 40)]);
+        assert_eq!(quick_modes(&all, &[], &names(&["Acro", "Gone", "Loiter"]), &used, Some("MultiRotor")), ["Acro", "Loiter"], "a pin the vehicle does not offer is skipped, and pins win over use");
+        assert_eq!(quick_modes(&all, &[], &names(&["Gone"]), &BTreeMap::new(), Some("MultiRotor")), ["Loiter", "Altitude Hold", "Stabilize", "Auto"], "a vehicle without RTL or Land fills only the slots it has");
         assert_eq!(pinned_modes_setting(&json!({ "apmFirmware": true, "vtol": true, "fixedWing": true })).as_deref(), Some("settings.flightModeSettings.apmPinnedFlightModesVTOL"));
+    }
+
+    #[test]
+    fn the_modes_picked_most_lead_the_quick_list_and_the_defaults_fill_the_rest() {
+        let all = names(&["Stabilize", "Acro", "Altitude Hold", "Auto", "Guided", "Loiter", "RTL", "Land", "Position Hold"]);
+        let used = BTreeMap::from([("Acro".to_string(), 5), ("Loiter".to_string(), 2), ("Gone".to_string(), 9), ("RTL".to_string(), 2)]);
+        assert_eq!(quick_modes(&all, &[], &[], &used, Some("MultiRotor")), ["Acro", "Loiter", "RTL", "Altitude Hold", "Stabilize", "Auto"], "a mode the vehicle lacks is skipped, a tie keeps the default order, and the list keeps its length");
+    }
+
+    #[test]
+    fn each_mode_picked_from_the_menu_is_counted_for_its_firmware_and_vehicle_class() {
+        use std::cell::RefCell;
+        struct Copter(RefCell<String>, RefCell<Vec<String>>);
+        impl Backend for Copter {
+            fn get(&self, p: &str) -> String {
+                match p {
+                    MODE_USE => json!({ "value": self.0.borrow().clone() }).to_string(),
+                    _ => String::new(),
+                }
+            }
+            fn get_fields(&self, _p: &str, _f: &str) -> String {
+                json!({ "kind": "object", "flightMode": "Loiter", "flightModes": ["Loiter", "Acro", "RTL"], "advancedFlightModes": [], "flying": true, "flightModeSetAvailable": true, "apmFirmware": true, "multiRotor": true }).to_string()
+            }
+            fn set(&self, p: &str, v: &str) -> String {
+                self.1.borrow_mut().push(p.to_string());
+                if p == MODE_USE {
+                    *self.0.borrow_mut() = serde_json::from_str::<Value>(v).ok().and_then(|v| v["value"].as_str().map(str::to_string)).unwrap_or_default();
+                }
+                json!({ "ok": true }).to_string()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let copter = Copter(RefCell::new(r#"{"px4MultiRotor":{"Position":3}}"#.to_string()), RefCell::new(Vec::new()));
+        write_mode(&copter, "vehicle.flightMode", r#"{"value":"Acro"}"#);
+        write_mode(&copter, "vehicle.flightMode", r#"{"value":"Acro"}"#);
+        write_mode(&copter, "vehicle.flightMode", r#"{"value":"Loiter"}"#);
+        let table: Value = serde_json::from_str(&copter.0.borrow()).expect("stored use");
+        assert_eq!(table, json!({ "px4MultiRotor": { "Position": 3 }, "apmMultiRotor": { "Acro": 2 } }), "asking for the mode it is already in is not a pick, and another firmware's counts are kept");
+        assert_eq!(used_modes(&copter, Some("apmMultiRotor")), BTreeMap::from([("Acro".to_string(), 2)]));
     }
 
     #[test]

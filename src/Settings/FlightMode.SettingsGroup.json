@@ -178,6 +178,13 @@
             "label": "Comma separated list of flight modes pinned to the quick list for Airship"
         },
         {
+            "name": "flightModeUse",
+            "shortDesc": "How many times each flight mode was picked, per firmware and vehicle class, as JSON",
+            "type": "string",
+            "default": "{}",
+            "label": "How many times each flight mode was picked"
+        },
+        {
             "name": "requireModeChangeConfirmation",
             "shortDesc": "Require confirmation when changing flight modes",
             "type": "bool",

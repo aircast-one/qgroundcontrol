@@ -104,6 +104,7 @@ const HIDDEN: &[&str] = &[
     "apmPinnedFlightModesRoverBoat",
     "apmPinnedFlightModesSub",
     "apmPinnedFlightModesAirship",
+    "flightModeUse",
     "firstRunPromptIdsShown",
     "deviceName",
     "ntripServerConnectEnabled",

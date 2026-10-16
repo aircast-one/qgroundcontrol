@@ -37,5 +37,6 @@ public:
     DEFINE_SETTINGFACT(apmPinnedFlightModesRoverBoat)
     DEFINE_SETTINGFACT(apmPinnedFlightModesSub)
     DEFINE_SETTINGFACT(apmPinnedFlightModesAirship)
+    DEFINE_SETTINGFACT(flightModeUse)
     DEFINE_SETTINGFACT(requireModeChangeConfirmation)
 };
