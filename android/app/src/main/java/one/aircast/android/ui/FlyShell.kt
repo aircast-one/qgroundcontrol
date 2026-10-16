@@ -494,27 +494,29 @@ internal fun FlyScreen(
             FlyChromeLayout(
                 modifier = Modifier.fillMaxSize(),
                 top = {
-                    Column(
-                        Modifier
-                            .windowInsetsPadding(WindowInsets.statusBars)
-                            .padding(horizontal = AircastSpace.s3, vertical = AircastSpace.s2),
-                        verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
-                    ) {
-                        CompositionLocalProvider(LocalCompactStatus provides true) {
+                    Box {
+                        Column(
+                            Modifier
+                                .windowInsetsPadding(WindowInsets.statusBars)
+                                .padding(horizontal = AircastSpace.s3, vertical = AircastSpace.s2),
+                            verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
+                        ) {
+                            CompositionLocalProvider(LocalCompactStatus provides true) {
+                                Row(
+                                    Modifier.fillMaxWidth().heightIn(min = STATUS_ROW_HEIGHT),
+                                    horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    content = status,
+                                )
+                            }
+                            TrafficBanner()
                             Row(
-                                Modifier.fillMaxWidth().heightIn(min = STATUS_ROW_HEIGHT),
+                                Modifier.horizontalScroll(rememberScrollState()),
                                 horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
                                 verticalAlignment = Alignment.CenterVertically,
-                                content = status,
-                            )
+                            ) { keyRow() }
                         }
-                        BatteryReturnBar()
-                        TrafficBanner()
-                        Row(
-                            Modifier.horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
-                            verticalAlignment = Alignment.CenterVertically,
-                        ) { keyRow() }
+                        BatteryReturnBar(Modifier.align(Alignment.TopCenter).windowInsetsPadding(WindowInsets.statusBars))
                     }
                 },
                 overlays = {

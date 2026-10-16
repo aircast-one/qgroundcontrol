@@ -51,7 +51,6 @@ import androidx.compose.ui.text.drawText
 import kotlin.math.roundToInt
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.foundation.Canvas
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.TextStyle
@@ -363,8 +362,7 @@ internal fun batteryBarDescription(headline: BatteryHeadline): String =
         RETURN_NOW_SPOKEN.takeIf { headline.returnNow },
     ).joinToString(", ")
 
-private val BATTERY_BAR_HEIGHT = 4.dp
-private val BATTERY_BAR_ROOM = 14.dp
+private val BATTERY_BAR_HEIGHT = 3.dp
 private val RETURN_MARKER = 12.dp
 private const val BATTERY_BAR_TRACK_ALPHA = 0.25f
 private const val PERCENT = 100f
@@ -386,19 +384,18 @@ internal fun BatteryReturnBar(modifier: Modifier = Modifier) {
             BarTone.Reserve -> MaterialTheme.colorScheme.error
         }
     }
-    val track = (if (live && tone != BarTone.Fine) fill else MaterialTheme.aircast.outdoorForeground).copy(alpha = BATTERY_BAR_TRACK_ALPHA)
+    val track = MaterialTheme.aircast.outdoorForeground.copy(alpha = BATTERY_BAR_TRACK_ALPHA)
     val reserveZone = MaterialTheme.colorScheme.error
     val home = MaterialTheme.aircast.success
     val homeText = MaterialTheme.aircast.onSuccess
     val measurer = rememberTextMeasurer()
     val letter = TextStyle(color = homeText, fontSize = 8.sp, fontWeight = FontWeight.Bold)
-    Canvas(modifier.fillMaxWidth().height(BATTERY_BAR_ROOM).semantics { contentDescription = batteryBarDescription(headline) }) {
+    Canvas(modifier.fillMaxWidth().height(RETURN_MARKER).semantics { contentDescription = batteryBarDescription(headline) }) {
         val bar = BATTERY_BAR_HEIGHT.toPx()
-        val top = (size.height - bar) / 2f
         val at = { share: Double -> size.width * (share.toFloat() / PERCENT).coerceIn(0f, 1f) }
-        drawRoundRect(track, Offset(0f, top), Size(size.width, bar), CornerRadius(bar / 2f))
-        drawRoundRect(fill, Offset(0f, top), Size(at(percent), bar), CornerRadius(bar / 2f))
-        drawRect(reserveZone, Offset(0f, top), Size(at(headline.reserve), bar))
+        drawRect(track, Offset.Zero, Size(size.width, bar))
+        drawRect(fill, Offset.Zero, Size(at(percent), bar))
+        drawRect(reserveZone, Offset.Zero, Size(at(headline.reserve), bar))
         headline.returnAt?.let { share ->
             val centre = Offset(at(share), size.height / 2f)
             drawCircle(home, RETURN_MARKER.toPx() / 2f, centre)

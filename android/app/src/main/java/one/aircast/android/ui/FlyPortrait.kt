@@ -328,18 +328,23 @@ internal fun FlyPortrait(
                 VideoTab(swipeDistance, growingSwipe(corner)) { flyScreen.videoTucked = false }
             }
             Column(Modifier.fillMaxWidth().onSizeChanged { chromeHeightPx = it.height }) {
-                Row(
+                Box(
                     Modifier
                         .fillMaxWidth()
                         .background(Brush.verticalGradient(listOf(Color.Black.copy(alpha = SCRIM_ALPHA), Color.Transparent)))
-                        .windowInsetsPadding(WindowInsets.statusBars)
-                        .height(PORTRAIT_BAR_HEIGHT)
-                        .padding(horizontal = AircastSpace.s3),
-                    horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
-                    verticalAlignment = Alignment.CenterVertically,
-                    content = status,
-                )
-                BatteryReturnBar(Modifier.padding(horizontal = AircastSpace.s3))
+                        .windowInsetsPadding(WindowInsets.statusBars),
+                ) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(PORTRAIT_BAR_HEIGHT)
+                            .padding(horizontal = AircastSpace.s3),
+                        horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
+                        verticalAlignment = Alignment.CenterVertically,
+                        content = status,
+                    )
+                    BatteryReturnBar(Modifier.align(Alignment.TopCenter))
+                }
                 TrafficBanner(Modifier.padding(start = AircastSpace.s3, end = AircastSpace.s3, bottom = AircastSpace.s2))
             }
             }
