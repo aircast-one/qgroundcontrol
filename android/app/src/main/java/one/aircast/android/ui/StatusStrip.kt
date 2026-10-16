@@ -362,6 +362,7 @@ internal fun batteryBarDescription(headline: BatteryHeadline): String =
     listOfNotNull(
         headline.percent?.let { "Battery ${it.roundToInt()}%" },
         headline.returnAt?.let { "return home needed at ${it.roundToInt()}%" },
+        headline.drainPerMinute?.let { "using ${it.roundToInt()}% a minute" },
         RETURN_NOW_SPOKEN.takeIf { headline.returnNow },
     ).joinToString(", ")
 
@@ -527,16 +528,17 @@ private const val BATTERY_RING_TRACK_ALPHA = 0.25f
 private val RING_HOME_MARKER = 10.dp
 private val RING_HOME_LETTER = 7.sp
 
-internal enum class RingZone { Reserve, Return, Free }
+internal enum class RingZone { Reserve, Return, Free, Usage }
 
 internal data class RingSegment(val from: Double, val to: Double, val zone: RingZone)
 
-internal fun batteryRingSegments(percent: Double, reserve: Double, returnAt: Double?): List<RingSegment> {
+internal fun batteryRingSegments(percent: Double, reserve: Double, returnAt: Double?, drainPerMinute: Double?): List<RingSegment> {
     val returnFrom = maxOf(reserve, returnAt ?: reserve)
-    return listOf(
+    return listOfNotNull(
         RingSegment(0.0, reserve, RingZone.Reserve),
         RingSegment(reserve, returnFrom, RingZone.Return),
         RingSegment(returnFrom, PERCENT.toDouble(), RingZone.Free),
+        drainPerMinute?.let { RingSegment(percent - it, percent, RingZone.Usage) },
     ).map { it.copy(from = it.from.coerceIn(0.0, percent), to = it.to.coerceIn(0.0, percent)) }.filter { it.to > it.from }
 }
 
@@ -579,8 +581,8 @@ private fun BatteryRing(text: String, colour: Color, count: String, zones: Batte
     val alarm = colour.takeIf { it != Color.Unspecified }
     val ring = alarm ?: MaterialTheme.aircast.success
     val track = (alarm ?: MaterialTheme.aircast.outdoorForeground).copy(alpha = BATTERY_RING_TRACK_ALPHA)
-    val zoneColour = mapOf(RingZone.Reserve to MaterialTheme.colorScheme.error, RingZone.Return to MaterialTheme.aircast.warning, RingZone.Free to ring)
-    val segments = batteryRingSegments(percent.toDouble(), zones?.reserve ?: 0.0, zones?.returnAt)
+    val zoneColour = mapOf(RingZone.Reserve to MaterialTheme.colorScheme.error, RingZone.Return to MaterialTheme.aircast.warning, RingZone.Free to ring, RingZone.Usage to MaterialTheme.aircast.warning)
+    val segments = batteryRingSegments(percent.toDouble(), zones?.reserve ?: 0.0, zones?.returnAt, zones?.drainPerMinute)
     val home = MaterialTheme.aircast.success
     val measurer = rememberTextMeasurer()
     val letter = TextStyle(color = MaterialTheme.aircast.onSuccess, fontSize = RING_HOME_LETTER, fontWeight = FontWeight.Bold)

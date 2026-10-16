@@ -6596,6 +6596,7 @@
         "view.battery.class",
         "view.battery.headline",
         "view.battery.headline.detail",
+        "view.battery.headline.drainPerMinute",
         "view.battery.headline.index",
         "view.battery.headline.level",
         "view.battery.headline.margin",
@@ -10150,6 +10151,7 @@
         "class": "string",
         "headline": {
             "detail": "string",
+            "drainPerMinute": "null",
             "index": "number",
             "level": "string",
             "margin": "string",

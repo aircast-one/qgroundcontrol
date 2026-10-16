@@ -394,7 +394,7 @@ pub fn battery_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "text": described.first().map(|p| p["text"].clone()).unwrap_or(Value::String(String::new())),
         "indicatorPacks": indicator_packs(&described, backend.value(COMBINE_PACKS).get("value").and_then(Value::as_bool).unwrap_or(COMBINE_PACKS_UNSET)),
         "packs": described,
-        "headline": headline(&popup_packs).map(|shown| limiting_pack_extras(backend, shown, &popup_packs, &described)),
+        "headline": headline(&popup_packs).map(|shown| limiting_pack_extras(backend, shown, &popup_packs, &packs, &described)),
     })
 }
 
@@ -434,7 +434,16 @@ pub fn must_return(percent: Option<f64>, return_at: Option<f64>, flying: bool) -
     flying && percent.zip(return_at).is_some_and(|(percent, at)| percent <= at)
 }
 
-fn limiting_pack_extras(backend: &dyn Backend, mut shown: Value, popup_packs: &[PopupPack], described: &[Value]) -> Value {
+pub fn drain_per_minute(amps: Option<f64>, capacity_mah: Option<f64>) -> Option<f64> {
+    amps.filter(|a| *a > 0.0).zip(capacity_mah.filter(|c| *c > 0.0)).map(|(amps, mah)| amps * 1000.0 / mah * 100.0 / 60.0)
+}
+
+fn capacity_mah(backend: &dyn Backend, index: usize) -> Option<f64> {
+    let apm = if index == 0 { "BATT_CAPACITY".to_string() } else { format!("BATT{}_CAPACITY", index + 1) };
+    [apm, format!("BAT{}_CAPACITY", index + 1)].iter().find_map(|name| parameter_value(backend, name, "value"))
+}
+
+fn limiting_pack_extras(backend: &dyn Backend, mut shown: Value, popup_packs: &[PopupPack], packs: &[Pack], described: &[Value]) -> Value {
     let index = shown["index"].as_u64().unwrap_or(0) as usize;
     let limiting = &popup_packs[index];
     let action = parameter_value(backend, "COM_LOW_BAT_ACT", "rawValue").map(|v| v as i64);
@@ -454,6 +463,7 @@ fn limiting_pack_extras(backend: &dyn Backend, mut shown: Value, popup_packs: &[
     shown["reserve"] = json!(reserve);
     shown["returnAt"] = return_at.map_or(Value::Null, |at| json!(at));
     shown["returnNow"] = json!(must_return(limiting.percent, return_at, flying));
+    shown["drainPerMinute"] = drain_per_minute(packs.get(index).and_then(|pack| pack.current), capacity_mah(backend, index)).map_or(Value::Null, |d| json!(d));
     shown
 }
 
@@ -572,6 +582,15 @@ mod tests {
         assert_eq!(failsafe_reserve(Some(3), Some(7.0)), 7.0);
         assert_eq!(failsafe_reserve(Some(0), Some(7.0)), 0.0, "a warn-only failsafe never lands, so there is no reserve to keep");
         assert_eq!(failsafe_reserve(None, None), 0.0);
+    }
+
+    #[test]
+    fn the_drain_is_the_share_of_the_pack_a_minute_at_this_current_costs() {
+        assert!((drain_per_minute(Some(36.0), Some(3300.0)).unwrap() - 18.18).abs() < 0.01, "36 A on a 3.3 Ah pack empties 18% a minute");
+        assert_eq!(drain_per_minute(Some(0.0), Some(3300.0)), None, "no draw, nothing to show");
+        assert_eq!(drain_per_minute(Some(-2.0), Some(3300.0)), None, "a charging pack is not drained");
+        assert_eq!(drain_per_minute(Some(10.0), Some(0.0)), None, "an unset capacity gives no scale");
+        assert_eq!(drain_per_minute(Some(10.0), None), None);
     }
 
     #[test]

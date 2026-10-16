@@ -84,18 +84,24 @@ class BatteryRingTest {
     fun `the ring splits the charge into land, return and free zones like DJI`() {
         assertEquals(
             listOf(RingSegment(0.0, 10.0, RingZone.Reserve), RingSegment(10.0, 30.0, RingZone.Return), RingSegment(30.0, 60.0, RingZone.Free)),
-            batteryRingSegments(60.0, 10.0, 30.0),
+            batteryRingSegments(60.0, 10.0, 30.0, null),
         )
     }
 
     @Test
     fun `below the return point the ring shows only land and return`() {
-        assertEquals(listOf(RingSegment(0.0, 10.0, RingZone.Reserve), RingSegment(10.0, 20.0, RingZone.Return)), batteryRingSegments(20.0, 10.0, 30.0))
+        assertEquals(listOf(RingSegment(0.0, 10.0, RingZone.Reserve), RingSegment(10.0, 20.0, RingZone.Return)), batteryRingSegments(20.0, 10.0, 30.0, null))
     }
 
     @Test
     fun `without a return estimate the charge above the reserve is free`() {
-        assertEquals(listOf(RingSegment(0.0, 60.0, RingZone.Free)), batteryRingSegments(60.0, 0.0, null))
-        assertEquals(listOf(RingSegment(0.0, 5.0, RingZone.Reserve)), batteryRingSegments(5.0, 10.0, null))
+        assertEquals(listOf(RingSegment(0.0, 60.0, RingZone.Free)), batteryRingSegments(60.0, 0.0, null, null))
+        assertEquals(listOf(RingSegment(0.0, 5.0, RingZone.Reserve)), batteryRingSegments(5.0, 10.0, null, null))
+    }
+
+    @Test
+    fun `the yellow usage at the tip grows with the draw and never runs past empty`() {
+        assertEquals(RingSegment(42.0, 60.0, RingZone.Usage), batteryRingSegments(60.0, 0.0, null, 18.0).last())
+        assertEquals(RingSegment(0.0, 10.0, RingZone.Usage), batteryRingSegments(10.0, 0.0, null, 25.0).last())
     }
 }

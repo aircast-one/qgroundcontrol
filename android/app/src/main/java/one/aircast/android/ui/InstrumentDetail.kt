@@ -20,6 +20,7 @@ internal data class BatteryHeadline(
     val reserve: Double = 0.0,
     val returnAt: Double? = null,
     val returnNow: Boolean = false,
+    val drainPerMinute: Double? = null,
 )
 
 internal fun batteryHeadline(view: JSONObject?): BatteryHeadline? =
@@ -31,6 +32,7 @@ internal fun batteryHeadline(view: JSONObject?): BatteryHeadline? =
             reserve = it.optDouble("reserve", 0.0),
             returnAt = it.optNumber("returnAt"),
             returnNow = it.optBoolean("returnNow"),
+            drainPerMinute = it.optNumber("drainPerMinute"),
         )
     }
 
