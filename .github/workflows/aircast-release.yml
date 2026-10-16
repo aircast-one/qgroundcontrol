@@ -322,6 +322,7 @@ jobs:
             --api_key_path "$RUNNER_TEMP/asc.json" \
             --app_identifier one.aircast.app \
             --app_version "$MARKETING_VERSION" \
+            --app_platform ios \
             --distribute_external true \
             --groups Public \
             --notify_external_testers true \
@@ -335,6 +336,7 @@ jobs:
           fastlane deliver \
             --api_key_path "$RUNNER_TEMP/asc.json" \
             --app_identifier one.aircast.app \
+            --platform ios \
             --app_version "${SHORT#v}" \
             --skip_binary_upload true \
             --metadata_path ios/fastlane/metadata \
