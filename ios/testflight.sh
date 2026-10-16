@@ -15,7 +15,7 @@ xcodegen generate >/dev/null
 rm -rf "$OUT"
 mkdir -p "$OUT"
 xcodebuild -project Aircast.xcodeproj -scheme Aircast -configuration Release -destination 'generic/platform=iOS' \
-  -archivePath "$ARCHIVE" "${AUTH[@]}" archive > "$OUT/archive.log" 2>&1 || { grep -E "error:" "$OUT/archive.log"; echo "archive failed, see build-ios/testflight/archive.log"; exit 1; }
+  -archivePath "$ARCHIVE" "${AUTH[@]}" ${MARKETING_VERSION:+MARKETING_VERSION="$MARKETING_VERSION"} archive > "$OUT/archive.log" 2>&1 || { grep -E "error:" "$OUT/archive.log"; echo "archive failed, see build-ios/testflight/archive.log"; exit 1; }
 env PATH=/usr/bin:/bin:/usr/sbin:/sbin xcodebuild -exportArchive -archivePath "$ARCHIVE" -exportOptionsPlist ExportOptions.plist -exportPath "$OUT/export" "${AUTH[@]}" \
   > "$OUT/export.log" 2>&1 || { grep -E "error:|Error" "$OUT/export.log"; echo "upload failed, see build-ios/testflight/export.log"; exit 1; }
 echo "Uploaded. App Store Connect processes it in 5-15 minutes, then it appears in TestFlight."

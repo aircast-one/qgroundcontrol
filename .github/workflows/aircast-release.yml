@@ -222,15 +222,15 @@ jobs:
           service_account: play-publisher@aircast-439915.iam.gserviceaccount.com
           create_credentials_file: true
 
-      - name: Publish the Rust core head to the Play internal testing track
+      - name: Publish the Rust core head to Google Play
         if: ${{ steps.play_auth.outcome == 'success' }}
-        continue-on-error: true
+        continue-on-error: ${{ needs.setup.outputs.is_production != 'true' }}
         uses: ./.github/actions/playstore
         with:
           package_name: one.aircast.app
           artifact: out/AircastAndroidCore-${{ needs.setup.outputs.short_version }}.aab
           service_account_json_file: ${{ steps.play_auth.outputs.credentials_file_path }}
-          track: internal
+          track: ${{ needs.setup.outputs.is_production == 'true' && 'production' || 'internal' }}
           status: completed
 
       - name: Collect the native head APK
@@ -251,6 +251,79 @@ jobs:
             out/*.apk
             out/*.aab
           if-no-files-found: error
+
+  build-ios:
+    needs: setup
+    runs-on: macos-26
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: bash
+    env:
+      HAS_ASC_KEY: ${{ secrets.ASC_KEY_P8 != '' }}
+    steps:
+      - name: Checkout repo
+        if: ${{ env.HAS_ASC_KEY == 'true' }}
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: maxim-lobanov/setup-xcode@v1
+        if: ${{ env.HAS_ASC_KEY == 'true' }}
+        with:
+          xcode-version: latest-stable
+
+      - name: Rust toolchain
+        if: ${{ env.HAS_ASC_KEY == 'true' }}
+        uses: ./.github/actions/rust-toolchain
+        with:
+          targets: aarch64-apple-ios
+
+      - name: Install XcodeGen and fastlane
+        if: ${{ env.HAS_ASC_KEY == 'true' }}
+        run: |
+          curl -fsSL -o "$RUNNER_TEMP/xcodegen.zip" https://github.com/yonaskolb/XcodeGen/releases/download/2.45.4/xcodegen.zip
+          unzip -q "$RUNNER_TEMP/xcodegen.zip" -d "$RUNNER_TEMP"
+          echo "$RUNNER_TEMP/xcodegen/bin" >> "$GITHUB_PATH"
+          gem install fastlane -v 2.241.1 --no-document --user-install
+          echo "$(ruby -e 'puts Gem.user_dir')/bin" >> "$GITHUB_PATH"
+
+      - name: Install the App Store Connect key
+        if: ${{ env.HAS_ASC_KEY == 'true' }}
+        env:
+          ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
+        run: printf '%s' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc.p8"
+
+      - name: Upload to TestFlight
+        if: ${{ env.HAS_ASC_KEY == 'true' }}
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          SHORT: ${{ needs.setup.outputs.short_version }}
+        run: |
+          export ASC_KEY_PATH="$RUNNER_TEMP/asc.p8"
+          MARKETING_VERSION=$(echo "$SHORT" | grep -oE '^v[0-9]+\.[0-9]+\.[0-9]+' | cut -c2-)
+          export MARKETING_VERSION
+          ios/testflight.sh || { cat build-ios/testflight/*.log | tail -100; exit 1; }
+
+      - name: Submit to App Store review
+        if: ${{ env.HAS_ASC_KEY == 'true' && needs.setup.outputs.is_production == 'true' }}
+        env:
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+          SHORT: ${{ needs.setup.outputs.short_version }}
+        run: |
+          jq -n --arg id "$ASC_KEY_ID" --arg iss "$ASC_ISSUER_ID" --rawfile key "$RUNNER_TEMP/asc.p8" \
+            '{key_id: $id, issuer_id: $iss, key: $key}' > "$RUNNER_TEMP/asc.json"
+          fastlane deliver \
+            --api_key_path "$RUNNER_TEMP/asc.json" \
+            --app_identifier one.aircast.app \
+            --app_version "${SHORT#v}" \
+            --skip_binary_upload true --skip_metadata true --skip_screenshots true \
+            --submit_for_review true --automatic_release true \
+            --run_precheck_before_submit false \
+            --submission_information '{"add_id_info_uses_idfa": false}' \
+            --force true
 
   build-macos:
     needs: setup
@@ -812,7 +885,7 @@ jobs:
           fi
 
   notify:
-    needs: [setup, build-android, build-macos, build-windows, build-windows-arm64, build-linux, publish, cleanup-old-releases]
+    needs: [setup, build-android, build-ios, build-macos, build-windows, build-windows-arm64, build-linux, publish, cleanup-old-releases]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -820,6 +893,7 @@ jobs:
           VERSION: ${{ needs.setup.outputs.version }}
           ENVIRONMENT: ${{ needs.setup.outputs.environment }}
           ANDROID: ${{ needs.build-android.result }}
+          IOS: ${{ needs.build-ios.result }}
           MACOS: ${{ needs.build-macos.result }}
           WINDOWS: ${{ needs.build-windows.result }}
           WINDOWS_ARM64: ${{ needs.build-windows-arm64.result }}
@@ -830,6 +904,7 @@ jobs:
             echo "## Aircast QGC Release"
             echo "- **Version:** $VERSION ($ENVIRONMENT)"
             echo "- **Android:** $ANDROID"
+            echo "- **iOS:** $IOS"
             echo "- **macOS:** $MACOS"
             echo "- **Windows:** $WINDOWS"
             echo "- **Windows ARM64:** $WINDOWS_ARM64 (non-blocking)"
