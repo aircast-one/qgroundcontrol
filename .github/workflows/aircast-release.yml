@@ -292,7 +292,12 @@ jobs:
         if: ${{ env.HAS_ASC_KEY == 'true' }}
         env:
           ASC_KEY_P8: ${{ secrets.ASC_KEY_P8 }}
-        run: printf '%s' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc.p8"
+          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+        run: |
+          printf '%s' "$ASC_KEY_P8" > "$RUNNER_TEMP/asc.p8"
+          jq -n --arg id "$ASC_KEY_ID" --arg iss "$ASC_ISSUER_ID" --rawfile key "$RUNNER_TEMP/asc.p8" \
+            '{key_id: $id, issuer_id: $iss, key: $key}' > "$RUNNER_TEMP/asc.json"
 
       - name: Upload to TestFlight
         if: ${{ env.HAS_ASC_KEY == 'true' }}
@@ -306,15 +311,27 @@ jobs:
           export MARKETING_VERSION
           ios/testflight.sh || { cat build-ios/testflight/*.log | tail -100; exit 1; }
 
+      - name: Release to public TestFlight testers
+        if: ${{ env.HAS_ASC_KEY == 'true' }}
+        env:
+          VERSION: ${{ needs.setup.outputs.version }}
+          SHORT: ${{ needs.setup.outputs.short_version }}
+        run: |
+          MARKETING_VERSION=$(echo "$SHORT" | grep -oE '^v[0-9]+\.[0-9]+\.[0-9]+' | cut -c2-)
+          fastlane pilot distribute \
+            --api_key_path "$RUNNER_TEMP/asc.json" \
+            --app_identifier one.aircast.app \
+            --app_version "$MARKETING_VERSION" \
+            --distribute_external true \
+            --groups Public \
+            --notify_external_testers true \
+            --changelog "Aircast $SHORT. Release notes: https://github.com/$GITHUB_REPOSITORY/releases/tag/$VERSION"
+
       - name: Submit to App Store review
         if: ${{ env.HAS_ASC_KEY == 'true' && needs.setup.outputs.is_production == 'true' }}
         env:
-          ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
-          ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
           SHORT: ${{ needs.setup.outputs.short_version }}
         run: |
-          jq -n --arg id "$ASC_KEY_ID" --arg iss "$ASC_ISSUER_ID" --rawfile key "$RUNNER_TEMP/asc.p8" \
-            '{key_id: $id, issuer_id: $iss, key: $key}' > "$RUNNER_TEMP/asc.json"
           fastlane deliver \
             --api_key_path "$RUNNER_TEMP/asc.json" \
             --app_identifier one.aircast.app \
