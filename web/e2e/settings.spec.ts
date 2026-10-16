@@ -1,0 +1,42 @@
+import { expect, test } from './fixtures';
+import type { Page } from '@playwright/test';
+
+const openGeneral = async (page: Page) => {
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('tablist').getByRole('tab', { name: 'General' }).click();
+};
+
+test('theme switches between dark and light and survives a reload', async ({ app }) => {
+  await openGeneral(app);
+  await expect(app.locator('html')).toHaveClass(/dark/);
+  await app.getByRole('radio', { name: 'Light' }).click();
+  await expect(app.locator('html')).toHaveClass(/light/);
+  await app.reload();
+  await expect(app.locator('html')).toHaveClass(/light/);
+});
+
+test('a switch setting keeps its value across a reload', async ({ app }) => {
+  await openGeneral(app);
+  const mute = app.getByRole('switch', { name: 'Mute all audio output' });
+  await expect(mute).not.toBeChecked();
+  await mute.click();
+  await expect(mute).toBeChecked();
+  await app.reload();
+  await openGeneral(app);
+  await expect(app.getByRole('switch', { name: 'Mute all audio output' })).toBeChecked();
+});
+
+test('the enforce checklist switch unlocks only with the checklist on', async ({ app }) => {
+  await openGeneral(app);
+  const enforce = app.getByRole('switch', { name: 'Enforce preflight checklist' });
+  await expect(enforce).toBeDisabled();
+  await app.getByRole('switch', { name: 'Use preflight checklist' }).click();
+  await expect(enforce).toBeEnabled();
+});
+
+test('settings search finds a setting by name', async ({ app }) => {
+  await app.getByRole('button', { name: 'Settings', exact: true }).click();
+  await app.getByRole('button', { name: 'Search settings' }).click();
+  await app.getByRole('textbox').first().fill('mute');
+  await expect(app.getByText('Mute all audio output')).toBeVisible();
+});
