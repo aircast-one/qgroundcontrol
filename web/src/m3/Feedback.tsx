@@ -1,4 +1,4 @@
-import { type ReactNode, useMemo, useState } from 'react';
+import { type ReactNode, useMemo, useRef, useState } from 'react';
 import { Tooltip } from '@base-ui/react';
 
 export type SnackbarResult = 'Dismissed' | 'ActionPerformed';
@@ -14,19 +14,30 @@ const DURATION_MS: Record<SnackbarDuration, number | null> = { Short: 4000, Long
 
 export const useSnackbarHostState = (): SnackbarHostState => {
   const [current, setCurrent] = useState<Shown | null>(null);
-  return useMemo(() => ({
-    current,
-    showSnackbar: (message, actionLabel = null, duration = actionLabel ? 'Indefinite' : 'Short') => new Promise<SnackbarResult>((resolve) => {
+  const queue = useRef<Promise<unknown>>(Promise.resolve());
+  return useMemo(() => {
+    const display = (message: string, actionLabel: string | null, duration: SnackbarDuration) => new Promise<SnackbarResult>((resolve) => {
       const id = Date.now() + Math.random();
+      const settled = { done: false };
       const settle = (result: SnackbarResult) => {
+        if (settled.done) return;
+        settled.done = true;
         setCurrent((shown) => (shown?.id === id ? null : shown));
         resolve(result);
       };
       setCurrent({ message, actionLabel, settle, id });
       const timeout = DURATION_MS[duration];
       if (timeout !== null) setTimeout(() => settle('Dismissed'), timeout);
-    }),
-  }), [current]);
+    });
+    return {
+      current,
+      showSnackbar: (message, actionLabel = null, duration = actionLabel ? 'Indefinite' : 'Short') => {
+        const shown = queue.current.then(() => display(message, actionLabel, duration));
+        queue.current = shown.catch(() => undefined);
+        return shown;
+      },
+    };
+  }, [current]);
 };
 
 export const SnackbarHost = ({ hostState, className }: { hostState: SnackbarHostState; className?: string }) => {

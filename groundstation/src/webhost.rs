@@ -198,14 +198,38 @@ pub fn gcs_position_source(token: &str) {
     unsafe { crate::abi::qgc_core_gcs_position_source(c(token).as_ptr()) }
 }
 
+fn reading(value: f64) -> Option<f64> {
+    value.is_finite().then_some(value)
+}
+
 #[wasm_bindgen(js_name = gcsPositionUpdate)]
-pub fn gcs_position_update(latitude: f64, longitude: f64, altitude: f64, horizontal_accuracy_m: f64, vertical_accuracy_m: f64, direction_deg: f64, direction_accuracy_deg: f64) {
-    crate::abi::qgc_core_gcs_position_update(latitude, longitude, altitude, horizontal_accuracy_m, vertical_accuracy_m, direction_deg, direction_accuracy_deg);
+#[allow(clippy::too_many_arguments)]
+pub fn gcs_position_update(latitude: f64, longitude: f64, altitude: f64, horizontal_accuracy_m: f64, vertical_accuracy_m: f64, direction_deg: f64, direction_accuracy_deg: f64, ground_speed_m_s: f64) {
+    crate::gcsposition::report(crate::gcsposition::Update {
+        latitude: reading(latitude),
+        longitude: reading(longitude),
+        altitude: reading(altitude),
+        horizontal_accuracy_m: reading(horizontal_accuracy_m),
+        vertical_accuracy_m: reading(vertical_accuracy_m),
+        direction_deg: reading(direction_deg),
+        direction_accuracy_deg: reading(direction_accuracy_deg),
+        ground_speed_m_s: reading(ground_speed_m_s),
+    });
 }
 
 #[wasm_bindgen(js_name = gcsPositionError)]
 pub fn gcs_position_error(code: i32) {
-    crate::abi::qgc_core_gcs_position_error(i64::from(code));
+    crate::gcsposition::report_error(i64::from(code));
+}
+
+#[wasm_bindgen(js_name = notifyDeepLink)]
+pub fn notify_deep_link(link: &str) {
+    if let Some(host) = crate::nativeargs::deep_link_device(link) {
+        crate::deeplinksetup::offer(&host);
+    }
+    if let Some((_, Some(camera))) = crate::nativeargs::deep_link_writes(link, crate::mocklink::available()) {
+        crate::cameras::adopt(camera);
+    }
 }
 
 #[wasm_bindgen]

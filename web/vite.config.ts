@@ -8,7 +8,7 @@ export default defineConfig({
   plugins: [react(), tailwindcss()],
   resolve: { alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) } },
   worker: { format: 'es' },
-  server: { port: 8800, strictPort: true },
+  server: { port: 8800, strictPort: true, fs: { allow: [fileURLToPath(new URL('..', import.meta.url))] } },
   preview: { port: 8800, strictPort: true },
   build: { target: 'es2023' },
   test: { environment: 'node', include: ['src/**/*.test.{ts,tsx}'] },

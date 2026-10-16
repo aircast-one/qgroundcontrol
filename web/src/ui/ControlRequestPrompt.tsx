@@ -1,0 +1,1 @@
+export const ControlRequestPrompt = () => null;

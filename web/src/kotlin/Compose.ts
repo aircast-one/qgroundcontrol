@@ -31,18 +31,34 @@ export const useProduceState = <T,>(initial: T, keys: DependencyList, producer: 
   return value;
 };
 
+type BackEntry = { order: number; enabled: boolean; onBack: { readonly current: () => void } };
+
+const backStack: { entries: readonly BackEntry[]; next: number; listening: boolean } = { entries: [], next: 0, listening: false };
+
+const OPEN_POPUP = '[role="dialog"][data-open], [role="alertdialog"][data-open], [role="menu"][data-open], [role="listbox"][data-open]';
+
+const listenForBack = () => {
+  if (backStack.listening) return;
+  backStack.listening = true;
+  window.addEventListener('keydown', (event) => {
+    if (event.key !== 'Escape' || event.defaultPrevented || document.querySelector(OPEN_POPUP)) return;
+    const top = backStack.entries.filter((entry) => entry.enabled).reduce<BackEntry | null>((best, entry) => (best === null || entry.order > best.order ? entry : best), null);
+    if (top === null) return;
+    event.preventDefault();
+    top.onBack.current();
+  });
+};
+
 export const useBackHandler = (enabled: boolean, onBack: () => void): void => {
   const latest = useUpdatedRef(onBack);
+  const [order] = useState(() => backStack.next++);
   useEffect(() => {
-    if (!enabled) return undefined;
-    const onKey = (event: KeyboardEvent) => {
-      if (event.key !== 'Escape' || event.defaultPrevented) return;
-      event.preventDefault();
-      latest.current();
+    listenForBack();
+    backStack.entries = [...backStack.entries.filter((entry) => entry.order !== order), { order, enabled, onBack: latest }];
+    return () => {
+      backStack.entries = backStack.entries.filter((entry) => entry.order !== order);
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [enabled]);
+  }, [order, enabled]);
 };
 
 export const useTicker = (periodMs: number, keys: DependencyList, tick: () => void | Promise<void>): void => {

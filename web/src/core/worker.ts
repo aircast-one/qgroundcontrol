@@ -50,6 +50,7 @@ const calls = {
   gcsPositionSource: core.gcsPositionSource,
   gcsPositionUpdate: core.gcsPositionUpdate,
   gcsPositionError: core.gcsPositionError,
+  notifyDeepLink: core.notifyDeepLink,
 } as const;
 
 scope.onmessage = ({ data: { id, call, args } }) => {
