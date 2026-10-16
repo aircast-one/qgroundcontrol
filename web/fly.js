@@ -243,7 +243,7 @@ const render = (all) => {
   document.body.style.setProperty('--battery', color);
   $('#battery-arc').style.strokeDasharray = `${Number.isFinite(percent) ? percent : 0} 100`;
   $('#battery-text').textContent = Number.isFinite(percent) ? String(Math.round(percent)) : '–';
-  $('#return-fill').style.width = `${Number.isFinite(percent) ? percent : 0}%`;
+  $('#return-fill').style.transform = `scaleX(${Number.isFinite(percent) ? percent / 100 : 0})`;
   const pack = battery?.indicatorPacks?.[0];
   $('#current').textContent = Number.isFinite(pack?.current) ? `${pack.current.toFixed(1)}A` : '–';
   $('#flight-time').textContent = clock(all['vehicle.flightTime']?.value);
