@@ -379,18 +379,20 @@ pub fn stream_switches(was: Option<u8>, now: Option<u8>, outs: &[Out]) -> Vec<(u
         .collect()
 }
 
+fn switch_stream((vehicle, start): (u8, bool)) {
+    let op = if start { "resumeStream" } else { "stopStream" };
+    let frames = crate::hub::lock().guided(Some(vehicle), &json!({ "action": "camera", "op": op }), crate::hub::now_ms()).unwrap_or_default();
+    frames.iter().for_each(|(link, bytes)| { crate::linkhost::write(&crate::linkhost::TRANSPORTS, *link, bytes); });
+}
+
+#[cfg(not(target_family = "wasm"))]
 static STREAM_SWITCHES: std::sync::LazyLock<Mutex<std::sync::mpsc::Sender<(u8, bool)>>> = std::sync::LazyLock::new(|| {
     let (sender, receiver) = std::sync::mpsc::channel::<(u8, bool)>();
-    std::thread::spawn(move || {
-        receiver.iter().for_each(|(vehicle, start)| {
-            let op = if start { "resumeStream" } else { "stopStream" };
-            let frames = crate::hub::lock().guided(Some(vehicle), &json!({ "action": "camera", "op": op }), crate::hub::now_ms()).unwrap_or_default();
-            frames.iter().for_each(|(link, bytes)| { crate::linkhost::write(&crate::linkhost::TRANSPORTS, *link, bytes); });
-        });
-    });
+    std::thread::spawn(move || receiver.iter().for_each(switch_stream));
     Mutex::new(sender)
 });
 
+#[cfg(not(target_family = "wasm"))]
 fn send_stream_switches(switches: Vec<(u8, bool)>) {
     if switches.is_empty() {
         return;
@@ -399,6 +401,13 @@ fn send_stream_switches(switches: Vec<(u8, bool)>) {
     switches.into_iter().for_each(|switch| {
         let _ = sender.send(switch);
     });
+}
+
+#[cfg(target_family = "wasm")]
+fn send_stream_switches(switches: Vec<(u8, bool)>) {
+    if !switches.is_empty() {
+        let _ = crate::background::spawn("groundstation-stream-switch", move || switches.into_iter().for_each(switch_stream));
+    }
 }
 
 fn synced() -> MutexGuard<'static, Option<Host>> {

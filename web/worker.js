@@ -1,10 +1,23 @@
-import init, { setMockLinksAvailable, linkOpen, hostLinkOpen, hostLinkBytes, hostLinkClosed, onLinkWrite, pump, get, guided } from './pkg/groundstation.js';
+import init, * as core from './pkg/groundstation.js';
 
 await init();
-setMockLinksAvailable(true);
-onLinkWrite((id, bytes) => postMessage({ write: { id, bytes } }, [bytes.buffer]));
-setInterval(pump, 20);
+core.setMockLinksAvailable(true);
+core.onLinkWrite((id, bytes) => postMessage({ write: { id, bytes } }, [bytes.buffer]));
+setInterval(core.pump, 20);
 
-const calls = { linkOpen, hostLinkOpen, hostLinkBytes, hostLinkClosed, get, guided };
+const calls = {
+  get: core.get,
+  getMany: (paths) => paths.map((path) => core.get(path)),
+  set: core.set,
+  invoke: core.invoke,
+  linkOpen: core.linkOpen,
+  linkClose: core.linkClose,
+  hostLinkOpen: core.hostLinkOpen,
+  hostLinkBytes: core.hostLinkBytes,
+  hostLinkClosed: core.hostLinkClosed,
+  settingsOpen: core.settingsOpen,
+  settingsText: core.settingsText,
+  settingsRevision: core.settingsRevision,
+};
 onmessage = ({ data: { id, call, args } }) => postMessage({ id, result: calls[call](...args) });
 postMessage({ ready: true });

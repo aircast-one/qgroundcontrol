@@ -2,53 +2,95 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Aircast Core</title>
-<style>
-  :root { color-scheme: light dark; font: 15px/1.45 system-ui, sans-serif; }
-  body { margin: 0 auto; max-width: 46rem; padding: 1rem; }
-  h1 { font-size: 1.3rem; }
-  h2 { font-size: 1rem; margin-block: 1.5rem .5rem; }
-  .row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
-  button, input { font: inherit; }
-  input[type=number] { width: 6rem; }
-  dl { display: grid; grid-template-columns: max-content 1fr; gap: .2rem 1rem; margin: 0 0 1rem; }
-  dt { opacity: .65; }
-  dd { margin: 0; font-variant-numeric: tabular-nums; }
-  #answer:empty { display: none; }
-  pre { max-height: 24rem; overflow: auto; font-size: 12px; }
-</style>
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Aircast Fly</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Material+Symbols+Rounded:opsz,wght,FILL,GRAD@24,400,0..1,0&display=block">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/maplibre-gl@6.14.0/dist/maplibre-gl.css">
+<link rel="stylesheet" href="fly.css">
 </head>
-<body>
-<h1>Aircast core in the browser</h1>
-<p id="status">Loading the core…</p>
+<body data-follow="true" data-connected="false">
+<div id="map" aria-label="Map"></div>
+<div class="scrim" aria-hidden="true"></div>
 
-<h2>Connect</h2>
-<div class="row">
-  <button data-mock="3">Mock ArduPilot copter</button>
-  <button data-mock="12">Mock PX4 copter</button>
-</div>
-<div class="row">
-  <button id="serial">Serial port…</button>
-  <label>Baud <input id="baud" type="number" value="57600"></label>
-</div>
-<form id="socket" class="row">
-  <input id="url" type="url" placeholder="ws://localhost:5761" size="28" required>
-  <button>Connect WebSocket</button>
-</form>
+<header class="topbar">
+  <button class="icon-button" id="menu" aria-label="Connections"><span class="icon">menu</span></button>
+  <div class="mode">
+    <span class="icon mode-icon" aria-hidden="true">flight</span>
+    <button class="mode-name" id="mode" aria-haspopup="menu" aria-expanded="false"><span id="mode-name">No vehicle</span><span class="icon">arrow_drop_down</span></button>
+    <span class="state-pill" id="state">Disconnected</span>
+  </div>
+  <div class="status" id="status">
+    <span class="battery" title="Battery">
+      <svg viewBox="0 0 36 36" aria-hidden="true"><circle class="track" cx="18" cy="18" r="15"/><circle class="arc" id="battery-arc" cx="18" cy="18" r="15" pathLength="100"/></svg>
+      <span id="battery-text">–</span>
+    </span>
+    <span class="cell" id="current" title="Current">–</span>
+    <span class="cell" id="flight-time" title="Flight time">00'00"</span>
+    <span class="cell gps" title="GPS satellites"><span class="icon">satellite_alt</span><span id="satellites">–</span></span>
+  </div>
+</header>
+<div class="return-bar" aria-hidden="true"><div id="return-fill"></div></div>
 
-<h2>Vehicle</h2>
-<dl id="vehicle"><dt>Vehicle</dt><dd>None connected</dd></dl>
-<div class="row">
-  <button data-guided='{"action":"arm","arm":true}'>Arm</button>
-  <button data-guided='{"action":"arm","arm":false}'>Disarm</button>
-  <button data-guided='{"action":"takeoff","altitude":10}'>Take off 10 m</button>
-  <button data-guided='{"action":"land"}'>Land</button>
-  <button data-guided='{"action":"rtl","smart":false}'>Return</button>
-</div>
-<p id="answer"></p>
-<details><summary>view.coreVehicle</summary><pre id="raw"></pre></details>
+<div id="modes" class="menu" role="menu" hidden></div>
 
-<script type="module" src="main.js"></script>
+<nav class="rail" id="rail" aria-label="Flight actions"></nav>
+<div id="more" class="menu more-menu" role="menu" hidden></div>
+
+<section class="osd" aria-label="Telemetry">
+  <div class="compass" aria-hidden="true">
+    <div class="rose" id="rose"><span class="north">N</span></div>
+    <span class="icon nose">navigation</span>
+  </div>
+  <div class="telemetry">
+    <div class="row small"><span class="label">H.S</span><span id="hs">0.0m/s</span><span class="label">V.S</span><span id="vs">0.0m/s</span></div>
+    <div class="row big"><span class="label">H</span><span id="h">0.0m</span><span class="label">D</span><span id="d">0.0m</span></div>
+  </div>
+</section>
+
+<button class="recenter" id="recenter" aria-label="Follow the vehicle"><span class="icon">my_location</span></button>
+
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+
+<section class="confirm" id="confirm" aria-labelledby="confirm-title" hidden>
+  <div class="confirm-head">
+    <span class="icon" id="confirm-icon" aria-hidden="true"></span>
+    <h2 id="confirm-title"></h2>
+    <button class="icon-button" id="confirm-cancel" aria-label="Cancel"><span class="icon">close</span></button>
+  </div>
+  <p id="confirm-prompt"></p>
+  <div class="height" id="height" hidden>
+    <button class="icon-button" data-step="-1" aria-label="Lower"><span class="icon">remove</span></button>
+    <output id="height-value">10 m</output>
+    <button class="icon-button" data-step="1" aria-label="Higher"><span class="icon">add</span></button>
+  </div>
+  <label class="slide" id="slide">
+    <input type="range" id="slide-input" min="0" max="100" value="0" aria-describedby="confirm-prompt">
+    <span class="slide-label" id="slide-label">Slide to confirm</span>
+  </label>
+</section>
+
+<section class="sheet" id="connect" aria-labelledby="connect-title">
+  <div class="sheet-head">
+    <h2 id="connect-title">Connect a vehicle</h2>
+    <button class="icon-button" id="connect-close" aria-label="Close"><span class="icon">close</span></button>
+  </div>
+  <div id="links"></div>
+  <div class="options">
+    <button class="option" data-mock="3"><span class="icon">deployed_code</span>Mock ArduPilot copter</button>
+    <button class="option" data-mock="12"><span class="icon">deployed_code</span>Mock PX4 copter</button>
+    <div class="serial">
+      <button class="option" id="serial"><span class="icon">usb</span>USB serial port</button>
+      <label>Baud <input id="baud" type="number" value="57600" inputmode="numeric"></label>
+    </div>
+    <form class="socket" id="socket">
+      <input id="url" type="url" placeholder="ws://localhost:5761" required aria-label="MAVLink WebSocket address">
+      <button class="option compact"><span class="icon">lan</span>WebSocket</button>
+    </form>
+  </div>
+</section>
+
+<script type="module" src="fly.js"></script>
 </body>
 </html>

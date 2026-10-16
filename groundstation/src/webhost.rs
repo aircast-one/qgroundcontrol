@@ -72,6 +72,22 @@ unsafe extern "C" fn event(path: *const c_char, json: *const c_char) {
     EVENTS.with(|events| events.borrow().as_ref().map(|handler| handler.call2(&JsValue::NULL, &path, &json)));
 }
 
+#[wasm_bindgen(js_name = settingsOpen)]
+pub fn settings_open(text: &str) {
+    crate::settingsstore::open_text(text);
+    crate::applog::load_categories();
+}
+
+#[wasm_bindgen(js_name = settingsText)]
+pub fn settings_text() -> String {
+    crate::settingsstore::text().unwrap_or_default()
+}
+
+#[wasm_bindgen(js_name = settingsRevision)]
+pub fn settings_revision() -> u64 {
+    crate::settingsstore::revision()
+}
+
 #[wasm_bindgen(js_name = setMockLinksAvailable)]
 pub fn set_mock_links_available(available: bool) {
     crate::mocklink::set_available(available);

@@ -480,6 +480,14 @@ fn settings_text(read: std::io::Result<Vec<u8>>) -> (String, Result<(), std::io:
     }
 }
 
+pub fn open_text(text: &str) {
+    *changing() = Some(versioned(cleared_on_boot(crate::settingsini::read(text))).0);
+}
+
+pub fn text() -> Option<String> {
+    stored().as_ref().map(crate::settingsini::write)
+}
+
 pub fn open(path: &std::path::Path) {
     let (text, readable) = settings_text(std::fs::read(path));
     if let Err(error) = &readable {
