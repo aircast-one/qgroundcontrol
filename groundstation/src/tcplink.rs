@@ -129,7 +129,7 @@ mod tests {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let port = listener.local_addr().unwrap().port();
         drop(listener);
-        let started = std::time::Instant::now();
+        let started = web_time::Instant::now();
         assert!(TcpLink::open(&TcpConfig { host: "127.0.0.1".into(), port }, |_| {}).is_err());
         assert!(started.elapsed() < Duration::from_secs(3));
         assert!(TcpLink::open(&TcpConfig { host: "nonexistent.invalid".into(), port: 1 }, |_| {}).is_err());

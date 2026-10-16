@@ -1,4 +1,5 @@
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Lag {

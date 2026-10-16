@@ -84,7 +84,7 @@ getrandom = { version = "0.4.3", features = ["wasm_js"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "wasmbind"] }
 wasm-bindgen = "0.2.128"
 js-sys = "0.3.105"
-web-sys = { version = "0.3.105", features = ["XmlHttpRequest", "XmlHttpRequestResponseType"] }
+web-sys = { version = "0.3.105", features = ["XmlHttpRequest", "XmlHttpRequestResponseType", "console"] }
 
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
 libc = "0.2"

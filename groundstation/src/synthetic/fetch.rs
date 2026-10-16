@@ -2,7 +2,8 @@ use std::cell::OnceCell;
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::sync::mpsc::{self, Receiver, Sender};
 use std::sync::{Arc, LazyLock, Mutex, PoisonError};
-use std::time::{Duration, SystemTime};
+use std::time::Duration;
+use web_time::SystemTime;
 
 use ureq::http::{HeaderMap, Response};
 use url::Url;
@@ -153,7 +154,8 @@ impl<J: Send + 'static, D: Send + 'static> Pool<J, D> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{Duration, Instant};
+    use std::time::Duration;
+    use web_time::Instant;
 
     fn drained<D: Send + 'static>(pool: &mut Pool<u32, D>, expected: usize) -> Vec<D> {
         let deadline = Instant::now() + Duration::from_secs(10);

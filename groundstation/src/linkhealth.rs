@@ -10,7 +10,7 @@ pub const REPORT_EVERY_MS: u64 = 10_000;
 const NANOS_PER_MS: i64 = 1_000_000;
 const LONGEST_ROUND_TRIP_MS: u64 = 10_000;
 
-static NONCE: LazyLock<i64> = LazyLock::new(|| i64::from(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |since| since.subsec_nanos())) % NANOS_PER_MS);
+static NONCE: LazyLock<i64> = LazyLock::new(|| i64::from(web_time::SystemTime::now().duration_since(web_time::UNIX_EPOCH).map_or(0, |since| since.subsec_nanos())) % NANOS_PER_MS);
 static PINGS_SENT: Mutex<BTreeMap<LinkId, u64>> = Mutex::new(BTreeMap::new());
 static RECENT_ROUND_TRIP_MS: AtomicU64 = AtomicU64::new(0);
 

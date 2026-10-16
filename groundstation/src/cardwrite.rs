@@ -1,5 +1,6 @@
 use std::io::{self, Cursor, Read, Seek, SeekFrom, Write};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
 use mbrman::MBR;
 use sha2::{Digest, Sha256};

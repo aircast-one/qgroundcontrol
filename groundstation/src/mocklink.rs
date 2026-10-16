@@ -5,7 +5,8 @@ use num_traits::FromPrimitive;
 use std::collections::{BTreeMap, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicU8, Ordering};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
 use crate::mockbattery::Battery;
 use crate::mockcal::{Calibration, Stored};
@@ -1887,6 +1888,93 @@ fn phone_position() -> Option<(f64, f64)> {
     position.usable(crate::gcsposition::now()).then_some((lat?, lon?))
 }
 
+struct Driver<S, D> {
+    sim: Sim,
+    parser: Registry,
+    link: crate::transport::LinkId,
+    sequences: BTreeMap<u8, u8>,
+    started: Instant,
+    next_tick: Instant,
+    system: u8,
+    _stream: Option<S>,
+    incoming: mpsc::Receiver<Vec<u8>>,
+    running: std::sync::Arc<AtomicBool>,
+    muted: std::sync::Arc<AtomicBool>,
+    conditions: std::sync::Arc<std::sync::Mutex<Conditions>>,
+    deliver: D,
+}
+
+impl<S, D: Fn(&[u8])> Driver<S, D> {
+    fn step(&mut self, received: Result<Vec<u8>, RecvTimeoutError>) -> bool {
+        self.sim.condition(self.conditions.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone());
+        let replies: Vec<Out> = match received {
+            Ok(bytes) => {
+                let decoded: Vec<Out> = self.parser.bytes_in(self.link, &bytes).iter().flat_map(|frame| self.sim.receive(frame.header, &frame.message)).collect();
+                self.parser.take_extras(self.link).iter().for_each(|extra| self.sim.receive_undecoded(extra));
+                decoded
+            }
+            Err(RecvTimeoutError::Timeout) => Vec::new(),
+            Err(RecvTimeoutError::Disconnected) => return false,
+        };
+        let telemetry = match Instant::now() >= self.next_tick {
+            true => {
+                self.next_tick += TICK;
+                self.sim.tick(self.started.elapsed().as_millis() as u64)
+            }
+            false => Vec::new(),
+        };
+        let pumped = self.sim.pump();
+        let outgoing: Vec<u8> = replies.iter().chain(&telemetry).chain(&pumped).flat_map(|out| encode(self.system, &mut self.sequences, out)).collect();
+        if !outgoing.is_empty() && self.running.load(Ordering::Relaxed) && !self.muted.load(Ordering::Relaxed) {
+            (self.deliver)(&outgoing);
+        }
+        true
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn drive<S, D: Fn(&[u8])>(driver: impl FnOnce() -> Driver<S, D> + Send + 'static) -> Result<(), String> {
+    std::thread::Builder::new()
+        .name("groundstation-mock-link".to_string())
+        .spawn(move || {
+            let mut driver = driver();
+            while driver.running.load(Ordering::Relaxed) && driver.step(driver.incoming.recv_timeout(POLL)) {}
+        })
+        .map(drop)
+        .map_err(|e| e.to_string())
+}
+
+#[cfg(target_family = "wasm")]
+thread_local! {
+    static DRIVEN: std::cell::RefCell<Vec<Box<dyn FnMut() -> bool>>> = const { std::cell::RefCell::new(Vec::new()) };
+}
+
+#[cfg(target_family = "wasm")]
+fn drive<S: 'static, D: Fn(&[u8]) + 'static>(driver: impl FnOnce() -> Driver<S, D>) -> Result<(), String> {
+    let mut driver = driver();
+    DRIVEN.with(|driven| {
+        driven.borrow_mut().push(Box::new(move || {
+            let received = match driver.incoming.try_recv() {
+                Ok(first) => Ok(std::iter::once(first).chain(driver.incoming.try_iter()).flatten().collect()),
+                Err(mpsc::TryRecvError::Empty) => Err(RecvTimeoutError::Timeout),
+                Err(mpsc::TryRecvError::Disconnected) => Err(RecvTimeoutError::Disconnected),
+            };
+            driver.running.load(Ordering::Relaxed) && driver.step(received)
+        }))
+    });
+    Ok(())
+}
+
+#[cfg(target_family = "wasm")]
+pub fn pump() {
+    let driven = DRIVEN.with(|driven| std::mem::take(&mut *driven.borrow_mut()));
+    let kept: Vec<Box<dyn FnMut() -> bool>> = driven.into_iter().filter_map(|mut step| step().then_some(step)).collect();
+    DRIVEN.with(|driven| {
+        let opened = std::mem::take(&mut *driven.borrow_mut());
+        *driven.borrow_mut() = kept.into_iter().chain(opened).collect();
+    });
+}
+
 pub struct MockLink {
     inbox: Sender<Vec<u8>>,
     alive: std::sync::Arc<AtomicBool>,
@@ -1907,42 +1995,14 @@ impl MockLink {
         let muted = silent.clone();
         let conditions = std::sync::Arc::new(std::sync::Mutex::new(Conditions::default()));
         let shared = conditions.clone();
-        std::thread::Builder::new()
-            .name("groundstation-mock-link".to_string())
-            .spawn(move || {
-                let stream = (options.enable_camera && options.video != StreamKind::None).then(|| serve(options.video)).flatten();
-                let mut sim = Sim { ground: world.ground, ..Sim::new(options, system, stream.as_ref().map(|s| s.uri.clone())) }.starting_at(world.start);
-                let mut parser = Registry::default();
-                let link = parser.open(Owner::Core, "mock", "parser");
-                let mut sequences = BTreeMap::new();
-                let started = Instant::now();
-                let mut next_tick = started;
-                while running.load(Ordering::Relaxed) {
-                    let received = incoming.recv_timeout(POLL);
-                    sim.condition(shared.lock().unwrap_or_else(std::sync::PoisonError::into_inner).clone());
-                    let replies: Vec<Out> = match received {
-                        Ok(bytes) => {
-                            let decoded: Vec<Out> = parser.bytes_in(link, &bytes).iter().flat_map(|frame| sim.receive(frame.header, &frame.message)).collect();
-                            parser.take_extras(link).iter().for_each(|extra| sim.receive_undecoded(extra));
-                            decoded
-                        }
-                        Err(RecvTimeoutError::Timeout) => Vec::new(),
-                        Err(RecvTimeoutError::Disconnected) => return,
-                    };
-                    let telemetry = match Instant::now() >= next_tick {
-                        true => {
-                            next_tick += TICK;
-                            sim.tick(started.elapsed().as_millis() as u64)
-                        }
-                        false => Vec::new(),
-                    };
-                    let outgoing: Vec<u8> = replies.iter().chain(&telemetry).chain(&sim.pump()).flat_map(|out| encode(system, &mut sequences, out)).collect();
-                    if !outgoing.is_empty() && running.load(Ordering::Relaxed) && !muted.load(Ordering::Relaxed) {
-                        deliver(&outgoing);
-                    }
-                }
-            })
-            .map_err(|e| e.to_string())?;
+        drive(move || {
+            let stream = (options.enable_camera && options.video != StreamKind::None).then(|| serve(options.video)).flatten();
+            let sim = Sim { ground: world.ground, ..Sim::new(options, system, stream.as_ref().map(|s| s.uri.clone())) }.starting_at(world.start);
+            let mut parser = Registry::default();
+            let link = parser.open(Owner::Core, "mock", "parser");
+            let started = Instant::now();
+            Driver { sim, parser, link, sequences: BTreeMap::new(), started, next_tick: started, system, _stream: stream, incoming, running, muted, conditions: shared, deliver }
+        })?;
         Ok(MockLink { inbox, alive, silent, conditions })
     }
 

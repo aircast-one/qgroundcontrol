@@ -81,7 +81,7 @@ fn refresh_status(ip: String, now_ms: u64) {
         due.then(|| std::mem::take(&mut status.reset))
     };
     let Some(reset) = due else { return };
-    std::thread::spawn(move || {
+    let _ = crate::background::spawn("groundstation-esp-status", move || {
         let url = format!("http://{ip}/status.json{}", if reset { "?r=1" } else { "" });
         let answer = crate::http::get_text(&url, STATUS_TIMEOUT).ok().and_then(|t| serde_json::from_str::<Value>(&t).ok());
         let mut status = STATUS.lock().unwrap_or_else(PoisonError::into_inner);

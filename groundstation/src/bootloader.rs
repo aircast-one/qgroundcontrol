@@ -150,9 +150,9 @@ impl<P: Port> Bootloader<P> {
     }
 
     fn read_line(&mut self, timeout_ms: u64) -> String {
-        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
+        let deadline = web_time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
         let mut line = Vec::new();
-        while let Some(left) = deadline.checked_duration_since(std::time::Instant::now()).map(|d| d.as_millis() as u64).filter(|left| *left > 0) {
+        while let Some(left) = deadline.checked_duration_since(web_time::Instant::now()).map(|d| d.as_millis() as u64).filter(|left| *left > 0) {
             match self.port.read_exact(1, left).ok().and_then(|b| b.first().copied()) {
                 Some(b'\n') if line.last() == Some(&b'\r') => {
                     line.pop();
@@ -169,10 +169,10 @@ impl<P: Port> Bootloader<P> {
         self.port.discard_input();
         self.port.set_baud(SIK_COMMAND_BAUD)?;
         self.port.write(b"+++")?;
-        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(SIK_COMMAND_MODE_TIMEOUT_MS);
+        let deadline = web_time::Instant::now() + std::time::Duration::from_millis(SIK_COMMAND_MODE_TIMEOUT_MS);
         let mut heard = Vec::new();
         while !String::from_utf8_lossy(&heard).contains("OK") {
-            let left = deadline.saturating_duration_since(std::time::Instant::now()).as_millis() as u64;
+            let left = deadline.saturating_duration_since(web_time::Instant::now()).as_millis() as u64;
             match (left, self.port.read_exact(1, left.max(1))) {
                 (0, _) | (_, Err(_)) if heard.is_empty() => return Err("Unable to put radio into command mode +++".to_string()),
                 (0, _) | (_, Err(_)) => return Err("Radio did not respond to command mode".to_string()),

@@ -370,11 +370,11 @@ impl Port for Serial {
 
     fn read_exact(&mut self, count: usize, timeout_ms: u64) -> Result<Vec<u8>, String> {
         use std::io::Read;
-        let deadline = std::time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
+        let deadline = web_time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
         let mut bytes = vec![0u8; count];
         let mut filled = 0;
         while filled < count {
-            let left = deadline.saturating_duration_since(std::time::Instant::now());
+            let left = deadline.saturating_duration_since(web_time::Instant::now());
             if left.is_zero() {
                 return Err("Timeout waiting for bytes to be available".to_string());
             }

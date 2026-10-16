@@ -1,6 +1,7 @@
 use std::cell::Cell;
 use std::path::Path;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
+use web_time::{SystemTime, UNIX_EPOCH};
 
 use http_cache_semantics::{AfterResponse, BeforeRequest, CacheOptions, CachePolicy};
 use rusqlite::{Connection, OptionalExtension, params};

@@ -130,7 +130,7 @@ impl Drop for Running {
 struct Attempt {
     wanted: Wanted,
     running: Option<Running>,
-    at: std::time::Instant,
+    at: web_time::Instant,
 }
 
 const RETRY_AFTER: std::time::Duration = std::time::Duration::from_secs(1);
@@ -212,7 +212,7 @@ pub fn maintain() {
             Wanted::Udp(port) => open_udp(*port),
             Wanted::Serial(port, baud) => open_serial(port, *baud),
         };
-        Attempt { wanted, running, at: std::time::Instant::now() }
+        Attempt { wanted, running, at: web_time::Instant::now() }
     });
     crate::gcsposition::lock().use_nmea(attempt.as_ref().is_some_and(alive));
     *current = attempt;

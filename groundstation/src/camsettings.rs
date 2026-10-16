@@ -86,7 +86,7 @@ pub fn wanted(camera: Wanted) {
         }
         store.insert(key, Entry::Fetching);
     }
-    std::thread::Builder::new().name("groundstation-camera-definition".to_string()).spawn(move || fetch(camera)).expect("camera definition thread");
+    crate::background::spawn("groundstation-camera-definition", move || fetch(camera)).expect("camera definition thread");
 }
 
 fn start_ftp_downloads(now_ms: u64) {
@@ -121,20 +121,18 @@ fn start_ftp_downloads(now_ms: u64) {
 pub fn ftp_finished(vehicle: u8, compid: u8, result: Result<crate::filejobs::Outcome, String>) {
     let Some(Entry::FtpDownloading(camera)) = STORE.lock().unwrap_or_else(PoisonError::into_inner).remove(&(vehicle, compid)) else { return };
     STORE.lock().unwrap_or_else(PoisonError::into_inner).insert((vehicle, compid), Entry::Fetching);
-    std::thread::Builder::new()
-        .name("groundstation-camera-definition".to_string())
-        .spawn(move || {
-            let bytes = match result {
-                Ok(crate::filejobs::Outcome::Downloaded(bytes)) => crate::compmeta::inflate(&camera.uri, &bytes).map_err(|e| format!("Inflate of compressed xml failed: {e}")),
-                Ok(_) => Err("The camera sent no definition file.".to_string()),
-                Err(reason) => Err(reason),
-            };
-            if let (Ok(bytes), Some(path)) = (&bytes, cache_path(&camera.vendor, &camera.model, camera.version)) {
-                let _ = std::fs::create_dir_all(path.parent().unwrap_or(&path)).and_then(|()| std::fs::write(&path, bytes));
-            }
-            settle(camera, bytes);
-        })
-        .expect("camera definition thread");
+    crate::background::spawn("groundstation-camera-definition", move || {
+        let bytes = match result {
+            Ok(crate::filejobs::Outcome::Downloaded(bytes)) => crate::compmeta::inflate(&camera.uri, &bytes).map_err(|e| format!("Inflate of compressed xml failed: {e}")),
+            Ok(_) => Err("The camera sent no definition file.".to_string()),
+            Err(reason) => Err(reason),
+        };
+        if let (Ok(bytes), Some(path)) = (&bytes, cache_path(&camera.vendor, &camera.model, camera.version)) {
+            let _ = std::fs::create_dir_all(path.parent().unwrap_or(&path)).and_then(|()| std::fs::write(&path, bytes));
+        }
+        settle(camera, bytes);
+    })
+    .expect("camera definition thread");
 }
 
 fn fetch(camera: Wanted) {

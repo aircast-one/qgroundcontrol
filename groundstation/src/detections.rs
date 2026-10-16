@@ -200,7 +200,7 @@ pub fn detections_view(backend: &dyn Backend, _args: &[String]) -> Value {
         && let Some(source) = source
     {
         let generation = feed.generation;
-        std::thread::Builder::new().name("groundstation-detections".to_string()).spawn(move || follow(source, generation)).expect("detections thread");
+        crate::background::spawn("groundstation-detections", move || follow(source, generation)).expect("detections thread");
     }
     feed.snapshot(crate::hub::now_ms())
 }

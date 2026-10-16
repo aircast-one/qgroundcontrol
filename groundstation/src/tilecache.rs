@@ -123,7 +123,7 @@ fn uri_escaped(path: &Path) -> String {
 }
 
 fn now_secs() -> i64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|since| since.as_secs() as i64).unwrap_or(0)
+    web_time::SystemTime::now().duration_since(web_time::UNIX_EPOCH).map(|since| since.as_secs() as i64).unwrap_or(0)
 }
 
 impl Cache {

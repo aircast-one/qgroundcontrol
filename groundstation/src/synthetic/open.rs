@@ -1,7 +1,8 @@
 use std::collections::{BTreeMap, HashMap};
 use std::f64::consts::{FRAC_1_SQRT_2, PI};
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
 use glam::{DMat3, DMat4, DVec3, DVec4};
 

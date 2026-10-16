@@ -150,7 +150,7 @@ fn loaded(path: &str) -> Option<(std::time::SystemTime, Option<std::sync::Arc<Ci
         _ => {
             *held = Some((path.to_string(), modified, Load::Parsing));
             let owned = path.to_string();
-            let _ = std::thread::Builder::new().name("osm-parse".into()).spawn(move || {
+            let _ = crate::background::spawn("osm-parse", move || {
                 let map = std::fs::read_to_string(&owned).ok().and_then(|text| parse(&text)).map(std::sync::Arc::new);
                 let mut held = locked(&LOADED);
                 if held.as_ref().is_some_and(|(known, at, _)| *known == owned && *at == modified) {

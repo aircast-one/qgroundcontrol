@@ -4,6 +4,10 @@
 mod abi;
 #[cfg(all(feature = "native-host", not(test)))]
 pub mod nativehost;
+#[cfg(all(any(feature = "native-host", target_family = "wasm"), not(test)))]
+mod noqt;
+#[cfg(all(target_family = "wasm", not(test)))]
+mod webhost;
 #[cfg(all(feature = "jni-host", not(test)))]
 mod androidvideo;
 #[cfg(all(feature = "jni-host", not(test)))]
@@ -285,6 +289,7 @@ pub mod terraintile;
 pub mod terraindownload;
 pub mod tlog;
 pub mod track;
+pub mod background;
 pub mod http;
 pub mod transport;
 pub mod udplink;

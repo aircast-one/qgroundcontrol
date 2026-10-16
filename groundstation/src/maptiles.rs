@@ -1,7 +1,8 @@
 use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicI64, AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, PoisonError, TryLockError};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
 use once_cell::sync::OnceCell;
 use quick_cache::Weighter;

@@ -131,6 +131,11 @@ ios-checks:
     cd ios && xcodegen generate
     cd ios && xcodebuild -project Aircast.xcodeproj -scheme Aircast -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath {{justfile_directory()}}/build-ios/dd test
 
+# Build the core for the browser and serve the web head at http://localhost:8800
+web:
+    ./web/build-core.sh
+    python3 -m http.server 8800 --directory web
+
 # Regenerate the Android and iOS colour schemes from the pinned aircast-tokens commit
 tokens:
     GOWORK=off go run github.com/aircast-one/aircast-tokens/cmd/aircast-tokens@{{aircast_tokens}} -format kotlin -package one.aircast.map > android/map/src/main/java/one/aircast/map/AircastTokens.kt

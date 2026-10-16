@@ -1,7 +1,8 @@
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 use std::sync::{Mutex, PoisonError};
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
 use crate::modes::{COPTER_MODES, Mode, PLANE_MODES, PX4_MODES, ROVER_MODES, SUB_MODES};
 use crate::read::{flag, object, value_number};

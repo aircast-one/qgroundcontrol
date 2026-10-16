@@ -160,13 +160,11 @@ pub fn run(backend: &dyn Backend, action: &str, args: &str) -> Value {
             }
             let written = set_frame(backend, frame.value);
             let path = format!("Sub/{file}-{}.params", params_version(version(backend)));
-            std::thread::Builder::new()
-                .name("groundstation-sub-frame-params".to_string())
-                .spawn(move || {
-                    let outcome = fetch_params(&path).map(|text| apply(&parse_params(&text)));
-                    *LOADING.lock().unwrap_or_else(PoisonError::into_inner) = Loading { busy: false, error: outcome.err().unwrap_or_default() };
-                })
-                .expect("sub frame params thread");
+            crate::background::spawn("groundstation-sub-frame-params", move || {
+                let outcome = fetch_params(&path).map(|text| apply(&parse_params(&text)));
+                *LOADING.lock().unwrap_or_else(PoisonError::into_inner) = Loading { busy: false, error: outcome.err().unwrap_or_default() };
+            })
+            .expect("sub frame params thread");
             written
         }
         _ => json!({ "ok": false, "reason": format!("{action} is not a Sub frame action") }),

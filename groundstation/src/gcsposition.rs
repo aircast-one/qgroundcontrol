@@ -30,7 +30,7 @@ pub fn now() -> MonotonicMs {
 }
 
 pub fn wall_now() -> MonotonicMs {
-    MonotonicMs(std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|since| since.as_millis() as u64).unwrap_or(0))
+    MonotonicMs(web_time::SystemTime::now().duration_since(web_time::UNIX_EPOCH).map(|since| since.as_millis() as u64).unwrap_or(0))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -517,7 +517,7 @@ mod tests {
     }
 
     fn epoch_now() -> i64 {
-        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64
+        web_time::SystemTime::now().duration_since(web_time::UNIX_EPOCH).unwrap().as_millis() as i64
     }
 
     #[test]
@@ -558,7 +558,7 @@ mod tests {
                 json!({
                     "gcsPosition": { "latitude": 47.397, "longitude": 8.545, "altitude": 500.0, "valid": true },
                     "gcsPositionHorizontalAccuracy": self.2,
-                    "gcsPositionTimestamp": std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_millis() as i64,
+                    "gcsPositionTimestamp": web_time::SystemTime::now().duration_since(web_time::UNIX_EPOCH).unwrap().as_millis() as i64,
                     "gcsPositionSource": self.0,
                 })
                 .to_string()

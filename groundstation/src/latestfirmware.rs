@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::sync::Mutex;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
 const PX4_RELEASES: &str = "https://api.github.com/repos/PX4/Firmware/releases?per_page=10";
 const APM_VERSION: &str = "http://firmware.ardupilot.org/{}/stable/Pixhawk1/git-version.txt";
@@ -60,7 +61,7 @@ fn text(url: &str) -> Option<String> {
     if due && fetches() {
         held.insert(url.to_string(), Fetch::Pending);
         let url = url.to_string();
-        let _ = std::thread::Builder::new().name("firmware-versions".into()).spawn(move || {
+        let _ = crate::background::spawn("firmware-versions", move || {
             let body = crate::http::get_text(&url, VERSION_FETCH_TIMEOUT).ok();
             fetched().insert(url, body.map_or_else(|| Fetch::Failed(Instant::now()), Fetch::Done));
         });

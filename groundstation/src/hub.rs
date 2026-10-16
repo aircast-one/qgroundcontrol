@@ -1186,7 +1186,7 @@ impl Vehicle {
             None => {
                 let (sender, answer) = std::sync::mpsc::channel();
                 let uri = source.uri.clone();
-                let spawned = std::thread::Builder::new().name("groundstation-component-metadata".to_string()).spawn(move || {
+                let spawned = crate::background::spawn("groundstation-component-metadata", move || {
                     let _ = sender.send(compmeta::download_over_http(&uri));
                 });
                 match spawned {
@@ -4753,10 +4753,10 @@ impl Hub {
 }
 
 pub fn now_us() -> u64 {
-    std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_micros() as u64).unwrap_or(0)
+    web_time::SystemTime::now().duration_since(web_time::UNIX_EPOCH).map(|d| d.as_micros() as u64).unwrap_or(0)
 }
 
-static STARTED: LazyLock<std::time::Instant> = LazyLock::new(std::time::Instant::now);
+static STARTED: LazyLock<web_time::Instant> = LazyLock::new(web_time::Instant::now);
 
 pub fn no_parameters_notice(id: u8, autopilot: u8, app: &str) -> Option<String> {
     let generic = autopilot != crate::modes::AUTOPILOT_PX4 && autopilot != crate::modes::AUTOPILOT_ARDUPILOT;
@@ -6819,7 +6819,7 @@ mod tests {
         assert_eq!(opened, ["/etc/extras/component_general.json", "/etc/extras/gone.json", "/etc/extras/parameters.json"], "RequestMetaDataJsonFallback runs after the primary download fails");
         assert_eq!(hub.active().unwrap().parameter_meta("RTL_ALT", Some(ParamValue::F32(0.0))).unwrap()["shortDescription"], "Return altitude");
         assert!(after.iter().all(|(_, b)| !matches!(decode(b), MavMessage::FILE_TRANSFER_PROTOCOL(_))), "events are fetched over HTTP, not FTP");
-        let started = std::time::Instant::now();
+        let started = web_time::Instant::now();
         let answered = std::iter::repeat_with(|| {
             std::thread::yield_now();
             hub.tick(100)

@@ -62,6 +62,8 @@ impl log::Log for CoreLogger {
         let message = record.args().to_string();
         #[cfg(target_os = "android")]
         logcat(record.level(), target, &message);
+        #[cfg(target_family = "wasm")]
+        console(record.level(), target, &message);
         record_entry(level_of(record.level()), target, &message, record.file().unwrap_or_default(), record.line().unwrap_or(0));
     }
 
@@ -139,6 +141,17 @@ pub fn categories_view(_backend: &dyn Backend, _args: &[String]) -> Value {
             "enabled": enabled.contains(name),
         })).collect::<Vec<_>>(),
     })
+}
+
+#[cfg(target_family = "wasm")]
+fn console(level: log::Level, target: &str, message: &str) {
+    let text = wasm_bindgen::JsValue::from(format!("{target}: {message}"));
+    match level {
+        log::Level::Error => web_sys::console::error_1(&text),
+        log::Level::Warn => web_sys::console::warn_1(&text),
+        log::Level::Info => web_sys::console::info_1(&text),
+        log::Level::Debug | log::Level::Trace => web_sys::console::debug_1(&text),
+    }
 }
 
 #[cfg(target_os = "android")]
@@ -330,7 +343,7 @@ pub fn passes(filter: &Filter, entry: &Entry) -> bool {
     accepts(filter, &filter.category.to_lowercase(), &filter.matcher(), entry)
 }
 
-static STARTED: std::sync::LazyLock<std::time::Instant> = std::sync::LazyLock::new(std::time::Instant::now);
+static STARTED: std::sync::LazyLock<web_time::Instant> = std::sync::LazyLock::new(web_time::Instant::now);
 const ELAPSED_SETTING: &str = "settings.appSettings.showAppLogTimestampAsElapsedTime";
 
 pub fn shown_time(entry: &Entry, elapsed: bool) -> String {

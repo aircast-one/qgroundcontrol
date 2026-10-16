@@ -1,6 +1,7 @@
 use std::collections::BTreeSet;
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
 use glam::{DMat4, DVec3, DVec4};
 use serde_json::Value;

@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Aircast Core</title>
+<style>
+  :root { color-scheme: light dark; font: 15px/1.45 system-ui, sans-serif; }
+  body { margin: 0 auto; max-width: 46rem; padding: 1rem; }
+  h1 { font-size: 1.3rem; }
+  h2 { font-size: 1rem; margin-block: 1.5rem .5rem; }
+  .row { display: flex; flex-wrap: wrap; gap: .5rem; align-items: center; }
+  button, input { font: inherit; }
+  input[type=number] { width: 6rem; }
+  dl { display: grid; grid-template-columns: max-content 1fr; gap: .2rem 1rem; margin: 0 0 1rem; }
+  dt { opacity: .65; }
+  dd { margin: 0; font-variant-numeric: tabular-nums; }
+  #answer:empty { display: none; }
+  pre { max-height: 24rem; overflow: auto; font-size: 12px; }
+</style>
+</head>
+<body>
+<h1>Aircast core in the browser</h1>
+<p id="status">Loading the core…</p>
+
+<h2>Connect</h2>
+<div class="row">
+  <button data-mock="3">Mock ArduPilot copter</button>
+  <button data-mock="12">Mock PX4 copter</button>
+</div>
+<div class="row">
+  <button id="serial">Serial port…</button>
+  <label>Baud <input id="baud" type="number" value="57600"></label>
+</div>
+<form id="socket" class="row">
+  <input id="url" type="url" placeholder="ws://localhost:5761" size="28" required>
+  <button>Connect WebSocket</button>
+</form>
+
+<h2>Vehicle</h2>
+<dl id="vehicle"><dt>Vehicle</dt><dd>None connected</dd></dl>
+<div class="row">
+  <button data-guided='{"action":"arm","arm":true}'>Arm</button>
+  <button data-guided='{"action":"arm","arm":false}'>Disarm</button>
+  <button data-guided='{"action":"takeoff","altitude":10}'>Take off 10 m</button>
+  <button data-guided='{"action":"land"}'>Land</button>
+  <button data-guided='{"action":"rtl","smart":false}'>Return</button>
+</div>
+<p id="answer"></p>
+<details><summary>view.coreVehicle</summary><pre id="raw"></pre></details>
+
+<script type="module" src="main.js"></script>
+</body>
+</html>

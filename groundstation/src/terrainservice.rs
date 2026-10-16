@@ -69,7 +69,7 @@ pub fn set_notify(notify: Notify) {
 }
 
 fn fetch_in_background(key: Key) {
-    std::thread::spawn(move || {
+    let _ = crate::background::spawn("groundstation-terrain", move || {
         let path = CACHE_PATH.lock().unwrap_or_else(PoisonError::into_inner).clone();
         let fetched = load(key, path.as_deref(), &crate::terrainquery::fetch_over_http);
         TABLE.lock().unwrap_or_else(PoisonError::into_inner).store(key, fetched, crate::hub::now_ms());

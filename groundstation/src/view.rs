@@ -793,6 +793,7 @@ mod deps_cover_reads {
             ("tilecache", include_str!("tilecache.rs")),
             ("tlog", include_str!("tlog.rs")),
             ("track", include_str!("track.rs")),
+            ("background", include_str!("background.rs")),
             ("http", include_str!("http.rs")),
             ("transport", include_str!("transport.rs")),
             ("udplink", include_str!("udplink.rs")),
