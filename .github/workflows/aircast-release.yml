@@ -319,7 +319,11 @@ jobs:
             --api_key_path "$RUNNER_TEMP/asc.json" \
             --app_identifier one.aircast.app \
             --app_version "${SHORT#v}" \
-            --skip_binary_upload true --skip_metadata true --skip_screenshots true \
+            --skip_binary_upload true \
+            --metadata_path ios/fastlane/metadata \
+            --screenshots_path ios/fastlane/screenshots \
+            --overwrite_screenshots true \
+            --app_rating_config_path ios/fastlane/app_rating_config.json \
             --submit_for_review true --automatic_release true \
             --run_precheck_before_submit false \
             --submission_information '{"add_id_info_uses_idfa": false}' \

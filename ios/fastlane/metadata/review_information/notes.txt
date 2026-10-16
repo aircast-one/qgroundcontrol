@@ -1,0 +1,1 @@
+Aircast is a ground control station for MAVLink drones (ArduPilot, PX4). No account is needed. To see the app with a vehicle without hardware, open the link settings and add a UDP link to an ArduPilot SITL simulator, or browse the Plan screen to build a mission on the map. Live video needs a connected aircraft with a camera.

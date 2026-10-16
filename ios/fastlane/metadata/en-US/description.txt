@@ -1,0 +1,28 @@
+Aircast is a ground control station for uncrewed aircraft, built for flying in the field on a phone: one-handed, in sunlight, with the aircraft in the air.
+
+IN FLIGHT
+• Live video with the map beside it, either one full screen with a tap
+• Altitude, ground speed, distance to home, battery, satellites and RC signal at a glance
+• Take off, land, return, pause, change altitude and speed, each showing why it is unavailable when it is
+• An emergency stop that stays pinned on screen
+• Obstacle distances and ADS-B traffic when you have a source
+
+PLANNING
+• Waypoints, survey grids, corridor and structure scans on a map
+• Geofences and rally points
+• Upload to the aircraft and download what is already on it
+
+CAMERA
+• Photo, video and time-lapse with the storage and mode the camera reports
+• Tap or drag the video to track a target when the camera supports it
+
+MORE THAN ONE AIRCRAFT
+• Select several and arm, disarm, start or pause them together
+• See which ground station is flying an aircraft, and ask for control
+
+CONNECTIONS
+• Finds an aircraft on the network by itself; add UDP, TCP or Bluetooth when it cannot
+• Optional Aircast Cloud link to fly over 4G/LTE with your Aircast account
+• Works with ArduPilot and PX4
+
+Aircast works without an account. Your plans and logs stay on your device.

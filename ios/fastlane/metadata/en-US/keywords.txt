@@ -1,0 +1,1 @@
+drone,gcs,ground control,ardupilot,px4,mavlink,uav,mission planner,waypoint,survey,telemetry,fpv

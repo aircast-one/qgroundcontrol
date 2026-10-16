@@ -143,7 +143,7 @@ struct SliderValueRow<Title: View>: View {
 
     private func commit() {
         let before = numberOf(fact)
-        guard let target = dragging.map({ valueAtPosition(fact, slider, $0) }), target != before else {
+        guard let target = dragging.map({ valueAtPosition(self.fact, slider, $0) }), target != before else {
             dragging = nil
             return
         }
