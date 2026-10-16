@@ -214,8 +214,9 @@ export const useHoldToEditLayout = (): HTMLAttributes<HTMLElement> => {
   useEffect(() => cancel, []);
   if (editing || locked) return {};
   return {
-    onPointerDownCapture: () => {
+    onPointerDownCapture: (event) => {
       cancel();
+      if (!event.currentTarget.contains(event.target as Node)) return;
       timer.current = setTimeout(() => {
         timer.current = null;
         layout.startEditing();

@@ -31,6 +31,7 @@ export const flightMode = (page: Page): Locator => page.getByRole('button', { na
 export const telemetry = (page: Page, label: string): Locator => page.getByText(label, { exact: true }).locator('..').filter({ hasText: /\d/ });
 
 export const slideAcross = async (page: Page, target: Locator) => {
+  await target.hover();
   const box = await target.boundingBox();
   if (box === null) throw new Error('slide target is not on screen');
   const y = box.y + box.height / 2;
@@ -38,6 +39,11 @@ export const slideAcross = async (page: Page, target: Locator) => {
   await page.mouse.down();
   await page.mouse.move(box.x + box.width - 4, y, { steps: 20 });
   await page.mouse.up();
+};
+
+export const vehicleStatus = async (page: Page) => {
+  await page.getByRole('button', { name: /^Not fully ready$|^Ready to fly$|^Armed$/ }).first().click();
+  return page.getByRole('dialog');
 };
 
 export const takeOff = async (page: Page, height: string) => {
