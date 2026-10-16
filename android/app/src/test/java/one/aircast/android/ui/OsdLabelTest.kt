@@ -31,13 +31,6 @@ class DjiChromeTest {
         assertEquals(53, batteryPercent("B1 53%"))
         assertEquals(null, batteryPercent("No battery"))
     }
-
-    @Test
-    fun `the mini-map opens as a thumbnail unless the pilot chose otherwise`() {
-        assertEquals(MiniMap.Thumb, miniMapNamed(null))
-        assertEquals(MiniMap.Compass, miniMapNamed("Compass"))
-        assertEquals(MiniMap.Thumb, miniMapNamed("Unknown"))
-    }
 }
 
 class FlightTimeTest {

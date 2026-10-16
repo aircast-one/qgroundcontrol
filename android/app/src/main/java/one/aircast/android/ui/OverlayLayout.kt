@@ -45,7 +45,6 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionInRoot
-import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.layout.findRootCoordinates
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.geometry.Rect
@@ -243,22 +242,6 @@ internal fun LayoutDragArea(key: String, modifier: Modifier = Modifier) {
                 }
             },
     )
-}
-
-@Composable
-internal fun layoutPlacement(key: String, keepOnScreen: Boolean): Modifier {
-    val layout = LocalFlyScreenState.current.layout
-    val placedKey = layoutKey(key)
-    val moved = layout.offsets[placedKey] ?: (0f to 0f)
-    val angle = if (layout.editing) jiggleAngle(key) else 0f
-    val clamped = if (keepOnScreen) keptOnScreen(placedKey) else Modifier
-    return Modifier.offset(moved.first.dp, moved.second.dp).then(clamped).graphicsLayer { rotationZ = angle }
-}
-
-@Composable
-internal fun LayoutPipEditor(key: String, shape: Shape, modifier: Modifier = Modifier) {
-    if (!LocalFlyScreenState.current.layout.editing) return
-    LayoutDragArea(key, modifier.border(2.dp, MaterialTheme.colorScheme.primary, shape))
 }
 
 @Composable
