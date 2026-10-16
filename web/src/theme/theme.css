@@ -1,0 +1,121 @@
+@import "tailwindcss";
+@import "@fontsource-variable/roboto";
+@import "material-symbols/rounded.css";
+@import "./AircastTokens.css";
+
+:root {
+  --aircast-mission: #b45f00;
+  --aircast-alert: #b45f00;
+  --aircast-map-land: #dde8dc;
+  --aircast-map-water: #b9d7f0;
+  --aircast-map-road: #ffffff;
+  --aircast-outdoor-background: #000000;
+  --aircast-outdoor-foreground: #ffffff;
+  --aircast-outdoor-accent: #ffd60a;
+  --aircast-on-outdoor-accent: #000000;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.light) {
+    --aircast-mission: #ffb870;
+    --aircast-alert: #ffb870;
+    --aircast-map-land: #1b2a24;
+    --aircast-map-water: #12263a;
+    --aircast-map-road: #3a4a44;
+    color-scheme: dark;
+  }
+}
+
+:root.dark {
+  --aircast-mission: #ffb870;
+  --aircast-alert: #ffb870;
+  --aircast-map-land: #1b2a24;
+  --aircast-map-water: #12263a;
+  --aircast-map-road: #3a4a44;
+  color-scheme: dark;
+}
+
+@theme inline {
+  --font-sans: "Roboto Variable", Roboto, system-ui, sans-serif;
+
+  --color-primary: var(--md-primary);
+  --color-on-primary: var(--md-on-primary);
+  --color-primary-container: var(--md-primary-container);
+  --color-on-primary-container: var(--md-on-primary-container);
+  --color-secondary: var(--md-secondary);
+  --color-on-secondary: var(--md-on-secondary);
+  --color-secondary-container: var(--md-secondary-container);
+  --color-on-secondary-container: var(--md-on-secondary-container);
+  --color-tertiary: var(--md-tertiary);
+  --color-on-tertiary: var(--md-on-tertiary);
+  --color-tertiary-container: var(--md-tertiary-container);
+  --color-error: var(--md-error);
+  --color-on-error: var(--md-on-error);
+  --color-error-container: var(--md-error-container);
+  --color-on-error-container: var(--md-on-error-container);
+  --color-background: var(--md-background);
+  --color-on-background: var(--md-on-background);
+  --color-surface: var(--md-surface);
+  --color-on-surface: var(--md-on-surface);
+  --color-surface-variant: var(--md-surface-variant);
+  --color-on-surface-variant: var(--md-on-surface-variant);
+  --color-outline: var(--md-outline);
+  --color-outline-variant: var(--md-outline-variant);
+  --color-surface-dim: var(--md-surface-dim);
+  --color-surface-bright: var(--md-surface-bright);
+  --color-surface-container-lowest: var(--md-surface-container-lowest);
+  --color-surface-container-low: var(--md-surface-container-low);
+  --color-surface-container: var(--md-surface-container);
+  --color-surface-container-high: var(--md-surface-container-high);
+  --color-surface-container-highest: var(--md-surface-container-highest);
+  --color-inverse-surface: var(--md-inverse-surface);
+  --color-inverse-on-surface: var(--md-inverse-on-surface);
+  --color-scrim: var(--md-scrim);
+  --color-success: var(--md-success);
+  --color-on-success: var(--md-on-success);
+  --color-success-container: var(--md-success-container);
+  --color-warning: var(--md-warning);
+  --color-on-warning: var(--md-on-warning);
+  --color-warning-container: var(--md-warning-container);
+  --color-mission: var(--aircast-mission);
+  --color-alert: var(--aircast-alert);
+  --color-map-land: var(--aircast-map-land);
+  --color-map-water: var(--aircast-map-water);
+  --color-map-road: var(--aircast-map-road);
+  --color-outdoor-background: var(--aircast-outdoor-background);
+  --color-outdoor-foreground: var(--aircast-outdoor-foreground);
+  --color-outdoor-accent: var(--aircast-outdoor-accent);
+  --color-on-outdoor-accent: var(--aircast-on-outdoor-accent);
+
+  --radius-shape-xs: 4px;
+  --radius-shape-sm: 8px;
+  --radius-shape-md: 12px;
+  --radius-shape-lg: 16px;
+  --radius-shape-xl: 28px;
+}
+
+@utility text-display-large { font-size: 57px; line-height: 64px; font-weight: 400; }
+@utility text-display-medium { font-size: 45px; line-height: 52px; font-weight: 400; }
+@utility text-display-small { font-size: 36px; line-height: 44px; font-weight: 400; }
+@utility text-headline-large { font-size: 32px; line-height: 40px; font-weight: 400; }
+@utility text-headline-medium { font-size: 28px; line-height: 36px; font-weight: 400; }
+@utility text-headline-small { font-size: 24px; line-height: 32px; font-weight: 400; }
+@utility text-title-large { font-size: 22px; line-height: 28px; font-weight: 400; }
+@utility text-title-medium { font-size: 16px; line-height: 24px; font-weight: 500; }
+@utility text-title-small { font-size: 14px; line-height: 20px; font-weight: 500; }
+@utility text-body-large { font-size: 16px; line-height: 24px; font-weight: 400; }
+@utility text-body-medium { font-size: 14px; line-height: 20px; font-weight: 400; }
+@utility text-body-small { font-size: 12px; line-height: 16px; font-weight: 400; }
+@utility text-label-large { font-size: 14px; line-height: 20px; font-weight: 500; }
+@utility text-label-medium { font-size: 12px; line-height: 16px; font-weight: 500; }
+@utility text-label-small { font-size: 11px; line-height: 16px; font-weight: 500; }
+@utility text-telemetry { font-size: 22px; line-height: 26.4px; font-weight: 500; font-variant-numeric: tabular-nums; }
+@utility text-telemetry-medium { font-size: 16px; line-height: 20px; font-weight: 500; font-variant-numeric: tabular-nums; }
+@utility osd-shadow { text-shadow: 0 1px 2px rgb(0 0 0 / 0.85), 0 0 8px rgb(0 0 0 / 0.45); }
+
+@layer base {
+  html, body, #root { height: 100%; margin: 0; }
+  body { background: var(--md-background); color: var(--md-on-surface); font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
+  button { cursor: pointer; }
+}

@@ -9,6 +9,8 @@ thread_local! {
     static EVENTS: RefCell<Option<js_sys::Function>> = const { RefCell::new(None) };
     static WRITER: RefCell<Option<js_sys::Function>> = const { RefCell::new(None) };
     static LAST_HUB_MS: Cell<u64> = const { Cell::new(0) };
+    static SERIAL_HOST: RefCell<Option<js_sys::Object>> = const { RefCell::new(None) };
+    static SERIAL_PORTS: RefCell<Vec<crate::boards::PortInfo>> = const { RefCell::new(Vec::new()) };
 }
 
 fn c(text: &str) -> CString {
@@ -59,6 +61,11 @@ pub fn guided(action: &str) -> String {
 #[wasm_bindgen]
 pub fn watch(paths: &str) {
     unsafe { crate::abi::qgc_core_watch(c(paths).as_ptr()) }
+}
+
+#[wasm_bindgen(js_name = watchClient)]
+pub fn watch_client(client: &str, paths: &str) {
+    unsafe { crate::abi::qgc_core_watch_client(c(client).as_ptr(), c(paths).as_ptr()) }
 }
 
 #[wasm_bindgen(js_name = onEvent)]
@@ -127,6 +134,57 @@ pub fn on_link_write(writer: js_sys::Function) {
 unsafe extern "C" fn write(id: u32, bytes: *const u8, len: usize, _user: *mut c_void) {
     let bytes = js_sys::Uint8Array::from(unsafe { std::slice::from_raw_parts(bytes, len) });
     WRITER.with(|held| held.borrow().as_ref().map(|writer| writer.call2(&JsValue::NULL, &id.into(), &bytes)));
+}
+
+fn serial_call(name: &str, args: js_sys::Array) -> JsValue {
+    SERIAL_HOST.with(|host| {
+        host.borrow()
+            .as_ref()
+            .and_then(|host| js_sys::Reflect::get(host, &name.into()).ok())
+            .and_then(|method| method.dyn_into::<js_sys::Function>().ok())
+            .and_then(|method| method.apply(&JsValue::NULL, &args).ok())
+            .unwrap_or(JsValue::UNDEFINED)
+    })
+}
+
+fn serial_open(id: u32, name: &str, baud: u32, data_bits: i64, stop_bits: i64, parity: i64) -> bool {
+    let args: js_sys::Array = [JsValue::from(id), name.into(), baud.into(), (data_bits as f64).into(), (stop_bits as f64).into(), (parity as f64).into()].into_iter().collect();
+    serial_call("open", args).as_bool().unwrap_or(false)
+}
+
+fn serial_write(id: u32, bytes: &[u8]) -> bool {
+    let args: js_sys::Array = [JsValue::from(id), js_sys::Uint8Array::from(bytes).into()].into_iter().collect();
+    serial_call("write", args).as_bool().unwrap_or(false)
+}
+
+fn serial_close(id: u32) {
+    serial_call("close", std::iter::once(JsValue::from(id)).collect());
+}
+
+fn serial_ports() -> Vec<crate::boards::PortInfo> {
+    SERIAL_PORTS.with(|ports| ports.borrow().clone())
+}
+
+#[wasm_bindgen(js_name = setSerialHost)]
+pub fn set_serial_host(host: js_sys::Object) {
+    SERIAL_HOST.with(|held| *held.borrow_mut() = Some(host));
+    crate::platformserial::install(crate::platformserial::Hooks { open: serial_open, write: serial_write, close: serial_close, ports: serial_ports });
+}
+
+#[wasm_bindgen(js_name = setSerialPorts)]
+pub fn set_serial_ports(lines: Vec<String>) {
+    let ports = lines.iter().filter_map(|line| crate::platformserial::port_from_info(line)).collect();
+    SERIAL_PORTS.with(|held| *held.borrow_mut() = ports);
+}
+
+#[wasm_bindgen(js_name = serialReceived)]
+pub fn serial_received(id: u32, bytes: &[u8]) {
+    crate::platformserial::received(id, bytes.to_vec());
+}
+
+#[wasm_bindgen(js_name = serialClosed)]
+pub fn serial_closed(id: u32, reason: &str) {
+    crate::platformserial::closed(id, reason);
 }
 
 #[wasm_bindgen]

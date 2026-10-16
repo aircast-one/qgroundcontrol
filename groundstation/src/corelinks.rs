@@ -511,6 +511,19 @@ fn release(name: &str) {
     OPENING.lock().unwrap_or_else(PoisonError::into_inner).remove(name);
 }
 
+#[cfg(target_family = "wasm")]
+fn open_in_background(name: &str, open: impl FnOnce() + Send + 'static) -> Option<()> {
+    claim(name).then_some(())?;
+    let owned = name.to_string();
+    crate::background::spawn("qgc-link-open", move || {
+        open();
+        release(&owned);
+    })
+    .map_err(|_| release(name))
+    .ok()
+}
+
+#[cfg(not(target_family = "wasm"))]
 fn open_in_background(name: &str, open: impl FnOnce() + Send + 'static) -> Option<std::thread::JoinHandle<()>> {
     claim(name).then_some(())?;
     let owned = name.to_string();

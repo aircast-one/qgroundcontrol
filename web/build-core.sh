@@ -11,4 +11,4 @@ archiver=${AR_wasm32_unknown_unknown:-$(command -v llvm-ar || ls /opt/homebrew/o
 
 rustup target add wasm32-unknown-unknown
 AR_wasm32_unknown_unknown=$archiver cargo rustc --lib --release --target wasm32-unknown-unknown --crate-type cdylib
-wasm-bindgen --target web --out-dir ../web/pkg target/wasm32-unknown-unknown/release/groundstation.wasm
+wasm-bindgen --target web --out-dir ../web/src/core/pkg target/wasm32-unknown-unknown/release/groundstation.wasm

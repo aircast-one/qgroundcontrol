@@ -13,7 +13,7 @@ build_type := env_var_or_default("BUILD_TYPE", "Debug")
 build_dir := "build"
 # Use all cores by default; override with JOBS=N.
 jobs := env_var_or_default("JOBS", `python3 -c "import os; print(os.cpu_count() or 4)" 2>/dev/null || echo 4`)
-aircast_tokens := "4eb3949e84347783ed9e0c37ae03427c698e39cb"
+aircast_tokens := "26c9049718f588be2b8587e44de7307fc72a924c"
 
 # Default: show available commands
 default:
@@ -131,15 +131,21 @@ ios-checks:
     cd ios && xcodegen generate
     cd ios && xcodebuild -project Aircast.xcodeproj -scheme Aircast -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath {{justfile_directory()}}/build-ios/dd test
 
-# Build the core for the browser and serve the web head at http://localhost:8800
+# Build the core for the browser and run the web head at http://localhost:8800
 web:
     ./web/build-core.sh
-    python3 -m http.server 8800 --directory web
+    cd web && npm ci && npx vite
+
+# Type-check, unit-test and bundle the web head
+web-checks:
+    ./web/build-core.sh
+    cd web && npm ci && npm run check
 
 # Regenerate the Android and iOS colour schemes from the pinned aircast-tokens commit
 tokens:
     GOWORK=off go run github.com/aircast-one/aircast-tokens/cmd/aircast-tokens@{{aircast_tokens}} -format kotlin -package one.aircast.map > android/map/src/main/java/one/aircast/map/AircastTokens.kt
     GOWORK=off go run github.com/aircast-one/aircast-tokens/cmd/aircast-tokens@{{aircast_tokens}} -format swift > ios/Sources/Theme/AircastTokens.swift
+    GOWORK=off go run github.com/aircast-one/aircast-tokens/cmd/aircast-tokens@{{aircast_tokens}} -format material-css > web/src/theme/AircastTokens.css
 
 # Build documentation
 docs:
