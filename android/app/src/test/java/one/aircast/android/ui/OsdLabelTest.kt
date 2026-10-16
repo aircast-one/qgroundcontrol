@@ -78,3 +78,24 @@ class RailLabelTest {
         assertEquals(listOf("Land", "Return", "Take off"), listOf("Slide to land", "Return", "Slide to take off").map(::railLabel))
     }
 }
+
+class BatteryRingTest {
+    @Test
+    fun `the ring splits the charge into land, return and free zones like DJI`() {
+        assertEquals(
+            listOf(RingSegment(0.0, 10.0, RingZone.Reserve), RingSegment(10.0, 30.0, RingZone.Return), RingSegment(30.0, 60.0, RingZone.Free)),
+            batteryRingSegments(60.0, 10.0, 30.0),
+        )
+    }
+
+    @Test
+    fun `below the return point the ring shows only land and return`() {
+        assertEquals(listOf(RingSegment(0.0, 10.0, RingZone.Reserve), RingSegment(10.0, 20.0, RingZone.Return)), batteryRingSegments(20.0, 10.0, 30.0))
+    }
+
+    @Test
+    fun `without a return estimate the charge above the reserve is free`() {
+        assertEquals(listOf(RingSegment(0.0, 60.0, RingZone.Free)), batteryRingSegments(60.0, 0.0, null))
+        assertEquals(listOf(RingSegment(0.0, 5.0, RingZone.Reserve)), batteryRingSegments(5.0, 10.0, null))
+    }
+}

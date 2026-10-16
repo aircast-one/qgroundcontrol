@@ -199,7 +199,8 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
 
     val batteryJson by qgcPath(BATTERY_VIEW)
     val batteries = remember(batteryJson) { batteryReadings(batteryJson) }
-    val timeLeft = remember(batteryJson) { batteryHeadline(batteryJson)?.timeLeft.orEmpty() }
+    val headline = remember(batteryJson) { batteryHeadline(batteryJson) }
+    val timeLeft = headline?.timeLeft.orEmpty()
     val current = remember(batteryJson) { totalCurrent(batteryJson).orEmpty() }
     val linksJson by qgcPath(VEHICLE_LINKS)
     val links = remember(linksJson) { linkCell(vehicleLinks(linksJson)) }
@@ -222,9 +223,11 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
         val cells: List<Pair<String, @Composable () -> Unit>> = listOf(
             "battery" to {
                 Row(horizontalArrangement = Arrangement.spacedBy(BATTERY_GAP), verticalAlignment = Alignment.CenterVertically) {
+                    val limiting = batteries.minByOrNull { batteryPercent(it.text) ?: Int.MAX_VALUE }
                     batteries.map {
                         val colour = if (live) batteryLevelColour(it.level) else MaterialTheme.colorScheme.outline
-                        if (LocalCompactStatus.current) BatteryRing(it.text, colour, if (LocalNarrowStatus.current) "" else packCountText(it.packs)) { detail = StripDetail.Battery }
+                        val zones = headline.takeIf { _ -> live && it === limiting }
+                        if (LocalCompactStatus.current) BatteryRing(it.text, colour, if (LocalNarrowStatus.current) "" else packCountText(it.packs), zones) { detail = StripDetail.Battery }
                         else InlineCell(listOf(it.text, packCountText(it.packs)).filter(String::isNotEmpty).joinToString(" "), colour, R.drawable.ic_battery_5_bar) { detail = StripDetail.Battery }
                     }
                     if (batteries.isNotEmpty() && !LocalNarrowStatus.current) listOf(timeLeft to "flight time left", current to "current draw").filter { it.first.isNotEmpty() }.map { (value, meaning) ->
@@ -518,9 +521,24 @@ private fun InlineCell(text: String, colour: Color, @DrawableRes icon: Int? = nu
 
 internal val LocalCompactStatus = androidx.compose.runtime.compositionLocalOf { false }
 
-private val BATTERY_RING_SIZE = 30.dp
+private val BATTERY_RING_SIZE = 32.dp
 private val BATTERY_RING_STROKE = 3.dp
 private const val BATTERY_RING_TRACK_ALPHA = 0.25f
+private val RING_HOME_MARKER = 10.dp
+private val RING_HOME_LETTER = 7.sp
+
+internal enum class RingZone { Reserve, Return, Free }
+
+internal data class RingSegment(val from: Double, val to: Double, val zone: RingZone)
+
+internal fun batteryRingSegments(percent: Double, reserve: Double, returnAt: Double?): List<RingSegment> {
+    val returnFrom = maxOf(reserve, returnAt ?: reserve)
+    return listOf(
+        RingSegment(0.0, reserve, RingZone.Reserve),
+        RingSegment(reserve, returnFrom, RingZone.Return),
+        RingSegment(returnFrom, PERCENT.toDouble(), RingZone.Free),
+    ).map { it.copy(from = it.from.coerceIn(0.0, percent), to = it.to.coerceIn(0.0, percent)) }.filter { it.to > it.from }
+}
 
 internal fun batteryPercent(text: String): Int? = compactStatusText(text).removeSuffix("%").toIntOrNull()?.coerceIn(0, 100)
 
@@ -556,25 +574,39 @@ private fun FlightTimeCell() {
 }
 
 @Composable
-private fun BatteryRing(text: String, colour: Color, count: String, onClick: () -> Unit) {
+private fun BatteryRing(text: String, colour: Color, count: String, zones: BatteryHeadline?, onClick: () -> Unit) {
     val percent = batteryPercent(text) ?: return InlineCell(text, colour, R.drawable.ic_battery_5_bar, onClick)
     val alarm = colour.takeIf { it != Color.Unspecified }
     val ring = alarm ?: MaterialTheme.aircast.success
     val track = (alarm ?: MaterialTheme.aircast.outdoorForeground).copy(alpha = BATTERY_RING_TRACK_ALPHA)
+    val zoneColour = mapOf(RingZone.Reserve to MaterialTheme.colorScheme.error, RingZone.Return to MaterialTheme.aircast.warning, RingZone.Free to ring)
+    val segments = batteryRingSegments(percent.toDouble(), zones?.reserve ?: 0.0, zones?.returnAt)
+    val home = MaterialTheme.aircast.success
+    val measurer = rememberTextMeasurer()
+    val letter = TextStyle(color = MaterialTheme.aircast.onSuccess, fontSize = RING_HOME_LETTER, fontWeight = FontWeight.Bold)
     Box(
         Modifier
             .clickable(onClickLabel = "Battery") { onClick() }
-            .semantics { contentDescription = if (count.isEmpty()) "Battery $percent%" else "Lowest of $count batteries $percent%" }
+            .semantics { contentDescription = zones?.let(::batteryBarDescription) ?: if (count.isEmpty()) "Battery $percent%" else "Lowest of $count batteries $percent%" }
             .padding(end = if (count.isEmpty()) 0.dp else BATTERY_COUNT_ROOM),
     ) {
         Box(Modifier.size(BATTERY_RING_SIZE), contentAlignment = Alignment.Center) {
             androidx.compose.foundation.Canvas(Modifier.matchParentSize()) {
-                val stroke = androidx.compose.ui.graphics.drawscope.Stroke(BATTERY_RING_STROKE.toPx(), cap = androidx.compose.ui.graphics.StrokeCap.Round)
+                val stroke = androidx.compose.ui.graphics.drawscope.Stroke(BATTERY_RING_STROKE.toPx())
                 val inset = BATTERY_RING_STROKE.toPx() / 2f
                 val arcSize = androidx.compose.ui.geometry.Size(size.width - inset * 2, size.height - inset * 2)
                 val topLeft = androidx.compose.ui.geometry.Offset(inset, inset)
+                val angle = { share: Double -> (share / PERCENT * 360.0).toFloat() }
                 drawArc(track, 0f, 360f, false, topLeft = topLeft, size = arcSize, style = stroke)
-                drawArc(ring, -90f, 360f * percent / 100f, false, topLeft = topLeft, size = arcSize, style = stroke)
+                segments.map { drawArc(zoneColour.getValue(it.zone), angle(it.from) - 90f, angle(it.to - it.from), false, topLeft = topLeft, size = arcSize, style = stroke) }
+                zones?.returnAt?.let { share ->
+                    val radians = Math.toRadians(angle(share) - 90.0)
+                    val radius = arcSize.width / 2f
+                    val centre = center + Offset((radius * kotlin.math.cos(radians)).toFloat(), (radius * kotlin.math.sin(radians)).toFloat())
+                    drawCircle(home, RING_HOME_MARKER.toPx() / 2f, centre)
+                    val h = measurer.measure("H", letter)
+                    drawText(h, topLeft = centre - Offset(h.size.width / 2f, h.size.height / 2f))
+                }
             }
             Text("$percent", style = MaterialTheme.typography.labelSmall.copy(fontFeatureSettings = "tnum"), color = alarm ?: MaterialTheme.aircast.outdoorForeground)
         }
@@ -590,7 +622,7 @@ private fun BatteryRing(text: String, colour: Color, count: String, onClick: () 
 }
 
 private val BATTERY_COUNT_SIZE = 9.sp
-private val BATTERY_COUNT_ROOM = 10.dp
+private val BATTERY_COUNT_ROOM = 16.dp
 private val BATTERY_GAP = 6.dp
 
 internal const val COMPACT_STATUS_CELLS = 4
