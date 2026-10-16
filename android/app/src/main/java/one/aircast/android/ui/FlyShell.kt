@@ -144,8 +144,6 @@ internal fun miniWidth(mini: MiniMap): androidx.compose.ui.unit.Dp = when (mini)
 
 private fun miniHeight(mini: MiniMap): Dp = if (mini == MiniMap.Thumb) MINIMAP_THUMB else MINIMAP_HEIGHT
 
-internal fun videoPipShown(hasVideo: Boolean, expanded: Boolean): Boolean = hasVideo && expanded
-
 @Composable
 private fun PipToggle(onToggle: () -> Unit, modifier: Modifier = Modifier) {
     Surface(
@@ -247,7 +245,7 @@ internal fun FlyScreen(
         val mapIsPip = view == FlyView.Video
         val videoIsPip = view == FlyView.Map
         val mapShown = view == FlyView.Map || (mapIsPip && mini != MiniMap.Compass)
-        val videoShown = view != FlyView.ThreeD && (view != FlyView.Map || videoPipShown(hasVideo, pipExpanded))
+        val videoShown = view != FlyView.ThreeD && (view != FlyView.Map || hasVideo)
         if (view == FlyView.ThreeD) one.aircast.map.Viewer3DPane(Modifier.fillMaxSize())
         val pipAlign = Alignment.BottomStart
         val mapPipShape = MaterialTheme.shapes.medium
@@ -263,7 +261,7 @@ internal fun FlyScreen(
                         .windowInsetsPadding(WindowInsets.displayCutout)
                         .padding(start = bottomLead)
                         .padding(AircastSpace.s3)
-                        .then(layoutPlacement(MAP_PIP_KEY, keepOnScreen = false))
+                        .then(if (mini == MiniMap.Thumb) Modifier else layoutPlacement(MAP_PIP_KEY, keepOnScreen = false))
                         .then(mapPipSize)
                         .clip(mapPipShape)
                         .border(2.dp, MaterialTheme.colorScheme.onSurface, mapPipShape)
@@ -279,7 +277,11 @@ internal fun FlyScreen(
         val pipHome = with(density) {
             Offset(cutout.getLeft(this, LocalLayoutDirection.current) + (AircastSpace.s3 + bottomLead).toPx(), boxSize.height - cutout.getBottom(this) - AircastSpace.s3.toPx() - MINIMAP_HEIGHT.toPx())
         }
-        val pipFrame = with(density) { Rect(pipHome + Offset(videoMoved.first.dp.toPx(), videoMoved.second.dp.toPx()), Size(MINIMAP_WIDTH.toPx(), MINIMAP_HEIGHT.toPx())) }
+        val videoThumb = videoIsPip && !pipExpanded
+        val pipFrame = with(density) {
+            if (videoThumb) Rect(pipHome + Offset(0f, (MINIMAP_HEIGHT - MINIMAP_THUMB).toPx()), Size(MINIMAP_THUMB.toPx(), MINIMAP_THUMB.toPx()))
+            else Rect(pipHome + Offset(videoMoved.first.dp.toPx(), videoMoved.second.dp.toPx()), Size(MINIMAP_WIDTH.toPx(), MINIMAP_HEIGHT.toPx()))
+        }
         val pipNow = videoIsPip && !fullScreen
         val videoTarget = if (pipNow) pipFrame else Rect(Offset.Zero, boxSize.toSize())
         var holding by remember { mutableStateOf(false) }
@@ -361,7 +363,6 @@ internal fun FlyScreen(
                         .windowInsetsPadding(WindowInsets.displayCutout)
                         .padding(start = bottomLead)
                         .padding(AircastSpace.s3)
-                        .then(layoutPlacement(MAP_PIP_KEY, keepOnScreen = false))
                         .then(mapPipSize)
                         .clip(mapPipShape)
                         .clickable(onClickLabel = if (stickPad != null) "Show the map" else "Show the mini-map") { if (stickPad != null) onView(FlyView.Map) else showMini(MiniMap.Map) }
@@ -461,22 +462,20 @@ internal fun FlyScreen(
                     LayoutPipEditor(VIDEO_PIP_KEY, MaterialTheme.shapes.medium, Modifier.matchParentSize())
                 }
             } else {
-                Surface(
-                    onClick = togglePip,
-                    modifier = Modifier
+                Box(
+                    Modifier
                         .zIndex(3f)
                         .align(pipAlign)
                         .windowInsetsPadding(WindowInsets.displayCutout)
                         .padding(start = bottomLead)
                         .padding(AircastSpace.s3)
                         .size(MINIMAP_THUMB)
-                        .verticalSwipe(swipeDistance) { if (it == VideoSwipe.Up) togglePip() },
-                    shape = mapPipShape,
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    border = androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.onSurface),
-                ) {
-                    Box(contentAlignment = Alignment.Center) { Icon(painterResource(R.drawable.ic_videocam), "Show the video") }
-                }
+                        .clip(mapPipShape)
+                        .border(2.dp, MaterialTheme.colorScheme.onSurface, mapPipShape)
+                        .verticalSwipe(swipeDistance) { if (it == VideoSwipe.Up) togglePip() }
+                        .clickable(onClickLabel = if (stickPad != null) "Show the video" else "Show the video picture-in-picture", onClick = togglePip)
+                        .semantics { contentDescription = "Video" },
+                )
             }
         }
         val settingsOver = LocalAppNavigation.current.settingsOpen
@@ -574,7 +573,13 @@ internal fun FlyScreen(
                 CompositionLocalProvider(LocalAvoidedByVideoMessage provides true) { cameraSwitch(mapIsPip, Modifier) }
             }
             if (hasVehicle() && !flyScreen.guidedPanelOpen) {
-            val besideMini = if (mapIsPip) miniWidth(mini) else if (hasVideo && pipExpanded) MINIMAP_WIDTH else PIP_TOGGLE_SIZE
+            val besideMini = when {
+                mapIsPip -> miniWidth(mini)
+                !hasVideo -> PIP_TOGGLE_SIZE
+                videoThumb -> MINIMAP_THUMB
+                pipExpanded -> MINIMAP_WIDTH
+                else -> PIP_TOGGLE_SIZE
+            }
             Box(
                 Modifier
                     .zIndex(2f)
