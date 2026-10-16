@@ -440,7 +440,7 @@ pub fn ahead(target: &Target, sticks: &[StickSample], read: Reading, now: Instan
     };
     let response = target.response;
     let yaw_lag = if response.rate_mode { predict::ACRO_YAW } else { predict::LOITER_YAW };
-    let yaw = response.yaw.map(|gain| move |sample: &StickSample| gain.commanded(sample.yaw));
+    let yaw = response.yaw.filter(|_| target.heading_rate.is_some()).map(|gain| move |sample: &StickSample| gain.commanded(sample.yaw));
     let roll = response.roll.map(|gain| move |sample: &StickSample| gain.commanded(sample.roll));
     let pitch = response.pitch.map(|gain| move |sample: &StickSample| -gain.commanded(sample.pitch));
     let (sin, cos) = target.heading.to_radians().sin_cos();
@@ -1114,6 +1114,10 @@ mod tests {
         let pushed = [stick(at(500), 1.0, 1.0, 1.0, 1.0), stick(at(990), 1.0, 1.0, 1.0, 1.0)];
         let (guess, motion) = ahead(&unknown, &pushed, read, at(1_000));
         assert!((guess.heading - unknown.heading).abs() < 1e-9 && (guess.latitude - unknown.latitude).abs() < 1e-9 && (guess.above_home - unknown.above_home).abs() < 1e-9 && motion.heading == 0.0, "no known response, no feed-forward: {motion:?}");
+        let loiter = Response { yaw: Some(Gain { full: 150.0, expo: 0.0, deadzone: 0.0 }), ..Response::default() };
+        let held = Target { heading_rate: None, response: loiter, ..unknown };
+        let (guess, motion) = ahead(&held, &pushed, read, at(1_000));
+        assert!((guess.heading - held.heading).abs() < 1e-9 && motion.heading == 0.0, "a gimbal holding its own heading does not turn with the yaw stick; predicting it fought the glide toward the gimbal's readings and shook the view: {motion:?}");
     }
 
     #[test]

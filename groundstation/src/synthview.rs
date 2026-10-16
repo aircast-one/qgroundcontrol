@@ -98,13 +98,22 @@ pub fn imagery(provider: &str) -> &'static str {
         .unwrap_or(FALLBACK_IMAGERY)
 }
 
-pub fn gimbal_aim(gimbals: &Value) -> Option<(f64, f64)> {
+fn active_gimbal(gimbals: &Value) -> Option<Value> {
     let all = gimbals["gimbals"].as_array().cloned().unwrap_or_default();
-    all.iter()
-        .find(|gimbal| flag(gimbal, "active"))
-        .or(all.first())
+    all.iter().find(|gimbal| flag(gimbal, "active")).or(all.first()).cloned()
+}
+
+pub fn gimbal_aim(gimbals: &Value) -> Option<(f64, f64)> {
+    active_gimbal(gimbals)
         .and_then(|gimbal| Some((gimbal["absoluteYaw"].as_f64()?, gimbal["pitch"].as_f64()?)))
         .filter(|(yaw, pitch)| yaw.is_finite() && pitch.is_finite())
+}
+
+fn yaw_from_nose(gimbals: &Value) -> Option<f64> {
+    active_gimbal(gimbals)
+        .filter(|gimbal| gimbal["yawLock"] == false)
+        .and_then(|gimbal| gimbal["bodyYaw"].as_f64())
+        .filter(|yaw| yaw.is_finite())
 }
 
 pub fn euler_rates(roll: f64, pitch: f64, [p, q, r]: [f64; 3]) -> (f64, f64, f64) {
@@ -145,7 +154,13 @@ pub fn synthetic(backend: &dyn Backend, gimbals: &Value, aim: (f64, f64)) -> Val
     let gimbal = gimbal_aim(gimbals);
     let (tilt, pan) = aim;
     let reading = |path: &str| raw(backend, path).unwrap_or(0.0);
-    let (heading, aimed_pitch) = gimbal.unwrap_or(((reading("vehicle.heading") + pan).rem_euclid(360.0), tilt));
+    let nose = |offset: f64| (reading("vehicle.heading") + offset).rem_euclid(360.0);
+    let follows = gimbal.and(yaw_from_nose(gimbals));
+    let (heading, aimed_pitch) = match (gimbal, follows) {
+        (Some((_, pitch)), Some(body_yaw)) => (nose(body_yaw), pitch),
+        (Some(aim), None) => aim,
+        (None, _) => (nose(pan), tilt),
+    };
     let frame_locked = crate::virtualjoystick::rate_mode_now(&backend.value_fields("vehicle", crate::virtualjoystick::VEHICLE_FIELDS));
     let (pitch, roll) = match frame_locked {
         true => (reading("vehicle.pitch") + aimed_pitch, reading("vehicle.roll")),
@@ -177,7 +192,7 @@ pub fn synthetic(backend: &dyn Backend, gimbals: &Value, aim: (f64, f64)) -> Val
         "northSpeed": reading("vehicle.localPosition.vx"),
         "eastSpeed": reading("vehicle.localPosition.vy"),
         "climbSpeed": -reading("vehicle.localPosition.vz"),
-        "headingRate": gimbal.is_none().then_some(heading_rate),
+        "headingRate": (gimbal.is_none() || follows.is_some()).then_some(heading_rate),
         "pitchRate": pitch_rate,
         "rollRate": roll_rate,
         "response": response(backend, &backend.value_fields("vehicle", crate::virtualjoystick::VEHICLE_FIELDS)),
@@ -358,6 +373,8 @@ mod tests {
         assert_eq!((turning["headingRate"].as_f64(), turning["pitchRate"].as_f64(), turning["rollRate"].as_f64()), (Some(30.0), Some(0.0), Some(0.0)), "level and turning, the view turns with the nose and keeps the pilot's tilt");
         let gimballed = synthetic(&flying(&[("vehicle.yawRate", json!(30.0))]), &json!({ "gimbals": [{ "active": true, "absoluteYaw": 90.0, "pitch": -30.0 }] }), DEFAULT_AIM);
         assert!(gimballed["headingRate"].is_null() && gimballed["pitchRate"].is_null(), "a gimbal aims the view, and its own readings are glided, not predicted from the airframe");
+        let following = synthetic(&flying(&[("vehicle.yawRate", json!(30.0))]), &json!({ "gimbals": [{ "active": true, "yawLock": false, "bodyYaw": -20.0, "absoluteYaw": 40.0, "pitch": -30.0 }] }), DEFAULT_AIM);
+        assert_eq!((following["heading"].as_f64(), following["headingRate"].as_f64(), following["pitch"].as_f64()), (Some(70.0), Some(30.0), Some(-30.0)), "a gimbal that turns with the nose reports only a few times a second, so the view turns with the nose's 20 Hz heading and keeps the gimbal's offset and tilt");
     }
 
     #[test]
