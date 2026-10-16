@@ -85,7 +85,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -148,7 +147,7 @@ private fun miniHeight(mini: MiniMap): Dp = if (mini == MiniMap.Thumb) MINIMAP_T
 internal fun videoPipShown(hasVideo: Boolean, expanded: Boolean): Boolean = hasVideo && expanded
 
 @Composable
-private fun PipToggle(expanded: Boolean, onToggle: () -> Unit, modifier: Modifier = Modifier) {
+private fun PipToggle(onToggle: () -> Unit, modifier: Modifier = Modifier) {
     Surface(
         onClick = onToggle,
         modifier = modifier.size(PIP_TOGGLE_SIZE),
@@ -156,11 +155,7 @@ private fun PipToggle(expanded: Boolean, onToggle: () -> Unit, modifier: Modifie
         color = MaterialTheme.colorScheme.surfaceContainerHigh,
     ) {
         Box(contentAlignment = Alignment.Center) {
-            Icon(
-                if (expanded) Icons.Default.KeyboardArrowDown else Icons.Default.KeyboardArrowUp,
-                if (expanded) "Hide picture-in-picture" else "Show picture-in-picture",
-                Modifier.size(18.dp),
-            )
+            Icon(Icons.Default.KeyboardArrowDown, "Hide picture-in-picture", Modifier.size(18.dp))
         }
     }
 }
@@ -402,7 +397,7 @@ internal fun FlyScreen(
                     .clickable(onClickLabel = "Show the map full screen") { onView(FlyView.Map) }
                     .semantics { contentDescription = "Mini-map" },
             ) {
-                PipToggle(true, togglePip, Modifier.align(Alignment.TopStart))
+                PipToggle(togglePip, Modifier.align(Alignment.TopStart))
                 Surface(
                     onClick = { showMini(MiniMap.Compass) },
                     modifier = Modifier.align(Alignment.TopEnd).size(PIP_TOGGLE_SIZE),
@@ -462,11 +457,26 @@ internal fun FlyScreen(
                         }
                         .then(pipGestures),
                 ) {
-                    PipToggle(true, togglePip, Modifier.align(Alignment.TopStart))
+                    PipToggle(togglePip, Modifier.align(Alignment.TopStart))
                     LayoutPipEditor(VIDEO_PIP_KEY, MaterialTheme.shapes.medium, Modifier.matchParentSize())
                 }
             } else {
-                PipToggle(false, togglePip, Modifier.zIndex(3f).align(pipAlign).windowInsetsPadding(WindowInsets.displayCutout).padding(start = bottomLead).padding(AircastSpace.s3).verticalSwipe(swipeDistance) { if (it == VideoSwipe.Up) togglePip() })
+                Surface(
+                    onClick = togglePip,
+                    modifier = Modifier
+                        .zIndex(3f)
+                        .align(pipAlign)
+                        .windowInsetsPadding(WindowInsets.displayCutout)
+                        .padding(start = bottomLead)
+                        .padding(AircastSpace.s3)
+                        .size(MINIMAP_THUMB)
+                        .verticalSwipe(swipeDistance) { if (it == VideoSwipe.Up) togglePip() },
+                    shape = mapPipShape,
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    border = androidx.compose.foundation.BorderStroke(2.dp, MaterialTheme.colorScheme.onSurface),
+                ) {
+                    Box(contentAlignment = Alignment.Center) { Icon(painterResource(R.drawable.ic_videocam), "Show the video") }
+                }
             }
         }
         val settingsOver = LocalAppNavigation.current.settingsOpen
