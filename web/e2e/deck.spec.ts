@@ -32,3 +32,10 @@ test('map layers switches the base map', async ({ vehicle: app }) => {
   await app.keyboard.press('Escape');
   await expect(app.getByText('Bing Road', { exact: true })).toBeVisible();
 });
+
+test('the gripper panel offers release and grab', async ({ vehicle }) => {
+  await vehicle.getByRole('button', { name: 'More', exact: true }).click();
+  await vehicle.getByRole('dialog').getByText('Gripper').click();
+  await expect(vehicle.getByText('Release', { exact: true })).toBeVisible();
+  await expect(vehicle.getByText('Grab', { exact: true })).toBeVisible();
+});
