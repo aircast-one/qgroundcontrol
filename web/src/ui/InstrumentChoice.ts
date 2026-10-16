@@ -1,35 +1,59 @@
-import { type Json, optText } from '@/bridge/Json';
+import { type Json, jsonObjects, optBoolean, optJSONArray, optText } from '@/bridge/Json';
 import { AppCommands } from '@/bridge/BridgeCommands';
 import { getSharedPreferences } from '@/kotlin/Platform';
 
 export const INSTRUMENT_GROUPS = 'view.instrumentGroups';
-export const INSTRUMENTS_VIEW = 'view.instruments';
 
 export const DEFAULT_INSTRUMENTS: readonly string[] = ['distanceToHome', 'altitudeRelative', 'groundSpeed', 'climbRate'];
 
 const FORWARD_FLIGHT_CLASSES: ReadonlySet<string> = new Set(['fixedWing', 'vtol', 'airship']);
-const STORE = 'fly-instruments';
-const GENERIC_CLASS = 'generic';
-const VALUE_SIZE_KEY = 'fontSize';
 
-export const defaultInstruments = (vehicleClass: string): readonly string[] => [...DEFAULT_INSTRUMENTS, ...(FORWARD_FLIGHT_CLASSES.has(vehicleClass) ? ['airSpeed'] : [])];
+export const defaultInstruments = (vehicleClass: string): readonly string[] => [...DEFAULT_INSTRUMENTS, ...['airSpeed'].filter(() => FORWARD_FLIGHT_CLASSES.has(vehicleClass))];
+
+export const INSTRUMENTS_VIEW = 'view.instruments';
 
 export type InstrumentFact = { name: string; label: string; path: string };
 
+export const InstrumentFact = (name: string, label: string, path: string): InstrumentFact => ({ name, label, path });
+
 export type InstrumentGroup = { group: string; title: string; facts: readonly InstrumentFact[] };
 
-export const instrumentGroups = (_view: Json | null): readonly InstrumentGroup[] => [];
+export const InstrumentGroup = (group: string, title: string, facts: readonly InstrumentFact[]): InstrumentGroup => ({ group, title, facts });
 
-export const vehicleOwnGroup = (_view: Json | null): InstrumentGroup | null => null;
+const availableView = (view: Json | null): Json | null => (view !== null && optBoolean(view, 'available') ? view : null);
+
+const instrumentFact = (it: Json): InstrumentFact => InstrumentFact(optText(it, 'name'), optText(it, 'label'), optText(it, 'selection'));
+
+const askable = (fact: InstrumentFact): boolean => fact.name.trim() !== '' && fact.path.trim() !== '';
+
+const listedGroups = (view: Json | null, key: string): readonly InstrumentGroup[] =>
+  jsonObjects(optJSONArray(availableView(view), key))
+    .map((entry) => InstrumentGroup(optText(entry, 'group'), optText(entry, 'title'), jsonObjects(optJSONArray(entry, 'facts')).map(instrumentFact).filter(askable)))
+    .filter((it) => it.facts.length > 0);
+
+export const instrumentGroups = (view: Json | null): readonly InstrumentGroup[] => [...listedGroups(view, 'groups'), ...listedGroups(view, 'packGroups')];
+
+export const vehicleOwnGroup = (view: Json | null): InstrumentGroup | null => {
+  const facts = optJSONArray(availableView(view), 'vehicleFacts');
+  if (facts === null) return null;
+  const listed = jsonObjects(facts).map(instrumentFact).filter(askable);
+  return listed.length === 0 ? null : InstrumentGroup('vehicle', 'Vehicle', listed);
+};
 
 const sameList = (a: readonly string[], b: readonly string[]): boolean => a.length === b.length && a.every((it, index) => it === b[index]);
+
+const GENERIC_CLASS = 'generic';
 
 export const instrumentsPath = (chosen: readonly string[], vehicleClass: string = GENERIC_CLASS): string =>
   chosen.length === 0 || sameList(chosen, defaultInstruments(vehicleClass)) ? INSTRUMENTS_VIEW : `${INSTRUMENTS_VIEW}(${chosen.join(',')})`;
 
 export const showsInstruments = (chosen: readonly string[]): boolean => chosen.length > 0;
 
-export const withInstrument = (chosen: readonly string[], name: string): readonly string[] => (chosen.includes(name) ? chosen.filter((it) => it !== name) : [...chosen, name]);
+export const withInstrument = (chosen: readonly string[], name: string): readonly string[] => {
+  if (!chosen.includes(name)) return [...chosen, name];
+  const at = chosen.indexOf(name);
+  return [...chosen.slice(0, at), ...chosen.slice(at + 1)];
+};
 
 export const selectionId = (selection: string): string => (selection.includes('/') ? selection : `vehicle/${selection}`);
 
@@ -50,8 +74,10 @@ export const emptyCatalogueText = (connected: boolean): string =>
 export const instrumentChoiceNote = (chosen: readonly string[]): string =>
   chosen.length === 0 ? 'Nothing chosen. The flight screen shows no readings.' : `${chosen.length} chosen.`;
 
+const STORE = 'fly-instruments';
+
 export const instrumentVehicleClass = (view: Json | null): string => {
-  const named = view === null ? '' : optText(view, 'vehicleClass');
+  const named = optText(view, 'vehicleClass');
   return named.trim() === '' ? GENERIC_CLASS : named;
 };
 
@@ -66,6 +92,8 @@ export const writeChosen = (vehicleClass: string, chosen: readonly string[]): vo
   getSharedPreferences(STORE).putString(chosenKey(vehicleClass), chosen.join(','));
   void AppCommands.setSubtitleInstruments(vehicleClass, [...chosen]);
 };
+
+const VALUE_SIZE_KEY = 'fontSize';
 
 export type ValueSize = { readonly name: 'Default' | 'Small' | 'Medium' | 'Large'; readonly ordinal: number; readonly label: string; readonly scale: number };
 
@@ -90,4 +118,14 @@ export const writeValueSize = (vehicleClass: string, size: ValueSize): void => {
   getSharedPreferences(STORE).putInt(`${VALUE_SIZE_KEY}-${vehicleClass}`, size.ordinal);
 };
 
-export const shownFirst = (groups: readonly InstrumentGroup[], _shown: readonly string[]): readonly InstrumentGroup[] => groups;
+const SHOWN_GROUP = 'shown';
+
+export const shownFirst = (groups: readonly InstrumentGroup[], shown: readonly string[]): readonly InstrumentGroup[] => {
+  const all = groups.flatMap((it) => it.facts);
+  const picked = InstrumentGroup(
+    SHOWN_GROUP,
+    'Shown',
+    shown.flatMap((path) => all.filter((it) => it.path === path).slice(0, 1)),
+  );
+  return [picked, ...groups.map((group) => ({ ...group, facts: group.facts.filter((it) => !shown.includes(it.path)) }))].filter((it) => it.facts.length > 0);
+};

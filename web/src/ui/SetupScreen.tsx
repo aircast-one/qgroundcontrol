@@ -8,6 +8,8 @@ import { SETUP, type SetupReadiness } from './SetupView';
 
 export const SETUP_PARAMETERS_PAGE = 'Parameters';
 
+export const SETUP_OVERVIEW_PAGE = '';
+
 export type SetupComponent = {
   index: number;
   name: string;

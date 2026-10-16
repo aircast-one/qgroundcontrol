@@ -1,4 +1,4 @@
-import type { Json } from '@/bridge/Json';
+import { type Json, jsonObjects, jsonStrings, optBoolean, optJSONArray, optText } from '@/bridge/Json';
 
 export const REBOOT_VEHICLE = 'vehicle.rebootVehicle';
 export const CALIBRATION = 'view.calibration';
@@ -48,3 +48,22 @@ export type CalibrationState = {
 };
 
 export const calibrationState = (_view: Json | null): CalibrationState | null => null;
+
+export const SENSOR_HEALTH = 'view.sensors';
+
+export type SensorHealth = { name: string; state: string; label: string };
+
+export type SensorHealthReading = { available: boolean; sensors: readonly SensorHealth[]; failing: readonly string[]; status: string };
+
+export const sensorHealth = (view: Json | null): SensorHealthReading | null =>
+  view === null || optText(view, 'class') !== 'SensorHealth'
+    ? null
+    : {
+        available: optBoolean(view, 'available'),
+        sensors: jsonObjects(optJSONArray(view, 'sensors')).flatMap((item) => {
+          const name = optText(item, 'name');
+          return name.trim() === '' ? [] : [{ name, state: optText(item, 'state'), label: optText(item, 'label') }];
+        }),
+        failing: jsonStrings(optJSONArray(view, 'failing')).filter((it) => it.trim() !== ''),
+        status: optText(view, 'status'),
+      };
