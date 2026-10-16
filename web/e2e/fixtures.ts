@@ -46,6 +46,24 @@ export const vehicleStatus = async (page: Page) => {
   return page.getByRole('dialog');
 };
 
+export const showMapFull = async (page: Page) => {
+  const map = page.getByRole('region', { name: 'Map' });
+  const full = async () => ((await map.boundingBox())?.width ?? 0) >= (page.viewportSize()?.width ?? 0) * 0.9;
+  await expect(async () => {
+    if (!(await full())) await page.getByRole('button', { name: /^(Map|Mini-map)$/ }).first().click();
+    expect(await full()).toBe(true);
+  }).toPass({ timeout: 20_000 });
+};
+
+export const mapMenuAt = async (page: Page, dx: number, dy: number) => {
+  const box = await page.getByRole('region', { name: 'Map' }).boundingBox();
+  if (box === null) throw new Error('map is not on screen');
+  await expect(async () => {
+    await page.mouse.click(box.x + box.width / 2 + dx, box.y + box.height / 2 + dy, { button: 'right' });
+    await expect(page.getByText(/^Lat: /)).toBeVisible({ timeout: 1_000 });
+  }).toPass({ timeout: 20_000 });
+};
+
 export const takeOff = async (page: Page, height: string) => {
   await page.getByRole('button', { name: 'Take off' }).click();
   await page.getByRole('button', { name: height, exact: true }).click();
