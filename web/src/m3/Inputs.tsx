@@ -32,7 +32,7 @@ const field = (filled: boolean) => ({ value, onValueChange, label, placeholder, 
   const tone = isError ? 'border-error text-error' : 'border-outline focus-within:border-primary focus-within:border-2';
   const control = 'min-w-0 flex-1 bg-transparent text-body-large text-on-surface outline-none placeholder:text-on-surface-variant/60 disabled:opacity-40';
   return (
-    <div className={`grid gap-1 ${className ?? ''}`}>
+    <div className={`grid grid-cols-[minmax(0,1fr)] gap-1 ${className ?? ''}`}>
       {label ? <label htmlFor={id} className={`text-body-small ${isError ? 'text-error' : 'text-on-surface-variant'}`}>{label}</label> : null}
       <div className={`flex min-h-14 items-center gap-3 px-4 ${filled ? 'rounded-t-shape-xs border-b bg-surface-container-highest' : 'rounded-shape-xs border'} ${tone} ${enabled ? '' : 'opacity-40'}`}>
         {leadingIcon ? <span className="flex text-on-surface-variant">{leadingIcon}</span> : null}
