@@ -1,5 +1,5 @@
 import { type Page } from '@playwright/test';
-import { expect, test } from './fixtures';
+import { connectMock, expect, test } from './fixtures';
 
 const WHEP_STREAM = 'http://localhost:18889/e2e/whep';
 
@@ -62,4 +62,12 @@ test('retry on a WHEP stream that never arrives posts a fresh offer', async ({ a
   const before = offers.length;
   await retry.click();
   await expect.poll(() => offers.length, { timeout: 5_000 }).toBeGreaterThan(before);
+});
+
+test('proximity sensors draw distance rings over the live video', async ({ app }) => {
+  await addVideoSource(app, /^WebRTC \(WHEP\)/, WHEP_STREAM);
+  const video = app.locator('video').first();
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.videoWidth), { timeout: 30_000 }).toBeGreaterThan(0);
+  await connectMock(app, ['Enable proximity sensors']);
+  await expect(video.locator('xpath=..').getByText(/^\d+\.\d\d$/).first()).toBeVisible({ timeout: 30_000 });
 });
