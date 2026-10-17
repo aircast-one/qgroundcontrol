@@ -34,3 +34,11 @@ test('the motor test stays locked until the propellers-off switch, then takes a 
   await vehicle.getByRole('button', { name: 'Stop' }).click();
   await expect(vehicle.getByRole('button', { name: 'Motor 1 Tap to spin' })).toBeEnabled();
 });
+
+test('switching quickly in and out of the PX4 radio page raises no duplicate-command error', async ({ vehicle }) => {
+  await openAircraftSetup(vehicle);
+  const entry = (name: string) => vehicle.getByRole('button', { name: new RegExp(`^${name}( |$)`) }).first();
+  await ['Radio', 'Safety', 'Radio', 'Safety', 'Radio', 'Safety'].reduce((done, page) => done.then(() => entry(page).click()), Promise.resolve());
+  await expect(vehicle.getByText('Safety', { exact: true }).nth(1)).toBeVisible();
+  await expect(vehicle.getByRole('dialog').filter({ hasText: 'Unable to send command' })).toHaveCount(0);
+});

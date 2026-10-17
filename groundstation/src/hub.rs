@@ -2220,6 +2220,9 @@ impl Vehicle {
                 };
                 self.rccal = cal;
                 if op == Some("close") && std::mem::take(&mut self.rccal_open) {
+                    if self.commands.pending(self.component, sensorcal::CMD_PREFLIGHT_CALIBRATION) {
+                        return Ok(Vec::new());
+                    }
                     let outs = self.commands.send(Command { component: self.component, command: sensorcal::CMD_PREFLIGHT_CALIBRATION, command_int: false, frame: 0, params: [0.0; 7], show_error: vehicle.px4, tag: 0 }, now_ms);
                     return Ok(self.handle(outs, now_ms));
                 }
@@ -7244,6 +7247,23 @@ mod tests {
         hub.set_active(Some(4));
         let stopped = hub.vehicles.get_mut(&3).unwrap().pump_with(1_400, None, 0).iter().any(|b| matches!(decode(b), MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_PREFLIGHT_CALIBRATION && c.param4 == 0.0));
         assert!(stopped && !hub.vehicles[&3].rccal.running(), "RadioComponentController's destructor stops the vehicle's RC calibration too");
+    }
+
+    #[test]
+    fn reopening_and_closing_the_radio_page_before_the_stop_is_answered_sends_no_second_stop() {
+        use mavlink::dialects::ardupilotmega::{HEARTBEAT_DATA, MavAutopilot, MavCmd, MavType};
+        let heard = MavHeader { system_id: 3, component_id: 1, sequence: 0 };
+        let mut px4 = HEARTBEAT_DATA::default();
+        px4.mavtype = MavType::MAV_TYPE_QUADROTOR;
+        px4.autopilot = MavAutopilot::MAV_AUTOPILOT_PX4;
+        let mut hub = Hub::default();
+        hub.on_frame(origin(4), &heard, &MavMessage::HEARTBEAT(px4), 0, 0);
+        let radio = hub.vehicles.get_mut(&3).unwrap();
+        let stop = |frames: &[Vec<u8>]| frames.iter().any(|b| matches!(decode(b), MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_PREFLIGHT_CALIBRATION && c.param4 == 0.0));
+        radio.start_guided(&json!({ "action": "rcCal", "op": "open" }), 1_100).unwrap();
+        assert!(stop(&radio.start_guided(&json!({ "action": "rcCal", "op": "close" }), 1_200).unwrap()), "closing the page stops the vehicle's RC calibration");
+        radio.start_guided(&json!({ "action": "rcCal", "op": "open" }), 1_300).unwrap();
+        assert!(radio.start_guided(&json!({ "action": "rcCal", "op": "close" }), 1_400).unwrap().is_empty(), "the first stop is still waiting for its answer, so a second would only be refused as a duplicate with an error dialog");
     }
 
     #[test]
