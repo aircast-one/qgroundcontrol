@@ -3,13 +3,13 @@ import { Qgc } from '@/bridge/Qgc';
 import { VehicleCommands } from '@/bridge/VehicleCommands';
 import { useKeyedState, useLaunchedEffect } from '@/kotlin/Compose';
 import { type MutableState, mutableStateOf, useValue } from '@/kotlin/State';
-import { Slider } from '@/m3';
+import { Slider, stepsFor } from '@/m3';
 import { type ClosedRange } from '@/map/SettingStepper';
 import type { GuidedOffer } from './GuidedActions';
 import { GUIDED_ALTITUDE, type GuidedAltitude, altitudeDelta, guidedAltitude, guidedAltitudePath, rangeLabel } from './GuidedAltitude';
 import { GUIDED_SPEED, type GuidedSpeed, guidedSpeed, guidedSpeedPath } from './GuidedSpeed';
 import { GUIDED_TAKEOFF, type GuidedTakeoff, guidedTakeoff, guidedTakeoffPath } from './GuidedTakeoff';
-import { GuidedPresets, GuidedQuickPicks, GuidedStepper, GuidedValuePanel, LocalGuidedCompact, guidedRounded, guidedValueText } from './GuidedValuePanel';
+import { GuidedPresets, GuidedQuickPicks, GuidedStepper, GuidedValuePanel, LocalGuidedCompact, guidedDecimals, guidedRounded, guidedValueText } from './GuidedValuePanel';
 import { PAUSE } from './MoreActions';
 import { RangeHint } from './VehicleUi';
 
@@ -156,6 +156,8 @@ const GuidedValueContent = ({ open }: { open: OpenGuidedValue }) => {
             open.settled.value = open.target.value;
           }}
           valueRange={[start, endInclusive]}
+          steps={stepsFor(start, endInclusive, 10 ** -guidedDecimals(unit))}
+          label={open.reading.label}
         />
       ) : null}
       {kind.quickPicks ? <GuidedQuickPicks value={target} minimum={start} maximum={endInclusive} unit={unit} onValue={settle} /> : null}

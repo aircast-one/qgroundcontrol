@@ -424,7 +424,7 @@ export const ValueControls = ({ fact, onWrite, typedEntry }: { fact: Fact; onWri
         </button>
         <StepButton label="+" description="Increase" enabled={fact.acceptsWrite} onStep={nudge(1)} onRelease={commit} />
       </div>
-      {slider !== null && !(disablesAtZero(fact) && shown === 0) ? <FieldSlider value={shown} slider={slider} enabled={fact.acceptsWrite} onWrite={write} /> : null}
+      {slider !== null && !(disablesAtZero(fact) && shown === 0) ? <FieldSlider value={shown} slider={slider} label={fact.title} enabled={fact.acceptsWrite} onWrite={write} /> : null}
       {disablesAtZero(fact) ? (
         shown === 0 ? (
           <TextButton onClick={() => write(turnOnValue(fact))}>{limit ? 'Set a limit' : 'Turn on'}</TextButton>

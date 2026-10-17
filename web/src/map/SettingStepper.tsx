@@ -1,5 +1,5 @@
 import { type MouseEvent, type PointerEvent, type ReactNode, useEffect, useRef, useState } from 'react';
-import { AlertDialog, OutlinedTextField, Slider, Text, TextButton } from '@/m3';
+import { AlertDialog, OutlinedTextField, Slider, Text, TextButton, stepsFor } from '@/m3';
 import { useKeyedState, useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
 import { coerceIn, delay, format } from '@/kotlin/Std';
 import { md } from '@/theme/Colors';
@@ -213,6 +213,7 @@ export const SettingStepper = ({
             if (shownRef.current !== null) onSet(shownRef.current);
           }}
           valueRange={[range.start, range.endInclusive]}
+          steps={stepsFor(range.start, range.endInclusive, step)}
           enabled={enabled}
           label={label}
         />

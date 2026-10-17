@@ -634,7 +634,7 @@ export const SpeedSectionRow = ({ speed, withSlider = false, onWrite }: { speed:
               Set
             </TextButton>
           </div>
-          {speed.slider !== null && withSlider ? <FieldSlider value={speed.value} slider={speed.slider} enabled onWrite={(value) => onWrite(() => Qgc.writeRefusal(speed.path, value))} /> : null}
+          {speed.slider !== null && withSlider ? <FieldSlider value={speed.value} slider={speed.slider} label="Speed" enabled onWrite={(value) => onWrite(() => Qgc.writeRefusal(speed.path, value))} /> : null}
         </>
       ) : null}
     </div>

@@ -19,3 +19,17 @@ test('upload sends the mission to the vehicle and offers to fly it', async ({ ve
   await expect(vehicle.getByRole('button', { name: 'Upload', exact: true })).toBeHidden({ timeout: 30_000 });
   await expect(vehicle.getByRole('button', { name: 'Fly', exact: true }).last()).toBeVisible();
 });
+
+test('the selected waypoint editor steps its altitude into the item list', async ({ app }) => {
+  await openMenu(app, 'Plan');
+  await tapPlanMission(app);
+  await expect.poll(() => itemCount(app)).toBeGreaterThanOrEqual(5);
+  await app.getByRole('button', { name: 'Done' }).click();
+  await app.getByRole('button', { name: 'Waypoint 3' }).click();
+  await expect(app.getByRole('button', { name: /^3 Waypoint 50\.0 m/ })).toBeVisible();
+  await app.getByRole('button', { name: 'Increase Altitude' }).click();
+  await app.getByRole('button', { name: 'Increase Altitude' }).click();
+  await expect(app.getByRole('button', { name: /^3 Waypoint 52\.0 m/ })).toBeVisible({ timeout: 15_000 });
+  await app.getByRole('slider', { name: 'Altitude' }).press('ArrowLeft');
+  await expect(app.getByRole('button', { name: /^3 Waypoint 51\.0 m/ })).toBeVisible({ timeout: 15_000 });
+});

@@ -339,7 +339,7 @@ const SettingRow = ({ setting, onChange }: { setting: JoystickSetting; onChange:
   <div className="flex w-full flex-col">
     <SettingField setting={setting} onChange={onChange} />
     {setting.slider !== null && setting.type !== 'bool' ? (
-      <FieldSlider value={typeof setting.value === 'number' ? setting.value : null} slider={setting.slider} enabled onWrite={onChange} />
+      <FieldSlider value={typeof setting.value === 'number' ? setting.value : null} slider={setting.slider} label={setting.label} enabled onWrite={onChange} />
     ) : null}
   </div>
 );

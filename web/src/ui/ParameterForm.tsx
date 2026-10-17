@@ -1,7 +1,7 @@
 import { type ReactNode, useRef, useState } from 'react';
 import { type Fact, type FactSlider, Qgc, makeFact } from '@/bridge/Qgc';
 import { type Json, isJson, isNull, jsonObjects, jsonStrings, opt, optBoolean, optDouble, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
-import { FilledTonalButton, OutlinedButton, Slider, Surface, Text } from '@/m3';
+import { FilledTonalButton, OutlinedButton, Slider, Surface, Text, stepsFor } from '@/m3';
 import { useKeyedState, useLaunchedEffect } from '@/kotlin/Compose';
 import { coerceIn } from '@/kotlin/Std';
 import { toDoubleOrNull } from '@/map/AltitudeEntry';
@@ -289,6 +289,7 @@ const FactSliderRow = ({ fact, slider, onWrite }: { fact: Fact; slider: FactSlid
         value={shown}
         onValueChange={(it) => setShown(sliderSnapped(it, slider.decimals))}
         valueRange={[slider.from, slider.to]}
+        steps={stepsFor(slider.from, slider.to, 10 ** -slider.decimals)}
         enabled={fact.enabled && !fact.readOnly}
         label={sliderTitle(fact)}
         onValueChangeFinished={() => {

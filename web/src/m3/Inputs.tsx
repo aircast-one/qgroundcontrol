@@ -128,6 +128,8 @@ export type SliderProps = {
   className?: string;
 };
 
+export const stepsFor = (from: number, to: number, step: number): number => Math.max(0, Math.round((to - from) / step) - 1);
+
 const stepOf = (range: [number, number], steps: number) => (steps > 0 ? (range[1] - range[0]) / (steps + 1) : (range[1] - range[0]) / 1000);
 
 export const Slider = ({ value, onValueChange, valueRange = [0, 1], steps = 0, onValueChangeFinished, enabled = true, label, className }: SliderProps) => (

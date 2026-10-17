@@ -4,7 +4,7 @@ import { useBackHandler, useLaunchedEffect } from '@/kotlin/Compose';
 import { openDocuments } from '@/kotlin/Platform';
 import { delay, format, same } from '@/kotlin/Std';
 import { MutableState, useValue } from '@/kotlin/State';
-import { AlertDialog, Button, DropdownMenu, DropdownMenuItem, FilledTonalButton, IconButton, OutlinedTextField, Slider, Surface, Switch, Text, TextButton } from '@/m3';
+import { AlertDialog, Button, DropdownMenu, DropdownMenuItem, FilledTonalButton, IconButton, OutlinedTextField, Slider, Surface, Switch, Text, TextButton, stepsFor } from '@/m3';
 import { MaterialIcon } from '@/res/Icon';
 import type { DrawableName } from '@/res/drawables';
 import { aircast, md, withAlpha } from '@/theme/Colors';
@@ -1612,6 +1612,8 @@ const GridAngle = ({ index, onBridge }: { index: number; onBridge: OnBridge }) =
       <Slider
         value={angle}
         valueRange={[0, GRID_ANGLE_MAX]}
+        steps={stepsFor(0, GRID_ANGLE_MAX, 1)}
+        label="Grid angle"
         onValueChange={(next) => {
           latest.current = Math.round(next);
           setAngle(latest.current);

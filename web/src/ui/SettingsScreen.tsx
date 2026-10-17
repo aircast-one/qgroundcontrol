@@ -6,7 +6,7 @@ import { useBackHandler, useKeyedState, useLaunchedEffect, useProduceState, useU
 import type { MutableState } from '@/kotlin/State';
 import { coerceIn, delay, format } from '@/kotlin/Std';
 import { sentenceCase as mapSentenceCase } from '@/map/SentenceCase';
-import { AlertDialog, Checkbox, DropdownMenu, DropdownMenuItem, HorizontalDivider, IconButton, OutlinedTextField, SegmentedButton, SingleChoiceSegmentedButtonRow, Slider, Switch, Text, TextButton } from '@/m3';
+import { AlertDialog, Checkbox, DropdownMenu, DropdownMenuItem, HorizontalDivider, IconButton, OutlinedTextField, SegmentedButton, SingleChoiceSegmentedButtonRow, Slider, Switch, Text, TextButton, stepsFor } from '@/m3';
 import type { KeyboardType } from '@/m3';
 import { Drawable, MaterialIcon } from '@/res/Icon';
 import type { DrawableName } from '@/res/drawables';
@@ -779,7 +779,7 @@ export const shownEnumLabel = (fact: Fact): string => {
 
 export const factSubtitle = (fact: Fact): string => (fact.enumStrings.length > 0 || fact.bitmaskStrings.length > 0 || fact.isBool ? '' : fact.units);
 
-export const FieldSlider = ({ value, slider, enabled, onWrite }: { value: number | null; slider: FactSlider; enabled: boolean; onWrite: (value: number) => void }) => {
+export const FieldSlider = ({ value, slider, label, enabled, onWrite }: { value: number | null; slider: FactSlider; label: string; enabled: boolean; onWrite: (value: number) => void }) => {
   const held = value ?? slider.from;
   const [shown, setShown] = useKeyedState([slider.from, slider.to, slider.decimals, slider.hint, held], () => coerceIn(held, slider.from, slider.to));
   const dragged = useRef<number | null>(null);
@@ -793,6 +793,8 @@ export const FieldSlider = ({ value, slider, enabled, onWrite }: { value: number
           setShown(snapped);
         }}
         valueRange={[slider.from, slider.to]}
+        steps={stepsFor(slider.from, slider.to, 10 ** -slider.decimals)}
+        label={label}
         enabled={enabled}
         onValueChangeFinished={() => {
           onWrite(dragged.current ?? shown);
@@ -927,7 +929,7 @@ export const FactRow = ({
           </>
         )}
         {fact.slider !== null && !fact.isEnum && !fact.isBitmask ? (
-          <FieldSlider value={factNumberOrNull(fact)} slider={fact.slider} enabled={fact.acceptsWrite} onWrite={(value) => write(() => Qgc.set(fact.path, value))} />
+          <FieldSlider value={factNumberOrNull(fact)} slider={fact.slider} label={title} enabled={fact.acceptsWrite} onWrite={(value) => write(() => Qgc.set(fact.path, value))} />
         ) : null}
         {notBlank(note) && !valueOnTheRight(fact) ? (
           <Text typography="bodySmall" color={md('onSurfaceVariant')} className="block pt-1 pl-4">
