@@ -30,5 +30,11 @@ export default defineConfig({
       reuseExistingServer: true,
       timeout: 30_000,
     },
+    {
+      command: 'node e2e/ws/mavlink-ws.ts',
+      url: 'http://localhost:18760/',
+      reuseExistingServer: true,
+      timeout: 30_000,
+    },
   ],
 });

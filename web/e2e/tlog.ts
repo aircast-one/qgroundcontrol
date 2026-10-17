@@ -24,13 +24,15 @@ const frame = (seq: number, message: { id: number; crcExtra: number }, payload: 
 
 const stamped = (us: bigint, bytes: readonly number[]): number[] => [...Array.from({ length: 8 }, (_, at) => Number((us >> BigInt((7 - at) * 8)) & 0xffn)), ...bytes];
 
-export const flightLog = (seconds: number, home: { lat: number; lon: number }): Buffer => {
-  const ticks = seconds * 4;
-  const bytes = Array.from({ length: ticks }, (_, tick) => {
-    const us = START_US + BigInt(tick) * 250_000n;
-    const heartbeat = tick % 4 === 0 ? stamped(us, frame(tick * 2, HEARTBEAT, [...le(0, 4), QUADROTOR, AUTOPILOT_PX4, CUSTOM_MODE_ENABLED, STATE_ACTIVE, MAVLINK_VERSION])) : [];
-    const position = [...le(tick * 250, 4), ...le((home.lat + tick * 0.00001) * 1e7, 4), ...le(home.lon * 1e7, 4), ...le(500_000, 4), ...le(20_000, 4), ...le(100, 2), ...le(0, 2), ...le(0, 2), ...le(0, 2)];
-    return [...heartbeat, ...stamped(us, frame(tick * 2 + 1, GLOBAL_POSITION_INT, position))];
-  }).flat();
-  return Buffer.from(bytes);
+export type Home = { lat: number; lon: number };
+
+export const tickFrames = (tick: number, home: Home): readonly number[][] => {
+  const heartbeat = tick % 4 === 0 ? [frame(tick * 2, HEARTBEAT, [...le(0, 4), QUADROTOR, AUTOPILOT_PX4, CUSTOM_MODE_ENABLED, STATE_ACTIVE, MAVLINK_VERSION])] : [];
+  const position = [...le(tick * 250, 4), ...le((home.lat + tick * 0.00001) * 1e7, 4), ...le(home.lon * 1e7, 4), ...le(500_000, 4), ...le(20_000, 4), ...le(100, 2), ...le(0, 2), ...le(0, 2), ...le(0, 2)];
+  return [...heartbeat, frame(tick * 2 + 1, GLOBAL_POSITION_INT, position)];
 };
+
+export const flightLog = (seconds: number, home: Home): Buffer =>
+  Buffer.from(
+    Array.from({ length: seconds * 4 }, (_, tick) => tickFrames(tick, home).flatMap((bytes) => stamped(START_US + BigInt(tick) * 250_000n, bytes))).flat(),
+  );

@@ -10,7 +10,7 @@ describe('MockLinkFieldsTest', () => {
   it('mock links are started from Add link, not a settings page of their own', () => {
     const view = json('{"pages":[{"title":"Mock Link","sections":[]}]}');
     expect(settingsPages(view)).toHaveLength(0);
-    expect(addableLinkTypes(json('{"linkTypeIds":["serial","udp","tcp","mock"]}'))).toEqual([LinkType.Udp, LinkType.Tcp, LinkType.Serial, LinkType.Mock]);
+    expect(addableLinkTypes(json('{"linkTypeIds":["serial","udp","tcp","mock"]}'))).toEqual([LinkType.WebSocket, LinkType.Serial, LinkType.Mock]);
   });
 
   it('start sends the vehicle key and options in the order the core reads them', () => {

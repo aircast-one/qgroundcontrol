@@ -33,3 +33,27 @@ test('the battery sheet shows each battery with its voltage', async ({ vehicle }
   await expect(sheet.getByText(/\d+\.\d\d V/).first()).toBeVisible();
   await expect(sheet.getByText('Battery failsafes')).toBeVisible();
 });
+
+test('a MAVLink WebSocket link connects a vehicle and hears the ground station', async ({ app, request }) => {
+  const before = ((await (await request.get('http://localhost:18760/stats')).json()) as { gcsHeartbeats: number }).gcsHeartbeats;
+  await app.getByRole('button', { name: /How to connect/ }).click();
+  await app.getByRole('button', { name: 'Add link…' }).click();
+  await app.getByRole('button', { name: /^Network \(WebSocket\)/ }).click();
+  await app.getByRole('textbox', { name: 'WebSocket address' }).fill('ws://localhost:18760');
+  await app.getByRole('button', { name: 'Connect', exact: true }).click();
+  await expect(app.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
+  await expect(app.getByText('20.0m', { exact: true })).toBeVisible();
+  await expect.poll(async () => ((await (await request.get('http://localhost:18760/stats')).json()) as { gcsHeartbeats: number }).gcsHeartbeats, { timeout: 15_000 }).toBeGreaterThan(before);
+});
+
+test('a WebSocket address that is not ws:// is refused, and one that does not answer says so', async ({ app }) => {
+  await app.getByRole('button', { name: /How to connect/ }).click();
+  await app.getByRole('button', { name: 'Add link…' }).click();
+  await app.getByRole('button', { name: /^Network \(WebSocket\)/ }).click();
+  await app.getByRole('textbox', { name: 'WebSocket address' }).fill('http://localhost:18760');
+  await app.getByRole('button', { name: 'Connect', exact: true }).click();
+  await expect(app.getByText('A MAVLink WebSocket address starts with ws:// or wss://.')).toBeVisible();
+  await app.getByRole('textbox', { name: 'WebSocket address' }).fill('ws://localhost:1');
+  await app.getByRole('button', { name: 'Connect', exact: true }).click();
+  await expect(app.getByText('No MAVLink WebSocket answered at ws://localhost:1')).toBeVisible({ timeout: 15_000 });
+});

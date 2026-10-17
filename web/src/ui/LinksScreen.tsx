@@ -3,6 +3,7 @@ import { AccountCommands, LinkCommands } from '@/bridge/BridgeCommands';
 import { type Json, jsonObjects, jsonStrings, optBoolean, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcPath, useQgcValue } from '@/bridge/QgcState';
+import { openWebSocketLink } from '@/core/client';
 import { stageFile, unstage, unstageAll } from '@/core/files';
 import { useBackHandler, useLaunchedEffect, useTicker } from '@/kotlin/Compose';
 import { openDocument } from '@/kotlin/Platform';
@@ -26,7 +27,7 @@ const DEFAULT_TCP_PORT = '5760';
 const UDP_LISTEN_PORT = 'settings.autoConnectSettings.udpListenPort';
 
 export type LinkType = {
-  readonly name: 'Udp' | 'Tcp' | 'Serial' | 'Bluetooth' | 'LogReplay' | 'Mock' | 'AircastCloud' | 'Other';
+  readonly name: 'Udp' | 'Tcp' | 'Serial' | 'Bluetooth' | 'LogReplay' | 'Mock' | 'AircastCloud' | 'WebSocket' | 'Other';
   readonly ordinal: number;
   readonly id: string;
 };
@@ -39,10 +40,11 @@ export const LinkType = {
   LogReplay: { name: 'LogReplay', ordinal: 4, id: 'logReplay' },
   Mock: { name: 'Mock', ordinal: 5, id: 'mock' },
   AircastCloud: { name: 'AircastCloud', ordinal: 6, id: 'aircastCloud' },
-  Other: { name: 'Other', ordinal: 7, id: '' },
+  WebSocket: { name: 'WebSocket', ordinal: 7, id: 'websocket' },
+  Other: { name: 'Other', ordinal: 8, id: '' },
 } as const satisfies Record<string, LinkType>;
 
-export const LinkTypeEntries: readonly LinkType[] = [LinkType.Udp, LinkType.Tcp, LinkType.Serial, LinkType.Bluetooth, LinkType.LogReplay, LinkType.Mock, LinkType.AircastCloud, LinkType.Other];
+export const LinkTypeEntries: readonly LinkType[] = [LinkType.Udp, LinkType.Tcp, LinkType.Serial, LinkType.Bluetooth, LinkType.LogReplay, LinkType.Mock, LinkType.AircastCloud, LinkType.WebSocket, LinkType.Other];
 
 export const linkTypeFrom = (id: string): LinkType => LinkTypeEntries.find((it) => it.id === id && it !== LinkType.Other) ?? LinkType.Other;
 
@@ -153,6 +155,7 @@ const LINK_ICONS: Record<LinkType['name'], DrawableName> = {
   AircastCloud: 'ic_cloud',
   LogReplay: 'ic_history',
   Mock: 'ic_science',
+  WebSocket: 'ic_lan',
   Other: 'ic_link',
 };
 
@@ -196,13 +199,17 @@ export const bluetoothState = (view: Json | null): BluetoothState => {
 
 export const linkTypeIds = (view: Json | null): ReadonlySet<LinkType> => new Set(jsonStrings(optJSONArray(view, 'linkTypeIds')).map(linkTypeFrom));
 
-export const addableLinkTypes = (view: Json | null): readonly LinkType[] => {
+const SOCKET_LINK_TYPES: ReadonlySet<LinkType> = new Set([LinkType.Udp, LinkType.Tcp]);
+
+const servedLinkTypes = (view: Json | null): readonly LinkType[] => {
   if (optJSONArray(view, 'linkTypeIds') === null) return CREATABLE_LINK_TYPES;
   const served = linkTypeIds(view);
   const creatable = CREATABLE_LINK_TYPES.filter((it) => served.has(it));
   const bluetooth = [LinkType.Bluetooth].filter((it) => served.has(it) && bluetoothState(view).available);
   return [...(creatable.length === 0 ? CREATABLE_LINK_TYPES : creatable), ...bluetooth, ...[LinkType.LogReplay, LinkType.Mock].filter((it) => served.has(it))];
 };
+
+export const addableLinkTypes = (view: Json | null): readonly LinkType[] => [LinkType.WebSocket, ...servedLinkTypes(view).filter((it) => !SOCKET_LINK_TYPES.has(it))];
 
 export const PARITY_CHOICES: readonly (readonly [string, number])[] = [
   ['None', 0],
@@ -803,7 +810,7 @@ const EditLinkPage = ({ row, onDismiss, onSaved, className }: { row: LinkRow; on
 
 export type LinkKind = { type: LinkType; title: string; detail: string; about: string };
 
-export const PILOT_LINK_ORDER: readonly LinkType[] = [LinkType.Udp, LinkType.Serial, LinkType.Bluetooth, LinkType.AircastCloud, LinkType.Tcp];
+export const PILOT_LINK_ORDER: readonly LinkType[] = [LinkType.WebSocket, LinkType.Udp, LinkType.Serial, LinkType.Bluetooth, LinkType.AircastCloud, LinkType.Tcp];
 export const TOOL_LINK_ORDER: readonly LinkType[] = [LinkType.LogReplay, LinkType.Mock];
 
 const LINK_KINDS: Record<Exclude<LinkType['name'], 'Other'>, readonly [string, string, string]> = {
@@ -814,6 +821,7 @@ const LINK_KINDS: Record<Exclude<LinkType['name'], 'Other'>, readonly [string, s
   Tcp: ['Network server (TCP)', 'A listening ground station', 'Calls out to a device that is listening, such as a ground station or bridge.'],
   LogReplay: ['Replay a flight log', 'Play back a saved log', 'Plays back a saved telemetry log as if the vehicle were connected.'],
   Mock: ['Simulated vehicle', 'Try the app without hardware', 'A simulated vehicle for trying the app without hardware. It is not saved, so it ends when the app restarts.'],
+  WebSocket: ['Network (WebSocket)', 'MAVLink over WebSocket', 'A browser cannot open UDP or TCP sockets, so it reaches the aircraft through a MAVLink WebSocket, such as a bridge on the ground station or the aircraft. It is not saved, so it ends when the page reloads.'],
 };
 
 export const linkKind = (type: LinkType): LinkKind => {
@@ -941,6 +949,7 @@ const AddLinkPage = ({ onDismiss, onAdded, className }: { onDismiss: () => void;
   const choices = [...offered, ...[LinkType.AircastCloud].filter((it) => cloudOffered && linkTypeIds(linksJson).has(it))];
   useBackHandler(type === null, onDismiss);
 
+  if (type === LinkType.WebSocket) return <WebSocketLinkPage onBack={() => setType(null)} onAdded={onAdded} className={className} />;
   if (type !== null) return <AddLinkDetails type={type} onBack={() => setType(null)} onAdded={onAdded} className={className} />;
 
   const row = (kind: LinkKind) => <SetupRow key={kind.type.name} title={kind.title} subtitle={kind.detail} icon={linkIcon(kind.type)} onClick={() => setType(kind.type)} />;
@@ -1042,6 +1051,58 @@ const NewLinkAdvanced = ({
     <LinkFlagSwitches autoConnect={draft.autoConnect} highLatency={draft.highLatency} onAutoConnect={(it) => onDraft({ ...draft, autoConnect: it })} onHighLatency={(it) => onDraft({ ...draft, highLatency: it })} />
   </>
 );
+
+export const DEFAULT_WEBSOCKET_URL = 'ws://localhost:5760';
+
+export const webSocketUrlError = (typed: string): string | null => {
+  try {
+    const url = new URL(typed.trim());
+    return url.protocol === 'ws:' || url.protocol === 'wss:' ? null : 'A MAVLink WebSocket address starts with ws:// or wss://.';
+  } catch {
+    return 'Enter an address such as ws://192.168.1.10:5760.';
+  }
+};
+
+const WebSocketLinkPage = ({ onBack, onAdded, className }: { onBack: () => void; onAdded: () => void; className?: string }) => {
+  const [typed, setTyped] = useState(DEFAULT_WEBSOCKET_URL);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  const kind = linkKind(LinkType.WebSocket);
+  useBackHandler(true, onBack);
+  const connect = () => {
+    const invalid = webSocketUrlError(typed);
+    setError(invalid);
+    if (invalid !== null) return;
+    setBusy(true);
+    void openWebSocketLink(typed.trim()).then(
+      (reply) => {
+        setBusy(false);
+        if (reply.ok) onAdded();
+        else setError(reply.reason ?? 'The WebSocket link could not be opened.');
+      },
+      (failure: unknown) => {
+        setBusy(false);
+        setError(failure instanceof Error ? failure.message : String(failure));
+      },
+    );
+  };
+  return (
+    <>
+      <OverridePageHeading title={kind.title} onBack={onBack} />
+      <PageColumn title={kind.title} backLabel="Back to link types" onBack={onBack} className={className}>
+        <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
+          {kind.about}
+        </Text>
+        <OutlinedTextField value={typed} onValueChange={setTyped} label="WebSocket address" keyboardType="uri" autoCorrect={false} isError={error !== null} supportingText={error ?? undefined} onDone={connect} singleLine />
+        <div className="flex justify-end">
+          <Button onClick={connect} enabled={!busy}>
+            Connect
+          </Button>
+        </div>
+      </PageColumn>
+    </>
+  );
+};
 
 const AddLinkDetails = ({ type, onBack, onAdded, className }: { type: LinkType; onBack: () => void; onAdded: () => void; className?: string }) => {
   const linksJson = useQgcPath(LINKS_VIEW);
