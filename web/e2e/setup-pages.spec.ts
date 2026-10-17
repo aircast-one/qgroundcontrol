@@ -21,3 +21,14 @@ test('ArduPilot setup opens on the ESC page with its calibration', async ({ app 
   await app.getByRole('button', { name: /^ESC / }).click();
   await expect(app.getByRole('button', { name: 'Calibrate', exact: true }).first()).toBeVisible();
 });
+
+test('ArduPilot flight modes setup changes a mode slot', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduCopter Vehicle');
+  await openAircraftSetup(app);
+  await app.getByRole('button', { name: /^Flight modes / }).click();
+  const slot = app.getByText('Flight mode 1', { exact: true }).locator('xpath=ancestor::div[.//button][1]');
+  await expect(slot.getByRole('textbox')).not.toHaveValue('');
+  await slot.getByRole('button').first().click();
+  await app.getByRole('menuitem', { name: 'Loiter', exact: true }).or(app.getByRole('option', { name: 'Loiter', exact: true })).first().click();
+  await expect(slot.getByRole('textbox')).toHaveValue('Loiter');
+});
