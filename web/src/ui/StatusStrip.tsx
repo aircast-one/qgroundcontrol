@@ -382,7 +382,7 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
       {allStatus ? (
         <AircastSheet onDismissRequest={() => setAllStatus(false)}>
           <LocalCompactStatus.Provider value={false}>
-            <div className="flex flex-col gap-[14px] px-6 py-2">
+            <div className="flex flex-col items-start gap-[14px] px-6 py-2">
               <Text typography="titleLarge">Status</Text>
               {ordered.map((key) => (
                 <Fragment key={key}>{byKey.get(key) ?? null}</Fragment>

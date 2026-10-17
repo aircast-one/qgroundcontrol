@@ -1,3 +1,4 @@
+import { type Locator } from '@playwright/test';
 import { connectMock, expect, slideAcross, test, vehicleStatus } from './fixtures';
 
 test('the status sheet arms the aircraft without starting layout editing', async ({ vehicle }) => {
@@ -37,4 +38,16 @@ test('at desktop width the status pill shows battery time, current draw and sate
   await expect(vehicle.getByRole('button', { name: /^\d+:\d\d flight time left$/ })).toBeVisible();
   await expect(vehicle.getByRole('button', { name: /^[\d.]+A current draw$/ })).toBeVisible();
   await expect(vehicle.getByText(/^\d+$/).filter({ hasText: '12' }).first()).toBeVisible();
+});
+
+test('all status lists the gimbal and Tilt 90 points it as far down as it goes', async ({ app }) => {
+  await connectMock(app, ['Enable gimbal']);
+  await app.getByRole('button', { name: 'All status' }).click();
+  const gimbal = app.getByRole('button', { name: /· P: -?[\d.]+ ·/ });
+  await expect(gimbal).toBeVisible({ timeout: 30_000 });
+  const left = async (locator: Locator) => (await locator.boundingBox())?.x ?? Number.NaN;
+  expect(Math.abs((await left(app.getByText(/^ESC \d+ OK$/))) - (await left(gimbal)))).toBeLessThan(2);
+  await gimbal.click();
+  await app.getByRole('button', { name: 'Tilt 90' }).click();
+  await expect(app.getByRole('button', { name: /· P: -45\.0 ·/ })).toBeVisible({ timeout: 30_000 });
 });
