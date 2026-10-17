@@ -880,9 +880,16 @@ pub fn parameter_save_path() -> Option<String> {
     Some(child_save_path(&root, "Parameters")).filter(|path| !path.is_empty())
 }
 
+#[cfg(target_family = "wasm")]
+const BROWSER_SAVE_ROOT: Option<&str> = Some("/Aircast");
+#[cfg(not(target_family = "wasm"))]
+const BROWSER_SAVE_ROOT: Option<&str> = None;
+
 pub fn video_save_path() -> Option<String> {
-    let root = stored_text(&key("App", "savePath"))?;
-    Some(child_save_path(&root, "Video")).filter(|path| !path.is_empty())
+    match stored_text(&key("App", "savePath")).filter(|root| !root.is_empty()) {
+        Some(root) => Some(child_save_path(&root, "Video")).filter(|path| !path.is_empty()),
+        None => BROWSER_SAVE_ROOT.map(|root| format!("{root}/Video")),
+    }
 }
 
 pub fn photo_save_path() -> Option<String> {

@@ -66,6 +66,11 @@ export const whepEndpoint = (view: Json | null, channel: number): string | null 
   return typeof endpoint === 'string' && endpoint !== '' ? endpoint : null;
 };
 
+export const nativeRecordingFile = (view: Json | null): string | null => {
+  const file = optText(optJSONObject(view, 'nativeRecording'), 'file');
+  return file.trim() === '' ? null : file;
+};
+
 export const whepRestarts = (view: Json | null, channel: number): number => {
   const restarts = optJSONArray(view, 'whepRestarts')?.[channel];
   return typeof restarts === 'number' ? restarts : 0;

@@ -1,3 +1,4 @@
+import { readFile } from 'node:fs/promises';
 import { type Page } from '@playwright/test';
 import { connectMock, expect, test } from './fixtures';
 
@@ -70,4 +71,22 @@ test('proximity sensors draw distance rings over the live video', async ({ app }
   await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.videoWidth), { timeout: 30_000 }).toBeGreaterThan(0);
   await connectMock(app, ['Enable proximity sensors']);
   await expect(video.locator('xpath=..').getByText(/^\d+\.\d\d$/).first()).toBeVisible({ timeout: 30_000 });
+});
+
+test('recording the live WHEP video saves a video file in the browser', async ({ app }, testInfo) => {
+  await addVideoSource(app, /^WebRTC \(WHEP\)/, WHEP_STREAM);
+  const video = app.locator('video').first();
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.videoWidth), { timeout: 30_000 }).toBeGreaterThan(0);
+  await app.getByRole('button', { name: 'Start recording' }).first().click();
+  const stop = app.getByRole('button', { name: 'Stop recording' }).first();
+  await expect(stop).toBeVisible({ timeout: 15_000 });
+  await expect(app.getByText(/^REC 00:00:(0[3-9]|[1-5]\d)$/).first()).toBeVisible({ timeout: 30_000 });
+  const saving = app.waitForEvent('download');
+  await stop.click();
+  const saved = await saving;
+  expect(saved.suggestedFilename()).toMatch(/\.(mp4|webm)$/);
+  const file = testInfo.outputPath(saved.suggestedFilename());
+  await saved.saveAs(file);
+  expect((await readFile(file)).length).toBeGreaterThan(10_000);
+  await expect(app.getByRole('button', { name: 'Start recording' }).first()).toBeVisible();
 });

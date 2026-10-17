@@ -2,8 +2,10 @@ import { type HTMLAttributes, type PointerEvent, useEffect, useMemo, useRef } fr
 import { VideoCommands } from '@/bridge/BridgeCommands';
 import { Qgc } from '@/bridge/Qgc';
 import { settingControl, useQgcBool, useQgcPath, useQgcValue } from '@/bridge/QgcState';
+import { recordStream } from '@/core/recorder';
 import { playWhep } from '@/core/whep';
 import { useUpdatedRef } from '@/kotlin/Compose';
+import { createDocument } from '@/kotlin/Platform';
 import { same } from '@/kotlin/Std';
 import { Surface, Text } from '@/m3';
 import { ObstacleVideoOverlay } from '@/map/ObstacleOverlay';
@@ -24,7 +26,7 @@ import { TrackingBoxOverlay } from '@/ui/TrackingBoxOverlay';
 import { VideoArOverlay } from '@/ui/VideoAr';
 import { usePointerGestures } from '@/ui/VideoGestures';
 import { VideoStatsPill } from '@/ui/VideoStatsPill';
-import { VIDEO_VIEW, type SourceSize, type VideoReading, videoReading, whepEndpoint, whepRestarts } from '@/ui/VideoView';
+import { VIDEO_VIEW, type SourceSize, type VideoReading, nativeRecordingFile, videoReading, whepEndpoint, whepRestarts } from '@/ui/VideoView';
 
 export const CAMERA_STEP_ZOOM = 'vehicle.cameraManager.currentCameraInstance.stepZoom';
 
@@ -318,6 +320,7 @@ export const VideoChannelSurface = ({ channel, className }: { channel: number; c
   const view = useQgcPath(VIDEO_VIEW);
   const endpoint = whepEndpoint(view, channel);
   const restarts = whepRestarts(view, channel);
+  const recordingFile = channel === MAIN_VIDEO_CHANNEL ? nativeRecordingFile(view) : null;
   const video = useRef<HTMLVideoElement>(null);
   useEffect(() => {
     if (channel !== PIP_VIDEO_CHANNEL) return undefined;
@@ -329,6 +332,16 @@ export const VideoChannelSurface = ({ channel, className }: { channel: number; c
     if (endpoint === null || element === null) return undefined;
     return playWhep(element, endpoint, (reading) => void VideoCommands.reportPlayback(channel, reading));
   }, [endpoint, channel, restarts]);
+  useEffect(() => {
+    const stream = video.current?.srcObject;
+    if (recordingFile === null || !(stream instanceof MediaStream)) return undefined;
+    const stop = recordStream(stream, recordingFile, (recording) => createDocument(recording.name, recording.type, recording));
+    void VideoCommands.reportRecording(true);
+    return () => {
+      stop();
+      void VideoCommands.reportRecording(false);
+    };
+  }, [recordingFile]);
   return <video ref={video} muted playsInline autoPlay className={`block bg-black object-fill ${className ?? ''}`} />;
 };
 
