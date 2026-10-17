@@ -93,6 +93,13 @@ export const tapPlanMission = async (page: Page) => {
   );
 };
 
+export const openPlanAtVehicle = async (page: Page) => {
+  await page.addLocatorHandler(page.getByRole('dialog').filter({ hasText: 'Aircraft connected' }), (prompt) => prompt.getByRole('button', { name: 'Keep my route' }).click());
+  await openMenu(page, 'Plan');
+  await expect(page.getByText('Tap the map to add a waypoint')).toBeVisible();
+  await expect(page.locator('span.text-label-small').getByText(/^\d+ (m|km)$/)).toHaveText(/^\d+ m$/, { timeout: 60_000 });
+};
+
 export const test = base.extend<{ app: Page; vehicle: Page }>({
   app: async ({ page }, use) => {
     const errors: string[] = [];
