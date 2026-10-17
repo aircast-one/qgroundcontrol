@@ -2,7 +2,7 @@ import { type CSSProperties, type HTMLAttributes, type PointerEvent, type ReactN
 import { useQgcPath } from '@/bridge/QgcState';
 import { Button, Surface, TextButton, radius } from '@/m3';
 import { useBackHandler, useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
-import { type SharedPreferences, getSharedPreferences } from '@/kotlin/Platform';
+import { type SharedPreferences, getSharedPreferences, TAP } from '@/kotlin/Platform';
 import { type MutableState, mutableStateOf, useValue } from '@/kotlin/State';
 import { coerceAtLeast, coerceIn, delay } from '@/kotlin/Std';
 import { toDoubleOrNull } from '@/map/AltitudeEntry';
@@ -32,7 +32,7 @@ export const ResetTap = (fields: ResetTap): ResetTap => ({ ...fields });
 
 export const resetTap = (armed: boolean): ResetTap => ResetTap({ reset: armed, armed: !armed });
 
-export const resetPillText = (armed: boolean): string => (armed ? 'Tap again to reset' : 'Reset layout');
+export const resetPillText = (armed: boolean): string => (armed ? `${TAP} again to reset` : 'Reset layout');
 
 const INDICATOR_ORDER = 'FlyViewIndicatorOrder';
 

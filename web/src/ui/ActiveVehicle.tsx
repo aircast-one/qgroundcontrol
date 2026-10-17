@@ -66,6 +66,7 @@ import { VEHICLE_LINKS, vehicleLinks } from './VehicleLinks';
 import { VehicleMessagesSheet, WARNINGS, armingBlocker, armingChecks, chipBlocker } from './VehicleMessages';
 import { VehicleStatusSheet } from './VehicleStatusSheet';
 import { FlightModeMenu, GuidedAction } from './VehicleUi';
+import { TAP } from '@/kotlin/Platform';
 
 const STATUS_BAR_SCRIM_ALPHA = 0.55;
 
@@ -350,7 +351,7 @@ export const VehicleStateChip = ({ className }: { className?: string }) => {
             </div>
           ) : null}
           <ControlHolderNote station={station} vehicleId={activeVehicleId(vehiclesJson)} onRefusal={setRefusal} />
-          <FootNote text="Tap a name to fly that aircraft. Arm, Takeoff and every action on the flight screen go to the one you pick." />
+          <FootNote text={`${TAP} a name to fly that aircraft. Arm, Takeoff and every action on the flight screen go to the one you pick.`} />
           {panelEnabled ? <FleetControls view={vehiclesJson} choices={choices} onRefusal={setRefusal} /> : null}
         </AircastSheet>
       ) : null}

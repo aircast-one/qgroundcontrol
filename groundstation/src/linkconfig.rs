@@ -13,6 +13,7 @@ pub enum LinkKind {
     Mock,
     LogReplay,
     AircastCloud,
+    WebSocket,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -30,6 +31,7 @@ impl TypeTable {
             mock.then_some(LinkKind::Mock),
             Some(LinkKind::LogReplay),
             Some(LinkKind::AircastCloud),
+            Some(LinkKind::WebSocket),
         ]
         .into_iter()
         .flatten()
@@ -55,6 +57,7 @@ pub enum Kind {
     Mock { firmware_type: i64, vehicle_type: i64, send_status_text: bool, increment_vehicle_id: bool, failure_mode: i64, enable_camera: bool, enable_gimbal: bool, enable_proximity: bool, apm_start_fresh_params: bool, video_stream_type: i64 },
     LogReplay { file: String },
     AircastCloud { api_base: String, device_id: String },
+    WebSocket { url: String },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -124,6 +127,7 @@ fn kind(settings: &BTreeMap<String, Setting>, root: &str, link: LinkKind, defaul
         },
         LinkKind::LogReplay => Kind::LogReplay { file: text(settings, &key("logFilename")).unwrap_or_default() },
         LinkKind::AircastCloud => Kind::AircastCloud { api_base: text(settings, &key("apiBase")).unwrap_or_default(), device_id: text(settings, &key("deviceId")).unwrap_or_default() },
+        LinkKind::WebSocket => Kind::WebSocket { url: text(settings, &key("url")).unwrap_or_default() },
     }
 }
 
@@ -148,6 +152,7 @@ pub fn kind_of(kind: &Kind) -> LinkKind {
         Kind::Mock { .. } => LinkKind::Mock,
         Kind::LogReplay { .. } => LinkKind::LogReplay,
         Kind::AircastCloud { .. } => LinkKind::AircastCloud,
+        Kind::WebSocket { .. } => LinkKind::WebSocket,
     }
 }
 
@@ -183,6 +188,7 @@ fn entries(root: &str, kind: &Kind) -> Vec<(String, String)> {
         ],
         Kind::LogReplay { file } => vec![key("logFilename", file.clone())],
         Kind::AircastCloud { api_base, device_id } => vec![key("apiBase", api_base.clone()), key("deviceId", device_id.clone())],
+        Kind::WebSocket { url } => vec![key("url", url.clone())],
     }
 }
 
@@ -216,6 +222,7 @@ pub fn to_json(config: &LinkConfig) -> serde_json::Value {
         Kind::Mock { firmware_type, vehicle_type, send_status_text, increment_vehicle_id, failure_mode, enable_camera, enable_gimbal, enable_proximity, apm_start_fresh_params, video_stream_type } => json!({ "kind": "mock", "firmwareType": firmware_type, "vehicleType": vehicle_type, "sendStatusText": send_status_text, "incrementVehicleId": increment_vehicle_id, "failureMode": failure_mode, "enableCamera": enable_camera, "enableGimbal": enable_gimbal, "enableProximity": enable_proximity, "apmStartFreshParams": apm_start_fresh_params, "videoStreamType": video_stream_type }),
         Kind::LogReplay { file } => json!({ "kind": "logReplay", "logFilename": file }),
         Kind::AircastCloud { api_base, device_id } => json!({ "kind": "aircastCloud", "apiBase": api_base, "deviceId": device_id }),
+        Kind::WebSocket { url } => json!({ "kind": "webSocket", "url": url }),
     };
     let mut object = kind;
     object["name"] = json!(config.name);
@@ -255,6 +262,7 @@ pub fn from_json(value: &serde_json::Value) -> Result<LinkConfig, String> {
         }
         Some("logReplay") => Kind::LogReplay { file: text("logFilename").unwrap_or_default() },
         Some("aircastCloud") => Kind::AircastCloud { api_base: text("apiBase").unwrap_or_default(), device_id: text("deviceId").unwrap_or_default() },
+        Some("webSocket") => Kind::WebSocket { url: text("url").ok_or("websocket link without an address")? },
         other => return Err(format!("unknown link kind {other:?}")),
     };
     Ok(LinkConfig { name, auto_connect: value.get("auto").and_then(Value::as_bool).unwrap_or(false), high_latency: value.get("highLatency").and_then(Value::as_bool).unwrap_or(false), kind })
@@ -325,6 +333,7 @@ mod tests {
             LinkConfig { name: "m".into(), auto_connect: false, high_latency: false, kind: Kind::Mock { firmware_type: 3, vehicle_type: 2, send_status_text: true, increment_vehicle_id: false, failure_mode: 1, enable_camera: false, enable_gimbal: true, enable_proximity: false, apm_start_fresh_params: true, video_stream_type: 5 } },
             LinkConfig { name: "r".into(), auto_connect: false, high_latency: false, kind: Kind::LogReplay { file: "/tmp/x.tlog".into() } },
             LinkConfig { name: "c".into(), auto_connect: true, high_latency: false, kind: Kind::AircastCloud { api_base: "https://api.aircast.one".into(), device_id: "d-1".into() } },
+            LinkConfig { name: "w".into(), auto_connect: true, high_latency: false, kind: Kind::WebSocket { url: "wss://sitl.aircast.one/ws/mavlink".into() } },
         ];
         for config in &configs {
             assert_eq!(from_json(&to_json(config)).unwrap(), *config);
@@ -342,5 +351,15 @@ mod tests {
         assert_eq!(loaded.len(), 1);
         assert_eq!(loaded[0].kind, Kind::Udp { local_port: 14550, hosts: vec![("192.168.1.10".into(), 14550)] });
         assert!(loaded[0].auto_connect && !loaded[0].high_latency);
+    }
+
+    #[test]
+    fn a_websocket_link_is_saved_after_every_qt_link_type_and_comes_back_on_load() {
+        let table = TypeTable::new(true, true);
+        assert_eq!(table.code(LinkKind::AircastCloud), Some(6));
+        assert_eq!(table.code(LinkKind::WebSocket), Some(7));
+        let configs = vec![LinkConfig { name: "SITL".into(), auto_connect: true, high_latency: false, kind: Kind::WebSocket { url: "wss://sitl.aircast.one/ws/mavlink".into() } }];
+        assert_eq!(load(&save(&configs, &table), &table, &defaults()), configs);
+        assert!(from_json(&serde_json::json!({ "kind": "webSocket", "name": "x" })).is_err());
     }
 }

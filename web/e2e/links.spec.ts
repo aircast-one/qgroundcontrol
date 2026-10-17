@@ -46,6 +46,21 @@ test('a MAVLink WebSocket link connects a vehicle and hears the ground station',
   await expect.poll(async () => ((await (await request.get('http://localhost:18760/stats')).json()) as { gcsHeartbeats: number }).gcsHeartbeats, { timeout: 15_000 }).toBeGreaterThan(before);
 });
 
+test('a WebSocket link is saved and reconnects by itself after the page reloads', async ({ app }) => {
+  await app.getByRole('button', { name: /How to connect/ }).click();
+  await app.getByRole('button', { name: 'Add link…' }).click();
+  await app.getByRole('button', { name: /^Network \(WebSocket\)/ }).click();
+  await app.getByRole('textbox', { name: 'WebSocket address' }).fill('ws://localhost:18760');
+  await app.getByRole('button', { name: 'Connect', exact: true }).click();
+  await expect(app.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
+  await app.reload();
+  await expect(app.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
+  await app.getByRole('button', { name: 'Settings', exact: true }).click();
+  await app.getByRole('tablist').getByRole('tab', { name: 'Transmission' }).click();
+  await app.getByRole('button', { name: /^Links/ }).first().click();
+  await expect(app.getByText('ws://localhost:18760', { exact: false }).first()).toBeVisible();
+});
+
 test('a WebSocket address that is not ws:// is refused, and one that does not answer says so', async ({ app }) => {
   await app.getByRole('button', { name: /How to connect/ }).click();
   await app.getByRole('button', { name: 'Add link…' }).click();

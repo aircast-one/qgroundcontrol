@@ -13,7 +13,6 @@ const owned = (bytes: Uint8Array) => [bytes.buffer as ArrayBuffer];
 
 await init();
 core.onEvent((path: string, json: string) => scope.postMessage({ event: { path, json } }));
-core.onLinkWrite((id: number, bytes: Uint8Array) => scope.postMessage({ write: { id, bytes } }, owned(bytes)));
 core.setSerialHost({
   open: (id: number, name: string, baud: number, dataBits: number, stopBits: number, parity: number) => {
     scope.postMessage({ serial: { op: 'open', id, name, baud, dataBits, stopBits, parity } });
@@ -55,9 +54,7 @@ const calls = {
   watchClient: core.watchClient,
   linkOpen: core.linkOpen,
   linkClose: core.linkClose,
-  hostLinkOpen: core.hostLinkOpen,
-  hostLinkBytes: core.hostLinkBytes,
-  hostLinkClosed: core.hostLinkClosed,
+  linksStart: core.linksStart,
   settingsOpen: openSettings,
   setMockLinksAvailable: core.setMockLinksAvailable,
   setSerialPorts: core.setSerialPorts,

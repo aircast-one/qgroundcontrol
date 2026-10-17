@@ -55,6 +55,7 @@ import {
   withServer,
   webSocketUrlError,
   DEFAULT_WEBSOCKET_URL,
+  webSocketLinkName,
 } from './LinksScreen';
 import { sheetDrilled } from './SettingsSheet';
 
@@ -530,6 +531,12 @@ describe('AddableLinkTypesTest', () => {
   it('the WebSocket link starts on the Aircast cloud simulator, so the browser app flies something out of the box', () => {
     expect(DEFAULT_WEBSOCKET_URL).toBe('wss://sitl.aircast.one/ws/mavlink');
     expect(webSocketUrlError(DEFAULT_WEBSOCKET_URL)).toBeNull();
+  });
+
+  it('a saved WebSocket link is named after the host it reaches', () => {
+    expect(webSocketLinkName('wss://sitl.aircast.one/ws/mavlink')).toBe('sitl.aircast.one');
+    expect(webSocketLinkName(' ws://192.168.1.10:5760 ')).toBe('192.168.1.10:5760');
+    expect(webSocketLinkName('nonsense')).toBe('WebSocket');
   });
 
   it("each type is named in full, as LinkManager's type strings are", () => {

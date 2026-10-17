@@ -32,3 +32,10 @@ test('the flight mode menu changes the mode', async ({ vehicle }) => {
   await menu.getByRole('menuitem', { name: 'Position' }).click();
   await expect(flightMode(vehicle)).toHaveAccessibleName(/^Position/);
 });
+
+test('Escape cancels the takeoff panel', async ({ vehicle }) => {
+  await vehicle.getByRole('button', { name: 'Take off' }).click();
+  await expect(vehicle.getByText('Height above launch')).toBeVisible();
+  await vehicle.keyboard.press('Escape');
+  await expect(vehicle.getByText('Height above launch')).toBeHidden();
+});

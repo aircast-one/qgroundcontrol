@@ -42,7 +42,7 @@ export const SectionHeader = ({ text, image = '' }: { text: string; image?: stri
   const band = useContext(LocalSettingsList);
   const asset = sectionImageAsset(image);
   return (
-    <div className={`flex items-center gap-3 ${band ? 'mt-3 w-full bg-surface-container-high px-4 py-2.5' : 'px-4 pt-5 pb-2'}`}>
+    <div className={`flex items-center gap-3 ${band ? 'mt-3 w-full bg-surface-container-high px-list py-2.5' : 'px-list pt-5 pb-2'}`}>
       {image.trim() !== '' ? (
         <span
           aria-hidden
@@ -113,7 +113,7 @@ export const SetupRow = ({
       {onClick !== null ? <MaterialIcon name="keyboard_arrow_right" filled style={{ color: md('onSurfaceVariant') }} /> : null}
     </>
   );
-  const look = 'flex min-h-[72px] w-full items-center gap-4 px-4 py-3 text-left';
+  const look = 'flex min-h-[72px] w-full items-center gap-4 px-list py-3 text-left';
   const background = selected ? { background: md('surfaceContainerHighest') } : undefined;
   return onClick !== null ? (
     <button type="button" onClick={onClick} className={`${look} hover:bg-[color-mix(in_srgb,var(--md-on-surface)_8%,transparent)]`} style={background}>
@@ -225,7 +225,7 @@ const glanceText = (parts: readonly SummaryLine[], warn: string): ReactNode =>
   ));
 
 export const FootNote = ({ text }: { text: string }) => (
-  <div className="flex w-full flex-col gap-1 px-5 py-6">
+  <div className="flex w-full flex-col gap-1 px-list py-6">
     <Text typography="bodySmall" color={md('onSurfaceVariant')}>
       {text}
     </Text>

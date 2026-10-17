@@ -6,6 +6,7 @@ import { type EditableShape, editableShape } from './EditableShape';
 import { MapBridge } from './MapBridge';
 import type { MapHit } from './MissionEditing';
 import { type TrackPoint, isPlottable } from './VehicleMap';
+import { TAP } from '@/kotlin/Platform';
 
 export const FENCE_ROOT = 'plan.geoFenceController';
 export const RALLY_ROOT = 'plan.rallyPointController';
@@ -90,7 +91,7 @@ export const rallyAfterRemove = (removed: number, countBefore: number): MapHit |
 };
 
 export const NO_GEOFENCE = 'No geofence – keep the vehicle inside a boundary, or out of an area.';
-export const NO_RALLY_POINTS = 'No rally points – alternate landing points for Return to Launch. Tap the map to place one.';
+export const NO_RALLY_POINTS = `No rally points – alternate landing points for Return to Launch. ${TAP} the map to place one.`;
 export const GEOFENCE_NOT_SUPPORTED = 'Not supported – this vehicle does not support geofence.';
 export const RALLY_NOT_SUPPORTED = 'Not supported – this vehicle does not support rally points.';
 

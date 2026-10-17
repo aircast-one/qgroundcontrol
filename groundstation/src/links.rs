@@ -12,6 +12,7 @@ pub(crate) fn kind(settings_url: &str) -> &'static str {
         "BluetoothSettings.qml" => "bluetooth",
         "LogReplaySettings.qml" => "logReplay",
         "MockLinkSettings.qml" => "mock",
+        "WebSocketSettings.qml" => "websocket",
         _ => "other",
     }
 }
@@ -23,6 +24,7 @@ fn type_label(kind: &str, title: &str) -> String {
         "serial" => "Serial".to_string(),
         "bluetooth" => "Bluetooth".to_string(),
         "logReplay" => "Log Replay".to_string(),
+        "websocket" => "WebSocket".to_string(),
         _ => strip_title(title),
     }
 }
@@ -78,6 +80,7 @@ pub fn link_json_with(index: usize, element: &Value, quiet: &[String]) -> Value 
     let heard = flag("heardVehicle");
     let gone_quiet = quiet.iter().any(|quiet_name| *quiet_name == name);
     let state = match (connected, heard, gone_quiet) {
+        (true, _, _) if flag("linkDown") => "Reconnecting",
         (false, _, _) => "Not connected",
         (true, false, _) => "Waiting for the vehicle",
         (true, true, true) => "Not hearing the vehicle",
@@ -391,6 +394,9 @@ mod tests {
         assert_eq!(tcp["statusLine"], "Waiting for the vehicle \u{b7} No host set", "the line took the RAW summary while displaySummary held the words that replace it, so a TCP link with no host read as a bare colon and a port with nothing in front of it");
         assert_eq!(tcp["connected"], true);
         assert_eq!(tcp["heardVehicle"], false);
+        let socket = link_json(0, &json!({ "name": "sitl.aircast.one", "settingsURL": "WebSocketSettings.qml", "summary": "wss://sitl.aircast.one/ws/mavlink", "children": ["link"], "linkDown": true, "lastError": "No MAVLink WebSocket answered at wss://sitl.aircast.one/ws/mavlink" }));
+        assert_eq!((socket["type"].as_str(), socket["typeLabel"].as_str()), (Some("websocket"), Some("WebSocket")));
+        assert_eq!(socket["statusLine"], "Reconnecting \u{b7} wss://sitl.aircast.one/ws/mavlink", "an open link whose host lost the socket reconnects instead of waiting for a vehicle it cannot hear");
         let heard = link_json(0, &json!({ "name": "Ground", "settingsURL": "TcpSettings.qml", "summary": "", "host": "10.0.0.2", "children": ["link"], "heardVehicle": true }));
         let quiet = link_json_with(
             0,

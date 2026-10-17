@@ -7,7 +7,6 @@ const HUB_PERIOD_MS: u64 = 100;
 
 thread_local! {
     static EVENTS: RefCell<Option<js_sys::Function>> = const { RefCell::new(None) };
-    static WRITER: RefCell<Option<js_sys::Function>> = const { RefCell::new(None) };
     static LAST_HUB_MS: Cell<u64> = const { Cell::new(0) };
     static SERIAL_HOST: RefCell<Option<js_sys::Object>> = const { RefCell::new(None) };
     static CLOUD_HOST: RefCell<Option<js_sys::Object>> = const { RefCell::new(None) };
@@ -106,35 +105,14 @@ pub fn link_open(config: &str) -> String {
     taken(unsafe { crate::abi::qgc_core_link_open(c(config).as_ptr()) })
 }
 
+#[wasm_bindgen(js_name = linksStart)]
+pub fn links_start() {
+    crate::abi::qgc_core_links_start();
+}
+
 #[wasm_bindgen(js_name = linkClose)]
 pub fn link_close(id: u32, reason: &str) -> bool {
     unsafe { crate::abi::qgc_core_link_close(id, c(reason).as_ptr()) }
-}
-
-#[wasm_bindgen(js_name = hostLinkOpen)]
-pub fn host_link_open(kind: &str, name: &str) -> String {
-    taken(unsafe { crate::abi::qgc_core_host_link_open(c(kind).as_ptr(), c(name).as_ptr()) })
-}
-
-#[wasm_bindgen(js_name = hostLinkBytes)]
-pub fn host_link_bytes(id: u32, bytes: &[u8]) {
-    unsafe { crate::abi::qgc_core_host_link_bytes(id, bytes.as_ptr(), bytes.len()) }
-}
-
-#[wasm_bindgen(js_name = hostLinkClosed)]
-pub fn host_link_closed(id: u32, reason: &str) -> bool {
-    unsafe { crate::abi::qgc_core_host_link_closed(id, c(reason).as_ptr()) }
-}
-
-#[wasm_bindgen(js_name = onLinkWrite)]
-pub fn on_link_write(writer: js_sys::Function) {
-    WRITER.with(|held| *held.borrow_mut() = Some(writer));
-    unsafe { crate::abi::qgc_core_set_link_writer(Some(write), std::ptr::null_mut()) }
-}
-
-unsafe extern "C" fn write(id: u32, bytes: *const u8, len: usize, _user: *mut c_void) {
-    let bytes = js_sys::Uint8Array::from(unsafe { std::slice::from_raw_parts(bytes, len) });
-    WRITER.with(|held| held.borrow().as_ref().map(|writer| writer.call2(&JsValue::NULL, &id.into(), &bytes)));
 }
 
 fn host_call(host: &'static std::thread::LocalKey<RefCell<Option<js_sys::Object>>>, name: &str, args: js_sys::Array) -> JsValue {

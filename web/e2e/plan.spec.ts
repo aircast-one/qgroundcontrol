@@ -4,7 +4,7 @@ test.describe.configure({ timeout: 120_000 });
 
 test('tapping the plan map builds a mission with home, takeoff and waypoints', async ({ app }) => {
   await openMenu(app, 'Plan');
-  await expect(app.getByText('Tap the map to add a waypoint')).toBeVisible();
+  await expect(app.getByText('Click the map to add a waypoint')).toBeVisible();
   await tapPlanMission(app);
   await expect.poll(() => itemCount(app)).toBeGreaterThanOrEqual(5);
   const drawn = await itemCount(app);

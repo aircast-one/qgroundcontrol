@@ -6,14 +6,13 @@ type SerialOp =
   | { op: 'open'; id: number; name: string; baud: number; dataBits: number; stopBits: number; parity: number }
   | { op: 'write'; id: number; bytes: Uint8Array }
   | { op: 'close'; id: number };
-type Message = { ready: true } | { event: { path: string; json: string } } | { write: { id: number; bytes: Uint8Array } } | { serial: SerialOp } | { settings: string } | Reply;
+type Message = { ready: true } | { event: { path: string; json: string } } | { serial: SerialOp } | { settings: string } | Reply;
 
 type EventListener = (path: string, json: string) => void;
 
 const calls = { next: 0 };
 const pending = new Map<string, (result: unknown) => void>();
 const eventListeners = new Set<EventListener>();
-const hostLinks = new Map<number, (bytes: Uint8Array) => void>();
 const serialPorts = new Map<string, SerialPort>();
 const serialSessions = new Map<number, { port: SerialPort; writer: Promise<WritableStreamDefaultWriter<Uint8Array> | null>; reader: ReadableStreamDefaultReader<Uint8Array> | null }>();
 
@@ -26,7 +25,6 @@ const connect = (): Promise<Worker> => {
     worker.onmessage = ({ data }: MessageEvent<Message>) => {
       if ('ready' in data) return resolve(worker);
       if ('event' in data) return eventListeners.forEach((listener) => listener(data.event.path, data.event.json));
-      if ('write' in data) return hostLinks.get(data.write.id)?.(data.write.bytes);
       if ('serial' in data) return void serialOp(data.serial);
       if ('settings' in data) return store(data.settings);
       pending.get(data.id)?.(data.result);
@@ -134,32 +132,11 @@ const serialOp = async (op: SerialOp) => {
   return session.port.close().catch(() => undefined);
 };
 
-export const openWebSocketLink = async (url: string): Promise<{ ok: boolean; id?: number; reason?: string }> => {
-  const socket = new WebSocket(url);
-  socket.binaryType = 'arraybuffer';
-  await new Promise((resolve, reject) => {
-    socket.onopen = resolve;
-    socket.onerror = () => reject(new Error(`No MAVLink WebSocket answered at ${url}`));
-  });
-  const reply = JSON.parse(await call<string>('hostLinkOpen', 'websocket', url)) as { ok: boolean; id?: number; reason?: string };
-  if (!reply.ok || reply.id === undefined) {
-    socket.close();
-    return reply;
-  }
-  const id = reply.id;
-  hostLinks.set(id, (bytes) => socket.send(bytes as Uint8Array<ArrayBuffer>));
-  socket.onmessage = ({ data }) => void call('hostLinkBytes', id, new Uint8Array(data as ArrayBuffer));
-  socket.onclose = () => {
-    hostLinks.delete(id);
-    void call('hostLinkClosed', id, 'The WebSocket closed');
-  };
-  return reply;
-};
-
 export const startCore = async (): Promise<void> => {
   await call('settingsOpen', stored());
   await call('setMockLinksAvailable', true);
   await refreshSerialPorts();
+  await call('linksStart');
   if (serialAvailable()) {
     navigator.serial.addEventListener('connect', () => void refreshSerialPorts());
     navigator.serial.addEventListener('disconnect', () => void refreshSerialPorts());

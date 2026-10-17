@@ -120,3 +120,8 @@ export const vibrate = (milliseconds: number): void => {
 export const openUri = (uri: string): void => {
   window.open(uri, '_blank', 'noopener,noreferrer');
 };
+
+const finePointer = (): boolean => typeof window !== 'undefined' && typeof window.matchMedia === 'function' && window.matchMedia('(pointer: fine)').matches;
+
+export const TAP = finePointer() ? 'Click' : 'Tap';
+export const TAP_LOWER = TAP.toLowerCase();

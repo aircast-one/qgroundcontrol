@@ -96,6 +96,7 @@ pub struct State {
     pub heard: bool,
     pub error: Option<(String, &'static str)>,
     pub reconnecting: bool,
+    pub down: Option<String>,
 }
 
 pub fn owned() -> bool {
@@ -200,6 +201,16 @@ pub fn cloud_settings_valid(api_base: &str, device_id: &str) -> bool {
     let base = api_base.trim();
     let after_scheme = base.strip_prefix("https://").or_else(|| base.strip_prefix("http://"));
     after_scheme.is_some_and(|rest| rest.chars().next().is_some_and(|c| c != '/')) && !device_id.trim().is_empty()
+}
+
+fn create_websocket(name: &str, url: &str) -> bool {
+    let url = url.trim();
+    let scheme_ok = url.starts_with("ws://") || url.starts_with("wss://");
+    if name.is_empty() || !scheme_ok || !add(LinkConfig { name: name.to_string(), auto_connect: true, high_latency: false, kind: Kind::WebSocket { url: url.to_string() } }) {
+        return false;
+    }
+    let index = listed().iter().position(|e| e.config.name == name).unwrap_or(0);
+    connect(index)
 }
 
 fn create_cloud(name: &str, api_base: &str, device_id: &str) -> bool {
@@ -395,7 +406,8 @@ pub fn listed() -> Vec<Entry> {
 fn state_of(name: &str, live: &[(crate::transport::LinkId, LinkConfig)]) -> State {
     let link = live.iter().find(|(_, config)| config.name == name).map(|(id, _)| *id);
     let run = runtime(name);
-    State { link, heard: link.is_some_and(|id| crate::hub::lock().heard_on(id)), error: LAST_ERRORS.lock().unwrap_or_else(PoisonError::into_inner).get(name).cloned(), reconnecting: run.started && !run.suppressed }
+    let down = link.and_then(|id| crate::linkhost::TRANSPORTS.lock().unwrap_or_else(PoisonError::into_inner).down_reason(id));
+    State { link, heard: link.is_some_and(|id| crate::hub::lock().heard_on(id)), error: LAST_ERRORS.lock().unwrap_or_else(PoisonError::into_inner).get(name).cloned(), reconnecting: run.started && !run.suppressed, down }
 }
 
 fn kind_fields(kind: &Kind) -> (&'static str, &'static str, &'static str, String, Value) {
@@ -417,6 +429,7 @@ fn kind_fields(kind: &Kind) -> (&'static str, &'static str, &'static str, String
         ),
         Kind::LogReplay { file } => ("LogReplayConfiguration", "LogReplaySettings.qml", "Log Replay Link Settings", String::new(), json!({ "filename": file })),
         Kind::AircastCloud { api_base, device_id } => ("AircastCloudConfiguration", "AircastCloudSettings.qml", "Aircast Cloud Link Settings", format!("Aircast cloud \u{b7} {device_id}"), json!({ "apiBase": api_base, "deviceId": device_id })),
+        Kind::WebSocket { url } => ("WebSocketConfiguration", "WebSocketSettings.qml", "WebSocket Link Settings", url.clone(), json!({ "url": url })),
         Kind::Bluetooth { device_name, address } => ("BluetoothConfiguration", "BluetoothSettings.qml", "Bluetooth Link Settings", String::new(), json!({ "deviceName": device_name, "address": address })),
         Kind::Mock { firmware_type, vehicle_type, send_status_text, increment_vehicle_id, .. } => (
             "MockConfiguration",
@@ -445,7 +458,8 @@ pub fn element(entry: &Entry, table: &TypeTable, state: &State) -> Value {
         "settingsURL": url,
         "settingsTitle": title,
         "summary": summary,
-        "lastError": state.error.as_ref().map_or("", |(reason, _)| reason.as_str()),
+        "lastError": state.error.as_ref().map(|(reason, _)| reason.as_str()).or(state.down.as_deref()).unwrap_or(""),
+        "linkDown": state.down.is_some(),
         "lastErrorRemedy": i64::from(state.error.as_ref().is_some_and(|(_, remedy)| *remedy == "editAddress")),
         "heardVehicle": state.heard,
         "linkActive": state.link.is_some() || (entry.config.auto_connect && state.reconnecting),
@@ -819,6 +833,7 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
         "links.createLogReplayConfiguration" => json!(create_replay(&text(0), &text(1))),
         "links.createBluetoothLink" => json!(create_bluetooth(&text(0), &text(1), &text(2))),
         "links.createAircastCloudLink" => json!(create_cloud(&text(0), &text(1), &text(2))),
+        "links.createWebSocketLink" => json!(create_websocket(&text(0), &text(1))),
         START_MOCK_LINK => json!(start_mock(&text(0), &given)),
         STOP_ONE_MOCK_LINK => json!(stop_one_mock()),
         crate::platformbluetooth::SCAN => return crate::platformbluetooth::scan(args),
@@ -909,7 +924,7 @@ mod tests {
     #[test]
     fn an_autoconnected_board_is_a_dynamic_serial_link_named_for_its_port() {
         let entry = serial_entry("PX4 FMU V2 on cu.usbmodem1 (AutoConnect)", "/dev/cu.usbmodem1", 115200);
-        let shown = element(&entry, &TypeTable::new(true, true), &State { link: None, heard: false, error: None, reconnecting: false });
+        let shown = element(&entry, &TypeTable::new(true, true), &State { link: None, heard: false, error: None, reconnecting: false, down: None });
         assert_eq!((shown["dynamic"].as_bool(), shown["autoConnect"].as_bool(), shown["baud"].as_i64(), shown["portDisplayName"].as_str()), (Some(true), Some(true), Some(115200), Some("cu.usbmodem1")));
         assert_eq!(shown["summary"], "cu.usbmodem1 at 115200 baud");
     }
@@ -977,16 +992,18 @@ mod tests {
     fn an_element_reads_as_the_qt_configuration_does() {
         let table = TypeTable::new(true, true);
         let tcp = Entry { config: LinkConfig { name: "iter7".into(), auto_connect: false, high_latency: false, kind: Kind::Tcp { host: "145.223.98.65".into(), port: 5760 } }, dynamic: false };
-        let idle = State { link: None, heard: false, error: None, reconnecting: false };
+        let idle = State { link: None, heard: false, error: None, reconnecting: false, down: None };
         let shown = element(&tcp, &table, &idle);
         assert_eq!((shown["class"].as_str(), shown["linkType"].as_i64(), shown["summary"].as_str(), shown["settingsURL"].as_str()), (Some("TCPConfiguration"), Some(2), Some("145.223.98.65:5760"), Some("TcpSettings.qml")));
         let udp = Entry { config: LinkConfig { name: "u".into(), auto_connect: true, high_latency: false, kind: Kind::Udp { local_port: 14550, hosts: vec![("10.0.0.2".into(), 14551)] } }, dynamic: true };
-        let shown = element(&udp, &table, &State { link: Some(3), heard: true, error: None, reconnecting: false });
+        let shown = element(&udp, &table, &State { link: Some(3), heard: true, error: None, reconnecting: false, down: None });
         assert_eq!((shown["summary"].as_str(), shown["hostList"][0].as_str(), shown["localPort"].as_u64()), (Some("UDP port 14550"), Some("10.0.0.2:14551"), Some(14550)));
         assert_eq!((shown["linkActive"].as_bool(), shown["children"][0].as_str(), shown.get("link"), shown["heardVehicle"].as_bool()), (Some(true), Some("link"), None, Some(true)), "a connected configuration carries its link as a child object, as the bridge walks it");
         let serial = Entry { config: LinkConfig { name: "s".into(), auto_connect: false, high_latency: false, kind: Kind::Serial { baud: 57600, data_bits: 8, flow_control: 0, stop_bits: 1, parity: 0, port_name: "/dev/cu.usbmodem1".into(), port_display_name: String::new() } }, dynamic: false };
         assert_eq!(element(&serial, &table, &idle)["summary"], "/dev/cu.usbmodem1 at 57600 baud", "the port name stands in when there is no display name");
-        let refused = element(&tcp, &table, &State { link: None, heard: false, error: Some(("Reached host but nothing is listening on port 5760.".into(), "editAddress")), reconnecting: false });
+        let refused = element(&tcp, &table, &State { link: None, heard: false, error: Some(("Reached host but nothing is listening on port 5760.".into(), "editAddress")), reconnecting: false, down: None });
+        let dropped = element(&tcp, &table, &State { link: Some(3), heard: false, error: None, reconnecting: false, down: Some("No MAVLink WebSocket answered at ws://localhost:1".into()) });
+        assert_eq!((dropped["lastError"].as_str(), dropped["linkDown"].as_bool()), (Some("No MAVLink WebSocket answered at ws://localhost:1"), Some(true)), "a link that is open but down says why");
         assert_eq!((refused["lastErrorRemedy"].as_i64(), refused["link"].is_null(), refused["children"].as_array().map(Vec::len)), (Some(1), true, Some(0)));
     }
 }

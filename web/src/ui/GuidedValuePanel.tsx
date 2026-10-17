@@ -1,5 +1,6 @@
 import { type ReactNode, createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { useQgcPath } from '@/bridge/QgcState';
+import { useBackHandler } from '@/kotlin/Compose';
 import { coerceIn, format } from '@/kotlin/Std';
 import { FilledTonalIconButton, FilterChip, OutlinedTextField, Surface, Text, TextButton } from '@/m3';
 import { typedNumber } from '@/map/AltitudeEntry';
@@ -30,6 +31,7 @@ export const GuidedValuePanel = ({
   children?: ReactNode;
 }) => {
   const flyScreen = useContext(LocalFlyScreenState);
+  useBackHandler(true, onCancel);
   const portrait = useFlyIsPortrait();
   const available = useScreenSize().height;
   useEffect(() => {

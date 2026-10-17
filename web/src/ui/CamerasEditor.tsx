@@ -11,6 +11,7 @@ import { md } from '@/theme/Colors';
 import { CAMERAS_VIEW, type CameraEntry, type CameraKind, addableKinds, addedName, cameraDetail, camerasReading, kindLabel, kindTitle } from '@/ui/Cameras';
 import { CameraStatusDot } from '@/ui/CameraSwitch';
 import { FootNote } from '@/ui/SetupRow';
+import { TAP } from '@/kotlin/Platform';
 
 const CAMERA_UNDO_WINDOW_MS = 6000;
 const CAMERA_LIST_SETTLE_MS = 2000;
@@ -156,7 +157,7 @@ export const CamerasEditor = ({ className }: { className?: string }) => {
         </div>
         {reading !== null && !reading.readable ? <ErrorLine text={reading.reason} /> : null}
         {notice !== null ? <ErrorLine text={notice} /> : null}
-        {reading !== null && cameras.length === 0 ? <FootNote text="No video sources yet. Cameras on the drone show up here by themselves. Tap + to add one." /> : null}
+        {reading !== null && cameras.length === 0 ? <FootNote text={`No video sources yet. Cameras on the drone show up here by themselves. ${TAP} + to add one.`} /> : null}
         {cameras.map((camera) => {
           const opened = editable ? editDraft(camera, kinds) : null;
           return (

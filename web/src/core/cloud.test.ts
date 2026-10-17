@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { cloudBackoffMs, relayTokenRefusal } from './cloud';
+import { cloudBackoffMs, relayTokenRefusal, usesWebSocket } from './cloud';
 
 describe('the browser cloud relay', () => {
   it('backs off like the native relay, doubling from 2 s to a 60 s ceiling', () => {
@@ -10,5 +10,11 @@ describe('the browser cloud relay', () => {
     expect(relayTokenRefusal(401)).toBe('Sign in to your Aircast account again.');
     expect(relayTokenRefusal(403)).toBe('This account cannot reach that device.');
     expect(relayTokenRefusal(500)).toBe('The Aircast account server answered 500.');
+  });
+
+  it('opens a plain WebSocket for a saved WebSocket link, which needs no relay token', () => {
+    expect(usesWebSocket('', 'wss://sitl.aircast.one/ws/mavlink')).toBe(true);
+    expect(usesWebSocket('', 'ws://192.168.1.10:5760')).toBe(true);
+    expect(usesWebSocket('https://api.aircast.one/v1/user/devices/d/webtransport-token', 'https://api.aircast.one/v1/mavlink/device/d')).toBe(false);
   });
 });

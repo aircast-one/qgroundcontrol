@@ -820,7 +820,7 @@ export const FactRow = ({
   title = sentenceCase(fact.heading),
   subtitle = [fact.detail, factSubtitle(fact)].filter(notBlank).join(' · '),
   titleColor,
-  fieldModifier = 'w-full px-4 py-2',
+  fieldModifier = 'w-full px-list py-2',
   warning = null,
   onRejected = () => undefined,
   onWrite = () => undefined,

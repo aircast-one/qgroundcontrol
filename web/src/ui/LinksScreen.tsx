@@ -3,7 +3,7 @@ import { AccountCommands, LinkCommands } from '@/bridge/BridgeCommands';
 import { type Json, jsonObjects, jsonStrings, optBoolean, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcPath, useQgcValue } from '@/bridge/QgcState';
-import { openWebSocketLink, requestSerialPort, serialAvailable } from '@/core/client';
+import { requestSerialPort, serialAvailable } from '@/core/client';
 import { stageFile, unstage, unstageAll } from '@/core/files';
 import { useBackHandler, useLaunchedEffect, useTicker } from '@/kotlin/Compose';
 import { openDocument } from '@/kotlin/Platform';
@@ -691,7 +691,7 @@ const EditLinkFields = ({
     return (
       <>
         <Text typography="bodyLarge">{orIfBlank(leafName(edit.logFile), 'No log file chosen')}</Text>
-        <OutlinedButton enabled={enabled} onClick={onPickLog} className="w-full">
+        <OutlinedButton enabled={enabled} onClick={onPickLog} className="w-full desktop:w-auto desktop:self-start">
           Choose another log file
         </OutlinedButton>
       </>
@@ -800,7 +800,7 @@ const EditLinkPage = ({ row, onDismiss, onSaved, className }: { row: LinkRow; on
             {error}
           </Text>
         ) : null}
-        <Button enabled={editable} onClick={save} className="min-h-[52px] w-full">
+        <Button enabled={editable} onClick={save} className="min-h-[52px] w-full desktop:w-auto desktop:min-w-40 desktop:self-end">
           Save and connect
         </Button>
       </PageColumn>
@@ -821,7 +821,7 @@ const LINK_KINDS: Record<Exclude<LinkType['name'], 'Other'>, readonly [string, s
   Tcp: ['Network server (TCP)', 'A listening ground station', 'Calls out to a device that is listening, such as a ground station or bridge.'],
   LogReplay: ['Replay a flight log', 'Play back a saved log', 'Plays back a saved telemetry log as if the vehicle were connected.'],
   Mock: ['Simulated vehicle', 'Try the app without hardware', 'A simulated vehicle for trying the app without hardware. It is not saved, so it ends when the app restarts.'],
-  WebSocket: ['Network (WebSocket)', 'MAVLink over WebSocket', 'A browser cannot open UDP or TCP sockets, so it reaches the aircraft through a MAVLink WebSocket, such as a bridge on the ground station or the aircraft. It is not saved, so it ends when the page reloads.'],
+  WebSocket: ['Network (WebSocket)', 'MAVLink over WebSocket', 'A browser cannot open UDP or TCP sockets, so it reaches the aircraft through a MAVLink WebSocket, such as a bridge on the ground station or the aircraft. The link is saved and reconnects when the page opens again.'],
 };
 
 export const linkKind = (type: LinkType): LinkKind => {
@@ -993,7 +993,7 @@ const NewLinkFields = ({
   if (draft.type === LinkType.Mock) return <MockLinkFields choices={draft.mock} onChange={(it) => onDraft({ ...draft, mock: it })} />;
   if (draft.type === LinkType.LogReplay) {
     return (
-      <OutlinedButton onClick={onPickLog} className="w-full">
+      <OutlinedButton onClick={onPickLog} className="w-full desktop:w-auto desktop:self-start">
         {draft.replayLog.trim() === '' ? 'Choose a log file' : leafName(draft.replayLog)}
       </OutlinedButton>
     );
@@ -1067,6 +1067,16 @@ const NewLinkAdvanced = ({
 
 export const DEFAULT_WEBSOCKET_URL = 'wss://sitl.aircast.one/ws/mavlink';
 
+export const WEBSOCKET_NOT_SAVED = 'The WebSocket link could not be saved.';
+
+export const webSocketLinkName = (typed: string): string => {
+  try {
+    return new URL(typed.trim()).host || 'WebSocket';
+  } catch {
+    return 'WebSocket';
+  }
+};
+
 export const webSocketUrlError = (typed: string): string | null => {
   try {
     const url = new URL(typed.trim());
@@ -1081,23 +1091,19 @@ const WebSocketLinkPage = ({ onBack, onAdded, className }: { onBack: () => void;
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const kind = linkKind(LinkType.WebSocket);
+  const linksJson = useQgcPath(LINKS_VIEW);
+  const taken = useMemo(() => linkRows(linksJson).map((it) => it.name), [linksJson]);
   useBackHandler(true, onBack);
   const connect = () => {
     const invalid = webSocketUrlError(typed);
     setError(invalid);
     if (invalid !== null) return;
     setBusy(true);
-    void openWebSocketLink(typed.trim()).then(
-      (reply) => {
-        setBusy(false);
-        if (reply.ok) onAdded();
-        else setError(reply.reason ?? 'The WebSocket link could not be opened.');
-      },
-      (failure: unknown) => {
-        setBusy(false);
-        setError(failure instanceof Error ? failure.message : String(failure));
-      },
-    );
+    void LinkCommands.createWebSocket(uniqueLinkName(webSocketLinkName(typed), taken), typed.trim()).then((saved) => {
+      setBusy(false);
+      if (saved) onAdded();
+      else setError(WEBSOCKET_NOT_SAVED);
+    });
   };
   return (
     <>
@@ -1195,7 +1201,7 @@ const AddLinkDetails = ({ type, onBack, onAdded, className }: { type: LinkType; 
             {error}
           </Text>
         ) : null}
-        <Button enabled={!busy} onClick={connect} className="min-h-[52px] w-full">
+        <Button enabled={!busy} onClick={connect} className="min-h-[52px] w-full desktop:w-auto desktop:min-w-40 desktop:self-end">
           {busy ? 'Connecting…' : type === LinkType.Mock ? 'Start' : 'Connect'}
         </Button>
       </PageColumn>

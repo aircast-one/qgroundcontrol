@@ -189,6 +189,10 @@ impl Transports {
         self.shared.registry.lock().unwrap().down_ids()
     }
 
+    pub fn down_reason(&self, id: LinkId) -> Option<String> {
+        self.shared.registry.lock().unwrap().down_reason(id)
+    }
+
     pub fn describe(&self, id: LinkId) -> Option<(String, String, bool)> {
         let registry = self.shared.registry.lock().unwrap();
         let entry = registry.entry(id)?;
@@ -326,6 +330,11 @@ fn build(shared: &Shared, id: LinkId, config: &LinkConfig) -> Result<Owned, Fail
             let (shared, relay) = (shared.clone(), shared.clone());
             Ok(Owned::Cloud(crate::cloudlink::CloudLink::open(url, token, move |bytes| shared.deliver(id, bytes), move |up, reason| relay.relay_state(id, up, reason))))
         }
+        #[cfg(target_family = "wasm")]
+        Kind::WebSocket { url } => {
+            let (shared, relay) = (shared.clone(), shared.clone());
+            Ok(Owned::Cloud(crate::cloudlink::CloudLink::open_socket(url.clone(), move |bytes| shared.deliver(id, bytes), move |up, reason| relay.relay_state(id, up, reason))))
+        }
         Kind::LogReplay { file } => {
             let shared = shared.clone();
             crate::logreplay::ReplayLink::open(file, move |bytes| shared.deliver(id, bytes)).map(Owned::Replay).map_err(Failure::retry)
@@ -348,6 +357,7 @@ fn kind_name(kind: &Kind) -> &'static str {
         Kind::Mock { .. } => "mock",
         Kind::LogReplay { .. } => "logReplay",
         Kind::AircastCloud { .. } => "aircastCloud",
+        Kind::WebSocket { .. } => "webSocket",
     }
 }
 

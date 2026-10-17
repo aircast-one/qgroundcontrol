@@ -6,6 +6,7 @@ import { FilledTonalButton, OutlinedButton, Slider, Surface, Switch, Text, steps
 import { Drawable } from '@/res/Icon';
 import { aircast, md } from '@/theme/Colors';
 import { SETUP, setupReadiness } from '@/ui/SetupView';
+import { TAP } from '@/kotlin/Platform';
 
 const FRAME_VIEW = 'view.frame';
 
@@ -120,7 +121,7 @@ export const MotorsScreen = ({ className }: { className?: string }) => {
               <span className="flex w-full flex-col items-center py-5">
                 <Text typography="bodyLarge">{`Motor ${motorLabel(motor, letters)}`}</Text>
                 <Text typography="labelMedium" color={md('onSurfaceVariant')}>
-                  {testable ? 'Tap to spin' : 'Locked'}
+                  {testable ? `${TAP} to spin` : 'Locked'}
                 </Text>
               </span>
             </Surface>

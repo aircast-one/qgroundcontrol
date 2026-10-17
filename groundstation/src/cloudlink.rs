@@ -26,6 +26,8 @@ pub const RELAY_LOST: &str = "The Aircast relay connection was lost. Reconnectin
 #[cfg(target_family = "wasm")]
 const NO_BROWSER_RELAY: &str = "This browser cannot reach the Aircast relay: it needs WebTransport.";
 #[cfg(target_family = "wasm")]
+const NO_BROWSER_SOCKET: &str = "This browser could not open the WebSocket link.";
+#[cfg(target_family = "wasm")]
 const BAD_RELAY_ADDRESS: &str = "The Aircast relay address is not valid.";
 
 pub fn relay_url(api_base: &str, device_id: &str) -> Option<String> {
@@ -225,6 +227,22 @@ impl CloudLink {
         if !(hooks.open)(id, &token_url, &session_url, &token) {
             hosted().remove(&id);
             relay(false, NO_BROWSER_RELAY);
+            return CloudLink { id: 0 };
+        }
+        CloudLink { id }
+    }
+
+    pub fn open_socket(url: String, deliver: impl FnMut(&[u8]) + Send + 'static, relay: impl Fn(bool, &str) + Send + Sync + 'static) -> CloudLink {
+        let Some(hooks) = HOST_HOOKS.get() else {
+            relay(false, NO_BROWSER_SOCKET);
+            return CloudLink { id: 0 };
+        };
+        let id = NEXT_HOSTED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let relay: Relay = Arc::new(relay);
+        hosted().insert(id, Hosted { deliver: Arc::new(std::sync::Mutex::new(Box::new(deliver))), relay: relay.clone(), connected: false });
+        if !(hooks.open)(id, "", &url, "") {
+            hosted().remove(&id);
+            relay(false, NO_BROWSER_SOCKET);
             return CloudLink { id: 0 };
         }
         CloudLink { id }

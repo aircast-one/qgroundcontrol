@@ -1,5 +1,7 @@
 import { test as base, expect, type Locator, type Page } from '@playwright/test';
 
+export const APP = '/';
+
 const passFirstRun = async (page: Page) => {
   const welcome = page.getByRole('dialog').filter({ has: page.getByRole('heading', { name: 'Welcome to Aircast' }) });
   await welcome.getByRole('button', { name: 'Continue' }).click();
@@ -7,7 +9,7 @@ const passFirstRun = async (page: Page) => {
 };
 
 export const openApp = async (page: Page, { firstRun = true } = {}) => {
-  await page.goto('/');
+  await page.goto(APP);
   if (!firstRun) return;
   await passFirstRun(page);
   await expect(page.getByRole('region', { name: 'Map' })).toBeVisible();
@@ -116,7 +118,7 @@ export const openAircraftSetup = async (page: Page) => {
 export const openPlanAtVehicle = async (page: Page) => {
   await page.addLocatorHandler(page.getByRole('dialog').filter({ hasText: 'Aircraft connected' }), (prompt) => prompt.getByRole('button', { name: 'Keep my route' }).click());
   await openMenu(page, 'Plan');
-  await expect(page.getByText('Tap the map to add a waypoint')).toBeVisible();
+  await expect(page.getByText('Click the map to add a waypoint')).toBeVisible();
   await expect(page.locator('span.text-label-small').getByText(/^\d+ (m|km)$/)).toHaveText(/^\d+ m$/, { timeout: 60_000 });
 };
 

@@ -35,7 +35,7 @@ const HOME_ALT_M: f64 = 488.056;
 const SYSTEM_SPACING_DEG: f64 = 0.0001;
 const TICK: Duration = Duration::from_millis(100);
 const POLL: Duration = Duration::from_millis(20);
-const PARAMS_PER_POLL: usize = 20;
+const PARAMS_PER_STEP: usize = if cfg!(target_family = "wasm") { 200 } else { 20 };
 const TICKS_PER_SECOND: u64 = 10;
 const YAW_DPS: f64 = 90.0;
 const DRAG_PER_S: f64 = 0.3;
@@ -1576,7 +1576,7 @@ impl Sim {
     }
 
     pub fn pump(&mut self) -> Vec<Out> {
-        let count = PARAMS_PER_POLL.min(self.queued.len());
+        let count = PARAMS_PER_STEP.min(self.queued.len());
         let batch: Vec<usize> = self.queued.drain(..count).collect();
         let logs = self.logs.pump();
         let outbox = std::mem::take(&mut self.outbox);
@@ -1635,8 +1635,11 @@ impl Sim {
 
     fn sys_status(&self) -> Out {
         let battery = self.batteries[0];
+        let gps = MavSysStatusSensor::MAV_SYS_STATUS_SENSOR_GPS;
         (AUTOPILOT, MavMessage::SYS_STATUS(SYS_STATUS_DATA {
-            onboard_control_sensors_present: MavSysStatusSensor::MAV_SYS_STATUS_SENSOR_GPS,
+            onboard_control_sensors_present: gps,
+            onboard_control_sensors_enabled: gps,
+            onboard_control_sensors_health: if self.conditions.gps_lost { MavSysStatusSensor::empty() } else { gps },
             load: 250,
             voltage_battery: (battery.volts(self.tuning.capacity_mah, self.tuning.cells) * 1000.0) as u16,
             current_battery: (battery.current_a * 100.0) as i16,
@@ -2122,6 +2125,15 @@ mod tests {
             assert_eq!(sent, sim.params.len(), "{vehicle:?}");
         });
         assert!(parse_params(COPTER_PARAMS).len() > 1000);
+    }
+
+    #[test]
+    fn the_browser_build_streams_parameters_in_bigger_batches_than_the_thread_that_polls_every_20_ms() {
+        let (vehicle, _, _) = VEHICLES[0];
+        let mut sim = Sim::new(options(vehicle), 128, None);
+        sim.receive(gcs(), &MavMessage::PARAM_REQUEST_LIST(PARAM_REQUEST_LIST_DATA { target_system: 128, target_component: 1 }));
+        assert_eq!(sim.pump().len(), PARAMS_PER_STEP.min(sim.params.len()));
+        assert_eq!(PARAMS_PER_STEP, if cfg!(target_family = "wasm") { 200 } else { 20 });
     }
 
     #[test]
@@ -2703,6 +2715,20 @@ mod tests {
         fly(&mut sim, 60);
         assert!(!sim.armed && sim.lon > sim.home.1, "and lands downwind");
         assert_eq!(sim.refusal().as_deref(), Some("Need 3D Fix"), "nor will it arm again without a fix");
+    }
+
+    #[test]
+    fn sys_status_reports_the_gps_on_and_healthy_while_it_has_a_fix() {
+        let mut sim = Sim::new(options(Vehicle::Copter), 128, None);
+        let gps = MavSysStatusSensor::MAV_SYS_STATUS_SENSOR_GPS;
+        let sensors = |sim: &Sim| {
+            let (_, MavMessage::SYS_STATUS(status)) = sim.sys_status() else { panic!() };
+            (status.onboard_control_sensors_enabled, status.onboard_control_sensors_health)
+        };
+        let (_, MavMessage::GPS_RAW_INT(fix)) = sim.gps(0) else { panic!() };
+        assert_eq!((fix.satellites_visible, sensors(&sim)), (12, (gps, gps)), "the GPS was reported present but switched off, so the status read \"GPS turned off\" over a 12-satellite fix");
+        sim.conditions = Conditions { gps_lost: true, ..Conditions::default() };
+        assert_eq!(sensors(&sim), (gps, MavSysStatusSensor::empty()), "a lost fix reads as a GPS that is on but not working");
     }
 
     #[test]

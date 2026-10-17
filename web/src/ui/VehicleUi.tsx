@@ -62,6 +62,7 @@ import { FLIGHT_MODES_PAGE } from './SetupPages';
 import { FootNote, SectionHeader } from './SetupRow';
 import { useHasSetupPage } from './SetupScreen';
 import { ARM_REQUEST, deckRequestRefusal } from './VehicleStatusSheet';
+import { TAP_LOWER } from '@/kotlin/Platform';
 
 const MISSION_POPUP_DELAY_MS = 1000;
 const GCS_POSITION = 'view.gcsPosition';
@@ -999,7 +1000,7 @@ export const FlightModeMenu = ({ expanded, onDismiss, onStatus }: { expanded: bo
 const MODE_TEXT_WIDTH = 260;
 export const ALL_MODES = 'All modes';
 export const TAKEOFF_REQUEST = 'takeoff';
-const QUICK_LIST_HINT = 'Shown first when you tap the mode';
+const QUICK_LIST_HINT = `Shown first when you ${TAP_LOWER} the mode`;
 
 const InstrumentSheet = ({
   chosen,

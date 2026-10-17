@@ -9,6 +9,7 @@ import { aircast, md } from '@/theme/Colors';
 import { BlocksNavigation } from '@/ui/AppNavigation';
 import { phoneIsOnMeteredNetwork, useRememberPhoneWifi } from '@/ui/PhoneNetwork';
 import { OverridePageHeading } from '@/ui/SetupRow';
+import { TAP } from '@/kotlin/Platform';
 
 export const FLASHER_PAGE = 'Aircast card';
 export const FLASHER_VIEW = 'view.flasher';
@@ -139,7 +140,7 @@ export const flasherCardText = (card: Json | null): string => {
     case 'opening':
       return 'Checking the card reader…';
     case 'waiting':
-      return 'Tap OK on the prompt to let Aircast use the card reader';
+      return `${TAP} OK on the prompt to let Aircast use the card reader`;
     case 'ready':
       return [notBlank(optText(card, 'label')) ? optText(card, 'label') : 'Card reader', optText(card, 'capacityText')].filter(notBlank).join(' · ');
     case 'failed':

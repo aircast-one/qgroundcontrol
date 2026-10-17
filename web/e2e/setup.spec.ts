@@ -23,16 +23,16 @@ test('the motor test stays locked until the propellers-off switch, then takes a 
   await expect(vehicle.getByRole('button', { name: 'Motor 1 Locked' })).toBeDisabled();
   await expect(vehicle.getByRole('slider', { name: 'Throttle' })).toBeDisabled();
   await vehicle.getByRole('switch', { name: /Propellers are removed/ }).click();
-  await expect(vehicle.getByRole('button', { name: 'Motor 1 Tap to spin' })).toBeEnabled();
+  await expect(vehicle.getByRole('button', { name: 'Motor 1 Click to spin' })).toBeEnabled();
   const throttle = vehicle.getByRole('slider', { name: 'Throttle' });
   await throttle.press('ArrowRight');
   await throttle.press('ArrowRight');
   await throttle.press('ArrowRight');
   await expect(throttle).toHaveAttribute('aria-valuenow', '3');
   await expect(vehicle.getByText('3%', { exact: true })).toBeVisible();
-  await vehicle.getByRole('button', { name: 'Motor 1 Tap to spin' }).click();
+  await vehicle.getByRole('button', { name: 'Motor 1 Click to spin' }).click();
   await vehicle.getByRole('button', { name: 'Stop' }).click();
-  await expect(vehicle.getByRole('button', { name: 'Motor 1 Tap to spin' })).toBeEnabled();
+  await expect(vehicle.getByRole('button', { name: 'Motor 1 Click to spin' })).toBeEnabled();
 });
 
 test('switching quickly in and out of the PX4 radio page raises no duplicate-command error', async ({ vehicle }) => {

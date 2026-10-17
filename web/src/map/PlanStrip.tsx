@@ -16,6 +16,7 @@ import { metresBetween } from './TerrainProfile';
 import type { TrackPoint } from './VehicleMap';
 import { NEWEST_PATTERN } from './VehicleSync';
 import { WaypointStrip } from './WaypointPanel';
+import { TAP, TAP_LOWER } from '@/kotlin/Platform';
 
 export type PlanStat = { label: string; value: string };
 
@@ -37,7 +38,7 @@ export const highestAltitude = (items: readonly MissionItem[]): string | null =>
     .reduce<MissionItem | null>((best, it) => (best === null || it.altitude > best.altitude ? it : best), null)?.altitudeText ?? null;
 
 const NO_HOURS = '00:';
-export const TAP_TO_ADD = 'Tap the map to add a waypoint';
+export const TAP_TO_ADD = `${TAP} the map to add a waypoint`;
 export const TERRAIN_CONFLICT_HERE = 'Too close to the terrain here';
 const PANEL_DRAG_THRESHOLD = 24;
 
@@ -130,7 +131,7 @@ export const panelDrag = (onOpen: (open: boolean) => void) => ({
   },
 });
 
-export const FIRST_TAP_SETS_HOME = 'The first tap also sets home.';
+export const FIRST_TAP_SETS_HOME = `The first ${TAP_LOWER} also sets home.`;
 
 export const selectionTitle = (selected: MapHit, items: readonly MissionItem[]): string => {
   switch (selected.kind) {

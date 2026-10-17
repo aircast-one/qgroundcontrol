@@ -137,7 +137,7 @@ export const ParameterForm = ({ page, className, highlighted = new Set(), sectio
     setLoaded(true);
   });
 
-  if (!loaded) return <Text className={`block p-4 ${className ?? ''}`}>Reading parameters from the vehicle.</Text>;
+  if (!loaded) return <Text className={`block px-list py-4 ${className ?? ''}`}>Reading parameters from the vehicle.</Text>;
 
   if (rows.length === 0) return <EmptyState icon="ic_tune" title="Nothing to set here" text={EMPTY_PAGE_TEXTS.get(page) ?? 'This vehicle exposes none of these parameters.'} className={className} />;
 

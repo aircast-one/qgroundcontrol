@@ -167,6 +167,10 @@ impl Registry {
         self.links.values().filter(|e| e.state == State::Open && !e.up).map(|e| e.id).collect()
     }
 
+    pub fn down_reason(&self, id: LinkId) -> Option<String> {
+        self.links.get(&id).filter(|e| e.state == State::Open && !e.up).map(|e| e.reason.clone())
+    }
+
     pub fn remove_closed(&mut self) {
         self.links.retain(|_, e| e.state == State::Open);
     }

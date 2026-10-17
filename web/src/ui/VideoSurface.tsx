@@ -264,8 +264,10 @@ const MainPane = ({
           </>
         ) : null}
       </div>
-      {!decoding && synthetic ? (
-        <SyntheticView className="absolute inset-0 size-full" aimable={expanded} standIn={expanded ? (video?.standIn ?? null) : null} />
+      {!decoding && synthetic && !expanded ? (
+        <SyntheticThumb className="absolute inset-0" />
+      ) : !decoding && synthetic ? (
+        <SyntheticView className="absolute inset-0 size-full" aimable standIn={video?.standIn ?? null} />
       ) : !decoding ? (
         <Surface className="absolute inset-0 size-full" color={expanded ? Color.Black : aircast('outdoorBackground')}>
           <NoVideoArea underFlyChrome={expanded && !fullScreen} thumb={!expanded} video={video} />

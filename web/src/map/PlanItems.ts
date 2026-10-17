@@ -8,6 +8,7 @@ import { sentenceCase } from './SentenceCase';
 import { type Survey, SurveyBridge, type SurveyStats } from './SurveyBridge';
 import { metresBetween } from './TerrainProfile';
 import type { TrackPoint } from './VehicleMap';
+import { TAP } from '@/kotlin/Platform';
 
 export const NO_POSITION = 'no position';
 export const AFTER_THE_ROUTE_ENDS = 'after the route ends';
@@ -139,7 +140,7 @@ export const selectionSequence = (selected: MapHit | null, items: readonly Missi
 export const addingAfterText = (selected: MapHit | null, items: readonly MissionItem[]): string | null => {
   const index = missionItemIndex(selected);
   const item = index === null ? undefined : items.find((it) => it.index === index);
-  return item === undefined ? null : `Tap the map to add after #${item.sequence}`;
+  return item === undefined ? null : `${TAP} the map to add after #${item.sequence}`;
 };
 
 export const legText = (item: MissionItem): string | null => {
