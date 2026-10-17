@@ -37,10 +37,12 @@ export type DropdownMenuItemProps = {
   trailingIcon?: ReactNode;
   enabled?: boolean;
   color?: string;
+  checked?: boolean;
 };
 
-export const DropdownMenuItem = ({ text, onClick, leadingIcon, trailingIcon, enabled = true, color }: DropdownMenuItemProps) => (
+export const DropdownMenuItem = ({ text, onClick, leadingIcon, trailingIcon, enabled = true, color, checked }: DropdownMenuItemProps) => (
   <Menu.Item
+    {...(checked === undefined ? {} : { role: 'menuitemcheckbox', 'aria-checked': checked })}
     disabled={!enabled}
     onClick={onClick}
     className="flex min-h-12 cursor-pointer items-center gap-3 px-3 text-label-large outline-none data-[disabled]:cursor-default data-[disabled]:opacity-40 data-[highlighted]:bg-[color-mix(in_srgb,var(--md-on-surface)_8%,transparent)]"

@@ -129,6 +129,7 @@ export const CameraSwitch = ({ splitRoom, className }: { splitRoom: boolean; cla
             {switchState !== null ? <HorizontalDivider /> : null}
             <DropdownMenuItem
               text="Split view"
+              checked={!splitTo}
               leadingIcon={<Drawable name="ic_split_view" size={CHIP_GLYPH} />}
               trailingIcon={!splitTo ? <MaterialIcon name="check" filled label="On" /> : undefined}
               onClick={() => {

@@ -16,7 +16,7 @@ const addVideoSource = async (page: Page, type: RegExp, address: string) => {
   await page.getByRole('textbox').first().fill(address);
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page.getByText(address)).toBeVisible();
-  await page.keyboard.press('Escape');
+  await page.getByRole('button', { name: 'Close settings' }).click();
 };
 
 test('a WHEP camera plays in the Fly view', async ({ app }) => {
@@ -32,4 +32,18 @@ test('a WHEP camera plays in the Fly view', async ({ app }) => {
 test('a stream the browser cannot play says so', async ({ app }) => {
   await addVideoSource(app, /^RTSP/, 'rtsp://localhost:18554/e2e');
   await expect(app.getByText('This browser can only play WebRTC (WHEP) streams.', { exact: false })).toBeVisible({ timeout: 30_000 });
+});
+
+test('split view plays a second WHEP camera beside the main one', async ({ app }) => {
+  await addVideoSource(app, /^WebRTC \(WHEP\)/, WHEP_STREAM);
+  await addVideoSource(app, /^WebRTC \(WHEP\)/, `${WHEP_STREAM}?second`);
+  await app.getByRole('button', { name: /^Cameras, showing/ }).click();
+  const split = app.getByRole('menuitemcheckbox', { name: /Split view/ });
+  await expect(split).toHaveAttribute('aria-checked', 'false');
+  await split.click();
+  await expect(app.getByRole('button', { name: /^Second camera, / })).toBeVisible({ timeout: 30_000 });
+  const playing = () => app.locator('video').evaluateAll((videos: HTMLVideoElement[]) => videos.filter((video) => video.videoWidth > 0).length);
+  await expect.poll(playing, { timeout: 30_000 }).toBe(2);
+  await app.getByRole('button', { name: /^Cameras, showing/ }).click();
+  await expect(app.getByRole('menuitemcheckbox', { name: /Split view/ })).toHaveAttribute('aria-checked', 'true');
 });
