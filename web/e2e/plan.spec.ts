@@ -43,3 +43,15 @@ test('the terrain profile charts the mission over the ground at the vehicle', as
   await expect(chart).toBeVisible({ timeout: 30_000 });
   await expect(chart).not.toHaveAccessibleName(/ground height/);
 });
+
+test('a waypoint deletes from the plan through its editor', async ({ app }) => {
+  await openMenu(app, 'Plan');
+  await tapPlanMission(app);
+  await expect.poll(() => itemCount(app)).toBeGreaterThanOrEqual(5);
+  await app.getByRole('button', { name: 'Done' }).click();
+  const before = await itemCount(app);
+  await app.getByRole('button', { name: 'Waypoint 3' }).first().click();
+  await app.getByRole('button', { name: /^Advanced/, expanded: false }).last().click();
+  await app.getByRole('button', { name: 'Delete from the plan' }).click();
+  await expect.poll(() => itemCount(app), { timeout: 30_000 }).toBe(before - 1);
+});
