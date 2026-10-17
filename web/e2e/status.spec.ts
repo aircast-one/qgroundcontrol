@@ -12,7 +12,8 @@ test('the status sheet arms the aircraft without starting layout editing', async
 
 test('the status sheet lists sensor health and opens the message log', async ({ vehicle }) => {
   const sheet = await vehicleStatus(vehicle);
-  await expect(sheet.getByRole('button', { name: 'GPS Disabled' })).toBeVisible();
+  await sheet.getByRole('button', { name: 'Show 1 more' }).click();
+  await expect(sheet.getByRole('button', { name: 'GPS Normal' }), 'the simulated vehicle reported its GPS switched off over a 12-satellite fix').toBeVisible();
   await sheet.getByRole('button', { name: 'Messages', exact: true }).click();
   const log = vehicle.getByRole('dialog').filter({ hasText: 'messages from the vehicle' });
   await expect(log).toBeVisible();
