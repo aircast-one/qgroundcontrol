@@ -813,6 +813,14 @@ jobs:
         working-directory: web
         run: npm ci && npm run build
 
+      - name: Pack the web build for devices
+        run: tar -czf qgc-web.tar.gz -C web/dist .
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: qgc-web
+          path: qgc-web.tar.gz
+
       - uses: docker/login-action@v4
         with:
           registry: ghcr.io
@@ -841,7 +849,7 @@ jobs:
                 -d @-
 
   publish:
-    needs: [setup, build-android, build-macos, build-windows, build-linux]
+    needs: [setup, build-android, build-macos, build-windows, build-linux, build-web]
     if: always() && needs.setup.result == 'success'
     runs-on: ubuntu-latest
     steps:
@@ -883,7 +891,7 @@ jobs:
       - name: Checksums
         run: |
           cd assets
-          for f in *.apk *.dmg *.exe *.AppImage; do
+          for f in *.apk *.dmg *.exe *.AppImage *.tar.gz; do
             [ -f "$f" ] && sha256sum "$f" > "$f.sha256"
           done || true
           ls -la
