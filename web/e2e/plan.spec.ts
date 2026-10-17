@@ -33,3 +33,13 @@ test('the selected waypoint editor steps its altitude into the item list', async
   await app.getByRole('slider', { name: 'Altitude' }).press('ArrowLeft');
   await expect(app.getByRole('button', { name: /^3 Waypoint 51\.0 m/ })).toBeVisible({ timeout: 15_000 });
 });
+
+test('the terrain profile charts the mission over the ground at the vehicle', async ({ vehicle }) => {
+  await openPlanAtVehicle(vehicle);
+  await tapPlanMission(vehicle);
+  await expect.poll(() => itemCount(vehicle)).toBeGreaterThanOrEqual(5);
+  await vehicle.getByRole('button', { name: 'Done' }).click();
+  const chart = vehicle.getByRole('img', { name: / · \d+ m/ });
+  await expect(chart).toBeVisible({ timeout: 30_000 });
+  await expect(chart).not.toHaveAccessibleName(/ground height/);
+});
