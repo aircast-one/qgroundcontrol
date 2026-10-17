@@ -160,6 +160,7 @@ pub fn video_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "cameras": cameras,
         "nativePipeline": crate::videohost::native_pipeline(),
         "pipPipeline": crate::videohost::pip_pipeline(),
+        "whepEndpoints": crate::videohost::whep_endpoints(),
         "deviceCamera": crate::videohost::device_camera(),
         "nativeRecording": crate::videohost::native_recording(),
     })

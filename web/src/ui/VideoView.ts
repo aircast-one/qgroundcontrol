@@ -61,6 +61,11 @@ export const videoReading = (view: Json | null): VideoReading | null => {
   });
 };
 
+export const whepEndpoint = (view: Json | null, channel: number): string | null => {
+  const endpoint = optJSONArray(view, 'whepEndpoints')?.[channel];
+  return typeof endpoint === 'string' && endpoint !== '' ? endpoint : null;
+};
+
 export type PaintedRect = { left: number; top: number; width: number; height: number };
 
 export const paintedRect = (surfaceWidth: number, surfaceHeight: number, source: SourceSize | null): PaintedRect => {

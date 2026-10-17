@@ -1,0 +1,35 @@
+import { type Page } from '@playwright/test';
+import { expect, test } from './fixtures';
+
+const WHEP_STREAM = 'http://localhost:18889/e2e/whep';
+
+const addVideoSource = async (page: Page, type: RegExp, address: string) => {
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('tablist').getByRole('tab', { name: 'Transmission' }).click();
+  const row = page.getByRole('button', { name: /^Video sources/ });
+  await expect(async () => {
+    if (await row.isVisible()) await row.click();
+    await expect(page.getByRole('button', { name: 'Add a video source' })).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+  await page.getByRole('button', { name: 'Add a video source' }).click();
+  await page.getByRole('dialog').filter({ hasText: 'Add video source' }).getByRole('button', { name: type }).click();
+  await page.getByRole('textbox').first().fill(address);
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByText(address)).toBeVisible();
+  await page.keyboard.press('Escape');
+};
+
+test('a WHEP camera plays in the Fly view', async ({ app }) => {
+  await addVideoSource(app, /^WebRTC \(WHEP\)/, WHEP_STREAM);
+  const video = app.locator('video').first();
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => [element.videoWidth, element.videoHeight]), { timeout: 30_000 }).toEqual([640, 360]);
+  const frames = () => video.evaluate((element: HTMLVideoElement) => element.getVideoPlaybackQuality().totalVideoFrames);
+  const before = await frames();
+  await expect.poll(frames).toBeGreaterThan(before);
+  await expect(app.getByText(/^No video/)).toHaveCount(0);
+});
+
+test('a stream the browser cannot play says so', async ({ app }) => {
+  await addVideoSource(app, /^RTSP/, 'rtsp://localhost:18554/e2e');
+  await expect(app.getByText('This browser can only play WebRTC (WHEP) streams.', { exact: false })).toBeVisible({ timeout: 30_000 });
+});

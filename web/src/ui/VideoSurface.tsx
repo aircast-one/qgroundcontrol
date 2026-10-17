@@ -1,7 +1,8 @@
-import { type HTMLAttributes, type PointerEvent, useEffect, useMemo } from 'react';
+import { type HTMLAttributes, type PointerEvent, useEffect, useMemo, useRef } from 'react';
 import { VideoCommands } from '@/bridge/BridgeCommands';
 import { Qgc } from '@/bridge/Qgc';
 import { settingControl, useQgcBool, useQgcPath, useQgcValue } from '@/bridge/QgcState';
+import { playWhep } from '@/core/whep';
 import { useUpdatedRef } from '@/kotlin/Compose';
 import { same } from '@/kotlin/Std';
 import { Surface, Text } from '@/m3';
@@ -23,7 +24,7 @@ import { TrackingBoxOverlay } from '@/ui/TrackingBoxOverlay';
 import { VideoArOverlay } from '@/ui/VideoAr';
 import { usePointerGestures } from '@/ui/VideoGestures';
 import { VideoStatsPill } from '@/ui/VideoStatsPill';
-import { VIDEO_VIEW, type SourceSize, type VideoReading, videoReading } from '@/ui/VideoView';
+import { VIDEO_VIEW, type SourceSize, type VideoReading, videoReading, whepEndpoint } from '@/ui/VideoView';
 
 export const CAMERA_STEP_ZOOM = 'vehicle.cameraManager.currentCameraInstance.stepZoom';
 
@@ -314,12 +315,19 @@ export class PipSurfaces {
 const pipSurfaces = new PipSurfaces((shown) => void VideoCommands.setPipShown(shown));
 
 export const VideoChannelSurface = ({ channel, className }: { channel: number; className?: string }) => {
+  const endpoint = whepEndpoint(useQgcPath(VIDEO_VIEW), channel);
+  const video = useRef<HTMLVideoElement>(null);
   useEffect(() => {
     if (channel !== PIP_VIDEO_CHANNEL) return undefined;
     pipSurfaces.created();
     return () => pipSurfaces.destroyed();
   }, [channel]);
-  return <video muted playsInline autoPlay className={`block bg-black object-fill ${className ?? ''}`} />;
+  useEffect(() => {
+    const element = video.current;
+    if (endpoint === null || element === null) return undefined;
+    return playWhep(element, endpoint, (reading) => void VideoCommands.reportPlayback(channel, reading));
+  }, [endpoint, channel]);
+  return <video ref={video} muted playsInline autoPlay className={`block bg-black object-fill ${className ?? ''}`} />;
 };
 
 const NO_VIDEO_FULL_HEIGHT = 230;

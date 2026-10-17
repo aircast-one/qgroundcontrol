@@ -274,6 +274,19 @@ fn oriented(uri: &str, rotation: u32) -> String {
     }
 }
 
+pub fn whep_endpoint(uri: &str) -> Option<String> {
+    matches!(uri.split_once("://")?.0, "http" | "https" | "whep" | "wheps").then(|| uri.replacen("wheps://", "https://", 1).replacen("whep://", "http://", 1))
+}
+
+pub const BROWSER_PLAYS_WHEP_ONLY: &str = "This browser can only play WebRTC (WHEP) streams. Pick a WHEP source, or use the Aircast app for this camera.";
+
+fn playable(uri: &str, low_latency: bool) -> bool {
+    match cfg!(target_family = "wasm") {
+        true => whep_endpoint(uri).is_some(),
+        false => pipeline(uri, setting("rtpJitterLatencyMs").as_i64().unwrap_or(80), low_latency).is_some(),
+    }
+}
+
 pub fn pipeline(uri: &str, latency_ms: i64, low_latency: bool) -> Option<String> {
     let retransmit = latency_ms >= RETRANSMISSION_MIN_LATENCY_MS && !low_latency;
     let jitter = match low_latency {
@@ -299,7 +312,7 @@ pub fn pipeline(uri: &str, latency_ms: i64, low_latency: bool) -> Option<String>
             format!("tcpclientsrc host={host} port={port} ! tsdemux ! {TS_VIDEO}")
         }
         ("http" | "https" | "whep" | "wheps", _) => {
-            let endpoint = uri.replacen("wheps://", "https://", 1).replacen("whep://", "http://", 1);
+            let endpoint = whep_endpoint(uri)?;
             let webrtc_latency_ms = if low_latency { WHEP_LOW_LATENCY_JITTER_MS } else { latency_ms };
             format!("whepsrc name={WHEP_LATENCY_PREFIX}{webrtc_latency_ms} whep-endpoint={} video-caps={} audio-caps=EMPTY timeout={WHEP_TIMEOUT_S}", quoted(&endpoint), quoted(WHEP_VIDEO_CAPS))
         }
@@ -320,15 +333,20 @@ fn apply(host: &mut Host, outs: Vec<Out>, now_ms: u64) {
             Out::StartReceiver { receiver, timeout_s, low_latency } => match channel_of(&receiver) {
                 Some(channel) => {
                     let uri = host.state.desired_uri(&receiver);
-                    let buildable = pipeline(&uri, setting("rtpJitterLatencyMs").as_i64().unwrap_or(80), low_latency).is_some();
+                    let buildable = playable(&uri, low_latency);
+                    let unplayable_here = !buildable && cfg!(target_family = "wasm") && !uri.trim().is_empty();
                     let played = &mut host.channels[channel];
                     played.restart_at_ms = None;
                     played.timeout_s = timeout_s;
                     played.wanted = buildable;
                     played.progress = buildable.then(|| Watch::fresh(now_ms));
-                    match buildable {
-                        true => Vec::new(),
-                        false => host.state.on_start_complete(&receiver, unbuildable_outcome(&uri), now_ms / 1000),
+                    if unplayable_here {
+                        played.problem = Some((uri.clone(), BROWSER_PLAYS_WHEP_ONLY.to_string()));
+                    }
+                    match (buildable, unplayable_here) {
+                        (true, _) => Vec::new(),
+                        (false, true) => host.state.on_start_complete(&receiver, Outcome::InvalidUrl, now_ms / 1000),
+                        (false, false) => host.state.on_start_complete(&receiver, unbuildable_outcome(&uri), now_ms / 1000),
                     }
                 }
                 None => Vec::new(),
@@ -503,6 +521,7 @@ fn object(host: &Host) -> Value {
         "pipSlot": settings.pip_choice(),
         "nativePipeline": pipeline_for(host, MAIN_CHANNEL),
         "pipPipeline": pipeline_for(host, PIP_CHANNEL),
+        "whepEndpoints": (0..VIDEO_CHANNELS).map(|channel| whep_for(host, channel)).collect::<Vec<_>>(),
         "deviceCamera": crate::videostate::device_camera(&uri),
         "nativeRecording": host.recording_file,
         "nativeRecordingFormat": recording_format(),
@@ -513,6 +532,14 @@ fn object(host: &Host) -> Value {
 fn pipeline_for(host: &Host, channel: usize) -> Option<String> {
     let uri = host.state.desired_uri(CHANNEL_RECEIVERS.get(channel)?);
     (host.channels[channel].wanted && host.state.has_video()).then(|| pipeline(&oriented(&uri, host.camera_rotation), setting("rtpJitterLatencyMs").as_i64().unwrap_or(80), host.state.settings.low_latency)).flatten()
+}
+
+fn whep_for(host: &Host, channel: usize) -> Option<String> {
+    (host.channels[channel].wanted && host.state.has_video()).then(|| whep_endpoint(&host.state.desired_uri(CHANNEL_RECEIVERS[channel]))).flatten()
+}
+
+pub fn whep_endpoints() -> Value {
+    get("video.whepEndpoints").and_then(|value| value.get("value").cloned()).unwrap_or(Value::Null)
 }
 
 fn served() -> bool {
@@ -778,6 +805,15 @@ mod tests {
     }
 
     #[test]
+    fn a_whep_source_names_the_endpoint_a_browser_posts_its_offer_to() {
+        assert_eq!(whep_endpoint("whep://sfu/whep/front").as_deref(), Some("http://sfu/whep/front"));
+        assert_eq!(whep_endpoint("wheps://sfu/whep/front").as_deref(), Some("https://sfu/whep/front"));
+        assert_eq!(whep_endpoint("http://192.168.1.50:8889/cam/whep").as_deref(), Some("http://192.168.1.50:8889/cam/whep"));
+        assert_eq!(whep_endpoint("rtsp://cam/main"), None);
+        assert_eq!(whep_endpoint("0.0.0.0:5600"), None);
+    }
+
+    #[test]
     fn an_address_no_pipeline_can_be_built_for_fails_like_gst_source_factory() {
         assert_eq!(unbuildable_outcome(""), Outcome::InvalidUrl, "an empty address is GstVideoReceiver's Invalid stream URL");
         assert_eq!(unbuildable_outcome("udp://host-without-port"), Outcome::Failed, "anything else is a failed start, retried");
@@ -890,6 +926,7 @@ mod tests {
         let outs = host.state.register_receiver(MAIN_RECEIVER);
         apply(&mut host, outs, 0);
         assert!(host.channels[MAIN_CHANNEL].wanted, "a configured stream starts the main receiver");
+        assert_eq!(object(&host)["whepEndpoints"], json!([null, null]), "only a WHEP source has an endpoint a browser can play");
         assert_eq!(status_text(host.state.receiver_status(0)), "Connecting\u{2026}");
         report(&mut host, MAIN_CHANNEL, true, 0, 0, 0, Some(0), false, "", 0);
         assert_eq!(status_text(host.state.receiver_status(0)), "Connecting\u{2026}", "a pipeline that has received nothing is still connecting, not connected");

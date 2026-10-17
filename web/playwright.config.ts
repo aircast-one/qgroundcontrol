@@ -17,10 +17,18 @@ export default defineConfig({
     viewport: { width: 1280, height: 800 },
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } } }],
-  webServer: {
-    command: `npx vite --port ${port} --strictPort`,
-    url: `http://localhost:${port}`,
-    reuseExistingServer: true,
-    timeout: 120_000,
-  },
+  webServer: [
+    {
+      command: `npx vite --port ${port} --strictPort`,
+      url: `http://localhost:${port}`,
+      reuseExistingServer: true,
+      timeout: 120_000,
+    },
+    {
+      command: 'mediamtx e2e/whep/mediamtx.yml',
+      url: 'http://localhost:18889/e2e/',
+      reuseExistingServer: true,
+      timeout: 30_000,
+    },
+  ],
 });
