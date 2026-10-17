@@ -28,10 +28,11 @@ export type TextFieldProps = {
   autoFocus?: boolean;
   capitalization?: Capitalization;
   autoCorrect?: boolean;
+  ariaLabel?: string;
   className?: string;
 };
 
-const field = (filled: boolean) => ({ value, onValueChange, label, placeholder, supportingText, isError = false, singleLine = true, minLines = 3, enabled = true, readOnly = false, keyboardType = 'text', leadingIcon, trailingIcon, prefix, suffix, onDone, autoFocus, capitalization = 'none', autoCorrect = true, className }: TextFieldProps) => {
+const field = (filled: boolean) => ({ value, onValueChange, label, placeholder, supportingText, isError = false, singleLine = true, minLines = 3, enabled = true, readOnly = false, keyboardType = 'text', leadingIcon, trailingIcon, prefix, suffix, onDone, autoFocus, capitalization = 'none', autoCorrect = true, ariaLabel, className }: TextFieldProps) => {
   const id = useId();
   const tone = isError ? 'border-error text-error' : 'border-outline focus-within:border-primary focus-within:border-2';
   const control = 'min-w-0 flex-1 bg-transparent text-body-large text-on-surface outline-none placeholder:text-on-surface-variant/60 disabled:opacity-40';
@@ -56,11 +57,12 @@ const field = (filled: boolean) => ({ value, onValueChange, label, placeholder, 
             type={keyboardType === 'password' ? 'password' : 'text'}
             inputMode={inputMode(keyboardType)}
             aria-invalid={isError || undefined}
+            aria-label={ariaLabel}
             onChange={(event) => onValueChange(event.target.value)}
             onKeyDown={(event) => event.key === 'Enter' && onDone?.()}
           />
         ) : (
-          <textarea id={id} className={`${control} py-3`} rows={minLines} value={value} placeholder={placeholder} disabled={!enabled} readOnly={readOnly} autoFocus={autoFocus} aria-invalid={isError || undefined} onChange={(event) => onValueChange(event.target.value)} />
+          <textarea id={id} className={`${control} py-3`} rows={minLines} value={value} placeholder={placeholder} disabled={!enabled} readOnly={readOnly} autoFocus={autoFocus} aria-invalid={isError || undefined} aria-label={ariaLabel} onChange={(event) => onValueChange(event.target.value)} />
         )}
         {suffix ? <span className="text-body-large text-on-surface-variant">{suffix}</span> : null}
         {trailingIcon ? <span className="flex text-on-surface-variant">{trailingIcon}</span> : null}

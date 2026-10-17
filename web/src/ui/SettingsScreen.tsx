@@ -1070,16 +1070,18 @@ const BitmaskPicker = ({ fact, write }: { fact: Fact; write: (block: () => Promi
   return (
     <>
       <div className="relative w-full">
-        <OutlinedTextField
-          value={bitmaskSummary(fact)}
-          onValueChange={() => undefined}
-          readOnly
-          singleLine={false}
-          minLines={1}
-          trailingIcon={<MaterialIcon name="keyboard_arrow_down" filled />}
-          className={`w-full ${GROWING_THREE_LINES}`}
-        />
-        <button type="button" aria-label={fact.title} className="absolute inset-0 cursor-pointer" onClick={() => setEditing(true)} />
+        <div inert aria-hidden>
+          <OutlinedTextField
+            value={bitmaskSummary(fact)}
+            onValueChange={() => undefined}
+            readOnly
+            singleLine={false}
+            minLines={1}
+            trailingIcon={<MaterialIcon name="keyboard_arrow_down" filled />}
+            className={`w-full ${GROWING_THREE_LINES}`}
+          />
+        </div>
+        <button type="button" aria-label={`${fact.title}, ${bitmaskSummary(fact)}`} className="absolute inset-0 cursor-pointer" onClick={() => setEditing(true)} />
       </div>
       {editing ? (
         <AlertDialog
@@ -1388,6 +1390,7 @@ const FactTextField = ({ fact, onWrite, onRejected = () => undefined, onTheRight
     >
       <OutlinedTextField
         value={editing ?? shownText(fact)}
+        ariaLabel={fact.title}
         enabled={fact.enabled}
         suffix={notBlank(fact.units) ? shownUnits(fact.units) : undefined}
         keyboardType={secret && !revealed ? 'password' : factKeyboard(fact)}
