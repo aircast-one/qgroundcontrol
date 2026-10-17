@@ -814,23 +814,33 @@ fn contains_items(document: &Document) -> bool {
 }
 
 fn send_after_mission(id: u8, document: Document) {
-    std::thread::spawn(move || {
+    let _ = crate::background::spawn("groundstation-plan-send", move || {
         let (fence, rally) = crate::hub::lock().vehicle(id).map_or((false, false), crate::hub::Vehicle::plans_supported);
-        let wanted: Vec<&str> = [("fence", fence), ("rally", rally)].into_iter().filter(|(_, supported)| *supported).map(|(k, _)| k).collect();
-        let previous = std::iter::once("mission").chain(wanted.iter().copied()).collect::<Vec<_>>();
-        wanted.iter().zip(previous).for_each(|(kind, before)| {
-            if settle(id, before) {
-                match crate::hub::lock().mission_request(Some(id), &send_shape(kind, &document), crate::hub::now_ms()) {
-                    Ok(outbound) => deliver(outbound),
-                    Err(error) => {
-                        crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &crate::hub::transfer_failed_text(kind, &error));
+        let wanted: Vec<&'static str> = [("fence", fence), ("rally", rally)].into_iter().filter(|(_, supported)| *supported).map(|(k, _)| k).collect();
+        send_rest(id, "mission", wanted, document);
+    });
+}
+
+fn send_rest(id: u8, before: &'static str, rest: Vec<&'static str>, document: Document) {
+    match rest.split_first() {
+        None if before == "mission" => changed(),
+        None => settle_then(id, before, |_| changed()),
+        Some((&kind, later)) => {
+            let later = later.to_vec();
+            settle_then(id, before, move |settled| {
+                if settled {
+                    let requested = crate::hub::lock().mission_request(Some(id), &send_shape(kind, &document), crate::hub::now_ms());
+                    match requested {
+                        Ok(outbound) => deliver(outbound),
+                        Err(error) => {
+                            crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &crate::hub::transfer_failed_text(kind, &error));
+                        }
                     }
                 }
-            }
-        });
-        let _ = wanted.last().is_some_and(|last| settle(id, last));
-        changed();
-    });
+                send_rest(id, kind, later, document);
+            });
+        }
+    }
 }
 
 fn carried() -> bool {
@@ -1031,28 +1041,56 @@ fn transfer_outcome(active: Option<u8>, id: u8, in_progress: bool) -> Option<boo
     }
 }
 
-fn settle(id: u8, kind: &str) -> bool {
-    (0..600)
-        .find_map(|_| {
-            std::thread::sleep(std::time::Duration::from_millis(100));
+const TRANSFER_SETTLE_MS: u64 = 60_000;
+const TRANSFER_POLL: std::time::Duration = std::time::Duration::from_millis(100);
+
+fn once_settled(name: &str, mut check: impl FnMut() -> Option<bool> + Send + 'static, then: impl FnOnce(bool) + Send + 'static) {
+    let deadline = crate::hub::now_ms() + TRANSFER_SETTLE_MS;
+    let mut then = Some(then);
+    let _ = crate::background::poll(name, TRANSFER_POLL, move || match check().or_else(|| (crate::hub::now_ms() >= deadline).then_some(false)) {
+        None => false,
+        Some(settled) => {
+            if let Some(then) = then.take() {
+                then(settled);
+            }
+            true
+        }
+    });
+}
+
+fn settle_then(id: u8, kind: &'static str, then: impl FnOnce(bool) + Send + 'static) {
+    once_settled(
+        "groundstation-plan-transfer",
+        move || {
             let hub = crate::hub::lock();
             transfer_outcome(hub.active_id(), id, hub.vehicle(id).is_some_and(|v| v.mission_snapshot()[kind]["inProgress"].as_bool() == Some(true)))
-        })
-        .unwrap_or(false)
+        },
+        then,
+    );
 }
 
 fn read_succeeded(snapshot: &Value, kind: &str) -> bool {
     snapshot[kind]["error"].is_null()
 }
 
-fn load(id: u8, kind: &str) -> bool {
+fn load_then(id: u8, kind: &'static str, then: impl FnOnce(bool) + Send + 'static) {
     let started = crate::hub::lock().mission_request(Some(id), &json!({ "action": "load", "plan": kind }), crate::hub::now_ms());
     match started {
         Ok(outbound) => {
             deliver(outbound);
-            settle(id, kind) && crate::hub::lock().vehicle(id).is_some_and(|v| read_succeeded(&v.mission_snapshot(), kind))
+            settle_then(id, kind, move |settled| {
+                let read = settled && crate::hub::lock().vehicle(id).is_some_and(|v| read_succeeded(&v.mission_snapshot(), kind));
+                then(read);
+            });
         }
-        Err(_) => false,
+        Err(_) => then(false),
+    }
+}
+
+fn load_if(wanted: bool, id: u8, kind: &'static str, then: impl FnOnce(bool) + Send + 'static) {
+    match wanted {
+        true => load_then(id, kind, then),
+        false => then(false),
     }
 }
 
@@ -1142,22 +1180,25 @@ fn fetch() -> Value {
         return refused(crate::hub::HIGH_LATENCY_DOWNLOAD);
     }
     held().fetching = true;
-    std::thread::spawn(move || {
-        let mission_read = load(id, "mission");
-        let fence_read = fence && load(id, "fence");
-        let rally_read = rally && load(id, "rally");
-        let (still_active, snapshot) = {
-            let hub = crate::hub::lock();
-            (hub.active_id() == Some(id), hub.vehicle(id).map(crate::hub::Vehicle::mission_snapshot).unwrap_or(Value::Null))
-        };
-        match mission_read && still_active {
-            true => {
-                adopt(&snapshot, sends_home, fence_read, rally_read, types, vehicle_home);
-                settle_home_on_terrain(None);
-            }
-            false => held().fetching = false,
-        }
-        changed();
+    let _ = crate::background::spawn("groundstation-plan-fetch", move || {
+        load_then(id, "mission", move |mission_read| {
+            load_if(fence, id, "fence", move |fence_read| {
+                load_if(rally, id, "rally", move |rally_read| {
+                    let (still_active, snapshot) = {
+                        let hub = crate::hub::lock();
+                        (hub.active_id() == Some(id), hub.vehicle(id).map(crate::hub::Vehicle::mission_snapshot).unwrap_or(Value::Null))
+                    };
+                    match mission_read && still_active {
+                        true => {
+                            adopt(&snapshot, sends_home, fence_read, rally_read, types, vehicle_home);
+                            settle_home_on_terrain(None);
+                        }
+                        false => held().fetching = false,
+                    }
+                    changed();
+                });
+            });
+        });
     });
     json!({ "ok": true })
 }
@@ -1492,24 +1533,30 @@ fn remove_all_from_vehicle(backend: &dyn Backend) -> Value {
         state.file = None;
     }
     changed();
-    std::thread::spawn(move || {
-        let removed: Vec<&str> = sent.into_iter().filter(|kind| removed_on(id, kind)).collect();
-        if !removed.is_empty() {
-            clear_kinds(fresh, &removed);
-        }
-    });
+    let _ = crate::background::spawn("groundstation-plan-remove", move || removed_then(id, sent, Vec::new(), fresh));
     match refusals.first() {
         None => json!({ "ok": true }),
         Some(reason) => refused(reason.clone()),
     }
 }
 
-fn removed_on(id: u8, kind: &str) -> bool {
-    let settled = (0..600).any(|_| {
-        std::thread::sleep(std::time::Duration::from_millis(100));
-        crate::hub::lock().vehicle(id).is_none_or(|v| v.mission_snapshot()[kind]["inProgress"].as_bool() != Some(true))
-    });
-    settled && crate::hub::lock().vehicle(id).is_some_and(|v| v.mission_snapshot()[kind]["error"].is_null())
+fn removed_then(id: u8, kinds: Vec<&'static str>, removed: Vec<&'static str>, fresh: Option<Document>) {
+    match kinds.split_first() {
+        None if removed.is_empty() => {}
+        None => clear_kinds(fresh, &removed),
+        Some((&kind, later)) => {
+            let later = later.to_vec();
+            once_settled(
+                "groundstation-plan-remove",
+                move || {
+                    let hub = crate::hub::lock();
+                    let busy = hub.vehicle(id).is_some_and(|v| v.mission_snapshot()[kind]["inProgress"].as_bool() == Some(true));
+                    (!busy).then(|| hub.vehicle(id).is_some_and(|v| v.mission_snapshot()[kind]["error"].is_null()))
+                },
+                move |gone| removed_then(id, later, if gone { [removed, vec![kind]].concat() } else { removed }, fresh),
+            );
+        }
+    }
 }
 
 fn clear(backend: &dyn Backend) -> Value {
