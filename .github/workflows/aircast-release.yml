@@ -885,6 +885,7 @@ jobs:
 
       - uses: actions/download-artifact@v7
         with:
+          pattern: qgc-*
           merge-multiple: true
           path: assets
 
