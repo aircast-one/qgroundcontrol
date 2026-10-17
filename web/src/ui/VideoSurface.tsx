@@ -24,7 +24,7 @@ import { TrackingBoxOverlay } from '@/ui/TrackingBoxOverlay';
 import { VideoArOverlay } from '@/ui/VideoAr';
 import { usePointerGestures } from '@/ui/VideoGestures';
 import { VideoStatsPill } from '@/ui/VideoStatsPill';
-import { VIDEO_VIEW, type SourceSize, type VideoReading, videoReading, whepEndpoint } from '@/ui/VideoView';
+import { VIDEO_VIEW, type SourceSize, type VideoReading, videoReading, whepEndpoint, whepRestarts } from '@/ui/VideoView';
 
 export const CAMERA_STEP_ZOOM = 'vehicle.cameraManager.currentCameraInstance.stepZoom';
 
@@ -315,7 +315,9 @@ export class PipSurfaces {
 const pipSurfaces = new PipSurfaces((shown) => void VideoCommands.setPipShown(shown));
 
 export const VideoChannelSurface = ({ channel, className }: { channel: number; className?: string }) => {
-  const endpoint = whepEndpoint(useQgcPath(VIDEO_VIEW), channel);
+  const view = useQgcPath(VIDEO_VIEW);
+  const endpoint = whepEndpoint(view, channel);
+  const restarts = whepRestarts(view, channel);
   const video = useRef<HTMLVideoElement>(null);
   useEffect(() => {
     if (channel !== PIP_VIDEO_CHANNEL) return undefined;
@@ -326,7 +328,7 @@ export const VideoChannelSurface = ({ channel, className }: { channel: number; c
     const element = video.current;
     if (endpoint === null || element === null) return undefined;
     return playWhep(element, endpoint, (reading) => void VideoCommands.reportPlayback(channel, reading));
-  }, [endpoint, channel]);
+  }, [endpoint, channel, restarts]);
   return <video ref={video} muted playsInline autoPlay className={`block bg-black object-fill ${className ?? ''}`} />;
 };
 

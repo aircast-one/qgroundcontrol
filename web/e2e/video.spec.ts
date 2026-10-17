@@ -47,3 +47,19 @@ test('split view plays a second WHEP camera beside the main one', async ({ app }
   await app.getByRole('button', { name: /^Cameras, showing/ }).click();
   await expect(app.getByRole('menuitemcheckbox', { name: /Split view/ })).toHaveAttribute('aria-checked', 'true');
 });
+
+test('retry on a WHEP stream that never arrives posts a fresh offer', async ({ app }) => {
+  const missing = 'http://localhost:18889/missing/whep';
+  const offers: string[] = [];
+  app.on('request', (request) => {
+    if (request.method() === 'POST' && request.url() === missing) offers.push(request.url());
+  });
+  await addVideoSource(app, /^WebRTC \(WHEP\)/, missing);
+  await expect.poll(() => offers.length, { timeout: 30_000 }).toBeGreaterThan(0);
+  const retry = app.getByRole('button', { name: 'Retry' });
+  await expect(retry).toBeVisible({ timeout: 30_000 });
+  await expect(app.getByText('localhost:18889 has no stream at /missing/whep. Check the path.')).toBeVisible();
+  const before = offers.length;
+  await retry.click();
+  await expect.poll(() => offers.length, { timeout: 5_000 }).toBeGreaterThan(before);
+});

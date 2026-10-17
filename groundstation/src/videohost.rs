@@ -25,6 +25,7 @@ struct Channel {
     progress: Option<Watch>,
     flowing: bool,
     problem: Option<(String, String)>,
+    restarts: u64,
 }
 
 #[derive(Default)]
@@ -522,6 +523,7 @@ fn object(host: &Host) -> Value {
         "nativePipeline": pipeline_for(host, MAIN_CHANNEL),
         "pipPipeline": pipeline_for(host, PIP_CHANNEL),
         "whepEndpoints": (0..VIDEO_CHANNELS).map(|channel| whep_for(host, channel)).collect::<Vec<_>>(),
+        "whepRestarts": host.channels.iter().map(|channel| channel.restarts).collect::<Vec<_>>(),
         "deviceCamera": crate::videostate::device_camera(&uri),
         "nativeRecording": host.recording_file,
         "nativeRecordingFormat": recording_format(),
@@ -540,6 +542,19 @@ fn whep_for(host: &Host, channel: usize) -> Option<String> {
 
 pub fn whep_endpoints() -> Value {
     get("video.whepEndpoints").and_then(|value| value.get("value").cloned()).unwrap_or(Value::Null)
+}
+
+pub fn whep_restarts() -> Value {
+    get("video.whepRestarts").and_then(|value| value.get("value").cloned()).unwrap_or(Value::Null)
+}
+
+fn restart(host: &mut Host, now_ms: u64) {
+    host.channels[MAIN_CHANNEL].restarts += 1;
+    if !host.channels[MAIN_CHANNEL].wanted {
+        host.channels[MAIN_CHANNEL].restart_at_ms = None;
+        let outs = host.state.start_receiver(MAIN_RECEIVER);
+        apply(host, outs, now_ms);
+    }
 }
 
 fn served() -> bool {
@@ -703,7 +718,7 @@ pub fn stream_problem(uri: &str, source: i64, decoded: i64, error: &str) -> Stri
         _ if decoded > 0 => format!("The stream from {at} stopped."),
         _ if source > 0 => format!("Data arrives from {at}, but it can't be shown as video."),
         _ if matches!(scheme.as_str(), "udp" | "udp265" | "mpegts") => format!("Nothing is arriving on UDP port {}. Check the drone is sending video to this device.", at.rsplit(':').next().unwrap_or(&at)),
-        _ if says(&["404", "not found"]) => format!("{at} has no stream at {}. Check the path.", path_of(uri)),
+        _ if says(&["404", "not found", "not configured", "no stream"]) => format!("{at} has no stream at {}. Check the path.", path_of(uri)),
         _ if says(&["401", "403", "unauthorized", "forbidden"]) => format!("{at} refused access to the stream."),
         _ if says(&["refused"]) => format!("Nothing is listening at {at}. Check the port."),
         _ if says(&["dns", "lookup", "resolve", "unknown host", "name or service"]) => format!("Can't find {host}. Check the address."),
@@ -758,11 +773,7 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
         }
         "video.restart" => {
             RESTART[MAIN_CHANNEL].store(true, std::sync::atomic::Ordering::Relaxed);
-            if !host.channels[MAIN_CHANNEL].wanted {
-                host.channels[MAIN_CHANNEL].restart_at_ms = None;
-                let outs = host.state.start_receiver(MAIN_RECEIVER);
-                apply(host, outs, crate::hub::now_ms());
-            }
+            restart(host, crate::hub::now_ms());
             Some(json!({ "ok": true }))
         }
         "video.reportRecording" => {
@@ -857,6 +868,7 @@ mod tests {
         let whep = "http://192.168.1.50:8889/cam/whep";
         assert_eq!(stream_problem(whep, 0, 0, ""), "No answer from 192.168.1.50:8889. Check the address and that this device is on the drone's network.");
         assert_eq!(stream_problem(whep, 0, 0, "GStreamer encountered a general resource error. whepsrc: Unexpected response: 404 - no such stream"), "192.168.1.50:8889 has no stream at /cam/whep. Check the path.");
+        assert_eq!(stream_problem(whep, 0, 0, r#"Unexpected response: 400 - {"status":"error","error":"path 'cam' is not configured"}"#), "192.168.1.50:8889 has no stream at /cam/whep. Check the path.", "mediamtx answers an unknown path with 400 and these words");
         assert_eq!(stream_problem("http://10.0.0.5:4040/whep", 0, 0, "error sending request for url (http://10.0.0.5:4040/whep)"), "No answer from 10.0.0.5:4040. Check the address and that this device is on the drone's network.", "the address inside the error is not the answer");
         assert_eq!(stream_problem(whep, 0, 0, "error sending request: Connection refused (os error 111)"), "Nothing is listening at 192.168.1.50:8889. Check the port.");
         assert_eq!(stream_problem("rtsp://user:pw@cam.local:554/live", 0, 0, "dns error: failed to lookup address"), "Can't find cam.local. Check the address.");
@@ -927,6 +939,10 @@ mod tests {
         apply(&mut host, outs, 0);
         assert!(host.channels[MAIN_CHANNEL].wanted, "a configured stream starts the main receiver");
         assert_eq!(object(&host)["whepEndpoints"], json!([null, null]), "only a WHEP source has an endpoint a browser can play");
+        assert_eq!(object(&host)["whepRestarts"], json!([0, 0]));
+        restart(&mut host, 0);
+        assert_eq!(object(&host)["whepRestarts"], json!([1, 0]), "a retry while still connecting renews the browser's WHEP session, as a native host rebuilds its pipeline");
+        assert!(host.channels[MAIN_CHANNEL].wanted);
         assert_eq!(status_text(host.state.receiver_status(0)), "Connecting\u{2026}");
         report(&mut host, MAIN_CHANNEL, true, 0, 0, 0, Some(0), false, "", 0);
         assert_eq!(status_text(host.state.receiver_status(0)), "Connecting\u{2026}", "a pipeline that has received nothing is still connecting, not connected");

@@ -66,6 +66,11 @@ export const whepEndpoint = (view: Json | null, channel: number): string | null 
   return typeof endpoint === 'string' && endpoint !== '' ? endpoint : null;
 };
 
+export const whepRestarts = (view: Json | null, channel: number): number => {
+  const restarts = optJSONArray(view, 'whepRestarts')?.[channel];
+  return typeof restarts === 'number' ? restarts : 0;
+};
+
 export type PaintedRect = { left: number; top: number; width: number; height: number };
 
 export const paintedRect = (surfaceWidth: number, surfaceHeight: number, source: SourceSize | null): PaintedRect => {
