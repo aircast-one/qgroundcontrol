@@ -4,6 +4,9 @@ import { connectMock, expect, test } from './fixtures';
 
 const WHEP_STREAM = 'http://localhost:18889/e2e/whep';
 
+const coreView = (page: Page, path: string) =>
+  page.evaluate(async ([module, watched]) => ((await import(module)) as { Qgc: { path: (path: string) => unknown } }).Qgc.path(watched), ['/src/bridge/Qgc.ts', path] as const);
+
 const addVideoSource = async (page: Page, type: RegExp, address: string) => {
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('tablist').getByRole('tab', { name: 'Transmission' }).click();
@@ -28,6 +31,9 @@ test('a WHEP camera plays in the Fly view', async ({ app }) => {
   const before = await frames();
   await expect.poll(frames).toBeGreaterThan(before);
   await expect(app.getByText(/^No video/)).toHaveCount(0);
+  await expect.poll(() => coreView(app, 'view.detections'), { timeout: 30_000 }).toMatchObject({ class: 'Detections' });
+  expect(await coreView(app, 'view.detections'), 'the browser cannot follow a detector, and said so in a red strip over the minimap').toMatchObject({ available: false, error: null });
+  await expect(app.getByText(/^Detections:/)).toHaveCount(0);
 });
 
 test('a stream the browser cannot play says so', async ({ app }) => {
