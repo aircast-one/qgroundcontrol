@@ -10,6 +10,7 @@ type Message = { ready: true } | { event: { path: string; json: string } } | { w
 
 type EventListener = (path: string, json: string) => void;
 
+const calls = { next: 0 };
 const pending = new Map<string, (result: unknown) => void>();
 const eventListeners = new Set<EventListener>();
 const hostLinks = new Map<number, (bytes: Uint8Array) => void>();
@@ -37,7 +38,7 @@ const connect = (): Promise<Worker> => {
 
 export const callTransferring = <T = unknown>(name: string, transfer: Transferable[], ...args: unknown[]): Promise<T> =>
   connect().then((worker) => new Promise<T>((resolve) => {
-    const id = crypto.randomUUID();
+    const id = String(calls.next++);
     pending.set(id, resolve as (result: unknown) => void);
     worker.postMessage({ id, call: name, args }, transfer);
   }));

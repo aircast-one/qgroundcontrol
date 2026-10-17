@@ -42,6 +42,7 @@ const CAMERAS_ADD = 'cameras.add';
 const CAMERAS_UPDATE = 'cameras.update';
 const CAMERAS_REMOVE = 'cameras.remove';
 const CAMERAS_MOVE = 'cameras.move';
+const CAMERAS_ADOPT_DEVICE = 'cameras.adoptDevice';
 const VEHICLE_FIELDS = 'vehicle';
 const ESC_CALIBRATION_START = 'escCalibration.start';
 const ESC_CALIBRATION_CLOSE = 'escCalibration.close';
@@ -110,6 +111,7 @@ export const CameraCommands = {
   update: (slot: number, name: string, source: string, url: string, tilt: number | null): Promise<string | null> => Qgc.refusalOf(CAMERAS_UPDATE, slot, name, source, url, tilt),
   remove: (slot: number): Promise<string | null> => Qgc.refusalOf(CAMERAS_REMOVE, slot),
   move: (from: number, to: number): Promise<string | null> => Qgc.refusalOf(CAMERAS_MOVE, from, to),
+  adoptDevice: (host: string, cameras: [string, string][]): Promise<string | null> => Qgc.refusalOf(CAMERAS_ADOPT_DEVICE, host, cameras),
 };
 
 export const SetupCommands = {

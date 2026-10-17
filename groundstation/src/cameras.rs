@@ -32,7 +32,8 @@ pub const CAMERAS_UPDATE: &str = "cameras.update";
 pub const CAMERAS_REMOVE: &str = "cameras.remove";
 pub const CAMERAS_MOVE: &str = "cameras.move";
 pub const CAMERAS_CLASSIFY: &str = "cameras.classify";
-const CAMERAS_OWNED: [&str; 5] = [CAMERAS_ADD, CAMERAS_UPDATE, CAMERAS_REMOVE, CAMERAS_MOVE, CAMERAS_CLASSIFY];
+pub const CAMERAS_ADOPT_DEVICE: &str = "cameras.adoptDevice";
+const CAMERAS_OWNED: [&str; 6] = [CAMERAS_ADD, CAMERAS_UPDATE, CAMERAS_REMOVE, CAMERAS_MOVE, CAMERAS_CLASSIFY, CAMERAS_ADOPT_DEVICE];
 const QT_STORE_CAMERAS: &str = "video.storeCameras";
 
 const UNREADABLE: &str = "The camera list is not a readable list, so its cameras cannot be shown. Changing it now would replace it.";
@@ -426,6 +427,16 @@ fn changed(path: &str, given: &Value, cameras: &[Camera], active: i64) -> Change
             }
             _ => refusal(NO_SUCH_CAMERA),
         },
+        CAMERAS_ADOPT_DEVICE => match text_arg(given, 0) {
+            host if host.is_empty() => refusal(NEEDS_HOST),
+            host => {
+                let device = given.get(1).and_then(Value::as_array).map_or_else(Vec::new, |listed| listed.iter().map(|camera| Camera::new(&text_arg(camera, 0), SOURCE_WEBRTC, &text_arg(camera, 1))).collect());
+                let kept = cameras.iter().filter(|camera| url_host(&camera.url) != host).count();
+                let next = with_device(cameras, &host, device);
+                let at = if next.len() > kept { kept as i64 } else { 0 };
+                (Some((next, at)).filter(|(next, _)| next.as_slice() != cameras), json!({ "ok": true }))
+            }
+        },
         _ => (None, Value::Null),
     }
 }
@@ -573,6 +584,18 @@ mod tests {
         assert_eq!((replaced.len(), at, replaced[1].source.as_str()), (2, 1, SOURCE_WEBRTC));
         let (added, at) = with_named(&list, cam("Tail", SOURCE_RTSP, "rtsp://a/tail"));
         assert_eq!((added.len(), at), (3, 2));
+    }
+
+    #[test]
+    fn the_device_serving_the_page_brings_its_cameras_and_keeps_them_current() {
+        let phone = cam("Phone", SOURCE_BACK_CAMERA, "");
+        let served = json!(["192.168.1.100", [["siyi", "http://192.168.1.100:8889/siyi/whep"]]]);
+        let (next, active) = changed(CAMERAS_ADOPT_DEVICE, &served, &[phone.clone()], 0).0.expect("the device cameras are written");
+        assert_eq!(next, vec![phone.clone(), cam("siyi", SOURCE_WEBRTC, "http://192.168.1.100:8889/siyi/whep")]);
+        assert_eq!(active, 1, "the device's camera goes on screen");
+        assert_eq!(changed(CAMERAS_ADOPT_DEVICE, &served, &next, 1).0, None, "a reload that finds the same cameras writes nothing and keeps the pick");
+        assert_eq!(changed(CAMERAS_ADOPT_DEVICE, &json!(["192.168.1.100", []]), &next, 1).0, Some((vec![phone], 0)), "a camera the device no longer has is dropped");
+        assert_eq!(changed(CAMERAS_ADOPT_DEVICE, &json!(["", []]), &next, 1), (None, refused(NEEDS_HOST)));
     }
 
     #[test]
