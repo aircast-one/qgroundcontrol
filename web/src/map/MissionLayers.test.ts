@@ -33,7 +33,9 @@ import {
   TAKEOFF_COLOUR,
   VERTEX_INDEX_PROPERTY,
   WAYPOINT_COLOUR,
+  WAYPOINT_ID_PROPERTY,
   WAYPOINT_LABEL_PROPERTY,
+  WAYPOINT_SIDE_LABEL_PROPERTY,
   WAYPOINT_RADIUS_PROPERTY,
   WAYPOINT_SELECTED_PROPERTY,
   circleEdge,
@@ -55,6 +57,8 @@ import {
   rallyFeatures,
   shadedArea,
   shotFeatures,
+  DROP_SIDE,
+  dropsAt,
   sideLabel,
   surveyAreaFeatures,
   surveyLineFeatures,
@@ -504,6 +508,16 @@ describe('MarkerLabelTest', () => {
     expect(waypointLabel(5, false, 'S')).toBe('S');
     expect(sideLabel(false, 'S')).toBe('');
     expect(sideLabel(true, 'Loiter')).toBe('');
+  });
+
+  it('a waypoint followed by a gripper release is marked as the drop point', () => {
+    const waypoint = (index: number) => MissionItem({ index, sequence: index, latitude: 47 + index, longitude: 8, command: 'Waypoint', selected: false, commandId: 16, specifiesCoordinate: true });
+    const drop = (index: number) => MissionItem({ index, sequence: index, latitude: NaN, longitude: NaN, command: 'Gripper Action', selected: false, commandId: 211, placed: false, specifiesCoordinate: false });
+    const items = [waypoint(1), drop(2), waypoint(3), MissionItem({ index: 4, sequence: 4, latitude: NaN, longitude: NaN, command: 'Change Speed', selected: false, commandId: 178, placed: false }), waypoint(5)];
+    expect(items.map((it) => dropsAt(items, it))).toEqual([true, false, false, false, false]);
+    const sides = missionFeatures(items).features.map((it) => [it.properties?.[WAYPOINT_ID_PROPERTY], it.properties?.[WAYPOINT_SIDE_LABEL_PROPERTY]]);
+    expect(sides.find(([id]) => id === 1)?.[1]).toBe(DROP_SIDE);
+    expect(sides.find(([id]) => id === 3)?.[1]).toBe('');
   });
 });
 

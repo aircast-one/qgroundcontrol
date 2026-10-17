@@ -37,4 +37,5 @@ public:
     DEFINE_SETTINGFACT(cameraRecordChannel)
     DEFINE_SETTINGFACT(rcControls)
     DEFINE_SETTINGFACT(enableAutomaticMissionPopups)
+    DEFINE_SETTINGFACT(payloadBays)
 };

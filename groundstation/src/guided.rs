@@ -22,6 +22,8 @@ pub fn remember_flight(previous: Option<FlightMemory>, vehicle: i64, flying: boo
 
 pub const DEPS: &[&str] = &[
     "settings.flyViewSettings.forwardFlightGoToLocationLoiterRad",
+    "settings.flyViewSettings.payloadBays",
+    "vehicle.gripper",
     "vehicles.activeVehicleAvailable",
     "vehicle.parameterManager.parametersReady",
     "vehicle.id",
@@ -70,13 +72,13 @@ pub struct GuidedState {
     pub vtol: bool,
     pub vtol_in_fwd_flight: bool,
     pub forward_flight: bool,
-    // What a goto has to carry in DO_REPOSITION param 3. Zero for anything that does not fly
-    // forward, and the operator's setting for anything that does. QML derives this at the call
-    // site; a head deriving it would be deriving vehicle knowledge, so it is answered here.
     pub goto_loiter_radius: f64,
     pub speed_limits: bool,
     pub landing: bool,
     pub has_gripper: bool,
+    pub apm: bool,
+    pub payload_bays: i64,
+    pub empty_bays: Vec<i64>,
     pub initial_connect_complete: bool,
     pub in_rtl: bool,
     pub in_land: bool,
@@ -107,6 +109,10 @@ impl GuidedState {
     }
     fn has_more_mission(&self) -> bool {
         self.current_mission_index < self.mission_item_count - 1
+    }
+
+    pub fn next_bay(&self) -> Option<i64> {
+        (self.payload_bays > 1).then(|| (1..=self.payload_bays).find(|bay| !self.empty_bays.contains(bay))).flatten()
     }
 
     pub fn can_resume(&self) -> bool {
@@ -198,7 +204,7 @@ impl Action {
             Action::Rtl => "Return",
             Action::Disarm => "Disarm",
             Action::Grab => "Grab",
-            Action::Release => "Release",
+            Action::Release => "Drop",
             Action::Hold => "Hold",
             Action::EmergencyStop => "EMERGENCY STOP",
             Action::VtolTransitionToFixedWing => "Transition to Fixed Wing",
@@ -222,8 +228,8 @@ impl Action {
             Action::Land => "Land the vehicle at the current position",
             Action::Rtl => "Return to the launch position of the vehicle",
             Action::Disarm => "Disarm the vehicle",
-            Action::Grab => "Close the gripper and hold the cargo.",
-            Action::Release => "Open the gripper and drop the cargo.",
+            Action::Grab => "Close the gripper and hold the payload.",
+            Action::Release => "Open the gripper and drop the payload.",
             Action::Hold => "Stop the gripper where it is.",
             Action::EmergencyStop => "WARNING: THIS WILL STOP ALL MOTORS. IF VEHICLE IS CURRENTLY IN THE AIR IT WILL CRASH.",
             Action::VtolTransitionToFixedWing => "Transition VTOL to fixed wing flight.",
@@ -241,7 +247,8 @@ impl Action {
             && match self {
                 Action::Arm => !s.armed,
                 Action::Disarm => s.armed && !s.flying,
-                Action::Grab | Action::Release | Action::Hold => s.has_gripper,
+                Action::Grab | Action::Release => s.has_gripper,
+                Action::Hold => s.has_gripper && !s.apm,
                 Action::Rtl => s.armed && s.guided_supported && s.flying && !s.in_rtl,
                 Action::Takeoff => s.takeoff_supported && !s.flying,
                 Action::Land => s.guided_supported && s.armed && !s.fixed_wing && !s.in_land,
@@ -332,6 +339,7 @@ pub fn guided_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "flying": state.flying,
         "gotoLoiterRadius": state.goto_loiter_radius,
         "actions": offers,
+        "payload": { "bays": state.payload_bays.max(1), "empty": state.empty_bays, "next": state.next_bay() },
     })
 }
 
@@ -370,7 +378,7 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
     }
     let vehicle = backend.value_fields(
         "vehicle",
-        "id,armed,flying,isROIEnabled,fixedWing,vtol,vtolInFwdFlight,haveFWSpeedLimits,haveMRSpeedLimits,px4Firmware,apmFirmware,landing,hasGripper,initialConnectComplete,checkListState,flightMode,rtlFlightMode,smartRTLFlightMode,landFlightMode,missionFlightMode,pauseFlightMode",
+        "id,armed,flying,isROIEnabled,fixedWing,vtol,vtolInFwdFlight,haveFWSpeedLimits,haveMRSpeedLimits,px4Firmware,apmFirmware,landing,hasGripper,gripper,initialConnectComplete,checkListState,flightMode,rtlFlightMode,smartRTLFlightMode,landFlightMode,missionFlightMode,pauseFlightMode",
     );
     let supports = backend.value_fields("vehicle.supports", "guidedMode,pauseVehicle,roiMode,guidedTakeoffWithAltitude,guidedTakeoffWithoutAltitude,smartRTL");
     let report = backend.value_fields("vehicle.healthAndArmingCheckReport", "supported,canArm,canTakeoff,canStartMission");
@@ -410,6 +418,9 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
             || speed_limits_live(backend, flag(&vehicle, "px4Firmware"), flag(&vehicle, "apmFirmware"), forward_flight),
         landing: flag(&vehicle, "landing"),
         has_gripper: flag(&vehicle, "hasGripper"),
+        apm: flag(&vehicle, "apmFirmware"),
+        payload_bays: value_number(&backend.value("settings.flyViewSettings.payloadBays.rawValue")).map_or(1, |bays| bays as i64),
+        empty_bays: vehicle.get("gripper").and_then(|g| g.get("empty")).and_then(Value::as_array).map(|bays| bays.iter().filter_map(Value::as_i64).collect()).unwrap_or_default(),
         initial_connect_complete: flag(&vehicle, "initialConnectComplete"),
         in_rtl: same_mode("rtlFlightMode") || same_mode("smartRTLFlightMode"),
         in_land: same_mode("landFlightMode"),
@@ -511,7 +522,7 @@ fn core_action(offered: &[Action], args: &str, state: &GuidedState) -> Option<Va
         [Action::CancelRoi] => Some(json!({ "action": "cancelRoi" })),
         [Action::ResumeMission] => given.get(0).and_then(Value::as_i64).map(|index| json!({ "action": "resumeMission", "index": index })),
         [Action::LandAbort] => given.get(0).and_then(Value::as_f64).map(|metres| json!({ "action": "abortLanding", "climbOut": metres })),
-        [Action::Grab] | [Action::Release] | [Action::Hold] => given.get(0).and_then(Value::as_f64).map(|grip| json!({ "action": "gripper", "gripAction": grip })),
+        [Action::Grab] | [Action::Release] | [Action::Hold] => given.get(0).and_then(Value::as_f64).map(|grip| json!({ "action": "gripper", "gripAction": grip, "bay": given.get(1).and_then(Value::as_f64).unwrap_or(0.0) })),
         [Action::Takeoff] if !state.takeoff_with_altitude => Some(json!({ "action": "takeoff" })),
         [Action::Takeoff] => given.get(0).and_then(Value::as_f64).map(|metres| json!({ "action": "takeoff", "altitude": metres })),
         [Action::ChangeAltitude] | [Action::Pause, Action::ChangeAltitude] => given.get(0).and_then(Value::as_f64).map(|delta| json!({
@@ -555,8 +566,79 @@ pub enum Valued {
 }
 
 pub(crate) const GRIPPER_RELEASE: i64 = 0;
-const GRIPPER_GRAB: i64 = 1;
+pub(crate) const GRIPPER_GRAB: i64 = 1;
 const GRIPPER_HOLD: i64 = 2;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum GripperOutcome {
+    Sent,
+    Confirmed,
+    Refused,
+    Unanswered,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct GripperState {
+    pub action: i64,
+    pub bay: i64,
+    pub outcome: GripperOutcome,
+    pub at_ms: i64,
+}
+
+impl GripperState {
+    pub fn sent(action: i64, bay: i64, at_ms: i64) -> GripperState {
+        GripperState { action, bay, outcome: GripperOutcome::Sent, at_ms }
+    }
+
+    pub fn empties(self) -> Option<bool> {
+        match (self.action, self.outcome) {
+            (GRIPPER_RELEASE, GripperOutcome::Confirmed | GripperOutcome::Unanswered) => Some(true),
+            (GRIPPER_GRAB, GripperOutcome::Confirmed) => Some(false),
+            _ => None,
+        }
+    }
+
+    pub fn answered(self, accepted: Option<bool>, at_ms: i64) -> GripperState {
+        let outcome = match accepted {
+            Some(true) => GripperOutcome::Confirmed,
+            Some(false) => GripperOutcome::Refused,
+            None => GripperOutcome::Unanswered,
+        };
+        GripperState { outcome, at_ms, ..self }
+    }
+
+    fn verb(self) -> &'static str {
+        match self.action {
+            GRIPPER_RELEASE => "Drop",
+            GRIPPER_GRAB => "Grab",
+            _ => "Hold",
+        }
+    }
+
+    pub fn notice(self) -> Option<String> {
+        let subject = if self.bay > 0 { format!("Bay {}", self.bay) } else { "Payload".to_string() };
+        let verb = if self.bay > 0 { format!("{} {}", self.verb(), self.bay) } else { self.verb().to_string() };
+        match (self.outcome, self.action) {
+            (GripperOutcome::Sent, _) => None,
+            (GripperOutcome::Confirmed, GRIPPER_RELEASE) => Some(format!("{subject} dropped")),
+            (GripperOutcome::Confirmed, GRIPPER_GRAB) => Some(format!("{subject} grabbed")),
+            (GripperOutcome::Confirmed, _) => Some("Gripper holding".to_string()),
+            (GripperOutcome::Refused, _) => Some(format!("{verb} refused by the flight controller")),
+            (GripperOutcome::Unanswered, GRIPPER_RELEASE) => Some(format!("{verb} not confirmed. It may have dropped, check before dropping again.")),
+            (GripperOutcome::Unanswered, _) => Some(format!("{verb} not confirmed. Check the gripper before trying again.")),
+        }
+    }
+
+    pub fn json(self, empty: &std::collections::BTreeSet<i64>) -> Value {
+        json!({
+            "bay": self.bay,
+            "empty": empty,
+            "action": match self.action { GRIPPER_RELEASE => "release", GRIPPER_GRAB => "grab", _ => "hold" },
+            "outcome": match self.outcome { GripperOutcome::Sent => "sent", GripperOutcome::Confirmed => "confirmed", GripperOutcome::Refused => "refused", GripperOutcome::Unanswered => "unanswered" },
+            "atMs": self.at_ms,
+        })
+    }
+}
 
 type Checked = Result<(Vec<Action>, String), (&'static str, String)>;
 
@@ -585,12 +667,19 @@ fn valued_check(kind: Valued, args: &Value, s: &GuidedState, takeoff: Option<(f6
                 false => Err(("outOfRange", format!("The new height has to be between {lo:.1} and {hi:.1} m."))),
             }
         }
-        Valued::Gripper => match whole(0) {
-            Some(GRIPPER_GRAB) => Ok((vec![Action::Grab], json!([GRIPPER_GRAB]).to_string())),
-            Some(GRIPPER_RELEASE) => Ok((vec![Action::Release], json!([GRIPPER_RELEASE]).to_string())),
-            Some(GRIPPER_HOLD) => Ok((vec![Action::Hold], json!([GRIPPER_HOLD]).to_string())),
-            _ => malformed("The gripper is sent 1 to grab, 0 to release or 2 to hold."),
-        },
+        Valued::Gripper => {
+            let bay = match (s.payload_bays > 1, whole(1)) {
+                (false, _) => Ok(0),
+                (true, Some(bay)) if (1..=s.payload_bays).contains(&bay) => Ok(bay),
+                (true, _) => Err(("malformed", format!("Name the bay to use, 1 to {}.", s.payload_bays))),
+            }?;
+            match whole(0) {
+                Some(GRIPPER_GRAB) => Ok((vec![Action::Grab], json!([GRIPPER_GRAB, bay]).to_string())),
+                Some(GRIPPER_RELEASE) => Ok((vec![Action::Release], json!([GRIPPER_RELEASE, bay]).to_string())),
+                Some(GRIPPER_HOLD) => Ok((vec![Action::Hold], json!([GRIPPER_HOLD, bay]).to_string())),
+                _ => malformed("The gripper is sent 1 to grab, 0 to release or 2 to hold."),
+            }
+        }
         Valued::Resume => match whole(0) {
             Some(sequence) if sequence > 0 && sequence == s.resume_from_sequence => Ok((vec![Action::ResumeMission], json!([sequence]).to_string())),
             Some(_) if s.resume_from_sequence > 0 => Err(("moved", format!("The mission can resume from item {} now.", s.resume_from_sequence))),
@@ -663,7 +752,12 @@ mod tests {
         assert_eq!(check(Valued::ChangeAltitude, json!([20.0])), Ok((vec![Action::ChangeAltitude], "[20.0,false]".to_string())), "guidedModeChangeAltitude(double, bool) has no default for the bool");
         assert_eq!(check(Valued::ChangeAltitude, json!([-35.0, false])).map_err(|e| e.0), Err("outOfRange"), "a change is a delta, so it is the height it lands at that has to be inside the range");
         assert_eq!(check(Valued::ChangeAltitude, json!([0.0, true])).map(|c| c.0), Ok(vec![Action::Pause, Action::ChangeAltitude]), "the Pause offer is carried out as a change of altitude that pauses first");
-        assert_eq!(check(Valued::Gripper, json!([1])).map(|c| c.0), Ok(vec![Action::Grab]));
+        assert_eq!(check(Valued::Gripper, json!([1])), Ok((vec![Action::Grab], "[1,0]".to_string())), "a single gripper is bay 0, the id QGC sends");
+        let basket = GuidedState { payload_bays: 3, ..s.clone() };
+        let bay = |args: Value| valued_check(Valued::Gripper, &args, &basket, None, None);
+        assert_eq!(bay(json!([0, 2])), Ok((vec![Action::Release], "[0,2]".to_string())), "a multi-bay basket drops the bay it was asked for");
+        assert_eq!(bay(json!([0, 4])).map_err(|e| e.1), Err("Name the bay to use, 1 to 3.".to_string()));
+        assert_eq!(bay(json!([0])).map_err(|e| e.0), Err("malformed"), "a basket never guesses the bay");
         assert_eq!(check(Valued::Gripper, json!([0])).map(|c| c.0), Ok(vec![Action::Release]));
         assert_eq!(check(Valued::Gripper, json!([2])).map(|c| c.0), Ok(vec![Action::Hold]));
         assert_eq!(check(Valued::Gripper, json!([3])).map_err(|e| e.0), Err("malformed"));
@@ -890,9 +984,6 @@ mod tests {
                 .unwrap_or_default()
         };
 
-        // A wing in forward flight and a rotor have different speed limits and the vehicle reports
-        // them under different names. Swapping the two reads changed no assertion in the crate, so
-        // a wing could have been offered a speed change on the strength of a rotor's limits.
         assert_eq!(offers(&Wing { fixed_wing: true, fw_limits: true, mr_limits: false }), "ready", "a wing with wing limits can be asked to change speed");
         assert_eq!(offers(&Wing { fixed_wing: true, fw_limits: false, mr_limits: true }), "hidden", "a wing must not be offered a speed change because a rotor limit happens to be set");
         assert_eq!(offers(&Wing { fixed_wing: false, fw_limits: false, mr_limits: true }), "ready", "and a rotor reads its own");
@@ -921,6 +1012,44 @@ mod tests {
         assert_eq!(offer_of(&done, Action::ContinueMission), "hidden");
         let ground = GuidedState { armed: false, flying: false, ..mid };
         assert_eq!(offer_of(&ground, Action::StartMission), "ready");
+    }
+
+    #[test]
+    fn a_gripper_offers_drop_and_grab_and_hold_only_where_the_firmware_takes_it() {
+        let gripped = GuidedState { has_gripper: true, ..ready_on_ground() };
+        assert_eq!((offer_of(&gripped, Action::Release), offer_of(&gripped, Action::Grab), offer_of(&gripped, Action::Hold)), ("ready", "ready", "ready"));
+        assert_eq!(Action::Release.offer(&gripped).title, "Drop", "a pilot drops a payload, the gripper releasing it is the mechanism");
+        let copter = GuidedState { apm: true, ..gripped.clone() };
+        assert_eq!(offer_of(&copter, Action::Hold), "hidden", "ArduPilot answers DO_GRIPPER hold with MAV_RESULT_FAILED (SITL, 2026-10-16), so it is not offered there");
+        assert_eq!((offer_of(&copter, Action::Release), offer_of(&copter, Action::Grab)), ("ready", "ready"));
+        assert_eq!(offer_of(&GuidedState { has_gripper: false, ..copter }, Action::Release), "hidden");
+    }
+
+    #[test]
+    fn the_next_bay_to_drop_is_the_lowest_one_still_loaded() {
+        let basket = GuidedState { payload_bays: 3, ..GuidedState::default() };
+        assert_eq!(basket.next_bay(), Some(1));
+        assert_eq!(GuidedState { empty_bays: vec![1, 3], ..basket.clone() }.next_bay(), Some(2));
+        assert_eq!(GuidedState { empty_bays: vec![1, 2, 3], ..basket.clone() }.next_bay(), None, "every bay dropped: nothing left for the deck to drop");
+        assert_eq!(GuidedState { payload_bays: 1, ..GuidedState::default() }.next_bay(), None, "a single gripper has no bays to choose between");
+    }
+
+    #[test]
+    fn the_payload_state_tells_the_pilot_what_the_flight_controller_said() {
+        let none = std::collections::BTreeSet::new();
+        let sent = GripperState::sent(GRIPPER_RELEASE, 0, 1_000);
+        assert_eq!((sent.notice(), sent.json(&none)["outcome"].as_str()), (None, Some("sent")), "sending says nothing yet; the sheet shows the pending state");
+        assert_eq!(sent.answered(Some(true), 1_200).notice().as_deref(), Some("Payload dropped"));
+        assert_eq!(sent.answered(Some(false), 1_200).notice().as_deref(), Some("Drop refused by the flight controller"));
+        assert_eq!(sent.answered(None, 2_300).notice().as_deref(), Some("Drop not confirmed. It may have dropped, check before dropping again."), "a lost ack is not a failed drop: in SITL the command lands before the ack");
+        assert_eq!(GripperState::sent(GRIPPER_GRAB, 0, 0).answered(Some(true), 1).notice().as_deref(), Some("Payload grabbed"));
+        assert_eq!(GripperState::sent(GRIPPER_GRAB, 0, 0).answered(None, 1).notice().as_deref(), Some("Grab not confirmed. Check the gripper before trying again."));
+        let json = sent.answered(Some(true), 1_200).json(&std::collections::BTreeSet::from([2]));
+        assert_eq!((json["action"].as_str(), json["outcome"].as_str(), json["atMs"].as_i64(), json["empty"].clone()), (Some("release"), Some("confirmed"), Some(1_200), json!([2])));
+        let bay = GripperState::sent(GRIPPER_RELEASE, 2, 0);
+        assert_eq!((bay.answered(Some(true), 1).notice().as_deref(), bay.answered(None, 1).notice().as_deref()), (Some("Bay 2 dropped"), Some("Drop 2 not confirmed. It may have dropped, check before dropping again.")));
+        assert_eq!((bay.answered(Some(true), 1).empties(), bay.answered(None, 1).empties(), bay.answered(Some(false), 1).empties()), (Some(true), Some(true), None), "a drop that may have happened empties the bay; a refused one does not");
+        assert_eq!(GripperState::sent(GRIPPER_GRAB, 2, 0).answered(Some(true), 1).empties(), Some(false), "a confirmed grab is a loaded bay again");
     }
 
     #[test]
@@ -1181,6 +1310,7 @@ mod core_route {
         assert_eq!(core_action(&[Action::Pause, Action::ChangeAltitude], "[-3.0,true]", &GuidedState::default()), Some(json!({ "action": "changeAltitude", "delta": -3.0, "pause": true })));
         assert_eq!(core_action(&[Action::ForceArm], "[]", &GuidedState::default()), Some(json!({ "action": "arm", "arm": true, "force": true })));
         assert_eq!(core_action(&[Action::LandAbort], "[50.0]", &GuidedState::default()), Some(json!({ "action": "abortLanding", "climbOut": 50.0 })));
-        assert_eq!(core_action(&[Action::Release], "[0]", &GuidedState::default()), Some(json!({ "action": "gripper", "gripAction": 0.0 })));
+        assert_eq!(core_action(&[Action::Release], "[0]", &GuidedState::default()), Some(json!({ "action": "gripper", "gripAction": 0.0, "bay": 0.0 })));
+        assert_eq!(core_action(&[Action::Release], "[0,2]", &GuidedState::default()), Some(json!({ "action": "gripper", "gripAction": 0.0, "bay": 2.0 })), "the checked bay reaches the hub");
     }
 }

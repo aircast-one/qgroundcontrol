@@ -208,11 +208,21 @@ fun homeCovered(items: List<MissionItem>): Boolean {
     return items.any { it.index != HOME_ITEM && it.placed && kotlin.math.abs(it.latitude - home.latitude) < SAME_SPOT_DEGREES && kotlin.math.abs(it.longitude - home.longitude) < SAME_SPOT_DEGREES }
 }
 
+const val DROP_COMMAND = 211
+const val DROP_SIDE = "Drop"
+
+fun dropsAt(items: List<MissionItem>, item: MissionItem): Boolean {
+    val start = items.indexOfFirst { it.index == item.index }
+    if (start < 0) return false
+    val following = items.drop(start + 1)
+    return following.takeWhile { !it.specifiesCoordinate && !it.complexPattern }.any { it.commandId == DROP_COMMAND }
+}
+
 fun missionFeatures(items: List<MissionItem>, selectedIndex: Int? = null, landings: List<LandingPattern> = emptyList()): FeatureCollection {
     val crowded = crowded(items.size)
     val patterns = landings.associateBy { it.index }
     val plain = items.filter { it.index !in patterns }.filterNot { it.index == HOME_ITEM && homeCovered(items) }
-    val markers = plain.map { item -> Marker(item, TrackPoint(item.latitude, item.longitude), item.sequence, exit = false) } +
+    val markers = plain.map { item -> Marker(item, TrackPoint(item.latitude, item.longitude), item.sequence, exit = false, side = DROP_SIDE.takeIf { dropsAt(items, item) }) } +
         exitMarkers(plain).map { (item, exit) -> Marker(item, exit, item.sequence + item.foldedCommands, exit = true) } +
         items.flatMap { item -> patterns[item.index]?.let { landingMarkers(item, it) }.orEmpty() }
     val features = markers.map { (item, at, sequence, exit, side) ->

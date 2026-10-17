@@ -24,7 +24,7 @@ import { LocalFlyScreenState, OpenOnRequest } from './FlyScreenState';
 import { AnimatedVisibility } from './FlyShell';
 import { FLY_STATE, type Readiness, flyState, guidedReadiness, readinessWarning, useHasVehicle, vehicleSubtitle } from './FlyState';
 import { GRIPPER_ACTIONS, GripperPanel, gripperOffers } from './GripperPanel';
-import { GUIDED_ACTIONS, type GuidedOffer, guidedOffers, resumeFromSequence } from './GuidedActions';
+import { GUIDED_ACTIONS, type GuidedOffer, type Payload, SINGLE_GRIPPER, guidedOffers, multiBay, payloadOf, resumeFromSequence } from './GuidedActions';
 import { GUIDED_TAKEOFF, guidedTakeoff, guidedTakeoffPath } from './GuidedTakeoff';
 import { type GuidedValueKind, GuidedValueFlow, type OpenGuidedValue, altitudeValue, openGuidedValue, speedValue, takeoffValue } from './GuidedValueFlow';
 import { holdLabel } from './HoldToConfirm';
@@ -53,7 +53,7 @@ import {
 import { ValueDisplay, ValueDisplayDialog, ValueLabel, displayColour, readDisplays, writeDisplay } from './InstrumentDisplay';
 import { MAP_CLICK_PATH, type LoiterOffer, LoiterRadiusPanel, loiterOffer, mapClickUnits } from './MapClickMenu';
 import { FlyViewMavlinkActions } from './MavlinkActions';
-import { AUTO_POPUP_ACTIONS, PAUSE, autoMissionPopup, guidedCommand, moreActions, popupReplacesOpenConfirm } from './MoreActions';
+import { AUTO_POPUP_ACTIONS, GRIPPER_RELEASE, PAUSE, RELEASE, autoMissionPopup, guidedCommand, moreActions, popupReplacesOpenConfirm } from './MoreActions';
 import { OFFLINE_SHEET, openAddLink } from './OfflineStatusSheet';
 import { ParameterForm } from './ParameterForm';
 import { PREFLIGHT, checklistOffered, preflightOffered } from './Preflight';
@@ -414,6 +414,7 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
   const extras = useMemo(() => moreActions(offers), [offers]);
   const gripper = useMemo(() => gripperOffers(extras), [extras]);
   const resumeFrom = useMemo(() => resumeFromSequence(actionsJson), [actionsJson]);
+  const payload = useMemo(() => payloadOf(actionsJson), [actionsJson]);
   const liveActions = useMemo(() => (actionsJson === null ? null : JSON.stringify(actionsJson)), [actionsJson]);
   const automaticMissionPopups = useQgcBool(settingControl('settings.flyViewSettings.enableAutomaticMissionPopups'));
   const [missionReady, setMissionReady] = useState<ReadonlySet<string> | null>(null);
@@ -473,6 +474,7 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
       report: setRefusal,
       openChecklist: useChecklist ? () => checklist.open() : null,
       readiness,
+      payload,
     }),
   );
   const deck = deckIds(new Set(entries.map((it) => it.id)), armed);
@@ -606,10 +608,10 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
   const tiles: readonly MoreTile[] = showMore
     ? [
         ...(stop !== null ? [MoreTile({ label: STOP_MOTORS, icon: 'ic_warning', enabled: true, warning: true, onClick: () => setPending(emergencyStopAction(stop)) })] : []),
-        ...deckRest.filter((it) => it.id !== CHECKLIST).map((it) => MoreTile({ label: it.label, icon: it.icon, enabled: it.enabled, warning: it.warning, onClick: it.onClick })),
+        ...deckRest.filter((it) => it.id !== CHECKLIST && it.id !== RELEASE).map((it) => MoreTile({ label: it.label, icon: it.icon, enabled: it.enabled, warning: it.warning, onClick: it.onClick })),
         ...(preflightOffered(preflightJson) ? [MoreTile({ label: 'Checklist', icon: 'ic_check_circle', enabled: checklistPast === null, onClick: () => checklist.open() })] : []),
         ...(loiter !== null ? [MoreTile({ label: loiter.title, icon: 'ic_my_location', enabled: true, onClick: () => setEditingLoiter(loiter) })] : []),
-        ...(gripper.length > 0 ? [MoreTile({ label: 'Gripper', icon: 'ic_download', enabled: gripper.some((it: GuidedOffer) => it.ready), onClick: () => setShowGripper(true) })] : []),
+        ...(gripper.length > 0 ? [MoreTile({ label: 'Payload', icon: 'ic_payload', enabled: gripper.some((it: GuidedOffer) => it.ready), onClick: () => setShowGripper(true) })] : []),
         MoreTile({
           label: 'Choose readings',
           icon: 'ic_tune',
@@ -649,7 +651,7 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
       {showMore ? (
         <MoreActionsSheet tiles={tiles} onDismiss={() => setShowMore(false)} footer={<FlyViewMavlinkActions onSent={() => setShowMore(false)} />} />
       ) : null}
-      {showGripper && gripper.length > 0 ? <GripperPanel offers={gripper} onDismiss={() => setShowGripper(false)} /> : null}
+      {showGripper && gripper.length > 0 ? <GripperPanel offers={gripper} payload={payload} onDismiss={() => setShowGripper(false)} /> : null}
     </>
   );
 };
@@ -664,7 +666,7 @@ const DeckRow = ({ deck, entries, more, center }: { deck: readonly (readonly [st
   ];
   const leading = Math.trunc((buttons.length + 1) / 2);
   const button = ([entry, primary]: readonly [DeckEntry, boolean]) => (
-    <DeckButton key={entry.id} entry={entry} primary={primary} className={entry === more && deck.length > 0 ? 'w-16 shrink-0' : 'min-w-0 flex-1'} />
+    <DeckButton key={entry.id} entry={entry} primary={primary} buttons={buttons.length} className={entry === more && deck.length > 0 ? 'w-16 shrink-0' : 'min-w-0 flex-1'} />
   );
   return (
     <div className="flex items-center gap-[10px]">
@@ -1090,12 +1092,18 @@ export type FlightDeckContext = {
   readonly report: (message: string | null) => void;
   readonly openChecklist: (() => void) | null;
   readonly readiness: Readiness | null;
+  readonly payload: Payload;
 };
 
-export const FlightDeckContext = (fields: Omit<FlightDeckContext, 'readiness'> & { readiness?: Readiness | null }): FlightDeckContext => ({
+export const FlightDeckContext = (fields: Omit<FlightDeckContext, 'readiness' | 'payload'> & { readiness?: Readiness | null; payload?: Payload }): FlightDeckContext => ({
   readiness: null,
+  payload: SINGLE_GRIPPER,
   ...fields,
 });
+
+export const BAYS_EMPTY = 'Bays empty';
+
+const dropLabel = (title: string, payload: Payload): string => (!multiBay(payload) ? holdLabel(title) : payload.next === null ? BAYS_EMPTY : holdLabel(`${title} ${payload.next}`));
 
 const promptOr = (offer: GuidedOffer | undefined, fallback: string): string => {
   const prompt = offer?.prompt ?? '';
@@ -1111,7 +1119,8 @@ const takeoffHoldRefusal = async (offers: ReadonlyMap<string, GuidedOffer>): Pro
 };
 
 export const flightDeckEntries = (deck: FlightDeckContext): readonly DeckEntry[] => {
-  const { offers, armed, confirm, openValue, report, openChecklist, readiness } = deck;
+  const { offers, armed, confirm, openValue, report, openChecklist, readiness, payload } = deck;
+  const dropBay = payload.next ?? 0;
   const armAction = offers.get(armed ? 'disarm' : 'arm');
   const takeoff = offers.get('takeoff');
   const pause = offers.get(PAUSE);
@@ -1119,6 +1128,7 @@ export const flightDeckEntries = (deck: FlightDeckContext): readonly DeckEntry[]
   const land = offers.get('land');
   const speed = offers.get('changeSpeed');
   const altitude = offers.get('changeAltitude');
+  const release = offers.get(RELEASE);
   const rtlOption = rtl?.option.trim() ? rtl.option : null;
   return [
     armAction?.shown === true
@@ -1202,6 +1212,25 @@ export const flightDeckEntries = (deck: FlightDeckContext): readonly DeckEntry[]
       : null,
     speed?.shown === true ? DeckEntry({ id: 'changeSpeed', label: 'Speed', icon: 'ic_speed', enabled: speed.ready, onClick: () => openValue(speedValue(speed)) }) : null,
     altitude?.shown === true ? DeckEntry({ id: 'changeAltitude', label: 'Altitude', icon: 'ic_height', enabled: altitude.ready, onClick: () => openValue(altitudeValue(false)) }) : null,
+    release?.shown === true
+      ? DeckEntry({
+          id: RELEASE,
+          label: dropLabel(release.title, payload),
+          icon: 'ic_drop',
+          enabled: release.ready && (!multiBay(payload) || payload.next !== null),
+          onHold: () => void VehicleCommands.gripperRefusal(GRIPPER_RELEASE, dropBay).then(report),
+          onClick: () =>
+            confirm(
+              GuidedAction({
+                offerId: RELEASE,
+                name: multiBay(payload) ? `${release.title} ${dropBay}` : release.title,
+                confirm: promptOr(release, 'Open the gripper and drop the payload.'),
+                destructive: false,
+                run: () => void VehicleCommands.gripper(GRIPPER_RELEASE, dropBay),
+              }),
+            ),
+        })
+      : null,
     openChecklist !== null && checklistOffered(armed) === null ? DeckEntry({ id: CHECKLIST, label: 'Checklist', icon: 'ic_check_circle', enabled: true, onClick: () => openChecklist() }) : null,
   ].filter((it): it is DeckEntry => it !== null);
 };

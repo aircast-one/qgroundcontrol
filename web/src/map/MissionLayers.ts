@@ -173,6 +173,17 @@ export const markerStroke = (crowded: boolean, selected: boolean): number => (se
 
 type Marker = { item: MissionItem; at: TrackPoint; sequence: number; exit: boolean; side: string | null };
 
+export const DROP_COMMAND = 211;
+export const DROP_SIDE = 'Drop';
+
+export const dropsAt = (items: readonly MissionItem[], item: MissionItem): boolean => {
+  const start = items.findIndex((it) => it.index === item.index);
+  if (start < 0) return false;
+  const following = items.slice(start + 1);
+  const next = following.findIndex((it) => it.specifiesCoordinate || it.complexPattern);
+  return following.slice(0, next < 0 ? following.length : next).some((it) => it.commandId === DROP_COMMAND);
+};
+
 export const exitMarkers = (items: readonly MissionItem[]): readonly (readonly [MissionItem, TrackPoint])[] =>
   items.filter((it) => it.complexPattern).flatMap((item) => (item.exit === null ? [] : [[item, item.exit] as const]));
 
@@ -196,7 +207,7 @@ export const missionFeatures = (items: readonly MissionItem[], selectedIndex: nu
   const covered = homeCovered(items);
   const plain = items.filter((it) => !patterns.has(it.index)).filter((it) => !(it.index === HOME_ITEM && covered));
   const markers: readonly Marker[] = [
-    ...plain.map((item) => ({ item, at: pointOf(item), sequence: item.sequence, exit: false, side: null })),
+    ...plain.map((item) => ({ item, at: pointOf(item), sequence: item.sequence, exit: false, side: dropsAt(items, item) ? DROP_SIDE : null })),
     ...exitMarkers(plain).map(([item, exit]) => ({ item, at: exit, sequence: item.sequence + item.foldedCommands, exit: true, side: null })),
     ...items.flatMap((item) => {
       const pattern = patterns.get(item.index);

@@ -606,6 +606,7 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         "mavlinkLossPercent": v.link_status.percent,
         "vtolInFwdFlight": v.vtol_in_forward_flight,
         "hasGripper": has_gripper(v.autopilot, |name| v.parameter(v.component, name).map(|p| p.as_f64())),
+        "gripper": v.gripper.map(|g| g.json(&v.empty_bays)),
         "readyToFlyAvailable": v.status_bits.ready_to_fly_available,
         "readyToFly": v.status_bits.ready_to_fly,
         "allSensorsHealthy": v.status_bits.all_healthy,

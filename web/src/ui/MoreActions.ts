@@ -13,9 +13,10 @@ export const SHEET_ACTIONS: ReadonlySet<string> = new Set([
   'vtolTransitionToMultiRotor', 'forceArm',
 ]);
 
-const GRIPPER_RELEASE = 0;
-const GRIPPER_GRAB = 1;
+export const GRIPPER_RELEASE = 0;
+export const GRIPPER_GRAB = 1;
 const GRIPPER_HOLD = 2;
+export const RELEASE = 'release';
 const LAND_ABORT_CLIMB_METERS = 50.0;
 
 export const moreActions = (offers: ReadonlyMap<string, GuidedOffer>): readonly GuidedOffer[] =>

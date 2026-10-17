@@ -46,6 +46,20 @@ internal fun guidedOffers(view: JSONObject?): Map<String, GuidedOffer> {
     }.toMap()
 }
 
+internal data class Payload(val bays: Int, val empty: List<Int>, val next: Int?)
+
+internal val SINGLE_GRIPPER = Payload(bays = 1, empty = emptyList(), next = null)
+
+internal fun payloadOf(view: JSONObject?): Payload {
+    val payload = view?.optJSONObject("payload") ?: return SINGLE_GRIPPER
+    val empty = payload.optJSONArray("empty")?.let { array -> (0 until array.length()).map { array.optInt(it) } }.orEmpty()
+    return Payload(bays = payload.optInt("bays", 1).coerceAtLeast(1), empty = empty, next = payload.takeUnless { it.isNull("next") }?.optInt("next"))
+}
+
+internal val Payload.multiBay: Boolean get() = bays > 1
+
+internal val Payload.bayNumbers: List<Int> get() = (1..bays).toList()
+
 internal fun resumeFromSequence(view: JSONObject?): Int? =
     view?.takeIf { !it.isNull("resumeFromSequence") }?.optInt("resumeFromSequence")?.takeIf { it > 0 }
 

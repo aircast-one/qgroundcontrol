@@ -16,6 +16,7 @@ export const PLAN_VIEW = 'view.missionItems(geometry)';
 export const KIND_LAND = 'land';
 export const KIND_WAYPOINT = 'waypoint';
 export const KIND_TAKEOFF = 'takeoff';
+export const KIND_DROP = 'drop';
 export const KIND_SURVEY = 'survey';
 export const KIND_CORRIDOR = 'corridor';
 export const KIND_STRUCTURE = 'structure';

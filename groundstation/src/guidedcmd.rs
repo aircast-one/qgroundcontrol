@@ -424,9 +424,9 @@ pub fn abort_landing(climb_out: f64) -> Plan {
     }
 }
 
-pub fn gripper(action: f64) -> Plan {
-    match action {
-        0.0..=2.0 if action.fract() == 0.0 => Plan::Steps(vec![Step::Command { command: CMD_DO_GRIPPER, params: [0.0, action, 0.0, 0.0, 0.0, 0.0, 0.0], command_int: false, frame: FRAME_GLOBAL, show_error: true }]),
+pub fn gripper(action: f64, bay: f64) -> Plan {
+    match (action, bay) {
+        (0.0..=2.0, 0.0..=6.0) if action.fract() == 0.0 && bay.fract() == 0.0 => Plan::Steps(vec![Step::Command { command: CMD_DO_GRIPPER, params: [bay, action, 0.0, 0.0, 0.0, 0.0, 0.0], command_int: false, frame: FRAME_GLOBAL, show_error: false }]),
         _ => Plan::Refused("The gripper is sent 1 to grab, 0 to release or 2 to hold.".into()),
     }
 }
@@ -578,14 +578,18 @@ mod tests {
         assert_eq!(command(&steps[0]).1[..2], [0.0, ARM_MAGIC]);
         let Plan::Steps(steps) = abort_landing(30.0) else { panic!() };
         assert_eq!((command(&steps[0]).0, command(&steps[0]).1[0]), (CMD_DO_GO_AROUND, 30.0));
-        let Plan::Steps(steps) = gripper(1.0) else { panic!() };
+        let Plan::Steps(steps) = gripper(1.0, 0.0) else { panic!() };
         assert_eq!((command(&steps[0]).0, command(&steps[0]).1[..2].to_vec()), (CMD_DO_GRIPPER, vec![0.0, 1.0]));
+        let Plan::Steps(steps) = gripper(0.0, 3.0) else { panic!() };
+        assert_eq!(command(&steps[0]).1[..2].to_vec(), vec![3.0, 0.0], "DO_GRIPPER param1 is the gripper instance, which is the bay");
+        assert!(matches!(steps[0], Step::Command { show_error: false, .. }), "the gripper's answer is told by the payload state, not the generic command failure line");
         let Plan::Steps(steps) = motor_test(3.0, 20.0, 5.0) else { panic!("a motor test is always sent") };
         assert_eq!(command(&steps[0]).1, [3.0, 0.0, 20.0, 5.0, 0.0, 2.0, 0.0], "Vehicle::motorTest sends a throttle percent in board order");
         let Plan::Steps(steps) = vtol_transition(true) else { panic!("a transition is always sent") };
         assert_eq!((command(&steps[0]).0, command(&steps[0]).1[0]), (CMD_DO_VTOL_TRANSITION, f64::from(VTOL_STATE_FW)), "setVtolInFwdFlight sends MAV_VTOL_STATE_FW for forward flight");
-        assert!(matches!(gripper(2.0), Plan::Steps(_)), "GRIPPER_ACTION_HOLD is 2, which the joystick's Gripper Hold sends");
-        assert!(matches!(gripper(3.0), Plan::Refused(_)));
+        assert!(matches!(gripper(2.0, 0.0), Plan::Steps(_)), "GRIPPER_ACTION_HOLD is 2, which the joystick's Gripper Hold sends");
+        assert!(matches!(gripper(3.0, 0.0), Plan::Refused(_)));
+        assert!(matches!(gripper(0.0, 7.0), Plan::Refused(_)));
         let Plan::Steps(steps) = landing_gear(true) else { panic!() };
         assert_eq!(command(&steps[0]), (CMD_AIRFRAME_CONFIGURATION, [-1.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0], false), "Vehicle::landingGearRetract: all gears, up");
         let Plan::Steps(steps) = set_current_mission(&px4(), 3.0) else { panic!() };

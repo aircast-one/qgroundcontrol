@@ -271,6 +271,12 @@ fn parse_params(text: &str) -> Vec<Param> {
         .collect()
 }
 
+const MOCK_GRIPPER_PARAMS: [(&str, f64); 2] = [("GRIP_ENABLE", 1.0), ("PD_GRIPPER_EN", 1.0)];
+
+fn with_gripper(params: Vec<Param>) -> Vec<Param> {
+    params.into_iter().map(|p| Param { value: MOCK_GRIPPER_PARAMS.iter().find(|(name, _)| *name == p.name).map_or(p.value, |(_, on)| *on), ..p }).collect()
+}
+
 fn fresh_flash(params: Vec<Param>) -> Vec<Param> {
     let channels: Vec<String> = RC_MAPS.iter().filter_map(|map| params.iter().find(|p| p.name == *map)).map(|p| (p.value as i64).to_string()).collect();
     let reset = |name: &str| -> Option<f64> {
@@ -491,7 +497,7 @@ fn traffic(home: (f64, f64), home_amsl: f64) -> Vec<Adsb> {
 
 impl Sim {
     pub fn new(options: Options, system: u8, served: Option<String>) -> Sim {
-        let loaded = parse_params(options.vehicle.params());
+        let loaded = with_gripper(parse_params(options.vehicle.params()));
         let params = if options.vehicle.apm() && options.apm_start_fresh_params { fresh_flash(loaded) } else { loaded };
         let offset = f64::from(system.saturating_sub(FIRST_SYSTEM_ID)) * SYSTEM_SPACING_DEG;
         let home = (HOME_LAT + offset, HOME_LON + offset);
@@ -2151,6 +2157,14 @@ mod tests {
         let echoed = sim.receive(gcs(), &MavMessage::PARAM_SET(PARAM_SET_DATA { param_value: wire(&set, true), target_system: 128, target_component: 1, param_id: crate::mavout::param_id(&name), param_type: set.kind }));
         assert!(matches!(&echoed[..], [(_, MavMessage::PARAM_VALUE(v))] if v.param_value.to_bits() == 7));
         assert_eq!(sim.params[at].value, 7.0);
+    }
+
+    #[test]
+    fn the_mock_copter_carries_a_gripper_so_a_drop_can_be_rehearsed() {
+        let sim = Sim::new(options(Vehicle::Copter), 128, None);
+        assert_eq!(sim.params.iter().find(|p| p.name == "GRIP_ENABLE").map(|p| p.value), Some(1.0), "Copter.OfflineEditing.params ships GRIP_ENABLE 0, which hid the payload controls in every rehearsal");
+        let fresh = Sim::new(Options { apm_start_fresh_params: true, ..options(Vehicle::Copter) }, 128, None);
+        assert_eq!(fresh.params.iter().find(|p| p.name == "GRIP_ENABLE").map(|p| p.value), Some(1.0));
     }
 
     #[test]

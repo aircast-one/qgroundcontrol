@@ -172,13 +172,18 @@ private fun DeckPress(entry: DeckEntry, content: @Composable () -> Unit) {
 internal fun deckIds(shown: Set<String>, armed: Boolean): List<Pair<String, Boolean>> {
     val flying = armed && ("rtl" in shown || "land" in shown)
     val ground = listOf(CHECKLIST, if ("takeoff" in shown) "takeoff" else "arm")
-    val chosen = (if (flying) listOf(PAUSE, "rtl", "land") else ground).filter { it in shown }
-    val primary = if (flying) "rtl".takeIf { it in chosen } else chosen.lastOrNull()
+    val flown = (if (flying) listOf(PAUSE, "rtl", "land") else ground).filter { it in shown }
+    val primary = if (flying) "rtl".takeIf { it in flown } else flown.lastOrNull()
+    val chosen = if (flying && RELEASE in shown) flown + RELEASE else flown
     return chosen.map { it to (it == primary) }
 }
 
+internal const val CROWDED_DECK = 5
+
+internal fun deckLabel(label: String, buttons: Int): String = if (buttons >= CROWDED_DECK) railLabel(label) else label
+
 @Composable
-internal fun DeckButton(entry: DeckEntry, primary: Boolean, modifier: Modifier = Modifier) {
+internal fun DeckButton(entry: DeckEntry, primary: Boolean, modifier: Modifier = Modifier, buttons: Int = 0) {
     Surface(
         modifier = modifier.height(DECK_BUTTON_HEIGHT),
         shape = MaterialTheme.shapes.large,
@@ -195,7 +200,7 @@ internal fun DeckButton(entry: DeckEntry, primary: Boolean, modifier: Modifier =
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Icon(painterResource(entry.icon), null, Modifier.size(DECK_ICON_SIZE))
-                Text(entry.label, style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                Text(deckLabel(entry.label, buttons), style = MaterialTheme.typography.labelLarge, maxLines = 1)
             }
         }
     }
@@ -244,8 +249,8 @@ internal fun guidedIcon(id: String): Int = when (id) {
     "cancelRoi" -> R.drawable.ic_close
     PAUSE -> R.drawable.ic_pause
     "landAbort" -> R.drawable.ic_flight_takeoff
-    "release" -> R.drawable.ic_download
-    "grab" -> R.drawable.ic_upload
+    RELEASE -> R.drawable.ic_drop
+    "grab" -> R.drawable.ic_payload
     "hold" -> R.drawable.ic_stop_circle
     "vtolTransitionToFixedWing", "vtolTransitionToMultiRotor" -> R.drawable.ic_swap_horiz
     "forceArm" -> R.drawable.ic_bolt

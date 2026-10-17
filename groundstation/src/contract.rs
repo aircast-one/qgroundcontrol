@@ -37,7 +37,7 @@ pub fn enumerations() -> Value {
         "view.calibration.sides[].stage": ["waiting", "inProgress", "done"],
         "view.calibration.routines[].id": ["accelerometer", "compass", "levelHorizon", "gyro", "pressure"],
         "view.missionKinds.kinds[].geometry": ["area", "line", null],
-        "view.missionKinds.kinds[].id": ["waypoint", "takeoff", "land", "roi", "survey", "corridor", "structure"],
+        "view.missionKinds.kinds[].id": ["waypoint", "takeoff", "land", "roi", "drop", "survey", "corridor", "structure"],
         "view.setup.firmware": ["none", "apm", "px4"],
         "view.altitudeModes.context": ["mission", "item"],
         "view.altitudeModes.modes[].raw": [0, 1, 2, 3, 4],

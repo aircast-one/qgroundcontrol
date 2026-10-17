@@ -1371,6 +1371,15 @@ mod tests {
     }
 
     #[test]
+    fn a_payload_drop_is_a_gripper_release_with_no_place_of_its_own() {
+        let apm = Document { firmware_type: 3, ..section() };
+        let placed = insert_simple(&apm, 211, 0.0, 0.0, 2, &QT_DEFAULTS);
+        let Some(Item::Simple(drop)) = placed.items.get(1) else { panic!("the drop goes where it was asked") };
+        assert_eq!((drop.command, drop.params[0], drop.params[1], drop.params[4], drop.params[5], drop.altitude.is_none()), (211, Some(1.0), Some(0.0), Some(0.0), Some(0.0), true), "gripper 1, action 0 = release, no coordinate: it fires at the waypoint before it");
+        assert_eq!(placed.items.len(), apm.items.len() + 1);
+    }
+
+    #[test]
     fn an_items_altitude_mode_sets_its_mavlink_frame_as_simple_mission_item_does() {
         let doc = section();
         let at = doc.items.iter().position(|item| matches!(item, Item::Simple(s) if s.altitude.is_some())).unwrap() + 1;

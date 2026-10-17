@@ -11,7 +11,7 @@ import { aircast, md, withAlpha } from '@/theme/Colors';
 import type { Readiness } from '@/ui/FlyState';
 import type { GuidedOffer } from '@/ui/GuidedActions';
 import { type GuidedTakeoff, takeoffRangeUsable } from '@/ui/GuidedTakeoff';
-import { PAUSE } from '@/ui/MoreActions';
+import { PAUSE, RELEASE } from '@/ui/MoreActions';
 import { osdShadow } from '@/ui/Osd';
 
 export const CHECKLIST = 'checklist';
@@ -201,12 +201,17 @@ const DeckPress = ({ entry, children }: { entry: DeckEntry; children: ReactNode 
 export const deckIds = (shown: ReadonlySet<string>, armed: boolean): readonly (readonly [string, boolean])[] => {
   const flying = armed && (shown.has('rtl') || shown.has('land'));
   const ground = [CHECKLIST, shown.has('takeoff') ? 'takeoff' : 'arm'];
-  const chosen = (flying ? [PAUSE, 'rtl', 'land'] : ground).filter((it) => shown.has(it));
-  const primary = flying ? (chosen.includes('rtl') ? 'rtl' : null) : (chosen[chosen.length - 1] ?? null);
+  const flown = (flying ? [PAUSE, 'rtl', 'land'] : ground).filter((it) => shown.has(it));
+  const primary = flying ? (flown.includes('rtl') ? 'rtl' : null) : (flown[flown.length - 1] ?? null);
+  const chosen = flying && shown.has(RELEASE) ? [...flown, RELEASE] : flown;
   return chosen.map((it) => [it, it === primary] as const);
 };
 
-export const DeckButton = ({ entry, primary, className }: { entry: DeckEntry; primary: boolean; className?: string }) => (
+export const CROWDED_DECK = 5;
+
+export const deckLabel = (label: string, buttons: number): string => (buttons >= CROWDED_DECK ? railLabel(label) : label);
+
+export const DeckButton = ({ entry, primary, className, buttons = 0 }: { entry: DeckEntry; primary: boolean; className?: string; buttons?: number }) => (
   <Surface
     shape="large"
     color={primary && entry.enabled ? md('primaryContainer') : md('surfaceContainerHigh')}
@@ -218,7 +223,7 @@ export const DeckButton = ({ entry, primary, className }: { entry: DeckEntry; pr
       <div className="flex flex-col items-center justify-center gap-1">
         <Drawable name={entry.icon} size={DECK_ICON_SIZE} />
         <Text typography="labelLarge" maxLines={1}>
-          {entry.label}
+          {deckLabel(entry.label, buttons)}
         </Text>
       </div>
     </DeckPress>
@@ -274,10 +279,10 @@ export const guidedIcon = (id: string): DrawableName => {
       return 'ic_pause';
     case 'landAbort':
       return 'ic_flight_takeoff';
-    case 'release':
-      return 'ic_download';
+    case RELEASE:
+      return 'ic_drop';
     case 'grab':
-      return 'ic_upload';
+      return 'ic_payload';
     case 'hold':
       return 'ic_stop_circle';
     case 'vtolTransitionToFixedWing':

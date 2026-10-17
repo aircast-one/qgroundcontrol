@@ -390,6 +390,17 @@ fn insert_roi(backend: &dyn Backend, args: &str) -> Value {
     edit(|doc| Ok(plandoc::insert_roi(doc, latitude, longitude, index, &defaults)))
 }
 
+const CMD_DO_GRIPPER: i64 = 211;
+
+fn insert_drop(backend: &dyn Backend, args: &str) -> Value {
+    let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
+    let index = given.get(2).and_then(Value::as_i64).unwrap_or(-1);
+    let Some(defaults) = edit_defaults(backend) else {
+        return refused("The default mission item altitude is not known.");
+    };
+    edit(|doc| Ok(plandoc::insert_simple(doc, CMD_DO_GRIPPER, 0.0, 0.0, index, &defaults)))
+}
+
 fn insert_scan(backend: &dyn Backend, args: &str, corridor: bool) -> Value {
     let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
     let number = |i: usize| given.get(i).and_then(Value::as_f64).filter(|v| v.is_finite());
@@ -1705,6 +1716,7 @@ fn insert_kind(backend: &dyn Backend, args: &str) -> Value {
         "corridor" => insert_scan(backend, &rest, true),
         "structure" => insert_structure(backend, &rest),
         "roi" => insert_roi(backend, &rest),
+        "drop" => insert_drop(backend, &rest),
         other => return refused(format!("The core plan cannot insert a {other} yet.")),
     };
     match answered.get("ok").and_then(Value::as_bool) {

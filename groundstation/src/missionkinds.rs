@@ -22,6 +22,7 @@ pub const KINDS: &[Kind] = &[
     Kind { id: "takeoff", title: "Takeoff", invokable: "insertTakeoffItem", complex_name: None, class_name: None, geometry: None, placement_hint: "Click the map to place a takeoff." },
     Kind { id: "land", title: "Land", invokable: "insertLandItem", complex_name: None, class_name: None, geometry: None, placement_hint: "Click the map to place a land." },
     Kind { id: "roi", title: "Region of Interest", invokable: "insertROIMissionItem", complex_name: None, class_name: None, geometry: None, placement_hint: "Click the map to place the region of interest" },
+    Kind { id: "drop", title: "Drop payload", invokable: "", complex_name: None, class_name: None, geometry: None, placement_hint: "The payload drops at the selected waypoint." },
     Kind { id: "survey", title: "Survey", invokable: "insertComplexMissionItem", complex_name: Some("Survey"), class_name: Some("SurveyComplexItem"), geometry: Some(("area", "surveyAreaPolygon")), placement_hint: "Click the map to place a survey area." },
     Kind { id: "corridor", title: "Corridor Scan", invokable: "insertComplexMissionItem", complex_name: Some("Corridor Scan"), class_name: Some("CorridorScanComplexItem"), geometry: Some(("line", "corridorPolyline")), placement_hint: "Click the map to place a corridor to scan along." },
     Kind { id: "structure", title: "Structure Scan", invokable: "insertComplexMissionItem", complex_name: Some("Structure Scan"), class_name: Some("StructureScanComplexItem"), geometry: Some(("area", "structurePolygon")), placement_hint: "Click the map to place a structure to scan around." },
@@ -380,7 +381,7 @@ mod tests {
     #[test]
     fn the_simple_kinds_come_first_and_only_the_complex_ones_carry_a_shape() {
         let (simple, complex): (Vec<&Kind>, Vec<&Kind>) = KINDS.iter().partition(|kind| kind.geometry.is_none());
-        assert_eq!(simple.iter().map(|k| k.id).collect::<Vec<_>>(), vec!["waypoint", "takeoff", "land", "roi"]);
+        assert_eq!(simple.iter().map(|k| k.id).collect::<Vec<_>>(), vec!["waypoint", "takeoff", "land", "roi", "drop"]);
         assert_eq!(complex.iter().map(|k| k.id).collect::<Vec<_>>(), vec!["survey", "corridor", "structure"]);
         assert_eq!(&KINDS[..simple.len()].iter().map(|k| k.id).collect::<Vec<_>>(), &simple.iter().map(|k| k.id).collect::<Vec<_>>(), "the simple kinds are the leading run, which is what makes items 0 to 3 of view.missionKinds carry no className, complexName or geometry");
         assert!(simple.iter().all(|k| k.class_name.is_none() && k.complex_name.is_none()), "a kind with no shape has no complex class behind it either, so those three fields are absent together or not at all");
@@ -399,7 +400,9 @@ mod tests {
     #[test]
     fn the_catalogue_names_the_invokable_and_the_geometry() {
         let all = kinds_view(&Nothing, &[]);
-        assert_eq!(all["kinds"].as_array().unwrap().len(), 7);
+        assert_eq!(all["kinds"].as_array().unwrap().len(), 8);
+        let drop = kinds_view(&Nothing, &["drop".to_string()]);
+        assert_eq!((drop["simple"].as_bool(), drop["invokable"].as_str(), drop["title"].as_str()), (Some(true), Some(""), Some("Drop payload")), "a drop is a DO_GRIPPER item the core plan inserts itself; the Qt plan has no invokable for it");
         let corridor = kinds_view(&Nothing, &["Corridor Scan".to_string()]);
         assert_eq!(corridor["id"], "corridor");
         assert_eq!(corridor["invokable"], "insertComplexMissionItem");

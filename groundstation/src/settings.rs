@@ -434,6 +434,7 @@ const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
         ("Map and compass", &["keepMapCenteredOnVehicle", "showAdditionalIndicatorsCompass", "lockNoseUpCompass", "showObstacleDistanceOverlay"]),
         ("On-screen controls", &["showPhotoVideoControl", "showSimpleCameraControl", "showLogReplayStatusBar"]),
         ("Camera & Gimbal Control", &["gimbalTiltChannel", "gimbalPanChannel", "cameraZoomChannel", "cameraLightChannel", "cameraRecordChannel"]),
+        ("Payload", &["payloadBays"]),
         ("Sharing control", &["requestControlAllowTakeover", "requestControlTimeout"]),
     ]),
 ];

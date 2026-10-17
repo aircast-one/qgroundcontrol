@@ -54,6 +54,7 @@ import { readCamera } from './MapCamera';
 import { centersOnVehicleAtEntry, fitsPlanOnEntry, planEntryPoint, planIsDrawn, stillFirstRead } from './PlanBounds';
 import {
   KIND_CORRIDOR,
+  KIND_DROP,
   KIND_LAND,
   KIND_STRUCTURE,
   KIND_SURVEY,
@@ -932,6 +933,9 @@ export const PlanMapContent = ({
               enabled={itemCount.value > 0}
               onClick={() => addMissionItem(KIND_LAND, 'Adding a landing', placeAt(), insertAfter(selected.value, allItems.value))}
             />
+            {kindOffered(insertable, KIND_DROP) ? (
+              <RailButton icon="plan_drop" label="Drop" enabled={itemCount.value > 0 && addable(KIND_DROP)} onClick={() => addMissionItem(KIND_DROP, 'Adding a drop', placeAt(), insertAfter(selected.value, allItems.value))} />
+            ) : null}
           </>
         ) : layer.value === PlanLayer.Fence ? (
           support.fenceRefused ? null : (

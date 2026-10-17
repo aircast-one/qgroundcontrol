@@ -105,6 +105,10 @@ pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
 
 const SETTINGS_NAME: &str = "Initial Camera Settings";
 
+const CMD_DO_GRIPPER: i64 = 211;
+const GRIPPER_RELEASE_ACTION: f64 = 0.0;
+const DROP_PAYLOAD: &str = "Drop payload";
+
 fn abbreviation(command: i64) -> &'static str {
     match command {
         22 => "Takeoff",
@@ -761,7 +765,7 @@ pub fn document_reads(doc: &crate::plandoc::Document, selected: i64) -> Result<V
                 "sequenceNumber": seq,
                 "lastSequenceNumber": seq + s.sections.len(),
                 "abbreviation": abbreviation(s.command),
-                "commandName": info.map(|c| c.friendly_name.clone()).unwrap_or_default(),
+                "commandName": if s.command == CMD_DO_GRIPPER && s.params[1] == Some(GRIPPER_RELEASE_ACTION) { DROP_PAYLOAD.to_string() } else { info.map(|c| c.friendly_name.clone()).unwrap_or_default() },
                 "commandDescription": info.map(|c| c.description.clone()).unwrap_or_default(),
                 "category": info.map(|c| c.category.clone()).unwrap_or_default(),
                 "command": s.command,
@@ -1317,6 +1321,19 @@ mod from_the_document {
         let shown: Vec<(bool, Value)> = plane.iter().skip(1).map(|r| (r["showLoiterRadius"].as_bool().unwrap(), r["loiterRadius"].clone())).collect();
         assert_eq!(shown, [(false, Value::Null), (true, json!(-80.0)), (true, json!(120.0))], "param3 for turns (negative is counter-clockwise), param2 for loiter-to-altitude, nothing for a waypoint");
         assert!(reads(2).iter().all(|r| r["showLoiterRadius"] != true), "a multirotor never draws the ring");
+    }
+
+    #[test]
+    fn a_gripper_release_in_a_mission_reads_as_a_payload_drop() {
+        let plan = json!({ "fileType": "Plan", "version": 1, "groundStation": "QGroundControl", "geoFence": { "version": 2, "circles": [], "polygons": [] }, "rallyPoints": { "version": 2, "points": [] }, "mission": { "firmwareType": 3, "vehicleType": 2, "plannedHomePosition": [47.0, 8.0, 0], "items": [
+            { "type": "SimpleItem", "autoContinue": true, "command": 22, "frame": 3, "doJumpId": 1, "params": [0, 0, 0, 0, 0, 0, 30] },
+            { "type": "SimpleItem", "autoContinue": true, "command": 16, "frame": 3, "doJumpId": 2, "params": [0, 0, 0, 0, 47.02, 8.0, 30] },
+            { "type": "SimpleItem", "autoContinue": true, "command": 211, "frame": 2, "doJumpId": 3, "params": [1, 0, 0, 0, 0, 0, 0] },
+            { "type": "SimpleItem", "autoContinue": true, "command": 211, "frame": 2, "doJumpId": 4, "params": [1, 1, 0, 0, 0, 0, 0] },
+        ] } }).to_string();
+        let reads = document_reads(&crate::plandoc::load(&plan, 2).unwrap(), 0).unwrap();
+        assert_eq!((reads[3]["commandName"].as_str(), reads[4]["commandName"].as_str()), (Some("Drop payload"), Some("Gripper Action")), "a release is what a pilot plans as a drop; a grab keeps the generic name");
+        assert_eq!(reads[3]["specifiesCoordinate"], false);
     }
 
     #[test]

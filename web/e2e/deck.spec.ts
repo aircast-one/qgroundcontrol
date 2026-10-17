@@ -1,4 +1,4 @@
-import { expect, showMapFull, test } from './fixtures';
+import { expect, flightMode, showMapFull, slideAcross, takeOff, test } from './fixtures';
 
 test('more actions lists every deck command', async ({ vehicle }) => {
   await vehicle.getByRole('button', { name: 'More', exact: true }).click();
@@ -6,7 +6,7 @@ test('more actions lists every deck command', async ({ vehicle }) => {
   await expect(sheet).toBeVisible();
   await expect(sheet.getByText('Choose readings')).toBeVisible();
   await expect(sheet.getByText('Edit layout')).toBeVisible();
-  await expect(sheet.getByText('Gripper')).toBeVisible();
+  await expect(sheet.getByText('Payload')).toBeVisible();
 });
 
 test('edit layout from more actions starts and ends layout editing', async ({ vehicle }) => {
@@ -33,9 +33,21 @@ test('map layers switches the base map', async ({ vehicle: app }) => {
   await expect(app.getByText('Bing Road', { exact: true })).toBeVisible();
 });
 
-test('the gripper panel offers release and grab', async ({ vehicle }) => {
+test('the payload sheet offers drop and grab and reports what the aircraft answered', async ({ vehicle }) => {
   await vehicle.getByRole('button', { name: 'More', exact: true }).click();
-  await vehicle.getByRole('dialog').getByText('Gripper').click();
-  await expect(vehicle.getByText('Release', { exact: true })).toBeVisible();
-  await expect(vehicle.getByText('Grab', { exact: true })).toBeVisible();
+  await vehicle.getByRole('dialog').getByText('Payload').click();
+  await expect(vehicle.getByText('No payload command sent yet')).toBeVisible();
+  await vehicle.getByRole('dialog').getByRole('button', { name: 'Grab', exact: true }).click();
+  await expect(vehicle.getByText(/^Grabbed \d+ s ago$/)).toBeVisible();
+  await expect(vehicle.getByRole('dialog').getByRole('button', { name: 'Slide to drop' })).toBeVisible();
+});
+
+test('the drop joins the fly deck once the aircraft is flying', async ({ vehicle }) => {
+  test.setTimeout(120_000);
+  await expect(vehicle.getByRole('button', { name: 'Take off' })).toBeVisible();
+  await expect(vehicle.getByRole('button', { name: 'Slide to drop' })).toBeHidden();
+  await takeOff(vehicle, '5 m');
+  await expect(flightMode(vehicle)).toHaveAccessibleName(/^Hold Flying/, { timeout: 60_000 });
+  await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to drop' }));
+  await expect(vehicle.getByText('Payload dropped')).toBeVisible();
 });

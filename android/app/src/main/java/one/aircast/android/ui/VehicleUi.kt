@@ -393,6 +393,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     val extras = remember(offers) { moreActions(offers) }
     val gripper = remember(extras) { gripperOffers(extras) }
     val resumeFrom = remember(actionsJson) { resumeFromSequence(actionsJson) }
+    val payload = remember(actionsJson) { payloadOf(actionsJson) }
     val automaticMissionPopups by qgcBool(settingControl("settings.flyViewSettings.enableAutomaticMissionPopups"))
     var missionReady by remember { mutableStateOf<Set<String>?>(null) }
     var popupDue by remember { mutableStateOf<GuidedOffer?>(null) }
@@ -467,6 +468,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             report = { refusal = it },
             openChecklist = checklist::open.takeIf { useChecklist },
             readiness = readiness,
+            payload = payload,
         ),
     )
     val deck = deckIds(entries.map { it.id }.toSet(), armed)
@@ -554,7 +556,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             val leading = (buttons.size + 1) / 2
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
                 val button: @Composable (Pair<DeckEntry, Boolean>) -> Unit = { (entry, primary) ->
-                    DeckButton(entry, primary, if (entry === more && deck.isNotEmpty()) Modifier.width(64.dp) else Modifier.weight(1f))
+                    DeckButton(entry, primary, if (entry === more && deck.isNotEmpty()) Modifier.width(64.dp) else Modifier.weight(1f), buttons = buttons.size)
                 }
                 buttons.take(leading).map { button(it) }
                 center()
@@ -577,12 +579,12 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
         val checklistPast = checklistOffered(armed)
         MoreActionsSheet(
             tiles = listOfNotNull(armedStopOffer(offers, armed)?.let { offer -> MoreTile(STOP_MOTORS, R.drawable.ic_warning, true, warning = true) { pending = emergencyStopAction(offer) } }) +
-                deckRest.filter { it.id != CHECKLIST }.map { MoreTile(it.label, it.icon, it.enabled, it.warning, it.onClick) } +
+                deckRest.filter { it.id != CHECKLIST && it.id != RELEASE }.map { MoreTile(it.label, it.icon, it.enabled, it.warning, it.onClick) } +
                 listOfNotNull(
                     MoreTile("Checklist", R.drawable.ic_check_circle, checklistPast == null) { checklist.open() }
                         .takeIf { preflightOffered(preflightJson) },
                     loiter?.let { offer -> MoreTile(offer.title, R.drawable.ic_my_location, true) { editingLoiter = offer } },
-                    MoreTile("Gripper", R.drawable.ic_download, gripper.any { it.ready }) { showGripper = true }.takeIf { gripper.isNotEmpty() },
+                    MoreTile("Payload", R.drawable.ic_payload, gripper.any { it.ready }) { showGripper = true }.takeIf { gripper.isNotEmpty() },
                     MoreTile("Choose readings", R.drawable.ic_tune, true) { flyScreen.choosingReadings = true },
                     MoreTile("Edit layout", R.drawable.ic_edit, true) { flyScreen.layout.startEditing() }.takeIf { !armed },
                 ) +
@@ -614,7 +616,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     LaunchedEffect(gripper.isEmpty()) {
         if (gripper.isEmpty()) showGripper = false
     }
-    if (showGripper && gripper.isNotEmpty()) GripperPanel(gripper) { showGripper = false }
+    if (showGripper && gripper.isNotEmpty()) GripperPanel(gripper, payload) { showGripper = false }
 
 
 }
@@ -982,7 +984,16 @@ internal class FlightDeckContext(
     val report: (String?) -> Unit,
     val openChecklist: (() -> Unit)?,
     val readiness: Readiness? = null,
+    val payload: Payload = SINGLE_GRIPPER,
 )
+
+internal const val BAYS_EMPTY = "Bays empty"
+
+private fun dropLabel(title: String, payload: Payload): String = when {
+    !payload.multiBay -> holdLabel(title)
+    payload.next == null -> BAYS_EMPTY
+    else -> holdLabel("$title ${payload.next}")
+}
 
 internal fun flightDeckEntries(deck: FlightDeckContext): List<DeckEntry> = with(deck) {
     val armAction = offers[if (armed) "disarm" else "arm"]
@@ -1081,6 +1092,26 @@ internal fun flightDeckEntries(deck: FlightDeckContext): List<DeckEntry> = with(
         DeckEntry("changeAltitude", "Altitude", R.drawable.ic_height, offers["changeAltitude"]?.ready == true) {
             openValue(altitudeValue(false))
         }.takeIf { offers["changeAltitude"]?.shown == true },
+        DeckEntry(
+            RELEASE,
+            dropLabel(offers[RELEASE]?.title ?: "Drop", payload),
+            R.drawable.ic_drop,
+            offers[RELEASE]?.ready == true && (!payload.multiBay || payload.next != null),
+            onHold = {
+                scope.launch { report(withContext(Dispatchers.Default) { VehicleCommands.gripperRefusal(GRIPPER_RELEASE, payload.next ?: 0) }) }
+            },
+        ) {
+            val bay = payload.next ?: 0
+            val title = offers[RELEASE]?.title ?: "Drop"
+            confirm(GuidedAction(
+                offerId = RELEASE,
+                name = if (payload.multiBay) "$title $bay" else title,
+                confirm = offers[RELEASE]?.prompt?.ifBlank { null } ?: "Open the gripper and drop the payload.",
+                destructive = false,
+            ) {
+                offMainDetached { VehicleCommands.gripper(GRIPPER_RELEASE, bay) }
+            })
+        }.takeIf { offers[RELEASE]?.shown == true },
         DeckEntry(CHECKLIST, "Checklist", R.drawable.ic_check_circle, true) {
             openChecklist?.invoke()
         }.takeIf { openChecklist != null && checklistOffered(armed) == null },

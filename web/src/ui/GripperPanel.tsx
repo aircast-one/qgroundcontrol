@@ -1,126 +1,102 @@
-import { type KeyboardEvent, useEffect, useRef, useState } from 'react';
-import { useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
-import { delay } from '@/kotlin/Std';
-import { Text } from '@/m3';
+import { useState } from 'react';
+import { VehicleCommands } from '@/bridge/VehicleCommands';
+import { type Json, optInt, optText } from '@/bridge/Json';
+import { useQgcValue } from '@/bridge/QgcState';
+import { useTicker } from '@/kotlin/Compose';
+import { OutlinedButton, Text } from '@/m3';
 import { AircastSheet } from '@/map/AircastSheet';
-import { md, withAlpha } from '@/theme/Colors';
-import type { GuidedOffer } from './GuidedActions';
-import { guidedCommand } from './MoreActions';
-
-export const HOLD_TO_CONFIRM_MS = 500;
-export const HOLD_HELP_MS = 3000;
-export const HOLD_TO_CONFIRM_HELP = 'Hold to Confirm';
-const DISABLED_HOLD_ALPHA = 0.38;
-const HOLD_FILL_ALPHA = 0.35;
+import { md } from '@/theme/Colors';
+import { type GuidedOffer, type Payload, bayNumbers, multiBay } from './GuidedActions';
+import { HoldToConfirm, holdLabel } from './HoldToConfirm';
+import { GRIPPER_GRAB, GRIPPER_RELEASE, guidedCommand } from './MoreActions';
 
 export const GRIPPER_ACTIONS: readonly string[] = ['release', 'grab', 'hold'];
+export const PAYLOAD_STATE = 'vehicle.gripper';
+const STATUS_TICK_MS = 1000;
 
 export const gripperOffers = (extras: readonly GuidedOffer[]): readonly GuidedOffer[] => GRIPPER_ACTIONS.flatMap((id) => extras.find((it) => it.id === id) ?? []);
 
-type Hold = { readonly timer: ReturnType<typeof setTimeout>; readonly fired: { value: boolean } };
+export type PayloadStatus = { readonly text: string; readonly warning: boolean };
 
-const HOLD_KEYS: ReadonlySet<string> = new Set([' ', 'Enter']);
-
-export const HoldToConfirmButton = ({ text, enabled, className, onActivated }: { text: string; enabled: boolean; className?: string; onActivated: () => void }) => {
-  const [pressed, setPressed] = useState(false);
-  const [showHelp, setShowHelp] = useState(false);
-  const activate = useUpdatedRef(onActivated);
-  const hold = useRef<Hold | null>(null);
-
-  useLaunchedEffect([showHelp], async (scope) => {
-    if (!showHelp) return;
-    await delay(HOLD_HELP_MS);
-    if (scope.isActive()) setShowHelp(false);
-  });
-
-  useEffect(
-    () => () => {
-      if (hold.current !== null) clearTimeout(hold.current.timer);
-      hold.current = null;
-    },
-    [],
-  );
-
-  const press = () => {
-    if (!enabled || hold.current !== null) return;
-    setShowHelp(false);
-    const fired = { value: false };
-    hold.current = {
-      fired,
-      timer: setTimeout(() => {
-        fired.value = true;
-        activate.current();
-      }, HOLD_TO_CONFIRM_MS),
-    };
-    setPressed(true);
-  };
-
-  const release = () => {
-    const current = hold.current;
-    if (current === null) return;
-    clearTimeout(current.timer);
-    hold.current = null;
-    setPressed(false);
-    setShowHelp(!current.fired.value);
-  };
-
-  const onKey = (event: KeyboardEvent, down: boolean) => {
-    if (!HOLD_KEYS.has(event.key)) return;
-    event.preventDefault();
-    if (down && !event.repeat) press();
-    if (!down) release();
-  };
-
-  return (
-    <div
-      role="button"
-      tabIndex={enabled ? 0 : -1}
-      aria-disabled={!enabled}
-      onPointerDown={(event) => {
-        if (!enabled) return;
-        event.currentTarget.setPointerCapture(event.pointerId);
-        press();
-      }}
-      onPointerUp={release}
-      onPointerCancel={release}
-      onKeyDown={(event) => onKey(event, true)}
-      onKeyUp={(event) => onKey(event, false)}
-      onBlur={release}
-      className={`relative flex h-14 w-full touch-none select-none items-center justify-center overflow-hidden rounded-shape-md bg-secondary-container outline-none focus-visible:ring-2 focus-visible:ring-primary ${className ?? ''}`}
-      style={{ opacity: enabled ? 1 : DISABLED_HOLD_ALPHA }}
-    >
-      <div
-        className="absolute inset-0 origin-left"
-        style={{ transform: `scaleX(${pressed ? 1 : 0})`, transition: pressed ? `transform ${HOLD_TO_CONFIRM_MS}ms linear` : 'none', background: withAlpha(md('primary'), HOLD_FILL_ALPHA) }}
-      />
-      <div className="relative flex flex-col items-center">
-        <Text typography="labelLarge" color={md('onSecondaryContainer')}>
-          {text}
-        </Text>
-        {showHelp ? (
-          <Text typography="labelSmall" color={md('onSecondaryContainer')}>
-            {HOLD_TO_CONFIRM_HELP}
-          </Text>
-        ) : null}
-      </div>
-    </div>
-  );
+export const agoText = (atMs: number, nowMs: number): string => {
+  const seconds = Math.max(0, Math.floor((nowMs - atMs) / 1000));
+  if (seconds < 60) return `${seconds} s ago`;
+  const minutes = Math.floor(seconds / 60);
+  return minutes < 60 ? `${minutes} min ago` : `${Math.floor(minutes / 60)} h ago`;
 };
 
-export const GripperPanel = ({ offers, onDismiss }: { offers: readonly GuidedOffer[]; onDismiss: () => void }) => (
-  <AircastSheet onDismissRequest={onDismiss}>
-    <div className="flex w-full flex-col gap-2 px-sheet pb-6">
-      {offers.map((offer) => (
-        <HoldToConfirmButton
-          key={offer.id}
-          text={offer.title}
-          enabled={offer.ready}
-          onActivated={() => {
-            guidedCommand(offer.id, null)?.();
-            onDismiss();
-          }}
-        />
+const verbs = (action: string): readonly [string, string] => (action === 'release' ? ['Drop', 'Dropped'] : action === 'grab' ? ['Grab', 'Grabbed'] : ['Hold', 'Holding']);
+
+export const payloadStatus = (json: Json | null, nowMs: number): PayloadStatus | null => {
+  if (json === null) return null;
+  const action = optText(json, 'action');
+  const bay = optInt(json, 'bay');
+  const [plainVerb, plainDone] = verbs(action);
+  const [verb, done] = bay > 0 ? [`${plainVerb} ${bay}`, `Bay ${bay} ${plainDone.toLowerCase()}`] : [plainVerb, plainDone];
+  const ago = agoText(optInt(json, 'atMs'), nowMs);
+  switch (optText(json, 'outcome')) {
+    case 'sent':
+      return { text: `${verb} sent, waiting for the aircraft`, warning: false };
+    case 'confirmed':
+      return { text: `${done} ${ago}`, warning: false };
+    case 'refused':
+      return { text: `${verb} refused by the flight controller ${ago}`, warning: true };
+    case 'unanswered':
+      return { text: action === 'release' ? `${verb} not confirmed ${ago}. It may have dropped, check before dropping again.` : `${verb} not confirmed ${ago}. Check the gripper before trying again.`, warning: true };
+    default:
+      return null;
+  }
+};
+
+export const bayLabel = (bay: number, payload: Payload): string => (payload.empty.includes(bay) ? `Bay ${bay} empty, slide to drop` : `Slide to drop bay ${bay}`);
+
+const offerReady = (offers: readonly GuidedOffer[], id: string): boolean => offers.some((it) => it.id === id && it.ready);
+
+const SingleGripper = ({ offers }: { offers: readonly GuidedOffer[] }) => (
+  <>
+    {offers
+      .filter((it) => it.id === 'release')
+      .map((offer) => (
+        <HoldToConfirm key={offer.id} label={holdLabel(offer.title)} enabled={offer.ready} onConfirm={() => guidedCommand(offer.id, null)?.()} />
       ))}
+    <div className="flex gap-2">
+      {offers
+        .filter((it) => it.id !== 'release')
+        .map((offer) => (
+          <OutlinedButton key={offer.id} enabled={offer.ready} onClick={() => guidedCommand(offer.id, null)?.()}>
+            {offer.title}
+          </OutlinedButton>
+        ))}
     </div>
-  </AircastSheet>
+  </>
 );
+
+const Bays = ({ offers, payload }: { offers: readonly GuidedOffer[]; payload: Payload }) => (
+  <>
+    {bayNumbers(payload).map((bay) => (
+      <div key={bay} className="flex items-center gap-2">
+        <HoldToConfirm className="flex-1" label={bayLabel(bay, payload)} enabled={offerReady(offers, 'release')} onConfirm={() => void VehicleCommands.gripper(GRIPPER_RELEASE, bay)} />
+        <OutlinedButton enabled={offerReady(offers, 'grab')} label={`Grab bay ${bay}`} onClick={() => void VehicleCommands.gripper(GRIPPER_GRAB, bay)}>
+          Grab
+        </OutlinedButton>
+      </div>
+    ))}
+  </>
+);
+
+export const GripperPanel = ({ offers, payload, onDismiss }: { offers: readonly GuidedOffer[]; payload: Payload; onDismiss: () => void }) => {
+  const stateJson = useQgcValue(PAYLOAD_STATE) as Json | null;
+  const [now, setNow] = useState(() => Date.now());
+  useTicker(STATUS_TICK_MS, [], () => setNow(Date.now()));
+  const status = payloadStatus(stateJson, now);
+  return (
+    <AircastSheet onDismissRequest={onDismiss}>
+      <div className="flex w-full flex-col gap-3 px-sheet pb-6">
+        <Text typography="bodyMedium" color={status?.warning === true ? md('error') : md('onSurfaceVariant')}>
+          {status?.text ?? 'No payload command sent yet'}
+        </Text>
+        {multiBay(payload) ? <Bays offers={offers} payload={payload} /> : <SingleGripper offers={offers} />}
+      </div>
+    </AircastSheet>
+  );
+};

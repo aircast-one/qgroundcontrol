@@ -1,4 +1,4 @@
-import { type Json, isNull, jsonObjects, optBoolean, optInt, optJSONArray, optText } from '@/bridge/Json';
+import { type Json, isNull, jsonObjects, optBoolean, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 
 export const GUIDED_ACTIONS = 'view.guidedActions';
 
@@ -60,6 +60,21 @@ export const guidedOffers = (view: Json | null): ReadonlyMap<string, GuidedOffer
         ] as const;
       }),
   );
+
+export type Payload = { readonly bays: number; readonly empty: readonly number[]; readonly next: number | null };
+
+export const SINGLE_GRIPPER: Payload = { bays: 1, empty: [], next: null };
+
+export const payloadOf = (view: Json | null): Payload => {
+  const payload = optJSONObject(view, 'payload');
+  if (payload === null) return SINGLE_GRIPPER;
+  const bays = Math.max(1, optInt(payload, 'bays', 1));
+  return { bays, empty: (optJSONArray(payload, 'empty') ?? []).filter((it): it is number => typeof it === 'number'), next: isNull(payload, 'next') ? null : optInt(payload, 'next') };
+};
+
+export const multiBay = (payload: Payload): boolean => payload.bays > 1;
+
+export const bayNumbers = (payload: Payload): readonly number[] => Array.from({ length: payload.bays }, (_, index) => index + 1);
 
 export const resumeFromSequence = (view: Json | null): number | null => {
   if (view === null || isNull(view, 'resumeFromSequence')) return null;

@@ -478,6 +478,9 @@ fn insert(backend: &dyn Backend, args: &str) -> Value {
     let Some(kind) = lookup(named) else {
         return json!({ "ok": false, "unknown": named, "reason": format!("the core has no {named} in its catalogue, so this one has to be inserted directly") });
     };
+    if kind.invokable.is_empty() {
+        return json!({ "ok": false, "reason": format!("Only the core plan inserts a {}.", kind.title.to_lowercase()) });
+    }
     let index = args.get(3).and_then(Value::as_i64).unwrap_or(-1);
     let Some(held) = item_count(backend).filter(|count| *count > 0) else {
         return json!({ "ok": false, "reason": "the plan did not say how many items it holds" });

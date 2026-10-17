@@ -3,7 +3,7 @@ import { type Json, parseJson } from '@/bridge/Json';
 import { multiVehiclePanelEnabled, osdModeText, osdStatusNote } from './ActiveVehicle';
 import { CHECKLIST, HOLD_TO_TAKE_OFF, TAKE_OFF } from './FlyDeck';
 import { Readiness } from './FlyState';
-import { GuidedOffer, guidedOffers } from './GuidedActions';
+import { GuidedOffer, type Payload, SINGLE_GRIPPER, guidedOffers } from './GuidedActions';
 import type { GuidedValueKind } from './GuidedValueFlow';
 import { PAUSE } from './MoreActions';
 import {
@@ -27,7 +27,7 @@ describe('FlightDeckEntriesTest', () => {
 
   const deck = (
     offers: readonly GuidedOffer[],
-    { armed = false, openChecklist = null, openValue = () => undefined, readiness = null }: { armed?: boolean; openChecklist?: (() => void) | null; openValue?: (kind: GuidedValueKind) => void; readiness?: Readiness | null } = {},
+    { armed = false, openChecklist = null, openValue = () => undefined, readiness = null, payload = SINGLE_GRIPPER }: { armed?: boolean; openChecklist?: (() => void) | null; openValue?: (kind: GuidedValueKind) => void; readiness?: Readiness | null; payload?: Payload } = {},
   ) =>
     FlightDeckContext({
       offers: new Map(offers.map((it) => [it.id, it] as const)),
@@ -37,7 +37,25 @@ describe('FlightDeckEntriesTest', () => {
       report: () => undefined,
       openChecklist,
       readiness,
+      payload,
     });
+
+  it('a basket drops its next loaded bay from the deck and says which', () => {
+    const drop = (empty: readonly number[], next: number | null) =>
+      flightDeckEntries(deck([{ ...offer('release'), title: 'Drop' }], { payload: { bays: 3, empty, next } })).find((it) => it.id === 'release');
+    expect([drop([], 1)?.label, drop([1], 2)?.label]).toEqual(['Slide to drop 1', 'Slide to drop 2']);
+    expect([drop([1, 2, 3], null)?.label, drop([1, 2, 3], null)?.enabled]).toEqual(['Bays empty', false]);
+  });
+
+  it('a vehicle with a gripper gets a drop on the deck that lands on a hold, like land', () => {
+    const entries = flightDeckEntries(deck([offer('arm'), { ...offer('release'), title: 'Drop' }]));
+    const drop = entries.find((it) => it.id === 'release');
+    expect(entries.map((it) => it.id)).toEqual(['arm', 'release']);
+    expect(drop?.label).toBe('Slide to drop');
+    expect(drop?.onHold).not.toBeNull();
+    expect(drop?.icon).toBe('ic_drop');
+    expect(flightDeckEntries(deck([offer('arm'), offer('release', 'hidden')])).map((it) => it.id)).toEqual(['arm']);
+  });
 
   it('the deck shows the offers the vehicle shows, and the checklist only on the ground when offered', () => {
     const offers = [offer('arm'), offer('takeoff'), offer('rtl', 'hidden'), offer('land', 'disabled')];

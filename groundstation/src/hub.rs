@@ -306,6 +306,8 @@ pub struct Vehicle {
     mission_cached_last: i32,
     resume_upload: Option<i64>,
     pub resume_failed: Option<i64>,
+    pub gripper: Option<crate::guided::GripperState>,
+    pub empty_bays: std::collections::BTreeSet<i64>,
     pub trigger_points: Vec<(f64, f64, f64)>,
     pub trigger_points_appended: bool,
     image_captured_seen: bool,
@@ -535,6 +537,8 @@ impl Vehicle {
             mission_cached_last: -1,
             resume_upload: None,
             resume_failed: None,
+            gripper: None,
+            empty_bays: std::collections::BTreeSet::new(),
             trigger_points: Vec::new(),
             trigger_points_appended: false,
             image_captured_seen: false,
@@ -1825,7 +1829,7 @@ impl Vehicle {
             "startMission" => guidedcmd::start_mission(&state, flag("flying")),
             "emergencyStop" => guidedcmd::emergency_stop(),
             "abortLanding" => guidedcmd::abort_landing(number("climbOut")),
-            "gripper" => guidedcmd::gripper(number("gripAction")),
+            "gripper" => guidedcmd::gripper(number("gripAction"), action.get("bay").and_then(Value::as_f64).unwrap_or(0.0)),
             "cancelRoi" => guidedcmd::cancel_roi(&state),
             "resetParameters" => guidedcmd::reset_parameters(),
             "setCurrentMission" => guidedcmd::set_current_mission(&state, number("sequence")),
@@ -2319,6 +2323,10 @@ impl Vehicle {
                     let number = |key: &str| action.get(key).and_then(Value::as_f64).unwrap_or(0.0);
                     self.estimator_origin = Some((number("latitude"), number("longitude"), number("altitude")));
                 }
+                if action.get("action").and_then(Value::as_str) == Some("gripper") && !steps.is_empty() {
+                    let number = |key: &str| action.get(key).and_then(Value::as_f64).unwrap_or(0.0) as i64;
+                    self.gripper = Some(crate::guided::GripperState::sent(number("gripAction"), number("bay"), wall_ms()));
+                }
                 if action.get("action").and_then(Value::as_str) == Some("roi") && !steps.is_empty() {
                     let number = |key: &str| action.get(key).and_then(Value::as_f64).unwrap_or(f64::NAN);
                     self.roi_coord = Some((number("latitude"), number("longitude"), number("altitude")));
@@ -2326,6 +2334,20 @@ impl Vehicle {
                 let emits = self.guided.start(steps, &self.observed(), now_ms);
                 Ok(self.carry(emits, now_ms))
             }
+        }
+    }
+
+    fn gripper_answered(&mut self, accepted: Option<bool>) {
+        let Some(sent) = self.gripper.filter(|g| g.outcome == crate::guided::GripperOutcome::Sent) else { return };
+        let answered = sent.answered(accepted, wall_ms());
+        self.gripper = Some(answered);
+        self.empty_bays = match answered.empties() {
+            Some(true) => self.empty_bays.iter().copied().chain([answered.bay]).collect(),
+            Some(false) => self.empty_bays.iter().copied().filter(|bay| *bay != answered.bay).collect(),
+            None => self.empty_bays.clone(),
+        };
+        if let Some(text) = answered.notice() {
+            self.pending_notices.push((crate::noticeboard::BRIEF, text));
         }
     }
 
@@ -2490,6 +2512,14 @@ impl Vehicle {
                 Out::RequestResult { tag, component, result, failure, .. } if (INSPECTOR_INTERVAL_TAG..INSPECTOR_INTERVAL_TAG + (1 << 32)).contains(&tag) => {
                     if result != RESULT_ACCEPTED || failure != crate::mavcmd::RequestFailure::None {
                         self.intervals_unsupported.insert((component, (tag - INSPECTOR_INTERVAL_TAG) as u32));
+                    }
+                    Vec::new()
+                }
+                Out::Result { command: guidedcmd::CMD_DO_GRIPPER, result, failure, .. } => {
+                    match failure {
+                        Failure::ResultOnly => self.gripper_answered(Some(result == RESULT_ACCEPTED)),
+                        Failure::NoResponse => self.gripper_answered(None),
+                        Failure::Duplicate => {}
                     }
                     Vec::new()
                 }
@@ -4805,6 +4835,10 @@ pub fn now_ms() -> u64 {
     STARTED.elapsed().as_millis() as u64
 }
 
+pub fn wall_ms() -> i64 {
+    chrono::Utc::now().timestamp_millis()
+}
+
 pub fn lock() -> MutexGuard<'static, Hub> {
     HUB.lock().unwrap_or_else(PoisonError::into_inner)
 }
@@ -5513,6 +5547,53 @@ mod tests {
         hub.on_frame(origin(0), &header, &ack(MavCmd::MAV_CMD_DO_SET_ROI_NONE, MavResult::MAV_RESULT_ACCEPTED), 3, 0);
         assert!(!hub.active().unwrap().roi_enabled);
         assert_eq!(hub.active().unwrap().roi_coord, None, "an accepted ROI_NONE clears the point, as Vehicle::_handleCommandAck does");
+    }
+
+    #[test]
+    fn a_payload_drop_is_told_by_the_flight_controllers_answer_not_by_the_send() {
+        use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, MavCmd, MavResult};
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 0);
+        let ack = |result| MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_DO_GRIPPER, result, ..Default::default() });
+        let outcome = |hub: &Hub| hub.active().unwrap().gripper.map(|g| g.outcome);
+        hub.guided(None, &json!({ "action": "gripper", "gripAction": 0 }), 1).unwrap();
+        assert_eq!(outcome(&hub), Some(crate::guided::GripperOutcome::Sent));
+        assert_eq!(hub.active().unwrap().gripper.map(|g| g.json(&Default::default())["action"].clone()), Some(json!("release")), "the heads read the pending drop from the vehicle's gripper field");
+        hub.on_frame(origin(0), &header, &ack(MavResult::MAV_RESULT_ACCEPTED), 2, 0);
+        assert_eq!(outcome(&hub), Some(crate::guided::GripperOutcome::Confirmed));
+        assert!(hub.active().unwrap().pending_notices.contains(&(crate::noticeboard::BRIEF, "Payload dropped".to_string())));
+        hub.guided(None, &json!({ "action": "gripper", "gripAction": 1 }), 10_000).unwrap();
+        hub.on_frame(origin(0), &header, &ack(MavResult::MAV_RESULT_FAILED), 10_001, 0);
+        assert_eq!(outcome(&hub), Some(crate::guided::GripperOutcome::Refused));
+        assert!(hub.active().unwrap().pending_notices.contains(&(crate::noticeboard::BRIEF, "Grab refused by the flight controller".to_string())));
+        hub.guided(None, &json!({ "action": "gripper", "gripAction": 0 }), 20_000).unwrap();
+        hub.tick(20_000 + crate::mavcmd::ACK_TIMEOUT_MS + 1);
+        assert_eq!(outcome(&hub), Some(crate::guided::GripperOutcome::Unanswered), "a drop the vehicle never answered is not a failed drop");
+        let notices = &hub.active().unwrap().pending_notices;
+        assert!(notices.contains(&(crate::noticeboard::BRIEF, "Drop not confirmed. It may have dropped, check before dropping again.".to_string())));
+        assert!(!notices.iter().any(|(_, text)| text.starts_with("Vehicle did not respond")), "the generic command line would say the same thing twice");
+    }
+
+    #[test]
+    fn a_basket_remembers_which_bays_it_has_dropped() {
+        use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, MavCmd, MavResult};
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 0);
+        let ack = |result| MavMessage::COMMAND_ACK(COMMAND_ACK_DATA { command: MavCmd::MAV_CMD_DO_GRIPPER, result, ..Default::default() });
+        let empty = |hub: &Hub| hub.active().unwrap().empty_bays.iter().copied().collect::<Vec<i64>>();
+        let sent = hub.guided(None, &json!({ "action": "gripper", "gripAction": 0, "bay": 2 }), 1).unwrap();
+        assert!(sent.iter().any(|(_, bytes)| matches!(decode(bytes), MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_DO_GRIPPER && c.param1 == 2.0 && c.param2 == 0.0)), "the bay goes out as the gripper instance");
+        hub.on_frame(origin(0), &header, &ack(MavResult::MAV_RESULT_ACCEPTED), 2, 0);
+        assert_eq!(empty(&hub), [2]);
+        assert!(hub.active().unwrap().pending_notices.contains(&(crate::noticeboard::BRIEF, "Bay 2 dropped".to_string())));
+        hub.guided(None, &json!({ "action": "gripper", "gripAction": 0, "bay": 3 }), 10_000).unwrap();
+        hub.on_frame(origin(0), &header, &ack(MavResult::MAV_RESULT_FAILED), 10_001, 0);
+        assert_eq!(empty(&hub), [2], "a refused drop leaves the bay loaded");
+        hub.guided(None, &json!({ "action": "gripper", "gripAction": 1, "bay": 2 }), 20_000).unwrap();
+        hub.on_frame(origin(0), &header, &ack(MavResult::MAV_RESULT_ACCEPTED), 20_001, 0);
+        assert!(empty(&hub).is_empty(), "grabbing a fresh payload loads the bay again");
     }
 
     #[test]
