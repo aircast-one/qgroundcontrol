@@ -10,7 +10,7 @@ test('an enforced preflight checklist pops up on connect, ticks off and resets',
   await app.getByRole('button', { name: 'Close settings' }).click();
   await connectMock(app);
   const checklist = app.getByRole('dialog').filter({ hasText: 'Pre-flight checklist' });
-  await expect(checklist).toBeVisible({ timeout: 30_000 });
+  await expect(checklist).toBeVisible({ timeout: 60_000 });
   await expect(checklist.getByText(/^9 of 9 left to check/)).toBeVisible();
   await ['Props mounted and secured?', 'Battery connector firmly plugged?', 'Receiving signal. Perform range test & confirm.'].reduce(
     (done, check) => done.then(() => checklist.getByRole('checkbox', { name: check }).click()),

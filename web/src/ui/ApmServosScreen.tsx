@@ -151,7 +151,7 @@ const Stepper = ({ title, fact }: { title: string; fact: Fact }) => {
         </Text>
         <RepeatButton label="-" onStep={() => step(-1)} />
         <div className="w-24 shrink-0" onBlur={commit}>
-          <OutlinedTextField value={typed} onValueChange={setTyped} singleLine keyboardType="number" onDone={commit} />
+          <OutlinedTextField value={typed} onValueChange={setTyped} ariaLabel={`${title}, ${fact.name}`} singleLine keyboardType="number" onDone={commit} />
         </div>
         <RepeatButton label="+" onStep={() => step(1)} />
       </div>

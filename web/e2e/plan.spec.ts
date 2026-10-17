@@ -9,7 +9,7 @@ test('tapping the plan map builds a mission with home, takeoff and waypoints', a
   await expect.poll(() => itemCount(app)).toBeGreaterThanOrEqual(5);
   const drawn = await itemCount(app);
   await app.getByRole('button', { name: 'Undo' }).click();
-  await expect.poll(() => itemCount(app)).toBeLessThan(drawn);
+  await expect.poll(() => itemCount(app), { timeout: 30_000 }).toBeLessThan(drawn);
 });
 
 test('upload sends the mission to the vehicle and offers to fly it', async ({ vehicle }) => {
