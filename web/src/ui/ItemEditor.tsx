@@ -3,7 +3,7 @@ import { type Json, arrayJSONObject, has, isNull, jsonObjects, jsonStrings, optA
 import { PlanCommands } from '@/bridge/BridgeCommands';
 import { type Fact, type FactSlider, Qgc, makeFact } from '@/bridge/Qgc';
 import { VehicleCommands } from '@/bridge/VehicleCommands';
-import { useLaunchedEffect, useProduceState } from '@/kotlin/Compose';
+import { useKeyedState, useLaunchedEffect, useProduceState } from '@/kotlin/Compose';
 import { delay, format } from '@/kotlin/Std';
 import { AlertDialog, Button, Checkbox, DropdownMenu, DropdownMenuItem, FilterChip, ListItem, OutlinedTextField, RadioButton, Switch, Text, TextButton } from '@/m3';
 import type { KeyboardType } from '@/m3';
@@ -23,7 +23,7 @@ import { factFromControl, factSlider } from '@/ui/ParameterForm';
 import { ValueDetailsSheet } from '@/ui/ParameterLinks';
 import { PatternPresets, presetKind } from '@/ui/PatternPresets';
 import { PlanVehicleRows } from '@/ui/PlanVehicleRows';
-import { FactRow, FieldSlider, LocalTypedDiscarded, useKeyedState } from '@/ui/SettingsScreen';
+import { FactRow, FieldSlider, LocalTypedDiscarded } from '@/ui/SettingsScreen';
 import { SectionHeader } from '@/ui/SetupRow';
 
 export const itemFactsPath = (index: number): string => `view.itemFacts(${index})`;

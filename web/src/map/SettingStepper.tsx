@@ -1,6 +1,6 @@
 import { type MouseEvent, type PointerEvent, type ReactNode, useEffect, useRef, useState } from 'react';
 import { AlertDialog, OutlinedTextField, Slider, Text, TextButton } from '@/m3';
-import { useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
+import { useKeyedState, useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
 import { coerceIn, delay, format } from '@/kotlin/Std';
 import { md } from '@/theme/Colors';
 import { typedNumber } from './AltitudeEntry';
@@ -13,15 +13,6 @@ const STEP_BUTTON = 40;
 const VALUE_MIN_WIDTH = 72;
 
 export type ClosedRange = { readonly start: number; readonly endInclusive: number };
-
-const sameKeys = (a: readonly unknown[], b: readonly unknown[]) => a.length === b.length && a.every((key, index) => Object.is(key, b[index]));
-
-export const useKeyedState = <T,>(keys: readonly unknown[], initial: () => T): [T, (next: T) => void] => {
-  const [held, setHeld] = useState(() => ({ keys, value: initial() }));
-  const current = sameKeys(held.keys, keys) ? held : { keys, value: initial() };
-  if (current !== held) setHeld(current);
-  return [current.value, (next: T) => setHeld((previous) => ({ keys: previous.keys, value: next }))];
-};
 
 export const steppedValue = (current: number, step: number, direction: number, range: ClosedRange | null): number => {
   const next = current + step * direction;

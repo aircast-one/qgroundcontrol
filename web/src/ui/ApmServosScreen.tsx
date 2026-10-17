@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { type Json, isNull, jsonObjects, optDouble, optInt, optJSONArray, optJSONObject } from '@/bridge/Json';
 import { type Fact, Qgc } from '@/bridge/Qgc';
-import { useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
+import { useKeyedState, useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
 import { delay } from '@/kotlin/Std';
 import { LinearProgressIndicator, OutlinedTextField, Text } from '@/m3';
 import { toDoubleOrNull, typedNumber } from '@/map/AltitudeEntry';
-import { useKeyedState, useRepeatWhileHeld } from '@/map/SettingStepper';
+import { useRepeatWhileHeld } from '@/map/SettingStepper';
 import { md } from '@/theme/Colors';
 import { factFromControl } from '@/ui/ParameterForm';
 import { FactRow } from '@/ui/SettingsScreen';

@@ -1,12 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { type Json, jsonObjects, optBoolean, optDouble, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { type Fact, Qgc } from '@/bridge/Qgc';
-import { useLaunchedEffect } from '@/kotlin/Compose';
+import { useKeyedState, useLaunchedEffect } from '@/kotlin/Compose';
 import { coerceAtLeast, coerceIn, roundToInt } from '@/kotlin/Std';
 import { FilterChip, OutlinedButton, RadioButton, ScrollableTabRow, Slider, Tab, Text } from '@/m3';
 import { toDoubleOrNull } from '@/map/AltitudeEntry';
 import { sentenceCase } from '@/map/SentenceCase';
-import { useKeyedState } from '@/map/SettingStepper';
 import { md } from '@/theme/Colors';
 import { AutotuneSection } from '@/ui/AutotuneSection';
 import { factFromControl } from '@/ui/ParameterForm';

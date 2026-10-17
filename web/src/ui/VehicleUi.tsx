@@ -4,13 +4,12 @@ import { type Json, isNull, jsonObjects, optBoolean, optDouble, optJSONArray, op
 import { Qgc } from '@/bridge/Qgc';
 import { settingControl, useQgcBool, useQgcPath, useQgcPathHoldingLast } from '@/bridge/QgcState';
 import { VehicleCommands } from '@/bridge/VehicleCommands';
-import { useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
+import { useKeyedState, useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
 import { useValue } from '@/kotlin/State';
 import { delay } from '@/kotlin/Std';
 import { AlertDialog, Checkbox, DropdownMenu, HorizontalDivider, IconButton, ListItem, Surface, Switch, Text, TextButton, type Typography } from '@/m3';
 import { AircastSheet } from '@/map/AircastSheet';
 import { sentenceCase } from '@/map/SentenceCase';
-import { useKeyedState } from '@/map/SettingStepper';
 import { Drawable, MaterialIcon } from '@/res/Icon';
 import type { DrawableName } from '@/res/drawables';
 import { aircast, argb, md, withAlpha } from '@/theme/Colors';

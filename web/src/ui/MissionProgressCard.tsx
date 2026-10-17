@@ -1,11 +1,11 @@
 import { type Json, optBoolean, optDouble, optInt, optText } from '@/bridge/Json';
 import { useQgcPath } from '@/bridge/QgcState';
 import { LinearProgressIndicator, Surface, Text, TextButton } from '@/m3';
-import { useKeyedState } from '@/map/SettingStepper';
 import { Color, md } from '@/theme/Colors';
 import { useRememberActiveVehicleId } from './ActiveVehicle';
 import { SetWaypointSheet } from './MapClickMenu';
 import { useOsdBackdrop } from './Osd';
+import { useKeyedState } from '@/kotlin/Compose';
 
 const MISSION_PROGRESS = 'view.missionProgress';
 const CARD_MAX_WIDTH = 360;

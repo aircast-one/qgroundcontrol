@@ -4,8 +4,8 @@ import { useQgcPath } from '@/bridge/QgcState';
 import { type Json, jsonObjects, optBoolean, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { createDocument, openDocument } from '@/kotlin/Platform';
 import { AlertDialog, Checkbox, DropdownMenu, DropdownMenuItem, Text, TextButton } from '@/m3';
-import { useKeyedState } from '@/map/SettingStepper';
 import { aircast, md } from '@/theme/Colors';
+import { useKeyedState } from '@/kotlin/Compose';
 
 export const PARAMETER_TOOLS_PATH = 'view.parameterTools';
 export const PARAMETER_REFRESH_PATH = 'parameterTools.refresh';

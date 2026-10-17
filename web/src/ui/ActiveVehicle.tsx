@@ -2,14 +2,13 @@ import { type ReactNode, useContext, useEffect, useMemo, useState } from 'react'
 import { type Json, has, isNull, jsonObjects, optBoolean, optInt, optJSONArray, optText } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
 import { settingControl, truthy, useQgcDerived, useQgcPath, useQgcValue } from '@/bridge/QgcState';
-import { useLaunchedEffect } from '@/kotlin/Compose';
+import { useKeyedState, useLaunchedEffect } from '@/kotlin/Compose';
 import { useValue } from '@/kotlin/State';
 import { coerceIn, delay } from '@/kotlin/Std';
 import { Checkbox, CircularProgressIndicator, DropdownMenu, DropdownMenuItem, HorizontalDivider, LinearProgressIndicator, ListItem, Surface, Switch, Text, TextButton } from '@/m3';
 import { AircastSheet } from '@/map/AircastSheet';
 import { useSilentSeconds } from '@/map/Silence';
 import { gotoLocation } from '@/map/GotoMarker';
-import { useKeyedState } from '@/map/SettingStepper';
 import {
   CHOOSER_TITLE,
   FleetBridge,

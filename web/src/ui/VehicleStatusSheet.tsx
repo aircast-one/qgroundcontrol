@@ -2,7 +2,7 @@ import { type KeyboardEvent, useContext, useMemo, useState } from 'react';
 import { VehicleCommands } from '@/bridge/VehicleCommands';
 import { optBoolean } from '@/bridge/Json';
 import { useQgcPath } from '@/bridge/QgcState';
-import { useLaunchedEffect } from '@/kotlin/Compose';
+import { useKeyedState, useLaunchedEffect } from '@/kotlin/Compose';
 import { OutlinedButton, Text, TextButton } from '@/m3';
 import { AircastSheet } from '@/map/AircastSheet';
 import { Drawable, MaterialIcon } from '@/res/Icon';
@@ -17,7 +17,7 @@ import type { GuidedOffer } from './GuidedActions';
 import { HoldToConfirm } from './HoldToConfirm';
 import { ParameterForm } from './ParameterForm';
 import { EDIT_PARAMETER_TITLE, LinkedText, ParameterEditDialog } from './ParameterLinks';
-import { AIRCRAFT_SETUP, useKeyedState } from './SettingsScreen';
+import { AIRCRAFT_SETUP } from './SettingsScreen';
 import { SETUP_OVERVIEW_PAGE, SETUP_PARAMETERS_PAGE } from './SetupScreen';
 import { type ArmingCheck, MESSAGES, MessageLine, WARNINGS, armingChecks, vehicleMessages } from './VehicleMessages';
 

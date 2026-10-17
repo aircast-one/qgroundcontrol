@@ -2,12 +2,11 @@ import { type PointerEvent, type ReactNode, type RefCallback, useEffect, useRef,
 import { type Json, optBoolean, optLong, optString } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcDerived, useQgcPath } from '@/bridge/QgcState';
-import { type Scope, useUpdatedRef } from '@/kotlin/Compose';
+import { type Scope, useKeyedState, useUpdatedRef } from '@/kotlin/Compose';
 import { coerceIn, same } from '@/kotlin/Std';
 import { Color, aircast, withAlpha } from '@/theme/Colors';
 import { type Offset, useAvoidedByVideoMessage } from '@/ui/FlyShell';
 import { FLY_STATE, type FlyState, flyState } from '@/ui/FlyState';
-import { useKeyedState } from '@/ui/SettingsScreen';
 
 export const VIRTUAL_JOYSTICK_PATH = 'view.virtualJoystick';
 export const VIRTUAL_JOYSTICK_VALUE = 'vehicle.virtualTabletJoystickValue';

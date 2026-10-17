@@ -3,7 +3,7 @@ import { type Json, jsonObjects, optBoolean, optDouble, optJSONArray, optJSONObj
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcPath } from '@/bridge/QgcState';
 import { VehicleCommands } from '@/bridge/VehicleCommands';
-import { useLaunchedEffect } from '@/kotlin/Compose';
+import { useKeyedState, useLaunchedEffect } from '@/kotlin/Compose';
 import { useValue } from '@/kotlin/State';
 import { coerceAtLeast, format } from '@/kotlin/Std';
 import { Button, HorizontalDivider, ListItem, OutlinedButton, OutlinedTextField, Slider, Switch, Text } from '@/m3';
@@ -14,7 +14,6 @@ import { type LoiterEdit, loiterEditNumber } from '@/map/GotoMarker';
 import { MINIMUM_CIRCLE_RADIUS_METRES } from '@/map/MissionLayers';
 import { OrbitCircle } from '@/map/OrbitMarker';
 import { sentenceCase } from '@/map/SentenceCase';
-import { useKeyedState } from '@/map/SettingStepper';
 import { metresBetween } from '@/map/TerrainProfile';
 import type { TrackPoint } from '@/map/VehicleMap';
 import { aircast, md } from '@/theme/Colors';

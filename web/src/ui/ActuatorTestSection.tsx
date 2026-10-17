@@ -1,10 +1,9 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { type Json, isNull, jsonObjects, optBoolean, optDouble, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
-import { useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
+import { useKeyedState, useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
 import { delay } from '@/kotlin/Std';
 import { DropdownMenu, DropdownMenuItem, OutlinedButton, Slider, Switch, Text } from '@/m3';
-import { useKeyedState } from '@/map/SettingStepper';
 import { aircast } from '@/theme/Colors';
 
 export const ACTUATOR_TEST_ACTIVE = 'actuatorTest.setActive';

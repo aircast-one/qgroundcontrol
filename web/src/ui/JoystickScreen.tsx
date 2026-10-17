@@ -1,12 +1,12 @@
 import { useState } from 'react';
 import { type Json, type JsonArray, isNull, jsonObjects, jsonStrings, opt, optBoolean, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { type FactSlider, Qgc } from '@/bridge/Qgc';
-import { useTicker } from '@/kotlin/Compose';
+import { useKeyedState, useTicker } from '@/kotlin/Compose';
 import { AlertDialog, Button, Checkbox, DropdownMenu, DropdownMenuItem, LinearProgressIndicator, OutlinedButton, OutlinedTextField, RadioButton, Switch, Text, TextButton } from '@/m3';
 import { toDoubleOrNull } from '@/map/AltitudeEntry';
 import { md } from '@/theme/Colors';
 import { factSlider } from '@/ui/ParameterForm';
-import { FieldSlider, useKeyedState } from '@/ui/SettingsScreen';
+import { FieldSlider } from '@/ui/SettingsScreen';
 import { EmptyState, SectionHeader } from '@/ui/SetupRow';
 
 export const JOYSTICK_VIEW = 'view.joystick';

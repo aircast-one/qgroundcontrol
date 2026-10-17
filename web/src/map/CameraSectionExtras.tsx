@@ -3,7 +3,8 @@ import { FilterChip, OutlinedTextField, Slider, Switch, Text } from '@/m3';
 import { coerceIn } from '@/kotlin/Std';
 import { typedNumber } from './AltitudeEntry';
 import type { CameraExtras } from './ItemCamera';
-import { type ClosedRange, useKeyedState } from './SettingStepper';
+import { type ClosedRange } from './SettingStepper';
+import { useKeyedState } from '@/kotlin/Compose';
 
 export const CAMERA_MODES: readonly string[] = ['Photo', 'Video', 'Survey'];
 

@@ -1,11 +1,10 @@
 import { useRef, useState } from 'react';
 import { type Json, arrayJSONObject, has, isNull, jsonObjects, opt, optArrayText, optBoolean, optDouble, optInt, optJSONArray, optText } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
-import { useTicker } from '@/kotlin/Compose';
+import { useKeyedState, useTicker } from '@/kotlin/Compose';
 import { coerceIn } from '@/kotlin/Std';
 import { DropdownMenu, DropdownMenuItem, OutlinedButton, OutlinedTextField, Slider, Switch, Text } from '@/m3';
 import { toDoubleOrNull } from '@/map/AltitudeEntry';
-import { useKeyedState } from '@/map/SettingStepper';
 import { md } from '@/theme/Colors';
 
 export const CAMERA_SETTINGS_VIEW = 'view.cameraSettings';

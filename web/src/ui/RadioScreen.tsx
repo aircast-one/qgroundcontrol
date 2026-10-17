@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcPath } from '@/bridge/QgcState';
-import { useLaunchedEffect } from '@/kotlin/Compose';
+import { useKeyedState, useLaunchedEffect } from '@/kotlin/Compose';
 import { AlertDialog, Button, Checkbox, FilterChip, HorizontalDivider, OutlinedButton, RadioButton, Surface, Text, TextButton } from '@/m3';
 import { sentenceCase } from '@/map/SentenceCase';
 import { md } from '@/theme/Colors';
@@ -21,7 +21,7 @@ import {
   radioCalAction,
   radioView,
 } from '@/ui/RadioView';
-import { FactRow, useKeyedState } from '@/ui/SettingsScreen';
+import { FactRow } from '@/ui/SettingsScreen';
 import { FootNote, SectionHeader } from '@/ui/SetupRow';
 
 const RadioNotice = ({ text, className }: { text: string; className?: string }) => (

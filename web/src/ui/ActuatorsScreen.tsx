@@ -1,12 +1,11 @@
 import { Fragment, useState } from 'react';
 import { type Json, arrayJSONObject, jsonObjects, jsonStrings, optBoolean, optInt, optJSONArray, optJSONObject, optString, optText } from '@/bridge/Json';
 import { type Fact, Qgc } from '@/bridge/Qgc';
-import { useLaunchedEffect } from '@/kotlin/Compose';
+import { useKeyedState, useLaunchedEffect } from '@/kotlin/Compose';
 import { openUri } from '@/kotlin/Platform';
 import { delay } from '@/kotlin/Std';
 import { AlertDialog, Button, Checkbox, DropdownMenu, DropdownMenuItem, HorizontalDivider, OutlinedButton, OutlinedCard, OutlinedTextField, ScrollableTabRow, Tab, Text, TextButton } from '@/m3';
 import { toDoubleOrNull } from '@/map/AltitudeEntry';
-import { useKeyedState } from '@/map/SettingStepper';
 import { md } from '@/theme/Colors';
 import { type ActuatorActionGroup, type ActuatorTesting, ActuatorTestSection, actuatorActions, actuatorTesting } from '@/ui/ActuatorTestSection';
 import { type GeometryMotor, GeometryImage, geometryMotors } from '@/ui/GeometryImage';

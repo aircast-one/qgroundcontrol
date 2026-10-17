@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { type Json, isNull, optDouble, optJSONObject, optText } from '@/bridge/Json';
-import { useProduceState } from '@/kotlin/Compose';
+import { useKeyedState, useProduceState } from '@/kotlin/Compose';
 import { AlertDialog, DropdownMenu, DropdownMenuItem, FilterChip, IconButton, RadioButton, Text, TextButton } from '@/m3';
 import { Drawable, MaterialIcon } from '@/res/Icon';
 import type { DrawableName } from '@/res/drawables';
@@ -9,7 +9,7 @@ import { setOk, settingJson } from './BridgeCalls';
 import { CAMERA_MODES, trimmedNumber } from './CameraSectionExtras';
 import { type CameraChoices, type CameraExtras, ItemCameraBridge, cameraChoices, cameraExtras } from './ItemCamera';
 import { sentenceCase } from './SentenceCase';
-import { type ClosedRange, SettingStepper, useKeyedState } from './SettingStepper';
+import { type ClosedRange, SettingStepper } from './SettingStepper';
 import type { WaypointHold } from './WaypointSpeed';
 
 export type WaypointYaw = { degrees: number | null; units: string; path: string };

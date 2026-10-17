@@ -1,10 +1,9 @@
 import { useState } from 'react';
 import { type Json, jsonStrings, optBoolean, optInt, optJSONArray, optText } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
-import { useLaunchedEffect } from '@/kotlin/Compose';
+import { useKeyedState, useLaunchedEffect } from '@/kotlin/Compose';
 import { delay } from '@/kotlin/Std';
 import { type KeyboardType, OutlinedButton, OutlinedTextField, Text } from '@/m3';
-import { useKeyedState } from '@/map/SettingStepper';
 import { md } from '@/theme/Colors';
 import { ChoiceField } from '@/ui/SettingsScreen';
 import { SectionHeader } from '@/ui/SetupRow';

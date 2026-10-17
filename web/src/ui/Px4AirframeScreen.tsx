@@ -3,8 +3,8 @@ import { type Json, jsonObjects, optBoolean, optInt, optJSONArray, optLong, optT
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcPath } from '@/bridge/QgcState';
 import { AlertDialog, Button, DropdownMenu, DropdownMenuItem, OutlinedButton, RadioButton, Text, TextButton } from '@/m3';
-import { useKeyedState } from '@/map/SettingStepper';
 import { md } from '@/theme/Colors';
+import { useKeyedState } from '@/kotlin/Compose';
 
 export const PX4_AIRFRAME_VIEW = 'view.px4Airframe';
 export const PX4_AIRFRAME_SCREEN = 'px4Airframe';

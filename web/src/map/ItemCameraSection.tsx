@@ -1,12 +1,11 @@
 import { useState } from 'react';
 import type { Json } from '@/bridge/Json';
-import { useProduceState } from '@/kotlin/Compose';
+import { useKeyedState, useProduceState } from '@/kotlin/Compose';
 import { DropdownMenu, DropdownMenuItem, OutlinedTextField, Text } from '@/m3';
 import { MaterialIcon } from '@/res/Icon';
 import { md } from '@/theme/Colors';
 import { CameraSectionExtras } from './CameraSectionExtras';
 import { ItemCameraBridge, cameraChoices, cameraExtras, itemCameraNote, itemCameraTextBeside } from './ItemCamera';
-import { useKeyedState } from './SettingStepper';
 
 export const ItemCameraSection = ({ index, className, onChanged = () => undefined }: { index: number; className?: string; onChanged?: () => void }) => {
   const [revision, setRevision] = useState(0);

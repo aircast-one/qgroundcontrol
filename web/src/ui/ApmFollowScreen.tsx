@@ -1,11 +1,10 @@
 import { type MouseEvent, useState } from 'react';
 import { type Json, jsonStrings, optBoolean, optDouble, optInt, optJSONArray, optText } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
-import { useLaunchedEffect } from '@/kotlin/Compose';
+import { useKeyedState, useLaunchedEffect } from '@/kotlin/Compose';
 import { delay, format } from '@/kotlin/Std';
 import { Button, Checkbox, DropdownMenu, DropdownMenuItem, OutlinedButton, OutlinedTextField, Text } from '@/m3';
 import { toDoubleOrNull } from '@/map/AltitudeEntry';
-import { useKeyedState } from '@/map/SettingStepper';
 import { md, withAlpha } from '@/theme/Colors';
 import { type DistanceUnit, transformUnit } from '@/ui/PlanTransform';
 import { SectionHeader } from '@/ui/SetupRow';

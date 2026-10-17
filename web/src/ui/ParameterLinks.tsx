@@ -1,12 +1,11 @@
 import { type ReactNode, useCallback, useMemo, useRef, useState } from 'react';
 import { type Fact, Qgc, makeFact } from '@/bridge/Qgc';
 import { type Json, has, isNull, opt, optBoolean } from '@/bridge/Json';
-import { useProduceState, useUpdatedRef } from '@/kotlin/Compose';
+import { useKeyedState, useProduceState, useUpdatedRef } from '@/kotlin/Compose';
 import { openUri } from '@/kotlin/Platform';
 import { Button, Checkbox, OutlinedTextField, Text, TextButton, type Typography } from '@/m3';
 import { AircastSheet } from '@/map/AircastSheet';
 import { toDoubleOrNull } from '@/map/AltitudeEntry';
-import { useKeyedState } from '@/map/SettingStepper';
 import { aircast, md } from '@/theme/Colors';
 import { useAdvancedUiShown } from '@/ui/AdvancedUi';
 import { parameterFact, parameterPath } from '@/ui/ParametersScreen';

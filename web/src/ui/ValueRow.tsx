@@ -1,10 +1,10 @@
 import { type PointerEvent, type ReactNode, Fragment, createContext, useContext, useRef, useState } from 'react';
 import { type Fact, type FactSlider, Qgc } from '@/bridge/Qgc';
 import { AlertDialog, CircularProgressIndicator, DropdownMenu, DropdownMenuItem, HorizontalDivider, Text, TextButton } from '@/m3';
-import { useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
+import { useKeyedState, useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
 import { coerceAtMost, coerceIn, delay } from '@/kotlin/Std';
 import { toDoubleOrNull } from '@/map/AltitudeEntry';
-import { type ClosedRange, useKeyedState, useRepeatWhileHeld } from '@/map/SettingStepper';
+import { type ClosedRange, useRepeatWhileHeld } from '@/map/SettingStepper';
 import { md, withAlpha } from '@/theme/Colors';
 import { sliderValue } from '@/ui/ParameterForm';
 import { factNumber } from '@/ui/Px4TuningScreen';

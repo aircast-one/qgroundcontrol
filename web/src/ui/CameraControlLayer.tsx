@@ -4,12 +4,11 @@ import { type Json, isNull } from '@/bridge/Json';
 import { type Fact, Qgc } from '@/bridge/Qgc';
 import { VideoCommands } from '@/bridge/BridgeCommands';
 import { settingControl, useQgcBool, useQgcPath } from '@/bridge/QgcState';
-import { useLaunchedEffect, useProduceState, useUpdatedRef } from '@/kotlin/Compose';
+import { useKeyedState, useLaunchedEffect, useProduceState, useUpdatedRef } from '@/kotlin/Compose';
 import { coerceIn, delay, format } from '@/kotlin/Std';
 import { AlertDialog, FilterChip, RadioButton, Slider, Surface, Text, TextButton } from '@/m3';
 import { AircastSheet } from '@/map/AircastSheet';
 import { sentenceCase } from '@/map/SentenceCase';
-import { useKeyedState } from '@/map/SettingStepper';
 import { Drawable } from '@/res/Icon';
 import { Color, aircast, argb, md, withAlpha } from '@/theme/Colors';
 import {

@@ -4,10 +4,10 @@ import { useQgcPath } from '@/bridge/QgcState';
 import { Checkbox, Surface, Text, TextButton } from '@/m3';
 import { summaryRow } from '@/map/MissionSummary';
 import { sentenceCase } from '@/map/SentenceCase';
-import { useKeyedState } from '@/map/SettingStepper';
 import { aircast, md } from '@/theme/Colors';
 import { HoldToConfirm, holdLabel } from '@/ui/HoldToConfirm';
 import { planStatusText, planTitle } from '@/ui/PlanFileRules';
+import { useKeyedState } from '@/kotlin/Compose';
 import type { GuidedAction } from '@/ui/VehicleUi';
 
 export const sentIsStillShowing = (name: string | null, snapshotAtSend: string | null, live: string | null): boolean =>

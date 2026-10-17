@@ -1,8 +1,8 @@
-import { type CSSProperties, Fragment, type ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { type CSSProperties, Fragment, type ReactNode, createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { type Fact, type FactSlider, Qgc } from '@/bridge/Qgc';
 import { settingControl, useQgcPath } from '@/bridge/QgcState';
 import { type Json, jsonObjects, optBoolean, optDouble, optJSONArray, optText } from '@/bridge/Json';
-import { useBackHandler, useLaunchedEffect, useProduceState, useUpdatedRef } from '@/kotlin/Compose';
+import { useBackHandler, useKeyedState, useLaunchedEffect, useProduceState, useUpdatedRef } from '@/kotlin/Compose';
 import type { MutableState } from '@/kotlin/State';
 import { coerceIn, delay, format } from '@/kotlin/Std';
 import { sentenceCase as mapSentenceCase } from '@/map/SentenceCase';
@@ -63,15 +63,6 @@ export const CONNECTIONS_PAGE = 'Connections';
 const PAGE_GLANCES: ReadonlyMap<string, readonly string[]> = new Map([['Maps', ['settings.flightMapSettings.mapProvider', 'settings.flightMapSettings.mapType']]]);
 
 const notBlank = (text: string): boolean => text.trim() !== '';
-
-export const useKeyedState = <T,>(keys: readonly unknown[], initial: () => T): readonly [T, (next: T | ((previous: T) => T)) => void] => {
-  const [held, setHeld] = useState(() => ({ keys, value: initial() }));
-  const stale = held.keys.length !== keys.length || held.keys.some((key, at) => !Object.is(key, keys[at]));
-  const current = stale ? { keys, value: initial() } : held;
-  if (stale) setHeld(current);
-  const set = useCallback((next: T | ((previous: T) => T)) => setHeld((previous) => ({ keys: previous.keys, value: typeof next === 'function' ? (next as (previous: T) => T)(previous.value) : next })), []);
-  return [current.value, set];
-};
 
 const useServed = (paths: readonly string[], watching: boolean): readonly (Json | null)[] => {
   useEffect(() => {

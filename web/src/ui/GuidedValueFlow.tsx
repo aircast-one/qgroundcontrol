@@ -1,10 +1,10 @@
 import { useContext } from 'react';
 import { Qgc } from '@/bridge/Qgc';
 import { VehicleCommands } from '@/bridge/VehicleCommands';
-import { useLaunchedEffect } from '@/kotlin/Compose';
+import { useKeyedState, useLaunchedEffect } from '@/kotlin/Compose';
 import { type MutableState, mutableStateOf, useValue } from '@/kotlin/State';
 import { Slider } from '@/m3';
-import { type ClosedRange, useKeyedState } from '@/map/SettingStepper';
+import { type ClosedRange } from '@/map/SettingStepper';
 import type { GuidedOffer } from './GuidedActions';
 import { GUIDED_ALTITUDE, type GuidedAltitude, altitudeDelta, guidedAltitude, guidedAltitudePath, rangeLabel } from './GuidedAltitude';
 import { GUIDED_SPEED, type GuidedSpeed, guidedSpeed, guidedSpeedPath } from './GuidedSpeed';

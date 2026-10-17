@@ -1,4 +1,4 @@
-import { type DependencyList, useEffect, useRef, useState } from 'react';
+import { type DependencyList, useCallback, useEffect, useRef, useState } from 'react';
 
 export type Scope = { isActive: () => boolean };
 
@@ -71,4 +71,13 @@ export const useTicker = (periodMs: number, keys: DependencyList, tick: () => vo
     };
     await loop();
   });
+};
+
+export const useKeyedState = <T,>(keys: readonly unknown[], initial: () => T): readonly [T, (next: T | ((previous: T) => T)) => void] => {
+  const [held, setHeld] = useState(() => ({ keys, value: initial() }));
+  const stale = held.keys.length !== keys.length || held.keys.some((key, at) => !Object.is(key, keys[at]));
+  const current = stale ? { keys, value: initial() } : held;
+  if (stale) setHeld(current);
+  const set = useCallback((next: T | ((previous: T) => T)) => setHeld((previous) => ({ keys: previous.keys, value: typeof next === 'function' ? (next as (previous: T) => T)(previous.value) : next })), []);
+  return [current.value, set];
 };

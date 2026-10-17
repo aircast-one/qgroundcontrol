@@ -1,5 +1,5 @@
 import { type ReactNode, type RefObject, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
-import { useBackHandler, useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
+import { useBackHandler, useKeyedState, useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
 import { type MutableState, mutableStateOf, useValue } from '@/kotlin/State';
 import { HorizontalDivider, IconButton, ScrollableTabRow, SnackbarHost, Tab, Text, TextButton, useSnackbarHostState } from '@/m3';
 import { Drawable } from '@/res/Icon';
@@ -9,7 +9,7 @@ import { osdShadow } from '@/ui/Osd';
 import { LocalPageHeading, type PageHeading, SearchPill } from '@/ui/SetupRow';
 import { SetupScreen } from '@/ui/SetupScreen';
 import { type ChangeNotice, LocalChangeNotice } from '@/ui/ValueRow';
-import { AIRCRAFT_SETUP, SettingsGroup, SettingsGroupEntries, SettingsScreen, SettingsSearch, pageLook, pageTitle, useKeyedState, useRememberSettingsPages } from '@/ui/SettingsScreen';
+import { AIRCRAFT_SETUP, SettingsGroup, SettingsGroupEntries, SettingsScreen, SettingsSearch, pageLook, pageTitle, useRememberSettingsPages } from '@/ui/SettingsScreen';
 
 export const sheetDrilled = (openPage: string | null, setupOpen: boolean): boolean => openPage !== null || setupOpen;
 

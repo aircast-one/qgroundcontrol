@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcPath } from '@/bridge/QgcState';
-import { useLaunchedEffect } from '@/kotlin/Compose';
+import { useKeyedState, useLaunchedEffect } from '@/kotlin/Compose';
 import { coerceAtLeast, coerceIn, delay } from '@/kotlin/Std';
 import { AlertDialog, Button, CircularProgressIndicator, Text, TextButton } from '@/m3';
 import { sentenceCase } from '@/map/SentenceCase';
@@ -28,7 +28,6 @@ import {
 import { type FastCompass, type FastCompassChoice, FastCompassBlock, fastCompassArguments, initialFastCompassChoice } from '@/ui/FastCompass';
 import { useHasVehicle } from '@/ui/FlyState';
 import { CompassOrientations, SensorSettingsBlock } from '@/ui/SensorSettings';
-import { useKeyedState } from '@/ui/SettingsScreen';
 import { FootNote, SectionHeader, SetupRow, SetupState } from '@/ui/SetupRow';
 
 const CAL = 'sensorsCal';

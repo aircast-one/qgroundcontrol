@@ -1,10 +1,9 @@
 import { useState } from 'react';
 import { type Json, isNull, opt, optBoolean, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
-import { useLaunchedEffect } from '@/kotlin/Compose';
+import { useKeyedState, useLaunchedEffect } from '@/kotlin/Compose';
 import { delay, format } from '@/kotlin/Std';
 import { AlertDialog, DropdownMenu, DropdownMenuItem, OutlinedButton, OutlinedTextField, Text, TextButton } from '@/m3';
-import { useKeyedState } from '@/map/SettingStepper';
 import { md } from '@/theme/Colors';
 import { SectionHeader } from '@/ui/SetupRow';
 
