@@ -68,15 +68,24 @@ pub fn set_notify(notify: Notify) {
     *NOTIFY.lock().unwrap_or_else(PoisonError::into_inner) = Some(notify);
 }
 
+fn stored(key: Key, fetched: Result<Tile, String>) {
+    TABLE.lock().unwrap_or_else(PoisonError::into_inner).store(key, fetched, crate::hub::now_ms());
+    if let Some(notify) = NOTIFY.lock().unwrap_or_else(PoisonError::into_inner).as_ref() {
+        notify();
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
 fn fetch_in_background(key: Key) {
     let _ = crate::background::spawn("groundstation-terrain", move || {
         let path = CACHE_PATH.lock().unwrap_or_else(PoisonError::into_inner).clone();
-        let fetched = load(key, path.as_deref(), &crate::terrainquery::fetch_over_http);
-        TABLE.lock().unwrap_or_else(PoisonError::into_inner).store(key, fetched, crate::hub::now_ms());
-        if let Some(notify) = NOTIFY.lock().unwrap_or_else(PoisonError::into_inner).as_ref() {
-            notify();
-        }
+        stored(key, load(key, path.as_deref(), &crate::terrainquery::fetch_over_http));
     });
+}
+
+#[cfg(target_family = "wasm")]
+fn fetch_in_background(key: Key) {
+    wasm_bindgen_futures::spawn_local(async move { stored(key, crate::terrainquery::tile_later(key.0, key.1).await) });
 }
 
 pub fn height(latitude: f64, longitude: f64) -> Option<f64> {

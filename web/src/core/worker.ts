@@ -77,8 +77,10 @@ const calls = {
   syntheticRelease: core.syntheticRelease,
 } as const;
 
+const reply = (id: string) => (result: unknown) => scope.postMessage({ id, result });
+
 scope.onmessage = ({ data: { id, call, args } }) => {
-  const run = calls[call] as (...given: unknown[]) => unknown;
-  scope.postMessage({ id, result: run(...args) });
+  const result = (calls[call] as (...given: unknown[]) => unknown)(...args);
+  return result instanceof Promise ? void result.then(reply(id), () => reply(id)(null)) : reply(id)(result);
 };
 scope.postMessage({ ready: true });

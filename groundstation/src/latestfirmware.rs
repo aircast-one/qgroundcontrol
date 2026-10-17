@@ -60,13 +60,29 @@ fn text(url: &str) -> Option<String> {
     };
     if due && fetches() {
         held.insert(url.to_string(), Fetch::Pending);
-        let url = url.to_string();
-        let _ = crate::background::spawn("firmware-versions", move || {
-            let body = crate::http::get_text(&url, VERSION_FETCH_TIMEOUT).ok();
-            fetched().insert(url, body.map_or_else(|| Fetch::Failed(Instant::now()), Fetch::Done));
-        });
+        fetch_in_background(url.to_string());
     }
     None
+}
+
+fn settle(url: String, body: Option<String>) {
+    fetched().insert(url, body.map_or_else(|| Fetch::Failed(Instant::now()), Fetch::Done));
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn fetch_in_background(url: String) {
+    let _ = crate::background::spawn("firmware-versions", move || {
+        let body = crate::http::get_text(&url, VERSION_FETCH_TIMEOUT).ok();
+        settle(url, body);
+    });
+}
+
+#[cfg(target_family = "wasm")]
+fn fetch_in_background(url: String) {
+    wasm_bindgen_futures::spawn_local(async move {
+        let body = crate::http::get_later(&url, &[], VERSION_FETCH_TIMEOUT).await.ok().and_then(|bytes| String::from_utf8(bytes).ok());
+        settle(url, body);
+    });
 }
 
 pub fn latest(url: &str, px4: bool) -> Option<String> {

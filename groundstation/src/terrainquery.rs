@@ -84,18 +84,46 @@ mod terrarium {
         ((tile_x as i32, tile_y as i32), (((column - tile_x) * 256.0) as u32, ((row - tile_y) * 256.0) as u32))
     }
 
-    fn image(tile: (i32, i32)) -> Result<image::RgbImage, String> {
-        let url = crate::mapurls::tile_request(crate::maptypes::TERRAIN_TILES, tile.0, tile.1, ZOOM, &crate::mapurls::keys_from_settings()).ok_or("No terrain tile address.")?.url;
-        let png = crate::http::get(&url, &[], FETCH_TIMEOUT).map_err(|e| format!("The terrain server did not answer: {e}"))?;
+    fn address(tile: (i32, i32)) -> Result<String, String> {
+        Ok(crate::mapurls::tile_request(crate::maptypes::TERRAIN_TILES, tile.0, tile.1, ZOOM, &crate::mapurls::keys_from_settings()).ok_or("No terrain tile address.")?.url)
+    }
+
+    fn decoded(png: Result<Vec<u8>, String>) -> Result<image::RgbImage, String> {
+        let png = png.map_err(|e| format!("The terrain server did not answer: {e}"))?;
         image::load_from_memory(&png).map(|decoded| decoded.to_rgb8()).map_err(|e| format!("The terrain tile could not be read: {e}"))
     }
 
-    pub fn tile(x: i32, y: i32) -> Result<Tile, String> {
+    fn image(tile: (i32, i32)) -> Result<image::RgbImage, String> {
+        decoded(crate::http::get(&address(tile)?, &[], FETCH_TIMEOUT))
+    }
+
+    fn points(x: i32, y: i32) -> Vec<(f64, f64)> {
         let (sw_lat, sw_lon) = (f64::from(y) * TILE_SIZE_DEGREES - 90.0, f64::from(x) * TILE_SIZE_DEGREES - 180.0);
         let cell = TILE_SIZE_DEGREES / GRID as f64;
-        let points: Vec<(f64, f64)> = (0..GRID).flat_map(|row| (0..GRID).map(move |column| (sw_lat + (row as f64 + 0.5) * cell, sw_lon + (column as f64 + 0.5) * cell))).collect();
-        let needed: BTreeSet<(i32, i32)> = points.iter().map(|&(lat, lon)| pixel(lat, lon).0).collect();
-        let images: BTreeMap<(i32, i32), image::RgbImage> = needed.into_iter().map(|tile| image(tile).map(|decoded| (tile, decoded))).collect::<Result<_, String>>()?;
+        (0..GRID).flat_map(|row| (0..GRID).map(move |column| (sw_lat + (row as f64 + 0.5) * cell, sw_lon + (column as f64 + 0.5) * cell))).collect()
+    }
+
+    fn needed(x: i32, y: i32) -> BTreeSet<(i32, i32)> {
+        points(x, y).iter().map(|&(lat, lon)| pixel(lat, lon).0).collect()
+    }
+
+    pub fn tile(x: i32, y: i32) -> Result<Tile, String> {
+        let images: BTreeMap<(i32, i32), image::RgbImage> = needed(x, y).into_iter().map(|tile| image(tile).map(|decoded| (tile, decoded))).collect::<Result<_, String>>()?;
+        Ok(assembled(x, y, &images))
+    }
+
+    pub async fn tile_later(x: i32, y: i32) -> Result<Tile, String> {
+        let mut images = BTreeMap::new();
+        for tile in needed(x, y) {
+            let png = crate::http::get_later(&address(tile)?, &[], FETCH_TIMEOUT).await;
+            images.insert(tile, decoded(png)?);
+        }
+        Ok(assembled(x, y, &images))
+    }
+
+    fn assembled(x: i32, y: i32, images: &BTreeMap<(i32, i32), image::RgbImage>) -> Tile {
+        let (sw_lat, sw_lon) = (f64::from(y) * TILE_SIZE_DEGREES - 90.0, f64::from(x) * TILE_SIZE_DEGREES - 180.0);
+        let points = points(x, y);
         let elevations: Vec<i16> = points
             .iter()
             .map(|&(lat, lon)| {
@@ -108,8 +136,13 @@ mod terrarium {
         let min_elevation = elevations.iter().copied().min().unwrap_or(0);
         let max_elevation = elevations.iter().copied().max().unwrap_or(0);
         let avg_elevation = elevations.iter().map(|e| f64::from(*e)).sum::<f64>() / elevations.len().max(1) as f64;
-        Ok(Tile { sw_lat, sw_lon, ne_lat: sw_lat + TILE_SIZE_DEGREES, ne_lon: sw_lon + TILE_SIZE_DEGREES, min_elevation, max_elevation, avg_elevation, grid_lat: GRID, grid_lon: GRID, elevations })
+        Tile { sw_lat, sw_lon, ne_lat: sw_lat + TILE_SIZE_DEGREES, ne_lon: sw_lon + TILE_SIZE_DEGREES, min_elevation, max_elevation, avg_elevation, grid_lat: GRID, grid_lon: GRID, elevations }
     }
+}
+
+#[cfg(target_family = "wasm")]
+pub async fn tile_later(x: i32, y: i32) -> Result<crate::terraintile::Tile, String> {
+    terrarium::tile_later(x, y).await
 }
 
 pub fn elevation(latitude: f64, longitude: f64, cache: Option<&Cache>, fetch: &dyn Fn(&str) -> Result<String, String>) -> Result<f64, String> {

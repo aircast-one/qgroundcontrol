@@ -43,6 +43,28 @@ pub fn get(url: &str, headers: &[(&str, &str)], timeout: Duration) -> Result<Vec
 }
 
 #[cfg(target_family = "wasm")]
+pub async fn get_later(url: &str, headers: &[(String, String)], timeout: Duration) -> Result<Vec<u8>, String> {
+    use wasm_bindgen::JsCast;
+    use wasm_bindgen_futures::JsFuture;
+    let failed = |error: wasm_bindgen::JsValue| match error.dyn_ref::<js_sys::Error>() {
+        Some(thrown) => String::from(thrown.message()),
+        None => error.as_string().unwrap_or_else(|| format!("{error:?}")),
+    };
+    let sent = web_sys::Headers::new().map_err(failed)?;
+    headers.iter().try_for_each(|(name, value)| sent.append(name, value)).map_err(failed)?;
+    let init = web_sys::RequestInit::new();
+    init.set_headers(&sent);
+    init.set_signal(Some(&web_sys::AbortSignal::timeout_with_u32(u32::try_from(timeout.as_millis()).unwrap_or(u32::MAX))));
+    let scope: web_sys::WorkerGlobalScope = js_sys::global().unchecked_into();
+    let response: web_sys::Response = JsFuture::from(scope.fetch_with_str_and_init(url, &init)).await.map_err(failed)?.unchecked_into();
+    if !response.ok() {
+        return Err(format!("http status: {}", response.status()));
+    }
+    let body = JsFuture::from(response.array_buffer().map_err(failed)?).await.map_err(failed)?;
+    Ok(js_sys::Uint8Array::new(&body).to_vec())
+}
+
+#[cfg(target_family = "wasm")]
 pub fn post(url: &str, content_type: &str, body: &[u8], timeout: Duration) -> Result<(u16, Vec<u8>), String> {
     exchange("POST", url, &[("Content-Type", content_type)], Some(body), timeout)
 }

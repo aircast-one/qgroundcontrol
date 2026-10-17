@@ -12,7 +12,6 @@ thread_local! {
     static SERIAL_HOST: RefCell<Option<js_sys::Object>> = const { RefCell::new(None) };
     static CLOUD_HOST: RefCell<Option<js_sys::Object>> = const { RefCell::new(None) };
     static SERIAL_PORTS: RefCell<Vec<crate::boards::PortInfo>> = const { RefCell::new(Vec::new()) };
-    static TILES: Option<crate::tilecache::Cache> = crate::tilecache::Cache::open_in_memory().ok();
 }
 
 fn c(text: &str) -> CString {
@@ -229,8 +228,8 @@ pub fn cloud_closed(id: u32, reason: &str) {
 }
 
 #[wasm_bindgen(js_name = mapTile)]
-pub fn map_tile(map_type: &str, x: i32, y: i32, zoom: i32) -> Option<Vec<u8>> {
-    TILES.with(|cache| crate::maptiles::fetch_remembered(map_type, x, y, zoom, cache.as_ref(), true))
+pub async fn map_tile(map_type: String, x: i32, y: i32, zoom: i32) -> JsValue {
+    crate::maptiles::fetch_remembered_later(map_type, x, y, zoom).await.map_or(JsValue::NULL, |tile| js_sys::Uint8Array::from(tile.as_slice()).into())
 }
 
 #[cfg(feature = "synthetic")]

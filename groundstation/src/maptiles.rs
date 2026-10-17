@@ -120,24 +120,62 @@ pub fn image_format(image: &[u8]) -> Option<&'static str> {
         .map(|(_, format)| *format)
 }
 
-pub fn fetch(provider: &str, x: i32, y: i32, zoom: i32, keys: &Keys, cache: Option<&Cache>, persist: bool, http: &dyn Fn(&TileRequest) -> Result<Vec<u8>, String>) -> Option<Vec<u8>> {
+pub enum Plan {
+    Cached(Vec<u8>),
+    Download(TileRequest),
+}
+
+pub fn plan(provider: &str, x: i32, y: i32, zoom: i32, keys: &Keys, cache: Option<&Cache>) -> Option<Plan> {
     let kind = provider_hash(provider).filter(|_| provider != ELEVATION_PROVIDER)?;
     let hash = tile_hash(kind, x, y, zoom);
-    if let Some(tile) = cache.and_then(|c| c.tile(&hash).ok().flatten()) {
-        return Some(tile.image);
+    match cache.and_then(|c| c.tile(&hash).ok().flatten()) {
+        Some(tile) => Some(Plan::Cached(tile.image)),
+        None => tile_request(provider, x, y, zoom, keys).map(Plan::Download),
     }
-    let request = tile_request(provider, x, y, zoom, keys)?;
-    let image = http(&request).ok().filter(|image| !image.is_empty())?;
-    if provider.starts_with("Bing") && image == BING_NO_TILE {
+}
+
+pub fn accept(provider: &str, x: i32, y: i32, zoom: i32, image: Vec<u8>, cache: Option<&Cache>, persist: bool) -> Option<Vec<u8>> {
+    let kind = provider_hash(provider)?;
+    if image.is_empty() || (provider.starts_with("Bing") && image == BING_NO_TILE) {
         return None;
     }
     let format = tile_format(provider, &image)?;
     if let Some(cache) = cache.filter(|_| persist)
-        && cache.save(&Tile { hash, format: format.to_string(), image: image.clone(), kind }, None).unwrap_or(false)
+        && cache.save(&Tile { hash: tile_hash(kind, x, y, zoom), format: format.to_string(), image: image.clone(), kind }, None).unwrap_or(false)
     {
         keep_within_disk_limit(cache, image.len() as i64);
     }
     Some(image)
+}
+
+pub fn fetch(provider: &str, x: i32, y: i32, zoom: i32, keys: &Keys, cache: Option<&Cache>, persist: bool, http: &dyn Fn(&TileRequest) -> Result<Vec<u8>, String>) -> Option<Vec<u8>> {
+    match plan(provider, x, y, zoom, keys, cache)? {
+        Plan::Cached(image) => Some(image),
+        Plan::Download(request) => accept(provider, x, y, zoom, http(&request).ok()?, cache, persist),
+    }
+}
+
+#[cfg(target_family = "wasm")]
+thread_local! {
+    static WEB_TILES: Option<Cache> = Cache::open_in_memory().ok();
+}
+
+#[cfg(target_family = "wasm")]
+pub async fn fetch_remembered_later(provider: String, x: i32, y: i32, zoom: i32) -> Option<Vec<u8>> {
+    let key = (provider.clone(), x, y, zoom);
+    if let Some(image) = MEMORY.0.get(&key) {
+        return Some(image.to_vec());
+    }
+    let image = match WEB_TILES.with(|cache| plan(&provider, x, y, zoom, &crate::mapurls::keys_from_settings(), cache.as_ref()))? {
+        Plan::Cached(image) => image,
+        Plan::Download(request) => {
+            let downloaded = crate::http::get_later(&request.url, &request.headers, TILE_TIMEOUT).await.ok()?;
+            WEB_TILES.with(|cache| accept(&provider, x, y, zoom, downloaded, cache.as_ref(), true))?
+        }
+    };
+    let tile = served(&provider, image)?;
+    MEMORY.0.insert(key, Arc::from(tile.as_slice()));
+    Some(tile)
 }
 
 pub fn fetch_over_http(request: &TileRequest) -> Result<Vec<u8>, String> {
