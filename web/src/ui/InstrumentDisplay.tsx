@@ -143,22 +143,13 @@ export const displayFrom = (json: string | null): ValueDisplay => {
   });
 };
 
-const storedNames = (store: string): readonly string[] => {
-  const prefix = `aircast.${store}.`;
-  try {
-    const storage = window.localStorage;
-    return Array.from({ length: storage.length }, (_, index) => storage.key(index))
-      .filter((it): it is string => it !== null && it.startsWith(prefix))
-      .map((it) => it.slice(prefix.length));
-  } catch {
-    return [];
-  }
-};
-
 export const readDisplays = (vehicleClass: string): ReadonlyMap<string, ValueDisplay> => {
-  const preferences = getSharedPreferences(DISPLAY_STORE);
   const prefix = `${vehicleClass}/`;
-  return new Map(storedNames(DISPLAY_STORE).filter((key) => key.startsWith(prefix)).map((key) => [key.slice(prefix.length), displayFrom(preferences.getString(key, null))] as const));
+  return new Map(
+    Object.entries(getSharedPreferences(DISPLAY_STORE).getAll())
+      .filter(([key]) => key.startsWith(prefix))
+      .map(([key, text]) => [key.slice(prefix.length), displayFrom(text)] as const),
+  );
 };
 
 export const writeDisplay = (vehicleClass: string, id: string, display: ValueDisplay): void => {

@@ -42,23 +42,8 @@ export type Bounds = { readonly left: number; readonly top: number; readonly rig
 
 export type Size = { readonly width: number; readonly height: number };
 
-const STORE_PREFIX = `aircast.${LAYOUT_STORE}.`;
-
-const storedLayout = (): Record<string, unknown> => {
-  try {
-    const storage = window.localStorage;
-    return Object.fromEntries(
-      Array.from({ length: storage.length }, (_, index) => storage.key(index))
-        .filter((key): key is string => key !== null && key.startsWith(STORE_PREFIX))
-        .map((key) => {
-          const text = storage.getItem(key);
-          return [key.slice(STORE_PREFIX.length), text === 'true' ? true : text === 'false' ? false : text];
-        }),
-    );
-  } catch {
-    return {};
-  }
-};
+const storedLayout = (): Record<string, unknown> =>
+  Object.fromEntries(Object.entries(getSharedPreferences(LAYOUT_STORE).getAll()).map(([key, text]) => [key, text === 'true' ? true : text === 'false' ? false : text]));
 
 export class OverlayLayoutState {
   readonly editing = mutableStateOf(false);

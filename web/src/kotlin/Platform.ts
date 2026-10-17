@@ -21,6 +21,7 @@ export type SharedPreferences = {
   putFloat(name: string, value: number): void;
   putStringSet(name: string, value: Set<string>): void;
   remove(name: string): void;
+  getAll(): Readonly<Record<string, string>>;
 };
 
 export const getSharedPreferences = (store: string): SharedPreferences => {
@@ -69,6 +70,21 @@ export const getSharedPreferences = (store: string): SharedPreferences => {
     putFloat: (name, value) => write(name, String(value)),
     putStringSet: (name, value) => write(name, JSON.stringify([...value])),
     remove: (name) => write(name, null),
+    getAll: () => {
+      const prefix = key(store, '');
+      try {
+        const all = storage();
+        return all === null
+          ? {}
+          : Object.fromEntries(
+              Array.from({ length: all.length }, (_, index) => all.key(index))
+                .filter((it): it is string => it !== null && it.startsWith(prefix))
+                .map((it) => [it.slice(prefix.length), all.getItem(it) ?? '']),
+            );
+      } catch {
+        return {};
+      }
+    },
   };
 };
 
