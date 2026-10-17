@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { FenceCircle, FencePolygon, RallyPoint } from './FenceBridge';
-import { PlanBounds, centersOnVehicleAtEntry, clearWindow, fitPoints, fitsPlanOnEntry, longitudeArc, normaliseLongitude, planBounds, planIsDrawn, planPoints, stillFirstRead } from './PlanBounds';
+import { PlanBounds, centersOnVehicleAtEntry, clearWindow, fitPoints, fitsPlanOnEntry, longitudeArc, normaliseLongitude, planBounds, planEntryPoint, planIsDrawn, planPoints, stillFirstRead } from './PlanBounds';
 import { KIND_SURVEY, MissionItem, takeoffMissing } from './PlanBridge';
 import { SHAPE_AREA, Survey } from './SurveyBridge';
 import { TrackPoint } from './VehicleMap';
@@ -187,6 +187,16 @@ describe('FitsPlanOnEntryTest', () => {
     expect(centersOnVehicleAtEntry(true, true, 0), 'PlanView never follows the vehicle; the Center menu moves the map').toBe(false);
     expect(centersOnVehicleAtEntry(false, true, 1), 'a mission fitted on entry wins').toBe(false);
     expect(centersOnVehicleAtEntry(false, false, 0)).toBe(false);
+  });
+
+  it('the plan map opens where the operator last looked when neither the vehicle nor the operator is placed', () => {
+    const vehicle = TrackPoint(41.7, 44.8);
+    const operator = TrackPoint(41.71, 44.81);
+    const lastViewed = TrackPoint(41.72, 44.82);
+    expect(planEntryPoint(vehicle, operator, lastViewed)).toBe(vehicle);
+    expect(planEntryPoint(null, operator, lastViewed)).toBe(operator);
+    expect(planEntryPoint(null, null, lastViewed), 'the Fly map was centred here a moment ago; the world view makes the first tap set home anywhere').toBe(lastViewed);
+    expect(planEntryPoint(null, null, null)).toBeNull();
   });
 
   it('the clear window squares off a rotated view so a new fence lands where the operator can see it', () => {

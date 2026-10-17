@@ -1,7 +1,6 @@
 import { type HTMLAttributes, useContext, useEffect, useMemo, useState } from 'react';
 import { type Json, jsonObjects, optInt, optJSONArray } from '@/bridge/Json';
 import { useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
-import { getSharedPreferences } from '@/kotlin/Platform';
 import { delay, same } from '@/kotlin/Std';
 import { useValue } from '@/kotlin/State';
 import { Surface } from '@/m3';
@@ -11,6 +10,7 @@ import { GimbalBridge, type GimbalAzimuth } from './GimbalWedge';
 import { GotoBridge, type GotoLocation } from './GotoMarker';
 import { VideoBridge, shotPoints } from './ItemCamera';
 import { MapBridge, useMapBool, useMapPath } from './MapBridge';
+import { readCamera, writeCamera } from './MapCamera';
 import type { OtherMission } from './MissionLayers';
 import { OperatorBridge, operatorHeading, operatorPoint } from './OperatorPosition';
 import { OrbitBridge, type OrbitCircle } from './OrbitMarker';
@@ -24,30 +24,8 @@ import { VEHICLES_VIEW, vehicleChoices } from './VehiclePicker';
 import { FlightMapPosition, type TrackPoint, VehicleMap, isPlottable } from './VehicleMap';
 
 const FLY_POLL_MS = 2000;
-const CAMERA_STORE = 'fly-map-camera';
 const LONG_PRESS_TIMEOUT_MS = 400;
 const TOUCH_SLOP_PX = 8;
-
-export type SavedCamera = { readonly centre: TrackPoint; readonly zoom: number };
-
-const toDoubleOrNull = (text: string): number | null => {
-  const parsed = Number(text);
-  return text.trim() === '' || Number.isNaN(parsed) ? null : parsed;
-};
-
-export const readCamera = (): SavedCamera | null => {
-  const parts = (getSharedPreferences(CAMERA_STORE).getString('camera', null) ?? '').split(',').flatMap((it) => {
-    const parsed = toDoubleOrNull(it);
-    return parsed === null ? [] : [parsed];
-  });
-  const [latitude, longitude, zoom] = parts;
-  if (parts.length !== 3 || latitude === undefined || longitude === undefined || zoom === undefined) return null;
-  return isPlottable(latitude, longitude) && zoom > 1.0 ? { centre: { latitude, longitude }, zoom } : null;
-};
-
-const writeCamera = (camera: SavedCamera): void => {
-  getSharedPreferences(CAMERA_STORE).putString('camera', `${camera.centre.latitude},${camera.centre.longitude},${camera.zoom}`);
-};
 
 export const centresOnOperator = (alreadyCentred: boolean, operator: TrackPoint | null, vehiclePlaced: boolean): boolean => !alreadyCentred && operator !== null && !vehiclePlaced;
 

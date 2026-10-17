@@ -50,7 +50,8 @@ import { AT_END, BEFORE_THE_REST, HOME_ITEM, insertMissionItem, removeMissionIte
 import { MISSION_SPLIT_PATH, legSplit } from './MissionLayers';
 import { missionSummaryText } from './MissionSummary';
 import { OperatorBridge, operatorPoint } from './OperatorPosition';
-import { centersOnVehicleAtEntry, fitsPlanOnEntry, planIsDrawn, stillFirstRead } from './PlanBounds';
+import { readCamera } from './MapCamera';
+import { centersOnVehicleAtEntry, fitsPlanOnEntry, planEntryPoint, planIsDrawn, stillFirstRead } from './PlanBounds';
 import {
   KIND_CORRIDOR,
   KIND_LAND,
@@ -489,7 +490,8 @@ export const PlanMapContent = ({
     });
   };
   const centredOnEntry = useRemembered(false);
-  const entryPoint = isPlottable(latitude, longitude) ? TrackPoint(latitude, longitude) : operator.value;
+  const lastViewed = useMemo(() => readCamera()?.centre ?? null, []);
+  const entryPoint = planEntryPoint(isPlottable(latitude, longitude) ? TrackPoint(latitude, longitude) : null, operator.value, lastViewed);
   useEffect(() => {
     if (!centersOnVehicleAtEntry(centredOnEntry.value, entryPoint !== null, fitRequest.value)) return;
     centredOnEntry.value = true;

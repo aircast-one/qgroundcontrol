@@ -84,6 +84,8 @@ export const fitsPlanOnEntry = (firstRead: boolean, planRead: boolean, planIsDra
 
 export const centersOnVehicleAtEntry = (alreadyCentred: boolean, vehicleKnown: boolean, fitsRequested: number): boolean => !alreadyCentred && vehicleKnown && fitsRequested === 0;
 
+export const planEntryPoint = (vehicle: TrackPoint | null, operator: TrackPoint | null, lastViewed: TrackPoint | null): TrackPoint | null => vehicle ?? operator ?? lastViewed;
+
 export const stillFirstRead = (firstRead: boolean, planRead: boolean): boolean => firstRead && !planRead;
 
 export const clearWindow = (corners: readonly TrackPoint[]): readonly TrackPoint[] => {

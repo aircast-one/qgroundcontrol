@@ -20,7 +20,7 @@ import {
   TextButton,
 } from '@/m3';
 import { aircast, md } from '@/theme/Colors';
-import { readCamera } from '@/map/FlyMap';
+import { readCamera } from '@/map/MapCamera';
 import { useMapPath } from '@/map/MapBridge';
 import { OperatorBridge, operatorHeading, operatorPoint } from '@/map/OperatorPosition';
 import { CenterMenu } from '@/map/PlanMapContent';
