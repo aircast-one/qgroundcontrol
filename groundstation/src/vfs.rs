@@ -45,8 +45,11 @@ pub fn remove(path: impl AsRef<Path>) -> std::io::Result<()> {
 }
 
 #[cfg(target_family = "wasm")]
-pub fn remove_prefixed(prefix: &str) {
-    files().retain(|path, _| !path.to_string_lossy().starts_with(prefix));
+pub fn remove_prefixed(prefix: &str, keep: Option<&str>) {
+    files().retain(|path, _| {
+        let path = path.to_string_lossy();
+        !path.starts_with(prefix) || keep == Some(path.as_ref())
+    });
 }
 
 pub fn read_to_string(path: impl AsRef<Path>) -> std::io::Result<String> {

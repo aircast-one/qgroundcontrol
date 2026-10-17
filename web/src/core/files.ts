@@ -12,4 +12,4 @@ export const stagedFile = async (path: string, name: string = path.slice(path.la
 
 export const unstage = (path: string): Promise<boolean> => call<boolean>('vfsRemove', path);
 
-export const unstageAll = (prefix: string): Promise<void> => call<void>('vfsRemovePrefixed', prefix);
+export const unstageAll = (prefix: string, keep?: string): Promise<void> => call<void>('vfsRemovePrefixed', prefix, keep);

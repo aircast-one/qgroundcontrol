@@ -18,7 +18,7 @@ pub const CLOSE_REPLAY: &str = "logReplay.close";
 const SHOW_BAR: &str = "settings.flyViewSettings.showLogReplayStatusBar";
 const SPEEDS: [(&str, f64); 7] = [("0.1", 0.1), ("0.25", 0.25), ("0.5", 0.5), ("1x", 1.0), ("2x", 2.0), ("5x", 5.0), ("10x", 10.0)];
 const DEFAULT_SPEED_INDEX: usize = 3;
-const IDLE_POLL: Duration = Duration::from_millis(20);
+const STEP: Duration = Duration::from_millis(5);
 const CLOSE_FIRST: &str = "You must close all connections prior to replaying a log.";
 
 pub fn hms(seconds: u64) -> String {
@@ -65,7 +65,7 @@ pub struct ReplayLink {
 
 impl ReplayLink {
     pub fn open(file: &str, deliver: impl Fn(&[u8]) + Send + 'static) -> Result<ReplayLink, String> {
-        let bytes = std::fs::read(file).map_err(|e| format!("Unable to open log file: '{file}', error: {e}"))?;
+        let bytes = crate::vfs::read(file).map_err(|e| format!("Unable to open log file: '{file}', error: {e}"))?;
         let replay = Replay::from_tlog(&bytes, crate::hub::now_us());
         if replay.duration_us() == 0 {
             return Err(format!("The log file '{file}' is corrupt or empty."));
@@ -79,7 +79,7 @@ impl ReplayLink {
             controller.error.clear();
             controller.generation
         };
-        std::thread::Builder::new().name("groundstation-log-replay".to_string()).spawn(move || play(generation, deliver)).map_err(|e| e.to_string())?;
+        crate::background::poll("groundstation-log-replay", STEP, move || step(generation, &deliver)).map_err(|e| e.to_string())?;
         Ok(ReplayLink { generation })
     }
 
@@ -91,30 +91,23 @@ impl ReplayLink {
     }
 }
 
-fn play(generation: u64, deliver: impl Fn(&[u8])) {
-    loop {
-        let batch = {
-            let mut controller = lock();
-            let Some(session) = controller.session.as_mut().filter(|s| s.generation == generation) else { return };
-            let now_ms = crate::hub::now_ms();
-            match session.replay.is_playing() {
-                true if session.replay.due_in_ms(now_ms) <= 0 => {
-                    let batch = session.replay.tick(now_ms);
-                    session.playhead_s = batch.log_time_s;
-                    session.percent = batch.percent;
-                    Some(batch)
-                }
-                _ => None,
+fn step(generation: u64, deliver: &impl Fn(&[u8])) -> bool {
+    let batch = {
+        let mut controller = lock();
+        let Some(session) = controller.session.as_mut().filter(|s| s.generation == generation) else { return true };
+        let now_ms = crate::hub::now_ms();
+        match session.replay.is_playing() {
+            true if session.replay.due_in_ms(now_ms) <= 0 => {
+                let batch = session.replay.tick(now_ms);
+                session.playhead_s = batch.log_time_s;
+                session.percent = batch.percent;
+                Some(batch)
             }
-        };
-        match batch {
-            None => std::thread::sleep(IDLE_POLL),
-            Some(batch) => {
-                batch.frames.iter().for_each(|frame| deliver(frame));
-                std::thread::sleep(Duration::from_millis(batch.wait_ms.clamp(1, IDLE_POLL.as_millis() as u64)));
-            }
+            _ => None,
         }
-    }
+    };
+    batch.iter().flat_map(|batch| batch.frames.iter()).for_each(|frame| deliver(frame));
+    false
 }
 
 pub fn bind_link(link: LinkId) {

@@ -227,8 +227,8 @@ pub fn vfs_remove(path: &str) -> bool {
 }
 
 #[wasm_bindgen(js_name = vfsRemovePrefixed)]
-pub fn vfs_remove_prefixed(prefix: &str) {
-    crate::vfs::remove_prefixed(prefix);
+pub fn vfs_remove_prefixed(prefix: &str, keep: Option<String>) {
+    crate::vfs::remove_prefixed(prefix, keep.as_deref());
 }
 
 #[wasm_bindgen(js_name = gcsPositionSource)]

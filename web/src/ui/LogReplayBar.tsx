@@ -1,6 +1,7 @@
 import { useRef, useState } from 'react';
 import { type Json, jsonStrings, optBoolean, optDouble, optInt, optJSONArray, optText } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
+import { stageFile, unstageAll } from '@/core/files';
 import { useLaunchedEffect } from '@/kotlin/Compose';
 import { openDocument } from '@/kotlin/Platform';
 import { delay } from '@/kotlin/Std';
@@ -60,11 +61,10 @@ export const logReplay = (view: Json | null): LogReplay | null =>
     : null;
 
 const stagedRefusal = async (chosen: File): Promise<string | null> => {
-  const copied = await chosen.arrayBuffer().then(
-    () => true,
-    () => false,
-  );
-  return copied ? Qgc.refusalOf(LOG_REPLAY_START, `${REPLAY_FOLDER}/${replayFileName(chosen.name)}`) : 'That file could not be read.';
+  const staged = `/${REPLAY_FOLDER}/${replayFileName(chosen.name)}`;
+  await unstageAll(`/${REPLAY_FOLDER}/`);
+  const copied = await stageFile(staged, chosen).catch(() => false);
+  return copied ? Qgc.refusalOf(LOG_REPLAY_START, staged) : 'That file could not be read.';
 };
 
 export const LogReplayBar = () => {

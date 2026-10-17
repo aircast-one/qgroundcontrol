@@ -3,6 +3,7 @@ import { AccountCommands, LinkCommands } from '@/bridge/BridgeCommands';
 import { type Json, jsonObjects, jsonStrings, optBoolean, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcPath, useQgcValue } from '@/bridge/QgcState';
+import { stageFile, unstage, unstageAll } from '@/core/files';
 import { useBackHandler, useLaunchedEffect, useTicker } from '@/kotlin/Compose';
 import { openDocument } from '@/kotlin/Platform';
 import { useValue } from '@/kotlin/State';
@@ -161,52 +162,19 @@ const REPLAY_LINK_FOLDER = 'replay-links';
 
 const fileSafe = (text: string): string => text.replace(/[^A-Za-z0-9._-]/g, '_');
 
-const replayFolder = async (link: string, create: boolean): Promise<FileSystemDirectoryHandle> => {
-  const root = await navigator.storage.getDirectory();
-  const folder = await root.getDirectoryHandle(REPLAY_LINK_FOLDER, { create });
-  return folder.getDirectoryHandle(fileSafe(link), { create });
-};
-
-const replayPath = (link: string, file: string): string => `/${REPLAY_LINK_FOLDER}/${fileSafe(link)}/${file}`;
-
 const leafName = (path: string): string => path.slice(path.lastIndexOf('/') + 1);
 
+const replayFolder = (link: string): string => `/${REPLAY_LINK_FOLDER}/${fileSafe(link)}/`;
+
 export const stagedReplayLog = async (link: string, file: File): Promise<string | null> => {
-  try {
-    const cleaned = file.name.replace(/[/\\]/g, '_');
-    const shown = cleaned.trim() === '' ? 'replay.tlog' : cleaned;
-    const folder = await replayFolder(link, true);
-    const writable = await (await folder.getFileHandle(shown, { create: true })).createWritable();
-    await writable.write(file);
-    await writable.close();
-    return replayPath(link, shown);
-  } catch {
-    return null;
-  }
+  const cleaned = file.name.replace(/[/\\]/g, '_');
+  const path = `${replayFolder(link)}${cleaned.trim() === '' ? 'replay.tlog' : cleaned}`;
+  return (await stageFile(path, file).catch(() => false)) ? path : null;
 };
 
-const entryNames = async (names: AsyncIterator<string>, seen: readonly string[] = []): Promise<readonly string[]> => {
-  const next = await names.next();
-  return next.done === true ? seen : entryNames(names, [...seen, next.value]);
-};
+export const pruneReplayFolder = (link: string, keep: string): Promise<void> => unstageAll(replayFolder(link), keep);
 
-export const pruneReplayFolder = async (link: string, keep: string): Promise<void> => {
-  try {
-    const folder = await replayFolder(link, false);
-    const names = await entryNames(folder.keys());
-    await Promise.all(names.filter((name) => replayPath(link, name) !== keep).map((name) => folder.removeEntry(name)));
-  } catch {
-    return;
-  }
-};
-
-const discardStagedLog = async (link: string, staged: string): Promise<void> => {
-  try {
-    await (await replayFolder(link, false)).removeEntry(leafName(staged));
-  } catch {
-    return;
-  }
-};
+const discardStagedLog = async (staged: string): Promise<void> => void (await unstage(staged));
 
 export const linkIsEditable = (row: LinkRow): boolean => !row.connected && row.editing !== LinkEditing.None;
 
@@ -952,7 +920,7 @@ const addLink = async (draft: LinkDraft, name: string, udpDefault: string, repla
   const created = await createLink(draft, name, toIntOrNull(shownPort(draft, udpDefault)) ?? 0, staged);
   const saved = draft.type !== LinkType.Mock && (await currentRows()).some((it) => it.name === name);
   const outcome = addOutcome(created, saved);
-  if (outcome === AddOutcome.Failed && staged !== null) await discardStagedLog(name, staged);
+  if (outcome === AddOutcome.Failed && staged !== null) await discardStagedLog(staged);
   if (saved) {
     await addServers(name, draft.servers);
     await writeNewLinkFlags(name, draft.autoConnect, draft.highLatency);
