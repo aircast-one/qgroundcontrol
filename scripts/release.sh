@@ -1,25 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# =============================================================================
-# release.sh - Create and push version tags for the Aircast QGroundControl fork
-# =============================================================================
-# The aircast-release workflow (.github/workflows/aircast-release.yml) builds
-# and publishes on these tag patterns, so the types below map to those triggers.
-# Tags are prefixed `aircast-v` because bare vX.Y.Z is upstream QGC's tag
-# namespace and collides on fetch.
-#
-#   patch    - Bump patch version   (aircast-v5.0.8 -> aircast-v5.0.9)   [production]
-#   minor    - Bump minor version   (aircast-v5.0.8 -> aircast-v5.1.0)   [production]
-#   major    - Bump major version   (aircast-v5.0.8 -> aircast-v6.0.0)   [production]
-#   dev      - Development release  (aircast-v5.0.8 -> aircast-v5.0.9-dev.1)
-#   staging  - Staging release      (aircast-v5.0.8 -> aircast-v5.0.8-staging.1)
-#
-# Usage:
-#   ./scripts/release.sh <patch|minor|major|dev|staging>
-# =============================================================================
-
-TYPE="${1:?Usage: $0 <patch|minor|major|dev|staging>}"
+TYPE="${1:?Usage: $0 <patch|minor|major|beta|dev|staging>}"
 
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
@@ -50,6 +32,11 @@ find_next_version() {
                 num="${version##*-staging.}"
                 base="${version%-staging.*}"
                 version="${base}-staging.$((num + 1))"
+                ;;
+            *-beta.*)
+                num="${version##*-beta.}"
+                base="${version%-beta.*}"
+                version="${base}-beta.$((num + 1))"
                 ;;
             *)
                 IFS='.' read -r major minor patch <<< "${version#aircast-v}"
@@ -85,6 +72,10 @@ case "$TYPE" in
         NEW_VERSION="aircast-v$((MAJOR + 1)).0.0"
         NEW_VERSION=$(find_next_version "$NEW_VERSION")
         ;;
+    beta)
+        NEW_VERSION="aircast-v${MAJOR}.${MINOR}.$((PATCH + 1))-beta.1"
+        NEW_VERSION=$(find_next_version "$NEW_VERSION")
+        ;;
     dev)
         NEW_VERSION="aircast-v${MAJOR}.${MINOR}.$((PATCH + 1))-dev.1"
         NEW_VERSION=$(find_next_version "$NEW_VERSION")
@@ -95,7 +86,7 @@ case "$TYPE" in
         ;;
     *)
         echo "Unknown release type: $TYPE"
-        echo "Valid types: patch, minor, major, dev, staging"
+        echo "Valid types: patch, minor, major, beta, dev, staging"
         exit 1
         ;;
 esac
