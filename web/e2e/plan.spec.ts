@@ -55,3 +55,17 @@ test('a waypoint deletes from the plan through its editor', async ({ app }) => {
   await app.getByRole('button', { name: 'Delete from the plan' }).click();
   await expect.poll(() => itemCount(app), { timeout: 30_000 }).toBe(before - 1);
 });
+
+test('a waypoint takes a hover action and gives it back', async ({ app }) => {
+  await openMenu(app, 'Plan');
+  await tapPlanMission(app);
+  await expect.poll(() => itemCount(app)).toBeGreaterThanOrEqual(5);
+  await app.getByRole('button', { name: 'Done' }).click();
+  await app.getByRole('button', { name: 'Waypoint 3' }).first().click();
+  await app.getByRole('button', { name: 'Add', exact: true }).click();
+  await app.getByRole('menuitem', { name: 'Hover' }).click();
+  await app.getByRole('dialog').filter({ hasText: 'Hover' }).getByRole('button', { name: 'Done' }).click();
+  await expect(app.getByRole('button', { name: /^3 Waypoint .* · holds 5 s/ })).toBeVisible({ timeout: 15_000 });
+  await app.getByRole('button', { name: 'Remove Hover' }).click();
+  await expect(app.getByRole('button', { name: /^3 Waypoint .* · holds/ })).toHaveCount(0, { timeout: 15_000 });
+});
