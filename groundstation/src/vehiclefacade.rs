@@ -1453,7 +1453,7 @@ impl<B: Backend> Facade<B> {
             "eraseAll" => dispatch(json!({ "action": "logEraseAll", "vehicle": vehicle })),
             "eraseSelected" => dispatch(json!({ "action": "logEraseSelected", "vehicle": vehicle })),
             "download" => {
-                let folder = given.get(0).and_then(Value::as_str).filter(|f| !f.is_empty()).map(str::to_string).or_else(crate::settingsstore::log_save_path).unwrap_or_default();
+                let folder = given.get(0).and_then(Value::as_str).filter(|f| !f.is_empty()).map(str::to_string).or_else(crate::settingsstore::log_save_path).or_else(|| crate::logs::BROWSER_SAVE_PATH.map(str::to_string)).unwrap_or_default();
                 dispatch(json!({ "action": "logDownload", "vehicle": vehicle, "folder": folder }))
             }
             "selectAll" => crate::hub::lock().with_onboard_logs(|logs| logs.select_all(first_bool().unwrap_or(true))).map(|_| json!({ "ok": true }).to_string()),

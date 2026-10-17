@@ -15,6 +15,65 @@ pub fn remove(path: impl AsRef<Path>) -> std::io::Result<()> {
     std::fs::remove_file(path)
 }
 
+#[cfg(not(target_family = "wasm"))]
+pub fn exists(path: impl AsRef<Path>) -> bool {
+    path.as_ref().exists()
+}
+
+#[cfg(not(target_family = "wasm"))]
+#[derive(Debug)]
+pub struct Sink(std::fs::File);
+
+#[cfg(not(target_family = "wasm"))]
+impl Sink {
+    pub fn create(path: impl AsRef<Path>) -> std::io::Result<Sink> {
+        std::fs::File::create(path).map(Sink)
+    }
+
+    pub fn set_len(&mut self, len: u64) -> std::io::Result<()> {
+        self.0.set_len(len)
+    }
+
+    pub fn write_at(&mut self, offset: u64, data: &[u8]) -> std::io::Result<()> {
+        use std::io::{Seek, SeekFrom, Write};
+        self.0.seek(SeekFrom::Start(offset)).and_then(|_| self.0.write_all(data))
+    }
+
+    pub fn finish(self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+
+#[cfg(target_family = "wasm")]
+#[derive(Debug)]
+pub struct Sink(std::path::PathBuf, std::io::Cursor<Vec<u8>>);
+
+#[cfg(target_family = "wasm")]
+impl Sink {
+    pub fn create(path: impl AsRef<Path>) -> std::io::Result<Sink> {
+        Ok(Sink(path.as_ref().to_path_buf(), std::io::Cursor::default()))
+    }
+
+    pub fn set_len(&mut self, len: u64) -> std::io::Result<()> {
+        self.1.get_mut().resize(len as usize, 0);
+        Ok(())
+    }
+
+    pub fn write_at(&mut self, offset: u64, data: &[u8]) -> std::io::Result<()> {
+        use std::io::{Seek, SeekFrom, Write};
+        self.1.seek(SeekFrom::Start(offset)).and_then(|_| self.1.write_all(data))
+    }
+
+    pub fn finish(self) -> std::io::Result<()> {
+        write(self.0, self.1.into_inner())
+    }
+}
+
+#[cfg(target_family = "wasm")]
+pub fn exists(path: impl AsRef<Path>) -> bool {
+    files().contains_key(path.as_ref())
+}
+
 #[cfg(target_family = "wasm")]
 static FILES: std::sync::LazyLock<std::sync::Mutex<std::collections::BTreeMap<std::path::PathBuf, Vec<u8>>>> = std::sync::LazyLock::new(Default::default);
 

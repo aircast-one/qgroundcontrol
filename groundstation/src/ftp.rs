@@ -152,7 +152,7 @@ pub struct Download {
     file_size: u32,
     file: Vec<u8>,
     sink_path: Option<std::path::PathBuf>,
-    sink: Option<std::fs::File>,
+    sink: Option<crate::vfs::Sink>,
     missing: Vec<Missing>,
     retries: u32,
 }
@@ -193,7 +193,7 @@ impl Download {
         self.phase = None;
         if let (Some(file), Some(path)) = (self.sink.take(), self.sink_path.as_ref()) {
             drop(file);
-            let _ = std::fs::remove_file(path);
+            let _ = crate::vfs::remove(path);
         }
         vec![Out::StopTimer, Out::Complete { ok: false, error: error.to_string(), bytes: Vec::new() }]
     }
@@ -235,10 +235,7 @@ impl Download {
 
     fn write_at(&mut self, offset: u32, data: &[u8]) -> Result<(), String> {
         match self.sink.as_mut() {
-            Some(file) => {
-                use std::io::{Seek, SeekFrom, Write};
-                file.seek(SeekFrom::Start(u64::from(offset))).and_then(|_| file.write_all(data)).map_err(|_| "Download failed: Error saving file".to_string())?;
-            }
+            Some(file) => file.write_at(u64::from(offset), data).map_err(|_| "Download failed: Error saving file".to_string())?,
             None => {
                 let end = offset as usize + data.len();
                 if self.file.len() < end {
@@ -294,6 +291,9 @@ impl Download {
     }
 
     fn complete_ok(&mut self) -> Vec<Out> {
+        if self.sink.take().is_some_and(|file| file.finish().is_err()) {
+            return self.fail("Download failed: Error saving file");
+        }
         self.phase = None;
         vec![Out::StopTimer, Out::Complete { ok: true, error: String::new(), bytes: std::mem::take(&mut self.file) }]
     }
@@ -321,7 +321,7 @@ impl Download {
             RSP_ACK => match reply.open_length() {
                 Some(size) => {
                     if let Some(path) = self.sink_path.clone() {
-                        match std::fs::File::create(&path) {
+                        match crate::vfs::Sink::create(&path) {
                             Ok(file) => self.sink = Some(file),
                             Err(_) => return self.fail("Download failed"),
                         }

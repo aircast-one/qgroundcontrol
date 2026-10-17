@@ -22,13 +22,14 @@ const read = (text: string): LogsView => {
 };
 
 describe('LogDownloadScreenTest', () => {
-  it("logs split into the vehicle's and the phone's by status id", () => {
-    const saved = served.replace('"status":"Downloaded",', '"status":"Downloaded","statusId":"downloaded",');
+  it("logs split into the vehicle's and the browser's by status id", () => {
+    const saved = served.replace('"status":"Downloaded",', '"status":"Downloaded","statusId":"downloaded","savedPath":"/logs/log_1_UnknownDate.bin",');
     const sections = logSections(read(saved).entries);
     expect(sections.map(([title, logs]) => [title, logs.map((it) => it.id)])).toEqual([
       ['On the vehicle', [2]],
-      ['On this phone', [1]],
+      ['In this browser', [1]],
     ]);
+    expect(read(saved).entries.map((it) => it.savedPath)).toEqual(['/logs/log_1_UnknownDate.bin', '']);
     expect(logSections(read(served).entries).map(([title]) => title)).toEqual(['On the vehicle']);
   });
 

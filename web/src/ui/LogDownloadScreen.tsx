@@ -2,6 +2,8 @@ import { useEffect, useMemo, useState } from 'react';
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcPath } from '@/bridge/QgcState';
 import { type Json, isJson, optBoolean, optInt, optJSONArray, optText } from '@/bridge/Json';
+import { stagedFile } from '@/core/files';
+import { createDocument } from '@/kotlin/Platform';
 import { AlertDialog, Checkbox, ExtendedFloatingActionButton, FilledTonalButton, LinearProgressIndicator, OutlinedButton, Surface, Text, TextButton } from '@/m3';
 import { sentenceCase } from '@/map/SentenceCase';
 import { Drawable } from '@/res/Icon';
@@ -54,15 +56,16 @@ export type LogEntry = {
   status: string;
   downloading: boolean;
   saved: boolean;
+  savedPath: string;
 };
 
-export const LogEntry = (fields: Omit<LogEntry, 'downloading' | 'saved'> & { downloading?: boolean; saved?: boolean }): LogEntry => ({ downloading: false, saved: false, ...fields });
+export const LogEntry = (fields: Omit<LogEntry, 'downloading' | 'saved' | 'savedPath'> & { downloading?: boolean; saved?: boolean; savedPath?: string }): LogEntry => ({ downloading: false, saved: false, savedPath: '', ...fields });
 
 export const logSections = (entries: readonly LogEntry[]): (readonly [string, readonly LogEntry[]])[] =>
   (
     [
       ['On the vehicle', entries.filter((it) => !it.saved)],
-      ['On this phone', entries.filter((it) => it.saved)],
+      ['In this browser', entries.filter((it) => it.saved)],
     ] as const
   ).filter(([, section]) => section.length > 0);
 
@@ -110,6 +113,7 @@ export const logsView = (view: Json | null): LogsView | null =>
                   status: optText(entry, 'status'),
                   downloading: optText(entry, 'statusId') === 'downloading',
                   saved: optText(entry, 'statusId') === 'downloaded',
+                  savedPath: optText(entry, 'savedPath'),
                 }),
               ],
         ),
@@ -173,31 +177,42 @@ const EraseConfirmDialog = ({ erase, onConfirm, onDismiss }: { erase: EraseKind;
   />
 );
 
+const saveToDevice = async (path: string): Promise<void> => {
+  const file = await stagedFile(path);
+  if (file !== null) createDocument(file.name, 'application/octet-stream', file);
+};
+
 const LogRow = ({ entry, enabled, onToggle }: { entry: LogEntry; enabled: boolean; onToggle: (checked: boolean) => void }) => {
   const selectable = enabled && entry.received;
   return (
-    <button
-      type="button"
-      role="checkbox"
-      aria-checked={entry.selected}
-      disabled={!selectable}
-      onClick={() => onToggle(!entry.selected)}
-      className="flex min-h-[72px] w-full items-center gap-4 px-4 py-3 text-left"
-      style={{ background: entry.selected ? md('secondaryContainer') : 'transparent' }}
-    >
-      <span className="grid size-10 shrink-0 place-items-center rounded-full" style={{ background: entry.selected ? md('primary') : md('secondaryContainer') }}>
-        <Drawable name={entry.selected ? 'ic_check_circle' : 'ic_description'} size={24} style={{ color: entry.selected ? md('onPrimary') : md('onSecondaryContainer') }} />
-      </span>
-      <span className="flex min-w-0 flex-1 flex-col">
-        <Text typography="bodyLarge">{`Log ${entry.id}`}</Text>
-        <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
-          {[entry.time, entry.sizeStr].filter((it) => it.trim() !== '').join(' · ')}
+    <div className="flex w-full items-center" style={{ background: entry.selected ? md('secondaryContainer') : 'transparent' }}>
+      <button
+        type="button"
+        role="checkbox"
+        aria-checked={entry.selected}
+        disabled={!selectable}
+        onClick={() => onToggle(!entry.selected)}
+        className="flex min-h-[72px] min-w-0 flex-1 items-center gap-4 px-4 py-3 text-left"
+      >
+        <span className="grid size-10 shrink-0 place-items-center rounded-full" style={{ background: entry.selected ? md('primary') : md('secondaryContainer') }}>
+          <Drawable name={entry.selected ? 'ic_check_circle' : 'ic_description'} size={24} style={{ color: entry.selected ? md('onPrimary') : md('onSecondaryContainer') }} />
+        </span>
+        <span className="flex min-w-0 flex-1 flex-col">
+          <Text typography="bodyLarge">{`Log ${entry.id}`}</Text>
+          <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
+            {[entry.time, entry.sizeStr].filter((it) => it.trim() !== '').join(' · ')}
+          </Text>
+        </span>
+        <Text typography="labelMedium" color={md('primary')}>
+          {entry.status}
         </Text>
-      </span>
-      <Text typography="labelMedium" color={md('primary')}>
-        {entry.status}
-      </Text>
-    </button>
+      </button>
+      {entry.saved && entry.savedPath !== '' ? (
+        <TextButton label={`Save log ${entry.id}`} onClick={() => void saveToDevice(entry.savedPath)} className="mr-2">
+          Save
+        </TextButton>
+      ) : null}
+    </div>
   );
 };
 

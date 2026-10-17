@@ -20,6 +20,15 @@ pub fn human_size(bytes: i64) -> String {
 const CLOCK_SET_YEAR: i64 = 2010;
 pub const FTP_TRANSPORT: &str = "ftp";
 
+#[cfg(target_family = "wasm")]
+pub const BROWSER_SAVE_PATH: Option<&str> = Some("/logs");
+#[cfg(not(target_family = "wasm"))]
+pub const BROWSER_SAVE_PATH: Option<&str> = None;
+
+fn save_path(saving: &Value) -> &str {
+    saving.get("logSavePath").and_then(Value::as_str).filter(|p| !p.is_empty()).or(BROWSER_SAVE_PATH).unwrap_or("")
+}
+
 pub fn time_state(received: bool, raw: &str) -> &'static str {
     let year = raw.get(..4).and_then(|y| y.parse::<i64>().ok());
     match (received, year) {
@@ -51,7 +60,7 @@ pub fn logs_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let root = backend.value_fields("logDownload", "requestingList,listAnswered,downloadingLogs,sortAscending,selectedCount,transport");
     let ftp = crate::read::text(&root, "transport") == FTP_TRANSPORT;
     let saving = backend.value_fields("settings.appSettings", "logSavePath,savePath");
-    let save_path = saving.get("logSavePath").and_then(Value::as_str).unwrap_or("").to_string();
+    let save_path = save_path(&saving).to_string();
     let chosen = crate::read::text(saving.get("savePath").unwrap_or(&Value::Null), "valueString");
     let requesting = flag(&root, "requestingList");
     let downloading = flag(&root, "downloadingLogs");
@@ -77,6 +86,7 @@ pub fn logs_view(backend: &dyn Backend, _args: &[String]) -> Value {
                         "selected": flag(e, "selected"),
                         "time": time,
                         "timeState": time_state(flag(e, "received"), time),
+                        "savedPath": e.get("savedPath").and_then(Value::as_str),
                     }))
                 })
                 .collect()
@@ -87,7 +97,7 @@ pub fn logs_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "kind": "object",
         "class": "Logs",
         "connected": connected,
-        "savePath": save_path,
+        "savePath": if BROWSER_SAVE_PATH == Some(save_path.as_str()) { "" } else { save_path.as_str() },
         "savePathReason": match (save_path.is_empty(), chosen.trim().is_empty()) {
             (false, _) => Value::Null,
             (true, true) => json!("notChosen"),
@@ -154,7 +164,7 @@ pub fn act(backend: &dyn Backend, action: Action, path: &str, args: &str) -> Val
         busy: flag(&root, "requestingList") || flag(&root, "downloadingLogs"),
         entries: backend.value("logDownload.model").get("elements").and_then(Value::as_array).map_or(0, Vec::len),
         selected: root.get("selectedCount").and_then(Value::as_u64).unwrap_or(0) as usize,
-        save_path: chosen.is_some() || saving.get("logSavePath").and_then(Value::as_str).is_some_and(|p| !p.is_empty()),
+        save_path: chosen.is_some() || !save_path(&saving).is_empty(),
         ftp: crate::read::text(&root, "transport") == FTP_TRANSPORT,
     };
     if let Some((token, reason)) = refusal(action, state) {
@@ -264,13 +274,14 @@ mod tests {
             fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
             fn watch(&self, _p: &[String]) {}
         }
-        let idle = logs_view(&Fake { connected: true, requesting: false, entries: json!([{ "id": 1, "size": 4096, "status": "Downloaded", "statusId": "downloaded", "received": true, "selected": false, "time": "2026-09-08T14:42:51.000" }]) }, &[]);
+        let idle = logs_view(&Fake { connected: true, requesting: false, entries: json!([{ "id": 1, "size": 4096, "status": "Downloaded", "statusId": "downloaded", "received": true, "selected": false, "time": "2026-09-08T14:42:51.000", "savedPath": "/Users/p/Logs/log_1.bin" }]) }, &[]);
         assert_eq!(idle["canRefresh"], true);
         assert_eq!(idle["sortText"], "Sort Ascending", "OnboardLogPage names the order a press will give");
         assert_eq!(idle["canSort"], idle["entries"].as_array().unwrap().len() > 1);
         assert_eq!(idle["canDownload"], true, "the head selects the row inside download(), so requiring a selection the click has not made yet would disable every Download button there is");
         assert_eq!(idle["canErase"], true);
         assert_eq!(idle["anyDownloaded"], true);
+        assert_eq!(idle["entries"][0]["savedPath"], "/Users/p/Logs/log_1.bin");
 
         let german = logs_view(&Fake { connected: true, requesting: false, entries: json!([{ "id": 1, "size": 4096, "status": "Heruntergeladen", "statusId": "downloaded", "received": true, "selected": false, "time": "2026-09-08T14:42:51.000" }]) }, &[]);
         assert_eq!(german["anyDownloaded"], true, "LogDownloadController wraps every status in tr(), so comparing against the English word made this permanently false outside English and whatever it gates never appeared");

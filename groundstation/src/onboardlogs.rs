@@ -1,5 +1,3 @@
-use std::io::{Seek, SeekFrom, Write};
-
 use serde_json::{Value, json};
 
 pub const LOG_DATA_LEN: u32 = 90;
@@ -41,6 +39,7 @@ struct Ftp {
     deleting: bool,
     erasing: Option<u16>,
     current: Option<u16>,
+    local: Option<std::path::PathBuf>,
     had_error: bool,
     progress_bytes: u64,
     progress_from_ms: u64,
@@ -56,11 +55,12 @@ pub struct Entry {
     pub selected: bool,
     pub status: String,
     pub ftp_path: Option<String>,
+    pub saved: Option<std::path::PathBuf>,
 }
 
 impl Entry {
     fn pending(id: u16) -> Entry {
-        Entry { id, size: 0, time_utc: None, received: false, selected: false, status: "Pending".to_string(), ftp_path: None }
+        Entry { id, size: 0, time_utc: None, received: false, selected: false, status: "Pending".to_string(), ftp_path: None, saved: None }
     }
 
     fn status_id(&self) -> String {
@@ -75,7 +75,7 @@ impl Entry {
 struct Download {
     id: u16,
     size: u32,
-    file: std::fs::File,
+    file: crate::vfs::Sink,
     path: std::path::PathBuf,
     chunk: u32,
     table: Vec<bool>,
@@ -296,6 +296,7 @@ impl OnboardLogs {
                     Some(dir) => format!("{}/{dir}/{name}", self.ftp.root),
                     None => format!("{}/{name}", self.ftp.root),
                 }),
+                saved: None,
             })
             .collect();
         self.ftp.next_id += found.len() as u16;
@@ -436,15 +437,15 @@ impl OnboardLogs {
         format!("log_{}_{when}{extension}", entry.id)
     }
 
-    fn open(&self, name: &str) -> Option<(std::fs::File, std::path::PathBuf)> {
+    fn open(&self, name: &str) -> Option<(crate::vfs::Sink, std::path::PathBuf)> {
         let (stem, extension) = name.rsplit_once('.').unwrap_or((name, ""));
         let path = (0..)
             .map(|n| match n {
                 0 => self.folder.join(name),
                 n => self.folder.join(format!("{stem}_{n}.{extension}")),
             })
-            .find(|path| !path.exists())?;
-        std::fs::File::create(&path).ok().map(|file| (file, path))
+            .find(|path| !crate::vfs::exists(path))?;
+        crate::vfs::Sink::create(&path).ok().map(|file| (file, path))
     }
 
     fn next_download(&mut self, now_ms: u64) -> Vec<Out> {
@@ -457,10 +458,10 @@ impl OnboardLogs {
         };
         entry.selected = false;
         let entry = entry.clone();
-        let opened = self.open(&Self::file_name(&entry, &self.extension)).and_then(|(file, path)| match file.set_len(u64::from(entry.size)) {
+        let opened = self.open(&Self::file_name(&entry, &self.extension)).and_then(|(mut file, path)| match file.set_len(u64::from(entry.size)) {
             Ok(()) => Some((file, path)),
             Err(_) => {
-                let _ = std::fs::remove_file(&path);
+                let _ = crate::vfs::remove(&path);
                 None
             }
         });
@@ -517,10 +518,7 @@ impl OnboardLogs {
         if let Some(slot) = download.table.get_mut(bin) {
             *slot = true;
         }
-        if download.file.seek(SeekFrom::Start(u64::from(offset))).is_err() {
-            return Vec::new();
-        }
-        if download.file.write_all(data).is_err() {
+        if download.file.write_at(u64::from(offset), data).is_err() {
             self.set_status(index, "Error");
             return Vec::new();
         }
@@ -531,10 +529,7 @@ impl OnboardLogs {
         self.due = Some(now_ms + TIMEOUT_MS);
         let Some(download) = self.download.as_mut() else { return Vec::new() };
         match () {
-            _ if download.log_complete() => {
-                self.set_status(index, "Downloaded");
-                self.next_download(now_ms)
-            }
+            _ if download.log_complete() => self.complete_download(now_ms),
             _ if download.chunk_complete() => {
                 download.advance();
                 let request = Out::RequestData { id: index + self.offset, offset: download.chunk * CHUNK_SIZE, count: download.table.len() as u32 * LOG_DATA_LEN };
@@ -545,10 +540,20 @@ impl OnboardLogs {
         }
     }
 
+    fn complete_download(&mut self, now_ms: u64) -> Vec<Out> {
+        if let Some(download) = self.download.take() {
+            let saved = download.file.finish().is_ok().then_some(download.path);
+            if let Some(entry) = self.entries.iter_mut().find(|e| e.id == download.id) {
+                entry.status = if saved.is_some() { "Downloaded" } else { "Error" }.to_string();
+                entry.saved = saved;
+            }
+        }
+        self.next_download(now_ms)
+    }
+
     fn find_missing_data(&mut self, now_ms: u64) -> Vec<Out> {
-        if let Some(id) = self.download.as_ref().filter(|d| d.log_complete()).map(|d| d.id) {
-            self.set_status(id, "Downloaded");
-            return self.next_download(now_ms);
+        if self.download.as_ref().is_some_and(Download::log_complete) {
+            return self.complete_download(now_ms);
         }
         let Some(download) = self.download.as_mut() else { return Vec::new() };
         if download.chunk_complete() {
@@ -588,7 +593,7 @@ impl OnboardLogs {
                 0 => self.folder.join(&name),
                 n => self.folder.join(format!("{stem}_{n}{extension}")),
             })
-            .find(|path| !path.exists())
+            .find(|path| !crate::vfs::exists(path))
             .unwrap_or_else(|| self.folder.join(&name))
     }
 
@@ -608,6 +613,7 @@ impl OnboardLogs {
         let path = entry.ftp_path.clone().unwrap_or_default();
         let local = self.local_name(&path, id);
         self.ftp.current = Some(id);
+        self.ftp.local = Some(local.clone());
         (self.ftp.progress_bytes, self.ftp.progress_from_ms, self.ftp.rate_avg) = (0, now_ms, 0.0);
         vec![Out::FtpDownload { path, local }]
     }
@@ -615,7 +621,12 @@ impl OnboardLogs {
     pub fn on_ftp_downloaded(&mut self, result: Result<(), String>, now_ms: u64) -> Vec<Out> {
         let Some(id) = self.ftp.current.filter(|_| self.downloading && !self.ftp.deleting) else { return Vec::new() };
         match result {
-            Ok(()) => self.set_status(id, "Downloaded"),
+            Ok(()) => {
+                let saved = self.ftp.local.take();
+                if let Some(entry) = self.entries.iter_mut().find(|e| e.id == id) {
+                    (entry.status, entry.saved) = ("Downloaded".to_string(), saved);
+                }
+            }
             Err(_) => {
                 self.set_status(id, "Error");
                 self.ftp.had_error = true;
@@ -697,7 +708,7 @@ impl OnboardLogs {
         if let Some(download) = self.download.take() {
             self.set_status(download.id, "Canceled");
             drop(download.file);
-            let _ = std::fs::remove_file(&download.path);
+            let _ = crate::vfs::remove(&download.path);
         }
         self.reset_selection(true);
         self.downloading = false;
@@ -732,7 +743,7 @@ impl OnboardLogs {
     pub fn leave(&mut self) {
         if let Some(download) = self.download.take() {
             drop(download.file);
-            let _ = std::fs::remove_file(&download.path);
+            let _ = crate::vfs::remove(&download.path);
         }
         *self = OnboardLogs { sort_ascending: self.sort_ascending, ..OnboardLogs::default() };
     }
@@ -753,6 +764,7 @@ impl OnboardLogs {
             "selected": entry.selected,
             "size": entry.size,
             "sizeStr": big_size_text(u64::from(entry.size)),
+            "savedPath": entry.saved.as_ref().map(|path| path.to_string_lossy()),
             "status": entry.status,
             "statusId": entry.status_id(),
             "time": entry.time_utc.and_then(local_time).map(|t| t.format("%Y-%m-%dT%H:%M:%S%.3f").to_string()),
@@ -848,6 +860,7 @@ mod tests {
         assert_eq!((logs.downloading, logs.entries[0].status.as_str()), (false, "Downloaded"));
         let written = std::fs::read(folder.join("log_0_UnknownDate.bin")).unwrap();
         assert_eq!((written.len(), written[0], written[90]), (180, 1, 2));
+        assert_eq!(logs.model_json()["elements"][0]["savedPath"], folder.join("log_0_UnknownDate.bin").to_string_lossy().as_ref(), "the head fetches the saved file by the path the core wrote it to");
         std::fs::remove_dir_all(&folder).unwrap();
     }
 
@@ -915,6 +928,7 @@ mod tests {
         let Out::FtpDownload { local, .. } = &first[0] else { unreachable!() };
         assert!(local.ends_with("a_1.ulg") || local.ends_with("b.ulg"), "an existing file gets a numbered name");
         assert!(matches!(logs.on_ftp_downloaded(Ok(()), 1).as_slice(), [Out::FtpDownload { .. }]));
+        assert_eq!(logs.entries.iter().find(|e| e.status == "Downloaded").and_then(|e| e.saved.as_ref()), Some(local));
         assert!(logs.on_ftp_downloaded(Err("Download failed".into()), 2).is_empty());
         assert!(!logs.downloading);
         assert_eq!(logs.entries.iter().filter(|e| e.status == "Downloaded").count(), 1);
