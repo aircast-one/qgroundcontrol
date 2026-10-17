@@ -101,6 +101,15 @@ export const tapPlanMission = async (page: Page) => {
   );
 };
 
+export const openAircraftSetup = async (page: Page) => {
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('tablist').getByRole('tab', { name: 'General' }).click();
+  await expect(async () => {
+    await page.getByRole('button', { name: 'Aircraft setup' }).click();
+    await expect(page.getByRole('button', { name: /^Sensors/ })).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 60_000 });
+};
+
 export const openPlanAtVehicle = async (page: Page) => {
   await page.addLocatorHandler(page.getByRole('dialog').filter({ hasText: 'Aircraft connected' }), (prompt) => prompt.getByRole('button', { name: 'Keep my route' }).click());
   await openMenu(page, 'Plan');

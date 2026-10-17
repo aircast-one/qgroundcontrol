@@ -1,16 +1,6 @@
-import { connectMock, expect, test } from './fixtures';
-import type { Page } from '@playwright/test';
+import { connectMock, expect, openAircraftSetup, test } from './fixtures';
 
 test.describe.configure({ timeout: 120_000 });
-
-const openAircraftSetup = async (page: Page) => {
-  await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await page.getByRole('tablist').getByRole('tab', { name: 'General' }).click();
-  await expect(async () => {
-    await page.getByRole('button', { name: 'Aircraft setup' }).click();
-    await expect(page.getByRole('button', { name: /^Sensors/ })).toBeVisible({ timeout: 2_000 });
-  }).toPass({ timeout: 60_000 });
-};
 
 test('ArduPilot setup names the frame and failsafe actions from the parameter metadata', async ({ app }) => {
   await connectMock(app, [], 'APM ArduCopter Vehicle');
