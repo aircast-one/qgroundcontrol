@@ -80,6 +80,8 @@ const PX4_LAND: u32 = 6;
 const PX4_ALTCTL: u32 = 2;
 const PX4_POSCTL: u32 = 3;
 const PX4_MISSION: u32 = 4;
+const PX4_ORBIT: u32 = 1;
+const ORBIT_LEAD_M: f64 = 10.0;
 const APM_AUTO: u32 = 3;
 const APM_WHEELED_AUTO: u32 = 10;
 const COPTER_PILOT_MODES: [u32; 6] = [0, 1, 2, 5, 13, 16];
@@ -339,6 +341,12 @@ impl Target {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+struct Orbit {
+    centre: Target,
+    radius: f64,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Phase {
     Holding,
@@ -434,6 +442,7 @@ pub struct Sim {
     missions: BTreeMap<u8, Vec<MISSION_ITEM_INT_DATA>>,
     mission: Runner,
     guidance: Guidance,
+    orbit: Option<Orbit>,
     photos: Photos,
     zones: Vec<Zone>,
     upload: Option<Upload>,
@@ -514,6 +523,7 @@ impl Sim {
             missions: BTreeMap::new(),
             mission: Runner::default(),
             guidance: Guidance::default(),
+            orbit: None,
             photos: Photos::default(),
             zones: Vec::new(),
             upload: None,
@@ -884,6 +894,17 @@ impl Sim {
                 self.fly_to(if alt.is_nan() { Target { lat: place.lat, lon: place.lon, ..current } } else { place });
                 accepted(Vec::new())
             }
+            MavCmd::MAV_CMD_DO_ORBIT if self.options.vehicle == Vehicle::Px4 && self.airborne() => {
+                let (lat, lon, alt) = position;
+                let place = self.placed(frame, if lat.is_nan() { self.lat } else { lat }, if lon.is_nan() { self.lon } else { lon }, alt);
+                let centre = if alt.is_nan() { Target::at(place.lat, place.lon, self.alt) } else { place };
+                let radius = if params[0].is_nan() || params[0] == 0.0 { self.tuning.circle_radius } else { f64::from(params[0]) };
+                self.switch(px4_mode(PX4_POSCTL, PX4_ORBIT));
+                self.orbit = Some(Orbit { centre, radius });
+                self.guidance.speed = (params[1] > 0.0).then(|| f64::from(params[1]));
+                accepted(Vec::new())
+            }
+            MavCmd::MAV_CMD_DO_ORBIT if self.options.vehicle == Vehicle::Px4 => (MavResult::MAV_RESULT_TEMPORARILY_REJECTED, Vec::new()),
             MavCmd::MAV_CMD_DO_CHANGE_ALTITUDE => {
                 let current = self.target.unwrap_or(Target::at(self.lat, self.lon, self.alt));
                 let place = self.placed(frame, current.lat, current.lon, f64::from(params[0]));
@@ -982,6 +1003,7 @@ impl Sim {
     fn switch(&mut self, custom: u32) {
         self.custom_mode = custom;
         self.target = None;
+        self.orbit = None;
         self.guidance = Guidance::default();
         self.phase = self.phase_of(custom);
         self.mission.pause();
@@ -1259,8 +1281,15 @@ impl Sim {
                 Some(if climbing { Target::at(self.lat, self.lon, alt) } else { Target::at(self.home.0, self.home.1, alt) })
             }
             Phase::Landing => Some(Target::at(self.lat, self.lon, self.ground_rel(self.lat, self.lon))),
-            Phase::Holding => self.target.filter(|_| self.armed).map(|target| self.resolved(target)),
+            Phase::Holding => self.orbit.map(|orbit| self.orbit_point(orbit)).or(self.target).filter(|_| self.armed).map(|target| self.resolved(target)),
         }
+    }
+
+    fn orbit_point(&self, orbit: Orbit) -> Target {
+        let (north, east) = self.offset(orbit.centre);
+        let radius = orbit.radius.abs();
+        let ahead = (-east).atan2(-north) + orbit.radius.signum() * (ORBIT_LEAD_M / radius).min(std::f64::consts::FRAC_PI_2);
+        Target { lat: orbit.centre.lat + radius * ahead.cos() / METRES_PER_DEG, lon: orbit.centre.lon + radius * ahead.sin() / (METRES_PER_DEG * orbit.centre.lat.to_radians().cos()), ..orbit.centre }
     }
 
     fn offset(&self, to: Target) -> (f64, f64) {
@@ -2129,6 +2158,35 @@ mod tests {
         command(&mut sim, MavCmd::MAV_CMD_DO_SET_MODE, [1.0, px4_mode(PX4_AUTO, PX4_RTL) as f32, 0.0, 0.0, 0.0, 0.0, 0.0]);
         fly(&mut sim, 60);
         assert!((sim.lat - sim.home.0).abs() < 1e-5 && sim.alt == 0.0 && !sim.armed);
+    }
+
+    #[test]
+    fn px4_orbits_the_point_it_is_given_until_the_mode_changes() {
+        let mut sim = Sim::new(options(Vehicle::Px4), 128, None);
+        let orbit = |sim: &mut Sim| {
+            let centre = (sim.home.0 + 0.0005, sim.home.1);
+            sim.receive(gcs(), &MavMessage::COMMAND_INT(COMMAND_INT_DATA { command: MavCmd::MAV_CMD_DO_ORBIT, x: e7(centre.0), y: e7(centre.1), z: f32::NAN, frame: MavFrame::MAV_FRAME_GLOBAL_RELATIVE_ALT_INT, param1: 30.0, param2: f32::NAN, target_system: 128, target_component: 1, ..Default::default() }));
+            centre
+        };
+        orbit(&mut sim);
+        assert_ne!(sim.custom_mode, px4_mode(PX4_POSCTL, PX4_ORBIT), "a vehicle on the ground does not orbit");
+        command(&mut sim, MavCmd::MAV_CMD_NAV_TAKEOFF, [0.0, 0.0, 0.0, 0.0, f32::NAN, f32::NAN, (HOME_ALT_M + 10.0) as f32]);
+        fly(&mut sim, 6);
+        let centre = orbit(&mut sim);
+        assert_eq!(sim.custom_mode, px4_mode(PX4_POSCTL, PX4_ORBIT));
+        fly(&mut sim, 30);
+        let bearing = |sim: &Sim| { let (north, east) = sim.offset(Target::at(centre.0, centre.1, sim.alt)); (-east).atan2(-north) };
+        let before = bearing(&sim);
+        assert!((metres_to(&sim, centre.0, centre.1) - 30.0).abs() < 8.0, "it settles on the 30 m ring: {} m", metres_to(&sim, centre.0, centre.1));
+        fly(&mut sim, 3);
+        let swept = (bearing(&sim) - before).rem_euclid(std::f64::consts::TAU);
+        assert!(swept > 0.1 && swept < std::f64::consts::PI, "a positive radius goes clockwise: swept {swept} rad");
+        assert!((metres_to(&sim, centre.0, centre.1) - 30.0).abs() < 8.0 && (sim.alt - 10.0).abs() < 1.0);
+        command(&mut sim, MavCmd::MAV_CMD_DO_SET_MODE, [1.0, px4_mode(PX4_AUTO, PX4_LOITER) as f32, 0.0, 0.0, 0.0, 0.0, 0.0]);
+        fly(&mut sim, 10);
+        let stopped = (sim.lat, sim.lon);
+        fly(&mut sim, 3);
+        assert!(metres_to(&sim, stopped.0, stopped.1) < 1.0, "Hold stops the orbit");
     }
 
     #[test]
