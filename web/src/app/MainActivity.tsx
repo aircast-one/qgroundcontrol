@@ -521,7 +521,7 @@ export const AircastShell = () => {
 
   return (
     <AircastTheme dark={darkBars}>
-      <CloseGuard enabled={onFly && !fullScreen} />
+      <CloseGuard />
       <GimbalTakeControlDialog />
       {appMessages[0] !== undefined ? <AppMessageDialog message={appMessages[0]} onOpenSetup={() => navigation.openAircraft()} onDismiss={() => setAppMessages((messages) => messages.slice(1))} /> : null}
       <LocalImmersive.Provider value={flyLandscape}>

@@ -277,6 +277,22 @@ fn url_host(url: &str) -> &str {
     host_port.rsplit_once(':').map_or(host_port, |(host, _)| host)
 }
 
+const SYNTHETIC_NAME: &str = "Synthetic view";
+const SYNTHETIC_WAITING: &str = "Draws once the aircraft has a GPS fix";
+
+fn synthetic_here() -> bool {
+    crate::settingsstore::camera_sources().iter().any(|source| source == SOURCE_SYNTHETIC)
+}
+
+fn adopted(cameras: &[Camera], host: &str, device: Vec<Camera>, synthetic_here: bool) -> (Vec<Camera>, i64) {
+    let kept = cameras.iter().filter(|camera| url_host(&camera.url) != host).count();
+    let first_visit = kept == cameras.len() && !device.is_empty();
+    let fallback = (first_visit && synthetic_here && !cameras.iter().any(|camera| camera.source == SOURCE_SYNTHETIC)).then(|| Camera::new(SYNTHETIC_NAME, SOURCE_SYNTHETIC, ""));
+    let next: Vec<Camera> = with_device(cameras, host, device).into_iter().chain(fallback).collect();
+    let at = if next.len() > kept { kept as i64 } else { 0 };
+    (next, at)
+}
+
 pub fn with_device(cameras: &[Camera], host: &str, device: Vec<Camera>) -> Vec<Camera> {
     cameras.iter().filter(|camera| url_host(&camera.url) != host).cloned().chain(device).collect()
 }
@@ -431,9 +447,7 @@ fn changed(path: &str, given: &Value, cameras: &[Camera], active: i64) -> Change
             host if host.is_empty() => refusal(NEEDS_HOST),
             host => {
                 let device = given.get(1).and_then(Value::as_array).map_or_else(Vec::new, |listed| listed.iter().map(|camera| Camera::new(&text_arg(camera, 0), SOURCE_WEBRTC, &text_arg(camera, 1))).collect());
-                let kept = cameras.iter().filter(|camera| url_host(&camera.url) != host).count();
-                let next = with_device(cameras, &host, device);
-                let at = if next.len() > kept { kept as i64 } else { 0 };
+                let (next, at) = adopted(cameras, &host, device, synthetic_here());
                 (Some((next, at)).filter(|(next, _)| next.as_slice() != cameras), json!({ "ok": true }))
             }
         },
@@ -514,7 +528,10 @@ pub fn view_of(video: &Value, stored: Option<Vec<Camera>>, stored_active: i64, p
                 "source": camera.source,
                 "url": camera.url,
                 "tilt": camera.tilt,
-                "summary": summary(camera),
+                "summary": match (camera.source == SOURCE_SYNTHETIC, synthetic_ready) {
+                    (true, false) => SYNTHETIC_WAITING.to_string(),
+                    _ => summary(camera),
+                },
                 "problem": (!from_drone).then(|| problem(&camera.source, &camera.url)).flatten(),
                 "fromDrone": from_drone,
                 "active": *slot as i64 == active,
@@ -596,6 +613,17 @@ mod tests {
         assert_eq!(changed(CAMERAS_ADOPT_DEVICE, &served, &next, 1).0, None, "a reload that finds the same cameras writes nothing and keeps the pick");
         assert_eq!(changed(CAMERAS_ADOPT_DEVICE, &json!(["192.168.1.100", []]), &next, 1).0, Some((vec![phone], 0)), "a camera the device no longer has is dropped");
         assert_eq!(changed(CAMERAS_ADOPT_DEVICE, &json!(["", []]), &next, 1), (None, refused(NEEDS_HOST)));
+    }
+
+    #[test]
+    fn the_first_visit_to_a_device_also_brings_the_synthetic_view_once() {
+        let siyi = || vec![cam("siyi", SOURCE_WEBRTC, "http://192.168.1.100:8889/siyi/whep")];
+        let synthetic = cam(SYNTHETIC_NAME, SOURCE_SYNTHETIC, "");
+        let (first, active) = adopted(&[], "192.168.1.100", siyi(), true);
+        assert_eq!((first.clone(), active), ([siyi(), vec![synthetic.clone()]].concat(), 0), "the device's camera goes on screen and the synthetic view waits beside it");
+        assert_eq!(adopted(&first[..1], "192.168.1.100", siyi(), true).0, siyi(), "removed later, it stays removed");
+        assert_eq!(adopted(&[synthetic.clone()], "192.168.1.100", siyi(), true).0, [vec![synthetic], siyi()].concat(), "one is enough");
+        assert_eq!(adopted(&[], "192.168.1.100", siyi(), false).0, siyi(), "where it cannot be drawn it is not offered");
     }
 
     #[test]
@@ -712,6 +740,9 @@ mod tests {
         let status = |ready: bool| view_of(&video, Some(vec![cam("Synthetic", SOURCE_SYNTHETIC, "")]), 0, false, ready)["cameras"][0]["status"].clone();
         assert_eq!(status(true), SIGNAL_LIVE, "it is drawn on this device once the aircraft is placed");
         assert_eq!(status(false), SIGNAL_IDLE, "with no aircraft, or no home yet, there is nothing to draw, so it is not shown as live");
+        let summary = |ready: bool| view_of(&video, Some(vec![cam("Synthetic", SOURCE_SYNTHETIC, "")]), 0, false, ready)["cameras"][0]["summary"].clone();
+        assert_eq!(summary(false), SYNTHETIC_WAITING, "an idle synthetic view says what it is waiting for");
+        assert_eq!(summary(true), SOURCE_SYNTHETIC);
         assert_eq!(group(SOURCE_SYNTHETIC), GROUP_DEVICE);
         assert!(source_usable(SOURCE_SYNTHETIC, "") && !needs_url(SOURCE_SYNTHETIC));
         assert_eq!(crate::videostate::source_uri(SOURCE_SYNTHETIC, ""), "", "no pipeline starts for it, so the head draws it where the picture would be");
