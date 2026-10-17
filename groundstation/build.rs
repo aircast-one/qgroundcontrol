@@ -27,6 +27,7 @@ fn main() {
     println!("cargo:rerun-if-env-changed=QGC_APM_PARAMS_DIR");
     let out = std::env::var("OUT_DIR").expect("OUT_DIR");
     let cache = concat!(env!("CARGO_MANIFEST_DIR"), "/../.cache/CPM/ardupilotparams");
+    println!("cargo:rerun-if-changed={cache}");
     let cached = || std::fs::read_dir(cache).ok()?.filter_map(Result::ok).map(|entry| entry.path()).find(|path| path.join("Copter-4.5").is_dir()).map(|path| path.to_string_lossy().into_owned());
     let source = std::env::var("QGC_APM_PARAMS_DIR").ok().filter(|dir| Path::new(dir).is_dir()).or_else(cached);
     let entries: Vec<(String, String)> = source

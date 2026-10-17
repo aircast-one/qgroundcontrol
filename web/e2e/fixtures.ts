@@ -20,10 +20,16 @@ export const openMenu = async (page: Page, item: string) => {
 
 export type MockOption = 'Enable camera' | 'Enable gimbal' | 'Enable proximity sensors' | 'Send status text + voice';
 
-export const connectMock = async (page: Page, options: readonly MockOption[] = []) => {
+export type MockVehicle = 'PX4 Vehicle' | 'APM ArduCopter Vehicle' | 'APM ArduPlane Vehicle' | 'APM ArduSub Vehicle' | 'APM ArduRover Vehicle' | 'Generic Vehicle';
+
+export const connectMock = async (page: Page, options: readonly MockOption[] = [], vehicle: MockVehicle | null = null) => {
   await page.getByRole('button', { name: /How to connect/ }).click();
   await page.getByRole('button', { name: 'Add link…' }).click();
   await page.getByRole('button', { name: /^Simulated vehicle/ }).click();
+  if (vehicle !== null) {
+    await page.getByRole('button', { name: 'Vehicle Type' }).click();
+    await page.getByRole('menuitem', { name: vehicle }).click();
+  }
   await options.reduce((done, name) => done.then(() => page.getByRole('checkbox', { name }).check()), Promise.resolve());
   await page.getByRole('button', { name: 'Start', exact: true }).click();
   await expect(page.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 30_000 });
