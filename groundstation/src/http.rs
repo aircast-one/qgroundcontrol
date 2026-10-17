@@ -18,7 +18,12 @@ pub fn post(url: &str, content_type: &str, body: &[u8], timeout: Duration) -> Re
 
 #[cfg(target_family = "wasm")]
 fn exchange(method: &str, url: &str, headers: &[(&str, &str)], body: Option<&[u8]>, timeout: Duration) -> Result<(u16, Vec<u8>), String> {
-    let failed = |error: wasm_bindgen::JsValue| error.as_string().unwrap_or_else(|| format!("{error:?}"));
+    let host = url::Url::parse(url).ok().and_then(|parsed| parsed.host_str().map(str::to_string)).unwrap_or_else(|| url.to_string());
+    let failed = |error: wasm_bindgen::JsValue| match wasm_bindgen::JsCast::dyn_ref::<js_sys::Error>(&error) {
+        Some(thrown) if thrown.name() == "NetworkError" => format!("No answer from {host}"),
+        Some(thrown) => String::from(thrown.message()),
+        None => error.as_string().unwrap_or_else(|| format!("{error:?}")),
+    };
     let request = web_sys::XmlHttpRequest::new().map_err(failed)?;
     request.open_with_async(method, url, false).map_err(failed)?;
     request.set_response_type(web_sys::XmlHttpRequestResponseType::Arraybuffer);

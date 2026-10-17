@@ -10,6 +10,7 @@ thread_local! {
     static WRITER: RefCell<Option<js_sys::Function>> = const { RefCell::new(None) };
     static LAST_HUB_MS: Cell<u64> = const { Cell::new(0) };
     static SERIAL_HOST: RefCell<Option<js_sys::Object>> = const { RefCell::new(None) };
+    static CLOUD_HOST: RefCell<Option<js_sys::Object>> = const { RefCell::new(None) };
     static SERIAL_PORTS: RefCell<Vec<crate::boards::PortInfo>> = const { RefCell::new(Vec::new()) };
     static TILES: Option<crate::tilecache::Cache> = crate::tilecache::Cache::open_in_memory().ok();
 }
@@ -137,8 +138,8 @@ unsafe extern "C" fn write(id: u32, bytes: *const u8, len: usize, _user: *mut c_
     WRITER.with(|held| held.borrow().as_ref().map(|writer| writer.call2(&JsValue::NULL, &id.into(), &bytes)));
 }
 
-fn serial_call(name: &str, args: js_sys::Array) -> JsValue {
-    SERIAL_HOST.with(|host| {
+fn host_call(host: &'static std::thread::LocalKey<RefCell<Option<js_sys::Object>>>, name: &str, args: js_sys::Array) -> JsValue {
+    host.with(|host| {
         host.borrow()
             .as_ref()
             .and_then(|host| js_sys::Reflect::get(host, &name.into()).ok())
@@ -146,6 +147,10 @@ fn serial_call(name: &str, args: js_sys::Array) -> JsValue {
             .and_then(|method| method.apply(&JsValue::NULL, &args).ok())
             .unwrap_or(JsValue::UNDEFINED)
     })
+}
+
+fn serial_call(name: &str, args: js_sys::Array) -> JsValue {
+    host_call(&SERIAL_HOST, name, args)
 }
 
 fn serial_open(id: u32, name: &str, baud: u32, data_bits: i64, stop_bits: i64, parity: i64) -> bool {
@@ -186,6 +191,41 @@ pub fn serial_received(id: u32, bytes: &[u8]) {
 #[wasm_bindgen(js_name = serialClosed)]
 pub fn serial_closed(id: u32, reason: &str) {
     crate::platformserial::closed(id, reason);
+}
+
+fn cloud_open(id: u32, token_url: &str, session_url: &str, bearer: &str) -> bool {
+    let args: js_sys::Array = [JsValue::from(id), token_url.into(), session_url.into(), bearer.into()].into_iter().collect();
+    host_call(&CLOUD_HOST, "open", args).as_bool().unwrap_or(false)
+}
+
+fn cloud_send(id: u32, bytes: &[u8]) -> bool {
+    let args: js_sys::Array = [JsValue::from(id), js_sys::Uint8Array::from(bytes).into()].into_iter().collect();
+    host_call(&CLOUD_HOST, "send", args).as_bool().unwrap_or(false)
+}
+
+fn cloud_close(id: u32) {
+    host_call(&CLOUD_HOST, "close", std::iter::once(JsValue::from(id)).collect());
+}
+
+#[wasm_bindgen(js_name = setCloudHost)]
+pub fn set_cloud_host(host: js_sys::Object) {
+    CLOUD_HOST.with(|held| *held.borrow_mut() = Some(host));
+    crate::cloudlink::install(crate::cloudlink::HostHooks { open: cloud_open, send: cloud_send, close: cloud_close });
+}
+
+#[wasm_bindgen(js_name = cloudOpened)]
+pub fn cloud_opened(id: u32) {
+    crate::cloudlink::host_opened(id);
+}
+
+#[wasm_bindgen(js_name = cloudReceived)]
+pub fn cloud_received(id: u32, bytes: &[u8]) {
+    crate::cloudlink::host_received(id, bytes);
+}
+
+#[wasm_bindgen(js_name = cloudClosed)]
+pub fn cloud_closed(id: u32, reason: &str) {
+    crate::cloudlink::host_closed(id, reason);
 }
 
 #[wasm_bindgen(js_name = mapTile)]

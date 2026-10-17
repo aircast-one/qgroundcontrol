@@ -24,7 +24,9 @@ const PING_EVERY: Duration = Duration::from_secs(5);
 const RELAY_SILENT: Duration = Duration::from_secs(15);
 pub const RELAY_LOST: &str = "The Aircast relay connection was lost. Reconnecting.";
 #[cfg(target_family = "wasm")]
-const NO_BROWSER_RELAY: &str = "The Aircast cloud relay needs the desktop or mobile app for now.";
+const NO_BROWSER_RELAY: &str = "This browser cannot reach the Aircast relay: it needs WebTransport.";
+#[cfg(target_family = "wasm")]
+const BAD_RELAY_ADDRESS: &str = "The Aircast relay address is not valid.";
 
 pub fn relay_url(api_base: &str, device_id: &str) -> Option<String> {
     let parsed = url::Url::parse(api_base.trim()).ok().filter(|u| u.host_str().is_some_and(|h| !h.is_empty()))?;
@@ -39,6 +41,16 @@ pub fn relay_url(api_base: &str, device_id: &str) -> Option<String> {
     Some(format!("{scheme}://{host}{port}{path}/v1/mavlink/web/{device}/ws"))
 }
 
+pub fn webtransport_urls(relay_url: &str) -> Option<(String, String)> {
+    let parsed = url::Url::parse(relay_url).ok()?;
+    let (prefix, rest) = parsed.path().split_once("/v1/mavlink/web/")?;
+    let device = rest.strip_suffix("/ws").filter(|d| !d.is_empty() && !d.contains('/'))?;
+    let host = parsed.host_str().filter(|h| !h.is_empty())?;
+    let port = parsed.port().map(|p| format!(":{p}")).unwrap_or_default();
+    let scheme = if parsed.scheme() == "ws" { "http" } else { "https" };
+    Some((format!("{scheme}://{host}{port}{prefix}/v1/user/devices/{device}/webtransport-token"), format!("https://{host}{port}{prefix}/v1/mavlink/device/{device}")))
+}
+
 pub fn token_key(api_base: &str) -> Option<String> {
     let host = url::Url::parse(api_base.trim()).ok()?.host_str()?.to_string();
     Some(format!("{ACCOUNT_GROUP}/tokens/{host}"))
@@ -48,10 +60,82 @@ pub fn backoff_ms(failures: u32) -> u64 {
     (INITIAL_BACKOFF_MS << failures.min(5)).min(MAX_BACKOFF_MS)
 }
 
+#[cfg(not(target_family = "wasm"))]
 pub struct CloudLink {
     outbox: SyncSender<Vec<u8>>,
     wanted: Arc<AtomicBool>,
     connected: Arc<AtomicBool>,
+}
+
+#[cfg(target_family = "wasm")]
+pub struct CloudLink {
+    id: u32,
+}
+
+#[cfg(target_family = "wasm")]
+pub struct HostHooks {
+    pub open: fn(u32, &str, &str, &str) -> bool,
+    pub send: fn(u32, &[u8]) -> bool,
+    pub close: fn(u32),
+}
+
+#[cfg(target_family = "wasm")]
+type Deliver = Arc<std::sync::Mutex<Box<dyn FnMut(&[u8]) + Send>>>;
+#[cfg(target_family = "wasm")]
+type Relay = Arc<dyn Fn(bool, &str) + Send + Sync>;
+
+#[cfg(target_family = "wasm")]
+struct Hosted {
+    deliver: Deliver,
+    relay: Relay,
+    connected: bool,
+}
+
+#[cfg(target_family = "wasm")]
+static HOST_HOOKS: std::sync::OnceLock<HostHooks> = std::sync::OnceLock::new();
+#[cfg(target_family = "wasm")]
+static HOSTED: std::sync::Mutex<std::collections::BTreeMap<u32, Hosted>> = std::sync::Mutex::new(std::collections::BTreeMap::new());
+#[cfg(target_family = "wasm")]
+static NEXT_HOSTED: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
+
+#[cfg(target_family = "wasm")]
+fn hosted() -> std::sync::MutexGuard<'static, std::collections::BTreeMap<u32, Hosted>> {
+    HOSTED.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+}
+
+#[cfg(target_family = "wasm")]
+pub fn install(hooks: HostHooks) {
+    let _ = HOST_HOOKS.set(hooks);
+}
+
+#[cfg(target_family = "wasm")]
+pub fn host_opened(id: u32) {
+    let relay = hosted().get_mut(&id).map(|link| {
+        link.connected = true;
+        link.relay.clone()
+    });
+    if let Some(relay) = relay {
+        relay(true, "");
+    }
+}
+
+#[cfg(target_family = "wasm")]
+pub fn host_received(id: u32, bytes: &[u8]) {
+    let deliver = hosted().get(&id).filter(|link| link.connected).map(|link| link.deliver.clone());
+    if let Some(deliver) = deliver.filter(|_| bytes.first().is_some_and(|b| *b != CONTROL_PREFIX)) {
+        (deliver.lock().unwrap_or_else(std::sync::PoisonError::into_inner))(bytes);
+    }
+}
+
+#[cfg(target_family = "wasm")]
+pub fn host_closed(id: u32, reason: &str) {
+    let relay = hosted().get_mut(&id).map(|link| {
+        link.connected = false;
+        link.relay.clone()
+    });
+    if let Some(relay) = relay {
+        relay(false, if reason.is_empty() { RELAY_LOST } else { reason });
+    }
 }
 
 #[cfg(not(target_family = "wasm"))]
@@ -124,13 +208,44 @@ fn pump(socket: &mut Socket, outbox: &Receiver<Vec<u8>>, wanted: &AtomicBool, de
     false
 }
 
+#[cfg(target_family = "wasm")]
 impl CloudLink {
-    #[cfg(target_family = "wasm")]
-    pub fn open(_url: String, _token: String, _deliver: impl FnMut(&[u8]) + Send + 'static, relay: impl Fn(bool, &str) + Send + 'static) -> CloudLink {
-        relay(false, NO_BROWSER_RELAY);
-        let (outbox, _) = std::sync::mpsc::sync_channel(0);
-        CloudLink { outbox, wanted: Arc::new(AtomicBool::new(false)), connected: Arc::new(AtomicBool::new(false)) }
+    pub fn open(url: String, token: String, deliver: impl FnMut(&[u8]) + Send + 'static, relay: impl Fn(bool, &str) + Send + Sync + 'static) -> CloudLink {
+        let Some((token_url, session_url)) = webtransport_urls(&url) else {
+            relay(false, BAD_RELAY_ADDRESS);
+            return CloudLink { id: 0 };
+        };
+        let Some(hooks) = HOST_HOOKS.get() else {
+            relay(false, NO_BROWSER_RELAY);
+            return CloudLink { id: 0 };
+        };
+        let id = NEXT_HOSTED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let relay: Relay = Arc::new(relay);
+        hosted().insert(id, Hosted { deliver: Arc::new(std::sync::Mutex::new(Box::new(deliver))), relay: relay.clone(), connected: false });
+        if !(hooks.open)(id, &token_url, &session_url, &token) {
+            hosted().remove(&id);
+            relay(false, NO_BROWSER_RELAY);
+            return CloudLink { id: 0 };
+        }
+        CloudLink { id }
     }
+
+    pub fn write(&self, bytes: &[u8]) -> bool {
+        let connected = hosted().get(&self.id).is_some_and(|link| link.connected);
+        connected && HOST_HOOKS.get().is_some_and(|hooks| (hooks.send)(self.id, bytes))
+    }
+
+    pub fn close(&self) {
+        if hosted().remove(&self.id).is_some() {
+            if let Some(hooks) = HOST_HOOKS.get() {
+                (hooks.close)(self.id);
+            }
+        }
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+impl CloudLink {
 
     #[cfg(not(target_family = "wasm"))]
     pub fn open(url: String, token: String, mut deliver: impl FnMut(&[u8]) + Send + 'static, relay: impl Fn(bool, &str) + Send + 'static) -> CloudLink {
@@ -201,6 +316,21 @@ mod tests {
         assert_eq!(relay_url("not a url", "d"), None);
         assert_eq!(token_key("https://api.aircast.one/").as_deref(), Some("AircastAccount/tokens/api.aircast.one"));
         assert_eq!((backoff_ms(0), backoff_ms(4), backoff_ms(9)), (2000, 32_000, 60_000));
+    }
+
+    #[test]
+    fn a_browser_reaches_the_relay_over_webtransport_with_a_short_lived_device_token() {
+        assert_eq!(
+            webtransport_urls("wss://api.dev.aircast.one/v1/mavlink/web/d-1/ws"),
+            Some(("https://api.dev.aircast.one/v1/user/devices/d-1/webtransport-token".to_string(), "https://api.dev.aircast.one/v1/mavlink/device/d-1".to_string()))
+        );
+        assert_eq!(
+            webtransport_urls("ws://10.0.0.5:8080/base/v1/mavlink/web/d-2/ws"),
+            Some(("http://10.0.0.5:8080/base/v1/user/devices/d-2/webtransport-token".to_string(), "https://10.0.0.5:8080/base/v1/mavlink/device/d-2".to_string())),
+            "WebTransport is HTTP/3 only, so the session is https even when the REST API is plain http"
+        );
+        assert_eq!(webtransport_urls("wss://api.aircast.one/v1/mavlink/web//ws"), None);
+        assert_eq!(webtransport_urls("not a url"), None);
     }
 
     #[test]

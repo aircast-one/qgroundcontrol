@@ -1,4 +1,5 @@
 import init, * as core from './pkg/groundstation.js';
+import { cloudHost } from './cloud';
 
 const PUMP_MS = 20;
 
@@ -24,6 +25,7 @@ core.setSerialHost({
   },
   close: (id: number) => scope.postMessage({ serial: { op: 'close', id } }),
 });
+core.setCloudHost(cloudHost(core));
 const settings: { revision: bigint | null } = { revision: null };
 
 const openSettings = (text: string) => {

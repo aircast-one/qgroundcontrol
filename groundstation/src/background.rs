@@ -27,8 +27,18 @@ pub fn spawn(_name: &str, job: impl FnOnce() + Send + 'static) -> std::io::Resul
 }
 
 #[cfg(target_family = "wasm")]
-pub fn poll(_name: &str, _every: std::time::Duration, step: impl FnMut() -> bool + Send + 'static) -> std::io::Result<()> {
-    POLLING.with(|polling| polling.borrow_mut().push(Box::new(step)));
+pub fn poll(_name: &str, every: std::time::Duration, mut step: impl FnMut() -> bool + Send + 'static) -> std::io::Result<()> {
+    let mut due = web_time::Instant::now() + every;
+    POLLING.with(|polling| {
+        polling.borrow_mut().push(Box::new(move || {
+            let now = web_time::Instant::now();
+            if now < due {
+                return false;
+            }
+            due = now + every;
+            step()
+        }))
+    });
     Ok(())
 }
 

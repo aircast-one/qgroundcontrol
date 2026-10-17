@@ -89,8 +89,8 @@ pub fn sign_in(post: &'static Post) {
     let attempt = ATTEMPT.fetch_add(1, Ordering::SeqCst) + 1;
     *PENDING.lock().unwrap_or_else(PoisonError::into_inner) = None;
     set_status("Asking the Aircast account server for a sign-in code\u{2026}");
-    let spawned = std::thread::Builder::new().name("groundstation-sign-in".to_string()).spawn(move || {
-        let current = || ATTEMPT.load(Ordering::SeqCst) == attempt;
+    let started = crate::background::spawn("groundstation-sign-in", move || {
+        let current = move || ATTEMPT.load(Ordering::SeqCst) == attempt;
         let code = post(&endpoint(&base, "/v1/oauth2/cli/code"), &json!({ "client_id": CLIENT_ID }));
         let Some((device_code, user_code, url, interval)) = code.as_ref().ok().and_then(|c| {
             let text = |key: &str| c.get(key).and_then(Value::as_str).map(str::to_string);
@@ -107,24 +107,30 @@ pub fn sign_in(post: &'static Post) {
         *PENDING.lock().unwrap_or_else(PoisonError::into_inner) = Some(Pending { user_code: user_code.clone(), verification_url: url });
         set_status(&format!("Approve code {user_code} in the browser to sign in."));
         let body = json!({ "grant_type": DEVICE_CODE_GRANT, "device_code": device_code, "client_id": CLIENT_ID });
-        let outcome = std::iter::repeat_with(|| {
-            std::thread::sleep(Duration::from_secs(interval));
-            current().then(|| poll_outcome(&post(&endpoint(&base, "/v1/oauth2/cli/token"), &body)))
-        })
-        .find(|polled| polled.as_ref() != Some(&Poll::Wait))
-        .flatten();
-        match outcome {
-            Some(Poll::Token(token)) => {
-                if let Some(key) = crate::cloudlink::token_key(&base) {
-                    crate::settingsstore::written(&key, &token);
-                }
-                finish("Signed in.");
+        let polling = crate::background::poll("groundstation-sign-in-poll", Duration::from_secs(interval), move || {
+            if !current() {
+                return true;
             }
-            Some(Poll::Refused(reason)) => finish(&reason),
-            _ => {}
+            match poll_outcome(&post(&endpoint(&base, "/v1/oauth2/cli/token"), &body)) {
+                Poll::Wait => false,
+                Poll::Token(token) => {
+                    if let Some(key) = crate::cloudlink::token_key(&base) {
+                        crate::settingsstore::written(&key, &token);
+                    }
+                    finish("Signed in.");
+                    true
+                }
+                Poll::Refused(reason) => {
+                    finish(&reason);
+                    true
+                }
+            }
+        });
+        if polling.is_err() {
+            finish(SIGN_IN_UNAVAILABLE);
         }
     });
-    if spawned.is_err() {
+    if started.is_err() {
         set_status(SIGN_IN_UNAVAILABLE);
     }
 }
