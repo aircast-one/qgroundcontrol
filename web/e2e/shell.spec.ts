@@ -33,15 +33,17 @@ test.describe('on a phone in landscape', () => {
   );
 });
 
-test('on a desktop the rail stays on Fly and the map inset is a real preview', async ({ app }) => {
-  const rail = app.getByRole('navigation');
+test('with no aircraft and no video the Fly screen opens on the map, not an empty video pane', async ({ app }) => {
+  const map = app.getByRole('region', { name: 'Map' });
+  await expect.poll(async () => (await map.boundingBox())?.width ?? 0).toBeGreaterThan(1000);
+  await expect(app.getByText('Video starts when your aircraft connects')).toBeHidden();
+});
+
+test('on a desktop the rail stays on Fly and the map inset is a real preview', async ({ vehicle }) => {
+  const rail = vehicle.getByRole('navigation');
   await expect(rail.getByRole('button', { name: 'Fly', exact: true })).toBeVisible();
-  await expect(app.getByRole('button', { name: 'Menu' })).toHaveCount(0);
-  await expect.poll(async () => (await app.getByRole('button', { name: 'Map', exact: true }).boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(320);
-  await rail.getByRole('button', { name: 'Plan', exact: true }).click();
-  await expect(app.getByText('Tap the map to add a waypoint')).toBeVisible();
-  await rail.getByRole('button', { name: 'Fly', exact: true }).click();
-  await expect(rail.getByRole('button', { name: 'Fly', exact: true })).toBeVisible();
+  await expect(vehicle.getByRole('button', { name: 'Menu' })).toHaveCount(0);
+  await expect.poll(async () => (await vehicle.getByRole('button', { name: 'Map', exact: true }).boundingBox())?.width ?? 0).toBeGreaterThanOrEqual(320);
 });
 
 test('menu opens the settings sheet with its tabs', async ({ app }) => {

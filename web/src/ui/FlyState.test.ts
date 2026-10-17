@@ -210,4 +210,10 @@ describe('FlyReadinessTest', () => {
     expect(flyViewShown(FlyView.Video, false, true)).toBe(FlyView.Video);
     expect(flyViewShown(FlyView.Video, true, false)).toBe(FlyView.Video);
   });
+
+  it('the map leads until there is an aircraft or a live picture to show', () => {
+    expect(flyViewShown(FlyView.Video, false, false, true)).toBe(FlyView.Map);
+    expect(flyViewShown(FlyView.Video, false, false, false)).toBe(FlyView.Video);
+    expect(flyViewShown(FlyView.ThreeD, false, false, true)).toBe(FlyView.ThreeD);
+  });
 });

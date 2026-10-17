@@ -247,8 +247,8 @@ export const flyViewAllowed = (viewer3dEnabled: boolean | null, current: FlyView
 
 export const viewer3dEnabled = (view: Json | null): boolean | null => (view !== null && has(view, 'enabled') ? optBoolean(view, 'enabled') : null);
 
-export const flyViewShown = (chosen: FlyView, armed: boolean, noVideoSource: boolean): FlyView =>
-  chosen === FlyView.Video && armed && noVideoSource ? FlyView.Map : chosen;
+export const flyViewShown = (chosen: FlyView, armed: boolean, noVideoSource: boolean, nothingToShow = false): FlyView =>
+  chosen === FlyView.Video && ((armed && noVideoSource) || nothingToShow) ? FlyView.Map : chosen;
 
 export const flyViewSwapped = (view: FlyView): FlyView => (view === FlyView.Map ? FlyView.Video : FlyView.Map);
 

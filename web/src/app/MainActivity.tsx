@@ -398,7 +398,8 @@ export const AircastShell = () => {
   }, [flyNow?.armed, flyNow?.state]);
 
   const noVideoSource = useQgcDerived(VIDEO_VIEW, noVideoSourceOf);
-  const shownFlyView = flyViewShown(flyView, flyNow?.armed === true, noVideoSource);
+  const pictureNow = useQgcDerived(VIDEO_VIEW, videoDecodingOf);
+  const shownFlyView = flyViewShown(flyView, flyNow?.armed === true, noVideoSource, !vehicleNow && noVideoSource && !pictureNow);
 
   const vehicles = useQgcPath(VEHICLES_VIEW);
   const lastVehicles = useRef<VehicleChoices | null>(null);
