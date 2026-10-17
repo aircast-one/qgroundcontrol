@@ -34,3 +34,12 @@ test('ArduPilot flight modes setup changes a mode slot', async ({ app }) => {
   await expect(choice).toHaveAccessibleName('Loiter');
   await expect(slot.getByRole('textbox')).toHaveCount(0);
 });
+
+test('ArduPilot compass calibration runs to its reboot reminder', async ({ app }) => {
+  await connectMock(app, [], 'APM ArduCopter Vehicle');
+  await openAircraftSetup(app);
+  await app.getByRole('button', { name: /^Sensors/ }).first().click();
+  await app.getByRole('button', { name: /^Compass/ }).first().click();
+  await app.getByRole('dialog').getByRole('button', { name: 'OK' }).click();
+  await expect(app.getByText(/YOU MUST REBOOT YOUR VEHICLE AFTER EACH CALIBRATION/)).toBeVisible({ timeout: 60_000 });
+});
