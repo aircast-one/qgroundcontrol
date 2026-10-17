@@ -32,20 +32,20 @@ pub const USER_AGENT: &str = "Mozilla/5.0 (X11; Linux x86_64; rv:109.0) Gecko/20
 #[cfg(not(any(target_os = "macos", target_os = "windows", target_os = "android", target_os = "linux")))]
 pub const USER_AGENT: &str = "Qt Location based application";
 
-const GOOGLE: &str = "http://mt%1.google.com/vt/%2=%3&hl=%4&x=%5%6&y=%7&z=%8&s=%9&scale=%10";
-const BING: &str = "http://ecn.t%1.tiles.virtualearth.net/tiles/%2%3.%4?g=%5&mkt=%6";
+const GOOGLE: &str = "https://mt%1.google.com/vt/%2=%3&hl=%4&x=%5%6&y=%7&z=%8&s=%9&scale=%10";
+const BING: &str = "https://ecn.t%1.tiles.virtualearth.net/tiles/%2%3.%4?g=%5&mkt=%6";
 const TIANDITU: &str = "https://t%1.tianditu.gov.cn/DataServer?tk=%2&T=%3&x=%4&y=%5&l=%6";
 const STATKART: &str = "https://cache.kartverket.no/v1/wmts/1.0.0/topo/default/webmercator/%1/%2/%3.png";
 const SVALBARD: &str = "https://geodata.npolar.no/arcgis/rest/services/Basisdata/NP_Basiskart_Svalbard_WMTS_3857/MapServer/WMTS/tile/1.0.0/Basisdata_NP_Basiskart_Svalbard_WMTS_3857/default/default028mm/%1/%2/%3";
-const ENIRO: &str = "http://map.eniro.com/geowebcache/service/tms1.0.0/map/%1/%2/%3.%4";
-const ESRI: &str = "http://services.arcgisonline.com/ArcGIS/rest/services/%1/MapServer/tile/%2/%3/%4";
+const ENIRO: &str = "https://map.eniro.com/geowebcache/service/tms1.0.0/map/%1/%2/%3.%4";
+const ESRI: &str = "https://services.arcgisonline.com/ArcGIS/rest/services/%1/MapServer/tile/%2/%3/%4";
 const MAPBOX: &str = "https://api.mapbox.com/styles/v1/mapbox/%1/tiles/%2/%3/%4?access_token=%5";
 const MAPBOX_CUSTOM: &str = "https://api.mapbox.com/styles/v1/%1/%2/tiles/256/%3/%4/%5?access_token=%6";
-const MAPQUEST: &str = "http://otile%1.mqcdn.com/tiles/1.0.0/%2/%3/%4/%5.%6";
-const VWORLD: &str = "http://api.vworld.kr/req/wmts/1.0.0/%1/%2/%3/%4/%5.%6";
+const MAPQUEST: &str = "https://otile%1.mqcdn.com/tiles/1.0.0/%2/%3/%4/%5.%6";
+const VWORLD: &str = "https://api.vworld.kr/req/wmts/1.0.0/%1/%2/%3/%4/%5.%6";
 const CYBERJAPAN: &str = "https://cyberjapandata.gsi.go.jp/xyz/%1/%2/%3/%4.%5";
 const LINZ: &str = "https://basemaps.linz.govt.nz/v1/tiles/aerial/EPSG:3857/%1/%2/%3.%4?api=d01ev80nqcjxddfvc6amyvkk1ka";
-const OPENSTREETMAP: &str = "http://tile.openstreetmap.org/%1/%2/%3.png";
+const OPENSTREETMAP: &str = "https://tile.openstreetmap.org/%1/%2/%3.png";
 const OPENAIP: &str = "https://api.tiles.openaip.net/api/data/openaip/%1/%2/%3.png";
 const COPERNICUS: &str = "https://terrain-ce.suite.auterion.com/api/v1/carpet?points=%1,%2,%3,%4";
 const COPERNICUS_TILE_DEGREES: f64 = 0.01;
@@ -327,10 +327,10 @@ mod tests {
 
     #[test]
     fn google_rotates_servers_and_appends_the_galileo_prefix() {
-        assert_eq!(url("Google Street Map", 8523, 5606, 14).as_deref(), Some("http://mt3.google.com/vt/lyrs=m&hl=en-US&x=8523&y=5606&z=14&s=Galileo&scale=1"));
-        assert_eq!(url("Google Terrain", 8523, 5606, 14).as_deref(), Some("http://mt3.google.com/vt/v=t,r&hl=en-US&x=8523&y=5606&z=14&s=Galileo&scale=1"));
-        assert_eq!(url("Google Satellite", 1, 12345, 15).as_deref(), Some("http://mt3.google.com/vt/lyrs=s&hl=en-US&x=1&s=&y=12345&z=15&s=Gali&scale=1"));
-        assert_eq!(url("Google Labels", 0, 0, 0).as_deref(), Some("http://mt0.google.com/vt/lyrs=h&hl=en-US&x=0&y=0&z=0&s=&scale=1"));
+        assert_eq!(url("Google Street Map", 8523, 5606, 14).as_deref(), Some("https://mt3.google.com/vt/lyrs=m&hl=en-US&x=8523&y=5606&z=14&s=Galileo&scale=1"));
+        assert_eq!(url("Google Terrain", 8523, 5606, 14).as_deref(), Some("https://mt3.google.com/vt/v=t,r&hl=en-US&x=8523&y=5606&z=14&s=Galileo&scale=1"));
+        assert_eq!(url("Google Satellite", 1, 12345, 15).as_deref(), Some("https://mt3.google.com/vt/lyrs=s&hl=en-US&x=1&s=&y=12345&z=15&s=Gali&scale=1"));
+        assert_eq!(url("Google Labels", 0, 0, 0).as_deref(), Some("https://mt0.google.com/vt/lyrs=h&hl=en-US&x=0&y=0&z=0&s=&scale=1"));
         assert_eq!(
             tile_request("Google Hybrid", 8523, 5606, 14, &keys()).map(|request| request.headers),
             Some(headers(&[("Accept", "*/*"), ("User-Agent", USER_AGENT), ("Referer", "https://www.google.com/maps/preview"), ("Connection", "keep-alive")]))
@@ -339,9 +339,9 @@ mod tests {
 
     #[test]
     fn bing_addresses_tiles_by_quadkey() {
-        assert_eq!(url("Bing Road", 8523, 5606, 14).as_deref(), Some("http://ecn.t3.tiles.virtualearth.net/tiles/r12020323201231.png?g=2981&mkt=en-US"));
-        assert_eq!(url("Bing Satellite", 3, 5, 3).as_deref(), Some("http://ecn.t1.tiles.virtualearth.net/tiles/a213.jpg?g=2981&mkt=en-US"));
-        assert_eq!(url("Bing Hybrid", 0, 0, 0).as_deref(), Some("http://ecn.t0.tiles.virtualearth.net/tiles/h.jpg?g=2981&mkt=en-US"));
+        assert_eq!(url("Bing Road", 8523, 5606, 14).as_deref(), Some("https://ecn.t3.tiles.virtualearth.net/tiles/r12020323201231.png?g=2981&mkt=en-US"));
+        assert_eq!(url("Bing Satellite", 3, 5, 3).as_deref(), Some("https://ecn.t1.tiles.virtualearth.net/tiles/a213.jpg?g=2981&mkt=en-US"));
+        assert_eq!(url("Bing Hybrid", 0, 0, 0).as_deref(), Some("https://ecn.t0.tiles.virtualearth.net/tiles/h.jpg?g=2981&mkt=en-US"));
     }
 
     #[test]
@@ -354,7 +354,7 @@ mod tests {
     #[test]
     fn esri_sends_its_token_as_a_header_and_no_referer() {
         let request = tile_request("Esri World Satellite", 8523, 5606, 14, &keys()).expect("esri");
-        assert_eq!(request.url, "http://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/14/5606/8523");
+        assert_eq!(request.url, "https://services.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/14/5606/8523");
         assert_eq!(request.headers, headers(&[("Accept", "*/*"), ("User-Agent", USER_AGENT), ("User-Token", "esri-tok"), ("Connection", "keep-alive")]));
         assert_eq!(
             tile_request("Esri Terrain", 1, 2, 3, &Keys::default()).map(|request| request.headers.len()),
@@ -386,9 +386,9 @@ mod tests {
             url("Svalbard Topo", 8523, 5606, 14).as_deref(),
             Some("https://geodata.npolar.no/arcgis/rest/services/Basisdata/NP_Basiskart_Svalbard_WMTS_3857/MapServer/WMTS/tile/1.0.0/Basisdata_NP_Basiskart_Svalbard_WMTS_3857/default/default028mm/14/5606/8523")
         );
-        assert_eq!(url("Eniro Topo", 8523, 5606, 14).as_deref(), Some("http://map.eniro.com/geowebcache/service/tms1.0.0/map/14/8523/10777.png"));
+        assert_eq!(url("Eniro Topo", 8523, 5606, 14).as_deref(), Some("https://map.eniro.com/geowebcache/service/tms1.0.0/map/14/8523/10777.png"));
         assert_eq!(url("LINZ Basemap", 8523, 5606, 14).as_deref(), Some("https://basemaps.linz.govt.nz/v1/tiles/aerial/EPSG:3857/14/8523/5606.png?api=d01ev80nqcjxddfvc6amyvkk1ka"));
-        assert_eq!(url("Street Map", 8523, 5606, 14).as_deref(), Some("http://tile.openstreetmap.org/14/8523/5606.png"));
+        assert_eq!(url("Street Map", 8523, 5606, 14).as_deref(), Some("https://tile.openstreetmap.org/14/8523/5606.png"));
         assert_eq!(url("OpenAIP", 8523, 5606, 14).as_deref(), Some("https://api.tiles.openaip.net/api/data/openaip/14/8523/5606.png?apiKey=oaip"));
         assert_eq!(
             tile_request("OpenAIP", 8523, 5606, 14, &Keys::default()).map(|request| request.url).as_deref(),
@@ -398,15 +398,15 @@ mod tests {
 
     #[test]
     fn providers_that_put_their_display_name_in_the_path_get_it_percent_encoded() {
-        assert_eq!(url("MapQuest Map", 8523, 5606, 14).as_deref(), Some("http://otile3.mqcdn.com/tiles/1.0.0/MapQuest%20Map/14/8523/5606.jpg"));
+        assert_eq!(url("MapQuest Map", 8523, 5606, 14).as_deref(), Some("https://otile3.mqcdn.com/tiles/1.0.0/MapQuest%20Map/14/8523/5606.jpg"));
         assert_eq!(url("Japan-GSI Contour", 8523, 5606, 14).as_deref(), Some("https://cyberjapandata.gsi.go.jp/xyz/Japan-GSI%20Contour/14/8523/5606.png"));
         assert_eq!(url("Japan-GSI Seamless", 8523, 5606, 14).as_deref(), Some("https://cyberjapandata.gsi.go.jp/xyz/Japan-GSI%20Seamless/14/8523/5606.jpg"));
     }
 
     #[test]
     fn vworld_only_serves_korea() {
-        assert_eq!(url("VWorld Street Map", 13970, 6300, 14).as_deref(), Some("http://api.vworld.kr/req/wmts/1.0.0/vw/VWorld%20Street%20Map/14/6300/13970.png"));
-        assert_eq!(url("VWorld Satellite Map", 53, 22, 6).as_deref(), Some("http://api.vworld.kr/req/wmts/1.0.0/vw/VWorld%20Satellite%20Map/6/22/53.jpeg"));
+        assert_eq!(url("VWorld Street Map", 13970, 6300, 14).as_deref(), Some("https://api.vworld.kr/req/wmts/1.0.0/vw/VWorld%20Street%20Map/14/6300/13970.png"));
+        assert_eq!(url("VWorld Satellite Map", 53, 22, 6).as_deref(), Some("https://api.vworld.kr/req/wmts/1.0.0/vw/VWorld%20Satellite%20Map/6/22/53.jpeg"));
         assert_eq!(url("VWorld Street Map", 8523, 5606, 14), None);
         assert_eq!(url("VWorld Street Map", 55, 22, 6), None);
         assert_eq!(url("VWorld Street Map", 26, 11, 5), None);

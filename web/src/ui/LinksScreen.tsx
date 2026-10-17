@@ -13,7 +13,7 @@ import { AlertDialog, Button, Checkbox, DropdownMenu, DropdownMenuItem, FilterCh
 import { type DrawableName } from '@/res/drawables';
 import { Drawable, MaterialIcon } from '@/res/Icon';
 import { aircast, md } from '@/theme/Colors';
-import { AIRCAST_CLOUD_NAME, AircastCloudFields, accountState, cloudApiBaseValid, cloudDeviceValid } from '@/ui/AircastCloud';
+import { AIRCAST_CLOUD_NAME, AircastCloudFields, DEFAULT_ACCOUNT_SERVER, accountState, cloudApiBaseValid, cloudDeviceValid } from '@/ui/AircastCloud';
 import { LocalAppNavigation } from '@/ui/AppNavigation';
 import { useHasVehicle } from '@/ui/FlyState';
 import { MockLinkChoices, MockLinkFields, mockLinkArguments } from '@/ui/MockLinkFields';
@@ -865,7 +865,7 @@ export const LinkDraft = (fields: Pick<LinkDraft, 'type'> & Partial<LinkDraft>):
   highLatency: false,
   device: null,
   replayLog: '',
-  apiBase: '',
+  apiBase: DEFAULT_ACCOUNT_SERVER,
   deviceId: '',
   mock: MockLinkChoices(),
   ...fields,

@@ -11,6 +11,7 @@ export const AIRCAST_CLOUD_NAME = 'Aircast cloud';
 const ACCOUNT = 'account';
 const ACCOUNT_POLL_MS = 1000;
 const API_BASE = /^https?:\/\/[^/]+/;
+export const DEFAULT_ACCOUNT_SERVER = 'https://api.aircast.one';
 
 export type AccountState = { signedIn: boolean; signingIn: boolean; status: string; userCode: string; verificationUrl: string };
 
@@ -56,7 +57,7 @@ export const AircastCloudFields = ({
 
   return (
     <div className="flex flex-col gap-1.5">
-      <OutlinedTextField value={apiBase} onValueChange={onApiBase} label="Account server" placeholder="https://api.aircast.one" singleLine keyboardType="uri" />
+      <OutlinedTextField value={apiBase} onValueChange={onApiBase} label="Account server" placeholder={DEFAULT_ACCOUNT_SERVER} singleLine keyboardType="uri" />
       {showErrors && !cloudApiBaseValid(apiBase) ? (
         <Text typography="bodySmall" color={md('error')}>
           Enter the account server address, starting with https://
