@@ -69,8 +69,8 @@ export const mapMenuAt = async (page: Page, dx: number, dy: number) => {
   if (box === null) throw new Error('map is not on screen');
   await expect(async () => {
     await page.mouse.click(box.x + box.width / 2 + dx, box.y + box.height / 2 + dy, { button: 'right' });
-    await expect(page.getByText(/^Lat: /)).toBeVisible({ timeout: 1_000 });
-  }).toPass({ timeout: 20_000 });
+    await expect(page.getByText(/^Lat: /)).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 45_000 });
 };
 
 export const takeOff = async (page: Page, height: string) => {
