@@ -1,4 +1,5 @@
 import { startCore } from '@/core/client';
+import { restoreKeptFiles } from '@/core/files';
 import { GcsLocation } from './GcsLocation';
 
 const state = { started: false };
@@ -8,6 +9,7 @@ export const HostPlatform = {
     if (state.started) return;
     state.started = true;
     await startCore();
+    await restoreKeptFiles();
     GcsLocation.start();
   },
 

@@ -33,8 +33,8 @@ const openSettings = (text: string) => {
 };
 
 const pumpAndKeepSettings = () => {
-  core.pump();
   if (settings.revision === null) return;
+  core.pump();
   const revision = core.settingsRevision();
   if (revision === settings.revision) return;
   settings.revision = revision;
