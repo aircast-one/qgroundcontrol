@@ -658,6 +658,7 @@ const LinkHostField = ({ value, error, enabled, onChange }: { value: string; err
     isError={error !== null}
     supportingText={error ?? undefined}
     keyboardType="uri"
+    autoCorrect={false}
     className="w-full"
   />
 );

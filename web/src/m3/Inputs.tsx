@@ -6,6 +6,8 @@ export type KeyboardType = 'text' | 'number' | 'decimal' | 'password' | 'uri' | 
 
 const inputMode = (keyboard: KeyboardType) => ({ text: 'text', number: 'numeric', decimal: 'decimal', password: 'text', uri: 'url', email: 'email', phone: 'tel' } as const)[keyboard];
 
+export type Capitalization = 'none' | 'characters' | 'words' | 'sentences';
+
 export type TextFieldProps = {
   value: string;
   onValueChange: (value: string) => void;
@@ -24,10 +26,12 @@ export type TextFieldProps = {
   suffix?: ReactNode;
   onDone?: () => void;
   autoFocus?: boolean;
+  capitalization?: Capitalization;
+  autoCorrect?: boolean;
   className?: string;
 };
 
-const field = (filled: boolean) => ({ value, onValueChange, label, placeholder, supportingText, isError = false, singleLine = true, minLines = 3, enabled = true, readOnly = false, keyboardType = 'text', leadingIcon, trailingIcon, prefix, suffix, onDone, autoFocus, className }: TextFieldProps) => {
+const field = (filled: boolean) => ({ value, onValueChange, label, placeholder, supportingText, isError = false, singleLine = true, minLines = 3, enabled = true, readOnly = false, keyboardType = 'text', leadingIcon, trailingIcon, prefix, suffix, onDone, autoFocus, capitalization = 'none', autoCorrect = true, className }: TextFieldProps) => {
   const id = useId();
   const tone = isError ? 'border-error text-error' : 'border-outline focus-within:border-primary focus-within:border-2';
   const control = 'min-w-0 flex-1 bg-transparent text-body-large text-on-surface outline-none placeholder:text-on-surface-variant/60 disabled:opacity-40';
@@ -46,6 +50,9 @@ const field = (filled: boolean) => ({ value, onValueChange, label, placeholder, 
             disabled={!enabled}
             readOnly={readOnly}
             autoFocus={autoFocus}
+            autoCapitalize={capitalization === 'none' ? 'off' : capitalization}
+            autoCorrect={autoCorrect ? 'on' : 'off'}
+            spellCheck={autoCorrect}
             type={keyboardType === 'password' ? 'password' : 'text'}
             inputMode={inputMode(keyboardType)}
             aria-invalid={isError || undefined}

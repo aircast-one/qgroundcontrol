@@ -1398,6 +1398,7 @@ const FactTextField = ({ fact, onWrite, onRejected = () => undefined, onTheRight
         enabled={fact.enabled}
         suffix={notBlank(fact.units) ? shownUnits(fact.units) : undefined}
         keyboardType={secret && !revealed ? 'password' : factKeyboard(fact)}
+        autoCorrect={!isAddress(fact)}
         leadingIcon={secret ? <TextButton onClick={() => setRevealed(!revealed)}>{revealed ? 'Hide' : 'Show'}</TextButton> : undefined}
         onValueChange={(it) => {
           setEditing(typedValue(it));

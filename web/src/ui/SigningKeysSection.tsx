@@ -289,7 +289,7 @@ const AddKeyDialog = ({ minPassphrase, onDone }: { minPassphrase: number; onDone
           </div>
           {!raw ? (
             <>
-              <OutlinedTextField value={passphrase} onValueChange={setPassphrase} singleLine keyboardType="password" placeholder={`Enter passphrase (min ${minPassphrase} chars)`} />
+              <OutlinedTextField value={passphrase} onValueChange={setPassphrase} singleLine keyboardType="password" autoCorrect={false} placeholder={`Enter passphrase (min ${minPassphrase} chars)`} />
               {passphrase !== '' && passphrase.length < minPassphrase ? (
                 <Text typography="bodySmall" color={md('error')}>
                   {`Passphrase too short (${passphrase.length}/${minPassphrase})`}
@@ -304,6 +304,7 @@ const AddKeyDialog = ({ minPassphrase, onDone }: { minPassphrase: number; onDone
                   value={hex}
                   onValueChange={(typed) => setHex([...typed].filter((character) => HEX_CHARACTER.test(character)).slice(0, RAW_KEY_HEX_LENGTH).join(''))}
                   singleLine
+                  autoCorrect={false}
                   placeholder="64 hex characters"
                 />
                 <TextButton

@@ -356,7 +356,7 @@ const CameraForm = ({
         <MaterialIcon name="keyboard_arrow_right" filled label="Change type" className="text-on-surface-variant rtl:-scale-x-100" />
       </button>
       {naming ? (
-        <OutlinedTextField value={draft.name} onValueChange={(name) => onChange({ ...draft, name, refusal: null })} label="Name" singleLine onDone={save} className="w-full" />
+        <OutlinedTextField value={draft.name} onValueChange={(name) => onChange({ ...draft, name, refusal: null })} label="Name" singleLine capitalization="words" onDone={save} className="w-full" />
       ) : (
         <div>
           <TextButton onClick={() => setNaming(true)}>Add a name</TextButton>
@@ -372,6 +372,7 @@ const CameraForm = ({
           isError={draft.refusal !== null}
           supportingText={addressNote !== null && addressNote.trim() !== '' ? addressNote : undefined}
           keyboardType="uri"
+          autoCorrect={false}
           onDone={save}
           className="w-full"
         />
