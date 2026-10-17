@@ -8,6 +8,11 @@ const PAGES: readonly (readonly [string, string, string?])[] = [
   ['Transmission', 'NTRIP / RTK'],
   ['Safety', 'Remote ID'],
   ['Safety', 'More failsafe settings', 'Aircraft setup'],
+  ['General', 'PX4 log transfer'],
+  ['General', 'App logging'],
+  ['General', 'Console'],
+  ['General', 'About'],
+  ['General', 'Aircast card'],
 ];
 
 PAGES.map(([tab, page, title = page]) =>
