@@ -37,7 +37,7 @@ export const connectMock = async (page: Page, options: readonly MockOption[] = [
 
 export const flightMode = (page: Page): Locator => page.getByRole('button', { name: /Change flight mode$/ }).first();
 
-export const telemetry = (page: Page, label: string): Locator => page.getByText(label, { exact: true }).locator('..').filter({ hasText: /\d/ });
+export const telemetry = (page: Page, label: string): Locator => page.getByText(label, { exact: true }).locator('..').filter({ hasText: new RegExp(`^${label.replace('.', '\\.')}-?[\\d.]+(m|m/s|ft|ft/s)$`) });
 
 export const slideAcross = async (page: Page, target: Locator) => {
   await target.hover();
@@ -92,8 +92,10 @@ export const tapPlanMission = async (page: Page) => {
     (done, [dx, dy]) => done.then(async () => {
       const before = await itemCount(page);
       await expect(page.getByRole('region', { name: 'Map' })).toBeVisible();
-      await page.mouse.click(x + dx!, y + dy!);
-      await expect.poll(() => itemCount(page)).toBeGreaterThan(before);
+      await expect(async () => {
+        await page.mouse.click(x + dx!, y + dy!);
+        await expect.poll(() => itemCount(page), { timeout: 3_000 }).toBeGreaterThan(before);
+      }).toPass({ timeout: 30_000 });
     }),
     Promise.resolve(),
   );

@@ -20,7 +20,7 @@ test('slide to land brings the aircraft down and offers takeoff again', async ({
 test('return switches the aircraft into return mode', async ({ vehicle }) => {
   await takeOff(vehicle, '5 m');
   await expect(flightMode(vehicle)).toHaveAccessibleName(/^Hold Flying/, { timeout: 60_000 });
-  await vehicle.getByRole('button', { name: 'Return' }).click();
+  await vehicle.getByRole('button', { name: 'Return', exact: true }).click();
   await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to return' }));
   await expect(flightMode(vehicle)).toHaveAccessibleName(/^Return/);
 });

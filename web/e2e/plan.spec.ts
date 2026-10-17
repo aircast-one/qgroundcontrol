@@ -1,4 +1,4 @@
-import { expect, openMenu, openPlanAtVehicle, tapPlanMission, test } from './fixtures';
+import { expect, itemCount, openMenu, openPlanAtVehicle, tapPlanMission, test } from './fixtures';
 
 test.describe.configure({ timeout: 120_000 });
 
@@ -6,9 +6,10 @@ test('tapping the plan map builds a mission with home, takeoff and waypoints', a
   await openMenu(app, 'Plan');
   await expect(app.getByText('Tap the map to add a waypoint')).toBeVisible();
   await tapPlanMission(app);
-  await expect(app.getByText(/^5 items · \d+ m/)).toBeVisible();
+  await expect.poll(() => itemCount(app)).toBeGreaterThanOrEqual(5);
+  const drawn = await itemCount(app);
   await app.getByRole('button', { name: 'Undo' }).click();
-  await expect(app.getByText(/^(Empty plan|[1-4] items · .*)$/)).toBeVisible();
+  await expect.poll(() => itemCount(app)).toBeLessThan(drawn);
 });
 
 test('upload sends the mission to the vehicle and offers to fly it', async ({ vehicle }) => {

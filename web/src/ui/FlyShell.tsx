@@ -31,13 +31,12 @@ import type { DrawableName } from '@/res/drawables';
 import { AircastSpace, Color, aircast, md, withAlpha } from '@/theme/Colors';
 import { FleetPanel } from '@/ui/ActiveVehicle';
 import { LocalAppNavigation } from '@/ui/AppNavigation';
-import { OsdCompassDial } from '@/ui/AttitudeInstrument';
 import { useRememberGimbalDrags } from '@/ui/CameraSwitch';
 import { FlyDeckLayout } from '@/ui/FlyDeck';
 import { LocalFlyScreenState } from '@/ui/FlyScreenState';
 import { FLY_STATE, flyState, useHasVehicle } from '@/ui/FlyState';
 import { LocalFlyOsd, osdShadow, useOsdBackdrop } from '@/ui/Osd';
-import { LayoutPipEditor, LayoutWidget, orientedKey, useHoldToEditLayout, useLayoutPlacement } from '@/ui/OverlayLayout';
+import { LayoutWidget } from '@/ui/OverlayLayout';
 import { BatteryReturnBar, LocalCompactStatus } from '@/ui/StatusStrip';
 import { useRememberSyntheticAims } from '@/ui/SyntheticView';
 import { TrafficBanner } from '@/ui/TrafficBanner';
@@ -63,18 +62,11 @@ const FLY_STORE = 'fly';
 const FLY_VIEW_KEY = 'view';
 const FLY_SCRIM_ALPHA = 0.55;
 const STATUS_ROW_HEIGHT = 32;
-const MAP_PIP_KEY = 'mapPip';
-const VIDEO_PIP_KEY = 'videoPip';
-const MINIMAP_WIDTH = 184;
-const MINIMAP_HEIGHT = 112;
-const COMPASS_DIAL_KEY = 'compassDial';
 const ACTION_RAIL_CLEARANCE = 72;
 const STOP_CLEARANCE = 56;
 const RAIL_CLEARANCE = STOP_CLEARANCE + AircastSpace.s3 * 2;
 const TOP_SCRIM_HEIGHT = 96;
 const TOP_SCRIM_ALPHA = 0.6;
-const PIP_TOGGLE_SIZE = 28;
-const MINI_MAP_KEY = 'LandscapeMiniMap';
 const MINIMAP_THUMB = 56;
 const FULL_SCREEN_LAYER = 10;
 const DECISION_LAYER = 4;
@@ -154,23 +146,6 @@ export const AnimatedVisibility = ({ visible, from = null, className, style, chi
   );
 };
 
-export const mergeRefs = <T,>(...refs: readonly (Ref<T> | undefined)[]): RefCallback<T> => (node) => {
-  const cleanups = refs.map((ref) => {
-    if (typeof ref === 'function') return ref(node);
-    if (ref) (ref as RefObject<T | null>).current = node;
-    return undefined;
-  });
-  return () => {
-    cleanups.map((cleanup, at) => {
-      const ref = refs[at];
-      if (typeof cleanup === 'function') return cleanup();
-      if (typeof ref === 'function') return ref(null);
-      if (ref) (ref as RefObject<T | null>).current = null;
-      return undefined;
-    });
-  };
-};
-
 const ZERO_SIZE = Size(0, 0);
 
 export const useElementSize = (): { ref: RefCallback<HTMLElement>; size: Size; node: RefObject<HTMLElement | null> } => {
@@ -229,22 +204,6 @@ export const useSafeAreaInsets = (): Insets => {
 
 export const CUTOUT_PADDING: CSSProperties = { paddingLeft: 'env(safe-area-inset-left, 0px)', paddingRight: 'env(safe-area-inset-right, 0px)' };
 
-export type MiniMap = { readonly name: 'Thumb' | 'Map' | 'Compass'; readonly ordinal: number };
-export const MiniMap = {
-  Thumb: { name: 'Thumb', ordinal: 0 },
-  Map: { name: 'Map', ordinal: 1 },
-  Compass: { name: 'Compass', ordinal: 2 },
-} as const satisfies Record<string, MiniMap>;
-export const MiniMapEntries: readonly MiniMap[] = [MiniMap.Thumb, MiniMap.Map, MiniMap.Compass];
-
-export const miniMapNamed = (name: string | null): MiniMap => MiniMapEntries.find((it) => it.name === name) ?? MiniMap.Thumb;
-
-export const loadMiniMap = (): MiniMap => miniMapNamed(getSharedPreferences(FLY_STORE).getString(MINI_MAP_KEY, null));
-
-export const saveMiniMap = (mini: MiniMap): void => getSharedPreferences(FLY_STORE).putString(MINI_MAP_KEY, mini.name);
-
-export const miniWidth = (mini: MiniMap): number => (mini === MiniMap.Thumb ? MINIMAP_THUMB : mini === MiniMap.Map ? MINIMAP_WIDTH : MINIMAP_HEIGHT);
-
 export const useSwipeInsteadOfClick = (onSwipe: ((swipe: VideoSwipe) => void) | null): HTMLAttributes<HTMLElement> => {
   const latest = useUpdatedRef(onSwipe);
   const swiped = useRef(false);
@@ -265,41 +224,6 @@ export const useSwipeInsteadOfClick = (onSwipe: ((swipe: VideoSwipe) => void) | 
       event.preventDefault();
     },
   };
-};
-
-const PipToggle = ({ onToggle, className }: { onToggle: () => void; className?: string }) => (
-  <StopPropagation className={className}>
-    <Surface
-      onClick={onToggle}
-      shape="full"
-      color={md('surfaceContainerHigh')}
-      contentColor={md('onSurface')}
-      label="Hide picture-in-picture"
-      className="grid place-items-center"
-      style={{ width: PIP_TOGGLE_SIZE, height: PIP_TOGGLE_SIZE }}
-    >
-      <MaterialIcon name="keyboard_arrow_down" filled size={18} />
-    </Surface>
-  </StopPropagation>
-);
-
-const VideoThumb = ({ clickLabel, onToggle, style }: { clickLabel: string; onToggle: () => void; style: CSSProperties }) => {
-  const swipes = useSwipeInsteadOfClick((swipe) => {
-    if (swipe === VideoSwipe.Up) onToggle();
-  });
-  return (
-    <div
-      {...swipes}
-      role="button"
-      tabIndex={0}
-      aria-label="Video"
-      aria-description={clickLabel}
-      onClick={onToggle}
-      onKeyDown={activate(onToggle)}
-      className="pointer-events-auto absolute cursor-pointer overflow-hidden rounded-shape-md"
-      style={{ ...style, border: `2px solid ${md('onSurface')}`, touchAction: 'none' }}
-    />
-  );
 };
 
 export type FlyView = { readonly name: 'Video' | 'Map' | 'ThreeD'; readonly ordinal: number; readonly label: string; readonly icon: DrawableName };
@@ -341,15 +265,15 @@ const subscribePortrait = (listener: () => void) => {
 
 export const useFlyIsPortrait = (): boolean => useSyncExternalStore(subscribePortrait, () => portraitQuery().matches, () => false);
 
-const pipBox = (size: Size | null = null): CSSProperties => ({
+const THUMB_SIZE = Size(MINIMAP_THUMB, MINIMAP_THUMB);
+
+const THUMB_PLACE: CSSProperties = {
   position: 'absolute',
   left: `calc(env(safe-area-inset-left, 0px) + ${BOTTOM_LEAD + AircastSpace.s3}px)`,
   bottom: AircastSpace.s3,
-  ...(size === null ? {} : { width: size.width, height: size.height }),
-});
-
-const PIP_SIZE = Size(MINIMAP_WIDTH, MINIMAP_HEIGHT);
-const THUMB_SIZE = Size(MINIMAP_THUMB, MINIMAP_THUMB);
+  width: THUMB_SIZE.width,
+  height: THUMB_SIZE.height,
+};
 
 type FlyScreenProps = {
   view: FlyView;
@@ -399,14 +323,6 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const boxHeight = box.size.height > 0 ? box.size.height : screen.height;
   const stickBand = boxHeight - TOP_SCRIM_HEIGHT - STICK_FLOOR;
   const stickPad = useShownStickPad(boxHeight, stickBand);
-  const [savedMini, setSavedMini] = useState<MiniMap>(loadMiniMap);
-  const mini = stickPad !== null ? MiniMap.Thumb : savedMini;
-  const showMini = (next: MiniMap) => {
-    setSavedMini(next);
-    saveMiniMap(next);
-  };
-  const pipExpanded = mini !== MiniMap.Thumb;
-  const togglePip = () => (stickPad !== null ? onView(flyViewSwapped(view)) : showMini(pipExpanded ? MiniMap.Thumb : MiniMap.Map));
   const shellState = useContext(LocalFlyScreenState);
   const layout = shellState.layout;
   const safeArea = useSafeAreaInsets();
@@ -428,110 +344,53 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   useEffect(() => {
     layout.lockWhileArmed(armed);
   }, [armed]);
-  const offsets = useValue(layout.offsets);
   const settingsOver = useValue(useContext(LocalAppNavigation).settingsOpen);
   const deciding = useValue(shellState.guidedPanels) > 0;
   const obstacles = useValue(shellState.obstacles);
   const hasVehicle = useHasVehicle();
-  const mapPipPlacement = useLayoutPlacement(MAP_PIP_KEY, false);
-  const miniMapPlacement = useLayoutPlacement(MAP_PIP_KEY, true);
-  const videoPipPlacement = useLayoutPlacement(VIDEO_PIP_KEY, true);
-  const holdToEdit = useHoldToEditLayout();
-  const avoidCompass = useAvoidedByVideoMessage(COMPASS_DIAL_KEY);
-  const avoidMiniMap = useAvoidedByVideoMessage(MAP_PIP_KEY);
-  const miniMapRef = useMemo(() => mergeRefs<HTMLDivElement>(miniMapPlacement.ref, avoidMiniMap), [miniMapPlacement.ref, avoidMiniMap]);
   const [layers, setLayers] = useState(false);
   useEffect(() => setLayers(false), [view]);
 
   const mapIsPip = view === FlyView.Video;
   const videoIsPip = view === FlyView.Map;
-  const mapShown = view === FlyView.Map || (mapIsPip && mini !== MiniMap.Compass);
   const videoShown = view !== FlyView.ThreeD && (view !== FlyView.Map || hasVideo);
-  const mapPipSize = mini === MiniMap.Thumb ? THUMB_SIZE : PIP_SIZE;
-  const videoKey = orientedKey(VIDEO_PIP_KEY, true);
-  const videoMoved = offsets.get(videoKey) ?? [0, 0];
-  const pipHome = Offset(safeArea.left + AircastSpace.s3 + BOTTOM_LEAD, box.size.height - AircastSpace.s3 - MINIMAP_HEIGHT);
-  const videoThumb = videoIsPip && !pipExpanded;
-  const pipFrame = videoThumb ? rectAt(plus(pipHome, Offset(0, MINIMAP_HEIGHT - MINIMAP_THUMB)), THUMB_SIZE) : rectAt(plus(pipHome, Offset(videoMoved[0], videoMoved[1])), PIP_SIZE);
+  const thumbShown = mapIsPip || (videoIsPip && hasVideo);
+  const thumbFrame = rectAt(Offset(safeArea.left + AircastSpace.s3 + BOTTOM_LEAD, box.size.height - (AircastSpace.s3 + MINIMAP_THUMB)), THUMB_SIZE);
   const pipNow = videoIsPip && !fullScreen;
-  const videoTarget = pipNow ? pipFrame : Rect(0, 0, box.size.width, box.size.height);
-  const [holding, setHolding] = useState(false);
-  const frame = useRememberVideoFrame(videoTarget, holding);
+  const videoTarget = pipNow ? thumbFrame : Rect(0, 0, box.size.width, box.size.height);
+  const frame = useRememberVideoFrame(videoTarget, false);
   const cameras = useRememberCameraStepper();
   const gimbalDrags = useRememberGimbalDrags();
   const syntheticAims = useRememberSyntheticAims();
-  const latest = useUpdatedRef({ pipNow, pipHome, videoTarget, onView, onExitFullScreen, onFullScreen, fullScreen, pipExpanded, showMini, togglePip, gimbalDrags, syntheticAims, cameras });
-  const stepCamera = (swipe: VideoSwipe | null) => {
-    const step = cameraStep(swipe);
-    if (step !== null) latest.current.cameras.step(step);
-  };
+  const latest = useUpdatedRef({ pipNow, onExitFullScreen, onFullScreen, fullScreen, gimbalDrags, syntheticAims, cameras });
   const videoGestureProps = useMemo(() => {
     const handlers: VideoGestureHandlers = {
       owned: () => false,
       claimsSwipe: (moved: Offset) => sideways(moved) && !latest.current.gimbalDrags && !(latest.current.syntheticAims && !latest.current.pipNow),
       onTap: () => undefined,
       onDoubleTap: () => (latest.current.fullScreen ? latest.current.onExitFullScreen() : latest.current.onFullScreen()),
-      onSwipe: (moved: Offset) => stepCamera(videoSwipe(moved, VIDEO_SWIPE_DISTANCE)),
-      onHold: (at: Offset) => {
-        const now = latest.current;
-        if (now.pipNow) return false;
-        setHolding(true);
-        const wanted = minus(minus(plus(rectTopLeft(now.videoTarget), at), Offset(MINIMAP_WIDTH / 2, MINIMAP_HEIGHT / 2)), now.pipHome);
-        const [x, y] = layout.offsets.value.get(videoKey) ?? [0, 0];
-        layout.nudge(videoKey, wanted.x - x, wanted.y - y);
-        if (!now.pipExpanded) now.showMini(MiniMap.Map);
-        now.onExitFullScreen();
-        now.onView(FlyView.Map);
-        return true;
+      onSwipe: (moved: Offset) => {
+        const step = cameraStep(videoSwipe(moved, VIDEO_SWIPE_DISTANCE));
+        if (step !== null) latest.current.cameras.step(step);
       },
-      onHoldDrag: (delta: Offset) => layout.nudge(videoKey, delta.x, delta.y),
-      onHoldEnd: () => {
-        layout.saveOffset(videoKey);
-        setHolding(false);
-      },
+      onHold: () => false,
+      onHoldDrag: () => undefined,
+      onHoldEnd: () => undefined,
     };
     return videoGestures(handlers);
   }, []);
-  const pipGestureProps = useMemo(() => {
-    const handlers: VideoGestureHandlers = {
-      owned: () => !layout.editing.value,
-      claimsSwipe: () => false,
-      onTap: () => latest.current.onView(FlyView.Video),
-      onDoubleTap: () => latest.current.onFullScreen(),
-      onSwipe: (moved: Offset) => {
-        const swipe = videoSwipe(moved, VIDEO_SWIPE_DISTANCE);
-        if (swipe === VideoSwipe.Down) return latest.current.togglePip();
-        if (swipe === VideoSwipe.Up) return latest.current.onView(FlyView.Video);
-        return stepCamera(swipe);
-      },
-      onHold: () => {
-        if (layout.editing.value) return false;
-        setHolding(true);
-        return true;
-      },
-      onHoldDrag: (delta: Offset) => layout.nudge(videoKey, delta.x, delta.y),
-      onHoldEnd: () => {
-        layout.saveOffset(videoKey);
-        setHolding(false);
-      },
-    };
-    return videoGestures(handlers, 'Main');
-  }, []);
   const videoMessage = videoShown && !videoIsPip && videoReading(videoJson)?.decoding !== true;
-  const besideMini = mapIsPip ? miniWidth(mini) : !hasVideo ? PIP_TOGGLE_SIZE : videoThumb ? MINIMAP_THUMB : pipExpanded ? MINIMAP_WIDTH : PIP_TOGGLE_SIZE;
-  const mapPipStyle: CSSProperties = { ...(mini === MiniMap.Thumb ? {} : mapPipPlacement.style), ...pipBox(mapPipSize) };
-  const showMapFromThumb = () => (stickPad !== null ? onView(FlyView.Map) : showMini(MiniMap.Map));
-  const showMapFromCompass = () => showMini(MiniMap.Map);
-  const showMapFull = () => onView(FlyView.Map);
-  const showVideoLarge = () => onView(FlyView.Video);
+  const besideThumb = thumbShown ? MINIMAP_THUMB : 0;
+  const showMap = () => onView(FlyView.Map);
+  const showVideo = () => onView(FlyView.Video);
 
   return (
     <div ref={rootRef} className="relative size-full overflow-hidden">
       {view === FlyView.ThreeD ? <Viewer3DPane className="absolute inset-0" /> : null}
-      {mapShown
+      {view !== FlyView.ThreeD
         ? map(
             mapIsPip
-              ? { className: 'absolute overflow-hidden rounded-shape-md', style: { ...mapPipStyle, zIndex: layer(1), border: `2px solid ${md('onSurface')}` }, 'aria-hidden': fullScreen || undefined }
+              ? { className: 'absolute overflow-hidden rounded-shape-md', style: { ...THUMB_PLACE, zIndex: layer(1), border: `2px solid ${md('onSurface')}` }, 'aria-hidden': fullScreen || undefined }
               : { className: 'absolute inset-0', 'aria-hidden': fullScreen || undefined },
           )
         : null}
@@ -548,83 +407,29 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
       {fullScreen ? null : (
         <>
           <div className="pointer-events-none absolute inset-x-0 top-0" style={{ height: TOP_SCRIM_HEIGHT, background: `linear-gradient(to bottom, ${withAlpha(Color.Black, TOP_SCRIM_ALPHA)}, transparent)` }} />
-          {mapIsPip && mini === MiniMap.Thumb ? (
+          {mapIsPip ? (
             <div
               role="button"
               tabIndex={0}
               aria-label="Map"
-              aria-description={stickPad !== null ? 'Show the map' : 'Show the mini-map'}
-              onClick={showMapFromThumb}
-              onKeyDown={activate(showMapFromThumb)}
+              aria-description="Show the map"
+              onClick={showMap}
+              onKeyDown={activate(showMap)}
               className="absolute cursor-pointer overflow-hidden rounded-shape-md"
-              style={{ ...pipBox(mapPipSize), zIndex: layer(2) }}
+              style={{ ...THUMB_PLACE, zIndex: layer(2) }}
             />
           ) : null}
-          {mapIsPip && mini === MiniMap.Compass ? (
-            <div
-              ref={avoidCompass}
-              role="button"
-              tabIndex={0}
-              aria-label="Compass"
-              aria-description="Show the map"
-              onClick={showMapFromCompass}
-              onKeyDown={activate(showMapFromCompass)}
-              className="absolute cursor-pointer overflow-hidden rounded-full"
-              style={{ ...pipBox(), zIndex: layer(3) }}
-            >
-              <OsdCompassDial size={MINIMAP_HEIGHT} />
-            </div>
-          ) : null}
-          {mapIsPip && mini === MiniMap.Map ? (
-            <div
-              ref={miniMapRef}
-              role="button"
-              tabIndex={0}
-              aria-label="Mini-map"
-              aria-description="Show the map full screen"
-              {...holdToEdit}
-              onClick={showMapFull}
-              onKeyDown={activate(showMapFull)}
-              className="absolute cursor-pointer overflow-hidden rounded-shape-md"
-              style={{ ...miniMapPlacement.style, ...pipBox(PIP_SIZE), zIndex: layer(3) }}
-            >
-              <PipToggle onToggle={togglePip} className="absolute start-0 top-0" />
-              <StopPropagation className="absolute end-0 top-0">
-                <Surface
-                  onClick={() => showMini(MiniMap.Compass)}
-                  shape="full"
-                  color={md('surfaceContainerHigh')}
-                  contentColor={md('onSurface')}
-                  label="Show the compass"
-                  className="grid place-items-center"
-                  style={{ width: PIP_TOGGLE_SIZE, height: PIP_TOGGLE_SIZE }}
-                >
-                  <Drawable name="ic_explore" size={18} />
-                </Surface>
-              </StopPropagation>
-              <LayoutPipEditor widgetKey={MAP_PIP_KEY} shape="medium" className="absolute inset-0" />
-            </div>
-          ) : null}
           {videoIsPip && hasVideo ? (
-            pipExpanded ? (
-              <div
-                ref={videoPipPlacement.ref}
-                role="button"
-                tabIndex={0}
-                aria-label="Video picture-in-picture"
-                aria-description="Show the video large"
-                {...pipGestureProps}
-                onKeyDown={activate(showVideoLarge)}
-                className="pointer-events-auto absolute overflow-hidden rounded-shape-md"
-                style={{ ...videoPipPlacement.style, ...pipBox(PIP_SIZE), zIndex: layer(3), touchAction: 'none' }}
-              >
-                <PipToggle onToggle={togglePip} className="absolute start-0 top-0" />
-                <LayoutPipEditor widgetKey={VIDEO_PIP_KEY} shape="medium" className="absolute inset-0" />
-                <A11yActions actions={[['Show the video full screen', onFullScreen], ['Hide the video', togglePip]]} />
-              </div>
-            ) : (
-              <VideoThumb clickLabel={stickPad !== null ? 'Show the video' : 'Show the video picture-in-picture'} onToggle={togglePip} style={{ ...pipBox(THUMB_SIZE), zIndex: layer(3) }} />
-            )
+            <div
+              role="button"
+              tabIndex={0}
+              aria-label="Video"
+              aria-description="Show the video"
+              onClick={showVideo}
+              onKeyDown={activate(showVideo)}
+              className="absolute cursor-pointer overflow-hidden rounded-shape-md"
+              style={{ ...THUMB_PLACE, zIndex: layer(3), border: `2px solid ${md('onSurface')}` }}
+            />
           ) : null}
           <div className={`absolute inset-0 ${PASS_THROUGH}`} style={{ zIndex: layer(1), opacity: settingsOver ? 0 : 1, ...CUTOUT_PADDING }}>
             <div className="relative size-full">
@@ -652,7 +457,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                     <div className="relative">
                       <div className="flex flex-col gap-2 px-3 pb-2" style={{ paddingTop: `calc(env(safe-area-inset-top, 0px) + ${AircastSpace.s2}px)` }}>
                         <LocalCompactStatus.Provider value>
-                          <div className="flex w-full items-center gap-2" style={{ minHeight: STATUS_ROW_HEIGHT }}>
+                          <div data-status-row className="flex w-full items-center gap-2" style={{ minHeight: STATUS_ROW_HEIGHT }}>
                             {status}
                           </div>
                         </LocalCompactStatus.Provider>
@@ -709,7 +514,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                 {hasVehicle && !deciding ? (
                   <div
                     className={`absolute start-0 bottom-0 max-w-full ${osdShadow()}`}
-                    style={{ zIndex: layer(2), paddingInlineStart: BOTTOM_LEAD + besideMini + AircastSpace.s3 * 2, paddingInlineEnd: AircastSpace.s3, paddingBottom: AircastSpace.s3 }}
+                    style={{ zIndex: layer(2), paddingInlineStart: BOTTOM_LEAD + besideThumb + AircastSpace.s3 * 2, paddingInlineEnd: AircastSpace.s3, paddingBottom: AircastSpace.s3 }}
                   >
                     <LocalFlyOsd.Provider value>
                       <TelemetryRow valuesShown chooser={false} compact stacked />

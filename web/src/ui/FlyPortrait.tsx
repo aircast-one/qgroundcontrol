@@ -318,7 +318,7 @@ export const FlyPortrait = ({ view, onView, status, video, map, keyRow, rail, ov
             </AnimatedVisibility>
             <div ref={chrome.ref} className={`absolute inset-x-0 top-0 flex w-full flex-col ${PASS_THROUGH}`}>
               <div className="relative w-full" style={{ background: `linear-gradient(to bottom, ${withAlpha(Color.Black, SCRIM_ALPHA)}, transparent)`, paddingTop: 'env(safe-area-inset-top, 0px)' }}>
-                <div className="flex w-full items-center gap-2 px-3" style={{ height: PORTRAIT_BAR_HEIGHT }}>
+                <div data-status-row className="flex w-full items-center gap-2 px-3" style={{ height: PORTRAIT_BAR_HEIGHT }}>
                   {status}
                 </div>
                 <div className="pointer-events-none absolute inset-x-0" style={{ top: 'env(safe-area-inset-top, 0px)' }}>

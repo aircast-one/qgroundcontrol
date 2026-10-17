@@ -1,4 +1,4 @@
-import { type CSSProperties, Fragment, type ReactNode, createContext, useCallback, useContext, useMemo, useState } from 'react';
+import { type CSSProperties, Fragment, type ReactNode, createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { type Json, jsonObjects, jsonStrings, optBoolean, optInt, optJSONArray, optText } from '@/bridge/Json';
 import { type Fact, Qgc } from '@/bridge/Qgc';
 import { useQgcFacts, useQgcPath } from '@/bridge/QgcState';
@@ -145,12 +145,12 @@ export const StatusPill = ({ className }: { className?: string }) => {
   const backdrop = useOsdBackdrop(withAlpha(Color.Black, 0.45));
   const [maxWidth, setMaxWidth] = useState(Number.POSITIVE_INFINITY);
   const measure = useCallback((element: HTMLElement | null) => {
-    const parent = element?.parentElement ?? null;
-    if (parent === null) return undefined;
-    const read = () => setMaxWidth(parent.clientWidth);
+    const row = element?.closest<HTMLElement>('[data-status-row]') ?? element?.parentElement ?? null;
+    if (element === null || row === null) return undefined;
+    const read = () => setMaxWidth(widthLeftInRow(row, element));
     read();
     const observer = new ResizeObserver(read);
-    observer.observe(parent);
+    observer.observe(row);
     return () => observer.disconnect();
   }, []);
   if (!statusPillShown(vehicle, rtk !== null, gcsBattery !== null)) return null;
@@ -166,6 +166,15 @@ export const StatusPill = ({ className }: { className?: string }) => {
       </Surface>
     </div>
   );
+};
+
+export const widthLeftInRow = (row: HTMLElement, element: HTMLElement): number => {
+  const style = getComputedStyle(row);
+  const children = Array.from(row.children).filter((child): child is HTMLElement => child instanceof HTMLElement);
+  const others = children.filter((child) => !child.contains(element) && getComputedStyle(child).flexGrow === '0');
+  const gaps = (Number.parseFloat(style.columnGap) || 0) * Math.max(0, children.length - 1);
+  const padding = (Number.parseFloat(style.paddingLeft) || 0) + (Number.parseFloat(style.paddingRight) || 0);
+  return row.clientWidth - padding - gaps - others.reduce((sum, child) => sum + child.getBoundingClientRect().width, 0);
 };
 
 const STRIP_GAP = 14;
@@ -202,17 +211,40 @@ const NoVehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps)
   </div>
 );
 
-const BatteryCells = ({ batteries, live, timeLeft, current, onOpen }: { batteries: readonly BatteryReading[]; live: boolean; timeLeft: string; current: string; onOpen: () => void }) => {
+const limitingBattery = (batteries: readonly BatteryReading[]): BatteryReading | null =>
+  batteries.reduce<BatteryReading | null>(
+    (lowest, it) => (lowest === null || (batteryPercent(it.text) ?? Number.MAX_SAFE_INTEGER) < (batteryPercent(lowest.text) ?? Number.MAX_SAFE_INTEGER) ? it : lowest),
+    null,
+  );
+
+const BatteryCells = ({
+  batteries,
+  headline,
+  live,
+  timeLeft,
+  current,
+  onOpen,
+}: {
+  batteries: readonly BatteryReading[];
+  headline: BatteryHeadline | null;
+  live: boolean;
+  timeLeft: string;
+  current: string;
+  onOpen: () => void;
+}) => {
   const compact = useContext(LocalCompactStatus);
   const narrow = useContext(LocalNarrowStatus);
   if (batteries.length === 0) return null;
   const extras = narrow ? [] : ([[timeLeft, 'flight time left'], [current, 'current draw']] as const).filter(([value]) => value !== '');
+  const limiting = limitingBattery(batteries);
   return (
     <div className="flex items-center" style={{ gap: BATTERY_GAP }}>
       {batteries.map((it, at) => {
         const colour = live ? batteryLevelColour(it.level) : md('outline');
+        const zones = live && it === limiting ? headline : null;
+        const arc = !live ? md('outline') : it.level === BatteryLevel.Critical ? md('error') : aircast('success');
         return compact ? (
-          <BatteryRing key={at} text={it.text} colour={colour} count={narrow ? '' : packCountText(it.packs)} onClick={onOpen} />
+          <BatteryRing key={at} text={it.text} colour={colour} arc={arc} count={narrow ? '' : packCountText(it.packs)} zones={zones} onClick={onOpen} />
         ) : (
           <InlineCell key={at} text={[it.text, packCountText(it.packs)].filter((part) => part !== '').join(' ')} colour={colour} icon="ic_battery_5_bar" onClick={onOpen} />
         );
@@ -243,7 +275,8 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
   const live = (state?.staleNotice ?? '').trim() === '';
   const batteryJson = useQgcPath(BATTERY_VIEW);
   const batteries = useMemo(() => batteryReadings(batteryJson), [batteryJson]);
-  const timeLeft = useMemo(() => batteryHeadline(batteryJson)?.timeLeft ?? '', [batteryJson]);
+  const headline = useMemo(() => batteryHeadline(batteryJson), [batteryJson]);
+  const timeLeft = headline?.timeLeft ?? '';
   const current = useMemo(() => totalCurrent(batteryJson) ?? '', [batteryJson]);
   const linksJson = useQgcPath(VEHICLE_LINKS);
   const links = useMemo(() => linkCell(vehicleLinks(linksJson)), [linksJson]);
@@ -270,7 +303,7 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
   const telemetry = telemetryCell(state);
 
   const cells: readonly (readonly [string, ReactNode])[] = [
-    ['battery', <BatteryCells batteries={batteries} live={live} timeLeft={timeLeft} current={current} onOpen={open(StripDetail.Battery)} />],
+    ['battery', <BatteryCells batteries={batteries} headline={headline} live={live} timeLeft={timeLeft} current={current} onOpen={open(StripDetail.Battery)} />],
     ['flightTime', <FlightTimeSlot />],
     ['gps', gps === null ? null : <InlineCell text={fix === null ? NO_COUNT : satsText(fix, satellites)} colour={fix === null ? null : gpsColour(fix)} icon="ic_satellite_alt" onClick={open(StripDetail.Gps)} />],
     ['rc', rc === null ? null : <InlineCell text={rc.text} colour={rc.lost ? md('error') : null} icon="ic_gamepad" onClick={open(StripDetail.Rc)} />],
@@ -461,6 +494,7 @@ export const batteryBarDescription = (headline: BatteryHeadline): string =>
   [
     headline.percent === null ? null : `Battery ${roundToInt(headline.percent)}%`,
     headline.returnAt === null ? null : `return home needed at ${roundToInt(headline.returnAt)}%`,
+    headline.drainPerMinute === null ? null : `using ${roundToInt(headline.drainPerMinute)}% a minute`,
     headline.returnNow ? RETURN_NOW_SPOKEN : null,
   ]
     .filter((part): part is string => part !== null)
@@ -658,9 +692,37 @@ const InlineCell = ({ text, colour, icon = null, onClick = null }: { text: strin
 
 export const LocalCompactStatus = createContext(false);
 
-const BATTERY_RING_SIZE = 30;
+const BATTERY_RING_SIZE = 32;
 const BATTERY_RING_STROKE = 3;
 const BATTERY_RING_TRACK_ALPHA = 0.25;
+const RING_HOME_MARKER = 10;
+const RING_HOME_LETTER = 7;
+const RING_ANIMATION_MS = 600;
+const USAGE_BLEND = 0.6;
+
+export type RingZone = { readonly name: 'Reserve' | 'Return' | 'Free' | 'Usage'; readonly ordinal: number };
+export const RingZone = {
+  Reserve: { name: 'Reserve', ordinal: 0 },
+  Return: { name: 'Return', ordinal: 1 },
+  Free: { name: 'Free', ordinal: 2 },
+  Usage: { name: 'Usage', ordinal: 3 },
+} as const satisfies Record<string, RingZone>;
+export const RingZoneEntries: readonly RingZone[] = [RingZone.Reserve, RingZone.Return, RingZone.Free, RingZone.Usage];
+
+export type RingSegment = { from: number; to: number; zone: RingZone };
+export const RingSegment = (from: number, to: number, zone: RingZone): RingSegment => ({ from, to, zone });
+
+export const batteryRingSegments = (percent: number, reserve: number, returnAt: number | null, drainPerMinute: number | null): readonly RingSegment[] => {
+  const returnFrom = Math.max(reserve, returnAt ?? reserve);
+  return [
+    RingSegment(0, reserve, RingZone.Reserve),
+    RingSegment(reserve, returnFrom, RingZone.Return),
+    RingSegment(returnFrom, PERCENT, RingZone.Free),
+    ...(drainPerMinute === null ? [] : [RingSegment(percent - drainPerMinute, percent, RingZone.Usage)]),
+  ]
+    .map((it) => ({ ...it, from: coerceIn(it.from, 0, percent), to: coerceIn(it.to, 0, percent) }))
+    .filter((it) => it.to > it.from);
+};
 
 export const batteryPercent = (text: string): number | null => {
   const reading = compactStatusText(text);
@@ -694,38 +756,101 @@ const FlightTimeCell = () => {
   );
 };
 
-const BatteryRing = ({ text, colour, count, onClick }: { text: string; colour: string | null; count: string; onClick: () => void }) => {
-  const percent = batteryPercent(text);
-  if (percent === null) return <InlineCell text={text} colour={colour} icon="ic_battery_5_bar" onClick={onClick} />;
-  const ring = colour ?? aircast('success');
-  const track = withAlpha(colour ?? aircast('outdoorForeground'), BATTERY_RING_TRACK_ALPHA);
-  const centre = BATTERY_RING_SIZE / 2;
+const fastOutSlowIn = (fraction: number): number => {
+  const curve = (t: number, first: number, second: number): number => 3 * first * t * (1 - t) ** 2 + 3 * second * t ** 2 * (1 - t) + t ** 3;
+  const solve = (low: number, high: number, depth: number): number => {
+    const middle = (low + high) / 2;
+    if (depth === 0) return middle;
+    return curve(middle, 0.4, 0.2) < fraction ? solve(middle, high, depth - 1) : solve(low, middle, depth - 1);
+  };
+  return curve(solve(0, 1, 24), 0, 1);
+};
+
+const reducedMotion = (): boolean => typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches === true;
+
+const useAnimateFloatAsState = (target: number, durationMs: number): number => {
+  const [shown, setShown] = useState(target);
+  const latest = useRef(target);
+  useEffect(() => {
+    const from = latest.current;
+    const show = (value: number) => {
+      latest.current = value;
+      setShown(value);
+    };
+    if (from === target) return undefined;
+    if (reducedMotion() || typeof requestAnimationFrame === 'undefined') return show(target);
+    const began = performance.now();
+    const run = { frame: 0 };
+    const step = (now: number) => {
+      const progress = Math.min(1, (now - began) / durationMs);
+      show(from + (target - from) * fastOutSlowIn(progress));
+      if (progress < 1) run.frame = requestAnimationFrame(step);
+    };
+    run.frame = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(run.frame);
+  }, [target, durationMs]);
+  return shown;
+};
+
+const RING_MASK = `radial-gradient(closest-side, transparent calc(100% - ${BATTERY_RING_STROKE + 0.5}px), #000 calc(100% - ${BATTERY_RING_STROKE - 0.5}px))`;
+
+type BatteryRingProps = { text: string; colour: string | null; arc: string; count: string; zones: BatteryHeadline | null; onClick: () => void };
+
+const BatteryRing = (props: BatteryRingProps) => {
+  const percent = batteryPercent(props.text);
+  return percent === null ? <InlineCell text={props.text} colour={props.colour} icon="ic_battery_5_bar" onClick={props.onClick} /> : <BatteryDial {...props} percent={percent} />;
+};
+
+const BatteryDial = ({ colour, arc, count, zones, onClick, percent }: BatteryRingProps & { percent: number }) => {
+  const shownPercent = useAnimateFloatAsState(percent, RING_ANIMATION_MS);
+  const shownDrain = useAnimateFloatAsState(zones?.drainPerMinute ?? 0, RING_ANIMATION_MS);
+  const track = withAlpha(aircast('outdoorForeground'), BATTERY_RING_TRACK_ALPHA);
+  const zoneColour = (zone: RingZone): string => {
+    if (zone === RingZone.Reserve) return md('error');
+    return zone === RingZone.Free ? arc : aircast('warning');
+  };
+  const segments = batteryRingSegments(shownPercent, zones?.reserve ?? 0, zones?.returnAt ?? null, shownDrain > 0 ? shownDrain : null);
+  const angle = (share: number): number => (share / PERCENT) * 360;
+  const paint = (segment: RingSegment): string => {
+    const sweep = angle(segment.to - segment.from);
+    const fill = segment.zone === RingZone.Usage ? `${arc} 0deg, ${zoneColour(RingZone.Usage)} ${sweep * USAGE_BLEND}deg` : `${zoneColour(segment.zone)} 0deg`;
+    return `conic-gradient(from ${angle(segment.from)}deg, ${fill} ${sweep}deg, transparent ${sweep}deg)`;
+  };
   const radius = (BATTERY_RING_SIZE - BATTERY_RING_STROKE) / 2;
-  const length = 2 * Math.PI * radius;
+  const returnAt = zones?.returnAt ?? null;
+  const home = returnAt === null ? null : ((angle(returnAt) - 90) * Math.PI) / 180;
   return (
     <button
       type="button"
-      aria-label={count === '' ? `Battery ${percent}%` : `Lowest of ${count} batteries ${percent}%`}
+      aria-label={zones !== null ? batteryBarDescription(zones) : count === '' ? `Battery ${percent}%` : `Lowest of ${count} batteries ${percent}%`}
       aria-description="Battery"
       onClick={onClick}
       className="relative flex"
       style={{ paddingInlineEnd: count === '' ? 0 : BATTERY_COUNT_ROOM }}
     >
       <span className="relative grid place-items-center" style={{ width: BATTERY_RING_SIZE, height: BATTERY_RING_SIZE }}>
-        <svg className="absolute inset-0" width={BATTERY_RING_SIZE} height={BATTERY_RING_SIZE} viewBox={`0 0 ${BATTERY_RING_SIZE} ${BATTERY_RING_SIZE}`} aria-hidden>
-          <circle cx={centre} cy={centre} r={radius} fill="none" strokeWidth={BATTERY_RING_STROKE} style={{ stroke: track }} />
-          <circle
-            cx={centre}
-            cy={centre}
-            r={radius}
-            fill="none"
-            strokeWidth={BATTERY_RING_STROKE}
-            strokeLinecap="round"
-            strokeDasharray={`${(length * percent) / 100} ${length}`}
-            transform={`rotate(-90 ${centre} ${centre})`}
-            style={{ stroke: ring }}
-          />
-        </svg>
+        <span
+          aria-hidden
+          className="absolute inset-0 rounded-full"
+          style={{ backgroundColor: track, backgroundImage: segments.length === 0 ? 'none' : segments.toReversed().map(paint).join(', '), mask: RING_MASK }}
+        />
+        {home === null ? null : (
+          <span
+            aria-hidden
+            className="absolute grid place-items-center rounded-full font-bold leading-none"
+            style={{
+              left: BATTERY_RING_SIZE / 2 + radius * Math.cos(home) - RING_HOME_MARKER / 2,
+              top: BATTERY_RING_SIZE / 2 + radius * Math.sin(home) - RING_HOME_MARKER / 2,
+              width: RING_HOME_MARKER,
+              height: RING_HOME_MARKER,
+              fontSize: RING_HOME_LETTER,
+              background: aircast('success'),
+              color: aircast('onSuccess'),
+            }}
+          >
+            H
+          </span>
+        )}
         <span className="relative text-label-small tabular-nums" style={{ color: colour ?? aircast('outdoorForeground') }}>
           {percent}
         </span>
@@ -740,7 +865,7 @@ const BatteryRing = ({ text, colour, count, onClick }: { text: string; colour: s
 };
 
 const BATTERY_COUNT_SIZE = 9;
-const BATTERY_COUNT_ROOM = 10;
+const BATTERY_COUNT_ROOM = 16;
 const BATTERY_GAP = 6;
 
 export const COMPACT_STATUS_CELLS = 4;

@@ -5,9 +5,12 @@ import {
   BatteryLevel,
   COMPACT_STATUS_CELLS,
   FixLevel,
+  RingSegment,
+  RingZone,
   batteryLevelOf,
   batteryPercent,
   batteryReadings,
+  batteryRingSegments,
   compactStatusText,
   fixLevel,
   flightTimeSeconds,
@@ -229,6 +232,26 @@ describe('FlightTimeTest', () => {
     expect(flightTimeText(0)).toBe('00\'00"');
     expect(flightTimeText(75.4)).toBe('01\'15"');
     expect(flightTimeText(4325)).toBe('72\'05"');
+  });
+});
+
+describe('BatteryRingTest', () => {
+  it('the ring splits the charge into land, return and free zones like DJI', () => {
+    expect(batteryRingSegments(60, 10, 30, null)).toEqual([RingSegment(0, 10, RingZone.Reserve), RingSegment(10, 30, RingZone.Return), RingSegment(30, 60, RingZone.Free)]);
+  });
+
+  it('below the return point the ring shows only land and return', () => {
+    expect(batteryRingSegments(20, 10, 30, null)).toEqual([RingSegment(0, 10, RingZone.Reserve), RingSegment(10, 20, RingZone.Return)]);
+  });
+
+  it('without a return estimate the charge above the reserve is free', () => {
+    expect(batteryRingSegments(60, 0, null, null)).toEqual([RingSegment(0, 60, RingZone.Free)]);
+    expect(batteryRingSegments(5, 10, null, null)).toEqual([RingSegment(0, 5, RingZone.Reserve)]);
+  });
+
+  it('the yellow usage at the tip grows with the draw and never runs past empty', () => {
+    expect(batteryRingSegments(60, 0, null, 18).at(-1)).toEqual(RingSegment(42, 60, RingZone.Usage));
+    expect(batteryRingSegments(10, 0, null, 25).at(-1)).toEqual(RingSegment(0, 10, RingZone.Usage));
   });
 });
 

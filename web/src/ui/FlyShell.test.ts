@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { FlyView, FlyViewEntries, Letterbox, MiniMap, flyViewAllowed, flyViewsOffered, miniMapNamed, stickInsets } from './FlyShell';
+import { FlyView, FlyViewEntries, Letterbox, flyViewAllowed, flyViewsOffered, stickInsets } from './FlyShell';
 
 describe('PipRulesTest', () => {
   it("the 3D view is offered only while QGC's 3D viewer is enabled, or already showing", () => {
@@ -39,13 +39,5 @@ describe('StickInsetsTest', () => {
     expect(insets.overlaysStart).toBe(72);
     expect(insets.overlaysEnd).toBe(12);
     expect(insets.ornamentEnd).toBeNull();
-  });
-});
-
-describe('DjiChromeTest', () => {
-  it('the mini-map opens as a thumbnail unless the pilot chose otherwise', () => {
-    expect(miniMapNamed(null)).toBe(MiniMap.Thumb);
-    expect(miniMapNamed('Compass')).toBe(MiniMap.Compass);
-    expect(miniMapNamed('Unknown')).toBe(MiniMap.Thumb);
   });
 });

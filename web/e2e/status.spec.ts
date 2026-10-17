@@ -32,3 +32,9 @@ test('status text from the vehicle fills the message log and clear empties it', 
   await again.getByRole('button', { name: 'Messages', exact: true }).click();
   await expect(app.getByText('The vehicle has not said anything yet.')).toBeVisible();
 });
+
+test('at desktop width the status pill shows battery time, current draw and satellites', async ({ vehicle }) => {
+  await expect(vehicle.getByRole('button', { name: /^\d+:\d\d flight time left$/ })).toBeVisible();
+  await expect(vehicle.getByRole('button', { name: /^[\d.]+A current draw$/ })).toBeVisible();
+  await expect(vehicle.getByText(/^\d+$/).filter({ hasText: '12' }).first()).toBeVisible();
+});

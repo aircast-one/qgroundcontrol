@@ -1,6 +1,6 @@
 import { type CSSProperties, type HTMLAttributes, type PointerEvent, type ReactNode, useCallback, useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useQgcPath } from '@/bridge/QgcState';
-import { Button, type Shape, Surface, TextButton, radius } from '@/m3';
+import { Button, Surface, TextButton, radius } from '@/m3';
 import { useBackHandler, useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
 import { type SharedPreferences, getSharedPreferences } from '@/kotlin/Platform';
 import { type MutableState, mutableStateOf, useValue } from '@/kotlin/State';
@@ -251,7 +251,7 @@ export const clampedDrag = (left: number, top: number, right: number, bottom: nu
   coerceIn(dy, -top, coerceAtLeast(height - bottom, -top)),
 ];
 
-export const LayoutDragArea = ({ widgetKey, className, style }: { widgetKey: string; className?: string; style?: CSSProperties }) => {
+export const LayoutDragArea = ({ widgetKey, className }: { widgetKey: string; className?: string }) => {
   const layout = useContext(LocalFlyScreenState).layout;
   const placedKey = useLayoutKey(widgetKey);
   const drag = useRef<{ id: number; x: number; y: number; dragging: boolean } | null>(null);
@@ -264,7 +264,6 @@ export const LayoutDragArea = ({ widgetKey, className, style }: { widgetKey: str
   return (
     <div
       className={`touch-none ${className ?? ''}`}
-      style={style}
       onPointerDown={(event) => {
         event.currentTarget.setPointerCapture(event.pointerId);
         drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, dragging: false };
@@ -287,21 +286,6 @@ export const LayoutDragArea = ({ widgetKey, className, style }: { widgetKey: str
       onPointerCancel={end}
     />
   );
-};
-
-export const useLayoutPlacement = (key: string, keepOnScreen: boolean): { ref?: (node: HTMLElement | null) => () => void; style: CSSProperties } => {
-  const layout = useContext(LocalFlyScreenState).layout;
-  const placedKey = useLayoutKey(key);
-  const [x, y] = useValue(layout.offsets).get(placedKey) ?? [0, 0];
-  const jiggle = useJiggleAngle(key, useValue(layout.editing));
-  const kept = useKeptOnScreen(placedKey);
-  return { ref: keepOnScreen ? kept : undefined, style: { translate: `${x}px ${y}px`, ...jiggle } };
-};
-
-export const LayoutPipEditor = ({ widgetKey, shape, className }: { widgetKey: string; shape: Shape; className?: string }) => {
-  const editing = useValue(useContext(LocalFlyScreenState).layout.editing);
-  if (!editing) return null;
-  return <LayoutDragArea widgetKey={widgetKey} className={className} style={{ outline: `2px solid ${md('primary')}`, outlineOffset: -2, borderRadius: radius(shape) }} />;
 };
 
 const BADGE = 'absolute end-0 top-0 grid place-items-center';
