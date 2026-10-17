@@ -31,3 +31,18 @@ test('skip moves a running mission on to the next waypoint', async ({ vehicle })
   await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to set waypoint' }));
   await expect.poll(async () => Number((await progress.textContent())?.match(/^To waypoint (\d+)/)?.[1]), { timeout: 30_000 }).toBeGreaterThan(Number(before));
 });
+
+test('landing out of a flown mission says the flight plan is complete', async ({ vehicle }) => {
+  await openPlanAtVehicle(vehicle);
+  await tapPlanMission(vehicle);
+  await vehicle.getByRole('button', { name: 'Upload', exact: true }).click();
+  await expect(vehicle.getByRole('button', { name: 'Upload', exact: true })).toBeHidden({ timeout: 30_000 });
+  await vehicle.getByRole('button', { name: 'Fly', exact: true }).last().click();
+  await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to start mission' }));
+  await expect(vehicle.getByText(/^To waypoint \d+ of \d+/)).toBeVisible({ timeout: 30_000 });
+  await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to land' }));
+  const done = vehicle.getByRole('dialog').filter({ hasText: 'Flight plan complete' });
+  await expect(done).toBeVisible({ timeout: 120_000 });
+  await done.getByRole('button', { name: 'Close' }).click();
+  await expect(done).toBeHidden();
+});
