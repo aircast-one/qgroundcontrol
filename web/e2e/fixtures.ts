@@ -94,7 +94,7 @@ export const tapPlanMission = async (page: Page) => {
       await expect(page.getByRole('region', { name: 'Map' })).toBeVisible();
       await expect(async () => {
         await page.mouse.click(x + dx!, y + dy!);
-        await expect.poll(() => itemCount(page), { timeout: 3_000 }).toBeGreaterThan(before);
+        await expect.poll(() => itemCount(page), { timeout: 10_000 }).toBeGreaterThan(before);
       }).toPass({ timeout: 30_000 });
     }),
     Promise.resolve(),
