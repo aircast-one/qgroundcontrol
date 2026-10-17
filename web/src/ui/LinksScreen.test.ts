@@ -54,6 +54,7 @@ import {
   withPluggedPort,
   withServer,
   webSocketUrlError,
+  DEFAULT_WEBSOCKET_URL,
 } from './LinksScreen';
 import { sheetDrilled } from './SettingsSheet';
 
@@ -524,6 +525,11 @@ describe('AddableLinkTypesTest', () => {
     expect(webSocketUrlError('wss://bridge.example/mavlink')).toBeNull();
     expect(webSocketUrlError('http://192.168.1.10:5760')).toBe('A MAVLink WebSocket address starts with ws:// or wss://.');
     expect(webSocketUrlError('192.168.1.10')).toBe('Enter an address such as ws://192.168.1.10:5760.');
+  });
+
+  it('the WebSocket link starts on the Aircast cloud simulator, so the browser app flies something out of the box', () => {
+    expect(DEFAULT_WEBSOCKET_URL).toBe('wss://sitl.aircast.one/ws/mavlink');
+    expect(webSocketUrlError(DEFAULT_WEBSOCKET_URL)).toBeNull();
   });
 
   it("each type is named in full, as LinkManager's type strings are", () => {

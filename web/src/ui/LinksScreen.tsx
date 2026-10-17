@@ -1065,7 +1065,7 @@ const NewLinkAdvanced = ({
   </>
 );
 
-export const DEFAULT_WEBSOCKET_URL = 'ws://localhost:5760';
+export const DEFAULT_WEBSOCKET_URL = 'wss://sitl.aircast.one/ws/mavlink';
 
 export const webSocketUrlError = (typed: string): string | null => {
   try {
