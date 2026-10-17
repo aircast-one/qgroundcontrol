@@ -51,3 +51,15 @@ test('turning on the ADS-B server connection keeps the core running', async ({ a
   await app.getByRole('button', { name: 'Close settings' }).click();
   await connectMock(app);
 });
+
+test('turning on the on-screen sticks shows both sticks on the Fly screen', async ({ vehicle }) => {
+  await vehicle.getByRole('button', { name: 'Settings', exact: true }).click();
+  await vehicle.getByRole('tablist').getByRole('tab', { name: 'General' }).click();
+  const sticks = vehicle.getByRole('switch', { name: 'Enabled' });
+  await sticks.click();
+  await expect(sticks).toBeChecked();
+  await expect(vehicle.getByRole('switch', { name: 'Left-handed mode (swap sticks)' })).toBeEnabled();
+  await vehicle.getByRole('button', { name: 'Close settings' }).click();
+  await expect(vehicle.getByLabel('Left virtual stick')).toBeVisible({ timeout: 60_000 });
+  await expect(vehicle.getByLabel('Right virtual stick')).toBeVisible();
+});
