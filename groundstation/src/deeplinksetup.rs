@@ -71,14 +71,18 @@ pub fn setup_from_device(host: &str) {
     }
 }
 
+pub const DEVICE_SETUP_UNAVAILABLE: &str = "Setting up a device is not available in this app yet.";
+
 pub fn run(path: &str, args: &str, setup: impl FnOnce(String) + Send + 'static) -> Value {
     let shown = serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0)?.as_str().map(str::to_string));
     let waiting = pending().clone();
     match (path, waiting) {
         (ACCEPT, Some(host)) if shown.as_deref() == Some(host.as_str()) => {
             replace(None);
-            std::thread::spawn(move || setup(host));
-            json!({ "ok": true })
+            match std::thread::Builder::new().name("groundstation-device-setup".to_string()).spawn(move || setup(host)) {
+                Ok(_) => json!({ "ok": true }),
+                Err(_) => json!({ "ok": false, "reason": DEVICE_SETUP_UNAVAILABLE }),
+            }
         }
         (ACCEPT, Some(_)) => json!({ "ok": false, "reason": "The device waiting to set up is not the one that was shown." }),
         (ACCEPT, None) => json!({ "ok": false, "reason": "There is no device setup waiting." }),

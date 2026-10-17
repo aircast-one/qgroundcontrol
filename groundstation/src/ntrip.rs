@@ -655,7 +655,9 @@ fn sync_udp_input() {
         })
     };
     if let Some(Some((port, validate, generation))) = start {
-        std::thread::Builder::new().name("groundstation-rtcm-udp".to_string()).spawn(move || listen(port, validate, generation)).expect("rtcm udp thread");
+        if let Err(error) = std::thread::Builder::new().name("groundstation-rtcm-udp".to_string()).spawn(move || listen(port, validate, generation)) {
+            log::warn!("RTCM UDP input cannot start here: {error}");
+        }
     }
 }
 
@@ -669,7 +671,9 @@ pub fn sync() {
         ntrip.retarget(wanted)
     };
     if let Some((config, generation)) = start {
-        std::thread::Builder::new().name("groundstation-ntrip".to_string()).spawn(move || follow(config, generation)).expect("ntrip thread");
+        if let Err(error) = std::thread::Builder::new().name("groundstation-ntrip".to_string()).spawn(move || follow(config, generation)) {
+            log::warn!("NTRIP connection cannot start here: {error}");
+        }
     }
 }
 

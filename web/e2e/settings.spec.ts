@@ -1,4 +1,4 @@
-import { expect, test } from './fixtures';
+import { connectMock, expect, test } from './fixtures';
 import type { Page } from '@playwright/test';
 
 const openGeneral = async (page: Page) => {
@@ -39,4 +39,15 @@ test('settings search finds a setting by name', async ({ app }) => {
   await app.getByRole('button', { name: 'Search settings' }).click();
   await app.getByRole('textbox').first().fill('mute');
   await expect(app.getByText('Mute all audio output')).toBeVisible();
+});
+
+test('turning on the ADS-B server connection keeps the core running', async ({ app }) => {
+  await app.getByRole('button', { name: 'Settings', exact: true }).click();
+  await app.getByRole('button', { name: 'Search settings' }).click();
+  await app.getByRole('textbox').first().fill('ADS-B');
+  const adsb = app.getByRole('switch', { name: 'Show nearby aircraft (ADS-B)' });
+  await adsb.click();
+  await expect(adsb).toBeChecked();
+  await app.getByRole('button', { name: 'Close settings' }).click();
+  await connectMock(app);
 });

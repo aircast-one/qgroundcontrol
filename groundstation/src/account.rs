@@ -89,7 +89,7 @@ pub fn sign_in(post: &'static Post) {
     let attempt = ATTEMPT.fetch_add(1, Ordering::SeqCst) + 1;
     *PENDING.lock().unwrap_or_else(PoisonError::into_inner) = None;
     set_status("Asking the Aircast account server for a sign-in code\u{2026}");
-    std::thread::spawn(move || {
+    let spawned = std::thread::Builder::new().name("groundstation-sign-in".to_string()).spawn(move || {
         let current = || ATTEMPT.load(Ordering::SeqCst) == attempt;
         let code = post(&endpoint(&base, "/v1/oauth2/cli/code"), &json!({ "client_id": CLIENT_ID }));
         let Some((device_code, user_code, url, interval)) = code.as_ref().ok().and_then(|c| {
@@ -124,7 +124,12 @@ pub fn sign_in(post: &'static Post) {
             _ => {}
         }
     });
+    if spawned.is_err() {
+        set_status(SIGN_IN_UNAVAILABLE);
+    }
 }
+
+pub const SIGN_IN_UNAVAILABLE: &str = "Signing in is not available in this app yet.";
 
 pub fn sign_out() {
     if let Some(key) = token_key() {

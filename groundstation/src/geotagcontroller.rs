@@ -575,7 +575,7 @@ pub fn start() {
         )
     };
     let (run, job) = job;
-    std::thread::spawn(move || match tag_run(run, &job) {
+    let spawned = std::thread::Builder::new().name("groundstation-geotag".to_string()).spawn(move || match tag_run(run, &job) {
         Ok((tagged, skipped, failed)) => {
             update(run, |state| {
                 state.in_progress = false;
@@ -590,7 +590,12 @@ pub fn start() {
         }
         Err(message) => fail(run, &message),
     });
+    if spawned.is_err() {
+        fail(run, GEOTAG_UNAVAILABLE);
+    }
 }
+
+pub const GEOTAG_UNAVAILABLE: &str = "Geotagging is not available in this app yet.";
 
 pub fn cancel() {
     let mut state = held();
