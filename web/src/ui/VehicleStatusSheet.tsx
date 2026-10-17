@@ -80,7 +80,7 @@ export const VehicleStatusSheet = ({ onMessages, onDismiss }: { onMessages: () =
     <AircastSheet onDismissRequest={onDismiss}>
       <div className="flex w-full flex-col gap-1 pb-4">
         <StatusSummary />
-        <button type="button" onClick={onMessages} className="flex w-full items-center gap-3 px-5 py-3 text-left">
+        <button type="button" onClick={onMessages} className="flex w-full items-center gap-3 px-sheet py-3 text-left">
           <Drawable name="ic_notifications" size={24} />
           <Text className="flex-1">Messages</Text>
           <ChevronRight />
@@ -88,13 +88,13 @@ export const VehicleStatusSheet = ({ onMessages, onDismiss }: { onMessages: () =
         <ArmSection onDismiss={onDismiss} />
         {reading !== null ? (
           <>
-            <Text typography="titleSmall" className="block px-5 py-1">
+            <Text typography="titleSmall" className="block px-sheet py-1">
               Sensors
             </Text>
             {shownSensors(reading.sensors, showAll).map((sensor) => {
               const fault = sensor.state === SENSOR_FAULT_STATE;
               return (
-                <button key={sensor.name} type="button" onClick={() => open(SETUP_OVERVIEW_PAGE)} className="flex w-full items-center gap-2 px-5 py-1.5 text-left">
+                <button key={sensor.name} type="button" onClick={() => open(SETUP_OVERVIEW_PAGE)} className="flex w-full items-center gap-2 px-sheet py-1.5 text-left">
                   <Text typography="bodyMedium" className="flex-1" color={fault ? md('onSurface') : md('onSurfaceVariant')}>
                     {sensor.name}
                   </Text>
@@ -120,7 +120,7 @@ export const VehicleStatusSheet = ({ onMessages, onDismiss }: { onMessages: () =
         <ParameterForm page={STATUS_SETTINGS_PAGE} className="max-h-[360px] overflow-auto" />
         {advanced
           ? [['Vehicle parameters', SETUP_PARAMETERS_PAGE] as const].map(([label, page]) => (
-              <div key={page} className="flex w-full items-center px-5 py-0.5">
+              <div key={page} className="flex w-full items-center px-sheet py-0.5">
                 <Text typography="bodyMedium" className="flex-1">
                   {label}
                 </Text>
@@ -141,7 +141,7 @@ const StatusMessages = () => {
   if (lines.length === 0) return null;
   return (
     <>
-      <div className="flex w-full items-center px-5">
+      <div className="flex w-full items-center px-sheet">
         <Text typography="titleSmall" className="flex-1">
           Messages
         </Text>
@@ -151,7 +151,7 @@ const StatusMessages = () => {
         {messagesToggleText(shown)}
       </TextButton>
       {shown ? (
-        <div className="max-h-[320px] overflow-auto px-5">
+        <div className="max-h-[320px] overflow-auto px-sheet">
           {lines.map((message, at) => (
             <MessageLine key={at} level={message.level} time={message.time}>
               <Text typography="bodyMedium">{message.text}</Text>
@@ -195,7 +195,7 @@ const OverallStatus = () => {
   return (
     <>
       {editing !== null ? <ParameterEditDialog name={editing} title={EDIT_PARAMETER_TITLE} onDismiss={() => setEditing(null)} /> : null}
-      <Text typography="titleSmall" className="block px-5 py-1">
+      <Text typography="titleSmall" className="block px-sheet py-1">
         Overall status
       </Text>
       {checks.map((check, index) => {
@@ -210,7 +210,7 @@ const OverallStatus = () => {
             aria-expanded={detailed ? open : undefined}
             onClick={detailed ? toggle : undefined}
             onKeyDown={detailed ? (event) => activate(event, toggle) : undefined}
-            className={`flex w-full flex-col gap-0.5 px-5 py-1.5 ${detailed ? 'cursor-pointer' : ''}`}
+            className={`flex w-full flex-col gap-0.5 px-sheet py-1.5 ${detailed ? 'cursor-pointer' : ''}`}
           >
             <div className="flex items-center">
               <LinkedText html={check.message} style="bodyMedium" color={checkColour(check.severity)} onParameter={setEditing} className="flex-1" />
@@ -233,7 +233,7 @@ const StatusSummary = () => {
   if (lines === null || lines[1].trim() === '') return null;
   const [title, detail] = lines;
   return (
-    <div className="flex flex-col px-5 py-1">
+    <div className="flex flex-col px-sheet py-1">
       <Text typography="titleMedium">{title}</Text>
       <Text typography="bodySmall" color={md('onSurfaceVariant')}>
         {detail}
@@ -257,7 +257,7 @@ const ArmButtons = ({ state, onDismiss }: { state: FlyState; onDismiss: () => vo
     onDismiss();
   };
   return (
-    <div className="flex w-full flex-col gap-1 px-5 py-1">
+    <div className="flex w-full flex-col gap-1 px-sheet py-1">
       <HoldToConfirm label={controls.holdText} destructive={state.armed} enabled={controls.holdEnabled} onConfirm={() => request(ARM_REQUEST)} />
       {controls.mayBeRefused ? (
         <Text typography="bodySmall" color={md('onSurfaceVariant')}>

@@ -59,23 +59,23 @@ export const OfflineStatusSheet = ({ onDismiss }: { onDismiss: () => void }) => 
     <AircastSheet onDismissRequest={onDismiss}>
       {status !== null ? (
         <div className="flex w-full flex-col gap-1 pb-6">
-          <Text typography="titleMedium" className="px-5">
+          <Text typography="titleMedium" className="px-sheet">
             {status.title}
           </Text>
-          <Text typography="bodyMedium" className="px-5">
+          <Text typography="bodyMedium" className="px-sheet">
             {hint}
           </Text>
           {status.editAddress ? (
-            <button type="button" className="flex items-center gap-2 px-5 text-left" onClick={() => openConnectionSettings(navigation, onDismiss)}>
+            <button type="button" className="flex items-center gap-2 px-sheet text-left" onClick={() => openConnectionSettings(navigation, onDismiss)}>
               <Footnote status={status} />
             </button>
           ) : (
-            <div className="flex items-center gap-2 px-5">
+            <div className="flex items-center gap-2 px-sheet">
               <Footnote status={status} />
             </div>
           )}
           {status.noLinks ? (
-            <div className="w-full px-5 py-2">
+            <div className="w-full px-sheet py-2">
               <Button
                 className="w-full"
                 onClick={() => {

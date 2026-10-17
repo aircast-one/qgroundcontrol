@@ -3,7 +3,17 @@
 @import "material-symbols/rounded.css";
 @import "./AircastTokens.css";
 
+@custom-variant desktop (@media (min-width: 1200px) and (pointer: fine));
+
 :root {
+  --layout-page: 16px;
+  --layout-section: 24px;
+  --layout-form: 20px;
+  --layout-label: 6px;
+  --layout-sheet: 20px;
+  --layout-list: 16px;
+  --layout-menu: 12px;
+  --layout-dialog: 24px;
   --aircast-mission: #b45f00;
   --aircast-alert: #b45f00;
   --aircast-map-land: #dde8dc;
@@ -14,6 +24,14 @@
   --aircast-outdoor-accent: #ffd60a;
   --aircast-on-outdoor-accent: #000000;
   color-scheme: light;
+}
+
+@media (min-width: 1200px) and (pointer: fine) {
+  :root {
+    --layout-page: 24px;
+    --layout-form: 24px;
+    --layout-sheet: 24px;
+  }
 }
 
 @media (prefers-color-scheme: dark) {
@@ -38,6 +56,15 @@
 
 @theme inline {
   --font-sans: "Roboto Variable", Roboto, system-ui, sans-serif;
+
+  --spacing-page: var(--layout-page);
+  --spacing-section: var(--layout-section);
+  --spacing-form: var(--layout-form);
+  --spacing-label: var(--layout-label);
+  --spacing-sheet: var(--layout-sheet);
+  --spacing-list: var(--layout-list);
+  --spacing-menu: var(--layout-menu);
+  --spacing-dialog: var(--layout-dialog);
 
   --color-primary: var(--md-primary);
   --color-on-primary: var(--md-on-primary);

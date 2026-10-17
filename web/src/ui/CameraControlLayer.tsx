@@ -618,7 +618,7 @@ const DetailsZoom = ({ zoomLevel }: { zoomLevel: number }) => {
     if (!dragged) setDragging(null);
   });
   return (
-    <div className="px-5">
+    <div className="px-sheet">
       <Slider
         value={dragging ?? zoomLevel}
         onValueChange={(level) => {
@@ -640,10 +640,10 @@ const LapseInterval = ({ lapseSeconds }: { lapseSeconds: number | null }) => {
   latest.current = interval;
   return (
     <>
-      <Text typography="titleSmall" className="whitespace-pre px-5 py-2">
+      <Text typography="titleSmall" className="whitespace-pre px-sheet py-2">
         {`Photo Interval (seconds)  ${Math.trunc(interval)}`}
       </Text>
-      <div className="px-5">
+      <div className="px-sheet">
         <Slider
           value={interval}
           onValueChange={(next) => {
@@ -665,7 +665,7 @@ const ThermalOpacity = ({ opacity }: { opacity: number | null }) => {
   const latest = useRef(typed);
   latest.current = typed;
   return (
-    <div className="px-5">
+    <div className="px-sheet">
       <Slider
         value={typed}
         onValueChange={(next) => {
@@ -715,7 +715,7 @@ const DestructiveRow = ({ action }: { action: DestructiveAction }) => {
         </TextButton>
       </div>
       {reason !== null ? (
-        <Text typography="labelSmall" color={md('onSurfaceVariant')} className="px-5">
+        <Text typography="labelSmall" color={md('onSurfaceVariant')} className="px-sheet">
           {reason}
         </Text>
       ) : null}

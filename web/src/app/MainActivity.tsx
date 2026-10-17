@@ -7,7 +7,7 @@ import { call } from '@/core/client';
 import { useBackHandler, useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
 import { useValue } from '@/kotlin/State';
 import { same } from '@/kotlin/Std';
-import { NavigationBar, NavigationBarItem, NavigationRail, NavigationRailItem, type SnackbarHostState, SnackbarHost, Surface, useSnackbarHostState } from '@/m3';
+import { NavigationBar, NavigationBarItem, NavigationRail, NavigationRailItem, type SnackbarHostState, SnackbarHost, Surface, useSnackbarHostState, type SheetAnchor } from '@/m3';
 import { Drawable } from '@/res/Icon';
 import type { DrawableName } from '@/res/drawables';
 import { md } from '@/theme/Colors';
@@ -30,7 +30,6 @@ import { CameraControlLayer, CameraShutters } from '@/ui/CameraControlLayer';
 import { CameraSwitch } from '@/ui/CameraSwitch';
 import { CloseGuard } from '@/ui/CloseGuard';
 import { ConnectingCard } from '@/ui/ConnectingCard';
-import { useDesktopLayout } from '@/ui/DesktopLayout';
 import { ConnectionLocks } from '@/ui/ConnectionLocks';
 import { ControlRequestPrompt } from '@/ui/ControlRequestPrompt';
 import { DeepLinkSetupPrompt } from '@/ui/DeepLinkSetupPrompt';
@@ -45,7 +44,8 @@ import { FollowMeReadout } from '@/ui/FollowMeReadout';
 import { GimbalTakeControlDialog } from '@/ui/GimbalIndicator';
 import { type AppMessage, AppMessageDialog, type NoticeBatch, RESET_ERROR_LEVEL_MESSAGES, criticalBanner, hostNoticesPath, noticeBatch, quietBanners } from '@/ui/HostNotices';
 import { LogReplayBar } from '@/ui/LogReplayBar';
-import { MAP_HOLD_HINT, MapClickMenu, MapHoldHint, type MapPoint, RoiSheet, SetWaypointSheet } from '@/ui/MapClickMenu';
+import { MapClickMenu, MapHoldHint, type MapPoint, RoiSheet, SetWaypointSheet, mapHoldHintText } from '@/ui/MapClickMenu';
+import { useDesktopLayout } from '@/ui/DesktopLayout';
 import { MissionCompleteDialog } from '@/ui/MissionCompleteDialog';
 import { MissionProgressCard } from '@/ui/MissionProgressCard';
 import { ObstacleArc } from '@/ui/ObstacleArc';
@@ -243,7 +243,6 @@ export const AircastShell = () => {
 
   const portrait = useFlyIsPortrait();
   const landscape = !portrait;
-  const desktop = useDesktopLayout();
   const layoutEditing = useValue(overlayLayout.editing);
   const layoutLocked = useValue(overlayLayout.locked);
   const guidedPanelOpen = useValue(flyScreen.guidedPanels) > 0;
@@ -256,6 +255,18 @@ export const AircastShell = () => {
   const [videoFullScreen, setVideoFullScreen] = useState(false);
 
   const [mapClickAt, setMapClickAt] = useState<MapPoint | null>(null);
+  const [mapClickAnchor, setMapClickAnchor] = useState<SheetAnchor | undefined>(undefined);
+  const lastPointer = useRef<SheetAnchor>({ x: 0, y: 0 });
+  useEffect(() => {
+    if (!vehicleNow) setMapClickAt(null);
+  }, [vehicleNow]);
+  useEffect(() => {
+    const remember = (event: PointerEvent) => {
+      lastPointer.current = { x: event.clientX, y: event.clientY };
+    };
+    window.addEventListener('pointerdown', remember, true);
+    return () => window.removeEventListener('pointerdown', remember, true);
+  }, []);
   const [mapHoldHint, setMapHoldHint] = useState<MapHoldHint>(MapHoldHint.Unseen);
   const [waypointTapped, setWaypointTapped] = useState<number | null>(null);
   const [roiTapped, setRoiTapped] = useState<TrackPoint | null>(null);
@@ -280,9 +291,10 @@ export const AircastShell = () => {
         pip={flyView === FlyView.Video && !portrait}
         onMapClick={(latitude: number, longitude: number) => {
           setMapHoldHint(MapHoldHint.Learned);
+          setMapClickAnchor(lastPointer.current);
           setMapClickAt({ latitude, longitude });
         }}
-        onPlainTap={() => setMapHoldHint((hint: MapHoldHint) => (hint === MapHoldHint.Unseen ? MapHoldHint.Due : hint))}
+        onPlainTap={() => setMapHoldHint((hint: MapHoldHint) => (hint === MapHoldHint.Unseen && vehicleNow ? MapHoldHint.Due : hint))}
         onMissionItemClick={(sequence: number) => setWaypointTapped(sequence)}
         onRoiClick={(at: TrackPoint) => setRoiTapped(at)}
         onTrafficClick={() => {
@@ -318,10 +330,11 @@ export const AircastShell = () => {
     </LayoutWidget>
   );
 
+  const desktop = useDesktopLayout();
   const snackbars = useSnackbarHostState();
   useLaunchedEffect([mapHoldHint], async (scope) => {
     if (mapHoldHint !== MapHoldHint.Due) return;
-    await snackbars.showSnackbar(MAP_HOLD_HINT);
+    await snackbars.showSnackbar(mapHoldHintText(desktop));
     if (scope.isActive()) setMapHoldHint(MapHoldHint.Learned);
   });
   const alerts = useSnackbarHostState();
@@ -399,7 +412,8 @@ export const AircastShell = () => {
 
   const noVideoSource = useQgcDerived(VIDEO_VIEW, noVideoSourceOf);
   const pictureNow = useQgcDerived(VIDEO_VIEW, videoDecodingOf);
-  const shownFlyView = flyViewShown(flyView, flyNow?.armed === true, noVideoSource, !vehicleNow && noVideoSource && !pictureNow);
+  const syntheticOnScreen = useRememberSyntheticAvailable();
+  const shownFlyView = flyViewShown(flyView, flyNow?.armed === true, noVideoSource && !syntheticOnScreen, !vehicleNow && noVideoSource && !pictureNow);
 
   const vehicles = useQgcPath(VEHICLES_VIEW);
   const lastVehicles = useRef<VehicleChoices | null>(null);
@@ -422,7 +436,6 @@ export const AircastShell = () => {
   const darkBars = useAppDarkTheme();
 
   const videoDecoding = useQgcDerived(VIDEO_VIEW, videoDecodingOf);
-  const syntheticOnScreen = useRememberSyntheticAvailable();
   const fullScreen = videoFullScreen && tab === Tab.Fly && videoExpanded && (videoDecoding || syntheticOnScreen);
   useEffect(() => {
     if (!fullScreen) setVideoFullScreen(false);
@@ -449,7 +462,7 @@ export const AircastShell = () => {
 
   const flyStatus = (
     <>
-      {desktop ? null : <FlyTabMenu destinations={[...tabs.map((it) => ({ label: it.label, icon: it.icon, current: it === Tab.Fly, onSelect: () => selectTab(it) })), { label: 'Settings', icon: 'ic_settings', current: false, onSelect: openSettings }]} />}
+      <FlyTabMenu destinations={[...tabs.map((it) => ({ label: it.label, icon: it.icon, current: it === Tab.Fly, onSelect: () => selectTab(it) })), { label: 'Settings', icon: 'ic_settings', current: false, onSelect: openSettings }]} />
       <div className="flex min-w-0 flex-1 items-center justify-start">
         <LayoutWidget widgetKey="vehicleState" movable={false} hideable={false}>
           <VehicleStateChip />
@@ -462,7 +475,7 @@ export const AircastShell = () => {
       <LayoutWidget widgetKey="statusPill" movable={false} hideable={false}>
         <StatusPill />
       </LayoutWidget>
-      {desktop ? null : <FlySettingsButton />}
+      <FlySettingsButton />
     </>
   );
   const flyRail = (splitRoom: boolean) => (
@@ -513,7 +526,7 @@ export const AircastShell = () => {
       {appMessages[0] !== undefined ? <AppMessageDialog message={appMessages[0]} onOpenSetup={() => navigation.openAircraft()} onDismiss={() => setAppMessages((messages) => messages.slice(1))} /> : null}
       <LocalImmersive.Provider value={flyLandscape}>
         <div className="flex h-full w-full bg-surface text-on-surface">
-          {(landscape && !flyLandscape) || desktop ? (
+          {landscape && !flyLandscape ? (
             <NavigationRail className="h-full pt-[max(12px,env(safe-area-inset-top))] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]">
               {tabs.map((entry) => (
                 <NavigationRailItem key={entry.name} selected={tab === entry && !settingsOpen} onClick={() => selectTab(entry)} icon={<Drawable name={entry.icon} label={entry.label} />} label={entry.label} />
@@ -573,7 +586,7 @@ export const AircastShell = () => {
                 </div>
               ) : null}
 
-              {mapClickAt !== null && onFly ? <MapClickMenu point={mapClickAt} onDismiss={() => setMapClickAt(null)} /> : null}
+              {mapClickAt !== null && onFly ? <MapClickMenu point={mapClickAt} anchor={mapClickAnchor} onDismiss={() => setMapClickAt(null)} /> : null}
               {waypointTapped !== null && onFly ? <SetWaypointSheet sequence={waypointTapped} onDismiss={() => setWaypointTapped(null)} /> : null}
               {roiTapped !== null && onFly ? <RoiSheet at={roiTapped} onDismiss={() => setRoiTapped(null)} /> : null}
               {settingsOpen ? (

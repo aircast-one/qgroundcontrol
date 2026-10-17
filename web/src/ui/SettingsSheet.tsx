@@ -1,4 +1,4 @@
-import { type ReactNode, type RefObject, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore } from 'react';
+import { type ReactNode, type RefObject, useContext, useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties } from 'react';
 import { useBackHandler, useKeyedState, useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
 import { type MutableState, mutableStateOf, useValue } from '@/kotlin/State';
 import { HorizontalDivider, IconButton, ScrollableTabRow, SnackbarHost, Tab, Text, TextButton, useSnackbarHostState } from '@/m3';
@@ -179,11 +179,14 @@ export const SettingsSheet = ({ requested, onClose }: { requested: string | null
 
   return (
     <div
-      className="fixed inset-0 text-on-surface"
-      style={{ zIndex: SETTINGS_SHEET_LAYER, background: withAlpha(md('surface'), landscape ? SETTINGS_PANEL_ALPHA : 1) }}
+      className="fixed inset-0 bg-(--settings-backdrop) text-on-surface desktop:bg-scrim/50"
+      style={{ zIndex: SETTINGS_SHEET_LAYER, '--settings-backdrop': withAlpha(md('surface'), landscape ? SETTINGS_PANEL_ALPHA : 1) } as CSSProperties}
+      onClick={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
     >
       <LocalChangeNotice.Provider value={notice}>
-        <div className="relative h-full w-full">
+        <div className="relative h-full w-full desktop:absolute desktop:top-1/2 desktop:left-1/2 desktop:h-[min(760px,calc(100vh-48px))] desktop:w-[min(1100px,calc(100vw-48px))] desktop:-translate-x-1/2 desktop:-translate-y-1/2 desktop:overflow-hidden desktop:rounded-shape-xl desktop:bg-surface-container-low desktop:shadow-2xl">
           <div className="flex h-full w-full flex-col pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]">
             <div className="@container">
               <div

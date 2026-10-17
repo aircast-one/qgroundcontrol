@@ -719,7 +719,7 @@ const PageColumn = ({ title, backLabel, onBack, className, padded = true, childr
   return (
     <div className={`flex h-full w-full flex-col ${className ?? ''}`}>
       {heading === null ? <PageTopBar title={title} backLabel={backLabel} onBack={onBack} /> : null}
-      <div className={`flex min-h-0 flex-1 flex-col overflow-auto ${padded ? 'gap-3 px-4 py-2' : ''}`}>{children}</div>
+      <div className={`flex min-h-0 flex-1 flex-col overflow-auto ${padded ? 'gap-form px-page py-page' : ''}`}>{children}</div>
     </div>
   );
 };

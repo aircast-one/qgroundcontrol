@@ -59,7 +59,7 @@ export const EscIndicatorCell = () => {
 
       {open ? (
         <AircastSheet onDismissRequest={() => setOpen(false)}>
-          <div className="flex w-full flex-col gap-2 px-5 pb-6">
+          <div className="flex w-full flex-col gap-2 px-sheet pb-6">
             <Text typography="titleMedium">ESC Status Overview</Text>
             <Text typography="bodyMedium">{`Healthy Motors  ${summary.healthyMotorsText}`}</Text>
             <Text typography="bodyMedium">{`Total Errors  ${summary.totalErrors}`}</Text>

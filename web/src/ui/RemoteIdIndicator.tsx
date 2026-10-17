@@ -131,7 +131,7 @@ export const RemoteIdIndicatorCell = () => {
 
       {open ? (
         <AircastSheet onDismissRequest={() => setOpen(false)}>
-          <div className="flex w-full flex-col gap-2 overflow-y-auto px-5 pb-6">
+          <div className="flex w-full flex-col gap-2 overflow-y-auto px-sheet pb-6">
             <Text typography="titleMedium">RemoteID Status</Text>
             {remoteIdRows(status).map(([label, good]) => (
               <button key={label} type="button" className="text-left" onClick={configure}>

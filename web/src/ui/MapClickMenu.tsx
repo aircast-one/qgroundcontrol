@@ -6,7 +6,7 @@ import { VehicleCommands } from '@/bridge/VehicleCommands';
 import { useKeyedState, useLaunchedEffect } from '@/kotlin/Compose';
 import { useValue } from '@/kotlin/State';
 import { coerceAtLeast, format } from '@/kotlin/Std';
-import { Button, HorizontalDivider, ListItem, OutlinedButton, OutlinedTextField, Slider, Switch, Text } from '@/m3';
+import { Button, HorizontalDivider, ListItem, OutlinedButton, OutlinedTextField, Slider, Switch, Text, type SheetAnchor } from '@/m3';
 import { AircastSheet } from '@/map/AircastSheet';
 import { typedNumber } from '@/map/AltitudeEntry';
 import { LocalFlyMapEdits } from '@/map/FlyMapEdits';
@@ -33,6 +33,9 @@ export const ORBIT_ACTION = 'Orbit';
 export const RETURN_HOME_INSTEAD = 'Return home instead';
 
 export const MAP_HOLD_HINT = 'Press and hold the map to fly there';
+export const MAP_RIGHT_CLICK_HINT = 'Right-click the map to fly there';
+
+export const mapHoldHintText = (desktop: boolean): string => (desktop ? MAP_RIGHT_CLICK_HINT : MAP_HOLD_HINT);
 
 export type MapHoldHint = { readonly name: 'Unseen' | 'Due' | 'Learned'; readonly ordinal: number };
 
@@ -139,7 +142,7 @@ export const coordinateLines = (point: MapPoint): readonly string[] => [format('
 const send = (action: MapClickAction, point: MapPoint, orbit: OrbitChoice | null): Promise<string | null> =>
   orbit === null ? Qgc.refusalOf(action.path, { latitude: point.latitude, longitude: point.longitude }) : Qgc.refusalOf(action.path, ...orbitArgs(point, orbit));
 
-export const MapClickMenu = ({ point, onDismiss }: { point: MapPoint; onDismiss: () => void }) => {
+export const MapClickMenu = ({ point, anchor, onDismiss }: { point: MapPoint; anchor?: SheetAnchor; onDismiss: () => void }) => {
   const view = useQgcPath(MAP_CLICK_PATH);
   const vehicleCoordinate = useQgcPath('vehicle.coordinate');
   const actions = useMemo(() => mapClickActions(view), [view]);
@@ -172,7 +175,7 @@ export const MapClickMenu = ({ point, onDismiss }: { point: MapPoint; onDismiss:
     void send(action, point, null).then((refused) => (refused === null ? onDismiss() : setRefusal(refused)));
   };
 
-  if (empty) return null;
+  if (view === null || actions.length === 0) return null;
 
   if (confirming?.id === ORBIT_ACTION) return <OrbitPanel point={point} action={confirming} defaults={defaults} onDone={onDismiss} />;
 
@@ -184,8 +187,8 @@ export const MapClickMenu = ({ point, onDismiss }: { point: MapPoint; onDismiss:
   const warn = preview?.pastReturnPoint === true;
 
   return (
-    <AircastSheet onDismissRequest={onDismiss}>
-      <div className="flex w-full flex-col pb-6">
+    <AircastSheet onDismissRequest={onDismiss} anchor={anchor}>
+      <div className="flex w-full flex-col pb-6 desktop:pb-1">
         {pending === null ? (
           actions.map((action, index) => (
             <ListItem
@@ -199,7 +202,7 @@ export const MapClickMenu = ({ point, onDismiss }: { point: MapPoint; onDismiss:
             />
           ))
         ) : (
-          <div className="flex flex-col gap-3 px-5">
+          <div className="flex flex-col gap-3 px-sheet">
             <Text typography="titleLarge">{sentenceCase(pending.title)}</Text>
             {lines.map((line, index) => (
               <Text key={index} typography="bodyMedium" color={warn && index === lines.length - 1 ? aircast('warning') : md('onSurfaceVariant')}>
@@ -215,7 +218,7 @@ export const MapClickMenu = ({ point, onDismiss }: { point: MapPoint; onDismiss:
           </div>
         )}
         {refusal !== null ? (
-          <Text typography="bodyMedium" color={md('error')} className="px-5 py-2">
+          <Text typography="bodyMedium" color={md('error')} className="px-sheet py-2">
             {refusal}
           </Text>
         ) : null}
@@ -338,7 +341,7 @@ export const SetWaypointSheet = ({ sequence, onDismiss }: { sequence: number; on
   const [refusal, setRefusal] = useKeyedState<string | null>([sequence], () => null);
   return (
     <AircastSheet onDismissRequest={onDismiss}>
-      <div className="flex w-full flex-col gap-3 px-5 pb-6">
+      <div className="flex w-full flex-col gap-3 px-sheet pb-6">
         <Text typography="titleLarge">Set waypoint</Text>
         <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
           {setWaypointMessage(sequence)}
@@ -470,7 +473,7 @@ export const RoiSheet = ({ at, onDismiss }: { at: TrackPoint; onDismiss: () => v
         />
       ) : null}
       <AircastSheet onDismissRequest={onDismiss}>
-        <div className="flex w-full flex-col gap-3 px-5 pb-6">
+        <div className="flex w-full flex-col gap-3 px-sheet pb-6">
           <Text typography="titleMedium">ROI</Text>
           <div className="flex gap-2">
             <OutlinedButton onClick={() => run(STOP_ROI_PATH, [])}>Cancel ROI</OutlinedButton>

@@ -89,7 +89,7 @@ export const useRememberRtkStatus = (): RtkStatus | null => {
 };
 
 export const RtkSettingsSheetContent = ({ status }: { status: RtkStatus | null }) => (
-  <div className="flex w-full flex-col gap-1.5 overflow-y-auto px-5 pb-6">
+  <div className="flex w-full flex-col gap-1.5 overflow-y-auto px-sheet pb-6">
     <RtkSettingsSection status={status} />
   </div>
 );
@@ -105,7 +105,7 @@ export const RtkIndicatorCell = ({ status }: { status: RtkStatus | null }) => {
 
       {open ? (
         <AircastSheet onDismissRequest={() => setOpen(false)}>
-          <div className="flex w-full flex-col gap-1.5 overflow-y-auto px-5 pb-6">
+          <div className="flex w-full flex-col gap-1.5 overflow-y-auto px-sheet pb-6">
             <Text typography="titleSmall">RTK GPS Status</Text>
             <Text typography="bodyMedium">{rtkHeadline(status)}</Text>
             {rtkRows(status).map(([label, value]) => (

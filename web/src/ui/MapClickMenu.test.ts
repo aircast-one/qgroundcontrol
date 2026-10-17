@@ -20,6 +20,7 @@ import {
   setWaypointMessage,
   signedLoiterRadius,
   waypointTarget,
+  mapHoldHintText,
 } from './MapClickMenu';
 
 const json = (text: string): Json => parseJson(text) ?? {};
@@ -109,5 +110,10 @@ describe('MapClickMenuTest', () => {
     expect(gotoPreviewLines({ ...preview, distance: '81 m north-west' }, 'Move the vehicle')).toEqual(['81 m north-west · at 20 m (current height)', 'Past your return point. Return home instead?']);
     expect(gotoPreviewLines(null, 'Move the vehicle')).toEqual(['Move the vehicle']);
     expect(gotoPreviewPath({ latitude: 47.398, longitude: 8.546 })).toBe('view.gotoPreview(47.3980000,8.5460000)');
+  });
+
+  it('the map hint names the desktop gesture on a desktop and the touch gesture elsewhere', () => {
+    expect(mapHoldHintText(true)).toBe('Right-click the map to fly there');
+    expect(mapHoldHintText(false)).toBe('Press and hold the map to fly there');
   });
 });

@@ -38,7 +38,7 @@ import { FLY_STATE, flyState, useHasVehicle } from '@/ui/FlyState';
 import { LocalFlyOsd, osdShadow, useOsdBackdrop } from '@/ui/Osd';
 import { LayoutWidget } from '@/ui/OverlayLayout';
 import { BatteryReturnBar, LocalCompactStatus } from '@/ui/StatusStrip';
-import { useRememberSyntheticAims } from '@/ui/SyntheticView';
+import { useRememberSyntheticAims, useRememberSyntheticAvailable } from '@/ui/SyntheticView';
 import { TrafficBanner } from '@/ui/TrafficBanner';
 import { TelemetryRow } from '@/ui/VehicleUi';
 import {
@@ -320,7 +320,8 @@ const useShellBox = (): [RefCallback<HTMLElement>, ShellBox] => {
 
 export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwitch, cameraControls, overlays, actions, fullScreen, onFullScreen, onExitFullScreen }: FlyScreenProps) => {
   const videoJson = useQgcPath(VIDEO_VIEW);
-  const hasVideo = optBoolean(videoJson, 'available');
+  const syntheticReady = useRememberSyntheticAvailable();
+  const hasPicture = optBoolean(videoJson, 'available') || syntheticReady;
   const [rootRef, box] = useShellBox();
   const screen = useScreenSize();
   const boxHeight = box.size.height > 0 ? box.size.height : screen.height;
@@ -356,8 +357,8 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
 
   const mapIsPip = view === FlyView.Video;
   const videoIsPip = view === FlyView.Map;
-  const videoShown = view !== FlyView.ThreeD && (view !== FlyView.Map || hasVideo);
-  const thumbShown = mapIsPip || (videoIsPip && hasVideo);
+  const videoShown = view !== FlyView.ThreeD && (view !== FlyView.Map || hasPicture);
+  const thumbShown = mapIsPip || (videoIsPip && hasPicture);
   const thumb = thumbSize(useDesktopLayout());
   const thumbStyle = thumbPlace(thumb);
   const thumbFrame = rectAt(Offset(safeArea.left + AircastSpace.s3 + BOTTOM_LEAD, box.size.height - (AircastSpace.s3 + thumb.height)), thumb);
@@ -424,7 +425,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
               style={{ ...thumbStyle, zIndex: layer(2) }}
             />
           ) : null}
-          {videoIsPip && hasVideo ? (
+          {videoIsPip && hasPicture ? (
             <div
               role="button"
               tabIndex={0}

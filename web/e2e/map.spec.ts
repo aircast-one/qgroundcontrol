@@ -5,7 +5,7 @@ test.describe.configure({ timeout: 120_000 });
 test('on the ground the map menu offers a new home position', async ({ vehicle }) => {
   await showMapFull(vehicle);
   await mapMenuAt(vehicle, 200, -100);
-  await expect(vehicle.getByText('Press and hold the map to fly there')).toBeVisible();
+  await expect(vehicle.getByText('Right-click the map to fly there')).toBeVisible();
   await expect(vehicle.getByRole('button', { name: 'Set home here' })).toBeVisible();
   await expect(vehicle.getByText(/^Lat: -?\d+\.\d{6}$/)).toBeVisible();
 });

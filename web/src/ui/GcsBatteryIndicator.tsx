@@ -95,7 +95,7 @@ export const GcsBatteryCell = ({ reading }: { reading: GcsBatteryReading | null 
       {open ? (
         <AircastSheet onDismissRequest={() => setOpen(false)}>
           <div className="flex w-full flex-col pb-6">
-            <Text typography="titleMedium" className="px-6 py-2">
+            <Text typography="titleMedium" className="px-sheet py-2">
               {reading.heading}
             </Text>
             <ListItem headlineContent="Charge" trailingContent={reading.levelText} />

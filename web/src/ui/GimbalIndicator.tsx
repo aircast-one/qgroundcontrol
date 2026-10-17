@@ -129,7 +129,7 @@ export const GimbalIndicatorCell = () => {
 
       {open ? (
         <AircastSheet onDismissRequest={() => setOpen(false)}>
-          <div className="flex w-full flex-col gap-2 px-5 pb-6">
+          <div className="flex w-full flex-col gap-2 px-sheet pb-6">
             <Text typography="titleMedium">Gimbal</Text>
             {state.gimbals.length > 1 ? (
               <div className="flex gap-1">
@@ -215,7 +215,7 @@ const GimbalSettings = () => {
       {gimbalSettingsBlocks(sections, joystickButtonsAvailable(joystick)).map((block, index) => (
         <div key={`${block.title}-${index}`} className="flex flex-col">
           {block.title.trim() !== '' ? (
-            <Text typography="titleMedium" className="px-6 py-2">
+            <Text typography="titleMedium" className="px-sheet py-2">
               {sentenceCase(block.title)}
             </Text>
           ) : null}

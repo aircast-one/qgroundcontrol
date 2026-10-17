@@ -67,7 +67,7 @@ export const GpsResilienceCell = () => {
 
       {open ? (
         <AircastSheet onDismissRequest={() => setOpen(false)}>
-          <div className="flex w-full flex-col gap-1.5 px-5 pb-6">
+          <div className="flex w-full flex-col gap-1.5 px-sheet pb-6">
             {resilience.sections.map((section, index) => (
               <div key={`${section.title}-${index}`} className="contents">
                 <Text typography="titleSmall">{section.title}</Text>

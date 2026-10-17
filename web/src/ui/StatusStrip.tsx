@@ -382,7 +382,7 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
       {allStatus ? (
         <AircastSheet onDismissRequest={() => setAllStatus(false)}>
           <LocalCompactStatus.Provider value={false}>
-            <div className="flex flex-col items-start gap-[14px] px-6 py-2">
+            <div className="flex flex-col items-start gap-[14px] px-sheet py-2">
               <Text typography="titleLarge">Status</Text>
               {ordered.map((key) => (
                 <Fragment key={key}>{byKey.get(key) ?? null}</Fragment>
@@ -472,7 +472,7 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
 const BatterySettingsContent = () => {
   const setupJson = useQgcPath(SETUP);
   const wait = indicatorParameterWait(setupJson);
-  return wait === null ? <ParameterForm page={BATTERY_SETTINGS_PAGE} /> : <Text className="block px-6 py-4">{wait}</Text>;
+  return wait === null ? <ParameterForm page={BATTERY_SETTINGS_PAGE} /> : <Text className="block px-sheet py-4">{wait}</Text>;
 };
 
 export type BarTone = { readonly name: 'Fine' | 'Low' | 'ReturnNow' | 'Reserve'; readonly ordinal: number };
@@ -557,7 +557,7 @@ const BatteryDisplaySettings = () => {
   const facts = useQgcFacts(BATTERY_INDICATOR_SETTINGS);
   return (
     <div className="flex w-full flex-col pb-6">
-      <Text typography="titleMedium" className="block px-6 py-2">
+      <Text typography="titleMedium" className="block px-sheet py-2">
         Battery display
       </Text>
       {batteryDisplayFacts(facts).map((fact) => (
@@ -613,16 +613,16 @@ const InstrumentSheet = ({ title, rows, headline = null, silence = null, action 
   const muted = md('onSurfaceVariant');
   return (
     <AircastSheet onDismissRequest={onDismiss}>
-      <Text typography="titleMedium" className="block px-6 py-2">
+      <Text typography="titleMedium" className="block px-sheet py-2">
         {title}
       </Text>
       {silence !== null ? (
-        <Text typography="bodyMedium" fontWeight="bold" color={md('error')} className="block px-6 py-1">
+        <Text typography="bodyMedium" fontWeight="bold" color={md('error')} className="block px-sheet py-1">
           {silence}
         </Text>
       ) : null}
       {headline !== null ? (
-        <div className="flex flex-col px-6 py-1">
+        <div className="flex flex-col px-sheet py-1">
           <Text typography="headlineMedium" fontWeight="bold" color={stale ? muted : headlineColour(headline)}>
             {headline.text}
           </Text>
@@ -640,7 +640,7 @@ const InstrumentSheet = ({ title, rows, headline = null, silence = null, action 
       ) : null}
       {action === null ? null : <div className="flex flex-col items-start">{action}</div>}
       {rows.length === 0 ? (
-        <Text typography="bodyMedium" color={md('onSurfaceVariant')} className="block px-6 py-3">
+        <Text typography="bodyMedium" color={md('onSurfaceVariant')} className="block px-sheet py-3">
           The vehicle has not reported anything else about this yet.
         </Text>
       ) : (

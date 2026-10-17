@@ -26,7 +26,7 @@ export const ListItem = ({ headlineContent, supportingContent, overlineContent, 
       {trailingContent ? <span className="flex shrink-0 items-center text-label-small text-on-surface-variant">{trailingContent}</span> : null}
     </>
   );
-  const look = `flex min-h-14 w-full items-center gap-4 px-4 py-2 text-left ${className ?? ''}`;
+  const look = `flex min-h-14 w-full items-center gap-4 px-list py-2 text-left ${className ?? ''}`;
   return onClick ? (
     <button type="button" disabled={!enabled} onClick={onClick} className={`${look} hover:bg-[color-mix(in_srgb,var(--md-on-surface)_8%,transparent)] disabled:opacity-40`} style={{ background: containerColor, ...style }}>
       {body}

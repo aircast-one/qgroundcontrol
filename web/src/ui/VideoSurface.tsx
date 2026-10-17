@@ -171,8 +171,9 @@ export const VideoSurface = ({
   const secondCamera = useShownSecondCamera();
 
   if (video?.available === false) {
-    if (!expanded) return null;
+    if (synthetic && !expanded) return <SyntheticThumb className={className} />;
     if (synthetic) return <SyntheticView className={`size-full ${className ?? ''}`} aimable />;
+    if (!expanded) return null;
     return (
       <Surface className={`size-full ${className ?? ''}`} color={Color.Black}>
         <NoVideoArea underFlyChrome={expanded && !fullScreen} thumb={false} video={video} />
@@ -188,6 +189,19 @@ export const VideoSurface = ({
     </div>
   );
 };
+
+export const SYNTHETIC_THUMB_LABEL = 'Synthetic view';
+
+const SyntheticThumb = ({ className }: { className?: string }) => (
+  <Surface className={`size-full ${className ?? ''}`} color={aircast('outdoorBackground')} contentColor={aircast('outdoorForeground')}>
+    <div className="flex size-full flex-col items-center justify-center gap-1">
+      <Drawable name="ic_explore" size={28} />
+      <Text typography="labelMedium" color={aircast('outdoorForeground')}>
+        {SYNTHETIC_THUMB_LABEL}
+      </Text>
+    </div>
+  </Surface>
+);
 
 const numberOf = (value: unknown): number | null => {
   if (typeof value === 'number') return value;

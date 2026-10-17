@@ -23,7 +23,7 @@ const SupportForwardingNotice = () => {
       </button>
       {open ? (
         <AircastSheet onDismissRequest={() => setOpen(false)}>
-          <div className="flex w-full flex-col gap-2 px-5 pb-6">
+          <div className="flex w-full flex-col gap-2 px-sheet pb-6">
             <Text typography="bodyMedium">Mavlink traffic is being forwarded to a support server</Text>
             <Text typography="bodyMedium" className="whitespace-pre-wrap">{`Server name:  ${host}`}</Text>
           </div>

@@ -109,7 +109,7 @@ export const HoldToConfirmButton = ({ text, enabled, className, onActivated }: {
 
 export const GripperPanel = ({ offers, onDismiss }: { offers: readonly GuidedOffer[]; onDismiss: () => void }) => (
   <AircastSheet onDismissRequest={onDismiss}>
-    <div className="flex w-full flex-col gap-2 px-5 pb-6">
+    <div className="flex w-full flex-col gap-2 px-sheet pb-6">
       {offers.map((offer) => (
         <HoldToConfirmButton
           key={offer.id}

@@ -71,17 +71,17 @@ const TrafficSheet = ({ reading, onDismiss }: { reading: TrafficReading; onDismi
   const urgent = md('error');
   return (
     <AircastSheet onDismissRequest={onDismiss}>
-      <Text typography="titleSmall" className="block px-5">
+      <Text typography="titleSmall" className="block px-sheet">
         {trafficSummary(reading)}
       </Text>
-      <Text typography="bodySmall" color={md('onSurfaceVariant')} className="block px-5 py-1">
+      <Text typography="bodySmall" color={md('onSurfaceVariant')} className="block px-sheet py-1">
         {trafficCaption(reading)}
       </Text>
       <div className="w-full overflow-auto pb-6">
         {reading.contacts.map((contact) => {
           const colour = trafficContactUrgent(contact) ? urgent : undefined;
           return (
-            <div key={contact.icaoAddress} className="flex w-full gap-3 px-5 py-1.5">
+            <div key={contact.icaoAddress} className="flex w-full gap-3 px-sheet py-1.5">
               <Text typography="labelLarge" color={colour}>
                 {contact.name}
               </Text>

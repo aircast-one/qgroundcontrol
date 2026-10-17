@@ -5,7 +5,6 @@ import { Qgc } from '@/bridge/Qgc';
 import { useTicker } from '@/kotlin/Compose';
 import { openUri } from '@/kotlin/Platform';
 import { OutlinedButton, OutlinedTextField, Text } from '@/m3';
-import { md } from '@/theme/Colors';
 
 export const AIRCAST_CLOUD_NAME = 'Aircast cloud';
 const ACCOUNT = 'account';
@@ -48,6 +47,8 @@ export const AircastCloudFields = ({
   const [account, setAccount] = useState<AccountState | null>(null);
   const opened = useRef('');
   useTicker(ACCOUNT_POLL_MS, [], async () => setAccount(accountState(await Qgc.get(ACCOUNT))));
+  const apiBaseError = showErrors && !cloudApiBaseValid(apiBase) ? 'Enter the account server address, starting with https://' : null;
+  const deviceError = showErrors && !cloudDeviceValid(deviceId) ? 'Set up from the device to fill this in' : null;
   const pendingUrl = account !== null && account.signingIn && account.verificationUrl.trim() !== '' ? account.verificationUrl : null;
   useEffect(() => {
     if (pendingUrl === null || pendingUrl === opened.current) return;
@@ -56,19 +57,18 @@ export const AircastCloudFields = ({
   }, [pendingUrl]);
 
   return (
-    <div className="flex flex-col gap-1.5">
-      <OutlinedTextField value={apiBase} onValueChange={onApiBase} label="Account server" placeholder={DEFAULT_ACCOUNT_SERVER} singleLine keyboardType="uri" />
-      {showErrors && !cloudApiBaseValid(apiBase) ? (
-        <Text typography="bodySmall" color={md('error')}>
-          Enter the account server address, starting with https://
-        </Text>
-      ) : null}
-      <OutlinedTextField value={deviceId} onValueChange={onDeviceId} label="Device" singleLine />
-      {showErrors && !cloudDeviceValid(deviceId) ? (
-        <Text typography="bodySmall" color={md('error')}>
-          Set up from the device to fill this in
-        </Text>
-      ) : null}
+    <div className="flex flex-col gap-form">
+      <OutlinedTextField
+        value={apiBase}
+        onValueChange={onApiBase}
+        label="Account server"
+        placeholder={DEFAULT_ACCOUNT_SERVER}
+        singleLine
+        keyboardType="uri"
+        isError={apiBaseError !== null}
+        supportingText={apiBaseError ?? undefined}
+      />
+      <OutlinedTextField value={deviceId} onValueChange={onDeviceId} label="Device" singleLine isError={deviceError !== null} supportingText={deviceError ?? undefined} />
       {account !== null ? (
         <>
           <div className="flex w-full items-center">

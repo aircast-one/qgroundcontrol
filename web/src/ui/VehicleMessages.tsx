@@ -200,7 +200,7 @@ const VehicleMessageLog = ({ messages, checks, blocker, onDismiss }: { messages:
   return (
     <AircastSheet onDismissRequest={onDismiss}>
       {editing !== null ? <ParameterEditDialog name={editing} title={EDIT_PARAMETER_TITLE} onDismiss={() => setEditing(null)} /> : null}
-      <div className="flex flex-col px-6 pb-6">
+      <div className="flex flex-col px-sheet pb-6">
         <Text typography="headlineSmall">{blocking.length === 0 ? 'Messages' : 'Why it will not arm'}</Text>
         <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
           {severitySummary(lines)}

@@ -49,7 +49,7 @@ export const JoystickIndicatorCell = () => {
 
       {open ? (
         <AircastSheet onDismissRequest={() => setOpen(false)}>
-          <div className="flex w-full flex-col gap-2 px-5 pb-6">
+          <div className="flex w-full flex-col gap-2 px-sheet pb-6">
             <Text typography="titleMedium">{badge.heading}</Text>
             <Text typography="bodyMedium" color={tint}>{`Enabled:  ${badge.enabledText}`}</Text>
             <Text typography="bodyMedium">{`Type:  ${badge.typeText}`}</Text>

@@ -303,7 +303,7 @@ export const VehicleStateChip = ({ className }: { className?: string }) => {
       {why ? <VehicleMessagesSheet onDismiss={() => setWhy(false)} /> : null}
       {picking ? (
         <AircastSheet onDismissRequest={() => setPicking(false)}>
-          <Text typography="titleMedium" className="block px-6 py-2">{lostVehiclesText(lostVehicles(choices)) ?? CHOOSER_TITLE}</Text>
+          <Text typography="titleMedium" className="block px-sheet py-2">{lostVehiclesText(lostVehicles(choices)) ?? CHOOSER_TITLE}</Text>
           <VehicleRows choices={choices} selectable={panelEnabled} onRefusal={setRefusal} onSwitched={() => setPicking(false)} />
           <ListItem
             headlineContent={<Text typography="bodyLarge" color={md('primary')}>Connect another vehicle</Text>}
@@ -313,7 +313,7 @@ export const VehicleStateChip = ({ className }: { className?: string }) => {
               navigation.settingsPage.value = CONNECTIONS_PAGE;
             }}
           />
-          {refusal !== null ? <Text typography="bodySmall" color={md('error')} className="block px-6 py-3">{refusal}</Text> : null}
+          {refusal !== null ? <Text typography="bodySmall" color={md('error')} className="block px-sheet py-3">{refusal}</Text> : null}
           {panelToggleShown(panelFact) ? (
             <ListItem
               headlineContent="Enable multi-vehicle panel"
@@ -367,12 +367,12 @@ const AmbiguousFleetControls = ({ view, choices, onRefusal }: FleetControlsProps
   const [confirming, setConfirming] = useState<MvAction | null>(null);
   return (
     <>
-      <Text typography="titleSmall" className="block px-6 py-2">{fleetHeading(selectedIds(choices))}</Text>
+      <Text typography="titleSmall" className="block px-sheet py-2">{fleetHeading(selectedIds(choices))}</Text>
       <div className="flex items-center px-4">
         <TextButton enabled={choices.canSelectAll} onClick={() => void FleetBridge.selectAll(choices)}>Select all</TextButton>
         <TextButton enabled={choices.canDeselectAll} onClick={() => void FleetBridge.deselectAll()}>Deselect all</TextButton>
       </div>
-      <Text typography="titleSmall" className="block px-6 py-2">Multi vehicle actions</Text>
+      <Text typography="titleSmall" className="block px-sheet py-2">Multi vehicle actions</Text>
       {actions.map((action) => (
         <div key={action.id}>
           <ListItem
@@ -396,7 +396,7 @@ const AmbiguousFleetControls = ({ view, choices, onRefusal }: FleetControlsProps
               })}
               onSent={() => setConfirming(null)}
               onCancel={() => setConfirming(null)}
-              className="px-6 py-2"
+              className="px-sheet py-2"
             />
           ) : null}
         </div>
@@ -440,7 +440,7 @@ export const FleetPanel = ({ className }: { className?: string }) => {
     <div className={`flex flex-col ${className ?? ''}`}>
       <VehicleRows choices={choices} selectable onRefusal={setRefusal} onSwitched={() => undefined} />
       <FleetControls view={vehiclesJson} choices={choices} onRefusal={setRefusal} />
-      {refusal !== null ? <Text typography="bodySmall" color={md('error')} className="block px-6 py-2">{refusal}</Text> : null}
+      {refusal !== null ? <Text typography="bodySmall" color={md('error')} className="block px-sheet py-2">{refusal}</Text> : null}
     </div>
   );
 };
@@ -527,12 +527,12 @@ const HolderNote = ({ holder, line, vehicleId, onRefusal }: { holder: ControlSta
   const label = acquireLabel(holder);
   return (
     <>
-      <Text typography="bodyMedium" className="block px-6 py-2">{line}</Text>
-      {takeover !== null ? <Text typography="bodySmall" color={md('onSurfaceVariant')} className="block px-6">{takeover}</Text> : null}
+      <Text typography="bodyMedium" className="block px-sheet py-2">{line}</Text>
+      {takeover !== null ? <Text typography="bodySmall" color={md('onSurfaceVariant')} className="block px-sheet">{takeover}</Text> : null}
       <ControlSectionTitle holder={holder} />
       {requestEndsAt !== null ? <RequestCountdown endsAt={requestEndsAt} onDone={() => flyScreen.controlRequestDeadlines.remove(deadlineKey)} /> : null}
       <AllowTakeoverBox holder={holder} onRefusal={onRefusal} />
-      {waiting !== null ? <Text typography="bodySmall" color={md('onSurfaceVariant')} className="block px-6 py-2">{waiting}</Text> : null}
+      {waiting !== null ? <Text typography="bodySmall" color={md('onSurfaceVariant')} className="block px-sheet py-2">{waiting}</Text> : null}
       {label !== null ? (
         <TextButton
           enabled={acquireEnabled(holder, requestEndsAt !== null)}
@@ -556,13 +556,13 @@ const HolderNote = ({ holder, line, vehicleId, onRefusal }: { holder: ControlSta
 
 const ControlSectionTitle = ({ holder }: { holder: ControlStation }) => {
   const title = controlSectionTitle(holder);
-  return title === null ? null : <Text typography="titleSmall" className="block px-6 py-2">{title}</Text>;
+  return title === null ? null : <Text typography="titleSmall" className="block px-sheet py-2">{title}</Text>;
 };
 
 const SettingFactRow = ({ path, title }: { path: string; title: string }) => {
   const control = useQgcPath(settingControl(path));
   const fact = useMemo(() => (control !== null && optText(control, 'kind') === 'object' ? factFromControl(control) : null), [control]);
-  return fact === null ? null : <FactRow fact={fact} title={title} subtitle={factSubtitle(fact)} fieldModifier="w-full px-6 py-2" />;
+  return fact === null ? null : <FactRow fact={fact} title={title} subtitle={factSubtitle(fact)} fieldModifier="w-full px-sheet py-2" />;
 };
 
 const RequestCountdown = ({ endsAt, onDone }: { endsAt: number; onDone: () => void }) => {
@@ -578,7 +578,7 @@ const RequestCountdown = ({ endsAt, onDone }: { endsAt: number; onDone: () => vo
     };
     if (await tick(now)) onDone();
   });
-  return <Text typography="bodySmall" color={md('onSurfaceVariant')} className="block px-6 py-2">{requestSentLabel(endsAt - now)}</Text>;
+  return <Text typography="bodySmall" color={md('onSurfaceVariant')} className="block px-sheet py-2">{requestSentLabel(endsAt - now)}</Text>;
 };
 
 const COUNTDOWN_TICK_MS = 100;
@@ -593,7 +593,7 @@ const AllowTakeoverBox = ({ holder, onRefusal, onRead = () => undefined }: { hol
     onRead(stored);
   }, [stored]);
   return (
-    <div className="flex items-center px-6 py-1">
+    <div className="flex items-center px-sheet py-1">
       <Text typography="bodyMedium" className="flex-1">Allow takeover</Text>
       <Checkbox
         checked={allow === true}
@@ -618,8 +618,8 @@ const InControlNote = ({ holder, onRefusal }: { holder: ControlStation; onRefusa
   const takeover = takeoverLine(holder);
   return (
     <>
-      {line !== null ? <Text typography="bodyMedium" color={md('primary')} className="block px-6 py-2">{line}</Text> : null}
-      {takeover !== null ? <Text typography="bodySmall" color={md('onSurfaceVariant')} className="block px-6">{takeover}</Text> : null}
+      {line !== null ? <Text typography="bodyMedium" color={md('primary')} className="block px-sheet py-2">{line}</Text> : null}
+      {takeover !== null ? <Text typography="bodySmall" color={md('onSurfaceVariant')} className="block px-sheet">{takeover}</Text> : null}
       <ControlSectionTitle holder={holder} />
       <AllowTakeoverBox holder={holder} onRefusal={onRefusal} onRead={setAllow} />
       <TextButton
