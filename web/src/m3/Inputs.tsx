@@ -145,7 +145,7 @@ export const Slider = ({ value, onValueChange, valueRange = [0, 1], steps = 0, o
     <BaseSlider.Control className="flex h-11 w-full touch-none items-center">
       <BaseSlider.Track className="h-1 w-full rounded-full bg-secondary-container">
         <BaseSlider.Indicator className="rounded-full bg-primary" />
-        <BaseSlider.Thumb className="size-5 rounded-full bg-primary shadow outline-none focus-visible:ring-4 focus-visible:ring-primary/30" />
+        <BaseSlider.Thumb getAriaLabel={label === undefined ? null : () => label} className="size-5 rounded-full bg-primary shadow outline-none focus-visible:ring-4 focus-visible:ring-primary/30" />
       </BaseSlider.Track>
     </BaseSlider.Control>
   </BaseSlider.Root>
@@ -166,8 +166,8 @@ export const RangeSlider = ({ value, onValueChange, valueRange = [0, 1], steps =
     <BaseSlider.Control className="flex h-11 w-full touch-none items-center">
       <BaseSlider.Track className="h-1 w-full rounded-full bg-secondary-container">
         <BaseSlider.Indicator className="rounded-full bg-primary" />
-        <BaseSlider.Thumb index={0} className="size-5 rounded-full bg-primary shadow outline-none" />
-        <BaseSlider.Thumb index={1} className="size-5 rounded-full bg-primary shadow outline-none" />
+        <BaseSlider.Thumb index={0} getAriaLabel={label === undefined ? null : () => `${label}, from`} className="size-5 rounded-full bg-primary shadow outline-none" />
+        <BaseSlider.Thumb index={1} getAriaLabel={label === undefined ? null : () => `${label}, to`} className="size-5 rounded-full bg-primary shadow outline-none" />
       </BaseSlider.Track>
     </BaseSlider.Control>
   </BaseSlider.Root>

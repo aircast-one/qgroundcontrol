@@ -61,7 +61,7 @@ export const RailSlider = ({
     <BaseSlider.Control className="flex h-full w-full touch-none justify-center">
       <BaseSlider.Track className={`relative h-full w-1 rounded-full ${colors === null ? 'bg-secondary-container' : ''}`} style={{ background: colors?.inactiveTrack }}>
         <BaseSlider.Indicator className={`w-full rounded-full ${colors === null ? 'bg-primary' : ''}`} style={{ background: colors?.activeTrack }} />
-        <BaseSlider.Thumb className={`size-5 rounded-full shadow outline-none focus-visible:ring-4 focus-visible:ring-primary/30 ${colors === null ? 'bg-primary' : ''}`} style={{ background: colors?.thumb }} />
+        <BaseSlider.Thumb getAriaLabel={label === undefined ? null : () => label} className={`size-5 rounded-full shadow outline-none focus-visible:ring-4 focus-visible:ring-primary/30 ${colors === null ? 'bg-primary' : ''}`} style={{ background: colors?.thumb }} />
       </BaseSlider.Track>
     </BaseSlider.Control>
   </BaseSlider.Root>
