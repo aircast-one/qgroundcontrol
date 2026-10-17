@@ -121,16 +121,17 @@ const readFlownPlan = async (): Promise<FlownPlan> => {
     OrbitBridge.read(),
     MapBridge.read(VEHICLES_VIEW),
   ]);
+  const [polygons, surveys] = await Promise.all([fencePolygons(fences), SurveyBridge.surveysFrom(raw)]);
   const selected = raw === null ? -1 : optInt(raw, 'selected', -1);
   return {
     items: missionItems(raw),
     linkStartToHome: linksStartToHome(raw),
-    fences: fencePolygons(fences),
+    fences: polygons,
     circles: fenceCircles(fences),
     firmwareFence: firmwareFence(fences),
     breachReturn: breachReturn(fences)?.point ?? null,
     rally: rallyPoints(fences),
-    surveys: SurveyBridge.surveysFrom(raw),
+    surveys,
     operator: operatorPoint(gcs),
     operatorHeading: operatorHeading(gcs),
     shots: shotPoints(video),

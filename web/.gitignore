@@ -4,3 +4,4 @@ src/core/pkg/
 dist-screens/
 test-results/
 playwright-report/
+.playwright-cli/
