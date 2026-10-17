@@ -731,6 +731,7 @@ impl Sim {
 
     fn vehicle_message(&mut self, from: (u8, u8), message: &MavMessage) -> Vec<Out> {
         match message {
+            MavMessage::SERIAL_CONTROL(m) if self.options.vehicle == Vehicle::Px4 && m.device == SerialControlDev::SERIAL_CONTROL_DEV_SHELL && m.count > 0 => shell_reply(m.data.get(..usize::from(m.count)).unwrap_or(&m.data)),
             MavMessage::HEARTBEAT(h) => {
                 if h.mavtype == MavType::MAV_TYPE_GCS {
                     self.heard_gcs_at = Some(self.ticks);
@@ -1740,6 +1741,25 @@ fn px4_mode(main: u32, sub: u32) -> u32 {
     (main << 16) | (sub << 24)
 }
 
+const SHELL_CHUNK: usize = 70;
+
+fn shell_reply(typed: &[u8]) -> Vec<Out> {
+    let command = String::from_utf8_lossy(typed).trim().to_string();
+    let answer = match command.split_whitespace().next() {
+        None => String::new(),
+        Some("ver") => "HW arch: MOCK_SITL\r\nFW version: mock\r\n".to_string(),
+        Some(name) => format!("nsh: {name}: command not found\r\n"),
+    };
+    format!("{command}\r\n{answer}nsh> ")
+        .as_bytes()
+        .chunks(SHELL_CHUNK)
+        .map(|chunk| {
+            let data: [u8; SHELL_CHUNK] = std::array::from_fn(|at| chunk.get(at).copied().unwrap_or(0));
+            (AUTOPILOT, MavMessage::SERIAL_CONTROL(SERIAL_CONTROL_DATA { device: SerialControlDev::SERIAL_CONTROL_DEV_SHELL, flags: SerialControlFlag::SERIAL_CONTROL_FLAG_REPLY, count: chunk.len() as u8, data, ..Default::default() }))
+        })
+        .collect()
+}
+
 fn said(severity: MavSeverity, text: &str) -> Out {
     (AUTOPILOT, MavMessage::STATUSTEXT(STATUSTEXT_DATA { severity, text: crate::mavout::chars(text), ..Default::default() }))
 }
@@ -2158,6 +2178,19 @@ mod tests {
         command(&mut sim, MavCmd::MAV_CMD_DO_SET_MODE, [1.0, px4_mode(PX4_AUTO, PX4_RTL) as f32, 0.0, 0.0, 0.0, 0.0, 0.0]);
         fly(&mut sim, 60);
         assert!((sim.lat - sim.home.0).abs() < 1e-5 && sim.alt == 0.0 && !sim.armed);
+    }
+
+    #[test]
+    fn the_px4_shell_echoes_a_command_and_answers_ver_in_mavlink_sized_chunks() {
+        let mut sim = Sim::new(options(Vehicle::Px4), 128, None);
+        let typed = b"ver all\n";
+        let data: [u8; SHELL_CHUNK] = std::array::from_fn(|at| typed.get(at).copied().unwrap_or(0));
+        let replies = sim.receive(gcs(), &MavMessage::SERIAL_CONTROL(SERIAL_CONTROL_DATA { device: SerialControlDev::SERIAL_CONTROL_DEV_SHELL, count: typed.len() as u8, data, ..Default::default() }));
+        let text: String = replies.iter().filter_map(|(_, m)| match m { MavMessage::SERIAL_CONTROL(d) => Some(String::from_utf8_lossy(&d.data[..usize::from(d.count)]).to_string()), _ => None }).collect();
+        assert_eq!(text, "ver all\r\nHW arch: MOCK_SITL\r\nFW version: mock\r\nnsh> ");
+        assert!(replies.len() > 0 && replies.iter().all(|(_, m)| matches!(m, MavMessage::SERIAL_CONTROL(d) if usize::from(d.count) <= SHELL_CHUNK)));
+        let apm = Sim::new(options(Vehicle::Copter), 128, None).receive(gcs(), &MavMessage::SERIAL_CONTROL(SERIAL_CONTROL_DATA { device: SerialControlDev::SERIAL_CONTROL_DEV_SHELL, count: typed.len() as u8, data, ..Default::default() }));
+        assert!(apm.iter().all(|(_, m)| !matches!(m, MavMessage::SERIAL_CONTROL(_))), "only PX4 has nsh");
     }
 
     #[test]
