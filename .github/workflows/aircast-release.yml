@@ -811,7 +811,11 @@ jobs:
 
       - name: Build web
         working-directory: web
-        run: npm ci && npm run build
+        env:
+          RELEASE_TAG: ${{ needs.setup.outputs.version }}
+        run: |
+          export VITE_APP_VERSION="${RELEASE_TAG#aircast-v}"
+          npm ci && npm run build
 
       - name: Pack the web build for devices
         run: tar -czf qgc-web.tar.gz -C web/dist .
