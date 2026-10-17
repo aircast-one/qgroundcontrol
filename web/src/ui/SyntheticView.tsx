@@ -250,8 +250,8 @@ export const SyntheticView = ({ className, aimable = false, standIn = null }: { 
       : null;
   const gestures = usePointerGestures(aiming);
   return (
-    <div {...gestures} className={`relative overflow-hidden ${aiming !== null ? 'touch-none' : ''} ${className ?? ''}`}>
-      {nativeChosen(view) ? <NativePage view={view} standIn={standIn} /> : <SyntheticPage view={view} standIn={standIn} />}
+    <div {...gestures} className={`overflow-hidden ${aiming !== null ? 'touch-none' : ''} ${className ?? ''}`}>
+      <div className="relative size-full">{nativeChosen(view) ? <NativePage view={view} standIn={standIn} /> : <SyntheticPage view={view} standIn={standIn} />}</div>
     </div>
   );
 };

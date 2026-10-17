@@ -35,12 +35,14 @@ const connect = (): Promise<Worker> => {
   return connection.ready;
 };
 
-export const call = <T = unknown>(name: string, ...args: unknown[]): Promise<T> =>
+export const callTransferring = <T = unknown>(name: string, transfer: Transferable[], ...args: unknown[]): Promise<T> =>
   connect().then((worker) => new Promise<T>((resolve) => {
     const id = crypto.randomUUID();
     pending.set(id, resolve as (result: unknown) => void);
-    worker.postMessage({ id, call: name, args });
+    worker.postMessage({ id, call: name, args }, transfer);
   }));
+
+export const call = <T = unknown>(name: string, ...args: unknown[]): Promise<T> => callTransferring<T>(name, [], ...args);
 
 export const onCoreEvent = (listener: EventListener): (() => void) => {
   eventListeners.add(listener);

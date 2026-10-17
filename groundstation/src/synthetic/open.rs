@@ -174,6 +174,7 @@ impl Patch {
     }
 }
 
+#[derive(Clone)]
 pub enum Want {
     Heights(TileKey),
     Terrain { key: TileKey, imagery: String, patch: Patch },

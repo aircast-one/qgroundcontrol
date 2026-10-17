@@ -88,7 +88,7 @@ fn take(ptr: *mut c_char) -> String {
     owned
 }
 
-#[cfg(native_synthetic)]
+#[cfg(any(native_synthetic, all(feature = "synthetic", target_family = "wasm")))]
 pub(crate) fn core_get(path: &str) -> String {
     CORE.get(path)
 }

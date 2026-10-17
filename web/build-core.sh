@@ -15,5 +15,5 @@ if [ -z "${QGC_APM_PARAMS_DIR:-}" ] && ! ls -d "$params"/*/Copter-4.5 >/dev/null
 fi
 
 rustup target add wasm32-unknown-unknown
-AR_wasm32_unknown_unknown=$archiver cargo rustc --lib --release --target wasm32-unknown-unknown --crate-type cdylib
+AR_wasm32_unknown_unknown=$archiver cargo rustc --lib --release --target wasm32-unknown-unknown --crate-type cdylib --features synthetic
 wasm-bindgen --target web --out-dir ../web/src/core/pkg target/wasm32-unknown-unknown/release/groundstation.wasm

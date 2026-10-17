@@ -240,7 +240,7 @@ pub fn response(backend: &dyn Backend, vehicle: &Value) -> Value {
 }
 
 fn native() -> bool {
-    cfg!(native_synthetic)
+    cfg!(any(native_synthetic, all(feature = "synthetic", target_family = "wasm")))
 }
 
 pub fn overlay_deps() -> Vec<String> {

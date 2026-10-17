@@ -181,6 +181,7 @@ pub fn root_url(token: &str, fetcher: &dyn Fetcher) -> Result<Url, String> {
     }
 }
 
+#[derive(Clone)]
 enum Job {
     Root(String),
     Tile(Request),

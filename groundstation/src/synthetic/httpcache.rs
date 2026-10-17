@@ -5,7 +5,7 @@ use web_time::{SystemTime, UNIX_EPOCH};
 
 use http_cache_semantics::{AfterResponse, BeforeRequest, CacheOptions, CachePolicy};
 use rusqlite::{Connection, OptionalExtension, params};
-use ureq::http::{HeaderMap, Request, Response, StatusCode};
+use http::{HeaderMap, Request, Response, StatusCode};
 use url::Url;
 
 const SIGNING: [&str; 2] = ["key", "session"];
@@ -40,6 +40,7 @@ fn seconds(at: SystemTime) -> i64 {
     at.duration_since(UNIX_EPOCH).map_or(0, |since| i64::try_from(since.as_secs()).unwrap_or(i64::MAX))
 }
 
+#[cfg(not(target_family = "wasm"))]
 impl HttpCache {
     pub fn open(path: &Path, limit: u64) -> rusqlite::Result<Self> {
         let db = Connection::open(path)?;

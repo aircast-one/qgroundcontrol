@@ -193,6 +193,24 @@ pub fn map_tile(map_type: &str, x: i32, y: i32, zoom: i32) -> Option<Vec<u8>> {
     TILES.with(|cache| crate::maptiles::fetch_remembered(map_type, x, y, zoom, cache.as_ref(), true))
 }
 
+#[cfg(feature = "synthetic")]
+#[wasm_bindgen(js_name = syntheticAttach)]
+pub fn synthetic_attach(canvas: web_sys::OffscreenCanvas, width: u32, height: u32) -> u32 {
+    crate::synthetic::webview::attach(canvas, width, height)
+}
+
+#[cfg(feature = "synthetic")]
+#[wasm_bindgen(js_name = syntheticResize)]
+pub fn synthetic_resize(key: u32, width: u32, height: u32) {
+    crate::synthetic::webview::resize(key, width, height);
+}
+
+#[cfg(feature = "synthetic")]
+#[wasm_bindgen(js_name = syntheticRelease)]
+pub fn synthetic_release(key: u32) {
+    crate::synthetic::webview::release(key);
+}
+
 #[wasm_bindgen(js_name = vfsWrite)]
 pub fn vfs_write(path: &str, bytes: &[u8]) -> bool {
     crate::vfs::write(path, bytes).is_ok()

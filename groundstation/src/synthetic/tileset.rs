@@ -128,6 +128,7 @@ struct Candidate {
     path: Vec<usize>,
 }
 
+#[derive(Clone)]
 pub struct Request {
     pub path: Vec<usize>,
     pub url: Url,

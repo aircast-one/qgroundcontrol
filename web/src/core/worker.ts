@@ -70,6 +70,9 @@ const calls = {
   gcsPositionUpdate: core.gcsPositionUpdate,
   gcsPositionError: core.gcsPositionError,
   notifyDeepLink: core.notifyDeepLink,
+  syntheticAttach: core.syntheticAttach,
+  syntheticResize: core.syntheticResize,
+  syntheticRelease: core.syntheticRelease,
 } as const;
 
 scope.onmessage = ({ data: { id, call, args } }) => {

@@ -5,7 +5,7 @@ use std::sync::{Arc, LazyLock, Mutex, PoisonError};
 use std::time::Duration;
 use web_time::SystemTime;
 
-use ureq::http::{HeaderMap, Response};
+use http::{HeaderMap, Response};
 use url::Url;
 
 use super::httpcache::{Answer, HttpCache};
@@ -21,6 +21,7 @@ const TILE_CACHE_FILE: &str = "synthetic-tiles.db";
 const TILE_CACHE_BYTES: u64 = 1024 * 1024 * 1024;
 const ROOT_REUSE: Duration = Duration::from_secs(60 * 60);
 
+#[cfg(not(target_family = "wasm"))]
 static AGENT: LazyLock<ureq::Agent> = LazyLock::new(|| {
     ureq::Agent::config_builder()
         .timeout_connect(Some(CONNECT_TIMEOUT))
@@ -47,6 +48,9 @@ pub trait Fetcher: Send + Sync {
 
 pub struct Network;
 
+#[cfg(target_family = "wasm")]
+pub use super::webfetch::Pool;
+
 thread_local! {
     #[allow(clippy::missing_const_for_thread_local)]
     static CACHE: OnceCell<Option<crate::tilecache::Cache>> = const { OnceCell::new() };
@@ -58,12 +62,14 @@ fn persist() -> bool {
     !crate::settingsstore::raw_setting(NO_PERSISTENCE).and_then(|value| value.as_bool()).unwrap_or(false)
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn send(url: &Url, headers: &HeaderMap) -> Result<Response<Vec<u8>>, String> {
     let mut response = headers.iter().fold(AGENT.get(url.as_str()), |request, (name, value)| request.header(name, value)).call().map_err(|error| error.to_string())?;
     let body = response.body_mut().with_config().limit(MAX_BODY_BYTES).read_to_vec().map_err(|error| error.to_string())?;
     Ok(response.map(|_| body))
 }
 
+#[cfg(not(target_family = "wasm"))]
 impl Fetcher for Network {
     fn url(&self, url: &Url) -> Result<Vec<u8>, String> {
         send(url, &HeaderMap::new()).map(Response::into_body)
@@ -88,6 +94,7 @@ impl Fetcher for Network {
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn cached(url: &Url, reuse_body_for: Duration) -> Result<(Vec<u8>, Answer), String> {
     TILES.with(|tiles| {
         let opened = || crate::terrainservice::cache_path().and_then(|path| HttpCache::open(&path.with_file_name(TILE_CACHE_FILE), TILE_CACHE_BYTES).ok());
@@ -98,12 +105,14 @@ fn cached(url: &Url, reuse_body_for: Duration) -> Result<(Vec<u8>, Answer), Stri
     })
 }
 
+#[cfg(not(target_family = "wasm"))]
 pub struct Pool<J, D> {
     jobs: Sender<J>,
     done: Receiver<D>,
     in_flight: usize,
 }
 
+#[cfg(not(target_family = "wasm"))]
 impl<J: Send + 'static, D: Send + 'static> Pool<J, D> {
     pub fn new(workers: usize, name: &str, work: impl Fn(J) -> D + Send + Sync + 'static, lost: impl Fn(&J) -> D + Send + Sync + 'static) -> Result<Self, String> {
         let (jobs, queue) = mpsc::channel::<J>();
