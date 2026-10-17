@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcBool, useQgcFacts } from '@/bridge/QgcState';
 import { type Json, isNull, jsonObjects, jsonStrings, optBoolean, optDouble, optInt, optJSONArray, optText } from '@/bridge/Json';
-import { requestSerialPort } from '@/core/client';
+import { requestSerialPort, serialAvailable } from '@/core/client';
 import { useLaunchedEffect } from '@/kotlin/Compose';
 import { openDocument } from '@/kotlin/Platform';
 import { delay, replaceFirstCharUpper, same } from '@/kotlin/Std';
@@ -160,7 +160,6 @@ export const firmwareFileAccepted = (name: string): boolean => FIRMWARE_EXTENSIO
 
 type PortSelection = { ports: readonly FirmwarePort[]; port: string };
 
-const serialAvailable = (): boolean => typeof navigator !== 'undefined' && 'serial' in navigator;
 
 export const FirmwareScreen = ({ className }: { className?: string }) => {
   const [job, setJob] = useState<FirmwareJob | null>(null);

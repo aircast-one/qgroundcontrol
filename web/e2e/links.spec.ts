@@ -57,3 +57,11 @@ test('a WebSocket address that is not ws:// is refused, and one that does not an
   await app.getByRole('button', { name: 'Connect', exact: true }).click();
   await expect(app.getByText('No MAVLink WebSocket answered at ws://localhost:1')).toBeVisible({ timeout: 15_000 });
 });
+
+test('the USB radio form lets the browser grant a serial port', async ({ app }) => {
+  await app.getByRole('button', { name: /How to connect/ }).click();
+  await app.getByRole('button', { name: 'Add link…' }).click();
+  await app.getByRole('button', { name: /^USB radio/ }).click();
+  await expect(app.getByText('Nothing is plugged in. Connect a radio over USB and it will appear here.')).toBeVisible();
+  await expect(app.getByRole('button', { name: 'Allow a USB port' })).toBeVisible();
+});

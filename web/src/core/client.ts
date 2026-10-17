@@ -65,7 +65,7 @@ const store = (text: string) => {
   }
 };
 
-const serialAvailable = () => typeof navigator !== 'undefined' && 'serial' in navigator;
+export const serialAvailable = (): boolean => typeof navigator !== 'undefined' && 'serial' in navigator;
 
 const portLine = (port: SerialPort, index: number): [string, string] => {
   const { usbVendorId, usbProductId } = port.getInfo();

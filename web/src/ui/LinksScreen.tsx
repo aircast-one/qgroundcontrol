@@ -3,7 +3,7 @@ import { AccountCommands, LinkCommands } from '@/bridge/BridgeCommands';
 import { type Json, jsonObjects, jsonStrings, optBoolean, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcPath, useQgcValue } from '@/bridge/QgcState';
-import { openWebSocketLink } from '@/core/client';
+import { openWebSocketLink, requestSerialPort, serialAvailable } from '@/core/client';
 import { stageFile, unstage, unstageAll } from '@/core/files';
 import { useBackHandler, useLaunchedEffect, useTicker } from '@/kotlin/Compose';
 import { openDocument } from '@/kotlin/Platform';
@@ -1003,12 +1003,25 @@ const NewLinkFields = ({
   }
   if (draft.type === LinkType.Bluetooth) return <BluetoothPicker chosen={draft.device} onPick={(it) => onDraft({ ...draft, device: it })} />;
   if (draft.type === LinkType.Serial) {
-    return ports.length === 0 ? (
-      <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
-        Nothing is plugged in. Connect a radio over USB and it will appear here.
-      </Text>
-    ) : (
-      <SerialPortFields ports={ports} bauds={bauds} portName={draft.portName} baud={draft.baud} enabled onPort={(it) => onDraft({ ...draft, portName: it })} onBaud={(it) => onDraft({ ...draft, baud: it })} />
+    return (
+      <>
+        {ports.length === 0 ? (
+          <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
+            Nothing is plugged in. Connect a radio over USB and it will appear here.
+          </Text>
+        ) : (
+          <SerialPortFields ports={ports} bauds={bauds} portName={draft.portName} baud={draft.baud} enabled onPort={(it) => onDraft({ ...draft, portName: it })} onBaud={(it) => onDraft({ ...draft, baud: it })} />
+        )}
+        {serialAvailable() ? (
+          <div>
+            <TextButton onClick={() => void requestSerialPort().catch(() => undefined)}>Allow a USB port</TextButton>
+          </div>
+        ) : (
+          <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
+            This browser cannot reach USB radios. Use Chrome or Edge, or connect over a WebSocket.
+          </Text>
+        )}
+      </>
     );
   }
   if (draft.type === LinkType.Udp) return <LinkPortField label="Listening port" value={draft.port} error={portError} enabled onChange={(it) => onDraft({ ...draft, port: it })} />;
