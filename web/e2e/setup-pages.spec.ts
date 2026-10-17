@@ -27,8 +27,10 @@ test('ArduPilot flight modes setup changes a mode slot', async ({ app }) => {
   await openAircraftSetup(app);
   await app.getByRole('button', { name: /^Flight modes / }).click();
   const slot = app.getByText('Flight mode 1', { exact: true }).locator('xpath=ancestor::div[.//button][1]');
-  await expect(slot.getByRole('textbox')).not.toHaveValue('');
-  await slot.getByRole('button').first().click();
+  const choice = slot.getByRole('button').first();
+  await expect(choice).not.toHaveAccessibleName('');
+  await choice.click();
   await app.getByRole('menuitem', { name: 'Loiter', exact: true }).or(app.getByRole('option', { name: 'Loiter', exact: true })).first().click();
-  await expect(slot.getByRole('textbox')).toHaveValue('Loiter');
+  await expect(choice).toHaveAccessibleName('Loiter');
+  await expect(slot.getByRole('textbox')).toHaveCount(0);
 });

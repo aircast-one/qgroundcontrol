@@ -1188,17 +1188,19 @@ export const ChoiceField = ({
           <Drawable name="ic_chevron_right" style={{ color: md('onSurfaceVariant') }} />
         </div>
       ) : (
-        <OutlinedTextField
-          value={value}
-          onValueChange={() => undefined}
-          readOnly
-          enabled={enabled}
-          label={label === null ? undefined : <span className="truncate">{label}</span>}
-          trailingIcon={<MaterialIcon name="keyboard_arrow_down" filled />}
-          className="w-full"
-        />
+        <div inert aria-hidden className="w-full">
+          <OutlinedTextField
+            value={value}
+            onValueChange={() => undefined}
+            readOnly
+            enabled={enabled}
+            label={label === null ? undefined : <span className="truncate">{label}</span>}
+            trailingIcon={<MaterialIcon name="keyboard_arrow_down" filled />}
+            className="w-full"
+          />
+        </div>
       )}
-      <button type="button" aria-label={label ?? value} aria-haspopup="menu" disabled={!enabled} className="absolute inset-0 cursor-pointer disabled:cursor-default" onClick={() => setExpanded(true)} />
+      <button type="button" aria-label={label === null ? value : `${label}, ${value}`} aria-haspopup="menu" disabled={!enabled} className="absolute inset-0 cursor-pointer disabled:cursor-default" onClick={() => setExpanded(true)} />
       {plain ? (
         <SafeChoiceMenu expanded={expanded} options={options} onDismiss={() => setExpanded(false)} onPick={onPick} />
       ) : (
