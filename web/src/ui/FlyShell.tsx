@@ -37,6 +37,7 @@ import { LocalFlyScreenState } from '@/ui/FlyScreenState';
 import { FLY_STATE, flyState, useHasVehicle } from '@/ui/FlyState';
 import { LocalFlyOsd, osdShadow, useOsdBackdrop } from '@/ui/Osd';
 import { LayoutWidget } from '@/ui/OverlayLayout';
+import { HeadingTape } from '@/ui/HeadingTape';
 import { BatteryReturnBar, LocalCompactStatus } from '@/ui/StatusStrip';
 import { useRememberSyntheticAims, useRememberSyntheticAvailable } from '@/ui/SyntheticView';
 import { TrafficBanner } from '@/ui/TrafficBanner';
@@ -467,6 +468,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
                             {status}
                           </div>
                         </LocalCompactStatus.Provider>
+                        <HeadingTape className="self-center" />
                         <TrafficBanner />
                         <div className="flex items-center gap-2 overflow-x-auto">{keyRow}</div>
                       </div>
