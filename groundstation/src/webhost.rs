@@ -193,6 +193,26 @@ pub fn map_tile(map_type: &str, x: i32, y: i32, zoom: i32) -> Option<Vec<u8>> {
     TILES.with(|cache| crate::maptiles::fetch_remembered(map_type, x, y, zoom, cache.as_ref(), true))
 }
 
+#[wasm_bindgen(js_name = vfsWrite)]
+pub fn vfs_write(path: &str, bytes: &[u8]) -> bool {
+    crate::vfs::write(path, bytes).is_ok()
+}
+
+#[wasm_bindgen(js_name = vfsRead)]
+pub fn vfs_read(path: &str) -> Option<Vec<u8>> {
+    crate::vfs::read(path).ok()
+}
+
+#[wasm_bindgen(js_name = vfsRemove)]
+pub fn vfs_remove(path: &str) -> bool {
+    crate::vfs::remove(path).is_ok()
+}
+
+#[wasm_bindgen(js_name = vfsRemovePrefixed)]
+pub fn vfs_remove_prefixed(prefix: &str) {
+    crate::vfs::remove_prefixed(prefix);
+}
+
 #[wasm_bindgen(js_name = gcsPositionSource)]
 pub fn gcs_position_source(token: &str) {
     unsafe { crate::abi::qgc_core_gcs_position_source(c(token).as_ptr()) }

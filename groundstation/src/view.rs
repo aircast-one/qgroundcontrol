@@ -795,6 +795,7 @@ mod deps_cover_reads {
             ("track", include_str!("track.rs")),
             ("background", include_str!("background.rs")),
             ("http", include_str!("http.rs")),
+            ("vfs", include_str!("vfs.rs")),
             ("transport", include_str!("transport.rs")),
             ("udplink", include_str!("udplink.rs")),
             ("ulogstream", include_str!("ulogstream.rs")),

@@ -1,6 +1,7 @@
 import { useContext, useState } from 'react';
 import { type Json, type JsonArray, arrayJSONObject, jsonObjects, optJSONArray, optText } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
+import { stageFile, stagedFile, unstageAll } from '@/core/files';
 import { useUpdatedRef } from '@/kotlin/Compose';
 import { createDocument, getSharedPreferences, openDocument, openDocuments } from '@/kotlin/Platform';
 import { useValue } from '@/kotlin/State';
@@ -65,45 +66,9 @@ export const planSave = async (path: string): Promise<string | null> => {
   return currentPlanPath(await Qgc.get(PLAN_VIEW));
 };
 
-const cacheDir = (): Promise<FileSystemDirectoryHandle> => navigator.storage.getDirectory();
-
 const cachePath = (...names: string[]): string => `/${names.join('/')}`;
 
 const leafOf = (path: string): string => path.slice(path.lastIndexOf('/') + 1);
-
-const folderOf = (path: string, create: boolean): Promise<FileSystemDirectoryHandle> =>
-  path
-    .split('/')
-    .filter((it) => it !== '')
-    .slice(0, -1)
-    .reduce<Promise<FileSystemDirectoryHandle>>(async (folder, name) => (await folder).getDirectoryHandle(name, { create }), cacheDir());
-
-const cached = async (path: string): Promise<File | null> => {
-  try {
-    return await (await (await folderOf(path, false)).getFileHandle(leafOf(path))).getFile();
-  } catch {
-    return null;
-  }
-};
-
-const deleteCached = async (path: string): Promise<void> => {
-  try {
-    await (await folderOf(path, false)).removeEntry(leafOf(path), { recursive: true });
-  } catch {
-    return;
-  }
-};
-
-const copyIn = async (source: File, into: string): Promise<boolean> => {
-  try {
-    const writable = await (await (await folderOf(into, true)).getFileHandle(leafOf(into), { create: true })).createWritable();
-    await writable.write(source);
-    await writable.close();
-    return ((await cached(into))?.size ?? 0) > 0;
-  } catch {
-    return false;
-  }
-};
 
 const copyOut = (source: File, name: string): boolean => {
   try {
@@ -111,21 +76,6 @@ const copyOut = (source: File, name: string): boolean => {
     return true;
   } catch {
     return false;
-  }
-};
-
-const entryNames = async (names: AsyncIterator<string>, seen: readonly string[] = []): Promise<readonly string[]> => {
-  const next = await names.next();
-  return next.done === true ? seen : entryNames(names, [...seen, next.value]);
-};
-
-const deleteCachedBoundaries = async (): Promise<void> => {
-  try {
-    const folder = await cacheDir();
-    const names = await entryNames(folder.keys());
-    await Promise.all(names.filter((it) => it.startsWith('boundary.')).map((it) => folder.removeEntry(it)));
-  } catch {
-    return;
   }
 };
 
@@ -178,8 +128,8 @@ const importMessage = async (documents: readonly File[], pattern: string): Promi
   const main = mainBoundaryName(labelled.map(([, name]) => name));
   const label = labelled.find(([, name]) => name === main)?.[1] ?? null;
   const staged = cachePath(boundaryCacheName(label));
-  await deleteCachedBoundaries();
-  const copied = await labelled.reduce<Promise<boolean>>(async (ok, [document, name]) => (await ok) && copyIn(document, cachePath(boundaryCacheName(name))), Promise.resolve(true));
+  await unstageAll(cachePath('boundary.'));
+  const copied = await labelled.reduce<Promise<boolean>>(async (ok, [document, name]) => (await ok) && stageFile(cachePath(boundaryCacheName(name)), document), Promise.resolve(true));
   if (!copied) return 'That file could not be read.';
   const before = (await visualItems()).length;
   await Qgc.invoke(`${MISSION_ROOT}.insertComplexMissionItemFromKMLOrSHP`, pattern, staged, before, true);
@@ -239,10 +189,10 @@ export const useRememberPlanFileActions = (onResult: (message: string) => void =
     void (async () => {
       const named = withExtension(target, PLAN_EXTENSION);
       const staged = cachePath(SAVE_CACHE);
-      await deleteCached(staged);
+      await unstageAll(staged);
       const written = await planSave(staged);
       if (written === null) return result.current('The plan could not be saved.');
-      const saved = await cached(written);
+      const saved = await stagedFile(written);
       if (saved === null || !copyOut(saved, named)) return result.current('The plan was written but could not be copied out.');
       adopt(new File([saved], named));
       result.current('Plan saved.');
@@ -253,8 +203,8 @@ export const useRememberPlanFileActions = (onResult: (message: string) => void =
       const chosen = await openDocument([...PLAN_OPEN_TYPES]);
       if (chosen === null) return;
       const staged = cachePath(OPEN_FOLDER, openedFileName(chosen.name));
-      await deleteCached(cachePath(OPEN_FOLDER));
-      const [failure, loaded] = (await copyIn(chosen, staged)) ? await planLoad(staged).then((it) => [loadFailureMessage(it), it === true] as const) : (['That file could not be read.', false] as const);
+      await unstageAll(cachePath(OPEN_FOLDER));
+      const [failure, loaded] = (await stageFile(staged, chosen)) ? await planLoad(staged).then((it) => [loadFailureMessage(it), it === true] as const) : (['That file could not be read.', false] as const);
       if (!loaded) {
         if (failure !== null) result.current(failure);
         return;
@@ -268,9 +218,9 @@ export const useRememberPlanFileActions = (onResult: (message: string) => void =
   const exportKmlTo = (target: string) =>
     void (async () => {
       const staged = cachePath(KML_CACHE);
-      await deleteCached(staged);
+      await unstageAll(staged);
       await Qgc.invoke(`${PLAN_ROOT}.saveToKml`, staged);
-      const exported = await cached(staged);
+      const exported = await stagedFile(staged);
       result.current(
         exported === null || exported.size === 0
           ? 'The plan could not be exported.'

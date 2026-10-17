@@ -102,7 +102,7 @@ pub fn kml_view(_backend: &dyn Backend, args: &[String]) -> Value {
 
 pub fn kml_shape_view(args: &[String], polyline: Option<bool>) -> Value {
     let Some(path) = args.first().filter(|p| !p.is_empty()) else { return refused("view.kmlFile needs the path of a kml or kmz file to read, as view.kmlFile(/Users/you/area.kml)") };
-    let text = match std::fs::read_to_string(path) {
+    let text = match crate::vfs::read_to_string(path) {
         Ok(t) => t,
         Err(e) => return json!({ "kind": "object", "class": "KmlFile", "path": path, "readable": false, "error": e.to_string() }),
     };

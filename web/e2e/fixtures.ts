@@ -73,6 +73,26 @@ export const takeOff = async (page: Page, height: string) => {
   await slideAcross(page, page.getByRole('button', { name: /^Slide to take off/ }));
 };
 
+export const itemCount = async (page: Page): Promise<number> => {
+  const [listed] = await page.getByText(/^\d+ items$/).allTextContents();
+  return listed === undefined ? 0 : Number.parseInt(listed, 10);
+};
+
+export const tapPlanMission = async (page: Page) => {
+  const box = await page.getByRole('region', { name: 'Map' }).boundingBox();
+  if (box === null) throw new Error('plan map is not on screen');
+  const [x, y] = [box.x + box.width * 0.6, box.y + box.height * 0.5];
+  await [[0, 0], [80, -60], [160, 0], [80, 80]].reduce(
+    (done, [dx, dy]) => done.then(async () => {
+      const before = await itemCount(page);
+      await expect(page.getByRole('region', { name: 'Map' })).toBeVisible();
+      await page.mouse.click(x + dx!, y + dy!);
+      await expect.poll(() => itemCount(page)).toBeGreaterThan(before);
+    }),
+    Promise.resolve(),
+  );
+};
+
 export const test = base.extend<{ app: Page; vehicle: Page }>({
   app: async ({ page }, use) => {
     const errors: string[] = [];

@@ -11,6 +11,7 @@ import { PLAN_ITEMS } from './PlanBridge';
 import type { Survey } from './SurveyBridge';
 import { metresBetween } from './TerrainProfile';
 import { type TrackPoint, featureCollection, geoJsonSource, lineFeature, setGeoJson } from './VehicleMap';
+import { stageFile, unstageAll } from '@/core/files';
 
 const DEFAULT_SHAPE_FRACTION = 0.75;
 const DEFAULT_SHAPE_MAX_METRES = 3000.0;
@@ -185,37 +186,9 @@ export const mainShapeExtension = (names: readonly string[]): string | null => {
   return ['shp', 'kml'].find((it) => extensions.includes(it)) ?? extensions[0] ?? null;
 };
 
-const shapeFolder = async (): Promise<FileSystemDirectoryHandle> => (await navigator.storage.getDirectory()).getDirectoryHandle(SHAPE_FOLDER, { create: true });
-
-const entryNames = async (names: AsyncIterator<string>, seen: readonly string[] = []): Promise<readonly string[]> => {
-  const next = await names.next();
-  return next.done === true ? seen : entryNames(names, [...seen, next.value]);
-};
-
-const clearStaged = async (folder: FileSystemDirectoryHandle): Promise<void> => {
-  const names = await entryNames(folder.keys());
-  await Promise.all(names.filter((name) => name.startsWith(SHAPE_PREFIX)).map((name) => folder.removeEntry(name)));
-};
-
-const stagedCopy = async (folder: FileSystemDirectoryHandle, file: File, extension: string): Promise<boolean> => {
-  try {
-    const writable = await (await folder.getFileHandle(`${SHAPE_PREFIX}${extension}`, { create: true })).createWritable();
-    await writable.write(file);
-    await writable.close();
-    return true;
-  } catch {
-    return false;
-  }
-};
-
 const stagedShapes = async (named: readonly (readonly [File, string])[]): Promise<boolean> => {
-  try {
-    const folder = await shapeFolder();
-    await clearStaged(folder);
-    return named.reduce<Promise<boolean>>(async (copied, [file, extension]) => (await copied) && stagedCopy(folder, file, extension), Promise.resolve(true));
-  } catch {
-    return false;
-  }
+  await unstageAll(`/${SHAPE_FOLDER}/${SHAPE_PREFIX}`);
+  return named.reduce<Promise<boolean>>(async (copied, [file, extension]) => (await copied) && stageFile(`/${SHAPE_FOLDER}/${SHAPE_PREFIX}${extension}`, file), Promise.resolve(true));
 };
 
 export const importShapeFiles = async (files: readonly File[], target: ShapeTarget): Promise<string | null> => {

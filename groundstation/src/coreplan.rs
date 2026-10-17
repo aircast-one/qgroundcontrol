@@ -689,7 +689,7 @@ fn load_failed_text(file: &str, reason: &str) -> String {
 fn open(file: &str) -> Value {
     forget_raw_edits();
     let connected = !offline();
-    let loaded = std::fs::read(file).map_err(|e| format!("{e} {file}")).and_then(|bytes| {
+    let loaded = crate::vfs::read(file).map_err(|e| format!("{e} {file}")).and_then(|bytes| {
         let text = String::from_utf8_lossy(&bytes);
         match is_text_mission(file) {
             true => load_text_mission(&text),
@@ -730,7 +730,7 @@ fn save(file: &str) -> Value {
         return refused("There is no plan to save.");
     };
     let offline = offline();
-    match std::fs::write(file, text) {
+    match crate::vfs::write(file, text) {
         Ok(()) => {
             {
                 let mut state = held();
@@ -759,7 +759,7 @@ fn save_kml(file: &str) -> Value {
         vertical: crate::units::cooking("vertical m"),
     };
     let target = crate::plankml::with_extension(file);
-    match crate::plankml::document(&plan, &planned).and_then(|kml| std::fs::write(&target, kml).map_err(|e| e.to_string())) {
+    match crate::plankml::document(&plan, &planned).and_then(|kml| crate::vfs::write(&target, kml).map_err(|e| e.to_string())) {
         Ok(()) => json!({ "ok": true }),
         Err(e) => refused(format!("KML save error {file} : {e}")),
     }
@@ -1396,7 +1396,7 @@ pub fn controller_fields(path: &str) -> Option<Value> {
 }
 
 fn plan_speeds(backend: &dyn Backend, file: &str) {
-    let Some(mission) = std::fs::read_to_string(file).ok().and_then(|text| serde_json::from_str::<Value>(&text).ok()).and_then(|plan| plan.get("mission").cloned()) else { return };
+    let Some(mission) = crate::vfs::read_to_string(file).ok().and_then(|text| serde_json::from_str::<Value>(&text).ok()).and_then(|plan| plan.get("mission").cloned()) else { return };
     [("cruiseSpeed", "offlineEditingCruiseSpeed"), ("hoverSpeed", "offlineEditingHoverSpeed")]
         .iter()
         .filter_map(|(key, setting)| mission.get(*key).and_then(Value::as_f64).map(|speed| (setting, speed)))
@@ -1606,7 +1606,7 @@ fn takeoff_required_first() -> bool {
 fn shape_points(file: &str, polyline: bool) -> Result<Vec<(f64, f64)>, String> {
     let lower = file.to_lowercase();
     let (points, found_polyline) = match () {
-        _ if lower.ends_with(".kml") => match crate::kml::parse_wanted(&std::fs::read_to_string(file).map_err(|e| format!("Unable to open file: {file} error: {e}"))?, polyline)? {
+        _ if lower.ends_with(".kml") => match crate::kml::parse_wanted(&crate::vfs::read_to_string(file).map_err(|e| format!("Unable to open file: {file} error: {e}"))?, polyline)? {
             crate::kml::Shape::Polygon(points) => (points, false),
             crate::kml::Shape::Polyline(points) => (points, true),
         },

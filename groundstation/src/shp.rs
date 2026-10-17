@@ -107,10 +107,11 @@ pub fn parse_wanted(shp_path: &str, polyline: Option<bool>) -> Result<(String, u
         return Err(failed(format!("File is not a .shp file: {shp_path}")));
     }
     let prj_path = format!("{}.prj", &shp_path[..shp_path.len() - 4]);
-    let prj = std::fs::read_to_string(&prj_path).map_err(|_| failed(format!("File not found: {prj_path}")))?;
+    let prj = crate::vfs::read_to_string(&prj_path).map_err(|_| failed(format!("File not found: {prj_path}")))?;
     let projection = projection(&prj).map_err(failed)?;
-    let kind = shapefile::ShapeReader::from_path(shp_path).map_err(|_| failed("SHPOpen failed.".to_string()))?.header().shape_type;
-    let shapes = shapefile::read_shapes(shp_path).map_err(|_| failed("SHPOpen failed.".to_string()))?;
+    let reader = crate::vfs::read(shp_path).ok().and_then(|bytes| shapefile::ShapeReader::new(std::io::Cursor::new(bytes)).ok()).ok_or_else(|| failed("SHPOpen failed.".to_string()))?;
+    let kind = reader.header().shape_type;
+    let shapes = reader.read().map_err(|_| failed("SHPOpen failed.".to_string()))?;
     let entities = shapes.len();
     if entities == 0 && polyline.is_none() {
         return Err(failed("No entities found.".to_string()));

@@ -291,6 +291,7 @@ pub mod tlog;
 pub mod track;
 pub mod background;
 pub mod http;
+pub mod vfs;
 pub mod transport;
 pub mod udplink;
 pub mod ulogstream;
