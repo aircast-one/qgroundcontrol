@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { type Json, isNull, optBoolean, optInt } from '@/bridge/Json';
 import { useQgcPath } from '@/bridge/QgcState';
 import { VehicleCommands } from '@/bridge/VehicleCommands';
-import { FilledTonalButton, OutlinedButton, Slider, Surface, Switch, Text } from '@/m3';
+import { FilledTonalButton, OutlinedButton, Slider, Surface, Switch, Text, stepsFor } from '@/m3';
 import { Drawable } from '@/res/Icon';
 import { aircast, md } from '@/theme/Colors';
 import { SETUP, setupReadiness } from '@/ui/SetupView';
@@ -111,7 +111,7 @@ export const MotorsScreen = ({ className }: { className?: string }) => {
           {`${percent}%`}
         </Text>
       </div>
-      <Slider value={throttle} onValueChange={setThrottle} valueRange={[0, 100]} enabled={testable} label="Throttle" />
+      <Slider value={throttle} onValueChange={setThrottle} valueRange={[0, 100]} steps={stepsFor(0, 100, 1)} enabled={testable} label="Throttle" />
 
       {chunked(motorNumbers(motors), 2).map((pair) => (
         <div key={pair[0]} className="flex gap-3">
