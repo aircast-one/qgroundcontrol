@@ -24,7 +24,7 @@ test('fly screen shows no vehicle until one connects', async ({ app }) => {
   test(`menu opens ${item} and the rail returns to Fly`, async ({ app }) => {
     await openMenu(app, item);
     await expect(app.getByRole('menu')).toBeHidden();
-    await app.getByRole('navigation').getByRole('button', { name: /^Fly/ }).click();
+    await app.getByRole('navigation').getByRole('button', { name: 'Fly', exact: true }).click();
     await expect(app.getByRole('button', { name: 'Menu' })).toBeVisible();
   }),
 );
