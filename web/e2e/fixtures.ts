@@ -14,6 +14,8 @@ export const openApp = async (page: Page, { firstRun = true } = {}) => {
 };
 
 export const openMenu = async (page: Page, item: string) => {
+  const rail = page.getByRole('navigation').getByRole('button', { name: item, exact: true });
+  if (await rail.isVisible()) return rail.click();
   await page.getByRole('button', { name: 'Menu' }).click();
   await page.getByRole('menuitem', { name: item }).click();
 };

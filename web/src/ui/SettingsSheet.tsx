@@ -214,7 +214,9 @@ export const SettingsSheet = ({ requested, onClose }: { requested: string | null
                           Settings
                         </Text>
                         <div className="hidden min-w-0 flex-1 @min-[600px]:block">
-                          <SheetTabs selected={pager.targetPage} edgePadding={0} onPick={showTab} />
+                          <div className="mx-auto max-w-[720px]">
+                            <SheetTabs selected={pager.targetPage} edgePadding={0} onPick={showTab} />
+                          </div>
                         </div>
                       </>
                     )}

@@ -56,6 +56,7 @@ import {
 } from '@/ui/VideoGestures';
 import { FlyNoVideoMessage, NO_VIDEO_PILL_HEIGHT, NO_VIDEO_PILL_WIDTH, centredRegion, messageRegion } from '@/ui/VideoSurface';
 import { VIDEO_VIEW, videoReading } from '@/ui/VideoView';
+import { useDesktopLayout } from '@/ui/DesktopLayout';
 import { VirtualJoystick, useShownStickPad } from '@/ui/VirtualJoystick';
 
 const FLY_STORE = 'fly';
@@ -265,15 +266,17 @@ const subscribePortrait = (listener: () => void) => {
 
 export const useFlyIsPortrait = (): boolean => useSyncExternalStore(subscribePortrait, () => portraitQuery().matches, () => false);
 
-const THUMB_SIZE = Size(MINIMAP_THUMB, MINIMAP_THUMB);
+const DESKTOP_PIP = Size(320, 180);
 
-const THUMB_PLACE: CSSProperties = {
+export const thumbSize = (desktop: boolean): Size => (desktop ? DESKTOP_PIP : Size(MINIMAP_THUMB, MINIMAP_THUMB));
+
+const thumbPlace = (size: Size): CSSProperties => ({
   position: 'absolute',
   left: `calc(env(safe-area-inset-left, 0px) + ${BOTTOM_LEAD + AircastSpace.s3}px)`,
   bottom: AircastSpace.s3,
-  width: THUMB_SIZE.width,
-  height: THUMB_SIZE.height,
-};
+  width: size.width,
+  height: size.height,
+});
 
 type FlyScreenProps = {
   view: FlyView;
@@ -355,7 +358,9 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const videoIsPip = view === FlyView.Map;
   const videoShown = view !== FlyView.ThreeD && (view !== FlyView.Map || hasVideo);
   const thumbShown = mapIsPip || (videoIsPip && hasVideo);
-  const thumbFrame = rectAt(Offset(safeArea.left + AircastSpace.s3 + BOTTOM_LEAD, box.size.height - (AircastSpace.s3 + MINIMAP_THUMB)), THUMB_SIZE);
+  const thumb = thumbSize(useDesktopLayout());
+  const thumbStyle = thumbPlace(thumb);
+  const thumbFrame = rectAt(Offset(safeArea.left + AircastSpace.s3 + BOTTOM_LEAD, box.size.height - (AircastSpace.s3 + thumb.height)), thumb);
   const pipNow = videoIsPip && !fullScreen;
   const videoTarget = pipNow ? thumbFrame : Rect(0, 0, box.size.width, box.size.height);
   const frame = useRememberVideoFrame(videoTarget, false);
@@ -380,7 +385,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
     return videoGestures(handlers);
   }, []);
   const videoMessage = videoShown && !videoIsPip && videoReading(videoJson)?.decoding !== true;
-  const besideThumb = thumbShown ? MINIMAP_THUMB : 0;
+  const besideThumb = thumbShown ? thumb.width : 0;
   const showMap = () => onView(FlyView.Map);
   const showVideo = () => onView(FlyView.Video);
 
@@ -390,7 +395,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
       {view !== FlyView.ThreeD
         ? map(
             mapIsPip
-              ? { className: 'absolute overflow-hidden rounded-shape-md', style: { ...THUMB_PLACE, zIndex: layer(1), border: `2px solid ${md('onSurface')}` }, 'aria-hidden': fullScreen || undefined }
+              ? { className: 'absolute overflow-hidden rounded-shape-md', style: { ...thumbStyle, zIndex: layer(1), border: `2px solid ${md('onSurface')}` }, 'aria-hidden': fullScreen || undefined }
               : { className: 'absolute inset-0', 'aria-hidden': fullScreen || undefined },
           )
         : null}
@@ -416,7 +421,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
               onClick={showMap}
               onKeyDown={activate(showMap)}
               className="absolute cursor-pointer overflow-hidden rounded-shape-md"
-              style={{ ...THUMB_PLACE, zIndex: layer(2) }}
+              style={{ ...thumbStyle, zIndex: layer(2) }}
             />
           ) : null}
           {videoIsPip && hasVideo ? (
@@ -428,7 +433,7 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
               onClick={showVideo}
               onKeyDown={activate(showVideo)}
               className="absolute cursor-pointer overflow-hidden rounded-shape-md"
-              style={{ ...THUMB_PLACE, zIndex: layer(3), border: `2px solid ${md('onSurface')}` }}
+              style={{ ...thumbStyle, zIndex: layer(3), border: `2px solid ${md('onSurface')}` }}
             />
           ) : null}
           <div className={`absolute inset-0 ${PASS_THROUGH}`} style={{ zIndex: layer(1), opacity: settingsOver ? 0 : 1, ...CUTOUT_PADDING }}>

@@ -36,7 +36,7 @@ export const ConnectingCard = ({ className }: { className?: string }) => {
   if (loading === null || dismissed) return null;
   const progress = loading;
   return (
-    <div className={`w-full p-4 ${className ?? ''}`}>
+    <div className={`mx-auto w-full max-w-[560px] p-4 ${className ?? ''}`}>
       <Surface shape="extraLarge" color={md('surfaceContainer')} contentColor={md('onSurface')}>
         <div className="flex flex-col items-center gap-3 p-6">
           <div className="flex size-[72px] items-center justify-center rounded-full bg-primary-container text-on-primary-container">

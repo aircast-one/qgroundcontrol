@@ -30,6 +30,7 @@ import { CameraControlLayer, CameraShutters } from '@/ui/CameraControlLayer';
 import { CameraSwitch } from '@/ui/CameraSwitch';
 import { CloseGuard } from '@/ui/CloseGuard';
 import { ConnectingCard } from '@/ui/ConnectingCard';
+import { useDesktopLayout } from '@/ui/DesktopLayout';
 import { ConnectionLocks } from '@/ui/ConnectionLocks';
 import { ControlRequestPrompt } from '@/ui/ControlRequestPrompt';
 import { DeepLinkSetupPrompt } from '@/ui/DeepLinkSetupPrompt';
@@ -242,6 +243,7 @@ export const AircastShell = () => {
 
   const portrait = useFlyIsPortrait();
   const landscape = !portrait;
+  const desktop = useDesktopLayout();
   const layoutEditing = useValue(overlayLayout.editing);
   const layoutLocked = useValue(overlayLayout.locked);
   const guidedPanelOpen = useValue(flyScreen.guidedPanels) > 0;
@@ -446,7 +448,7 @@ export const AircastShell = () => {
 
   const flyStatus = (
     <>
-      <FlyTabMenu destinations={[...tabs.map((it) => ({ label: it.label, icon: it.icon, current: it === Tab.Fly, onSelect: () => selectTab(it) })), { label: 'Settings', icon: 'ic_settings', current: false, onSelect: openSettings }]} />
+      {desktop ? null : <FlyTabMenu destinations={[...tabs.map((it) => ({ label: it.label, icon: it.icon, current: it === Tab.Fly, onSelect: () => selectTab(it) })), { label: 'Settings', icon: 'ic_settings', current: false, onSelect: openSettings }]} />}
       <div className="flex min-w-0 flex-1 items-center justify-start">
         <LayoutWidget widgetKey="vehicleState" movable={false} hideable={false}>
           <VehicleStateChip />
@@ -459,7 +461,7 @@ export const AircastShell = () => {
       <LayoutWidget widgetKey="statusPill" movable={false} hideable={false}>
         <StatusPill />
       </LayoutWidget>
-      <FlySettingsButton />
+      {desktop ? null : <FlySettingsButton />}
     </>
   );
   const flyRail = (splitRoom: boolean) => (
@@ -510,8 +512,8 @@ export const AircastShell = () => {
       {appMessages[0] !== undefined ? <AppMessageDialog message={appMessages[0]} onOpenSetup={() => navigation.openAircraft()} onDismiss={() => setAppMessages((messages) => messages.slice(1))} /> : null}
       <LocalImmersive.Provider value={flyLandscape}>
         <div className="flex h-full w-full bg-surface text-on-surface">
-          {landscape && !flyLandscape ? (
-            <NavigationRail className="h-full pt-[env(safe-area-inset-top)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]">
+          {(landscape && !flyLandscape) || desktop ? (
+            <NavigationRail className="h-full pt-[max(12px,env(safe-area-inset-top))] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]">
               {tabs.map((entry) => (
                 <NavigationRailItem key={entry.name} selected={tab === entry && !settingsOpen} onClick={() => selectTab(entry)} icon={<Drawable name={entry.icon} label={entry.label} />} label={entry.label} />
               ))}
