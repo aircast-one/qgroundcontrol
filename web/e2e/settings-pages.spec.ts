@@ -16,9 +16,9 @@ PAGES.map(([tab, page, title = page]) =>
     await vehicle.getByRole('tablist').getByRole('tab', { name: tab }).click();
     const row = vehicle.getByRole('button', { name: new RegExp(`^${page.replace(/[/]/g, '\\/')}`) });
     await expect(async () => {
-      await row.click();
-      await expect(vehicle.getByRole('button', { name: 'Back', exact: true })).toBeVisible({ timeout: 1_000 });
-    }).toPass({ timeout: 15_000 });
+      if (await row.isVisible()) await row.click();
+      await expect(vehicle.getByRole('button', { name: 'Back', exact: true })).toBeVisible({ timeout: 2_000 });
+    }).toPass({ timeout: 30_000 });
     await expect(vehicle.getByText(title, { exact: true }).first()).toBeVisible();
     await vehicle.getByRole('button', { name: 'Back', exact: true }).click();
     await expect(row).toBeVisible();

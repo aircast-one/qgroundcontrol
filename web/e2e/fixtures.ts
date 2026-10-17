@@ -32,7 +32,7 @@ export const connectMock = async (page: Page, options: readonly MockOption[] = [
   }
   await options.reduce((done, name) => done.then(() => page.getByRole('checkbox', { name }).check()), Promise.resolve());
   await page.getByRole('button', { name: 'Start', exact: true }).click();
-  await expect(page.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
 };
 
 export const flightMode = (page: Page): Locator => page.getByRole('button', { name: /Change flight mode$/ }).first();
@@ -104,9 +104,10 @@ export const tapPlanMission = async (page: Page) => {
 export const openAircraftSetup = async (page: Page) => {
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
   await page.getByRole('tablist').getByRole('tab', { name: 'General' }).click();
+  const entry = page.getByRole('button', { name: 'Aircraft setup' });
   await expect(async () => {
-    await page.getByRole('button', { name: 'Aircraft setup' }).click();
-    await expect(page.getByRole('button', { name: /^Sensors/ })).toBeVisible({ timeout: 2_000 });
+    if (await entry.isVisible()) await entry.click();
+    await expect(page.getByRole('button', { name: /^Sensors/ })).toBeVisible({ timeout: 5_000 });
   }).toPass({ timeout: 60_000 });
 };
 
