@@ -1048,7 +1048,7 @@ mod tests {
 
     #[test]
     fn a_mission_whose_drops_would_not_fall_does_not_start() {
-        let stuck = crate::payloadcheck::Setup { ardupilot: true, enabled: true, loaded: true, output: true, drops: 4, ..Default::default() };
+        let stuck = crate::payloadcheck::Setup { ardupilot: true, enabled: true, loaded: true, typed: true, output: true, drops: 4, ..Default::default() };
         let ground = GuidedState { mission_available: true, can_start_mission: true, payload: stuck.clone(), ..ready_on_ground() };
         let refused = invoke_refusal(&[Action::StartMission, Action::ContinueMission], &ground);
         assert_eq!(refused.as_ref().map(|r| r.0), Some("payload"));

@@ -391,6 +391,7 @@ pub struct Vehicle {
     parameter_metadata: Option<ComponentParameters>,
     parameter_metadata_generation: u64,
     pub parameter_download_skipped: bool,
+    gripper_at_load: Option<[Option<f64>; 2]>,
     parameters_announce_due: bool,
     setup_recheck: crate::components::Recheck,
     pub link_status: crate::linkcount::LinkStatus,
@@ -637,6 +638,7 @@ impl Vehicle {
             parameter_metadata: None,
             parameter_metadata_generation: 0,
             parameter_download_skipped: false,
+            gripper_at_load: None,
             parameters_announce_due: false,
             setup_recheck: crate::components::Recheck::default(),
             link_status: crate::linkcount::LinkStatus::default(),
@@ -1723,6 +1725,8 @@ impl Vehicle {
                 }
                 params::Action::Ready { missing } => {
                     self.params_progress = 1.0;
+                    let gripper = self.gripper_params();
+                    self.gripper_at_load.get_or_insert(gripper);
                     if missing {
                         self.note("Some parameters were not received from the vehicle.".to_string());
                         let app = Some(crate::noticeboard::application_name()).filter(|n| !n.is_empty()).unwrap_or_else(|| "QGroundControl".to_string());
@@ -3405,10 +3409,15 @@ impl Vehicle {
         }
     }
 
+    fn gripper_params(&self) -> [Option<f64>; 2] {
+        ["GRIP_ENABLE", "GRIP_TYPE"].map(|name| self.parameter(self.component, name).map(|p| p.as_f64()))
+    }
+
     pub fn payload_setup(&self) -> crate::payloadcheck::Setup {
         let parameter = |name: &str| self.parameter(self.component, name).map(|p| p.as_f64());
         let enabled = crate::vehiclefacade::has_gripper(self.autopilot, parameter);
-        crate::payloadcheck::Setup::read(self.autopilot == crate::modes::AUTOPILOT_ARDUPILOT, enabled, parameter, crate::payloadcheck::drops_in(self.mission_items()), crate::payloadcheck::early_drops_in(self.mission_items(), self.sends_home()))
+        let read = crate::payloadcheck::Setup::read(self.autopilot == crate::modes::AUTOPILOT_ARDUPILOT, enabled, parameter, crate::payloadcheck::drops_in(self.mission_items()), crate::payloadcheck::early_drops_in(self.mission_items(), self.sends_home()));
+        crate::payloadcheck::Setup { stale: self.gripper_at_load.is_some_and(|at| at != self.gripper_params()), ..read }
     }
 
     pub fn mission_items(&self) -> &[plantransfer::Item] {
@@ -5734,6 +5743,23 @@ mod tests {
         hub.on_frame(origin(0), &header, &copter_heartbeat(AUTO, true), 7, 0);
         assert_eq!(empty(&hub), [1, 2, 3, 4], "arming again to resume the sortie does not reload the bays; only a grab does");
         assert_eq!(hub.active().unwrap().payload_setup().drops, 3);
+    }
+
+    #[test]
+    fn a_gripper_setting_changed_after_the_load_waits_for_a_reboot() {
+        const STABILIZE: u32 = 0;
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(STABILIZE, false), 0, 0);
+        hub.vehicles.get_mut(&1).unwrap().pack_declined = true;
+        [("GRIP_ENABLE", 0, 1.0), ("GRIP_TYPE", 1, 0.0)].iter().for_each(|(name, index, value)| {
+            hub.on_frame(origin(0), &header, &param_value(name, 2, *index, *value), 0, 10);
+        });
+        let setup = |hub: &Hub| hub.active().unwrap().payload_setup();
+        assert!(hub.active().unwrap().parameters_ready());
+        assert_eq!((setup(&hub).typed, setup(&hub).stale), (false, false), "a gripper of type None as loaded");
+        hub.on_frame(origin(0), &header, &param_value("GRIP_TYPE", 2, 1, 1.0), 0, 20);
+        assert_eq!((setup(&hub).typed, setup(&hub).stale), (true, true), "made a servo since the load, it is not there until the flight controller restarts");
     }
 
     #[test]
