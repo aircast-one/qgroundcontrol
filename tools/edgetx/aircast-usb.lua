@@ -7,7 +7,7 @@ local UPDATE_INTERVAL_TICKS = 10
 local APP_SILENT_TICKS = 150
 local CONFIRM_TICKS = 300
 local SAME_PRESS_TICKS = 20
-local BAR_MAX_W = 60
+local BAR_MAX_W = 50
 local COLUMN_ROWS = 12
 local EXIT_HINT = "RTN: stop sending sticks and exit"
 local CONFIRM_HINT = "Stop sending sticks? RTN again to exit"
@@ -212,30 +212,30 @@ local function buildLvglUI()
   pg:label({ x = 330, y = 0, font = MIDSIZE,
     text = function() return string.format("%.1fV", battVolt) end,
   })
+  pg:label({ x = 0, y = 30, font = SMLSIZE, color = color.warning, text = nextStep })
 
   for slot = 1, #used do
     local i = used[slot]
     local column, row = place(slot)
-    local colBase = column == 1 and 0 or 230
-    local yOfs = 10 + row * 24
+    local colBase = column == 1 and 0 or 235
+    local yOfs = 30 + row * 22
 
     pg:label({ x = colBase, y = yOfs, font = SMLSIZE,
       text = function() return channelText(i) end,
     })
 
-    pg:rectangle({ x = colBase, y = yOfs + 15, w = BAR_MAX_W, h = 3, filled = true,
+    pg:rectangle({ x = colBase + 175, y = yOfs + 6, w = BAR_MAX_W, h = 8, filled = true,
       color = color.primary,
       size = function()
         local w = math.floor((channelValues[i] + 1024) * BAR_MAX_W / 2048)
         if w < 1 then w = 1 elseif w > BAR_MAX_W then w = BAR_MAX_W end
-        return w, 3
+        return w, 8
       end,
     })
   end
   local column, row = place(#used + 1)
-  pg:label({ x = column == 1 and 0 or 230, y = 10 + row * 24, font = SMLSIZE, color = color.muted, text = unusedText() })
-  pg:label({ x = 0, y = 10 + (COLUMN_ROWS + 2) * 24, font = SMLSIZE, color = color.warning, text = nextStep })
-  pg:label({ x = 0, y = 10 + (COLUMN_ROWS + 3) * 24, font = SMLSIZE, text = hint })
+  pg:label({ x = column == 1 and 0 or 235, y = 30 + row * 22, font = SMLSIZE, color = color.muted, text = unusedText() })
+  pg:label({ x = 0, y = 30 + (COLUMN_ROWS + 2) * 22, font = SMLSIZE, text = hint })
 end
 
 local function init()
