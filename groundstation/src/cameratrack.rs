@@ -182,10 +182,6 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
     })
 }
 
-// QGCCameraManager::setCurrentCamera ignores an index outside its list and keeps the camera it had,
-// while the bridge answered the property write ok - so a switcher tapped on a list that had shrunk
-// under it said the camera changed and it had not. The index is checked against the labels the
-// switcher was drawn from, and read back.
 pub fn select_camera(backend: &dyn Backend, path: &str, value: &str) -> Value {
     let refused = |token: &str, reason: String| json!({ "ok": false, "result": false, "refusal": token, "reason": reason });
     let Some(index) = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value")?.as_f64()).filter(|v| v.fract() == 0.0).map(|v| v as i64) else {
