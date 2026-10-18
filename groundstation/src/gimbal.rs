@@ -662,22 +662,29 @@ impl Gimbals {
     pub fn drag_to(&mut self, pan_pct: f32, tilt_pct: f32, begin: bool, h_fov: f32, v_fov: f32, heading: f32, now_ms: u64) -> Vec<Out> {
         let pointing = self
             .active
-            .and_then(|pair| self.gimbals.get(&pair))
-            .and_then(|gimbal| gimbal.attitude.map(|a| (a.pitch, a.body_yaw, gimbal.yaw_lock.unwrap_or(false))));
-        let origin = match (begin, self.drag_origin) {
-            (false, Some(origin)) => Some(origin),
-            _ => pointing,
-        };
-        let Some((pitch, body_yaw, locked)) = origin else {
+            .and_then(|pair| self.gimbals.get(&pair).map(|gimbal| (pair, gimbal)))
+            .and_then(|(pair, gimbal)| gimbal.attitude.map(|a| (pair, a.pitch, a.body_yaw, gimbal.yaw_lock.unwrap_or(false))));
+        let Some((pair, reported_pitch, reported_yaw, locked)) = pointing else {
             return vec![Out::Refused { pair: self.active, reason: REASON_ATTITUDE_UNKNOWN }];
         };
-        self.drag_origin = Some((pitch, body_yaw, locked));
+        let left_off = self
+            .dragged
+            .filter(|dragged| dragged.pair == pair && now_ms.saturating_sub(dragged.at_ms) < DRAG_CONTINUES_MS)
+            .map(|dragged| (dragged.pitch, dragged.body_yaw, locked));
+        let origin = match (begin, self.drag_origin) {
+            (false, Some(origin)) => origin,
+            _ => left_off.unwrap_or((reported_pitch, reported_yaw, locked)),
+        };
+        let (pitch, body_yaw, locked) = origin;
         let (yaw_off, tilt) = aim_through_lens(pan_pct, tilt_pct, h_fov, v_fov, pitch);
-        let pan = body_yaw + yaw_off;
-        match locked {
+        let pan = wrap180(body_yaw + yaw_off);
+        let sent = match locked {
             true => self.send_pitch_absolute_yaw(tilt, pan + heading, false, now_ms),
             false => self.send_pitch_body_yaw(tilt, pan, false, now_ms),
-        }
+        };
+        self.drag_origin = Some(origin);
+        self.dragged = Some(Dragged { pair, pitch: tilt, body_yaw: pan, at_ms: now_ms });
+        sent
     }
 
     pub fn fact_groups(&self) -> Vec<(PairId, Option<Attitude>)> {
@@ -1496,8 +1503,21 @@ mod tests {
         assert!((later[1] - expected).abs() < 0.01, "a reading that has not caught up with the gimbal is not where the drag is measured from: {} want {expected}", later[1]);
         assert!(first[1] > 10.0 && first[1] < later[1]);
         gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, yawed(25.0)), 0.0, 2200);
-        let next = angles(&gimbals.drag_to(0.0, 0.0, true, 62.0, 37.0, 0.0, 2200));
+        let next = angles(&gimbals.drag_to(0.0, 0.0, true, 62.0, 37.0, 0.0, 2100 + DRAG_CONTINUES_MS));
         assert!((next[1] - 25.0).abs() < 0.01, "a new drag starts from where the gimbal now is");
+    }
+
+    #[test]
+    fn a_drag_started_right_after_another_carries_on_from_where_that_one_left_the_camera() {
+        let mut gimbals = discovered();
+        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, yawed(10.0)), 0.0, 2000);
+        gimbals.drag_to(0.0, 0.0, true, 62.0, 37.0, 0.0, 2000);
+        let first = angles(&gimbals.drag_to(-0.5, 0.0, false, 62.0, 37.0, 0.0, 2100))[1];
+        let second = angles(&gimbals.drag_to(-0.5, 0.0, true, 62.0, 37.0, 0.0, 2400))[1];
+        assert!((second - 2.0 * first + 10.0).abs() < 0.01, "a second swipe before the gimbal reports again turns as far again, rather than jumping back to the stale angle: {first} then {second}");
+        gimbals.center(2500);
+        let after_center = angles(&gimbals.drag_to(0.0, 0.0, true, 62.0, 37.0, 0.0, 2600))[1];
+        assert!((after_center - 10.0).abs() < 0.01, "another aim in between ends the drag, so the next one starts from the reported angle");
     }
 
     #[test]

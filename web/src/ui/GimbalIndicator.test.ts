@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseJson } from '@/bridge/Json';
 import { makeFact } from '@/bridge/Qgc';
 import type { SettingsSectionRows } from './SettingsScreen';
-import { aimFraction, gimbalAsksForControl, gimbalCellText, gimbalIndicator, gimbalRefusal, gimbalSettingsBlocks, joystickButtonsAvailable, onScreenGimbal, screenFraction, nextVideoGimbalMode, serialAsks, VIDEO_GIMBAL_MODES, videoGimbalMode } from './GimbalIndicator';
+import { aimFraction, grabFraction, swiped, gimbalAsksForControl, gimbalCellText, gimbalIndicator, gimbalRefusal, gimbalSettingsBlocks, joystickButtonsAvailable, onScreenGimbal, screenFraction, nextVideoGimbalMode, serialAsks, VIDEO_GIMBAL_MODES, videoGimbalMode } from './GimbalIndicator';
 
 describe('GimbalIndicatorTest', () => {
   it('the cell reads status, pitch and yaw as the toolbar does', () => {
@@ -108,5 +108,23 @@ describe('GimbalTakeControlTest', () => {
 
   it('the switch on the video steps through every mode and back to the first', () => {
     expect(VIDEO_GIMBAL_MODES.map((mode) => nextVideoGimbalMode(mode.mode))).toEqual(['point', 'hold', 'drag']);
+  });
+
+  it('dragging the picture turns the camera the other way, so what you grabbed stays under your finger', () => {
+    const [pan, tilt] = grabFraction(50, 25, 200, 100);
+    expect(pan, 'the picture dragged right means the camera turns left').toBe(-0.5);
+    expect(tilt, 'the picture dragged down means the camera tilts up').toBe(0.5);
+  });
+
+  it('a two-finger swipe scrolls the picture like a page and its steps add up to one drag', () => {
+    const first = swiped(null, 20, 0, 1000, 200, 100);
+    expect(first.begin).toBe(true);
+    expect(grabFraction(first.swipe.x, first.swipe.y, 200, 100)[0], 'scrolling right turns the camera right').toBeCloseTo(0.2);
+    const next = swiped(first.swipe, 20, 10, 1100, 200, 100);
+    expect(next.begin).toBe(false);
+    expect(next.swipe).toEqual({ x: -40, y: -10, at: 1100 });
+    expect(swiped(next.swipe, 20, 0, 1500, 200, 100).begin, 'a pause starts a new swipe').toBe(true);
+    const far = swiped({ x: -195, y: 0, at: 1000 }, 20, 0, 1100, 200, 100);
+    expect(far, 'a swipe past the edge of the picture carries on as a fresh drag').toEqual({ swipe: { x: -20, y: -0, at: 1100 }, begin: true });
   });
 });

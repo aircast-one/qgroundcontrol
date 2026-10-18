@@ -1,4 +1,4 @@
-import { type PointerEvent, useEffect, useMemo, useRef, useState } from 'react';
+import { type PointerEvent, type WheelEvent, useEffect, useMemo, useRef, useState } from 'react';
 import { type Json, isNull, jsonObjects, optBoolean, optDouble, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { Qgc, makeFact, refusal } from '@/bridge/Qgc';
 import { useQgcPath } from '@/bridge/QgcState';
@@ -250,8 +250,8 @@ const CLICK_AND_DRAG_SETTING = 'settings.gimbalControllerSettings.clickAndDrag';
 type VideoGimbalModeChoice = { mode: VideoGimbalMode; label: string; icon: string; hint: string; onScreen: boolean; clickAndDrag: boolean };
 
 export const VIDEO_GIMBAL_MODES: readonly VideoGimbalModeChoice[] = [
-  { mode: 'drag', label: 'Drag to move', icon: 'pan_tool', hint: 'The camera follows your drag on the video.', onScreen: false, clickAndDrag: false },
-  { mode: 'point', label: 'Tap to point', icon: 'ads_click', hint: 'The camera turns to where you tap on the video.', onScreen: true, clickAndDrag: false },
+  { mode: 'drag', label: 'Drag to move', icon: 'pan_tool', hint: 'Drag the picture like a map; what you grab stays under your finger.', onScreen: false, clickAndDrag: false },
+  { mode: 'point', label: 'Tap to point', icon: 'ads_click', hint: 'Tap to turn the camera there, or drag the picture to move it.', onScreen: true, clickAndDrag: false },
   { mode: 'hold', label: 'Hold and drag', icon: 'joystick', hint: 'Press, then drag away from that spot; the further you drag, the faster the camera turns.', onScreen: true, clickAndDrag: true },
 ];
 
@@ -318,6 +318,22 @@ export const GimbalModeSwitch = ({ className }: { className?: string }) => {
 
 export const aimFraction = (delta: number, width: number): number => delta / (Math.max(width, 1) / 2);
 
+export const DRAG_SLOP_PX = 6;
+const DRAG_SPAN = 2;
+const WHEEL_GESTURE_MS = 250;
+const WHEEL_LINE_PX = 16;
+
+export const grabFraction = (dx: number, dy: number, width: number, height: number): readonly [number, number] => [-aimFraction(dx, width), aimFraction(dy, height)];
+
+export type Swipe = { x: number; y: number; at: number };
+
+export const swiped = (last: Swipe | null, deltaX: number, deltaY: number, at: number, width: number, height: number): { swipe: Swipe; begin: boolean } => {
+  const going = last !== null && at - last.at < WHEEL_GESTURE_MS;
+  const moved = { x: (going ? last.x : 0) - deltaX, y: (going ? last.y : 0) - deltaY };
+  const within = grabFraction(moved.x, moved.y, width, height).every((part) => Math.abs(part) <= DRAG_SPAN);
+  return within ? { swipe: { ...moved, at }, begin: !going } : { swipe: { x: -deltaX, y: -deltaY, at }, begin: true };
+};
+
 type Point = { x: number; y: number };
 
 const pointIn = (event: PointerEvent<HTMLDivElement>): Point & { width: number; height: number } => {
@@ -332,7 +348,7 @@ export const GimbalScreenControl = ({ className }: { className?: string }) => {
   const approximate = useMemo(() => lensReading(lensJson)?.approximate === true, [lensJson]);
   const drag = useRef<Point | null>(null);
   const dragBegun = useRef(false);
-  const tapping = useRef(false);
+  const wheel = useRef<Swipe | null>(null);
   const press = useRef<{ latest: Point; width: number; height: number; repeating: ReturnType<typeof setInterval> } | null>(null);
   useEffect(() => () => {
     if (press.current !== null) clearInterval(press.current.repeating);
@@ -348,51 +364,53 @@ export const GimbalScreenControl = ({ className }: { className?: string }) => {
     drag.current = null;
   };
 
-  if (!control.enabled) {
+  const scroll = (event: WheelEvent<HTMLDivElement>) => {
+    if (event.ctrlKey) return;
+    const unit = event.deltaMode === 1 ? WHEEL_LINE_PX : 1;
+    const box = event.currentTarget.getBoundingClientRect();
+    const { swipe, begin } = swiped(wheel.current, event.deltaX * unit, event.deltaY * unit, event.timeStamp, box.width, box.height);
+    wheel.current = swipe;
+    const [pan, tilt] = grabFraction(swipe.x, swipe.y, box.width, box.height);
+    sendDrag(pan, tilt, begin);
+  };
+
+  if (!control.clickAndDrag || !control.enabled) {
+    const points = control.enabled;
     return (
       <div
         className={`touch-none ${className ?? ''}`}
+        onWheel={scroll}
         onPointerDown={(event) => {
+          if (!event.isPrimary) {
+            release();
+            return;
+          }
           event.currentTarget.setPointerCapture(event.pointerId);
           drag.current = { x: event.clientX, y: event.clientY };
           dragBegun.current = false;
         }}
         onPointerMove={(event) => {
           const from = drag.current;
-          if (from === null) return;
+          if (from === null || !event.isPrimary) return;
+          const [dx, dy] = [event.clientX - from.x, event.clientY - from.y];
+          if (!dragBegun.current && Math.hypot(dx, dy) < DRAG_SLOP_PX) return;
           const box = event.currentTarget.getBoundingClientRect();
           const begin = !dragBegun.current;
           dragBegun.current = true;
-          sendDrag(aimFraction(event.clientX - from.x, box.width), -aimFraction(event.clientY - from.y, box.height), begin);
-        }}
-        onPointerUp={release}
-        onPointerCancel={release}
-      />
-    );
-  }
-
-  if (!control.clickAndDrag) {
-    return (
-      <div
-        className={className}
-        onPointerDown={() => {
-          tapping.current = true;
-        }}
-        onPointerLeave={() => {
-          tapping.current = false;
-        }}
-        onPointerCancel={() => {
-          tapping.current = false;
+          const [pan, tilt] = grabFraction(dx, dy, box.width, box.height);
+          sendDrag(pan, tilt, begin);
         }}
         onPointerUp={(event) => {
-          if (!tapping.current) return;
-          tapping.current = false;
+          const tapped = drag.current !== null && !dragBegun.current;
+          release();
+          if (!points || !tapped) return;
           const at = pointIn(event);
           const [pan, tilt] = screenFraction(at.x, at.y, at.width, at.height);
           send(pan, tilt, true);
         }}
+        onPointerCancel={release}
       >
-        {approximate ? (
+        {points && approximate ? (
           <Text typography="labelMedium" color="#ffffff" className="pointer-events-none absolute start-1/2 top-[72px] -translate-x-1/2 rounded-lg bg-black/55 px-2.5 py-1.5 whitespace-nowrap">
             {APPROXIMATE_AIM}
           </Text>
@@ -404,6 +422,7 @@ export const GimbalScreenControl = ({ className }: { className?: string }) => {
   return (
     <div
       className={`touch-none ${className ?? ''}`}
+      onWheel={scroll}
       onPointerDown={(event) => {
         event.currentTarget.setPointerCapture(event.pointerId);
         release();

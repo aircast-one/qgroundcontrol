@@ -114,7 +114,7 @@ test('the gimbal sheet chooses what a drag on the video does and opens every gim
   await expect(app.getByRole('button', { name: 'Tap to point' })).toHaveAttribute('aria-pressed', 'true');
   await app.getByRole('button', { name: 'Drag to move' }).click();
   await expect(app.getByRole('button', { name: 'Drag to move' })).toHaveAttribute('aria-pressed', 'true');
-  await expect(app.getByText('The camera follows your drag on the video.')).toBeVisible();
+  await expect(app.getByText('Drag the picture like a map; what you grab stays under your finger.')).toBeVisible();
   await app.getByRole('button', { name: 'Gimbal settings', exact: true }).click();
   await expect(app.getByText('Show gimbal azimuth indicator in map')).toBeVisible();
 });
@@ -269,7 +269,7 @@ test('measuring the lens learns how wide the camera sees from how far a detectio
   expect(Math.abs(lens.vFov - LENS.v), `measured ${lens.vFov}°`).toBeLessThan(1);
 });
 
-test('a drag on the video turns the gimbal as far as the drag spans through the lens, however late its angle reports', async ({ app }) => {
+test('dragging the picture turns the gimbal the other way, as far as the drag spans through the lens, however late its angle reports', async ({ app }) => {
   await addVideoSource(app, /^WebRTC \(WHEP\)/, WHEP_STREAM);
   await connectMock(app, ['Enable gimbal']);
   const later = app.getByRole('button', { name: 'Fly now, finish loading in background' });
@@ -298,6 +298,44 @@ test('a drag on the video turns the gimbal as far as the drag spans through the 
   await app.mouse.down();
   await Array.from({ length: 40 }, (_, step) => step + 1).reduce((done, step) => done.then(() => app.mouse.move(x + step * 8, y)), Promise.resolve());
   await app.mouse.up();
-  const [yawOff] = aimThroughLens(320 / (box.width / 2), 0, 80, 80, before.pitch);
+  const [yawOff] = aimThroughLens(-320 / (box.width / 2), 0, 80, 80, before.pitch);
   await expect.poll(async () => Math.abs(((await aim())?.yaw ?? 0) - (before.yaw + yawOff)), { timeout: 30_000 }).toBeLessThan(0.5);
+});
+
+const gimbalAim = (page: Page) => async () => {
+  const view = (await page.evaluate(async (module) => ((await import(module)) as { Qgc: { get: (path: string) => Promise<unknown> } }).Qgc.get('view.gimbal'), '/src/bridge/Qgc.ts')) as { gimbals?: { pitch: number | null; bodyYaw: number | null }[] } | null;
+  const gimbal = view?.gimbals?.[0];
+  return gimbal?.pitch == null || gimbal.bodyYaw == null ? null : { pitch: gimbal.pitch, yaw: gimbal.bodyYaw };
+};
+
+const liveGimbalVideo = async (page: Page) => {
+  await addVideoSource(page, /^WebRTC \(WHEP\)/, WHEP_STREAM);
+  await connectMock(page, ['Enable gimbal']);
+  const video = page.locator('video').first();
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.videoWidth), { timeout: 30_000 }).toBe(640);
+  const later = page.getByRole('button', { name: 'Fly now, finish loading in background' });
+  if (await later.isVisible()) await later.click();
+  await expect(later).toBeHidden();
+  await expect(page.getByRole('button', { name: /^Video gimbal mode/ })).toHaveAccessibleName('Video gimbal mode, Tap to point');
+  await expect.poll(gimbalAim(page), { timeout: 30_000 }).not.toBeNull();
+  const box = (await video.boundingBox())!;
+  return { box, before: (await gimbalAim(page)()) as { pitch: number; yaw: number } };
+};
+
+test('in tap to point, holding the mouse and dragging the picture moves the camera', async ({ app }) => {
+  const { box, before } = await liveGimbalVideo(app);
+  const [x, y] = [box.x + box.width / 2, box.y + box.height / 2];
+  await app.mouse.move(x, y);
+  await app.mouse.down();
+  await app.mouse.move(x - box.width / 4, y + box.height / 4, { steps: 10 });
+  await app.mouse.up();
+  await expect.poll(async () => ((await gimbalAim(app)())?.yaw ?? before.yaw) - before.yaw, { timeout: 10_000 }).toBeGreaterThan(5);
+  expect(((await gimbalAim(app)())?.pitch ?? before.pitch) - before.pitch, 'pulling the picture down tilts the camera up').toBeGreaterThan(3);
+});
+
+test('a two-finger swipe on the video scrolls the picture and moves the camera', async ({ app }) => {
+  const { box, before } = await liveGimbalVideo(app);
+  await app.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await Array.from({ length: 10 }).reduce<Promise<void>>((done) => done.then(() => app.mouse.wheel(20, 0)), Promise.resolve());
+  await expect.poll(async () => ((await gimbalAim(app)())?.yaw ?? before.yaw) - before.yaw, { timeout: 10_000 }).toBeGreaterThan(5);
 });
