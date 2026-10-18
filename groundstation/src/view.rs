@@ -317,6 +317,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.cameraSettings", deps: crate::camsettings::DEPS, compute: crate::camsettings::camera_settings_view },
     View { path: "view.joystickMapping", deps: &[], compute: joystick::joystick_view },
     View { path: "view.joystick", deps: joystickhost::DEPS, compute: joystickhost::joystick_state_view },
+    View { path: "view.usbRadio", deps: &[], compute: crate::usbradio::indicator_view },
     View { path: "view.followMe", deps: followme::DEPS, compute: followme::follow_me_view },
     View { path: "view.frame", deps: frame::DEPS, compute: frame::frame_view },
     View { path: "view.gcsPosition", deps: gcsposition::DEPS, compute: gcsposition::gcs_position_view },

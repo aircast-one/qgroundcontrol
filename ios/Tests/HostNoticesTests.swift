@@ -36,6 +36,12 @@ final class HostNoticesTests: XCTestCase {
         XCTAssertEqual(batch?.dialogs, [AppMessage(title: "Aircast QGC", text: "Parameters missing"), AppMessage(title: "Aircast QGC", text: "Reboot", action: REBOOT_VEHICLE_ACTION)])
     }
 
+    func testARadioFoundOnUsbIsOfferedWithUseAndNotNow() {
+        XCTAssertEqual(confirmLabel(USE_RADIO_ACTION), "Use")
+        XCTAssertEqual(confirmLabel(OPEN_SETUP_ACTION), "Open Setup")
+        XCTAssertEqual(confirmLabel(nil), "OK")
+    }
+
     func testASecondErrorInOneBatchIsStillCriticalAndSaysMoreArrived() {
         XCTAssertNil(criticalBanner([]))
         XCTAssertEqual(criticalBanner(["EKF failure"]), "EKF failure")

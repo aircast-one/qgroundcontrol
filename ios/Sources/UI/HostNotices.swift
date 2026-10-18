@@ -21,6 +21,16 @@ struct AppMessage: Equatable, Hashable, Identifiable {
 
 let REBOOT_VEHICLE_ACTION = "rebootVehicle"
 let OPEN_SETUP_ACTION = "openSetup"
+let USE_RADIO_ACTION = "useRadio"
+let USE_RADIO = "usbRadio.use"
+
+func confirmLabel(_ action: String?) -> String {
+    switch action {
+    case OPEN_SETUP_ACTION: return "Open Setup"
+    case USE_RADIO_ACTION: return "Use"
+    default: return "OK"
+    }
+}
 
 func noticeBatch(_ view: JSON?) -> NoticeBatch? {
     guard let view, let unseen = view["unseen"].arrayOrNil else { return nil }
@@ -59,13 +69,15 @@ struct AppMessageDialog: View {
         Color.clear
             .invisibleAnchor()
             .alert(message.title, isPresented: .constant(true)) {
-                Button(message.action == OPEN_SETUP_ACTION ? "Open Setup" : "OK") {
+                Button(confirmLabel(message.action)) {
                     if message.action == REBOOT_VEHICLE_ACTION { offMain { Qgc.invoke(REBOOT_VEHICLE) } }
                     if message.action == OPEN_SETUP_ACTION { onOpenSetup() }
+                    if message.action == USE_RADIO_ACTION { offMain { Qgc.invoke(USE_RADIO) } }
                     onDismiss()
                 }
                 if message.action == REBOOT_VEHICLE_ACTION { Button("Cancel", role: .cancel, action: onDismiss) }
                 if message.action == OPEN_SETUP_ACTION { Button("Later", role: .cancel, action: onDismiss) }
+                if message.action == USE_RADIO_ACTION { Button("Not now", role: .cancel, action: onDismiss) }
             } message: {
                 Text(message.text)
             }

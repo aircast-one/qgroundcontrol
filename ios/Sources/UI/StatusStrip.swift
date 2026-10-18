@@ -163,7 +163,7 @@ private let NARROW_STATUS_CELLS = 1
 
 private func stripGap(_ narrow: Bool) -> CGFloat { narrow ? NARROW_STRIP_GAP : STRIP_GAP }
 
-private let STATUS_CELLS = ["battery", "flightTime", "gps", "rc", "rcOverride", "telemetry", "links", "aircastLink", "esc", "joystick", "remoteId", "gpsResilience", "rtk", "gcsBattery", "gimbal", "supportForwarding"]
+private let STATUS_CELLS = ["battery", "flightTime", "gps", "rc", "rcOverride", "telemetry", "links", "aircastLink", "esc", "joystick", "usbRadio", "remoteId", "gpsResilience", "rtk", "gcsBattery", "gimbal", "supportForwarding"]
 
 func shownStatusCells(_ narrow: Bool) -> Int { narrow ? NARROW_STATUS_CELLS : COMPACT_STATUS_CELLS }
 
@@ -345,6 +345,7 @@ private struct VehicleStatusReadings: View {
         case "aircastLink": AircastLinkCell()
         case "esc": EscIndicatorCell()
         case "joystick": JoystickIndicatorCell()
+        case "usbRadio": UsbRadioCell()
         case "remoteId": RemoteIdIndicatorCell()
         case "gpsResilience": GpsResilienceCell()
         case "rtk": RtkIndicatorCell(status: rtk)
@@ -612,6 +613,18 @@ private struct InstrumentSheet: View {
         if severity >= 2 { return theme.colors.error }
         if severity == 1 { return theme.aircast.warning }
         return severity == SEVERITY_SECONDARY ? theme.colors.onSurfaceVariant : theme.colors.onSurface
+    }
+}
+
+private struct UsbRadioCell: View {
+    @Environment(\.theme) private var theme
+    @QgcPath(USB_RADIO_VIEW) private var view
+
+    var body: some View {
+        if let badge = usbRadioBadge(view) {
+            let tone = usbRadioTone(badge.state)
+            InlineCell(text: badge.text, colour: tone == .error ? theme.colors.error : tone == .warning ? theme.aircast.warning : nil, icon: .gamepad)
+        }
     }
 }
 

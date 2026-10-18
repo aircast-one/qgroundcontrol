@@ -255,6 +255,7 @@ internal fun StatusReadingsInline(rtk: RtkStatus?, gcsBattery: GcsBatteryReading
             "aircastLink" to { AircastLinkCell() },
             "esc" to { EscIndicatorCell() },
             "joystick" to { JoystickIndicatorCell() },
+            "usbRadio" to { UsbRadioCell() },
             "remoteId" to { RemoteIdIndicatorCell() },
             "gpsResilience" to { GpsResilienceCell() },
             "rtk" to { RtkIndicatorCell(rtk) },
@@ -506,6 +507,18 @@ private fun severityColour(severity: Int): Color = when {
     severity == 1 -> MaterialTheme.aircast.warning
     severity == SEVERITY_SECONDARY -> MaterialTheme.colorScheme.onSurfaceVariant
     else -> MaterialTheme.colorScheme.onSurface
+}
+
+@Composable
+private fun UsbRadioCell() {
+    val view by qgcPath(USB_RADIO_VIEW)
+    val badge = remember(view) { usbRadioBadge(view) } ?: return
+    val tint = when (usbRadioTone(badge.state)) {
+        UsbRadioTone.Error -> MaterialTheme.colorScheme.error
+        UsbRadioTone.Warning -> MaterialTheme.aircast.warning
+        null -> Color.Unspecified
+    }
+    InlineCell(badge.text, tint, R.drawable.ic_gamepad)
 }
 
 @Composable

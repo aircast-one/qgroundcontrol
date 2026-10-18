@@ -1,5 +1,6 @@
 import { type CSSProperties, Fragment, type ReactNode, createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { type Fact, type FactSlider, Qgc } from '@/bridge/Qgc';
+import { requestSerialPort, serialAvailable } from '@/core/client';
 import { settingControl, useQgcPath } from '@/bridge/QgcState';
 import { type Json, jsonObjects, optBoolean, optDouble, optJSONArray, optText } from '@/bridge/Json';
 import { useBackHandler, useKeyedState, useLaunchedEffect, useProduceState, useUpdatedRef } from '@/kotlin/Compose';
@@ -169,7 +170,12 @@ export const PAGE_LOOKS: ReadonlyMap<string, PageLook> = new Map<string, PageLoo
   [DEVICE_PAGE, PageLook({ group: SettingsGroup.Device, icon: 'ic_developer_board', inline: true, tabHome: true })],
 ]);
 
-export const BLOCK_HOMES: ReadonlyArray<readonly [readonly [string, string], SettingsGroup]> = [[['Fly View', 'Guided Commands'], SettingsGroup.Safety]];
+export const RADIO_ON_USB_BLOCK = 'Radio on USB (EdgeTX script)';
+
+export const BLOCK_HOMES: ReadonlyArray<readonly [readonly [string, string], SettingsGroup]> = [
+  [['Fly View', 'Guided Commands'], SettingsGroup.Safety],
+  [['Connections', RADIO_ON_USB_BLOCK], SettingsGroup.Control],
+];
 
 export const pageLook = (title: string): PageLook => PAGE_LOOKS.get(title) ?? PageLook({ group: SettingsGroup.General, icon: 'ic_settings' });
 
@@ -584,17 +590,18 @@ const SettingsPageBody = ({ page, className }: { page: SettingsPageEntry; classN
     setLoaded(true);
   });
 
-  if (page.showsLinks) return <LinksScreen className={className} footer={<SettingsControls page={page} sections={sections} onWrite={reload} />} />;
+  const own = sectionsIn(pageLook(page.title).group, page.title, sections);
+  if (page.showsLinks) return <LinksScreen className={className} footer={<SettingsControls page={page} sections={own} onWrite={reload} />} />;
   if (page.showsAbout) return <AboutPage links={page.helpLinks} className={className} />;
   if (page.showsFlasher) return <FlasherScreen className={className} />;
   if (page.showsConsole) return <AppLogPage className={className} />;
   if (page.showsPx4Logs) return <Px4LogTransferPage className={className} />;
   if (page.showsVideoSources) return <CamerasEditor className={className} />;
   if (!loaded) return <Text className={`block p-4 ${className}`}>Reading settings.</Text>;
-  if (sections.length === 0) return <Text className={`block p-4 ${className}`}>No settings exposed here.</Text>;
+  if (own.length === 0) return <Text className={`block p-4 ${className}`}>No settings exposed here.</Text>;
   return (
     <div className={`overflow-y-auto ${className}`}>
-      <SettingsControls page={page} sections={sections} onWrite={reload} />
+      <SettingsControls page={page} sections={own} onWrite={reload} />
       {page.title === GENERAL_PAGE ? <ResetAllSettingsRow /> : null}
     </div>
   );
@@ -1121,6 +1128,10 @@ const BitmaskPicker = ({ fact, write }: { fact: Fact; write: (block: () => Promi
 
 const toLongOrNull = (text: string): number | null => (/^[+-]?\d+$/.test(text) ? Number(text) : null);
 
+export const ALLOW_USB_PORT = 'Allow a USB port…';
+
+export const choiceOptions = (fact: Fact, webSerial: boolean): readonly string[] => [...fact.enumStrings.map(sentenceCase), ...(fact.portChoice && webSerial ? [ALLOW_USB_PORT] : [])];
+
 const EnumField = ({ fact, style, write }: { fact: Fact; style: CSSProperties; write: (block: () => Promise<boolean>) => void }) => {
   const notice = useContext(LocalChangeNotice);
   const choose = (index: number): Promise<boolean> => {
@@ -1132,11 +1143,15 @@ const EnumField = ({ fact, style, write }: { fact: Fact; style: CSSProperties; w
     <ChoiceField
       label={null}
       value={shownEnumLabel(fact)}
-      options={fact.enumStrings.map(sentenceCase)}
+      options={choiceOptions(fact, serialAvailable())}
       style={style}
       enabled={fact.enabled}
       groups={fact.enumGroups}
       onPick={(index) => {
+        if (index >= fact.enumStrings.length) {
+          write(() => requestSerialPort().then(() => true, () => false));
+          return;
+        }
         const previous = fact.enumIndex;
         write(async () => {
           const accepted = await choose(index);

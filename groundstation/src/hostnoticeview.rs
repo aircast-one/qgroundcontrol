@@ -54,6 +54,7 @@ pub fn host_notices_view(backend: &dyn Backend, args: &[String]) -> Value {
             match text {
                 crate::noticeboard::REBOOT_VEHICLE_TEXT => json!({ "title": title, "text": format!("{text} Click Ok to reboot the vehicle now."), "action": "rebootVehicle" }),
                 crate::connectnotices::SETUP_INCOMPLETE => json!({ "title": title, "text": text, "action": "openSetup" }),
+                crate::usbradio::RADIO_FOUND => json!({ "title": title, "text": text, "action": "useRadio" }),
                 _ => json!({ "title": title, "text": text, "action": "" }),
             }
         })
@@ -152,5 +153,13 @@ mod tests {
             { "id": 1, "kind": "message", "title": "", "text": crate::connectnotices::SETUP_INCOMPLETE },
         ] }));
         assert_eq!(host_notices_view(&host, &[])["dialogs"][0]["action"], "openSetup");
+    }
+
+    #[test]
+    fn a_radio_found_on_usb_is_offered_as_a_dialog_with_use() {
+        let host = Host(json!({ "kind": "object", "dropped": 0, "notices": [
+            { "id": 1, "kind": "message", "title": "", "text": crate::usbradio::RADIO_FOUND },
+        ] }));
+        assert_eq!(host_notices_view(&host, &[])["dialogs"][0]["action"], "useRadio");
     }
 }

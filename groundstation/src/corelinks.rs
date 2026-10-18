@@ -707,7 +707,7 @@ fn owned_ports() -> Vec<String> {
         Some(crate::nmea::Wanted::Serial(port, _)) => Some(port),
         _ => None,
     };
-    nmea.into_iter().chain(crate::usbradio::wanted()).collect()
+    nmea.into_iter().chain(crate::usbradio::wanted()).chain(crate::usbradio::detected_ports()).collect()
 }
 
 pub fn held_by_autoconnect(live: &[(crate::transport::LinkId, LinkConfig)], dynamic: &[String], owned: &[String]) -> Vec<crate::transport::LinkId> {

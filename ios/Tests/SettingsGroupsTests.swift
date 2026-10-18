@@ -11,7 +11,7 @@ final class SettingsGroupsTests: XCTestCase {
     }
 
     func testEachTabListsItsPagesInDesignOrderAndUnknownPagesLandInGeneral() {
-        XCTAssertEqual(tabPages(.Control, every).map(\.title), ["Fly View"])
+        XCTAssertEqual(tabPages(.Control, every).map(\.title), ["Connections", "Fly View"], "Control borrows the radio on USB block from Connections")
         XCTAssertEqual(tabPages(.Transmission, every).map(\.title), ["Connections"])
         XCTAssertEqual(tabPages(.General, every).map(\.title), ["General", "Something new"])
     }
@@ -37,6 +37,12 @@ final class SettingsGroupsTests: XCTestCase {
         XCTAssertEqual(sectionsIn(.Safety, "Fly View", flyView).flatMap(\.blocks).map(\.title), ["Guided Commands"])
         XCTAssertEqual(sectionsIn(.Control, "Fly View", flyView).flatMap(\.blocks).map(\.title), ["Map and compass"])
         XCTAssertEqual(sectionsIn(.Camera, "Fly View", flyView), [])
+    }
+
+    func testTheRadioOnUsbMovesFromLinksToControlBesideTheOtherStickInputs() {
+        let connections = [SettingsSectionRows(title: "Auto Connect", group: "autoConnectSettings", note: "", blocks: [block(""), block("NMEA GPS"), block(RADIO_ON_USB_BLOCK)])]
+        XCTAssertEqual(sectionsIn(.Control, "Connections", connections).flatMap(\.blocks).map(\.title), [RADIO_ON_USB_BLOCK])
+        XCTAssertEqual(sectionsIn(.Transmission, "Connections", connections).flatMap(\.blocks).map(\.title), ["", "NMEA GPS"])
     }
 
     func testBorrowedBlocksAreHeadedByTheirOwnNames() {

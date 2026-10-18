@@ -40,6 +40,7 @@ import {
   totalDraw,
 } from '@/ui/InstrumentDetail';
 import { JoystickIndicatorCell } from '@/ui/JoystickIndicator';
+import { USB_RADIO_VIEW, usbRadioBadge, usbRadioTone } from '@/ui/UsbRadioIndicator';
 import { useOsdBackdrop } from '@/ui/Osd';
 import { LayoutWidget, movedKey, orderedKeys } from '@/ui/OverlayLayout';
 import { ParameterForm } from '@/ui/ParameterForm';
@@ -313,6 +314,7 @@ const VehicleReadings = ({ rtk, gcsBattery, className, style }: ReadingsProps) =
     ['aircastLink', <AircastLinkCell />],
     ['esc', <EscIndicatorCell />],
     ['joystick', <JoystickIndicatorCell />],
+    ['usbRadio', <UsbRadioCell />],
     ['remoteId', <RemoteIdIndicatorCell />],
     ['gpsResilience', <GpsResilienceCell />],
     ['rtk', <RtkIndicatorCell status={rtk} />],
@@ -665,6 +667,13 @@ const severityColour = (severity: number): string => {
   if (severity >= 2) return md('error');
   if (severity === 1) return aircast('warning');
   return severity === SEVERITY_SECONDARY ? md('onSurfaceVariant') : md('onSurface');
+};
+
+const UsbRadioCell = () => {
+  const badge = usbRadioBadge(useQgcPath(USB_RADIO_VIEW));
+  if (badge === null) return null;
+  const tone = usbRadioTone(badge.state);
+  return <InlineCell text={badge.text} colour={tone === 'error' ? md('error') : tone === 'warning' ? aircast('warning') : null} icon="ic_gamepad" />;
 };
 
 const InlineCell = ({ text, colour, icon = null, onClick = null }: { text: string; colour: string | null; icon?: DrawableName | null; onClick?: (() => void) | null }) => {

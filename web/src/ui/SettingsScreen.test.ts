@@ -45,6 +45,9 @@ import {
   pageMatches,
   pageTitle,
   sectionsIn,
+  RADIO_ON_USB_BLOCK,
+  choiceOptions,
+  ALLOW_USB_PORT,
   settingsPages,
   settingsSections,
   setupSearchHits,
@@ -60,7 +63,7 @@ describe('SettingsGroupsTest', () => {
   const every = [page('General'), page('Remote ID'), page('Fly View'), page('ADSB Server'), page('Video'), page('Connections'), page('Something new')];
 
   it('eachTabListsItsPagesInDesignOrderAndUnknownPagesLandInGeneral', () => {
-    expect(tabPages(SettingsGroup.Control, every).map((it) => it.title)).toEqual(['Fly View']);
+    expect(tabPages(SettingsGroup.Control, every).map((it) => it.title)).toEqual(['Connections', 'Fly View']);
     expect(tabPages(SettingsGroup.Transmission, every).map((it) => it.title)).toEqual(['Connections']);
     expect(tabPages(SettingsGroup.General, every).map((it) => it.title)).toEqual(['General', 'Something new']);
   });
@@ -82,6 +85,19 @@ describe('SettingsGroupsTest', () => {
     expect(sectionsIn(SettingsGroup.Safety, 'Fly View', flyView).flatMap((it) => it.blocks).map((it) => it.title)).toEqual(['Guided Commands']);
     expect(sectionsIn(SettingsGroup.Control, 'Fly View', flyView).flatMap((it) => it.blocks).map((it) => it.title)).toEqual(['Map and compass']);
     expect(sectionsIn(SettingsGroup.Camera, 'Fly View', flyView)).toEqual([]);
+  });
+
+  it('theRadioOnUsbMovesFromLinksToControlBesideTheOtherStickInputs', () => {
+    const connections: SettingsSectionRows[] = [{ title: 'Auto Connect', group: 'autoConnectSettings', note: '', blocks: [block(''), block('NMEA GPS'), block(RADIO_ON_USB_BLOCK)] }];
+    expect(sectionsIn(SettingsGroup.Control, 'Connections', connections).flatMap((it) => it.blocks).map((it) => it.title)).toEqual([RADIO_ON_USB_BLOCK]);
+    expect(sectionsIn(SettingsGroup.Transmission, 'Connections', connections).flatMap((it) => it.blocks).map((it) => it.title)).toEqual(['', 'NMEA GPS']);
+  });
+
+  it('aPortPickerOffersToAllowAUsbPortOnlyWhereTheBrowserCan', () => {
+    const port = makeFact({ path: 'settings.autoConnectSettings.usbRadioPort', name: 'usbRadioPort', description: 'Device', units: '', valueString: '', value: '', enumStrings: ['Off', 'EdgeTX radio (webserial-0)'], enumIndex: 0, isBool: false, isString: true, readOnly: false, portChoice: true });
+    expect(choiceOptions(port, true)).toEqual(['Off', 'EdgeTX radio (webserial-0)', ALLOW_USB_PORT]);
+    expect(choiceOptions(port, false)).toEqual(['Off', 'EdgeTX radio (webserial-0)']);
+    expect(choiceOptions({ ...port, portChoice: false }, true)).toEqual(['Off', 'EdgeTX radio (webserial-0)']);
   });
 
   it('borrowedBlocksAreHeadedByTheirOwnNames', () => {

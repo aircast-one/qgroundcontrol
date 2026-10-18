@@ -22,6 +22,8 @@ export const NoticeBatch = (fields: Omit<NoticeBatch, 'dialogs'> & { dialogs?: r
 
 export const REBOOT_VEHICLE_ACTION = 'rebootVehicle';
 export const OPEN_SETUP_ACTION = 'openSetup';
+export const USE_RADIO_ACTION = 'useRadio';
+export const USE_RADIO = 'usbRadio.use';
 
 const blankToNull = (text: string): string | null => (text.trim() === '' ? null : text);
 
@@ -64,10 +66,11 @@ export const AppMessageDialog = ({ message, onOpenSetup = () => undefined, onDis
         onClick={() => {
           if (message.action === REBOOT_VEHICLE_ACTION) void Qgc.invoke(REBOOT_VEHICLE);
           if (message.action === OPEN_SETUP_ACTION) onOpenSetup();
+          if (message.action === USE_RADIO_ACTION) void Qgc.invoke(USE_RADIO);
           onDismiss();
         }}
       >
-        {message.action === OPEN_SETUP_ACTION ? 'Open Setup' : 'OK'}
+        {message.action === OPEN_SETUP_ACTION ? 'Open Setup' : message.action === USE_RADIO_ACTION ? 'Use' : 'OK'}
       </TextButton>
     }
     dismissButton={
@@ -78,6 +81,10 @@ export const AppMessageDialog = ({ message, onOpenSetup = () => undefined, onDis
       ) : message.action === OPEN_SETUP_ACTION ? (
         <TextButton onClick={onDismiss}>
           Later
+        </TextButton>
+      ) : message.action === USE_RADIO_ACTION ? (
+        <TextButton onClick={onDismiss}>
+          Not now
         </TextButton>
       ) : undefined
     }

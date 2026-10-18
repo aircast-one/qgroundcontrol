@@ -135,12 +135,18 @@ fn choices_json(fact: &Value, labels: Vec<String>, raws: Vec<Value>) -> Value {
     chosen
 }
 
+const PORT_CHOICES: [&str; 2] = ["autoConnectNmeaPort", "usbRadioPort"];
+
 fn port_choices(backend: &dyn Backend, fact: &Value, off: Option<&str>) -> Value {
     let ports = backend.value_fields("links", "serialPorts,serialPortStrings");
     let listed = crate::links::serial_ports(ports.get("serialPorts"), ports.get("serialPortStrings"));
     let current = fact.get("value").and_then(Value::as_str).filter(|v| !v.is_empty()).map(str::to_string);
     let extra = current.filter(|c| !listed.iter().any(|p| p["port"].as_str() == Some(c.as_str())));
-    let labels = off.map(str::to_string).into_iter().chain(listed.iter().map(|p| p["label"].as_str().unwrap_or("").to_string())).chain(extra.clone()).collect();
+    let label = |p: &Value| match p["port"].as_str().filter(|port| crate::usbradio::is_radio(port)) {
+        Some(port) => format!("EdgeTX radio ({port})"),
+        None => p["label"].as_str().unwrap_or("").to_string(),
+    };
+    let labels = off.map(str::to_string).into_iter().chain(listed.iter().map(label)).chain(extra.clone()).collect();
     let raws = off.map(|_| json!("")).into_iter().chain(listed.iter().map(|p| p["port"].clone())).chain(extra.map(Value::from)).collect();
     choices_json(fact, labels, raws)
 }
@@ -615,6 +621,7 @@ fn section_json(title: &str, slice: &str, backend: Option<&dyn Backend>) -> Valu
         .map(|mut control| {
             let named = control.get("name").and_then(Value::as_str).unwrap_or_default().to_string();
             control["keywords"] = json!(fact_keywords(group, &named));
+            control["portChoice"] = json!(PORT_CHOICES.contains(&named.as_str()));
             qml_labelled(group, inverted(control))
         })
         .collect();
@@ -893,6 +900,23 @@ mod tests {
     }
 
     #[test]
+    fn a_port_streaming_the_radio_script_is_named_an_edgetx_radio() {
+        struct Ports;
+        impl Backend for Ports {
+            fn get(&self, _p: &str) -> String {
+                json!({ "kind": "object", "serialPorts": ["webserial-7", "webserial-8"], "serialPortStrings": ["USB serial 0483:5740 (webserial-7)", "USB serial 0483:5740 (webserial-8)"] }).to_string()
+            }
+            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
+            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        crate::usbradio::sniff("webserial-7", b"$0,0,0,0,\r\n");
+        let offered = with_choices(&Ports, &json!({ "name": "usbRadioPort", "value": "" }));
+        assert_eq!(offered["enumStrings"], json!(["Off", "EdgeTX radio (webserial-7)", "USB serial 0483:5740 (webserial-8)"]), "the same 0483:5740 a flight controller shows is told apart by what it sends");
+    }
+
+    #[test]
     fn the_radio_on_usb_is_off_until_a_port_is_picked() {
         let row = |value: &str| {
             let facts = vec![json!({ "kind": "fact", "name": "usbRadioPort", "value": value, "typeIsString": true })];
@@ -900,6 +924,7 @@ mod tests {
         };
         assert_eq!((row("")["control"].clone(), row("")["display"].clone(), row("")["label"].clone()), (json!("choice"), json!("Off"), json!("Device")));
         assert_eq!(row("/dev/ttyACM0")["display"], "/dev/ttyACM0", "a radio that is unplugged right now stays chosen");
+        assert_eq!(row("")["portChoice"], true, "a port picker, so a browser can offer to allow a USB port");
         assert!(!user_visible("usbRadioPort", true), "iOS has no USB serial");
         assert!(!user_visible("usbRadioStandby", true), "nor its 4G standby");
         assert!(user_visible("usbRadioStandby", false));

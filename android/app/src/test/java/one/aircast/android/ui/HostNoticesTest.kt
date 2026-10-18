@@ -50,6 +50,15 @@ class HostNoticesTest {
     }
 
     @Test
+    fun `a radio found on USB is offered with Use and Not now`() {
+        val batch = noticeBatch(JSONObject("""{"unseen":[{"id":5,"kind":"message"}],"banners":[],"dialogs":[{"title":"Aircast QGC","text":"Fly with it?","action":"useRadio"}]}"""))
+        assertEquals(USE_RADIO_ACTION, batch?.dialogs?.single()?.action)
+        assertEquals("Use", confirmLabel(USE_RADIO_ACTION))
+        assertEquals("Open Setup", confirmLabel(OPEN_SETUP_ACTION))
+        assertEquals("OK", confirmLabel(null))
+    }
+
+    @Test
     fun `a second error in one batch is still critical and says more arrived`() {
         assertEquals(null, criticalBanner(emptyList()))
         assertEquals("EKF failure", criticalBanner(listOf("EKF failure")))

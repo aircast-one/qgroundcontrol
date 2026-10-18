@@ -95,6 +95,7 @@ export const factFromControl = (control: Json): Fact | null => {
     keywords: optText(control, 'keywords'),
     inverted: optBoolean(control, 'inverted'),
     rawChoice: optBoolean(control, 'rawChoice'),
+    portChoice: optBoolean(control, 'portChoice'),
     valueDetails: optText(control, 'valueDetails'),
     problem: optText(control, 'problem'),
     enumGroups: options.map((it) => optText(it, 'group')),

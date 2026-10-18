@@ -45,6 +45,7 @@ export type FactFields = {
   keywords?: string;
   inverted?: boolean;
   rawChoice?: boolean;
+  portChoice?: boolean;
   valueDetails?: string;
   problem?: string;
   enumGroups?: string[];
@@ -103,6 +104,7 @@ export const makeFact = (fields: FactFields): Fact => {
     keywords: '',
     inverted: false,
     rawChoice: false,
+    portChoice: false,
     valueDetails: '',
     problem: '',
     enumGroups: [],

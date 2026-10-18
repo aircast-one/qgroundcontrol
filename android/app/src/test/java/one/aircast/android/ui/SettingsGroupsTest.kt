@@ -10,7 +10,7 @@ class SettingsGroupsTest {
 
     @Test
     fun eachTabListsItsPagesInDesignOrderAndUnknownPagesLandInGeneral() {
-        assertEquals(listOf("Fly View"), tabPages(SettingsGroup.Control, every).map { it.title })
+        assertEquals("Control borrows the radio on USB block from Connections", listOf("Connections", "Fly View"), tabPages(SettingsGroup.Control, every).map { it.title })
         assertEquals(listOf("Connections"), tabPages(SettingsGroup.Transmission, every).map { it.title })
         assertEquals(listOf("General", "Something new"), tabPages(SettingsGroup.General, every).map { it.title })
     }
@@ -31,6 +31,13 @@ class SettingsGroupsTest {
         assertEquals(listOf("Guided Commands"), sectionsIn(SettingsGroup.Safety, "Fly View", flyView).flatMap { it.blocks }.map { it.title })
         assertEquals(listOf("Map and compass"), sectionsIn(SettingsGroup.Control, "Fly View", flyView).flatMap { it.blocks }.map { it.title })
         assertEquals(emptyList<SettingsSectionRows>(), sectionsIn(SettingsGroup.Camera, "Fly View", flyView))
+    }
+
+    @Test
+    fun theRadioOnUsbMovesFromLinksToControlBesideTheOtherStickInputs() {
+        val connections = listOf(SettingsSectionRows("Auto Connect", "autoConnectSettings", "", listOf(block(""), block("NMEA GPS"), block(RADIO_ON_USB_BLOCK))))
+        assertEquals(listOf(RADIO_ON_USB_BLOCK), sectionsIn(SettingsGroup.Control, "Connections", connections).flatMap { it.blocks }.map { it.title })
+        assertEquals(listOf("", "NMEA GPS"), sectionsIn(SettingsGroup.Transmission, "Connections", connections).flatMap { it.blocks }.map { it.title })
     }
 
     @Test

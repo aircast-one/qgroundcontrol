@@ -120,7 +120,12 @@ private let PAGE_LOOK_ORDER: [(String, PageLook)] = [
 
 let PAGE_LOOKS: [String: PageLook] = Dictionary(PAGE_LOOK_ORDER, uniquingKeysWith: { first, _ in first })
 
-let BLOCK_HOMES: [(page: String, block: String, group: SettingsGroup)] = [("Fly View", "Guided Commands", .Safety)]
+let RADIO_ON_USB_BLOCK = "Radio on USB (EdgeTX script)"
+
+let BLOCK_HOMES: [(page: String, block: String, group: SettingsGroup)] = [
+    ("Fly View", "Guided Commands", .Safety),
+    ("Connections", RADIO_ON_USB_BLOCK, .Control),
+]
 
 func pageLook(_ title: String) -> PageLook { PAGE_LOOKS[title] ?? PageLook(group: .General, icon: .settings) }
 
@@ -554,8 +559,9 @@ private struct SettingsPageBody: View {
     }
 
     @ViewBuilder private var content: some View {
+        let own = sectionsIn(pageLook(page.title).group, page.title, sections)
         if page.showsLinks {
-            let shown = sections
+            let shown = own
             LinksScreen(footer: { SettingsControls(page: page, sections: shown) { reloads += 1 } })
         } else if page.showsAbout {
             AboutPage(links: page.helpLinks)
@@ -567,12 +573,12 @@ private struct SettingsPageBody: View {
             CamerasEditor()
         } else if !loaded {
             Text("Reading settings.").padding(16).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        } else if sections.isEmpty {
+        } else if own.isEmpty {
             Text("No settings exposed here.").padding(16).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         } else {
             ScrollView {
                 VStack(alignment: .leading, spacing: 0) {
-                    SettingsControls(page: page, sections: sections) { reloads += 1 }
+                    SettingsControls(page: page, sections: own) { reloads += 1 }
                     if page.title == GENERAL_PAGE { ResetAllSettingsRow() }
                 }
             }

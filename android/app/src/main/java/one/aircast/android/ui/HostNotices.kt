@@ -24,6 +24,8 @@ internal data class AppMessage(val title: String, val text: String, val action: 
 
 internal const val REBOOT_VEHICLE_ACTION = "rebootVehicle"
 internal const val OPEN_SETUP_ACTION = "openSetup"
+internal const val USE_RADIO_ACTION = "useRadio"
+internal const val USE_RADIO = "usbRadio.use"
 
 internal fun noticeBatch(view: JSONObject?): NoticeBatch? {
     val unseen = view?.optJSONArray("unseen") ?: return null
@@ -59,15 +61,23 @@ internal fun AppMessageDialog(message: AppMessage, onOpenSetup: () -> Unit = {},
             TextButton(onClick = {
                 if (message.action == REBOOT_VEHICLE_ACTION) offMainDetached { Qgc.invoke(REBOOT_VEHICLE) }
                 if (message.action == OPEN_SETUP_ACTION) onOpenSetup()
+                if (message.action == USE_RADIO_ACTION) offMainDetached { Qgc.invoke(USE_RADIO) }
                 onDismiss()
-            }) { Text(if (message.action == OPEN_SETUP_ACTION) "Open Setup" else "OK") }
+            }) { Text(confirmLabel(message.action)) }
         },
         dismissButton = when (message.action) {
             REBOOT_VEHICLE_ACTION -> ({ TextButton(onClick = onDismiss) { Text("Cancel") } })
             OPEN_SETUP_ACTION -> ({ TextButton(onClick = onDismiss) { Text("Later") } })
+            USE_RADIO_ACTION -> ({ TextButton(onClick = onDismiss) { Text("Not now") } })
             else -> null
         },
     )
+}
+
+internal fun confirmLabel(action: String?): String = when (action) {
+    OPEN_SETUP_ACTION -> "Open Setup"
+    USE_RADIO_ACTION -> "Use"
+    else -> "OK"
 }
 
 internal fun quietBanners(banners: List<String>, shownAt: Map<String, Long>, now: Long): List<String> =

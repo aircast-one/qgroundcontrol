@@ -183,7 +183,12 @@ internal val PAGE_LOOKS = mapOf(
     "About" to PageLook(SettingsGroup.General, R.drawable.ic_help),
 )
 
-internal val BLOCK_HOMES = mapOf(("Fly View" to "Guided Commands") to SettingsGroup.Safety)
+internal const val RADIO_ON_USB_BLOCK = "Radio on USB (EdgeTX script)"
+
+internal val BLOCK_HOMES = mapOf(
+    ("Fly View" to "Guided Commands") to SettingsGroup.Safety,
+    ("Connections" to RADIO_ON_USB_BLOCK) to SettingsGroup.Control,
+)
 
 internal fun pageLook(title: String): PageLook = PAGE_LOOKS[title] ?: PageLook(SettingsGroup.General, R.drawable.ic_settings)
 
@@ -538,8 +543,10 @@ private fun SettingsPageBody(page: SettingsPageEntry, modifier: Modifier = Modif
         loaded = true
     }
 
+    val own = sectionsIn(pageLook(page.title).group, page.title, sections)
+
     if (page.showsLinks) {
-        LinksScreen(modifier) { SettingsControls(page, sections) { reloads++ } }
+        LinksScreen(modifier) { SettingsControls(page, own) { reloads++ } }
         return
     }
 
@@ -573,13 +580,13 @@ private fun SettingsPageBody(page: SettingsPageEntry, modifier: Modifier = Modif
         return
     }
 
-    if (sections.isEmpty()) {
+    if (own.isEmpty()) {
         Text("No settings exposed here.", modifier.padding(16.dp))
         return
     }
 
     Column(modifier.verticalScroll(rememberScrollState())) {
-        SettingsControls(page, sections) { reloads++ }
+        SettingsControls(page, own) { reloads++ }
         if (page.title == GENERAL_PAGE) ResetAllSettingsRow()
     }
 }

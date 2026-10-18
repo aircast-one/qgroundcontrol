@@ -1,5 +1,8 @@
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, MutexGuard, PoisonError};
+
+use serde_json::{Value, json};
 
 use crate::mavout::Outbound;
 use crate::transport::LinkId;
@@ -17,6 +20,9 @@ const BAUD: u32 = 115_200;
 const MAX_LINE_BYTES: usize = 1024;
 const VALUES: std::ops::RangeInclusive<usize> = 4..=24;
 const OVERRIDE_PWM: std::ops::RangeInclusive<i32> = 800..=2200;
+const SNIFF_LIMIT: usize = 16 * 1024;
+pub const RADIO_FOUND: &str = "An EdgeTX radio is streaming its sticks on USB. Fly with it?";
+pub const USE: &str = "usbRadio.use";
 
 pub type Frame = [u16; crate::joystick::RC_FRAME_CHANNELS];
 pub type Target = (u8, LinkId);
@@ -163,6 +169,118 @@ fn radio() -> MutexGuard<'static, Radio> {
     RADIO.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+#[derive(Default)]
+pub struct Detection {
+    sniffing: BTreeMap<String, (Lines, usize)>,
+    radios: BTreeSet<String>,
+    offered: BTreeSet<String>,
+    pending: Option<String>,
+}
+
+impl Detection {
+    pub fn heard(&mut self, port: &str, bytes: &[u8]) {
+        if self.radios.contains(port) {
+            return;
+        }
+        let (lines, seen) = self.sniffing.entry(port.to_string()).or_default();
+        if *seen > SNIFF_LIMIT {
+            return;
+        }
+        *seen += bytes.len();
+        if !lines.feed(bytes).is_empty() {
+            self.sniffing.remove(port);
+            self.radios.insert(port.to_string());
+        }
+    }
+
+    pub fn is_radio(&self, port: &str) -> bool {
+        self.radios.contains(port)
+    }
+
+    pub fn keep_present(&mut self, present: &[String]) {
+        self.sniffing.retain(|port, _| present.contains(port));
+        self.radios.retain(|port| present.contains(port));
+        self.offered.retain(|port| present.contains(port));
+        self.pending = self.pending.take().filter(|port| self.radios.contains(port));
+    }
+
+    pub fn offer(&mut self, chosen: Option<&str>) -> Option<String> {
+        if chosen.is_some() {
+            self.pending = None;
+            return None;
+        }
+        let port = self.radios.iter().find(|port| !self.offered.contains(*port)).cloned()?;
+        self.offered.insert(port.clone());
+        self.pending = Some(port.clone());
+        Some(port)
+    }
+
+    pub fn take_pending(&mut self) -> Option<String> {
+        self.pending.take()
+    }
+}
+
+static DETECTION: Mutex<Detection> = Mutex::new(Detection { sniffing: BTreeMap::new(), radios: BTreeSet::new(), offered: BTreeSet::new(), pending: None });
+
+fn detection() -> MutexGuard<'static, Detection> {
+    DETECTION.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+pub fn sniff(port: &str, bytes: &[u8]) {
+    detection().heard(port, bytes);
+}
+
+pub fn is_radio(port: &str) -> bool {
+    detection().is_radio(port)
+}
+
+pub fn detected_ports() -> Vec<String> {
+    detection().radios.iter().cloned().collect()
+}
+
+fn offer_found_radio() {
+    let present: Vec<String> = crate::corelinks::port_infos().into_iter().map(|port| port.system_location).collect();
+    let offered = {
+        let mut detection = detection();
+        detection.keep_present(&present);
+        detection.offer(wanted().as_deref())
+    };
+    if offered.is_some() {
+        crate::noticeboard::post(crate::noticeboard::MESSAGE, "", RADIO_FOUND);
+    }
+}
+
+pub fn owns(path: &str) -> bool {
+    path == USE
+}
+
+pub fn run(_backend: &dyn crate::router::Backend, _path: &str, _args: &str) -> Value {
+    match detection().take_pending() {
+        Some(port) => {
+            crate::settingsstore::set_raw(PORT_SETTING, &json!(port));
+            json!({ "ok": true, "port": port })
+        }
+        None => json!({ "ok": false, "reason": "No radio is waiting to be used." }),
+    }
+}
+
+pub fn indicator(chosen: bool, live: bool, flying: Flying) -> Value {
+    let (text, state) = match (chosen, live, flying) {
+        (false, ..) => return Value::Null,
+        (true, false, _) => ("Radio · stopped", "stopped"),
+        (true, true, Flying::Vehicle(_)) => ("Radio · live", "live"),
+        (true, true, Flying::Joystick(_)) => ("Radio · paused", "paused"),
+        (true, true, Flying::Standby(_)) => ("Radio · standby", "standby"),
+        (true, true, Flying::NoVehicle) => ("Radio · ready", "ready"),
+    };
+    json!({ "text": text, "state": state })
+}
+
+pub fn indicator_view(_backend: &dyn crate::router::Backend, _args: &[String]) -> Value {
+    let live = radio().live(crate::hub::now_ms());
+    json!({ "kind": "object", "class": "UsbRadio", "indicator": indicator(wanted().is_some(), live, flying()) })
+}
+
 pub fn wanted() -> Option<String> {
     crate::settingsstore::raw_setting(PORT_SETTING).and_then(|value| value.as_str().map(str::trim).map(str::to_string)).filter(|port| !port.is_empty())
 }
@@ -216,8 +334,9 @@ fn advance(fresh: Option<Frame>) {
     answer(now, live);
 }
 
-fn heard(frames: Vec<Frame>) {
+fn heard_on(port: &str, frames: Vec<Frame>) {
     if let Some(frame) = frames.last() {
+        detection().radios.insert(port.to_string());
         advance(Some(*frame));
     }
 }
@@ -227,8 +346,9 @@ fn open(port: &str) -> Option<Port> {
     let lines = Mutex::new(Lines::default());
     let dead = Arc::new(AtomicBool::new(false));
     let lost = dead.clone();
+    let name = port.to_string();
     let opened = crate::platformserial::PlatformSerial::open(SERIAL_ID, port, BAUD, 8, 1, 0, move |event| match event {
-        crate::platformserial::Event::Bytes(bytes) => heard(lines.lock().unwrap_or_else(PoisonError::into_inner).feed(&bytes)),
+        crate::platformserial::Event::Bytes(bytes) => heard_on(&name, lines.lock().unwrap_or_else(PoisonError::into_inner).feed(&bytes)),
         crate::platformserial::Event::Disconnected(_) => lost.store(true, Ordering::Relaxed),
     })
     .ok()?;
@@ -249,8 +369,9 @@ fn open(port: &str) -> Option<Port> {
     let mut lines = Lines::default();
     let dead = Arc::new(AtomicBool::new(false));
     let lost = dead.clone();
+    let name = port.to_string();
     let link = crate::seriallink::SerialLink::open(&config, move |event| match event {
-        crate::seriallink::Event::Bytes(bytes) => heard(lines.feed(&bytes)),
+        crate::seriallink::Event::Bytes(bytes) => heard_on(&name, lines.feed(&bytes)),
         crate::seriallink::Event::Disconnected(_) => lost.store(true, Ordering::Relaxed),
     })
     .ok()?;
@@ -276,6 +397,7 @@ pub fn maintain() {
         let attempt = wanted.map(|wanted| Attempt { port: open(&wanted), wanted, at: now });
         *ATTEMPT.lock().unwrap_or_else(PoisonError::into_inner) = attempt;
     }
+    offer_found_radio();
     advance(None);
 }
 
@@ -339,6 +461,48 @@ mod tests {
         answer(5_000, true);
         assert_eq!(String::from_utf8(written.lock().unwrap().clone()).unwrap(), "@N\n", "with no vehicle the radio is told so");
         *ATTEMPT.lock().unwrap() = None;
+    }
+
+    #[test]
+    fn a_port_is_a_radio_once_it_sends_the_scripts_lines_and_mavlink_never_reads_as_one() {
+        let mut found = Detection::default();
+        found.heard("webserial-0", &LINE.as_bytes()[..20]);
+        assert!(!found.is_radio("webserial-0"), "half a line proves nothing");
+        found.heard("webserial-0", &LINE.as_bytes()[20..]);
+        assert!(found.is_radio("webserial-0"));
+        let heartbeat = [0xfd, 0x09, 0, 0, 0x2a, 1, 1, 0, 0, 0, 0, 0, 0, 0, 2, 3, 0x51, 4, 3, 0x1c, 0x7f, b'\n'];
+        (0..2000).for_each(|_| found.heard("ttyACM0", &heartbeat));
+        assert!(!found.is_radio("ttyACM0"), "a flight controller's binary MAVLink is never a radio");
+        found.heard("ttyACM0", LINE.as_bytes());
+        assert!(!found.is_radio("ttyACM0"), "sniffing stops after the first few kilobytes, so a busy link costs nothing");
+        found.keep_present(&["ttyACM0".to_string()]);
+        assert!(!found.is_radio("webserial-0"), "an unplugged radio is forgotten, so a flight controller that later takes its port name is not mistaken for it");
+    }
+
+    #[test]
+    fn a_found_radio_is_offered_once_and_use_picks_that_port() {
+        let mut found = Detection::default();
+        assert_eq!(found.offer(None), None, "nothing found, nothing offered");
+        found.heard("webserial-0", LINE.as_bytes());
+        assert_eq!(found.offer(Some("webserial-1")), None, "a pilot who already picked a radio is not asked");
+        assert_eq!(found.offer(None).as_deref(), Some("webserial-0"));
+        assert_eq!(found.offer(None), None, "Not now is not asked again for the same port");
+        assert_eq!(found.take_pending().as_deref(), Some("webserial-0"));
+        assert_eq!(found.take_pending(), None, "Use picks it once");
+        found.keep_present(&[]);
+        found.heard("webserial-0", LINE.as_bytes());
+        assert_eq!(found.offer(None).as_deref(), Some("webserial-0"), "plugged in again, it is offered again");
+    }
+
+    #[test]
+    fn the_indicator_says_what_the_radio_on_usb_is_doing() {
+        assert_eq!(indicator(false, true, Flying::Vehicle(1)), Value::Null, "hidden while Radio on USB is off");
+        assert_eq!(indicator(true, true, Flying::Vehicle(1))["text"], "Radio · live");
+        assert_eq!(indicator(true, true, Flying::Joystick(1))["text"], "Radio · paused", "a joystick owns the sticks");
+        assert_eq!(indicator(true, true, Flying::Standby(1))["text"], "Radio · standby", "the sticks wait on the aircraft for 4G standby");
+        assert_eq!(indicator(true, true, Flying::NoVehicle)["text"], "Radio · ready");
+        assert_eq!(indicator(true, false, Flying::Vehicle(1))["state"], "stopped", "a lost or silent radio has handed the sticks back");
+        assert!(owns(USE) && !owns("usbRadio"));
     }
 
     #[test]

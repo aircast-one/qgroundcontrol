@@ -307,10 +307,14 @@ fn build(shared: &Shared, id: LinkId, config: &LinkConfig) -> Result<Owned, Fail
         #[cfg(not(hosted_serial))]
         Kind::Serial { baud, data_bits, flow_control, stop_bits, parity, port_name, .. } => {
             let shared = shared.clone();
+            let sniffed = port_name.clone();
             crate::seriallink::SerialLink::open(
                 &crate::seriallink::SerialConfig { port_name: port_name.clone(), baud: *baud as u32, data_bits: *data_bits, parity: *parity, stop_bits: *stop_bits, flow_control: *flow_control, usb_direct: false },
                 move |event| match event {
-                    crate::seriallink::Event::Bytes(bytes) => shared.deliver(id, &bytes),
+                    crate::seriallink::Event::Bytes(bytes) => {
+                        crate::usbradio::sniff(&sniffed, &bytes);
+                        shared.deliver(id, &bytes)
+                    }
                     crate::seriallink::Event::Disconnected(reason) => shared.closed_by_reader(id, &reason),
                 },
             )
@@ -320,8 +324,12 @@ fn build(shared: &Shared, id: LinkId, config: &LinkConfig) -> Result<Owned, Fail
         #[cfg(hosted_serial)]
         Kind::Serial { baud, data_bits, stop_bits, parity, port_name, .. } => {
             let shared = shared.clone();
+            let sniffed = port_name.clone();
             crate::platformserial::PlatformSerial::open(id, port_name, *baud as u32, *data_bits, *stop_bits, *parity, move |event| match event {
-                crate::platformserial::Event::Bytes(bytes) => shared.deliver(id, &bytes),
+                crate::platformserial::Event::Bytes(bytes) => {
+                    crate::usbradio::sniff(&sniffed, &bytes);
+                    shared.deliver(id, &bytes)
+                }
                 crate::platformserial::Event::Disconnected(reason) => shared.closed_by_reader(id, &reason),
             })
             .map(Owned::PlatformSerial)
