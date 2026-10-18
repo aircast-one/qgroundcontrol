@@ -3,7 +3,7 @@ import { mutableStateOf } from '@/kotlin/State';
 import type { DrawableName } from '@/res/drawables';
 import { followDeviceView } from '@/ui/DeviceView';
 
-export const DeviceLevel = { Ready: 0, Warn: 1, Blocked: 2 } as const;
+export const DeviceLevel = { Ready: 0, Warn: 1, Blocked: 2, Neutral: 3 } as const;
 
 export type DeviceAction = { readonly label: string; readonly href: string };
 export type DeviceCheck = { readonly label: string; readonly value: string; readonly level: number; readonly href: string; readonly action: string };

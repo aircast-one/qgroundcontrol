@@ -8,6 +8,7 @@ import { useOsdBackdrop } from '@/ui/Osd';
 import { FootNote, OverridePageHeading, SectionHeader, SetupRow, SetupState } from '@/ui/SetupRow';
 import { DEVICE_HOME, DEVICE_PAGE, DeviceLevel, type DeviceStatus, deviceAnswered, deviceNeedsAttention, devicePageIcon, deviceRequested, deviceStatus } from '@/ui/DeviceStatus';
 import { DEVICE_SCREENS, type DeviceScreenEntry, devicePath } from '@/ui/DeviceScreens';
+import { levelColor } from '@/ui/DeviceKit';
 
 const TITLE_PREFIX = 'aircast · ';
 
@@ -18,8 +19,6 @@ export const framedTitle = (documentTitle: string | undefined, fallback: string)
 
 export const openedTitle = (status: DeviceStatus | null, href: string): string =>
   status?.pages.find((page) => page.href === href)?.title ?? status?.checks.find((check) => check.href === href)?.label ?? status?.action?.label ?? 'Device';
-
-const levelColor = (level: number): string => (level === DeviceLevel.Ready ? aircast('success') : level === DeviceLevel.Warn ? aircast('warning') : aircast('alert'));
 
 const checkState = (level: number): SetupState => (level === DeviceLevel.Ready ? SetupState.Done : SetupState.NeedsAttention);
 
