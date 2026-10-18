@@ -6,7 +6,7 @@
             "name": "enableOnScreenControl",
             "shortDesc": "Enable on Screen Camera Control",
             "type": "bool",
-            "default": false,
+            "default": true,
             "label": "Enable on Screen Camera Control"
         },
         {

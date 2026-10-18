@@ -96,3 +96,21 @@ test('recording the live WHEP video saves a video file in the browser', async ({
   expect((await readFile(file)).length).toBeGreaterThan(10_000);
   await expect(app.getByRole('button', { name: 'Start recording' }).first()).toBeVisible();
 });
+
+test('a tap on the live picture points the gimbal there', async ({ app }) => {
+  await addVideoSource(app, /^WebRTC \(WHEP\)/, WHEP_STREAM);
+  await connectMock(app, ['Enable gimbal']);
+  const video = app.locator('video').first();
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.videoWidth), { timeout: 30_000 }).toBe(640);
+  const pitch = () =>
+    app.evaluate(async (module) => {
+      const view = (await ((await import(module)) as { Qgc: { get: (path: string) => Promise<unknown> } }).Qgc.get('view.gimbal')) as { gimbals?: { pitch: number | null }[] } | null;
+      return view?.gimbals?.[0]?.pitch ?? null;
+    }, '/src/bridge/Qgc.ts');
+  await expect.poll(pitch, { timeout: 30_000 }).not.toBeNull();
+  const before = (await pitch()) as number;
+  const box = await video.boundingBox();
+  if (box === null) throw new Error('the video has no box');
+  await app.mouse.click(box.x + box.width / 2, box.y + box.height * 0.9);
+  await expect.poll(pitch, { timeout: 30_000 }).toBeLessThan(before - 5);
+});
