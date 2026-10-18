@@ -29,8 +29,6 @@ export const deviceAddress = (typed: string): string | null => {
   }
 };
 
-export const telemetryReachable = (page: string, origin: string): boolean => new URL(page).protocol === 'http:' || new URL(origin).protocol === 'https:';
-
 export const deviceServed = mutableStateOf(false);
 
 export const deviceConnected = mutableStateOf<string | null>(null);
@@ -82,7 +80,7 @@ export const DeviceLink = {
     followStatus();
     await Promise.all([
       CameraCommands.adoptDevice(host, deviceCameras(device)),
-      telemetryReachable(location.href, origin) ? LinkCommands.createWebSocket(deviceLinkName(device, host), deviceSocket(resolveDeviceUrl(origin, '/fly/'))) : Promise.resolve(null),
+      LinkCommands.createWebSocket(deviceLinkName(device, host), deviceSocket(resolveDeviceUrl(origin, '/fly/'))),
     ]);
     return null;
   },

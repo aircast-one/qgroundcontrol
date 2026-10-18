@@ -2,7 +2,7 @@ import { useContext, useEffect, useState } from 'react';
 import { useBackHandler, useKeyedState } from '@/kotlin/Compose';
 import { useValue } from '@/kotlin/State';
 import { FilledTonalButton, OutlinedTextField, Surface, Text, TextButton } from '@/m3';
-import { DeviceLink, deviceAddress, deviceConnected, deviceServed, telemetryReachable } from '@/app/DeviceLink';
+import { DeviceLink, deviceAddress, deviceConnected, deviceServed } from '@/app/DeviceLink';
 import { Color, aircast, md, withAlpha } from '@/theme/Colors';
 import { LocalAppNavigation } from '@/ui/AppNavigation';
 import { useOsdBackdrop } from '@/ui/Osd';
@@ -131,13 +131,9 @@ const ConnectDevice = () => {
   );
 };
 
-export const flyHereText = (origin: string): string =>
-  `To fly from here, open ${origin}/fly/ — a browser lets this page read the device's settings and video, but not hold a telemetry link to a device without https.`;
-
 const HostedDevice = ({ origin }: { origin: string }) => (
   <DeviceSection title="This app">
     <DeviceFact label="Connected to" value={new URL(origin).host} />
-    {!telemetryReachable(location.href, origin) ? <DeviceNotice notice={{ level: DeviceLevel.Neutral, text: flyHereText(origin) }} /> : null}
     <div className="px-list py-2">
       <TextButton onClick={() => DeviceLink.disconnect()}>Disconnect</TextButton>
     </div>
