@@ -393,6 +393,16 @@ impl Default for Gimbals {
     }
 }
 
+pub fn aim_through_lens(pan_pct: f32, tilt_pct: f32, h_fov: f32, v_fov: f32, pitch: f32) -> (f32, f32) {
+    let right = f64::from(pan_pct) * (f64::from(h_fov).to_radians() / 2.0).tan();
+    let up = f64::from(tilt_pct) * (f64::from(v_fov).to_radians() / 2.0).tan();
+    let (sin, cos) = f64::from(pitch).to_radians().sin_cos();
+    let (forward, raised) = (cos - sin * up, sin + cos * up);
+    let yaw = right.atan2(forward).to_degrees();
+    let tilt = raised.atan2(forward.hypot(right)).to_degrees();
+    (yaw as f32, tilt as f32)
+}
+
 pub fn wrap180(angle: f32) -> f32 {
     (angle + 180.0).rem_euclid(360.0) - 180.0
 }
@@ -603,10 +613,6 @@ impl Gimbals {
     }
 
     pub fn on_screen_control(&mut self, pan_pct: f32, tilt_pct: f32, screen: Screen, heading: f32, now_ms: u64) -> Vec<Out> {
-        let (pan_scale, tilt_scale) = match screen {
-            Screen::Point { h_fov, v_fov } => (h_fov * 0.5, v_fov * 0.5),
-            Screen::Drag { slide_speed } => (slide_speed * 0.1, slide_speed * 0.1),
-        };
         let pointing = self
             .active
             .and_then(|pair| self.gimbals.get(&pair))
@@ -614,7 +620,13 @@ impl Gimbals {
         let Some((body_yaw, pitch, locked)) = pointing else {
             return vec![Out::Refused { pair: self.active, reason: REASON_ATTITUDE_UNKNOWN }];
         };
-        let (pan, tilt) = (pan_pct * pan_scale + body_yaw, tilt_pct * tilt_scale + pitch);
+        let (pan, tilt) = match screen {
+            Screen::Point { h_fov, v_fov } => {
+                let (yaw_off, tilt_to) = aim_through_lens(pan_pct, tilt_pct, h_fov, v_fov, pitch);
+                (body_yaw + yaw_off, tilt_to)
+            }
+            Screen::Drag { slide_speed } => (pan_pct * slide_speed * 0.1 + body_yaw, tilt_pct * slide_speed * 0.1 + pitch),
+        };
         match locked {
             true => self.send_pitch_absolute_yaw(tilt, pan + heading, false, now_ms),
             false => self.send_pitch_body_yaw(tilt, pan, false, now_ms),
@@ -1416,12 +1428,23 @@ mod tests {
     }
 
     #[test]
+    fn a_tap_becomes_the_ray_through_that_point_of_the_lens() {
+        let (yaw, tilt) = aim_through_lens(0.5, 0.0, 62.0, 37.35, 0.0);
+        assert!((yaw - 16.72).abs() < 0.01, "a quarter of the frame off centre on a 62° lens is atan(0.5 tan 31°), not a quarter of 62°: {yaw}");
+        assert!(tilt.abs() < 1e-4);
+        let (yaw, tilt) = aim_through_lens(0.0, 1.0, 62.0, 37.35, -30.0);
+        assert!(yaw.abs() < 1e-4 && (tilt - (-30.0 + 37.35 / 2.0)).abs() < 0.01, "straight up the centre line is the pitch plus half the vertical field: {tilt}");
+        let (yaw, tilt) = aim_through_lens(1.0, 0.0, 62.0, 37.35, -90.0);
+        assert!((yaw - 90.0).abs() < 0.01 && (tilt - (-59.0)).abs() < 0.01, "looking straight down, the right edge of the picture is a quarter turn of yaw and 31° up from nadir: {yaw} {tilt}");
+    }
+
+    #[test]
     fn on_screen_control_moves_from_where_the_gimbal_is_pointing() {
         let mut gimbals = discovered();
         gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, yawed(10.0)), 0.0, 2000);
         let params = angles(&gimbals.on_screen_control(1.0, 0.5, Screen::Point { h_fov: 60.0, v_fov: 40.0 }, 0.0, 2000));
         assert!((params[1] - 40.0).abs() < 0.01, "a click at the right edge is half a horizontal field of view away from where the gimbal already points");
-        assert!((params[0] - 10.0).abs() < 0.01, "and a click halfway down is a quarter of the vertical field of view");
+        assert!((params[0] - 8.96).abs() < 0.01, "and a click halfway up is the ray through that point of the lens, a little under a quarter of the vertical field once it is also off to the side: {}", params[0]);
         let params = angles(&gimbals.on_screen_control(-1.0, 0.0, Screen::Drag { slide_speed: 100.0 }, 0.0, 2000));
         assert!(params[1].abs() < 0.01, "a drag steps a tenth of the slide speed, from 10 degrees back to zero");
         let mut unknown = discovered_with([f32::NAN; 4]);

@@ -97,6 +97,12 @@ test('recording the live WHEP video saves a video file in the browser', async ({
   await expect(app.getByRole('button', { name: 'Start recording' }).first()).toBeVisible();
 });
 
+const holdGimbal = (page: Page, at: { pitch: number; yaw: number }) =>
+  page.evaluate(
+    async ([module, pitch, yaw]) => ((await import(module)) as { Qgc: { invoke: (path: string, ...args: unknown[]) => Promise<boolean> } }).Qgc.invoke('gimbal.aim', pitch, yaw),
+    ['/src/bridge/Qgc.ts', at.pitch, at.yaw] as const,
+  );
+
 test('the gimbal sheet chooses what a drag on the video does and opens every gimbal setting', async ({ app }) => {
   await addVideoSource(app, /^WebRTC \(WHEP\)/, WHEP_STREAM);
   await connectMock(app, ['Enable gimbal']);
@@ -113,29 +119,65 @@ test('the gimbal sheet chooses what a drag on the video does and opens every gim
   await expect(app.getByText('Show gimbal azimuth indicator in map')).toBeVisible();
 });
 
-test('a tap on the live picture points the gimbal there', async ({ app }) => {
+test('a tap on the live picture turns the gimbal along the ray through that point of the lens', async ({ app }) => {
   await addVideoSource(app, /^WebRTC \(WHEP\)/, WHEP_STREAM);
   await connectMock(app, ['Enable gimbal']);
   const video = app.locator('video').first();
   await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.videoWidth), { timeout: 30_000 }).toBe(640);
-  const pitch = () =>
+  const aim = () =>
     app.evaluate(async (module) => {
-      const view = (await ((await import(module)) as { Qgc: { get: (path: string) => Promise<unknown> } }).Qgc.get('view.gimbal')) as { gimbals?: { pitch: number | null }[] } | null;
-      return view?.gimbals?.[0]?.pitch ?? null;
+      const view = (await ((await import(module)) as { Qgc: { get: (path: string) => Promise<unknown> } }).Qgc.get('view.gimbal')) as { gimbals?: { pitch: number | null; bodyYaw: number | null }[] } | null;
+      const gimbal = view?.gimbals?.[0];
+      return gimbal?.pitch == null || gimbal.bodyYaw == null ? null : { pitch: gimbal.pitch, yaw: gimbal.bodyYaw };
     }, '/src/bridge/Qgc.ts');
-  await expect.poll(pitch, { timeout: 30_000 }).not.toBeNull();
-  const before = (await pitch()) as number;
+  await expect.poll(aim, { timeout: 30_000 }).not.toBeNull();
+  const later = app.getByRole('button', { name: 'Fly now, finish loading in background' });
+  if (await later.isVisible()) await later.click();
+  await expect(later).toBeHidden();
   const box = await video.boundingBox();
   if (box === null) throw new Error('the video has no box');
-  await app.mouse.click(box.x + box.width / 2, box.y + box.height * 0.9);
-  await expect.poll(pitch, { timeout: 30_000 }).toBeLessThan(before - 5);
+  await holdGimbal(app, (await aim()) as { pitch: number; yaw: number });
+  const held = async () => {
+    const first = await aim();
+    await new Promise((resolve) => setTimeout(resolve, 2_500));
+    const second = await aim();
+    return first !== null && second !== null && Math.abs(first.pitch - second.pitch) < 0.05 && Math.abs(first.yaw - second.yaw) < 0.05;
+  };
+  await expect.poll(held, { timeout: 30_000 }).toBe(true);
+  const before = (await aim()) as { pitch: number; yaw: number };
+  await app.mouse.click(box.x + box.width * 0.75, box.y + box.height * 0.9);
+  const [yawOff, tilt] = aimThroughLens(0.5, -0.8, 80, 80, before.pitch);
+  const expected = { pitch: Math.max(-45, Math.min(45, tilt)), yaw: before.yaw + yawOff };
+  await expect.poll(async () => {
+    const now = await aim();
+    return now === null ? null : Math.max(Math.abs(now.pitch - expected.pitch), Math.abs(now.yaw - expected.yaw));
+  }, { timeout: 30_000, message: `expected ${JSON.stringify(expected)}` }).toBeLessThan(0.5);
 });
+
+const aimThroughLens = (pan: number, tilt: number, hFov: number, vFov: number, pitch: number): [number, number] => {
+  const right = pan * Math.tan(radians(hFov) / 2);
+  const up = tilt * Math.tan(radians(vFov) / 2);
+  const [sin, cos] = [Math.sin(radians(pitch)), Math.cos(radians(pitch))];
+  const [forward, raised] = [cos - sin * up, sin + cos * up];
+  return [(Math.atan2(right, forward) * 180) / Math.PI, (Math.atan2(raised, Math.hypot(forward, right)) * 180) / Math.PI];
+};
+
+const radians = (degrees: number) => (degrees * Math.PI) / 180;
+
+const seenThroughLens = (object: { pitch: number; bodyYaw: number }, camera: { pitch: number; bodyYaw: number }, lens: { h: number; v: number }): [number, number] => {
+  const world = [Math.cos(radians(object.pitch)) * Math.cos(radians(object.bodyYaw)), Math.cos(radians(object.pitch)) * Math.sin(radians(object.bodyYaw)), Math.sin(radians(object.pitch))];
+  const [ys, yc] = [Math.sin(radians(camera.bodyYaw)), Math.cos(radians(camera.bodyYaw))];
+  const [x1, y1, z1] = [world[0] * yc + world[1] * ys, -world[0] * ys + world[1] * yc, world[2]];
+  const [ps, pc] = [Math.sin(radians(camera.pitch)), Math.cos(radians(camera.pitch))];
+  const [forward, raised] = [pc * x1 + ps * z1, -ps * x1 + pc * z1];
+  return [0.5 + y1 / forward / (2 * Math.tan(radians(lens.h) / 2)), 0.5 - raised / forward / (2 * Math.tan(radians(lens.v) / 2))];
+};
 
 test('measuring the lens learns how wide the camera sees from how far a detection slides', async ({ app }) => {
   test.setTimeout(240_000);
   const DEVICE = 'http://localhost:18780';
   const LENS = { h: 60, v: 34 };
-  await addVideoSource(app, /^WebRTC \(WHEP\)/, WHEP_STREAM);
+  await addVideoSource(app, /^WebRTC \(WHEP\)/, 'http://localhost:18889/lens/whep');
   await connectMock(app, ['Enable camera', 'Enable gimbal']);
   await app.evaluate(
     async ([module, device]) => {
@@ -148,19 +190,23 @@ test('measuring the lens learns how wide the camera sees from how far a detectio
   const read = (path: string) => app.evaluate(async ([module, watched]) => ((await import(module)) as { Qgc: { get: (path: string) => Promise<unknown> } }).Qgc.get(watched), ['/src/bridge/Qgc.ts', path] as const);
   const aim = async () => ((await read('view.gimbal')) as { gimbals?: { pitch: number | null; bodyYaw: number | null }[] } | null)?.gimbals?.[0] ?? null;
   await expect.poll(async () => (await aim())?.pitch ?? null, { timeout: 60_000 }).not.toBeNull();
+  const wandering = (await aim()) as { pitch: number; bodyYaw: number };
+  await holdGimbal(app, { pitch: wandering.pitch, yaw: wandering.bodyYaw });
+  await expect.poll(async () => { const now = await aim(); return now !== null && Math.abs((now.pitch ?? 0) - wandering.pitch) < 0.05 && Math.abs((now.bodyYaw ?? 0) - wandering.bodyYaw) < 0.05; }, { timeout: 30_000 }).toBe(true);
   const start = (await aim()) as { pitch: number; bodyYaw: number };
   const sliding = { on: true };
   const slide = (async () => {
     while (sliding.on) {
       const now = await aim().catch(() => null);
       if (now !== null && now.pitch !== null && now.bodyYaw !== null) {
-        const scene = { x: 0.4 + (start.bodyYaw - now.bodyYaw) / LENS.h, y: 0.4 + (now.pitch - start.pitch) / LENS.v };
-        await fetch(`${DEVICE}/scene`, { method: 'PUT', body: JSON.stringify(scene) });
+        const [x, y] = seenThroughLens(start, { pitch: now.pitch, bodyYaw: now.bodyYaw }, LENS);
+        const scene = { x: x - 0.1, y: y - 0.1 };
+        await fetch(`${DEVICE}/scene/lens`, { method: 'PUT', body: JSON.stringify(scene) });
       }
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
   })();
-  await expect(app.getByText('Approximate aim · measure the lens in camera details')).toBeVisible({ timeout: 30_000 });
+  await expect(app.getByText('Approximate aim · measure the lens in camera details')).toBeVisible({ timeout: 60_000 });
   await app.getByRole('button', { name: /^Cameras, showing/ }).click();
   await app.getByRole('menuitem', { name: 'Camera settings' }).click();
   await app.getByRole('button', { name: 'Measure the lens' }).click();
@@ -171,7 +217,6 @@ test('measuring the lens learns how wide the camera sees from how far a detectio
   expect(lens.source).toBe('measured');
   await app.keyboard.press('Escape');
   await expect(app.getByText('Approximate aim · measure the lens in camera details')).toHaveCount(0);
-  expect(Math.abs(lens.hFov - LENS.h), `measured ${lens.hFov}°`).toBeLessThan(3);
-  expect(Math.abs(lens.vFov - LENS.v), `measured ${lens.vFov}°`).toBeLessThan(3);
-  await fetch(`${DEVICE}/scene`, { method: 'PUT', body: JSON.stringify({ x: 0.4, y: 0.4 }) });
+  expect(Math.abs(lens.hFov - LENS.h), `measured ${lens.hFov}°`).toBeLessThan(1);
+  expect(Math.abs(lens.vFov - LENS.v), `measured ${lens.vFov}°`).toBeLessThan(1);
 });

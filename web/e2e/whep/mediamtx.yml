@@ -17,3 +17,6 @@ paths:
   e2e:
     runOnInit: ffmpeg -hide_banner -loglevel fatal -re -f lavfi -i testsrc=size=640x360:rate=30 -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -profile:v baseline -bf 0 -g 30 -f rtsp rtsp://localhost:$RTSP_PORT/$MTX_PATH
     runOnInitRestart: yes
+  lens:
+    runOnInit: ffmpeg -hide_banner -loglevel fatal -re -f lavfi -i testsrc=size=640x360:rate=30 -c:v libx264 -preset ultrafast -tune zerolatency -pix_fmt yuv420p -profile:v baseline -bf 0 -g 30 -f rtsp rtsp://localhost:$RTSP_PORT/$MTX_PATH
+    runOnInitRestart: yes

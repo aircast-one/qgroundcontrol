@@ -37,6 +37,11 @@ pub const MEASURE_STEP: std::time::Duration = std::time::Duration::from_millis(1
 
 const NO_REFERENCE: &str = "Nothing in view to measure against. Point the camera at something the detector recognises.";
 const LOST_SIGHT: &str = "Lost sight of the reference while turning. Try again with something that stays in frame.";
+const DISAGREE: &str = "The views did not agree on one lens. The detector may be jumping between things; try again with one clear object in view.";
+const MAX_MISFIT: f64 = 0.02;
+const OUTLIER_TIMES: f64 = 4.0;
+const OUTLIER_FLOOR: f64 = 0.02;
+const FRAMES_AGREE: f64 = 0.01;
 const NO_ATTITUDE: &str = "The gimbal is not reporting its angle, so a measurement cannot be trusted.";
 
 #[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
@@ -55,6 +60,7 @@ static REPORTED_AT: AtomicU64 = AtomicU64::new(0);
 static MEMORY: Mutex<Option<Store>> = Mutex::new(None);
 static STATUS: Mutex<Status> = Mutex::new(Status { measuring: false, progress: String::new(), error: None, generation: 0 });
 static ANNOUNCED: Mutex<Value> = Mutex::new(Value::Null);
+static LAST_FIT: Mutex<Value> = Mutex::new(Value::Null);
 
 #[derive(Clone, Debug)]
 struct Status {
@@ -202,6 +208,7 @@ pub fn lens_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "progress": current.progress,
         "error": current.error,
         "canMeasure": refusal.is_none(),
+        "lastFit": LAST_FIT.lock().unwrap_or_else(PoisonError::into_inner).clone(),
         "reason": refusal,
     })
 }
@@ -273,9 +280,104 @@ pub fn matching(reference: &Seen, seen: &[Seen]) -> Option<Seen> {
     seen.iter().filter(|s| s.label == reference.label).min_by(|a, b| difference(a).total_cmp(&difference(b))).cloned()
 }
 
-pub fn fov_from_totals(degrees: f64, shift: f64) -> Option<f64> {
-    let shift = shift.abs();
-    (shift >= MIN_SHIFT).then(|| degrees.abs() / shift).filter(|fov| (MIN_FOV..=MAX_FOV).contains(fov))
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Observation {
+    pub pitch: f64,
+    pub yaw: f64,
+    pub x: f64,
+    pub y: f64,
+}
+
+fn half(fov: f64) -> f64 {
+    (fov.to_radians() / 2.0).tan()
+}
+
+fn direction(pitch: f64, yaw: f64, right: f64, up: f64) -> [f64; 3] {
+    let (sin, cos) = pitch.to_radians().sin_cos();
+    let (forward, raised) = (cos - sin * up, sin + cos * up);
+    let (ys, yc) = yaw.to_radians().sin_cos();
+    [forward * yc - right * ys, forward * ys + right * yc, raised]
+}
+
+fn projected(world: [f64; 3], pitch: f64, yaw: f64) -> Option<(f64, f64)> {
+    let (ys, yc) = yaw.to_radians().sin_cos();
+    let (x1, y1, z1) = (world[0] * yc + world[1] * ys, -world[0] * ys + world[1] * yc, world[2]);
+    let (sin, cos) = pitch.to_radians().sin_cos();
+    let (forward, raised) = (cos * x1 + sin * z1, -sin * x1 + cos * z1);
+    (forward > 1e-6).then(|| (y1 / forward, raised / forward))
+}
+
+pub fn seen_at(world: [f64; 3], pitch: f64, yaw: f64, h_fov: f64, v_fov: f64) -> Option<(f64, f64)> {
+    projected(world, pitch, yaw).map(|(right, up)| (0.5 + right / (2.0 * half(h_fov)), 0.5 - up / (2.0 * half(v_fov))))
+}
+
+pub fn looking_at(observation: &Observation, h_fov: f64, v_fov: f64) -> [f64; 3] {
+    direction(observation.pitch, observation.yaw, (observation.x - 0.5) * 2.0 * half(h_fov), (0.5 - observation.y) * 2.0 * half(v_fov))
+}
+
+fn median(values: impl Iterator<Item = f64>) -> f64 {
+    let mut sorted: Vec<f64> = values.collect();
+    sorted.sort_by(f64::total_cmp);
+    sorted.get(sorted.len() / 2).copied().unwrap_or(0.0)
+}
+
+fn object(sweep: &[Observation], h_fov: f64, v_fov: f64) -> [f64; 3] {
+    let seen: Vec<[f64; 3]> = sweep.iter().map(|o| looking_at(o, h_fov, v_fov)).map(|d| d.map(|c| c / d.iter().map(|c| c * c).sum::<f64>().sqrt())).collect();
+    std::array::from_fn(|axis| median(seen.iter().map(|d| d[axis])))
+}
+
+fn residuals(sweep: &[Observation], h_fov: f64, v_fov: f64) -> Vec<f64> {
+    let world = object(sweep, h_fov, v_fov);
+    sweep.iter().map(|o| seen_at(world, o.pitch, o.yaw, h_fov, v_fov).map_or(1.0, |(x, y)| ((x - o.x).powi(2) + (y - o.y).powi(2)).sqrt())).collect()
+}
+
+fn misfit(sweeps: &[Vec<Observation>], h_fov: f64, v_fov: f64) -> (f64, usize) {
+    sweeps.iter().flat_map(|sweep| residuals(sweep, h_fov, v_fov)).fold((0.0, 0), |(sum, n), e| (sum + e * e, n + 1))
+}
+
+fn best(sweeps: &[Vec<Observation>], hs: impl Iterator<Item = f64> + Clone, vs: impl Iterator<Item = f64> + Clone) -> Option<(f64, f64, f64)> {
+    hs.flat_map(|h| vs.clone().map(move |v| (h, v)))
+        .map(|(h, v)| {
+            let (sum, n) = misfit(sweeps, h, v);
+            (h, v, if n == 0 { f64::INFINITY } else { (sum / n as f64).sqrt() })
+        })
+        .min_by(|a, b| a.2.total_cmp(&b.2))
+}
+
+fn range(from: f64, to: f64, step: f64) -> impl Iterator<Item = f64> + Clone {
+    (0..=((to - from) / step).round() as usize).map(move |i| from + i as f64 * step)
+}
+
+fn fit_once(sweeps: &[Vec<Observation>]) -> Option<(f64, f64, f64)> {
+    let (h, v, _) = best(sweeps, range(MIN_FOV, MAX_FOV, 1.0), range(MIN_FOV, MAX_FOV, 1.0))?;
+    let (h, v, rms) = best(sweeps, range((h - 1.0).max(MIN_FOV), (h + 1.0).min(MAX_FOV), 0.02), range((v - 1.0).max(MIN_FOV), (v + 1.0).min(MAX_FOV), 0.02))?;
+    rms.is_finite().then_some((h, v, rms))
+}
+
+pub fn trimmed(sweeps: &[Vec<Observation>], h_fov: f64, v_fov: f64) -> Vec<Vec<Observation>> {
+    let all: Vec<f64> = sweeps.iter().flat_map(|sweep| residuals(sweep, h_fov, v_fov)).collect();
+    let mut sorted = all.clone();
+    sorted.sort_by(f64::total_cmp);
+    let cut = (median(all.iter().copied()) * OUTLIER_TIMES).max(OUTLIER_FLOOR);
+    let budget = all.len() / 4;
+    let worst: Vec<f64> = sorted.iter().rev().copied().filter(|r| *r > cut).take(budget).collect();
+    let dropped = |r: f64| worst.last().is_some_and(|least| r >= *least);
+    sweeps
+        .iter()
+        .map(|sweep| {
+            let kept = residuals(sweep, h_fov, v_fov);
+            sweep.iter().zip(kept).filter(|(_, r)| !dropped(*r)).map(|(o, _)| *o).collect()
+        })
+        .collect()
+}
+
+pub fn fit_lens(sweeps: &[Vec<Observation>]) -> Option<(f64, f64, f64)> {
+    let first = fit_once(sweeps)?;
+    let kept = trimmed(sweeps, first.0, first.1);
+    match kept.iter().map(Vec::len).sum::<usize>() < sweeps.iter().map(Vec::len).sum::<usize>() {
+        true => fit_once(&kept),
+        false => Some(first),
+    }
 }
 
 pub trait Rig {
@@ -289,7 +391,7 @@ enum Phase {
     Finding { deadline: u64 },
     Turning,
     Settling { since: u64, still_since: u64, last: (f64, f64), before: (f64, f64) },
-    Matching { deadline: u64, settled_at: u64, before: (f64, f64), after: (f64, f64) },
+    Matching { deadline: u64, settled_at: u64, after: (f64, f64), candidate: Option<(Seen, u64)> },
     Done,
 }
 
@@ -312,36 +414,38 @@ pub struct Measurement {
     sweep: usize,
     steps: u32,
     reference: Option<Seen>,
-    degrees: f64,
-    shift: f64,
+    points: Vec<Observation>,
     phase: Phase,
-    hs: Vec<f64>,
-    vs: Vec<f64>,
+    kept: Vec<(Axis, Vec<Observation>)>,
     last_error: Option<&'static str>,
 }
 
 impl Measurement {
     pub fn start(rig: &dyn Rig, now_ms: u64) -> Result<Measurement, &'static str> {
         let start = rig.attitude().ok_or(NO_ATTITUDE)?;
-        Ok(Measurement { start, sweep: 0, steps: 0, reference: None, degrees: 0.0, shift: 0.0, phase: Phase::Finding { deadline: now_ms + WAIT_MS }, hs: Vec::new(), vs: Vec::new(), last_error: None })
+        Ok(Measurement { start, sweep: 0, steps: 0, reference: None, points: Vec::new(), phase: Phase::Finding { deadline: now_ms + WAIT_MS }, kept: Vec::new(), last_error: None })
     }
 
     fn progress(&self) -> String {
         format!("Measuring… {} of {}", (self.sweep + 1).min(SWEEPS.len()), SWEEPS.len())
     }
 
+    fn travelled(&self) -> f64 {
+        match (self.points.first(), self.points.last(), SWEEPS[self.sweep]) {
+            (Some(first), Some(last), Axis::Yaw(_)) => (last.x - first.x).abs(),
+            (Some(first), Some(last), Axis::Pitch(_)) => (last.y - first.y).abs(),
+            _ => 0.0,
+        }
+    }
+
     fn finish_sweep(&mut self, now_ms: u64, error: Option<&'static str>) {
-        match (error, fov_from_totals(self.degrees, self.shift)) {
-            (None, Some(fov)) => match SWEEPS[self.sweep] {
-                Axis::Yaw(_) => self.hs.push(fov),
-                Axis::Pitch(_) => self.vs.push(fov),
-            },
+        match (error, self.travelled() >= MIN_SHIFT) {
+            (None, true) => self.kept.push((SWEEPS[self.sweep], std::mem::take(&mut self.points))),
             (error, _) => self.last_error = Some(error.unwrap_or(LOST_SIGHT)),
         }
+        self.points.clear();
         self.sweep += 1;
         self.steps = 0;
-        self.degrees = 0.0;
-        self.shift = 0.0;
         self.reference = None;
         self.phase = match self.sweep < SWEEPS.len() {
             true => Phase::Finding { deadline: now_ms + WAIT_MS },
@@ -353,9 +457,22 @@ impl Measurement {
         if let Err(error) = rig.aim(self.start.0, self.start.1) {
             log::warn!("gimbal not returned after lens measurement: {error}");
         }
-        match (self.hs.is_empty(), self.vs.is_empty()) {
-            (false, false) => Outcome::Measured { h: self.hs.iter().sum::<f64>() / self.hs.len() as f64, v: self.vs.iter().sum::<f64>() / self.vs.len() as f64 },
-            _ => Outcome::Failed(self.last_error.unwrap_or(LOST_SIGHT).to_string()),
+        let swept = |yaw: bool| self.kept.iter().any(|(axis, _)| matches!(axis, Axis::Yaw(_)) == yaw);
+        if !(swept(true) && swept(false)) {
+            return Outcome::Failed(self.last_error.unwrap_or(LOST_SIGHT).to_string());
+        }
+        let sweeps: Vec<Vec<Observation>> = self.kept.iter().map(|(_, points)| points.clone()).collect();
+        let fitted = fit_lens(&sweeps);
+        *LAST_FIT.lock().unwrap_or_else(PoisonError::into_inner) = json!({
+            "hFov": fitted.map(|f| f.0),
+            "vFov": fitted.map(|f| f.1),
+            "misfit": fitted.map(|f| f.2),
+            "observations": sweeps.iter().map(|sweep| sweep.iter().map(|o| json!([o.pitch, o.yaw, o.x, o.y])).collect::<Vec<_>>()).collect::<Vec<_>>(),
+        });
+        match fitted {
+            Some((h, v, misfit)) if misfit <= MAX_MISFIT => Outcome::Measured { h, v },
+            Some(_) => Outcome::Failed(DISAGREE.to_string()),
+            None => Outcome::Failed(LOST_SIGHT.to_string()),
         }
     }
 
@@ -372,6 +489,12 @@ impl Measurement {
             Phase::Turning => match rig.attitude() {
                 None => self.finish_sweep(now_ms, Some(NO_ATTITUDE)),
                 Some(before) => {
+                    if self.points.is_empty()
+                        && let Some(first) = &self.reference
+                    {
+                        let (x, y) = first.center();
+                        self.points.push(Observation { pitch: before.0, yaw: before.1, x, y });
+                    }
                     let (pitch, yaw) = match SWEEPS[self.sweep] {
                         Axis::Yaw(step) => (before.0, before.1 + step),
                         Axis::Pitch(step) => (before.0 + step, before.1),
@@ -393,26 +516,35 @@ impl Measurement {
                     let turned = (now.0 - before.0).abs() + (now.1 - before.1).abs() >= commanded / 2.0;
                     let settled = turned && now_ms.saturating_sub(still_since) >= STILL_MS || now_ms.saturating_sub(since) >= TURN_GIVE_UP_MS;
                     self.phase = match settled {
-                        true => Phase::Matching { deadline: now_ms + WAIT_MS, settled_at: now_ms, before, after: now },
+                        true => Phase::Matching { deadline: now_ms + WAIT_MS, settled_at: now_ms, after: now, candidate: None },
                         false => Phase::Settling { since, still_since, last: now, before },
                     };
                 }
             },
-            Phase::Matching { deadline, settled_at, before, after } => {
+            Phase::Matching { deadline, settled_at, after, candidate } => {
                 let reference = self.reference.clone();
-                let seen = rig.seen().filter(|(_, at)| *at >= settled_at).map(|(seen, _)| seen);
-                match reference.as_ref().and_then(|r| seen.as_deref().and_then(|seen| matching(r, seen))) {
+                let frame = rig.seen().filter(|(_, at)| *at >= settled_at);
+                let found = reference.as_ref().and_then(|r| frame.as_ref().and_then(|(seen, at)| matching(r, seen).map(|m| (m, *at))));
+                let agreed = match (&candidate, &found) {
+                    (Some((earlier, earlier_at)), Some((now, at))) if at != earlier_at => {
+                        let ((x0, y0), (x1, y1)) = (earlier.center(), now.center());
+                        ((x1 - x0).abs() <= FRAMES_AGREE && (y1 - y0).abs() <= FRAMES_AGREE).then(|| now.clone())
+                    }
+                    _ => None,
+                };
+                if agreed.is_none()
+                    && let Some((now, at)) = found.clone()
+                    && candidate.as_ref().is_none_or(|(_, earlier_at)| *earlier_at != at)
+                {
+                    self.phase = Phase::Matching { deadline, settled_at, after, candidate: Some((now, at)) };
+                }
+                match agreed {
                     Some(now) => {
-                        let ((x0, y0), (x1, y1)) = (reference.map_or((0.0, 0.0), |r| r.center()), now.center());
-                        let (turned, slid) = match SWEEPS[self.sweep] {
-                            Axis::Yaw(_) => (after.1 - before.1, x1 - x0),
-                            Axis::Pitch(_) => (after.0 - before.0, y1 - y0),
-                        };
-                        self.degrees += turned;
-                        self.shift += slid;
+                        let (x, y) = now.center();
+                        self.points.push(Observation { pitch: after.0, yaw: after.1, x, y });
                         self.steps += 1;
                         self.reference = Some(now);
-                        match self.shift.abs() >= TARGET_SHIFT || self.steps >= MAX_STEPS {
+                        match self.travelled() >= TARGET_SHIFT || self.steps >= MAX_STEPS {
                             true => self.finish_sweep(now_ms, None),
                             false => self.phase = Phase::Turning,
                         }
@@ -541,10 +673,34 @@ mod tests {
     }
 
     #[test]
-    fn a_shift_too_small_to_trust_is_no_measurement() {
-        assert_eq!(fov_from_totals(10.0, 0.05), None);
-        assert_eq!(fov_from_totals(-15.0, -0.25), Some(60.0));
-        assert_eq!(fov_from_totals(0.1, 0.1), None, "a 1° view is outside any lens this flies");
+    fn glitched_detections_are_dropped_instead_of_bending_the_lens_even_the_first_of_a_sweep() {
+        let world = direction(-20.0, 0.0, 0.0, 0.0);
+        let sweep = |axis: fn(f64) -> (f64, f64)| -> Vec<Observation> {
+            (0..8)
+                .map(|step| {
+                    let (pitch, yaw) = axis(f64::from(step) * 2.0);
+                    let (x, y) = seen_at(world, pitch, yaw, 62.0, 37.0).unwrap();
+                    Observation { pitch, yaw, x, y }
+                })
+                .collect()
+        };
+        let mut yawing = sweep(|d| (-20.0, d));
+        yawing[4].y += 0.17;
+        yawing[0].x -= 0.12;
+        let sweeps = vec![yawing, sweep(|d| (-20.0 + d, 0.0))];
+        let (h, v, misfit) = fit_lens(&sweeps).unwrap();
+        assert!((h - 62.0).abs() < 0.05 && (v - 37.0).abs() < 0.05 && misfit < 0.001, "{h} × {v} misfit {misfit}");
+    }
+
+    #[test]
+    fn a_direction_seen_through_the_lens_projects_back_to_the_same_place() {
+        let seen = Observation { pitch: -35.0, yaw: 12.0, x: 0.8, y: 0.3 };
+        let world = looking_at(&seen, 62.0, 37.35);
+        let (x, y) = seen_at(world, -35.0, 12.0, 62.0, 37.35).unwrap();
+        assert!((x - 0.8).abs() < 1e-9 && (y - 0.3).abs() < 1e-9, "{x} {y}");
+        let (yaw, tilt) = crate::gimbal::aim_through_lens(0.6, 0.4, 62.0, 37.35, -35.0);
+        let (x, y) = seen_at(direction(-35.0, 0.0, 0.6 * half(62.0), 0.4 * half(37.35)), f64::from(tilt), f64::from(yaw), 62.0, 37.35).unwrap();
+        assert!((x - 0.5).abs() < 1e-5 && (y - 0.5).abs() < 1e-5, "a tap aims the gimbal so the tapped thing lands in the middle: {x} {y}");
     }
 
     struct Bench {
@@ -556,10 +712,11 @@ mod tests {
         aims: RefCell<Vec<(f64, f64)>>,
         blind: bool,
         rate: f64,
+        frames: std::cell::Cell<u64>,
     }
 
     fn bench(start: (f64, f64), rate: f64, blind: bool) -> Bench {
-        Bench { hfov: 62.0, vfov: 37.0, attitude: RefCell::new(start), target: RefCell::new(start), object: start, aims: RefCell::new(Vec::new()), blind, rate }
+        Bench { hfov: 62.0, vfov: 37.0, attitude: RefCell::new(start), target: RefCell::new(start), object: start, aims: RefCell::new(Vec::new()), blind, rate, frames: std::cell::Cell::new(0) }
     }
 
     fn toward(now: f64, target: f64, rate: f64) -> f64 {
@@ -579,9 +736,10 @@ mod tests {
         }
         fn seen(&self) -> Option<(Vec<Seen>, u64)> {
             let (pitch, yaw) = *self.attitude.borrow();
-            let x = 0.5 + (self.object.1 - yaw) / self.hfov;
-            let y = 0.5 - (self.object.0 - pitch) / self.vfov;
-            (!self.blind).then(|| (vec![Seen { x: x - 0.05, y: y - 0.05, w: 0.1, h: 0.1, label: "car".into(), confidence: 0.9, target: false }], u64::MAX))
+            let world = direction(self.object.0, self.object.1, 0.0, 0.0);
+            let (x, y) = seen_at(world, pitch, yaw, self.hfov, self.vfov)?;
+            self.frames.set(self.frames.get() + 1);
+            (!self.blind).then(|| (vec![Seen { x: x - 0.05, y: y - 0.05, w: 0.1, h: 0.1, label: "car".into(), confidence: 0.9, target: false }], u64::MAX - 1_000_000 + self.frames.get()))
         }
     }
 
@@ -595,19 +753,19 @@ mod tests {
 
     #[test]
     fn turning_the_gimbal_and_watching_the_scene_slide_measures_the_lens_and_puts_the_camera_back() {
-        let bench = bench((-10.0, 5.0), 100.0, false);
+        let bench = bench((-40.0, 5.0), 100.0, false);
         match run(&bench) {
-            Outcome::Measured { h, v } => assert!((h - 62.0).abs() < 0.5 && (v - 37.0).abs() < 0.5, "{h} × {v}"),
+            Outcome::Measured { h, v } => assert!((h - 62.0).abs() < 0.05 && (v - 37.0).abs() < 0.05, "a wide lens through the tangent, tilted down: {h} × {v}"),
             _ => panic!("the bench lens was not measured"),
         }
-        assert_eq!(bench.aims.borrow().last(), Some(&(-10.0, 5.0)), "the camera goes back to what the pilot was watching");
+        assert_eq!(bench.aims.borrow().last(), Some(&(-40.0, 5.0)), "the camera goes back to what the pilot was watching");
     }
 
     #[test]
     fn a_gimbal_still_turning_is_waited_for_rather_than_read_mid_move() {
         let bench = bench((-10.0, 5.0), 0.3, false);
         match run(&bench) {
-            Outcome::Measured { h, v } => assert!((h - 62.0).abs() < 0.5 && (v - 37.0).abs() < 0.5, "a slow gimbal read mid-turn mismeasures: {h} × {v}"),
+            Outcome::Measured { h, v } => assert!((h - 62.0).abs() < 0.05 && (v - 37.0).abs() < 0.05, "a slow gimbal read mid-turn mismeasures: {h} × {v}"),
             _ => panic!("the slow bench lens was not measured"),
         }
     }

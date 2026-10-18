@@ -762,6 +762,13 @@ impl Sim {
                 let position = (if m.x == 0 { f64::NAN } else { degrees(m.x) }, if m.y == 0 { f64::NAN } else { degrees(m.y) }, f64::from(m.z));
                 self.command(from, m.target_component, m.command, params, position, m.frame)
             }
+            MavMessage::GIMBAL_MANAGER_SET_PITCHYAW(m) if self.mine(m.target_system) => {
+                let params = [m.pitch.to_degrees(), m.yaw.to_degrees(), m.pitch_rate, m.yaw_rate, 0.0, 0.0, 0.0];
+                if let Some(gimbal) = self.gimbal.as_mut() {
+                    gimbal.command(from, crate::mockgimbal::GIMBAL, MavCmd::MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW, params);
+                }
+                Vec::new()
+            }
             MavMessage::COMMAND_ACK(m) => {
                 self.calibration.acked(m.command);
                 Vec::new()
@@ -2905,6 +2912,25 @@ mod tests {
         let pitch = heard.iter().rev().find_map(|m| if let MavMessage::GIMBAL_DEVICE_ATTITUDE_STATUS(a) = m { Some(a.q) } else { None });
         assert!(pitch.is_some_and(|q| (q[2] - (-15.0_f32).to_radians().sin()).abs() < 1e-3), "the gimbal item pitched it 30 degrees down: {pitch:?}");
         assert!(!sim.armed);
+    }
+
+    #[test]
+    fn the_gimbal_holds_where_a_set_pitchyaw_message_points_it() {
+        let mut sim = Sim::new(Options { enable_gimbal: true, ..options(Vehicle::Px4) }, 128, None);
+        command(&mut sim, MavCmd::MAV_CMD_SET_MESSAGE_INTERVAL, [285.0, 1_000_000.0, 0.0, 0.0, 0.0, 0.0, 0.0]);
+        let system = sim.system;
+        sim.receive(gcs(), &MavMessage::GIMBAL_MANAGER_SET_PITCHYAW(GIMBAL_MANAGER_SET_PITCHYAW_DATA {
+            target_system: system,
+            target_component: 1,
+            pitch: (-30.0_f32).to_radians(),
+            yaw: f32::NAN,
+            pitch_rate: f32::NAN,
+            yaw_rate: f32::NAN,
+            ..Default::default()
+        }));
+        let heard = heard(&mut sim, 20);
+        let pitch = heard.iter().rev().find_map(|m| if let MavMessage::GIMBAL_DEVICE_ATTITUDE_STATUS(a) = m { Some(a.q) } else { None });
+        assert!(pitch.is_some_and(|q| (q[2] - (-15.0_f32).to_radians().sin()).abs() < 1e-3), "QGroundControl aims with the message, not the command, and the mock wandered on regardless: {pitch:?}");
     }
 
     #[test]
