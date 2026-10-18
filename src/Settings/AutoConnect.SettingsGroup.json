@@ -75,11 +75,11 @@
         },
         {
             "name": "usbRadioPort",
-            "shortDesc": "Radio streaming its channels over USB with the R2D2 script",
-            "longDesc": "A radio running the r2d2-usb-vcp.lua script streams its channels over USB serial. While it streams, its channels 1 to 18 fly the active vehicle as RC overrides. Off sends nothing.",
+            "shortDesc": "Radio streaming its channels over USB with an EdgeTX script",
+            "longDesc": "A radio running aircast-usb.lua or r2d2-usb-vcp.lua streams its channels over USB serial. While it streams, its channels 1 to 18 fly the active vehicle as RC overrides. Off sends nothing.",
             "type": "string",
             "default": "",
-            "label": "Radio on USB (R2D2 script)"
+            "label": "Radio on USB (EdgeTX script)"
         },
         {
             "name": "autoConnectZeroConf",

@@ -390,7 +390,7 @@ const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
     ("autoConnectSettings", &[
         ("", &["autoConnectPixhawk", "autoConnectSiKRadio", "autoConnectLibrePilot", "autoConnectUDP", "autoConnectRTKGPS"]),
         ("NMEA GPS", &["nmeaSource", "autoConnectNmeaPort", "autoConnectNmeaBaud", "nmeaUdpPort"]),
-        ("Radio on USB (R2D2 script)", &["usbRadioPort"]),
+        ("Radio on USB (EdgeTX script)", &["usbRadioPort"]),
     ]),
     ("remoteIDSettings", &[
         ("Region", &["region"]),
