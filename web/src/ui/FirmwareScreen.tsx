@@ -3,6 +3,7 @@ import { Qgc } from '@/bridge/Qgc';
 import { useQgcBool, useQgcFacts } from '@/bridge/QgcState';
 import { type Json, isNull, jsonObjects, jsonStrings, optBoolean, optDouble, optInt, optJSONArray, optText } from '@/bridge/Json';
 import { requestSerialPort, serialAvailable } from '@/core/client';
+import { stageFile } from '@/core/files';
 import { useLaunchedEffect } from '@/kotlin/Compose';
 import { openDocument } from '@/kotlin/Platform';
 import { delay, replaceFirstCharUpper, same } from '@/kotlin/Std';
@@ -19,7 +20,8 @@ export const FIRMWARE_UPGRADE_SETTINGS = 'settings.firmwareUpgradeSettings';
 export const APM_CHIBIOS = 'apmChibiOS';
 export const FIRMWARE_POLL_MS = 500;
 export const FIRMWARE_EXTENSIONS: readonly string[] = ['px4', 'apj', 'bin', 'ihx'];
-const STAGED_PREFIX = 'firmware-';
+const STAGED_PREFIX = '/cache/firmware-';
+export const DEVICE_PORT = 'aircast-device';
 
 export type FirmwarePort = { port: string; description: string; bootloader: boolean; boardType: string };
 
@@ -143,6 +145,9 @@ export const firmwareWarning = (source: string): string | null => {
   return null;
 };
 
+export const firmwareHeading = (ports: readonly FirmwarePort[]): string =>
+  ports.some((it) => it.port === DEVICE_PORT) ? 'Flash the flight controller on this Aircast device, or a board over USB' : ports.length === 0 ? 'No USB serial devices attached' : 'Flash a board over USB';
+
 export const flashingLabel = (ports: readonly FirmwarePort[], port: string): string => {
   const description = ports.find((it) => it.port === port)?.description ?? '';
   return `Flashing - ${description.trim() === '' ? port : description}`;
@@ -213,9 +218,13 @@ export const FirmwareScreen = ({ className }: { className?: string }) => {
   const pick = async () => {
     const chosen = await openDocument(['*/*']);
     if (chosen === null) return;
-    const staged = firmwareFileAccepted(chosen.name) ? chosen : null;
-    setRefusal(staged === null ? 'Choose a .px4, .apj, .bin or .ihx firmware file.' : '');
-    if (staged !== null) setFile(staged);
+    if (!firmwareFileAccepted(chosen.name)) {
+      setRefusal('Choose a .px4, .apj, .bin or .ihx firmware file.');
+      return;
+    }
+    const staged = await stageFile(`${STAGED_PREFIX}${chosen.name}`, chosen).catch(() => false);
+    setRefusal(staged ? '' : 'That file could not be read.');
+    if (staged) setFile(chosen);
   };
 
   const busy = job?.busy === true;
@@ -249,7 +258,7 @@ export const FirmwareScreen = ({ className }: { className?: string }) => {
                 {job.updateAvailable}
               </Text>
             ) : null}
-            <Text typography="titleSmall">{ports.length === 0 ? 'No USB serial devices attached' : 'Flash a board over USB'}</Text>
+            <Text typography="titleSmall">{firmwareHeading(ports)}</Text>
             <Text typography="bodyMedium">
               Plug in your device via USB, choose its port and either a release, downloaded once the board is identified, or a firmware file, then press Flash. A board running its firmware is asked to be
               unplugged and plugged back in so its bootloader starts.

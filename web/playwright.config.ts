@@ -42,6 +42,12 @@ export default defineConfig({
       timeout: 120_000,
     },
     {
+      command: 'node e2e/device/aircastd.ts',
+      url: 'http://localhost:18780/stats',
+      reuseExistingServer: true,
+      timeout: 30_000,
+    },
+    {
       command: 'node e2e/ws/mavlink-ws.ts',
       url: 'http://localhost:18760/',
       reuseExistingServer: true,

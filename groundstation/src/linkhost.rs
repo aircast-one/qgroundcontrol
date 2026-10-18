@@ -274,14 +274,27 @@ fn resolves(host: &str, port: u16) -> bool {
     (host, port).to_socket_addrs().is_ok()
 }
 
+#[cfg(target_family = "wasm")]
+fn through_device(shared: &Shared, id: LinkId, url: Option<String>) -> Result<Owned, Failure> {
+    let url = url.ok_or_else(|| Failure::retry(crate::device::NEEDS_DEVICE.to_string()))?;
+    let (shared, relay) = (shared.clone(), shared.clone());
+    Ok(Owned::Cloud(crate::cloudlink::CloudLink::open_socket(url, move |bytes| shared.deliver(id, bytes), move |up, reason| relay.relay_state(id, up, reason))))
+}
+
 fn build(shared: &Shared, id: LinkId, config: &LinkConfig) -> Result<Owned, Failure> {
     match &config.kind {
+        #[cfg(target_family = "wasm")]
+        Kind::Udp { local_port, hosts } => through_device(shared, id, crate::device::udp(*local_port, hosts)),
+        #[cfg(target_family = "wasm")]
+        Kind::Tcp { host, port } => through_device(shared, id, crate::device::tcp(host, *port)),
+        #[cfg(not(target_family = "wasm"))]
         Kind::Udp { local_port, hosts } => {
             let (shared, lost) = (shared.clone(), shared.clone());
             UdpLink::open(&UdpConfig { local_port: *local_port, targets: hosts.clone() }, crate::udplink::local_addresses(), move |bytes| shared.deliver(id, bytes), move |reason| lost.closed_by_reader(id, &reason))
                 .map(Owned::Udp)
                 .map_err(|_| Failure::retry(format!("Link {}: Failed to bind UDP socket to port", config.name)))
         }
+        #[cfg(not(target_family = "wasm"))]
         Kind::Tcp { host, port } => {
             let shared = shared.clone();
             TcpLink::open(&TcpConfig { host: host.clone(), port: *port }, move |event| match event {

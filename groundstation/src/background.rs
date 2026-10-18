@@ -53,3 +53,13 @@ pub fn run_queued() {
         *polling.borrow_mut() = pending.into_iter().chain(added).collect();
     });
 }
+
+#[cfg(target_family = "wasm")]
+pub async fn pause(wait: std::time::Duration) {
+    use wasm_bindgen::JsCast;
+    let promise = js_sys::Promise::new(&mut |resolve, _| {
+        let scope: web_sys::WorkerGlobalScope = js_sys::global().unchecked_into();
+        let _ = scope.set_timeout_with_callback_and_timeout_and_arguments_0(&resolve, i32::try_from(wait.as_millis()).unwrap_or(i32::MAX));
+    });
+    let _ = wasm_bindgen_futures::JsFuture::from(promise).await;
+}

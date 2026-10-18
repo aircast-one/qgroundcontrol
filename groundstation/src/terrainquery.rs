@@ -4,7 +4,7 @@ use crate::tilecache::{self, Cache};
 const TILE_SIZE_DEGREES: f64 = 0.01;
 const PROVIDER: &str = "Copernicus";
 const PROVIDER_URL: &str = "https://terrain-ce.suite.auterion.com";
-const TILE_FORMAT: &str = "bin";
+pub const TILE_FORMAT: &str = "bin";
 const TERRAIN_ZOOM: i32 = 1;
 
 pub fn tile_xy(latitude: f64, longitude: f64) -> (i32, i32) {
@@ -38,6 +38,11 @@ pub fn fetched_tile(x: i32, y: i32, fetch: &dyn Fn(&str) -> Result<String, Strin
 
 pub fn tile_hash(x: i32, y: i32) -> Option<String> {
     tilecache::provider_hash(PROVIDER).map(|provider| tilecache::tile_hash(provider, x, y, TERRAIN_ZOOM))
+}
+
+pub fn cached_tile(x: i32, y: i32, cache: &Cache) -> Option<Tile> {
+    let hash = tile_hash(x, y)?;
+    cache.tile(&hash).ok().flatten().and_then(|saved| terraintile::decode(&saved.image))
 }
 
 pub fn load_tile(x: i32, y: i32, cache: Option<&Cache>, fetch: &dyn Fn(&str) -> Result<String, String>) -> Result<Tile, String> {

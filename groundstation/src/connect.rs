@@ -71,6 +71,7 @@ pub struct AutopilotVersion {
     pub uid: u64,
     pub vendor_id: u16,
     pub product_id: u16,
+    pub board_version: u32,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -198,7 +199,7 @@ mod tests {
         let mut connect = Connect::default();
         let (link, vehicle) = (live(), px4());
         assert_eq!(requests(&connect.start(&link, &vehicle)), vec![&Action::RequestMessage { message_id: MSG_AUTOPILOT_VERSION }]);
-        let version = AutopilotVersion { capabilities: 0x1010, flight_sw_version: 0x01_0F_02_FF, flight_custom_version: [0xaa, 0xbb, 0xcc, 1, 2, 3, 4, 5], uid: 9, vendor_id: 1, product_id: 2 };
+        let version = AutopilotVersion { capabilities: 0x1010, flight_sw_version: 0x01_0F_02_FF, flight_custom_version: [0xaa, 0xbb, 0xcc, 1, 2, 3, 4, 5], uid: 9, vendor_id: 1, product_id: 2, board_version: 0 };
         let after_version = connect.on_autopilot_version(&link, &vehicle, Some(&version));
         assert_eq!(requests(&after_version), vec![&Action::SetCapabilities(0x1010), &Action::RequestStandardModes], "current QGC requests no PROTOCOL_VERSION");
         assert_eq!(requests(&connect.on_step_done(&link, &vehicle)), vec![&Action::RequestComponentInformation]);
@@ -230,7 +231,7 @@ mod tests {
         connect.on_step_done(&link, &vehicle);
         assert_eq!(requests(&connect.on_step_done(&link, &vehicle)), vec![&Action::FirstGeoFenceLoadComplete]);
         assert_eq!(requests(&connect.on_step_done(&link, &vehicle)), vec![&Action::LoadRallyPoints]);
-        let apm = AutopilotVersion { capabilities: 0, flight_sw_version: 0, flight_custom_version: *b"abc12345", uid: 0, vendor_id: 0, product_id: 0 };
+        let apm = AutopilotVersion { capabilities: 0, flight_sw_version: 0, flight_custom_version: *b"abc12345", uid: 0, vendor_id: 0, product_id: 0, board_version: 0 };
         let unstamped = firmware_from(&apm, false);
         assert_eq!((unstamped.version, unstamped.git_hash.as_str()), (None, "abc12345"));
         let stamped = AutopilotVersion { flight_sw_version: 0x04_05_06_00, ..apm };

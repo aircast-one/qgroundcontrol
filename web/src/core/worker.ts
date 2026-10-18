@@ -1,5 +1,6 @@
 import init, * as core from './pkg/groundstation.js';
 import { cloudHost } from './cloud';
+import { socketHost } from './socket';
 
 const PUMP_MS = 20;
 
@@ -25,6 +26,7 @@ core.setSerialHost({
   close: (id: number) => scope.postMessage({ serial: { op: 'close', id } }),
 });
 core.setCloudHost(cloudHost(core));
+core.setSocketHost(socketHost(core));
 const settings: { revision: bigint | null } = { revision: null };
 
 const openSettings = (text: string) => {
@@ -63,6 +65,7 @@ const calls = {
   mapTile: core.mapTile,
   vfsWrite: core.vfsWrite,
   vfsRead: core.vfsRead,
+  vfsList: core.vfsList,
   vfsRemove: core.vfsRemove,
   vfsRemovePrefixed: core.vfsRemovePrefixed,
   gcsPositionSource: core.gcsPositionSource,

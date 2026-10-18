@@ -502,6 +502,11 @@ describe('AddableLinkTypesTest', () => {
     ).toEqual([LinkType.WebSocket, LinkType.Serial]);
   });
 
+  it('a page served by an Aircast device offers UDP and TCP, carried by the device', () => {
+    const paired = json('{"kind":"object","class":"Links","links":[],"linkTypeIds":["serial","udp","tcp"],"throughDevice":true}');
+    expect(addableLinkTypes(paired)).toEqual([LinkType.WebSocket, LinkType.Udp, LinkType.Tcp, LinkType.Serial]);
+  });
+
   it('a core too old to serve the list keeps all three rather than offering none', () => {
     expect(addableLinkTypes(json('{"kind":"object"}'))).toEqual([LinkType.WebSocket, LinkType.Serial]);
     expect(addableLinkTypes(null)).toEqual([LinkType.WebSocket, LinkType.Serial]);

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { type Json, jsonStrings, optBoolean, optDouble, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { type Fact, Qgc } from '@/bridge/Qgc';
+import { stageFile, stagedFile, unstage } from '@/core/files';
 import { useLaunchedEffect } from '@/kotlin/Compose';
 import { createDocument, openDocument } from '@/kotlin/Platform';
 import { delay } from '@/kotlin/Std';
@@ -53,33 +54,12 @@ export const scripting = (view: Json | null): Scripting | null => {
 
 const stagePath = (name: string): string => `/${STAGE_FOLDER}/${name}`;
 
-const stageFolder = async (): Promise<FileSystemDirectoryHandle> => (await navigator.storage.getDirectory()).getDirectoryHandle(STAGE_FOLDER, { create: true });
+const stagedCopy = (source: File, name: string): Promise<boolean> => stageFile(stagePath(name), source).catch(() => false);
 
-const stagedCopy = async (source: File, name: string): Promise<boolean> => {
-  try {
-    const writable = await (await (await stageFolder()).getFileHandle(name, { create: true })).createWritable();
-    await writable.write(source);
-    await writable.close();
-    return true;
-  } catch {
-    return false;
-  }
-};
-
-const staged = async (name: string): Promise<File | null> => {
-  try {
-    return await (await (await stageFolder()).getFileHandle(name)).getFile();
-  } catch {
-    return null;
-  }
-};
+const staged = (name: string): Promise<File | null> => stagedFile(stagePath(name), name).catch(() => null);
 
 const discard = async (name: string): Promise<void> => {
-  try {
-    await (await stageFolder()).removeEntry(name);
-  } catch {
-    return;
-  }
+  await unstage(stagePath(name)).catch(() => undefined);
 };
 
 const whileBusy = async (): Promise<void> => {

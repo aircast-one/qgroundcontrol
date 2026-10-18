@@ -1,3 +1,4 @@
+import { listStaged, stageFile, stagedFile, unstageAll } from '@/core/files';
 import { createDocument } from '@/kotlin/Platform';
 import { DEFAULT_GEOTAG_OUTPUT } from '@/ui/GeoTagRun';
 import { isGeoTagImage } from '@/ui/GeoTagView';
@@ -12,7 +13,7 @@ export type TreeEntry = { documentId: string; name: string; mime: string };
 
 export type GeoTagTree = { name: string; handle: FileSystemDirectoryHandle | null; files: readonly File[] };
 
-export type StagedDir = { absolutePath: string; handle: FileSystemDirectoryHandle };
+export type StagedDir = { absolutePath: string };
 
 export type DownloadedLog = { name: string; absolutePath: string; lastModified: number };
 
@@ -30,10 +31,13 @@ const extension = (name: string): string => {
 
 const imageMime = (name: string): string => IMAGE_MIMES[extension(name)] ?? OCTET_STREAM;
 
+const KEEP = '.keep';
+
 const stagingDir = async (name: string): Promise<StagedDir> => {
-  const cache = await (await navigator.storage.getDirectory()).getDirectoryHandle(GEOTAG_CACHE, { create: true });
-  await cache.removeEntry(name, { recursive: true }).catch(() => undefined);
-  return { absolutePath: `/${GEOTAG_CACHE}/${name}`, handle: await cache.getDirectoryHandle(name, { create: true }) };
+  const absolutePath = `/${GEOTAG_CACHE}/${name}`;
+  await unstageAll(`${absolutePath}/`);
+  await stageFile(`${absolutePath}/${KEEP}`, new Blob(['.']));
+  return { absolutePath };
 };
 
 export const taggedOutputDir = (): Promise<StagedDir> => stagingDir('tagged');
@@ -91,6 +95,8 @@ const treeFile = async (tree: GeoTagTree, entry: TreeEntry): Promise<File | null
   }
 };
 
+const stageInto = async (from: File | null, folder: StagedDir, name: string): Promise<boolean> => from !== null && stageFile(`${folder.absolutePath}/${name}`, from).catch(() => false);
+
 const copyInto = async (from: File | null, folder: FileSystemDirectoryHandle, name: string): Promise<boolean> => {
   if (from === null) return false;
   try {
@@ -106,13 +112,13 @@ const copyInto = async (from: File | null, folder: FileSystemDirectoryHandle, na
 export const stageLog = async (source: File, name: string): Promise<string | null> => {
   const dir = await stagingDir('log');
   const target = name.trim() === '' ? 'flight.log' : name;
-  return (await copyInto(source, dir.handle, target)) ? `${dir.absolutePath}/${target}` : null;
+  return (await stageInto(source, dir, target)) ? `${dir.absolutePath}/${target}` : null;
 };
 
 export const stageImages = async (tree: GeoTagTree): Promise<readonly [string, number]> => {
   const dir = await stagingDir('images');
   const images = (await treeChildren(tree)).filter((it) => it.mime !== MIME_TYPE_DIR && isGeoTagImage(it.name));
-  const copied = await Promise.all(images.map(async (entry) => copyInto(await treeFile(tree, entry), dir.handle, entry.name)));
+  const copied = await Promise.all(images.map(async (entry) => stageInto(await treeFile(tree, entry), dir, entry.name)));
   return [dir.absolutePath, copied.filter((it) => it).length];
 };
 
@@ -128,19 +134,11 @@ export const documentName = (file: File): string => file.name;
 
 export const downloadedLogs = async (logSavePath: string): Promise<readonly DownloadedLog[]> => {
   if (logSavePath.trim() === '') return [];
-  try {
-    const folder = await logSavePath
-      .split('/')
-      .filter((it) => it !== '')
-      .reduce<Promise<FileSystemDirectoryHandle>>(async (at, name) => (await at).getDirectoryHandle(name), navigator.storage.getDirectory());
-    const handles = (await collect(folder.values())).filter((it): it is FileSystemFileHandle => it.kind === 'file' && LOG_EXTENSIONS.has(extension(it.name)));
-    const files = await Promise.all(handles.map((it) => it.getFile()));
-    return files
-      .map((file) => ({ name: file.name, absolutePath: `${logSavePath.replace(/\/+$/, '')}/${file.name}`, lastModified: file.lastModified }))
-      .toSorted((a, b) => b.lastModified - a.lastModified);
-  } catch {
-    return [];
-  }
+  const folder = logSavePath.replace(/\/+$/, '');
+  return (await listStaged(folder))
+    .filter((it) => !it.dir && LOG_EXTENSIONS.has(extension(it.name)))
+    .map((it) => ({ name: it.name, absolutePath: `${folder}/${it.name}`, lastModified: it.modified ?? 0 }))
+    .toSorted((a, b) => b.lastModified - a.lastModified || b.name.localeCompare(a.name));
 };
 
 const folderIn = async (root: FileSystemDirectoryHandle, name: string): Promise<FileSystemDirectoryHandle | null> => {
@@ -152,7 +150,7 @@ const folderIn = async (root: FileSystemDirectoryHandle, name: string): Promise<
 };
 
 const stagedImages = async (staged: StagedDir): Promise<readonly File[]> =>
-  Promise.all((await collect(staged.handle.values())).filter((it): it is FileSystemFileHandle => it.kind === 'file' && isGeoTagImage(it.name)).map((it) => it.getFile()));
+  (await Promise.all((await listStaged(staged.absolutePath)).filter((it) => !it.dir && isGeoTagImage(it.name)).map((it) => stagedFile(`${staged.absolutePath}/${it.name}`)))).filter((it): it is File => it !== null);
 
 export const publishTagged = async (staged: StagedDir, tree: GeoTagTree, subfolder: string | null): Promise<number> => {
   const files = await stagedImages(staged).catch((): readonly File[] => []);

@@ -2148,7 +2148,7 @@ mod tests {
     #[test]
     fn the_core_alone_answers_a_parameter_file_header() {
         let mut vehicle = crate::hub::Vehicle::heard(1);
-        vehicle.autopilot_version = Some(crate::connect::AutopilotVersion { capabilities: 0, flight_sw_version: 0x010F_0280, flight_custom_version: [0x1b, 0x0a, 0x3c, 0x9f, 0, 0, 0, 0], uid: 0, vendor_id: 0, product_id: 0 });
+        vehicle.autopilot_version = Some(crate::connect::AutopilotVersion { capabilities: 0, flight_sw_version: 0x010F_0280, flight_custom_version: [0x1b, 0x0a, 0x3c, 0x9f, 0, 0, 0, 0], uid: 0, vendor_id: 0, product_id: 0, board_version: 0 });
         let (answered, missing) = super::answer_fields("vehicle", crate::paramfile::HEADER_FIELDS, &super::known_of(&vehicle));
         assert!(missing.is_empty(), "with no Qt host a fall-through turns the whole vehicle null: {missing:?}");
         let git_hash = vehicle.firmware().map(|firmware| firmware.git_hash).unwrap();

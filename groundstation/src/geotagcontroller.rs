@@ -384,16 +384,23 @@ pub fn tagged(image: &[u8], trigger: &Trigger) -> Option<Vec<u8>> {
     Some(written)
 }
 
+#[cfg(not(target_family = "wasm"))]
+fn linked(path: &Path) -> bool {
+    std::fs::symlink_metadata(path).map(|m| m.file_type().is_symlink()).unwrap_or(true)
+}
+
+#[cfg(target_family = "wasm")]
+fn linked(_path: &Path) -> bool {
+    false
+}
+
 fn images_in(directory: &Path, recursive: bool) -> Vec<PathBuf> {
-    let entries: Vec<PathBuf> = std::fs::read_dir(directory).into_iter().flatten().flatten().map(|e| e.path()).collect();
+    let entries = crate::vfs::list(directory);
     let named = |p: &Path| p.file_name().and_then(|n| n.to_str()).map(str::to_string).unwrap_or_default();
-    let here = entries.iter().filter(|p| {
-        let symlink = std::fs::symlink_metadata(p).map(|m| m.file_type().is_symlink()).unwrap_or(true);
-        let extension = p.extension().and_then(|e| e.to_str()).map(str::to_lowercase).unwrap_or_default();
-        p.is_file() && !symlink && !named(p).starts_with('.') && IMAGE_EXTENSIONS.contains(&extension.as_str())
-    });
-    let below = entries.iter().filter(|p| recursive && p.is_dir() && !named(p).starts_with('.')).flat_map(|d| images_in(d, true));
-    let mut found: Vec<PathBuf> = here.cloned().chain(below).collect();
+    let image = |name: &str| IMAGE_EXTENSIONS.contains(&Path::new(name).extension().and_then(|e| e.to_str()).map(str::to_lowercase).unwrap_or_default().as_str());
+    let here = entries.iter().filter(|e| !e.dir && !e.name.starts_with('.') && image(&e.name)).map(|e| directory.join(&e.name)).filter(|p| !linked(p));
+    let below = entries.iter().filter(|e| recursive && e.dir && !e.name.starts_with('.')).flat_map(|e| images_in(&directory.join(&e.name), true));
+    let mut found: Vec<PathBuf> = here.chain(below).collect();
     found.sort_by_key(|p| named(p));
     found
 }
@@ -455,7 +462,7 @@ fn tag_run(run: u64, job: &Job) -> Result<(i64, i64, i64), String> {
         .take_while(|_| alive())
         .map(|(i, path)| {
             update(run, |s| s.progress = stage_progress(LOAD_IMAGES_END, PARSE_EXIF_END, i + 1, images.len()));
-            std::fs::read(path).ok().and_then(|bytes| capture_time(&bytes)).unwrap_or(0)
+            crate::vfs::read(path).ok().and_then(|bytes| capture_time(&bytes)).unwrap_or(0)
         })
         .collect();
     if !alive() {
@@ -466,7 +473,7 @@ fn tag_run(run: u64, job: &Job) -> Result<(i64, i64, i64), String> {
         return Err("Could not read EXIF data from any images".to_string());
     }
     update(run, |s| s.progress = PARSE_EXIF_END);
-    let log = std::fs::read(&job.log_file).map_err(|_| "Geotagging failed. Couldn't open log file.".to_string())?;
+    let log = crate::vfs::read(&job.log_file).map_err(|_| "Geotagging failed. Couldn't open log file.".to_string())?;
     if log.is_empty() {
         return Err("Geotagging failed. Log file is empty.".to_string());
     }
@@ -491,7 +498,7 @@ fn tag_run(run: u64, job: &Job) -> Result<(i64, i64, i64), String> {
             return Err(format!("Geotagging failed. Insufficient disk space. Need approximately {} MB.", required / (1024 * 1024)));
         }
     }
-    if !job.preview && std::fs::create_dir_all(&output).is_err() {
+    if !job.preview && crate::vfs::create_dir_all(&output).is_err() {
         return Err(format!("Geotagging failed. Couldn't create output directory: {}", output.display()));
     }
     let pairs: Vec<(usize, usize)> = calibration.image_indices.iter().copied().zip(calibration.trigger_indices.iter().copied()).collect();
@@ -504,14 +511,13 @@ fn tag_run(run: u64, job: &Job) -> Result<(i64, i64, i64), String> {
             let path = &images[*image];
             let name = file_name(path);
             let written = || -> Result<(), String> {
-                let bytes = std::fs::read(path).ok().filter(|b| !b.is_empty()).ok_or_else(|| format!("Geotagging failed. Couldn't open image: {name}"))?;
+                let bytes = crate::vfs::read(path).ok().filter(|b| !b.is_empty()).ok_or_else(|| format!("Geotagging failed. Couldn't open image: {name}"))?;
                 if job.preview {
                     return Ok(());
                 }
                 let geotagged = tagged(&bytes, &triggers[*trigger]).ok_or_else(|| format!("Geotagging failed. Couldn't write EXIF to image: {name}"))?;
                 let target = output.join(&name);
-                let staged = target.with_extension(format!("{}.part", target.extension().and_then(|e| e.to_str()).unwrap_or("")));
-                std::fs::write(&staged, geotagged).and_then(|()| std::fs::rename(&staged, &target)).map_err(|_| format!("Geotagging failed. Couldn't save image: {}", target.display()))
+                crate::vfs::replace(&target, geotagged).map_err(|_| format!("Geotagging failed. Couldn't save image: {}", target.display()))
             };
             let outcome = written();
             update(run, |s| s.progress = stage_progress(CALIBRATE_END, TAG_IMAGES_END, done + 1, pairs.len()));
@@ -551,8 +557,8 @@ pub fn start() {
         let refusal = match () {
             _ if state.image_directory.is_empty() => Some("Please select an image directory."),
             _ if state.log_file.is_empty() => Some("Please select a log file."),
-            _ if !Path::new(&state.image_directory).exists() => Some("Cannot find the image directory."),
-            _ if !state.save_directory.is_empty() && !Path::new(&state.save_directory).exists() => Some("Cannot find the save directory."),
+            _ if !crate::vfs::exists(&state.image_directory) => Some("Cannot find the image directory."),
+            _ if !state.save_directory.is_empty() && !crate::vfs::exists(&state.save_directory) => Some("Cannot find the save directory."),
             _ => None,
         };
         if let Some(message) = refusal {
@@ -575,7 +581,7 @@ pub fn start() {
         )
     };
     let (run, job) = job;
-    let spawned = std::thread::Builder::new().name("groundstation-geotag".to_string()).spawn(move || match tag_run(run, &job) {
+    let spawned = crate::background::spawn("groundstation-geotag", move || match tag_run(run, &job) {
         Ok((tagged, skipped, failed)) => {
             update(run, |state| {
                 state.in_progress = false;
@@ -609,11 +615,12 @@ pub fn cancel() {
 fn set_path(field: &str, raw: &str) {
     let path = crate::geotagjob::local_path(raw);
     let place = Path::new(&path);
+    let found = crate::vfs::kind(place);
     let mut state = held();
-    let invalid_directory = || !place.exists() || !place.is_dir();
+    let invalid_directory = || found != Some(crate::vfs::Kind::Dir);
     state.error_message = match field {
         "logFile" if path.is_empty() => "Empty Filename.".to_string(),
-        "logFile" if !place.exists() || !place.is_file() => "Invalid Filename.".to_string(),
+        "logFile" if found != Some(crate::vfs::Kind::File) => "Invalid Filename.".to_string(),
         "logFile" => {
             state.log_file = path.clone();
             String::new()
@@ -621,7 +628,7 @@ fn set_path(field: &str, raw: &str) {
         _ if path.is_empty() || invalid_directory() => "Invalid Directory.".to_string(),
         "imageDirectory" => {
             state.image_directory = path.clone();
-            let already = state.save_directory.is_empty() && Path::new(&state.image_directory).join("TAGGED").exists();
+            let already = state.save_directory.is_empty() && crate::vfs::exists(Path::new(&state.image_directory).join("TAGGED"));
             if already { "Images have already been tagged. Existing images will be removed.".to_string() } else { String::new() }
         }
         _ => {

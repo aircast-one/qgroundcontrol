@@ -3,6 +3,7 @@ import type { Json } from './Json';
 import { Qgc } from './Qgc';
 
 const LINKS_COMMIT = 'links.commitLinkConfigurations';
+const DEVICE_PAIR = 'device.pair';
 const LINKS_BLUETOOTH_SCAN = 'links.bluetoothScan';
 const LINKS_CONNECT = 'links.createConnectedLink';
 const LINKS_REMOVE = 'links.removeConfiguration';
@@ -126,6 +127,10 @@ export const SetupCommands = {
   setInspectorMessageInterval: (rate: number): Promise<boolean> => Qgc.invoke(INSPECTOR_MESSAGE_INTERVAL, rate),
   setInspectorSystem: (system: number): Promise<boolean> => Qgc.invoke(INSPECTOR_ACTIVE_SYSTEM, system),
   takeGimbalControlRefusal: (): Promise<string | null> => Qgc.refusalOf(GIMBAL_CONTROL, true),
+};
+
+export const DeviceCommands = {
+  pair: (base: string): Promise<string | null> => Qgc.refusalOf(DEVICE_PAIR, base),
 };
 
 export const AppCommands = {

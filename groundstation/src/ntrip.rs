@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+#[cfg(not(target_family = "wasm"))]
 use std::io::{Read, Write};
 use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
@@ -536,29 +537,39 @@ pub fn fetch_mountpoints() -> Value {
         *browser = Browser { fetching: true, key: Some(key.clone()), ..Browser::default() };
     }
     let from = vehicle_coordinate();
-    std::thread::Builder::new()
-        .name("groundstation-ntrip-sourcetable".to_string())
-        .spawn(move || {
-            let fetched = download_source_table(&config);
-            let mut browser = browser();
-            if browser.key.as_ref() != Some(&key) {
-                return;
+    let finish = move |fetched: Result<String, String>| {
+        let mut browser = browser();
+        if browser.key.as_ref() != Some(&key) {
+            return;
+        }
+        browser.fetching = false;
+        match fetched {
+            Ok(body) => {
+                browser.mountpoints = source_table(&body, from);
+                browser.fetched_at_ms = Some(crate::hub::now_ms());
             }
-            browser.fetching = false;
-            match fetched {
-                Ok(body) => {
-                    browser.mountpoints = source_table(&body, from);
-                    browser.fetched_at_ms = Some(crate::hub::now_ms());
-                }
-                Err(error) => {
-                    browser.error = error;
-                    browser.mountpoints.clear();
-                    browser.fetched_at_ms = None;
-                }
+            Err(error) => {
+                browser.error = error;
+                browser.mountpoints.clear();
+                browser.fetched_at_ms = None;
             }
-        })
-        .expect("ntrip source table thread");
+        }
+    };
+    if let Err(error) = fetch_source_table(config, finish) {
+        *browser() = Browser { error: format!("Could not start the source table download: {error}"), ..Browser::default() };
+    }
     json!({ "ok": true })
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn fetch_source_table(config: Config, finish: impl FnOnce(Result<String, String>) + Send + 'static) -> std::io::Result<()> {
+    std::thread::Builder::new().name("groundstation-ntrip-sourcetable".to_string()).spawn(move || finish(download_source_table(&config))).map(drop)
+}
+
+#[cfg(target_family = "wasm")]
+fn fetch_source_table(config: Config, finish: impl FnOnce(Result<String, String>) + Send + 'static) -> std::io::Result<()> {
+    let mut table = relayed::SourceTable::new(&config, finish);
+    crate::background::poll("ntrip-sourcetable", relayed::STEP, move || table.step(web_time::Instant::now()))
 }
 
 pub fn select_mountpoint(backend: &dyn Backend, args: &str) -> Value {
@@ -614,6 +625,7 @@ pub fn datagram_frames(framer: &mut Framer, datagram: &[u8], validate: bool) -> 
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn listen(port: u16, validate: bool, generation: u64) {
     let socket = match std::net::UdpSocket::bind(("0.0.0.0", port)) {
         Ok(socket) => socket,
@@ -655,10 +667,20 @@ fn sync_udp_input() {
         })
     };
     if let Some(Some((port, validate, generation))) = start {
-        if let Err(error) = std::thread::Builder::new().name("groundstation-rtcm-udp".to_string()).spawn(move || listen(port, validate, generation)) {
+        if let Err(error) = start_udp_input(port, validate, generation) {
             log::warn!("RTCM UDP input cannot start here: {error}");
         }
     }
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn start_udp_input(port: u16, validate: bool, generation: u64) -> std::io::Result<()> {
+    std::thread::Builder::new().name("groundstation-rtcm-udp".to_string()).spawn(move || listen(port, validate, generation)).map(drop)
+}
+
+#[cfg(target_family = "wasm")]
+fn start_udp_input(port: u16, validate: bool, generation: u64) -> std::io::Result<()> {
+    crate::hostsocket::follow("rtcm-udp", relayed::udp_input_follower(port, validate, generation))
 }
 
 pub fn sync() {
@@ -671,13 +693,26 @@ pub fn sync() {
         ntrip.retarget(wanted)
     };
     if let Some((config, generation)) = start {
-        if let Err(error) = std::thread::Builder::new().name("groundstation-ntrip".to_string()).spawn(move || follow(config, generation)) {
+        if let Err(error) = start_session(config, generation) {
             log::warn!("NTRIP connection cannot start here: {error}");
         }
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
+fn start_session(config: Config, generation: u64) -> std::io::Result<()> {
+    std::thread::Builder::new().name("groundstation-ntrip".to_string()).spawn(move || follow(config, generation)).map(drop)
+}
+
+#[cfg(target_family = "wasm")]
+fn start_session(config: Config, generation: u64) -> std::io::Result<()> {
+    let mut session = relayed::Session::new(config, generation);
+    crate::background::poll("ntrip", relayed::STEP, move || session.step(web_time::Instant::now()))
+}
+
+#[cfg(not(target_family = "wasm"))]
 trait Stream: Read + Write + Send {}
+#[cfg(not(target_family = "wasm"))]
 impl<T: Read + Write + Send> Stream for T {}
 
 #[cfg(not(target_family = "wasm"))]
@@ -685,36 +720,33 @@ mod caster;
 #[cfg(not(target_family = "wasm"))]
 use caster::{download_source_table, open};
 
-#[cfg(target_family = "wasm")]
-const NO_RAW_TCP: &str = "NTRIP casters need the desktop or mobile app: a browser cannot open a raw TCP connection.";
-
-#[cfg(target_family = "wasm")]
-fn download_source_table(_config: &Config) -> Result<String, String> {
-    Err(NO_RAW_TCP.to_string())
-}
-
-#[cfg(target_family = "wasm")]
-fn open(_config: &Config) -> Result<Box<dyn Stream>, String> {
-    Err(NO_RAW_TCP.to_string())
-}
+#[cfg(any(target_family = "wasm", test))]
+mod relayed;
 
 
-fn forward(generation: u64, framer: &mut Framer, bytes: &[u8]) -> bool {
+fn forward(generation: u64, framer: &mut Framer, bytes: &[u8], to_udp: &dyn Fn(&[u8])) -> bool {
     let now_ms = crate::hub::now_ms();
     if !lock().received(generation, bytes.len(), now_ms) {
         return false;
     }
-    let target = lock().udp_target.clone();
-    let udp = target.as_ref().and_then(|_| std::net::UdpSocket::bind("0.0.0.0:0").ok());
     framer.push(bytes).iter().filter(|frame| lock().accept(generation, frame, now_ms)).for_each(|frame| {
-        if let (Some(socket), Some(target)) = (udp.as_ref(), target.as_ref())
-            && let Err(e) = socket.send_to(&frame.bytes, target)
-        {
-            log::warn!("NTRIP UDP forward to {target} failed: {e}");
-        }
+        to_udp(&frame.bytes);
         inject(&frame.bytes);
     });
     true
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn udp_forwarder() -> impl Fn(&[u8]) {
+    let target = lock().udp_target.clone();
+    let udp = target.as_ref().and_then(|_| std::net::UdpSocket::bind("0.0.0.0:0").ok());
+    move |bytes| {
+        if let (Some(socket), Some(target)) = (udp.as_ref(), target.as_ref())
+            && let Err(e) = socket.send_to(bytes, target)
+        {
+            log::warn!("NTRIP UDP forward to {target} failed: {e}");
+        }
+    }
 }
 
 fn nmea_checksum(body: &str) -> u8 {
@@ -795,7 +827,7 @@ impl GgaSchedule {
     }
 }
 
-fn send_gga(stream: &mut Box<dyn Stream>, schedule: &mut GgaSchedule, generation: u64) -> Result<(), String> {
+fn send_gga(write: &mut dyn FnMut(&[u8]) -> Result<(), String>, schedule: &mut GgaSchedule, generation: u64) -> Result<(), String> {
     let now_ms = crate::hub::now_ms();
     if !schedule.due(now_ms) {
         return Ok(());
@@ -810,7 +842,7 @@ fn send_gga(stream: &mut Box<dyn Stream>, schedule: &mut GgaSchedule, generation
         Some(((lat, lon, alt), name)) => {
             let now = chrono::Utc::now();
             use chrono::Timelike;
-            stream.write_all(gga(lat, lon, alt, (now.hour(), now.minute(), now.second())).as_bytes()).map_err(|e| e.to_string())?;
+            write(gga(lat, lon, alt, (now.hour(), now.minute(), now.second())).as_bytes())?;
             schedule.sent(now_ms, interval_ms);
             lock().gga_source(generation, name);
             Ok(())
@@ -818,6 +850,7 @@ fn send_gga(stream: &mut Box<dyn Stream>, schedule: &mut GgaSchedule, generation
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn session(config: &Config, generation: u64) -> (bool, String) {
     let mut stream = match open(config) {
         Ok(stream) => stream,
@@ -850,18 +883,19 @@ fn session(config: &Config, generation: u64) -> (bool, String) {
     };
     lock().connected(generation);
     let mut framer = Framer::default();
-    if !forward(generation, &mut framer, &rest) {
+    let to_udp = udp_forwarder();
+    if !forward(generation, &mut framer, &rest, &to_udp) {
         return (false, String::new());
     }
     let mut schedule = GgaSchedule::default();
     let mut quiet = Duration::ZERO;
     loop {
-        if let Err(detail) = send_gga(&mut stream, &mut schedule, generation) {
+        if let Err(detail) = send_gga(&mut |bytes| stream.write_all(bytes).map_err(|e| e.to_string()), &mut schedule, generation) {
             return (false, detail);
         }
         match stream.read(&mut chunk) {
             Ok(0) => return (false, "Server disconnected".to_string()),
-            Ok(n) if !forward(generation, &mut framer, &chunk[..n]) => return (false, String::new()),
+            Ok(n) if !forward(generation, &mut framer, &chunk[..n], &to_udp) => return (false, String::new()),
             Ok(_) => quiet = Duration::ZERO,
             Err(e) if timed_out(&e) && lock().generation != generation => return (false, String::new()),
             Err(e) if timed_out(&e) && quiet + READ_SLICE < DATA_WATCHDOG => quiet += READ_SLICE,
@@ -871,6 +905,7 @@ fn session(config: &Config, generation: u64) -> (bool, String) {
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn follow(config: Config, generation: u64) {
     loop {
         let (fatal, detail) = session(&config, generation);

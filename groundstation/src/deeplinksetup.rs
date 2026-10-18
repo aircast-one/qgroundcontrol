@@ -79,8 +79,8 @@ pub fn run(path: &str, args: &str, setup: impl FnOnce(String) + Send + 'static) 
     match (path, waiting) {
         (ACCEPT, Some(host)) if shown.as_deref() == Some(host.as_str()) => {
             replace(None);
-            match std::thread::Builder::new().name("groundstation-device-setup".to_string()).spawn(move || setup(host)) {
-                Ok(_) => json!({ "ok": true }),
+            match crate::background::spawn("groundstation-device-setup", move || setup(host)) {
+                Ok(()) => json!({ "ok": true }),
                 Err(_) => json!({ "ok": false, "reason": DEVICE_SETUP_UNAVAILABLE }),
             }
         }

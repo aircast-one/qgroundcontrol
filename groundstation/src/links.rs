@@ -116,10 +116,6 @@ pub fn link_json_with(index: usize, element: &Value, quiet: &[String]) -> Value 
         "filename": filename,
         "logFileName": filename.rsplit('/').next().unwrap_or("").to_string(),
         "lastError": last_error.clone(),
-        // MainStatusIndicatorOfflinePage.qml:47 branches on this to send the operator to edit the
-        // address instead of offering Retry, and TCPLink raises it for three cases - no address,
-        // host not found, nothing listening. Serving the sentence without it tells someone their
-        // link failed and lets them retry a configuration that cannot succeed until it is changed.
         "errorRemedy": match (last_error.is_empty(), number("lastErrorRemedy")) {
             (true, _) => Value::Null,
             (false, Some(1)) => json!("editAddress"),
@@ -128,10 +124,6 @@ pub fn link_json_with(index: usize, element: &Value, quiet: &[String]) -> Value 
     })
 }
 
-// LinkManager serves the ports and their display strings as two parallel lists. LinksScreen.kt
-// dropped blank ports BEFORE pairing them with labels by position, so one blank entry shifted every
-// label after it onto the wrong port. They are paired first here, and a blank label falls back to
-// the port itself.
 pub(crate) fn serial_ports(ports: Option<&Value>, labels: Option<&Value>) -> Vec<Value> {
     let texts = |list: Option<&Value>| list.and_then(Value::as_array).map(|a| a.iter().map(|v| v.as_str().unwrap_or_default().to_string()).collect::<Vec<_>>()).unwrap_or_default();
     let labels = texts(labels);
@@ -163,6 +155,7 @@ pub fn links_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "linkTypeIds": root.get("linkTypeIds").cloned().unwrap_or(json!([])),
         "serialPorts": serial_ports(root.get("serialPorts"), root.get("serialPortStrings")),
         "bluetooth": crate::platformbluetooth::state(),
+        "throughDevice": cfg!(target_family = "wasm") && crate::device::paired(),
         "baudRates": root.get("serialBaudRates").and_then(Value::as_array).map(|a| a.iter().filter_map(|v| v.as_str().and_then(|s| s.parse::<i64>().ok())).collect::<Vec<_>>()).unwrap_or_default(),
     })
 }
@@ -172,17 +165,10 @@ pub(crate) fn serial_baud_rates(backend: &dyn Backend) -> Vec<i64> {
 }
 
 pub fn support_host_view(_backend: &dyn Backend, args: &[String]) -> Value {
-    // NOT trimmed. LinkManager.cc:942 hands the stored value to addHost exactly as typed, and
-    // _getIpAddress cannot resolve a name with a leading space - so trimming here judged a string
-    // QGC never uses and answered valid for an address that forwards nowhere. A normalisation on
-    // one side of a boundary and not the other is a disagreement no test inside either side finds.
     let typed = args.first().map(String::as_str).unwrap_or_default();
     let parts: Vec<&str> = typed.split(':').collect();
     let error = match (typed.trim().is_empty(), parts.len()) {
         (true, _) => Some("Enter the address of the support engineer's ground station."),
-        // A view's arguments are split on commas, so a typed comma arrives here as a second
-        // argument and the first half alone could answer valid. The caller cannot tell this
-        // happened; the view can, because it is the only thing that sees the extra argument.
         _ if args.len() > 1 => Some("An address cannot contain a comma."),
         _ if parts[0].chars().any(char::is_whitespace) => Some("An address cannot contain a space."),
         (false, 1) => None,
@@ -238,19 +224,6 @@ pub fn link_form_view(backend: &dyn Backend, args: &[String]) -> Value {
     let rates = serial_baud_rates(backend);
     let number = port.parse::<i64>().ok();
     let ok = port_ok(&kind, number, &rates);
-    // One flag for two fields left a head no way to tell which one it was about, so a field gated
-    // on valid refuses whichever field the operator happens to be editing: an empty TCP host made
-    // every port entry fail with a sentence about the host, and an absent port made the host
-    // unrepairable with a sentence about the port. errorField names the field so a head gates that
-    // one and leaves the other alone. It is never null while valid is false - a check about the
-    // pair rather than either field would need its own token, because a head reading null as
-    // "nothing is wrong" would gate nothing at all.
-    // An unrecognised token was never examined: the host check keys on "tcp" and the rate check on
-    // serial, so anything else fell through to None and the form called a link it cannot build
-    // fine. linkTypeIds is LinkManager::linkTypeTable(), the same list the type picker is filled
-    // from, so the form cannot accept a type the manager could not construct. An empty list
-    // refuses nothing - a bridge that cannot answer must not become a validator rejecting every
-    // type.
     let error = form_error(&kind, &host, ok, &link_type_ids(backend));
     let name = match (serial, host.trim().is_empty()) {
         (true, _) => format!("{} {}", host.trim(), port).trim().to_string(),
@@ -429,8 +402,6 @@ mod tests {
 
     #[test]
     fn a_failed_link_says_whether_retrying_could_ever_work() {
-        // variantJson serialises a Q_ENUM as its integer (QGCBridgeCore.cc), and ErrorRemedy is
-        // declared RemedyRetry then RemedyEditAddress, so the wire value is 0 or 1.
         let link = |error: &str, remedy: Value| {
             let mut element = json!({ "name": "Ground", "settingsURL": "TcpSettings.qml", "host": "192.168.1.5", "port": 5760 });
             element["lastError"] = json!(error);

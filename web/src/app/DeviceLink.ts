@@ -1,4 +1,4 @@
-import { AppCommands, CameraCommands, LinkCommands } from '@/bridge/BridgeCommands';
+import { AppCommands, CameraCommands, DeviceCommands, LinkCommands } from '@/bridge/BridgeCommands';
 
 type Device = { name?: string; cameras?: { name: string; url: string }[] };
 
@@ -7,6 +7,8 @@ export const deviceSocket = (page: string): string => {
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
   return url.href;
 };
+
+export const deviceBase = (page: string): string => new URL('.', page).href;
 
 export const deviceLinkName = (device: Device, hostname: string): string => `Aircast ${device.name?.trim() || hostname}`;
 
@@ -22,6 +24,7 @@ export const DeviceLink = {
     const device = await servedBy();
     if (device === null) return;
     await Promise.all([
+      DeviceCommands.pair(deviceBase(location.href)),
       LinkCommands.createWebSocket(deviceLinkName(device, location.hostname), deviceSocket(location.href)),
       CameraCommands.adoptDevice(location.hostname, deviceCameras(device)),
       AppCommands.markFirstRunShown(),

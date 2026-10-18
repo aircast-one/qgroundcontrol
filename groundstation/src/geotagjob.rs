@@ -1,4 +1,3 @@
-use std::path::Path;
 
 use serde_json::{Value, json};
 
@@ -44,12 +43,12 @@ pub fn local_path(raw: &str) -> String {
 }
 
 fn path_refusal(field: Field, path: &str) -> Option<(&'static str, &'static str)> {
-    let place = Path::new(path);
-    match field {
+    let found = (!path.trim().is_empty()).then(|| crate::vfs::kind(path)).flatten();
+    match (field, found) {
         _ if path.trim().is_empty() => Some(("emptyPath", "Choose a path first.")),
-        _ if !place.exists() => Some(("notFound", "Nothing exists at that path.")),
-        Field::LogFile if !place.is_file() => Some(("notAFile", "The flight log has to be a file.")),
-        Field::ImageDirectory | Field::SaveDirectory if !place.is_dir() => Some(("notADirectory", "That path is not a folder.")),
+        (_, None) => Some(("notFound", "Nothing exists at that path.")),
+        (Field::LogFile, Some(crate::vfs::Kind::Dir)) => Some(("notAFile", "The flight log has to be a file.")),
+        (Field::ImageDirectory | Field::SaveDirectory, Some(crate::vfs::Kind::File)) => Some(("notADirectory", "That path is not a folder.")),
         _ => None,
     }
 }
@@ -78,8 +77,8 @@ fn refusal(action: Action, state: &Job) -> Option<(&'static str, &'static str)> 
         Action::Start if state.running => Some(("busy", "Tagging is already running.")),
         Action::Start if state.image_directory.is_empty() => Some(("noImageDirectory", "Choose the folder holding the images.")),
         Action::Start if state.log_file.is_empty() => Some(("noLogFile", "Choose the flight log.")),
-        Action::Start if !Path::new(&state.image_directory).is_dir() => Some(("imageDirectoryMissing", "The image folder is no longer there.")),
-        Action::Start if !state.save_directory.is_empty() && !Path::new(&state.save_directory).is_dir() => Some(("saveDirectoryMissing", "The destination folder is no longer there.")),
+        Action::Start if crate::vfs::kind(&state.image_directory) != Some(crate::vfs::Kind::Dir) => Some(("imageDirectoryMissing", "The image folder is no longer there.")),
+        Action::Start if !state.save_directory.is_empty() && crate::vfs::kind(&state.save_directory) != Some(crate::vfs::Kind::Dir) => Some(("saveDirectoryMissing", "The destination folder is no longer there.")),
         Action::Start => None,
     }
 }

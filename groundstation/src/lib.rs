@@ -176,6 +176,8 @@ pub mod usbmsc;
 pub mod usbfs;
 pub mod firmwarecatalog;
 pub mod platformserial;
+pub mod device;
+pub mod hostsocket;
 pub mod hostdevice;
 pub mod pilotunits;
 pub mod presets;

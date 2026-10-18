@@ -27,7 +27,7 @@ test('the links page offers every link type the browser can open', async ({ vehi
 });
 
 test('the battery sheet shows each battery with its voltage', async ({ vehicle }) => {
-  await vehicle.getByRole('button', { name: /^Battery \d+%$/ }).click();
+  await vehicle.getByRole('button', { name: /^Battery \d+%/ }).click();
   const sheet = vehicle.getByRole('dialog');
   await expect(sheet.getByText(/^Battery 1/)).toBeVisible();
   await expect(sheet.getByText(/\d+\.\d\d V/).first()).toBeVisible();

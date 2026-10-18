@@ -367,6 +367,9 @@ impl Cache {
     }
 
     fn is_own_file(&self, path: &Path) -> bool {
+        if cfg!(target_family = "wasm") {
+            return self.connection.path().is_some_and(|own| Path::new(own) == path);
+        }
         let own = self.connection.path().and_then(|own| std::fs::canonicalize(own).ok());
         std::fs::canonicalize(path).ok().zip(own).is_some_and(|(asked, own)| asked == own)
     }
@@ -410,7 +413,7 @@ impl Cache {
     }
 
     pub fn import(&self, path: &Path, replace: bool) -> Result<(), String> {
-        if !path.is_file() {
+        if !cfg!(target_family = "wasm") && !path.is_file() {
             return Err("Error opening import database".to_string());
         }
         if self.is_own_file(path) {

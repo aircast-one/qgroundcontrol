@@ -261,7 +261,7 @@ pub fn resolve(source: &Source, board: &BoardInfo, description: &str, report: &m
     let url = match source {
         Source::File(path) => {
             report(Event::Status(format!("Using firmware file {path}")));
-            return std::fs::read(path).map(|bytes| (path.clone(), bytes)).map_err(|e| format!("Unable to open firmware file {path}: {e}"));
+            return crate::vfs::read(path).map(|bytes| (path.clone(), bytes)).map_err(|e| format!("Unable to open firmware file {path}: {e}"));
         }
         Source::Url(url) => url.clone(),
         Source::Px4(build) => crate::firmwarecatalog::px4_url(board.board_id, *build).ok_or_else(|| "Unable to find specified firmware for board type".to_string())?,
@@ -436,7 +436,107 @@ fn ports() -> Vec<Value> {
     crate::platformserial::ports()
         .into_iter()
         .map(|p| json!({ "port": p.system_location, "bootloader": in_bootloader(&p.description), "description": crate::platformserial::display_name(&p), "boardType": recognized_board(&p) }))
+        .chain(device_port())
         .collect()
+}
+
+pub const DEVICE_PORT: &str = "aircast-device";
+pub const DEVICE_PORT_NAME: &str = "Flight controller on the Aircast device";
+
+#[cfg(hosted_serial)]
+fn device_port() -> Option<Value> {
+    (cfg!(target_family = "wasm") && crate::device::paired()).then(|| json!({ "port": DEVICE_PORT, "bootloader": false, "description": DEVICE_PORT_NAME, "boardType": crate::boards::BoardType::Pixhawk.name(), "device": true }))
+}
+
+#[cfg(target_family = "wasm")]
+mod device {
+    use super::*;
+
+    const FLASH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(240);
+
+    fn board_id() -> Option<u32> {
+        crate::hub::lock().active().and_then(|vehicle| vehicle.autopilot_version.as_ref()).map(|version| version.board_version >> 16).filter(|board| *board != 0)
+    }
+
+    pub fn start(file: &str) -> Result<(), String> {
+        let chosen = source(file)?;
+        if chosen.sik() {
+            return Err("SiK radios are flashed over USB, not through the device".to_string());
+        }
+        let url = crate::device::firmware().ok_or_else(|| crate::device::NEEDS_DEVICE.to_string())?;
+        begin(DEVICE_PORT, file)?;
+        wasm_bindgen_futures::spawn_local(async move { finished(flash(chosen, url).await) });
+        Ok(())
+    }
+
+    async fn choose(choices: Vec<(String, String)>, best: Option<usize>) -> Result<String, String> {
+        apply(Event::Choose(choices, best));
+        loop {
+            if cancelled() {
+                return Err(FLASH_CANCELLED.to_string());
+            }
+            if let Some(picked) = job().chosen.take() {
+                apply(Event::Phase(Phase::Connecting));
+                return Ok(picked);
+            }
+            crate::background::pause(std::time::Duration::from_millis(CHOICE_POLL_MS)).await;
+        }
+    }
+
+    async fn catalog_url(chosen: &Source) -> Result<Option<String>, String> {
+        let board = || board_id().ok_or_else(|| "The flight controller has not said which board it is. Pick a firmware file instead.".to_string());
+        Ok(match chosen {
+            Source::File(_) | Source::Sik => None,
+            Source::Url(url) => Some(url.clone()),
+            Source::Px4(build) => Some(crate::firmwarecatalog::px4_url(board()?, *build).ok_or_else(|| "Unable to find specified firmware for board type".to_string())?),
+            Source::ArduPilot { vehicle, build } => {
+                apply(Event::Status("Downloading the ArduPilot firmware list...".into()));
+                let manifest = crate::firmwarecatalog::download_later(crate::firmwarecatalog::ARDUPILOT_MANIFEST_URL).await?;
+                let entries = crate::firmwarecatalog::parse_manifest(&String::from_utf8_lossy(&manifest))?;
+                let chibios = crate::settingsstore::raw_setting(APM_CHIBIOS).and_then(|v| v.as_i64()).unwrap_or(0) == 0;
+                let (choices, best) = crate::firmwarecatalog::apm_url(&entries, board()?, *build, *vehicle, chibios, "")?;
+                Some(match (choices.len(), best) {
+                    (1, _) => choices[0].1.clone(),
+                    _ => choose(choices, best).await?,
+                })
+            }
+        })
+    }
+
+    pub fn refusal(status: u16, answer: &[u8]) -> String {
+        let said = serde_json::from_slice::<Value>(answer).ok().and_then(|answer| answer["error"].as_str().map(str::to_string)).unwrap_or_else(|| String::from_utf8_lossy(answer).trim().to_string());
+        match (status, said.is_empty()) {
+            (_, true) => format!("The device answered {status}"),
+            (409, false) => format!("The device will not flash now: {said}"),
+            (422, false) => format!("This firmware is not for the attached flight controller: {said}"),
+            (_, false) => said,
+        }
+    }
+
+    async fn flash(chosen: Source, device: String) -> Result<(), String> {
+        let image = match catalog_url(&chosen).await? {
+            Some(url) => {
+                apply(Event::Status(format!("Downloading firmware from {url}")));
+                let bytes = crate::firmwarecatalog::download_later(&url).await?;
+                apply(Event::Status("Download complete".into()));
+                bytes
+            }
+            None => match &chosen {
+                Source::File(path) => crate::vfs::read(path).map_err(|e| format!("Unable to open firmware file {path}: {e}"))?,
+                _ => return Err("Nothing to flash".to_string()),
+            },
+        };
+        if cancelled() {
+            return Err(FLASH_CANCELLED.to_string());
+        }
+        apply(Event::Phase(Phase::Programming));
+        apply(Event::Status("The device is rebooting the flight controller into its bootloader and flashing it. This takes about half a minute.".into()));
+        let headers = [("Content-Type".to_string(), "application/octet-stream".to_string())];
+        match crate::http::send_later("POST", &device, &headers, Some(&image), FLASH_TIMEOUT).await? {
+            (200, _) => Ok(()),
+            (status, answer) => Err(refusal(status, &answer)),
+        }
+    }
 }
 
 #[cfg(not(hosted_serial))]
@@ -538,19 +638,47 @@ pub fn for_hardware(chosen: Source, radio: bool) -> Result<Source, String> {
     }
 }
 
-pub fn start(port: &str, file: &str) -> Result<(), String> {
-    let chosen = for_hardware(source(file)?, crate::corelinks::board_type_at(port) == Some(crate::boards::BoardType::SiKRadio))?;
-    if let Source::File(path) = &chosen {
-        std::fs::metadata(path).map_err(|e| format!("Unable to open firmware file {path}: {e}"))?;
-    }
-    {
-        let mut held = job();
-        if held.phase.busy() {
-            return Err("A firmware upgrade is already running".to_string());
+fn finished(outcome: Result<(), String>) {
+    let mut held = job();
+    match outcome {
+        Ok(()) => {
+            held.phase = Phase::Complete;
+            held.messages.push("Upgrade complete".into());
         }
-        CANCEL.store(false, std::sync::atomic::Ordering::SeqCst);
-        *held = Job { phase: Phase::Connecting, port: Some(port.to_string()), file: Some(file.to_string()), ..Job::default() };
+        Err(e) if e == FLASH_CANCELLED => {
+            held.phase = Phase::Idle;
+            held.messages.push(e);
+        }
+        Err(e) => {
+            held.phase = Phase::Failed;
+            held.messages.extend([format!("Error: {e}"), "Upgrade cancelled".to_string()]);
+            held.error = Some(e);
+        }
     }
+}
+
+fn begin(port: &str, file: &str) -> Result<(), String> {
+    let mut held = job();
+    if held.phase.busy() {
+        return Err("A firmware upgrade is already running".to_string());
+    }
+    CANCEL.store(false, std::sync::atomic::Ordering::SeqCst);
+    *held = Job { phase: Phase::Connecting, port: Some(port.to_string()), file: Some(file.to_string()), ..Job::default() };
+    Ok(())
+}
+
+pub fn start(port: &str, file: &str) -> Result<(), String> {
+    #[cfg(target_family = "wasm")]
+    if port == DEVICE_PORT {
+        return device::start(file);
+    }
+    let chosen = for_hardware(source(file)?, crate::corelinks::board_type_at(port) == Some(crate::boards::BoardType::SiKRadio))?;
+    if let Source::File(path) = &chosen
+        && !crate::vfs::exists(path)
+    {
+        return Err(format!("Unable to open firmware file {path}"));
+    }
+    begin(port, file)?;
     if crate::hub::lock().active().is_none() {
         crate::corelinks::close_links_at(crate::hub::now_ms(), None, "firmware upgrade");
     }
@@ -573,23 +701,7 @@ pub fn start(port: &str, file: &str) -> Result<(), String> {
                     flash_from(opened, chosen.sik(), &mut |board| resolve(&chosen, board, &description, &mut apply).and_then(|fetched| if cancelled() { Err(FLASH_CANCELLED.to_string()) } else { Ok(fetched) }), &mut apply)
                 })
             }));
-            let outcome = flashed.unwrap_or_else(|_| Err("The firmware upgrade stopped unexpectedly".to_string()));
-            let mut held = job();
-            match outcome {
-                Ok(()) => {
-                    held.phase = Phase::Complete;
-                    held.messages.push("Upgrade complete".into());
-                }
-                Err(e) if e == FLASH_CANCELLED => {
-                    held.phase = Phase::Idle;
-                    held.messages.push(e);
-                }
-                Err(e) => {
-                    held.phase = Phase::Failed;
-                    held.messages.extend([format!("Error: {e}"), "Upgrade cancelled".to_string()]);
-                    held.error = Some(e);
-                }
-            }
+            finished(flashed.unwrap_or_else(|_| Err("The firmware upgrade stopped unexpectedly".to_string())));
         })
         .map(|_| ())
         .map_err(|e| {

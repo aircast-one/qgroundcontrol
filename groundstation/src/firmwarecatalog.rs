@@ -206,7 +206,16 @@ fn fetch(url: &str) -> Result<Vec<u8>, String> {
 }
 
 pub fn download(url: &str) -> Result<Vec<u8>, String> {
-    let bytes = fetch(url)?;
+    unpacked(url, fetch(url)?)
+}
+
+#[cfg(target_family = "wasm")]
+pub async fn download_later(url: &str) -> Result<Vec<u8>, String> {
+    let bytes = crate::http::get_later(url, &[], std::time::Duration::from_secs(600)).await.map_err(|e| format!("Download of {url} failed: {e}"))?;
+    unpacked(url, bytes)
+}
+
+fn unpacked(url: &str, bytes: Vec<u8>) -> Result<Vec<u8>, String> {
     match url.ends_with(".gz") {
         true => {
             let mut unpacked = Vec::new();

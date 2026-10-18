@@ -767,7 +767,7 @@ const SAVE_DIRECTORIES: [(&str, &str); 9] = [
 
 fn child_save_path(root: &str, directory: &str) -> String {
     let root = std::path::Path::new(root);
-    match !root.as_os_str().is_empty() && root.is_dir() {
+    match !root.as_os_str().is_empty() && (cfg!(target_family = "wasm") || root.is_dir()) {
         true => root.join(directory).to_string_lossy().into_owned(),
         false => String::new(),
     }
@@ -810,8 +810,7 @@ pub fn folder() -> Option<std::path::PathBuf> {
 }
 
 pub fn telemetry_save_path() -> Option<String> {
-    let root = stored_text(&key("App", "savePath"))?;
-    Some(child_save_path(&root, "Telemetry")).filter(|path| !path.is_empty())
+    save_child("Telemetry")
 }
 
 pub fn default_save_path(application: &str) -> Option<std::path::PathBuf> {
@@ -875,31 +874,33 @@ fn create_save_directories() {
     }
 }
 
-pub fn parameter_save_path() -> Option<String> {
-    let root = stored_text(&key("App", "savePath"))?;
-    Some(child_save_path(&root, "Parameters")).filter(|path| !path.is_empty())
-}
-
 #[cfg(target_family = "wasm")]
 const BROWSER_SAVE_ROOT: Option<&str> = Some("/Aircast");
 #[cfg(not(target_family = "wasm"))]
 const BROWSER_SAVE_ROOT: Option<&str> = None;
 
+pub fn save_root() -> Option<String> {
+    stored_text(&key("App", "savePath")).filter(|root| !root.is_empty()).or_else(|| BROWSER_SAVE_ROOT.map(str::to_string))
+}
+
+fn save_child(directory: &str) -> Option<String> {
+    save_root().map(|root| child_save_path(&root, directory)).filter(|path| !path.is_empty())
+}
+
+pub fn parameter_save_path() -> Option<String> {
+    save_child("Parameters")
+}
+
 pub fn video_save_path() -> Option<String> {
-    match stored_text(&key("App", "savePath")).filter(|root| !root.is_empty()) {
-        Some(root) => Some(child_save_path(&root, "Video")).filter(|path| !path.is_empty()),
-        None => BROWSER_SAVE_ROOT.map(|root| format!("{root}/Video")),
-    }
+    save_child("Video")
 }
 
 pub fn photo_save_path() -> Option<String> {
-    let root = stored_text(&key("App", "savePath"))?;
-    Some(child_save_path(&root, "Photo")).filter(|path| !path.is_empty())
+    save_child("Photo")
 }
 
 pub fn log_save_path() -> Option<String> {
-    let root = stored_text(&key("App", "savePath"))?;
-    Some(child_save_path(&root, "Logs")).filter(|path| !path.is_empty())
+    save_child("Logs")
 }
 
 fn save_path(path: &str) -> Option<Value> {

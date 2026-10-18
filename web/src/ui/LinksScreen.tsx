@@ -209,7 +209,7 @@ const servedLinkTypes = (view: Json | null): readonly LinkType[] => {
   return [...(creatable.length === 0 ? CREATABLE_LINK_TYPES : creatable), ...bluetooth, ...[LinkType.LogReplay, LinkType.Mock].filter((it) => served.has(it))];
 };
 
-export const addableLinkTypes = (view: Json | null): readonly LinkType[] => [LinkType.WebSocket, ...servedLinkTypes(view).filter((it) => !SOCKET_LINK_TYPES.has(it))];
+export const addableLinkTypes = (view: Json | null): readonly LinkType[] => [LinkType.WebSocket, ...servedLinkTypes(view).filter((it) => optBoolean(view, 'throughDevice') || !SOCKET_LINK_TYPES.has(it))];
 
 export const PARITY_CHOICES: readonly (readonly [string, number])[] = [
   ['None', 0],

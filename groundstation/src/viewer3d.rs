@@ -141,8 +141,18 @@ fn accepted(path: &str) -> bool {
     lower.ends_with(".osm") || lower.ends_with(".xml")
 }
 
+#[cfg(not(target_family = "wasm"))]
+fn stamp(path: &str) -> Option<std::time::SystemTime> {
+    std::fs::metadata(path).and_then(|m| m.modified()).ok()
+}
+
+#[cfg(target_family = "wasm")]
+fn stamp(path: &str) -> Option<std::time::SystemTime> {
+    crate::vfs::exists(path).then_some(std::time::SystemTime::UNIX_EPOCH)
+}
+
 fn loaded(path: &str) -> Option<(std::time::SystemTime, Option<std::sync::Arc<CityMap>>)> {
-    let modified = std::fs::metadata(path).and_then(|m| m.modified()).ok()?;
+    let modified = stamp(path)?;
     let mut held = locked(&LOADED);
     match held.as_ref() {
         Some((known, at, Load::Done(map))) if known == path && *at == modified => Some((modified, map.clone())),
@@ -151,7 +161,7 @@ fn loaded(path: &str) -> Option<(std::time::SystemTime, Option<std::sync::Arc<Ci
             *held = Some((path.to_string(), modified, Load::Parsing));
             let owned = path.to_string();
             let _ = crate::background::spawn("osm-parse", move || {
-                let map = std::fs::read_to_string(&owned).ok().and_then(|text| parse(&text)).map(std::sync::Arc::new);
+                let map = crate::vfs::read_to_string(&owned).ok().and_then(|text| parse(&text)).map(std::sync::Arc::new);
                 let mut held = locked(&LOADED);
                 if held.as_ref().is_some_and(|(known, at, _)| *known == owned && *at == modified) {
                     *held = Some((owned, modified, Load::Done(map)));

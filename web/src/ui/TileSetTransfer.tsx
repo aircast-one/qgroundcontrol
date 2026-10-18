@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Qgc } from '@/bridge/Qgc';
+import { stageFile, stagedFile, unstage } from '@/core/files';
 import { createDocument, openDocument } from '@/kotlin/Platform';
 import { AlertDialog, Checkbox, LinearProgressIndicator, OutlinedButton, RadioButton, Text, TextButton } from '@/m3';
 import type { OfflineSet } from '@/ui/OfflineMaps';
@@ -25,36 +26,18 @@ export const exportArguments = (path: string, chosen: ReadonlySet<number>): unkn
 
 const stagePath = (name: string): string => `/${STAGE_FOLDER}/${name}`;
 
-const stageFolder = async (): Promise<FileSystemDirectoryHandle> => (await navigator.storage.getDirectory()).getDirectoryHandle(STAGE_FOLDER, { create: true });
-
 const discard = async (name: string): Promise<void> => {
-  try {
-    await (await stageFolder()).removeEntry(name);
-  } catch {
-    return;
-  }
+  await unstage(stagePath(name)).catch(() => undefined);
 };
 
 const savedExport = async (): Promise<string | null> => {
-  try {
-    const staged = await (await (await stageFolder()).getFileHandle(EXPORT_STAGE)).getFile();
-    createDocument(`export.${TILESET_EXTENSION}`, TILESET_MIME, await staged.arrayBuffer());
-    return null;
-  } catch {
-    return UNWRITABLE;
-  }
+  const staged = await stagedFile(stagePath(EXPORT_STAGE)).catch(() => null);
+  if (staged === null) return UNWRITABLE;
+  createDocument(`export.${TILESET_EXTENSION}`, TILESET_MIME, await staged.arrayBuffer());
+  return null;
 };
 
-const stagedImport = async (source: File): Promise<boolean> => {
-  try {
-    const writable = await (await (await stageFolder()).getFileHandle(IMPORT_STAGE, { create: true })).createWritable();
-    await writable.write(source);
-    await writable.close();
-    return true;
-  } catch {
-    return false;
-  }
-};
+const stagedImport = (source: File): Promise<boolean> => stageFile(stagePath(IMPORT_STAGE), source).catch(() => false);
 
 const ActionLine = ({ label, button, enabled, onClick }: { label: string; button: string; enabled: boolean; onClick: () => void }) => (
   <div className="flex w-full items-center">

@@ -55,8 +55,10 @@ pub fn set_cache_path(path: Option<std::path::PathBuf>) {
     *CACHE_PATH.lock().unwrap_or_else(PoisonError::into_inner) = path;
 }
 
+pub const BROWSER_CACHE: &str = "/qgcMapCache.db";
+
 pub fn cache_path() -> Option<std::path::PathBuf> {
-    CACHE_PATH.lock().unwrap_or_else(PoisonError::into_inner).clone()
+    CACHE_PATH.lock().unwrap_or_else(PoisonError::into_inner).clone().or_else(|| cfg!(target_family = "wasm").then(|| std::path::PathBuf::from(BROWSER_CACHE)))
 }
 
 pub fn load(key: Key, cache_path: Option<&std::path::Path>, fetch: &dyn Fn(&str) -> Result<String, String>) -> Result<Tile, String> {
@@ -85,7 +87,11 @@ fn fetch_in_background(key: Key) {
 
 #[cfg(target_family = "wasm")]
 fn fetch_in_background(key: Key) {
-    wasm_bindgen_futures::spawn_local(async move { stored(key, crate::terrainquery::tile_later(key.0, key.1).await) });
+    let saved = cache_path().and_then(|path| crate::tilecache::Cache::open(&path).ok()).and_then(|cache| crate::terrainquery::cached_tile(key.0, key.1, &cache));
+    match saved {
+        Some(tile) => stored(key, Ok(tile)),
+        None => wasm_bindgen_futures::spawn_local(async move { stored(key, crate::terrainquery::tile_later(key.0, key.1).await) }),
+    }
 }
 
 pub fn height(latitude: f64, longitude: f64) -> Option<f64> {

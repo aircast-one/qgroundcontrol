@@ -236,6 +236,7 @@ pub fn offline_maps_view(backend: &dyn Backend, args: &[String]) -> Value {
     })
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn fetched_until_cancelled<T: Sync, R: Send>(batch: &[T], cancel: &AtomicBool, fetch: impl Fn(&T) -> R + Sync) -> Vec<R> {
     std::thread::scope(|scope| {
         batch
@@ -248,6 +249,7 @@ fn fetched_until_cancelled<T: Sync, R: Send>(batch: &[T], cancel: &AtomicBool, f
     })
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn download(set: i64, provider: String, cancel: Arc<AtomicBool>) {
     let keys = crate::mapurls::keys_from_settings();
     let Some(kind) = provider_hash(&provider) else { return };
@@ -280,7 +282,97 @@ fn start(set: i64, provider: &str) {
     let fresh = DOWNLOADS.lock().unwrap_or_else(PoisonError::into_inner).insert(set, cancel.clone()).is_none();
     if fresh {
         let provider = provider.to_string();
+        #[cfg(not(target_family = "wasm"))]
         std::thread::spawn(move || download(set, provider, cancel));
+        #[cfg(target_family = "wasm")]
+        wasm_bindgen_futures::spawn_local(browser::download(set, provider, cancel));
+    }
+}
+
+#[cfg(target_family = "wasm")]
+pub mod browser {
+    use super::*;
+
+    const TILE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
+    const RESTORED: &str = "/restored-tiles.db";
+
+    type Memory = sqlite_wasm_rs::MemVfsUtil<sqlite_wasm_rs::WasmOsCallback>;
+
+    async fn fetched(provider: &str, keys: &crate::mapurls::Keys, x: i32, y: i32, z: i32) -> Option<(String, Vec<u8>)> {
+        match crate::maptypes::ELEVATION_PROVIDERS.contains(&provider) {
+            true => crate::terrainquery::tile_later(x, y).await.ok().map(|tile| (crate::terrainquery::TILE_FORMAT.to_string(), crate::terraintile::encode(&tile))),
+            false => {
+                let request = crate::mapurls::tile_request(provider, x, y, z, keys)?;
+                let image = crate::http::get_later(&request.url, &request.headers, TILE_TIMEOUT).await.ok()?;
+                Some((crate::maptiles::tile_format(provider, &image)?.to_string(), image))
+            }
+        }
+    }
+
+    pub async fn download(set: i64, provider: String, cancel: Arc<AtomicBool>) {
+        let keys = crate::mapurls::keys_from_settings();
+        if let Some(kind) = provider_hash(&provider) {
+            loop {
+                let batch = open_cache().map(|cache| cache.pending(set, CONCURRENT_DOWNLOADS).unwrap_or_default()).unwrap_or_default();
+                if batch.is_empty() || cancel.load(Ordering::Relaxed) {
+                    break;
+                }
+                let fetched = futures_util::future::join_all(batch.iter().map(|(hash, x, y, z)| async { (hash.clone(), fetched(&provider, &keys, *x, *y, *z).await) })).await;
+                let Ok(cache) = open_cache() else { break };
+                fetched.iter().for_each(|(hash, image)| {
+                    let stored = image.as_ref().and_then(|(format, image)| cache.complete(set, &Tile { hash: hash.clone(), format: format.clone(), image: image.clone(), kind }).ok());
+                    if stored.is_none() {
+                        let _ = cache.mark_error(set, hash);
+                    }
+                });
+            }
+        }
+        DOWNLOADS.lock().unwrap_or_else(PoisonError::into_inner).remove(&set);
+        log::info!("Offline map set {set} download stopped");
+        save_to_device();
+    }
+
+    fn stored_path() -> Option<String> {
+        crate::settingsstore::save_root().map(|root| format!("{root}/Tiles/qgcMapCache.db"))
+    }
+
+    pub fn save_to_device() {
+        let (Some(path), true) = (stored_path(), crate::device::paired()) else { return };
+        match Memory::new().export_db(crate::terrainservice::BROWSER_CACHE) {
+            Ok(bytes) => {
+                let _ = crate::vfs::write(&path, bytes);
+            }
+            Err(error) => log::warn!("Could not keep the offline maps on the device: {error}"),
+        }
+    }
+
+    pub fn handed_to_files(path: &str) -> Result<(), String> {
+        let memory = Memory::new();
+        let bytes = memory.export_db(path).map_err(|error| error.to_string())?;
+        memory.delete_db(path);
+        crate::vfs::write(path, bytes).map_err(|error| error.to_string())
+    }
+
+    pub fn taken_from_files(path: &str) -> Result<(), String> {
+        let bytes = crate::vfs::read(path).map_err(|_| "Error opening import database".to_string())?;
+        let memory = Memory::new();
+        memory.delete_db(path);
+        memory.import_db(path, &bytes).map_err(|error| error.to_string())
+    }
+
+    pub fn restore_from_device() {
+        let Some(url) = stored_path().and_then(|path| crate::device::files(&path)) else { return };
+        wasm_bindgen_futures::spawn_local(async move {
+            let Ok(bytes) = crate::http::get_later(&url, &[], std::time::Duration::from_secs(300)).await else { return };
+            let memory = Memory::new();
+            memory.delete_db(RESTORED);
+            let merged = memory.import_db(RESTORED, &bytes).map_err(|error| error.to_string()).and_then(|()| open_cache()?.import(std::path::Path::new(RESTORED), false));
+            memory.delete_db(RESTORED);
+            match merged {
+                Ok(()) => log::info!("Offline maps kept on the device are back in this browser"),
+                Err(error) => log::warn!("Could not bring back the offline maps kept on the device: {error}"),
+            }
+        });
     }
 }
 
@@ -439,8 +531,28 @@ fn export_sets(args: &str) -> Value {
     match (path.is_empty(), sets.is_empty()) {
         (true, _) => json!({ "ok": false, "reason": "offlineMaps.export takes the file to write and the ids of the sets to put in it" }),
         (false, true) => json!({ "ok": false, "reason": "Select at least one tile set to export." }),
-        (false, false) => outcome(open_cache().and_then(|cache| cache.export(&sets, std::path::Path::new(path)))),
+        (false, false) => outcome(open_cache().and_then(|cache| cache.export(&sets, std::path::Path::new(path))).and_then(|()| handed_to_files(path))),
     }
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn handed_to_files(_path: &str) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn taken_from_files(_path: &str) -> Result<(), String> {
+    Ok(())
+}
+
+#[cfg(target_family = "wasm")]
+fn handed_to_files(path: &str) -> Result<(), String> {
+    browser::handed_to_files(path)
+}
+
+#[cfg(target_family = "wasm")]
+fn taken_from_files(path: &str) -> Result<(), String> {
+    browser::taken_from_files(path)
 }
 
 fn import_sets(args: &str) -> Value {
@@ -453,10 +565,19 @@ fn import_sets(args: &str) -> Value {
     if replace {
         cancel_all();
     }
-    outcome(open_cache().and_then(|cache| cache.import(std::path::Path::new(path), replace)))
+    outcome(taken_from_files(path).and_then(|()| open_cache()?.import(std::path::Path::new(path), replace)))
 }
 
 pub fn run(path: &str, args: &str) -> Value {
+    let answer = act(path, args);
+    #[cfg(target_family = "wasm")]
+    if [DELETE_SET, RENAME_SET, IMPORT_SETS].contains(&path) && answer["ok"] == json!(true) {
+        browser::save_to_device();
+    }
+    answer
+}
+
+fn act(path: &str, args: &str) -> Value {
     match path {
         EXPORT_SETS => export_sets(args),
         IMPORT_SETS => import_sets(args),

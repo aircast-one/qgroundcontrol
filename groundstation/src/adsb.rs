@@ -691,6 +691,50 @@ fn follow(source: Source, generation: u64) {
     });
 }
 
+#[cfg(not(target_family = "wasm"))]
+fn start_following(source: Source, generation: u64) -> std::io::Result<()> {
+    std::thread::Builder::new().name("groundstation-adsb".to_string()).spawn(move || follow(source, generation)).map(drop)
+}
+
+#[cfg(target_family = "wasm")]
+fn start_following(source: Source, generation: u64) -> std::io::Result<()> {
+    crate::hostsocket::follow("adsb", device_follower(source, generation))
+}
+
+#[cfg(any(target_family = "wasm", test))]
+const MAX_SBS1_LINE_BYTES: usize = 4096;
+
+#[cfg(any(target_family = "wasm", test))]
+fn device_follower(source: Source, generation: u64) -> crate::hostsocket::Follower {
+    use crate::hostsocket::Event;
+    use std::sync::atomic::{AtomicBool, Ordering};
+    let pending = Mutex::new(Vec::new());
+    let heard = AtomicBool::new(false);
+    crate::hostsocket::Follower::new(SBS1_RECONNECT_AFTER, move || crate::device::tcp(&source.host, source.port), move || lock().generation == generation, move |event| match event {
+        Event::Opened => {
+            heard.store(true, Ordering::Relaxed);
+            if lock().attached(generation) {
+                changed();
+            }
+        }
+        Event::Bytes(bytes) => {
+            let lines = crate::hostsocket::lines(&mut pending.lock().unwrap_or_else(PoisonError::into_inner), &bytes, MAX_SBS1_LINE_BYTES);
+            if lines.iter().fold(false, |news, line| lock().on_sbs1_line(line, crate::hub::now_ms()) || news) {
+                changed();
+            }
+        }
+        Event::Closed(reason) if reason == crate::device::NEEDS_DEVICE => {
+            if lock().failed(generation, CONNECT_FAILED, reason) {
+                changed();
+            }
+        }
+        Event::Closed(reason) => {
+            let token = if heard.swap(false, Ordering::Relaxed) { LINK_LOST } else { CONNECT_FAILED };
+            report_failure(generation, token, if reason.is_empty() { REMOTE_HOST_CLOSED.to_string() } else { reason });
+        }
+    })
+}
+
 fn port_number(json: &str) -> Option<u16> {
     let value = object(json).get("value")?.clone();
     let number = value.as_f64().or_else(|| value.as_str().and_then(|text| text.trim().parse().ok()))?;
@@ -711,7 +755,7 @@ pub fn adsb_traffic_view(backend: &dyn Backend, _args: &[String]) -> Value {
         && let Some(source) = source
     {
         let generation = traffic.generation;
-        if let Err(error) = std::thread::Builder::new().name("groundstation-adsb".to_string()).spawn(move || follow(source, generation)) {
+        if let Err(error) = start_following(source, generation) {
             log::warn!("ADS-B server connection cannot start here: {error}");
         }
     }
@@ -1385,5 +1429,48 @@ mod tests {
         let imperial = traffic.announced(0);
         assert_eq!(imperial["units"]["altitude"], "ft", "announce() runs on the thread that receives traffic and cannot read the backend, so a head watching this view was served metres with an m label while the same read through get came back in feet - and the push arrives every frame, so the wrong one wins");
         assert_ne!(imperial["contacts"][0]["altitude"], imperial["contacts"][0]["altitudeMetres"]);
+    }
+
+    #[test]
+    fn a_browser_on_the_device_reads_the_sbs1_server_through_its_relay() {
+        let _host = crate::hostsocket::fake::install();
+        let _pairing = crate::device::TEST_PAIRING.lock().unwrap_or_else(PoisonError::into_inner);
+        crate::device::pair("http://falcon.local/fly/").unwrap();
+        let source = Source { host: "10.0.0.9".into(), port: 30003 };
+        lock().retarget(false, None);
+        lock().retarget(true, Some(source.clone()));
+        let generation = lock().generation();
+        let mut follower = device_follower(source, generation);
+        follower.step(web_time::Instant::now());
+        let (id, url) = crate::hostsocket::fake::last_opened().unwrap();
+        assert_eq!(url, "ws://falcon.local/fly/socket?tcp=10.0.0.9%3A30003");
+
+        crate::hostsocket::opened(id);
+        assert_eq!(lock().snapshot(0)["connected"], json!(true));
+        let line = position_line(&[(FIELD_ICAO, "ABCDEF")]) + "\r\n";
+        let (head, tail) = line.split_at(9);
+        crate::hostsocket::received(id, head.as_bytes().to_vec());
+        crate::hostsocket::received(id, tail.as_bytes().to_vec());
+        assert_eq!(lock().count(), 1, "a line split across two relay messages still lands as one aircraft");
+
+        crate::hostsocket::closed(id, "");
+        assert_eq!(lock().snapshot(0)["error"], json!({ "token": LINK_LOST, "detail": REMOTE_HOST_CLOSED }));
+        lock().retarget(false, None);
+        crate::device::unpair();
+    }
+
+    #[test]
+    fn a_browser_without_a_device_shows_why_in_the_traffic_view_without_a_popup() {
+        let _host = crate::hostsocket::fake::install();
+        let _pairing = crate::device::TEST_PAIRING.lock().unwrap_or_else(PoisonError::into_inner);
+        crate::device::unpair();
+        let source = Source { host: "127.0.0.1".into(), port: 30003 };
+        lock().retarget(false, None);
+        lock().retarget(true, Some(source.clone()));
+        let generation = lock().generation();
+        device_follower(source, generation).step(web_time::Instant::now());
+        assert_eq!(lock().snapshot(0)["error"], json!({ "token": CONNECT_FAILED, "detail": crate::device::NEEDS_DEVICE }));
+        assert!(!crate::noticeboard::lock().object().to_string().contains(crate::device::NEEDS_DEVICE), "a missing device is the page's situation, not a server error to pop up");
+        lock().retarget(false, None);
     }
 }

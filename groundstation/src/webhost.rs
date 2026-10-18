@@ -10,6 +10,7 @@ thread_local! {
     static LAST_HUB_MS: Cell<u64> = const { Cell::new(0) };
     static SERIAL_HOST: RefCell<Option<js_sys::Object>> = const { RefCell::new(None) };
     static CLOUD_HOST: RefCell<Option<js_sys::Object>> = const { RefCell::new(None) };
+    static SOCKET_HOST: RefCell<Option<js_sys::Object>> = const { RefCell::new(None) };
     static SERIAL_PORTS: RefCell<Vec<crate::boards::PortInfo>> = const { RefCell::new(Vec::new()) };
 }
 
@@ -205,6 +206,41 @@ pub fn cloud_closed(id: u32, reason: &str) {
     crate::cloudlink::host_closed(id, reason);
 }
 
+fn socket_open(id: u32, url: &str) -> bool {
+    let args: js_sys::Array = [JsValue::from(id), url.into()].into_iter().collect();
+    host_call(&SOCKET_HOST, "open", args).as_bool().unwrap_or(false)
+}
+
+fn socket_send(id: u32, bytes: &[u8]) -> bool {
+    let args: js_sys::Array = [JsValue::from(id), js_sys::Uint8Array::from(bytes).into()].into_iter().collect();
+    host_call(&SOCKET_HOST, "send", args).as_bool().unwrap_or(false)
+}
+
+fn socket_close(id: u32) {
+    host_call(&SOCKET_HOST, "close", std::iter::once(JsValue::from(id)).collect());
+}
+
+#[wasm_bindgen(js_name = setSocketHost)]
+pub fn set_socket_host(host: js_sys::Object) {
+    SOCKET_HOST.with(|held| *held.borrow_mut() = Some(host));
+    crate::hostsocket::install(crate::hostsocket::Hooks { open: socket_open, send: socket_send, close: socket_close });
+}
+
+#[wasm_bindgen(js_name = socketOpened)]
+pub fn socket_opened(id: u32) {
+    crate::hostsocket::opened(id);
+}
+
+#[wasm_bindgen(js_name = socketReceived)]
+pub fn socket_received(id: u32, bytes: &[u8]) {
+    crate::hostsocket::received(id, bytes.to_vec());
+}
+
+#[wasm_bindgen(js_name = socketClosed)]
+pub fn socket_closed(id: u32, reason: &str) {
+    crate::hostsocket::closed(id, reason);
+}
+
 #[wasm_bindgen(js_name = mapTile)]
 pub async fn map_tile(map_type: String, x: i32, y: i32, zoom: i32) -> JsValue {
     crate::maptiles::fetch_remembered_later(map_type, x, y, zoom).await.map_or(JsValue::NULL, |tile| js_sys::Uint8Array::from(tile.as_slice()).into())
@@ -236,6 +272,11 @@ pub fn vfs_write(path: &str, bytes: &[u8]) -> bool {
 #[wasm_bindgen(js_name = vfsRead)]
 pub fn vfs_read(path: &str) -> Option<Vec<u8>> {
     crate::vfs::read(path).ok()
+}
+
+#[wasm_bindgen(js_name = vfsList)]
+pub fn vfs_list(dir: &str) -> String {
+    serde_json::to_string(&crate::vfs::list(dir)).unwrap_or_else(|_| "[]".to_string())
 }
 
 #[wasm_bindgen(js_name = vfsRemove)]

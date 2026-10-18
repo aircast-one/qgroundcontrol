@@ -1,4 +1,3 @@
-use std::net::UdpSocket;
 use std::sync::Arc;
 use std::sync::Mutex;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -8,6 +7,7 @@ use crate::gcsposition::Update;
 const USER_EQUIVALENT_RANGE_ERROR_M: f64 = 5.1;
 const NMEA_SOURCE_UDP: u64 = 1;
 const DEFAULT_NMEA_UDP_PORT: u16 = 14401;
+#[cfg(not(target_family = "wasm"))]
 const NMEA_POLL_MS: u64 = 500;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -108,12 +108,16 @@ pub enum Wanted {
 enum Running {
     Udp { running: Arc<AtomicBool>, dead: Arc<AtomicBool> },
     Serial { close: Box<dyn Fn() + Send>, dead: Arc<AtomicBool> },
+    #[cfg(any(target_family = "wasm", test))]
+    Device { _socket: crate::hostsocket::HostSocket, dead: Arc<AtomicBool> },
 }
 
 impl Running {
     fn alive(&self) -> bool {
         match self {
             Running::Udp { dead, .. } | Running::Serial { dead, .. } => !dead.load(Ordering::Relaxed),
+            #[cfg(any(target_family = "wasm", test))]
+            Running::Device { dead, .. } => !dead.load(Ordering::Relaxed),
         }
     }
 }
@@ -123,6 +127,8 @@ impl Drop for Running {
         match self {
             Running::Udp { running, .. } => running.store(false, Ordering::Relaxed),
             Running::Serial { close, .. } => close(),
+            #[cfg(any(target_family = "wasm", test))]
+            Running::Device { .. } => {}
         }
     }
 }
@@ -152,6 +158,7 @@ pub fn wanted() -> Option<Wanted> {
     }
 }
 
+#[cfg(any(not(target_family = "wasm"), test))]
 fn listen_udp(mut receive: impl FnMut(&mut [u8]) -> std::io::Result<usize>, running: &AtomicBool, dead: &AtomicBool) {
     let mut lines = Lines::default();
     let lost = crate::udplink::receive_until_lost(|| running.load(Ordering::Relaxed), |buffer| receive(buffer).map(|size| (size, ())), |bytes, ()| lines.feed(bytes).into_iter().for_each(crate::gcsposition::report_nmea));
@@ -161,13 +168,38 @@ fn listen_udp(mut receive: impl FnMut(&mut [u8]) -> std::io::Result<usize>, runn
     }
 }
 
+#[cfg(not(target_family = "wasm"))]
 fn open_udp(port: u16) -> Option<Running> {
-    let socket = UdpSocket::bind(("0.0.0.0", port)).ok()?;
+    let socket = std::net::UdpSocket::bind(("0.0.0.0", port)).ok()?;
     socket.set_read_timeout(Some(std::time::Duration::from_millis(NMEA_POLL_MS))).ok()?;
     let (running, dead) = (Arc::new(AtomicBool::new(true)), Arc::new(AtomicBool::new(false)));
     let (thread_running, thread_dead) = (running.clone(), dead.clone());
     std::thread::spawn(move || listen_udp(|buffer| socket.recv(buffer), &thread_running, &thread_dead));
     Some(Running::Udp { running, dead })
+}
+
+#[cfg(target_family = "wasm")]
+fn open_udp(port: u16) -> Option<Running> {
+    open_device_udp(port)
+}
+
+#[cfg(any(target_family = "wasm", test))]
+fn open_device_udp(port: u16) -> Option<Running> {
+    use crate::hostsocket::{Event, HostSocket};
+    let url = crate::device::udp(port, &[])?;
+    let lines = Mutex::new(Lines::default());
+    let dead = Arc::new(AtomicBool::new(false));
+    let lost = dead.clone();
+    let socket = HostSocket::open(&url, move |event| match event {
+        Event::Bytes(bytes) => lines.lock().unwrap_or_else(std::sync::PoisonError::into_inner).feed(&bytes).into_iter().for_each(crate::gcsposition::report_nmea),
+        Event::Closed(reason) => {
+            log::warn!("NMEA UDP input through the device stopped: {reason}");
+            lost.store(true, Ordering::Relaxed);
+        }
+        Event::Opened => {}
+    })
+    .ok()?;
+    Some(Running::Device { _socket: socket, dead })
 }
 
 #[cfg(hosted_serial)]
@@ -261,5 +293,21 @@ mod tests {
         assert_eq!(Reader::default().read(parse("$GPGGA,123519,4807.038,N,01131.000,E,0,08,0.9,545.4,M,46.9,M,,*46").unwrap()), None);
         assert_eq!(parse("$GPGGA,123519,4807.038,N,01131.000,E,1,08,0.9,545.4,M,46.9,M,,*00"), None);
         assert_eq!(parse("$GPGGA,123519,4807.038,S,01131.000,W,1,08,0.9,545.4,M,46.9,M,,*48").map(|s| match s { Sentence::Gga { latitude, longitude, .. } => (latitude < 0.0, longitude < 0.0), _ => (false, false) }), Some((true, true)));
+    }
+
+    #[test]
+    fn a_browser_on_the_device_listens_for_nmea_on_the_devices_udp_port() {
+        let _host = crate::hostsocket::fake::install();
+        let _pairing = crate::device::TEST_PAIRING.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        crate::device::unpair();
+        assert!(open_device_udp(14401).is_none(), "a browser with no device has no UDP port to listen on");
+        crate::device::pair("http://falcon.local/fly/").unwrap();
+        let running = open_device_udp(14401).unwrap();
+        let (id, url) = crate::hostsocket::fake::last_opened().unwrap();
+        assert_eq!(url, "ws://falcon.local/fly/socket?udp=14401");
+        assert!(running.alive());
+        crate::hostsocket::closed(id, "listen udp :14401: address already in use");
+        assert!(!running.alive(), "a port the device cannot bind is retried like a lost socket");
+        crate::device::unpair();
     }
 }

@@ -157,7 +157,7 @@ pub fn fetch(provider: &str, x: i32, y: i32, zoom: i32, keys: &Keys, cache: Opti
 
 #[cfg(target_family = "wasm")]
 thread_local! {
-    static WEB_TILES: Option<Cache> = Cache::open_in_memory().ok();
+    static WEB_TILES: Option<Cache> = crate::terrainservice::cache_path().and_then(|path| Cache::open(&path).ok()).or_else(|| Cache::open_in_memory().ok());
 }
 
 #[cfg(target_family = "wasm")]

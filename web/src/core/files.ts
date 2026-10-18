@@ -31,6 +31,10 @@ export const unstageAll = async (prefix: string, keep?: string): Promise<void> =
   return call<void>('vfsRemovePrefixed', prefix, keep);
 };
 
+export type StagedEntry = { name: string; size: number; dir: boolean; modified?: number };
+
+export const listStaged = async (dir: string): Promise<readonly StagedEntry[]> => JSON.parse((await call<string | undefined>('vfsList', dir)) ?? '[]') as StagedEntry[];
+
 export const restoreKeptFiles = async (): Promise<void> => {
   await Promise.all((await keptPaths()).map(([path, bytes]) => call<boolean>('vfsWrite', path, bytes)));
 };

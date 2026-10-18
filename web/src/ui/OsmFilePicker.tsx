@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Qgc } from '@/bridge/Qgc';
+import { stageFile, unstageAll } from '@/core/files';
 import { settingControl, useQgcBool } from '@/bridge/QgcState';
 import { openDocument } from '@/kotlin/Platform';
 import { OutlinedButton, Text } from '@/m3';
@@ -16,37 +17,16 @@ export const osmFileAccepted = (name: string): boolean => {
 
 type Staged = { readonly kind: 'Copied'; readonly path: string } | { readonly kind: 'NotOsm' } | { readonly kind: 'Unreadable' };
 
-const osmFolder = async (): Promise<FileSystemDirectoryHandle> => (await navigator.storage.getDirectory()).getDirectoryHandle(OSM_FOLDER, { create: true });
-
 const stagedPath = (name: string): string => `/${OSM_FOLDER}/${name}`;
 
 const stagedOsm = async (file: File): Promise<Staged> => {
   const shown = file.name.replace(/[/\\]/g, '_');
   if (!osmFileAccepted(shown)) return { kind: 'NotOsm' };
-  try {
-    const writable = await (await (await osmFolder()).getFileHandle(shown, { create: true })).createWritable();
-    await writable.write(file);
-    await writable.close();
-    return { kind: 'Copied', path: stagedPath(shown) };
-  } catch {
-    return { kind: 'Unreadable' };
-  }
+  const copied = await stageFile(stagedPath(shown), file).catch(() => false);
+  return copied ? { kind: 'Copied', path: stagedPath(shown) } : { kind: 'Unreadable' };
 };
 
-const entryNames = async (names: AsyncIterator<string>, seen: readonly string[] = []): Promise<readonly string[]> => {
-  const next = await names.next();
-  return next.done === true ? seen : entryNames(names, [...seen, next.value]);
-};
-
-const keepOnly = async (path: string): Promise<void> => {
-  try {
-    const folder = await osmFolder();
-    const names = await entryNames(folder.keys());
-    await Promise.all(names.filter((name) => stagedPath(name) !== path).map((name) => folder.removeEntry(name)));
-  } catch {
-    return;
-  }
-};
+const keepOnly = (path: string): Promise<void> => unstageAll(`/${OSM_FOLDER}/`, path).catch(() => undefined);
 
 const refusalOf = async (staged: Staged): Promise<string | null> => {
   switch (staged.kind) {

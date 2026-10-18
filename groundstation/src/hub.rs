@@ -2,7 +2,6 @@ use mavlink::{MavHeader, Message};
 use mavlink::dialects::ardupilotmega::MavMessage;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
-use std::io::Write;
 use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError};
 
 use crate::batteryfacts::Batteries;
@@ -154,9 +153,13 @@ pub struct LogInputs {
 #[derive(Debug)]
 struct LogSession {
     processor: Processor,
-    file: std::fs::File,
+    file: crate::vfs::Sink,
     path: String,
+    at: u64,
+    synced_ms: u64,
 }
+
+const LOG_SYNC_MS: u64 = 2000;
 pub const ODID_TIMEOUT_MS: u64 = 2500;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -757,10 +760,10 @@ impl Vehicle {
         if inputs.path.is_empty() {
             return Err("A log path is required before starting a log.".to_string());
         }
-        std::fs::create_dir_all(&inputs.path).map_err(|e| format!("Could not create the log directory {}: {e}", inputs.path))?;
+        crate::vfs::create_dir_all(&inputs.path).map_err(|e| format!("Could not create the log directory {}: {e}", inputs.path))?;
         let path = format!("{}/{:03}-{}{}", inputs.path.trim_end_matches('/'), self.id, chrono::Local::now().format("%Y-%m-%d-%H-%M-%S-%3f"), inputs.extension);
-        let file = std::fs::File::create(&path).map_err(|e| format!("Could not create the log file {path}: {e}"))?;
-        self.log = Some(LogSession { processor: Processor::default(), file, path });
+        let file = crate::vfs::Sink::create(&path).map_err(|e| format!("Could not create the log file {path}: {e}"))?;
+        self.log = Some(LogSession { processor: Processor::default(), file, path, at: 0, synced_ms: now_ms });
         self.log_error = None;
         let outs = self.commands.send(Command { component: self.component, command: CMD_LOGGING_START, command_int: false, frame: 0, params: [0.0; 7], show_error: false, tag: 0 }, now_ms);
         Ok(self.handle(outs, now_ms))
@@ -770,14 +773,19 @@ impl Vehicle {
         if self.autopilot != crate::modes::AUTOPILOT_PX4 {
             return Err("MAVLink log streaming is a PX4 feature.".to_string());
         }
-        self.last_log = self.log.take().map(|session| session.path);
+        self.last_log = self.log.take().map(|session| {
+            if let Err(error) = session.file.finish() {
+                log::warn!("Could not finish the MAVLink log {}: {error}", session.path);
+            }
+            session.path
+        });
         let outs = self.commands.send(Command { component: self.component, command: CMD_LOGGING_STOP, command_int: false, frame: 0, params: [0.0; 7], show_error: false, tag: 0 }, now_ms);
         Ok(self.handle(outs, now_ms))
     }
 
     fn discard_log(&mut self, reason: String) {
         if let Some(session) = self.log.take() {
-            std::fs::remove_file(&session.path).ok();
+            crate::vfs::remove(&session.path).ok();
             self.log_error = Some(reason);
         }
     }
@@ -786,7 +794,12 @@ impl Vehicle {
         let Some(session) = self.log.as_mut() else { return Vec::new() };
         let ok = session.processor.process(sequence, first_message, data);
         let output = session.processor.take_output();
-        if ok && session.file.write_all(&output).is_ok() {
+        if ok && session.file.write_at(session.at, &output).is_ok() {
+            session.at += output.len() as u64;
+            if now_ms.saturating_sub(session.synced_ms) >= LOG_SYNC_MS {
+                session.file.sync();
+                session.synced_ms = now_ms;
+            }
             return Vec::new();
         }
         let path = session.path.clone();
@@ -3608,7 +3621,7 @@ impl Vehicle {
                 if !outs.is_empty() {
                     self.capabilities = v.capabilities.bits();
                 }
-                self.autopilot_version = Some(AutopilotVersion { capabilities: v.capabilities.bits(), flight_sw_version: v.flight_sw_version, flight_custom_version: v.flight_custom_version, uid: v.uid, vendor_id: v.vendor_id, product_id: v.product_id });
+                self.autopilot_version = Some(AutopilotVersion { capabilities: v.capabilities.bits(), flight_sw_version: v.flight_sw_version, flight_custom_version: v.flight_custom_version, uid: v.uid, vendor_id: v.vendor_id, product_id: v.product_id, board_version: v.board_version });
                 return self.handle(outs, now_ms);
             }
             MavMessage::COMPONENT_METADATA(m) => {

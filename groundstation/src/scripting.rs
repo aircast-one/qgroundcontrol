@@ -142,7 +142,7 @@ pub fn run(backend: &dyn Backend, path: &str, text: &str) -> Value {
             }
         }
         REFRESH_SCRIPTS => list(backend),
-        UPLOAD_SCRIPT => match std::path::Path::new(&arg(0)).is_file() {
+        UPLOAD_SCRIPT => match crate::vfs::kind(arg(0)) == Some(crate::vfs::Kind::File) {
             false => {
                 let text = format!("File {} does not exist", arg(0));
                 page().status = text.clone();

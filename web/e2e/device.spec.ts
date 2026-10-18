@@ -1,0 +1,87 @@
+import { expect, test as base, type Page } from '@playwright/test';
+import { openMenu } from './fixtures';
+
+const DEVICE = 'http://localhost:18780';
+const SBS1 = 30003;
+const UPLOADS = 18782;
+
+type Stats = { uploads: string[]; firmware: number[]; relays: string[]; store: string; tcpHeartbeats: number };
+
+const stats = async (): Promise<Stats> => (await fetch(`${DEVICE}/stats`)).json() as Promise<Stats>;
+
+const test = base.extend<{ device: Page }>({
+  device: async ({ page }, use) => {
+    const errors: string[] = [];
+    page.on('pageerror', (error) => errors.push(error.message));
+    await page.addLocatorHandler(page.getByRole('dialog').filter({ hasText: 'did not respond to request for parameters' }), (dialog) => dialog.getByRole('button', { name: 'OK' }).click());
+    await page.goto(`${DEVICE}/fly/`);
+    await expect(page.getByRole('region', { name: 'Map' })).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
+    await use(page);
+    expect(errors, 'uncaught page errors').toEqual([]);
+  },
+});
+
+const settingsPage = async (page: Page, tab: string, name: RegExp) => {
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('tablist').getByRole('tab', { name: tab }).click();
+  const row = page.getByRole('button', { name }).first();
+  await expect(async () => {
+    if (await row.isVisible()) await row.click();
+    await expect(page.getByRole('button', { name: 'Back', exact: true })).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 30_000 });
+};
+
+const typeSetting = async (page: Page, label: string, value: string) => {
+  const field = page.getByRole('textbox', { name: label });
+  await field.fill(value);
+  await field.press('Enter');
+};
+
+test('a device page reads an ADS-B server on its network through the device', async ({ device }) => {
+  await device.getByRole('button', { name: 'Settings', exact: true }).click();
+  await device.getByRole('button', { name: 'Search settings' }).click();
+  await device.getByRole('textbox').first().fill('ADS-B');
+  await device.getByRole('switch', { name: 'Show nearby aircraft (ADS-B)' }).click();
+  await expect.poll(async () => (await stats()).relays.some((query) => query.includes(`tcp=127.0.0.1%3A${SBS1}`)), { timeout: 30_000 }).toBe(true);
+  await expect(device.getByText(/ADSB Server Error/)).toHaveCount(0);
+});
+
+test('a device page uploads a PX4 log kept on the device to a server without CORS', async ({ device }) => {
+  await fetch(`${DEVICE}/fly/files/Aircast/Logs/001-2026-10-18-03-00-00-000.ulg`, { method: 'PUT', body: 'ULog-e2e' });
+  await settingsPage(device, 'General', /^PX4 log transfer/);
+  await typeSetting(device, 'Email Address', 'pilot@example.com');
+  await typeSetting(device, 'Upload URL', `http://127.0.0.1:${UPLOADS}/upload`);
+  await device.getByRole('checkbox', { name: '001-2026-10-18-03-00-00-000' }).check();
+  await device.getByRole('button', { name: 'Upload…' }).click();
+  await device.getByRole('dialog').getByRole('button', { name: 'Ok', exact: true }).click();
+  await expect.poll(async () => (await stats()).uploads.find((sent) => sent.includes('ULog-e2e')) ?? '', { timeout: 60_000 }).toContain('filename="001-2026-10-18-03-00-00-000.ulg"');
+  await expect(device.getByText('Uploaded')).toBeVisible({ timeout: 30_000 });
+});
+
+test('a device page flashes the flight controller on the device', async ({ device }) => {
+  await openMenu(device, 'Analyze');
+  await device.getByRole('button', { name: /^Firmware/ }).click();
+  await device.getByRole('radio', { name: 'Flight controller on the Aircast device' }).click();
+  await device.getByRole('checkbox', { name: 'Advanced settings' }).check();
+  await device.getByRole('button', { name: /^Firmware, / }).click();
+  await device.getByRole('menuitem', { name: 'A firmware file' }).click();
+  const chooser = device.waitForEvent('filechooser');
+  await device.getByRole('button', { name: 'Choose file' }).click();
+  await (await chooser).setFiles({ name: 'copter.apj', mimeType: 'application/json', buffer: Buffer.from(JSON.stringify({ board_id: 50, image: 'eJwDAAAAAAE=', image_size: 0 })) });
+  await device.getByRole('button', { name: 'Flash', exact: true }).click();
+  await expect(device.getByText('Upgrade complete', { exact: true })).toBeVisible({ timeout: 60_000 });
+  expect((await stats()).firmware.length).toBeGreaterThan(0);
+});
+
+test('a device page reaches a TCP vehicle on its network through the device', async ({ device }) => {
+  await settingsPage(device, 'Transmission', /^Links/);
+  await device.getByRole('button', { name: 'Add link…' }).click();
+  await expect(device.getByRole('button', { name: /^Wi-Fi or network/ })).toBeVisible();
+  await device.getByRole('button', { name: /^Network server \(TCP\)/ }).click();
+  await device.getByRole('textbox', { name: 'Host address' }).fill('127.0.0.1');
+  await device.getByRole('textbox', { name: 'Port' }).fill('18784');
+  await device.getByRole('button', { name: 'Connect', exact: true }).click();
+  await expect.poll(async () => (await stats()).relays.some((query) => query.includes('tcp=127.0.0.1%3A18784')), { timeout: 30_000 }).toBe(true);
+  await expect.poll(async () => (await stats()).tcpHeartbeats, { timeout: 30_000 }).toBeGreaterThan(0);
+});

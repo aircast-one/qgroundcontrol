@@ -5,6 +5,7 @@ import {
   DEFAULT_FIRMWARE_SOURCE,
   DEV_WARNING,
   FIRMWARE_FROM_FILE,
+  DEVICE_PORT,
   FIRMWARE_SOURCES,
   FirmwareJob,
   FirmwarePort,
@@ -12,6 +13,7 @@ import {
   cancelledOnLeave,
   firmwareChoice,
   firmwareFileAccepted,
+  firmwareHeading,
   firmwareJob,
   firmwarePhaseText,
   firmwarePorts,
@@ -114,5 +116,11 @@ describe('FirmwareScreenTest', () => {
   it('leaving the page drops a board search but never interrupts a write', () => {
     expect(['connecting', 'choosing', 'erasing', 'programming', 'verifying', 'idle'].map(cancelledOnLeave)).toEqual([true, true, false, false, false, false]);
     expect(cancelledOnLeave(null)).toBe(false);
+  });
+  it('a page served by an Aircast device offers the flight controller on it before any USB board', () => {
+    const usb = { port: 'webserial-0', bootloader: false, description: 'Pixhawk', boardType: 'Pixhawk' };
+    expect(firmwareHeading([])).toBe('No USB serial devices attached');
+    expect(firmwareHeading([usb])).toBe('Flash a board over USB');
+    expect(firmwareHeading([usb, { ...usb, port: DEVICE_PORT, description: 'Flight controller on the Aircast device' }])).toBe('Flash the flight controller on this Aircast device, or a board over USB');
   });
 });

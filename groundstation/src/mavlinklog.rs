@@ -134,19 +134,10 @@ pub fn configure_hub() {
 fn files() -> Vec<Value> {
     let Some(folder) = folder() else { return Vec::new() };
     let writing = writing_files();
-    let listed: std::collections::BTreeMap<String, (u64, bool)> = std::fs::read_dir(&folder)
-        .map(|entries| {
-            entries
-                .filter_map(Result::ok)
-                .map(|entry| entry.path())
-                .filter(|path| path.to_string_lossy().ends_with(MAVLINK_LOG_EXTENSION))
-                .map(|path| {
-                    let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-                    (path.file_name().unwrap_or_default().to_string_lossy().into_owned(), (size, uploaded_marker(&path).exists()))
-                })
-                .collect()
-        })
-        .unwrap_or_default();
+    let entries = crate::vfs::list(&folder);
+    let marked = |name: &str| entries.iter().any(|entry| Path::new(&entry.name) == uploaded_marker(Path::new(name)));
+    let listed: std::collections::BTreeMap<String, (u64, bool)> =
+        entries.iter().filter(|entry| !entry.dir && entry.name.ends_with(MAVLINK_LOG_EXTENSION)).map(|entry| (entry.name.clone(), (entry.size, marked(&entry.name)))).collect();
     listed.into_iter().map(|(name, (size, uploaded))| json!({ "name": stem(&name), "size": size, "uploaded": uploaded, "writing": writing.contains(&name) })).collect()
 }
 
@@ -198,13 +189,21 @@ fn sent_fraction(sent: u64, total: usize) -> f64 {
 }
 
 #[cfg(target_family = "wasm")]
-fn send(_path: &Path, _feedback: &str, _cancel: &AtomicBool) -> Result<(), String> {
-    Err("Log Upload Error: uploading needs the desktop or mobile app".to_string())
+async fn send_later(path: &Path, feedback: &str) -> Result<(), String> {
+    let bytes = crate::vfs::read(path).map_err(|e| format!("Could not read {}: {e}", path.display()))?;
+    let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+    let body = multipart(&form_fields(feedback), &name, &bytes);
+    let headers = [("Content-Type".to_string(), format!("multipart/form-data; boundary={BOUNDARY}"))];
+    match crate::http::send_later("POST", &from_user_input(&text("uploadURL")), &headers, Some(&body), std::time::Duration::from_secs(600)).await {
+        Ok((200, _)) => Ok(()),
+        Ok((code, _)) => Err(format!("Log Upload Error: status {code}")),
+        Err(error) => Err(format!("Log Upload Error: {error}")),
+    }
 }
 
 #[cfg(not(target_family = "wasm"))]
 fn send(path: &Path, feedback: &str, cancel: &AtomicBool) -> Result<(), String> {
-    let bytes = std::fs::read(path).map_err(|e| format!("Could not read {}: {e}", path.display()))?;
+    let bytes = crate::vfs::read(path).map_err(|e| format!("Could not read {}: {e}", path.display()))?;
     let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
     let body = multipart(&form_fields(feedback), &name, &bytes);
     let length = body.len();
@@ -225,23 +224,66 @@ fn send(path: &Path, feedback: &str, cancel: &AtomicBool) -> Result<(), String> 
     }
 }
 
+fn begin_upload(name: &str) {
+    let mut uploads = UPLOADS.lock().unwrap_or_else(PoisonError::into_inner);
+    uploads.current = Some(stem(name));
+    uploads.progress = 0.0;
+}
+
+fn uploaded(path: &Path) {
+    let _ = match flag("deleteAfterUpload") {
+        true => crate::vfs::remove(path),
+        false => crate::vfs::write(uploaded_marker(path), b""),
+    };
+}
+
+#[cfg(not(target_family = "wasm"))]
 fn upload_one(folder: &Path, name: &str, feedback: &str, cancel: &AtomicBool) -> Result<(), String> {
-    {
-        let mut uploads = UPLOADS.lock().unwrap_or_else(PoisonError::into_inner);
-        uploads.current = Some(stem(name));
-        uploads.progress = 0.0;
-    }
+    begin_upload(name);
     let path = folder.join(name);
     send(&path, feedback, cancel)?;
-    match flag("deleteAfterUpload") {
-        true => {
-            let _ = std::fs::remove_file(&path);
-        }
-        false => {
-            let _ = std::fs::write(uploaded_marker(&path), b"");
-        }
-    }
+    uploaded(&path);
     Ok(())
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn send_all(folder: PathBuf, names: Vec<String>, feedback: String, cancel: Arc<AtomicBool>) {
+    std::thread::spawn(move || {
+        let failures: Vec<String> = names.iter().take_while(|_| !cancel.load(Ordering::Relaxed)).filter_map(|name| upload_one(&folder, name, &feedback, &cancel).err()).collect();
+        uploads_done(failures, cancel.load(Ordering::Relaxed));
+    });
+}
+
+#[cfg(target_family = "wasm")]
+fn send_all(folder: PathBuf, names: Vec<String>, feedback: String, cancel: Arc<AtomicBool>) {
+    wasm_bindgen_futures::spawn_local(async move {
+        let mut failures = Vec::new();
+        for name in names.iter().take_while(|_| !cancel.load(Ordering::Relaxed)) {
+            begin_upload(name);
+            let path = folder.join(name);
+            match send_later(&path, &feedback).await {
+                Ok(()) => uploaded(&path),
+                Err(failure) => failures.push(failure),
+            }
+        }
+        uploads_done(failures, cancel.load(Ordering::Relaxed));
+    });
+}
+
+fn uploads_done(failures: Vec<String>, cancelled: bool) {
+    let pending = {
+        let mut uploads = UPLOADS.lock().unwrap_or_else(PoisonError::into_inner);
+        uploads.running = false;
+        uploads.current = None;
+        uploads.cancel = None;
+        uploads.progress = 0.0;
+        uploads.message = (!failures.is_empty() && !cancelled).then(|| failures.join("\n"));
+        let queued = std::mem::take(&mut uploads.pending);
+        if cancelled { Vec::new() } else { queued }
+    };
+    if let Err(reason) = (!pending.is_empty()).then(|| upload(pending)).unwrap_or(Ok(())) {
+        UPLOADS.lock().unwrap_or_else(PoisonError::into_inner).message = Some(reason);
+    }
 }
 
 fn upload(names: Vec<String>) -> Result<(), String> {
@@ -250,7 +292,7 @@ fn upload(names: Vec<String>) -> Result<(), String> {
     }
     let folder = folder().ok_or("There is no log folder.")?;
     let writing = writing_files();
-    let names: Vec<String> = names.iter().map(|name| file_of(name)).filter(|name| !uploaded_marker(&folder.join(name)).exists() && !writing.contains(name)).collect::<std::collections::BTreeSet<String>>().into_iter().collect();
+    let names: Vec<String> = names.iter().map(|name| file_of(name)).filter(|name| !crate::vfs::exists(uploaded_marker(&folder.join(name))) && !writing.contains(name)).collect::<std::collections::BTreeSet<String>>().into_iter().collect();
     let cancel = Arc::new(AtomicBool::new(false));
     let feedback = {
         let mut uploads = UPLOADS.lock().unwrap_or_else(PoisonError::into_inner);
@@ -263,23 +305,7 @@ fn upload(names: Vec<String>) -> Result<(), String> {
         uploads.cancel = Some(cancel.clone());
         uploads.feedback.clone()
     };
-    std::thread::spawn(move || {
-        let failures: Vec<String> = names.iter().take_while(|_| !cancel.load(Ordering::Relaxed)).filter_map(|name| upload_one(&folder, name, &feedback, &cancel).err()).collect();
-        let cancelled = cancel.load(Ordering::Relaxed);
-        let pending = {
-            let mut uploads = UPLOADS.lock().unwrap_or_else(PoisonError::into_inner);
-            uploads.running = false;
-            uploads.current = None;
-            uploads.cancel = None;
-            uploads.progress = 0.0;
-            uploads.message = (!failures.is_empty() && !cancelled).then(|| failures.join("\n"));
-            let queued = std::mem::take(&mut uploads.pending);
-            if cancelled { Vec::new() } else { queued }
-        };
-        if let Err(reason) = (!pending.is_empty()).then(|| upload(pending)).unwrap_or(Ok(())) {
-            UPLOADS.lock().unwrap_or_else(PoisonError::into_inner).message = Some(reason);
-        }
-    });
+    send_all(folder, names, feedback, cancel);
     Ok(())
 }
 
@@ -393,8 +419,8 @@ pub fn run(path: &str, args: &str) -> Value {
             let folder = folder();
             let writing = writing_files();
             names(&given).iter().map(|name| file_of(name)).filter(|name| !writing.contains(name)).filter_map(|name| folder.as_ref().map(|f| f.join(name))).for_each(|path| {
-                let _ = std::fs::remove_file(uploaded_marker(&path));
-                let _ = std::fs::remove_file(&path);
+                let _ = crate::vfs::remove(uploaded_marker(&path));
+                let _ = crate::vfs::remove(&path);
             });
             json!({ "ok": true })
         }

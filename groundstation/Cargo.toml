@@ -87,6 +87,8 @@ wasm-bindgen = "0.2.128"
 js-sys = "0.3.105"
 web-sys = { version = "0.3.105", features = ["XmlHttpRequest", "XmlHttpRequestResponseType", "console", "OffscreenCanvas", "WorkerGlobalScope", "RequestInit", "Response", "Headers", "AbortSignal"] }
 wasm-bindgen-futures = "0.4.78"
+futures-util = { version = "0.3.34", default-features = false, features = ["alloc"] }
+sqlite-wasm-rs = { version = "0.5.5", default-features = false }
 wgpu = { version = "30.0.1", optional = true, features = ["webgl"] }
 
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
