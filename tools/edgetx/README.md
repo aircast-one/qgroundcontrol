@@ -20,7 +20,7 @@
 Chrome lets only `https` and `localhost` pages use USB. The app an Aircast device serves at `http://<device>.local/fly/` is neither, so Chrome hides USB and the app shows how to fix it instead of **Allow a USB port**. Once per computer:
 
 1. In Chrome open `chrome://flags/#unsafely-treat-insecure-origin-as-secure`.
-2. Add the device's address exactly as the address bar shows it, for example `http://falcon.local`. Separate several devices with commas.
+2. Add the device as `http://` and its host name only, without `/fly/`: for example `http://falcon.local`. Separate several devices with commas.
 3. Set the flag to **Enabled** and press **Relaunch**.
 
 Safari and Firefox have no USB serial in web pages at all; use Chrome or Edge.
