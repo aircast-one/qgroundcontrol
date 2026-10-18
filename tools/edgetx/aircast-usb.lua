@@ -10,7 +10,7 @@ local BAR_MAX_W = 60
 local EXIT_HINT = "RTN: stop sending sticks and exit"
 local CONFIRM_HINT = "Stop sending sticks? RTN again to exit"
 local NO_CABLE = "USB cable not connected"
-local NO_ANSWER = "No answer from the app: set Hardware > USB-VCP to LUA"
+local NO_ANSWER = "App silent: set USB-VCP to LUA"
 
 local battVolt = 0
 local modelInfo
@@ -170,7 +170,7 @@ local function drawLarge()
   lcd.drawText(10, 6, "Aircast USB", MIDSIZE + color.primary)
   lcd.drawText(170, 6, modelInfo.name, MIDSIZE + color.foreground)
   lcd.drawText(380, 6, string.format("%.2fV", battVolt), MIDSIZE + color.foreground)
-  lcd.drawText(10, 32, said, MIDSIZE + (ok and color.good or color.warning))
+  lcd.drawText(10, 36, said, MIDSIZE + (ok and color.good or color.warning))
   for slot = 1, math.min(#used, 16) do
     local i = used[slot]
     local colBase = (slot <= 8) and 10 or 245
