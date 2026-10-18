@@ -138,6 +138,35 @@ test('the switch on the video steps through every way a drag steers the gimbal',
   await expect(app.getByRole('button', { name: 'Drag to move' })).toHaveAttribute('aria-pressed', 'true');
 });
 
+test('holding a drag on the video keeps the gimbal turning, however late its angle reports', async ({ app }) => {
+  await addVideoSource(app, /^WebRTC \(WHEP\)/, WHEP_STREAM);
+  await connectMock(app, ['Enable gimbal']);
+  const video = app.locator('video').first();
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.videoWidth), { timeout: 30_000 }).toBe(640);
+  const later = app.getByRole('button', { name: 'Fly now, finish loading in background' });
+  if (await later.isVisible()) await later.click();
+  await expect(later).toBeHidden();
+  const mode = app.getByRole('button', { name: /^Video gimbal mode/ });
+  await mode.click();
+  await expect(mode).toHaveAccessibleName('Video gimbal mode, Hold and drag');
+  const aim = () =>
+    app.evaluate(async (module) => {
+      const view = (await ((await import(module)) as { Qgc: { get: (path: string) => Promise<unknown> } }).Qgc.get('view.gimbal')) as { gimbals?: { pitch: number | null; bodyYaw: number | null }[] } | null;
+      const gimbal = view?.gimbals?.[0];
+      return gimbal?.pitch == null || gimbal.bodyYaw == null ? null : { pitch: gimbal.pitch, yaw: gimbal.bodyYaw };
+    }, '/src/bridge/Qgc.ts');
+  await expect.poll(aim, { timeout: 30_000 }).not.toBeNull();
+  const before = (await aim()) as { pitch: number; yaw: number };
+  const box = (await video.boundingBox())!;
+  const [x, y] = [box.x + box.width / 2, box.y + box.height / 2];
+  await app.mouse.move(x, y);
+  await app.mouse.down();
+  await app.mouse.move(x + box.width / 8, y - box.height / 8, { steps: 10 });
+  await expect.poll(async () => ((await aim())?.yaw ?? before.yaw) - before.yaw, { timeout: 6_000 }).toBeGreaterThan(5);
+  await app.mouse.up();
+  expect(((await aim())?.pitch ?? before.pitch) - before.pitch, 'dragging up tilts the camera up').toBeGreaterThan(1);
+});
+
 test('a tap on the live picture turns the gimbal along the ray through that point of the lens', async ({ app }) => {
   await addVideoSource(app, /^WebRTC \(WHEP\)/, WHEP_STREAM);
   await connectMock(app, ['Enable gimbal']);
