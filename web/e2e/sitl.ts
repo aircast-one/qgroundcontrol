@@ -28,7 +28,7 @@ const frames = (bytes: Buffer, found: readonly Frame[] = []): { rest: Buffer; fo
 
 const channels = (payload: Buffer): number[] => {
   const full = Buffer.concat([payload, Buffer.alloc(RC_CHANNELS_LENGTH)]);
-  return Array.from({ length: 4 }, (_, index) => full.readUInt16LE(4 + index * 2));
+  return Array.from({ length: 18 }, (_, index) => full.readUInt16LE(4 + index * 2));
 };
 
 export type Sitl = { ws: string; heard: { heartbeat: boolean; rc: readonly number[] }; stop: () => void };
