@@ -24,6 +24,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -33,14 +34,21 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
+import one.aircast.android.bridge.offMainInOrder
 import one.aircast.android.openApp
 import one.aircast.android.stopApp
 import one.aircast.map.optText
@@ -60,6 +68,7 @@ private const val TAKE_OVER_RETRY_MS = 200L
 internal const val NO_ACTION = "No Action"
 private const val JOYSTICK_POLL_MS = 100L
 private const val AXIS_RANGE = 32767f
+private const val LEAVE_GRACE_MS = 1000L
 
 internal data class JoystickSetting(val name: String, val type: String, val label: String, val units: String, val value: Any?, val slider: one.aircast.android.bridge.FactSlider? = null)
 
@@ -92,7 +101,17 @@ internal data class JoystickCalibration(
     val oneSidedVisible: Boolean,
     val stickPositions: List<Int> = List(4) { 0 },
     val singleStick: Boolean = false,
+    val step: Int? = null,
+    val steps: Int? = null,
+    val holding: Double? = null,
+    val checking: Boolean = false,
+    val warning: String? = null,
+    val live: Map<String, Double> = FUNCTION_LABELS.keys.associateWith { 0.0 },
+    val livePositions: List<Double> = List(4) { 0.0 },
+    val captured: List<String?> = emptyList(),
 )
+
+private val FUNCTION_LABELS = mapOf("roll" to "Roll", "pitch" to "Pitch", "yaw" to "Yaw", "throttle" to "Throttle")
 
 internal fun joystickCalibration(json: JSONObject?): JoystickCalibration = JoystickCalibration(
     calibrating = json?.optBoolean("calibrating") == true,
@@ -103,7 +122,57 @@ internal fun joystickCalibration(json: JSONObject?): JoystickCalibration = Joyst
     oneSidedVisible = json?.optBoolean("oneSidedVisible") == true,
     stickPositions = json?.optJSONArray("stickPositions")?.let { a -> (0 until 4).map { a.optInt(it) } } ?: List(4) { 0 },
     singleStick = json?.optBoolean("singleStickDisplay") == true,
+    step = json?.takeUnless { it.isNull("step") }?.optInt("step"),
+    steps = json?.takeUnless { it.isNull("steps") }?.optInt("steps"),
+    holding = json?.takeUnless { it.isNull("holding") }?.optDouble("holding", 0.0),
+    checking = json?.optBoolean("checking") == true,
+    warning = json?.optText("warning")?.ifBlank { null },
+    live = json?.optJSONObject("live").let { live -> FUNCTION_LABELS.keys.associateWith { live?.optDouble(it, 0.0) ?: 0.0 } },
+    livePositions = json?.optJSONArray("livePositions")?.let { a -> (0 until 4).map { a.optDouble(it, 0.0) } } ?: List(4) { 0.0 },
+    captured = json?.optJSONArray("channels")?.let { a -> (0 until a.length()).mapNotNull { a.optJSONObject(it) }.map { c -> c.optText("function").ifBlank { null } } }.orEmpty(),
 )
+
+internal fun functionLabel(id: String): String = FUNCTION_LABELS[id] ?: id
+
+internal fun axisLabel(axis: JoystickAxis, calibration: JoystickCalibration): String =
+    (if (calibration.calibrating) calibration.captured.getOrNull(axis.index).orEmpty() else axis.function).ifBlank { null }?.let(::functionLabel) ?: "Axis ${axis.index + 1}"
+
+internal val MODE_STICKS = mapOf(
+    1 to "Pitch and yaw on the left stick, throttle and roll on the right",
+    2 to "Throttle and yaw on the left stick, pitch and roll on the right",
+    3 to "Pitch and roll on the left stick, throttle and yaw on the right",
+    4 to "Throttle and roll on the left stick, pitch and yaw on the right",
+)
+
+private val NOT_SENDING = mapOf(
+    "notPolling" to "Not sending: no aircraft is connected",
+    "configuring" to "Not sending while calibrating",
+    "notCalibrated" to "Not sending: calibrate first",
+    "mappingIncomplete" to "Not sending: a stick has no axis. Calibrate again",
+    "invalidCalibration" to "Not sending: the calibration is not usable. Calibrate again",
+    "noSample" to "Not sending: no input from the radio. Check its cable and move a stick",
+    "missingAxisData" to "Not sending: the radio stopped reporting a stick",
+)
+
+private val shownJoystickPages = java.util.concurrent.atomic.AtomicInteger()
+
+private fun cancelIfLeft() {
+    if (shownJoystickPages.get() == 0 && Qgc.get(JOYSTICK_VIEW)?.optBoolean("vehicle") == true) Qgc.call(JOYSTICK_CALIBRATION, "cancel")
+}
+
+internal fun sendingText(page: JoystickPage): String? = when {
+    !page.enabled -> null
+    page.commanding -> "Sending your sticks to the aircraft"
+    else -> NOT_SENDING[page.notCommandingReason] ?: "Not sending your sticks to the aircraft"
+}
+
+internal data class StatusLines(val bullets: Boolean, val lines: List<String>)
+
+internal fun statusLines(text: String): StatusLines {
+    val lines = text.split("\n").filter { it.isNotBlank() }
+    val bullets = lines.isNotEmpty() && lines.all { it.startsWith("* ") }
+    return StatusLines(bullets, if (bullets) lines.map { it.removePrefix("* ") } else listOf(lines.joinToString(" ")))
+}
 
 internal data class JoystickPage(
     val names: List<String>,
@@ -115,6 +184,8 @@ internal data class JoystickPage(
     val axes: List<JoystickAxis>,
     val armed: Boolean = false,
     val calibration: JoystickCalibration = joystickCalibration(null),
+    val commanding: Boolean = false,
+    val notCommandingReason: String? = null,
     val transmitterMode: Int = 2,
     val buttons: List<JoystickButton> = emptyList(),
     val actions: List<AssignableAction> = emptyList(),
@@ -140,6 +211,8 @@ internal fun joystickPage(view: JSONObject?): JoystickPage? = view?.takeIf { it.
         },
         armed = it.optBoolean("armed"),
         calibration = joystickCalibration(it.optJSONObject("calibration")),
+        commanding = it.optJSONObject("state")?.optBoolean("commanding") == true,
+        notCommandingReason = it.optJSONObject("state")?.optText("notCommandingReason")?.ifBlank { null },
         transmitterMode = it.optInt("transmitterMode", 2),
         buttons = it.optJSONObject("state")?.optJSONArray("buttons")?.let { list ->
             (0 until list.length()).mapNotNull { at ->
@@ -174,6 +247,13 @@ fun JoystickScreen(modifier: Modifier = Modifier) {
         page = withContext(Dispatchers.Default) { joystickPage(Qgc.get(JOYSTICK_VIEW)) }
         delay(JOYSTICK_POLL_MS)
         revision++
+    }
+    DisposableEffect(Unit) {
+        shownJoystickPages.incrementAndGet()
+        onDispose {
+            shownJoystickPages.decrementAndGet()
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ offMainInOrder(::cancelIfLeft) }, LEAVE_GRACE_MS)
+        }
     }
 
     fun act(path: String, vararg args: Any) {
@@ -227,15 +307,17 @@ fun JoystickScreen(modifier: Modifier = Modifier) {
         if (read.names.size > 1) JoystickPicker(read) { act(JOYSTICK_SELECT, it) }
         sticksSection()
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Checkbox(checked = read.enabled, enabled = read.vehicle, onCheckedChange = { act(JOYSTICK_ENABLE, it) })
+            Checkbox(checked = read.enabled, enabled = read.vehicle && (read.calibrated || read.enabled), onCheckedChange = { act(JOYSTICK_ENABLE, it) })
             Text("Enable")
             if (!read.vehicle) Text("Not currently available", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Text(if (read.calibrated) "Calibrated" else "Requires calibration", color = if (read.calibrated) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error)
+        Text(if (read.calibrated) "Calibrated · saved on this device" else "Calibrate before enabling", color = if (read.calibrated) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error)
+        sendingText(read)?.let { Text(it, color = if (read.commanding) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error) }
         refusal?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
         if (!read.armed) {
             SectionHeader("Calibration")
+            if (!read.calibration.calibrating) TransmitterModeRow(read.transmitterMode) { act(JOYSTICK_SETTING, "transmitterMode", it) }
             CalibrationPanel(read) { op ->
                 scope.launch {
                     val answer = withContext(Dispatchers.Default) { Qgc.call(JOYSTICK_CALIBRATION, op) }
@@ -243,13 +325,13 @@ fun JoystickScreen(modifier: Modifier = Modifier) {
                     if (answer?.optBoolean("completed") == true && !read.enabled) offerEnable = answer.optText("name")
                 }
             }
-            TransmitterModeRow(read.transmitterMode) { act(JOYSTICK_SETTING, "transmitterMode", it) }
         }
 
+        if (read.calibration.calibrating) return@Column
         SectionHeader("Axis monitor")
         read.axes.forEach { axis ->
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(axis.function.ifBlank { "Axis ${axis.index + 1}" }, modifier = Modifier.width(96.dp))
+                Text(axisLabel(axis, read.calibration), modifier = Modifier.width(96.dp))
                 LinearProgressIndicator(progress = { ((axis.raw ?: 0) / AXIS_RANGE + 1f) / 2f }, modifier = Modifier.weight(1f))
             }
         }
@@ -353,12 +435,60 @@ private fun ButtonRow(button: JoystickButton, actions: List<AssignableAction>, c
 }
 
 @Composable
+private fun StatusText(text: String) {
+    val (bullets, lines) = statusLines(text)
+    when {
+        lines.all { it.isBlank() } -> Unit
+        bullets -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            lines.map { line ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("•", style = MaterialTheme.typography.bodyMedium)
+                    Text(line, style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        }
+        else -> Text(lines.first(), style = MaterialTheme.typography.bodyMedium)
+    }
+}
+
+private val CHECK_ROWS = listOf(Triple("roll", "Left", "Right"), Triple("pitch", "Down", "Up"), Triple("yaw", "Left", "Right"), Triple("throttle", "Down", "Up"))
+
+@Composable
+private fun StickCheck(live: Map<String, Double>) {
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        CHECK_ROWS.map { (key, low, high) ->
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(functionLabel(key), modifier = Modifier.width(80.dp))
+                Text(low, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, textAlign = TextAlign.End, modifier = Modifier.width(40.dp))
+                LinearProgressIndicator(progress = { (((live[key] ?: 0.0) + 1) / 2).toFloat() }, modifier = Modifier.weight(1f).semantics { contentDescription = "${functionLabel(key)} stick" })
+                Text(high, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.width(40.dp))
+            }
+        }
+    }
+}
+
+@Composable
 private fun CalibrationPanel(page: JoystickPage, onStep: (String) -> Unit) {
     val cal = page.calibration
-    if (cal.calibrating) StickDiagram(cal.stickPositions, cal.singleStick)
-    if (cal.statusText.isNotBlank()) Text(cal.statusText, style = MaterialTheme.typography.bodyMedium)
+    if (cal.calibrating && cal.step != null && cal.steps != null) {
+        Text("Step ${cal.step} of ${cal.steps}", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    if (cal.calibrating && !cal.checking) {
+        StickDiagram(cal.stickPositions, cal.singleStick, cal.livePositions)
+        Text("Ring: where to move the stick. Dot: where your stick is.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+    StatusText(cal.statusText)
+    cal.holding?.let { held ->
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            LinearProgressIndicator(progress = { held.toFloat() }, modifier = Modifier.width(160.dp).semantics { contentDescription = "Holding the stick" })
+            Text("Got it, hold it there", style = MaterialTheme.typography.bodySmall)
+        }
+    }
+    if (cal.checking) StickCheck(cal.live)
+    cal.warning?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+    if (cal.checking) Text("Save keeps this calibration on this device.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedButton(enabled = cal.cancelEnabled, onClick = { onStep("cancel") }) { Text("Cancel") }
+        if (cal.calibrating) OutlinedButton(enabled = cal.cancelEnabled, onClick = { onStep("cancel") }) { Text("Cancel") }
         if (cal.oneSidedVisible) OutlinedButton(onClick = { onStep("oneSided") }) { Text("One-Sided") }
         androidx.compose.material3.Button(enabled = cal.nextEnabled, onClick = { onStep("next") }) { Text(cal.nextText) }
     }
@@ -368,7 +498,10 @@ private fun CalibrationPanel(page: JoystickPage, onStep: (String) -> Unit) {
 private fun TransmitterModeRow(mode: Int, onPick: (Int) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text("Mode", modifier = Modifier.weight(1f))
+        Column(Modifier.weight(1f)) {
+            Text("Stick mode")
+            Text(MODE_STICKS[mode].orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        }
         Box {
             OutlinedButton(onClick = { open = true }) { Text("Mode $mode") }
             DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
@@ -432,15 +565,21 @@ private fun SettingField(setting: JoystickSetting, onChange: (Any) -> Unit) {
 private val STICK_BOX = 72.dp
 
 @Composable
-internal fun StickDiagram(positions: List<Int>, single: Boolean) {
+internal fun StickDiagram(positions: List<Int>, single: Boolean, live: List<Double>? = null) {
     val ring = MaterialTheme.colorScheme.outline
     val knob = MaterialTheme.colorScheme.primary
     Row(horizontalArrangement = Arrangement.spacedBy(24.dp)) {
-        positions.chunked(2).take(if (single) 1 else 2).forEach { (x, y) ->
+        listOf(0, 2).take(if (single) 1 else 2).map { at ->
             androidx.compose.foundation.Canvas(Modifier.size(STICK_BOX)) {
                 val half = size.minDimension / 2f
-                drawRect(ring, style = androidx.compose.ui.graphics.drawscope.Stroke(1.dp.toPx()))
-                drawCircle(knob, radius = half * 0.18f, center = center + androidx.compose.ui.geometry.Offset(x * half * 0.75f, -y * half * 0.75f))
+                val stick = { values: List<Number> -> center + Offset(values[at].toFloat() * half * 0.75f, -values[at + 1].toFloat() * half * 0.75f) }
+                drawRect(ring, style = Stroke(1.dp.toPx()))
+                if (live == null) {
+                    drawCircle(knob, radius = half * 0.18f, center = stick(positions))
+                } else {
+                    drawCircle(knob, radius = half * 0.24f, center = stick(positions), style = Stroke(2.dp.toPx(), pathEffect = PathEffect.dashPathEffect(floatArrayOf(4.dp.toPx(), 3.dp.toPx()))))
+                    drawCircle(knob, radius = half * 0.14f, center = stick(live))
+                }
             }
         }
     }

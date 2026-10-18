@@ -158,4 +158,17 @@ class SetupScreenTest {
         assertEquals(null, parametersIncomplete(JSONObject("""{"parametersReady":true,"parametersReason":""}""")))
         assertEquals("ready parameters never block setup", null, parameterWait(view))
     }
+
+    @Test
+    fun `setup opens on the first component that still needs setting up, not the first in the list`() {
+        val components = listOf(
+            SetupComponent(0, "ESC", needsAttention = false),
+            SetupComponent(1, "Pre-Arm Check", needsAttention = true),
+            SetupComponent(2, "Sensors", needsAttention = true),
+        )
+        assertEquals("Pre-Arm Check", firstToOpen(components) { true }?.name)
+        assertEquals("Sensors", firstToOpen(components) { it.name != "Pre-Arm Check" }?.name)
+        assertEquals("ESC", firstToOpen(components.take(1)) { true }?.name)
+        assertNull(firstToOpen(emptyList()) { true })
+    }
 }

@@ -80,6 +80,9 @@ internal fun readinessNote(readiness: SetupReadiness?, listed: Boolean): String?
 internal fun parameterCountText(count: Int): String? =
     count.takeIf { it > 0 }?.let { "%,d parameters".format(java.util.Locale.US, it) }
 
+internal fun firstToOpen(components: List<SetupComponent>, canOpen: (SetupComponent) -> Boolean): SetupComponent? =
+    components.filter(canOpen).let { openable -> openable.firstOrNull { it.needsAttention } ?: openable.firstOrNull() }
+
 internal fun attentionAction(className: String): String =
     if (listOf("Sensors", "Radio").any { it in className }) "Calibrate" else "Set up"
 
@@ -545,7 +548,7 @@ fun SetupScreen(modifier: Modifier = Modifier) {
         if (maxWidth >= LIST_DETAIL_MIN_WIDTH) {
             LaunchedEffect(components, navigation.setupPage) {
                 if (opened == null && !parametersOpen && navigation.setupPage == null) {
-                    components.firstOrNull { headCanOpen(setupPage(setupJson, it.name), it.name) }?.let { opened = it to null }
+                    firstToOpen(components) { headCanOpen(setupPage(setupJson, it.name), it.name) }?.let { opened = it to null }
                 }
             }
             Row(Modifier.fillMaxSize()) {
