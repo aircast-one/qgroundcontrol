@@ -127,13 +127,13 @@ export const activeLinksText = (count: number): string => (count > 0 ? `${count}
 
 export type SettingsGroup = { readonly name: 'Safety' | 'Control' | 'Camera' | 'Transmission' | 'General'; readonly ordinal: number; readonly title: string };
 export const SettingsGroup = {
-  Safety: { name: 'Safety', ordinal: 0, title: 'Safety' },
-  Control: { name: 'Control', ordinal: 1, title: 'Control' },
-  Camera: { name: 'Camera', ordinal: 2, title: 'Camera' },
-  Transmission: { name: 'Transmission', ordinal: 3, title: 'Transmission' },
-  General: { name: 'General', ordinal: 4, title: 'General' },
+  General: { name: 'General', ordinal: 0, title: 'General' },
+  Safety: { name: 'Safety', ordinal: 1, title: 'Safety' },
+  Control: { name: 'Control', ordinal: 2, title: 'Control' },
+  Camera: { name: 'Camera', ordinal: 3, title: 'Camera' },
+  Transmission: { name: 'Transmission', ordinal: 4, title: 'Transmission' },
 } as const satisfies Record<string, SettingsGroup>;
-export const SettingsGroupEntries: readonly SettingsGroup[] = [SettingsGroup.Safety, SettingsGroup.Control, SettingsGroup.Camera, SettingsGroup.Transmission, SettingsGroup.General];
+export const SettingsGroupEntries: readonly SettingsGroup[] = [SettingsGroup.General, SettingsGroup.Safety, SettingsGroup.Control, SettingsGroup.Camera, SettingsGroup.Transmission];
 
 export type PageLook = { group: SettingsGroup; icon: DrawableName; inline: boolean; tabHome: boolean };
 export const PageLook = (fields: { group: SettingsGroup; icon: DrawableName; inline?: boolean; tabHome?: boolean }): PageLook => ({ inline: false, tabHome: false, ...fields });

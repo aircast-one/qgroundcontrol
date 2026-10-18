@@ -155,7 +155,7 @@ internal fun activeLinksGlance(view: JSONObject?): String =
 
 internal fun activeLinksText(count: Int): String = if (count > 0) "$count active" else ""
 
-internal enum class SettingsGroup(val title: String) { Safety("Safety"), Control("Control"), Camera("Camera"), Transmission("Transmission"), General("General") }
+internal enum class SettingsGroup(val title: String) { General("General"), Safety("Safety"), Control("Control"), Camera("Camera"), Transmission("Transmission") }
 
 internal data class PageLook(val group: SettingsGroup, @DrawableRes val icon: Int, val inline: Boolean = false, val tabHome: Boolean = false)
 

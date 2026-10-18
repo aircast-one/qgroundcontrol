@@ -83,7 +83,7 @@ func activeLinksGlance(_ view: JSON?) -> String {
 func activeLinksText(_ count: Int) -> String { count > 0 ? "\(count) active" : "" }
 
 enum SettingsGroup: String, CaseIterable {
-    case Safety, Control, Camera, Transmission, General
+    case General, Safety, Control, Camera, Transmission
 
     var title: String { rawValue }
 }
