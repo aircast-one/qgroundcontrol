@@ -9,6 +9,7 @@ const USB_RADIO_STANDBY: &str = "settings.autoConnectSettings.usbRadioStandby";
 pub const SEND_EVERY_MS: u64 = 40;
 pub const STALE_AFTER_MS: u64 = 500;
 const REOPEN_AFTER_MS: u64 = 1_000;
+pub const ECHO_EVERY_MS: u64 = 250;
 const RELEASE_FRAMES: usize = 3;
 #[cfg(hosted_serial)]
 const SERIAL_ID: u32 = 0xfff0_0004;
@@ -88,8 +89,59 @@ impl Radio {
 }
 
 struct Port {
+    write: Box<dyn Fn(&[u8]) + Send>,
     close: Box<dyn Fn() + Send>,
     dead: Arc<AtomicBool>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Flying {
+    NoVehicle,
+    Vehicle(u8),
+    Standby(u8),
+    Joystick(u8),
+}
+
+pub fn echo(flying: Flying) -> String {
+    match flying {
+        Flying::NoVehicle => "@N\n".to_string(),
+        Flying::Vehicle(id) => format!("@F,{id}\n"),
+        Flying::Standby(id) => format!("@S,{id}\n"),
+        Flying::Joystick(id) => format!("@J,{id}\n"),
+    }
+}
+
+fn flying() -> Flying {
+    let vehicle = crate::hub::lock().active().filter(|v| !v.on_high_latency_link()).map(|v| v.id);
+    match vehicle {
+        None => Flying::NoVehicle,
+        Some(id) if crate::joystickhost::drives(id) => Flying::Joystick(id),
+        Some(id) if standby(id) => Flying::Standby(id),
+        Some(id) => Flying::Vehicle(id),
+    }
+}
+
+static ECHOED_AT: Mutex<Option<u64>> = Mutex::new(None);
+
+pub fn echo_due(last: Option<u64>, now_ms: u64, live: bool) -> bool {
+    live && last.is_none_or(|at| now_ms.saturating_sub(at) >= ECHO_EVERY_MS)
+}
+
+fn answer(now_ms: u64, live: bool) {
+    let due = {
+        let mut echoed = ECHOED_AT.lock().unwrap_or_else(PoisonError::into_inner);
+        let due = echo_due(*echoed, now_ms, live);
+        if due {
+            *echoed = Some(now_ms);
+        }
+        due
+    };
+    if due {
+        let line = echo(flying());
+        if let Some(port) = ATTEMPT.lock().unwrap_or_else(PoisonError::into_inner).as_ref().and_then(|attempt| attempt.port.as_ref()) {
+            (port.write)(line.as_bytes());
+        }
+    }
 }
 
 impl Drop for Port {
@@ -161,6 +213,7 @@ fn advance(fresh: Option<Frame>) {
     if let Some((vehicle, _)) = step.handed_back {
         crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &why_handed_back(live, vehicle));
     }
+    answer(now, live);
 }
 
 fn heard(frames: Vec<Frame>) {
@@ -179,7 +232,15 @@ fn open(port: &str) -> Option<Port> {
         crate::platformserial::Event::Disconnected(_) => lost.store(true, Ordering::Relaxed),
     })
     .ok()?;
-    Some(Port { close: Box::new(move || opened.close()), dead })
+    let opened = Arc::new(opened);
+    let writer = opened.clone();
+    Some(Port {
+        write: Box::new(move |bytes| {
+            writer.write(bytes);
+        }),
+        close: Box::new(move || opened.close()),
+        dead,
+    })
 }
 
 #[cfg(not(hosted_serial))]
@@ -193,7 +254,9 @@ fn open(port: &str) -> Option<Port> {
         crate::seriallink::Event::Disconnected(_) => lost.store(true, Ordering::Relaxed),
     })
     .ok()?;
-    Some(Port { close: Box::new(move || link.close()), dead })
+    let link = Arc::new(link);
+    let writer = link.clone();
+    Some(Port { write: Box::new(move |bytes| drop(writer.write(bytes))), close: Box::new(move || link.close()), dead })
 }
 
 pub fn maintain() {
@@ -242,6 +305,40 @@ mod tests {
     fn in_4g_standby_the_radio_streams_to_the_aircraft_computer_not_the_flight_controller() {
         assert_eq!(component(false), crate::hub::COMP_AUTOPILOT1);
         assert_eq!(component(true), crate::joystickhost::STANDBY_COMPONENT, "ArduPilot processes an override for another component of its own system nowhere, so only aircastd acts on it");
+    }
+
+    #[test]
+    fn the_radio_is_told_what_its_sticks_are_doing() {
+        assert_eq!(echo(Flying::Vehicle(1)), "@F,1\n");
+        assert_eq!(echo(Flying::Standby(3)), "@S,3\n", "in 4G standby the sticks go to the aircraft computer");
+        assert_eq!(echo(Flying::Joystick(1)), "@J,1\n");
+        assert_eq!(echo(Flying::NoVehicle), "@N\n");
+        assert!(echo(Flying::Vehicle(1)).lines().all(|line| parse(line).is_none()), "an echo is never read back as stick values");
+    }
+
+    #[test]
+    fn the_radio_hears_back_a_few_times_a_second_and_only_while_it_streams() {
+        assert!(!echo_due(None, 0, false), "a silent radio is not answered");
+        assert!(echo_due(None, 1_000, true));
+        assert!(!echo_due(Some(1_000), 1_000 + ECHO_EVERY_MS - 1, true));
+        assert!(echo_due(Some(1_000), 1_000 + ECHO_EVERY_MS, true));
+    }
+
+    #[test]
+    fn a_streaming_radio_is_written_its_status_on_its_own_port() {
+        let written = Arc::new(Mutex::new(Vec::<u8>::new()));
+        let sink = written.clone();
+        *ATTEMPT.lock().unwrap() = Some(Attempt {
+            wanted: "radio".into(),
+            port: Some(Port { write: Box::new(move |bytes| sink.lock().unwrap().extend_from_slice(bytes)), close: Box::new(|| {}), dead: Arc::new(AtomicBool::new(false)) }),
+            at: 0,
+        });
+        *ECHOED_AT.lock().unwrap() = None;
+        answer(5_000, false);
+        assert!(written.lock().unwrap().is_empty(), "nothing is written to a radio that is not streaming");
+        answer(5_000, true);
+        assert_eq!(String::from_utf8(written.lock().unwrap().clone()).unwrap(), "@N\n", "with no vehicle the radio is told so");
+        *ATTEMPT.lock().unwrap() = None;
     }
 
     #[test]

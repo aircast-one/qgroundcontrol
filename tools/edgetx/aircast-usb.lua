@@ -4,15 +4,31 @@ local CHANNEL_COUNT = 24
 local SERIAL_BAUDRATE = 115200
 local SERIAL_PREFIX = "$"
 local UPDATE_INTERVAL_TICKS = 10
-local KEEP_OPEN = "Keep open while flying"
+local APP_SILENT_TICKS = 150
+local CONFIRM_TICKS = 300
 local BAR_MAX_W = 60
+local EXIT_HINT = "RTN: stop sending sticks and exit"
+local CONFIRM_HINT = "Stop sending sticks? RTN again to exit"
+local NO_CABLE = "USB cable not connected"
+local NO_ANSWER = "No answer from the app: set Hardware > USB-VCP to LUA"
 
 local battVolt = 0
 local modelInfo
 local mixesInfo = {}
 local channelValues = {}
+local used = {}
 local useLvglUI = false
 local leaving = false
+local confirmUntil = nil
+local heard = ""
+local app = { state = nil, vehicle = nil, at = nil }
+
+local SAYS = {
+  F = function(vehicle) return "App flying vehicle " .. vehicle end,
+  S = function(vehicle) return "App: 4G standby, vehicle " .. vehicle end,
+  J = function(vehicle) return "A joystick is flying vehicle " .. vehicle end,
+  N = function() return "App receiving, no vehicle connected" end,
+}
 
 local function readChannels()
   for i = 1, CHANNEL_COUNT do
@@ -21,6 +37,7 @@ local function readChannels()
 end
 
 local function readMixes()
+  used = {}
   for i = 1, CHANNEL_COUNT do
     local m = model.getMix(i - 1, 0)
     local srcName = ""
@@ -29,6 +46,7 @@ local function readMixes()
       if ok and name then srcName = name end
     end
     mixesInfo[i] = { name = m and m.name or "", src = srcName }
+    if m then used[#used + 1] = i end
   end
 end
 
@@ -47,8 +65,71 @@ local function stream()
   end
 end
 
+local function now()
+  return getTime and getTime() or 0
+end
+
+local function listen()
+  if not serialRead then return end
+  heard = heard .. (serialRead() or "")
+  local line = heard:match("^(.-)\n")
+  while line do
+    heard = heard:sub(#line + 2)
+    local state, vehicle = line:match("^@(%a),?(%d*)")
+    if state and SAYS[state] then
+      app.state, app.vehicle, app.at = state, vehicle, now()
+    end
+    line = heard:match("^(.-)\n")
+  end
+  if #heard > 256 then heard = "" end
+end
+
+local function appLive()
+  return app.at ~= nil and now() - app.at <= APP_SILENT_TICKS
+end
+
+local function flying()
+  return appLive() and (app.state == "F" or app.state == "S")
+end
+
+local function status()
+  if appLive() then return SAYS[app.state](app.vehicle), true end
+  if usbConnected and not usbConnected() then return NO_CABLE, false end
+  return NO_ANSWER, false
+end
+
+local function confirming()
+  return confirmUntil ~= nil and now() <= confirmUntil
+end
+
+local function hint()
+  return confirming() and CONFIRM_HINT or EXIT_HINT
+end
+
+local function askToLeave()
+  if not flying() or confirming() then
+    leaving = true
+  else
+    confirmUntil = now() + CONFIRM_TICKS
+  end
+end
+
+local function exitKey(event)
+  return event ~= nil and event ~= 0 and (event == EVT_VIRTUAL_EXIT or event == EVT_EXIT_BREAK)
+end
+
 local function pwm(i)
   return math.floor(channelValues[i] / 2) + 1500
+end
+
+local function afterList()
+  local shown = math.min(#used, 16) + 1
+  return (shown <= 8) and 1 or 2, (shown <= 8) and shown or (shown - 8)
+end
+
+local function unusedText()
+  local unused = CHANNEL_COUNT - #used
+  return unused > 0 and ("+" .. unused .. " unused channels") or ""
 end
 
 local function brand()
@@ -57,47 +138,51 @@ local function brand()
     foreground = lcd.RGB(0xFA, 0xFA, 0xFA),
     muted = lcd.RGB(0xD2, 0xD4, 0xD8),
     primary = lcd.RGB(0x00, 0x88, 0xF2),
+    good = lcd.RGB(0x3D, 0xD6, 0x8C),
     warning = lcd.RGB(0xF4, 0xA4, 0x37),
   }
 end
 
 local function drawSmall()
+  local said, ok = status()
   lcd.clear()
   lcd.drawText(0, 0, "AIRCAST", SMLSIZE + INVERS)
   lcd.drawText(40, 0, string.sub(modelInfo.name, 1, 8), SMLSIZE)
-  lcd.drawText(84, 0, string.format("Batt: %1.1fV", battVolt), SMLSIZE)
-  lcd.drawFilledRectangle(0, 7, 128, 1)
-
-  for i = 1, CHANNEL_COUNT do
-    local x = math.floor((i - 1) / 8) * 42
-    local y = 9 + ((i - 1) % 8) * 7
-    lcd.drawText(x, y, string.format("%02d    %s", i, string.sub(mixesInfo[i].src, 3)), SMLSIZE)
-    local w = math.floor((channelValues[i] + 1024 + 256) / 255)
-    if w < 1 then w = 1 elseif w > 9 then w = 9 end
-    lcd.drawFilledRectangle(x + 11, y, w, 6)
-    lcd.drawPoint(x + 11 + 4, y + 2)
+  lcd.drawText(92, 0, string.format("%1.1fV", battVolt), SMLSIZE)
+  lcd.drawText(0, 8, string.sub(said, 1, 32), SMLSIZE + (ok and 0 or INVERS))
+  lcd.drawFilledRectangle(0, 15, 128, 1)
+  for slot = 1, math.min(#used, 15) do
+    local i = used[slot]
+    local x = math.floor((slot - 1) / 5) * 43
+    local y = 17 + ((slot - 1) % 5) * 8
+    lcd.drawText(x, y, string.sub(mixesInfo[i].src ~= "" and mixesInfo[i].src or ("CH" .. i), 1, 4), SMLSIZE)
+    local w = math.floor((channelValues[i] + 1024 + 128) / 128)
+    if w < 1 then w = 1 elseif w > 17 then w = 17 end
+    lcd.drawFilledRectangle(x + 22, y + 1, w, 5)
   end
+  lcd.drawText(0, 57, string.sub(hint(), 1, 32), SMLSIZE + (confirming() and INVERS or 0))
 end
 
 local function drawLarge()
   local color = brand()
-  local fSmall = SMLSIZE + color.foreground
-
+  local said, ok = status()
   lcd.clear(color.background)
-  lcd.drawText(10, 10, "Aircast USB", MIDSIZE + color.primary)
-  lcd.drawText(240, 10, modelInfo.name, MIDSIZE + color.foreground)
-  lcd.drawText(240, 240, KEEP_OPEN, MIDSIZE + color.warning)
-  lcd.drawText(10, 240, string.format("RC BATTERY: %.2fV", battVolt), MIDSIZE + color.foreground)
-
-  for i = 1, CHANNEL_COUNT do
-    local colBase = (i <= 12) and 10 or 240
-    local row = (i <= 12) and i or (i - 12)
-    local y = 30 + row * 16
-    lcd.drawText(colBase, y, string.format("CH%02d:%04d", i, pwm(i)), fSmall)
-    lcd.drawFilledRectangle(colBase, y + 14, math.floor((channelValues[i] + 1024 + 34) / 34), 2, color.primary)
-    lcd.drawText(colBase + 80, y, mixesInfo[i].src, SMLSIZE + color.muted)
-    lcd.drawText(colBase + 140, y, mixesInfo[i].name, SMLSIZE + color.muted)
+  lcd.drawText(10, 6, "Aircast USB", MIDSIZE + color.primary)
+  lcd.drawText(170, 6, modelInfo.name, MIDSIZE + color.foreground)
+  lcd.drawText(380, 6, string.format("%.2fV", battVolt), MIDSIZE + color.foreground)
+  lcd.drawText(10, 32, said, MIDSIZE + (ok and color.good or color.warning))
+  for slot = 1, math.min(#used, 16) do
+    local i = used[slot]
+    local colBase = (slot <= 8) and 10 or 245
+    local row = (slot <= 8) and slot or (slot - 8)
+    local y = 46 + row * 22
+    local label = mixesInfo[i].src ~= "" and mixesInfo[i].src or ("CH" .. i)
+    lcd.drawText(colBase, y, string.format("%-6s %4d", label, pwm(i)), SMLSIZE + color.foreground)
+    lcd.drawFilledRectangle(colBase + 100, y + 4, math.floor((channelValues[i] + 1024) * 100 / 2048) + 1, 6, color.primary)
   end
+  local column, row = afterList()
+  lcd.drawText(column == 1 and 10 or 245, 46 + row * 22, unusedText(), SMLSIZE + color.muted)
+  lcd.drawText(10, 250, hint(), SMLSIZE + (confirming() and color.warning or color.muted))
 end
 
 local function buildLvglUI()
@@ -105,24 +190,28 @@ local function buildLvglUI()
   local pg = lvgl.page({
     title = "Aircast USB",
     subtitle = modelInfo.name,
-    back = function() leaving = true end,
+    back = askToLeave,
   })
 
   pg:label({ x = 0, y = 0, font = MIDSIZE,
-    text = function() return string.format("Batt: %.1fV", battVolt) end,
+    text = function() return (status()) end,
   })
-  pg:label({ x = 230, y = 0, font = MIDSIZE, color = color.warning, text = KEEP_OPEN })
+  pg:label({ x = 330, y = 0, font = MIDSIZE,
+    text = function() return string.format("%.1fV", battVolt) end,
+  })
 
-  for i = 1, CHANNEL_COUNT do
-    local colBase = (i <= 12) and 0 or 230
-    local row = (i <= 12) and i or (i - 12)
-    local yOfs = 20 + row * 22
+  for slot = 1, math.min(#used, 16) do
+    local i = used[slot]
+    local colBase = (slot <= 8) and 0 or 230
+    local row = (slot <= 8) and slot or (slot - 8)
+    local yOfs = 10 + row * 24
+    local label = mixesInfo[i].src ~= "" and mixesInfo[i].src or ("CH" .. i)
 
     pg:label({ x = colBase, y = yOfs, font = SMLSIZE,
-      text = function() return string.format("CH%02d:%5d %s", i, pwm(i), mixesInfo[i].src) end,
+      text = function() return string.format("%-6s %5d", label, pwm(i)) end,
     })
 
-    pg:rectangle({ x = colBase, y = yOfs + 14, w = BAR_MAX_W, h = 3, filled = true,
+    pg:rectangle({ x = colBase, y = yOfs + 15, w = BAR_MAX_W, h = 3, filled = true,
       color = color.primary,
       size = function()
         local w = math.floor((channelValues[i] + 1024) * BAR_MAX_W / 2048)
@@ -131,6 +220,9 @@ local function buildLvglUI()
       end,
     })
   end
+  local column, row = afterList()
+  pg:label({ x = column == 1 and 0 or 230, y = 10 + row * 24, font = SMLSIZE, color = color.muted, text = unusedText() })
+  pg:label({ x = 0, y = 10 + 10 * 24, font = SMLSIZE, text = hint })
 end
 
 local function init()
@@ -144,14 +236,10 @@ local function init()
   end
 end
 
-local function exiting(event)
-  return event ~= nil and event ~= 0 and (event == EVT_VIRTUAL_EXIT or event == EVT_EXIT_BREAK)
-end
-
 local function run(event)
-  if leaving or exiting(event) then
-    return 1
-  end
+  listen()
+  if exitKey(event) then askToLeave() end
+  if leaving then return 1 end
   battVolt = getValue("tx-voltage")
   stream()
   if not useLvglUI then
