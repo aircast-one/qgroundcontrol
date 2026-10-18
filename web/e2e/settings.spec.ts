@@ -72,3 +72,12 @@ test('imperial units turn the Fly telemetry into feet', async ({ vehicle }) => {
   await vehicle.getByRole('button', { name: 'Close settings' }).click();
   await expect(telemetry(vehicle, 'H')).toContainText('ft');
 });
+
+test('the radio on USB settings let the browser grant the radio its serial port', async ({ app }) => {
+  await app.getByRole('button', { name: 'Settings', exact: true }).click();
+  await app.getByRole('tablist').getByRole('tab', { name: 'Transmission' }).click();
+  await app.getByRole('button', { name: /^Links/ }).click();
+  await app.getByRole('button', { name: 'Advanced' }).click();
+  await expect(app.getByText('Radio on USB (EdgeTX script)', { exact: false })).toBeVisible();
+  await expect(app.getByRole('button', { name: 'Allow a USB port' })).toBeVisible();
+});

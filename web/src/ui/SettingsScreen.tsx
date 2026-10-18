@@ -43,6 +43,7 @@ import { AppLogPage } from '@/ui/AppLogPage';
 import { PilotSettings, SensorChecks, pilotSearchHits, pilotWorded } from '@/ui/PilotSettings';
 import { GENERAL_PAGE, ResetAllSettingsRow } from '@/ui/ResetAllSettings';
 import { UnitsSection, unitSystemLabel } from '@/ui/UnitsSection';
+import { USB_RADIO_BLOCK, UsbAccess } from '@/ui/UsbAccess';
 
 const SETTINGS_VIEW = 'view.settings';
 const SEARCH_SETTLE_MS = 250;
@@ -639,6 +640,7 @@ const SettingsControls = ({
                 {page.showsNtrip && block.title === NTRIP_MOUNTPOINT_BLOCK ? <NtripMountpointBrowser onWrite={onWrite} /> : null}
                 {section.group === REMOTE_ID_GROUP && block.title === GCS_LOCATION_BLOCK ? <GcsPositionStatus /> : null}
                 {section.group === MAVLINK_GROUP && block.title === SIGNING_AFTER_BLOCK ? <SigningKeysSection /> : null}
+                {block.title === USB_RADIO_BLOCK ? <UsbAccess /> : null}
               </Fragment>
             );
           })}

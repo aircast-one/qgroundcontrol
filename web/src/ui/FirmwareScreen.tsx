@@ -2,14 +2,14 @@ import { useEffect, useRef, useState } from 'react';
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcBool, useQgcFacts } from '@/bridge/QgcState';
 import { type Json, isNull, jsonObjects, jsonStrings, optBoolean, optDouble, optInt, optJSONArray, optText } from '@/bridge/Json';
-import { requestSerialPort, serialAvailable } from '@/core/client';
 import { stageFile } from '@/core/files';
 import { useLaunchedEffect } from '@/kotlin/Compose';
 import { openDocument } from '@/kotlin/Platform';
 import { delay, replaceFirstCharUpper, same } from '@/kotlin/Std';
-import { Button, Checkbox, LinearProgressIndicator, ListItem, OutlinedButton, RadioButton, Surface, Text, TextButton } from '@/m3';
+import { Button, Checkbox, LinearProgressIndicator, ListItem, OutlinedButton, RadioButton, Surface, Text } from '@/m3';
 import { aircast, md } from '@/theme/Colors';
 import { ChoiceField, FactRow } from '@/ui/SettingsScreen';
+import { UsbAccess } from '@/ui/UsbAccess';
 
 export const FIRMWARE_VIEW = 'view.firmwareUpgrade';
 export const FIRMWARE_PORTS_VIEW = 'view.firmwarePorts';
@@ -263,11 +263,7 @@ export const FirmwareScreen = ({ className }: { className?: string }) => {
               Plug in your device via USB, choose its port and either a release, downloaded once the board is identified, or a firmware file, then press Flash. A board running its firmware is asked to be
               unplugged and plugged back in so its bootloader starts.
             </Text>
-            {serialAvailable() ? (
-              <div>
-                <TextButton onClick={() => void requestSerialPort().catch(() => undefined)}>Allow a USB port</TextButton>
-              </div>
-            ) : null}
+            <UsbAccess />
           </div>
         </Surface>
       </div>
