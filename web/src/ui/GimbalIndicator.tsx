@@ -5,6 +5,7 @@ import { useQgcPath } from '@/bridge/QgcState';
 import { SetupCommands } from '@/bridge/BridgeCommands';
 import { useLaunchedEffect } from '@/kotlin/Compose';
 import { mutableStateOf, useValue } from '@/kotlin/State';
+import { coerceIn } from '@/kotlin/Std';
 import { AlertDialog, Button, FilterChip, OutlinedButton, Text, TextButton } from '@/m3';
 import { AircastSheet } from '@/map/AircastSheet';
 import { MaterialIcon } from '@/res/Icon';
@@ -408,7 +409,7 @@ export const GimbalScreenControl = ({ className }: { className?: string }) => {
           const held = press.current;
           if (held === null) return;
           const now = screenFraction(held.latest.x, held.latest.y, held.width, held.height);
-          send(now[0] - start[0], now[1] - start[1], false);
+          send(coerceIn(now[0] - start[0], -1, 1), coerceIn(now[1] - start[1], -1, 1), false);
         }, GIMBAL_DRAG_REPEAT_MS);
         press.current = { latest: { x: at.x, y: at.y }, width: at.width, height: at.height, repeating };
       }}
