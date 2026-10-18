@@ -8,13 +8,12 @@ import { AircastSheet } from '@/map/AircastSheet';
 import { md } from '@/theme/Colors';
 import { type GuidedOffer, type Payload, type PayloadProblem, bayNumbers, multiBay } from './GuidedActions';
 import { HoldToConfirm, holdLabel } from './HoldToConfirm';
-import { GRIPPER_GRAB, GRIPPER_RELEASE } from './MoreActions';
+import { GRIPPER_GRAB, GRIPPER_HOLD, GRIPPER_RELEASE } from './MoreActions';
 
 export const GRIPPER_ACTIONS: readonly string[] = ['release', 'grab', 'hold'];
 export const PAYLOAD_STATE = 'vehicle.gripper';
 const STATUS_TICK_MS = 1000;
-const GRIPPER_HOLD = 2;
-const ACTION_CODES: Readonly<Record<string, number>> = { release: GRIPPER_RELEASE, grab: GRIPPER_GRAB, hold: GRIPPER_HOLD };
+const actionCode = (id: string): number => (id === 'release' ? GRIPPER_RELEASE : id === 'hold' ? GRIPPER_HOLD : GRIPPER_GRAB);
 
 type Refused = (reason: string | null) => void;
 
@@ -69,7 +68,7 @@ const SingleGripper = ({ offers, onRefused }: { offers: readonly GuidedOffer[]; 
       {offers
         .filter((it) => it.id !== 'release')
         .map((offer) => (
-          <OutlinedButton key={offer.id} enabled={offer.ready} onClick={() => send(ACTION_CODES[offer.id] ?? GRIPPER_GRAB, 0, onRefused)}>
+          <OutlinedButton key={offer.id} enabled={offer.ready} onClick={() => send(actionCode(offer.id), 0, onRefused)}>
             {offer.title}
           </OutlinedButton>
         ))}

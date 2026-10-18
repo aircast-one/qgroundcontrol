@@ -1,0 +1,46 @@
+import { connectMock, expect, openPlanAtVehicle, slideAcross, tapPlanMission, test, vehicleStatus } from './fixtures';
+
+test.describe.configure({ timeout: 180_000 });
+
+const STAYS_OPEN = /The gripper stays open after the first drop, so the second drop releases nothing/;
+
+test('a mission whose second drop would not fall says why and turns on auto-close in one tap', async ({ app: vehicle }) => {
+  await connectMock(vehicle, [], 'APM ArduCopter Vehicle');
+  await openPlanAtVehicle(vehicle);
+  await tapPlanMission(vehicle);
+  const drop = vehicle.getByRole('button', { name: 'Drop', exact: true });
+  await drop.click();
+  await drop.click();
+  await vehicle.getByRole('button', { name: 'Upload', exact: true }).click();
+  await expect(vehicle.getByRole('button', { name: 'Upload', exact: true })).toBeHidden({ timeout: 30_000 });
+  await vehicle.getByRole('button', { name: 'Fly', exact: true }).last().click();
+
+  const status = await vehicleStatus(vehicle);
+  await expect(status.getByText(STAYS_OPEN)).toBeVisible({ timeout: 30_000 });
+  await vehicle.keyboard.press('Escape');
+  await expect(vehicle.getByRole('button', { name: 'Slide to start mission' })).toBeHidden();
+
+  await vehicle.getByRole('button', { name: 'More', exact: true }).click();
+  await vehicle.getByRole('dialog').getByText('Payload').click();
+  const panel = vehicle.getByRole('dialog').filter({ hasText: STAYS_OPEN });
+  await expect(panel).toBeVisible();
+  await panel.getByRole('button', { name: 'Turn on auto-close' }).click();
+  await expect(vehicle.getByText(STAYS_OPEN)).toBeHidden({ timeout: 30_000 });
+  await vehicle.keyboard.press('Escape');
+  await expect(vehicle.getByText('Start mission', { exact: true })).toBeVisible({ timeout: 30_000 });
+});
+
+test('a second drop while the gripper is still open is refused rather than counted', async ({ app: vehicle }) => {
+  await connectMock(vehicle, [], 'APM ArduCopter Vehicle');
+  await vehicle.getByRole('button', { name: 'More', exact: true }).click();
+  await vehicle.getByRole('dialog').getByText('Payload').click();
+  const sheet = vehicle.getByRole('dialog');
+  await slideAcross(vehicle, sheet.getByRole('button', { name: 'Slide to drop' }));
+  await expect(vehicle.getByText(/^Dropped \d+ s ago$/)).toBeVisible({ timeout: 30_000 });
+  await slideAcross(vehicle, sheet.getByRole('button', { name: 'Slide to drop' }));
+  await expect(vehicle.getByText('The gripper is still open from the last drop, so nothing would fall. Grab first, or turn on auto-close.')).toBeVisible();
+  await sheet.getByRole('button', { name: 'Grab', exact: true }).click();
+  await expect(vehicle.getByText(/^Grabbed \d+ s ago$/)).toBeVisible();
+  await slideAcross(vehicle, sheet.getByRole('button', { name: 'Slide to drop' }));
+  await expect(vehicle.getByText(/^Dropped \d+ s ago$/)).toBeVisible({ timeout: 30_000 });
+});

@@ -58,6 +58,7 @@ pub const DEPS: &[&str] = &[
 
 const CHECKLIST_PASSED: i64 = 1;
 pub const NO_SIGNAL: &str = "No signal from the aircraft.";
+const REBOOT_PATH: &str = "vehicle.rebootVehicle";
 const PAYLOAD_BLOCKED: &str = "The mission's drops would not all fall. The gripper panel says what to change.";
 pub const NO_SIGNAL_CODE: &str = "noSignal";
 
@@ -726,8 +727,11 @@ pub fn fix_payload(backend: &dyn Backend, path: &str, args: &str) -> Value {
         return json!({ "ok": false, "refusal": "malformed", "reason": "Name the payload problem to fix." });
     };
     let state = read_state(backend);
-    let fix = crate::payloadcheck::problems(&state.payload, state.payload_bays).contains(&problem).then(|| problem.fix(&state.payload)).flatten();
-    match fix {
+    let present = crate::payloadcheck::problems(&state.payload, state.payload_bays).contains(&problem);
+    if present && problem == crate::payloadcheck::Problem::NeedsReboot {
+        return crate::flystate::reboot(backend, REBOOT_PATH);
+    }
+    match present.then(|| problem.fix(&state.payload)).flatten() {
         None => json!({ "ok": false, "refusal": "notOffered", "reason": "There is nothing to change for that payload problem now." }),
         Some((name, value)) => dispatch(backend, Some(json!({ "action": "paramSet", "name": name, "value": value })), active_id(backend), path, args),
     }
@@ -1044,7 +1048,7 @@ mod tests {
 
     #[test]
     fn a_mission_whose_drops_would_not_fall_does_not_start() {
-        let stuck = crate::payloadcheck::Setup { ardupilot: true, enabled: true, output: true, drops: 4, ..Default::default() };
+        let stuck = crate::payloadcheck::Setup { ardupilot: true, enabled: true, loaded: true, output: true, drops: 4, ..Default::default() };
         let ground = GuidedState { mission_available: true, can_start_mission: true, payload: stuck.clone(), ..ready_on_ground() };
         let refused = invoke_refusal(&[Action::StartMission, Action::ContinueMission], &ground);
         assert_eq!(refused.as_ref().map(|r| r.0), Some("payload"));
