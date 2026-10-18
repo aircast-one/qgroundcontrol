@@ -16,6 +16,8 @@ import {
   syntheticPoseScript,
   syntheticTilePath,
   syntheticTilt,
+  syntheticLook,
+  verticalFov,
 } from '@/ui/SyntheticView';
 
 describe('SyntheticViewTest', () => {
@@ -32,18 +34,19 @@ describe('SyntheticViewTest', () => {
     expect(syntheticAvailable(null)).toBe(false);
   });
 
-  it('dragging the view down looks up and dragging up looks down, a full height being ninety degrees', () => {
-    expect(syntheticTilt(-15.0, -500, 1000)).toBeCloseTo(-60.0, 9);
-    expect(syntheticTilt(-15.0, 100, 1000)).toBeCloseTo(-6.0, 9);
-    expect(syntheticTilt(-15.0, 900, 1000)).toBeCloseTo(0.0, 9);
-    expect(syntheticTilt(-15.0, -2000, 1000)).toBeCloseTo(-90.0, 9);
+  it('dragging the view down looks up and dragging up looks down, a full height being the vertical field of view', () => {
+    expect(syntheticTilt(-15.0, -500, 1000, 40.0)).toBeCloseTo(-35.0, 9);
+    expect(syntheticTilt(-15.0, 100, 1000, 40.0)).toBeCloseTo(-11.0, 9);
+    expect(syntheticTilt(-15.0, 900, 1000, 40.0)).toBeCloseTo(0.0, 9);
+    expect(syntheticTilt(-15.0, -5000, 1000, 40.0)).toBeCloseTo(-90.0, 9);
   });
 
-  it('a full-width swipe turns the view all the way round, as a full-height one covers the whole tilt', () => {
-    expect(syntheticPan(0.0, 250, 1000)).toBeCloseTo(90.0, 9);
-    expect(syntheticPan(0.0, -250, 1000)).toBeCloseTo(-90.0, 9);
-    expect(syntheticPan(30.0, 1000, 1000)).toBeCloseTo(30.0, 9);
-    expect(syntheticPan(170.0, -100, 1000)).toBeCloseTo(134.0, 9);
+  it('dragging the view grabs it like a map: a drag right turns it left by the angle the drag spans', () => {
+    expect(syntheticPan(0.0, 250, 1000, 70.0)).toBeCloseTo(-17.5, 9);
+    expect(syntheticPan(0.0, -250, 1000, 70.0)).toBeCloseTo(17.5, 9);
+    expect(syntheticPan(170.0, -200, 1000, 70.0)).toBeCloseTo(-176.0, 9);
+    expect(verticalFov(90.0, 1000, 500)).toBeCloseTo(53.13, 2);
+    expect(syntheticLook([-15.0, 0.0], { x: -250, y: 100 }, { width: 1000, height: 500 }, 90.0).map((it) => Number(it.toFixed(2)))).toEqual([-4.37, 22.5]);
   });
 
   it('the synthetic camera reads live only once the page has drawn it', () => {

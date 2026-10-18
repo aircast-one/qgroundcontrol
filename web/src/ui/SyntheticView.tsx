@@ -20,7 +20,7 @@ export const SYNTHETIC_SOURCE = 'Synthetic View';
 export const SYNTHETIC_AIM = 'syntheticView.aim';
 const TILT_SPAN_DEG = 90.0;
 export const DEFAULT_TILT_DEG = -15.0;
-const PAN_SPAN_DEG = 360.0;
+const CAMERA_FOV_DEG = 70.0;
 const SYNTHETIC_PAGE = `${import.meta.env.BASE_URL}assets/synthetic/index.html`;
 const SYNTHETIC_TILES = '/assets/synthetic/tiles';
 const SYNTHETIC_HOST = 'aircastHost';
@@ -63,12 +63,20 @@ export const syntheticPoseScript = (view: Json): string => `window.aircast && wi
 
 export const syntheticOverlaysScript = (view: Json): string => `window.aircast && window.aircast.overlays(${JSON.stringify(view)})`;
 
-export const syntheticTilt = (from: number, draggedPx: number, heightPx: number): number =>
-  coerceIn(from + (draggedPx / coerceAtLeast(heightPx, 1)) * TILT_SPAN_DEG, -TILT_SPAN_DEG, 0.0);
+export const verticalFov = (hFov: number, widthPx: number, heightPx: number): number =>
+  (2.0 * Math.atan(Math.tan((hFov * Math.PI) / 360.0) * (coerceAtLeast(heightPx, 1) / coerceAtLeast(widthPx, 1))) * 180.0) / Math.PI;
+
+export const syntheticTilt = (from: number, draggedPx: number, heightPx: number, vFov: number): number =>
+  coerceIn(from + (draggedPx / coerceAtLeast(heightPx, 1)) * vFov, -TILT_SPAN_DEG, 0.0);
 
 const mod = (value: number, divisor: number): number => ((value % divisor) + divisor) % divisor;
 
-export const syntheticPan = (from: number, draggedPx: number, widthPx: number): number => mod(from + (draggedPx / coerceAtLeast(widthPx, 1)) * PAN_SPAN_DEG + 180.0, 360.0) - 180.0;
+export const syntheticPan = (from: number, draggedPx: number, widthPx: number, hFov: number): number => mod(from - (draggedPx / coerceAtLeast(widthPx, 1)) * hFov + 180.0, 360.0) - 180.0;
+
+export const syntheticLook = (from: Aim, dragged: { x: number; y: number }, size: { width: number; height: number }, hFov: number): Aim => [
+  syntheticTilt(from[0], dragged.y, size.height, verticalFov(hFov, size.width, size.height)),
+  syntheticPan(from[1], dragged.x, size.width, hFov),
+];
 
 export const syntheticAims = (view: Json | null, cameras: CamerasReading | null): boolean =>
   syntheticAvailable(view) && optBoolean(view, 'aimable') && (cameras?.cameras.some((it) => it.active && it.source === SYNTHETIC_SOURCE) ?? false);
@@ -193,6 +201,7 @@ export const SyntheticView = ({ className, aimable = false, standIn = null }: { 
   const canAim = aimable && optBoolean(view, 'aimable');
   const aimedTilt = useUpdatedRef(view === null ? DEFAULT_TILT_DEG : optDouble(view, 'tilt', DEFAULT_TILT_DEG));
   const pan = useUpdatedRef(view === null ? 0.0 : optDouble(view, 'pan', 0.0));
+  const fov = useUpdatedRef(view === null ? CAMERA_FOV_DEG : optDouble(view, 'fov', CAMERA_FOV_DEG));
   const sent = useMemo(() => ({ value: null as Aim | null }), [canAim]);
   const send = (tilt: number, turned: number) => {
     sent.value = [tilt, turned];
@@ -209,18 +218,14 @@ export const SyntheticView = ({ className, aimable = false, standIn = null }: { 
     void (async () => gimbalRefusal(await Qgc.call(GIMBAL_AIM_COMMAND, tilt, yaw)))();
   };
   const look = useRef({ aim: [DEFAULT_TILT_DEG, 0.0] as Aim, start: [0.0, 0.0] as Aim, moved: { x: 0, y: 0 }, sentAt: 0, size: { width: 1, height: 1 } });
-  const gimbalTarget = (): Aim => {
-    const now = look.current;
-    return [syntheticTilt(now.start[0], now.moved.y, now.size.height), syntheticPan(now.start[1], now.moved.x, now.size.width)];
-  };
+  const gimbalTarget = (): Aim => syntheticLook(look.current.start, look.current.moved, look.current.size, fov.current);
   const aiming: PointerGestureHandlers | null = canAim
     ? {
         onDragStart: () => {
           look.current.aim = sent.value ?? [aimedTilt.current, pan.current];
         },
         onDrag: (_at, dragged, size) => {
-          const was = look.current.aim;
-          look.current.aim = [syntheticTilt(was[0], dragged.y, size.height), syntheticPan(was[1], dragged.x, size.width)];
+          look.current.aim = syntheticLook(look.current.aim, dragged, size, fov.current);
           send(look.current.aim[0], look.current.aim[1]);
         },
         onDoubleTap: () => send(DEFAULT_TILT_DEG, 0.0),
@@ -250,7 +255,7 @@ export const SyntheticView = ({ className, aimable = false, standIn = null }: { 
       : null;
   const gestures = usePointerGestures(aiming);
   return (
-    <div {...gestures} className={`overflow-hidden ${aiming !== null ? 'touch-none' : ''} ${className ?? ''}`}>
+    <div {...gestures} data-gesture={aiming !== null || undefined} className={`overflow-hidden ${aiming !== null ? 'touch-none' : ''} ${className ?? ''}`}>
       <div className="relative size-full">{nativeChosen(view) ? <NativePage view={view} standIn={standIn} /> : <SyntheticPage view={view} standIn={standIn} />}</div>
     </div>
   );
