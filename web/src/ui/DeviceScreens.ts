@@ -1,11 +1,17 @@
 import type { ReactNode } from 'react';
+import { ConnectScreen } from '@/ui/DeviceConnectScreen';
+import { FlightsScreen } from '@/ui/DeviceFlightsScreen';
 import { TelemetryScreen } from '@/ui/DeviceTelemetryScreen';
 
 export type DeviceScreenProps = { readonly href: string; readonly query: URLSearchParams; readonly onOpen: (href: string) => void; readonly onClose: () => void };
 
 export type DeviceScreenEntry = { readonly title: string; readonly screen: (props: DeviceScreenProps) => ReactNode };
 
-export const DEVICE_SCREENS: ReadonlyMap<string, DeviceScreenEntry> = new Map<string, DeviceScreenEntry>([['/telemetry', { title: 'Telemetry', screen: TelemetryScreen }]]);
+export const DEVICE_SCREENS: ReadonlyMap<string, DeviceScreenEntry> = new Map<string, DeviceScreenEntry>([
+  ['/telemetry', { title: 'Telemetry', screen: TelemetryScreen }],
+  ['/connect', { title: 'Ground station links', screen: ConnectScreen }],
+  ['/flights', { title: 'Flight log', screen: FlightsScreen }],
+]);
 
 export const devicePath = (href: string): { path: string; query: URLSearchParams } => {
   const url = new URL(href, 'http://device');
