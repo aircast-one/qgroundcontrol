@@ -14,7 +14,7 @@ import { activeVehicleId } from '@/ui/ActiveVehicle';
 import { VIDEO_RECORDING_STATE } from '@/ui/CameraControlLayer';
 import { OpenOnRequest } from '@/ui/FlyScreenState';
 import { useHasVehicle } from '@/ui/FlyState';
-import { type GimbalIndicatorState, gimbalIndicator, gimbalRefusal } from '@/ui/GimbalIndicator';
+import { GimbalSettings, GimbalVideoMode, type GimbalIndicatorState, gimbalIndicator, gimbalRefusal } from '@/ui/GimbalIndicator';
 import { PWM_CENTER, PWM_MAX, PWM_MIN, rcSendDue } from '@/ui/RcControls';
 import { cameraRcControls } from '@/ui/RcControlsLayer';
 import { RecenterTarget, TiltReadout, recenter, recenterTarget } from '@/ui/RecenterCamera';
@@ -278,6 +278,7 @@ const RcCameraControlsShown = ({
   const gimbal: GimbalIndicatorState | null = useMemo(() => gimbalIndicator(gimbalJson), [gimbalJson]);
   const [gimbalRefused, setGimbalRefused] = useState<string | null>(null);
   const [options, setOptions] = useState(false);
+  const [gimbalSettings, setGimbalSettings] = useState(false);
   const syntheticTilt = finiteOrNull(optDouble(syntheticJson, 'tilt'));
   const syntheticPan = finiteOrNull(optDouble(syntheticJson, 'pan'));
   const target = recenterTarget(syntheticAims, syntheticTilt, syntheticPan, gimbal);
@@ -347,12 +348,30 @@ const RcCameraControlsShown = ({
                 </TextButton>
               ) : null}
             </div>
+            {gimbal !== null ? <GimbalVideoMode /> : null}
             {gimbalRefused !== null ? (
               <Text typography="bodySmall" color={md('error')}>
                 {gimbalRefused}
               </Text>
             ) : null}
+            {gimbal !== null ? (
+              <div>
+                <TextButton
+                  onClick={() => {
+                    setOptions(false);
+                    setGimbalSettings(true);
+                  }}
+                >
+                  Gimbal settings
+                </TextButton>
+              </div>
+            ) : null}
           </div>
+        </AircastSheet>
+      ) : null}
+      {gimbalSettings ? (
+        <AircastSheet onDismissRequest={() => setGimbalSettings(false)}>
+          <GimbalSettings />
         </AircastSheet>
       ) : null}
       {gimbalRefused !== null ? (

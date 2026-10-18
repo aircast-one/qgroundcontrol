@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseJson } from '@/bridge/Json';
 import { makeFact } from '@/bridge/Qgc';
 import type { SettingsSectionRows } from './SettingsScreen';
-import { aimFraction, gimbalAsksForControl, gimbalCellText, gimbalIndicator, gimbalRefusal, gimbalSettingsBlocks, joystickButtonsAvailable, onScreenGimbal, screenFraction, serialAsks } from './GimbalIndicator';
+import { aimFraction, gimbalAsksForControl, gimbalCellText, gimbalIndicator, gimbalRefusal, gimbalSettingsBlocks, joystickButtonsAvailable, onScreenGimbal, screenFraction, serialAsks, VIDEO_GIMBAL_MODES, videoGimbalMode } from './GimbalIndicator';
 
 describe('GimbalIndicatorTest', () => {
   it('the cell reads status, pitch and yaw as the toolbar does', () => {
@@ -98,5 +98,11 @@ describe('GimbalTakeControlTest', () => {
   it("a drag aims by its move over half the view width, as CameraAimArea's sensitivity", () => {
     expect(aimFraction(100, 400)).toBe(0.5);
     expect(aimFraction(-50, 400)).toBe(-0.25);
+  });
+
+  it('each way a drag on the video can steer the gimbal maps to its two settings and back', () => {
+    expect(VIDEO_GIMBAL_MODES.map((mode) => videoGimbalMode({ enabled: mode.onScreen, clickAndDrag: mode.clickAndDrag }))).toEqual(VIDEO_GIMBAL_MODES.map((mode) => mode.mode));
+    expect(videoGimbalMode({ enabled: false, clickAndDrag: true })).toBe('drag');
+    expect(VIDEO_GIMBAL_MODES.map((mode) => mode.label)).toEqual(['Drag to move', 'Tap to point', 'Hold and drag']);
   });
 });

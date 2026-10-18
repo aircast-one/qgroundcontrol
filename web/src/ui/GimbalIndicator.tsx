@@ -203,7 +203,7 @@ export const gimbalSettingsBlocks = (sections: readonly SettingsSectionRows[], j
       facts: block.facts.map((fact) => (fact.name !== JOYSTICK_BUTTONS_SPEED || joystickButtons ? fact : makeFact({ ...fact, enabled: false, disabledReason: 'No joystick is enabled for this vehicle.' }))),
     }));
 
-const GimbalSettings = () => {
+export const GimbalSettings = () => {
   const joystick = useQgcPath(JOYSTICK_VIEW);
   const [reloads, setReloads] = useState(0);
   const [sections, setSections] = useState<readonly SettingsSectionRows[]>([]);
@@ -238,6 +238,44 @@ export type OnScreenGimbal = { enabled: boolean; clickAndDrag: boolean };
 export const onScreenGimbal = (view: Json | null): OnScreenGimbal | null => {
   const onScreen = view !== null && optBoolean(view, 'shown') ? optJSONObject(view, 'onScreen') : null;
   return onScreen === null ? null : { enabled: optBoolean(onScreen, 'enabled'), clickAndDrag: optBoolean(onScreen, 'clickAndDrag') };
+};
+
+export type VideoGimbalMode = 'drag' | 'point' | 'hold';
+
+const ON_SCREEN_SETTING = 'settings.gimbalControllerSettings.enableOnScreenControl';
+const CLICK_AND_DRAG_SETTING = 'settings.gimbalControllerSettings.clickAndDrag';
+
+export const VIDEO_GIMBAL_MODES: readonly { mode: VideoGimbalMode; label: string; hint: string; onScreen: boolean; clickAndDrag: boolean }[] = [
+  { mode: 'drag', label: 'Drag to move', hint: 'The camera follows your drag on the video.', onScreen: false, clickAndDrag: false },
+  { mode: 'point', label: 'Tap to point', hint: 'The camera turns to where you tap on the video.', onScreen: true, clickAndDrag: false },
+  { mode: 'hold', label: 'Hold and drag', hint: 'Press, then drag away from that spot; the further you drag, the faster the camera turns.', onScreen: true, clickAndDrag: true },
+];
+
+export const videoGimbalMode = (control: OnScreenGimbal): VideoGimbalMode => (!control.enabled ? 'drag' : control.clickAndDrag ? 'hold' : 'point');
+
+export const GimbalVideoMode = () => {
+  const view = useQgcPath(GIMBAL_INDICATOR_PATH);
+  const control = useMemo(() => onScreenGimbal(view), [view]);
+  if (control === null) return null;
+  const current = videoGimbalMode(control);
+  const choose = (mode: (typeof VIDEO_GIMBAL_MODES)[number]) =>
+    void (async () => {
+      await Qgc.set(ON_SCREEN_SETTING, mode.onScreen);
+      await Qgc.set(CLICK_AND_DRAG_SETTING, mode.clickAndDrag);
+    })();
+  return (
+    <div className="flex flex-col gap-1">
+      <Text typography="titleSmall">On the video</Text>
+      <div className="flex flex-wrap gap-2">
+        {VIDEO_GIMBAL_MODES.map((mode) => (
+          <FilterChip key={mode.mode} selected={current === mode.mode} onClick={() => choose(mode)} label={mode.label} />
+        ))}
+      </div>
+      <Text typography="bodySmall" color={md('onSurfaceVariant')}>
+        {VIDEO_GIMBAL_MODES.find((mode) => mode.mode === current)?.hint}
+      </Text>
+    </div>
+  );
 };
 
 export const aimFraction = (delta: number, width: number): number => delta / (Math.max(width, 1) / 2);
