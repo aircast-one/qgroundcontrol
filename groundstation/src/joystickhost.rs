@@ -54,10 +54,6 @@ const ACTIVE_NAME: &str = "JoystickManager/activeJoystickName";
 const ENABLED_VEHICLES: &str = "JoystickManager/joystickEnabledVehiclesIds";
 const SETTINGS_PREFIX: &str = "JoystickSettingsV2";
 const OPTIONAL_SETTINGS: [&str; 8] = ["enableManualControlPitchExtension", "enableManualControlRollExtension", "enableAdditionalAxis1", "enableAdditionalAxis2", "enableAdditionalAxis3", "enableAdditionalAxis4", "enableAdditionalAxis5", "enableAdditionalAxis6"];
-const RC_OVERRIDE_TOTAL: usize = 18;
-const RC_IGNORE_LOW: u16 = u16::MAX;
-const RC_IGNORE_HIGH: u16 = 0;
-const RC_LOW_CHANNELS: usize = 8;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Meta {
@@ -308,12 +304,13 @@ pub fn button_entries(joystick: &str, model: &Joystick) -> BTreeMap<String, Sett
         .collect()
 }
 
-pub fn assignable_actions(flight_modes: &[String], custom: &[String], assigned: &[String]) -> Vec<(String, bool)> {
+pub fn assignable_actions(flight_modes: &[String], channels: &[usize], custom: &[String], assigned: &[String]) -> Vec<(String, bool)> {
     let fixed = |range: std::ops::Range<usize>| ACTIONS[range].iter().map(|(_, name, _, repeat)| (name.to_string(), *repeat)).collect::<Vec<_>>();
     let listed: Vec<(String, bool)> = std::iter::once((ACTION_NONE.to_string(), false))
         .chain(fixed(0..3))
         .chain(flight_modes.iter().map(|mode| (mode.clone(), false)))
         .chain(fixed(3..ACTIONS.len()))
+        .chain(channels.iter().filter_map(|channel| crate::joystick::rc_channel_action(*channel)).map(|action| (action.to_string(), false)))
         .chain(custom.iter().map(|label| (label.clone(), false)))
         .collect();
     let extra: Vec<(String, bool)> = assigned.iter().filter(|a| !listed.iter().any(|(name, _)| name == *a)).map(|a| (a.clone(), false)).collect();
@@ -476,10 +473,13 @@ const MAV_TYPE_GROUND_ROVER: u8 = 10;
 const MAV_TYPE_SURFACE_BOAT: u8 = 11;
 const MAV_TYPE_SUBMARINE: u8 = 12;
 
+const ARDUPILOT_MANUAL_CONTROL: Support = Support { manual_control_aux: false, sticks_are_rc_overrides: true, throttle_mode_center_zero: true, negative_thrust: false };
+
 fn support_for(vehicle: Option<(u8, u8)>) -> Support {
     match vehicle {
         Some((crate::modes::AUTOPILOT_ARDUPILOT, MAV_TYPE_SUBMARINE)) => Support { negative_thrust: true, ..Support::default() },
-        Some((crate::modes::AUTOPILOT_ARDUPILOT, MAV_TYPE_GROUND_ROVER | MAV_TYPE_SURFACE_BOAT)) => Support { negative_thrust: true, ..Support::default() },
+        Some((crate::modes::AUTOPILOT_ARDUPILOT, MAV_TYPE_GROUND_ROVER | MAV_TYPE_SURFACE_BOAT)) => Support { negative_thrust: true, ..ARDUPILOT_MANUAL_CONTROL },
+        Some((crate::modes::AUTOPILOT_ARDUPILOT, _)) => ARDUPILOT_MANUAL_CONTROL,
         Some((crate::modes::AUTOPILOT_PX4, MAV_TYPE_GROUND_ROVER | MAV_TYPE_SUBMARINE)) => Support { negative_thrust: true, ..Support::default() },
         _ => Support::default(),
     }
@@ -489,6 +489,7 @@ fn setting_visible(name: &str, center_zero: &Value, support: Support) -> bool {
     match name {
         "throttleSmoothing" => center_zero.as_bool() == Some(true),
         "negativeThrust" => support.negative_thrust,
+        "additionalAxesFunction" => support.manual_control_aux,
         _ => true,
     }
 }
@@ -512,15 +513,7 @@ fn send(vehicle: (u8, u32), outs: Vec<Out>) {
         .into_iter()
         .filter_map(|out| match out {
             Out::ManualControl { x, y, z, r, buttons, buttons2, enabled_extensions, extensions } => Some(Outbound::JoystickManualControl { target: id, x, y, z, r, buttons, buttons2, enabled_extensions, extensions }),
-            Out::RcChannelsOverride { channels } => {
-                let first = crate::joystick::RC_OVERRIDE_FIRST_CHANNEL - 1;
-                let all: [u16; RC_OVERRIDE_TOTAL] = std::array::from_fn(|i| match i.checked_sub(first).and_then(|at| channels.get(at)) {
-                    Some(value) => *value,
-                    None if i < RC_LOW_CHANNELS => RC_IGNORE_LOW,
-                    None => RC_IGNORE_HIGH,
-                });
-                Some(Outbound::RcOverride { target: (id, crate::hub::COMP_AUTOPILOT1), channels: all })
-            }
+            Out::RcChannelsOverride { channels } => Some(Outbound::RcOverride { target: (id, crate::hub::COMP_AUTOPILOT1), channels }),
             _ => None,
         })
         .collect();
@@ -829,7 +822,8 @@ pub fn joystick_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let now_ms = crate::hub::now_ms();
     let state = active.as_ref().and_then(|name| host.joysticks.get(name).map(|j| j.snapshot(&settings_for(name), support, now_ms)));
     let assigned: Vec<String> = active.as_ref().and_then(|name| host.joysticks.get(name)).map(|j| (0..j.total_button_count()).filter_map(|b| j.binding(b).map(|binding| binding.action.clone())).collect()).unwrap_or_default();
-    let assignable: Vec<Value> = assignable_actions(&modes, &custom, &assigned).into_iter().map(|(action, repeat)| json!({ "action": action, "canRepeat": repeat })).collect();
+    let channels = active.as_ref().map(|name| settings_for(name).button_channels(support)).unwrap_or_default();
+    let assignable: Vec<Value> = assignable_actions(&modes, &channels, &custom, &assigned).into_iter().map(|(action, repeat)| json!({ "action": action, "canRepeat": repeat })).collect();
     json!({
         "kind": "object",
         "class": "Joystick",
@@ -889,6 +883,21 @@ mod tests {
         assert!(support_for(Some((crate::modes::AUTOPILOT_ARDUPILOT, MAV_TYPE_GROUND_ROVER))).negative_thrust, "ArduRoverFirmwarePlugin");
         assert!(support_for(Some((crate::modes::AUTOPILOT_PX4, MAV_TYPE_SUBMARINE))).negative_thrust);
         assert!(!support_for(Some((crate::modes::AUTOPILOT_PX4, 2))).negative_thrust);
+    }
+
+    #[test]
+    fn ardupilot_reads_manual_control_as_stick_overrides_and_drops_its_aux_axes() {
+        let copter = support_for(Some((crate::modes::AUTOPILOT_ARDUPILOT, 2)));
+        assert!(!copter.manual_control_aux, "GCS_MAVLINK_Copter::handle_manual_control_axes reads x, y, z and r only, so a switch sent as aux1 never reaches the vehicle");
+        assert!(copter.sticks_are_rc_overrides, "manual_override() turns the sticks into RC overrides that outlive the joystick by RC_OVERRIDE_TIME");
+        let rover = support_for(Some((crate::modes::AUTOPILOT_ARDUPILOT, MAV_TYPE_GROUND_ROVER)));
+        assert!(rover.negative_thrust && !rover.manual_control_aux && rover.sticks_are_rc_overrides);
+        let sub = support_for(Some((crate::modes::AUTOPILOT_ARDUPILOT, MAV_TYPE_SUBMARINE)));
+        assert!(sub.manual_control_aux && !sub.sticks_are_rc_overrides, "ArduSub decodes aux1-6 and maps every axis itself");
+        let px4 = support_for(Some((crate::modes::AUTOPILOT_PX4, 2)));
+        assert!(px4.manual_control_aux && !px4.sticks_are_rc_overrides);
+        assert!(!setting_visible("additionalAxesFunction", &Value::Null, copter), "there is no choice to offer when one of the two messages is ignored");
+        assert!(setting_visible("additionalAxesFunction", &Value::Null, px4));
     }
 
     #[test]
@@ -976,9 +985,9 @@ mod tests {
         let mut restored = Joystick::new(4, 6, 0);
         load_buttons("Pad", &mut restored, &entries);
         assert_eq!(restored.binding(2).map(|b| (b.action.clone(), b.repeat)), Some(("Step Zoom In".to_string(), true)));
-        let list = assignable_actions(&["Loiter".to_string()], &["Lights".to_string()], &["Old Mode".to_string()]);
+        let list = assignable_actions(&["Loiter".to_string()], &[7, 12], &["Lights".to_string()], &["Old Mode".to_string()]);
         let names: Vec<&str> = list.iter().map(|(n, _)| n.as_str()).collect();
         assert_eq!(names[..6], ["No Action", "Arm", "Disarm", "Toggle Arm", "Loiter", "VTOL: Fixed Wing"]);
-        assert_eq!(names[names.len() - 2..], ["Lights", "Old Mode"], "custom MAVLink actions follow the built-ins, and an assignment that is not available right now stays listed");
+        assert_eq!(names[names.len() - 4..], ["RC Channel 7", "RC Channel 12", "Lights", "Old Mode"], "the free rc channels and then custom MAVLink actions follow the built-ins, and an assignment that is not available right now stays listed");
     }
 }

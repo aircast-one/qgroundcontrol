@@ -147,7 +147,8 @@ struct JoystickScreen: View {
 
     private func screen(_ read: JoystickPage) -> some View {
         let setting = { (name: String) in read.settings.first { $0.name == name } }
-        let viaRc = setting("additionalAxesFunction")?.value.numberOrNil.map { $0.rounded(.towardZero) } == 1
+        let additionalAxes = setting("additionalAxesFunction")
+        let viaRc = additionalAxes == nil || additionalAxes?.value.numberOrNil.map { $0.rounded(.towardZero) } == 1
         return ScrollView {
             VStack(alignment: .leading, spacing: 8) {
                 if read.names.count > 1 {
@@ -211,8 +212,10 @@ struct JoystickScreen: View {
                         SettingRow(setting: relabeled(each, label)) { act(JOYSTICK_SETTING, each.name, $0) }
                     }
                     Text("Additional axes").font(.titleSmall)
-                    RadioChoiceRow(label: "Send using MANUAL_CONTROL", selected: !viaRc) { act(JOYSTICK_SETTING, "additionalAxesFunction", 0) }
-                    RadioChoiceRow(label: "Send using RC_CHANNELS_OVERRIDE", selected: viaRc) { act(JOYSTICK_SETTING, "additionalAxesFunction", 1) }
+                    if additionalAxes != nil {
+                        RadioChoiceRow(label: "Send using MANUAL_CONTROL", selected: !viaRc) { act(JOYSTICK_SETTING, "additionalAxesFunction", 0) }
+                        RadioChoiceRow(label: "Send using RC_CHANNELS_OVERRIDE", selected: viaRc) { act(JOYSTICK_SETTING, "additionalAxesFunction", 1) }
+                    }
                     ForEach(Array(ADDITIONAL_SETTINGS.compactMap(setting).enumerated()), id: \.element.name) { index, each in
                         SettingRow(setting: relabeled(each, viaRc ? "Channel \(index + 5)" : "Aux\(index + 1)")) { act(JOYSTICK_SETTING, each.name, $0) }
                     }

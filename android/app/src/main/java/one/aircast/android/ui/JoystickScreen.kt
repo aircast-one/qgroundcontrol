@@ -207,14 +207,17 @@ fun JoystickScreen(modifier: Modifier = Modifier) {
             Text("MANUAL_CONTROL Extensions", style = MaterialTheme.typography.titleSmall)
             EXTENSION_SETTINGS.mapNotNull(setting).zip(listOf("Pitch", "Roll")).forEach { (s, label) -> SettingRow(s.copy(label = label)) { value -> act(JOYSTICK_SETTING, s.name, value) } }
             Text("Additional axes", style = MaterialTheme.typography.titleSmall)
-            val viaRc = (setting("additionalAxesFunction")?.value as? Number)?.toInt() == 1
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                androidx.compose.material3.RadioButton(selected = !viaRc, onClick = { act(JOYSTICK_SETTING, "additionalAxesFunction", 0) })
-                Text("Send using MANUAL_CONTROL")
-            }
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                androidx.compose.material3.RadioButton(selected = viaRc, onClick = { act(JOYSTICK_SETTING, "additionalAxesFunction", 1) })
-                Text("Send using RC_CHANNELS_OVERRIDE")
+            val additionalAxes = setting("additionalAxesFunction")
+            val viaRc = additionalAxes == null || (additionalAxes.value as? Number)?.toInt() == 1
+            if (additionalAxes != null) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.RadioButton(selected = !viaRc, onClick = { act(JOYSTICK_SETTING, "additionalAxesFunction", 0) })
+                    Text("Send using MANUAL_CONTROL")
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    androidx.compose.material3.RadioButton(selected = viaRc, onClick = { act(JOYSTICK_SETTING, "additionalAxesFunction", 1) })
+                    Text("Send using RC_CHANNELS_OVERRIDE")
+                }
             }
             ADDITIONAL_SETTINGS.mapNotNull(setting).forEachIndexed { index, s ->
                 SettingRow(s.copy(label = if (viaRc) "Channel ${index + 5}" else "Aux${index + 1}")) { value -> act(JOYSTICK_SETTING, s.name, value) }

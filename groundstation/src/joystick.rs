@@ -10,11 +10,13 @@ pub const HAT_DIRECTION_IDS: [&str; HAT_BUTTONS_PER_HAT] = ["up", "down", "left"
 pub const AXES_SCALING: f32 = 1000.0;
 pub const MANUAL_CONTROL_EXTENSIONS: usize = 8;
 pub const VEHICLE_BUTTON_BITS: usize = 32;
-pub const RC_OVERRIDE_CHANNELS: usize = 6;
+pub const ADDITIONAL_AXES: usize = 6;
 pub const RC_OVERRIDE_FIRST_CHANNEL: usize = 5;
+pub const RC_FRAME_CHANNELS: usize = 18;
+pub const RC_LOW_CHANNELS: usize = 8;
+pub const RC_STICK_CHANNELS: usize = 4;
+pub const RC_BUTTON_CHANNELS: std::ops::RangeInclusive<usize> = 5..=16;
 pub const RC_OVERRIDE_RELEASE_COUNT: u8 = 3;
-pub const RC_RELEASE: [u16; RC_OVERRIDE_CHANNELS] = [0, 0, 0, 0, u16::MAX - 1, u16::MAX - 1];
-pub const RC_IGNORE: [u16; RC_OVERRIDE_CHANNELS] = [u16::MAX, u16::MAX, u16::MAX, u16::MAX, 0, 0];
 pub const PWM_MIN: f32 = 1000.0;
 pub const PWM_CENTER: f32 = 1500.0;
 pub const PWM_MAX: f32 = 2000.0;
@@ -98,7 +100,15 @@ pub const OPTIONAL: [Function; MANUAL_CONTROL_EXTENSIONS] = [
 pub const MANUAL_CONTROL_ONLY_EXTENSIONS: usize = 2;
 
 const _: () = assert!(MANUAL_CONTROL_EXTENSIONS == 8);
-const _: () = assert!(OPTIONAL.len() == MANUAL_CONTROL_ONLY_EXTENSIONS + RC_OVERRIDE_CHANNELS);
+const _: () = assert!(OPTIONAL.len() == MANUAL_CONTROL_ONLY_EXTENSIONS + ADDITIONAL_AXES);
+
+pub const fn rc_release(channel: usize) -> u16 {
+    if channel <= RC_LOW_CHANNELS { 0 } else { u16::MAX - 1 }
+}
+
+pub const fn rc_ignore(channel: usize) -> u16 {
+    if channel <= RC_LOW_CHANNELS { u16::MAX } else { 0 }
+}
 
 pub const TRANSMITTER_MODES: [[Function; 4]; 4] = [
     [Function::Yaw, Function::Pitch, Function::Roll, Function::Throttle],
@@ -210,10 +220,39 @@ pub const ACTIONS: [(&str, &str, bool, bool); 36] = [
     ("motorInterlockDisable", "Motor Interlock disable", false, false),
 ];
 
+pub const RC_CHANNEL_ACTIONS: [(&str, &str, usize); 12] = [
+    ("rcChannel5", "RC Channel 5", 5),
+    ("rcChannel6", "RC Channel 6", 6),
+    ("rcChannel7", "RC Channel 7", 7),
+    ("rcChannel8", "RC Channel 8", 8),
+    ("rcChannel9", "RC Channel 9", 9),
+    ("rcChannel10", "RC Channel 10", 10),
+    ("rcChannel11", "RC Channel 11", 11),
+    ("rcChannel12", "RC Channel 12", 12),
+    ("rcChannel13", "RC Channel 13", 13),
+    ("rcChannel14", "RC Channel 14", 14),
+    ("rcChannel15", "RC Channel 15", 15),
+    ("rcChannel16", "RC Channel 16", 16),
+];
+
+const _: () = assert!(RC_CHANNEL_ACTIONS.len() == *RC_BUTTON_CHANNELS.end() - *RC_BUTTON_CHANNELS.start() + 1);
+
+pub fn rc_channel_of(action: &str) -> Option<usize> {
+    RC_CHANNEL_ACTIONS.iter().find(|(_, name, _)| *name == action).map(|(_, _, channel)| *channel)
+}
+
+pub fn rc_channel_action(channel: usize) -> Option<&'static str> {
+    RC_CHANNEL_ACTIONS.iter().find(|(_, _, c)| *c == channel).map(|(_, name, _)| *name)
+}
+
 pub fn action_id(action: &str) -> Option<&'static str> {
     match action {
         ACTION_NONE => Some(ACTION_NONE_ID),
-        _ => ACTIONS.iter().find(|(_, name, _, _)| *name == action).map(|(id, _, _, _)| *id),
+        _ => ACTIONS
+            .iter()
+            .find(|(_, name, _, _)| *name == action)
+            .map(|(id, _, _, _)| *id)
+            .or_else(|| RC_CHANNEL_ACTIONS.iter().find(|(_, name, _)| *name == action).map(|(id, _, _)| *id)),
     }
 }
 
@@ -222,7 +261,7 @@ pub fn can_repeat(action: &str) -> bool {
 }
 
 pub fn accepts(action: &str, event: ButtonEvent) -> bool {
-    if action.is_empty() || action == ACTION_NONE {
+    if action.is_empty() || action == ACTION_NONE || rc_channel_of(action).is_some() {
         return false;
     }
     match (ACTIONS.iter().find(|(_, name, _, _)| *name == action), event) {
@@ -396,17 +435,38 @@ impl Settings {
     pub fn smoothing_active(&self, support: Support) -> bool {
         self.throttle_smoothing && self.centre_zero(support)
     }
+
+    pub fn additional_axes_via(&self, support: Support) -> AdditionalAxes {
+        match support.manual_control_aux {
+            true => self.additional_axes,
+            false => AdditionalAxes::RcChannelsOverride,
+        }
+    }
+
+    pub fn axis_channels(&self, support: Support) -> Vec<usize> {
+        match self.additional_axes_via(support) {
+            AdditionalAxes::ManualControl => Vec::new(),
+            AdditionalAxes::RcChannelsOverride => OPTIONAL.iter().filter(|f| self.enabled(**f)).filter_map(|f| f.rc_channel()).collect(),
+        }
+    }
+
+    pub fn button_channels(&self, support: Support) -> Vec<usize> {
+        let taken = self.axis_channels(support);
+        RC_BUTTON_CHANNELS.filter(|channel| !taken.contains(channel)).collect()
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Support {
     pub throttle_mode_center_zero: bool,
     pub negative_thrust: bool,
+    pub manual_control_aux: bool,
+    pub sticks_are_rc_overrides: bool,
 }
 
 impl Default for Support {
     fn default() -> Self {
-        Support { throttle_mode_center_zero: true, negative_thrust: false }
+        Support { throttle_mode_center_zero: true, negative_thrust: false, manual_control_aux: true, sticks_are_rc_overrides: false }
     }
 }
 
@@ -443,7 +503,7 @@ pub struct Binding {
 pub enum Out {
     Axes { roll: f32, pitch: f32, yaw: f32, throttle: f32 },
     ManualControl { x: i16, y: i16, z: i16, r: i16, buttons: u16, buttons2: u16, enabled_extensions: u8, extensions: [i16; MANUAL_CONTROL_EXTENSIONS] },
-    RcChannelsOverride { channels: [u16; RC_OVERRIDE_CHANNELS] },
+    RcChannelsOverride { channels: [u16; RC_FRAME_CHANNELS] },
     Action { action: String, event: ButtonEvent },
     RawAxes { values: Vec<Option<i32>> },
     RawButton { index: usize, pressed: bool },
@@ -519,9 +579,10 @@ pub struct Joystick {
     axis_sent_ms: Option<u64>,
     throttle_accumulator: f32,
     transmitter_mode: u8,
-    rc_override_held: [bool; RC_OVERRIDE_CHANNELS],
+    rc_held: [bool; RC_FRAME_CHANNELS],
+    sticks_held: bool,
     release_pending: u8,
-    release_frame: [u16; RC_OVERRIDE_CHANNELS],
+    release_frame: [u16; RC_FRAME_CHANNELS],
     shaped: Option<[f32; 4]>,
 }
 
@@ -542,9 +603,10 @@ impl Joystick {
             axis_sent_ms: None,
             throttle_accumulator: 0.0,
             transmitter_mode: TRANSMITTER_MODE_STORED,
-            rc_override_held: [false; RC_OVERRIDE_CHANNELS],
+            rc_held: [false; RC_FRAME_CHANNELS],
+            sticks_held: false,
             release_pending: 0,
-            release_frame: RC_RELEASE,
+            release_frame: std::array::from_fn(|i| rc_ignore(i + 1)),
             shaped: None,
         }
     }
@@ -667,18 +729,17 @@ impl Joystick {
     }
 
     pub fn rc_override_active(&self) -> bool {
-        self.rc_override_held.iter().any(|channel| *channel)
+        self.rc_held.iter().any(|channel| *channel)
     }
 
-    fn begin_release(&mut self) {
-        let held = std::mem::replace(&mut self.rc_override_held, [false; RC_OVERRIDE_CHANNELS]);
-        if held.iter().any(|channel| *channel) {
-            self.release_frame = std::array::from_fn(|channel| match held[channel] {
-                true => RC_RELEASE[channel],
-                false => RC_IGNORE[channel],
-            });
-            self.release_pending = RC_OVERRIDE_RELEASE_COUNT;
-        }
+    pub fn sticks_overriding(&self) -> bool {
+        self.sticks_held
+    }
+
+    fn begin_release(&mut self, sticks: bool) {
+        let held = std::mem::replace(&mut self.rc_held, [false; RC_FRAME_CHANNELS]);
+        let sticks = sticks && std::mem::take(&mut self.sticks_held);
+        self.queue_release(std::array::from_fn(|i| held[i] || (sticks && i < RC_STICK_CHANNELS)));
     }
 
     fn drain_release(&mut self, frames: u8) -> Vec<Out> {
@@ -688,8 +749,57 @@ impl Joystick {
     }
 
     fn release(&mut self, frames: u8) -> Vec<Out> {
-        self.begin_release();
+        self.begin_release(false);
         self.drain_release(frames)
+    }
+
+    fn queue_release(&mut self, channels: [bool; RC_FRAME_CHANNELS]) {
+        if channels.iter().any(|channel| *channel) {
+            let pending = self.release_pending > 0;
+            self.release_frame = std::array::from_fn(|i| match channels[i] || (pending && self.release_frame[i] == rc_release(i + 1)) {
+                true => rc_release(i + 1),
+                false => rc_ignore(i + 1),
+            });
+            self.release_pending = RC_OVERRIDE_RELEASE_COUNT;
+        }
+    }
+
+    fn override_frame(&mut self, driven: [Option<u16>; RC_FRAME_CHANNELS]) -> Vec<Out> {
+        let dropped: [bool; RC_FRAME_CHANNELS] = std::array::from_fn(|i| self.rc_held[i] && driven[i].is_none());
+        self.rc_held = std::array::from_fn(|i| driven[i].is_some());
+        self.queue_release(dropped);
+        let releasing: [bool; RC_FRAME_CHANNELS] = std::array::from_fn(|i| self.release_pending > 0 && driven[i].is_none() && self.release_frame[i] == rc_release(i + 1));
+        self.release_pending = self.release_pending.saturating_sub(1);
+        match driven.iter().any(Option::is_some) || releasing.iter().any(|channel| *channel) {
+            true => vec![Out::RcChannelsOverride {
+                channels: std::array::from_fn(|i| {
+                    driven[i].unwrap_or(match releasing[i] {
+                        true => rc_release(i + 1),
+                        false => rc_ignore(i + 1),
+                    })
+                }),
+            }],
+            false => Vec::new(),
+        }
+    }
+
+    fn button_channel(&self, channel: usize) -> Option<u16> {
+        let bound: Vec<bool> = self
+            .bindings
+            .iter()
+            .zip(&self.events)
+            .filter(|(binding, _)| binding.as_ref().and_then(|b| rc_channel_of(&b.action)) == Some(channel))
+            .map(|(_, event)| event.held())
+            .collect();
+        (!bound.is_empty()).then(|| match bound.iter().any(|held| *held) {
+            true => PWM_MAX as u16,
+            false => PWM_MIN as u16,
+        })
+    }
+
+    fn hand_back(&mut self) -> Vec<Out> {
+        self.begin_release(true);
+        self.drain_release(RC_OVERRIDE_RELEASE_COUNT)
     }
 
     pub fn set_polling(&mut self, polling: Polling, now_ms: u64) -> Vec<Out> {
@@ -705,7 +815,7 @@ impl Joystick {
         self.axis_sent_ms = (!polling.idle()).then_some(now_ms);
         match polling.commands() {
             true => Vec::new(),
-            false => self.release(RC_OVERRIDE_RELEASE_COUNT),
+            false => self.hand_back(),
         }
     }
 
@@ -871,17 +981,20 @@ impl Joystick {
         };
         self.shaped = Some([roll, pitch, yaw, throttle]);
 
-        let manual = settings.additional_axes == AdditionalAxes::ManualControl;
+        let manual = settings.additional_axes_via(support) == AdditionalAxes::ManualControl;
         let extensions: [Option<f32>; MANUAL_CONTROL_EXTENSIONS] = std::array::from_fn(|bit| {
             let function = OPTIONAL[bit];
             let sent_as_manual_control = bit < MANUAL_CONTROL_ONLY_EXTENSIONS || manual;
             (settings.enabled(function) && sent_as_manual_control).then(|| self.shape(function, deadband)).flatten()
         });
-        let channels: [Option<u16>; RC_OVERRIDE_CHANNELS] = std::array::from_fn(|channel| {
-            let function = OPTIONAL[channel + MANUAL_CONTROL_ONLY_EXTENSIONS];
-            (!manual && settings.enabled(function))
-                .then(|| self.raw(function).flatten().and_then(|(axis, value)| adjust_range_to_pwm(value, &self.calibration[axis], deadband)))
-                .flatten()
+        let axis_channels: Vec<(usize, Option<u16>)> = OPTIONAL[MANUAL_CONTROL_ONLY_EXTENSIONS..]
+            .iter()
+            .filter(|function| !manual && settings.enabled(**function))
+            .filter_map(|function| Some((function.rc_channel()?, self.raw(*function).flatten().and_then(|(axis, value)| adjust_range_to_pwm(value, &self.calibration[axis], deadband)))))
+            .collect();
+        let driven: [Option<u16>; RC_FRAME_CHANNELS] = std::array::from_fn(|i| match axis_channels.iter().find(|(channel, _)| *channel == i + 1) {
+            Some((_, pwm)) => *pwm,
+            None => self.button_channel(i + 1),
         });
 
         let held = self.events.iter().enumerate().filter(|(index, event)| *index < VEHICLE_BUTTON_BITS && event.held()).fold(0u32, |bits, (index, _)| bits | (1u32 << index));
@@ -896,20 +1009,8 @@ impl Joystick {
             enabled_extensions: extensions.iter().enumerate().filter(|(_, value)| value.is_some()).fold(0u8, |bits, (bit, _)| bits | (1u8 << bit)),
             extensions: std::array::from_fn(|bit| extensions[bit].map(scaled).unwrap_or(0)),
         };
-        let override_out = match channels.iter().any(Option::is_some) {
-            true => {
-                let frame = std::array::from_fn(|channel| {
-                    channels[channel].unwrap_or(match self.rc_override_held[channel] {
-                        true => RC_RELEASE[channel],
-                        false => RC_IGNORE[channel],
-                    })
-                });
-                self.rc_override_held = std::array::from_fn(|channel| channels[channel].is_some());
-                self.release_pending = 0;
-                vec![Out::RcChannelsOverride { channels: frame }]
-            }
-            false => self.release(1),
-        };
+        self.sticks_held |= support.sticks_are_rc_overrides;
+        let override_out = self.override_frame(driven);
         [Out::Axes { roll, pitch, yaw, throttle }, control].into_iter().chain(override_out).collect()
     }
 
@@ -944,7 +1045,11 @@ impl Joystick {
             "sampleAgeMs": age,
             "stale": stale,
             "rcOverrideActive": self.rc_override_active(),
+            "sticksOverriding": self.sticks_held,
             "rcReleasePending": self.release_pending,
+            "additionalAxesVia": settings.additional_axes_via(support).id(),
+            "axisChannels": settings.axis_channels(support),
+            "buttonChannels": settings.button_channels(support),
             "rates": {
                 "axisHz": settings.axis_frequency_hz,
                 "buttonHz": settings.button_frequency_hz,
@@ -976,6 +1081,7 @@ impl Joystick {
                     "reachesVehicle": button < VEHICLE_BUTTON_BITS,
                     "action": self.binding(button).map(|b| b.action.clone()),
                     "actionId": self.binding(button).and_then(|b| action_id(&b.action)),
+                    "rcChannel": self.binding(button).and_then(|b| rc_channel_of(&b.action)),
                     "repeat": self.binding(button).is_some_and(|b| b.repeat),
                     "event": self.events[button].id(),
                 })
@@ -1027,13 +1133,15 @@ pub fn joystick_view(_backend: &dyn Backend, _args: &[String]) -> Value {
         "vehicleButtonBits": VEHICLE_BUTTON_BITS,
         "throttleSmoothingStep": THROTTLE_SMOOTHING_STEP,
         "rcOverride": {
-            "channels": RC_OVERRIDE_CHANNELS,
+            "frameChannels": RC_FRAME_CHANNELS,
             "firstChannel": RC_OVERRIDE_FIRST_CHANNEL,
+            "additionalAxes": ADDITIONAL_AXES,
+            "buttonChannels": RC_BUTTON_CHANNELS.collect::<Vec<_>>(),
             "pwmMin": PWM_MIN,
             "pwmCenter": PWM_CENTER,
             "pwmMax": PWM_MAX,
-            "release": RC_RELEASE,
-            "ignore": RC_IGNORE,
+            "release": (1..=RC_FRAME_CHANNELS).map(rc_release).collect::<Vec<_>>(),
+            "ignore": (1..=RC_FRAME_CHANNELS).map(rc_ignore).collect::<Vec<_>>(),
             "releaseFrames": RC_OVERRIDE_RELEASE_COUNT,
         },
         "functions": FUNCTIONS.iter().map(|(function, id)| json!({
@@ -1050,6 +1158,7 @@ pub fn joystick_view(_backend: &dyn Backend, _args: &[String]) -> Value {
         })).collect::<Vec<_>>(),
         "actions": std::iter::once(json!({ "id": ACTION_NONE_ID, "action": ACTION_NONE, "down": false, "up": false, "repeat": false }))
             .chain(ACTIONS.iter().map(|(id, action, up, repeat)| json!({ "id": id, "action": action, "down": true, "up": up, "repeat": repeat })))
+            .chain(RC_CHANNEL_ACTIONS.iter().map(|(id, action, channel)| json!({ "id": id, "action": action, "down": false, "up": false, "repeat": false, "rcChannel": channel })))
             .collect::<Vec<_>>(),
         "settings": settings_catalog(),
     })
@@ -1095,7 +1204,15 @@ mod tests {
         out.iter().find(|o| matches!(o, Out::ManualControl { .. }))
     }
 
-    fn overrides_of(out: &[Out]) -> Vec<[u16; RC_OVERRIDE_CHANNELS]> {
+    fn frame(driven: &[(usize, u16)]) -> [u16; RC_FRAME_CHANNELS] {
+        std::array::from_fn(|i| driven.iter().find(|(channel, _)| *channel == i + 1).map(|(_, pwm)| *pwm).unwrap_or(rc_ignore(i + 1)))
+    }
+
+    fn released(channels: &[usize]) -> [u16; RC_FRAME_CHANNELS] {
+        frame(&channels.iter().map(|channel| (*channel, rc_release(*channel))).collect::<Vec<_>>())
+    }
+
+    fn overrides_of(out: &[Out]) -> Vec<[u16; RC_FRAME_CHANNELS]> {
         out.iter()
             .filter_map(|o| match o {
                 Out::RcChannelsOverride { channels } => Some(*channels),
@@ -1175,8 +1292,8 @@ mod tests {
         assert_eq!(adjust_range_to_pwm(0, &trigger, false), Some(1000), "a one-sided axis starts at the bottom of the pwm range, not the middle");
         assert_eq!(adjust_range_to_pwm(32767, &trigger, false), Some(2000));
         assert_eq!(adjust_range_to_pwm(16384, &trigger, false), Some(1500));
-        assert_eq!(RC_RELEASE, [0, 0, 0, 0, u16::MAX - 1, u16::MAX - 1], "channels 5-8 release with 0 and the two extension channels with UINT16_MAX-1");
-        assert_eq!(RC_IGNORE, [u16::MAX, u16::MAX, u16::MAX, u16::MAX, 0, 0], "leaving a channel alone is UINT16_MAX below channel 9 and 0 above it, which is the opposite encoding");
+        assert_eq!((rc_release(1), rc_release(8), rc_release(9), rc_release(18)), (0, 0, u16::MAX - 1, u16::MAX - 1), "channels 1-8 release with 0 and channels 9-18 with UINT16_MAX-1");
+        assert_eq!((rc_ignore(1), rc_ignore(8), rc_ignore(9), rc_ignore(18)), (u16::MAX, u16::MAX, 0, 0), "leaving a channel alone is UINT16_MAX below channel 9 and 0 above it, which is the opposite encoding");
     }
 
     #[test]
@@ -1440,7 +1557,7 @@ mod tests {
         let out = stick.on_input(input, &overriding, Support::default(), 82);
         assert_eq!(
             overrides_of(&out),
-            vec![[2000, u16::MAX, u16::MAX, u16::MAX, 0, 0]],
+            vec![frame(&[(5, 2000)])],
             "the enabled aux axis drives channel 5 and every channel this joystick does not hold is left alone, because the camera layer overrides the same block"
         );
         match control_of(&out).unwrap() {
@@ -1448,7 +1565,7 @@ mod tests {
             other => panic!("expected a manual control message, got {other:?}"),
         }
         let back = stick.on_input(input, &settings, Support::default(), 123);
-        assert_eq!(overrides_of(&back), vec![[0, u16::MAX, u16::MAX, u16::MAX, 0, 0]], "leaving override mode releases only the channel it held");
+        assert_eq!(overrides_of(&back), vec![released(&[5])], "leaving override mode releases only the channel it held");
         let again = stick.on_input(input, &settings, Support::default(), 164);
         let third = stick.on_input(input, &settings, Support::default(), 205);
         assert_eq!(overrides_of(&again).len() + overrides_of(&third).len(), 2, "the release is repeated for a few ticks, because one dropped packet would leave the channel overridden until the vehicle's own timeout");
@@ -1466,7 +1583,7 @@ mod tests {
         settings.additional_axes = AdditionalAxes::RcChannelsOverride;
         settings.optional_enabled[Function::Additional1.extension_bit().unwrap()] = true;
         let full = Input { axes: &[0, 0, 0, 0, 32767], buttons: &[false; 4], hats: &[0] };
-        assert_eq!(overrides_of(&stick.on_input(full, &settings, Support::default(), 41)), vec![[2000, u16::MAX, u16::MAX, u16::MAX, 0, 0]]);
+        assert_eq!(overrides_of(&stick.on_input(full, &settings, Support::default(), 41)), vec![frame(&[(5, 2000)])]);
         assert!(stick.rc_override_active());
 
         let short = Input { axes: &[0, 0, 0, 0], buttons: &[false; 4], hats: &[0] };
@@ -1474,7 +1591,7 @@ mod tests {
         assert!(dropped.iter().any(|o| matches!(o, Out::MissingAxisData { .. })), "the head dropping an axis for a frame is still a missing-data fault");
         assert_eq!(
             overrides_of(&dropped),
-            vec![[0, u16::MAX, u16::MAX, u16::MAX, 0, 0]],
+            vec![released(&[5])],
             "the release has to be produced on the very path the fault takes, or the channel stays at its last pwm with the flag that would clear it stuck on"
         );
         assert!(!stick.rc_override_active());
@@ -1496,10 +1613,109 @@ mod tests {
         let opened = stick.set_polling(Polling { vehicle: true, configuration: true }, 82);
         assert_eq!(
             overrides_of(&opened),
-            vec![[0, u16::MAX, u16::MAX, u16::MAX, 0, 0]; RC_OVERRIDE_RELEASE_COUNT as usize],
+            vec![released(&[5]); RC_OVERRIDE_RELEASE_COUNT as usize],
             "configuration mode stops producing channels, so the held ones must be handed back and handed back more than once"
         );
         assert!(!stick.rc_override_active());
+    }
+
+    fn ardupilot() -> Support {
+        Support { manual_control_aux: false, sticks_are_rc_overrides: true, ..Support::default() }
+    }
+
+    #[test]
+    fn on_ardupilot_the_additional_axes_ride_rc_override_whatever_the_setting_says() {
+        let mut stick = mapped();
+        stick.set_axis_function(Function::Additional1, 4);
+        stick.set_calibration(4, centered());
+        stick.set_polling(Polling { vehicle: true, configuration: false }, 0);
+        let mut settings = flying();
+        settings.optional_enabled[Function::Additional1.extension_bit().unwrap()] = true;
+        assert_eq!(settings.additional_axes, AdditionalAxes::ManualControl, "the stored default is QGC's");
+        let out = stick.on_input(Input { axes: &[0, 0, 0, 0, 32767], buttons: &[false; 4], hats: &[0] }, &settings, ardupilot(), 41);
+        assert_eq!(overrides_of(&out), vec![frame(&[(5, 2000)])], "a flight-mode switch on channel 5 has to reach ArduPilot, which never reads MANUAL_CONTROL aux1");
+        match control_of(&out).unwrap() {
+            Out::ManualControl { enabled_extensions, .. } => assert_eq!(*enabled_extensions, 0, "and the switch is not also sent where it is ignored"),
+            other => panic!("expected a manual control message, got {other:?}"),
+        }
+        assert_eq!(stick.snapshot(&settings, ardupilot(), 41)["additionalAxesVia"], RC_CHANNELS_OVERRIDE);
+        assert_eq!(stick.snapshot(&settings, Support::default(), 41)["additionalAxesVia"], MANUAL_CONTROL);
+    }
+
+    #[test]
+    fn a_button_bound_to_an_rc_channel_holds_it_high_while_pressed_and_low_once_let_go() {
+        let mut stick = mapped();
+        assert!(stick.set_button_action(0, Some("RC Channel 12")));
+        assert!(stick.set_button_action(1, Some("RC Channel 9")));
+        assert!(stick.set_button_action(2, Some("RC Channel 9")));
+        stick.set_polling(Polling { vehicle: true, configuration: false }, 0);
+        let settings = flying();
+        let press = |stick: &mut Joystick, buttons: [bool; 4], at: u64| stick.on_input(Input { axes: &[0, 0, 0, 0], buttons: &buttons, hats: &[0] }, &settings, ardupilot(), at);
+        let resting = press(&mut stick, [false; 4], 41);
+        assert_eq!(overrides_of(&resting), vec![frame(&[(9, 1000), (12, 1000)])], "a two-position switch reported as a button is asserted low, the way the radio sends its off position");
+        let held = press(&mut stick, [true, false, true, false], 82);
+        assert_eq!(overrides_of(&held), vec![frame(&[(9, 2000), (12, 2000)])], "either button on a shared channel lifts it");
+        assert!(!held.iter().any(|o| matches!(o, Out::Action { .. })), "a channel binding is carried in the frame, never dispatched as an action");
+        let released = press(&mut stick, [false; 4], 123);
+        assert_eq!(overrides_of(&released), vec![frame(&[(9, 1000), (12, 1000)])]);
+        assert_eq!(stick.snapshot(&settings, ardupilot(), 123)["buttons"][0]["rcChannel"], 12);
+        assert_eq!(action_id("RC Channel 12"), Some("rcChannel12"));
+    }
+
+    #[test]
+    fn an_enabled_additional_axis_owns_its_channel_so_buttons_are_offered_the_rest() {
+        let mut settings = flying();
+        assert_eq!(settings.button_channels(ardupilot()), RC_BUTTON_CHANNELS.collect::<Vec<_>>());
+        settings.optional_enabled[Function::Additional1.extension_bit().unwrap()] = true;
+        settings.optional_enabled[Function::Additional3.extension_bit().unwrap()] = true;
+        assert_eq!(settings.axis_channels(ardupilot()), vec![5, 7]);
+        assert_eq!(settings.button_channels(ardupilot()), vec![6, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
+        assert_eq!(settings.button_channels(Support::default()), RC_BUTTON_CHANNELS.collect::<Vec<_>>(), "axes sent as MANUAL_CONTROL aux occupy no channel");
+
+        let mut stick = mapped();
+        stick.set_axis_function(Function::Additional1, 4);
+        stick.set_calibration(4, centered());
+        assert!(stick.set_button_action(0, Some("RC Channel 5")));
+        stick.set_polling(Polling { vehicle: true, configuration: false }, 0);
+        settings.optional_enabled[Function::Additional3.extension_bit().unwrap()] = false;
+        let out = stick.on_input(Input { axes: &[0, 0, 0, 0, -32768], buttons: &[true, false, false, false], hats: &[0] }, &settings, ardupilot(), 41);
+        assert_eq!(overrides_of(&out)[0][4], 1000, "a binding left over from before the axis was enabled cannot fight the axis for the channel");
+    }
+
+    #[test]
+    fn stopping_on_ardupilot_hands_the_sticks_back_to_the_radio_at_once() {
+        let mut stick = mapped();
+        stick.set_polling(Polling { vehicle: true, configuration: false }, 0);
+        let settings = flying();
+        let sticks = Input { axes: &[0, 32767, 0, 0], buttons: &[false; 4], hats: &[0] };
+        assert!(overrides_of(&stick.on_input(sticks, &settings, ardupilot(), 41)).is_empty(), "flying the sticks sends MANUAL_CONTROL only");
+        assert!(stick.sticks_overriding());
+        let stopped = stick.stop(82);
+        assert_eq!(
+            overrides_of(&stopped),
+            vec![released(&[1, 2, 3, 4]); RC_OVERRIDE_RELEASE_COUNT as usize],
+            "ArduPilot keeps the last MANUAL_CONTROL sticks for RC_OVERRIDE_TIME, so without a release the radio gets the aircraft back seconds late"
+        );
+        assert!(!stick.sticks_overriding());
+
+        let mut px4 = mapped();
+        px4.set_polling(Polling { vehicle: true, configuration: false }, 0);
+        px4.on_input(sticks, &settings, Support::default(), 41);
+        assert!(overrides_of(&px4.stop(82)).is_empty(), "PX4 times MANUAL_CONTROL out by itself and never sees the sticks as RC overrides");
+    }
+
+    #[test]
+    fn a_stop_while_a_switch_release_is_still_repeating_releases_both() {
+        let mut stick = mapped();
+        stick.set_axis_function(Function::Additional1, 4);
+        stick.set_calibration(4, centered());
+        stick.set_polling(Polling { vehicle: true, configuration: false }, 0);
+        let mut settings = flying();
+        settings.optional_enabled[Function::Additional1.extension_bit().unwrap()] = true;
+        stick.on_input(Input { axes: &[0, 0, 0, 0, 32767], buttons: &[false; 4], hats: &[0] }, &settings, ardupilot(), 41);
+        let dropped = stick.on_input(Input { axes: &[0, 0, 0, 0], buttons: &[false; 4], hats: &[0] }, &settings, ardupilot(), 82);
+        assert_eq!(overrides_of(&dropped), vec![released(&[5])]);
+        assert_eq!(overrides_of(&stick.stop(123)), vec![released(&[1, 2, 3, 4, 5]); RC_OVERRIDE_RELEASE_COUNT as usize], "the sticks join the switch release instead of cutting its repeats short");
     }
 
     #[test]

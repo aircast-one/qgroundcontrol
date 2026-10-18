@@ -226,8 +226,8 @@ export const JoystickScreen = ({ className }: { className?: string }) => {
   }
   const setting = (name: string): JoystickSetting | null => read.settings.find((it) => it.name === name) ?? null;
   const present = (names: readonly string[]): JoystickSetting[] => names.map(setting).filter((it): it is JoystickSetting => it !== null);
-  const additionalAxes = setting('additionalAxesFunction')?.value;
-  const viaRc = typeof additionalAxes === 'number' && Math.trunc(additionalAxes) === 1;
+  const additionalAxes = setting('additionalAxesFunction');
+  const viaRc = additionalAxes === null || (typeof additionalAxes.value === 'number' && Math.trunc(additionalAxes.value) === 1);
   const calibrating = read.calibration.calibrating;
   const sending = sendingText(read);
   const step = (op: string) =>
@@ -301,14 +301,18 @@ export const JoystickScreen = ({ className }: { className?: string }) => {
                     <SettingRow key={s.name} setting={{ ...s, label: EXTENSION_LABELS[index] ?? s.label }} onChange={(value) => act(JOYSTICK_SETTING, s.name, value)} />
                   ))}
                 <Text typography="titleSmall">Additional axes</Text>
-                <div className="flex items-center">
-                  <RadioButton selected={!viaRc} onClick={() => act(JOYSTICK_SETTING, 'additionalAxesFunction', 0)} label="Send using MANUAL_CONTROL" />
-                  <Text className="ps-3">Send using MANUAL_CONTROL</Text>
-                </div>
-                <div className="flex items-center">
-                  <RadioButton selected={viaRc} onClick={() => act(JOYSTICK_SETTING, 'additionalAxesFunction', 1)} label="Send using RC_CHANNELS_OVERRIDE" />
-                  <Text className="ps-3">Send using RC_CHANNELS_OVERRIDE</Text>
-                </div>
+                {additionalAxes !== null ? (
+                  <>
+                    <div className="flex items-center">
+                      <RadioButton selected={!viaRc} onClick={() => act(JOYSTICK_SETTING, 'additionalAxesFunction', 0)} label="Send using MANUAL_CONTROL" />
+                      <Text className="ps-3">Send using MANUAL_CONTROL</Text>
+                    </div>
+                    <div className="flex items-center">
+                      <RadioButton selected={viaRc} onClick={() => act(JOYSTICK_SETTING, 'additionalAxesFunction', 1)} label="Send using RC_CHANNELS_OVERRIDE" />
+                      <Text className="ps-3">Send using RC_CHANNELS_OVERRIDE</Text>
+                    </div>
+                  </>
+                ) : null}
                 {present(ADDITIONAL_SETTINGS).map((s, index) => (
                   <SettingRow key={s.name} setting={{ ...s, label: viaRc ? `Channel ${index + 5}` : `Aux${index + 1}` }} onChange={(value) => act(JOYSTICK_SETTING, s.name, value)} />
                 ))}
