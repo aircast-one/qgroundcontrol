@@ -12,7 +12,9 @@
 #include "LinkInterface.h"
 #include "MAVLinkProtocol.h"
 #include "MultiVehicleManager.h"
+#include "ParameterManager.h"
 #include "QGCLoggingCategory.h"
+#include "QGCMAVLink.h"
 #include "QGCSerialPortInfo.h"
 #include "SettingsManager.h"
 #include "Vehicle.h"
@@ -64,19 +66,45 @@ Frame released()
     return frame;
 }
 
-QByteArray echo(Flying flying, int vehicle)
+QByteArray echo(Flying flying, int vehicle, Kind kind, Sticks sticks)
 {
-    switch (flying) {
-        case Flying::Vehicle:
-            return QByteArrayLiteral("@F,") + QByteArray::number(vehicle) + '\n';
-        case Flying::Standby:
-            return QByteArrayLiteral("@S,") + QByteArray::number(vehicle) + '\n';
-        case Flying::Joystick:
-            return QByteArrayLiteral("@J,") + QByteArray::number(vehicle) + '\n';
-        case Flying::NoVehicle:
-            break;
+    const char state = flying == Flying::Vehicle    ? 'F'
+                       : flying == Flying::Standby  ? 'S'
+                       : flying == Flying::Joystick ? 'J'
+                                                    : 'N';
+    if (state == 'N') {
+        return QByteArrayLiteral("@N\n");
     }
-    return QByteArrayLiteral("@N\n");
+    const QByteArray head = QByteArrayLiteral("@") + state + ',' + QByteArray::number(vehicle);
+    const char letter = kind == Kind::Copter ? 'C' : kind == Kind::Plane ? 'P' : kind == Kind::Rover ? 'R' : '\0';
+    if (letter == '\0') {
+        return head + '\n';
+    }
+    return head + ',' + letter + ',' + QByteArray::number(sticks.roll) + ',' + QByteArray::number(sticks.pitch) + ',' +
+           QByteArray::number(sticks.throttle) + ',' + QByteArray::number(sticks.yaw) + '\n';
+}
+
+Kind kind(int mavType)
+{
+    const MAV_TYPE type = static_cast<MAV_TYPE>(mavType);
+    const QGCMAVLink::VehicleClass_t vehicleClass = QGCMAVLink::vehicleClass(type);
+    const bool copter = vehicleClass == QGCMAVLink::VehicleClassMultiRotor ||
+                        vehicleClass == QGCMAVLink::VehicleClassSub || type == MAV_TYPE_DECAROTOR ||
+                        type == MAV_TYPE_DODECAROTOR;
+    const bool plane =
+        vehicleClass == QGCMAVLink::VehicleClassFixedWing || vehicleClass == QGCMAVLink::VehicleClassVTOL;
+    return copter                                              ? Kind::Copter
+           : plane                                             ? Kind::Plane
+           : vehicleClass == QGCMAVLink::VehicleClassRoverBoat ? Kind::Rover
+                                                               : Kind::Unknown;
+}
+
+Sticks sticks(int roll, int pitch, int throttle, int yaw)
+{
+    const Sticks fallback;
+    const auto pick = [](int mapped, int otherwise) { return mapped > 0 ? mapped : otherwise; };
+    return Sticks{pick(roll, fallback.roll), pick(pitch, fallback.pitch), pick(throttle, fallback.throttle),
+                  pick(yaw, fallback.yaw)};
 }
 
 bool echoDue(std::optional<qint64> last, qint64 nowMs, bool live)
@@ -270,7 +298,16 @@ UsbRadio::Flight UsbRadio::_flight() const
     const bool joystick = JoystickManager::instance()->activeJoystick() &&
                           JoystickManager::instance()->activeJoystickEnabledForActiveVehicle();
     const Flying flying = joystick ? Flying::Joystick : (_standby(vehicle->id()) ? Flying::Standby : Flying::Vehicle);
-    return Flight{flying, vehicle->id()};
+    ParameterManager* const parameters = vehicle->parameterManager();
+    const QString prefix = vehicle->px4Firmware() ? QStringLiteral("RC_MAP_") : QStringLiteral("RCMAP_");
+    const auto mapped = [parameters, &prefix](const char* axis) {
+        const QString name = prefix + QLatin1String(axis);
+        return parameters && parameters->parameterExists(ParameterManager::defaultComponentId, name)
+                   ? parameters->getParameter(ParameterManager::defaultComponentId, name)->rawValue().toInt()
+                   : 0;
+    };
+    return Flight{flying, vehicle->id(), kind(vehicle->vehicleType()),
+                  sticks(mapped("ROLL"), mapped("PITCH"), mapped("THROTTLE"), mapped("YAW"))};
 }
 
 std::optional<int> UsbRadio::_target() const
@@ -322,7 +359,7 @@ void UsbRadio::_advance(std::optional<Frame> fresh)
     const Flight flight = _flight();
     if (echoDue(_echoedAt, now, live) && _port && _port->isOpen()) {
         _echoedAt = now;
-        (void) _port->write(echo(flight.flying, flight.vehicle));
+        (void) _port->write(echo(flight.flying, flight.vehicle, flight.kind, flight.sticks));
     }
     const QString quiet =
         _portName.isEmpty() ? tr("Off") : tr("Waiting for the radio's Aircast USB script on %1").arg(_portName);

@@ -59,6 +59,35 @@ void UsbRadioTest::_radioIsToldWhatItsSticksAreDoing_test()
     QVERIFY(!parse(echo(Flying::Vehicle, 1)));
 }
 
+void UsbRadioTest::_radioLearnsTheVehicleKindAndItsStickChannels_test()
+{
+    QCOMPARE(echo(Flying::Vehicle, 1, Kind::Copter, Sticks{}), QByteArray("@F,1,C,1,2,3,4\n"));
+    QCOMPARE(echo(Flying::Standby, 2, Kind::Plane, Sticks{2, 1, 3, 4}), QByteArray("@S,2,P,2,1,3,4\n"));
+    QCOMPARE(echo(Flying::Joystick, 3, Kind::Rover, Sticks{}), QByteArray("@J,3,R,1,2,3,4\n"));
+    QCOMPARE(echo(Flying::Vehicle, 4, Kind::Unknown, Sticks{2, 1, 3, 4}), QByteArray("@F,4\n"));
+    QCOMPARE(echo(Flying::NoVehicle, 0, Kind::Copter, Sticks{}), QByteArray("@N\n"));
+}
+
+void UsbRadioTest::_vehicleKindFollowsTheAirframe_test()
+{
+    QCOMPARE(kind(MAV_TYPE_QUADROTOR), Kind::Copter);
+    QCOMPARE(kind(MAV_TYPE_HELICOPTER), Kind::Copter);
+    QCOMPARE(kind(MAV_TYPE_DODECAROTOR), Kind::Copter);
+    QCOMPARE(kind(MAV_TYPE_SUBMARINE), Kind::Copter);
+    QCOMPARE(kind(MAV_TYPE_FIXED_WING), Kind::Plane);
+    QCOMPARE(kind(MAV_TYPE_VTOL_TILTROTOR), Kind::Plane);
+    QCOMPARE(kind(MAV_TYPE_GROUND_ROVER), Kind::Rover);
+    QCOMPARE(kind(MAV_TYPE_SURFACE_BOAT), Kind::Rover);
+    QCOMPARE(kind(MAV_TYPE_GENERIC), Kind::Unknown);
+}
+
+void UsbRadioTest::_unmappedSticksFallBackToTheFirstFourChannels_test()
+{
+    QCOMPARE(sticks(2, 1, 3, 4), (Sticks{2, 1, 3, 4}));
+    QCOMPARE(sticks(0, 0, 0, 0), Sticks{});
+    QCOMPARE(sticks(5, 0, 7, 0), (Sticks{5, 2, 7, 4}));
+}
+
 void UsbRadioTest::_radioHearsBackOnlyWhileItStreams_test()
 {
     QVERIFY(!echoDue(std::nullopt, 0, false));

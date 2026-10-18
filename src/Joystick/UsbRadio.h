@@ -43,10 +43,29 @@ enum class Flying
     Joystick
 };
 
+enum class Kind
+{
+    Unknown,
+    Copter,
+    Plane,
+    Rover
+};
+
+struct Sticks
+{
+    int roll = 1;
+    int pitch = 2;
+    int throttle = 3;
+    int yaw = 4;
+    bool operator==(const Sticks& other) const = default;
+};
+
 uint16_t pwm(int raw);
 std::optional<Frame> parse(const QByteArray& line);
 Frame released();
-QByteArray echo(Flying flying, int vehicle);
+QByteArray echo(Flying flying, int vehicle, Kind kind = Kind::Unknown, Sticks sticks = {});
+Kind kind(int mavType);
+Sticks sticks(int roll, int pitch, int throttle, int yaw);
 bool echoDue(std::optional<qint64> last, qint64 nowMs, bool live);
 uint8_t component(bool standby);
 bool standbyAirframe(bool ardupilot, int mavType);
@@ -119,6 +138,8 @@ private:
     {
         UsbRadioProtocol::Flying flying = UsbRadioProtocol::Flying::NoVehicle;
         int vehicle = 0;
+        UsbRadioProtocol::Kind kind = UsbRadioProtocol::Kind::Unknown;
+        UsbRadioProtocol::Sticks sticks;
     };
 
     void _maintain();
