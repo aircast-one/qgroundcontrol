@@ -22,6 +22,7 @@ import { AircastTheme } from '@/map/Theme';
 import type { TrackPoint } from '@/map/VehicleMap';
 import { VEHICLES_VIEW, type VehicleChoices, VehicleBridge, activeChanged, handoverNotice, rememberedChoices, vehicleChoices } from '@/map/VehiclePicker';
 import { VehicleStateChip } from '@/ui/ActiveVehicle';
+import { DeviceStatusChip } from '@/ui/DeviceScreen';
 import { useAdvancedUiShown } from '@/ui/AdvancedUi';
 import { type AnalyzePage, AnalyzeScreen } from '@/ui/AnalyzeScreen';
 import { AppFontScale } from '@/ui/AppFontScale';
@@ -472,6 +473,7 @@ export const AircastShell = () => {
         <VtolStateCell />
       </LayoutWidget>
       <ControlRequestPrompt />
+      <DeviceStatusChip />
       <LayoutWidget widgetKey="statusPill" movable={false} hideable={false}>
         <StatusPill />
       </LayoutWidget>

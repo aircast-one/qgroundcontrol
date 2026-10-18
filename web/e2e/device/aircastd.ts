@@ -109,6 +109,33 @@ const track = async (request: IncomingMessage, response: ServerResponse, url: UR
   return json(response, 200, { status: tracker.on ? 'tracking' : 'stopped' });
 };
 
+const AIRCRAFT = {
+  name: 'e2e-device',
+  level: 2,
+  headline: 'No camera yet',
+  detail: 'Add the camera once and this device carries its picture from then on.',
+  action: { label: 'Add a camera', href: '/streaming' },
+  checks: [
+    { label: 'Camera', value: 'not set up', level: 2, href: '/streaming' },
+    { label: 'Telemetry', value: 'connected', level: 0 },
+  ],
+  pages: [
+    { title: 'Ground station links', href: '/connect', icon: 'qr-code' },
+    { title: 'Connection', href: '/network', icon: 'network', summary: 'Wi-Fi' },
+  ],
+};
+
+const devicePage = (title: string) => `<!DOCTYPE html><html><head><title>aircast · ${title}</title></head><body>
+<main><h1>${title} page</h1><a href="/network">Connection</a> <a href="/" id="home">Flight</a></main>
+<script>document.getElementById('home').addEventListener('click', (event) => { event.preventDefault(); parent.postMessage('aircast:home', location.origin); });</script>
+</body></html>`;
+
+const DEVICE_PAGES = new Map([
+  ['/streaming', 'Cameras'],
+  ['/connect', 'Connect ground station'],
+  ['/network', 'Connection'],
+]);
+
 const app = (request: IncomingMessage, response: ServerResponse) => {
   const path = request.url?.startsWith('/fly/') && !request.url.startsWith('/fly/src/') ? '/' : (request.url ?? '/');
   const upstream = forward({ host: 'localhost', port: VITE, path, method: request.method, headers: { ...request.headers, host: `localhost:${VITE}` } }, (answer) => {
@@ -132,6 +159,9 @@ const http = createServer((request, response) => {
       json(response, 200, scenes.get(placed[1]));
     });
   }
+  if (url.pathname === '/fly/aircraft.json') return json(response, 200, AIRCRAFT);
+  const page = DEVICE_PAGES.get(url.pathname);
+  if (page !== undefined) return void response.writeHead(200, { 'Content-Type': 'text/html' }).end(devicePage(page));
   if (url.pathname === '/stats') return json(response, 200, { ...seen, store });
   if (url.pathname.startsWith('/fly/files/') || url.pathname === '/fly/files') return void files(request, response, url);
   if (url.pathname === '/fly/proxy') return void proxy(request, response);

@@ -1,4 +1,5 @@
 import { AppCommands, CameraCommands, DeviceCommands, LinkCommands } from '@/bridge/BridgeCommands';
+import { followDeviceStatus } from '@/ui/DeviceStatus';
 
 type Device = { name?: string; cameras?: { name: string; url: string }[] };
 
@@ -23,6 +24,7 @@ export const DeviceLink = {
   async start(): Promise<void> {
     const device = await servedBy();
     if (device === null) return;
+    followDeviceStatus();
     await Promise.all([
       DeviceCommands.pair(deviceBase(location.href)),
       LinkCommands.createWebSocket(deviceLinkName(device, location.hostname), deviceSocket(location.href)),

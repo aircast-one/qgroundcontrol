@@ -16,6 +16,8 @@ import { useAdvancedUiShown } from '@/ui/AdvancedUi';
 import { LocalAppNavigation } from '@/ui/AppNavigation';
 import { CAMERAS_VIEW, VIDEO_SOURCES_PAGE, camerasGlance, camerasReading } from '@/ui/Cameras';
 import { CamerasEditor } from '@/ui/CamerasEditor';
+import { DeviceTab } from '@/ui/DeviceScreen';
+import { DEVICE_PAGE } from '@/ui/DeviceStatus';
 import { FLASHER_PAGE, FlasherScreen } from '@/ui/FlasherScreen';
 import { useHasVehicle } from '@/ui/FlyState';
 import { GCS_LOCATION_BLOCK, GcsPositionStatus, REMOTE_ID_GROUP } from '@/ui/GcsPositionStatus';
@@ -125,15 +127,18 @@ export const activeLinksGlance = (view: Json | null): string => [
 
 export const activeLinksText = (count: number): string => (count > 0 ? `${count} active` : '');
 
-export type SettingsGroup = { readonly name: 'Safety' | 'Control' | 'Camera' | 'Transmission' | 'General'; readonly ordinal: number; readonly title: string };
+export type SettingsGroup = { readonly name: 'Safety' | 'Control' | 'Camera' | 'Transmission' | 'General' | 'Device'; readonly ordinal: number; readonly title: string };
 export const SettingsGroup = {
   General: { name: 'General', ordinal: 0, title: 'General' },
   Safety: { name: 'Safety', ordinal: 1, title: 'Safety' },
   Control: { name: 'Control', ordinal: 2, title: 'Control' },
   Camera: { name: 'Camera', ordinal: 3, title: 'Camera' },
   Transmission: { name: 'Transmission', ordinal: 4, title: 'Transmission' },
+  Device: { name: 'Device', ordinal: 5, title: 'Device' },
 } as const satisfies Record<string, SettingsGroup>;
 export const SettingsGroupEntries: readonly SettingsGroup[] = [SettingsGroup.General, SettingsGroup.Safety, SettingsGroup.Control, SettingsGroup.Camera, SettingsGroup.Transmission];
+
+export const sheetGroups = (deviceAnswers: boolean): readonly SettingsGroup[] => (deviceAnswers ? [...SettingsGroupEntries, SettingsGroup.Device] : SettingsGroupEntries);
 
 export type PageLook = { group: SettingsGroup; icon: DrawableName; inline: boolean; tabHome: boolean };
 export const PageLook = (fields: { group: SettingsGroup; icon: DrawableName; inline?: boolean; tabHome?: boolean }): PageLook => ({ inline: false, tabHome: false, ...fields });
@@ -160,6 +165,7 @@ export const PAGE_LOOKS: ReadonlyMap<string, PageLook> = new Map<string, PageLoo
   ['App Logging', PageLook({ group: SettingsGroup.General, icon: 'ic_description' })],
   ['Console', PageLook({ group: SettingsGroup.General, icon: 'ic_terminal' })],
   ['About', PageLook({ group: SettingsGroup.General, icon: 'ic_help' })],
+  [DEVICE_PAGE, PageLook({ group: SettingsGroup.Device, icon: 'ic_developer_board', inline: true, tabHome: true })],
 ]);
 
 export const BLOCK_HOMES: ReadonlyArray<readonly [readonly [string, string], SettingsGroup]> = [[['Fly View', 'Guided Commands'], SettingsGroup.Safety]];
@@ -357,7 +363,9 @@ export const SettingsScreen = ({
       <LocalSettingsList.Provider value>
         <div className={`flex h-full w-full justify-center ${className ?? ''}`}>
           <div className="h-full w-full" style={{ maxWidth: DETAIL_PANE_MAX_WIDTH }}>
-            {current === null ? (
+            {group === SettingsGroup.Device ? (
+              <DeviceTab open={open} onOpen={onOpen} onClose={onClose} />
+            ) : current === null ? (
               <SettingsTab group={group} everyPage={everyPage} className="h-full w-full" onOpenSetup={onOpenSetup} onOpen={onOpen} />
             ) : (
               <SettingsPageBody page={current} className="h-full w-full" />

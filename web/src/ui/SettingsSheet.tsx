@@ -9,7 +9,8 @@ import { osdShadow } from '@/ui/Osd';
 import { LocalPageHeading, type PageHeading, SearchPill } from '@/ui/SetupRow';
 import { SetupScreen } from '@/ui/SetupScreen';
 import { type ChangeNotice, LocalChangeNotice } from '@/ui/ValueRow';
-import { AIRCRAFT_SETUP, SettingsGroup, SettingsGroupEntries, SettingsScreen, SettingsSearch, pageLook, pageTitle, useRememberSettingsPages } from '@/ui/SettingsScreen';
+import { deviceAnswered } from '@/ui/DeviceStatus';
+import { AIRCRAFT_SETUP, SettingsGroup, SettingsScreen, SettingsSearch, pageLook, pageTitle, sheetGroups, useRememberSettingsPages } from '@/ui/SettingsScreen';
 
 export const sheetDrilled = (openPage: string | null, setupOpen: boolean): boolean => openPage !== null || setupOpen;
 
@@ -164,6 +165,7 @@ export const SettingsSheet = ({ requested, onClose }: { requested: string | null
     [],
   );
   const landscape = useLandscape();
+  const groups = sheetGroups(useValue(deviceAnswered));
   const pickTab = (entry: SettingsGroup) => {
     setGroup(entry);
     setPage(null);
@@ -218,7 +220,7 @@ export const SettingsSheet = ({ requested, onClose }: { requested: string | null
                         </Text>
                         <div className="hidden min-w-0 flex-1 @min-[600px]:block">
                           <div className="mx-auto max-w-[720px]">
-                            <SheetTabs selected={pager.targetPage} edgePadding={0} onPick={showTab} />
+                            <SheetTabs groups={groups} selected={pager.targetPage} edgePadding={0} onPick={showTab} />
                           </div>
                         </div>
                       </>
@@ -234,13 +236,13 @@ export const SettingsSheet = ({ requested, onClose }: { requested: string | null
               </div>
               {tabsShown ? (
                 <div className="w-full @min-[600px]:hidden">
-                  <SheetTabs selected={pager.targetPage} edgePadding={AircastSpace.s2} onPick={showTab} />
+                  <SheetTabs groups={groups} selected={pager.targetPage} edgePadding={AircastSpace.s2} onPick={showTab} />
                 </div>
               ) : null}
               {tabsShown ? <HorizontalDivider /> : null}
             </div>
             {query === null && !setupOpen ? (
-              <SettingsTabsPager pager={pager} group={group} swipeable={openPage === null} onSettled={pickTab} className="min-h-0 flex-1">
+              <SettingsTabsPager pager={pager} groups={groups} group={group} swipeable={openPage === null} onSettled={pickTab} className="min-h-0 flex-1">
                 {(shown, everyPage) => {
                   const current = shown === group;
                   return (
@@ -310,6 +312,7 @@ const FocusedOnShow = ({ className, children }: { className: string; children: R
 
 const SettingsTabsPager = ({
   pager,
+  groups,
   group,
   swipeable,
   onSettled,
@@ -317,6 +320,7 @@ const SettingsTabsPager = ({
   children,
 }: {
   pager: PagerState;
+  groups: readonly SettingsGroup[];
   group: SettingsGroup;
   swipeable: boolean;
   onSettled: (group: SettingsGroup) => void;
@@ -330,7 +334,7 @@ const SettingsTabsPager = ({
     if (pager.currentPage() !== group.ordinal) pager.scrollToPage(group.ordinal);
   }, [group]);
   const land = (page: number) => {
-    const landed = SettingsGroupEntries[page];
+    const landed = groups[page];
     if (landed !== undefined && landed !== shownGroup.current) settled.current(landed);
   };
   const near = (index: number) => Math.abs(index - pager.targetPage) <= 1 || index === group.ordinal;
@@ -340,7 +344,7 @@ const SettingsTabsPager = ({
       onScroll={() => pager.onScroll(land)}
       className={`flex w-full snap-x snap-mandatory [scrollbar-width:none] ${swipeable ? 'overflow-x-auto' : 'overflow-x-hidden'} overflow-y-hidden ${className}`}
     >
-      {SettingsGroupEntries.map((entry, index) => (
+      {groups.map((entry, index) => (
         <div key={entry.name} className="h-full w-full shrink-0 snap-start snap-always overflow-hidden">
           {near(index) ? children(entry, everyPage) : null}
         </div>
@@ -349,10 +353,10 @@ const SettingsTabsPager = ({
   );
 };
 
-const SheetTabs = ({ selected, edgePadding, onPick }: { selected: number; edgePadding: number; onPick: (group: SettingsGroup) => void }) => (
+const SheetTabs = ({ groups, selected, edgePadding, onPick }: { groups: readonly SettingsGroup[]; selected: number; edgePadding: number; onPick: (group: SettingsGroup) => void }) => (
   <ScrollableTabRow selectedTabIndex={selected} className="border-b-0!">
     <span className="shrink-0" style={{ width: edgePadding }} />
-    {SettingsGroupEntries.map((entry) => (
+    {groups.map((entry) => (
       <Tab key={entry.name} selected={entry.ordinal === selected} onClick={() => onPick(entry)} text={<span className="whitespace-nowrap">{entry.title}</span>} />
     ))}
     <span className="shrink-0" style={{ width: edgePadding }} />
