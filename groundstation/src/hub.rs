@@ -280,6 +280,7 @@ pub struct Vehicle {
     pub shell: crate::shell::Shell,
     pending_notices: Vec<(&'static str, String)>,
     pub rc_values: Vec<u16>,
+    pub standby: Option<(i32, u64)>,
     pub servo_outputs: Vec<i32>,
     pub message_log: crate::messagelog::MessageLog,
     pub control: crate::operatorcontrol::ControlState,
@@ -511,6 +512,7 @@ impl Vehicle {
             shell: crate::shell::Shell::default(),
             pending_notices: Vec::new(),
             rc_values: Vec::new(),
+            standby: None,
             servo_outputs: Vec::new(),
             message_log: crate::messagelog::MessageLog::default(),
             control: crate::operatorcontrol::ControlState::default(),
@@ -3812,6 +3814,12 @@ impl Vehicle {
             self.orbit_circle = Some((d.radius, d.x, d.y));
         }
         self.rc_rssi.apply(message, self.ardupilot_components.contains(&header.component_id));
+        if let MavMessage::NAMED_VALUE_INT(value) = message
+            && header.component_id == crate::joystickhost::STANDBY_COMPONENT
+            && value.name.to_str().is_ok_and(|name| name == crate::joystickhost::STANDBY_VALUE)
+        {
+            self.standby = Some((value.value, now_ms));
+        }
         self.distance.apply(message);
         self.local.apply(message);
         self.local_setpoint.apply_target(message);
@@ -5718,6 +5726,19 @@ mod tests {
         let vehicle = hub.active().unwrap();
         assert!(!vehicle.events.supports_checks(1), "an event sequence alone is not the health_and_arming_check protocol");
         assert!(crate::messagelog::admitted(true, vehicle.events.supports_checks(1), 2, "Preflight Fail: Accel uncalibrated").is_some(), "Vehicle::_handleStatusText drops it only when _healthAndArmingChecksSupported(component)");
+    }
+
+    #[test]
+    fn only_the_aircraft_computer_reports_4g_standby() {
+        use mavlink::dialects::ardupilotmega::NAMED_VALUE_INT_DATA;
+        let mut hub = Hub::default();
+        let autopilot = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        hub.on_frame(origin(0), &autopilot, &copter_heartbeat(0, false), 0, 0);
+        let standby = |value| MavMessage::NAMED_VALUE_INT(NAMED_VALUE_INT_DATA { time_boot_ms: 0, value, name: mavlink::types::CharArray::from("STANDBY") });
+        hub.on_frame(origin(0), &autopilot, &standby(2), 1, 1);
+        assert_eq!(hub.active().and_then(|v| v.standby), None, "a flight controller script naming a value STANDBY is not aircastd");
+        hub.on_frame(origin(0), &MavHeader { component_id: crate::joystickhost::STANDBY_COMPONENT, ..autopilot }, &standby(1), 2, 2);
+        assert_eq!(hub.active().and_then(|v| v.standby), Some((1, 2)));
     }
 
     #[test]

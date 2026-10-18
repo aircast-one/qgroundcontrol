@@ -395,6 +395,7 @@ pub struct Settings {
     pub exponential_pct: f64,
     pub additional_axes: AdditionalAxes,
     pub optional_enabled: [bool; 8],
+    pub standby: bool,
 }
 
 impl Default for Settings {
@@ -411,6 +412,7 @@ impl Default for Settings {
             exponential_pct: EXPONENTIAL_PCT_DEFAULT,
             additional_axes: AdditionalAxes::ManualControl,
             optional_enabled: [false; 8],
+            standby: false,
         }
     }
 }
@@ -488,11 +490,12 @@ pub struct Support {
     pub negative_thrust: bool,
     pub manual_control_aux: bool,
     pub sticks_are_rc_overrides: bool,
+    pub standby: bool,
 }
 
 impl Default for Support {
     fn default() -> Self {
-        Support { throttle_mode_center_zero: true, negative_thrust: false, manual_control_aux: true, sticks_are_rc_overrides: false }
+        Support { throttle_mode_center_zero: true, negative_thrust: false, manual_control_aux: true, sticks_are_rc_overrides: false, standby: false }
     }
 }
 

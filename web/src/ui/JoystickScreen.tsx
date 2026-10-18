@@ -168,6 +168,7 @@ export type JoystickPage = {
   transmitterMode: number;
   buttons: readonly JoystickButton[];
   actions: readonly AssignableAction[];
+  standbyText: string | null;
 };
 
 export const joystickPage = (view: Json | null): JoystickPage | null => {
@@ -196,10 +197,11 @@ export const joystickPage = (view: Json | null): JoystickPage | null => {
       return { index: optInt(b, 'index'), action: isNull(b, 'action') ? NO_ACTION : optText(b, 'action'), repeat: optBoolean(b, 'repeat'), pressed: event === 'down' || event === 'repeat' };
     }),
     actions: jsonObjects(optJSONArray(view, 'assignableActions')).map((a) => ({ action: optText(a, 'action'), canRepeat: optBoolean(a, 'canRepeat') })),
+    standbyText: blankToNull(optText(optJSONObject(view, 'standby'), 'text')),
   };
 };
 
-const BASIC_SETTINGS = ['throttleModeCenterZero', 'throttleSmoothing', 'exponentialPct', 'negativeThrust'];
+const BASIC_SETTINGS = ['standby', 'throttleModeCenterZero', 'throttleSmoothing', 'exponentialPct', 'negativeThrust'];
 const ADVANCED_SETTINGS = ['circleCorrection', 'axisFrequencyHz', 'buttonFrequencyHz', 'useDeadband'];
 const EXTENSION_SETTINGS = ['enableManualControlPitchExtension', 'enableManualControlRollExtension'];
 const EXTENSION_LABELS = ['Pitch', 'Roll'];
@@ -285,6 +287,7 @@ export const JoystickScreen = ({ className }: { className?: string }) => {
             {present(BASIC_SETTINGS).map((it) => (
               <SettingRow key={it.name} setting={it} onChange={(value) => act(JOYSTICK_SETTING, it.name, value)} />
             ))}
+            {read.standbyText !== null ? <Text typography="bodySmall">{read.standbyText}</Text> : null}
             <OutlinedButton onClick={() => setAdvanced(!advanced)} className="self-start">
               Advanced settings
             </OutlinedButton>

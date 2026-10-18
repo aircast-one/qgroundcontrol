@@ -6,6 +6,12 @@ import { JoystickCalibration, MODE_STICKS, axisLabel, joystickCalibration, joyst
 const json = (text: string): Json => parseJson(text) ?? {};
 
 describe('JoystickScreenTest', () => {
+  it('the_standby_line_comes_from_the_core', () => {
+    const standing = joystickPage(json('{"available":true,"names":["Radio"],"active":"Radio","standby":{"capable":true,"enabled":true,"text":"The radio flies the aircraft. 4G is standing by."}}'));
+    expect(standing?.standbyText).toBe('The radio flies the aircraft. 4G is standing by.');
+    expect(joystickPage(json('{"available":true,"names":["Pad"],"active":"Pad","standby":{"capable":false,"enabled":false,"text":null}}'))?.standbyText).toBeNull();
+  });
+
   it('the_page_reads_devices_settings_and_axes', () => {
     expect(joystickPage(json('{"available":false}'))).toBeNull();
     const page = joystickPage(

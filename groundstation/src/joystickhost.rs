@@ -54,6 +54,14 @@ const SETTINGS_JSON: &str = include_str!("../../src/Settings/Joystick.SettingsGr
 const ACTIVE_NAME: &str = "JoystickManager/activeJoystickName";
 const ENABLED_VEHICLES: &str = "JoystickManager/joystickEnabledVehiclesIds";
 const SETTINGS_PREFIX: &str = "JoystickSettingsV2";
+pub const STANDBY_SETTING: &str = "standby";
+pub const STANDBY_VALUE: &str = "STANDBY";
+pub const STANDBY_COMPONENT: u8 = 191;
+const STANDBY_TARGET: u8 = 0;
+const STANDBY_STALE_MS: u64 = 3000;
+const STANDBY_READY: i32 = 1;
+const STANDBY_FLYING: i32 = 2;
+const STANDBY_AIRFRAMES: [u8; 8] = [2, 3, 4, 13, 14, 15, 29, 35];
 const OPTIONAL_SETTINGS: [&str; 8] = ["enableManualControlPitchExtension", "enableManualControlRollExtension", "enableAdditionalAxis1", "enableAdditionalAxis2", "enableAdditionalAxis3", "enableAdditionalAxis4", "enableAdditionalAxis5", "enableAdditionalAxis6"];
 
 #[derive(Debug, Clone, PartialEq)]
@@ -100,6 +108,16 @@ pub static METADATA: LazyLock<Vec<Meta>> = LazyLock::new(|| {
                     max: f["max"].as_f64(),
                     slider: crate::read::user_slider(f),
                 })
+                .chain(std::iter::once(Meta {
+                    name: STANDBY_SETTING.to_string(),
+                    kind: "bool".to_string(),
+                    default: json!(false),
+                    label: "4G standby: the radio flies, 4G takes over if its link drops".to_string(),
+                    units: String::new(),
+                    min: None,
+                    max: None,
+                    slider: Value::Null,
+                }))
                 .collect()
         })
         .unwrap_or_default()
@@ -144,6 +162,7 @@ pub fn settings_for(joystick: &str) -> Settings {
         exponential_pct: number(joystick, "exponentialPct"),
         additional_axes: if number(joystick, "additionalAxesFunction") as i64 == 1 { AdditionalAxes::RcChannelsOverride } else { AdditionalAxes::ManualControl },
         optional_enabled: OPTIONAL_SETTINGS.map(|name| flag(joystick, name)),
+        standby: flag(joystick, STANDBY_SETTING),
     }
 }
 
@@ -476,12 +495,13 @@ const MAV_TYPE_GROUND_ROVER: u8 = 10;
 const MAV_TYPE_SURFACE_BOAT: u8 = 11;
 const MAV_TYPE_SUBMARINE: u8 = 12;
 
-const ARDUPILOT_MANUAL_CONTROL: Support = Support { manual_control_aux: false, sticks_are_rc_overrides: true, throttle_mode_center_zero: true, negative_thrust: false };
+const ARDUPILOT_MANUAL_CONTROL: Support = Support { manual_control_aux: false, sticks_are_rc_overrides: true, throttle_mode_center_zero: true, negative_thrust: false, standby: false };
 
 fn support_for(vehicle: Option<(u8, u8)>) -> Support {
     match vehicle {
         Some((crate::modes::AUTOPILOT_ARDUPILOT, MAV_TYPE_SUBMARINE)) => Support { negative_thrust: true, ..Support::default() },
         Some((crate::modes::AUTOPILOT_ARDUPILOT, MAV_TYPE_GROUND_ROVER | MAV_TYPE_SURFACE_BOAT)) => Support { negative_thrust: true, ..ARDUPILOT_MANUAL_CONTROL },
+        Some((crate::modes::AUTOPILOT_ARDUPILOT, kind)) if STANDBY_AIRFRAMES.contains(&kind) => Support { standby: true, ..ARDUPILOT_MANUAL_CONTROL },
         Some((crate::modes::AUTOPILOT_ARDUPILOT, _)) => ARDUPILOT_MANUAL_CONTROL,
         Some((crate::modes::AUTOPILOT_PX4, MAV_TYPE_GROUND_ROVER | MAV_TYPE_SUBMARINE)) => Support { negative_thrust: true, ..Support::default() },
         _ => Support::default(),
@@ -493,6 +513,7 @@ fn setting_visible(name: &str, center_zero: &Value, support: Support) -> bool {
         "throttleSmoothing" => center_zero.as_bool() == Some(true),
         "negativeThrust" => support.negative_thrust,
         "additionalAxesFunction" => support.manual_control_aux,
+        STANDBY_SETTING => support.standby,
         _ => true,
     }
 }
@@ -507,20 +528,55 @@ pub fn active_uncalibrated() -> bool {
     ACTIVE_UNCALIBRATED.load(std::sync::atomic::Ordering::Relaxed)
 }
 
+pub fn standby_capable(vehicle: u8) -> bool {
+    let kind = crate::hub::lock().vehicle(vehicle).map(|v| (v.autopilot, v.vehicle_type));
+    support_for(kind).standby
+}
+
+fn standby_now() -> bool {
+    let support = support_for(active_vehicle().map(|v| (v.2, v.4)));
+    let active = active_name(&host().devices);
+    support.standby && active.is_some_and(|name| settings_for(&name).standby)
+}
+
+pub fn addressed(id: u8, standby: bool, out: Out) -> Option<Outbound> {
+    let (control, overrides) = match standby {
+        true => (STANDBY_TARGET, (id, STANDBY_COMPONENT)),
+        false => (id, (id, crate::hub::COMP_AUTOPILOT1)),
+    };
+    match out {
+        Out::ManualControl { x, y, z, r, buttons, buttons2, enabled_extensions, extensions } => Some(Outbound::JoystickManualControl { target: control, x, y, z, r, buttons, buttons2, enabled_extensions, extensions }),
+        Out::RcChannelsOverride { channels } => Some(Outbound::RcOverride { target: overrides, channels }),
+        _ => None,
+    }
+}
+
 fn send(vehicle: (u8, u32), outs: Vec<Out>) {
     let (id, link) = vehicle;
     if crate::hub::lock().active().is_some_and(|v| v.id == id && v.on_high_latency_link()) {
         return;
     }
-    let outbound: Vec<Outbound> = outs
-        .into_iter()
-        .filter_map(|out| match out {
-            Out::ManualControl { x, y, z, r, buttons, buttons2, enabled_extensions, extensions } => Some(Outbound::JoystickManualControl { target: id, x, y, z, r, buttons, buttons2, enabled_extensions, extensions }),
-            Out::RcChannelsOverride { channels } => Some(Outbound::RcOverride { target: (id, crate::hub::COMP_AUTOPILOT1), channels }),
-            _ => None,
-        })
-        .collect();
+    let standby = standby_now();
+    let outbound: Vec<Outbound> = outs.into_iter().filter_map(|out| addressed(id, standby, out)).collect();
     crate::hub::send_for(id, link, &outbound);
+}
+
+pub fn standby_text(enabled: bool, commanding: bool, heard: Option<(i32, u64)>, now_ms: u64) -> Option<&'static str> {
+    let live = heard.filter(|(_, at)| now_ms.saturating_sub(*at) <= STANDBY_STALE_MS).map(|(state, _)| state);
+    match (enabled, commanding, live) {
+        (false, ..) => None,
+        (true, _, None) => Some("The aircraft's computer is not answering for 4G standby. Update aircastd on the aircraft."),
+        (true, _, Some(STANDBY_FLYING)) => Some("4G is flying the aircraft. The radio takes over again once its link is good."),
+        (true, true, Some(STANDBY_READY)) => Some("The radio flies the aircraft. 4G is standing by."),
+        (true, ..) => Some("4G standby is waiting for the joystick to send."),
+    }
+}
+
+fn hand_back(name: &str) {
+    let released = host().joysticks.get_mut(name).map(|joystick| joystick.stop(crate::hub::now_ms())).unwrap_or_default();
+    if let Some((id, link, ..)) = active_vehicle() {
+        send((id, link), released);
+    }
 }
 
 fn left_vehicle(before: Option<(u8, u32)>, now: Option<(u8, u32)>) -> Option<(u8, u32)> {
@@ -699,6 +755,9 @@ fn set_setting(text: &str) -> Value {
     match args.get(1).and_then(|v| coerce(meta, v)) {
         Some(text) => {
             let changed = coerce(meta, &setting_value(&active, name)).as_deref() != Some(text.as_str());
+            if changed && name == STANDBY_SETTING {
+                hand_back(&active);
+            }
             crate::settingsstore::written(&setting_key(&active, name), &text);
             if changed && OPTIONAL_SETTINGS.contains(&name) {
                 crate::settingsstore::written(&setting_key(&active, "calibrated"), "false");
@@ -871,6 +930,7 @@ pub fn indicator(device: Option<&Device>, vehicle: bool, enabled: bool) -> Value
 pub fn joystick_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let built_in = built_in_sticks(crate::hub::now_ms());
     let vehicle = active_vehicle();
+    let standby_heard = vehicle.and_then(|(id, ..)| crate::hub::lock().vehicle(id).and_then(|v| v.standby));
     let modes = settable_modes();
     let custom: Vec<String> = crate::mavlinkactions::joystick_actions(backend).into_iter().map(|a| a.label).collect();
     let support = support_for(vehicle.map(|v| (v.2, v.4)));
@@ -908,6 +968,16 @@ pub fn joystick_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "transmitterMode": active.as_ref().map(|name| transmitter_mode(name)),
         "assignableActions": assignable,
         "builtInSticks": built_in,
+        "standby": {
+            "capable": support.standby,
+            "enabled": active.as_ref().is_some_and(|name| settings_for(name).standby),
+            "text": standby_text(
+                support.standby && active.as_ref().is_some_and(|name| settings_for(name).standby),
+                state.as_ref().is_some_and(|s| s["commanding"] == true),
+                standby_heard,
+                now_ms,
+            ),
+        },
         "indicator": indicator(active.as_ref().and_then(|name| host.devices.iter().find(|d| &d.name == name)), vehicle.is_some(), enabled),
     })
 }
@@ -942,6 +1012,34 @@ mod tests {
         assert!(support_for(Some((crate::modes::AUTOPILOT_ARDUPILOT, MAV_TYPE_GROUND_ROVER))).negative_thrust, "ArduRoverFirmwarePlugin");
         assert!(support_for(Some((crate::modes::AUTOPILOT_PX4, MAV_TYPE_SUBMARINE))).negative_thrust);
         assert!(!support_for(Some((crate::modes::AUTOPILOT_PX4, 2))).negative_thrust);
+    }
+
+    #[test]
+    fn in_4g_standby_the_sticks_are_addressed_to_the_aircraft_computer_which_arducopter_ignores() {
+        let sticks = Out::ManualControl { x: 1, y: 2, z: 3, r: 4, buttons: 0, buttons2: 0, enabled_extensions: 0, extensions: [0; 8] };
+        let switches = Out::RcChannelsOverride { channels: [7; 18] };
+        assert!(matches!(addressed(1, false, sticks.clone()), Some(Outbound::JoystickManualControl { target: 1, .. })));
+        assert!(matches!(addressed(1, true, sticks), Some(Outbound::JoystickManualControl { target: 0, .. })), "ArduPilot drops MANUAL_CONTROL whose target is not its system id, so an old aircastd or a direct link changes nothing");
+        assert!(matches!(addressed(1, false, switches.clone()), Some(Outbound::RcOverride { target: (1, 1), .. })));
+        assert!(matches!(addressed(1, true, switches), Some(Outbound::RcOverride { target: (1, STANDBY_COMPONENT), .. })), "ArduPilot's router processes an override for another component of its system nowhere");
+        assert_eq!(addressed(1, true, Out::Action { action: "Arm".into(), event: ButtonEvent::Down }), None);
+    }
+
+    #[test]
+    fn standby_is_offered_where_aircastd_can_fly_it_and_says_what_is_flying() {
+        assert!(support_for(Some((crate::modes::AUTOPILOT_ARDUPILOT, 2))).standby, "ArduCopter quad");
+        assert!(support_for(Some((crate::modes::AUTOPILOT_ARDUPILOT, 13))).standby, "hexa");
+        assert!(!support_for(Some((crate::modes::AUTOPILOT_ARDUPILOT, 1))).standby, "aircastd takes over multicopters only; a plane's RC failsafe is a different machine");
+        assert!(!support_for(Some((crate::modes::AUTOPILOT_PX4, 2))).standby);
+        assert!(!setting_visible(STANDBY_SETTING, &Value::Null, Support::default()));
+        assert!(METADATA.iter().any(|m| m.name == STANDBY_SETTING && m.default == json!(false)), "off unless the pilot turns it on");
+        let now = 10_000;
+        assert_eq!(standby_text(false, true, Some((STANDBY_READY, now)), now), None);
+        assert!(standby_text(true, true, None, now).unwrap().contains("not answering"), "an aircastd without standby never answers");
+        assert!(standby_text(true, true, Some((STANDBY_READY, now - STANDBY_STALE_MS - 1)), now).unwrap().contains("not answering"));
+        assert_eq!(standby_text(true, true, Some((STANDBY_READY, now)), now), Some("The radio flies the aircraft. 4G is standing by."));
+        assert!(standby_text(true, true, Some((STANDBY_FLYING, now)), now).unwrap().starts_with("4G is flying"));
+        assert!(standby_text(true, false, Some((0, now)), now).unwrap().contains("waiting for the joystick"));
     }
 
     #[test]

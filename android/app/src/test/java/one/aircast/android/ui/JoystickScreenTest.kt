@@ -18,6 +18,9 @@ class JoystickScreenTest {
         assertEquals(true, builtInSticksText(busy.copy(status = "live", reason = null, receiving = true)).startsWith("The AX12's own sticks"))
         val page = joystickPage(JSONObject("""{"available":true,"names":[],"active":null,"builtInSticks":{"available":true,"status":"off","receiving":false}}"""))!!
         assertEquals("off", page.builtInSticks?.status)
+        assertNull(page.standbyText)
+        val standing = joystickPage(JSONObject("""{"available":true,"names":["Radio"],"active":"Radio","standby":{"capable":true,"enabled":true,"text":"The radio flies the aircraft. 4G is standing by."}}"""))!!
+        assertEquals("The radio flies the aircraft. 4G is standing by.", standing.standbyText)
     }
 
     @Test

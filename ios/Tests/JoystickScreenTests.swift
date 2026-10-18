@@ -2,6 +2,12 @@ import XCTest
 @testable import Aircast
 
 final class JoystickScreenTests: XCTestCase {
+    func testTheStandbyLineComesFromTheCore() throws {
+        let standing = try XCTUnwrap(joystickPage(JSON.parse(#"{"available":true,"names":["Radio"],"active":"Radio","standby":{"capable":true,"enabled":true,"text":"The radio flies the aircraft. 4G is standing by."}}"#)))
+        XCTAssertEqual(standing.standbyText, "The radio flies the aircraft. 4G is standing by.")
+        XCTAssertNil(try XCTUnwrap(joystickPage(JSON.parse(#"{"available":true,"names":["Pad"],"active":"Pad","standby":{"capable":false,"enabled":false,"text":null}}"#))).standbyText)
+    }
+
     func testThePageReadsDevicesSettingsAndAxes() throws {
         XCTAssertNil(joystickPage(JSON.parse(#"{"available":false}"#)))
         let page = try XCTUnwrap(joystickPage(JSON.parse(#"""

@@ -5,6 +5,7 @@ use crate::mavout::Outbound;
 use crate::transport::LinkId;
 
 const PORT_SETTING: &str = "settings.autoConnectSettings.usbRadioPort";
+const USB_RADIO_STANDBY: &str = "settings.autoConnectSettings.usbRadioStandby";
 pub const SEND_EVERY_MS: u64 = 40;
 pub const STALE_AFTER_MS: u64 = 500;
 const REOPEN_AFTER_MS: u64 = 1_000;
@@ -114,6 +115,20 @@ fn wanted() -> Option<String> {
     crate::settingsstore::raw_setting(PORT_SETTING).and_then(|value| value.as_str().map(str::trim).map(str::to_string)).filter(|port| !port.is_empty())
 }
 
+pub fn component(standby: bool) -> u8 {
+    match standby {
+        true => crate::joystickhost::STANDBY_COMPONENT,
+        false => crate::hub::COMP_AUTOPILOT1,
+    }
+}
+
+fn standby(vehicle: u8) -> bool {
+    let on = crate::settingsstore::raw_setting(USB_RADIO_STANDBY).is_some_and(|value| value.as_bool() == Some(true) || value.as_str() == Some("true"));
+    on && crate::joystickhost::standby_capable(vehicle)
+}
+
+static STANDBY: AtomicBool = AtomicBool::new(false);
+
 fn target() -> Option<Target> {
     let vehicle = crate::hub::lock().active().filter(|v| !v.on_high_latency_link()).map(|v| (v.id, v.link))?;
     (!crate::joystickhost::drives(vehicle.0)).then_some(vehicle)
@@ -135,7 +150,14 @@ fn advance(fresh: Option<Frame>) {
         let step = radio.step(now, target, fresh);
         (step, radio.live(now))
     };
-    step.sends.iter().for_each(|((id, link), channels)| crate::hub::send_for(*id, *link, &[Outbound::RcOverride { target: (*id, crate::hub::COMP_AUTOPILOT1), channels: *channels }]));
+    let standby_now = target.is_some_and(|(id, _)| standby(id));
+    let was = STANDBY.swap(standby_now, Ordering::Relaxed);
+    let moved = (was != standby_now && live).then_some(()).and(target);
+    moved.into_iter().for_each(|(id, link)| {
+        let handed: Vec<Outbound> = std::iter::repeat_n(Outbound::RcOverride { target: (id, component(was)), channels: released() }, RELEASE_FRAMES).collect();
+        crate::hub::send_for(id, link, &handed);
+    });
+    step.sends.iter().for_each(|((id, link), channels)| crate::hub::send_for(*id, *link, &[Outbound::RcOverride { target: (*id, component(standby_now)), channels: *channels }]));
     if let Some((vehicle, _)) = step.handed_back {
         crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &why_handed_back(live, vehicle));
     }
@@ -214,6 +236,12 @@ mod tests {
         assert_eq!(parse("$0,0,0,x,0\r\n"), None);
         assert_eq!(parse("GPGGA,0,0,0,0"), None);
         assert_eq!(parse("$0,0,0,0").map(|read| read[4]), Some(u16::MAX), "channels the radio did not send are left to the pilot");
+    }
+
+    #[test]
+    fn in_4g_standby_the_radio_streams_to_the_aircraft_computer_not_the_flight_controller() {
+        assert_eq!(component(false), crate::hub::COMP_AUTOPILOT1);
+        assert_eq!(component(true), crate::joystickhost::STANDBY_COMPONENT, "ArduPilot processes an override for another component of its own system nowhere, so only aircastd acts on it");
     }
 
     #[test]

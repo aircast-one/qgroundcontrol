@@ -77,6 +77,7 @@ struct JoystickPage: Equatable {
     var transmitterMode: Int = 2
     var buttons: [JoystickButton] = []
     var actions: [AssignableAction] = []
+    var standbyText: String?
 }
 
 func joystickPage(_ view: JSON?) -> JoystickPage? {
@@ -100,11 +101,12 @@ func joystickPage(_ view: JSON?) -> JoystickPage? {
         buttons: state["buttons"].objects.compactMap { b in
             JoystickButton(index: b["index"].int(0), action: b["action"].isNull ? NO_ACTION : b["action"].string, repeat: b["repeat"].bool, pressed: ["down", "repeat"].contains(b["event"].string))
         },
-        actions: it["assignableActions"].objects.compactMap { AssignableAction(action: $0["action"].string, canRepeat: $0["canRepeat"].bool) }
+        actions: it["assignableActions"].objects.compactMap { AssignableAction(action: $0["action"].string, canRepeat: $0["canRepeat"].bool) },
+        standbyText: it["standby"]["text"].string.isEmpty ? nil : it["standby"]["text"].string
     )
 }
 
-private let BASIC_SETTINGS = ["throttleModeCenterZero", "throttleSmoothing", "exponentialPct", "negativeThrust"]
+private let BASIC_SETTINGS = ["standby", "throttleModeCenterZero", "throttleSmoothing", "exponentialPct", "negativeThrust"]
 private let ADVANCED_SETTINGS = ["circleCorrection", "axisFrequencyHz", "buttonFrequencyHz", "useDeadband"]
 private let EXTENSION_SETTINGS = ["enableManualControlPitchExtension", "enableManualControlRollExtension"]
 private let ADDITIONAL_SETTINGS = (1...6).map { "enableAdditionalAxis\($0)" }
@@ -198,6 +200,9 @@ struct JoystickScreen: View {
                 SectionHeader(text: "Settings")
                 ForEach(BASIC_SETTINGS.compactMap(setting), id: \.name) { each in
                     SettingRow(setting: each) { act(JOYSTICK_SETTING, each.name, $0) }
+                }
+                if let standby = read.standbyText {
+                    Text(standby).font(.bodySmall)
                 }
                 Button("Advanced settings") { advanced.toggle() }.buttonStyle(.bordered)
                 if advanced {

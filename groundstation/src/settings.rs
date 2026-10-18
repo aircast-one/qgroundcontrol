@@ -119,7 +119,7 @@ const HIDDEN: &[&str] = &[
 ];
 const DESKTOP_ONLY: &[(&str, &str)] = &[("rcControls", "on-screen RC controls")];
 const IOS: bool = cfg!(target_os = "ios");
-const IOS_HIDDEN: &[&str] = &["autoConnectPixhawk", "autoConnectSiKRadio", "autoConnectRTKGPS", "autoConnectLibrePilot", "nmeaSource", "autoConnectNmeaPort", "autoConnectNmeaBaud", "nmeaUdpPort", "usbRadioPort"];
+const IOS_HIDDEN: &[&str] = &["autoConnectPixhawk", "autoConnectSiKRadio", "autoConnectRTKGPS", "autoConnectLibrePilot", "nmeaSource", "autoConnectNmeaPort", "autoConnectNmeaBaud", "nmeaUdpPort", "usbRadioPort", "usbRadioStandby"];
 
 fn user_visible(name: &str, ios: bool) -> bool {
     !HIDDEN.contains(&name) && !DESKTOP_ONLY.iter().any(|(d, _)| *d == name) && !(MOBILE && name == "savePath") && !(ios && IOS_HIDDEN.contains(&name))
@@ -260,6 +260,7 @@ const QML_LABELS: &[(&str, &str, &str)] = &[
     ("autoConnectSettings", "autoConnectNmeaBaud", "Baudrate"),
     ("autoConnectSettings", "nmeaUdpPort", "NMEA stream UDP port"),
     ("autoConnectSettings", "usbRadioPort", "Device"),
+    ("autoConnectSettings", "usbRadioStandby", "4G standby"),
     ("videoSettings", "rtspTimeout", "Connection Timeout"),
     ("videoSettings", "disableWhenDisarmed", "Stop recording when disarmed"),
     ("videoSettings", "lowLatencyMode", "Low latency mode"),
@@ -390,7 +391,7 @@ const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
     ("autoConnectSettings", &[
         ("", &["autoConnectPixhawk", "autoConnectSiKRadio", "autoConnectLibrePilot", "autoConnectUDP", "autoConnectRTKGPS"]),
         ("NMEA GPS", &["nmeaSource", "autoConnectNmeaPort", "autoConnectNmeaBaud", "nmeaUdpPort"]),
-        ("Radio on USB (EdgeTX script)", &["usbRadioPort"]),
+        ("Radio on USB (EdgeTX script)", &["usbRadioPort", "usbRadioStandby"]),
     ]),
     ("remoteIDSettings", &[
         ("Region", &["region"]),
@@ -900,6 +901,8 @@ mod tests {
         assert_eq!((row("")["control"].clone(), row("")["display"].clone(), row("")["label"].clone()), (json!("choice"), json!("Off"), json!("Device")));
         assert_eq!(row("/dev/ttyACM0")["display"], "/dev/ttyACM0", "a radio that is unplugged right now stays chosen");
         assert!(!user_visible("usbRadioPort", true), "iOS has no USB serial");
+        assert!(!user_visible("usbRadioStandby", true), "nor its 4G standby");
+        assert!(user_visible("usbRadioStandby", false));
     }
 
     #[test]

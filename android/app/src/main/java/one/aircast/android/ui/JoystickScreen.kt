@@ -119,6 +119,7 @@ internal data class JoystickPage(
     val buttons: List<JoystickButton> = emptyList(),
     val actions: List<AssignableAction> = emptyList(),
     val builtInSticks: BuiltInSticks? = null,
+    val standbyText: String? = null,
 )
 
 internal fun joystickPage(view: JSONObject?): JoystickPage? = view?.takeIf { it.optBoolean("available") }?.let {
@@ -149,10 +150,11 @@ internal fun joystickPage(view: JSONObject?): JoystickPage? = view?.takeIf { it.
             (0 until list.length()).mapNotNull { at -> list.optJSONObject(at)?.let { a -> AssignableAction(a.optText("action"), a.optBoolean("canRepeat")) } }
         }.orEmpty(),
         builtInSticks = builtInSticks(it.optJSONObject("builtInSticks")),
+        standbyText = it.optJSONObject("standby")?.optText("text")?.ifBlank { null },
     )
 }
 
-private val BASIC_SETTINGS = listOf("throttleModeCenterZero", "throttleSmoothing", "exponentialPct", "negativeThrust")
+private val BASIC_SETTINGS = listOf("standby", "throttleModeCenterZero", "throttleSmoothing", "exponentialPct", "negativeThrust")
 private val ADVANCED_SETTINGS = listOf("circleCorrection", "axisFrequencyHz", "buttonFrequencyHz", "useDeadband")
 private val EXTENSION_SETTINGS = listOf("enableManualControlPitchExtension", "enableManualControlRollExtension")
 private val ADDITIONAL_SETTINGS = (1..6).map { "enableAdditionalAxis$it" }
@@ -260,6 +262,7 @@ fun JoystickScreen(modifier: Modifier = Modifier) {
 
         SectionHeader("Settings")
         BASIC_SETTINGS.mapNotNull(setting).forEach { SettingRow(it) { value -> act(JOYSTICK_SETTING, it.name, value) } }
+        read.standbyText?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
         OutlinedButton(onClick = { advanced = !advanced }) { Text("Advanced settings") }
         if (advanced) {
             ADVANCED_SETTINGS.mapNotNull(setting).forEach { SettingRow(it) { value -> act(JOYSTICK_SETTING, it.name, value) } }
