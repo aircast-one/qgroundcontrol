@@ -170,7 +170,7 @@ void FirmwarePlugin::guidedModeChangeEquivalentAirspeedMetersSecond(Vehicle*, do
     QGC::showAppMessage(guided_mode_not_supported_by_vehicle);
 }
 
-void FirmwarePlugin::guidedModeChangeHeading(Vehicle *vehicle, const QGeoCoordinate &/*headingCoord*/) const
+void FirmwarePlugin::guidedModeChangeHeading(Vehicle *vehicle, const QGeoCoordinate &) const
 {
     Q_UNUSED(vehicle);
     QGC::showAppMessage(guided_mode_not_supported_by_vehicle);
@@ -178,7 +178,6 @@ void FirmwarePlugin::guidedModeChangeHeading(Vehicle *vehicle, const QGeoCoordin
 
 void FirmwarePlugin::startTakeoff(Vehicle*) const
 {
-    // Not supported by generic vehicle
     QGC::showAppMessage(guided_mode_not_supported_by_vehicle);
 }
 
@@ -196,7 +195,6 @@ const FirmwarePlugin::remapParamNameMajorVersionMap_t &FirmwarePlugin::paramName
 
 const QVariantList &FirmwarePlugin::toolIndicators(const Vehicle*)
 {
-    //-- Default list of indicators for all vehicles.
     if (_toolIndicatorList.isEmpty()) {
         _toolIndicatorList = QVariantList({
             QVariant::fromValue(QUrl::fromUserInput("qrc:/qml/QGroundControl/Toolbar/VehicleGPSIndicator.qml")),
@@ -211,7 +209,6 @@ const QVariantList &FirmwarePlugin::toolIndicators(const Vehicle*)
             QVariant::fromValue(QUrl::fromUserInput("qrc:/qml/QGroundControl/Toolbar/JoystickIndicator.qml")),
             QVariant::fromValue(QUrl::fromUserInput("qrc:/qml/QGroundControl/Toolbar/MultiVehicleSelector.qml")),
 #ifdef QT_DEBUG
-            // ControlIndicator is only available in debug builds for the moment
             QVariant::fromValue(QUrl::fromUserInput("qrc:/qml/QGroundControl/Toolbar/GCSControlIndicator.qml")),
 #endif
         });
@@ -228,10 +225,8 @@ bool FirmwarePlugin::_armVehicleAndValidate(Vehicle *vehicle) const
 
     bool vehicleArmed = false;
 
-    // Only try arming the vehicle a single time. Doing retries on arming with a delay can lead to safety issues.
-    vehicle->setArmed(true, false /* showError */);
+    vehicle->setArmed(true, false);
 
-    // Wait 1500 msecs for vehicle to arm (waiting for the next heartbeat)
     for (int i = 0; i < 15; i++) {
         if (vehicle->armed()) {
             vehicleArmed = true;
@@ -252,11 +247,9 @@ bool FirmwarePlugin::_setFlightModeAndValidate(Vehicle *vehicle, const QString &
 
     bool flightModeChanged = false;
 
-    // We try 3 times
     for (int retries = 0; retries < 3; retries++) {
         vehicle->setFlightMode(flightMode);
 
-        // Wait for vehicle to return flight mode
         for (int i = 0; i < 13; i++) {
             if (vehicle->flightMode() == flightMode) {
                 flightModeChanged = true;
@@ -273,7 +266,6 @@ bool FirmwarePlugin::_setFlightModeAndValidate(Vehicle *vehicle, const QString &
 
     return flightModeChanged;
 }
-
 
 void FirmwarePlugin::batteryConsumptionData(Vehicle *vehicle, int &mAhBattery, double &hoverAmps, double &cruiseAmps) const
 {
@@ -304,7 +296,6 @@ MavlinkCameraControlInterface *FirmwarePlugin::createCameraControl(const mavlink
 
 void FirmwarePlugin::checkIfIsLatestStable(Vehicle *vehicle) const
 {
-    // This is required as mocklink uses a hardcoded firmware version
     if (QGC::runningUnitTests()) {
         qCDebug(FirmwarePluginLog) << "Skipping version check";
         return;
@@ -327,10 +318,9 @@ void FirmwarePlugin::checkIfIsLatestStable(Vehicle *vehicle) const
     }
 }
 
-void FirmwarePlugin::_versionFileDownloadFinished(const QString &remoteFile, const QString &localFile, const Vehicle *vehicle) const
+void FirmwarePlugin::_versionFileDownloadFinished(const QString &remoteFile, const QString &localFile, Vehicle *vehicle) const
 {
     qCDebug(FirmwarePluginLog) << "Download complete" << remoteFile << localFile;
-    // Now read the version file and pull out the version string
     QFile versionFile(localFile);
     if (!versionFile.open(QIODevice::ReadOnly | QIODevice::Text)) {
         qCWarning(FirmwarePluginLog) << "Error opening downloaded version file.";
@@ -355,12 +345,8 @@ void FirmwarePlugin::_versionFileDownloadFinished(const QString &remoteFile, con
 
     const int currType = vehicle->firmwareVersionType();
 
-    // Check if lower version than stable or same version but different type
     if ((currType == FIRMWARE_VERSION_TYPE_OFFICIAL) && (vehicle->versionCompare(version) < 0)) {
-        const QString currentVersionNumber = QStringLiteral("%1.%2.%3").arg(vehicle->firmwareMajorVersion())
-                                                                       .arg(vehicle->firmwareMinorVersion())
-                                                                       .arg(vehicle->firmwarePatchVersion());
-        QGC::showAppMessage(tr("Vehicle is not running latest stable firmware! Running %1, latest stable is %2.").arg(currentVersionNumber, version));
+        vehicle->setLatestStableFirmwareVersion(version);
     }
 }
 
@@ -462,8 +448,6 @@ void FirmwarePlugin::_addNewFlightMode(FirmwareFlightMode &newFlightMode)
     _flightModeList += newFlightMode;
 }
 
-/*===========================================================================*/
-
 static constexpr const char *kCachedMetaDataFilePrefix = "ParameterFactMetaData";
 
 static QDir _parameterMetaDataCacheDir(bool ensureExists = false)
@@ -508,8 +492,6 @@ QString FirmwarePlugin::_cachedParameterMetaDataFile(const Vehicle *vehicle) con
         internalVersion = ParameterMetaData::versionFromMetaDataFile(internalFile);
     }
 
-    // Without a known internal version we can't safely compare against
-    // cache — use the bundled file to avoid stale overrides.
     if (internalVersion.isNull() || QGC::runningUnitTests()) {
         qCDebug(FirmwarePluginLog) << "Using internal parameter metadata:" << internalFile;
         return internalFile;
@@ -562,8 +544,6 @@ void FirmwarePlugin::cacheParameterMetaDataFile(const QString &metaDataFile)
         return;
     }
 
-    // Reject non-JSON content (e.g. XML from older PX4 firmware images)
-    // and extract the catalog version in a single parse pass.
     bool validJson = false;
     QVersionNumber newVersion = ParameterMetaData::versionFromJsonData(data, &validJson);
     if (!validJson) {
@@ -571,9 +551,6 @@ void FirmwarePlugin::cacheParameterMetaDataFile(const QString &metaDataFile)
         return;
     }
     if (newVersion.isNull()) {
-        // Valid JSON but no version stamps — use fallback so unversioned
-        // files still get cached with a major version that matches the
-        // default wantedMajorVersion in _cachedParameterMetaDataFile.
         newVersion = QVersionNumber(1, 0);
     }
 
@@ -585,9 +562,6 @@ void FirmwarePlugin::cacheParameterMetaDataFile(const QString &metaDataFile)
 
     for (const QString &file : existing) {
         const QVersionNumber existingVersion = ParameterMetaData::versionFromFileName(file);
-        // Strict less-than: equal versions are replaced so that
-        // re-flashing with corrected metadata (same version stamp)
-        // updates the cache.
         if (!existingVersion.isNull() && newVersion < existingVersion) {
             return;
         }
@@ -607,8 +581,6 @@ void FirmwarePlugin::cacheParameterMetaDataFile(const QString &metaDataFile)
         }
     }
 }
-
-/*===========================================================================*/
 
 FirmwarePluginInstanceData::CommandSupportedResult FirmwarePluginInstanceData::getCommandSupported(MAV_CMD cmd) const
 {

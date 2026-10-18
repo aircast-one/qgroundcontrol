@@ -264,6 +264,7 @@ public:
     Q_PROPERTY(int      firmwarePatchVersion        READ firmwarePatchVersion       NOTIFY firmwareVersionChanged)
     Q_PROPERTY(int      firmwareVersionType         READ firmwareVersionType        NOTIFY firmwareVersionChanged)
     Q_PROPERTY(QString  firmwareVersionTypeString   READ firmwareVersionTypeString  NOTIFY firmwareVersionChanged)
+    Q_PROPERTY(QString  latestStableFirmwareVersion READ latestStableFirmwareVersion NOTIFY latestStableFirmwareVersionChanged)
     Q_PROPERTY(int      firmwareCustomMajorVersion  READ firmwareCustomMajorVersion NOTIFY firmwareCustomVersionChanged)
     Q_PROPERTY(int      firmwareCustomMinorVersion  READ firmwareCustomMinorVersion NOTIFY firmwareCustomVersionChanged)
     Q_PROPERTY(int      firmwareCustomPatchVersion  READ firmwareCustomPatchVersion NOTIFY firmwareCustomVersionChanged)
@@ -668,6 +669,8 @@ public:
     int firmwareBoardVendorId() const { return _firmwareBoardVendorId; }
     int firmwareBoardProductId() const { return _firmwareBoardProductId; }
     QString firmwareVersionTypeString() const;
+    QString latestStableFirmwareVersion() const { return _latestStableFirmwareVersion; }
+    void setLatestStableFirmwareVersion(const QString &version);
     void setFirmwareVersion(int majorVersion, int minorVersion, int patchVersion, FIRMWARE_VERSION_TYPE versionType = FIRMWARE_VERSION_TYPE_OFFICIAL);
     void setFirmwareCustomVersion(int majorVersion, int minorVersion, int patchVersion);
     // versionNotSetValue inherited from VehicleTypes
@@ -790,6 +793,7 @@ signals:
     void hasGripperChanged              ();
 
     void firmwareVersionChanged         ();
+    void latestStableFirmwareVersionChanged();
     void firmwareCustomVersionChanged   ();
     void gitHashChanged                 (QString hash);
     void vehicleUIDChanged              ();
@@ -1020,6 +1024,7 @@ private:
     int _firmwareCustomMinorVersion = versionNotSetValue;
     int _firmwareCustomPatchVersion = versionNotSetValue;
     FIRMWARE_VERSION_TYPE _firmwareVersionType = FIRMWARE_VERSION_TYPE_OFFICIAL;
+    QString _latestStableFirmwareVersion;
 
     // Vendor and Product as reported from the first autopilot version message
     // during the initial connect. They may be zero eg ArduPilot SITL reports 0

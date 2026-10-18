@@ -1,7 +1,3 @@
-# ============================================================================
-# Vehicle Unit Tests
-# Tests for vehicle connection, FTP, MAVLink commands, and link management
-# ============================================================================
 
 target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
@@ -13,6 +9,8 @@ target_sources(${CMAKE_PROJECT_NAME}
         APMStartMissionTest.h
         FTPManagerTest.cc
         FTPManagerTest.h
+        FirmwareUpdateAvailableTest.cc
+        FirmwareUpdateAvailableTest.h
         FTPControllerTest.cc
         FTPControllerTest.h
         FirmwareUpgradeControllerTest.cc
@@ -49,9 +47,6 @@ target_sources(${CMAKE_PROJECT_NAME}
 
 target_include_directories(${CMAKE_PROJECT_NAME} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
-# ----------------------------------------------------------------------------
-# Component Information Tests
-# ----------------------------------------------------------------------------
 add_subdirectory(ComponentInformation)
 
 add_qgc_test(APMAirframeComponentControllerTest LABELS Integration Vehicle)
@@ -64,6 +59,7 @@ add_qgc_test(InitialConnectPeripheralStartupTest LABELS Integration Vehicle)
 add_qgc_test(AircastLinkFactGroupTest LABELS Unit Vehicle)
 add_qgc_test(MAVLinkLogManagerTest LABELS Integration Vehicle)
 add_qgc_test(MavCommandQueueReentrancyTest LABELS Integration Vehicle)
+add_qgc_test(FirmwareUpdateAvailableTest LABELS Integration Vehicle)
 add_qgc_test(MultiVehicleManagerTest LABELS Integration Vehicle)
 add_qgc_test(PX4ExternalFlightModesTest LABELS Unit Vehicle)
 add_qgc_test(PX4HasGripperTest LABELS Integration Vehicle)

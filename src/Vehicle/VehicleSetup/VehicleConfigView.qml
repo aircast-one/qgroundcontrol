@@ -11,7 +11,6 @@ Rectangle {
     color:          qgcPal.window
     z:      QGroundControl.zOrderTopMost
 
-    // This need to block click event leakage to underlying map.
     DeadMouseArea {
         anchors.fill: parent
     }
@@ -31,11 +30,10 @@ Rectangle {
     property bool   _fullParameterVehicleAvailable: _activeVehicle && QGroundControl.multiVehicleManager.parameterReadyVehicleAvailable && !_activeVehicle.parameterManager.missingParameters
     property var    _corePlugin:                    QGroundControl.corePlugin
 
-    // Tree view state
-    property int    _selectedComponentIndex: -1     // -1 = summary or special button
+    property int    _selectedComponentIndex: -1
     property int    _selectedSectionIndex:   -1
-    property string _selectedSpecial:        ""     // "summary", "parameters", "firmware", "opticalflow"
-    property bool   _showingPrereqMessage:   false  // Panel area shows prerequisite message instead of selected component
+    property string _selectedSpecial:        ""
+    property bool   _showingPrereqMessage:   false
     property var    _expandedComponents:     ({})
     property int    _expandedRevision:       0
     property string _searchQuery:            ""
@@ -50,8 +48,6 @@ Rectangle {
         return !!_expandedComponents[compIndex]
     }
 
-    /// Translated display name for a section ID. JSON-driven components translate via the JSON
-    /// filename context; hand-coded components provide sectionDisplayName().
     function _sectionDisplayName(component, sectionId) {
         let context = _translationContext(component)
         if (context) {
@@ -63,7 +59,6 @@ Rectangle {
         return sectionId
     }
 
-    /// Get the section ID for a sidebar entry.
     function _sectionId(compIndex, sectionIndex) {
         if (sectionIndex < 0 || !_fullParameterVehicleAvailable) return ""
         var components = _activeVehicle.autopilotPlugin.vehicleComponents
@@ -73,7 +68,6 @@ Rectangle {
         return ""
     }
 
-    /// Extract the translation context (JSON filename) from a component.
     function _translationContext(component) {
         if (!component || !component.vehicleConfigJson) return ""
         var path = component.vehicleConfigJson.toString()
@@ -171,7 +165,6 @@ Rectangle {
 
         _selectedSpecial = ""
 
-        // If component opts in and root was clicked, auto-select first section
         if (sectionIndex < 0 && vehicleComponent.showFirstSectionOnRootClick && vehicleComponent.sectionIds.length > 0) {
             sectionIndex = 0
         }
@@ -180,8 +173,6 @@ Rectangle {
         var autopilotPlugin = _activeVehicle.autopilotPlugin
         var prereq = autopilotPlugin.prerequisiteSetup(vehicleComponent)
         if (prereq !== "") {
-            // Selection state still updates so the tree expands and highlights
-            // normally; only the panel area shows the prerequisite message
             _selectedComponentIndex = compIndex
             _showingPrereqMessage = true
             _messagePanelText = qsTr("%1 setup must be completed prior to %2 setup.").arg(prereq).arg(vehicleComponent.name)
@@ -195,7 +186,6 @@ Rectangle {
             panelLoader.setSource(vehicleComponent.setupSource, vehicleComponent)
         }
 
-        // Apply section filter
         if (panelLoader.item && typeof panelLoader.item.sectionIdFilter !== "undefined") {
             panelLoader.item.sectionIdFilter = _sectionId(compIndex, sectionIndex)
         }
@@ -366,7 +356,6 @@ Rectangle {
                 width:      parent.width
                 spacing:    0
 
-                // Summary button
                 ConfigButton {
                     id:                 summaryButton
                     objectName:         "vehicleConfig_summary"
@@ -385,7 +374,6 @@ Rectangle {
                     visible: vehicleConfigView._searchQuery.trim() === ""
                 }
 
-                // Vehicle component tree
                 Repeater {
                     id:     componentRepeater
                     model:  _fullParameterVehicleAvailable ? _activeVehicle.autopilotPlugin.vehicleComponents : 0
@@ -445,7 +433,6 @@ Rectangle {
                             }
                         }
 
-                        // Section sub-items
                         Repeater {
                             model: compColumn.isExpanded ? compColumn.compSectionIds : []
 
@@ -463,9 +450,6 @@ Rectangle {
                                     if (!compColumn.comp) {
                                         return true
                                     }
-                                    // Referencing comp.setupComplete re-evaluates this binding whenever a
-                                    // setup trigger parameter changes, since sectionSetupComplete() is a
-                                    // plain function call which QML cannot otherwise track
                                     void compColumn.comp.setupComplete
                                     return typeof compColumn.comp.sectionSetupComplete === "function"
                                                ? compColumn.comp.sectionSetupComplete(modelData)
@@ -518,7 +502,6 @@ Rectangle {
                     }
                 }
 
-                // Optical Flow (special)
                 ConfigButton {
                     visible:            _activeVehicle ? _activeVehicle.flowImageIndex > 0 : false
                     text:               qsTr("Optical Flow")
@@ -552,7 +535,7 @@ Rectangle {
                     icon.source:        "/qmlimages/FirmwareUpgradeIcon.png"
                     visible:            !ScreenTools.isMobile && _corePlugin.options.showFirmwareUpgrade &&
                                         vehicleConfigView._searchQuery.trim() === ""
-                    text:               qsTr("Firmware")
+                    text:               _activeVehicle && _activeVehicle.latestStableFirmwareVersion !== "" ? qsTr("Firmware (%1 available)").arg(_activeVehicle.latestStableFirmwareVersion) : qsTr("Firmware")
                     Layout.fillWidth:   true
                     checked:            vehicleConfigView._selectedSpecial === "firmware"
 

@@ -2270,6 +2270,15 @@ void Vehicle::_prearmErrorTimeout()
     setPrearmError(QString());
 }
 
+void Vehicle::setLatestStableFirmwareVersion(const QString &version)
+{
+    if (_latestStableFirmwareVersion == version) {
+        return;
+    }
+    _latestStableFirmwareVersion = version;
+    emit latestStableFirmwareVersionChanged();
+}
+
 void Vehicle::setFirmwareVersion(int majorVersion, int minorVersion, int patchVersion, FIRMWARE_VERSION_TYPE versionType)
 {
     _firmwareMajorVersion = majorVersion;
