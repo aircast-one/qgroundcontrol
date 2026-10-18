@@ -337,6 +337,7 @@ jobs:
 
       - name: Submit to App Store review
         if: ${{ env.HAS_ASC_KEY == 'true' && needs.setup.outputs.is_production == 'true' }}
+        working-directory: ios
         env:
           SHORT: ${{ needs.setup.outputs.short_version }}
         run: |
@@ -346,10 +347,10 @@ jobs:
             --platform ios \
             --app_version "${SHORT#v}" \
             --skip_binary_upload true \
-            --metadata_path ios/fastlane/metadata \
-            --screenshots_path ios/fastlane/screenshots \
+            --metadata_path fastlane/metadata \
+            --screenshots_path fastlane/screenshots \
             --overwrite_screenshots true \
-            --app_rating_config_path ios/fastlane/app_rating_config.json \
+            --app_rating_config_path fastlane/app_rating_config.json \
             --submit_for_review true --automatic_release true \
             --run_precheck_before_submit false \
             --submission_information '{"add_id_info_uses_idfa": false}' \
