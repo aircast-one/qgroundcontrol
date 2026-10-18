@@ -111,7 +111,7 @@ impl Sink {
     pub fn create(path: impl AsRef<Path>) -> std::io::Result<Sink> {
         let path = path.as_ref().to_path_buf();
         if let Some(url) = on_device(&path) {
-            remote::send(remote::Change::Put(url, Vec::new()));
+            remote::send(remote::Change { path: path.clone(), url, body: remote::Body::Put(Vec::new()) });
         }
         Ok(Sink { path, bytes: std::io::Cursor::default(), dirty_from: None })
     }
@@ -131,13 +131,15 @@ impl Sink {
     pub fn sync(&mut self) {
         if let (Some(from), Some(url)) = (self.dirty_from.take(), on_device(&self.path)) {
             let tail = self.bytes.get_ref().get(from as usize..).unwrap_or_default().to_vec();
-            remote::send(remote::Change::Patch(url, from, tail));
+            remote::send(remote::Change { path: self.path.clone(), url, body: remote::Body::Patch(from, tail) });
         }
     }
 
     pub fn finish(mut self) -> std::io::Result<()> {
         self.sync();
-        files().insert(self.path, self.bytes.into_inner());
+        if on_device(&self.path).is_none() || remote::waiting(&self.path) {
+            files().insert(self.path, self.bytes.into_inner());
+        }
         Ok(())
     }
 }
@@ -152,43 +154,117 @@ fn on_device(path: &Path) -> Option<String> {
 #[cfg(target_family = "wasm")]
 const REMOTE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
-#[cfg(target_family = "wasm")]
+#[cfg(any(target_family = "wasm", test))]
 mod remote {
     use std::cell::{Cell, RefCell};
     use std::collections::VecDeque;
+    use std::path::PathBuf;
+    use std::time::Duration;
 
-    pub enum Change {
-        Put(String, Vec<u8>),
-        Patch(String, u64, Vec<u8>),
-        Delete(String),
+    pub enum Body {
+        Put(Vec<u8>),
+        Patch(u64, Vec<u8>),
+        Delete,
+    }
+
+    pub struct Change {
+        pub path: PathBuf,
+        pub url: String,
+        pub body: Body,
+    }
+
+    #[derive(Debug, PartialEq, Eq)]
+    pub enum Outcome {
+        Stored,
+        Refused(String),
+        Unreached(String),
+    }
+
+    impl Change {
+        pub fn request(&self) -> (&'static str, String, Option<&[u8]>) {
+            match &self.body {
+                Body::Put(bytes) => ("PUT", self.url.clone(), Some(bytes)),
+                Body::Patch(offset, bytes) => ("PATCH", format!("{}?offset={offset}", self.url), Some(bytes)),
+                Body::Delete => ("DELETE", self.url.clone(), None),
+            }
+        }
+    }
+
+    pub fn outcome(method: &str, answer: Result<(u16, Vec<u8>), String>) -> Outcome {
+        match answer {
+            Ok((status, _)) if (200..300).contains(&status) || (method == "DELETE" && status == 404) => Outcome::Stored,
+            Ok((status, text)) if (400..500).contains(&status) && ![408, 429].contains(&status) => Outcome::Refused(format!("{status} {}", String::from_utf8_lossy(&text))),
+            Ok((status, _)) => Outcome::Unreached(format!("the device answered {status}")),
+            Err(error) => Outcome::Unreached(error),
+        }
+    }
+
+    pub fn backoff(failures: u32) -> Duration {
+        Duration::from_secs(1u64 << failures.min(5)).min(Duration::from_secs(30))
     }
 
     thread_local! {
-        static OUTBOX: RefCell<VecDeque<Change>> = const { RefCell::new(VecDeque::new()) };
-        static SENDING: Cell<bool> = const { Cell::new(false) };
+        static WAITING: RefCell<VecDeque<Change>> = const { RefCell::new(VecDeque::new()) };
+        static RETRYING: Cell<bool> = const { Cell::new(false) };
     }
 
-    pub fn send(change: Change) {
-        OUTBOX.with(|outbox| outbox.borrow_mut().push_back(change));
-        if !SENDING.with(|sending| sending.replace(true)) {
-            wasm_bindgen_futures::spawn_local(drain());
+    pub fn waiting(path: &std::path::Path) -> bool {
+        WAITING.with(|waiting| waiting.borrow().iter().any(|change| change.path == path))
+    }
+
+    #[cfg(target_family = "wasm")]
+    pub fn send(change: Change) -> bool {
+        if WAITING.with(|waiting| !waiting.borrow().is_empty()) {
+            return wait(change);
         }
-    }
-
-    async fn drain() {
-        while let Some(change) = OUTBOX.with(|outbox| outbox.borrow_mut().pop_front()) {
-            let (method, url, body) = match change {
-                Change::Put(url, bytes) => ("PUT", url, Some(bytes)),
-                Change::Patch(url, offset, bytes) => ("PATCH", format!("{url}?offset={offset}"), Some(bytes)),
-                Change::Delete(url) => ("DELETE", url, None),
-            };
-            match crate::http::send_later(method, &url, &[], body.as_deref(), super::REMOTE_TIMEOUT).await {
-                Ok((status, _)) if (200..300).contains(&status) || (method == "DELETE" && status == 404) => {}
-                Ok((status, answer)) => log::warn!("The device refused {method} {url}: {status} {}", String::from_utf8_lossy(&answer)),
-                Err(error) => log::warn!("Could not reach the device for {method} {url}: {error}"),
+        let (method, url, body) = change.request();
+        match outcome(method, crate::http::send(method, &url, &[], body, super::REMOTE_TIMEOUT)) {
+            Outcome::Stored => true,
+            Outcome::Refused(why) => {
+                log::warn!("The device refused {method} {url}: {why}");
+                false
+            }
+            Outcome::Unreached(why) => {
+                log::warn!("The device did not take {method} {url} ({why}); trying again");
+                wait(change)
             }
         }
-        SENDING.with(|sending| sending.set(false));
+    }
+
+    #[cfg(target_family = "wasm")]
+    fn wait(change: Change) -> bool {
+        WAITING.with(|waiting| waiting.borrow_mut().push_back(change));
+        if !RETRYING.with(|retrying| retrying.replace(true)) {
+            wasm_bindgen_futures::spawn_local(retry());
+        }
+        false
+    }
+
+    #[cfg(target_family = "wasm")]
+    async fn retry() {
+        let mut failures = 0;
+        while let Some((method, url, body, path)) = WAITING.with(|waiting| waiting.borrow().front().map(|change| {
+            let (method, url, body) = change.request();
+            (method, url, body.map(<[u8]>::to_vec), change.path.clone())
+        })) {
+            match outcome(method, crate::http::send_later(method, &url, &[], body.as_deref(), super::REMOTE_TIMEOUT).await) {
+                Outcome::Unreached(_) => {
+                    crate::background::pause(backoff(failures)).await;
+                    failures += 1;
+                }
+                settled => {
+                    if let Outcome::Refused(why) = settled {
+                        log::warn!("The device refused {method} {url}: {why}");
+                    }
+                    failures = 0;
+                    WAITING.with(|waiting| waiting.borrow_mut().pop_front());
+                    if !waiting(&path) {
+                        super::files().remove(&path);
+                    }
+                }
+            }
+        }
+        RETRYING.with(|retrying| retrying.set(false));
     }
 }
 
@@ -265,21 +341,18 @@ pub fn read(path: impl AsRef<Path>) -> std::io::Result<Vec<u8>> {
     match (held, on_device(path)) {
         (Some(bytes), _) => Ok(bytes),
         (None, None) => Err(missing(path)),
-        (None, Some(url)) => {
-            let bytes = remote_get(&url, path)?;
-            files().insert(path.to_path_buf(), bytes.clone());
-            Ok(bytes)
-        }
+        (None, Some(url)) => remote_get(&url, path),
     }
 }
 
 #[cfg(target_family = "wasm")]
 pub fn write(path: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> std::io::Result<()> {
     let path = path.as_ref();
-    files().insert(path.to_path_buf(), contents.as_ref().to_vec());
-    if let Some(url) = on_device(path) {
-        remote::send(remote::Change::Put(url, contents.as_ref().to_vec()));
-    }
+    let stored = on_device(path).is_some_and(|url| remote::send(remote::Change { path: path.to_path_buf(), url, body: remote::Body::Put(contents.as_ref().to_vec()) }));
+    match stored {
+        true => files().remove(path),
+        false => files().insert(path.to_path_buf(), contents.as_ref().to_vec()),
+    };
     Ok(())
 }
 
@@ -289,7 +362,7 @@ pub fn remove(path: impl AsRef<Path>) -> std::io::Result<()> {
     let held = files().remove(path).is_some();
     match on_device(path) {
         Some(url) => {
-            remote::send(remote::Change::Delete(url));
+            remote::send(remote::Change { path: path.to_path_buf(), url, body: remote::Body::Delete });
             Ok(())
         }
         None if held => Ok(()),
@@ -318,5 +391,17 @@ mod tests {
         assert_eq!(super::read_to_string(&path).unwrap(), "plan");
         super::remove(&path).unwrap();
         assert!(super::read(&path).is_err());
+    }
+
+    #[test]
+    fn the_device_store_retries_what_it_could_not_reach_and_drops_what_it_refused() {
+        use super::remote::{Outcome, backoff, outcome};
+        assert_eq!(outcome("PUT", Ok((204, Vec::new()))), Outcome::Stored);
+        assert_eq!(outcome("DELETE", Ok((404, Vec::new()))), Outcome::Stored, "deleting what is already gone is done");
+        assert_eq!(outcome("PUT", Ok((413, b"not enough space".to_vec()))), Outcome::Refused("413 not enough space".into()), "a full device will not take it on a retry either");
+        assert!(matches!(outcome("PUT", Ok((502, Vec::new()))), Outcome::Unreached(_)));
+        assert!(matches!(outcome("PATCH", Ok((429, Vec::new()))), Outcome::Unreached(_)));
+        assert!(matches!(outcome("PUT", Err("No answer from falcon.local".into())), Outcome::Unreached(_)));
+        assert_eq!((backoff(0), backoff(3), backoff(9)), (std::time::Duration::from_secs(1), std::time::Duration::from_secs(8), std::time::Duration::from_secs(30)));
     }
 }

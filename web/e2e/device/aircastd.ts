@@ -91,6 +91,12 @@ const firmware = async (request: IncomingMessage, response: ServerResponse) => {
   return image.toString().includes('"board_id"') ? json(response, 200, { status: 'flashed' }) : json(response, 400, { error: 'not an apj firmware image' });
 };
 
+const detections = (response: ServerResponse) => {
+  response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
+  const timer = setInterval(() => response.write(`data: ${JSON.stringify({ boxes: [{ label: 'car', conf: 0.9, x: 0.4, y: 0.4, w: 0.2, h: 0.2 }], ageMs: 0 })}\n\n`), 200);
+  response.on('close', () => clearInterval(timer));
+};
+
 const app = (request: IncomingMessage, response: ServerResponse) => {
   const path = request.url?.startsWith('/fly/') && !request.url.startsWith('/fly/src/') ? '/' : (request.url ?? '/');
   const upstream = forward({ host: 'localhost', port: VITE, path, method: request.method, headers: { ...request.headers, host: `localhost:${VITE}` } }, (answer) => {
@@ -103,7 +109,8 @@ const app = (request: IncomingMessage, response: ServerResponse) => {
 
 const http = createServer((request, response) => {
   const url = new URL(request.url ?? '/', `http://localhost:${DEVICE_PORT}`);
-  if (url.pathname === '/fly/device.json') return json(response, 200, { name: 'e2e-device', cameras: [] });
+  if (url.pathname === '/fly/device.json') return json(response, 200, { name: 'e2e-device', cameras: [{ name: 'e2e', url: 'http://localhost:18889/e2e/whep' }] });
+  if (url.pathname === '/api/streams/e2e/detections/stream') return detections(response);
   if (url.pathname === '/stats') return json(response, 200, { ...seen, store });
   if (url.pathname.startsWith('/fly/files/') || url.pathname === '/fly/files') return void files(request, response, url);
   if (url.pathname === '/fly/proxy') return void proxy(request, response);

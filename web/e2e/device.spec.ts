@@ -85,3 +85,11 @@ test('a device page reaches a TCP vehicle on its network through the device', as
   await expect.poll(async () => (await stats()).relays.some((query) => query.includes('tcp=127.0.0.1%3A18784')), { timeout: 30_000 }).toBe(true);
   await expect.poll(async () => (await stats()).tcpHeartbeats, { timeout: 30_000 }).toBeGreaterThan(0);
 });
+
+test('a device page draws what the device detects on its camera', async ({ device }) => {
+  await device.evaluate(async ([module, port]) => {
+    const { Qgc } = (await import(module)) as { Qgc: { set: (path: string, value: unknown) => Promise<unknown> } };
+    await Qgc.set('settings.appSettings.detectionsHttpPort', port);
+  }, ['/src/bridge/Qgc.ts', 18780] as const);
+  await expect(device.getByText('car 90%')).toBeVisible({ timeout: 60_000 });
+});

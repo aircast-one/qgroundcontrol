@@ -97,17 +97,24 @@ const serialClosed = (id: number, reason: string) => {
 
 const readSerial = async (id: number, reader: ReadableStreamDefaultReader<Uint8Array>): Promise<unknown> => {
   const { value, done } = await reader.read().catch(() => ({ value: undefined, done: true }));
+  if (serialSessions.get(id)?.reader !== reader) return undefined;
   if (done || !value) return serialClosed(id, 'The serial port closed.');
   void call('serialReceived', id, value);
   return readSerial(id, reader);
 };
 
+const portTurns = new Map<SerialPort, Promise<unknown>>();
+
+export const onPort = <T,>(port: SerialPort, work: () => Promise<T>): Promise<T> => {
+  const turn = (portTurns.get(port) ?? Promise.resolve()).then(work, work);
+  portTurns.set(port, turn.catch(() => undefined));
+  return turn;
+};
+
 const openSerial = async (op: Extract<SerialOp, { op: 'open' }>) => {
   const port = serialPorts.get(op.name);
   if (!port) return serialClosed(op.id, `${op.name} is not available. Allow the port in the browser first.`);
-  const opened = port
-    .open({ baudRate: op.baud, dataBits: op.dataBits === 7 ? 7 : 8, stopBits: op.stopBits === 2 ? 2 : 1, parity: parityOf(op.parity) })
-    .then(() => port.writable?.getWriter() ?? null);
+  const opened = onPort(port, () => port.open({ baudRate: op.baud, dataBits: op.dataBits === 7 ? 7 : 8, stopBits: op.stopBits === 2 ? 2 : 1, parity: parityOf(op.parity) })).then(() => port.writable?.getWriter() ?? null);
   serialSessions.set(op.id, { port, writer: opened.catch(() => null), reader: null });
   try {
     await opened;
@@ -127,9 +134,11 @@ const serialOp = async (op: SerialOp) => {
   if (!session) return undefined;
   if (op.op === 'write') return (await session.writer)?.write(op.bytes);
   serialSessions.delete(op.id);
-  await session.reader?.cancel().catch(() => undefined);
-  (await session.writer)?.releaseLock();
-  return session.port.close().catch(() => undefined);
+  return onPort(session.port, async () => {
+    await session.reader?.cancel().catch(() => undefined);
+    (await session.writer)?.releaseLock();
+    return session.port.close().catch(() => undefined);
+  });
 };
 
 export const startCore = async (): Promise<void> => {

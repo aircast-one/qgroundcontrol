@@ -441,6 +441,15 @@ fn ports() -> Vec<Value> {
 }
 
 pub const DEVICE_PORT: &str = "aircast-device";
+pub const DEVICE_NEEDS_PACKAGE: &str = "The device flashes .apj and .px4 firmware, which name their board. Choose one of those instead of a raw image.";
+
+pub fn device_refusal(chosen: &Source) -> Option<&'static str> {
+    let named = match chosen {
+        Source::File(path) | Source::Url(path) => path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase(),
+        _ => return None,
+    };
+    (!named.ends_with(".apj") && !named.ends_with(".px4")).then_some(DEVICE_NEEDS_PACKAGE)
+}
 pub const DEVICE_PORT_NAME: &str = "Flight controller on the Aircast device";
 
 #[cfg(hosted_serial)]
@@ -462,6 +471,9 @@ mod device {
         let chosen = source(file)?;
         if chosen.sik() {
             return Err("SiK radios are flashed over USB, not through the device".to_string());
+        }
+        if let Some(refusal) = device_refusal(&chosen) {
+            return Err(refusal.to_string());
         }
         let url = crate::device::firmware().ok_or_else(|| crate::device::NEEDS_DEVICE.to_string())?;
         begin(DEVICE_PORT, file)?;
@@ -986,5 +998,13 @@ mod tests {
         assert_eq!(apm_version_vehicle(&flags("sub")), Some("Sub"));
         assert_eq!(apm_version_vehicle(&flags("multiRotor")), Some("Copter"));
         assert_eq!(apm_version_vehicle(&json!({ "kind": "object" })), None, "an airship or generic vehicle has no version file");
+    }
+
+    #[test]
+    fn the_device_only_takes_firmware_that_names_its_board() {
+        assert_eq!(device_refusal(&source("/cache/firmware-arducopter.apj").unwrap()), None);
+        assert_eq!(device_refusal(&source("https://firmware.px4.io/fmu-v5.px4").unwrap()), None);
+        assert_eq!(device_refusal(&source("/cache/firmware-raw.bin").unwrap()), Some(DEVICE_NEEDS_PACKAGE));
+        assert_eq!(device_refusal(&source("px4:stable").unwrap()), None, "catalog builds resolve to .px4 or .apj files");
     }
 }

@@ -10,7 +10,11 @@ pub const STALE_MS: u64 = 1000;
 const RETRY: Duration = Duration::from_secs(1);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 const SILENCE_TIMEOUT: Duration = Duration::from_secs(60);
-const FOLLOWS: bool = cfg!(not(target_family = "wasm"));
+const MAX_EVENT_BYTES: usize = 1 << 20;
+
+fn follows() -> bool {
+    cfg!(not(target_family = "wasm")) || crate::device::paired()
+}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Source {
@@ -153,7 +157,27 @@ fn changed() {
 }
 
 #[cfg(target_family = "wasm")]
-fn follow(_source: Source, _generation: u64) {}
+fn follow(source: Source, generation: u64) {
+    wasm_bindgen_futures::spawn_local(async move {
+        while lock().generation == generation {
+            let followed = crate::http::stream_lines(&source.stream_url(), MAX_EVENT_BYTES, |line| {
+                if let Some(payload) = event_payload(line)
+                    && lock().receive(generation, frame_from(&payload, crate::hub::now_ms()))
+                {
+                    changed();
+                }
+                lock().generation == generation
+            })
+            .await;
+            if let Err(error) = followed
+                && lock().fail(generation, error)
+            {
+                changed();
+            }
+            crate::background::pause(RETRY).await;
+        }
+    });
+}
 
 #[cfg(not(target_family = "wasm"))]
 fn follow(source: Source, generation: u64) {
@@ -191,7 +215,7 @@ pub fn detections_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let video = backend.value_fields("video", "activeVideoSource,cameraUrls");
     let active = crate::read::integer(&video, "activeVideoSource").and_then(|index| usize::try_from(index).ok()).unwrap_or(0);
     let url = video.get("cameraUrls").and_then(Value::as_array).and_then(|urls| urls.get(active)).and_then(Value::as_str).unwrap_or_default().to_string();
-    let source = parse(&url, port).filter(|_| FOLLOWS);
+    let source = parse(&url, port).filter(|_| follows());
     let mut feed = lock();
     if feed.retarget(source.clone())
         && let Some(source) = source

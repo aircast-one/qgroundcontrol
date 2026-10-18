@@ -3,7 +3,7 @@ import { createDocument } from '@/kotlin/Platform';
 import { DEFAULT_GEOTAG_OUTPUT } from '@/ui/GeoTagRun';
 import { isGeoTagImage } from '@/ui/GeoTagView';
 
-const GEOTAG_CACHE = 'geotag';
+const GEOTAG_CACHE = 'Aircast/GeoTag';
 const MIME_TYPE_DIR = 'inode/directory';
 const OCTET_STREAM = 'application/octet-stream';
 const LOG_EXTENSIONS: ReadonlySet<string> = new Set(['ulg', 'bin']);
@@ -118,8 +118,8 @@ export const stageLog = async (source: File, name: string): Promise<string | nul
 export const stageImages = async (tree: GeoTagTree): Promise<readonly [string, number]> => {
   const dir = await stagingDir('images');
   const images = (await treeChildren(tree)).filter((it) => it.mime !== MIME_TYPE_DIR && isGeoTagImage(it.name));
-  const copied = await Promise.all(images.map(async (entry) => stageInto(await treeFile(tree, entry), dir, entry.name)));
-  return [dir.absolutePath, copied.filter((it) => it).length];
+  const copied = await images.reduce<Promise<number>>(async (count, entry) => (await count) + ((await stageInto(await treeFile(tree, entry), dir, entry.name)) ? 1 : 0), Promise.resolve(0));
+  return [dir.absolutePath, copied];
 };
 
 export const hasTaggedFolder = async (tree: GeoTagTree): Promise<boolean> =>

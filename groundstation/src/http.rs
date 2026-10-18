@@ -103,6 +103,11 @@ fn exchange(method: &str, url: &str, headers: &[(&str, &str)], body: Option<&[u8
 }
 
 #[cfg(target_family = "wasm")]
+pub fn send(method: &str, url: &str, headers: &[(&str, &str)], body: Option<&[u8]>, timeout: Duration) -> Result<(u16, Vec<u8>), String> {
+    exchange(method, url, headers, body, timeout)
+}
+
+#[cfg(target_family = "wasm")]
 pub fn get(url: &str, headers: &[(&str, &str)], timeout: Duration) -> Result<Vec<u8>, String> {
     match exchange("GET", url, headers, None, timeout)? {
         (status, bytes) if (200..300).contains(&status) => Ok(bytes),
@@ -154,6 +159,42 @@ pub async fn get_later(url: &str, headers: &[(String, String)], timeout: Duratio
     match send_later("GET", url, headers, None, timeout).await? {
         (status, bytes) if (200..300).contains(&status) => Ok(bytes),
         (status, _) => Err(format!("http status: {status}")),
+    }
+}
+
+#[cfg(target_family = "wasm")]
+pub async fn stream_lines(url: &str, limit: usize, mut line: impl FnMut(&str) -> bool) -> Result<usize, String> {
+    use wasm_bindgen::JsCast;
+    use wasm_bindgen_futures::JsFuture;
+    let failed = |error: wasm_bindgen::JsValue| thrown(&error).1;
+    let through = crate::device::proxy().filter(|_| crate::device::foreign(url));
+    let headers = web_sys::Headers::new().map_err(failed)?;
+    if through.is_some() {
+        headers.append(crate::device::PROXY_TARGET, url).map_err(failed)?;
+    }
+    let init = web_sys::RequestInit::new();
+    init.set_headers(&headers);
+    let scope: web_sys::WorkerGlobalScope = js_sys::global().unchecked_into();
+    let response: web_sys::Response = JsFuture::from(scope.fetch_with_str_and_init(through.as_deref().unwrap_or(url), &init)).await.map_err(failed)?.unchecked_into();
+    if !response.ok() {
+        return Err(format!("http status: {}", response.status()));
+    }
+    let reader: web_sys::ReadableStreamDefaultReader = response.body().ok_or("the answer has no body")?.get_reader().unchecked_into();
+    let mut pending = Vec::new();
+    let mut lines = 0;
+    loop {
+        let chunk = JsFuture::from(reader.read()).await.map_err(failed)?;
+        if js_sys::Reflect::get(&chunk, &"done".into()).ok().and_then(|done| done.as_bool()).unwrap_or(true) {
+            return Ok(lines);
+        }
+        let bytes = js_sys::Reflect::get(&chunk, &"value".into()).map(|value| js_sys::Uint8Array::new(&value).to_vec()).unwrap_or_default();
+        for text in crate::hostsocket::lines(&mut pending, &bytes, limit) {
+            lines += 1;
+            if !line(&text) {
+                let _ = reader.cancel();
+                return Ok(lines);
+            }
+        }
     }
 }
 
