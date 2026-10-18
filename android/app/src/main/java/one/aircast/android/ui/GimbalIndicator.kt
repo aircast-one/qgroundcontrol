@@ -10,6 +10,18 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
+import androidx.annotation.DrawableRes
+import androidx.compose.material3.Icon
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import one.aircast.android.R
+import one.aircast.android.bridge.offMainInOrder
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
@@ -225,7 +237,7 @@ internal fun gimbalSettingsBlocks(sections: List<SettingsSectionRows>, joystickB
     }
 
 @Composable
-private fun GimbalSettings() {
+internal fun GimbalSettings() {
     val joystick by qgcPath(JOYSTICK_VIEW)
     var reloads by remember { mutableIntStateOf(0) }
     var sections by remember { mutableStateOf(emptyList<SettingsSectionRows>()) }
@@ -253,6 +265,67 @@ internal fun onScreenGimbal(view: JSONObject?): OnScreenGimbal? =
     view?.takeIf { it.optBoolean("shown") }?.optJSONObject("onScreen")?.let {
         OnScreenGimbal(it.optBoolean("enabled"), it.optBoolean("clickAndDrag"))
     }
+
+private const val ON_SCREEN_SETTING = "settings.gimbalControllerSettings.enableOnScreenControl"
+private const val CLICK_AND_DRAG_SETTING = "settings.gimbalControllerSettings.clickAndDrag"
+
+internal enum class VideoGimbalMode(val label: String, @DrawableRes val icon: Int, val hint: String, val onScreen: Boolean, val clickAndDrag: Boolean) {
+    Drag("Drag to move", R.drawable.ic_pan_tool, "The camera follows your drag on the video.", onScreen = false, clickAndDrag = false),
+    Point("Tap to point", R.drawable.ic_ads_click, "The camera turns to where you tap on the video.", onScreen = true, clickAndDrag = false),
+    Hold("Hold and drag", R.drawable.ic_joystick, "Press, then drag away from that spot; the further you drag, the faster the camera turns.", onScreen = true, clickAndDrag = true),
+}
+
+internal fun videoGimbalMode(control: OnScreenGimbal): VideoGimbalMode = when {
+    !control.enabled -> VideoGimbalMode.Drag
+    control.clickAndDrag -> VideoGimbalMode.Hold
+    else -> VideoGimbalMode.Point
+}
+
+internal fun nextVideoGimbalMode(mode: VideoGimbalMode): VideoGimbalMode = VideoGimbalMode.entries[(mode.ordinal + 1) % VideoGimbalMode.entries.size]
+
+private fun chooseVideoGimbalMode(mode: VideoGimbalMode) = offMainInOrder {
+    Qgc.set(ON_SCREEN_SETTING, mode.onScreen)
+    Qgc.set(CLICK_AND_DRAG_SETTING, mode.clickAndDrag)
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+internal fun GimbalVideoMode() {
+    val view by qgcPath(GIMBAL_INDICATOR_PATH)
+    val control = remember(view) { onScreenGimbal(view) } ?: return
+    val current = videoGimbalMode(control)
+    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        Text("On the video", style = MaterialTheme.typography.titleSmall)
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            VideoGimbalMode.entries.map { mode ->
+                FilterChip(selected = current == mode, onClick = { chooseVideoGimbalMode(mode) }, label = { Text(mode.label) })
+            }
+        }
+        Text(current.hint, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
+@Composable
+internal fun GimbalModeSwitch(modifier: Modifier = Modifier) {
+    val view by qgcPath(GIMBAL_INDICATOR_PATH)
+    val control = remember(view) { onScreenGimbal(view) } ?: return
+    val current = videoGimbalMode(control)
+    val next = nextVideoGimbalMode(current)
+    Row(
+        modifier
+            .videoControl()
+            .clip(CircleShape)
+            .background(Color.Black.copy(alpha = 0.6f))
+            .clickable(onClickLabel = "Switch to ${next.label}") { chooseVideoGimbalMode(next) }
+            .semantics { contentDescription = "Video gimbal mode, ${current.label}" }
+            .padding(start = 8.dp, end = 12.dp, top = 6.dp, bottom = 6.dp),
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Icon(painterResource(current.icon), null, Modifier.size(18.dp), tint = Color.White)
+        Text(current.label, style = MaterialTheme.typography.labelMedium, color = Color.White)
+    }
+}
 
 internal fun aimFraction(delta: Float, width: Int): Float = delta / (maxOf(width, 1) / 2f)
 

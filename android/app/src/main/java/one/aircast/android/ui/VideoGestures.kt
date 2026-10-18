@@ -88,11 +88,23 @@ private tailrec suspend fun AwaitPointerEventScope.follow(pointer: PointerId, la
     return follow(pointer, change.position, pass, onMove)
 }
 
+private val controlPress = java.util.concurrent.atomic.AtomicReference<PointerId?>(null)
+
+internal fun Modifier.videoControl(): Modifier = pointerInput(Unit) {
+    awaitEachGesture { controlPress.set(awaitFirstDown(requireUnconsumed = false, pass = PointerEventPass.Initial).id) }
+}
+
+private suspend fun AwaitPointerEventScope.onControl(pointer: PointerId): Boolean {
+    awaitPointerEvent(PointerEventPass.Final)
+    return controlPress.get() == pointer
+}
+
 internal fun Modifier.videoGestures(handlers: VideoGestureHandlers, pass: PointerEventPass = PointerEventPass.Initial): Modifier = pointerInput(Unit) {
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false, pass = pass)
         if (down.isConsumed) return@awaitEachGesture
         val owned = handlers.owned()
+        if (!owned && onControl(down.id)) return@awaitEachGesture
         if (owned) down.consume()
         val press = withTimeoutOrNull(viewConfiguration.longPressTimeoutMillis) { pressOutcome(down.id, down.position, owned, pass) }
         when {

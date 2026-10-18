@@ -28,4 +28,16 @@ class GimbalTakeControlTest {
         assertEquals(0.5f, aimFraction(100f, 400), 0f)
         assertEquals(-0.25f, aimFraction(-50f, 400), 0f)
     }
+
+    @Test
+    fun `each way a drag on the video can steer the gimbal maps to its two settings and back`() {
+        assertEquals(VideoGimbalMode.entries, VideoGimbalMode.entries.map { videoGimbalMode(OnScreenGimbal(it.onScreen, it.clickAndDrag)) })
+        assertEquals(VideoGimbalMode.Drag, videoGimbalMode(OnScreenGimbal(enabled = false, clickAndDrag = true)))
+        assertEquals(listOf("Drag to move", "Tap to point", "Hold and drag"), VideoGimbalMode.entries.map { it.label })
+    }
+
+    @Test
+    fun `the switch on the video steps through every mode and back to the first`() {
+        assertEquals(listOf(VideoGimbalMode.Point, VideoGimbalMode.Hold, VideoGimbalMode.Drag), VideoGimbalMode.entries.map(::nextVideoGimbalMode))
+    }
 }

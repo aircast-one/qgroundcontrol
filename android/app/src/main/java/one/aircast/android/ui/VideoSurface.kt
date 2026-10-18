@@ -205,6 +205,7 @@ private fun MainPane(video: VideoReading?, synthetic: Boolean, modifier: Modifie
             if (expanded) VideoStatsPill(Modifier.fillMaxSize())
         }
         }
+        if (expanded && video?.decoding == true) GimbalModeSwitch(Modifier.align(Alignment.BottomEnd).padding(AircastSpace.s2))
 
         if (video?.decoding != true && synthetic) {
             SyntheticView(Modifier.fillMaxSize(), aimable = expanded, standIn = video?.standIn?.takeIf { expanded })

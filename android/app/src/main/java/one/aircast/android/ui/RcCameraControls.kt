@@ -208,6 +208,7 @@ fun RcCameraControls(modifier: Modifier = Modifier, tiltSlider: Boolean = true) 
     val target = recenterTarget(syntheticAims, syntheticTilt, syntheticPan, gimbal)
     val onRecenter = { aimed: RecenterTarget -> { recenter(aimed) { gimbalRefused = it } }.takeIf { target == aimed } }
     var options by remember { mutableStateOf(false) }
+    var gimbalSettings by remember { mutableStateOf(false) }
     LaunchedEffect(gimbalRefused) {
         if (gimbalRefused != null) {
             kotlinx.coroutines.delay(GIMBAL_REFUSAL_MS)
@@ -265,8 +266,15 @@ fun RcCameraControls(modifier: Modifier = Modifier, tiltSlider: Boolean = true) 
                             }) { Text("Recenter") }
                         }
                     }
+                    if (gimbal != null) GimbalVideoMode()
                     gimbalRefused?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+                    if (gimbal != null) TextButton(onClick = { options = false; gimbalSettings = true }) { Text("Gimbal settings") }
                 }
+            }
+        }
+        if (gimbalSettings) {
+            AircastSheet(onDismissRequest = { gimbalSettings = false }) {
+                GimbalSettings()
             }
         }
         gimbalRefused?.let { Text(it, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.error) }
