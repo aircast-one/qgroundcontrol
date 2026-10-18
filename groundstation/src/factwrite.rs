@@ -150,16 +150,22 @@ fn enum_index_refusal(fact: &Value, index: Option<i64>) -> Option<String> {
 }
 
 fn write_enum_index(backend: &dyn Backend, path: &str, value: &str) -> Value {
-    let fact = backend.value(path.strip_suffix(ENUM_INDEX).unwrap_or(path));
-    if !is_fact(&fact) {
+    let fact_path = path.strip_suffix(ENUM_INDEX).unwrap_or(path);
+    let bare = backend.value(fact_path);
+    if !is_fact(&bare) {
         return object(&backend.set(path, value));
     }
-    if fact.get("readOnly").and_then(Value::as_bool) == Some(true) {
+    if bare.get("readOnly").and_then(Value::as_bool) == Some(true) {
         return json!({ "ok": false, "result": false, "refusal": "readOnly", "reason": "This setting cannot be changed." });
     }
+    let fact = crate::settings::with_choices(backend, &bare);
     let index = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value")?.as_i64());
     if let Some(reason) = enum_index_refusal(&fact, index) {
         return json!({ "ok": false, "result": false, "refusal": "notAnOption", "reason": reason });
+    }
+    if bare.get("enumStrings").and_then(Value::as_array).is_none_or(Vec::is_empty) {
+        let offered = index.and_then(|i| usize::try_from(i).ok()).and_then(|i| fact.get("enumValues")?.get(i).cloned());
+        return write(backend, fact_path, &json!({ "value": offered }).to_string());
     }
     let answered = flag(&object(&backend.set(path, value)), "ok");
     if answered && index != fact.get("enumIndex").and_then(Value::as_i64) {
@@ -429,6 +435,39 @@ mod tests {
         assert_eq!(write(&units, path, r#"{"value":9}"#)["reason"], "Choose one of the 2 options.");
         assert_eq!(write(&units, path, r#"{"value":-1}"#)["refusal"], "notAnOption");
         assert_eq!(units.0.borrow().as_slice(), &[path.to_string()], "only the real choice was written");
+    }
+
+    #[test]
+    fn a_port_picked_by_index_is_written_as_the_port_the_settings_page_offered() {
+        struct Ports(RefCell<Vec<(String, String)>>);
+        impl Backend for Ports {
+            fn get(&self, p: &str) -> String {
+                match p {
+                    "settings.autoConnectSettings.usbRadioPort" => json!({ "kind": "fact", "name": "usbRadioPort", "value": "", "typeIsString": true, "readOnly": false }),
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn get_fields(&self, p: &str, _f: &str) -> String {
+                match p {
+                    "links" => json!({ "kind": "object", "serialPorts": ["webserial-0"], "serialPortStrings": ["USB serial 0483:5740 (webserial-0)"] }).to_string(),
+                    _ => String::new(),
+                }
+            }
+            fn set(&self, p: &str, v: &str) -> String {
+                self.0.borrow_mut().push((p.to_string(), v.to_string()));
+                json!({ "ok": true }).to_string()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let ports = Ports(RefCell::new(Vec::new()));
+        let path = "settings.autoConnectSettings.usbRadioPort.enumIndex";
+        assert_eq!(write(&ports, path, r#"{"value":1}"#)["ok"], true, "a head writes the row's enumIndex; the fact itself has no enum, its choices are the ports found");
+        assert_eq!(write(&ports, path, r#"{"value":0}"#)["ok"], true);
+        assert_eq!(write(&ports, path, r#"{"value":2}"#)["reason"], "Choose one of the 2 options.");
+        let written: Vec<(String, Value)> = ports.0.borrow().iter().map(|(p, v)| (p.clone(), serde_json::from_str::<Value>(v).unwrap()["value"].clone())).collect();
+        assert_eq!(written, vec![("settings.autoConnectSettings.usbRadioPort".to_string(), json!("webserial-0")), ("settings.autoConnectSettings.usbRadioPort".to_string(), json!(""))]);
     }
 
     #[test]

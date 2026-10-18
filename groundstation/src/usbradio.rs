@@ -163,7 +163,7 @@ fn radio() -> MutexGuard<'static, Radio> {
     RADIO.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-fn wanted() -> Option<String> {
+pub fn wanted() -> Option<String> {
     crate::settingsstore::raw_setting(PORT_SETTING).and_then(|value| value.as_str().map(str::trim).map(str::to_string)).filter(|port| !port.is_empty())
 }
 
@@ -211,7 +211,7 @@ fn advance(fresh: Option<Frame>) {
     });
     step.sends.iter().for_each(|((id, link), channels)| crate::hub::send_for(*id, *link, &[Outbound::RcOverride { target: (*id, component(standby_now)), channels: *channels }]));
     if let Some((vehicle, _)) = step.handed_back {
-        crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &why_handed_back(live, vehicle));
+        crate::noticeboard::post_from_vehicle(crate::noticeboard::BRIEF, &why_handed_back(live, vehicle));
     }
     answer(now, live);
 }

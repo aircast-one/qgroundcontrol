@@ -702,17 +702,44 @@ fn add_dynamic(entry: &Entry) {
     }
 }
 
+fn owned_ports() -> Vec<String> {
+    let nmea = match crate::nmea::wanted() {
+        Some(crate::nmea::Wanted::Serial(port, _)) => Some(port),
+        _ => None,
+    };
+    nmea.into_iter().chain(crate::usbradio::wanted()).collect()
+}
+
+pub fn held_by_autoconnect(live: &[(crate::transport::LinkId, LinkConfig)], dynamic: &[String], owned: &[String]) -> Vec<crate::transport::LinkId> {
+    live.iter()
+        .filter(|(_, c)| dynamic.contains(&c.name))
+        .filter(|(_, c)| matches!(&c.kind, Kind::Serial { port_name, .. } if owned.iter().any(|o| o.trim() == port_name.trim())))
+        .map(|(id, _)| *id)
+        .collect()
+}
+
+fn release_owned_ports(live: &[(crate::transport::LinkId, LinkConfig)], owned: &[String]) {
+    let dynamic: Vec<String> = DYNAMIC.lock().unwrap_or_else(PoisonError::into_inner).iter().map(|e| e.config.name.clone()).collect();
+    let held = held_by_autoconnect(live, &dynamic, owned);
+    let hooks = *HOOKS.lock().unwrap_or_else(PoisonError::into_inner);
+    held.iter().for_each(|id| {
+        if let Some((_, close)) = hooks {
+            close(*id);
+        }
+    });
+    let names: Vec<String> = live.iter().filter(|(id, _)| held.contains(id)).map(|(_, c)| c.name.clone()).collect();
+    DYNAMIC.lock().unwrap_or_else(PoisonError::into_inner).retain(|e| !names.contains(&e.config.name));
+}
+
 fn autoconnect_serial(live: &[(crate::transport::LinkId, LinkConfig)]) {
+    let owned = owned_ports();
+    release_owned_ports(live, &owned);
     let connected: Vec<String> = live.iter().filter_map(|(_, c)| match &c.kind {
         Kind::Serial { port_name, .. } => Some(port_name.clone()),
         _ => None,
     }).collect();
-    let nmea = match crate::nmea::wanted() {
-        Some(crate::nmea::Wanted::Serial(port, _)) => port,
-        _ => String::new(),
-    };
     let host = crate::autoconnect::Host { android: cfg!(target_os = "android"), windows: cfg!(target_os = "windows") };
-    let boards = BOARDS.as_ref().map(|boards| SERIAL_AUTO.lock().unwrap_or_else(PoisonError::into_inner).serial(boards, &autoconnect_settings(), &host, serial_ports(), &connected, &nmea));
+    let boards = BOARDS.as_ref().map(|boards| SERIAL_AUTO.lock().unwrap_or_else(PoisonError::into_inner).serial(boards, &autoconnect_settings(), &host, serial_ports(), &connected, &owned));
     let actions = crate::autoconnect::built_in(crate::hostdevice::built_in_radio(), &connected).into_iter().chain(boards.unwrap_or_default());
     actions.for_each(|action| match action {
         crate::autoconnect::Action::OpenSerial { name, port, baud, usb_direct } => {
@@ -875,6 +902,16 @@ mod tests {
         assert_eq!(hosts(&edited(&bare, "addHost", &serde_json::json!("10.0.0.2:14550")).unwrap()).len(), 2, "a host already listed is not added twice");
         assert_eq!(hosts(&edited(&bare, "removeHost", &serde_json::json!("192.168.4.1:14555")).unwrap()), [("10.0.0.2".to_string(), 14550)]);
         assert!(edited(&udp, "addHost", &serde_json::json!("a:b:c")).is_none());
+    }
+
+    #[test]
+    fn an_autoconnect_link_gives_up_a_port_another_input_owns_and_a_saved_link_does_not() {
+        let serial = |name: &str, port: &str| LinkConfig { name: name.into(), auto_connect: true, high_latency: false, kind: Kind::Serial { baud: 115200, data_bits: 8, flow_control: 0, stop_bits: 1, parity: 0, port_name: port.into(), port_display_name: port.into() } };
+        let live = vec![(1, serial("ArduPilot ChibiOS on radio (AutoConnect)", "webserial-0")), (2, serial("Telemetry", "webserial-1")), (3, serial("ArduPilot ChibiOS on fc (AutoConnect)", "webserial-2"))];
+        let dynamic = vec!["ArduPilot ChibiOS on radio (AutoConnect)".to_string(), "ArduPilot ChibiOS on fc (AutoConnect)".to_string()];
+        assert_eq!(held_by_autoconnect(&live, &dynamic, &["webserial-0".into()]), vec![1]);
+        assert!(held_by_autoconnect(&live, &dynamic, &["webserial-1".into()]).is_empty(), "a link the pilot saved on that port is theirs to close");
+        assert!(held_by_autoconnect(&live, &dynamic, &[]).is_empty());
     }
 
     #[test]

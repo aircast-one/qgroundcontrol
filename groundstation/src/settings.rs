@@ -145,7 +145,7 @@ fn port_choices(backend: &dyn Backend, fact: &Value, off: Option<&str>) -> Value
     choices_json(fact, labels, raws)
 }
 
-fn with_choices(backend: &dyn Backend, fact: &Value) -> Value {
+pub(crate) fn with_choices(backend: &dyn Backend, fact: &Value) -> Value {
     match fact.get("name").and_then(Value::as_str) {
         Some("autoConnectNmeaPort") => port_choices(backend, fact, None),
         Some("usbRadioPort") => port_choices(backend, fact, Some("Off")),

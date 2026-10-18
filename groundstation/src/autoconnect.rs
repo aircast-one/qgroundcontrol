@@ -85,13 +85,13 @@ impl AutoConnect {
         .collect()
     }
 
-    pub fn serial(&mut self, table: &BoardTable, settings: &Settings, host: &Host, ports: Vec<PortInfo>, connected_ports: &[String], nmea_port: &str) -> Vec<Action> {
+    pub fn serial(&mut self, table: &BoardTable, settings: &Settings, host: &Host, ports: Vec<PortInfo>, connected_ports: &[String], owned_ports: &[String]) -> Vec<Action> {
         let ports = filter_composite(ports);
         let current: BTreeSet<String> = ports.iter().map(|p| p.system_location.clone()).collect();
         let mut actions = Vec::new();
         for port in &ports {
             let location = port.system_location.trim().to_string();
-            if location == nmea_port.trim() {
+            if owned_ports.iter().any(|owned| owned.trim() == location) {
                 continue;
             }
             let Some((board, name)) = table.classify(port, host.android) else { continue };
@@ -147,19 +147,19 @@ mod tests {
         let host = Host { android: false, windows: false };
         let mut auto = AutoConnect::default();
         let pixhawk = || vec![port("/dev/cu.usbmodem1", 9900, 17, "A1", "PX4 FMU v2.x")];
-        assert!(auto.serial(&table, &settings(), &host, pixhawk(), &[], "").is_empty());
-        let second = auto.serial(&table, &settings(), &host, pixhawk(), &[], "");
+        assert!(auto.serial(&table, &settings(), &host, pixhawk(), &[], &[]).is_empty());
+        let second = auto.serial(&table, &settings(), &host, pixhawk(), &[], &[]);
         assert_eq!(second, vec![Action::OpenSerial { name: "PX4 FMU V2 on cu.usbmodem1 (AutoConnect)".into(), port: "/dev/cu.usbmodem1".into(), baud: 115200, usb_direct: true }]);
-        assert!(auto.serial(&table, &settings(), &host, pixhawk(), &["/dev/cu.usbmodem1".into()], "").is_empty());
+        assert!(auto.serial(&table, &settings(), &host, pixhawk(), &["/dev/cu.usbmodem1".into()], &[]).is_empty());
         let windows = Host { android: false, windows: true };
         let mut slow = AutoConnect::default();
-        let passes: Vec<usize> = (0..7).map(|_| slow.serial(&table, &settings(), &windows, pixhawk(), &[], "").len()).collect();
+        let passes: Vec<usize> = (0..7).map(|_| slow.serial(&table, &settings(), &windows, pixhawk(), &[], &[]).len()).collect();
         assert_eq!(passes, vec![0, 0, 0, 0, 0, 0, 1]);
         let sik = table.boards.iter().find(|(_, _, b, _)| *b == BoardType::SiKRadio).unwrap().clone();
         let radio = || vec![port("/dev/cu.usbserial", sik.0, sik.1.max(1), "R1", "")];
         let mut auto = AutoConnect::default();
-        auto.serial(&table, &settings(), &host, radio(), &[], "");
-        assert!(matches!(auto.serial(&table, &settings(), &host, radio(), &[], "").as_slice(), [Action::OpenSerial { baud: 57600, usb_direct: false, .. }]));
+        auto.serial(&table, &settings(), &host, radio(), &[], &[]);
+        assert!(matches!(auto.serial(&table, &settings(), &host, radio(), &[], &[]).as_slice(), [Action::OpenSerial { baud: 57600, usb_direct: false, .. }]));
     }
 
     #[test]
@@ -168,11 +168,24 @@ mod tests {
         let host = Host { android: false, windows: false };
         let mut auto = AutoConnect::default();
         let bl = vec![port("/dev/cu.usbmodem1", 9900, 17, "A1", "PX4 BL FMU v2.x")];
-        assert!(auto.serial(&table, &settings(), &host, bl.clone(), &[], "").is_empty() && auto.serial(&table, &settings(), &host, bl, &[], "").is_empty());
+        assert!(auto.serial(&table, &settings(), &host, bl.clone(), &[], &[]).is_empty() && auto.serial(&table, &settings(), &host, bl, &[], &[]).is_empty());
         let off = Settings { pixhawk: false, ..settings() };
         let pixhawk = vec![port("/dev/cu.usbmodem1", 9900, 17, "A1", "PX4 FMU v2.x")];
-        assert!(auto.serial(&table, &off, &host, pixhawk.clone(), &[], "").is_empty() && auto.serial(&table, &off, &host, pixhawk.clone(), &[], "").is_empty());
-        assert!(auto.serial(&table, &settings(), &host, pixhawk.clone(), &[], "/dev/cu.usbmodem1").is_empty() && auto.serial(&table, &settings(), &host, pixhawk, &[], "/dev/cu.usbmodem1 ").is_empty());
+        assert!(auto.serial(&table, &off, &host, pixhawk.clone(), &[], &[]).is_empty() && auto.serial(&table, &off, &host, pixhawk.clone(), &[], &[]).is_empty());
+        assert!(auto.serial(&table, &settings(), &host, pixhawk.clone(), &[], &["/dev/cu.usbmodem1".into()]).is_empty() && auto.serial(&table, &settings(), &host, pixhawk, &[], &["/dev/cu.usbmodem1 ".into()]).is_empty());
+    }
+
+    #[test]
+    fn an_edgetx_radio_reads_as_an_ardupilot_board_and_is_left_alone_once_it_is_the_radio_on_usb() {
+        let table = BoardTable::bundled().unwrap();
+        let host = Host { android: false, windows: false };
+        let radio = || vec![port("/dev/cu.usbmodem00000000001B1", 1155, 22336, "", "")];
+        let mut grabbing = AutoConnect::default();
+        grabbing.serial(&table, &settings(), &host, radio(), &[], &[]);
+        assert!(matches!(grabbing.serial(&table, &settings(), &host, radio(), &[], &[]).as_slice(), [Action::OpenSerial { .. }]), "an EdgeTX radio in USB-VCP mode shares 0483:5740 with ArduPilot ChibiOS boards");
+        let owned = ["/dev/cu.usbmodem00000000001B1".to_string()];
+        let mut leaving = AutoConnect::default();
+        assert!(leaving.serial(&table, &settings(), &host, radio(), &[], &owned).is_empty() && leaving.serial(&table, &settings(), &host, radio(), &[], &owned).is_empty());
     }
 
     #[test]
@@ -185,10 +198,10 @@ mod tests {
         let gps = || vec![port("/dev/cu.gps", rtk.0, rtk.1.max(1), "G", "")];
         let host = Host { android: false, windows: false };
         let mut auto = AutoConnect::default();
-        auto.serial(&table, &settings(), &host, gps(), &[], "");
-        assert_eq!(auto.serial(&table, &settings(), &host, gps(), &[], ""), vec![Action::ConnectRtk { port: "/dev/cu.gps".into(), name: rtk.3.clone() }]);
-        assert!(auto.serial(&table, &settings(), &host, gps(), &[], "").is_empty());
-        assert_eq!(auto.serial(&table, &settings(), &host, Vec::new(), &[], ""), vec![Action::DisconnectRtk]);
+        auto.serial(&table, &settings(), &host, gps(), &[], &[]);
+        assert_eq!(auto.serial(&table, &settings(), &host, gps(), &[], &[]), vec![Action::ConnectRtk { port: "/dev/cu.gps".into(), name: rtk.3.clone() }]);
+        assert!(auto.serial(&table, &settings(), &host, gps(), &[], &[]).is_empty());
+        assert_eq!(auto.serial(&table, &settings(), &host, Vec::new(), &[], &[]), vec![Action::DisconnectRtk]);
         assert_eq!(auto.network(&settings(), &[]), vec![Action::OpenUdp { name: DEFAULT_UDP_LINK_NAME.into() }]);
         assert!(auto.network(&settings(), &[DEFAULT_UDP_LINK_NAME.to_string()]).is_empty());
     }
