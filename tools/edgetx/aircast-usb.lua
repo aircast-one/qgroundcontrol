@@ -72,14 +72,14 @@ end
 local function listen()
   if not serialRead then return end
   heard = heard .. (serialRead() or "")
-  local line = heard:match("^(.-)\n")
+  local line = string.match(heard, "^(.-)\n")
   while line do
-    heard = heard:sub(#line + 2)
-    local state, vehicle = line:match("^@(%a),?(%d*)")
+    heard = string.sub(heard, #line + 2)
+    local state, vehicle = string.match(line, "^@(%a),?(%d*)")
     if state and SAYS[state] then
       app.state, app.vehicle, app.at = state, vehicle, now()
     end
-    line = heard:match("^(.-)\n")
+    line = string.match(heard, "^(.-)\n")
   end
   if #heard > 256 then heard = "" end
 end

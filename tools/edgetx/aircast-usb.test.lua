@@ -1,11 +1,13 @@
-local here = arg[0]:match("(.*/)") or "./"
+local here = string.match(arg[0], "(.*/)") or "./"
 
 local source = assert(io.open(here .. "aircast-usb.lua")):read("*a")
 for _, operator in ipairs({ "//", "&", "<<", ">>" }) do
-  assert(not source:find(operator, 1, true), "EdgeTX 2.9 runs Lua 5.2, which has no " .. operator .. " operator")
+  assert(not string.find(source, operator, 1, true), "EdgeTX 2.9 runs Lua 5.2, which has no " .. operator .. " operator")
 end
 
 local EXIT = 1537
+
+getmetatable("").__index = nil
 
 local function radio(screen)
   local sent, drawn, pages = {}, {}, {}
@@ -62,8 +64,8 @@ for _, screen in ipairs({ { w = 480, h = 272 }, { w = 480, h = 320, lvgl = true 
   assert(r.script.run() == 0)
   assert(#r.sent == 20, "each run streams 20 frames")
   local values = {}
-  for value in r.sent[1]:gmatch("(-?%d+),") do values[#values + 1] = tonumber(value) end
-  assert(r.sent[1]:sub(1, 1) == "$" and r.sent[1]:sub(-2) == "\r\n", "the R2D2 line format the app and R2D2 both read")
+  for value in string.gmatch(r.sent[1], "(-?%d+),") do values[#values + 1] = tonumber(value) end
+  assert(string.sub(r.sent[1], 1, 1) == "$" and string.sub(r.sent[1], -2) == "\r\n", "the R2D2 line format the app and R2D2 both read")
   assert(#values == 24 and values[1] == -1024 and values[2] == 1024 and values[4] == -512 and values[11] == -1024 and values[18] == 1024)
 
   if screen.w == 480 then
