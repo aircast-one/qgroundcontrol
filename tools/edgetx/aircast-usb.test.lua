@@ -26,7 +26,7 @@ local function radio(screen)
     usbConnected = function() return cable end,
     model = {
       getInfo = function() return { name = "VAMPIRE" } end,
-      getMix = function(channel) return channel < 4 and { name = "m" .. channel, source = channel } or nil end,
+      getMix = function(channel) return channel < (screen.mixes or 4) and { name = "m" .. channel, source = channel } or nil end,
     },
     lcd = setmetatable({ RGB = function() return 0 end, clear = function() for k in pairs(drawn) do drawn[k] = nil end end },
       { __index = function(_, name) return function(_, _, text) drawn[#drawn + 1] = { name, text } end end }),
@@ -70,7 +70,7 @@ for _, screen in ipairs({ { w = 480, h = 272 }, { w = 480, h = 320, lvgl = true 
 
   if screen.w == 480 then
     assert(shows(r, "Waiting for the Aircast app"), "silence blames nothing it cannot see")
-    assert(shows(r, "CH1  src0   988") and shows(r, "CH4  src3  1244"), "each row names the channel the app receives, then the stick on it")
+    assert(shows(r, "CH1  src0 m0      988") and shows(r, "CH4  src3 m3     1244"), "each row names the channel the app receives, the stick on it and the mix's name")
     assert(shows(r, "+20 unused channels") and not shows(r, "CH24"), "only the channels this model mixes are listed")
     assert(shows(r, "RTN: stop sending sticks and exit"), "the way out is on the screen")
 
@@ -91,6 +91,10 @@ for _, screen in ipairs({ { w = 480, h = 272 }, { w = 480, h = 320, lvgl = true 
     assert(shows(r, "AIRCAST"))
   end
 end
+
+local full = radio({ w = 480, h = 272, mixes = 24 })
+full.script.run(0)
+assert(shows(full, "CH24 src23 m23    1500") and not shows(full, "+0 unused channels"), "a model mixing all 24 channels shows every one")
 
 local quiet = radio({ w = 480, h = 272 })
 quiet.script.run(0)

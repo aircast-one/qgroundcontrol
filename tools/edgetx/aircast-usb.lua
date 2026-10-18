@@ -7,6 +7,7 @@ local UPDATE_INTERVAL_TICKS = 10
 local APP_SILENT_TICKS = 150
 local CONFIRM_TICKS = 300
 local BAR_MAX_W = 60
+local COLUMN_ROWS = 12
 local EXIT_HINT = "RTN: stop sending sticks and exit"
 local CONFIRM_HINT = "Stop sending sticks? RTN again to exit"
 local NO_CABLE = "USB cable not connected"
@@ -123,12 +124,11 @@ local function pwm(i)
 end
 
 local function channelText(i)
-  return string.format("CH%-2d %-5s %4d", i, mixesInfo[i].src, pwm(i))
+  return string.format("CH%-2d %-4s %-6s %4d", i, mixesInfo[i].src, mixesInfo[i].name, pwm(i))
 end
 
-local function afterList()
-  local shown = math.min(#used, 16) + 1
-  return (shown <= 8) and 1 or 2, (shown <= 8) and shown or (shown - 8)
+local function place(slot)
+  return (slot <= COLUMN_ROWS) and 1 or 2, (slot <= COLUMN_ROWS) and slot or (slot - COLUMN_ROWS)
 end
 
 local function unusedText()
@@ -175,17 +175,16 @@ local function drawLarge()
   lcd.drawText(170, 6, modelInfo.name, MIDSIZE + color.foreground)
   lcd.drawText(380, 6, string.format("%.2fV", battVolt), MIDSIZE + color.foreground)
   lcd.drawText(10, 36, said, MIDSIZE + (ok and color.good or color.warning))
-  for slot = 1, math.min(#used, 16) do
+  for slot = 1, #used do
     local i = used[slot]
-    local colBase = (slot <= 8) and 10 or 245
-    local row = (slot <= 8) and slot or (slot - 8)
-    local y = 46 + row * 22
+    local column, row = place(slot)
+    local colBase = column == 1 and 10 or 245
+    local y = 50 + row * 16
     lcd.drawText(colBase, y, channelText(i), SMLSIZE + color.foreground)
-    lcd.drawFilledRectangle(colBase + 130, y + 4, math.floor((channelValues[i] + 1024) * 100 / 2048) + 1, 6, color.primary)
+    lcd.drawFilledRectangle(colBase + 170, y + 4, math.floor((channelValues[i] + 1024) * 55 / 2048) + 1, 6, color.primary)
   end
-  local column, row = afterList()
-  lcd.drawText(column == 1 and 10 or 245, 46 + row * 22, unusedText(), SMLSIZE + color.muted)
-  lcd.drawText(10, 250, hint(), SMLSIZE + (confirming() and color.warning or color.muted))
+  lcd.drawText(10, 256, hint(), SMLSIZE + (confirming() and color.warning or color.muted))
+  lcd.drawText(330, 256, unusedText(), SMLSIZE + color.muted)
 end
 
 local function buildLvglUI()
@@ -203,10 +202,10 @@ local function buildLvglUI()
     text = function() return string.format("%.1fV", battVolt) end,
   })
 
-  for slot = 1, math.min(#used, 16) do
+  for slot = 1, #used do
     local i = used[slot]
-    local colBase = (slot <= 8) and 0 or 230
-    local row = (slot <= 8) and slot or (slot - 8)
+    local column, row = place(slot)
+    local colBase = column == 1 and 0 or 230
     local yOfs = 10 + row * 24
 
     pg:label({ x = colBase, y = yOfs, font = SMLSIZE,
@@ -222,9 +221,9 @@ local function buildLvglUI()
       end,
     })
   end
-  local column, row = afterList()
+  local column, row = place(#used + 1)
   pg:label({ x = column == 1 and 0 or 230, y = 10 + row * 24, font = SMLSIZE, color = color.muted, text = unusedText() })
-  pg:label({ x = 0, y = 10 + 10 * 24, font = SMLSIZE, text = hint })
+  pg:label({ x = 0, y = 10 + (COLUMN_ROWS + 2) * 24, font = SMLSIZE, text = hint })
 end
 
 local function init()
