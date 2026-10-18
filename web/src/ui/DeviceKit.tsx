@@ -240,6 +240,9 @@ export const DeviceSwitchRow = ({
   on,
   off,
   success = '',
+  offSuccess = success,
+  enabled = true,
+  confirmOn = null,
 }: {
   title: string;
   detail?: string;
@@ -247,13 +250,16 @@ export const DeviceSwitchRow = ({
   on: DeviceRequest;
   off: DeviceRequest;
   success?: string;
+  offSuccess?: string;
+  enabled?: boolean;
+  confirmOn?: ActionConfirm | null;
 }) => {
   const action = useDeviceAction();
   const [pending, setPending] = useState<boolean | null>(null);
-  const shown = pending ?? checked;
+  const [asking, setAsking] = useState(false);
   const flip = (next: boolean) => {
     setPending(next);
-    void action.run(next ? on : off, success).then(() => setPending(null));
+    void action.run(next ? on : off, next ? success : offSuccess).then(() => setPending(null));
   };
   return (
     <>
@@ -266,12 +272,86 @@ export const DeviceSwitchRow = ({
             </Text>
           ) : null}
         </div>
-        <Switch checked={shown} enabled={!action.busy} label={title} onCheckedChange={flip} />
+        <Switch checked={pending ?? checked} enabled={enabled && !action.busy} label={title} onCheckedChange={(next) => (next && confirmOn !== null ? setAsking(true) : flip(next))} />
       </div>
       <RefusalText refusal={action.refusal} />
+      {asking && confirmOn !== null ? <ConfirmDialog {...confirmOn} onConfirm={() => flip(true)} onDismiss={() => setAsking(false)} /> : null}
     </>
   );
 };
+
+export const SecretField = ({
+  label,
+  value,
+  placeholder,
+  isError = false,
+  supportingText,
+  onValueChange,
+}: {
+  label: string;
+  value: string;
+  placeholder?: string;
+  isError?: boolean;
+  supportingText?: string;
+  onValueChange: (value: string) => void;
+}) => {
+  const [shown, setShown] = useState(false);
+  return (
+    <OutlinedTextField
+      label={label}
+      ariaLabel={label}
+      value={value}
+      placeholder={placeholder}
+      keyboardType={shown ? 'text' : 'password'}
+      autoCorrect={false}
+      isError={isError}
+      supportingText={supportingText}
+      onValueChange={onValueChange}
+      trailingIcon={
+        <IconButton label={shown ? `Hide ${label}` : `Show ${label}`} onClick={() => setShown(!shown)}>
+          <MaterialIcon name={shown ? 'visibility_off' : 'visibility'} />
+        </IconButton>
+      }
+    />
+  );
+};
+
+export type LinkLook = 'filled' | 'tonal' | 'outlined' | 'text';
+
+const LINK_LOOKS: Readonly<Record<LinkLook, string>> = {
+  filled: 'bg-primary px-6 text-on-primary hover:brightness-110',
+  tonal: 'bg-secondary-container px-6 text-on-secondary-container hover:brightness-110',
+  outlined: 'border border-outline px-6 text-primary hover:bg-[color-mix(in_srgb,var(--md-primary)_8%,transparent)]',
+  text: 'px-3 text-primary hover:bg-[color-mix(in_srgb,var(--md-primary)_8%,transparent)]',
+};
+
+export const LinkButton = ({
+  href,
+  children,
+  look = 'tonal',
+  external = false,
+  download = false,
+  title,
+}: {
+  href: string;
+  children: ReactNode;
+  look?: LinkLook;
+  external?: boolean;
+  download?: boolean;
+  title?: string;
+}) => (
+  <a
+    href={href}
+    target={external ? '_blank' : undefined}
+    rel={external ? 'noopener noreferrer' : undefined}
+    download={download ? '' : undefined}
+    title={title}
+    className={`inline-flex h-10 select-none items-center justify-center gap-2 rounded-full text-label-large no-underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--md-primary)] ${LINK_LOOKS[look]}`}
+  >
+    {children}
+    {external ? <MaterialIcon name="open_in_new" size={18} /> : null}
+  </a>
+);
 
 export const DeviceSelect = ({ label, value, options, onPick, enabled = true }: { label: string; value: string; options: readonly DeviceOption[]; onPick: (value: string) => void; enabled?: boolean }) => {
   const [open, setOpen] = useState(false);
@@ -422,7 +502,19 @@ export const DeviceChart = ({ chart }: { chart: DeviceChartView }) => (
   </div>
 );
 
-export const DeviceDisclosure = ({ title, summary = '', initiallyOpen = false, children }: { title: string; summary?: string; initiallyOpen?: boolean; children: ReactNode }) => {
+export const DeviceDisclosure = ({
+  title,
+  summary = '',
+  badge = null,
+  initiallyOpen = false,
+  children,
+}: {
+  title: string;
+  summary?: string;
+  badge?: DeviceBadge | null;
+  initiallyOpen?: boolean;
+  children: ReactNode;
+}) => {
   const [open, setOpen] = useState(initiallyOpen);
   return (
     <div>
@@ -435,6 +527,7 @@ export const DeviceDisclosure = ({ title, summary = '', initiallyOpen = false, c
             </Text>
           ) : null}
         </span>
+        {badge !== null ? <DeviceBadgeText badge={badge} /> : null}
         <MaterialIcon name={open ? 'expand_less' : 'expand_more'} style={{ color: md('onSurfaceVariant') }} />
       </button>
       {open ? children : null}

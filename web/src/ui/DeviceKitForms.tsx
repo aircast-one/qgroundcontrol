@@ -1,8 +1,7 @@
 import { useState } from 'react';
-import { FilledTonalButton, IconButton, OutlinedTextField, Text } from '@/m3';
-import { MaterialIcon } from '@/res/Icon';
+import { FilledTonalButton, OutlinedTextField, Text } from '@/m3';
 import { md } from '@/theme/Colors';
-import { type ActionConfirm, ConfirmDialog, type DeviceField, DeviceSelect, formBody, useDeviceAction } from '@/ui/DeviceKit';
+import { type ActionConfirm, ConfirmDialog, type DeviceField, DeviceSelect, SecretField, formBody, useDeviceAction } from '@/ui/DeviceKit';
 import type { DeviceMethod } from '@/ui/DeviceView';
 
 export type FormValues = Readonly<Record<string, string>>;
@@ -10,28 +9,6 @@ export type FormValues = Readonly<Record<string, string>>;
 export type ShapedField = DeviceField & { readonly shownWhen?: (values: FormValues) => boolean };
 
 export const shownFields = (fields: readonly ShapedField[], values: FormValues): readonly ShapedField[] => fields.filter((field) => field.shownWhen?.(values) ?? true);
-
-export const SecretField = ({ label, value, placeholder, hint, isError = false, onValueChange }: { label: string; value: string; placeholder?: string; hint?: string; isError?: boolean; onValueChange: (value: string) => void }) => {
-  const [revealed, setRevealed] = useState(false);
-  return (
-    <OutlinedTextField
-      label={label}
-      ariaLabel={label}
-      value={value}
-      placeholder={placeholder}
-      keyboardType={revealed ? 'text' : 'password'}
-      autoCorrect={false}
-      isError={isError}
-      supportingText={hint}
-      onValueChange={onValueChange}
-      trailingIcon={
-        <IconButton label={revealed ? 'Hide password' : 'Show password'} onClick={() => setRevealed(!revealed)}>
-          <MaterialIcon name={revealed ? 'visibility_off' : 'visibility'} />
-        </IconButton>
-      }
-    />
-  );
-};
 
 export const ShapedForm = ({
   fields,
@@ -77,7 +54,7 @@ export const ShapedForm = ({
                 value={current[field.name] ?? ''}
                 placeholder={field.placeholder}
                 isError={refusedOn(field)}
-                hint={refusedOn(field) ? action.refusal?.message : field.hint}
+                supportingText={refusedOn(field) ? action.refusal?.message : field.hint}
                 onValueChange={set(field.name)}
               />
             ) : (

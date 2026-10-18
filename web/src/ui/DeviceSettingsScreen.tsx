@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { FilledTonalButton, OutlinedTextField, Text } from '@/m3';
 import { MaterialIcon } from '@/res/Icon';
 import { md } from '@/theme/Colors';
-import { ActionButton, CopyRow, DeviceDisclosure, DeviceNotice, DeviceSection, DeviceText, RefusalText, levelColor, useDeviceAction } from '@/ui/DeviceKit';
-import { ButtonRow, LinkButton, StackedFact, StatusLine, TypedConfirmDialog } from '@/ui/DeviceKitSettings';
+import { ActionButton, CopyRow, DeviceDisclosure, DeviceNotice, DeviceSection, DeviceText, LinkButton, RefusalText, levelColor, useDeviceAction } from '@/ui/DeviceKit';
+import { ButtonRow, StackedFact, StatusLine, TypedConfirmDialog } from '@/ui/DeviceKitSettings';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
 import { CloudStage, type CloudAccount, type DeviceSettingsView, type DeviceStat, SERVICES, type ServiceRow, type SoftwareNotice, type SoftwareStatus, parseDeviceSettings } from '@/ui/DeviceSettings';
 import { DeviceLevel } from '@/ui/DeviceLevel';
@@ -98,7 +98,7 @@ const CloudSection = ({ cloud }: { cloud: CloudAccount }) => (
         <CopyRow label="Device ID (for support)" text={cloud.deviceId} />
         {cloud.watchUrl !== '' ? (
           <ButtonRow>
-            <LinkButton href={cloud.watchUrl} external tonal={false}>
+            <LinkButton href={cloud.watchUrl} external look="text">
               Watch in the cloud
             </LinkButton>
           </ButtonRow>
@@ -180,7 +180,7 @@ const SoftwareSection = ({ software }: { software: SoftwareStatus }) => (
             success={software.candidate.success}
             confirm={{ title: 'Install the update?', text: software.candidate.confirm, confirm: 'Install' }}
           />
-          <LinkButton href={software.candidate.notesUrl} external tonal={false}>
+          <LinkButton href={software.candidate.notesUrl} external look="text">
             What's new
           </LinkButton>
         </div>

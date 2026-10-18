@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { chipText, framedElsewhere, framedTitle, openedTitle } from '@/ui/DeviceScreen';
+import { chipText } from '@/ui/DeviceScreen';
+import { DEVICE_SCREENS, devicePath } from '@/ui/DeviceScreens';
 import { deviceNeedsAttention, devicePageIcon, parseDeviceStatus } from '@/ui/DeviceStatus';
 import { DeviceLevel } from '@/ui/DeviceLevel';
 import { DEVICE_PAGE } from '@/ui/DevicePage';
@@ -19,6 +20,31 @@ const served = {
   ],
 };
 
+const aircraft = {
+  ...served,
+  setup: { label: 'Finish setting up', href: '/setup' },
+  checks: [
+    { label: 'Camera', value: 'no video', level: 2, href: '/streaming?camera=cam' },
+    { label: 'Telemetry', value: 'waiting for autopilot', level: 1, href: '/telemetry' },
+    { label: 'Remote access', value: 'not set up', level: 1, href: '/network#tailscale' },
+  ],
+  pages: [
+    { title: 'Ground station links', href: '/connect', icon: 'qr-code' },
+    { title: 'Cameras', href: '/streaming', icon: 'video' },
+    { title: 'Video engine', href: '/settings/video', icon: 'sliders-horizontal' },
+    { title: 'Connection', href: '/network', icon: 'network' },
+    { title: 'Telemetry', href: '/telemetry', icon: 'activity' },
+    { title: 'Recordings', href: '/settings/recordings', icon: 'gauge' },
+    { title: 'Flight log', href: '/flights', icon: 'clock' },
+    { title: 'Device', href: '/settings/device', icon: 'settings' },
+    { title: 'Engineering', href: '/settings/engineering', icon: 'server' },
+    { title: 'Watching & recording', href: '/settings/camera?camera=cam', icon: 'sliders-horizontal' },
+    { title: 'Set up this device step by step', href: '/setup', icon: 'scan-search' },
+  ],
+};
+
+const SCREEN_SOURCES: Readonly<Record<string, string>> = import.meta.glob(['./Device*.tsx', './CameraWizard.tsx'], { query: '?raw', import: 'default', eager: true });
+
 describe('DeviceScreenTest', () => {
   it('reads what the device says about itself', () => {
     const status = parseDeviceStatus(served);
@@ -36,22 +62,21 @@ describe('DeviceScreenTest', () => {
     expect(parseDeviceStatus({ name: 'falcon' })).toBeNull();
   });
 
-  it('a device page opens under the title of the row that opened it', () => {
-    const status = parseDeviceStatus(served);
-    expect(openedTitle(status, '/streaming')).toBe('Cameras');
-    expect(openedTitle(status, '/streaming?camera=cam')).toBe('Camera');
-    expect(openedTitle(null, '/network')).toBe('Device');
-    expect(framedTitle('aircast · Connection', 'Cameras')).toBe('Connection');
-    expect(framedTitle('', 'Cameras')).toBe('Cameras');
+  it('every device page has its own icon, and an unknown one falls back', () => {
     expect(devicePageIcon('video')).toBe('ic_videocam');
+    expect(devicePageIcon('scan-search')).toBe('ic_build');
     expect(devicePageIcon('unheard-of')).toBe('ic_settings');
   });
 
-  it('back walks the framed pages before it leaves them', () => {
-    const at = (url: string) => new URL(url) as unknown as Location;
-    expect(framedElsewhere('/streaming?camera=cam', at('http://falcon.local/streaming?camera=cam'))).toBe(false);
-    expect(framedElsewhere('/streaming?camera=cam', at('http://falcon.local/settings/camera?camera=cam'))).toBe(true);
-    expect(framedElsewhere('/network', undefined)).toBe(false);
+  it('every page the device links to, and every page a screen opens, is drawn natively', () => {
+    const native = (href: string) => DEVICE_SCREENS.has(devicePath(href).path);
+    const status = parseDeviceStatus(aircraft);
+    const linked = [status?.action?.href, status?.setup?.href, ...(status?.checks.map((check) => check.href) ?? []), ...(status?.pages.map((page) => page.href) ?? [])].filter((href): href is string => href !== undefined && href !== '');
+    expect(linked.length).toBe(16);
+    expect(linked.filter((href) => !native(href))).toEqual([]);
+    const opened = Object.values(SCREEN_SOURCES).flatMap((source) => [...source.matchAll(/onOpen\('([^']+)'\)/g)].map((match) => match[1] ?? ''));
+    expect(opened.length).toBeGreaterThan(5);
+    expect(opened.filter((href) => !native(href))).toEqual([]);
   });
 
   it('the Device tab is always there, and a requested device page opens on it', () => {

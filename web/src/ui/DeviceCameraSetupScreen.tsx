@@ -2,8 +2,8 @@ import { type ReactNode, useState } from 'react';
 import { FilledTonalButton, OutlinedTextField, Text, TextButton } from '@/m3';
 import { md } from '@/theme/Colors';
 import { type CameraView, type ServerDest, type ShareLink, SETUP_SECTIONS, cloudflareTarget, openedSection, parseCameras } from '@/ui/DeviceCameras';
-import { ActionButton, CopyRow, DeviceForm, DeviceNotice, DeviceSwitchRow, DeviceText, RefusalText, useDeviceAction } from '@/ui/DeviceKit';
-import { LinkButton, LinkedNoticeView, PartDisclosure } from '@/ui/DeviceKitCamera';
+import { ActionButton, CopyRow, DeviceForm, DeviceNotice, DeviceSwitchRow, DeviceText, LinkButton, RefusalText, useDeviceAction } from '@/ui/DeviceKit';
+import { LinkedNoticeView, PartDisclosure } from '@/ui/DeviceKitCamera';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
 import { DeviceLevel } from '@/ui/DeviceLevel';
 import { EndpointRows } from '@/ui/DeviceTelemetryScreen';
@@ -350,7 +350,7 @@ const ServerBody = ({ camera, dest, onOpen }: { camera: CameraView; dest: Server
         <>
           {dest.watch !== '' ? (
             <Row>
-              <LinkButton href={deviceUrl(dest.watch)} filled>
+              <LinkButton href={deviceUrl(dest.watch)} look="filled" external>
                 ▶ Watch via Cloudflare
               </LinkButton>
             </Row>
@@ -376,7 +376,7 @@ const CloudflareForm = ({ name, dest }: { name: string; dest: ServerDest }) => {
         <Text typography="bodySmall" color={md('onSurfaceVariant')}>
           In the Cloudflare dashboard, open Realtime → SFU and create an app — it gives you the App ID and App secret.
         </Text>
-        <LinkButton href="https://dash.cloudflare.com/">Cloudflare dashboard</LinkButton>
+        <LinkButton href="https://dash.cloudflare.com/" look="outlined" external>Cloudflare dashboard</LinkButton>
       </div>
       <OutlinedTextField
         label="App ID"

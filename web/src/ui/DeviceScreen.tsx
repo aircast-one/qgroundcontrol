@@ -1,4 +1,4 @@
-import { useContext, useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useState } from 'react';
 import { useBackHandler, useKeyedState } from '@/kotlin/Compose';
 import { useValue } from '@/kotlin/State';
 import { FilledTonalButton, OutlinedTextField, Surface, Text, TextButton } from '@/m3';
@@ -9,21 +9,11 @@ import { useOsdBackdrop } from '@/ui/Osd';
 import { useFlyIsPortrait } from '@/ui/FlyShell';
 import { MaterialIcon } from '@/res/Icon';
 import { FootNote, OverridePageHeading, SectionHeader, SetupRow, SetupState } from '@/ui/SetupRow';
-import { DEVICE_HOME, type DeviceHealth, type DeviceStatus, type DeviceUplink, deviceAnswered, deviceNeedsAttention, devicePageIcon, deviceRequested, deviceStatus } from '@/ui/DeviceStatus';
+import { type DeviceHealth, type DeviceStatus, type DeviceUplink, deviceAnswered, deviceNeedsAttention, devicePageIcon, deviceRequested, deviceStatus } from '@/ui/DeviceStatus';
 import { DeviceLevel } from '@/ui/DeviceLevel';
 import { DEVICE_PAGE } from '@/ui/DevicePage';
 import { DEVICE_SCREENS, type DeviceScreenEntry, devicePath } from '@/ui/DeviceScreens';
 import { DeviceChart, DeviceFact, DeviceNotice, DeviceSection, DeviceText, levelColor } from '@/ui/DeviceKit';
-
-const TITLE_PREFIX = 'aircast · ';
-
-export const framedTitle = (documentTitle: string | undefined, fallback: string): string => {
-  const title = (documentTitle ?? '').replace(TITLE_PREFIX, '').trim();
-  return title === '' ? fallback : title;
-};
-
-export const openedTitle = (status: DeviceStatus | null, href: string): string =>
-  status?.pages.find((page) => page.href === href)?.title ?? status?.checks.find((check) => check.href === href)?.label ?? status?.action?.label ?? 'Device';
 
 const checkState = (level: number): SetupState => (level === DeviceLevel.Ready ? SetupState.Done : SetupState.NeedsAttention);
 
@@ -40,15 +30,10 @@ export const DeviceTab = ({ open, onOpen, onClose }: { open: string | null; onOp
   }, [requested]);
   const current = stack.at(-1) ?? null;
   const back = () => (stack.length > 1 ? setStack(stack.slice(0, -1)) : onClose());
-  if (current !== null) {
-    const { path, query } = devicePath(current);
-    const entry = DEVICE_SCREENS.get(path);
-    return entry !== undefined ? (
-      <NativeDevicePage key={current} entry={entry} href={current} query={query} onOpen={(href) => setStack([...stack, href])} onBack={back} />
-    ) : (
-      <DevicePageFrame key={current} href={current} title={openedTitle(status, current)} onBack={back} />
-    );
-  }
+  const opened = current === null ? null : devicePath(current);
+  const entry = opened === null ? undefined : DEVICE_SCREENS.get(opened.path);
+  if (current !== null && opened !== null && entry !== undefined)
+    return <NativeDevicePage key={current} entry={entry} href={current} query={opened.query} onOpen={(href) => setStack([...stack, href])} onBack={back} />;
   if (!served && connected === null) return <ConnectDevice />;
   if (status === null)
     return (
@@ -189,44 +174,6 @@ const NativeDevicePage = ({ entry, href, query, onOpen, onBack }: { entry: Devic
     <>
       <OverridePageHeading title={entry.title} onBack={onBack} />
       <div className="h-full w-full overflow-y-auto">{entry.screen({ href, query, onOpen, onClose: onBack })}</div>
-    </>
-  );
-};
-
-export const framedElsewhere = (href: string, at: Location | undefined): boolean => {
-  if (at === undefined) return false;
-  const opened = new URL(href, at.href);
-  return at.pathname + at.search !== opened.pathname + opened.search;
-};
-
-const DevicePageFrame = ({ href, title, onBack }: { href: string; title: string; onBack: () => void }) => {
-  const navigation = useContext(LocalAppNavigation);
-  const [shown, setShown] = useState(title);
-  const frame = useRef<HTMLIFrameElement>(null);
-  const back = () => {
-    const inner = frame.current?.contentWindow ?? null;
-    if (inner !== null && framedElsewhere(href, inner.location)) inner.history.back();
-    else onBack();
-  };
-  useBackHandler(true, back);
-  useEffect(() => {
-    const home = (event: MessageEvent) => {
-      if (event.origin === location.origin && event.data === DEVICE_HOME) navigation.settingsOpen.value = false;
-    };
-    window.addEventListener('message', home);
-    return () => window.removeEventListener('message', home);
-  }, []);
-  return (
-    <>
-      <OverridePageHeading title={shown} onBack={back} />
-      <iframe
-        ref={frame}
-        src={href}
-        title={title}
-        allow="clipboard-write; fullscreen"
-        className="h-full w-full border-0 bg-transparent"
-        onLoad={(event) => setShown(framedTitle(event.currentTarget.contentDocument?.title, title))}
-      />
     </>
   );
 };

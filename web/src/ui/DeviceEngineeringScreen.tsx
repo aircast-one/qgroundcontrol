@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { FilledTonalButton, OutlinedTextField, RadioButton, Text, TextButton } from '@/m3';
 import { md } from '@/theme/Colors';
-import { ActionButton, ConfirmDialog, DeviceDisclosure, DeviceNotice, DeviceSection, DeviceText, RefusalText, useDeviceAction } from '@/ui/DeviceKit';
-import { ButtonRow, LinkButton, SecretField, SettingSwitchRow, StatusLine } from '@/ui/DeviceKitSettings';
+import { ActionButton, ConfirmDialog, DeviceDisclosure, DeviceNotice, DeviceSection, DeviceSwitchRow, DeviceText, LinkButton, RefusalText, SecretField, useDeviceAction } from '@/ui/DeviceKit';
+import { ButtonRow, StatusLine } from '@/ui/DeviceKitSettings';
 import { type DiagnosticsSettings, type EngineeringView, type PublishSignIn, modeNamed, parseEngineering, shownFields, signInBody, signInKey } from '@/ui/DeviceEngineering';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
 import { DeviceLevel } from '@/ui/DeviceLevel';
@@ -156,13 +156,13 @@ const DiagnosticsSection = ({ diagnostics }: { diagnostics: DiagnosticsSettings 
   <DeviceSection title="Remote diagnostics" badge={diagnostics.status}>
     <DeviceText text={diagnostics.hint} />
     <DiagnosticsForm key={`${diagnostics.endpoint}|${diagnostics.token}`} diagnostics={diagnostics} />
-    <SettingSwitchRow
+    <DeviceSwitchRow
       title="Stream this device's logs"
       checked={diagnostics.streaming}
       enabled={diagnostics.canStream}
       on={{ method: 'PUT', path: '/api/diagnostics', body: { enabled: 'true' } }}
       off={{ method: 'PUT', path: '/api/diagnostics', body: { enabled: 'false' } }}
-      onSuccess="Streaming logs."
+      success="Streaming logs."
       offSuccess="Stopped streaming logs."
       confirmOn={{ title: 'Stream the logs?', text: diagnostics.confirm, confirm: 'Stream' }}
     />

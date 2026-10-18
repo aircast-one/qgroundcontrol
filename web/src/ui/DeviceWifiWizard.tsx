@@ -3,8 +3,7 @@ import { isJson, jsonObjects, optBoolean, optInt, optJSONArray, optText } from '
 import { FilledTonalButton, OutlinedButton, OutlinedTextField, Text } from '@/m3';
 import { MaterialIcon } from '@/res/Icon';
 import { aircast, md } from '@/theme/Colors';
-import { DeviceDisclosure } from '@/ui/DeviceKit';
-import { SecretField } from '@/ui/DeviceKitForms';
+import { DeviceDisclosure, SecretField } from '@/ui/DeviceKit';
 import { useValue } from '@/kotlin/State';
 import { type DeviceRefusal, NO_ANSWER, deviceCall, deviceOrigin, deviceRead } from '@/ui/DeviceView';
 
@@ -131,7 +130,7 @@ export const WifiWizard = ({ reopen }: { reopen: WifiReopen }) => {
           onValueChange={setSsid}
           onDone={connect}
         />
-        <SecretField label="Password" value={psk} isError={problem?.field === 'psk'} hint="Leave blank for an open network." onValueChange={setPsk} />
+        <SecretField label="Password" value={psk} isError={problem?.field === 'psk'} supportingText="Leave blank for an open network." onValueChange={setPsk} />
       </div>
       {problem !== null ? (
         <div role="alert">

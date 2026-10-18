@@ -1,10 +1,10 @@
-import { type PointerEvent, type ReactNode, useContext, useEffect, useRef, useState } from 'react';
+import { type PointerEvent, useContext, useEffect, useRef, useState } from 'react';
 import { copyToClipboard } from '@/kotlin/Platform';
 import { mutableStateOf, useValue } from '@/kotlin/State';
-import { FilterChip, Text, TextButton } from '@/m3';
+import { FilterChip, OutlinedButton, Text, TextButton } from '@/m3';
 import { MaterialIcon } from '@/res/Icon';
 import { aircast, md } from '@/theme/Colors';
-import { ConfirmDialog, DeviceBadgeText, DeviceNotice, DeviceText, levelColor, qrSource, useCopy } from '@/ui/DeviceKit';
+import { ConfirmDialog, DeviceBadgeText, DeviceNotice, DeviceText, LinkButton, levelColor, qrSource, useCopy } from '@/ui/DeviceKit';
 import {
   type FlightEntry,
   type FlightLine,
@@ -181,17 +181,9 @@ const LineRow = ({ line, active, onActive }: { line: FlightLine; active: boolean
   </li>
 );
 
-const linkLook = 'inline-flex h-10 select-none items-center whitespace-nowrap justify-center gap-2 rounded-full px-4 text-label-large text-primary no-underline hover:bg-[color-mix(in_srgb,var(--md-primary)_8%,transparent)]';
-
-const LinkButton = ({ href, outlined = false, title, children }: { href: string; outlined?: boolean; title?: string; children: ReactNode }) => (
-  <a href={deviceUrl(href)} download title={title} className={`${linkLook} ${outlined ? 'border border-outline' : ''}`}>
-    {children}
-  </a>
-);
-
 const SortieVideoLinks = ({ video }: { video: SortieVideo }) => (
   <>
-    <LinkButton href={video.url} outlined title="The sortie's video with its telemetry as a subtitle track — turn subtitles on in your player to see it">
+    <LinkButton href={deviceUrl(video.url)} look="outlined" download title="The sortie's video with its telemetry as a subtitle track — turn subtitles on in your player to see it">
       <MaterialIcon name="download" size={18} />
       {video.label}
     </LinkButton>
@@ -215,14 +207,9 @@ const SortieShareRow = ({ share }: { share: SortieShare }) => {
   return (
     <div className="flex flex-wrap items-center gap-2">
       {job.state === '' || job.state === 'failed' ? (
-        <button
-          type="button"
-          title="Burns the telemetry into the picture in Aircast cloud, so it survives Telegram, WhatsApp and any player"
-          onClick={() => setAsking(true)}
-          className={`${linkLook} border border-outline`}
-        >
+        <OutlinedButton title="Burns the telemetry into the picture in Aircast cloud, so it survives Telegram, WhatsApp and any player" onClick={() => setAsking(true)}>
           {share.label}
-        </button>
+        </OutlinedButton>
       ) : null}
       {job.state === 'uploading' ? (
         <Text typography="bodySmall" color={muted}>
@@ -459,10 +446,10 @@ const FlightFiles = ({ flight }: { flight: FlightEntry }) => {
   return (
     <div className="mt-3 flex flex-col gap-2 border-t border-outline-variant px-list pt-3">
       <div className="flex flex-wrap items-center gap-2">
-        <LinkButton href={flight.csv} outlined>
+        <LinkButton href={deviceUrl(flight.csv)} look="outlined" download>
           Samples as CSV
         </LinkButton>
-        <LinkButton href={flight.json}>Everything as JSON</LinkButton>
+        <LinkButton href={deviceUrl(flight.json)} look="text" download>Everything as JSON</LinkButton>
         <TextButton onClick={copyLink}>
           <MaterialIcon name="link" size={18} />
           Copy link to this flight

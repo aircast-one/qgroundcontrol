@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { IconButton, Text } from '@/m3';
 import { MaterialIcon } from '@/res/Icon';
 import { md } from '@/theme/Colors';
-import { ActionButton, ConfirmDialog, DeviceNotice, DeviceSection, DeviceSelect, DeviceText, RefusalText, useDeviceAction } from '@/ui/DeviceKit';
-import { LinkButton, SettingSwitchRow, StatusLine } from '@/ui/DeviceKitSettings';
+import { ActionButton, ConfirmDialog, DeviceNotice, DeviceSection, DeviceSelect, DeviceSwitchRow, DeviceText, LinkButton, RefusalText, useDeviceAction } from '@/ui/DeviceKit';
+import { StatusLine } from '@/ui/DeviceKitSettings';
 import { type RecordedCamera, type RecordingSegment, type RecordingsLimit, lowersLimit, parseRecordings, recordPath, recordingsPath, segmentDetail, segmentPath } from '@/ui/DeviceRecordings';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
 import { DeviceLevel } from '@/ui/DeviceLevel';
@@ -22,14 +22,14 @@ export const RecordingsScreen = (_: DeviceScreenProps) => {
       {view.cameras.length > 0 ? (
         <DeviceSection title="Cameras">
           {view.cameras.map((camera) => (
-            <SettingSwitchRow
+            <DeviceSwitchRow
               key={camera.name}
               title={camera.name}
               detail={camera.note}
               checked={camera.recording}
               on={{ method: 'PUT', path: recordPath(camera.name) }}
               off={{ method: 'DELETE', path: recordPath(camera.name) }}
-              onSuccess={`Recording turned on for ${camera.name}.`}
+              success={`Recording turned on for ${camera.name}.`}
               offSuccess={`Recording turned off for ${camera.name} — its recordings stay below.`}
             />
           ))}
@@ -115,7 +115,7 @@ const SegmentRow = ({ camera, segment }: { camera: string; segment: RecordingSeg
           </Text>
         </div>
         {segment.open ? null : (
-          <LinkButton href={deviceUrl(segment.url)} download tonal={false}>
+          <LinkButton href={deviceUrl(segment.url)} download look="text">
             Download
           </LinkButton>
         )}

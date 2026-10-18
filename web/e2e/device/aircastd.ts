@@ -125,17 +125,6 @@ const AIRCRAFT = {
   ],
 };
 
-const devicePage = (title: string) => `<!DOCTYPE html><html><head><title>aircast · ${title}</title></head><body>
-<main><h1>${title} page</h1><a href="/network">Connection</a> <a href="/" id="home">Flight</a></main>
-<script>document.getElementById('home').addEventListener('click', (event) => { event.preventDefault(); parent.postMessage('aircast:home', location.origin); });</script>
-</body></html>`;
-
-const DEVICE_PAGES = new Map([
-  ['/streaming', 'Cameras'],
-  ['/connect', 'Connect ground station'],
-  ['/network', 'Connection'],
-]);
-
 const app = (request: IncomingMessage, response: ServerResponse) => {
   const path = request.url?.startsWith('/fly/') && !request.url.startsWith('/fly/src/') ? '/' : (request.url ?? '/');
   const upstream = forward({ host: 'localhost', port: VITE, path, method: request.method, headers: { ...request.headers, host: `localhost:${VITE}` } }, (answer) => {
@@ -164,8 +153,6 @@ const http = createServer((request, response) => {
     response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
     return void response.write(`data: ${JSON.stringify(AIRCRAFT)}\n\n`);
   }
-  const page = DEVICE_PAGES.get(url.pathname);
-  if (page !== undefined) return void response.writeHead(200, { 'Content-Type': 'text/html' }).end(devicePage(page));
   if (url.pathname === '/stats') return json(response, 200, { ...seen, store });
   if (url.pathname.startsWith('/fly/files/') || url.pathname === '/fly/files') return void files(request, response, url);
   if (url.pathname === '/fly/proxy') return void proxy(request, response);

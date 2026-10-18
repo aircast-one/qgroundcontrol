@@ -101,14 +101,12 @@ const PAGE_ICONS: ReadonlyMap<string, DrawableName> = new Map<string, DrawableNa
   ['clock', 'ic_history'],
   ['settings', 'ic_developer_board'],
   ['server', 'ic_terminal'],
+  ['scan-search', 'ic_build'],
 ]);
 
 export const devicePageIcon = (icon: string): DrawableName => PAGE_ICONS.get(icon) ?? 'ic_settings';
 
 export const deviceNeedsAttention = (status: DeviceStatus | null): boolean => status !== null && status.level !== DeviceLevel.Ready;
-
-export const DEVICE_HOME = 'aircast:home';
-
 
 export const deviceStatus = mutableStateOf<DeviceStatus | null>(null);
 

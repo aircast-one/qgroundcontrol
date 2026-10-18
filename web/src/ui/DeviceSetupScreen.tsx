@@ -4,8 +4,7 @@ import { MaterialIcon } from '@/res/Icon';
 import { aircast, md } from '@/theme/Colors';
 import { LocalAppNavigation } from '@/ui/AppNavigation';
 import { CameraWizard } from '@/ui/CameraWizard';
-import { ActionButton, DeviceBadgeText, DeviceNotice, DeviceText } from '@/ui/DeviceKit';
-import { LinkButton } from '@/ui/DeviceKitCamera';
+import { ActionButton, DeviceBadgeText, DeviceNotice, DeviceText, LinkButton } from '@/ui/DeviceKit';
 import { DeviceLevel } from '@/ui/DeviceLevel';
 import { TailscaleSection } from '@/ui/DeviceNetworkScreen';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
@@ -149,7 +148,7 @@ const CameraStep = ({
         <>
           <div className="flex flex-wrap items-center gap-2 px-list py-2" role="group" aria-label={camera.wizard.name}>
             {camera.watch !== '' ? (
-              <LinkButton href={deviceUrl(camera.watch)} filled>
+              <LinkButton href={deviceUrl(camera.watch)} look="filled" external>
                 ▶ Watch live
               </LinkButton>
             ) : null}

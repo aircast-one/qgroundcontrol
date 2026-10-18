@@ -3,7 +3,7 @@ import { type WhepReport, playWhep } from '@/core/whep';
 import { CircularProgressIndicator, Text, TextButton } from '@/m3';
 import { MaterialIcon } from '@/res/Icon';
 import { Color, md } from '@/theme/Colors';
-import { DeviceBadgeText, DeviceNotice } from '@/ui/DeviceKit';
+import { DeviceDisclosure, DeviceNotice } from '@/ui/DeviceKit';
 import type { LinkedNotice, SetupPart } from '@/ui/DeviceCameras';
 
 const RETRY_MS = [2000, 4000, 8000, 15000] as const;
@@ -104,43 +104,16 @@ export const PreviewPlaceholder = ({ text }: { text: string }) => (
   </div>
 );
 
-export const LinkButton = ({ href, children, filled = false }: { href: string; children: ReactNode; filled?: boolean }) => (
-  <a
-    href={href}
-    target="_blank"
-    rel="noopener"
-    className={`inline-flex h-10 select-none items-center justify-center gap-2 rounded-full px-6 text-label-large ${filled ? 'bg-primary text-on-primary hover:brightness-110' : 'border border-outline text-primary hover:bg-[color-mix(in_srgb,var(--md-primary)_8%,transparent)]'}`}
-  >
-    {children}
-  </a>
-);
-
 export const PartDisclosure = ({ part, id, opened, children }: { part: SetupPart; id: string; opened: string; children: ReactNode }) => {
-  const [open, setOpen] = useState(part.open || opened === id);
   const head = useRef<HTMLElement>(null);
   useEffect(() => {
     if (opened === id) head.current?.scrollIntoView({ block: 'start' });
   }, []);
   return (
     <section ref={head} id={id} aria-label={part.title}>
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-        className="flex min-h-14 w-full items-center gap-4 px-list py-2 text-left hover:bg-[color-mix(in_srgb,var(--md-on-surface)_8%,transparent)]"
-      >
-        <span className="flex min-w-0 flex-1 flex-col">
-          <Text typography="bodyLarge">{part.title}</Text>
-          {part.summary !== '' ? (
-            <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
-              {part.summary}
-            </Text>
-          ) : null}
-        </span>
-        {part.badge !== null ? <DeviceBadgeText badge={part.badge} /> : null}
-        <MaterialIcon name={open ? 'expand_less' : 'expand_more'} style={{ color: md('onSurfaceVariant') }} />
-      </button>
-      {open ? <div className="pb-2">{children}</div> : null}
+      <DeviceDisclosure title={part.title} summary={part.summary} badge={part.badge} initiallyOpen={part.open || opened === id}>
+        <div className="pb-2">{children}</div>
+      </DeviceDisclosure>
     </section>
   );
 };

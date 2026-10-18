@@ -4,8 +4,8 @@ import { MaterialIcon } from '@/res/Icon';
 import { md } from '@/theme/Colors';
 import { CameraWizard } from '@/ui/CameraWizard';
 import { type CameraCopy, type CameraView, type CamerasView, cameBack, camerasShown, liveness, parseCameras } from '@/ui/DeviceCameras';
-import { DeviceBadgeText, DeviceChart, DeviceDisclosure, DeviceFact, DeviceNotice, DeviceSection, DeviceSwitchRow, QrDialog, levelColor, useCopy } from '@/ui/DeviceKit';
-import { LinkButton, PreviewPlaceholder, WhepPreview } from '@/ui/DeviceKitCamera';
+import { DeviceBadgeText, DeviceChart, DeviceDisclosure, DeviceFact, DeviceNotice, DeviceSection, DeviceSwitchRow, LinkButton, QrDialog, levelColor, useCopy } from '@/ui/DeviceKit';
+import { PreviewPlaceholder, WhepPreview } from '@/ui/DeviceKitCamera';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
 import { devicePageIcon } from '@/ui/DeviceStatus';
 import { DeviceLevel } from '@/ui/DeviceLevel';
@@ -64,7 +64,7 @@ export const CamerasScreen = ({ query, onOpen }: DeviceScreenProps) => {
       {(!adding && view.cameras.length > 0) || view.cloudLink !== '' ? (
         <div className="flex flex-wrap items-center justify-between gap-2 px-list pt-2">
           {!adding && view.cameras.length > 0 ? <TextButton onClick={() => setAdding(true)}>+ Add camera</TextButton> : <span />}
-          {view.cloudLink !== '' ? <LinkButton href={view.cloudLink}>Watch in the cloud →</LinkButton> : null}
+          {view.cloudLink !== '' ? <LinkButton href={view.cloudLink} look="outlined" external>Watch in the cloud</LinkButton> : null}
         </div>
       ) : null}
       {shown.kind === 'camera' ? (
@@ -158,7 +158,7 @@ const CameraDetail = ({ camera, scan, onOpen }: { camera: CameraView; scan: bool
       <div className="flex min-w-0 flex-col">
         {camera.live ? (
           <div className="flex flex-wrap items-center gap-2 px-list py-2" role="group" aria-label="Watch">
-            <LinkButton href={deviceUrl(camera.watch)} filled>
+            <LinkButton href={deviceUrl(camera.watch)} look="filled" external>
               ▶ Watch live
             </LinkButton>
             {camera.copies.map((copy) => (

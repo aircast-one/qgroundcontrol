@@ -117,19 +117,20 @@ test('a device page tracks what the pilot boxes with the device tracker', async 
   await expect.poll(async () => (await stats()).tracks.find((sent) => sent.startsWith('PUT /api/streams/e2e/track/visual')) ?? '', { timeout: 30_000 }).toMatch(/"w":0\.\d+/);
 });
 
-test('the Device tab holds the device pages, and device trouble shows in the fly view', async ({ device }) => {
+test('the Device tab holds the device pages, drawn natively, and device trouble shows in the fly view', async ({ device }) => {
   await device.getByRole('button', { name: 'e2e-device: No camera yet' }).click();
   await expect(device.getByRole('tablist').getByRole('tab', { name: 'Device' })).toHaveAttribute('aria-selected', 'true');
   await expect(device.getByText('Before you fly')).toBeVisible();
   await device.getByRole('button', { name: /^Connection/ }).click();
-  await expect(device.frameLocator('iframe').getByRole('heading', { name: 'Connection page' })).toBeVisible();
   await expect(device.getByText('Connection', { exact: true }).first()).toBeVisible();
+  await expect(device.locator('iframe')).toHaveCount(0);
   await device.getByRole('button', { name: 'Back', exact: true }).click();
   await expect(device.getByText('Before you fly')).toBeVisible();
   await device.getByRole('button', { name: 'Camera not set up' }).click();
   await expect(device.getByText('Cameras', { exact: true }).first()).toBeVisible();
-  await device.frameLocator('iframe').getByRole('link', { name: 'Flight' }).click();
-  await expect(device.getByRole('tablist')).toHaveCount(0);
+  await expect(device.locator('iframe')).toHaveCount(0);
+  await device.getByRole('button', { name: 'Back', exact: true }).click();
+  await expect(device.getByText('Before you fly')).toBeVisible();
 });
 
 test('a device page offers its synthetic view on every visit, even after it was removed', async ({ device }) => {
