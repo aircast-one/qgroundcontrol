@@ -13,7 +13,7 @@ local EXIT_HINT = "RTN: stop sending sticks and exit"
 local CONFIRM_HINT = "Stop sending sticks? RTN again to exit"
 local NO_CABLE = "USB cable not connected"
 local NO_ANSWER = "Waiting for the app"
-local NEXT_STEP = "In app: Links > Radio on USB"
+local NEXT_STEP = "In app: Control > Radio on USB"
 
 local battVolt = 0
 local modelInfo
