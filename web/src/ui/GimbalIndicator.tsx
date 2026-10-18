@@ -5,7 +5,6 @@ import { useQgcPath } from '@/bridge/QgcState';
 import { SetupCommands } from '@/bridge/BridgeCommands';
 import { useLaunchedEffect } from '@/kotlin/Compose';
 import { mutableStateOf, useValue } from '@/kotlin/State';
-import { coerceIn } from '@/kotlin/Std';
 import { AlertDialog, Button, FilterChip, OutlinedButton, Text, TextButton } from '@/m3';
 import { AircastSheet } from '@/map/AircastSheet';
 import { MaterialIcon } from '@/res/Icon';
@@ -331,6 +330,7 @@ export const GimbalScreenControl = ({ className }: { className?: string }) => {
   const lensJson = useQgcPath(LENS_VIEW);
   const approximate = useMemo(() => lensReading(lensJson)?.approximate === true, [lensJson]);
   const drag = useRef<Point | null>(null);
+  const dragBegun = useRef(false);
   const tapping = useRef(false);
   const press = useRef<{ latest: Point; width: number; height: number; repeating: ReturnType<typeof setInterval> } | null>(null);
   useEffect(() => () => {
@@ -339,6 +339,7 @@ export const GimbalScreenControl = ({ className }: { className?: string }) => {
   if (control === null) return null;
 
   const send = (pan: number, tilt: number, point: boolean) => void (async () => gimbalRefusal(await Qgc.call('gimbal.onScreen', pan, tilt, point)))();
+  const sendDrag = (pan: number, tilt: number, begin: boolean) => void (async () => gimbalRefusal(await Qgc.call('gimbal.drag', pan, tilt, begin)))();
 
   const release = () => {
     if (press.current !== null) clearInterval(press.current.repeating);
@@ -353,13 +354,15 @@ export const GimbalScreenControl = ({ className }: { className?: string }) => {
         onPointerDown={(event) => {
           event.currentTarget.setPointerCapture(event.pointerId);
           drag.current = { x: event.clientX, y: event.clientY };
+          dragBegun.current = false;
         }}
         onPointerMove={(event) => {
-          const last = drag.current;
-          if (last === null) return;
-          const width = event.currentTarget.getBoundingClientRect().width;
-          drag.current = { x: event.clientX, y: event.clientY };
-          send(aimFraction(event.clientX - last.x, width), -aimFraction(event.clientY - last.y, width), false);
+          const from = drag.current;
+          if (from === null) return;
+          const box = event.currentTarget.getBoundingClientRect();
+          const begin = !dragBegun.current;
+          dragBegun.current = true;
+          sendDrag(aimFraction(event.clientX - from.x, box.width), -aimFraction(event.clientY - from.y, box.height), begin);
         }}
         onPointerUp={release}
         onPointerCancel={release}
@@ -409,7 +412,7 @@ export const GimbalScreenControl = ({ className }: { className?: string }) => {
           const held = press.current;
           if (held === null) return;
           const now = screenFraction(held.latest.x, held.latest.y, held.width, held.height);
-          send(coerceIn(now[0] - start[0], -1, 1), coerceIn(now[1] - start[1], -1, 1), false);
+          send(now[0] - start[0], now[1] - start[1], false);
         }, GIMBAL_DRAG_REPEAT_MS);
         press.current = { latest: { x: at.x, y: at.y }, width: at.width, height: at.height, repeating };
       }}

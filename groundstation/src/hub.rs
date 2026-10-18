@@ -4008,6 +4008,10 @@ impl Vehicle {
                     };
                     gimbals.on_screen_control(number("pan").unwrap_or(0.0), number("tilt").unwrap_or(0.0), screen, heading, now_ms)
                 }
+                "drag" => {
+                    let number = |key: &str| action.get(key).and_then(Value::as_f64).map(|v| v as f32).unwrap_or(0.0);
+                    gimbals.drag_to(number("pan"), number("tilt"), flag("begin"), number("hFov"), number("vFov"), heading, now_ms)
+                }
                 "select" => {
                     let number = |key: &str| action.get(key).and_then(Value::as_u64).and_then(|v| u8::try_from(v).ok());
                     match number("managerCompid").zip(number("deviceId")) {

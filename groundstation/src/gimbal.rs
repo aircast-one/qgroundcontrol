@@ -57,7 +57,6 @@ pub const REASON_UNSUPPORTED: &str = "unsupported";
 static ASKED: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
 pub const GIMBAL_CHANGED: &str = "core.gimbal@changed";
 pub const ANNOUNCE_INTERVAL_MS: u64 = 250;
-pub const DRAG_CONTINUES_MS: u64 = 1_000;
 static ANNOUNCED: std::sync::Mutex<(u64, u64, bool)> = std::sync::Mutex::new((0, 0, false));
 
 pub fn announce_due(now_ms: u64, live: bool) -> bool {
@@ -167,14 +166,6 @@ pub struct Attitude {
 pub enum Screen {
     Point { h_fov: f32, v_fov: f32 },
     Drag { slide_speed: f32 },
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-struct Dragged {
-    pair: PairId,
-    pitch: f32,
-    body_yaw: f32,
-    at_ms: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -385,7 +376,7 @@ pub struct Gimbals {
     active: Option<PairId>,
     pending_information: Option<(u8, u64)>,
     last_status_request_ms: Option<u64>,
-    dragged: Option<Dragged>,
+    drag_origin: Option<(f32, f32, bool)>,
 }
 
 impl Default for Gimbals {
@@ -399,7 +390,7 @@ impl Default for Gimbals {
             active: None,
             pending_information: None,
             last_status_request_ms: None,
-            dragged: None,
+            drag_origin: None,
         }
     }
 }
@@ -604,7 +595,6 @@ impl Gimbals {
     }
 
     pub fn set_rates(&mut self, pitch_rate: Option<f32>, yaw_rate: Option<f32>, now_ms: u64) -> Vec<Out> {
-        self.dragged = None;
         let stored = self.active.and_then(|pair| self.gimbals.get_mut(&pair)).map(|gimbal| {
             gimbal.commanded_pitch_rate = pitch_rate.filter(|r| r.is_finite()).or(gimbal.commanded_pitch_rate);
             gimbal.commanded_yaw_rate = yaw_rate.filter(|r| r.is_finite()).or(gimbal.commanded_yaw_rate);
@@ -627,9 +617,9 @@ impl Gimbals {
     pub fn on_screen_control(&mut self, pan_pct: f32, tilt_pct: f32, screen: Screen, heading: f32, now_ms: u64) -> Vec<Out> {
         let pointing = self
             .active
-            .and_then(|pair| self.gimbals.get(&pair).map(|gimbal| (pair, gimbal)))
-            .and_then(|(pair, gimbal)| gimbal.attitude.map(|a| (pair, a.body_yaw, a.pitch, gimbal.yaw_lock.unwrap_or(false), gimbal.limits[2], gimbal.limits[3])));
-        let Some((pair, body_yaw, pitch, locked, pitch_min, pitch_max)) = pointing else {
+            .and_then(|pair| self.gimbals.get(&pair))
+            .and_then(|gimbal| gimbal.attitude.map(|a| (a.body_yaw, a.pitch, gimbal.yaw_lock.unwrap_or(false))));
+        let Some((body_yaw, pitch, locked)) = pointing else {
             return vec![Out::Refused { pair: self.active, reason: REASON_ATTITUDE_UNKNOWN }];
         };
         let (pan, tilt) = match screen {
@@ -637,24 +627,33 @@ impl Gimbals {
                 let (yaw_off, tilt_to) = aim_through_lens(pan_pct, tilt_pct, h_fov, v_fov, pitch);
                 (body_yaw + yaw_off, tilt_to)
             }
-            Screen::Drag { slide_speed } => {
-                let (from_yaw, from_pitch) = self
-                    .dragged
-                    .filter(|dragged| dragged.pair == pair && now_ms.saturating_sub(dragged.at_ms) < DRAG_CONTINUES_MS)
-                    .map_or((body_yaw, pitch), |dragged| (dragged.body_yaw, dragged.pitch));
-                let tilt = tilt_pct * slide_speed * 0.1 + from_pitch;
-                (wrap180(pan_pct * slide_speed * 0.1 + from_yaw), tilt.max(pitch_min.unwrap_or(tilt)).min(pitch_max.unwrap_or(tilt)))
-            }
+            Screen::Drag { slide_speed } => (pan_pct * slide_speed * 0.1 + body_yaw, tilt_pct * slide_speed * 0.1 + pitch),
         };
-        let sent = match locked {
+        match locked {
             true => self.send_pitch_absolute_yaw(tilt, pan + heading, false, now_ms),
             false => self.send_pitch_body_yaw(tilt, pan, false, now_ms),
+        }
+    }
+
+    pub fn drag_to(&mut self, pan_pct: f32, tilt_pct: f32, begin: bool, h_fov: f32, v_fov: f32, heading: f32, now_ms: u64) -> Vec<Out> {
+        let pointing = self
+            .active
+            .and_then(|pair| self.gimbals.get(&pair))
+            .and_then(|gimbal| gimbal.attitude.map(|a| (a.pitch, a.body_yaw, gimbal.yaw_lock.unwrap_or(false))));
+        let origin = match (begin, self.drag_origin) {
+            (false, Some(origin)) => Some(origin),
+            _ => pointing,
         };
-        self.dragged = match screen {
-            Screen::Drag { .. } => Some(Dragged { pair, pitch: tilt, body_yaw: pan, at_ms: now_ms }),
-            Screen::Point { .. } => None,
+        let Some((pitch, body_yaw, locked)) = origin else {
+            return vec![Out::Refused { pair: self.active, reason: REASON_ATTITUDE_UNKNOWN }];
         };
-        sent
+        self.drag_origin = Some((pitch, body_yaw, locked));
+        let (yaw_off, tilt) = aim_through_lens(pan_pct, tilt_pct, h_fov, v_fov, pitch);
+        let pan = body_yaw + yaw_off;
+        match locked {
+            true => self.send_pitch_absolute_yaw(tilt, pan + heading, false, now_ms),
+            false => self.send_pitch_body_yaw(tilt, pan, false, now_ms),
+        }
     }
 
     pub fn fact_groups(&self) -> Vec<(PairId, Option<Attitude>)> {
@@ -746,7 +745,6 @@ impl Gimbals {
     }
 
     fn stop_rates(&mut self) -> Vec<Out> {
-        self.dragged = None;
         if let Some(gimbal) = self.active.and_then(|pair| self.gimbals.get_mut(&pair)) {
             gimbal.commanded_pitch_rate = Some(0.0);
             gimbal.commanded_yaw_rate = Some(0.0);
@@ -1464,6 +1462,20 @@ mod tests {
     }
 
     #[test]
+    fn a_drag_turns_from_where_the_gimbal_was_when_the_drag_began() {
+        let mut gimbals = discovered();
+        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, yawed(10.0)), 0.0, 2000);
+        let first = angles(&gimbals.drag_to(0.05, 0.0, true, 62.0, 37.0, 0.0, 2000));
+        let later = angles(&gimbals.drag_to(0.5, 0.0, false, 62.0, 37.0, 0.0, 2100));
+        let expected = 10.0 + (0.5 * (31.0_f64).to_radians().tan()).atan().to_degrees();
+        assert!((later[1] - expected).abs() < 0.01, "a reading that has not caught up with the gimbal is not where the drag is measured from: {} want {expected}", later[1]);
+        assert!(first[1] > 10.0 && first[1] < later[1]);
+        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, yawed(25.0)), 0.0, 2200);
+        let next = angles(&gimbals.drag_to(0.0, 0.0, true, 62.0, 37.0, 0.0, 2200));
+        assert!((next[1] - 25.0).abs() < 0.01, "a new drag starts from where the gimbal now is");
+    }
+
+    #[test]
     fn on_screen_control_moves_from_where_the_gimbal_is_pointing() {
         let mut gimbals = discovered();
         gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, yawed(10.0)), 0.0, 2000);
@@ -1477,26 +1489,8 @@ mod tests {
         let mut locked = discovered();
         locked.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME | FLAG_YAW_LOCK, yawed(10.0)), 0.0, 2000);
         assert!((angles(&locked.on_screen_control(1.0, 0.0, Screen::Drag { slide_speed: 100.0 }, 0.0, 2000))[1] - 20.0).abs() < 0.01, "heading 0 is still a heading, as the heading fact defaults to it");
-        let later = 2000 + DRAG_CONTINUES_MS;
-        locked.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME | FLAG_YAW_LOCK, yawed(10.0)), 0.0, later);
-        assert!((angles(&locked.on_screen_control(0.0, 0.0, Screen::Drag { slide_speed: 100.0 }, 90.0, later))[1] - 100.0).abs() < 0.01, "a yaw-locked gimbal is aimed with the heading at the time of the drag");
-    }
-
-    #[test]
-    fn a_held_drag_keeps_turning_from_its_own_last_aim_while_the_gimbal_reports_slowly() {
-        let mut gimbals = discovered();
-        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, yawed(10.0)), 0.0, 2000);
-        let drag = |gimbals: &mut Gimbals, at: u64| angles(&gimbals.on_screen_control(0.5, 0.0, Screen::Drag { slide_speed: 30.0 }, 0.0, at))[1];
-        let steps = [2000, 2100, 2200, 2300].map(|at| drag(&mut gimbals, at));
-        assert!(steps.iter().zip([11.5, 13.0, 14.5, 16.0]).all(|(sent, want)| (sent - want).abs() < 0.01), "each tick adds its step to the last aim, so half a screen turns 15°/s at 30°/s, not one step per attitude report: {steps:?}");
-        assert!((drag(&mut gimbals, 2300 + DRAG_CONTINUES_MS) - 11.5).abs() < 0.01, "a drag picked up after a pause starts again from where the gimbal reports it is");
-        drag(&mut gimbals, 4000);
-        gimbals.center(4050);
-        assert!((drag(&mut gimbals, 4100) - 11.5).abs() < 0.01, "another aim in between ends the drag it interrupted");
-        let mut limited = discovered();
-        limited.on_manager_information(ManagerInformation { compid: MANAGER, device_id: DEVICE, capability_flags: 0, limits_rad: Some([f32::NAN, f32::NAN, (-90.0_f32).to_radians(), 25.0_f32.to_radians(), (-180.0_f32).to_radians(), 180.0_f32.to_radians()]) }, 2000);
-        let tilts = [2000, 2100, 2200, 2300].map(|at| angles(&limited.on_screen_control(0.0, 1.0, Screen::Drag { slide_speed: 100.0 }, 0.0, at))[0]);
-        assert!(tilts.iter().all(|tilt| *tilt <= 25.0 + 0.01) && (tilts[3] - 25.0).abs() < 0.01, "the tilt stops at the gimbal's own limit instead of running past it: {tilts:?}");
+        locked.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME | FLAG_YAW_LOCK, yawed(10.0)), 0.0, 2000);
+        assert!((angles(&locked.on_screen_control(0.0, 0.0, Screen::Drag { slide_speed: 100.0 }, 90.0, 2000))[1] - 100.0).abs() < 0.01, "a yaw-locked gimbal is aimed with the heading at the time of the drag");
     }
 
     #[test]

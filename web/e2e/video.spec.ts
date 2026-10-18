@@ -138,35 +138,6 @@ test('the switch on the video steps through every way a drag steers the gimbal',
   await expect(app.getByRole('button', { name: 'Drag to move' })).toHaveAttribute('aria-pressed', 'true');
 });
 
-test('holding a drag on the video keeps the gimbal turning, however late its angle reports', async ({ app }) => {
-  await addVideoSource(app, /^WebRTC \(WHEP\)/, WHEP_STREAM);
-  await connectMock(app, ['Enable gimbal']);
-  const video = app.locator('video').first();
-  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.videoWidth), { timeout: 30_000 }).toBe(640);
-  const later = app.getByRole('button', { name: 'Fly now, finish loading in background' });
-  if (await later.isVisible()) await later.click();
-  await expect(later).toBeHidden();
-  const mode = app.getByRole('button', { name: /^Video gimbal mode/ });
-  await mode.click();
-  await expect(mode).toHaveAccessibleName('Video gimbal mode, Hold and drag');
-  const aim = () =>
-    app.evaluate(async (module) => {
-      const view = (await ((await import(module)) as { Qgc: { get: (path: string) => Promise<unknown> } }).Qgc.get('view.gimbal')) as { gimbals?: { pitch: number | null; bodyYaw: number | null }[] } | null;
-      const gimbal = view?.gimbals?.[0];
-      return gimbal?.pitch == null || gimbal.bodyYaw == null ? null : { pitch: gimbal.pitch, yaw: gimbal.bodyYaw };
-    }, '/src/bridge/Qgc.ts');
-  await expect.poll(aim, { timeout: 30_000 }).not.toBeNull();
-  const before = (await aim()) as { pitch: number; yaw: number };
-  const box = (await video.boundingBox())!;
-  const [x, y] = [box.x + box.width / 2, box.y + box.height / 2];
-  await app.mouse.move(x, y);
-  await app.mouse.down();
-  await app.mouse.move(x + box.width / 8, y - box.height / 8, { steps: 10 });
-  await expect.poll(async () => ((await aim())?.yaw ?? before.yaw) - before.yaw, { timeout: 6_000 }).toBeGreaterThan(5);
-  await app.mouse.up();
-  expect(((await aim())?.pitch ?? before.pitch) - before.pitch, 'dragging up tilts the camera up').toBeGreaterThan(1);
-});
-
 test('a tap on the live picture turns the gimbal along the ray through that point of the lens', async ({ app }) => {
   await addVideoSource(app, /^WebRTC \(WHEP\)/, WHEP_STREAM);
   await connectMock(app, ['Enable gimbal']);
@@ -267,4 +238,37 @@ test('measuring the lens learns how wide the camera sees from how far a detectio
   await expect(app.getByText('Approximate aim · measure the lens in camera details')).toHaveCount(0);
   expect(Math.abs(lens.hFov - LENS.h), `measured ${lens.hFov}°`).toBeLessThan(1);
   expect(Math.abs(lens.vFov - LENS.v), `measured ${lens.vFov}°`).toBeLessThan(1);
+});
+
+test('a drag on the video turns the gimbal as far as the drag spans through the lens, however late its angle reports', async ({ app }) => {
+  await addVideoSource(app, /^WebRTC \(WHEP\)/, WHEP_STREAM);
+  await connectMock(app, ['Enable gimbal']);
+  const later = app.getByRole('button', { name: 'Fly now, finish loading in background' });
+  if (await later.isVisible()) await later.click();
+  await expect(later).toBeHidden();
+  await app.evaluate(async (module) => {
+    const { Qgc } = (await import(module)) as { Qgc: { set: (path: string, value: unknown) => Promise<unknown> } };
+    await Qgc.set('settings.gimbalControllerSettings.enableOnScreenControl', false);
+    await Qgc.set('settings.gimbalControllerSettings.clickAndDrag', false);
+  }, '/src/bridge/Qgc.ts');
+  const aim = () =>
+    app.evaluate(async (module) => {
+      const view = (await ((await import(module)) as { Qgc: { get: (path: string) => Promise<unknown> } }).Qgc.get('view.gimbal')) as { gimbals?: { pitch: number | null; bodyYaw: number | null }[] } | null;
+      const gimbal = view?.gimbals?.[0];
+      return gimbal?.pitch == null || gimbal.bodyYaw == null ? null : { pitch: gimbal.pitch, yaw: gimbal.bodyYaw };
+    }, '/src/bridge/Qgc.ts');
+  await expect.poll(aim, { timeout: 30_000 }).not.toBeNull();
+  await holdGimbal(app, (await aim()) as { pitch: number; yaw: number });
+  const video = app.locator('video').first();
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.videoWidth), { timeout: 30_000 }).toBe(640);
+  await app.waitForTimeout(2_500);
+  const before = (await aim()) as { pitch: number; yaw: number };
+  const box = (await video.boundingBox())!;
+  const [x, y] = [box.x + box.width / 2, box.y + box.height / 2];
+  await app.mouse.move(x, y);
+  await app.mouse.down();
+  await Array.from({ length: 40 }, (_, step) => step + 1).reduce((done, step) => done.then(() => app.mouse.move(x + step * 8, y)), Promise.resolve());
+  await app.mouse.up();
+  const [yawOff] = aimThroughLens(320 / (box.width / 2), 0, 80, 80, before.pitch);
+  await expect.poll(async () => Math.abs(((await aim())?.yaw ?? 0) - (before.yaw + yawOff)), { timeout: 30_000 }).toBeLessThan(0.5);
 });

@@ -20,6 +20,7 @@ pub const GIMBAL_YAW_LOCK: &str = "gimbal.yawLock";
 pub const GIMBAL_CONTROL: &str = "gimbal.control";
 pub const GIMBAL_SELECT: &str = "gimbal.select";
 pub const GIMBAL_ON_SCREEN: &str = "gimbal.onScreen";
+pub const GIMBAL_DRAG: &str = "gimbal.drag";
 pub const GIMBAL_PITCH: &str = "gimbal.pitch";
 pub const GIMBAL_AIM: &str = "gimbal.aim";
 
@@ -106,7 +107,7 @@ pub fn azimuth_view(backend: &dyn Backend, _args: &[String]) -> Value {
 }
 
 pub fn owns(path: &str) -> bool {
-    [GIMBAL_CENTER, GIMBAL_TILT_90, GIMBAL_POINT_HOME, GIMBAL_RETRACT, GIMBAL_YAW_LOCK, GIMBAL_CONTROL, GIMBAL_SELECT, GIMBAL_ON_SCREEN, GIMBAL_PITCH, GIMBAL_AIM].contains(&path)
+    [GIMBAL_CENTER, GIMBAL_TILT_90, GIMBAL_POINT_HOME, GIMBAL_RETRACT, GIMBAL_YAW_LOCK, GIMBAL_CONTROL, GIMBAL_SELECT, GIMBAL_ON_SCREEN, GIMBAL_DRAG, GIMBAL_PITCH, GIMBAL_AIM].contains(&path)
 }
 
 fn qt_path(method: &str) -> String {
@@ -164,6 +165,16 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
                 "slide": number_setting(backend, "cameraSlideSpeed"),
             });
             crate::guided::dispatch(backend, Some(op("onScreen", screen)), vehicle, &qt_path("gimbalOnScreenControl"), &json!([pan, tilt, point, !point, !point]).to_string())
+        }
+        GIMBAL_DRAG => {
+            let number = |i: usize| given.get(i).and_then(Value::as_f64).filter(|v| v.is_finite() && (-2.0..=2.0).contains(v));
+            let (Some(pan), Some(tilt)) = (number(0), number(1)) else {
+                return json!({ "ok": false, "refusal": "badPoint", "reason": "A drag is how far across the picture it went, in fractions of half the width and height." });
+            };
+            let begin = given.get(2).and_then(Value::as_bool).unwrap_or(false);
+            let (h_fov, v_fov, _) = crate::lens::field_of_view(backend);
+            let drag = json!({ "pan": pan, "tilt": tilt, "begin": begin, "hFov": h_fov, "vFov": v_fov });
+            crate::guided::dispatch(backend, Some(op("drag", drag)), vehicle, &qt_path("gimbalOnScreenControl"), &json!([pan, tilt, true, false, false]).to_string())
         }
         GIMBAL_SELECT => crate::guided::dispatch(
             backend,

@@ -38,6 +38,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -269,9 +270,14 @@ internal fun GimbalScreenControl(modifier: Modifier = Modifier) {
     if (!control.enabled) {
         Box(
             modifier.pointerInput(Unit) {
-                detectDragGestures { change, drag ->
+                var from = Offset.Zero
+                var begun = false
+                detectDragGestures(onDragStart = { at -> from = at; begun = false }) { change, _ ->
                     change.consume()
-                    send(aimFraction(drag.x, size.width), -aimFraction(drag.y, size.width), false)
+                    val begin = !begun
+                    begun = true
+                    val moved = change.position - from
+                    scope.launch(Dispatchers.Default) { gimbalRefusal(Qgc.call("gimbal.drag", aimFraction(moved.x, size.width).toDouble(), (-aimFraction(moved.y, size.height)).toDouble(), begin)) }
                 }
             },
         )

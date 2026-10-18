@@ -250,8 +250,10 @@ func onScreenGimbal(_ view: JSON?) -> OnScreenGimbal? {
 
 func aimFraction(_ delta: CGFloat, _ width: CGFloat) -> CGFloat { delta / (max(width, 1) / 2) }
 
-func aimDelta(_ last: CGSize?, _ translation: CGSize) -> CGSize? {
-    last.map { CGSize(width: translation.width - $0.width, height: translation.height - $0.height) }
+private func sendDrag(_ pan: CGFloat, _ tilt: CGFloat, _ begin: Bool) {
+    let panning = Double(pan)
+    let tilting = Double(tilt)
+    offMain { _ = gimbalRefusal(Qgc.call("gimbal.drag", panning, tilting, begin)) }
 }
 
 private func sendOnScreen(_ pan: CGFloat, _ tilt: CGFloat, _ point: Bool) {
@@ -302,10 +304,9 @@ private struct GimbalAim: ViewModifier {
                 DragGesture()
                     .updating($pressed) { _, pressed, _ in pressed = true }
                     .onChanged { drag in
-                        let moved = aimDelta(last, drag.translation)
+                        let begin = last == nil
                         last = drag.translation
-                        guard let moved else { return }
-                        sendOnScreen(aimFraction(moved.width, size.width), -aimFraction(moved.height, size.width), false)
+                        sendDrag(aimFraction(drag.translation.width, size.width), -aimFraction(drag.translation.height, size.height), begin)
                     }
                     .onEnded { _ in stop() }
             )
