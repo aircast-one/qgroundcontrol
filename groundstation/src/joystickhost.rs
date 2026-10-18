@@ -313,7 +313,7 @@ pub fn assignable_actions(flight_modes: &[String], channels: &[usize], custom: &
         .chain(fixed(0..3))
         .chain(flight_modes.iter().map(|mode| (mode.clone(), false)))
         .chain(fixed(3..ACTIONS.len()))
-        .chain(channels.iter().filter_map(|channel| crate::joystick::rc_channel_action(*channel)).map(|action| (action.to_string(), false)))
+        .chain(channels.iter().flat_map(|channel| crate::joystick::rc_channel_actions(*channel)).map(|action| (action.to_string(), false)))
         .chain(custom.iter().map(|label| (label.clone(), false)))
         .collect();
     let extra: Vec<(String, bool)> = assigned.iter().filter(|a| !listed.iter().any(|(name, _)| name == *a)).map(|a| (a.clone(), false)).collect();
@@ -1047,6 +1047,6 @@ mod tests {
         let list = assignable_actions(&["Loiter".to_string()], &[7, 12], &["Lights".to_string()], &["Old Mode".to_string()]);
         let names: Vec<&str> = list.iter().map(|(n, _)| n.as_str()).collect();
         assert_eq!(names[..6], ["No Action", "Arm", "Disarm", "Toggle Arm", "Loiter", "VTOL: Fixed Wing"]);
-        assert_eq!(names[names.len() - 4..], ["RC Channel 7", "RC Channel 12", "Lights", "Old Mode"], "the free rc channels and then custom MAVLink actions follow the built-ins, and an assignment that is not available right now stays listed");
+        assert_eq!(names[names.len() - 6..], ["RC Channel 7", "RC Channel 7 Middle", "RC Channel 12", "RC Channel 12 Middle", "Lights", "Old Mode"], "the free rc channels and then custom MAVLink actions follow the built-ins, and an assignment that is not available right now stays listed");
     }
 }

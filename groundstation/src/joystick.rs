@@ -235,14 +235,40 @@ pub const RC_CHANNEL_ACTIONS: [(&str, &str, usize); 12] = [
     ("rcChannel16", "RC Channel 16", 16),
 ];
 
-const _: () = assert!(RC_CHANNEL_ACTIONS.len() == *RC_BUTTON_CHANNELS.end() - *RC_BUTTON_CHANNELS.start() + 1);
+pub const RC_CHANNEL_MIDDLE_ACTIONS: [(&str, &str, usize); 12] = [
+    ("rcChannel5Middle", "RC Channel 5 Middle", 5),
+    ("rcChannel6Middle", "RC Channel 6 Middle", 6),
+    ("rcChannel7Middle", "RC Channel 7 Middle", 7),
+    ("rcChannel8Middle", "RC Channel 8 Middle", 8),
+    ("rcChannel9Middle", "RC Channel 9 Middle", 9),
+    ("rcChannel10Middle", "RC Channel 10 Middle", 10),
+    ("rcChannel11Middle", "RC Channel 11 Middle", 11),
+    ("rcChannel12Middle", "RC Channel 12 Middle", 12),
+    ("rcChannel13Middle", "RC Channel 13 Middle", 13),
+    ("rcChannel14Middle", "RC Channel 14 Middle", 14),
+    ("rcChannel15Middle", "RC Channel 15 Middle", 15),
+    ("rcChannel16Middle", "RC Channel 16 Middle", 16),
+];
 
-pub fn rc_channel_of(action: &str) -> Option<usize> {
-    RC_CHANNEL_ACTIONS.iter().find(|(_, name, _)| *name == action).map(|(_, _, channel)| *channel)
+const _: () = assert!(RC_CHANNEL_ACTIONS.len() == *RC_BUTTON_CHANNELS.end() - *RC_BUTTON_CHANNELS.start() + 1);
+const _: () = assert!(RC_CHANNEL_MIDDLE_ACTIONS.len() == RC_CHANNEL_ACTIONS.len());
+
+fn rc_channel_entries() -> impl Iterator<Item = (&'static str, &'static str, usize, u16)> {
+    let high = RC_CHANNEL_ACTIONS.iter().map(|(id, name, channel)| (*id, *name, *channel, PWM_MAX as u16));
+    let middle = RC_CHANNEL_MIDDLE_ACTIONS.iter().map(|(id, name, channel)| (*id, *name, *channel, PWM_CENTER as u16));
+    high.chain(middle)
 }
 
-pub fn rc_channel_action(channel: usize) -> Option<&'static str> {
-    RC_CHANNEL_ACTIONS.iter().find(|(_, _, c)| *c == channel).map(|(_, name, _)| *name)
+fn rc_binding(action: &str) -> Option<(usize, u16)> {
+    rc_channel_entries().find(|(_, name, _, _)| *name == action).map(|(_, _, channel, pwm)| (channel, pwm))
+}
+
+pub fn rc_channel_of(action: &str) -> Option<usize> {
+    rc_binding(action).map(|(channel, _)| channel)
+}
+
+pub fn rc_channel_actions(channel: usize) -> Vec<&'static str> {
+    rc_channel_entries().filter(|(_, _, c, _)| *c == channel).map(|(_, name, _, _)| name).collect()
 }
 
 pub fn action_id(action: &str) -> Option<&'static str> {
@@ -252,7 +278,7 @@ pub fn action_id(action: &str) -> Option<&'static str> {
             .iter()
             .find(|(_, name, _, _)| *name == action)
             .map(|(id, _, _, _)| *id)
-            .or_else(|| RC_CHANNEL_ACTIONS.iter().find(|(_, name, _)| *name == action).map(|(id, _, _)| *id)),
+            .or_else(|| rc_channel_entries().find(|(_, name, _, _)| *name == action).map(|(id, _, _, _)| id)),
     }
 }
 
@@ -784,17 +810,16 @@ impl Joystick {
     }
 
     fn button_channel(&self, channel: usize) -> Option<u16> {
-        let bound: Vec<bool> = self
+        let bound: Vec<Option<u16>> = self
             .bindings
             .iter()
             .zip(&self.events)
-            .filter(|(binding, _)| binding.as_ref().and_then(|b| rc_channel_of(&b.action)) == Some(channel))
-            .map(|(_, event)| event.held())
+            .filter_map(|(binding, event)| {
+                let (bound_to, pwm) = binding.as_ref().and_then(|b| rc_binding(&b.action))?;
+                (bound_to == channel).then(|| event.held().then_some(pwm))
+            })
             .collect();
-        (!bound.is_empty()).then(|| match bound.iter().any(|held| *held) {
-            true => PWM_MAX as u16,
-            false => PWM_MIN as u16,
-        })
+        (!bound.is_empty()).then(|| bound.iter().flatten().max().copied().unwrap_or(PWM_MIN as u16))
     }
 
     fn hand_back(&mut self) -> Vec<Out> {
@@ -1158,7 +1183,7 @@ pub fn joystick_view(_backend: &dyn Backend, _args: &[String]) -> Value {
         })).collect::<Vec<_>>(),
         "actions": std::iter::once(json!({ "id": ACTION_NONE_ID, "action": ACTION_NONE, "down": false, "up": false, "repeat": false }))
             .chain(ACTIONS.iter().map(|(id, action, up, repeat)| json!({ "id": id, "action": action, "down": true, "up": up, "repeat": repeat })))
-            .chain(RC_CHANNEL_ACTIONS.iter().map(|(id, action, channel)| json!({ "id": id, "action": action, "down": false, "up": false, "repeat": false, "rcChannel": channel })))
+            .chain(rc_channel_entries().map(|(id, action, channel, _)| json!({ "id": id, "action": action, "down": false, "up": false, "repeat": false, "rcChannel": channel })))
             .collect::<Vec<_>>(),
         "settings": settings_catalog(),
     })
@@ -1660,6 +1685,24 @@ mod tests {
         assert_eq!(overrides_of(&released), vec![frame(&[(9, 1000), (12, 1000)])]);
         assert_eq!(stick.snapshot(&settings, ardupilot(), 123)["buttons"][0]["rcChannel"], 12);
         assert_eq!(action_id("RC Channel 12"), Some("rcChannel12"));
+    }
+
+    #[test]
+    fn a_three_position_switch_sent_as_three_buttons_reaches_its_channel_low_middle_and_high() {
+        let mut stick = mapped();
+        assert!(stick.set_button_action(1, Some("RC Channel 12 Middle")));
+        assert!(stick.set_button_action(2, Some("RC Channel 12")));
+        stick.set_polling(Polling { vehicle: true, configuration: false }, 0);
+        let settings = flying();
+        let switch = |stick: &mut Joystick, buttons: [bool; 4], at: u64| overrides_of(&stick.on_input(Input { axes: &[0, 0, 0, 0], buttons: &buttons, hats: &[0] }, &settings, ardupilot(), at));
+        assert_eq!(switch(&mut stick, [true, false, false, false], 41), vec![frame(&[(12, 1000)])], "EdgeTX holds the button of the low position, which nothing is bound to");
+        assert_eq!(switch(&mut stick, [false, true, false, false], 82), vec![frame(&[(12, 1500)])]);
+        assert_eq!(switch(&mut stick, [false, false, true, false], 123), vec![frame(&[(12, 2000)])]);
+        assert_eq!(switch(&mut stick, [false, true, true, false], 164), vec![frame(&[(12, 2000)])], "if two positions ever read held together, the higher one wins");
+        assert_eq!(stick.snapshot(&settings, ardupilot(), 164)["buttons"][1]["rcChannel"], 12);
+        assert_eq!(action_id("RC Channel 12 Middle"), Some("rcChannel12Middle"));
+        assert!(!accepts("RC Channel 12 Middle", ButtonEvent::Down), "a channel binding is never dispatched as an action");
+        assert_eq!(rc_channel_actions(12), vec!["RC Channel 12", "RC Channel 12 Middle"]);
     }
 
     #[test]
