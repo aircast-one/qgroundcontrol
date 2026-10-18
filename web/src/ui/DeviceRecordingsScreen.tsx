@@ -6,7 +6,7 @@ import { ActionButton, ConfirmDialog, DeviceNotice, DeviceSection, DeviceSelect,
 import { LinkButton, SettingSwitchRow, StatusLine } from '@/ui/DeviceKitSettings';
 import { type RecordedCamera, type RecordingSegment, type RecordingsLimit, lowersLimit, parseRecordings, recordPath, recordingsPath, segmentDetail, segmentPath } from '@/ui/DeviceRecordings';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
-import { DeviceLevel } from '@/ui/DeviceStatus';
+import { DeviceLevel } from '@/ui/DeviceLevel';
 import { deviceUrl, useDeviceView } from '@/ui/DeviceView';
 import { FootNote } from '@/ui/SetupRow';
 

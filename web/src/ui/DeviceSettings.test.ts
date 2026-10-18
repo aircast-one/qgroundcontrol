@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CloudStage, parseDeviceSettings } from '@/ui/DeviceSettings';
-import { DeviceLevel } from '@/ui/DeviceStatus';
+import { DeviceLevel } from '@/ui/DeviceLevel';
 
 const served = {
   health: { level: 2, text: 'Mobile data down', href: '/network#cellular' },

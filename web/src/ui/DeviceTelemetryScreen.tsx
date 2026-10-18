@@ -4,7 +4,7 @@ import { MaterialIcon } from '@/res/Icon';
 import { md } from '@/theme/Colors';
 import { CopyRow, DeviceBadgeText, DeviceForm, DeviceNotice, DeviceSection, DeviceSelect, DeviceText, RefusalText, useDeviceAction } from '@/ui/DeviceKit';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
-import { DeviceLevel } from '@/ui/DeviceStatus';
+import { DeviceLevel } from '@/ui/DeviceLevel';
 import {
   type DeviceEndpoint,
   type EndpointRow,

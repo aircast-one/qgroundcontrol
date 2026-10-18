@@ -47,7 +47,7 @@ import {
   uplinkIcon,
 } from '@/ui/DeviceNetwork';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
-import { DeviceLevel } from '@/ui/DeviceStatus';
+import { DeviceLevel } from '@/ui/DeviceLevel';
 import { useDeviceView } from '@/ui/DeviceView';
 import { WifiWizard } from '@/ui/DeviceWifiWizard';
 import { FootNote } from '@/ui/SetupRow';

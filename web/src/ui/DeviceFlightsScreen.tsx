@@ -43,7 +43,7 @@ import {
   zoomSlice,
 } from '@/ui/DeviceFlights';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
-import { DeviceLevel } from '@/ui/DeviceStatus';
+import { DeviceLevel } from '@/ui/DeviceLevel';
 import { deviceUrl, useDeviceView } from '@/ui/DeviceView';
 import { FootNote } from '@/ui/SetupRow';
 import { LocalChangeNotice } from '@/ui/ValueRow';

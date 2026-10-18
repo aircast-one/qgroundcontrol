@@ -5,7 +5,7 @@ import { ActionButton, ConfirmDialog, DeviceDisclosure, DeviceNotice, DeviceSect
 import { ButtonRow, LinkButton, SecretField, SettingSwitchRow, StatusLine } from '@/ui/DeviceKitSettings';
 import { type DiagnosticsSettings, type EngineeringView, type PublishSignIn, modeNamed, parseEngineering, shownFields, signInBody, signInKey } from '@/ui/DeviceEngineering';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
-import { DeviceLevel } from '@/ui/DeviceStatus';
+import { DeviceLevel } from '@/ui/DeviceLevel';
 import { deviceUrl, useDeviceView } from '@/ui/DeviceView';
 import { FootNote } from '@/ui/SetupRow';
 

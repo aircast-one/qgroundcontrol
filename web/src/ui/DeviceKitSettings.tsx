@@ -3,7 +3,7 @@ import { AlertDialog, IconButton, OutlinedTextField, Switch, Text, TextButton } 
 import { MaterialIcon } from '@/res/Icon';
 import { md } from '@/theme/Colors';
 import { type ActionConfirm, ConfirmDialog, type DeviceRequest, RefusalText, levelColor, useDeviceAction } from '@/ui/DeviceKit';
-import { DeviceLevel } from '@/ui/DeviceStatus';
+import { DeviceLevel } from '@/ui/DeviceLevel';
 
 export const SecretField = ({
   label,

@@ -19,7 +19,7 @@ import {
 } from '@/ui/DeviceConnect';
 import { CopyRow, DeviceDisclosure, DeviceNotice, DeviceSection, DeviceText } from '@/ui/DeviceKit';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
-import { DeviceLevel } from '@/ui/DeviceStatus';
+import { DeviceLevel } from '@/ui/DeviceLevel';
 import { useDeviceView } from '@/ui/DeviceView';
 import { FootNote } from '@/ui/SetupRow';
 

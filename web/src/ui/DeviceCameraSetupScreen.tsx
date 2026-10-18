@@ -5,7 +5,7 @@ import { type CameraView, type ServerDest, type ShareLink, SETUP_SECTIONS, cloud
 import { ActionButton, CopyRow, DeviceForm, DeviceNotice, DeviceSwitchRow, DeviceText, RefusalText, useDeviceAction } from '@/ui/DeviceKit';
 import { LinkButton, LinkedNoticeView, PartDisclosure } from '@/ui/DeviceKitCamera';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
-import { DeviceLevel } from '@/ui/DeviceStatus';
+import { DeviceLevel } from '@/ui/DeviceLevel';
 import { EndpointRows } from '@/ui/DeviceTelemetryScreen';
 import { deviceUrl, useDeviceView } from '@/ui/DeviceView';
 import { FootNote } from '@/ui/SetupRow';

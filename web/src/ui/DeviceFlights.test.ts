@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { DeviceLevel } from '@/ui/DeviceStatus';
+import { DeviceLevel } from '@/ui/DeviceLevel';
 import {
   clockAt,
   composeZoom,

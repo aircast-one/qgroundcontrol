@@ -6,7 +6,7 @@ import { ActionButton, CopyRow, DeviceDisclosure, DeviceNotice, DeviceSection, D
 import { ButtonRow, LinkButton, StackedFact, StatusLine, TypedConfirmDialog } from '@/ui/DeviceKitSettings';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
 import { CloudStage, type CloudAccount, type DeviceSettingsView, type DeviceStat, SERVICES, type ServiceRow, type SoftwareNotice, type SoftwareStatus, parseDeviceSettings } from '@/ui/DeviceSettings';
-import { DeviceLevel } from '@/ui/DeviceStatus';
+import { DeviceLevel } from '@/ui/DeviceLevel';
 import { deviceUrl, useDeviceView } from '@/ui/DeviceView';
 import { FootNote } from '@/ui/SetupRow';
 

@@ -7,7 +7,8 @@ import { type CameraCopy, type CameraView, type CamerasView, cameBack, camerasSh
 import { DeviceBadgeText, DeviceChart, DeviceDisclosure, DeviceFact, DeviceNotice, DeviceSection, DeviceSwitchRow, QrDialog, levelColor, useCopy } from '@/ui/DeviceKit';
 import { LinkButton, PreviewPlaceholder, WhepPreview } from '@/ui/DeviceKitCamera';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
-import { DeviceLevel, devicePageIcon } from '@/ui/DeviceStatus';
+import { devicePageIcon } from '@/ui/DeviceStatus';
+import { DeviceLevel } from '@/ui/DeviceLevel';
 import { EndpointRows } from '@/ui/DeviceTelemetryScreen';
 import { deviceUrl, useDeviceView } from '@/ui/DeviceView';
 import { FootNote, SetupRow, SetupState } from '@/ui/SetupRow';

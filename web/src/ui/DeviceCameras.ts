@@ -1,7 +1,8 @@
 import { type Json, isJson, jsonObjects, optBoolean, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { type DeviceBadge, type DeviceChartView, type DeviceOption, parseBadge, parseChart, parseOptions } from '@/ui/DeviceKit';
 import { type CameraWizardView, parseCameraWizard } from '@/ui/DeviceCameraWizard';
-import { DeviceLevel, type DevicePage } from '@/ui/DeviceStatus';
+import { type DevicePage } from '@/ui/DeviceStatus';
+import { DeviceLevel } from '@/ui/DeviceLevel';
 import { type DeviceEndpoint, parseEndpointList } from '@/ui/DeviceTelemetry';
 
 export type CameraCopy = { readonly label: string; readonly text: string; readonly qr: boolean };

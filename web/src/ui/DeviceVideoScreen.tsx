@@ -4,7 +4,7 @@ import { md } from '@/theme/Colors';
 import { ActionButton, CopyRow, DeviceBadgeText, DeviceDisclosure, DeviceForm, DeviceNotice, DeviceSection, DeviceText, RefusalText } from '@/ui/DeviceKit';
 import { ButtonRow, LinkButton, StackedFact, StatusLine, StepText } from '@/ui/DeviceKitSettings';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
-import { DeviceLevel } from '@/ui/DeviceStatus';
+import { DeviceLevel } from '@/ui/DeviceLevel';
 import { SHARING_OFF, SharingStage, type DetectModel, type DetectionSettings, type PublicSharing, type RadioSettings, modelPath, parseVideo, uploadModel } from '@/ui/DeviceVideo';
 import { type DeviceRefusal, useDeviceView } from '@/ui/DeviceView';
 import { FootNote, SetupRow } from '@/ui/SetupRow';

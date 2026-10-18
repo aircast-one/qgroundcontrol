@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { chipText, framedElsewhere, framedTitle, openedTitle } from '@/ui/DeviceScreen';
-import { DeviceLevel, deviceNeedsAttention, devicePageIcon, parseDeviceStatus } from '@/ui/DeviceStatus';
+import { deviceNeedsAttention, devicePageIcon, parseDeviceStatus } from '@/ui/DeviceStatus';
+import { DeviceLevel } from '@/ui/DeviceLevel';
 import { DEVICE_PAGE } from '@/ui/DevicePage';
 import { SettingsGroup, SettingsGroupEntries, pageLook } from '@/ui/SettingsScreen';
 import { openingGroup } from '@/ui/SettingsSheet';

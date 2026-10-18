@@ -4,7 +4,7 @@ import { copyToClipboard } from '@/kotlin/Platform';
 import { AlertDialog, BasicAlertDialog, DropdownMenu, DropdownMenuItem, FilledTonalButton, IconButton, type KeyboardType, OutlinedTextField, Switch, Text, TextButton } from '@/m3';
 import { MaterialIcon } from '@/res/Icon';
 import { aircast, md } from '@/theme/Colors';
-import { DeviceLevel } from '@/ui/DeviceStatus';
+import { DeviceLevel } from '@/ui/DeviceLevel';
 import { type DeviceMethod, type DeviceRefusal, deviceCall, deviceUrl } from '@/ui/DeviceView';
 import { LocalChangeNotice } from '@/ui/ValueRow';
 

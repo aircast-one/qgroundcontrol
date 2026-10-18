@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type CameraView, cameBack, camerasShown, cloudflareTarget, liveness, openedSection, parseCameras } from '@/ui/DeviceCameras';
-import { DeviceLevel } from '@/ui/DeviceStatus';
+import { DeviceLevel } from '@/ui/DeviceLevel';
 
 const wizard = {
   name: '',

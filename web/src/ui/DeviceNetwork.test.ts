@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { shownFields } from '@/ui/DeviceKitForms';
 import { GOOGLE_STUN, connectionFieldShown, iceRows, manualAddressing, parseNetwork, serializeIceServers, uplinkIcon } from '@/ui/DeviceNetwork';
-import { DeviceLevel } from '@/ui/DeviceStatus';
+import { DeviceLevel } from '@/ui/DeviceLevel';
 import { NO_ANSWER } from '@/ui/DeviceView';
 import { joinOutcome, parseWifiScan, reopenLabel, reopenLink, wifiJoinProblem } from '@/ui/DeviceWifiWizard';
 

@@ -2,7 +2,7 @@ import { type Json, isJson, jsonObjects, jsonStrings, optBoolean, optDouble, opt
 import { type DeviceBadge, parseBadge } from '@/ui/DeviceKit';
 import { readStored, writeStored } from '@/ui/DeviceConnect';
 import { deviceUrl } from '@/ui/DeviceView';
-import { DeviceLevel } from '@/ui/DeviceStatus';
+import { DeviceLevel } from '@/ui/DeviceLevel';
 
 export type FlightLine = { readonly index: number; readonly clock: string; readonly text: string; readonly level: number; readonly alert: boolean; readonly repeats: string; readonly heldBack: boolean };
 
