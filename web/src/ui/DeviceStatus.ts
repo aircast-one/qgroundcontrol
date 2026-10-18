@@ -1,6 +1,7 @@
 import { type Json, isJson, jsonObjects, optBoolean, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { mutableStateOf } from '@/kotlin/State';
 import type { DrawableName } from '@/res/drawables';
+import { followDeviceView } from '@/ui/DeviceView';
 
 export const DeviceLevel = { Ready: 0, Warn: 1, Blocked: 2 } as const;
 
@@ -71,16 +72,10 @@ export const deviceStatus = mutableStateOf<DeviceStatus | null>(null);
 
 export const deviceAnswered = mutableStateOf(false);
 
-const STATUS_EVERY_MS = 5000;
+export const deviceRequested = mutableStateOf<string | null>(null);
 
-const readDeviceStatus = async (): Promise<DeviceStatus | null> => {
-  const response = await fetch('aircraft.json', { cache: 'no-store' }).catch(() => null);
-  return response?.ok ? parseDeviceStatus(await response.json().catch(() => null)) : null;
-};
-
-export const followDeviceStatus = (): void =>
-  void readDeviceStatus().then((status) => {
+export const followDeviceStatus = (): (() => void) =>
+  followDeviceView('aircraft', parseDeviceStatus, (status) => {
     deviceStatus.value = status;
-    if (status !== null) deviceAnswered.value = true;
-    setTimeout(followDeviceStatus, STATUS_EVERY_MS);
+    deviceAnswered.value = true;
   });

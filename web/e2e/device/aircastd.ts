@@ -159,7 +159,11 @@ const http = createServer((request, response) => {
       json(response, 200, scenes.get(placed[1]));
     });
   }
-  if (url.pathname === '/fly/aircraft.json') return json(response, 200, AIRCRAFT);
+  if (url.pathname === '/api/views/aircraft') return json(response, 200, AIRCRAFT);
+  if (url.pathname === '/api/views/aircraft/events') {
+    response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
+    return void response.write(`data: ${JSON.stringify(AIRCRAFT)}\n\n`);
+  }
   const page = DEVICE_PAGES.get(url.pathname);
   if (page !== undefined) return void response.writeHead(200, { 'Content-Type': 'text/html' }).end(devicePage(page));
   if (url.pathname === '/stats') return json(response, 200, { ...seen, store });

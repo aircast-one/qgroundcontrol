@@ -25,6 +25,7 @@ export default defineConfig({
             rewrite: (path) => `/fly${path}`,
             configure: (proxy) => proxy.on('proxyReqWs', (request) => request.setHeader('origin', aircastd)),
           },
+          '^/api/': { target: aircastd, changeOrigin: true },
         }
       : undefined,
   },

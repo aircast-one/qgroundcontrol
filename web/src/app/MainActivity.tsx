@@ -22,7 +22,9 @@ import { AircastTheme } from '@/map/Theme';
 import type { TrackPoint } from '@/map/VehicleMap';
 import { VEHICLES_VIEW, type VehicleChoices, VehicleBridge, activeChanged, handoverNotice, rememberedChoices, vehicleChoices } from '@/map/VehiclePicker';
 import { VehicleStateChip } from '@/ui/ActiveVehicle';
-import { DeviceStatusChip } from '@/ui/DeviceScreen';
+import { DeviceDeepLink, DeviceStatusChip } from '@/ui/DeviceScreen';
+import { deviceLinkOf } from '@/ui/DeviceScreens';
+import { deviceRequested } from '@/ui/DeviceStatus';
 import { useAdvancedUiShown } from '@/ui/AdvancedUi';
 import { type AnalyzePage, AnalyzeScreen } from '@/ui/AnalyzeScreen';
 import { AppFontScale } from '@/ui/AppFontScale';
@@ -114,6 +116,7 @@ export const MainActivity = () => {
     SpeechOut.start();
     const link = launchDeepLink();
     if (link !== null) void call('notifyDeepLink', link);
+    deviceRequested.value = deviceLinkOf(window.location.hash);
     GamepadInput.start(scope);
     VirtualStickSender.start(scope);
     VehicleLinkKeeper.start();
@@ -133,6 +136,7 @@ export const MainActivity = () => {
       <DeviceCameraHost />
       <AppFontScale>
         <LocalAppNavigation.Provider value={navigation}>
+          <DeviceDeepLink />
           <LocalOpenPlan.Provider value={openPlan}>
             <LocalFlyScreenState.Provider value={flyScreen}>
               <LocalFlyMapEdits.Provider value={flyScreen.mapEdits}>

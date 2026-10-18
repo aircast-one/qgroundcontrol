@@ -1,12 +1,13 @@
 import { useContext, useEffect, useRef, useState } from 'react';
-import { useBackHandler } from '@/kotlin/Compose';
+import { useBackHandler, useKeyedState } from '@/kotlin/Compose';
 import { useValue } from '@/kotlin/State';
 import { FilledTonalButton, Surface, Text } from '@/m3';
 import { Color, aircast, md, withAlpha } from '@/theme/Colors';
 import { LocalAppNavigation } from '@/ui/AppNavigation';
 import { useOsdBackdrop } from '@/ui/Osd';
 import { FootNote, OverridePageHeading, SectionHeader, SetupRow, SetupState } from '@/ui/SetupRow';
-import { DEVICE_HOME, DEVICE_PAGE, DeviceLevel, type DeviceStatus, deviceNeedsAttention, devicePageIcon, deviceStatus } from '@/ui/DeviceStatus';
+import { DEVICE_HOME, DEVICE_PAGE, DeviceLevel, type DeviceStatus, deviceAnswered, deviceNeedsAttention, devicePageIcon, deviceRequested, deviceStatus } from '@/ui/DeviceStatus';
+import { DEVICE_SCREENS, type DeviceScreenEntry, devicePath } from '@/ui/DeviceScreens';
 
 const TITLE_PREFIX = 'aircast · ';
 
@@ -24,7 +25,24 @@ const checkState = (level: number): SetupState => (level === DeviceLevel.Ready ?
 
 export const DeviceTab = ({ open, onOpen, onClose }: { open: string | null; onOpen: (href: string) => void; onClose: () => void }) => {
   const status = useValue(deviceStatus);
-  if (open !== null) return <DevicePageFrame href={open} title={openedTitle(status, open)} onBack={onClose} />;
+  const requested = useValue(deviceRequested);
+  const [stack, setStack] = useKeyedState<readonly string[]>([open], () => (open === null ? [] : [open]));
+  useEffect(() => {
+    if (requested === null) return;
+    deviceRequested.value = null;
+    onOpen(requested);
+  }, [requested]);
+  const current = stack.at(-1) ?? null;
+  const back = () => (stack.length > 1 ? setStack(stack.slice(0, -1)) : onClose());
+  if (current !== null) {
+    const { path, query } = devicePath(current);
+    const entry = DEVICE_SCREENS.get(path);
+    return entry !== undefined ? (
+      <NativeDevicePage key={current} entry={entry} href={current} query={query} onOpen={(href) => setStack([...stack, href])} onBack={back} />
+    ) : (
+      <DevicePageFrame key={current} href={current} title={openedTitle(status, current)} onBack={back} />
+    );
+  }
   if (status === null) return <FootNote text="Waiting for the device to answer…" />;
   return (
     <div className="h-full w-full overflow-y-auto">
@@ -68,6 +86,16 @@ export const DeviceTab = ({ open, onOpen, onClose }: { open: string | null; onOp
   );
 };
 
+const NativeDevicePage = ({ entry, href, query, onOpen, onBack }: { entry: DeviceScreenEntry; href: string; query: URLSearchParams; onOpen: (href: string) => void; onBack: () => void }) => {
+  useBackHandler(true, onBack);
+  return (
+    <>
+      <OverridePageHeading title={entry.title} onBack={onBack} />
+      <div className="h-full w-full overflow-y-auto">{entry.screen({ href, query, onOpen, onClose: onBack })}</div>
+    </>
+  );
+};
+
 export const framedElsewhere = (href: string, at: Location | undefined): boolean => {
   if (at === undefined) return false;
   const opened = new URL(href, at.href);
@@ -104,6 +132,18 @@ const DevicePageFrame = ({ href, title, onBack }: { href: string; title: string;
       />
     </>
   );
+};
+
+export const DeviceDeepLink = () => {
+  const navigation = useContext(LocalAppNavigation);
+  const answered = useValue(deviceAnswered);
+  const requested = useValue(deviceRequested);
+  useEffect(() => {
+    if (!answered || requested === null || navigation.settingsOpen.value) return;
+    navigation.settingsPage.value = DEVICE_PAGE;
+    navigation.settingsOpen.value = true;
+  }, [answered, requested]);
+  return null;
 };
 
 export const chipText = (status: DeviceStatus): string => (status.name !== '' ? `${status.name} · ${status.headline}` : status.headline);
