@@ -152,11 +152,12 @@ Step Radio::step(qint64 nowMs, std::optional<int> target, std::optional<Frame> f
     if (fresh) {
         _latest = std::make_pair(*fresh, nowMs);
     }
-    const std::optional<int> flying = live(nowMs) ? target : std::nullopt;
-    const std::optional<int> handedBack = (_holding && flying != _holding) ? _holding : std::nullopt;
+    const int flying = live(nowMs) ? target.value_or(0) : 0;
+    const int holding = _holding.value_or(0);
+    const std::optional<int> handedBack = (holding != 0 && flying != holding) ? std::optional<int>(holding) : std::nullopt;
     const bool due = fresh && (!_sentAt || (nowMs - *_sentAt) >= kSendEveryMs);
     const std::optional<Send> send =
-        (flying && _latest && due) ? std::optional<Send>(Send{*flying, _latest->first}) : std::nullopt;
+        (flying != 0 && _latest && due) ? std::optional<Send>(Send{flying, _latest->first}) : std::nullopt;
     if (send) {
         _sentAt = nowMs;
     }
