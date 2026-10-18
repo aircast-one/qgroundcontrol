@@ -47,6 +47,7 @@ enum Icon: String {
     case pause = "pause.fill"
     case photoCamera = "camera"
     case planCircle = "circle"
+    case planDrop = "arrow.down.to.line"
     case planFlag = "flag"
     case planGimbal = "arrow.up.and.down.circle"
     case planGrid = "square.grid.3x3"

@@ -75,6 +75,8 @@ pub fn mission_complete_view(backend: &dyn Backend, _args: &[String]) -> Value {
         *held
     };
     let resume = latch.open.then(|| crate::guided::resume_offer(backend)).flatten();
+    let summary = resume.and_then(resume_summary);
+    let interrupted = resume.is_some();
     json!({
         "kind": "object",
         "class": "MissionComplete",
@@ -83,7 +85,33 @@ pub fn mission_complete_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "imagesTaken": images,
         "resumeFromWaypoint": resume,
         "batteryWarning": resume.is_some(),
+        "interrupted": interrupted,
+        "title": if interrupted { INTERRUPTED_TITLE } else { COMPLETE_TITLE },
+        "detail": summary.map(|(waypoint, drops)| interrupted_detail(waypoint, drops)).unwrap_or_default(),
+        "resumeLabel": summary.map(|(waypoint, _)| format!("Resume from waypoint {waypoint}")).or_else(|| resume.map(|at| format!("Resume mission from waypoint {at}"))),
     })
+}
+
+const COMPLETE_TITLE: &str = "Flight plan complete";
+const INTERRUPTED_TITLE: &str = "Mission interrupted";
+
+pub fn interrupted_detail(waypoint: usize, drops: usize) -> String {
+    let rest = match drops {
+        0 => String::new(),
+        1 => " One drop is still to come.".to_string(),
+        n => format!(" {n} drops are still to come."),
+    };
+    format!("The aircraft left the mission before finishing it. Resuming flies it again from waypoint {waypoint}.{rest}")
+}
+
+fn resume_summary(offer: i64) -> Option<(usize, usize)> {
+    let hub = crate::hub::lock();
+    let vehicle = hub.active()?;
+    let shift = i64::from(!vehicle.sends_home());
+    let asked = usize::try_from(offer - shift).ok()?;
+    let commands = crate::cmdinfo::tree(crate::plandoc::firmware(i64::from(vehicle.autopilot)), crate::plandoc::vehicle_class(i64::from(vehicle.vehicle_type)));
+    let (first, drops) = crate::resumemission::resume_summary(vehicle.mission_items(), asked, |command| crate::resumemission::shape(&commands, command));
+    Some((first + usize::try_from(shift).unwrap_or(0), drops))
 }
 
 pub fn dismiss(id: u64) -> Value {
@@ -100,6 +128,13 @@ pub fn dismiss(id: u64) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_interrupted_mission_says_where_it_resumes_and_what_is_left() {
+        assert_eq!(interrupted_detail(4, 2), "The aircraft left the mission before finishing it. Resuming flies it again from waypoint 4. 2 drops are still to come.");
+        assert_eq!(interrupted_detail(4, 1), "The aircraft left the mission before finishing it. Resuming flies it again from waypoint 4. One drop is still to come.");
+        assert_eq!(interrupted_detail(6, 0), "The aircraft left the mission before finishing it. Resuming flies it again from waypoint 6.");
+    }
 
     fn at(armed: bool, in_mission: bool) -> Reading {
         Reading { connected: true, armed, in_mission, has_plan: true }

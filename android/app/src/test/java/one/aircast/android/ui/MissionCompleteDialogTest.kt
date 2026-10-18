@@ -24,4 +24,14 @@ class MissionCompleteDialogTest {
         assertNull(missionComplete(JSONObject("""{"open":true,"id":1,"resumeFromWaypoint":null}"""))!!.resumeFromWaypoint)
         assertNull(imagesTakenText(0))
     }
+
+    @Test
+    fun `an interrupted mission says so and names where it resumes`() {
+        val notice = missionComplete(
+            JSONObject("""{"open":true,"id":2,"imagesTaken":0,"resumeFromWaypoint":5,"batteryWarning":true,"interrupted":true,"title":"Mission interrupted","detail":"2 drops are still to come.","resumeLabel":"Resume from waypoint 4"}"""),
+        )!!
+        assertEquals(listOf("Mission interrupted", "Resume from waypoint 4"), listOf(notice.title, notice.resumeLabel))
+        assertTrue(notice.interrupted)
+        assertEquals("Flight plan complete", missionComplete(JSONObject("""{"open":true,"id":3,"resumeFromWaypoint":null}"""))!!.title)
+    }
 }

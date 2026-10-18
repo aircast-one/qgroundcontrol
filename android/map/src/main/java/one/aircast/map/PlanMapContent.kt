@@ -89,6 +89,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.withContext
 
 private const val PLAN_POLL_MS = 700L
+private const val FIELD_ZOOM = 16.0
 private const val FAILURE_MESSAGE_MS = 2500L
 private const val PANEL_MAX_FRACTION = 0.5f
 private val SIDE_PANEL_WIDTH = 380.dp
@@ -350,11 +351,13 @@ internal fun PlanMapContent(
     var listOpen by remember { mutableStateOf(false) }
     var centreRequest by remember { mutableIntStateOf(0) }
     var centreOn by remember { mutableStateOf<TrackPoint?>(null) }
+    var centreMinZoom by remember { mutableStateOf<Double?>(null) }
     fun focusItem(index: Int) {
         panelOpen = true
         selected = MapHit.Waypoint(index)
         items.firstOrNull { it.index == index }?.let { placed ->
             centreOn = TrackPoint(placed.latitude, placed.longitude)
+            centreMinZoom = null
             centreRequest += 1
             follow = false
         }
@@ -370,6 +373,7 @@ internal fun PlanMapContent(
         if (centersOnVehicleAtEntry(centredOnEntry, entryPoint != null, fitRequest)) {
             centredOnEntry = true
             centreOn = entryPoint
+            centreMinZoom = null
             centreRequest += 1
         }
     }
@@ -624,6 +628,7 @@ internal fun PlanMapContent(
             onFitFailed = { onBridge("Fitting the plan") { false } },
             centreRequest = centreRequest,
             centreOn = centreOn,
+            centreMinZoom = centreMinZoom,
         )
 
         radiusFor?.let { target ->
@@ -755,6 +760,7 @@ internal fun PlanMapContent(
                 onCentre = { point ->
                     follow = false
                     centreOn = point
+                    centreMinZoom = FIELD_ZOOM
                     centreRequest += 1
                 },
                 missionPoints = missionFitPoints(allItems),
@@ -786,6 +792,7 @@ internal fun PlanMapContent(
                         onBridge("Moving the route to the aircraft", done = "Route moved to the aircraft", then = {
                             follow = false
                             centreOn = aircraftAt
+                            centreMinZoom = null
                             centreRequest += 1
                         }) { repositionMission(aircraftAt) }
                     }) { Text("Move it to the aircraft") }

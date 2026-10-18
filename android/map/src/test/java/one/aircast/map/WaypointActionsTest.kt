@@ -74,4 +74,15 @@ class WaypointActionsTest {
         val next = MissionItem(3, 3, 41.0, 44.002, "Waypoint", true, 50.0, distance = 168.0, distanceText = "168 m")
         assertEquals(44.001, legLabels(listOf(first, roi, next)).single().first.longitude, 1e-9)
     }
+
+    @Test
+    fun `a waypoint offers a drop until one follows it, then shows it as an action`() {
+        val free = waypointDrop(JSONObject("""{"drop":{"index":null}}"""), 47.1, 8.2)
+        val taken = waypointDrop(JSONObject("""{"drop":{"index":5}}"""), 47.1, 8.2)
+        assertNull(waypointDrop(JSONObject("{}"), 47.1, 8.2))
+        assertEquals(WaypointDrop(null, 47.1, 8.2), free)
+        assertEquals(listOf("Hover", "Turn aircraft", "Drop payload"), offeredActions(noHold, noTurn, null, null, free).map { it.title })
+        assertEquals(listOf("Hover", "Turn aircraft"), offeredActions(noHold, noTurn, null, null, taken).map { it.title })
+        assertEquals(listOf("Drop payload"), activeActions(noHold, noTurn, null, null, taken).map { it.title })
+    }
 }

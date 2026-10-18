@@ -217,11 +217,7 @@ fn create_cloud(name: &str, api_base: &str, device_id: &str) -> bool {
     if name.is_empty() || !cloud_settings_valid(api_base, device_id) {
         return false;
     }
-    if !add(LinkConfig { name: name.to_string(), auto_connect: false, high_latency: false, kind: Kind::AircastCloud { api_base: api_base.trim().to_string(), device_id: device_id.trim().to_string() } }) {
-        return false;
-    }
-    let index = listed().iter().position(|e| e.config.name == name).unwrap_or(0);
-    connect(index)
+    replace_and_connect(LinkConfig { name: name.to_string(), auto_connect: true, high_latency: false, kind: Kind::AircastCloud { api_base: api_base.trim().to_string(), device_id: device_id.trim().to_string() } })
 }
 
 pub const START_MOCK_LINK: &str = "links.startMockLink";

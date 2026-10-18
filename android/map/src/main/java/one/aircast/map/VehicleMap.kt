@@ -207,6 +207,7 @@ fun VehicleMap(
     centreRequest: Int = 0,
     centreOn: TrackPoint? = null,
     centreZoom: Double? = null,
+    centreMinZoom: Double? = null,
     gestures: Boolean = true,
     onMapClick: ((Double, Double) -> Unit)? = null,
     onMissionItemClick: ((Int) -> Unit)? = null,
@@ -587,6 +588,7 @@ fun VehicleMap(
         val target = LatLng(at.latitude, at.longitude)
         when {
             centreZoom != null -> loaded.moveCamera(CameraUpdateFactory.newLatLngZoom(target, centreZoom))
+            centreMinZoom != null && loaded.cameraPosition.zoom < centreMinZoom -> loaded.animateCamera(CameraUpdateFactory.newLatLngZoom(target, centreMinZoom))
             loaded.cameraPosition.zoom > 1.0 -> {
                 val point = loaded.projection.toScreenLocation(target)
                 val clear = PointF(point.x - leftInsetPx / 2f, point.y - clearAreaLift(topInsetPx.toFloat(), bottomInsetPx.toFloat()))

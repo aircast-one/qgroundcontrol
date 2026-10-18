@@ -7,6 +7,7 @@ let PLAN_VIEW = "view.missionItems(geometry)"
 let KIND_LAND = "land"
 let KIND_WAYPOINT = "waypoint"
 let KIND_TAKEOFF = "takeoff"
+let KIND_DROP = "drop"
 let KIND_SURVEY = "survey"
 let KIND_CORRIDOR = "corridor"
 let KIND_STRUCTURE = "structure"
@@ -115,6 +116,7 @@ struct MissionItem: Equatable {
     var closesRoute: Bool = false
     var legBroken: Bool = false
     var abbreviation: String = ""
+    var drops: Bool = false
 
     static func == (lhs: MissionItem, rhs: MissionItem) -> Bool {
         lhs.doubles.map(boxedBits) == rhs.doubles.map(boxedBits)
@@ -130,7 +132,7 @@ struct MissionItem: Equatable {
             && lhs.altitudeFrameText == rhs.altitudeFrameText && lhs.altitudeMode == rhs.altitudeMode
             && lhs.altitudeEditUnits == rhs.altitudeEditUnits && lhs.complexPattern == rhs.complexPattern
             && lhs.terrainCollision == rhs.terrainCollision && lhs.closesRoute == rhs.closesRoute
-            && lhs.legBroken == rhs.legBroken && lhs.abbreviation == rhs.abbreviation
+            && lhs.legBroken == rhs.legBroken && lhs.abbreviation == rhs.abbreviation && lhs.drops == rhs.drops
     }
 
     private var doubles: [Double] {
@@ -220,7 +222,7 @@ func allMissionItems(_ json: JSON?) -> [MissionItem] {
     }
 }
 
-func missionItems(_ json: JSON?) -> [MissionItem] { allMissionItems(json).filter(\.placed) }
+func missionItems(_ json: JSON?) -> [MissionItem] { withDrops(allMissionItems(json)).filter(\.placed) }
 
 enum PlanBridge {
     static func rawItems() -> JSON? { MapBridge.read(PLAN_VIEW) }

@@ -8,9 +8,12 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -29,6 +32,7 @@ import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
 import one.aircast.map.optText
+import org.json.JSONArray
 import org.json.JSONObject
 
 internal const val AIRCAST_CLOUD_NAME = "Aircast cloud"
@@ -36,11 +40,36 @@ private const val ACCOUNT = "account"
 private const val ACCOUNT_POLL_MS = 1000L
 private val API_BASE = Regex("""^https?://[^/]+""")
 
-internal data class AccountState(val signedIn: Boolean, val signingIn: Boolean, val status: String, val userCode: String, val verificationUrl: String)
+internal data class CloudDrone(val id: String, val name: String, val seen: String)
+
+internal data class AccountState(
+    val signedIn: Boolean,
+    val signingIn: Boolean,
+    val status: String,
+    val userCode: String,
+    val verificationUrl: String,
+    val apiBase: String = "",
+    val drones: List<CloudDrone> = emptyList(),
+    val dronesStatus: String = "",
+)
+
+private fun JSONArray?.objects(): List<JSONObject> = this?.let { array -> (0 until array.length()).mapNotNull(array::optJSONObject) }.orEmpty()
 
 internal fun accountState(view: JSONObject?): AccountState? = view?.takeIf { it.optText("kind") == "object" }?.let {
-    AccountState(it.optBoolean("signedIn"), it.optBoolean("signingIn"), it.optText("status"), it.optText("userCode"), it.optText("verificationUrl"))
+    AccountState(
+        it.optBoolean("signedIn"),
+        it.optBoolean("signingIn"),
+        it.optText("status"),
+        it.optText("userCode"),
+        it.optText("verificationUrl"),
+        it.optText("apiBase"),
+        it.optJSONArray("drones").objects().map { drone -> CloudDrone(drone.optText("id"), drone.optText("name"), drone.optText("seen")) },
+        it.optText("dronesStatus"),
+    )
 }
+
+internal fun adoptedApiBase(field: String, account: AccountState?): String? =
+    account?.apiBase?.takeIf { account.signedIn && it.isNotBlank() && it != field && field.isBlank() }
 
 internal fun accountLine(state: AccountState): String = if (state.signedIn) "Signed in" else state.status.ifBlank { "Not signed in" }
 
@@ -67,9 +96,22 @@ internal fun AircastCloudFields(apiBase: String, deviceId: String, showErrors: B
             runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
         }
     }
+    val adopted = adoptedApiBase(apiBase, account)
+    LaunchedEffect(adopted) { adopted?.let(onApiBase) }
+    val drones = account?.takeIf { it.signedIn }?.drones.orEmpty()
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         OutlinedTextField(value = apiBase, onValueChange = onApiBase, label = { Text("Account server") }, placeholder = { Text("https://api.aircast.one") }, singleLine = true, keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Uri))
         if (showErrors && !cloudApiBaseValid(apiBase)) Text("Enter the account server address, starting with https://", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        if (drones.isNotEmpty()) Text("Your drones", style = MaterialTheme.typography.titleSmall)
+        drones.map { drone ->
+            ListItem(
+                headlineContent = { Text(drone.name) },
+                supportingContent = { Text(drone.seen) },
+                leadingContent = { RadioButton(selected = deviceId.trim() == drone.id, onClick = null) },
+                modifier = Modifier.selectable(selected = deviceId.trim() == drone.id) { onDeviceId(drone.id) },
+            )
+        }
+        account?.takeIf { it.signedIn && it.dronesStatus.isNotBlank() }?.let { Text(it.dronesStatus, style = MaterialTheme.typography.bodySmall) }
         OutlinedTextField(value = deviceId, onValueChange = onDeviceId, label = { Text("Device") }, singleLine = true)
         if (showErrors && !cloudDeviceValid(deviceId)) Text("Set up from the device to fill this in", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
         account?.let { state ->

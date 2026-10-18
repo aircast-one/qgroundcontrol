@@ -269,6 +269,7 @@ struct VehicleMap: View {
     var centreRequest: Int = 0
     var centreOn: TrackPoint? = nil
     var centreZoom: Double? = nil
+    var centreMinZoom: Double? = nil
     var gestures: Bool = true
     var onMapClick: ((Double, Double) -> Void)? = nil
     var onMissionItemClick: ((Int) -> Void)? = nil
@@ -492,7 +493,7 @@ private struct VehicleMapPlan: ViewModifier {
                 if let style { applyPip(style, map.pip) }
             }
             .onChange(of: Keys(model.mapReady, map.centreRequest), initial: true) {
-                model.centre(map.centreRequest, map.centreOn, map.centreZoom, UIEdgeInsets(top: map.topInsetPx, left: map.leftInsetPx, bottom: map.bottomInsetPx, right: 0))
+                model.centre(map.centreRequest, map.centreOn, map.centreZoom, map.centreMinZoom, UIEdgeInsets(top: map.topInsetPx, left: map.leftInsetPx, bottom: map.bottomInsetPx, right: 0))
             }
             .task(id: Keys(map.fitRequest, map.topInsetPx, map.leftInsetPx, map.bottomInsetPx)) {
                 guard map.fitRequest != 0, map.fitRequest != model.fittedRequest else { return }
@@ -771,10 +772,12 @@ final class VehicleMapModel: NSObject, ObservableObject, MLNMapViewDelegate {
         }
     }
 
-    fileprivate func centre(_ request: Int, _ centreOn: TrackPoint?, _ centreZoom: Double?, _ insets: UIEdgeInsets) {
+    fileprivate func centre(_ request: Int, _ centreOn: TrackPoint?, _ centreZoom: Double?, _ centreMinZoom: Double?, _ insets: UIEdgeInsets) {
         guard request != 0, let at = centreOn, isPlottable(at.latitude, at.longitude), let mapView else { return }
         if let centreZoom {
             mapView.setCenter(at.location, zoomLevel: centreZoom, animated: false)
+        } else if let centreMinZoom, mapView.zoomLevel < centreMinZoom {
+            mapView.setCenter(at.location, zoomLevel: centreMinZoom, animated: true)
         } else if mapView.zoomLevel > 1.0 {
             let point = mapView.convert(at.location, toPointTo: mapView)
             let clear = CGPoint(x: point.x - insets.left / 2, y: point.y - clearAreaLift(insets.top, insets.bottom))

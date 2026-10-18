@@ -20,4 +20,14 @@ final class AircastCloudTests: XCTestCase {
         )
         XCTAssertNil(accountState(JSON.parse(#"{"kind":"null"}"#)))
     }
+
+    func testASignedInAccountListsItsDronesAndFillsInItsOwnServer() throws {
+        let account = try XCTUnwrap(accountState(JSON.parse(#"{"kind":"object","signedIn":true,"signingIn":false,"status":"","userCode":"","verificationUrl":"","apiBase":"https://api.dev.aircast.one","drones":[{"id":"a-1","name":"Vampire 1","seen":"seen 1 min ago"}],"dronesStatus":""}"#)))
+        XCTAssertEqual(account.drones, [CloudDrone(id: "a-1", name: "Vampire 1", seen: "seen 1 min ago")])
+        XCTAssertEqual(adoptedApiBase("", account), "https://api.dev.aircast.one")
+        XCTAssertNil(adoptedApiBase("https://my.own.server", account))
+        var signedOut = account
+        signedOut.signedIn = false
+        XCTAssertNil(adoptedApiBase("", signedOut))
+    }
 }

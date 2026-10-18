@@ -1,4 +1,4 @@
-import { connectMock, expect, openPlanAtVehicle, slideAcross, tapPlanMission, test, vehicleStatus } from './fixtures';
+import { connectMock, expect, itemCount, openPlanAtVehicle, slideAcross, tapPlanMission, test, vehicleStatus } from './fixtures';
 
 test.describe.configure({ timeout: 180_000 });
 
@@ -43,4 +43,21 @@ test('a second drop while the gripper is still open is refused rather than count
   await expect(vehicle.getByText(/^Grabbed \d+ s ago$/)).toBeVisible();
   await slideAcross(vehicle, sheet.getByRole('button', { name: 'Slide to drop' }));
   await expect(vehicle.getByText(/^Dropped \d+ s ago$/)).toBeVisible({ timeout: 30_000 });
+});
+
+test('a waypoint takes a drop from its actions and gives it back', async ({ app: vehicle }) => {
+  await connectMock(vehicle, [], 'APM ArduCopter Vehicle');
+  await openPlanAtVehicle(vehicle);
+  await tapPlanMission(vehicle);
+  await expect.poll(() => itemCount(vehicle)).toBeGreaterThanOrEqual(5);
+  await vehicle.getByRole('button', { name: 'Done' }).click();
+  await vehicle.getByRole('button', { name: 'Waypoint 3' }).first().click();
+  const before = await itemCount(vehicle);
+  await vehicle.getByRole('button', { name: 'Add', exact: true }).click();
+  await vehicle.getByRole('menuitem', { name: 'Drop payload' }).click();
+  await expect.poll(() => itemCount(vehicle), { timeout: 30_000 }).toBe(before + 1);
+  await expect(vehicle.getByRole('button', { name: 'Remove Drop payload' })).toBeVisible();
+  await vehicle.getByRole('button', { name: 'Remove Drop payload' }).click();
+  await expect.poll(() => itemCount(vehicle), { timeout: 30_000 }).toBe(before);
+  await expect(vehicle.getByRole('button', { name: 'Add', exact: true })).toBeVisible();
 });

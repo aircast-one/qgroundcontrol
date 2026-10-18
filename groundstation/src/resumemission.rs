@@ -72,6 +72,12 @@ fn kept_from_back(item: &Item, seen: &mut Seen) -> bool {
     }
 }
 
+pub fn resume_summary(items: &[Item], asked: usize, shape_of: impl Fn(u16) -> Shape) -> (usize, usize) {
+    let first = if items.is_empty() { 0 } else { resume_at(items, asked, &shape_of) };
+    let left = items.iter().enumerate().filter(|(at, item)| *at > asked && crate::payloadcheck::is_release(item)).count();
+    (first, left)
+}
+
 pub fn resume_items(items: &[Item], asked: usize, sends_home: bool, shape_of: impl Fn(u16) -> Shape) -> Result<Vec<Item>, &'static str> {
     if items.iter().any(|item| item.command == CMD_DO_JUMP) {
         return Err(JUMP_REFUSAL);
@@ -144,6 +150,15 @@ mod tests {
         assert_eq!(drops(&resumed), 1, "only the drop still to come");
         assert_eq!(drops(&resume_items(&mission, 3, true, shape_of).unwrap()), 2, "heading to 4, the drop at 3 already fell");
         assert_eq!(drops(&resume_items(&mission, 2, true, shape_of).unwrap()), 3, "resuming at the waypoint before a drop keeps that drop");
+    }
+
+    #[test]
+    fn a_resume_names_the_waypoint_it_flies_first_and_the_drops_still_to_come() {
+        let release = |seq: u16| Item { params: [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], ..item(seq, crate::payloadcheck::CMD_DO_GRIPPER) };
+        let mission = [item(0, NAV_WAYPOINT), item(1, NAV_TAKEOFF), item(2, NAV_WAYPOINT), release(3), item(4, NAV_WAYPOINT), release(5), item(6, NAV_WAYPOINT), release(7), item(8, NAV_WAYPOINT), release(9)];
+        assert_eq!(resume_summary(&mission, 5, shape_of), (4, 2), "asked at the drop of waypoint 4, it flies 4 again and two drops are left");
+        assert_eq!(resume_summary(&mission, 2, shape_of), (2, 4));
+        assert_eq!(resume_summary(&[], 3, shape_of), (0, 0));
     }
 
     #[test]

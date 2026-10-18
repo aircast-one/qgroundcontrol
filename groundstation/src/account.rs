@@ -16,6 +16,18 @@ struct Pending {
 }
 
 static PENDING: Mutex<Option<Pending>> = Mutex::new(None);
+
+#[derive(Debug, Clone, Default, PartialEq)]
+struct Drones {
+    base: String,
+    list: Vec<Value>,
+    status: String,
+    asked_ms: Option<i64>,
+}
+
+static DRONES: Mutex<Drones> = Mutex::new(Drones { base: String::new(), list: Vec::new(), status: String::new(), asked_ms: None });
+const DRONES_REFRESH_MS: i64 = 30_000;
+const DRONES_TIMEOUT: Duration = Duration::from_secs(15);
 static STATUS: Mutex<String> = Mutex::new(String::new());
 static ATTEMPT: AtomicU64 = AtomicU64::new(0);
 
@@ -67,8 +79,77 @@ fn finish(status: &str) {
     set_status(status);
 }
 
+pub fn seen_text(ago: chrono::Duration) -> String {
+    let minutes = ago.num_minutes().max(0);
+    match (minutes, minutes / 60, minutes / 1440) {
+        (0, _, _) => "seen just now".to_string(),
+        (m, 0, _) => format!("seen {m} min ago"),
+        (_, h, 0) => format!("seen {h} h ago"),
+        (_, _, d) => format!("seen {d} d ago"),
+    }
+}
+
+pub fn drones_from(body: &Value, now: chrono::DateTime<chrono::Utc>) -> Vec<Value> {
+    let seen = |device: &Value| device.get("last_seen_at").and_then(Value::as_str).and_then(|t| chrono::DateTime::parse_from_rfc3339(t).ok()).map(|t| t.with_timezone(&chrono::Utc));
+    body.as_array()
+        .map(Vec::as_slice)
+        .unwrap_or_default()
+        .iter()
+        .filter_map(|device| {
+            let id = device.get("id").and_then(Value::as_str).filter(|id| !id.trim().is_empty())?.to_string();
+            let name = device.get("name").and_then(Value::as_str).filter(|n| !n.trim().is_empty()).unwrap_or(&id).to_string();
+            let last = seen(device);
+            let line = last.map_or_else(|| "never seen".to_string(), |at| seen_text(now - at));
+            Some(((std::cmp::Reverse(last.map_or(i64::MIN, |at| at.timestamp())), id.clone()), json!({ "id": id, "name": name, "seen": line })))
+        })
+        .collect::<std::collections::BTreeMap<_, _>>()
+        .into_values()
+        .collect()
+}
+
+fn drones_due(signed_in: bool, base: &str, now_ms: i64) -> bool {
+    let held = DRONES.lock().unwrap_or_else(PoisonError::into_inner);
+    signed_in && (held.base != base || held.asked_ms.is_none_or(|at| now_ms - at >= DRONES_REFRESH_MS))
+}
+
+pub fn refresh_drones() {
+    let base = api_base();
+    let Some(token) = token_key().and_then(|key| crate::settingsstore::stored_text(&key)).filter(|t| !t.is_empty()) else { return };
+    let asked = crate::hub::wall_ms();
+    {
+        let mut held = DRONES.lock().unwrap_or_else(PoisonError::into_inner);
+        if held.base != base {
+            *held = Drones { base: base.clone(), ..Drones::default() };
+        }
+        held.asked_ms = Some(asked);
+    }
+    let _ = crate::background::spawn("groundstation-account-drones", move || {
+        let bearer = format!("Bearer {token}");
+        let answer = crate::http::send("GET", &endpoint(&base, "/v1/user/devices"), &[("Authorization", bearer.as_str()), ("Accept", "application/json")], None, DRONES_TIMEOUT);
+        let mut held = DRONES.lock().unwrap_or_else(PoisonError::into_inner);
+        if held.base != base {
+            return;
+        }
+        match answer {
+            Ok((status, body)) if (200..300).contains(&status) => {
+                held.list = drones_from(&serde_json::from_slice(&body).unwrap_or(Value::Null), chrono::Utc::now());
+                held.status = if held.list.is_empty() { "No drones on this account yet. Connect one to the cloud from its own page.".to_string() } else { String::new() };
+            }
+            Ok((401 | 403, _)) => held.status = "Sign in again to see your drones.".to_string(),
+            Ok((status, _)) => held.status = format!("Couldn't list your drones (HTTP {status})."),
+            Err(reason) => held.status = format!("Couldn't list your drones: {reason}"),
+        }
+    });
+}
+
 pub fn object() -> Value {
     let pending = PENDING.lock().unwrap_or_else(PoisonError::into_inner).clone();
+    let (base, signed) = (api_base(), signed_in());
+    if drones_due(signed, &base, crate::hub::wall_ms()) {
+        refresh_drones();
+    }
+    let drones = DRONES.lock().unwrap_or_else(PoisonError::into_inner).clone();
+    let current = signed && drones.base == base;
     json!({
         "kind": "object",
         "apiBase": api_base(),
@@ -77,6 +158,8 @@ pub fn object() -> Value {
         "userCode": pending.as_ref().map(|p| p.user_code.clone()).unwrap_or_default(),
         "verificationUrl": pending.map(|p| p.verification_url).unwrap_or_default(),
         "status": STATUS.lock().unwrap_or_else(PoisonError::into_inner).clone(),
+        "drones": if current { drones.list } else { Vec::new() },
+        "dronesStatus": if current { drones.status } else { String::new() },
     })
 }
 
@@ -118,6 +201,7 @@ pub fn sign_in(post: &'static Post) {
                         crate::settingsstore::written(&key, &token);
                     }
                     finish("Signed in.");
+                    refresh_drones();
                     true
                 }
                 Poll::Refused(reason) => {
@@ -172,6 +256,7 @@ pub fn invoke(path: &str) -> Option<Value> {
         "account.signIn" => sign_in(&post_json),
         "account.cancelSignIn" => finish(""),
         "account.signOut" => sign_out(),
+        "account.refreshDrones" => refresh_drones(),
         _ => return None,
     }
     Some(json!({ "ok": true }))
@@ -197,5 +282,29 @@ mod tests {
         assert_eq!(poll_outcome(&Ok(json!({ "error": "expired_token" }))), Poll::Refused("The sign-in code expired \u{2014} start again.".into()));
         assert_eq!(poll_outcome(&Ok(json!({ "error": "access_denied", "error_description": "no" }))), Poll::Refused("Sign-in failed: no".into()));
         assert_eq!(endpoint("https://api.aircast.one//", "/v1/oauth2/cli/code"), "https://api.aircast.one/v1/oauth2/cli/code");
+    }
+
+    #[test]
+    fn the_account_lists_its_drones_most_recently_seen_first() {
+        let now = chrono::DateTime::parse_from_rfc3339("2026-10-19T12:00:00Z").unwrap().with_timezone(&chrono::Utc);
+        let body = json!([
+            { "id": "old", "name": "Hangar spare", "last_seen_at": "2026-10-12T12:00:00Z" },
+            { "id": "a-1", "name": "Vampire 1", "last_seen_at": "2026-10-19T11:58:30Z" },
+            { "id": "b-2", "name": "", "last_seen_at": "2026-10-19T09:00:00Z" },
+            { "id": "", "name": "no id" },
+            { "id": "c-3", "name": "Never flown" }
+        ]);
+        assert_eq!(
+            drones_from(&body, now),
+            vec![
+                json!({ "id": "a-1", "name": "Vampire 1", "seen": "seen 1 min ago" }),
+                json!({ "id": "b-2", "name": "b-2", "seen": "seen 3 h ago" }),
+                json!({ "id": "old", "name": "Hangar spare", "seen": "seen 7 d ago" }),
+                json!({ "id": "c-3", "name": "Never flown", "seen": "never seen" }),
+            ],
+            "a drone with no name is shown by its id, and one with no id cannot be linked to"
+        );
+        assert_eq!(seen_text(chrono::Duration::seconds(20)), "seen just now");
+        assert!(drones_from(&json!({ "error": "x" }), now).is_empty());
     }
 }

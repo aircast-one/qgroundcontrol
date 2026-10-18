@@ -129,7 +129,7 @@ struct WaypointSettings: View {
                 .padding(.vertical, Space.s1)
             }
             if index != HOME_ITEM {
-                WaypointActions(index: index, hold: waypointHold(json), yaw: waypointYaw(json))
+                WaypointActions(index: index, hold: waypointHold(json), yaw: waypointYaw(json), drop: waypointDrop(json, item.latitude, item.longitude))
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

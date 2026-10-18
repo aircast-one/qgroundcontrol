@@ -5,17 +5,40 @@ private let ACCOUNT = "account"
 private let ACCOUNT_POLL_MS = 1000
 private let API_BASE = "^https?://[^/]+"
 
+struct CloudDrone: Equatable {
+    var id: String
+    var name: String
+    var seen: String
+}
+
 struct AccountState: Equatable {
     var signedIn: Bool
     var signingIn: Bool
     var status: String
     var userCode: String
     var verificationUrl: String
+    var apiBase = ""
+    var drones: [CloudDrone] = []
+    var dronesStatus = ""
 }
 
 func accountState(_ view: JSON?) -> AccountState? {
     guard let view, view["kind"].string == "object" else { return nil }
-    return AccountState(signedIn: view["signedIn"].bool, signingIn: view["signingIn"].bool, status: view["status"].string, userCode: view["userCode"].string, verificationUrl: view["verificationUrl"].string)
+    return AccountState(
+        signedIn: view["signedIn"].bool,
+        signingIn: view["signingIn"].bool,
+        status: view["status"].string,
+        userCode: view["userCode"].string,
+        verificationUrl: view["verificationUrl"].string,
+        apiBase: view["apiBase"].string,
+        drones: view["drones"].array.map { CloudDrone(id: $0["id"].string, name: $0["name"].string, seen: $0["seen"].string) },
+        dronesStatus: view["dronesStatus"].string
+    )
+}
+
+func adoptedApiBase(_ field: String, _ account: AccountState?) -> String? {
+    guard let account, account.signedIn, !account.apiBase.isBlank, account.apiBase != field, field.isBlank else { return nil }
+    return account.apiBase
 }
 
 func accountLine(_ state: AccountState) -> String { state.signedIn ? "Signed in" : state.status.ifBlank("Not signed in") }
@@ -36,6 +59,7 @@ struct AircastCloudFields: View {
     @Environment(\.openURL) private var openURL
 
     private var pending: AccountState? { account.flatMap { $0.signingIn && !$0.verificationUrl.isBlank ? $0 : nil } }
+    private var drones: [CloudDrone] { account.map { $0.signedIn ? $0.drones : [] } ?? [] }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -43,6 +67,26 @@ struct AircastCloudFields: View {
                 .keyboardType(.URL)
             if showErrors && !cloudApiBaseValid(apiBase) {
                 Text("Enter the account server address, starting with https://").font(.bodySmall).foregroundStyle(theme.colors.error)
+            }
+            if !drones.isEmpty {
+                Text("Your drones").font(.titleSmall)
+                ForEach(drones, id: \.id) { drone in
+                    Button { onDeviceId(drone.id) } label: {
+                        HStack {
+                            RadioIndicator(selected: deviceId.trimmed == drone.id)
+                            VStack(alignment: .leading) {
+                                Text(drone.name).foregroundStyle(theme.colors.onSurface)
+                                Text(drone.seen).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
+                            }
+                        }
+                        .frame(minHeight: 48)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(deviceId.trimmed == drone.id ? .isSelected : [])
+                }
+            }
+            if let state = account, state.signedIn, !state.dronesStatus.isBlank {
+                Text(state.dronesStatus).font(.bodySmall)
             }
             CloudField(label: "Device", placeholder: "", value: deviceId, onChange: onDeviceId)
             if showErrors && !cloudDeviceValid(deviceId) {
@@ -76,6 +120,9 @@ struct AircastCloudFields: View {
                 account = await offMain { accountState(Qgc.get(ACCOUNT)) }
                 try? await Task.sleep(for: .milliseconds(ACCOUNT_POLL_MS))
             }
+        }
+        .onChange(of: adoptedApiBase(apiBase, account)) { _, adopted in
+            if let adopted { onApiBase(adopted) }
         }
         .onChange(of: pending?.verificationUrl) { _, url in
             guard let url, url != opened else { return }

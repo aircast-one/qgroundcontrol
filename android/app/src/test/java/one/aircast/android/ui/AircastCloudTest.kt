@@ -25,4 +25,13 @@ class AircastCloudTest {
         assertEquals("Approve code ABC in the browser to sign in.", accountLine(signedIn.copy(signedIn = false, status = "Approve code ABC in the browser to sign in.")))
         assertNull(accountState(JSONObject("""{"kind":"null"}""")))
     }
+
+    @Test
+    fun `a signed-in account lists its drones and fills in its own server`() {
+        val account = accountState(JSONObject("""{"kind":"object","signedIn":true,"signingIn":false,"status":"","userCode":"","verificationUrl":"","apiBase":"https://api.dev.aircast.one","drones":[{"id":"a-1","name":"Vampire 1","seen":"seen 1 min ago"}],"dronesStatus":""}"""))!!
+        assertEquals(listOf(CloudDrone("a-1", "Vampire 1", "seen 1 min ago")), account.drones)
+        assertEquals("https://api.dev.aircast.one", adoptedApiBase("", account))
+        assertNull(adoptedApiBase("https://my.own.server", account))
+        assertNull(adoptedApiBase("", account.copy(signedIn = false)))
+    }
 }

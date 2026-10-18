@@ -125,6 +125,7 @@ data class MissionItem(
     val closesRoute: Boolean = false,
     val legBroken: Boolean = false,
     val abbreviation: String = "",
+    val drops: Boolean = false,
 )
 
 private fun JSONObject.isReturn() = optBoolean("endsRoute") && optInt("command") == MAV_CMD_NAV_RETURN_TO_LAUNCH
@@ -201,7 +202,7 @@ fun allMissionItems(json: JSONObject?): List<MissionItem> {
     }
 }
 
-fun missionItems(json: JSONObject?): List<MissionItem> = allMissionItems(json).filter { it.placed }
+fun missionItems(json: JSONObject?): List<MissionItem> = withDrops(allMissionItems(json)).filter { it.placed }
 
 object PlanBridge {
     fun rawItems(): JSONObject? =

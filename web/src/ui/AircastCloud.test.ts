@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseJson } from '@/bridge/Json';
-import { DEFAULT_ACCOUNT_SERVER, accountLine, accountState, cloudApiBaseValid, cloudDeviceValid } from './AircastCloud';
+import { DEFAULT_ACCOUNT_SERVER, accountLine, accountState, adoptedApiBase, cloudApiBaseValid, cloudDeviceValid } from './AircastCloud';
 import { LinkDraft, LinkType } from './LinksScreen';
 
 describe('AircastCloudTest', () => {
@@ -24,5 +24,17 @@ describe('AircastCloudTest', () => {
     expect(accountLine({ ...signedIn, signedIn: false })).toBe('Not signed in');
     expect(accountLine({ ...signedIn, signedIn: false, status: 'Approve code ABC in the browser to sign in.' })).toBe('Approve code ABC in the browser to sign in.');
     expect(accountState(parseJson('{"kind":"null"}'))).toBeNull();
+  });
+
+  it('a signed-in account lists its drones and fills in its own server', () => {
+    const account = accountState(
+      parseJson('{"kind":"object","signedIn":true,"signingIn":false,"status":"","userCode":"","verificationUrl":"","apiBase":"https://api.dev.aircast.one","drones":[{"id":"a-1","name":"Vampire 1","seen":"seen 1 min ago"}],"dronesStatus":""}'),
+    )!;
+    expect(account.drones).toEqual([{ id: 'a-1', name: 'Vampire 1', seen: 'seen 1 min ago' }]);
+    expect(adoptedApiBase(DEFAULT_ACCOUNT_SERVER, account)).toBe('https://api.dev.aircast.one');
+    expect(adoptedApiBase('', account)).toBe('https://api.dev.aircast.one');
+    expect(adoptedApiBase('https://my.own.server', account)).toBeNull();
+    expect(adoptedApiBase('https://api.dev.aircast.one', account)).toBeNull();
+    expect(adoptedApiBase(DEFAULT_ACCOUNT_SERVER, { ...account, signedIn: false })).toBeNull();
   });
 });

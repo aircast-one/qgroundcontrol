@@ -56,7 +56,12 @@ fun waypointYaw(view: JSONObject?): WaypointYaw? =
         )
     }?.takeIf { it.path.isNotBlank() }
 
-internal enum class ActionKind { Hover, Camera, Gimbal, Mode, Turn }
+data class WaypointDrop(val index: Int?, val latitude: Double, val longitude: Double)
+
+fun waypointDrop(view: JSONObject?, latitude: Double, longitude: Double): WaypointDrop? =
+    view?.optJSONObject("drop")?.let { WaypointDrop(if (it.isNull("index")) null else it.optInt("index"), latitude, longitude) }
+
+internal enum class ActionKind { Hover, Camera, Gimbal, Mode, Turn, Drop }
 
 internal data class WaypointAction(val kind: ActionKind, val title: String, val value: String, @DrawableRes val icon: Int)
 
@@ -69,6 +74,7 @@ private val PITCH_RANGE = -90.0..30.0
 private val HEADING_RANGE = -180.0..180.0
 private val INTERVAL_RANGE = 1.0..3600.0
 private const val ANGLE_STEP = 5.0
+private const val DROP_TITLE = "Drop payload"
 
 internal fun cameraIcon(label: String): Int = when {
     label.contains("video", ignoreCase = true) && label.contains("stop", ignoreCase = true) -> R.drawable.plan_video_off
@@ -88,7 +94,7 @@ internal fun cameraInterval(extras: CameraExtras?): String = when {
 internal fun startingChoice(labels: List<String>, subject: String): Int? =
     labels.indexOfFirst { it.contains(subject, ignoreCase = true) && !it.contains("stop", ignoreCase = true) }.takeIf { it > NO_CAMERA_ACTION }
 
-internal fun activeActions(hold: WaypointHold?, yaw: WaypointYaw?, choices: CameraChoices?, extras: CameraExtras?): List<WaypointAction> = listOfNotNull(
+internal fun activeActions(hold: WaypointHold?, yaw: WaypointYaw?, choices: CameraChoices?, extras: CameraExtras?, drop: WaypointDrop? = null): List<WaypointAction> = listOfNotNull(
     hold?.takeIf { it.seconds > 0.0 }?.let { WaypointAction(ActionKind.Hover, "Hover", "${trimmedNumber(it.seconds)} ${it.units}", R.drawable.plan_timer) },
     choices?.takeIf { it.chosen > NO_CAMERA_ACTION }?.let { picked ->
         val label = picked.labels.getOrElse(picked.chosen) { "" }
@@ -97,9 +103,10 @@ internal fun activeActions(hold: WaypointHold?, yaw: WaypointYaw?, choices: Came
     extras?.takeIf { it.commandsGimbal }?.let { WaypointAction(ActionKind.Gimbal, "Gimbal", "${degreesText(it.pitch)} / ${degreesText(it.yaw)}", R.drawable.plan_gimbal) },
     extras?.takeIf { it.modeSupported && it.commandsMode }?.let { WaypointAction(ActionKind.Mode, "Camera mode", CAMERA_MODES.getOrElse(it.mode) { "" }, R.drawable.plan_tune) },
     yaw?.degrees?.let { WaypointAction(ActionKind.Turn, "Turn aircraft", degreesText(it), R.drawable.plan_turn) },
+    drop?.index?.let { WaypointAction(ActionKind.Drop, DROP_TITLE, "", R.drawable.plan_drop) },
 )
 
-internal fun offeredActions(hold: WaypointHold?, yaw: WaypointYaw?, choices: CameraChoices?, extras: CameraExtras?): List<ActionOffer> =
+internal fun offeredActions(hold: WaypointHold?, yaw: WaypointYaw?, choices: CameraChoices?, extras: CameraExtras?, drop: WaypointDrop? = null): List<ActionOffer> =
     listOfNotNull(hold?.takeIf { it.seconds <= 0.0 }?.let { ActionOffer("Hover", R.drawable.plan_timer, ActionKind.Hover) }) +
         choices?.takeIf { it.chosen <= NO_CAMERA_ACTION }?.let { camera ->
             listOfNotNull(
@@ -111,19 +118,20 @@ internal fun offeredActions(hold: WaypointHold?, yaw: WaypointYaw?, choices: Cam
             extras?.takeIf { !it.commandsGimbal }?.let { ActionOffer("Tilt camera", R.drawable.plan_gimbal, ActionKind.Gimbal) },
             extras?.takeIf { it.modeSupported && !it.commandsMode }?.let { ActionOffer("Camera mode", R.drawable.plan_tune, ActionKind.Mode) },
             yaw?.takeIf { it.degrees == null }?.let { ActionOffer("Turn aircraft", R.drawable.plan_turn, ActionKind.Turn) },
+            drop?.takeIf { it.index == null }?.let { ActionOffer(DROP_TITLE, R.drawable.plan_drop, ActionKind.Drop) },
         )
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-internal fun WaypointActions(index: Int, hold: WaypointHold?, yaw: WaypointYaw?) {
+internal fun WaypointActions(index: Int, hold: WaypointHold?, yaw: WaypointYaw?, drop: WaypointDrop? = null) {
     var revision by remember(index) { mutableIntStateOf(0) }
     val camera by produceState<JSONObject?>(null, index, revision) {
         value = withContext(Dispatchers.Default) { ItemCameraBridge.read(index) }
     }
     val choices = cameraChoices(camera)
     val extras = cameraExtras(camera)
-    val active = activeActions(hold, yaw, choices, extras)
-    val offers = offeredActions(hold, yaw, choices, extras)
+    val active = activeActions(hold, yaw, choices, extras, drop)
+    val offers = offeredActions(hold, yaw, choices, extras, drop)
     if (active.isEmpty() && offers.isEmpty()) return
     val scope = rememberCoroutineScope()
     var adding by remember { mutableStateOf(false) }
@@ -144,6 +152,7 @@ internal fun WaypointActions(index: Int, hold: WaypointHold?, yaw: WaypointYaw?)
             ActionKind.Gimbal -> setCamera("specifyGimbal", false)
             ActionKind.Mode -> setCamera("specifyCameraMode", false)
             ActionKind.Turn -> setYaw(null)
+            ActionKind.Drop -> drop?.index?.let { at -> write { removeMissionItem(at).ok } }
         }
     }
 
@@ -169,8 +178,9 @@ internal fun WaypointActions(index: Int, hold: WaypointHold?, yaw: WaypointYaw?)
                                     ActionKind.Gimbal -> setCamera("specifyGimbal", true)
                                     ActionKind.Mode -> setCamera("specifyCameraMode", true)
                                     ActionKind.Turn -> setYaw(0.0)
+                                    ActionKind.Drop -> drop?.let { place -> write { insertMissionItem(KIND_DROP, place.latitude, place.longitude, index + 1).ok } }
                                 }
-                                editing = offer.kind
+                                editing = offer.kind.takeIf { it != ActionKind.Drop }
                             },
                         )
                     }
@@ -178,10 +188,10 @@ internal fun WaypointActions(index: Int, hold: WaypointHold?, yaw: WaypointYaw?)
             }
         }
         if (active.isEmpty()) {
-            Text("Tap Add to take a photo, film, hover or turn here.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text("Tap Add to take a photo, film, hover, turn or drop here.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            active.forEach { action -> ActionChip(action, onClick = { editing = action.kind }, onRemove = { remove(action.kind) }) }
+            active.forEach { action -> ActionChip(action, onClick = { editing = action.kind.takeIf { it != ActionKind.Drop } }, onRemove = { remove(action.kind) }) }
         }
     }
 
@@ -203,6 +213,7 @@ internal fun WaypointActions(index: Int, hold: WaypointHold?, yaw: WaypointYaw?)
                                 FilterChip(selected = extras?.mode == at, onClick = { setCamera("cameraMode", at) }, label = { Text(label) })
                             }
                         }
+                        ActionKind.Drop -> Unit
                         ActionKind.Camera -> {
                             choices?.labels.orEmpty().withIndex().drop(1).forEach { (at, label) ->
                                 Row(

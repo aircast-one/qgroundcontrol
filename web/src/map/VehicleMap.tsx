@@ -233,6 +233,7 @@ export type VehicleMapProps = {
   centreRequest?: number;
   centreOn?: TrackPoint | null;
   centreZoom?: number | null;
+  centreMinZoom?: number | null;
   gestures?: boolean;
   onMapClick?: ((latitude: number, longitude: number) => void) | null;
   onMissionItemClick?: ((sequence: number) => void) | null;
@@ -299,6 +300,7 @@ export const VehicleMap = ({
   centreRequest = 0,
   centreOn = null,
   centreZoom = null,
+  centreMinZoom = null,
   gestures = true,
   onMapClick = null,
   onMissionItemClick = null,
@@ -676,6 +678,8 @@ export const VehicleMap = ({
     const target: [number, number] = [at.longitude, at.latitude];
     if (centreZoom !== null) {
       map.jumpTo({ center: target, zoom: centreZoom });
+    } else if (centreMinZoom !== null && map.getZoom() < centreMinZoom) {
+      map.easeTo({ center: target, zoom: centreMinZoom });
     } else if (map.getZoom() > 1.0) {
       const point = map.project(target);
       map.easeTo({ center: map.unproject([point.x - leftInsetPx / 2, point.y - clearAreaLift(topInsetPx, bottomInsetPx)]) });

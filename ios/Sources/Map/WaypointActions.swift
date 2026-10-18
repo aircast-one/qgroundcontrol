@@ -16,7 +16,18 @@ func waypointYaw(_ view: JSON?) -> WaypointYaw? {
     return made.path.isBlank ? nil : made
 }
 
-enum ActionKind { case Hover, Camera, Gimbal, Mode, Turn }
+struct WaypointDrop: Equatable {
+    var index: Int?
+    var latitude: Double
+    var longitude: Double
+}
+
+func waypointDrop(_ view: JSON?, _ latitude: Double, _ longitude: Double) -> WaypointDrop? {
+    guard let drop = view?["drop"], drop.object != nil else { return nil }
+    return WaypointDrop(index: drop["index"].isNull ? nil : drop["index"].int(0), latitude: latitude, longitude: longitude)
+}
+
+enum ActionKind { case Hover, Camera, Gimbal, Mode, Turn, Drop }
 
 struct WaypointAction: Equatable {
     let kind: ActionKind
@@ -39,6 +50,7 @@ private let PITCH_RANGE = -90.0...30.0
 private let HEADING_RANGE = -180.0...180.0
 private let INTERVAL_RANGE = 1.0...3600.0
 private let ANGLE_STEP = 5.0
+private let DROP_TITLE = "Drop payload"
 
 private func mentions(_ label: String, _ word: String) -> Bool { label.range(of: word, options: .caseInsensitive) != nil }
 
@@ -60,7 +72,7 @@ func startingChoice(_ labels: [String], _ subject: String) -> Int? {
     labels.firstIndex { mentions($0, subject) && !mentions($0, "stop") }.flatMap { $0 > NO_CAMERA_ACTION ? $0 : nil }
 }
 
-func activeActions(_ hold: WaypointHold?, _ yaw: WaypointYaw?, _ choices: CameraChoices?, _ extras: CameraExtras?) -> [WaypointAction] {
+func activeActions(_ hold: WaypointHold?, _ yaw: WaypointYaw?, _ choices: CameraChoices?, _ extras: CameraExtras?, _ drop: WaypointDrop? = nil) -> [WaypointAction] {
     [
         hold.flatMap { $0.seconds > 0 ? WaypointAction(kind: .Hover, title: "Hover", value: "\(trimmedNumber($0.seconds)) \($0.units)", icon: .planTimer) : nil },
         choices.flatMap { picked -> WaypointAction? in
@@ -75,10 +87,11 @@ func activeActions(_ hold: WaypointHold?, _ yaw: WaypointYaw?, _ choices: Camera
                 : nil
         },
         yaw?.degrees.map { WaypointAction(kind: .Turn, title: "Turn aircraft", value: degreesText($0), icon: .planTurn) },
+        drop?.index.map { _ in WaypointAction(kind: .Drop, title: DROP_TITLE, value: "", icon: .planDrop) },
     ].compactMap { $0 }
 }
 
-func offeredActions(_ hold: WaypointHold?, _ yaw: WaypointYaw?, _ choices: CameraChoices?, _ extras: CameraExtras?) -> [ActionOffer] {
+func offeredActions(_ hold: WaypointHold?, _ yaw: WaypointYaw?, _ choices: CameraChoices?, _ extras: CameraExtras?, _ drop: WaypointDrop? = nil) -> [ActionOffer] {
     let hover: [ActionOffer?] = [hold.flatMap { $0.seconds <= 0 ? ActionOffer(title: "Hover", icon: .planTimer, kind: .Hover) : nil }]
     let camera: [ActionOffer?] = choices.map { camera in
         camera.chosen <= NO_CAMERA_ACTION ? [
@@ -90,6 +103,7 @@ func offeredActions(_ hold: WaypointHold?, _ yaw: WaypointYaw?, _ choices: Camer
         extras.flatMap { !$0.commandsGimbal ? ActionOffer(title: "Tilt camera", icon: .planGimbal, kind: .Gimbal) : nil },
         extras.flatMap { $0.modeSupported && !$0.commandsMode ? ActionOffer(title: "Camera mode", icon: .planTune, kind: .Mode) : nil },
         yaw.flatMap { $0.degrees == nil ? ActionOffer(title: "Turn aircraft", icon: .planTurn, kind: .Turn) : nil },
+        drop.flatMap { $0.index == nil ? ActionOffer(title: DROP_TITLE, icon: .planDrop, kind: .Drop) : nil },
     ]
     return (hover + camera + rest).compactMap { $0 }
 }
@@ -98,6 +112,7 @@ struct WaypointActions: View {
     let index: Int
     let hold: WaypointHold?
     let yaw: WaypointYaw?
+    var drop: WaypointDrop? = nil
     @Environment(\.theme) private var theme
     @State private var revision = 0
     @State private var camera: JSON?
@@ -106,8 +121,8 @@ struct WaypointActions: View {
     var body: some View {
         let choices = cameraChoices(camera)
         let extras = cameraExtras(camera)
-        let active = activeActions(hold, yaw, choices, extras)
-        let offers = offeredActions(hold, yaw, choices, extras)
+        let active = activeActions(hold, yaw, choices, extras, drop)
+        let offers = offeredActions(hold, yaw, choices, extras, drop)
         VStack(alignment: .leading, spacing: 0) {
             if !active.isEmpty || !offers.isEmpty {
                 VStack(alignment: .leading, spacing: 0) {
@@ -132,13 +147,13 @@ struct WaypointActions: View {
                         }
                     }
                     if active.isEmpty {
-                        Text("Tap Add to take a photo, film, hover or turn here.")
+                        Text("Tap Add to take a photo, film, hover, turn or drop here.")
                             .font(.bodySmall)
                             .foregroundStyle(theme.colors.onSurfaceVariant)
                     }
                     PlanFlowRow(spacing: 8, lineSpacing: 8) {
                         ForEach(active, id: \.kind) { action in
-                            ActionChip(action: action, onClick: { editing = action.kind }, onRemove: { remove(action.kind) })
+                            ActionChip(action: action, onClick: { editing = action.kind == .Drop ? nil : action.kind }, onRemove: { remove(action.kind) })
                         }
                     }
                 }
@@ -172,6 +187,8 @@ struct WaypointActions: View {
                         SettingStepper(label: "Pitch", value: extras.pitch, unit: "°", step: ANGLE_STEP, onSet: { setCamera("gimbalPitch", $0) }, range: extras.pitchRange ?? PITCH_RANGE, slider: true)
                         SettingStepper(label: "Yaw", value: extras.yaw, unit: "°", step: ANGLE_STEP, onSet: { setCamera("gimbalYaw", $0) }, range: extras.yawRange ?? HEADING_RANGE, slider: true)
                     }
+                case .Drop:
+                    EmptyView()
                 case .Mode:
                     HStack(spacing: Space.s2) {
                         ForEach(Array(CAMERA_MODES.enumerated()), id: \.offset) { at, label in
@@ -210,8 +227,9 @@ struct WaypointActions: View {
         case .Gimbal: setCamera("specifyGimbal", true)
         case .Mode: setCamera("specifyCameraMode", true)
         case .Turn: setYaw(0.0)
+        case .Drop: addDrop()
         }
-        editing = offer.kind
+        editing = offer.kind == .Drop ? nil : offer.kind
     }
 
     private func remove(_ kind: ActionKind) {
@@ -221,7 +239,19 @@ struct WaypointActions: View {
         case .Gimbal: setCamera("specifyGimbal", false)
         case .Mode: setCamera("specifyCameraMode", false)
         case .Turn: setYaw(nil)
+        case .Drop: removeDrop()
         }
+    }
+
+    private func addDrop() {
+        guard let drop else { return }
+        let after = index + 1
+        write { insertMissionItem(KIND_DROP, drop.latitude, drop.longitude, after).ok }
+    }
+
+    private func removeDrop() {
+        guard let at = drop?.index else { return }
+        write { removeMissionItem(at).ok }
     }
 
     private func write(_ work: @escaping @Sendable () -> Bool) {

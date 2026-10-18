@@ -180,6 +180,21 @@ private func landingMarkers(_ item: MissionItem, _ pattern: LandingPattern) -> [
 }
 
 let HOME_SEAL = "H"
+let DROP_COMMAND = 211
+let DROP_SIDE = "Drop"
+
+func dropsAt(_ items: [MissionItem], _ item: MissionItem) -> Bool {
+    guard let start = items.firstIndex(where: { $0.index == item.index }) else { return false }
+    return items[(start + 1)...].prefix { !$0.specifiesCoordinate && !$0.complexPattern }.contains { $0.commandId == DROP_COMMAND }
+}
+
+func withDrops(_ items: [MissionItem]) -> [MissionItem] {
+    items.map { item in
+        var marked = item
+        marked.drops = dropsAt(items, item)
+        return marked
+    }
+}
 private let SAME_SPOT_DEGREES = 1e-6
 
 func homeCovered(_ items: [MissionItem]) -> Bool {
@@ -192,7 +207,7 @@ func missionFeatures(_ items: [MissionItem], selectedIndex: Int? = nil, landings
     let patterns = Dictionary(landings.map { ($0.index, $0) }, uniquingKeysWith: { _, last in last })
     let covered = homeCovered(items)
     let plain = items.filter { patterns[$0.index] == nil && !($0.index == HOME_ITEM && covered) }
-    let markers = plain.map { Marker(item: $0, at: TrackPoint(latitude: $0.latitude, longitude: $0.longitude), sequence: $0.sequence, exit: false) }
+    let markers = plain.map { Marker(item: $0, at: TrackPoint(latitude: $0.latitude, longitude: $0.longitude), sequence: $0.sequence, exit: false, side: $0.drops ? DROP_SIDE : nil) }
         + exitMarkers(plain).map { item, exit in Marker(item: item, at: exit, sequence: item.sequence + item.foldedCommands, exit: true) }
         + items.flatMap { item in patterns[item.index].map { landingMarkers(item, $0) } ?? [] }
     return featureCollection(markers.map { marker in

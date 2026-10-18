@@ -184,6 +184,8 @@ export const dropsAt = (items: readonly MissionItem[], item: MissionItem): boole
   return following.slice(0, next < 0 ? following.length : next).some((it) => it.commandId === DROP_COMMAND);
 };
 
+export const withDrops = (items: readonly MissionItem[]): readonly MissionItem[] => items.map((it) => ({ ...it, drops: dropsAt(items, it) }));
+
 export const exitMarkers = (items: readonly MissionItem[]): readonly (readonly [MissionItem, TrackPoint])[] =>
   items.filter((it) => it.complexPattern).flatMap((item) => (item.exit === null ? [] : [[item, item.exit] as const]));
 
@@ -207,7 +209,7 @@ export const missionFeatures = (items: readonly MissionItem[], selectedIndex: nu
   const covered = homeCovered(items);
   const plain = items.filter((it) => !patterns.has(it.index)).filter((it) => !(it.index === HOME_ITEM && covered));
   const markers: readonly Marker[] = [
-    ...plain.map((item) => ({ item, at: pointOf(item), sequence: item.sequence, exit: false, side: dropsAt(items, item) ? DROP_SIDE : null })),
+    ...plain.map((item) => ({ item, at: pointOf(item), sequence: item.sequence, exit: false, side: item.drops ? DROP_SIDE : null })),
     ...exitMarkers(plain).map(([item, exit]) => ({ item, at: exit, sequence: item.sequence + item.foldedCommands, exit: true, side: null })),
     ...items.flatMap((item) => {
       const pattern = patterns.get(item.index);

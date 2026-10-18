@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import type { CameraExtras } from './ItemCamera';
 import { legLabels } from './MissionLayers';
 import { MissionItem } from './PlanBridge';
-import { activeActions, cameraIcon, offeredActions, startingChoice, waypointYaw } from './WaypointActions';
+import { activeActions, cameraIcon, offeredActions, startingChoice, waypointDrop, waypointYaw } from './WaypointActions';
 
 describe('WaypointActionsTest', () => {
   const labels = ['No change', 'Take photo', 'Take photos (time)', 'Take photos (distance)', 'Stop taking photos', 'Start recording video', 'Stop recording video'];
@@ -59,5 +59,17 @@ describe('WaypointActionsTest', () => {
     const legs = legLabels([first, roi, next]);
     expect(legs.length).toBe(1);
     expect(legs[0]?.[0].longitude).toBeCloseTo(44.001, 9);
+  });
+
+  it('a waypoint offers a drop until one follows it, then shows it as an action', () => {
+    const free = waypointDrop({ drop: { index: null } }, 47.1, 8.2);
+    const taken = waypointDrop({ drop: { index: 5 } }, 47.1, 8.2);
+    expect(waypointDrop({}, 47.1, 8.2)).toBeNull();
+    expect(free).toEqual({ index: null, latitude: 47.1, longitude: 8.2 });
+    expect(taken?.index).toBe(5);
+    expect(offeredActions(noHold, noTurn, null, null, free).map((it) => it.title)).toContain('Drop payload');
+    expect(offeredActions(noHold, noTurn, null, null, taken).map((it) => it.title)).not.toContain('Drop payload');
+    expect(activeActions(noHold, noTurn, null, null, taken).map((it) => it.title)).toEqual(['Drop payload']);
+    expect(offeredActions(noHold, noTurn, null, null, null).map((it) => it.title)).not.toContain('Drop payload');
   });
 });

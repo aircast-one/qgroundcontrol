@@ -218,11 +218,13 @@ fun dropsAt(items: List<MissionItem>, item: MissionItem): Boolean {
     return following.takeWhile { !it.specifiesCoordinate && !it.complexPattern }.any { it.commandId == DROP_COMMAND }
 }
 
+fun withDrops(items: List<MissionItem>): List<MissionItem> = items.map { it.copy(drops = dropsAt(items, it)) }
+
 fun missionFeatures(items: List<MissionItem>, selectedIndex: Int? = null, landings: List<LandingPattern> = emptyList()): FeatureCollection {
     val crowded = crowded(items.size)
     val patterns = landings.associateBy { it.index }
     val plain = items.filter { it.index !in patterns }.filterNot { it.index == HOME_ITEM && homeCovered(items) }
-    val markers = plain.map { item -> Marker(item, TrackPoint(item.latitude, item.longitude), item.sequence, exit = false, side = DROP_SIDE.takeIf { dropsAt(items, item) }) } +
+    val markers = plain.map { item -> Marker(item, TrackPoint(item.latitude, item.longitude), item.sequence, exit = false, side = DROP_SIDE.takeIf { item.drops }) } +
         exitMarkers(plain).map { (item, exit) -> Marker(item, exit, item.sequence + item.foldedCommands, exit = true) } +
         items.flatMap { item -> patterns[item.index]?.let { landingMarkers(item, it) }.orEmpty() }
     val features = markers.map { (item, at, sequence, exit, side) ->

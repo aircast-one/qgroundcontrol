@@ -1,10 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { AccountCommands } from '@/bridge/BridgeCommands';
-import { type Json, optBoolean, optText } from '@/bridge/Json';
+import { type Json, jsonObjects, optBoolean, optJSONArray, optText } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
 import { useTicker } from '@/kotlin/Compose';
 import { openUri } from '@/kotlin/Platform';
-import { OutlinedButton, OutlinedTextField, Text } from '@/m3';
+import { OutlinedButton, OutlinedTextField, RadioButton, Text } from '@/m3';
 
 export const AIRCAST_CLOUD_NAME = 'Aircast cloud';
 const ACCOUNT = 'account';
@@ -12,7 +12,18 @@ const ACCOUNT_POLL_MS = 1000;
 const API_BASE = /^https?:\/\/[^/]+/;
 export const DEFAULT_ACCOUNT_SERVER = 'https://api.aircast.one';
 
-export type AccountState = { signedIn: boolean; signingIn: boolean; status: string; userCode: string; verificationUrl: string };
+export type CloudDrone = { readonly id: string; readonly name: string; readonly seen: string };
+
+export type AccountState = {
+  signedIn: boolean;
+  signingIn: boolean;
+  status: string;
+  userCode: string;
+  verificationUrl: string;
+  apiBase: string;
+  drones: readonly CloudDrone[];
+  dronesStatus: string;
+};
 
 export const accountState = (view: Json | null): AccountState | null =>
   optText(view, 'kind') === 'object'
@@ -22,8 +33,14 @@ export const accountState = (view: Json | null): AccountState | null =>
         status: optText(view, 'status'),
         userCode: optText(view, 'userCode'),
         verificationUrl: optText(view, 'verificationUrl'),
+        apiBase: optText(view, 'apiBase'),
+        drones: jsonObjects(optJSONArray(view, 'drones')).map((it) => ({ id: optText(it, 'id'), name: optText(it, 'name'), seen: optText(it, 'seen') })),
+        dronesStatus: optText(view, 'dronesStatus'),
       }
     : null;
+
+export const adoptedApiBase = (field: string, account: AccountState | null): string | null =>
+  account !== null && account.signedIn && account.apiBase.trim() !== '' && account.apiBase !== field && (field.trim() === '' || field.trim() === DEFAULT_ACCOUNT_SERVER) ? account.apiBase : null;
 
 export const accountLine = (state: AccountState): string => (state.signedIn ? 'Signed in' : state.status.trim() === '' ? 'Not signed in' : state.status);
 
@@ -55,6 +72,11 @@ export const AircastCloudFields = ({
     opened.current = pendingUrl;
     openUri(pendingUrl);
   }, [pendingUrl]);
+  const adopted = adoptedApiBase(apiBase, account);
+  useEffect(() => {
+    if (adopted !== null) onApiBase(adopted);
+  }, [adopted]);
+  const drones = account !== null && account.signedIn ? account.drones : [];
 
   return (
     <div className="flex flex-col gap-form">
@@ -68,6 +90,21 @@ export const AircastCloudFields = ({
         isError={apiBaseError !== null}
         supportingText={apiBaseError ?? undefined}
       />
+      {drones.length > 0 ? (
+        <div className="flex flex-col" role="radiogroup" aria-label="Your drones">
+          <Text typography="titleSmall">Your drones</Text>
+          {drones.map((drone) => (
+            <div key={drone.id} className="flex min-h-12 w-full cursor-pointer items-center gap-3" onClick={() => onDeviceId(drone.id)}>
+              <RadioButton selected={deviceId.trim() === drone.id} onClick={null} label={drone.name} />
+              <div className="flex flex-col">
+                <Text>{drone.name}</Text>
+                <Text typography="bodySmall">{drone.seen}</Text>
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : null}
+      {account !== null && account.signedIn && account.dronesStatus.trim() !== '' ? <Text typography="bodySmall">{account.dronesStatus}</Text> : null}
       <OutlinedTextField value={deviceId} onValueChange={onDeviceId} label="Device" singleLine isError={deviceError !== null} supportingText={deviceError ?? undefined} />
       {account !== null ? (
         <>

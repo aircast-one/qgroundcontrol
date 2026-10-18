@@ -71,4 +71,14 @@ final class WaypointActionsTests: XCTestCase {
         XCTAssertEqual(44.001, legs[0].0.longitude, accuracy: 1e-9)
         XCTAssertEqual(41.0, legs[0].0.latitude, accuracy: 1e-9)
     }
+
+    func testAWaypointOffersADropUntilOneFollowsItThenShowsItAsAnAction() {
+        let free = waypointDrop(JSON.parse(#"{"drop":{"index":null}}"#), 47.1, 8.2)
+        let taken = waypointDrop(JSON.parse(#"{"drop":{"index":5}}"#), 47.1, 8.2)
+        XCTAssertNil(waypointDrop(JSON.parse("{}"), 47.1, 8.2))
+        XCTAssertEqual(free, WaypointDrop(index: nil, latitude: 47.1, longitude: 8.2))
+        XCTAssertEqual(offeredActions(noHold, noTurn, nil, nil, free).map(\.title), ["Hover", "Turn aircraft", "Drop payload"])
+        XCTAssertEqual(offeredActions(noHold, noTurn, nil, nil, taken).map(\.title), ["Hover", "Turn aircraft"])
+        XCTAssertEqual(activeActions(noHold, noTurn, nil, nil, taken).map(\.title), ["Drop payload"])
+    }
 }

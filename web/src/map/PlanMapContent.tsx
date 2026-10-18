@@ -152,6 +152,7 @@ import { PlanFocus, UPLOADED, type UploadGate, freshPlanView, notReadyToSend, pl
 import { WaypointSettings } from './WaypointPanel';
 
 const PLAN_POLL_MS = 700;
+const FIELD_ZOOM = 16;
 const FAILURE_MESSAGE_MS = 2500;
 const PANEL_MAX_FRACTION = 0.5;
 const SIDE_PANEL_WIDTH = 380;
@@ -471,12 +472,14 @@ export const PlanMapContent = ({
   const listOpen = useRemembered(false);
   const centreRequest = useRemembered(0);
   const centreOn = useRemembered<TrackPoint | null>(null);
+  const centreMinZoom = useRemembered<number | null>(null);
   const focusItem = (index: number): void => {
     panelOpen.value = true;
     selected.value = { kind: 'Waypoint', index };
     const placedItem = items.value.find((it) => it.index === index);
     if (placedItem === undefined) return;
     centreOn.value = TrackPoint(placedItem.latitude, placedItem.longitude);
+    centreMinZoom.value = null;
     centreRequest.value += 1;
     follow.value = false;
   };
@@ -497,6 +500,7 @@ export const PlanMapContent = ({
     if (!centersOnVehicleAtEntry(centredOnEntry.value, entryPoint !== null, fitRequest.value)) return;
     centredOnEntry.value = true;
     centreOn.value = entryPoint;
+    centreMinZoom.value = null;
     centreRequest.value += 1;
   }, [entryPoint !== null]);
 
@@ -843,6 +847,7 @@ export const PlanMapContent = ({
         onFitFailed={() => onBridge(async () => false, { label: 'Fitting the plan' })}
         centreRequest={centreRequest.value}
         centreOn={centreOn.value}
+        centreMinZoom={centreMinZoom.value}
       />
 
       {radiusFor.value === null ? null : (
@@ -1027,6 +1032,7 @@ export const PlanMapContent = ({
           onCentre={(point) => {
             follow.value = false;
             centreOn.value = point;
+            centreMinZoom.value = FIELD_ZOOM;
             centreRequest.value += 1;
           }}
           missionPoints={missionFitPoints(allItems.value)}
@@ -1080,6 +1086,7 @@ export const PlanMapContent = ({
                   then: () => {
                     follow.value = false;
                     centreOn.value = aircraftAt;
+                    centreMinZoom.value = null;
                     centreRequest.value += 1;
                   },
                 });

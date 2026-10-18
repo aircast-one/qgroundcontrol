@@ -3,6 +3,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 
 private let PLAN_POLL_MS = 700
+private let FIELD_ZOOM = 16.0
 private let FAILURE_MESSAGE_MS = 2500
 private let PANEL_MAX_FRACTION: CGFloat = 0.5
 private let SIDE_PANEL_WIDTH: CGFloat = 380
@@ -157,6 +158,7 @@ struct PlanMapContent: View {
     @State private var listOpen = false
     @State private var centreRequest = 0
     @State private var centreOn: TrackPoint?
+    @State private var centreMinZoom: Double?
     @State private var centredOnEntry = false
     @State private var gridAngle: Float?
     @State private var surveyAlt = ""
@@ -289,6 +291,7 @@ struct PlanMapContent: View {
                 if centersOnVehicleAtEntry(centredOnEntry, entryPoint != nil, fitRequest) {
                     centredOnEntry = true
                     centreOn = entryPoint
+                    centreMinZoom = nil
                     centreRequest += 1
                 }
             }
@@ -448,6 +451,7 @@ struct PlanMapContent: View {
             onFitFailed: { onBridge("Fitting the plan") { false } },
             centreRequest: centreRequest,
             centreOn: centreOn,
+            centreMinZoom: centreMinZoom,
             breachReturn: breach?.point,
             tracePoints: tracing?.1 ?? [],
             traceLine: tracing?.0.line == true,
@@ -559,6 +563,11 @@ struct PlanMapContent: View {
                 RailButton(icon: .flightLand, label: kindLabel(insertable, KIND_LAND), onClick: {
                     addMissionItem(KIND_LAND, "Adding a landing", placeAt(), insertAfter(selected, allItems))
                 }, enabled: itemCount > 0)
+                if kindOffered(insertable, KIND_DROP) {
+                    RailButton(icon: .planDrop, label: "Drop", onClick: {
+                        addMissionItem(KIND_DROP, "Adding a drop", placeAt(), insertAfter(selected, allItems))
+                    }, enabled: itemCount > 0 && addable(KIND_DROP))
+                }
             case .Fence:
                 if !support.fenceRefused {
                     RailButton(icon: .planPolygon, label: "Polygon", onClick: addPolygonFence, enabled: support.fence)
@@ -582,6 +591,7 @@ struct PlanMapContent: View {
                 onCentre: { point in
                     follow = false
                     centreOn = point
+                    centreMinZoom = FIELD_ZOOM
                     centreRequest += 1
                 },
                 missionPoints: missionFitPoints(allItems),
@@ -1137,6 +1147,7 @@ struct PlanMapContent: View {
                     onBridge("Moving the route to the aircraft", done: "Route moved to the aircraft", then: {
                         follow = false
                         centreOn = aircraftAt
+                        centreMinZoom = nil
                         centreRequest += 1
                     }) { repositionMission(aircraftAt) }
                 }
@@ -1193,6 +1204,7 @@ struct PlanMapContent: View {
         selected = .Waypoint(index: index)
         if let placed = items.first(where: { $0.index == index }) {
             centreOn = TrackPoint(latitude: placed.latitude, longitude: placed.longitude)
+            centreMinZoom = nil
             centreRequest += 1
             follow = false
         }

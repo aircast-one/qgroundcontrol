@@ -3027,7 +3027,14 @@ pub fn item_facts(backend: &dyn Backend, index: usize) -> Value {
     let wizard_rows = crate::itemfacts::wizard_info(wizard, plandoc::vehicle_class(document.vehicle_type) == crate::cmdinfo::VehicleClass::Vtol);
     match with_previous_coordinate(facts, plandoc::previous_coordinate(&document, index as i64)) {
         Value::Object(map) => crate::itemfacts::without_hidden_mission_speed(
-            Value::Object(map.into_iter().chain([("launchAltitude".to_string(), launch.unwrap_or(Value::Null))]).chain(crate::itemfacts::command_info(&read)).chain(wizard_rows).collect()),
+            Value::Object(
+                map.into_iter()
+                    .chain([("launchAltitude".to_string(), launch.unwrap_or(Value::Null))])
+                    .chain([("drop".to_string(), plandoc::drop_after(&document, index).map_or(Value::Null, |drop| json!({ "index": drop })))])
+                    .chain(crate::itemfacts::command_info(&read))
+                    .chain(wizard_rows)
+                    .collect(),
+            ),
             index,
             plandoc::vehicle_class(document.vehicle_type) == crate::cmdinfo::VehicleClass::Vtol,
             plandoc::firmware(document.firmware_type) == crate::cmdinfo::Firmware::ArduPilot,

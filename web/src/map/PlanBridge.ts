@@ -5,7 +5,7 @@ import { coordinateJson, invokeOk, setOk, settingJson } from './BridgeCalls';
 import { type LandingPattern, landingPattern } from './LandingPattern';
 import { MapBridge } from './MapBridge';
 import { removeMissionItem } from './MissionKinds';
-import { LANDING_PLACE_APPROACH, LANDING_PLACE_TOUCHDOWN } from './MissionLayers';
+import { LANDING_PLACE_APPROACH, LANDING_PLACE_TOUCHDOWN, withDrops } from './MissionLayers';
 import { MISSION_CONTROLLER } from './SurveyBridge';
 import { type TrackPoint, isPlottable } from './VehicleMap';
 
@@ -122,6 +122,7 @@ export type MissionItem = {
   closesRoute: boolean;
   legBroken: boolean;
   abbreviation: string;
+  drops: boolean;
 };
 
 type MissionItemRequired = Pick<MissionItem, 'index' | 'sequence' | 'latitude' | 'longitude' | 'command' | 'selected'>;
@@ -161,6 +162,7 @@ export const MissionItem = (fields: MissionItemRequired & Partial<MissionItem>):
   closesRoute: false,
   legBroken: false,
   abbreviation: '',
+  drops: false,
   ...fields,
 });
 
@@ -239,7 +241,7 @@ export const allMissionItems = (json: Json | null): readonly MissionItem[] => {
   });
 };
 
-export const missionItems = (json: Json | null): readonly MissionItem[] => allMissionItems(json).filter((it) => it.placed);
+export const missionItems = (json: Json | null): readonly MissionItem[] => withDrops(allMissionItems(json)).filter((it) => it.placed);
 
 export const PlanBridge = {
   rawItems: (): Promise<Json | null> => MapBridge.read(PLAN_VIEW),
