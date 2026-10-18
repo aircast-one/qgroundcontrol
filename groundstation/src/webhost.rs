@@ -51,7 +51,12 @@ pub fn set(path: &str, value: &str) -> String {
 
 #[wasm_bindgen]
 pub fn invoke(path: &str, args: &str) -> String {
-    taken(unsafe { crate::abi::qgc_core_invoke(c(path).as_ptr(), c(args).as_ptr()) })
+    let answer = taken(unsafe { crate::abi::qgc_core_invoke(c(path).as_ptr(), c(args).as_ptr()) });
+    #[cfg(feature = "synthetic")]
+    if crate::synthview::owns(path) {
+        crate::synthetic::webview::draw_now();
+    }
+    answer
 }
 
 #[wasm_bindgen]

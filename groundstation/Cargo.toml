@@ -85,7 +85,7 @@ getrandom = { version = "0.4.3", features = ["wasm_js"] }
 chrono = { version = "0.4", default-features = false, features = ["clock", "wasmbind"] }
 wasm-bindgen = "0.2.128"
 js-sys = "0.3.105"
-web-sys = { version = "0.3.105", features = ["XmlHttpRequest", "XmlHttpRequestResponseType", "console", "OffscreenCanvas", "WorkerGlobalScope", "RequestInit", "Response", "Headers", "AbortSignal", "ReadableStream", "ReadableStreamDefaultReader"] }
+web-sys = { version = "0.3.105", features = ["XmlHttpRequest", "XmlHttpRequestResponseType", "console", "OffscreenCanvas", "WorkerGlobalScope", "DedicatedWorkerGlobalScope", "RequestInit", "Response", "Headers", "AbortSignal", "ReadableStream", "ReadableStreamDefaultReader"] }
 wasm-bindgen-futures = "0.4.78"
 futures-util = { version = "0.3.34", default-features = false, features = ["alloc"] }
 sqlite-wasm-rs = { version = "0.5.5", default-features = false }

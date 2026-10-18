@@ -1,6 +1,8 @@
 use std::cell::RefCell;
 use std::sync::Arc;
 use std::time::Duration;
+use wasm_bindgen::JsCast;
+use wasm_bindgen::closure::Closure;
 use web_time::Instant;
 
 use super::fetch::Network;
@@ -8,7 +10,6 @@ use super::overlay::Overlays;
 use super::render::{Renderer, Targets};
 use super::session::{Frame, Session, Target};
 
-const TICK: Duration = Duration::from_millis(16);
 const TOKEN_EVERY: Duration = Duration::from_secs(1);
 const OVERLAYS_EVERY: Duration = Duration::from_millis(500);
 const WARM_PER_TICK: usize = 6;
@@ -82,9 +83,7 @@ pub fn attach(canvas: web_sys::OffscreenCanvas, width: u32, height: u32) -> u32 
         }
         if !web.polling {
             web.polling = true;
-            if let Err(error) = crate::background::poll("synthetic-view", TICK, tick) {
-                log::error!(target: "synthetic", "event=attach_failed reason=\"no render loop: {error}\"");
-            }
+            next_frame();
         }
         key
     })
@@ -100,6 +99,27 @@ pub fn release(key: u32) {
 
 fn tick() -> bool {
     WEB.with(|web| web.borrow_mut().tick())
+}
+
+pub fn draw_now() {
+    WEB.with(|web| {
+        let web = &mut *web.borrow_mut();
+        if let Start::Ready(world) = &mut web.start {
+            world.show(&mut web.views);
+        }
+    });
+}
+
+fn next_frame() {
+    let frame = Closure::once_into_js(|| {
+        if !tick() {
+            next_frame();
+        }
+    });
+    let scope: web_sys::DedicatedWorkerGlobalScope = js_sys::global().unchecked_into();
+    if let Err(error) = scope.request_animation_frame(frame.unchecked_ref()) {
+        log::error!(target: "synthetic", "event=attach_failed reason=\"no render loop: {error:?}\"");
+    }
 }
 
 fn read(path: &str) -> Option<serde_json::Value> {
