@@ -299,6 +299,13 @@ jobs:
           jq -n --arg id "$ASC_KEY_ID" --arg iss "$ASC_ISSUER_ID" --rawfile key "$RUNNER_TEMP/asc.p8" \
             '{key_id: $id, issuer_id: $iss, key: $key}' > "$RUNNER_TEMP/asc.json"
 
+      - name: Import the CI development certificate
+        if: ${{ env.HAS_ASC_KEY == 'true' }}
+        uses: apple-actions/import-codesign-certs@v7
+        with:
+          p12-file-base64: ${{ secrets.IOS_CERT_P12_BASE64 }}
+          p12-password: ${{ secrets.IOS_CERT_P12_PASSWORD }}
+
       - name: Upload to TestFlight
         if: ${{ env.HAS_ASC_KEY == 'true' }}
         env:
