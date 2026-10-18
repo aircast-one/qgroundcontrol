@@ -1,4 +1,5 @@
 import { type Json, isJson, jsonObjects, optBoolean, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
+import { type DeviceBadge, type DeviceChartView, parseBadge, parseChart } from '@/ui/DeviceKit';
 import { mutableStateOf } from '@/kotlin/State';
 import type { DrawableName } from '@/res/drawables';
 import { followDeviceView } from '@/ui/DeviceView';
@@ -8,6 +9,19 @@ export const DeviceLevel = { Ready: 0, Warn: 1, Blocked: 2, Neutral: 3 } as cons
 export type DeviceAction = { readonly label: string; readonly href: string };
 export type DeviceCheck = { readonly label: string; readonly value: string; readonly level: number; readonly href: string; readonly action: string };
 export type DevicePage = { readonly title: string; readonly href: string; readonly icon: string; readonly summary: string; readonly needs: boolean };
+export type DeviceUplink = {
+  readonly carrier: string;
+  readonly backup: string;
+  readonly rate: string;
+  readonly network: string;
+  readonly standby: string;
+  readonly trouble: string;
+  readonly data: string;
+  readonly charts: readonly DeviceChartView[];
+};
+
+export type DeviceHealth = { readonly memory: string; readonly warning: DeviceBadge | null; readonly charts: readonly DeviceChartView[] };
+
 export type DeviceStatus = {
   readonly name: string;
   readonly level: number;
@@ -16,7 +30,32 @@ export type DeviceStatus = {
   readonly action: DeviceAction | null;
   readonly checks: readonly DeviceCheck[];
   readonly pages: readonly DevicePage[];
+  readonly link: DeviceUplink | null;
+  readonly health: DeviceHealth | null;
+  readonly events: string;
 };
+
+const parseCharts = (json: Json | null): readonly DeviceChartView[] => jsonObjects(optJSONArray(json, 'charts')).flatMap((chart) => {
+  const parsed = parseChart(chart);
+  return parsed === null ? [] : [parsed];
+});
+
+const parseUplink = (json: Json | null): DeviceUplink | null =>
+  json === null
+    ? null
+    : {
+        carrier: optText(json, 'carrier'),
+        backup: optText(json, 'backup'),
+        rate: optText(json, 'rate'),
+        network: optText(json, 'network'),
+        standby: optText(json, 'standby'),
+        trouble: optText(json, 'trouble'),
+        data: optText(json, 'data'),
+        charts: parseCharts(json),
+      };
+
+const parseHealth = (json: Json | null): DeviceHealth | null =>
+  json === null ? null : { memory: optText(json, 'memory'), warning: isJson(json.warning) ? parseBadge(json.warning) : null, charts: parseCharts(json) };
 
 const deviceAction = (json: Json | null): DeviceAction | null => {
   const href = optText(json, 'href');
@@ -45,6 +84,9 @@ export const parseDeviceStatus = (json: unknown): DeviceStatus | null =>
           summary: optText(page, 'summary'),
           needs: optBoolean(page, 'needs'),
         })),
+        link: parseUplink(optJSONObject(json, 'link')),
+        health: parseHealth(optJSONObject(json, 'health')),
+        events: optText(json, 'events'),
       }
     : null;
 

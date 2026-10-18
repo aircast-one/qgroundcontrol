@@ -58,3 +58,20 @@ describe('DeviceScreenTest', () => {
     expect(pageLook(DEVICE_PAGE).inline).toBe(true);
   });
 });
+
+describe('DeviceHomeTest', () => {
+  it('the device home carries the link and the health the flight sheet showed', () => {
+    const status = parseDeviceStatus({
+      ...served,
+      link: { carrier: 'Wi-Fi (wlan0)', rate: '↓ 1 kB/s', standby: 'Magti · lte', charts: [{ label: 'Wi-Fi', values: [60, 64], max: 100, value: '64%', level: 3 }] },
+      health: { memory: '400 MB of 1 GB', warning: { level: 1, text: 'Undervoltage seen since start' }, charts: [{ label: 'CPU', values: [10, 92], max: 100, value: '92%', level: 2 }] },
+      events: '2 events this flight',
+    });
+    expect(status?.link?.carrier).toBe('Wi-Fi (wlan0)');
+    expect(status?.link?.charts[0]).toEqual({ label: 'Wi-Fi', values: [60, 64], max: 100, value: '64%', level: 3 });
+    expect(status?.health?.warning).toEqual({ level: 1, text: 'Undervoltage seen since start' });
+    expect(status?.health?.charts[0]?.level).toBe(DeviceLevel.Blocked);
+    expect(status?.events).toBe('2 events this flight');
+    expect(parseDeviceStatus(served)?.link).toBeNull();
+  });
+});

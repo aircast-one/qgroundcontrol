@@ -5,10 +5,12 @@ import { FilledTonalButton, Surface, Text } from '@/m3';
 import { Color, aircast, md, withAlpha } from '@/theme/Colors';
 import { LocalAppNavigation } from '@/ui/AppNavigation';
 import { useOsdBackdrop } from '@/ui/Osd';
+import { useFlyIsPortrait } from '@/ui/FlyShell';
+import { MaterialIcon } from '@/res/Icon';
 import { FootNote, OverridePageHeading, SectionHeader, SetupRow, SetupState } from '@/ui/SetupRow';
-import { DEVICE_HOME, DEVICE_PAGE, DeviceLevel, type DeviceStatus, deviceAnswered, deviceNeedsAttention, devicePageIcon, deviceRequested, deviceStatus } from '@/ui/DeviceStatus';
+import { DEVICE_HOME, DEVICE_PAGE, type DeviceHealth, DeviceLevel, type DeviceStatus, type DeviceUplink, deviceAnswered, deviceNeedsAttention, devicePageIcon, deviceRequested, deviceStatus } from '@/ui/DeviceStatus';
 import { DEVICE_SCREENS, type DeviceScreenEntry, devicePath } from '@/ui/DeviceScreens';
-import { levelColor } from '@/ui/DeviceKit';
+import { DeviceChart, DeviceFact, DeviceNotice, DeviceSection, DeviceText, levelColor } from '@/ui/DeviceKit';
 
 const TITLE_PREFIX = 'aircast · ';
 
@@ -70,6 +72,9 @@ export const DeviceTab = ({ open, onOpen, onClose }: { open: string | null; onOp
           onClick={check.href !== '' ? () => onOpen(check.href) : null}
         />
       ))}
+      <SetupRow title={status.events !== '' ? status.events : 'Flight log'} status="" state={status.events !== '' ? SetupState.NeedsAttention : SetupState.Neutral} onClick={() => onOpen('/flights')} />
+      {status.link !== null ? <UplinkSection link={status.link} /> : null}
+      {status.health !== null ? <HealthSection health={status.health} /> : null}
       <SectionHeader text={status.name !== '' ? status.name : 'Device'} />
       {status.pages.map((page) => (
         <SetupRow
@@ -84,6 +89,30 @@ export const DeviceTab = ({ open, onOpen, onClose }: { open: string | null; onOp
     </div>
   );
 };
+
+const UplinkSection = ({ link }: { link: DeviceUplink }) => (
+  <DeviceSection title="Link">
+    <DeviceFact label="Carrying video" value={link.carrier} />
+    <DeviceText text={[link.backup, link.network].filter((it) => it !== '').join(' · ')} />
+    {link.rate !== '' ? <DeviceFact label="Throughput" value={link.rate} /> : null}
+    {link.standby !== '' ? <DeviceFact label="Cellular · standby" value={link.standby} /> : null}
+    {link.trouble !== '' ? <DeviceNotice notice={{ level: DeviceLevel.Warn, text: link.trouble }} /> : null}
+    {link.data !== '' ? <DeviceFact label="Data" value={link.data} /> : null}
+    {link.charts.map((chart) => (
+      <DeviceChart key={chart.label} chart={chart} />
+    ))}
+  </DeviceSection>
+);
+
+const HealthSection = ({ health }: { health: DeviceHealth }) => (
+  <DeviceSection title="Device health">
+    {health.memory !== '' ? <DeviceFact label="Memory in use" value={health.memory} /> : null}
+    {health.warning !== null ? <DeviceNotice notice={health.warning} /> : null}
+    {health.charts.map((chart) => (
+      <DeviceChart key={chart.label} chart={chart} />
+    ))}
+  </DeviceSection>
+);
 
 const NativeDevicePage = ({ entry, href, query, onOpen, onBack }: { entry: DeviceScreenEntry; href: string; query: URLSearchParams; onOpen: (href: string) => void; onBack: () => void }) => {
   useBackHandler(true, onBack);
@@ -151,19 +180,19 @@ export const DeviceStatusChip = () => {
   const navigation = useContext(LocalAppNavigation);
   const status = useValue(deviceStatus);
   const backdrop = useOsdBackdrop(withAlpha(Color.Black, 0.45));
+  const narrow = useFlyIsPortrait();
   if (status === null || !deviceNeedsAttention(status)) return null;
-  return (
-    <Surface
-      shape="full"
-      color={backdrop}
-      contentColor={aircast('outdoorForeground')}
-      className="min-w-0 shrink px-3 py-1.5"
-      label={`${status.name}: ${status.headline}`}
-      onClick={() => {
-        navigation.settingsPage.value = DEVICE_PAGE;
-        navigation.settingsOpen.value = true;
-      }}
-    >
+  const open = () => {
+    navigation.settingsPage.value = DEVICE_PAGE;
+    navigation.settingsOpen.value = true;
+  };
+  return narrow ? (
+    <Surface shape="full" color={backdrop} contentColor={aircast('outdoorForeground')} className="relative grid size-10 shrink-0 place-items-center" label={`${status.name}: ${status.headline}`} title={chipText(status)} onClick={open}>
+      <MaterialIcon name="developer_board" size={22} />
+      <span className="absolute top-1.5 right-1.5 size-2.5 rounded-full ring-2 ring-black/40" style={{ background: levelColor(status.level) }} />
+    </Surface>
+  ) : (
+    <Surface shape="full" color={backdrop} contentColor={aircast('outdoorForeground')} className="min-w-0 shrink px-3 py-1.5" label={`${status.name}: ${status.headline}`} onClick={open}>
       <span className="flex min-w-0 items-center gap-2">
         <span className="size-2 shrink-0 rounded-full" style={{ background: levelColor(status.level) }} />
         <Text typography="labelLarge" maxLines={1} ellipsis>
