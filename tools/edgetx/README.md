@@ -48,6 +48,12 @@ Safari and Firefox have no USB serial in web pages at all; use Chrome or Edge.
 
 **RTN** leaves the script. While the app is flying on these sticks, the first RTN only asks; press it again within 3 s to stop sending sticks.
 
+## Channel names
+
+Each row shows the channel the app receives, then what drives it. While the app answers and knows the vehicle, the stick channels are named by what the vehicle does with them, following its RCMAP (ArduPilot) or RC_MAP (PX4) parameters: Roll, Pitch, Thr, Yaw on a copter, helicopter or sub; Ail, Ele, Thr, Rud on a plane or VTOL; Steer and Thr on a rover or boat. Every other channel, and every channel while the app is silent, keeps EdgeTX's source name. EdgeTX itself names the sticks Ail, Ele, Thr and Rud on every model.
+
+The app answers `@N` with no vehicle, otherwise `@<F|S|J>,<vehicle>,<C|P|R>,<roll>,<pitch>,<throttle>,<yaw>`, dropping everything after the vehicle when it does not know the vehicle type.
+
 ## Test
 
 ```sh

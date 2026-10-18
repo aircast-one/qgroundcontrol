@@ -25,7 +25,24 @@ local leaving = false
 local confirmUntil = nil
 local askedAt = nil
 local heard = ""
-local app = { state = nil, vehicle = nil, at = nil }
+local app = { state = nil, vehicle = nil, at = nil, labels = nil }
+
+local ROLES = {
+  C = { "Roll", "Pitch", "Thr", "Yaw" },
+  P = { "Ail", "Ele", "Thr", "Rud" },
+  R = { "Steer", false, "Thr", false },
+}
+
+local function labelsFor(kind, channels)
+  local names = ROLES[kind]
+  if not names then return nil end
+  local labels = {}
+  for at = 1, 4 do
+    local channel = tonumber(channels[at])
+    if names[at] and channel then labels[channel] = names[at] end
+  end
+  return labels
+end
 
 local SAYS = {
   F = function(vehicle) return "App flying vehicle " .. vehicle end,
@@ -81,7 +98,9 @@ local function listen()
     heard = string.sub(heard, #line + 2)
     local state, vehicle = string.match(line, "^@(%a),?(%d*)")
     if state and SAYS[state] then
+      local kind, roll, pitch, throttle, yaw = string.match(line, "^@%a,%d+,(%a),(%d+),(%d+),(%d+),(%d+)")
       app.state, app.vehicle, app.at = state, vehicle, now()
+      app.labels = labelsFor(kind, { roll, pitch, throttle, yaw })
     end
     line = string.match(heard, "^(.-)\n")
   end
@@ -133,8 +152,12 @@ local function pwm(i)
   return math.floor(channelValues[i] / 2) + 1500
 end
 
+local function role(i)
+  return appLive() and app.labels and app.labels[i] or nil
+end
+
 local function channelText(i)
-  return string.format("CH%-2d %-4s %-6s %4d", i, mixesInfo[i].src, mixesInfo[i].name, pwm(i))
+  return string.format("CH%-2d %-5s %-6s %4d", i, role(i) or mixesInfo[i].src, mixesInfo[i].name, pwm(i))
 end
 
 local function place(slot)
@@ -169,7 +192,7 @@ local function drawSmall()
     local i = used[slot]
     local x = math.floor((slot - 1) / 5) * 43
     local y = 17 + ((slot - 1) % 5) * 8
-    lcd.drawText(x, y, "CH" .. i, SMLSIZE)
+    lcd.drawText(x, y, string.sub(role(i) or ("CH" .. i), 1, 4), SMLSIZE)
     local w = math.floor((channelValues[i] + 1024 + 128) / 128)
     if w < 1 then w = 1 elseif w > 17 then w = 17 end
     lcd.drawFilledRectangle(x + 22, y + 1, w, 5)

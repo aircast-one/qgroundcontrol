@@ -108,13 +108,45 @@ pub enum Flying {
     Joystick(u8),
 }
 
-pub fn echo(flying: Flying) -> String {
-    match flying {
-        Flying::NoVehicle => "@N\n".to_string(),
-        Flying::Vehicle(id) => format!("@F,{id}\n"),
-        Flying::Standby(id) => format!("@S,{id}\n"),
-        Flying::Joystick(id) => format!("@J,{id}\n"),
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Roles {
+    pub kind: char,
+    pub channels: [u8; 4],
+}
+
+const DEFAULT_CHANNELS: [u8; 4] = [1, 2, 3, 4];
+const ARDUPILOT_MAP: [&str; 4] = ["RCMAP_ROLL", "RCMAP_PITCH", "RCMAP_THROTTLE", "RCMAP_YAW"];
+const PX4_MAP: [&str; 4] = ["RC_MAP_ROLL", "RC_MAP_PITCH", "RC_MAP_THROTTLE", "RC_MAP_YAW"];
+
+pub fn roles(vehicle_type: u8, px4: bool, parameter: impl Fn(&str) -> Option<f64>) -> Option<Roles> {
+    let kind = match crate::modes::vehicle_class(vehicle_type) {
+        crate::modes::VehicleClass::MultiRotor | crate::modes::VehicleClass::Sub => 'C',
+        crate::modes::VehicleClass::FixedWing => 'P',
+        crate::modes::VehicleClass::Rover => 'R',
+        crate::modes::VehicleClass::Other => return None,
+    };
+    let names = if px4 { PX4_MAP } else { ARDUPILOT_MAP };
+    let channels = std::array::from_fn(|at| parameter(names[at]).filter(|c| (1.0..=255.0).contains(c)).map_or(DEFAULT_CHANNELS[at], |c| c as u8));
+    Some(Roles { kind, channels })
+}
+
+pub fn echo(flying: Flying, roles: Option<Roles>) -> String {
+    let (state, id) = match flying {
+        Flying::NoVehicle => return "@N\n".to_string(),
+        Flying::Vehicle(id) => ('F', id),
+        Flying::Standby(id) => ('S', id),
+        Flying::Joystick(id) => ('J', id),
+    };
+    match roles {
+        None => format!("@{state},{id}\n"),
+        Some(Roles { kind, channels: [roll, pitch, throttle, yaw] }) => format!("@{state},{id},{kind},{roll},{pitch},{throttle},{yaw}\n"),
     }
+}
+
+fn active_roles() -> Option<Roles> {
+    let hub = crate::hub::lock();
+    let vehicle = hub.active().filter(|v| !v.on_high_latency_link())?;
+    roles(vehicle.vehicle_type, vehicle.autopilot == crate::modes::AUTOPILOT_PX4, |name| vehicle.parameter_exact(vehicle.component, name).map(|value| value.as_f64()))
 }
 
 fn flying() -> Flying {
@@ -143,7 +175,7 @@ fn answer(now_ms: u64, live: bool) {
         due
     };
     if due {
-        let line = echo(flying());
+        let line = echo(flying(), active_roles());
         if let Some(port) = ATTEMPT.lock().unwrap_or_else(PoisonError::into_inner).as_ref().and_then(|attempt| attempt.port.as_ref()) {
             (port.write)(line.as_bytes());
         }
@@ -431,11 +463,36 @@ mod tests {
 
     #[test]
     fn the_radio_is_told_what_its_sticks_are_doing() {
-        assert_eq!(echo(Flying::Vehicle(1)), "@F,1\n");
-        assert_eq!(echo(Flying::Standby(3)), "@S,3\n", "in 4G standby the sticks go to the aircraft computer");
-        assert_eq!(echo(Flying::Joystick(1)), "@J,1\n");
-        assert_eq!(echo(Flying::NoVehicle), "@N\n");
-        assert!(echo(Flying::Vehicle(1)).lines().all(|line| parse(line).is_none()), "an echo is never read back as stick values");
+        assert_eq!(echo(Flying::Vehicle(1), None), "@F,1\n");
+        assert_eq!(echo(Flying::Standby(3), None), "@S,3\n", "in 4G standby the sticks go to the aircraft computer");
+        assert_eq!(echo(Flying::Joystick(1), None), "@J,1\n");
+        assert_eq!(echo(Flying::NoVehicle, None), "@N\n");
+        assert_eq!(echo(Flying::NoVehicle, Some(Roles { kind: 'C', channels: [1, 2, 3, 4] })), "@N\n");
+        assert_eq!(echo(Flying::Vehicle(1), Some(Roles { kind: 'C', channels: [1, 2, 3, 4] })), "@F,1,C,1,2,3,4\n", "a known vehicle says what each stick channel does");
+        assert!(echo(Flying::Vehicle(1), Some(Roles { kind: 'P', channels: [1, 2, 3, 4] })).lines().all(|line| parse(line).is_none()), "an echo is never read back as stick values");
+    }
+
+    #[test]
+    fn roles_follow_the_vehicle_type_and_its_channel_map() {
+        let none = |_: &str| None;
+        assert_eq!(roles(2, false, none), Some(Roles { kind: 'C', channels: [1, 2, 3, 4] }), "a quad without RCMAP params flies on 1 to 4");
+        assert_eq!(roles(1, false, none).map(|r| r.kind), Some('P'));
+        assert_eq!(roles(20, true, none).map(|r| r.kind), Some('P'), "a VTOL is labelled as a plane");
+        assert_eq!(roles(10, false, none).map(|r| r.kind), Some('R'));
+        assert_eq!(roles(11, false, none).map(|r| r.kind), Some('R'), "a boat steers like a rover");
+        assert_eq!(roles(12, false, none).map(|r| r.kind), Some('C'), "a submarine uses copter sticks");
+        assert_eq!(roles(4, false, none).map(|r| r.kind), Some('C'), "a helicopter uses copter sticks");
+        assert_eq!(roles(6, false, none), None, "a ground station is not a vehicle kind");
+        let ardupilot = |name: &str| match name {
+            "RCMAP_ROLL" => Some(2.0),
+            "RCMAP_PITCH" => Some(1.0),
+            "RCMAP_THROTTLE" => Some(0.0),
+            _ => None,
+        };
+        assert_eq!(roles(2, false, ardupilot).map(|r| r.channels), Some([2, 1, 3, 4]), "RCMAP moves channels; 0 or missing keeps the default");
+        let px4 = |name: &str| (name == "RC_MAP_THROTTLE").then_some(1.0);
+        assert_eq!(roles(2, true, px4).map(|r| r.channels), Some([1, 2, 1, 4]), "PX4 reads RC_MAP_*");
+        assert_eq!(roles(2, false, px4).map(|r| r.channels), Some([1, 2, 3, 4]), "ArduPilot ignores PX4's names");
     }
 
     #[test]

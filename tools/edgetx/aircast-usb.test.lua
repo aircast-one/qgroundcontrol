@@ -70,7 +70,7 @@ for _, screen in ipairs({ { w = 480, h = 272 }, { w = 480, h = 320, lvgl = true 
 
   if screen.w == 480 then
     assert(shows(r, "Waiting for the app") and shows(r, "In app: Control > Radio on USB"), "silence says where in the app to pick the radio")
-    assert(shows(r, "CH1  src0 m0      988") and shows(r, "CH4  src3 m3     1244"), "each row names the channel the app receives, the stick on it and the mix's name")
+    assert(shows(r, "CH1  src0  m0      988") and shows(r, "CH4  src3  m3     1244"), "each row names the channel the app receives, the stick on it and the mix's name")
     assert(shows(r, "+20 unused channels") and not shows(r, "CH24"), "only the channels this model mixes are listed")
     assert(shows(r, "RTN: stop sending sticks and exit"), "the way out is on the screen")
 
@@ -96,6 +96,35 @@ end
 local full = radio({ w = 480, h = 272, mixes = 24 })
 full.script.run(0)
 assert(shows(full, "CH24 src23 m23    1500") and not shows(full, "+0 unused channels"), "a model mixing all 24 channels shows every one")
+
+local labelled = radio({ w = 480, h = 272 })
+labelled.hear("@F,1,C,2,1,3,4\n")
+labelled.script.run(0)
+assert(shows(labelled, "CH1  Pitch m0      988") and shows(labelled, "CH2  Roll  m1     2012") and shows(labelled, "CH3  Thr   m2     1500") and shows(labelled, "CH4  Yaw   m3     1244"), "a copter's channels are named by what its RCMAP makes them do")
+labelled.hear("@F,1,P,1,2,3,4\n")
+labelled.script.run(0)
+assert(shows(labelled, "CH1  Ail   m0      988") and shows(labelled, "CH4  Rud   m3     1244"), "a plane keeps plane names")
+labelled.hear("@S,1,R,1,2,3,4\n")
+labelled.script.run(0)
+assert(shows(labelled, "CH1  Steer m0      988") and shows(labelled, "CH2  src1  m1     2012") and shows(labelled, "CH3  Thr   m2     1500"), "a rover names steering and throttle and leaves the rest to EdgeTX")
+labelled.hear("@F,1\n")
+labelled.script.run(0)
+assert(shows(labelled, "CH1  src0  m0      988"), "an app that does not know the vehicle leaves EdgeTX's names")
+labelled.hear("@F,1,C,1,2,3,4\n")
+labelled.script.run(0)
+labelled.at(151)
+labelled.script.run(0)
+assert(shows(labelled, "CH1  src0  m0      988"), "a silent app's labels fall back to EdgeTX's names")
+
+local small = radio({ w = 128, h = 64 })
+small.hear("@F,1,C,1,2,3,4\n")
+small.script.run(0)
+assert(shows(small, "Roll") and shows(small, "Pitc"), "the small screen shows the role, cut to fit")
+
+local colourLabels = radio({ w = 480, h = 320, lvgl = true })
+colourLabels.hear("@F,1,C,1,2,3,4\n")
+colourLabels.script.run(0)
+assert(shows(colourLabels, "CH1  Roll  m0      988"), "an LVGL radio labels its rows the same way")
 
 local quiet = radio({ w = 480, h = 272 })
 quiet.script.run(0)

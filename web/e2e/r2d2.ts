@@ -3,10 +3,11 @@ import type { Page } from '@playwright/test';
 export const STM32_VCP_VENDOR = 0x0483;
 export const STM32_VCP_PRODUCT = 0x5740;
 
-type RadioWindow = Window & { radioChannels?: (raw: Readonly<Record<number, number>>) => void; radioStreaming?: (on: boolean) => void };
+type RadioWindow = Window & { radioChannels?: (raw: Readonly<Record<number, number>>) => void; radioStreaming?: (on: boolean) => void; radioHeard?: () => string };
 
 const installRadio = ({ vendor, product }: { vendor: number; product: number }) => {
-  const radio = { raw: Array.from({ length: 24 }, (_, at): number => (at === 2 ? -1024 : 0)), streaming: true, controller: null as ReadableStreamDefaultController<Uint8Array> | null };
+  const radio = { raw: Array.from({ length: 24 }, (_, at): number => (at === 2 ? -1024 : 0)), streaming: true, controller: null as ReadableStreamDefaultController<Uint8Array> | null, heard: '' };
+  (window as RadioWindow).radioHeard = () => radio.heard;
   const line = () => new TextEncoder().encode(`$${radio.raw.map((value) => `${value},`).join('')}\r\n`);
   setInterval(() => {
     if (radio.streaming) radio.controller?.enqueue(line());
@@ -25,7 +26,7 @@ const installRadio = ({ vendor, product }: { vendor: number; product: number }) 
       if (streams.open) throw new DOMException('The port is already open.', 'InvalidStateError');
       streams.open = true;
       streams.readable = new ReadableStream<Uint8Array>({ start: (controller) => void (radio.controller = controller) });
-      streams.writable = new WritableStream<Uint8Array>();
+      streams.writable = new WritableStream<Uint8Array>({ write: (chunk) => void (radio.heard = `${radio.heard}${new TextDecoder().decode(chunk)}`.slice(-4096)) });
     },
     close: async () => {
       if (!streams.open) throw new DOMException('The port is already closed.', 'InvalidStateError');
@@ -52,3 +53,5 @@ export const plugInR2d2Radio = (page: Page) => page.addInitScript(installRadio, 
 export const setRadioChannels = (page: Page, raw: Readonly<Record<number, number>>) => page.evaluate((values) => (window as RadioWindow).radioChannels?.(values), raw);
 
 export const setRadioStreaming = (page: Page, on: boolean) => page.evaluate((value) => (window as RadioWindow).radioStreaming?.(value), on);
+
+export const lastAnswer = (page: Page) => page.evaluate(() => ((window as RadioWindow).radioHeard?.() ?? '').split('\n').filter((line) => line.startsWith('@')).at(-1) ?? '');

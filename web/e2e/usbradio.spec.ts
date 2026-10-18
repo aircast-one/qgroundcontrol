@@ -1,6 +1,6 @@
 import type { Page } from '@playwright/test';
 import { expect, openApp, test } from './fixtures';
-import { plugInR2d2Radio, setRadioChannels, setRadioStreaming } from './r2d2';
+import { lastAnswer, plugInR2d2Radio, setRadioChannels, setRadioStreaming } from './r2d2';
 import { type Sitl, startSitl } from './sitl';
 
 const ROLL = 0;
@@ -32,7 +32,7 @@ const connectSitl = async (page: Page) => {
   await page.getByRole('button', { name: 'Add link…' }).click();
   await page.getByRole('button', { name: /^Network \(WebSocket\)/ }).click();
   await page.getByRole('textbox', { name: 'WebSocket address' }).fill(running().ws);
-  await page.getByRole('button', { name: 'Connect', exact: true }).click();
+  await page.getByRole('textbox', { name: 'WebSocket address' }).locator('xpath=following::button[normalize-space()="Connect"][1]').click();
   await expect(page.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 120_000 });
 };
 
@@ -63,6 +63,7 @@ test('a radio streaming the script is found by what it sends, offered once, and 
   await expect(indicator(page, 'Radio · live')).toBeVisible({ timeout: 20_000 });
   await page.keyboard.press('Escape');
   await expect(indicator(page, 'Radio · live')).toBeHidden();
+  await expect.poll(() => lastAnswer(page), { message: 'the radio is told a copter flies on it and which channel does what', timeout: 10_000 }).toMatch(/^@F,\d+,C,1,2,3,4$/);
   await setRadioChannels(page, { 1: 1024, 3: -1024, 11: 1024 });
   await expect.poll(channel(ROLL), { message: 'roll right', timeout: 20_000 }).toBeGreaterThan(1900);
   await expect.poll(channel(THROTTLE), { message: 'throttle low' }).toBeLessThan(1050);
