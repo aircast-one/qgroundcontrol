@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { type Json, type JsonArray, isNull, jsonObjects, jsonStrings, opt, optBoolean, optDouble, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { type FactSlider, Qgc } from '@/bridge/Qgc';
 import { useKeyedState, useTicker } from '@/kotlin/Compose';
@@ -114,7 +114,26 @@ export const MODE_STICKS: Record<number, string> = {
   4: 'Throttle and roll on the left stick, pitch and yaw on the right',
 };
 
-const savedWhere = (): string => `Saved in this browser for ${typeof location === 'undefined' ? 'this site' : location.host}`;
+const thisSite = (): string => (typeof location === 'undefined' ? 'this site' : location.host);
+
+const NOT_SENDING: Record<string, string> = {
+  notPolling: 'Not sending: no aircraft is connected',
+  configuring: 'Not sending while calibrating',
+  notCalibrated: 'Not sending: calibrate first',
+  mappingIncomplete: 'Not sending: a stick has no axis. Calibrate again',
+  invalidCalibration: 'Not sending: the calibration is not usable. Calibrate again',
+  noSample: 'Not sending: no input from the radio. Check its cable and move a stick',
+  missingAxisData: 'Not sending: the radio stopped reporting a stick',
+};
+
+export const sendingText = (page: Pick<JoystickPage, 'enabled' | 'commanding' | 'notCommandingReason'>): string | null =>
+  !page.enabled ? null : page.commanding ? 'Sending your sticks to the aircraft' : (NOT_SENDING[page.notCommandingReason ?? ''] ?? 'Not sending your sticks to the aircraft');
+
+export const statusLines = (text: string): { bullets: boolean; lines: readonly string[] } => {
+  const lines = text.split('\n').filter((it) => it.trim() !== '');
+  const bullets = lines.length > 0 && lines.every((it) => it.startsWith('* '));
+  return { bullets, lines: bullets ? lines.map((it) => it.slice(2)) : [lines.join(' ')] };
+};
 
 export type JoystickPage = {
   names: readonly string[];
@@ -126,6 +145,8 @@ export type JoystickPage = {
   axes: readonly JoystickAxis[];
   armed: boolean;
   calibration: JoystickCalibration;
+  commanding: boolean;
+  notCommandingReason: string | null;
   transmitterMode: number;
   buttons: readonly JoystickButton[];
   actions: readonly AssignableAction[];
@@ -149,6 +170,8 @@ export const joystickPage = (view: Json | null): JoystickPage | null => {
     axes: jsonObjects(optJSONArray(state, 'axes')).map((a) => ({ index: optInt(a, 'index'), raw: isNull(a, 'raw') ? null : optInt(a, 'raw'), function: optText(a, 'function') })),
     armed: optBoolean(view, 'armed'),
     calibration: joystickCalibration(optJSONObject(view, 'calibration')),
+    commanding: optBoolean(state, 'commanding'),
+    notCommandingReason: blankToNull(optText(state, 'notCommandingReason')),
     transmitterMode: optInt(view, 'transmitterMode', 2),
     buttons: jsonObjects(optJSONArray(state, 'buttons')).map((b) => {
       const event = optText(b, 'event');
@@ -171,6 +194,12 @@ export const JoystickScreen = ({ className }: { className?: string }) => {
   const [offerEnable, setOfferEnable] = useState<string | null>(null);
 
   useTicker(JOYSTICK_POLL_MS, [], async () => setPage(joystickPage(await Qgc.get(JOYSTICK_VIEW))));
+  useEffect(
+    () => () => {
+      void Qgc.call(JOYSTICK_CALIBRATION, 'cancel');
+    },
+    [],
+  );
 
   const act = (path: string, ...args: unknown[]) =>
     void (async () => {
@@ -199,11 +228,12 @@ export const JoystickScreen = ({ className }: { className?: string }) => {
       <div className={`flex w-full flex-col gap-2 overflow-auto px-5 py-3 ${className ?? ''}`}>
         {read.names.length > 1 ? <JoystickPicker page={read} onPick={(it) => act(JOYSTICK_SELECT, it)} /> : null}
         <div className="flex items-center gap-3">
-          <Checkbox checked={read.enabled} enabled={read.vehicle} onCheckedChange={(it) => act(JOYSTICK_ENABLE, it)} label="Enable" />
+          <Checkbox checked={read.enabled} enabled={read.vehicle && read.calibrated} onCheckedChange={(it) => act(JOYSTICK_ENABLE, it)} label="Enable" />
           <Text>Enable</Text>
           {!read.vehicle ? <Text color={md('onSurfaceVariant')}>Not currently available</Text> : null}
         </div>
-        <Text color={read.calibrated ? md('onSurface') : md('error')}>{read.calibrated ? `Calibrated · ${savedWhere().toLowerCase()}` : 'Requires calibration'}</Text>
+        <Text color={read.calibrated ? md('onSurface') : md('error')}>{read.calibrated ? `Calibrated · saved in this browser for ${thisSite()}` : 'Calibrate before enabling'}</Text>
+        {sendingText(read) !== null ? <Text color={read.commanding ? md('primary') : md('error')}>{sendingText(read)}</Text> : null}
         {refusal !== null ? <Text color={md('error')}>{refusal}</Text> : null}
 
         {!read.armed ? (
@@ -214,16 +244,16 @@ export const JoystickScreen = ({ className }: { className?: string }) => {
           </>
         ) : null}
 
-        <SectionHeader text="Axis monitor" />
-        {read.axes.map((axis) => (
-          <div key={axis.index} className="flex items-center gap-2">
-            <Text className="w-24 shrink-0">{axisLabel(axis, read.calibration)}</Text>
-            <LinearProgressIndicator progress={((axis.raw ?? 0) / AXIS_RANGE + 1) / 2} className="flex-1" />
-          </div>
-        ))}
-
         {calibrating ? null : (
           <>
+            <SectionHeader text="Axis monitor" />
+            {read.axes.map((axis) => (
+              <div key={axis.index} className="flex items-center gap-2">
+                <Text className="w-24 shrink-0">{axisLabel(axis, read.calibration)}</Text>
+                <LinearProgressIndicator progress={((axis.raw ?? 0) / AXIS_RANGE + 1) / 2} className="flex-1" />
+              </div>
+            ))}
+
             <SectionHeader text="Buttons" />
             <Text typography="bodySmall">Multiple buttons that have the same action must be pressed simultaneously to invoke the action.</Text>
             {read.buttons.map((button) => (
@@ -328,6 +358,22 @@ const ButtonRow = ({ button, actions, calibrated, onAction, onRepeat }: { button
   );
 };
 
+const StatusText = ({ text }: { text: string }) => {
+  const { bullets, lines } = statusLines(text);
+  if (lines.length === 0 || lines.every((it) => it.trim() === '')) return null;
+  return bullets ? (
+    <ul className="flex list-disc flex-col gap-1 ps-5">
+      {lines.map((line) => (
+        <li key={line}>
+          <Text typography="bodyMedium">{line}</Text>
+        </li>
+      ))}
+    </ul>
+  ) : (
+    <Text typography="bodyMedium">{lines[0]}</Text>
+  );
+};
+
 const CHECK_ROWS: readonly (readonly [keyof StickValues, string, string])[] = [
   ['roll', 'Left', 'Right'],
   ['pitch', 'Down', 'Up'],
@@ -369,7 +415,7 @@ const CalibrationPanel = ({ page, onStep }: { page: JoystickPage; onStep: (op: s
           </Text>
         </>
       ) : null}
-      {cal.statusText.trim() !== '' ? <Text typography="bodyMedium">{cal.statusText}</Text> : null}
+      <StatusText text={cal.statusText} />
       {cal.holding !== null ? (
         <div className="flex items-center gap-2">
           <LinearProgressIndicator progress={cal.holding} className="w-40" label="Holding the stick" />
@@ -380,13 +426,15 @@ const CalibrationPanel = ({ page, onStep }: { page: JoystickPage; onStep: (op: s
       {cal.warning !== null ? <Text color={md('error')}>{cal.warning}</Text> : null}
       {cal.checking ? (
         <Text typography="bodySmall" color={md('onSurfaceVariant')}>
-          {`${savedWhere()}.`}
+          {`Save keeps this calibration in this browser for ${thisSite()}.`}
         </Text>
       ) : null}
       <div className="flex gap-2">
-        <OutlinedButton enabled={cal.cancelEnabled} onClick={() => onStep('cancel')}>
-          Cancel
-        </OutlinedButton>
+        {cal.calibrating ? (
+          <OutlinedButton enabled={cal.cancelEnabled} onClick={() => onStep('cancel')}>
+            Cancel
+          </OutlinedButton>
+        ) : null}
         {cal.oneSidedVisible ? <OutlinedButton onClick={() => onStep('oneSided')}>One-Sided</OutlinedButton> : null}
         <Button enabled={cal.nextEnabled} onClick={() => onStep('next')}>
           {cal.nextText}

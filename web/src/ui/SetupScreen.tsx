@@ -87,6 +87,11 @@ export const readinessNote = (readiness: SetupReadiness | null, listed: boolean)
 
 export const parameterCountText = (count: number): string | null => (count > 0 ? format('%,d parameters', count) : null);
 
+export const firstToOpen = (components: readonly SetupComponent[], canOpen: (component: SetupComponent) => boolean): SetupComponent | undefined => {
+  const openable = components.filter(canOpen);
+  return openable.find((it) => it.needsAttention) ?? openable[0];
+};
+
 export const attentionAction = (className: string): string => (['Sensors', 'Radio'].some((it) => className.includes(it)) ? 'Calibrate' : 'Set up');
 
 export const setupNote = (className: string): string => COMPONENT_NOTES.find(([token]) => className.includes(token))?.[1] ?? '';
@@ -335,7 +340,7 @@ export const SetupScreen = ({ className }: { className?: string }) => {
 
   useLaunchedEffect([wide && panesShown, components, requestedPage], () => {
     if (!(wide && panesShown) || opened !== null || parametersOpen || requestedPage !== null) return;
-    const first = components.find((it) => headCanOpen(setupPage(setupJson, it.name), it.name));
+    const first = firstToOpen(components, (it) => headCanOpen(setupPage(setupJson, it.name), it.name));
     if (first !== undefined) setOpened([first, null]);
   });
 

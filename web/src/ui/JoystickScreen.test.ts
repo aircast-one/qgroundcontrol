@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { type Json, parseJson } from '@/bridge/Json';
 import { hatBits, scaled } from '@/app/GamepadInput';
-import { JoystickCalibration, MODE_STICKS, axisLabel, joystickCalibration, joystickPage } from './JoystickScreen';
+import { JoystickCalibration, MODE_STICKS, axisLabel, joystickCalibration, joystickPage, sendingText, statusLines } from './JoystickScreen';
 
 const json = (text: string): Json => parseJson(text) ?? {};
 
@@ -78,6 +78,21 @@ describe('JoystickScreenTest', () => {
   it('each stick mode says which stick carries the throttle', () => {
     expect(MODE_STICKS[2]).toBe('Throttle and yaw on the left stick, pitch and roll on the right');
     expect(Object.keys(MODE_STICKS)).toEqual(['1', '2', '3', '4']);
+  });
+
+  it('an enabled joystick says whether its sticks reach the aircraft, and why not', () => {
+    const page = joystickPage(json('{"available":true,"names":["Pad"],"active":"Pad","enabled":true,"state":{"commanding":false,"notCommandingReason":"noSample"}}'))!;
+    expect([page.commanding, page.notCommandingReason]).toEqual([false, 'noSample']);
+    expect(sendingText(page)).toBe('Not sending: no input from the radio. Check its cable and move a stick');
+    expect(sendingText({ enabled: true, commanding: true, notCommandingReason: null })).toBe('Sending your sticks to the aircraft');
+    expect(sendingText({ enabled: false, commanding: false, notCommandingReason: 'notPolling' })).toBeNull();
+    expect(sendingText({ enabled: true, commanding: false, notCommandingReason: 'somethingNew' })).toBe('Not sending your sticks to the aircraft');
+  });
+
+  it('a step written as bullets is shown as a list', () => {
+    expect(statusLines('* Center all sticks.\n* Click Next to continue')).toEqual({ bullets: true, lines: ['Center all sticks.', 'Click Next to continue'] });
+    expect(statusLines('Move the Roll stick all the way to the right')).toEqual({ bullets: false, lines: ['Move the Roll stick all the way to the right'] });
+    expect(statusLines('')).toEqual({ bullets: false, lines: [''] });
   });
 
   it('a_setting_the_core_hides_is_not_listed', () => {

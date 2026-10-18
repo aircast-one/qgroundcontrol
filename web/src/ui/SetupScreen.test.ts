@@ -13,6 +13,7 @@ import {
   reportsOpening,
   setupComponents,
   setupMatches,
+  firstToOpen,
 } from '@/ui/SetupScreen';
 import { SetupPage, parametersReady } from '@/ui/SetupView';
 
@@ -135,5 +136,17 @@ describe('SetupScreenTest', () => {
     expect(parametersIncomplete(view)).toBe("Parameters Incomplete. The vehicle didn't return its full parameter list, so some setup options are unavailable.");
     expect(parametersIncomplete({ parametersReady: true, parametersReason: '' })).toBeNull();
     expect(parameterWait(view), 'ready parameters never block setup').toBeNull();
+  });
+
+  it('setup opens on the first component that still needs setting up, not the first in the list', () => {
+    const components = [
+      SetupComponent({ index: 0, name: 'ESC', needsAttention: false }),
+      SetupComponent({ index: 1, name: 'Pre-Arm Check', needsAttention: true }),
+      SetupComponent({ index: 2, name: 'Sensors', needsAttention: true }),
+    ];
+    expect(firstToOpen(components, () => true)?.name).toBe('Pre-Arm Check');
+    expect(firstToOpen(components, (it) => it.name !== 'Pre-Arm Check')?.name).toBe('Sensors');
+    expect(firstToOpen(components.slice(0, 1), () => true)?.name).toBe('ESC');
+    expect(firstToOpen([], () => true)).toBeUndefined();
   });
 });
