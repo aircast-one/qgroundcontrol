@@ -131,3 +131,28 @@ test('the Device tab holds the device pages, and device trouble shows in the fly
   await device.frameLocator('iframe').getByRole('link', { name: 'Flight' }).click();
   await expect(device.getByRole('tablist')).toHaveCount(0);
 });
+
+test('a device page offers its synthetic view on every visit, even after it was removed', async ({ device }) => {
+  const offered = async () => {
+    await device.getByRole('button', { name: /^Cameras, showing/ }).click();
+    await expect(device.getByRole('menuitem', { name: /Synthetic view/ })).toBeVisible();
+    await device.keyboard.press('Escape');
+  };
+  await device.addLocatorHandler(device.getByRole('dialog').filter({ hasText: /transfer failed/ }), (dialog) => dialog.getByRole('button', { name: 'OK' }).click());
+  await offered();
+  const sources = device.getByRole('button', { name: /^Video sources/ });
+  const synthetic = device.getByRole('button', { name: /Synthetic view/ });
+  await device.getByRole('button', { name: 'Settings', exact: true }).click();
+  await device.getByRole('tablist').getByRole('tab', { name: 'Transmission' }).click();
+  await expect(async () => {
+    if (await sources.isVisible()) await sources.click();
+    if (await synthetic.isVisible()) await synthetic.click();
+    const remove = device.getByRole('button', { name: 'Remove' });
+    if (await remove.isVisible()) await remove.click();
+    await expect(device.getByRole('button', { name: 'Add a video source' })).toBeVisible({ timeout: 2_000 });
+    await expect(synthetic).toHaveCount(0);
+  }).toPass({ timeout: 45_000 });
+  await device.getByRole('button', { name: 'Close settings' }).click();
+  await device.reload();
+  await offered();
+});
