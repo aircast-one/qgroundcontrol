@@ -2,6 +2,20 @@ import XCTest
 @testable import Aircast
 
 final class RcControlsTests: XCTestCase {
+    func testEachControlReadsThePositionTheCoreReportsForItsChannel() {
+        let view = JSON.parse(#"""
+            {"controls":[
+             {"label":"Mode","channel":5,"type":"switch3","pwm":1985,"position":2,"on":true,"held":false},
+             {"label":"CH7","channel":7,"type":"button","pwm":null,"position":null,"on":null,"held":true},
+             {"label":"Odd","channel":9,"type":"dial","pwm":1500,"position":1,"on":false,"held":false}]}
+            """#)
+        XCTAssertEqual(parseRcControlStates(view), [
+            RcControlState(control: RcControl(label: "Mode", channel: 5, type: .Switch3), pwm: 1985, position: 2, on: true, held: false),
+            RcControlState(control: RcControl(label: "CH7", channel: 7, type: .Button), pwm: nil, position: nil, on: nil, held: true),
+        ])
+        XCTAssertEqual(parseRcControlStates(nil), [])
+    }
+
     func testAnUnsetSettingYieldsNoControls() {
         XCTAssertEqual(parseRcControls("[]"), [])
         XCTAssertEqual(parseRcControls(nil), [])

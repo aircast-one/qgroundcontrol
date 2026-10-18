@@ -1,9 +1,24 @@
 import { describe, expect, it } from 'vitest';
-import { RcControlType, RcControlTypeEntries, channelOwner, channelUsable, firstFreeChannel, parseRcControls, rcControlsAdded, rcControlsPatched, rcControlsRemoved, rcSendDue } from './RcControls';
+import { RcControlType, RcControlTypeEntries, channelOwner, channelUsable, firstFreeChannel, parseRcControlStates, parseRcControls, rcControlsAdded, rcControlsPatched, rcControlsRemoved, rcSendDue } from './RcControls';
 
 const entryAt = (json: string, index: number): Record<string, unknown> => (JSON.parse(json) as Record<string, unknown>[])[index] ?? {};
 
 describe('RcControlsTest', () => {
+  it('each control reads the position the core reports for its channel', () => {
+    const view = {
+      controls: [
+        { label: 'Mode', channel: 5, type: 'switch3', pwm: 1985, position: 2, on: true, held: false },
+        { label: 'CH7', channel: 7, type: 'button', pwm: null, position: null, on: null, held: false },
+        { label: 'Odd', channel: 9, type: 'dial', pwm: 1500, position: 1, on: false, held: false },
+      ],
+    };
+    expect(parseRcControlStates(view)).toEqual([
+      { label: 'Mode', channel: 5, type: RcControlType.Switch3, pwm: 1985, position: 2, on: true, held: false },
+      { label: 'CH7', channel: 7, type: RcControlType.Button, pwm: null, position: null, on: null, held: false },
+    ]);
+    expect(parseRcControlStates(null)).toEqual([]);
+  });
+
   it('an unset setting yields no controls', () => {
     expect(parseRcControls('[]')).toEqual([]);
     expect(parseRcControls(null)).toEqual([]);

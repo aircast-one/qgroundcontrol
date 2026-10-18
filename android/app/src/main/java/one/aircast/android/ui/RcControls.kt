@@ -43,6 +43,39 @@ internal fun parseRcControls(json: String?): List<RcControl> {
         }
 }
 
+internal const val RC_CONTROLS_VIEW = "view.rcControls"
+
+data class RcControlState(
+    val control: RcControl,
+    val pwm: Int?,
+    val position: Int?,
+    val on: Boolean?,
+    val held: Boolean,
+)
+
+private fun JSONObject.wholeOrNull(key: String): Int? = (opt(key) as? Number)?.toInt()
+
+internal fun parseRcControlStates(view: JSONObject?): List<RcControlState> {
+    val array = view?.optJSONArray("controls") ?: return emptyList()
+    return (0 until array.length())
+        .mapNotNull { array.optJSONObject(it) }
+        .mapNotNull { entry ->
+            val channel = entry.optInt("channel", 0)
+            val type = typeOf(entry.optText("type"))
+            if (channel <= 0 || type == null) {
+                null
+            } else {
+                RcControlState(
+                    control = RcControl(entry.optText("label"), channel, type),
+                    pwm = entry.wholeOrNull("pwm"),
+                    position = entry.wholeOrNull("position"),
+                    on = entry.opt("on") as? Boolean,
+                    held = entry.optBoolean("held"),
+                )
+            }
+        }
+}
+
 internal fun switch3Pwms(): List<Int> = listOf(PWM_MIN, PWM_CENTER, PWM_MAX)
 
 internal const val RC_CHANNEL_MIN = 1

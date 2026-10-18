@@ -31,6 +31,30 @@ func parseRcControls(_ json: String?) -> [RcControl] {
     }
 }
 
+let RC_CONTROLS_VIEW = "view.rcControls"
+
+struct RcControlState: Equatable {
+    let control: RcControl
+    let pwm: Int?
+    let position: Int?
+    let on: Bool?
+    let held: Bool
+}
+
+func parseRcControlStates(_ view: JSON?) -> [RcControlState] {
+    (view?["controls"].arrayOrNil ?? []).filter { $0.object != nil }.compactMap { entry in
+        let channel = entry["channel"].int(0)
+        guard channel > 0, let type = typeOf(entry["type"].string) else { return nil }
+        return RcControlState(
+            control: RcControl(label: entry["label"].string, channel: channel, type: type),
+            pwm: entry["pwm"].int,
+            position: entry["position"].int,
+            on: entry["on"].boolOrNil,
+            held: entry["held"].bool(false)
+        )
+    }
+}
+
 func switch3Pwms() -> [Int] { [PWM_MIN, PWM_CENTER, PWM_MAX] }
 
 let RC_CHANNEL_MIN = 1

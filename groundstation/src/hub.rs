@@ -314,7 +314,7 @@ pub struct Vehicle {
     pub trigger_points: Vec<(f64, f64, f64)>,
     pub trigger_points_appended: bool,
     image_captured_seen: bool,
-    rc_releasing: BTreeMap<u8, u8>,
+    pub rc_releasing: BTreeMap<u8, u8>,
     calibration_left_behind: bool,
     rc_due: Option<u64>,
     pub temperature: TemperatureFacts,

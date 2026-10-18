@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { VehicleCommands } from '@/bridge/VehicleCommands';
-import { settingControl, useQgcPath, useQgcString } from '@/bridge/QgcState';
+import { useQgcPath } from '@/bridge/QgcState';
 import { Button, FilterChip, Slider, Surface, Text } from '@/m3';
 import { md, withAlpha } from '@/theme/Colors';
 import { FLY_STATE, flyState, useHasVehicle } from '@/ui/FlyState';
-import { PWM_CENTER, PWM_MAX, PWM_MIN, type RcControl, RcControlType, parseRcControls, rcSendDue, switch3Pwms } from '@/ui/RcControls';
-
-const RC_CONTROLS_FACT = 'settings.flyViewSettings.rcControls';
+import { PWM_CENTER, PWM_MAX, PWM_MIN, RC_CONTROLS_VIEW, type RcControlState, RcControlType, parseRcControlStates, rcSendDue, switch3Pwms } from '@/ui/RcControls';
 
 const inOrder = (block: () => Promise<unknown>): void => void block();
 
@@ -55,9 +53,10 @@ const ControlLabel = ({ text }: { text: string }) => (
   </Text>
 );
 
-const RcSlider = ({ control }: { control: RcControl }) => {
-  const [pwm, setPwm] = useState(PWM_CENTER);
-  const latest = useRef(PWM_CENTER);
+const RcSlider = ({ control }: { control: RcControlState }) => {
+  const [dragging, setDragging] = useState<number | null>(null);
+  const shown = dragging ?? control.pwm ?? PWM_CENTER;
+  const latest = useRef(shown);
   const lastSent = useRef(0);
 
   const send = (value: number, finished: boolean) => {
@@ -71,15 +70,18 @@ const RcSlider = ({ control }: { control: RcControl }) => {
     <div className="flex items-center">
       <ControlLabel text={control.label} />
       <Slider
-        value={pwm}
+        value={shown}
         onValueChange={(raw) => {
           const next = Math.trunc(raw);
-          if (next === latest.current) return;
+          if (next === shown) return;
           latest.current = next;
-          setPwm(next);
+          setDragging(next);
           send(next, false);
         }}
-        onValueChangeFinished={() => send(latest.current, true)}
+        onValueChangeFinished={() => {
+          send(latest.current, true);
+          setDragging(null);
+        }}
         valueRange={[PWM_MIN, PWM_MAX]}
         label={control.label}
         className="w-full"
@@ -88,46 +90,37 @@ const RcSlider = ({ control }: { control: RcControl }) => {
   );
 };
 
-const RcButton = ({ control }: { control: RcControl }) => {
-  const [on, setOn] = useState(false);
+const RcButton = ({ control }: { control: RcControlState }) => {
+  const on = control.on === true;
   return (
     <FilterChip
       selected={on}
-      onClick={() => {
-        setOn(!on);
-        sendRcOverride(control.channel, !on ? PWM_MAX : PWM_MIN);
-      }}
+      onClick={() => sendRcOverride(control.channel, on ? PWM_MIN : PWM_MAX)}
       label={control.label}
       className="self-start"
     />
   );
 };
 
-const RcSwitch3 = ({ control }: { control: RcControl }) => {
-  const [position, setPosition] = useState(1);
-  return (
-    <div className="flex items-center">
-      <ControlLabel text={control.label} />
-      <div className="flex gap-1">
-        {switch3Pwms().map((value, index) => (
-          <FilterChip
-            key={index}
-            selected={position === index}
-            onClick={() => {
-              setPosition(index);
-              sendRcOverride(control.channel, value);
-            }}
-            label={SWITCH3_LABELS[index] ?? ''}
-          />
-        ))}
-      </div>
+const RcSwitch3 = ({ control }: { control: RcControlState }) => (
+  <div className="flex items-center">
+    <ControlLabel text={control.label} />
+    <div className="flex gap-1">
+      {switch3Pwms().map((value, index) => (
+        <FilterChip
+          key={index}
+          selected={control.position === index}
+          onClick={() => sendRcOverride(control.channel, value)}
+          label={SWITCH3_LABELS[index] ?? ''}
+        />
+      ))}
     </div>
-  );
-};
+  </div>
+);
 
 const PRESS_KEYS: ReadonlySet<string> = new Set([' ', 'Enter']);
 
-const RcMomentary = ({ control }: { control: RcControl }) => {
+const RcMomentary = ({ control }: { control: RcControlState }) => {
   const [pressed, setPressed] = useState(false);
   const everPressed = useRef(false);
 
@@ -159,7 +152,7 @@ const RcMomentary = ({ control }: { control: RcControl }) => {
   );
 };
 
-const RcControlView = ({ control }: { control: RcControl }) =>
+const RcControlView = ({ control }: { control: RcControlState }) =>
   control.type === RcControlType.Slider ? (
     <RcSlider control={control} />
   ) : control.type === RcControlType.Button ? (
@@ -172,8 +165,8 @@ const RcControlView = ({ control }: { control: RcControl }) =>
 
 export const RcControlsLayer = ({ className }: { className?: string }) => {
   const hasVehicle = useHasVehicle();
-  const configured = useQgcString(settingControl(RC_CONTROLS_FACT));
-  const controls = useMemo(() => parseRcControls(configured), [configured]);
+  const view = useQgcPath(RC_CONTROLS_VIEW);
+  const controls = useMemo(() => parseRcControlStates(view), [view]);
   const stateJson = useQgcPath(FLY_STATE);
   const overriding = useMemo(() => flyState(stateJson)?.rcOverride === true, [stateJson]);
 

@@ -627,6 +627,8 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         "loadProgress": v.connect_progress,
         "orbitActive": v.orbit_active(crate::hub::now_ms()),
         "rcChannelOverrideActive": !v.rc_override.is_empty(),
+        "rcChannelValues": v.rc_values,
+        "rcChannelOverrides": v.rc_override.iter().filter(|(channel, _)| !v.rc_releasing.contains_key(*channel)).map(|(channel, pwm)| (channel.to_string(), json!(pwm))).collect::<serde_json::Map<_, _>>(),
         "isROIEnabled": v.roi_enabled,
         "communicationLostEnabled": v.comm_lost_enabled,
         "messageCount": v.message_log.unread(),

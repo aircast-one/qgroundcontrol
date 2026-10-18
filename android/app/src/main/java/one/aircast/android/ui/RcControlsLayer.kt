@@ -21,7 +21,6 @@ import android.os.SystemClock
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -31,10 +30,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.qgcPath
-import one.aircast.android.bridge.qgcString
-import one.aircast.android.bridge.settingControl
-
-private const val RC_CONTROLS_FACT = "settings.flyViewSettings.rcControls"
 
 internal class RcHolder(private val send: (() -> Unit) -> Unit = ::offMainInOrder) {
     private val sent = java.util.concurrent.ConcurrentHashMap.newKeySet<Int>()
@@ -77,9 +72,11 @@ private fun ControlLabel(text: String) {
 }
 
 @Composable
-private fun RcSlider(control: RcControl) {
-    var pwm by remember(control.channel) { mutableIntStateOf(PWM_CENTER) }
+private fun RcSlider(state: RcControlState) {
+    val control = state.control
+    var dragging by remember(control.channel) { mutableStateOf<Int?>(null) }
     var lastSent by remember(control.channel) { mutableLongStateOf(0L) }
+    val shown = dragging ?: state.pwm ?: PWM_CENTER
 
     fun send(value: Int, finished: Boolean) {
         val now = SystemClock.uptimeMillis()
@@ -92,15 +89,18 @@ private fun RcSlider(control: RcControl) {
     Row(verticalAlignment = Alignment.CenterVertically) {
         ControlLabel(control.label)
         Slider(
-            value = pwm.toFloat(),
+            value = shown.toFloat(),
             onValueChange = { raw ->
                 val next = raw.toInt()
-                if (next != pwm) {
-                    pwm = next
+                if (next != shown) {
+                    dragging = next
                     send(next, finished = false)
                 }
             },
-            onValueChangeFinished = { send(pwm, finished = true) },
+            onValueChangeFinished = {
+                send(shown, finished = true)
+                dragging = null
+            },
             valueRange = PWM_MIN.toFloat()..PWM_MAX.toFloat(),
             modifier = Modifier.fillMaxWidth(),
         )
@@ -108,33 +108,28 @@ private fun RcSlider(control: RcControl) {
 }
 
 @Composable
-private fun RcButton(control: RcControl) {
-    var on by remember(control.channel) { mutableStateOf(false) }
+private fun RcButton(state: RcControlState) {
+    val control = state.control
+    val on = state.on == true
 
     FilterChip(
         selected = on,
-        onClick = {
-            on = !on
-            sendRcOverride(control.channel, if (on) PWM_MAX else PWM_MIN)
-        },
+        onClick = { sendRcOverride(control.channel, if (on) PWM_MIN else PWM_MAX) },
         label = { Text(control.label) },
     )
 }
 
 @Composable
-private fun RcSwitch3(control: RcControl) {
-    var position by remember(control.channel) { mutableIntStateOf(1) }
+private fun RcSwitch3(state: RcControlState) {
+    val control = state.control
 
     Row(verticalAlignment = Alignment.CenterVertically) {
         ControlLabel(control.label)
         Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
             switch3Pwms().forEachIndexed { index, value ->
                 FilterChip(
-                    selected = position == index,
-                    onClick = {
-                        position = index
-                        sendRcOverride(control.channel, value)
-                    },
+                    selected = state.position == index,
+                    onClick = { sendRcOverride(control.channel, value) },
                     label = { Text(listOf("Low", "Mid", "High")[index]) },
                 )
             }
@@ -164,8 +159,8 @@ private fun RcMomentary(control: RcControl) {
 @Composable
 fun RcControlsLayer(modifier: Modifier = Modifier) {
     val hasVehicle = hasVehicle()
-    val configured by qgcString(settingControl(RC_CONTROLS_FACT))
-    val controls = remember(configured) { parseRcControls(configured) }
+    val view by qgcPath(RC_CONTROLS_VIEW)
+    val controls = remember(view) { parseRcControlStates(view) }
     val stateJson by qgcPath(FLY_STATE)
     val overriding = remember(stateJson) { flyState(stateJson)?.rcOverride == true }
 
@@ -183,12 +178,12 @@ fun RcControlsLayer(modifier: Modifier = Modifier) {
             Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             verticalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            controls.forEach { control ->
-                when (control.type) {
-                    RcControlType.Slider -> RcSlider(control)
-                    RcControlType.Button -> RcButton(control)
-                    RcControlType.Switch3 -> RcSwitch3(control)
-                    RcControlType.Momentary -> RcMomentary(control)
+            controls.forEach { state ->
+                when (state.control.type) {
+                    RcControlType.Slider -> RcSlider(state)
+                    RcControlType.Button -> RcButton(state)
+                    RcControlType.Switch3 -> RcSwitch3(state)
+                    RcControlType.Momentary -> RcMomentary(state.control)
                 }
             }
 

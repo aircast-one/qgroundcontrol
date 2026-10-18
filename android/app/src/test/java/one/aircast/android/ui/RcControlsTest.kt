@@ -7,6 +7,25 @@ import org.junit.Test
 
 class RcControlsTest {
     @Test
+    fun `each control reads the position the core reports for its channel`() {
+        val view = org.json.JSONObject(
+            """{"controls":[
+                {"label":"Mode","channel":5,"type":"switch3","pwm":1985,"position":2,"on":true,"held":false},
+                {"label":"CH7","channel":7,"type":"button","pwm":null,"position":null,"on":null,"held":true},
+                {"label":"Odd","channel":9,"type":"dial","pwm":1500,"position":1,"on":false,"held":false}]}""",
+        )
+
+        assertEquals(
+            listOf(
+                RcControlState(RcControl("Mode", 5, RcControlType.Switch3), pwm = 1985, position = 2, on = true, held = false),
+                RcControlState(RcControl("CH7", 7, RcControlType.Button), pwm = null, position = null, on = null, held = true),
+            ),
+            parseRcControlStates(view),
+        )
+        assertEquals(emptyList<RcControlState>(), parseRcControlStates(null))
+    }
+
+    @Test
     fun `an unset setting yields no controls`() {
         assertEquals(emptyList<RcControl>(), parseRcControls("[]"))
         assertEquals(emptyList<RcControl>(), parseRcControls(null))

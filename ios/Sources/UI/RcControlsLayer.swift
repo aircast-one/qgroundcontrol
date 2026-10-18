@@ -67,14 +67,12 @@ private struct ControlLabel: View {
 }
 
 private struct RcSlider: View {
-    let control: RcControl
-    @State private var pwm: Int
+    let state: RcControlState
+    @State private var dragging: Int?
     @State private var lastSent: Int64 = 0
 
-    init(control: RcControl) {
-        self.control = control
-        _pwm = State(initialValue: customRcControls.held(control.channel) ?? PWM_CENTER)
-    }
+    private var control: RcControl { state.control }
+    private var shown: Int { dragging ?? state.pwm ?? PWM_CENTER }
 
     private func send(_ value: Int, _ finished: Bool) {
         let now = uptimeMillis()
@@ -89,17 +87,22 @@ private struct RcSlider: View {
             ControlLabel(text: control.label)
             Slider(
                 value: Binding(
-                    get: { Double(pwm) },
+                    get: { Double(shown) },
                     set: { raw in
                         let next = Int(raw)
-                        if next != pwm {
-                            pwm = next
+                        if next != shown {
+                            dragging = next
                             send(next, false)
                         }
                     }
                 ),
                 in: Double(PWM_MIN)...Double(PWM_MAX),
-                onEditingChanged: { editing in if !editing { send(pwm, true) } }
+                onEditingChanged: { editing in
+                    if !editing {
+                        send(shown, true)
+                        dragging = nil
+                    }
+                }
             )
             .frame(maxWidth: .infinity)
         }
@@ -107,21 +110,12 @@ private struct RcSlider: View {
 }
 
 private struct RcButton: View {
-    let control: RcControl
-    @State private var on: Bool
-
-    init(control: RcControl) {
-        self.control = control
-        _on = State(initialValue: customRcControls.held(control.channel) == PWM_MAX)
-    }
+    let state: RcControlState
 
     var body: some View {
-        Toggle(control.label, isOn: Binding(
-            get: { on },
-            set: { next in
-                on = next
-                sendRcOverride(control.channel, next ? PWM_MAX : PWM_MIN)
-            }
+        Toggle(state.control.label, isOn: Binding(
+            get: { state.on == true },
+            set: { next in sendRcOverride(state.control.channel, next ? PWM_MAX : PWM_MIN) }
         ))
         .toggleStyle(.button)
     }
@@ -130,23 +124,14 @@ private struct RcButton: View {
 private let SWITCH3_LABELS = ["Low", "Mid", "High"]
 
 private struct RcSwitch3: View {
-    let control: RcControl
-    @State private var position: Int
-
-    init(control: RcControl) {
-        self.control = control
-        _position = State(initialValue: switch3Pwms().firstIndex(of: customRcControls.held(control.channel) ?? PWM_CENTER) ?? 1)
-    }
+    let state: RcControlState
 
     var body: some View {
         HStack {
-            ControlLabel(text: control.label)
-            Picker(control.label, selection: Binding(
-                get: { position },
-                set: { index in
-                    position = index
-                    sendRcOverride(control.channel, switch3Pwms()[index])
-                }
+            ControlLabel(text: state.control.label)
+            Picker(state.control.label, selection: Binding(
+                get: { state.position ?? -1 },
+                set: { index in sendRcOverride(state.control.channel, switch3Pwms()[index]) }
             )) {
                 ForEach(Array(SWITCH3_LABELS.enumerated()), id: \.offset) { index, label in Text(label).tag(index) }
             }
@@ -188,12 +173,12 @@ private struct RcMomentary: View {
 
 struct RcControlsLayer: View {
     @HasVehicle private var hasVehicle
-    @QgcString(settingControl(RC_CONTROLS)) private var configured
+    @QgcPath(RC_CONTROLS_VIEW) private var view
     @QgcPath(FLY_STATE) private var stateJson
     @Environment(\.theme) private var theme
 
     var body: some View {
-        let controls = parseRcControls(configured)
+        let controls = parseRcControlStates(view)
         let overriding = flyState(stateJson)?.rcOverride == true
         ZStack {
             Color.clear
@@ -202,16 +187,16 @@ struct RcControlsLayer: View {
                 .onDisappear { rcLayerGone() }
             if !controls.isEmpty && hasVehicle {
                 VStack(alignment: .leading, spacing: 6) {
-                    ForEach(Array(controls.enumerated()), id: \.offset) { _, control in
+                    ForEach(Array(controls.enumerated()), id: \.offset) { _, state in
                         Group {
-                            switch control.type {
-                            case .Slider: RcSlider(control: control)
-                            case .Button: RcButton(control: control)
-                            case .Switch3: RcSwitch3(control: control)
-                            case .Momentary: RcMomentary(control: control)
+                            switch state.control.type {
+                            case .Slider: RcSlider(state: state)
+                            case .Button: RcButton(state: state)
+                            case .Switch3: RcSwitch3(state: state)
+                            case .Momentary: RcMomentary(control: state.control)
                             }
                         }
-                        .id(control.channel)
+                        .id(state.control.channel)
                     }
                     if overriding {
                         HStack(spacing: Space.s2) {

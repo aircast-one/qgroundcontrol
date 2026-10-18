@@ -1,4 +1,4 @@
-import { type Json, isJson, optInt, optText } from '@/bridge/Json';
+import { type Json, isJson, optBoolean, optInt, optJSONArray, optText } from '@/bridge/Json';
 
 export const PWM_MIN = 1000;
 export const PWM_CENTER = 1500;
@@ -41,6 +41,22 @@ export const parseRcControls = (json: string | null): readonly RcControl[] =>
     const type = typeOf(optText(entry, 'type'));
     const label = optText(entry, 'label');
     return channel <= 0 || type === null ? [] : [{ label: label.trim() === '' ? `CH${channel}` : label, channel, type }];
+  });
+
+export const RC_CONTROLS_VIEW = 'view.rcControls';
+
+export type RcControlState = RcControl & { pwm: number | null; position: number | null; on: boolean | null; held: boolean };
+
+const wholeOrNull = (json: Json, key: string): number | null => (typeof json[key] === 'number' ? Math.trunc(json[key]) : null);
+
+export const parseRcControlStates = (view: Json | null): readonly RcControlState[] =>
+  (optJSONArray(view, 'controls') ?? []).filter(isJson).flatMap((entry) => {
+    const channel = optInt(entry, 'channel', 0);
+    const type = typeOf(optText(entry, 'type'));
+    const on = entry['on'];
+    return channel <= 0 || type === null
+      ? []
+      : [{ label: optText(entry, 'label'), channel, type, pwm: wholeOrNull(entry, 'pwm'), position: wholeOrNull(entry, 'position'), on: typeof on === 'boolean' ? on : null, held: optBoolean(entry, 'held') }];
   });
 
 export const switch3Pwms = (): readonly number[] => [PWM_MIN, PWM_CENTER, PWM_MAX];

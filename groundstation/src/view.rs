@@ -270,6 +270,7 @@ pub const VIEWS: &[View] = &[
     View { path: "view.missionSeed", deps: missionkinds::DEPS, compute: missionkinds::seed_view },
     View { path: "view.calibration", deps: calibration::DEPS, compute: calibration::calibration_view },
     View { path: "view.radio", deps: radio::DEPS, compute: radio::radio_view },
+    View { path: "view.rcControls", deps: crate::rcoverride::DEPS, compute: crate::rcoverride::controls_view },
     View { path: "view.logs", deps: logs::DEPS, compute: logs::logs_view },
     View { path: "view.inspector", deps: inspector::DEPS, compute: inspector::inspector_view },
     View { path: "view.inspectorCharts", deps: &[], compute: crate::inspectorchart::charts_view },
