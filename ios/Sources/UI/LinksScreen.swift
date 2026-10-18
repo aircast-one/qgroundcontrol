@@ -780,7 +780,7 @@ let TOOL_LINK_ORDER: [LinkType] = [.LogReplay, .Mock]
 func linkKind(_ type: LinkType) -> LinkKind {
     switch type {
     case .Udp: LinkKind(type: type, title: "Wi-Fi or network", detail: "Wi-Fi or Ethernet (UDP)", about: "Listens on a port for telemetry from the aircraft or its radio.")
-    case .Serial: LinkKind(type: type, title: "USB radio", detail: "Telemetry radio on USB", about: "A radio plugged into this device over USB.")
+    case .Serial: LinkKind(type: type, title: "USB telemetry radio", detail: "MAVLink radio on USB", about: "A telemetry radio or flight controller plugged into this device over USB.")
     case .Bluetooth: LinkKind(type: type, title: "Bluetooth radio", detail: "Paired telemetry radio", about: "A radio paired with or near this device over Bluetooth.")
     case .AircastCloud: LinkKind(type: type, title: "Aircast Cloud", detail: "Backup link via your account", about: "A backup link to the aircraft through your Aircast account.")
     case .Tcp: LinkKind(type: type, title: "Network server (TCP)", detail: "A listening ground station", about: "Calls out to a device that is listening, such as a ground station or bridge.")

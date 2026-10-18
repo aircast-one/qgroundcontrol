@@ -18,7 +18,8 @@ import { useHasVehicle } from '@/ui/FlyState';
 import { MockLinkChoices, MockLinkFields, mockLinkArguments } from '@/ui/MockLinkFields';
 import { ChoiceField } from '@/ui/SettingsScreen';
 import { AdvancedToggle, FootNote, LocalPageHeading, OverridePageHeading, PageTopBar, SectionHeader, SetupRow } from '@/ui/SetupRow';
-import { UsbAccess } from '@/ui/UsbAccess';
+import { USB_RADIO_PORT, UsbAccess } from '@/ui/UsbAccess';
+import { serialAvailable } from '@/core/client';
 
 export const LINKS_VIEW = 'view.links';
 const LINKS_PATH = 'links.linkConfigurations';
@@ -815,7 +816,7 @@ export const TOOL_LINK_ORDER: readonly LinkType[] = [LinkType.LogReplay, LinkTyp
 
 const LINK_KINDS: Record<Exclude<LinkType['name'], 'Other'>, readonly [string, string, string]> = {
   Udp: ['Wi-Fi or network', 'Wi-Fi or Ethernet (UDP)', 'Listens on a port for telemetry from the aircraft or its radio.'],
-  Serial: ['USB radio', 'Telemetry radio on USB', 'A radio plugged into this device over USB.'],
+  Serial: ['USB telemetry radio', 'MAVLink radio on USB', 'A telemetry radio or flight controller plugged into this device over USB.'],
   Bluetooth: ['Bluetooth radio', 'Paired telemetry radio', 'A radio paired with or near this device over Bluetooth.'],
   AircastCloud: ['Aircast Cloud', 'Backup link via your account', 'A backup link to the aircraft through your Aircast account.'],
   Tcp: ['Network server (TCP)', 'A listening ground station', 'Calls out to a device that is listening, such as a ground station or bridge.'],
@@ -938,6 +939,7 @@ const addLink = async (draft: LinkDraft, name: string, udpDefault: string, repla
 
 const AddLinkPage = ({ onDismiss, onAdded, className }: { onDismiss: () => void; onAdded: () => void; className?: string }) => {
   const [type, setType] = useState<LinkType | null>(null);
+  const [transmitter, setTransmitter] = useState(false);
   const linksJson = useQgcPath(LINKS_VIEW);
   const ports = useMemo(() => serialPortChoices(linksJson), [linksJson]);
   const offered = useMemo(() => addableLinkTypes(linksJson), [linksJson]);
@@ -947,8 +949,9 @@ const AddLinkPage = ({ onDismiss, onAdded, className }: { onDismiss: () => void;
     if (scope.isActive()) setCloudOffered(offeredNow);
   });
   const choices = [...offered, ...[LinkType.AircastCloud].filter((it) => cloudOffered && linkTypeIds(linksJson).has(it))];
-  useBackHandler(type === null, onDismiss);
+  useBackHandler(type === null && !transmitter, onDismiss);
 
+  if (transmitter) return <RcTransmitterPage onBack={() => setTransmitter(false)} onDone={onAdded} className={className} />;
   if (type === LinkType.WebSocket) return <WebSocketLinkPage onBack={() => setType(null)} onAdded={onAdded} className={className} />;
   if (type !== null) return <AddLinkDetails type={type} onBack={() => setType(null)} onAdded={onAdded} className={className} />;
 
@@ -960,10 +963,56 @@ const AddLinkPage = ({ onDismiss, onAdded, className }: { onDismiss: () => void;
       <PageColumn title="Add link" backLabel="Back to links" onBack={onDismiss} className={className} padded={false}>
         <SectionHeader text="Connect over" />
         {pilotLinkKinds(choices, ports.length > 0).map(linkKind).map(row)}
+        {choices.includes(LinkType.Serial) ? <SetupRow title={RC_TRANSMITTER.title} subtitle={RC_TRANSMITTER.detail} icon={linkIcon(LinkType.Serial)} onClick={() => setTransmitter(true)} /> : null}
         {tools.length > 0 ? (
           <>
             <SectionHeader text="Other" />
             {tools.map(linkKind).map(row)}
+          </>
+        ) : null}
+      </PageColumn>
+    </>
+  );
+};
+
+export const RC_TRANSMITTER = {
+  title: 'RC transmitter (EdgeTX script)',
+  detail: 'Your radio’s sticks over USB',
+  about: 'An EdgeTX radio running the Aircast USB script sends its sticks to this app. Pick the port it is plugged into.',
+  picked: 'The radio sends its sticks to this app. Its screen shows whether the app hears it. Change the port under Control > Radio on USB.',
+};
+
+const RcTransmitterPage = ({ onBack, onDone, className }: { onBack: () => void; onDone: () => void; className?: string }) => {
+  const ports = serialPortChoices(useQgcPath(LINKS_VIEW));
+  const current = String(useQgcValue(USB_RADIO_PORT) ?? '');
+  const [picked, setPicked] = useState(false);
+  useBackHandler(true, onBack);
+  const pick = (port: string) =>
+    void (async () => {
+      setPicked(await Qgc.set(`${USB_RADIO_PORT}.rawValue`, port));
+    })();
+  return (
+    <>
+      <OverridePageHeading title={RC_TRANSMITTER.title} onBack={onBack} />
+      <PageColumn title={RC_TRANSMITTER.title} backLabel="Back to link types" onBack={onBack} className={className}>
+        <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
+          {RC_TRANSMITTER.about}
+        </Text>
+        {ports.length === 0 && serialAvailable() ? (
+          <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
+            Nothing is plugged in. Connect a radio over USB and it will appear here.
+          </Text>
+        ) : null}
+        {ports.map((it) => (
+          <SetupRow key={it.port} title={it.label} subtitle={it.port === current ? 'Sends the sticks' : ''} icon={linkIcon(LinkType.Serial)} onClick={() => pick(it.port)} />
+        ))}
+        <UsbAccess />
+        {picked ? (
+          <>
+            <Text typography="bodyMedium">{RC_TRANSMITTER.picked}</Text>
+            <Button onClick={onDone} className="min-h-[52px] w-full desktop:w-auto desktop:min-w-40 desktop:self-end">
+              Done
+            </Button>
           </>
         ) : null}
       </PageColumn>
@@ -1006,9 +1055,11 @@ const NewLinkFields = ({
     return (
       <>
         {ports.length === 0 ? (
-          <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
-            Nothing is plugged in. Connect a radio over USB and it will appear here.
-          </Text>
+          serialAvailable() ? (
+            <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
+              Nothing is plugged in. Connect a radio over USB and it will appear here.
+            </Text>
+          ) : null
         ) : (
           <SerialPortFields ports={ports} bauds={bauds} portName={draft.portName} baud={draft.baud} enabled onPort={(it) => onDraft({ ...draft, portName: it })} onBaud={(it) => onDraft({ ...draft, baud: it })} />
         )}
@@ -1193,7 +1244,7 @@ const AddLinkDetails = ({ type, onBack, onAdded, className }: { type: LinkType; 
             {error}
           </Text>
         ) : null}
-        <Button enabled={!busy} onClick={connect} className="min-h-[52px] w-full desktop:w-auto desktop:min-w-40 desktop:self-end">
+        <Button enabled={!busy && (type !== LinkType.Serial || serialAvailable())} onClick={connect} className="min-h-[52px] w-full desktop:w-auto desktop:min-w-40 desktop:self-end">
           {busy ? 'Connecting…' : type === LinkType.Mock ? 'Start' : 'Connect'}
         </Button>
       </PageColumn>

@@ -1,4 +1,7 @@
-import { expect, test } from './fixtures';
+import { expect, openApp, test } from './fixtures';
+import { plugInR2d2Radio } from './r2d2';
+
+const RADIO_PORT = /0483:5740/;
 import type { Page } from '@playwright/test';
 
 const openLinks = async (page: Page) => {
@@ -76,7 +79,29 @@ test('a WebSocket address that is not ws:// is refused, and one that does not an
 test('the USB radio form lets the browser grant a serial port', async ({ app }) => {
   await app.getByRole('button', { name: /How to connect/ }).click();
   await app.getByRole('button', { name: 'Add link…' }).click();
-  await app.getByRole('button', { name: /^USB radio/ }).click();
+  await app.getByRole('button', { name: /^USB telemetry radio/ }).click();
   await expect(app.getByText('Nothing is plugged in. Connect a radio over USB and it will appear here.')).toBeVisible();
   await expect(app.getByRole('button', { name: 'Allow a USB port' })).toBeVisible();
+});
+
+test('a browser that cannot reach USB says so once, instead of claiming nothing is plugged in', async ({ page }) => {
+  await page.addInitScript(() => delete (Navigator.prototype as { serial?: unknown }).serial);
+  await openApp(page);
+  await page.getByRole('button', { name: /How to connect/ }).click();
+  await page.getByRole('button', { name: 'Add link…' }).click();
+  await page.getByRole('button', { name: /^USB telemetry radio/ }).click();
+  await expect(page.getByText('This browser cannot reach USB devices. Use Chrome or Edge, or connect over a WebSocket.')).toBeVisible();
+  await expect(page.getByText('Nothing is plugged in', { exact: false })).toBeHidden();
+  await expect(page.getByRole('button', { name: 'Connect', exact: true })).toBeDisabled();
+});
+
+test('the RC transmitter entry hands a plugged-in EdgeTX radio to the stick input', async ({ page }) => {
+  await plugInR2d2Radio(page);
+  await openApp(page);
+  await page.getByRole('button', { name: /How to connect/ }).click();
+  await page.getByRole('button', { name: 'Add link…' }).click();
+  await page.getByRole('button', { name: /^RC transmitter \(EdgeTX script\)/ }).click();
+  await page.getByRole('button', { name: RADIO_PORT }).click();
+  await expect(page.getByText('Change the port under Control > Radio on USB.', { exact: false })).toBeVisible();
+  await expect(page.getByRole('button', { name: RADIO_PORT })).toContainText('Sends the sticks');
 });

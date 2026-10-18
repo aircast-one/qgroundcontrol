@@ -13,11 +13,17 @@
 
 1. Plug the radio into the device running the app and pick **USB Serial (VCP)** on the radio.
 2. On the radio, open **SYS → Tools → Aircast USB radio**.
-3. In the app, open **Settings → Transmission → Links → Advanced → Radio on USB (EdgeTX script)** and pick the radio as **Device**. In a browser, press **Allow a USB port** there first and choose the radio.
+3. The app recognises the radio by the stick lines it sends and asks "An EdgeTX radio is streaming its sticks on USB. Fly with it?" — press **Use**. To pick it yourself, open **Links → Add link… → RC transmitter (EdgeTX script)**, or **Settings → Control → Radio on USB (EdgeTX script) → Device**. In a browser, allow the USB port there first and choose the radio.
+
+Do not add the radio as a **USB telemetry radio**: that link reads MAVLink, which the radio does not send.
 
 ## Use the web app from a device over plain http
 
-Chrome lets only `https` and `localhost` pages use USB. The app an Aircast device serves at `http://<device>.local/fly/` is neither, so Chrome hides USB and the app shows how to fix it instead of **Allow a USB port**. Once per computer:
+Chrome lets only `https` and `localhost` pages use USB. The app an Aircast device serves at `http://<device>.local/fly/` is neither, so Chrome hides USB and the app shows how to fix it instead of **Allow a USB port**.
+
+Open the same page over https: the app's **Open over https** button goes to `https://<device>.local/fly/`. Accept the device's certificate once and USB works there.
+
+Or, once per computer, let Chrome treat the http page as secure:
 
 1. In Chrome open `chrome://flags/#unsafely-treat-insecure-origin-as-secure`.
 2. Add the device as `http://` and its host name only, without `/fly/`: for example `http://falcon.local`. Separate several devices with commas.
@@ -33,7 +39,7 @@ Safari and Firefox have no USB serial in web pages at all; use Chrome or Edge.
 | App: 4G standby, vehicle N | The app is receiving the sticks and takes over if the vehicle's own radio link fails |
 | A joystick is flying vehicle N | The app is receiving, but another joystick is flying |
 | App receiving, no vehicle connected | The app is receiving, but no vehicle is linked |
-| Waiting for the Aircast app | Nothing has answered for 1.5 s: the app is closed, the radio is not picked in Settings, or the app is older than this script |
+| Waiting for the app · In app: Control > Radio on USB | Nothing has answered for 1.5 s: the app is closed, the radio is not picked under Control > Radio on USB, or the app is older than this script |
 | USB cable not connected | The radio sees no USB cable |
 
 **RTN** leaves the script. While the app is flying on these sticks, the first RTN only asks; press it again within 3 s to stop sending sticks.

@@ -10,6 +10,7 @@ import {
   LinkType,
   LinkTypeEntries,
   PILOT_LINK_ORDER,
+  RC_TRANSMITTER,
   REMEDY_EDIT_ADDRESS,
   REPLAY_LINK_NAME,
   SerialFraming,
@@ -554,6 +555,13 @@ describe('AddableLinkTypesTest', () => {
     expect(pilotLinkKinds(offered, true)).toEqual([LinkType.Serial, LinkType.Udp, LinkType.Bluetooth, LinkType.AircastCloud, LinkType.Tcp]);
     expect(toolLinkKinds(offered)).toEqual([LinkType.LogReplay, LinkType.Mock]);
     expect(pilotLinkKinds([LinkType.Udp, LinkType.LogReplay], true)).toEqual([LinkType.Udp]);
+  });
+
+  it('a USB link is named as the MAVLink radio it opens, apart from the RC transmitter that flies on its sticks', () => {
+    expect(linkKind(LinkType.Serial).detail).toBe('MAVLink radio on USB');
+    expect(RC_TRANSMITTER.title).toBe('RC transmitter (EdgeTX script)');
+    expect(RC_TRANSMITTER.detail.length).toBeLessThanOrEqual(32);
+    expect(RC_TRANSMITTER.picked).toContain('Control > Radio on USB');
   });
 
   it('every link kind has a pilot title, an explanation, and a subtitle within the 32-character row budget', () => {

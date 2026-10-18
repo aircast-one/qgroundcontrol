@@ -786,7 +786,7 @@ internal val TOOL_LINK_ORDER = listOf(LinkType.LogReplay, LinkType.Mock)
 
 internal fun linkKind(type: LinkType): LinkKind = when (type) {
     LinkType.Udp -> LinkKind(type, "Wi-Fi or network", "Wi-Fi or Ethernet (UDP)", "Listens on a port for telemetry from the aircraft or its radio.")
-    LinkType.Serial -> LinkKind(type, "USB radio", "Telemetry radio on USB", "A radio plugged into this device over USB.")
+    LinkType.Serial -> LinkKind(type, "USB telemetry radio", "MAVLink radio on USB", "A telemetry radio or flight controller plugged into this device over USB.")
     LinkType.Bluetooth -> LinkKind(type, "Bluetooth radio", "Paired telemetry radio", "A radio paired with or near this device over Bluetooth.")
     LinkType.AircastCloud -> LinkKind(type, "Aircast Cloud", "Backup link via your account", "A backup link to the aircraft through your Aircast account.")
     LinkType.Tcp -> LinkKind(type, "Network server (TCP)", "A listening ground station", "Calls out to a device that is listening, such as a ground station or bridge.")
