@@ -20,7 +20,7 @@ export default defineConfig({
     ignoreHTTPSErrors: true,
     launchOptions: { args: [`--origin-to-force-quic-on=${WT_ORIGIN}`, `--ignore-certificate-errors-spki-list=${WT_CERT_SPKI}`] },
   },
-  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], viewport: { width: 1280, height: 800 } } }],
+  projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'], channel: 'chromium', viewport: { width: 1280, height: 800 } } }],
   webServer: [
     {
       command: `npx vite --port ${port} --strictPort`,

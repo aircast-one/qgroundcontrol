@@ -80,7 +80,7 @@ export const mapMenuAt = async (page: Page, dx: number, dy: number) => {
 export const takeOff = async (page: Page, height: string) => {
   await page.getByRole('button', { name: 'Take off' }).click();
   await page.getByRole('button', { name: height, exact: true }).click();
-  await slideAcross(page, page.getByRole('button', { name: /^Slide to take off/ }));
+  await slideAcross(page, page.getByRole('button', { name: /^Slide to take off · / }));
 };
 
 export const itemCount = async (page: Page): Promise<number> => {

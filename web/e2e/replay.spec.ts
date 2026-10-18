@@ -54,7 +54,7 @@ test('a saved replay link still plays its log after a reload', async ({ app }) =
   }).toPass({ timeout: 30_000 });
   await app.getByRole('button', { name: 'More actions for Log Replay' }).click();
   await app.getByRole('menuitem', { name: 'Connect' }).click();
-  await app.getByRole('button', { name: 'Close settings' }).click();
+  await expect(app.getByRole('button', { name: 'Close settings' }), 'a vehicle connecting from Transmission closes settings').toBeHidden({ timeout: 60_000 });
   await expect(app.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
   await expect(app.getByText('20.0m', { exact: true })).toBeVisible();
 });
