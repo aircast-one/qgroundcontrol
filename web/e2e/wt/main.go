@@ -116,7 +116,11 @@ func rest(mux *http.ServeMux) {
 
 func relay(server *webtransport.Server) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		device := strings.TrimPrefix(r.URL.Path, "/v1/mavlink/device/")
+		device, browser := strings.CutSuffix(strings.TrimPrefix(r.URL.Path, "/v1/mavlink/device/"), "/webtransport")
+		if !browser {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
 		if r.URL.Query().Get("token") != relayPrefix+device {
 			w.WriteHeader(http.StatusUnauthorized)
 			return

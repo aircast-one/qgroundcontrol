@@ -3408,7 +3408,7 @@ impl Vehicle {
     pub fn payload_setup(&self) -> crate::payloadcheck::Setup {
         let parameter = |name: &str| self.parameter(self.component, name).map(|p| p.as_f64());
         let enabled = crate::vehiclefacade::has_gripper(self.autopilot, parameter);
-        crate::payloadcheck::Setup::read(self.autopilot == crate::modes::AUTOPILOT_ARDUPILOT, enabled, parameter, crate::payloadcheck::drops_in(self.mission_items()))
+        crate::payloadcheck::Setup::read(self.autopilot == crate::modes::AUTOPILOT_ARDUPILOT, enabled, parameter, crate::payloadcheck::drops_in(self.mission_items()), crate::payloadcheck::early_drops_in(self.mission_items(), self.sends_home()))
     }
 
     pub fn mission_items(&self) -> &[plantransfer::Item] {

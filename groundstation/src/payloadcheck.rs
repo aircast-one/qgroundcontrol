@@ -21,6 +21,12 @@ pub fn drops_in(items: &[Item]) -> usize {
     items.iter().filter(|item| is_release(item)).count()
 }
 
+const PLACES: [u16; 6] = [16, 17, 18, 19, 31, 82];
+
+pub fn early_drops_in(items: &[Item], sends_home: bool) -> usize {
+    items.iter().skip(usize::from(sends_home)).take_while(|item| !PLACES.contains(&item.command)).filter(|item| is_release(item)).count()
+}
+
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct Setup {
     pub ardupilot: bool,
@@ -32,10 +38,11 @@ pub struct Setup {
     pub gcs_failsafe: bool,
     pub gcs_timeout_s: f64,
     pub drops: usize,
+    pub early_drops: usize,
 }
 
 impl Setup {
-    pub fn read(ardupilot: bool, enabled: bool, parameter: impl Fn(&str) -> Option<f64>, drops: usize) -> Setup {
+    pub fn read(ardupilot: bool, enabled: bool, parameter: impl Fn(&str) -> Option<f64>, drops: usize, early_drops: usize) -> Setup {
         let servo = parameter("GRIP_TYPE") == Some(GRIPPER_TYPE_SERVO);
         Setup {
             ardupilot,
@@ -47,6 +54,7 @@ impl Setup {
             gcs_failsafe: parameter("FS_GCS_ENABLE").is_some_and(|v| v != 0.0),
             gcs_timeout_s: parameter("FS_GCS_TIMEOUT").unwrap_or(DEFAULT_GCS_TIMEOUT_SECONDS),
             drops,
+            early_drops,
         }
     }
 
@@ -61,6 +69,7 @@ impl Setup {
             "gcsFailsafe": self.gcs_failsafe,
             "gcsTimeoutSeconds": self.gcs_timeout_s,
             "drops": self.drops,
+            "earlyDrops": self.early_drops,
         })
     }
 
@@ -77,6 +86,7 @@ impl Setup {
             gcs_failsafe: flag("gcsFailsafe"),
             gcs_timeout_s: number("gcsTimeoutSeconds"),
             drops: number("drops") as usize,
+            early_drops: number("earlyDrops") as usize,
         }
     }
 
@@ -87,6 +97,7 @@ impl Setup {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Problem {
+    DropAtLaunch,
     NoGripper,
     NeedsReboot,
     NoOutput,
@@ -95,11 +106,12 @@ pub enum Problem {
     LinkLossSkipsDrops,
 }
 
-const PROBLEMS: [Problem; 6] = [Problem::NoGripper, Problem::NeedsReboot, Problem::NoOutput, Problem::StaysOpen, Problem::FailsafeDrops, Problem::LinkLossSkipsDrops];
+const PROBLEMS: [Problem; 7] = [Problem::DropAtLaunch, Problem::NoGripper, Problem::NeedsReboot, Problem::NoOutput, Problem::StaysOpen, Problem::FailsafeDrops, Problem::LinkLossSkipsDrops];
 
 impl Problem {
     pub fn code(self) -> &'static str {
         match self {
+            Problem::DropAtLaunch => "dropAtLaunch",
             Problem::NoGripper => "noGripper",
             Problem::NeedsReboot => "needsReboot",
             Problem::NoOutput => "noOutput",
@@ -114,12 +126,13 @@ impl Problem {
     }
 
     pub fn blocks(self) -> bool {
-        matches!(self, Problem::NoGripper | Problem::NeedsReboot | Problem::NoOutput | Problem::StaysOpen)
+        matches!(self, Problem::DropAtLaunch | Problem::NoGripper | Problem::NeedsReboot | Problem::NoOutput | Problem::StaysOpen)
     }
 
     fn applies(self, s: &Setup, bays: i64) -> bool {
         let releases = s.drops.max(usize::try_from(bays).unwrap_or(0));
         match self {
+            Problem::DropAtLaunch => s.early_drops > 0,
             Problem::NoGripper => s.drops > 0 && !s.enabled,
             Problem::NeedsReboot => s.ardupilot && s.enabled && !s.loaded,
             Problem::NoOutput => s.ardupilot && s.enabled && s.loaded && !s.output,
@@ -132,6 +145,7 @@ impl Problem {
     pub fn text(self, s: &Setup, bays: i64) -> String {
         let releases = s.drops.max(usize::try_from(bays).unwrap_or(0));
         match self {
+            Problem::DropAtLaunch => "The mission drops before its first waypoint, so the payload would fall over the launch point. Put a waypoint before the drop.".to_string(),
             Problem::NoGripper => "The mission drops a payload, but the flight controller has no gripper set up (GRIP_ENABLE is off).".to_string(),
             Problem::NeedsReboot => "The gripper was just turned on. Reboot the flight controller so its gripper settings appear.".to_string(),
             Problem::NoOutput => "The gripper has no output to move. Give one servo output the Gripper function (SERVOn_FUNCTION 28).".to_string(),
@@ -146,6 +160,7 @@ impl Problem {
 
     pub fn fix_label(self) -> &'static str {
         match self {
+            Problem::DropAtLaunch => "",
             Problem::NeedsReboot => "Reboot the flight controller",
             Problem::StaysOpen => "Turn on auto-close",
             Problem::FailsafeDrops => "Keep the payload on failsafe",
@@ -159,7 +174,7 @@ impl Problem {
             Problem::StaysOpen => Some(("GRIP_AUTOCLOSE", AUTO_CLOSE_SECONDS)),
             Problem::FailsafeDrops => Some(("FS_OPTIONS", (s.fs_options & !RELEASE_GRIPPER_ON_FAILSAFE) as f64)),
             Problem::LinkLossSkipsDrops => Some(("FS_OPTIONS", (s.fs_options | CONTINUE_AUTO_ON_GCS_FAILSAFE) as f64)),
-            Problem::NoGripper | Problem::NeedsReboot | Problem::NoOutput => None,
+            Problem::DropAtLaunch | Problem::NoGripper | Problem::NeedsReboot | Problem::NoOutput => None,
         }
     }
 }
@@ -200,13 +215,25 @@ mod tests {
     }
 
     fn copter(drops: usize) -> Setup {
-        Setup { ardupilot: true, enabled: true, loaded: true, output: true, auto_close_s: 0.0, fs_options: 0, gcs_failsafe: false, gcs_timeout_s: 5.0, drops }
+        Setup { ardupilot: true, enabled: true, loaded: true, output: true, auto_close_s: 0.0, fs_options: 0, gcs_failsafe: false, gcs_timeout_s: 5.0, drops, early_drops: 0 }
     }
 
     #[test]
     fn only_gripper_releases_count_as_drops() {
         let items = [item(0, 16, 0.0), item(1, CMD_DO_GRIPPER, 0.0), item(2, CMD_DO_GRIPPER, 1.0), item(3, CMD_DO_GRIPPER, 0.0), item(4, 20, 0.0)];
         assert_eq!(drops_in(&items), 2, "a grab is not a drop, and a waypoint's param2 is not a gripper action");
+    }
+
+    #[test]
+    fn a_drop_before_the_first_waypoint_falls_over_the_launch_point() {
+        let home = item(0, 16, 0.0);
+        let mission = [home.clone(), item(1, CMD_DO_GRIPPER, 0.0), item(2, 22, 0.0), item(3, CMD_DO_GRIPPER, 0.0), item(4, 16, 0.0), item(5, CMD_DO_GRIPPER, 0.0)];
+        assert_eq!(early_drops_in(&mission, true), 2, "home is not a waypoint, and neither is the takeoff");
+        assert_eq!(early_drops_in(&mission[1..], false), 2, "PX4 sends no home");
+        assert_eq!(early_drops_in(&[home, item(1, 22, 0.0), item(2, 16, 0.0), item(3, CMD_DO_GRIPPER, 0.0)], true), 0);
+        let early = Setup { early_drops: 1, ..copter(1) };
+        assert_eq!(problems(&early, 1), vec![Problem::DropAtLaunch]);
+        assert!(Problem::DropAtLaunch.blocks() && blocking(&early, 1).is_some_and(|text| text.contains("launch point")));
     }
 
     #[test]
@@ -232,7 +259,7 @@ mod tests {
         let fresh = Setup { loaded: false, output: true, ..copter(4) };
         assert_eq!(problems(&fresh, 1), vec![Problem::NeedsReboot], "until the reboot there is no GRIP_AUTOCLOSE to turn on, so only the reboot is offered");
         assert_eq!((Problem::NeedsReboot.fix_label(), Problem::NeedsReboot.blocks()), ("Reboot the flight controller", true));
-        assert!(!Setup::read(true, true, |_| None, 0).loaded, "GRIP_TYPE appears only after the reboot");
+        assert!(!Setup::read(true, true, |_| None, 0, 0).loaded, "GRIP_TYPE appears only after the reboot");
     }
 
     #[test]
@@ -249,7 +276,7 @@ mod tests {
 
     #[test]
     fn px4_is_only_asked_for_a_gripper() {
-        let px4 = Setup { ardupilot: false, enabled: true, loaded: false, output: true, auto_close_s: 0.0, fs_options: 32, gcs_failsafe: true, gcs_timeout_s: 5.0, drops: 4 };
+        let px4 = Setup { ardupilot: false, enabled: true, loaded: false, output: true, auto_close_s: 0.0, fs_options: 32, gcs_failsafe: true, gcs_timeout_s: 5.0, drops: 4, early_drops: 0 };
         assert_eq!(problems(&px4, 4), vec![]);
         assert_eq!(problems(&Setup { enabled: false, ..px4 }, 4), vec![Problem::NoGripper]);
     }
@@ -264,11 +291,11 @@ mod tests {
             "FS_GCS_ENABLE" => Some(1.0),
             _ => None,
         };
-        let read = Setup::read(true, true, params, 3);
-        assert_eq!(read, Setup { ardupilot: true, enabled: true, loaded: true, output: true, auto_close_s: 2.0, fs_options: 2, gcs_failsafe: true, gcs_timeout_s: 5.0, drops: 3 });
+        let read = Setup::read(true, true, params, 3, 0);
+        assert_eq!(read, Setup { ardupilot: true, enabled: true, loaded: true, output: true, auto_close_s: 2.0, fs_options: 2, gcs_failsafe: true, gcs_timeout_s: 5.0, drops: 3, early_drops: 0 });
         assert_eq!(Setup::from_json(&read.json()), read);
-        assert!(!Setup::read(true, true, |name| (name == "GRIP_TYPE").then_some(1.0), 0).output, "a servo gripper with no output assigned cannot move");
-        assert!(Setup::read(true, true, |name| (name == "GRIP_TYPE").then_some(2.0), 0).output, "an EPM needs no servo output");
+        assert!(!Setup::read(true, true, |name| (name == "GRIP_TYPE").then_some(1.0), 0, 0).output, "a servo gripper with no output assigned cannot move");
+        assert!(Setup::read(true, true, |name| (name == "GRIP_TYPE").then_some(2.0), 0, 0).output, "an EPM needs no servo output");
     }
 
     #[test]

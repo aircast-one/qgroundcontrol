@@ -693,6 +693,11 @@ pub fn awaiting_terrain(doc: &Document) -> bool {
     doc.items.iter().any(|item| matches!(item, Item::Simple(Simple { altitude: Some(held), .. }) if held.mode == crate::altitudemodes::CALC_ABOVE_TERRAIN && !held.amsl_above_terrain.is_some_and(f64::is_finite)))
 }
 
+pub fn drop_has_a_place(doc: &Document, drop_at: usize) -> bool {
+    let last_place = doc.items.get(..drop_at).unwrap_or(&doc.items).iter().rposition(|item| !matches!(item, Item::Simple(s) if s.altitude.is_none()));
+    last_place.is_some_and(|at| !matches!(&doc.items[at], Item::Simple(s) if s.command == CMD_NAV_TAKEOFF || s.command == CMD_NAV_VTOL_TAKEOFF))
+}
+
 pub fn hold_before_drop(doc: &Document, drop_at: usize, seconds: f64) -> Document {
     let last_place = doc.items.get(..drop_at).unwrap_or(&doc.items).iter().rposition(|item| !matches!(item, Item::Simple(s) if s.altitude.is_none()));
     let waypoint = last_place.filter(|at| matches!(&doc.items[*at], Item::Simple(s) if s.command == CMD_NAV_WAYPOINT && s.params[0].unwrap_or(0.0) == 0.0));
@@ -1386,6 +1391,18 @@ mod tests {
         let Some(Item::Simple(drop)) = placed.items.get(1) else { panic!("the drop goes where it was asked") };
         assert_eq!((drop.command, drop.params[0], drop.params[1], drop.params[4], drop.params[5], drop.altitude.is_none()), (211, Some(1.0), Some(0.0), Some(0.0), Some(0.0), true), "gripper 1, action 0 = release, no coordinate: it fires at the waypoint before it");
         assert_eq!(placed.items.len(), apm.items.len() + 1);
+    }
+
+    #[test]
+    fn a_drop_needs_a_waypoint_before_it_not_the_takeoff() {
+        let copter = Document { firmware_type: 3, vehicle_type: 2, ..section() };
+        let waypoint = copter.items.iter().rposition(|item| matches!(item, Item::Simple(s) if s.command == CMD_NAV_WAYPOINT)).unwrap();
+        assert!(drop_has_a_place(&copter, waypoint + 1), "after a waypoint the drop falls over it");
+        assert!(!drop_has_a_place(&Document { items: Vec::new(), ..copter.clone() }, 0), "an empty plan has nowhere to drop");
+        let takeoff_only = insert_simple(&Document { items: Vec::new(), ..copter.clone() }, CMD_NAV_TAKEOFF, 47.63, -122.08, 1, &QT_DEFAULTS);
+        assert!(!drop_has_a_place(&takeoff_only, 1), "straight after takeoff the drop would fall over the launch point");
+        let dropped = insert_simple(&takeoff_only, 211, 0.0, 0.0, 2, &QT_DEFAULTS);
+        assert!(!drop_has_a_place(&dropped, 2), "a second drop looks past the first to the takeoff");
     }
 
     #[test]

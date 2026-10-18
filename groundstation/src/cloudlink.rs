@@ -50,7 +50,7 @@ pub fn webtransport_urls(relay_url: &str) -> Option<(String, String)> {
     let host = parsed.host_str().filter(|h| !h.is_empty())?;
     let port = parsed.port().map(|p| format!(":{p}")).unwrap_or_default();
     let scheme = if parsed.scheme() == "ws" { "http" } else { "https" };
-    Some((format!("{scheme}://{host}{port}{prefix}/v1/user/devices/{device}/webtransport-token"), format!("https://{host}{port}{prefix}/v1/mavlink/device/{device}")))
+    Some((format!("{scheme}://{host}{port}{prefix}/v1/user/devices/{device}/webtransport-token"), format!("https://{host}{port}{prefix}/v1/mavlink/device/{device}/webtransport")))
 }
 
 pub fn token_key(api_base: &str) -> Option<String> {
@@ -340,11 +340,11 @@ mod tests {
     fn a_browser_reaches_the_relay_over_webtransport_with_a_short_lived_device_token() {
         assert_eq!(
             webtransport_urls("wss://api.dev.aircast.one/v1/mavlink/web/d-1/ws"),
-            Some(("https://api.dev.aircast.one/v1/user/devices/d-1/webtransport-token".to_string(), "https://api.dev.aircast.one/v1/mavlink/device/d-1".to_string()))
+            Some(("https://api.dev.aircast.one/v1/user/devices/d-1/webtransport-token".to_string(), "https://api.dev.aircast.one/v1/mavlink/device/d-1/webtransport".to_string()))
         );
         assert_eq!(
             webtransport_urls("ws://10.0.0.5:8080/base/v1/mavlink/web/d-2/ws"),
-            Some(("http://10.0.0.5:8080/base/v1/user/devices/d-2/webtransport-token".to_string(), "https://10.0.0.5:8080/base/v1/mavlink/device/d-2".to_string())),
+            Some(("http://10.0.0.5:8080/base/v1/user/devices/d-2/webtransport-token".to_string(), "https://10.0.0.5:8080/base/v1/mavlink/device/d-2/webtransport".to_string())),
             "WebTransport is HTTP/3 only, so the session is https even when the REST API is plain http"
         );
         assert_eq!(webtransport_urls("wss://api.aircast.one/v1/mavlink/web//ws"), None);

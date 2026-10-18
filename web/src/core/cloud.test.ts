@@ -15,6 +15,6 @@ describe('the browser cloud relay', () => {
   it('opens a plain WebSocket for a saved WebSocket link, which needs no relay token', () => {
     expect(usesWebSocket('', 'wss://sitl.aircast.one/ws/mavlink')).toBe(true);
     expect(usesWebSocket('', 'ws://192.168.1.10:5760')).toBe(true);
-    expect(usesWebSocket('https://api.aircast.one/v1/user/devices/d/webtransport-token', 'https://api.aircast.one/v1/mavlink/device/d')).toBe(false);
+    expect(usesWebSocket('https://api.aircast.one/v1/user/devices/d/webtransport-token', 'https://api.aircast.one/v1/mavlink/device/d/webtransport')).toBe(false);
   });
 });

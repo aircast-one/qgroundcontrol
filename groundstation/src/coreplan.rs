@@ -391,6 +391,7 @@ fn insert_roi(backend: &dyn Backend, args: &str) -> Value {
 }
 
 const CMD_DO_GRIPPER: i64 = 211;
+const DROP_NEEDS_A_WAYPOINT: &str = "Add a waypoint before the drop. A drop falls where the drone is when it reaches the item before it, so after takeoff it would fall over the launch point.";
 
 fn insert_drop(backend: &dyn Backend, args: &str) -> Value {
     let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
@@ -400,6 +401,9 @@ fn insert_drop(backend: &dyn Backend, args: &str) -> Value {
     };
     edit(|doc| {
         let at = usize::try_from(index - 1).ok().filter(|i| *i <= doc.items.len()).unwrap_or(doc.items.len());
+        if !plandoc::drop_has_a_place(doc, at) {
+            return Err(DROP_NEEDS_A_WAYPOINT.to_string());
+        }
         Ok(plandoc::hold_before_drop(&plandoc::insert_simple(doc, CMD_DO_GRIPPER, 0.0, 0.0, index, &defaults), at, crate::payloadcheck::DROP_HOLD_SECONDS))
     })
 }
@@ -842,16 +846,18 @@ fn send_rest(id: u8, before: &'static str, rest: Vec<&'static str>, document: Do
         Some((&kind, later)) => {
             let later = later.to_vec();
             settle_then(id, before, move |settled| {
-                if settled {
-                    let requested = crate::hub::lock().mission_request(Some(id), &send_shape(kind, &document), crate::hub::now_ms());
-                    match requested {
-                        Ok(outbound) => deliver(outbound),
-                        Err(error) => {
-                            crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &crate::hub::transfer_failed_text(kind, &error));
+                settle_then(id, kind, move |free| {
+                    if settled && free {
+                        let requested = crate::hub::lock().mission_request(Some(id), &send_shape(kind, &document), crate::hub::now_ms());
+                        match requested {
+                            Ok(outbound) => deliver(outbound),
+                            Err(error) => {
+                                crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &crate::hub::transfer_failed_text(kind, &error));
+                            }
                         }
                     }
-                }
-                send_rest(id, kind, later, document);
+                    send_rest(id, kind, later, document);
+                });
             });
         }
     }
