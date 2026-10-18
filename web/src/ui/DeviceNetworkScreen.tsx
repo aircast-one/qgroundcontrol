@@ -49,7 +49,7 @@ import {
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
 import { DeviceLevel } from '@/ui/DeviceLevel';
 import { useDeviceView } from '@/ui/DeviceView';
-import { WifiWizard } from '@/ui/DeviceWifiWizard';
+import { WifiJoin } from '@/ui/DeviceWifiWizard';
 import { FootNote } from '@/ui/SetupRow';
 
 export const NetworkScreen = ({ onOpen }: DeviceScreenProps) => {
@@ -63,9 +63,7 @@ export const NetworkScreen = ({ onOpen }: DeviceScreenProps) => {
       <DeviceSection title="Wi-Fi" badge={view.wifi.status}>
         <Summary text={view.wifi.summary} />
         {view.wifi.joined !== null ? <DeviceNotice notice={view.wifi.joined} /> : null}
-        <DeviceDisclosure title="Join a Wi-Fi network" summary="Connect this device to your Wi-Fi. It leaves the recovery hotspot and rejoins on every boot.">
-          <WifiWizard reopen={view.wifi.reopen} />
-        </DeviceDisclosure>
+        <WifiJoin reopen={view.wifi.reopen} />
       </DeviceSection>
       <InterfacesSection interfaces={view.interfaces} />
       <FootNote text="The device routes through the best uplink that reaches the internet and moves off one that stops — this is where you say what it may use." />
@@ -545,7 +543,7 @@ const Gauge = ({ gauge }: { gauge: DataGauge }) => (
   </div>
 );
 
-const TailscaleSection = ({ tailscale }: { tailscale: TailscaleCard }) => (
+export const TailscaleSection = ({ tailscale }: { tailscale: TailscaleCard }) => (
   <DeviceSection title="Tailscale" badge={tailscale.status}>
     <Summary text={tailscale.summary} />
     {tailscale.problem !== null ? <ProblemNotice problem={tailscale.problem} /> : null}

@@ -27,6 +27,7 @@ export type DeviceStatus = {
   readonly headline: string;
   readonly detail: string;
   readonly action: DeviceAction | null;
+  readonly setup: DeviceAction | null;
   readonly checks: readonly DeviceCheck[];
   readonly pages: readonly DevicePage[];
   readonly link: DeviceUplink | null;
@@ -69,6 +70,7 @@ export const parseDeviceStatus = (json: unknown): DeviceStatus | null =>
         headline: optText(json, 'headline'),
         detail: optText(json, 'detail'),
         action: deviceAction(optJSONObject(json, 'action')),
+        setup: deviceAction(optJSONObject(json, 'setup')),
         checks: jsonObjects(optJSONArray(json, 'checks')).map((check) => ({
           label: optText(check, 'label'),
           value: optText(check, 'value'),

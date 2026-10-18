@@ -123,7 +123,7 @@ const parseLinkedNotice = (json: Json | null): LinkedNotice | null => {
   };
 };
 
-const parsePage = (json: Json | null): DevicePage => ({
+export const parsePage = (json: Json | null): DevicePage => ({
   title: optText(json, 'title'),
   href: optText(json, 'href'),
   icon: optText(json, 'icon'),

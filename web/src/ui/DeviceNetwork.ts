@@ -125,7 +125,7 @@ export type NetworkView = {
 
 const objects = (json: Json | null, key: string): Json[] => jsonObjects(optJSONArray(json, key));
 
-const optBadge = (json: Json | null, key: string): DeviceBadge | null => {
+export const optBadge = (json: Json | null, key: string): DeviceBadge | null => {
   const it = optJSONObject(json, key);
   return it === null ? null : parseBadge(it);
 };
@@ -288,7 +288,7 @@ const parseControl = (json: Json | null): TailscaleControl | null =>
         hint: optText(json, 'hint'),
       };
 
-const parseTailscale = (json: Json | null): TailscaleCard => {
+export const parseTailscale = (json: Json | null): TailscaleCard => {
   const banner = optJSONObject(json, 'banner');
   const signIn = optJSONObject(json, 'signIn');
   return {

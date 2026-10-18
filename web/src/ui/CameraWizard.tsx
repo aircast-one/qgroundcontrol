@@ -97,7 +97,19 @@ const APPLYING: Status = { state: 'loading', text: 'Applying…' };
 
 const NO_FIXER: PortFixer = { open: false, input: '', suggest: '', status: '', busy: false };
 
-export const CameraWizard = ({ view, scan = false, onCancel = null, onDone }: { view: CameraWizardView; scan?: boolean; onCancel?: (() => void) | null; onDone: (name: string) => void }) => {
+export const CameraWizard = ({
+  view,
+  scan = false,
+  onCancel = null,
+  onStep = () => undefined,
+  onDone,
+}: {
+  view: CameraWizardView;
+  scan?: boolean;
+  onCancel?: (() => void) | null;
+  onStep?: (step: 1 | 2 | 3) => void;
+  onDone: (name: string) => void;
+}) => {
   const notice = useContext(LocalChangeNotice);
   const [step, setStep] = useState<1 | 2 | 3>(1);
   const [rtsp, setRtsp] = useState(view.rtsp);
@@ -141,6 +153,10 @@ export const CameraWizard = ({ view, scan = false, onCancel = null, onDone }: { 
   useEffect(() => {
     if (refusal !== null) errorLine.current?.scrollIntoView({ block: 'nearest' });
   }, [refusal]);
+
+  useEffect(() => {
+    onStep(step);
+  }, [step]);
 
   const pick = (cam: FoundCamera): string => {
     const keep = cam.needsAuth;

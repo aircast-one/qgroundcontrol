@@ -7,6 +7,7 @@ import { DeviceSettingsScreen } from '@/ui/DeviceSettingsScreen';
 import { NetworkScreen } from '@/ui/DeviceNetworkScreen';
 import { CameraSetupScreen } from '@/ui/DeviceCameraSetupScreen';
 import { CamerasScreen } from '@/ui/DeviceCamerasScreen';
+import { SetupScreen } from '@/ui/DeviceSetupScreen';
 import { TelemetryScreen } from '@/ui/DeviceTelemetryScreen';
 import { VideoScreen } from '@/ui/DeviceVideoScreen';
 
@@ -25,6 +26,7 @@ export const DEVICE_SCREENS: ReadonlyMap<string, DeviceScreenEntry> = new Map<st
   ['/network', { title: 'Connection', screen: NetworkScreen }],
   ['/streaming', { title: 'Cameras', screen: CamerasScreen }],
   ['/settings/camera', { title: 'Watching & recording', screen: CameraSetupScreen }],
+  ['/setup', { title: 'Device setup', screen: SetupScreen }],
 ]);
 
 export const devicePath = (href: string): { path: string; query: URLSearchParams } => {

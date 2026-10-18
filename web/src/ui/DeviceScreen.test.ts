@@ -30,6 +30,8 @@ describe('DeviceScreenTest', () => {
     expect(status !== null && chipText(status)).toBe('falcon · Camera is not sending video');
     expect(deviceNeedsAttention(parseDeviceStatus({ ...served, level: 0, action: undefined }))).toBe(false);
     expect(parseDeviceStatus({ ...served, action: undefined })?.action).toBeNull();
+    expect(status?.setup).toBeNull();
+    expect(parseDeviceStatus({ ...served, setup: { label: 'Finish setting up', href: '/setup' } })?.setup).toEqual({ label: 'Finish setting up', href: '/setup' });
     expect(parseDeviceStatus(null)).toBeNull();
     expect(parseDeviceStatus({ name: 'falcon' })).toBeNull();
   });

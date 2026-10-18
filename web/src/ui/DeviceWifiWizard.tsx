@@ -3,6 +3,7 @@ import { isJson, jsonObjects, optBoolean, optInt, optJSONArray, optText } from '
 import { FilledTonalButton, OutlinedButton, OutlinedTextField, Text } from '@/m3';
 import { MaterialIcon } from '@/res/Icon';
 import { aircast, md } from '@/theme/Colors';
+import { DeviceDisclosure } from '@/ui/DeviceKit';
 import { SecretField } from '@/ui/DeviceKitForms';
 import { useValue } from '@/kotlin/State';
 import { type DeviceRefusal, NO_ANSWER, deviceCall, deviceOrigin, deviceRead } from '@/ui/DeviceView';
@@ -148,6 +149,12 @@ export const WifiWizard = ({ reopen }: { reopen: WifiReopen }) => {
     </div>
   );
 };
+
+export const WifiJoin = ({ reopen, initiallyOpen = false }: { reopen: WifiReopen; initiallyOpen?: boolean }) => (
+  <DeviceDisclosure title="Join a Wi-Fi network" summary="Connect this device to your Wi-Fi. It leaves the recovery hotspot and rejoins on every boot." initiallyOpen={initiallyOpen}>
+    <WifiWizard reopen={reopen} />
+  </DeviceDisclosure>
+);
 
 const Hint = ({ text }: { text: string }) => (
   <Text typography="bodySmall" color={md('onSurfaceVariant')}>

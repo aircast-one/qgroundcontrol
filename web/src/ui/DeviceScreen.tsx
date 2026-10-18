@@ -74,6 +74,7 @@ export const DeviceTab = ({ open, onOpen, onClose }: { open: string | null; onOp
           </div>
         ) : null}
       </div>
+      {status.setup !== null ? <SetupRow title={status.setup.label} icon="ic_build" state={SetupState.NeedsAttention} onClick={() => status.setup !== null && onOpen(status.setup.href)} /> : null}
       <SectionHeader text="Before you fly" />
       {status.checks.map((check) => (
         <SetupRow
