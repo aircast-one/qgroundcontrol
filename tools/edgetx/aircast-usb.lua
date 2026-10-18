@@ -47,7 +47,7 @@ local function stream()
 end
 
 local function pwm(i)
-  return (channelValues[i] // 2) + 1500
+  return math.floor(channelValues[i] / 2) + 1500
 end
 
 local function brand()
@@ -68,10 +68,10 @@ local function drawSmall()
   lcd.drawFilledRectangle(0, 7, 128, 1)
 
   for i = 1, CHANNEL_COUNT do
-    local x = ((i - 1) // 8) * 42
+    local x = math.floor((i - 1) / 8) * 42
     local y = 9 + ((i - 1) % 8) * 7
     lcd.drawText(x, y, string.format("%02d    %s", i, string.sub(mixesInfo[i].src, 3)), SMLSIZE)
-    local w = (channelValues[i] + 1024 + 256) // 255
+    local w = math.floor((channelValues[i] + 1024 + 256) / 255)
     if w < 1 then w = 1 elseif w > 9 then w = 9 end
     lcd.drawFilledRectangle(x + 11, y, w, 6)
     lcd.drawPoint(x + 11 + 4, y + 2)
@@ -93,7 +93,7 @@ local function drawLarge()
     local row = (i <= 12) and i or (i - 12)
     local y = 30 + row * 16
     lcd.drawText(colBase, y, string.format("CH%02d:%04d", i, pwm(i)), fSmall)
-    lcd.drawFilledRectangle(colBase, y + 14, (channelValues[i] + 1024 + 34) // 34, 2, color.primary)
+    lcd.drawFilledRectangle(colBase, y + 14, math.floor((channelValues[i] + 1024 + 34) / 34), 2, color.primary)
     lcd.drawText(colBase + 80, y, mixesInfo[i].src, SMLSIZE + color.muted)
     lcd.drawText(colBase + 140, y, mixesInfo[i].name, SMLSIZE + color.muted)
   end
@@ -124,7 +124,7 @@ local function buildLvglUI()
     pg:rectangle({ x = colBase, y = yOfs + 14, w = BAR_MAX_W, h = 3, filled = true,
       color = color.primary,
       size = function()
-        local w = (channelValues[i] + 1024) * BAR_MAX_W // 2048
+        local w = math.floor((channelValues[i] + 1024) * BAR_MAX_W / 2048)
         if w < 1 then w = 1 elseif w > BAR_MAX_W then w = BAR_MAX_W end
         return w, 3
       end,

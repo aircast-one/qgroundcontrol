@@ -1,5 +1,10 @@
 local here = arg[0]:match("(.*/)") or "./"
 
+local source = assert(io.open(here .. "aircast-usb.lua")):read("a")
+for _, operator in ipairs({ "//", "&", "<<", ">>" }) do
+  assert(not source:find(operator, 1, true), "EdgeTX 2.9 runs Lua 5.2, which has no " .. operator .. " operator")
+end
+
 local function radio(screen)
   local sent, drawn = {}, {}
   local env = setmetatable({
