@@ -131,10 +131,17 @@ ios-checks:
     cd ios && xcodegen generate
     cd ios && xcodebuild -project Aircast.xcodeproj -scheme Aircast -destination 'platform=iOS Simulator,name=iPhone 17 Pro' -derivedDataPath {{justfile_directory()}}/build-ios/dd test
 
-# Build the core for the browser and run the web head at http://localhost:8800
-web:
+# Build the core for the browser and run the web head at http://localhost:8800, or with hot reload against DEVICE's aircastd at http://localhost:8801
+web DEVICE=env("AIRCAST_DEVICE", ""):
     ./web/build-core.sh
-    cd web && npm ci && npx vite
+    cd web && { [ node_modules/.package-lock.json -nt package-lock.json ] || npm ci; }
+    @[ -z "{{DEVICE}}" ] || echo "device.json, mavlink, socket, files and proxy go to {{DEVICE}}"
+    cd web && QGC_WEB_DEVICE="{{DEVICE}}" npx vite
+
+# Build the web head and install it on DEVICE's aircastd at http://DEVICE/fly/
+[no-exit-message]
+device DEVICE=env("AIRCAST_DEVICE", ""):
+    @./web/scripts/device.sh "{{DEVICE}}"
 
 # Type-check, unit-test and bundle the web head
 web-checks:
