@@ -6,13 +6,13 @@ import { SITL_WS, type Sitl, startSitl } from './sitl';
 const CENTRE: Sticks = { roll: 0, pitch: 0, throttle: 0, yaw: 0 };
 const IDLE: Sticks = { ...CENTRE, throttle: -1 };
 
-const PROMPTS: readonly (readonly [RegExp, Sticks])[] = [
+const prompts = (rollRight: number): readonly (readonly [RegExp, Sticks])[] => [
   [/Throttle stick all the way up/, { ...CENTRE, throttle: 1 }],
   [/Throttle stick all the way down/, IDLE],
   [/Yaw stick all the way to the right/, { ...IDLE, yaw: 1 }],
   [/Yaw stick all the way to the left/, { ...IDLE, yaw: -1 }],
-  [/Roll stick all the way to the right/, { ...IDLE, roll: 1 }],
-  [/Roll stick all the way to the left/, { ...IDLE, roll: -1 }],
+  [/Roll stick all the way to the right/, { ...IDLE, roll: rollRight }],
+  [/Roll stick all the way to the left/, { ...IDLE, roll: -rollRight }],
   [/Pitch stick all the way up/, { ...IDLE, pitch: 1 }],
   [/Pitch stick all the way down/, { ...IDLE, pitch: -1 }],
 ];
@@ -23,6 +23,8 @@ const THROTTLE = 2;
 const YAW = 3;
 
 const sitl: { running: Sitl | null } = { running: null };
+
+test.describe.configure({ mode: 'serial' });
 
 test.beforeAll(async () => {
   test.setTimeout(120_000);
@@ -41,26 +43,51 @@ const connectSitl = async (page: Page) => {
   await page.getByRole('button', { name: /^Network \(WebSocket\)/ }).click();
   await page.getByRole('textbox', { name: 'WebSocket address' }).fill(SITL_WS);
   await page.getByRole('button', { name: 'Connect', exact: true }).click();
-  await expect(page.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 120_000 });
+  await expect(page.getByRole('button', { name: 'Open Setup', exact: true })).toBeVisible({ timeout: 120_000 });
 };
 
-const calibrate = async (page: Page) => {
+const captureSticks = async (page: Page, rollRight = 1) => {
   await page.getByRole('button', { name: /^Joystick.*axes/ }).click();
+  await expect(page.getByText(/^Stick mode/)).toBeVisible();
   await page.getByRole('button', { name: 'Calibrate', exact: true }).click();
+  await expect(page.getByText('Step 1 of 10')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Advanced settings' })).toBeHidden();
   await moveSticks(page, CENTRE);
   await page.getByRole('button', { name: 'Next', exact: true }).click();
-  await PROMPTS.reduce(async (previous, [prompt, sticks]) => {
+  await prompts(rollRight).reduce(async (previous, [prompt, sticks]) => {
     await previous;
     await expect(page.getByText(prompt)).toBeVisible();
     await moveSticks(page, sticks);
     await expect(page.getByText(prompt)).toBeHidden({ timeout: 45_000 });
   }, Promise.resolve());
-  await expect(page.getByText(/All settings have been captured/)).toBeVisible();
+  await expect(page.getByText(/All sticks are captured/)).toBeVisible();
+  await expect(page.getByText('Step 10 of 10')).toBeVisible();
+};
+
+const calibrate = async (page: Page) => {
+  await captureSticks(page);
+  await expect(page.getByText(/moved the opposite way/)).toBeHidden();
+  await moveSticks(page, { ...IDLE, roll: 1 });
+  await expect(page.getByRole('progressbar', { name: 'Roll stick' })).toHaveAttribute('aria-valuenow', /^(9\d|100)$/);
   await moveSticks(page, IDLE);
-  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
   await page.getByRole('button', { name: 'Yes', exact: true }).click();
   await expect(page.getByRole('checkbox', { name: 'Enable' })).toBeChecked();
+  await expect(page.getByText(/^Calibrated · saved in this browser for /)).toBeVisible();
 };
+
+test('a roll stick pushed the wrong way during calibration is flagged before it is saved', async ({ page }) => {
+  test.setTimeout(300_000);
+  await page.context().route((url) => !['localhost', '127.0.0.1'].includes(url.hostname), (route) => route.abort());
+  await plugInRadio(page);
+  await openApp(page);
+  await connectSitl(page);
+  await page.getByRole('button', { name: 'Open Setup', exact: true }).click();
+  await captureSticks(page, -1);
+  await expect(page.getByText(/^Roll moved the opposite way to yaw/)).toBeVisible();
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await expect(page.getByText('Requires calibration')).toBeVisible();
+});
 
 test('a radio calibrated in the browser moves each ArduPilot channel the way its stick points', async ({ page }) => {
   test.setTimeout(300_000);

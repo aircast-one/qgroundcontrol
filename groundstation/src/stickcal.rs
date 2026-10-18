@@ -80,6 +80,20 @@ fn stick_for(message: Message, mode: u8) -> Stick {
     }
 }
 
+fn pushed(function: Function) -> Message {
+    match function {
+        Function::Throttle => Message::ThrottleUp,
+        Function::Yaw => Message::YawRight,
+        Function::Roll => Message::RollRight,
+        _ => Message::PitchUp,
+    }
+}
+
+const REVERSED_PAIRS: [(Function, Function, &str); 2] = [
+    (Function::Roll, Function::Yaw, "Roll moved the opposite way to yaw. If you pushed a stick the wrong way, cancel and calibrate again."),
+    (Function::Pitch, Function::Throttle, "Pitch moved the opposite way to throttle. If you pushed a stick the wrong way, cancel and calibrate again."),
+];
+
 pub(crate) fn stick_positions(message: Message, mode: u8) -> [i32; 4] {
     let moved = match message {
         Message::ThrottleUp | Message::PitchUp => Some((0, 1)),
@@ -164,7 +178,7 @@ fn text(step: &Step) -> String {
         Message::PitchDown => "Move the Pitch stick all the way down and hold it there...".to_string(),
         Message::ExtensionHigh => format!("Move the {name} Extension stick to its high value position and hold it there..."),
         Message::ExtensionLow => format!("* Move the {name} Extension stick to its low value position and hold it there...\n* Select 'One-Sided' for controls like gamepad triggers."),
-        Message::Complete => "All settings have been captured. Click Next to write the new parameters to your board.".to_string(),
+        Message::Complete => "All sticks are captured. Push each one and check its bar moves the same way, then save.".to_string(),
     }
 }
 
@@ -426,11 +440,58 @@ impl StickCal {
         self.current().map_or([0; 4], |step| stick_positions(step.message, transmitter_mode))
     }
 
-    pub fn json(&self) -> Value {
+    pub fn progress(&self) -> Option<(usize, usize)> {
+        let shown: Vec<usize> = (0..STEPS.len()).filter(|i| STEPS[*i].function.is_none_or(|f| self.enabled[function_slot(f)])).collect();
+        let at = shown.iter().position(|i| Some(*i) == self.step)?;
+        Some((at + 1, shown.len()))
+    }
+
+    pub fn holding(&self, now_ms: u64) -> Option<f64> {
+        self.detect.map(|_| self.settle_since.map_or(0.0, |since| (now_ms.saturating_sub(since) as f64 / self.profile.settle_ms as f64).min(1.0)))
+    }
+
+    fn checking(&self) -> bool {
+        self.current().is_some_and(|step| step.message == Message::Complete)
+    }
+
+    pub fn live(&self, function: Function) -> f64 {
+        let scaled = |delta: i32| (f64::from(delta) / f64::from(self.profile.default_max)).clamp(-1.0, 1.0);
+        match (self.mapped(function), self.detect, self.current()) {
+            (Some(axis), _, _) => {
+                let channel = &self.channels[axis];
+                let value = scaled(self.raw[axis] - channel.trim);
+                if channel.reversed { -value } else { value }
+            }
+            (None, Some(axis), Some(step)) if step.function == Some(function) => scaled((self.raw[axis] - self.saved[axis]).abs()),
+            _ => 0.0,
+        }
+    }
+
+    pub fn live_positions(&self, transmitter_mode: u8) -> [f64; 4] {
+        crate::joystick::ATTITUDE.iter().fold([0.0; 4], |sum, function| {
+            let unit = stick_positions(pushed(*function), transmitter_mode);
+            std::array::from_fn(|i| sum[i] + f64::from(unit[i]) * self.live(*function))
+        })
+    }
+
+    pub fn warning(&self) -> Option<&'static str> {
+        let reversed = |function: Function| self.mapped(function).map(|axis| self.channels[axis].reversed);
+        REVERSED_PAIRS.iter().find(|(a, b, _)| matches!((reversed(*a), reversed(*b)), (Some(x), Some(y)) if x != y)).map(|(_, _, text)| *text)
+    }
+
+    pub fn json(&self, now_ms: u64, transmitter_mode: u8) -> Value {
+        let progress = self.progress();
         json!({
             "calibrating": self.calibrating(),
             "statusText": self.status,
-            "nextText": if self.calibrating() { "Next" } else { "Calibrate" },
+            "nextText": match (self.calibrating(), self.checking()) { (false, _) => "Calibrate", (true, true) => "Save", (true, false) => "Next" },
+            "step": progress.map(|(at, _)| at),
+            "steps": progress.map(|(_, of)| of),
+            "holding": self.holding(now_ms),
+            "checking": self.checking(),
+            "warning": self.warning(),
+            "live": { "roll": self.live(Function::Roll), "pitch": self.live(Function::Pitch), "yaw": self.live(Function::Yaw), "throttle": self.live(Function::Throttle) },
+            "livePositions": self.live_positions(transmitter_mode),
             "nextEnabled": self.next_enabled,
             "cancelEnabled": self.calibrating(),
             "oneSidedVisible": self.one_sided_visible(),
@@ -475,7 +536,7 @@ mod tests {
         cal.channel_values(&[300, -200, 0, 100], 0);
         assert_eq!(cal.channels[0].deadband, 330, "the neutral step records 10% over each axis's resting noise as its deadband");
         cal.next();
-        assert!(cal.json()["statusText"].as_str().unwrap().starts_with("Move the Throttle stick all the way up"));
+        assert!(cal.json(0, 2)["statusText"].as_str().unwrap().starts_with("Move the Throttle stick all the way up"));
         let at = hold(&mut cal, [0, -32000, 0, 0], 1_000);
         let at = hold(&mut cal, [0, 32000, 0, 0], at);
         let at = hold(&mut cal, [32000, 0, 0, 0], at);
@@ -484,12 +545,60 @@ mod tests {
         let at = hold(&mut cal, [0, 0, -32000, 0], at);
         let at = hold(&mut cal, [0, 0, 0, -32000], at);
         hold(&mut cal, [0, 0, 0, 32000], at);
-        assert!(cal.json()["statusText"].as_str().unwrap().starts_with("All settings have been captured"));
+        assert!(cal.json(0, 2)["statusText"].as_str().unwrap().starts_with("All sticks are captured"));
         let Outcome::Save(channels) = cal.next() else { panic!("the last Next saves") };
         let functions: Vec<Option<Function>> = channels.iter().map(|c| c.function).collect();
         assert_eq!(functions, [Some(Function::Yaw), Some(Function::Throttle), Some(Function::Roll), Some(Function::Pitch)]);
         assert!(channels[1].reversed, "throttle up read negative, so that axis is reversed");
         assert!(!cal.calibrating());
+    }
+
+    #[test]
+    fn the_wizard_counts_its_steps_and_shows_a_held_stick_live() {
+        let mut cal = StickCal::new(JOYSTICK, 4, [false; 8]);
+        cal.next();
+        assert_eq!(cal.progress(), Some((1, 10)), "centre, eight stick moves and the check");
+        cal.channel_values(&[0, 0, 0, 0], 0);
+        cal.next();
+        assert_eq!(cal.progress(), Some((2, 10)));
+        assert_eq!(cal.holding(0), None, "nothing has moved yet");
+        cal.channel_values(&[0, 0, 32000, 0], 1_000);
+        assert_eq!(cal.holding(1_000), Some(0.0), "a moved stick is seen before it settles");
+        cal.channel_values(&[0, 0, 32000, 0], 1_100);
+        assert_eq!(cal.holding(1_250), Some(0.5));
+        assert!(cal.live(Function::Throttle) > 0.97, "the stick being captured moves toward its target");
+        cal.channel_values(&[0, 0, 32000, 0], 1_500);
+        assert_eq!(cal.progress(), Some((3, 10)), "held long enough, it moves on");
+        let [_, left_y, _, _] = cal.live_positions(2);
+        assert!(left_y > 0.97, "mode 2 draws the captured throttle on the left stick, up");
+        assert!(cal.live_positions(1)[3] > 0.97, "mode 1 draws it on the right stick");
+    }
+
+    fn edgetx_run(roll_right: i32) -> StickCal {
+        let mut cal = StickCal::new(JOYSTICK, 4, [false; 8]);
+        cal.next();
+        cal.channel_values(&[0, 0, 0, 0], 0);
+        cal.next();
+        let at = hold(&mut cal, [0, 0, 32000, 0], 1_000);
+        let at = hold(&mut cal, [0, 0, -32000, 0], at);
+        let at = hold(&mut cal, [0, 0, -32000, 32000], at);
+        let at = hold(&mut cal, [0, 0, -32000, -32000], at);
+        let at = hold(&mut cal, [roll_right, 0, -32000, 0], at);
+        let at = hold(&mut cal, [-roll_right, 0, -32000, 0], at);
+        let at = hold(&mut cal, [0, 32000, -32000, 0], at);
+        hold(&mut cal, [0, -32000, -32000, 0], at);
+        cal
+    }
+
+    #[test]
+    fn a_roll_pushed_the_wrong_way_is_flagged_on_the_check_step() {
+        let right = edgetx_run(32000);
+        assert_eq!(right.json(0, 2)["nextText"], "Save", "the last step checks the sticks and saves");
+        assert_eq!(right.json(0, 2)["checking"], true);
+        assert_eq!(right.warning(), None, "a radio with every stick the same way round passes");
+        let wrong = edgetx_run(-32000);
+        assert!(wrong.warning().is_some_and(|text| text.starts_with("Roll moved the opposite way to yaw")), "roll came out reversed while yaw did not");
+        assert_eq!(wrong.json(0, 2)["warning"].as_str().map(|text| text.starts_with("Roll")), Some(true));
     }
 
     #[test]
@@ -500,12 +609,12 @@ mod tests {
         aux.start();
         aux.step = Some(13);
         aux.setup();
-        assert!(aux.json()["statusText"].as_str().unwrap().contains("Aux 1"));
+        assert!(aux.json(0, 2)["statusText"].as_str().unwrap().contains("Aux 1"));
         aux.channels[4].function = Some(Function::Additional1);
         aux.step = Some(14);
         aux.setup();
         assert!(aux.one_sided_visible(), "a trigger can be calibrated one-sided");
         aux.one_sided();
-        assert_eq!(aux.json()["statusText"].as_str().unwrap().starts_with("All settings"), true, "Aux 2-6 are off, so it skips to the end");
+        assert_eq!(aux.json(0, 2)["statusText"].as_str().unwrap().starts_with("All sticks"), true, "Aux 2-6 are off, so it skips to the end");
     }
 }

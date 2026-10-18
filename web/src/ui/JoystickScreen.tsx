@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { type Json, type JsonArray, isNull, jsonObjects, jsonStrings, opt, optBoolean, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
+import { type Json, type JsonArray, isNull, jsonObjects, jsonStrings, opt, optBoolean, optDouble, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { type FactSlider, Qgc } from '@/bridge/Qgc';
 import { useKeyedState, useTicker } from '@/kotlin/Compose';
 import { AlertDialog, Button, Checkbox, DropdownMenu, DropdownMenuItem, LinearProgressIndicator, OutlinedButton, OutlinedTextField, RadioButton, Switch, Text, TextButton } from '@/m3';
@@ -29,6 +29,8 @@ export type JoystickButton = { index: number; action: string; repeat: boolean; p
 
 export type AssignableAction = { action: string; canRepeat: boolean };
 
+export type StickValues = { roll: number; pitch: number; yaw: number; throttle: number };
+
 export type JoystickCalibration = {
   calibrating: boolean;
   statusText: string;
@@ -38,20 +40,44 @@ export type JoystickCalibration = {
   oneSidedVisible: boolean;
   stickPositions: readonly number[];
   singleStick: boolean;
+  step: number | null;
+  steps: number | null;
+  holding: number | null;
+  checking: boolean;
+  warning: string | null;
+  live: StickValues;
+  livePositions: readonly number[];
+  captured: readonly (string | null)[];
 };
 
-export const JoystickCalibration = (fields: Omit<JoystickCalibration, 'stickPositions' | 'singleStick'> & Partial<Pick<JoystickCalibration, 'stickPositions' | 'singleStick'>>): JoystickCalibration => ({
+type CalibrationExtras = 'stickPositions' | 'singleStick' | 'step' | 'steps' | 'holding' | 'checking' | 'warning' | 'live' | 'livePositions' | 'captured';
+
+export const JoystickCalibration = (fields: Omit<JoystickCalibration, CalibrationExtras> & Partial<Pick<JoystickCalibration, CalibrationExtras>>): JoystickCalibration => ({
   stickPositions: [0, 0, 0, 0],
   singleStick: false,
+  step: null,
+  steps: null,
+  holding: null,
+  checking: false,
+  warning: null,
+  live: { roll: 0, pitch: 0, yaw: 0, throttle: 0 },
+  livePositions: [0, 0, 0, 0],
+  captured: [],
   ...fields,
 });
 
 const intAt = (array: JsonArray, index: number): number => optInt({ value: array[index] }, 'value');
 
+const numberAt = (array: JsonArray, index: number): number => optDouble({ value: array[index] }, 'value', 0);
+
+const orNull = (json: Json | null, key: string, read: (json: Json | null, key: string) => number): number | null => (isNull(json, key) ? null : read(json, key));
+
 const blankToNull = (text: string): string | null => (text.trim() === '' ? null : text);
 
 export const joystickCalibration = (json: Json | null): JoystickCalibration => {
   const positions = optJSONArray(json, 'stickPositions');
+  const live = optJSONObject(json, 'live');
+  const livePositions = optJSONArray(json, 'livePositions');
   return JoystickCalibration({
     calibrating: optBoolean(json, 'calibrating'),
     statusText: optText(json, 'statusText'),
@@ -61,8 +87,34 @@ export const joystickCalibration = (json: Json | null): JoystickCalibration => {
     oneSidedVisible: optBoolean(json, 'oneSidedVisible'),
     stickPositions: positions === null ? [0, 0, 0, 0] : [0, 1, 2, 3].map((at) => intAt(positions, at)),
     singleStick: optBoolean(json, 'singleStickDisplay'),
+    step: orNull(json, 'step', optInt),
+    steps: orNull(json, 'steps', optInt),
+    holding: orNull(json, 'holding', (j, k) => optDouble(j, k, 0)),
+    checking: optBoolean(json, 'checking'),
+    warning: blankToNull(optText(json, 'warning')),
+    live: { roll: optDouble(live, 'roll', 0), pitch: optDouble(live, 'pitch', 0), yaw: optDouble(live, 'yaw', 0), throttle: optDouble(live, 'throttle', 0) },
+    livePositions: livePositions === null ? [0, 0, 0, 0] : [0, 1, 2, 3].map((at) => numberAt(livePositions, at)),
+    captured: jsonObjects(optJSONArray(json, 'channels')).map((channel) => blankToNull(optText(channel, 'function'))),
   });
 };
+
+const FUNCTION_LABELS: Record<string, string> = { roll: 'Roll', pitch: 'Pitch', yaw: 'Yaw', throttle: 'Throttle' };
+
+export const functionLabel = (id: string): string => FUNCTION_LABELS[id] ?? id;
+
+export const axisLabel = (axis: JoystickAxis, calibration: JoystickCalibration): string => {
+  const known = calibration.calibrating ? (calibration.captured[axis.index] ?? '') : axis.function;
+  return known.trim() === '' ? `Axis ${axis.index + 1}` : functionLabel(known);
+};
+
+export const MODE_STICKS: Record<number, string> = {
+  1: 'Pitch and yaw on the left stick, throttle and roll on the right',
+  2: 'Throttle and yaw on the left stick, pitch and roll on the right',
+  3: 'Pitch and roll on the left stick, throttle and yaw on the right',
+  4: 'Throttle and roll on the left stick, pitch and yaw on the right',
+};
+
+const savedWhere = (): string => `Saved in this browser for ${typeof location === 'undefined' ? 'this site' : location.host}`;
 
 export type JoystickPage = {
   names: readonly string[];
@@ -134,6 +186,7 @@ export const JoystickScreen = ({ className }: { className?: string }) => {
   const present = (names: readonly string[]): JoystickSetting[] => names.map(setting).filter((it): it is JoystickSetting => it !== null);
   const additionalAxes = setting('additionalAxesFunction')?.value;
   const viaRc = typeof additionalAxes === 'number' && Math.trunc(additionalAxes) === 1;
+  const calibrating = read.calibration.calibrating;
   const step = (op: string) =>
     void (async () => {
       const answer = await Qgc.call(JOYSTICK_CALIBRATION, op);
@@ -150,71 +203,75 @@ export const JoystickScreen = ({ className }: { className?: string }) => {
           <Text>Enable</Text>
           {!read.vehicle ? <Text color={md('onSurfaceVariant')}>Not currently available</Text> : null}
         </div>
-        <Text color={read.calibrated ? md('onSurface') : md('error')}>{read.calibrated ? 'Calibrated' : 'Requires calibration'}</Text>
+        <Text color={read.calibrated ? md('onSurface') : md('error')}>{read.calibrated ? `Calibrated · ${savedWhere().toLowerCase()}` : 'Requires calibration'}</Text>
         {refusal !== null ? <Text color={md('error')}>{refusal}</Text> : null}
 
         {!read.armed ? (
           <>
             <SectionHeader text="Calibration" />
+            {!calibrating ? <TransmitterModeRow mode={read.transmitterMode} onPick={(it) => act(JOYSTICK_SETTING, 'transmitterMode', it)} /> : null}
             <CalibrationPanel page={read} onStep={step} />
-            <TransmitterModeRow mode={read.transmitterMode} onPick={(it) => act(JOYSTICK_SETTING, 'transmitterMode', it)} />
           </>
         ) : null}
 
         <SectionHeader text="Axis monitor" />
         {read.axes.map((axis) => (
           <div key={axis.index} className="flex items-center gap-2">
-            <Text className="w-24 shrink-0">{axis.function.trim() === '' ? `Axis ${axis.index + 1}` : axis.function}</Text>
+            <Text className="w-24 shrink-0">{axisLabel(axis, read.calibration)}</Text>
             <LinearProgressIndicator progress={((axis.raw ?? 0) / AXIS_RANGE + 1) / 2} className="flex-1" />
           </div>
         ))}
 
-        <SectionHeader text="Buttons" />
-        <Text typography="bodySmall">Multiple buttons that have the same action must be pressed simultaneously to invoke the action.</Text>
-        {read.buttons.map((button) => (
-          <ButtonRow
-            key={button.index}
-            button={button}
-            actions={read.actions}
-            calibrated={read.calibrated}
-            onAction={(it) => act(JOYSTICK_BUTTON_ACTION, button.index, it)}
-            onRepeat={(it) => act(JOYSTICK_BUTTON_REPEAT, button.index, it)}
-          />
-        ))}
-
-        <SectionHeader text="Settings" />
-        {present(BASIC_SETTINGS).map((it) => (
-          <SettingRow key={it.name} setting={it} onChange={(value) => act(JOYSTICK_SETTING, it.name, value)} />
-        ))}
-        <OutlinedButton onClick={() => setAdvanced(!advanced)} className="self-start">
-          Advanced settings
-        </OutlinedButton>
-        {advanced ? (
+        {calibrating ? null : (
           <>
-            {present(ADVANCED_SETTINGS).map((it) => (
+            <SectionHeader text="Buttons" />
+            <Text typography="bodySmall">Multiple buttons that have the same action must be pressed simultaneously to invoke the action.</Text>
+            {read.buttons.map((button) => (
+              <ButtonRow
+                key={button.index}
+                button={button}
+                actions={read.actions}
+                calibrated={read.calibrated}
+                onAction={(it) => act(JOYSTICK_BUTTON_ACTION, button.index, it)}
+                onRepeat={(it) => act(JOYSTICK_BUTTON_REPEAT, button.index, it)}
+              />
+            ))}
+
+            <SectionHeader text="Settings" />
+            {present(BASIC_SETTINGS).map((it) => (
               <SettingRow key={it.name} setting={it} onChange={(value) => act(JOYSTICK_SETTING, it.name, value)} />
             ))}
-            {setting('useDeadband')?.value === true ? <Text typography="bodySmall">Deadband can be set during the first step of calibration by gently wiggling each axis. </Text> : null}
-            <Text typography="titleSmall">MANUAL_CONTROL Extensions</Text>
-            {present(EXTENSION_SETTINGS)
-              .slice(0, EXTENSION_LABELS.length)
-              .map((s, index) => (
-                <SettingRow key={s.name} setting={{ ...s, label: EXTENSION_LABELS[index] ?? s.label }} onChange={(value) => act(JOYSTICK_SETTING, s.name, value)} />
-              ))}
-            <Text typography="titleSmall">Additional axes</Text>
-            <div className="flex items-center">
-              <RadioButton selected={!viaRc} onClick={() => act(JOYSTICK_SETTING, 'additionalAxesFunction', 0)} label="Send using MANUAL_CONTROL" />
-              <Text className="ps-3">Send using MANUAL_CONTROL</Text>
-            </div>
-            <div className="flex items-center">
-              <RadioButton selected={viaRc} onClick={() => act(JOYSTICK_SETTING, 'additionalAxesFunction', 1)} label="Send using RC_CHANNELS_OVERRIDE" />
-              <Text className="ps-3">Send using RC_CHANNELS_OVERRIDE</Text>
-            </div>
-            {present(ADDITIONAL_SETTINGS).map((s, index) => (
-              <SettingRow key={s.name} setting={{ ...s, label: viaRc ? `Channel ${index + 5}` : `Aux${index + 1}` }} onChange={(value) => act(JOYSTICK_SETTING, s.name, value)} />
-            ))}
+            <OutlinedButton onClick={() => setAdvanced(!advanced)} className="self-start">
+              Advanced settings
+            </OutlinedButton>
+            {advanced ? (
+              <>
+                {present(ADVANCED_SETTINGS).map((it) => (
+                  <SettingRow key={it.name} setting={it} onChange={(value) => act(JOYSTICK_SETTING, it.name, value)} />
+                ))}
+                {setting('useDeadband')?.value === true ? <Text typography="bodySmall">Deadband can be set during the first step of calibration by gently wiggling each axis. </Text> : null}
+                <Text typography="titleSmall">MANUAL_CONTROL Extensions</Text>
+                {present(EXTENSION_SETTINGS)
+                  .slice(0, EXTENSION_LABELS.length)
+                  .map((s, index) => (
+                    <SettingRow key={s.name} setting={{ ...s, label: EXTENSION_LABELS[index] ?? s.label }} onChange={(value) => act(JOYSTICK_SETTING, s.name, value)} />
+                  ))}
+                <Text typography="titleSmall">Additional axes</Text>
+                <div className="flex items-center">
+                  <RadioButton selected={!viaRc} onClick={() => act(JOYSTICK_SETTING, 'additionalAxesFunction', 0)} label="Send using MANUAL_CONTROL" />
+                  <Text className="ps-3">Send using MANUAL_CONTROL</Text>
+                </div>
+                <div className="flex items-center">
+                  <RadioButton selected={viaRc} onClick={() => act(JOYSTICK_SETTING, 'additionalAxesFunction', 1)} label="Send using RC_CHANNELS_OVERRIDE" />
+                  <Text className="ps-3">Send using RC_CHANNELS_OVERRIDE</Text>
+                </div>
+                {present(ADDITIONAL_SETTINGS).map((s, index) => (
+                  <SettingRow key={s.name} setting={{ ...s, label: viaRc ? `Channel ${index + 5}` : `Aux${index + 1}` }} onChange={(value) => act(JOYSTICK_SETTING, s.name, value)} />
+                ))}
+              </>
+            ) : null}
           </>
-        ) : null}
+        )}
       </div>
       {offerEnable !== null ? (
         <AlertDialog
@@ -271,12 +328,61 @@ const ButtonRow = ({ button, actions, calibrated, onAction, onRepeat }: { button
   );
 };
 
+const CHECK_ROWS: readonly (readonly [keyof StickValues, string, string])[] = [
+  ['roll', 'Left', 'Right'],
+  ['pitch', 'Down', 'Up'],
+  ['yaw', 'Left', 'Right'],
+  ['throttle', 'Down', 'Up'],
+];
+
+const StickCheck = ({ live }: { live: StickValues }) => (
+  <div className="flex flex-col gap-2">
+    {CHECK_ROWS.map(([key, low, high]) => (
+      <div key={key} className="flex items-center gap-2">
+        <Text className="w-20 shrink-0">{functionLabel(key)}</Text>
+        <Text typography="bodySmall" color={md('onSurfaceVariant')} className="w-10 shrink-0 text-end">
+          {low}
+        </Text>
+        <LinearProgressIndicator progress={(live[key] + 1) / 2} className="flex-1" label={`${functionLabel(key)} stick`} />
+        <Text typography="bodySmall" color={md('onSurfaceVariant')} className="w-10 shrink-0">
+          {high}
+        </Text>
+      </div>
+    ))}
+  </div>
+);
+
 const CalibrationPanel = ({ page, onStep }: { page: JoystickPage; onStep: (op: string) => void }) => {
   const cal = page.calibration;
   return (
     <>
-      {cal.calibrating ? <StickDiagram positions={cal.stickPositions} single={cal.singleStick} /> : null}
+      {cal.calibrating && cal.step !== null && cal.steps !== null ? (
+        <Text typography="labelLarge" color={md('onSurfaceVariant')}>
+          {`Step ${cal.step} of ${cal.steps}`}
+        </Text>
+      ) : null}
+      {cal.calibrating && !cal.checking ? (
+        <>
+          <StickDiagram positions={cal.stickPositions} live={cal.livePositions} single={cal.singleStick} />
+          <Text typography="bodySmall" color={md('onSurfaceVariant')}>
+            Ring: where to move the stick. Dot: where your stick is.
+          </Text>
+        </>
+      ) : null}
       {cal.statusText.trim() !== '' ? <Text typography="bodyMedium">{cal.statusText}</Text> : null}
+      {cal.holding !== null ? (
+        <div className="flex items-center gap-2">
+          <LinearProgressIndicator progress={cal.holding} className="w-40" label="Holding the stick" />
+          <Text typography="bodySmall">Got it, hold it there</Text>
+        </div>
+      ) : null}
+      {cal.checking ? <StickCheck live={cal.live} /> : null}
+      {cal.warning !== null ? <Text color={md('error')}>{cal.warning}</Text> : null}
+      {cal.checking ? (
+        <Text typography="bodySmall" color={md('onSurfaceVariant')}>
+          {`${savedWhere()}.`}
+        </Text>
+      ) : null}
       <div className="flex gap-2">
         <OutlinedButton enabled={cal.cancelEnabled} onClick={() => onStep('cancel')}>
           Cancel
@@ -294,7 +400,12 @@ const TransmitterModeRow = ({ mode, onPick }: { mode: number; onPick: (mode: num
   const [open, setOpen] = useState(false);
   return (
     <div className="flex items-center gap-3">
-      <Text className="flex-1">Mode</Text>
+      <div className="flex min-w-0 flex-1 flex-col">
+        <Text>Stick mode</Text>
+        <Text typography="bodySmall" color={md('onSurfaceVariant')}>
+          {MODE_STICKS[mode] ?? ''}
+        </Text>
+      </div>
       <div className="relative">
         <OutlinedButton onClick={() => setOpen(true)}>{`Mode ${mode}`}</OutlinedButton>
         <DropdownMenu expanded={open} onDismissRequest={() => setOpen(false)}>
@@ -370,15 +481,22 @@ const SettingField = ({ setting, onChange }: { setting: JoystickSetting; onChang
 
 const STICK_BOX = 72;
 
-export const StickDiagram = ({ positions, single }: { positions: readonly number[]; single: boolean }) => {
+export const StickDiagram = ({ positions, live, single }: { positions: readonly number[]; live?: readonly number[]; single: boolean }) => {
   const half = STICK_BOX / 2;
-  const sticks = [0, 2].slice(0, single ? 1 : 2).map((at) => [positions[at] ?? 0, positions[at + 1] ?? 0] as const);
+  const stick = (values: readonly number[], at: number) => ({ cx: half + (values[at] ?? 0) * half * 0.75, cy: half - (values[at + 1] ?? 0) * half * 0.75 });
   return (
     <div className="flex gap-6">
-      {sticks.map(([x, y], index) => (
-        <svg key={index} width={STICK_BOX} height={STICK_BOX} viewBox={`0 0 ${STICK_BOX} ${STICK_BOX}`} aria-hidden>
+      {[0, 2].slice(0, single ? 1 : 2).map((at) => (
+        <svg key={at} width={STICK_BOX} height={STICK_BOX} viewBox={`0 0 ${STICK_BOX} ${STICK_BOX}`} aria-hidden>
           <rect x={0.5} y={0.5} width={STICK_BOX - 1} height={STICK_BOX - 1} fill="none" style={{ stroke: md('outline') }} strokeWidth={1} />
-          <circle cx={half + x * half * 0.75} cy={half - y * half * 0.75} r={half * 0.18} style={{ fill: md('primary') }} />
+          {live === undefined ? (
+            <circle {...stick(positions, at)} r={half * 0.18} style={{ fill: md('primary') }} />
+          ) : (
+            <>
+              <circle {...stick(positions, at)} r={half * 0.24} fill="none" style={{ stroke: md('primary') }} strokeWidth={2} strokeDasharray="4 3" />
+              <circle {...stick(live, at)} r={half * 0.14} style={{ fill: md('primary') }} />
+            </>
+          )}
         </svg>
       ))}
     </div>

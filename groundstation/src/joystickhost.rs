@@ -849,7 +849,7 @@ pub fn joystick_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
             "visible": setting_visible(&m.name, &setting_value(name, "throttleModeCenterZero"), support),
         })).collect::<Vec<_>>()).unwrap_or_default(),
         "state": state,
-        "calibration": host.calibration.as_ref().filter(|(name, _)| Some(name) == active.as_ref()).map(|(name, cal)| match cal.json() {
+        "calibration": host.calibration.as_ref().filter(|(name, _)| Some(name) == active.as_ref()).map(|(name, cal)| match cal.json(crate::hub::now_ms(), transmitter_mode(name)) {
             Value::Object(fields) => Value::Object(fields.into_iter().chain(std::iter::once(("stickPositions".to_string(), json!(cal.stick_positions(transmitter_mode(name)))))).collect()),
             other => other,
         }),

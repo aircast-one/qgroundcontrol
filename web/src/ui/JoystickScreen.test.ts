@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { type Json, parseJson } from '@/bridge/Json';
 import { hatBits, scaled } from '@/app/GamepadInput';
-import { JoystickCalibration, joystickCalibration, joystickPage } from './JoystickScreen';
+import { JoystickCalibration, MODE_STICKS, axisLabel, joystickCalibration, joystickPage } from './JoystickScreen';
 
 const json = (text: string): Json => parseJson(text) ?? {};
 
@@ -51,6 +51,33 @@ describe('JoystickScreenTest', () => {
     const cal = joystickCalibration(json('{"calibrating":true,"stickPositions":[0,1,0,0],"singleStickDisplay":false}'));
     expect(cal.stickPositions).toEqual([0, 1, 0, 0]);
     expect(joystickCalibration(null).stickPositions).toEqual([0, 0, 0, 0]);
+  });
+
+  it('calibration reads the step count, the held stick, the live sticks and the check warning', () => {
+    const cal = joystickCalibration(
+      json(`{"calibrating":true,"step":4,"steps":10,"holding":0.5,"checking":true,"warning":"Roll moved the opposite way to yaw.",
+            "live":{"roll":-0.9,"pitch":0.1,"yaw":0,"throttle":-1},"livePositions":[0,-1,-0.9,0.1],
+            "channels":[{"index":0,"raw":0,"function":"roll"},{"index":1,"raw":0,"function":null}]}`),
+    );
+    expect([cal.step, cal.steps, cal.holding, cal.checking, cal.warning]).toEqual([4, 10, 0.5, true, 'Roll moved the opposite way to yaw.']);
+    expect(cal.live).toEqual({ roll: -0.9, pitch: 0.1, yaw: 0, throttle: -1 });
+    expect(cal.livePositions).toEqual([0, -1, -0.9, 0.1]);
+    expect(cal.captured).toEqual(['roll', null]);
+    const idle = joystickCalibration(null);
+    expect([idle.step, idle.holding, idle.warning, idle.checking]).toEqual([null, null, null, false]);
+  });
+
+  it('axes are named by what calibration has captured so far, then by the saved mapping', () => {
+    const calibrating = JoystickCalibration({ calibrating: true, statusText: '', nextText: 'Next', nextEnabled: false, cancelEnabled: true, oneSidedVisible: false, captured: ['throttle', null] });
+    expect(axisLabel({ index: 0, raw: 0, function: 'roll' }, calibrating)).toBe('Throttle');
+    expect(axisLabel({ index: 1, raw: 0, function: 'pitch' }, calibrating)).toBe('Axis 2');
+    expect(axisLabel({ index: 1, raw: 0, function: 'pitch' }, joystickCalibration(null))).toBe('Pitch');
+    expect(axisLabel({ index: 5, raw: 0, function: '' }, joystickCalibration(null))).toBe('Axis 6');
+  });
+
+  it('each stick mode says which stick carries the throttle', () => {
+    expect(MODE_STICKS[2]).toBe('Throttle and yaw on the left stick, pitch and roll on the right');
+    expect(Object.keys(MODE_STICKS)).toEqual(['1', '2', '3', '4']);
   });
 
   it('a_setting_the_core_hides_is_not_listed', () => {
