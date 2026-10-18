@@ -1,7 +1,7 @@
 use crate::femtobase::{Message, nmea_degrees, take_messages};
 use crate::gpsrtk::{ASHTECH_BAUD, BasePlan, BasePosition, MAX_SATELLITES, Satellite};
 use crate::sbfbase::heard_within;
-use crate::ubxbase::{BaseDriver, Event, SurveyStatus, Transport};
+use crate::ubxbase::{BaseDriver, Event, SurveyStatus, Transport, first};
 
 const ASH_RESPONSE_TIMEOUT_MS: u64 = 200;
 const PORT_QUERY: &str = "$PASHQ,PRT\r\n";
@@ -144,27 +144,28 @@ impl<T: Transport> AshtechBase<T> {
         }
     }
 
-    fn reply<R>(&mut self, command: &str, pick: impl Fn(&str) -> Option<R>) -> Option<R> {
+    async fn reply<R>(&mut self, command: &str, pick: impl Fn(&str) -> Option<R>) -> Option<R> {
         if !self.transport.write(command.as_bytes()) {
             return None;
         }
         heard_within(&mut self.transport, ASH_RESPONSE_TIMEOUT_MS, &mut self.transport_lost, |heard| sentences(heard).iter().any(|sentence| pick(sentence).is_some()))
+            .await
             .and_then(|heard| sentences(&heard).iter().find_map(|sentence| pick(sentence)))
     }
 
-    fn acked(&mut self, command: &str) -> bool {
-        self.reply(command, ack) == Some(true)
+    async fn acked(&mut self, command: &str) -> bool {
+        self.reply(command, ack).await == Some(true)
     }
 
     fn on_port(&self, template: &str) -> String {
         template.replace("{port}", &self.port.to_string())
     }
 
-    fn acked_on_port(&mut self, templates: &[&str]) {
-        templates.iter().for_each(|template| {
+    async fn acked_on_port(&mut self, templates: &[&str]) {
+        for template in templates {
             let command = self.on_port(template);
-            self.acked(&command);
-        });
+            self.acked(&command).await;
+        }
     }
 
     fn status(&self, active: bool, valid: bool, latitude: f64, longitude: f64, altitude_m: f32) -> Event {
@@ -175,21 +176,21 @@ impl<T: Transport> AshtechBase<T> {
         self.status(active, valid, f64::NAN, f64::NAN, f32::NAN)
     }
 
-    fn start_corrections(&mut self) {
+    async fn start_corrections(&mut self) {
         self.corrections_on = true;
         match self.plan {
             BasePlan::SurveyIn(spec) => {
-                self.reply(&format!("$PASHS,POS,AVG,{}\r\n", spec.duration_s), receipt);
-                SURVEY_BASE.iter().for_each(|command| {
-                    self.acked(command);
-                });
+                self.reply(&format!("$PASHS,POS,AVG,{}\r\n", spec.duration_s), receipt).await;
+                for command in SURVEY_BASE {
+                    self.acked(command).await;
+                }
                 self.survey_s = 0;
                 self.survey_from_ms = Some(self.transport.now_ms());
                 self.events.push(self.unknown_status(true, false));
             }
             BasePlan::Fixed(position) => {
-                self.acked(&fixed_position_command(position));
-                self.acked_on_port(&RTCM_OUTPUT);
+                self.acked(&fixed_position_command(position)).await;
+                self.acked_on_port(&RTCM_OUTPUT).await;
                 self.events.push(self.status(false, true, position.latitude, position.longitude, position.altitude_m));
             }
         }
@@ -217,18 +218,18 @@ impl<T: Transport> AshtechBase<T> {
         }
     }
 
-    fn sentence(&mut self, sentence: &str) {
+    async fn sentence(&mut self, sentence: &str) {
         if sentence.get(3..7) == Some("GSV,") {
             self.satellites_in_view(sentence);
         } else if position_found(sentence) && self.mb_two && !self.corrections_on {
-            self.start_corrections();
+            self.start_corrections().await;
         } else if receipt(sentence).is_some() && sentence.contains("FINISHED,") {
             self.survey_from_ms = None;
             match surveyed_position(sentence) {
                 None => self.events.push(self.unknown_status(false, false)),
                 Some((latitude, longitude, altitude_m)) => {
                     self.events.push(self.status(false, true, latitude, longitude, altitude_m));
-                    self.acked_on_port(&RTCM_OUTPUT);
+                    self.acked_on_port(&RTCM_OUTPUT).await;
                 }
             }
         }
@@ -243,23 +244,23 @@ impl<T: Transport> AshtechBase<T> {
 }
 
 impl<T: Transport> BaseDriver for AshtechBase<T> {
-    fn configure(&mut self) -> bool {
+    async fn configure(&mut self) -> bool {
         self.configured = false;
         self.corrections_on = false;
         self.survey_from_ms = None;
         self.transport.set_baud(ASHTECH_BAUD);
-        let Some(port) = (0..2).find_map(|_| self.reply(PORT_QUERY, port_of)) else {
+        let Some(port) = first(0..2, async |_| self.reply(PORT_QUERY, port_of).await).await else {
             return false;
         };
         self.port = port;
-        let Some(mb_two) = self.reply(BOARD_QUERY, mb_two) else {
+        let Some(mb_two) = self.reply(BOARD_QUERY, mb_two).await else {
             return false;
         };
         self.mb_two = mb_two;
-        SETUP.iter().for_each(|command| {
-            self.acked(command);
-        });
-        self.acked_on_port(&MESSAGES);
+        for command in SETUP {
+            self.acked(command).await;
+        }
+        self.acked_on_port(&MESSAGES).await;
         self.buffer.clear();
         if self.mb_two {
             self.events.push(self.unknown_status(true, false));
@@ -268,8 +269,8 @@ impl<T: Transport> BaseDriver for AshtechBase<T> {
         true
     }
 
-    fn receive(&mut self, timeout_ms: u64) -> Option<bool> {
-        let Some(bytes) = self.transport.read(timeout_ms) else {
+    async fn receive(&mut self, timeout_ms: u64) -> Option<bool> {
+        let Some(bytes) = self.transport.read(timeout_ms).await else {
             self.transport_lost = true;
             return None;
         };
@@ -278,10 +279,12 @@ impl<T: Transport> BaseDriver for AshtechBase<T> {
         }
         self.buffer.extend_from_slice(&bytes);
         let before = self.events.len();
-        take_messages(&mut self.buffer).into_iter().for_each(|message| match message {
-            Message::Nmea(sentence) => self.sentence(&sentence),
-            Message::Rtcm(frame) => self.events.push(Event::Rtcm(frame)),
-        });
+        for message in take_messages(&mut self.buffer) {
+            match message {
+                Message::Nmea(sentence) => self.sentence(&sentence).await,
+                Message::Rtcm(frame) => self.events.push(Event::Rtcm(frame)),
+            }
+        }
         Some(self.events.len() > before)
     }
 
@@ -298,6 +301,7 @@ impl<T: Transport> BaseDriver for AshtechBase<T> {
 mod tests {
     use super::*;
     use crate::gpsrtk::SurveySpec;
+    use crate::ubxbase::block_on;
     use std::collections::VecDeque;
 
     fn checksummed(body: &str) -> String {
@@ -314,7 +318,7 @@ mod tests {
     }
 
     impl Transport for Receiver {
-        fn read(&mut self, timeout_ms: u64) -> Option<Vec<u8>> {
+        async fn read(&mut self, timeout_ms: u64) -> Option<Vec<u8>> {
             match self.pending.is_empty() {
                 true => {
                     self.clock_ms += timeout_ms.max(1);
@@ -374,37 +378,37 @@ mod tests {
     #[test]
     fn an_mb_two_is_configured_like_gps_driver_ashtech_and_waits_for_a_position() {
         let mut base = AshtechBase::new(receiver(), survey());
-        assert!(base.configure());
+        assert!(block_on(base.configure()));
         assert_eq!(base.transport.bauds, [ASHTECH_BAUD]);
         let expected: Vec<String> = [PORT_QUERY, BOARD_QUERY].into_iter().chain(SETUP).map(String::from).chain(on_port_b(&MESSAGES)).collect();
         assert_eq!(base.transport.written, expected);
         assert_eq!(base.take_events().iter().map(flags).collect::<Vec<_>>(), [(0, 0b10, false)]);
 
         base.transport.pending.extend(checksummed(NO_POSITION).bytes());
-        assert_eq!(base.receive(100), Some(false), "no correction output before the receiver has a position");
+        assert_eq!(block_on(base.receive(100)), Some(false), "no correction output before the receiver has a position");
         assert_eq!(base.transport.written.len(), expected.len());
     }
 
     #[test]
     fn a_surveying_base_averages_then_streams_rtcm() {
         let mut base = AshtechBase::new(receiver(), survey());
-        base.configure();
+        block_on(base.configure());
         base.take_events();
         let configured = base.transport.written.len();
 
         base.transport.pending.extend(checksummed(POSITION).bytes());
-        assert_eq!(base.receive(100), Some(true));
+        assert_eq!(block_on(base.receive(100)), Some(true));
         let started: Vec<String> = ["$PASHS,POS,AVG,100\r\n"].into_iter().chain(SURVEY_BASE).map(String::from).collect();
         assert_eq!(base.transport.written[configured..], started);
         assert_eq!(base.take_events().iter().map(flags).collect::<Vec<_>>(), [(0, 0b10, false)]);
 
         base.transport.clock_ms += 3_000;
         base.transport.pending.extend(checksummed(POSITION).bytes());
-        base.receive(100);
+        block_on(base.receive(100));
         assert_eq!(base.take_events().iter().map(flags).collect::<Vec<_>>(), [(3, 0b10, false)], "one tick per new second, the survey is not restarted");
 
         base.transport.pending.extend(checksummed(FINISHED).bytes());
-        base.receive(100);
+        block_on(base.receive(100));
         let Event::SurveyIn(done) = base.take_events().remove(0) else { panic!("finished survey expected") };
         assert_eq!(done.flags, 0b01);
         assert!((done.latitude - 55.708_630_801_666).abs() < 1e-9 && (done.longitude - 37.654_924_99).abs() < 1e-9, "{done:?}");
@@ -412,20 +416,20 @@ mod tests {
         assert_eq!(base.transport.written[configured + started.len()..], on_port_b(&RTCM_OUTPUT));
 
         base.transport.pending.extend([b'x', 0xd3, 0x00, 0x01, 0x42, 9, 9, 9]);
-        assert_eq!(base.receive(100), Some(true));
+        assert_eq!(block_on(base.receive(100)), Some(true));
         assert_eq!(base.take_events(), [Event::Rtcm(vec![0xd3, 0x00, 0x01, 0x42, 9, 9, 9])]);
     }
 
     #[test]
     fn a_failed_survey_reports_invalid_and_sends_no_corrections() {
         let mut base = AshtechBase::new(receiver(), survey());
-        base.configure();
+        block_on(base.configure());
         base.transport.pending.extend(checksummed(POSITION).bytes());
-        base.receive(100);
+        block_on(base.receive(100));
         base.take_events();
         let written = base.transport.written.len();
         base.transport.pending.extend(checksummed("PASHR,RECEIPT,POS,AVG,100,FINISHED,124628.01,28.12.2011,ERR").bytes());
-        base.receive(100);
+        block_on(base.receive(100));
         assert_eq!(base.take_events().iter().map(flags).collect::<Vec<_>>(), [(0, 0, false)]);
         assert_eq!(base.transport.written.len(), written);
     }
@@ -434,11 +438,11 @@ mod tests {
     fn a_fixed_base_is_told_its_position_in_ddmm_once_it_has_a_fix() {
         let fixed = BasePlan::Fixed(BasePosition { latitude: -47.5, longitude: 8.25, altitude_m: 488.0, accuracy_mm: 1500.0 });
         let mut base = AshtechBase::new(receiver(), fixed);
-        base.configure();
+        block_on(base.configure());
         base.take_events();
         let configured = base.transport.written.len();
         base.transport.pending.extend(checksummed(POSITION).bytes());
-        base.receive(100);
+        block_on(base.receive(100));
         assert_eq!(base.transport.written[configured], "$PASHS,POS,4730.00000000,S,815.00000000,E,488.00000,PC1");
         assert_eq!(base.transport.written[configured + 1..], on_port_b(&RTCM_OUTPUT));
         let Event::SurveyIn(done) = base.take_events().remove(0) else { panic!("fixed position status expected") };
@@ -448,23 +452,23 @@ mod tests {
     #[test]
     fn another_board_is_configured_but_never_becomes_a_base() {
         let mut base = AshtechBase::new(Receiver { board: "BD9", ..receiver() }, survey());
-        assert!(base.configure());
+        assert!(block_on(base.configure()));
         assert!(base.take_events().is_empty());
         let written = base.transport.written.len();
         base.transport.pending.extend(checksummed(POSITION).bytes());
-        assert_eq!(base.receive(100), Some(false));
+        assert_eq!(block_on(base.receive(100)), Some(false));
         assert_eq!(base.transport.written.len(), written);
     }
 
     #[test]
     fn gps_satellites_in_view_are_counted_like_the_driver() {
         let mut base = AshtechBase::new(receiver(), survey());
-        base.configure();
+        block_on(base.configure());
         base.take_events();
         base.transport.pending.extend(checksummed("GLGSV,1,1,02,70,40,100,30,71,20,300,").bytes());
         base.transport.pending.extend(checksummed("GPGSV,2,1,06,02,02,213,,03,-3,000,,11,00,121,,14,13,172,05").bytes());
         base.transport.pending.extend(checksummed("GPGSV,2,2,06,20,45,090,41,21,10,270,").bytes());
-        assert_eq!(base.receive(100), Some(true));
+        assert_eq!(block_on(base.receive(100)), Some(true));
         let events = base.take_events();
         let [Event::Satellites { count, list }] = events.as_slice() else { panic!("one satellite report expected, got {events:?}") };
         assert_eq!(*count, 6);
@@ -475,7 +479,7 @@ mod tests {
     #[test]
     fn a_receiver_that_never_answers_is_asked_for_its_port_twice() {
         let mut base = AshtechBase::new(Receiver { answers: false, ..receiver() }, survey());
-        assert!(!base.configure());
+        assert!(!block_on(base.configure()));
         assert_eq!(base.transport.written, [PORT_QUERY, PORT_QUERY]);
     }
 }

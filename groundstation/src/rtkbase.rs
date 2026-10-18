@@ -1,5 +1,9 @@
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::mpsc::{Receiver, RecvTimeoutError, Sender, channel};
+#[cfg(not(target_family = "wasm"))]
+use std::sync::mpsc::RecvTimeoutError;
+#[cfg(target_family = "wasm")]
+use std::sync::mpsc::TryRecvError;
+use std::sync::mpsc::{Receiver, Sender, channel};
 use std::sync::{Arc, LazyLock, Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 use web_time::Instant;
@@ -11,9 +15,15 @@ use crate::router::Backend;
 use crate::ashtechbase::AshtechBase;
 use crate::femtobase::FemtoBase;
 use crate::sbfbase::SbfBase;
+#[cfg(target_family = "wasm")]
+use crate::background::pause;
+#[cfg(not(target_family = "wasm"))]
+use crate::ubxbase::block_on;
 use crate::ubxbase::{BaseDriver, Event, Transport, UbxBase};
 
 const CONFIGURE_RETRY_MS: u64 = 500;
+#[cfg(target_family = "wasm")]
+const READ_POLL_MS: u64 = 10;
 #[cfg(hosted_serial)]
 const RTK_SERIAL_ID: u32 = 0xfff0_0001;
 
@@ -134,11 +144,25 @@ impl Drop for SerialTransport {
 }
 
 impl Transport for SerialTransport {
-    fn read(&mut self, timeout_ms: u64) -> Option<Vec<u8>> {
+    #[cfg(not(target_family = "wasm"))]
+    async fn read(&mut self, timeout_ms: u64) -> Option<Vec<u8>> {
         match self.incoming.recv_timeout(Duration::from_millis(timeout_ms)) {
             Ok(Incoming::Bytes(bytes)) => Some(bytes),
             Err(RecvTimeoutError::Timeout) => Some(Vec::new()),
             Ok(Incoming::Closed) | Err(RecvTimeoutError::Disconnected) => None,
+        }
+    }
+
+    #[cfg(target_family = "wasm")]
+    async fn read(&mut self, timeout_ms: u64) -> Option<Vec<u8>> {
+        let asked = Instant::now();
+        loop {
+            match self.incoming.try_recv() {
+                Ok(Incoming::Bytes(bytes)) => return Some(bytes),
+                Ok(Incoming::Closed) | Err(TryRecvError::Disconnected) => return None,
+                Err(TryRecvError::Empty) if asked.elapsed() >= Duration::from_millis(timeout_ms) => return Some(Vec::new()),
+                Err(TryRecvError::Empty) => pause(Duration::from_millis(READ_POLL_MS)).await,
+            }
         }
     }
 
@@ -176,9 +200,9 @@ fn apply(event: Event, now_ms: u64, stop: &AtomicBool) {
     }
 }
 
-fn stream(base: &mut dyn BaseDriver, stop: &AtomicBool) -> Result<(), Fault> {
+async fn stream(base: &mut impl BaseDriver, stop: &AtomicBool) -> Result<(), Fault> {
     while !stop.load(Ordering::Relaxed) {
-        let handled = base.receive(RECEIVE_TIMEOUT_MS as u64).ok_or(Fault::SerialError)?;
+        let handled = base.receive(RECEIVE_TIMEOUT_MS as u64).await.ok_or(Fault::SerialError)?;
         let events = base.take_events();
         let progress = handled || !events.is_empty();
         let now = crate::hub::now_ms();
@@ -188,15 +212,6 @@ fn stream(base: &mut dyn BaseDriver, stop: &AtomicBool) -> Result<(), Fault> {
         }
     }
     Ok(())
-}
-
-fn driver_for<T: Transport + 'static>(driver: Driver, transport: T, plan: crate::gpsrtk::BasePlan) -> Box<dyn BaseDriver> {
-    match driver {
-        Driver::UBlox => Box::new(UbxBase::new(transport, plan)),
-        Driver::Septentrio => Box::new(SbfBase::new(transport, plan)),
-        Driver::Femtomes => Box::new(FemtoBase::new(transport, plan)),
-        Driver::Trimble => Box::new(AshtechBase::new(transport, plan)),
-    }
 }
 
 const MANUFACTURER_SETTING: &str = "settings.rtkSettings.baseReceiverManufacturers";
@@ -210,36 +225,68 @@ pub fn manufacturer_id(driver: Driver) -> u8 {
     }
 }
 
-pub fn run<T: Transport + 'static>(transport: T, stop: &AtomicBool) {
+#[cfg(not(target_family = "wasm"))]
+async fn pause(wait: Duration) {
+    std::thread::sleep(wait);
+}
+
+pub async fn run<T: Transport>(transport: T, stop: &AtomicBool) {
     let configure = owned(stop, Session::serial_opened).into_iter().find_map(|out| match out {
         Out::ConfigureDriver { driver, plan, .. } => Some((driver, plan)),
         _ => None,
     });
-    if let Some((driver, _)) = configure.as_ref() {
-        crate::settingsstore::set_raw(MANUFACTURER_SETTING, &json!(manufacturer_id(*driver)));
-    }
-    let Some(mut base) = configure.map(|(driver, plan)| driver_for(driver, transport, plan)) else {
+    let Some((driver, plan)) = configure else {
         owned(stop, |held| held.serial_failed(Fault::ConfigureFailed));
         return;
     };
+    crate::settingsstore::set_raw(MANUFACTURER_SETTING, &json!(manufacturer_id(driver)));
+    match driver {
+        Driver::UBlox => drive(UbxBase::new(transport, plan), stop).await,
+        Driver::Septentrio => drive(SbfBase::new(transport, plan), stop).await,
+        Driver::Femtomes => drive(FemtoBase::new(transport, plan), stop).await,
+        Driver::Trimble => drive(AshtechBase::new(transport, plan), stop).await,
+    }
+}
+
+async fn drive(mut base: impl BaseDriver, stop: &AtomicBool) {
     while !stop.load(Ordering::Relaxed) {
-        if !base.configure() {
+        if !base.configure().await {
             if base.transport_lost() {
                 owned(stop, |held| held.serial_failed(Fault::SerialError));
                 return;
             }
             if !stop.load(Ordering::Relaxed) {
                 owned(stop, Session::driver_configure_failed);
-                std::thread::sleep(Duration::from_millis(CONFIGURE_RETRY_MS));
+                pause(Duration::from_millis(CONFIGURE_RETRY_MS)).await;
             }
             continue;
         }
         owned(stop, Session::driver_configured);
-        if let Err(fault) = stream(base.as_mut(), stop) {
+        if let Err(fault) = stream(&mut base, stop).await {
             owned(stop, |held| held.serial_failed(fault));
             return;
         }
     }
+}
+
+async fn open_and_run(port: &str, stop: &AtomicBool) {
+    match SerialTransport::open(port, INITIAL_BAUD) {
+        Ok(transport) => run(transport, stop).await,
+        Err(reason) => {
+            log::warn!("RTK base {reason}");
+            owned(stop, |held| held.serial_failed(Fault::DeviceMissing));
+        }
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn start(port: String, stop: Arc<AtomicBool>) {
+    let _ = std::thread::Builder::new().name("groundstation-rtk-base".to_string()).spawn(move || block_on(open_and_run(&port, &stop)));
+}
+
+#[cfg(target_family = "wasm")]
+fn start(port: String, stop: Arc<AtomicBool>) {
+    wasm_bindgen_futures::spawn_local(async move { open_and_run(&port, &stop).await });
 }
 
 pub fn connect(port: &str, name: &str) {
@@ -250,15 +297,8 @@ pub fn connect(port: &str, name: &str) {
     }
     let stop = Arc::new(AtomicBool::new(false));
     *STOP.lock().unwrap_or_else(PoisonError::into_inner) = Some(stop.clone());
-    let port = port.to_string();
     log::info!("RTK base connecting on {port} as {name}");
-    let _ = std::thread::Builder::new().name("groundstation-rtk-base".to_string()).spawn(move || match SerialTransport::open(&port, INITIAL_BAUD) {
-        Ok(transport) => run(transport, &stop),
-        Err(reason) => {
-            log::warn!("RTK base {reason}");
-            owned(&stop, |held| held.serial_failed(Fault::DeviceMissing));
-        }
-    });
+    start(port.to_string(), stop);
 }
 
 pub fn disconnect() {
@@ -303,7 +343,7 @@ mod tests {
     struct Silent(u64);
 
     impl Transport for Silent {
-        fn read(&mut self, timeout_ms: u64) -> Option<Vec<u8>> {
+        async fn read(&mut self, timeout_ms: u64) -> Option<Vec<u8>> {
             self.0 += timeout_ms.max(1);
             (self.0 < 3_000).then(Vec::new)
         }
@@ -321,9 +361,9 @@ mod tests {
     #[test]
     fn a_stopped_worker_leaves_the_session_alone_and_a_dead_port_fails_it() {
         session().connect("/dev/gps", "u-blox", Settings::default());
-        run(Silent(0), &AtomicBool::new(true));
+        block_on(run(Silent(0), &AtomicBool::new(true)));
         assert!(matches!(session().link, Link::Opening { .. }), "a worker replaced by a newer connect never writes into its session");
-        run(Silent(0), &AtomicBool::new(false));
+        block_on(run(Silent(0), &AtomicBool::new(false)));
         let after = session();
         assert_eq!(after.link, Link::Failed);
         assert_eq!(after.fault, Some(Fault::SerialError));

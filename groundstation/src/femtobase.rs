@@ -1,6 +1,6 @@
 use crate::gpsrtk::{BasePlan, BasePosition};
 use crate::sbfbase::heard_within;
-use crate::ubxbase::{BaseDriver, Event, Frame, RTCM3_PREAMBLE, Scan, SurveyStatus, Transport, scan};
+use crate::ubxbase::{BaseDriver, Event, Frame, RTCM3_PREAMBLE, Scan, SurveyStatus, Transport, first, scan};
 
 const FEMTO_BAUD: u32 = 115200;
 const ACK_WINDOW_MS: u64 = 400;
@@ -114,43 +114,43 @@ impl<T: Transport> FemtoBase<T> {
         FemtoBase { transport, buffer: Vec::new(), plan, configured: false, transport_lost: false, corrections_on: false, survey_from_ms: None, survey_s: 0, events: Vec::new() }
     }
 
-    fn acked(&mut self, (command, reply): (&str, &str)) -> bool {
-        self.transport.write(command.as_bytes()) && heard_within(&mut self.transport, ACK_WINDOW_MS, &mut self.transport_lost, |heard| heard.contains(reply)).is_some()
+    async fn acked(&mut self, (command, reply): (&str, &str)) -> bool {
+        self.transport.write(command.as_bytes()) && heard_within(&mut self.transport, ACK_WINDOW_MS, &mut self.transport_lost, |heard| heard.contains(reply)).await.is_some()
     }
 
     fn status(&self, active: bool, valid: bool, latitude: f64, longitude: f64, altitude_m: f32) -> Event {
         Event::SurveyIn(SurveyStatus { duration_s: self.survey_s, mean_accuracy_mm: 0, latitude, longitude, altitude_m, flags: u8::from(valid) | (u8::from(active) << 1) })
     }
 
-    fn start_corrections(&mut self) {
-        self.acked(LOG_RTCM);
+    async fn start_corrections(&mut self) {
+        self.acked(LOG_RTCM).await;
         self.corrections_on = true;
     }
 
-    fn start_survey(&mut self) {
-        if self.acked(POSAVE) {
-            self.acked(LOG_GGA);
+    async fn start_survey(&mut self) {
+        if self.acked(POSAVE).await {
+            self.acked(LOG_GGA).await;
         }
         self.survey_s = 0;
         self.survey_from_ms = Some(self.transport.now_ms());
         self.events.push(self.status(true, false, 0.0, 0.0, 0.0));
     }
 
-    fn fix_position(&mut self, position: BasePosition) {
+    async fn fix_position(&mut self, position: BasePosition) {
         let command = format!("FIX POSITION {:.8} {:.8} {:.5}\r\n", position.latitude, position.longitude, f64::from(position.altitude_m));
-        if self.acked((&command, FIX_OK)) {
-            self.start_corrections();
+        if self.acked((&command, FIX_OK)).await {
+            self.start_corrections().await;
             self.events.push(self.status(false, true, position.latitude, position.longitude, position.altitude_m));
-            self.acked(LOG_GGA);
+            self.acked(LOG_GGA).await;
         }
     }
 
-    fn sentence(&mut self, sentence: &str) {
+    async fn sentence(&mut self, sentence: &str) {
         if let Some(fix) = gga(sentence) {
             if !self.corrections_on && fix.quality == BASE_FIXED_QUALITY {
                 self.survey_from_ms = None;
                 self.events.push(self.status(false, true, fix.latitude, fix.longitude, fix.altitude_m as f32));
-                self.start_corrections();
+                self.start_corrections().await;
             }
             self.events.push(Event::Satellites { count: fix.satellites, list: Vec::new() });
         }
@@ -165,25 +165,25 @@ impl<T: Transport> FemtoBase<T> {
 }
 
 impl<T: Transport> BaseDriver for FemtoBase<T> {
-    fn configure(&mut self) -> bool {
+    async fn configure(&mut self) -> bool {
         self.configured = false;
         self.corrections_on = false;
         self.survey_from_ms = None;
         self.transport.set_baud(FEMTO_BAUD);
-        if !(0..2).any(|_| self.acked(UNLOGALL) && self.acked(VERSION)) {
+        if first(0..2, async |_| (self.acked(UNLOGALL).await && self.acked(VERSION).await).then_some(())).await.is_none() {
             return false;
         }
         self.buffer.clear();
         match self.plan {
-            BasePlan::SurveyIn(_) => self.start_survey(),
-            BasePlan::Fixed(position) => self.fix_position(position),
+            BasePlan::SurveyIn(_) => self.start_survey().await,
+            BasePlan::Fixed(position) => self.fix_position(position).await,
         }
         self.configured = true;
         true
     }
 
-    fn receive(&mut self, timeout_ms: u64) -> Option<bool> {
-        let Some(bytes) = self.transport.read(timeout_ms) else {
+    async fn receive(&mut self, timeout_ms: u64) -> Option<bool> {
+        let Some(bytes) = self.transport.read(timeout_ms).await else {
             self.transport_lost = true;
             return None;
         };
@@ -192,10 +192,12 @@ impl<T: Transport> BaseDriver for FemtoBase<T> {
         }
         self.buffer.extend_from_slice(&bytes);
         let before = self.events.len();
-        take_messages(&mut self.buffer).into_iter().for_each(|message| match message {
-            Message::Nmea(sentence) => self.sentence(&sentence),
-            Message::Rtcm(frame) => self.events.push(Event::Rtcm(frame)),
-        });
+        for message in take_messages(&mut self.buffer) {
+            match message {
+                Message::Nmea(sentence) => self.sentence(&sentence).await,
+                Message::Rtcm(frame) => self.events.push(Event::Rtcm(frame)),
+            }
+        }
         Some(self.events.len() > before)
     }
 
@@ -212,6 +214,7 @@ impl<T: Transport> BaseDriver for FemtoBase<T> {
 mod tests {
     use super::*;
     use crate::gpsrtk::SurveySpec;
+    use crate::ubxbase::block_on;
     use std::collections::VecDeque;
 
     struct Receiver {
@@ -223,7 +226,7 @@ mod tests {
     }
 
     impl Transport for Receiver {
-        fn read(&mut self, timeout_ms: u64) -> Option<Vec<u8>> {
+        async fn read(&mut self, timeout_ms: u64) -> Option<Vec<u8>> {
             match self.pending.is_empty() {
                 true => {
                     self.clock_ms += timeout_ms.max(1);
@@ -270,19 +273,19 @@ mod tests {
     #[test]
     fn a_surveying_base_averages_its_position_then_streams_rtcm_like_gps_driver_femto() {
         let mut base = FemtoBase::new(receiver(), survey());
-        assert!(base.configure());
+        assert!(block_on(base.configure()));
         assert_eq!(base.transport.written, [UNLOGALL.0, VERSION.0, POSAVE.0, LOG_GGA.0]);
         assert_eq!(base.transport.bauds, [FEMTO_BAUD]);
         assert_eq!(base.take_events(), [base.status(true, false, 0.0, 0.0, 0.0)]);
 
         base.transport.clock_ms += 2_500;
         base.transport.pending.extend(SURVEYING.bytes());
-        assert_eq!(base.receive(100), Some(true));
+        assert_eq!(block_on(base.receive(100)), Some(true));
         let Event::SurveyIn(ticking) = base.take_events().remove(1) else { panic!("survey tick expected") };
         assert_eq!((ticking.duration_s, ticking.flags), (2, 0b10));
 
         base.transport.pending.extend(SURVEYED.bytes());
-        assert_eq!(base.receive(100), Some(true));
+        assert_eq!(block_on(base.receive(100)), Some(true));
         let events = base.take_events();
         let Event::SurveyIn(done) = events[0] else { panic!("finished survey expected") };
         assert_eq!(done.flags, 0b01);
@@ -292,7 +295,7 @@ mod tests {
         assert_eq!(base.transport.written.last().map(String::as_str), Some(LOG_RTCM.0));
 
         base.transport.pending.extend([b'x', 0xd3, 0x00, 0x01, 0x42, 9, 9, 9]);
-        assert_eq!(base.receive(100), Some(true));
+        assert_eq!(block_on(base.receive(100)), Some(true));
         assert_eq!(base.take_events(), [Event::Rtcm(vec![0xd3, 0x00, 0x01, 0x42, 9, 9, 9])]);
     }
 
@@ -300,32 +303,32 @@ mod tests {
     fn a_fixed_base_is_told_its_position_and_streams_at_once() {
         let fixed = BasePlan::Fixed(BasePosition { latitude: 47.3977419, longitude: 8.5455938, altitude_m: 488.0, accuracy_mm: 1500.0 });
         let mut base = FemtoBase::new(receiver(), fixed);
-        assert!(base.configure());
+        assert!(block_on(base.configure()));
         assert_eq!(base.transport.written[2..], ["FIX POSITION 47.39774190 8.54559380 488.00000\r\n", LOG_RTCM.0, LOG_GGA.0]);
         assert_eq!(base.take_events(), [base.status(false, true, 47.3977419, 8.5455938, 488.0)]);
         base.transport.pending.extend(SURVEYED.bytes());
-        base.receive(100);
+        block_on(base.receive(100));
         assert_eq!(base.take_events(), [Event::Satellites { count: 12, list: Vec::new() }], "a fixed base never re-reports a finished survey");
     }
 
     #[test]
     fn a_sentence_with_a_bad_checksum_or_a_split_read_is_handled_like_the_driver() {
         let mut base = FemtoBase::new(receiver(), survey());
-        base.configure();
+        block_on(base.configure());
         base.take_events();
         base.transport.pending.extend(SURVEYED.replace("*4A", "*4B").bytes());
-        assert_eq!(base.receive(100), Some(false));
+        assert_eq!(block_on(base.receive(100)), Some(false));
         let (head, tail) = SURVEYED.split_at(30);
         base.transport.pending.extend(head.bytes());
-        assert_eq!(base.receive(100), Some(false));
+        assert_eq!(block_on(base.receive(100)), Some(false));
         base.transport.pending.extend(tail.bytes());
-        assert_eq!(base.receive(100), Some(true));
+        assert_eq!(block_on(base.receive(100)), Some(true));
     }
 
     #[test]
     fn a_receiver_that_never_answers_is_tried_twice_and_not_configured() {
         let mut base = FemtoBase::new(Receiver { answers: false, ..receiver() }, survey());
-        assert!(!base.configure());
+        assert!(!block_on(base.configure()));
         assert_eq!(base.transport.written, [UNLOGALL.0, UNLOGALL.0]);
     }
 }

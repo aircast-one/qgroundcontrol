@@ -151,17 +151,37 @@ pub enum Event {
 }
 
 pub trait BaseDriver {
-    fn configure(&mut self) -> bool;
-    fn receive(&mut self, timeout_ms: u64) -> Option<bool>;
+    fn configure(&mut self) -> impl Future<Output = bool>;
+    fn receive(&mut self, timeout_ms: u64) -> impl Future<Output = Option<bool>>;
     fn take_events(&mut self) -> Vec<Event>;
     fn transport_lost(&self) -> bool;
 }
 
 pub trait Transport {
-    fn read(&mut self, timeout_ms: u64) -> Option<Vec<u8>>;
+    fn read(&mut self, timeout_ms: u64) -> impl Future<Output = Option<Vec<u8>>>;
     fn write(&mut self, bytes: &[u8]) -> bool;
     fn set_baud(&mut self, baud: u32) -> bool;
     fn now_ms(&self) -> u64;
+}
+
+pub(crate) async fn first<I: IntoIterator, R>(items: I, mut pick: impl AsyncFnMut(I::Item) -> Option<R>) -> Option<R> {
+    for item in items {
+        if let Some(found) = pick(item).await {
+            return Some(found);
+        }
+    }
+    None
+}
+
+#[cfg(any(test, not(target_family = "wasm")))]
+pub(crate) fn block_on<F: Future>(future: F) -> F::Output {
+    let mut future = std::pin::pin!(future);
+    let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+    loop {
+        if let std::task::Poll::Ready(output) = future.as_mut().poll(&mut context) {
+            return output;
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -530,8 +550,8 @@ impl<T: Transport> UbxBase<T> {
         self.transport_lost
     }
 
-    fn receive_once(&mut self, timeout_ms: u64) -> Option<bool> {
-        let Some(bytes) = self.transport.read(timeout_ms) else {
+    async fn receive_once(&mut self, timeout_ms: u64) -> Option<bool> {
+        let Some(bytes) = self.transport.read(timeout_ms).await else {
             self.transport_lost = true;
             return None;
         };
@@ -539,20 +559,20 @@ impl<T: Transport> UbxBase<T> {
         Some(frames.into_iter().map(|frame| self.handle(frame)).collect::<Vec<bool>>().contains(&true))
     }
 
-    pub fn receive(&mut self, timeout_ms: u64) -> Option<bool> {
-        let handled = self.receive_once(timeout_ms)?;
+    pub async fn receive(&mut self, timeout_ms: u64) -> Option<bool> {
+        let handled = self.receive_once(timeout_ms).await?;
         if self.activate_requested && self.configured {
             self.activate_requested = false;
-            self.activate_rtcm_output(true);
+            self.activate_rtcm_output(true).await;
         }
         Some(handled)
     }
 
-    fn wait_for_ack(&mut self, message: (u8, u8), timeout_ms: u64) -> bool {
+    async fn wait_for_ack(&mut self, message: (u8, u8), timeout_ms: u64) -> bool {
         self.ack = Ack::Waiting(message.0, message.1);
         let deadline = self.transport.now_ms() + timeout_ms;
         while self.ack == Ack::Waiting(message.0, message.1) && self.transport.now_ms() < deadline {
-            if self.receive_once(deadline.saturating_sub(self.transport.now_ms())).is_none() {
+            if self.receive_once(deadline.saturating_sub(self.transport.now_ms())).await.is_none() {
                 break;
             }
         }
@@ -561,19 +581,19 @@ impl<T: Transport> UbxBase<T> {
         got
     }
 
-    fn send_and_ack(&mut self, message: (u8, u8), payload: &[u8], timeout_ms: u64) -> bool {
-        self.send(message, payload) && self.wait_for_ack(message, timeout_ms)
+    async fn send_and_ack(&mut self, message: (u8, u8), payload: &[u8], timeout_ms: u64) -> bool {
+        self.send(message, payload) && self.wait_for_ack(message, timeout_ms).await
     }
 
-    fn send_and_drain(&mut self, message: (u8, u8), payload: &[u8]) -> bool {
+    async fn send_and_drain(&mut self, message: (u8, u8), payload: &[u8]) -> bool {
         let sent = self.send(message, payload);
-        self.wait_for_ack(message, CONFIG_TIMEOUT_MS);
+        self.wait_for_ack(message, CONFIG_TIMEOUT_MS).await;
         sent
     }
 
-    fn flush(&mut self) {
+    async fn flush(&mut self) {
         self.decoder.reset();
-        let _ = self.transport.read(FLUSH_MS);
+        let _ = self.transport.read(FLUSH_MS).await;
         self.decoder.reset();
     }
 
@@ -581,13 +601,13 @@ impl<T: Transport> UbxBase<T> {
         std::iter::once((key + 1, Value::U8(rate))).chain((self.board != Board::UBlox10).then_some((key + 3, Value::U8(rate)))).collect()
     }
 
-    fn detect_baud(&mut self) -> Option<u32> {
-        PROBE_BAUD_RATES.iter().find_map(|test| {
+    async fn detect_baud(&mut self) -> Option<u32> {
+        first(PROBE_BAUD_RATES.iter(), async |test| {
             if self.transport_lost {
                 return None;
             }
             self.transport.set_baud(*test);
-            self.flush();
+            self.flush().await;
             let probe = valset(&[
                 (KEY_UART1_STOPBITS, Value::U8(1)),
                 (KEY_UART1_DATABITS, Value::U8(0)),
@@ -597,28 +617,29 @@ impl<T: Transport> UbxBase<T> {
                 (KEY_UART1OUTPROT_UBX, Value::U8(1)),
                 (KEY_UART1OUTPROT_NMEA, Value::U8(0)),
             ]);
-            let desired = match self.send_and_ack(CFG_VALSET, &probe, FIRST_VALSET_TIMEOUT_MS) {
+            let desired = match self.send_and_ack(CFG_VALSET, &probe, FIRST_VALSET_TIMEOUT_MS).await {
                 true => {
                     self.protocol_27 = true;
-                    self.send_and_drain(CFG_VALSET, &valset(&[(KEY_UART1_BAUDRATE, Value::U32(BAUD_M8_AND_NEWER))])).then_some(BAUD_M8_AND_NEWER)?
+                    self.send_and_drain(CFG_VALSET, &valset(&[(KEY_UART1_BAUDRATE, Value::U32(BAUD_M8_AND_NEWER))])).await.then_some(BAUD_M8_AND_NEWER)?
                 }
                 false => {
                     self.protocol_27 = false;
-                    if !self.send_and_ack(CFG_PRT, &cfg_prt(*test), CONFIG_TIMEOUT_MS) {
+                    if !self.send_and_ack(CFG_PRT, &cfg_prt(*test), CONFIG_TIMEOUT_MS).await {
                         return None;
                     }
-                    self.send_and_drain(CFG_PRT, &cfg_prt(BAUD_PRE_M8)).then_some(BAUD_PRE_M8)?
+                    self.send_and_drain(CFG_PRT, &cfg_prt(BAUD_PRE_M8)).await.then_some(BAUD_PRE_M8)?
                 }
             };
             if desired != *test {
                 self.transport.set_baud(desired);
-                self.flush();
+                self.flush().await;
             }
             Some(desired)
         })
+        .await
     }
 
-    fn configure_device(&mut self) -> bool {
+    async fn configure_device(&mut self) -> bool {
         let protocols = [
             (KEY_UART1INPROT_RTCM3X, Value::U8(0)),
             (KEY_UART1OUTPROT_RTCM3X, Value::U8(1)),
@@ -629,7 +650,7 @@ impl<T: Transport> UbxBase<T> {
             (KEY_USBOUTPROT_RTCM3X, Value::U8(1)),
             (KEY_USBOUTPROT_NMEA, Value::U8(0)),
         ];
-        if self.board != Board::UBlox10 && !self.send_and_ack(CFG_VALSET, &valset(&protocols), CONFIG_TIMEOUT_MS) {
+        if self.board != Board::UBlox10 && !self.send_and_ack(CFG_VALSET, &valset(&protocols), CONFIG_TIMEOUT_MS).await {
             return false;
         }
         let navigation = [
@@ -644,11 +665,11 @@ impl<T: Transport> UbxBase<T> {
             (KEY_RATE_NAV, Value::U16(1)),
             (KEY_RATE_TIMEREF, Value::U8(0)),
         ];
-        if !self.send_and_ack(CFG_VALSET, &valset(&navigation), CONFIG_TIMEOUT_MS) {
+        if !self.send_and_ack(CFG_VALSET, &valset(&navigation), CONFIG_TIMEOUT_MS).await {
             return false;
         }
-        self.send_and_drain(CFG_VALSET, &valset(&[(KEY_NAVHPG_DGNSSMODE, Value::U8(3))]));
-        self.send_and_drain(CFG_VALSET, &valset(&[(KEY_ITFM_ENABLE, Value::U8(1))]));
+        self.send_and_drain(CFG_VALSET, &valset(&[(KEY_NAVHPG_DGNSSMODE, Value::U8(3))])).await;
+        self.send_and_drain(CFG_VALSET, &valset(&[(KEY_ITFM_ENABLE, Value::U8(1))])).await;
         let high_precision = !matches!(self.board, Board::UBlox10 | Board::UBlox9);
         let outputs: Vec<(u32, Value)> = [
             Some((KEY_MSGOUT_NAV_PVT, 1)),
@@ -664,7 +685,7 @@ impl<T: Transport> UbxBase<T> {
         .flatten()
         .flat_map(|(key, rate)| self.port(key, rate))
         .collect();
-        if !self.send_and_ack(CFG_VALSET, &valset(&outputs), CONFIG_TIMEOUT_MS) {
+        if !self.send_and_ack(CFG_VALSET, &valset(&outputs), CONFIG_TIMEOUT_MS).await {
             return false;
         }
         let i2c: Vec<(u32, Value)> = [
@@ -679,40 +700,45 @@ impl<T: Transport> UbxBase<T> {
         .flatten()
         .map(|key| (key, Value::U8(0)))
         .collect();
-        self.send_and_ack(CFG_VALSET, &valset(&i2c), CONFIG_TIMEOUT_MS)
+        self.send_and_ack(CFG_VALSET, &valset(&i2c), CONFIG_TIMEOUT_MS).await
     }
 
-    fn rate_and_ack(&mut self, message: (u8, u8), rate: u8) -> bool {
-        self.send_and_ack(CFG_MSG, &cfg_msg(message, rate), CONFIG_TIMEOUT_MS)
+    async fn rate_and_ack(&mut self, message: (u8, u8), rate: u8) -> bool {
+        self.send_and_ack(CFG_MSG, &cfg_msg(message, rate), CONFIG_TIMEOUT_MS).await
     }
 
-    fn configure_device_pre_27(&mut self) -> bool {
-        if !self.send_and_ack(CFG_RATE, &cfg_rate(RATE_MEAS_MS), CONFIG_TIMEOUT_MS) || !self.send_and_ack(CFG_NAV5, &cfg_nav5(), CONFIG_TIMEOUT_MS) {
+    async fn configure_device_pre_27(&mut self) -> bool {
+        if !self.send_and_ack(CFG_RATE, &cfg_rate(RATE_MEAS_MS), CONFIG_TIMEOUT_MS).await || !self.send_and_ack(CFG_NAV5, &cfg_nav5(), CONFIG_TIMEOUT_MS).await {
             return false;
         }
-        let nav_pvt = self.rate_and_ack(NAV_PVT, 1);
+        let nav_pvt = self.rate_and_ack(NAV_PVT, 1).await;
         let legacy = [(NAV_TIMEUTC, 5), (NAV_POSLLH, 1), (NAV_SOL, 1), (NAV_VELNED, 1)];
         let common = [(NAV_STATUS, 1), (NAV_DOP, 1), (NAV_SVINFO, 5), (MON_HW, 1)];
-        legacy.iter().filter(|_| !nav_pvt).chain(common.iter()).all(|(message, rate)| self.rate_and_ack(*message, *rate))
+        for (message, rate) in legacy.iter().filter(|_| !nav_pvt).chain(common.iter()) {
+            if !self.rate_and_ack(*message, *rate).await {
+                return false;
+            }
+        }
+        true
     }
 
-    fn restart_survey_in(&mut self) -> bool {
+    async fn restart_survey_in(&mut self) -> bool {
         match self.protocol_27 {
-            true => self.restart_survey_in_27(),
-            false => self.restart_survey_in_pre_27(),
+            true => self.restart_survey_in_27().await,
+            false => self.restart_survey_in_pre_27().await,
         }
     }
 
-    fn restart_survey_in_27(&mut self) -> bool {
+    async fn restart_survey_in_27(&mut self) -> bool {
         let silenced: Vec<(u32, Value)> = KEY_MSGOUT_RTCM.iter().flat_map(|key| self.port(*key, 0)).collect();
-        self.send_and_drain(CFG_VALSET, &valset(&silenced));
+        self.send_and_drain(CFG_VALSET, &valset(&silenced)).await;
         match self.plan {
             Some(BasePlan::SurveyIn(spec)) => {
                 let survey: Vec<(u32, Value)> = [(KEY_TMODE_MODE, Value::U8(1)), (KEY_TMODE_SVIN_MIN_DUR, Value::U32(spec.duration_s)), (KEY_TMODE_SVIN_ACC_LIMIT, Value::U32(spec.accuracy_driver_units as u32))]
                     .into_iter()
                     .chain(self.port(KEY_MSGOUT_NAV_SVIN, 5))
                     .collect();
-                self.send_and_ack(CFG_VALSET, &valset(&survey), CONFIG_TIMEOUT_MS)
+                self.send_and_ack(CFG_VALSET, &valset(&survey), CONFIG_TIMEOUT_MS).await
             }
             Some(BasePlan::Fixed(position)) => {
                 let (lat, lat_hp) = high_precision(position.latitude, 1e9);
@@ -729,27 +755,27 @@ impl<T: Transport> UbxBase<T> {
                     (KEY_TMODE_HEIGHT_HP, Value::I8(alt_hp)),
                     (KEY_TMODE_FIXED_POS_ACC, Value::U32((position.accuracy_mm * 10.0) as u32)),
                 ];
-                self.send_and_ack(CFG_VALSET, &valset(&fixed), CONFIG_TIMEOUT_MS) && self.activate_rtcm_output(true)
+                self.send_and_ack(CFG_VALSET, &valset(&fixed), CONFIG_TIMEOUT_MS).await && self.activate_rtcm_output(true).await
             }
             None => false,
         }
     }
 
-    fn restart_survey_in_pre_27(&mut self) -> bool {
+    async fn restart_survey_in_pre_27(&mut self) -> bool {
         RTCM3_MESSAGES.iter().for_each(|message| {
             self.send(CFG_MSG, &cfg_msg(*message, 0));
         });
-        if !self.send_and_ack(CFG_TMODE3, &cfg_tmode3(None), CONFIG_TIMEOUT_MS) {
+        if !self.send_and_ack(CFG_TMODE3, &cfg_tmode3(None), CONFIG_TIMEOUT_MS).await {
             return false;
         }
         match self.plan {
-            Some(survey @ BasePlan::SurveyIn(_)) => self.send_and_ack(CFG_TMODE3, &cfg_tmode3(Some(survey)), CONFIG_TIMEOUT_MS) && self.rate_and_ack(NAV_SVIN, 5),
-            Some(fixed @ BasePlan::Fixed(_)) => self.send_and_ack(CFG_TMODE3, &cfg_tmode3(Some(fixed)), CONFIG_TIMEOUT_MS) && self.activate_rtcm_output(true),
+            Some(survey @ BasePlan::SurveyIn(_)) => self.send_and_ack(CFG_TMODE3, &cfg_tmode3(Some(survey)), CONFIG_TIMEOUT_MS).await && self.rate_and_ack(NAV_SVIN, 5).await,
+            Some(fixed @ BasePlan::Fixed(_)) => self.send_and_ack(CFG_TMODE3, &cfg_tmode3(Some(fixed)), CONFIG_TIMEOUT_MS).await && self.activate_rtcm_output(true).await,
             None => false,
         }
     }
 
-    fn activate_rtcm_output(&mut self, reduce_update_rate: bool) -> bool {
+    async fn activate_rtcm_output(&mut self, reduce_update_rate: bool) -> bool {
         match self.protocol_27 {
             true => {
                 let outputs: Vec<(u32, Value)> = reduce_update_rate
@@ -758,7 +784,7 @@ impl<T: Transport> UbxBase<T> {
                     .chain(KEY_MSGOUT_RTCM.iter().zip(RTCM_RATES).flat_map(|(key, rate)| self.port(*key, rate)))
                     .chain(self.port(KEY_MSGOUT_NAV_SVIN, 0))
                     .collect();
-                self.send_and_ack(CFG_VALSET, &valset(&outputs), CONFIG_TIMEOUT_MS)
+                self.send_and_ack(CFG_VALSET, &valset(&outputs), CONFIG_TIMEOUT_MS).await
             }
             false => {
                 if reduce_update_rate && !self.send(CFG_RATE, &cfg_rate(RATE_MEAS_BASE_MS)) {
@@ -770,23 +796,23 @@ impl<T: Transport> UbxBase<T> {
         }
     }
 
-    pub fn configure(&mut self) -> bool {
+    pub async fn configure(&mut self) -> bool {
         self.configured = false;
-        if self.detect_baud().is_none() {
+        if self.detect_baud().await.is_none() {
             return false;
         }
-        if !self.send(MON_VER, &[]) || !self.wait_for_ack(MON_VER, CONFIG_TIMEOUT_MS) {
+        if !self.send(MON_VER, &[]) || !self.wait_for_ack(MON_VER, CONFIG_TIMEOUT_MS).await {
             return false;
         }
         if self.board == Board::UBlox8 && self.send(CFG_PRT, &cfg_prt(BAUD_M8_AND_NEWER)) {
-            self.wait_for_ack(CFG_PRT, CONFIG_TIMEOUT_MS);
+            self.wait_for_ack(CFG_PRT, CONFIG_TIMEOUT_MS).await;
             self.transport.set_baud(BAUD_M8_AND_NEWER);
         }
         let device = match self.protocol_27 {
-            true => self.configure_device(),
-            false => self.configure_device_pre_27(),
+            true => self.configure_device().await,
+            false => self.configure_device_pre_27().await,
         };
-        if !device || !self.restart_survey_in() {
+        if !device || !self.restart_survey_in().await {
             return false;
         }
         self.configured = true;
@@ -795,12 +821,12 @@ impl<T: Transport> UbxBase<T> {
 }
 
 impl<T: Transport> BaseDriver for UbxBase<T> {
-    fn configure(&mut self) -> bool {
-        UbxBase::configure(self)
+    async fn configure(&mut self) -> bool {
+        UbxBase::configure(self).await
     }
 
-    fn receive(&mut self, timeout_ms: u64) -> Option<bool> {
-        UbxBase::receive(self, timeout_ms)
+    async fn receive(&mut self, timeout_ms: u64) -> Option<bool> {
+        UbxBase::receive(self, timeout_ms).await
     }
 
     fn take_events(&mut self) -> Vec<Event> {
@@ -847,7 +873,7 @@ mod tests {
     }
 
     impl Transport for Receiver {
-        fn read(&mut self, timeout_ms: u64) -> Option<Vec<u8>> {
+        async fn read(&mut self, timeout_ms: u64) -> Option<Vec<u8>> {
             match self.pending.is_empty() {
                 true => {
                     self.clock_ms += timeout_ms.max(1);
@@ -937,7 +963,7 @@ mod tests {
     fn a_generation_9_receiver_is_found_at_its_baud_and_set_up_as_a_survey_in_base() {
         let device = Receiver::new(57600, true, "00190000", vec!["FWVER=HPG 1.32", "PROTVER=27.31", "MOD=ZED-F9P"]);
         let mut base = UbxBase::new(device, survey());
-        assert!(base.configure());
+        assert!(block_on(base.configure()));
         assert_eq!((base.board, base.protocol_27), (Board::UBlox9F9pL1L2, true));
         assert_eq!(base.transport.bauds, [38400, 57600, 115200], "38400 answers nothing, 57600 acks the probe, then the receiver is moved to 115200");
         let valsets: Vec<Vec<u32>> = base.transport.written.iter().filter(|(c, i, _)| (*c, *i) == CFG_VALSET).map(|(_, _, p)| keys_in(p)).collect();
@@ -952,12 +978,12 @@ mod tests {
     fn a_survey_that_completes_turns_the_rtcm_stream_on() {
         let device = Receiver::new(38400, true, "00190000", vec!["MOD=ZED-F9P"]);
         let mut base = UbxBase::new(device, survey());
-        assert!(base.configure());
+        assert!(block_on(base.configure()));
         let svin: Vec<u8> = [vec![0; 8], 181u32.to_le_bytes().to_vec(), 400_000_000_i32.to_le_bytes().to_vec(), 0i32.to_le_bytes().to_vec(), 400_000_000_i32.to_le_bytes().to_vec(), vec![0; 4], 15_000u32.to_le_bytes().to_vec(), 300u32.to_le_bytes().to_vec(), vec![1, 0, 0, 0]].concat();
         base.transport.reply(CLASS_NAV, 0x3b, &svin);
         base.transport.pending.extend([0xd3, 0x00, 0x01, 0x99, 0, 0, 0]);
         let before = base.transport.written.len();
-        assert_eq!(base.receive(100), Some(true));
+        assert_eq!(block_on(base.receive(100)), Some(true));
         let events = base.take_events();
         let Event::SurveyIn(status) = &events[0] else { panic!("{events:?}") };
         assert_eq!((status.duration_s, status.mean_accuracy_mm, status.flags), (181, 1500, 1));
@@ -973,7 +999,7 @@ mod tests {
         let device = Receiver::new(9600, false, "00080000", vec!["PROTVER=20.30"]);
         let fixed = BasePlan::Fixed(BasePosition { latitude: 47.3977419, longitude: 8.5455938, altitude_m: 488.0, accuracy_mm: 1500.0 });
         let mut base = UbxBase::new(device, fixed);
-        assert!(base.configure());
+        assert!(block_on(base.configure()));
         assert_eq!((base.board, base.protocol_27), (Board::UBlox8, false));
         assert_eq!(*base.transport.bauds.last().unwrap(), BAUD_M8_AND_NEWER, "an M8 is moved to 115200 once MON-VER names it");
         let tmode: Vec<&Vec<u8>> = base.transport.written.iter().filter(|(c, i, _)| (*c, *i) == CFG_TMODE3).map(|(_, _, p)| p).collect();
@@ -989,7 +1015,7 @@ mod tests {
     fn nothing_answering_fails_the_configuration() {
         let device = Receiver::new(1, true, "00190000", Vec::new());
         let mut base = UbxBase::new(device, survey());
-        assert!(!base.configure());
+        assert!(!block_on(base.configure()));
         assert_eq!(base.transport.bauds, PROBE_BAUD_RATES);
     }
 
