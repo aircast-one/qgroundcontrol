@@ -835,22 +835,27 @@ mod tests {
         use std::io::{Read, Write};
         let (mut master, slave) = serialport::TTYPort::pair().unwrap();
         let firmware: Vec<u8> = (0..3000u32).map(|i| (i * 13 % 256) as u8).collect();
-        let board_side = std::thread::spawn(move || {
-            let mut board = Board::new(5, 50, 8192);
-            let _ = master.set_timeout(std::time::Duration::from_millis(50));
-            let mut chunk = [0u8; 512];
-            while !board.booted {
-                if let Ok(read) = master.read(&mut chunk) {
-                    board.write(&chunk[..read]).unwrap();
-                    master.write_all(&board.output()).unwrap();
+        let flashed_all = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let board_side = std::thread::spawn({
+            let flashed_all = std::sync::Arc::clone(&flashed_all);
+            move || {
+                let mut board = Board::new(5, 50, 8192);
+                let _ = master.set_timeout(std::time::Duration::from_millis(50));
+                let mut chunk = [0u8; 512];
+                while !board.booted && !flashed_all.load(std::sync::atomic::Ordering::Relaxed) {
+                    if let Ok(read) = master.read(&mut chunk) {
+                        board.write(&chunk[..read]).unwrap();
+                        master.write_all(&board.output()).unwrap();
+                    }
                 }
+                board.flash
             }
-            board.flash
         });
         let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
         encoder.write_all(&firmware).unwrap();
         let px4 = serde_json::json!({ "board_id": 50, "image_size": firmware.len(), "image": base64::Engine::encode(&base64::engine::general_purpose::STANDARD, encoder.finish().unwrap()) }).to_string();
         flash(Serial(Box::new(slave)), "fw.px4", px4.as_bytes(), &mut |_| {}).unwrap();
+        flashed_all.store(true, std::sync::atomic::Ordering::Relaxed);
         let flashed = board_side.join().unwrap();
         assert_eq!(&flashed[..firmware.len()], &firmware[..]);
         assert!(flashed[firmware.len()..].iter().all(|b| *b == 0xff));
