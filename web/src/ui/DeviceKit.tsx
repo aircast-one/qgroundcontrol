@@ -281,16 +281,18 @@ export const DeviceSelect = ({ label, value, options, onPick, enabled = true }: 
       <Text typography="bodySmall" color={md('onSurfaceVariant')}>
         {label}
       </Text>
-      <button
-        type="button"
-        aria-label={label}
-        aria-haspopup="menu"
-        disabled={!enabled}
-        onClick={() => setOpen(true)}
-        className="relative flex min-h-14 items-center gap-3 rounded-shape-xs border border-outline px-4 text-left text-body-large text-on-surface disabled:opacity-40"
-      >
-        <span className="min-w-0 flex-1 truncate">{shown}</span>
-        <MaterialIcon name="arrow_drop_down" />
+      <div className="relative">
+        <button
+          type="button"
+          aria-label={label}
+          aria-haspopup="menu"
+          disabled={!enabled}
+          onClick={() => setOpen(true)}
+          className="flex min-h-14 w-full items-center gap-3 rounded-shape-xs border border-outline px-4 text-left text-body-large text-on-surface disabled:opacity-40"
+        >
+          <span className="min-w-0 flex-1 truncate">{shown}</span>
+          <MaterialIcon name="arrow_drop_down" />
+        </button>
         <DropdownMenu expanded={open} onDismissRequest={() => setOpen(false)}>
           {options.map((option) => (
             <DropdownMenuItem
@@ -304,7 +306,7 @@ export const DeviceSelect = ({ label, value, options, onPick, enabled = true }: 
             />
           ))}
         </DropdownMenu>
-      </button>
+      </div>
     </div>
   );
 };
