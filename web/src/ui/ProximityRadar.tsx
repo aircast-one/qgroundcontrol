@@ -60,7 +60,7 @@ const RadarRings = ({ radar, className }: { radar: ProximityRadar; className?: s
   const center = { x: width / 2, y: height / 2 };
   const placed = radar.sectors.flatMap((sector) => (sector.meters === null ? [] : [{ sector, meters: sector.meters }]));
   return (
-    <div ref={ref} className={`pointer-events-none relative ${className ?? ''}`}>
+    <div ref={ref} className={`pointer-events-none ${className ?? 'relative'}`}>
       {shortest > 0 ? (
         <>
           <svg width={width} height={height} className="absolute inset-0" aria-hidden>

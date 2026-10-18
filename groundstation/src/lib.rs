@@ -42,6 +42,7 @@ pub mod cameraproto;
 pub mod cmdinfo;
 pub mod debugapi;
 pub mod detections;
+pub mod devicetrack;
 pub mod contract;
 pub mod factmeta;
 pub mod control;

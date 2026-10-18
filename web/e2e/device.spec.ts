@@ -5,7 +5,7 @@ const DEVICE = 'http://localhost:18780';
 const SBS1 = 30003;
 const UPLOADS = 18782;
 
-type Stats = { uploads: string[]; firmware: number[]; relays: string[]; store: string; tcpHeartbeats: number };
+type Stats = { uploads: string[]; firmware: number[]; relays: string[]; store: string; tcpHeartbeats: number; tracks: string[] };
 
 const stats = async (): Promise<Stats> => (await fetch(`${DEVICE}/stats`)).json() as Promise<Stats>;
 
@@ -92,4 +92,27 @@ test('a device page draws what the device detects on its camera', async ({ devic
     await Qgc.set('settings.appSettings.detectionsHttpPort', port);
   }, ['/src/bridge/Qgc.ts', 18780] as const);
   await expect(device.getByText('car 90%')).toBeVisible({ timeout: 60_000 });
+});
+
+test('a device page tracks what the pilot boxes with the device tracker', async ({ device }) => {
+  await device.evaluate(async ([module, port]) => {
+    const { Qgc } = (await import(module)) as { Qgc: { set: (path: string, value: unknown) => Promise<unknown> } };
+    await Qgc.set('settings.appSettings.detectionsHttpPort', port);
+  }, ['/src/bridge/Qgc.ts', 18780] as const);
+  const caption = device.getByText('car 90%');
+  await expect(caption).toBeVisible({ timeout: 60_000 });
+  await device.evaluate(async (module) => {
+    const { Qgc } = (await import(module)) as { Qgc: { set: (path: string, value: unknown) => Promise<unknown> } };
+    await Qgc.set('vehicle.cameraManager.currentCameraInstance.trackingEnabled', true);
+  }, '/src/bridge/Qgc.ts');
+  const later = device.getByRole('button', { name: 'Fly now, finish loading in background' });
+  if (await later.isVisible()) await later.click();
+  await expect(later).toBeHidden();
+  const at = await caption.boundingBox();
+  if (at === null) throw new Error('the detection caption has no box');
+  await device.mouse.move(at.x + 2, at.y + at.height + 4);
+  await device.mouse.down();
+  await device.mouse.move(at.x + 30, at.y + at.height + 30, { steps: 5 });
+  await device.mouse.up();
+  await expect.poll(async () => (await stats()).tracks.find((sent) => sent.startsWith('PUT /api/streams/e2e/track/visual')) ?? '', { timeout: 30_000 }).toMatch(/"w":0\.\d+/);
 });

@@ -177,7 +177,8 @@ internal fun rememberCameraSwiper(): (Int) -> Boolean {
 }
 
 @Composable
-internal fun rememberGimbalDrags(): Boolean {
+internal fun rememberDragAims(): Boolean {
     val view by qgcPath(GIMBAL_INDICATOR_PATH)
-    return remember(view) { onScreenGimbal(view) != null }
+    val camera by qgcPath(CAMERA_VIEW)
+    return remember(view, camera) { onScreenGimbal(view) != null || trackingCanAim(trackingReading(camera)) }
 }

@@ -38,7 +38,7 @@ export const TrackingBoxOverlay = ({ className }: { className?: string }) => {
   if (tracking === null) return null;
 
   return (
-    <div ref={ref} className={`pointer-events-none relative ${className ?? ''}`}>
+    <div ref={ref} className={`pointer-events-none ${className ?? 'relative'}`}>
       <div {...aim} className={`absolute inset-0 ${trackingCanAim(tracking) ? 'pointer-events-auto touch-none' : ''}`} />
       {box !== null ? (
         <svg width={size.width} height={size.height} className="absolute inset-0 block overflow-visible">

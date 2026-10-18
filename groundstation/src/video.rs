@@ -56,6 +56,7 @@ pub const CAMERA_DEPS: &[&str] = &[
     "vehicle.cameraManager.currentCameraInstance.currentStream",
     "vehicle.cameraManager.currentCamera",
     "vehicle.cameraTriggerPoints.count",
+    crate::devicetrack::CHANGED,
 ];
 
 const UNDEFINED_MODE: i64 = -1;
@@ -331,13 +332,13 @@ pub fn camera_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "thermalOpacity": (thermal_available && integer(&camera, "thermalMode") == Some(THERMAL_BLEND))
             .then(|| camera.get("thermalOpacity").and_then(Value::as_f64))
             .flatten(),
-        "tracking": present.then(|| json!({
+        "tracking": crate::devicetrack::tracking(&camera).or_else(|| present.then(|| json!({
             "supported": flag(&camera, "hasTracking"),
             "requested": flag(&camera, "trackingEnabled"),
             "reported": flag(&camera, "trackingImageIsActive"),
             "shapes": tracking_shapes(&camera),
             "rect": flag(&camera, "trackingImageIsActive").then(|| camera.get("trackingImageRect").cloned().filter(|r| r.is_object())).flatten(),
-        })),
+        }))),
         "hasZoom": flag(&camera, "hasZoom"),
         "zoomLevel": camera.get("zoomLevel").and_then(Value::as_f64).unwrap_or(0.0),
         "canRecord": present && integer(&camera, "captureVideoState").is_some_and(|state| state != CAPTURE_DISABLED),

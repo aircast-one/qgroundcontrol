@@ -24,9 +24,17 @@ pub struct Source {
 }
 
 impl Source {
-    pub fn stream_url(&self) -> String {
+    fn base(&self) -> String {
         let authority = self.port.map(|p| format!("{}:{p}", self.host)).unwrap_or_else(|| self.host.clone());
-        format!("http://{authority}/api/streams/{}/detections/stream", self.camera)
+        format!("http://{authority}/api/streams/{}", self.camera)
+    }
+
+    pub fn stream_url(&self) -> String {
+        format!("{}/detections/stream", self.base())
+    }
+
+    pub fn track_url(&self) -> String {
+        format!("{}/track", self.base())
     }
 }
 
@@ -129,6 +137,16 @@ impl Feed {
         }
         self.error = Some(error);
         true
+    }
+
+    pub fn tracker(&self, now_ms: u64) -> Option<(Source, Option<Value>)> {
+        let frame = self.frame.as_ref().filter(|f| now_ms.saturating_sub(f.received_ms) <= STALE_MS)?;
+        let target = frame
+            .boxes
+            .iter()
+            .find(|b| b.get("target").and_then(Value::as_bool).unwrap_or(false))
+            .map(|b| json!({ "x": b["x"], "y": b["y"], "width": b["w"], "height": b["h"] }));
+        self.source.clone().map(|source| (source, target))
     }
 
     pub fn snapshot(&self, now_ms: u64) -> Value {

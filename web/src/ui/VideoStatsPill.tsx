@@ -17,7 +17,7 @@ export const VideoStatsPill = ({ className }: { className?: string }) => {
   const portrait = useFlyIsPortrait();
   if (text.trim() === '' || !portrait) return null;
   return (
-    <div className={`pointer-events-none relative ${className ?? ''}`}>
+    <div className={`pointer-events-none ${className ?? 'relative'}`}>
       <Text
         typography="labelSmall"
         color={Color.White}

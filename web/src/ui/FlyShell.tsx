@@ -31,7 +31,7 @@ import type { DrawableName } from '@/res/drawables';
 import { AircastSpace, Color, aircast, md, withAlpha } from '@/theme/Colors';
 import { FleetPanel } from '@/ui/ActiveVehicle';
 import { LocalAppNavigation } from '@/ui/AppNavigation';
-import { useRememberGimbalDrags } from '@/ui/CameraSwitch';
+import { useRememberDragAims } from '@/ui/CameraSwitch';
 import { FlyDeckLayout } from '@/ui/FlyDeck';
 import { LocalFlyScreenState } from '@/ui/FlyScreenState';
 import { FLY_STATE, flyState, useHasVehicle } from '@/ui/FlyState';
@@ -367,13 +367,13 @@ export const FlyScreen = ({ view, onView, status, video, map, keyRow, cameraSwit
   const videoTarget = pipNow ? thumbFrame : Rect(0, 0, box.size.width, box.size.height);
   const frame = useRememberVideoFrame(videoTarget, false);
   const cameras = useRememberCameraStepper();
-  const gimbalDrags = useRememberGimbalDrags();
+  const dragAims = useRememberDragAims();
   const syntheticAims = useRememberSyntheticAims();
-  const latest = useUpdatedRef({ pipNow, onExitFullScreen, onFullScreen, fullScreen, gimbalDrags, syntheticAims, cameras });
+  const latest = useUpdatedRef({ pipNow, onExitFullScreen, onFullScreen, fullScreen, dragAims, syntheticAims, cameras });
   const videoGestureProps = useMemo(() => {
     const handlers: VideoGestureHandlers = {
       owned: () => false,
-      claimsSwipe: (moved: Offset) => sideways(moved) && !latest.current.gimbalDrags && !(latest.current.syntheticAims && !latest.current.pipNow),
+      claimsSwipe: (moved: Offset) => sideways(moved) && !latest.current.dragAims && !(latest.current.syntheticAims && !latest.current.pipNow),
       onTap: () => undefined,
       onDoubleTap: () => (latest.current.fullScreen ? latest.current.onExitFullScreen() : latest.current.onFullScreen()),
       onSwipe: (moved: Offset) => {

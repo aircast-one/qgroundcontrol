@@ -6,7 +6,7 @@ use crate::router::Backend;
 const CAMERA: &str = "vehicle.cameraManager.currentCameraInstance";
 
 #[derive(Clone, Debug, PartialEq)]
-enum Request {
+pub enum Request {
     Rect { x: f64, y: f64, width: f64, height: f64 },
     Point { x: f64, y: f64, radius: f64 },
 }
@@ -15,7 +15,7 @@ fn unit(value: Option<&Value>) -> Option<f64> {
     value?.as_f64().filter(|v| v.is_finite() && (0.0..=1.0).contains(v))
 }
 
-fn request(args: &Value) -> Option<Request> {
+pub fn request(args: &Value) -> Option<Request> {
     let first = args.get(0)?;
     let (x, y) = (unit(first.get("x"))?, unit(first.get("y"))?);
     match (first.get("width"), first.get("height")) {

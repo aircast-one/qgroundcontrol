@@ -20,7 +20,7 @@ export const DetectionOverlay = ({ className }: { className?: string }) => {
   const picture = paintedRect(size.width, size.height, source);
 
   return (
-    <div ref={ref} className={`pointer-events-none relative ${className ?? ''}`}>
+    <div ref={ref} className={`pointer-events-none ${className ?? 'relative'}`}>
       <svg width={size.width} height={size.height} className="absolute inset-0 block overflow-visible">
         {boxes.map((box, index) => {
           const width = box.target ? 4 : 2;

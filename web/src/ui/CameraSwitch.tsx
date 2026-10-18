@@ -7,6 +7,7 @@ import { useValue } from '@/kotlin/State';
 import { DropdownMenu, DropdownMenuItem, HorizontalDivider, Surface, Text } from '@/m3';
 import { Drawable, MaterialIcon } from '@/res/Icon';
 import { Color, aircast, md, withAlpha } from '@/theme/Colors';
+import { CAMERA_VIEW, trackingCanAim, trackingReading } from '@/ui/CameraControl';
 import { CAMERA_SHEET } from '@/ui/CameraControlLayer';
 import { CAMERAS_VIEW, type CameraEntry, CameraStatus, type CamerasReading, camerasReading } from '@/ui/Cameras';
 import { LocalFlyScreenState } from '@/ui/FlyScreenState';
@@ -180,7 +181,8 @@ export const useRememberCameraSwiper = (): ((step: number) => boolean) => {
   }, []);
 };
 
-export const useRememberGimbalDrags = (): boolean => {
+export const useRememberDragAims = (): boolean => {
   const view = useQgcPath(GIMBAL_INDICATOR_PATH);
-  return useMemo(() => onScreenGimbal(view) !== null, [view]);
+  const camera = useQgcPath(CAMERA_VIEW);
+  return useMemo(() => onScreenGimbal(view) !== null || trackingCanAim(trackingReading(camera)), [view, camera]);
 };

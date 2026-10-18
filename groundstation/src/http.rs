@@ -16,6 +16,19 @@ pub fn post(url: &str, content_type: &str, body: &[u8], timeout: Duration) -> Re
     answer.body_mut().read_to_vec().map(|bytes| (status, bytes)).map_err(|e| e.to_string())
 }
 
+#[cfg(not(target_family = "wasm"))]
+pub fn send(method: &str, url: &str, headers: &[(&str, &str)], body: Option<&[u8]>, timeout: Duration) -> Result<(u16, Vec<u8>), String> {
+    let answer = match method {
+        "PUT" => headers.iter().fold(AGENT.put(url), |asked, (name, value)| asked.header(*name, *value)).config().http_status_as_error(false).timeout_global(Some(timeout)).build().send(body.unwrap_or_default()),
+        "POST" => headers.iter().fold(AGENT.post(url), |asked, (name, value)| asked.header(*name, *value)).config().http_status_as_error(false).timeout_global(Some(timeout)).build().send(body.unwrap_or_default()),
+        "DELETE" => headers.iter().fold(AGENT.delete(url), |asked, (name, value)| asked.header(*name, *value)).config().http_status_as_error(false).timeout_global(Some(timeout)).build().call(),
+        _ => headers.iter().fold(AGENT.get(url), |asked, (name, value)| asked.header(*name, *value)).config().http_status_as_error(false).timeout_global(Some(timeout)).build().call(),
+    };
+    let mut answer = answer.map_err(|e| e.to_string())?;
+    let status = answer.status().as_u16();
+    answer.body_mut().read_to_vec().map(|bytes| (status, bytes)).map_err(|e| e.to_string())
+}
+
 #[cfg(target_family = "wasm")]
 enum Failure {
     Unreachable(String),

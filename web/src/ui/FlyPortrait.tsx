@@ -10,7 +10,7 @@ import { Drawable } from '@/res/Icon';
 import type { DrawableName } from '@/res/drawables';
 import { AircastSpace, Color, aircast, withAlpha } from '@/theme/Colors';
 import { OsdCompassDial } from '@/ui/AttitudeInstrument';
-import { CameraSwitch, useRememberGimbalDrags } from '@/ui/CameraSwitch';
+import { CameraSwitch, useRememberDragAims } from '@/ui/CameraSwitch';
 import { FlyDeckLayout } from '@/ui/FlyDeck';
 import { LocalFlyScreenState } from '@/ui/FlyScreenState';
 import {
@@ -151,9 +151,9 @@ export const FlyPortrait = ({ view, onView, status, video, map, keyRow, rail, ov
   const target = fullScreen ? geometry.full : split ? geometry.split : geometry.pipAt(corner, pipDrag);
   const frame = useRememberVideoFrame(target, holding);
   const cameras = useRememberCameraStepper();
-  const gimbalDrags = useRememberGimbalDrags();
+  const dragAims = useRememberDragAims();
   const syntheticAims = useRememberSyntheticAims();
-  const latest = useUpdatedRef({ split, target, onExitFullScreen, fullScreen, geometry, onView, onFullScreen, gimbalDrags, syntheticAims, cameras });
+  const latest = useUpdatedRef({ split, target, onExitFullScreen, fullScreen, geometry, onView, onFullScreen, dragAims, syntheticAims, cameras });
   const dragTo = (next: Offset) => {
     drag.current = next;
     setPipDrag(next);
@@ -161,7 +161,7 @@ export const FlyPortrait = ({ view, onView, status, video, map, keyRow, rail, ov
   const gestures = useMemo(() => {
     const handlers: VideoGestureHandlers = {
       owned: () => !latest.current.split,
-      claimsSwipe: (moved: Offset) => sideways(moved) && !latest.current.gimbalDrags && !(latest.current.syntheticAims && latest.current.split),
+      claimsSwipe: (moved: Offset) => sideways(moved) && !latest.current.dragAims && !(latest.current.syntheticAims && latest.current.split),
       onTap: () => latest.current.onView(FlyView.Video),
       onDoubleTap: () => (latest.current.fullScreen ? latest.current.onExitFullScreen() : latest.current.onFullScreen()),
       onSwipe: (moved: Offset) => {
