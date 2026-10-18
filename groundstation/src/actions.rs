@@ -123,16 +123,216 @@ const SET_HOME: &str = "vehicle.doSetHome";
 const FACE_POINT: &str = "vehicle.guidedModeChangeHeading";
 const ESTIMATOR_ORIGIN: &str = "vehicle.setEstimatorOrigin";
 
-pub const OWNED: &[&str] = &[INSERT, REMOVE, ORBIT, SET_CURRENT_MISSION, MISSION_COMPLETE_DISMISS, ACTIVATE, PHOTO, RECORD, MODE, STOP_PHOTO, UNDO, REDO, LOG_REFRESH, LOG_DOWNLOAD, LOG_CANCEL, LOG_ERASE_ALL, LOG_ERASE_SELECTED, RADIO_NEXT, RADIO_CANCEL, RADIO_SKIP, SENSOR_NEXT, SENSOR_CANCEL, CAL_ACCEL, CAL_COMPASS, CAL_LEVEL, CAL_GYRO, CAL_PRESSURE, CAL_MOTOR, CAL_AIRSPEED, CAL_COMPASS_NORTH, GEOTAG_START, GEOTAG_CANCEL, MOTOR_TEST, MESSAGE_INTERVAL, REMOVE_LINK, REBOOT, EMERGENCY_STOP, ABORT_LANDING, GUIDED_LAND, GUIDED_RTL, START_MISSION, STOP_ROI, FORCE_ARM, GUIDED_TAKEOFF, GUIDED_ALTITUDE, PAUSE_VEHICLE, GRIPPER, FIX_PAYLOAD, RESUME_MISSION, PLAN_SEND, PLAN_DOWNLOAD, PLAN_SAVE_CURRENT, PLAN_SAVE_FILE, PLAN_SAVE_KML, PLAN_OPEN, PLAN_CLEAR, PLAN_CLEAR_VEHICLE, RALLY_ADD, RALLY_REMOVE, FENCE_ADD_POLYGON, FENCE_ADD_CIRCLE, FENCE_DELETE_POLYGON, FENCE_DELETE_CIRCLE, INSERT_TAKEOFF, INSERT_LAND, CONNECT_LINK, START_SUPPORT, END_SUPPORT, START_TRACKING, INSERT_PATTERN, INSERT_PATTERN_FILE, STOP_TRACKING, RC_OVERRIDE, RC_OVERRIDE_RELEASE, RC_OVERRIDE_RELEASE_CHANNEL, CREATE_AND_CONNECT, CREATE_SERIAL, CREATE_REPLAY, REQUEST_CONTROL, SET_VIDEO_SOURCE, SWITCH_VIDEO_SOURCE, ACKNOWLEDGE, ACKNOWLEDGE_THROUGH, POST_NOTICE, CLEAR_MESSAGES, SELECT_ITEM, REMOVE_ITEM, UNIT_SYSTEM, CONSOLE_COMMAND, COMMAND_CATEGORIES, CATEGORY_COMMANDS, PARAMETER_NAMES, DESELECT_ALL, COMMIT_LINKS, GROUND_SPEED, AIRSPEED, GOTO_LOCATION, POINT_AT, SET_HOME, FACE_POINT, ESTIMATOR_ORIGIN];
+pub const OWNED: &[&str] = &[
+    INSERT,
+    REMOVE,
+    ORBIT,
+    SET_CURRENT_MISSION,
+    MISSION_COMPLETE_DISMISS,
+    ACTIVATE,
+    PHOTO,
+    RECORD,
+    MODE,
+    STOP_PHOTO,
+    UNDO,
+    REDO,
+    LOG_REFRESH,
+    LOG_DOWNLOAD,
+    LOG_CANCEL,
+    LOG_ERASE_ALL,
+    LOG_ERASE_SELECTED,
+    RADIO_NEXT,
+    RADIO_CANCEL,
+    RADIO_SKIP,
+    SENSOR_NEXT,
+    SENSOR_CANCEL,
+    CAL_ACCEL,
+    CAL_COMPASS,
+    CAL_LEVEL,
+    CAL_GYRO,
+    CAL_PRESSURE,
+    CAL_MOTOR,
+    CAL_AIRSPEED,
+    CAL_COMPASS_NORTH,
+    GEOTAG_START,
+    GEOTAG_CANCEL,
+    MOTOR_TEST,
+    MESSAGE_INTERVAL,
+    REMOVE_LINK,
+    REBOOT,
+    EMERGENCY_STOP,
+    ABORT_LANDING,
+    GUIDED_LAND,
+    GUIDED_RTL,
+    START_MISSION,
+    STOP_ROI,
+    FORCE_ARM,
+    GUIDED_TAKEOFF,
+    GUIDED_ALTITUDE,
+    PAUSE_VEHICLE,
+    GRIPPER,
+    FIX_PAYLOAD,
+    RESUME_MISSION,
+    PLAN_SEND,
+    PLAN_DOWNLOAD,
+    PLAN_SAVE_CURRENT,
+    PLAN_SAVE_FILE,
+    PLAN_SAVE_KML,
+    PLAN_OPEN,
+    PLAN_CLEAR,
+    PLAN_CLEAR_VEHICLE,
+    RALLY_ADD,
+    RALLY_REMOVE,
+    FENCE_ADD_POLYGON,
+    FENCE_ADD_CIRCLE,
+    FENCE_DELETE_POLYGON,
+    FENCE_DELETE_CIRCLE,
+    INSERT_TAKEOFF,
+    INSERT_LAND,
+    CONNECT_LINK,
+    START_SUPPORT,
+    END_SUPPORT,
+    START_TRACKING,
+    INSERT_PATTERN,
+    INSERT_PATTERN_FILE,
+    STOP_TRACKING,
+    RC_OVERRIDE,
+    RC_OVERRIDE_RELEASE,
+    RC_OVERRIDE_RELEASE_CHANNEL,
+    CREATE_AND_CONNECT,
+    CREATE_SERIAL,
+    CREATE_REPLAY,
+    REQUEST_CONTROL,
+    SET_VIDEO_SOURCE,
+    SWITCH_VIDEO_SOURCE,
+    ACKNOWLEDGE,
+    ACKNOWLEDGE_THROUGH,
+    POST_NOTICE,
+    CLEAR_MESSAGES,
+    SELECT_ITEM,
+    REMOVE_ITEM,
+    UNIT_SYSTEM,
+    CONSOLE_COMMAND,
+    COMMAND_CATEGORIES,
+    CATEGORY_COMMANDS,
+    PARAMETER_NAMES,
+    DESELECT_ALL,
+    COMMIT_LINKS,
+    GROUND_SPEED,
+    AIRSPEED,
+    GOTO_LOCATION,
+    POINT_AT,
+    SET_HOME,
+    FACE_POINT,
+    ESTIMATOR_ORIGIN,
+];
 
 pub fn owns(path: &str) -> bool {
-    OWNED.contains(&path) || [crate::videohost::SET_DEVICE_CAMERA_ROTATION, crate::videohost::SET_PIP_SHOWN].contains(&path) || crate::cameras::owns(path) || [crate::lens::MEASURE, crate::lens::FORGET].contains(&path) || path == crate::firstrun::MARK_SHOWN || path == crate::device::PAIR || crate::deeplinksetup::owns(path) || path == crate::advancedui::SET_ADVANCED_UI || [crate::applog::LOG_CLEAR, crate::applog::LOG_SAVE, crate::applog::SET_CATEGORY, crate::applog::RESET_CATEGORIES].contains(&path) || crate::offlinemaps::owns(path) || crate::flasher::owns(path) || crate::synthview::owns(path) || path == crate::virtualjoystick::JOYSTICK_VALUE || path == crate::plantemplates::CREATE_FROM_TEMPLATE || crate::plantransform::owns(path) || crate::px4airframe::owns(path) || crate::apmfollow::owns(path) || crate::apmsubframe::owns(path) || crate::apmairframe::owns(path) || crate::apmsubmotors::owns(path) || crate::rctoparam::owns(path) || crate::presets::owns(path) || crate::ntrip::owns(path) || crate::logreplay::owns(path) || crate::scripting::owns(path) || crate::joystickhost::owns(path) || crate::usbradio::owns(path) || crate::espbridge::owns(path) || crate::syslink::owns(path) || path == crate::subtitles::SET_INSTRUMENTS || [crate::sensorsettings::SET_PRIORITY, crate::sensorsettings::FACTORY_RESET, crate::camsettings::SET_CAMERA_SETTING].contains(&path) || path == crate::mavlinkactions::SEND_MAVLINK_ACTION || crate::signingkeys::owns(path) || path == crate::px4tuning::SET_TELEMETRY_MODE || path == crate::autotune::REQUEST || crate::actuators::owns(path) || crate::paramtools::owns(path) || crate::gimbalindicator::owns(path) || [crate::paramfile::FILE_SAVE, crate::paramfile::FILE_REVIEW, crate::paramfile::FILE_APPLY].contains(&path) || crate::coreplan::owns(path) || crate::linkconnect::disconnect_target(path).is_some() || crate::fenceedit::owns_member_action(path) || crate::factwrite::owns_validate(path) || crate::vehicleconfig::owns_validate(path) || path == crate::vehicleconfig::PAGE_OPENED || path == crate::vehicleconfig::DIALOG_OPENED || path == crate::powercalc::CALCULATE || crate::mavlinklog::owns(path) || crate::escal::owns(path) || crate::inspectorchart::owns(path) || crate::itemshape::owns(path) || crate::itemshape::owns_split(path) || crate::vehicleselect::fleet_target(path).is_some() || crate::commandtree::hint_target(path).is_some()
+    OWNED.contains(&path)
+        || [
+            crate::videohost::SET_DEVICE_CAMERA_ROTATION,
+            crate::videohost::SET_PIP_SHOWN,
+        ]
+        .contains(&path)
+        || crate::cameras::owns(path)
+        || [crate::lens::MEASURE, crate::lens::FORGET].contains(&path)
+        || path == crate::firstrun::MARK_SHOWN
+        || path == crate::device::PAIR
+        || crate::deeplinksetup::owns(path)
+        || path == crate::advancedui::SET_ADVANCED_UI
+        || [
+            crate::applog::LOG_CLEAR,
+            crate::applog::LOG_SAVE,
+            crate::applog::SET_CATEGORY,
+            crate::applog::RESET_CATEGORIES,
+        ]
+        .contains(&path)
+        || crate::offlinemaps::owns(path)
+        || crate::flasher::owns(path)
+        || crate::synthview::owns(path)
+        || path == crate::virtualjoystick::JOYSTICK_VALUE
+        || path == crate::plantemplates::CREATE_FROM_TEMPLATE
+        || crate::plantransform::owns(path)
+        || crate::px4airframe::owns(path)
+        || crate::apmfollow::owns(path)
+        || crate::apmsubframe::owns(path)
+        || crate::apmairframe::owns(path)
+        || crate::apmsubmotors::owns(path)
+        || crate::rctoparam::owns(path)
+        || crate::presets::owns(path)
+        || crate::ntrip::owns(path)
+        || crate::logreplay::owns(path)
+        || crate::scripting::owns(path)
+        || crate::joystickhost::owns(path)
+        || crate::usbradio::owns(path)
+        || crate::espbridge::owns(path)
+        || crate::syslink::owns(path)
+        || path == crate::subtitles::SET_INSTRUMENTS
+        || [
+            crate::sensorsettings::SET_PRIORITY,
+            crate::sensorsettings::FACTORY_RESET,
+            crate::camsettings::SET_CAMERA_SETTING,
+        ]
+        .contains(&path)
+        || path == crate::mavlinkactions::SEND_MAVLINK_ACTION
+        || crate::signingkeys::owns(path)
+        || path == crate::px4tuning::SET_TELEMETRY_MODE
+        || path == crate::autotune::REQUEST
+        || crate::actuators::owns(path)
+        || crate::paramtools::owns(path)
+        || crate::gimbalindicator::owns(path)
+        || [
+            crate::paramfile::FILE_SAVE,
+            crate::paramfile::FILE_REVIEW,
+            crate::paramfile::FILE_APPLY,
+        ]
+        .contains(&path)
+        || crate::coreplan::owns(path)
+        || crate::linkconnect::disconnect_target(path).is_some()
+        || crate::fenceedit::owns_member_action(path)
+        || crate::factwrite::owns_validate(path)
+        || crate::vehicleconfig::owns_validate(path)
+        || path == crate::vehicleconfig::PAGE_OPENED
+        || path == crate::vehicleconfig::DIALOG_OPENED
+        || path == crate::powercalc::CALCULATE
+        || crate::mavlinklog::owns(path)
+        || crate::escal::owns(path)
+        || crate::inspectorchart::owns(path)
+        || crate::itemshape::owns(path)
+        || crate::itemshape::owns_split(path)
+        || crate::vehicleselect::fleet_target(path).is_some()
+        || crate::commandtree::hint_target(path).is_some()
 }
 
-pub const OWNED_WRITES: &[&str] = &[ZOOM, CURRENT_CAMERA, TRANSMITTER_MODE, CENTERED_THROTTLE, GEOTAG_LOG, GEOTAG_IMAGES, GEOTAG_SAVE, BREACH_RETURN, FLIGHT_MODE, VTOL_FORWARD, GLOBAL_ALTITUDE_MODE, THERMAL_MODE, THERMAL_OPACITY, TRACKING_ENABLED, UNDO_TRACKING, INSPECTOR_SELECTED, BREACH_ALTITUDE];
+pub const OWNED_WRITES: &[&str] = &[
+    ZOOM,
+    CURRENT_CAMERA,
+    TRANSMITTER_MODE,
+    CENTERED_THROTTLE,
+    GEOTAG_LOG,
+    GEOTAG_IMAGES,
+    GEOTAG_SAVE,
+    BREACH_RETURN,
+    FLIGHT_MODE,
+    VTOL_FORWARD,
+    GLOBAL_ALTITUDE_MODE,
+    THERMAL_MODE,
+    THERMAL_OPACITY,
+    TRACKING_ENABLED,
+    UNDO_TRACKING,
+    INSPECTOR_SELECTED,
+    BREACH_ALTITUDE,
+];
 
 pub fn owns_write(path: &str) -> bool {
-    OWNED_WRITES.contains(&path) || crate::vehicles::fleet_mode_target(path).is_some() || crate::vehicleselect::fleet_arm_index(path).is_some() || crate::logs::selection_index(path).is_some() || crate::factwrite::owns(path) || crate::linkconnect::edit_target(path).is_some() || crate::fenceedit::owns_member_write(path) || crate::vehicleconfig::owns(path)
+    OWNED_WRITES.contains(&path)
+        || crate::vehicles::fleet_mode_target(path).is_some()
+        || crate::vehicleselect::fleet_arm_index(path).is_some()
+        || crate::logs::selection_index(path).is_some()
+        || crate::factwrite::owns(path)
+        || crate::linkconnect::edit_target(path).is_some()
+        || crate::fenceedit::owns_member_write(path)
+        || crate::vehicleconfig::owns(path)
 }
 
 pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
@@ -143,27 +343,56 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
         CENTERED_THROTTLE => crate::radio::write_centered_throttle(backend, path, value),
         BREACH_ALTITUDE => crate::factwrite::write(backend, path, value),
         INSPECTOR_SELECTED => crate::inspector::write_selected(backend, value),
-        _ if crate::vehicleselect::fleet_arm_index(path).is_some() => crate::vehicleselect::fleet_arm(backend, path, value),
-        _ if crate::logs::selection_index(path).is_some() => crate::logs::write_selected(backend, path, value),
+        _ if crate::vehicleselect::fleet_arm_index(path).is_some() => {
+            crate::vehicleselect::fleet_arm(backend, path, value)
+        }
+        _ if crate::logs::selection_index(path).is_some() => {
+            crate::logs::write_selected(backend, path, value)
+        }
         _ if crate::itemposition::owns(path) => crate::itemposition::write(backend, path, value),
-        _ if crate::commandtree::command_target(path).is_some() => crate::commandtree::write_command(backend, path, value),
-        _ if crate::itemposition::speed_target(path).is_some() => crate::itemposition::write_specify_speed(backend, path, value),
-        _ if crate::altitudeedit::distance_mode_target(path).is_some() => crate::altitudeedit::write_distance_mode(backend, path, value),
+        _ if crate::commandtree::command_target(path).is_some() => {
+            crate::commandtree::write_command(backend, path, value)
+        }
+        _ if crate::itemposition::speed_target(path).is_some() => {
+            crate::itemposition::write_specify_speed(backend, path, value)
+        }
+        _ if crate::altitudeedit::distance_mode_target(path).is_some() => {
+            crate::altitudeedit::write_distance_mode(backend, path, value)
+        }
         _ if crate::vehicleconfig::owns(path) => crate::vehicleconfig::write(backend, path, value),
         _ if crate::factwrite::owns(path) => crate::factwrite::write(backend, path, value),
-        _ if crate::linkconnect::edit_target(path).is_some() => crate::linkconnect::edit(backend, path, value),
-        _ if crate::fenceedit::owns_member_write(path) => crate::fenceedit::member_write(backend, path, value),
+        _ if crate::linkconnect::edit_target(path).is_some() => {
+            crate::linkconnect::edit(backend, path, value)
+        }
+        _ if crate::fenceedit::owns_member_write(path) => {
+            crate::fenceedit::member_write(backend, path, value)
+        }
         UNDO_TRACKING => crate::planselect::write_undo_tracking(backend, path, value),
-        TRACKING_ENABLED if crate::devicetrack::applies(backend).is_some() => crate::devicetrack::write(value),
-        THERMAL_MODE | THERMAL_OPACITY | TRACKING_ENABLED => crate::cameratrack::write(backend, path, value),
+        TRACKING_ENABLED if crate::devicetrack::applies(backend).is_some() => {
+            crate::devicetrack::write(value)
+        }
+        THERMAL_MODE | THERMAL_OPACITY | TRACKING_ENABLED => {
+            crate::cameratrack::write(backend, path, value)
+        }
         GLOBAL_ALTITUDE_MODE => crate::altitudeedit::write_global(backend, value),
         FLIGHT_MODE => crate::flightmodes::write_mode(backend, path, value),
-        _ if crate::vehicles::fleet_mode_target(path).is_some() => crate::vehicles::write_fleet_mode(backend, path, value),
+        _ if crate::vehicles::fleet_mode_target(path).is_some() => {
+            crate::vehicles::write_fleet_mode(backend, path, value)
+        }
         VTOL_FORWARD => crate::guided::write_vtol(backend, path, value),
         BREACH_RETURN => crate::fenceedit::write_breach_return(backend, path, value),
-        GEOTAG_LOG => crate::geotagjob::write(backend, crate::geotagjob::Field::LogFile, path, value),
-        GEOTAG_IMAGES => crate::geotagjob::write(backend, crate::geotagjob::Field::ImageDirectory, path, value),
-        GEOTAG_SAVE => crate::geotagjob::write(backend, crate::geotagjob::Field::SaveDirectory, path, value),
+        GEOTAG_LOG => {
+            crate::geotagjob::write(backend, crate::geotagjob::Field::LogFile, path, value)
+        }
+        GEOTAG_IMAGES => crate::geotagjob::write(
+            backend,
+            crate::geotagjob::Field::ImageDirectory,
+            path,
+            value,
+        ),
+        GEOTAG_SAVE => {
+            crate::geotagjob::write(backend, crate::geotagjob::Field::SaveDirectory, path, value)
+        }
         _ => json!({ "ok": false, "reason": format!("{path} is not a write the core performs") }),
     }
 }
@@ -172,7 +401,10 @@ const ZOOM_LOWEST: f64 = 0.0;
 const ZOOM_HIGHEST: f64 = 100.0;
 
 fn zoom(backend: &dyn Backend, value: &str) -> Value {
-    let Some(asked) = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value")?.as_f64()) else {
+    let Some(asked) = serde_json::from_str::<Value>(value)
+        .ok()
+        .and_then(|v| v.get("value")?.as_f64())
+    else {
         return json!({ "ok": false, "result": false, "reason": "A zoom level has to be a number." });
     };
     let camera = backend.value_fields(CAMERA, "modelName,hasZoom");
@@ -183,7 +415,10 @@ fn zoom(backend: &dyn Backend, value: &str) -> Value {
         return json!({ "ok": false, "result": false, "reason": "This camera has no zoom." });
     }
     let level = asked.clamp(ZOOM_LOWEST, ZOOM_HIGHEST);
-    let answered = crate::read::flag(&object(&backend.set(ZOOM, &json!({ "value": level }).to_string())), "ok");
+    let answered = crate::read::flag(
+        &object(&backend.set(ZOOM, &json!({ "value": level }).to_string())),
+        "ok",
+    );
     json!({
         "ok": answered,
         "result": answered,
@@ -203,16 +438,23 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         REMOVE => remove(backend, args),
         ORBIT => orbit(backend, args),
         SET_CURRENT_MISSION => set_current_mission(backend, args),
-        MISSION_COMPLETE_DISMISS => match serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0)?.as_u64()) {
+        MISSION_COMPLETE_DISMISS => match serde_json::from_str::<Value>(args)
+            .ok()
+            .and_then(|a| a.get(0)?.as_u64())
+        {
             Some(id) => crate::missioncomplete::dismiss(id),
-            None => json!({ "ok": false, "reason": "missionComplete.dismiss takes the id of the notice it closes" }),
+            None => {
+                json!({ "ok": false, "reason": "missionComplete.dismiss takes the id of the notice it closes" })
+            }
         },
         ACTIVATE => activate(backend, args),
         PHOTO | RECORD | MODE | STOP_PHOTO => camera(backend, path, args),
         UNDO | REDO => step(backend, path),
         crate::firstrun::MARK_SHOWN => crate::firstrun::mark_shown(backend),
         crate::device::PAIR => crate::device::pair_command(args),
-        _ if crate::deeplinksetup::owns(path) => crate::deeplinksetup::run(path, args, |host| crate::deeplinksetup::setup_from_device(&host)),
+        _ if crate::deeplinksetup::owns(path) => crate::deeplinksetup::run(path, args, |host| {
+            crate::deeplinksetup::setup_from_device(&host)
+        }),
         crate::advancedui::SET_ADVANCED_UI => crate::advancedui::set(args),
         crate::applog::LOG_CLEAR => crate::applog::clear(backend),
         _ if crate::offlinemaps::owns(path) => crate::offlinemaps::run(path, args),
@@ -237,7 +479,13 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         _ if crate::syslink::owns(path) => crate::syslink::run(backend, path, args),
         crate::subtitles::SET_INSTRUMENTS => {
             let given = serde_json::from_str::<Vec<serde_json::Value>>(args).unwrap_or_default();
-            let text = |i: usize| given.get(i).and_then(serde_json::Value::as_str).unwrap_or("").to_string();
+            let text = |i: usize| {
+                given
+                    .get(i)
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("")
+                    .to_string()
+            };
             crate::subtitles::set_instruments(&text(0), &text(1));
             serde_json::json!({ "ok": true })
         }
@@ -254,7 +502,10 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         _ if crate::actuators::owns(path) => crate::actuators::test_action(backend, path, args),
         crate::applog::SET_CATEGORY => crate::applog::set_category(args),
         crate::applog::RESET_CATEGORIES => crate::applog::reset_categories(),
-        crate::applog::LOG_SAVE => match serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0)?.as_str().map(str::to_string)) {
+        crate::applog::LOG_SAVE => match serde_json::from_str::<Value>(args)
+            .ok()
+            .and_then(|a| a.get(0)?.as_str().map(str::to_string))
+        {
             Some(name) => crate::applog::save(backend, &name),
             None => json!({ "ok": false, "reason": "appLog.save takes the file name it saves to" }),
         },
@@ -268,22 +519,36 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         crate::paramfile::FILE_REVIEW => crate::paramfile::review(backend, args),
         crate::paramfile::FILE_APPLY => crate::paramfile::apply(backend, args),
         _ if crate::coreplan::owns(path) => crate::coreplan::act(backend, path, args),
-        _ if crate::linkconnect::disconnect_target(path).is_some() => crate::linkconnect::disconnect(backend, path),
-        _ if crate::fenceedit::owns_member_action(path) => crate::fenceedit::member_action(backend, path, args),
-        _ if crate::vehicleconfig::owns_validate(path) => crate::vehicleconfig::validate(backend, path, args),
+        _ if crate::linkconnect::disconnect_target(path).is_some() => {
+            crate::linkconnect::disconnect(backend, path)
+        }
+        _ if crate::fenceedit::owns_member_action(path) => {
+            crate::fenceedit::member_action(backend, path, args)
+        }
+        _ if crate::vehicleconfig::owns_validate(path) => {
+            crate::vehicleconfig::validate(backend, path, args)
+        }
         crate::powercalc::CALCULATE => crate::powercalc::calculate(backend, args),
         _ if crate::mavlinklog::owns(path) => crate::mavlinklog::run(path, args),
         _ if crate::escal::owns(path) => crate::escal::run(backend, path),
-        _ if crate::factwrite::owns_validate(path) => crate::factwrite::validate(backend, path, args),
+        _ if crate::factwrite::owns_validate(path) => {
+            crate::factwrite::validate(backend, path, args)
+        }
         _ if crate::itemshape::owns(path) => crate::itemshape::edit(backend, path, args),
         _ if crate::itemshape::owns_split(path) => crate::itemshape::split(backend, path, args),
-        _ if crate::vehicleselect::fleet_target(path).is_some() => crate::vehicleselect::fleet_command(backend, path),
-        _ if crate::commandtree::hint_target(path).is_some() => crate::commandtree::hint(backend, path, args),
+        _ if crate::vehicleselect::fleet_target(path).is_some() => {
+            crate::vehicleselect::fleet_command(backend, path)
+        }
+        _ if crate::commandtree::hint_target(path).is_some() => {
+            crate::commandtree::hint(backend, path, args)
+        }
         LOG_REFRESH => crate::logs::act(backend, crate::logs::Action::Refresh, path, args),
         LOG_DOWNLOAD => crate::logs::act(backend, crate::logs::Action::Download, path, args),
         LOG_CANCEL => crate::logs::act(backend, crate::logs::Action::Cancel, path, args),
         LOG_ERASE_ALL => crate::logs::act(backend, crate::logs::Action::EraseAll, path, args),
-        LOG_ERASE_SELECTED => crate::logs::act(backend, crate::logs::Action::EraseSelected, path, args),
+        LOG_ERASE_SELECTED => {
+            crate::logs::act(backend, crate::logs::Action::EraseSelected, path, args)
+        }
         RADIO_NEXT => crate::radio::act(backend, crate::radio::Action::Next, path),
         RADIO_CANCEL => crate::radio::act(backend, crate::radio::Action::Cancel, path),
         RADIO_SKIP => crate::radio::act(backend, crate::radio::Action::Skip, path),
@@ -298,10 +563,14 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         DESELECT_ALL => crate::vehicleselect::deselect_all(backend, path),
         COMMIT_LINKS => crate::linkconnect::commit(backend, path),
         GROUND_SPEED | AIRSPEED => crate::speed::change(backend, path, args),
-        GOTO_LOCATION | POINT_AT | SET_HOME | FACE_POINT | ESTIMATOR_ORIGIN => match crate::mapclick::Click::of(path) {
-            Some(click) => crate::mapclick::send(backend, click, path, args),
-            None => json!({ "ok": false, "reason": format!("{path} is not a map command the core knows") }),
-        },
+        GOTO_LOCATION | POINT_AT | SET_HOME | FACE_POINT | ESTIMATOR_ORIGIN => {
+            match crate::mapclick::Click::of(path) {
+                Some(click) => crate::mapclick::send(backend, click, path, args),
+                None => {
+                    json!({ "ok": false, "reason": format!("{path} is not a map command the core knows") })
+                }
+            }
+        }
         REMOVE_ITEM => remove(backend, args),
         SELECT_ITEM => crate::planselect::select(backend, path, args),
         ACKNOWLEDGE => crate::hostnotice::acknowledge(backend, path, args),
@@ -310,60 +579,150 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         CLEAR_MESSAGES => crate::hostnotice::clear_messages(backend, path),
         SET_VIDEO_SOURCE => crate::videosource::set(backend, path, args),
         SWITCH_VIDEO_SOURCE => crate::videosource::switch(backend, path),
-        crate::videohost::SET_DEVICE_CAMERA_ROTATION => crate::videohost::invoke(path, args).unwrap_or_else(|| json!({ "ok": false, "reason": "this build has no device camera" })),
-        crate::videohost::SET_PIP_SHOWN => crate::videohost::invoke(path, args).unwrap_or_else(|| json!({ "ok": true })),
-        _ if crate::cameras::owns(path) => crate::cameras::invoke(backend, path, args).unwrap_or_else(|| json!({ "ok": false, "reason": "the camera list is unavailable" })),
+        crate::videohost::SET_DEVICE_CAMERA_ROTATION => crate::videohost::invoke(path, args)
+            .unwrap_or_else(|| json!({ "ok": false, "reason": "this build has no device camera" })),
+        crate::videohost::SET_PIP_SHOWN => {
+            crate::videohost::invoke(path, args).unwrap_or_else(|| json!({ "ok": true }))
+        }
+        _ if crate::cameras::owns(path) => crate::cameras::invoke(backend, path, args)
+            .unwrap_or_else(|| json!({ "ok": false, "reason": "the camera list is unavailable" })),
         REQUEST_CONTROL => crate::operatorrequest::request(backend, path, args),
-        CREATE_AND_CONNECT => crate::linkconnect::create(backend, crate::linkconnect::Create::AndConnect, path, args),
-        CREATE_SERIAL => crate::linkconnect::create(backend, crate::linkconnect::Create::Serial, path, args),
-        CREATE_REPLAY => crate::linkconnect::create(backend, crate::linkconnect::Create::LogReplay, path, args),
+        CREATE_AND_CONNECT => {
+            crate::linkconnect::create(backend, crate::linkconnect::Create::AndConnect, path, args)
+        }
+        CREATE_SERIAL => {
+            crate::linkconnect::create(backend, crate::linkconnect::Create::Serial, path, args)
+        }
+        CREATE_REPLAY => {
+            crate::linkconnect::create(backend, crate::linkconnect::Create::LogReplay, path, args)
+        }
         RC_OVERRIDE => crate::rcoverride::set(backend, path, args),
         RC_OVERRIDE_RELEASE => crate::rcoverride::clear(backend, path),
         RC_OVERRIDE_RELEASE_CHANNEL => crate::rcoverride::release(backend, path, args),
-        STOP_TRACKING => crate::devicetrack::applies(backend).map_or_else(|| crate::cameratrack::stop(backend, path), |source| crate::devicetrack::stop(&source)),
-        START_TRACKING => crate::devicetrack::applies(backend).map_or_else(|| crate::cameratrack::start(backend, args), |source| crate::devicetrack::start(&source, args)),
+        STOP_TRACKING => crate::devicetrack::applies(backend).map_or_else(
+            || crate::cameratrack::stop(backend, path),
+            |source| crate::devicetrack::stop(&source),
+        ),
+        START_TRACKING => crate::devicetrack::applies(backend).map_or_else(
+            || crate::cameratrack::start(backend, args),
+            |source| crate::devicetrack::start(&source, args),
+        ),
         CONNECT_LINK => crate::linkconnect::connect(backend, path, args),
-        START_SUPPORT => crate::linkconnect::support_forwarding(backend, crate::linkconnect::Forwarding::Start, path),
-        END_SUPPORT => crate::linkconnect::support_forwarding(backend, crate::linkconnect::Forwarding::End, path),
+        START_SUPPORT => crate::linkconnect::support_forwarding(
+            backend,
+            crate::linkconnect::Forwarding::Start,
+            path,
+        ),
+        END_SUPPORT => crate::linkconnect::support_forwarding(
+            backend,
+            crate::linkconnect::Forwarding::End,
+            path,
+        ),
         INSERT_TAKEOFF => insert_direct(backend, "takeoff", path, args),
         INSERT_LAND => insert_direct(backend, "land", path, args),
-        FENCE_ADD_POLYGON => crate::fenceedit::add(backend, crate::fenceedit::Shape::Polygon, path, args),
-        FENCE_ADD_CIRCLE => crate::fenceedit::add(backend, crate::fenceedit::Shape::Circle, path, args),
-        FENCE_DELETE_POLYGON => crate::fenceedit::delete(backend, crate::fenceedit::Shape::Polygon, path, args),
-        FENCE_DELETE_CIRCLE => crate::fenceedit::delete(backend, crate::fenceedit::Shape::Circle, path, args),
+        FENCE_ADD_POLYGON => {
+            crate::fenceedit::add(backend, crate::fenceedit::Shape::Polygon, path, args)
+        }
+        FENCE_ADD_CIRCLE => {
+            crate::fenceedit::add(backend, crate::fenceedit::Shape::Circle, path, args)
+        }
+        FENCE_DELETE_POLYGON => {
+            crate::fenceedit::delete(backend, crate::fenceedit::Shape::Polygon, path, args)
+        }
+        FENCE_DELETE_CIRCLE => {
+            crate::fenceedit::delete(backend, crate::fenceedit::Shape::Circle, path, args)
+        }
         RALLY_ADD => crate::rallyedit::add_point(backend, path, args),
         RALLY_REMOVE => crate::rallyedit::remove_point(backend, path, args),
         PLAN_OPEN => crate::plan::plan_action(backend, crate::plan::PlanAction::Open, path, args),
         PLAN_CLEAR => crate::plan::plan_action(backend, crate::plan::PlanAction::Clear, path, args),
-        PLAN_CLEAR_VEHICLE => crate::plan::plan_action(backend, crate::plan::PlanAction::ClearVehicle, path, args),
+        PLAN_CLEAR_VEHICLE => {
+            crate::plan::plan_action(backend, crate::plan::PlanAction::ClearVehicle, path, args)
+        }
         PLAN_SEND => crate::plan::plan_action(backend, crate::plan::PlanAction::Send, path, args),
-        PLAN_DOWNLOAD => crate::plan::plan_action(backend, crate::plan::PlanAction::Download, path, args),
-        PLAN_SAVE_CURRENT => crate::plan::plan_action(backend, crate::plan::PlanAction::SaveCurrent, path, args),
-        PLAN_SAVE_FILE => crate::plan::plan_action(backend, crate::plan::PlanAction::SaveFile, path, args),
-        PLAN_SAVE_KML => crate::plan::plan_action(backend, crate::plan::PlanAction::SaveKml, path, args),
-        GUIDED_TAKEOFF => crate::guided::invoke_valued(backend, crate::guided::Valued::Takeoff, path, args),
-        GUIDED_ALTITUDE => crate::guided::invoke_valued(backend, crate::guided::Valued::ChangeAltitude, path, args),
-        PAUSE_VEHICLE => crate::guided::invoke_valued(backend, crate::guided::Valued::Pause, path, args),
-        GRIPPER => crate::guided::invoke_valued(backend, crate::guided::Valued::Gripper, path, args),
+        PLAN_DOWNLOAD => {
+            crate::plan::plan_action(backend, crate::plan::PlanAction::Download, path, args)
+        }
+        PLAN_SAVE_CURRENT => {
+            crate::plan::plan_action(backend, crate::plan::PlanAction::SaveCurrent, path, args)
+        }
+        PLAN_SAVE_FILE => {
+            crate::plan::plan_action(backend, crate::plan::PlanAction::SaveFile, path, args)
+        }
+        PLAN_SAVE_KML => {
+            crate::plan::plan_action(backend, crate::plan::PlanAction::SaveKml, path, args)
+        }
+        GUIDED_TAKEOFF => {
+            crate::guided::invoke_valued(backend, crate::guided::Valued::Takeoff, path, args)
+        }
+        GUIDED_ALTITUDE => {
+            crate::guided::invoke_valued(backend, crate::guided::Valued::ChangeAltitude, path, args)
+        }
+        PAUSE_VEHICLE => {
+            crate::guided::invoke_valued(backend, crate::guided::Valued::Pause, path, args)
+        }
+        GRIPPER => {
+            crate::guided::invoke_valued(backend, crate::guided::Valued::Gripper, path, args)
+        }
         FIX_PAYLOAD => crate::guided::fix_payload(backend, path, args),
-        RESUME_MISSION => crate::guided::invoke_valued(backend, crate::guided::Valued::Resume, path, args),
-        EMERGENCY_STOP => crate::guided::invoke_offered(backend, &[crate::guided::Action::EmergencyStop], path, args),
-        ABORT_LANDING => crate::guided::invoke_offered(backend, &[crate::guided::Action::LandAbort], path, args),
-        GUIDED_LAND => crate::guided::invoke_offered(backend, &[crate::guided::Action::Land], path, args),
-        GUIDED_RTL => crate::guided::invoke_offered(backend, &[crate::guided::Action::Rtl], path, args),
-        START_MISSION => crate::guided::invoke_offered(backend, &[crate::guided::Action::StartMission, crate::guided::Action::ContinueMission], path, args),
-        STOP_ROI => crate::guided::invoke_offered(backend, &[crate::guided::Action::CancelRoi], path, args),
-        FORCE_ARM => crate::guided::invoke_offered(backend, &[crate::guided::Action::ForceArm], path, args),
+        RESUME_MISSION => {
+            crate::guided::invoke_valued(backend, crate::guided::Valued::Resume, path, args)
+        }
+        EMERGENCY_STOP => crate::guided::invoke_offered(
+            backend,
+            &[crate::guided::Action::EmergencyStop],
+            path,
+            args,
+        ),
+        ABORT_LANDING => {
+            crate::guided::invoke_offered(backend, &[crate::guided::Action::LandAbort], path, args)
+        }
+        GUIDED_LAND => {
+            crate::guided::invoke_offered(backend, &[crate::guided::Action::Land], path, args)
+        }
+        GUIDED_RTL => {
+            crate::guided::invoke_offered(backend, &[crate::guided::Action::Rtl], path, args)
+        }
+        START_MISSION => crate::guided::invoke_offered(
+            backend,
+            &[
+                crate::guided::Action::StartMission,
+                crate::guided::Action::ContinueMission,
+            ],
+            path,
+            args,
+        ),
+        STOP_ROI => {
+            crate::guided::invoke_offered(backend, &[crate::guided::Action::CancelRoi], path, args)
+        }
+        FORCE_ARM => {
+            crate::guided::invoke_offered(backend, &[crate::guided::Action::ForceArm], path, args)
+        }
         REBOOT => crate::flystate::reboot(backend, path),
         REMOVE_LINK => crate::linkremove::remove_configuration(backend, path, args),
         MOTOR_TEST => crate::frame::motor_test(backend, path, args),
         GEOTAG_START => crate::geotagjob::act(backend, crate::geotagjob::Action::Start, path),
         GEOTAG_CANCEL => crate::geotagjob::act(backend, crate::geotagjob::Action::Cancel, path),
-        SENSOR_NEXT => crate::calibration::act(backend, crate::calibration::Action::Next, path, args),
-        SENSOR_CANCEL => crate::calibration::act(backend, crate::calibration::Action::Cancel, path, args),
-        CAL_ACCEL | CAL_COMPASS | CAL_LEVEL | CAL_GYRO | CAL_PRESSURE | CAL_MOTOR | CAL_AIRSPEED | CAL_COMPASS_NORTH => match crate::calibration::METHODS.iter().find(|m| path.ends_with(&format!(".{m}"))) {
-            Some(method) => crate::calibration::act(backend, crate::calibration::Action::Start(method), path, args),
-            None => json!({ "ok": false, "reason": format!("{path} is not a calibration the core knows") }),
+        SENSOR_NEXT => {
+            crate::calibration::act(backend, crate::calibration::Action::Next, path, args)
+        }
+        SENSOR_CANCEL => {
+            crate::calibration::act(backend, crate::calibration::Action::Cancel, path, args)
+        }
+        CAL_ACCEL | CAL_COMPASS | CAL_LEVEL | CAL_GYRO | CAL_PRESSURE | CAL_MOTOR
+        | CAL_AIRSPEED | CAL_COMPASS_NORTH => match crate::calibration::METHODS
+            .iter()
+            .find(|m| path.ends_with(&format!(".{m}")))
+        {
+            Some(method) => crate::calibration::act(
+                backend,
+                crate::calibration::Action::Start(method),
+                path,
+                args,
+            ),
+            None => {
+                json!({ "ok": false, "reason": format!("{path} is not a calibration the core knows") })
+            }
         },
         _ => json!({ "ok": false, "reason": format!("{path} is not an action the core performs") }),
     }
@@ -395,11 +754,19 @@ const CAMERA: &str = "vehicle.cameraManager.currentCameraInstance";
 
 fn camera(backend: &dyn Backend, path: &str, args: &str) -> Value {
     let mode = match path {
-        MODE => match serde_json::from_str::<Value>(args).ok().and_then(|a| a.as_array()?.first()?.as_str().map(str::to_string)).as_deref() {
+        MODE => match serde_json::from_str::<Value>(args)
+            .ok()
+            .and_then(|a| a.as_array()?.first()?.as_str().map(str::to_string))
+            .as_deref()
+        {
             Some("photo") => Some("Photo"),
             Some("video") => Some("Video"),
-            Some(other) => return json!({ "ok": false, "result": false, "unknown": other, "reason": format!("a camera mode is photo or video, not {other}") }),
-            None => return json!({ "ok": false, "result": false, "reason": "camera.setMode takes photo or video" }),
+            Some(other) => {
+                return json!({ "ok": false, "result": false, "unknown": other, "reason": format!("a camera mode is photo or video, not {other}") });
+            }
+            None => {
+                return json!({ "ok": false, "result": false, "reason": "camera.setMode takes photo or video" });
+            }
         },
         _ => None,
     };
@@ -409,16 +776,35 @@ fn camera(backend: &dyn Backend, path: &str, args: &str) -> Value {
         return json!({ "ok": false, "result": false, "reason": "No camera is connected." });
     }
     let (allowed, refusal, invokable) = match path {
-        PHOTO => (gate("canPhoto"), photo_refusal(&view), "takePhoto".to_string()),
-        RECORD => (gate("canRecord"), "This camera cannot record video in the mode it is in.".to_string(), "toggleVideoRecording".to_string()),
-        STOP_PHOTO => (gate("canStopPhoto"), "The camera is not taking an interval capture.".to_string(), "stopTakePhoto".to_string()),
+        PHOTO => (
+            gate("canPhoto"),
+            photo_refusal(&view),
+            "takePhoto".to_string(),
+        ),
+        RECORD => (
+            gate("canRecord"),
+            "This camera cannot record video in the mode it is in.".to_string(),
+            "toggleVideoRecording".to_string(),
+        ),
+        STOP_PHOTO => (
+            gate("canStopPhoto"),
+            "The camera is not taking an interval capture.".to_string(),
+            "stopTakePhoto".to_string(),
+        ),
         MODE => match mode {
             Some(wanted) => (
-                gate("hasModes") && view["panel"][if wanted == "Video" { "selectVideoEnabled" } else { "selectPhotoEnabled" }] == true,
+                gate("hasModes")
+                    && view["panel"][if wanted == "Video" {
+                        "selectVideoEnabled"
+                    } else {
+                        "selectPhotoEnabled"
+                    }] == true,
                 mode_refusal(&view),
                 format!("setCameraMode{wanted}"),
             ),
-            None => return json!({ "ok": false, "result": false, "reason": "camera.setMode takes photo or video" }),
+            None => {
+                return json!({ "ok": false, "result": false, "reason": "camera.setMode takes photo or video" });
+            }
         },
         _ => return json!({ "ok": false, "reason": format!("{path} is not a camera action") }),
     };
@@ -430,7 +816,8 @@ fn camera(backend: &dyn Backend, path: &str, args: &str) -> Value {
         MODE => crate::read::flag(&answer, "ok"),
         _ => crate::read::flag(&answer, "result"),
     };
-    let timelapse = path == PHOTO && view.get("photoMode").and_then(Value::as_str) == Some("timelapse");
+    let timelapse =
+        path == PHOTO && view.get("photoMode").and_then(Value::as_str) == Some("timelapse");
     json!({
         "ok": took,
         "result": took,
@@ -450,7 +837,10 @@ fn photo_refusal(view: &Value) -> String {
 }
 
 fn mode_refusal(view: &Value) -> String {
-    match (view.get("hasModes").and_then(Value::as_bool), view.get("isRecording").and_then(Value::as_bool)) {
+    match (
+        view.get("hasModes").and_then(Value::as_bool),
+        view.get("isRecording").and_then(Value::as_bool),
+    ) {
         (Some(false), _) => "This camera has only one mode.".to_string(),
         (_, Some(true)) => "The camera is recording, so it cannot leave video mode.".to_string(),
         _ => "The camera is busy capturing, so it cannot change mode.".to_string(),
@@ -466,10 +856,15 @@ fn point_at(backend: &dyn Backend, index: i64) -> Option<i64> {
         index if index < 0 => count - 1,
         index => (index - 1).clamp(0, count - 1),
     };
-    let sequence = serde_json::from_str::<Value>(&backend.get(&format!("plan.missionController.visualItems.{wanted}.sequenceNumber")))
-        .ok()
-        .and_then(|v| v.get("value").and_then(Value::as_i64))?;
-    backend.invoke("plan.missionController.setCurrentPlanViewSeqNum", &json!([sequence, true]).to_string());
+    let sequence = serde_json::from_str::<Value>(&backend.get(&format!(
+        "plan.missionController.visualItems.{wanted}.sequenceNumber"
+    )))
+    .ok()
+    .and_then(|v| v.get("value").and_then(Value::as_i64))?;
+    backend.invoke(
+        "plan.missionController.setCurrentPlanViewSeqNum",
+        &json!([sequence, true]).to_string(),
+    );
     Some(sequence)
 }
 
@@ -478,8 +873,14 @@ fn insert(backend: &dyn Backend, args: &str) -> Value {
     let Some(args) = args.as_array() else {
         return json!({ "ok": false, "reason": "mission.insert takes a kind, a latitude, a longitude and an index" });
     };
-    let number = |index: usize| args.get(index).and_then(Value::as_f64).filter(|value| value.is_finite());
-    let (Some(named), Some(latitude), Some(longitude)) = (args.first().and_then(Value::as_str), number(1), number(2)) else {
+    let number = |index: usize| {
+        args.get(index)
+            .and_then(Value::as_f64)
+            .filter(|value| value.is_finite())
+    };
+    let (Some(named), Some(latitude), Some(longitude)) =
+        (args.first().and_then(Value::as_str), number(1), number(2))
+    else {
         return json!({ "ok": false, "reason": "mission.insert takes a kind, a latitude, a longitude and an index" });
     };
     let Some(kind) = lookup(named) else {
@@ -500,7 +901,10 @@ fn insert(backend: &dyn Backend, args: &str) -> Value {
     };
     let at_sequence = Some(at_sequence);
     if !insertable(backend).home_set {
-        backend.invoke("plan.missionController.setHomePosition", &json!([{ "latitude": latitude, "longitude": longitude, "altitude": 0.0 }]).to_string());
+        backend.invoke(
+            "plan.missionController.setHomePosition",
+            &json!([{ "latitude": latitude, "longitude": longitude, "altitude": 0.0 }]).to_string(),
+        );
     }
     if let Some(reason) = refusal(kind, &insertable(backend)) {
         return json!({ "ok": false, "reason": reason, "refused": kind.id, "atSequence": at_sequence });
@@ -510,7 +914,11 @@ fn insert(backend: &dyn Backend, args: &str) -> Value {
         Some(name) => vec![json!(name), at, json!(index), json!(true)],
         None => vec![at, json!(index), json!(true)],
     };
-    let answered: Value = serde_json::from_str(&backend.invoke(&format!("plan.missionController.{}", kind.invokable), &Value::Array(call).to_string())).unwrap_or(Value::Null);
+    let answered: Value = serde_json::from_str(&backend.invoke(
+        &format!("plan.missionController.{}", kind.invokable),
+        &Value::Array(call).to_string(),
+    ))
+    .unwrap_or(Value::Null);
     if answered.get("ok").and_then(Value::as_bool) != Some(true) {
         return json!({ "ok": false, "reason": answered.get("reason").and_then(Value::as_str).unwrap_or("the plan refused the item").to_string() });
     }
@@ -521,9 +929,14 @@ fn insert(backend: &dyn Backend, args: &str) -> Value {
         return json!({ "ok": false, "reason": "the item was added and then could not be found, so the plan is not in a state to build on" });
     };
     match shape(backend, kind, placed, latitude, longitude) {
-        Ok(()) => json!({ "ok": true, "inserted": kind.id, "index": placed, "atSequence": at_sequence }),
+        Ok(()) => {
+            json!({ "ok": true, "inserted": kind.id, "index": placed, "atSequence": at_sequence })
+        }
         Err(reason) => {
-            backend.invoke("plan.missionController.removeVisualItem", &json!([placed]).to_string());
+            backend.invoke(
+                "plan.missionController.removeVisualItem",
+                &json!([placed]).to_string(),
+            );
             json!({ "ok": false, "reason": reason, "removed": kind.id })
         }
     }
@@ -533,7 +946,11 @@ const SETTINGS_ITEM: i64 = 0;
 
 fn remove(backend: &dyn Backend, args: &str) -> Value {
     let args: Value = serde_json::from_str(args).unwrap_or(Value::Null);
-    let Some(index) = args.as_array().and_then(|args| args.first()).and_then(Value::as_i64) else {
+    let Some(index) = args
+        .as_array()
+        .and_then(|args| args.first())
+        .and_then(Value::as_i64)
+    else {
         return json!({ "ok": false, "reason": "mission.remove takes the index of the item to remove" });
     };
     let Some(count) = item_count(backend) else {
@@ -545,23 +962,38 @@ fn remove(backend: &dyn Backend, args: &str) -> Value {
     if index < 0 || index >= count {
         return json!({ "ok": false, "reason": format!("this plan has no item {index}") });
     }
-    backend.invoke("plan.missionController.removeVisualItem", &json!([index]).to_string());
+    backend.invoke(
+        "plan.missionController.removeVisualItem",
+        &json!([index]).to_string(),
+    );
     match item_count(backend) {
         Some(now) if now == count - 1 => json!({ "ok": true, "removed": index, "remaining": now }),
-        Some(now) if now < count - 1 => json!({ "ok": false, "reason": format!("the plan lost {} items rather than the one asked for", count - now) }),
-        _ => json!({ "ok": false, "reason": "the plan still holds the item, so it was not removed" }),
+        Some(now) if now < count - 1 => {
+            json!({ "ok": false, "reason": format!("the plan lost {} items rather than the one asked for", count - now) })
+        }
+        _ => {
+            json!({ "ok": false, "reason": "the plan still holds the item, so it was not removed" })
+        }
     }
 }
 
 fn set_current_mission(backend: &dyn Backend, args: &str) -> Value {
-    let asked = serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0)?.as_f64());
+    let asked = serde_json::from_str::<Value>(args)
+        .ok()
+        .and_then(|a| a.get(0)?.as_f64());
     let Some(sequence) = asked.filter(|s| s.fract() == 0.0 && *s >= 1.0) else {
         return json!({ "ok": false, "refusal": "badSequence", "reason": "A waypoint is chosen by its sequence number, from 1." });
     };
     let Some(vehicle) = crate::guided::active_id(backend) else {
         return json!({ "ok": false, "refusal": "noVehicle", "reason": "No vehicle is connected." });
     };
-    crate::guided::dispatch(backend, Some(json!({ "action": "setCurrentMission", "sequence": sequence })), Some(vehicle), SET_CURRENT_MISSION, &json!([sequence as i64]).to_string())
+    crate::guided::dispatch(
+        backend,
+        Some(json!({ "action": "setCurrentMission", "sequence": sequence })),
+        Some(vehicle),
+        SET_CURRENT_MISSION,
+        &json!([sequence as i64]).to_string(),
+    )
 }
 
 fn orbit(backend: &dyn Backend, args: &str) -> Value {
@@ -569,8 +1001,14 @@ fn orbit(backend: &dyn Backend, args: &str) -> Value {
     let Some(args) = args.as_array() else {
         return json!({ "ok": false, "reason": "guided.orbit takes a latitude, a longitude, a radius, a direction and a height above the launch point" });
     };
-    let number = |index: usize| args.get(index).and_then(Value::as_f64).filter(|value| value.is_finite());
-    let (Some(latitude), Some(longitude), Some(radius), Some(above_home)) = (number(0), number(1), number(2), number(4)) else {
+    let number = |index: usize| {
+        args.get(index)
+            .and_then(Value::as_f64)
+            .filter(|value| value.is_finite())
+    };
+    let (Some(latitude), Some(longitude), Some(radius), Some(above_home)) =
+        (number(0), number(1), number(2), number(4))
+    else {
         return json!({ "ok": false, "reason": "guided.orbit takes a latitude, a longitude, a radius, a direction and a height above the launch point" });
     };
     if radius <= 0.0 {
@@ -579,11 +1017,21 @@ fn orbit(backend: &dyn Backend, args: &str) -> Value {
     let Some(clockwise) = args.get(3).and_then(Value::as_bool) else {
         return json!({ "ok": false, "reason": "An orbit has to turn one way or the other." });
     };
-    if !crate::read::flag(&backend.value_fields("vehicle.supports", "orbitMode"), "orbitMode") {
+    if !crate::read::flag(
+        &backend.value_fields("vehicle.supports", "orbitMode"),
+        "orbitMode",
+    ) {
         return json!({ "ok": false, "reason": "This vehicle does not support orbiting." });
     }
-    let limit = |name: &str| crate::read::value_number(&backend.value(&format!("settings.flyViewSettings.{name}.rawValue")));
-    match (limit("guidedMinimumAltitude"), limit("guidedMaximumAltitude")) {
+    let limit = |name: &str| {
+        crate::read::value_number(
+            &backend.value(&format!("settings.flyViewSettings.{name}.rawValue")),
+        )
+    };
+    match (
+        limit("guidedMinimumAltitude"),
+        limit("guidedMaximumAltitude"),
+    ) {
         (Some(lowest), Some(highest)) if above_home < lowest || above_home > highest => {
             return json!({ "ok": false, "reason": format!("An orbit has to be between {lowest} and {highest} metres above the launch point.") });
         }
@@ -593,32 +1041,47 @@ fn orbit(backend: &dyn Backend, args: &str) -> Value {
     if home.get("valid").and_then(Value::as_bool) != Some(true) {
         return json!({ "ok": false, "reason": "The vehicle has not reported where it launched from, so there is nothing to measure the orbit height against." });
     }
-    let Some(home_altitude) = home.get("altitude").and_then(Value::as_f64).filter(|value| value.is_finite()) else {
+    let Some(home_altitude) = home
+        .get("altitude")
+        .and_then(Value::as_f64)
+        .filter(|value| value.is_finite())
+    else {
         return json!({ "ok": false, "reason": "The launch position carries no altitude, so an orbit height above sea level cannot be worked out." });
     };
     let signed = if clockwise { radius } else { -radius };
     let amsl = home_altitude + above_home;
     let called = crate::guided::dispatch(
         backend,
-        Some(json!({ "action": "orbit", "latitude": latitude, "longitude": longitude, "radius": signed, "altitudeAmsl": amsl })),
+        Some(
+            json!({ "action": "orbit", "latitude": latitude, "longitude": longitude, "radius": signed, "altitudeAmsl": amsl }),
+        ),
         crate::guided::active_id(backend),
         "vehicle.guidedModeOrbit",
-        &json!([{ "latitude": latitude, "longitude": longitude, "altitude": 0.0 }, signed, amsl]).to_string(),
+        &json!([{ "latitude": latitude, "longitude": longitude, "altitude": 0.0 }, signed, amsl])
+            .to_string(),
     );
     match called.get("ok").and_then(Value::as_bool) {
         Some(true) => json!({ "ok": true, "radius": signed, "altitudeAmsl": amsl }),
-        _ => json!({ "ok": false, "reason": called.get("reason").and_then(Value::as_str).unwrap_or("the vehicle refused the orbit").to_string() }),
+        _ => {
+            json!({ "ok": false, "reason": called.get("reason").and_then(Value::as_str).unwrap_or("the vehicle refused the orbit").to_string() })
+        }
     }
 }
 
 fn activate(backend: &dyn Backend, args: &str) -> Value {
     let args: Value = serde_json::from_str(args).unwrap_or(Value::Null);
-    let Some(wanted) = args.as_array().and_then(|args| args.first()).and_then(Value::as_i64) else {
+    let Some(wanted) = args
+        .as_array()
+        .and_then(|args| args.first())
+        .and_then(Value::as_i64)
+    else {
         return json!({ "ok": false, "reason": "vehicles.setActive takes the id of the vehicle to command" });
     };
     if !crate::qthost::present() {
         let mut hub = crate::hub::lock();
-        let known = u8::try_from(wanted).ok().filter(|id| hub.vehicle_ids().contains(id));
+        let known = u8::try_from(wanted)
+            .ok()
+            .filter(|id| hub.vehicle_ids().contains(id));
         return match known {
             Some(id) => {
                 hub.set_active(Some(id));
@@ -627,25 +1090,43 @@ fn activate(backend: &dyn Backend, args: &str) -> Value {
             None => json!({ "ok": false, "reason": format!("no vehicle {wanted} is connected") }),
         };
     }
-    let count = serde_json::from_str::<Value>(&backend.get("vehicles.vehicles.count")).ok().and_then(|v| v.get("value").and_then(Value::as_i64)).unwrap_or(0);
+    let count = serde_json::from_str::<Value>(&backend.get("vehicles.vehicles.count"))
+        .ok()
+        .and_then(|v| v.get("value").and_then(Value::as_i64))
+        .unwrap_or(0);
     let found = (0..count).find(|index| {
-        crate::read::integer(&backend.value_fields(&format!("vehicles.vehicles.{index}"), "id"), "id") == Some(wanted)
+        crate::read::integer(
+            &backend.value_fields(&format!("vehicles.vehicles.{index}"), "id"),
+            "id",
+        ) == Some(wanted)
     });
     let Some(index) = found else {
         return json!({ "ok": false, "reason": format!("no vehicle {wanted} is connected") });
     };
-    let written: Value = serde_json::from_str(&backend.set("vehicles.activeVehicle", &json!({ "value": format!("@vehicles.vehicles.{index}") }).to_string())).unwrap_or(Value::Null);
+    let written: Value = serde_json::from_str(&backend.set(
+        "vehicles.activeVehicle",
+        &json!({ "value": format!("@vehicles.vehicles.{index}") }).to_string(),
+    ))
+    .unwrap_or(Value::Null);
     match written.get("ok").and_then(Value::as_bool) {
         Some(true) => json!({ "ok": true, "activating": wanted }),
-        _ => json!({ "ok": false, "reason": written.get("reason").and_then(Value::as_str).unwrap_or("the vehicle could not be made active").to_string() }),
+        _ => {
+            json!({ "ok": false, "reason": written.get("reason").and_then(Value::as_str).unwrap_or("the vehicle could not be made active").to_string() })
+        }
     }
 }
 
 fn insert_direct(backend: &dyn Backend, kind_id: &str, path: &str, args: &str) -> Value {
     let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
     let at = given.get(0).and_then(|point| {
-        let latitude = point.get("latitude")?.as_f64().filter(|v| v.is_finite() && (-90.0..=90.0).contains(v))?;
-        let longitude = point.get("longitude")?.as_f64().filter(|v| v.is_finite() && (-180.0..=180.0).contains(v))?;
+        let latitude = point
+            .get("latitude")?
+            .as_f64()
+            .filter(|v| v.is_finite() && (-90.0..=90.0).contains(v))?;
+        let longitude = point
+            .get("longitude")?
+            .as_f64()
+            .filter(|v| v.is_finite() && (-180.0..=180.0).contains(v))?;
         Some((latitude, longitude))
     });
     let Some((latitude, longitude)) = at else {
@@ -678,38 +1159,88 @@ fn insert_direct(backend: &dyn Backend, kind_id: &str, path: &str, args: &str) -
 
 fn offered_patterns(backend: &dyn Backend) -> Option<Vec<String>> {
     if crate::coreplan::enabled() {
-        return Some(crate::plan::offered_patterns(backend).into_iter().map(str::to_string).collect());
+        return Some(
+            crate::plan::offered_patterns(backend)
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+        );
     }
     let controller = backend.value_fields("plan.missionController", "complexMissionItems");
-    controller.get("complexMissionItems")?.as_array().map(|items| items.iter().filter_map(|item| item.as_str().or_else(|| item.get("canonicalName")?.as_str())).map(str::to_string).collect())
+    controller
+        .get("complexMissionItems")?
+        .as_array()
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| {
+                    item.as_str()
+                        .or_else(|| item.get("canonicalName")?.as_str())
+                })
+                .map(str::to_string)
+                .collect()
+        })
 }
 
-fn pattern_refusal(name: Option<&str>, offered: Option<&[String]>) -> Option<(&'static str, String)> {
+fn pattern_refusal(
+    name: Option<&str>,
+    offered: Option<&[String]>,
+) -> Option<(&'static str, String)> {
     let Some(name) = name.filter(|n| !n.is_empty()) else {
-        return Some(("malformed", "A pattern is inserted by its name.".to_string()));
+        return Some((
+            "malformed",
+            "A pattern is inserted by its name.".to_string(),
+        ));
     };
     match offered {
-        Some(offered) if !offered.iter().any(|o| o == name) => Some(("unknownPattern", format!("{name} is not a pattern this plan offers."))),
+        Some(offered) if !offered.iter().any(|o| o == name) => Some((
+            "unknownPattern",
+            format!("{name} is not a pattern this plan offers."),
+        )),
         _ => None,
     }
 }
 
 fn shape_refusal(pattern: &str, file: &str) -> Option<(&'static str, String)> {
-    let wants_line = lookup(pattern).and_then(|kind| kind.geometry).is_some_and(|(geometry, _)| geometry == "line");
+    let wants_line = lookup(pattern)
+        .and_then(|kind| kind.geometry)
+        .is_some_and(|(geometry, _)| geometry == "line");
     let lower = file.to_lowercase();
     let found = match () {
         _ if lower.ends_with(".kml") => match std::fs::read_to_string(file) {
             Err(_) => return Some(("unreadable", format!("{file} could not be read."))),
-            Ok(text) => crate::kml::parse_wanted(&text, wants_line).map(|_| wants_line).or_else(|wanted| crate::kml::parse(&text).map(|shape| matches!(shape, crate::kml::Shape::Polyline(_))).map_err(|_| wanted)),
+            Ok(text) => crate::kml::parse_wanted(&text, wants_line)
+                .map(|_| wants_line)
+                .or_else(|wanted| {
+                    crate::kml::parse(&text)
+                        .map(|shape| matches!(shape, crate::kml::Shape::Polyline(_)))
+                        .map_err(|_| wanted)
+                }),
         },
         _ if lower.ends_with(".shp") => crate::shp::parse_wanted(file, Some(wants_line))
             .map(|_| wants_line)
-            .or_else(|wanted| crate::shp::parse(file).map(|(kind, _, _)| kind == "polyline").map_err(|_| wanted)),
-        _ => return Some(("notAShape", "A pattern is drawn from a .kml or .shp file.".to_string())),
+            .or_else(|wanted| {
+                crate::shp::parse(file)
+                    .map(|(kind, _, _)| kind == "polyline")
+                    .map_err(|_| wanted)
+            }),
+        _ => {
+            return Some((
+                "notAShape",
+                "A pattern is drawn from a .kml or .shp file.".to_string(),
+            ));
+        }
     };
     match found {
         Err(reason) => Some(("noShape", reason)),
-        Ok(line) if line != wants_line => Some(("wrongShape", format!("{pattern} needs {} and this file holds {}.", if wants_line { "a line" } else { "an area" }, if line { "a line" } else { "an area" }))),
+        Ok(line) if line != wants_line => Some((
+            "wrongShape",
+            format!(
+                "{pattern} needs {} and this file holds {}.",
+                if wants_line { "a line" } else { "an area" },
+                if line { "a line" } else { "an area" }
+            ),
+        )),
         Ok(_) => None,
     }
 }
@@ -722,10 +1253,20 @@ fn insert_pattern(backend: &dyn Backend, path: &str, args: &str, from_file: bool
         return json!({ "ok": false, "refusal": "unavailable", "reason": "The plan did not say how many items it holds." });
     };
     let placed = match from_file {
-        true => given.get(1).and_then(Value::as_str).filter(|f| !f.trim().is_empty()).map(|f| json!(f)),
+        true => given
+            .get(1)
+            .and_then(Value::as_str)
+            .filter(|f| !f.trim().is_empty())
+            .map(|f| json!(f)),
         false => given.get(1).and_then(|at| {
-            let latitude = at.get("latitude")?.as_f64().filter(|v| v.is_finite() && (-90.0..=90.0).contains(v))?;
-            let longitude = at.get("longitude")?.as_f64().filter(|v| v.is_finite() && (-180.0..=180.0).contains(v))?;
+            let latitude = at
+                .get("latitude")?
+                .as_f64()
+                .filter(|v| v.is_finite() && (-90.0..=90.0).contains(v))?;
+            let longitude = at
+                .get("longitude")?
+                .as_f64()
+                .filter(|v| v.is_finite() && (-180.0..=180.0).contains(v))?;
             Some(json!({ "latitude": latitude, "longitude": longitude }))
         }),
     };
@@ -740,7 +1281,10 @@ fn insert_pattern(backend: &dyn Backend, path: &str, args: &str, from_file: bool
         return json!({ "ok": false, "result": Value::Null, "refusal": token, "reason": reason });
     }
     let make_current = given.get(3).and_then(Value::as_bool).unwrap_or(false);
-    let answered = object(&backend.invoke(path, &json!([name, placed, index, make_current]).to_string()));
+    let answered = object(&backend.invoke(
+        path,
+        &json!([name, placed, index, make_current]).to_string(),
+    ));
     let grew = crate::read::flag(&answered, "ok") && item_count(backend) == Some(held + 1);
     json!({
         "ok": grew,
@@ -753,36 +1297,67 @@ fn insert_pattern(backend: &dyn Backend, path: &str, args: &str, from_file: bool
 const UNIT_SYSTEMS: std::ops::RangeInclusive<i64> = 0..=2;
 
 fn set_unit_system(backend: &dyn Backend, path: &str, args: &str) -> Value {
-    let Some(system) = serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0)?.as_i64()).filter(|s| UNIT_SYSTEMS.contains(s)) else {
+    let Some(system) = serde_json::from_str::<Value>(args)
+        .ok()
+        .and_then(|a| a.get(0)?.as_i64())
+        .filter(|s| UNIT_SYSTEMS.contains(s))
+    else {
         return json!({ "ok": false, "refusal": "unknownSystem", "reason": "A unit system is 0 metric, 1 imperial or 2 custom." });
     };
-    let dispatched = crate::read::flag(&object(&backend.invoke(path, &json!([system]).to_string())), "ok");
+    let dispatched = crate::read::flag(
+        &object(&backend.invoke(path, &json!([system]).to_string())),
+        "ok",
+    );
     json!({ "ok": dispatched, "refusal": Value::Null, "reason": match dispatched { true => Value::Null, false => json!("The unit system was not changed.") } })
 }
 
 fn send_console(backend: &dyn Backend, path: &str, args: &str) -> Value {
-    let Some(command) = serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0)?.as_str().map(str::to_string)) else {
+    let Some(command) = serde_json::from_str::<Value>(args)
+        .ok()
+        .and_then(|a| a.get(0)?.as_str().map(str::to_string))
+    else {
         return json!({ "ok": false, "refusal": "malformed", "reason": "A console command is text." });
     };
-    if !crate::read::flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable") {
+    if !crate::read::flag(
+        &backend.value_fields("vehicles", "activeVehicleAvailable"),
+        "activeVehicleAvailable",
+    ) {
         return json!({ "ok": false, "refusal": "noVehicle", "reason": "No vehicle is connected, so nothing will read the command." });
     }
-    let dispatched = crate::read::flag(&object(&backend.invoke(path, &json!([command]).to_string())), "ok");
+    let dispatched = crate::read::flag(
+        &object(&backend.invoke(path, &json!([command]).to_string())),
+        "ok",
+    );
     json!({ "ok": dispatched, "refusal": Value::Null, "reason": match dispatched { true => Value::Null, false => json!("The command was not sent.") } })
 }
 
 fn item_count(backend: &dyn Backend) -> Option<i64> {
-    serde_json::from_str::<Value>(&backend.get("plan.missionController.visualItems.count")).ok().and_then(|v| v.get("value").and_then(Value::as_i64))
+    serde_json::from_str::<Value>(&backend.get("plan.missionController.visualItems.count"))
+        .ok()
+        .and_then(|v| v.get("value").and_then(Value::as_i64))
 }
 
 fn inserted_index(backend: &dyn Backend) -> Option<i64> {
-    serde_json::from_str::<Value>(&backend.get("plan.missionController.currentPlanViewVIIndex")).ok().and_then(|v| v.get("value").and_then(Value::as_i64)).filter(|index| *index > 0)
+    serde_json::from_str::<Value>(&backend.get("plan.missionController.currentPlanViewVIIndex"))
+        .ok()
+        .and_then(|v| v.get("value").and_then(Value::as_i64))
+        .filter(|index| *index > 0)
 }
 
-fn shape(backend: &dyn Backend, kind: &crate::missionkinds::Kind, index: i64, latitude: f64, longitude: f64) -> Result<(), String> {
+fn shape(
+    backend: &dyn Backend,
+    kind: &crate::missionkinds::Kind,
+    index: i64,
+    latitude: f64,
+    longitude: f64,
+) -> Result<(), String> {
     if kind.id == "takeoff" {
         let at = json!({ "latitude": latitude, "longitude": longitude, "altitude": 0.0 });
-        let written: Value = serde_json::from_str(&backend.set(&format!("plan.missionController.visualItems.{index}.launchCoordinate"), &json!({ "value": at }).to_string())).unwrap_or(Value::Null);
+        let written: Value = serde_json::from_str(&backend.set(
+            &format!("plan.missionController.visualItems.{index}.launchCoordinate"),
+            &json!({ "value": at }).to_string(),
+        ))
+        .unwrap_or(Value::Null);
         if written.get("ok").and_then(Value::as_bool) != Some(true) {
             return Err("the takeoff would not take a launch position, and a takeoff without one cannot be flown".to_string());
         }
@@ -792,7 +1367,9 @@ fn shape(backend: &dyn Backend, kind: &crate::missionkinds::Kind, index: i64, la
             _ => Err("the launch position was accepted and the plan still has no launch point, so nothing the takeoff is measured from exists".to_string()),
         };
     }
-    let Some((geometry, property)) = kind.geometry else { return Ok(()) };
+    let Some((geometry, property)) = kind.geometry else {
+        return Ok(());
+    };
     let points = match geometry {
         "line" => default_line(latitude, longitude),
         _ => default_area(latitude, longitude),
@@ -801,10 +1378,16 @@ fn shape(backend: &dyn Backend, kind: &crate::missionkinds::Kind, index: i64, la
     backend.invoke(&format!("{path}.clear"), "[]");
     let refused = points.iter().find_map(|(lat, lon)| {
         let at = json!([{ "latitude": lat, "longitude": lon, "altitude": 0.0 }]);
-        let answered: Value = serde_json::from_str(&backend.invoke(&format!("{path}.appendVertex"), &at.to_string())).unwrap_or(Value::Null);
+        let answered: Value =
+            serde_json::from_str(&backend.invoke(&format!("{path}.appendVertex"), &at.to_string()))
+                .unwrap_or(Value::Null);
         match answered.get("ok").and_then(Value::as_bool) {
             Some(true) => None,
-            _ => Some(format!("the {} would not take a {}", kind.title.to_lowercase(), kind.shape_noun())),
+            _ => Some(format!(
+                "the {} would not take a {}",
+                kind.title.to_lowercase(),
+                kind.shape_noun()
+            )),
         }
     });
     match refused {
@@ -820,15 +1403,24 @@ mod tests {
 
     #[test]
     fn the_setup_dialog_notice_is_answered_by_the_core() {
-        assert!(owns(crate::vehicleconfig::DIALOG_OPENED) && owns(crate::vehicleconfig::PAGE_OPENED));
+        assert!(
+            owns(crate::vehicleconfig::DIALOG_OPENED) && owns(crate::vehicleconfig::PAGE_OPENED)
+        );
     }
 
     #[test]
     #[ignore = "run by android/tools/qtpaths.py with QTPATHS_QUERY naming a file of kind<TAB>path lines"]
     fn claims_for_qtpaths() {
-        let Ok(query) = std::env::var("QTPATHS_QUERY") else { return };
-        for line in std::fs::read_to_string(query).expect("QTPATHS_QUERY names a readable file").lines() {
-            let Some((kind, path)) = line.split_once('\t') else { continue };
+        let Ok(query) = std::env::var("QTPATHS_QUERY") else {
+            return;
+        };
+        for line in std::fs::read_to_string(query)
+            .expect("QTPATHS_QUERY names a readable file")
+            .lines()
+        {
+            let Some((kind, path)) = line.split_once('\t') else {
+                continue;
+            };
             let claimed = match kind {
                 "set" => owns_write(path),
                 "invoke" => owns(path),
@@ -847,16 +1439,27 @@ mod tests {
 
     impl Plan {
         fn new(mission: Value) -> Plan {
-            Plan { mission, calls: Mutex::new(Vec::new()), answer: json!({ "ok": true }), count: Mutex::new(3) }
+            Plan {
+                mission,
+                calls: Mutex::new(Vec::new()),
+                answer: json!({ "ok": true }),
+                count: Mutex::new(3),
+            }
         }
     }
 
     impl Backend for Plan {
         fn get(&self, path: &str) -> String {
             match path {
-                "plan.missionController.visualItems.count" => json!({ "kind": "value", "value": *self.count.lock().unwrap() }).to_string(),
-                "plan.missionController.currentPlanViewVIIndex" => json!({ "kind": "value", "value": *self.count.lock().unwrap() - 1 }).to_string(),
-                path if path.ends_with(".sequenceNumber") => json!({ "kind": "value", "value": 2 }).to_string(),
+                "plan.missionController.visualItems.count" => {
+                    json!({ "kind": "value", "value": *self.count.lock().unwrap() }).to_string()
+                }
+                "plan.missionController.currentPlanViewVIIndex" => {
+                    json!({ "kind": "value", "value": *self.count.lock().unwrap() - 1 }).to_string()
+                }
+                path if path.ends_with(".sequenceNumber") => {
+                    json!({ "kind": "value", "value": 2 }).to_string()
+                }
                 _ => String::new(),
             }
         }
@@ -864,19 +1467,32 @@ mod tests {
             match path {
                 "plan.missionController" => self.mission.to_string(),
                 path if path.starts_with("plan.missionController.visualItems.") => {
-                    let placed = self.calls.lock().unwrap().iter().any(|(called, _)| called.ends_with(".launchCoordinate"));
+                    let placed = self
+                        .calls
+                        .lock()
+                        .unwrap()
+                        .iter()
+                        .any(|(called, _)| called.ends_with(".launchCoordinate"));
                     json!({ "kind": "object", "coordinate": { "kind": "coordinate", "valid": placed, "latitude": 47.0, "longitude": 8.0 } }).to_string()
                 }
                 _ => String::new(),
             }
         }
         fn set(&self, path: &str, value: &str) -> String {
-            self.calls.lock().unwrap().push((path.to_string(), value.to_string()));
+            self.calls
+                .lock()
+                .unwrap()
+                .push((path.to_string(), value.to_string()));
             self.answer.to_string()
         }
         fn invoke(&self, path: &str, args: &str) -> String {
-            self.calls.lock().unwrap().push((path.to_string(), args.to_string()));
-            if (path.contains("insert") || path.ends_with("addWaypoint")) && self.answer.get("ok").and_then(Value::as_bool) == Some(true) {
+            self.calls
+                .lock()
+                .unwrap()
+                .push((path.to_string(), args.to_string()));
+            if (path.contains("insert") || path.ends_with("addWaypoint"))
+                && self.answer.get("ok").and_then(Value::as_bool) == Some(true)
+            {
                 *self.count.lock().unwrap() += 1;
             }
             self.answer.to_string()
@@ -892,15 +1508,22 @@ mod tests {
         json!({ "kind": "object", "onlyInsertTakeoffValid": false, "isInsertTakeoffValid": false, "isInsertLandValid": true, "flyThroughCommandsAllowed": true })
     }
 
-
     #[test]
     fn a_claimed_path_keeps_the_shape_its_qt_answer_had() {
         struct Nothing;
         impl Backend for Nothing {
-            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
-            fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "null" }).to_string() }
-            fn set(&self, _p: &str, _v: &str) -> String { json!({ "ok": false }).to_string() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { json!({ "ok": false }).to_string() }
+            fn get(&self, p: &str) -> String {
+                self.get_fields(p, "")
+            }
+            fn get_fields(&self, _p: &str, _f: &str) -> String {
+                json!({ "kind": "null" }).to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                json!({ "ok": false }).to_string()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                json!({ "ok": false }).to_string()
+            }
             fn watch(&self, _p: &[String]) {}
         }
         let answer = |path: &str| match owns_write(path) {
@@ -908,29 +1531,57 @@ mod tests {
             false => run(&Nothing, path, "[]"),
         };
 
-        let silent: Vec<&&str> = OWNED.iter().chain(OWNED_WRITES.iter())
+        let silent: Vec<&&str> = OWNED
+            .iter()
+            .chain(OWNED_WRITES.iter())
             .filter(|path| {
                 let given = answer(path);
-                given.get("ok").and_then(Value::as_bool) != Some(false) || given.get("reason").and_then(Value::as_str).is_none_or(str::is_empty)
+                given.get("ok").and_then(Value::as_bool) != Some(false)
+                    || given
+                        .get("reason")
+                        .and_then(Value::as_str)
+                        .is_none_or(str::is_empty)
             })
             .collect();
-        assert!(silent.is_empty(), "these refuse without saying why, which is the silence the whole table exists to remove: {silent:?}");
+        assert!(
+            silent.is_empty(),
+            "these refuse without saying why, which is the silence the whole table exists to remove: {silent:?}"
+        );
 
-        let shapeless: Vec<&&str> = OWNED_WRITES.iter().filter(|path| answer(path).get("result").is_none()).collect();
-        assert!(shapeless.is_empty(), "these shadow a Qt path and dropped its result key, so a head reading one the Qt way sees a failure or an empty list: {shapeless:?}");
+        let shapeless: Vec<&&str> = OWNED_WRITES
+            .iter()
+            .filter(|path| answer(path).get("result").is_none())
+            .collect();
+        assert!(
+            shapeless.is_empty(),
+            "these shadow a Qt path and dropped its result key, so a head reading one the Qt way sees a failure or an empty list: {shapeless:?}"
+        );
 
-        let camera_shapeless: Vec<&&str> = OWNED.iter().filter(|path| path.contains("cameraManager") && answer(path).get("result").is_none()).collect();
-        assert!(camera_shapeless.is_empty(), "an invented name is exempt from the result rule only because no Qt path answers to it; a full camera path in this list is spelled like one a head reads the Qt way, so it owes the result key: {camera_shapeless:?}");
+        let camera_shapeless: Vec<&&str> = OWNED
+            .iter()
+            .filter(|path| path.contains("cameraManager") && answer(path).get("result").is_none())
+            .collect();
+        assert!(
+            camera_shapeless.is_empty(),
+            "an invented name is exempt from the result rule only because no Qt path answers to it; a full camera path in this list is spelled like one a head reads the Qt way, so it owes the result key: {camera_shapeless:?}"
+        );
     }
 
     #[test]
     fn a_direct_takeoff_or_land_insert_is_confirmed_by_the_plan_growing() {
         use std::cell::RefCell;
-        struct Plan { items: RefCell<i64>, grows: bool, land_valid: bool, calls: RefCell<Vec<String>> }
+        struct Plan {
+            items: RefCell<i64>,
+            grows: bool,
+            land_valid: bool,
+            calls: RefCell<Vec<String>>,
+        }
         impl Backend for Plan {
             fn get(&self, p: &str) -> String {
                 match p {
-                    "plan.missionController.visualItems.count" => json!({ "kind": "value", "value": *self.items.borrow() }),
+                    "plan.missionController.visualItems.count" => {
+                        json!({ "kind": "value", "value": *self.items.borrow() })
+                    }
                     _ => json!({ "kind": "null" }),
                 }
                 .to_string()
@@ -938,7 +1589,9 @@ mod tests {
             fn get_fields(&self, _p: &str, _f: &str) -> String {
                 json!({ "kind": "object", "homePositionSet": true, "onlyInsertTakeoffValid": false, "isInsertTakeoffValid": true, "isInsertLandValid": self.land_valid, "flyThroughCommandsAllowed": true, "complexMissionItems": [] }).to_string()
             }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
             fn invoke(&self, p: &str, a: &str) -> String {
                 self.calls.borrow_mut().push(format!("{p} {a}"));
                 if self.grows {
@@ -948,24 +1601,82 @@ mod tests {
             }
             fn watch(&self, _p: &[String]) {}
         }
-        let plan = Plan { items: RefCell::new(3), grows: true, land_valid: false, calls: RefCell::new(Vec::new()) };
-        let appended = run(&plan, INSERT_LAND, r#"[{"latitude":47.4,"longitude":8.5}, -1, false]"#);
-        assert_eq!(appended["ok"], true, "isInsertLandValid describes the selected position, so an append to the end is not refused on it");
-        assert_eq!(run(&plan, INSERT_LAND, r#"[{"latitude":47.4,"longitude":8.5}, 2, false]"#)["refusal"], "notHere", "an insert at a named place is held to the rule for that place");
-        assert_eq!(run(&plan, INSERT_TAKEOFF, r#"[{"latitude":147.4,"longitude":8.5}, -1, false]"#)["refusal"], "badCoordinate");
-        assert_eq!(run(&plan, INSERT_TAKEOFF, r#"[{"latitude":47.4,"longitude":8.5}, 9, false]"#)["refusal"], "noSuchPlace");
+        let plan = Plan {
+            items: RefCell::new(3),
+            grows: true,
+            land_valid: false,
+            calls: RefCell::new(Vec::new()),
+        };
+        let appended = run(
+            &plan,
+            INSERT_LAND,
+            r#"[{"latitude":47.4,"longitude":8.5}, -1, false]"#,
+        );
+        assert_eq!(
+            appended["ok"], true,
+            "isInsertLandValid describes the selected position, so an append to the end is not refused on it"
+        );
+        assert_eq!(
+            run(
+                &plan,
+                INSERT_LAND,
+                r#"[{"latitude":47.4,"longitude":8.5}, 2, false]"#
+            )["refusal"],
+            "notHere",
+            "an insert at a named place is held to the rule for that place"
+        );
+        assert_eq!(
+            run(
+                &plan,
+                INSERT_TAKEOFF,
+                r#"[{"latitude":147.4,"longitude":8.5}, -1, false]"#
+            )["refusal"],
+            "badCoordinate"
+        );
+        assert_eq!(
+            run(
+                &plan,
+                INSERT_TAKEOFF,
+                r#"[{"latitude":47.4,"longitude":8.5}, 9, false]"#
+            )["refusal"],
+            "noSuchPlace"
+        );
         assert_eq!(plan.calls.borrow().len(), 1);
-        let refusing = Plan { items: RefCell::new(3), grows: false, land_valid: true, calls: RefCell::new(Vec::new()) };
-        assert_eq!(run(&refusing, INSERT_TAKEOFF, r#"[{"latitude":47.4,"longitude":8.5}, -1, false]"#)["ok"], false, "insertTakeoffItem answers a null item when it declines, and the bridge calls that a successful invoke");
+        let refusing = Plan {
+            items: RefCell::new(3),
+            grows: false,
+            land_valid: true,
+            calls: RefCell::new(Vec::new()),
+        };
+        assert_eq!(
+            run(
+                &refusing,
+                INSERT_TAKEOFF,
+                r#"[{"latitude":47.4,"longitude":8.5}, -1, false]"#
+            )["ok"],
+            false,
+            "insertTakeoffItem answers a null item when it declines, and the bridge calls that a successful invoke"
+        );
     }
 
     #[test]
     fn a_pattern_goes_in_only_by_a_name_the_plan_offers_and_from_a_file_holding_its_shape() {
         let offered = vec!["Survey".to_string(), "Corridor Scan".to_string()];
         assert_eq!(pattern_refusal(Some("Survey"), Some(&offered)), None);
-        assert_eq!(pattern_refusal(Some("Orbit"), Some(&offered)).map(|r| r.0), Some("unknownPattern"), "createComplexMissionItem answers null for a name it does not know and insertComplexMissionItem passes that back in silence");
-        assert_eq!(pattern_refusal(Some("Orbit"), None), None, "a plan that has not said what it offers is not refused on a guess");
-        assert_eq!(pattern_refusal(None, Some(&offered)).map(|r| r.0), Some("malformed"));
+        assert_eq!(
+            pattern_refusal(Some("Orbit"), Some(&offered)).map(|r| r.0),
+            Some("unknownPattern"),
+            "createComplexMissionItem answers null for a name it does not know and insertComplexMissionItem passes that back in silence"
+        );
+        assert_eq!(
+            pattern_refusal(Some("Orbit"), None),
+            None,
+            "a plan that has not said what it offers is not refused on a guess"
+        );
+        assert_eq!(
+            pattern_refusal(None, Some(&offered)).map(|r| r.0),
+            Some("malformed")
+        );
 
         let folder = std::env::temp_dir().join(format!("qgc-pattern-{}", std::process::id()));
         std::fs::create_dir_all(&folder).unwrap();
@@ -974,26 +1685,61 @@ mod tests {
             std::fs::write(&file, body).unwrap();
             file.to_string_lossy().into_owned()
         };
-        let area = write("area.kml", "<kml><Placemark><Polygon><outerBoundaryIs><LinearRing><coordinates>8.5,47.3 8.6,47.3 8.6,47.4 8.5,47.3</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark></kml>");
-        let line = write("line.kml", "<kml><Placemark><LineString><coordinates>8.5,47.3 8.6,47.4</coordinates></LineString></Placemark></kml>");
-        let empty = write("empty.kml", "<kml><Placemark><name>nothing</name></Placemark></kml>");
+        let area = write(
+            "area.kml",
+            "<kml><Placemark><Polygon><outerBoundaryIs><LinearRing><coordinates>8.5,47.3 8.6,47.3 8.6,47.4 8.5,47.3</coordinates></LinearRing></outerBoundaryIs></Polygon></Placemark></kml>",
+        );
+        let line = write(
+            "line.kml",
+            "<kml><Placemark><LineString><coordinates>8.5,47.3 8.6,47.4</coordinates></LineString></Placemark></kml>",
+        );
+        let empty = write(
+            "empty.kml",
+            "<kml><Placemark><name>nothing</name></Placemark></kml>",
+        );
         assert_eq!(shape_refusal("Survey", &area), None);
         assert_eq!(shape_refusal("Corridor Scan", &line), None);
-        assert_eq!(shape_refusal("Corridor Scan", &area).map(|r| r.0), Some("wrongShape"), "a corridor built from an area file comes out with no corridor, which both heads were left to notice by counting items and measuring distances");
-        assert_eq!(shape_refusal("Survey", &empty).map(|r| r.0), Some("noShape"));
-        let pline = format!("{}/../test/Utilities/Geo/pline.shp", env!("CARGO_MANIFEST_DIR"));
-        assert_eq!(shape_refusal("Survey", &pline).map(|r| r.0), Some("wrongShape"), "a line shapefile offered to a survey is the wrong shape, as a line KML is");
-        assert_eq!(shape_refusal("Survey", "/no/such/file.kml").map(|r| r.0), Some("unreadable"));
-        assert_eq!(shape_refusal("Survey", &write("area.gpx", "")).map(|r| r.0), Some("notAShape"));
+        assert_eq!(
+            shape_refusal("Corridor Scan", &area).map(|r| r.0),
+            Some("wrongShape"),
+            "a corridor built from an area file comes out with no corridor, which both heads were left to notice by counting items and measuring distances"
+        );
+        assert_eq!(
+            shape_refusal("Survey", &empty).map(|r| r.0),
+            Some("noShape")
+        );
+        let pline = format!(
+            "{}/../test/Utilities/Geo/pline.shp",
+            env!("CARGO_MANIFEST_DIR")
+        );
+        assert_eq!(
+            shape_refusal("Survey", &pline).map(|r| r.0),
+            Some("wrongShape"),
+            "a line shapefile offered to a survey is the wrong shape, as a line KML is"
+        );
+        assert_eq!(
+            shape_refusal("Survey", "/no/such/file.kml").map(|r| r.0),
+            Some("unreadable")
+        );
+        assert_eq!(
+            shape_refusal("Survey", &write("area.gpx", "")).map(|r| r.0),
+            Some("notAShape")
+        );
     }
 
     #[test]
     fn a_unit_system_outside_the_three_is_refused_before_it_switches_custom_units_off() {
         struct Settings(std::cell::RefCell<Vec<String>>);
         impl Backend for Settings {
-            fn get(&self, _p: &str) -> String { String::new() }
-            fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "object", "activeVehicleAvailable": false }).to_string() }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn get(&self, _p: &str) -> String {
+                String::new()
+            }
+            fn get_fields(&self, _p: &str, _f: &str) -> String {
+                json!({ "kind": "object", "activeVehicleAvailable": false }).to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
             fn invoke(&self, _p: &str, a: &str) -> String {
                 self.0.borrow_mut().push(a.to_string());
                 json!({ "ok": true }).to_string()
@@ -1008,15 +1754,23 @@ mod tests {
         );
         assert!(settings.0.borrow().is_empty());
         assert_eq!(run(&settings, UNIT_SYSTEM, "[1]")["ok"], true);
-        assert_eq!(run(&settings, CONSOLE_COMMAND, r#"["ver all"]"#)["refusal"], "noVehicle");
+        assert_eq!(
+            run(&settings, CONSOLE_COMMAND, r#"["ver all"]"#)["refusal"],
+            "noVehicle"
+        );
     }
 
     #[test]
     fn a_camera_action_answers_when_the_camera_would_have_refused_in_silence() {
         use std::cell::RefCell;
-        struct Cam { camera: Value, fired: RefCell<Vec<String>> }
+        struct Cam {
+            camera: Value,
+            fired: RefCell<Vec<String>>,
+        }
         impl Backend for Cam {
-            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+            fn get(&self, p: &str) -> String {
+                self.get_fields(p, "")
+            }
             fn get_fields(&self, path: &str, fields: &str) -> String {
                 if !path.ends_with("currentCameraInstance") {
                     return json!({ "kind": "null" }).to_string();
@@ -1024,12 +1778,21 @@ mod tests {
                 let asked: Vec<&str> = fields.split(',').filter(|f| !f.is_empty()).collect();
                 match asked.is_empty() {
                     true => self.camera.to_string(),
-                    false => Value::Object(self.camera.as_object().unwrap().iter()
-                        .filter(|(key, _)| *key == "kind" || asked.contains(&key.as_str()))
-                        .map(|(key, value)| (key.clone(), value.clone())).collect()).to_string(),
+                    false => Value::Object(
+                        self.camera
+                            .as_object()
+                            .unwrap()
+                            .iter()
+                            .filter(|(key, _)| *key == "kind" || asked.contains(&key.as_str()))
+                            .map(|(key, value)| (key.clone(), value.clone()))
+                            .collect(),
+                    )
+                    .to_string(),
                 }
             }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
             fn invoke(&self, path: &str, _a: &str) -> String {
                 self.fired.borrow_mut().push(path.to_string());
                 json!({ "ok": true, "result": true }).to_string()
@@ -1038,15 +1801,26 @@ mod tests {
         }
         let cam = |extra: Value| {
             let mut base = json!({ "kind": "object", "modelName": "ZR30", "capturesPhotos": true, "capturesVideo": true, "hasModes": true });
-            extra.as_object().unwrap().iter().for_each(|(k, v)| { base[k] = v.clone(); });
-            Cam { camera: base, fired: RefCell::new(vec![]) }
+            extra.as_object().unwrap().iter().for_each(|(k, v)| {
+                base[k] = v.clone();
+            });
+            Cam {
+                camera: base,
+                fired: RefCell::new(vec![]),
+            }
         };
 
         let busy = cam(json!({ "cameraMode": 0, "capturePhotosState": 2 }));
         let answer = run(&busy, PHOTO, "[]");
         assert_eq!(answer["ok"], false);
-        assert!(answer["reason"].as_str().unwrap().contains("still taking"), "takePhoto returns false here with only a qCWarning, so the whole point of owning the action is that the head gets a sentence instead of nothing: {answer}");
-        assert!(busy.fired.borrow().is_empty(), "and the call the camera would have dropped is not made at all");
+        assert!(
+            answer["reason"].as_str().unwrap().contains("still taking"),
+            "takePhoto returns false here with only a qCWarning, so the whole point of owning the action is that the head gets a sentence instead of nothing: {answer}"
+        );
+        assert!(
+            busy.fired.borrow().is_empty(),
+            "and the call the camera would have dropped is not made at all"
+        );
 
         let ready = cam(json!({ "cameraMode": 0 }));
         let answer = run(&ready, PHOTO, "[]");
@@ -1054,98 +1828,222 @@ mod tests {
         assert_eq!(*ready.fired.borrow(), vec![format!("{CAMERA}.takePhoto")]);
 
         let video_mode = cam(json!({ "cameraMode": 1 }));
-        assert_eq!(run(&video_mode, PHOTO, "[]")["ok"], true, "takePhoto grabs a video frame when the camera cannot shoot stills in video mode");
+        assert_eq!(
+            run(&video_mode, PHOTO, "[]")["ok"],
+            true,
+            "takePhoto grabs a video frame when the camera cannot shoot stills in video mode"
+        );
         let in_video = cam(json!({ "cameraMode": 1, "photosInVideoMode": true }));
-        assert_eq!(run(&in_video, PHOTO, "[]")["ok"], true, "a camera that shoots stills in video mode is not refused, which is the term view.camera was missing");
+        assert_eq!(
+            run(&in_video, PHOTO, "[]")["ok"],
+            true,
+            "a camera that shoots stills in video mode is not refused, which is the term view.camera was missing"
+        );
 
         let recording = cam(json!({ "cameraMode": 1, "captureVideoState": 2 }));
-        assert_eq!(run(&recording, RECORD, "[]")["ok"], true, "the toggle is what stops a running recording");
-        assert_eq!(*recording.fired.borrow(), vec![format!("{CAMERA}.toggleVideoRecording")]);
+        assert_eq!(
+            run(&recording, RECORD, "[]")["ok"],
+            true,
+            "the toggle is what stops a running recording"
+        );
+        assert_eq!(
+            *recording.fired.borrow(),
+            vec![format!("{CAMERA}.toggleVideoRecording")]
+        );
         let held = cam(json!({ "cameraMode": 1, "captureVideoState": 2 }));
         let answer = run(&held, MODE, "[\"photo\"]");
         assert_eq!(answer["ok"], false);
-        assert!(answer["reason"].as_str().unwrap().contains("recording"), "{answer}");
+        assert!(
+            answer["reason"].as_str().unwrap().contains("recording"),
+            "{answer}"
+        );
         assert!(held.fired.borrow().is_empty());
 
         let switchable = cam(json!({ "cameraMode": 1, "captureVideoState": 1 }));
         assert_eq!(run(&switchable, MODE, "[\"photo\"]")["ok"], true);
-        assert_eq!(*switchable.fired.borrow(), vec![format!("{CAMERA}.setCameraModePhoto")]);
-        assert_eq!(*cam(json!({ "cameraMode": 0 })).fired.borrow(), Vec::<String>::new());
-        let shooting_in_video = cam(json!({ "cameraMode": 1, "captureVideoState": 0, "capturePhotosState": 2, "photosInVideoMode": true }));
-        assert_eq!(run(&shooting_in_video, MODE, "[\"photo\"]")["ok"], false, "PhotoVideoControl enables the photo selector only while captureVideoState is Idle, and setCameraMode itself checks nothing");
+        assert_eq!(
+            *switchable.fired.borrow(),
+            vec![format!("{CAMERA}.setCameraModePhoto")]
+        );
+        assert_eq!(
+            *cam(json!({ "cameraMode": 0 })).fired.borrow(),
+            Vec::<String>::new()
+        );
+        let shooting_in_video = cam(
+            json!({ "cameraMode": 1, "captureVideoState": 0, "capturePhotosState": 2, "photosInVideoMode": true }),
+        );
+        assert_eq!(
+            run(&shooting_in_video, MODE, "[\"photo\"]")["ok"],
+            false,
+            "PhotoVideoControl enables the photo selector only while captureVideoState is Idle, and setCameraMode itself checks nothing"
+        );
         let survey_shooting = cam(json!({ "cameraMode": 2, "capturePhotosState": 2 }));
-        assert_eq!(run(&survey_shooting, MODE, "[\"video\"]")["ok"], false, "survey waits for its photo capture like photo mode");
-        assert_eq!(run(&cam(json!({ "cameraMode": 2, "capturePhotosState": 1 })), MODE, "[\"photo\"]")["ok"], true, "and survey can be switched to photo");
+        assert_eq!(
+            run(&survey_shooting, MODE, "[\"video\"]")["ok"],
+            false,
+            "survey waits for its photo capture like photo mode"
+        );
+        assert_eq!(
+            run(
+                &cam(json!({ "cameraMode": 2, "capturePhotosState": 1 })),
+                MODE,
+                "[\"photo\"]"
+            )["ok"],
+            true,
+            "and survey can be switched to photo"
+        );
 
         let fixed = cam(json!({ "cameraMode": 1, "hasModes": false }));
         let answer = run(&fixed, MODE, "[\"video\"]");
-        assert!(answer["reason"].as_str().unwrap().contains("one mode"), "{answer}");
+        assert!(
+            answer["reason"].as_str().unwrap().contains("one mode"),
+            "{answer}"
+        );
 
         let nonsense = cam(json!({ "cameraMode": 0 }));
-        assert_eq!(run(&nonsense, MODE, "[\"panorama\"]")["unknown"], "panorama");
-        assert!(run(&nonsense, MODE, "[]")["reason"].as_str().unwrap().contains("photo or video"));
-        assert_eq!(run(&None_, MODE, "[\"panorama\"]")["unknown"], "panorama", "a mode the core cannot name is a malformed call whether or not a camera is attached; answering it with the rig's state hides the caller's bug");
+        assert_eq!(
+            run(&nonsense, MODE, "[\"panorama\"]")["unknown"],
+            "panorama"
+        );
+        assert!(
+            run(&nonsense, MODE, "[]")["reason"]
+                .as_str()
+                .unwrap()
+                .contains("photo or video")
+        );
+        assert_eq!(
+            run(&None_, MODE, "[\"panorama\"]")["unknown"],
+            "panorama",
+            "a mode the core cannot name is a malformed call whether or not a camera is attached; answering it with the rig's state hides the caller's bug"
+        );
 
-        let lapsing = cam(json!({ "cameraMode": 0, "photoCaptureMode": 1, "photoLapse": 5.0, "photoLapseCount": 0 }));
+        let lapsing = cam(
+            json!({ "cameraMode": 0, "photoCaptureMode": 1, "photoLapse": 5.0, "photoLapseCount": 0 }),
+        );
         let answer = run(&lapsing, PHOTO, "[]");
         assert_eq!(answer["ok"], true);
-        assert_eq!(answer["started"], "timelapse", "takePhoto sends photoLapse and photoLapseCount when the mode is timelapse, so this press began a run of shots rather than taking one");
-        assert_eq!(answer["lapseUnlimited"], true, "count zero is MAV_CMD_IMAGE_START_CAPTURE's unlimited, so nothing stops this until someone stops it");
+        assert_eq!(
+            answer["started"], "timelapse",
+            "takePhoto sends photoLapse and photoLapseCount when the mode is timelapse, so this press began a run of shots rather than taking one"
+        );
+        assert_eq!(
+            answer["lapseUnlimited"], true,
+            "count zero is MAV_CMD_IMAGE_START_CAPTURE's unlimited, so nothing stops this until someone stops it"
+        );
         assert_eq!(answer["lapseSeconds"], 5.0);
-        assert_eq!(*lapsing.fired.borrow(), vec![format!("{CAMERA}.takePhoto")], "and it is the same invokable, which is exactly why the answer has to say which capture it started");
+        assert_eq!(
+            *lapsing.fired.borrow(),
+            vec![format!("{CAMERA}.takePhoto")],
+            "and it is the same invokable, which is exactly why the answer has to say which capture it started"
+        );
 
         let single = cam(json!({ "cameraMode": 0 }));
         assert_eq!(run(&single, PHOTO, "[]")["started"], "single");
-        assert_eq!(run(&cam(json!({ "cameraMode": 0 })), PHOTO, "[]")["lapseCount"], Value::Null, "a single shot has no interval to report, and a count beside it would read as one");
+        assert_eq!(
+            run(&cam(json!({ "cameraMode": 0 })), PHOTO, "[]")["lapseCount"],
+            Value::Null,
+            "a single shot has no interval to report, and a count beside it would read as one"
+        );
 
         let mid_interval = cam(json!({ "cameraMode": 0, "capturePhotosState": 3 }));
         let answer = run(&mid_interval, STOP_PHOTO, "[]");
-        assert_eq!(answer["ok"], true, "stopTakePhoto is the only way to end an unlimited timelapse and nothing in QGC's QML calls it");
-        assert_eq!(*mid_interval.fired.borrow(), vec![format!("{CAMERA}.stopTakePhoto")]);
+        assert_eq!(
+            answer["ok"], true,
+            "stopTakePhoto is the only way to end an unlimited timelapse and nothing in QGC's QML calls it"
+        );
+        assert_eq!(
+            *mid_interval.fired.borrow(),
+            vec![format!("{CAMERA}.stopTakePhoto")]
+        );
 
         let idle = cam(json!({ "cameraMode": 0 }));
         let answer = run(&idle, STOP_PHOTO, "[]");
-        assert_eq!(answer["ok"], false, "stopTakePhoto refuses unless the status is one of the two interval states");
+        assert_eq!(
+            answer["ok"], false,
+            "stopTakePhoto refuses unless the status is one of the two interval states"
+        );
         assert!(answer["reason"].as_str().unwrap().contains("interval"));
         assert!(idle.fired.borrow().is_empty());
 
         struct Refusing;
         impl Backend for Refusing {
-            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+            fn get(&self, p: &str) -> String {
+                self.get_fields(p, "")
+            }
             fn get_fields(&self, path: &str, _f: &str) -> String {
                 match path.ends_with("currentCameraInstance") {
                     true => json!({ "kind": "object", "modelName": "ZR30", "capturesPhotos": true, "hasModes": true, "cameraMode": 0 }).to_string(),
                     false => json!({ "kind": "null" }).to_string(),
                 }
             }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { json!({ "ok": true, "result": false }).to_string() }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                json!({ "ok": true, "result": false }).to_string()
+            }
             fn watch(&self, _p: &[String]) {}
         }
         let answer = run(&Refusing, PHOTO, "[]");
-        assert_eq!(answer["ok"], false, "takePhoto has refusals the core cannot see - _resetting is not a readable property - so reporting ok because the gate passed puts the silence back one layer down");
+        assert_eq!(
+            answer["ok"], false,
+            "takePhoto has refusals the core cannot see - _resetting is not a readable property - so reporting ok because the gate passed puts the silence back one layer down"
+        );
         assert_eq!(answer["result"], false);
-        assert!(answer["reason"].as_str().unwrap().contains("did not carry out"));
+        assert!(
+            answer["reason"]
+                .as_str()
+                .unwrap()
+                .contains("did not carry out")
+        );
 
         struct None_;
         impl Backend for None_ {
-            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
-            fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "null" }).to_string() }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn get(&self, p: &str) -> String {
+                self.get_fields(p, "")
+            }
+            fn get_fields(&self, _p: &str, _f: &str) -> String {
+                json!({ "kind": "null" }).to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
             fn watch(&self, _p: &[String]) {}
         }
-        assert!(run(&None_, PHOTO, "[]")["reason"].as_str().unwrap().contains("No camera"), "no camera is not the same refusal as a camera that will not");
-        assert!(run(&None_, MODE, "[\"photo\"]")["reason"].as_str().unwrap().contains("No camera"), "a well-formed call with no camera still gets the rig's answer");
+        assert!(
+            run(&None_, PHOTO, "[]")["reason"]
+                .as_str()
+                .unwrap()
+                .contains("No camera"),
+            "no camera is not the same refusal as a camera that will not"
+        );
+        assert!(
+            run(&None_, MODE, "[\"photo\"]")["reason"]
+                .as_str()
+                .unwrap()
+                .contains("No camera"),
+            "a well-formed call with no camera still gets the rig's answer"
+        );
 
-        assert!(owns(PHOTO) && owns(RECORD) && owns(MODE) && owns(STOP_PHOTO), "the router only reaches these if owns says so, which is how qgc_core_guided ended up defined with no caller");
+        assert!(
+            owns(PHOTO) && owns(RECORD) && owns(MODE) && owns(STOP_PHOTO),
+            "the router only reaches these if owns says so, which is how qgc_core_guided ended up defined with no caller"
+        );
     }
     #[test]
     fn a_zoom_write_says_what_the_camera_actually_took() {
         use std::cell::RefCell;
-        struct Cam { camera: Value, wrote: RefCell<Vec<String>> }
+        struct Cam {
+            camera: Value,
+            wrote: RefCell<Vec<String>>,
+        }
         impl Backend for Cam {
-            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+            fn get(&self, p: &str) -> String {
+                self.get_fields(p, "")
+            }
             fn get_fields(&self, path: &str, fields: &str) -> String {
                 if !path.ends_with("currentCameraInstance") {
                     return json!({ "kind": "null" }).to_string();
@@ -1153,30 +2051,50 @@ mod tests {
                 let asked: Vec<&str> = fields.split(',').filter(|f| !f.is_empty()).collect();
                 match asked.is_empty() {
                     true => self.camera.to_string(),
-                    false => Value::Object(self.camera.as_object().unwrap().iter()
-                        .filter(|(key, _)| *key == "kind" || asked.contains(&key.as_str()))
-                        .map(|(key, value)| (key.clone(), value.clone())).collect()).to_string(),
+                    false => Value::Object(
+                        self.camera
+                            .as_object()
+                            .unwrap()
+                            .iter()
+                            .filter(|(key, _)| *key == "kind" || asked.contains(&key.as_str()))
+                            .map(|(key, value)| (key.clone(), value.clone()))
+                            .collect(),
+                    )
+                    .to_string(),
                 }
             }
             fn set(&self, _p: &str, value: &str) -> String {
                 self.wrote.borrow_mut().push(value.to_string());
                 json!({ "ok": true }).to_string()
             }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
             fn watch(&self, _p: &[String]) {}
         }
         let cam = |extra: Value| {
             let mut base = json!({ "kind": "object", "modelName": "ZR30", "hasZoom": true });
-            extra.as_object().unwrap().iter().for_each(|(k, v)| { base[k] = v.clone(); });
-            Cam { camera: base, wrote: RefCell::new(vec![]) }
+            extra.as_object().unwrap().iter().for_each(|(k, v)| {
+                base[k] = v.clone();
+            });
+            Cam {
+                camera: base,
+                wrote: RefCell::new(vec![]),
+            }
         };
 
         let plain = cam(json!({}));
         let answer = write(&plain, ZOOM, &json!({ "value": 40.0 }).to_string());
         assert_eq!(answer["ok"], true);
-        assert_eq!(answer["result"], true, "zoomLevel shadows a real Qt path, so its success answer owes the result key a Qt write would have carried");
+        assert_eq!(
+            answer["result"], true,
+            "zoomLevel shadows a real Qt path, so its success answer owes the result key a Qt write would have carried"
+        );
         assert_eq!(answer["clamped"], false);
-        assert_eq!(*plain.wrote.borrow(), vec![json!({ "value": 40.0 }).to_string()]);
+        assert_eq!(
+            *plain.wrote.borrow(),
+            vec![json!({ "value": 40.0 }).to_string()]
+        );
 
         let high = cam(json!({}));
         let answer = write(&high, ZOOM, &json!({ "value": 150.0 }).to_string());
@@ -1184,25 +2102,51 @@ mod tests {
         assert_eq!(answer["result"], true);
         assert_eq!(answer["level"], 100.0);
         assert_eq!(answer["asked"], 150.0);
-        assert_eq!(answer["clamped"], true, "setZoomLevel clamps in silence, so a head asking for 150 is told it succeeded and never learns the camera went to 100");
-        assert_eq!(*high.wrote.borrow(), vec![json!({ "value": 100.0 }).to_string()], "and the clamped value is what travels, not the one that was asked for");
+        assert_eq!(
+            answer["clamped"], true,
+            "setZoomLevel clamps in silence, so a head asking for 150 is told it succeeded and never learns the camera went to 100"
+        );
+        assert_eq!(
+            *high.wrote.borrow(),
+            vec![json!({ "value": 100.0 }).to_string()],
+            "and the clamped value is what travels, not the one that was asked for"
+        );
 
         let fixed = cam(json!({ "hasZoom": false }));
         let answer = write(&fixed, ZOOM, &json!({ "value": 40.0 }).to_string());
         assert_eq!(answer["ok"], false);
         assert!(answer["reason"].as_str().unwrap().contains("no zoom"));
-        assert!(fixed.wrote.borrow().is_empty(), "setZoomLevel drops this write entirely, so passing it through only spends a MAVLink message to achieve nothing");
+        assert!(
+            fixed.wrote.borrow().is_empty(),
+            "setZoomLevel drops this write entirely, so passing it through only spends a MAVLink message to achieve nothing"
+        );
 
         let absent = cam(json!({ "modelName": "" }));
-        assert!(write(&absent, ZOOM, &json!({ "value": 40.0 }).to_string())["reason"].as_str().unwrap().contains("No camera"), "no camera and no zoom are different refusals");
+        assert!(
+            write(&absent, ZOOM, &json!({ "value": 40.0 }).to_string())["reason"]
+                .as_str()
+                .unwrap()
+                .contains("No camera"),
+            "no camera and no zoom are different refusals"
+        );
 
         let nonsense = cam(json!({}));
         assert_eq!(write(&nonsense, ZOOM, "{\"value\": \"lots\"}")["ok"], false);
         assert!(nonsense.wrote.borrow().is_empty());
-        assert_eq!(write(&nonsense, ZOOM, "{}")["ok"], false, "a payload with no value at all is not a zoom of zero");
+        assert_eq!(
+            write(&nonsense, ZOOM, "{}")["ok"],
+            false,
+            "a payload with no value at all is not a zoom of zero"
+        );
 
-        assert!(owns_write(ZOOM), "router.set consults this and nothing else; unclaimed, the write goes straight past every check above");
-        assert!(!owns_write("vehicle.armed"), "arming is deliberately not claimed: a gate that can wrongly refuse an arm needs an airframe to prove it wrong");
+        assert!(
+            owns_write(ZOOM),
+            "router.set consults this and nothing else; unclaimed, the write goes straight past every check above"
+        );
+        assert!(
+            !owns_write("vehicle.armed"),
+            "arming is deliberately not claimed: a gate that can wrongly refuse an arm needs an airframe to prove it wrong"
+        );
     }
 
     #[test]
@@ -1213,7 +2157,12 @@ mod tests {
         assert_eq!(refused["refused"], "survey");
         assert!(refused["reason"].as_str().unwrap().contains("takeoff"));
         let calls = plan.calls.lock().unwrap();
-        assert!(calls.iter().all(|(path, _)| path.ends_with("setCurrentPlanViewSeqNum")), "the refusal has to happen before the plan is touched, or a head racing a stale view still gets its item in");
+        assert!(
+            calls
+                .iter()
+                .all(|(path, _)| path.ends_with("setCurrentPlanViewSeqNum")),
+            "the refusal has to happen before the plan is touched, or a head racing a stale view still gets its item in"
+        );
     }
 
     #[test]
@@ -1223,23 +2172,45 @@ mod tests {
         assert_eq!(inserted["ok"], true);
         assert_eq!(inserted["inserted"], "survey");
         let calls = plan.calls.lock().unwrap();
-        assert_eq!(calls[0].0, "plan.missionController.setCurrentPlanViewSeqNum", "the insert point is selected before the question is asked, because the answer is about that point");
-        assert_eq!(calls[1].0, "plan.missionController.insertComplexMissionItem");
+        assert_eq!(
+            calls[0].0, "plan.missionController.setCurrentPlanViewSeqNum",
+            "the insert point is selected before the question is asked, because the answer is about that point"
+        );
+        assert_eq!(
+            calls[1].0,
+            "plan.missionController.insertComplexMissionItem"
+        );
         let sent: Value = serde_json::from_str(&calls[1].1).unwrap();
-        assert_eq!(sent[0], "Survey", "the head names the kind and the core supplies the complex name, so a head never spells it");
+        assert_eq!(
+            sent[0], "Survey",
+            "the head names the kind and the core supplies the complex name, so a head never spells it"
+        );
         assert_eq!(sent[1]["latitude"], 47.5);
         assert_eq!(sent[2], 3);
-        assert_eq!(sent[3], true, "the inserted item becomes the selected one, which is what makes the controller recompute what can be inserted next");
+        assert_eq!(
+            sent[3], true,
+            "the inserted item becomes the selected one, which is what makes the controller recompute what can be inserted next"
+        );
     }
 
     #[test]
     fn a_simple_item_is_called_without_a_complex_name() {
         let plan = Plan::new(flying_mission());
-        assert_eq!(run(&plan, "mission.insert", "[\"waypoint\", 47.0, 8.0, -1]")["ok"], true);
+        assert_eq!(
+            run(&plan, "mission.insert", "[\"waypoint\", 47.0, 8.0, -1]")["ok"],
+            true
+        );
         let calls = plan.calls.lock().unwrap();
-        assert_eq!(calls[1].0, "plan.missionController.addWaypoint", "addWaypoint puts the takeoff in first on an empty plan, as PlanView's map click does");
+        assert_eq!(
+            calls[1].0, "plan.missionController.addWaypoint",
+            "addWaypoint puts the takeoff in first on an empty plan, as PlanView's map click does"
+        );
         let sent: Value = serde_json::from_str(&calls[1].1).unwrap();
-        assert_eq!(sent.as_array().unwrap().len(), 3, "a simple item takes a coordinate, an index, and the flag that selects it");
+        assert_eq!(
+            sent.as_array().unwrap().len(),
+            3,
+            "a simple item takes a coordinate, an index, and the flag that selects it"
+        );
         assert_eq!(sent[0]["longitude"], 8.0);
         assert_eq!(sent[2], true);
     }
@@ -1247,33 +2218,79 @@ mod tests {
     #[test]
     fn in_a_state_that_wants_a_takeoff_first_a_takeoff_is_the_one_thing_accepted() {
         let plan = Plan::new(empty_ground_mission());
-        assert_eq!(run(&plan, "mission.insert", "[\"takeoff\", 47.0, 8.0, -1]")["ok"], true);
+        assert_eq!(
+            run(&plan, "mission.insert", "[\"takeoff\", 47.0, 8.0, -1]")["ok"],
+            true
+        );
         let refused = Plan::new(empty_ground_mission());
-        assert_eq!(run(&refused, "mission.insert", "[\"land\", 47.0, 8.0, -1]")["ok"], false);
-        assert_eq!(run(&refused, "mission.insert", "[\"survey\", 47.0, 8.0, -1]")["ok"], false);
-        assert!(refused.calls.lock().unwrap().iter().all(|(path, _)| !path.contains("insert")));
+        assert_eq!(
+            run(&refused, "mission.insert", "[\"land\", 47.0, 8.0, -1]")["ok"],
+            false
+        );
+        assert_eq!(
+            run(&refused, "mission.insert", "[\"survey\", 47.0, 8.0, -1]")["ok"],
+            false
+        );
+        assert!(
+            refused
+                .calls
+                .lock()
+                .unwrap()
+                .iter()
+                .all(|(path, _)| !path.contains("insert"))
+        );
     }
 
     #[test]
     fn a_kind_the_core_never_heard_of_says_so_rather_than_saying_no() {
         let plan = Plan::new(flying_mission());
-        let unknown = run(&plan, "mission.insert", "[\"Fixed Wing Landing Pattern\", 47.0, 8.0, -1]");
+        let unknown = run(
+            &plan,
+            "mission.insert",
+            "[\"Fixed Wing Landing Pattern\", 47.0, 8.0, -1]",
+        );
         assert_eq!(unknown["ok"], false);
-        assert_eq!(unknown["unknown"], "Fixed Wing Landing Pattern", "a head holding an item type this catalogue never listed has to be able to tell that apart from the plan turning it down, because the first means insert it yourself and the second means do not");
+        assert_eq!(
+            unknown["unknown"], "Fixed Wing Landing Pattern",
+            "a head holding an item type this catalogue never listed has to be able to tell that apart from the plan turning it down, because the first means insert it yourself and the second means do not"
+        );
         assert!(unknown["reason"].as_str().unwrap().contains("catalogue"));
-        assert!(plan.calls.lock().unwrap().is_empty(), "a kind the core does not know is refused before the plan view is even moved");
+        assert!(
+            plan.calls.lock().unwrap().is_empty(),
+            "a kind the core does not know is refused before the plan view is even moved"
+        );
 
-        let refused = run(&Plan::new(empty_ground_mission()), "mission.insert", "[\"survey\", 47.0, 8.0, -1]");
+        let refused = run(
+            &Plan::new(empty_ground_mission()),
+            "mission.insert",
+            "[\"survey\", 47.0, 8.0, -1]",
+        );
         assert_eq!(refused["ok"], false);
-        assert_eq!(refused["unknown"], Value::Null, "a kind the core does know and is refusing carries no unknown marker");
+        assert_eq!(
+            refused["unknown"],
+            Value::Null,
+            "a kind the core does know and is refusing carries no unknown marker"
+        );
         assert_eq!(refused["refused"], "survey");
     }
 
     #[test]
     fn arguments_that_are_not_a_place_are_refused_rather_than_placed_at_zero() {
         let plan = Plan::new(flying_mission());
-        ["[]", "[\"waypoint\"]", "[\"waypoint\", null, 8.0, -1]", "not json", "{}"].iter().for_each(|args| {
-            assert_eq!(run(&plan, "mission.insert", args)["ok"], false, "{args} is not a place to put a mission item");
+        [
+            "[]",
+            "[\"waypoint\"]",
+            "[\"waypoint\", null, 8.0, -1]",
+            "not json",
+            "{}",
+        ]
+        .iter()
+        .for_each(|args| {
+            assert_eq!(
+                run(&plan, "mission.insert", args)["ok"],
+                false,
+                "{args} is not a place to put a mission item"
+            );
         });
         assert!(plan.calls.lock().unwrap().is_empty());
     }
@@ -1291,61 +2308,119 @@ mod tests {
     fn an_insert_that_did_not_grow_the_plan_never_reaches_the_rollback() {
         struct Deaf(Plan);
         impl Backend for Deaf {
-            fn get(&self, path: &str) -> String { self.0.get(path) }
-            fn get_fields(&self, path: &str, fields: &str) -> String { self.0.get_fields(path, fields) }
-            fn set(&self, path: &str, value: &str) -> String { self.0.set(path, value) }
+            fn get(&self, path: &str) -> String {
+                self.0.get(path)
+            }
+            fn get_fields(&self, path: &str, fields: &str) -> String {
+                self.0.get_fields(path, fields)
+            }
+            fn set(&self, path: &str, value: &str) -> String {
+                self.0.set(path, value)
+            }
             fn invoke(&self, path: &str, args: &str) -> String {
-                self.0.calls.lock().unwrap().push((path.to_string(), args.to_string()));
+                self.0
+                    .calls
+                    .lock()
+                    .unwrap()
+                    .push((path.to_string(), args.to_string()));
                 json!({ "ok": true }).to_string()
             }
-            fn watch(&self, paths: &[String]) { self.0.watch(paths) }
+            fn watch(&self, paths: &[String]) {
+                self.0.watch(paths)
+            }
         }
         let deaf = Deaf(Plan::new(flying_mission()));
         let refused = run(&deaf, "mission.insert", "[\"survey\", 47.0, 8.0, -1]");
         assert_eq!(refused["ok"], false);
         assert!(refused["reason"].as_str().unwrap().contains("did not grow"));
         let calls = deaf.0.calls.lock().unwrap();
-        assert!(calls.iter().all(|(called, _)| !called.ends_with("removeVisualItem")), "rolling back here would delete an item the operator already had");
-        assert!(calls.iter().all(|(called, _)| !called.ends_with("appendVertex")), "and shaping here would draw over one");
+        assert!(
+            calls
+                .iter()
+                .all(|(called, _)| !called.ends_with("removeVisualItem")),
+            "rolling back here would delete an item the operator already had"
+        );
+        assert!(
+            calls
+                .iter()
+                .all(|(called, _)| !called.ends_with("appendVertex")),
+            "and shaping here would draw over one"
+        );
     }
 
     #[test]
     fn a_place_the_plan_does_not_have_is_refused_before_anything_is_touched() {
         let plan = Plan::new(flying_mission());
-        ["[\"waypoint\", 47.0, 8.0, 0]", "[\"waypoint\", 47.0, 8.0, 99]", "[\"waypoint\", 47.0, 8.0, 4]"]
-            .iter()
-            .for_each(|args| assert_eq!(run(&plan, "mission.insert", args)["ok"], false, "{args}"));
+        [
+            "[\"waypoint\", 47.0, 8.0, 0]",
+            "[\"waypoint\", 47.0, 8.0, 99]",
+            "[\"waypoint\", 47.0, 8.0, 4]",
+        ]
+        .iter()
+        .for_each(|args| assert_eq!(run(&plan, "mission.insert", args)["ok"], false, "{args}"));
         let calls = plan.calls.lock().unwrap();
-        assert!(calls.iter().all(|(called, _)| !called.contains("insert")), "index zero would put an item before the plan's own settings entry, and an index past the end the model inserts anyway with only a warning");
+        assert!(
+            calls.iter().all(|(called, _)| !called.contains("insert")),
+            "index zero would put an item before the plan's own settings entry, and an index past the end the model inserts anyway with only a warning"
+        );
     }
 
     #[test]
     fn the_question_is_asked_about_the_slot_the_item_will_follow() {
         let plan = Plan::new(flying_mission());
-        assert_eq!(run(&plan, "mission.insert", "[\"waypoint\", 47.0, 8.0, 2]")["ok"], true);
+        assert_eq!(
+            run(&plan, "mission.insert", "[\"waypoint\", 47.0, 8.0, 2]")["ok"],
+            true
+        );
         let selected: Vec<i64> = plan
             .calls
             .lock()
             .unwrap()
             .iter()
             .filter(|(path, _)| path.ends_with("setCurrentPlanViewSeqNum"))
-            .map(|(_, args)| serde_json::from_str::<Value>(args).unwrap()[0].as_i64().unwrap())
+            .map(|(_, args)| {
+                serde_json::from_str::<Value>(args).unwrap()[0]
+                    .as_i64()
+                    .unwrap()
+            })
             .collect();
-        assert_eq!(selected.len(), 1, "the plan view selects an item and inserts after it, so an insert at place two is a question about place one");
+        assert_eq!(
+            selected.len(),
+            1,
+            "the plan view selects an item and inserts after it, so an insert at place two is a question about place one"
+        );
     }
 
     #[test]
     fn an_orbit_height_outside_what_the_operator_can_choose_is_refused() {
         let flying = orbiting::Flying::launched(480.0);
-        ["[47.5, 8.5, 150.0, true, -500.0]", "[47.5, 8.5, 150.0, true, 0.0]", "[47.5, 8.5, 150.0, true, 5000.0]"]
-            .iter()
-            .for_each(|args| {
-                let refused = run(&flying, "guided.orbit", args);
-                assert_eq!(refused["ok"], false, "{args} is outside the range the slider offers");
-                assert!(refused["reason"].as_str().unwrap().contains("above the launch point"));
-            });
-        assert!(flying.calls.lock().unwrap().is_empty(), "a height of minus five hundred metres is five hundred metres into the ground");
-        assert_eq!(run(&flying, "guided.orbit", "[47.5, 8.5, 150.0, true, 60.0]")["ok"], true);
+        [
+            "[47.5, 8.5, 150.0, true, -500.0]",
+            "[47.5, 8.5, 150.0, true, 0.0]",
+            "[47.5, 8.5, 150.0, true, 5000.0]",
+        ]
+        .iter()
+        .for_each(|args| {
+            let refused = run(&flying, "guided.orbit", args);
+            assert_eq!(
+                refused["ok"], false,
+                "{args} is outside the range the slider offers"
+            );
+            assert!(
+                refused["reason"]
+                    .as_str()
+                    .unwrap()
+                    .contains("above the launch point")
+            );
+        });
+        assert!(
+            flying.calls.lock().unwrap().is_empty(),
+            "a height of minus five hundred metres is five hundred metres into the ground"
+        );
+        assert_eq!(
+            run(&flying, "guided.orbit", "[47.5, 8.5, 150.0, true, 60.0]")["ok"],
+            true
+        );
     }
 
     #[test]
@@ -1354,8 +2429,16 @@ mod tests {
         unable.supported = false;
         let refused = run(&unable, "guided.orbit", "[47.5, 8.5, 150.0, true, 60.0]");
         assert_eq!(refused["ok"], false);
-        assert!(refused["reason"].as_str().unwrap().contains("does not support"));
-        assert!(unable.calls.lock().unwrap().is_empty(), "guidedModeOrbit returns void and shows a dialog, so asking anyway would report success while nothing was sent");
+        assert!(
+            refused["reason"]
+                .as_str()
+                .unwrap()
+                .contains("does not support")
+        );
+        assert!(
+            unable.calls.lock().unwrap().is_empty(),
+            "guidedModeOrbit returns void and shows a dialog, so asking anyway would report success while nothing was sent"
+        );
     }
 
     #[test]
@@ -1363,37 +2446,74 @@ mod tests {
         assert!(owns("mission.insert"));
         assert!(!owns("plan.missionController.insertSimpleMissionItem"));
         assert!(!owns("mission.insertion"));
-        assert_eq!(run(&Plan::new(flying_mission()), "mission.remove", "[]")["ok"], false);
+        assert_eq!(
+            run(&Plan::new(flying_mission()), "mission.remove", "[]")["ok"],
+            false
+        );
     }
 
     #[test]
     fn a_survey_arrives_with_an_area_around_where_it_was_placed() {
         let plan = Plan::new(flying_mission());
-        assert_eq!(run(&plan, "mission.insert", "[\"survey\", 47.0, 8.0, -1]")["ok"], true);
+        assert_eq!(
+            run(&plan, "mission.insert", "[\"survey\", 47.0, 8.0, -1]")["ok"],
+            true
+        );
         let calls = plan.calls.lock().unwrap();
         let path = "plan.missionController.visualItems.3.surveyAreaPolygon";
-        assert_eq!(calls.iter().filter(|(called, _)| called == &format!("{path}.clear")).count(), 1);
-        let vertices: Vec<&(String, String)> = calls.iter().filter(|(called, _)| called == &format!("{path}.appendVertex")).collect();
-        assert_eq!(vertices.len(), 4, "a survey with no area draws nothing and uploads nothing, so the action gives it one");
+        assert_eq!(
+            calls
+                .iter()
+                .filter(|(called, _)| called == &format!("{path}.clear"))
+                .count(),
+            1
+        );
+        let vertices: Vec<&(String, String)> = calls
+            .iter()
+            .filter(|(called, _)| called == &format!("{path}.appendVertex"))
+            .collect();
+        assert_eq!(
+            vertices.len(),
+            4,
+            "a survey with no area draws nothing and uploads nothing, so the action gives it one"
+        );
         let first: Value = serde_json::from_str(&vertices[0].1).unwrap();
-        assert!((first[0]["latitude"].as_f64().unwrap() - 47.0).abs() < 0.01, "the area is placed around where the operator tapped");
+        assert!(
+            (first[0]["latitude"].as_f64().unwrap() - 47.0).abs() < 0.01,
+            "the area is placed around where the operator tapped"
+        );
     }
 
     #[test]
     fn a_corridor_arrives_with_a_path_rather_than_an_area() {
         let plan = Plan::new(flying_mission());
-        assert_eq!(run(&plan, "mission.insert", "[\"corridor\", 47.0, 8.0, -1]")["ok"], true);
+        assert_eq!(
+            run(&plan, "mission.insert", "[\"corridor\", 47.0, 8.0, -1]")["ok"],
+            true
+        );
         let calls = plan.calls.lock().unwrap();
-        let vertices = calls.iter().filter(|(called, _)| called.ends_with("corridorPolyline.appendVertex")).count();
-        assert_eq!(vertices, 2, "a corridor is a line to scan along, so two points rather than four");
+        let vertices = calls
+            .iter()
+            .filter(|(called, _)| called.ends_with("corridorPolyline.appendVertex"))
+            .count();
+        assert_eq!(
+            vertices, 2,
+            "a corridor is a line to scan along, so two points rather than four"
+        );
     }
 
     #[test]
     fn a_takeoff_arrives_knowing_where_the_vehicle_launches_from() {
         let plan = Plan::new(empty_ground_mission());
-        assert_eq!(run(&plan, "mission.insert", "[\"takeoff\", 47.25, 8.75, -1]")["ok"], true);
+        assert_eq!(
+            run(&plan, "mission.insert", "[\"takeoff\", 47.25, 8.75, -1]")["ok"],
+            true
+        );
         let calls = plan.calls.lock().unwrap();
-        let written = calls.iter().find(|(called, _)| called.ends_with(".launchCoordinate")).expect("the launch position was never written");
+        let written = calls
+            .iter()
+            .find(|(called, _)| called.ends_with(".launchCoordinate"))
+            .expect("the launch position was never written");
         let value: Value = serde_json::from_str(&written.1).unwrap();
         assert_eq!(value["value"]["latitude"], 47.25);
         assert_eq!(value["value"]["longitude"], 8.75);
@@ -1406,33 +2526,55 @@ mod tests {
         let refused = run(&plan, "mission.insert", "[\"survey\", 47.0, 8.0, -1]");
         assert_eq!(refused["ok"], false);
         let calls = plan.calls.lock().unwrap();
-        assert!(calls.iter().all(|(called, _)| !called.ends_with("removeVisualItem")), "the insert itself failed, so there is nothing to remove");
+        assert!(
+            calls
+                .iter()
+                .all(|(called, _)| !called.ends_with("removeVisualItem")),
+            "the insert itself failed, so there is nothing to remove"
+        );
     }
 
     #[test]
     fn a_survey_that_will_not_take_an_area_is_removed_rather_than_left_empty() {
         struct Fussy(Plan);
         impl Backend for Fussy {
-            fn get(&self, path: &str) -> String { self.0.get(path) }
-            fn get_fields(&self, path: &str, fields: &str) -> String { self.0.get_fields(path, fields) }
-            fn set(&self, path: &str, value: &str) -> String { self.0.set(path, value) }
+            fn get(&self, path: &str) -> String {
+                self.0.get(path)
+            }
+            fn get_fields(&self, path: &str, fields: &str) -> String {
+                self.0.get_fields(path, fields)
+            }
+            fn set(&self, path: &str, value: &str) -> String {
+                self.0.set(path, value)
+            }
             fn invoke(&self, path: &str, args: &str) -> String {
                 match path.ends_with("appendVertex") {
                     true => {
-                        self.0.calls.lock().unwrap().push((path.to_string(), args.to_string()));
+                        self.0
+                            .calls
+                            .lock()
+                            .unwrap()
+                            .push((path.to_string(), args.to_string()));
                         json!({ "ok": false, "reason": "no" }).to_string()
                     }
                     false => self.0.invoke(path, args),
                 }
             }
-            fn watch(&self, paths: &[String]) { self.0.watch(paths) }
+            fn watch(&self, paths: &[String]) {
+                self.0.watch(paths)
+            }
         }
         let fussy = Fussy(Plan::new(flying_mission()));
         let refused = run(&fussy, "mission.insert", "[\"survey\", 47.0, 8.0, -1]");
         assert_eq!(refused["ok"], false);
         assert_eq!(refused["removed"], "survey");
         let calls = fussy.0.calls.lock().unwrap();
-        assert!(calls.iter().any(|(called, _)| called.ends_with("removeVisualItem")), "a survey with no area is worse than no survey, because an operator has to find it to delete it");
+        assert!(
+            calls
+                .iter()
+                .any(|(called, _)| called.ends_with("removeVisualItem")),
+            "a survey with no area is worse than no survey, because an operator has to find it to delete it"
+        );
     }
 }
 
@@ -1448,19 +2590,28 @@ mod removal {
 
     impl Shrinking {
         fn holding(count: i64) -> Shrinking {
-            Shrinking { count: Mutex::new(count), calls: Mutex::new(Vec::new()) }
+            Shrinking {
+                count: Mutex::new(count),
+                calls: Mutex::new(Vec::new()),
+            }
         }
     }
 
     impl Backend for Shrinking {
         fn get(&self, path: &str) -> String {
             match path {
-                "plan.missionController.visualItems.count" => json!({ "kind": "value", "value": *self.count.lock().unwrap() }).to_string(),
+                "plan.missionController.visualItems.count" => {
+                    json!({ "kind": "value", "value": *self.count.lock().unwrap() }).to_string()
+                }
                 _ => String::new(),
             }
         }
-        fn get_fields(&self, _p: &str, _f: &str) -> String { String::new() }
-        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn get_fields(&self, _p: &str, _f: &str) -> String {
+            String::new()
+        }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
         fn invoke(&self, path: &str, args: &str) -> String {
             self.calls.lock().unwrap().push(format!("{path} {args}"));
             if path.ends_with("removeVisualItem") {
@@ -1487,16 +2638,25 @@ mod removal {
         let refused = run(&plan, "mission.remove", "[0]");
         assert_eq!(refused["ok"], false);
         assert!(refused["reason"].as_str().unwrap().contains("settings"));
-        assert!(plan.calls.lock().unwrap().is_empty(), "the plan view offers no way to remove it, and removing it leaves a plan the controller cannot describe");
+        assert!(
+            plan.calls.lock().unwrap().is_empty(),
+            "the plan view offers no way to remove it, and removing it leaves a plan the controller cannot describe"
+        );
         assert_eq!(*plan.count.lock().unwrap(), 4);
     }
 
     #[test]
     fn an_index_the_plan_does_not_hold_is_refused_rather_than_passed_on() {
         let plan = Shrinking::holding(3);
-        ["[3]", "[99]", "[-1]", "[]", "not json"].iter().for_each(|args| {
-            assert_eq!(run(&plan, "mission.remove", args)["ok"], false, "{args} names no item");
-        });
+        ["[3]", "[99]", "[-1]", "[]", "not json"]
+            .iter()
+            .for_each(|args| {
+                assert_eq!(
+                    run(&plan, "mission.remove", args)["ok"],
+                    false,
+                    "{args} names no item"
+                );
+            });
         assert!(plan.calls.lock().unwrap().is_empty());
         assert_eq!(*plan.count.lock().unwrap(), 3);
     }
@@ -1507,17 +2667,28 @@ mod removal {
         impl Backend for Stubborn {
             fn get(&self, path: &str) -> String {
                 match path {
-                    "plan.missionController.visualItems.count" => json!({ "kind": "value", "value": 3 }).to_string(),
+                    "plan.missionController.visualItems.count" => {
+                        json!({ "kind": "value", "value": 3 }).to_string()
+                    }
                     _ => String::new(),
                 }
             }
-            fn get_fields(&self, _p: &str, _f: &str) -> String { String::new() }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { json!({ "ok": true }).to_string() }
+            fn get_fields(&self, _p: &str, _f: &str) -> String {
+                String::new()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                json!({ "ok": true }).to_string()
+            }
             fn watch(&self, _p: &[String]) {}
         }
         let refused = run(&Stubborn, "mission.remove", "[1]");
-        assert_eq!(refused["ok"], false, "the call answered ok and the item is still there, and a head told ok would redraw a list that has not changed");
+        assert_eq!(
+            refused["ok"], false,
+            "the call answered ok and the item is still there, and a head told ok would redraw a list that has not changed"
+        );
         assert!(refused["reason"].as_str().unwrap().contains("still holds"));
     }
 }
@@ -1549,18 +2720,26 @@ pub(super) mod orbiting {
         fn get(&self, path: &str) -> String {
             match path {
                 "vehicle.homePosition" => self.home.to_string(),
-                "settings.flyViewSettings.guidedMinimumAltitude.rawValue" => json!({ "kind": "value", "value": 2.0 }).to_string(),
-                "settings.flyViewSettings.guidedMaximumAltitude.rawValue" => json!({ "kind": "value", "value": 121.92 }).to_string(),
+                "settings.flyViewSettings.guidedMinimumAltitude.rawValue" => {
+                    json!({ "kind": "value", "value": 2.0 }).to_string()
+                }
+                "settings.flyViewSettings.guidedMaximumAltitude.rawValue" => {
+                    json!({ "kind": "value", "value": 121.92 }).to_string()
+                }
                 _ => String::new(),
             }
         }
         fn get_fields(&self, path: &str, _f: &str) -> String {
             match path {
-                "vehicle.supports" => json!({ "kind": "object", "orbitMode": self.supported }).to_string(),
+                "vehicle.supports" => {
+                    json!({ "kind": "object", "orbitMode": self.supported }).to_string()
+                }
                 _ => String::new(),
             }
         }
-        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
         fn invoke(&self, path: &str, args: &str) -> String {
             self.calls.lock().unwrap().push(format!("{path} {args}"));
             self.answer.to_string()
@@ -1577,21 +2756,46 @@ pub(super) mod orbiting {
     #[test]
     fn a_jump_names_a_waypoint_from_one_on_a_connected_vehicle() {
         let flying = Flying::launched(480.0);
-        assert_eq!(run(&flying, "vehicle.setCurrentMissionSequence", "[0]")["refusal"], "badSequence", "QGC clamps a click to 1 before asking, so 0 is never a request");
-        assert_eq!(run(&flying, "vehicle.setCurrentMissionSequence", "[2.5]")["refusal"], "badSequence");
-        assert_eq!(run(&flying, "vehicle.setCurrentMissionSequence", "[3]")["refusal"], "noVehicle", "with no vehicle id there is nobody to send it to");
+        assert_eq!(
+            run(&flying, "vehicle.setCurrentMissionSequence", "[0]")["refusal"],
+            "badSequence",
+            "QGC clamps a click to 1 before asking, so 0 is never a request"
+        );
+        assert_eq!(
+            run(&flying, "vehicle.setCurrentMissionSequence", "[2.5]")["refusal"],
+            "badSequence"
+        );
+        assert_eq!(
+            run(&flying, "vehicle.setCurrentMissionSequence", "[3]")["refusal"],
+            "noVehicle",
+            "with no vehicle id there is nobody to send it to"
+        );
         assert!(flying.calls.lock().unwrap().is_empty());
     }
 
     #[test]
     fn the_direction_of_the_turn_is_the_sign_of_the_radius() {
         let clockwise = Flying::launched(480.0);
-        assert_eq!(run(&clockwise, "guided.orbit", "[47.5, 8.5, 150.0, true, 60.0]")["ok"], true);
+        assert_eq!(
+            run(&clockwise, "guided.orbit", "[47.5, 8.5, 150.0, true, 60.0]")["ok"],
+            true
+        );
         assert_eq!(sent(&clockwise)[1], 150.0);
 
         let widdershins = Flying::launched(480.0);
-        assert_eq!(run(&widdershins, "guided.orbit", "[47.5, 8.5, 150.0, false, 60.0]")["ok"], true);
-        assert_eq!(sent(&widdershins)[1], -150.0, "a negative radius is how this command says anticlockwise, which is not something a head should have to know");
+        assert_eq!(
+            run(
+                &widdershins,
+                "guided.orbit",
+                "[47.5, 8.5, 150.0, false, 60.0]"
+            )["ok"],
+            true
+        );
+        assert_eq!(
+            sent(&widdershins)[1],
+            -150.0,
+            "a negative radius is how this command says anticlockwise, which is not something a head should have to know"
+        );
     }
 
     #[test]
@@ -1599,7 +2803,11 @@ pub(super) mod orbiting {
         let flying = Flying::launched(480.0);
         let started = run(&flying, "guided.orbit", "[47.5, 8.5, 150.0, true, 60.0]");
         assert_eq!(started["altitudeAmsl"], 540.0);
-        assert_eq!(sent(&flying)[2], 540.0, "the operator chooses a height above where it took off, and the command wants sea level");
+        assert_eq!(
+            sent(&flying)[2],
+            540.0,
+            "the operator chooses a height above where it took off, and the command wants sea level"
+        );
         assert_eq!(sent(&flying)[0]["latitude"], 47.5);
     }
 
@@ -1611,18 +2819,36 @@ pub(super) mod orbiting {
             answer: json!({ "ok": true }),
             supported: true,
         };
-        let refused = run(&unlaunched, "guided.orbit", "[47.5, 8.5, 150.0, true, 60.0]");
+        let refused = run(
+            &unlaunched,
+            "guided.orbit",
+            "[47.5, 8.5, 150.0, true, 60.0]",
+        );
         assert_eq!(refused["ok"], false);
-        assert!(refused["reason"].as_str().unwrap().contains("launched from"));
-        assert!(unlaunched.calls.lock().unwrap().is_empty(), "sending an orbit measured against an unknown launch height is sending an altitude nobody chose");
+        assert!(
+            refused["reason"]
+                .as_str()
+                .unwrap()
+                .contains("launched from")
+        );
+        assert!(
+            unlaunched.calls.lock().unwrap().is_empty(),
+            "sending an orbit measured against an unknown launch height is sending an altitude nobody chose"
+        );
     }
 
     #[test]
     fn an_orbit_with_no_radius_or_no_direction_is_refused_rather_than_guessed() {
         let flying = Flying::launched(480.0);
-        ["[47.5, 8.5, 0.0, true, 60.0]", "[47.5, 8.5, -20.0, true, 60.0]", "[47.5, 8.5, 150.0, null, 60.0]", "[47.5, 8.5, 150.0, true]", "[]"]
-            .iter()
-            .for_each(|args| assert_eq!(run(&flying, "guided.orbit", args)["ok"], false, "{args}"));
+        [
+            "[47.5, 8.5, 0.0, true, 60.0]",
+            "[47.5, 8.5, -20.0, true, 60.0]",
+            "[47.5, 8.5, 150.0, null, 60.0]",
+            "[47.5, 8.5, 150.0, true]",
+            "[]",
+        ]
+        .iter()
+        .for_each(|args| assert_eq!(run(&flying, "guided.orbit", args)["ok"], false, "{args}"));
         assert!(flying.calls.lock().unwrap().is_empty());
     }
 
@@ -1635,8 +2861,6 @@ pub(super) mod orbiting {
         assert_eq!(refused["reason"], "not in guided mode");
     }
 
-
-
     #[test]
     fn an_untracked_plan_is_not_a_plan_with_nothing_to_undo() {
         use std::cell::RefCell;
@@ -1645,32 +2869,61 @@ pub(super) mod orbiting {
             called: RefCell<Vec<String>>,
         }
         impl Backend for Plan {
-            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
-            fn get_fields(&self, _p: &str, _f: &str) -> String { self.fields.to_string() }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn get(&self, p: &str) -> String {
+                self.get_fields(p, "")
+            }
+            fn get_fields(&self, _p: &str, _f: &str) -> String {
+                self.fields.to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
             fn invoke(&self, p: &str, _a: &str) -> String {
                 self.called.borrow_mut().push(p.to_string());
                 json!({ "ok": true }).to_string()
             }
             fn watch(&self, _p: &[String]) {}
         }
-        let plan = |fields: Value| Plan { fields, called: RefCell::new(vec![]) };
+        let plan = |fields: Value| Plan {
+            fields,
+            called: RefCell::new(vec![]),
+        };
 
-        let untracked = plan(json!({ "kind": "object", "undoTracking": false, "canUndo": false, "canRedo": false }));
+        let untracked = plan(
+            json!({ "kind": "object", "undoTracking": false, "canUndo": false, "canRedo": false }),
+        );
         let refused = run(&untracked, UNDO, "[]");
         assert_eq!(refused["ok"], false);
-        assert_eq!(refused["refusal"], "notTracking", "every head clears undoTracking when its plan screen goes away, so canUndo is false after twenty edits and a navigation as surely as after none - answering nothingTo there is true about the stack and wrong about the plan");
-        assert!(untracked.called.borrow().is_empty(), "a refusal that still fired the invoke would be a refusal in the answer only");
+        assert_eq!(
+            refused["refusal"], "notTracking",
+            "every head clears undoTracking when its plan screen goes away, so canUndo is false after twenty edits and a navigation as surely as after none - answering nothingTo there is true about the stack and wrong about the plan"
+        );
+        assert!(
+            untracked.called.borrow().is_empty(),
+            "a refusal that still fired the invoke would be a refusal in the answer only"
+        );
 
-        let empty = plan(json!({ "kind": "object", "undoTracking": true, "canUndo": false, "canRedo": true }));
+        let empty = plan(
+            json!({ "kind": "object", "undoTracking": true, "canUndo": false, "canRedo": true }),
+        );
         assert_eq!(run(&empty, UNDO, "[]")["refusal"], "nothingTo");
-        assert_eq!(run(&empty, REDO, "[]")["ok"], true, "the two stacks are separate and redo is gated on its own");
+        assert_eq!(
+            run(&empty, REDO, "[]")["ok"],
+            true,
+            "the two stacks are separate and redo is gated on its own"
+        );
 
-        let ready = plan(json!({ "kind": "object", "undoTracking": true, "canUndo": true, "canRedo": false }));
+        let ready = plan(
+            json!({ "kind": "object", "undoTracking": true, "canUndo": true, "canRedo": false }),
+        );
         let done = run(&ready, UNDO, "[]");
         assert_eq!(done["ok"], true);
         assert_eq!(done["refusal"], Value::Null);
-        assert_eq!(done.get("result"), None, "undo() returns void and the bridge answers a void invoke with ok and no result key, so serving result would mean inventing one");
+        assert_eq!(
+            done.get("result"),
+            None,
+            "undo() returns void and the bridge answers a void invoke with ok and no result key, so serving result would mean inventing one"
+        );
         assert_eq!(ready.called.borrow().as_slice(), ["plan.undo"]);
 
         assert!(owns(UNDO) && owns(REDO));
@@ -1678,6 +2931,9 @@ pub(super) mod orbiting {
 
     #[test]
     fn the_core_answers_whether_the_picture_in_picture_is_shown_on_every_host() {
-        assert!(owns(crate::videohost::SET_PIP_SHOWN), "a Qt host never hears it, so the head's call is not a Qt path left to port");
+        assert!(
+            owns(crate::videohost::SET_PIP_SHOWN),
+            "a Qt host never hears it, so the head's call is not a Qt path left to port"
+        );
     }
 }

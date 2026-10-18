@@ -9,7 +9,11 @@ use sha2::{Digest, Sha256};
 
 pub const MIN_CARD_BYTES: u64 = 3_500_000_000;
 pub const CANCELLED_BY_USER: &str = "Cancelled";
-pub const RELEASE_CHANNELS: [(&str, &str); 3] = [("stable", "downloads.aircast.one"), ("staging", "downloads.stage.aircast.one"), ("development", "downloads-dev.aircast.one")];
+pub const RELEASE_CHANNELS: [(&str, &str); 3] = [
+    ("stable", "downloads.aircast.one"),
+    ("staging", "downloads.stage.aircast.one"),
+    ("development", "downloads-dev.aircast.one"),
+];
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(15);
 const ATTEMPT_LIMIT: Duration = Duration::from_secs(60);
 const ATTEMPTS: u32 = 30;
@@ -45,11 +49,16 @@ struct Listing {
 }
 
 pub fn releases_url(channel: &str) -> Option<String> {
-    RELEASE_CHANNELS.iter().find(|(name, _)| *name == channel).map(|(_, host)| format!("https://{host}/lite/releases.json"))
+    RELEASE_CHANNELS
+        .iter()
+        .find(|(name, _)| *name == channel)
+        .map(|(_, host)| format!("https://{host}/lite/releases.json"))
 }
 
 pub fn parse_releases(json: &str) -> Result<Vec<Release>, String> {
-    serde_json::from_str::<Listing>(json).map(|listing| listing.releases).map_err(|e| format!("The release list did not parse: {e}"))
+    serde_json::from_str::<Listing>(json)
+        .map(|listing| listing.releases)
+        .map_err(|e| format!("The release list did not parse: {e}"))
 }
 
 pub fn parse_sha256(text: &str) -> Result<String, String> {
@@ -62,14 +71,25 @@ pub fn parse_sha256(text: &str) -> Result<String, String> {
 
 #[cfg(not(target_family = "wasm"))]
 fn agent(limit: Option<Duration>) -> ureq::Agent {
-    ureq::Agent::config_builder().timeout_connect(Some(CONNECT_TIMEOUT)).timeout_recv_body(limit).http_status_as_error(false).build().into()
+    ureq::Agent::config_builder()
+        .timeout_connect(Some(CONNECT_TIMEOUT))
+        .timeout_recv_body(limit)
+        .http_status_as_error(false)
+        .build()
+        .into()
 }
 
 #[cfg(not(target_family = "wasm"))]
 fn text(url: &str) -> Result<String, String> {
-    let mut answer = agent(Some(CONNECT_TIMEOUT)).get(url).call().map_err(|e| format!("{url}: {e}"))?;
+    let mut answer = agent(Some(CONNECT_TIMEOUT))
+        .get(url)
+        .call()
+        .map_err(|e| format!("{url}: {e}"))?;
     match answer.status().as_u16() {
-        200 => answer.body_mut().read_to_string().map_err(|e| format!("{url}: {e}")),
+        200 => answer
+            .body_mut()
+            .read_to_string()
+            .map_err(|e| format!("{url}: {e}")),
         status => Err(format!("{url} answered HTTP {status}")),
     }
 }
@@ -80,12 +100,23 @@ fn text(url: &str) -> Result<String, String> {
 }
 
 #[cfg(target_family = "wasm")]
-fn fetch_into(url: &str, _part: &Path, _size_hint: u64, _cancelled: &dyn Fn() -> bool, _progress: &mut dyn FnMut(u64, u64)) -> Result<(), String> {
-    Err(format!("{url}: writing an Aircast card needs the desktop or mobile app"))
+fn fetch_into(
+    url: &str,
+    _part: &Path,
+    _size_hint: u64,
+    _cancelled: &dyn Fn() -> bool,
+    _progress: &mut dyn FnMut(u64, u64),
+) -> Result<(), String> {
+    Err(format!(
+        "{url}: writing an Aircast card needs the desktop or mobile app"
+    ))
 }
 
 pub fn fetch_releases(channel: &str) -> Result<Vec<Release>, String> {
-    releases_url(channel).ok_or_else(|| format!("Unknown channel {channel}")).and_then(|url| text(&url)).and_then(|json| parse_releases(&json))
+    releases_url(channel)
+        .ok_or_else(|| format!("Unknown channel {channel}"))
+        .and_then(|url| text(&url))
+        .and_then(|json| parse_releases(&json))
 }
 
 pub fn sha256_of(path: &Path, cancelled: &dyn Fn() -> bool) -> Result<String, String> {
@@ -96,7 +127,10 @@ pub fn sha256_of(path: &Path, cancelled: &dyn Fn() -> bool) -> Result<String, St
         if cancelled() {
             return Err(CANCELLED_BY_USER.to_string());
         }
-        match file.read(&mut buf).map_err(|e| format!("{}: {e}", path.display()))? {
+        match file
+            .read(&mut buf)
+            .map_err(|e| format!("{}: {e}", path.display()))?
+        {
             0 => return Ok(crate::signingkeys::to_hex(&hash.finalize())),
             n => hash.update(&buf[..n]),
         }
@@ -109,7 +143,12 @@ pub fn cached(folder: &Path, filename: &str, expected: &str) -> Option<PathBuf> 
     (image.is_file() && marker.trim() == expected).then_some(image)
 }
 
-pub fn download(image: &Image, folder: &Path, cancelled: &dyn Fn() -> bool, progress: &mut dyn FnMut(u64, u64)) -> Result<PathBuf, String> {
+pub fn download(
+    image: &Image,
+    folder: &Path,
+    cancelled: &dyn Fn() -> bool,
+    progress: &mut dyn FnMut(u64, u64),
+) -> Result<PathBuf, String> {
     let expected = parse_sha256(&text(&image.checksum_url)?)?;
     if let Some(found) = cached(folder, &image.filename, &expected) {
         progress(image.size, image.size);
@@ -117,12 +156,21 @@ pub fn download(image: &Image, folder: &Path, cancelled: &dyn Fn() -> bool, prog
     }
     std::fs::create_dir_all(folder).map_err(|e| format!("{}: {e}", folder.display()))?;
     let part = folder.join(format!("{}.part", image.filename));
-    fetch_with_retries(&image.download_url, &part, image.size, cancelled, progress, 0)?;
+    fetch_with_retries(
+        &image.download_url,
+        &part,
+        image.size,
+        cancelled,
+        progress,
+        0,
+    )?;
     match sha256_of(&part, cancelled)? == expected {
         true => {
             let finished = folder.join(&image.filename);
-            std::fs::rename(&part, &finished).map_err(|e| format!("{}: {e}", finished.display()))?;
-            std::fs::write(folder.join(format!("{}.sha256", image.filename)), &expected).map_err(|e| format!("{}: {e}", folder.display()))?;
+            std::fs::rename(&part, &finished)
+                .map_err(|e| format!("{}: {e}", finished.display()))?;
+            std::fs::write(folder.join(format!("{}.sha256", image.filename)), &expected)
+                .map_err(|e| format!("{}: {e}", folder.display()))?;
             Ok(finished)
         }
         false => {
@@ -132,12 +180,22 @@ pub fn download(image: &Image, folder: &Path, cancelled: &dyn Fn() -> bool, prog
     }
 }
 
-fn fetch_with_retries(url: &str, part: &Path, size_hint: u64, cancelled: &dyn Fn() -> bool, progress: &mut dyn FnMut(u64, u64), attempt: u32) -> Result<(), String> {
+fn fetch_with_retries(
+    url: &str,
+    part: &Path,
+    size_hint: u64,
+    cancelled: &dyn Fn() -> bool,
+    progress: &mut dyn FnMut(u64, u64),
+    attempt: u32,
+) -> Result<(), String> {
     match fetch_into(url, part, size_hint, cancelled, progress) {
         Ok(()) => Ok(()),
         Err(e) if e == CANCELLED_BY_USER || attempt + 1 >= ATTEMPTS => Err(e),
         Err(_) => {
-            wait_unless_cancelled(Duration::from_secs((1u64 << attempt.min(5)).min(BACKOFF_CAP_SECS)), cancelled);
+            wait_unless_cancelled(
+                Duration::from_secs((1u64 << attempt.min(5)).min(BACKOFF_CAP_SECS)),
+                cancelled,
+            );
             match cancelled() {
                 true => Err(CANCELLED_BY_USER.to_string()),
                 false => fetch_with_retries(url, part, size_hint, cancelled, progress, attempt + 1),
@@ -148,11 +206,19 @@ fn fetch_with_retries(url: &str, part: &Path, size_hint: u64, cancelled: &dyn Fn
 
 fn wait_unless_cancelled(total: Duration, cancelled: &dyn Fn() -> bool) {
     let step = Duration::from_millis(100);
-    let _ = (0..total.as_millis() / step.as_millis()).take_while(|_| !cancelled()).for_each(|_| std::thread::sleep(step));
+    let _ = (0..total.as_millis() / step.as_millis())
+        .take_while(|_| !cancelled())
+        .for_each(|_| std::thread::sleep(step));
 }
 
 #[cfg(not(target_family = "wasm"))]
-fn fetch_into(url: &str, part: &Path, size_hint: u64, cancelled: &dyn Fn() -> bool, progress: &mut dyn FnMut(u64, u64)) -> Result<(), String> {
+fn fetch_into(
+    url: &str,
+    part: &Path,
+    size_hint: u64,
+    cancelled: &dyn Fn() -> bool,
+    progress: &mut dyn FnMut(u64, u64),
+) -> Result<(), String> {
     let start = std::fs::metadata(part).map(|m| m.len()).unwrap_or(0);
     let request = agent(Some(ATTEMPT_LIMIT)).get(url);
     let request = match start {
@@ -160,15 +226,25 @@ fn fetch_into(url: &str, part: &Path, size_hint: u64, cancelled: &dyn Fn() -> bo
         n => request.header("Range", &format!("bytes={n}-")),
     };
     let mut answer = request.call().map_err(|e| format!("{url}: {e}"))?;
-    let length = answer.headers().get("content-length").and_then(|v| v.to_str().ok()).and_then(|v| v.parse::<u64>().ok());
+    let length = answer
+        .headers()
+        .get("content-length")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.parse::<u64>().ok());
     let (resume_at, total) = match answer.status().as_u16() {
         206 => (start, length.map(|l| start + l).unwrap_or(size_hint)),
         200 => (0, length.unwrap_or(size_hint)),
         416 if start > 0 => return Ok(()),
         status => return Err(format!("{url} answered HTTP {status}")),
     };
-    let mut file = OpenOptions::new().create(true).write(true).truncate(resume_at == 0).open(part).map_err(|e| format!("{}: {e}", part.display()))?;
-    file.seek(SeekFrom::Start(resume_at)).map_err(|e| format!("{}: {e}", part.display()))?;
+    let mut file = OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(resume_at == 0)
+        .open(part)
+        .map_err(|e| format!("{}: {e}", part.display()))?;
+    file.seek(SeekFrom::Start(resume_at))
+        .map_err(|e| format!("{}: {e}", part.display()))?;
     let mut reader = answer.body_mut().as_reader();
     let mut done = resume_at;
     let mut buf = vec![0u8; IMAGE_CHUNK];
@@ -180,7 +256,8 @@ fn fetch_into(url: &str, part: &Path, size_hint: u64, cancelled: &dyn Fn() -> bo
         match reader.read(&mut buf).map_err(|e| format!("{url}: {e}"))? {
             0 => break,
             n => {
-                file.write_all(&buf[..n]).map_err(|e| format!("{}: {e}", part.display()))?;
+                file.write_all(&buf[..n])
+                    .map_err(|e| format!("{}: {e}", part.display()))?;
                 done += n as u64;
                 progress(done, total);
             }
@@ -188,7 +265,9 @@ fn fetch_into(url: &str, part: &Path, size_hint: u64, cancelled: &dyn Fn() -> bo
     }
     match done >= total || total == 0 {
         true => Ok(()),
-        false => Err(format!("{url}: the download stopped at {done} of {total} bytes")),
+        false => Err(format!(
+            "{url}: the download stopped at {done} of {total} bytes"
+        )),
     }
 }
 
@@ -218,18 +297,26 @@ pub fn xz_uncompressed_len(file: &mut File) -> Option<u64> {
     let footer_at = footer_end.checked_sub(XZ_FOOTER_LEN)?;
     let footer = &tail[(footer_at - (len - scan)) as usize..(footer_end - (len - scan)) as usize];
     (footer[10..12] == *b"YZ").then_some(())?;
-    let index_len = (u64::from(u32::from_le_bytes([footer[4], footer[5], footer[6], footer[7]])) + 1) * 4;
+    let index_len = (u64::from(u32::from_le_bytes([
+        footer[4], footer[5], footer[6], footer[7],
+    ])) + 1)
+        * 4;
     let index_at = footer_at.checked_sub(index_len)?;
     let mut index = vec![0u8; index_len as usize];
     file.seek(SeekFrom::Start(index_at)).ok()?;
     file.read_exact(&mut index).ok()?;
     (index.first() == Some(&0)).then_some(())?;
     let (records, used) = multibyte(&index[1..])?;
-    let (blocks, uncompressed, _) = (0..records).try_fold((0u64, 0u64, 1 + used), |(blocks, uncompressed, at), _| {
-        let (unpadded, a) = multibyte(index.get(at..)?)?;
-        let (size, b) = multibyte(index.get(at + a..)?)?;
-        Some((blocks + unpadded.div_ceil(4) * 4, uncompressed + size, at + a + b))
-    })?;
+    let (blocks, uncompressed, _) =
+        (0..records).try_fold((0u64, 0u64, 1 + used), |(blocks, uncompressed, at), _| {
+            let (unpadded, a) = multibyte(index.get(at..)?)?;
+            let (size, b) = multibyte(index.get(at + a..)?)?;
+            Some((
+                blocks + unpadded.div_ceil(4) * 4,
+                uncompressed + size,
+                at + a + b,
+            ))
+        })?;
     (XZ_HEADER_LEN + blocks + index_len + XZ_FOOTER_LEN == footer_end).then_some(uncompressed)
 }
 
@@ -242,7 +329,10 @@ pub fn uncompressed_len(path: &Path) -> Result<u64, String> {
             None => count(open_image(path)?),
         },
         (_, true) => count(open_image(path)?),
-        _ => file.metadata().map(|m| m.len()).map_err(|e| format!("{}: {e}", path.display())),
+        _ => file
+            .metadata()
+            .map(|m| m.len())
+            .map_err(|e| format!("{}: {e}", path.display())),
     }
 }
 
@@ -254,7 +344,10 @@ struct ChunkSender(SyncSender<io::Result<Vec<u8>>>);
 
 impl Write for ChunkSender {
     fn write(&mut self, buf: &[u8]) -> io::Result<usize> {
-        self.0.send(Ok(buf.to_vec())).map(|_| buf.len()).map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "the image reader went away"))
+        self.0
+            .send(Ok(buf.to_vec()))
+            .map(|_| buf.len())
+            .map_err(|_| io::Error::new(io::ErrorKind::BrokenPipe, "the image reader went away"))
     }
     fn flush(&mut self) -> io::Result<()> {
         Ok(())
@@ -296,14 +389,26 @@ pub fn open_image(path: &Path) -> Result<Box<dyn Read + Send>, String> {
                 .name("card-image-xz".into())
                 .spawn(move || {
                     let failed = sender.clone();
-                    if let Err(e) = lzma_rs::xz_decompress(&mut BufReader::with_capacity(IMAGE_CHUNK, file), &mut ChunkSender(sender)) {
-                        let _ = failed.send(Err(io::Error::new(io::ErrorKind::InvalidData, format!("xz: {e:?}"))));
+                    if let Err(e) = lzma_rs::xz_decompress(
+                        &mut BufReader::with_capacity(IMAGE_CHUNK, file),
+                        &mut ChunkSender(sender),
+                    ) {
+                        let _ = failed.send(Err(io::Error::new(
+                            io::ErrorKind::InvalidData,
+                            format!("xz: {e:?}"),
+                        )));
                     }
                 })
                 .map_err(|e| format!("could not start the decompressor: {e}"))?;
-            Ok(Box::new(ChunkReader { chunks, current: Vec::new(), at: 0 }))
+            Ok(Box::new(ChunkReader {
+                chunks,
+                current: Vec::new(),
+                at: 0,
+            }))
         }
-        (_, true) => Ok(Box::new(flate2::read::MultiGzDecoder::new(BufReader::with_capacity(IMAGE_CHUNK, file)))),
+        (_, true) => Ok(Box::new(flate2::read::MultiGzDecoder::new(
+            BufReader::with_capacity(IMAGE_CHUNK, file),
+        ))),
         _ => Ok(Box::new(BufReader::with_capacity(IMAGE_CHUNK, file))),
     }
 }
@@ -342,15 +447,24 @@ mod tests {
 
     #[test]
     fn every_channel_has_a_releases_url_and_unknown_ones_do_not() {
-        assert_eq!(releases_url("stable").as_deref(), Some("https://downloads.aircast.one/lite/releases.json"));
-        assert_eq!(releases_url("development").as_deref(), Some("https://downloads-dev.aircast.one/lite/releases.json"));
+        assert_eq!(
+            releases_url("stable").as_deref(),
+            Some("https://downloads.aircast.one/lite/releases.json")
+        );
+        assert_eq!(
+            releases_url("development").as_deref(),
+            Some("https://downloads-dev.aircast.one/lite/releases.json")
+        );
         assert_eq!(releases_url("nightly"), None);
     }
 
     #[test]
     fn a_checksum_file_yields_its_digest_and_junk_is_refused() {
         let digest = "A".repeat(64);
-        assert_eq!(parse_sha256(&format!("{digest}  aircast.img.xz\n")).unwrap(), "a".repeat(64));
+        assert_eq!(
+            parse_sha256(&format!("{digest}  aircast.img.xz\n")).unwrap(),
+            "a".repeat(64)
+        );
         assert!(parse_sha256("<html>not found</html>").is_err());
         assert!(parse_sha256("").is_err());
     }
@@ -361,7 +475,10 @@ mod tests {
         let data = sample(3 * 1024 * 1024 + 17);
         let path = dir.join("image.img.xz");
         std::fs::write(&path, xz(&data)).unwrap();
-        assert_eq!(xz_uncompressed_len(&mut File::open(&path).unwrap()), Some(data.len() as u64));
+        assert_eq!(
+            xz_uncompressed_len(&mut File::open(&path).unwrap()),
+            Some(data.len() as u64)
+        );
         assert_eq!(uncompressed_len(&path).unwrap(), data.len() as u64);
     }
 
@@ -371,7 +488,10 @@ mod tests {
         let data = sample(100_000);
         let path = dir.join("padded.img.xz");
         std::fs::write(&path, [xz(&data), vec![0u8; 8]].concat()).unwrap();
-        assert_eq!(xz_uncompressed_len(&mut File::open(&path).unwrap()), Some(data.len() as u64));
+        assert_eq!(
+            xz_uncompressed_len(&mut File::open(&path).unwrap()),
+            Some(data.len() as u64)
+        );
     }
 
     #[test]
@@ -388,20 +508,36 @@ mod tests {
         let data = sample(2 * 1024 * 1024 + 5);
         let mut gz = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::fast());
         gz.write_all(&data).unwrap();
-        [("a.img.xz", xz(&data)), ("a.img.gz", gz.finish().unwrap()), ("a.img", data.clone())].iter().for_each(|(name, bytes)| {
+        [
+            ("a.img.xz", xz(&data)),
+            ("a.img.gz", gz.finish().unwrap()),
+            ("a.img", data.clone()),
+        ]
+        .iter()
+        .for_each(|(name, bytes)| {
             let path = dir.join(name);
             std::fs::write(&path, bytes).unwrap();
             let mut out = Vec::new();
             open_image(&path).unwrap().read_to_end(&mut out).unwrap();
             assert_eq!(out, data, "{name}");
-            assert_eq!(uncompressed_len(&path).unwrap(), data.len() as u64, "{name}");
+            assert_eq!(
+                uncompressed_len(&path).unwrap(),
+                data.len() as u64,
+                "{name}"
+            );
         });
     }
 
     #[test]
     fn a_truncated_xz_reports_an_error_instead_of_a_short_image() {
         let dir = scratch("truncated");
-        let noise: Vec<u8> = (0..500_000u64).map(|i| (i.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407) >> 33) as u8).collect();
+        let noise: Vec<u8> = (0..500_000u64)
+            .map(|i| {
+                (i.wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407)
+                    >> 33) as u8
+            })
+            .collect();
         let bytes = xz(&noise);
         let path = dir.join("broken.img.xz");
         std::fs::write(&path, &bytes[..bytes.len() / 2]).unwrap();
@@ -423,8 +559,14 @@ mod tests {
     fn hashing_a_file_matches_sha256_and_stops_when_cancelled() {
         let dir = scratch("hash");
         std::fs::write(dir.join("f"), b"abc").unwrap();
-        assert_eq!(sha256_of(&dir.join("f"), &|| false).unwrap(), "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad");
-        assert_eq!(sha256_of(&dir.join("f"), &|| true).unwrap_err(), CANCELLED_BY_USER);
+        assert_eq!(
+            sha256_of(&dir.join("f"), &|| false).unwrap(),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
+        assert_eq!(
+            sha256_of(&dir.join("f"), &|| true).unwrap_err(),
+            CANCELLED_BY_USER
+        );
     }
 
     #[test]

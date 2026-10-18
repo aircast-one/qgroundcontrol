@@ -15,8 +15,16 @@ static FLIGHT_MEMORY: std::sync::Mutex<Option<FlightMemory>> = std::sync::Mutex:
 
 pub fn remember_flight(previous: Option<FlightMemory>, vehicle: i64, flying: bool) -> FlightMemory {
     match previous.filter(|p| p.vehicle == vehicle) {
-        Some(p) => FlightMemory { vehicle, flying, was_flying: p.was_flying || (p.flying && !flying) },
-        None => FlightMemory { vehicle, flying, was_flying: false },
+        Some(p) => FlightMemory {
+            vehicle,
+            flying,
+            was_flying: p.was_flying || (p.flying && !flying),
+        },
+        None => FlightMemory {
+            vehicle,
+            flying,
+            was_flying: false,
+        },
     }
 }
 
@@ -59,7 +67,8 @@ pub const DEPS: &[&str] = &[
 const CHECKLIST_PASSED: i64 = 1;
 pub const NO_SIGNAL: &str = "No signal from the aircraft.";
 const REBOOT_PATH: &str = "vehicle.rebootVehicle";
-const PAYLOAD_BLOCKED: &str = "The mission's drops would not all fall. The gripper panel says what to change.";
+const PAYLOAD_BLOCKED: &str =
+    "The mission's drops would not all fall. The gripper panel says what to change.";
 pub const NO_SIGNAL_CODE: &str = "noSignal";
 
 #[derive(Default, PartialEq, Debug, Clone)]
@@ -116,7 +125,9 @@ impl GuidedState {
     }
 
     pub fn next_bay(&self) -> Option<i64> {
-        (self.payload_bays > 1).then(|| (1..=self.payload_bays).find(|bay| !self.empty_bays.contains(bay))).flatten()
+        (self.payload_bays > 1)
+            .then(|| (1..=self.payload_bays).find(|bay| !self.empty_bays.contains(bay)))
+            .flatten()
     }
 
     pub fn can_resume(&self) -> bool {
@@ -223,8 +234,12 @@ impl Action {
             Action::Takeoff => "Takeoff and hold position",
             Action::StartMission => "Takeoff and start the current mission",
             Action::ContinueMission => "Continue the mission from the current waypoint",
-            Action::ResumeMission => "Carry on from the waypoint the vehicle had reached, rather than flying the plan again from the start.",
-            Action::CancelRoi => "Stop pointing the camera at the region of interest and let it follow the vehicle again.",
+            Action::ResumeMission => {
+                "Carry on from the waypoint the vehicle had reached, rather than flying the plan again from the start."
+            }
+            Action::CancelRoi => {
+                "Stop pointing the camera at the region of interest and let it follow the vehicle again."
+            }
             Action::Pause => "Pause at current position",
             Action::ChangeAltitude => "Change the altitude of the vehicle up or down",
             Action::ChangeSpeed => "Change the maximum horizontal cruise speed",
@@ -235,15 +250,22 @@ impl Action {
             Action::Grab => "Close the gripper and hold the payload.",
             Action::Release => "Open the gripper and drop the payload.",
             Action::Hold => "Stop the gripper where it is.",
-            Action::EmergencyStop => "WARNING: THIS WILL STOP ALL MOTORS. IF VEHICLE IS CURRENTLY IN THE AIR IT WILL CRASH.",
+            Action::EmergencyStop => {
+                "WARNING: THIS WILL STOP ALL MOTORS. IF VEHICLE IS CURRENTLY IN THE AIR IT WILL CRASH."
+            }
             Action::VtolTransitionToFixedWing => "Transition VTOL to fixed wing flight.",
             Action::VtolTransitionToMultiRotor => "Transition VTOL to multi-rotor flight.",
-            Action::ForceArm => "WARNING: This will force arming of the vehicle bypassing any safety checks.",
+            Action::ForceArm => {
+                "WARNING: This will force arming of the vehicle bypassing any safety checks."
+            }
         }
     }
 
     fn carries_value(self) -> bool {
-        matches!(self, Action::Takeoff | Action::ChangeAltitude | Action::ChangeSpeed | Action::Pause)
+        matches!(
+            self,
+            Action::Takeoff | Action::ChangeAltitude | Action::ChangeSpeed | Action::Pause
+        )
     }
 
     fn shown(self, s: &GuidedState) -> bool {
@@ -258,19 +280,35 @@ impl Action {
                 Action::Land => s.guided_supported && s.armed && !s.fixed_wing && !s.in_land,
                 Action::StartMission => s.mission_available && !s.mission_active() && !s.flying,
                 Action::ContinueMission => {
-                    s.mission_available && !s.mission_active() && s.armed && s.flying && s.has_more_mission()
+                    s.mission_available
+                        && !s.mission_active()
+                        && s.armed
+                        && s.flying
+                        && s.has_more_mission()
                 }
                 Action::ResumeMission => s.can_resume(),
                 Action::CancelRoi => s.roi_active,
-                Action::Pause => s.armed && s.pause_supported && s.flying && !s.paused && !s.on_approach(),
+                Action::Pause => {
+                    s.armed && s.pause_supported && s.flying && !s.paused && !s.on_approach()
+                }
                 Action::LandAbort => s.flying && s.on_approach(),
-                Action::ChangeAltitude => s.armed && s.guided_supported && s.flying && !s.mission_active(),
+                Action::ChangeAltitude => {
+                    s.armed && s.guided_supported && s.flying && !s.mission_active()
+                }
                 Action::ChangeSpeed => {
-                    s.armed && s.guided_supported && s.flying && !s.mission_active() && s.speed_limits
+                    s.armed
+                        && s.guided_supported
+                        && s.flying
+                        && !s.mission_active()
+                        && s.speed_limits
                 }
                 Action::EmergencyStop => s.armed && s.flying,
-                Action::VtolTransitionToFixedWing => s.vtol && (s.flying || s.landing) && !s.vtol_in_fwd_flight,
-                Action::VtolTransitionToMultiRotor => s.vtol && (s.flying || s.landing) && s.vtol_in_fwd_flight,
+                Action::VtolTransitionToFixedWing => {
+                    s.vtol && (s.flying || s.landing) && !s.vtol_in_fwd_flight
+                }
+                Action::VtolTransitionToMultiRotor => {
+                    s.vtol && (s.flying || s.landing) && s.vtol_in_fwd_flight
+                }
                 Action::ForceArm => !s.armed,
             }
     }
@@ -279,7 +317,10 @@ impl Action {
         if s.contact_lost && matches!(self, Action::Arm | Action::Takeoff | Action::StartMission) {
             return Some(NO_SIGNAL);
         }
-        if matches!(self, Action::StartMission | Action::ResumeMission) && !s.flying && crate::payloadcheck::blocking(&s.payload, 1).is_some() {
+        if matches!(self, Action::StartMission | Action::ResumeMission)
+            && !s.flying
+            && crate::payloadcheck::blocking(&s.payload, 1).is_some()
+        {
             return Some(PAYLOAD_BLOCKED);
         }
         let passes = match self {
@@ -313,10 +354,15 @@ impl Action {
             },
             offer,
             reason,
-            reason_code: if s.contact_lost && reason == NO_SIGNAL { NO_SIGNAL_CODE } else { "" },
+            reason_code: if s.contact_lost && reason == NO_SIGNAL {
+                NO_SIGNAL_CODE
+            } else {
+                ""
+            },
             destructive: matches!(self, Action::EmergencyStop | Action::ForceArm),
             confirm: self != Action::Disarm,
-            carries_value: self.carries_value() && !(self == Action::Takeoff && !s.takeoff_with_altitude),
+            carries_value: self.carries_value()
+                && !(self == Action::Takeoff && !s.takeoff_with_altitude),
             option: match (self, s.smart_rtl_supported) {
                 (Action::Rtl, true) => "Smart RTL",
                 _ => "",
@@ -358,7 +404,12 @@ fn speed_limits_live(backend: &dyn Backend, px4: bool, apm: bool, forward_flight
         (true, false, true) => &["r.AIRSPEED_MIN", "r.AIRSPEED_MAX"],
         _ => return false,
     };
-    names.iter().all(|name| crate::read::result_flag(&backend.invoke("vehicle.parameterManager.parameterExists", &json!([-1, name]).to_string())))
+    names.iter().all(|name| {
+        crate::read::result_flag(&backend.invoke(
+            "vehicle.parameterManager.parameterExists",
+            &json!([-1, name]).to_string(),
+        ))
+    })
 }
 
 pub fn forward_flight(backend: &dyn Backend) -> bool {
@@ -388,29 +439,41 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
         "id,armed,flying,isROIEnabled,fixedWing,vtol,vtolInFwdFlight,haveFWSpeedLimits,haveMRSpeedLimits,px4Firmware,apmFirmware,landing,hasGripper,payloadSetup,initialConnectComplete,checkListState,flightMode,rtlFlightMode,smartRTLFlightMode,landFlightMode,missionFlightMode,pauseFlightMode",
     );
     let supports = backend.value_fields("vehicle.supports", "guidedMode,pauseVehicle,roiMode,guidedTakeoffWithAltitude,guidedTakeoffWithoutAltitude,smartRTL");
-    let report = backend.value_fields("vehicle.healthAndArmingCheckReport", "supported,canArm,canTakeoff,canStartMission");
+    let report = backend.value_fields(
+        "vehicle.healthAndArmingCheckReport",
+        "supported,canArm,canTakeoff,canStartMission",
+    );
     let mission = backend.value_fields("planFly.missionController", "containsItems");
-    let flying = backend.value_fields("planFly.missionController", "currentMissionIndex,resumeMissionIndex");
+    let flying = backend.value_fields(
+        "planFly.missionController",
+        "currentMissionIndex,resumeMissionIndex",
+    );
     let items = backend.value_fields("planFly.missionController.visualItems", "count");
     let app = backend.value_fields("settings.appSettings", "useChecklist,enforceChecklist");
     let mode = text(&vehicle, "flightMode");
     let same_mode = |key: &str| !mode.is_empty() && text(&vehicle, key) == mode;
     let use_checklist = fact_flag(&app, "useChecklist");
     let enforce_checklist = fact_flag(&app, "enforceChecklist");
-    let checklist_passed = !use_checklist || !enforce_checklist || integer(&vehicle, "checkListState") == Some(CHECKLIST_PASSED);
+    let checklist_passed = !use_checklist
+        || !enforce_checklist
+        || integer(&vehicle, "checkListState") == Some(CHECKLIST_PASSED);
     let report_supported = flag(&report, "supported");
     let gate = |key: &str| checklist_passed && (!report_supported || flag(&report, key));
     let fixed_wing = flag(&vehicle, "fixedWing");
     let vtol_in_fwd_flight = flag(&vehicle, "vtolInFwdFlight");
     let forward_flight = vtol_in_fwd_flight || fixed_wing;
-    let link = backend.value_fields("vehicle.vehicleLinkManager", "communicationLost,communicationLostEnabled");
+    let link = backend.value_fields(
+        "vehicle.vehicleLinkManager",
+        "communicationLost,communicationLostEnabled",
+    );
     GuidedState {
         contact_lost: flag(&link, "communicationLostEnabled") && flag(&link, "communicationLost"),
         connected: true,
         armed: flag(&vehicle, "armed"),
         flying: flag(&vehicle, "flying"),
         guided_supported: flag(&supports, "guidedMode"),
-        takeoff_supported: flag(&supports, "guidedTakeoffWithAltitude") || flag(&supports, "guidedTakeoffWithoutAltitude"),
+        takeoff_supported: flag(&supports, "guidedTakeoffWithAltitude")
+            || flag(&supports, "guidedTakeoffWithoutAltitude"),
         takeoff_with_altitude: flag(&supports, "guidedTakeoffWithAltitude"),
         pause_supported: flag(&supports, "pauseVehicle"),
         fixed_wing,
@@ -418,18 +481,43 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
         vtol_in_fwd_flight,
         forward_flight,
         goto_loiter_radius: match forward_flight {
-            true => value_number(&backend.value("settings.flyViewSettings.forwardFlightGoToLocationLoiterRad.rawValue")).unwrap_or(0.0),
+            true => value_number(
+                &backend
+                    .value("settings.flyViewSettings.forwardFlightGoToLocationLoiterRad.rawValue"),
+            )
+            .unwrap_or(0.0),
             false => 0.0,
         },
-        speed_limits: if forward_flight { flag(&vehicle, "haveFWSpeedLimits") } else { flag(&vehicle, "haveMRSpeedLimits") }
-            || speed_limits_live(backend, flag(&vehicle, "px4Firmware"), flag(&vehicle, "apmFirmware"), forward_flight),
+        speed_limits: if forward_flight {
+            flag(&vehicle, "haveFWSpeedLimits")
+        } else {
+            flag(&vehicle, "haveMRSpeedLimits")
+        } || speed_limits_live(
+            backend,
+            flag(&vehicle, "px4Firmware"),
+            flag(&vehicle, "apmFirmware"),
+            forward_flight,
+        ),
         landing: flag(&vehicle, "landing"),
         has_gripper: flag(&vehicle, "hasGripper"),
         apm: flag(&vehicle, "apmFirmware"),
-        payload_bays: value_number(&backend.value("settings.flyViewSettings.payloadBays.rawValue")).map_or(1, |bays| bays as i64),
-        empty_bays: vehicle.get("payloadSetup").and_then(|p| p.get("empty")).and_then(Value::as_array).map(|bays| bays.iter().filter_map(Value::as_i64).collect()).unwrap_or_default(),
-        payload: vehicle.get("payloadSetup").and_then(|p| p.get("setup")).map(crate::payloadcheck::Setup::from_json).unwrap_or_default(),
-        payload_released_ms: vehicle.get("payloadSetup").and_then(|p| p.get("releasedAtMs")).and_then(Value::as_i64),
+        payload_bays: value_number(&backend.value("settings.flyViewSettings.payloadBays.rawValue"))
+            .map_or(1, |bays| bays as i64),
+        empty_bays: vehicle
+            .get("payloadSetup")
+            .and_then(|p| p.get("empty"))
+            .and_then(Value::as_array)
+            .map(|bays| bays.iter().filter_map(Value::as_i64).collect())
+            .unwrap_or_default(),
+        payload: vehicle
+            .get("payloadSetup")
+            .and_then(|p| p.get("setup"))
+            .map(crate::payloadcheck::Setup::from_json)
+            .unwrap_or_default(),
+        payload_released_ms: vehicle
+            .get("payloadSetup")
+            .and_then(|p| p.get("releasedAtMs"))
+            .and_then(Value::as_i64),
         initial_connect_complete: flag(&vehicle, "initialConnectComplete"),
         in_rtl: same_mode("rtlFlightMode") || same_mode("smartRTLFlightMode"),
         in_land: same_mode("landFlightMode"),
@@ -447,8 +535,14 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
         smart_rtl_supported: flag(&supports, "smartRTL"),
         roi_active: flag(&vehicle, "isROIEnabled"),
         was_flying: {
-            let mut memory = FLIGHT_MEMORY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-            let now = remember_flight(*memory, integer(&vehicle, "id").unwrap_or(-1), flag(&vehicle, "flying"));
+            let mut memory = FLIGHT_MEMORY
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            let now = remember_flight(
+                *memory,
+                integer(&vehicle, "id").unwrap_or(-1),
+                flag(&vehicle, "flying"),
+            );
             *memory = Some(now);
             now.was_flying
         },
@@ -457,7 +551,10 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
 
 const LONGEST_CLIMB_OUT_M: f64 = 1000.0;
 
-pub(crate) fn offer_refusal(backend: &dyn Backend, offered: &[Action]) -> Option<(&'static str, String)> {
+pub(crate) fn offer_refusal(
+    backend: &dyn Backend,
+    offered: &[Action],
+) -> Option<(&'static str, String)> {
     invoke_refusal(offered, &read_state(backend))
 }
 
@@ -465,30 +562,55 @@ fn invoke_refusal(offered: &[Action], s: &GuidedState) -> Option<(&'static str, 
     if offered == [Action::EmergencyStop] {
         return match (s.connected, s.armed) {
             (false, _) => Some(("noVehicle", "No vehicle is connected.".to_string())),
-            (true, false) => Some(("notOffered", "The motors are not armed, so there is nothing to stop.".to_string())),
+            (true, false) => Some((
+                "notOffered",
+                "The motors are not armed, so there is nothing to stop.".to_string(),
+            )),
             (true, true) => None,
         };
     }
     let offers: Vec<Offer> = offered.iter().map(|a| a.offer(s)).collect();
-    let starts_a_mission = offered.iter().any(|a| matches!(a, Action::StartMission | Action::ResumeMission)) && !s.flying;
-    if let Some(reason) = starts_a_mission.then(|| crate::payloadcheck::blocking(&s.payload, 1)).flatten() {
+    let starts_a_mission = offered
+        .iter()
+        .any(|a| matches!(a, Action::StartMission | Action::ResumeMission))
+        && !s.flying;
+    if let Some(reason) = starts_a_mission
+        .then(|| crate::payloadcheck::blocking(&s.payload, 1))
+        .flatten()
+    {
         return Some(("payload", reason));
     }
     if offers.iter().any(|o| o.offer == "ready") {
         return None;
     }
-    match offered.iter().filter(|a| a.shown(s)).find_map(|a| a.gate(s)) {
+    match offered
+        .iter()
+        .filter(|a| a.shown(s))
+        .find_map(|a| a.gate(s))
+    {
         Some(reason) => Some(("blocked", reason.to_string())),
         None if !s.connected => Some(("noVehicle", "No vehicle is connected.".to_string())),
-        None => Some(("notOffered", format!("{} is not available right now.", offers.first().map_or("That action", |o| o.title)))),
+        None => Some((
+            "notOffered",
+            format!(
+                "{} is not available right now.",
+                offers.first().map_or("That action", |o| o.title)
+            ),
+        )),
     }
 }
 
 fn invoke_args(offered: &[Action], args: &str) -> Result<String, &'static str> {
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
     match offered {
-        [Action::Rtl] => Ok(json!([given.get(0).and_then(Value::as_bool).unwrap_or(false)]).to_string()),
-        [Action::LandAbort] => match given.get(0).and_then(Value::as_f64).filter(|m| m.is_finite() && *m > 0.0 && *m <= LONGEST_CLIMB_OUT_M) {
+        [Action::Rtl] => {
+            Ok(json!([given.get(0).and_then(Value::as_bool).unwrap_or(false)]).to_string())
+        }
+        [Action::LandAbort] => match given
+            .get(0)
+            .and_then(Value::as_f64)
+            .filter(|m| m.is_finite() && *m > 0.0 && *m <= LONGEST_CLIMB_OUT_M)
+        {
             Some(metres) => Ok(json!([metres]).to_string()),
             None => Err("Abort Landing needs a climb-out height above zero and at most 1000 m."),
         },
@@ -505,7 +627,10 @@ pub fn invoke_offered(backend: &dyn Backend, offered: &[Action], path: &str, arg
         [Action::EmergencyStop] => {
             let read = backend.value_fields("vehicle", "armed,id");
             let state = GuidedState {
-                connected: flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable"),
+                connected: flag(
+                    &backend.value_fields("vehicles", "activeVehicleAvailable"),
+                    "activeVehicleAvailable",
+                ),
                 armed: flag(&read, "armed"),
                 ..GuidedState::default()
             };
@@ -516,7 +641,13 @@ pub fn invoke_offered(backend: &dyn Backend, offered: &[Action], path: &str, arg
     if let Some((token, reason)) = invoke_refusal(offered, &state) {
         return json!({ "ok": false, "refusal": token, "reason": reason });
     }
-    dispatch(backend, core_action(offered, &args, &state), vehicle, path, &args)
+    dispatch(
+        backend,
+        core_action(offered, &args, &state),
+        vehicle,
+        path,
+        &args,
+    )
 }
 
 pub fn active_id(backend: &dyn Backend) -> Option<i64> {
@@ -547,7 +678,13 @@ fn core_action(offered: &[Action], args: &str, state: &GuidedState) -> Option<Va
     }
 }
 
-pub fn dispatch(backend: &dyn Backend, core: Option<Value>, vehicle: Option<i64>, path: &str, args: &str) -> Value {
+pub fn dispatch(
+    backend: &dyn Backend,
+    core: Option<Value>,
+    vehicle: Option<i64>,
+    path: &str,
+    args: &str,
+) -> Value {
     let on_core = core.zip(vehicle).and_then(|(mut action, id)| {
         action["vehicle"] = json!(id);
         backend.core_guided(&action)
@@ -562,7 +699,14 @@ pub fn dispatch(backend: &dyn Backend, core: Option<Value>, vehicle: Option<i64>
             let answered = object(&backend.invoke(path, args));
             match flag(&answered, "ok") {
                 true => (true, Value::Null),
-                false => (false, answered.get("reason").filter(|r| r.as_str().is_some_and(|t| !t.is_empty())).cloned().unwrap_or_else(|| json!("The vehicle was not sent the command."))),
+                false => (
+                    false,
+                    answered
+                        .get("reason")
+                        .filter(|r| r.as_str().is_some_and(|t| !t.is_empty()))
+                        .cloned()
+                        .unwrap_or_else(|| json!("The vehicle was not sent the command.")),
+                ),
             }
         }
     };
@@ -600,7 +744,12 @@ pub struct GripperState {
 
 impl GripperState {
     pub fn sent(action: i64, bay: i64, at_ms: i64) -> GripperState {
-        GripperState { action, bay, outcome: GripperOutcome::Sent, at_ms }
+        GripperState {
+            action,
+            bay,
+            outcome: GripperOutcome::Sent,
+            at_ms,
+        }
     }
 
     pub fn empties(self) -> Option<bool> {
@@ -617,7 +766,11 @@ impl GripperState {
             Some(false) => GripperOutcome::Refused,
             None => GripperOutcome::Unanswered,
         };
-        GripperState { outcome, at_ms, ..self }
+        GripperState {
+            outcome,
+            at_ms,
+            ..self
+        }
     }
 
     fn verb(self) -> &'static str {
@@ -629,16 +782,30 @@ impl GripperState {
     }
 
     pub fn notice(self) -> Option<String> {
-        let subject = if self.bay > 0 { format!("Bay {}", self.bay) } else { "Payload".to_string() };
-        let verb = if self.bay > 0 { format!("{} {}", self.verb(), self.bay) } else { self.verb().to_string() };
+        let subject = if self.bay > 0 {
+            format!("Bay {}", self.bay)
+        } else {
+            "Payload".to_string()
+        };
+        let verb = if self.bay > 0 {
+            format!("{} {}", self.verb(), self.bay)
+        } else {
+            self.verb().to_string()
+        };
         match (self.outcome, self.action) {
             (GripperOutcome::Sent, _) => None,
             (GripperOutcome::Confirmed, GRIPPER_RELEASE) => Some(format!("{subject} dropped")),
             (GripperOutcome::Confirmed, GRIPPER_GRAB) => Some(format!("{subject} grabbed")),
             (GripperOutcome::Confirmed, _) => Some("Gripper holding".to_string()),
-            (GripperOutcome::Refused, _) => Some(format!("{verb} refused by the flight controller")),
-            (GripperOutcome::Unanswered, GRIPPER_RELEASE) => Some(format!("{verb} not confirmed. It may have dropped, check before dropping again.")),
-            (GripperOutcome::Unanswered, _) => Some(format!("{verb} not confirmed. Check the gripper before trying again.")),
+            (GripperOutcome::Refused, _) => {
+                Some(format!("{verb} refused by the flight controller"))
+            }
+            (GripperOutcome::Unanswered, GRIPPER_RELEASE) => Some(format!(
+                "{verb} not confirmed. It may have dropped, check before dropping again."
+            )),
+            (GripperOutcome::Unanswered, _) => Some(format!(
+                "{verb} not confirmed. Check the gripper before trying again."
+            )),
         }
     }
 
@@ -655,47 +822,101 @@ impl GripperState {
 
 type Checked = Result<(Vec<Action>, String), (&'static str, String)>;
 
-fn valued_check(kind: Valued, args: &Value, s: &GuidedState, takeoff: Option<(f64, f64)>, altitude: Option<(f64, f64, f64)>) -> Checked {
-    let number = |i: usize| args.get(i).and_then(Value::as_f64).filter(|v| v.is_finite());
+fn valued_check(
+    kind: Valued,
+    args: &Value,
+    s: &GuidedState,
+    takeoff: Option<(f64, f64)>,
+    altitude: Option<(f64, f64, f64)>,
+) -> Checked {
+    let number = |i: usize| {
+        args.get(i)
+            .and_then(Value::as_f64)
+            .filter(|v| v.is_finite())
+    };
     let whole = |i: usize| number(i).filter(|v| v.fract() == 0.0).map(|v| v as i64);
     let malformed = |what: &str| Err(("malformed", what.to_string()));
     match kind {
         Valued::Pause => Ok((vec![Action::Pause], "[]".to_string())),
-        Valued::Takeoff if !s.takeoff_with_altitude => Ok((vec![Action::Takeoff], "[]".to_string())),
+        Valued::Takeoff if !s.takeoff_with_altitude => {
+            Ok((vec![Action::Takeoff], "[]".to_string()))
+        }
         Valued::Takeoff => {
-            let Some(metres) = number(0) else { return malformed("Takeoff needs a height in metres.") };
-            let Some((lo, hi)) = takeoff else { return Err(("noRange", "The takeoff height range is not known yet.".to_string())) };
+            let Some(metres) = number(0) else {
+                return malformed("Takeoff needs a height in metres.");
+            };
+            let Some((lo, hi)) = takeoff else {
+                return Err((
+                    "noRange",
+                    "The takeoff height range is not known yet.".to_string(),
+                ));
+            };
             match (lo..=hi).contains(&metres) {
                 true => Ok((vec![Action::Takeoff], json!([metres]).to_string())),
-                false => Err(("outOfRange", format!("A takeoff height has to be between {lo:.1} and {hi:.1} m."))),
+                false => Err((
+                    "outOfRange",
+                    format!("A takeoff height has to be between {lo:.1} and {hi:.1} m."),
+                )),
             }
         }
         Valued::ChangeAltitude => {
-            let Some(delta) = number(0) else { return malformed("Changing altitude needs a change in metres.") };
+            let Some(delta) = number(0) else {
+                return malformed("Changing altitude needs a change in metres.");
+            };
             let pause = args.get(1).and_then(Value::as_bool).unwrap_or(false);
-            let Some((current, lo, hi)) = altitude else { return Err(("noRange", "The altitude range is not known yet.".to_string())) };
-            let offered = if pause { vec![Action::Pause, Action::ChangeAltitude] } else { vec![Action::ChangeAltitude] };
+            let Some((current, lo, hi)) = altitude else {
+                return Err((
+                    "noRange",
+                    "The altitude range is not known yet.".to_string(),
+                ));
+            };
+            let offered = if pause {
+                vec![Action::Pause, Action::ChangeAltitude]
+            } else {
+                vec![Action::ChangeAltitude]
+            };
             match (lo..=hi).contains(&(current + delta)) {
                 true => Ok((offered, json!([delta, pause]).to_string())),
-                false => Err(("outOfRange", format!("The new height has to be between {lo:.1} and {hi:.1} m."))),
+                false => Err((
+                    "outOfRange",
+                    format!("The new height has to be between {lo:.1} and {hi:.1} m."),
+                )),
             }
         }
         Valued::Gripper => {
             let bay = match (s.payload_bays > 1, whole(1)) {
                 (false, _) => Ok(0),
                 (true, Some(bay)) if (1..=s.payload_bays).contains(&bay) => Ok(bay),
-                (true, _) => Err(("malformed", format!("Name the bay to use, 1 to {}.", s.payload_bays))),
+                (true, _) => Err((
+                    "malformed",
+                    format!("Name the bay to use, 1 to {}.", s.payload_bays),
+                )),
             }?;
             match whole(0) {
-                Some(GRIPPER_GRAB) => Ok((vec![Action::Grab], json!([GRIPPER_GRAB, bay]).to_string())),
-                Some(GRIPPER_RELEASE) => Ok((vec![Action::Release], json!([GRIPPER_RELEASE, bay]).to_string())),
-                Some(GRIPPER_HOLD) => Ok((vec![Action::Hold], json!([GRIPPER_HOLD, bay]).to_string())),
+                Some(GRIPPER_GRAB) => {
+                    Ok((vec![Action::Grab], json!([GRIPPER_GRAB, bay]).to_string()))
+                }
+                Some(GRIPPER_RELEASE) => Ok((
+                    vec![Action::Release],
+                    json!([GRIPPER_RELEASE, bay]).to_string(),
+                )),
+                Some(GRIPPER_HOLD) => {
+                    Ok((vec![Action::Hold], json!([GRIPPER_HOLD, bay]).to_string()))
+                }
                 _ => malformed("The gripper is sent 1 to grab, 0 to release or 2 to hold."),
             }
         }
         Valued::Resume => match whole(0) {
-            Some(sequence) if sequence > 0 && sequence == s.resume_from_sequence => Ok((vec![Action::ResumeMission], json!([sequence]).to_string())),
-            Some(_) if s.resume_from_sequence > 0 => Err(("moved", format!("The mission can resume from item {} now.", s.resume_from_sequence))),
+            Some(sequence) if sequence > 0 && sequence == s.resume_from_sequence => {
+                Ok((vec![Action::ResumeMission], json!([sequence]).to_string()))
+            }
+            Some(_) if s.resume_from_sequence > 0 => Err((
+                "moved",
+                format!(
+                    "The mission can resume from item {} now.",
+                    s.resume_from_sequence
+                ),
+            )),
             Some(_) => Ok((vec![Action::ResumeMission], "[]".to_string())),
             None => malformed("Resuming needs the item to resume from."),
         },
@@ -705,47 +926,93 @@ fn valued_check(kind: Valued, args: &Value, s: &GuidedState, takeoff: Option<(f6
 pub fn invoke_valued(backend: &dyn Backend, kind: Valued, path: &str, args: &str) -> Value {
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
     let state = read_state(backend);
-    let takeoff = matches!(kind, Valued::Takeoff).then(|| crate::takeoff::range_meters(backend)).flatten();
-    let altitude = matches!(kind, Valued::ChangeAltitude).then(|| crate::altitude::range_meters(backend)).flatten().map(|r| (r.current, r.minimum, r.maximum));
-    let checked = valued_check(kind, &given, &state, takeoff, altitude).and_then(|(offered, forwarded)| match invoke_refusal(&offered, &state) {
-        Some(refused) => Err(refused),
-        None => Ok((offered, forwarded)),
-    });
+    let takeoff = matches!(kind, Valued::Takeoff)
+        .then(|| crate::takeoff::range_meters(backend))
+        .flatten();
+    let altitude = matches!(kind, Valued::ChangeAltitude)
+        .then(|| crate::altitude::range_meters(backend))
+        .flatten()
+        .map(|r| (r.current, r.minimum, r.maximum));
+    let checked =
+        valued_check(kind, &given, &state, takeoff, altitude).and_then(|(offered, forwarded)| {
+            match invoke_refusal(&offered, &state) {
+                Some(refused) => Err(refused),
+                None => Ok((offered, forwarded)),
+            }
+        });
     let (offered, forwarded) = match checked {
         Ok(checked) => checked,
         Err((token, reason)) => return json!({ "ok": false, "refusal": token, "reason": reason }),
     };
-    if let Some(reason) = (offered == [Action::Release]).then(|| crate::payloadcheck::open_refusal(&state.payload, state.payload_released_ms, crate::hub::wall_ms())).flatten() {
+    if let Some(reason) = (offered == [Action::Release])
+        .then(|| {
+            crate::payloadcheck::open_refusal(
+                &state.payload,
+                state.payload_released_ms,
+                crate::hub::wall_ms(),
+            )
+        })
+        .flatten()
+    {
         return json!({ "ok": false, "refusal": "gripperOpen", "reason": reason });
     }
-    dispatch(backend, core_action(&offered, &forwarded, &state), active_id(backend), path, &forwarded)
+    dispatch(
+        backend,
+        core_action(&offered, &forwarded, &state),
+        active_id(backend),
+        path,
+        &forwarded,
+    )
 }
 
 pub fn fix_payload(backend: &dyn Backend, path: &str, args: &str) -> Value {
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
-    let Some(problem) = given.get(0).and_then(Value::as_str).and_then(crate::payloadcheck::Problem::of_code) else {
+    let Some(problem) = given
+        .get(0)
+        .and_then(Value::as_str)
+        .and_then(crate::payloadcheck::Problem::of_code)
+    else {
         return json!({ "ok": false, "refusal": "malformed", "reason": "Name the payload problem to fix." });
     };
     let state = read_state(backend);
-    let present = crate::payloadcheck::problems(&state.payload, state.payload_bays).contains(&problem);
+    let present =
+        crate::payloadcheck::problems(&state.payload, state.payload_bays).contains(&problem);
     if present && problem == crate::payloadcheck::Problem::NeedsReboot {
         return crate::flystate::reboot(backend, REBOOT_PATH);
     }
     match present.then(|| problem.fix(&state.payload)).flatten() {
-        None => json!({ "ok": false, "refusal": "notOffered", "reason": "There is nothing to change for that payload problem now." }),
-        Some((name, value)) => dispatch(backend, Some(json!({ "action": "paramSet", "name": name, "value": value })), active_id(backend), path, args),
+        None => {
+            json!({ "ok": false, "refusal": "notOffered", "reason": "There is nothing to change for that payload problem now." })
+        }
+        Some((name, value)) => dispatch(
+            backend,
+            Some(json!({ "action": "paramSet", "name": name, "value": value })),
+            active_id(backend),
+            path,
+            args,
+        ),
     }
 }
 
 pub fn write_vtol(backend: &dyn Backend, path: &str, value: &str) -> Value {
-    let Some(forward) = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value")?.as_bool()) else {
+    let Some(forward) = serde_json::from_str::<Value>(value)
+        .ok()
+        .and_then(|v| v.get("value")?.as_bool())
+    else {
         return json!({ "ok": false, "result": false, "refusal": "malformed", "reason": "A VTOL transition is true for fixed-wing flight or false for multi-rotor flight." });
     };
-    let offered = if forward { [Action::VtolTransitionToFixedWing] } else { [Action::VtolTransitionToMultiRotor] };
+    let offered = if forward {
+        [Action::VtolTransitionToFixedWing]
+    } else {
+        [Action::VtolTransitionToMultiRotor]
+    };
     if let Some((token, reason)) = invoke_refusal(&offered, &read_state(backend)) {
         return json!({ "ok": false, "result": false, "refusal": token, "reason": reason });
     }
-    let answered = flag(&object(&backend.set(path, &json!({ "value": forward }).to_string())), "ok");
+    let answered = flag(
+        &object(&backend.set(path, &json!({ "value": forward }).to_string())),
+        "ok",
+    );
     json!({
         "ok": answered,
         "result": answered,
@@ -760,90 +1027,293 @@ mod tests {
 
     #[test]
     fn a_vtol_transition_goes_only_the_way_the_view_offers() {
-        let hover = GuidedState { connected: true, armed: true, flying: true, vtol: true, vtol_in_fwd_flight: false, ..GuidedState::default() };
-        assert_eq!(invoke_refusal(&[Action::VtolTransitionToFixedWing], &hover), None);
+        let hover = GuidedState {
+            connected: true,
+            armed: true,
+            flying: true,
+            vtol: true,
+            vtol_in_fwd_flight: false,
+            ..GuidedState::default()
+        };
+        assert_eq!(
+            invoke_refusal(&[Action::VtolTransitionToFixedWing], &hover),
+            None
+        );
         assert_eq!(
             invoke_refusal(&[Action::VtolTransitionToMultiRotor], &hover).map(|r| r.0),
             Some("notOffered"),
             "setVtolInFwdFlight sends MAV_CMD_DO_VTOL_TRANSITION whenever the stored flag differs, so a stale flag sends a transition the aircraft is already in"
         );
-        assert_eq!(invoke_refusal(&[Action::VtolTransitionToFixedWing], &GuidedState { flying: false, ..hover.clone() }).map(|r| r.0), Some("notOffered"), "and on the ground there is no transition to make");
-        assert_eq!(invoke_refusal(&[Action::VtolTransitionToFixedWing], &GuidedState { vtol: false, ..hover.clone() }).map(|r| r.0), Some("notOffered"));
+        assert_eq!(
+            invoke_refusal(
+                &[Action::VtolTransitionToFixedWing],
+                &GuidedState {
+                    flying: false,
+                    ..hover.clone()
+                }
+            )
+            .map(|r| r.0),
+            Some("notOffered"),
+            "and on the ground there is no transition to make"
+        );
+        assert_eq!(
+            invoke_refusal(
+                &[Action::VtolTransitionToFixedWing],
+                &GuidedState {
+                    vtol: false,
+                    ..hover.clone()
+                }
+            )
+            .map(|r| r.0),
+            Some("notOffered")
+        );
     }
 
     #[test]
     fn a_guided_value_is_checked_against_the_range_its_view_served() {
-        let s = GuidedState { resume_from_sequence: 7, takeoff_with_altitude: true, ..GuidedState::default() };
-        let check = |kind, args: Value| valued_check(kind, &args, &s, Some((3.0, 120.0)), Some((40.0, 10.0, 120.0)));
-        let plane = GuidedState { takeoff_with_altitude: false, ..s.clone() };
-        assert_eq!(valued_check(Valued::Takeoff, &json!([]), &plane, None, None), Ok((vec![Action::Takeoff], "[]".to_string())), "GuidedActionsController calls startTakeoff() with no height when guidedTakeoffWithAltitude is false, and needs no range for it");
-        assert_eq!(check(Valued::Takeoff, json!([30.0])), Ok((vec![Action::Takeoff], "[30.0]".to_string())));
-        assert_eq!(check(Valued::Takeoff, json!([500.0])).map_err(|e| e.0), Err("outOfRange"), "guidedModeTakeoff sends whatever height it is given, and 500 m is past the operator's own guided maximum");
-        assert_eq!(check(Valued::Takeoff, json!([])).map_err(|e| e.0), Err("malformed"));
-        assert_eq!(valued_check(Valued::Takeoff, &json!([30.0]), &s, None, None).map_err(|e| e.0), Err("noRange"));
-        assert_eq!(check(Valued::ChangeAltitude, json!([20.0])), Ok((vec![Action::ChangeAltitude], "[20.0,false]".to_string())), "guidedModeChangeAltitude(double, bool) has no default for the bool");
-        assert_eq!(check(Valued::ChangeAltitude, json!([-35.0, false])).map_err(|e| e.0), Err("outOfRange"), "a change is a delta, so it is the height it lands at that has to be inside the range");
-        assert_eq!(check(Valued::ChangeAltitude, json!([0.0, true])).map(|c| c.0), Ok(vec![Action::Pause, Action::ChangeAltitude]), "the Pause offer is carried out as a change of altitude that pauses first");
-        assert_eq!(check(Valued::Gripper, json!([1])), Ok((vec![Action::Grab], "[1,0]".to_string())), "a single gripper is bay 0, the id QGC sends");
-        let basket = GuidedState { payload_bays: 3, ..s.clone() };
+        let s = GuidedState {
+            resume_from_sequence: 7,
+            takeoff_with_altitude: true,
+            ..GuidedState::default()
+        };
+        let check = |kind, args: Value| {
+            valued_check(
+                kind,
+                &args,
+                &s,
+                Some((3.0, 120.0)),
+                Some((40.0, 10.0, 120.0)),
+            )
+        };
+        let plane = GuidedState {
+            takeoff_with_altitude: false,
+            ..s.clone()
+        };
+        assert_eq!(
+            valued_check(Valued::Takeoff, &json!([]), &plane, None, None),
+            Ok((vec![Action::Takeoff], "[]".to_string())),
+            "GuidedActionsController calls startTakeoff() with no height when guidedTakeoffWithAltitude is false, and needs no range for it"
+        );
+        assert_eq!(
+            check(Valued::Takeoff, json!([30.0])),
+            Ok((vec![Action::Takeoff], "[30.0]".to_string()))
+        );
+        assert_eq!(
+            check(Valued::Takeoff, json!([500.0])).map_err(|e| e.0),
+            Err("outOfRange"),
+            "guidedModeTakeoff sends whatever height it is given, and 500 m is past the operator's own guided maximum"
+        );
+        assert_eq!(
+            check(Valued::Takeoff, json!([])).map_err(|e| e.0),
+            Err("malformed")
+        );
+        assert_eq!(
+            valued_check(Valued::Takeoff, &json!([30.0]), &s, None, None).map_err(|e| e.0),
+            Err("noRange")
+        );
+        assert_eq!(
+            check(Valued::ChangeAltitude, json!([20.0])),
+            Ok((vec![Action::ChangeAltitude], "[20.0,false]".to_string())),
+            "guidedModeChangeAltitude(double, bool) has no default for the bool"
+        );
+        assert_eq!(
+            check(Valued::ChangeAltitude, json!([-35.0, false])).map_err(|e| e.0),
+            Err("outOfRange"),
+            "a change is a delta, so it is the height it lands at that has to be inside the range"
+        );
+        assert_eq!(
+            check(Valued::ChangeAltitude, json!([0.0, true])).map(|c| c.0),
+            Ok(vec![Action::Pause, Action::ChangeAltitude]),
+            "the Pause offer is carried out as a change of altitude that pauses first"
+        );
+        assert_eq!(
+            check(Valued::Gripper, json!([1])),
+            Ok((vec![Action::Grab], "[1,0]".to_string())),
+            "a single gripper is bay 0, the id QGC sends"
+        );
+        let basket = GuidedState {
+            payload_bays: 3,
+            ..s.clone()
+        };
         let bay = |args: Value| valued_check(Valued::Gripper, &args, &basket, None, None);
-        assert_eq!(bay(json!([0, 2])), Ok((vec![Action::Release], "[0,2]".to_string())), "a multi-bay basket drops the bay it was asked for");
-        assert_eq!(bay(json!([0, 4])).map_err(|e| e.1), Err("Name the bay to use, 1 to 3.".to_string()));
-        assert_eq!(bay(json!([0])).map_err(|e| e.0), Err("malformed"), "a basket never guesses the bay");
-        assert_eq!(check(Valued::Gripper, json!([0])).map(|c| c.0), Ok(vec![Action::Release]));
-        assert_eq!(check(Valued::Gripper, json!([2])).map(|c| c.0), Ok(vec![Action::Hold]));
-        assert_eq!(check(Valued::Gripper, json!([3])).map_err(|e| e.0), Err("malformed"));
-        assert_eq!(check(Valued::Resume, json!([7])).map(|c| c.1), Ok("[7]".to_string()));
-        assert_eq!(check(Valued::Resume, json!([4])).map_err(|e| e.0), Err("moved"), "a resume from an item the vehicle has since moved past regenerates the mission from the wrong place");
-        assert_eq!(check(Valued::Pause, json!([])).map(|c| c.0), Ok(vec![Action::Pause]));
+        assert_eq!(
+            bay(json!([0, 2])),
+            Ok((vec![Action::Release], "[0,2]".to_string())),
+            "a multi-bay basket drops the bay it was asked for"
+        );
+        assert_eq!(
+            bay(json!([0, 4])).map_err(|e| e.1),
+            Err("Name the bay to use, 1 to 3.".to_string())
+        );
+        assert_eq!(
+            bay(json!([0])).map_err(|e| e.0),
+            Err("malformed"),
+            "a basket never guesses the bay"
+        );
+        assert_eq!(
+            check(Valued::Gripper, json!([0])).map(|c| c.0),
+            Ok(vec![Action::Release])
+        );
+        assert_eq!(
+            check(Valued::Gripper, json!([2])).map(|c| c.0),
+            Ok(vec![Action::Hold])
+        );
+        assert_eq!(
+            check(Valued::Gripper, json!([3])).map_err(|e| e.0),
+            Err("malformed")
+        );
+        assert_eq!(
+            check(Valued::Resume, json!([7])).map(|c| c.1),
+            Ok("[7]".to_string())
+        );
+        assert_eq!(
+            check(Valued::Resume, json!([4])).map_err(|e| e.0),
+            Err("moved"),
+            "a resume from an item the vehicle has since moved past regenerates the mission from the wrong place"
+        );
+        assert_eq!(
+            check(Valued::Pause, json!([])).map(|c| c.0),
+            Ok(vec![Action::Pause])
+        );
     }
 
     #[test]
     fn a_guided_invoke_goes_only_when_the_view_offers_it_ready() {
-        let flying = GuidedState { connected: true, armed: true, flying: true, guided_supported: true, ..GuidedState::default() };
-        let ground = GuidedState { connected: true, ..GuidedState::default() };
-        let token = |offered: &[Action], s: &GuidedState| invoke_refusal(offered, s).map(|(t, _)| t);
+        let flying = GuidedState {
+            connected: true,
+            armed: true,
+            flying: true,
+            guided_supported: true,
+            ..GuidedState::default()
+        };
+        let ground = GuidedState {
+            connected: true,
+            ..GuidedState::default()
+        };
+        let token =
+            |offered: &[Action], s: &GuidedState| invoke_refusal(offered, s).map(|(t, _)| t);
         assert_eq!(token(&[Action::Rtl], &flying), None);
-        assert_eq!(token(&[Action::Rtl], &ground), Some("notOffered"), "guidedModeRTL on a vehicle sitting disarmed on the ground is a mode change the view never offered");
-        assert_eq!(token(&[Action::Land], &GuidedState::default()), Some("noVehicle"));
-        assert_eq!(token(&[Action::StartMission, Action::ContinueMission], &GuidedState { mission_available: true, can_start_mission: true, ..ground.clone() }), None, "both heads send startMission for Start and for Continue, so either offer being ready lets it through");
-        let refusing = GuidedState { mission_available: true, can_start_mission: false, checklist_passed: false, ..ground.clone() };
+        assert_eq!(
+            token(&[Action::Rtl], &ground),
+            Some("notOffered"),
+            "guidedModeRTL on a vehicle sitting disarmed on the ground is a mode change the view never offered"
+        );
+        assert_eq!(
+            token(&[Action::Land], &GuidedState::default()),
+            Some("noVehicle")
+        );
+        assert_eq!(
+            token(
+                &[Action::StartMission, Action::ContinueMission],
+                &GuidedState {
+                    mission_available: true,
+                    can_start_mission: true,
+                    ..ground.clone()
+                }
+            ),
+            None,
+            "both heads send startMission for Start and for Continue, so either offer being ready lets it through"
+        );
+        let refusing = GuidedState {
+            mission_available: true,
+            can_start_mission: false,
+            checklist_passed: false,
+            ..ground.clone()
+        };
         assert_eq!(
             invoke_refusal(&[Action::StartMission, Action::ContinueMission], &refusing),
-            Some(("blocked", "The pre-flight checklist has not been completed.".to_string())),
+            Some((
+                "blocked",
+                "The pre-flight checklist has not been completed.".to_string()
+            )),
             "a blocked offer's own reason travels, rather than a second sentence for the same fact"
         );
-        assert_eq!(token(&[Action::ForceArm], &GuidedState { armed: true, ..ground.clone() }), Some("notOffered"));
-        assert_eq!(token(&[Action::EmergencyStop], &GuidedState { armed: true, flying: false, ..ground.clone() }), None, "the view offers it only armed AND flying, and refusing a real emergency stop because the flying flag lagged is the one failure this must never have");
+        assert_eq!(
+            token(
+                &[Action::ForceArm],
+                &GuidedState {
+                    armed: true,
+                    ..ground.clone()
+                }
+            ),
+            Some("notOffered")
+        );
+        assert_eq!(
+            token(
+                &[Action::EmergencyStop],
+                &GuidedState {
+                    armed: true,
+                    flying: false,
+                    ..ground.clone()
+                }
+            ),
+            None,
+            "the view offers it only armed AND flying, and refusing a real emergency stop because the flying flag lagged is the one failure this must never have"
+        );
         assert_eq!(token(&[Action::EmergencyStop], &ground), Some("notOffered"));
 
-        assert_eq!(invoke_args(&[Action::Rtl], "[]"), Ok("[false]".to_string()), "guidedModeRTL(bool) has no default");
-        assert_eq!(invoke_args(&[Action::LandAbort], "[50]"), Ok("[50.0]".to_string()));
+        assert_eq!(
+            invoke_args(&[Action::Rtl], "[]"),
+            Ok("[false]".to_string()),
+            "guidedModeRTL(bool) has no default"
+        );
+        assert_eq!(
+            invoke_args(&[Action::LandAbort], "[50]"),
+            Ok("[50.0]".to_string())
+        );
         assert!(invoke_args(&[Action::LandAbort], "[]").is_err());
-        assert!(invoke_args(&[Action::LandAbort], "[-5]").is_err(), "a negative climb-out asks the vehicle to descend while breaking off a landing");
+        assert!(
+            invoke_args(&[Action::LandAbort], "[-5]").is_err(),
+            "a negative climb-out asks the vehicle to descend while breaking off a landing"
+        );
 
         use std::cell::RefCell;
         struct Counting(RefCell<usize>);
         impl Backend for Counting {
-            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+            fn get(&self, p: &str) -> String {
+                self.get_fields(p, "")
+            }
             fn get_fields(&self, _p: &str, _f: &str) -> String {
                 *self.0.borrow_mut() += 1;
-                json!({ "kind": "object", "activeVehicleAvailable": true, "armed": true }).to_string()
+                json!({ "kind": "object", "activeVehicleAvailable": true, "armed": true })
+                    .to_string()
             }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { json!({ "ok": true }).to_string() }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                json!({ "ok": true }).to_string()
+            }
             fn watch(&self, _p: &[String]) {}
         }
         let reads = Counting(RefCell::new(0));
-        assert_eq!(invoke_offered(&reads, &[Action::EmergencyStop], "vehicle.emergencyStop", "[]")["ok"], true);
-        assert_eq!(*reads.0.borrow(), 2, "an emergency stop waits on two reads of Qt's thread, not the whole guided state with its parameter lookups");
+        assert_eq!(
+            invoke_offered(
+                &reads,
+                &[Action::EmergencyStop],
+                "vehicle.emergencyStop",
+                "[]"
+            )["ok"],
+            true
+        );
+        assert_eq!(
+            *reads.0.borrow(),
+            2,
+            "an emergency stop waits on two reads of Qt's thread, not the whole guided state with its parameter lookups"
+        );
     }
 
     #[test]
     fn rtl_offers_smart_rtl_when_the_firmware_has_it_like_guided_actions_controller() {
-        let plain = GuidedState { connected: true, ..GuidedState::default() };
+        let plain = GuidedState {
+            connected: true,
+            ..GuidedState::default()
+        };
         assert_eq!(Action::Rtl.offer(&plain).option, "");
-        let smart = GuidedState { smart_rtl_supported: true, ..plain };
+        let smart = GuidedState {
+            smart_rtl_supported: true,
+            ..plain
+        };
         assert_eq!(Action::Rtl.offer(&smart).option, "Smart RTL");
         assert_eq!(Action::Land.offer(&smart).option, "");
     }
@@ -869,14 +1339,39 @@ mod tests {
 
     #[test]
     fn a_region_of_interest_can_be_cancelled_only_while_one_is_in_force() {
-        let pointing = GuidedState { connected: true, flying: true, roi_supported: true, roi_active: true, ..GuidedState::default() };
-        assert_eq!(offer_of(&pointing, Action::CancelRoi), "ready", "while an ROI holds, the camera is locked to a point on the ground rather than following the vehicle, and this is the only thing that releases it");
+        let pointing = GuidedState {
+            connected: true,
+            flying: true,
+            roi_supported: true,
+            roi_active: true,
+            ..GuidedState::default()
+        };
+        assert_eq!(
+            offer_of(&pointing, Action::CancelRoi),
+            "ready",
+            "while an ROI holds, the camera is locked to a point on the ground rather than following the vehicle, and this is the only thing that releases it"
+        );
 
-        let released = GuidedState { roi_active: false, ..pointing.clone() };
-        assert_eq!(offer_of(&released, Action::CancelRoi), "hidden", "isROIEnabled is what says one is in force - offering a cancel with nothing to cancel sends a command the vehicle answers with nothing");
+        let released = GuidedState {
+            roi_active: false,
+            ..pointing.clone()
+        };
+        assert_eq!(
+            offer_of(&released, Action::CancelRoi),
+            "hidden",
+            "isROIEnabled is what says one is in force - offering a cancel with nothing to cancel sends a command the vehicle answers with nothing"
+        );
 
-        let landed = GuidedState { flying: false, roi_supported: false, ..pointing };
-        assert_eq!(offer_of(&landed, Action::CancelRoi), "ready", "FlyViewMap shows the ROI marker and its Cancel ROI whenever isROIEnabled, on the ground too");
+        let landed = GuidedState {
+            flying: false,
+            roi_supported: false,
+            ..pointing
+        };
+        assert_eq!(
+            offer_of(&landed, Action::CancelRoi),
+            "ready",
+            "FlyViewMap shows the ROI marker and its Cancel ROI whenever isROIEnabled, on the ground too"
+        );
 
         struct Pointed(bool);
         impl Backend for Pointed {
@@ -891,42 +1386,104 @@ mod tests {
                 match path {
                     "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": true }),
                     "vehicle.supports" => json!({ "kind": "object", "roiMode": true }),
-                    "vehicle" => json!({ "kind": "object", "flying": true, "isROIEnabled": self.0 }),
+                    "vehicle" => {
+                        json!({ "kind": "object", "flying": true, "isROIEnabled": self.0 })
+                    }
                     _ => json!({ "kind": "object" }),
                 }
                 .to_string()
             }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { json!({ "ok": true, "result": false }).to_string() }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                json!({ "ok": true, "result": false }).to_string()
+            }
             fn watch(&self, _p: &[String]) {}
         }
-        assert_eq!(guided_view(&Pointed(true), &[])["roi"]["latitude"], 47.4, "the point the camera is locked to, so a head can draw it rather than only say one exists");
-        assert_eq!(guided_view(&Pointed(false), &[])["roi"], Value::Null, "with no ROI in force the vehicle keeps whatever coordinate it was last given, and serving that would draw a marker for a lock that has been released");
+        assert_eq!(
+            guided_view(&Pointed(true), &[])["roi"]["latitude"],
+            47.4,
+            "the point the camera is locked to, so a head can draw it rather than only say one exists"
+        );
+        assert_eq!(
+            guided_view(&Pointed(false), &[])["roi"],
+            Value::Null,
+            "with no ROI in force the vehicle keeps whatever coordinate it was last given, and serving that would draw a marker for a lock that has been released"
+        );
     }
 
     #[test]
     fn resume_is_offered_from_the_waypoint_reached_and_zero_means_it_is_not() {
-        let landed = GuidedState { armed: false, was_flying: true, mission_available: true, mission_item_count: 12, resume_from_sequence: 5, ..GuidedState::default() };
-        assert!(landed.can_resume(), "after the vehicle lands part way through - a battery swap or an aborted leg - this is the only offer that carries on from where it got to instead of flying the plan again");
+        let landed = GuidedState {
+            armed: false,
+            was_flying: true,
+            mission_available: true,
+            mission_item_count: 12,
+            resume_from_sequence: 5,
+            ..GuidedState::default()
+        };
+        assert!(
+            landed.can_resume(),
+            "after the vehicle lands part way through - a battery swap or an aborted leg - this is the only offer that carries on from where it got to instead of flying the plan again"
+        );
 
-        let unavailable = GuidedState { resume_from_sequence: 0, ..landed.clone() };
-        assert!(!unavailable.can_resume(), "MissionController returns ZERO when a mission cannot be resumed, not -1 - its own header comment says -1, and a core gating on index >= 0 would offer Resume forever");
+        let unavailable = GuidedState {
+            resume_from_sequence: 0,
+            ..landed.clone()
+        };
+        assert!(
+            !unavailable.can_resume(),
+            "MissionController returns ZERO when a mission cannot be resumed, not -1 - its own header comment says -1, and a core gating on index >= 0 would offer Resume forever"
+        );
 
-        let armed = GuidedState { armed: true, ..landed.clone() };
-        assert!(!armed.can_resume(), "resuming is an offer for a vehicle on the ground");
+        let armed = GuidedState {
+            armed: true,
+            ..landed.clone()
+        };
+        assert!(
+            !armed.can_resume(),
+            "resuming is an offer for a vehicle on the ground"
+        );
 
-        let never_flew = GuidedState { was_flying: false, ..landed.clone() };
-        assert!(!never_flew.can_resume(), "QGC offers it only once flying has gone false this session, so a stale resume index on connect or during Start Mission does not pop it up");
+        let never_flew = GuidedState {
+            was_flying: false,
+            ..landed.clone()
+        };
+        assert!(
+            !never_flew.can_resume(),
+            "QGC offers it only once flying has gone false this session, so a stale resume index on connect or during Start Mission does not pop it up"
+        );
         assert_eq!(remember_flight(None, 1, false).was_flying, false);
         assert!(remember_flight(Some(remember_flight(None, 1, true)), 1, false).was_flying);
-        assert!(!remember_flight(Some(remember_flight(Some(remember_flight(None, 1, true)), 1, false)), 2, false).was_flying, "another vehicle starts its own memory");
+        assert!(
+            !remember_flight(
+                Some(remember_flight(
+                    Some(remember_flight(None, 1, true)),
+                    1,
+                    false
+                )),
+                2,
+                false
+            )
+            .was_flying,
+            "another vehicle starts its own memory"
+        );
 
-        let near_the_end = GuidedState { resume_from_sequence: 10, ..landed.clone() };
-        assert!(!near_the_end.can_resume(), "QGC stops offering it within two items of the end, where regenerating a truncated plan buys nothing");
+        let near_the_end = GuidedState {
+            resume_from_sequence: 10,
+            ..landed.clone()
+        };
+        assert!(
+            !near_the_end.can_resume(),
+            "QGC stops offering it within two items of the end, where regenerating a truncated plan buys nothing"
+        );
 
         struct Landed(i64);
         impl Backend for Landed {
-            fn get(&self, _p: &str) -> String { json!({ "kind": "null" }).to_string() }
+            fn get(&self, _p: &str) -> String {
+                json!({ "kind": "null" }).to_string()
+            }
             fn get_fields(&self, path: &str, _f: &str) -> String {
                 match path {
                     "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": true }),
@@ -937,12 +1494,24 @@ mod tests {
                 }
                 .to_string()
             }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { json!({ "ok": true, "result": false }).to_string() }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                json!({ "ok": true, "result": false }).to_string()
+            }
             fn watch(&self, _p: &[String]) {}
         }
-        assert_eq!(guided_view(&Landed(5), &[])["resumeFromSequence"], 5, "the head invoking resumeMission needs the number, and reading it off a raw Qt path is a head re-deriving what the core already holds");
-        assert_eq!(guided_view(&Landed(0), &[])["resumeFromSequence"], Value::Null, "zero is not a waypoint to resume from, so it is withheld rather than served as a number a head might pass straight to resumeMission");
+        assert_eq!(
+            guided_view(&Landed(5), &[])["resumeFromSequence"],
+            5,
+            "the head invoking resumeMission needs the number, and reading it off a raw Qt path is a head re-deriving what the core already holds"
+        );
+        assert_eq!(
+            guided_view(&Landed(0), &[])["resumeFromSequence"],
+            Value::Null,
+            "zero is not a waypoint to resume from, so it is withheld rather than served as a number a head might pass straight to resumeMission"
+        );
     }
 
     #[test]
@@ -965,19 +1534,74 @@ mod tests {
 
     #[test]
     fn a_failing_gate_hides_the_action_and_still_names_why_when_invoked() {
-        let checks = GuidedState { can_arm: false, ..ready_on_ground() };
-        assert_eq!(offer_of(&checks, Action::Arm), "hidden", "showArm requires _canArm");
-        assert_eq!(invoke_refusal(&[Action::Arm], &checks), Some(("blocked", "The vehicle's arming checks are failing.".to_string())));
-        let checklist = GuidedState { can_arm: false, checklist_passed: false, ..ready_on_ground() };
-        assert_eq!(invoke_refusal(&[Action::Arm], &checklist).map(|(_, r)| r).as_deref(), Some("The pre-flight checklist has not been completed."));
+        let checks = GuidedState {
+            can_arm: false,
+            ..ready_on_ground()
+        };
+        assert_eq!(
+            offer_of(&checks, Action::Arm),
+            "hidden",
+            "showArm requires _canArm"
+        );
+        assert_eq!(
+            invoke_refusal(&[Action::Arm], &checks),
+            Some((
+                "blocked",
+                "The vehicle's arming checks are failing.".to_string()
+            ))
+        );
+        let checklist = GuidedState {
+            can_arm: false,
+            checklist_passed: false,
+            ..ready_on_ground()
+        };
+        assert_eq!(
+            invoke_refusal(&[Action::Arm], &checklist)
+                .map(|(_, r)| r)
+                .as_deref(),
+            Some("The pre-flight checklist has not been completed.")
+        );
         assert_eq!(offer_of(&checks, Action::Takeoff), "ready");
-        let silent = GuidedState { contact_lost: true, ..checks.clone() };
-        assert_eq!((offer_of(&silent, Action::Takeoff), Action::Takeoff.offer(&silent).reason), ("hidden", NO_SIGNAL), "a ground action sent into a silent link would launch an aircraft nobody can watch");
+        let silent = GuidedState {
+            contact_lost: true,
+            ..checks.clone()
+        };
+        assert_eq!(
+            (
+                offer_of(&silent, Action::Takeoff),
+                Action::Takeoff.offer(&silent).reason
+            ),
+            ("hidden", NO_SIGNAL),
+            "a ground action sent into a silent link would launch an aircraft nobody can watch"
+        );
         assert_eq!(offer_of(&silent, Action::Arm), "hidden");
-        assert_eq!(Action::Takeoff.offer(&silent).reason_code, NO_SIGNAL_CODE, "heads key on the code, never on the English sentence");
+        assert_eq!(
+            Action::Takeoff.offer(&silent).reason_code,
+            NO_SIGNAL_CODE,
+            "heads key on the code, never on the English sentence"
+        );
         assert_eq!(Action::Takeoff.offer(&checks).reason_code, "");
-        assert_eq!(offer_of(&GuidedState { can_takeoff: false, ..ready_on_ground() }, Action::Takeoff), "hidden");
-        assert_eq!(offer_of(&GuidedState { can_start_mission: false, mission_available: true, ..ready_on_ground() }, Action::StartMission), "hidden");
+        assert_eq!(
+            offer_of(
+                &GuidedState {
+                    can_takeoff: false,
+                    ..ready_on_ground()
+                },
+                Action::Takeoff
+            ),
+            "hidden"
+        );
+        assert_eq!(
+            offer_of(
+                &GuidedState {
+                    can_start_mission: false,
+                    mission_available: true,
+                    ..ready_on_ground()
+                },
+                Action::StartMission
+            ),
+            "hidden"
+        );
     }
 
     #[test]
@@ -988,7 +1612,9 @@ mod tests {
             mr_limits: bool,
         }
         impl Backend for Wing {
-            fn get(&self, _p: &str) -> String { String::new() }
+            fn get(&self, _p: &str) -> String {
+                String::new()
+            }
             fn get_fields(&self, path: &str, _f: &str) -> String {
                 match path {
                     "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": true }).to_string(),
@@ -1002,8 +1628,12 @@ mod tests {
                     _ => json!({ "kind": "object" }).to_string(),
                 }
             }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { json!({ "ok": true, "result": false }).to_string() }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                json!({ "ok": true, "result": false }).to_string()
+            }
             fn watch(&self, _p: &[String]) {}
         }
         let offers = |backend: &Wing| {
@@ -1016,20 +1646,59 @@ mod tests {
                 .unwrap_or_default()
         };
 
-        assert_eq!(offers(&Wing { fixed_wing: true, fw_limits: true, mr_limits: false }), "ready", "a wing with wing limits can be asked to change speed");
-        assert_eq!(offers(&Wing { fixed_wing: true, fw_limits: false, mr_limits: true }), "hidden", "a wing must not be offered a speed change because a rotor limit happens to be set");
-        assert_eq!(offers(&Wing { fixed_wing: false, fw_limits: false, mr_limits: true }), "ready", "and a rotor reads its own");
-        assert_eq!(offers(&Wing { fixed_wing: false, fw_limits: true, mr_limits: false }), "hidden");
+        assert_eq!(
+            offers(&Wing {
+                fixed_wing: true,
+                fw_limits: true,
+                mr_limits: false
+            }),
+            "ready",
+            "a wing with wing limits can be asked to change speed"
+        );
+        assert_eq!(
+            offers(&Wing {
+                fixed_wing: true,
+                fw_limits: false,
+                mr_limits: true
+            }),
+            "hidden",
+            "a wing must not be offered a speed change because a rotor limit happens to be set"
+        );
+        assert_eq!(
+            offers(&Wing {
+                fixed_wing: false,
+                fw_limits: false,
+                mr_limits: true
+            }),
+            "ready",
+            "and a rotor reads its own"
+        );
+        assert_eq!(
+            offers(&Wing {
+                fixed_wing: false,
+                fw_limits: true,
+                mr_limits: false
+            }),
+            "hidden"
+        );
     }
 
     #[test]
     fn in_flight_the_return_button_hides_while_returning_by_the_vehicles_own_mode_name() {
-        let flying = GuidedState { armed: true, flying: true, speed_limits: true, ..ready_on_ground() };
+        let flying = GuidedState {
+            armed: true,
+            flying: true,
+            speed_limits: true,
+            ..ready_on_ground()
+        };
         assert_eq!(offer_of(&flying, Action::Rtl), "ready");
         assert_eq!(offer_of(&flying, Action::ChangeSpeed), "ready");
         assert_eq!(offer_of(&flying, Action::EmergencyStop), "ready");
         assert_eq!(offer_of(&flying, Action::Arm), "hidden");
-        let returning = GuidedState { in_rtl: true, ..flying.clone() };
+        let returning = GuidedState {
+            in_rtl: true,
+            ..flying.clone()
+        };
         assert_eq!(offer_of(&returning, Action::Rtl), "hidden");
         assert_eq!(offer_of(&returning, Action::ChangeAltitude), "hidden");
         assert_eq!(offer_of(&returning, Action::Pause), "ready");
@@ -1037,116 +1706,391 @@ mod tests {
 
     #[test]
     fn mission_actions_follow_the_item_cursor() {
-        let mid = GuidedState { armed: true, flying: true, mission_available: true, mission_item_count: 5, current_mission_index: 2, ..ready_on_ground() };
+        let mid = GuidedState {
+            armed: true,
+            flying: true,
+            mission_available: true,
+            mission_item_count: 5,
+            current_mission_index: 2,
+            ..ready_on_ground()
+        };
         assert_eq!(offer_of(&mid, Action::ContinueMission), "ready");
         assert_eq!(offer_of(&mid, Action::StartMission), "hidden");
-        let done = GuidedState { current_mission_index: 4, ..mid.clone() };
+        let done = GuidedState {
+            current_mission_index: 4,
+            ..mid.clone()
+        };
         assert_eq!(offer_of(&done, Action::ContinueMission), "hidden");
-        let ground = GuidedState { armed: false, flying: false, ..mid };
+        let ground = GuidedState {
+            armed: false,
+            flying: false,
+            ..mid
+        };
         assert_eq!(offer_of(&ground, Action::StartMission), "ready");
     }
 
     #[test]
     fn a_mission_whose_drops_would_not_fall_does_not_start() {
-        let stuck = crate::payloadcheck::Setup { ardupilot: true, enabled: true, loaded: true, typed: true, output: true, drops: 4, ..Default::default() };
-        let ground = GuidedState { mission_available: true, can_start_mission: true, payload: stuck.clone(), ..ready_on_ground() };
+        let stuck = crate::payloadcheck::Setup {
+            ardupilot: true,
+            enabled: true,
+            loaded: true,
+            typed: true,
+            output: true,
+            drops: 4,
+            ..Default::default()
+        };
+        let ground = GuidedState {
+            mission_available: true,
+            can_start_mission: true,
+            payload: stuck.clone(),
+            ..ready_on_ground()
+        };
         let refused = invoke_refusal(&[Action::StartMission, Action::ContinueMission], &ground);
         assert_eq!(refused.as_ref().map(|r| r.0), Some("payload"));
-        assert!(refused.unwrap().1.starts_with("The gripper stays open after the first drop"), "the refusal says what to change");
-        assert_eq!((offer_of(&ground, Action::StartMission), Action::StartMission.offer(&ground).reason), ("hidden", PAYLOAD_BLOCKED), "hidden like a failing arming check, while the status line names the problem");
-        let closing = GuidedState { payload: crate::payloadcheck::Setup { auto_close_s: 2.0, ..stuck.clone() }, ..ground.clone() };
-        assert_eq!(invoke_refusal(&[Action::StartMission, Action::ContinueMission], &closing), None);
-        let airborne = GuidedState { armed: true, flying: true, mission_item_count: 9, current_mission_index: 2, ..ground };
-        assert_eq!(invoke_refusal(&[Action::StartMission, Action::ContinueMission], &airborne), None, "a drone in the air is never refused its mission");
+        assert!(
+            refused
+                .unwrap()
+                .1
+                .starts_with("The gripper stays open after the first drop"),
+            "the refusal says what to change"
+        );
+        assert_eq!(
+            (
+                offer_of(&ground, Action::StartMission),
+                Action::StartMission.offer(&ground).reason
+            ),
+            ("hidden", PAYLOAD_BLOCKED),
+            "hidden like a failing arming check, while the status line names the problem"
+        );
+        let closing = GuidedState {
+            payload: crate::payloadcheck::Setup {
+                auto_close_s: 2.0,
+                ..stuck.clone()
+            },
+            ..ground.clone()
+        };
+        assert_eq!(
+            invoke_refusal(&[Action::StartMission, Action::ContinueMission], &closing),
+            None
+        );
+        let airborne = GuidedState {
+            armed: true,
+            flying: true,
+            mission_item_count: 9,
+            current_mission_index: 2,
+            ..ground
+        };
+        assert_eq!(
+            invoke_refusal(&[Action::StartMission, Action::ContinueMission], &airborne),
+            None,
+            "a drone in the air is never refused its mission"
+        );
     }
 
     #[test]
     fn a_gripper_offers_drop_and_grab_and_hold_only_where_the_firmware_takes_it() {
-        let gripped = GuidedState { has_gripper: true, ..ready_on_ground() };
-        assert_eq!((offer_of(&gripped, Action::Release), offer_of(&gripped, Action::Grab), offer_of(&gripped, Action::Hold)), ("ready", "ready", "ready"));
-        assert_eq!(Action::Release.offer(&gripped).title, "Drop", "a pilot drops a payload, the gripper releasing it is the mechanism");
-        let copter = GuidedState { apm: true, ..gripped.clone() };
-        assert_eq!(offer_of(&copter, Action::Hold), "hidden", "ArduPilot answers DO_GRIPPER hold with MAV_RESULT_FAILED (SITL, 2026-10-16), so it is not offered there");
-        assert_eq!((offer_of(&copter, Action::Release), offer_of(&copter, Action::Grab)), ("ready", "ready"));
-        assert_eq!(offer_of(&GuidedState { has_gripper: false, ..copter }, Action::Release), "hidden");
+        let gripped = GuidedState {
+            has_gripper: true,
+            ..ready_on_ground()
+        };
+        assert_eq!(
+            (
+                offer_of(&gripped, Action::Release),
+                offer_of(&gripped, Action::Grab),
+                offer_of(&gripped, Action::Hold)
+            ),
+            ("ready", "ready", "ready")
+        );
+        assert_eq!(
+            Action::Release.offer(&gripped).title,
+            "Drop",
+            "a pilot drops a payload, the gripper releasing it is the mechanism"
+        );
+        let copter = GuidedState {
+            apm: true,
+            ..gripped.clone()
+        };
+        assert_eq!(
+            offer_of(&copter, Action::Hold),
+            "hidden",
+            "ArduPilot answers DO_GRIPPER hold with MAV_RESULT_FAILED (SITL, 2026-10-16), so it is not offered there"
+        );
+        assert_eq!(
+            (
+                offer_of(&copter, Action::Release),
+                offer_of(&copter, Action::Grab)
+            ),
+            ("ready", "ready")
+        );
+        assert_eq!(
+            offer_of(
+                &GuidedState {
+                    has_gripper: false,
+                    ..copter
+                },
+                Action::Release
+            ),
+            "hidden"
+        );
     }
 
     #[test]
     fn the_next_bay_to_drop_is_the_lowest_one_still_loaded() {
-        let basket = GuidedState { payload_bays: 3, ..GuidedState::default() };
+        let basket = GuidedState {
+            payload_bays: 3,
+            ..GuidedState::default()
+        };
         assert_eq!(basket.next_bay(), Some(1));
-        assert_eq!(GuidedState { empty_bays: vec![1, 3], ..basket.clone() }.next_bay(), Some(2));
-        assert_eq!(GuidedState { empty_bays: vec![1, 2, 3], ..basket.clone() }.next_bay(), None, "every bay dropped: nothing left for the deck to drop");
-        assert_eq!(GuidedState { payload_bays: 1, ..GuidedState::default() }.next_bay(), None, "a single gripper has no bays to choose between");
+        assert_eq!(
+            GuidedState {
+                empty_bays: vec![1, 3],
+                ..basket.clone()
+            }
+            .next_bay(),
+            Some(2)
+        );
+        assert_eq!(
+            GuidedState {
+                empty_bays: vec![1, 2, 3],
+                ..basket.clone()
+            }
+            .next_bay(),
+            None,
+            "every bay dropped: nothing left for the deck to drop"
+        );
+        assert_eq!(
+            GuidedState {
+                payload_bays: 1,
+                ..GuidedState::default()
+            }
+            .next_bay(),
+            None,
+            "a single gripper has no bays to choose between"
+        );
     }
 
     #[test]
     fn the_payload_state_tells_the_pilot_what_the_flight_controller_said() {
         let none = std::collections::BTreeSet::new();
         let sent = GripperState::sent(GRIPPER_RELEASE, 0, 1_000);
-        assert_eq!((sent.notice(), sent.json(&none)["outcome"].as_str()), (None, Some("sent")), "sending says nothing yet; the sheet shows the pending state");
-        assert_eq!(sent.answered(Some(true), 1_200).notice().as_deref(), Some("Payload dropped"));
-        assert_eq!(sent.answered(Some(false), 1_200).notice().as_deref(), Some("Drop refused by the flight controller"));
-        assert_eq!(sent.answered(None, 2_300).notice().as_deref(), Some("Drop not confirmed. It may have dropped, check before dropping again."), "a lost ack is not a failed drop: in SITL the command lands before the ack");
-        assert_eq!(GripperState::sent(GRIPPER_GRAB, 0, 0).answered(Some(true), 1).notice().as_deref(), Some("Payload grabbed"));
-        assert_eq!(GripperState::sent(GRIPPER_GRAB, 0, 0).answered(None, 1).notice().as_deref(), Some("Grab not confirmed. Check the gripper before trying again."));
-        let json = sent.answered(Some(true), 1_200).json(&std::collections::BTreeSet::from([2]));
-        assert_eq!((json["action"].as_str(), json["outcome"].as_str(), json["atMs"].as_i64(), json["empty"].clone()), (Some("release"), Some("confirmed"), Some(1_200), json!([2])));
+        assert_eq!(
+            (sent.notice(), sent.json(&none)["outcome"].as_str()),
+            (None, Some("sent")),
+            "sending says nothing yet; the sheet shows the pending state"
+        );
+        assert_eq!(
+            sent.answered(Some(true), 1_200).notice().as_deref(),
+            Some("Payload dropped")
+        );
+        assert_eq!(
+            sent.answered(Some(false), 1_200).notice().as_deref(),
+            Some("Drop refused by the flight controller")
+        );
+        assert_eq!(
+            sent.answered(None, 2_300).notice().as_deref(),
+            Some("Drop not confirmed. It may have dropped, check before dropping again."),
+            "a lost ack is not a failed drop: in SITL the command lands before the ack"
+        );
+        assert_eq!(
+            GripperState::sent(GRIPPER_GRAB, 0, 0)
+                .answered(Some(true), 1)
+                .notice()
+                .as_deref(),
+            Some("Payload grabbed")
+        );
+        assert_eq!(
+            GripperState::sent(GRIPPER_GRAB, 0, 0)
+                .answered(None, 1)
+                .notice()
+                .as_deref(),
+            Some("Grab not confirmed. Check the gripper before trying again.")
+        );
+        let json = sent
+            .answered(Some(true), 1_200)
+            .json(&std::collections::BTreeSet::from([2]));
+        assert_eq!(
+            (
+                json["action"].as_str(),
+                json["outcome"].as_str(),
+                json["atMs"].as_i64(),
+                json["empty"].clone()
+            ),
+            (Some("release"), Some("confirmed"), Some(1_200), json!([2]))
+        );
         let bay = GripperState::sent(GRIPPER_RELEASE, 2, 0);
-        assert_eq!((bay.answered(Some(true), 1).notice().as_deref(), bay.answered(None, 1).notice().as_deref()), (Some("Bay 2 dropped"), Some("Drop 2 not confirmed. It may have dropped, check before dropping again.")));
-        assert_eq!((bay.answered(Some(true), 1).empties(), bay.answered(None, 1).empties(), bay.answered(Some(false), 1).empties()), (Some(true), Some(true), None), "a drop that may have happened empties the bay; a refused one does not");
-        assert_eq!(GripperState::sent(GRIPPER_GRAB, 2, 0).answered(Some(true), 1).empties(), Some(false), "a confirmed grab is a loaded bay again");
+        assert_eq!(
+            (
+                bay.answered(Some(true), 1).notice().as_deref(),
+                bay.answered(None, 1).notice().as_deref()
+            ),
+            (
+                Some("Bay 2 dropped"),
+                Some("Drop 2 not confirmed. It may have dropped, check before dropping again.")
+            )
+        );
+        assert_eq!(
+            (
+                bay.answered(Some(true), 1).empties(),
+                bay.answered(None, 1).empties(),
+                bay.answered(Some(false), 1).empties()
+            ),
+            (Some(true), Some(true), None),
+            "a drop that may have happened empties the bay; a refused one does not"
+        );
+        assert_eq!(
+            GripperState::sent(GRIPPER_GRAB, 2, 0)
+                .answered(Some(true), 1)
+                .empties(),
+            Some(false),
+            "a confirmed grab is a loaded bay again"
+        );
     }
 
     #[test]
     fn force_arm_is_offered_whenever_the_vehicle_is_disarmed() {
         let ready = ready_on_ground();
         assert_eq!(offer_of(&ready, Action::Arm), "ready");
-        assert_eq!(offer_of(&ready, Action::ForceArm), "ready", "showForceArm is only !_vehicleArmed");
-        let refused = GuidedState { can_arm: false, ..ready_on_ground() };
-        assert_eq!(offer_of(&refused, Action::Arm), "hidden", "the ordinary arm is hidden by the failing checks");
-        assert_eq!(offer_of(&refused, Action::ForceArm), "ready", "force arm is the escape hatch, so the checks that refused the arm do not gate it");
+        assert_eq!(
+            offer_of(&ready, Action::ForceArm),
+            "ready",
+            "showForceArm is only !_vehicleArmed"
+        );
+        let refused = GuidedState {
+            can_arm: false,
+            ..ready_on_ground()
+        };
+        assert_eq!(
+            offer_of(&refused, Action::Arm),
+            "hidden",
+            "the ordinary arm is hidden by the failing checks"
+        );
+        assert_eq!(
+            offer_of(&refused, Action::ForceArm),
+            "ready",
+            "force arm is the escape hatch, so the checks that refused the arm do not gate it"
+        );
         let force = Action::ForceArm.offer(&refused);
-        assert!(force.destructive, "bypassing the safety checks is destructive and a head must say so");
+        assert!(
+            force.destructive,
+            "bypassing the safety checks is destructive and a head must say so"
+        );
         assert!(!force.carries_value);
-        assert!(!Action::Arm.offer(&ready).destructive, "the ordinary arm is not the destructive one");
-        let armed = GuidedState { armed: true, can_arm: false, ..ready_on_ground() };
+        assert!(
+            !Action::Arm.offer(&ready).destructive,
+            "the ordinary arm is not the destructive one"
+        );
+        let armed = GuidedState {
+            armed: true,
+            can_arm: false,
+            ..ready_on_ground()
+        };
         assert_eq!(offer_of(&armed, Action::ForceArm), "hidden");
     }
 
     #[test]
     fn only_a_disarm_on_the_ground_goes_out_without_a_hold_to_confirm() {
-        let landed = GuidedState { armed: true, ..ready_on_ground() };
+        let landed = GuidedState {
+            armed: true,
+            ..ready_on_ground()
+        };
         let disarm = Action::Disarm.offer(&landed);
-        assert_eq!((disarm.offer, disarm.confirm), ("ready", false), "Disarm is only offered on the ground, where ArduCopter would disarm itself after DISARM_DELAY anyway");
-        let asking: Vec<Action> = ACTIONS.iter().copied().filter(|action| action.offer(&landed).confirm).collect();
-        assert_eq!(asking.len(), ACTIONS.len() - 1, "every other action still asks first");
-        assert!(Action::Arm.offer(&ready_on_ground()).confirm && Action::EmergencyStop.offer(&landed).confirm);
-        assert_eq!(serde_json::to_value(&disarm).unwrap()["confirm"], false, "heads read it as confirm");
+        assert_eq!(
+            (disarm.offer, disarm.confirm),
+            ("ready", false),
+            "Disarm is only offered on the ground, where ArduCopter would disarm itself after DISARM_DELAY anyway"
+        );
+        let asking: Vec<Action> = ACTIONS
+            .iter()
+            .copied()
+            .filter(|action| action.offer(&landed).confirm)
+            .collect();
+        assert_eq!(
+            asking.len(),
+            ACTIONS.len() - 1,
+            "every other action still asks first"
+        );
+        assert!(
+            Action::Arm.offer(&ready_on_ground()).confirm
+                && Action::EmergencyStop.offer(&landed).confirm
+        );
+        assert_eq!(
+            serde_json::to_value(&disarm).unwrap()["confirm"],
+            false,
+            "heads read it as confirm"
+        );
     }
 
     #[test]
     fn only_a_vtol_is_offered_a_transition_and_only_the_one_it_is_not_in() {
-        let aloft = GuidedState { armed: true, flying: true, ..ready_on_ground() };
-        assert_eq!(offer_of(&aloft, Action::VtolTransitionToFixedWing), "hidden", "a vehicle that cannot transition is never asked to");
-        assert_eq!(offer_of(&aloft, Action::VtolTransitionToMultiRotor), "hidden");
-        let grounded = GuidedState { vtol: true, ..ready_on_ground() };
-        assert_eq!(offer_of(&grounded, Action::VtolTransitionToFixedWing), "hidden", "a VTOL on the ground is never offered a transition, as QGC only opens that drawer in the air");
-        let rotor = GuidedState { vtol: true, ..aloft.clone() };
+        let aloft = GuidedState {
+            armed: true,
+            flying: true,
+            ..ready_on_ground()
+        };
+        assert_eq!(
+            offer_of(&aloft, Action::VtolTransitionToFixedWing),
+            "hidden",
+            "a vehicle that cannot transition is never asked to"
+        );
+        assert_eq!(
+            offer_of(&aloft, Action::VtolTransitionToMultiRotor),
+            "hidden"
+        );
+        let grounded = GuidedState {
+            vtol: true,
+            ..ready_on_ground()
+        };
+        assert_eq!(
+            offer_of(&grounded, Action::VtolTransitionToFixedWing),
+            "hidden",
+            "a VTOL on the ground is never offered a transition, as QGC only opens that drawer in the air"
+        );
+        let rotor = GuidedState {
+            vtol: true,
+            ..aloft.clone()
+        };
         assert_eq!(offer_of(&rotor, Action::VtolTransitionToFixedWing), "ready");
-        assert_eq!(offer_of(&rotor, Action::VtolTransitionToMultiRotor), "hidden", "a vehicle already in multi-rotor flight is not offered the way it came");
-        let wing = GuidedState { vtol: true, vtol_in_fwd_flight: true, ..aloft.clone() };
+        assert_eq!(
+            offer_of(&rotor, Action::VtolTransitionToMultiRotor),
+            "hidden",
+            "a vehicle already in multi-rotor flight is not offered the way it came"
+        );
+        let wing = GuidedState {
+            vtol: true,
+            vtol_in_fwd_flight: true,
+            ..aloft.clone()
+        };
         assert_eq!(offer_of(&wing, Action::VtolTransitionToMultiRotor), "ready");
         assert_eq!(offer_of(&wing, Action::VtolTransitionToFixedWing), "hidden");
-        let gone = GuidedState { connected: false, vtol: true, flying: true, ..GuidedState::default() };
+        let gone = GuidedState {
+            connected: false,
+            vtol: true,
+            flying: true,
+            ..GuidedState::default()
+        };
         assert_eq!(offer_of(&gone, Action::VtolTransitionToFixedWing), "hidden");
-        assert!(!Action::VtolTransitionToFixedWing.offer(&rotor).destructive, "a transition is not a destructive action");
-        assert!(!Action::VtolTransitionToFixedWing.offer(&rotor).carries_value, "a transition takes no value from the operator");
+        assert!(
+            !Action::VtolTransitionToFixedWing.offer(&rotor).destructive,
+            "a transition is not a destructive action"
+        );
+        assert!(
+            !Action::VtolTransitionToFixedWing
+                .offer(&rotor)
+                .carries_value,
+            "a transition takes no value from the operator"
+        );
     }
 
     #[test]
     fn fixed_wing_on_approach_offers_abort_instead_of_pause_and_land() {
-        let approach = GuidedState { armed: true, flying: true, fixed_wing: true, landing: true, ..ready_on_ground() };
+        let approach = GuidedState {
+            armed: true,
+            flying: true,
+            fixed_wing: true,
+            landing: true,
+            ..ready_on_ground()
+        };
         assert_eq!(offer_of(&approach, Action::LandAbort), "ready");
         assert_eq!(offer_of(&approach, Action::Pause), "hidden");
         assert_eq!(offer_of(&approach, Action::Land), "hidden");
@@ -1156,7 +2100,9 @@ mod tests {
     fn the_view_reads_the_checklist_and_report_gates_from_the_bridge() {
         struct Fake;
         impl Backend for Fake {
-            fn get(&self, _p: &str) -> String { String::new() }
+            fn get(&self, _p: &str) -> String {
+                String::new()
+            }
             fn get_fields(&self, path: &str, _f: &str) -> String {
                 match path {
                     "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": true }),
@@ -1169,8 +2115,12 @@ mod tests {
                 }
                 .to_string()
             }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
             fn watch(&self, _p: &[String]) {}
         }
         let view = guided_view(&Fake, &[]);
@@ -1180,8 +2130,20 @@ mod tests {
         assert_eq!(arm["offer"], "hidden");
         assert_eq!(view["actions"][1]["id"], "takeoff");
         assert_eq!(view["actions"][1]["offer"], "ready");
-        let named = |id: &str| view["actions"].as_array().unwrap().iter().find(|a| a["id"] == id).cloned().unwrap_or(Value::Null);
-        assert_eq!(named("emergencyStop")["destructive"], true, "keyed by id rather than by position: adding an action to ACTIONS moved this assertion onto a different one, and it still passed its own shape");
+        let named = |id: &str| {
+            view["actions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|a| a["id"] == id)
+                .cloned()
+                .unwrap_or(Value::Null)
+        };
+        assert_eq!(
+            named("emergencyStop")["destructive"],
+            true,
+            "keyed by id rather than by position: adding an action to ACTIONS moved this assertion onto a different one, and it still passed its own shape"
+        );
         assert_eq!(view["actions"][1]["carriesValue"], true);
         assert!(view["actions"][1].get("carries_value").is_none());
     }
@@ -1190,7 +2152,9 @@ mod tests {
     fn the_speed_offer_follows_the_live_parameter_when_the_latched_flag_is_stale() {
         struct Fake(bool);
         impl Backend for Fake {
-            fn get(&self, _p: &str) -> String { String::new() }
+            fn get(&self, _p: &str) -> String {
+                String::new()
+            }
             fn get_fields(&self, path: &str, _f: &str) -> String {
                 match path {
                     "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": true }).to_string(),
@@ -1199,7 +2163,9 @@ mod tests {
                     _ => json!({ "kind": "object" }).to_string(),
                 }
             }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
             fn invoke(&self, path: &str, args: &str) -> String {
                 assert_eq!(path, "vehicle.parameterManager.parameterExists");
                 assert!(args.contains("WPNAV_SPEED"));
@@ -1216,12 +2182,17 @@ mod tests {
 mod loiter {
     use super::*;
 
-    struct Flying { forward: bool, setting: f64 }
+    struct Flying {
+        forward: bool,
+        setting: f64,
+    }
 
     impl Backend for Flying {
         fn get(&self, path: &str) -> String {
             match path {
-                "settings.flyViewSettings.forwardFlightGoToLocationLoiterRad.rawValue" => json!({ "kind": "value", "value": self.setting }).to_string(),
+                "settings.flyViewSettings.forwardFlightGoToLocationLoiterRad.rawValue" => {
+                    json!({ "kind": "value", "value": self.setting }).to_string()
+                }
                 _ => json!({ "kind": "null" }).to_string(),
             }
         }
@@ -1235,27 +2206,51 @@ mod loiter {
                 _ => json!({ "kind": "null" }).to_string(),
             }
         }
-        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            String::new()
+        }
         fn watch(&self, _p: &[String]) {}
     }
 
     #[test]
     fn a_goto_carries_the_operators_loiter_radius_only_when_the_vehicle_flies_forward() {
-        let winged = guided_view(&Flying { forward: true, setting: 120.0 }, &[]);
+        let winged = guided_view(
+            &Flying {
+                forward: true,
+                setting: 120.0,
+            },
+            &[],
+        );
         assert_eq!(winged["forwardFlight"], true);
-        assert_eq!(winged["gotoLoiterRadius"], 120.0, "a fixed wing cannot hover, so a goto it is sent has to say how wide to circle");
+        assert_eq!(
+            winged["gotoLoiterRadius"], 120.0,
+            "a fixed wing cannot hover, so a goto it is sent has to say how wide to circle"
+        );
 
-        let hovering = guided_view(&Flying { forward: false, setting: 120.0 }, &[]);
+        let hovering = guided_view(
+            &Flying {
+                forward: false,
+                setting: 120.0,
+            },
+            &[],
+        );
         assert_eq!(hovering["forwardFlight"], false);
-        assert_eq!(hovering["gotoLoiterRadius"], 0.0, "a multirotor holds position, and sending it a radius would be sending a number nobody chose");
+        assert_eq!(
+            hovering["gotoLoiterRadius"], 0.0,
+            "a multirotor holds position, and sending it a radius would be sending a number nobody chose"
+        );
     }
 
     #[test]
     fn a_setting_the_app_does_not_answer_is_no_radius_rather_than_a_guess() {
         struct Silent;
         impl Backend for Silent {
-            fn get(&self, _p: &str) -> String { String::new() }
+            fn get(&self, _p: &str) -> String {
+                String::new()
+            }
             fn get_fields(&self, path: &str, _f: &str) -> String {
                 match path {
                     "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": true }).to_string(),
@@ -1263,8 +2258,12 @@ mod loiter {
                     _ => json!({ "kind": "null" }).to_string(),
                 }
             }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
             fn watch(&self, _p: &[String]) {}
         }
         assert_eq!(guided_view(&Silent, &[])["gotoLoiterRadius"], 0.0);
@@ -1276,23 +2275,35 @@ mod core_route {
     use super::*;
     use std::cell::RefCell;
 
-    struct Hubbed { answer: Option<Result<(), String>>, asked: RefCell<Vec<Value>>, invoked: RefCell<Vec<String>> }
+    struct Hubbed {
+        answer: Option<Result<(), String>>,
+        asked: RefCell<Vec<Value>>,
+        invoked: RefCell<Vec<String>>,
+    }
 
     impl Hubbed {
         fn new(answer: Option<Result<(), String>>) -> Self {
-            Hubbed { answer, asked: RefCell::new(vec![]), invoked: RefCell::new(vec![]) }
+            Hubbed {
+                answer,
+                asked: RefCell::new(vec![]),
+                invoked: RefCell::new(vec![]),
+            }
         }
     }
 
     impl Backend for Hubbed {
-        fn get(&self, _p: &str) -> String { String::new() }
+        fn get(&self, _p: &str) -> String {
+            String::new()
+        }
         fn get_fields(&self, path: &str, _f: &str) -> String {
             match path {
                 "vehicle" => json!({ "kind": "object", "id": 7 }).to_string(),
                 _ => json!({ "kind": "null" }).to_string(),
             }
         }
-        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
         fn invoke(&self, path: &str, _a: &str) -> String {
             self.invoked.borrow_mut().push(path.to_string());
             json!({ "ok": true }).to_string()
@@ -1307,42 +2318,102 @@ mod core_route {
     #[test]
     fn a_vehicle_the_core_carries_is_commanded_by_the_core_and_qt_is_never_asked() {
         let hub = Hubbed::new(Some(Ok(())));
-        let answered = dispatch(&hub, core_action(&[Action::Rtl], "[true]", &GuidedState::default()), Some(7), "vehicle.guidedModeRTL", "[true]");
+        let answered = dispatch(
+            &hub,
+            core_action(&[Action::Rtl], "[true]", &GuidedState::default()),
+            Some(7),
+            "vehicle.guidedModeRTL",
+            "[true]",
+        );
         assert_eq!(answered["ok"], true);
-        assert!(hub.invoked.borrow().is_empty(), "sending on both routes would command the vehicle twice");
-        assert_eq!(hub.asked.borrow()[0], json!({ "action": "rtl", "smart": true, "vehicle": 7 }), "the hub is told which vehicle Qt has active, so it never commands a different one it happens to carry");
+        assert!(
+            hub.invoked.borrow().is_empty(),
+            "sending on both routes would command the vehicle twice"
+        );
+        assert_eq!(
+            hub.asked.borrow()[0],
+            json!({ "action": "rtl", "smart": true, "vehicle": 7 }),
+            "the hub is told which vehicle Qt has active, so it never commands a different one it happens to carry"
+        );
     }
 
     #[test]
     fn the_hubs_refusal_is_the_answer_rather_than_a_fallback_to_qt() {
         let hub = Hubbed::new(Some(Err("A guided action is still running.".to_string())));
-        let answered = dispatch(&hub, core_action(&[Action::Land], "[]", &GuidedState::default()), Some(7), "vehicle.guidedModeLand", "[]");
+        let answered = dispatch(
+            &hub,
+            core_action(&[Action::Land], "[]", &GuidedState::default()),
+            Some(7),
+            "vehicle.guidedModeLand",
+            "[]",
+        );
         assert_eq!(answered["ok"], false);
         assert_eq!(answered["reason"], "A guided action is still running.");
-        assert!(hub.invoked.borrow().is_empty(), "a refused core command retried through Qt would be sent anyway");
+        assert!(
+            hub.invoked.borrow().is_empty(),
+            "a refused core command retried through Qt would be sent anyway"
+        );
     }
 
     #[test]
     fn a_vehicle_on_a_qt_link_is_still_commanded_through_qt() {
         let hub = Hubbed::new(None);
-        assert_eq!(dispatch(&hub, core_action(&[Action::Rtl], "[false]", &GuidedState::default()), Some(7), "vehicle.guidedModeRTL", "[false]")["ok"], true);
-        assert_eq!(*hub.invoked.borrow(), vec!["vehicle.guidedModeRTL".to_string()]);
+        assert_eq!(
+            dispatch(
+                &hub,
+                core_action(&[Action::Rtl], "[false]", &GuidedState::default()),
+                Some(7),
+                "vehicle.guidedModeRTL",
+                "[false]"
+            )["ok"],
+            true
+        );
+        assert_eq!(
+            *hub.invoked.borrow(),
+            vec!["vehicle.guidedModeRTL".to_string()]
+        );
     }
 
     #[test]
     fn an_unknown_active_vehicle_is_never_guessed_at_by_the_core() {
         let hub = Hubbed::new(Some(Ok(())));
-        assert_eq!(dispatch(&hub, core_action(&[Action::Land], "[]", &GuidedState::default()), None, "vehicle.guidedModeLand", "[]")["ok"], true);
+        assert_eq!(
+            dispatch(
+                &hub,
+                core_action(&[Action::Land], "[]", &GuidedState::default()),
+                None,
+                "vehicle.guidedModeLand",
+                "[]"
+            )["ok"],
+            true
+        );
         assert!(hub.asked.borrow().is_empty());
-        assert_eq!(*hub.invoked.borrow(), vec!["vehicle.guidedModeLand".to_string()]);
+        assert_eq!(
+            *hub.invoked.borrow(),
+            vec!["vehicle.guidedModeLand".to_string()]
+        );
     }
 
     #[test]
     fn actions_the_hub_cannot_plan_never_reach_it() {
-        assert_eq!(core_action(&[Action::ResumeMission], "[50]", &GuidedState::default()), Some(json!({ "action": "resumeMission", "index": 50 })), "the hub builds and uploads the resume mission as generateResumeMission does");
-        assert_eq!(core_action(&[Action::ResumeMission], "[]", &GuidedState::default()), None);
         assert_eq!(
-            core_action(&[Action::StartMission, Action::ContinueMission], "[]", &GuidedState { flying: true, ..GuidedState::default() }),
+            core_action(&[Action::ResumeMission], "[50]", &GuidedState::default()),
+            Some(json!({ "action": "resumeMission", "index": 50 })),
+            "the hub builds and uploads the resume mission as generateResumeMission does"
+        );
+        assert_eq!(
+            core_action(&[Action::ResumeMission], "[]", &GuidedState::default()),
+            None
+        );
+        assert_eq!(
+            core_action(
+                &[Action::StartMission, Action::ContinueMission],
+                "[]",
+                &GuidedState {
+                    flying: true,
+                    ..GuidedState::default()
+                }
+            ),
             Some(json!({ "action": "startMission", "flying": true })),
             "ArduPilot starts a mission in the air by switching to Auto and on the ground by arming and MISSION_START, so the hub is told which",
         );
@@ -1350,13 +2421,43 @@ mod core_route {
 
     #[test]
     fn valued_actions_carry_their_value_to_the_hub() {
-        let rotor = GuidedState { takeoff_with_altitude: true, ..GuidedState::default() };
-        assert_eq!(core_action(&[Action::Takeoff], "[12.5]", &rotor), Some(json!({ "action": "takeoff", "altitude": 12.5 })));
-        assert_eq!(core_action(&[Action::Takeoff], "[12.5]", &GuidedState::default()), Some(json!({ "action": "takeoff" })), "without guided takeoff the vehicle is sent to its Takeoff mode, which takes no height");
-        assert_eq!(core_action(&[Action::Pause, Action::ChangeAltitude], "[-3.0,true]", &GuidedState::default()), Some(json!({ "action": "changeAltitude", "delta": -3.0, "pause": true })));
-        assert_eq!(core_action(&[Action::ForceArm], "[]", &GuidedState::default()), Some(json!({ "action": "arm", "arm": true, "force": true })));
-        assert_eq!(core_action(&[Action::LandAbort], "[50.0]", &GuidedState::default()), Some(json!({ "action": "abortLanding", "climbOut": 50.0 })));
-        assert_eq!(core_action(&[Action::Release], "[0]", &GuidedState::default()), Some(json!({ "action": "gripper", "gripAction": 0.0, "bay": 0.0 })));
-        assert_eq!(core_action(&[Action::Release], "[0,2]", &GuidedState::default()), Some(json!({ "action": "gripper", "gripAction": 0.0, "bay": 2.0 })), "the checked bay reaches the hub");
+        let rotor = GuidedState {
+            takeoff_with_altitude: true,
+            ..GuidedState::default()
+        };
+        assert_eq!(
+            core_action(&[Action::Takeoff], "[12.5]", &rotor),
+            Some(json!({ "action": "takeoff", "altitude": 12.5 }))
+        );
+        assert_eq!(
+            core_action(&[Action::Takeoff], "[12.5]", &GuidedState::default()),
+            Some(json!({ "action": "takeoff" })),
+            "without guided takeoff the vehicle is sent to its Takeoff mode, which takes no height"
+        );
+        assert_eq!(
+            core_action(
+                &[Action::Pause, Action::ChangeAltitude],
+                "[-3.0,true]",
+                &GuidedState::default()
+            ),
+            Some(json!({ "action": "changeAltitude", "delta": -3.0, "pause": true }))
+        );
+        assert_eq!(
+            core_action(&[Action::ForceArm], "[]", &GuidedState::default()),
+            Some(json!({ "action": "arm", "arm": true, "force": true }))
+        );
+        assert_eq!(
+            core_action(&[Action::LandAbort], "[50.0]", &GuidedState::default()),
+            Some(json!({ "action": "abortLanding", "climbOut": 50.0 }))
+        );
+        assert_eq!(
+            core_action(&[Action::Release], "[0]", &GuidedState::default()),
+            Some(json!({ "action": "gripper", "gripAction": 0.0, "bay": 0.0 }))
+        );
+        assert_eq!(
+            core_action(&[Action::Release], "[0,2]", &GuidedState::default()),
+            Some(json!({ "action": "gripper", "gripAction": 0.0, "bay": 2.0 })),
+            "the checked bay reaches the hub"
+        );
     }
 }

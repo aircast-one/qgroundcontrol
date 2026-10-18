@@ -19,7 +19,12 @@ fn offline_field(path: &str, field: &str) -> Option<Value> {
         ("plan.geoFenceController" | "plan.rallyPointController", "supported") => Some(json!(true)),
         ("plan.managerVehicle", "capabilitiesKnown") => Some(json!(true)),
         ("plan.geoFenceController", "paramCircularFence") => Some(json!(0)),
-        ("planFly.geoFenceController" | "planFly.rallyPointController" | "planFly.missionController", "containsItems") => Some(json!(false)),
+        (
+            "planFly.geoFenceController"
+            | "planFly.rallyPointController"
+            | "planFly.missionController",
+            "containsItems",
+        ) => Some(json!(false)),
         ("planFly.missionController", "currentMissionIndex") => Some(json!(-1)),
         ("planFly.missionController", "resumeMissionIndex") => Some(json!(0)),
         ("planFly.missionController.visualItems", "count") => Some(json!(1)),
@@ -27,7 +32,40 @@ fn offline_field(path: &str, field: &str) -> Option<Value> {
     }
 }
 
-const VEHICLE_FACTS: [&str; 32] = ["altitudeAboveTerr", "rcRSSI", "heading", "roll", "pitch", "rollRate", "pitchRate", "yawRate", "groundSpeed", "airSpeed", "climbRate", "altitudeRelative", "altitudeAMSL", "throttlePct", "distanceToNextWP", "distanceToHome", "headingToHome", "headingFromHome", "xTrackError", "airSpeedSetpoint", "altitudeTuning", "altitudeTuningSetpoint", "rangeFinderDist", "timeToHome", "imuTemp", "missionItemIndex", "distanceToGCS", "headingFromGCS", "flightDistance", "flightTime", "headingToNextWP", "hobbs"];
+const VEHICLE_FACTS: [&str; 32] = [
+    "altitudeAboveTerr",
+    "rcRSSI",
+    "heading",
+    "roll",
+    "pitch",
+    "rollRate",
+    "pitchRate",
+    "yawRate",
+    "groundSpeed",
+    "airSpeed",
+    "climbRate",
+    "altitudeRelative",
+    "altitudeAMSL",
+    "throttlePct",
+    "distanceToNextWP",
+    "distanceToHome",
+    "headingToHome",
+    "headingFromHome",
+    "xTrackError",
+    "airSpeedSetpoint",
+    "altitudeTuning",
+    "altitudeTuningSetpoint",
+    "rangeFinderDist",
+    "timeToHome",
+    "imuTemp",
+    "missionItemIndex",
+    "distanceToGCS",
+    "headingFromGCS",
+    "flightDistance",
+    "flightTime",
+    "headingToNextWP",
+    "hobbs",
+];
 
 pub fn qt_azimuth(from: (f64, f64), to: (f64, f64)) -> f64 {
     let (lat1, lat2) = (from.0.to_radians(), to.0.to_radians());
@@ -41,47 +79,92 @@ pub fn qt_azimuth(from: (f64, f64), to: (f64, f64)) -> f64 {
 fn hobbs_meter(px4: bool, parameter: impl Fn(&str) -> Option<f64>) -> String {
     let word = |name: &str| parameter(name).map(|raw| u64::from(raw as i64 as u32));
     let seconds = match px4 {
-        true => word("LND_FLIGHT_T_HI").zip(word("LND_FLIGHT_T_LO")).map_or(0, |(hi, lo)| (hi << 32 | lo) / 1_000_000),
+        true => word("LND_FLIGHT_T_HI")
+            .zip(word("LND_FLIGHT_T_LO"))
+            .map_or(0, |(hi, lo)| (hi << 32 | lo) / 1_000_000),
         false => word("STAT_FLTTIME").unwrap_or(0),
     };
-    format!("{:04}:{:02}:{:02}", seconds / 3600, seconds % 3600 / 60, seconds % 60)
+    format!(
+        "{:04}:{:02}:{:02}",
+        seconds / 3600,
+        seconds % 3600 / 60,
+        seconds % 60
+    )
 }
 
 const FENCE_SHAPES: std::ops::RangeInclusive<u16> = 5001..=5004;
 
-fn plan_contents(fence: &[crate::plantransfer::Item], rally: &[crate::plantransfer::Item]) -> (bool, bool) {
-    (fence.iter().any(|item| FENCE_SHAPES.contains(&item.command)), !rally.is_empty())
+fn plan_contents(
+    fence: &[crate::plantransfer::Item],
+    rally: &[crate::plantransfer::Item],
+) -> (bool, bool) {
+    (
+        fence
+            .iter()
+            .any(|item| FENCE_SHAPES.contains(&item.command)),
+        !rally.is_empty(),
+    )
 }
 
-fn heading_to_next_wp(coordinate: Option<(f64, f64, f64)>, items: &[crate::plantransfer::Item], current: i32) -> f64 {
-    let next = usize::try_from(current).ok().and_then(|index| items.get(index)).map(|item| (item.params[4], item.params[5]));
+fn heading_to_next_wp(
+    coordinate: Option<(f64, f64, f64)>,
+    items: &[crate::plantransfer::Item],
+    current: i32,
+) -> f64 {
+    let next = usize::try_from(current)
+        .ok()
+        .and_then(|index| items.get(index))
+        .map(|item| (item.params[4], item.params[5]));
     match coordinate.zip(next) {
-        Some((here, target)) if target.1 != 0.0 && crate::terrain::qt_distance((here.0, here.1), target) > 5.0 => qt_azimuth((here.0, here.1), target),
+        Some((here, target))
+            if target.1 != 0.0 && crate::terrain::qt_distance((here.0, here.1), target) > 5.0 =>
+        {
+            qt_azimuth((here.0, here.1), target)
+        }
         _ => f64::NAN,
     }
 }
 
-fn home_facts(coordinate: Option<(f64, f64, f64)>, home: Option<(f64, f64, f64)>) -> (f64, f64, f64) {
+fn home_facts(
+    coordinate: Option<(f64, f64, f64)>,
+    home: Option<(f64, f64, f64)>,
+) -> (f64, f64, f64) {
     match coordinate.zip(home) {
         None => (f64::NAN, f64::NAN, f64::NAN),
         Some((here, home)) => {
             let distance = crate::terrain::qt_distance((here.0, here.1), (home.0, home.1));
             match distance > 1.0 {
-                true => (distance, qt_azimuth((here.0, here.1), (home.0, home.1)), qt_azimuth((home.0, home.1), (here.0, here.1))),
+                true => (
+                    distance,
+                    qt_azimuth((here.0, here.1), (home.0, home.1)),
+                    qt_azimuth((home.0, home.1), (here.0, here.1)),
+                ),
                 false => (distance, f64::NAN, f64::NAN),
             }
         }
     }
 }
 
-static FELL_THROUGH: std::sync::Mutex<std::collections::BTreeMap<String, u64>> = std::sync::Mutex::new(std::collections::BTreeMap::new());
+static FELL_THROUGH: std::sync::Mutex<std::collections::BTreeMap<String, u64>> =
+    std::sync::Mutex::new(std::collections::BTreeMap::new());
 
 fn shape(path: &str) -> String {
-    path.split('.').map(|part| if !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()) { "#" } else { part }).collect::<Vec<_>>().join(".")
+    path.split('.')
+        .map(|part| {
+            if !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit()) {
+                "#"
+            } else {
+                part
+            }
+        })
+        .collect::<Vec<_>>()
+        .join(".")
 }
 
 fn fell_through(kind: &str, path: &str) {
-    let mut tally = FELL_THROUGH.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut tally = FELL_THROUGH
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     *tally.entry(format!("{kind} {}", shape(path))).or_default() += 1;
 }
 
@@ -155,7 +238,11 @@ impl Known {
         let done = self.formatted.borrow().get(key).cloned();
         done.or_else(|| {
             let fact = crate::vehiclefact::vehicle_fact(key, raw).unwrap_or(Value::Null);
-            let fact = if self.sub { crate::vehiclefact::sub_described(json!({ *key: fact }))[*key].take() } else { fact };
+            let fact = if self.sub {
+                crate::vehiclefact::sub_described(json!({ *key: fact }))[*key].take()
+            } else {
+                fact
+            };
             self.formatted.borrow_mut().insert(key, fact.clone());
             Some(fact)
         })
@@ -165,11 +252,17 @@ impl Known {
 fn supports(autopilot: u8, vehicle_type: u8) -> Value {
     use crate::cmdinfo::VehicleClass::{FixedWing, MultiRotor, Rover, Sub, Vtol};
     let class = crate::plandoc::vehicle_class(i64::from(vehicle_type));
-    let (px4, apm) = (autopilot == crate::modes::AUTOPILOT_PX4, autopilot == crate::modes::AUTOPILOT_ARDUPILOT);
+    let (px4, apm) = (
+        autopilot == crate::modes::AUTOPILOT_PX4,
+        autopilot == crate::modes::AUTOPILOT_ARDUPILOT,
+    );
     let sub = apm && class == Sub;
-    let capable = |check: fn(bool, bool, crate::cmdinfo::VehicleClass) -> bool| check(px4, apm, class);
-    let takeoff = !sub && capable(|px4, apm, c| (apm || px4) && matches!(c, FixedWing | MultiRotor | Vtol));
-    let guided_takeoff = !sub && capable(|px4, apm, c| (apm || px4) && matches!(c, MultiRotor | Vtol));
+    let capable =
+        |check: fn(bool, bool, crate::cmdinfo::VehicleClass) -> bool| check(px4, apm, class);
+    let takeoff =
+        !sub && capable(|px4, apm, c| (apm || px4) && matches!(c, FixedWing | MultiRotor | Vtol));
+    let guided_takeoff =
+        !sub && capable(|px4, apm, c| (apm || px4) && matches!(c, MultiRotor | Vtol));
     json!({
         "guidedMode": px4 || apm,
         "pauseVehicle": px4 || apm,
@@ -251,7 +344,10 @@ fn motor_count(mav_type: u8, sub_frame: Option<f64>) -> Option<i64> {
 
 fn firmware_fields(autopilot: u8, firmware: Option<crate::connect::Firmware>) -> Value {
     let custom = firmware.as_ref().and_then(|f| f.custom);
-    let git_hash = firmware.as_ref().map(|f| f.git_hash.clone()).unwrap_or_default();
+    let git_hash = firmware
+        .as_ref()
+        .map(|f| f.git_hash.clone())
+        .unwrap_or_default();
     let version = firmware.and_then(|f| f.version);
     let part = |pick: fn((u8, u8, u8, u8)) -> u8| version.map_or(-1, |v| i64::from(pick(v)));
     let custom_part = |pick: fn((u8, u8, u8)) -> u8| custom.map_or(-1, |c| i64::from(pick(c)));
@@ -281,49 +377,162 @@ fn firmware_fields(autopilot: u8, firmware: Option<crate::connect::Firmware>) ->
 pub fn has_gripper(autopilot: u8, parameter: impl Fn(&str) -> Option<f64>) -> bool {
     match autopilot {
         crate::modes::AUTOPILOT_ARDUPILOT => parameter("GRIP_ENABLE") == Some(1.0),
-        crate::modes::AUTOPILOT_PX4 => parameter("PD_GRIPPER_EN").map(|v| v != 0.0).or_else(|| parameter("PD_GRIPPER_TYPE").map(|v| v >= 0.0)).unwrap_or(false),
+        crate::modes::AUTOPILOT_PX4 => parameter("PD_GRIPPER_EN")
+            .map(|v| v != 0.0)
+            .or_else(|| parameter("PD_GRIPPER_TYPE").map(|v| v >= 0.0))
+            .unwrap_or(false),
         _ => false,
     }
 }
 
-pub fn mission_flight_mode(autopilot: u8, vehicle_type: u8, available: &[crate::standardmodes::FlightMode]) -> String {
-    mode_fields(autopilot, vehicle_type, available, &[]).get("missionFlightMode").and_then(Value::as_str).unwrap_or_default().to_string()
+pub fn mission_flight_mode(
+    autopilot: u8,
+    vehicle_type: u8,
+    available: &[crate::standardmodes::FlightMode],
+) -> String {
+    mode_fields(autopilot, vehicle_type, available, &[])
+        .get("missionFlightMode")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string()
 }
 
 pub fn px4_mode_airframes(custom_mode: u32, given: (bool, bool)) -> (bool, bool) {
     use crate::modes::px4;
-    const MULTI_ROTOR: [u32; 18] = [px4(1, 0), px4(7, 0), px4(5, 0), px4(8, 0), px4(2, 0), px4(6, 0), px4(9, 0), px4(3, 0), px4(4, 3), px4(4, 4), px4(4, 5), px4(4, 8), px4(4, 6), px4(4, 9), px4(4, 1), px4(4, 2), px4(3, 2), px4(10, 0)];
+    const MULTI_ROTOR: [u32; 18] = [
+        px4(1, 0),
+        px4(7, 0),
+        px4(5, 0),
+        px4(8, 0),
+        px4(2, 0),
+        px4(6, 0),
+        px4(9, 0),
+        px4(3, 0),
+        px4(4, 3),
+        px4(4, 4),
+        px4(4, 5),
+        px4(4, 8),
+        px4(4, 6),
+        px4(4, 9),
+        px4(4, 1),
+        px4(4, 2),
+        px4(3, 2),
+        px4(10, 0),
+    ];
     const NOT_MULTI_ROTOR: [u32; 4] = [px4(3, 1), px4(11, 0), px4(4, 10), px4(4, 19)];
     const NOT_FIXED_WING: [u32; 5] = [px4(9, 0), px4(3, 1), px4(4, 8), px4(4, 9), px4(3, 2)];
-    const FIXED_WING: [u32; 17] = [px4(6, 0), px4(1, 0), px4(7, 0), px4(5, 0), px4(8, 0), px4(2, 0), px4(3, 0), px4(4, 3), px4(4, 4), px4(4, 5), px4(4, 6), px4(4, 1), px4(4, 2), px4(11, 0), px4(10, 0), px4(4, 10), px4(4, 19)];
-    let fixed_wing = if FIXED_WING.contains(&custom_mode) { true } else if NOT_FIXED_WING.contains(&custom_mode) { false } else { given.0 };
-    let multi_rotor = if MULTI_ROTOR.contains(&custom_mode) { true } else if NOT_MULTI_ROTOR.contains(&custom_mode) { false } else { given.1 };
+    const FIXED_WING: [u32; 17] = [
+        px4(6, 0),
+        px4(1, 0),
+        px4(7, 0),
+        px4(5, 0),
+        px4(8, 0),
+        px4(2, 0),
+        px4(3, 0),
+        px4(4, 3),
+        px4(4, 4),
+        px4(4, 5),
+        px4(4, 6),
+        px4(4, 1),
+        px4(4, 2),
+        px4(11, 0),
+        px4(10, 0),
+        px4(4, 10),
+        px4(4, 19),
+    ];
+    let fixed_wing = if FIXED_WING.contains(&custom_mode) {
+        true
+    } else if NOT_FIXED_WING.contains(&custom_mode) {
+        false
+    } else {
+        given.0
+    };
+    let multi_rotor = if MULTI_ROTOR.contains(&custom_mode) {
+        true
+    } else if NOT_MULTI_ROTOR.contains(&custom_mode) {
+        false
+    } else {
+        given.1
+    };
     (fixed_wing, multi_rotor)
 }
 
-fn px4_offered(listed: &[(String, u32, bool, bool, (bool, bool))], class: crate::modes::VehicleClass) -> Vec<String> {
+fn px4_offered(
+    listed: &[(String, u32, bool, bool, (bool, bool))],
+    class: crate::modes::VehicleClass,
+) -> Vec<String> {
     use crate::modes::VehicleClass::{FixedWing, MultiRotor};
     listed
         .iter()
         .filter(|(_, custom, can_be_set, _, given)| {
             let (fixed_wing, multi_rotor) = px4_mode_airframes(*custom, *given);
-            *can_be_set && ((class == FixedWing && fixed_wing) || (class == MultiRotor && multi_rotor) || !matches!(class, FixedWing | MultiRotor))
+            *can_be_set
+                && ((class == FixedWing && fixed_wing)
+                    || (class == MultiRotor && multi_rotor)
+                    || !matches!(class, FixedWing | MultiRotor))
         })
         .map(|m| m.0.clone())
         .collect()
 }
 
-fn mode_fields(autopilot: u8, vehicle_type: u8, available: &[crate::standardmodes::FlightMode], missing: &[u32]) -> serde_json::Map<String, Value> {
+fn mode_fields(
+    autopilot: u8,
+    vehicle_type: u8,
+    available: &[crate::standardmodes::FlightMode],
+    missing: &[u32],
+) -> serde_json::Map<String, Value> {
     use crate::modes::{AUTOPILOT_ARDUPILOT, AUTOPILOT_PX4, VehicleClass, px4};
     let flagged: Vec<(String, u32, bool, bool, (bool, bool))> = if available.is_empty() {
-        crate::modes::table(autopilot, vehicle_type).iter().map(|m| (m.name.to_string(), m.custom_mode, m.can_be_set, m.advanced, (false, true))).collect()
+        crate::modes::table(autopilot, vehicle_type)
+            .iter()
+            .map(|m| {
+                (
+                    m.name.to_string(),
+                    m.custom_mode,
+                    m.can_be_set,
+                    m.advanced,
+                    (false, true),
+                )
+            })
+            .collect()
     } else {
-        available.iter().map(|m| (m.name.clone(), m.custom_mode, m.can_be_set, m.advanced, (m.fixed_wing, m.multi_rotor))).collect()
+        available
+            .iter()
+            .map(|m| {
+                (
+                    m.name.clone(),
+                    m.custom_mode,
+                    m.can_be_set,
+                    m.advanced,
+                    (m.fixed_wing, m.multi_rotor),
+                )
+            })
+            .collect()
     };
-    let listed: Vec<(String, u32, bool, bool)> = flagged.iter().map(|m| (m.0.clone(), m.1, m.2 && !missing.contains(&m.1), m.3)).collect();
-    let named = |custom: Option<u32>, fallback: &str| custom.and_then(|c| listed.iter().find(|m| m.1 == c)).map_or_else(|| fallback.to_string(), |m| m.0.clone());
-    let names = |advanced_only: bool| listed.iter().filter(|m| m.2 && (!advanced_only || m.3)).map(|m| m.0.clone()).collect::<Vec<_>>();
-    let apm = |guided: u32, rtl: Option<u32>, smart: Option<u32>, mission: Option<u32>, land: (Option<u32>, &str), pause: (Option<u32>, &str), follow: (Option<u32>, &str), stabilized: (u32, &str)| {
+    let listed: Vec<(String, u32, bool, bool)> = flagged
+        .iter()
+        .map(|m| (m.0.clone(), m.1, m.2 && !missing.contains(&m.1), m.3))
+        .collect();
+    let named = |custom: Option<u32>, fallback: &str| {
+        custom
+            .and_then(|c| listed.iter().find(|m| m.1 == c))
+            .map_or_else(|| fallback.to_string(), |m| m.0.clone())
+    };
+    let names = |advanced_only: bool| {
+        listed
+            .iter()
+            .filter(|m| m.2 && (!advanced_only || m.3))
+            .map(|m| m.0.clone())
+            .collect::<Vec<_>>()
+    };
+    let apm = |guided: u32,
+               rtl: Option<u32>,
+               smart: Option<u32>,
+               mission: Option<u32>,
+               land: (Option<u32>, &str),
+               pause: (Option<u32>, &str),
+               follow: (Option<u32>, &str),
+               stabilized: (u32, &str)| {
         json!({
             "flightModes": names(false),
             "advancedFlightModes": names(true),
@@ -339,10 +548,46 @@ fn mode_fields(autopilot: u8, vehicle_type: u8, available: &[crate::standardmode
         })
     };
     let fields = match (autopilot, crate::modes::vehicle_class(vehicle_type)) {
-        (AUTOPILOT_ARDUPILOT, VehicleClass::MultiRotor) => apm(4, Some(6), Some(21), Some(3), (Some(9), "Land"), (Some(17), "Brake"), (Some(23), "Follow"), (0, "Stabilize")),
-        (AUTOPILOT_ARDUPILOT, VehicleClass::FixedWing) => apm(15, Some(11), Some(11), Some(10), (None, ""), (Some(12), "Loiter"), (None, ""), (2, "Stabilize")),
-        (AUTOPILOT_ARDUPILOT, VehicleClass::Rover) => apm(15, Some(11), Some(12), Some(10), (None, ""), (Some(4), "Hold"), (Some(6), "Follow"), (0, "Manual")),
-        (AUTOPILOT_ARDUPILOT, VehicleClass::Sub) => apm(4, None, None, Some(3), (None, ""), (None, ""), (None, ""), (0, "Stabilize")),
+        (AUTOPILOT_ARDUPILOT, VehicleClass::MultiRotor) => apm(
+            4,
+            Some(6),
+            Some(21),
+            Some(3),
+            (Some(9), "Land"),
+            (Some(17), "Brake"),
+            (Some(23), "Follow"),
+            (0, "Stabilize"),
+        ),
+        (AUTOPILOT_ARDUPILOT, VehicleClass::FixedWing) => apm(
+            15,
+            Some(11),
+            Some(11),
+            Some(10),
+            (None, ""),
+            (Some(12), "Loiter"),
+            (None, ""),
+            (2, "Stabilize"),
+        ),
+        (AUTOPILOT_ARDUPILOT, VehicleClass::Rover) => apm(
+            15,
+            Some(11),
+            Some(12),
+            Some(10),
+            (None, ""),
+            (Some(4), "Hold"),
+            (Some(6), "Follow"),
+            (0, "Manual"),
+        ),
+        (AUTOPILOT_ARDUPILOT, VehicleClass::Sub) => apm(
+            4,
+            None,
+            None,
+            Some(3),
+            (None, ""),
+            (None, ""),
+            (None, ""),
+            (0, "Stabilize"),
+        ),
         (AUTOPILOT_PX4, _) => json!({
             "flightModes": px4_offered(&flagged, if crate::modes::is_vtol(vehicle_type) { VehicleClass::Other } else { crate::modes::vehicle_class(vehicle_type) }),
             "advancedFlightModes": names(true),
@@ -385,14 +630,23 @@ pub fn one_pass<T>(render: impl FnOnce() -> T) -> T {
 }
 
 pub fn pass_number() -> Option<u64> {
-    PASS.with(|pass| pass.borrow().is_some()).then(|| PASSES.with(std::cell::Cell::get))
+    PASS.with(|pass| pass.borrow().is_some())
+        .then(|| PASSES.with(std::cell::Cell::get))
 }
 
 fn known(v: &crate::hub::Vehicle) -> Rc<Known> {
-    let remembered = PASS.with(|pass| pass.borrow().as_ref().and_then(|seen| seen.get(&v.id).cloned()));
+    let remembered = PASS.with(|pass| {
+        pass.borrow()
+            .as_ref()
+            .and_then(|seen| seen.get(&v.id).cloned())
+    });
     remembered.unwrap_or_else(|| {
         let fresh = Rc::new(known_of(v));
-        PASS.with(|pass| pass.borrow_mut().as_mut().map(|seen| seen.insert(v.id, fresh.clone())));
+        PASS.with(|pass| {
+            pass.borrow_mut()
+                .as_mut()
+                .map(|seen| seen.insert(v.id, fresh.clone()))
+        });
         fresh
     })
 }
@@ -402,7 +656,9 @@ fn carried() -> Option<Rc<Known>> {
 }
 
 pub fn battery_inputs() -> (Option<u8>, Vec<(u8, crate::batteryfacts::BatteryFacts)>) {
-    carried().map_or((None, Vec::new()), |known| (Some(known.id), known.batteries.clone()))
+    carried().map_or((None, Vec::new()), |known| {
+        (Some(known.id), known.batteries.clone())
+    })
 }
 
 fn fleet_member(path: &str) -> Option<(usize, &str)> {
@@ -420,7 +676,9 @@ fn arming_checks() -> Option<Value> {
         json!({ "kind": "object", "class": "QmlObjectListModel", "count": elements.len(), "elements": elements })
     };
     Some(match &vehicle.events.report {
-        None => json!({ "supported": false, "canArm": true, "canTakeoff": true, "canStartMission": true, "hasWarningsOrErrors": false, "gpsState": "", "problemsForCurrentMode": problems(&[]) }),
+        None => {
+            json!({ "supported": false, "canArm": true, "canTakeoff": true, "canStartMission": true, "hasWarningsOrErrors": false, "gpsState": "", "problemsForCurrentMode": problems(&[]) })
+        }
         Some(report) => json!({
             "supported": true,
             "canArm": report.can_arm,
@@ -444,12 +702,23 @@ fn links_field(name: &str) -> Option<Value> {
 }
 
 fn video_camera_name(index: i64) -> String {
-    let name = usize::try_from(index).ok().and_then(|at| crate::cameras::stored()?.into_iter().nth(at)).map(|camera| camera.name).unwrap_or_default();
-    if name.is_empty() { format!("Camera {}", index + 1) } else { name }
+    let name = usize::try_from(index)
+        .ok()
+        .and_then(|at| crate::cameras::stored()?.into_iter().nth(at))
+        .map(|camera| camera.name)
+        .unwrap_or_default();
+    if name.is_empty() {
+        format!("Camera {}", index + 1)
+    } else {
+        name
+    }
 }
 
 fn sensors_request(path: &str, args: &str) -> Option<Value> {
-    let simple = serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0)?.as_bool()).unwrap_or(false);
+    let simple = serde_json::from_str::<Value>(args)
+        .ok()
+        .and_then(|a| a.get(0)?.as_bool())
+        .unwrap_or(false);
     let start = |kind: &str| Some(json!({ "action": "start", "type": kind }));
     match path.strip_prefix("sensorsCal.")? {
         "calibrateAccel" if simple => start("accelSimple"),
@@ -462,7 +731,9 @@ fn sensors_request(path: &str, args: &str) -> Option<Value> {
         "calibrateAirspeed" => start("airspeed"),
         "calibrateCompassNorth" => {
             let given = serde_json::from_str::<Vec<Value>>(args).unwrap_or_default();
-            Some(json!({ "action": "start", "type": "compassNorth", "latitude": given.first(), "longitude": given.get(1), "mask": given.get(2) }))
+            Some(
+                json!({ "action": "start", "type": "compassNorth", "latitude": given.first(), "longitude": given.get(1), "mask": given.get(2) }),
+            )
         }
         "nextClicked" => Some(json!({ "action": "next" })),
         "cancelCalibration" => Some(json!({ "action": "cancel" })),
@@ -490,12 +761,22 @@ fn inspector_get(path: &str) -> Option<Value> {
 
 fn only_fields(answer: Value, wanted: &[&str]) -> Value {
     let keep = |object: &Value| -> Value {
-        let mut kept: serde_json::Map<String, Value> = object.as_object().map(|o| o.iter().filter(|(k, _)| wanted.contains(&k.as_str())).map(|(k, v)| (k.clone(), v.clone())).collect()).unwrap_or_default();
+        let mut kept: serde_json::Map<String, Value> = object
+            .as_object()
+            .map(|o| {
+                o.iter()
+                    .filter(|(k, _)| wanted.contains(&k.as_str()))
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect()
+            })
+            .unwrap_or_default();
         kept.insert("kind".to_string(), json!("object"));
         Value::Object(kept)
     };
     match answer.get("elements").and_then(Value::as_array) {
-        Some(elements) => json!({ "kind": "object", "count": elements.len(), "elements": elements.iter().map(keep).collect::<Vec<_>>() }),
+        Some(elements) => {
+            json!({ "kind": "object", "count": elements.len(), "elements": elements.iter().map(keep).collect::<Vec<_>>() })
+        }
         None if answer["kind"] == "object" => keep(&answer),
         None => answer,
     }
@@ -503,7 +784,9 @@ fn only_fields(answer: Value, wanted: &[&str]) -> Value {
 
 fn shell_lines() -> Option<Vec<String>> {
     switched_on().then_some(())?;
-    let lines = crate::hub::lock().active().map(|vehicle| vehicle.shell.lines());
+    let lines = crate::hub::lock()
+        .active()
+        .map(|vehicle| vehicle.shell.lines());
     lines.or_else(|| without_any_vehicle().then(Vec::new))
 }
 
@@ -516,12 +799,22 @@ fn selected_member(path: &str) -> Option<(usize, &str)> {
 fn resolved(path: &str) -> Option<(String, Rc<Known>)> {
     switched_on().then_some(())?;
     if let Some((index, tail)) = selected_member(path) {
-        let field = if tail.is_empty() { "vehicle".to_string() } else { format!("vehicle.{tail}") };
-        return crate::hub::lock().selected_member(index).map(|v| (field, known(v)));
+        let field = if tail.is_empty() {
+            "vehicle".to_string()
+        } else {
+            format!("vehicle.{tail}")
+        };
+        return crate::hub::lock()
+            .selected_member(index)
+            .map(|v| (field, known(v)));
     }
     match fleet_member(path) {
-        Some((index, "")) => crate::hub::lock().listed(index).map(|v| ("vehicle".to_string(), known(v))),
-        Some((index, tail)) => crate::hub::lock().listed(index).map(|v| (format!("vehicle.{tail}"), known(v))),
+        Some((index, "")) => crate::hub::lock()
+            .listed(index)
+            .map(|v| ("vehicle".to_string(), known(v))),
+        Some((index, tail)) => crate::hub::lock()
+            .listed(index)
+            .map(|v| (format!("vehicle.{tail}"), known(v))),
         None => carried().map(|known| (path.to_string(), known)),
     }
 }
@@ -529,8 +822,16 @@ fn resolved(path: &str) -> Option<(String, Rc<Known>)> {
 fn circular_fence(autopilot: u8, parameter: impl Fn(&str) -> Option<f64>) -> f64 {
     match autopilot {
         crate::modes::AUTOPILOT_PX4 => parameter("GF_MAX_HOR_DIST").unwrap_or(0.0),
-        crate::modes::AUTOPILOT_ARDUPILOT => match (parameter("FENCE_RADIUS"), parameter("FENCE_ENABLE"), parameter("FENCE_TYPE")) {
-            (Some(radius), Some(enabled), Some(kind)) if enabled != 0.0 && (kind as u32) & 2 != 0 => radius,
+        crate::modes::AUTOPILOT_ARDUPILOT => match (
+            parameter("FENCE_RADIUS"),
+            parameter("FENCE_ENABLE"),
+            parameter("FENCE_TYPE"),
+        ) {
+            (Some(radius), Some(enabled), Some(kind))
+                if enabled != 0.0 && (kind as u32) & 2 != 0 =>
+            {
+                radius
+            }
             _ => 0.0,
         },
         _ => 0.0,
@@ -545,8 +846,14 @@ fn gcs_relation(vehicle: Option<(f64, f64, f64)>) -> (Option<f64>, Option<f64>) 
     let gcs = crate::gcsposition::lock().coordinate();
     match (vehicle, gcs) {
         (Some((latitude, longitude, _)), (Some(gcs_latitude), Some(gcs_longitude), _)) => (
-            Some(crate::terrain::qt_distance((latitude, longitude), (gcs_latitude, gcs_longitude))),
-            Some(qt_azimuth((gcs_latitude, gcs_longitude), (latitude, longitude))),
+            Some(crate::terrain::qt_distance(
+                (latitude, longitude),
+                (gcs_latitude, gcs_longitude),
+            )),
+            Some(qt_azimuth(
+                (gcs_latitude, gcs_longitude),
+                (latitude, longitude),
+            )),
         ),
         _ => (None, None),
     }
@@ -578,20 +885,48 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         ("xTrackError", json!(v.facts.x_track_error)),
         ("airSpeedSetpoint", json!(v.facts.air_speed_setpoint)),
         ("altitudeTuning", json!(v.facts.altitude_tuning)),
-        ("altitudeTuningSetpoint", json!(v.facts.altitude_tuning_setpoint)),
+        (
+            "altitudeTuningSetpoint",
+            json!(v.facts.altitude_tuning_setpoint),
+        ),
         ("rangeFinderDist", json!(v.facts.range_finder_dist)),
-        ("timeToHome", json!(crate::vehiclefacts::time_to_home(Some(home.0), v.facts.ground_speed).filter(|t| t.is_finite()))),
+        (
+            "timeToHome",
+            json!(
+                crate::vehiclefacts::time_to_home(Some(home.0), v.facts.ground_speed)
+                    .filter(|t| t.is_finite())
+            ),
+        ),
         ("imuTemp", json!(v.facts.imu_temp)),
-        ("missionItemIndex", json!(mission_item_index(v.mission_current, !v.sends_home()))),
+        (
+            "missionItemIndex",
+            json!(mission_item_index(v.mission_current, !v.sends_home())),
+        ),
         ("distanceToGCS", json!(gcs.0)),
         ("headingFromGCS", json!(gcs.1)),
-        ("flightDistance", json!(crate::track::flight_distance(i64::from(v.id)).unwrap_or(0.0))),
-        ("headingToNextWP", json!(heading_to_next_wp(v.facts.coordinate, v.mission_items(), v.mission_current))),
+        (
+            "flightDistance",
+            json!(crate::track::flight_distance(i64::from(v.id)).unwrap_or(0.0)),
+        ),
+        (
+            "headingToNextWP",
+            json!(heading_to_next_wp(
+                v.facts.coordinate,
+                v.mission_items(),
+                v.mission_current
+            )),
+        ),
         ("distanceToHome", json!(home.0)),
         ("headingToHome", json!(home.1)),
         ("headingFromHome", json!(home.2)),
         ("flightTime", json!(v.flight_time(crate::hub::now_ms()))),
-        ("hobbs", json!(hobbs_meter(v.autopilot == crate::modes::AUTOPILOT_PX4, |name| v.parameter(v.component, name).map(|p| p.as_f64())))),
+        (
+            "hobbs",
+            json!(hobbs_meter(
+                v.autopilot == crate::modes::AUTOPILOT_PX4,
+                |name| v.parameter(v.component, name).map(|p| p.as_f64())
+            )),
+        ),
     ];
     let fields = json!({
         "messagesReceived": v.messages,
@@ -658,9 +993,19 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         "vehicleTypeString": mav_type_text(v.vehicle_type),
         "airship": v.vehicle_type == 7,
     });
-    let motors = motor_count(v.vehicle_type, sub_frame(v.parameter(v.component, "FRAME_CONFIG").map(|p| p.as_f64()), v.parameters_ready())).map(|count| ("motorCount".to_string(), json!(count)));
+    let motors = motor_count(
+        v.vehicle_type,
+        sub_frame(
+            v.parameter(v.component, "FRAME_CONFIG").map(|p| p.as_f64()),
+            v.parameters_ready(),
+        ),
+    )
+    .map(|count| ("motorCount".to_string(), json!(count)));
     let object = |value: Value| value.as_object().cloned().unwrap_or_default();
-    let prearm = Some(("prearmError".to_string(), json!(v.prearm_error(crate::hub::now_ms()))));
+    let prearm = Some((
+        "prearmError".to_string(),
+        json!(v.prearm_error(crate::hub::now_ms())),
+    ));
     let fields = Value::Object(
         object(fields)
             .into_iter()
@@ -669,15 +1014,100 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
             .chain(object(described))
             .chain(object(firmware_fields(v.autopilot, v.firmware())))
             .chain(motors)
-            .chain(mode_fields(v.autopilot, v.vehicle_type, &v.flight_modes, &v.missing_modes))
-            .chain([("sensorsPresentBits".to_string(), json!(v.status_bits.present))])
+            .chain(mode_fields(
+                v.autopilot,
+                v.vehicle_type,
+                &v.flight_modes,
+                &v.missing_modes,
+            ))
+            .chain([(
+                "sensorsPresentBits".to_string(),
+                json!(v.status_bits.present),
+            )])
             .collect(),
     );
-    Known { id: v.id, parameters_ready: v.parameters_ready(), pending_writes: v.pending_parameter_writes(), parameters_unanswered: v.parameters_unanswered(), parameters_missing: v.parameters_missing(), parameter_download_skipped: v.parameter_download_skipped, lost: v.connection_lost, home: v.home, roi: v.roi_coord, remote: v.remote_snapshot(), coordinate: v.facts.coordinate, batteries: v.batteries.by_id.iter().map(|(id, b)| (*id, b.clone())).collect(), gps: v.gps.clone(), gps2: v.gps2.clone(), integrity_stale: crate::vehiclefact::integrity_stale(v.integrity_heard_ms, crate::hub::now_ms()), vibration: v.vibration.clone(), estimator: v.estimator.clone(), distance: v.distance.clone(), capabilities: v.capabilities_known.then_some(v.capabilities), radio: v.radio.clone(), aircast: v.aircast.clone(), obstacle: v.obstacle.clone(), avoidance_enabled: v.parameter(v.component, "CP_DIST").is_some_and(|p| p.as_f64() >= 0.0), temperature: v.temperature.clone(), local: v.local.clone(), local_setpoint: v.local_setpoint.clone(), wind: v.wind.clone(), setpoint: v.setpoint.clone(), orbit: v.orbit_circle, hygrometer: v.hygrometer.clone(), gimbals: v.gimbals.fact_groups(), generator: v.generator.clone(), efi: v.efi.clone(), rpm: v.rpm.clone(), sub_info: v.sub_info.clone(), terrain_blocks: v.terrain_blocks, escs: v.escs.clone(), trigger_points: (v.trigger_points.clone(), v.trigger_points_appended), mission_indices: (v.current_mission_index(), v.resume_mission_index(), v.fly_items()), links: (v.link_states.iter().map(|(link, _, lost)| (*link, *lost)).collect(), v.primary_link), cameras: (v.cameras.models(), v.cameras.selected_index().unwrap_or(0)), sensors, supports: supports(v.autopilot, v.vehicle_type), fields, facts, sub: v.is_ardusub(), formatted: RefCell::default(), autotune: v.autotune.clone(), plan_contents: plan_contents(v.plan_items(crate::plantransfer::PLAN_FENCE), v.plan_items(crate::plantransfer::PLAN_RALLY)) }
+    Known {
+        id: v.id,
+        parameters_ready: v.parameters_ready(),
+        pending_writes: v.pending_parameter_writes(),
+        parameters_unanswered: v.parameters_unanswered(),
+        parameters_missing: v.parameters_missing(),
+        parameter_download_skipped: v.parameter_download_skipped,
+        lost: v.connection_lost,
+        home: v.home,
+        roi: v.roi_coord,
+        remote: v.remote_snapshot(),
+        coordinate: v.facts.coordinate,
+        batteries: v
+            .batteries
+            .by_id
+            .iter()
+            .map(|(id, b)| (*id, b.clone()))
+            .collect(),
+        gps: v.gps.clone(),
+        gps2: v.gps2.clone(),
+        integrity_stale: crate::vehiclefact::integrity_stale(
+            v.integrity_heard_ms,
+            crate::hub::now_ms(),
+        ),
+        vibration: v.vibration.clone(),
+        estimator: v.estimator.clone(),
+        distance: v.distance.clone(),
+        capabilities: v.capabilities_known.then_some(v.capabilities),
+        radio: v.radio.clone(),
+        aircast: v.aircast.clone(),
+        obstacle: v.obstacle.clone(),
+        avoidance_enabled: v
+            .parameter(v.component, "CP_DIST")
+            .is_some_and(|p| p.as_f64() >= 0.0),
+        temperature: v.temperature.clone(),
+        local: v.local.clone(),
+        local_setpoint: v.local_setpoint.clone(),
+        wind: v.wind.clone(),
+        setpoint: v.setpoint.clone(),
+        orbit: v.orbit_circle,
+        hygrometer: v.hygrometer.clone(),
+        gimbals: v.gimbals.fact_groups(),
+        generator: v.generator.clone(),
+        efi: v.efi.clone(),
+        rpm: v.rpm.clone(),
+        sub_info: v.sub_info.clone(),
+        terrain_blocks: v.terrain_blocks,
+        escs: v.escs.clone(),
+        trigger_points: (v.trigger_points.clone(), v.trigger_points_appended),
+        mission_indices: (
+            v.current_mission_index(),
+            v.resume_mission_index(),
+            v.fly_items(),
+        ),
+        links: (
+            v.link_states
+                .iter()
+                .map(|(link, _, lost)| (*link, *lost))
+                .collect(),
+            v.primary_link,
+        ),
+        cameras: (v.cameras.models(), v.cameras.selected_index().unwrap_or(0)),
+        sensors,
+        supports: supports(v.autopilot, v.vehicle_type),
+        fields,
+        facts,
+        sub: v.is_ardusub(),
+        formatted: RefCell::default(),
+        autotune: v.autotune.clone(),
+        plan_contents: plan_contents(
+            v.plan_items(crate::plantransfer::PLAN_FENCE),
+            v.plan_items(crate::plantransfer::PLAN_RALLY),
+        ),
+    }
 }
 
 fn fields_of(fields: &str) -> Vec<&str> {
-    fields.split(',').map(str::trim).filter(|f| !f.is_empty()).collect()
+    fields
+        .split(',')
+        .map(str::trim)
+        .filter(|f| !f.is_empty())
+        .collect()
 }
 
 const SIMULATED_CAMERA: &str = "Simulated Camera";
@@ -688,7 +1118,10 @@ fn onboard_logs<T>(read: impl FnOnce(&crate::onboardlogs::OnboardLogs) -> T) -> 
     switched_on().then_some(())?;
     let idle = without_any_vehicle().then(crate::onboardlogs::OnboardLogs::default);
     let hub = crate::hub::lock();
-    hub.active().map(|v| &v.onboard_logs).or(idle.as_ref()).map(read)
+    hub.active()
+        .map(|v| &v.onboard_logs)
+        .or(idle.as_ref())
+        .map(read)
 }
 
 fn onboard_log_get(path: &str) -> Option<Value> {
@@ -708,11 +1141,31 @@ const RC_TYPE_SPEKTRUM: f64 = 0.0;
 const RC_TYPE_CRSF: f64 = 1.0;
 
 fn vehicle_command(path: &str, args: &str) -> Option<(u16, [f64; 7])> {
-    let mode = serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0).and_then(Value::as_f64)).unwrap_or(0.0);
+    let mode = serde_json::from_str::<Value>(args)
+        .ok()
+        .and_then(|a| a.get(0).and_then(Value::as_f64))
+        .unwrap_or(0.0);
     match path {
-        "radioCal.spektrumBindMode" => Some((crate::mavcmd::CMD_START_RX_PAIR, [RC_TYPE_SPEKTRUM, mode, 0.0, 0.0, 0.0, 0.0, 0.0])),
-        "radioCal.crsfBindMode" => Some((crate::mavcmd::CMD_START_RX_PAIR, [RC_TYPE_CRSF, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0])),
-        "vehicle.flashBootloader" => Some((crate::mavcmd::CMD_FLASH_BOOTLOADER, [0.0, 0.0, 0.0, 0.0, crate::mavcmd::FLASH_BOOTLOADER_MAGIC, 0.0, 0.0])),
+        "radioCal.spektrumBindMode" => Some((
+            crate::mavcmd::CMD_START_RX_PAIR,
+            [RC_TYPE_SPEKTRUM, mode, 0.0, 0.0, 0.0, 0.0, 0.0],
+        )),
+        "radioCal.crsfBindMode" => Some((
+            crate::mavcmd::CMD_START_RX_PAIR,
+            [RC_TYPE_CRSF, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        )),
+        "vehicle.flashBootloader" => Some((
+            crate::mavcmd::CMD_FLASH_BOOTLOADER,
+            [
+                0.0,
+                0.0,
+                0.0,
+                0.0,
+                crate::mavcmd::FLASH_BOOTLOADER_MAGIC,
+                0.0,
+                0.0,
+            ],
+        )),
         _ => None,
     }
 }
@@ -721,10 +1174,13 @@ fn current_camera_mode() -> Option<u8> {
     crate::hub::lock().active()?.cameras.selected()?.mode_now()
 }
 
-const TIMELAPSE_NEEDS_STILLS: &str = "Timelapse photo capture is not supported on cameras without still capture capability";
+const TIMELAPSE_NEEDS_STILLS: &str =
+    "Timelapse photo capture is not supported on cameras without still capture capability";
 
 fn grabs_locally(flags: u32, mode: Option<u8>) -> bool {
-    flags & crate::cameraproto::CAP_CAPTURE_IMAGE == 0 || (mode == Some(crate::cameraproto::MODE_VIDEO) && flags & crate::cameraproto::CAP_IMAGE_IN_VIDEO_MODE == 0)
+    flags & crate::cameraproto::CAP_CAPTURE_IMAGE == 0
+        || (mode == Some(crate::cameraproto::MODE_VIDEO)
+            && flags & crate::cameraproto::CAP_IMAGE_IN_VIDEO_MODE == 0)
 }
 
 #[derive(Debug, PartialEq)]
@@ -733,7 +1189,11 @@ enum LocalRecording {
     Stop,
 }
 
-fn local_recording_op(name: &str, camera_captures_video: bool, recording: bool) -> Option<LocalRecording> {
+fn local_recording_op(
+    name: &str,
+    camera_captures_video: bool,
+    recording: bool,
+) -> Option<LocalRecording> {
     (!camera_captures_video).then_some(())?;
     match (name, recording) {
         ("startVideoRecording", _) | ("toggleVideoRecording", false) => Some(LocalRecording::Start),
@@ -744,9 +1204,12 @@ fn local_recording_op(name: &str, camera_captures_video: bool, recording: bool) 
 
 fn real_camera_op(name: &str, args: &str) -> Option<Value> {
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
-    let timelapse = stored_number("PhotoCaptureMode").is_some_and(|mode| mode as i64 != crate::simcamera::PHOTO_CAPTURE_SINGLE);
+    let timelapse = stored_number("PhotoCaptureMode")
+        .is_some_and(|mode| mode as i64 != crate::simcamera::PHOTO_CAPTURE_SINGLE);
     Some(match name {
-        "takePhoto" if timelapse => json!({ "op": "takePhoto", "interval": stored_number("PhotoLapse").unwrap_or(1.0), "count": stored_number("PhotoLapseCount").unwrap_or(0.0) as u64 }),
+        "takePhoto" if timelapse => {
+            json!({ "op": "takePhoto", "interval": stored_number("PhotoLapse").unwrap_or(1.0), "count": stored_number("PhotoLapseCount").unwrap_or(0.0) as u64 })
+        }
         "takePhoto" => json!({ "op": "takePhoto", "count": 1 }),
         "stopTakePhoto" => json!({ "op": "stopTakePhoto" }),
         "startVideoRecording" => json!({ "op": "startRecording" }),
@@ -755,15 +1218,25 @@ fn real_camera_op(name: &str, args: &str) -> Option<Value> {
         "setCameraModePhoto" => json!({ "op": "setMode", "mode": crate::cameraproto::MODE_PHOTO }),
         "setCameraModeVideo" => json!({ "op": "setMode", "mode": crate::cameraproto::MODE_VIDEO }),
         "toggleCameraMode" => match current_camera_mode() {
-            Some(crate::cameraproto::MODE_VIDEO) => json!({ "op": "setMode", "mode": crate::cameraproto::MODE_PHOTO }),
+            Some(crate::cameraproto::MODE_VIDEO) => {
+                json!({ "op": "setMode", "mode": crate::cameraproto::MODE_PHOTO })
+            }
             Some(_) => json!({ "op": "setMode", "mode": crate::cameraproto::MODE_VIDEO }),
             None => json!({ "op": "toggleMode" }),
         },
         "resetSettings" => json!({ "op": "reset" }),
-        "stepZoom" => json!({ "op": "step", "axis": "zoom", "direction": given.get(0).and_then(Value::as_i64).unwrap_or(0) }),
-        "formatCard" => json!({ "op": "format", "storage": given.get(0).and_then(Value::as_u64).unwrap_or(1) }),
-        "startTrackingRect" => json!({ "op": "trackRect", "rect": given.get(0).cloned().unwrap_or(Value::Null) }),
-        "startTrackingPoint" => json!({ "op": "trackPoint", "point": given.get(0).cloned().unwrap_or(Value::Null), "radius": given.get(1).cloned().unwrap_or(Value::Null) }),
+        "stepZoom" => {
+            json!({ "op": "step", "axis": "zoom", "direction": given.get(0).and_then(Value::as_i64).unwrap_or(0) })
+        }
+        "formatCard" => {
+            json!({ "op": "format", "storage": given.get(0).and_then(Value::as_u64).unwrap_or(1) })
+        }
+        "startTrackingRect" => {
+            json!({ "op": "trackRect", "rect": given.get(0).cloned().unwrap_or(Value::Null) })
+        }
+        "startTrackingPoint" => {
+            json!({ "op": "trackPoint", "point": given.get(0).cloned().unwrap_or(Value::Null), "radius": given.get(1).cloned().unwrap_or(Value::Null) })
+        }
         "stopTracking" => json!({ "op": "stopTracking" }),
         _ => return None,
     })
@@ -774,10 +1247,18 @@ fn write_mode_parameter(action: &Value) -> Option<String> {
     let differs = {
         let hub = crate::hub::lock();
         let camera = hub.active()?.cameras.selected()?;
-        camera.mode_is_parameter() && camera.gate(crate::cameraproto::Action::SetMode).is_none() && camera.mode_now().map(u64::from) != Some(wanted)
+        camera.mode_is_parameter()
+            && camera.gate(crate::cameraproto::Action::SetMode).is_none()
+            && camera.mode_now().map(u64::from) != Some(wanted)
     };
-    let written = differs.then(|| crate::camsettings::set_setting(&json!(["CAM_MODE", wanted]).to_string()))?;
-    (written["ok"] != true).then(|| written["reason"].as_str().unwrap_or("The camera mode could not be set.").to_string())
+    let written = differs
+        .then(|| crate::camsettings::set_setting(&json!(["CAM_MODE", wanted]).to_string()))?;
+    (written["ok"] != true).then(|| {
+        written["reason"]
+            .as_str()
+            .unwrap_or("The camera mode could not be set.")
+            .to_string()
+    })
 }
 
 fn simulated_camera() -> Option<(u8, crate::simcamera::Inputs)> {
@@ -787,13 +1268,27 @@ fn simulated_camera() -> Option<(u8, crate::simcamera::Inputs)> {
         let active = hub.active()?;
         active.cameras.selected().is_none().then_some(active.id)?
     };
-    let photos = crate::settingsstore::raw_setting("settings.flyViewSettings.showSimpleCameraControl").and_then(|v| v.as_bool()).unwrap_or(false);
-    Some((vehicle, crate::simcamera::Inputs { captures_video: crate::videohost::has_video(), captures_photos: photos, recording: crate::videohost::recording() }))
+    let photos =
+        crate::settingsstore::raw_setting("settings.flyViewSettings.showSimpleCameraControl")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+    Some((
+        vehicle,
+        crate::simcamera::Inputs {
+            captures_video: crate::videohost::has_video(),
+            captures_photos: photos,
+            recording: crate::videohost::recording(),
+        },
+    ))
 }
 
 fn simulated_camera_fields() -> Option<serde_json::Map<String, Value>> {
     let (vehicle, inputs) = simulated_camera()?;
-    Some(crate::simcamera::fields(vehicle, inputs, crate::hub::now_ms()))
+    Some(crate::simcamera::fields(
+        vehicle,
+        inputs,
+        crate::hub::now_ms(),
+    ))
 }
 
 fn current_camera_fields(recording: impl Fn() -> bool) -> Option<serde_json::Map<String, Value>> {
@@ -802,7 +1297,13 @@ fn current_camera_fields(recording: impl Fn() -> bool) -> Option<serde_json::Map
     let hub = crate::hub::lock();
     let vehicle = hub.active()?;
     let camera = vehicle.cameras.selected()?;
-    Some(camera_instance(camera, recording, vehicle.camera_tracking_enabled, vehicle.camera_tracking_image.as_ref(), crate::hub::now_ms()))
+    Some(camera_instance(
+        camera,
+        recording,
+        vehicle.camera_tracking_enabled,
+        vehicle.camera_tracking_image.as_ref(),
+        crate::hub::now_ms(),
+    ))
 }
 
 fn big_size_mb(size_mb: u64) -> String {
@@ -816,7 +1317,12 @@ fn big_size_mb(size_mb: u64) -> String {
 
 fn clock_text(ms: u64) -> String {
     let seconds = (ms / 1000) % 86_400;
-    format!("{:02}:{:02}:{:02}", seconds / 3600, seconds / 60 % 60, seconds % 60)
+    format!(
+        "{:02}:{:02}:{:02}",
+        seconds / 3600,
+        seconds / 60 % 60,
+        seconds % 60
+    )
 }
 
 const CAMERA_STORED: &[(&str, &str)] = &[
@@ -829,19 +1335,36 @@ const CAMERA_STORED: &[(&str, &str)] = &[
 
 pub fn camera_stored_key(path: &str) -> Option<&'static str> {
     let field = path.strip_prefix("vehicle.cameraManager.currentCameraInstance.")?;
-    CAMERA_STORED.iter().find(|(name, _)| *name == field).map(|(_, key)| *key)
+    CAMERA_STORED
+        .iter()
+        .find(|(name, _)| *name == field)
+        .map(|(_, key)| *key)
 }
 
 fn stored_number(key: &str) -> Option<f64> {
     crate::settingsstore::stored_text(key).and_then(|text| text.trim().parse().ok())
 }
 
-fn camera_instance(camera: &crate::cameraproto::Camera, recording: bool, tracking_enabled: bool, tracking_image: Option<&crate::cameratrack::TrackingImage>, now_ms: u64) -> serde_json::Map<String, Value> {
-    use crate::cameraproto::{CAP_CAPTURE_IMAGE, CAP_CAPTURE_VIDEO, CAP_HAS_BASIC_ZOOM, CAP_HAS_MODES, CAP_HAS_TRACKING_POINT, CAP_HAS_TRACKING_RECTANGLE, CAP_HAS_VIDEO_STREAM, CAP_IMAGE_IN_VIDEO_MODE, CAP_VIDEO_IN_IMAGE_MODE};
+fn camera_instance(
+    camera: &crate::cameraproto::Camera,
+    recording: bool,
+    tracking_enabled: bool,
+    tracking_image: Option<&crate::cameratrack::TrackingImage>,
+    now_ms: u64,
+) -> serde_json::Map<String, Value> {
+    use crate::cameraproto::{
+        CAP_CAPTURE_IMAGE, CAP_CAPTURE_VIDEO, CAP_HAS_BASIC_ZOOM, CAP_HAS_MODES,
+        CAP_HAS_TRACKING_POINT, CAP_HAS_TRACKING_RECTANGLE, CAP_HAS_VIDEO_STREAM,
+        CAP_IMAGE_IN_VIDEO_MODE, CAP_VIDEO_IN_IMAGE_MODE,
+    };
     let info = &camera.info;
     let flag = |bits: u32| info.flags & bits != 0;
-    let photo = camera.photo_status.map_or(0, |s| if s < 4 { s } else { 255 });
-    let video = camera.video_status.map_or(0, |s| if s < 2 { s } else { 255 });
+    let photo = camera
+        .photo_status
+        .map_or(0, |s| if s < 4 { s } else { 255 });
+    let video = camera
+        .video_status
+        .map_or(0, |s| if s < 2 { s } else { 255 });
     let mode = camera.mode.map_or(-1, i64::from);
     let has_modes = flag(CAP_HAS_MODES);
     let streams_or = |bits: u32| flag(bits | CAP_HAS_VIDEO_STREAM);
@@ -865,42 +1388,123 @@ fn camera_instance(camera: &crate::cameraproto::Camera, recording: bool, trackin
         ("cameraMode", json!(mode)),
         ("capturePhotosState", json!(capture_photos)),
         ("captureVideoState", json!(capture_video)),
-        ("recordTimeStr", json!(clock_text(camera.record_time_ms(now_ms).unwrap_or(0)))),
-        ("storageStatus", json!(camera.storage_status().map_or(STORAGE_NOT_SUPPORTED, i64::from))),
-        ("storageFreeStr", json!(big_size_mb(camera.free_mib.unwrap_or(0.0).max(0.0) as u64))),
+        (
+            "recordTimeStr",
+            json!(clock_text(camera.record_time_ms(now_ms).unwrap_or(0))),
+        ),
+        (
+            "storageStatus",
+            json!(
+                camera
+                    .storage_status()
+                    .map_or(STORAGE_NOT_SUPPORTED, i64::from)
+            ),
+        ),
+        (
+            "storageFreeStr",
+            json!(big_size_mb(camera.free_mib.unwrap_or(0.0).max(0.0) as u64)),
+        ),
         ("capturesPhotos", json!(streams_or(CAP_CAPTURE_IMAGE))),
         ("capturesVideo", json!(streams_or(CAP_CAPTURE_VIDEO))),
         ("hasVideoStream", json!(flag(CAP_HAS_VIDEO_STREAM))),
         ("hasModes", json!(has_modes)),
         ("photosInVideoMode", json!(flag(CAP_IMAGE_IN_VIDEO_MODE))),
         ("videoInPhotoMode", json!(flag(CAP_VIDEO_IN_IMAGE_MODE))),
-        ("photoCaptureMode", json!(stored_number("PhotoCaptureMode").map_or(0, |v| v as i64))),
-        ("photoLapse", json!(stored_number("PhotoLapse").unwrap_or(1.0))),
-        ("photoLapseCount", json!(stored_number("PhotoLapseCount").map_or(0, |v| v as i64))),
-        ("batteryRemaining", json!(camera.battery_percent.filter(|p| *p >= 0).map_or(-1, i64::from))),
+        (
+            "photoCaptureMode",
+            json!(stored_number("PhotoCaptureMode").map_or(0, |v| v as i64)),
+        ),
+        (
+            "photoLapse",
+            json!(stored_number("PhotoLapse").unwrap_or(1.0)),
+        ),
+        (
+            "photoLapseCount",
+            json!(stored_number("PhotoLapseCount").map_or(0, |v| v as i64)),
+        ),
+        (
+            "batteryRemaining",
+            json!(
+                camera
+                    .battery_percent
+                    .filter(|p| *p >= 0)
+                    .map_or(-1, i64::from)
+            ),
+        ),
         ("hasZoom", json!(flag(CAP_HAS_BASIC_ZOOM))),
-        ("zoomLevel", json!(camera.zoom_percent.filter(|z| z.is_finite()).unwrap_or(0.0))),
+        (
+            "zoomLevel",
+            json!(camera.zoom_percent.filter(|z| z.is_finite()).unwrap_or(0.0)),
+        ),
         ("hasTracking", json!(tracking)),
-        ("thermalMode", json!(stored_number("ThermalMode").map_or(1, |v| v as i64))),
-        ("thermalOpacity", json!(stored_number("ThermalOpacity").unwrap_or(85.0))),
+        (
+            "thermalMode",
+            json!(stored_number("ThermalMode").map_or(1, |v| v as i64)),
+        ),
+        (
+            "thermalOpacity",
+            json!(stored_number("ThermalOpacity").unwrap_or(85.0)),
+        ),
         ("trackingEnabled", json!(tracking_enabled)),
-        ("supportsTrackingRect", json!(flag(CAP_HAS_TRACKING_RECTANGLE))),
+        (
+            "supportsTrackingRect",
+            json!(flag(CAP_HAS_TRACKING_RECTANGLE)),
+        ),
         ("supportsTrackingPoint", json!(flag(CAP_HAS_TRACKING_POINT))),
-        ("streamLabels", json!(camera.listed_streams().iter().map(|stream| stream.name.clone()).collect::<Vec<_>>())),
-        ("currentStream", json!(camera.current_stream().and_then(|current| camera.listed_streams().iter().position(|stream| stream.stream_id == current.stream_id)).unwrap_or(0))),
+        (
+            "streamLabels",
+            json!(
+                camera
+                    .listed_streams()
+                    .iter()
+                    .map(|stream| stream.name.clone())
+                    .collect::<Vec<_>>()
+            ),
+        ),
+        (
+            "currentStream",
+            json!(
+                camera
+                    .current_stream()
+                    .and_then(|current| camera
+                        .listed_streams()
+                        .iter()
+                        .position(|stream| stream.stream_id == current.stream_id))
+                    .unwrap_or(0)
+            ),
+        ),
     ];
-    let unthermal = camera.thermal_stream().is_none().then(|| ("thermalStreamInstance", Value::Null));
+    let unthermal = camera
+        .thermal_stream()
+        .is_none()
+        .then(|| ("thermalStreamInstance", Value::Null));
     let image = tracking_image.filter(|_| tracking);
     let point = image.and_then(crate::cameratrack::TrackingImage::point);
     let untracked = [
         ("trackingImageIsActive", json!(image.is_some())),
-        ("trackingImageRect", image.and_then(crate::cameratrack::TrackingImage::rect_json).unwrap_or(Value::Null)),
+        (
+            "trackingImageRect",
+            image
+                .and_then(crate::cameratrack::TrackingImage::rect_json)
+                .unwrap_or(Value::Null),
+        ),
         ("trackingImageIsPoint", json!(point.is_some())),
-        ("trackingImagePoint", point.map_or(Value::Null, |(x, y, _)| json!({ "x": x, "y": y }))),
-        ("trackingImageRadius", json!(point.map_or(0.0, |(_, _, radius)| radius))),
+        (
+            "trackingImagePoint",
+            point.map_or(Value::Null, |(x, y, _)| json!({ "x": x, "y": y })),
+        ),
+        (
+            "trackingImageRadius",
+            json!(point.map_or(0.0, |(_, _, radius)| radius)),
+        ),
     ]
     .into_iter();
-    plain.into_iter().chain(unthermal).chain(untracked).map(|(k, v)| (k.to_string(), v)).collect()
+    plain
+        .into_iter()
+        .chain(unthermal)
+        .chain(untracked)
+        .map(|(k, v)| (k.to_string(), v))
+        .collect()
 }
 
 fn no_vehicle() -> bool {
@@ -909,19 +1513,57 @@ fn no_vehicle() -> bool {
 }
 
 fn link_fields(known: &Known) -> Option<serde_json::Map<String, Value>> {
-    let transports = crate::linkhost::TRANSPORTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let transports = crate::linkhost::TRANSPORTS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let every_kind = !crate::qthost::present();
-    let described: Option<Vec<(u32, String, bool)>> = known.links.0.iter().map(|(link, lost)| transports.describe(*link).filter(|(_, kind, high_latency)| every_kind || (matches!(kind.as_str(), "udp" | "tcp") && !high_latency)).map(|(name, _, _)| (*link, name, *lost))).collect();
+    let described: Option<Vec<(u32, String, bool)>> = known
+        .links
+        .0
+        .iter()
+        .map(|(link, lost)| {
+            transports
+                .describe(*link)
+                .filter(|(_, kind, high_latency)| {
+                    every_kind || (matches!(kind.as_str(), "udp" | "tcp") && !high_latency)
+                })
+                .map(|(name, _, _)| (*link, name, *lost))
+        })
+        .collect();
     let described = described.filter(|d| !d.is_empty())?;
-    let primary = known.links.1.and_then(|id| described.iter().find(|(link, _, _)| *link == id)).map_or_else(String::new, |(_, name, _)| name.clone());
+    let primary = known
+        .links
+        .1
+        .and_then(|id| described.iter().find(|(link, _, _)| *link == id))
+        .map_or_else(String::new, |(_, name, _)| name.clone());
     Some(serde_json::Map::from_iter([
-        ("linkNames".to_string(), json!(described.iter().map(|(_, name, _)| name.clone()).collect::<Vec<_>>())),
-        ("linkStatuses".to_string(), json!(described.iter().map(|(_, _, lost)| if *lost { "Comm Lost" } else { "" }).collect::<Vec<_>>())),
+        (
+            "linkNames".to_string(),
+            json!(
+                described
+                    .iter()
+                    .map(|(_, name, _)| name.clone())
+                    .collect::<Vec<_>>()
+            ),
+        ),
+        (
+            "linkStatuses".to_string(),
+            json!(
+                described
+                    .iter()
+                    .map(|(_, _, lost)| if *lost { "Comm Lost" } else { "" })
+                    .collect::<Vec<_>>()
+            ),
+        ),
         ("primaryLinkName".to_string(), json!(primary)),
     ]))
 }
 
-fn answer_fields(path: &str, fields: &str, known: &Known) -> (serde_json::Map<String, Value>, Vec<String>) {
+fn answer_fields(
+    path: &str,
+    fields: &str,
+    known: &Known,
+) -> (serde_json::Map<String, Value>, Vec<String>) {
     let field = |name: &str| -> Option<Value> {
         match (path, name) {
             ("vehicles", "activeVehicleAvailable") => Some(json!(true)),
@@ -960,8 +1602,20 @@ fn answer_fields(path: &str, fields: &str, known: &Known) -> (serde_json::Map<St
             _ => None,
         }
     };
-    let (answered, missing): (Vec<_>, Vec<_>) = fields_of(fields).into_iter().map(|name| (name, field(name))).partition(|(_, v)| v.is_some());
-    (answered.into_iter().filter_map(|(name, v)| Some((name.to_string(), v?))).collect(), missing.into_iter().map(|(name, _)| name.to_string()).collect())
+    let (answered, missing): (Vec<_>, Vec<_>) = fields_of(fields)
+        .into_iter()
+        .map(|name| (name, field(name)))
+        .partition(|(_, v)| v.is_some());
+    (
+        answered
+            .into_iter()
+            .filter_map(|(name, v)| Some((name.to_string(), v?)))
+            .collect(),
+        missing
+            .into_iter()
+            .map(|(name, _)| name.to_string())
+            .collect(),
+    )
 }
 
 const VEHICLE_COMPONENTS: &str = "vehicle.autopilotPlugin.vehicleComponents";
@@ -971,23 +1625,45 @@ fn vehicle_components() -> Option<Vec<Value>> {
         return None;
     }
     let hub = crate::hub::lock();
-    let v = hub.active().filter(|v| matches!(v.autopilot, crate::modes::AUTOPILOT_ARDUPILOT | crate::modes::AUTOPILOT_PX4))?;
+    let v = hub.active().filter(|v| {
+        matches!(
+            v.autopilot,
+            crate::modes::AUTOPILOT_ARDUPILOT | crate::modes::AUTOPILOT_PX4
+        )
+    })?;
     if !v.parameters_ready() {
         return Some(Vec::new());
     }
-    Some(described_components(v, crate::components::ardupilot, crate::components::px4))
+    Some(described_components(
+        v,
+        crate::components::ardupilot,
+        crate::components::px4,
+    ))
 }
 
 fn setup_described(v: &crate::hub::Vehicle) -> bool {
-    matches!(v.autopilot, crate::modes::AUTOPILOT_ARDUPILOT | crate::modes::AUTOPILOT_PX4) && v.parameters_ready()
+    matches!(
+        v.autopilot,
+        crate::modes::AUTOPILOT_ARDUPILOT | crate::modes::AUTOPILOT_PX4
+    ) && v.parameters_ready()
 }
 
 fn first_seen(names: impl IntoIterator<Item = String>) -> Vec<String> {
-    names.into_iter().fold(Vec::new(), |seen, name| if seen.contains(&name) { seen } else { seen.into_iter().chain(std::iter::once(name)).collect() })
+    names.into_iter().fold(Vec::new(), |seen, name| {
+        if seen.contains(&name) {
+            seen
+        } else {
+            seen.into_iter().chain(std::iter::once(name)).collect()
+        }
+    })
 }
 
 fn absent_once(v: &crate::hub::Vehicle, looked_up: Vec<String>) -> Vec<String> {
-    first_seen(looked_up.into_iter().filter(|name| v.parameter(v.component, name).is_none()))
+    first_seen(
+        looked_up
+            .into_iter()
+            .filter(|name| v.parameter(v.component, name).is_none()),
+    )
 }
 
 pub fn setup_complete_missing_parameters() -> Vec<String> {
@@ -995,45 +1671,99 @@ pub fn setup_complete_missing_parameters() -> Vec<String> {
     let Some(v) = hub.active().filter(|v| setup_described(v)) else {
         return Vec::new();
     };
-    absent_once(v, described_components(v, crate::components::ardupilot_setup_lookups, crate::components::px4_setup_lookups))
+    absent_once(
+        v,
+        described_components(
+            v,
+            crate::components::ardupilot_setup_lookups,
+            crate::components::px4_setup_lookups,
+        ),
+    )
 }
 
 pub fn setup_recheck_missing_parameters() -> Vec<String> {
     let mut hub = crate::hub::lock();
     let rechecks = hub.take_setup_rechecks();
-    let missing = rechecks.iter().filter_map(|(id, recheck)| hub.vehicle(*id).filter(|v| setup_described(v)).map(|v| {
-        absent_once(v, described_components(v, |described| crate::components::ardupilot_recheck_lookups(described, recheck), |described, actuators| crate::components::px4_recheck_lookups(described, actuators, recheck)))
-    }));
+    let missing = rechecks.iter().filter_map(|(id, recheck)| {
+        hub.vehicle(*id).filter(|v| setup_described(v)).map(|v| {
+            absent_once(
+                v,
+                described_components(
+                    v,
+                    |described| crate::components::ardupilot_recheck_lookups(described, recheck),
+                    |described, actuators| {
+                        crate::components::px4_recheck_lookups(described, actuators, recheck)
+                    },
+                ),
+            )
+        })
+    });
     first_seen(missing.flatten())
 }
 
 pub fn prerequisite_lookups(class: &str) -> Vec<String> {
     let hub = crate::hub::lock();
     hub.active()
-        .filter(|v| matches!(v.autopilot, crate::modes::AUTOPILOT_ARDUPILOT | crate::modes::AUTOPILOT_PX4))
-        .map(|v| described_components(v, |d| crate::components::ardupilot_prerequisite_lookups(d, class), |d, actuators| crate::components::px4_prerequisite_lookups(d, actuators, class)))
+        .filter(|v| {
+            matches!(
+                v.autopilot,
+                crate::modes::AUTOPILOT_ARDUPILOT | crate::modes::AUTOPILOT_PX4
+            )
+        })
+        .map(|v| {
+            described_components(
+                v,
+                |d| crate::components::ardupilot_prerequisite_lookups(d, class),
+                |d, actuators| crate::components::px4_prerequisite_lookups(d, actuators, class),
+            )
+        })
         .unwrap_or_default()
 }
 
-fn described_components<T>(v: &crate::hub::Vehicle, ardupilot: impl FnOnce(&crate::components::Vehicle) -> T, px4: impl FnOnce(&crate::components::Vehicle, Option<crate::components::Px4Actuators>) -> T) -> T {
+fn described_components<T>(
+    v: &crate::hub::Vehicle,
+    ardupilot: impl FnOnce(&crate::components::Vehicle) -> T,
+    px4: impl FnOnce(&crate::components::Vehicle, Option<crate::components::Px4Actuators>) -> T,
+) -> T {
     let parameter = |component: u8, name: &str| v.parameter(component, name).map(|p| p.as_f64());
-    let version = v.firmware().and_then(|f| f.version).map(|(major, minor, patch, _)| (major, minor, patch));
-    let described = crate::components::Vehicle { vehicle_type: v.vehicle_type, version, parameter: &parameter, default_component: v.component, hil: v.base_mode & MAV_MODE_FLAG_HIL_ENABLED != 0 };
+    let version = v
+        .firmware()
+        .and_then(|f| f.version)
+        .map(|(major, minor, patch, _)| (major, minor, patch));
+    let described = crate::components::Vehicle {
+        vehicle_type: v.vehicle_type,
+        version,
+        parameter: &parameter,
+        default_component: v.component,
+        hil: v.base_mode & MAV_MODE_FLAG_HIL_ENABLED != 0,
+    };
     if v.autopilot == crate::modes::AUTOPILOT_ARDUPILOT {
         return ardupilot(&described);
     }
     let value_of = |name: &str| v.parameter(v.component, name).map(|p| p.as_f64() as i64);
-    let actuators = v.actuators_metadata.as_ref().and_then(|json| crate::actuators::parse(json).ok()).map(|metadata| {
-        let required = crate::actuators::mixer_functions(&crate::actuators::mixer_state(&metadata, &value_of), true);
-        let configured = crate::actuators::configured_functions(&metadata, &value_of);
-        crate::components::Px4Actuators { show_ui: metadata.show_ui_if.evaluate(&value_of), has_unset_required: !required.is_subset(&configured) }
-    });
+    let actuators = v
+        .actuators_metadata
+        .as_ref()
+        .and_then(|json| crate::actuators::parse(json).ok())
+        .map(|metadata| {
+            let required = crate::actuators::mixer_functions(
+                &crate::actuators::mixer_state(&metadata, &value_of),
+                true,
+            );
+            let configured = crate::actuators::configured_functions(&metadata, &value_of);
+            crate::components::Px4Actuators {
+                show_ui: metadata.show_ui_if.evaluate(&value_of),
+                has_unset_required: !required.is_subset(&configured),
+            }
+        });
     px4(&described, actuators)
 }
 
 fn vehicle_component(path: &str) -> Option<(Value, Option<&str>)> {
     let rest = path.strip_prefix(VEHICLE_COMPONENTS)?.strip_prefix('.')?;
-    let (index, field) = rest.split_once('.').map_or((rest, None), |(i, f)| (i, Some(f)));
+    let (index, field) = rest
+        .split_once('.')
+        .map_or((rest, None), |(i, f)| (i, Some(f)));
     let component = vehicle_components()?.into_iter().nth(index.parse().ok()?)?;
     Some((component, field))
 }
@@ -1046,31 +1776,77 @@ fn object_of(mut fields: serde_json::Map<String, Value>) -> Value {
 }
 
 fn core_option(name: &str) -> Option<bool> {
-    CORE_OPTIONS.iter().find(|(held, _)| *held == name).map(|(_, value)| *value)
+    CORE_OPTIONS
+        .iter()
+        .find(|(held, _)| *held == name)
+        .map(|(_, value)| *value)
 }
 
-const FIRMWARE_LIMITS: [&str; 4] = ["vehicle.minimumTakeoffAltitudeMeters", "vehicle.maximumHorizontalSpeedMultirotorMetersSecond", "vehicle.maximumEquivalentAirspeed", "vehicle.minimumEquivalentAirspeed"];
+const FIRMWARE_LIMITS: [&str; 4] = [
+    "vehicle.minimumTakeoffAltitudeMeters",
+    "vehicle.maximumHorizontalSpeedMultirotorMetersSecond",
+    "vehicle.maximumEquivalentAirspeed",
+    "vehicle.minimumEquivalentAirspeed",
+];
 const DEFAULT_TAKEOFF_METRES: f64 = 3.048;
 
-pub(crate) fn minimum_takeoff_altitude(autopilot: u8, vtol: bool, param: &dyn Fn(&str) -> Option<f64>) -> f64 {
+pub(crate) fn minimum_takeoff_altitude(
+    autopilot: u8,
+    vtol: bool,
+    param: &dyn Fn(&str) -> Option<f64>,
+) -> f64 {
     let names: &[(&str, f64)] = match (autopilot, vtol) {
-        (crate::modes::AUTOPILOT_ARDUPILOT, true) => &[("Q_PILOT_TKO_ALT_M", 1.0), ("Q_PILOT_TKOFF_ALT", 0.01), ("Q_RTL_ALT", 1.0)],
-        (crate::modes::AUTOPILOT_ARDUPILOT, false) => &[("PILOT_TKO_ALT_M", 1.0), ("PILOT_TKOFF_ALT", 0.01)],
+        (crate::modes::AUTOPILOT_ARDUPILOT, true) => &[
+            ("Q_PILOT_TKO_ALT_M", 1.0),
+            ("Q_PILOT_TKOFF_ALT", 0.01),
+            ("Q_RTL_ALT", 1.0),
+        ],
+        (crate::modes::AUTOPILOT_ARDUPILOT, false) => {
+            &[("PILOT_TKO_ALT_M", 1.0), ("PILOT_TKOFF_ALT", 0.01)]
+        }
         _ => &[],
     };
-    names.iter().find_map(|(name, scale)| param(name).map(|v| v * scale)).filter(|v| *v != 0.0).unwrap_or(DEFAULT_TAKEOFF_METRES)
+    names
+        .iter()
+        .find_map(|(name, scale)| param(name).map(|v| v * scale))
+        .filter(|v| *v != 0.0)
+        .unwrap_or(DEFAULT_TAKEOFF_METRES)
 }
 
-pub(crate) fn firmware_limit(path: &str, autopilot: u8, vtol: bool, param: &dyn Fn(&str) -> Option<f64>) -> Option<f64> {
-    let first = |names: &[(&str, f64)]| names.iter().find_map(|(name, scale)| param(name).map(|v| v * scale));
+pub(crate) fn firmware_limit(
+    path: &str,
+    autopilot: u8,
+    vtol: bool,
+    param: &dyn Fn(&str) -> Option<f64>,
+) -> Option<f64> {
+    let first = |names: &[(&str, f64)]| {
+        names
+            .iter()
+            .find_map(|(name, scale)| param(name).map(|v| v * scale))
+    };
     match (autopilot, path) {
-        (_, "vehicle.minimumTakeoffAltitudeMeters") => Some(minimum_takeoff_altitude(autopilot, vtol, param)),
-        (crate::modes::AUTOPILOT_ARDUPILOT, "vehicle.maximumHorizontalSpeedMultirotorMetersSecond") => first(&[("WP_SPD", 1.0), ("WPNAV_SPEED", 0.01)]),
-        (crate::modes::AUTOPILOT_PX4, "vehicle.maximumHorizontalSpeedMultirotorMetersSecond") => param("MPC_XY_VEL_MAX"),
-        (crate::modes::AUTOPILOT_ARDUPILOT, "vehicle.maximumEquivalentAirspeed") => param("AIRSPEED_MAX"),
-        (crate::modes::AUTOPILOT_PX4, "vehicle.maximumEquivalentAirspeed") => param("FW_AIRSPD_MAX"),
-        (crate::modes::AUTOPILOT_ARDUPILOT, "vehicle.minimumEquivalentAirspeed") => param("AIRSPEED_MIN"),
-        (crate::modes::AUTOPILOT_PX4, "vehicle.minimumEquivalentAirspeed") => param("FW_AIRSPD_MIN"),
+        (_, "vehicle.minimumTakeoffAltitudeMeters") => {
+            Some(minimum_takeoff_altitude(autopilot, vtol, param))
+        }
+        (
+            crate::modes::AUTOPILOT_ARDUPILOT,
+            "vehicle.maximumHorizontalSpeedMultirotorMetersSecond",
+        ) => first(&[("WP_SPD", 1.0), ("WPNAV_SPEED", 0.01)]),
+        (crate::modes::AUTOPILOT_PX4, "vehicle.maximumHorizontalSpeedMultirotorMetersSecond") => {
+            param("MPC_XY_VEL_MAX")
+        }
+        (crate::modes::AUTOPILOT_ARDUPILOT, "vehicle.maximumEquivalentAirspeed") => {
+            param("AIRSPEED_MAX")
+        }
+        (crate::modes::AUTOPILOT_PX4, "vehicle.maximumEquivalentAirspeed") => {
+            param("FW_AIRSPD_MAX")
+        }
+        (crate::modes::AUTOPILOT_ARDUPILOT, "vehicle.minimumEquivalentAirspeed") => {
+            param("AIRSPEED_MIN")
+        }
+        (crate::modes::AUTOPILOT_PX4, "vehicle.minimumEquivalentAirspeed") => {
+            param("FW_AIRSPD_MIN")
+        }
         _ => None,
     }
 }
@@ -1085,7 +1861,12 @@ fn merged(answered: serde_json::Map<String, Value>, host: Value) -> Value {
     }
 }
 
-static DESCRIBED_FACTS: std::sync::LazyLock<Vec<&'static str>> = std::sync::LazyLock::new(|| VEHICLE_FACTS.into_iter().filter(|name| crate::vehiclefact::described(name)).collect());
+static DESCRIBED_FACTS: std::sync::LazyLock<Vec<&'static str>> = std::sync::LazyLock::new(|| {
+    VEHICLE_FACTS
+        .into_iter()
+        .filter(|name| crate::vehiclefact::described(name))
+        .collect()
+});
 
 fn quick<T>(path: &str, answer: impl FnOnce(&Known) -> Option<T>) -> Option<T> {
     (switched_on() && !crate::qthost::present() && path.starts_with("vehicle.")).then_some(())?;
@@ -1097,9 +1878,19 @@ fn quick_raw(path: &str, known: &Known) -> Option<Option<f64>> {
     match path.strip_prefix("vehicle.")?.split_once('.') {
         None => {
             let name = &path["vehicle.".len()..];
-            (DESCRIBED_FACTS.contains(&name) && known.fields.get(name).is_none()).then(|| known.facts.iter().find(|(key, _)| *key == name).and_then(|(_, raw)| number(raw)))
+            (DESCRIBED_FACTS.contains(&name) && known.fields.get(name).is_none()).then(|| {
+                known
+                    .facts
+                    .iter()
+                    .find(|(key, _)| *key == name)
+                    .and_then(|(_, raw)| number(raw))
+            })
         }
-        Some(("localPosition", property)) => crate::vehiclefact::LOCAL_POSITION.properties.iter().find(|(shown, _)| *shown == property).map(|(_, name)| number(&crate::vehiclefact::local_position_raw(&known.local, name))),
+        Some(("localPosition", property)) => crate::vehiclefact::LOCAL_POSITION
+            .properties
+            .iter()
+            .find(|(shown, _)| *shown == property)
+            .map(|(_, name)| number(&crate::vehiclefact::local_position_raw(&known.local, name))),
         Some(_) => None,
     }
 }
@@ -1110,7 +1901,14 @@ fn quick_point(path: &str, known: &Known) -> Option<Option<(f64, f64)>> {
         "vehicle.homePosition" => known.home,
         _ => return None,
     };
-    Some(spot.map(|(latitude, longitude, _)| (latitude, longitude)).filter(|(latitude, longitude)| latitude.is_finite() && longitude.is_finite() && (*latitude, *longitude) != (0.0, 0.0)))
+    Some(
+        spot.map(|(latitude, longitude, _)| (latitude, longitude))
+            .filter(|(latitude, longitude)| {
+                latitude.is_finite()
+                    && longitude.is_finite()
+                    && (*latitude, *longitude) != (0.0, 0.0)
+            }),
+    )
 }
 
 fn answer_get(path: &str, known: &Known) -> Option<Value> {
@@ -1121,77 +1919,339 @@ fn answer_get(path: &str, known: &Known) -> Option<Value> {
         "vehicle.id" => json!(known.id),
         "vehicle.parameterManager.parametersReady" => json!(known.parameters_ready),
         "vehicle.parameterManager.requestUnanswered" => json!(known.parameters_unanswered),
-        "vehicle.parameterManager.parameterDownloadSkipped" => json!(known.parameter_download_skipped),
+        "vehicle.parameterManager.parameterDownloadSkipped" => {
+            json!(known.parameter_download_skipped)
+        }
         "vehicle.vehicleLinkManager.communicationLost" => json!(known.lost),
         "vehicle.sysStatusSensorInfo" => {
             let mut object = json!({ "children": [], "class": "SysStatusSensorInfo", "facts": [], "kind": "object", "objectName": "" });
-            known.sensors.as_object()?.iter().for_each(|(k, v)| object[k.as_str()] = v.clone());
+            known
+                .sensors
+                .as_object()?
+                .iter()
+                .for_each(|(k, v)| object[k.as_str()] = v.clone());
             return Some(object);
         }
-        fact if fact.strip_prefix("vehicle.").is_some_and(|name| VEHICLE_FACTS.contains(&name)) => return known.field(&fact["vehicle.".len()..]).filter(|f| !f.is_null()),
-        property if property.strip_prefix("vehicle.").and_then(|rest| rest.split_once('.')).is_some_and(|(name, _)| VEHICLE_FACTS.contains(&name)) => {
+        fact if fact
+            .strip_prefix("vehicle.")
+            .is_some_and(|name| VEHICLE_FACTS.contains(&name)) =>
+        {
+            return known
+                .field(&fact["vehicle.".len()..])
+                .filter(|f| !f.is_null());
+        }
+        property
+            if property
+                .strip_prefix("vehicle.")
+                .and_then(|rest| rest.split_once('.'))
+                .is_some_and(|(name, _)| VEHICLE_FACTS.contains(&name)) =>
+        {
             let (name, field) = property["vehicle.".len()..].split_once('.')?;
-            return known.field(name)?.get(field).cloned().map(|v| json!({ "kind": "value", "value": v }));
+            return known
+                .field(name)?
+                .get(field)
+                .cloned()
+                .map(|v| json!({ "kind": "value", "value": v }));
         }
-        field if field.starts_with("vehicle.") && !field["vehicle.".len()..].contains('.') && known.field(&field["vehicle.".len()..]).is_some() => known.field(&field["vehicle.".len()..])?,
-        capability if capability.starts_with("vehicle.supports.") => known.supports.get(capability.trim_start_matches("vehicle.supports."))?.clone(),
-        sensor if sensor.starts_with("vehicle.sysStatusSensorInfo.") => known.sensors.get(sensor.trim_start_matches("vehicle.sysStatusSensorInfo."))?.clone(),
-        "vehicle.estimatorStatus" => return Some(crate::vehiclefact::spec_group(&crate::vehiclefact::ESTIMATOR, |n| crate::vehiclefact::estimator_raw(&known.estimator, n), known.estimator.seen)),
+        field
+            if field.starts_with("vehicle.")
+                && !field["vehicle.".len()..].contains('.')
+                && known.field(&field["vehicle.".len()..]).is_some() =>
+        {
+            known.field(&field["vehicle.".len()..])?
+        }
+        capability if capability.starts_with("vehicle.supports.") => known
+            .supports
+            .get(capability.trim_start_matches("vehicle.supports."))?
+            .clone(),
+        sensor if sensor.starts_with("vehicle.sysStatusSensorInfo.") => known
+            .sensors
+            .get(sensor.trim_start_matches("vehicle.sysStatusSensorInfo."))?
+            .clone(),
+        "vehicle.estimatorStatus" => {
+            return Some(crate::vehiclefact::spec_group(
+                &crate::vehiclefact::ESTIMATOR,
+                |n| crate::vehiclefact::estimator_raw(&known.estimator, n),
+                known.estimator.seen,
+            ));
+        }
         estimator if estimator.starts_with("vehicle.estimatorStatus.") => {
-            return crate::vehiclefact::spec_property(&crate::vehiclefact::ESTIMATOR, &estimator["vehicle.estimatorStatus.".len()..], |n| crate::vehiclefact::estimator_raw(&known.estimator, n));
+            return crate::vehiclefact::spec_property(
+                &crate::vehiclefact::ESTIMATOR,
+                &estimator["vehicle.estimatorStatus.".len()..],
+                |n| crate::vehiclefact::estimator_raw(&known.estimator, n),
+            );
         }
-        "vehicle.distanceSensors" => return Some(crate::vehiclefact::spec_group(&crate::vehiclefact::DISTANCE, |n| crate::vehiclefact::distance_raw(&known.distance, n, &Value::Null), known.distance.seen)),
+        "vehicle.distanceSensors" => {
+            return Some(crate::vehiclefact::spec_group(
+                &crate::vehiclefact::DISTANCE,
+                |n| crate::vehiclefact::distance_raw(&known.distance, n, &Value::Null),
+                known.distance.seen,
+            ));
+        }
         distance if distance.starts_with("vehicle.distanceSensors.") => {
-            return crate::vehiclefact::spec_property(&crate::vehiclefact::DISTANCE, &distance["vehicle.distanceSensors.".len()..], |n| crate::vehiclefact::distance_raw(&known.distance, n, &Value::Null));
+            return crate::vehiclefact::spec_property(
+                &crate::vehiclefact::DISTANCE,
+                &distance["vehicle.distanceSensors.".len()..],
+                |n| crate::vehiclefact::distance_raw(&known.distance, n, &Value::Null),
+            );
         }
         "vehicle.aircastLink" => return Some(known.aircast.group()),
-        "vehicle.aircastLink.qualityHistory" => return Some(json!({ "kind": "value", "value": known.aircast.quality_history })),
-        "vehicle.aircastLink.bitrateHistory" => return Some(json!({ "kind": "value", "value": known.aircast.bitrate_history })),
-        aircast if aircast.starts_with("vehicle.aircastLink.") => return crate::vehiclefact::spec_property(&crate::vehiclefact::AIRCAST_LINK, &aircast["vehicle.aircastLink.".len()..], |n| known.aircast.raw(n)),
-        "vehicle.radioStatus" => return Some(crate::vehiclefact::spec_group(&crate::vehiclefact::RADIO, |n| known.radio.raw(n), known.radio.telemetry)),
-        radio if radio.starts_with("vehicle.radioStatus.") => return crate::vehiclefact::spec_property(&crate::vehiclefact::RADIO, &radio["vehicle.radioStatus.".len()..], |n| known.radio.raw(n)),
-        "vehicle.clock" => return Some(crate::vehiclefact::spec_group(&crate::vehiclefact::CLOCK, |n| crate::vehiclefact::clock_raw(chrono::Local::now(), n), true)),
-        clock if clock.starts_with("vehicle.clock.") => return crate::vehiclefact::spec_property(&crate::vehiclefact::CLOCK, &clock["vehicle.clock.".len()..], |n| crate::vehiclefact::clock_raw(chrono::Local::now(), n)),
-        "vehicle.temperature" => return Some(crate::vehiclefact::spec_group(&crate::vehiclefact::TEMPERATURE, |n| crate::vehiclefact::temperature_raw(&known.temperature, n), known.temperature.seen.iter().any(|s| *s))),
-        temperature if temperature.starts_with("vehicle.temperature.") => return crate::vehiclefact::spec_property(&crate::vehiclefact::TEMPERATURE, &temperature["vehicle.temperature.".len()..], |n| crate::vehiclefact::temperature_raw(&known.temperature, n)),
+        "vehicle.aircastLink.qualityHistory" => {
+            return Some(json!({ "kind": "value", "value": known.aircast.quality_history }));
+        }
+        "vehicle.aircastLink.bitrateHistory" => {
+            return Some(json!({ "kind": "value", "value": known.aircast.bitrate_history }));
+        }
+        aircast if aircast.starts_with("vehicle.aircastLink.") => {
+            return crate::vehiclefact::spec_property(
+                &crate::vehiclefact::AIRCAST_LINK,
+                &aircast["vehicle.aircastLink.".len()..],
+                |n| known.aircast.raw(n),
+            );
+        }
+        "vehicle.radioStatus" => {
+            return Some(crate::vehiclefact::spec_group(
+                &crate::vehiclefact::RADIO,
+                |n| known.radio.raw(n),
+                known.radio.telemetry,
+            ));
+        }
+        radio if radio.starts_with("vehicle.radioStatus.") => {
+            return crate::vehiclefact::spec_property(
+                &crate::vehiclefact::RADIO,
+                &radio["vehicle.radioStatus.".len()..],
+                |n| known.radio.raw(n),
+            );
+        }
+        "vehicle.clock" => {
+            return Some(crate::vehiclefact::spec_group(
+                &crate::vehiclefact::CLOCK,
+                |n| crate::vehiclefact::clock_raw(chrono::Local::now(), n),
+                true,
+            ));
+        }
+        clock if clock.starts_with("vehicle.clock.") => {
+            return crate::vehiclefact::spec_property(
+                &crate::vehiclefact::CLOCK,
+                &clock["vehicle.clock.".len()..],
+                |n| crate::vehiclefact::clock_raw(chrono::Local::now(), n),
+            );
+        }
+        "vehicle.temperature" => {
+            return Some(crate::vehiclefact::spec_group(
+                &crate::vehiclefact::TEMPERATURE,
+                |n| crate::vehiclefact::temperature_raw(&known.temperature, n),
+                known.temperature.seen.iter().any(|s| *s),
+            ));
+        }
+        temperature if temperature.starts_with("vehicle.temperature.") => {
+            return crate::vehiclefact::spec_property(
+                &crate::vehiclefact::TEMPERATURE,
+                &temperature["vehicle.temperature.".len()..],
+                |n| crate::vehiclefact::temperature_raw(&known.temperature, n),
+            );
+        }
         "vehicle.orbitMapCircle" => return crate::vehiclefact::orbit_circle(known.orbit),
-        circle if circle.starts_with("vehicle.orbitMapCircle.") => return crate::vehiclefact::orbit_circle_part(known.orbit, &circle["vehicle.orbitMapCircle.".len()..]),
-        "vehicle.cameraTriggerPoints" => return Some(crate::vehiclefact::trigger_points(&known.trigger_points.0, known.trigger_points.1)),
-        points if points.starts_with("vehicle.cameraTriggerPoints.") => return crate::vehiclefact::trigger_points_part(&known.trigger_points.0, &points["vehicle.cameraTriggerPoints.".len()..]),
+        circle if circle.starts_with("vehicle.orbitMapCircle.") => {
+            return crate::vehiclefact::orbit_circle_part(
+                known.orbit,
+                &circle["vehicle.orbitMapCircle.".len()..],
+            );
+        }
+        "vehicle.cameraTriggerPoints" => {
+            return Some(crate::vehiclefact::trigger_points(
+                &known.trigger_points.0,
+                known.trigger_points.1,
+            ));
+        }
+        points if points.starts_with("vehicle.cameraTriggerPoints.") => {
+            return crate::vehiclefact::trigger_points_part(
+                &known.trigger_points.0,
+                &points["vehicle.cameraTriggerPoints.".len()..],
+            );
+        }
         "vehicle.escs" => return Some(crate::vehiclefact::esc_list(&known.escs)),
-        "vehicle.escs.count" => return Some(json!({ "kind": "value", "value": known.escs.by_id.len() })),
-        "vehicle.terrain" => return Some(crate::vehiclefact::spec_group(&crate::vehiclefact::TERRAIN, |n| crate::vehiclefact::terrain_raw(known.terrain_blocks, n), false)),
-        terrain if terrain.starts_with("vehicle.terrain.") => return crate::vehiclefact::spec_property(&crate::vehiclefact::TERRAIN, &terrain["vehicle.terrain.".len()..], |n| crate::vehiclefact::terrain_raw(known.terrain_blocks, n)),
-        "vehicle.apmSubInfo" => return Some(crate::vehiclefact::spec_group(&crate::vehiclefact::SUB_INFO, |n| crate::vehiclefact::sub_info_raw(&known.sub_info, n), known.sub_info.seen)),
-        sub if sub.starts_with("vehicle.apmSubInfo.") => return crate::vehiclefact::spec_property(&crate::vehiclefact::SUB_INFO, &sub["vehicle.apmSubInfo.".len()..], |n| crate::vehiclefact::sub_info_raw(&known.sub_info, n)),
-        "vehicle.rpm" => return Some(crate::vehiclefact::spec_group(&crate::vehiclefact::RPM, |n| crate::vehiclefact::rpm_raw(&known.rpm, n), known.rpm.seen)),
-        rpm if rpm.starts_with("vehicle.rpm.") => return crate::vehiclefact::spec_property(&crate::vehiclefact::RPM, &rpm["vehicle.rpm.".len()..], |n| crate::vehiclefact::rpm_raw(&known.rpm, n)),
-        "vehicle.efi" => return Some(crate::vehiclefact::spec_group(&crate::vehiclefact::EFI, |n| crate::vehiclefact::efi_raw(&known.efi, n), known.efi.seen)),
-        efi if efi.starts_with("vehicle.efi.") => return crate::vehiclefact::spec_property(&crate::vehiclefact::EFI, &efi["vehicle.efi.".len()..], |n| crate::vehiclefact::efi_raw(&known.efi, n)),
+        "vehicle.escs.count" => {
+            return Some(json!({ "kind": "value", "value": known.escs.by_id.len() }));
+        }
+        "vehicle.terrain" => {
+            return Some(crate::vehiclefact::spec_group(
+                &crate::vehiclefact::TERRAIN,
+                |n| crate::vehiclefact::terrain_raw(known.terrain_blocks, n),
+                false,
+            ));
+        }
+        terrain if terrain.starts_with("vehicle.terrain.") => {
+            return crate::vehiclefact::spec_property(
+                &crate::vehiclefact::TERRAIN,
+                &terrain["vehicle.terrain.".len()..],
+                |n| crate::vehiclefact::terrain_raw(known.terrain_blocks, n),
+            );
+        }
+        "vehicle.apmSubInfo" => {
+            return Some(crate::vehiclefact::spec_group(
+                &crate::vehiclefact::SUB_INFO,
+                |n| crate::vehiclefact::sub_info_raw(&known.sub_info, n),
+                known.sub_info.seen,
+            ));
+        }
+        sub if sub.starts_with("vehicle.apmSubInfo.") => {
+            return crate::vehiclefact::spec_property(
+                &crate::vehiclefact::SUB_INFO,
+                &sub["vehicle.apmSubInfo.".len()..],
+                |n| crate::vehiclefact::sub_info_raw(&known.sub_info, n),
+            );
+        }
+        "vehicle.rpm" => {
+            return Some(crate::vehiclefact::spec_group(
+                &crate::vehiclefact::RPM,
+                |n| crate::vehiclefact::rpm_raw(&known.rpm, n),
+                known.rpm.seen,
+            ));
+        }
+        rpm if rpm.starts_with("vehicle.rpm.") => {
+            return crate::vehiclefact::spec_property(
+                &crate::vehiclefact::RPM,
+                &rpm["vehicle.rpm.".len()..],
+                |n| crate::vehiclefact::rpm_raw(&known.rpm, n),
+            );
+        }
+        "vehicle.efi" => {
+            return Some(crate::vehiclefact::spec_group(
+                &crate::vehiclefact::EFI,
+                |n| crate::vehiclefact::efi_raw(&known.efi, n),
+                known.efi.seen,
+            ));
+        }
+        efi if efi.starts_with("vehicle.efi.") => {
+            return crate::vehiclefact::spec_property(
+                &crate::vehiclefact::EFI,
+                &efi["vehicle.efi.".len()..],
+                |n| crate::vehiclefact::efi_raw(&known.efi, n),
+            );
+        }
         "vehicle.generator" => {
-            let mut group = crate::vehiclefact::spec_group(&crate::vehiclefact::GENERATOR, |n| crate::vehiclefact::generator_raw(&known.generator, n), known.generator.seen);
+            let mut group = crate::vehiclefact::spec_group(
+                &crate::vehiclefact::GENERATOR,
+                |n| crate::vehiclefact::generator_raw(&known.generator, n),
+                known.generator.seen,
+            );
             group["flagsListGenerator"] = crate::vehiclefact::generator_flags(&known.generator);
             return Some(group);
         }
-        "vehicle.generator.flagsListGenerator" => return Some(json!({ "kind": "value", "value": crate::vehiclefact::generator_flags(&known.generator) })),
-        generator if generator.starts_with("vehicle.generator.") => return crate::vehiclefact::spec_property(&crate::vehiclefact::GENERATOR, &generator["vehicle.generator.".len()..], |n| crate::vehiclefact::generator_raw(&known.generator, n)),
-        "vehicle.hygrometer" => return Some(crate::vehiclefact::spec_group(&crate::vehiclefact::HYGROMETER, |n| crate::vehiclefact::hygrometer_raw(&known.hygrometer, n), known.hygrometer.seen)),
-        hygrometer if hygrometer.starts_with("vehicle.hygrometer.") => return crate::vehiclefact::spec_property(&crate::vehiclefact::HYGROMETER, &hygrometer["vehicle.hygrometer.".len()..], |n| crate::vehiclefact::hygrometer_raw(&known.hygrometer, n)),
-        "vehicle.autotune" => return Some(json!({ "kind": "object", "autotuneInProgress": known.autotune.in_progress, "autotuneProgress": known.autotune.progress, "autotuneStatus": known.autotune.status })),
-        "vehicle.setpoint" => return Some(crate::vehiclefact::spec_group(&crate::vehiclefact::SETPOINT, |n| crate::vehiclefact::setpoint_raw(&known.setpoint, n), known.setpoint.seen)),
-        setpoint if setpoint.starts_with("vehicle.setpoint.") => return crate::vehiclefact::spec_property(&crate::vehiclefact::SETPOINT, &setpoint["vehicle.setpoint.".len()..], |n| crate::vehiclefact::setpoint_raw(&known.setpoint, n)),
-        "vehicle.wind" => return Some(crate::vehiclefact::spec_group(&crate::vehiclefact::WIND, |n| crate::vehiclefact::wind_raw(&known.wind, n), known.wind.seen.iter().any(|s| *s))),
-        wind if wind.starts_with("vehicle.wind.") => return crate::vehiclefact::spec_property(&crate::vehiclefact::WIND, &wind["vehicle.wind.".len()..], |n| crate::vehiclefact::wind_raw(&known.wind, n)),
-        "vehicle.localPositionSetpoint" => return Some(crate::vehiclefact::spec_group(&crate::vehiclefact::LOCAL_POSITION_SETPOINT, |n| crate::vehiclefact::local_position_raw(&known.local_setpoint, n), known.local_setpoint.seen)),
-        target if target.starts_with("vehicle.localPositionSetpoint.") => return crate::vehiclefact::spec_property(&crate::vehiclefact::LOCAL_POSITION_SETPOINT, &target["vehicle.localPositionSetpoint.".len()..], |n| crate::vehiclefact::local_position_raw(&known.local_setpoint, n)),
-        "vehicle.localPosition" => return Some(crate::vehiclefact::spec_group(&crate::vehiclefact::LOCAL_POSITION, |n| crate::vehiclefact::local_position_raw(&known.local, n), known.local.seen)),
-        local if local.starts_with("vehicle.localPosition.") => return crate::vehiclefact::spec_property(&crate::vehiclefact::LOCAL_POSITION, &local["vehicle.localPosition.".len()..], |n| crate::vehiclefact::local_position_raw(&known.local, n)),
+        "vehicle.generator.flagsListGenerator" => {
+            return Some(
+                json!({ "kind": "value", "value": crate::vehiclefact::generator_flags(&known.generator) }),
+            );
+        }
+        generator if generator.starts_with("vehicle.generator.") => {
+            return crate::vehiclefact::spec_property(
+                &crate::vehiclefact::GENERATOR,
+                &generator["vehicle.generator.".len()..],
+                |n| crate::vehiclefact::generator_raw(&known.generator, n),
+            );
+        }
+        "vehicle.hygrometer" => {
+            return Some(crate::vehiclefact::spec_group(
+                &crate::vehiclefact::HYGROMETER,
+                |n| crate::vehiclefact::hygrometer_raw(&known.hygrometer, n),
+                known.hygrometer.seen,
+            ));
+        }
+        hygrometer if hygrometer.starts_with("vehicle.hygrometer.") => {
+            return crate::vehiclefact::spec_property(
+                &crate::vehiclefact::HYGROMETER,
+                &hygrometer["vehicle.hygrometer.".len()..],
+                |n| crate::vehiclefact::hygrometer_raw(&known.hygrometer, n),
+            );
+        }
+        "vehicle.autotune" => {
+            return Some(
+                json!({ "kind": "object", "autotuneInProgress": known.autotune.in_progress, "autotuneProgress": known.autotune.progress, "autotuneStatus": known.autotune.status }),
+            );
+        }
+        "vehicle.setpoint" => {
+            return Some(crate::vehiclefact::spec_group(
+                &crate::vehiclefact::SETPOINT,
+                |n| crate::vehiclefact::setpoint_raw(&known.setpoint, n),
+                known.setpoint.seen,
+            ));
+        }
+        setpoint if setpoint.starts_with("vehicle.setpoint.") => {
+            return crate::vehiclefact::spec_property(
+                &crate::vehiclefact::SETPOINT,
+                &setpoint["vehicle.setpoint.".len()..],
+                |n| crate::vehiclefact::setpoint_raw(&known.setpoint, n),
+            );
+        }
+        "vehicle.wind" => {
+            return Some(crate::vehiclefact::spec_group(
+                &crate::vehiclefact::WIND,
+                |n| crate::vehiclefact::wind_raw(&known.wind, n),
+                known.wind.seen.iter().any(|s| *s),
+            ));
+        }
+        wind if wind.starts_with("vehicle.wind.") => {
+            return crate::vehiclefact::spec_property(
+                &crate::vehiclefact::WIND,
+                &wind["vehicle.wind.".len()..],
+                |n| crate::vehiclefact::wind_raw(&known.wind, n),
+            );
+        }
+        "vehicle.localPositionSetpoint" => {
+            return Some(crate::vehiclefact::spec_group(
+                &crate::vehiclefact::LOCAL_POSITION_SETPOINT,
+                |n| crate::vehiclefact::local_position_raw(&known.local_setpoint, n),
+                known.local_setpoint.seen,
+            ));
+        }
+        target if target.starts_with("vehicle.localPositionSetpoint.") => {
+            return crate::vehiclefact::spec_property(
+                &crate::vehiclefact::LOCAL_POSITION_SETPOINT,
+                &target["vehicle.localPositionSetpoint.".len()..],
+                |n| crate::vehiclefact::local_position_raw(&known.local_setpoint, n),
+            );
+        }
+        "vehicle.localPosition" => {
+            return Some(crate::vehiclefact::spec_group(
+                &crate::vehiclefact::LOCAL_POSITION,
+                |n| crate::vehiclefact::local_position_raw(&known.local, n),
+                known.local.seen,
+            ));
+        }
+        local if local.starts_with("vehicle.localPosition.") => {
+            return crate::vehiclefact::spec_property(
+                &crate::vehiclefact::LOCAL_POSITION,
+                &local["vehicle.localPosition.".len()..],
+                |n| crate::vehiclefact::local_position_raw(&known.local, n),
+            );
+        }
         "vehicle.vibration" => return Some(crate::vehiclefact::vibration_group(&known.vibration)),
-        vibration if vibration.starts_with("vehicle.vibration.") => return crate::vehiclefact::vibration_fact(&known.vibration, &vibration["vehicle.vibration.".len()..], None),
-        "vehicle.gps.telemetryAvailable" => return Some(json!({ "kind": "value", "value": known.gps.telemetry })),
-        gps if gps.starts_with("vehicle.gps.") => return crate::vehiclefact::gps_fact(&known.gps, &gps["vehicle.gps.".len()..]),
-        gps if gps.starts_with("vehicle.gps2.") => return crate::vehiclefact::gps_fact(&known.gps2, &gps["vehicle.gps2.".len()..]),
-        gps if gps.starts_with("vehicle.gpsAggregate.") => return crate::vehiclefact::gps_aggregate_fact(&known.gps, &known.gps2, known.integrity_stale, &gps["vehicle.gpsAggregate.".len()..]),
+        vibration if vibration.starts_with("vehicle.vibration.") => {
+            return crate::vehiclefact::vibration_fact(
+                &known.vibration,
+                &vibration["vehicle.vibration.".len()..],
+                None,
+            );
+        }
+        "vehicle.gps.telemetryAvailable" => {
+            return Some(json!({ "kind": "value", "value": known.gps.telemetry }));
+        }
+        gps if gps.starts_with("vehicle.gps.") => {
+            return crate::vehiclefact::gps_fact(&known.gps, &gps["vehicle.gps.".len()..]);
+        }
+        gps if gps.starts_with("vehicle.gps2.") => {
+            return crate::vehiclefact::gps_fact(&known.gps2, &gps["vehicle.gps2.".len()..]);
+        }
+        gps if gps.starts_with("vehicle.gpsAggregate.") => {
+            return crate::vehiclefact::gps_aggregate_fact(
+                &known.gps,
+                &known.gps2,
+                known.integrity_stale,
+                &gps["vehicle.gpsAggregate.".len()..],
+            );
+        }
         "vehicle.batteries" => return Some(crate::vehiclefact::battery_list(&known.batteries)),
         "vehicle.batteries.count" => json!(known.batteries.len()),
         battery if battery.starts_with("vehicle.batteries.") => {
@@ -1202,17 +2262,30 @@ fn answer_get(path: &str, known: &Known) -> Option<Value> {
             };
             return match parts.next() {
                 None => Some(crate::vehiclefact::battery_group(*id, facts)),
-                Some(name) => crate::vehiclefact::battery_fact(*id, facts, crate::vehiclefact::battery_by_property(name)?, None),
+                Some(name) => crate::vehiclefact::battery_fact(
+                    *id,
+                    facts,
+                    crate::vehiclefact::battery_by_property(name)?,
+                    None,
+                ),
             };
         }
         "vehicle.coordinate" => {
             let Some((latitude, longitude, altitude)) = known.coordinate else {
                 return (!crate::qthost::present()).then(|| json!({ "kind": "coordinate", "valid": false, "latitude": null, "longitude": null, "altitude": null }));
             };
-            return Some(json!({ "kind": "coordinate", "latitude": latitude, "longitude": longitude, "altitude": altitude, "valid": true }));
+            return Some(
+                json!({ "kind": "coordinate", "latitude": latitude, "longitude": longitude, "altitude": altitude, "valid": true }),
+            );
         }
         "vehicle.remoteIDManager" => {
-            let flag = |key: &str| known.remote.get(key).and_then(Value::as_bool).unwrap_or(false);
+            let flag = |key: &str| {
+                known
+                    .remote
+                    .get(key)
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false)
+            };
             return Some(json!({
                 "kind": "object",
                 "class": "RemoteIDManager",
@@ -1229,31 +2302,54 @@ fn answer_get(path: &str, known: &Known) -> Option<Value> {
             let Some((latitude, longitude, altitude)) = known.roi else {
                 return (!crate::qthost::present()).then(|| json!({ "kind": "coordinate", "valid": false, "latitude": null, "longitude": null, "altitude": null }));
             };
-            return Some(json!({ "kind": "coordinate", "latitude": latitude, "longitude": longitude, "altitude": altitude, "valid": true }));
+            return Some(
+                json!({ "kind": "coordinate", "latitude": latitude, "longitude": longitude, "altitude": altitude, "valid": true }),
+            );
         }
         "vehicle.homePosition" => {
             let Some((latitude, longitude, altitude)) = known.home else {
                 return (!crate::qthost::present()).then(|| json!({ "kind": "coordinate", "valid": false, "latitude": null, "longitude": null, "altitude": null }));
             };
-            return Some(json!({ "kind": "coordinate", "latitude": latitude, "longitude": longitude, "altitude": altitude, "valid": true }));
+            return Some(
+                json!({ "kind": "coordinate", "latitude": latitude, "longitude": longitude, "altitude": altitude, "valid": true }),
+            );
         }
         _ => return None,
     };
     Some(json!({ "kind": "value", "value": value }))
 }
 
-fn parameter_definition_of(vehicle: &crate::hub::Vehicle, name: &str, value_type: crate::factmeta::ValueType) -> Option<crate::factmeta::MetaData> {
+fn parameter_definition_of(
+    vehicle: &crate::hub::Vehicle,
+    name: &str,
+    value_type: crate::factmeta::ValueType,
+) -> Option<crate::factmeta::MetaData> {
     match vehicle.autopilot == crate::modes::AUTOPILOT_ARDUPILOT {
         true => {
-            let version = vehicle.firmware().and_then(|f| f.version).map_or((-1, -1), |(major, minor, _, _)| (i64::from(major), i64::from(minor)));
-            let definitions = crate::apmmeta::vehicle_file_name(vehicle.vehicle_type).and_then(|file| crate::apmmeta::load(file, version.0, version.1));
-            Some(definitions.map_or_else(|| crate::factmeta::MetaData { name: name.to_string(), ..crate::px4meta::bare(value_type) }, |definitions| crate::apmmeta::json_metadata(&definitions, name, value_type)))
+            let version = vehicle
+                .firmware()
+                .and_then(|f| f.version)
+                .map_or((-1, -1), |(major, minor, _, _)| {
+                    (i64::from(major), i64::from(minor))
+                });
+            let definitions = crate::apmmeta::vehicle_file_name(vehicle.vehicle_type)
+                .and_then(|file| crate::apmmeta::load(file, version.0, version.1));
+            Some(definitions.map_or_else(
+                || crate::factmeta::MetaData {
+                    name: name.to_string(),
+                    ..crate::px4meta::bare(value_type)
+                },
+                |definitions| crate::apmmeta::json_metadata(&definitions, name, value_type),
+            ))
         }
         false => Some(vehicle.parameter_definition(name, value_type)),
     }
 }
 
-fn parameter_address(vehicle: &crate::hub::Vehicle, call: &str) -> Option<(u8, String, Option<crate::pilotunits::Quantity>)> {
+fn parameter_address(
+    vehicle: &crate::hub::Vehicle,
+    call: &str,
+) -> Option<(u8, String, Option<crate::pilotunits::Quantity>)> {
     let (component, rest) = call.split_once(',')?;
     let (name, quantity) = match rest.split_once(',') {
         Some((name, quantity)) => (name, Some(crate::pilotunits::Quantity::named(quantity)?)),
@@ -1267,7 +2363,9 @@ fn parameter_address(vehicle: &crate::hub::Vehicle, call: &str) -> Option<(u8, S
 }
 
 pub fn parameter_write(path: &str, value: &str) -> Option<Value> {
-    let (call, rest) = path.strip_prefix("vehicle.parameterManager.getParameter(")?.split_once(')')?;
+    let (call, rest) = path
+        .strip_prefix("vehicle.parameterManager.getParameter(")?
+        .split_once(')')?;
     let given = serde_json::from_str::<Value>(value).ok()?;
     let given = given.get("value").cloned().unwrap_or(given);
     let (raw_given, number) = match rest {
@@ -1276,8 +2374,20 @@ pub fn parameter_write(path: &str, value: &str) -> Option<Value> {
             let fact = answer_parameter(&format!("vehicle.parameterManager.getParameter({call})"))?;
             (true, fact.get("enumValues")?.get(index)?.as_f64()?)
         }
-        ".rawValue" => (true, given.as_f64().or_else(|| given.as_bool().map(f64::from)).or_else(|| given.as_str().and_then(|t| t.trim().parse::<f64>().ok()))?),
-        "" | ".value" => (false, given.as_f64().or_else(|| given.as_bool().map(f64::from)).or_else(|| given.as_str().and_then(|t| t.trim().parse::<f64>().ok()))?),
+        ".rawValue" => (
+            true,
+            given
+                .as_f64()
+                .or_else(|| given.as_bool().map(f64::from))
+                .or_else(|| given.as_str().and_then(|t| t.trim().parse::<f64>().ok()))?,
+        ),
+        "" | ".value" => (
+            false,
+            given
+                .as_f64()
+                .or_else(|| given.as_bool().map(f64::from))
+                .or_else(|| given.as_str().and_then(|t| t.trim().parse::<f64>().ok()))?,
+        ),
         _ => return None,
     };
     let (vehicle_id, component, name, raw) = {
@@ -1285,15 +2395,24 @@ pub fn parameter_write(path: &str, value: &str) -> Option<Value> {
         let vehicle = hub.active()?;
         let (component, name, quantity) = parameter_address(vehicle, call)?;
         let known = vehicle.parameter_exact(component, &name)?;
-        let meta = crate::factmeta::ValueType::from_param_type(known.param_type()).and_then(|value_type| parameter_definition_of(vehicle, &name, value_type));
-        let raw = match (quantity.zip(meta.as_ref()).and_then(|(quantity, meta)| crate::pilotunits::Pilot::new(quantity, meta)), raw_given) {
+        let meta = crate::factmeta::ValueType::from_param_type(known.param_type())
+            .and_then(|value_type| parameter_definition_of(vehicle, &name, value_type));
+        let raw = match (
+            quantity
+                .zip(meta.as_ref())
+                .and_then(|(quantity, meta)| crate::pilotunits::Pilot::new(quantity, meta)),
+            raw_given,
+        ) {
             (Some(pilot), raw_given) => pilot.raw(number, !raw_given),
             (None, true) => number,
-            (None, false) => crate::units::for_fact(&meta?, crate::units::cooking).map_or(number, |conversion| (conversion.base)(number)),
+            (None, false) => crate::units::for_fact(&meta?, crate::units::cooking)
+                .map_or(number, |conversion| (conversion.base)(number)),
         };
         (vehicle.id, component, name, raw)
     };
-    Some(json!({ "action": "paramSet", "vehicle": vehicle_id, "component": component, "name": format!("{}{name}", crate::paramremap::NO_REMAP), "value": raw }))
+    Some(
+        json!({ "action": "paramSet", "vehicle": vehicle_id, "component": component, "name": format!("{}{name}", crate::paramremap::NO_REMAP), "value": raw }),
+    )
 }
 
 #[derive(Debug, PartialEq, Eq, Hash)]
@@ -1313,10 +2432,14 @@ fn parameter_identity(value: crate::params::ParamValue) -> (u8, u64) {
     (value.param_type(), value.as_f64().to_bits())
 }
 
-static PARAMETER_MEMO: std::sync::LazyLock<crate::settingsstore::SettingsMemo<ParameterKey, Option<Value>>> = std::sync::LazyLock::new(|| crate::settingsstore::SettingsMemo::new(1024));
+static PARAMETER_MEMO: std::sync::LazyLock<
+    crate::settingsstore::SettingsMemo<ParameterKey, Option<Value>>,
+> = std::sync::LazyLock::new(|| crate::settingsstore::SettingsMemo::new(1024));
 
 fn answer_parameter(path: &str) -> Option<Value> {
-    let (call, rest) = path.strip_prefix("vehicle.parameterManager.getParameter(")?.split_once(')')?;
+    let (call, rest) = path
+        .strip_prefix("vehicle.parameterManager.getParameter(")?
+        .split_once(')')?;
     let hub = crate::hub::lock();
     let vehicle = hub.active()?;
     let ardupilot = vehicle.autopilot == crate::modes::AUTOPILOT_ARDUPILOT;
@@ -1324,18 +2447,34 @@ fn answer_parameter(path: &str) -> Option<Value> {
     let (component, name, quantity) = parameter_address(vehicle, call)?;
     let name = name.as_str();
     let Some(value) = vehicle.parameter_exact(component, name) else {
-        return vehicle.parameters_ready().then(|| field_of(absent_parameter(), rest)).flatten();
+        return vehicle
+            .parameters_ready()
+            .then(|| field_of(absent_parameter(), rest))
+            .flatten();
     };
     let default = default_of(vehicle, component, name);
-    let described = PARAMETER_MEMO.get_or(parameter_key(vehicle, call, value, default), || described_parameter(vehicle, component, name, quantity, value, default));
+    let described = PARAMETER_MEMO.get_or(parameter_key(vehicle, call, value, default), || {
+        described_parameter(vehicle, component, name, quantity, value, default)
+    });
     field_of(described?, rest)
 }
 
-fn default_of(vehicle: &crate::hub::Vehicle, component: u8, name: &str) -> Option<crate::params::ParamValue> {
-    (component == vehicle.component).then(|| vehicle.parameter_defaults.get(name).copied()).flatten()
+fn default_of(
+    vehicle: &crate::hub::Vehicle,
+    component: u8,
+    name: &str,
+) -> Option<crate::params::ParamValue> {
+    (component == vehicle.component)
+        .then(|| vehicle.parameter_defaults.get(name).copied())
+        .flatten()
 }
 
-fn parameter_key(vehicle: &crate::hub::Vehicle, call: &str, value: crate::params::ParamValue, default: Option<crate::params::ParamValue>) -> ParameterKey {
+fn parameter_key(
+    vehicle: &crate::hub::Vehicle,
+    call: &str,
+    value: crate::params::ParamValue,
+    default: Option<crate::params::ParamValue>,
+) -> ParameterKey {
     ParameterKey {
         vehicle: vehicle.id,
         autopilot: vehicle.autopilot,
@@ -1349,7 +2488,14 @@ fn parameter_key(vehicle: &crate::hub::Vehicle, call: &str, value: crate::params
     }
 }
 
-fn described_parameter(vehicle: &crate::hub::Vehicle, component: u8, name: &str, quantity: Option<crate::pilotunits::Quantity>, value: crate::params::ParamValue, firmware_default: Option<crate::params::ParamValue>) -> Option<Value> {
+fn described_parameter(
+    vehicle: &crate::hub::Vehicle,
+    component: u8,
+    name: &str,
+    quantity: Option<crate::pilotunits::Quantity>,
+    value: crate::params::ParamValue,
+    firmware_default: Option<crate::params::ParamValue>,
+) -> Option<Value> {
     let value_type = crate::factmeta::ValueType::from_param_type(value.param_type())?;
     let definition = parameter_definition_of(vehicle, name, value_type)?;
     let number = |value: crate::params::ParamValue| match value {
@@ -1357,19 +2503,34 @@ fn described_parameter(vehicle: &crate::hub::Vehicle, component: u8, name: &str,
         other => json!(other.as_f64() as i64),
     };
     let raw = number(value);
-    let meta = crate::factmeta::MetaData { default: firmware_default.map(number).or(definition.default.clone()), ..definition };
-    let pilot = quantity.and_then(|quantity| crate::pilotunits::Pilot::new(quantity, &meta)).zip(raw.as_f64());
-    let mut described = pilot.map_or_else(|| crate::vehiclefact::fact(&meta, &raw, None), |(pilot, raw)| pilot.fact(raw));
+    let meta = crate::factmeta::MetaData {
+        default: firmware_default.map(number).or(definition.default.clone()),
+        ..definition
+    };
+    let pilot = quantity
+        .and_then(|quantity| crate::pilotunits::Pilot::new(quantity, &meta))
+        .zip(raw.as_f64());
+    let mut described = pilot.map_or_else(
+        || crate::vehiclefact::fact(&meta, &raw, None),
+        |(pilot, raw)| pilot.fact(raw),
+    );
     described["mavType"] = json!(value.param_type());
     described["componentId"] = json!(component);
     if described["typeIsInteger"] == true {
-        [("minString", &meta.min), ("maxString", &meta.max)].into_iter().filter_map(|(key, bound)| Some((key, bound.as_ref()?.as_f64()?))).for_each(|(key, bound)| described[key] = json!(crate::control::qt_shortest(bound)));
+        [("minString", &meta.min), ("maxString", &meta.max)]
+            .into_iter()
+            .filter_map(|(key, bound)| Some((key, bound.as_ref()?.as_f64()?)))
+            .for_each(|(key, bound)| described[key] = json!(crate::control::qt_shortest(bound)));
     }
     Some(described)
 }
 
 fn absent_parameter() -> Value {
-    crate::vehiclefact::fact(&crate::px4meta::bare(crate::factmeta::ValueType::Int32), &json!(0), None)
+    crate::vehiclefact::fact(
+        &crate::px4meta::bare(crate::factmeta::ValueType::Int32),
+        &json!(0),
+        None,
+    )
 }
 
 fn field_of(described: Value, rest: &str) -> Option<Value> {
@@ -1383,7 +2544,12 @@ fn field_of(described: Value, rest: &str) -> Option<Value> {
 fn answer_scalar(path: &str, known: &Known) -> Option<Value> {
     let (parent, leaf) = path.rsplit_once('.')?;
     let (answered, _) = answer_fields(parent, leaf, known);
-    let value = answered.get(leaf).filter(|v| v.is_boolean() || v.is_number() || v.is_string() || v.as_array().is_some_and(|a| a.iter().all(Value::is_string)))?;
+    let value = answered.get(leaf).filter(|v| {
+        v.is_boolean()
+            || v.is_number()
+            || v.is_string()
+            || v.as_array().is_some_and(|a| a.iter().all(Value::is_string))
+    })?;
     Some(json!({ "kind": "value", "value": value }))
 }
 
@@ -1401,11 +2567,24 @@ fn answer_invoke(path: &str, args: &str) -> Option<Value> {
 impl<B: Backend> Facade<B> {
     fn shell_invoke(&self, path: &str, args: &str) -> Option<String> {
         switched_on().then_some(())?;
-        let first = || serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0)?.as_str().map(str::to_string)).unwrap_or_default();
-        let history = || crate::console::HISTORY.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let first = || {
+            serde_json::from_str::<Value>(args)
+                .ok()
+                .and_then(|a| a.get(0)?.as_str().map(str::to_string))
+                .unwrap_or_default()
+        };
+        let history = || {
+            crate::console::HISTORY
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+        };
         match path {
-            "mavlinkConsole.historyUp" => return Some(json!({ "ok": true, "result": history().up(&first()) }).to_string()),
-            "mavlinkConsole.historyDown" => return Some(json!({ "ok": true, "result": history().down(&first()) }).to_string()),
+            "mavlinkConsole.historyUp" => {
+                return Some(json!({ "ok": true, "result": history().up(&first()) }).to_string());
+            }
+            "mavlinkConsole.historyDown" => {
+                return Some(json!({ "ok": true, "result": history().down(&first()) }).to_string());
+            }
             "mavlinkConsole.open" => {
                 *history() = crate::console::CommandHistory::default();
                 let opened = crate::hub::lock().open_shell();
@@ -1415,9 +2594,15 @@ impl<B: Backend> Facade<B> {
             _ => return None,
         }
         let vehicle = crate::hub::lock().active_id()?;
-        let command = serde_json::from_str::<Value>(args).ok()?.get(0)?.as_str()?.to_string();
+        let command = serde_json::from_str::<Value>(args)
+            .ok()?
+            .get(0)?
+            .as_str()?
+            .to_string();
         history().sent(&command);
-        let started = self.0.core_guided(&json!({ "action": "shellCommand", "vehicle": vehicle, "command": command }))?;
+        let started = self.0.core_guided(
+            &json!({ "action": "shellCommand", "vehicle": vehicle, "command": command }),
+        )?;
         Some(json!({ "ok": started.is_ok() }).to_string())
     }
 
@@ -1431,7 +2616,13 @@ impl<B: Backend> Facade<B> {
     fn selection_invoke(&self, path: &str, args: &str) -> Option<String> {
         let name = path.strip_prefix("vehicles.")?;
         switched_on().then_some(())?;
-        let id = || serde_json::from_str::<Value>(args).ok()?.get(0)?.as_i64().and_then(|id| u8::try_from(id).ok());
+        let id = || {
+            serde_json::from_str::<Value>(args)
+                .ok()?
+                .get(0)?
+                .as_i64()
+                .and_then(|id| u8::try_from(id).ok())
+        };
         match name {
             "selectVehicle" => crate::hub::lock().select_vehicle(id()?),
             "deselectVehicle" => crate::hub::lock().deselect_vehicle(id()?),
@@ -1450,19 +2641,38 @@ impl<B: Backend> Facade<B> {
         let vehicle = crate::hub::lock().active_id()?;
         let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
         let first_bool = || given.get(0).and_then(Value::as_bool);
-        let dispatch = |action: Value| self.0.core_guided(&action).map(|started| json!({ "ok": started.is_ok() }).to_string());
+        let dispatch = |action: Value| {
+            self.0
+                .core_guided(&action)
+                .map(|started| json!({ "ok": started.is_ok() }).to_string())
+        };
         match name {
             "refresh" => dispatch(json!({ "action": "logRefresh", "vehicle": vehicle })),
             "cancel" => dispatch(json!({ "action": "logCancel", "vehicle": vehicle })),
             "eraseAll" => dispatch(json!({ "action": "logEraseAll", "vehicle": vehicle })),
-            "eraseSelected" => dispatch(json!({ "action": "logEraseSelected", "vehicle": vehicle })),
+            "eraseSelected" => {
+                dispatch(json!({ "action": "logEraseSelected", "vehicle": vehicle }))
+            }
             "download" => {
-                let folder = given.get(0).and_then(Value::as_str).filter(|f| !f.is_empty()).map(str::to_string).or_else(crate::settingsstore::log_save_path).or_else(|| crate::logs::BROWSER_SAVE_PATH.map(str::to_string)).unwrap_or_default();
+                let folder = given
+                    .get(0)
+                    .and_then(Value::as_str)
+                    .filter(|f| !f.is_empty())
+                    .map(str::to_string)
+                    .or_else(crate::settingsstore::log_save_path)
+                    .or_else(|| crate::logs::BROWSER_SAVE_PATH.map(str::to_string))
+                    .unwrap_or_default();
                 dispatch(json!({ "action": "logDownload", "vehicle": vehicle, "folder": folder }))
             }
-            "selectAll" => crate::hub::lock().with_onboard_logs(|logs| logs.select_all(first_bool().unwrap_or(true))).map(|_| json!({ "ok": true }).to_string()),
-            "setSortAscending" => crate::hub::lock().with_onboard_logs(|logs| logs.set_sort_ascending(first_bool().unwrap_or(false))).map(|_| json!({ "ok": true }).to_string()),
-            "toggleSortByDate" => crate::hub::lock().with_onboard_logs(|logs| logs.set_sort_ascending(!logs.sort_ascending)).map(|_| json!({ "ok": true }).to_string()),
+            "selectAll" => crate::hub::lock()
+                .with_onboard_logs(|logs| logs.select_all(first_bool().unwrap_or(true)))
+                .map(|_| json!({ "ok": true }).to_string()),
+            "setSortAscending" => crate::hub::lock()
+                .with_onboard_logs(|logs| logs.set_sort_ascending(first_bool().unwrap_or(false)))
+                .map(|_| json!({ "ok": true }).to_string()),
+            "toggleSortByDate" => crate::hub::lock()
+                .with_onboard_logs(|logs| logs.set_sort_ascending(!logs.sort_ascending))
+                .map(|_| json!({ "ok": true }).to_string()),
             _ => None,
         }
     }
@@ -1479,21 +2689,36 @@ impl<B: Backend> Facade<B> {
         if let Some(answer) = crate::geotagcontroller::set(path, value) {
             return answer.to_string();
         }
-        let link_flag = path.strip_prefix("vehicle.vehicleLinkManager.").filter(|f| matches!(*f, "communicationLostEnabled" | "autoDisconnect"));
+        let link_flag = path
+            .strip_prefix("vehicle.vehicleLinkManager.")
+            .filter(|f| matches!(*f, "communicationLostEnabled" | "autoDisconnect"));
         if let Some(flag) = link_flag.filter(|_| switched_on()) {
-            let on = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_bool).or_else(|| v.as_bool()));
+            let on = serde_json::from_str::<Value>(value).ok().and_then(|v| {
+                v.get("value")
+                    .and_then(Value::as_bool)
+                    .or_else(|| v.as_bool())
+            });
             if let Some(on) = on {
                 crate::hub::lock().set_link_flag(flag, on);
             }
             return self.held_write(path, value);
         }
         if let Some(index) = crate::logs::selection_index(path).filter(|_| switched_on()) {
-            let on = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_bool).or_else(|| v.as_bool()));
-            if let Some(held) = on.and_then(|on| crate::hub::lock().with_onboard_logs(|logs| logs.select(index, on))) {
+            let on = serde_json::from_str::<Value>(value).ok().and_then(|v| {
+                v.get("value")
+                    .and_then(Value::as_bool)
+                    .or_else(|| v.as_bool())
+            });
+            if let Some(held) = on
+                .and_then(|on| crate::hub::lock().with_onboard_logs(|logs| logs.select(index, on)))
+            {
                 return json!({ "ok": held }).to_string();
             }
         }
-        if let Some(action) = (switched_on() && !crate::qthost::present()).then(|| parameter_write(path, value)).flatten() {
+        if let Some(action) = (switched_on() && !crate::qthost::present())
+            .then(|| parameter_write(path, value))
+            .flatten()
+        {
             return match self.0.core_guided(&action) {
                 Some(Ok(())) => json!({ "ok": true }).to_string(),
                 Some(Err(reason)) => json!({ "ok": false, "error": reason }).to_string(),
@@ -1502,9 +2727,14 @@ impl<B: Backend> Facade<B> {
         }
         if path == "vehicle.armed" && switched_on() {
             let truth = |v: &Value| v.as_bool().or_else(|| v.as_i64().map(|n| n != 0));
-            let arm = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(truth).or_else(|| truth(&v)));
+            let arm = serde_json::from_str::<Value>(value)
+                .ok()
+                .and_then(|v| v.get("value").and_then(truth).or_else(|| truth(&v)));
             let vehicle = crate::hub::lock().active_id();
-            if let Some(armed) = arm.zip(vehicle).and_then(|(arm, vehicle)| self.0.core_guided(&json!({ "action": "arm", "arm": arm, "vehicle": vehicle }))) {
+            if let Some(armed) = arm.zip(vehicle).and_then(|(arm, vehicle)| {
+                self.0
+                    .core_guided(&json!({ "action": "arm", "arm": arm, "vehicle": vehicle }))
+            }) {
                 return match armed {
                     Ok(_) => json!({ "ok": true }).to_string(),
                     Err(reason) => json!({ "ok": false, "error": reason }).to_string(),
@@ -1512,9 +2742,15 @@ impl<B: Backend> Facade<B> {
             }
         }
         if path == "vehicle.cameraManager.currentCameraInstance.trackingEnabled" && switched_on() {
-            let on = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_bool).or_else(|| v.as_bool()));
+            let on = serde_json::from_str::<Value>(value).ok().and_then(|v| {
+                v.get("value")
+                    .and_then(Value::as_bool)
+                    .or_else(|| v.as_bool())
+            });
             if let Some(on) = on {
-                let was = crate::hub::lock().active().is_some_and(|v| v.camera_tracking_enabled);
+                let was = crate::hub::lock()
+                    .active()
+                    .is_some_and(|v| v.camera_tracking_enabled);
                 crate::hub::lock().set_camera_tracking(on);
                 if was && !on {
                     let _ = self.real_camera_invoke("stopTracking", "[]");
@@ -1522,19 +2758,37 @@ impl<B: Backend> Facade<B> {
             }
             return self.held_write(path, value);
         }
-        if let Some(key) = camera_stored_key(path).filter(|_| switched_on() && crate::hub::lock().active().is_some_and(|v| v.cameras.selected().is_some())) {
-            let number = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_f64).or_else(|| v.as_f64()));
+        if let Some(key) = camera_stored_key(path).filter(|_| {
+            switched_on()
+                && crate::hub::lock()
+                    .active()
+                    .is_some_and(|v| v.cameras.selected().is_some())
+        }) {
+            let number = serde_json::from_str::<Value>(value).ok().and_then(|v| {
+                v.get("value")
+                    .and_then(Value::as_f64)
+                    .or_else(|| v.as_f64())
+            });
             return match number.filter(|n| n.is_finite()) {
                 Some(number) => {
                     crate::settingsstore::written(key, &number.to_string());
                     json!({ "ok": true }).to_string()
                 }
-                None => json!({ "ok": false, "error": "A camera setting is a number." }).to_string(),
+                None => {
+                    json!({ "ok": false, "error": "A camera setting is a number." }).to_string()
+                }
             };
         }
         if path == "vehicle.cameraManager.currentCameraInstance.zoomLevel" && switched_on() {
-            let percent = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_f64).or_else(|| v.as_f64()));
-            let vehicle = crate::hub::lock().active().filter(|v| v.cameras.selected().is_some()).map(|v| v.id);
+            let percent = serde_json::from_str::<Value>(value).ok().and_then(|v| {
+                v.get("value")
+                    .and_then(Value::as_f64)
+                    .or_else(|| v.as_f64())
+            });
+            let vehicle = crate::hub::lock()
+                .active()
+                .filter(|v| v.cameras.selected().is_some())
+                .map(|v| v.id);
             if let Some(zoomed) = percent.zip(vehicle).and_then(|(percent, vehicle)| self.0.core_guided(&json!({ "action": "camera", "op": "level", "axis": "zoom", "percent": percent, "vehicle": vehicle }))) {
                 return match zoomed {
                     Ok(_) => json!({ "ok": true }).to_string(),
@@ -1543,7 +2797,11 @@ impl<B: Backend> Facade<B> {
             }
         }
         if path == "vehicle.cameraManager.currentCameraInstance.currentStream" && switched_on() {
-            let index = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_u64).or_else(|| v.as_u64()));
+            let index = serde_json::from_str::<Value>(value).ok().and_then(|v| {
+                v.get("value")
+                    .and_then(Value::as_u64)
+                    .or_else(|| v.as_u64())
+            });
             let vehicle = crate::hub::lock().active_id();
             if let Some(chosen) = index.zip(vehicle).and_then(|(stream, vehicle)| self.0.core_guided(&json!({ "action": "camera", "op": "selectStream", "stream": stream, "vehicle": vehicle }))) {
                 return match chosen {
@@ -1553,53 +2811,102 @@ impl<B: Backend> Facade<B> {
             }
         }
         if path == "vehicle.cameraManager.currentCamera" && switched_on() {
-            let index = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_u64).or_else(|| v.as_u64()));
+            let index = serde_json::from_str::<Value>(value).ok().and_then(|v| {
+                v.get("value")
+                    .and_then(Value::as_u64)
+                    .or_else(|| v.as_u64())
+            });
             if let Some(index) = index.and_then(|i| usize::try_from(i).ok()) {
                 crate::hub::lock().select_camera(index);
             }
             return self.held_write(path, value);
         }
         if path == "mavlinkInspector.activeSystem.selected" && inspector_owned() {
-            let index = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_u64).or_else(|| v.as_u64()));
-            let fits = index.and_then(|i| usize::try_from(i).ok()).is_some_and(|i| crate::mavinspect::lock().select(i));
+            let index = serde_json::from_str::<Value>(value).ok().and_then(|v| {
+                v.get("value")
+                    .and_then(Value::as_u64)
+                    .or_else(|| v.as_u64())
+            });
+            let fits = index
+                .and_then(|i| usize::try_from(i).ok())
+                .is_some_and(|i| crate::mavinspect::lock().select(i));
             return json!({ "ok": fits }).to_string();
         }
         if path == "radioCal.transmitterMode" && switched_on() {
-            let mode = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_i64).or_else(|| v.as_i64()));
-            if let Some(held) = mode.map(|m| crate::hub::lock().set_transmitter_mode(m)).filter(|held| *held) {
+            let mode = serde_json::from_str::<Value>(value).ok().and_then(|v| {
+                v.get("value")
+                    .and_then(Value::as_i64)
+                    .or_else(|| v.as_i64())
+            });
+            if let Some(held) = mode
+                .map(|m| crate::hub::lock().set_transmitter_mode(m))
+                .filter(|held| *held)
+            {
                 return json!({ "ok": held }).to_string();
             }
         }
         if path == "radioCal.centeredThrottle" && switched_on() {
-            let centered = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_bool).or_else(|| v.as_bool()));
-            if let Some(held) = centered.map(|c| crate::hub::lock().set_centered_throttle(c)).filter(|held| *held) {
+            let centered = serde_json::from_str::<Value>(value).ok().and_then(|v| {
+                v.get("value")
+                    .and_then(Value::as_bool)
+                    .or_else(|| v.as_bool())
+            });
+            if let Some(held) = centered
+                .map(|c| crate::hub::lock().set_centered_throttle(c))
+                .filter(|held| *held)
+            {
                 return json!({ "ok": held }).to_string();
             }
         }
         if path == "vehicle.checkListState" && switched_on() {
-            let state = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_i64).or_else(|| v.as_i64()));
+            let state = serde_json::from_str::<Value>(value).ok().and_then(|v| {
+                v.get("value")
+                    .and_then(Value::as_i64)
+                    .or_else(|| v.as_i64())
+            });
             if let Some(state) = state {
                 crate::hub::lock().set_check_list_state(state);
             }
             return self.held_write(path, value);
         }
         if path == "vehicle.vtolInFwdFlight" && switched_on() {
-            let forward = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_bool).or_else(|| v.as_bool()));
+            let forward = serde_json::from_str::<Value>(value).ok().and_then(|v| {
+                v.get("value")
+                    .and_then(Value::as_bool)
+                    .or_else(|| v.as_bool())
+            });
             let vehicle = crate::hub::lock().active_id();
-            if let Some(started) = forward.zip(vehicle).and_then(|(forward, vehicle)| self.0.core_guided(&json!({ "action": "vtolTransition", "vehicle": vehicle, "forward": forward }))) {
+            if let Some(started) = forward.zip(vehicle).and_then(|(forward, vehicle)| {
+                self.0.core_guided(
+                    &json!({ "action": "vtolTransition", "vehicle": vehicle, "forward": forward }),
+                )
+            }) {
                 return json!({ "ok": started.is_ok() }).to_string();
             }
         }
-        let listed_mode = fleet_member(path).filter(|(_, tail)| *tail == "flightMode").map(|(index, _)| index);
+        let listed_mode = fleet_member(path)
+            .filter(|(_, tail)| *tail == "flightMode")
+            .map(|(index, _)| index);
         if (path == "vehicle.flightMode" || listed_mode.is_some()) && switched_on() {
-            let mode = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value").and_then(Value::as_str).or_else(|| v.as_str()).map(str::to_string));
-            let named_vehicle = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("vehicle")?.as_u64()).and_then(|id| u8::try_from(id).ok());
+            let mode = serde_json::from_str::<Value>(value).ok().and_then(|v| {
+                v.get("value")
+                    .and_then(Value::as_str)
+                    .or_else(|| v.as_str())
+                    .map(str::to_string)
+            });
+            let named_vehicle = serde_json::from_str::<Value>(value)
+                .ok()
+                .and_then(|v| v.get("vehicle")?.as_u64())
+                .and_then(|id| u8::try_from(id).ok());
             let vehicle = match (named_vehicle, listed_mode) {
                 (Some(id), Some(_)) => Some(id),
                 (None, Some(index)) => crate::hub::lock().listed(index).map(|v| v.id),
                 (_, None) => crate::hub::lock().active_id(),
             };
-            if let Some(started) = mode.zip(vehicle).and_then(|(mode, vehicle)| self.0.core_guided(&json!({ "action": "setMode", "vehicle": vehicle, "mode": mode }))) {
+            if let Some(started) = mode.zip(vehicle).and_then(|(mode, vehicle)| {
+                self.0
+                    .core_guided(&json!({ "action": "setMode", "vehicle": vehicle, "mode": mode }))
+            }) {
                 return match started {
                     Ok(_) => json!({ "ok": true }).to_string(),
                     Err(reason) => json!({ "ok": false, "reason": reason }).to_string(),
@@ -1611,23 +2918,48 @@ impl<B: Backend> Facade<B> {
     }
 
     fn real_camera_invoke(&self, name: &str, args: &str) -> Option<String> {
-        let (vehicle, captures_video, grabs) = switched_on().then(|| crate::hub::lock().active().and_then(|v| v.cameras.selected().map(|c| (v.id, c.info.flags & crate::cameraproto::CAP_CAPTURE_VIDEO != 0, grabs_locally(c.info.flags, c.mode))))).flatten()?;
+        let (vehicle, captures_video, grabs) = switched_on()
+            .then(|| {
+                crate::hub::lock().active().and_then(|v| {
+                    v.cameras.selected().map(|c| {
+                        (
+                            v.id,
+                            c.info.flags & crate::cameraproto::CAP_CAPTURE_VIDEO != 0,
+                            grabs_locally(c.info.flags, c.mode),
+                        )
+                    })
+                })
+            })
+            .flatten()?;
         if name == "takePhoto" && grabs {
-            let single = stored_number("PhotoCaptureMode").is_none_or(|mode| mode as i64 == crate::simcamera::PHOTO_CAPTURE_SINGLE);
-            let grabbed = if single { crate::videohost::grab_image().map(|_| ()) } else { Err(TIMELAPSE_NEEDS_STILLS) };
+            let single = stored_number("PhotoCaptureMode")
+                .is_none_or(|mode| mode as i64 == crate::simcamera::PHOTO_CAPTURE_SINGLE);
+            let grabbed = if single {
+                crate::videohost::grab_image().map(|_| ())
+            } else {
+                Err(TIMELAPSE_NEEDS_STILLS)
+            };
             return Some(match grabbed {
                 Ok(()) => json!({ "ok": true, "result": true }).to_string(),
-                Err(reason) => json!({ "ok": false, "result": false, "reason": reason, "error": reason }).to_string(),
+                Err(reason) => {
+                    json!({ "ok": false, "result": false, "reason": reason, "error": reason })
+                        .to_string()
+                }
             });
         }
-        if let Some(local) = local_recording_op(name, captures_video, crate::videohost::recording()) {
+        if let Some(local) = local_recording_op(name, captures_video, crate::videohost::recording())
+        {
             let started = match local {
-                LocalRecording::Start => crate::videohost::start_recording().map_err(|refused| refused.unwrap_or("Video recording could not start.")),
+                LocalRecording::Start => crate::videohost::start_recording()
+                    .map_err(|refused| refused.unwrap_or("Video recording could not start.")),
                 LocalRecording::Stop => Ok(crate::videohost::stop_recording()),
             };
             return Some(match started {
                 Ok(()) => json!({ "ok": true, "result": true }).to_string(),
-                Err(reason) => json!({ "ok": false, "result": false, "reason": reason, "error": reason }).to_string(),
+                Err(reason) => {
+                    json!({ "ok": false, "result": false, "reason": reason, "error": reason })
+                        .to_string()
+                }
             });
         }
         let mut action = real_camera_op(name, args)?;
@@ -1645,10 +2977,12 @@ impl<B: Backend> Facade<B> {
 
 impl<B: Backend> Backend for Facade<B> {
     fn raw(&self, path: &str) -> Option<f64> {
-        quick(path, |known| quick_raw(path, known)).unwrap_or_else(|| crate::router::raw_of(&self.value(path)))
+        quick(path, |known| quick_raw(path, known))
+            .unwrap_or_else(|| crate::router::raw_of(&self.value(path)))
     }
     fn point(&self, path: &str) -> Option<(f64, f64)> {
-        quick(path, |known| quick_point(path, known)).unwrap_or_else(|| crate::router::point_of(&self.value(path)))
+        quick(path, |known| quick_point(path, known))
+            .unwrap_or_else(|| crate::router::point_of(&self.value(path)))
     }
     fn value(&self, path: &str) -> Value {
         if path == "core.qtReads" {
@@ -1666,18 +3000,26 @@ impl<B: Backend> Backend for Facade<B> {
         if let Some(answer) = crate::videohost::get(path) {
             return answer;
         }
-        if let Some(fact) = (path == "plan.geoFenceController.breachReturnAltitude").then(crate::coreplan::breach_altitude_fact).flatten() {
+        if let Some(fact) = (path == "plan.geoFenceController.breachReturnAltitude")
+            .then(crate::coreplan::breach_altitude_fact)
+            .flatten()
+        {
             return fact;
         }
         if path == "vehicle" && switched_on() && !crate::qthost::present() {
             if no_vehicle() {
                 return json!({ "kind": "null" });
             }
-            let mut whole: Value = self.value_fields("vehicle", &format!("{VEHICLE_OBJECT_FIELDS},{}", VEHICLE_FACTS.join(",")));
+            let mut whole: Value = self.value_fields(
+                "vehicle",
+                &format!("{VEHICLE_OBJECT_FIELDS},{}", VEHICLE_FACTS.join(",")),
+            );
             whole["class"] = json!("Vehicle");
             return whole;
         }
-        if let Some((prefix, field)) = path.rsplit_once('.').filter(|(prefix, _)| switched_on() && !crate::qthost::present() && no_vehicle() && !names_a_vehicle(prefix)) {
+        if let Some((prefix, field)) = path.rsplit_once('.').filter(|(prefix, _)| {
+            switched_on() && !crate::qthost::present() && no_vehicle() && !names_a_vehicle(prefix)
+        }) {
             if let Some(value) = offline_field(prefix, field) {
                 return json!({ "kind": "value", "value": value });
             }
@@ -1685,34 +3027,58 @@ impl<B: Backend> Backend for Facade<B> {
         if let Some(answer) = crate::corelinks::get(path) {
             return answer;
         }
-        let count = (path == "vehicles.vehicles.count" && switched_on()).then(|| json!({ "kind": "value", "value": crate::hub::lock().fleet_count() }));
-        let count = count.or_else(|| (path == "vehicles.selectedVehicles.count" && switched_on()).then(|| json!({ "kind": "value", "value": crate::hub::lock().selected_count() })));
-        if let Some(answer) = path.starts_with("logDownload").then(|| onboard_log_get(path)).flatten() {
+        let count = (path == "vehicles.vehicles.count" && switched_on())
+            .then(|| json!({ "kind": "value", "value": crate::hub::lock().fleet_count() }));
+        let count = count.or_else(|| {
+            (path == "vehicles.selectedVehicles.count" && switched_on())
+                .then(|| json!({ "kind": "value", "value": crate::hub::lock().selected_count() }))
+        });
+        if let Some(answer) = path
+            .starts_with("logDownload")
+            .then(|| onboard_log_get(path))
+            .flatten()
+        {
             return answer;
         }
-        if let Some(list) = (path == VEHICLE_COMPONENTS).then(vehicle_components).flatten() {
+        if let Some(list) = (path == VEHICLE_COMPONENTS)
+            .then(vehicle_components)
+            .flatten()
+        {
             return json!({ "kind": "value", "value": list });
         }
         if let Some((component, Some(field))) = vehicle_component(path) {
             return match component.get(field).filter(|_| field != "class") {
                 Some(value) => json!({ "kind": "value", "value": value }),
                 None => json!({ "kind": "value", "value": null, "found": false }),
-            }
-            ;
+            };
         }
-        if let Some(value) = path.strip_prefix("corePlugin.options.").and_then(core_option) {
+        if let Some(value) = path
+            .strip_prefix("corePlugin.options.")
+            .and_then(core_option)
+        {
             return json!({ "kind": "value", "value": value });
         }
-        if let Some(value) = path.rsplit_once('.').and_then(|(object, field)| crate::coreplan::controller_fields(object)?.get(field).cloned()) {
+        if let Some(value) = path.rsplit_once('.').and_then(|(object, field)| {
+            crate::coreplan::controller_fields(object)?
+                .get(field)
+                .cloned()
+        }) {
             return json!({ "kind": "value", "value": value });
         }
         if let Some(field) = path.strip_prefix("vehicle.cameraManager.currentCameraInstance.") {
-            let recording = || crate::read::flag(&self.0.value_fields("video", "recording"), "recording");
-            if let Some(value) = current_camera_fields(recording).or_else(simulated_camera_fields).and_then(|mut fields| fields.remove(field)) {
+            let recording =
+                || crate::read::flag(&self.0.value_fields("video", "recording"), "recording");
+            if let Some(value) = current_camera_fields(recording)
+                .or_else(simulated_camera_fields)
+                .and_then(|mut fields| fields.remove(field))
+            {
                 return json!({ "kind": "value", "value": value });
             }
         }
-        if let Some(value) = path.strip_prefix("vehicle.healthAndArmingCheckReport.").and_then(|name| arming_checks()?.get(name).cloned()) {
+        if let Some(value) = path
+            .strip_prefix("vehicle.healthAndArmingCheckReport.")
+            .and_then(|name| arming_checks()?.get(name).cloned())
+        {
             return match value.get("kind") {
                 Some(_) => value,
                 None => json!({ "kind": "value", "value": value }),
@@ -1724,68 +3090,129 @@ impl<B: Backend> Backend for Facade<B> {
         if calibration_without_vehicle(path) {
             return json!({ "kind": "null" });
         }
-        if let Some(sensors) = path.strip_prefix("sensorsCal").filter(|_| switched_on()).and_then(|rest| {
-            let sensors = crate::hub::lock().sensors_json()?;
-            match rest.strip_prefix('.') {
-                None if rest.is_empty() => Some(sensors),
-                Some(field) => sensors.get(field).cloned().map(|v| json!({ "kind": "value", "value": v })),
-                None => None,
-            }
-        }) {
+        if let Some(sensors) = path
+            .strip_prefix("sensorsCal")
+            .filter(|_| switched_on())
+            .and_then(|rest| {
+                let sensors = crate::hub::lock().sensors_json()?;
+                match rest.strip_prefix('.') {
+                    None if rest.is_empty() => Some(sensors),
+                    Some(field) => sensors
+                        .get(field)
+                        .cloned()
+                        .map(|v| json!({ "kind": "value", "value": v })),
+                    None => None,
+                }
+            })
+        {
             return sensors;
         }
-        if let Some(radio) = path.strip_prefix("radioCal").filter(|_| switched_on()).and_then(|rest| {
-            let radio = crate::hub::lock().radio_json()?;
-            match rest.strip_prefix('.') {
-                None if rest.is_empty() => Some(radio),
-                Some(field) => radio.get(field).cloned().map(|v| json!({ "kind": "value", "value": v })),
-                None => None,
-            }
-        }) {
+        if let Some(radio) = path
+            .strip_prefix("radioCal")
+            .filter(|_| switched_on())
+            .and_then(|rest| {
+                let radio = crate::hub::lock().radio_json()?;
+                match rest.strip_prefix('.') {
+                    None if rest.is_empty() => Some(radio),
+                    Some(field) => radio
+                        .get(field)
+                        .cloned()
+                        .map(|v| json!({ "kind": "value", "value": v })),
+                    None => None,
+                }
+            })
+        {
             return radio;
         }
-        if let Some(formatted) = (path == "vehicle.formattedMessages" && switched_on()).then(|| crate::hub::lock().active().map(|v| v.message_log.formatted())).flatten() {
+        if let Some(formatted) = (path == "vehicle.formattedMessages" && switched_on())
+            .then(|| {
+                crate::hub::lock()
+                    .active()
+                    .map(|v| v.message_log.formatted())
+            })
+            .flatten()
+        {
             return json!({ "kind": "value", "value": formatted });
         }
         if let Some(lines) = (path == "mavlinkConsole.lines").then(shell_lines).flatten() {
             return json!({ "kind": "value", "value": lines });
         }
-        if let Some(value) = path.strip_prefix("positionManager.").filter(|_| switched_on()).and_then(|name| crate::gcsposition::lock().property(name)) {
+        if let Some(value) = path
+            .strip_prefix("positionManager.")
+            .filter(|_| switched_on())
+            .and_then(|name| crate::gcsposition::lock().property(name))
+        {
             return match (path, value) {
-                ("positionManager.gcsPosition", Value::Null) => json!({ "kind": "coordinate", "valid": false, "latitude": null, "longitude": null, "altitude": null }),
+                ("positionManager.gcsPosition", Value::Null) => {
+                    json!({ "kind": "coordinate", "valid": false, "latitude": null, "longitude": null, "altitude": null })
+                }
                 ("positionManager.gcsPosition", mut point) => {
                     point["kind"] = json!("coordinate");
                     point
                 }
                 (_, value) => json!({ "kind": "value", "value": value }),
-            }
-            ;
+            };
         }
-        if let Some(field) = path.strip_prefix("links.").filter(|_| switched_on()).and_then(links_field) {
+        if let Some(field) = path
+            .strip_prefix("links.")
+            .filter(|_| switched_on())
+            .and_then(links_field)
+        {
             return json!({ "kind": "value", "value": field });
         }
-        let absent = (switched_on() && (path == "vehicle" || path.starts_with("vehicle.")) && no_vehicle()).then(|| json!({ "kind": "null" }));
-        let absent = absent.or_else(|| (switched_on() && selected_member(path).is_some_and(|(index, _)| crate::hub::lock().selected_member(index).is_none())).then(|| json!({ "kind": "null" })));
-        count.or(absent).or_else(|| switched_on().then(|| answer_parameter(path)).flatten()).or_else(|| resolved(path).and_then(|(path, known)| answer_get(&path, &known).or_else(|| answer_scalar(&path, &known)))).map_or_else(
-            || {
-                fell_through("get", path);
-                self.0.value(path)
-            },
-            |v| v,
-        )
+        let absent =
+            (switched_on() && (path == "vehicle" || path.starts_with("vehicle.")) && no_vehicle())
+                .then(|| json!({ "kind": "null" }));
+        let absent = absent.or_else(|| {
+            (switched_on()
+                && selected_member(path)
+                    .is_some_and(|(index, _)| crate::hub::lock().selected_member(index).is_none()))
+            .then(|| json!({ "kind": "null" }))
+        });
+        count
+            .or(absent)
+            .or_else(|| switched_on().then(|| answer_parameter(path)).flatten())
+            .or_else(|| {
+                resolved(path).and_then(|(path, known)| {
+                    answer_get(&path, &known).or_else(|| answer_scalar(&path, &known))
+                })
+            })
+            .map_or_else(
+                || {
+                    fell_through("get", path);
+                    self.0.value(path)
+                },
+                |v| v,
+            )
     }
     fn value_fields(&self, asked_path: &str, fields: &str) -> Value {
-        if let Some(controller) = (asked_path == "logDownload").then(|| onboard_logs(|logs| logs.controller_json())).flatten() {
+        if let Some(controller) = (asked_path == "logDownload")
+            .then(|| onboard_logs(|logs| logs.controller_json()))
+            .flatten()
+        {
             let wanted = fields_of(fields);
-            let mut object: serde_json::Map<String, Value> = controller.as_object().cloned().unwrap_or_default().into_iter().filter(|(k, _)| wanted.contains(&k.as_str())).collect();
+            let mut object: serde_json::Map<String, Value> = controller
+                .as_object()
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|(k, _)| wanted.contains(&k.as_str()))
+                .collect();
             object.insert("kind".to_string(), json!("object"));
             return Value::Object(object);
         }
         if asked_path == CAMERA_INSTANCE {
-            let recording = || crate::read::flag(&self.0.value_fields("video", "recording"), "recording");
-            if let Some(mut answered) = current_camera_fields(recording).or_else(simulated_camera_fields) {
+            let recording =
+                || crate::read::flag(&self.0.value_fields("video", "recording"), "recording");
+            if let Some(mut answered) =
+                current_camera_fields(recording).or_else(simulated_camera_fields)
+            {
                 let wanted = fields_of(fields);
-                let missing: Vec<&str> = wanted.iter().filter(|f| !answered.contains_key(**f)).copied().collect();
+                let missing: Vec<&str> = wanted
+                    .iter()
+                    .filter(|f| !answered.contains_key(**f))
+                    .copied()
+                    .collect();
                 answered.retain(|k, _| wanted.contains(&k.as_str()));
                 if missing.is_empty() {
                     let mut object = Value::Object(answered);
@@ -1793,10 +3220,17 @@ impl<B: Backend> Backend for Facade<B> {
                     return object;
                 }
                 fell_through("fields", &format!("{asked_path} [{}]", missing.join(",")));
-                return merged(answered, self.0.value_fields(asked_path, &missing.join(",")));
+                return merged(
+                    answered,
+                    self.0.value_fields(asked_path, &missing.join(",")),
+                );
             }
         }
-        if let Some(element) = crate::corelinks::get(asked_path).or_else(|| crate::geotagcontroller::get(asked_path)).or_else(|| crate::videohost::get(asked_path)).filter(|e| e["kind"] == "object") {
+        if let Some(element) = crate::corelinks::get(asked_path)
+            .or_else(|| crate::geotagcontroller::get(asked_path))
+            .or_else(|| crate::videohost::get(asked_path))
+            .filter(|e| e["kind"] == "object")
+        {
             return only_fields(element, &fields_of(fields));
         }
         if asked_path == "host" {
@@ -1805,14 +3239,28 @@ impl<B: Backend> Backend for Facade<B> {
         if let Some((component, None)) = vehicle_component(asked_path) {
             return only_fields(component, &fields_of(fields));
         }
-        if let Some(options) = (asked_path == "corePlugin.options").then(|| fields_of(fields).into_iter().map(|f| Some((f.to_string(), json!(core_option(f)?)))).collect::<Option<serde_json::Map<String, Value>>>()).flatten() {
+        if let Some(options) = (asked_path == "corePlugin.options")
+            .then(|| {
+                fields_of(fields)
+                    .into_iter()
+                    .map(|f| Some((f.to_string(), json!(core_option(f)?))))
+                    .collect::<Option<serde_json::Map<String, Value>>>()
+            })
+            .flatten()
+        {
             return object_of(options);
         }
-        if switched_on() && (asked_path == "vehicle" || asked_path.starts_with("vehicle.")) && no_vehicle() {
+        if switched_on()
+            && (asked_path == "vehicle" || asked_path.starts_with("vehicle."))
+            && no_vehicle()
+        {
             return json!({ "kind": "null" });
         }
         if switched_on() && !crate::qthost::present() && no_vehicle() {
-            let offline: Option<serde_json::Map<String, Value>> = fields_of(fields).into_iter().map(|f| Some((f.to_string(), offline_field(asked_path, f)?))).collect();
+            let offline: Option<serde_json::Map<String, Value>> = fields_of(fields)
+                .into_iter()
+                .map(|f| Some((f.to_string(), offline_field(asked_path, f)?)))
+                .collect();
             if let Some(mut object) = offline.map(Value::Object) {
                 object["kind"] = json!("object");
                 return object;
@@ -1820,32 +3268,55 @@ impl<B: Backend> Backend for Facade<B> {
         }
         if let Some(Value::Object(mut answered)) = crate::coreplan::controller_fields(asked_path) {
             let wanted = fields_of(fields);
-            let missing: Vec<&str> = wanted.iter().filter(|f| !answered.contains_key(**f)).copied().collect();
+            let missing: Vec<&str> = wanted
+                .iter()
+                .filter(|f| !answered.contains_key(**f))
+                .copied()
+                .collect();
             answered.retain(|k, _| wanted.contains(&k.as_str()) || k == "kind");
             if missing.is_empty() {
                 return Value::Object(answered);
             }
             fell_through("fields", &format!("{asked_path} [{}]", missing.join(",")));
             let host: Value = self.0.value_fields(asked_path, &missing.join(","));
-            host.as_object().filter(|h| h.get("kind") == Some(&json!("object"))).into_iter().flatten().for_each(|(k, v)| {
-                answered.entry(k.clone()).or_insert_with(|| v.clone());
-            });
+            host.as_object()
+                .filter(|h| h.get("kind") == Some(&json!("object")))
+                .into_iter()
+                .flatten()
+                .for_each(|(k, v)| {
+                    answered.entry(k.clone()).or_insert_with(|| v.clone());
+                });
             return Value::Object(answered);
         }
-        if let Some(lines) = (asked_path == "mavlinkConsole" && fields_of(fields) == ["lines"]).then(shell_lines).flatten() {
+        if let Some(lines) = (asked_path == "mavlinkConsole" && fields_of(fields) == ["lines"])
+            .then(shell_lines)
+            .flatten()
+        {
             return json!({ "kind": "object", "lines": lines });
         }
         if calibration_without_vehicle(asked_path) {
             return json!({ "kind": "null" });
         }
-        if let Some(sensors) = (asked_path == "sensorsCal" && switched_on()).then(|| crate::hub::lock().sensors_json()).flatten() {
+        if let Some(sensors) = (asked_path == "sensorsCal" && switched_on())
+            .then(|| crate::hub::lock().sensors_json())
+            .flatten()
+        {
             return only_fields(sensors, &fields_of(fields));
         }
-        if let Some(radio) = (asked_path == "radioCal" && switched_on()).then(|| crate::hub::lock().radio_json()).flatten() {
+        if let Some(radio) = (asked_path == "radioCal" && switched_on())
+            .then(|| crate::hub::lock().radio_json())
+            .flatten()
+        {
             return only_fields(radio, &fields_of(fields));
         }
-        if let Some(report) = (asked_path == "vehicle.healthAndArmingCheckReport").then(arming_checks).flatten() {
-            let answered: Option<serde_json::Map<String, Value>> = fields_of(fields).into_iter().map(|f| Some((f.to_string(), report.get(f)?.clone()))).collect();
+        if let Some(report) = (asked_path == "vehicle.healthAndArmingCheckReport")
+            .then(arming_checks)
+            .flatten()
+        {
+            let answered: Option<serde_json::Map<String, Value>> = fields_of(fields)
+                .into_iter()
+                .map(|f| Some((f.to_string(), report.get(f)?.clone())))
+                .collect();
             if let Some(mut object) = answered.map(Value::Object) {
                 object["kind"] = json!("object");
                 return object;
@@ -1856,47 +3327,93 @@ impl<B: Backend> Backend for Facade<B> {
         }
         if asked_path == "positionManager" && switched_on() {
             let position = crate::gcsposition::lock();
-            let answered: Option<serde_json::Map<String, Value>> = fields_of(fields).into_iter().map(|f| Some((f.to_string(), position.property(f)?))).collect();
+            let answered: Option<serde_json::Map<String, Value>> = fields_of(fields)
+                .into_iter()
+                .map(|f| Some((f.to_string(), position.property(f)?)))
+                .collect();
             if let Some(mut object) = answered.map(Value::Object) {
                 object["kind"] = json!("object");
                 return object;
             }
         }
         if asked_path == "links" && switched_on() {
-            let (answered, missing): (Vec<_>, Vec<_>) = fields_of(fields).into_iter().map(|f| (f, links_field(f))).partition(|(_, v)| v.is_some());
-            let answered: serde_json::Map<String, Value> = answered.into_iter().filter_map(|(f, v)| Some((f.to_string(), v?))).collect();
+            let (answered, missing): (Vec<_>, Vec<_>) = fields_of(fields)
+                .into_iter()
+                .map(|f| (f, links_field(f)))
+                .partition(|(_, v)| v.is_some());
+            let answered: serde_json::Map<String, Value> = answered
+                .into_iter()
+                .filter_map(|(f, v)| Some((f.to_string(), v?)))
+                .collect();
             if missing.is_empty() {
                 let mut object = Value::Object(answered);
                 object["kind"] = json!("object");
                 return object;
             }
-            let asked = missing.iter().map(|(f, _)| *f).collect::<Vec<_>>().join(",");
+            let asked = missing
+                .iter()
+                .map(|(f, _)| *f)
+                .collect::<Vec<_>>()
+                .join(",");
             fell_through("fields", &format!("links [{asked}]"));
             return merged(answered, self.0.value_fields(asked_path, &asked));
         }
         let resolved = resolved(asked_path);
-        let path = resolved.as_ref().map_or(asked_path, |(path, _)| path.as_str());
+        let path = resolved
+            .as_ref()
+            .map_or(asked_path, |(path, _)| path.as_str());
         let known = resolved.as_ref().map(|(_, known)| known);
-        let group = (path == "vehicle.radioStatus").then_some(known).flatten().and_then(|known| crate::vehiclefact::spec_group_fields(&crate::vehiclefact::RADIO, fields, |n| known.radio.raw(n)));
+        let group = (path == "vehicle.radioStatus")
+            .then_some(known)
+            .flatten()
+            .and_then(|known| {
+                crate::vehiclefact::spec_group_fields(&crate::vehiclefact::RADIO, fields, |n| {
+                    known.radio.raw(n)
+                })
+            });
         if let Some(answered) = group {
             return answered;
         }
-        let avoidance = (path == "vehicle.objectAvoidance").then_some(known).flatten().and_then(|known| {
-            let now = crate::hub::now_ms();
-            let answered: Option<serde_json::Map<String, Value>> = fields_of(fields).into_iter().map(|f| Some((f.to_string(), known.obstacle.field(f, known.avoidance_enabled, now)?))).collect();
-            let mut object = Value::Object(answered?);
-            object["kind"] = json!("object");
-            object["class"] = json!("VehicleObjectAvoidance");
-            object["facts"] = json!([]);
-            object["children"] = json!([]);
-            Some(object)
-        });
+        let avoidance = (path == "vehicle.objectAvoidance")
+            .then_some(known)
+            .flatten()
+            .and_then(|known| {
+                let now = crate::hub::now_ms();
+                let answered: Option<serde_json::Map<String, Value>> = fields_of(fields)
+                    .into_iter()
+                    .map(|f| {
+                        Some((
+                            f.to_string(),
+                            known.obstacle.field(f, known.avoidance_enabled, now)?,
+                        ))
+                    })
+                    .collect();
+                let mut object = Value::Object(answered?);
+                object["kind"] = json!("object");
+                object["class"] = json!("VehicleObjectAvoidance");
+                object["facts"] = json!([]);
+                object["children"] = json!([]);
+                Some(object)
+            });
         if let Some(answered) = avoidance {
             return answered;
         }
-        let (mut answered, missing) = known.map_or_else(|| (serde_json::Map::new(), fields_of(fields).into_iter().map(String::from).collect()), |known| answer_fields(path, fields, known));
+        let (mut answered, missing) = known.map_or_else(
+            || {
+                (
+                    serde_json::Map::new(),
+                    fields_of(fields).into_iter().map(String::from).collect(),
+                )
+            },
+            |known| answer_fields(path, fields, known),
+        );
         let facts: Vec<Value> = match path {
-            "vehicle" => VEHICLE_FACTS.iter().filter_map(|name| Some(crate::vehiclefact::compact(&answered.remove(*name)?, name))).collect(),
+            "vehicle" => VEHICLE_FACTS
+                .iter()
+                .filter_map(|name| {
+                    Some(crate::vehiclefact::compact(&answered.remove(*name)?, name))
+                })
+                .collect(),
             _ => Vec::new(),
         };
         if missing.is_empty() && (!answered.is_empty() || !facts.is_empty()) {
@@ -1907,13 +3424,21 @@ impl<B: Backend> Backend for Facade<B> {
             }
             return object;
         }
-        let asked = if answered.is_empty() && facts.is_empty() { fields.to_string() } else { missing.join(",") };
+        let asked = if answered.is_empty() && facts.is_empty() {
+            fields.to_string()
+        } else {
+            missing.join(",")
+        };
         fell_through("fields", &format!("{asked_path} [{asked}]"));
         let host = merged(answered, self.0.value_fields(asked_path, &asked));
         match facts.is_empty() || host["kind"] != "object" {
             true => host,
             false => {
-                let theirs = host.get("facts").and_then(Value::as_array).cloned().unwrap_or_default();
+                let theirs = host
+                    .get("facts")
+                    .and_then(Value::as_array)
+                    .cloned()
+                    .unwrap_or_default();
                 let mut host = host;
                 host["facts"] = json!(theirs.into_iter().chain(facts).collect::<Vec<_>>());
                 host
@@ -1928,7 +3453,9 @@ impl<B: Backend> Backend for Facade<B> {
     }
     fn set(&self, path: &str, value: &str) -> String {
         match crate::factwrite::owns_raw(path) {
-            true => crate::factwrite::write_raw(self, path, value, || self.set_unannounced(path, value)),
+            true => {
+                crate::factwrite::write_raw(self, path, value, || self.set_unannounced(path, value))
+            }
             false => self.set_unannounced(path, value),
         }
     }
@@ -1939,17 +3466,34 @@ impl<B: Backend> Backend for Facade<B> {
         }
         if let Some(name) = path.strip_prefix("vehicle.cameraManager.currentCameraInstance.") {
             if let Some((vehicle, inputs)) = simulated_camera() {
-                let trigger = || self.0.core_guided(&json!({ "action": "triggerCamera", "vehicle": vehicle })).is_some_and(|started| started.is_ok());
+                let trigger = || {
+                    self.0
+                        .core_guided(&json!({ "action": "triggerCamera", "vehicle": vehicle }))
+                        .is_some_and(|started| started.is_ok())
+                };
                 let start = || {
                     let _ = crate::videohost::start_recording();
                 };
-                let recorder = crate::simcamera::Recorder { start: &start, stop: &crate::videohost::stop_recording };
-                if let Some(took) = crate::simcamera::invoke(vehicle, inputs, name, crate::hub::now_ms(), &trigger, &recorder) {
+                let recorder = crate::simcamera::Recorder {
+                    start: &start,
+                    stop: &crate::videohost::stop_recording,
+                };
+                if let Some(took) = crate::simcamera::invoke(
+                    vehicle,
+                    inputs,
+                    name,
+                    crate::hub::now_ms(),
+                    &trigger,
+                    &recorder,
+                ) {
                     return json!({ "ok": true, "result": took }).to_string();
                 }
             }
         }
-        if let Some(answer) = path.strip_prefix("vehicle.cameraManager.currentCameraInstance.").and_then(|name| self.real_camera_invoke(name, args)) {
+        if let Some(answer) = path
+            .strip_prefix("vehicle.cameraManager.currentCameraInstance.")
+            .and_then(|name| self.real_camera_invoke(name, args))
+        {
             return answer;
         }
         if path == "vehicle.motorTest" && switched_on() {
@@ -1971,15 +3515,28 @@ impl<B: Backend> Backend for Facade<B> {
             return answer.to_string();
         }
         if path == "vehicle.parameterManager.componentIds" && switched_on() {
-            if let Some(components) = crate::hub::lock().active().map(crate::hub::Vehicle::parameter_components) {
+            if let Some(components) = crate::hub::lock()
+                .active()
+                .map(crate::hub::Vehicle::parameter_components)
+            {
                 return json!({ "ok": true, "result": components }).to_string();
             }
         }
         if path == "vehicle.parameterManager.parameterNames" && switched_on() {
-            let asked = serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0).and_then(Value::as_i64)).unwrap_or(-1);
+            let asked = serde_json::from_str::<Value>(args)
+                .ok()
+                .and_then(|a| a.get(0).and_then(Value::as_i64))
+                .unwrap_or(-1);
             let names = crate::hub::lock().active().map(|v| {
-                let component = u8::try_from(asked).ok().filter(|c| *c != 0).unwrap_or(v.component);
-                let mut listed: Vec<String> = v.parameters(component).into_iter().map(|(name, _)| name).collect();
+                let component = u8::try_from(asked)
+                    .ok()
+                    .filter(|c| *c != 0)
+                    .unwrap_or(v.component);
+                let mut listed: Vec<String> = v
+                    .parameters(component)
+                    .into_iter()
+                    .map(|(name, _)| name)
+                    .collect();
                 listed.sort();
                 listed
             });
@@ -1999,15 +3556,27 @@ impl<B: Backend> Backend for Facade<B> {
         if let Some(answer) = self.shell_invoke(path, args) {
             return answer;
         }
-        if let Some(request) = sensors_request(path, args).filter(|_| switched_on() && crate::hub::lock().sensors_json().is_some()) {
+        if let Some(request) = sensors_request(path, args)
+            .filter(|_| switched_on() && crate::hub::lock().sensors_json().is_some())
+        {
             let vehicle = crate::hub::lock().active_id();
-            let started = self.0.core_guided(&json!({ "action": "calibrate", "vehicle": vehicle, "request": request }));
+            let started = self.0.core_guided(
+                &json!({ "action": "calibrate", "vehicle": vehicle, "request": request }),
+            );
             return json!({ "ok": started.is_some_and(|s| s.is_ok()) }).to_string();
         }
-        if path == "vehicle.flashBootloader" && switched_on() && !crate::hub::lock().active().is_some_and(|v| v.autopilot == crate::modes::AUTOPILOT_ARDUPILOT) {
+        if path == "vehicle.flashBootloader"
+            && switched_on()
+            && !crate::hub::lock()
+                .active()
+                .is_some_and(|v| v.autopilot == crate::modes::AUTOPILOT_ARDUPILOT)
+        {
             return json!({ "ok": true }).to_string();
         }
-        if let Some(params) = (switched_on()).then(|| vehicle_command(path, args)).flatten() {
+        if let Some(params) = (switched_on())
+            .then(|| vehicle_command(path, args))
+            .flatten()
+        {
             let active = crate::hub::lock().active_id();
             if let Some(vehicle) = active {
                 let (command, params) = params;
@@ -2015,23 +3584,33 @@ impl<B: Backend> Backend for Facade<B> {
                 return json!({ "ok": sent.is_some_and(|s| s.is_ok()) }).to_string();
             }
         }
-        if let Some(op) = (switched_on() && crate::hub::lock().active().is_some()).then(|| match path {
-            "radioCal.nextButtonClicked" => Some("next"),
-            "radioCal.cancelButtonClicked" => Some("cancel"),
-            "radioCal.start" => Some("start"),
-            "radioCal.open" => Some("open"),
-            "radioCal.close" => Some("close"),
-            "radioCal.copyTrims" => Some("copyTrims"),
-            _ => None,
-        }).flatten() {
+        if let Some(op) = (switched_on() && crate::hub::lock().active().is_some())
+            .then(|| match path {
+                "radioCal.nextButtonClicked" => Some("next"),
+                "radioCal.cancelButtonClicked" => Some("cancel"),
+                "radioCal.start" => Some("start"),
+                "radioCal.open" => Some("open"),
+                "radioCal.close" => Some("close"),
+                "radioCal.copyTrims" => Some("copyTrims"),
+                _ => None,
+            })
+            .flatten()
+        {
             let vehicle = crate::hub::lock().active_id();
-            let started = self.0.core_guided(&json!({ "action": "rcCal", "vehicle": vehicle, "op": op }));
+            let started = self
+                .0
+                .core_guided(&json!({ "action": "rcCal", "vehicle": vehicle, "op": op }));
             return json!({ "ok": started.is_some_and(|s| s.is_ok()) }).to_string();
         }
-        if let Some(limit) = FIRMWARE_LIMITS.contains(&path).then(|| {
-            let hub = crate::hub::lock();
-            hub.active().map(|v| v.firmware_limit(path))
-        }).flatten().filter(|_| switched_on()) {
+        if let Some(limit) = FIRMWARE_LIMITS
+            .contains(&path)
+            .then(|| {
+                let hub = crate::hub::lock();
+                hub.active().map(|v| v.firmware_limit(path))
+            })
+            .flatten()
+            .filter(|_| switched_on())
+        {
             return json!({ "ok": true, "result": limit }).to_string();
         }
         if path == "vehicle.resetCounters" && switched_on() && !crate::qthost::present() {
@@ -2039,7 +3618,9 @@ impl<B: Backend> Backend for Facade<B> {
         }
         if path == "vehicle.startTimerRevertAllowTakeover" && inspector_owned() {
             let vehicle = crate::hub::lock().active_id();
-            let started = self.0.core_guided(&json!({ "action": "revertTakeoverTimer", "vehicle": vehicle }));
+            let started = self
+                .0
+                .core_guided(&json!({ "action": "revertTakeoverTimer", "vehicle": vehicle }));
             return json!({ "ok": started.is_some_and(|s| s.is_ok()) }).to_string();
         }
         if path == "vehicle.requestOperatorControl" && inspector_owned() {
@@ -2047,21 +3628,35 @@ impl<B: Backend> Backend for Facade<B> {
             let allow = given.get(0).and_then(Value::as_bool).unwrap_or(false);
             let timeout = given.get(1).and_then(Value::as_i64).unwrap_or(0);
             let meta = crate::settingsstore::metadata("FlyView", "requestControlTimeout");
-            let limit = |value: Option<&Value>, fallback: i64| value.and_then(Value::as_i64).unwrap_or(fallback);
-            let safe = crate::operatorcontrol::safe_timeout(timeout, (limit(meta.as_ref().and_then(|m| m.min.as_ref()), 3), limit(meta.as_ref().and_then(|m| m.max.as_ref()), 60)), limit(meta.as_ref().and_then(|m| m.default.as_ref()), 10));
+            let limit = |value: Option<&Value>, fallback: i64| {
+                value.and_then(Value::as_i64).unwrap_or(fallback)
+            };
+            let safe = crate::operatorcontrol::safe_timeout(
+                timeout,
+                (
+                    limit(meta.as_ref().and_then(|m| m.min.as_ref()), 3),
+                    limit(meta.as_ref().and_then(|m| m.max.as_ref()), 60),
+                ),
+                limit(meta.as_ref().and_then(|m| m.default.as_ref()), 10),
+            );
             let vehicle = crate::hub::lock().active_id();
             let started = self.0.core_guided(&json!({ "action": "requestControl", "vehicle": vehicle, "allowTakeover": allow, "timeout": timeout, "safeTimeout": safe }));
             return json!({ "ok": started.is_some_and(|s| s.is_ok()) }).to_string();
         }
         if path == "mavlinkInspector.setActiveSystem" && inspector_owned() {
-            let id = serde_json::from_str::<Value>(args).ok().and_then(|v| v.get(0)?.as_u64()).and_then(|id| u8::try_from(id).ok());
+            let id = serde_json::from_str::<Value>(args)
+                .ok()
+                .and_then(|v| v.get(0)?.as_u64())
+                .and_then(|id| u8::try_from(id).ok());
             if let Some(id) = id {
                 crate::mavinspect::lock().set_active(id);
                 return json!({ "ok": true }).to_string();
             }
         }
         if path == "mavlinkInspector.setMessageInterval" && inspector_owned() {
-            let rate = serde_json::from_str::<Value>(args).ok().and_then(|v| v.get(0)?.as_i64());
+            let rate = serde_json::from_str::<Value>(args)
+                .ok()
+                .and_then(|v| v.get(0)?.as_i64());
             let target = crate::mavinspect::lock().selected_target();
             let started = rate.zip(target).and_then(|(rate, (vehicle, component, message))| self.0.core_guided(&json!({ "action": "messageInterval", "vehicle": vehicle, "component": component, "message": message, "rate": rate })));
             return json!({ "ok": started.is_some_and(|s| s.is_ok()) }).to_string();
@@ -2069,16 +3664,25 @@ impl<B: Backend> Backend for Facade<B> {
         if let Some(done) = crate::firmwareflash::invoke(path, args) {
             return done.to_string();
         }
-        if let Some(done) = (path == "packetRadio.refreshAdapters").then(crate::wfbhost::refresh).flatten() {
+        if let Some(done) = (path == "packetRadio.refreshAdapters")
+            .then(crate::wfbhost::refresh)
+            .flatten()
+        {
             return done.to_string();
         }
-        if let Some(index) = (path == "video.cameraName" && switched_on()).then(|| serde_json::from_str::<Value>(args).ok()?.get(0)?.as_i64()).flatten() {
+        if let Some(index) = (path == "video.cameraName" && switched_on())
+            .then(|| serde_json::from_str::<Value>(args).ok()?.get(0)?.as_i64())
+            .flatten()
+        {
             return json!({ "ok": true, "result": video_camera_name(index) }).to_string();
         }
         if path == "vehicle.remoteIDManager.setEmergency" && switched_on() {
-            let declare = serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0)?.as_bool());
+            let declare = serde_json::from_str::<Value>(args)
+                .ok()
+                .and_then(|a| a.get(0)?.as_bool());
             if let Some(declare) = declare {
-                let done = crate::hub::lock().remote_request(None, &json!({ "emergency": declare }));
+                let done =
+                    crate::hub::lock().remote_request(None, &json!({ "emergency": declare }));
                 return json!({ "ok": done.is_ok(), "reason": done.err() }).to_string();
             }
         }
@@ -2112,7 +3716,9 @@ impl<B: Backend> Backend for Facade<B> {
         }
         if switched_on() {
             match path {
-                "links.createMavlinkForwardingSupportLink" => return json!({ "ok": crate::forwarding::start_support() }).to_string(),
+                "links.createMavlinkForwardingSupportLink" => {
+                    return json!({ "ok": crate::forwarding::start_support() }).to_string();
+                }
                 "links.endMavlinkForwardingSupportLink" => {
                     crate::forwarding::end_support();
                     return json!({ "ok": true }).to_string();
@@ -2120,13 +3726,16 @@ impl<B: Backend> Backend for Facade<B> {
                 _ => {}
             }
         }
-        switched_on().then(|| answer_invoke(path, args)).flatten().map_or_else(
-            || {
-                fell_through("invoke", path);
-                self.0.invoke(path, args)
-            },
-            |v| v.to_string(),
-        )
+        switched_on()
+            .then(|| answer_invoke(path, args))
+            .flatten()
+            .map_or_else(
+                || {
+                    fell_through("invoke", path);
+                    self.0.invoke(path, args)
+                },
+                |v| v.to_string(),
+            )
     }
     fn watch(&self, paths: &[String]) {
         self.0.watch(paths);
@@ -2144,21 +3753,52 @@ mod tests {
     #[test]
     fn every_fact_property_of_the_vehicle_answers_as_the_fact_itself_like_flight_distance() {
         let known = super::known_of(&crate::hub::Vehicle::heard(1));
-        let kind = |name: &str| super::answer_get(&format!("vehicle.{name}"), &known).and_then(|answer| answer.get("kind").cloned());
-        assert_eq!(["flightDistance", "flightTime", "headingToNextWP", "hobbs"].map(kind), [0; 4].map(|_| Some(serde_json::json!("fact"))));
+        let kind = |name: &str| {
+            super::answer_get(&format!("vehicle.{name}"), &known)
+                .and_then(|answer| answer.get("kind").cloned())
+        };
+        assert_eq!(
+            ["flightDistance", "flightTime", "headingToNextWP", "hobbs"].map(kind),
+            [0; 4].map(|_| Some(serde_json::json!("fact")))
+        );
     }
 
     #[test]
     fn the_core_alone_answers_a_parameter_file_header() {
         let mut vehicle = crate::hub::Vehicle::heard(1);
-        vehicle.autopilot_version = Some(crate::connect::AutopilotVersion { capabilities: 0, flight_sw_version: 0x010F_0280, flight_custom_version: [0x1b, 0x0a, 0x3c, 0x9f, 0, 0, 0, 0], uid: 0, vendor_id: 0, product_id: 0, board_version: 0 });
-        let (answered, missing) = super::answer_fields("vehicle", crate::paramfile::HEADER_FIELDS, &super::known_of(&vehicle));
-        assert!(missing.is_empty(), "with no Qt host a fall-through turns the whole vehicle null: {missing:?}");
-        let git_hash = vehicle.firmware().map(|firmware| firmware.git_hash).unwrap();
+        vehicle.autopilot_version = Some(crate::connect::AutopilotVersion {
+            capabilities: 0,
+            flight_sw_version: 0x010F_0280,
+            flight_custom_version: [0x1b, 0x0a, 0x3c, 0x9f, 0, 0, 0, 0],
+            uid: 0,
+            vendor_id: 0,
+            product_id: 0,
+            board_version: 0,
+        });
+        let (answered, missing) = super::answer_fields(
+            "vehicle",
+            crate::paramfile::HEADER_FIELDS,
+            &super::known_of(&vehicle),
+        );
+        assert!(
+            missing.is_empty(),
+            "with no Qt host a fall-through turns the whole vehicle null: {missing:?}"
+        );
+        let git_hash = vehicle
+            .firmware()
+            .map(|firmware| firmware.git_hash)
+            .unwrap();
         assert!(!git_hash.is_empty());
         assert_eq!(
-            ["id", "firmwareType", "vehicleType", "gitHash"].map(|field| answered.get(field).cloned()),
-            [json!(vehicle.id), json!(vehicle.autopilot), json!(vehicle.vehicle_type), json!(git_hash)].map(Some),
+            ["id", "firmwareType", "vehicleType", "gitHash"]
+                .map(|field| answered.get(field).cloned()),
+            [
+                json!(vehicle.id),
+                json!(vehicle.autopilot),
+                json!(vehicle.vehicle_type),
+                json!(git_hash)
+            ]
+            .map(Some),
             "the header names the vehicle the file came from, so a load can refuse a file from another firmware or frame"
         );
     }
@@ -2177,32 +3817,117 @@ mod tests {
         vehicle.facts.throttle_pct = 42;
         vehicle.facts.coordinate = Some((-35.3633, 149.1652, 584.0));
         vehicle.home = Some((-35.3632, 149.1652, 584.0));
-        vehicle.local = crate::sensorfacts::LocalPositionFacts { x: 1.0, y: 2.0, z: -59.0, vx: 11.5, vy: -0.75, vz: 0.25, seen: true };
+        vehicle.local = crate::sensorfacts::LocalPositionFacts {
+            x: 1.0,
+            y: 2.0,
+            z: -59.0,
+            vx: 11.5,
+            vy: -0.75,
+            vz: 0.25,
+            seen: true,
+        };
         let known = super::known_of(&vehicle);
         let formatted = |path: &str| super::answer_get(path, &known).unwrap_or(Value::Null);
-        let paths: Vec<String> = super::VEHICLE_FACTS.iter().map(|name| format!("vehicle.{name}")).chain(crate::vehiclefact::LOCAL_POSITION.properties.iter().map(|(shown, _)| format!("vehicle.localPosition.{shown}"))).collect();
-        paths.iter().for_each(|path| assert!(super::quick_raw(path, &known).is_none_or(|quick| quick == crate::router::raw_of(&formatted(path))), "{path}"));
-        ["heading", "roll", "pitch", "rollRate", "pitchRate", "yawRate", "altitudeRelative", "localPosition.vx", "localPosition.vy", "localPosition.vz"]
+        let paths: Vec<String> = super::VEHICLE_FACTS
             .iter()
-            .for_each(|name| assert!(super::quick_raw(&format!("vehicle.{name}"), &known).is_some(), "the 3D view reads {name} on every frame"));
-        assert_eq!(super::quick_raw("vehicle.xTrackError", &known), None, "a fact without metadata reads as nothing, so it keeps the formatted path");
-        assert_eq!(super::quick_raw("vehicle.heading", &known), Some(Some(271.5)));
-        ["vehicle.coordinate", "vehicle.homePosition"].iter().for_each(|path| assert_eq!(super::quick_point(path, &known), Some(crate::router::point_of(&formatted(path))), "{path}"));
+            .map(|name| format!("vehicle.{name}"))
+            .chain(
+                crate::vehiclefact::LOCAL_POSITION
+                    .properties
+                    .iter()
+                    .map(|(shown, _)| format!("vehicle.localPosition.{shown}")),
+            )
+            .collect();
+        paths.iter().for_each(|path| {
+            assert!(
+                super::quick_raw(path, &known)
+                    .is_none_or(|quick| quick == crate::router::raw_of(&formatted(path))),
+                "{path}"
+            )
+        });
+        [
+            "heading",
+            "roll",
+            "pitch",
+            "rollRate",
+            "pitchRate",
+            "yawRate",
+            "altitudeRelative",
+            "localPosition.vx",
+            "localPosition.vy",
+            "localPosition.vz",
+        ]
+        .iter()
+        .for_each(|name| {
+            assert!(
+                super::quick_raw(&format!("vehicle.{name}"), &known).is_some(),
+                "the 3D view reads {name} on every frame"
+            )
+        });
+        assert_eq!(
+            super::quick_raw("vehicle.xTrackError", &known),
+            None,
+            "a fact without metadata reads as nothing, so it keeps the formatted path"
+        );
+        assert_eq!(
+            super::quick_raw("vehicle.heading", &known),
+            Some(Some(271.5))
+        );
+        ["vehicle.coordinate", "vehicle.homePosition"]
+            .iter()
+            .for_each(|path| {
+                assert_eq!(
+                    super::quick_point(path, &known),
+                    Some(crate::router::point_of(&formatted(path))),
+                    "{path}"
+                )
+            });
         let nowhere = super::known_of(&crate::hub::Vehicle::heard(2));
-        assert_eq!(super::quick_point("vehicle.coordinate", &nowhere), Some(crate::router::point_of(&super::answer_get("vehicle.coordinate", &nowhere).unwrap_or(Value::Null))));
-        assert_eq!(super::quick_raw("vehicle.parameterManager.getParameter(-1,PILOT_Y_RATE)", &known), None, "anything else takes the formatted path");
+        assert_eq!(
+            super::quick_point("vehicle.coordinate", &nowhere),
+            Some(crate::router::point_of(
+                &super::answer_get("vehicle.coordinate", &nowhere).unwrap_or(Value::Null)
+            ))
+        );
+        assert_eq!(
+            super::quick_raw(
+                "vehicle.parameterManager.getParameter(-1,PILOT_Y_RATE)",
+                &known
+            ),
+            None,
+            "anything else takes the formatted path"
+        );
         assert_eq!(super::quick_raw("vehicle.armed", &known), None);
     }
 
     #[test]
     fn one_render_pass_builds_a_vehicles_facts_once_and_forgets_them_after() {
         let vehicle = crate::hub::Vehicle::heard(1);
-        let (first, second, nested) = super::one_pass(|| (super::known(&vehicle), super::known(&vehicle), super::one_pass(|| super::known(&vehicle))));
+        let (first, second, nested) = super::one_pass(|| {
+            (
+                super::known(&vehicle),
+                super::known(&vehicle),
+                super::one_pass(|| super::known(&vehicle)),
+            )
+        });
         assert!(std::rc::Rc::ptr_eq(&first, &second));
-        assert!(std::rc::Rc::ptr_eq(&first, &nested), "a get inside a poll joins the poll's pass");
-        assert!(!std::rc::Rc::ptr_eq(&super::known(&vehicle), &super::known(&vehicle)), "outside a pass every read sees the vehicle as it is now");
-        let (outer, nested) = super::one_pass(|| (super::pass_number(), super::one_pass(super::pass_number)));
-        assert!(outer.is_some() && outer == nested && super::pass_number().is_none() && super::one_pass(super::pass_number) != outer, "a nested pass is the same pass, and the next pass is a new one");
+        assert!(
+            std::rc::Rc::ptr_eq(&first, &nested),
+            "a get inside a poll joins the poll's pass"
+        );
+        assert!(
+            !std::rc::Rc::ptr_eq(&super::known(&vehicle), &super::known(&vehicle)),
+            "outside a pass every read sees the vehicle as it is now"
+        );
+        let (outer, nested) =
+            super::one_pass(|| (super::pass_number(), super::one_pass(super::pass_number)));
+        assert!(
+            outer.is_some()
+                && outer == nested
+                && super::pass_number().is_none()
+                && super::one_pass(super::pass_number) != outer,
+            "a nested pass is the same pass, and the next pass is a new one"
+        );
     }
 
     #[test]
@@ -2210,8 +3935,20 @@ mod tests {
         let mut unknown_frame = crate::hub::Vehicle::heard(1);
         unknown_frame.autopilot = crate::modes::AUTOPILOT_ARDUPILOT;
         unknown_frame.vehicle_type = 200;
-        let described = described_parameter(&unknown_frame, 1, "PILOT_Y_RATE", None, crate::params::ParamValue::F32(150.0), None).expect("a parameter the vehicle sent is served");
-        assert_eq!((described["rawValue"].as_f64(), described["name"].as_str()), (Some(150.0), Some("PILOT_Y_RATE")), "like QGC, a parameter with no metadata keeps its value with bare metadata instead of reading as null");
+        let described = described_parameter(
+            &unknown_frame,
+            1,
+            "PILOT_Y_RATE",
+            None,
+            crate::params::ParamValue::F32(150.0),
+            None,
+        )
+        .expect("a parameter the vehicle sent is served");
+        assert_eq!(
+            (described["rawValue"].as_f64(), described["name"].as_str()),
+            (Some(150.0), Some("PILOT_Y_RATE")),
+            "like QGC, a parameter with no metadata keeps its value with bare metadata instead of reading as null"
+        );
     }
 
     #[test]
@@ -2223,234 +3960,823 @@ mod tests {
             vehicle.vehicle_type = vehicle_type;
             vehicle
         };
-        let key = |vehicle: &crate::hub::Vehicle, value: ParamValue| parameter_key(vehicle, "-1,RTL_ALT", value, default_of(vehicle, 1, "RTL_ALT"));
+        let key = |vehicle: &crate::hub::Vehicle, value: ParamValue| {
+            parameter_key(
+                vehicle,
+                "-1,RTL_ALT",
+                value,
+                default_of(vehicle, 1, "RTL_ALT"),
+            )
+        };
         let copter = ardupilot(2);
-        assert_eq!(key(&copter, ParamValue::I32(1500)), key(&ardupilot(2), ParamValue::I32(1500)));
-        assert_ne!(key(&copter, ParamValue::I32(1500)), key(&ardupilot(1), ParamValue::I32(1500)), "a plane with the same system ID and firmware version reads another metadata file");
-        assert_ne!(key(&copter, ParamValue::I32(1500)), key(&copter, ParamValue::I32(1600)));
-        assert_ne!(key(&copter, ParamValue::I32(1500)), key(&copter, ParamValue::F32(1500.0)), "the same number in another type is another fact");
+        assert_eq!(
+            key(&copter, ParamValue::I32(1500)),
+            key(&ardupilot(2), ParamValue::I32(1500))
+        );
+        assert_ne!(
+            key(&copter, ParamValue::I32(1500)),
+            key(&ardupilot(1), ParamValue::I32(1500)),
+            "a plane with the same system ID and firmware version reads another metadata file"
+        );
+        assert_ne!(
+            key(&copter, ParamValue::I32(1500)),
+            key(&copter, ParamValue::I32(1600))
+        );
+        assert_ne!(
+            key(&copter, ParamValue::I32(1500)),
+            key(&copter, ParamValue::F32(1500.0)),
+            "the same number in another type is another fact"
+        );
         let defaulted = {
             let mut vehicle = ardupilot(2);
-            vehicle.parameter_defaults.insert("RTL_ALT".to_string(), ParamValue::I32(1500));
+            vehicle
+                .parameter_defaults
+                .insert("RTL_ALT".to_string(), ParamValue::I32(1500));
             vehicle
         };
-        assert_ne!(key(&copter, ParamValue::I32(1500)), key(&defaulted, ParamValue::I32(1500)), "a firmware default changes what the fact says about its value");
+        assert_ne!(
+            key(&copter, ParamValue::I32(1500)),
+            key(&defaulted, ParamValue::I32(1500)),
+            "a firmware default changes what the fact says about its value"
+        );
     }
 
     #[test]
     fn a_parameter_write_names_its_path_kind_and_refuses_what_is_not_a_write() {
-        assert_eq!(parameter_write("vehicle.parameterManager.getParameter(1,X).enumStrings", "{\"value\":1}"), None, "only the fact, its value, raw value and enum index are written as a parameter");
+        assert_eq!(
+            parameter_write(
+                "vehicle.parameterManager.getParameter(1,X).enumStrings",
+                "{\"value\":1}"
+            ),
+            None,
+            "only the fact, its value, raw value and enum index are written as a parameter"
+        );
         assert_eq!(parameter_write("vehicle.other", "{\"value\":1}"), None);
     }
 
     #[test]
     fn the_hobbs_meter_reads_lifetime_flight_time_like_the_firmware_plugins() {
         let apm = |name: &str| (name == "STAT_FLTTIME").then_some(3_725.0 + 360_000.0);
-        assert_eq!(hobbs_meter(false, apm), "0101:02:05", "APMFirmwarePlugin::getHobbsMeter: STAT_FLTTIME seconds as %04d:%02d:%02d");
-        let px4 = |name: &str| match name { "LND_FLIGHT_T_HI" => Some(1.0), "LND_FLIGHT_T_LO" => Some(-1.0), _ => None };
-        assert_eq!(hobbs_meter(true, px4), "0002:23:09", "PX4 joins HI and LO as unsigned microseconds");
-        assert_eq!(hobbs_meter(true, |_| None), "0000:00:00", "a vehicle without the parameters reads zero, as both plugins do");
+        assert_eq!(
+            hobbs_meter(false, apm),
+            "0101:02:05",
+            "APMFirmwarePlugin::getHobbsMeter: STAT_FLTTIME seconds as %04d:%02d:%02d"
+        );
+        let px4 = |name: &str| match name {
+            "LND_FLIGHT_T_HI" => Some(1.0),
+            "LND_FLIGHT_T_LO" => Some(-1.0),
+            _ => None,
+        };
+        assert_eq!(
+            hobbs_meter(true, px4),
+            "0002:23:09",
+            "PX4 joins HI and LO as unsigned microseconds"
+        );
+        assert_eq!(
+            hobbs_meter(true, |_| None),
+            "0000:00:00",
+            "a vehicle without the parameters reads zero, as both plugins do"
+        );
     }
 
     #[test]
     fn mission_item_index_counts_home_for_px4_like_vehicle_update_mission_item_index() {
-        assert_eq!(super::mission_item_index(3, true), 4, "PX4 does not take a home position, so QGC adds one");
-        assert_eq!(super::mission_item_index(3, false), 3, "ArduPilot sends home as item 0, so nothing is added");
+        assert_eq!(
+            super::mission_item_index(3, true),
+            4,
+            "PX4 does not take a home position, so QGC adds one"
+        );
+        assert_eq!(
+            super::mission_item_index(3, false),
+            3,
+            "ArduPilot sends home as item 0, so nothing is added"
+        );
     }
 
     #[test]
     fn radio_bind_and_copy_trims_send_what_vehicle_pair_rx_and_start_calibration_send() {
-        assert_eq!(vehicle_command("radioCal.spektrumBindMode", "[2]"), Some((crate::mavcmd::CMD_START_RX_PAIR, [0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0])));
-        assert_eq!(vehicle_command("radioCal.crsfBindMode", "[]").map(|c| c.1[0]), Some(1.0));
-        assert_eq!(vehicle_command("radioCal.copyTrims", "[]"), None, "startCalibration(CalibrationCopyTrims) is a raw COMMAND_LONG, never the command queue");
+        assert_eq!(
+            vehicle_command("radioCal.spektrumBindMode", "[2]"),
+            Some((
+                crate::mavcmd::CMD_START_RX_PAIR,
+                [0.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+            ))
+        );
+        assert_eq!(
+            vehicle_command("radioCal.crsfBindMode", "[]").map(|c| c.1[0]),
+            Some(1.0)
+        );
+        assert_eq!(
+            vehicle_command("radioCal.copyTrims", "[]"),
+            None,
+            "startCalibration(CalibrationCopyTrims) is a raw COMMAND_LONG, never the command queue"
+        );
         assert_eq!(vehicle_command("radioCal.nextButtonClicked", "[]"), None);
-        assert_eq!(vehicle_command("vehicle.flashBootloader", "[]"), Some((42650, [0.0, 0.0, 0.0, 0.0, 290876.0, 0.0, 0.0])), "Vehicle::flashBootloader puts the magic number in param 5");
+        assert_eq!(
+            vehicle_command("vehicle.flashBootloader", "[]"),
+            Some((42650, [0.0, 0.0, 0.0, 0.0, 290876.0, 0.0, 0.0])),
+            "Vehicle::flashBootloader puts the magic number in param 5"
+        );
     }
 
     #[test]
     fn a_real_camera_takes_vehicle_camera_controls_invokables_as_core_camera_ops() {
-        assert_eq!(real_camera_op("toggleVideoRecording", "[]"), Some(json!({ "op": "toggleRecording" })));
-        assert_eq!(real_camera_op("setCameraModeVideo", "[]"), Some(json!({ "op": "setMode", "mode": crate::cameraproto::MODE_VIDEO })));
-        assert_eq!(real_camera_op("formatCard", "[2]"), Some(json!({ "op": "format", "storage": 2 })), "formatCard takes the storage id, 1 for the first");
-        assert_eq!(real_camera_op("startTrackingRect", r#"[{"x":0.1,"y":0.2,"width":0.3,"height":0.4}]"#), Some(json!({ "op": "trackRect", "rect": { "x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4 } })));
-        assert_eq!(real_camera_op("startTrackingPoint", r#"[{"x":0.5,"y":0.5},0.05]"#), Some(json!({ "op": "trackPoint", "point": { "x": 0.5, "y": 0.5 }, "radius": 0.05 })));
-        assert_eq!(real_camera_op("startTracking", "[]"), None, "anything else is left to the host");
-        assert_eq!(real_camera_op("stepZoom", "[-9]"), Some(json!({ "op": "step", "axis": "zoom", "direction": -9 })), "the pinch area's stepZoom goes out as ZOOM_TYPE_STEP");
+        assert_eq!(
+            real_camera_op("toggleVideoRecording", "[]"),
+            Some(json!({ "op": "toggleRecording" }))
+        );
+        assert_eq!(
+            real_camera_op("setCameraModeVideo", "[]"),
+            Some(json!({ "op": "setMode", "mode": crate::cameraproto::MODE_VIDEO }))
+        );
+        assert_eq!(
+            real_camera_op("formatCard", "[2]"),
+            Some(json!({ "op": "format", "storage": 2 })),
+            "formatCard takes the storage id, 1 for the first"
+        );
+        assert_eq!(
+            real_camera_op(
+                "startTrackingRect",
+                r#"[{"x":0.1,"y":0.2,"width":0.3,"height":0.4}]"#
+            ),
+            Some(
+                json!({ "op": "trackRect", "rect": { "x": 0.1, "y": 0.2, "width": 0.3, "height": 0.4 } })
+            )
+        );
+        assert_eq!(
+            real_camera_op("startTrackingPoint", r#"[{"x":0.5,"y":0.5},0.05]"#),
+            Some(json!({ "op": "trackPoint", "point": { "x": 0.5, "y": 0.5 }, "radius": 0.05 }))
+        );
+        assert_eq!(
+            real_camera_op("startTracking", "[]"),
+            None,
+            "anything else is left to the host"
+        );
+        assert_eq!(
+            real_camera_op("stepZoom", "[-9]"),
+            Some(json!({ "op": "step", "axis": "zoom", "direction": -9 })),
+            "the pinch area's stepZoom goes out as ZOOM_TYPE_STEP"
+        );
     }
 
     #[test]
     fn camera_local_settings_are_kept_under_qgcs_own_keys() {
-        assert_eq!(camera_stored_key("vehicle.cameraManager.currentCameraInstance.photoCaptureMode"), Some("PhotoCaptureMode"));
-        assert_eq!(camera_stored_key("vehicle.cameraManager.currentCameraInstance.photoLapse"), Some("PhotoLapse"));
-        assert_eq!(camera_stored_key("vehicle.cameraManager.currentCameraInstance.thermalOpacity"), Some("ThermalOpacity"));
-        assert_eq!(camera_stored_key("vehicle.cameraManager.currentCameraInstance.zoomLevel"), None, "zoom is a command to the camera, not a stored setting");
+        assert_eq!(
+            camera_stored_key("vehicle.cameraManager.currentCameraInstance.photoCaptureMode"),
+            Some("PhotoCaptureMode")
+        );
+        assert_eq!(
+            camera_stored_key("vehicle.cameraManager.currentCameraInstance.photoLapse"),
+            Some("PhotoLapse")
+        );
+        assert_eq!(
+            camera_stored_key("vehicle.cameraManager.currentCameraInstance.thermalOpacity"),
+            Some("ThermalOpacity")
+        );
+        assert_eq!(
+            camera_stored_key("vehicle.cameraManager.currentCameraInstance.zoomLevel"),
+            None,
+            "zoom is a command to the camera, not a stored setting"
+        );
     }
 
     use super::*;
 
     #[test]
     fn a_photo_is_grabbed_locally_when_the_camera_cannot_take_one_in_its_mode_like_take_photo() {
-        use crate::cameraproto::{CAP_CAPTURE_IMAGE, CAP_IMAGE_IN_VIDEO_MODE, MODE_PHOTO, MODE_VIDEO};
-        assert!(grabs_locally(0, Some(MODE_PHOTO)), "no still capture at all");
-        assert!(grabs_locally(CAP_CAPTURE_IMAGE, Some(MODE_VIDEO)), "stills, but not while in video mode");
-        assert!(!grabs_locally(CAP_CAPTURE_IMAGE | CAP_IMAGE_IN_VIDEO_MODE, Some(MODE_VIDEO)));
+        use crate::cameraproto::{
+            CAP_CAPTURE_IMAGE, CAP_IMAGE_IN_VIDEO_MODE, MODE_PHOTO, MODE_VIDEO,
+        };
+        assert!(
+            grabs_locally(0, Some(MODE_PHOTO)),
+            "no still capture at all"
+        );
+        assert!(
+            grabs_locally(CAP_CAPTURE_IMAGE, Some(MODE_VIDEO)),
+            "stills, but not while in video mode"
+        );
+        assert!(!grabs_locally(
+            CAP_CAPTURE_IMAGE | CAP_IMAGE_IN_VIDEO_MODE,
+            Some(MODE_VIDEO)
+        ));
         assert!(!grabs_locally(CAP_CAPTURE_IMAGE, Some(MODE_PHOTO)));
     }
 
     #[test]
     fn a_listed_vehicles_flight_mode_is_a_fleet_member_write() {
-        assert_eq!(fleet_member("vehicles.vehicles.2.flightMode"), Some((2, "flightMode")));
+        assert_eq!(
+            fleet_member("vehicles.vehicles.2.flightMode"),
+            Some((2, "flightMode"))
+        );
     }
 
     #[test]
     fn a_camera_without_video_capture_records_locally_like_vehicle_camera_control() {
-        assert_eq!(local_recording_op("startVideoRecording", false, false), Some(LocalRecording::Start));
-        assert_eq!(local_recording_op("toggleVideoRecording", false, true), Some(LocalRecording::Stop));
-        assert_eq!(local_recording_op("startVideoRecording", true, false), None, "a camera that records goes over MAVLink");
+        assert_eq!(
+            local_recording_op("startVideoRecording", false, false),
+            Some(LocalRecording::Start)
+        );
+        assert_eq!(
+            local_recording_op("toggleVideoRecording", false, true),
+            Some(LocalRecording::Stop)
+        );
+        assert_eq!(
+            local_recording_op("startVideoRecording", true, false),
+            None,
+            "a camera that records goes over MAVLink"
+        );
         assert_eq!(local_recording_op("takePhoto", false, false), None);
     }
 
     #[test]
     fn a_fence_contains_items_only_when_it_has_a_shape() {
-        let item = |command: u16| crate::plantransfer::Item { seq: 0, frame: 0, command, current: false, auto_continue: true, params: [0.0; 7] };
-        assert_eq!(plan_contents(&[item(5000)], &[]), (false, false), "a breach return point is not a polygon or a circle");
-        assert_eq!(plan_contents(&[item(5000), item(5003)], &[item(5100)]), (true, true));
+        let item = |command: u16| crate::plantransfer::Item {
+            seq: 0,
+            frame: 0,
+            command,
+            current: false,
+            auto_continue: true,
+            params: [0.0; 7],
+        };
+        assert_eq!(
+            plan_contents(&[item(5000)], &[]),
+            (false, false),
+            "a breach return point is not a polygon or a circle"
+        );
+        assert_eq!(
+            plan_contents(&[item(5000), item(5003)], &[item(5100)]),
+            (true, true)
+        );
         assert_eq!(plan_contents(&[item(5001)], &[]), (true, false));
     }
 
     #[test]
     fn heading_to_the_next_waypoint_follows_vehicle_update_heading_to_next_wp() {
-        let item = |lat: f64, lon: f64| crate::plantransfer::Item { seq: 0, frame: 3, command: 16, current: false, auto_continue: true, params: [0.0, 0.0, 0.0, 0.0, lat, lon, 10.0] };
+        let item = |lat: f64, lon: f64| crate::plantransfer::Item {
+            seq: 0,
+            frame: 3,
+            command: 16,
+            current: false,
+            auto_continue: true,
+            params: [0.0, 0.0, 0.0, 0.0, lat, lon, 10.0],
+        };
         let items = [item(0.0, 0.0), item(-35.36, 149.17)];
         let here = Some((-35.3633, 149.1652, 584.0));
-        assert!((heading_to_next_wp(here, &items, 1) - qt_azimuth((-35.3633, 149.1652), (-35.36, 149.17))).abs() < 1e-9);
-        assert!(heading_to_next_wp(here, &items, 0).is_nan(), "a zero longitude is no waypoint");
-        assert!(heading_to_next_wp(here, &items, -1).is_nan() && heading_to_next_wp(here, &items, 2).is_nan(), "no current item");
-        assert!(heading_to_next_wp(Some((-35.36, 149.17, 0.0)), &items, 1).is_nan(), "within five metres there is no heading");
+        assert!(
+            (heading_to_next_wp(here, &items, 1)
+                - qt_azimuth((-35.3633, 149.1652), (-35.36, 149.17)))
+            .abs()
+                < 1e-9
+        );
+        assert!(
+            heading_to_next_wp(here, &items, 0).is_nan(),
+            "a zero longitude is no waypoint"
+        );
+        assert!(
+            heading_to_next_wp(here, &items, -1).is_nan()
+                && heading_to_next_wp(here, &items, 2).is_nan(),
+            "no current item"
+        );
+        assert!(
+            heading_to_next_wp(Some((-35.36, 149.17, 0.0)), &items, 1).is_nan(),
+            "within five metres there is no heading"
+        );
         assert!(heading_to_next_wp(None, &items, 1).is_nan());
     }
 
     #[test]
     fn the_vehicle_manager_is_not_a_vehicle() {
         assert!(names_a_vehicle("vehicle") && names_a_vehicle("vehicle.parameterManager"));
-        assert!(!names_a_vehicle("vehicles"), "vehicles.activeVehicleAvailable is the manager's answer and has an offline value");
-        assert_eq!(offline_field("vehicles", "activeVehicleAvailable"), Some(json!(false)));
+        assert!(
+            !names_a_vehicle("vehicles"),
+            "vehicles.activeVehicleAvailable is the manager's answer and has an offline value"
+        );
+        assert_eq!(
+            offline_field("vehicles", "activeVehicleAvailable"),
+            Some(json!(false))
+        );
     }
 
     #[test]
     fn airframe_and_firmware_text_follow_the_heartbeat_and_autopilot_version() {
-        assert_eq!((mav_type_text(2), mav_type_text(45), mav_type_text(99)), ("Quadrotor", "Spacecraft, orbiter", "MAV_TYPE_UNKNOWN"));
-        assert_eq!((motor_count(2, None), motor_count(10, None), motor_count(12, Some(4.0)), motor_count(12, Some(9.0))), (Some(4), Some(-1), Some(3), Some(-1)));
-        assert_eq!(motor_count(12, None), None, "a sub's count waits for FRAME_CONFIG");
-        assert_eq!(motor_count(12, sub_frame(None, true)), Some(6), "a sub with no FRAME_CONFIG, as PX4 sends, reads frame 0 the way Qt's missing parameter does");
+        assert_eq!(
+            (mav_type_text(2), mav_type_text(45), mav_type_text(99)),
+            ("Quadrotor", "Spacecraft, orbiter", "MAV_TYPE_UNKNOWN")
+        );
+        assert_eq!(
+            (
+                motor_count(2, None),
+                motor_count(10, None),
+                motor_count(12, Some(4.0)),
+                motor_count(12, Some(9.0))
+            ),
+            (Some(4), Some(-1), Some(3), Some(-1))
+        );
+        assert_eq!(
+            motor_count(12, None),
+            None,
+            "a sub's count waits for FRAME_CONFIG"
+        );
+        assert_eq!(
+            motor_count(12, sub_frame(None, true)),
+            Some(6),
+            "a sub with no FRAME_CONFIG, as PX4 sends, reads frame 0 the way Qt's missing parameter does"
+        );
         let unknown = firmware_fields(3, None);
-        assert_eq!((unknown["firmwareMajorVersion"].as_i64(), unknown["firmwareVersionTypeString"].as_str(), unknown["firmwareTypeString"].as_str()), (Some(-1), Some(""), Some("ArduPilot")));
-        let beta = firmware_fields(12, Some(crate::connect::Firmware { version: Some((1, 15, 2, 128)), custom: None, git_hash: "9f3c0a1b".to_string() }));
-        assert_eq!((beta["firmwareMinorVersion"].as_i64(), beta["firmwareVersionTypeString"].as_str(), beta["firmwareTypeString"].as_str(), beta["gitHash"].as_str()), (Some(15), Some("beta"), Some("PX4 Pro"), Some("9f3c0a1b")));
-        assert_eq!(unknown["gitHash"].as_str(), Some(""), "Vehicle::gitHash is empty until AUTOPILOT_VERSION arrives");
+        assert_eq!(
+            (
+                unknown["firmwareMajorVersion"].as_i64(),
+                unknown["firmwareVersionTypeString"].as_str(),
+                unknown["firmwareTypeString"].as_str()
+            ),
+            (Some(-1), Some(""), Some("ArduPilot"))
+        );
+        let beta = firmware_fields(
+            12,
+            Some(crate::connect::Firmware {
+                version: Some((1, 15, 2, 128)),
+                custom: None,
+                git_hash: "9f3c0a1b".to_string(),
+            }),
+        );
+        assert_eq!(
+            (
+                beta["firmwareMinorVersion"].as_i64(),
+                beta["firmwareVersionTypeString"].as_str(),
+                beta["firmwareTypeString"].as_str(),
+                beta["gitHash"].as_str()
+            ),
+            (Some(15), Some("beta"), Some("PX4 Pro"), Some("9f3c0a1b"))
+        );
+        assert_eq!(
+            unknown["gitHash"].as_str(),
+            Some(""),
+            "Vehicle::gitHash is empty until AUTOPILOT_VERSION arrives"
+        );
     }
 
     #[test]
     fn a_gripper_is_read_from_each_firmware_parameter() {
-        let with = |pairs: &'static [(&'static str, f64)]| move |name: &str| pairs.iter().find(|(n, _)| *n == name).map(|(_, v)| *v);
+        let with = |pairs: &'static [(&'static str, f64)]| {
+            move |name: &str| pairs.iter().find(|(n, _)| *n == name).map(|(_, v)| *v)
+        };
         assert!(has_gripper(3, with(&[("GRIP_ENABLE", 1.0)])));
         assert!(!has_gripper(3, with(&[("GRIP_ENABLE", 2.0)])));
-        assert!(has_gripper(12, with(&[("PD_GRIPPER_TYPE", 0.0)])), "PX4 1.17 names a gripper type instead of enabling one");
-        assert!(!has_gripper(12, with(&[("PD_GRIPPER_EN", 0.0), ("PD_GRIPPER_TYPE", 1.0)])), "the older switch wins where it exists");
+        assert!(
+            has_gripper(12, with(&[("PD_GRIPPER_TYPE", 0.0)])),
+            "PX4 1.17 names a gripper type instead of enabling one"
+        );
+        assert!(
+            !has_gripper(
+                12,
+                with(&[("PD_GRIPPER_EN", 0.0), ("PD_GRIPPER_TYPE", 1.0)])
+            ),
+            "the older switch wins where it exists"
+        );
         assert!(!has_gripper(0, with(&[("GRIP_ENABLE", 1.0)])));
     }
 
     #[test]
     fn mode_names_come_from_the_firmware_class_and_what_the_vehicle_announced() {
         let copter = mode_fields(3, 2, &[], &[]);
-        assert_eq!((copter["pauseFlightMode"].as_str(), copter["landFlightMode"].as_str(), copter["missionFlightMode"].as_str()), (Some("Brake"), Some("Land"), Some("Auto")));
+        assert_eq!(
+            (
+                copter["pauseFlightMode"].as_str(),
+                copter["landFlightMode"].as_str(),
+                copter["missionFlightMode"].as_str()
+            ),
+            (Some("Brake"), Some("Land"), Some("Auto"))
+        );
         assert_eq!(copter["followFlightMode"], "Follow");
-        assert!(copter["advancedFlightModes"].as_array().unwrap().contains(&json!("Brake")));
-        assert!(!copter["advancedFlightModes"].as_array().unwrap().contains(&json!("Loiter")));
+        assert!(
+            copter["advancedFlightModes"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("Brake"))
+        );
+        assert!(
+            !copter["advancedFlightModes"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("Loiter"))
+        );
         let plane = mode_fields(3, 1, &[], &[]);
-        assert!(!plane["flightModes"].as_array().unwrap().contains(&json!("Initializing")), "a mode the vehicle only reports is never offered");
-        assert_eq!((plane["smartRTLFlightMode"].as_str(), plane["landFlightMode"].as_str()), (Some("RTL"), Some("")), "a plane's smart RTL is its RTL and it has no land mode");
-        assert_eq!(mode_fields(3, 12, &[], &[])["rtlFlightMode"], "RTL", "a sub has no RTL number, so the name falls back");
-        assert_eq!((copter["gotoFlightMode"].as_str(), plane["gotoFlightMode"].as_str()), (Some("Guided"), Some("Guided")), "APMFirmwarePlugin::gotoFlightMode is guidedFlightMode");
-        let renamed = crate::standardmodes::FlightMode { name: "Return Home".into(), standard_mode: 0, custom_mode: 6, can_be_set: true, advanced: false, fixed_wing: false, multi_rotor: true };
+        assert!(
+            !plane["flightModes"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("Initializing")),
+            "a mode the vehicle only reports is never offered"
+        );
+        assert_eq!(
+            (
+                plane["smartRTLFlightMode"].as_str(),
+                plane["landFlightMode"].as_str()
+            ),
+            (Some("RTL"), Some("")),
+            "a plane's smart RTL is its RTL and it has no land mode"
+        );
+        assert_eq!(
+            mode_fields(3, 12, &[], &[])["rtlFlightMode"],
+            "RTL",
+            "a sub has no RTL number, so the name falls back"
+        );
+        assert_eq!(
+            (
+                copter["gotoFlightMode"].as_str(),
+                plane["gotoFlightMode"].as_str()
+            ),
+            (Some("Guided"), Some("Guided")),
+            "APMFirmwarePlugin::gotoFlightMode is guidedFlightMode"
+        );
+        let renamed = crate::standardmodes::FlightMode {
+            name: "Return Home".into(),
+            standard_mode: 0,
+            custom_mode: 6,
+            can_be_set: true,
+            advanced: false,
+            fixed_wing: false,
+            multi_rotor: true,
+        };
         let announced = mode_fields(3, 2, &[renamed], &[]);
-        assert_eq!((announced["rtlFlightMode"].as_str(), announced["pauseFlightMode"].as_str()), (Some("Return Home"), Some("Brake")), "an announced list replaces the table and a missing mode falls back");
+        assert_eq!(
+            (
+                announced["rtlFlightMode"].as_str(),
+                announced["pauseFlightMode"].as_str()
+            ),
+            (Some("Return Home"), Some("Brake")),
+            "an announced list replaces the table and a missing mode falls back"
+        );
         let quad = mode_fields(12, 2, &[], &[]);
-        assert!(quad["flightModes"].as_array().unwrap().contains(&json!("Position")) && !quad["flightModes"].as_array().unwrap().contains(&json!("Land")), "a mode is offered when it can be set and suits the airframe");
+        assert!(
+            quad["flightModes"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("Position"))
+                && !quad["flightModes"]
+                    .as_array()
+                    .unwrap()
+                    .contains(&json!("Land")),
+            "a mode is offered when it can be set and suits the airframe"
+        );
         let fixed = mode_fields(12, 1, &[], &[]);
-        assert!(!fixed["flightModes"].as_array().unwrap().contains(&json!("Precision Land")), "PX4FirmwarePlugin::updateAvailableFlightModes takes precision land off fixed wings");
-        assert!(quad["flightModes"].as_array().unwrap().contains(&json!("Precision Land")));
+        assert!(
+            !fixed["flightModes"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("Precision Land")),
+            "PX4FirmwarePlugin::updateAvailableFlightModes takes precision land off fixed wings"
+        );
+        assert!(
+            quad["flightModes"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("Precision Land"))
+        );
         let vtol = mode_fields(12, 22, &[], &[]);
-        assert!(vtol["flightModes"].as_array().unwrap().contains(&json!("Precision Land")), "a VTOL is neither fixedWing nor multiRotor in QGCMAVLink, so PX4FirmwarePlugin offers it every settable mode");
+        assert!(
+            vtol["flightModes"]
+                .as_array()
+                .unwrap()
+                .contains(&json!("Precision Land")),
+            "a VTOL is neither fixedWing nor multiRotor in QGCMAVLink, so PX4FirmwarePlugin offers it every settable mode"
+        );
         assert!(mode_fields(0, 2, &[], &[]).is_empty());
     }
 
     #[test]
     fn a_mode_the_firmware_lacks_is_not_offered() {
-        let offered = |missing: &[u32]| mode_fields(3, 1, &[], missing)["flightModes"].as_array().unwrap().clone();
-        assert!(!offered(&[]).contains(&json!("Autoland")), "only ArduPlane 4.7 has Autoland, and it reports its own modes, so the fallback table never offers it");
+        let offered = |missing: &[u32]| {
+            mode_fields(3, 1, &[], missing)["flightModes"]
+                .as_array()
+                .unwrap()
+                .clone()
+        };
+        assert!(
+            !offered(&[]).contains(&json!("Autoland")),
+            "only ArduPlane 4.7 has Autoland, and it reports its own modes, so the fallback table never offers it"
+        );
         assert!(offered(&[]).contains(&json!("Thermal")));
-        assert!(!offered(&[24]).contains(&json!("Thermal")), "a mode the plane answered 'No such mode' to is taken off the list");
+        assert!(
+            !offered(&[24]).contains(&json!("Thermal")),
+            "a mode the plane answered 'No such mode' to is taken off the list"
+        );
     }
 
     #[test]
     fn a_circular_fence_is_the_radius_only_while_enabled_as_a_circle() {
-        let params = |list: &'static [(&'static str, f64)]| move |name: &str| list.iter().find(|(n, _)| *n == name).map(|(_, v)| *v);
-        assert_eq!(circular_fence(3, params(&[("FENCE_RADIUS", 150.0), ("FENCE_ENABLE", 1.0), ("FENCE_TYPE", 7.0)])), 150.0);
-        assert_eq!(circular_fence(3, params(&[("FENCE_RADIUS", 150.0), ("FENCE_ENABLE", 0.0), ("FENCE_TYPE", 7.0)])), 0.0);
-        assert_eq!(circular_fence(3, params(&[("FENCE_RADIUS", 150.0), ("FENCE_ENABLE", 1.0), ("FENCE_TYPE", 5.0)])), 0.0, "bit 1 is the circle");
-        assert_eq!(circular_fence(12, params(&[("GF_MAX_HOR_DIST", 80.0)])), 80.0);
+        let params = |list: &'static [(&'static str, f64)]| {
+            move |name: &str| list.iter().find(|(n, _)| *n == name).map(|(_, v)| *v)
+        };
+        assert_eq!(
+            circular_fence(
+                3,
+                params(&[
+                    ("FENCE_RADIUS", 150.0),
+                    ("FENCE_ENABLE", 1.0),
+                    ("FENCE_TYPE", 7.0)
+                ])
+            ),
+            150.0
+        );
+        assert_eq!(
+            circular_fence(
+                3,
+                params(&[
+                    ("FENCE_RADIUS", 150.0),
+                    ("FENCE_ENABLE", 0.0),
+                    ("FENCE_TYPE", 7.0)
+                ])
+            ),
+            0.0
+        );
+        assert_eq!(
+            circular_fence(
+                3,
+                params(&[
+                    ("FENCE_RADIUS", 150.0),
+                    ("FENCE_ENABLE", 1.0),
+                    ("FENCE_TYPE", 5.0)
+                ])
+            ),
+            0.0,
+            "bit 1 is the circle"
+        );
+        assert_eq!(
+            circular_fence(12, params(&[("GF_MAX_HOR_DIST", 80.0)])),
+            80.0
+        );
         assert_eq!(circular_fence(12, params(&[])), 0.0);
     }
 
     #[test]
     fn a_fleet_path_names_a_list_position_and_what_follows_it() {
         assert_eq!(fleet_member("vehicles.vehicles.0"), Some((0, "")));
-        assert_eq!(fleet_member("vehicles.vehicles.12.gps.lat"), Some((12, "gps.lat")));
-        assert_eq!(fleet_member("vehicles.vehicles.#.supports"), None, "a wildcard is the host's to expand");
+        assert_eq!(
+            fleet_member("vehicles.vehicles.12.gps.lat"),
+            Some((12, "gps.lat"))
+        );
+        assert_eq!(
+            fleet_member("vehicles.vehicles.#.supports"),
+            None,
+            "a wildcard is the host's to expand"
+        );
         assert_eq!(fleet_member("vehicles.vehicles.count"), None);
     }
 
     #[test]
     fn an_unnamed_camera_is_called_by_its_slot() {
-        assert_eq!((video_camera_name(0), video_camera_name(2)), ("Camera 1".to_string(), "Camera 3".to_string()));
+        assert_eq!(
+            (video_camera_name(0), video_camera_name(2)),
+            ("Camera 1".to_string(), "Camera 3".to_string())
+        );
     }
 
     #[test]
     fn firmware_limits_read_the_parameter_each_firmware_names_with_its_units() {
-        let params = |held: &'static [(&'static str, f64)]| move |name: &str| held.iter().find(|(n, _)| *n == name).map(|(_, v)| *v);
+        let params = |held: &'static [(&'static str, f64)]| {
+            move |name: &str| held.iter().find(|(n, _)| *n == name).map(|(_, v)| *v)
+        };
         let apm = crate::modes::AUTOPILOT_ARDUPILOT;
-        assert_eq!(firmware_limit("vehicle.minimumTakeoffAltitudeMeters", apm, false, &params(&[("PILOT_TKOFF_ALT", 250.0)])), Some(2.5), "pre-4.7 copters give centimetres");
-        assert_eq!(firmware_limit("vehicle.minimumTakeoffAltitudeMeters", apm, true, &params(&[("PILOT_TKOFF_ALT", 250.0), ("Q_RTL_ALT", 15.0)])), Some(15.0), "a VTOL reads the Q_ parameters");
-        assert_eq!(firmware_limit("vehicle.minimumTakeoffAltitudeMeters", apm, false, &params(&[("PILOT_TKOFF_ALT", 0.0)])), Some(3.048), "zero means the firmware default");
-        assert_eq!(firmware_limit("vehicle.minimumTakeoffAltitudeMeters", crate::modes::AUTOPILOT_PX4, false, &params(&[])), Some(3.048));
-        assert_eq!(firmware_limit("vehicle.maximumHorizontalSpeedMultirotorMetersSecond", apm, false, &params(&[("WPNAV_SPEED", 1000.0)])), Some(10.0));
-        assert_eq!(firmware_limit("vehicle.maximumHorizontalSpeedMultirotorMetersSecond", apm, false, &params(&[("WP_SPD", 7.0), ("WPNAV_SPEED", 1000.0)])), Some(7.0), "4.7 names win");
-        assert_eq!(firmware_limit("vehicle.maximumEquivalentAirspeed", apm, false, &params(&[])), None, "no parameter is no limit");
+        assert_eq!(
+            firmware_limit(
+                "vehicle.minimumTakeoffAltitudeMeters",
+                apm,
+                false,
+                &params(&[("PILOT_TKOFF_ALT", 250.0)])
+            ),
+            Some(2.5),
+            "pre-4.7 copters give centimetres"
+        );
+        assert_eq!(
+            firmware_limit(
+                "vehicle.minimumTakeoffAltitudeMeters",
+                apm,
+                true,
+                &params(&[("PILOT_TKOFF_ALT", 250.0), ("Q_RTL_ALT", 15.0)])
+            ),
+            Some(15.0),
+            "a VTOL reads the Q_ parameters"
+        );
+        assert_eq!(
+            firmware_limit(
+                "vehicle.minimumTakeoffAltitudeMeters",
+                apm,
+                false,
+                &params(&[("PILOT_TKOFF_ALT", 0.0)])
+            ),
+            Some(3.048),
+            "zero means the firmware default"
+        );
+        assert_eq!(
+            firmware_limit(
+                "vehicle.minimumTakeoffAltitudeMeters",
+                crate::modes::AUTOPILOT_PX4,
+                false,
+                &params(&[])
+            ),
+            Some(3.048)
+        );
+        assert_eq!(
+            firmware_limit(
+                "vehicle.maximumHorizontalSpeedMultirotorMetersSecond",
+                apm,
+                false,
+                &params(&[("WPNAV_SPEED", 1000.0)])
+            ),
+            Some(10.0)
+        );
+        assert_eq!(
+            firmware_limit(
+                "vehicle.maximumHorizontalSpeedMultirotorMetersSecond",
+                apm,
+                false,
+                &params(&[("WP_SPD", 7.0), ("WPNAV_SPEED", 1000.0)])
+            ),
+            Some(7.0),
+            "4.7 names win"
+        );
+        assert_eq!(
+            firmware_limit(
+                "vehicle.maximumEquivalentAirspeed",
+                apm,
+                false,
+                &params(&[])
+            ),
+            None,
+            "no parameter is no limit"
+        );
     }
 
     #[test]
     fn only_fields_the_hub_knows_are_answered_and_the_rest_fall_through() {
-        let known = Known { id: 1, parameters_ready: true, pending_writes: false, parameters_unanswered: false, parameters_missing: false, parameter_download_skipped: false, lost: false, home: None, roi: None, remote: Value::Null, coordinate: None, batteries: Vec::new(), gps: crate::gpsfacts::GpsFacts::default(), gps2: crate::gpsfacts::GpsFacts::default(), integrity_stale: true, vibration: crate::vehiclefact::VibrationFacts::default(), estimator: Default::default(), distance: Default::default(), capabilities: None, radio: Default::default(), aircast: Default::default(), obstacle: Default::default(), avoidance_enabled: false, temperature: Default::default(), local: Default::default(), local_setpoint: Default::default(), wind: Default::default(), setpoint: Default::default(), orbit: None, hygrometer: Default::default(), gimbals: Vec::new(), generator: Default::default(), efi: Default::default(), rpm: Default::default(), sub_info: Default::default(), terrain_blocks: (0, 0), escs: Default::default(), trigger_points: Default::default(), mission_indices: (-1, 0, 1), links: (Vec::new(), None), cameras: (Vec::new(), 0), sensors: json!({ "sensorNames": ["GPS"] }), supports: supports(3, 2), fields: json!({ "armed": false }), facts: Vec::new(), sub: false, formatted: RefCell::default(), autotune: crate::autotune::Autotune::default(), plan_contents: (false, false) };
-        assert_eq!(answer_fields("vehicles", "activeVehicleAvailable,activeVehicle", &known), (json!({ "activeVehicleAvailable": true }).as_object().unwrap().clone(), vec!["activeVehicle".to_string()]), "only the unknown field goes to the host");
-        assert_eq!(merged(json!({ "armed": false }).as_object().unwrap().clone(), json!({ "kind": "object", "rcRSSI": 255 })), json!({ "kind": "object", "rcRSSI": 255, "armed": false }));
-        assert_eq!(merged(json!({ "armed": false }).as_object().unwrap().clone(), json!({ "kind": "null" })), json!({ "kind": "null" }), "a host with no such object keeps its answer");
-        assert_eq!(answer_fields("planFly.missionController", "containsItems", &known).0.get("containsItems"), Some(&json!(false)), "the vehicle's mission is home alone, as MissionController::containsItems counts visualItems past the first");
-        assert_eq!(answer_get("vehicle.id", &known), Some(json!({ "kind": "value", "value": 1 })));
-        assert_eq!(answer_fields("vehicle", "coordinate", &known).0.get("coordinate"), Some(&Value::Null), "an unknown position reads as null nested, as the bridge spells it");
-        assert_eq!(answer_get("vehicle.coordinate", &known), Some(json!({ "kind": "coordinate", "valid": false, "latitude": null, "longitude": null, "altitude": null })), "with no Qt host a direct read of an unknown position is the invalid coordinate QGCBridgeCore spells");
-        let placed = Known { coordinate: Some((1.0, 2.0, 3.0)), ..known };
-        assert_eq!(answer_get("vehicle.coordinate", &placed).unwrap()["kind"], "coordinate");
+        let known = Known {
+            id: 1,
+            parameters_ready: true,
+            pending_writes: false,
+            parameters_unanswered: false,
+            parameters_missing: false,
+            parameter_download_skipped: false,
+            lost: false,
+            home: None,
+            roi: None,
+            remote: Value::Null,
+            coordinate: None,
+            batteries: Vec::new(),
+            gps: crate::gpsfacts::GpsFacts::default(),
+            gps2: crate::gpsfacts::GpsFacts::default(),
+            integrity_stale: true,
+            vibration: crate::vehiclefact::VibrationFacts::default(),
+            estimator: Default::default(),
+            distance: Default::default(),
+            capabilities: None,
+            radio: Default::default(),
+            aircast: Default::default(),
+            obstacle: Default::default(),
+            avoidance_enabled: false,
+            temperature: Default::default(),
+            local: Default::default(),
+            local_setpoint: Default::default(),
+            wind: Default::default(),
+            setpoint: Default::default(),
+            orbit: None,
+            hygrometer: Default::default(),
+            gimbals: Vec::new(),
+            generator: Default::default(),
+            efi: Default::default(),
+            rpm: Default::default(),
+            sub_info: Default::default(),
+            terrain_blocks: (0, 0),
+            escs: Default::default(),
+            trigger_points: Default::default(),
+            mission_indices: (-1, 0, 1),
+            links: (Vec::new(), None),
+            cameras: (Vec::new(), 0),
+            sensors: json!({ "sensorNames": ["GPS"] }),
+            supports: supports(3, 2),
+            fields: json!({ "armed": false }),
+            facts: Vec::new(),
+            sub: false,
+            formatted: RefCell::default(),
+            autotune: crate::autotune::Autotune::default(),
+            plan_contents: (false, false),
+        };
+        assert_eq!(
+            answer_fields("vehicles", "activeVehicleAvailable,activeVehicle", &known),
+            (
+                json!({ "activeVehicleAvailable": true })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+                vec!["activeVehicle".to_string()]
+            ),
+            "only the unknown field goes to the host"
+        );
+        assert_eq!(
+            merged(
+                json!({ "armed": false }).as_object().unwrap().clone(),
+                json!({ "kind": "object", "rcRSSI": 255 })
+            ),
+            json!({ "kind": "object", "rcRSSI": 255, "armed": false })
+        );
+        assert_eq!(
+            merged(
+                json!({ "armed": false }).as_object().unwrap().clone(),
+                json!({ "kind": "null" })
+            ),
+            json!({ "kind": "null" }),
+            "a host with no such object keeps its answer"
+        );
+        assert_eq!(
+            answer_fields("planFly.missionController", "containsItems", &known)
+                .0
+                .get("containsItems"),
+            Some(&json!(false)),
+            "the vehicle's mission is home alone, as MissionController::containsItems counts visualItems past the first"
+        );
+        assert_eq!(
+            answer_get("vehicle.id", &known),
+            Some(json!({ "kind": "value", "value": 1 }))
+        );
+        assert_eq!(
+            answer_fields("vehicle", "coordinate", &known)
+                .0
+                .get("coordinate"),
+            Some(&Value::Null),
+            "an unknown position reads as null nested, as the bridge spells it"
+        );
+        assert_eq!(
+            answer_get("vehicle.coordinate", &known),
+            Some(
+                json!({ "kind": "coordinate", "valid": false, "latitude": null, "longitude": null, "altitude": null })
+            ),
+            "with no Qt host a direct read of an unknown position is the invalid coordinate QGCBridgeCore spells"
+        );
+        let placed = Known {
+            coordinate: Some((1.0, 2.0, 3.0)),
+            ..known
+        };
+        assert_eq!(
+            answer_get("vehicle.coordinate", &placed).unwrap()["kind"],
+            "coordinate"
+        );
         let known = placed;
-        assert_eq!(answer_scalar("plan.managerVehicle.capabilitiesKnown", &known), Some(json!({ "kind": "value", "value": false })), "capabilities are unknown until AUTOPILOT_VERSION answers or is given up on");
-        let rally_only = Known { capabilities: Some(crate::connect::CAP_MISSION_RALLY), ..known };
-        assert_eq!((answer_scalar("plan.geoFenceController.supported", &rally_only), answer_scalar("plan.rallyPointController.supported", &rally_only)), (Some(json!({ "kind": "value", "value": false })), Some(json!({ "kind": "value", "value": true }))));
+        assert_eq!(
+            answer_scalar("plan.managerVehicle.capabilitiesKnown", &known),
+            Some(json!({ "kind": "value", "value": false })),
+            "capabilities are unknown until AUTOPILOT_VERSION answers or is given up on"
+        );
+        let rally_only = Known {
+            capabilities: Some(crate::connect::CAP_MISSION_RALLY),
+            ..known
+        };
+        assert_eq!(
+            (
+                answer_scalar("plan.geoFenceController.supported", &rally_only),
+                answer_scalar("plan.rallyPointController.supported", &rally_only)
+            ),
+            (
+                Some(json!({ "kind": "value", "value": false })),
+                Some(json!({ "kind": "value", "value": true }))
+            )
+        );
         let known = rally_only;
         assert_eq!(answer_get("vehicle.flying", &known), None);
-        assert_eq!(answer_get("vehicle.armed", &known), Some(json!({ "kind": "value", "value": false })));
-        assert_eq!(answer_fields("vehicle.supports", "guidedTakeoffWithAltitude,orbitMode,smartRTL", &known).0, json!({ "guidedTakeoffWithAltitude": true, "orbitMode": false, "smartRTL": true }).as_object().unwrap().clone(), "an ArduCopter quad");
-        assert_eq!(supports(12, 1)["guidedTakeoffWithoutAltitude"], true, "a PX4 plane takes off without an altitude");
-        assert_eq!((supports(3, 2)["smartRTL"].clone(), supports(3, 10)["smartRTL"].clone(), supports(3, 1)["smartRTL"].clone(), supports(12, 2)["smartRTL"].clone()), (json!(true), json!(true), json!(false), json!(false)), "ArduCopter and ArduRover only");
-        assert_eq!(answer_get("vehicle.sysStatusSensorInfo.sensorNames", &known), Some(json!({ "kind": "value", "value": ["GPS"] })));
+        assert_eq!(
+            answer_get("vehicle.armed", &known),
+            Some(json!({ "kind": "value", "value": false }))
+        );
+        assert_eq!(
+            answer_fields(
+                "vehicle.supports",
+                "guidedTakeoffWithAltitude,orbitMode,smartRTL",
+                &known
+            )
+            .0,
+            json!({ "guidedTakeoffWithAltitude": true, "orbitMode": false, "smartRTL": true })
+                .as_object()
+                .unwrap()
+                .clone(),
+            "an ArduCopter quad"
+        );
+        assert_eq!(
+            supports(12, 1)["guidedTakeoffWithoutAltitude"],
+            true,
+            "a PX4 plane takes off without an altitude"
+        );
+        assert_eq!(
+            (
+                supports(3, 2)["smartRTL"].clone(),
+                supports(3, 10)["smartRTL"].clone(),
+                supports(3, 1)["smartRTL"].clone(),
+                supports(12, 2)["smartRTL"].clone()
+            ),
+            (json!(true), json!(true), json!(false), json!(false)),
+            "ArduCopter and ArduRover only"
+        );
+        assert_eq!(
+            answer_get("vehicle.sysStatusSensorInfo.sensorNames", &known),
+            Some(json!({ "kind": "value", "value": ["GPS"] }))
+        );
     }
 }

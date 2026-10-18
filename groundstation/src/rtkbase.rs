@@ -10,13 +10,13 @@ use web_time::Instant;
 
 use serde_json::{Value, json};
 
-use crate::gpsrtk::{Driver, Fault, INITIAL_BAUD, Out, RECEIVE_TIMEOUT_MS, Session, Settings};
-use crate::router::Backend;
 use crate::ashtechbase::AshtechBase;
-use crate::femtobase::FemtoBase;
-use crate::sbfbase::SbfBase;
 #[cfg(target_family = "wasm")]
 use crate::background::pause;
+use crate::femtobase::FemtoBase;
+use crate::gpsrtk::{Driver, Fault, INITIAL_BAUD, Out, RECEIVE_TIMEOUT_MS, Session, Settings};
+use crate::router::Backend;
+use crate::sbfbase::SbfBase;
 #[cfg(not(target_family = "wasm"))]
 use crate::ubxbase::block_on;
 use crate::ubxbase::{BaseDriver, Event, Transport, UbxBase};
@@ -36,7 +36,17 @@ fn session() -> MutexGuard<'static, Session> {
 
 pub fn surveyed_position() -> Option<(f64, f64, f64)> {
     let held = session();
-    held.live().then_some(held.survey).flatten().filter(|survey| survey.valid).map(|survey| (survey.latitude, survey.longitude, f64::from(survey.altitude_m)))
+    held.live()
+        .then_some(held.survey)
+        .flatten()
+        .filter(|survey| survey.valid)
+        .map(|survey| {
+            (
+                survey.latitude,
+                survey.longitude,
+                f64::from(survey.altitude_m),
+            )
+        })
 }
 
 fn owned<R: Default>(stop: &AtomicBool, change: impl FnOnce(&mut Session) -> R) -> R {
@@ -48,7 +58,8 @@ fn owned<R: Default>(stop: &AtomicBool, change: impl FnOnce(&mut Session) -> R) 
 }
 
 fn setting(name: &str) -> Value {
-    crate::settingsstore::raw_setting(&format!("{}.{name}", crate::gpsrtk::SETTINGS_GROUP)).unwrap_or(Value::Null)
+    crate::settingsstore::raw_setting(&format!("{}.{name}", crate::gpsrtk::SETTINGS_GROUP))
+        .unwrap_or(Value::Null)
 }
 
 fn settings() -> Settings {
@@ -104,14 +115,25 @@ fn open_port(name: &str, baud: u32, sink: Sender<Incoming>) -> Result<Box<dyn Po
             crate::platformserial::Event::Bytes(bytes) => Incoming::Bytes(bytes),
             crate::platformserial::Event::Disconnected(_) => Incoming::Closed,
         };
-        let _ = sink.lock().unwrap_or_else(PoisonError::into_inner).send(incoming);
+        let _ = sink
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .send(incoming);
     })
     .map(|port| Box::new(port) as Box<dyn Port>)
 }
 
 #[cfg(not(hosted_serial))]
 fn open_port(name: &str, baud: u32, sink: Sender<Incoming>) -> Result<Box<dyn Port>, String> {
-    let config = crate::seriallink::SerialConfig { port_name: name.to_string(), baud, data_bits: 8, parity: 0, stop_bits: 1, flow_control: 0, usb_direct: false };
+    let config = crate::seriallink::SerialConfig {
+        port_name: name.to_string(),
+        baud,
+        data_bits: 8,
+        parity: 0,
+        stop_bits: 1,
+        flow_control: 0,
+        usb_direct: false,
+    };
     crate::seriallink::SerialLink::open(&config, move |event| {
         let _ = sink.send(match event {
             crate::seriallink::Event::Bytes(bytes) => Incoming::Bytes(bytes),
@@ -133,7 +155,12 @@ impl SerialTransport {
     fn open(name: &str, baud: u32) -> Result<SerialTransport, String> {
         let (sink, incoming) = channel();
         let port = open_port(name, baud, sink)?;
-        Ok(SerialTransport { name: name.to_string(), port, incoming, started: Instant::now() })
+        Ok(SerialTransport {
+            name: name.to_string(),
+            port,
+            incoming,
+            started: Instant::now(),
+        })
     }
 }
 
@@ -146,7 +173,10 @@ impl Drop for SerialTransport {
 impl Transport for SerialTransport {
     #[cfg(not(target_family = "wasm"))]
     async fn read(&mut self, timeout_ms: u64) -> Option<Vec<u8>> {
-        match self.incoming.recv_timeout(Duration::from_millis(timeout_ms)) {
+        match self
+            .incoming
+            .recv_timeout(Duration::from_millis(timeout_ms))
+        {
             Ok(Incoming::Bytes(bytes)) => Some(bytes),
             Err(RecvTimeoutError::Timeout) => Some(Vec::new()),
             Ok(Incoming::Closed) | Err(RecvTimeoutError::Disconnected) => None,
@@ -160,7 +190,11 @@ impl Transport for SerialTransport {
             match self.incoming.try_recv() {
                 Ok(Incoming::Bytes(bytes)) => return Some(bytes),
                 Ok(Incoming::Closed) | Err(TryRecvError::Disconnected) => return None,
-                Err(TryRecvError::Empty) if asked.elapsed() >= Duration::from_millis(timeout_ms) => return Some(Vec::new()),
+                Err(TryRecvError::Empty)
+                    if asked.elapsed() >= Duration::from_millis(timeout_ms) =>
+                {
+                    return Some(Vec::new());
+                }
                 Err(TryRecvError::Empty) => pause(Duration::from_millis(READ_POLL_MS)).await,
             }
         }
@@ -190,8 +224,20 @@ impl Transport for SerialTransport {
 
 fn apply(event: Event, now_ms: u64, stop: &AtomicBool) {
     match event {
-        Event::SurveyIn(status) => owned(stop, |held| held.survey_in_status(status.duration_s as f32, status.mean_accuracy_mm as f32, status.latitude, status.longitude, status.altitude_m, status.flags, now_ms)),
-        Event::Satellites { count, list } => owned(stop, |held| held.satellite_info(count, &list, now_ms)),
+        Event::SurveyIn(status) => owned(stop, |held| {
+            held.survey_in_status(
+                status.duration_s as f32,
+                status.mean_accuracy_mm as f32,
+                status.latitude,
+                status.longitude,
+                status.altitude_m,
+                status.flags,
+                now_ms,
+            )
+        }),
+        Event::Satellites { count, list } => {
+            owned(stop, |held| held.satellite_info(count, &list, now_ms))
+        }
         Event::Rtcm(bytes) => {
             if owned(stop, |held| !held.rtcm(&bytes, now_ms).is_empty()) {
                 crate::ntrip::inject(&bytes);
@@ -202,7 +248,10 @@ fn apply(event: Event, now_ms: u64, stop: &AtomicBool) {
 
 async fn stream(base: &mut impl BaseDriver, stop: &AtomicBool) -> Result<(), Fault> {
     while !stop.load(Ordering::Relaxed) {
-        let handled = base.receive(RECEIVE_TIMEOUT_MS as u64).await.ok_or(Fault::SerialError)?;
+        let handled = base
+            .receive(RECEIVE_TIMEOUT_MS as u64)
+            .await
+            .ok_or(Fault::SerialError)?;
         let events = base.take_events();
         let progress = handled || !events.is_empty();
         let now = crate::hub::now_ms();
@@ -231,10 +280,12 @@ async fn pause(wait: Duration) {
 }
 
 pub async fn run<T: Transport>(transport: T, stop: &AtomicBool) {
-    let configure = owned(stop, Session::serial_opened).into_iter().find_map(|out| match out {
-        Out::ConfigureDriver { driver, plan, .. } => Some((driver, plan)),
-        _ => None,
-    });
+    let configure = owned(stop, Session::serial_opened)
+        .into_iter()
+        .find_map(|out| match out {
+            Out::ConfigureDriver { driver, plan, .. } => Some((driver, plan)),
+            _ => None,
+        });
     let Some((driver, plan)) = configure else {
         owned(stop, |held| held.serial_failed(Fault::ConfigureFailed));
         return;
@@ -281,7 +332,9 @@ async fn open_and_run(port: &str, stop: &AtomicBool) {
 
 #[cfg(not(target_family = "wasm"))]
 fn start(port: String, stop: Arc<AtomicBool>) {
-    let _ = std::thread::Builder::new().name("groundstation-rtk-base".to_string()).spawn(move || block_on(open_and_run(&port, &stop)));
+    let _ = std::thread::Builder::new()
+        .name("groundstation-rtk-base".to_string())
+        .spawn(move || block_on(open_and_run(&port, &stop)));
 }
 
 #[cfg(target_family = "wasm")]
@@ -292,7 +345,10 @@ fn start(port: String, stop: Arc<AtomicBool>) {
 pub fn connect(port: &str, name: &str) {
     disconnect();
     let opening = session().connect(port, name, settings());
-    if !opening.iter().any(|out| matches!(out, Out::OpenSerial { .. })) {
+    if !opening
+        .iter()
+        .any(|out| matches!(out, Out::OpenSerial { .. }))
+    {
         return;
     }
     let stop = Arc::new(AtomicBool::new(false));
@@ -316,7 +372,9 @@ pub fn accuracy_text(metres: f64, unit: &crate::read::Unit) -> String {
 
 pub fn rtk_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let facts = session().facts(crate::hub::now_ms());
-    let text = facts["currentAccuracy"].as_f64().map(|metres| accuracy_text(metres, &crate::read::Unit::horizontal(backend)));
+    let text = facts["currentAccuracy"]
+        .as_f64()
+        .map(|metres| accuracy_text(metres, &crate::read::Unit::horizontal(backend)));
     match facts {
         Value::Object(mut fields) => {
             fields.insert("currentAccuracyText".into(), json!(text));
@@ -333,8 +391,14 @@ mod tests {
 
     #[test]
     fn accuracy_reads_in_the_horizontal_distance_unit_like_gps_indicator_page() {
-        let metres = crate::read::Unit { name: "m".into(), factor: 1.0 };
-        let feet = crate::read::Unit { name: "ft".into(), factor: 3.28084 };
+        let metres = crate::read::Unit {
+            name: "m".into(),
+            factor: 1.0,
+        };
+        let feet = crate::read::Unit {
+            name: "ft".into(),
+            factor: 3.28084,
+        };
         assert_eq!(accuracy_text(1.5, &metres), "1.5 m");
         assert_eq!(accuracy_text(2.0, &metres), "2.0 m");
         assert_eq!(accuracy_text(1.5, &feet), "4.9 ft");
@@ -362,11 +426,17 @@ mod tests {
     fn a_stopped_worker_leaves_the_session_alone_and_a_dead_port_fails_it() {
         session().connect("/dev/gps", "u-blox", Settings::default());
         block_on(run(Silent(0), &AtomicBool::new(true)));
-        assert!(matches!(session().link, Link::Opening { .. }), "a worker replaced by a newer connect never writes into its session");
+        assert!(
+            matches!(session().link, Link::Opening { .. }),
+            "a worker replaced by a newer connect never writes into its session"
+        );
         block_on(run(Silent(0), &AtomicBool::new(false)));
         let after = session();
         assert_eq!(after.link, Link::Failed);
         assert_eq!(after.fault, Some(Fault::SerialError));
-        assert_eq!(after.failed_configures, 0, "the port died during the first configure, so it is reported as a serial fault rather than retried");
+        assert_eq!(
+            after.failed_configures, 0,
+            "the port died during the first configure, so it is reported as a serial fault rather than retried"
+        );
     }
 }

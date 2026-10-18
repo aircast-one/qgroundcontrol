@@ -7,7 +7,10 @@ use groundstation::synthetic::session::{Session, Target};
 
 fn arg(name: &str) -> Option<String> {
     let args: Vec<String> = std::env::args().collect();
-    args.iter().position(|a| a == name).and_then(|at| args.get(at + 1)).cloned()
+    args.iter()
+        .position(|a| a == name)
+        .and_then(|at| args.get(at + 1))
+        .cloned()
 }
 
 fn number(name: &str, fallback: f64) -> f64 {
@@ -43,16 +46,24 @@ fn main() {
     let seconds = Duration::from_secs_f64(number("--seconds", 40.0));
     let mut drawn = None;
     while started.elapsed() < seconds {
-        drawn = session.frame(Some(&target), &[], width, height, Instant::now()).or(drawn);
+        drawn = session
+            .frame(Some(&target), &[], width, height, Instant::now())
+            .or(drawn);
         std::thread::sleep(Duration::from_millis(100));
     }
     let frame = drawn.expect("something to draw");
     let (camera, meshes) = frame.view(None, width, height);
     println!("{:?}", session.take_stats());
     println!("google took over after {:?}", session.handover());
-    println!("{} meshes after {:.1} s", meshes.len(), started.elapsed().as_secs_f64());
+    println!(
+        "{} meshes after {:.1} s",
+        meshes.len(),
+        started.elapsed().as_secs_f64()
+    );
     let mut renderer = Renderer::new().expect("a GPU adapter");
-    let picture = renderer.picture(&camera, &frame.backfill, &meshes, width, height).expect("rendered picture");
+    let picture = renderer
+        .picture(&camera, &frame.backfill, &meshes, width, height)
+        .expect("rendered picture");
     let out = arg("--out").unwrap_or_else(|| "synthetic.png".into());
     picture.save(&out).expect("saved picture");
     println!("wrote {out}");

@@ -16,7 +16,10 @@ struct Manual {
     held_items: bool,
 }
 
-static MANUAL: Mutex<Manual> = Mutex::new(Manual { chosen: false, held_items: false });
+static MANUAL: Mutex<Manual> = Mutex::new(Manual {
+    chosen: false,
+    held_items: false,
+});
 
 pub fn show(contains_items: bool) -> bool {
     let mut manual = MANUAL.lock().unwrap_or_else(PoisonError::into_inner);
@@ -34,7 +37,10 @@ fn choose_manual() {
 }
 
 pub fn templates_json(backend: &dyn Backend, patterns: &[String], contains_items: bool) -> Value {
-    let home_set = flag(&backend.value_fields("plan.missionController", "homePositionSet"), "homePositionSet");
+    let home_set = flag(
+        &backend.value_fields("plan.missionController", "homePositionSet"),
+        "homePositionSet",
+    );
     json!({
         "show": show(contains_items),
         "enabled": home_set || crate::coreplan::enabled(),
@@ -49,10 +55,22 @@ pub fn steps(name: &str, latitude: f64, longitude: f64) -> Vec<(&'static str, Va
     let at = json!({ "latitude": latitude, "longitude": longitude });
     vec![
         ("plan.removeAll", json!([])),
-        ("plan.missionController.insertTakeoffItem", json!([at, -1, false])),
-        ("plan.missionController.insertComplexMissionItem", json!([name, at, -1, false])),
-        ("plan.missionController.insertLandItem", json!([at, -1, false])),
-        ("plan.missionController.setCurrentPlanViewSeqNum", json!([TAKEOFF_SEQUENCE, true])),
+        (
+            "plan.missionController.insertTakeoffItem",
+            json!([at, -1, false]),
+        ),
+        (
+            "plan.missionController.insertComplexMissionItem",
+            json!([name, at, -1, false]),
+        ),
+        (
+            "plan.missionController.insertLandItem",
+            json!([at, -1, false]),
+        ),
+        (
+            "plan.missionController.setCurrentPlanViewSeqNum",
+            json!([TAKEOFF_SEQUENCE, true]),
+        ),
     ]
 }
 
@@ -66,13 +84,21 @@ fn core_kind(name: &str) -> Option<&'static str> {
 }
 
 pub fn core_steps(name: &str, latitude: f64, longitude: f64) -> Vec<(&'static str, Value)> {
-    let Some(kind) = core_kind(name) else { return Vec::new() };
+    let Some(kind) = core_kind(name) else {
+        return Vec::new();
+    };
     vec![
         ("plan.removeAll", json!([])),
-        ("mission.insert", json!(["takeoff", latitude, longitude, -1])),
+        (
+            "mission.insert",
+            json!(["takeoff", latitude, longitude, -1]),
+        ),
         ("mission.insert", json!([kind, latitude, longitude, -1])),
         ("mission.insert", json!(["land", latitude, longitude, -1])),
-        ("plan.missionController.setCurrentPlanViewSeqNum", json!([TAKEOFF_SEQUENCE, true])),
+        (
+            "plan.missionController.setCurrentPlanViewSeqNum",
+            json!([TAKEOFF_SEQUENCE, true]),
+        ),
     ]
 }
 
@@ -83,7 +109,12 @@ pub fn create(backend: &dyn Backend, args: &str) -> Value {
         choose_manual();
         return json!({ "ok": true });
     }
-    let coordinate = |i: usize, limit: f64| given.get(i).and_then(Value::as_f64).filter(|v| v.is_finite() && v.abs() <= limit);
+    let coordinate = |i: usize, limit: f64| {
+        given
+            .get(i)
+            .and_then(Value::as_f64)
+            .filter(|v| v.is_finite() && v.abs() <= limit)
+    };
     let (Some(latitude), Some(longitude)) = (coordinate(1, 90.0), coordinate(2, 180.0)) else {
         return json!({ "ok": false, "reason": "A template is placed at the map centre's latitude and longitude." });
     };
@@ -114,13 +145,42 @@ mod tests {
 
     #[test]
     fn a_template_clears_then_adds_takeoff_pattern_and_land_at_the_centre() {
-        let paths: Vec<&str> = steps("Survey", 47.4, 8.5).into_iter().map(|(path, _)| path).collect();
-        assert_eq!(paths, ["plan.removeAll", "plan.missionController.insertTakeoffItem", "plan.missionController.insertComplexMissionItem", "plan.missionController.insertLandItem", "plan.missionController.setCurrentPlanViewSeqNum"]);
-        assert_eq!(steps("Survey", 47.4, 8.5)[2].1, json!(["Survey", { "latitude": 47.4, "longitude": 8.5 }, -1, false]));
-        assert_eq!(steps("Survey", 47.4, 8.5)[4].1, json!([1, true]), "the takeoff is selected, as setCurrentPlanViewSeqNum(takeoff, true)");
-        let core: Vec<Value> = core_steps("Corridor Scan", 47.4, 8.5).into_iter().map(|(_, args)| args).collect();
-        assert_eq!(core[2], json!(["corridor", 47.4, 8.5, -1]), "the core plan inserts through its own mission.insert, so a template never reaches the absent Qt controller");
-        assert!(core_steps("Bogus", 47.4, 8.5).is_empty(), "an unknown template name is refused rather than quietly becoming a survey");
+        let paths: Vec<&str> = steps("Survey", 47.4, 8.5)
+            .into_iter()
+            .map(|(path, _)| path)
+            .collect();
+        assert_eq!(
+            paths,
+            [
+                "plan.removeAll",
+                "plan.missionController.insertTakeoffItem",
+                "plan.missionController.insertComplexMissionItem",
+                "plan.missionController.insertLandItem",
+                "plan.missionController.setCurrentPlanViewSeqNum"
+            ]
+        );
+        assert_eq!(
+            steps("Survey", 47.4, 8.5)[2].1,
+            json!(["Survey", { "latitude": 47.4, "longitude": 8.5 }, -1, false])
+        );
+        assert_eq!(
+            steps("Survey", 47.4, 8.5)[4].1,
+            json!([1, true]),
+            "the takeoff is selected, as setCurrentPlanViewSeqNum(takeoff, true)"
+        );
+        let core: Vec<Value> = core_steps("Corridor Scan", 47.4, 8.5)
+            .into_iter()
+            .map(|(_, args)| args)
+            .collect();
+        assert_eq!(
+            core[2],
+            json!(["corridor", 47.4, 8.5, -1]),
+            "the core plan inserts through its own mission.insert, so a template never reaches the absent Qt controller"
+        );
+        assert!(
+            core_steps("Bogus", 47.4, 8.5).is_empty(),
+            "an unknown template name is refused rather than quietly becoming a survey"
+        );
     }
 
     #[test]
@@ -130,6 +190,9 @@ mod tests {
         choose_manual();
         assert!(!show(false), "the user chose to build by hand");
         assert!(!show(true));
-        assert!(show(false), "clearing the plan brings the templates back, as _updateShowCreateFromTemplate does");
+        assert!(
+            show(false),
+            "clearing the plan brings the templates back, as _updateShowCreateFromTemplate does"
+        );
     }
 }

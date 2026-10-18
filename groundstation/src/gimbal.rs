@@ -61,9 +61,13 @@ pub const DRAG_CONTINUES_MS: u64 = 1_000;
 static ANNOUNCED: std::sync::Mutex<(u64, u64, bool)> = std::sync::Mutex::new((0, 0, false));
 
 pub fn announce_due(now_ms: u64, live: bool) -> bool {
-    let mut last = ANNOUNCED.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut last = ANNOUNCED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let (serial, at, was_live) = *last;
-    let due = asked() != serial || live != was_live || (live && now_ms.saturating_sub(at) >= ANNOUNCE_INTERVAL_MS);
+    let due = asked() != serial
+        || live != was_live
+        || (live && now_ms.saturating_sub(at) >= ANNOUNCE_INTERVAL_MS);
     if due {
         *last = (asked(), now_ms, live);
     }
@@ -82,7 +86,9 @@ pub fn reason_text(token: &str) -> Option<&'static str> {
     match token {
         REASON_NOT_READY => Some("The gimbal is not ready yet."),
         REASON_NO_ACTIVE_GIMBAL => Some("No gimbal is selected."),
-        REASON_OTHERS_HAVE_CONTROL => Some("Command not sent. Another user has control of the gimbal."),
+        REASON_OTHERS_HAVE_CONTROL => {
+            Some("Command not sent. Another user has control of the gimbal.")
+        }
         REASON_ATTITUDE_UNKNOWN => Some("The gimbal has not reported its attitude yet."),
         REASON_UNSUPPORTED => Some("This gimbal does not support that."),
         _ => None,
@@ -143,7 +149,11 @@ impl Frame {
     }
 
     pub fn of(flags: u32) -> Frame {
-        match (flags & FLAG_YAW_IN_VEHICLE_FRAME != 0, flags & FLAG_YAW_IN_EARTH_FRAME != 0, flags & FLAG_YAW_LOCK != 0) {
+        match (
+            flags & FLAG_YAW_IN_VEHICLE_FRAME != 0,
+            flags & FLAG_YAW_IN_EARTH_FRAME != 0,
+            flags & FLAG_YAW_LOCK != 0,
+        ) {
             (true, _, _) => Frame::Vehicle,
             (false, true, _) => Frame::Earth,
             (false, false, true) => Frame::Earth,
@@ -190,17 +200,44 @@ pub struct Ownership {
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Out {
-    RequestMessage { component: u8, message: u32 },
-    MessageInterval { component: u8, message: u32, interval_us: f64 },
-    Command { component: u8, command: u16, params: [f64; 7], show_error: bool },
-    SetAttitudeRates { component: u8, flags: u32, device_id: u8, pitch_rate: f32, yaw_rate: f32 },
-    SetPitchYaw { component: u8, flags: u32, device_id: u8, pitch: f32, yaw: f32 },
+    RequestMessage {
+        component: u8,
+        message: u32,
+    },
+    MessageInterval {
+        component: u8,
+        message: u32,
+        interval_us: f64,
+    },
+    Command {
+        component: u8,
+        command: u16,
+        params: [f64; 7],
+        show_error: bool,
+    },
+    SetAttitudeRates {
+        component: u8,
+        flags: u32,
+        device_id: u8,
+        pitch_rate: f32,
+        yaw_rate: f32,
+    },
+    SetPitchYaw {
+        component: u8,
+        flags: u32,
+        device_id: u8,
+        pitch: f32,
+        yaw: f32,
+    },
     StartRateRepeat,
     StopRateRepeat,
     ActiveGimbal(PairId),
     GimbalComplete(PairId),
     AskToTakeControl(PairId),
-    Refused { pair: Option<PairId>, reason: &'static str },
+    Refused {
+        pair: Option<PairId>,
+        reason: &'static str,
+    },
 }
 
 #[derive(Debug, PartialEq)]
@@ -252,11 +289,13 @@ impl Default for Gimbal {
 
 impl Gimbal {
     pub fn supports_retract(&self) -> Option<bool> {
-        self.capability_flags.map(|flags| flags & CAP_HAS_RETRACT != 0)
+        self.capability_flags
+            .map(|flags| flags & CAP_HAS_RETRACT != 0)
     }
 
     pub fn supports_yaw_lock(&self) -> Option<bool> {
-        self.capability_flags.map(|flags| flags & CAP_HAS_YAW_LOCK != 0)
+        self.capability_flags
+            .map(|flags| flags & CAP_HAS_YAW_LOCK != 0)
     }
 
     pub fn have_control(&self, now_ms: u64) -> Option<bool> {
@@ -272,11 +311,13 @@ impl Gimbal {
     }
 
     pub fn attitude_stale(&self, now_ms: u64) -> bool {
-        self.attitude_age_ms(now_ms).is_none_or(|age| age > ATTITUDE_STALE_MS)
+        self.attitude_age_ms(now_ms)
+            .is_none_or(|age| age > ATTITUDE_STALE_MS)
     }
 
     fn fresh_ownership(&self, now_ms: u64) -> Option<Ownership> {
-        self.ownership.filter(|owner| now_ms.saturating_sub(owner.at_ms) <= CONTROL_STALE_MS)
+        self.ownership
+            .filter(|owner| now_ms.saturating_sub(owner.at_ms) <= CONTROL_STALE_MS)
     }
 
     fn heard_everything(&self) -> bool {
@@ -284,15 +325,21 @@ impl Gimbal {
     }
 
     fn chasing(&self) -> bool {
-        (!self.received_information && self.information_retries > 0) || (!self.received_status && self.status_retries > 0) || (!self.received_attitude && self.attitude_retries > 0)
+        (!self.received_information && self.information_retries > 0)
+            || (!self.received_status && self.status_retries > 0)
+            || (!self.received_attitude && self.attitude_retries > 0)
     }
 
     fn missing(&self) -> Vec<&'static str> {
-        [(self.received_information, "information"), (self.received_status, "status"), (self.received_attitude, "attitude")]
-            .iter()
-            .filter(|(heard, _)| !heard)
-            .map(|(_, name)| *name)
-            .collect()
+        [
+            (self.received_information, "information"),
+            (self.received_status, "status"),
+            (self.received_attitude, "attitude"),
+        ]
+        .iter()
+        .filter(|(heard, _)| !heard)
+        .map(|(_, name)| *name)
+        .collect()
     }
 
     fn failures(&self) -> Value {
@@ -315,7 +362,14 @@ impl Gimbal {
             .unwrap_or(Value::Null)
     }
 
-    fn snapshot(&self, pair: PairId, active: bool, control: Value, aim: Value, now_ms: u64) -> Value {
+    fn snapshot(
+        &self,
+        pair: PairId,
+        active: bool,
+        control: Value,
+        aim: Value,
+        now_ms: u64,
+    ) -> Value {
         let age_ms = self.attitude_age_ms(now_ms);
         let stale = self.attitude_stale(now_ms);
         let fresh = |mode: Option<bool>| mode.filter(|_| !stale);
@@ -371,7 +425,10 @@ struct Manager {
 
 impl Default for Manager {
     fn default() -> Self {
-        Manager { retries: MANAGER_INFORMATION_RETRIES, received_information: false }
+        Manager {
+            retries: MANAGER_INFORMATION_RETRIES,
+            received_information: false,
+        }
     }
 }
 
@@ -406,7 +463,13 @@ impl Default for Gimbals {
     }
 }
 
-pub fn aim_through_lens(pan_pct: f32, tilt_pct: f32, h_fov: f32, v_fov: f32, pitch: f32) -> (f32, f32) {
+pub fn aim_through_lens(
+    pan_pct: f32,
+    tilt_pct: f32,
+    h_fov: f32,
+    v_fov: f32,
+    pitch: f32,
+) -> (f32, f32) {
     let right = f64::from(pan_pct) * (f64::from(h_fov).to_radians() / 2.0).tan();
     let up = f64::from(tilt_pct) * (f64::from(v_fov).to_radians() / 2.0).tan();
     let (sin, cos) = f64::from(pitch).to_radians().sin_cos();
@@ -422,13 +485,29 @@ pub fn wrap180(angle: f32) -> f32 {
 
 pub fn euler_degrees(q: [f32; 4]) -> (f32, f32, f32) {
     let (roll, pitch, yaw) = crate::vehiclefacts::quaternion_to_euler(q.map(f64::from));
-    ((roll as f32).to_degrees(), (pitch as f32).to_degrees(), (yaw as f32).to_degrees())
+    (
+        (roll as f32).to_degrees(),
+        (pitch as f32).to_degrees(),
+        (yaw as f32).to_degrees(),
+    )
 }
 
 pub fn body_and_absolute_yaw(frame: Frame, yaw: f32, heading: f32) -> (f32, f32) {
     match frame {
-        Frame::Vehicle => (yaw, match yaw + heading { absolute if absolute > 180.0 => absolute - 360.0, absolute => absolute }),
-        Frame::Earth => (match yaw - heading { body if body < -180.0 => body + 360.0, body => body }, yaw),
+        Frame::Vehicle => (
+            yaw,
+            match yaw + heading {
+                absolute if absolute > 180.0 => absolute - 360.0,
+                absolute => absolute,
+            },
+        ),
+        Frame::Earth => (
+            match yaw - heading {
+                body if body < -180.0 => body + 360.0,
+                body => body,
+            },
+            yaw,
+        ),
     }
 }
 
@@ -441,7 +520,11 @@ fn offer(reason: Option<&'static str>) -> Value {
 
 impl Gimbals {
     pub fn new(our_system: u8, our_component: u8) -> Gimbals {
-        Gimbals { our_system, our_component, ..Default::default() }
+        Gimbals {
+            our_system,
+            our_component,
+            ..Default::default()
+        }
     }
 
     pub fn set_ready(&mut self, ready: bool) {
@@ -461,7 +544,12 @@ impl Gimbals {
     }
 
     pub fn set_active(&mut self, pair: PairId) -> Vec<Out> {
-        match self.gimbals.get(&pair).is_some_and(|gimbal| gimbal.complete) && self.active != Some(pair) {
+        match self
+            .gimbals
+            .get(&pair)
+            .is_some_and(|gimbal| gimbal.complete)
+            && self.active != Some(pair)
+        {
             true => {
                 self.active = Some(pair);
                 vec![Out::ActiveGimbal(pair)]
@@ -482,7 +570,9 @@ impl Gimbals {
             return Vec::new();
         }
         let out = self.request_information(compid, now_ms);
-        self.managers.entry(compid).and_modify(|m| m.retries = m.retries.saturating_sub(out.len() as u32));
+        self.managers
+            .entry(compid)
+            .and_modify(|m| m.retries = m.retries.saturating_sub(out.len() as u32));
         out
     }
 
@@ -490,14 +580,24 @@ impl Gimbals {
         if !self.ready || info.device_id == 0 {
             return Vec::new();
         }
-        let pair = PairId { manager_compid: info.compid, device_id: info.device_id };
-        let limits = info.limits_rad.map(|rad| rad.map(|v| Some(v.to_degrees()).filter(|d| d.is_finite())));
+        let pair = PairId {
+            manager_compid: info.compid,
+            device_id: info.device_id,
+        };
+        let limits = info
+            .limits_rad
+            .map(|rad| rad.map(|v| Some(v.to_degrees()).filter(|d| d.is_finite())));
         let gimbal = self.gimbals.entry(pair).or_default();
         gimbal.capability_flags = Some(info.capability_flags);
         gimbal.limits = limits.unwrap_or(gimbal.limits);
         gimbal.received_information = true;
-        self.managers.entry(info.compid).or_default().received_information = true;
-        self.pending_information = self.pending_information.filter(|(pending, _)| *pending != info.compid);
+        self.managers
+            .entry(info.compid)
+            .or_default()
+            .received_information = true;
+        self.pending_information = self
+            .pending_information
+            .filter(|(pending, _)| *pending != info.compid);
         self.check_complete(pair, now_ms)
     }
 
@@ -505,8 +605,12 @@ impl Gimbals {
         if !self.ready || status.device_id == 0 {
             return Vec::new();
         }
-        let pair = PairId { manager_compid: status.compid, device_id: status.device_id };
-        let ours = (status.primary_sysid, status.primary_compid) == (self.our_system, self.our_component);
+        let pair = PairId {
+            manager_compid: status.compid,
+            device_id: status.device_id,
+        };
+        let ours =
+            (status.primary_sysid, status.primary_compid) == (self.our_system, self.our_component);
         let unowned = status.primary_sysid == 0 || status.primary_compid == 0;
         let gimbal = self.gimbals.entry(pair).or_default();
         gimbal.received_status = true;
@@ -522,16 +626,36 @@ impl Gimbals {
         self.check_complete(pair, now_ms)
     }
 
-    pub fn on_device_attitude_status(&mut self, report: DeviceAttitude, heading: f32, now_ms: u64) -> Vec<Out> {
+    pub fn on_device_attitude_status(
+        &mut self,
+        report: DeviceAttitude,
+        heading: f32,
+        now_ms: u64,
+    ) -> Vec<Out> {
         if !self.ready {
             return Vec::new();
         }
-        let Some(pair) = self.attitude_pair(report.compid, report.device_id) else { return Vec::new() };
+        let Some(pair) = self.attitude_pair(report.compid, report.device_id) else {
+            return Vec::new();
+        };
         let frame = Frame::of(report.flags);
-        let rate = |axis: usize| report.angular_velocity_rad_s.map(|w| w[axis].to_degrees()).filter(|r| r.is_finite());
+        let rate = |axis: usize| {
+            report
+                .angular_velocity_rad_s
+                .map(|w| w[axis].to_degrees())
+                .filter(|r| r.is_finite())
+        };
         let (roll, pitch, yaw) = euler_degrees(report.q);
         let (body_yaw, absolute_yaw) = body_and_absolute_yaw(frame, yaw, heading);
-        let attitude = Attitude { roll, pitch, body_yaw, absolute_yaw, pitch_rate: rate(1), yaw_rate: rate(2), at_ms: now_ms };
+        let attitude = Attitude {
+            roll,
+            pitch,
+            body_yaw,
+            absolute_yaw,
+            pitch_rate: rate(1),
+            yaw_rate: rate(2),
+            at_ms: now_ms,
+        };
         let gimbal = self.gimbals.entry(pair).or_default();
         gimbal.retracted = Some(report.flags & FLAG_RETRACT != 0);
         gimbal.yaw_lock = Some(report.flags & FLAG_YAW_LOCK != 0);
@@ -544,39 +668,95 @@ impl Gimbals {
     }
 
     pub fn acquire_control(&self) -> Vec<Out> {
-        let Some(pair) = self.active else { return vec![Out::Refused { pair: None, reason: REASON_NO_ACTIVE_GIMBAL }] };
+        let Some(pair) = self.active else {
+            return vec![Out::Refused {
+                pair: None,
+                reason: REASON_NO_ACTIVE_GIMBAL,
+            }];
+        };
         vec![Out::Command {
             component: pair.manager_compid,
             command: CMD_DO_GIMBAL_MANAGER_CONFIGURE,
-            params: [self.our_system as f64, self.our_component as f64, LEAVE_UNCHANGED, LEAVE_UNCHANGED, f64::NAN, f64::NAN, pair.device_id as f64],
+            params: [
+                self.our_system as f64,
+                self.our_component as f64,
+                LEAVE_UNCHANGED,
+                LEAVE_UNCHANGED,
+                f64::NAN,
+                f64::NAN,
+                pair.device_id as f64,
+            ],
             show_error: true,
         }]
     }
 
     pub fn release_control(&self) -> Vec<Out> {
-        let Some(pair) = self.active else { return vec![Out::Refused { pair: None, reason: REASON_NO_ACTIVE_GIMBAL }] };
+        let Some(pair) = self.active else {
+            return vec![Out::Refused {
+                pair: None,
+                reason: REASON_NO_ACTIVE_GIMBAL,
+            }];
+        };
         vec![Out::Command {
             component: pair.manager_compid,
             command: CMD_DO_GIMBAL_MANAGER_CONFIGURE,
-            params: [RELEASE_CONTROL, RELEASE_CONTROL, LEAVE_UNCHANGED, LEAVE_UNCHANGED, f64::NAN, f64::NAN, pair.device_id as f64],
+            params: [
+                RELEASE_CONTROL,
+                RELEASE_CONTROL,
+                LEAVE_UNCHANGED,
+                LEAVE_UNCHANGED,
+                f64::NAN,
+                f64::NAN,
+                pair.device_id as f64,
+            ],
             show_error: true,
         }]
     }
 
-    pub fn send_pitch_body_yaw(&mut self, pitch: f32, yaw: f32, show_error: bool, now_ms: u64) -> Vec<Out> {
-        self.send_angles(FLAG_ROLL_LOCK | FLAG_PITCH_LOCK | FLAG_YAW_IN_VEHICLE_FRAME, pitch, wrap180(yaw), show_error, now_ms)
+    pub fn send_pitch_body_yaw(
+        &mut self,
+        pitch: f32,
+        yaw: f32,
+        show_error: bool,
+        now_ms: u64,
+    ) -> Vec<Out> {
+        self.send_angles(
+            FLAG_ROLL_LOCK | FLAG_PITCH_LOCK | FLAG_YAW_IN_VEHICLE_FRAME,
+            pitch,
+            wrap180(yaw),
+            show_error,
+            now_ms,
+        )
     }
 
     pub fn aim(&mut self, pitch: f32, body_yaw: f32, now_ms: u64) -> Vec<Out> {
         let stop = self.stop_rates();
         let (target, control) = self.control(now_ms);
         let flags = FLAG_ROLL_LOCK | FLAG_PITCH_LOCK | FLAG_YAW_IN_VEHICLE_FRAME;
-        let aimed = target.map(|pair| Out::SetPitchYaw { component: pair.manager_compid, flags, device_id: pair.device_id, pitch: pitch.to_radians(), yaw: wrap180(body_yaw).to_radians() });
+        let aimed = target.map(|pair| Out::SetPitchYaw {
+            component: pair.manager_compid,
+            flags,
+            device_id: pair.device_id,
+            pitch: pitch.to_radians(),
+            yaw: wrap180(body_yaw).to_radians(),
+        });
         control.into_iter().chain(stop).chain(aimed).collect()
     }
 
-    pub fn send_pitch_absolute_yaw(&mut self, pitch: f32, yaw: f32, show_error: bool, now_ms: u64) -> Vec<Out> {
-        self.send_angles(FLAG_ROLL_LOCK | FLAG_PITCH_LOCK | FLAG_YAW_LOCK | FLAG_YAW_IN_EARTH_FRAME, pitch, wrap180(yaw), show_error, now_ms)
+    pub fn send_pitch_absolute_yaw(
+        &mut self,
+        pitch: f32,
+        yaw: f32,
+        show_error: bool,
+        now_ms: u64,
+    ) -> Vec<Out> {
+        self.send_angles(
+            FLAG_ROLL_LOCK | FLAG_PITCH_LOCK | FLAG_YAW_LOCK | FLAG_YAW_IN_EARTH_FRAME,
+            pitch,
+            wrap180(yaw),
+            show_error,
+            now_ms,
+        )
     }
 
     pub fn center(&mut self, now_ms: u64) -> Vec<Out> {
@@ -589,7 +769,10 @@ impl Gimbals {
             false => 0,
         };
         match self.supported(Gimbal::supports_retract) {
-            false => vec![Out::Refused { pair: self.active, reason: REASON_UNSUPPORTED }],
+            false => vec![Out::Refused {
+                pair: self.active,
+                reason: REASON_UNSUPPORTED,
+            }],
             true => self.hold_attitude(flags, now_ms),
         }
     }
@@ -600,21 +783,47 @@ impl Gimbals {
             false => 0,
         };
         match self.supported(Gimbal::supports_yaw_lock) {
-            false => vec![Out::Refused { pair: self.active, reason: REASON_UNSUPPORTED }],
+            false => vec![Out::Refused {
+                pair: self.active,
+                reason: REASON_UNSUPPORTED,
+            }],
             true => self.hold_attitude(FLAG_ROLL_LOCK | FLAG_PITCH_LOCK | locked, now_ms),
         }
     }
 
-    pub fn set_rates(&mut self, pitch_rate: Option<f32>, yaw_rate: Option<f32>, now_ms: u64) -> Vec<Out> {
+    pub fn set_rates(
+        &mut self,
+        pitch_rate: Option<f32>,
+        yaw_rate: Option<f32>,
+        now_ms: u64,
+    ) -> Vec<Out> {
         self.dragged = None;
-        let stored = self.active.and_then(|pair| self.gimbals.get_mut(&pair)).map(|gimbal| {
-            gimbal.commanded_pitch_rate = pitch_rate.filter(|r| r.is_finite()).or(gimbal.commanded_pitch_rate);
-            gimbal.commanded_yaw_rate = yaw_rate.filter(|r| r.is_finite()).or(gimbal.commanded_yaw_rate);
-            (gimbal.commanded_pitch_rate.unwrap_or(0.0), gimbal.commanded_yaw_rate.unwrap_or(0.0), gimbal.yaw_lock.unwrap_or(false))
-        });
-        let Some((pitch, yaw, locked)) = stored else { return vec![Out::Refused { pair: self.active, reason: REASON_NO_ACTIVE_GIMBAL }] };
+        let stored = self
+            .active
+            .and_then(|pair| self.gimbals.get_mut(&pair))
+            .map(|gimbal| {
+                gimbal.commanded_pitch_rate = pitch_rate
+                    .filter(|r| r.is_finite())
+                    .or(gimbal.commanded_pitch_rate);
+                gimbal.commanded_yaw_rate = yaw_rate
+                    .filter(|r| r.is_finite())
+                    .or(gimbal.commanded_yaw_rate);
+                (
+                    gimbal.commanded_pitch_rate.unwrap_or(0.0),
+                    gimbal.commanded_yaw_rate.unwrap_or(0.0),
+                    gimbal.yaw_lock.unwrap_or(false),
+                )
+            });
+        let Some((pitch, yaw, locked)) = stored else {
+            return vec![Out::Refused {
+                pair: self.active,
+                reason: REASON_NO_ACTIVE_GIMBAL,
+            }];
+        };
         let (target, control) = self.control(now_ms);
-        let Some(pair) = target else { return control.into_iter().chain([Out::StopRateRepeat]).collect() };
+        let Some(pair) = target else {
+            return control.into_iter().chain([Out::StopRateRepeat]).collect();
+        };
         let lock = match locked {
             true => FLAG_YAW_LOCK,
             false => 0,
@@ -623,16 +832,48 @@ impl Gimbals {
             true => Out::StartRateRepeat,
             false => Out::StopRateRepeat,
         };
-        control.into_iter().chain([self.rate_command(pair, FLAG_ROLL_LOCK | FLAG_PITCH_LOCK | FLAG_YAW_IN_VEHICLE_FRAME | lock, pitch, yaw), repeat]).collect()
+        control
+            .into_iter()
+            .chain([
+                self.rate_command(
+                    pair,
+                    FLAG_ROLL_LOCK | FLAG_PITCH_LOCK | FLAG_YAW_IN_VEHICLE_FRAME | lock,
+                    pitch,
+                    yaw,
+                ),
+                repeat,
+            ])
+            .collect()
     }
 
-    pub fn on_screen_control(&mut self, pan_pct: f32, tilt_pct: f32, screen: Screen, heading: f32, now_ms: u64) -> Vec<Out> {
+    pub fn on_screen_control(
+        &mut self,
+        pan_pct: f32,
+        tilt_pct: f32,
+        screen: Screen,
+        heading: f32,
+        now_ms: u64,
+    ) -> Vec<Out> {
         let pointing = self
             .active
             .and_then(|pair| self.gimbals.get(&pair).map(|gimbal| (pair, gimbal)))
-            .and_then(|(pair, gimbal)| gimbal.attitude.map(|a| (pair, a.body_yaw, a.pitch, gimbal.yaw_lock.unwrap_or(false), gimbal.limits[2], gimbal.limits[3])));
+            .and_then(|(pair, gimbal)| {
+                gimbal.attitude.map(|a| {
+                    (
+                        pair,
+                        a.body_yaw,
+                        a.pitch,
+                        gimbal.yaw_lock.unwrap_or(false),
+                        gimbal.limits[2],
+                        gimbal.limits[3],
+                    )
+                })
+            });
         let Some((pair, body_yaw, pitch, locked, pitch_min, pitch_max)) = pointing else {
-            return vec![Out::Refused { pair: self.active, reason: REASON_ATTITUDE_UNKNOWN }];
+            return vec![Out::Refused {
+                pair: self.active,
+                reason: REASON_ATTITUDE_UNKNOWN,
+            }];
         };
         let (pan, tilt) = match screen {
             Screen::Point { h_fov, v_fov } => {
@@ -642,10 +883,19 @@ impl Gimbals {
             Screen::Drag { slide_speed } => {
                 let (from_yaw, from_pitch) = self
                     .dragged
-                    .filter(|dragged| dragged.pair == pair && now_ms.saturating_sub(dragged.at_ms) < DRAG_CONTINUES_MS)
-                    .map_or((body_yaw, pitch), |dragged| (dragged.body_yaw, dragged.pitch));
+                    .filter(|dragged| {
+                        dragged.pair == pair
+                            && now_ms.saturating_sub(dragged.at_ms) < DRAG_CONTINUES_MS
+                    })
+                    .map_or((body_yaw, pitch), |dragged| {
+                        (dragged.body_yaw, dragged.pitch)
+                    });
                 let tilt = tilt_pct * slide_speed * 0.1 + from_pitch;
-                (wrap180(pan_pct * slide_speed * 0.1 + from_yaw), tilt.max(pitch_min.unwrap_or(tilt)).min(pitch_max.unwrap_or(tilt)))
+                (
+                    wrap180(pan_pct * slide_speed * 0.1 + from_yaw),
+                    tilt.max(pitch_min.unwrap_or(tilt))
+                        .min(pitch_max.unwrap_or(tilt)),
+                )
             }
         };
         let sent = match locked {
@@ -653,23 +903,46 @@ impl Gimbals {
             false => self.send_pitch_body_yaw(tilt, pan, false, now_ms),
         };
         self.dragged = match screen {
-            Screen::Drag { .. } => Some(Dragged { pair, pitch: tilt, body_yaw: pan, at_ms: now_ms }),
+            Screen::Drag { .. } => Some(Dragged {
+                pair,
+                pitch: tilt,
+                body_yaw: pan,
+                at_ms: now_ms,
+            }),
             Screen::Point { .. } => None,
         };
         sent
     }
 
-    pub fn drag_to(&mut self, pan_pct: f32, tilt_pct: f32, begin: bool, h_fov: f32, v_fov: f32, heading: f32, now_ms: u64) -> Vec<Out> {
+    pub fn drag_to(
+        &mut self,
+        pan_pct: f32,
+        tilt_pct: f32,
+        begin: bool,
+        h_fov: f32,
+        v_fov: f32,
+        heading: f32,
+        now_ms: u64,
+    ) -> Vec<Out> {
         let pointing = self
             .active
             .and_then(|pair| self.gimbals.get(&pair).map(|gimbal| (pair, gimbal)))
-            .and_then(|(pair, gimbal)| gimbal.attitude.map(|a| (pair, a.pitch, a.body_yaw, gimbal.yaw_lock.unwrap_or(false))));
+            .and_then(|(pair, gimbal)| {
+                gimbal
+                    .attitude
+                    .map(|a| (pair, a.pitch, a.body_yaw, gimbal.yaw_lock.unwrap_or(false)))
+            });
         let Some((pair, reported_pitch, reported_yaw, locked)) = pointing else {
-            return vec![Out::Refused { pair: self.active, reason: REASON_ATTITUDE_UNKNOWN }];
+            return vec![Out::Refused {
+                pair: self.active,
+                reason: REASON_ATTITUDE_UNKNOWN,
+            }];
         };
         let left_off = self
             .dragged
-            .filter(|dragged| dragged.pair == pair && now_ms.saturating_sub(dragged.at_ms) < DRAG_CONTINUES_MS)
+            .filter(|dragged| {
+                dragged.pair == pair && now_ms.saturating_sub(dragged.at_ms) < DRAG_CONTINUES_MS
+            })
             .map(|dragged| (dragged.pitch, dragged.body_yaw, locked));
         let origin = match (begin, self.drag_origin) {
             (false, Some(origin)) => origin,
@@ -683,12 +956,21 @@ impl Gimbals {
             false => self.send_pitch_body_yaw(tilt, pan, false, now_ms),
         };
         self.drag_origin = Some(origin);
-        self.dragged = Some(Dragged { pair, pitch: tilt, body_yaw: pan, at_ms: now_ms });
+        self.dragged = Some(Dragged {
+            pair,
+            pitch: tilt,
+            body_yaw: pan,
+            at_ms: now_ms,
+        });
         sent
     }
 
     pub fn fact_groups(&self) -> Vec<(PairId, Option<Attitude>)> {
-        self.gimbals.iter().filter(|(_, gimbal)| gimbal.complete).map(|(pair, gimbal)| (*pair, gimbal.attitude)).collect()
+        self.gimbals
+            .iter()
+            .filter(|(_, gimbal)| gimbal.complete)
+            .map(|(pair, gimbal)| (*pair, gimbal.attitude))
+            .collect()
     }
 
     pub fn any(&self) -> bool {
@@ -696,7 +978,11 @@ impl Gimbals {
     }
 
     pub fn snapshot(&self, now_ms: u64) -> Value {
-        let complete: Vec<(&PairId, &Gimbal)> = self.gimbals.iter().filter(|(_, gimbal)| gimbal.complete).collect();
+        let complete: Vec<(&PairId, &Gimbal)> = self
+            .gimbals
+            .iter()
+            .filter(|(_, gimbal)| gimbal.complete)
+            .collect();
         json!({
             "kind": "object",
             "class": "Gimbals",
@@ -721,9 +1007,19 @@ impl Gimbals {
 
     fn discovery(&self) -> &'static str {
         let searching = self.managers.is_empty()
-            || self.managers.values().any(|manager| !manager.received_information && manager.retries > 0)
-            || self.gimbals.values().any(|gimbal| !gimbal.complete && gimbal.chasing());
-        match (self.ready, self.gimbals.values().any(|gimbal| gimbal.complete), searching) {
+            || self
+                .managers
+                .values()
+                .any(|manager| !manager.received_information && manager.retries > 0)
+            || self
+                .gimbals
+                .values()
+                .any(|gimbal| !gimbal.complete && gimbal.chasing());
+        match (
+            self.ready,
+            self.gimbals.values().any(|gimbal| gimbal.complete),
+            searching,
+        ) {
             (false, _, _) => DISCOVERY_IDLE,
             (true, true, _) => DISCOVERY_FOUND,
             (true, false, true) => DISCOVERY_SEARCHING,
@@ -735,44 +1031,100 @@ impl Gimbals {
         match (self.ready, self.gimbals.get(&pair)) {
             (false, _) => Some(REASON_NOT_READY),
             (true, None) => Some(REASON_NO_ACTIVE_GIMBAL),
-            (true, Some(gimbal)) => gimbal.others_have_control().filter(|held| *held).map(|_| REASON_OTHERS_HAVE_CONTROL),
+            (true, Some(gimbal)) => gimbal
+                .others_have_control()
+                .filter(|held| *held)
+                .map(|_| REASON_OTHERS_HAVE_CONTROL),
         }
     }
 
     fn aim_gate(&self, pair: PairId) -> Option<&'static str> {
-        self.control_gate(pair).or_else(|| self.gimbals.get(&pair)?.attitude.is_none().then_some(REASON_ATTITUDE_UNKNOWN))
+        self.control_gate(pair).or_else(|| {
+            self.gimbals
+                .get(&pair)?
+                .attitude
+                .is_none()
+                .then_some(REASON_ATTITUDE_UNKNOWN)
+        })
     }
 
     fn supported(&self, has: fn(&Gimbal) -> Option<bool>) -> bool {
-        self.active.and_then(|pair| self.gimbals.get(&pair)).and_then(has) != Some(false)
+        self.active
+            .and_then(|pair| self.gimbals.get(&pair))
+            .and_then(has)
+            != Some(false)
     }
 
     fn attitude_pair(&self, compid: u8, device_id: u8) -> Option<PairId> {
         match device_id {
-            0 => self.gimbals.keys().find(|pair| pair.device_id == compid).copied(),
-            id if id <= NON_MAVLINK_DEVICE_IDS => Some(PairId { manager_compid: compid, device_id: id }),
+            0 => self
+                .gimbals
+                .keys()
+                .find(|pair| pair.device_id == compid)
+                .copied(),
+            id if id <= NON_MAVLINK_DEVICE_IDS => Some(PairId {
+                manager_compid: compid,
+                device_id: id,
+            }),
             _ => None,
         }
     }
 
     fn control(&mut self, now_ms: u64) -> (Option<PairId>, Vec<Out>) {
         if !self.ready {
-            return (None, vec![Out::Refused { pair: self.active, reason: REASON_NOT_READY }]);
+            return (
+                None,
+                vec![Out::Refused {
+                    pair: self.active,
+                    reason: REASON_NOT_READY,
+                }],
+            );
         }
-        let Some(pair) = self.active else { return (None, vec![Out::Refused { pair: None, reason: REASON_NO_ACTIVE_GIMBAL }]) };
-        match self.gimbals.get(&pair).map(|gimbal| (gimbal.others_have_control(), gimbal.have_control(now_ms))) {
-            None => (None, vec![Out::Refused { pair: Some(pair), reason: REASON_NO_ACTIVE_GIMBAL }]),
+        let Some(pair) = self.active else {
+            return (
+                None,
+                vec![Out::Refused {
+                    pair: None,
+                    reason: REASON_NO_ACTIVE_GIMBAL,
+                }],
+            );
+        };
+        match self
+            .gimbals
+            .get(&pair)
+            .map(|gimbal| (gimbal.others_have_control(), gimbal.have_control(now_ms)))
+        {
+            None => (
+                None,
+                vec![Out::Refused {
+                    pair: Some(pair),
+                    reason: REASON_NO_ACTIVE_GIMBAL,
+                }],
+            ),
             Some((Some(true), _)) => (None, vec![Out::AskToTakeControl(pair)]),
             Some((_, Some(true))) => (Some(pair), Vec::new()),
             Some(_) => (Some(pair), self.acquire_control()),
         }
     }
 
-    fn send_angles(&mut self, flags: u32, pitch: f32, yaw: f32, show_error: bool, now_ms: u64) -> Vec<Out> {
+    fn send_angles(
+        &mut self,
+        flags: u32,
+        pitch: f32,
+        yaw: f32,
+        show_error: bool,
+        now_ms: u64,
+    ) -> Vec<Out> {
         let stop = self.stop_rates();
         let (target, control) = self.control(now_ms);
-        let Some(pair) = target else { return control.into_iter().chain(stop).collect() };
-        control.into_iter().chain(stop).chain([self.pitch_yaw(pair, flags, Some(pitch), Some(yaw), show_error)]).collect()
+        let Some(pair) = target else {
+            return control.into_iter().chain(stop).collect();
+        };
+        control
+            .into_iter()
+            .chain(stop)
+            .chain([self.pitch_yaw(pair, flags, Some(pitch), Some(yaw), show_error)])
+            .collect()
     }
 
     fn stop_rates(&mut self) -> Vec<Out> {
@@ -792,20 +1144,44 @@ impl Gimbals {
             Frame::Vehicle => a.body_yaw,
             Frame::Earth => a.absolute_yaw,
         });
-        control.into_iter().chain([self.pitch_yaw(pair, flags, attitude.map(|a| a.pitch), yaw, true)]).collect()
+        control
+            .into_iter()
+            .chain([self.pitch_yaw(pair, flags, attitude.map(|a| a.pitch), yaw, true)])
+            .collect()
     }
 
-    fn pitch_yaw(&self, pair: PairId, flags: u32, pitch: Option<f32>, yaw: Option<f32>, show_error: bool) -> Out {
+    fn pitch_yaw(
+        &self,
+        pair: PairId,
+        flags: u32,
+        pitch: Option<f32>,
+        yaw: Option<f32>,
+        show_error: bool,
+    ) -> Out {
         Out::Command {
             component: pair.manager_compid,
             command: CMD_DO_GIMBAL_MANAGER_PITCHYAW,
-            params: [pitch.map(f64::from).unwrap_or(f64::NAN), yaw.map(f64::from).unwrap_or(f64::NAN), f64::NAN, f64::NAN, flags as f64, 0.0, pair.device_id as f64],
+            params: [
+                pitch.map(f64::from).unwrap_or(f64::NAN),
+                yaw.map(f64::from).unwrap_or(f64::NAN),
+                f64::NAN,
+                f64::NAN,
+                flags as f64,
+                0.0,
+                pair.device_id as f64,
+            ],
             show_error,
         }
     }
 
     fn rate_command(&self, pair: PairId, flags: u32, pitch_rate: f32, yaw_rate: f32) -> Out {
-        Out::SetAttitudeRates { component: pair.manager_compid, flags, device_id: pair.device_id, pitch_rate: pitch_rate.to_radians(), yaw_rate: yaw_rate.to_radians() }
+        Out::SetAttitudeRates {
+            component: pair.manager_compid,
+            flags,
+            device_id: pair.device_id,
+            pitch_rate: pitch_rate.to_radians(),
+            yaw_rate: yaw_rate.to_radians(),
+        }
     }
 
     fn request_information(&mut self, compid: u8, now_ms: u64) -> Vec<Out> {
@@ -813,8 +1189,14 @@ impl Gimbals {
         match self.pending_information {
             Some(_) => Vec::new(),
             None => {
-                self.pending_information = Some((compid, now_ms.saturating_add(INFORMATION_REQUEST_TIMEOUT_MS)));
-                vec![Out::RequestMessage { component: compid, message: MSG_GIMBAL_MANAGER_INFORMATION }]
+                self.pending_information = Some((
+                    compid,
+                    now_ms.saturating_add(INFORMATION_REQUEST_TIMEOUT_MS),
+                ));
+                vec![Out::RequestMessage {
+                    component: compid,
+                    message: MSG_GIMBAL_MANAGER_INFORMATION,
+                }]
             }
         }
     }
@@ -826,61 +1208,106 @@ impl Gimbals {
         let information = self.chase_information(pair, now_ms);
         let status = self.chase_status(pair, now_ms);
         let attitude = self.chase_attitude(pair);
-        let complete = match self.gimbals.get(&pair).is_some_and(Gimbal::heard_everything) {
+        let complete = match self
+            .gimbals
+            .get(&pair)
+            .is_some_and(Gimbal::heard_everything)
+        {
             true => self.complete(pair),
             false => Vec::new(),
         };
-        information.into_iter().chain(status).chain(attitude).chain(complete).collect()
+        information
+            .into_iter()
+            .chain(status)
+            .chain(attitude)
+            .chain(complete)
+            .collect()
     }
 
     fn chase_information(&mut self, pair: PairId, now_ms: u64) -> Vec<Out> {
-        if self.gimbals.get(&pair).is_none_or(|gimbal| gimbal.received_information || gimbal.information_retries == 0) {
+        if self
+            .gimbals
+            .get(&pair)
+            .is_none_or(|gimbal| gimbal.received_information || gimbal.information_retries == 0)
+        {
             return Vec::new();
         }
         let out = self.request_information(pair.manager_compid, now_ms);
-        self.gimbals.entry(pair).and_modify(|gimbal| gimbal.information_retries = gimbal.information_retries.saturating_sub(out.len() as u32));
+        self.gimbals.entry(pair).and_modify(|gimbal| {
+            gimbal.information_retries = gimbal.information_retries.saturating_sub(out.len() as u32)
+        });
         out
     }
 
     fn chase_status(&mut self, pair: PairId, now_ms: u64) -> Vec<Out> {
-        let recently_asked = self.last_status_request_ms.is_some_and(|at| now_ms.saturating_sub(at) <= STATUS_REQUEST_GAP_MS);
-        let retries = self.gimbals.get(&pair).filter(|gimbal| !gimbal.received_status).map(|gimbal| gimbal.status_retries).unwrap_or(0);
+        let recently_asked = self
+            .last_status_request_ms
+            .is_some_and(|at| now_ms.saturating_sub(at) <= STATUS_REQUEST_GAP_MS);
+        let retries = self
+            .gimbals
+            .get(&pair)
+            .filter(|gimbal| !gimbal.received_status)
+            .map(|gimbal| gimbal.status_retries)
+            .unwrap_or(0);
         if recently_asked || retries == 0 {
             return Vec::new();
         }
         self.last_status_request_ms = Some(now_ms);
-        self.gimbals.entry(pair).and_modify(|gimbal| gimbal.status_retries -= 1);
+        self.gimbals
+            .entry(pair)
+            .and_modify(|gimbal| gimbal.status_retries -= 1);
         let interval_us = match retries > 2 {
             true => DEFAULT_INTERVAL_US,
             false => SLOW_STATUS_INTERVAL_US,
         };
-        vec![Out::MessageInterval { component: pair.manager_compid, message: MSG_GIMBAL_MANAGER_STATUS, interval_us }]
+        vec![Out::MessageInterval {
+            component: pair.manager_compid,
+            message: MSG_GIMBAL_MANAGER_STATUS,
+            interval_us,
+        }]
     }
 
     fn chase_attitude(&mut self, pair: PairId) -> Vec<Out> {
-        let wanted = self.gimbals.get(&pair).is_some_and(|gimbal| !gimbal.received_attitude && gimbal.attitude_retries > 0 && gimbal.received_information);
+        let wanted = self.gimbals.get(&pair).is_some_and(|gimbal| {
+            !gimbal.received_attitude && gimbal.attitude_retries > 0 && gimbal.received_information
+        });
         if !wanted {
             return Vec::new();
         }
-        self.gimbals.entry(pair).and_modify(|gimbal| gimbal.attitude_retries -= 1);
+        self.gimbals
+            .entry(pair)
+            .and_modify(|gimbal| gimbal.attitude_retries -= 1);
         let component = match pair.device_id <= NON_MAVLINK_DEVICE_IDS {
             true => pair.manager_compid,
             false => pair.device_id,
         };
-        vec![Out::MessageInterval { component, message: MSG_GIMBAL_DEVICE_ATTITUDE_STATUS, interval_us: DEFAULT_INTERVAL_US }]
+        vec![Out::MessageInterval {
+            component,
+            message: MSG_GIMBAL_DEVICE_ATTITUDE_STATUS,
+            interval_us: DEFAULT_INTERVAL_US,
+        }]
     }
 
     fn complete(&mut self, pair: PairId) -> Vec<Out> {
-        self.gimbals.entry(pair).and_modify(|gimbal| gimbal.complete = true);
+        self.gimbals
+            .entry(pair)
+            .and_modify(|gimbal| gimbal.complete = true);
         let activated = self.active.is_none();
         self.active = self.active.or(Some(pair));
-        activated.then_some(Out::ActiveGimbal(pair)).into_iter().chain([Out::GimbalComplete(pair)]).collect()
+        activated
+            .then_some(Out::ActiveGimbal(pair))
+            .into_iter()
+            .chain([Out::GimbalComplete(pair)])
+            .collect()
     }
 }
 
 pub fn gimbal_view(_backend: &dyn crate::router::Backend, _args: &[String]) -> Value {
     let now_ms = crate::hub::now_ms();
-    crate::hub::lock().active().map_or_else(|| Gimbals::default().snapshot(now_ms), |vehicle| vehicle.gimbals.snapshot(now_ms))
+    crate::hub::lock().active().map_or_else(
+        || Gimbals::default().snapshot(now_ms),
+        |vehicle| vehicle.gimbals.snapshot(now_ms),
+    )
 }
 
 #[cfg(test)]
@@ -893,19 +1320,39 @@ mod tests {
     const DEVICE: u8 = 154;
 
     fn pair() -> PairId {
-        PairId { manager_compid: MANAGER, device_id: DEVICE }
+        PairId {
+            manager_compid: MANAGER,
+            device_id: DEVICE,
+        }
     }
 
     fn info(compid: u8, device_id: u8, capability_flags: u32) -> ManagerInformation {
-        ManagerInformation { compid, device_id, capability_flags, limits_rad: None }
+        ManagerInformation {
+            compid,
+            device_id,
+            capability_flags,
+            limits_rad: None,
+        }
     }
 
     fn status(compid: u8, device_id: u8, primary_sysid: u8, primary_compid: u8) -> ManagerStatus {
-        ManagerStatus { compid, device_id, primary_sysid, primary_compid, ..Default::default() }
+        ManagerStatus {
+            compid,
+            device_id,
+            primary_sysid,
+            primary_compid,
+            ..Default::default()
+        }
     }
 
     fn attitude(compid: u8, device_id: u8, flags: u32, q: [f32; 4]) -> DeviceAttitude {
-        DeviceAttitude { compid, device_id, flags, q, ..Default::default() }
+        DeviceAttitude {
+            compid,
+            device_id,
+            flags,
+            q,
+            ..Default::default()
+        }
     }
 
     fn level() -> [f32; 4] {
@@ -920,9 +1367,14 @@ mod tests {
     fn discovered_with(q: [f32; 4]) -> Gimbals {
         let mut gimbals = Gimbals::new(OUR_SYSTEM, OUR_COMPONENT);
         gimbals.set_ready(true);
-        gimbals.on_manager_information(info(MANAGER, DEVICE, CAP_HAS_RETRACT | CAP_HAS_YAW_LOCK), 0);
+        gimbals
+            .on_manager_information(info(MANAGER, DEVICE, CAP_HAS_RETRACT | CAP_HAS_YAW_LOCK), 0);
         gimbals.on_manager_status(status(MANAGER, DEVICE, OUR_SYSTEM, OUR_COMPONENT), 2000);
-        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, q), 0.0, 2000);
+        gimbals.on_device_attitude_status(
+            attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, q),
+            0.0,
+            2000,
+        );
         gimbals
     }
 
@@ -933,7 +1385,11 @@ mod tests {
     fn angles(out: &[Out]) -> [f64; 7] {
         out.iter()
             .find_map(|sent| match sent {
-                Out::Command { params, command: CMD_DO_GIMBAL_MANAGER_PITCHYAW, .. } => Some(*params),
+                Out::Command {
+                    params,
+                    command: CMD_DO_GIMBAL_MANAGER_PITCHYAW,
+                    ..
+                } => Some(*params),
                 _ => None,
             })
             .expect("a pitch/yaw command")
@@ -949,13 +1405,31 @@ mod tests {
     #[test]
     fn the_wire_values_are_the_ones_the_protocol_defines_and_not_merely_the_ones_the_code_uses() {
         assert_eq!(
-            (MSG_GIMBAL_MANAGER_INFORMATION, MSG_GIMBAL_MANAGER_STATUS, MSG_GIMBAL_DEVICE_ATTITUDE_STATUS),
+            (
+                MSG_GIMBAL_MANAGER_INFORMATION,
+                MSG_GIMBAL_MANAGER_STATUS,
+                MSG_GIMBAL_DEVICE_ATTITUDE_STATUS
+            ),
             (280, 281, 285),
             "every other assertion in this file reads the flag through the same constant the code writes, so a transposed number would pass them all - these literals are the only thing standing between a typo and a vehicle sent nonsense"
         );
-        assert_eq!((CMD_DO_GIMBAL_MANAGER_PITCHYAW, CMD_DO_GIMBAL_MANAGER_CONFIGURE), (1000, 1001));
         assert_eq!(
-            (FLAG_RETRACT, FLAG_NEUTRAL, FLAG_ROLL_LOCK, FLAG_PITCH_LOCK, FLAG_YAW_LOCK, FLAG_YAW_IN_VEHICLE_FRAME, FLAG_YAW_IN_EARTH_FRAME),
+            (
+                CMD_DO_GIMBAL_MANAGER_PITCHYAW,
+                CMD_DO_GIMBAL_MANAGER_CONFIGURE
+            ),
+            (1000, 1001)
+        );
+        assert_eq!(
+            (
+                FLAG_RETRACT,
+                FLAG_NEUTRAL,
+                FLAG_ROLL_LOCK,
+                FLAG_PITCH_LOCK,
+                FLAG_YAW_LOCK,
+                FLAG_YAW_IN_VEHICLE_FRAME,
+                FLAG_YAW_IN_EARTH_FRAME
+            ),
             (1, 2, 4, 8, 16, 32, 64)
         );
         assert_eq!((CAP_HAS_RETRACT, CAP_HAS_YAW_LOCK), (1, 1024));
@@ -975,18 +1449,42 @@ mod tests {
             (1, 2, 4, 8, 16, 32, 64, 128, 256, 512)
         );
         assert_eq!((RELEASE_CONTROL, LEAVE_UNCHANGED), (-3.0, -1.0));
-        assert_eq!((ANGLE_UNITS, RATE_UNITS), ("degree", "degreePerSecond"), "the payload carries a unit identifier a head maps to its own locale, not an English abbreviation an operator reading Ukrainian has to be shown");
+        assert_eq!(
+            (ANGLE_UNITS, RATE_UNITS),
+            ("degree", "degreePerSecond"),
+            "the payload carries a unit identifier a head maps to its own locale, not an English abbreviation an operator reading Ukrainian has to be shown"
+        );
     }
 
     #[test]
     fn nothing_is_chased_until_the_initial_connection_has_completed() {
         let mut gimbals = Gimbals::new(OUR_SYSTEM, OUR_COMPONENT);
-        assert!(gimbals.on_heartbeat(MANAGER, 0).is_empty(), "asking a component for gimbal information during the initial connect is what the ready gate exists to stop");
-        assert!(gimbals.on_manager_information(info(MANAGER, DEVICE, 0), 0).is_empty());
-        assert!(gimbals.pairs().is_empty(), "and no gimbal is invented from a message that was never accepted");
-        assert_eq!(gimbals.snapshot(0)["discovery"], DISCOVERY_IDLE, "a screen that has not started looking says so rather than showing the same emptiness as a search that failed");
+        assert!(
+            gimbals.on_heartbeat(MANAGER, 0).is_empty(),
+            "asking a component for gimbal information during the initial connect is what the ready gate exists to stop"
+        );
+        assert!(
+            gimbals
+                .on_manager_information(info(MANAGER, DEVICE, 0), 0)
+                .is_empty()
+        );
+        assert!(
+            gimbals.pairs().is_empty(),
+            "and no gimbal is invented from a message that was never accepted"
+        );
+        assert_eq!(
+            gimbals.snapshot(0)["discovery"],
+            DISCOVERY_IDLE,
+            "a screen that has not started looking says so rather than showing the same emptiness as a search that failed"
+        );
         gimbals.set_ready(true);
-        assert_eq!(gimbals.on_heartbeat(MANAGER, 0), vec![Out::RequestMessage { component: MANAGER, message: MSG_GIMBAL_MANAGER_INFORMATION }]);
+        assert_eq!(
+            gimbals.on_heartbeat(MANAGER, 0),
+            vec![Out::RequestMessage {
+                component: MANAGER,
+                message: MSG_GIMBAL_MANAGER_INFORMATION
+            }]
+        );
         assert_eq!(gimbals.snapshot(0)["discovery"], DISCOVERY_SEARCHING);
     }
 
@@ -997,7 +1495,8 @@ mod tests {
         let spent: Vec<Value> = (0..MANAGER_INFORMATION_RETRIES + 1)
             .map(|attempt| {
                 gimbals.on_heartbeat(MANAGER, attempt as u64 * INFORMATION_REQUEST_TIMEOUT_MS);
-                gimbals.snapshot(attempt as u64 * INFORMATION_REQUEST_TIMEOUT_MS)["discovery"].clone()
+                gimbals.snapshot(attempt as u64 * INFORMATION_REQUEST_TIMEOUT_MS)["discovery"]
+                    .clone()
             })
             .collect();
         assert_eq!(spent.first(), Some(&json!(DISCOVERY_SEARCHING)));
@@ -1009,12 +1508,24 @@ mod tests {
         gimbals.on_manager_information(info(2, 155, 0), 0);
         let pending = gimbals.snapshot(0);
         assert_eq!(pending["discovery"], DISCOVERY_SEARCHING);
-        assert_eq!(pending["pending"][0]["missing"], json!(["status", "attitude"]), "a manager that answered information and went quiet says which of the three messages is still outstanding");
+        assert_eq!(
+            pending["pending"][0]["missing"],
+            json!(["status", "attitude"]),
+            "a manager that answered information and went quiet says which of the three messages is still outstanding"
+        );
         gimbals.on_manager_status(status(2, 155, OUR_SYSTEM, OUR_COMPONENT), 2000);
-        gimbals.on_device_attitude_status(attitude(155, 0, FLAG_YAW_IN_VEHICLE_FRAME, level()), 0.0, 2000);
+        gimbals.on_device_attitude_status(
+            attitude(155, 0, FLAG_YAW_IN_VEHICLE_FRAME, level()),
+            0.0,
+            2000,
+        );
         let found = gimbals.snapshot(2000);
         assert_eq!(found["discovery"], DISCOVERY_FOUND);
-        assert!(found["pending"].as_array().is_some_and(|listed| listed.is_empty()));
+        assert!(
+            found["pending"]
+                .as_array()
+                .is_some_and(|listed| listed.is_empty())
+        );
     }
 
     #[test]
@@ -1022,17 +1533,39 @@ mod tests {
         let mut gimbals = Gimbals::new(OUR_SYSTEM, OUR_COMPONENT);
         gimbals.set_ready(true);
         assert_eq!(gimbals.on_heartbeat(MANAGER, 0).len(), 1);
-        assert!(gimbals.on_heartbeat(2, 0).is_empty(), "a second manager waits its turn instead of colliding with the first request in the command queue");
-        assert!(gimbals.on_heartbeat(3, INFORMATION_REQUEST_TIMEOUT_MS - 1).is_empty());
-        assert_eq!(gimbals.on_heartbeat(3, INFORMATION_REQUEST_TIMEOUT_MS).len(), 1, "a reply that never arrives clears the guard, or the guard is a latch that ends discovery for good");
+        assert!(
+            gimbals.on_heartbeat(2, 0).is_empty(),
+            "a second manager waits its turn instead of colliding with the first request in the command queue"
+        );
+        assert!(
+            gimbals
+                .on_heartbeat(3, INFORMATION_REQUEST_TIMEOUT_MS - 1)
+                .is_empty()
+        );
+        assert_eq!(
+            gimbals
+                .on_heartbeat(3, INFORMATION_REQUEST_TIMEOUT_MS)
+                .len(),
+            1,
+            "a reply that never arrives clears the guard, or the guard is a latch that ends discovery for good"
+        );
     }
 
     #[test]
     fn a_retry_is_only_spent_on_a_request_that_was_actually_sent() {
         let mut gimbals = Gimbals::new(OUR_SYSTEM, OUR_COMPONENT);
         gimbals.set_ready(true);
-        let sent: usize = (0..MANAGER_INFORMATION_RETRIES + 4).map(|attempt| gimbals.on_heartbeat(MANAGER, attempt as u64 * INFORMATION_REQUEST_TIMEOUT_MS).len()).sum();
-        assert_eq!(sent, MANAGER_INFORMATION_RETRIES as usize, "the retries bound how many requests a silent manager gets, and then the asking stops");
+        let sent: usize = (0..MANAGER_INFORMATION_RETRIES + 4)
+            .map(|attempt| {
+                gimbals
+                    .on_heartbeat(MANAGER, attempt as u64 * INFORMATION_REQUEST_TIMEOUT_MS)
+                    .len()
+            })
+            .sum();
+        assert_eq!(
+            sent, MANAGER_INFORMATION_RETRIES as usize,
+            "the retries bound how many requests a silent manager gets, and then the asking stops"
+        );
         let mut blocked = Gimbals::new(OUR_SYSTEM, OUR_COMPONENT);
         blocked.set_ready(true);
         blocked.on_heartbeat(2, 0);
@@ -1040,7 +1573,9 @@ mod tests {
             blocked.on_heartbeat(MANAGER, 0);
         });
         assert_eq!(
-            blocked.on_heartbeat(MANAGER, INFORMATION_REQUEST_TIMEOUT_MS).len(),
+            blocked
+                .on_heartbeat(MANAGER, INFORMATION_REQUEST_TIMEOUT_MS)
+                .len(),
             1,
             "a manager whose every attempt was suppressed still has its retries when the queue frees up, because a retry spent on nothing is a retry lost"
         );
@@ -1050,14 +1585,44 @@ mod tests {
     fn a_gimbal_device_id_of_zero_names_no_gimbal() {
         let mut gimbals = Gimbals::new(OUR_SYSTEM, OUR_COMPONENT);
         gimbals.set_ready(true);
-        assert!(gimbals.on_manager_information(info(MANAGER, 0, CAP_HAS_RETRACT), 0).is_empty());
-        assert!(gimbals.on_manager_status(status(MANAGER, 0, OUR_SYSTEM, OUR_COMPONENT), 0).is_empty());
-        assert!(gimbals.pairs().is_empty(), "a manager reporting device 0 is reporting no device, not a device numbered zero");
-        assert!(gimbals.on_device_attitude_status(attitude(MANAGER, 7, 0, level()), 0.0, 0).is_empty(), "7 and up is not a device id this protocol can address");
-        assert!(gimbals.on_device_attitude_status(attitude(DEVICE, 0, 0, level()), 0.0, 0).is_empty(), "and an attitude from a device nobody has heard of is not a discovery");
+        assert!(
+            gimbals
+                .on_manager_information(info(MANAGER, 0, CAP_HAS_RETRACT), 0)
+                .is_empty()
+        );
+        assert!(
+            gimbals
+                .on_manager_status(status(MANAGER, 0, OUR_SYSTEM, OUR_COMPONENT), 0)
+                .is_empty()
+        );
+        assert!(
+            gimbals.pairs().is_empty(),
+            "a manager reporting device 0 is reporting no device, not a device numbered zero"
+        );
+        assert!(
+            gimbals
+                .on_device_attitude_status(attitude(MANAGER, 7, 0, level()), 0.0, 0)
+                .is_empty(),
+            "7 and up is not a device id this protocol can address"
+        );
+        assert!(
+            gimbals
+                .on_device_attitude_status(attitude(DEVICE, 0, 0, level()), 0.0, 0)
+                .is_empty(),
+            "and an attitude from a device nobody has heard of is not a discovery"
+        );
         gimbals.on_manager_information(info(MANAGER, DEVICE, 0), 0);
-        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, level()), 0.0, 0);
-        assert!(gimbals.get(pair()).is_some_and(|gimbal| gimbal.attitude.is_some()), "device id 0 in an attitude means the sending component id is the device");
+        gimbals.on_device_attitude_status(
+            attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, level()),
+            0.0,
+            0,
+        );
+        assert!(
+            gimbals
+                .get(pair())
+                .is_some_and(|gimbal| gimbal.attitude.is_some()),
+            "device id 0 in an attitude means the sending component id is the device"
+        );
     }
 
     #[test]
@@ -1065,17 +1630,41 @@ mod tests {
         let mut gimbals = Gimbals::new(OUR_SYSTEM, OUR_COMPONENT);
         gimbals.set_ready(true);
         let information = gimbals.on_manager_information(info(MANAGER, DEVICE, CAP_HAS_RETRACT), 0);
-        assert!(information.contains(&Out::MessageInterval { component: MANAGER, message: MSG_GIMBAL_MANAGER_STATUS, interval_us: DEFAULT_INTERVAL_US }));
+        assert!(information.contains(&Out::MessageInterval {
+            component: MANAGER,
+            message: MSG_GIMBAL_MANAGER_STATUS,
+            interval_us: DEFAULT_INTERVAL_US
+        }));
         assert!(
-            information.contains(&Out::MessageInterval { component: DEVICE, message: MSG_GIMBAL_DEVICE_ATTITUDE_STATUS, interval_us: DEFAULT_INTERVAL_US }),
+            information.contains(&Out::MessageInterval {
+                component: DEVICE,
+                message: MSG_GIMBAL_DEVICE_ATTITUDE_STATUS,
+                interval_us: DEFAULT_INTERVAL_US
+            }),
             "a device id above 6 is a real component, so its attitude is requested from the device itself"
         );
         assert!(!gimbals.get(pair()).unwrap().complete);
-        assert!(gimbals.active().is_none(), "an incomplete gimbal is not something a head can be pointed at");
+        assert!(
+            gimbals.active().is_none(),
+            "an incomplete gimbal is not something a head can be pointed at"
+        );
         gimbals.on_manager_status(status(MANAGER, DEVICE, OUR_SYSTEM, OUR_COMPONENT), 2000);
-        let done = gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, level()), 0.0, 2000);
-        assert_eq!(done, vec![Out::ActiveGimbal(pair()), Out::GimbalComplete(pair())], "the first complete gimbal becomes the active one");
-        assert!(gimbals.on_device_attitude_status(attitude(DEVICE, 0, 0, level()), 0.0, 3000).is_empty(), "a complete gimbal is never chased again");
+        let done = gimbals.on_device_attitude_status(
+            attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, level()),
+            0.0,
+            2000,
+        );
+        assert_eq!(
+            done,
+            vec![Out::ActiveGimbal(pair()), Out::GimbalComplete(pair())],
+            "the first complete gimbal becomes the active one"
+        );
+        assert!(
+            gimbals
+                .on_device_attitude_status(attitude(DEVICE, 0, 0, level()), 0.0, 3000)
+                .is_empty(),
+            "a complete gimbal is never chased again"
+        );
     }
 
     #[test]
@@ -1084,14 +1673,34 @@ mod tests {
         gimbals.set_ready(true);
         gimbals.on_manager_status(status(MANAGER, 3, 0, 0), 0);
         let view = gimbals.snapshot(0);
-        assert_eq!((view["count"].as_u64(), view["available"].as_bool()), (Some(0), Some(false)), "one stray status from any component must not put a gimbal in the indicator that a head counts");
-        assert!(view["gimbals"].as_array().is_some_and(|listed| listed.is_empty()));
-        let potential = PairId { manager_compid: MANAGER, device_id: 3 };
+        assert_eq!(
+            (view["count"].as_u64(), view["available"].as_bool()),
+            (Some(0), Some(false)),
+            "one stray status from any component must not put a gimbal in the indicator that a head counts"
+        );
+        assert!(
+            view["gimbals"]
+                .as_array()
+                .is_some_and(|listed| listed.is_empty())
+        );
+        let potential = PairId {
+            manager_compid: MANAGER,
+            device_id: 3,
+        };
         assert!(
             gimbals.set_active(potential).is_empty() && gimbals.active().is_none(),
             "and the selector cannot activate it, or the next centre command is fired at a device whose existence was never confirmed"
         );
-        assert_eq!(gimbals.center(0), vec![Out::Refused { pair: None, reason: REASON_NO_ACTIVE_GIMBAL }, Out::StopRateRepeat]);
+        assert_eq!(
+            gimbals.center(0),
+            vec![
+                Out::Refused {
+                    pair: None,
+                    reason: REASON_NO_ACTIVE_GIMBAL
+                },
+                Out::StopRateRepeat
+            ]
+        );
     }
 
     #[test]
@@ -1100,7 +1709,11 @@ mod tests {
         gimbals.set_ready(true);
         let out = gimbals.on_manager_information(info(MANAGER, 3, 0), 0);
         assert!(
-            out.contains(&Out::MessageInterval { component: MANAGER, message: MSG_GIMBAL_DEVICE_ATTITUDE_STATUS, interval_us: DEFAULT_INTERVAL_US }),
+            out.contains(&Out::MessageInterval {
+                component: MANAGER,
+                message: MSG_GIMBAL_DEVICE_ATTITUDE_STATUS,
+                interval_us: DEFAULT_INTERVAL_US
+            }),
             "device ids 1 to 6 are not components, so only the manager can be asked for their attitude"
         );
     }
@@ -1111,23 +1724,56 @@ mod tests {
         gimbals.set_ready(true);
         gimbals.on_manager_information(info(MANAGER, DEVICE, 0), 0);
         assert!(
-            !gimbals.on_manager_information(info(MANAGER, DEVICE, 0), 500).iter().any(|out| matches!(out, Out::MessageInterval { message: MSG_GIMBAL_MANAGER_STATUS, .. })),
+            !gimbals
+                .on_manager_information(info(MANAGER, DEVICE, 0), 500)
+                .iter()
+                .any(|out| matches!(
+                    out,
+                    Out::MessageInterval {
+                        message: MSG_GIMBAL_MANAGER_STATUS,
+                        ..
+                    }
+                )),
             "two status requests inside a second is the spam the gap exists to stop"
         );
         let intervals: Vec<f64> = (1..STATUS_RETRIES as u64)
-            .flat_map(|attempt| gimbals.on_manager_information(info(MANAGER, DEVICE, 0), attempt * (STATUS_REQUEST_GAP_MS + 1)))
+            .flat_map(|attempt| {
+                gimbals.on_manager_information(
+                    info(MANAGER, DEVICE, 0),
+                    attempt * (STATUS_REQUEST_GAP_MS + 1),
+                )
+            })
             .filter_map(|out| match out {
-                Out::MessageInterval { message: MSG_GIMBAL_MANAGER_STATUS, interval_us, .. } => Some(interval_us),
+                Out::MessageInterval {
+                    message: MSG_GIMBAL_MANAGER_STATUS,
+                    interval_us,
+                    ..
+                } => Some(interval_us),
                 _ => None,
             })
             .collect();
         assert_eq!(
             intervals,
-            vec![DEFAULT_INTERVAL_US, DEFAULT_INTERVAL_US, DEFAULT_INTERVAL_US, SLOW_STATUS_INTERVAL_US, SLOW_STATUS_INTERVAL_US],
+            vec![
+                DEFAULT_INTERVAL_US,
+                DEFAULT_INTERVAL_US,
+                DEFAULT_INTERVAL_US,
+                SLOW_STATUS_INTERVAL_US,
+                SLOW_STATUS_INTERVAL_US
+            ],
             "the last two attempts ask for a fixed slow rate instead of the default one"
         );
         assert!(
-            gimbals.on_manager_information(info(MANAGER, DEVICE, 0), 100_000).iter().all(|out| !matches!(out, Out::MessageInterval { message: MSG_GIMBAL_MANAGER_STATUS, .. })),
+            gimbals
+                .on_manager_information(info(MANAGER, DEVICE, 0), 100_000)
+                .iter()
+                .all(|out| !matches!(
+                    out,
+                    Out::MessageInterval {
+                        message: MSG_GIMBAL_MANAGER_STATUS,
+                        ..
+                    }
+                )),
             "the retries run out and the asking stops"
         );
     }
@@ -1136,8 +1782,16 @@ mod tests {
     fn the_yaw_frame_falls_back_to_the_yaw_lock_flag_when_neither_frame_flag_is_set() {
         assert_eq!(Frame::of(FLAG_YAW_IN_VEHICLE_FRAME), Frame::Vehicle);
         assert_eq!(Frame::of(FLAG_YAW_IN_EARTH_FRAME), Frame::Earth);
-        assert_eq!(Frame::of(FLAG_YAW_IN_VEHICLE_FRAME | FLAG_YAW_IN_EARTH_FRAME), Frame::Vehicle, "the vehicle frame flag settles a gimbal that sets both");
-        assert_eq!(Frame::of(FLAG_YAW_LOCK), Frame::Earth, "an older gimbal sends neither frame flag, and then its yaw lock names the frame");
+        assert_eq!(
+            Frame::of(FLAG_YAW_IN_VEHICLE_FRAME | FLAG_YAW_IN_EARTH_FRAME),
+            Frame::Vehicle,
+            "the vehicle frame flag settles a gimbal that sets both"
+        );
+        assert_eq!(
+            Frame::of(FLAG_YAW_LOCK),
+            Frame::Earth,
+            "an older gimbal sends neither frame flag, and then its yaw lock names the frame"
+        );
         assert_eq!(Frame::of(0), Frame::Vehicle);
     }
 
@@ -1145,64 +1799,149 @@ mod tests {
     fn a_commanded_yaw_wraps_to_the_half_circle() {
         assert_eq!(wrap180(380.0), 20.0);
         assert_eq!(wrap180(-190.0), 170.0);
-        assert_eq!(wrap180(180.0), -180.0, "a half turn is named once, not twice");
-        assert_eq!(wrap180(-900.0), -180.0, "and a bearing wraps however many turns it is out by, not just one");
+        assert_eq!(
+            wrap180(180.0),
+            -180.0,
+            "a half turn is named once, not twice"
+        );
+        assert_eq!(
+            wrap180(-900.0),
+            -180.0,
+            "and a bearing wraps however many turns it is out by, not just one"
+        );
     }
 
     #[test]
     fn yaw_readings_use_the_live_heading_and_wrap_one_way_like_gimbal_controller() {
         let mut gimbals = discovered();
-        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, yawed(30.0)), 350.0, 3000);
+        gimbals.on_device_attitude_status(
+            attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, yawed(30.0)),
+            350.0,
+            3000,
+        );
         let reading = gimbals.get(pair()).unwrap().attitude.unwrap();
         assert!((reading.body_yaw - 30.0).abs() < 0.01);
-        assert!((reading.absolute_yaw - 20.0).abs() < 0.01, "30 degrees of body yaw on a heading of 350 points at 20, not at 380");
-        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_EARTH_FRAME, yawed(-170.0)), 350.0, 3000);
+        assert!(
+            (reading.absolute_yaw - 20.0).abs() < 0.01,
+            "30 degrees of body yaw on a heading of 350 points at 20, not at 380"
+        );
+        gimbals.on_device_attitude_status(
+            attitude(DEVICE, 0, FLAG_YAW_IN_EARTH_FRAME, yawed(-170.0)),
+            350.0,
+            3000,
+        );
         let reading = gimbals.get(pair()).unwrap().attitude.unwrap();
         assert!((reading.absolute_yaw + 170.0).abs() < 0.01);
-        assert!((reading.body_yaw + 160.0).abs() < 0.01, "-170 in the earth frame on a heading of 350 is -160 in the body frame, not -520");
-        assert_eq!(body_and_absolute_yaw(Frame::Vehicle, 180.0, 180.0), (180.0, 0.0));
-        assert_eq!(body_and_absolute_yaw(Frame::Vehicle, 90.0, 90.0), (90.0, 180.0), "the absolute yaw only wraps above 180");
-        assert_eq!(body_and_absolute_yaw(Frame::Earth, 170.0, 350.0), (-180.0, 170.0), "the body yaw only wraps below -180");
-        assert_eq!(body_and_absolute_yaw(Frame::Earth, 10.0, 300.0), (70.0, 10.0));
-        assert_eq!(body_and_absolute_yaw(Frame::Vehicle, 30.0, 0.0), (30.0, 30.0), "a vehicle that has sent no attitude has heading 0, as the heading fact does");
+        assert!(
+            (reading.body_yaw + 160.0).abs() < 0.01,
+            "-170 in the earth frame on a heading of 350 is -160 in the body frame, not -520"
+        );
+        assert_eq!(
+            body_and_absolute_yaw(Frame::Vehicle, 180.0, 180.0),
+            (180.0, 0.0)
+        );
+        assert_eq!(
+            body_and_absolute_yaw(Frame::Vehicle, 90.0, 90.0),
+            (90.0, 180.0),
+            "the absolute yaw only wraps above 180"
+        );
+        assert_eq!(
+            body_and_absolute_yaw(Frame::Earth, 170.0, 350.0),
+            (-180.0, 170.0),
+            "the body yaw only wraps below -180"
+        );
+        assert_eq!(
+            body_and_absolute_yaw(Frame::Earth, 10.0, 300.0),
+            (70.0, 10.0)
+        );
+        assert_eq!(
+            body_and_absolute_yaw(Frame::Vehicle, 30.0, 0.0),
+            (30.0, 30.0),
+            "a vehicle that has sent no attitude has heading 0, as the heading fact does"
+        );
         let (body, absolute) = body_and_absolute_yaw(Frame::Vehicle, 30.0, f32::NAN);
         assert!(body == 30.0 && absolute.is_nan());
         let (body, absolute) = body_and_absolute_yaw(Frame::Earth, 30.0, f32::NAN);
         assert!(body.is_nan() && absolute == 30.0);
-        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, yawed(30.0)), f32::NAN, 3000);
-        assert!(gimbals.snapshot(3000)["gimbals"][0]["absoluteYaw"].is_null(), "a NaN azimuth reads as absent");
+        gimbals.on_device_attitude_status(
+            attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, yawed(30.0)),
+            f32::NAN,
+            3000,
+        );
+        assert!(
+            gimbals.snapshot(3000)["gimbals"][0]["absoluteYaw"].is_null(),
+            "a NaN azimuth reads as absent"
+        );
     }
 
     #[test]
     fn the_quaternion_converts_like_mavlink_quaternion_to_euler() {
         let (roll, pitch, yaw) = euler_degrees(yawed(30.0));
         assert!(roll.abs() < 0.01 && pitch.abs() < 0.01 && (yaw - 30.0).abs() < 0.01);
-        assert_eq!(euler_degrees([0.0; 4]), (0.0, 0.0, 0.0), "an all-zero quaternion is level there too, with no normalising or rejection");
+        assert_eq!(
+            euler_degrees([0.0; 4]),
+            (0.0, 0.0, 0.0),
+            "an all-zero quaternion is level there too, with no normalising or rejection"
+        );
         let (roll, pitch, yaw) = euler_degrees([f32::NAN; 4]);
         assert!(roll.is_nan() && pitch.is_nan() && yaw.is_nan());
         let mut gimbals = discovered_with(yawed(30.0));
-        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME | FLAG_RETRACT, [f32::NAN; 4]), 0.0, 0);
+        gimbals.on_device_attitude_status(
+            attitude(
+                DEVICE,
+                0,
+                FLAG_YAW_IN_VEHICLE_FRAME | FLAG_RETRACT,
+                [f32::NAN; 4],
+            ),
+            0.0,
+            0,
+        );
         let gimbal = gimbals.get(pair()).unwrap();
-        assert!(gimbal.attitude.is_some_and(|a| a.roll.is_nan() && a.body_yaw.is_nan()), "every report replaces the angles, as GimbalController sets them unconditionally");
+        assert!(
+            gimbal
+                .attitude
+                .is_some_and(|a| a.roll.is_nan() && a.body_yaw.is_nan()),
+            "every report replaces the angles, as GimbalController sets them unconditionally"
+        );
         assert_eq!(gimbal.retracted, Some(true));
     }
 
     #[test]
     fn a_frozen_attitude_carries_its_age_and_stops_claiming_to_be_a_mode() {
         let mut gimbals = discovered();
-        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME | FLAG_YAW_LOCK, yawed(30.0)), 0.0, 2000);
+        gimbals.on_device_attitude_status(
+            attitude(
+                DEVICE,
+                0,
+                FLAG_YAW_IN_VEHICLE_FRAME | FLAG_YAW_LOCK,
+                yawed(30.0),
+            ),
+            0.0,
+            2000,
+        );
         let live = gimbals.snapshot(2500)["gimbals"][0].clone();
-        assert_eq!((live["attitudeAgeMs"].as_u64(), live["attitudeStale"].as_bool(), live["yawLock"].as_bool()), (Some(500), Some(false), Some(true)));
+        assert_eq!(
+            (
+                live["attitudeAgeMs"].as_u64(),
+                live["attitudeStale"].as_bool(),
+                live["yawLock"].as_bool()
+            ),
+            (Some(500), Some(false), Some(true))
+        );
         let frozen = gimbals.snapshot(2001 + ATTITUDE_STALE_MS)["gimbals"][0].clone();
         assert_eq!(
-            frozen["attitudeStale"],
-            true,
+            frozen["attitudeStale"], true,
             "a gimbal that stopped reporting looks exactly like one reporting live, and the operator slews to a target on the strength of the number beside it"
         );
         assert_eq!(frozen["attitudeAgeMs"], 3001);
-        assert!(frozen["pitch"].as_f64().is_some(), "the last known angles stay standing, but never without their age");
         assert!(
-            frozen["yawLock"].is_null() && frozen["retracted"].is_null() && frozen["neutral"].is_null(),
+            frozen["pitch"].as_f64().is_some(),
+            "the last known angles stay standing, but never without their age"
+        );
+        assert!(
+            frozen["yawLock"].is_null()
+                && frozen["retracted"].is_null()
+                && frozen["neutral"].is_null(),
             "past the window nobody knows what mode the gimbal is in, and a lock toggle drawn from a frozen flag unlocks the gimbal the operator meant to lock"
         );
     }
@@ -1218,9 +1957,21 @@ mod tests {
             (None, None, None),
             "before the first attitude message nothing is known about the mode, and claiming a gimbal is deployed and unlocked is a definite claim about hardware nobody has heard from"
         );
-        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME | FLAG_YAW_LOCK, level()), 0.0, 0);
+        gimbals.on_device_attitude_status(
+            attitude(
+                DEVICE,
+                0,
+                FLAG_YAW_IN_VEHICLE_FRAME | FLAG_YAW_LOCK,
+                level(),
+            ),
+            0.0,
+            0,
+        );
         let gimbal = gimbals.get(pair()).unwrap();
-        assert_eq!((gimbal.yaw_lock, gimbal.retracted, gimbal.neutral), (Some(true), Some(false), Some(false)));
+        assert_eq!(
+            (gimbal.yaw_lock, gimbal.retracted, gimbal.neutral),
+            (Some(true), Some(false), Some(false))
+        );
     }
 
     #[test]
@@ -1228,7 +1979,10 @@ mod tests {
         let mut gimbals = Gimbals::new(OUR_SYSTEM, OUR_COMPONENT);
         gimbals.set_ready(true);
         gimbals.on_manager_information(info(MANAGER, DEVICE, CAP_HAS_RETRACT), 0);
-        assert!(gimbals.get(pair()).unwrap().failure_flags.is_none(), "no attitude message means no report of health, which is not the same as a clean bill of it");
+        assert!(
+            gimbals.get(pair()).unwrap().failure_flags.is_none(),
+            "no attitude message means no report of health, which is not the same as a clean bill of it"
+        );
         gimbals.on_manager_status(status(MANAGER, DEVICE, OUR_SYSTEM, OUR_COMPONENT), 2000);
         gimbals.on_device_attitude_status(
             DeviceAttitude {
@@ -1243,13 +1997,26 @@ mod tests {
             2000,
         );
         let gimbal = gimbals.snapshot(2000)["gimbals"][0].clone();
-        assert_eq!(gimbal["failureFlags"], (ERROR_AT_PITCH_LIMIT | ERROR_MOTOR | ERROR_CALIBRATION_RUNNING) as u64);
         assert_eq!(
-            (gimbal["failures"]["atPitchLimit"].as_bool(), gimbal["failures"]["motorError"].as_bool(), gimbal["failures"]["calibrationRunning"].as_bool()),
+            gimbal["failureFlags"],
+            (ERROR_AT_PITCH_LIMIT | ERROR_MOTOR | ERROR_CALIBRATION_RUNNING) as u64
+        );
+        assert_eq!(
+            (
+                gimbal["failures"]["atPitchLimit"].as_bool(),
+                gimbal["failures"]["motorError"].as_bool(),
+                gimbal["failures"]["calibrationRunning"].as_bool()
+            ),
             (Some(true), Some(true), Some(true)),
             "the aircraft already labelled why the commands are not moving the gimbal, and a screen that can only show an angle that will not change sends the operator after the radio link instead"
         );
-        assert_eq!((gimbal["failures"]["atRollLimit"].as_bool(), gimbal["failures"]["powerError"].as_bool()), (Some(false), Some(false)));
+        assert_eq!(
+            (
+                gimbal["failures"]["atRollLimit"].as_bool(),
+                gimbal["failures"]["powerError"].as_bool()
+            ),
+            (Some(false), Some(false))
+        );
         assert!(
             gimbals.snapshot(2000)["gimbals"][0]["failures"]["noManager"].as_bool() == Some(false),
             "and a head reads a named boolean rather than decoding a bitmask twice in two heads"
@@ -1268,19 +2035,41 @@ mod tests {
                 compid: MANAGER,
                 device_id: DEVICE,
                 capability_flags: 0,
-                limits_rad: Some([f32::NAN, f32::NAN, (-120.0_f32).to_radians(), 30.0_f32.to_radians(), (-180.0_f32).to_radians(), 180.0_f32.to_radians()]),
+                limits_rad: Some([
+                    f32::NAN,
+                    f32::NAN,
+                    (-120.0_f32).to_radians(),
+                    30.0_f32.to_radians(),
+                    (-180.0_f32).to_radians(),
+                    180.0_f32.to_radians(),
+                ]),
             },
             0,
         );
         gimbals.on_manager_status(status(MANAGER, DEVICE, OUR_SYSTEM, OUR_COMPONENT), 2000);
-        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, level()), 0.0, 2000);
+        gimbals.on_device_attitude_status(
+            attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, level()),
+            0.0,
+            2000,
+        );
         let limits = gimbals.snapshot(2000)["gimbals"][0]["limits"].clone();
         assert!(
-            limits["pitchMin"].as_f64().is_some_and(|deg| (deg + 120.0).abs() < 0.01) && limits["pitchMax"].as_f64().is_some_and(|deg| (deg - 30.0).abs() < 0.01),
+            limits["pitchMin"]
+                .as_f64()
+                .is_some_and(|deg| (deg + 120.0).abs() < 0.01)
+                && limits["pitchMax"]
+                    .as_f64()
+                    .is_some_and(|deg| (deg - 30.0).abs() < 0.01),
             "a pitch slider cannot be drawn without the travel, and every head that invents plus or minus 90 is wrong on a gimbal that pitches -120 to +30"
         );
-        assert!((limits["yawMin"].as_f64().unwrap() + 180.0).abs() < 0.01 && (limits["yawMax"].as_f64().unwrap() - 180.0).abs() < 0.01);
-        assert!(limits["rollMin"].is_null() && limits["rollMax"].is_null(), "an axis the manager did not report is unknown rather than a travel of zero");
+        assert!(
+            (limits["yawMin"].as_f64().unwrap() + 180.0).abs() < 0.01
+                && (limits["yawMax"].as_f64().unwrap() - 180.0).abs() < 0.01
+        );
+        assert!(
+            limits["rollMin"].is_null() && limits["rollMax"].is_null(),
+            "an axis the manager did not report is unknown rather than a travel of zero"
+        );
     }
 
     #[test]
@@ -1289,10 +2078,17 @@ mod tests {
         gimbals.set_ready(true);
         gimbals.on_manager_status(status(MANAGER, DEVICE, OUR_SYSTEM, OUR_COMPONENT), 0);
         let gimbal = gimbals.get(pair()).unwrap();
-        assert_eq!((gimbal.supports_retract(), gimbal.supports_yaw_lock()), (None, None), "the capability flags arrive with the manager information, and until they do the answer is not known");
+        assert_eq!(
+            (gimbal.supports_retract(), gimbal.supports_yaw_lock()),
+            (None, None),
+            "the capability flags arrive with the manager information, and until they do the answer is not known"
+        );
         gimbals.on_manager_information(info(MANAGER, DEVICE, CAP_HAS_YAW_LOCK), 0);
         let gimbal = gimbals.get(pair()).unwrap();
-        assert_eq!((gimbal.supports_retract(), gimbal.supports_yaw_lock()), (Some(false), Some(true)));
+        assert_eq!(
+            (gimbal.supports_retract(), gimbal.supports_yaw_lock()),
+            (Some(false), Some(true))
+        );
     }
 
     #[test]
@@ -1301,50 +2097,117 @@ mod tests {
         gimbals.on_manager_information(info(MANAGER, DEVICE, CAP_HAS_YAW_LOCK), 2000);
         assert_eq!(
             gimbals.set_retract(true, 2000),
-            vec![Out::Refused { pair: Some(pair()), reason: REASON_UNSUPPORTED }],
+            vec![Out::Refused {
+                pair: Some(pair()),
+                reason: REASON_UNSUPPORTED
+            }],
             "a gimbal that reported no retract capability is not sent a retract that will be silently dropped"
         );
-        assert!(gimbals.set_yaw_lock(true, 2000).iter().any(|out| matches!(out, Out::Command { .. })), "the capability it did report is still commanded");
+        assert!(
+            gimbals
+                .set_yaw_lock(true, 2000)
+                .iter()
+                .any(|out| matches!(out, Out::Command { .. })),
+            "the capability it did report is still commanded"
+        );
         let mut taken = discovered();
         taken.on_manager_status(status(MANAGER, DEVICE, 42, 190), 3000);
-        assert_eq!(taken.snapshot(3000)["gimbals"][0]["control"], json!({ "offer": "blocked", "reason": REASON_OTHERS_HAVE_CONTROL }));
+        assert_eq!(
+            taken.snapshot(3000)["gimbals"][0]["control"],
+            json!({ "offer": "blocked", "reason": REASON_OTHERS_HAVE_CONTROL })
+        );
         let mut connecting = discovered();
         connecting.set_ready(false);
-        assert_eq!(connecting.center(3000), vec![Out::Refused { pair: Some(pair()), reason: REASON_NOT_READY }, Out::StopRateRepeat]);
-        assert_eq!(connecting.snapshot(3000)["gimbals"][0]["control"]["reason"], REASON_NOT_READY);
+        assert_eq!(
+            connecting.center(3000),
+            vec![
+                Out::Refused {
+                    pair: Some(pair()),
+                    reason: REASON_NOT_READY
+                },
+                Out::StopRateRepeat
+            ]
+        );
+        assert_eq!(
+            connecting.snapshot(3000)["gimbals"][0]["control"]["reason"],
+            REASON_NOT_READY
+        );
     }
 
     #[test]
     fn control_ownership_comes_from_the_status_and_names_who_holds_it() {
         let mut gimbals = discovered();
-        let owner = |gimbals: &Gimbals, now: u64| (gimbals.get(pair()).unwrap().have_control(now), gimbals.get(pair()).unwrap().others_have_control());
+        let owner = |gimbals: &Gimbals, now: u64| {
+            (
+                gimbals.get(pair()).unwrap().have_control(now),
+                gimbals.get(pair()).unwrap().others_have_control(),
+            )
+        };
         assert_eq!(owner(&gimbals, 2000), (Some(true), Some(false)));
-        gimbals.on_manager_status(ManagerStatus { compid: MANAGER, device_id: DEVICE, primary_sysid: 42, primary_compid: 190, secondary_sysid: 7, secondary_compid: 191 }, 3000);
+        gimbals.on_manager_status(
+            ManagerStatus {
+                compid: MANAGER,
+                device_id: DEVICE,
+                primary_sysid: 42,
+                primary_compid: 190,
+                secondary_sysid: 7,
+                secondary_compid: 191,
+            },
+            3000,
+        );
         assert_eq!(owner(&gimbals, 3000), (Some(false), Some(true)));
         let held = gimbals.snapshot(3000)["gimbals"][0].clone();
         assert_eq!(
-            (held["primarySysid"].as_u64(), held["primaryCompid"].as_u64()),
+            (
+                held["primarySysid"].as_u64(),
+                held["primaryCompid"].as_u64()
+            ),
             (Some(42), Some(190)),
             "overriding the autopilot's own mount control and overriding the second operator on this aircraft are different decisions, so the holder is named rather than anonymous"
         );
-        assert_eq!((held["secondarySysid"].as_u64(), held["secondaryCompid"].as_u64()), (Some(7), Some(191)));
+        assert_eq!(
+            (
+                held["secondarySysid"].as_u64(),
+                held["secondaryCompid"].as_u64()
+            ),
+            (Some(7), Some(191))
+        );
         gimbals.on_manager_status(status(MANAGER, DEVICE, 0, 0), 4000);
-        assert_eq!(owner(&gimbals, 4000), (Some(false), Some(false)), "nobody in control is not somebody else in control");
-        assert_eq!(owner(&gimbals, 4000 + CONTROL_STALE_MS), (Some(false), Some(false)), "inside the window the last status still stands");
+        assert_eq!(
+            owner(&gimbals, 4000),
+            (Some(false), Some(false)),
+            "nobody in control is not somebody else in control"
+        );
+        assert_eq!(
+            owner(&gimbals, 4000 + CONTROL_STALE_MS),
+            (Some(false), Some(false)),
+            "inside the window the last status still stands"
+        );
         assert_eq!(
             owner(&gimbals, 4001 + CONTROL_STALE_MS),
             (None, Some(false)),
             "our own hold expires with its evidence, because a flag that outlives it is a latch that lets a command through on nothing"
         );
-        assert_eq!(gimbals.snapshot(4001 + CONTROL_STALE_MS)["gimbals"][0]["ownershipAgeMs"], 15_001, "and the age of the evidence is published beside the hold it supports");
-        assert!(gimbals.get(pair()).unwrap().complete, "the gimbal itself does not go away just because its status went quiet");
+        assert_eq!(
+            gimbals.snapshot(4001 + CONTROL_STALE_MS)["gimbals"][0]["ownershipAgeMs"],
+            15_001,
+            "and the age of the evidence is published beside the hold it supports"
+        );
+        assert!(
+            gimbals.get(pair()).unwrap().complete,
+            "the gimbal itself does not go away just because its status went quiet"
+        );
     }
 
     #[test]
     fn a_command_asks_before_taking_a_gimbal_somebody_else_was_holding() {
         let mut gimbals = discovered();
         gimbals.on_manager_status(status(MANAGER, DEVICE, 42, 190), 3000);
-        assert_eq!(gimbals.center(3000), vec![Out::AskToTakeControl(pair()), Out::StopRateRepeat], "someone else is pointing it, so the operator is asked and nothing is sent");
+        assert_eq!(
+            gimbals.center(3000),
+            vec![Out::AskToTakeControl(pair()), Out::StopRateRepeat],
+            "someone else is pointing it, so the operator is asked and nothing is sent"
+        );
         assert_eq!(
             gimbals.center(100_000),
             vec![Out::AskToTakeControl(pair()), Out::StopRateRepeat],
@@ -1352,28 +2215,78 @@ mod tests {
         );
         gimbals.on_manager_status(status(MANAGER, DEVICE, 0, 0), 4000);
         let taken = gimbals.center(4000);
-        assert!(matches!(taken.first(), Some(Out::Command { command: CMD_DO_GIMBAL_MANAGER_CONFIGURE, .. })), "a status that says nobody holds it is the evidence that releases the ask");
-        assert!(taken.iter().any(|out| matches!(out, Out::Command { command: CMD_DO_GIMBAL_MANAGER_PITCHYAW, .. })), "and the command still goes out");
+        assert!(
+            matches!(
+                taken.first(),
+                Some(Out::Command {
+                    command: CMD_DO_GIMBAL_MANAGER_CONFIGURE,
+                    ..
+                })
+            ),
+            "a status that says nobody holds it is the evidence that releases the ask"
+        );
+        assert!(
+            taken.iter().any(|out| matches!(
+                out,
+                Out::Command {
+                    command: CMD_DO_GIMBAL_MANAGER_PITCHYAW,
+                    ..
+                }
+            )),
+            "and the command still goes out"
+        );
         let stale = gimbals.center(100_000);
-        assert!(matches!(stale.first(), Some(Out::Command { command: CMD_DO_GIMBAL_MANAGER_CONFIGURE, .. })), "with our own hold expired control is asked for again rather than assumed");
+        assert!(
+            matches!(
+                stale.first(),
+                Some(Out::Command {
+                    command: CMD_DO_GIMBAL_MANAGER_CONFIGURE,
+                    ..
+                })
+            ),
+            "with our own hold expired control is asked for again rather than assumed"
+        );
         let nothing = Gimbals::new(OUR_SYSTEM, OUR_COMPONENT);
-        assert_eq!(refusal(&nothing.acquire_control()), Some(REASON_NO_ACTIVE_GIMBAL), "with no active gimbal the core says why rather than doing nothing in silence");
-        assert_eq!(refusal(&nothing.release_control()), Some(REASON_NO_ACTIVE_GIMBAL));
+        assert_eq!(
+            refusal(&nothing.acquire_control()),
+            Some(REASON_NO_ACTIVE_GIMBAL),
+            "with no active gimbal the core says why rather than doing nothing in silence"
+        );
+        assert_eq!(
+            refusal(&nothing.release_control()),
+            Some(REASON_NO_ACTIVE_GIMBAL)
+        );
     }
 
     #[test]
     fn acquiring_names_us_and_releasing_leaves_the_secondary_alone() {
         let gimbals = discovered();
         let params = |out: &[Out]| match out.first() {
-            Some(Out::Command { params, command: CMD_DO_GIMBAL_MANAGER_CONFIGURE, component: MANAGER, .. }) => *params,
+            Some(Out::Command {
+                params,
+                command: CMD_DO_GIMBAL_MANAGER_CONFIGURE,
+                component: MANAGER,
+                ..
+            }) => *params,
             _ => panic!("a configure command"),
         };
         let acquire = params(&gimbals.acquire_control());
-        assert_eq!((acquire[0], acquire[1]), (OUR_SYSTEM as f64, OUR_COMPONENT as f64), "taking control names this station as the primary");
-        assert_eq!((acquire[2], acquire[3]), (LEAVE_UNCHANGED, LEAVE_UNCHANGED), "and says nothing about whoever holds secondary control");
+        assert_eq!(
+            (acquire[0], acquire[1]),
+            (OUR_SYSTEM as f64, OUR_COMPONENT as f64),
+            "taking control names this station as the primary"
+        );
+        assert_eq!(
+            (acquire[2], acquire[3]),
+            (LEAVE_UNCHANGED, LEAVE_UNCHANGED),
+            "and says nothing about whoever holds secondary control"
+        );
         assert_eq!(acquire[6], DEVICE as f64);
         let release = params(&gimbals.release_control());
-        assert_eq!((release[0], release[1], release[2]), (RELEASE_CONTROL, RELEASE_CONTROL, LEAVE_UNCHANGED));
+        assert_eq!(
+            (release[0], release[1], release[2]),
+            (RELEASE_CONTROL, RELEASE_CONTROL, LEAVE_UNCHANGED)
+        );
     }
 
     #[test]
@@ -1381,13 +2294,29 @@ mod tests {
         let mut gimbals = discovered_with([f32::NAN; 4]);
         let params = angles(&gimbals.set_retract(true, 2000));
         assert_eq!(params[4], 1.0);
-        assert!(params[0].is_nan() && params[1].is_nan(), "a retract must not invent a zero pitch and yaw out of an attitude that was never measured, and an unset axis is what NaN means here");
-        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, yawed(30.0)), 10.0, 2000);
+        assert!(
+            params[0].is_nan() && params[1].is_nan(),
+            "a retract must not invent a zero pitch and yaw out of an attitude that was never measured, and an unset axis is what NaN means here"
+        );
+        gimbals.on_device_attitude_status(
+            attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, yawed(30.0)),
+            10.0,
+            2000,
+        );
         let params = angles(&gimbals.set_yaw_lock(true, 2000));
-        assert_eq!(params[4], 28.0, "roll lock, pitch lock and yaw lock, asserted as the sum the vehicle receives rather than through the same names the code builds it from");
-        assert!((params[1] - 40.0).abs() < 0.01, "locking the yaw holds the current angle in the earth frame those flags select, which is the body yaw plus the heading");
+        assert_eq!(
+            params[4], 28.0,
+            "roll lock, pitch lock and yaw lock, asserted as the sum the vehicle receives rather than through the same names the code builds it from"
+        );
+        assert!(
+            (params[1] - 40.0).abs() < 0.01,
+            "locking the yaw holds the current angle in the earth frame those flags select, which is the body yaw plus the heading"
+        );
         let params = angles(&gimbals.set_yaw_lock(false, 2000));
-        assert!((params[1] - 30.0).abs() < 0.01, "and unlocking holds the same direction expressed in the vehicle frame");
+        assert!(
+            (params[1] - 30.0).abs() < 0.01,
+            "and unlocking holds the same direction expressed in the vehicle frame"
+        );
         assert_eq!((params[5], params[6]), (0.0, DEVICE as f64));
     }
 
@@ -1396,15 +2325,37 @@ mod tests {
         let mut gimbals = discovered();
         gimbals.set_rates(Some(10.0), Some(-5.0), 2000);
         let body = gimbals.send_pitch_body_yaw(-20.0, 190.0, false, 2000);
-        assert!(body.contains(&Out::StopRateRepeat), "an angle target supersedes the rates, so whatever keeps resending them has to stop");
-        assert_eq!((gimbals.get(pair()).unwrap().commanded_pitch_rate, gimbals.get(pair()).unwrap().commanded_yaw_rate), (Some(0.0), Some(0.0)));
+        assert!(
+            body.contains(&Out::StopRateRepeat),
+            "an angle target supersedes the rates, so whatever keeps resending them has to stop"
+        );
+        assert_eq!(
+            (
+                gimbals.get(pair()).unwrap().commanded_pitch_rate,
+                gimbals.get(pair()).unwrap().commanded_yaw_rate
+            ),
+            (Some(0.0), Some(0.0))
+        );
         let params = angles(&body);
-        assert_eq!((params[0], params[1]), (-20.0, -170.0), "190 degrees of body yaw is -170, and a bearing outside the circle never reaches the vehicle");
-        assert_eq!(params[4], 44.0, "roll lock, pitch lock and yaw in the vehicle frame");
-        assert!(gimbals.get(pair()).unwrap().attitude.is_some(), "and commanding an angle does not overwrite the measured attitude with the target");
+        assert_eq!(
+            (params[0], params[1]),
+            (-20.0, -170.0),
+            "190 degrees of body yaw is -170, and a bearing outside the circle never reaches the vehicle"
+        );
+        assert_eq!(
+            params[4], 44.0,
+            "roll lock, pitch lock and yaw in the vehicle frame"
+        );
+        assert!(
+            gimbals.get(pair()).unwrap().attitude.is_some(),
+            "and commanding an angle does not overwrite the measured attitude with the target"
+        );
         let params = angles(&gimbals.send_pitch_absolute_yaw(0.0, -200.0, true, 2000));
         assert_eq!(params[1], 160.0);
-        assert_eq!(params[4], 92.0, "roll lock, pitch lock, yaw lock and yaw in the earth frame");
+        assert_eq!(
+            params[4], 92.0,
+            "roll lock, pitch lock, yaw lock and yaw in the earth frame"
+        );
     }
 
     #[test]
@@ -1412,16 +2363,52 @@ mod tests {
         let mut gimbals = discovered();
         let started = gimbals.set_rates(Some(30.0), None, 2000);
         let (flags, pitch, yaw) = match started.first() {
-            Some(Out::SetAttitudeRates { component: MANAGER, flags, device_id: DEVICE, pitch_rate, yaw_rate }) => (*flags, *pitch_rate, *yaw_rate),
-            other => panic!("GimbalController::_sendGimbalAttitudeRates streams GIMBAL_MANAGER_SET_ATTITUDE, got {other:?}"),
+            Some(Out::SetAttitudeRates {
+                component: MANAGER,
+                flags,
+                device_id: DEVICE,
+                pitch_rate,
+                yaw_rate,
+            }) => (*flags, *pitch_rate, *yaw_rate),
+            other => panic!(
+                "GimbalController::_sendGimbalAttitudeRates streams GIMBAL_MANAGER_SET_ATTITUDE, got {other:?}"
+            ),
         };
-        assert_eq!((flags, pitch, yaw), (44, 30f32.to_radians(), 0.0), "roll lock, pitch lock and the vehicle frame, with qDegreesToRadians rates");
+        assert_eq!(
+            (flags, pitch, yaw),
+            (44, 30f32.to_radians(), 0.0),
+            "roll lock, pitch lock and the vehicle frame, with qDegreesToRadians rates"
+        );
         assert_eq!(started.last(), Some(&Out::StartRateRepeat));
-        assert!(gimbals.set_rates(None, Some(-15.0), 3000).contains(&Out::StartRateRepeat), "one axis still moving keeps the repeat alive");
-        assert!(gimbals.set_rates(Some(0.0), Some(0.0), 4000).contains(&Out::StopRateRepeat));
-        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME | FLAG_YAW_LOCK, level()), 0.0, 5000);
+        assert!(
+            gimbals
+                .set_rates(None, Some(-15.0), 3000)
+                .contains(&Out::StartRateRepeat),
+            "one axis still moving keeps the repeat alive"
+        );
+        assert!(
+            gimbals
+                .set_rates(Some(0.0), Some(0.0), 4000)
+                .contains(&Out::StopRateRepeat)
+        );
+        gimbals.on_device_attitude_status(
+            attitude(
+                DEVICE,
+                0,
+                FLAG_YAW_IN_VEHICLE_FRAME | FLAG_YAW_LOCK,
+                level(),
+            ),
+            0.0,
+            5000,
+        );
         let locked = gimbals.set_rates(Some(5.0), None, 5000);
-        assert!(matches!(locked.first(), Some(Out::SetAttitudeRates { flags: 60, .. })), "the yaw lock the gimbal is already in is kept");
+        assert!(
+            matches!(
+                locked.first(),
+                Some(Out::SetAttitudeRates { flags: 60, .. })
+            ),
+            "the yaw lock the gimbal is already in is kept"
+        );
     }
 
     #[test]
@@ -1431,7 +2418,10 @@ mod tests {
         gimbals.on_manager_status(status(MANAGER, DEVICE, 42, 190), 2500);
         let released = gimbals.set_rates(Some(0.0), Some(0.0), 2500);
         assert_eq!(
-            (gimbals.get(pair()).unwrap().commanded_pitch_rate, gimbals.get(pair()).unwrap().commanded_yaw_rate),
+            (
+                gimbals.get(pair()).unwrap().commanded_pitch_rate,
+                gimbals.get(pair()).unwrap().commanded_yaw_rate
+            ),
             (Some(0.0), Some(0.0)),
             "the operator let go of the stick while another station held the gimbal, and a zero dropped at the gate is a 30 deg/s slew waiting to be resent the moment control comes back"
         );
@@ -1448,7 +2438,11 @@ mod tests {
         assert!(resumed.contains(&Out::StopRateRepeat));
         let mut gone = Gimbals::new(OUR_SYSTEM, OUR_COMPONENT);
         gone.set_ready(true);
-        assert_eq!(refusal(&gone.set_rates(Some(0.0), None, 0)), Some(REASON_NO_ACTIVE_GIMBAL), "and with nothing to store into the core says so rather than returning silence");
+        assert_eq!(
+            refusal(&gone.set_rates(Some(0.0), None, 0)),
+            Some(REASON_NO_ACTIVE_GIMBAL),
+            "and with nothing to store into the core says so rather than returning silence"
+        );
     }
 
     #[test]
@@ -1467,7 +2461,11 @@ mod tests {
                 device_id: 0,
                 flags: FLAG_YAW_IN_VEHICLE_FRAME,
                 q: level(),
-                angular_velocity_rad_s: Some([0.0, 12.0_f32.to_radians(), (-40.0_f32).to_radians()]),
+                angular_velocity_rad_s: Some([
+                    0.0,
+                    12.0_f32.to_radians(),
+                    (-40.0_f32).to_radians(),
+                ]),
                 ..Default::default()
             },
             0.0,
@@ -1476,97 +2474,293 @@ mod tests {
         let gimbal = gimbals.snapshot(2000)["gimbals"][0].clone();
         assert_eq!(gimbal["commandedPitchRate"], 30.0);
         assert!(
-            gimbal["measuredPitchRate"].as_f64().is_some_and(|rate| (rate - 12.0).abs() < 0.01) && gimbal["measuredYawRate"].as_f64().is_some_and(|rate| (rate + 40.0).abs() < 0.01),
+            gimbal["measuredPitchRate"]
+                .as_f64()
+                .is_some_and(|rate| (rate - 12.0).abs() < 0.01)
+                && gimbal["measuredYawRate"]
+                    .as_f64()
+                    .is_some_and(|rate| (rate + 40.0).abs() < 0.01),
             "the gimbal is slewing at 40 deg/s of yaw while this station commanded none of it, and a screen showing our own command as telemetry draws a still camera that is moving"
         );
-        assert!(gimbal.get("pitchRate").is_none() && gimbal.get("yawRate").is_none(), "an unqualified rate beside a measured pitch reads as telemetry, so the name says which one it is");
+        assert!(
+            gimbal.get("pitchRate").is_none() && gimbal.get("yawRate").is_none(),
+            "an unqualified rate beside a measured pitch reads as telemetry, so the name says which one it is"
+        );
     }
 
     #[test]
     fn a_tap_becomes_the_ray_through_that_point_of_the_lens() {
         let (yaw, tilt) = aim_through_lens(0.5, 0.0, 62.0, 37.35, 0.0);
-        assert!((yaw - 16.72).abs() < 0.01, "a quarter of the frame off centre on a 62° lens is atan(0.5 tan 31°), not a quarter of 62°: {yaw}");
+        assert!(
+            (yaw - 16.72).abs() < 0.01,
+            "a quarter of the frame off centre on a 62° lens is atan(0.5 tan 31°), not a quarter of 62°: {yaw}"
+        );
         assert!(tilt.abs() < 1e-4);
         let (yaw, tilt) = aim_through_lens(0.0, 1.0, 62.0, 37.35, -30.0);
-        assert!(yaw.abs() < 1e-4 && (tilt - (-30.0 + 37.35 / 2.0)).abs() < 0.01, "straight up the centre line is the pitch plus half the vertical field: {tilt}");
+        assert!(
+            yaw.abs() < 1e-4 && (tilt - (-30.0 + 37.35 / 2.0)).abs() < 0.01,
+            "straight up the centre line is the pitch plus half the vertical field: {tilt}"
+        );
         let (yaw, tilt) = aim_through_lens(1.0, 0.0, 62.0, 37.35, -90.0);
-        assert!((yaw - 90.0).abs() < 0.01 && (tilt - (-59.0)).abs() < 0.01, "looking straight down, the right edge of the picture is a quarter turn of yaw and 31° up from nadir: {yaw} {tilt}");
+        assert!(
+            (yaw - 90.0).abs() < 0.01 && (tilt - (-59.0)).abs() < 0.01,
+            "looking straight down, the right edge of the picture is a quarter turn of yaw and 31° up from nadir: {yaw} {tilt}"
+        );
     }
 
     #[test]
     fn a_drag_turns_from_where_the_gimbal_was_when_the_drag_began() {
         let mut gimbals = discovered();
-        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, yawed(10.0)), 0.0, 2000);
+        gimbals.on_device_attitude_status(
+            attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, yawed(10.0)),
+            0.0,
+            2000,
+        );
         let first = angles(&gimbals.drag_to(0.05, 0.0, true, 62.0, 37.0, 0.0, 2000));
         let later = angles(&gimbals.drag_to(0.5, 0.0, false, 62.0, 37.0, 0.0, 2100));
         let expected = 10.0 + (0.5 * (31.0_f64).to_radians().tan()).atan().to_degrees();
-        assert!((later[1] - expected).abs() < 0.01, "a reading that has not caught up with the gimbal is not where the drag is measured from: {} want {expected}", later[1]);
+        assert!(
+            (later[1] - expected).abs() < 0.01,
+            "a reading that has not caught up with the gimbal is not where the drag is measured from: {} want {expected}",
+            later[1]
+        );
         assert!(first[1] > 10.0 && first[1] < later[1]);
-        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, yawed(25.0)), 0.0, 2200);
-        let next = angles(&gimbals.drag_to(0.0, 0.0, true, 62.0, 37.0, 0.0, 2100 + DRAG_CONTINUES_MS));
-        assert!((next[1] - 25.0).abs() < 0.01, "a new drag starts from where the gimbal now is");
+        gimbals.on_device_attitude_status(
+            attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, yawed(25.0)),
+            0.0,
+            2200,
+        );
+        let next =
+            angles(&gimbals.drag_to(0.0, 0.0, true, 62.0, 37.0, 0.0, 2100 + DRAG_CONTINUES_MS));
+        assert!(
+            (next[1] - 25.0).abs() < 0.01,
+            "a new drag starts from where the gimbal now is"
+        );
     }
 
     #[test]
     fn a_drag_started_right_after_another_carries_on_from_where_that_one_left_the_camera() {
         let mut gimbals = discovered();
-        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, yawed(10.0)), 0.0, 2000);
+        gimbals.on_device_attitude_status(
+            attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, yawed(10.0)),
+            0.0,
+            2000,
+        );
         gimbals.drag_to(0.0, 0.0, true, 62.0, 37.0, 0.0, 2000);
         let first = angles(&gimbals.drag_to(-0.5, 0.0, false, 62.0, 37.0, 0.0, 2100))[1];
         let second = angles(&gimbals.drag_to(-0.5, 0.0, true, 62.0, 37.0, 0.0, 2400))[1];
-        assert!((second - 2.0 * first + 10.0).abs() < 0.01, "a second swipe before the gimbal reports again turns as far again, rather than jumping back to the stale angle: {first} then {second}");
+        assert!(
+            (second - 2.0 * first + 10.0).abs() < 0.01,
+            "a second swipe before the gimbal reports again turns as far again, rather than jumping back to the stale angle: {first} then {second}"
+        );
         gimbals.center(2500);
         let after_center = angles(&gimbals.drag_to(0.0, 0.0, true, 62.0, 37.0, 0.0, 2600))[1];
-        assert!((after_center - 10.0).abs() < 0.01, "another aim in between ends the drag, so the next one starts from the reported angle");
+        assert!(
+            (after_center - 10.0).abs() < 0.01,
+            "another aim in between ends the drag, so the next one starts from the reported angle"
+        );
     }
 
     #[test]
     fn on_screen_control_moves_from_where_the_gimbal_is_pointing() {
         let mut gimbals = discovered();
-        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, yawed(10.0)), 0.0, 2000);
-        let params = angles(&gimbals.on_screen_control(1.0, 0.5, Screen::Point { h_fov: 60.0, v_fov: 40.0 }, 0.0, 2000));
-        assert!((params[1] - 40.0).abs() < 0.01, "a click at the right edge is half a horizontal field of view away from where the gimbal already points");
-        assert!((params[0] - 8.96).abs() < 0.01, "and a click halfway up is the ray through that point of the lens, a little under a quarter of the vertical field once it is also off to the side: {}", params[0]);
-        let params = angles(&gimbals.on_screen_control(-1.0, 0.0, Screen::Drag { slide_speed: 100.0 }, 0.0, 2000));
-        assert!(params[1].abs() < 0.01, "a drag steps a tenth of the slide speed, from 10 degrees back to zero");
+        gimbals.on_device_attitude_status(
+            attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, yawed(10.0)),
+            0.0,
+            2000,
+        );
+        let params = angles(&gimbals.on_screen_control(
+            1.0,
+            0.5,
+            Screen::Point {
+                h_fov: 60.0,
+                v_fov: 40.0,
+            },
+            0.0,
+            2000,
+        ));
+        assert!(
+            (params[1] - 40.0).abs() < 0.01,
+            "a click at the right edge is half a horizontal field of view away from where the gimbal already points"
+        );
+        assert!(
+            (params[0] - 8.96).abs() < 0.01,
+            "and a click halfway up is the ray through that point of the lens, a little under a quarter of the vertical field once it is also off to the side: {}",
+            params[0]
+        );
+        let params = angles(&gimbals.on_screen_control(
+            -1.0,
+            0.0,
+            Screen::Drag { slide_speed: 100.0 },
+            0.0,
+            2000,
+        ));
+        assert!(
+            params[1].abs() < 0.01,
+            "a drag steps a tenth of the slide speed, from 10 degrees back to zero"
+        );
         let mut unknown = discovered_with([f32::NAN; 4]);
-        assert!(angles(&unknown.on_screen_control(1.0, 0.0, Screen::Drag { slide_speed: 100.0 }, 0.0, 2000))[1].is_nan(), "a NaN body yaw goes out as NaN, as GimbalController sends it");
+        assert!(
+            angles(&unknown.on_screen_control(
+                1.0,
+                0.0,
+                Screen::Drag { slide_speed: 100.0 },
+                0.0,
+                2000
+            ))[1]
+                .is_nan(),
+            "a NaN body yaw goes out as NaN, as GimbalController sends it"
+        );
         let mut locked = discovered();
-        locked.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME | FLAG_YAW_LOCK, yawed(10.0)), 0.0, 2000);
-        assert!((angles(&locked.on_screen_control(1.0, 0.0, Screen::Drag { slide_speed: 100.0 }, 0.0, 2000))[1] - 20.0).abs() < 0.01, "heading 0 is still a heading, as the heading fact defaults to it");
+        locked.on_device_attitude_status(
+            attitude(
+                DEVICE,
+                0,
+                FLAG_YAW_IN_VEHICLE_FRAME | FLAG_YAW_LOCK,
+                yawed(10.0),
+            ),
+            0.0,
+            2000,
+        );
+        assert!(
+            (angles(&locked.on_screen_control(
+                1.0,
+                0.0,
+                Screen::Drag { slide_speed: 100.0 },
+                0.0,
+                2000
+            ))[1]
+                - 20.0)
+                .abs()
+                < 0.01,
+            "heading 0 is still a heading, as the heading fact defaults to it"
+        );
         let later = 2000 + DRAG_CONTINUES_MS;
-        locked.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME | FLAG_YAW_LOCK, yawed(10.0)), 0.0, later);
-        assert!((angles(&locked.on_screen_control(0.0, 0.0, Screen::Drag { slide_speed: 100.0 }, 90.0, later))[1] - 100.0).abs() < 0.01, "a yaw-locked gimbal is aimed with the heading at the time of the drag");
+        locked.on_device_attitude_status(
+            attitude(
+                DEVICE,
+                0,
+                FLAG_YAW_IN_VEHICLE_FRAME | FLAG_YAW_LOCK,
+                yawed(10.0),
+            ),
+            0.0,
+            later,
+        );
+        assert!(
+            (angles(&locked.on_screen_control(
+                0.0,
+                0.0,
+                Screen::Drag { slide_speed: 100.0 },
+                90.0,
+                later
+            ))[1]
+                - 100.0)
+                .abs()
+                < 0.01,
+            "a yaw-locked gimbal is aimed with the heading at the time of the drag"
+        );
     }
 
     #[test]
     fn a_held_drag_keeps_turning_from_its_own_last_aim_while_the_gimbal_reports_slowly() {
         let mut gimbals = discovered();
-        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, yawed(10.0)), 0.0, 2000);
-        let drag = |gimbals: &mut Gimbals, at: u64| angles(&gimbals.on_screen_control(0.5, 0.0, Screen::Drag { slide_speed: 30.0 }, 0.0, at))[1];
+        gimbals.on_device_attitude_status(
+            attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME, yawed(10.0)),
+            0.0,
+            2000,
+        );
+        let drag = |gimbals: &mut Gimbals, at: u64| {
+            angles(&gimbals.on_screen_control(
+                0.5,
+                0.0,
+                Screen::Drag { slide_speed: 30.0 },
+                0.0,
+                at,
+            ))[1]
+        };
         let steps = [2000, 2100, 2200, 2300].map(|at| drag(&mut gimbals, at));
-        assert!(steps.iter().zip([11.5, 13.0, 14.5, 16.0]).all(|(sent, want)| (sent - want).abs() < 0.01), "each tick adds its step to the last aim, so half a screen turns 15°/s at 30°/s, not one step per attitude report: {steps:?}");
-        assert!((drag(&mut gimbals, 2300 + DRAG_CONTINUES_MS) - 11.5).abs() < 0.01, "a drag picked up after a pause starts again from where the gimbal reports it is");
+        assert!(
+            steps
+                .iter()
+                .zip([11.5, 13.0, 14.5, 16.0])
+                .all(|(sent, want)| (sent - want).abs() < 0.01),
+            "each tick adds its step to the last aim, so half a screen turns 15°/s at 30°/s, not one step per attitude report: {steps:?}"
+        );
+        assert!(
+            (drag(&mut gimbals, 2300 + DRAG_CONTINUES_MS) - 11.5).abs() < 0.01,
+            "a drag picked up after a pause starts again from where the gimbal reports it is"
+        );
         drag(&mut gimbals, 4000);
         gimbals.center(4050);
-        assert!((drag(&mut gimbals, 4100) - 11.5).abs() < 0.01, "another aim in between ends the drag it interrupted");
+        assert!(
+            (drag(&mut gimbals, 4100) - 11.5).abs() < 0.01,
+            "another aim in between ends the drag it interrupted"
+        );
         let mut limited = discovered();
-        limited.on_manager_information(ManagerInformation { compid: MANAGER, device_id: DEVICE, capability_flags: 0, limits_rad: Some([f32::NAN, f32::NAN, (-90.0_f32).to_radians(), 25.0_f32.to_radians(), (-180.0_f32).to_radians(), 180.0_f32.to_radians()]) }, 2000);
-        let tilts = [2000, 2100, 2200, 2300].map(|at| angles(&limited.on_screen_control(0.0, 1.0, Screen::Drag { slide_speed: 100.0 }, 0.0, at))[0]);
-        assert!(tilts.iter().all(|tilt| *tilt <= 25.0 + 0.01) && (tilts[3] - 25.0).abs() < 0.01, "the tilt stops at the gimbal's own limit instead of running past it: {tilts:?}");
+        limited.on_manager_information(
+            ManagerInformation {
+                compid: MANAGER,
+                device_id: DEVICE,
+                capability_flags: 0,
+                limits_rad: Some([
+                    f32::NAN,
+                    f32::NAN,
+                    (-90.0_f32).to_radians(),
+                    25.0_f32.to_radians(),
+                    (-180.0_f32).to_radians(),
+                    180.0_f32.to_radians(),
+                ]),
+            },
+            2000,
+        );
+        let tilts = [2000, 2100, 2200, 2300].map(|at| {
+            angles(&limited.on_screen_control(
+                0.0,
+                1.0,
+                Screen::Drag { slide_speed: 100.0 },
+                0.0,
+                at,
+            ))[0]
+        });
+        assert!(
+            tilts.iter().all(|tilt| *tilt <= 25.0 + 0.01) && (tilts[3] - 25.0).abs() < 0.01,
+            "the tilt stops at the gimbal's own limit instead of running past it: {tilts:?}"
+        );
     }
 
     #[test]
     fn the_active_gimbal_is_one_of_the_gimbals_and_changes_only_when_it_changes() {
         let mut gimbals = discovered();
         assert_eq!(gimbals.active(), Some(pair()));
-        assert!(gimbals.set_active(pair()).is_empty(), "naming the gimbal that is already active tells a head nothing");
-        assert!(gimbals.set_active(PairId { manager_compid: 9, device_id: 9 }).is_empty(), "and a gimbal nobody has heard from cannot become the active one");
-        let second = PairId { manager_compid: 2, device_id: 155 };
+        assert!(
+            gimbals.set_active(pair()).is_empty(),
+            "naming the gimbal that is already active tells a head nothing"
+        );
+        assert!(
+            gimbals
+                .set_active(PairId {
+                    manager_compid: 9,
+                    device_id: 9
+                })
+                .is_empty(),
+            "and a gimbal nobody has heard from cannot become the active one"
+        );
+        let second = PairId {
+            manager_compid: 2,
+            device_id: 155,
+        };
         gimbals.on_manager_information(info(2, 155, 0), 5000);
         gimbals.on_manager_status(status(2, 155, OUR_SYSTEM, OUR_COMPONENT), 6000);
-        let complete = gimbals.on_device_attitude_status(attitude(155, 0, FLAG_YAW_IN_VEHICLE_FRAME, level()), 0.0, 6000);
-        assert_eq!(complete, vec![Out::GimbalComplete(second)], "a second gimbal does not steal the active slot from the first");
+        let complete = gimbals.on_device_attitude_status(
+            attitude(155, 0, FLAG_YAW_IN_VEHICLE_FRAME, level()),
+            0.0,
+            6000,
+        );
+        assert_eq!(
+            complete,
+            vec![Out::GimbalComplete(second)],
+            "a second gimbal does not steal the active slot from the first"
+        );
         assert_eq!(gimbals.set_active(second), vec![Out::ActiveGimbal(second)]);
         assert_eq!(gimbals.pairs(), vec![pair(), second]);
     }
@@ -1574,19 +2768,69 @@ mod tests {
     #[test]
     fn the_snapshot_emits_numbers_and_unit_names_only() {
         let mut gimbals = discovered();
-        gimbals.on_device_attitude_status(attitude(DEVICE, 0, FLAG_YAW_IN_VEHICLE_FRAME | FLAG_NEUTRAL, yawed(45.0)), 90.0, 2000);
+        gimbals.on_device_attitude_status(
+            attitude(
+                DEVICE,
+                0,
+                FLAG_YAW_IN_VEHICLE_FRAME | FLAG_NEUTRAL,
+                yawed(45.0),
+            ),
+            90.0,
+            2000,
+        );
         let view = gimbals.snapshot(2000);
-        assert_eq!((view["class"].as_str(), view["available"].as_bool(), view["count"].as_u64()), (Some("Gimbals"), Some(true), Some(1)));
-        assert_eq!((view["angleUnits"].as_str(), view["rateUnits"].as_str()), (Some(ANGLE_UNITS), Some(RATE_UNITS)), "the core names the unit and never renders the number, because a decimal separator belongs to the head");
+        assert_eq!(
+            (
+                view["class"].as_str(),
+                view["available"].as_bool(),
+                view["count"].as_u64()
+            ),
+            (Some("Gimbals"), Some(true), Some(1))
+        );
+        assert_eq!(
+            (view["angleUnits"].as_str(), view["rateUnits"].as_str()),
+            (Some(ANGLE_UNITS), Some(RATE_UNITS)),
+            "the core names the unit and never renders the number, because a decimal separator belongs to the head"
+        );
         assert_eq!(view["active"]["deviceId"], DEVICE);
         let gimbal = &view["gimbals"][0];
-        assert!(gimbal["bodyYaw"].as_f64().is_some_and(|yaw| (yaw - 45.0).abs() < 0.01) && gimbal["absoluteYaw"].as_f64().is_some_and(|yaw| (yaw - 135.0).abs() < 0.01));
-        assert_eq!((gimbal["neutral"].as_bool(), gimbal["yawFrame"].as_str(), gimbal["active"].as_bool()), (Some(true), Some("vehicle"), Some(true)));
-        assert_eq!((gimbal["supportsRetract"].as_bool(), gimbal["haveControl"].as_bool()), (Some(true), Some(true)));
-        assert!(gimbals.snapshot(100_000)["gimbals"][0]["haveControl"].is_null(), "past the staleness window the snapshot says it does not know who is in control rather than guessing");
+        assert!(
+            gimbal["bodyYaw"]
+                .as_f64()
+                .is_some_and(|yaw| (yaw - 45.0).abs() < 0.01)
+                && gimbal["absoluteYaw"]
+                    .as_f64()
+                    .is_some_and(|yaw| (yaw - 135.0).abs() < 0.01)
+        );
+        assert_eq!(
+            (
+                gimbal["neutral"].as_bool(),
+                gimbal["yawFrame"].as_str(),
+                gimbal["active"].as_bool()
+            ),
+            (Some(true), Some("vehicle"), Some(true))
+        );
+        assert_eq!(
+            (
+                gimbal["supportsRetract"].as_bool(),
+                gimbal["haveControl"].as_bool()
+            ),
+            (Some(true), Some(true))
+        );
+        assert!(
+            gimbals.snapshot(100_000)["gimbals"][0]["haveControl"].is_null(),
+            "past the staleness window the snapshot says it does not know who is in control rather than guessing"
+        );
         let bare = Gimbals::new(OUR_SYSTEM, OUR_COMPONENT).snapshot(0);
         assert_eq!(bare["available"], false);
-        assert!(bare["active"].is_null(), "nothing measured yet reads as absent, not as zero");
-        assert!(bare["gimbals"].as_array().is_some_and(|listed| listed.is_empty()));
+        assert!(
+            bare["active"].is_null(),
+            "nothing measured yet reads as absent, not as zero"
+        );
+        assert!(
+            bare["gimbals"]
+                .as_array()
+                .is_some_and(|listed| listed.is_empty())
+        );
     }
 }

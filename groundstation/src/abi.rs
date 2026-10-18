@@ -41,7 +41,10 @@ impl Backend for QtBackend {
         unsafe { qgc_qt_remember_setting(c(key).as_ptr(), c(&value.to_string()).as_ptr()) }
     }
     fn core_guided(&self, action: &serde_json::Value) -> Option<Result<(), String>> {
-        let vehicle = action.get("vehicle").and_then(serde_json::Value::as_u64).and_then(|id| u8::try_from(id).ok())?;
+        let vehicle = action
+            .get("vehicle")
+            .and_then(serde_json::Value::as_u64)
+            .and_then(|id| u8::try_from(id).ok())?;
         let mut hub = crate::hub::lock();
         hub.carries(vehicle).then_some(())?;
         let started = hub.guided(Some(vehicle), action, crate::hub::now_ms());
@@ -58,20 +61,30 @@ fn guide(action: &serde_json::Value) -> Option<Result<(), String>> {
     QtBackend.core_guided(action)
 }
 
-static CORE: LazyLock<Core<crate::settingsstore::Owner<crate::vehiclefacade::Facade<QtBackend>>>> = LazyLock::new(|| {
-    crate::corelinks::set_hooks(registry_open, registry_close);
-    let _ = crate::lens::GUIDE.set(guide);
-    Core::new(crate::settingsstore::Owner(crate::vehiclefacade::Facade(QtBackend)))
-});
+static CORE: LazyLock<Core<crate::settingsstore::Owner<crate::vehiclefacade::Facade<QtBackend>>>> =
+    LazyLock::new(|| {
+        crate::corelinks::set_hooks(registry_open, registry_close);
+        let _ = crate::lens::GUIDE.set(guide);
+        Core::new(crate::settingsstore::Owner(crate::vehiclefacade::Facade(
+            QtBackend,
+        )))
+    });
 
-fn registry_open(config: crate::linkconfig::LinkConfig) -> Result<crate::transport::LinkId, (String, &'static str)> {
+fn registry_open(
+    config: crate::linkconfig::LinkConfig,
+) -> Result<crate::transport::LinkId, (String, &'static str)> {
     install_hub_sink();
     start_pump();
-    crate::linkhost::open(&crate::linkhost::TRANSPORTS, config, &[]).map_err(|failure| (failure.reason, failure.remedy))
+    crate::linkhost::open(&crate::linkhost::TRANSPORTS, config, &[])
+        .map_err(|failure| (failure.reason, failure.remedy))
 }
 
 fn registry_close(id: crate::transport::LinkId) {
-    crate::linkhost::close(&crate::linkhost::TRANSPORTS, id, "disconnected by the operator");
+    crate::linkhost::close(
+        &crate::linkhost::TRANSPORTS,
+        id,
+        "disconnected by the operator",
+    );
     crate::hub::lock().link_closed(id);
 }
 static HEAD: Mutex<EventFn> = Mutex::new(None);
@@ -83,7 +96,9 @@ fn c(text: &str) -> CString {
 fn text(ptr: *const c_char) -> String {
     match ptr.is_null() {
         true => String::new(),
-        false => unsafe { CStr::from_ptr(ptr) }.to_string_lossy().into_owned(),
+        false => unsafe { CStr::from_ptr(ptr) }
+            .to_string_lossy()
+            .into_owned(),
     }
 }
 
@@ -108,24 +123,37 @@ pub unsafe extern "C" fn qgc_core_get(path: *const c_char) -> *mut c_char {
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qgc_core_get_fields(path: *const c_char, fields_csv: *const c_char) -> *mut c_char {
+pub unsafe extern "C" fn qgc_core_get_fields(
+    path: *const c_char,
+    fields_csv: *const c_char,
+) -> *mut c_char {
     give(CORE.get_fields(&text(path), &text(fields_csv)))
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qgc_core_set(path: *const c_char, value_json: *const c_char) -> *mut c_char {
+pub unsafe extern "C" fn qgc_core_set(
+    path: *const c_char,
+    value_json: *const c_char,
+) -> *mut c_char {
     give(CORE.set(&text(path), &text(value_json)))
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qgc_core_invoke(path: *const c_char, args_json: *const c_char) -> *mut c_char {
+pub unsafe extern "C" fn qgc_core_invoke(
+    path: *const c_char,
+    args_json: *const c_char,
+) -> *mut c_char {
     let answer = CORE.invoke(&text(path), &text(args_json));
     announce_notices();
     give(answer)
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qgc_core_post_notice(kind: *const c_char, title: *const c_char, body: *const c_char) -> bool {
+pub unsafe extern "C" fn qgc_core_post_notice(
+    kind: *const c_char,
+    title: *const c_char,
+    body: *const c_char,
+) -> bool {
     let posted = crate::noticeboard::post(&text(kind), &text(title), &text(body));
     announce_notices();
     posted
@@ -151,7 +179,9 @@ pub extern "C" fn qgc_core_qt_host_present() {
 
 fn announce_notices() {
     if crate::noticeboard::take_changed() {
-        CORE.on_event(crate::noticeboard::NOTICES_CHANGED, "null").iter().for_each(|(path, json)| announce(path, json));
+        CORE.on_event(crate::noticeboard::NOTICES_CHANGED, "null")
+            .iter()
+            .for_each(|(path, json)| announce(path, json));
     }
 }
 
@@ -174,17 +204,35 @@ pub unsafe extern "C" fn qgc_core_set_event_handler(handler: EventFn) {
     *HEAD.lock().unwrap() = handler;
     crate::terrainservice::set_notify(Box::new(|| {
         crate::coreplan::terrain_arrived();
-        CORE.on_event(crate::terrainservice::TERRAIN_CHANGED, "null").iter().for_each(|(path, json)| announce(path, json));
+        CORE.on_event(crate::terrainservice::TERRAIN_CHANGED, "null")
+            .iter()
+            .for_each(|(path, json)| announce(path, json));
     }));
-    *crate::detections::ON_CHANGE.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = handler.map(|_| std::sync::Arc::new(announce_detections) as std::sync::Arc<dyn Fn() + Send + Sync>);
-    *crate::coreplan::ON_CHANGE.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = handler.map(|_| std::sync::Arc::new(announce_plan) as std::sync::Arc<dyn Fn() + Send + Sync>);
-    *crate::adsb::ON_CHANGE.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = handler.map(|_| std::sync::Arc::new(announce_adsb) as std::sync::Arc<dyn Fn() + Send + Sync>);
-    unsafe { qgc_qt_set_event_handler(handler.map(|_| relay as unsafe extern "C" fn(*const c_char, *const c_char))) }
+    *crate::detections::ON_CHANGE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = handler.map(|_| {
+        std::sync::Arc::new(announce_detections) as std::sync::Arc<dyn Fn() + Send + Sync>
+    });
+    *crate::coreplan::ON_CHANGE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = handler
+        .map(|_| std::sync::Arc::new(announce_plan) as std::sync::Arc<dyn Fn() + Send + Sync>);
+    *crate::adsb::ON_CHANGE
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = handler
+        .map(|_| std::sync::Arc::new(announce_adsb) as std::sync::Arc<dyn Fn() + Send + Sync>);
+    unsafe {
+        qgc_qt_set_event_handler(
+            handler.map(|_| relay as unsafe extern "C" fn(*const c_char, *const c_char)),
+        )
+    }
 }
 
 unsafe extern "C" fn relay(path: *const c_char, json: *const c_char) {
     let events = CORE.on_event(&text(path), &text(json));
-    let Some(handler) = *HEAD.lock().unwrap() else { return };
+    let Some(handler) = *HEAD.lock().unwrap() else {
+        return;
+    };
     events.iter().for_each(|(p, j)| {
         let (p, j) = (c(p), c(j));
         unsafe { handler(p.as_ptr(), j.as_ptr()) }
@@ -213,7 +261,10 @@ impl WriterUser {
 fn outcome(result: Result<u32, crate::linkhost::Failure>) -> *mut c_char {
     give(match result {
         Ok(id) => serde_json::json!({ "ok": true, "id": id }).to_string(),
-        Err(failure) => serde_json::json!({ "ok": false, "reason": failure.reason, "remedy": failure.remedy }).to_string(),
+        Err(failure) => {
+            serde_json::json!({ "ok": false, "reason": failure.reason, "remedy": failure.remedy })
+                .to_string()
+        }
     })
 }
 
@@ -235,7 +286,9 @@ fn announce_guided() {
     }
     let snapshot = crate::hub::lock().guided_snapshot(None).to_string();
     let changed = {
-        let mut last = GUIDED_ANNOUNCED.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut last = GUIDED_ANNOUNCED
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let changed = *last != snapshot;
         *last = snapshot.clone();
         changed
@@ -251,7 +304,15 @@ static LAST_POLL_MS: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64
 fn poll_due() -> bool {
     let now = crate::hub::now_ms();
     let last = LAST_POLL_MS.load(std::sync::atomic::Ordering::Relaxed);
-    now.saturating_sub(last) >= HEADLESS_POLL_MS && LAST_POLL_MS.compare_exchange(last, now, std::sync::atomic::Ordering::Relaxed, std::sync::atomic::Ordering::Relaxed).is_ok()
+    now.saturating_sub(last) >= HEADLESS_POLL_MS
+        && LAST_POLL_MS
+            .compare_exchange(
+                last,
+                now,
+                std::sync::atomic::Ordering::Relaxed,
+                std::sync::atomic::Ordering::Relaxed,
+            )
+            .is_ok()
 }
 
 #[cfg(not(target_family = "wasm"))]
@@ -259,9 +320,11 @@ pub(crate) fn start_pump() {
     PUMP.get_or_init(|| {
         std::thread::Builder::new()
             .name("groundstation-pump".to_string())
-            .spawn(|| loop {
-                std::thread::sleep(PUMP_PERIOD);
-                pump_once();
+            .spawn(|| {
+                loop {
+                    std::thread::sleep(PUMP_PERIOD);
+                    pump_once();
+                }
             })
             .expect("pump thread");
     });
@@ -273,14 +336,45 @@ pub(crate) fn start_pump() {}
 pub(crate) fn pump_once() {
     crate::pumpguard::guarded("hub", || {
         let (open, kinds) = {
-            let transports = crate::linkhost::TRANSPORTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+            let transports = crate::linkhost::TRANSPORTS
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
             let open = transports.open_ids();
-            let cloud: Vec<_> = open.iter().copied().filter(|id| transports.config(*id).is_some_and(|c| matches!(c.kind, crate::linkconfig::Kind::AircastCloud { .. }))).collect();
-            let high_latency: Vec<_> = open.iter().copied().filter(|id| transports.config(*id).is_some_and(|c| c.high_latency)).collect();
+            let cloud: Vec<_> = open
+                .iter()
+                .copied()
+                .filter(|id| {
+                    transports.config(*id).is_some_and(|c| {
+                        matches!(c.kind, crate::linkconfig::Kind::AircastCloud { .. })
+                    })
+                })
+                .collect();
+            let high_latency: Vec<_> = open
+                .iter()
+                .copied()
+                .filter(|id| transports.config(*id).is_some_and(|c| c.high_latency))
+                .collect();
             let usb_direct: Vec<_> = open.iter().copied().filter(|id| transports.config(*id).is_some_and(|c| matches!(&c.kind, crate::linkconfig::Kind::Serial { port_name, .. } if crate::linkhost::is_usb_direct(port_name)))).collect();
             let radio: Vec<_> = open.iter().copied().filter(|id| transports.config(*id).is_some_and(|c| matches!(&c.kind, crate::linkconfig::Kind::Serial { port_name, .. } if !crate::linkhost::is_usb_direct(port_name)))).collect();
-            let labels = open.iter().filter_map(|id| transports.describe(*id).map(|(name, kind, _)| (*id, (name, kind)))).collect();
-            (open, crate::hub::LinkKinds { cloud, high_latency, usb_direct, radio, labels, down: transports.down_ids() })
+            let labels = open
+                .iter()
+                .filter_map(|id| {
+                    transports
+                        .describe(*id)
+                        .map(|(name, kind, _)| (*id, (name, kind)))
+                })
+                .collect();
+            (
+                open,
+                crate::hub::LinkKinds {
+                    cloud,
+                    high_latency,
+                    usb_direct,
+                    radio,
+                    labels,
+                    down: transports.down_ids(),
+                },
+            )
         };
         let outbound = {
             let mut hub = crate::hub::lock();
@@ -291,12 +385,23 @@ pub(crate) fn pump_once() {
         deliver(outbound);
         let v1_links = crate::hub::lock().take_v1_reports();
         v1_links.into_iter().for_each(|link| {
-            let name = crate::linkhost::TRANSPORTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).describe(link).map_or_else(|| "unknown".to_string(), |(name, _, _)| name);
-            crate::noticeboard::post(crate::noticeboard::MESSAGE, "", &crate::hub::mavlink_v1_notice(&name, &crate::noticeboard::application_name()));
+            let name = crate::linkhost::TRANSPORTS
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .describe(link)
+                .map_or_else(|| "unknown".to_string(), |(name, _, _)| name);
+            crate::noticeboard::post(
+                crate::noticeboard::MESSAGE,
+                "",
+                &crate::hub::mavlink_v1_notice(&name, &crate::noticeboard::application_name()),
+            );
         });
-        crate::hub::lock().take_notices().iter().for_each(|(kind, body)| {
-            crate::noticeboard::post_from_vehicle(kind, body);
-        });
+        crate::hub::lock()
+            .take_notices()
+            .iter()
+            .for_each(|(kind, body)| {
+                crate::noticeboard::post_from_vehicle(kind, body);
+            });
         announce_notices();
     });
     crate::pumpguard::guarded("links", || crate::corelinks::tick(crate::hub::now_ms()));
@@ -305,7 +410,9 @@ pub(crate) fn pump_once() {
             crate::gcsheartbeat::tick(crate::hub::now_ms());
         }
     });
-    crate::pumpguard::guarded("sticks", || crate::virtualjoystick::flush(web_time::Instant::now()));
+    crate::pumpguard::guarded("sticks", || {
+        crate::virtualjoystick::flush(web_time::Instant::now())
+    });
     crate::pumpguard::guarded("rest", || {
         crate::nmea::maintain();
         crate::usbradio::maintain();
@@ -313,51 +420,93 @@ pub(crate) fn pump_once() {
         crate::signingkeys::tick(crate::hub::now_ms());
         if crate::vehiclefacade::switched_on() {
             if crate::hub::lock().remote_inputs_due(crate::hub::now_ms()) {
-                let (settings, fix) = crate::remoteidview::inputs(&crate::settingsstore::Owner(crate::vehiclefacade::Facade(QtBackend)), crate::hub::now_us() / 1000);
+                let (settings, fix) = crate::remoteidview::inputs(
+                    &crate::settingsstore::Owner(crate::vehiclefacade::Facade(QtBackend)),
+                    crate::hub::now_us() / 1000,
+                );
                 crate::hub::lock().set_remote_inputs(settings, fix, crate::hub::now_ms());
             }
             crate::telemetrylog::vehicles(crate::hub::lock().vehicle_ids().len());
             crate::mavlinklog::tick();
             let logged: Vec<crate::csvlog::Logged> = {
                 let hub = crate::hub::lock();
-                let count = hub.listed_count().unwrap_or_else(|| hub.vehicle_ids().len());
-                (0..count).filter_map(|listed| hub.listed(listed).map(|vehicle| crate::csvlog::Logged { id: vehicle.id, listed, armed: vehicle.armed(), sub: vehicle.is_ardusub() })).collect()
+                let count = hub
+                    .listed_count()
+                    .unwrap_or_else(|| hub.vehicle_ids().len());
+                (0..count)
+                    .filter_map(|listed| {
+                        hub.listed(listed).map(|vehicle| crate::csvlog::Logged {
+                            id: vehicle.id,
+                            listed,
+                            armed: vehicle.armed(),
+                            sub: vehicle.is_ardusub(),
+                        })
+                    })
+                    .collect()
             };
-            crate::csvlog::tick(&crate::settingsstore::Owner(crate::vehiclefacade::Facade(QtBackend)), &logged, crate::hub::now_ms());
-            crate::subtitles::tick(&crate::settingsstore::Owner(crate::vehiclefacade::Facade(QtBackend)), crate::hub::now_ms());
+            crate::csvlog::tick(
+                &crate::settingsstore::Owner(crate::vehiclefacade::Facade(QtBackend)),
+                &logged,
+                crate::hub::now_ms(),
+            );
+            crate::subtitles::tick(
+                &crate::settingsstore::Owner(crate::vehiclefacade::Facade(QtBackend)),
+                crate::hub::now_ms(),
+            );
             crate::forwarding::maintain();
             crate::ntrip::sync();
             crate::joystickhost::tick(crate::hub::now_ms());
             crate::wfbhost::tick(crate::hub::now_ms());
             crate::camsettings::tick(crate::hub::now_ms());
-            crate::followme::tick(&crate::settingsstore::Owner(crate::vehiclefacade::Facade(QtBackend)), crate::hub::now_ms());
+            crate::followme::tick(
+                &crate::settingsstore::Owner(crate::vehiclefacade::Facade(QtBackend)),
+                crate::hub::now_ms(),
+            );
             let gimbals_live = crate::hub::lock().any_gimbals();
             if crate::gimbal::announce_due(crate::hub::now_ms(), gimbals_live) {
-                CORE.on_event(crate::gimbal::GIMBAL_CHANGED, "null").iter().for_each(|(path, json)| announce(path, json));
+                CORE.on_event(crate::gimbal::GIMBAL_CHANGED, "null")
+                    .iter()
+                    .for_each(|(path, json)| announce(path, json));
             }
             if crate::mavinspect::lock().tick(crate::hub::now_ms()) {
-                CORE.on_event(crate::mavinspect::INSPECTOR_CHANGED, "null").iter().for_each(|(path, json)| announce(path, json));
+                CORE.on_event(crate::mavinspect::INSPECTOR_CHANGED, "null")
+                    .iter()
+                    .for_each(|(path, json)| announce(path, json));
             }
         }
         announce_guided();
         if crate::viewer3d::take_parsed() {
-            CORE.on_event(crate::viewer3d::VIEWER3D_CHANGED, "null").iter().for_each(|(path, json)| announce(path, json));
+            CORE.on_event(crate::viewer3d::VIEWER3D_CHANGED, "null")
+                .iter()
+                .for_each(|(path, json)| announce(path, json));
         }
         if crate::deeplinksetup::take_changed() {
-            CORE.on_event(crate::deeplinksetup::SETUP_CHANGED, "null").iter().for_each(|(path, json)| announce(path, json));
+            CORE.on_event(crate::deeplinksetup::SETUP_CHANGED, "null")
+                .iter()
+                .for_each(|(path, json)| announce(path, json));
         }
         if crate::synthview::take_changed() {
-            CORE.on_event(crate::synthview::SYNTHETIC_CHANGED, "null").iter().for_each(|(path, json)| announce(path, json));
+            CORE.on_event(crate::synthview::SYNTHETIC_CHANGED, "null")
+                .iter()
+                .for_each(|(path, json)| announce(path, json));
         }
         if crate::lens::take_changed() {
-            CORE.on_event(crate::lens::LENS_CHANGED, "null").iter().for_each(|(path, json)| announce(path, json));
+            CORE.on_event(crate::lens::LENS_CHANGED, "null")
+                .iter()
+                .for_each(|(path, json)| announce(path, json));
         }
         if crate::devicetrack::take_changed() {
-            CORE.on_event(crate::devicetrack::TRACK_CHANGED, "null").iter().for_each(|(path, json)| announce(path, json));
+            CORE.on_event(crate::devicetrack::TRACK_CHANGED, "null")
+                .iter()
+                .for_each(|(path, json)| announce(path, json));
         }
         crate::adsb::pump(crate::hub::now_ms());
         if !crate::qthost::present() {
-            let changed = if poll_due() { CORE.poll() } else { CORE.poll_motion() };
+            let changed = if poll_due() {
+                CORE.poll()
+            } else {
+                CORE.poll_motion()
+            };
             changed.iter().for_each(|(path, json)| announce(path, json));
         }
         if crate::detections::lock().went_stale(crate::hub::now_ms()) {
@@ -368,8 +517,12 @@ pub(crate) fn pump_once() {
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_core_parameter(request_json: *const c_char) -> *mut c_char {
-    let request: serde_json::Value = serde_json::from_str(&text(request_json)).unwrap_or(serde_json::Value::Null);
-    let vehicle = request.get("vehicle").and_then(serde_json::Value::as_u64).map(|id| id as u8);
+    let request: serde_json::Value =
+        serde_json::from_str(&text(request_json)).unwrap_or(serde_json::Value::Null);
+    let vehicle = request
+        .get("vehicle")
+        .and_then(serde_json::Value::as_u64)
+        .map(|id| id as u8);
     let sent = crate::hub::lock().parameter_request(vehicle, &request, crate::hub::now_ms());
     give(match sent {
         Ok(outbound) => {
@@ -382,8 +535,12 @@ pub unsafe extern "C" fn qgc_core_parameter(request_json: *const c_char) -> *mut
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_core_log(request_json: *const c_char) -> *mut c_char {
-    let request: serde_json::Value = serde_json::from_str(&text(request_json)).unwrap_or(serde_json::Value::Null);
-    let vehicle = request.get("vehicle").and_then(serde_json::Value::as_u64).map(|id| id as u8);
+    let request: serde_json::Value =
+        serde_json::from_str(&text(request_json)).unwrap_or(serde_json::Value::Null);
+    let vehicle = request
+        .get("vehicle")
+        .and_then(serde_json::Value::as_u64)
+        .map(|id| id as u8);
     let sent = crate::hub::lock().log_request(vehicle, &request, crate::hub::now_ms());
     give(match sent {
         Ok(outbound) => {
@@ -396,8 +553,12 @@ pub unsafe extern "C" fn qgc_core_log(request_json: *const c_char) -> *mut c_cha
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_core_calibrate(request_json: *const c_char) -> *mut c_char {
-    let request: serde_json::Value = serde_json::from_str(&text(request_json)).unwrap_or(serde_json::Value::Null);
-    let vehicle = request.get("vehicle").and_then(serde_json::Value::as_u64).map(|id| id as u8);
+    let request: serde_json::Value =
+        serde_json::from_str(&text(request_json)).unwrap_or(serde_json::Value::Null);
+    let vehicle = request
+        .get("vehicle")
+        .and_then(serde_json::Value::as_u64)
+        .map(|id| id as u8);
     let sent = crate::hub::lock().calibrate_request(vehicle, &request, crate::hub::now_ms());
     give(match sent {
         Ok(outbound) => {
@@ -411,8 +572,12 @@ pub unsafe extern "C" fn qgc_core_calibrate(request_json: *const c_char) -> *mut
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_core_remote_id(request_json: *const c_char) -> *mut c_char {
-    let request: serde_json::Value = serde_json::from_str(&text(request_json)).unwrap_or(serde_json::Value::Null);
-    let vehicle = request.get("vehicle").and_then(serde_json::Value::as_u64).map(|id| id as u8);
+    let request: serde_json::Value =
+        serde_json::from_str(&text(request_json)).unwrap_or(serde_json::Value::Null);
+    let vehicle = request
+        .get("vehicle")
+        .and_then(serde_json::Value::as_u64)
+        .map(|id| id as u8);
     give(match crate::hub::lock().remote_request(vehicle, &request) {
         Ok(()) => serde_json::json!({ "ok": true }).to_string(),
         Err(reason) => serde_json::json!({ "ok": false, "reason": reason }).to_string(),
@@ -421,8 +586,12 @@ pub unsafe extern "C" fn qgc_core_remote_id(request_json: *const c_char) -> *mut
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_core_mission(request_json: *const c_char) -> *mut c_char {
-    let request: serde_json::Value = serde_json::from_str(&text(request_json)).unwrap_or(serde_json::Value::Null);
-    let vehicle = request.get("vehicle").and_then(serde_json::Value::as_u64).map(|id| id as u8);
+    let request: serde_json::Value =
+        serde_json::from_str(&text(request_json)).unwrap_or(serde_json::Value::Null);
+    let vehicle = request
+        .get("vehicle")
+        .and_then(serde_json::Value::as_u64)
+        .map(|id| id as u8);
     let sent = crate::hub::lock().mission_request(vehicle, &request, crate::hub::now_ms());
     give(match sent {
         Ok(outbound) => {
@@ -435,8 +604,12 @@ pub unsafe extern "C" fn qgc_core_mission(request_json: *const c_char) -> *mut c
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_core_guided(action_json: *const c_char) -> *mut c_char {
-    let action: serde_json::Value = serde_json::from_str(&text(action_json)).unwrap_or(serde_json::Value::Null);
-    let vehicle = action.get("vehicle").and_then(serde_json::Value::as_u64).map(|id| id as u8);
+    let action: serde_json::Value =
+        serde_json::from_str(&text(action_json)).unwrap_or(serde_json::Value::Null);
+    let vehicle = action
+        .get("vehicle")
+        .and_then(serde_json::Value::as_u64)
+        .map(|id| id as u8);
     let started = crate::hub::lock().guided(vehicle, &action, crate::hub::now_ms());
     give(match started {
         Ok(outbound) => {
@@ -451,52 +624,81 @@ pub unsafe extern "C" fn qgc_core_guided(action_json: *const c_char) -> *mut c_c
 
 fn install_hub_sink() {
     HUB_SINK.get_or_init(|| {
-        let sink: crate::linkhost::FrameSink = std::sync::Arc::new(|frame: &crate::transport::Frame| {
-            if !frame.replay {
-                let verdict = crate::signing::lock().inbound(frame.link, frame.header.system_id, &frame.raw, &frame.message, &|| crate::signingkeys::load().all(), crate::hub::now_ms());
-                verdict.notices.iter().for_each(|notice| {
-                    crate::noticeboard::post_from_vehicle(crate::noticeboard::MESSAGE, notice);
-                });
-                if !verdict.accept {
+        let sink: crate::linkhost::FrameSink =
+            std::sync::Arc::new(|frame: &crate::transport::Frame| {
+                if !frame.replay {
+                    let verdict = crate::signing::lock().inbound(
+                        frame.link,
+                        frame.header.system_id,
+                        &frame.raw,
+                        &frame.message,
+                        &|| crate::signingkeys::load().all(),
+                        crate::hub::now_ms(),
+                    );
+                    verdict.notices.iter().for_each(|notice| {
+                        crate::noticeboard::post_from_vehicle(crate::noticeboard::MESSAGE, notice);
+                    });
+                    if !verdict.accept {
+                        return;
+                    }
+                }
+                let dropped = crate::hub::v1_dropped(frame.v2, &frame.message);
+                if crate::vehiclefacade::switched_on() && !dropped {
+                    crate::telemetrylog::received(frame);
+                }
+                let outbound = {
+                    let mut hub = crate::hub::lock();
+                    let outbound = hub.on_frame(
+                        crate::hub::Origin {
+                            link: frame.link,
+                            replay: frame.replay,
+                            v2: frame.v2,
+                        },
+                        &frame.header,
+                        &frame.message,
+                        crate::hub::now_us(),
+                        crate::hub::now_ms(),
+                    );
+                    hub.note_cellular(frame.header.system_id, &frame.message, &frame.raw);
+                    outbound
+                };
+                deliver(outbound);
+                if crate::vehiclefacade::switched_on() && !dropped {
+                    crate::forwarding::forward(frame);
+                    let (vehicles, active) = {
+                        let hub = crate::hub::lock();
+                        (hub.vehicle_ids(), hub.active_id())
+                    };
+                    crate::mavinspect::lock().observe(frame, &vehicles, active);
+                }
+            });
+        crate::linkhost::TRANSPORTS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .set_frame_sink(Some(sink));
+        let extra: crate::linkhost::ExtraSink =
+            std::sync::Arc::new(|extra: &crate::transport::Extra| {
+                if !crate::signing::lock().accepts_undecoded(extra.link, &extra.raw) {
                     return;
                 }
-            }
-            let dropped = crate::hub::v1_dropped(frame.v2, &frame.message);
-            if crate::vehiclefacade::switched_on() && !dropped {
-                crate::telemetrylog::received(frame);
-            }
-            let outbound = {
-                let mut hub = crate::hub::lock();
-                let outbound = hub.on_frame(crate::hub::Origin { link: frame.link, replay: frame.replay, v2: frame.v2 }, &frame.header, &frame.message, crate::hub::now_us(), crate::hub::now_ms());
-                hub.note_cellular(frame.header.system_id, &frame.message, &frame.raw);
-                outbound
-            };
-            deliver(outbound);
-            if crate::vehiclefacade::switched_on() && !dropped {
-                crate::forwarding::forward(frame);
-                let (vehicles, active) = {
-                    let hub = crate::hub::lock();
-                    (hub.vehicle_ids(), hub.active_id())
-                };
-                crate::mavinspect::lock().observe(frame, &vehicles, active);
-            }
-        });
-        crate::linkhost::TRANSPORTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).set_frame_sink(Some(sink));
-        let extra: crate::linkhost::ExtraSink = std::sync::Arc::new(|extra: &crate::transport::Extra| {
-            if !crate::signing::lock().accepts_undecoded(extra.link, &extra.raw) {
-                return;
-            }
-            let outbound = crate::hub::lock().on_extra(&extra.header, extra.msgid, &crate::mavinspect::payload(&extra.raw, extra.v2));
-            deliver(outbound);
-            if crate::vehiclefacade::switched_on() {
-                let (vehicles, active) = {
-                    let hub = crate::hub::lock();
-                    (hub.vehicle_ids(), hub.active_id())
-                };
-                crate::mavinspect::lock().observe_extra(extra, &vehicles, active);
-            }
-        });
-        crate::linkhost::TRANSPORTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).set_extra_sink(Some(extra));
+                let outbound = crate::hub::lock().on_extra(
+                    &extra.header,
+                    extra.msgid,
+                    &crate::mavinspect::payload(&extra.raw, extra.v2),
+                );
+                deliver(outbound);
+                if crate::vehiclefacade::switched_on() {
+                    let (vehicles, active) = {
+                        let hub = crate::hub::lock();
+                        (hub.vehicle_ids(), hub.active_id())
+                    };
+                    crate::mavinspect::lock().observe_extra(extra, &vehicles, active);
+                }
+            });
+        crate::linkhost::TRANSPORTS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .set_extra_sink(Some(extra));
     });
 }
 
@@ -505,7 +707,11 @@ pub unsafe extern "C" fn qgc_core_link_open(config_json: *const c_char) -> *mut 
     install_hub_sink();
     start_pump();
     let reserved = crate::linkhost::qt_udp_ports(&QtBackend);
-    outcome(crate::linkhost::open_json(&crate::linkhost::TRANSPORTS, &text(config_json), &reserved))
+    outcome(crate::linkhost::open_json(
+        &crate::linkhost::TRANSPORTS,
+        &text(config_json),
+        &reserved,
+    ))
 }
 
 #[unsafe(no_mangle)]
@@ -525,9 +731,16 @@ pub unsafe extern "C" fn qgc_core_link_write(id: u32, bytes: *const u8, len: usi
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qgc_core_host_link_open(kind: *const c_char, name: *const c_char) -> *mut c_char {
+pub unsafe extern "C" fn qgc_core_host_link_open(
+    kind: *const c_char,
+    name: *const c_char,
+) -> *mut c_char {
     install_hub_sink();
-    outcome(Ok(crate::linkhost::host_open(&crate::linkhost::TRANSPORTS, &text(kind), &text(name))))
+    outcome(Ok(crate::linkhost::host_open(
+        &crate::linkhost::TRANSPORTS,
+        &text(kind),
+        &text(name),
+    )))
 }
 
 #[unsafe(no_mangle)]
@@ -548,7 +761,9 @@ pub unsafe extern "C" fn qgc_core_packet_radio_report(report_json: *const c_char
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qgc_core_packet_radio_register(native: *const crate::wfbhost::Native) -> bool {
+pub unsafe extern "C" fn qgc_core_packet_radio_register(
+    native: *const crate::wfbhost::Native,
+) -> bool {
     match unsafe { native.as_ref() } {
         Some(native) => crate::wfbhost::register(crate::wfbhost::Native { ..*native }),
         None => false,
@@ -568,13 +783,21 @@ pub unsafe extern "C" fn qgc_core_host_link_closed(id: u32, reason: *const c_cha
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qgc_core_set_link_writer(writer: LinkWriterFn, user: *mut std::ffi::c_void) {
+pub unsafe extern "C" fn qgc_core_set_link_writer(
+    writer: LinkWriterFn,
+    user: *mut std::ffi::c_void,
+) {
     let user = WriterUser(user);
     let boxed: Option<crate::linkhost::Writer> = writer.map(|w| {
         let holder = user;
-        std::sync::Arc::new(move |id: u32, bytes: &[u8]| unsafe { w(id, bytes.as_ptr(), bytes.len(), holder.ptr()) }) as crate::linkhost::Writer
+        std::sync::Arc::new(move |id: u32, bytes: &[u8]| unsafe {
+            w(id, bytes.as_ptr(), bytes.len(), holder.ptr())
+        }) as crate::linkhost::Writer
     });
-    crate::linkhost::TRANSPORTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).set_writer(boxed);
+    crate::linkhost::TRANSPORTS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .set_writer(boxed);
 }
 
 fn announce(path: &str, json: &str) {
@@ -586,36 +809,60 @@ fn announce(path: &str, json: &str) {
 }
 
 fn announce_plan() {
-    CORE.on_event(crate::coreplan::CHANGED, "null").iter().for_each(|(path, json)| announce(path, json));
+    CORE.on_event(crate::coreplan::CHANGED, "null")
+        .iter()
+        .for_each(|(path, json)| announce(path, json));
 }
 
 fn announce_transports() {
-    let snapshot = crate::linkhost::TRANSPORTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).snapshot().to_string();
+    let snapshot = crate::linkhost::TRANSPORTS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .snapshot()
+        .to_string();
     announce("view.transports", &snapshot);
 }
 
 fn announce_detections() {
-    let snapshot = crate::detections::lock().snapshot(crate::hub::now_ms()).to_string();
+    let snapshot = crate::detections::lock()
+        .snapshot(crate::hub::now_ms())
+        .to_string();
     announce("view.detections", &snapshot);
 }
 
 fn announce_adsb() {
-    let snapshot = crate::adsb::lock().announced(crate::hub::now_ms()).to_string();
+    let snapshot = crate::adsb::lock()
+        .announced(crate::hub::now_ms())
+        .to_string();
     announce("view.adsbTraffic", &snapshot);
 }
 
 type LinkBytesSinkFn = Option<unsafe extern "C" fn(u32, *const u8, usize, *mut std::ffi::c_void)>;
-type LinkStateSinkFn = Option<unsafe extern "C" fn(u32, bool, *const c_char, *mut std::ffi::c_void)>;
+type LinkStateSinkFn =
+    Option<unsafe extern "C" fn(u32, bool, *const c_char, *mut std::ffi::c_void)>;
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qgc_core_set_link_bytes_sink(sink: LinkBytesSinkFn, user: *mut std::ffi::c_void) {
+pub unsafe extern "C" fn qgc_core_set_link_bytes_sink(
+    sink: LinkBytesSinkFn,
+    user: *mut std::ffi::c_void,
+) {
     let holder = WriterUser(user);
-    let boxed: Option<crate::linkhost::BytesSink> = sink.map(|f| std::sync::Arc::new(move |id: u32, bytes: &[u8]| unsafe { f(id, bytes.as_ptr(), bytes.len(), holder.ptr()) }) as crate::linkhost::BytesSink);
-    crate::linkhost::TRANSPORTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).set_bytes_sink(boxed);
+    let boxed: Option<crate::linkhost::BytesSink> = sink.map(|f| {
+        std::sync::Arc::new(move |id: u32, bytes: &[u8]| unsafe {
+            f(id, bytes.as_ptr(), bytes.len(), holder.ptr())
+        }) as crate::linkhost::BytesSink
+    });
+    crate::linkhost::TRANSPORTS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .set_bytes_sink(boxed);
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qgc_core_set_link_state_sink(sink: LinkStateSinkFn, user: *mut std::ffi::c_void) {
+pub unsafe extern "C" fn qgc_core_set_link_state_sink(
+    sink: LinkStateSinkFn,
+    user: *mut std::ffi::c_void,
+) {
     let holder = WriterUser(user);
     let boxed: Option<crate::linkhost::StateSink> = sink.map(|f| {
         std::sync::Arc::new(move |id: u32, open: bool, reason: &str| {
@@ -623,12 +870,18 @@ pub unsafe extern "C" fn qgc_core_set_link_state_sink(sink: LinkStateSinkFn, use
             unsafe { f(id, open, reason.as_ptr(), holder.ptr()) }
         }) as crate::linkhost::StateSink
     });
-    crate::linkhost::TRANSPORTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).set_state_sink(boxed);
+    crate::linkhost::TRANSPORTS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .set_state_sink(boxed);
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_core_link_announce_on_state() {
-    crate::linkhost::TRANSPORTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).set_state_hook(Some(std::sync::Arc::new(announce_transports)));
+    crate::linkhost::TRANSPORTS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .set_state_hook(Some(std::sync::Arc::new(announce_transports)));
 }
 
 static TILE_CACHE: std::sync::Mutex<Option<crate::tilecache::Cache>> = std::sync::Mutex::new(None);
@@ -651,8 +904,17 @@ pub extern "C" fn qgc_core_set_active_vehicle(id: i32) {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn qgc_core_set_vehicle_order(ids: *const i32, count: usize) {
-    let listed = if ids.is_null() { &[][..] } else { unsafe { std::slice::from_raw_parts(ids, count) } };
-    crate::hub::lock().set_listed(listed.iter().filter_map(|id| u8::try_from(*id).ok()).collect());
+    let listed = if ids.is_null() {
+        &[][..]
+    } else {
+        unsafe { std::slice::from_raw_parts(ids, count) }
+    };
+    crate::hub::lock().set_listed(
+        listed
+            .iter()
+            .filter_map(|id| u8::try_from(*id).ok())
+            .collect(),
+    );
 }
 
 #[unsafe(no_mangle)]
@@ -662,18 +924,41 @@ pub extern "C" fn qgc_core_owns_vehicle() -> bool {
 
 #[unsafe(no_mangle)]
 pub extern "C" fn qgc_core_set_selected_vehicles(ids: *const i32, count: usize) {
-    let selected = if ids.is_null() { &[][..] } else { unsafe { std::slice::from_raw_parts(ids, count) } };
-    crate::hub::lock().set_selected(selected.iter().filter_map(|id| u8::try_from(*id).ok()).collect());
+    let selected = if ids.is_null() {
+        &[][..]
+    } else {
+        unsafe { std::slice::from_raw_parts(ids, count) }
+    };
+    crate::hub::lock().set_selected(
+        selected
+            .iter()
+            .filter_map(|id| u8::try_from(*id).ok())
+            .collect(),
+    );
 }
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_core_gcs_position_source(token: *const c_char) {
-    let token = if token.is_null() { String::new() } else { unsafe { CStr::from_ptr(token) }.to_string_lossy().into_owned() };
+    let token = if token.is_null() {
+        String::new()
+    } else {
+        unsafe { CStr::from_ptr(token) }
+            .to_string_lossy()
+            .into_owned()
+    };
     crate::gcsposition::lock().host_source(crate::gcsposition::Source::from_token(&token));
 }
 
 #[unsafe(no_mangle)]
-pub extern "C" fn qgc_core_gcs_position_update(latitude: f64, longitude: f64, altitude: f64, horizontal_accuracy_m: f64, vertical_accuracy_m: f64, direction_deg: f64, direction_accuracy_deg: f64) {
+pub extern "C" fn qgc_core_gcs_position_update(
+    latitude: f64,
+    longitude: f64,
+    altitude: f64,
+    horizontal_accuracy_m: f64,
+    vertical_accuracy_m: f64,
+    direction_deg: f64,
+    direction_accuracy_deg: f64,
+) {
     let update = crate::gcsposition::Update {
         latitude: Some(latitude),
         longitude: Some(longitude),
@@ -700,7 +985,9 @@ pub extern "C" fn qgc_core_video_take_restart(channel: i32) -> bool {
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_core_set_map_cache_path(path: *const c_char) {
     let path = text(path);
-    crate::terrainservice::set_cache_path((!path.is_empty()).then(|| std::path::PathBuf::from(path)));
+    crate::terrainservice::set_cache_path(
+        (!path.is_empty()).then(|| std::path::PathBuf::from(path)),
+    );
 }
 
 #[unsafe(no_mangle)]
@@ -721,7 +1008,12 @@ pub unsafe extern "C" fn qgc_core_tile_close() {
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_core_tile_size(hash: *const c_char) -> i64 {
-    match TILE_CACHE.lock().unwrap().as_ref().map(|cache| cache.tile(&text(hash))) {
+    match TILE_CACHE
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|cache| cache.tile(&text(hash)))
+    {
         Some(Ok(Some(tile))) => tile.image.len() as i64,
         Some(Ok(None)) | None => -1,
         Some(Err(error)) => {
@@ -736,8 +1028,17 @@ pub unsafe extern "C" fn qgc_core_tile_size(hash: *const c_char) -> i64 {
 /// tile, -2 when the buffer is too small, and -3 when the database could not be read - which is a
 /// different fact from an absent tile and used to be reported as one.
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qgc_core_tile_copy(hash: *const c_char, into: *mut u8, capacity: i64) -> i64 {
-    let tile = match TILE_CACHE.lock().unwrap().as_ref().map(|cache| cache.tile(&text(hash))) {
+pub unsafe extern "C" fn qgc_core_tile_copy(
+    hash: *const c_char,
+    into: *mut u8,
+    capacity: i64,
+) -> i64 {
+    let tile = match TILE_CACHE
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|cache| cache.tile(&text(hash)))
+    {
         Some(Ok(Some(tile))) => tile,
         Some(Ok(None)) | None => return -1,
         Some(Err(error)) => {
@@ -761,5 +1062,3 @@ pub unsafe extern "C" fn qgc_core_tile_hash(provider: i32, x: i32, y: i32, z: i3
 pub unsafe extern "C" fn qgc_core_tile_provider(name: *const c_char) -> i32 {
     crate::tilecache::provider_hash(&text(name)).unwrap_or(0)
 }
-
-

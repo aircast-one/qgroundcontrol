@@ -3,7 +3,14 @@ use serde_json::{Value, json};
 use crate::read::flag;
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicle.autotune.autotuneInProgress", "vehicle.autotune.autotuneStatus", "vehicle.autotune.autotuneProgress", "vehicle.flying", "vehicle.landing", "vehicles.activeVehicleAvailable"];
+pub const DEPS: &[&str] = &[
+    "vehicle.autotune.autotuneInProgress",
+    "vehicle.autotune.autotuneStatus",
+    "vehicle.autotune.autotuneProgress",
+    "vehicle.flying",
+    "vehicle.landing",
+    "vehicles.activeVehicleAvailable",
+];
 
 pub const REQUEST: &str = "vehicle.autotune.autotuneRequest";
 pub const CMD_DO_AUTOTUNE_ENABLE: u16 = 212;
@@ -26,7 +33,12 @@ pub const NOT_PERFORMED: &str = "Autotune: Not performed";
 
 impl Default for Autotune {
     fn default() -> Self {
-        Autotune { in_progress: false, progress: 0.0, status: NOT_PERFORMED.to_string(), disarm_message_displayed: false }
+        Autotune {
+            in_progress: false,
+            progress: 0.0,
+            status: NOT_PERFORMED.to_string(),
+            disarm_message_displayed: false,
+        }
     }
 }
 
@@ -70,7 +82,11 @@ impl Autotune {
             WAIT_FOR_DISARM => {
                 let first = !self.disarm_message_displayed;
                 self.disarm_message_displayed = true;
-                ("Wait for disarm", first.then_some("Land and disarm the vehicle in order to apply the parameters."))
+                (
+                    "Wait for disarm",
+                    first
+                        .then_some("Land and disarm the vehicle in order to apply the parameters."),
+                )
             }
             p if p < DONE => ("Autotune: in progress", None),
             p => {
@@ -96,10 +112,20 @@ pub fn blocked_reason(in_progress: bool, landing: bool, flying: bool) -> &'stati
 }
 
 pub fn autotune_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let connected = flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable");
+    let connected = flag(
+        &backend.value_fields("vehicles", "activeVehicleAvailable"),
+        "activeVehicleAvailable",
+    );
     let vehicle = backend.value_fields("vehicle", "flying,landing");
-    let tune = backend.value_fields("vehicle.autotune", "autotuneInProgress,autotuneStatus,autotuneProgress");
-    let (flying, landing, in_progress) = (flag(&vehicle, "flying"), flag(&vehicle, "landing"), flag(&tune, "autotuneInProgress"));
+    let tune = backend.value_fields(
+        "vehicle.autotune",
+        "autotuneInProgress,autotuneStatus,autotuneProgress",
+    );
+    let (flying, landing, in_progress) = (
+        flag(&vehicle, "flying"),
+        flag(&vehicle, "landing"),
+        flag(&tune, "autotuneInProgress"),
+    );
     let blocked = blocked_reason(in_progress, landing, flying);
     json!({
         "kind": "object",
@@ -114,7 +140,13 @@ pub fn autotune_view(backend: &dyn Backend, _args: &[String]) -> Value {
 }
 
 pub fn request(backend: &dyn Backend) -> Value {
-    crate::guided::dispatch(backend, Some(json!({ "action": "autotune" })), crate::guided::active_id(backend), REQUEST, "[]")
+    crate::guided::dispatch(
+        backend,
+        Some(json!({ "action": "autotune" })),
+        crate::guided::active_id(backend),
+        REQUEST,
+        "[]",
+    )
 }
 
 #[cfg(test)]
@@ -124,19 +156,39 @@ mod tests {
     #[test]
     fn progress_names_the_axis_being_tuned_and_success_ends_it() {
         let mut tune = Autotune::default();
-        assert_eq!(tune.on_ack(RESULT_IN_PROGRESS, 30), None, "nothing is followed until a request");
+        assert_eq!(
+            tune.on_ack(RESULT_IN_PROGRESS, 30),
+            None,
+            "nothing is followed until a request"
+        );
         tune.request();
         assert_eq!(tune.status, "Autotune: In progress");
-        [(10, "Autotune: initializing"), (30, "Autotune: roll"), (50, "Autotune: pitch"), (70, "Autotune: yaw"), (85, "Autotune: in progress")]
-            .iter()
-            .for_each(|(p, s)| {
-                tune.on_ack(RESULT_IN_PROGRESS, *p);
-                assert_eq!(tune.status, *s);
-            });
-        assert_eq!(tune.on_ack(RESULT_IN_PROGRESS, 95), Some("Land and disarm the vehicle in order to apply the parameters."));
-        assert_eq!(tune.on_ack(RESULT_IN_PROGRESS, 95), None, "the disarm message is shown once");
+        [
+            (10, "Autotune: initializing"),
+            (30, "Autotune: roll"),
+            (50, "Autotune: pitch"),
+            (70, "Autotune: yaw"),
+            (85, "Autotune: in progress"),
+        ]
+        .iter()
+        .for_each(|(p, s)| {
+            tune.on_ack(RESULT_IN_PROGRESS, *p);
+            assert_eq!(tune.status, *s);
+        });
+        assert_eq!(
+            tune.on_ack(RESULT_IN_PROGRESS, 95),
+            Some("Land and disarm the vehicle in order to apply the parameters.")
+        );
+        assert_eq!(
+            tune.on_ack(RESULT_IN_PROGRESS, 95),
+            None,
+            "the disarm message is shown once"
+        );
         assert_eq!(tune.status, "Wait for disarm");
-        assert_eq!(tune.on_ack(RESULT_ACCEPTED, 100), Some("Autotune successful."));
+        assert_eq!(
+            tune.on_ack(RESULT_ACCEPTED, 100),
+            Some("Autotune successful.")
+        );
         assert!(!tune.in_progress);
         assert_eq!(tune.progress, 1.0);
     }
@@ -146,12 +198,18 @@ mod tests {
         let mut failed = Autotune::default();
         failed.request();
         failed.on_ack(RESULT_FAILED, 0);
-        assert_eq!((failed.in_progress, failed.status.as_str()), (false, "Autotune: Failed"));
+        assert_eq!(
+            (failed.in_progress, failed.status.as_str()),
+            (false, "Autotune: Failed")
+        );
         let mut denied = Autotune::default();
         denied.request();
         denied.on_ack(2, 0);
         assert_eq!(denied.status, "Autotune: Ack error 2");
-        assert_eq!(blocked_reason(false, false, false), "Take off first - auto-tuning runs in flight");
+        assert_eq!(
+            blocked_reason(false, false, false),
+            "Take off first - auto-tuning runs in flight"
+        );
         assert_eq!(blocked_reason(false, true, true), "Not while landing");
         assert_eq!(blocked_reason(true, true, false), "");
     }

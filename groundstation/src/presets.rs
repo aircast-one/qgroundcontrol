@@ -10,7 +10,12 @@ pub const DELETE_PRESET: &str = "core.plan.deletePreset";
 const PRESETS_KEY: &str = "_presets";
 const TRANSECT: &str = "TransectStyleComplexItem";
 const GENERATED: [&str; 2] = ["Items", "VisualTransectPoints"];
-const SURVEY_KEYS: [&str; 4] = ["angle", "flyAlternateTransects", "splitConcavePolygons", "entryLocation"];
+const SURVEY_KEYS: [&str; 4] = [
+    "angle",
+    "flyAlternateTransects",
+    "splitConcavePolygons",
+    "entryLocation",
+];
 const CORRIDOR_KEYS: [&str; 2] = ["CorridorWidth", "EntryPoint"];
 
 pub fn settings_group(kind: &str) -> Option<&'static str> {
@@ -26,17 +31,24 @@ fn group_of(kind: &str) -> Option<String> {
 }
 
 pub fn names(kind: &str) -> Vec<String> {
-    let Some(group) = group_of(kind) else { return Vec::new() };
+    let Some(group) = group_of(kind) else {
+        return Vec::new();
+    };
     let prefix = format!("{group}/");
-    crate::settingsstore::entries_under(&group).keys().filter_map(|key| key.strip_prefix(&prefix).map(str::to_string)).collect()
+    crate::settingsstore::entries_under(&group)
+        .keys()
+        .filter_map(|key| key.strip_prefix(&prefix).map(str::to_string))
+        .collect()
 }
 
 pub fn preset_of(item: &Value) -> Value {
     let mut preset = item.clone();
     if let Some(object) = preset.as_object_mut() {
-        ["polygon", "polyline", "coordinate"].iter().for_each(|key| {
-            object.remove(*key);
-        });
+        ["polygon", "polyline", "coordinate"]
+            .iter()
+            .for_each(|key| {
+                object.remove(*key);
+            });
     }
     if let Some(transect) = preset.get_mut(TRANSECT).and_then(Value::as_object_mut) {
         GENERATED.iter().for_each(|key| {
@@ -48,13 +60,23 @@ pub fn preset_of(item: &Value) -> Value {
 
 pub fn applied(item: &Value, preset: &Value, kind: &str) -> Value {
     let mut changed = item.clone();
-    let kept: Vec<(&str, Value)> = GENERATED.iter().filter_map(|key| item.get(TRANSECT)?.get(*key).cloned().map(|v| (*key, v))).collect();
+    let kept: Vec<(&str, Value)> = GENERATED
+        .iter()
+        .filter_map(|key| item.get(TRANSECT)?.get(*key).cloned().map(|v| (*key, v)))
+        .collect();
     if let Some(transect) = preset.get(TRANSECT) {
         changed[TRANSECT] = transect.clone();
-        kept.into_iter().for_each(|(key, value)| changed[TRANSECT][key] = value);
+        kept.into_iter()
+            .for_each(|(key, value)| changed[TRANSECT][key] = value);
     }
-    let own: &[&str] = if kind == "CorridorScan" { &CORRIDOR_KEYS } else { &SURVEY_KEYS };
-    own.iter().filter_map(|key| preset.get(*key).map(|value| (*key, value.clone()))).for_each(|(key, value)| changed[key] = value);
+    let own: &[&str] = if kind == "CorridorScan" {
+        &CORRIDOR_KEYS
+    } else {
+        &SURVEY_KEYS
+    };
+    own.iter()
+        .filter_map(|key| preset.get(*key).map(|value| (*key, value.clone())))
+        .for_each(|(key, value)| changed[key] = value);
     crate::surveydoc::regenerate_item(&changed)
 }
 
@@ -75,7 +97,13 @@ fn complex_at(doc: &plandoc::Document, index: usize) -> Option<(String, Value)> 
 
 pub fn run(path: &str, args: &str) -> Value {
     let given = serde_json::from_str::<Vec<Value>>(args).unwrap_or_default();
-    let text = |at: usize| given.get(at).and_then(Value::as_str).unwrap_or_default().to_string();
+    let text = |at: usize| {
+        given
+            .get(at)
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    };
     match path {
         DELETE_PRESET => match group_of(&text(0)).filter(|_| valid_name(&text(1))) {
             Some(group) => {
@@ -85,25 +113,61 @@ pub fn run(path: &str, args: &str) -> Value {
             None => refused("Delete preset takes a pattern kind and a preset name."),
         },
         _ => {
-            let (Some(index), name) = (given.first().and_then(Value::as_u64).and_then(|i| usize::try_from(i).ok()), text(1)) else { return refused("Presets need the item index and a preset name.") };
+            let (Some(index), name) = (
+                given
+                    .first()
+                    .and_then(Value::as_u64)
+                    .and_then(|i| usize::try_from(i).ok()),
+                text(1),
+            ) else {
+                return refused("Presets need the item index and a preset name.");
+            };
             if !valid_name(&name) {
                 return refused("Enter a preset name without '/'.");
             }
             if path == SAVE_PRESET {
-                let Some((kind, item)) = complex_at(&crate::coreplan::current_document(), index) else { return refused("That item is not a pattern.") };
-                let Some(group) = group_of(&kind) else { return refused("This Pattern does not support Presets.") };
-                crate::settingsstore::written(&format!("{group}/{name}"), &preset_of(&item).to_string());
+                let Some((kind, item)) = complex_at(&crate::coreplan::current_document(), index)
+                else {
+                    return refused("That item is not a pattern.");
+                };
+                let Some(group) = group_of(&kind) else {
+                    return refused("This Pattern does not support Presets.");
+                };
+                crate::settingsstore::written(
+                    &format!("{group}/{name}"),
+                    &preset_of(&item).to_string(),
+                );
                 return json!({ "ok": true });
             }
             crate::coreplan::apply(|doc| {
                 let (kind, item) = complex_at(doc, index).ok_or("That item is not a pattern.")?;
                 let group = group_of(&kind).ok_or("This Pattern does not support Presets.")?;
                 let key = format!("{group}/{name}");
-                let preset: Value = crate::settingsstore::stored_text(&key).and_then(|t| serde_json::from_str(&t).ok()).ok_or("That preset no longer exists.")?;
+                let preset: Value = crate::settingsstore::stored_text(&key)
+                    .and_then(|t| serde_json::from_str(&t).ok())
+                    .ok_or("That preset no longer exists.")?;
                 let changed = applied(&item, &preset, &kind);
                 let item_count = plandoc::complex_count(&kind, &changed).unwrap_or(0);
                 let at = index - 1;
-                Ok(plandoc::Document { items: doc.items.iter().enumerate().map(|(k, it)| if k == at { Item::Complex { kind: kind.clone(), json: changed.clone(), item_count } } else { it.clone() }).collect(), ..doc.clone() })
+                Ok(plandoc::Document {
+                    items: doc
+                        .items
+                        .iter()
+                        .enumerate()
+                        .map(|(k, it)| {
+                            if k == at {
+                                Item::Complex {
+                                    kind: kind.clone(),
+                                    json: changed.clone(),
+                                    item_count,
+                                }
+                            } else {
+                                it.clone()
+                            }
+                        })
+                        .collect(),
+                    ..doc.clone()
+                })
             })
         }
     }
@@ -136,15 +200,36 @@ mod tests {
         let item = json!({ "complexItemType": "CorridorScan", "polyline": [[47.0, 8.0], [47.001, 8.0]], "CorridorWidth": 50, "EntryPoint": 0, "TransectStyleComplexItem": { "CameraCalc": { "DistanceToSurface": 40, "AdjustedFootprintSide": 20, "AdjustedFootprintFrontal": 20 }, "TurnAroundDistance": 10 } });
         let preset = json!({ "complexItemType": "CorridorScan", "CorridorWidth": 80, "EntryPoint": 1, "TransectStyleComplexItem": { "CameraCalc": { "DistanceToSurface": 120, "AdjustedFootprintSide": 20, "AdjustedFootprintFrontal": 20 }, "TurnAroundDistance": 0 } });
         let changed = applied(&item, &preset, "CorridorScan");
-        assert_eq!(changed["polyline"], item["polyline"], "QGC loads a preset without touching the corridor polyline");
-        assert_eq!((changed["CorridorWidth"].as_f64(), changed["EntryPoint"].as_i64()), (Some(80.0), Some(1)));
+        assert_eq!(
+            changed["polyline"], item["polyline"],
+            "QGC loads a preset without touching the corridor polyline"
+        );
+        assert_eq!(
+            (
+                changed["CorridorWidth"].as_f64(),
+                changed["EntryPoint"].as_i64()
+            ),
+            (Some(80.0), Some(1))
+        );
         assert_eq!(changed[TRANSECT]["CameraCalc"]["DistanceToSurface"], 120);
-        assert!(changed[TRANSECT]["Items"].as_array().is_some_and(|items| !items.is_empty()), "the transects are rebuilt for the new settings");
+        assert!(
+            changed[TRANSECT]["Items"]
+                .as_array()
+                .is_some_and(|items| !items.is_empty()),
+            "the transects are rebuilt for the new settings"
+        );
     }
 
     #[test]
     fn only_surveys_and_corridors_have_presets() {
-        assert_eq!((settings_group("survey"), settings_group("CorridorScan"), settings_group("StructureScan")), (Some("Survey"), Some("CorridorScan"), None));
+        assert_eq!(
+            (
+                settings_group("survey"),
+                settings_group("CorridorScan"),
+                settings_group("StructureScan")
+            ),
+            (Some("Survey"), Some("CorridorScan"), None)
+        );
         assert!(!valid_name("a/b") && !valid_name(" ") && valid_name("Mapping 80m"));
     }
 }

@@ -46,7 +46,16 @@ pub const DEPS: &[&str] = &[
 ];
 
 pub const SLOTS: usize = 6;
-const PX4_SWITCHES: [(&str, &str); 8] = [("RC_MAP_ARM_SW", "RC_ARMSWITCH_TH"), ("RC_MAP_GEAR_SW", "RC_GEAR_TH"), ("RC_MAP_KILL_SW", "RC_KILLSWITCH_TH"), ("RC_MAP_LOITER_SW", "RC_LOITER_TH"), ("RC_MAP_OFFB_SW", "RC_OFFB_TH"), ("RC_MAP_RETURN_SW", "RC_RETURN_TH"), ("RC_MAP_TRANS_SW", "RC_TRANS_TH"), ("RC_MAP_FLAPS", "")];
+const PX4_SWITCHES: [(&str, &str); 8] = [
+    ("RC_MAP_ARM_SW", "RC_ARMSWITCH_TH"),
+    ("RC_MAP_GEAR_SW", "RC_GEAR_TH"),
+    ("RC_MAP_KILL_SW", "RC_KILLSWITCH_TH"),
+    ("RC_MAP_LOITER_SW", "RC_LOITER_TH"),
+    ("RC_MAP_OFFB_SW", "RC_OFFB_TH"),
+    ("RC_MAP_RETURN_SW", "RC_RETURN_TH"),
+    ("RC_MAP_TRANS_SW", "RC_TRANS_TH"),
+    ("RC_MAP_FLAPS", ""),
+];
 const DEFAULT_SWITCH_THRESHOLD: f64 = 0.5;
 
 pub fn switch_active(pwm: Option<i64>, threshold: f64) -> bool {
@@ -66,7 +75,11 @@ pub fn slot_for(pwm: Option<i64>) -> usize {
     match pwm {
         None => 0,
         Some(NO_RC) => 0,
-        Some(value) => THRESHOLDS.iter().position(|threshold| value <= *threshold).map(|index| index + 1).unwrap_or(SLOTS),
+        Some(value) => THRESHOLDS
+            .iter()
+            .position(|threshold| value <= *threshold)
+            .map(|index| index + 1)
+            .unwrap_or(SLOTS),
     }
 }
 
@@ -83,7 +96,9 @@ pub struct Calibration {
 }
 
 pub fn px4_slot(pwm: Option<i64>, cal: Calibration) -> usize {
-    let Some(value) = pwm.filter(|v| *v != NO_RC) else { return 0 };
+    let Some(value) = pwm.filter(|v| *v != NO_RC) else {
+        return 0;
+    };
     let (value, trim) = (value as f32, cal.trim as f32);
     let slots = SLOTS as f32;
     let slot_width_half = 2.0 / slots / 2.0;
@@ -93,12 +108,16 @@ pub fn px4_slot(pwm: Option<i64>, cal: Calibration) -> usize {
         v if v < trim => (v - trim) / (trim - cal.min as f32),
         _ => 0.0,
     } * if cal.reversed { -1.0 } else { 1.0 };
-    let index = ((((calibrated - slot_min) * slots) + slot_width_half) / (slot_max - slot_min) + (1.0 / slots)) as i64;
+    let index = ((((calibrated - slot_min) * slots) + slot_width_half) / (slot_max - slot_min)
+        + (1.0 / slots)) as i64;
     index.clamp(0, SLOTS as i64 - 1) as usize + 1
 }
 
 fn names(backend: &dyn Backend) -> (&'static str, &'static str) {
-    match (exists(backend, "RC_MAP_FLTMODE"), exists(backend, "MODE_CH")) {
+    match (
+        exists(backend, "RC_MAP_FLTMODE"),
+        exists(backend, "MODE_CH"),
+    ) {
         (true, _) => ("RC_MAP_FLTMODE", "COM_FLTMODE"),
         (false, true) => ("MODE_CH", "MODE"),
         (false, false) => ("FLTMODE_CH", "FLTMODE"),
@@ -107,19 +126,34 @@ fn names(backend: &dyn Backend) -> (&'static str, &'static str) {
 
 fn px4_calibration(backend: &dyn Backend, channel: i64) -> Option<Calibration> {
     let read = |what: &str| parameter(backend, &format!("RC{channel}_{what}"));
-    Some(Calibration { min: read("MIN")?, max: read("MAX")?, trim: read("TRIM")?, reversed: read("REV")? < 0.0 })
+    Some(Calibration {
+        min: read("MIN")?,
+        max: read("MAX")?,
+        trim: read("TRIM")?,
+        reversed: read("REV")? < 0.0,
+    })
 }
 
 fn exists(backend: &dyn Backend, name: &str) -> bool {
-    result_flag(&backend.invoke("vehicle.parameterManager.parameterExists", &json!([-1, name]).to_string()))
+    result_flag(&backend.invoke(
+        "vehicle.parameterManager.parameterExists",
+        &json!([-1, name]).to_string(),
+    ))
 }
 
 fn parameter(backend: &dyn Backend, name: &str) -> Option<f64> {
-    exists(backend, name).then(|| value_number(&backend.value(&format!("vehicle.parameterManager.getParameter(-1,{name}).rawValue")))).flatten()
+    exists(backend, name)
+        .then(|| {
+            value_number(&backend.value(&format!(
+                "vehicle.parameterManager.getParameter(-1,{name}).rawValue"
+            )))
+        })
+        .flatten()
 }
 
 fn switch_label(backend: &dyn Backend, name: &str) -> String {
-    backend.value(&format!("vehicle.parameterManager.getParameter(-1,{name})"))
+    backend
+        .value(&format!("vehicle.parameterManager.getParameter(-1,{name})"))
         .get("shortDescription")
         .and_then(Value::as_str)
         .filter(|label| !label.is_empty())
@@ -129,7 +163,11 @@ fn switch_label(backend: &dyn Backend, name: &str) -> String {
 fn parameter_text(backend: &dyn Backend, name: &str) -> Option<String> {
     let fact = backend.value(&format!("vehicle.parameterManager.getParameter(-1,{name})"));
     match fact.get("kind").and_then(Value::as_str) == Some("fact") {
-        true => fact.get("enumOrValueString").and_then(Value::as_str).filter(|mode| !mode.is_empty()).map(str::to_string),
+        true => fact
+            .get("enumOrValueString")
+            .and_then(Value::as_str)
+            .filter(|mode| !mode.is_empty())
+            .map(str::to_string),
         false => None,
     }
 }
@@ -144,13 +182,21 @@ pub fn slots_view(backend: &dyn Backend, _args: &[String]) -> Value {
         return json!({ "kind": "object", "class": "ModeSlots", "available": false, "slots": [], "liveSlot": 0, "channel": 0, "reason": "This vehicle does not choose its flight modes from a transmitter channel." });
     }
 
-    let channel_index = parameter(backend, channel_name).map(|value| value as i64 - 1).unwrap_or(DEFAULT_CHANNEL_INDEX);
+    let channel_index = parameter(backend, channel_name)
+        .map(|value| value as i64 - 1)
+        .unwrap_or(DEFAULT_CHANNEL_INDEX);
     let radio = backend.value_fields("radioCal", "rcValues");
-    let pwm: Vec<i64> = radio.get("rcValues").and_then(Value::as_array).map(|values| values.iter().filter_map(Value::as_i64).collect()).unwrap_or_default();
+    let pwm: Vec<i64> = radio
+        .get("rcValues")
+        .and_then(Value::as_array)
+        .map(|values| values.iter().filter_map(Value::as_i64).collect())
+        .unwrap_or_default();
     let reachable = channel_index >= 0 && (channel_index as usize) < pwm.len();
     let live = match (reachable, channel_name) {
         (false, _) => 0,
-        (true, "RC_MAP_FLTMODE") => px4_calibration(backend, channel_index + 1).map_or(0, |cal| px4_slot(pwm.get(channel_index as usize).copied(), cal)),
+        (true, "RC_MAP_FLTMODE") => px4_calibration(backend, channel_index + 1).map_or(0, |cal| {
+            px4_slot(pwm.get(channel_index as usize).copied(), cal)
+        }),
         (true, _) => slot_for(pwm.get(channel_index as usize).copied()),
     };
 
@@ -174,20 +220,35 @@ pub fn slots_view(backend: &dyn Backend, _args: &[String]) -> Value {
             .iter()
             .filter(|(switch, _)| exists(backend, switch))
             .filter(|(switch, threshold)| {
-                let th = (!threshold.is_empty()).then(|| parameter(backend, threshold)).flatten().unwrap_or(DEFAULT_SWITCH_THRESHOLD);
-                let pwm_at = parameter(backend, switch).and_then(|ch| usize::try_from(ch as i64 - 1).ok()).and_then(|i| pwm.get(i).copied());
+                let th = (!threshold.is_empty())
+                    .then(|| parameter(backend, threshold))
+                    .flatten()
+                    .unwrap_or(DEFAULT_SWITCH_THRESHOLD);
+                let pwm_at = parameter(backend, switch)
+                    .and_then(|ch| usize::try_from(ch as i64 - 1).ok())
+                    .and_then(|i| pwm.get(i).copied());
                 switch_active(pwm_at, th)
             })
             .map(|(switch, _)| *switch)
             .collect(),
         _ => Vec::new(),
     };
-    let active_switches: Vec<String> = raised.iter().map(|switch| switch_label(backend, switch)).collect();
+    let active_switches: Vec<String> = raised
+        .iter()
+        .map(|switch| switch_label(backend, switch))
+        .collect();
     let switch_params: Vec<String> = match channel_name {
         "RC_MAP_FLTMODE" => raised.iter().map(|switch| switch.to_string()).collect(),
-        _ => (0..CHANNEL_OPTIONS).filter(|index| option_enabled(pwm.get(index + 5).copied())).map(|index| format!("RC{}_OPTION", index + 6)).collect(),
+        _ => (0..CHANNEL_OPTIONS)
+            .filter(|index| option_enabled(pwm.get(index + 5).copied()))
+            .map(|index| format!("RC{}_OPTION", index + 6))
+            .collect(),
     };
-    let active_params: Vec<String> = (live > 0).then(|| format!("{slot_prefix}{live}")).into_iter().chain(switch_params).collect();
+    let active_params: Vec<String> = (live > 0)
+        .then(|| format!("{slot_prefix}{live}"))
+        .into_iter()
+        .chain(switch_params)
+        .collect();
     json!({
         "kind": "object",
         "class": "ModeSlots",
@@ -216,45 +277,96 @@ mod tests {
     #[test]
     fn a_px4_switch_is_on_past_its_threshold_like_px4_flight_modes() {
         assert!(switch_active(Some(1600), 0.5));
-        assert!(!switch_active(Some(1500), 0.5), "exactly at the threshold is off");
-        assert!(switch_active(Some(700), -0.25), "a negative threshold inverts, with the point taken as QGC computes it: 1000 + 1000 * -0.25 = 750");
+        assert!(
+            !switch_active(Some(1500), 0.5),
+            "exactly at the threshold is off"
+        );
+        assert!(
+            switch_active(Some(700), -0.25),
+            "a negative threshold inverts, with the point taken as QGC computes it: 1000 + 1000 * -0.25 = 750"
+        );
         assert!(!switch_active(Some(1200), -0.25));
         assert!(!switch_active(None, 0.5), "no reading, no highlight");
     }
 
     #[test]
     fn a_pwm_falls_into_the_slot_the_vehicle_would_pick() {
-        assert_eq!(slot_for(Some(1000)), 1, "anything at or below the first threshold is the first slot");
-        assert_eq!(slot_for(Some(1230)), 1, "the threshold belongs to the slot below it");
+        assert_eq!(
+            slot_for(Some(1000)),
+            1,
+            "anything at or below the first threshold is the first slot"
+        );
+        assert_eq!(
+            slot_for(Some(1230)),
+            1,
+            "the threshold belongs to the slot below it"
+        );
         assert_eq!(slot_for(Some(1231)), 2);
         assert_eq!(slot_for(Some(1360)), 2);
         assert_eq!(slot_for(Some(1490)), 3);
         assert_eq!(slot_for(Some(1620)), 4);
         assert_eq!(slot_for(Some(1749)), 5);
-        assert_eq!(slot_for(Some(1750)), 6, "above every threshold is the last slot rather than none");
+        assert_eq!(
+            slot_for(Some(1750)),
+            6,
+            "above every threshold is the last slot rather than none"
+        );
         assert_eq!(slot_for(Some(2000)), 6);
     }
 
     #[test]
     fn px4_normalises_around_trim_into_six_slots_as_px4_simple_flight_modes_controller_does() {
-        let cal = Calibration { min: 1000.0, max: 2000.0, trim: 1500.0, reversed: false };
-        let slots: Vec<usize> = [1000, 1150, 1300, 1450, 1500, 1600, 1750, 1900, 2000].iter().map(|pwm| px4_slot(Some(*pwm), cal)).collect();
-        assert_eq!(slots, [1, 2, 3, 3, 4, 4, 5, 6, 6], "1150 normalises to -0.7, which the slot formula floors into slot 2");
-        assert_eq!(px4_slot(Some(1000), Calibration { reversed: true, ..cal }), 6, "RCn_REV flips the channel");
+        let cal = Calibration {
+            min: 1000.0,
+            max: 2000.0,
+            trim: 1500.0,
+            reversed: false,
+        };
+        let slots: Vec<usize> = [1000, 1150, 1300, 1450, 1500, 1600, 1750, 1900, 2000]
+            .iter()
+            .map(|pwm| px4_slot(Some(*pwm), cal))
+            .collect();
+        assert_eq!(
+            slots,
+            [1, 2, 3, 3, 4, 4, 5, 6, 6],
+            "1150 normalises to -0.7, which the slot formula floors into slot 2"
+        );
+        assert_eq!(
+            px4_slot(
+                Some(1000),
+                Calibration {
+                    reversed: true,
+                    ..cal
+                }
+            ),
+            6,
+            "RCn_REV flips the channel"
+        );
         assert_eq!(px4_slot(Some(-1), cal), 0);
         assert_eq!(px4_slot(None, cal), 0);
     }
 
     #[test]
     fn a_channel_with_no_transmitter_selects_nothing() {
-        assert_eq!(slot_for(Some(-1)), 0, "minus one is the value a channel carries when nothing is transmitting on it");
+        assert_eq!(
+            slot_for(Some(-1)),
+            0,
+            "minus one is the value a channel carries when nothing is transmitting on it"
+        );
         assert_eq!(slot_for(None), 0);
-        assert_eq!(slot_for(Some(0)), 1, "zero is a real reading and falls in the first band, which is not the same as no reading");
+        assert_eq!(
+            slot_for(Some(0)),
+            1,
+            "zero is a real reading and falls in the first band, which is not the same as no reading"
+        );
     }
 
     #[test]
     fn a_channel_option_turns_on_above_its_threshold() {
-        assert!(!option_enabled(Some(1800)), "the threshold itself is not above it");
+        assert!(
+            !option_enabled(Some(1800)),
+            "the threshold itself is not above it"
+        );
         assert!(option_enabled(Some(1801)));
         assert!(!option_enabled(Some(-1)));
         assert!(!option_enabled(None));
@@ -290,7 +402,9 @@ mod tests {
                 _ => json!({ "kind": "null" }).to_string(),
             }
         }
-        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
         fn invoke(&self, path: &str, args: &str) -> String {
             if path != "vehicle.parameterManager.parameterExists" {
                 return String::new();
@@ -303,22 +417,42 @@ mod tests {
     }
 
     fn channels(mode_pwm: i64, channel: usize) -> Vec<i64> {
-        (0..8).map(|index| if index == channel { mode_pwm } else { 1500 }).collect()
+        (0..8)
+            .map(|index| if index == channel { mode_pwm } else { 1500 })
+            .collect()
     }
 
     fn copter(channel: f64, pwm: Vec<i64>) -> Fake {
-        let slots = (1..=SLOTS).map(|slot| (format!("FLTMODE{slot}"), slot as f64, format!("Mode {slot}")));
-        Fake { parameters: std::iter::once(("FLTMODE_CH".to_string(), channel, String::new())).chain(slots).collect(), pwm }
+        let slots = (1..=SLOTS).map(|slot| {
+            (
+                format!("FLTMODE{slot}"),
+                slot as f64,
+                format!("Mode {slot}"),
+            )
+        });
+        Fake {
+            parameters: std::iter::once(("FLTMODE_CH".to_string(), channel, String::new()))
+                .chain(slots)
+                .collect(),
+            pwm,
+        }
     }
 
     #[test]
     fn the_live_slot_is_marked_on_the_slot_the_transmitter_selects() {
         let view = slots_view(&copter(5.0, channels(1500, 4)), &[]);
         assert_eq!(view["channel"], 5);
-        assert_eq!(view["liveSlot"], 4, "fifteen hundred sits in the fourth band");
+        assert_eq!(
+            view["liveSlot"], 4,
+            "fifteen hundred sits in the fourth band"
+        );
         let slots = view["slots"].as_array().unwrap();
         assert_eq!(slots.len(), SLOTS);
-        assert_eq!(slots.iter().filter(|slot| slot["live"] == true).count(), 1, "exactly one slot is live, which is the whole question the screen exists to answer");
+        assert_eq!(
+            slots.iter().filter(|slot| slot["live"] == true).count(),
+            1,
+            "exactly one slot is live, which is the whole question the screen exists to answer"
+        );
         assert_eq!(slots[3]["live"], true);
         assert_eq!(slots[3]["mode"], "Mode 4");
     }
@@ -328,7 +462,11 @@ mod tests {
         let mut pwm = channels(1500, 4);
         pwm[6] = 1900;
         let view = slots_view(&copter(5.0, pwm), &[]);
-        assert_eq!(view["activeParams"], json!(["FLTMODE4", "RC7_OPTION"]), "APMFlightModesComponent paints the active slot and each enabled channel option yellow");
+        assert_eq!(
+            view["activeParams"],
+            json!(["FLTMODE4", "RC7_OPTION"]),
+            "APMFlightModesComponent paints the active slot and each enabled channel option yellow"
+        );
         let off = slots_view(&copter(12.0, channels(1500, 4)), &[]);
         assert_eq!(off["activeParams"], json!([]));
     }
@@ -337,51 +475,100 @@ mod tests {
     fn the_channel_the_vehicle_names_is_the_channel_that_is_read() {
         let view = slots_view(&copter(7.0, channels(1200, 6)), &[]);
         assert_eq!(view["channel"], 7);
-        assert_eq!(view["liveSlot"], 1, "twelve hundred on channel seven is the first slot");
+        assert_eq!(
+            view["liveSlot"], 1,
+            "twelve hundred on channel seven is the first slot"
+        );
         assert_eq!(view["channelPwm"], 1200);
     }
 
     #[test]
     fn a_vehicle_with_no_mode_channel_parameter_falls_back_to_channel_five() {
         let mut without = copter(5.0, channels(1200, 4));
-        without.parameters.retain(|(name, _, _)| name != "FLTMODE_CH");
+        without
+            .parameters
+            .retain(|(name, _, _)| name != "FLTMODE_CH");
         let view = slots_view(&without, &[]);
-        assert_eq!(view["channel"], 5, "the Qt controller defaults to the fifth channel when the parameter is absent, and a head must not guess differently");
+        assert_eq!(
+            view["channel"], 5,
+            "the Qt controller defaults to the fifth channel when the parameter is absent, and a head must not guess differently"
+        );
         assert_eq!(view["liveSlot"], 1);
     }
 
     #[test]
     fn a_rover_reads_its_own_parameter_names() {
-        let slots = (1..=SLOTS).map(|slot| (format!("MODE{slot}"), slot as f64, format!("Rover mode {slot}")));
+        let slots = (1..=SLOTS).map(|slot| {
+            (
+                format!("MODE{slot}"),
+                slot as f64,
+                format!("Rover mode {slot}"),
+            )
+        });
         let rover = Fake {
-            parameters: std::iter::once(("MODE_CH".to_string(), 5.0, String::new())).chain(slots).collect(),
+            parameters: std::iter::once(("MODE_CH".to_string(), 5.0, String::new()))
+                .chain(slots)
+                .collect(),
             pwm: channels(1500, 4),
         };
         let view = slots_view(&rover, &[]);
-        assert_eq!(view["slots"][0]["mode"], "Rover mode 1", "a rover names its slots MODE1 to MODE6, and which names to read is decided by which the vehicle has rather than by its type");
+        assert_eq!(
+            view["slots"][0]["mode"], "Rover mode 1",
+            "a rover names its slots MODE1 to MODE6, and which names to read is decided by which the vehicle has rather than by its type"
+        );
         assert_eq!(view["liveSlot"], 4);
     }
 
     #[test]
     fn a_vehicle_that_chooses_no_modes_from_a_channel_says_so() {
-        let bare = Fake { parameters: Vec::new(), pwm: channels(1500, 4) };
+        let bare = Fake {
+            parameters: Vec::new(),
+            pwm: channels(1500, 4),
+        };
         let view = slots_view(&bare, &[]);
-        assert_eq!(view["available"], false, "a vehicle with no slot parameters at all has no slots to show, and six empty rows would be a lie");
-        assert!(view["reason"].as_str().unwrap().contains("transmitter channel"));
+        assert_eq!(
+            view["available"], false,
+            "a vehicle with no slot parameters at all has no slots to show, and six empty rows would be a lie"
+        );
+        assert!(
+            view["reason"]
+                .as_str()
+                .unwrap()
+                .contains("transmitter channel")
+        );
     }
 
     #[test]
     fn a_mode_channel_past_the_last_one_the_transmitter_sends_selects_nothing() {
         let view = slots_view(&copter(12.0, channels(1500, 4)), &[]);
         assert_eq!(view["liveSlot"], 0);
-        assert_eq!(view["channelPwm"], Value::Null, "there is no reading for a channel that is not being received");
-        assert!(view["slots"].as_array().unwrap().iter().all(|slot| slot["live"] == false), "no slot may be marked live when the channel carrying the selection is not being received");
+        assert_eq!(
+            view["channelPwm"],
+            Value::Null,
+            "there is no reading for a channel that is not being received"
+        );
+        assert!(
+            view["slots"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|slot| slot["live"] == false),
+            "no slot may be marked live when the channel carrying the selection is not being received"
+        );
         assert!(view["reason"].as_str().unwrap().contains("not sending"));
 
         let below = slots_view(&copter(0.0, channels(1500, 8)), &[]);
-        assert_eq!(below["channelPwm"], Value::Null, "a mode channel of zero names no channel, so there is no reading rather than the last one");
+        assert_eq!(
+            below["channelPwm"],
+            Value::Null,
+            "a mode channel of zero names no channel, so there is no reading rather than the last one"
+        );
         assert_eq!(below["liveSlot"], 0);
-        assert_eq!((below["reason"].as_str(), below["channel"].clone()), (Some("No mode channel is assigned."), Value::Null), "an unassigned channel is said so, never named channel 0");
+        assert_eq!(
+            (below["reason"].as_str(), below["channel"].clone()),
+            (Some("No mode channel is assigned."), Value::Null),
+            "an unassigned channel is said so, never named channel 0"
+        );
     }
 
     #[test]
@@ -411,7 +598,10 @@ mod tests {
         assert_eq!(options.len(), CHANNEL_OPTIONS);
         assert_eq!(options[0]["channel"], 6);
         assert_eq!(options[1]["channel"], 7);
-        assert_eq!(options[1]["enabled"], true, "channel seven is the second option and it is the one held high");
+        assert_eq!(
+            options[1]["enabled"], true,
+            "channel seven is the second option and it is the one held high"
+        );
         assert_eq!(options[0]["enabled"], false);
     }
 
@@ -419,10 +609,18 @@ mod tests {
     fn no_vehicle_is_an_answer_rather_than_six_empty_slots() {
         struct Nothing;
         impl Backend for Nothing {
-            fn get(&self, _p: &str) -> String { String::new() }
-            fn get_fields(&self, _p: &str, _f: &str) -> String { String::new() }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn get(&self, _p: &str) -> String {
+                String::new()
+            }
+            fn get_fields(&self, _p: &str, _f: &str) -> String {
+                String::new()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
             fn watch(&self, _p: &[String]) {}
         }
         let view = slots_view(&Nothing, &[]);

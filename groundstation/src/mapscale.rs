@@ -5,8 +5,14 @@ use crate::router::Backend;
 
 pub const DEPS: &[&str] = &["settings.unitsSettings.horizontalDistanceUnits"];
 
-const METRES: &[f64] = &[5.0, 10.0, 25.0, 50.0, 100.0, 150.0, 250.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0, 20000.0, 50000.0, 100000.0, 200000.0, 500000.0, 1000000.0, 2000000.0];
-const FEET: &[f64] = &[10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2000.0, 3000.0, 4000.0, 5280.0, 10560.0, 26400.0, 52800.0, 132000.0, 264000.0, 528000.0, 1320000.0, 2640000.0, 5280000.0];
+const METRES: &[f64] = &[
+    5.0, 10.0, 25.0, 50.0, 100.0, 150.0, 250.0, 500.0, 1000.0, 2000.0, 5000.0, 10000.0, 20000.0,
+    50000.0, 100000.0, 200000.0, 500000.0, 1000000.0, 2000000.0,
+];
+const FEET: &[f64] = &[
+    10.0, 25.0, 50.0, 100.0, 250.0, 500.0, 1000.0, 2000.0, 3000.0, 4000.0, 5280.0, 10560.0,
+    26400.0, 52800.0, 132000.0, 264000.0, 528000.0, 1320000.0, 2640000.0, 5280000.0,
+];
 const FEET_PER_METRE: f64 = 3.2808399;
 const HORIZONTAL_UNITS_FEET: f64 = 0.0;
 
@@ -53,7 +59,9 @@ pub fn bar(metres_across: f64, imperial: bool) -> Option<(String, f64)> {
 }
 
 pub fn map_scale_view(backend: &dyn Backend, args: &[String]) -> Value {
-    let imperial = value_number(&backend.value("settings.unitsSettings.horizontalDistanceUnits.rawValue")) == Some(HORIZONTAL_UNITS_FEET);
+    let imperial =
+        value_number(&backend.value("settings.unitsSettings.horizontalDistanceUnits.rawValue"))
+            == Some(HORIZONTAL_UNITS_FEET);
     let across = args.first().and_then(|a| a.parse::<f64>().ok());
     let drawn = across.and_then(|m| bar(m, imperial));
     json!({

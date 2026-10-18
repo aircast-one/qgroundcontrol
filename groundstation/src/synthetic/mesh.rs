@@ -27,13 +27,27 @@ pub struct Mesh {
 }
 
 pub fn bounds(positions: &[[f32; 3]]) -> ([f32; 3], [f32; 3]) {
-    positions.iter().fold(([f32::MAX; 3], [f32::MIN; 3]), |(low, high), p| (std::array::from_fn(|axis| low[axis].min(p[axis])), std::array::from_fn(|axis| high[axis].max(p[axis]))))
+    positions
+        .iter()
+        .fold(([f32::MAX; 3], [f32::MIN; 3]), |(low, high), p| {
+            (
+                std::array::from_fn(|axis| low[axis].min(p[axis])),
+                std::array::from_fn(|axis| high[axis].max(p[axis])),
+            )
+        })
 }
 
 pub fn mip_chain(base: image::RgbaImage) -> Vec<image::RgbaImage> {
     std::iter::successors(Some(base), |level| {
         let (width, height) = level.dimensions();
-        (width > 1 || height > 1).then(|| image::imageops::resize(level, (width / 2).max(1), (height / 2).max(1), image::imageops::FilterType::Triangle))
+        (width > 1 || height > 1).then(|| {
+            image::imageops::resize(
+                level,
+                (width / 2).max(1),
+                (height / 2).max(1),
+                image::imageops::FilterType::Triangle,
+            )
+        })
     })
     .collect()
 }
@@ -43,9 +57,27 @@ pub fn solid(colour: [u8; 4]) -> image::RgbaImage {
 }
 
 impl Mesh {
-    pub fn new(to_ecef: DMat4, positions: Vec<[f32; 3]>, uvs: Vec<[f32; 2]>, indices: Vec<u32>, texture: image::RgbaImage, layer: Layer) -> Self {
+    pub fn new(
+        to_ecef: DMat4,
+        positions: Vec<[f32; 3]>,
+        uvs: Vec<[f32; 2]>,
+        indices: Vec<u32>,
+        texture: image::RgbaImage,
+        layer: Layer,
+    ) -> Self {
         let (low, high) = bounds(&positions);
-        Self { id: NEXT_ID.fetch_add(1, Ordering::Relaxed), to_ecef, low, high, positions, uvs, normals: Vec::new(), indices, layer, texture: Mutex::new(Some(mip_chain(texture))) }
+        Self {
+            id: NEXT_ID.fetch_add(1, Ordering::Relaxed),
+            to_ecef,
+            low,
+            high,
+            positions,
+            uvs,
+            normals: Vec::new(),
+            indices,
+            layer,
+            texture: Mutex::new(Some(mip_chain(texture))),
+        }
     }
 
     pub fn with_normals(self, normals: Vec<[f32; 3]>) -> Self {
@@ -53,7 +85,10 @@ impl Mesh {
     }
 
     pub fn take_texture(&self) -> Option<Vec<image::RgbaImage>> {
-        self.texture.lock().unwrap_or_else(std::sync::PoisonError::into_inner).take()
+        self.texture
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .take()
     }
 }
 
@@ -62,7 +97,14 @@ mod tests {
     use super::*;
 
     fn mesh() -> Mesh {
-        Mesh::new(DMat4::IDENTITY, vec![[0.0; 3]], vec![[0.0; 2]], vec![0], image::RgbaImage::new(8, 4), Layer::Opaque)
+        Mesh::new(
+            DMat4::IDENTITY,
+            vec![[0.0; 3]],
+            vec![[0.0; 2]],
+            vec![0],
+            image::RgbaImage::new(8, 4),
+            Layer::Opaque,
+        )
     }
 
     #[test]
@@ -75,8 +117,19 @@ mod tests {
     #[test]
     fn a_texture_hands_over_its_mip_chain_once() {
         let mesh = mesh();
-        let chain = mesh.take_texture().expect("the first upload gets the texture");
-        assert_eq!(chain.iter().map(image::RgbaImage::dimensions).collect::<Vec<_>>(), vec![(8, 4), (4, 2), (2, 1), (1, 1)]);
-        assert!(mesh.take_texture().is_none(), "the CPU copy is gone after upload");
+        let chain = mesh
+            .take_texture()
+            .expect("the first upload gets the texture");
+        assert_eq!(
+            chain
+                .iter()
+                .map(image::RgbaImage::dimensions)
+                .collect::<Vec<_>>(),
+            vec![(8, 4), (4, 2), (2, 1), (1, 1)]
+        );
+        assert!(
+            mesh.take_texture().is_none(),
+            "the CPU copy is gone after upload"
+        );
     }
 }

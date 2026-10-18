@@ -28,7 +28,9 @@ pub struct Trigger {
 
 impl Trigger {
     fn valid(&self) -> bool {
-        self.success && (-90.0..=90.0).contains(&self.latitude) && (-180.0..=180.0).contains(&self.longitude)
+        self.success
+            && (-90.0..=90.0).contains(&self.latitude)
+            && (-180.0..=180.0).contains(&self.longitude)
     }
 }
 
@@ -118,7 +120,8 @@ mod dataflash {
     }
 
     fn text(bytes: &[u8]) -> String {
-        String::from_utf8_lossy(&bytes[..bytes.iter().position(|b| *b == 0).unwrap_or(bytes.len())]).into_owned()
+        String::from_utf8_lossy(&bytes[..bytes.iter().position(|b| *b == 0).unwrap_or(bytes.len())])
+            .into_owned()
     }
 
     fn half(bits: u16) -> f64 {
@@ -182,9 +185,23 @@ mod dataflash {
             let kind = data[pos + 2];
             pos += 3;
             if kind == FMT_TYPE {
-                let Some(payload) = data.get(pos..pos + FMT_PAYLOAD) else { break };
-                let columns = text(&payload[22..86]).trim().split(',').map(str::to_string).collect();
-                known.insert(payload[0], Format { length: usize::from(payload[1]), name: text(&payload[2..6]), format: text(&payload[6..22]).into_bytes(), columns });
+                let Some(payload) = data.get(pos..pos + FMT_PAYLOAD) else {
+                    break;
+                };
+                let columns = text(&payload[22..86])
+                    .trim()
+                    .split(',')
+                    .map(str::to_string)
+                    .collect();
+                known.insert(
+                    payload[0],
+                    Format {
+                        length: usize::from(payload[1]),
+                        name: text(&payload[2..6]),
+                        format: text(&payload[6..22]).into_bytes(),
+                        columns,
+                    },
+                );
                 pos += FMT_PAYLOAD;
             } else {
                 pos += known.get(&kind).map_or(1, |f| f.length.wrapping_sub(3));
@@ -213,9 +230,13 @@ mod dataflash {
             }
             let kind = data[pos + 2];
             pos += 3;
-            let Some(format) = known.get(&kind) else { continue };
+            let Some(format) = known.get(&kind) else {
+                continue;
+            };
             let size = format.length.wrapping_sub(3);
-            let Some(payload) = data.get(pos..pos + size) else { break };
+            let Some(payload) = data.get(pos..pos + size) else {
+                break;
+            };
             if kind == cam {
                 let values = fields(payload, format);
                 let value = |key: &str| values.get(key).copied();
@@ -248,7 +269,11 @@ mod ulog {
     const CAPTURE_SUCCESS: i8 = 1;
 
     fn field<T: ParseableFieldType>(message: &DataMessage, name: &str) -> Option<T> {
-        message.flattened_format.get_field_parser::<T>(name).ok().map(|parser| parser.parse(message.data))
+        message
+            .flattened_format
+            .get_field_parser::<T>(name)
+            .ok()
+            .map(|parser| parser.parse(message.data))
     }
 
     fn trigger(message: &DataMessage) -> Option<Trigger> {
@@ -278,7 +303,9 @@ mod ulog {
         match (parsed, header, found.is_empty()) {
             (false, _, _) => Err("Could not parse ULog".to_string()),
             (true, false, _) => Err("Could not parse ULog header".to_string()),
-            (true, true, true) => Err("Could not detect camera_capture packets in ULog".to_string()),
+            (true, true, true) => {
+                Err("Could not detect camera_capture packets in ULog".to_string())
+            }
             (true, true, false) => Ok(found),
         }
     }
@@ -301,39 +328,62 @@ pub struct Calibration {
     pub skipped_triggers: i64,
 }
 
-pub fn calibrate(image_timestamps: &[i64], triggers: &[Trigger], time_offset: i64, tolerance: i64) -> Calibration {
-    let (Some(last_image), Some(last_trigger)) = (image_timestamps.last(), triggers.last()) else { return Calibration::default() };
+pub fn calibrate(
+    image_timestamps: &[i64],
+    triggers: &[Trigger],
+    time_offset: i64,
+    tolerance: i64,
+) -> Calibration {
+    let (Some(last_image), Some(last_trigger)) = (image_timestamps.last(), triggers.last()) else {
+        return Calibration::default();
+    };
     let last_image = last_image + time_offset;
     let offsets: Vec<(i64, usize)> = {
-        let unsorted: Vec<(i64, usize)> = image_timestamps.iter().enumerate().filter(|(_, t)| **t != 0).map(|(i, t)| (last_image - (t + time_offset), i)).collect();
+        let unsorted: Vec<(i64, usize)> = image_timestamps
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| **t != 0)
+            .map(|(i, t)| (last_image - (t + time_offset), i))
+            .collect();
         let mut sorted = unsorted;
         sorted.sort_by_key(|(offset, image)| (*offset, std::cmp::Reverse(*image)));
         sorted
     };
-    let (pairs, skipped, _) = triggers.iter().enumerate().fold((Vec::new(), 0i64, HashSet::new()), |(pairs, skipped, used), (index, trigger)| {
-        if !trigger.valid() {
-            return (pairs, skipped + 1, used);
-        }
-        let wanted = last_trigger.timestamp - trigger.timestamp;
-        let best = offsets
-            .iter()
-            .skip_while(|(offset, _)| *offset < wanted - tolerance)
-            .take_while(|(offset, _)| *offset <= wanted + tolerance)
-            .filter(|(offset, image)| (offset - wanted).abs() <= tolerance && !used.contains(image))
-            .fold(None::<(i64, usize)>, |best, (offset, image)| match best {
-                Some((diff, _)) if (offset - wanted).abs() >= diff => best,
-                _ => Some(((offset - wanted).abs(), *image)),
-            });
-        match best {
-            Some((_, image)) => ([pairs, vec![(image, index)]].concat(), skipped, used.into_iter().chain([image]).collect()),
-            None => (pairs, skipped, used),
-        }
-    });
+    let (pairs, skipped, _) = triggers.iter().enumerate().fold(
+        (Vec::new(), 0i64, HashSet::new()),
+        |(pairs, skipped, used), (index, trigger)| {
+            if !trigger.valid() {
+                return (pairs, skipped + 1, used);
+            }
+            let wanted = last_trigger.timestamp - trigger.timestamp;
+            let best = offsets
+                .iter()
+                .skip_while(|(offset, _)| *offset < wanted - tolerance)
+                .take_while(|(offset, _)| *offset <= wanted + tolerance)
+                .filter(|(offset, image)| {
+                    (offset - wanted).abs() <= tolerance && !used.contains(image)
+                })
+                .fold(None::<(i64, usize)>, |best, (offset, image)| match best {
+                    Some((diff, _)) if (offset - wanted).abs() >= diff => best,
+                    _ => Some(((offset - wanted).abs(), *image)),
+                });
+            match best {
+                Some((_, image)) => (
+                    [pairs, vec![(image, index)]].concat(),
+                    skipped,
+                    used.into_iter().chain([image]).collect(),
+                ),
+                None => (pairs, skipped, used),
+            }
+        },
+    );
     let matched: HashSet<usize> = pairs.iter().map(|(image, _)| *image).collect();
     Calibration {
         image_indices: pairs.iter().map(|(image, _)| *image).collect(),
         trigger_indices: pairs.iter().map(|(_, trigger)| *trigger).collect(),
-        unmatched_images: (0..image_timestamps.len()).filter(|i| !matched.contains(i)).collect(),
+        unmatched_images: (0..image_timestamps.len())
+            .filter(|i| !matched.contains(i))
+            .collect(),
         skipped_triggers: skipped,
     }
 }
@@ -344,12 +394,19 @@ fn file_type(bytes: &[u8]) -> Option<FileExtension> {
 
 pub fn capture_time(image: &[u8]) -> Option<i64> {
     let metadata = Metadata::new_from_vec(&image.to_vec(), file_type(image)?).ok()?;
-    let text = metadata.get_tag(&ExifTag::CreateDate(String::new())).find_map(|tag| match tag {
-        ExifTag::CreateDate(text) => Some(text.trim_end_matches('\0').to_string()),
-        _ => None,
-    })?;
+    let text = metadata
+        .get_tag(&ExifTag::CreateDate(String::new()))
+        .find_map(|tag| match tag {
+            ExifTag::CreateDate(text) => Some(text.trim_end_matches('\0').to_string()),
+            _ => None,
+        })?;
     let naive = chrono::NaiveDateTime::parse_from_str(&text, "%Y:%m:%d %H:%M:%S").ok()?;
-    Some(naive.and_local_timezone(chrono::Local).earliest()?.timestamp())
+    Some(
+        naive
+            .and_local_timezone(chrono::Local)
+            .earliest()?
+            .timestamp(),
+    )
 }
 
 fn degrees_minutes_seconds(value: f64) -> Vec<uR64> {
@@ -359,15 +416,25 @@ fn degrees_minutes_seconds(value: f64) -> Vec<uR64> {
     let minutes = minutes_f as i64;
     let seconds = (minutes_f - minutes as f64) * 60.0;
     vec![
-        uR64 { nominator: degrees as u32, denominator: 1 },
-        uR64 { nominator: minutes as u32, denominator: 1 },
-        uR64 { nominator: (seconds * 1000.0) as i64 as u32, denominator: 1000 },
+        uR64 {
+            nominator: degrees as u32,
+            denominator: 1,
+        },
+        uR64 {
+            nominator: minutes as u32,
+            denominator: 1,
+        },
+        uR64 {
+            nominator: (seconds * 1000.0) as i64 as u32,
+            denominator: 1000,
+        },
     ]
 }
 
 pub fn tagged(image: &[u8], trigger: &Trigger) -> Option<Vec<u8>> {
     let kind = file_type(image)?;
-    let mut metadata = Metadata::new_from_vec(&image.to_vec(), kind).unwrap_or_else(|_| Metadata::new());
+    let mut metadata =
+        Metadata::new_from_vec(&image.to_vec(), kind).unwrap_or_else(|_| Metadata::new());
     [
         ExifTag::GPSVersionID(vec![2, 3, 0, 0]),
         ExifTag::GPSLatitudeRef(if trigger.latitude >= 0.0 { "N" } else { "S" }.to_string()),
@@ -375,7 +442,10 @@ pub fn tagged(image: &[u8], trigger: &Trigger) -> Option<Vec<u8>> {
         ExifTag::GPSLongitudeRef(if trigger.longitude >= 0.0 { "E" } else { "W" }.to_string()),
         ExifTag::GPSLongitude(degrees_minutes_seconds(trigger.longitude)),
         ExifTag::GPSAltitudeRef(vec![u8::from(trigger.altitude < 0.0)]),
-        ExifTag::GPSAltitude(vec![uR64 { nominator: (trigger.altitude.abs() * 100.0) as i64 as u32, denominator: 100 }]),
+        ExifTag::GPSAltitude(vec![uR64 {
+            nominator: (trigger.altitude.abs() * 100.0) as i64 as u32,
+            denominator: 100,
+        }]),
     ]
     .into_iter()
     .for_each(|tag| metadata.set_tag(tag));
@@ -386,7 +456,9 @@ pub fn tagged(image: &[u8], trigger: &Trigger) -> Option<Vec<u8>> {
 
 #[cfg(not(target_family = "wasm"))]
 fn linked(path: &Path) -> bool {
-    std::fs::symlink_metadata(path).map(|m| m.file_type().is_symlink()).unwrap_or(true)
+    std::fs::symlink_metadata(path)
+        .map(|m| m.file_type().is_symlink())
+        .unwrap_or(true)
 }
 
 #[cfg(target_family = "wasm")]
@@ -396,10 +468,31 @@ fn linked(_path: &Path) -> bool {
 
 fn images_in(directory: &Path, recursive: bool) -> Vec<PathBuf> {
     let entries = crate::vfs::list(directory);
-    let named = |p: &Path| p.file_name().and_then(|n| n.to_str()).map(str::to_string).unwrap_or_default();
-    let image = |name: &str| IMAGE_EXTENSIONS.contains(&Path::new(name).extension().and_then(|e| e.to_str()).map(str::to_lowercase).unwrap_or_default().as_str());
-    let here = entries.iter().filter(|e| !e.dir && !e.name.starts_with('.') && image(&e.name)).map(|e| directory.join(&e.name)).filter(|p| !linked(p));
-    let below = entries.iter().filter(|e| recursive && e.dir && !e.name.starts_with('.')).flat_map(|e| images_in(&directory.join(&e.name), true));
+    let named = |p: &Path| {
+        p.file_name()
+            .and_then(|n| n.to_str())
+            .map(str::to_string)
+            .unwrap_or_default()
+    };
+    let image = |name: &str| {
+        IMAGE_EXTENSIONS.contains(
+            &Path::new(name)
+                .extension()
+                .and_then(|e| e.to_str())
+                .map(str::to_lowercase)
+                .unwrap_or_default()
+                .as_str(),
+        )
+    };
+    let here = entries
+        .iter()
+        .filter(|e| !e.dir && !e.name.starts_with('.') && image(&e.name))
+        .map(|e| directory.join(&e.name))
+        .filter(|p| !linked(p));
+    let below = entries
+        .iter()
+        .filter(|e| recursive && e.dir && !e.name.starts_with('.'))
+        .flat_map(|e| images_in(&directory.join(&e.name), true));
     let mut found: Vec<PathBuf> = here.chain(below).collect();
     found.sort_by_key(|p| named(p));
     found
@@ -422,7 +515,11 @@ fn fail(run: u64, message: &str) {
 }
 
 fn stage_progress(start: f64, end: f64, done: usize, total: usize) -> f64 {
-    if total == 0 { start } else { start + (end - start) * done as f64 / total as f64 }
+    if total == 0 {
+        start
+    } else {
+        start + (end - start) * done as f64 / total as f64
+    }
 }
 
 struct Job {
@@ -441,10 +538,22 @@ fn tag_run(run: u64, job: &Job) -> Result<(i64, i64, i64), String> {
     if images.is_empty() {
         return Err("The image directory doesn't contain supported images. Supported formats: JPEG, TIFF, DNG".to_string());
     }
-    let file_name = |path: &PathBuf| path.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+    let file_name = |path: &PathBuf| {
+        path.file_name()
+            .map(|n| n.to_string_lossy().into_owned())
+            .unwrap_or_default()
+    };
     update(run, |s| {
         s.progress = LOAD_IMAGES_END;
-        s.images = images.iter().map(|path| ImageRow { file_name: file_name(path), status: IMAGE_PENDING, error: String::new(), coordinate: None }).collect();
+        s.images = images
+            .iter()
+            .map(|path| ImageRow {
+                file_name: file_name(path),
+                status: IMAGE_PENDING,
+                error: String::new(),
+                coordinate: None,
+            })
+            .collect();
     });
     let mark = |indices: &[usize], status: u8, error: &str| {
         update(run, |s| {
@@ -461,19 +570,34 @@ fn tag_run(run: u64, job: &Job) -> Result<(i64, i64, i64), String> {
         .enumerate()
         .take_while(|_| alive())
         .map(|(i, path)| {
-            update(run, |s| s.progress = stage_progress(LOAD_IMAGES_END, PARSE_EXIF_END, i + 1, images.len()));
-            crate::vfs::read(path).ok().and_then(|bytes| capture_time(&bytes)).unwrap_or(0)
+            update(run, |s| {
+                s.progress = stage_progress(LOAD_IMAGES_END, PARSE_EXIF_END, i + 1, images.len())
+            });
+            crate::vfs::read(path)
+                .ok()
+                .and_then(|bytes| capture_time(&bytes))
+                .unwrap_or(0)
         })
         .collect();
     if !alive() {
         return Err(CANCELLED.to_string());
     }
-    mark(&timestamps.iter().enumerate().filter(|(_, t)| **t == 0).map(|(i, _)| i).collect::<Vec<_>>(), IMAGE_SKIPPED, "Could not read EXIF timestamp");
+    mark(
+        &timestamps
+            .iter()
+            .enumerate()
+            .filter(|(_, t)| **t == 0)
+            .map(|(i, _)| i)
+            .collect::<Vec<_>>(),
+        IMAGE_SKIPPED,
+        "Could not read EXIF timestamp",
+    );
     if timestamps.iter().all(|t| *t == 0) {
         return Err("Could not read EXIF data from any images".to_string());
     }
     update(run, |s| s.progress = PARSE_EXIF_END);
-    let log = crate::vfs::read(&job.log_file).map_err(|_| "Geotagging failed. Couldn't open log file.".to_string())?;
+    let log = crate::vfs::read(&job.log_file)
+        .map_err(|_| "Geotagging failed. Couldn't open log file.".to_string())?;
     if log.is_empty() {
         return Err("Geotagging failed. Log file is empty.".to_string());
     }
@@ -481,7 +605,11 @@ fn tag_run(run: u64, job: &Job) -> Result<(i64, i64, i64), String> {
     update(run, |s| s.progress = PARSE_LOGS_END);
     let calibration = calibrate(&timestamps, &triggers, job.time_offset, job.tolerance);
     let skipped = calibration.skipped_triggers + calibration.unmatched_images.len() as i64;
-    mark(&calibration.unmatched_images, IMAGE_SKIPPED, "No matching trigger");
+    mark(
+        &calibration.unmatched_images,
+        IMAGE_SKIPPED,
+        "No matching trigger",
+    );
     if calibration.image_indices.is_empty() {
         return Err("Calibration failed: No matching triggers found for images.".to_string());
     }
@@ -492,17 +620,44 @@ fn tag_run(run: u64, job: &Job) -> Result<(i64, i64, i64), String> {
     };
     #[cfg(not(target_family = "wasm"))]
     if !job.preview {
-        let required = (calibration.image_indices.iter().filter_map(|i| std::fs::metadata(&images[*i]).ok()).map(|m| m.len()).sum::<u64>() as f64 * SPACE_MARGIN) as u64;
-        let queried = if output.exists() { output.as_path() } else { output.parent().unwrap_or(&output) };
-        if fs4::available_space(queried).is_ok_and(|free| (free as f64) < required as f64 * SPACE_MARGIN) {
-            return Err(format!("Geotagging failed. Insufficient disk space. Need approximately {} MB.", required / (1024 * 1024)));
+        let required = (calibration
+            .image_indices
+            .iter()
+            .filter_map(|i| std::fs::metadata(&images[*i]).ok())
+            .map(|m| m.len())
+            .sum::<u64>() as f64
+            * SPACE_MARGIN) as u64;
+        let queried = if output.exists() {
+            output.as_path()
+        } else {
+            output.parent().unwrap_or(&output)
+        };
+        if fs4::available_space(queried)
+            .is_ok_and(|free| (free as f64) < required as f64 * SPACE_MARGIN)
+        {
+            return Err(format!(
+                "Geotagging failed. Insufficient disk space. Need approximately {} MB.",
+                required / (1024 * 1024)
+            ));
         }
     }
     if !job.preview && crate::vfs::create_dir_all(&output).is_err() {
-        return Err(format!("Geotagging failed. Couldn't create output directory: {}", output.display()));
+        return Err(format!(
+            "Geotagging failed. Couldn't create output directory: {}",
+            output.display()
+        ));
     }
-    let pairs: Vec<(usize, usize)> = calibration.image_indices.iter().copied().zip(calibration.trigger_indices.iter().copied()).collect();
-    mark(&pairs.iter().map(|(image, _)| *image).collect::<Vec<_>>(), IMAGE_PROCESSING, "");
+    let pairs: Vec<(usize, usize)> = calibration
+        .image_indices
+        .iter()
+        .copied()
+        .zip(calibration.trigger_indices.iter().copied())
+        .collect();
+    mark(
+        &pairs.iter().map(|(image, _)| *image).collect::<Vec<_>>(),
+        IMAGE_PROCESSING,
+        "",
+    );
     let outcomes: Vec<Result<(), String>> = pairs
         .iter()
         .enumerate()
@@ -511,16 +666,28 @@ fn tag_run(run: u64, job: &Job) -> Result<(i64, i64, i64), String> {
             let path = &images[*image];
             let name = file_name(path);
             let written = || -> Result<(), String> {
-                let bytes = crate::vfs::read(path).ok().filter(|b| !b.is_empty()).ok_or_else(|| format!("Geotagging failed. Couldn't open image: {name}"))?;
+                let bytes = crate::vfs::read(path)
+                    .ok()
+                    .filter(|b| !b.is_empty())
+                    .ok_or_else(|| format!("Geotagging failed. Couldn't open image: {name}"))?;
                 if job.preview {
                     return Ok(());
                 }
-                let geotagged = tagged(&bytes, &triggers[*trigger]).ok_or_else(|| format!("Geotagging failed. Couldn't write EXIF to image: {name}"))?;
+                let geotagged = tagged(&bytes, &triggers[*trigger]).ok_or_else(|| {
+                    format!("Geotagging failed. Couldn't write EXIF to image: {name}")
+                })?;
                 let target = output.join(&name);
-                crate::vfs::replace(&target, geotagged).map_err(|_| format!("Geotagging failed. Couldn't save image: {}", target.display()))
+                crate::vfs::replace(&target, geotagged).map_err(|_| {
+                    format!(
+                        "Geotagging failed. Couldn't save image: {}",
+                        target.display()
+                    )
+                })
             };
             let outcome = written();
-            update(run, |s| s.progress = stage_progress(CALIBRATE_END, TAG_IMAGES_END, done + 1, pairs.len()));
+            update(run, |s| {
+                s.progress = stage_progress(CALIBRATE_END, TAG_IMAGES_END, done + 1, pairs.len())
+            });
             outcome
         })
         .collect();
@@ -528,13 +695,22 @@ fn tag_run(run: u64, job: &Job) -> Result<(i64, i64, i64), String> {
         return Err(CANCELLED.to_string());
     }
     update(run, |s| {
-        pairs.iter().zip(&outcomes).for_each(|((image, trigger), outcome)| {
-            if let Some(row) = s.images.get_mut(*image) {
-                row.status = if outcome.is_ok() { IMAGE_TAGGED } else { IMAGE_FAILED };
-                row.error = outcome.as_ref().err().cloned().unwrap_or_default();
-                row.coordinate = outcome.is_ok().then_some((triggers[*trigger].latitude, triggers[*trigger].longitude));
-            }
-        });
+        pairs
+            .iter()
+            .zip(&outcomes)
+            .for_each(|((image, trigger), outcome)| {
+                if let Some(row) = s.images.get_mut(*image) {
+                    row.status = if outcome.is_ok() {
+                        IMAGE_TAGGED
+                    } else {
+                        IMAGE_FAILED
+                    };
+                    row.error = outcome.as_ref().err().cloned().unwrap_or_default();
+                    row.coordinate = outcome
+                        .is_ok()
+                        .then_some((triggers[*trigger].latitude, triggers[*trigger].longitude));
+                }
+            });
     });
     let failed = outcomes.iter().filter(|outcome| outcome.is_err()).count() as i64;
     if failed > 0 && failed == outcomes.len() as i64 {
@@ -557,8 +733,12 @@ pub fn start() {
         let refusal = match () {
             _ if state.image_directory.is_empty() => Some("Please select an image directory."),
             _ if state.log_file.is_empty() => Some("Please select a log file."),
-            _ if !crate::vfs::exists(&state.image_directory) => Some("Cannot find the image directory."),
-            _ if !state.save_directory.is_empty() && !crate::vfs::exists(&state.save_directory) => Some("Cannot find the save directory."),
+            _ if !crate::vfs::exists(&state.image_directory) => {
+                Some("Cannot find the image directory.")
+            }
+            _ if !state.save_directory.is_empty() && !crate::vfs::exists(&state.save_directory) => {
+                Some("Cannot find the save directory.")
+            }
             _ => None,
         };
         if let Some(message) = refusal {
@@ -581,21 +761,22 @@ pub fn start() {
         )
     };
     let (run, job) = job;
-    let spawned = crate::background::spawn("groundstation-geotag", move || match tag_run(run, &job) {
-        Ok((tagged, skipped, failed)) => {
-            update(run, |state| {
-                state.in_progress = false;
-                state.tagged = tagged;
-                state.skipped = skipped;
-                state.failed = failed;
-                state.progress = 100.0;
-                if failed > 0 {
-                    state.error_message = format!("{failed} image(s) failed to tag");
-                }
-            });
-        }
-        Err(message) => fail(run, &message),
-    });
+    let spawned =
+        crate::background::spawn("groundstation-geotag", move || match tag_run(run, &job) {
+            Ok((tagged, skipped, failed)) => {
+                update(run, |state| {
+                    state.in_progress = false;
+                    state.tagged = tagged;
+                    state.skipped = skipped;
+                    state.failed = failed;
+                    state.progress = 100.0;
+                    if failed > 0 {
+                        state.error_message = format!("{failed} image(s) failed to tag");
+                    }
+                });
+            }
+            Err(message) => fail(run, &message),
+        });
     if spawned.is_err() {
         fail(run, GEOTAG_UNAVAILABLE);
     }
@@ -628,12 +809,21 @@ fn set_path(field: &str, raw: &str) {
         _ if path.is_empty() || invalid_directory() => "Invalid Directory.".to_string(),
         "imageDirectory" => {
             state.image_directory = path.clone();
-            let already = state.save_directory.is_empty() && crate::vfs::exists(Path::new(&state.image_directory).join("TAGGED"));
-            if already { "Images have already been tagged. Existing images will be removed.".to_string() } else { String::new() }
+            let already = state.save_directory.is_empty()
+                && crate::vfs::exists(Path::new(&state.image_directory).join("TAGGED"));
+            if already {
+                "Images have already been tagged. Existing images will be removed.".to_string()
+            } else {
+                String::new()
+            }
         }
         _ => {
             state.save_directory = path.clone();
-            if images_in(place, false).is_empty() { String::new() } else { "The save folder already contains images.".to_string() }
+            if images_in(place, false).is_empty() {
+                String::new()
+            } else {
+                "The save folder already contains images.".to_string()
+            }
         }
     };
 }
@@ -684,9 +874,13 @@ pub fn get(path: &str) -> Option<Value> {
 pub fn set(path: &str, value: &str) -> Option<Value> {
     served().then_some(())?;
     let field = path.strip_prefix("geoTag.")?;
-    let given = serde_json::from_str::<Value>(value).ok().map(|v| v.get("value").cloned().unwrap_or(v))?;
+    let given = serde_json::from_str::<Value>(value)
+        .ok()
+        .map(|v| v.get("value").cloned().unwrap_or(v))?;
     match (field, &given) {
-        ("logFile" | "imageDirectory" | "saveDirectory", Value::String(raw)) => set_path(field, raw),
+        ("logFile" | "imageDirectory" | "saveDirectory", Value::String(raw)) => {
+            set_path(field, raw)
+        }
         ("timeOffsetSecs", _) => held().time_offset_secs = given.as_f64()?,
         ("toleranceSecs", _) => held().tolerance_secs = given.as_f64()?.clamp(0.1, 60.0),
         ("previewMode", Value::Bool(on)) => held().preview_mode = *on,
@@ -711,7 +905,13 @@ mod tests {
     use super::*;
 
     fn trigger(timestamp: i64) -> Trigger {
-        Trigger { timestamp, latitude: -35.0, longitude: 149.0, altitude: 600.0, success: true }
+        Trigger {
+            timestamp,
+            latitude: -35.0,
+            longitude: 149.0,
+            altitude: 600.0,
+            success: true,
+        }
     }
 
     #[test]
@@ -719,40 +919,116 @@ mod tests {
         let images = [1000, 1005, 1007, 1030];
         let triggers = [trigger(57), trigger(62), trigger(64), trigger(87)];
         let matched = calibrate(&images, &triggers, 0, 2);
-        assert_eq!((matched.image_indices, matched.trigger_indices), (vec![0, 1, 2, 3], vec![0, 1, 2, 3]));
+        assert_eq!(
+            (matched.image_indices, matched.trigger_indices),
+            (vec![0, 1, 2, 3], vec![0, 1, 2, 3])
+        );
         let broken = calibrate(&[1000, 1005, 0], &triggers[..2], 0, 2);
-        assert!(broken.image_indices.is_empty(), "an image without a capture time that sorts last anchors the images at zero, as GeoTagCalibrator does");
+        assert!(
+            broken.image_indices.is_empty(),
+            "an image without a capture time that sorts last anchors the images at zero, as GeoTagCalibrator does"
+        );
         let tied = calibrate(&[1000, 1000], &[trigger(57)], 0, 2);
-        assert_eq!(tied.image_indices, vec![1], "QMultiMap hands back the image inserted last among equal offsets");
-        let invalid = calibrate(&images, &[Trigger { latitude: 91.0, ..trigger(57) }, trigger(62)], 0, 2);
+        assert_eq!(
+            tied.image_indices,
+            vec![1],
+            "QMultiMap hands back the image inserted last among equal offsets"
+        );
+        let invalid = calibrate(
+            &images,
+            &[
+                Trigger {
+                    latitude: 91.0,
+                    ..trigger(57)
+                },
+                trigger(62),
+            ],
+            0,
+            2,
+        );
         assert_eq!(invalid.skipped_triggers, 1);
     }
 
     fn ulog_with(captures: &[(u64, f64, i8)]) -> Vec<u8> {
-        let message = |kind: u8, payload: Vec<u8>| [(payload.len() as u16).to_le_bytes().to_vec(), vec![kind], payload].concat();
+        let message = |kind: u8, payload: Vec<u8>| {
+            [
+                (payload.len() as u16).to_le_bytes().to_vec(),
+                vec![kind],
+                payload,
+            ]
+            .concat()
+        };
         let format = b"camera_capture:uint64_t timestamp;uint32_t seq;double lat;double lon;float alt;int8_t result;uint8_t[3] _padding0;".to_vec();
-        let header = [b"ULog\x01\x12\x35".to_vec(), vec![1], 0u64.to_le_bytes().to_vec(), message(b'B', vec![0; 40]), message(b'F', format), message(b'A', [vec![0], 7u16.to_le_bytes().to_vec(), b"camera_capture".to_vec()].concat())].concat();
-        captures.iter().enumerate().fold(header, |log, (i, (us, lon, result))| {
-            let payload = [7u16.to_le_bytes().to_vec(), us.to_le_bytes().to_vec(), (i as u32).to_le_bytes().to_vec(), (-35.0f64).to_le_bytes().to_vec(), lon.to_le_bytes().to_vec(), 600.0f32.to_le_bytes().to_vec(), vec![*result as u8]].concat();
-            [log, message(b'D', payload)].concat()
-        })
+        let header = [
+            b"ULog\x01\x12\x35".to_vec(),
+            vec![1],
+            0u64.to_le_bytes().to_vec(),
+            message(b'B', vec![0; 40]),
+            message(b'F', format),
+            message(
+                b'A',
+                [
+                    vec![0],
+                    7u16.to_le_bytes().to_vec(),
+                    b"camera_capture".to_vec(),
+                ]
+                .concat(),
+            ),
+        ]
+        .concat();
+        captures
+            .iter()
+            .enumerate()
+            .fold(header, |log, (i, (us, lon, result))| {
+                let payload = [
+                    7u16.to_le_bytes().to_vec(),
+                    us.to_le_bytes().to_vec(),
+                    (i as u32).to_le_bytes().to_vec(),
+                    (-35.0f64).to_le_bytes().to_vec(),
+                    lon.to_le_bytes().to_vec(),
+                    600.0f32.to_le_bytes().to_vec(),
+                    vec![*result as u8],
+                ]
+                .concat();
+                [log, message(b'D', payload)].concat()
+            })
     }
 
     #[test]
     fn a_ulog_camera_capture_is_read_as_ulogparser_reads_it() {
-        let log = ulog_with(&[(57_123_456, 149.0, 1), (62_000_000, -210.5, 1), (64_000_000, 149.0, 0)]);
+        let log = ulog_with(&[
+            (57_123_456, 149.0, 1),
+            (62_000_000, -210.5, 1),
+            (64_000_000, 149.0, 0),
+        ]);
         let found = parse_log("flight.ulg", &log).unwrap();
-        assert_eq!(found.iter().map(|t| (t.timestamp, t.longitude, t.success)).collect::<Vec<_>>(), vec![(57, 149.0, true), (62, -210.5, true), (64, 149.0, false)], "fmod keeps the sign, so a longitude below -180 stays out of range as it does in Qt");
+        assert_eq!(
+            found
+                .iter()
+                .map(|t| (t.timestamp, t.longitude, t.success))
+                .collect::<Vec<_>>(),
+            vec![(57, 149.0, true), (62, -210.5, true), (64, 149.0, false)],
+            "fmod keeps the sign, so a longitude below -180 stays out of range as it does in Qt"
+        );
         assert!(!found[1].valid() && !found[2].valid());
-        assert_eq!(parse_log("flight.log", &log).map(|t| t.len()), Ok(3), "an unknown extension tries ULog first");
-        assert_eq!(parse_log("flight.ulg", b"ULog").err().as_deref(), Some("Could not parse ULog header"));
+        assert_eq!(
+            parse_log("flight.log", &log).map(|t| t.len()),
+            Ok(3),
+            "an unknown extension tries ULog first"
+        );
+        assert_eq!(
+            parse_log("flight.ulg", b"ULog").err().as_deref(),
+            Some("Could not parse ULog header")
+        );
     }
 
     fn photo_at(time: &str) -> Vec<u8> {
         let mut metadata = Metadata::new();
         metadata.set_tag(ExifTag::CreateDate(time.to_string()));
         let mut jpeg = vec![0xFF, 0xD8, 0xFF, 0xD9];
-        metadata.write_to_vec(&mut jpeg, little_exif::filetype::FileExtension::JPEG).unwrap();
+        metadata
+            .write_to_vec(&mut jpeg, little_exif::filetype::FileExtension::JPEG)
+            .unwrap();
         jpeg
     }
 
@@ -764,14 +1040,26 @@ mod tests {
         std::fs::write(folder.join("1.jpg"), photo_at("2026:10:03 12:00:00")).unwrap();
         std::fs::write(folder.join("2.jpg"), photo_at("2026:10:03 12:00:05")).unwrap();
         let log = folder.join("flight.ulg");
-        std::fs::write(&log, ulog_with(&[(57_000_000, 149.0, 1), (62_000_000, 150.0, 1)])).unwrap();
+        std::fs::write(
+            &log,
+            ulog_with(&[(57_000_000, 149.0, 1), (62_000_000, 150.0, 1)]),
+        )
+        .unwrap();
         let run = {
             let mut state = held();
             state.run += 1;
             state.in_progress = true;
             state.run
         };
-        let job = Job { log_file: log.display().to_string(), image_directory: folder.display().to_string(), save_directory: String::new(), time_offset: 0, tolerance: 2, preview: true, recursive: false };
+        let job = Job {
+            log_file: log.display().to_string(),
+            image_directory: folder.display().to_string(),
+            save_directory: String::new(),
+            time_offset: 0,
+            tolerance: 2,
+            preview: true,
+            recursive: false,
+        };
         let counts = tag_run(run, &job);
         let rows = {
             let mut state = held();
@@ -780,13 +1068,38 @@ mod tests {
         };
         std::fs::remove_dir_all(&folder).unwrap();
         assert_eq!(counts, Ok((2, 1, 0)));
-        let shown: Vec<(&str, u8, &str, Option<(f64, f64)>)> = rows.iter().map(|r| (r.file_name.as_str(), r.status, r.error.as_str(), r.coordinate)).collect();
-        assert_eq!(shown, vec![("0-broken.jpg", IMAGE_SKIPPED, "No matching trigger", None), ("1.jpg", IMAGE_TAGGED, "", Some((-35.0, 149.0))), ("2.jpg", IMAGE_TAGGED, "", Some((-35.0, 150.0)))]);
+        let shown: Vec<(&str, u8, &str, Option<(f64, f64)>)> = rows
+            .iter()
+            .map(|r| {
+                (
+                    r.file_name.as_str(),
+                    r.status,
+                    r.error.as_str(),
+                    r.coordinate,
+                )
+            })
+            .collect();
+        assert_eq!(
+            shown,
+            vec![
+                ("0-broken.jpg", IMAGE_SKIPPED, "No matching trigger", None),
+                ("1.jpg", IMAGE_TAGGED, "", Some((-35.0, 149.0))),
+                ("2.jpg", IMAGE_TAGGED, "", Some((-35.0, 150.0)))
+            ]
+        );
     }
 
     #[test]
     fn coordinates_are_written_as_libexif_rationals() {
         let dms = degrees_minutes_seconds(-35.3632620);
-        assert_eq!((dms[0].nominator, dms[1].nominator, dms[2].nominator, dms[2].denominator), (35, 21, 47743, 1000));
+        assert_eq!(
+            (
+                dms[0].nominator,
+                dms[1].nominator,
+                dms[2].nominator,
+                dms[2].denominator
+            ),
+            (35, 21, 47743, 1000)
+        );
     }
 }

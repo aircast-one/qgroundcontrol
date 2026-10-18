@@ -87,16 +87,25 @@ impl<P: Port> Port for &mut P {
 pub type IhxBlocks = Vec<(u16, Vec<u8>)>;
 
 fn hex_byte(text: &str, at: usize) -> Option<u8> {
-    text.get(at..at + 2).and_then(|pair| u8::from_str_radix(pair, 16).ok())
+    text.get(at..at + 2)
+        .and_then(|pair| u8::from_str_radix(pair, 16).ok())
 }
 
 fn ihx_record(line: &str) -> Result<(u8, u16, Vec<u8>), String> {
-    let record = line.strip_prefix(':').ok_or("Incorrectly formatted .ihx file, line does not begin with :")?;
+    let record = line
+        .strip_prefix(':')
+        .ok_or("Incorrectly formatted .ihx file, line does not begin with :")?;
     let short = || "Incorrectly formatted line in .ihx file, line too short".to_string();
     let count = usize::from(hex_byte(record, 0).ok_or_else(short)?);
-    let address = u16::from_be_bytes([hex_byte(record, 2).ok_or_else(short)?, hex_byte(record, 4).ok_or_else(short)?]);
+    let address = u16::from_be_bytes([
+        hex_byte(record, 2).ok_or_else(short)?,
+        hex_byte(record, 4).ok_or_else(short)?,
+    ]);
     let kind = hex_byte(record, 6).ok_or_else(short)?;
-    let bytes: Vec<u8> = (0..count).map(|i| hex_byte(record, 8 + 2 * i)).collect::<Option<_>>().ok_or_else(short)?;
+    let bytes: Vec<u8> = (0..count)
+        .map(|i| hex_byte(record, 8 + 2 * i))
+        .collect::<Option<_>>()
+        .ok_or_else(short)?;
     hex_byte(record, 8 + 2 * count).ok_or_else(short)?;
     match kind {
         0 | 1 => Ok((kind, address, bytes)),
@@ -112,13 +121,18 @@ pub fn parse_ihx(text: &str) -> Result<IhxBlocks, String> {
         .map(ihx_record)
         .take_while(|record| !matches!(record, Ok((1, _, _))))
         .collect::<Result<_, _>>()?;
-    Ok(records.into_iter().fold(Vec::new(), |mut blocks: IhxBlocks, (_, address, bytes)| {
-        match blocks.last_mut().filter(|(start, held)| usize::from(*start) + held.len() == usize::from(address)) {
-            Some((_, held)) => held.extend(bytes),
-            None => blocks.push((address, bytes)),
-        }
-        blocks
-    }))
+    Ok(records
+        .into_iter()
+        .fold(Vec::new(), |mut blocks: IhxBlocks, (_, address, bytes)| {
+            match blocks
+                .last_mut()
+                .filter(|(start, held)| usize::from(*start) + held.len() == usize::from(address))
+            {
+                Some((_, held)) => held.extend(bytes),
+                None => blocks.push((address, bytes)),
+            }
+            blocks
+        }))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -142,18 +156,36 @@ fn hex(value: u8) -> String {
 
 impl<P: Port> Bootloader<P> {
     pub fn new(port: P) -> Self {
-        Bootloader { port, info: None, image_crc: 0, sik: false, in_bootloader: false }
+        Bootloader {
+            port,
+            info: None,
+            image_crc: 0,
+            sik: false,
+            in_bootloader: false,
+        }
     }
 
     pub fn sik(port: P) -> Self {
-        Bootloader { sik: true, ..Bootloader::new(port) }
+        Bootloader {
+            sik: true,
+            ..Bootloader::new(port)
+        }
     }
 
     fn read_line(&mut self, timeout_ms: u64) -> String {
         let deadline = web_time::Instant::now() + std::time::Duration::from_millis(timeout_ms);
         let mut line = Vec::new();
-        while let Some(left) = deadline.checked_duration_since(web_time::Instant::now()).map(|d| d.as_millis() as u64).filter(|left| *left > 0) {
-            match self.port.read_exact(1, left).ok().and_then(|b| b.first().copied()) {
+        while let Some(left) = deadline
+            .checked_duration_since(web_time::Instant::now())
+            .map(|d| d.as_millis() as u64)
+            .filter(|left| *left > 0)
+        {
+            match self
+                .port
+                .read_exact(1, left)
+                .ok()
+                .and_then(|b| b.first().copied())
+            {
                 Some(b'\n') if line.last() == Some(&b'\r') => {
                     line.pop();
                     return String::from_utf8_lossy(&line).into_owned();
@@ -169,13 +201,20 @@ impl<P: Port> Bootloader<P> {
         self.port.discard_input();
         self.port.set_baud(SIK_COMMAND_BAUD)?;
         self.port.write(b"+++")?;
-        let deadline = web_time::Instant::now() + std::time::Duration::from_millis(SIK_COMMAND_MODE_TIMEOUT_MS);
+        let deadline = web_time::Instant::now()
+            + std::time::Duration::from_millis(SIK_COMMAND_MODE_TIMEOUT_MS);
         let mut heard = Vec::new();
         while !String::from_utf8_lossy(&heard).contains("OK") {
-            let left = deadline.saturating_duration_since(web_time::Instant::now()).as_millis() as u64;
+            let left = deadline
+                .saturating_duration_since(web_time::Instant::now())
+                .as_millis() as u64;
             match (left, self.port.read_exact(1, left.max(1))) {
-                (0, _) | (_, Err(_)) if heard.is_empty() => return Err("Unable to put radio into command mode +++".to_string()),
-                (0, _) | (_, Err(_)) => return Err("Radio did not respond to command mode".to_string()),
+                (0, _) | (_, Err(_)) if heard.is_empty() => {
+                    return Err("Unable to put radio into command mode +++".to_string());
+                }
+                (0, _) | (_, Err(_)) => {
+                    return Err("Radio did not respond to command mode".to_string());
+                }
                 (_, Ok(byte)) => heard.extend(byte),
             }
         }
@@ -184,7 +223,10 @@ impl<P: Port> Bootloader<P> {
         if self.read_line(SIK_COMMAND_MODE_TIMEOUT_MS) != "ATI2" {
             return Err("Radio did not respond to ATI2 command".to_string());
         }
-        self.read_line(SIK_COMMAND_MODE_TIMEOUT_MS).trim().parse().map_err(|_| "Radio did not return board id".to_string())
+        self.read_line(SIK_COMMAND_MODE_TIMEOUT_MS)
+            .trim()
+            .parse()
+            .map_err(|_| "Radio did not return board id".to_string())
     }
 
     fn bootloader_board_id(&mut self) -> Result<u32, String> {
@@ -203,7 +245,11 @@ impl<P: Port> Bootloader<P> {
             true => self.bootloader_board_id()?,
             false => self.command_mode_board_id()?,
         };
-        Ok(BoardInfo { bootloader_version: 0, board_id, flash_size: 0 })
+        Ok(BoardInfo {
+            bootloader_version: 0,
+            board_id,
+            flash_size: 0,
+        })
     }
 
     pub fn init_flash_sequence(&mut self) -> Result<(), String> {
@@ -211,7 +257,9 @@ impl<P: Port> Bootloader<P> {
             return Ok(());
         }
         self.port.write(b"AT&UPDATE\r\n")?;
-        self.port.read_exact(1, SIK_UPDATE_TIMEOUT_MS).map_err(|_| "Unable to reboot radio (ready read)".to_string())?;
+        self.port
+            .read_exact(1, SIK_UPDATE_TIMEOUT_MS)
+            .map_err(|_| "Unable to reboot radio (ready read)".to_string())?;
         self.port.set_baud(SIK_BOOTLOADER_BAUD)?;
         self.sync()?;
         self.in_bootloader = true;
@@ -220,42 +268,77 @@ impl<P: Port> Bootloader<P> {
 
     fn load_address(&mut self, address: u16) -> Result<(), String> {
         let [high, low] = address.to_be_bytes();
-        self.port.write(&[PROTO_LOAD_ADDRESS, low, high, PROTO_EOC]).and_then(|()| self.response(RESPONSE_TIMEOUT_MS))
+        self.port
+            .write(&[PROTO_LOAD_ADDRESS, low, high, PROTO_EOC])
+            .and_then(|()| self.response(RESPONSE_TIMEOUT_MS))
     }
 
-    pub fn program_ihx(&mut self, blocks: &IhxBlocks, progress: &mut dyn FnMut(usize, usize)) -> Result<(), String> {
+    pub fn program_ihx(
+        &mut self,
+        blocks: &IhxBlocks,
+        progress: &mut dyn FnMut(usize, usize),
+    ) -> Result<(), String> {
         let total: usize = blocks.iter().map(|(_, bytes)| bytes.len()).sum();
-        blocks.iter().try_fold(0usize, |sent, (address, bytes)| {
-            self.load_address(*address).map_err(|_| format!("Unable to set flash start address: 0x{address:08x}"))?;
-            bytes.chunks(PROG_MULTI_MAX).try_fold(sent, |sent, chunk| {
-                let frame: Vec<u8> = [PROTO_PROG_MULTI, chunk.len() as u8].into_iter().chain(chunk.iter().copied()).chain([PROTO_EOC]).collect();
-                self.port.write(&frame).and_then(|()| self.response(RESPONSE_TIMEOUT_MS)).map_err(|e| format!("Flash failed: {e} at address 0x{address:08x}"))?;
-                progress(sent + chunk.len(), total);
-                Ok::<usize, String>(sent + chunk.len())
+        blocks
+            .iter()
+            .try_fold(0usize, |sent, (address, bytes)| {
+                self.load_address(*address)
+                    .map_err(|_| format!("Unable to set flash start address: 0x{address:08x}"))?;
+                bytes.chunks(PROG_MULTI_MAX).try_fold(sent, |sent, chunk| {
+                    let frame: Vec<u8> = [PROTO_PROG_MULTI, chunk.len() as u8]
+                        .into_iter()
+                        .chain(chunk.iter().copied())
+                        .chain([PROTO_EOC])
+                        .collect();
+                    self.port
+                        .write(&frame)
+                        .and_then(|()| self.response(RESPONSE_TIMEOUT_MS))
+                        .map_err(|e| format!("Flash failed: {e} at address 0x{address:08x}"))?;
+                    progress(sent + chunk.len(), total);
+                    Ok::<usize, String>(sent + chunk.len())
+                })
             })
-        })
-        .map(|_| ())
+            .map(|_| ())
     }
 
-    pub fn verify_ihx(&mut self, blocks: &IhxBlocks, progress: &mut dyn FnMut(usize, usize)) -> Result<(), String> {
+    pub fn verify_ihx(
+        &mut self,
+        blocks: &IhxBlocks,
+        progress: &mut dyn FnMut(usize, usize),
+    ) -> Result<(), String> {
         let total: usize = blocks.iter().map(|(_, bytes)| bytes.len()).sum();
-        let checked = blocks.iter().try_fold(0usize, |verified, (address, bytes)| {
-            self.load_address(*address).map_err(|_| format!("Unable to set read start address: 0x{address:08x}"))?;
-            bytes.chunks(READ_MULTI_MAX).enumerate().try_fold(verified, |verified, (index, expected)| {
-                let read = self
-                    .port
-                    .write(&[PROTO_READ_MULTI, expected.len() as u8, PROTO_EOC])
-                    .and_then(|()| self.port.read_exact(expected.len(), READ_TIMEOUT_MS))
-                    .and_then(|got| self.response(RESPONSE_TIMEOUT_MS).map(|()| got))
-                    .map_err(|e| format!("Read failed: {e} at address: 0x{address:08x}"))?;
-                if let Some((at, (want, got))) = expected.iter().zip(&read).enumerate().find(|(_, (want, got))| want != got) {
-                    let place = usize::from(*address) + index * READ_MULTI_MAX + at;
-                    return Err(format!("Compare failed: expected({}) actual({}) at address: 0x{place:08x}", hex(*want), hex(*got)));
-                }
-                progress(verified + expected.len(), total);
-                Ok(verified + expected.len())
-            })
-        });
+        let checked = blocks
+            .iter()
+            .try_fold(0usize, |verified, (address, bytes)| {
+                self.load_address(*address)
+                    .map_err(|_| format!("Unable to set read start address: 0x{address:08x}"))?;
+                bytes.chunks(READ_MULTI_MAX).enumerate().try_fold(
+                    verified,
+                    |verified, (index, expected)| {
+                        let read = self
+                            .port
+                            .write(&[PROTO_READ_MULTI, expected.len() as u8, PROTO_EOC])
+                            .and_then(|()| self.port.read_exact(expected.len(), READ_TIMEOUT_MS))
+                            .and_then(|got| self.response(RESPONSE_TIMEOUT_MS).map(|()| got))
+                            .map_err(|e| format!("Read failed: {e} at address: 0x{address:08x}"))?;
+                        if let Some((at, (want, got))) = expected
+                            .iter()
+                            .zip(&read)
+                            .enumerate()
+                            .find(|(_, (want, got))| want != got)
+                        {
+                            let place = usize::from(*address) + index * READ_MULTI_MAX + at;
+                            return Err(format!(
+                                "Compare failed: expected({}) actual({}) at address: 0x{place:08x}",
+                                hex(*want),
+                                hex(*got)
+                            ));
+                        }
+                        progress(verified + expected.len(), total);
+                        Ok(verified + expected.len())
+                    },
+                )
+            });
         let _ = self.reboot();
         checked.map(|_| ())
     }
@@ -265,7 +348,10 @@ impl<P: Port> Bootloader<P> {
     }
 
     fn response(&mut self, timeout_ms: u64) -> Result<(), String> {
-        let answer = self.port.read_exact(2, timeout_ms).map_err(|e| format!("Get Command Response: {e}"))?;
+        let answer = self
+            .port
+            .read_exact(2, timeout_ms)
+            .map_err(|e| format!("Get Command Response: {e}"))?;
         match (answer[0], answer[1]) {
             (PROTO_INSYNC, PROTO_OK) => Ok(()),
             (PROTO_INSYNC, PROTO_BAD_SILICON_REV) => Err("This board is using a microcontroller with faulty silicon and an incorrect configuration and should be put out of service.".to_string()),
@@ -282,12 +368,19 @@ impl<P: Port> Bootloader<P> {
     }
 
     fn command(&mut self, command: u8, timeout_ms: u64) -> Result<(), String> {
-        self.port.write(&[command, PROTO_EOC]).and_then(|()| self.response(timeout_ms)).map_err(|e| format!("Send Command: {e}"))
+        self.port
+            .write(&[command, PROTO_EOC])
+            .and_then(|()| self.response(timeout_ms))
+            .map_err(|e| format!("Send Command: {e}"))
     }
 
     fn sync(&mut self) -> Result<(), String> {
         self.port.discard_input();
-        match std::iter::repeat_with(|| self.command(PROTO_GET_SYNC, RESPONSE_TIMEOUT_MS)).take(SYNC_ATTEMPTS).try_fold(String::new(), |_, attempt| attempt.map_or_else(Ok, |()| Err(()))) {
+        match std::iter::repeat_with(|| self.command(PROTO_GET_SYNC, RESPONSE_TIMEOUT_MS))
+            .take(SYNC_ATTEMPTS)
+            .try_fold(String::new(), |_, attempt| {
+                attempt.map_or_else(Ok, |()| Err(()))
+            }) {
             Err(()) => Ok(()),
             Ok(last) => Err(format!("Sync: {last}")),
         }
@@ -301,26 +394,40 @@ impl<P: Port> Bootloader<P> {
     }
 
     fn device(&mut self, parameter: u8) -> Result<u32, String> {
-        self.read_device(parameter).map_err(|e| format!("Get Device: {e}"))
+        self.read_device(parameter)
+            .map_err(|e| format!("Get Device: {e}"))
     }
 
     fn read_board_info(&mut self) -> Result<BoardInfo, String> {
         self.sync()?;
         let bootloader_version = self.device(INFO_BL_REV)?;
         if !(BL_REV_MIN..=BL_REV_MAX).contains(&bootloader_version) {
-            return Err(format!("Found unsupported bootloader version: {bootloader_version}"));
+            return Err(format!(
+                "Found unsupported bootloader version: {bootloader_version}"
+            ));
         }
         let board_id = self.device(INFO_BOARD_ID)?;
         let flash_size = self.device(INFO_FLASH_SIZE)?;
-        let fmu_v3 = board_id == BOARD_ID_PX4_FMU_V2 && bootloader_version >= BOOTLOADER_VERSION_V2_CORRECT_FLASH && flash_size > FLASH_SIZE_SMALL;
-        Ok(BoardInfo { bootloader_version, board_id: if fmu_v3 { BOARD_ID_PX4_FMU_V3 } else { board_id }, flash_size })
+        let fmu_v3 = board_id == BOARD_ID_PX4_FMU_V2
+            && bootloader_version >= BOOTLOADER_VERSION_V2_CORRECT_FLASH
+            && flash_size > FLASH_SIZE_SMALL;
+        Ok(BoardInfo {
+            bootloader_version,
+            board_id: if fmu_v3 {
+                BOARD_ID_PX4_FMU_V3
+            } else {
+                board_id
+            },
+            flash_size,
+        })
     }
 
     pub fn board_info(&mut self) -> Result<BoardInfo, String> {
         let info = match self.sik {
             true => self.sik_board_info(),
             false => self.read_board_info(),
-        }.map_err(|e| format!("Get Board Info: {e}"))?;
+        }
+        .map_err(|e| format!("Get Board Info: {e}"))?;
         self.info = Some(info);
         Ok(info)
     }
@@ -331,44 +438,74 @@ impl<P: Port> Bootloader<P> {
             true => ERASE_TIMEOUT_MS + (f64::from(flash_size) / 1e6 * 4000.0) as u64,
             false => ERASE_TIMEOUT_MS,
         };
-        self.command(PROTO_CHIP_ERASE, timeout).map_err(|e| format!("Erase failed: {e}"))
+        self.command(PROTO_CHIP_ERASE, timeout)
+            .map_err(|e| format!("Erase failed: {e}"))
     }
 
-    pub fn program(&mut self, image: &[u8], progress: &mut dyn FnMut(usize, usize)) -> Result<(), String> {
+    pub fn program(
+        &mut self,
+        image: &[u8],
+        progress: &mut dyn FnMut(usize, usize),
+    ) -> Result<(), String> {
         self.image_crc = 0;
         let total = image.len();
-        image.chunks(PROG_MULTI_MAX).try_fold(0usize, |sent, chunk| {
-            let length = u8::try_from(chunk.len()).unwrap_or(u8::MAX);
-            let frame: Vec<u8> = [PROTO_PROG_MULTI, length].into_iter().chain(chunk.iter().copied()).chain([PROTO_EOC]).collect();
-            self.port.write(&frame).and_then(|()| self.response(RESPONSE_TIMEOUT_MS)).map_err(|e| format!("Flash failed: {e} at address 0x{sent:08x}"))?;
-            self.image_crc = crc32(chunk, self.image_crc);
-            progress(sent + chunk.len(), total);
-            Ok::<usize, String>(sent + chunk.len())
-        })?;
+        image
+            .chunks(PROG_MULTI_MAX)
+            .try_fold(0usize, |sent, chunk| {
+                let length = u8::try_from(chunk.len()).unwrap_or(u8::MAX);
+                let frame: Vec<u8> = [PROTO_PROG_MULTI, length]
+                    .into_iter()
+                    .chain(chunk.iter().copied())
+                    .chain([PROTO_EOC])
+                    .collect();
+                self.port
+                    .write(&frame)
+                    .and_then(|()| self.response(RESPONSE_TIMEOUT_MS))
+                    .map_err(|e| format!("Flash failed: {e} at address 0x{sent:08x}"))?;
+                self.image_crc = crc32(chunk, self.image_crc);
+                progress(sent + chunk.len(), total);
+                Ok::<usize, String>(sent + chunk.len())
+            })?;
         let flash_size = self.info.map_or(0, |info| info.flash_size) as usize;
         let fill = vec![0xffu8; flash_size.saturating_sub(total)];
         self.image_crc = crc32(&fill, self.image_crc);
         Ok(())
     }
 
-    fn verify_bytes(&mut self, image: &[u8], progress: &mut dyn FnMut(usize, usize)) -> Result<(), String> {
+    fn verify_bytes(
+        &mut self,
+        image: &[u8],
+        progress: &mut dyn FnMut(usize, usize),
+    ) -> Result<(), String> {
         self.command(PROTO_CHIP_VERIFY, RESPONSE_TIMEOUT_MS)?;
         let total = image.len();
-        image.chunks(READ_MULTI_MAX).try_fold(0usize, |verified, expected| {
-            let length = u8::try_from(expected.len()).unwrap_or(u8::MAX);
-            let read = self
-                .port
-                .write(&[PROTO_READ_MULTI, length, PROTO_EOC])
-                .and_then(|()| self.port.read_exact(expected.len(), READ_TIMEOUT_MS))
-                .and_then(|bytes| self.response(RESPONSE_TIMEOUT_MS).map(|()| bytes))
-                .map_err(|e| format!("Read failed: {e} at address: 0x{verified:08x}"))?;
-            if let Some((at, (want, got))) = expected.iter().zip(&read).enumerate().find(|(_, (want, got))| want != got) {
-                return Err(format!("Compare failed: expected({}) actual({}) at address: 0x{:08x}", hex(*want), hex(*got), verified + at));
-            }
-            progress(verified + expected.len(), total);
-            Ok(verified + expected.len())
-        })
-        .map(|_| ())
+        image
+            .chunks(READ_MULTI_MAX)
+            .try_fold(0usize, |verified, expected| {
+                let length = u8::try_from(expected.len()).unwrap_or(u8::MAX);
+                let read = self
+                    .port
+                    .write(&[PROTO_READ_MULTI, length, PROTO_EOC])
+                    .and_then(|()| self.port.read_exact(expected.len(), READ_TIMEOUT_MS))
+                    .and_then(|bytes| self.response(RESPONSE_TIMEOUT_MS).map(|()| bytes))
+                    .map_err(|e| format!("Read failed: {e} at address: 0x{verified:08x}"))?;
+                if let Some((at, (want, got))) = expected
+                    .iter()
+                    .zip(&read)
+                    .enumerate()
+                    .find(|(_, (want, got))| want != got)
+                {
+                    return Err(format!(
+                        "Compare failed: expected({}) actual({}) at address: 0x{:08x}",
+                        hex(*want),
+                        hex(*got),
+                        verified + at
+                    ));
+                }
+                progress(verified + expected.len(), total);
+                Ok(verified + expected.len())
+            })
+            .map(|_| ())
     }
 
     fn verify_crc(&mut self) -> Result<(), String> {
@@ -378,11 +515,18 @@ impl<P: Port> Bootloader<P> {
         let board = u32::from_le_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]);
         match board == self.image_crc {
             true => Ok(()),
-            false => Err(format!("CRC mismatch: board(0x{board:04x}) file(0x{:04x})", self.image_crc)),
+            false => Err(format!(
+                "CRC mismatch: board(0x{board:04x}) file(0x{:04x})",
+                self.image_crc
+            )),
         }
     }
 
-    pub fn verify(&mut self, image: &[u8], progress: &mut dyn FnMut(usize, usize)) -> Result<(), String> {
+    pub fn verify(
+        &mut self,
+        image: &[u8],
+        progress: &mut dyn FnMut(usize, usize),
+    ) -> Result<(), String> {
         let checked = match self.info.map_or(0, |info| info.bootloader_version) <= 2 {
             true => self.verify_bytes(image, progress),
             false => self.verify_crc(),
@@ -410,37 +554,65 @@ pub struct Image {
 }
 
 pub fn is_compatible(board_id: u32, firmware_id: u32) -> bool {
-    board_id == firmware_id || (board_id == BOARD_ID_PX4_FMU_V3 && firmware_id == BOARD_ID_PX4_FMU_V2)
+    board_id == firmware_id
+        || (board_id == BOARD_ID_PX4_FMU_V3 && firmware_id == BOARD_ID_PX4_FMU_V2)
 }
 
 fn decompressed(json: &Value, size_key: &str, bytes_key: &str) -> Result<Vec<u8>, String> {
-    let size = json.get(size_key).and_then(Value::as_u64).filter(|size| *size > 0).ok_or_else(|| format!("Firmware file has invalid decompressed size for {size_key}"))?;
-    let encoded = json.get(bytes_key).and_then(Value::as_str).ok_or_else(|| format!("Could not find compressed bytes for {bytes_key} in Firmware file"))?;
-    let compressed = base64::engine::general_purpose::STANDARD.decode(encoded.trim()).map_err(|e| format!("Firmware file {bytes_key} is not base64: {e}"))?;
+    let size = json
+        .get(size_key)
+        .and_then(Value::as_u64)
+        .filter(|size| *size > 0)
+        .ok_or_else(|| format!("Firmware file has invalid decompressed size for {size_key}"))?;
+    let encoded = json.get(bytes_key).and_then(Value::as_str).ok_or_else(|| {
+        format!("Could not find compressed bytes for {bytes_key} in Firmware file")
+    })?;
+    let compressed = base64::engine::general_purpose::STANDARD
+        .decode(encoded.trim())
+        .map_err(|e| format!("Firmware file {bytes_key} is not base64: {e}"))?;
     let mut bytes = Vec::new();
-    flate2::read::ZlibDecoder::new(compressed.as_slice()).read_to_end(&mut bytes).map_err(|e| format!("Firmware file {bytes_key} does not decompress: {e}"))?;
+    flate2::read::ZlibDecoder::new(compressed.as_slice())
+        .read_to_end(&mut bytes)
+        .map_err(|e| format!("Firmware file {bytes_key} does not decompress: {e}"))?;
     match bytes.len() as u64 == size {
         true => Ok(bytes),
-        false => Err(format!("Size for decompressed {bytes_key} does not match stored size: Expected({size}) Actual({})", bytes.len())),
+        false => Err(format!(
+            "Size for decompressed {bytes_key} does not match stored size: Expected({size}) Actual({})",
+            bytes.len()
+        )),
     }
 }
 
 pub fn parse_px4(text: &str, board_id: u32) -> Result<Image, String> {
-    let json: Value = serde_json::from_str(text).map_err(|_| "Supplied file is not a valid JSON document".to_string())?;
-    let missing = ["board_id", "image", "image_size"].into_iter().find(|key| json.get(key).is_none());
+    let json: Value = serde_json::from_str(text)
+        .map_err(|_| "Supplied file is not a valid JSON document".to_string())?;
+    let missing = ["board_id", "image", "image_size"]
+        .into_iter()
+        .find(|key| json.get(key).is_none());
     if let Some(key) = missing {
         return Err(format!("Firmware file missing required key: {key}"));
     }
-    let firmware_id = json["board_id"].as_u64().and_then(|id| u32::try_from(id).ok()).ok_or("Firmware file has invalid key: board_id")?;
+    let firmware_id = json["board_id"]
+        .as_u64()
+        .and_then(|id| u32::try_from(id).ok())
+        .ok_or("Firmware file has invalid key: board_id")?;
     if !is_compatible(board_id, firmware_id) {
-        return Err(format!("Downloaded firmware board id does not match hardware board id: {firmware_id} != {board_id}"));
+        return Err(format!(
+            "Downloaded firmware board id does not match hardware board id: {firmware_id} != {board_id}"
+        ));
     }
     let image = decompressed(&json, "image_size", "image")?;
     let padding = (4 - image.len() % 4) % 4;
     Ok(Image {
         board_id: firmware_id,
-        autopilot: json.get("mav_autopilot").and_then(Value::as_u64).and_then(|a| u8::try_from(a).ok()),
-        bytes: image.into_iter().chain(std::iter::repeat_n(0xff, padding)).collect(),
+        autopilot: json
+            .get("mav_autopilot")
+            .and_then(Value::as_u64)
+            .and_then(|a| u8::try_from(a).ok()),
+        bytes: image
+            .into_iter()
+            .chain(std::iter::repeat_n(0xff, padding))
+            .collect(),
     })
 }
 
@@ -465,11 +637,27 @@ pub mod simulated {
 
     impl Board {
         pub fn new(bootloader_version: u32, board_id: u32, flash_size: usize) -> Self {
-            Board { bootloader_version, board_id, flash: vec![0u8; flash_size], address: 0, booted: false, erased: false, sik: false, command_mode: false, baud: 115_200, pending: Vec::new(), out: VecDeque::new() }
+            Board {
+                bootloader_version,
+                board_id,
+                flash: vec![0u8; flash_size],
+                address: 0,
+                booted: false,
+                erased: false,
+                sik: false,
+                command_mode: false,
+                baud: 115_200,
+                pending: Vec::new(),
+                out: VecDeque::new(),
+            }
         }
 
         pub fn sik_radio(board_id: u32, flash_size: usize) -> Self {
-            Board { sik: true, command_mode: true, ..Board::new(0, board_id, flash_size) }
+            Board {
+                sik: true,
+                command_mode: true,
+                ..Board::new(0, board_id, flash_size)
+            }
         }
 
         fn command(&mut self) -> Option<usize> {
@@ -510,10 +698,17 @@ pub mod simulated {
             let used = match *p.first()? {
                 PROTO_LOAD_ADDRESS if self.sik && p.len() >= 4 => 4,
                 PROTO_GET_DEVICE if self.sik && p.len() >= 2 => 2,
-                PROTO_GET_SYNC | PROTO_CHIP_ERASE | PROTO_CHIP_VERIFY | PROTO_GET_CRC | PROTO_BOOT if !self.sik && p.len() >= 2 => 2,
+                PROTO_GET_SYNC | PROTO_CHIP_ERASE | PROTO_CHIP_VERIFY | PROTO_GET_CRC
+                | PROTO_BOOT
+                    if !self.sik && p.len() >= 2 =>
+                {
+                    2
+                }
                 PROTO_GET_SYNC | PROTO_CHIP_ERASE | PROTO_GET_CRC | PROTO_BOOT if p.len() >= 2 => 2,
                 PROTO_GET_DEVICE | PROTO_READ_MULTI if p.len() >= 3 => 3,
-                PROTO_PROG_MULTI if p.len() >= 2 && p.len() >= usize::from(p[1]) + 3 => usize::from(p[1]) + 3,
+                PROTO_PROG_MULTI if p.len() >= 2 && p.len() >= usize::from(p[1]) + 3 => {
+                    usize::from(p[1]) + 3
+                }
                 _ => return None,
             };
             let frame: Vec<u8> = self.pending.drain(..used).collect();
@@ -603,7 +798,8 @@ mod tests {
     use std::io::Write;
 
     fn px4_file(board_id: u32, image: &[u8]) -> String {
-        let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+        let mut encoder =
+            flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
         encoder.write_all(image).unwrap();
         let packed = base64::engine::general_purpose::STANDARD.encode(encoder.finish().unwrap());
         serde_json::json!({ "board_id": board_id, "image_size": image.len(), "image": packed, "mav_autopilot": 12 }).to_string()
@@ -613,24 +809,46 @@ mod tests {
 
     #[test]
     fn an_ihx_file_reads_as_contiguous_blocks_up_to_its_end_record() {
-        assert_eq!(parse_ihx(IHX), Ok(vec![(0, vec![1, 2, 3, 4, 5, 6]), (0x100, vec![0xaa, 0xbb])]));
-        assert_eq!(parse_ihx("0400"), Err("Incorrectly formatted .ihx file, line does not begin with :".to_string()));
-        assert_eq!(parse_ihx(":02000002AABB00"), Err("Unsupported record type in file: 2".to_string()));
-        assert_eq!(parse_ihx(":0400000001"), Err("Incorrectly formatted line in .ihx file, line too short".to_string()));
+        assert_eq!(
+            parse_ihx(IHX),
+            Ok(vec![(0, vec![1, 2, 3, 4, 5, 6]), (0x100, vec![0xaa, 0xbb])])
+        );
+        assert_eq!(
+            parse_ihx("0400"),
+            Err("Incorrectly formatted .ihx file, line does not begin with :".to_string())
+        );
+        assert_eq!(
+            parse_ihx(":02000002AABB00"),
+            Err("Unsupported record type in file: 2".to_string())
+        );
+        assert_eq!(
+            parse_ihx(":0400000001"),
+            Err("Incorrectly formatted line in .ihx file, line too short".to_string())
+        );
     }
 
     #[test]
     fn a_sik_radio_is_taken_from_command_mode_into_its_bootloader_and_flashed() {
         let blocks = parse_ihx(IHX).unwrap();
         let mut loader = Bootloader::sik(Board::sik_radio(BOARD_ID_SIK_RADIO_1060, 0x400));
-        assert_eq!(loader.board_info().unwrap(), BoardInfo { bootloader_version: 0, board_id: BOARD_ID_SIK_RADIO_1060, flash_size: 0 });
+        assert_eq!(
+            loader.board_info().unwrap(),
+            BoardInfo {
+                bootloader_version: 0,
+                board_id: BOARD_ID_SIK_RADIO_1060,
+                flash_size: 0
+            }
+        );
         loader.init_flash_sequence().unwrap();
         loader.erase().unwrap();
         loader.program_ihx(&blocks, &mut |_, _| {}).unwrap();
         loader.verify_ihx(&blocks, &mut |_, _| {}).unwrap();
         let board = loader.into_port();
         assert!(board.booted && !board.command_mode && board.baud == 115_200);
-        assert_eq!((&board.flash[..6], &board.flash[0x100..0x102]), (&[1u8, 2, 3, 4, 5, 6][..], &[0xaau8, 0xbb][..]));
+        assert_eq!(
+            (&board.flash[..6], &board.flash[0x100..0x102]),
+            (&[1u8, 2, 3, 4, 5, 6][..], &[0xaau8, 0xbb][..])
+        );
     }
 
     #[test]
@@ -638,14 +856,21 @@ mod tests {
         let mut radio = Board::sik_radio(BOARD_ID_SIK_RADIO_1000, 0x400);
         radio.command_mode = false;
         let mut loader = Bootloader::sik(radio);
-        assert_eq!(loader.board_info().unwrap().board_id, BOARD_ID_SIK_RADIO_1000);
+        assert_eq!(
+            loader.board_info().unwrap().board_id,
+            BOARD_ID_SIK_RADIO_1000
+        );
         loader.init_flash_sequence().unwrap();
     }
 
     #[test]
     fn the_crc_is_qgcs_table_crc_seeded_with_zero() {
         assert_eq!(crc32(b"123456789", 0), 0x2dfd_2d88);
-        assert_eq!(crc32(b"6789", crc32(b"12345", 0)), crc32(b"123456789", 0), "it chains the way the flash loop feeds it chunk by chunk");
+        assert_eq!(
+            crc32(b"6789", crc32(b"12345", 0)),
+            crc32(b"123456789", 0),
+            "it chains the way the flash loop feeds it chunk by chunk"
+        );
     }
 
     #[test]
@@ -655,10 +880,19 @@ mod tests {
         assert_eq!(image.bytes.len() % 4, 0, "padded to a whole word with 0xff");
         assert_eq!(image.autopilot, Some(12));
         let mut loader = Bootloader::new(Board::new(5, 50, 4096));
-        assert_eq!(loader.board_info().unwrap(), BoardInfo { bootloader_version: 5, board_id: 50, flash_size: 4096 });
+        assert_eq!(
+            loader.board_info().unwrap(),
+            BoardInfo {
+                bootloader_version: 5,
+                board_id: 50,
+                flash_size: 4096
+            }
+        );
         loader.erase().unwrap();
         let mut seen = Vec::new();
-        loader.program(&image.bytes, &mut |done, total| seen.push((done, total))).unwrap();
+        loader
+            .program(&image.bytes, &mut |done, total| seen.push((done, total)))
+            .unwrap();
         assert_eq!(seen.last(), Some(&(1000, 1000)));
         loader.verify(&image.bytes, &mut |_, _| {}).unwrap();
         let board = loader.into_port();
@@ -675,8 +909,19 @@ mod tests {
         loader.program(&firmware, &mut |_, _| {}).unwrap();
         let mut board = loader.into_port();
         board.flash[130] = 0;
-        let mut loader = Bootloader { port: board, info: Some(BoardInfo { bootloader_version: 2, board_id: 9, flash_size: 2048 }), ..Bootloader::new(Board::new(2, 9, 0)) };
-        assert_eq!(loader.verify(&firmware, &mut |_, _| {}), Err("Compare failed: expected(0xa5) actual(0x00) at address: 0x00000082".to_string()));
+        let mut loader = Bootloader {
+            port: board,
+            info: Some(BoardInfo {
+                bootloader_version: 2,
+                board_id: 9,
+                flash_size: 2048,
+            }),
+            ..Bootloader::new(Board::new(2, 9, 0))
+        };
+        assert_eq!(
+            loader.verify(&firmware, &mut |_, _| {}),
+            Err("Compare failed: expected(0xa5) actual(0x00) at address: 0x00000082".to_string())
+        );
     }
 
     #[test]
@@ -684,7 +929,13 @@ mod tests {
         let mut loader = Bootloader::new(Board::new(5, BOARD_ID_PX4_FMU_V2, 2 * 1024 * 1024));
         assert_eq!(loader.board_info().unwrap().board_id, BOARD_ID_PX4_FMU_V3);
         assert!(parse_px4(&px4_file(9, &[1, 2, 3, 4]), BOARD_ID_PX4_FMU_V3).is_ok());
-        assert_eq!(parse_px4(&px4_file(50, &[1, 2, 3, 4]), 9), Err("Downloaded firmware board id does not match hardware board id: 50 != 9".to_string()));
+        assert_eq!(
+            parse_px4(&px4_file(50, &[1, 2, 3, 4]), 9),
+            Err(
+                "Downloaded firmware board id does not match hardware board id: 50 != 9"
+                    .to_string()
+            )
+        );
     }
 
     #[test]
@@ -700,6 +951,9 @@ mod tests {
             fn discard_input(&mut self) {}
         }
         assert_eq!(Bootloader::new(Silent).board_info(), Err("Get Board Info: Sync: Send Command: Get Command Response: Timeout waiting for bytes to be available".to_string()));
-        assert_eq!(Bootloader::new(Board::new(6, 50, 1024)).board_info(), Err("Get Board Info: Found unsupported bootloader version: 6".to_string()));
+        assert_eq!(
+            Bootloader::new(Board::new(6, 50, 1024)).board_info(),
+            Err("Get Board Info: Found unsupported bootloader version: 6".to_string())
+        );
     }
 }

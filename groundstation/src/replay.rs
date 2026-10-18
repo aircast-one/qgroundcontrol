@@ -26,7 +26,17 @@ impl Replay {
     pub fn new(entries: Vec<(u64, Vec<u8>)>) -> Self {
         let start = entries.first().map(|e| e.0).unwrap_or(0);
         let last = entries.last().map(|e| e.0).unwrap_or(start);
-        Replay { entries, index: 0, speed: 1.0, start_log_us: start, duration_us: last.saturating_sub(start), current_us: start, playback_start_ms: 0, playback_start_log_us: 0, playing: false }
+        Replay {
+            entries,
+            index: 0,
+            speed: 1.0,
+            start_log_us: start,
+            duration_us: last.saturating_sub(start),
+            current_us: start,
+            playback_start_ms: 0,
+            playback_start_log_us: 0,
+            playing: false,
+        }
     }
 
     pub fn from_tlog(bytes: &[u8], now_us: u64) -> Self {
@@ -59,7 +69,11 @@ impl Replay {
     }
 
     pub fn set_speed(&mut self, speed: f64, now_ms: u64) {
-        self.speed = if speed.is_finite() && speed > 0.0 { speed } else { 1.0 };
+        self.speed = if speed.is_finite() && speed > 0.0 {
+            speed
+        } else {
+            1.0
+        };
         self.playback_start_ms = now_ms;
         self.playback_start_log_us = self.current_us;
     }
@@ -73,14 +87,25 @@ impl Replay {
 
     pub fn seek(&mut self, percent: f64) -> f64 {
         self.playing = false;
-        let desired = self.start_log_us + (percent.clamp(0.0, 100.0) / 100.0 * self.duration_us as f64) as u64;
-        self.index = self.entries.iter().position(|(ts, _)| *ts >= desired).unwrap_or(self.entries.len().saturating_sub(1));
-        self.current_us = self.entries.get(self.index).map(|e| e.0).unwrap_or(self.start_log_us);
+        let desired = self.start_log_us
+            + (percent.clamp(0.0, 100.0) / 100.0 * self.duration_us as f64) as u64;
+        self.index = self
+            .entries
+            .iter()
+            .position(|(ts, _)| *ts >= desired)
+            .unwrap_or(self.entries.len().saturating_sub(1));
+        self.current_us = self
+            .entries
+            .get(self.index)
+            .map(|e| e.0)
+            .unwrap_or(self.start_log_us);
         self.percent()
     }
 
     pub fn due_in_ms(&self, now_ms: u64) -> i64 {
-        let movement_ms = ((self.current_us.saturating_sub(self.playback_start_log_us) / 1000) as f64 / self.speed) as u64;
+        let movement_ms = ((self.current_us.saturating_sub(self.playback_start_log_us) / 1000)
+            as f64
+            / self.speed) as u64;
         (self.playback_start_ms + movement_ms) as i64 - now_ms as i64
     }
 
@@ -90,18 +115,36 @@ impl Replay {
         while wait < MIN_TICK_MS {
             let Some((_, frame)) = self.entries.get(self.index) else {
                 self.playing = false;
-                return Batch { frames, wait_ms: 0, percent: self.percent(), log_time_s: self.current_us.saturating_sub(self.start_log_us) / 1_000_000, at_end: true };
+                return Batch {
+                    frames,
+                    wait_ms: 0,
+                    percent: self.percent(),
+                    log_time_s: self.current_us.saturating_sub(self.start_log_us) / 1_000_000,
+                    at_end: true,
+                };
             };
             frames.push(frame.clone());
             self.index += 1;
             let Some((next_us, _)) = self.entries.get(self.index) else {
                 self.playing = false;
-                return Batch { frames, wait_ms: 0, percent: 100.0, log_time_s: self.duration_us / 1_000_000, at_end: true };
+                return Batch {
+                    frames,
+                    wait_ms: 0,
+                    percent: 100.0,
+                    log_time_s: self.duration_us / 1_000_000,
+                    at_end: true,
+                };
             };
             self.current_us = *next_us;
             wait = self.due_in_ms(now_ms);
         }
-        Batch { frames, wait_ms: wait as u64, percent: self.percent(), log_time_s: self.current_us.saturating_sub(self.start_log_us) / 1_000_000, at_end: false }
+        Batch {
+            frames,
+            wait_ms: wait as u64,
+            percent: self.percent(),
+            log_time_s: self.current_us.saturating_sub(self.start_log_us) / 1_000_000,
+            at_end: false,
+        }
     }
 }
 
@@ -110,7 +153,9 @@ mod tests {
     use super::*;
 
     fn log(step_us: u64, count: usize) -> Vec<(u64, Vec<u8>)> {
-        (0..count).map(|i| (1_000_000 + i as u64 * step_us, vec![i as u8; 3])).collect()
+        (0..count)
+            .map(|i| (1_000_000 + i as u64 * step_us, vec![i as u8; 3]))
+            .collect()
     }
 
     #[test]
@@ -133,12 +178,18 @@ mod tests {
         assert_eq!(replay.duration_s(), 6);
         replay.play(0);
         let first = replay.tick(0);
-        assert_eq!((first.frames.len(), first.wait_ms, first.log_time_s), (1, 2000, 2));
+        assert_eq!(
+            (first.frames.len(), first.wait_ms, first.log_time_s),
+            (1, 2000, 2)
+        );
         assert!((first.percent - 33.333).abs() < 0.01);
         let second = replay.tick(2000);
         let third = replay.tick(4000);
         let last = replay.tick(6000);
-        assert_eq!((second.frames.len(), third.frames.len(), last.frames.len()), (1, 1, 1));
+        assert_eq!(
+            (second.frames.len(), third.frames.len(), last.frames.len()),
+            (1, 1, 1)
+        );
         assert!(last.at_end && !replay.is_playing() && last.percent == 100.0);
         replay.play(7000);
         assert_eq!(replay.tick(7000).frames.len(), 1);
@@ -161,9 +212,15 @@ mod tests {
     fn a_recorded_frame_reads_back_with_the_swap_rule_for_old_logs() {
         let recorded = crate::tlog::record(1_700_000_000_000_000, &[0xfe, 1, 2]);
         assert_eq!(recorded.len(), 11);
-        assert_eq!(crate::tlog::parse_timestamp(recorded[..8].try_into().unwrap(), 1_800_000_000_000_000), 1_700_000_000_000_000);
+        assert_eq!(
+            crate::tlog::parse_timestamp(recorded[..8].try_into().unwrap(), 1_800_000_000_000_000),
+            1_700_000_000_000_000
+        );
         let little = 1_700_000_000_000_000u64.to_le_bytes();
-        assert_eq!(crate::tlog::parse_timestamp(little, 1_800_000_000_000_000), 1_700_000_000_000_000);
+        assert_eq!(
+            crate::tlog::parse_timestamp(little, 1_800_000_000_000_000),
+            1_700_000_000_000_000
+        );
         let sample = crate::samplelog::bytes();
         let replay = Replay::from_tlog(&sample, u64::MAX);
         assert!(replay.duration_s() > 0 && replay.entries.len() > 1000);

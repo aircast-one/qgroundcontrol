@@ -36,7 +36,11 @@ fn from_list(out: ListOut) -> Step {
         ListOut::Send(r) => Step::Send(r),
         ListOut::StartTimer => Step::StartTimer,
         ListOut::StopTimer => Step::StopTimer,
-        ListOut::Complete { entries, error } => Step::Done(if error.is_empty() { Ok(Outcome::Listed(entries)) } else { Err(error) }),
+        ListOut::Complete { entries, error } => Step::Done(if error.is_empty() {
+            Ok(Outcome::Listed(entries))
+        } else {
+            Err(error)
+        }),
     }
 }
 
@@ -46,7 +50,11 @@ fn from_download(out: Out) -> Step {
         Out::StartTimer => Step::StartTimer,
         Out::StopTimer => Step::StopTimer,
         Out::Progress(p) => Step::Progress(p),
-        Out::Complete { ok, error, bytes } => Step::Done(if ok { Ok(Outcome::Downloaded(bytes)) } else { Err(error) }),
+        Out::Complete { ok, error, bytes } => Step::Done(if ok {
+            Ok(Outcome::Downloaded(bytes))
+        } else {
+            Err(error)
+        }),
     }
 }
 
@@ -56,19 +64,35 @@ fn from_op(out: OpOut, done: Outcome) -> Step {
         OpOut::StartTimer => Step::StartTimer,
         OpOut::StopTimer => Step::StopTimer,
         OpOut::Progress(p) => Step::Progress(p),
-        OpOut::Complete { error } => Step::Done(if error.is_empty() { Ok(done) } else { Err(error) }),
+        OpOut::Complete { error } => Step::Done(if error.is_empty() {
+            Ok(done)
+        } else {
+            Err(error)
+        }),
     }
 }
 
 impl Job {
     pub fn list(component: u8, path: &str, seq: u16) -> Result<(Job, Vec<Step>), String> {
         let (listing, outs) = Listing::start_from(component, path, seq)?;
-        Ok((Job { machine: Machine::List(listing), path: path.to_string() }, outs.into_iter().map(from_list).collect()))
+        Ok((
+            Job {
+                machine: Machine::List(listing),
+                path: path.to_string(),
+            },
+            outs.into_iter().map(from_list).collect(),
+        ))
     }
 
     pub fn list_with_time(component: u8, path: &str, seq: u16) -> Result<(Job, Vec<Step>), String> {
         let (listing, outs) = Listing::start_with_time(component, path, seq)?;
-        Ok((Job { machine: Machine::List(listing), path: path.to_string() }, outs.into_iter().map(from_list).collect()))
+        Ok((
+            Job {
+                machine: Machine::List(listing),
+                path: path.to_string(),
+            },
+            outs.into_iter().map(from_list).collect(),
+        ))
     }
 
     pub fn is_list(&self) -> bool {
@@ -87,9 +111,20 @@ impl Job {
         Self::download_sized(component, path, seq, false)
     }
 
-    pub fn download_sized(component: u8, path: &str, seq: u16, check_size: bool) -> Result<(Job, Vec<Step>), String> {
+    pub fn download_sized(
+        component: u8,
+        path: &str,
+        seq: u16,
+        check_size: bool,
+    ) -> Result<(Job, Vec<Step>), String> {
         let (download, outs) = Download::start_from(component, path, check_size, seq)?;
-        Ok((Job { machine: Machine::Download(download), path: path.to_string() }, outs.into_iter().map(from_download).collect()))
+        Ok((
+            Job {
+                machine: Machine::Download(download),
+                path: path.to_string(),
+            },
+            outs.into_iter().map(from_download).collect(),
+        ))
     }
 
     pub fn stream_to(&mut self, local: &std::path::Path) -> Result<(), String> {
@@ -99,14 +134,35 @@ impl Job {
         }
     }
 
-    pub fn upload(component: u8, path: &str, data: Vec<u8>, seq: u16) -> Result<(Job, Vec<Step>), String> {
+    pub fn upload(
+        component: u8,
+        path: &str,
+        data: Vec<u8>,
+        seq: u16,
+    ) -> Result<(Job, Vec<Step>), String> {
         let (op, outs) = FileOp::upload(component, path, data, seq)?;
-        Ok((Job { machine: Machine::Upload(op), path: path.to_string() }, outs.into_iter().map(|o| from_op(o, Outcome::Uploaded)).collect()))
+        Ok((
+            Job {
+                machine: Machine::Upload(op),
+                path: path.to_string(),
+            },
+            outs.into_iter()
+                .map(|o| from_op(o, Outcome::Uploaded))
+                .collect(),
+        ))
     }
 
     pub fn delete(component: u8, path: &str, seq: u16) -> Result<(Job, Vec<Step>), String> {
         let (op, outs) = FileOp::remove(component, path, seq)?;
-        Ok((Job { machine: Machine::Delete(op), path: path.to_string() }, outs.into_iter().map(|o| from_op(o, Outcome::Deleted)).collect()))
+        Ok((
+            Job {
+                machine: Machine::Delete(op),
+                path: path.to_string(),
+            },
+            outs.into_iter()
+                .map(|o| from_op(o, Outcome::Deleted))
+                .collect(),
+        ))
     }
 
     pub fn component(&self) -> u8 {
@@ -128,9 +184,21 @@ impl Job {
     pub fn on_payload(&mut self, payload: &[u8]) -> Vec<Step> {
         match &mut self.machine {
             Machine::List(m) => m.on_payload(payload).into_iter().map(from_list).collect(),
-            Machine::Download(m) => m.on_payload(payload).into_iter().map(from_download).collect(),
-            Machine::Upload(m) => m.on_payload(payload).into_iter().map(|o| from_op(o, Outcome::Uploaded)).collect(),
-            Machine::Delete(m) => m.on_payload(payload).into_iter().map(|o| from_op(o, Outcome::Deleted)).collect(),
+            Machine::Download(m) => m
+                .on_payload(payload)
+                .into_iter()
+                .map(from_download)
+                .collect(),
+            Machine::Upload(m) => m
+                .on_payload(payload)
+                .into_iter()
+                .map(|o| from_op(o, Outcome::Uploaded))
+                .collect(),
+            Machine::Delete(m) => m
+                .on_payload(payload)
+                .into_iter()
+                .map(|o| from_op(o, Outcome::Deleted))
+                .collect(),
         }
     }
 
@@ -138,16 +206,32 @@ impl Job {
         match &mut self.machine {
             Machine::List(m) => m.on_timeout().into_iter().map(from_list).collect(),
             Machine::Download(m) => m.on_timeout().into_iter().map(from_download).collect(),
-            Machine::Upload(m) => m.on_timeout().into_iter().map(|o| from_op(o, Outcome::Uploaded)).collect(),
-            Machine::Delete(m) => m.on_timeout().into_iter().map(|o| from_op(o, Outcome::Deleted)).collect(),
+            Machine::Upload(m) => m
+                .on_timeout()
+                .into_iter()
+                .map(|o| from_op(o, Outcome::Uploaded))
+                .collect(),
+            Machine::Delete(m) => m
+                .on_timeout()
+                .into_iter()
+                .map(|o| from_op(o, Outcome::Deleted))
+                .collect(),
         }
     }
 
     pub fn cancel(&mut self) -> Vec<Step> {
         match &mut self.machine {
             Machine::Download(m) => m.cancel().into_iter().map(from_download).collect(),
-            Machine::Upload(m) => m.cancel().into_iter().map(|o| from_op(o, Outcome::Uploaded)).collect(),
-            Machine::Delete(m) => m.cancel().into_iter().map(|o| from_op(o, Outcome::Deleted)).collect(),
+            Machine::Upload(m) => m
+                .cancel()
+                .into_iter()
+                .map(|o| from_op(o, Outcome::Uploaded))
+                .collect(),
+            Machine::Delete(m) => m
+                .cancel()
+                .into_iter()
+                .map(|o| from_op(o, Outcome::Deleted))
+                .collect(),
             _ => vec![Step::StopTimer, Step::Done(Err("Aborted".to_string()))],
         }
     }
@@ -176,7 +260,9 @@ mod tests {
     fn every_machine_reports_through_one_step_shape() {
         let (job, steps) = Job::delete(1, "/APM/scripts/a.lua", 0).unwrap();
         assert_eq!(job.component(), 1);
-        assert!(matches!(steps.last(), Some(Step::Send(r)) if r.opcode == crate::ftp::CMD_REMOVE_FILE));
+        assert!(
+            matches!(steps.last(), Some(Step::Send(r)) if r.opcode == crate::ftp::CMD_REMOVE_FILE)
+        );
         let (mut listing, _) = Job::list(1, "/APM/scripts/", 0).unwrap();
         assert!(matches!(listing.cancel().last(), Some(Step::Done(Err(e))) if e == "Aborted"));
     }

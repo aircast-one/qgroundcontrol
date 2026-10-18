@@ -96,8 +96,12 @@ impl StandardModes {
             self.want_reset = false;
             return self.request();
         }
-        let Some(mode) = message.filter(|_| accepted) else { return vec![Out::Failed] };
-        let (name, forced_off) = standard_name(mode.standard_mode).map(|(n, off)| (n.to_string(), off)).unwrap_or((mode.name.clone(), false));
+        let Some(mode) = message.filter(|_| accepted) else {
+            return vec![Out::Failed];
+        };
+        let (name, forced_off) = standard_name(mode.standard_mode)
+            .map(|(n, off)| (n.to_string(), off))
+            .unwrap_or((mode.name.clone(), false));
         let cannot_be_set = mode.properties & PROPERTY_NOT_USER_SELECTABLE != 0 || forced_off;
         self.modes.push(FlightMode {
             name,
@@ -126,22 +130,59 @@ impl StandardModes {
 mod tests {
     use super::*;
 
-    fn mode(index: u8, total: u8, standard: u8, name: &str, properties: u32, custom: u32) -> AvailableMode {
-        AvailableMode { custom_mode: custom, properties, number_modes: total, mode_index: index, standard_mode: standard, name: name.into() }
+    fn mode(
+        index: u8,
+        total: u8,
+        standard: u8,
+        name: &str,
+        properties: u32,
+        custom: u32,
+    ) -> AvailableMode {
+        AvailableMode {
+            custom_mode: custom,
+            properties,
+            number_modes: total,
+            mode_index: index,
+            standard_mode: standard,
+            name: name.into(),
+        }
     }
 
     #[test]
     fn modes_are_requested_one_by_one_named_by_standard_and_made_unique() {
         let mut modes = StandardModes::default();
         assert_eq!(modes.request(), vec![Out::RequestMode(1)]);
-        assert_eq!(modes.on_message(true, Some(&mode(1, 4, 1, "POSCTL", 0, 10))), vec![Out::RequestMode(2)]);
-        assert_eq!(modes.on_message(true, Some(&mode(2, 4, 8, "TAKEOFF", 0, 11))), vec![Out::RequestMode(3)]);
-        assert_eq!(modes.on_message(true, Some(&mode(3, 4, 0, "Acro", PROPERTY_ADVANCED, 12))), vec![Out::RequestMode(4)]);
-        let done = modes.on_message(true, Some(&mode(4, 4, 0, "Acro", PROPERTY_NOT_USER_SELECTABLE, 13)));
-        let Out::Completed(list) = &done[0] else { panic!("not completed") };
-        assert_eq!(list.iter().map(|m| m.name.as_str()).collect::<Vec<_>>(), vec!["Position", "Takeoff", "Acro", "Acro (1)"]);
-        assert_eq!(list.iter().map(|m| m.can_be_set).collect::<Vec<_>>(), vec![true, false, true, false]);
-        assert_eq!(list.iter().map(|m| m.advanced).collect::<Vec<_>>(), vec![false, false, true, false]);
+        assert_eq!(
+            modes.on_message(true, Some(&mode(1, 4, 1, "POSCTL", 0, 10))),
+            vec![Out::RequestMode(2)]
+        );
+        assert_eq!(
+            modes.on_message(true, Some(&mode(2, 4, 8, "TAKEOFF", 0, 11))),
+            vec![Out::RequestMode(3)]
+        );
+        assert_eq!(
+            modes.on_message(true, Some(&mode(3, 4, 0, "Acro", PROPERTY_ADVANCED, 12))),
+            vec![Out::RequestMode(4)]
+        );
+        let done = modes.on_message(
+            true,
+            Some(&mode(4, 4, 0, "Acro", PROPERTY_NOT_USER_SELECTABLE, 13)),
+        );
+        let Out::Completed(list) = &done[0] else {
+            panic!("not completed")
+        };
+        assert_eq!(
+            list.iter().map(|m| m.name.as_str()).collect::<Vec<_>>(),
+            vec!["Position", "Takeoff", "Acro", "Acro (1)"]
+        );
+        assert_eq!(
+            list.iter().map(|m| m.can_be_set).collect::<Vec<_>>(),
+            vec![true, false, true, false]
+        );
+        assert_eq!(
+            list.iter().map(|m| m.advanced).collect::<Vec<_>>(),
+            vec![false, false, true, false]
+        );
         assert_eq!(list[1].custom_mode, 11);
     }
 
@@ -150,8 +191,15 @@ mod tests {
         let mut modes = StandardModes::default();
         assert_eq!(modes.on_monitor(3), vec![Out::RequestMode(1)]);
         assert!(modes.on_monitor(3).is_empty());
-        assert!(modes.on_monitor(4).is_empty(), "a reset while a request is active is deferred");
-        assert_eq!(modes.on_message(true, Some(&mode(1, 1, 6, "AUTO", 0, 4))), vec![Out::RequestMode(1)], "the deferred reset starts over");
+        assert!(
+            modes.on_monitor(4).is_empty(),
+            "a reset while a request is active is deferred"
+        );
+        assert_eq!(
+            modes.on_message(true, Some(&mode(1, 1, 6, "AUTO", 0, 4))),
+            vec![Out::RequestMode(1)],
+            "the deferred reset starts over"
+        );
         assert_eq!(modes.on_message(false, None), vec![Out::Failed]);
         assert!(modes.modes().is_empty());
     }

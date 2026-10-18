@@ -24,37 +24,58 @@ const PING_EVERY: Duration = Duration::from_secs(5);
 const RELAY_SILENT: Duration = Duration::from_secs(15);
 pub const RELAY_LOST: &str = "The Aircast relay connection was lost. Reconnecting.";
 #[cfg(target_family = "wasm")]
-const NO_BROWSER_RELAY: &str = "This browser cannot reach the Aircast relay: it needs WebTransport.";
+const NO_BROWSER_RELAY: &str =
+    "This browser cannot reach the Aircast relay: it needs WebTransport.";
 #[cfg(target_family = "wasm")]
 const NO_BROWSER_SOCKET: &str = "This browser could not open the WebSocket link.";
 #[cfg(target_family = "wasm")]
 const BAD_RELAY_ADDRESS: &str = "The Aircast relay address is not valid.";
 
 pub fn relay_url(api_base: &str, device_id: &str) -> Option<String> {
-    let parsed = url::Url::parse(api_base.trim()).ok().filter(|u| u.host_str().is_some_and(|h| !h.is_empty()))?;
+    let parsed = url::Url::parse(api_base.trim())
+        .ok()
+        .filter(|u| u.host_str().is_some_and(|h| !h.is_empty()))?;
     let device = device_id.trim();
     if device.is_empty() {
         return None;
     }
-    let scheme = if parsed.scheme() == "http" { "ws" } else { "wss" };
+    let scheme = if parsed.scheme() == "http" {
+        "ws"
+    } else {
+        "wss"
+    };
     let host = parsed.host_str()?;
     let port = parsed.port().map(|p| format!(":{p}")).unwrap_or_default();
     let path = parsed.path().trim_end_matches('/');
-    Some(format!("{scheme}://{host}{port}{path}/v1/mavlink/web/{device}/ws"))
+    Some(format!(
+        "{scheme}://{host}{port}{path}/v1/mavlink/web/{device}/ws"
+    ))
 }
 
 pub fn webtransport_urls(relay_url: &str) -> Option<(String, String)> {
     let parsed = url::Url::parse(relay_url).ok()?;
     let (prefix, rest) = parsed.path().split_once("/v1/mavlink/web/")?;
-    let device = rest.strip_suffix("/ws").filter(|d| !d.is_empty() && !d.contains('/'))?;
+    let device = rest
+        .strip_suffix("/ws")
+        .filter(|d| !d.is_empty() && !d.contains('/'))?;
     let host = parsed.host_str().filter(|h| !h.is_empty())?;
     let port = parsed.port().map(|p| format!(":{p}")).unwrap_or_default();
-    let scheme = if parsed.scheme() == "ws" { "http" } else { "https" };
-    Some((format!("{scheme}://{host}{port}{prefix}/v1/user/devices/{device}/webtransport-token"), format!("https://{host}{port}{prefix}/v1/mavlink/device/{device}/webtransport")))
+    let scheme = if parsed.scheme() == "ws" {
+        "http"
+    } else {
+        "https"
+    };
+    Some((
+        format!("{scheme}://{host}{port}{prefix}/v1/user/devices/{device}/webtransport-token"),
+        format!("https://{host}{port}{prefix}/v1/mavlink/device/{device}/webtransport"),
+    ))
 }
 
 pub fn token_key(api_base: &str) -> Option<String> {
-    let host = url::Url::parse(api_base.trim()).ok()?.host_str()?.to_string();
+    let host = url::Url::parse(api_base.trim())
+        .ok()?
+        .host_str()?
+        .to_string();
     Some(format!("{ACCOUNT_GROUP}/tokens/{host}"))
 }
 
@@ -96,13 +117,16 @@ struct Hosted {
 #[cfg(target_family = "wasm")]
 static HOST_HOOKS: std::sync::OnceLock<HostHooks> = std::sync::OnceLock::new();
 #[cfg(target_family = "wasm")]
-static HOSTED: std::sync::Mutex<std::collections::BTreeMap<u32, Hosted>> = std::sync::Mutex::new(std::collections::BTreeMap::new());
+static HOSTED: std::sync::Mutex<std::collections::BTreeMap<u32, Hosted>> =
+    std::sync::Mutex::new(std::collections::BTreeMap::new());
 #[cfg(target_family = "wasm")]
 static NEXT_HOSTED: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(1);
 
 #[cfg(target_family = "wasm")]
 fn hosted() -> std::sync::MutexGuard<'static, std::collections::BTreeMap<u32, Hosted>> {
-    HOSTED.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    HOSTED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 #[cfg(target_family = "wasm")]
@@ -123,9 +147,14 @@ pub fn host_opened(id: u32) {
 
 #[cfg(target_family = "wasm")]
 pub fn host_received(id: u32, bytes: &[u8]) {
-    let deliver = hosted().get(&id).filter(|link| link.connected).map(|link| link.deliver.clone());
+    let deliver = hosted()
+        .get(&id)
+        .filter(|link| link.connected)
+        .map(|link| link.deliver.clone());
     if let Some(deliver) = deliver.filter(|_| bytes.first().is_some_and(|b| *b != CONTROL_PREFIX)) {
-        (deliver.lock().unwrap_or_else(std::sync::PoisonError::into_inner))(bytes);
+        (deliver
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner))(bytes);
     }
 }
 
@@ -136,7 +165,14 @@ pub fn host_closed(id: u32, reason: &str) {
         link.relay.clone()
     });
     if let Some(relay) = relay {
-        relay(false, if reason.is_empty() { RELAY_LOST } else { reason });
+        relay(
+            false,
+            if reason.is_empty() {
+                RELAY_LOST
+            } else {
+                reason
+            },
+        );
     }
 }
 
@@ -144,33 +180,67 @@ pub fn host_closed(id: u32, reason: &str) {
 type Socket = tungstenite::WebSocket<MaybeTlsStream<TcpStream>>;
 
 fn reached(host: &str, port: u16) -> Result<TcpStream, String> {
-    let addresses: Vec<std::net::SocketAddr> = (host.trim_start_matches('[').trim_end_matches(']'), port).to_socket_addrs().map_err(|e| e.to_string())?.collect();
-    let stream = addresses.iter().find_map(|address| TcpStream::connect_timeout(address, RELAY_CONNECT_TIMEOUT).ok()).ok_or_else(|| format!("No answer from {host}:{port}"))?;
-    stream.set_read_timeout(Some(RELAY_CONNECT_TIMEOUT)).map_err(|e| e.to_string())?;
-    stream.set_write_timeout(Some(RELAY_WRITE_TIMEOUT)).map_err(|e| e.to_string())?;
+    let addresses: Vec<std::net::SocketAddr> =
+        (host.trim_start_matches('[').trim_end_matches(']'), port)
+            .to_socket_addrs()
+            .map_err(|e| e.to_string())?
+            .collect();
+    let stream = addresses
+        .iter()
+        .find_map(|address| TcpStream::connect_timeout(address, RELAY_CONNECT_TIMEOUT).ok())
+        .ok_or_else(|| format!("No answer from {host}:{port}"))?;
+    stream
+        .set_read_timeout(Some(RELAY_CONNECT_TIMEOUT))
+        .map_err(|e| e.to_string())?;
+    stream
+        .set_write_timeout(Some(RELAY_WRITE_TIMEOUT))
+        .map_err(|e| e.to_string())?;
     Ok(stream)
 }
 
 #[cfg(not(target_family = "wasm"))]
 fn connect(url: &str, token: &str) -> Result<Socket, String> {
     let mut request = url.into_client_request().map_err(|e| e.to_string())?;
-    request.headers_mut().insert("Authorization", format!("Bearer {token}").parse().map_err(|_| "the token is not a header value".to_string())?);
-    let host = request.uri().host().ok_or("the relay address has no host")?.to_string();
-    let port = request.uri().port_u16().unwrap_or(if request.uri().scheme_str() == Some("wss") { 443 } else { 80 });
-    let (socket, _) = tungstenite::client_tls(request, reached(&host, port)?).map_err(|e| e.to_string())?;
+    request.headers_mut().insert(
+        "Authorization",
+        format!("Bearer {token}")
+            .parse()
+            .map_err(|_| "the token is not a header value".to_string())?,
+    );
+    let host = request
+        .uri()
+        .host()
+        .ok_or("the relay address has no host")?
+        .to_string();
+    let port = request
+        .uri()
+        .port_u16()
+        .unwrap_or(if request.uri().scheme_str() == Some("wss") {
+            443
+        } else {
+            80
+        });
+    let (socket, _) =
+        tungstenite::client_tls(request, reached(&host, port)?).map_err(|e| e.to_string())?;
     let stream = match socket.get_ref() {
         MaybeTlsStream::Plain(tcp) => Some(tcp),
         MaybeTlsStream::Rustls(tls) => Some(tls.get_ref()),
         _ => None,
     };
     if let Some(tcp) = stream {
-        tcp.set_read_timeout(Some(POLL)).map_err(|e| e.to_string())?;
+        tcp.set_read_timeout(Some(POLL))
+            .map_err(|e| e.to_string())?;
     }
     Ok(socket)
 }
 
 #[cfg(not(target_family = "wasm"))]
-fn pump(socket: &mut Socket, outbox: &Receiver<Vec<u8>>, wanted: &AtomicBool, deliver: &mut dyn FnMut(&[u8])) -> bool {
+fn pump(
+    socket: &mut Socket,
+    outbox: &Receiver<Vec<u8>>,
+    wanted: &AtomicBool,
+    deliver: &mut dyn FnMut(&[u8]),
+) -> bool {
     let (mut heard, mut pinged) = (Instant::now(), Instant::now());
     while wanted.load(Ordering::SeqCst) {
         loop {
@@ -188,7 +258,10 @@ fn pump(socket: &mut Socket, outbox: &Receiver<Vec<u8>>, wanted: &AtomicBool, de
             return true;
         }
         if pinged.elapsed() >= PING_EVERY {
-            if socket.send(Message::Ping(tungstenite::Bytes::new())).is_err() {
+            if socket
+                .send(Message::Ping(tungstenite::Bytes::new()))
+                .is_err()
+            {
                 return true;
             }
             pinged = Instant::now();
@@ -202,7 +275,11 @@ fn pump(socket: &mut Socket, outbox: &Receiver<Vec<u8>>, wanted: &AtomicBool, de
             }
             Ok(Message::Close(_)) => return true,
             Ok(_) => heard = Instant::now(),
-            Err(tungstenite::Error::Io(e)) if matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut) => {}
+            Err(tungstenite::Error::Io(e))
+                if matches!(
+                    e.kind(),
+                    std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+                ) => {}
             Err(_) => return true,
         }
     }
@@ -212,7 +289,12 @@ fn pump(socket: &mut Socket, outbox: &Receiver<Vec<u8>>, wanted: &AtomicBool, de
 
 #[cfg(target_family = "wasm")]
 impl CloudLink {
-    pub fn open(url: String, token: String, deliver: impl FnMut(&[u8]) + Send + 'static, relay: impl Fn(bool, &str) + Send + Sync + 'static) -> CloudLink {
+    pub fn open(
+        url: String,
+        token: String,
+        deliver: impl FnMut(&[u8]) + Send + 'static,
+        relay: impl Fn(bool, &str) + Send + Sync + 'static,
+    ) -> CloudLink {
         let Some((token_url, session_url)) = webtransport_urls(&url) else {
             relay(false, BAD_RELAY_ADDRESS);
             return CloudLink { id: 0 };
@@ -223,7 +305,14 @@ impl CloudLink {
         };
         let id = NEXT_HOSTED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let relay: Relay = Arc::new(relay);
-        hosted().insert(id, Hosted { deliver: Arc::new(std::sync::Mutex::new(Box::new(deliver))), relay: relay.clone(), connected: false });
+        hosted().insert(
+            id,
+            Hosted {
+                deliver: Arc::new(std::sync::Mutex::new(Box::new(deliver))),
+                relay: relay.clone(),
+                connected: false,
+            },
+        );
         if !(hooks.open)(id, &token_url, &session_url, &token) {
             hosted().remove(&id);
             relay(false, NO_BROWSER_RELAY);
@@ -232,14 +321,25 @@ impl CloudLink {
         CloudLink { id }
     }
 
-    pub fn open_socket(url: String, deliver: impl FnMut(&[u8]) + Send + 'static, relay: impl Fn(bool, &str) + Send + Sync + 'static) -> CloudLink {
+    pub fn open_socket(
+        url: String,
+        deliver: impl FnMut(&[u8]) + Send + 'static,
+        relay: impl Fn(bool, &str) + Send + Sync + 'static,
+    ) -> CloudLink {
         let Some(hooks) = HOST_HOOKS.get() else {
             relay(false, NO_BROWSER_SOCKET);
             return CloudLink { id: 0 };
         };
         let id = NEXT_HOSTED.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
         let relay: Relay = Arc::new(relay);
-        hosted().insert(id, Hosted { deliver: Arc::new(std::sync::Mutex::new(Box::new(deliver))), relay: relay.clone(), connected: false });
+        hosted().insert(
+            id,
+            Hosted {
+                deliver: Arc::new(std::sync::Mutex::new(Box::new(deliver))),
+                relay: relay.clone(),
+                connected: false,
+            },
+        );
         if !(hooks.open)(id, "", &url, "") {
             hosted().remove(&id);
             relay(false, NO_BROWSER_SOCKET);
@@ -250,7 +350,10 @@ impl CloudLink {
 
     pub fn write(&self, bytes: &[u8]) -> bool {
         let connected = hosted().get(&self.id).is_some_and(|link| link.connected);
-        connected && HOST_HOOKS.get().is_some_and(|hooks| (hooks.send)(self.id, bytes))
+        connected
+            && HOST_HOOKS
+                .get()
+                .is_some_and(|hooks| (hooks.send)(self.id, bytes))
     }
 
     pub fn close(&self) {
@@ -264,9 +367,13 @@ impl CloudLink {
 
 #[cfg(not(target_family = "wasm"))]
 impl CloudLink {
-
     #[cfg(not(target_family = "wasm"))]
-    pub fn open(url: String, token: String, mut deliver: impl FnMut(&[u8]) + Send + 'static, relay: impl Fn(bool, &str) + Send + 'static) -> CloudLink {
+    pub fn open(
+        url: String,
+        token: String,
+        mut deliver: impl FnMut(&[u8]) + Send + 'static,
+        relay: impl Fn(bool, &str) + Send + 'static,
+    ) -> CloudLink {
         let (sender, outbox) = std::sync::mpsc::sync_channel::<Vec<u8>>(OUTBOX_FRAMES);
         let wanted = Arc::new(AtomicBool::new(true));
         let connected = Arc::new(AtomicBool::new(false));
@@ -300,15 +407,23 @@ impl CloudLink {
                     let wait = backoff_ms(failures);
                     failures += 1;
                     let steps = wait / POLL.as_millis() as u64;
-                    (0..steps).take_while(|_| running.load(Ordering::SeqCst)).for_each(|_| std::thread::sleep(POLL));
+                    (0..steps)
+                        .take_while(|_| running.load(Ordering::SeqCst))
+                        .for_each(|_| std::thread::sleep(POLL));
                 }
             })
             .ok();
-        CloudLink { outbox: sender, wanted, connected }
+        CloudLink {
+            outbox: sender,
+            wanted,
+            connected,
+        }
     }
 
     pub fn write(&self, bytes: &[u8]) -> bool {
-        self.wanted.load(Ordering::SeqCst) && self.connected.load(Ordering::SeqCst) && self.outbox.try_send(bytes.to_vec()).is_ok()
+        self.wanted.load(Ordering::SeqCst)
+            && self.connected.load(Ordering::SeqCst)
+            && self.outbox.try_send(bytes.to_vec()).is_ok()
     }
 
     pub fn close(&self) {
@@ -328,26 +443,47 @@ mod tests {
 
     #[test]
     fn the_relay_url_follows_aircast_cloud_configuration() {
-        assert_eq!(relay_url("https://api.aircast.one", "d-1").as_deref(), Some("wss://api.aircast.one/v1/mavlink/web/d-1/ws"));
-        assert_eq!(relay_url("http://10.0.0.5:8080/base/", " d-2 ").as_deref(), Some("ws://10.0.0.5:8080/base/v1/mavlink/web/d-2/ws"));
+        assert_eq!(
+            relay_url("https://api.aircast.one", "d-1").as_deref(),
+            Some("wss://api.aircast.one/v1/mavlink/web/d-1/ws")
+        );
+        assert_eq!(
+            relay_url("http://10.0.0.5:8080/base/", " d-2 ").as_deref(),
+            Some("ws://10.0.0.5:8080/base/v1/mavlink/web/d-2/ws")
+        );
         assert_eq!(relay_url("https://api.aircast.one", ""), None);
         assert_eq!(relay_url("not a url", "d"), None);
-        assert_eq!(token_key("https://api.aircast.one/").as_deref(), Some("AircastAccount/tokens/api.aircast.one"));
-        assert_eq!((backoff_ms(0), backoff_ms(4), backoff_ms(9)), (2000, 32_000, 60_000));
+        assert_eq!(
+            token_key("https://api.aircast.one/").as_deref(),
+            Some("AircastAccount/tokens/api.aircast.one")
+        );
+        assert_eq!(
+            (backoff_ms(0), backoff_ms(4), backoff_ms(9)),
+            (2000, 32_000, 60_000)
+        );
     }
 
     #[test]
     fn a_browser_reaches_the_relay_over_webtransport_with_a_short_lived_device_token() {
         assert_eq!(
             webtransport_urls("wss://api.dev.aircast.one/v1/mavlink/web/d-1/ws"),
-            Some(("https://api.dev.aircast.one/v1/user/devices/d-1/webtransport-token".to_string(), "https://api.dev.aircast.one/v1/mavlink/device/d-1/webtransport".to_string()))
+            Some((
+                "https://api.dev.aircast.one/v1/user/devices/d-1/webtransport-token".to_string(),
+                "https://api.dev.aircast.one/v1/mavlink/device/d-1/webtransport".to_string()
+            ))
         );
         assert_eq!(
             webtransport_urls("ws://10.0.0.5:8080/base/v1/mavlink/web/d-2/ws"),
-            Some(("http://10.0.0.5:8080/base/v1/user/devices/d-2/webtransport-token".to_string(), "https://10.0.0.5:8080/base/v1/mavlink/device/d-2/webtransport".to_string())),
+            Some((
+                "http://10.0.0.5:8080/base/v1/user/devices/d-2/webtransport-token".to_string(),
+                "https://10.0.0.5:8080/base/v1/mavlink/device/d-2/webtransport".to_string()
+            )),
             "WebTransport is HTTP/3 only, so the session is https even when the REST API is plain http"
         );
-        assert_eq!(webtransport_urls("wss://api.aircast.one/v1/mavlink/web//ws"), None);
+        assert_eq!(
+            webtransport_urls("wss://api.aircast.one/v1/mavlink/web//ws"),
+            None
+        );
         assert_eq!(webtransport_urls("not a url"), None);
     }
 
@@ -360,11 +496,18 @@ mod tests {
         let server = std::thread::spawn(move || {
             let (stream, _) = listener.accept().unwrap();
             let callback = |request: &tungstenite::handshake::server::Request, response| {
-                *seen.lock().unwrap() = request.headers().get("Authorization").and_then(|v| v.to_str().ok()).unwrap_or_default().to_string();
+                *seen.lock().unwrap() = request
+                    .headers()
+                    .get("Authorization")
+                    .and_then(|v| v.to_str().ok())
+                    .unwrap_or_default()
+                    .to_string();
                 Ok(response)
             };
             let mut socket = tungstenite::accept_hdr(stream, callback).unwrap();
-            socket.send(Message::binary(vec![CONTROL_PREFIX, 1, b'o', b'k'])).unwrap();
+            socket
+                .send(Message::binary(vec![CONTROL_PREFIX, 1, b'o', b'k']))
+                .unwrap();
             socket.send(Message::binary(vec![0xFD, 1, 2, 3])).unwrap();
             loop {
                 if let Ok(Message::Binary(echo)) = socket.read() {
@@ -382,7 +525,11 @@ mod tests {
             |_, _| {},
         );
         let received = rx.recv_timeout(Duration::from_secs(5)).unwrap();
-        assert_eq!(received, vec![0xFD, 1, 2, 3], "the control frame is the relay's status, never handed on as MAVLink");
+        assert_eq!(
+            received,
+            vec![0xFD, 1, 2, 3],
+            "the control frame is the relay's status, never handed on as MAVLink"
+        );
         assert!(link.write(&[0xFD, 9]));
         assert_eq!(server.join().unwrap(), vec![0xFD, 9]);
         assert_eq!(*authorised.lock().unwrap(), "Bearer secret");
@@ -392,11 +539,24 @@ mod tests {
     #[test]
     fn nothing_waits_for_the_vehicle_while_the_relay_is_down_and_the_outbox_is_bounded() {
         let (outbox, waiting) = std::sync::mpsc::sync_channel(OUTBOX_FRAMES);
-        let link = CloudLink { outbox, wanted: Arc::new(AtomicBool::new(true)), connected: Arc::new(AtomicBool::new(false)) };
-        assert!(!link.write(&[0xFD, 1]), "AircastCloudLink::_writeBytes drops what it cannot send, so an RTL the UI already showed as failed is never replayed on reconnect");
+        let link = CloudLink {
+            outbox,
+            wanted: Arc::new(AtomicBool::new(true)),
+            connected: Arc::new(AtomicBool::new(false)),
+        };
+        assert!(
+            !link.write(&[0xFD, 1]),
+            "AircastCloudLink::_writeBytes drops what it cannot send, so an RTL the UI already showed as failed is never replayed on reconnect"
+        );
         assert_eq!(waiting.try_iter().count(), 0);
         link.connected.store(true, Ordering::SeqCst);
-        assert_eq!((0..OUTBOX_FRAMES + 10).filter(|_| link.write(&[0xFD, 2])).count(), OUTBOX_FRAMES, "a relay that stops draining holds a few frames, never the whole outage");
+        assert_eq!(
+            (0..OUTBOX_FRAMES + 10)
+                .filter(|_| link.write(&[0xFD, 2]))
+                .count(),
+            OUTBOX_FRAMES,
+            "a relay that stops draining holds a few frames, never the whole outage"
+        );
     }
 
     #[test]
@@ -408,12 +568,24 @@ mod tests {
             drop(tungstenite::accept(stream).unwrap());
         });
         let (tx, states) = std::sync::mpsc::channel();
-        let link = CloudLink::open(format!("ws://127.0.0.1:{port}/v1/mavlink/web/d/ws"), "secret".into(), |_| {}, move |up, reason| {
-            let _ = tx.send((up, reason.to_string()));
-        });
-        assert_eq!(states.recv_timeout(Duration::from_secs(5)).unwrap(), (true, String::new()));
+        let link = CloudLink::open(
+            format!("ws://127.0.0.1:{port}/v1/mavlink/web/d/ws"),
+            "secret".into(),
+            |_| {},
+            move |up, reason| {
+                let _ = tx.send((up, reason.to_string()));
+            },
+        );
+        assert_eq!(
+            states.recv_timeout(Duration::from_secs(5)).unwrap(),
+            (true, String::new())
+        );
         server.join().unwrap();
-        assert_eq!(states.recv_timeout(Duration::from_secs(5)).unwrap(), (false, RELAY_LOST.to_string()), "the registry and hub hear of the outage instead of writing into it");
+        assert_eq!(
+            states.recv_timeout(Duration::from_secs(5)).unwrap(),
+            (false, RELAY_LOST.to_string()),
+            "the registry and hub hear of the outage instead of writing into it"
+        );
         assert!(!link.write(&[0xFD, 3]));
         link.close();
     }

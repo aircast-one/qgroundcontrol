@@ -26,25 +26,57 @@ pub fn serialize(input: &str) -> Result<Vec<u8>, String> {
     }
     let data = root.get("data").ok_or("no data object")?;
     let pair = |key: &str| -> Result<(f64, f64), String> {
-        let a = data.get("bounds").and_then(|b| b.get(key)).and_then(Value::as_array).ok_or(format!("no bounds.{key}"))?;
-        match (a.first().and_then(Value::as_f64), a.get(1).and_then(Value::as_f64)) {
+        let a = data
+            .get("bounds")
+            .and_then(|b| b.get(key))
+            .and_then(Value::as_array)
+            .ok_or(format!("no bounds.{key}"))?;
+        match (
+            a.first().and_then(Value::as_f64),
+            a.get(1).and_then(Value::as_f64),
+        ) {
             (Some(x), Some(y)) => Ok((x, y)),
             _ => Err("Incomplete bounding location".to_string()),
         }
     };
     let (sw_lat, sw_lon) = pair("sw")?;
     let (ne_lat, ne_lon) = pair("ne")?;
-    let stat = |key: &str| data.get("stats").and_then(|s| s.get(key)).and_then(Value::as_f64).ok_or(format!("no stats.{key}"));
+    let stat = |key: &str| {
+        data.get("stats")
+            .and_then(|s| s.get(key))
+            .and_then(Value::as_f64)
+            .ok_or(format!("no stats.{key}"))
+    };
     let (min, max, avg) = (stat("min")?, stat("max")?, stat("avg")?);
-    let carpet = data.get("carpet").and_then(Value::as_array).ok_or("no carpet")?;
+    let carpet = data
+        .get("carpet")
+        .and_then(Value::as_array)
+        .ok_or("no carpet")?;
     let grid_lat = carpet.len();
-    let grid_lon = carpet.first().and_then(Value::as_array).map(|r| r.len()).unwrap_or(0);
+    let grid_lon = carpet
+        .first()
+        .and_then(Value::as_array)
+        .map(|r| r.len())
+        .unwrap_or(0);
     let rows: Vec<Vec<i16>> = carpet
         .iter()
-        .map(|row| row.as_array().filter(|r| r.len() >= grid_lon).map(|r| r.iter().take(grid_lon).map(|v| v.as_f64().unwrap_or(0.0) as i16).collect()).ok_or("short carpet row".to_string()))
+        .map(|row| {
+            row.as_array()
+                .filter(|r| r.len() >= grid_lon)
+                .map(|r| {
+                    r.iter()
+                        .take(grid_lon)
+                        .map(|v| v.as_f64().unwrap_or(0.0) as i16)
+                        .collect()
+                })
+                .ok_or("short carpet row".to_string())
+        })
         .collect::<Result<_, _>>()?;
     let tile = Tile {
-        sw_lat, sw_lon, ne_lat, ne_lon,
+        sw_lat,
+        sw_lon,
+        ne_lat,
+        ne_lon,
         min_elevation: min as i16,
         max_elevation: max as i16,
         avg_elevation: avg,
@@ -100,19 +132,36 @@ impl Tile {
         let cell_lon = (self.ne_lon - self.sw_lon) / self.grid_lon as f64;
         let lat_index = ((lat - self.sw_lat) / cell_lat).floor();
         let lon_index = ((lon - self.sw_lon) / cell_lon).floor();
-        let (in_lat, in_lon) = (lat_index >= 0.0 && lat_index < self.grid_lat as f64, lon_index >= 0.0 && lon_index < self.grid_lon as f64);
+        let (in_lat, in_lon) = (
+            lat_index >= 0.0 && lat_index < self.grid_lat as f64,
+            lon_index >= 0.0 && lon_index < self.grid_lon as f64,
+        );
         match in_lat && in_lon {
-            true => self.elevations.get(lat_index as usize * self.grid_lon + lon_index as usize).map(|e| *e as f64),
+            true => self
+                .elevations
+                .get(lat_index as usize * self.grid_lon + lon_index as usize)
+                .map(|e| *e as f64),
             false => None,
         }
     }
 }
 
 pub fn terrain_tile_view(_backend: &dyn Backend, args: &[String]) -> Value {
-    let Some(path) = args.first().filter(|p| !p.is_empty()) else { return crate::read::refused("this needs the path of a terrain tile, then a latitude and a longitude") };
-    let Ok(bytes) = std::fs::read(path) else { return json!({ "kind": "object", "class": "TerrainTile", "path": path, "readable": false }) };
-    let Some(tile) = decode(&bytes) else { return json!({ "kind": "object", "class": "TerrainTile", "path": path, "readable": true, "valid": false }) };
-    let probe = match (args.get(1).and_then(|a| a.parse::<f64>().ok()), args.get(2).and_then(|a| a.parse::<f64>().ok())) {
+    let Some(path) = args.first().filter(|p| !p.is_empty()) else {
+        return crate::read::refused(
+            "this needs the path of a terrain tile, then a latitude and a longitude",
+        );
+    };
+    let Ok(bytes) = std::fs::read(path) else {
+        return json!({ "kind": "object", "class": "TerrainTile", "path": path, "readable": false });
+    };
+    let Some(tile) = decode(&bytes) else {
+        return json!({ "kind": "object", "class": "TerrainTile", "path": path, "readable": true, "valid": false });
+    };
+    let probe = match (
+        args.get(1).and_then(|a| a.parse::<f64>().ok()),
+        args.get(2).and_then(|a| a.parse::<f64>().ok()),
+    ) {
         (Some(lat), Some(lon)) => tile.elevation(lat, lon),
         _ => None,
     };
@@ -147,7 +196,10 @@ mod tests {
         assert_eq!((tile.grid_lat, tile.grid_lon), (2, 4));
         assert_eq!(tile.min_elevation, 400);
         assert_eq!(tile.avg_elevation, 430.5);
-        assert_eq!(tile.elevations, vec![400, 410, 420, 430, 440, 450, 455, 460]);
+        assert_eq!(
+            tile.elevations,
+            vec![400, 410, 420, 430, 440, 450, 455, 460]
+        );
         assert_eq!(encode(&tile), bytes);
     }
 
@@ -163,8 +215,13 @@ mod tests {
 
     #[test]
     fn bad_replies_and_short_tiles_are_refused() {
-        assert_eq!(serialize(r#"{"status":"error"}"#).unwrap_err(), "status is not success");
-        assert!(serialize(r#"{"status":"success","data":{"bounds":{"sw":[1]},"stats":{}}}"#).is_err());
+        assert_eq!(
+            serialize(r#"{"status":"error"}"#).unwrap_err(),
+            "status is not success"
+        );
+        assert!(
+            serialize(r#"{"status":"success","data":{"bounds":{"sw":[1]},"stats":{}}}"#).is_err()
+        );
         assert!(decode(&[0u8; 10]).is_none());
         let mut bytes = serialize(SAMPLE).unwrap();
         bytes.truncate(HEADER_BYTES + 3);

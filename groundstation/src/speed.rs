@@ -25,7 +25,10 @@ struct Range {
 pub fn speed_view(backend: &dyn Backend, args: &[String]) -> Value {
     let unit = Unit::speed(backend);
     let range = range_meters_second(backend);
-    let target = args.first().and_then(|a| a.parse::<f64>().ok()).filter(|t| t.is_finite());
+    let target = args
+        .first()
+        .and_then(|a| a.parse::<f64>().ok())
+        .filter(|t| t.is_finite());
     let base = json!({
         "kind": "object",
         "class": "GuidedSpeed",
@@ -40,11 +43,14 @@ pub fn speed_view(backend: &dyn Backend, args: &[String]) -> Value {
     match (range, target) {
         (Some(range), Some(target)) => {
             let target_meters_second = unit.meters(target).clamp(range.minimum, range.maximum);
-            merge(base, json!({
-                "target": unit.show(target_meters_second),
-                "targetMetersSecond": target_meters_second,
-                "sentence": format!("The aircraft will fly at {}.", unit.label(target_meters_second)),
-            }))
+            merge(
+                base,
+                json!({
+                    "target": unit.show(target_meters_second),
+                    "targetMetersSecond": target_meters_second,
+                    "sentence": format!("The aircraft will fly at {}.", unit.label(target_meters_second)),
+                }),
+            )
         }
         _ => base,
     }
@@ -55,28 +61,57 @@ pub fn speed_view(backend: &dyn Backend, args: &[String]) -> Value {
 // now flying on airspeed, and a figure past maximumEquivalentAirspeed goes to the autopilot as asked.
 // The view clamps the target it shows; an invoke with a number outside it is refused rather than
 // silently flown at a different speed than the operator typed.
-fn speed_refusal(range: Option<&Range>, command: &str, asked: Option<f64>) -> Option<(&'static str, String)> {
+fn speed_refusal(
+    range: Option<&Range>,
+    command: &str,
+    asked: Option<f64>,
+) -> Option<(&'static str, String)> {
     let Some(range) = range else {
-        return Some(("unavailable", "This vehicle does not report a speed range.".to_string()));
+        return Some((
+            "unavailable",
+            "This vehicle does not report a speed range.".to_string(),
+        ));
     };
     if command != range.command {
-        return Some(("wrongCommand", format!("This vehicle is flying on {}; change it with {}.", range.label.to_lowercase(), range.command)));
+        return Some((
+            "wrongCommand",
+            format!(
+                "This vehicle is flying on {}; change it with {}.",
+                range.label.to_lowercase(),
+                range.command
+            ),
+        ));
     }
     match asked {
         Some(v) if v.is_finite() && (range.minimum..=range.maximum).contains(&v) => None,
-        _ => Some(("outOfRange", format!("{} runs from {:.1} to {:.1} m/s.", range.label, range.minimum, range.maximum))),
+        _ => Some((
+            "outOfRange",
+            format!(
+                "{} runs from {:.1} to {:.1} m/s.",
+                range.label, range.minimum, range.maximum
+            ),
+        )),
     }
 }
 
 pub fn change(backend: &dyn Backend, path: &str, args: &str) -> Value {
     let command = path.strip_prefix("vehicle.").unwrap_or(path);
-    let asked = serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0)?.as_f64());
-    let refusal = crate::guided::offer_refusal(backend, &[crate::guided::Action::ChangeSpeed]).or_else(|| speed_refusal(range_meters_second(backend).as_ref(), command, asked));
+    let asked = serde_json::from_str::<Value>(args)
+        .ok()
+        .and_then(|a| a.get(0)?.as_f64());
+    let refusal = crate::guided::offer_refusal(backend, &[crate::guided::Action::ChangeSpeed])
+        .or_else(|| speed_refusal(range_meters_second(backend).as_ref(), command, asked));
     if let Some((token, reason)) = refusal {
         return json!({ "ok": false, "refusal": token, "reason": reason });
     }
     let core = json!({ "action": "speed", "ground": command == "guidedModeChangeGroundSpeedMetersSecond", "metresPerSecond": asked });
-    let answer = crate::guided::dispatch(backend, Some(core), crate::guided::active_id(backend), path, &json!([asked]).to_string());
+    let answer = crate::guided::dispatch(
+        backend,
+        Some(core),
+        crate::guided::active_id(backend),
+        path,
+        &json!([asked]).to_string(),
+    );
     let dispatched = flag(&answer, "ok");
     json!({ "ok": dispatched, "refusal": Value::Null, "reason": match dispatched { true => Value::Null, false => answer.get("reason").cloned().unwrap_or_else(|| json!("The vehicle was not sent the command.")) } })
 }
@@ -92,12 +127,25 @@ fn range_meters_second(backend: &dyn Backend) -> Option<Range> {
         true => {
             let minimum = number("vehicle.minimumEquivalentAirspeed")?;
             let maximum = number("vehicle.maximumEquivalentAirspeed")?;
-            let flying_at = crate::read::value_number(&backend.value("vehicle.airSpeed.rawValue")).filter(|v| v.is_finite());
-            Range { label: "Airspeed", command: "guidedModeChangeEquivalentAirspeedMetersSecond", minimum, maximum, initial: flying_at.unwrap_or((minimum + maximum) / 2.0) }
+            let flying_at = crate::read::value_number(&backend.value("vehicle.airSpeed.rawValue"))
+                .filter(|v| v.is_finite());
+            Range {
+                label: "Airspeed",
+                command: "guidedModeChangeEquivalentAirspeedMetersSecond",
+                minimum,
+                maximum,
+                initial: flying_at.unwrap_or((minimum + maximum) / 2.0),
+            }
         }
         false => {
             let maximum = number("vehicle.maximumHorizontalSpeedMultirotorMetersSecond")?;
-            Range { label: "Speed", command: "guidedModeChangeGroundSpeedMetersSecond", minimum: SLOWEST_GROUND_SPEED_METERS_SECOND, maximum, initial: maximum / 2.0 }
+            Range {
+                label: "Speed",
+                command: "guidedModeChangeGroundSpeedMetersSecond",
+                minimum: SLOWEST_GROUND_SPEED_METERS_SECOND,
+                maximum,
+                initial: maximum / 2.0,
+            }
         }
     };
     (range.maximum > range.minimum).then_some(range)
@@ -119,7 +167,9 @@ mod tests {
         }
         fn get_fields(&self, path: &str, _f: &str) -> String {
             match (path, self.connected) {
-                ("vehicle", true) => json!({ "kind": "object", "vtolInFwdFlight": self.forward, "fixedWing": false }),
+                ("vehicle", true) => {
+                    json!({ "kind": "object", "vtolInFwdFlight": self.forward, "fixedWing": false })
+                }
                 ("vehicle", false) => json!({ "kind": "null" }),
                 _ => json!({ "kind": "object", "appSettingsSpeedUnitsString": "m/s" }),
             }
@@ -142,7 +192,14 @@ mod tests {
 
     #[test]
     fn a_multirotor_gets_ground_speed_from_a_tenth_to_its_maximum() {
-        let view = speed_view(&Fake { connected: true, forward: false, maximum: 15.0 }, &["20".to_string()]);
+        let view = speed_view(
+            &Fake {
+                connected: true,
+                forward: false,
+                maximum: 15.0,
+            },
+            &["20".to_string()],
+        );
         assert_eq!(view["label"], "Speed");
         assert_eq!(view["command"], "guidedModeChangeGroundSpeedMetersSecond");
         assert_eq!(view["minimum"], 0.1);
@@ -153,9 +210,19 @@ mod tests {
 
     #[test]
     fn forward_flight_gets_airspeed_between_the_equivalent_limits() {
-        let view = speed_view(&Fake { connected: true, forward: true, maximum: 24.0 }, &[]);
+        let view = speed_view(
+            &Fake {
+                connected: true,
+                forward: true,
+                maximum: 24.0,
+            },
+            &[],
+        );
         assert_eq!(view["label"], "Airspeed");
-        assert_eq!(view["command"], "guidedModeChangeEquivalentAirspeedMetersSecond");
+        assert_eq!(
+            view["command"],
+            "guidedModeChangeEquivalentAirspeedMetersSecond"
+        );
         assert_eq!(view["minimum"], 8.0);
         assert_eq!(view["initial"], 16.0);
         assert!(view.get("sentence").is_none());
@@ -163,19 +230,96 @@ mod tests {
 
     #[test]
     fn an_empty_or_absent_range_is_unavailable() {
-        assert_eq!(speed_view(&Fake { connected: true, forward: false, maximum: 0.0 }, &[])["available"], false);
-        assert_eq!(speed_view(&Fake { connected: false, forward: false, maximum: 15.0 }, &[])["available"], false);
+        assert_eq!(
+            speed_view(
+                &Fake {
+                    connected: true,
+                    forward: false,
+                    maximum: 0.0
+                },
+                &[]
+            )["available"],
+            false
+        );
+        assert_eq!(
+            speed_view(
+                &Fake {
+                    connected: false,
+                    forward: false,
+                    maximum: 15.0
+                },
+                &[]
+            )["available"],
+            false
+        );
     }
 
     #[test]
     fn a_speed_change_is_sent_only_on_the_command_the_frame_flies_and_inside_its_range() {
-        let ground = Range { label: "Speed", command: "guidedModeChangeGroundSpeedMetersSecond", minimum: 0.1, maximum: 12.0, initial: 6.0 };
-        let air = Range { label: "Airspeed", command: "guidedModeChangeEquivalentAirspeedMetersSecond", minimum: 14.0, maximum: 30.0, initial: 22.0 };
-        assert_eq!(speed_refusal(Some(&ground), "guidedModeChangeGroundSpeedMetersSecond", Some(8.0)), None);
-        assert_eq!(speed_refusal(Some(&ground), "guidedModeChangeGroundSpeedMetersSecond", Some(40.0)).map(|r| r.1), Some("Speed runs from 0.1 to 12.0 m/s.".to_string()), "QGC forwards a speed past the vehicle's own maximum");
-        assert_eq!(speed_refusal(Some(&air), "guidedModeChangeGroundSpeedMetersSecond", Some(20.0)).map(|r| r.0), Some("wrongCommand"), "a VTOL that transitioned after the view was read flies on airspeed now");
-        assert_eq!(speed_refusal(Some(&air), "guidedModeChangeEquivalentAirspeedMetersSecond", Some(10.0)).map(|r| r.0), Some("outOfRange"), "below stall is refused, not clamped");
-        assert_eq!(speed_refusal(Some(&air), "guidedModeChangeEquivalentAirspeedMetersSecond", None).map(|r| r.0), Some("outOfRange"));
-        assert_eq!(speed_refusal(None, "guidedModeChangeGroundSpeedMetersSecond", Some(5.0)).map(|r| r.0), Some("unavailable"));
+        let ground = Range {
+            label: "Speed",
+            command: "guidedModeChangeGroundSpeedMetersSecond",
+            minimum: 0.1,
+            maximum: 12.0,
+            initial: 6.0,
+        };
+        let air = Range {
+            label: "Airspeed",
+            command: "guidedModeChangeEquivalentAirspeedMetersSecond",
+            minimum: 14.0,
+            maximum: 30.0,
+            initial: 22.0,
+        };
+        assert_eq!(
+            speed_refusal(
+                Some(&ground),
+                "guidedModeChangeGroundSpeedMetersSecond",
+                Some(8.0)
+            ),
+            None
+        );
+        assert_eq!(
+            speed_refusal(
+                Some(&ground),
+                "guidedModeChangeGroundSpeedMetersSecond",
+                Some(40.0)
+            )
+            .map(|r| r.1),
+            Some("Speed runs from 0.1 to 12.0 m/s.".to_string()),
+            "QGC forwards a speed past the vehicle's own maximum"
+        );
+        assert_eq!(
+            speed_refusal(
+                Some(&air),
+                "guidedModeChangeGroundSpeedMetersSecond",
+                Some(20.0)
+            )
+            .map(|r| r.0),
+            Some("wrongCommand"),
+            "a VTOL that transitioned after the view was read flies on airspeed now"
+        );
+        assert_eq!(
+            speed_refusal(
+                Some(&air),
+                "guidedModeChangeEquivalentAirspeedMetersSecond",
+                Some(10.0)
+            )
+            .map(|r| r.0),
+            Some("outOfRange"),
+            "below stall is refused, not clamped"
+        );
+        assert_eq!(
+            speed_refusal(
+                Some(&air),
+                "guidedModeChangeEquivalentAirspeedMetersSecond",
+                None
+            )
+            .map(|r| r.0),
+            Some("outOfRange")
+        );
+        assert_eq!(
+            speed_refusal(None, "guidedModeChangeGroundSpeedMetersSecond", Some(5.0)).map(|r| r.0),
+            Some("unavailable")
+        );
     }
 }

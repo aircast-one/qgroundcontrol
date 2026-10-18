@@ -4,21 +4,31 @@ use crate::control::decode;
 use crate::read::{flag, object};
 use crate::router::Backend;
 
-const FACT_ROOTS: &[&str] = &["settings.", "vehicle.parameterManager.getParameter(", "plan.missionController.visualItems."];
+const FACT_ROOTS: &[&str] = &[
+    "settings.",
+    "vehicle.parameterManager.getParameter(",
+    "plan.missionController.visualItems.",
+];
 
 pub fn owns(path: &str) -> bool {
     FACT_ROOTS.iter().any(|root| path.starts_with(root)) && !path.ends_with(".rawValue")
 }
 
 pub fn number(value: &Value) -> Option<f64> {
-    value.as_f64().or_else(|| value.as_str().and_then(|s| s.trim().parse().ok())).filter(|v| v.is_finite())
+    value
+        .as_f64()
+        .or_else(|| value.as_str().and_then(|s| s.trim().parse().ok()))
+        .filter(|v| v.is_finite())
 }
 
 fn raw_text(value: &Value) -> String {
     match number(value) {
         Some(n) if n.fract() == 0.0 && n.abs() < 1e15 => format!("{}", n as i64),
         Some(n) => format!("{n}"),
-        None => value.as_str().map(str::to_string).unwrap_or_else(|| value.to_string()),
+        None => value
+            .as_str()
+            .map(str::to_string)
+            .unwrap_or_else(|| value.to_string()),
     }
 }
 
@@ -38,20 +48,48 @@ pub fn refusal(control: &Value, fact: &Value, asked: &Value) -> Option<(&'static
             let offered = control["options"].as_array().cloned().unwrap_or_default();
             match offered.iter().any(|o| o["raw"] == raw_text(asked).as_str()) {
                 true => None,
-                false => Some(("notAnOption", format!("Choose one of: {}.", offered.iter().filter_map(|o| o["label"].as_str()).collect::<Vec<_>>().join(", ")))),
+                false => Some((
+                    "notAnOption",
+                    format!(
+                        "Choose one of: {}.",
+                        offered
+                            .iter()
+                            .filter_map(|o| o["label"].as_str())
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    ),
+                )),
             }
         }
-        "text" => match (asked.as_str(), fact["maxStringLength"].as_u64().filter(|longest| *longest > 0)) {
+        "text" => match (
+            asked.as_str(),
+            fact["maxStringLength"]
+                .as_u64()
+                .filter(|longest| *longest > 0),
+        ) {
             (None, _) => Some(("notText", "This setting is text.".to_string())),
-            (Some(text), Some(longest)) if text.encode_utf16().count() as u64 > longest => Some(("tooLong", format!("Value must be {longest} characters or less"))),
+            (Some(text), Some(longest)) if text.encode_utf16().count() as u64 > longest => Some((
+                "tooLong",
+                format!("Value must be {longest} characters or less"),
+            )),
             _ => None,
         },
         "bitmask" => {
-            let known: i64 = control["bits"].as_array().map(|b| b.iter().filter_map(|bit| bit["raw"].as_str()?.parse::<i64>().ok()).fold(0, |all, bit| all | bit)).unwrap_or(0);
+            let known: i64 = control["bits"]
+                .as_array()
+                .map(|b| {
+                    b.iter()
+                        .filter_map(|bit| bit["raw"].as_str()?.parse::<i64>().ok())
+                        .fold(0, |all, bit| all | bit)
+                })
+                .unwrap_or(0);
             let current = number(&fact["rawValue"]).map_or(0, |n| n as i64);
             match number(asked).filter(|n| n.fract() == 0.0).map(|n| n as i64) {
                 Some(bits) if bits & !known & !current == 0 => None,
-                _ => Some(("unknownBits", "Only the listed options can be set.".to_string())),
+                _ => Some((
+                    "unknownBits",
+                    "Only the listed options can be set.".to_string(),
+                )),
             }
         }
         _ => {
@@ -59,12 +97,30 @@ pub fn refusal(control: &Value, fact: &Value, asked: &Value) -> Option<(&'static
                 return Some(("notANumber", INVALID_NUMBER.to_string()));
             };
             let whole = control["wholeNumbersOnly"] == true;
-            let (minimum, maximum) = (control["minimum"].as_f64().or(fact["min"].as_f64()), control["maximum"].as_f64().or(fact["max"].as_f64()));
-            let shown = |bound: f64| if whole { format!("{}", bound.trunc() as i64) } else { crate::coreplan::qt_number(bound) };
+            let (minimum, maximum) = (
+                control["minimum"].as_f64().or(fact["min"].as_f64()),
+                control["maximum"].as_f64().or(fact["max"].as_f64()),
+            );
+            let shown = |bound: f64| {
+                if whole {
+                    format!("{}", bound.trunc() as i64)
+                } else {
+                    crate::coreplan::qt_number(bound)
+                }
+            };
             match () {
-                _ if whole && value.fract() != 0.0 => Some(("notWhole", INVALID_NUMBER.to_string())),
+                _ if whole && value.fract() != 0.0 => {
+                    Some(("notWhole", INVALID_NUMBER.to_string()))
+                }
                 _ if minimum.is_some_and(|m| value < m) || maximum.is_some_and(|m| value > m) => {
-                    Some(("outOfRange", format!("Value must be within {} and {}", shown(minimum.unwrap_or(f64::MIN)), shown(maximum.unwrap_or(f64::MAX)))))
+                    Some((
+                        "outOfRange",
+                        format!(
+                            "Value must be within {} and {}",
+                            shown(minimum.unwrap_or(f64::MIN)),
+                            shown(maximum.unwrap_or(f64::MAX))
+                        ),
+                    ))
                 }
                 _ => None,
             }
@@ -86,10 +142,16 @@ fn unchanged(fact: &Value, asked: &Value) -> bool {
 const RAW_VALUE: &str = ".rawValue";
 
 pub fn owns_raw(path: &str) -> bool {
-    path.strip_suffix(RAW_VALUE).is_some_and(|fact| FACT_ROOTS.iter().any(|root| fact.starts_with(root)))
+    path.strip_suffix(RAW_VALUE)
+        .is_some_and(|fact| FACT_ROOTS.iter().any(|root| fact.starts_with(root)))
 }
 
-pub fn write_raw(backend: &dyn Backend, path: &str, value: &str, write: impl FnOnce() -> String) -> String {
+pub fn write_raw(
+    backend: &dyn Backend,
+    path: &str,
+    value: &str,
+    write: impl FnOnce() -> String,
+) -> String {
     let fact = backend.value(path.strip_suffix(RAW_VALUE).unwrap_or(path));
     let written = write();
     if raw_write_changed(&fact, value, &object(&written)) {
@@ -99,8 +161,13 @@ pub fn write_raw(backend: &dyn Backend, path: &str, value: &str, write: impl FnO
 }
 
 fn raw_write_changed(fact: &Value, value: &str, written: &Value) -> bool {
-    let asked = serde_json::from_str::<Value>(value).ok().map(|given| given.get("value").cloned().unwrap_or(given)).unwrap_or(Value::Null);
-    is_fact(fact) && flag(written, "ok") && !same(fact.get("rawValue").unwrap_or(&Value::Null), &asked)
+    let asked = serde_json::from_str::<Value>(value)
+        .ok()
+        .map(|given| given.get("value").cloned().unwrap_or(given))
+        .unwrap_or(Value::Null);
+    is_fact(fact)
+        && flag(written, "ok")
+        && !same(fact.get("rawValue").unwrap_or(&Value::Null), &asked)
 }
 
 const ENUM_INDEX: &str = ".enumIndex";
@@ -126,7 +193,10 @@ pub fn validate(backend: &dyn Backend, path: &str, args: &str) -> Value {
     let convert_only = given.get(1).and_then(Value::as_bool).unwrap_or(false);
     let asked = match fact.get("typeIsString").and_then(Value::as_bool) {
         Some(true) => json!(entered),
-        _ => serde_json::from_str::<Value>(entered.trim()).ok().filter(|v| !v.is_string()).unwrap_or_else(|| json!(entered)),
+        _ => serde_json::from_str::<Value>(entered.trim())
+            .ok()
+            .filter(|v| !v.is_string())
+            .unwrap_or_else(|| json!(entered)),
     };
     let found = refusal(&decode(&fact, fact_path), &fact, &asked)
         .filter(|_| !unchanged(&fact, &asked))
@@ -139,12 +209,26 @@ pub fn validate(backend: &dyn Backend, path: &str, args: &str) -> Value {
 }
 
 fn enum_index_refusal(fact: &Value, index: Option<i64>) -> Option<String> {
-    let strings = fact.get("enumStrings").and_then(Value::as_array).cloned().unwrap_or_default();
-    let unknown = fact.get("unknownEnumLabel").and_then(Value::as_str).filter(|l| !l.is_empty());
-    let chosen = index.and_then(|i| usize::try_from(i).ok()).and_then(|i| strings.get(i));
+    let strings = fact
+        .get("enumStrings")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let unknown = fact
+        .get("unknownEnumLabel")
+        .and_then(Value::as_str)
+        .filter(|l| !l.is_empty());
+    let chosen = index
+        .and_then(|i| usize::try_from(i).ok())
+        .and_then(|i| strings.get(i));
     match chosen {
-        None => Some(format!("Choose one of the {} options.", strings.iter().filter(|s| s.as_str() != unknown).count())),
-        Some(label) if label.as_str() == unknown => Some("That entry is the current unknown reading, not a choice.".to_string()),
+        None => Some(format!(
+            "Choose one of the {} options.",
+            strings.iter().filter(|s| s.as_str() != unknown).count()
+        )),
+        Some(label) if label.as_str() == unknown => {
+            Some("That entry is the current unknown reading, not a choice.".to_string())
+        }
         Some(_) => None,
     }
 }
@@ -159,12 +243,20 @@ fn write_enum_index(backend: &dyn Backend, path: &str, value: &str) -> Value {
         return json!({ "ok": false, "result": false, "refusal": "readOnly", "reason": "This setting cannot be changed." });
     }
     let fact = crate::settings::with_choices(backend, &bare);
-    let index = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value")?.as_i64());
+    let index = serde_json::from_str::<Value>(value)
+        .ok()
+        .and_then(|v| v.get("value")?.as_i64());
     if let Some(reason) = enum_index_refusal(&fact, index) {
         return json!({ "ok": false, "result": false, "refusal": "notAnOption", "reason": reason });
     }
-    if bare.get("enumStrings").and_then(Value::as_array).is_none_or(Vec::is_empty) {
-        let offered = index.and_then(|i| usize::try_from(i).ok()).and_then(|i| fact.get("enumValues")?.get(i).cloned());
+    if bare
+        .get("enumStrings")
+        .and_then(Value::as_array)
+        .is_none_or(Vec::is_empty)
+    {
+        let offered = index
+            .and_then(|i| usize::try_from(i).ok())
+            .and_then(|i| fact.get("enumValues")?.get(i).cloned());
         return write(backend, fact_path, &json!({ "value": offered }).to_string());
     }
     let answered = flag(&object(&backend.set(path, value)), "ok");
@@ -175,22 +267,39 @@ fn write_enum_index(backend: &dyn Backend, path: &str, value: &str) -> Value {
 }
 
 fn reboot_flags(fact: &Value, qt_present: bool) -> (bool, bool) {
-    (flag(fact, "vehicleRebootRequired"), flag(fact, "qgcRebootRequired") && !qt_present)
+    (
+        flag(fact, "vehicleRebootRequired"),
+        flag(fact, "qgcRebootRequired") && !qt_present,
+    )
 }
 
 fn announce_reboot(fact: &Value) {
     let (vehicle, application) = reboot_flags(fact, crate::qthost::present());
-    crate::noticeboard::reboot_notice_after_write(vehicle, application, crate::hub::now_ms() as i64);
+    crate::noticeboard::reboot_notice_after_write(
+        vehicle,
+        application,
+        crate::hub::now_ms() as i64,
+    );
 }
 
 const UI_SCALING: &str = "settings.appSettings.appFontPointSize.enumIndex";
 
 pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
     if path == UI_SCALING {
-        let size = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value")?.as_i64()).and_then(|i| usize::try_from(i).ok()).and_then(crate::settings::scaled_point_size);
+        let size = serde_json::from_str::<Value>(value)
+            .ok()
+            .and_then(|v| v.get("value")?.as_i64())
+            .and_then(|i| usize::try_from(i).ok())
+            .and_then(crate::settings::scaled_point_size);
         return match size {
-            Some(size) => write(backend, path.strip_suffix(ENUM_INDEX).unwrap_or(path), &json!({ "value": size }).to_string()),
-            None => json!({ "ok": false, "result": false, "refusal": "notAnOption", "reason": "Choose one of the UI scaling steps." }),
+            Some(size) => write(
+                backend,
+                path.strip_suffix(ENUM_INDEX).unwrap_or(path),
+                &json!({ "value": size }).to_string(),
+            ),
+            None => {
+                json!({ "ok": false, "result": false, "refusal": "notAnOption", "reason": "Choose one of the UI scaling steps." })
+            }
         };
     }
     if path.ends_with(ENUM_INDEX) {
@@ -201,7 +310,12 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
     let fact = backend.value(path);
     if fact.get("kind").and_then(Value::as_str) != Some("fact") {
         let mut answered = object(&backend.set(path, value));
-        if !flag(&answered, "ok") && answered.get("reason").and_then(Value::as_str).is_none_or(str::is_empty) {
+        if !flag(&answered, "ok")
+            && answered
+                .get("reason")
+                .and_then(Value::as_str)
+                .is_none_or(str::is_empty)
+        {
             answered = json!({ "ok": false, "result": false, "reason": format!("{path} did not take the write.") });
         }
         return answered;
@@ -213,10 +327,20 @@ pub fn write(backend: &dyn Backend, path: &str, value: &str) -> Value {
     let fact = crate::actuators::output_function_fact(backend, path, fact);
     let control = decode(&fact, path);
     let judged = match force_edit {
-        true => Value::Object(fact.as_object().cloned().unwrap_or_default().into_iter().filter(|(key, _)| key != "readOnly").collect()),
+        true => Value::Object(
+            fact.as_object()
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .filter(|(key, _)| key != "readOnly")
+                .collect(),
+        ),
         false => fact.clone(),
     };
-    if let Some((token, reason)) = refusal(&control, &judged, &asked).filter(|_| !unchanged(&fact, &asked)).filter(|(token, _)| !forced || CONVERSION_REFUSALS.contains(token)) {
+    if let Some((token, reason)) = refusal(&control, &judged, &asked)
+        .filter(|_| !unchanged(&fact, &asked))
+        .filter(|(token, _)| !forced || CONVERSION_REFUSALS.contains(token))
+    {
         return json!({ "ok": false, "result": false, "refusal": token, "reason": reason, "path": path });
     }
     let answered = flag(&object(&backend.set(path, value)), "ok");
@@ -233,31 +357,65 @@ mod tests {
 
     #[test]
     fn reboot_flags_follow_the_fact_and_leave_restart_messages_to_qt_when_it_is_there() {
-        let both = json!({ "kind": "fact", "vehicleRebootRequired": true, "qgcRebootRequired": true });
+        let both =
+            json!({ "kind": "fact", "vehicleRebootRequired": true, "qgcRebootRequired": true });
         assert_eq!(reboot_flags(&both, false), (true, true));
-        assert_eq!(reboot_flags(&both, true), (true, false), "Qt's Fact::setRawValue already posts showRebootAppMessage");
-        assert_eq!(reboot_flags(&json!({ "kind": "fact" }), false), (false, false));
+        assert_eq!(
+            reboot_flags(&both, true),
+            (true, false),
+            "Qt's Fact::setRawValue already posts showRebootAppMessage"
+        );
+        assert_eq!(
+            reboot_flags(&json!({ "kind": "fact" }), false),
+            (false, false)
+        );
     }
 
     #[test]
-    fn a_raw_write_prompts_a_reboot_when_it_changes_the_value_like_fact_container_raw_value_changed() {
+    fn a_raw_write_prompts_a_reboot_when_it_changes_the_value_like_fact_container_raw_value_changed()
+     {
         let compass = json!({ "kind": "fact", "name": "COMPASS_USE", "rawValue": 1, "vehicleRebootRequired": true });
         let ok = json!({ "ok": true });
-        assert!(raw_write_changed(&compass, "{\"value\":0}", &ok), "APM setup pages and parameter file loads write rawValue, which skipped the prompt");
+        assert!(
+            raw_write_changed(&compass, "{\"value\":0}", &ok),
+            "APM setup pages and parameter file loads write rawValue, which skipped the prompt"
+        );
         assert!(raw_write_changed(&compass, "0", &ok));
-        assert!(!raw_write_changed(&compass, "{\"value\":1}", &ok), "Fact::setRawValue emits nothing for the value it already holds");
+        assert!(
+            !raw_write_changed(&compass, "{\"value\":1}", &ok),
+            "Fact::setRawValue emits nothing for the value it already holds"
+        );
         assert!(!raw_write_changed(&compass, "{\"value\":\"1\"}", &ok));
-        assert!(!raw_write_changed(&compass, "{\"value\":0}", &json!({ "ok": false })));
-        assert!(!raw_write_changed(&json!({ "kind": "value", "value": 1 }), "{\"value\":0}", &ok));
-        assert!(owns_raw("vehicle.parameterManager.getParameter(-1,COMPASS_USE).rawValue"));
-        assert!(owns_raw("settings.rtkSettings.useFixedBasePosition.rawValue"));
-        assert!(!owns_raw("settings.rtkSettings.useFixedBasePosition"), "value writes go through write(), which prompts itself");
+        assert!(!raw_write_changed(
+            &compass,
+            "{\"value\":0}",
+            &json!({ "ok": false })
+        ));
+        assert!(!raw_write_changed(
+            &json!({ "kind": "value", "value": 1 }),
+            "{\"value\":0}",
+            &ok
+        ));
+        assert!(owns_raw(
+            "vehicle.parameterManager.getParameter(-1,COMPASS_USE).rawValue"
+        ));
+        assert!(owns_raw(
+            "settings.rtkSettings.useFixedBasePosition.rawValue"
+        ));
+        assert!(
+            !owns_raw("settings.rtkSettings.useFixedBasePosition"),
+            "value writes go through write(), which prompts itself"
+        );
         assert!(!owns_raw("vehicle.flightMode.rawValue"));
     }
 
     fn fact(extra: Value) -> Value {
         let mut base = json!({ "kind": "fact", "name": "x", "readOnly": false });
-        extra.as_object().unwrap().iter().for_each(|(k, v)| base[k] = v.clone());
+        extra
+            .as_object()
+            .unwrap()
+            .iter()
+            .for_each(|(k, v)| base[k] = v.clone());
         base
     }
 
@@ -267,36 +425,98 @@ mod tests {
 
     #[test]
     fn a_setting_is_written_only_with_a_value_its_own_metadata_allows() {
-        let altitude = fact(json!({ "typeIsInteger": false, "min": 1.0, "max": 1000.0, "minIsDefaultForType": false, "maxIsDefaultForType": false, "minString": "1", "maxString": "1000" }));
+        let altitude = fact(
+            json!({ "typeIsInteger": false, "min": 1.0, "max": 1000.0, "minIsDefaultForType": false, "maxIsDefaultForType": false, "minString": "1", "maxString": "1000" }),
+        );
         assert_eq!(check(altitude.clone(), json!(50.0)), None);
-        assert_eq!(check(altitude.clone(), json!("50")), None, "a field's text reaches the write as a string");
-        assert_eq!(check(altitude.clone(), json!(5000.0)), Some("outOfRange"), "the bridge calls setCookedValue, which stores the value without Fact::validate, so a native head's out-of-range entry was kept where QML's FactTextField would have refused it");
+        assert_eq!(
+            check(altitude.clone(), json!("50")),
+            None,
+            "a field's text reaches the write as a string"
+        );
+        assert_eq!(
+            check(altitude.clone(), json!(5000.0)),
+            Some("outOfRange"),
+            "the bridge calls setCookedValue, which stores the value without Fact::validate, so a native head's out-of-range entry was kept where QML's FactTextField would have refused it"
+        );
         assert_eq!(check(altitude, json!("tall")), Some("notANumber"));
         let whole = fact(json!({ "typeIsInteger": true }));
-        assert_eq!(check(whole, json!(3.7)), Some("notWhole"), "the NATIVE_MACOS_REWRITE open item: an integer setting accepted 3.7 and kept 3 in silence");
-        let units = fact(json!({ "enumStrings": ["Feet", "Meters", "Unknown: 7"], "enumValues": [0, 1, 7], "unknownEnumLabel": "Unknown: 7" }));
+        assert_eq!(
+            check(whole, json!(3.7)),
+            Some("notWhole"),
+            "the NATIVE_MACOS_REWRITE open item: an integer setting accepted 3.7 and kept 3 in silence"
+        );
+        let units = fact(
+            json!({ "enumStrings": ["Feet", "Meters", "Unknown: 7"], "enumValues": [0, 1, 7], "unknownEnumLabel": "Unknown: 7" }),
+        );
         assert_eq!(check(units.clone(), json!(1)), None);
-        assert_eq!(check(units.clone(), json!(7)), Some("notAnOption"), "the synthesised unknown entry is a reading, never a choice");
+        assert_eq!(
+            check(units.clone(), json!(7)),
+            Some("notAnOption"),
+            "the synthesised unknown entry is a reading, never a choice"
+        );
         assert_eq!(check(units, json!(4)), Some("notAnOption"));
-        assert_eq!(check(fact(json!({ "typeIsBool": true })), json!(true)), None);
-        assert_eq!(check(fact(json!({ "typeIsBool": true })), json!("yes")), Some("notAToggle"));
-        assert_eq!(check(fact(json!({ "typeIsString": true })), json!("udp://:5600")), None);
+        assert_eq!(
+            check(fact(json!({ "typeIsBool": true })), json!(true)),
+            None
+        );
+        assert_eq!(
+            check(fact(json!({ "typeIsBool": true })), json!("yes")),
+            Some("notAToggle")
+        );
+        assert_eq!(
+            check(fact(json!({ "typeIsString": true })), json!("udp://:5600")),
+            None
+        );
         let mask = fact(json!({ "bitmaskStrings": ["RC", "Battery"], "bitmaskValues": [1, 2] }));
         assert_eq!(check(mask.clone(), json!(3)), None);
         assert_eq!(check(mask, json!(4)), Some("unknownBits"));
-        let vendor = fact(json!({ "bitmaskStrings": ["RC", "Battery"], "bitmaskValues": [1, 2], "rawValue": -2147483644 }));
-        assert_eq!(check(vendor.clone(), json!(-2147483643)), None, "FactBitmask flips one box and keeps bits the metadata does not list, sign bit included");
+        let vendor = fact(
+            json!({ "bitmaskStrings": ["RC", "Battery"], "bitmaskValues": [1, 2], "rawValue": -2147483644 }),
+        );
+        assert_eq!(
+            check(vendor.clone(), json!(-2147483643)),
+            None,
+            "FactBitmask flips one box and keeps bits the metadata does not list, sign bit included"
+        );
         assert_eq!(check(vendor, json!(-2147483643 | 8)), Some("unknownBits"));
-        let port = fact(json!({ "typeIsInteger": true, "min": 0, "max": 65535, "minIsDefaultForType": true, "maxIsDefaultForType": true, "minString": "0", "maxString": "65535" }));
-        assert_eq!(check(port.clone(), json!(70000)), Some("outOfRange"), "FactMetaData min/max default to the type range and are always checked");
+        let port = fact(
+            json!({ "typeIsInteger": true, "min": 0, "max": 65535, "minIsDefaultForType": true, "maxIsDefaultForType": true, "minString": "0", "maxString": "65535" }),
+        );
+        assert_eq!(
+            check(port.clone(), json!(70000)),
+            Some("outOfRange"),
+            "FactMetaData min/max default to the type range and are always checked"
+        );
         assert_eq!(check(port.clone(), json!(-1)), Some("outOfRange"));
-        assert_eq!(refusal(&decode(&port, "settings.x"), &port, &json!(70000)).map(|r| r.1).as_deref(), Some("Value must be within 0 and 65535"), "cookedMin/cookedMax are the type range when the metadata has none");
+        assert_eq!(
+            refusal(&decode(&port, "settings.x"), &port, &json!(70000))
+                .map(|r| r.1)
+                .as_deref(),
+            Some("Value must be within 0 and 65535"),
+            "cookedMin/cookedMax are the type range when the metadata has none"
+        );
         let id = fact(json!({ "typeIsString": true, "maxStringLength": 20 }));
         assert_eq!(check(id.clone(), json!("12345678901234567890")), None);
-        assert_eq!(check(id.clone(), json!("123456789012345678901")), Some("tooLong"), "Value must be 20 characters or less");
-        assert_eq!(check(id, json!("\u{1F681}".repeat(11))), Some("tooLong"), "QString::length counts UTF-16 units, two per emoji");
-        assert_eq!(check(fact(json!({ "readOnly": true })), json!(1)), Some("readOnly"));
-        assert_eq!(check(json!({ "kind": "fact", "name": "x" }), json!(1)), None, "a fact that does not say it is read-only is not refused as one");
+        assert_eq!(
+            check(id.clone(), json!("123456789012345678901")),
+            Some("tooLong"),
+            "Value must be 20 characters or less"
+        );
+        assert_eq!(
+            check(id, json!("\u{1F681}".repeat(11))),
+            Some("tooLong"),
+            "QString::length counts UTF-16 units, two per emoji"
+        );
+        assert_eq!(
+            check(fact(json!({ "readOnly": true })), json!(1)),
+            Some("readOnly")
+        );
+        assert_eq!(
+            check(json!({ "kind": "fact", "name": "x" }), json!(1)),
+            None,
+            "a fact that does not say it is read-only is not refused as one"
+        );
     }
 
     #[test]
@@ -310,24 +530,77 @@ mod tests {
                 }
                 .to_string()
             }
-            fn get_fields(&self, _p: &str, _f: &str) -> String { String::new() }
+            fn get_fields(&self, _p: &str, _f: &str) -> String {
+                String::new()
+            }
             fn set(&self, p: &str, _v: &str) -> String {
                 self.0.borrow_mut().push(p.to_string());
                 json!({ "ok": true }).to_string()
             }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
             fn watch(&self, _p: &[String]) {}
         }
         let settings = Settings(RefCell::new(Vec::new()));
-        assert_eq!(write(&settings, "settings.appSettings.defaultMissionItemAltitude", r#"{"value":2000}"#)["refusal"], "outOfRange");
-        assert_eq!(write(&settings, "settings.appSettings.defaultMissionItemAltitude", r#"{"value":60}"#)["result"], true);
-        assert_eq!(write(&settings, "settings.videoSettings", r#"{"value":1}"#)["ok"], true, "a path that is not a fact is the bridge's to answer");
-        assert_eq!(settings.0.borrow().as_slice(), &["settings.appSettings.defaultMissionItemAltitude".to_string(), "settings.videoSettings".to_string()]);
-        assert_eq!(write(&settings, "settings.appSettings.appFontPointSize.enumIndex", r#"{"value":4}"#)["ok"], true, "a UI Scaling step is written as its point size");
-        assert_eq!(settings.0.borrow().last().map(String::as_str), Some("settings.appSettings.appFontPointSize"));
-        assert_eq!(write(&settings, "settings.appSettings.appFontPointSize.enumIndex", r#"{"value":9}"#)["refusal"], "notAnOption");
-        assert!(owns("settings.appSettings.savePath") && !owns("settings.appSettings.savePath.rawValue") && !owns("vehicle.armed"));
-        assert!(owns("vehicle.parameterManager.getParameter(1,RTL_ALT)"), "a parameter is a Fact the vehicle keeps, so a value outside its metadata goes to the autopilot");
+        assert_eq!(
+            write(
+                &settings,
+                "settings.appSettings.defaultMissionItemAltitude",
+                r#"{"value":2000}"#
+            )["refusal"],
+            "outOfRange"
+        );
+        assert_eq!(
+            write(
+                &settings,
+                "settings.appSettings.defaultMissionItemAltitude",
+                r#"{"value":60}"#
+            )["result"],
+            true
+        );
+        assert_eq!(
+            write(&settings, "settings.videoSettings", r#"{"value":1}"#)["ok"],
+            true,
+            "a path that is not a fact is the bridge's to answer"
+        );
+        assert_eq!(
+            settings.0.borrow().as_slice(),
+            &[
+                "settings.appSettings.defaultMissionItemAltitude".to_string(),
+                "settings.videoSettings".to_string()
+            ]
+        );
+        assert_eq!(
+            write(
+                &settings,
+                "settings.appSettings.appFontPointSize.enumIndex",
+                r#"{"value":4}"#
+            )["ok"],
+            true,
+            "a UI Scaling step is written as its point size"
+        );
+        assert_eq!(
+            settings.0.borrow().last().map(String::as_str),
+            Some("settings.appSettings.appFontPointSize")
+        );
+        assert_eq!(
+            write(
+                &settings,
+                "settings.appSettings.appFontPointSize.enumIndex",
+                r#"{"value":9}"#
+            )["refusal"],
+            "notAnOption"
+        );
+        assert!(
+            owns("settings.appSettings.savePath")
+                && !owns("settings.appSettings.savePath.rawValue")
+                && !owns("vehicle.armed")
+        );
+        assert!(
+            owns("vehicle.parameterManager.getParameter(1,RTL_ALT)"),
+            "a parameter is a Fact the vehicle keeps, so a value outside its metadata goes to the autopilot"
+        );
         assert!(owns("plan.missionController.visualItems.3.altitude"));
         assert!(!owns("plan.missionController.globalAltitudeFrame"));
     }
@@ -344,33 +617,89 @@ mod tests {
                 }
                 .to_string()
             }
-            fn get_fields(&self, _p: &str, _f: &str) -> String { String::new() }
+            fn get_fields(&self, _p: &str, _f: &str) -> String {
+                String::new()
+            }
             fn set(&self, p: &str, _v: &str) -> String {
                 self.0.borrow_mut().push(p.to_string());
                 json!({ "ok": true }).to_string()
             }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
             fn watch(&self, _p: &[String]) {}
         }
         let vehicle = Vehicle(RefCell::new(Vec::new()));
         let path = "vehicle.parameterManager.getParameter(1,SERVO_RATE)";
-        assert_eq!(write(&vehicle, path, r#"{"value":50.5}"#)["refusal"], "notWhole", "NATIVE_MACOS_REWRITE's open item: an integer parameter accepted a fractional entry and the vehicle was sent the truncation");
-        assert_eq!(write(&vehicle, path, r#"{"value":900}"#)["refusal"], "outOfRange");
-        assert_eq!(write(&vehicle, path, r#"{"value":900}"#)["reason"], "Value must be within 25 and 400", "an int fact's bounds are shown through toInt");
-        assert_eq!(write(&vehicle, path, r#"{"value":50.5}"#)["reason"], "Invalid number", "QString(\"50.5\").toInt fails, so FactTextField says Invalid number");
-        assert_eq!(write(&vehicle, path, r#"{"value":900,"force":true}"#)["result"], true, "ParameterEditorDialog's Force save validates with convertOnly, so the range is not checked");
-        assert_eq!(write(&vehicle, path, r#"{"value":50.5,"force":true}"#)["refusal"], "notWhole", "but the value must still convert");
+        assert_eq!(
+            write(&vehicle, path, r#"{"value":50.5}"#)["refusal"],
+            "notWhole",
+            "NATIVE_MACOS_REWRITE's open item: an integer parameter accepted a fractional entry and the vehicle was sent the truncation"
+        );
+        assert_eq!(
+            write(&vehicle, path, r#"{"value":900}"#)["refusal"],
+            "outOfRange"
+        );
+        assert_eq!(
+            write(&vehicle, path, r#"{"value":900}"#)["reason"],
+            "Value must be within 25 and 400",
+            "an int fact's bounds are shown through toInt"
+        );
+        assert_eq!(
+            write(&vehicle, path, r#"{"value":50.5}"#)["reason"],
+            "Invalid number",
+            "QString(\"50.5\").toInt fails, so FactTextField says Invalid number"
+        );
+        assert_eq!(
+            write(&vehicle, path, r#"{"value":900,"force":true}"#)["result"],
+            true,
+            "ParameterEditorDialog's Force save validates with convertOnly, so the range is not checked"
+        );
+        assert_eq!(
+            write(&vehicle, path, r#"{"value":50.5,"force":true}"#)["refusal"],
+            "notWhole",
+            "but the value must still convert"
+        );
         assert_eq!(write(&vehicle, path, r#"{"value":50}"#)["result"], true);
-        assert_eq!(write(&vehicle, "plan.missionController.visualItems.2.altitudeMode", r#"{"value":1}"#)["ok"], true);
+        assert_eq!(
+            write(
+                &vehicle,
+                "plan.missionController.visualItems.2.altitudeMode",
+                r#"{"value":1}"#
+            )["ok"],
+            true
+        );
         let locked = "vehicle.parameterManager.getParameter(1,SYS_LOCKED)";
-        assert_eq!(write(&vehicle, locked, r#"{"value":2}"#)["refusal"], "readOnly");
-        assert_eq!(write(&vehicle, locked, r#"{"value":2.5,"force":true}"#)["refusal"], "notWhole", "a forced read-only write still has to convert");
-        assert_eq!(write(&vehicle, locked, r#"{"value":2,"force":true}"#)["result"], true, "ParameterEditorDialog's Force edit writes a read-only parameter, as Fact::setCookedValue never checks");
-        assert!(unchanged(&json!({ "value": 0.0 }), &json!(0)) && unchanged(&json!({ "value": null }), &Value::Null));
-        assert!(!unchanged(&json!({ "value": 0.0 }), &json!(0.05)) && !unchanged(&json!({ "value": null }), &json!(3)));
+        assert_eq!(
+            write(&vehicle, locked, r#"{"value":2}"#)["refusal"],
+            "readOnly"
+        );
+        assert_eq!(
+            write(&vehicle, locked, r#"{"value":2.5,"force":true}"#)["refusal"],
+            "notWhole",
+            "a forced read-only write still has to convert"
+        );
+        assert_eq!(
+            write(&vehicle, locked, r#"{"value":2,"force":true}"#)["result"],
+            true,
+            "ParameterEditorDialog's Force edit writes a read-only parameter, as Fact::setCookedValue never checks"
+        );
+        assert!(
+            unchanged(&json!({ "value": 0.0 }), &json!(0))
+                && unchanged(&json!({ "value": null }), &Value::Null)
+        );
+        assert!(
+            !unchanged(&json!({ "value": 0.0 }), &json!(0.05))
+                && !unchanged(&json!({ "value": null }), &json!(3))
+        );
         assert_eq!(
             vehicle.0.borrow().as_slice(),
-            &[path.to_string(), path.to_string(), "plan.missionController.visualItems.2.altitudeFrame".to_string(), locked.to_string()],
+            &[
+                path.to_string(),
+                path.to_string(),
+                "plan.missionController.visualItems.2.altitudeFrame".to_string(),
+                locked.to_string()
+            ],
             "an item's renamed field is still rewritten when the fact check takes the write before the router's own rename does"
         );
     }
@@ -386,19 +715,39 @@ mod tests {
                 }
                 .to_string()
             }
-            fn get_fields(&self, _p: &str, _f: &str) -> String { String::new() }
+            fn get_fields(&self, _p: &str, _f: &str) -> String {
+                String::new()
+            }
             fn set(&self, p: &str, _v: &str) -> String {
                 self.0.borrow_mut().push(p.to_string());
                 json!({ "ok": true }).to_string()
             }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
             fn watch(&self, _p: &[String]) {}
         }
         let survey = Survey(RefCell::new(Vec::new()));
         let interval = "plan.missionController.visualItems.3.cameraCalc.minTriggerInterval";
-        assert_eq!(write(&survey, interval, r#"{"value":0}"#)["ok"], true, "QGC holds 0 under a declared minimum of 0.1, and writing a field back untouched is not an entry out of range");
-        assert_eq!(write(&survey, interval, r#"{"value":0.05}"#)["refusal"], "outOfRange", "a new value below the minimum is still refused");
-        assert_eq!(write(&survey, "plan.missionController.visualItems.1.amslAltAboveTerrain", r#"{"value":null}"#)["ok"], true, "an unmeasured height is NaN and reads as null");
+        assert_eq!(
+            write(&survey, interval, r#"{"value":0}"#)["ok"],
+            true,
+            "QGC holds 0 under a declared minimum of 0.1, and writing a field back untouched is not an entry out of range"
+        );
+        assert_eq!(
+            write(&survey, interval, r#"{"value":0.05}"#)["refusal"],
+            "outOfRange",
+            "a new value below the minimum is still refused"
+        );
+        assert_eq!(
+            write(
+                &survey,
+                "plan.missionController.visualItems.1.amslAltAboveTerrain",
+                r#"{"value":null}"#
+            )["ok"],
+            true,
+            "an unmeasured height is NaN and reads as null"
+        );
         assert_eq!(survey.0.borrow().len(), 2);
     }
 
@@ -413,7 +762,9 @@ mod tests {
             }
             .to_string()
         }
-        fn get_fields(&self, _p: &str, _f: &str) -> String { String::new() }
+        fn get_fields(&self, _p: &str, _f: &str) -> String {
+            String::new()
+        }
         fn set(&self, p: &str, _v: &str) -> String {
             self.0.borrow_mut().push(p.to_string());
             json!({ "ok": true }).to_string()
@@ -429,12 +780,29 @@ mod tests {
     fn an_enum_index_is_written_only_for_a_real_choice() {
         let units = Units(RefCell::new(Vec::new()));
         let path = "settings.unitsSettings.verticalDistanceUnits.enumIndex";
-        assert!(crate::actions::owns_write(path), "the enumIndex write reaches the core through the fact roots");
+        assert!(
+            crate::actions::owns_write(path),
+            "the enumIndex write reaches the core through the fact roots"
+        );
         assert_eq!(write(&units, path, r#"{"value":1}"#)["ok"], true);
-        assert_eq!(write(&units, path, r#"{"value":2}"#)["refusal"], "notAnOption", "the synthesised Unknown: 7 is a reading, never a choice");
-        assert_eq!(write(&units, path, r#"{"value":9}"#)["reason"], "Choose one of the 2 options.");
-        assert_eq!(write(&units, path, r#"{"value":-1}"#)["refusal"], "notAnOption");
-        assert_eq!(units.0.borrow().as_slice(), &[path.to_string()], "only the real choice was written");
+        assert_eq!(
+            write(&units, path, r#"{"value":2}"#)["refusal"],
+            "notAnOption",
+            "the synthesised Unknown: 7 is a reading, never a choice"
+        );
+        assert_eq!(
+            write(&units, path, r#"{"value":9}"#)["reason"],
+            "Choose one of the 2 options."
+        );
+        assert_eq!(
+            write(&units, path, r#"{"value":-1}"#)["refusal"],
+            "notAnOption"
+        );
+        assert_eq!(
+            units.0.borrow().as_slice(),
+            &[path.to_string()],
+            "only the real choice was written"
+        );
     }
 
     #[test]
@@ -458,16 +826,47 @@ mod tests {
                 self.0.borrow_mut().push((p.to_string(), v.to_string()));
                 json!({ "ok": true }).to_string()
             }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
             fn watch(&self, _p: &[String]) {}
         }
         let ports = Ports(RefCell::new(Vec::new()));
         let path = "settings.autoConnectSettings.usbRadioPort.enumIndex";
-        assert_eq!(write(&ports, path, r#"{"value":1}"#)["ok"], true, "a head writes the row's enumIndex; the fact itself has no enum, its choices are the ports found");
+        assert_eq!(
+            write(&ports, path, r#"{"value":1}"#)["ok"],
+            true,
+            "a head writes the row's enumIndex; the fact itself has no enum, its choices are the ports found"
+        );
         assert_eq!(write(&ports, path, r#"{"value":0}"#)["ok"], true);
-        assert_eq!(write(&ports, path, r#"{"value":2}"#)["reason"], "Choose one of the 2 options.");
-        let written: Vec<(String, Value)> = ports.0.borrow().iter().map(|(p, v)| (p.clone(), serde_json::from_str::<Value>(v).unwrap()["value"].clone())).collect();
-        assert_eq!(written, vec![("settings.autoConnectSettings.usbRadioPort".to_string(), json!("webserial-0")), ("settings.autoConnectSettings.usbRadioPort".to_string(), json!(""))]);
+        assert_eq!(
+            write(&ports, path, r#"{"value":2}"#)["reason"],
+            "Choose one of the 2 options."
+        );
+        let written: Vec<(String, Value)> = ports
+            .0
+            .borrow()
+            .iter()
+            .map(|(p, v)| {
+                (
+                    p.clone(),
+                    serde_json::from_str::<Value>(v).unwrap()["value"].clone(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            written,
+            vec![
+                (
+                    "settings.autoConnectSettings.usbRadioPort".to_string(),
+                    json!("webserial-0")
+                ),
+                (
+                    "settings.autoConnectSettings.usbRadioPort".to_string(),
+                    json!("")
+                )
+            ]
+        );
     }
 
     #[test]
@@ -475,18 +874,50 @@ mod tests {
         let units = Units(RefCell::new(Vec::new()));
         let altitude = "settings.appSettings.defaultMissionItemAltitude.validate";
         assert!(owns_validate(altitude) && !owns_validate("vehicle.armed.validate"));
-        let asked = |text: &str, convert_only: bool| validate(&units, altitude, &json!([text, convert_only]).to_string());
-        assert_eq!((&asked("60", false)["ok"], &asked("60", false)["result"]), (&json!(true), &json!("")), "Qt's shape: an empty result is a valid entry");
+        let asked = |text: &str, convert_only: bool| {
+            validate(&units, altitude, &json!([text, convert_only]).to_string())
+        };
+        assert_eq!(
+            (&asked("60", false)["ok"], &asked("60", false)["result"]),
+            (&json!(true), &json!("")),
+            "Qt's shape: an empty result is a valid entry"
+        );
         assert_eq!(asked("5000", false)["refusal"], "outOfRange");
-        assert_eq!(asked("5000", false)["result"], "Value must be within 1 and 1000", "FactMetaData::convertAndValidateCooked's sentence, the one FactTextField shows");
+        assert_eq!(
+            asked("5000", false)["result"],
+            "Value must be within 1 and 1000",
+            "FactMetaData::convertAndValidateCooked's sentence, the one FactTextField shows"
+        );
         assert_eq!(asked("tall", false)["result"], "Invalid number");
-        assert_eq!(asked("0.5", false)["result"], "Value must be within 1 and 1000");
-        assert_eq!(asked("5000", true)["result"], "", "convertOnly asks only whether the text is a number");
+        assert_eq!(
+            asked("0.5", false)["result"],
+            "Value must be within 1 and 1000"
+        );
+        assert_eq!(
+            asked("5000", true)["result"],
+            "",
+            "convertOnly asks only whether the text is a number"
+        );
         assert_eq!(asked("tall", true)["refusal"], "notANumber");
-        let palette = validate(&units, "settings.appSettings.indoorPaletteName.validate", r#"["1.5",false]"#);
+        let palette = validate(
+            &units,
+            "settings.appSettings.indoorPaletteName.validate",
+            r#"["1.5",false]"#,
+        );
         assert_eq!(palette["result"], "", "a text setting takes digits as text");
-        assert!(units.0.borrow().is_empty(), "a fact is validated by the core without asking Qt");
-        let _ = validate(&units, "settings.appSettings.notAFact.validate", r#"["1",false]"#);
-        assert_eq!(units.0.borrow().as_slice(), &["settings.appSettings.notAFact.validate".to_string()], "a path that is not a fact is Qt's to answer");
+        assert!(
+            units.0.borrow().is_empty(),
+            "a fact is validated by the core without asking Qt"
+        );
+        let _ = validate(
+            &units,
+            "settings.appSettings.notAFact.validate",
+            r#"["1",false]"#,
+        );
+        assert_eq!(
+            units.0.borrow().as_slice(),
+            &["settings.appSettings.notAFact.validate".to_string()],
+            "a path that is not a fact is Qt's to answer"
+        );
     }
 }

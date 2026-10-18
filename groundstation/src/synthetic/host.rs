@@ -62,9 +62,15 @@ fn running() -> MutexGuard<'static, Option<Running>> {
 
 pub fn attach(window: Window, feed: Arc<dyn Feed>) -> bool {
     let mut running = running();
-    if running.as_ref().is_none_or(|current| current.thread.is_finished()) {
+    if running
+        .as_ref()
+        .is_none_or(|current| current.thread.is_finished())
+    {
         let (commands, received) = mpsc::channel();
-        match std::thread::Builder::new().name("synthetic-view".to_string()).spawn(move || serve(&received, feed.as_ref())) {
+        match std::thread::Builder::new()
+            .name("synthetic-view".to_string())
+            .spawn(move || serve(&received, feed.as_ref()))
+        {
             Ok(thread) => *running = Some(Running { commands, thread }),
             Err(error) => {
                 log::error!(target: "synthetic", "event=attach_failed reason=\"no render thread: {error}\"");
@@ -72,7 +78,9 @@ pub fn attach(window: Window, feed: Arc<dyn Feed>) -> bool {
             }
         }
     }
-    running.as_ref().is_some_and(|current| current.commands.send(Command::Attach(window)).is_ok())
+    running
+        .as_ref()
+        .is_some_and(|current| current.commands.send(Command::Attach(window)).is_ok())
 }
 
 pub fn wake() {
@@ -83,7 +91,9 @@ pub fn wake() {
 
 pub fn release(key: usize) {
     let (done, finished) = mpsc::sync_channel(1);
-    let sent = running().as_ref().is_some_and(|current| current.commands.send(Command::Release(key, done)).is_ok());
+    let sent = running()
+        .as_ref()
+        .is_some_and(|current| current.commands.send(Command::Release(key, done)).is_ok());
     if sent && finished.recv_timeout(RELEASE_WAIT).is_err() {
         log::error!(target: "synthetic", "event=release_timeout window={key:#x} waited_ms={}", RELEASE_WAIT.as_millis());
     }
@@ -99,9 +109,16 @@ struct Kept {
 impl Kept {
     fn surface_for(&self, window: &Window) -> Result<wgpu::Surface<'static>, String> {
         let surface = surface_for(&self.gpu.instance, window)?;
-        match surface.get_capabilities(&self.gpu.adapter).formats.contains(&self.gpu.format) {
+        match surface
+            .get_capabilities(&self.gpu.adapter)
+            .formats
+            .contains(&self.gpu.format)
+        {
             true => Ok(surface),
-            false => Err(format!("the window does not offer the kept format {:?}", self.gpu.format)),
+            false => Err(format!(
+                "the window does not offer the kept format {:?}",
+                self.gpu.format
+            )),
         }
     }
 
@@ -118,17 +135,34 @@ impl Kept {
 }
 
 fn world(session: Option<&Session>) -> (&'static str, usize, usize) {
-    session.map_or(("none", 0, 0), |session| (session.source(), session.loaded_tiles(), session.in_flight()))
+    session.map_or(("none", 0, 0), |session| {
+        (
+            session.source(),
+            session.loaded_tiles(),
+            session.in_flight(),
+        )
+    })
 }
 
 fn handing_over(session: Option<&Session>) -> (&'static str, String) {
-    session.map_or(("none", "none".to_string()), |session| (session.showing(), session.handover().map_or_else(|| "none".to_string(), |after| after.as_millis().to_string())))
+    session.map_or(("none", "none".to_string()), |session| {
+        (
+            session.showing(),
+            session
+                .handover()
+                .map_or_else(|| "none".to_string(), |after| after.as_millis().to_string()),
+        )
+    })
 }
 
 fn serve(commands: &Receiver<Command>, feed: &dyn Feed) {
     let mut kept: Option<Kept> = None;
     loop {
-        let next = if kept.is_some() { commands.recv_timeout(KEEP_UNSEEN) } else { commands.recv().map_err(|_| RecvTimeoutError::Disconnected) };
+        let next = if kept.is_some() {
+            commands.recv_timeout(KEEP_UNSEEN)
+        } else {
+            commands.recv().map_err(|_| RecvTimeoutError::Disconnected)
+        };
         match next {
             Ok(Command::Attach(window)) => kept = show(window, kept.take(), commands, feed),
             Ok(Command::Release(_, done)) => acknowledge(&done),
@@ -165,8 +199,20 @@ fn acquire(first: &Window, kept: Option<Kept>) -> Result<Acquired, String> {
         }
     });
     match reused {
-        Some((kept, surface)) => Ok(Acquired { unseen: Some(kept.unseen_since.elapsed()), gpu: kept.gpu, surface, session: kept.session, token: kept.token }),
-        None => Gpu::new(first).map(|(gpu, surface)| Acquired { gpu, surface, session: None, token: Throttled::new(TOKEN_EVERY, None), unseen: None }),
+        Some((kept, surface)) => Ok(Acquired {
+            unseen: Some(kept.unseen_since.elapsed()),
+            gpu: kept.gpu,
+            surface,
+            session: kept.session,
+            token: kept.token,
+        }),
+        None => Gpu::new(first).map(|(gpu, surface)| Acquired {
+            gpu,
+            surface,
+            session: None,
+            token: Throttled::new(TOKEN_EVERY, None),
+            unseen: None,
+        }),
     }
 }
 
@@ -186,7 +232,19 @@ struct Visit {
 
 impl Visit {
     fn new(opened: Instant, unseen: Option<Duration>) -> Self {
-        Self { opened, unseen, gpu_setup: opened.elapsed(), first_picture: None, attaches: 1, releases: 0, surfaces_peak: 1, painted: 0, slowest: Duration::ZERO, paint_failures: 0, ended: "released" }
+        Self {
+            opened,
+            unseen,
+            gpu_setup: opened.elapsed(),
+            first_picture: None,
+            attaches: 1,
+            releases: 0,
+            surfaces_peak: 1,
+            painted: 0,
+            slowest: Duration::ZERO,
+            paint_failures: 0,
+            ended: "released",
+        }
     }
 
     fn note(&mut self, command: &Command) {
@@ -228,8 +286,12 @@ fn acknowledge(done: &SyncSender<()>) {
     }
 }
 
-fn surface_for(instance: &wgpu::Instance, window: &Window) -> Result<wgpu::Surface<'static>, String> {
-    unsafe { instance.create_surface_unsafe(window.target()) }.map_err(|error| format!("no surface for the window: {error}"))
+fn surface_for(
+    instance: &wgpu::Instance,
+    window: &Window,
+) -> Result<wgpu::Surface<'static>, String> {
+    unsafe { instance.create_surface_unsafe(window.target()) }
+        .map_err(|error| format!("no surface for the window: {error}"))
 }
 
 struct Gpu {
@@ -242,15 +304,40 @@ struct Gpu {
 
 impl Gpu {
     fn new(first: &Window) -> Result<(Self, wgpu::Surface<'static>), String> {
-        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor { backends: wgpu::Backends::PRIMARY | wgpu::Backends::GL, ..wgpu::InstanceDescriptor::new_without_display_handle() });
+        let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::PRIMARY | wgpu::Backends::GL,
+            ..wgpu::InstanceDescriptor::new_without_display_handle()
+        });
         let surface = surface_for(&instance, first)?;
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions { compatible_surface: Some(&surface), ..Default::default() })).map_err(|error| format!("no GPU adapter for the window: {error}"))?;
-        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor { required_limits: wgpu::Limits::downlevel_defaults().using_resolution(adapter.limits()), ..Default::default() }))
-            .map_err(|error| format!("the GPU refused a device: {error}"))?;
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            compatible_surface: Some(&surface),
+            ..Default::default()
+        }))
+        .map_err(|error| format!("no GPU adapter for the window: {error}"))?;
+        let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
+            required_limits: wgpu::Limits::downlevel_defaults().using_resolution(adapter.limits()),
+            ..Default::default()
+        }))
+        .map_err(|error| format!("the GPU refused a device: {error}"))?;
         let capabilities = surface.get_capabilities(&adapter);
-        let format = capabilities.formats.iter().copied().find(wgpu::TextureFormat::is_srgb).or_else(|| capabilities.formats.first().copied()).ok_or("the window offers no colour format")?;
+        let format = capabilities
+            .formats
+            .iter()
+            .copied()
+            .find(wgpu::TextureFormat::is_srgb)
+            .or_else(|| capabilities.formats.first().copied())
+            .ok_or("the window offers no colour format")?;
         let renderer = Renderer::with_device(device.clone(), queue, format);
-        Ok((Self { instance, adapter, device, format, renderer }, surface))
+        Ok((
+            Self {
+                instance,
+                adapter,
+                device,
+                format,
+                renderer,
+            },
+            surface,
+        ))
     }
 }
 
@@ -267,7 +354,16 @@ struct Shown {
 
 impl Shown {
     fn new(window: Window, surface: wgpu::Surface<'static>) -> Self {
-        Self { surface, size: (0, 0), targets: None, drawn: false, window, acquire_slowest: Duration::ZERO, draw_slowest: Duration::ZERO, present: wgpu::PresentMode::Fifo }
+        Self {
+            surface,
+            size: (0, 0),
+            targets: None,
+            drawn: false,
+            window,
+            acquire_slowest: Duration::ZERO,
+            draw_slowest: Duration::ZERO,
+            present: wgpu::PresentMode::Fifo,
+        }
     }
 
     fn fit(&mut self, gpu: &Gpu) {
@@ -275,8 +371,18 @@ impl Shown {
         if size == self.size || size.0 == 0 || size.1 == 0 {
             return;
         }
-        let Some(config) = self.surface.get_default_config(&gpu.adapter, size.0, size.1) else { return };
-        self.present = match self.surface.get_capabilities(&gpu.adapter).present_modes.contains(&wgpu::PresentMode::Mailbox) {
+        let Some(config) = self
+            .surface
+            .get_default_config(&gpu.adapter, size.0, size.1)
+        else {
+            return;
+        };
+        self.present = match self
+            .surface
+            .get_capabilities(&gpu.adapter)
+            .present_modes
+            .contains(&wgpu::PresentMode::Mailbox)
+        {
             true => wgpu::PresentMode::Mailbox,
             false => wgpu::PresentMode::Fifo,
         };
@@ -284,13 +390,26 @@ impl Shown {
             wgpu::PresentMode::Mailbox => 1,
             _ => config.desired_maximum_frame_latency,
         };
-        self.surface.configure(&gpu.device, &wgpu::SurfaceConfiguration { format: gpu.format, present_mode: self.present, desired_maximum_frame_latency, ..config });
+        self.surface.configure(
+            &gpu.device,
+            &wgpu::SurfaceConfiguration {
+                format: gpu.format,
+                present_mode: self.present,
+                desired_maximum_frame_latency,
+                ..config
+            },
+        );
         self.targets = Some(gpu.renderer.targets(size.0, size.1));
         self.size = size;
         self.drawn = false;
     }
 
-    fn paint(&mut self, gpu: &mut Gpu, frame: Option<&Frame>, overlays: Option<&Overlays>) -> Result<bool, String> {
+    fn paint(
+        &mut self,
+        gpu: &mut Gpu,
+        frame: Option<&Frame>,
+        overlays: Option<&Overlays>,
+    ) -> Result<bool, String> {
         if self.targets.is_none() {
             return Ok(false);
         }
@@ -298,8 +417,11 @@ impl Shown {
         let acquired = self.surface.get_current_texture();
         self.acquire_slowest = self.acquire_slowest.max(acquiring.elapsed());
         let texture = match acquired {
-            wgpu::CurrentSurfaceTexture::Success(texture) | wgpu::CurrentSurfaceTexture::Suboptimal(texture) => texture,
-            wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => return Ok(false),
+            wgpu::CurrentSurfaceTexture::Success(texture)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(texture) => texture,
+            wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
+                return Ok(false);
+            }
             wgpu::CurrentSurfaceTexture::Outdated => {
                 self.size = (0, 0);
                 return Ok(false);
@@ -309,15 +431,20 @@ impl Shown {
                 self.size = (0, 0);
                 return Ok(false);
             }
-            wgpu::CurrentSurfaceTexture::Validation => return Err("the surface refused a frame".to_string()),
+            wgpu::CurrentSurfaceTexture::Validation => {
+                return Err("the surface refused a frame".to_string());
+            }
         };
-        let Some(targets) = self.targets.as_ref() else { return Ok(false) };
+        let Some(targets) = self.targets.as_ref() else {
+            return Ok(false);
+        };
         let drawing = Instant::now();
         let view = texture.texture.create_view(&Default::default());
         let pictured = match frame {
             Some(frame) => {
                 let (camera, meshes) = frame.view(overlays, self.size.0, self.size.1);
-                gpu.renderer.draw(&view, targets, &camera, &frame.backfill, &meshes);
+                gpu.renderer
+                    .draw(&view, targets, &camera, &frame.backfill, &meshes);
                 !frame.ground.is_empty()
             }
             None => {
@@ -340,11 +467,18 @@ struct Throttled<T> {
 
 impl<T: PartialEq> Throttled<T> {
     fn new(every: Duration, value: T) -> Self {
-        Self { every, read: None, value }
+        Self {
+            every,
+            read: None,
+            value,
+        }
     }
 
     fn refresh(&mut self, now: Instant, read: impl FnOnce() -> T) -> bool {
-        if self.read.is_some_and(|at| now.duration_since(at) < self.every) {
+        if self
+            .read
+            .is_some_and(|at| now.duration_since(at) < self.every)
+        {
             return false;
         }
         self.read = Some(now);
@@ -370,23 +504,56 @@ struct Summary {
 
 impl Summary {
     fn new(since: Instant) -> Self {
-        Self { since, painted: 0, idle: 0, slowest: Duration::ZERO, reading_ages_ms: Vec::new(), stick_to_frame_ms: Vec::new(), pose_read_ms: Vec::new(), frame_ms: Vec::new(), paint_ms: Vec::new(), holes: Vec::new() }
+        Self {
+            since,
+            painted: 0,
+            idle: 0,
+            slowest: Duration::ZERO,
+            reading_ages_ms: Vec::new(),
+            stick_to_frame_ms: Vec::new(),
+            pose_read_ms: Vec::new(),
+            frame_ms: Vec::new(),
+            paint_ms: Vec::new(),
+            holes: Vec::new(),
+        }
     }
 
     fn report(&self, session: Option<&mut Session>, gpu: &Gpu, shown: &mut [Shown], draw: Draw) {
         let surfaces = shown.len();
-        let acquire_slowest = shown.iter().map(|surface| surface.acquire_slowest).max().unwrap_or_default();
-        let draw_slowest = shown.iter().map(|surface| surface.draw_slowest).max().unwrap_or_default();
-        let present = shown.first().map_or_else(|| "none".to_string(), |surface| format!("{:?}", surface.present).to_lowercase());
+        let acquire_slowest = shown
+            .iter()
+            .map(|surface| surface.acquire_slowest)
+            .max()
+            .unwrap_or_default();
+        let draw_slowest = shown
+            .iter()
+            .map(|surface| surface.draw_slowest)
+            .max()
+            .unwrap_or_default();
+        let present = shown.first().map_or_else(
+            || "none".to_string(),
+            |surface| format!("{:?}", surface.present).to_lowercase(),
+        );
         shown.iter_mut().for_each(|surface| {
             surface.acquire_slowest = Duration::ZERO;
             surface.draw_slowest = Duration::ZERO;
         });
         let (source, tiles, in_flight) = world(session.as_deref());
         let (showing, handover) = handing_over(session.as_deref());
-        let warming = session.as_deref().and_then(Session::warming).map_or_else(|| "none".to_string(), |left| left.to_string());
+        let warming = session
+            .as_deref()
+            .and_then(Session::warming)
+            .map_or_else(|| "none".to_string(), |left| left.to_string());
         let stats = session.map(Session::take_stats).unwrap_or_default();
-        let Stats { requested, loaded, failed, bytes, from_disk, errors, waits_ms } = stats;
+        let Stats {
+            requested,
+            loaded,
+            failed,
+            bytes,
+            from_disk,
+            errors,
+            waits_ms,
+        } = stats;
         log::info!(
             target: "synthetic",
             "event=summary seconds={} source={source} showing={showing} handover_ms={handover} warming={warming} surfaces={surfaces} present={present} draw={} painted={} idle_ticks={} slowest_paint_ms={} acquire_slowest_ms={} draw_slowest_ms={} reading_age_p50_ms={} reading_age_max_ms={} stick_to_frame_p50_ms={} stick_to_frame_max_ms={} stick_frames={} pose_read_p50_ms={} pose_read_max_ms={} frame_p50_ms={} frame_max_ms={} paint_p50_ms={} holes_p50={} holes_max={} tile_wait_p50_ms={} tile_wait_p90_ms={} tile_wait_max_ms={} requested={requested} loaded={loaded} failed={failed} bytes={bytes} from_disk={from_disk} tiles={tiles} in_flight={in_flight} resident={} uploads={} errors={errors:?}",
@@ -430,14 +597,19 @@ fn start_session(token: &str) -> Option<Session> {
 
 fn apply(command: Command, shown: &mut Vec<Shown>, gpu: &Gpu) {
     match command {
-        Command::Attach(window) => match shown.iter_mut().find(|existing| existing.window.key() == window.key()) {
+        Command::Attach(window) => match shown
+            .iter_mut()
+            .find(|existing| existing.window.key() == window.key())
+        {
             Some(existing) => {
                 existing.window = window;
                 existing.drawn = false;
             }
             None => match surface_for(&gpu.instance, &window) {
                 Ok(surface) => shown.push(Shown::new(window, surface)),
-                Err(reason) => log::error!(target: "synthetic", "event=attach_failed window={:#x} reason=\"{reason}\"", window.key()),
+                Err(reason) => {
+                    log::error!(target: "synthetic", "event=attach_failed window={:#x} reason=\"{reason}\"", window.key())
+                }
             },
         },
         Command::Release(key, done) => {
@@ -448,9 +620,20 @@ fn apply(command: Command, shown: &mut Vec<Shown>, gpu: &Gpu) {
     }
 }
 
-fn show(first: Window, kept: Option<Kept>, commands: &Receiver<Command>, feed: &dyn Feed) -> Option<Kept> {
+fn show(
+    first: Window,
+    kept: Option<Kept>,
+    commands: &Receiver<Command>,
+    feed: &dyn Feed,
+) -> Option<Kept> {
     let opened = Instant::now();
-    let Acquired { mut gpu, surface, mut session, mut token, unseen } = match acquire(&first, kept) {
+    let Acquired {
+        mut gpu,
+        surface,
+        mut session,
+        mut token,
+        unseen,
+    } = match acquire(&first, kept) {
         Ok(acquired) => acquired,
         Err(reason) => {
             log::error!(target: "synthetic", "event=gpu_failed reason=\"{reason}\"");
@@ -472,26 +655,57 @@ fn show(first: Window, kept: Option<Kept>, commands: &Receiver<Command>, feed: &
         if rekeyed {
             session = start_session(token.value.as_deref().unwrap_or_default());
         }
-        let restyled = overlays.refresh(now, || feed.overlays().as_ref().and_then(Overlays::from_view));
+        let restyled = overlays.refresh(now, || {
+            feed.overlays().as_ref().and_then(Overlays::from_view)
+        });
         let reading = Instant::now();
         let target = feed.pose().as_ref().and_then(Target::from_view);
         let sticks = feed.sticks();
         summary.pose_read_ms.push(millis(reading.elapsed()));
-        let largest = shown.iter().map(|surface| surface.size).max_by_key(|(width, height)| u64::from(*width) * u64::from(*height)).unwrap_or_default();
+        let largest = shown
+            .iter()
+            .map(|surface| surface.size)
+            .max_by_key(|(width, height)| u64::from(*width) * u64::from(*height))
+            .unwrap_or_default();
         let building = Instant::now();
-        let mut frame = session.as_mut().filter(|_| largest.0 > 0 && largest.1 > 0).and_then(|session: &mut Session| session.frame(target.as_ref(), &sticks, largest.0, largest.1, now));
+        let mut frame = session
+            .as_mut()
+            .filter(|_| largest.0 > 0 && largest.1 > 0)
+            .and_then(|session: &mut Session| {
+                session.frame(target.as_ref(), &sticks, largest.0, largest.1, now)
+            });
         summary.frame_ms.push(millis(building.elapsed()));
         if let Some((frame, session)) = frame.as_mut().zip(session.as_mut()) {
-            session.warmed(gpu.renderer.warm(std::mem::take(&mut frame.warm), WARM_PER_TICK));
+            session.warmed(
+                gpu.renderer
+                    .warm(std::mem::take(&mut frame.warm), WARM_PER_TICK),
+            );
         }
-        let redraw = rekeyed || restyled || frame.as_ref().is_some_and(|frame| frame.changed) || frame.is_some() != framed;
+        let redraw = rekeyed
+            || restyled
+            || frame.as_ref().is_some_and(|frame| frame.changed)
+            || frame.is_some() != framed;
         framed = frame.is_some();
         let painting = Instant::now();
-        let painted: Vec<Result<bool, String>> = shown.iter_mut().filter(|surface| redraw || !surface.drawn).map(|surface| surface.paint(&mut gpu, frame.as_ref(), overlays.value.as_ref())).collect();
-        summary.paint_ms.extend((!painted.is_empty()).then(|| millis(painting.elapsed())));
-        painted.iter().filter_map(|result| result.as_ref().err()).for_each(|reason| log::error!(target: "synthetic", "event=paint_failed reason=\"{reason}\""));
+        let painted: Vec<Result<bool, String>> = shown
+            .iter_mut()
+            .filter(|surface| redraw || !surface.drawn)
+            .map(|surface| surface.paint(&mut gpu, frame.as_ref(), overlays.value.as_ref()))
+            .collect();
+        summary
+            .paint_ms
+            .extend((!painted.is_empty()).then(|| millis(painting.elapsed())));
+        painted
+            .iter()
+            .filter_map(|result| result.as_ref().err())
+            .for_each(
+                |reason| log::error!(target: "synthetic", "event=paint_failed reason=\"{reason}\""),
+            );
         visit.paint_failures += painted.iter().filter(|result| result.is_err()).count();
-        let state = match (session.is_some(), painted.iter().any(|result| result == &Ok(true))) {
+        let state = match (
+            session.is_some(),
+            painted.iter().any(|result| result == &Ok(true)),
+        ) {
             (false, _) => Draw::Failed,
             (true, true) => Draw::Drawn,
             (true, false) if painted.is_empty() => draw,
@@ -509,9 +723,25 @@ fn show(first: Window, kept: Option<Kept>, commands: &Receiver<Command>, feed: &
             false => {
                 summary.painted += 1;
                 summary.slowest = summary.slowest.max(now.elapsed());
-                summary.reading_ages_ms.extend(frame.as_ref().map(|frame| u64::try_from(frame.reading_age.as_millis()).unwrap_or(u64::MAX)));
-                summary.stick_to_frame_ms.extend(frame.as_ref().and_then(|frame| frame.stick_to_frame).map(|touched| u64::try_from((touched + now.elapsed()).as_millis()).unwrap_or(u64::MAX)));
-                summary.holes.extend(session.as_ref().filter(|session| session.showing() == "google").map(|session| session.holes() as u64));
+                summary.reading_ages_ms.extend(
+                    frame.as_ref().map(|frame| {
+                        u64::try_from(frame.reading_age.as_millis()).unwrap_or(u64::MAX)
+                    }),
+                );
+                summary.stick_to_frame_ms.extend(
+                    frame
+                        .as_ref()
+                        .and_then(|frame| frame.stick_to_frame)
+                        .map(|touched| {
+                            u64::try_from((touched + now.elapsed()).as_millis()).unwrap_or(u64::MAX)
+                        }),
+                );
+                summary.holes.extend(
+                    session
+                        .as_ref()
+                        .filter(|session| session.showing() == "google")
+                        .map(|session| session.holes() as u64),
+                );
                 visit.painted += 1;
                 visit.slowest = visit.slowest.max(now.elapsed());
             }
@@ -539,5 +769,10 @@ fn show(first: Window, kept: Option<Kept>, commands: &Receiver<Command>, feed: &
     }
     visit.report(session.as_ref(), &gpu, draw);
     feed.report(Draw::Loading);
-    Some(Kept { gpu, session, token, unseen_since: Instant::now() })
+    Some(Kept {
+        gpu,
+        session,
+        token,
+        unseen_since: Instant::now(),
+    })
 }

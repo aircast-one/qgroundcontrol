@@ -32,8 +32,17 @@ pub fn pwm(raw: i32) -> u16 {
 }
 
 pub fn parse(line: &str) -> Option<Frame> {
-    let values: Vec<u16> = line.trim().strip_prefix('$')?.split(',').map(str::trim).filter(|value| !value.is_empty()).map(|value| value.parse::<i32>().ok().map(pwm)).collect::<Option<_>>()?;
-    VALUES.contains(&values.len()).then(|| std::array::from_fn(|at| values.get(at).copied().unwrap_or(u16::MAX)))
+    let values: Vec<u16> = line
+        .trim()
+        .strip_prefix('$')?
+        .split(',')
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(|value| value.parse::<i32>().ok().map(pwm))
+        .collect::<Option<_>>()?;
+    VALUES
+        .contains(&values.len())
+        .then(|| std::array::from_fn(|at| values.get(at).copied().unwrap_or(u16::MAX)))
 }
 
 pub fn released() -> Frame {
@@ -48,7 +57,11 @@ pub struct Lines {
 impl Lines {
     pub fn feed(&mut self, bytes: &[u8]) -> Vec<Frame> {
         self.pending.push_str(&String::from_utf8_lossy(bytes));
-        let complete = self.pending.rfind('\n').map(|end| self.pending.drain(..=end).collect::<String>()).unwrap_or_default();
+        let complete = self
+            .pending
+            .rfind('\n')
+            .map(|end| self.pending.drain(..=end).collect::<String>())
+            .unwrap_or_default();
         if self.pending.len() > MAX_LINE_BYTES {
             self.pending.clear();
         }
@@ -71,7 +84,8 @@ pub struct Step {
 
 impl Radio {
     pub fn live(&self, now_ms: u64) -> bool {
-        self.latest.is_some_and(|(_, at)| now_ms.saturating_sub(at) <= STALE_AFTER_MS)
+        self.latest
+            .is_some_and(|(_, at)| now_ms.saturating_sub(at) <= STALE_AFTER_MS)
     }
 
     pub fn step(&mut self, now_ms: u64, target: Option<Target>, fresh: Option<Frame>) -> Step {
@@ -80,8 +94,14 @@ impl Radio {
         }
         let flying = target.filter(|_| self.live(now_ms));
         let handed_back = self.holding.filter(|held| flying != Some(*held));
-        let due = fresh.is_some() && self.sent_at.is_none_or(|at| now_ms.saturating_sub(at) >= SEND_EVERY_MS);
-        let send = flying.zip(self.latest).filter(|_| due).map(|(to, (frame, _))| (to, frame));
+        let due = fresh.is_some()
+            && self
+                .sent_at
+                .is_none_or(|at| now_ms.saturating_sub(at) >= SEND_EVERY_MS);
+        let send = flying
+            .zip(self.latest)
+            .filter(|_| due)
+            .map(|(to, (frame, _))| (to, frame));
         if send.is_some() {
             self.sent_at = Some(now_ms);
         }
@@ -89,8 +109,13 @@ impl Radio {
             Some((to, _)) => Some(to),
             None => self.holding.filter(|_| handed_back.is_none()),
         };
-        let releases = handed_back.into_iter().flat_map(|held| std::iter::repeat_n((held, released()), RELEASE_FRAMES));
-        Step { sends: releases.chain(send).collect(), handed_back }
+        let releases = handed_back
+            .into_iter()
+            .flat_map(|held| std::iter::repeat_n((held, released()), RELEASE_FRAMES));
+        Step {
+            sends: releases.chain(send).collect(),
+            handed_back,
+        }
     }
 }
 
@@ -116,9 +141,18 @@ pub struct Roles {
 
 const DEFAULT_CHANNELS: [u8; 4] = [1, 2, 3, 4];
 const ARDUPILOT_MAP: [&str; 4] = ["RCMAP_ROLL", "RCMAP_PITCH", "RCMAP_THROTTLE", "RCMAP_YAW"];
-const PX4_MAP: [&str; 4] = ["RC_MAP_ROLL", "RC_MAP_PITCH", "RC_MAP_THROTTLE", "RC_MAP_YAW"];
+const PX4_MAP: [&str; 4] = [
+    "RC_MAP_ROLL",
+    "RC_MAP_PITCH",
+    "RC_MAP_THROTTLE",
+    "RC_MAP_YAW",
+];
 
-pub fn roles(vehicle_type: u8, px4: bool, parameter: impl Fn(&str) -> Option<f64>) -> Option<Roles> {
+pub fn roles(
+    vehicle_type: u8,
+    px4: bool,
+    parameter: impl Fn(&str) -> Option<f64>,
+) -> Option<Roles> {
     let kind = match crate::modes::vehicle_class(vehicle_type) {
         crate::modes::VehicleClass::MultiRotor | crate::modes::VehicleClass::Sub => 'C',
         crate::modes::VehicleClass::FixedWing => 'P',
@@ -126,7 +160,11 @@ pub fn roles(vehicle_type: u8, px4: bool, parameter: impl Fn(&str) -> Option<f64
         crate::modes::VehicleClass::Other => return None,
     };
     let names = if px4 { PX4_MAP } else { ARDUPILOT_MAP };
-    let channels = std::array::from_fn(|at| parameter(names[at]).filter(|c| (1.0..=255.0).contains(c)).map_or(DEFAULT_CHANNELS[at], |c| c as u8));
+    let channels = std::array::from_fn(|at| {
+        parameter(names[at])
+            .filter(|c| (1.0..=255.0).contains(c))
+            .map_or(DEFAULT_CHANNELS[at], |c| c as u8)
+    });
     Some(Roles { kind, channels })
 }
 
@@ -139,18 +177,32 @@ pub fn echo(flying: Flying, roles: Option<Roles>) -> String {
     };
     match roles {
         None => format!("@{state},{id}\n"),
-        Some(Roles { kind, channels: [roll, pitch, throttle, yaw] }) => format!("@{state},{id},{kind},{roll},{pitch},{throttle},{yaw}\n"),
+        Some(Roles {
+            kind,
+            channels: [roll, pitch, throttle, yaw],
+        }) => format!("@{state},{id},{kind},{roll},{pitch},{throttle},{yaw}\n"),
     }
 }
 
 fn active_roles() -> Option<Roles> {
     let hub = crate::hub::lock();
     let vehicle = hub.active().filter(|v| !v.on_high_latency_link())?;
-    roles(vehicle.vehicle_type, vehicle.autopilot == crate::modes::AUTOPILOT_PX4, |name| vehicle.parameter_exact(vehicle.component, name).map(|value| value.as_f64()))
+    roles(
+        vehicle.vehicle_type,
+        vehicle.autopilot == crate::modes::AUTOPILOT_PX4,
+        |name| {
+            vehicle
+                .parameter_exact(vehicle.component, name)
+                .map(|value| value.as_f64())
+        },
+    )
 }
 
 fn flying() -> Flying {
-    let vehicle = crate::hub::lock().active().filter(|v| !v.on_high_latency_link()).map(|v| v.id);
+    let vehicle = crate::hub::lock()
+        .active()
+        .filter(|v| !v.on_high_latency_link())
+        .map(|v| v.id);
     match vehicle {
         None => Flying::NoVehicle,
         Some(id) if crate::joystickhost::drives(id) => Flying::Joystick(id),
@@ -176,7 +228,12 @@ fn answer(now_ms: u64, live: bool) {
     };
     if due {
         let line = echo(flying(), active_roles());
-        if let Some(port) = ATTEMPT.lock().unwrap_or_else(PoisonError::into_inner).as_ref().and_then(|attempt| attempt.port.as_ref()) {
+        if let Some(port) = ATTEMPT
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .as_ref()
+            .and_then(|attempt| attempt.port.as_ref())
+        {
             (port.write)(line.as_bytes());
         }
     }
@@ -195,7 +252,11 @@ struct Attempt {
 }
 
 static ATTEMPT: Mutex<Option<Attempt>> = Mutex::new(None);
-static RADIO: Mutex<Radio> = Mutex::new(Radio { latest: None, sent_at: None, holding: None });
+static RADIO: Mutex<Radio> = Mutex::new(Radio {
+    latest: None,
+    sent_at: None,
+    holding: None,
+});
 
 fn radio() -> MutexGuard<'static, Radio> {
     RADIO.lock().unwrap_or_else(PoisonError::into_inner)
@@ -233,7 +294,10 @@ impl Detection {
         self.sniffing.retain(|port, _| present.contains(port));
         self.radios.retain(|port| present.contains(port));
         self.offered.retain(|port| present.contains(port));
-        self.pending = self.pending.take().filter(|port| self.radios.contains(port));
+        self.pending = self
+            .pending
+            .take()
+            .filter(|port| self.radios.contains(port));
     }
 
     pub fn offer(&mut self, chosen: Option<&str>) -> Option<String> {
@@ -241,7 +305,11 @@ impl Detection {
             self.pending = None;
             return None;
         }
-        let port = self.radios.iter().find(|port| !self.offered.contains(*port)).cloned()?;
+        let port = self
+            .radios
+            .iter()
+            .find(|port| !self.offered.contains(*port))
+            .cloned()?;
         self.offered.insert(port.clone());
         self.pending = Some(port.clone());
         Some(port)
@@ -252,7 +320,12 @@ impl Detection {
     }
 }
 
-static DETECTION: Mutex<Detection> = Mutex::new(Detection { sniffing: BTreeMap::new(), radios: BTreeSet::new(), offered: BTreeSet::new(), pending: None });
+static DETECTION: Mutex<Detection> = Mutex::new(Detection {
+    sniffing: BTreeMap::new(),
+    radios: BTreeSet::new(),
+    offered: BTreeSet::new(),
+    pending: None,
+});
 
 fn detection() -> MutexGuard<'static, Detection> {
     DETECTION.lock().unwrap_or_else(PoisonError::into_inner)
@@ -271,7 +344,10 @@ pub fn detected_ports() -> Vec<String> {
 }
 
 fn offer_found_radio() {
-    let present: Vec<String> = crate::corelinks::port_infos().into_iter().map(|port| port.system_location).collect();
+    let present: Vec<String> = crate::corelinks::port_infos()
+        .into_iter()
+        .map(|port| port.system_location)
+        .collect();
     let offered = {
         let mut detection = detection();
         detection.keep_present(&present);
@@ -314,7 +390,9 @@ pub fn indicator_view(_backend: &dyn crate::router::Backend, _args: &[String]) -
 }
 
 pub fn wanted() -> Option<String> {
-    crate::settingsstore::raw_setting(PORT_SETTING).and_then(|value| value.as_str().map(str::trim).map(str::to_string)).filter(|port| !port.is_empty())
+    crate::settingsstore::raw_setting(PORT_SETTING)
+        .and_then(|value| value.as_str().map(str::trim).map(str::to_string))
+        .filter(|port| !port.is_empty())
 }
 
 pub fn component(standby: bool) -> u8 {
@@ -325,21 +403,29 @@ pub fn component(standby: bool) -> u8 {
 }
 
 fn standby(vehicle: u8) -> bool {
-    let on = crate::settingsstore::raw_setting(USB_RADIO_STANDBY).is_some_and(|value| value.as_bool() == Some(true) || value.as_str() == Some("true"));
+    let on = crate::settingsstore::raw_setting(USB_RADIO_STANDBY)
+        .is_some_and(|value| value.as_bool() == Some(true) || value.as_str() == Some("true"));
     on && crate::joystickhost::standby_capable(vehicle)
 }
 
 static STANDBY: AtomicBool = AtomicBool::new(false);
 
 fn target() -> Option<Target> {
-    let vehicle = crate::hub::lock().active().filter(|v| !v.on_high_latency_link()).map(|v| (v.id, v.link))?;
+    let vehicle = crate::hub::lock()
+        .active()
+        .filter(|v| !v.on_high_latency_link())
+        .map(|v| (v.id, v.link))?;
     (!crate::joystickhost::drives(vehicle.0)).then_some(vehicle)
 }
 
 fn why_handed_back(live: bool, vehicle: u8) -> String {
     match (live, crate::joystickhost::drives(vehicle)) {
-        (false, _) => format!("The radio on USB stopped sending, so vehicle {vehicle}'s RC channels were handed back."),
-        (true, true) => format!("A joystick flies vehicle {vehicle}, so the radio on USB handed its RC channels back."),
+        (false, _) => format!(
+            "The radio on USB stopped sending, so vehicle {vehicle}'s RC channels were handed back."
+        ),
+        (true, true) => format!(
+            "A joystick flies vehicle {vehicle}, so the radio on USB handed its RC channels back."
+        ),
         (true, false) => format!("The radio on USB handed vehicle {vehicle}'s RC channels back."),
     }
 }
@@ -356,12 +442,31 @@ fn advance(fresh: Option<Frame>) {
     let was = STANDBY.swap(standby_now, Ordering::Relaxed);
     let moved = (was != standby_now && live).then_some(()).and(target);
     moved.into_iter().for_each(|(id, link)| {
-        let handed: Vec<Outbound> = std::iter::repeat_n(Outbound::RcOverride { target: (id, component(was)), channels: released() }, RELEASE_FRAMES).collect();
+        let handed: Vec<Outbound> = std::iter::repeat_n(
+            Outbound::RcOverride {
+                target: (id, component(was)),
+                channels: released(),
+            },
+            RELEASE_FRAMES,
+        )
+        .collect();
         crate::hub::send_for(id, link, &handed);
     });
-    step.sends.iter().for_each(|((id, link), channels)| crate::hub::send_for(*id, *link, &[Outbound::RcOverride { target: (*id, component(standby_now)), channels: *channels }]));
+    step.sends.iter().for_each(|((id, link), channels)| {
+        crate::hub::send_for(
+            *id,
+            *link,
+            &[Outbound::RcOverride {
+                target: (*id, component(standby_now)),
+                channels: *channels,
+            }],
+        )
+    });
     if let Some((vehicle, _)) = step.handed_back {
-        crate::noticeboard::post_from_vehicle(crate::noticeboard::BRIEF, &why_handed_back(live, vehicle));
+        crate::noticeboard::post_from_vehicle(
+            crate::noticeboard::BRIEF,
+            &why_handed_back(live, vehicle),
+        );
     }
     answer(now, live);
 }
@@ -379,11 +484,22 @@ fn open(port: &str) -> Option<Port> {
     let dead = Arc::new(AtomicBool::new(false));
     let lost = dead.clone();
     let name = port.to_string();
-    let opened = crate::platformserial::PlatformSerial::open(SERIAL_ID, port, BAUD, 8, 1, 0, move |event| match event {
-        crate::platformserial::Event::Bytes(bytes) => heard_on(&name, lines.lock().unwrap_or_else(PoisonError::into_inner).feed(&bytes)),
-        crate::platformserial::Event::Disconnected(_) => lost.store(true, Ordering::Relaxed),
-    })
-    .ok()?;
+    let opened =
+        crate::platformserial::PlatformSerial::open(SERIAL_ID, port, BAUD, 8, 1, 0, move |event| {
+            match event {
+                crate::platformserial::Event::Bytes(bytes) => heard_on(
+                    &name,
+                    lines
+                        .lock()
+                        .unwrap_or_else(PoisonError::into_inner)
+                        .feed(&bytes),
+                ),
+                crate::platformserial::Event::Disconnected(_) => {
+                    lost.store(true, Ordering::Relaxed)
+                }
+            }
+        })
+        .ok()?;
     let opened = Arc::new(opened);
     let writer = opened.clone();
     Some(Port {
@@ -397,7 +513,15 @@ fn open(port: &str) -> Option<Port> {
 
 #[cfg(not(hosted_serial))]
 fn open(port: &str) -> Option<Port> {
-    let config = crate::seriallink::SerialConfig { port_name: port.to_string(), baud: BAUD, data_bits: 8, parity: 0, stop_bits: 1, flow_control: 0, usb_direct: false };
+    let config = crate::seriallink::SerialConfig {
+        port_name: port.to_string(),
+        baud: BAUD,
+        data_bits: 8,
+        parity: 0,
+        stop_bits: 1,
+        flow_control: 0,
+        usb_direct: false,
+    };
     let mut lines = Lines::default();
     let dead = Arc::new(AtomicBool::new(false));
     let lost = dead.clone();
@@ -409,7 +533,11 @@ fn open(port: &str) -> Option<Port> {
     .ok()?;
     let link = Arc::new(link);
     let writer = link.clone();
-    Some(Port { write: Box::new(move |bytes| drop(writer.write(bytes))), close: Box::new(move || link.close()), dead })
+    Some(Port {
+        write: Box::new(move |bytes| drop(writer.write(bytes))),
+        close: Box::new(move || link.close()),
+        dead,
+    })
 }
 
 pub fn maintain() {
@@ -417,8 +545,16 @@ pub fn maintain() {
     let wanted = wanted();
     let replaced = {
         let mut current = ATTEMPT.lock().unwrap_or_else(PoisonError::into_inner);
-        let alive = |attempt: &Attempt| attempt.port.as_ref().is_some_and(|port| !port.dead.load(Ordering::Relaxed));
-        let settled = current.as_ref().is_some_and(|attempt| Some(&attempt.wanted) == wanted.as_ref() && (alive(attempt) || now.saturating_sub(attempt.at) < REOPEN_AFTER_MS));
+        let alive = |attempt: &Attempt| {
+            attempt
+                .port
+                .as_ref()
+                .is_some_and(|port| !port.dead.load(Ordering::Relaxed))
+        };
+        let settled = current.as_ref().is_some_and(|attempt| {
+            Some(&attempt.wanted) == wanted.as_ref()
+                && (alive(attempt) || now.saturating_sub(attempt.at) < REOPEN_AFTER_MS)
+        });
         match settled || (current.is_none() && wanted.is_none()) {
             true => None,
             false => Some(current.take()),
@@ -426,7 +562,11 @@ pub fn maintain() {
     };
     if let Some(old) = replaced {
         drop(old);
-        let attempt = wanted.map(|wanted| Attempt { port: open(&wanted), wanted, at: now });
+        let attempt = wanted.map(|wanted| Attempt {
+            port: open(&wanted),
+            wanted,
+            at: now,
+        });
         *ATTEMPT.lock().unwrap_or_else(PoisonError::into_inner) = attempt;
     }
     offer_found_radio();
@@ -440,59 +580,161 @@ mod tests {
     const LINE: &str = "$-1024,1024,0,-512,-1024,-1024,0,0,0,0,-1024,0,0,0,0,-160,0,1024,8,-40,-160,0,0,-1024,\r\n";
 
     fn frame(pairs: &[(usize, u16)]) -> Frame {
-        std::array::from_fn(|at| pairs.iter().find(|(channel, _)| *channel == at + 1).map_or(1500, |(_, pwm)| *pwm))
+        std::array::from_fn(|at| {
+            pairs
+                .iter()
+                .find(|(channel, _)| *channel == at + 1)
+                .map_or(1500, |(_, pwm)| *pwm)
+        })
     }
 
     #[test]
     fn the_r2d2_script_line_reads_as_the_radio_shows_its_channels() {
         let read = parse(LINE).unwrap();
-        assert_eq!(read[..5], [988, 2012, 1500, 1244, 988], "raw -1024..1024 is (raw / 2) + 1500, the 988-2012 the radio's own monitor shows");
-        assert_eq!((read[10], read[15], read[17]), (988, 1420, 2012), "CH11 skld low, CH16 S2, CH18 camREB high");
-        assert_eq!(pwm(1536), 2200, "an extended 150% limit is clamped to what an override may carry");
-        assert_eq!(parse("$1500,1500\r\n"), None, "too few channels to be a radio");
+        assert_eq!(
+            read[..5],
+            [988, 2012, 1500, 1244, 988],
+            "raw -1024..1024 is (raw / 2) + 1500, the 988-2012 the radio's own monitor shows"
+        );
+        assert_eq!(
+            (read[10], read[15], read[17]),
+            (988, 1420, 2012),
+            "CH11 skld low, CH16 S2, CH18 camREB high"
+        );
+        assert_eq!(
+            pwm(1536),
+            2200,
+            "an extended 150% limit is clamped to what an override may carry"
+        );
+        assert_eq!(
+            parse("$1500,1500\r\n"),
+            None,
+            "too few channels to be a radio"
+        );
         assert_eq!(parse("$0,0,0,x,0\r\n"), None);
         assert_eq!(parse("GPGGA,0,0,0,0"), None);
-        assert_eq!(parse("$0,0,0,0").map(|read| read[4]), Some(u16::MAX), "channels the radio did not send are left to the pilot");
+        assert_eq!(
+            parse("$0,0,0,0").map(|read| read[4]),
+            Some(u16::MAX),
+            "channels the radio did not send are left to the pilot"
+        );
     }
 
     #[test]
     fn in_4g_standby_the_radio_streams_to_the_aircraft_computer_not_the_flight_controller() {
         assert_eq!(component(false), crate::hub::COMP_AUTOPILOT1);
-        assert_eq!(component(true), crate::joystickhost::STANDBY_COMPONENT, "ArduPilot processes an override for another component of its own system nowhere, so only aircastd acts on it");
+        assert_eq!(
+            component(true),
+            crate::joystickhost::STANDBY_COMPONENT,
+            "ArduPilot processes an override for another component of its own system nowhere, so only aircastd acts on it"
+        );
     }
 
     #[test]
     fn the_radio_is_told_what_its_sticks_are_doing() {
         assert_eq!(echo(Flying::Vehicle(1), None), "@F,1\n");
-        assert_eq!(echo(Flying::Standby(3), None), "@S,3\n", "in 4G standby the sticks go to the aircraft computer");
+        assert_eq!(
+            echo(Flying::Standby(3), None),
+            "@S,3\n",
+            "in 4G standby the sticks go to the aircraft computer"
+        );
         assert_eq!(echo(Flying::Joystick(1), None), "@J,1\n");
         assert_eq!(echo(Flying::NoVehicle, None), "@N\n");
-        assert_eq!(echo(Flying::NoVehicle, Some(Roles { kind: 'C', channels: [1, 2, 3, 4] })), "@N\n");
-        assert_eq!(echo(Flying::Vehicle(1), Some(Roles { kind: 'C', channels: [1, 2, 3, 4] })), "@F,1,C,1,2,3,4\n", "a known vehicle says what each stick channel does");
-        assert!(echo(Flying::Vehicle(1), Some(Roles { kind: 'P', channels: [1, 2, 3, 4] })).lines().all(|line| parse(line).is_none()), "an echo is never read back as stick values");
+        assert_eq!(
+            echo(
+                Flying::NoVehicle,
+                Some(Roles {
+                    kind: 'C',
+                    channels: [1, 2, 3, 4]
+                })
+            ),
+            "@N\n"
+        );
+        assert_eq!(
+            echo(
+                Flying::Vehicle(1),
+                Some(Roles {
+                    kind: 'C',
+                    channels: [1, 2, 3, 4]
+                })
+            ),
+            "@F,1,C,1,2,3,4\n",
+            "a known vehicle says what each stick channel does"
+        );
+        assert!(
+            echo(
+                Flying::Vehicle(1),
+                Some(Roles {
+                    kind: 'P',
+                    channels: [1, 2, 3, 4]
+                })
+            )
+            .lines()
+            .all(|line| parse(line).is_none()),
+            "an echo is never read back as stick values"
+        );
     }
 
     #[test]
     fn roles_follow_the_vehicle_type_and_its_channel_map() {
         let none = |_: &str| None;
-        assert_eq!(roles(2, false, none), Some(Roles { kind: 'C', channels: [1, 2, 3, 4] }), "a quad without RCMAP params flies on 1 to 4");
+        assert_eq!(
+            roles(2, false, none),
+            Some(Roles {
+                kind: 'C',
+                channels: [1, 2, 3, 4]
+            }),
+            "a quad without RCMAP params flies on 1 to 4"
+        );
         assert_eq!(roles(1, false, none).map(|r| r.kind), Some('P'));
-        assert_eq!(roles(20, true, none).map(|r| r.kind), Some('P'), "a VTOL is labelled as a plane");
+        assert_eq!(
+            roles(20, true, none).map(|r| r.kind),
+            Some('P'),
+            "a VTOL is labelled as a plane"
+        );
         assert_eq!(roles(10, false, none).map(|r| r.kind), Some('R'));
-        assert_eq!(roles(11, false, none).map(|r| r.kind), Some('R'), "a boat steers like a rover");
-        assert_eq!(roles(12, false, none).map(|r| r.kind), Some('C'), "a submarine uses copter sticks");
-        assert_eq!(roles(4, false, none).map(|r| r.kind), Some('C'), "a helicopter uses copter sticks");
-        assert_eq!(roles(6, false, none), None, "a ground station is not a vehicle kind");
+        assert_eq!(
+            roles(11, false, none).map(|r| r.kind),
+            Some('R'),
+            "a boat steers like a rover"
+        );
+        assert_eq!(
+            roles(12, false, none).map(|r| r.kind),
+            Some('C'),
+            "a submarine uses copter sticks"
+        );
+        assert_eq!(
+            roles(4, false, none).map(|r| r.kind),
+            Some('C'),
+            "a helicopter uses copter sticks"
+        );
+        assert_eq!(
+            roles(6, false, none),
+            None,
+            "a ground station is not a vehicle kind"
+        );
         let ardupilot = |name: &str| match name {
             "RCMAP_ROLL" => Some(2.0),
             "RCMAP_PITCH" => Some(1.0),
             "RCMAP_THROTTLE" => Some(0.0),
             _ => None,
         };
-        assert_eq!(roles(2, false, ardupilot).map(|r| r.channels), Some([2, 1, 3, 4]), "RCMAP moves channels; 0 or missing keeps the default");
+        assert_eq!(
+            roles(2, false, ardupilot).map(|r| r.channels),
+            Some([2, 1, 3, 4]),
+            "RCMAP moves channels; 0 or missing keeps the default"
+        );
         let px4 = |name: &str| (name == "RC_MAP_THROTTLE").then_some(1.0);
-        assert_eq!(roles(2, true, px4).map(|r| r.channels), Some([1, 2, 1, 4]), "PX4 reads RC_MAP_*");
-        assert_eq!(roles(2, false, px4).map(|r| r.channels), Some([1, 2, 3, 4]), "ArduPilot ignores PX4's names");
+        assert_eq!(
+            roles(2, true, px4).map(|r| r.channels),
+            Some([1, 2, 1, 4]),
+            "PX4 reads RC_MAP_*"
+        );
+        assert_eq!(
+            roles(2, false, px4).map(|r| r.channels),
+            Some([1, 2, 3, 4]),
+            "ArduPilot ignores PX4's names"
+        );
     }
 
     #[test]
@@ -509,14 +751,25 @@ mod tests {
         let sink = written.clone();
         *ATTEMPT.lock().unwrap() = Some(Attempt {
             wanted: "radio".into(),
-            port: Some(Port { write: Box::new(move |bytes| sink.lock().unwrap().extend_from_slice(bytes)), close: Box::new(|| {}), dead: Arc::new(AtomicBool::new(false)) }),
+            port: Some(Port {
+                write: Box::new(move |bytes| sink.lock().unwrap().extend_from_slice(bytes)),
+                close: Box::new(|| {}),
+                dead: Arc::new(AtomicBool::new(false)),
+            }),
             at: 0,
         });
         *ECHOED_AT.lock().unwrap() = None;
         answer(5_000, false);
-        assert!(written.lock().unwrap().is_empty(), "nothing is written to a radio that is not streaming");
+        assert!(
+            written.lock().unwrap().is_empty(),
+            "nothing is written to a radio that is not streaming"
+        );
         answer(5_000, true);
-        assert_eq!(String::from_utf8(written.lock().unwrap().clone()).unwrap(), "@N\n", "with no vehicle the radio is told so");
+        assert_eq!(
+            String::from_utf8(written.lock().unwrap().clone()).unwrap(),
+            "@N\n",
+            "with no vehicle the radio is told so"
+        );
         *ATTEMPT.lock().unwrap() = None;
     }
 
@@ -527,13 +780,24 @@ mod tests {
         assert!(!found.is_radio("webserial-0"), "half a line proves nothing");
         found.heard("webserial-0", &LINE.as_bytes()[20..]);
         assert!(found.is_radio("webserial-0"));
-        let heartbeat = [0xfd, 0x09, 0, 0, 0x2a, 1, 1, 0, 0, 0, 0, 0, 0, 0, 2, 3, 0x51, 4, 3, 0x1c, 0x7f, b'\n'];
+        let heartbeat = [
+            0xfd, 0x09, 0, 0, 0x2a, 1, 1, 0, 0, 0, 0, 0, 0, 0, 2, 3, 0x51, 4, 3, 0x1c, 0x7f, b'\n',
+        ];
         (0..2000).for_each(|_| found.heard("ttyACM0", &heartbeat));
-        assert!(!found.is_radio("ttyACM0"), "a flight controller's binary MAVLink is never a radio");
+        assert!(
+            !found.is_radio("ttyACM0"),
+            "a flight controller's binary MAVLink is never a radio"
+        );
         found.heard("ttyACM0", LINE.as_bytes());
-        assert!(!found.is_radio("ttyACM0"), "sniffing stops after the first few kilobytes, so a busy link costs nothing");
+        assert!(
+            !found.is_radio("ttyACM0"),
+            "sniffing stops after the first few kilobytes, so a busy link costs nothing"
+        );
         found.keep_present(&["ttyACM0".to_string()]);
-        assert!(!found.is_radio("webserial-0"), "an unplugged radio is forgotten, so a flight controller that later takes its port name is not mistaken for it");
+        assert!(
+            !found.is_radio("webserial-0"),
+            "an unplugged radio is forgotten, so a flight controller that later takes its port name is not mistaken for it"
+        );
     }
 
     #[test]
@@ -541,24 +805,58 @@ mod tests {
         let mut found = Detection::default();
         assert_eq!(found.offer(None), None, "nothing found, nothing offered");
         found.heard("webserial-0", LINE.as_bytes());
-        assert_eq!(found.offer(Some("webserial-1")), None, "a pilot who already picked a radio is not asked");
+        assert_eq!(
+            found.offer(Some("webserial-1")),
+            None,
+            "a pilot who already picked a radio is not asked"
+        );
         assert_eq!(found.offer(None).as_deref(), Some("webserial-0"));
-        assert_eq!(found.offer(None), None, "Not now is not asked again for the same port");
+        assert_eq!(
+            found.offer(None),
+            None,
+            "Not now is not asked again for the same port"
+        );
         assert_eq!(found.take_pending().as_deref(), Some("webserial-0"));
         assert_eq!(found.take_pending(), None, "Use picks it once");
         found.keep_present(&[]);
         found.heard("webserial-0", LINE.as_bytes());
-        assert_eq!(found.offer(None).as_deref(), Some("webserial-0"), "plugged in again, it is offered again");
+        assert_eq!(
+            found.offer(None).as_deref(),
+            Some("webserial-0"),
+            "plugged in again, it is offered again"
+        );
     }
 
     #[test]
     fn the_indicator_says_what_the_radio_on_usb_is_doing() {
-        assert_eq!(indicator(false, true, Flying::Vehicle(1)), Value::Null, "hidden while Radio on USB is off");
-        assert_eq!(indicator(true, true, Flying::Vehicle(1))["text"], "Radio · live");
-        assert_eq!(indicator(true, true, Flying::Joystick(1))["text"], "Radio · paused", "a joystick owns the sticks");
-        assert_eq!(indicator(true, true, Flying::Standby(1))["text"], "Radio · standby", "the sticks wait on the aircraft for 4G standby");
-        assert_eq!(indicator(true, true, Flying::NoVehicle)["text"], "Radio · ready");
-        assert_eq!(indicator(true, false, Flying::Vehicle(1))["state"], "stopped", "a lost or silent radio has handed the sticks back");
+        assert_eq!(
+            indicator(false, true, Flying::Vehicle(1)),
+            Value::Null,
+            "hidden while Radio on USB is off"
+        );
+        assert_eq!(
+            indicator(true, true, Flying::Vehicle(1))["text"],
+            "Radio · live"
+        );
+        assert_eq!(
+            indicator(true, true, Flying::Joystick(1))["text"],
+            "Radio · paused",
+            "a joystick owns the sticks"
+        );
+        assert_eq!(
+            indicator(true, true, Flying::Standby(1))["text"],
+            "Radio · standby",
+            "the sticks wait on the aircraft for 4G standby"
+        );
+        assert_eq!(
+            indicator(true, true, Flying::NoVehicle)["text"],
+            "Radio · ready"
+        );
+        assert_eq!(
+            indicator(true, false, Flying::Vehicle(1))["state"],
+            "stopped",
+            "a lost or silent radio has handed the sticks back"
+        );
         assert!(owns(USE) && !owns("usbRadio"));
     }
 
@@ -568,7 +866,11 @@ mod tests {
         assert!(lines.feed(&LINE.as_bytes()[..30]).is_empty());
         assert_eq!(lines.feed(&LINE.as_bytes()[30..]).len(), 1);
         assert!(lines.feed(&[b'x'; MAX_LINE_BYTES + 1]).is_empty());
-        assert_eq!(lines.feed(format!("\n{LINE}{LINE}").as_bytes()).len(), 2, "an overlong run without a newline is dropped, not glued to the next line");
+        assert_eq!(
+            lines.feed(format!("\n{LINE}{LINE}").as_bytes()).len(),
+            2,
+            "an overlong run without a newline is dropped, not glued to the next line"
+        );
     }
 
     #[test]
@@ -576,30 +878,66 @@ mod tests {
         let mut radio = Radio::default();
         let vehicle = Some((1, 7));
         let sticks = frame(&[(3, 1100)]);
-        assert_eq!(radio.step(0, vehicle, Some(sticks)).sends, vec![((1, 7), sticks)]);
-        assert!(radio.step(20, vehicle, Some(sticks)).sends.is_empty(), "a script streaming faster than the send period is thinned");
-        assert_eq!(radio.step(SEND_EVERY_MS, vehicle, Some(sticks)).sends.len(), 1);
-        assert_eq!(radio.step(SEND_EVERY_MS + STALE_AFTER_MS, vehicle, None), Step::default(), "still fresh at the stale limit");
+        assert_eq!(
+            radio.step(0, vehicle, Some(sticks)).sends,
+            vec![((1, 7), sticks)]
+        );
+        assert!(
+            radio.step(20, vehicle, Some(sticks)).sends.is_empty(),
+            "a script streaming faster than the send period is thinned"
+        );
+        assert_eq!(
+            radio.step(SEND_EVERY_MS, vehicle, Some(sticks)).sends.len(),
+            1
+        );
+        assert_eq!(
+            radio.step(SEND_EVERY_MS + STALE_AFTER_MS, vehicle, None),
+            Step::default(),
+            "still fresh at the stale limit"
+        );
         let quiet = radio.step(SEND_EVERY_MS + STALE_AFTER_MS + 1, vehicle, None);
         assert_eq!(quiet.handed_back, Some((1, 7)));
-        assert_eq!(quiet.sends, vec![((1, 7), released()); RELEASE_FRAMES], "channels go back to the radio link at once instead of after RC_OVERRIDE_TIME");
+        assert_eq!(
+            quiet.sends,
+            vec![((1, 7), released()); RELEASE_FRAMES],
+            "channels go back to the radio link at once instead of after RC_OVERRIDE_TIME"
+        );
         assert_eq!(released()[0], 0, "a released low channel is 0");
-        assert_eq!(released()[10], u16::MAX - 1, "a released high channel is UINT16_MAX - 1");
-        assert_eq!(radio.step(SEND_EVERY_MS + STALE_AFTER_MS + 2, vehicle, None), Step::default(), "handing back happens once");
+        assert_eq!(
+            released()[10],
+            u16::MAX - 1,
+            "a released high channel is UINT16_MAX - 1"
+        );
+        assert_eq!(
+            radio.step(SEND_EVERY_MS + STALE_AFTER_MS + 2, vehicle, None),
+            Step::default(),
+            "handing back happens once"
+        );
     }
 
     #[test]
-    fn losing_the_vehicle_or_yielding_to_a_joystick_hands_the_channels_back_and_a_new_vehicle_is_flown() {
+    fn losing_the_vehicle_or_yielding_to_a_joystick_hands_the_channels_back_and_a_new_vehicle_is_flown()
+     {
         let mut radio = Radio::default();
         let sticks = frame(&[]);
         radio.step(0, Some((1, 7)), Some(sticks));
         let yielded = radio.step(50, None, Some(sticks));
-        assert_eq!((yielded.handed_back, yielded.sends.len()), (Some((1, 7)), RELEASE_FRAMES));
+        assert_eq!(
+            (yielded.handed_back, yielded.sends.len()),
+            (Some((1, 7)), RELEASE_FRAMES)
+        );
         assert!(radio.step(100, None, Some(sticks)).sends.is_empty());
         let other = radio.step(150, Some((2, 8)), Some(sticks));
-        assert_eq!((other.handed_back, other.sends), (None, vec![((2, 8), sticks)]));
+        assert_eq!(
+            (other.handed_back, other.sends),
+            (None, vec![((2, 8), sticks)])
+        );
         let moved = radio.step(200, Some((1, 7)), Some(sticks));
         assert_eq!(moved.handed_back, Some((2, 8)));
-        assert_eq!(moved.sends.last(), Some(&((1, 7), sticks)), "the old vehicle is released before the new one is flown");
+        assert_eq!(
+            moved.sends.last(),
+            Some(&((1, 7), sticks)),
+            "the old vehicle is released before the new one is flown"
+        );
     }
 }

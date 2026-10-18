@@ -43,7 +43,12 @@ fn current(vehicle: u8, inputs: Inputs) -> Sim {
     let mut held = SIM.lock().unwrap_or_else(PoisonError::into_inner);
     let sim = match *held {
         Some(sim) if sim.vehicle == vehicle => sim,
-        _ => Sim { vehicle, mode: initial_mode(inputs), photo_until_ms: None, recording_since_ms: None },
+        _ => Sim {
+            vehicle,
+            mode: initial_mode(inputs),
+            photo_until_ms: None,
+            recording_since_ms: None,
+        },
     };
     *held = Some(sim);
     sim
@@ -67,7 +72,9 @@ pub fn fields(vehicle: u8, inputs: Inputs, now_ms: u64) -> Map<String, Value> {
         (true, false, true) => CAPTURE_DISABLED,
         (true, false, false) => CAPTURE_IDLE,
     };
-    let elapsed_s = sim.recording_since_ms.map_or(0, |since| now_ms.saturating_sub(since) / 1000);
+    let elapsed_s = sim
+        .recording_since_ms
+        .map_or(0, |since| now_ms.saturating_sub(since) / 1000);
     let object = json!({
         "class": "SimulatedCameraControl",
         "modelName": "Simulated Camera",
@@ -107,7 +114,14 @@ pub struct Recorder<'a> {
     pub stop: &'a dyn Fn(),
 }
 
-pub fn invoke(vehicle: u8, inputs: Inputs, name: &str, now_ms: u64, trigger: &dyn Fn() -> bool, recorder: &Recorder) -> Option<bool> {
+pub fn invoke(
+    vehicle: u8,
+    inputs: Inputs,
+    name: &str,
+    now_ms: u64,
+    trigger: &dyn Fn() -> bool,
+    recorder: &Recorder,
+) -> Option<bool> {
     let sim = current(vehicle, inputs);
     let has_modes = inputs.captures_photos && inputs.captures_video;
     let with_mode = |mode: i64| {
@@ -119,12 +133,22 @@ pub fn invoke(vehicle: u8, inputs: Inputs, name: &str, now_ms: u64, trigger: &dy
     Some(match name {
         "setCameraModePhoto" => with_mode(CAM_MODE_PHOTO),
         "setCameraModeVideo" => with_mode(CAM_MODE_VIDEO),
-        "toggleCameraMode" => with_mode(if sim.mode == CAM_MODE_VIDEO { CAM_MODE_PHOTO } else { CAM_MODE_VIDEO }),
+        "toggleCameraMode" => with_mode(if sim.mode == CAM_MODE_VIDEO {
+            CAM_MODE_PHOTO
+        } else {
+            CAM_MODE_VIDEO
+        }),
         "takePhoto" => {
             let idle = sim.photo_until_ms.is_none_or(|until| now_ms >= until);
-            let ready = inputs.captures_photos && idle && matches!(sim.mode, CAM_MODE_PHOTO | CAM_MODE_SURVEY) && trigger();
+            let ready = inputs.captures_photos
+                && idle
+                && matches!(sim.mode, CAM_MODE_PHOTO | CAM_MODE_SURVEY)
+                && trigger();
             if ready {
-                store(Sim { photo_until_ms: Some(now_ms + PHOTO_IN_PROGRESS_MS), ..sim });
+                store(Sim {
+                    photo_until_ms: Some(now_ms + PHOTO_IN_PROGRESS_MS),
+                    ..sim
+                });
             }
             ready
         }
@@ -141,7 +165,10 @@ fn start_recording(sim: Sim, inputs: Inputs, now_ms: u64, recorder: &Recorder) -
     let ready = inputs.captures_video && sim.mode != CAM_MODE_PHOTO && !inputs.recording;
     if ready {
         (recorder.start)();
-        store(Sim { recording_since_ms: Some(now_ms), ..sim });
+        store(Sim {
+            recording_since_ms: Some(now_ms),
+            ..sim
+        });
     }
     ready
 }
@@ -149,7 +176,10 @@ fn start_recording(sim: Sim, inputs: Inputs, now_ms: u64, recorder: &Recorder) -
 fn stop_recording(sim: Sim, inputs: Inputs, recorder: &Recorder) -> bool {
     if inputs.recording {
         (recorder.stop)();
-        store(Sim { recording_since_ms: None, ..sim });
+        store(Sim {
+            recording_since_ms: None,
+            ..sim
+        });
     }
     inputs.recording
 }
@@ -158,7 +188,10 @@ fn stop_recording(sim: Sim, inputs: Inputs, recorder: &Recorder) -> bool {
 mod tests {
     use super::*;
 
-    const NO_RECORDER: Recorder = Recorder { start: &|| {}, stop: &|| {} };
+    const NO_RECORDER: Recorder = Recorder {
+        start: &|| {},
+        stop: &|| {},
+    };
     static ONE_CAMERA: Mutex<()> = Mutex::new(());
 
     #[test]
@@ -166,36 +199,144 @@ mod tests {
         let _camera = ONE_CAMERA.lock().unwrap_or_else(PoisonError::into_inner);
         let started = std::cell::Cell::new(0);
         let stopped = std::cell::Cell::new(0);
-        let recorder = Recorder { start: &|| started.set(started.get() + 1), stop: &|| stopped.set(stopped.get() + 1) };
-        let idle = Inputs { captures_video: true, captures_photos: true, recording: false };
-        assert_eq!(invoke(7, idle, "setCameraModePhoto", 0, &|| true, &recorder), Some(true));
-        assert_eq!(invoke(7, idle, "toggleVideoRecording", 0, &|| true, &recorder), Some(false), "no video in photo mode");
-        assert_eq!(invoke(7, idle, "setCameraModeVideo", 0, &|| true, &recorder), Some(true));
-        assert_eq!(invoke(7, idle, "toggleVideoRecording", 1_000, &|| true, &recorder), Some(true));
-        let recording = Inputs { recording: true, ..idle };
-        assert_eq!(fields(7, recording, 66_000)["captureVideoState"], json!(CAPTURE_VIDEO_CAPTURING));
-        assert_eq!(fields(7, recording, 3_662_000)["recordTimeStr"], json!("01:01:01"), "hh:mm:ss since the start, as recordTimeStr formats recordTime");
-        assert_eq!(invoke(7, recording, "startVideoRecording", 0, &|| true, &recorder), Some(false), "already recording");
-        assert_eq!(invoke(7, recording, "toggleVideoRecording", 2_000, &|| true, &recorder), Some(true));
+        let recorder = Recorder {
+            start: &|| started.set(started.get() + 1),
+            stop: &|| stopped.set(stopped.get() + 1),
+        };
+        let idle = Inputs {
+            captures_video: true,
+            captures_photos: true,
+            recording: false,
+        };
+        assert_eq!(
+            invoke(7, idle, "setCameraModePhoto", 0, &|| true, &recorder),
+            Some(true)
+        );
+        assert_eq!(
+            invoke(7, idle, "toggleVideoRecording", 0, &|| true, &recorder),
+            Some(false),
+            "no video in photo mode"
+        );
+        assert_eq!(
+            invoke(7, idle, "setCameraModeVideo", 0, &|| true, &recorder),
+            Some(true)
+        );
+        assert_eq!(
+            invoke(7, idle, "toggleVideoRecording", 1_000, &|| true, &recorder),
+            Some(true)
+        );
+        let recording = Inputs {
+            recording: true,
+            ..idle
+        };
+        assert_eq!(
+            fields(7, recording, 66_000)["captureVideoState"],
+            json!(CAPTURE_VIDEO_CAPTURING)
+        );
+        assert_eq!(
+            fields(7, recording, 3_662_000)["recordTimeStr"],
+            json!("01:01:01"),
+            "hh:mm:ss since the start, as recordTimeStr formats recordTime"
+        );
+        assert_eq!(
+            invoke(7, recording, "startVideoRecording", 0, &|| true, &recorder),
+            Some(false),
+            "already recording"
+        );
+        assert_eq!(
+            invoke(
+                7,
+                recording,
+                "toggleVideoRecording",
+                2_000,
+                &|| true,
+                &recorder
+            ),
+            Some(true)
+        );
         assert_eq!((started.get(), stopped.get()), (1, 1));
-        assert_eq!(fields(7, idle, 9_000)["recordTimeStr"], json!("00:00:00"), "the timer stops with the recording");
-        assert_eq!(invoke(7, idle, "stopVideoRecording", 0, &|| true, &recorder), Some(false), "not recording");
+        assert_eq!(
+            fields(7, idle, 9_000)["recordTimeStr"],
+            json!("00:00:00"),
+            "the timer stops with the recording"
+        );
+        assert_eq!(
+            invoke(7, idle, "stopVideoRecording", 0, &|| true, &recorder),
+            Some(false),
+            "not recording"
+        );
     }
 
     #[test]
     fn the_simulated_camera_follows_simulatedcameracontrol() {
         let _camera = ONE_CAMERA.lock().unwrap_or_else(PoisonError::into_inner);
-        let both = Inputs { captures_video: true, captures_photos: true, recording: false };
+        let both = Inputs {
+            captures_video: true,
+            captures_photos: true,
+            recording: false,
+        };
         let start = fields(1, both, 0);
-        assert_eq!((start["cameraMode"].clone(), start["captureVideoState"].clone(), start["capturePhotosState"].clone()), (json!(CAM_MODE_VIDEO), json!(CAPTURE_IDLE), json!(CAPTURE_IDLE)), "video first when the stream is configured");
-        assert_eq!(invoke(1, both, "takePhoto", 0, &|| true, &NO_RECORDER), Some(false), "takePhoto refuses outside photo mode");
-        assert_eq!(invoke(1, both, "setCameraModePhoto", 0, &|| true, &NO_RECORDER), Some(true));
-        assert_eq!(invoke(1, both, "takePhoto", 10, &|| true, &NO_RECORDER), Some(true));
-        assert_eq!(fields(1, both, 100)["capturePhotosState"], json!(CAPTURE_SINGLE_PHOTO));
-        assert_eq!(fields(1, both, 100)["captureVideoState"], json!(CAPTURE_DISABLED), "a photo in progress disables video, as captureVideoState does");
-        assert_eq!(fields(1, both, 600)["capturePhotosState"], json!(CAPTURE_IDLE), "the in-progress state clears after 500 ms");
-        let video_only = Inputs { captures_video: true, captures_photos: false, recording: false };
-        assert_eq!(fields(2, video_only, 0)["capturePhotosState"], json!(CAPTURE_DISABLED), "a new vehicle gets a new camera");
-        assert_eq!(invoke(2, video_only, "setCameraModePhoto", 0, &|| true, &NO_RECORDER), Some(false), "no modes without photos");
+        assert_eq!(
+            (
+                start["cameraMode"].clone(),
+                start["captureVideoState"].clone(),
+                start["capturePhotosState"].clone()
+            ),
+            (
+                json!(CAM_MODE_VIDEO),
+                json!(CAPTURE_IDLE),
+                json!(CAPTURE_IDLE)
+            ),
+            "video first when the stream is configured"
+        );
+        assert_eq!(
+            invoke(1, both, "takePhoto", 0, &|| true, &NO_RECORDER),
+            Some(false),
+            "takePhoto refuses outside photo mode"
+        );
+        assert_eq!(
+            invoke(1, both, "setCameraModePhoto", 0, &|| true, &NO_RECORDER),
+            Some(true)
+        );
+        assert_eq!(
+            invoke(1, both, "takePhoto", 10, &|| true, &NO_RECORDER),
+            Some(true)
+        );
+        assert_eq!(
+            fields(1, both, 100)["capturePhotosState"],
+            json!(CAPTURE_SINGLE_PHOTO)
+        );
+        assert_eq!(
+            fields(1, both, 100)["captureVideoState"],
+            json!(CAPTURE_DISABLED),
+            "a photo in progress disables video, as captureVideoState does"
+        );
+        assert_eq!(
+            fields(1, both, 600)["capturePhotosState"],
+            json!(CAPTURE_IDLE),
+            "the in-progress state clears after 500 ms"
+        );
+        let video_only = Inputs {
+            captures_video: true,
+            captures_photos: false,
+            recording: false,
+        };
+        assert_eq!(
+            fields(2, video_only, 0)["capturePhotosState"],
+            json!(CAPTURE_DISABLED),
+            "a new vehicle gets a new camera"
+        );
+        assert_eq!(
+            invoke(
+                2,
+                video_only,
+                "setCameraModePhoto",
+                0,
+                &|| true,
+                &NO_RECORDER
+            ),
+            Some(false),
+            "no modes without photos"
+        );
     }
 }

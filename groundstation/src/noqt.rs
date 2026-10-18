@@ -31,7 +31,10 @@ pub extern "C" fn qgc_qt_watch(_paths: *const c_char) {}
 pub extern "C" fn qgc_qt_remember_setting(_key: *const c_char, _value: *const c_char) {}
 
 #[unsafe(no_mangle)]
-pub extern "C" fn qgc_qt_set_event_handler(_handler: Option<unsafe extern "C" fn(*const c_char, *const c_char)>) {}
+pub extern "C" fn qgc_qt_set_event_handler(
+    _handler: Option<unsafe extern "C" fn(*const c_char, *const c_char)>,
+) {
+}
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_qt_free(text: *mut c_char) {

@@ -11,7 +11,16 @@ use web_time::Instant;
 
 #[cfg(not(target_family = "wasm"))]
 pub fn local_addresses() -> BTreeSet<Ipv4Addr> {
-    if_addrs::get_if_addrs().map(|list| list.into_iter().filter_map(|i| match i.ip() { std::net::IpAddr::V4(v4) => Some(v4), _ => None }).collect()).unwrap_or_default()
+    if_addrs::get_if_addrs()
+        .map(|list| {
+            list.into_iter()
+                .filter_map(|i| match i.ip() {
+                    std::net::IpAddr::V4(v4) => Some(v4),
+                    _ => None,
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 #[cfg(target_family = "wasm")]
@@ -48,7 +57,9 @@ fn resolved(targets: &[(String, u16)]) -> Vec<SocketAddr> {
 
 fn normalise(sender: SocketAddr, local: &BTreeSet<Ipv4Addr>) -> SocketAddr {
     match sender {
-        SocketAddr::V4(v4) if v4.ip().is_loopback() || local.contains(v4.ip()) => SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, v4.port())),
+        SocketAddr::V4(v4) if v4.ip().is_loopback() || local.contains(v4.ip()) => {
+            SocketAddr::V4(SocketAddrV4::new(Ipv4Addr::LOCALHOST, v4.port()))
+        }
         other => other,
     }
 }
@@ -58,12 +69,26 @@ fn still_heard(heard: Instant, now: Instant) -> bool {
 }
 
 fn transient(error: &io::Error) -> bool {
-    matches!(error.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut | io::ErrorKind::Interrupted | io::ErrorKind::ConnectionReset | io::ErrorKind::ConnectionRefused)
+    matches!(
+        error.kind(),
+        io::ErrorKind::WouldBlock
+            | io::ErrorKind::TimedOut
+            | io::ErrorKind::Interrupted
+            | io::ErrorKind::ConnectionReset
+            | io::ErrorKind::ConnectionRefused
+    )
 }
 
-pub fn receive_until_lost<From>(running: impl Fn() -> bool, mut receive: impl FnMut(&mut [u8]) -> io::Result<(usize, From)>, mut deliver: impl FnMut(&[u8], From)) -> Option<io::Error> {
+pub fn receive_until_lost<From>(
+    running: impl Fn() -> bool,
+    mut receive: impl FnMut(&mut [u8]) -> io::Result<(usize, From)>,
+    mut deliver: impl FnMut(&[u8], From),
+) -> Option<io::Error> {
     let mut buffer = vec![0u8; MAX_DATAGRAM];
-    std::iter::from_fn(|| running().then(|| receive(&mut buffer).map(|(len, from)| deliver(&buffer[..len], from)))).find_map(|received| received.err().filter(|error| !transient(error)))
+    std::iter::from_fn(|| {
+        running().then(|| receive(&mut buffer).map(|(len, from)| deliver(&buffer[..len], from)))
+    })
+    .find_map(|received| received.err().filter(|error| !transient(error)))
 }
 
 #[cfg(not(target_family = "wasm"))]
@@ -80,11 +105,19 @@ fn bind_shared(port: u16) -> io::Result<UdpSocket> {
 
 #[cfg(target_family = "wasm")]
 fn bind_shared(_port: u16) -> io::Result<UdpSocket> {
-    Err(io::Error::new(io::ErrorKind::Unsupported, "UDP links need the desktop or mobile app: a browser cannot open UDP sockets."))
+    Err(io::Error::new(
+        io::ErrorKind::Unsupported,
+        "UDP links need the desktop or mobile app: a browser cannot open UDP sockets.",
+    ))
 }
 
 impl UdpLink {
-    pub fn open(config: &UdpConfig, local_addresses: BTreeSet<Ipv4Addr>, mut sink: impl FnMut(&[u8]) + Send + 'static, lost: impl FnOnce(String) + Send + 'static) -> io::Result<UdpLink> {
+    pub fn open(
+        config: &UdpConfig,
+        local_addresses: BTreeSet<Ipv4Addr>,
+        mut sink: impl FnMut(&[u8]) + Send + 'static,
+        lost: impl FnOnce(String) + Send + 'static,
+    ) -> io::Result<UdpLink> {
         let socket = bind_shared(config.local_port)?;
         let configured = Mutex::new(resolved(&config.targets));
         let session = Arc::new(Mutex::new(BTreeMap::new()));
@@ -93,28 +126,38 @@ impl UdpLink {
             let socket = socket.try_clone()?;
             let session = Arc::clone(&session);
             let stop = Arc::clone(&stop);
-            std::thread::Builder::new().name("qgc-udp".into()).spawn(move || {
-                let failed = receive_until_lost(
-                    || !stop.load(Ordering::Relaxed),
-                    |buffer| socket.recv_from(buffer),
-                    |bytes, sender| {
-                        if !bytes.is_empty() {
-                            let now = Instant::now();
-                            {
-                                let mut peers = session.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-                                peers.insert(normalise(sender, &local_addresses), now);
-                                peers.retain(|_, heard| still_heard(*heard, now));
+            std::thread::Builder::new()
+                .name("qgc-udp".into())
+                .spawn(move || {
+                    let failed = receive_until_lost(
+                        || !stop.load(Ordering::Relaxed),
+                        |buffer| socket.recv_from(buffer),
+                        |bytes, sender| {
+                            if !bytes.is_empty() {
+                                let now = Instant::now();
+                                {
+                                    let mut peers = session
+                                        .lock()
+                                        .unwrap_or_else(std::sync::PoisonError::into_inner);
+                                    peers.insert(normalise(sender, &local_addresses), now);
+                                    peers.retain(|_, heard| still_heard(*heard, now));
+                                }
+                                sink(bytes);
                             }
-                            sink(bytes);
-                        }
-                    },
-                );
-                if let Some(error) = failed {
-                    lost(error.to_string());
-                }
-            })?
+                        },
+                    );
+                    if let Some(error) = failed {
+                        lost(error.to_string());
+                    }
+                })?
         };
-        Ok(UdpLink { socket, configured, session, stop, reader: Mutex::new(Some(reader)) })
+        Ok(UdpLink {
+            socket,
+            configured,
+            session,
+            stop,
+            reader: Mutex::new(Some(reader)),
+        })
     }
 
     pub fn local_port(&self) -> u16 {
@@ -129,12 +172,27 @@ impl UdpLink {
     pub fn targets(&self) -> Vec<SocketAddr> {
         let configured = self.configured.lock().unwrap().clone();
         let now = Instant::now();
-        let session: Vec<SocketAddr> = self.session.lock().unwrap_or_else(std::sync::PoisonError::into_inner).iter().filter(|(_, heard)| still_heard(**heard, now)).map(|(peer, _)| *peer).collect();
-        configured.iter().filter(|c| !session.contains(c)).copied().chain(session.iter().copied()).collect()
+        let session: Vec<SocketAddr> = self
+            .session
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+            .iter()
+            .filter(|(_, heard)| still_heard(**heard, now))
+            .map(|(peer, _)| *peer)
+            .collect();
+        configured
+            .iter()
+            .filter(|c| !session.contains(c))
+            .copied()
+            .chain(session.iter().copied())
+            .collect()
     }
 
     pub fn write(&self, bytes: &[u8]) -> usize {
-        self.targets().iter().filter(|target| self.socket.send_to(bytes, target).is_ok()).count()
+        self.targets()
+            .iter()
+            .filter(|target| self.socket.send_to(bytes, target).is_ok())
+            .count()
     }
 
     pub fn close(&self) {
@@ -159,13 +217,26 @@ mod tests {
 
     fn heartbeat() -> Vec<u8> {
         let bytes = crate::samplelog::bytes();
-        crate::tlog::entries(&bytes, u64::MAX).into_iter().map(|(_, f)| f).find(|f| f.len() == 21).unwrap()
+        crate::tlog::entries(&bytes, u64::MAX)
+            .into_iter()
+            .map(|(_, f)| f)
+            .find(|f| f.len() == 21)
+            .unwrap()
     }
 
     #[test]
     fn a_peer_that_sends_first_becomes_a_session_target_and_gets_the_replies() {
         let (tx, rx) = mpsc::channel();
-        let link = UdpLink::open(&UdpConfig { local_port: 0, targets: vec![] }, BTreeSet::new(), move |bytes| tx.send(bytes.to_vec()).unwrap(), |_| {}).unwrap();
+        let link = UdpLink::open(
+            &UdpConfig {
+                local_port: 0,
+                targets: vec![],
+            },
+            BTreeSet::new(),
+            move |bytes| tx.send(bytes.to_vec()).unwrap(),
+            |_| {},
+        )
+        .unwrap();
         let port = link.local_port();
         assert!(port > 0);
         let peer = UdpSocket::bind("127.0.0.1:0").unwrap();
@@ -173,7 +244,13 @@ mod tests {
         let frame = heartbeat();
         peer.send_to(&frame, ("127.0.0.1", port)).unwrap();
         assert_eq!(rx.recv_timeout(Duration::from_secs(2)).unwrap(), frame);
-        assert_eq!(link.targets(), vec![SocketAddr::from(([127, 0, 0, 1], peer.local_addr().unwrap().port()))]);
+        assert_eq!(
+            link.targets(),
+            vec![SocketAddr::from((
+                [127, 0, 0, 1],
+                peer.local_addr().unwrap().port()
+            ))]
+        );
         assert_eq!(link.write(&frame), 1);
         let mut back = [0u8; 64];
         let (len, from) = peer.recv_from(&mut back).unwrap();
@@ -185,9 +262,18 @@ mod tests {
     fn a_reply_written_while_a_frame_is_delivered_reaches_the_peer() {
         let link: Arc<std::sync::OnceLock<UdpLink>> = Arc::new(std::sync::OnceLock::new());
         let replying = Arc::clone(&link);
-        let opened = UdpLink::open(&UdpConfig { local_port: 0, targets: vec![] }, BTreeSet::new(), move |bytes| {
-            replying.get().map(|link| link.write(bytes));
-        }, |_| {}).unwrap();
+        let opened = UdpLink::open(
+            &UdpConfig {
+                local_port: 0,
+                targets: vec![],
+            },
+            BTreeSet::new(),
+            move |bytes| {
+                replying.get().map(|link| link.write(bytes));
+            },
+            |_| {},
+        )
+        .unwrap();
         let port = opened.local_port();
         assert!(link.set(opened).is_ok());
         let peer = UdpSocket::bind("127.0.0.1:0").unwrap();
@@ -205,14 +291,27 @@ mod tests {
         let peer = UdpSocket::bind("127.0.0.1:0").unwrap();
         peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
         let peer_port = peer.local_addr().unwrap().port();
-        let link = UdpLink::open(&UdpConfig { local_port: 0, targets: vec![] }, BTreeSet::new(), |_| {}, |_| {}).unwrap();
+        let link = UdpLink::open(
+            &UdpConfig {
+                local_port: 0,
+                targets: vec![],
+            },
+            BTreeSet::new(),
+            |_| {},
+            |_| {},
+        )
+        .unwrap();
         assert_eq!(link.write(&heartbeat()), 0);
         link.retarget(&[("127.0.0.1".into(), peer_port)]);
         assert_eq!(link.write(&heartbeat()), 1);
         let mut back = [0u8; 64];
         assert!(peer.recv_from(&mut back).is_ok());
         link.retarget(&[]);
-        assert_eq!(link.targets(), vec![], "a removed server is no longer written to");
+        assert_eq!(
+            link.targets(),
+            vec![],
+            "a removed server is no longer written to"
+        );
         link.close();
     }
 
@@ -222,15 +321,31 @@ mod tests {
         peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
         let peer_port = peer.local_addr().unwrap().port();
         let (tx, rx) = mpsc::channel();
-        let link = UdpLink::open(&UdpConfig { local_port: 0, targets: vec![("localhost".into(), peer_port), ("nonexistent.invalid".into(), 1)] }, BTreeSet::new(), move |bytes| tx.send(bytes.len()).unwrap(), |_| {}).unwrap();
+        let link = UdpLink::open(
+            &UdpConfig {
+                local_port: 0,
+                targets: vec![
+                    ("localhost".into(), peer_port),
+                    ("nonexistent.invalid".into(), 1),
+                ],
+            },
+            BTreeSet::new(),
+            move |bytes| tx.send(bytes.len()).unwrap(),
+            |_| {},
+        )
+        .unwrap();
         assert_eq!(link.targets().len(), 1);
         let frame = heartbeat();
         assert_eq!(link.write(&frame), 1);
         let mut back = [0u8; 64];
         let (len, _) = peer.recv_from(&mut back).unwrap();
         assert_eq!(len, frame.len());
-        peer.send_to(&frame, ("127.0.0.1", link.local_port())).unwrap();
-        assert_eq!(rx.recv_timeout(Duration::from_secs(2)).unwrap(), frame.len());
+        peer.send_to(&frame, ("127.0.0.1", link.local_port()))
+            .unwrap();
+        assert_eq!(
+            rx.recv_timeout(Duration::from_secs(2)).unwrap(),
+            frame.len()
+        );
         assert_eq!(link.targets().len(), 1);
         assert_eq!(link.write(&frame), 1);
         link.close();
@@ -240,35 +355,117 @@ mod tests {
     fn a_peer_silent_for_thirty_seconds_is_no_longer_written_to() {
         let now = Instant::now();
         assert!(still_heard(now, now + Duration::from_secs(29)));
-        assert!(!still_heard(now, now + PEER_SILENCE), "a NAT port that moved on stops getting every frame");
-        let link = UdpLink::open(&UdpConfig { local_port: 0, targets: vec![] }, BTreeSet::new(), |_| {}, |_| {}).unwrap();
-        let (stale, fresh) = (SocketAddr::from(([10, 0, 0, 1], 14550)), SocketAddr::from(([10, 0, 0, 2], 14550)));
-        let long_ago = now.checked_sub(PEER_SILENCE + Duration::from_secs(1)).unwrap_or(now);
-        link.session.lock().unwrap().extend([(stale, long_ago), (fresh, now)]);
-        assert_eq!(link.targets(), if long_ago == now { vec![stale, fresh] } else { vec![fresh] });
+        assert!(
+            !still_heard(now, now + PEER_SILENCE),
+            "a NAT port that moved on stops getting every frame"
+        );
+        let link = UdpLink::open(
+            &UdpConfig {
+                local_port: 0,
+                targets: vec![],
+            },
+            BTreeSet::new(),
+            |_| {},
+            |_| {},
+        )
+        .unwrap();
+        let (stale, fresh) = (
+            SocketAddr::from(([10, 0, 0, 1], 14550)),
+            SocketAddr::from(([10, 0, 0, 2], 14550)),
+        );
+        let long_ago = now
+            .checked_sub(PEER_SILENCE + Duration::from_secs(1))
+            .unwrap_or(now);
+        link.session
+            .lock()
+            .unwrap()
+            .extend([(stale, long_ago), (fresh, now)]);
+        assert_eq!(
+            link.targets(),
+            if long_ago == now {
+                vec![stale, fresh]
+            } else {
+                vec![fresh]
+            }
+        );
         link.session.lock().unwrap().insert(stale, Instant::now());
-        assert_eq!(link.targets(), vec![stale, fresh], "a peer heard again is written to again");
+        assert_eq!(
+            link.targets(),
+            vec![stale, fresh],
+            "a peer heard again is written to again"
+        );
     }
 
     #[test]
     fn two_links_can_share_the_same_listen_port() {
-        let first = UdpLink::open(&UdpConfig { local_port: 0, targets: vec![] }, BTreeSet::new(), |_| {}, |_| {}).unwrap();
+        let first = UdpLink::open(
+            &UdpConfig {
+                local_port: 0,
+                targets: vec![],
+            },
+            BTreeSet::new(),
+            |_| {},
+            |_| {},
+        )
+        .unwrap();
         let port = first.local_port();
-        let second = UdpLink::open(&UdpConfig { local_port: port, targets: vec![] }, BTreeSet::new(), |_| {}, |_| {});
+        let second = UdpLink::open(
+            &UdpConfig {
+                local_port: port,
+                targets: vec![],
+            },
+            BTreeSet::new(),
+            |_| {},
+            |_| {},
+        );
         assert!(second.is_ok());
-        assert_eq!(normalise(SocketAddr::from(([10, 0, 0, 5], 14550)), &BTreeSet::from([Ipv4Addr::new(10, 0, 0, 5)])), SocketAddr::from(([127, 0, 0, 1], 14550)));
+        assert_eq!(
+            normalise(
+                SocketAddr::from(([10, 0, 0, 5], 14550)),
+                &BTreeSet::from([Ipv4Addr::new(10, 0, 0, 5)])
+            ),
+            SocketAddr::from(([127, 0, 0, 1], 14550))
+        );
     }
 
     #[test]
     fn a_socket_that_fails_for_good_ends_the_reader_while_timeouts_and_icmp_echoes_do_not() {
-        let mut script = [Ok((2, ())), Err(io::ErrorKind::TimedOut), Err(io::ErrorKind::WouldBlock), Err(io::ErrorKind::Interrupted), Err(io::ErrorKind::ConnectionReset), Ok((1, ())), Err(io::ErrorKind::NotConnected), Ok((3, ()))]
-            .map(|step| step.map_err(io::Error::from))
-            .into_iter();
+        let mut script = [
+            Ok((2, ())),
+            Err(io::ErrorKind::TimedOut),
+            Err(io::ErrorKind::WouldBlock),
+            Err(io::ErrorKind::Interrupted),
+            Err(io::ErrorKind::ConnectionReset),
+            Ok((1, ())),
+            Err(io::ErrorKind::NotConnected),
+            Ok((3, ())),
+        ]
+        .map(|step| step.map_err(io::Error::from))
+        .into_iter();
         let delivered = std::cell::RefCell::new(Vec::new());
-        let lost = receive_until_lost(|| true, |_| script.next().unwrap(), |bytes, ()| delivered.borrow_mut().push(bytes.len()));
-        assert_eq!(lost.map(|error| error.kind()), Some(io::ErrorKind::NotConnected), "a suspended app's defunct socket answers ENOTCONN at once, forever");
+        let lost = receive_until_lost(
+            || true,
+            |_| script.next().unwrap(),
+            |bytes, ()| delivered.borrow_mut().push(bytes.len()),
+        );
+        assert_eq!(
+            lost.map(|error| error.kind()),
+            Some(io::ErrorKind::NotConnected),
+            "a suspended app's defunct socket answers ENOTCONN at once, forever"
+        );
         assert_eq!(delivered.into_inner(), vec![2, 1]);
-        assert_eq!(script.len(), 1, "nothing is read after the socket is gone, so the reader cannot spin");
-        assert!(receive_until_lost(|| false, |_| -> io::Result<(usize, ())> { panic!("a stopped reader reads nothing") }, |_, ()| {}).is_none());
+        assert_eq!(
+            script.len(),
+            1,
+            "nothing is read after the socket is gone, so the reader cannot spin"
+        );
+        assert!(
+            receive_until_lost(
+                || false,
+                |_| -> io::Result<(usize, ())> { panic!("a stopped reader reads nothing") },
+                |_, ()| {}
+            )
+            .is_none()
+        );
     }
 }

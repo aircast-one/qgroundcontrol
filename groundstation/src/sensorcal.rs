@@ -20,9 +20,12 @@ const ACCEL_POS_SUCCESS: u32 = 16_777_215;
 const ACCEL_POS_FAILED: u32 = 16_777_216;
 const APM_HIDDEN_PREFIXES: &[&str] = &["prearm:", "ekf", "arm", "initialising"];
 
-const HELP_PLACE: &str = "Place your vehicle into one of the Incomplete orientations shown below and hold it still";
-const HELP_PLACE_AGAIN: &str = "Place your vehicle into one of the orientations shown below and hold it still";
-const HELP_ROTATE: &str = "Rotate the vehicle continuously as shown in the diagram until marked as Completed";
+const HELP_PLACE: &str =
+    "Place your vehicle into one of the Incomplete orientations shown below and hold it still";
+const HELP_PLACE_AGAIN: &str =
+    "Place your vehicle into one of the orientations shown below and hold it still";
+const HELP_ROTATE: &str =
+    "Rotate the vehicle continuously as shown in the diagram until marked as Completed";
 const HELP_HOLD: &str = "Hold still in the current orientation";
 const HELP_ALREADY: &str = "Orientation already completed, place your vehicle into one of the incomplete orientations shown below and hold it still";
 const HELP_APM_ACCEL: &str = "Hold still in the current orientation and press Next when ready";
@@ -61,15 +64,26 @@ pub const KINDS: &[(Kind, &str, &str)] = &[
 
 impl Kind {
     pub fn id(self) -> &'static str {
-        KINDS.iter().find(|(k, _, _)| *k == self).map(|(_, id, _)| *id).unwrap_or("")
+        KINDS
+            .iter()
+            .find(|(k, _, _)| *k == self)
+            .map(|(_, id, _)| *id)
+            .unwrap_or("")
     }
 
     fn title(self) -> &'static str {
-        KINDS.iter().find(|(k, _, _)| *k == self).map(|(_, _, title)| *title).unwrap_or("")
+        KINDS
+            .iter()
+            .find(|(k, _, _)| *k == self)
+            .map(|(_, _, title)| *title)
+            .unwrap_or("")
     }
 
     pub fn parse(id: &str) -> Option<Kind> {
-        KINDS.iter().find(|(_, key, _)| *key == id).map(|(k, _, _)| *k)
+        KINDS
+            .iter()
+            .find(|(_, key, _)| *key == id)
+            .map(|(k, _, _)| *k)
     }
 
     fn supported(self, px4: bool) -> bool {
@@ -153,8 +167,15 @@ impl Outcome {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Action {
-    Command { command: u16, params: [f64; 7], show_error: bool },
-    SetParam { name: &'static str, value: f64 },
+    Command {
+        command: u16,
+        params: [f64; 7],
+        show_error: bool,
+    },
+    SetParam {
+        name: &'static str,
+        value: f64,
+    },
     Ack,
     Notice(&'static str),
 }
@@ -204,7 +225,14 @@ const SIDES: [(&str, &str, &str, u32); SIDE_COUNT] = [
     ("NoseDown", "Nose down", "front", 1 << 1),
     ("TailDown", "Tail down", "back", 1 << 0),
 ];
-const ACCEL_POSITIONS: [(u32, usize, f64); SIDE_COUNT] = [(1, 0, 0.0), (2, 2, 0.17), (3, 3, 0.34), (4, 4, 0.51), (5, 5, 0.68), (6, 1, 0.85)];
+const ACCEL_POSITIONS: [(u32, usize, f64); SIDE_COUNT] = [
+    (1, 0, 0.0),
+    (2, 2, 0.17),
+    (3, 3, 0.34),
+    (4, 4, 0.51),
+    (5, 5, 0.68),
+    (6, 1, 0.85),
+];
 
 #[derive(Debug)]
 pub struct Calibration {
@@ -270,7 +298,10 @@ impl Calibration {
     }
 
     fn reset_sides(&mut self, visible: u32) {
-        self.sides = std::array::from_fn(|i| Side { visible: visible & SIDES[i].3 != 0, ..Side::default() });
+        self.sides = std::array::from_fn(|i| Side {
+            visible: visible & SIDES[i].3 != 0,
+            ..Side::default()
+        });
     }
 
     fn begin(&mut self, kind: Kind, now_ms: u64) {
@@ -292,7 +323,9 @@ impl Calibration {
     }
 
     pub fn tick(&mut self, now_ms: u64) -> Vec<Action> {
-        let stalled = self.active_ms.is_some_and(|since| now_ms.saturating_sub(since) >= STALL_TIMEOUT_MS);
+        let stalled = self
+            .active_ms
+            .is_some_and(|since| now_ms.saturating_sub(since) >= STALL_TIMEOUT_MS);
         if !stalled || self.running.is_none() {
             return Vec::new();
         }
@@ -300,15 +333,28 @@ impl Calibration {
         self.stop(Outcome::Failed)
     }
 
-    pub fn start(&mut self, kind: Kind, inputs: Inputs, now_ms: u64) -> Result<Vec<Action>, String> {
+    pub fn start(
+        &mut self,
+        kind: Kind,
+        inputs: Inputs,
+        now_ms: u64,
+    ) -> Result<Vec<Action>, String> {
         if let Some(running) = self.running {
-            return Err(format!("{} calibration is already running.", running.title()));
+            return Err(format!(
+                "{} calibration is already running.",
+                running.title()
+            ));
         }
         if !kind.supported(self.px4) {
-            return Err(format!("{} calibration is not offered for this firmware.", kind.title()));
+            return Err(format!(
+                "{} calibration is not offered for this firmware.",
+                kind.title()
+            ));
         }
         if kind == Kind::CompassNorth && inputs.north.is_none() {
-            return Err("Fast compass calibration needs the vehicle's latitude and longitude.".to_string());
+            return Err(
+                "Fast compass calibration needs the vehicle's latitude and longitude.".to_string(),
+            );
         }
         self.begin(kind, now_ms);
         self.mag_sides = inputs.mag_sides.unwrap_or(0b11_1111);
@@ -316,33 +362,76 @@ impl Calibration {
         self.compass_fitness = inputs.compass_fitness;
         self.compass_learn = inputs.compass_learn;
         if self.px4 {
-            return Ok(vec![Action::Command { command: CMD_PREFLIGHT_CALIBRATION, params: kind.params(), show_error: false }]);
+            return Ok(vec![Action::Command {
+                command: CMD_PREFLIGHT_CALIBRATION,
+                params: kind.params(),
+                show_error: false,
+            }]);
         }
         match kind {
             Kind::CompassNorth => {
                 let north = inputs.north.unwrap_or_default();
-                Ok(vec![Action::Command { command: CMD_FIXED_MAG_CAL_YAW, params: [YAW_NORTH, f64::from(north.mask), north.latitude, north.longitude, 0.0, 0.0, 0.0], show_error: true }])
+                Ok(vec![Action::Command {
+                    command: CMD_FIXED_MAG_CAL_YAW,
+                    params: [
+                        YAW_NORTH,
+                        f64::from(north.mask),
+                        north.latitude,
+                        north.longitude,
+                        0.0,
+                        0.0,
+                        0.0,
+                    ],
+                    show_error: true,
+                }])
             }
-            Kind::Compass => Ok(vec![Action::Command { command: CMD_DO_CANCEL_MAG_CAL, params: [0.0; 7], show_error: false }]),
+            Kind::Compass => Ok(vec![Action::Command {
+                command: CMD_DO_CANCEL_MAG_CAL,
+                params: [0.0; 7],
+                show_error: false,
+            }]),
             Kind::Accelerometer => {
                 self.reset_sides(u32::MAX);
                 self.visual = true;
                 self.help = HELP_APM_ACCEL;
-                Ok(vec![Action::Command { command: CMD_PREFLIGHT_CALIBRATION, params: kind.params(), show_error: false }])
+                Ok(vec![Action::Command {
+                    command: CMD_PREFLIGHT_CALIBRATION,
+                    params: kind.params(),
+                    show_error: false,
+                }])
             }
             Kind::CompassMot => {
                 COMPASSMOT_STEPS.iter().for_each(|step| self.note(*step));
                 self.next_enabled = true;
-                Ok(vec![Action::Command { command: CMD_PREFLIGHT_CALIBRATION, params: kind.params(), show_error: false }])
+                Ok(vec![Action::Command {
+                    command: CMD_PREFLIGHT_CALIBRATION,
+                    params: kind.params(),
+                    show_error: false,
+                }])
             }
-            Kind::AccelSimple => Ok(vec![Action::Command { command: CMD_PREFLIGHT_CALIBRATION, params: kind.params(), show_error: false }]),
+            Kind::AccelSimple => Ok(vec![Action::Command {
+                command: CMD_PREFLIGHT_CALIBRATION,
+                params: kind.params(),
+                show_error: false,
+            }]),
             Kind::LevelHorizon => {
                 self.note("Hold the vehicle in its level flight position.");
-                Ok(vec![Action::Command { command: CMD_PREFLIGHT_CALIBRATION, params: kind.params(), show_error: false }])
+                Ok(vec![Action::Command {
+                    command: CMD_PREFLIGHT_CALIBRATION,
+                    params: kind.params(),
+                    show_error: false,
+                }])
             }
             other => {
-                self.note(format!("Requesting {} calibration...", other.title().to_lowercase()));
-                Ok(vec![Action::Command { command: CMD_PREFLIGHT_CALIBRATION, params: other.params(), show_error: false }])
+                self.note(format!(
+                    "Requesting {} calibration...",
+                    other.title().to_lowercase()
+                ));
+                Ok(vec![Action::Command {
+                    command: CMD_PREFLIGHT_CALIBRATION,
+                    params: other.params(),
+                    show_error: false,
+                }])
             }
         }
     }
@@ -352,29 +441,48 @@ impl Calibration {
     }
 
     pub fn cancel(&mut self) -> Result<Vec<Action>, String> {
-        let Some(running) = self.running else { return Err("No calibration is running.".to_string()) };
+        let Some(running) = self.running else {
+            return Err("No calibration is running.".to_string());
+        };
         if self.px4 {
             self.waiting_for_cancel = true;
-            return Ok(vec![Action::Command { command: CMD_PREFLIGHT_CALIBRATION, params: [0.0; 7], show_error: true }]);
+            return Ok(vec![Action::Command {
+                command: CMD_PREFLIGHT_CALIBRATION,
+                params: [0.0; 7],
+                show_error: true,
+            }]);
         }
         if !running.is_mag() {
-            return Err(format!("{} calibration cannot be cancelled once started.", running.title()));
+            return Err(format!(
+                "{} calibration cannot be cancelled once started.",
+                running.title()
+            ));
         }
         let stopped = self.stop(Outcome::Cancelled);
-        Ok(std::iter::once(Action::Command { command: CMD_DO_CANCEL_MAG_CAL, params: [0.0; 7], show_error: true }).chain(stopped).collect())
+        Ok(std::iter::once(Action::Command {
+            command: CMD_DO_CANCEL_MAG_CAL,
+            params: [0.0; 7],
+            show_error: true,
+        })
+        .chain(stopped)
+        .collect())
     }
 
     pub fn next(&mut self) -> Result<Vec<Action>, String> {
         match (self.px4, self.running, self.next_enabled) {
             (false, Some(Kind::Accelerometer), true) => Ok(vec![Action::Ack]),
-            (false, Some(Kind::CompassMot), true) => Ok(std::iter::once(Action::Ack).chain(self.stop(Outcome::Success)).collect()),
+            (false, Some(Kind::CompassMot), true) => Ok(std::iter::once(Action::Ack)
+                .chain(self.stop(Outcome::Success))
+                .collect()),
             _ => Err("Nothing is waiting for the next step.".to_string()),
         }
     }
 
     fn stop(&mut self, outcome: Outcome) -> Vec<Action> {
-        let failed_compass = !self.px4 && self.running.is_some_and(Kind::is_mag) && outcome == Outcome::Failed;
-        let plain_success = outcome == Outcome::Success && (self.px4 || matches!(self.running, Some(Kind::Accelerometer | Kind::CompassMot)));
+        let failed_compass =
+            !self.px4 && self.running.is_some_and(Kind::is_mag) && outcome == Outcome::Failed;
+        let plain_success = outcome == Outcome::Success
+            && (self.px4 || matches!(self.running, Some(Kind::Accelerometer | Kind::CompassMot)));
         self.running = None;
         self.outcome = Some(outcome);
         self.waiting_for_cancel = false;
@@ -385,14 +493,37 @@ impl Calibration {
         if plain_success {
             self.help = HELP_COMPLETE;
             let sides = self.sides;
-            self.sides = std::array::from_fn(|i| Side { stage: Stage::Done, rotate: false, visible: sides[i].visible });
+            self.sides = std::array::from_fn(|i| Side {
+                stage: Stage::Done,
+                rotate: false,
+                visible: sides[i].visible,
+            });
         }
-        let restore = std::mem::take(&mut self.mag_cal_started).then(|| self.compass_fitness.take()).flatten().map(|value| Action::SetParam { name: COMPASS_FITNESS_PARAM, value });
-        let learn = (!self.px4 && plain_success && self.compass_learn).then_some(Action::SetParam { name: COMPASS_LEARN_PARAM, value: 0.0 });
-        let cancel = failed_compass.then_some(Action::Command { command: CMD_DO_CANCEL_MAG_CAL, params: [0.0; 7], show_error: false });
+        let restore = std::mem::take(&mut self.mag_cal_started)
+            .then(|| self.compass_fitness.take())
+            .flatten()
+            .map(|value| Action::SetParam {
+                name: COMPASS_FITNESS_PARAM,
+                value,
+            });
+        let learn =
+            (!self.px4 && plain_success && self.compass_learn).then_some(Action::SetParam {
+                name: COMPASS_LEARN_PARAM,
+                value: 0.0,
+            });
+        let cancel = failed_compass.then_some(Action::Command {
+            command: CMD_DO_CANCEL_MAG_CAL,
+            params: [0.0; 7],
+            show_error: false,
+        });
         let notice = (outcome == Outcome::Failed).then_some(Action::Notice(FAILED_NOTICE));
         self.stopped = true;
-        restore.into_iter().chain(learn).chain(cancel).chain(notice).collect()
+        restore
+            .into_iter()
+            .chain(learn)
+            .chain(cancel)
+            .chain(notice)
+            .collect()
     }
 
     pub fn on_text(&mut self, raw: &str, now_ms: u64) -> Vec<Action> {
@@ -400,19 +531,31 @@ impl Calibration {
             return Vec::new();
         }
         self.active_ms = Some(now_ms);
-        if self.px4 { self.on_px4_text(&raw.replace("&lt;", "<").replace("&gt;", ">")) } else { self.on_apm_text(raw) }
+        if self.px4 {
+            self.on_px4_text(&raw.replace("&lt;", "<").replace("&gt;", ">"))
+        } else {
+            self.on_apm_text(raw)
+        }
     }
 
     fn on_apm_text(&mut self, text: &str) -> Vec<Action> {
         let lower = text.to_lowercase();
-        if self.running != Some(Kind::Accelerometer) && !APM_HIDDEN_PREFIXES.iter().any(|prefix| lower.starts_with(prefix)) {
+        if self.running != Some(Kind::Accelerometer)
+            && !APM_HIDDEN_PREFIXES
+                .iter()
+                .any(|prefix| lower.starts_with(prefix))
+        {
             self.note(text);
         }
         Vec::new()
     }
 
     fn on_px4_text(&mut self, text: &str) -> Vec<Action> {
-        if let Some(percent) = text.split_once("progress <").and_then(|(_, rest)| rest.split('>').next()).and_then(|p| p.trim().parse::<u32>().ok()) {
+        if let Some(percent) = text
+            .split_once("progress <")
+            .and_then(|(_, rest)| rest.split('>').next())
+            .and_then(|p| p.trim().parse::<u32>().ok())
+        {
             self.progress = percent.min(100) as f64 / 100.0;
             return Vec::new();
         }
@@ -420,19 +563,35 @@ impl Calibration {
         if self.unknown_firmware {
             return Vec::new();
         }
-        let Some(cal) = text.strip_prefix(CAL_PREFIX) else { return Vec::new() };
+        let Some(cal) = text.strip_prefix(CAL_PREFIX) else {
+            return Vec::new();
+        };
         if let Some(started) = cal.strip_prefix("calibration started: ") {
             self.on_started(started);
             return Vec::new();
         }
-        if let Some(side) = cal.strip_suffix(" orientation detected").and_then(side_index) {
+        if let Some(side) = cal
+            .strip_suffix(" orientation detected")
+            .and_then(side_index)
+        {
             let rotate = self.running == Some(Kind::Compass);
-            self.sides[side] = Side { stage: Stage::InProgress, rotate, visible: self.sides[side].visible };
+            self.sides[side] = Side {
+                stage: Stage::InProgress,
+                rotate,
+                visible: self.sides[side].visible,
+            };
             self.help = if rotate { HELP_ROTATE } else { HELP_HOLD };
             return Vec::new();
         }
-        if let Some(side) = cal.strip_suffix(" side done, rotate to a different side").and_then(side_index) {
-            self.sides[side] = Side { stage: Stage::Done, rotate: false, visible: self.sides[side].visible };
+        if let Some(side) = cal
+            .strip_suffix(" side done, rotate to a different side")
+            .and_then(side_index)
+        {
+            self.sides[side] = Side {
+                stage: Stage::Done,
+                rotate: false,
+                visible: self.sides[side].visible,
+            };
             self.help = HELP_PLACE_AGAIN;
             return Vec::new();
         }
@@ -444,7 +603,11 @@ impl Calibration {
             return self.stop(Outcome::Success);
         }
         if cal.starts_with("calibration cancelled") {
-            let outcome = if self.waiting_for_cancel { Outcome::Cancelled } else { Outcome::Failed };
+            let outcome = if self.waiting_for_cancel {
+                Outcome::Cancelled
+            } else {
+                Outcome::Failed
+            };
             return self.stop(outcome);
         }
         if cal.starts_with("calibration failed") {
@@ -486,16 +649,39 @@ impl Calibration {
     }
 
     pub fn take_refresh(&mut self) -> Option<&'static [&'static str]> {
-        std::mem::take(&mut self.stopped).then_some(if self.px4 { PX4_CALIBRATION_FAMILIES } else { APM_CALIBRATION_FAMILIES })
+        std::mem::take(&mut self.stopped).then_some(if self.px4 {
+            PX4_CALIBRATION_FAMILIES
+        } else {
+            APM_CALIBRATION_FAMILIES
+        })
     }
 
     pub fn mutes_comm_lost(&self) -> bool {
-        !self.px4 && matches!(self.running, Some(Kind::Accelerometer | Kind::CompassMot | Kind::LevelHorizon | Kind::Pressure | Kind::Gyro))
+        !self.px4
+            && matches!(
+                self.running,
+                Some(
+                    Kind::Accelerometer
+                        | Kind::CompassMot
+                        | Kind::LevelHorizon
+                        | Kind::Pressure
+                        | Kind::Gyro
+                )
+            )
     }
 
     pub fn on_ack(&mut self, command: u16, result: u8, now_ms: u64) -> Vec<Action> {
-        if self.px4 && self.running.is_some() && !self.visual && !self.waiting_for_cancel && command == CMD_PREFLIGHT_CALIBRATION && !matches!(result, RESULT_ACCEPTED | RESULT_IN_PROGRESS) {
-            self.note(format!("Calibration {} by the vehicle", crate::flightmodes::rejection_wording(result)));
+        if self.px4
+            && self.running.is_some()
+            && !self.visual
+            && !self.waiting_for_cancel
+            && command == CMD_PREFLIGHT_CALIBRATION
+            && !matches!(result, RESULT_ACCEPTED | RESULT_IN_PROGRESS)
+        {
+            self.note(format!(
+                "Calibration {} by the vehicle",
+                crate::flightmodes::rejection_wording(result)
+            ));
             return self.stop(Outcome::Failed);
         }
         if self.px4 || self.running.is_none() {
@@ -506,11 +692,28 @@ impl Calibration {
             (Some(Kind::Compass), CMD_DO_CANCEL_MAG_CAL, _) if !self.mag_cal_started => {
                 self.mag_cal_started = true;
                 self.visual = true;
-                self.compasses = std::array::from_fn(|i| if self.compass_mask & (1 << i) != 0 { Compass::default() } else { Compass { complete: true, succeeded: true, ..Compass::default() } });
+                self.compasses = std::array::from_fn(|i| {
+                    if self.compass_mask & (1 << i) != 0 {
+                        Compass::default()
+                    } else {
+                        Compass {
+                            complete: true,
+                            succeeded: true,
+                            ..Compass::default()
+                        }
+                    }
+                });
                 self.help = HELP_APM_COMPASS;
                 self.note(HELP_APM_COMPASS);
-                let fitness = self.compass_fitness.map(|_| Action::SetParam { name: COMPASS_FITNESS_PARAM, value: 100.0 });
-                let start = Action::Command { command: CMD_DO_START_MAG_CAL, params: [self.compass_mask as f64, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0], show_error: true };
+                let fitness = self.compass_fitness.map(|_| Action::SetParam {
+                    name: COMPASS_FITNESS_PARAM,
+                    value: 100.0,
+                });
+                let start = Action::Command {
+                    command: CMD_DO_START_MAG_CAL,
+                    params: [self.compass_mask as f64, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+                    show_error: true,
+                };
                 fitness.into_iter().chain(std::iter::once(start)).collect()
             }
             (Some(Kind::CompassNorth), CMD_FIXED_MAG_CAL_YAW, RESULT_ACCEPTED) => {
@@ -529,15 +732,27 @@ impl Calibration {
                 self.note("Failed to start compass calibration");
                 self.stop(Outcome::Failed)
             }
-            (Some(Kind::Gyro | Kind::LevelHorizon | Kind::Pressure | Kind::AccelSimple), CMD_PREFLIGHT_CALIBRATION, RESULT_IN_PROGRESS) => {
+            (
+                Some(Kind::Gyro | Kind::LevelHorizon | Kind::Pressure | Kind::AccelSimple),
+                CMD_PREFLIGHT_CALIBRATION,
+                RESULT_IN_PROGRESS,
+            ) => {
                 self.note("In progress");
                 Vec::new()
             }
-            (Some(Kind::Gyro | Kind::LevelHorizon | Kind::Pressure | Kind::AccelSimple), CMD_PREFLIGHT_CALIBRATION, RESULT_ACCEPTED) => {
+            (
+                Some(Kind::Gyro | Kind::LevelHorizon | Kind::Pressure | Kind::AccelSimple),
+                CMD_PREFLIGHT_CALIBRATION,
+                RESULT_ACCEPTED,
+            ) => {
                 self.note("Successfully completed");
                 self.stop(Outcome::Success)
             }
-            (Some(Kind::Gyro | Kind::LevelHorizon | Kind::Pressure | Kind::AccelSimple), CMD_PREFLIGHT_CALIBRATION, _) => {
+            (
+                Some(Kind::Gyro | Kind::LevelHorizon | Kind::Pressure | Kind::AccelSimple),
+                CMD_PREFLIGHT_CALIBRATION,
+                _,
+            ) => {
                 self.note("Failed");
                 self.stop(Outcome::Failed)
             }
@@ -545,7 +760,13 @@ impl Calibration {
         }
     }
 
-    pub fn on_mag_progress(&mut self, compass_id: u8, cal_mask: u8, completion_pct: u8, now_ms: u64) {
+    pub fn on_mag_progress(
+        &mut self,
+        compass_id: u8,
+        cal_mask: u8,
+        completion_pct: u8,
+        now_ms: u64,
+    ) {
         if self.running != Some(Kind::Compass) || !self.mag_start_accepted {
             return;
         }
@@ -554,11 +775,25 @@ impl Calibration {
         if (compass_id as usize) < COMPASS_COUNT && calibrating != 0 {
             self.compasses[compass_id as usize].progress = completion_pct / calibrating;
         }
-        self.progress = self.compasses.iter().map(|c| c.progress as f64).sum::<f64>() / 100.0;
+        self.progress = self
+            .compasses
+            .iter()
+            .map(|c| c.progress as f64)
+            .sum::<f64>()
+            / 100.0;
     }
 
-    pub fn on_mag_report(&mut self, compass_id: u8, cal_status: u8, fitness: f64, now_ms: u64) -> Vec<Action> {
-        if self.running != Some(Kind::Compass) || !self.mag_start_accepted || compass_id as usize >= COMPASS_COUNT {
+    pub fn on_mag_report(
+        &mut self,
+        compass_id: u8,
+        cal_status: u8,
+        fitness: f64,
+        now_ms: u64,
+    ) -> Vec<Action> {
+        if self.running != Some(Kind::Compass)
+            || !self.mag_start_accepted
+            || compass_id as usize >= COMPASS_COUNT
+        {
             return Vec::new();
         }
         self.active_ms = Some(now_ms);
@@ -566,8 +801,17 @@ impl Calibration {
         let succeeded = cal_status == MAG_CAL_SUCCESS;
         let newly_complete = !self.compasses[index].complete;
         if newly_complete {
-            self.note(if succeeded { format!("Compass {compass_id} calibration complete") } else { format!("Compass {compass_id} calibration below quality threshold") });
-            self.compasses[index] = Compass { progress: self.compasses[index].progress, complete: true, succeeded, fitness };
+            self.note(if succeeded {
+                format!("Compass {compass_id} calibration complete")
+            } else {
+                format!("Compass {compass_id} calibration below quality threshold")
+            });
+            self.compasses[index] = Compass {
+                progress: self.compasses[index].progress,
+                complete: true,
+                succeeded,
+                fitness,
+            };
         }
         if !self.compasses.iter().all(|c| c.complete) {
             if newly_complete {
@@ -581,7 +825,9 @@ impl Calibration {
             self.stop(Outcome::Success)
         } else {
             self.note("Compass calibration failed");
-            self.note("YOU MUST REBOOT YOUR VEHICLE NOW AND RETRY COMPASS CALIBRATION PRIOR TO FLIGHT");
+            self.note(
+                "YOU MUST REBOOT YOUR VEHICLE NOW AND RETRY COMPASS CALIBRATION PRIOR TO FLIGHT",
+            );
             self.stop(Outcome::Failed)
         }
     }
@@ -595,15 +841,28 @@ impl Calibration {
             ACCEL_POS_SUCCESS => self.stop(Outcome::Success),
             ACCEL_POS_FAILED => self.stop(Outcome::Failed),
             other => {
-                let Some(step) = ACCEL_POSITIONS.iter().position(|(code, _, _)| *code == other) else { return Vec::new() };
+                let Some(step) = ACCEL_POSITIONS
+                    .iter()
+                    .position(|(code, _, _)| *code == other)
+                else {
+                    return Vec::new();
+                };
                 let (_, side, progress) = ACCEL_POSITIONS[step];
                 if self.sides[side].stage == Stage::InProgress {
                     return Vec::new();
                 }
                 if let Some(&(_, previous, _)) = step.checked_sub(1).map(|i| &ACCEL_POSITIONS[i]) {
-                    self.sides[previous] = Side { stage: Stage::Done, rotate: false, visible: true };
+                    self.sides[previous] = Side {
+                        stage: Stage::Done,
+                        rotate: false,
+                        visible: true,
+                    };
                 }
-                self.sides[side] = Side { stage: Stage::InProgress, rotate: false, visible: true };
+                self.sides[side] = Side {
+                    stage: Stage::InProgress,
+                    rotate: false,
+                    visible: true,
+                };
                 self.progress = progress;
                 self.next_enabled = true;
                 Vec::new()
@@ -618,7 +877,11 @@ impl Calibration {
             (false, Some(kind)) => kind.is_mag(),
             _ => false,
         };
-        let shown = running.or(if self.outcome == Some(Outcome::Success) { self.last } else { None });
+        let shown = running.or(if self.outcome == Some(Outcome::Success) {
+            self.last
+        } else {
+            None
+        });
         json!({
             "running": running.map(Kind::id),
             "last": self.last.map(Kind::id),
@@ -641,19 +904,43 @@ impl Calibration {
 }
 
 pub fn accel_setup_needed(parameter: &dyn Fn(&str) -> f64) -> bool {
-    ["INS_ACCOFFS_X", "INS_ACCOFFS_Y", "INS_ACCOFFS_Z"].iter().filter(|name| parameter(name) as f32 == 0.0).count() == 3
+    ["INS_ACCOFFS_X", "INS_ACCOFFS_Y", "INS_ACCOFFS_Z"]
+        .iter()
+        .filter(|name| parameter(name) as f32 == 0.0)
+        .count()
+        == 3
 }
 
 pub fn compass_setup_needed(parameter: &dyn Fn(&str) -> f64) -> bool {
-    [("COMPASS_DEV_ID", "COMPASS_USE", "COMPASS_OFS"), ("COMPASS_DEV_ID2", "COMPASS_USE2", "COMPASS_OFS2"), ("COMPASS_DEV_ID3", "COMPASS_USE3", "COMPASS_OFS3")]
-        .iter()
-        .filter(|(device, used, _)| parameter(device) as i64 != 0 && parameter(used) as i64 != 0)
-        .any(|(_, _, offsets)| ["X", "Y", "Z"].iter().any(|axis| parameter(&format!("{offsets}_{axis}")) as f32 == 0.0))
+    [
+        ("COMPASS_DEV_ID", "COMPASS_USE", "COMPASS_OFS"),
+        ("COMPASS_DEV_ID2", "COMPASS_USE2", "COMPASS_OFS2"),
+        ("COMPASS_DEV_ID3", "COMPASS_USE3", "COMPASS_OFS3"),
+    ]
+    .iter()
+    .filter(|(device, used, _)| parameter(device) as i64 != 0 && parameter(used) as i64 != 0)
+    .any(|(_, _, offsets)| {
+        ["X", "Y", "Z"]
+            .iter()
+            .any(|axis| parameter(&format!("{offsets}_{axis}")) as f32 == 0.0)
+    })
 }
 
 pub fn north_request(request: &Value) -> Option<North> {
-    let degrees = |key: &str, limit: f64| request.get(key).and_then(Value::as_f64).filter(|v| v.is_finite() && v.abs() <= limit);
-    Some(North { latitude: degrees("latitude", 90.0)?, longitude: degrees("longitude", 180.0)?, mask: request.get("mask").and_then(Value::as_u64).and_then(|m| u8::try_from(m).ok())? })
+    let degrees = |key: &str, limit: f64| {
+        request
+            .get(key)
+            .and_then(Value::as_f64)
+            .filter(|v| v.is_finite() && v.abs() <= limit)
+    };
+    Some(North {
+        latitude: degrees("latitude", 90.0)?,
+        longitude: degrees("longitude", 180.0)?,
+        mask: request
+            .get("mask")
+            .and_then(Value::as_u64)
+            .and_then(|m| u8::try_from(m).ok())?,
+    })
 }
 
 pub fn apm_setup_needs(parameter: &dyn Fn(&str) -> Option<f64>) -> Value {
@@ -663,13 +950,19 @@ pub fn apm_setup_needs(parameter: &dyn Fn(&str) -> Option<f64>) -> Value {
 
 const AIRSPEED_CHECK_DISABLED: i64 = 162_128;
 
-pub fn px4_setup_needs(parameter: &dyn Fn(&str) -> Option<f64>, airframe_flies_on_airspeed: bool) -> Value {
+pub fn px4_setup_needs(
+    parameter: &dyn Fn(&str) -> Option<f64>,
+    airframe_flies_on_airspeed: bool,
+) -> Value {
     let unset = |name: &str| parameter(name).unwrap_or(0.0) as f32 == 0.0;
     let mag_enabled = parameter("SYS_HAS_MAG").is_none_or(|has| has != 0.0);
     let airspeed_supported = airframe_flies_on_airspeed
         && match parameter("SYS_HAS_NUM_ASPD") {
             Some(count) => count != 0.0,
-            None => parameter("FW_ARSP_MODE").unwrap_or(0.0) == 0.0 && parameter("CBRK_AIRSPD_CHK").unwrap_or(0.0) as i64 != AIRSPEED_CHECK_DISABLED,
+            None => {
+                parameter("FW_ARSP_MODE").unwrap_or(0.0) == 0.0
+                    && parameter("CBRK_AIRSPD_CHK").unwrap_or(0.0) as i64 != AIRSPEED_CHECK_DISABLED
+            }
         };
     json!({
         "px4": true,
@@ -690,40 +983,86 @@ pub fn qt_shape(snapshot: &Value, needs: &Value) -> Value {
         true => kind.is_some_and(|k| ["accelerometer", "compass", "gyro"].contains(&k)),
         false => kind == Some("accelerometer"),
     };
-    let log = snapshot["log"].as_array().map(|lines| lines.iter().filter_map(Value::as_str).collect::<Vec<_>>().join("\n")).unwrap_or_default();
+    let log = snapshot["log"]
+        .as_array()
+        .map(|lines| {
+            lines
+                .iter()
+                .filter_map(Value::as_str)
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .unwrap_or_default();
     let help = || snapshot["help"].as_str().unwrap_or_default().to_string();
     let plain_success = match px4 {
         true => visual,
         false => kind.is_some_and(|k| ["accelerometer", "compassMot"].contains(&k)),
     };
-    let (progress, help_text, status, show, sides_done) = match (running, snapshot["outcome"].as_str()) {
-        (Some(_), _) => (snapshot["progress"].as_f64().unwrap_or(0.0), if visual { help() } else { String::new() }, log, visual && snapshot["showOrientations"] == true, None),
-        (None, Some("success")) if plain_success => (1.0, "Calibration complete".to_string(), String::new(), snapshot["showOrientations"] == true, Some(true)),
-        (None, Some("success")) => (0.0, String::new(), log, false, Some(false)),
-        (None, Some("cancelled")) => (0.0, if visual { help() } else { String::new() }, String::new(), false, None),
-        (None, Some(_)) => (0.0, String::new(), log, false, None),
-        (None, None) => (0.0, String::new(), String::new(), false, Some(false)),
-    };
+    let (progress, help_text, status, show, sides_done) =
+        match (running, snapshot["outcome"].as_str()) {
+            (Some(_), _) => (
+                snapshot["progress"].as_f64().unwrap_or(0.0),
+                if visual { help() } else { String::new() },
+                log,
+                visual && snapshot["showOrientations"] == true,
+                None,
+            ),
+            (None, Some("success")) if plain_success => (
+                1.0,
+                "Calibration complete".to_string(),
+                String::new(),
+                snapshot["showOrientations"] == true,
+                Some(true),
+            ),
+            (None, Some("success")) => (0.0, String::new(), log, false, Some(false)),
+            (None, Some("cancelled")) => (
+                0.0,
+                if visual { help() } else { String::new() },
+                String::new(),
+                false,
+                None,
+            ),
+            (None, Some(_)) => (0.0, String::new(), log, false, None),
+            (None, None) => (0.0, String::new(), String::new(), false, Some(false)),
+        };
     let sides = snapshot["sides"].as_array().cloned().unwrap_or_default();
     let side_fields = sides.iter().flat_map(|side| {
         let key = side["key"].as_str().unwrap_or_default().to_string();
         let stage = side["stage"].as_str().unwrap_or_default();
         let (done, in_progress, rotate) = match (visual, sides_done) {
             (_, Some(done)) => (done, false, false),
-            (true, None) => (stage == "done", stage == "inProgress", side["rotate"] == true),
+            (true, None) => (
+                stage == "done",
+                stage == "inProgress",
+                side["rotate"] == true,
+            ),
             (false, None) => (false, false, false),
         };
         [
             (format!("orientationCal{key}SideDone"), json!(done)),
-            (format!("orientationCal{key}SideInProgress"), json!(in_progress)),
-            (format!("orientationCal{key}SideVisible"), json!(visual && side["visible"] == true)),
+            (
+                format!("orientationCal{key}SideInProgress"),
+                json!(in_progress),
+            ),
+            (
+                format!("orientationCal{key}SideVisible"),
+                json!(visual && side["visible"] == true),
+            ),
             (format!("orientationCal{key}SideRotate"), json!(rotate)),
         ]
     });
-    let compass_fields = snapshot["compasses"].as_array().cloned().unwrap_or_default().into_iter().flat_map(|c| {
-        let n = c["id"].as_u64().unwrap_or(0) + 1;
-        [(format!("compass{n}CalSucceeded"), c["succeeded"].clone()), (format!("compass{n}CalFitness"), c["fitness"].clone())]
-    });
+    let compass_fields = snapshot["compasses"]
+        .as_array()
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .flat_map(|c| {
+            let n = c["id"].as_u64().unwrap_or(0) + 1;
+            [
+                (format!("compass{n}CalSucceeded"), c["succeeded"].clone()),
+                (format!("compass{n}CalFitness"), c["fitness"].clone()),
+            ]
+        });
     let base = json!({
         "kind": "object",
         "class": if px4 { "SensorsComponentController" } else { "APMSensorsComponentController" },
@@ -741,7 +1080,10 @@ pub fn qt_shape(snapshot: &Value, needs: &Value) -> Value {
     object.extend(side_fields.chain(compass_fields));
     object.extend(needs.as_object().cloned().unwrap_or_default());
     if !px4 {
-        object.insert("completedCalibration".to_string(), json!(snapshot["completed"].as_u64().unwrap_or(0)));
+        object.insert(
+            "completedCalibration".to_string(),
+            json!(snapshot["completed"].as_u64().unwrap_or(0)),
+        );
     }
     Value::Object(object)
 }
@@ -752,50 +1094,174 @@ mod tests {
 
     #[test]
     fn setup_is_needed_for_unset_accel_offsets_and_for_a_used_compass_with_a_zero_offset() {
-        let params = |values: &'static [(&'static str, f64)]| move |name: &str| values.iter().find(|(n, _)| *n == name).map_or(0.0, |(_, v)| *v);
+        let params = |values: &'static [(&'static str, f64)]| {
+            move |name: &str| {
+                values
+                    .iter()
+                    .find(|(n, _)| *n == name)
+                    .map_or(0.0, |(_, v)| *v)
+            }
+        };
         assert!(accel_setup_needed(&params(&[])));
-        assert!(!accel_setup_needed(&params(&[("INS_ACCOFFS_Y", 0.01)])), "one nonzero offset is enough to call it calibrated");
-        assert!(!compass_setup_needed(&params(&[])), "no compass device, nothing to calibrate");
-        assert!(compass_setup_needed(&params(&[("COMPASS_DEV_ID", 97539.0), ("COMPASS_USE", 1.0), ("COMPASS_OFS_X", 5.0), ("COMPASS_OFS_Y", 3.0)])));
-        assert!(!compass_setup_needed(&params(&[("COMPASS_DEV_ID", 97539.0), ("COMPASS_USE", 0.0)])), "an unused compass is not asked for");
+        assert!(
+            !accel_setup_needed(&params(&[("INS_ACCOFFS_Y", 0.01)])),
+            "one nonzero offset is enough to call it calibrated"
+        );
+        assert!(
+            !compass_setup_needed(&params(&[])),
+            "no compass device, nothing to calibrate"
+        );
+        assert!(compass_setup_needed(&params(&[
+            ("COMPASS_DEV_ID", 97539.0),
+            ("COMPASS_USE", 1.0),
+            ("COMPASS_OFS_X", 5.0),
+            ("COMPASS_OFS_Y", 3.0)
+        ])));
+        assert!(
+            !compass_setup_needed(&params(&[
+                ("COMPASS_DEV_ID", 97539.0),
+                ("COMPASS_USE", 0.0)
+            ])),
+            "an unused compass is not asked for"
+        );
     }
 
     #[test]
     fn fast_compass_calibration_is_one_fixed_yaw_command_and_its_ack() {
         let mut cal = Calibration::new(false);
-        assert!(cal.start(Kind::CompassNorth, Inputs::default(), 0).is_err(), "no position, no command");
+        assert!(
+            cal.start(Kind::CompassNorth, Inputs::default(), 0).is_err(),
+            "no position, no command"
+        );
         assert!(cal.snapshot()["running"].is_null());
-        let north = North { latitude: 41.7, longitude: 44.8, mask: 0b11 };
-        let sent = cal.start(Kind::CompassNorth, Inputs { north: Some(north), ..Inputs::default() }, 0).unwrap();
-        assert!(matches!(sent.as_slice(), [Action::Command { command: CMD_FIXED_MAG_CAL_YAW, params, show_error: true }] if *params == [0.0, 3.0, 41.7, 44.8, 0.0, 0.0, 0.0]));
-        assert!(cal.snapshot()["routines"].as_array().unwrap().iter().all(|r| r["id"] != "compassNorth"), "it is a checkbox on the compass dialog, not a row");
+        let north = North {
+            latitude: 41.7,
+            longitude: 44.8,
+            mask: 0b11,
+        };
+        let sent = cal
+            .start(
+                Kind::CompassNorth,
+                Inputs {
+                    north: Some(north),
+                    ..Inputs::default()
+                },
+                0,
+            )
+            .unwrap();
+        assert!(
+            matches!(sent.as_slice(), [Action::Command { command: CMD_FIXED_MAG_CAL_YAW, params, show_error: true }] if *params == [0.0, 3.0, 41.7, 44.8, 0.0, 0.0, 0.0])
+        );
+        assert!(
+            cal.snapshot()["routines"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|r| r["id"] != "compassNorth"),
+            "it is a checkbox on the compass dialog, not a row"
+        );
         cal.on_ack(CMD_FIXED_MAG_CAL_YAW, RESULT_ACCEPTED, 1);
         assert_eq!(cal.snapshot()["outcome"], "success");
         assert_eq!(cal.snapshot()["log"][0], "Successfully completed");
-        cal.start(Kind::CompassNorth, Inputs { north: Some(north), ..Inputs::default() }, 2).unwrap();
+        cal.start(
+            Kind::CompassNorth,
+            Inputs {
+                north: Some(north),
+                ..Inputs::default()
+            },
+            2,
+        )
+        .unwrap();
         cal.on_ack(CMD_FIXED_MAG_CAL_YAW, 4, 3);
         assert_eq!(cal.snapshot()["outcome"], "failed");
-        assert!(Calibration::new(true).start(Kind::CompassNorth, Inputs { north: Some(north), ..Inputs::default() }, 0).is_err(), "ArduPilot only");
-        cal.start(Kind::CompassNorth, Inputs { north: Some(north), ..Inputs::default() }, 4).unwrap();
-        assert!(cal.snapshot()["cancelEnabled"].as_bool().unwrap(), "a fast compass cal is CalibrationMag, so Cancel is enabled");
-        assert_eq!(cal.cancel().unwrap(), vec![Action::Command { command: CMD_DO_CANCEL_MAG_CAL, params: [0.0; 7], show_error: true }]);
+        assert!(
+            Calibration::new(true)
+                .start(
+                    Kind::CompassNorth,
+                    Inputs {
+                        north: Some(north),
+                        ..Inputs::default()
+                    },
+                    0
+                )
+                .is_err(),
+            "ArduPilot only"
+        );
+        cal.start(
+            Kind::CompassNorth,
+            Inputs {
+                north: Some(north),
+                ..Inputs::default()
+            },
+            4,
+        )
+        .unwrap();
+        assert!(
+            cal.snapshot()["cancelEnabled"].as_bool().unwrap(),
+            "a fast compass cal is CalibrationMag, so Cancel is enabled"
+        );
+        assert_eq!(
+            cal.cancel().unwrap(),
+            vec![Action::Command {
+                command: CMD_DO_CANCEL_MAG_CAL,
+                params: [0.0; 7],
+                show_error: true
+            }]
+        );
         assert_eq!(cal.snapshot()["outcome"], "cancelled");
-        assert_eq!(north_request(&json!({ "latitude": 41.7, "longitude": 44.8, "mask": 3 })), Some(north));
-        assert_eq!(north_request(&json!({ "latitude": null, "longitude": 44.8, "mask": 3 })), None);
+        assert_eq!(
+            north_request(&json!({ "latitude": 41.7, "longitude": 44.8, "mask": 3 })),
+            Some(north)
+        );
+        assert_eq!(
+            north_request(&json!({ "latitude": null, "longitude": 44.8, "mask": 3 })),
+            None
+        );
     }
 
     #[test]
     fn px4_setup_needs_follow_the_sensors_component() {
-        let params = |values: &'static [(&'static str, f64)]| move |name: &str| values.iter().find(|(n, _)| *n == name).map(|(_, v)| *v);
+        let params = |values: &'static [(&'static str, f64)]| {
+            move |name: &str| values.iter().find(|(n, _)| *n == name).map(|(_, v)| *v)
+        };
         let fresh = px4_setup_needs(&params(&[]), false);
-        assert_eq!((fresh["accelSetupNeeded"].clone(), fresh["gyroSetupNeeded"].clone(), fresh["compassSetupNeeded"].clone()), (json!(true), json!(true), json!(true)));
-        assert_eq!(fresh["airspeedSupported"], false, "a multirotor never offers airspeed");
+        assert_eq!(
+            (
+                fresh["accelSetupNeeded"].clone(),
+                fresh["gyroSetupNeeded"].clone(),
+                fresh["compassSetupNeeded"].clone()
+            ),
+            (json!(true), json!(true), json!(true))
+        );
+        assert_eq!(
+            fresh["airspeedSupported"], false,
+            "a multirotor never offers airspeed"
+        );
         let no_mag = px4_setup_needs(&params(&[("SYS_HAS_MAG", 0.0)]), false);
-        assert_eq!((no_mag["magEnabled"].clone(), no_mag["compassSetupNeeded"].clone()), (json!(false), json!(false)));
-        let plane = px4_setup_needs(&params(&[("SYS_HAS_NUM_ASPD", 1.0), ("CAL_ACC0_ID", 1_310_988.0)]), true);
-        assert_eq!((plane["airspeedSupported"].clone(), plane["airspeedSetupNeeded"].clone(), plane["accelSetupNeeded"].clone()), (json!(true), json!(true), json!(false)));
+        assert_eq!(
+            (
+                no_mag["magEnabled"].clone(),
+                no_mag["compassSetupNeeded"].clone()
+            ),
+            (json!(false), json!(false))
+        );
+        let plane = px4_setup_needs(
+            &params(&[("SYS_HAS_NUM_ASPD", 1.0), ("CAL_ACC0_ID", 1_310_988.0)]),
+            true,
+        );
+        assert_eq!(
+            (
+                plane["airspeedSupported"].clone(),
+                plane["airspeedSetupNeeded"].clone(),
+                plane["accelSetupNeeded"].clone()
+            ),
+            (json!(true), json!(true), json!(false))
+        );
         let old_plane = px4_setup_needs(&params(&[("CBRK_AIRSPD_CHK", 162_128.0)]), true);
-        assert_eq!(old_plane["airspeedSupported"], false, "before SYS_HAS_NUM_ASPD the circuit breaker turns the sensor off");
+        assert_eq!(
+            old_plane["airspeedSupported"], false,
+            "before SYS_HAS_NUM_ASPD the circuit breaker turns the sensor off"
+        );
         let no_sensor = px4_setup_needs(&params(&[("SYS_HAS_NUM_ASPD", 0.0)]), true);
         assert_eq!(no_sensor["airspeedSupported"], false);
     }
@@ -809,7 +1275,10 @@ mod tests {
         assert_eq!(shape["orientationCalDownSideRotate"], true);
         assert_eq!(shape["magEnabled"], true);
         let apm = qt_shape(&snapshot, &json!({ "px4": false }));
-        assert_eq!(apm["showOrientationCalArea"], false, "ArduPilot compass calibration reports progress bars, not sides");
+        assert_eq!(
+            apm["showOrientationCalArea"], false,
+            "ArduPilot compass calibration reports progress bars, not sides"
+        );
     }
 
     fn stages(cal: &Calibration) -> Vec<&'static str> {
@@ -819,14 +1288,40 @@ mod tests {
     #[test]
     fn px4_accel_walks_the_sides_from_the_cal_texts() {
         let mut cal = Calibration::new(true);
-        let started = cal.start(Kind::Accelerometer, Inputs::default(), 0).unwrap();
-        assert_eq!(started, vec![Action::Command { command: CMD_PREFLIGHT_CALIBRATION, params: [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0], show_error: false }]);
-        assert!(cal.start(Kind::Gyro, Inputs::default(), 0).is_err(), "one calibration at a time");
+        let started = cal
+            .start(Kind::Accelerometer, Inputs::default(), 0)
+            .unwrap();
+        assert_eq!(
+            started,
+            vec![Action::Command {
+                command: CMD_PREFLIGHT_CALIBRATION,
+                params: [0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0],
+                show_error: false
+            }]
+        );
+        assert!(
+            cal.start(Kind::Gyro, Inputs::default(), 0).is_err(),
+            "one calibration at a time"
+        );
         cal.on_text("[cal] calibration started: 2 accel", 0);
-        assert!(cal.sides.iter().all(|s| s.visible && s.stage == Stage::Waiting));
+        assert!(
+            cal.sides
+                .iter()
+                .all(|s| s.visible && s.stage == Stage::Waiting)
+        );
         assert_eq!(cal.snapshot()["help"], HELP_PLACE);
         cal.on_text("[cal] down orientation detected", 0);
-        assert_eq!(stages(&cal), ["inProgress", "waiting", "waiting", "waiting", "waiting", "waiting"]);
+        assert_eq!(
+            stages(&cal),
+            [
+                "inProgress",
+                "waiting",
+                "waiting",
+                "waiting",
+                "waiting",
+                "waiting"
+            ]
+        );
         assert!(!cal.sides[0].rotate, "only compass asks to rotate");
         cal.on_text("[cal] progress &lt;40&gt;", 0);
         assert_eq!(cal.progress, 0.4);
@@ -840,7 +1335,11 @@ mod tests {
         assert_eq!(cal.running, None);
         assert_eq!(cal.outcome, Some(Outcome::Success));
         assert!(cal.sides.iter().all(|s| s.stage == Stage::Done));
-        assert_eq!(cal.snapshot()["routines"].as_array().unwrap().len(), 5, "PX4 has no CompassMot");
+        assert_eq!(
+            cal.snapshot()["routines"].as_array().unwrap().len(),
+            5,
+            "PX4 has no CompassMot"
+        );
         assert!(cal.snapshot()["routines"][0]["enabled"].as_bool().unwrap());
     }
 
@@ -848,15 +1347,33 @@ mod tests {
     fn a_px4_calibration_the_vehicle_refuses_ends_instead_of_waiting_ten_minutes() {
         let mut cal = Calibration::new(true);
         cal.start(Kind::Gyro, Inputs::default(), 0).unwrap();
-        assert!(cal.on_ack(CMD_PREFLIGHT_CALIBRATION, RESULT_IN_PROGRESS, 10).is_empty(), "in progress is not a refusal");
+        assert!(
+            cal.on_ack(CMD_PREFLIGHT_CALIBRATION, RESULT_IN_PROGRESS, 10)
+                .is_empty(),
+            "in progress is not a refusal"
+        );
         cal.on_ack(CMD_PREFLIGHT_CALIBRATION, 1, 20);
-        assert_eq!((cal.snapshot()["outcome"].as_str(), cal.snapshot()["busy"].as_bool()), (Some("failed"), Some(false)));
+        assert_eq!(
+            (
+                cal.snapshot()["outcome"].as_str(),
+                cal.snapshot()["busy"].as_bool()
+            ),
+            (Some("failed"), Some(false))
+        );
     }
 
     #[test]
     fn px4_compass_shows_only_the_configured_sides_and_rotates() {
         let mut cal = Calibration::new(true);
-        cal.start(Kind::Compass, Inputs { mag_sides: Some((1 << 5) | (1 << 2)), ..Inputs::default() }, 0).unwrap();
+        cal.start(
+            Kind::Compass,
+            Inputs {
+                mag_sides: Some((1 << 5) | (1 << 2)),
+                ..Inputs::default()
+            },
+            0,
+        )
+        .unwrap();
         cal.on_text("[cal] calibration started: 2 mag", 0);
         let visible: Vec<bool> = cal.sides.iter().map(|s| s.visible).collect();
         assert_eq!(visible, [true, false, true, false, false, false]);
@@ -864,12 +1381,25 @@ mod tests {
         assert!(cal.sides[2].rotate);
         assert_eq!(cal.snapshot()["help"], HELP_ROTATE);
         assert!(cal.snapshot()["cancelEnabled"].as_bool().unwrap());
-        assert!(cal.snapshot()["busy"].as_bool().unwrap(), "a calibration mid-routine is the definition of busy");
+        assert!(
+            cal.snapshot()["busy"].as_bool().unwrap(),
+            "a calibration mid-routine is the definition of busy"
+        );
         let cancel = cal.cancel().unwrap();
-        assert_eq!(cancel, vec![Action::Command { command: CMD_PREFLIGHT_CALIBRATION, params: [0.0; 7], show_error: true }]);
+        assert_eq!(
+            cancel,
+            vec![Action::Command {
+                command: CMD_PREFLIGHT_CALIBRATION,
+                params: [0.0; 7],
+                show_error: true
+            }]
+        );
         assert!(cal.waiting_for_cancel);
         assert!(!cal.snapshot()["cancelEnabled"].as_bool().unwrap());
-        assert!(cal.snapshot()["busy"].as_bool().unwrap(), "a cancel the vehicle has not acknowledged is still a routine in progress, which is the second half of the rule");
+        assert!(
+            cal.snapshot()["busy"].as_bool().unwrap(),
+            "a cancel the vehicle has not acknowledged is still a routine in progress, which is the second half of the rule"
+        );
         cal.on_text("[cal] calibration cancelled", 0);
         assert_eq!(cal.outcome, Some(Outcome::Cancelled));
         assert!(!cal.snapshot()["busy"].as_bool().unwrap());
@@ -885,124 +1415,352 @@ mod tests {
         cal.start(Kind::LevelHorizon, Inputs::default(), 0).unwrap();
         cal.on_text("[cal] calibration started: 2 level", 0);
         assert!(!cal.snapshot()["showOrientations"].as_bool().unwrap());
-        assert_eq!(cal.on_text("[cal] calibration failed", 0), vec![Action::Notice(FAILED_NOTICE)], "SensorsComponentController::_stopCalibration shows the app message on any failure");
+        assert_eq!(
+            cal.on_text("[cal] calibration failed", 0),
+            vec![Action::Notice(FAILED_NOTICE)],
+            "SensorsComponentController::_stopCalibration shows the app message on any failure"
+        );
         assert_eq!(cal.outcome, Some(Outcome::Failed));
-        assert!(cal.on_text("[cal] calibration done: level", 0).is_empty(), "texts outside a run are ignored");
+        assert!(
+            cal.on_text("[cal] calibration done: level", 0).is_empty(),
+            "texts outside a run are ignored"
+        );
         assert_eq!(cal.outcome, Some(Outcome::Failed));
     }
 
     #[test]
     fn px4_unknown_cal_version_falls_back_to_the_log() {
         let mut cal = Calibration::new(true);
-        cal.start(Kind::Accelerometer, Inputs::default(), 0).unwrap();
+        cal.start(Kind::Accelerometer, Inputs::default(), 0)
+            .unwrap();
         cal.on_text("[cal] calibration started: 3 accel", 0);
         assert!(cal.unknown_firmware);
         cal.on_text("[cal] down orientation detected", 0);
-        assert_eq!(stages(&cal)[0], "waiting", "an unknown protocol version only logs");
+        assert_eq!(
+            stages(&cal)[0],
+            "waiting",
+            "an unknown protocol version only logs"
+        );
         assert_eq!(cal.log.len(), 3);
         assert!(cal.snapshot()["usingLog"].as_bool().unwrap());
-        assert!(cal.start(Kind::Pressure, Inputs::default(), 0).is_err(), "pressure is an ArduPilot routine");
+        assert!(
+            cal.start(Kind::Pressure, Inputs::default(), 0).is_err(),
+            "pressure is an ArduPilot routine"
+        );
     }
 
     #[test]
     fn simple_accel_is_one_command_finished_by_its_ack() {
         let mut cal = Calibration::new(false);
-        assert_eq!(cal.start(Kind::AccelSimple, Inputs::default(), 0).unwrap(), vec![Action::Command { command: CMD_PREFLIGHT_CALIBRATION, params: [0.0, 0.0, 0.0, 0.0, 4.0, 0.0, 0.0], show_error: false }]);
+        assert_eq!(
+            cal.start(Kind::AccelSimple, Inputs::default(), 0).unwrap(),
+            vec![Action::Command {
+                command: CMD_PREFLIGHT_CALIBRATION,
+                params: [0.0, 0.0, 0.0, 0.0, 4.0, 0.0, 0.0],
+                show_error: false
+            }]
+        );
         assert!(cal.log.is_empty() && !cal.next_enabled);
         cal.on_ack(CMD_PREFLIGHT_CALIBRATION, RESULT_ACCEPTED, 0);
-        assert_eq!((cal.outcome, cal.log.last().map(String::as_str)), (Some(Outcome::Success), Some("Successfully completed")));
-        assert!(cal.snapshot()["routines"].as_array().unwrap().iter().all(|r| r["id"] != "accelSimple"), "it is a way to run the accelerometer routine, not a routine of its own");
+        assert_eq!(
+            (cal.outcome, cal.log.last().map(String::as_str)),
+            (Some(Outcome::Success), Some("Successfully completed"))
+        );
+        assert!(
+            cal.snapshot()["routines"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|r| r["id"] != "accelSimple"),
+            "it is a way to run the accelerometer routine, not a routine of its own"
+        );
     }
 
     #[test]
     fn compassmot_logs_the_steps_and_next_acknowledges_and_completes() {
         let mut cal = Calibration::new(false);
-        let inputs = Inputs { mag_sides: None, compass_mask: 0, compass_fitness: None, compass_learn: false, north: None };
-        assert_eq!(cal.start(Kind::CompassMot, inputs, 0).unwrap(), vec![Action::Command { command: CMD_PREFLIGHT_CALIBRATION, params: [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0], show_error: false }]);
+        let inputs = Inputs {
+            mag_sides: None,
+            compass_mask: 0,
+            compass_fitness: None,
+            compass_learn: false,
+            north: None,
+        };
+        assert_eq!(
+            cal.start(Kind::CompassMot, inputs, 0).unwrap(),
+            vec![Action::Command {
+                command: CMD_PREFLIGHT_CALIBRATION,
+                params: [0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
+                show_error: false
+            }]
+        );
         assert_eq!(cal.log.len(), 3);
         assert!(cal.snapshot()["nextEnabled"].as_bool().unwrap());
-        assert!(cal.cancel().is_err(), "APMSensorsComponentController enables Cancel only for the compass");
+        assert!(
+            cal.cancel().is_err(),
+            "APMSensorsComponentController enables Cancel only for the compass"
+        );
         cal.on_text("Starting calibration", 10);
         assert_eq!(cal.next().unwrap(), vec![Action::Ack]);
-        assert_eq!((cal.running, cal.outcome, cal.progress), (None, Some(Outcome::Success), 1.0));
+        assert_eq!(
+            (cal.running, cal.outcome, cal.progress),
+            (None, Some(Outcome::Success), 1.0)
+        );
         let shape = qt_shape(&cal.snapshot(), &json!({ "px4": false }));
-        assert_eq!((shape["orientationHelpText"].clone(), shape["statusText"].clone(), shape["completedCalibration"].clone()), (json!("Calibration complete"), json!(""), json!(8)), "StopCalibrationSuccess clears the log");
-        assert!(Calibration::new(true).start(Kind::CompassMot, Inputs { mag_sides: None, compass_mask: 0, compass_fitness: None, compass_learn: false, north: None }, 0).is_err(), "PX4 has no CompassMot");
-        assert_eq!(Kind::Airspeed.params()[5], 2.0, "PX4 deprecated param6 = 1 for airspeed");
+        assert_eq!(
+            (
+                shape["orientationHelpText"].clone(),
+                shape["statusText"].clone(),
+                shape["completedCalibration"].clone()
+            ),
+            (json!("Calibration complete"), json!(""), json!(8)),
+            "StopCalibrationSuccess clears the log"
+        );
+        assert!(
+            Calibration::new(true)
+                .start(
+                    Kind::CompassMot,
+                    Inputs {
+                        mag_sides: None,
+                        compass_mask: 0,
+                        compass_fitness: None,
+                        compass_learn: false,
+                        north: None
+                    },
+                    0
+                )
+                .is_err(),
+            "PX4 has no CompassMot"
+        );
+        assert_eq!(
+            Kind::Airspeed.params()[5],
+            2.0,
+            "PX4 deprecated param6 = 1 for airspeed"
+        );
     }
 
     #[test]
     fn an_apm_compass_starts_even_when_the_cancel_before_it_is_refused() {
         let mut cal = Calibration::new(false);
-        let inputs = Inputs { mag_sides: None, compass_mask: 0b1, compass_fitness: None, compass_learn: false, north: None };
+        let inputs = Inputs {
+            mag_sides: None,
+            compass_mask: 0b1,
+            compass_fitness: None,
+            compass_learn: false,
+            north: None,
+        };
         cal.start(Kind::Compass, inputs, 0).unwrap();
         let begun = cal.on_ack(CMD_DO_CANCEL_MAG_CAL, 3, 0);
-        assert!(begun.iter().any(|a| matches!(a, Action::Command { command: CMD_DO_START_MAG_CAL, .. })), "APMSensorsComponentController::_mavCommandResult starts on any cancel result, so an unsupported cancel does not hang the page");
+        assert!(
+            begun.iter().any(|a| matches!(
+                a,
+                Action::Command {
+                    command: CMD_DO_START_MAG_CAL,
+                    ..
+                }
+            )),
+            "APMSensorsComponentController::_mavCommandResult starts on any cancel result, so an unsupported cancel does not hang the page"
+        );
         assert!(!Calibration::new(true).mutes_comm_lost());
     }
 
     #[test]
     fn apm_compass_cancels_then_starts_and_reports_per_compass() {
         let mut cal = Calibration::new(false);
-        let inputs = Inputs { mag_sides: None, compass_mask: 0b111, compass_fitness: Some(30.0), compass_learn: true, north: None };
+        let inputs = Inputs {
+            mag_sides: None,
+            compass_mask: 0b111,
+            compass_fitness: Some(30.0),
+            compass_learn: true,
+            north: None,
+        };
         let started = cal.start(Kind::Compass, inputs, 0).unwrap();
-        assert_eq!(started, vec![Action::Command { command: CMD_DO_CANCEL_MAG_CAL, params: [0.0; 7], show_error: false }]);
+        assert_eq!(
+            started,
+            vec![Action::Command {
+                command: CMD_DO_CANCEL_MAG_CAL,
+                params: [0.0; 7],
+                show_error: false
+            }]
+        );
         let begun = cal.on_ack(CMD_DO_CANCEL_MAG_CAL, RESULT_ACCEPTED, 0);
-        assert_eq!(begun, vec![Action::SetParam { name: COMPASS_FITNESS_PARAM, value: 100.0 }, Action::Command { command: CMD_DO_START_MAG_CAL, params: [7.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0], show_error: true }]);
-        assert!(cal.compasses.iter().all(|c| !c.complete), "every configured compass starts incomplete, which is why the guard cannot be the completion flags");
-        assert!(cal.on_ack(CMD_DO_CANCEL_MAG_CAL, RESULT_ACCEPTED, 0).is_empty(), "a late duplicate ack does not restart");
-        assert!(cal.on_ack(CMD_PREFLIGHT_CALIBRATION, RESULT_ACCEPTED, 0).is_empty(), "an ack for a command the compass flow never sent does not end it");
+        assert_eq!(
+            begun,
+            vec![
+                Action::SetParam {
+                    name: COMPASS_FITNESS_PARAM,
+                    value: 100.0
+                },
+                Action::Command {
+                    command: CMD_DO_START_MAG_CAL,
+                    params: [7.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+                    show_error: true
+                }
+            ]
+        );
+        assert!(
+            cal.compasses.iter().all(|c| !c.complete),
+            "every configured compass starts incomplete, which is why the guard cannot be the completion flags"
+        );
+        assert!(
+            cal.on_ack(CMD_DO_CANCEL_MAG_CAL, RESULT_ACCEPTED, 0)
+                .is_empty(),
+            "a late duplicate ack does not restart"
+        );
+        assert!(
+            cal.on_ack(CMD_PREFLIGHT_CALIBRATION, RESULT_ACCEPTED, 0)
+                .is_empty(),
+            "an ack for a command the compass flow never sent does not end it"
+        );
         assert_eq!(cal.running, Some(Kind::Compass));
         cal.on_mag_progress(0, 0b111, 90, 0);
         assert!(cal.on_mag_report(0, MAG_CAL_SUCCESS, 1.0, 0).is_empty());
-        assert_eq!((cal.progress, cal.compasses[0].complete), (0.0, false), "a previous session's stream is ignored until DO_START_MAG_CAL is accepted");
-        assert!(cal.on_ack(CMD_DO_START_MAG_CAL, RESULT_ACCEPTED, 0).is_empty());
+        assert_eq!(
+            (cal.progress, cal.compasses[0].complete),
+            (0.0, false),
+            "a previous session's stream is ignored until DO_START_MAG_CAL is accepted"
+        );
+        assert!(
+            cal.on_ack(CMD_DO_START_MAG_CAL, RESULT_ACCEPTED, 0)
+                .is_empty()
+        );
         cal.on_mag_progress(0, 0b111, 60, 0);
         cal.on_mag_progress(1, 0b111, 30, 0);
         assert_eq!(cal.progress, 0.30);
         cal.on_mag_progress(2, 0b1111, 30, 0);
-        assert_eq!(cal.progress, 0.40, "only the three compass bits divide the progress, whatever else the firmware sets");
+        assert_eq!(
+            cal.progress, 0.40,
+            "only the three compass bits divide the progress, whatever else the firmware sets"
+        );
         assert!(cal.on_mag_report(0, MAG_CAL_SUCCESS, 4.5, 0).is_empty());
         assert_eq!(cal.log.last().unwrap(), "Continue rotating...");
         let lines = cal.log.len();
         assert!(cal.on_mag_report(0, MAG_CAL_SUCCESS, 4.5, 0).is_empty());
-        assert_eq!(cal.log.len(), lines, "a repeated report for a finished compass adds nothing");
+        assert_eq!(
+            cal.log.len(),
+            lines,
+            "a repeated report for a finished compass adds nothing"
+        );
         assert!(cal.on_mag_report(2, MAG_CAL_SUCCESS, 5.0, 0).is_empty());
         let done = cal.on_mag_report(1, MAG_CAL_SUCCESS, 6.0, 0);
-        assert_eq!(done, vec![Action::SetParam { name: COMPASS_FITNESS_PARAM, value: 30.0 }], "StopCalibrationSuccessShowLog leaves COMPASS_LEARN alone");
+        assert_eq!(
+            done,
+            vec![Action::SetParam {
+                name: COMPASS_FITNESS_PARAM,
+                value: 30.0
+            }],
+            "StopCalibrationSuccessShowLog leaves COMPASS_LEARN alone"
+        );
         assert_eq!(cal.outcome, Some(Outcome::Success));
-        assert_eq!(cal.progress, 0.0, "only StopCalibrationSuccess fills the bar");
+        assert_eq!(
+            cal.progress, 0.0,
+            "only StopCalibrationSuccess fills the bar"
+        );
         let snapshot = cal.snapshot();
-        assert_eq!(snapshot["completed"], 3, "calibrationComplete(CalibrationMag)");
+        assert_eq!(
+            snapshot["completed"], 3,
+            "calibrationComplete(CalibrationMag)"
+        );
         assert_eq!(snapshot["compasses"][1]["fitness"], 6.0);
-        assert!(snapshot["log"].as_array().unwrap().iter().any(|l| l.as_str().unwrap().contains("REBOOT")));
+        assert!(
+            snapshot["log"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|l| l.as_str().unwrap().contains("REBOOT"))
+        );
     }
 
     #[test]
     fn apm_compass_below_threshold_fails_and_restores_fitness() {
         let mut cal = Calibration::new(false);
-        cal.start(Kind::Compass, Inputs { compass_mask: 0b001, compass_fitness: Some(25.0), ..Inputs::default() }, 0).unwrap();
+        cal.start(
+            Kind::Compass,
+            Inputs {
+                compass_mask: 0b001,
+                compass_fitness: Some(25.0),
+                ..Inputs::default()
+            },
+            0,
+        )
+        .unwrap();
         cal.on_ack(CMD_DO_CANCEL_MAG_CAL, RESULT_ACCEPTED, 0);
         cal.on_ack(CMD_DO_START_MAG_CAL, RESULT_ACCEPTED, 0);
         let failed = cal.on_mag_report(0, 5, 99.0, 0);
         assert_eq!(
             failed,
-            vec![Action::SetParam { name: COMPASS_FITNESS_PARAM, value: 25.0 }, Action::Command { command: CMD_DO_CANCEL_MAG_CAL, params: [0.0; 7], show_error: false }, Action::Notice(FAILED_NOTICE)],
+            vec![
+                Action::SetParam {
+                    name: COMPASS_FITNESS_PARAM,
+                    value: 25.0
+                },
+                Action::Command {
+                    command: CMD_DO_CANCEL_MAG_CAL,
+                    params: [0.0; 7],
+                    show_error: false
+                },
+                Action::Notice(FAILED_NOTICE)
+            ],
             "_stopCalibration sends MAV_CMD_DO_CANCEL_MAG_CAL on a failed compass cal so the autopilot stops and cannot save a late report"
         );
         assert_eq!(cal.outcome, Some(Outcome::Failed));
-        cal.start(Kind::Compass, Inputs { compass_mask: 0b001, compass_fitness: Some(25.0), ..Inputs::default() }, 0).unwrap();
-        assert!(cal.snapshot()["cancelEnabled"].as_bool().unwrap(), "_startLogCalibration enables Cancel for a mag cal at once");
+        cal.start(
+            Kind::Compass,
+            Inputs {
+                compass_mask: 0b001,
+                compass_fitness: Some(25.0),
+                ..Inputs::default()
+            },
+            0,
+        )
+        .unwrap();
+        assert!(
+            cal.snapshot()["cancelEnabled"].as_bool().unwrap(),
+            "_startLogCalibration enables Cancel for a mag cal at once"
+        );
         let refused = cal.on_ack(CMD_DO_CANCEL_MAG_CAL, RESULT_ACCEPTED, 0);
         assert_eq!(refused.len(), 2);
         assert!(cal.snapshot()["cancelEnabled"].as_bool().unwrap());
         let aborted = cal.on_ack(CMD_DO_START_MAG_CAL, 2, 0);
-        assert_eq!(cal.log.last().map(String::as_str), Some("Failed to start compass calibration"));
-        assert_eq!(aborted, vec![Action::SetParam { name: COMPASS_FITNESS_PARAM, value: 25.0 }, Action::Command { command: CMD_DO_CANCEL_MAG_CAL, params: [0.0; 7], show_error: false }, Action::Notice(FAILED_NOTICE)], "a refused start restores the threshold and cancels like any failed compass cal");
-        cal.start(Kind::Compass, Inputs { compass_mask: 0b001, ..Inputs::default() }, 0).unwrap();
+        assert_eq!(
+            cal.log.last().map(String::as_str),
+            Some("Failed to start compass calibration")
+        );
+        assert_eq!(
+            aborted,
+            vec![
+                Action::SetParam {
+                    name: COMPASS_FITNESS_PARAM,
+                    value: 25.0
+                },
+                Action::Command {
+                    command: CMD_DO_CANCEL_MAG_CAL,
+                    params: [0.0; 7],
+                    show_error: false
+                },
+                Action::Notice(FAILED_NOTICE)
+            ],
+            "a refused start restores the threshold and cancels like any failed compass cal"
+        );
+        cal.start(
+            Kind::Compass,
+            Inputs {
+                compass_mask: 0b001,
+                ..Inputs::default()
+            },
+            0,
+        )
+        .unwrap();
         cal.on_ack(CMD_DO_CANCEL_MAG_CAL, RESULT_ACCEPTED, 0);
         let cancelled = cal.cancel().unwrap();
-        assert_eq!(cancelled, vec![Action::Command { command: CMD_DO_CANCEL_MAG_CAL, params: [0.0; 7], show_error: true }]);
+        assert_eq!(
+            cancelled,
+            vec![Action::Command {
+                command: CMD_DO_CANCEL_MAG_CAL,
+                params: [0.0; 7],
+                show_error: true
+            }]
+        );
         assert_eq!(cal.outcome, Some(Outcome::Cancelled));
     }
 
@@ -1010,15 +1768,42 @@ mod tests {
     fn apm_accel_follows_the_vehicle_position_prompts_and_next_acks() {
         let mut cal = Calibration::new(false);
         assert!(cal.next().is_err());
-        cal.start(Kind::Accelerometer, Inputs::default(), 0).unwrap();
+        cal.start(Kind::Accelerometer, Inputs::default(), 0)
+            .unwrap();
         assert_eq!(cal.snapshot()["help"], HELP_APM_ACCEL);
-        assert!(cal.cancel().is_err(), "ArduPilot accel calibration has no cancel");
-        assert!(cal.next().is_err(), "next waits for the vehicle to ask for the first position");
+        assert!(
+            cal.cancel().is_err(),
+            "ArduPilot accel calibration has no cancel"
+        );
+        assert!(
+            cal.next().is_err(),
+            "next waits for the vehicle to ask for the first position"
+        );
         cal.on_accel_position(1, 0);
-        assert_eq!(stages(&cal), ["inProgress", "waiting", "waiting", "waiting", "waiting", "waiting"]);
+        assert_eq!(
+            stages(&cal),
+            [
+                "inProgress",
+                "waiting",
+                "waiting",
+                "waiting",
+                "waiting",
+                "waiting"
+            ]
+        );
         assert_eq!(cal.next().unwrap(), vec![Action::Ack]);
         cal.on_accel_position(2, 0);
-        assert_eq!(stages(&cal), ["done", "waiting", "inProgress", "waiting", "waiting", "waiting"]);
+        assert_eq!(
+            stages(&cal),
+            [
+                "done",
+                "waiting",
+                "inProgress",
+                "waiting",
+                "waiting",
+                "waiting"
+            ]
+        );
         assert_eq!(cal.progress, 0.17);
         cal.on_accel_position(2, 0);
         assert_eq!(cal.progress, 0.17, "a repeated prompt changes nothing");
@@ -1026,17 +1811,33 @@ mod tests {
         cal.on_accel_position(4, 0);
         cal.on_accel_position(5, 0);
         cal.on_accel_position(6, 0);
-        assert_eq!(stages(&cal), ["done", "inProgress", "done", "done", "done", "done"]);
+        assert_eq!(
+            stages(&cal),
+            ["done", "inProgress", "done", "done", "done", "done"]
+        );
         assert_eq!(cal.progress, 0.85);
         cal.on_text("Place vehicle level and press any key.", 0);
-        assert!(cal.log.is_empty(), "the visual accel cal never listens to status texts");
+        assert!(
+            cal.log.is_empty(),
+            "the visual accel cal never listens to status texts"
+        );
         assert!(cal.on_accel_position(ACCEL_POS_SUCCESS, 0).is_empty());
-        assert_eq!(cal.snapshot()["completed"], 4, "calibrationComplete(CalibrationAccel)");
+        assert_eq!(
+            cal.snapshot()["completed"],
+            4,
+            "calibrationComplete(CalibrationAccel)"
+        );
         assert_eq!(cal.outcome, Some(Outcome::Success));
         assert!(cal.sides.iter().all(|s| s.stage == Stage::Done));
-        assert!(cal.snapshot()["showOrientations"].as_bool().unwrap(), "the finished grid stays on screen, as the Qt view leaves it");
+        assert!(
+            cal.snapshot()["showOrientations"].as_bool().unwrap(),
+            "the finished grid stays on screen, as the Qt view leaves it"
+        );
         assert!(cal.next().is_err());
-        assert!(cal.on_accel_position(3, 0).is_empty(), "a prompt after the run ended changes nothing");
+        assert!(
+            cal.on_accel_position(3, 0).is_empty(),
+            "a prompt after the run ended changes nothing"
+        );
         assert_eq!(cal.outcome, Some(Outcome::Success));
     }
 
@@ -1044,52 +1845,112 @@ mod tests {
     fn a_px4_gyro_asks_for_one_orientation_only() {
         let mut cal = Calibration::new(true);
         cal.start(Kind::Gyro, Inputs::default(), 0).unwrap();
-        assert!(!cal.snapshot()["showOrientations"].as_bool().unwrap(), "nothing is shown before the vehicle says the calibration started");
+        assert!(
+            !cal.snapshot()["showOrientations"].as_bool().unwrap(),
+            "nothing is shown before the vehicle says the calibration started"
+        );
         cal.on_text("[cal] calibration started: 2 gyro", 0);
         let visible: Vec<bool> = cal.sides.iter().map(|s| s.visible).collect();
-        assert_eq!(visible, [true, false, false, false, false, false], "a gyro calibration is held level, never rotated through six sides");
+        assert_eq!(
+            visible,
+            [true, false, false, false, false, false],
+            "a gyro calibration is held level, never rotated through six sides"
+        );
         assert!(cal.snapshot()["showOrientations"].as_bool().unwrap());
         cal.on_text("[cal] progress <40>", 0);
         assert_eq!(cal.progress, 0.4);
         cal.on_text("[cal] calibration failed", 0);
-        assert_eq!(cal.progress, 0.0, "a failed run does not leave the bar where it stopped");
+        assert_eq!(
+            cal.progress, 0.0,
+            "a failed run does not leave the bar where it stopped"
+        );
     }
 
     #[test]
     fn an_apm_accel_prompt_closes_the_side_before_it() {
         let mut cal = Calibration::new(false);
-        cal.start(Kind::Accelerometer, Inputs::default(), 0).unwrap();
+        cal.start(Kind::Accelerometer, Inputs::default(), 0)
+            .unwrap();
         cal.on_accel_position(4, 0);
-        assert_eq!(stages(&cal), ["waiting", "waiting", "waiting", "done", "inProgress", "waiting"], "each prompt closes the side before it in ArduPilot's order, which is what the Qt view does");
+        assert_eq!(
+            stages(&cal),
+            [
+                "waiting",
+                "waiting",
+                "waiting",
+                "done",
+                "inProgress",
+                "waiting"
+            ],
+            "each prompt closes the side before it in ArduPilot's order, which is what the Qt view does"
+        );
         cal.on_accel_position(1, 0);
-        assert_eq!(stages(&cal)[0], "inProgress", "the level prompt has no side before it to close");
+        assert_eq!(
+            stages(&cal)[0],
+            "inProgress",
+            "the level prompt has no side before it to close"
+        );
         assert_eq!(stages(&cal)[4], "inProgress");
     }
 
     #[test]
     fn a_run_the_vehicle_abandons_stops_itself() {
         let mut cal = Calibration::new(false);
-        cal.start(Kind::Accelerometer, Inputs::default(), 1_000).unwrap();
+        cal.start(Kind::Accelerometer, Inputs::default(), 1_000)
+            .unwrap();
         assert!(cal.tick(1_000 + STALL_TIMEOUT_MS - 1).is_empty());
         cal.on_accel_position(1, 5_000);
-        assert!(cal.tick(5_000 + STALL_TIMEOUT_MS - 1).is_empty(), "every answer from the vehicle restarts the clock");
-        assert_eq!(cal.tick(5_000 + STALL_TIMEOUT_MS), vec![Action::Notice(FAILED_NOTICE)], "an accelerometer run writes no parameters when it gives up, and says it failed");
+        assert!(
+            cal.tick(5_000 + STALL_TIMEOUT_MS - 1).is_empty(),
+            "every answer from the vehicle restarts the clock"
+        );
+        assert_eq!(
+            cal.tick(5_000 + STALL_TIMEOUT_MS),
+            vec![Action::Notice(FAILED_NOTICE)],
+            "an accelerometer run writes no parameters when it gives up, and says it failed"
+        );
         assert_eq!(cal.outcome, Some(Outcome::Failed));
-        assert_eq!(cal.log.last().unwrap(), "The vehicle stopped answering during the calibration");
-        assert!(cal.start(Kind::Accelerometer, Inputs::default(), 9_000).is_ok(), "giving up frees the vehicle for another try");
+        assert_eq!(
+            cal.log.last().unwrap(),
+            "The vehicle stopped answering during the calibration"
+        );
+        assert!(
+            cal.start(Kind::Accelerometer, Inputs::default(), 9_000)
+                .is_ok(),
+            "giving up frees the vehicle for another try"
+        );
         assert!(cal.tick(9_000).is_empty());
     }
 
     #[test]
     fn an_apm_compass_with_nothing_configured_finishes_on_the_first_report() {
         let mut cal = Calibration::new(false);
-        cal.start(Kind::Compass, Inputs { compass_mask: 0, ..Inputs::default() }, 0).unwrap();
+        cal.start(
+            Kind::Compass,
+            Inputs {
+                compass_mask: 0,
+                ..Inputs::default()
+            },
+            0,
+        )
+        .unwrap();
         let begun = cal.on_ack(CMD_DO_CANCEL_MAG_CAL, RESULT_ACCEPTED, 0);
-        assert_eq!(begun, vec![Action::Command { command: CMD_DO_START_MAG_CAL, params: [0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0], show_error: true }], "with no fitness parameter there is nothing to bump");
+        assert_eq!(
+            begun,
+            vec![Action::Command {
+                command: CMD_DO_START_MAG_CAL,
+                params: [0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+                show_error: true
+            }],
+            "with no fitness parameter there is nothing to bump"
+        );
         assert!(cal.compasses.iter().all(|c| c.complete && c.succeeded));
         cal.on_ack(CMD_DO_START_MAG_CAL, RESULT_ACCEPTED, 0);
         let done = cal.on_mag_report(0, MAG_CAL_SUCCESS, 3.0, 0);
-        assert!(done.is_empty(), "no fitness was bumped, so nothing is restored");
+        assert!(
+            done.is_empty(),
+            "no fitness was bumped, so nothing is restored"
+        );
         assert_eq!(cal.outcome, Some(Outcome::Success));
     }
 
@@ -1097,7 +1958,14 @@ mod tests {
     fn apm_simple_routines_finish_on_the_command_ack() {
         let mut cal = Calibration::new(false);
         let started = cal.start(Kind::Pressure, Inputs::default(), 0).unwrap();
-        assert_eq!(started, vec![Action::Command { command: CMD_PREFLIGHT_CALIBRATION, params: [0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0], show_error: false }]);
+        assert_eq!(
+            started,
+            vec![Action::Command {
+                command: CMD_PREFLIGHT_CALIBRATION,
+                params: [0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+                show_error: false
+            }]
+        );
         assert_eq!(cal.log, vec!["Requesting pressure calibration..."]);
         cal.on_ack(CMD_PREFLIGHT_CALIBRATION, RESULT_IN_PROGRESS, 0);
         assert_eq!(cal.running, Some(Kind::Pressure));
@@ -1105,12 +1973,35 @@ mod tests {
         assert_eq!(cal.outcome, Some(Outcome::Success));
         assert_eq!(cal.snapshot()["completed"], 9);
         let shape = qt_shape(&cal.snapshot(), &json!({ "px4": false }));
-        assert_eq!((shape["calProgress"].clone(), shape["orientationHelpText"].clone(), shape["statusText"].clone()), (json!(0.0), json!(""), json!("Requesting pressure calibration...\nIn progress\nSuccessfully completed")), "StopCalibrationSuccessShowLog keeps the log");
+        assert_eq!(
+            (
+                shape["calProgress"].clone(),
+                shape["orientationHelpText"].clone(),
+                shape["statusText"].clone()
+            ),
+            (
+                json!(0.0),
+                json!(""),
+                json!("Requesting pressure calibration...\nIn progress\nSuccessfully completed")
+            ),
+            "StopCalibrationSuccessShowLog keeps the log"
+        );
         cal.start(Kind::LevelHorizon, Inputs::default(), 0).unwrap();
-        assert_eq!(cal.snapshot()["completed"], Value::Null, "a new run forgets the last completion");
+        assert_eq!(
+            cal.snapshot()["completed"],
+            Value::Null,
+            "a new run forgets the last completion"
+        );
         cal.on_ack(CMD_PREFLIGHT_CALIBRATION, 4, 0);
         assert_eq!(cal.outcome, Some(Outcome::Failed));
-        assert!(cal.start(Kind::Airspeed, Inputs::default(), 0).is_err(), "airspeed is a PX4 routine");
-        assert_eq!(cal.snapshot()["routines"].as_array().unwrap().len(), 6, "CompassMot is the sixth ArduPilot routine");
+        assert!(
+            cal.start(Kind::Airspeed, Inputs::default(), 0).is_err(),
+            "airspeed is a PX4 routine"
+        );
+        assert_eq!(
+            cal.snapshot()["routines"].as_array().unwrap().len(),
+            6,
+            "CompassMot is the sixth ArduPilot routine"
+        );
     }
 }

@@ -34,7 +34,14 @@ impl Phase {
     }
 
     fn busy(self) -> bool {
-        matches!(self, Phase::Connecting | Phase::Choosing | Phase::Erasing | Phase::Programming | Phase::Verifying)
+        matches!(
+            self,
+            Phase::Connecting
+                | Phase::Choosing
+                | Phase::Erasing
+                | Phase::Programming
+                | Phase::Verifying
+        )
     }
 }
 
@@ -62,7 +69,11 @@ pub enum Event {
 
 const CHOICE_POLL_MS: u64 = 200;
 
-fn await_choice(choices: Vec<(String, String)>, best: Option<usize>, report: &mut dyn FnMut(Event)) -> Result<String, String> {
+fn await_choice(
+    choices: Vec<(String, String)>,
+    best: Option<usize>,
+    report: &mut dyn FnMut(Event),
+) -> Result<String, String> {
     report(Event::Choose(choices, best));
     let picked = std::iter::repeat(())
         .take_while(|()| !cancelled())
@@ -77,24 +88,49 @@ fn await_choice(choices: Vec<(String, String)>, best: Option<usize>, report: &mu
     picked.ok_or_else(|| FLASH_CANCELLED.to_string())
 }
 
-fn image_for(file: &str, contents: &[u8], board: &BoardInfo, report: &mut dyn FnMut(Event)) -> Result<Vec<u8>, String> {
+fn image_for(
+    file: &str,
+    contents: &[u8],
+    board: &BoardInfo,
+    report: &mut dyn FnMut(Event),
+) -> Result<Vec<u8>, String> {
     let lower = file.to_ascii_lowercase();
     let bytes = match lower.ends_with(".px4") || lower.ends_with(".apj") {
-        true => crate::bootloader::parse_px4(&String::from_utf8_lossy(contents), board.board_id).map_err(|e| image_load_failed(&e, report))?.bytes,
-        false => contents.iter().copied().chain(std::iter::repeat_n(0xff, (4 - contents.len() % 4) % 4)).collect(),
+        true => {
+            crate::bootloader::parse_px4(&String::from_utf8_lossy(contents), board.board_id)
+                .map_err(|e| image_load_failed(&e, report))?
+                .bytes
+        }
+        false => contents
+            .iter()
+            .copied()
+            .chain(std::iter::repeat_n(0xff, (4 - contents.len() % 4) % 4))
+            .collect(),
     };
     match bytes.len() <= board.flash_size as usize {
         true => Ok(bytes),
-        false => Err(format!("Image size of {} is too large for board flash size {}", bytes.len(), board.flash_size)),
+        false => Err(format!(
+            "Image size of {} is too large for board flash size {}",
+            bytes.len(),
+            board.flash_size
+        )),
     }
 }
 
 pub const PLUG_IN: &str = "Plug in your device via USB.";
 pub const REPLUG: &str = "Now unplug your device and plug it back in to enter bootloader mode.";
-pub const BOARD_GONE: &str = "Device disconnected \u{2014} waiting for it to reappear in bootloader mode...";
+pub const BOARD_GONE: &str =
+    "Device disconnected \u{2014} waiting for it to reappear in bootloader mode...";
 
 pub fn found_device(description: &str, port: &str) -> String {
-    format!("Found device: {} ({port})", if description.is_empty() { "Unknown" } else { description })
+    format!(
+        "Found device: {} ({port})",
+        if description.is_empty() {
+            "Unknown"
+        } else {
+            description
+        }
+    )
 }
 pub const FIND_BOARD_INTERVAL_MS: u64 = 500;
 pub const SUSPENDED: &str = "Connect not allowed during Firmware Upgrade.";
@@ -134,13 +170,25 @@ impl Target {
     pub fn new(location: &str, ports: &[crate::boards::PortInfo]) -> Target {
         Target {
             location: location.to_string(),
-            serial: ports.iter().find(|p| p.system_location == location).map(|p| p.serial_number.clone()).unwrap_or_default(),
-            ignored: ports.iter().filter(|p| p.system_location != location).map(|p| p.system_location.clone()).collect(),
+            serial: ports
+                .iter()
+                .find(|p| p.system_location == location)
+                .map(|p| p.serial_number.clone())
+                .unwrap_or_default(),
+            ignored: ports
+                .iter()
+                .filter(|p| p.system_location != location)
+                .map(|p| p.system_location.clone())
+                .collect(),
             seen: false,
         }
     }
 
-    pub fn find(&mut self, ports: &[crate::boards::PortInfo], can_flash: &dyn Fn(&crate::boards::PortInfo) -> bool) -> Sighting {
+    pub fn find(
+        &mut self,
+        ports: &[crate::boards::PortInfo],
+        can_flash: &dyn Fn(&crate::boards::PortInfo) -> bool,
+    ) -> Sighting {
         let found = ports.iter().find(|p| {
             p.system_location == self.location
                 || (!self.serial.is_empty() && p.serial_number == self.serial)
@@ -154,44 +202,78 @@ impl Target {
                 if self.serial.is_empty() {
                     self.serial = port.serial_number.clone();
                 }
-                if in_bootloader(&port.description) { Sighting::Bootloader } else { Sighting::Running }
+                if in_bootloader(&port.description) {
+                    Sighting::Bootloader
+                } else {
+                    Sighting::Running
+                }
             }
         }
     }
 }
 
 pub fn recognized_board(port: &crate::boards::PortInfo) -> Option<&'static str> {
-    crate::corelinks::board_type_of(port).filter(|b| matches!(b, crate::boards::BoardType::Pixhawk | crate::boards::BoardType::SiKRadio)).map(crate::boards::BoardType::name)
+    crate::corelinks::board_type_of(port)
+        .filter(|b| {
+            matches!(
+                b,
+                crate::boards::BoardType::Pixhawk | crate::boards::BoardType::SiKRadio
+            )
+        })
+        .map(crate::boards::BoardType::name)
 }
 
 fn flashable(port: &crate::boards::PortInfo) -> bool {
     recognized_board(port).is_some()
 }
 
-pub fn wait_for_bootloader(look: &mut dyn FnMut() -> Sighting, pause: &mut dyn FnMut(), cancelled: &dyn Fn() -> bool, report: &mut dyn FnMut(Event)) -> Result<(), String> {
+pub fn wait_for_bootloader(
+    look: &mut dyn FnMut() -> Sighting,
+    pause: &mut dyn FnMut(),
+    cancelled: &dyn Fn() -> bool,
+    report: &mut dyn FnMut(Event),
+) -> Result<(), String> {
     let first = look();
     if first == Sighting::Bootloader {
         return Ok(());
     }
     let mut must_leave = first == Sighting::Running;
-    report(Event::Status(if must_leave { REPLUG } else { PLUG_IN }.to_string()));
-    let arrived = std::iter::repeat(()).take_while(|()| !cancelled()).any(|()| {
-        pause();
-        match (must_leave, look()) {
-            (true, Sighting::Absent) => {
-                must_leave = false;
-                report(Event::Status(BOARD_GONE.to_string()));
-                false
+    report(Event::Status(
+        if must_leave { REPLUG } else { PLUG_IN }.to_string(),
+    ));
+    let arrived = std::iter::repeat(())
+        .take_while(|()| !cancelled())
+        .any(|()| {
+            pause();
+            match (must_leave, look()) {
+                (true, Sighting::Absent) => {
+                    must_leave = false;
+                    report(Event::Status(BOARD_GONE.to_string()));
+                    false
+                }
+                (true, _) | (false, Sighting::Absent) => false,
+                (false, _) => true,
             }
-            (true, _) | (false, Sighting::Absent) => false,
-            (false, _) => true,
-        }
-    });
-    if arrived { Ok(()) } else { Err(FLASH_CANCELLED.to_string()) }
+        });
+    if arrived {
+        Ok(())
+    } else {
+        Err(FLASH_CANCELLED.to_string())
+    }
 }
 
-pub fn flash<P: Port>(port: P, file: &str, contents: &[u8], report: &mut dyn FnMut(Event)) -> Result<(), String> {
-    flash_from(port, is_ihx(file), &mut |_| Ok((file.to_string(), contents.to_vec())), report)
+pub fn flash<P: Port>(
+    port: P,
+    file: &str,
+    contents: &[u8],
+    report: &mut dyn FnMut(Event),
+) -> Result<(), String> {
+    flash_from(
+        port,
+        is_ihx(file),
+        &mut |_| Ok((file.to_string(), contents.to_vec())),
+        report,
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -199,7 +281,10 @@ pub enum Source {
     File(String),
     Url(String),
     Px4(crate::firmwarecatalog::Build),
-    ArduPilot { vehicle: crate::firmwarecatalog::Vehicle, build: crate::firmwarecatalog::Build },
+    ArduPilot {
+        vehicle: crate::firmwarecatalog::Vehicle,
+        build: crate::firmwarecatalog::Build,
+    },
     Sik,
 }
 
@@ -234,11 +319,20 @@ pub fn source(given: &str) -> Result<Source, String> {
     match parts.as_slice() {
         [scheme, ..] if matches!(*scheme, "http" | "https") => Ok(Source::Url(given.to_string())),
         ["sik", "stable"] => Ok(Source::Sik),
-        ["sik", build] => Err(format!("SiK radio firmware is only published as stable, not {build}")),
-        ["px4", build] => crate::firmwarecatalog::Build::parse(build).map(Source::Px4).ok_or_else(|| format!("PX4 builds are stable, beta or dev, not {build}")),
-        ["ardupilot", vehicle, build] => match (crate::firmwarecatalog::Vehicle::parse(vehicle), crate::firmwarecatalog::Build::parse(build)) {
+        ["sik", build] => Err(format!(
+            "SiK radio firmware is only published as stable, not {build}"
+        )),
+        ["px4", build] => crate::firmwarecatalog::Build::parse(build)
+            .map(Source::Px4)
+            .ok_or_else(|| format!("PX4 builds are stable, beta or dev, not {build}")),
+        ["ardupilot", vehicle, build] => match (
+            crate::firmwarecatalog::Vehicle::parse(vehicle),
+            crate::firmwarecatalog::Build::parse(build),
+        ) {
             (Some(vehicle), Some(build)) => Ok(Source::ArduPilot { vehicle, build }),
-            _ => Err(format!("ArduPilot builds are ardupilot:<copter|heli|plane|rover|sub>:<stable|beta|dev>, not {given}")),
+            _ => Err(format!(
+                "ArduPilot builds are ardupilot:<copter|heli|plane|rover|sub>:<stable|beta|dev>, not {given}"
+            )),
         },
         _ => Ok(Source::File(given.to_string())),
     }
@@ -257,19 +351,40 @@ fn manifest() -> Result<Vec<crate::firmwarecatalog::Entry>, String> {
     Ok(entries)
 }
 
-pub fn resolve(source: &Source, board: &BoardInfo, description: &str, report: &mut dyn FnMut(Event)) -> Result<(String, Vec<u8>), String> {
+pub fn resolve(
+    source: &Source,
+    board: &BoardInfo,
+    description: &str,
+    report: &mut dyn FnMut(Event),
+) -> Result<(String, Vec<u8>), String> {
     let url = match source {
         Source::File(path) => {
             report(Event::Status(format!("Using firmware file {path}")));
-            return crate::vfs::read(path).map(|bytes| (path.clone(), bytes)).map_err(|e| format!("Unable to open firmware file {path}: {e}"));
+            return crate::vfs::read(path)
+                .map(|bytes| (path.clone(), bytes))
+                .map_err(|e| format!("Unable to open firmware file {path}: {e}"));
         }
         Source::Url(url) => url.clone(),
-        Source::Px4(build) => crate::firmwarecatalog::px4_url(board.board_id, *build).ok_or_else(|| "Unable to find specified firmware for board type".to_string())?,
-        Source::Sik => sik_url(board.board_id).ok_or_else(|| "Unable to find specified firmware for board type".to_string())?,
+        Source::Px4(build) => crate::firmwarecatalog::px4_url(board.board_id, *build)
+            .ok_or_else(|| "Unable to find specified firmware for board type".to_string())?,
+        Source::Sik => sik_url(board.board_id)
+            .ok_or_else(|| "Unable to find specified firmware for board type".to_string())?,
         Source::ArduPilot { vehicle, build } => {
-            report(Event::Status("Downloading the ArduPilot firmware list...".into()));
-            let chibios = crate::settingsstore::raw_setting(APM_CHIBIOS).and_then(|v| v.as_i64()).unwrap_or(0) == 0;
-            let (choices, best) = crate::firmwarecatalog::apm_url(&manifest()?, board.board_id, *build, *vehicle, chibios, description)?;
+            report(Event::Status(
+                "Downloading the ArduPilot firmware list...".into(),
+            ));
+            let chibios = crate::settingsstore::raw_setting(APM_CHIBIOS)
+                .and_then(|v| v.as_i64())
+                .unwrap_or(0)
+                == 0;
+            let (choices, best) = crate::firmwarecatalog::apm_url(
+                &manifest()?,
+                board.board_id,
+                *build,
+                *vehicle,
+                chibios,
+                description,
+            )?;
             await_choice(choices, best, report)?
         }
     };
@@ -279,9 +394,15 @@ pub fn resolve(source: &Source, board: &BoardInfo, description: &str, report: &m
     Ok((url, bytes))
 }
 
-fn flash_sik<P: Port>(loader: &mut Bootloader<P>, board: &BoardInfo, fetch: &mut dyn FnMut(&BoardInfo) -> Result<(String, Vec<u8>), String>, report: &mut dyn FnMut(Event)) -> Result<(), String> {
+fn flash_sik<P: Port>(
+    loader: &mut Bootloader<P>,
+    board: &BoardInfo,
+    fetch: &mut dyn FnMut(&BoardInfo) -> Result<(String, Vec<u8>), String>,
+    report: &mut dyn FnMut(Event),
+) -> Result<(), String> {
     let (_, contents) = fetch(board)?;
-    let blocks = crate::bootloader::parse_ihx(&String::from_utf8_lossy(&contents)).map_err(|e| image_load_failed(&e, report))?;
+    let blocks = crate::bootloader::parse_ihx(&String::from_utf8_lossy(&contents))
+        .map_err(|e| image_load_failed(&e, report))?;
     loader.init_flash_sequence()?;
     begin_erase(report)?;
     report(Event::Status("Erasing previous program...".into()));
@@ -289,7 +410,9 @@ fn flash_sik<P: Port>(loader: &mut Bootloader<P>, board: &BoardInfo, fetch: &mut
     report(Event::Status("Erase complete".into()));
     report(Event::Phase(Phase::Programming));
     report(Event::Status("Programming new version...".into()));
-    loader.program_ihx(&blocks, &mut |done, total| report(Event::Progress(done as f64 / total.max(1) as f64)))?;
+    loader.program_ihx(&blocks, &mut |done, total| {
+        report(Event::Progress(done as f64 / total.max(1) as f64))
+    })?;
     report(Event::Phase(Phase::Verifying));
     report(Event::Status("Verifying program...".into()));
     loader.verify_ihx(&blocks, &mut |_, _| {})?;
@@ -302,7 +425,12 @@ fn image_load_failed(error: &str, report: &mut dyn FnMut(Event)) -> String {
     "Image load failed".to_string()
 }
 
-fn flash_px4<P: Port>(loader: &mut Bootloader<P>, board: &BoardInfo, fetch: &mut dyn FnMut(&BoardInfo) -> Result<(String, Vec<u8>), String>, report: &mut dyn FnMut(Event)) -> Result<(), String> {
+fn flash_px4<P: Port>(
+    loader: &mut Bootloader<P>,
+    board: &BoardInfo,
+    fetch: &mut dyn FnMut(&BoardInfo) -> Result<(String, Vec<u8>), String>,
+    report: &mut dyn FnMut(Event),
+) -> Result<(), String> {
     let (file, contents) = fetch(board)?;
     let image = image_for(&file, &contents, board, report)?;
     begin_erase(report)?;
@@ -311,7 +439,9 @@ fn flash_px4<P: Port>(loader: &mut Bootloader<P>, board: &BoardInfo, fetch: &mut
     report(Event::Status("Erase complete".into()));
     report(Event::Phase(Phase::Programming));
     report(Event::Status("Programming new version...".into()));
-    loader.program(&image, &mut |done, total| report(Event::Progress(done as f64 / total.max(1) as f64)))?;
+    loader.program(&image, &mut |done, total| {
+        report(Event::Progress(done as f64 / total.max(1) as f64))
+    })?;
     report(Event::Phase(Phase::Verifying));
     report(Event::Status("Verifying program...".into()));
     loader.verify(&image, &mut |_, _| {})?;
@@ -319,12 +449,24 @@ fn flash_px4<P: Port>(loader: &mut Bootloader<P>, board: &BoardInfo, fetch: &mut
     Ok(())
 }
 
-pub fn flash_from<P: Port>(port: P, sik: bool, fetch: &mut dyn FnMut(&BoardInfo) -> Result<(String, Vec<u8>), String>, report: &mut dyn FnMut(Event)) -> Result<(), String> {
-    let mut loader = if sik { Bootloader::sik(port) } else { Bootloader::new(port) };
+pub fn flash_from<P: Port>(
+    port: P,
+    sik: bool,
+    fetch: &mut dyn FnMut(&BoardInfo) -> Result<(String, Vec<u8>), String>,
+    report: &mut dyn FnMut(Event),
+) -> Result<(), String> {
+    let mut loader = if sik {
+        Bootloader::sik(port)
+    } else {
+        Bootloader::new(port)
+    };
     let board = loader.board_info()?;
     report(Event::Board(board));
     report(Event::Status("Connected to bootloader:".into()));
-    report(Event::Status(format!("  Version: {}", board.bootloader_version)));
+    report(Event::Status(format!(
+        "  Version: {}",
+        board.bootloader_version
+    )));
     report(Event::Status(format!("  Board ID: {}", board.board_id)));
     report(Event::Status(format!("  Flash size: {}", board.flash_size)));
     let flashed = match sik {
@@ -365,7 +507,10 @@ struct Serial(Box<dyn serialport::SerialPort>);
 impl Port for Serial {
     fn write(&mut self, bytes: &[u8]) -> Result<(), String> {
         use std::io::Write;
-        self.0.write_all(bytes).and_then(|()| self.0.flush()).map_err(|e| format!("Write failed: {e}"))
+        self.0
+            .write_all(bytes)
+            .and_then(|()| self.0.flush())
+            .map_err(|e| format!("Write failed: {e}"))
     }
 
     fn read_exact(&mut self, count: usize, timeout_ms: u64) -> Result<Vec<u8>, String> {
@@ -393,12 +538,18 @@ impl Port for Serial {
     }
 
     fn set_baud(&mut self, baud: u32) -> Result<(), String> {
-        self.0.set_baud_rate(baud).map_err(|e| format!("Unable to set baud rate {baud}: {e}"))
+        self.0
+            .set_baud_rate(baud)
+            .map_err(|e| format!("Unable to set baud rate {baud}: {e}"))
     }
 }
 
 fn description_of(port: &str) -> String {
-    crate::corelinks::port_infos().into_iter().find(|p| p.system_location == port).map(|p| p.description).unwrap_or_default()
+    crate::corelinks::port_infos()
+        .into_iter()
+        .find(|p| p.system_location == port)
+        .map(|p| p.description)
+        .unwrap_or_default()
 }
 
 fn begin_erase(report: &mut dyn FnMut(Event)) -> Result<(), String> {
@@ -445,7 +596,9 @@ pub const DEVICE_NEEDS_PACKAGE: &str = "The device flashes .apj and .px4 firmwar
 
 pub fn device_refusal(chosen: &Source) -> Option<&'static str> {
     let named = match chosen {
-        Source::File(path) | Source::Url(path) => path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase(),
+        Source::File(path) | Source::Url(path) => {
+            path.rsplit('/').next().unwrap_or(path).to_ascii_lowercase()
+        }
         _ => return None,
     };
     (!named.ends_with(".apj") && !named.ends_with(".px4")).then_some(DEVICE_NEEDS_PACKAGE)
@@ -464,7 +617,11 @@ mod device {
     const FLASH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(240);
 
     fn board_id() -> Option<u32> {
-        crate::hub::lock().active().and_then(|vehicle| vehicle.autopilot_version.as_ref()).map(|version| version.board_version >> 16).filter(|board| *board != 0)
+        crate::hub::lock()
+            .active()
+            .and_then(|vehicle| vehicle.autopilot_version.as_ref())
+            .map(|version| version.board_version >> 16)
+            .filter(|board| *board != 0)
     }
 
     pub fn start(file: &str) -> Result<(), String> {
@@ -475,7 +632,8 @@ mod device {
         if let Some(refusal) = device_refusal(&chosen) {
             return Err(refusal.to_string());
         }
-        let url = crate::device::firmware().ok_or_else(|| crate::device::NEEDS_DEVICE.to_string())?;
+        let url =
+            crate::device::firmware().ok_or_else(|| crate::device::NEEDS_DEVICE.to_string())?;
         begin(DEVICE_PORT, file)?;
         wasm_bindgen_futures::spawn_local(async move { finished(flash(chosen, url).await) });
         Ok(())
@@ -496,17 +654,39 @@ mod device {
     }
 
     async fn catalog_url(chosen: &Source) -> Result<Option<String>, String> {
-        let board = || board_id().ok_or_else(|| "The flight controller has not said which board it is. Pick a firmware file instead.".to_string());
+        let board = || {
+            board_id().ok_or_else(|| "The flight controller has not said which board it is. Pick a firmware file instead.".to_string())
+        };
         Ok(match chosen {
             Source::File(_) | Source::Sik => None,
             Source::Url(url) => Some(url.clone()),
-            Source::Px4(build) => Some(crate::firmwarecatalog::px4_url(board()?, *build).ok_or_else(|| "Unable to find specified firmware for board type".to_string())?),
+            Source::Px4(build) => Some(
+                crate::firmwarecatalog::px4_url(board()?, *build).ok_or_else(|| {
+                    "Unable to find specified firmware for board type".to_string()
+                })?,
+            ),
             Source::ArduPilot { vehicle, build } => {
-                apply(Event::Status("Downloading the ArduPilot firmware list...".into()));
-                let manifest = crate::firmwarecatalog::download_later(crate::firmwarecatalog::ARDUPILOT_MANIFEST_URL).await?;
-                let entries = crate::firmwarecatalog::parse_manifest(&String::from_utf8_lossy(&manifest))?;
-                let chibios = crate::settingsstore::raw_setting(APM_CHIBIOS).and_then(|v| v.as_i64()).unwrap_or(0) == 0;
-                let (choices, best) = crate::firmwarecatalog::apm_url(&entries, board()?, *build, *vehicle, chibios, "")?;
+                apply(Event::Status(
+                    "Downloading the ArduPilot firmware list...".into(),
+                ));
+                let manifest = crate::firmwarecatalog::download_later(
+                    crate::firmwarecatalog::ARDUPILOT_MANIFEST_URL,
+                )
+                .await?;
+                let entries =
+                    crate::firmwarecatalog::parse_manifest(&String::from_utf8_lossy(&manifest))?;
+                let chibios = crate::settingsstore::raw_setting(APM_CHIBIOS)
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or(0)
+                    == 0;
+                let (choices, best) = crate::firmwarecatalog::apm_url(
+                    &entries,
+                    board()?,
+                    *build,
+                    *vehicle,
+                    chibios,
+                    "",
+                )?;
                 Some(match (choices.len(), best) {
                     (1, _) => choices[0].1.clone(),
                     _ => choose(choices, best).await?,
@@ -516,11 +696,16 @@ mod device {
     }
 
     pub fn refusal(status: u16, answer: &[u8]) -> String {
-        let said = serde_json::from_slice::<Value>(answer).ok().and_then(|answer| answer["error"].as_str().map(str::to_string)).unwrap_or_else(|| String::from_utf8_lossy(answer).trim().to_string());
+        let said = serde_json::from_slice::<Value>(answer)
+            .ok()
+            .and_then(|answer| answer["error"].as_str().map(str::to_string))
+            .unwrap_or_else(|| String::from_utf8_lossy(answer).trim().to_string());
         match (status, said.is_empty()) {
             (_, true) => format!("The device answered {status}"),
             (409, false) => format!("The device will not flash now: {said}"),
-            (422, false) => format!("This firmware is not for the attached flight controller: {said}"),
+            (422, false) => {
+                format!("This firmware is not for the attached flight controller: {said}")
+            }
             (_, false) => said,
         }
     }
@@ -534,7 +719,8 @@ mod device {
                 bytes
             }
             None => match &chosen {
-                Source::File(path) => crate::vfs::read(path).map_err(|e| format!("Unable to open firmware file {path}: {e}"))?,
+                Source::File(path) => crate::vfs::read(path)
+                    .map_err(|e| format!("Unable to open firmware file {path}: {e}"))?,
                 _ => return Err("Nothing to flash".to_string()),
             },
         };
@@ -543,8 +729,13 @@ mod device {
         }
         apply(Event::Phase(Phase::Programming));
         apply(Event::Status("The device is rebooting the flight controller into its bootloader and flashing it. This takes about half a minute.".into()));
-        let headers = [("Content-Type".to_string(), "application/octet-stream".to_string())];
-        match crate::http::send_later("POST", &device, &headers, Some(&image), FLASH_TIMEOUT).await? {
+        let headers = [(
+            "Content-Type".to_string(),
+            "application/octet-stream".to_string(),
+        )];
+        match crate::http::send_later("POST", &device, &headers, Some(&image), FLASH_TIMEOUT)
+            .await?
+        {
             (200, _) => Ok(()),
             (status, answer) => Err(refusal(status, &answer)),
         }
@@ -567,7 +758,10 @@ fn open(port: &str) -> Result<Serial, String> {
 const FLASH_SERIAL_ID: u32 = 0xfff0_0002;
 
 #[cfg(any(hosted_serial, test))]
-type Inbox = std::sync::Arc<(Mutex<(std::collections::VecDeque<u8>, Option<String>)>, std::sync::Condvar)>;
+type Inbox = std::sync::Arc<(
+    Mutex<(std::collections::VecDeque<u8>, Option<String>)>,
+    std::sync::Condvar,
+)>;
 
 #[cfg(any(hosted_serial, test))]
 struct Usb {
@@ -596,7 +790,11 @@ impl Port for Usb {
         let (lock, ready) = &*self.inbox;
         let held = lock.lock().unwrap_or_else(PoisonError::into_inner);
         let (mut held, _) = ready
-            .wait_timeout_while(held, std::time::Duration::from_millis(timeout_ms), |(bytes, gone)| bytes.len() < count && gone.is_none())
+            .wait_timeout_while(
+                held,
+                std::time::Duration::from_millis(timeout_ms),
+                |(bytes, gone)| bytes.len() < count && gone.is_none(),
+            )
             .unwrap_or_else(PoisonError::into_inner);
         match (held.0.len() >= count, held.1.clone()) {
             (true, _) => Ok(held.0.drain(..count).collect()),
@@ -606,7 +804,12 @@ impl Port for Usb {
     }
 
     fn discard_input(&mut self) {
-        self.inbox.0.lock().unwrap_or_else(PoisonError::into_inner).0.clear();
+        self.inbox
+            .0
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .0
+            .clear();
     }
 
     fn set_baud(&mut self, baud: u32) -> Result<(), String> {
@@ -623,29 +826,50 @@ fn open(port: &str) -> Result<Usb, String> {
 
 #[cfg(any(hosted_serial, test))]
 fn open_usb(port: &str) -> Result<Usb, String> {
-    let inbox: Inbox = std::sync::Arc::new((Mutex::new((std::collections::VecDeque::new(), None)), std::sync::Condvar::new()));
+    let inbox: Inbox = std::sync::Arc::new((
+        Mutex::new((std::collections::VecDeque::new(), None)),
+        std::sync::Condvar::new(),
+    ));
     let serial = usb_serial(port, BAUD, inbox.clone())?;
-    Ok(Usb { serial, inbox, port: port.to_string() })
+    Ok(Usb {
+        serial,
+        inbox,
+        port: port.to_string(),
+    })
 }
 
 #[cfg(any(hosted_serial, test))]
-fn usb_serial(port: &str, baud: u32, fed: Inbox) -> Result<crate::platformserial::PlatformSerial, String> {
-    crate::platformserial::PlatformSerial::open(FLASH_SERIAL_ID, port, baud, 8, 1, 0, move |event| {
-        let (lock, ready) = &*fed;
-        let mut held = lock.lock().unwrap_or_else(PoisonError::into_inner);
-        match event {
-            crate::platformserial::Event::Bytes(bytes) => held.0.extend(bytes),
-            crate::platformserial::Event::Disconnected(reason) => held.1 = Some(reason),
-        }
-        ready.notify_all();
-    })
+fn usb_serial(
+    port: &str,
+    baud: u32,
+    fed: Inbox,
+) -> Result<crate::platformserial::PlatformSerial, String> {
+    crate::platformserial::PlatformSerial::open(
+        FLASH_SERIAL_ID,
+        port,
+        baud,
+        8,
+        1,
+        0,
+        move |event| {
+            let (lock, ready) = &*fed;
+            let mut held = lock.lock().unwrap_or_else(PoisonError::into_inner);
+            match event {
+                crate::platformserial::Event::Bytes(bytes) => held.0.extend(bytes),
+                crate::platformserial::Event::Disconnected(reason) => held.1 = Some(reason),
+            }
+            ready.notify_all();
+        },
+    )
     .map_err(|e| format!("Open failed on port {port}: {e}"))
 }
 
 pub fn for_hardware(chosen: Source, radio: bool) -> Result<Source, String> {
     match (radio, chosen) {
         (true, picked) if !picked.sik() => Ok(Source::Sik),
-        (false, picked) if picked.sik() => Err("SiK radio firmware can only be flashed to a SiK radio".to_string()),
+        (false, picked) if picked.sik() => {
+            Err("SiK radio firmware can only be flashed to a SiK radio".to_string())
+        }
         (_, picked) => Ok(picked),
     }
 }
@@ -663,7 +887,8 @@ fn finished(outcome: Result<(), String>) {
         }
         Err(e) => {
             held.phase = Phase::Failed;
-            held.messages.extend([format!("Error: {e}"), "Upgrade cancelled".to_string()]);
+            held.messages
+                .extend([format!("Error: {e}"), "Upgrade cancelled".to_string()]);
             held.error = Some(e);
         }
     }
@@ -675,7 +900,12 @@ fn begin(port: &str, file: &str) -> Result<(), String> {
         return Err("A firmware upgrade is already running".to_string());
     }
     CANCEL.store(false, std::sync::atomic::Ordering::SeqCst);
-    *held = Job { phase: Phase::Connecting, port: Some(port.to_string()), file: Some(file.to_string()), ..Job::default() };
+    *held = Job {
+        phase: Phase::Connecting,
+        port: Some(port.to_string()),
+        file: Some(file.to_string()),
+        ..Job::default()
+    };
     Ok(())
 }
 
@@ -684,7 +914,10 @@ pub fn start(port: &str, file: &str) -> Result<(), String> {
     if port == DEVICE_PORT {
         return device::start(file);
     }
-    let chosen = for_hardware(source(file)?, crate::corelinks::board_type_at(port) == Some(crate::boards::BoardType::SiKRadio))?;
+    let chosen = for_hardware(
+        source(file)?,
+        crate::corelinks::board_type_at(port) == Some(crate::boards::BoardType::SiKRadio),
+    )?;
     if let Source::File(path) = &chosen
         && !crate::vfs::exists(path)
     {
@@ -700,7 +933,14 @@ pub fn start(port: &str, file: &str) -> Result<(), String> {
         .spawn(move || {
             let flashed = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 let mut target = Target::new(&port, &crate::corelinks::port_infos());
-                let waited = wait_for_bootloader(&mut || target.find(&crate::corelinks::port_infos(), &flashable), &mut || std::thread::sleep(std::time::Duration::from_millis(FIND_BOARD_INTERVAL_MS)), &cancelled, &mut apply);
+                let waited = wait_for_bootloader(
+                    &mut || target.find(&crate::corelinks::port_infos(), &flashable),
+                    &mut || {
+                        std::thread::sleep(std::time::Duration::from_millis(FIND_BOARD_INTERVAL_MS))
+                    },
+                    &cancelled,
+                    &mut apply,
+                );
                 let port = target.location.clone();
                 let description = description_of(&port);
                 if waited.is_ok() {
@@ -710,10 +950,27 @@ pub fn start(port: &str, file: &str) -> Result<(), String> {
                     if chosen.sik() {
                         std::thread::sleep(std::time::Duration::from_millis(SIK_OPEN_SETTLE_MS));
                     }
-                    flash_from(opened, chosen.sik(), &mut |board| resolve(&chosen, board, &description, &mut apply).and_then(|fetched| if cancelled() { Err(FLASH_CANCELLED.to_string()) } else { Ok(fetched) }), &mut apply)
+                    flash_from(
+                        opened,
+                        chosen.sik(),
+                        &mut |board| {
+                            resolve(&chosen, board, &description, &mut apply).and_then(|fetched| {
+                                if cancelled() {
+                                    Err(FLASH_CANCELLED.to_string())
+                                } else {
+                                    Ok(fetched)
+                                }
+                            })
+                        },
+                        &mut apply,
+                    )
                 })
             }));
-            finished(flashed.unwrap_or_else(|_| Err("The firmware upgrade stopped unexpectedly".to_string())));
+            finished(
+                flashed.unwrap_or_else(|_| {
+                    Err("The firmware upgrade stopped unexpectedly".to_string())
+                }),
+            );
         })
         .map(|_| ())
         .map_err(|e| {
@@ -737,15 +994,26 @@ pub fn apm_version_vehicle(vehicle: &Value) -> Option<&'static str> {
 
 pub fn update_available(backend: &dyn crate::router::Backend) -> Option<String> {
     let vehicle = backend.value_fields("vehicle", VERSION_FIELDS);
-    let running = crate::firmwareinfo::version(crate::read::integer(&vehicle, "firmwareMajorVersion"), crate::read::integer(&vehicle, "firmwareMinorVersion"), crate::read::integer(&vehicle, "firmwarePatchVersion"))?;
+    let running = crate::firmwareinfo::version(
+        crate::read::integer(&vehicle, "firmwareMajorVersion"),
+        crate::read::integer(&vehicle, "firmwareMinorVersion"),
+        crate::read::integer(&vehicle, "firmwarePatchVersion"),
+    )?;
     let latest = match crate::qthost::present() {
-        true => backend.value("vehicle.latestStableFirmwareVersion").get("value").and_then(Value::as_str).map(str::to_string)?,
+        true => backend
+            .value("vehicle.latestStableFirmwareVersion")
+            .get("value")
+            .and_then(Value::as_str)
+            .map(str::to_string)?,
         false => {
             let official = crate::read::text(&vehicle, "firmwareVersionTypeString").is_empty();
             let px4 = crate::read::flag(&vehicle, "px4Firmware");
-            let apm_vehicle = crate::read::flag(&vehicle, "apmFirmware").then(|| apm_version_vehicle(&vehicle)).flatten();
+            let apm_vehicle = crate::read::flag(&vehicle, "apmFirmware")
+                .then(|| apm_version_vehicle(&vehicle))
+                .flatten();
             let url = crate::latestfirmware::version_url(px4, apm_vehicle).filter(|_| official)?;
-            crate::latestfirmware::latest(&url, px4).filter(|latest| crate::latestfirmware::older(&running, latest))?
+            crate::latestfirmware::latest(&url, px4)
+                .filter(|latest| crate::latestfirmware::older(&running, latest))?
         }
     };
     (!latest.is_empty()).then(|| crate::latestfirmware::update_text(&running, &latest))
@@ -780,29 +1048,43 @@ pub fn ports_view(_backend: &dyn crate::router::Backend, _args: &[String]) -> Va
 
 pub fn invoke(path: &str, args: &str) -> Option<Value> {
     if path == "firmware.cancel" {
-        return Some(match matches!(job().phase, Phase::Connecting | Phase::Choosing) {
-            true => {
-                CANCEL.store(true, std::sync::atomic::Ordering::SeqCst);
-                json!({ "ok": true })
-            }
-            false => json!({ "ok": false, "reason": "The upgrade can no longer be cancelled once erasing has started." }),
-        });
+        return Some(
+            match matches!(job().phase, Phase::Connecting | Phase::Choosing) {
+                true => {
+                    CANCEL.store(true, std::sync::atomic::Ordering::SeqCst);
+                    json!({ "ok": true })
+                }
+                false => {
+                    json!({ "ok": false, "reason": "The upgrade can no longer be cancelled once erasing has started." })
+                }
+            },
+        );
     }
     if path == "firmware.choose" {
-        let url = serde_json::from_str::<Vec<String>>(args).unwrap_or_default().into_iter().next().unwrap_or_default();
+        let url = serde_json::from_str::<Vec<String>>(args)
+            .unwrap_or_default()
+            .into_iter()
+            .next()
+            .unwrap_or_default();
         let mut held = job();
-        return Some(match held.phase == Phase::Choosing && held.choices.iter().any(|(_, offered)| *offered == url) {
-            true => {
-                held.chosen = Some(url);
-                json!({ "ok": true })
-            }
-            false => json!({ "ok": false, "reason": "Choose one of the offered board types." }),
-        });
+        return Some(
+            match held.phase == Phase::Choosing
+                && held.choices.iter().any(|(_, offered)| *offered == url)
+            {
+                true => {
+                    held.chosen = Some(url);
+                    json!({ "ok": true })
+                }
+                false => json!({ "ok": false, "reason": "Choose one of the offered board types." }),
+            },
+        );
     }
     (path == "firmware.flash").then_some(())?;
     let given: Vec<String> = serde_json::from_str(args).unwrap_or_default();
     let (Some(port), Some(file)) = (given.first(), given.get(1)) else {
-        return Some(json!({ "ok": false, "reason": "firmware.flash needs the bootloader's serial port and the firmware file" }));
+        return Some(
+            json!({ "ok": false, "reason": "firmware.flash needs the bootloader's serial port and the firmware file" }),
+        );
     };
     Some(match start(port, file) {
         Ok(()) => json!({ "ok": true }),
@@ -819,13 +1101,58 @@ mod tests {
     fn a_bin_file_flashes_through_every_phase_and_reports_qt_status_lines() {
         let mut events = Vec::new();
         let firmware = vec![0x5au8; 300];
-        flash(Board::new(5, 50, 1024), "fw.bin", &firmware, &mut |event| events.push(event)).unwrap();
-        let phases: Vec<Phase> = events.iter().filter_map(|e| if let Event::Phase(p) = e { Some(*p) } else { None }).collect();
-        assert_eq!(phases, [Phase::Erasing, Phase::Programming, Phase::Verifying]);
-        let lines: Vec<&str> = events.iter().filter_map(|e| if let Event::Status(s) = e { Some(s.as_str()) } else { None }).collect();
-        assert_eq!(lines[..4], ["Connected to bootloader:", "  Version: 5", "  Board ID: 50", "  Flash size: 1024"]);
-        assert_eq!(lines[4..], ["Erasing previous program...", "Erase complete", "Programming new version...", "Verifying program...", "Rebooting board"]);
-        assert!(events.iter().any(|e| matches!(e, Event::Progress(p) if (*p - 1.0).abs() < f64::EPSILON)));
+        flash(Board::new(5, 50, 1024), "fw.bin", &firmware, &mut |event| {
+            events.push(event)
+        })
+        .unwrap();
+        let phases: Vec<Phase> = events
+            .iter()
+            .filter_map(|e| {
+                if let Event::Phase(p) = e {
+                    Some(*p)
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert_eq!(
+            phases,
+            [Phase::Erasing, Phase::Programming, Phase::Verifying]
+        );
+        let lines: Vec<&str> = events
+            .iter()
+            .filter_map(|e| {
+                if let Event::Status(s) = e {
+                    Some(s.as_str())
+                } else {
+                    None
+                }
+            })
+            .collect();
+        assert_eq!(
+            lines[..4],
+            [
+                "Connected to bootloader:",
+                "  Version: 5",
+                "  Board ID: 50",
+                "  Flash size: 1024"
+            ]
+        );
+        assert_eq!(
+            lines[4..],
+            [
+                "Erasing previous program...",
+                "Erase complete",
+                "Programming new version...",
+                "Verifying program...",
+                "Rebooting board"
+            ]
+        );
+        assert!(
+            events
+                .iter()
+                .any(|e| matches!(e, Event::Progress(p) if (*p - 1.0).abs() < f64::EPSILON))
+        );
     }
 
     #[cfg(not(hosted_serial))]
@@ -851,10 +1178,17 @@ mod tests {
                 board.flash
             }
         });
-        let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+        let mut encoder =
+            flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
         encoder.write_all(&firmware).unwrap();
         let px4 = serde_json::json!({ "board_id": 50, "image_size": firmware.len(), "image": base64::Engine::encode(&base64::engine::general_purpose::STANDARD, encoder.finish().unwrap()) }).to_string();
-        flash(Serial(Box::new(slave)), "fw.px4", px4.as_bytes(), &mut |_| {}).unwrap();
+        flash(
+            Serial(Box::new(slave)),
+            "fw.px4",
+            px4.as_bytes(),
+            &mut |_| {},
+        )
+        .unwrap();
         flashed_all.store(true, std::sync::atomic::Ordering::Relaxed);
         let flashed = board_side.join().unwrap();
         assert_eq!(&flashed[..firmware.len()], &firmware[..]);
@@ -865,11 +1199,16 @@ mod tests {
         let mut queue = sightings.iter().copied();
         let pauses = std::cell::Cell::new(0);
         let mut lines = Vec::new();
-        let outcome = wait_for_bootloader(&mut || queue.next().unwrap_or(Sighting::Absent), &mut || pauses.set(pauses.get() + 1), &|| pauses.get() >= 1000, &mut |e| {
-            if let Event::Status(s) = e {
-                lines.push(s);
-            }
-        });
+        let outcome = wait_for_bootloader(
+            &mut || queue.next().unwrap_or(Sighting::Absent),
+            &mut || pauses.set(pauses.get() + 1),
+            &|| pauses.get() >= 1000,
+            &mut |e| {
+                if let Event::Status(s) = e {
+                    lines.push(s);
+                }
+            },
+        );
         (outcome, lines, pauses.get())
     }
 
@@ -880,23 +1219,52 @@ mod tests {
 
     #[test]
     fn a_running_board_must_be_replugged_and_its_return_is_taken() {
-        let (outcome, lines, pauses) = watched(&[Sighting::Running, Sighting::Running, Sighting::Absent, Sighting::Absent, Sighting::Running]);
-        assert_eq!((outcome, lines, pauses), (Ok(()), vec![REPLUG.to_string(), BOARD_GONE.to_string()], 4), "back after the unplug counts even before its description says BL, as Qt's found-board loop does; the unplug is reported as FirmwareUpgrade.qml's onBoardGone");
-        assert_eq!(found_device("PX4 BL FMU v5.x", "/dev/ttyACM0"), "Found device: PX4 BL FMU v5.x (/dev/ttyACM0)");
+        let (outcome, lines, pauses) = watched(&[
+            Sighting::Running,
+            Sighting::Running,
+            Sighting::Absent,
+            Sighting::Absent,
+            Sighting::Running,
+        ]);
+        assert_eq!(
+            (outcome, lines, pauses),
+            (Ok(()), vec![REPLUG.to_string(), BOARD_GONE.to_string()], 4),
+            "back after the unplug counts even before its description says BL, as Qt's found-board loop does; the unplug is reported as FirmwareUpgrade.qml's onBoardGone"
+        );
+        assert_eq!(
+            found_device("PX4 BL FMU v5.x", "/dev/ttyACM0"),
+            "Found device: PX4 BL FMU v5.x (/dev/ttyACM0)"
+        );
     }
 
     #[test]
     fn a_missing_board_is_waited_for_until_the_user_cancels() {
-        let (outcome, lines, _) = watched(&[Sighting::Absent, Sighting::Absent, Sighting::Bootloader]);
+        let (outcome, lines, _) =
+            watched(&[Sighting::Absent, Sighting::Absent, Sighting::Bootloader]);
         assert_eq!((outcome, lines), (Ok(()), vec![PLUG_IN.to_string()]));
         let (outcome, _, pauses) = watched(&[]);
-        assert_eq!((outcome, pauses), (Err(FLASH_CANCELLED.to_string()), 1000), "the search has no time limit, as the Qt find-board loop runs until cancel");
-        assert!(in_bootloader("PX4 BL FMU v5.x") && in_bootloader("ArduPilot Bootloader") && !in_bootloader("PX4 FMU v5.x"));
+        assert_eq!(
+            (outcome, pauses),
+            (Err(FLASH_CANCELLED.to_string()), 1000),
+            "the search has no time limit, as the Qt find-board loop runs until cancel"
+        );
+        assert!(
+            in_bootloader("PX4 BL FMU v5.x")
+                && in_bootloader("ArduPilot Bootloader")
+                && !in_bootloader("PX4 FMU v5.x")
+        );
     }
 
     static USB_BOARD: Mutex<Option<Board>> = Mutex::new(None);
 
-    fn usb_open(_id: u32, _port: &str, baud: u32, data_bits: i64, stop_bits: i64, parity: i64) -> bool {
+    fn usb_open(
+        _id: u32,
+        _port: &str,
+        baud: u32,
+        data_bits: i64,
+        stop_bits: i64,
+        parity: i64,
+    ) -> bool {
         (baud, data_bits, stop_bits, parity) == (BAUD, 8, 1, 0)
     }
 
@@ -905,8 +1273,12 @@ mod tests {
             board.write(bytes).unwrap();
             board.output()
         });
-        let delivered = answer.filter(|out| !out.is_empty()).map(|out| std::thread::spawn(move || crate::platformserial::received(id, out)));
-        delivered.map(|thread| thread.join().is_ok()).unwrap_or(true)
+        let delivered = answer
+            .filter(|out| !out.is_empty())
+            .map(|out| std::thread::spawn(move || crate::platformserial::received(id, out)));
+        delivered
+            .map(|thread| thread.join().is_ok())
+            .unwrap_or(true)
     }
 
     fn usb_close(_id: u32) {}
@@ -917,10 +1289,21 @@ mod tests {
 
     #[test]
     fn a_bin_file_flashes_over_the_android_usb_hooks_to_a_board_on_the_other_end() {
-        crate::platformserial::install(crate::platformserial::Hooks { open: usb_open, write: usb_write, close: usb_close, ports: usb_ports });
+        crate::platformserial::install(crate::platformserial::Hooks {
+            open: usb_open,
+            write: usb_write,
+            close: usb_close,
+            ports: usb_ports,
+        });
         *USB_BOARD.lock().unwrap() = Some(Board::new(5, 50, 2048));
         let firmware: Vec<u8> = (0..700u32).map(|i| (i % 253) as u8).collect();
-        flash(open_usb("/dev/bus/usb/001/002").unwrap(), "fw.bin", &firmware, &mut |_| {}).unwrap();
+        flash(
+            open_usb("/dev/bus/usb/001/002").unwrap(),
+            "fw.bin",
+            &firmware,
+            &mut |_| {},
+        )
+        .unwrap();
         let board = USB_BOARD.lock().unwrap().take().unwrap();
         assert!(board.booted);
         assert_eq!(&board.flash[..700], &firmware[..]);
@@ -929,87 +1312,222 @@ mod tests {
     #[test]
     fn a_firmware_source_reads_as_a_file_a_url_or_a_release_to_look_up() {
         use crate::firmwarecatalog::{Build, Vehicle};
-        assert_eq!(source("/tmp/fw.px4"), Ok(Source::File("/tmp/fw.px4".into())));
-        assert_eq!(source("https://firmware.ardupilot.org/x.apj"), Ok(Source::Url("https://firmware.ardupilot.org/x.apj".into())));
+        assert_eq!(
+            source("/tmp/fw.px4"),
+            Ok(Source::File("/tmp/fw.px4".into()))
+        );
+        assert_eq!(
+            source("https://firmware.ardupilot.org/x.apj"),
+            Ok(Source::Url("https://firmware.ardupilot.org/x.apj".into()))
+        );
         assert_eq!(source("px4:beta"), Ok(Source::Px4(Build::Beta)));
-        assert_eq!(source("px4:dev"), Ok(Source::Px4(Build::Developer)), "the developer build is master, offered behind Advanced");
-        assert_eq!(source("ardupilot:heli:dev"), Ok(Source::ArduPilot { vehicle: Vehicle::Heli, build: Build::Developer }));
+        assert_eq!(
+            source("px4:dev"),
+            Ok(Source::Px4(Build::Developer)),
+            "the developer build is master, offered behind Advanced"
+        );
+        assert_eq!(
+            source("ardupilot:heli:dev"),
+            Ok(Source::ArduPilot {
+                vehicle: Vehicle::Heli,
+                build: Build::Developer
+            })
+        );
         assert!(source("ardupilot:boat:stable").is_err());
-        let board = BoardInfo { bootloader_version: 5, board_id: 4242, flash_size: 1024 };
-        assert_eq!(resolve(&Source::Px4(Build::Stable), &board, "", &mut |_| {}), Err("Unable to find specified firmware for board type".to_string()), "a board PX4 publishes no build for is refused before any download");
+        let board = BoardInfo {
+            bootloader_version: 5,
+            board_id: 4242,
+            flash_size: 1024,
+        };
+        assert_eq!(
+            resolve(&Source::Px4(Build::Stable), &board, "", &mut |_| {}),
+            Err("Unable to find specified firmware for board type".to_string()),
+            "a board PX4 publishes no build for is refused before any download"
+        );
     }
 
     #[test]
     fn a_sik_radio_flashes_an_ihx_through_the_firmware_flow() {
         let ihx = ":0400000001020304F2\n:00000001FF\n";
         let mut lines = Vec::new();
-        flash(Board::sik_radio(crate::bootloader::BOARD_ID_SIK_RADIO_1060, 0x100), "radio.ihx", ihx.as_bytes(), &mut |e| {
-            if let Event::Status(s) = e {
-                lines.push(s);
-            }
-        })
+        flash(
+            Board::sik_radio(crate::bootloader::BOARD_ID_SIK_RADIO_1060, 0x100),
+            "radio.ihx",
+            ihx.as_bytes(),
+            &mut |e| {
+                if let Event::Status(s) = e {
+                    lines.push(s);
+                }
+            },
+        )
         .unwrap();
-        assert_eq!(lines[..4], ["Connected to bootloader:", "  Version: 0", "  Board ID: 80", "  Flash size: 0"], "a SiK radio reports like a bootloader, as _foundBoardInfo logs it");
+        assert_eq!(
+            lines[..4],
+            [
+                "Connected to bootloader:",
+                "  Version: 0",
+                "  Board ID: 80",
+                "  Flash size: 0"
+            ],
+            "a SiK radio reports like a bootloader, as _foundBoardInfo logs it"
+        );
         assert_eq!(source("sik:stable"), Ok(Source::Sik));
-        assert!(Source::Url("https://x/radio~hb1060.ihx".into()).sik() && !Source::Px4(crate::firmwarecatalog::Build::Stable).sik());
-        assert_eq!(sik_url(80).as_deref(), Some("https://px4-travis.s3.amazonaws.com/SiK/stable/radio~hb1060.ihx"));
+        assert!(
+            Source::Url("https://x/radio~hb1060.ihx".into()).sik()
+                && !Source::Px4(crate::firmwarecatalog::Build::Stable).sik()
+        );
+        assert_eq!(
+            sik_url(80).as_deref(),
+            Some("https://px4-travis.s3.amazonaws.com/SiK/stable/radio~hb1060.ihx")
+        );
     }
 
     fn usb(location: &str, serial: &str, description: &str) -> crate::boards::PortInfo {
-        crate::boards::PortInfo { system_location: location.into(), port_name: location.into(), description: description.into(), manufacturer: String::new(), serial_number: serial.into(), vendor_id: Some(0x26ac), product_id: Some(0x11) }
+        crate::boards::PortInfo {
+            system_location: location.into(),
+            port_name: location.into(),
+            description: description.into(),
+            manufacturer: String::new(),
+            serial_number: serial.into(),
+            vendor_id: Some(0x26ac),
+            product_id: Some(0x11),
+        }
     }
 
     #[test]
     fn a_board_is_followed_to_a_new_path_by_serial_or_as_a_new_flashable_port() {
         let radio = usb("/dev/bus/usb/001/003", "R1", "FTDI");
-        let mut target = Target::new("/dev/bus/usb/001/002", &[usb("/dev/bus/usb/001/002", "", "PX4 FMU v5.x"), radio.clone()]);
+        let mut target = Target::new(
+            "/dev/bus/usb/001/002",
+            &[
+                usb("/dev/bus/usb/001/002", "", "PX4 FMU v5.x"),
+                radio.clone(),
+            ],
+        );
         let anything = |_: &crate::boards::PortInfo| true;
-        assert_eq!(target.find(&[usb("/dev/bus/usb/001/002", "", "PX4 FMU v5.x"), radio.clone()], &anything), Sighting::Running);
-        assert_eq!(target.find(&[radio.clone()], &anything), Sighting::Absent, "a port already plugged in at the start is never taken for the board");
-        assert_eq!(target.find(&[radio.clone(), usb("/dev/bus/usb/001/004", "", "PX4 BL FMU v5.x")], &anything), Sighting::Bootloader, "Android numbers a replugged device anew");
+        assert_eq!(
+            target.find(
+                &[
+                    usb("/dev/bus/usb/001/002", "", "PX4 FMU v5.x"),
+                    radio.clone()
+                ],
+                &anything
+            ),
+            Sighting::Running
+        );
+        assert_eq!(
+            target.find(&[radio.clone()], &anything),
+            Sighting::Absent,
+            "a port already plugged in at the start is never taken for the board"
+        );
+        assert_eq!(
+            target.find(
+                &[
+                    radio.clone(),
+                    usb("/dev/bus/usb/001/004", "", "PX4 BL FMU v5.x")
+                ],
+                &anything
+            ),
+            Sighting::Bootloader,
+            "Android numbers a replugged device anew"
+        );
         assert_eq!(target.location, "/dev/bus/usb/001/004");
-        let mut by_serial = Target::new("/dev/ttyACM0", &[usb("/dev/ttyACM0", "S9", "PX4 FMU v5.x")]);
-        assert_eq!(by_serial.find(&[usb("/dev/ttyACM1", "S9", "PX4 BL FMU v5.x")], &|_| false), Sighting::Bootloader);
+        let mut by_serial =
+            Target::new("/dev/ttyACM0", &[usb("/dev/ttyACM0", "S9", "PX4 FMU v5.x")]);
+        assert_eq!(
+            by_serial.find(&[usb("/dev/ttyACM1", "S9", "PX4 BL FMU v5.x")], &|_| false),
+            Sighting::Bootloader
+        );
         let mut unseen = Target::new("/dev/ttyACM0", &[]);
-        assert_eq!(unseen.find(&[usb("/dev/ttyACM1", "", "PX4 BL")], &anything), Sighting::Absent, "a new port is only taken once the board was seen");
+        assert_eq!(
+            unseen.find(&[usb("/dev/ttyACM1", "", "PX4 BL")], &anything),
+            Sighting::Absent,
+            "a new port is only taken once the board was seen"
+        );
     }
 
     #[test]
     fn the_hardware_decides_between_a_sik_radio_and_an_autopilot_as_the_upgrade_thread_does() {
-        assert_eq!(for_hardware(Source::Px4(crate::firmwarecatalog::Build::Stable), true), Ok(Source::Sik), "a radio always takes the latest SiK firmware");
-        assert_eq!(for_hardware(Source::File("custom.ihx".into()), true), Ok(Source::File("custom.ihx".into())));
+        assert_eq!(
+            for_hardware(Source::Px4(crate::firmwarecatalog::Build::Stable), true),
+            Ok(Source::Sik),
+            "a radio always takes the latest SiK firmware"
+        );
+        assert_eq!(
+            for_hardware(Source::File("custom.ihx".into()), true),
+            Ok(Source::File("custom.ihx".into()))
+        );
         assert!(for_hardware(Source::Sik, false).is_err());
-        assert_eq!(for_hardware(Source::Px4(crate::firmwarecatalog::Build::Beta), false), Ok(Source::Px4(crate::firmwarecatalog::Build::Beta)));
+        assert_eq!(
+            for_hardware(Source::Px4(crate::firmwarecatalog::Build::Beta), false),
+            Ok(Source::Px4(crate::firmwarecatalog::Build::Beta))
+        );
     }
 
     #[test]
     fn an_image_bigger_than_the_flash_is_refused_before_erasing() {
         let mut events = Vec::new();
         let mut board = Board::new(5, 50, 256);
-        let outcome = flash(&mut board, "fw.bin", &[0u8; 400], &mut |event| events.push(event));
-        assert_eq!(outcome, Err("Image size of 400 is too large for board flash size 256".to_string()));
-        assert!(board.booted, "a failed upgrade reboots the board out of its bootloader as PX4FirmwareUpgradeThread does");
+        let outcome = flash(&mut board, "fw.bin", &[0u8; 400], &mut |event| {
+            events.push(event)
+        });
+        assert_eq!(
+            outcome,
+            Err("Image size of 400 is too large for board flash size 256".to_string())
+        );
+        assert!(
+            board.booted,
+            "a failed upgrade reboots the board out of its bootloader as PX4FirmwareUpgradeThread does"
+        );
         let mut corrupt = Board::new(5, 50, 256);
-        assert_eq!(flash(&mut corrupt, "fw.px4", b"not json", &mut |_| {}), Err("Image load failed".to_string()));
-        assert!(!events.iter().any(|e| matches!(e, Event::Phase(Phase::Erasing))));
+        assert_eq!(
+            flash(&mut corrupt, "fw.px4", b"not json", &mut |_| {}),
+            Err("Image load failed".to_string())
+        );
+        assert!(
+            !events
+                .iter()
+                .any(|e| matches!(e, Event::Phase(Phase::Erasing)))
+        );
     }
 
     #[test]
     fn the_version_check_file_follows_the_ardupilot_plugin() {
         let flags = |key: &str| json!({ "kind": "object", key: true });
-        assert_eq!(apm_version_vehicle(&flags("vtol")), Some("Plane"), "APMFirmwarePluginFactory sends VTOL types to ArduPlane");
+        assert_eq!(
+            apm_version_vehicle(&flags("vtol")),
+            Some("Plane"),
+            "APMFirmwarePluginFactory sends VTOL types to ArduPlane"
+        );
         assert_eq!(apm_version_vehicle(&flags("fixedWing")), Some("Plane"));
         assert_eq!(apm_version_vehicle(&flags("rover")), Some("Rover"));
         assert_eq!(apm_version_vehicle(&flags("sub")), Some("Sub"));
         assert_eq!(apm_version_vehicle(&flags("multiRotor")), Some("Copter"));
-        assert_eq!(apm_version_vehicle(&json!({ "kind": "object" })), None, "an airship or generic vehicle has no version file");
+        assert_eq!(
+            apm_version_vehicle(&json!({ "kind": "object" })),
+            None,
+            "an airship or generic vehicle has no version file"
+        );
     }
 
     #[test]
     fn the_device_only_takes_firmware_that_names_its_board() {
-        assert_eq!(device_refusal(&source("/cache/firmware-arducopter.apj").unwrap()), None);
-        assert_eq!(device_refusal(&source("https://firmware.px4.io/fmu-v5.px4").unwrap()), None);
-        assert_eq!(device_refusal(&source("/cache/firmware-raw.bin").unwrap()), Some(DEVICE_NEEDS_PACKAGE));
-        assert_eq!(device_refusal(&source("px4:stable").unwrap()), None, "catalog builds resolve to .px4 or .apj files");
+        assert_eq!(
+            device_refusal(&source("/cache/firmware-arducopter.apj").unwrap()),
+            None
+        );
+        assert_eq!(
+            device_refusal(&source("https://firmware.px4.io/fmu-v5.px4").unwrap()),
+            None
+        );
+        assert_eq!(
+            device_refusal(&source("/cache/firmware-raw.bin").unwrap()),
+            Some(DEVICE_NEEDS_PACKAGE)
+        );
+        assert_eq!(
+            device_refusal(&source("px4:stable").unwrap()),
+            None,
+            "catalog builds resolve to .px4 or .apj files"
+        );
     }
 }

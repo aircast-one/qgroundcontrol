@@ -39,11 +39,18 @@ pub struct Card {
 
 impl Card {
     pub fn new(id: &str, label: &str, capacity: u64, device: Box<dyn BlockDevice + Send>) -> Self {
-        Self { device: Some(device), capacity, label: label.to_string(), id: id.to_string() }
+        Self {
+            device: Some(device),
+            capacity,
+            label: label.to_string(),
+            id: id.to_string(),
+        }
     }
 
     pub fn device(&mut self) -> &mut (dyn BlockDevice + Send) {
-        self.device.as_deref_mut().expect("a card holds its device until it is dropped")
+        self.device
+            .as_deref_mut()
+            .expect("a card holds its device until it is dropped")
     }
 }
 
@@ -76,8 +83,15 @@ fn usb(id: &str, fd: i32) -> Opening {
     match crate::usbfs::Transport::claim(fd).and_then(crate::usbmsc::UsbDisk::open) {
         Ok(disk) => {
             let identity = disk.identity().clone();
-            let label = format!("{} {}", identity.vendor, identity.product).trim().to_string();
-            Opening::Ready(Card::new(id, &label, disk.capacity(), Box::new(crate::cardwrite::AlignedDevice::new(disk))))
+            let label = format!("{} {}", identity.vendor, identity.product)
+                .trim()
+                .to_string();
+            Opening::Ready(Card::new(
+                id,
+                &label,
+                disk.capacity(),
+                Box::new(crate::cardwrite::AlignedDevice::new(disk)),
+            ))
         }
         Err(e) => {
             if let Some(hooks) = HOOKS.get() {

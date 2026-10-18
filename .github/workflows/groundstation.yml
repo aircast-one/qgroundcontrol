@@ -64,6 +64,10 @@ jobs:
       - name: ArduPilot parameter metadata
         run: git clone --depth 1 https://github.com/ArduPilot/ParameterRepository .cache/CPM/ardupilotparams/main
 
+      - name: Format
+        working-directory: groundstation
+        run: cargo fmt --check
+
       - name: Test
         working-directory: groundstation
         run: cargo test --locked

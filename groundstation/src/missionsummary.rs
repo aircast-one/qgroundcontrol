@@ -35,7 +35,8 @@ const SECONDS_PER_HOUR: i64 = 3600;
 const UNKNOWN: &str = "\u{2014}";
 
 pub fn imperial(backend: &dyn Backend) -> bool {
-    value_number(&backend.value("settings.unitsSettings.horizontalDistanceUnits.rawValue")) == Some(HORIZONTAL_UNITS_FEET)
+    value_number(&backend.value("settings.unitsSettings.horizontalDistanceUnits.rawValue"))
+        == Some(HORIZONTAL_UNITS_FEET)
 }
 
 pub fn distance_text(metres: f64, imperial: bool) -> String {
@@ -80,10 +81,19 @@ pub fn whole_distance_text(metres: f64, imperial: bool) -> String {
 }
 
 pub fn mission_time_text(seconds: f64) -> String {
-    let whole = if seconds.is_finite() && seconds > 0.0 { seconds as i64 } else { 0 };
+    let whole = if seconds.is_finite() && seconds > 0.0 {
+        seconds as i64
+    } else {
+        0
+    };
     let days = whole / (24 * SECONDS_PER_HOUR);
     let rest = whole % (24 * SECONDS_PER_HOUR);
-    let clock = format!("{:02}:{:02}:{:02}", rest / SECONDS_PER_HOUR, rest % SECONDS_PER_HOUR / SECONDS_PER_MINUTE, rest % SECONDS_PER_MINUTE);
+    let clock = format!(
+        "{:02}:{:02}:{:02}",
+        rest / SECONDS_PER_HOUR,
+        rest % SECONDS_PER_HOUR / SECONDS_PER_MINUTE,
+        rest % SECONDS_PER_MINUTE
+    );
     match days {
         0 => clock,
         n => format!("{n:02} days {clock}"),
@@ -92,7 +102,10 @@ pub fn mission_time_text(seconds: f64) -> String {
 
 fn point_of(value: &Value) -> Option<(f64, f64)> {
     let at = value.as_object()?;
-    Some((at.get("latitude")?.as_f64()?, at.get("longitude")?.as_f64()?))
+    Some((
+        at.get("latitude")?.as_f64()?,
+        at.get("longitude")?.as_f64()?,
+    ))
 }
 
 fn flag_of(item: &Value, key: &str) -> bool {
@@ -107,52 +120,91 @@ fn reached(items: &[Value]) -> &[Value] {
 }
 
 fn flown(items: &[Value]) -> impl Iterator<Item = &Value> {
-    reached(items).iter().filter(|item| flag_of(item, "flownLeg"))
+    reached(items)
+        .iter()
+        .filter(|item| flag_of(item, "flownLeg"))
 }
 
 fn leg_metres(item: &Value, previous: Option<(f64, f64)>) -> Option<(f64, (f64, f64))> {
     let entry = item.get("coordinate").and_then(point_of)?;
-    let pattern = item.get("patternDistance").and_then(Value::as_f64).unwrap_or(0.0);
+    let pattern = item
+        .get("patternDistance")
+        .and_then(Value::as_f64)
+        .unwrap_or(0.0);
     let leg = previous.map_or(0.0, |from| crate::surveygrid::distance_between(from, entry));
-    let exit = item.get("exitCoordinate").and_then(point_of).unwrap_or(entry);
+    let exit = item
+        .get("exitCoordinate")
+        .and_then(point_of)
+        .unwrap_or(entry);
     Some((leg + pattern, exit))
 }
 
 pub fn flown_distance(items: &[Value]) -> f64 {
     flown(items)
-        .fold((0.0, None), |(total, previous), item| match leg_metres(item, previous) {
-            Some((metres, exit)) => (total + metres, Some(exit)),
-            None => (total, previous),
+        .fold((0.0, None), |(total, previous), item| {
+            match leg_metres(item, previous) {
+                Some((metres, exit)) => (total + metres, Some(exit)),
+                None => (total, previous),
+            }
         })
         .0
 }
 
 pub fn telemetry_terms(items: &[Value]) -> Vec<(i64, f64, f64)> {
-    let Some(home) = items.first().and_then(|item| item.get("coordinate")).and_then(point_of) else {
+    let Some(home) = items
+        .first()
+        .and_then(|item| item.get("coordinate"))
+        .and_then(point_of)
+    else {
         return Vec::new();
     };
     flown(items)
         .filter(|item| item.get("kind").and_then(Value::as_str) != Some("settings"))
         .map(|item| {
             let sequence = item.get("sequence").and_then(Value::as_i64).unwrap_or(-1);
-            let Some(entry) = item.get("coordinate").and_then(point_of) else { return (sequence, 0.0, 0.0) };
-            let exit = item.get("exitCoordinate").and_then(point_of).unwrap_or(entry);
+            let Some(entry) = item.get("coordinate").and_then(point_of) else {
+                return (sequence, 0.0, 0.0);
+            };
+            let exit = item
+                .get("exitCoordinate")
+                .and_then(point_of)
+                .unwrap_or(entry);
             let span = item
                 .get("geometry")
                 .and_then(|shape| shape.get("transects"))
                 .and_then(Value::as_array)
-                .map(|points| points.iter().filter_map(point_of).map(|at| crate::surveygrid::distance_between(exit, at)).fold(0.0, f64::max))
+                .map(|points| {
+                    points
+                        .iter()
+                        .filter_map(point_of)
+                        .map(|at| crate::surveygrid::distance_between(exit, at))
+                        .fold(0.0, f64::max)
+                })
                 .unwrap_or(0.0);
-            (sequence, crate::surveygrid::distance_between(home, entry), span)
+            (
+                sequence,
+                crate::surveygrid::distance_between(home, entry),
+                span,
+            )
         })
         .collect()
 }
 
 pub fn max_telemetry_distance(items: &[Value]) -> f64 {
-    telemetry_terms(items).iter().map(|(_, from_home, span)| from_home.max(*span)).fold(0.0, f64::max)
+    telemetry_terms(items)
+        .iter()
+        .map(|(_, from_home, span)| from_home.max(*span))
+        .fold(0.0, f64::max)
 }
 
-pub fn flown_seconds(items: &[Value], hover: f64, cruise: f64, ascent: f64, multirotor: bool, vtol: bool) -> Option<f64> {
+pub fn flown_seconds(
+    items: &[Value],
+    hover: f64,
+    cruise: f64,
+    ascent: f64,
+    multirotor: bool,
+    vtol: bool,
+) -> Option<f64> {
     if vtol {
         return None;
     }
@@ -166,29 +218,47 @@ pub fn flown_seconds(items: &[Value], hover: f64, cruise: f64, ascent: f64, mult
     let flying = reached(items)
         .iter()
         .enumerate()
-        .fold((hover, cruise, 0.0, None), |(hover, cruise, total, previous), (index, item)| {
-            if index == 0 {
-                return (hover, cruise, total, leg_metres(item, previous).map(|(_, exit)| exit).or(previous));
-            }
-            let speed = match multirotor {
-                true => hover,
-                false => cruise,
-            };
-            let (leg, exit) = match flag_of(item, "flownLeg") {
-                true => match leg_metres(item, previous) {
-                    Some((metres, exit)) => (metres / speed, Some(exit)),
-                    None => (0.0, previous),
-                },
-                false => (0.0, previous),
-            };
-            let delay = item.get("extraSeconds").and_then(Value::as_f64).filter(|seconds| seconds.is_finite()).unwrap_or(0.0);
-            let spent = total + leg + delay;
-            match item.get("speedChange").and_then(Value::as_f64).filter(|speed| speed.is_finite() && *speed > 0.0) {
-                Some(changed) if multirotor => (changed, cruise, spent, exit),
-                Some(changed) => (hover, changed, spent, exit),
-                None => (hover, cruise, spent, exit),
-            }
-        })
+        .fold(
+            (hover, cruise, 0.0, None),
+            |(hover, cruise, total, previous), (index, item)| {
+                if index == 0 {
+                    return (
+                        hover,
+                        cruise,
+                        total,
+                        leg_metres(item, previous)
+                            .map(|(_, exit)| exit)
+                            .or(previous),
+                    );
+                }
+                let speed = match multirotor {
+                    true => hover,
+                    false => cruise,
+                };
+                let (leg, exit) = match flag_of(item, "flownLeg") {
+                    true => match leg_metres(item, previous) {
+                        Some((metres, exit)) => (metres / speed, Some(exit)),
+                        None => (0.0, previous),
+                    },
+                    false => (0.0, previous),
+                };
+                let delay = item
+                    .get("extraSeconds")
+                    .and_then(Value::as_f64)
+                    .filter(|seconds| seconds.is_finite())
+                    .unwrap_or(0.0);
+                let spent = total + leg + delay;
+                match item
+                    .get("speedChange")
+                    .and_then(Value::as_f64)
+                    .filter(|speed| speed.is_finite() && *speed > 0.0)
+                {
+                    Some(changed) if multirotor => (changed, cruise, spent, exit),
+                    Some(changed) => (hover, changed, spent, exit),
+                    None => (hover, cruise, spent, exit),
+                }
+            },
+        )
         .2;
     Some(flying + climb(items, ascent, multirotor))
 }
@@ -197,8 +267,14 @@ fn climb(items: &[Value], ascent: f64, multirotor: bool) -> f64 {
     if !multirotor || !ascent.is_finite() || ascent <= 0.0 {
         return 0.0;
     }
-    let launch = items.first().and_then(|item| item.get("altitudeAmsl")).and_then(Value::as_f64);
-    let first = flown(items).nth(1).and_then(|item| item.get("altitudeAmsl")).and_then(Value::as_f64);
+    let launch = items
+        .first()
+        .and_then(|item| item.get("altitudeAmsl"))
+        .and_then(Value::as_f64);
+    let first = flown(items)
+        .nth(1)
+        .and_then(|item| item.get("altitudeAmsl"))
+        .and_then(Value::as_f64);
     match (launch, first) {
         (Some(from), Some(to)) => (to - from).abs() / ascent,
         _ => 0.0,
@@ -214,7 +290,10 @@ pub fn altitude_band(items: &[Value]) -> Option<(f64, f64)> {
             let highest = item.get("altitudeAmslHighest").and_then(Value::as_f64);
             match (lowest, highest) {
                 (Some(low), Some(high)) if high >= low => Some((low, high)),
-                _ => item.get("altitudeAmsl").and_then(Value::as_f64).map(|at| (at, at)),
+                _ => item
+                    .get("altitudeAmsl")
+                    .and_then(Value::as_f64)
+                    .map(|at| (at, at)),
             }
         })
         .filter(|(low, high)| low.is_finite() && high.is_finite())
@@ -233,9 +312,22 @@ pub fn summary_view(backend: &dyn Backend, args: &[String]) -> Value {
             "containsItems,missionTotalDistance,missionPlannedDistance,missionTime,missionHoverDistance,missionCruiseDistance,missionMaxTelemetry,minAMSLAltitude,maxAMSLAltitude",
         )
     });
-    let has_items = mission.get("containsItems").and_then(Value::as_bool).unwrap_or(false);
-    let metres = |key: &str| mission.get(key).and_then(Value::as_f64).filter(|value| value.is_finite() && *value >= 0.0);
-    let seconds = |key: &str| mission.get(key).and_then(Value::as_f64).filter(|value| value.is_finite() && *value >= 0.0);
+    let has_items = mission
+        .get("containsItems")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let metres = |key: &str| {
+        mission
+            .get(key)
+            .and_then(Value::as_f64)
+            .filter(|value| value.is_finite() && *value >= 0.0)
+    };
+    let seconds = |key: &str| {
+        mission
+            .get(key)
+            .and_then(Value::as_f64)
+            .filter(|value| value.is_finite() && *value >= 0.0)
+    };
 
     let airframe = backend.value_fields("plan.controllerVehicle", "multiRotor,vtol");
     let vtol = crate::read::flag(&airframe, "vtol");
@@ -243,11 +335,37 @@ pub fn summary_view(backend: &dyn Backend, args: &[String]) -> Value {
     let cruises = vtol || !crate::read::flag(&airframe, "multiRotor");
 
     let rows: Vec<Value> = vec![
-        row("distance", "Distance", metres("missionPlannedDistance").map(|value| whole_distance_text(value, imperial))),
-        row("time", "Time", seconds("missionTime").map(mission_time_text)),
-        row("hover", "Hover", hovers.then(|| metres("missionHoverDistance")).flatten().map(|value| distance_text(value, imperial))),
-        row("cruise", "Cruise", cruises.then(|| metres("missionCruiseDistance")).flatten().map(|value| distance_text(value, imperial))),
-        row("furthest", "Furthest from launch", metres("missionMaxTelemetry").map(|value| whole_distance_text(value, imperial))),
+        row(
+            "distance",
+            "Distance",
+            metres("missionPlannedDistance").map(|value| whole_distance_text(value, imperial)),
+        ),
+        row(
+            "time",
+            "Time",
+            seconds("missionTime").map(mission_time_text),
+        ),
+        row(
+            "hover",
+            "Hover",
+            hovers
+                .then(|| metres("missionHoverDistance"))
+                .flatten()
+                .map(|value| distance_text(value, imperial)),
+        ),
+        row(
+            "cruise",
+            "Cruise",
+            cruises
+                .then(|| metres("missionCruiseDistance"))
+                .flatten()
+                .map(|value| distance_text(value, imperial)),
+        ),
+        row(
+            "furthest",
+            "Furthest from launch",
+            metres("missionMaxTelemetry").map(|value| whole_distance_text(value, imperial)),
+        ),
     ];
 
     json!({
@@ -298,7 +416,12 @@ fn row(id: &str, label: &str, value: Option<String>) -> Value {
 }
 
 fn altitude_range(mission: &Value, vertical: &Unit) -> Value {
-    let read = |key: &str| mission.get(key).and_then(Value::as_f64).filter(|value| value.is_finite());
+    let read = |key: &str| {
+        mission
+            .get(key)
+            .and_then(Value::as_f64)
+            .filter(|value| value.is_finite())
+    };
     match (read("minAMSLAltitude"), read("maxAMSLAltitude")) {
         (Some(low), Some(high)) if high >= low => json!({
             "lowest": low,
@@ -321,7 +444,10 @@ mod tests {
     fn the_walk_stops_where_the_route_ends_and_steps_over_what_is_not_flown() {
         let straight = vec![leg(47.3960, 8.5440), leg(47.3990, 8.5480)];
         let plain = flown_distance(&straight);
-        assert!(plain > 400.0 && plain < 500.0, "two points about four hundred metres apart measured {plain}");
+        assert!(
+            plain > 400.0 && plain < 500.0,
+            "two points about four hundred metres apart measured {plain}"
+        );
 
         let past_the_end = vec![
             leg(47.3960, 8.5440),
@@ -329,24 +455,40 @@ mod tests {
             json!({ "flownLeg": false, "endsRoute": true }),
             leg(47.4200, 8.5700),
         ];
-        assert_eq!(flown_distance(&past_the_end), plain, "an item beyond the end of the route cannot lengthen the mission");
+        assert_eq!(
+            flown_distance(&past_the_end),
+            plain,
+            "an item beyond the end of the route cannot lengthen the mission"
+        );
 
         let with_roi = vec![
             leg(47.3960, 8.5440),
             json!({ "flownLeg": false, "endsRoute": false, "coordinate": { "latitude": 47.4200, "longitude": 8.5700 } }),
             leg(47.3990, 8.5480),
         ];
-        assert_eq!(flown_distance(&with_roi), plain, "an item that is not flown to adds no distance and no dogleg");
+        assert_eq!(
+            flown_distance(&with_roi),
+            plain,
+            "an item that is not flown to adds no distance and no dogleg"
+        );
     }
 
     #[test]
     fn a_distance_reads_in_the_unit_the_operator_chose() {
         assert_eq!(distance_text(750.0, false), "750 m");
-        assert_eq!(distance_text(1000.0, false), "1.00 km", "a kilometre is a kilometre rather than a thousand metres");
+        assert_eq!(
+            distance_text(1000.0, false),
+            "1.00 km",
+            "a kilometre is a kilometre rather than a thousand metres"
+        );
         assert_eq!(distance_text(2500.0, false), "2.50 km");
         assert_eq!(distance_text(100.0, true), "328 ft");
         assert_eq!(distance_text(2000.0, true), "1.24 mi");
-        assert_eq!(distance_text(-1.0, false), UNKNOWN, "a negative distance is a number that was never computed, not a distance");
+        assert_eq!(
+            distance_text(-1.0, false),
+            UNKNOWN,
+            "a negative distance is a number that was never computed, not a distance"
+        );
         assert_eq!(distance_text(f64::NAN, false), UNKNOWN);
     }
 
@@ -355,7 +497,11 @@ mod tests {
         assert_eq!(duration_text(0.0), "0:00");
         assert_eq!(duration_text(9.0), "0:09");
         assert_eq!(duration_text(75.0), "1:15");
-        assert_eq!(duration_text(3600.0), "1:00:00", "an hour long mission gains an hours field rather than reading sixty minutes");
+        assert_eq!(
+            duration_text(3600.0),
+            "1:00:00",
+            "an hour long mission gains an hours field rather than reading sixty minutes"
+        );
         assert_eq!(duration_text(3661.0), "1:01:01");
         assert_eq!(duration_text(-5.0), UNKNOWN);
     }
@@ -365,7 +511,9 @@ mod tests {
     impl Backend for Plan {
         fn get(&self, path: &str) -> String {
             match path {
-                "settings.unitsSettings.horizontalDistanceUnits.rawValue" => json!({ "kind": "value", "value": self.1 }).to_string(),
+                "settings.unitsSettings.horizontalDistanceUnits.rawValue" => {
+                    json!({ "kind": "value", "value": self.1 }).to_string()
+                }
                 _ => String::new(),
             }
         }
@@ -377,11 +525,15 @@ mod tests {
                 _ => String::new(),
             }
         }
-        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
         fn invoke(&self, path: &str, args: &str) -> String {
             let metres = || serde_json::from_str::<Vec<f64>>(args).unwrap()[0];
             match (path, self.1) {
-                ("units.metersToAppSettingsHorizontalDistanceUnits", 0.0) => json!({ "ok": true, "result": metres() * FEET_PER_METRE }).to_string(),
+                ("units.metersToAppSettingsHorizontalDistanceUnits", 0.0) => {
+                    json!({ "ok": true, "result": metres() * FEET_PER_METRE }).to_string()
+                }
                 _ => String::new(),
             }
         }
@@ -416,7 +568,10 @@ mod tests {
         ];
         let metres = flown_distance(&steady);
         let at_ten = flown_seconds(&steady, 5.0, 10.0, 3.0, false, false).unwrap();
-        assert!((at_ten - metres / 10.0).abs() < 1e-6, "with no speed item the whole plan flies at the cruise speed from settings");
+        assert!(
+            (at_ten - metres / 10.0).abs() < 1e-6,
+            "with no speed item the whole plan flies at the cruise speed from settings"
+        );
 
         let halved = vec![
             json!({ "kind": "settings", "sequence": 0, "coordinate": at(50.0, 30.0), "flownLeg": true }),
@@ -425,13 +580,22 @@ mod tests {
             leg(3, 30.0200),
         ];
         let mixed = flown_seconds(&halved, 5.0, 10.0, 3.0, false, false).unwrap();
-        assert!(mixed > at_ten, "halving the speed halfway can only make the mission longer, and answering the settings speed for the whole plan was the silent version of this");
+        assert!(
+            mixed > at_ten,
+            "halving the speed halfway can only make the mission longer, and answering the settings speed for the whole plan was the silent version of this"
+        );
         let first = crate::surveygrid::distance_between((50.0, 30.0), (50.0, 30.0100));
         let second = crate::surveygrid::distance_between((50.0, 30.0100), (50.0, 30.0200));
-        assert!((mixed - (first / 10.0 + second / 5.0)).abs() < 1e-6, "the leg before the change keeps the old speed - QGC applies a speed item to the next item, not its own");
+        assert!(
+            (mixed - (first / 10.0 + second / 5.0)).abs() < 1e-6,
+            "the leg before the change keeps the old speed - QGC applies a speed item to the next item, not its own"
+        );
 
         let rotor = flown_seconds(&halved, 5.0, 10.0, 3.0, true, false).unwrap();
-        assert!((rotor - (first / 5.0 + second / 5.0)).abs() < 1e-6, "on a multirotor the same item sets the hover speed, because that is the regime every leg is flown in");
+        assert!(
+            (rotor - (first / 5.0 + second / 5.0)).abs() < 1e-6,
+            "on a multirotor the same item sets the hover speed, because that is the regime every leg is flown in"
+        );
     }
 
     #[test]
@@ -443,7 +607,10 @@ mod tests {
         ];
         let flying = flown_distance(&plan) / 10.0;
         let total = flown_seconds(&plan, 5.0, 10.0, 3.0, false, false).unwrap();
-        assert!((total - (flying + 30.0)).abs() < 1e-6, "a loiter or a camera pause is time the aircraft spends, and it hangs on items that are not legs; the settings entry's own delay is skipped the way QGC skips item zero");
+        assert!(
+            (total - (flying + 30.0)).abs() < 1e-6,
+            "a loiter or a camera pause is time the aircraft spends, and it hangs on items that are not legs; the settings entry's own delay is skipped the way QGC skips item zero"
+        );
     }
 
     #[test]
@@ -461,30 +628,65 @@ mod tests {
 
         let terms = telemetry_terms(&plan);
         let sequences: Vec<i64> = terms.iter().map(|(sequence, _, _)| *sequence).collect();
-        assert_eq!(sequences, vec![1, 3, 4], "the ROI is not a flown leg, the settings entry is not somewhere the vehicle goes, and everything past the landing is not reached");
+        assert_eq!(
+            sequences,
+            vec![1, 3, 4],
+            "the ROI is not a flown leg, the settings entry is not somewhere the vehicle goes, and everything past the landing is not reached"
+        );
 
-        let folded = terms.iter().map(|(_, from_home, span)| from_home.max(*span)).fold(0.0, f64::max);
-        assert_eq!(max_telemetry_distance(&plan), folded, "the answer is the fold of these exact terms, so the inputs served beside it cannot describe a different walk");
+        let folded = terms
+            .iter()
+            .map(|(_, from_home, span)| from_home.max(*span))
+            .fold(0.0, f64::max);
+        assert_eq!(
+            max_telemetry_distance(&plan),
+            folded,
+            "the answer is the fold of these exact terms, so the inputs served beside it cannot describe a different walk"
+        );
 
-        let survey = terms.iter().find(|(sequence, _, _)| *sequence == 3).unwrap();
-        assert!(survey.2 > survey.1, "the survey's furthest transect is further from its own exit than its entry is from home, which is the term that makes this second and not a distance from launch at all");
+        let survey = terms
+            .iter()
+            .find(|(sequence, _, _)| *sequence == 3)
+            .unwrap();
+        assert!(
+            survey.2 > survey.1,
+            "the survey's furthest transect is further from its own exit than its entry is from home, which is the term that makes this second and not a distance from launch at all"
+        );
         assert!(max_telemetry_distance(&plan) >= survey.2);
     }
 
     #[test]
     fn a_regime_the_airframe_does_not_have_is_absent_rather_than_zero() {
-        let both = { let mut plan = flown(); plan["missionCruiseDistance"] = json!(0.0); plan };
+        let both = {
+            let mut plan = flown();
+            plan["missionCruiseDistance"] = json!(0.0);
+            plan
+        };
         let rotor = summary_view(&Plan(both.clone(), 1.0, quad()), &[]);
-        assert!(labelled(&rotor, "Cruise").is_none(), "a multirotor has no cruise regime, so a zero there is what the aircraft is and not something measured - and it lands in the cell the strip truncates first, spending width to say nothing");
+        assert!(
+            labelled(&rotor, "Cruise").is_none(),
+            "a multirotor has no cruise regime, so a zero there is what the aircraft is and not something measured - and it lands in the cell the strip truncates first, spending width to say nothing"
+        );
         assert_eq!(labelled(&rotor, "Hover").unwrap(), "200 m");
 
-        let fixed = { let mut plan = flown(); plan["missionHoverDistance"] = json!(0.0); plan };
+        let fixed = {
+            let mut plan = flown();
+            plan["missionHoverDistance"] = json!(0.0);
+            plan
+        };
         let plane = summary_view(&Plan(fixed, 1.0, wing()), &[]);
-        assert!(labelled(&plane, "Hover").is_none(), "and symmetrically, a fixed wing does not hover");
+        assert!(
+            labelled(&plane, "Hover").is_none(),
+            "and symmetrically, a fixed wing does not hover"
+        );
         assert_eq!(labelled(&plane, "Cruise").unwrap(), "1.30 km");
 
         let vtol = summary_view(&Plan(both, 1.0, tiltrotor()), &[]);
-        assert_eq!(labelled(&vtol, "Hover").unwrap(), "200 m", "a VTOL flies in both regimes, so both rows are real even when one reads zero");
+        assert_eq!(
+            labelled(&vtol, "Hover").unwrap(),
+            "200 m",
+            "a VTOL flies in both regimes, so both rows are real even when one reads zero"
+        );
         assert_eq!(labelled(&vtol, "Cruise").unwrap(), "0 m");
     }
 
@@ -504,21 +706,49 @@ mod tests {
     }
 
     fn labelled(view: &Value, label: &str) -> Option<String> {
-        view["rows"].as_array().unwrap().iter().find(|row| row["label"] == label).map(|row| row["value"].as_str().unwrap().to_string())
+        view["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|row| row["label"] == label)
+            .map(|row| row["value"].as_str().unwrap().to_string())
     }
 
     #[test]
     fn a_flown_plan_reports_what_it_will_cost_to_fly() {
         let view = summary_view(&Plan(flown(), 1.0, quad()), &[]);
         assert_eq!(view["available"], true);
-        assert_eq!(labelled(&view, "Distance").unwrap(), "1400 m", "PlanToolBarIndicators shows missionPlannedDistance to the whole unit");
-        assert_eq!(labelled(&view, "Time").unwrap(), "00:03:05", "and the time as hh:mm:ss");
+        assert_eq!(
+            labelled(&view, "Distance").unwrap(),
+            "1400 m",
+            "PlanToolBarIndicators shows missionPlannedDistance to the whole unit"
+        );
+        assert_eq!(
+            labelled(&view, "Time").unwrap(),
+            "00:03:05",
+            "and the time as hh:mm:ss"
+        );
         assert_eq!(labelled(&view, "Furthest from launch").unwrap(), "640 m");
-        let ids: Vec<&str> = view["rows"].as_array().unwrap().iter().filter_map(|r| r["id"].as_str()).collect();
-        assert!(ids.contains(&"furthest"), "a head picking the rows it wants to emphasise keys on this rather than on the label, because the labels are English display strings and the day they are localised every lookup returns nothing: {ids:?}");
-        assert_eq!(ids.len(), view["rows"].as_array().unwrap().len(), "every row carries one, so a head never has to fall back to the label");
+        let ids: Vec<&str> = view["rows"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter_map(|r| r["id"].as_str())
+            .collect();
+        assert!(
+            ids.contains(&"furthest"),
+            "a head picking the rows it wants to emphasise keys on this rather than on the label, because the labels are English display strings and the day they are localised every lookup returns nothing: {ids:?}"
+        );
+        assert_eq!(
+            ids.len(),
+            view["rows"].as_array().unwrap().len(),
+            "every row carries one, so a head never has to fall back to the label"
+        );
         assert_eq!(view["altitudeRange"]["text"], "480 m to 530 m");
-        assert_eq!(view["distanceMetres"], 1500.0, "the raw metres travel too, so a head that wants to draw a bar is not parsing a string back");
+        assert_eq!(
+            view["distanceMetres"], 1500.0,
+            "the raw metres travel too, so a head that wants to draw a bar is not parsing a string back"
+        );
     }
 
     #[test]
@@ -526,12 +756,37 @@ mod tests {
         let view = summary_view(&Plan(flown(), 0.0, quad()), &[]);
         assert_eq!(view["imperial"], true);
         assert_eq!(labelled(&view, "Distance").unwrap(), "4593 ft");
-        let longer = summary_view(&Plan({ let mut plan = flown(); plan["missionPlannedDistance"] = json!(3000.0); plan }, 0.0, quad()), &[]);
-        assert_eq!(labelled(&longer, "Distance").unwrap(), "9843 ft", "QGC never switches to miles here");
-        assert_eq!(labelled(&view, "Time").unwrap(), "00:03:05", "time is not a unit the operator chooses");
+        let longer = summary_view(
+            &Plan(
+                {
+                    let mut plan = flown();
+                    plan["missionPlannedDistance"] = json!(3000.0);
+                    plan
+                },
+                0.0,
+                quad(),
+            ),
+            &[],
+        );
+        assert_eq!(
+            labelled(&longer, "Distance").unwrap(),
+            "9843 ft",
+            "QGC never switches to miles here"
+        );
+        assert_eq!(
+            labelled(&view, "Time").unwrap(),
+            "00:03:05",
+            "time is not a unit the operator chooses"
+        );
         assert_eq!(mission_time_text(90_000.0), "01 days 01:00:00");
-        assert_eq!(view["distanceMetres"], 1500.0, "the raw number stays metric whichever way it is drawn");
-        assert_eq!(view["altitudeRange"]["text"], "480 m to 530 m", "QGC keeps the vertical unit apart from the horizontal one, and an operator flying in feet over a map in miles still reads altitudes in the unit they set for altitudes");
+        assert_eq!(
+            view["distanceMetres"], 1500.0,
+            "the raw number stays metric whichever way it is drawn"
+        );
+        assert_eq!(
+            view["altitudeRange"]["text"], "480 m to 530 m",
+            "QGC keeps the vertical unit apart from the horizontal one, and an operator flying in feet over a map in miles still reads altitudes in the unit they set for altitudes"
+        );
     }
 
     #[test]
@@ -539,7 +794,10 @@ mod tests {
         let mut sparse = flown();
         sparse["missionHoverDistance"] = json!(-1.0);
         let view = summary_view(&Plan(sparse, 1.0, quad()), &[]);
-        assert!(labelled(&view, "Hover").is_none(), "minus one is what this controller answers when it has not worked something out, and drawing it as a distance would be a lie");
+        assert!(
+            labelled(&view, "Hover").is_none(),
+            "minus one is what this controller answers when it has not worked something out, and drawing it as a distance would be a lie"
+        );
         assert!(labelled(&view, "Distance").is_some());
     }
 
@@ -548,11 +806,20 @@ mod tests {
         let plain = summary_view(&Plan(flown(), 1.0, quad()), &[]);
         assert!(plain["distanceMetres"].is_number());
         assert!(plain["timeSeconds"].is_number());
-        assert!(plain["maxTelemetryMetres"].is_number(), "this is the controller's own missionMaxTelemetry, not anything the core walks, and it was reachable only by passing verify - so a head asking how far the vehicle gets from launch was told null and the only other copy was a row keyed by an English label");
+        assert!(
+            plain["maxTelemetryMetres"].is_number(),
+            "this is the controller's own missionMaxTelemetry, not anything the core walks, and it was reachable only by passing verify - so a head asking how far the vehicle gets from launch was told null and the only other copy was a row keyed by an English label"
+        );
         assert_eq!(plain["altitudeBandMetres"].as_array().unwrap().len(), 2);
-        assert!(plain["distanceComputedMetres"].is_null(), "the walked figures stay behind verify, because those are the ones that cost a second pass over every item");
+        assert!(
+            plain["distanceComputedMetres"].is_null(),
+            "the walked figures stay behind verify, because those are the ones that cost a second pass over every item"
+        );
         assert!(plain["maxTelemetryComputedMetres"].is_null());
-        assert!(plain.get("durationSeconds").is_none(), "durationSeconds read missionTime and so did timeSeconds - one field, two names, and the gated one answered null all day");
+        assert!(
+            plain.get("durationSeconds").is_none(),
+            "durationSeconds read missionTime and so did timeSeconds - one field, two names, and the gated one answered null all day"
+        );
     }
 
     #[test]
@@ -569,16 +836,46 @@ mod tests {
         low["minAMSLAltitude"] = json!(-390.0);
         low["maxAMSLAltitude"] = json!(-340.0);
         let view = summary_view(&Plan(low, 1.0, quad()), &[]);
-        assert_eq!(view["altitudeRange"]["text"], "-390 m to -340 m", "the Dead Sea is four hundred metres down and a plan flown over it still has altitudes");
+        assert_eq!(
+            view["altitudeRange"]["text"], "-390 m to -340 m",
+            "the Dead Sea is four hundred metres down and a plan flown over it still has altitudes"
+        );
 
-        let shallow = { let mut plan = flown(); plan["minAMSLAltitude"] = json!(-10.0); plan["maxAMSLAltitude"] = json!(60.0); plan };
-        assert_eq!(summary_view(&Plan(shallow, 1.0, quad()), &[])["altitudeRange"]["text"], "-10.0 m to 60.0 m", "both ends of one range are spelled at one precision - a tenth on one end and none on the other reads as a mistake even though each is individually right");
+        let shallow = {
+            let mut plan = flown();
+            plan["minAMSLAltitude"] = json!(-10.0);
+            plan["maxAMSLAltitude"] = json!(60.0);
+            plan
+        };
+        assert_eq!(
+            summary_view(&Plan(shallow, 1.0, quad()), &[])["altitudeRange"]["text"],
+            "-10.0 m to 60.0 m",
+            "both ends of one range are spelled at one precision - a tenth on one end and none on the other reads as a mistake even though each is individually right"
+        );
 
-        let mixed = { let mut plan = flown(); plan["minAMSLAltitude"] = json!(-10.0); plan["maxAMSLAltitude"] = json!(600.0); plan };
-        assert_eq!(summary_view(&Plan(mixed, 1.0, quad()), &[])["altitudeRange"]["text"], "-10 m to 600 m", "and the precision follows the wider end, which is the scale the operator is reading");
+        let mixed = {
+            let mut plan = flown();
+            plan["minAMSLAltitude"] = json!(-10.0);
+            plan["maxAMSLAltitude"] = json!(600.0);
+            plan
+        };
+        assert_eq!(
+            summary_view(&Plan(mixed, 1.0, quad()), &[])["altitudeRange"]["text"],
+            "-10 m to 600 m",
+            "and the precision follows the wider end, which is the scale the operator is reading"
+        );
 
-        let below = { let mut plan = flown(); plan["minAMSLAltitude"] = json!(-150.0); plan["maxAMSLAltitude"] = json!(-20.0); plan };
-        assert_eq!(summary_view(&Plan(below, 1.0, quad()), &[])["altitudeRange"]["text"], "-150 m to -20 m", "the wider end is the deeper one here, so reading the precision off the high end alone would spell a valley in tenths");
+        let below = {
+            let mut plan = flown();
+            plan["minAMSLAltitude"] = json!(-150.0);
+            plan["maxAMSLAltitude"] = json!(-20.0);
+            plan
+        };
+        assert_eq!(
+            summary_view(&Plan(below, 1.0, quad()), &[])["altitudeRange"]["text"],
+            "-150 m to -20 m",
+            "the wider end is the deeper one here, so reading the precision off the high end alone would spell a valley in tenths"
+        );
         assert_eq!(view["altitudeRange"]["lowest"], -390.0);
     }
 
@@ -587,9 +884,15 @@ mod tests {
         let mut wrong = flown();
         wrong["minAMSLAltitude"] = json!(530.0);
         wrong["maxAMSLAltitude"] = json!(480.0);
-        assert_eq!(summary_view(&Plan(wrong, 1.0, quad()), &[])["altitudeRange"], Value::Null);
+        assert_eq!(
+            summary_view(&Plan(wrong, 1.0, quad()), &[])["altitudeRange"],
+            Value::Null
+        );
         let mut absent = flown();
         absent["maxAMSLAltitude"] = json!(f64::NAN.to_string());
-        assert_eq!(summary_view(&Plan(absent, 1.0, quad()), &[])["altitudeRange"], Value::Null);
+        assert_eq!(
+            summary_view(&Plan(absent, 1.0, quad()), &[])["altitudeRange"],
+            Value::Null
+        );
     }
 }

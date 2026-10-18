@@ -24,7 +24,19 @@ pub const FLASHER_START: &str = "flasher.start";
 pub const FLASHER_CANCEL: &str = "flasher.cancel";
 pub const FLASHER_AGAIN: &str = "flasher.again";
 pub const FLASHER_DOWNLOAD: &str = "flasher.download";
-const FLASHER_COMMANDS: &[&str] = &[FLASHER_OPEN, FLASHER_CHANNEL, FLASHER_RELEASES, FLASHER_SELECT, FLASHER_FORM, FLASHER_DISKS, FLASHER_CHOOSE_DISK, FLASHER_START, FLASHER_CANCEL, FLASHER_AGAIN, FLASHER_DOWNLOAD];
+const FLASHER_COMMANDS: &[&str] = &[
+    FLASHER_OPEN,
+    FLASHER_CHANNEL,
+    FLASHER_RELEASES,
+    FLASHER_SELECT,
+    FLASHER_FORM,
+    FLASHER_DISKS,
+    FLASHER_CHOOSE_DISK,
+    FLASHER_START,
+    FLASHER_CANCEL,
+    FLASHER_AGAIN,
+    FLASHER_DOWNLOAD,
+];
 const SETTINGS_KEY: &str = "Flasher/settings";
 const FOLDER: &str = "Flasher";
 const DEFAULT_CHANNEL: &str = "stable";
@@ -46,9 +58,20 @@ enum Releases {
 enum Download {
     #[default]
     Idle,
-    Running { version: String, done: u64, total: u64 },
-    Ready { version: String, path: PathBuf, image_len: u64 },
-    Failed { version: String, error: String },
+    Running {
+        version: String,
+        done: u64,
+        total: u64,
+    },
+    Ready {
+        version: String,
+        path: PathBuf,
+        image_len: u64,
+    },
+    Failed {
+        version: String,
+        error: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -57,8 +80,15 @@ enum CardState {
     None,
     Opening(String),
     Waiting(String),
-    Ready { id: String, label: String, capacity: u64 },
-    Failed { id: String, error: String },
+    Ready {
+        id: String,
+        label: String,
+        capacity: u64,
+    },
+    Failed {
+        id: String,
+        error: String,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -91,7 +121,14 @@ impl Phase {
     }
 
     fn busy(self) -> bool {
-        matches!(self, Phase::Downloading | Phase::Preparing | Phase::Writing | Phase::Verifying | Phase::Customizing)
+        matches!(
+            self,
+            Phase::Downloading
+                | Phase::Preparing
+                | Phase::Writing
+                | Phase::Verifying
+                | Phase::Customizing
+        )
     }
 
     fn finished(self) -> bool {
@@ -147,13 +184,17 @@ fn refused(reason: &str) -> Value {
 }
 
 fn spawn(name: &str, work: impl FnOnce() + Send + 'static) {
-    let _ = std::thread::Builder::new().name(name.into()).spawn(move || {
-        let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(work));
-    });
+    let _ = std::thread::Builder::new()
+        .name(name.into())
+        .spawn(move || {
+            let _ = std::panic::catch_unwind(std::panic::AssertUnwindSafe(work));
+        });
 }
 
 fn remembered() -> Remembered {
-    crate::settingsstore::stored_text(SETTINGS_KEY).and_then(|text| serde_json::from_str(&text).ok()).unwrap_or_default()
+    crate::settingsstore::stored_text(SETTINGS_KEY)
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_default()
 }
 
 fn remember(remembered: &Remembered) {
@@ -163,7 +204,9 @@ fn remember(remembered: &Remembered) {
 }
 
 fn folder() -> PathBuf {
-    crate::settingsstore::folder().unwrap_or_else(std::env::temp_dir).join(FOLDER)
+    crate::settingsstore::folder()
+        .unwrap_or_else(std::env::temp_dir)
+        .join(FOLDER)
 }
 
 pub fn owns(path: &str) -> bool {
@@ -172,7 +215,13 @@ pub fn owns(path: &str) -> bool {
 
 pub fn run(path: &str, args: &str) -> Value {
     let given: Vec<Value> = serde_json::from_str(args).unwrap_or_default();
-    let text = |at: usize| given.get(at).and_then(Value::as_str).unwrap_or_default().to_string();
+    let text = |at: usize| {
+        given
+            .get(at)
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    };
     let busy = state().job.phase.busy();
     match path {
         FLASHER_CANCEL => cancel(),
@@ -203,7 +252,9 @@ fn open() -> Value {
         if !s.loaded {
             let remembered = remembered();
             s.form = flasherform::form_from(&remembered);
-            s.channel = Some(remembered.channel.clone()).filter(|c| !c.is_empty()).unwrap_or_else(|| DEFAULT_CHANNEL.into());
+            s.channel = Some(remembered.channel.clone())
+                .filter(|c| !c.is_empty())
+                .unwrap_or_else(|| DEFAULT_CHANNEL.into());
             s.remembered = remembered;
             s.loaded = true;
         }
@@ -238,13 +289,29 @@ fn load_releases() {
     let channel = {
         let mut s = state();
         s.releases = Releases::Loading;
-        Some(s.channel.clone()).filter(|c| !c.is_empty()).unwrap_or_else(|| DEFAULT_CHANNEL.into())
+        Some(s.channel.clone())
+            .filter(|c| !c.is_empty())
+            .unwrap_or_else(|| DEFAULT_CHANNEL.into())
     };
     spawn("flasher-releases", move || {
         let fetched = cardimage::fetch_releases(&channel);
         let mut s = state();
         if s.channel == channel || s.channel.is_empty() {
-            s.selected = s.selected.clone().filter(|version| fetched.as_ref().is_ok_and(|list| list.iter().any(|r| &r.version == version))).or_else(|| fetched.as_ref().ok().and_then(|list| recommended(list)).map(|r| r.version.clone()));
+            s.selected = s
+                .selected
+                .clone()
+                .filter(|version| {
+                    fetched
+                        .as_ref()
+                        .is_ok_and(|list| list.iter().any(|r| &r.version == version))
+                })
+                .or_else(|| {
+                    fetched
+                        .as_ref()
+                        .ok()
+                        .and_then(|list| recommended(list))
+                        .map(|r| r.version.clone())
+                });
             s.releases = fetched.map_or_else(Releases::Failed, Releases::Ready);
         }
     });
@@ -252,14 +319,19 @@ fn load_releases() {
 
 fn selected_release(s: &State) -> Option<Release> {
     match &s.releases {
-        Releases::Ready(list) => s.selected.as_ref().and_then(|version| list.iter().find(|r| &r.version == version)).cloned(),
+        Releases::Ready(list) => s
+            .selected
+            .as_ref()
+            .and_then(|version| list.iter().find(|r| &r.version == version))
+            .cloned(),
         _ => None,
     }
 }
 
 fn select(version: &str) -> Value {
     let mut s = state();
-    let known = matches!(&s.releases, Releases::Ready(list) if list.iter().any(|r| r.version == version));
+    let known =
+        matches!(&s.releases, Releases::Ready(list) if list.iter().any(|r| r.version == version));
     match known {
         false => refused("That version is not in the release list"),
         true => {
@@ -282,12 +354,18 @@ fn download() -> Value {
 
 fn prefetch(release: Release) {
     let wanted = match &state().download {
-        Download::Running { version, .. } | Download::Ready { version, .. } => version != &release.version,
+        Download::Running { version, .. } | Download::Ready { version, .. } => {
+            version != &release.version
+        }
         _ => true,
     };
     if wanted {
         let token = Arc::new(AtomicBool::new(false));
-        if let Some(previous) = DOWNLOAD_TOKEN.lock().unwrap_or_else(PoisonError::into_inner).replace(token.clone()) {
+        if let Some(previous) = DOWNLOAD_TOKEN
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .replace(token.clone())
+        {
             previous.store(true, Ordering::Relaxed);
         }
         spawn("flasher-download", move || {
@@ -299,19 +377,39 @@ fn prefetch(release: Release) {
 fn fetch_release(release: &Release, cancel: &AtomicBool) -> Result<(PathBuf, u64), String> {
     let version = release.version.clone();
     let mine = |download: &Download| matches!(download, Download::Running { version: v, .. } if *v == version);
-    state().download = Download::Running { version: version.clone(), done: 0, total: release.image.size };
-    let fetched = cardimage::download(&release.image, &folder(), &|| cancel.load(Ordering::Relaxed), &mut |done, total| {
-        let mut s = state();
-        if mine(&s.download) {
-            s.download = Download::Running { version: version.clone(), done, total };
-        }
-    })
+    state().download = Download::Running {
+        version: version.clone(),
+        done: 0,
+        total: release.image.size,
+    };
+    let fetched = cardimage::download(
+        &release.image,
+        &folder(),
+        &|| cancel.load(Ordering::Relaxed),
+        &mut |done, total| {
+            let mut s = state();
+            if mine(&s.download) {
+                s.download = Download::Running {
+                    version: version.clone(),
+                    done,
+                    total,
+                };
+            }
+        },
+    )
     .and_then(|path| cardimage::uncompressed_len(&path).map(|image_len| (path, image_len)));
     let mut s = state();
     if mine(&s.download) {
         s.download = match &fetched {
-            Ok((path, image_len)) => Download::Ready { version: version.clone(), path: path.clone(), image_len: *image_len },
-            Err(error) => Download::Failed { version: version.clone(), error: error.clone() },
+            Ok((path, image_len)) => Download::Ready {
+                version: version.clone(),
+                path: path.clone(),
+                image_len: *image_len,
+            },
+            Err(error) => Download::Failed {
+                version: version.clone(),
+                error: error.clone(),
+            },
         };
     }
     fetched
@@ -325,7 +423,13 @@ fn form(patch: Value) -> Value {
 
 fn merged(form: &Form, patch: &Value) -> Form {
     let current = serde_json::to_value(form).unwrap_or(Value::Null);
-    let combined: serde_json::Map<String, Value> = current.as_object().into_iter().flatten().chain(patch.as_object().into_iter().flatten()).map(|(k, v)| (k.clone(), v.clone())).collect();
+    let combined: serde_json::Map<String, Value> = current
+        .as_object()
+        .into_iter()
+        .flatten()
+        .chain(patch.as_object().into_iter().flatten())
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
     serde_json::from_value(Value::Object(combined)).unwrap_or_else(|_| form.clone())
 }
 
@@ -345,7 +449,8 @@ fn refresh_disks() {
 }
 
 fn choose_disk(id: &str) -> Value {
-    let known = state().disks.iter().any(|d| d.id == id) || platformdisk::disks().iter().any(|d| d.id == id);
+    let known = state().disks.iter().any(|d| d.id == id)
+        || platformdisk::disks().iter().any(|d| d.id == id);
     match known {
         false => refused("That card reader is not connected"),
         true => {
@@ -372,21 +477,33 @@ fn open_card(id: &str) {
         match platformdisk::open(id) {
             Opening::Ready(card) => {
                 let mut s = state();
-                if matches!(&s.card, CardState::Opening(held) | CardState::Waiting(held) if held == id) {
-                    s.card = CardState::Ready { id: id.to_string(), label: card.label.clone(), capacity: card.capacity };
+                if matches!(&s.card, CardState::Opening(held) | CardState::Waiting(held) if held == id)
+                {
+                    s.card = CardState::Ready {
+                        id: id.to_string(),
+                        label: card.label.clone(),
+                        capacity: card.capacity,
+                    };
                     *card_slot() = Some(card);
                 }
                 return;
             }
             Opening::Failed(error) => {
                 let mut s = state();
-                if matches!(&s.card, CardState::Opening(held) | CardState::Waiting(held) if held == id) {
-                    s.card = CardState::Failed { id: id.to_string(), error };
+                if matches!(&s.card, CardState::Opening(held) | CardState::Waiting(held) if held == id)
+                {
+                    s.card = CardState::Failed {
+                        id: id.to_string(),
+                        error,
+                    };
                 }
                 return;
             }
             Opening::PermissionPending if Instant::now() >= deadline => {
-                state().card = CardState::Failed { id: id.to_string(), error: "Access to the card reader was not allowed".into() };
+                state().card = CardState::Failed {
+                    id: id.to_string(),
+                    error: "Access to the card reader was not allowed".into(),
+                };
                 return;
             }
             Opening::PermissionPending => {
@@ -399,26 +516,47 @@ fn open_card(id: &str) {
 
 fn required_bytes(s: &State) -> u64 {
     match (&s.download, selected_release(s)) {
-        (Download::Ready { version, image_len, .. }, Some(release)) if *version == release.version => *image_len,
-        (_, Some(release)) => release.image.uncompressed_size.unwrap_or(cardimage::MIN_CARD_BYTES),
+        (
+            Download::Ready {
+                version, image_len, ..
+            },
+            Some(release),
+        ) if *version == release.version => *image_len,
+        (_, Some(release)) => release
+            .image
+            .uncompressed_size
+            .unwrap_or(cardimage::MIN_CARD_BYTES),
         (_, None) => cardimage::MIN_CARD_BYTES,
     }
 }
 
 fn blocked(s: &State) -> Option<String> {
-    let problem = flasherform::problems(&s.form).first().map(|(_, message)| message.clone());
+    let problem = flasherform::problems(&s.form)
+        .first()
+        .map(|(_, message)| message.clone());
     let card = match &s.card {
-        CardState::None => Some("Connect a USB card reader with the card in it, then choose it".to_string()),
+        CardState::None => {
+            Some("Connect a USB card reader with the card in it, then choose it".to_string())
+        }
         CardState::Opening(_) => Some("Checking the card reader…".to_string()),
         CardState::Waiting(_) => Some("Allow access to the card reader".to_string()),
         CardState::Failed { error, .. } => Some(error.clone()),
-        CardState::Ready { capacity, .. } if *capacity < required_bytes(s) => Some(format!("The card holds {}; the image needs {}", size_text(*capacity), size_text(required_bytes(s)))),
+        CardState::Ready { capacity, .. } if *capacity < required_bytes(s) => Some(format!(
+            "The card holds {}; the image needs {}",
+            size_text(*capacity),
+            size_text(required_bytes(s))
+        )),
         CardState::Ready { .. } => None,
     };
     [
         (!s.hostable).then(|| "This device cannot write cards".to_string()),
-        s.job.phase.busy().then(|| "A card is being written".to_string()),
-        selected_release(s).is_none().then(|| "Choose an Aircast OS version".to_string()),
+        s.job
+            .phase
+            .busy()
+            .then(|| "A card is being written".to_string()),
+        selected_release(s)
+            .is_none()
+            .then(|| "Choose an Aircast OS version".to_string()),
         problem,
         card,
     ]
@@ -437,7 +575,11 @@ fn start() -> Value {
         (None, None) => refused("Choose an Aircast OS version"),
         (None, Some(release)) => {
             JOB_CANCEL.store(false, Ordering::Relaxed);
-            state().job = Job { phase: Phase::Downloading, hostname: form.hostname.trim().to_string(), ..Job::default() };
+            state().job = Job {
+                phase: Phase::Downloading,
+                hostname: form.hostname.trim().to_string(),
+                ..Job::default()
+            };
             spawn("flasher-job", move || run_job(&release, &form));
             ok()
         }
@@ -461,10 +603,15 @@ fn again() -> Value {
             false => None,
             true => {
                 if s.job.phase == Phase::Done {
-                    s.form.hostname = flasherform::next_free_hostname(&s.job.hostname, &s.remembered.flashed_hostnames);
+                    s.form.hostname = flasherform::next_free_hostname(
+                        &s.job.hostname,
+                        &s.remembered.flashed_hostnames,
+                    );
                 }
                 s.job = Job::default();
-                s.last_disk.clone().filter(|id| s.disks.iter().any(|d| &d.id == id))
+                s.last_disk
+                    .clone()
+                    .filter(|id| s.disks.iter().any(|d| &d.id == id))
             }
         }
     };
@@ -476,7 +623,13 @@ fn again() -> Value {
 
 fn set_phase(phase: Phase) {
     let mut s = state();
-    s.job = Job { phase, done: 0, total: 0, speed: 0, ..s.job.clone() };
+    s.job = Job {
+        phase,
+        done: 0,
+        total: 0,
+        speed: 0,
+        ..s.job.clone()
+    };
 }
 
 fn ensure_download(release: &Release) -> Result<(PathBuf, u64), String> {
@@ -486,11 +639,23 @@ fn ensure_download(release: &Release) -> Result<(PathBuf, u64), String> {
         }
         let current = state().download.clone();
         match current {
-            Download::Ready { version, path, image_len } if version == release.version && path.is_file() => return Ok((path, image_len)),
-            Download::Running { version, done, total } if version == release.version => {
+            Download::Ready {
+                version,
+                path,
+                image_len,
+            } if version == release.version && path.is_file() => return Ok((path, image_len)),
+            Download::Running {
+                version,
+                done,
+                total,
+            } if version == release.version => {
                 {
                     let mut s = state();
-                    s.job = Job { done, total, ..s.job.clone() };
+                    s.job = Job {
+                        done,
+                        total,
+                        ..s.job.clone()
+                    };
                 }
                 std::thread::sleep(DOWNLOAD_POLL);
             }
@@ -508,34 +673,88 @@ fn run_job(release: &Release, form: &Form) {
         Ok(()) => {
             s.remembered = flasherform::remembered_after_flash(&s.remembered, form);
             remember(&s.remembered);
-            Job { phase: Phase::Done, error: None, ..s.job.clone() }
+            Job {
+                phase: Phase::Done,
+                error: None,
+                ..s.job.clone()
+            }
         }
-        Err(_) if JOB_CANCEL.load(Ordering::Relaxed) => Job { phase: Phase::Cancelled, error: None, ..s.job.clone() },
-        Err(error) => Job { phase: Phase::Failed, error: Some(error), ..s.job.clone() },
+        Err(_) if JOB_CANCEL.load(Ordering::Relaxed) => Job {
+            phase: Phase::Cancelled,
+            error: None,
+            ..s.job.clone()
+        },
+        Err(error) => Job {
+            phase: Phase::Failed,
+            error: Some(error),
+            ..s.job.clone()
+        },
     };
 }
 
 fn job_steps(release: &Release, form: &Form) -> Result<(), String> {
     let (path, image_len) = ensure_download(release)?;
     set_phase(Phase::Preparing);
-    let mut card = card_slot().take().ok_or_else(|| "The card reader was disconnected. Choose it again.".to_string())?;
+    let mut card = card_slot()
+        .take()
+        .ok_or_else(|| "The card reader was disconnected. Choose it again.".to_string())?;
     match card.capacity >= image_len {
-        false => Err(format!("The card holds {}; the image needs {}", size_text(card.capacity), size_text(image_len))),
+        false => Err(format!(
+            "The card holds {}; the image needs {}",
+            size_text(card.capacity),
+            size_text(image_len)
+        )),
         true => {
             let mut speed = Speed::default();
-            write_card(card.device(), &path, image_len, &flasherform::provision(form), &JOB_CANCEL, &mut |phase, done, total| {
-                let bps = speed.sample(phase, done, Instant::now());
-                let mut s = state();
-                s.job = Job { phase, done, total, speed: bps, ..s.job.clone() };
-            })
+            write_card(
+                card.device(),
+                &path,
+                image_len,
+                &flasherform::provision(form),
+                &JOB_CANCEL,
+                &mut |phase, done, total| {
+                    let bps = speed.sample(phase, done, Instant::now());
+                    let mut s = state();
+                    s.job = Job {
+                        phase,
+                        done,
+                        total,
+                        speed: bps,
+                        ..s.job.clone()
+                    };
+                },
+            )
         }
     }
 }
 
-pub fn write_card(device: &mut (dyn BlockDevice + Send), image: &Path, image_len: u64, provision: &crate::cardprovision::ProvisionConfig, cancel: &AtomicBool, progress: &mut dyn FnMut(Phase, u64, u64)) -> Result<(), String> {
-    let mut reader = Cancellable { inner: cardimage::open_image(image)?, cancel };
-    let mut guarded = CancellableDevice { inner: device, cancel };
-    cardwrite::flash(&mut guarded, &mut reader, &cardwrite::Params { image_len, verify: true }, provision, &mut |stage, done, total| progress(phase_of(stage), done, total)).map_err(|e| match cancel.load(Ordering::Relaxed) {
+pub fn write_card(
+    device: &mut (dyn BlockDevice + Send),
+    image: &Path,
+    image_len: u64,
+    provision: &crate::cardprovision::ProvisionConfig,
+    cancel: &AtomicBool,
+    progress: &mut dyn FnMut(Phase, u64, u64),
+) -> Result<(), String> {
+    let mut reader = Cancellable {
+        inner: cardimage::open_image(image)?,
+        cancel,
+    };
+    let mut guarded = CancellableDevice {
+        inner: device,
+        cancel,
+    };
+    cardwrite::flash(
+        &mut guarded,
+        &mut reader,
+        &cardwrite::Params {
+            image_len,
+            verify: true,
+        },
+        provision,
+        &mut |stage, done, total| progress(phase_of(stage), done, total),
+    )
+    .map_err(|e| match cancel.load(Ordering::Relaxed) {
         true => CANCELLED_BY_USER.to_string(),
         false => e,
     })
@@ -618,14 +837,20 @@ impl Speed {
     fn sample(&mut self, phase: Phase, done: u64, now: Instant) -> u64 {
         match (self.phase == Some(phase) && done >= self.from, self.since) {
             (true, Some(since)) if now.duration_since(since) >= SPEED_WINDOW => {
-                self.bps = ((done - self.from) as f64 / now.duration_since(since).as_secs_f64()) as u64;
+                self.bps =
+                    ((done - self.from) as f64 / now.duration_since(since).as_secs_f64()) as u64;
                 self.since = Some(now);
                 self.from = done;
                 self.bps
             }
             (true, Some(_)) => self.bps,
             _ => {
-                *self = Speed { phase: Some(phase), since: Some(now), from: done, bps: 0 };
+                *self = Speed {
+                    phase: Some(phase),
+                    since: Some(now),
+                    from: done,
+                    bps: 0,
+                };
                 0
             }
         }
@@ -662,7 +887,11 @@ fn recommended(list: &[Release]) -> Option<&Release> {
 }
 
 fn release_json(release: &Release, recommended: bool) -> Value {
-    let label = format!("Aircast OS {}{}", release.version, if release.prerelease { " (beta)" } else { "" });
+    let label = format!(
+        "Aircast OS {}{}",
+        release.version,
+        if release.prerelease { " (beta)" } else { "" }
+    );
     json!({
         "recommended": recommended,
         "version": release.version,
@@ -678,23 +907,59 @@ fn render(s: &State) -> Value {
     let (releases_state, items, releases_error) = match &s.releases {
         Releases::Idle => ("idle", vec![], Value::Null),
         Releases::Loading => ("loading", vec![], Value::Null),
-        Releases::Ready(list) => ("ready", list.iter().map(|r| release_json(r, recommended(list).is_some_and(|best| best.version == r.version))).collect(), Value::Null),
+        Releases::Ready(list) => (
+            "ready",
+            list.iter()
+                .map(|r| {
+                    release_json(
+                        r,
+                        recommended(list).is_some_and(|best| best.version == r.version),
+                    )
+                })
+                .collect(),
+            Value::Null,
+        ),
         Releases::Failed(e) => ("failed", vec![], json!(e)),
     };
     let download = match &s.download {
         Download::Idle => json!({ "state": "idle" }),
-        Download::Running { version, done, total } => json!({ "state": "running", "version": version, "done": done, "total": total, "percent": percent(*done, *total) }),
-        Download::Ready { version, image_len, .. } => json!({ "state": "ready", "version": version, "imageSize": image_len, "imageSizeText": size_text(*image_len) }),
-        Download::Failed { version, error } => json!({ "state": "failed", "version": version, "error": error }),
+        Download::Running {
+            version,
+            done,
+            total,
+        } => {
+            json!({ "state": "running", "version": version, "done": done, "total": total, "percent": percent(*done, *total) })
+        }
+        Download::Ready {
+            version, image_len, ..
+        } => {
+            json!({ "state": "ready", "version": version, "imageSize": image_len, "imageSizeText": size_text(*image_len) })
+        }
+        Download::Failed { version, error } => {
+            json!({ "state": "failed", "version": version, "error": error })
+        }
     };
     let card = match &s.card {
         CardState::None => json!({ "state": "none" }),
         CardState::Opening(id) => json!({ "state": "opening", "id": id }),
         CardState::Waiting(id) => json!({ "state": "waiting", "id": id }),
-        CardState::Ready { id, label, capacity } => json!({ "state": "ready", "id": id, "label": label, "capacity": capacity, "capacityText": size_text(*capacity) }),
+        CardState::Ready {
+            id,
+            label,
+            capacity,
+        } => {
+            json!({ "state": "ready", "id": id, "label": label, "capacity": capacity, "capacityText": size_text(*capacity) })
+        }
         CardState::Failed { id, error } => json!({ "state": "failed", "id": id, "error": error }),
     };
-    let image = selected_release(s).map(|r| release_json(&r, false)["label"].as_str().unwrap_or_default().to_string()).unwrap_or_default();
+    let image = selected_release(s)
+        .map(|r| {
+            release_json(&r, false)["label"]
+                .as_str()
+                .unwrap_or_default()
+                .to_string()
+        })
+        .unwrap_or_default();
     let reason = blocked(s);
     json!({
         "available": s.hostable,
@@ -746,7 +1011,14 @@ mod tests {
             version: version.into(),
             prerelease,
             created_at: "2026-08-22T15:56:38Z".into(),
-            image: Image { filename: format!("aircast-{version}.img.xz"), extension: "img.xz".into(), size: 576_627_168, uncompressed_size: None, download_url: "https://example.invalid/a".into(), checksum_url: "https://example.invalid/a.sha256".into() },
+            image: Image {
+                filename: format!("aircast-{version}.img.xz"),
+                extension: "img.xz".into(),
+                size: 576_627_168,
+                uncompressed_size: None,
+                download_url: "https://example.invalid/a".into(),
+                checksum_url: "https://example.invalid/a.sha256".into(),
+            },
         }
     }
 
@@ -756,8 +1028,19 @@ mod tests {
             channel: "stable".into(),
             releases: Releases::Ready(vec![release("v0.3.5", false)]),
             selected: Some("v0.3.5".into()),
-            form: Form { hostname: "falcon-01".into(), ssid: "field-net".into(), wifi_password: "hunter22".into(), ssh_mode: "password".into(), device_password: "s3cret-pass".into(), ..Form::default() },
-            card: CardState::Ready { id: "/dev/bus/usb/001/004".into(), label: "Generic SD".into(), capacity: 16_000_000_000 },
+            form: Form {
+                hostname: "falcon-01".into(),
+                ssid: "field-net".into(),
+                wifi_password: "hunter22".into(),
+                ssh_mode: "password".into(),
+                device_password: "s3cret-pass".into(),
+                ..Form::default()
+            },
+            card: CardState::Ready {
+                id: "/dev/bus/usb/001/004".into(),
+                label: "Generic SD".into(),
+                capacity: 16_000_000_000,
+            },
             ..State::default()
         }
     }
@@ -783,25 +1066,103 @@ mod tests {
     #[test]
     fn the_first_thing_missing_is_what_blocks_starting() {
         let reason = |s: State| render(&s)["blocked"].as_str().map(str::to_string);
-        assert_eq!(reason(State { hostable: false, ..ready_state() }).as_deref(), Some("This device cannot write cards"));
-        assert_eq!(reason(State { selected: None, ..ready_state() }).as_deref(), Some("Choose an Aircast OS version"));
-        assert_eq!(reason(State { form: Form { ssid: "".into(), ..ready_state().form }, ..ready_state() }).as_deref(), Some("Enter the WiFi network name, or choose no WiFi."));
-        assert_eq!(reason(State { card: CardState::None, ..ready_state() }).as_deref(), Some("Connect a USB card reader with the card in it, then choose it"));
-        assert_eq!(reason(State { card: CardState::Waiting("x".into()), ..ready_state() }).as_deref(), Some("Allow access to the card reader"));
-        assert_eq!(reason(State { job: Job { phase: Phase::Writing, ..Job::default() }, ..ready_state() }).as_deref(), Some("A card is being written"));
+        assert_eq!(
+            reason(State {
+                hostable: false,
+                ..ready_state()
+            })
+            .as_deref(),
+            Some("This device cannot write cards")
+        );
+        assert_eq!(
+            reason(State {
+                selected: None,
+                ..ready_state()
+            })
+            .as_deref(),
+            Some("Choose an Aircast OS version")
+        );
+        assert_eq!(
+            reason(State {
+                form: Form {
+                    ssid: "".into(),
+                    ..ready_state().form
+                },
+                ..ready_state()
+            })
+            .as_deref(),
+            Some("Enter the WiFi network name, or choose no WiFi.")
+        );
+        assert_eq!(
+            reason(State {
+                card: CardState::None,
+                ..ready_state()
+            })
+            .as_deref(),
+            Some("Connect a USB card reader with the card in it, then choose it")
+        );
+        assert_eq!(
+            reason(State {
+                card: CardState::Waiting("x".into()),
+                ..ready_state()
+            })
+            .as_deref(),
+            Some("Allow access to the card reader")
+        );
+        assert_eq!(
+            reason(State {
+                job: Job {
+                    phase: Phase::Writing,
+                    ..Job::default()
+                },
+                ..ready_state()
+            })
+            .as_deref(),
+            Some("A card is being written")
+        );
     }
 
     #[test]
     fn a_card_smaller_than_the_image_is_refused_with_both_sizes() {
-        let small = State { card: CardState::Ready { id: "x".into(), label: "".into(), capacity: 2_000_000_000 }, ..ready_state() };
-        assert_eq!(render(&small)["blocked"], "The card holds 2.0 GB; the image needs 3.5 GB");
-        let measured = State { download: Download::Ready { version: "v0.3.5".into(), path: PathBuf::from("/x"), image_len: 1_500_000_000 }, ..small };
-        assert_eq!(render(&measured)["canStart"], true, "a measured image smaller than the card is allowed");
+        let small = State {
+            card: CardState::Ready {
+                id: "x".into(),
+                label: "".into(),
+                capacity: 2_000_000_000,
+            },
+            ..ready_state()
+        };
+        assert_eq!(
+            render(&small)["blocked"],
+            "The card holds 2.0 GB; the image needs 3.5 GB"
+        );
+        let measured = State {
+            download: Download::Ready {
+                version: "v0.3.5".into(),
+                path: PathBuf::from("/x"),
+                image_len: 1_500_000_000,
+            },
+            ..small
+        };
+        assert_eq!(
+            render(&measured)["canStart"],
+            true,
+            "a measured image smaller than the card is allowed"
+        );
     }
 
     #[test]
     fn job_progress_is_shown_as_a_percentage_with_speed() {
-        let view = render(&State { job: Job { phase: Phase::Writing, done: 250, total: 1000, speed: 12_300_000, ..Job::default() }, ..ready_state() });
+        let view = render(&State {
+            job: Job {
+                phase: Phase::Writing,
+                done: 250,
+                total: 1000,
+                speed: 12_300_000,
+                ..Job::default()
+            },
+            ..ready_state()
+        });
         assert_eq!(view["job"]["phase"], "writing");
         assert_eq!(view["job"]["busy"], true);
         assert_eq!(view["job"]["percent"], 25.0);
@@ -810,12 +1171,20 @@ mod tests {
 
     #[test]
     fn a_form_patch_changes_only_the_fields_it_names() {
-        let form = Form { hostname: "falcon-01".into(), ssid: "field-net".into(), ..Form::default() };
+        let form = Form {
+            hostname: "falcon-01".into(),
+            ssid: "field-net".into(),
+            ..Form::default()
+        };
         let patched = merged(&form, &json!({ "ssid": "other", "noWifi": true }));
         assert_eq!(patched.ssid, "other");
         assert!(patched.no_wifi);
         assert_eq!(patched.hostname, "falcon-01");
-        assert_eq!(merged(&form, &json!({ "noWifi": "not a bool" })), form, "a bad patch leaves the form as it was");
+        assert_eq!(
+            merged(&form, &json!({ "noWifi": "not a bool" })),
+            form,
+            "a bad patch leaves the form as it was"
+        );
         assert_eq!(merged(&form, &Value::Null), form);
     }
 
@@ -824,27 +1193,84 @@ mod tests {
         let t0 = Instant::now();
         let mut speed = Speed::default();
         assert_eq!(speed.sample(Phase::Writing, 0, t0), 0);
-        assert_eq!(speed.sample(Phase::Writing, 5_000_000, t0 + Duration::from_millis(500)), 0);
-        assert_eq!(speed.sample(Phase::Writing, 10_000_000, t0 + Duration::from_secs(1)), 10_000_000);
-        assert_eq!(speed.sample(Phase::Writing, 12_000_000, t0 + Duration::from_millis(1500)), 10_000_000);
-        assert_eq!(speed.sample(Phase::Verifying, 0, t0 + Duration::from_secs(2)), 0);
+        assert_eq!(
+            speed.sample(Phase::Writing, 5_000_000, t0 + Duration::from_millis(500)),
+            0
+        );
+        assert_eq!(
+            speed.sample(Phase::Writing, 10_000_000, t0 + Duration::from_secs(1)),
+            10_000_000
+        );
+        assert_eq!(
+            speed.sample(Phase::Writing, 12_000_000, t0 + Duration::from_millis(1500)),
+            10_000_000
+        );
+        assert_eq!(
+            speed.sample(Phase::Verifying, 0, t0 + Duration::from_secs(2)),
+            0
+        );
     }
 
     #[test]
     fn the_newest_stable_release_is_recommended_over_a_newer_beta() {
-        let view = render(&State { releases: Releases::Ready(vec![release("v0.4.0-beta.1", true), release("v0.3.5", false), release("v0.3.4", false)]), ..ready_state() });
-        let flags: Vec<(String, bool)> = view["releases"]["items"].as_array().unwrap().iter().map(|r| (r["version"].as_str().unwrap().to_string(), r["recommended"].as_bool().unwrap())).collect();
-        assert_eq!(flags, vec![("v0.4.0-beta.1".to_string(), false), ("v0.3.5".to_string(), true), ("v0.3.4".to_string(), false)]);
-        let betas_only = render(&State { releases: Releases::Ready(vec![release("v0.4.0-beta.2", true), release("v0.4.0-beta.1", true)]), selected: None, ..ready_state() });
-        assert_eq!(betas_only["releases"]["items"][0]["recommended"], true, "with no stable release the newest one is recommended");
+        let view = render(&State {
+            releases: Releases::Ready(vec![
+                release("v0.4.0-beta.1", true),
+                release("v0.3.5", false),
+                release("v0.3.4", false),
+            ]),
+            ..ready_state()
+        });
+        let flags: Vec<(String, bool)> = view["releases"]["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|r| {
+                (
+                    r["version"].as_str().unwrap().to_string(),
+                    r["recommended"].as_bool().unwrap(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            flags,
+            vec![
+                ("v0.4.0-beta.1".to_string(), false),
+                ("v0.3.5".to_string(), true),
+                ("v0.3.4".to_string(), false)
+            ]
+        );
+        let betas_only = render(&State {
+            releases: Releases::Ready(vec![
+                release("v0.4.0-beta.2", true),
+                release("v0.4.0-beta.1", true),
+            ]),
+            selected: None,
+            ..ready_state()
+        });
+        assert_eq!(
+            betas_only["releases"]["items"][0]["recommended"], true,
+            "with no stable release the newest one is recommended"
+        );
     }
 
     #[test]
     fn starting_the_download_returns_instead_of_waiting_on_its_own_lock() {
-        *state() = State { releases: Releases::Ready(vec![release("v9.9.9", false)]), selected: Some("v9.9.9".into()), ..State::default() };
+        *state() = State {
+            releases: Releases::Ready(vec![release("v9.9.9", false)]),
+            selected: Some("v9.9.9".into()),
+            ..State::default()
+        };
         assert_eq!(run(FLASHER_DOWNLOAD, "[]"), ok());
-        assert!(matches!(state().download, Download::Running { .. } | Download::Failed { .. } | Download::Idle));
-        if let Some(token) = DOWNLOAD_TOKEN.lock().unwrap_or_else(PoisonError::into_inner).take() {
+        assert!(matches!(
+            state().download,
+            Download::Running { .. } | Download::Failed { .. } | Download::Idle
+        ));
+        if let Some(token) = DOWNLOAD_TOKEN
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .take()
+        {
             token.store(true, Ordering::Relaxed);
         }
         *state() = State::default();
@@ -852,15 +1278,28 @@ mod tests {
 
     #[test]
     fn time_left_rounds_up_to_whole_minutes_and_hides_without_a_speed() {
-        assert_eq!(remaining_text(0, 3_000_000_000, 10_000_000), "about 5 min left");
-        assert_eq!(remaining_text(2_950_000_000, 3_000_000_000, 10_000_000), "less than a minute left");
+        assert_eq!(
+            remaining_text(0, 3_000_000_000, 10_000_000),
+            "about 5 min left"
+        );
+        assert_eq!(
+            remaining_text(2_950_000_000, 3_000_000_000, 10_000_000),
+            "less than a minute left"
+        );
         assert_eq!(remaining_text(0, 3_000_000_000, 0), "");
         assert_eq!(remaining_text(10, 10, 5), "");
     }
 
     #[test]
     fn the_first_problem_names_its_field() {
-        let view = render(&State { form: Form { wifi_password: "".into(), secured_ssid: "field-net".into(), ..ready_state().form }, ..ready_state() });
+        let view = render(&State {
+            form: Form {
+                wifi_password: "".into(),
+                secured_ssid: "field-net".into(),
+                ..ready_state().form
+            },
+            ..ready_state()
+        });
         assert_eq!(view["firstProblem"]["field"], "wifiPassword");
         assert_eq!(render(&ready_state())["firstProblem"], Value::Null);
     }
@@ -882,14 +1321,28 @@ mod tests {
         std::fs::write(&path, compressed).unwrap();
         let mut device = MemDevice::zeroed(image.len() + cardwrite::BLOCK);
         let mut phases: Vec<Phase> = Vec::new();
-        write_card(&mut device, &path, cardimage::uncompressed_len(&path).unwrap(), &cloud_init_config(), &AtomicBool::new(false), &mut |phase, _, _| {
-            if phases.last() != Some(&phase) {
-                phases.push(phase);
-            }
-        })
+        write_card(
+            &mut device,
+            &path,
+            cardimage::uncompressed_len(&path).unwrap(),
+            &cloud_init_config(),
+            &AtomicBool::new(false),
+            &mut |phase, _, _| {
+                if phases.last() != Some(&phase) {
+                    phases.push(phase);
+                }
+            },
+        )
         .expect("write");
-        assert_eq!(phases, vec![Phase::Writing, Phase::Verifying, Phase::Customizing]);
-        assert!(read_fat_file(&device.cur.into_inner(), "user-data").unwrap().contains("hostname: aircast"));
+        assert_eq!(
+            phases,
+            vec![Phase::Writing, Phase::Verifying, Phase::Customizing]
+        );
+        assert!(
+            read_fat_file(&device.cur.into_inner(), "user-data")
+                .unwrap()
+                .contains("hostname: aircast")
+        );
     }
 
     #[test]
@@ -899,7 +1352,15 @@ mod tests {
         let path = dir.join("aircast.img");
         std::fs::write(&path, &image).unwrap();
         let mut device = MemDevice::zeroed(image.len());
-        let error = write_card(&mut device, &path, image.len() as u64, &cloud_init_config(), &AtomicBool::new(true), &mut |_, _, _| {}).unwrap_err();
+        let error = write_card(
+            &mut device,
+            &path,
+            image.len() as u64,
+            &cloud_init_config(),
+            &AtomicBool::new(true),
+            &mut |_, _, _| {},
+        )
+        .unwrap_err();
         assert_eq!(error, CANCELLED_BY_USER);
     }
 }

@@ -20,7 +20,15 @@ const DEFAULT_URL: &str = "https://logs.px4.io/upload";
 const DEFAULT_DESCRIPTION: &str = "QGroundControl Session";
 const BOUNDARY: &str = "----QGroundControlLogBoundary7f3a";
 const NO_EMAIL: &str = "Please enter an email address before uploading MAVLink log files.";
-const SAVE_ITEMS_FIELDS: [&str; 7] = ["emailAddress", "description", "uploadURL", "videoURL", "windSpeed", "rating", "enableAutoUpload"];
+const SAVE_ITEMS_FIELDS: [&str; 7] = [
+    "emailAddress",
+    "description",
+    "uploadURL",
+    "videoURL",
+    "windSpeed",
+    "rating",
+    "enableAutoUpload",
+];
 
 const TEXT_KEYS: [(&str, &str, &str); 6] = [
     ("emailAddress", "Email", ""),
@@ -49,7 +57,16 @@ struct Uploads {
     pending: Vec<String>,
 }
 
-static UPLOADS: Mutex<Uploads> = Mutex::new(Uploads { running: false, current: None, progress: 0.0, message: None, cancel: None, feedback: String::new(), was_running: Vec::new(), pending: Vec::new() });
+static UPLOADS: Mutex<Uploads> = Mutex::new(Uploads {
+    running: false,
+    current: None,
+    progress: 0.0,
+    message: None,
+    cancel: None,
+    feedback: String::new(),
+    was_running: Vec::new(),
+    pending: Vec::new(),
+});
 static APPLICATION_VERSION: OnceLock<String> = OnceLock::new();
 
 pub fn set_application_version(version: &str) {
@@ -57,7 +74,10 @@ pub fn set_application_version(version: &str) {
 }
 
 fn application_version() -> String {
-    APPLICATION_VERSION.get().cloned().unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string())
+    APPLICATION_VERSION
+        .get()
+        .cloned()
+        .unwrap_or_else(|| env!("CARGO_PKG_VERSION").to_string())
 }
 
 fn from_user_input(url: &str) -> String {
@@ -73,12 +93,20 @@ fn key(name: &str) -> String {
 }
 
 fn text(field: &str) -> String {
-    let (_, stored, default) = TEXT_KEYS.iter().find(|(f, _, _)| *f == field).copied().unwrap_or(("", "", ""));
+    let (_, stored, default) = TEXT_KEYS
+        .iter()
+        .find(|(f, _, _)| *f == field)
+        .copied()
+        .unwrap_or(("", "", ""));
     crate::settingsstore::stored_text(&key(stored)).unwrap_or_else(|| default.to_string())
 }
 
 fn flag(field: &str) -> bool {
-    let (_, stored, default) = FLAG_KEYS.iter().find(|(f, _, _)| *f == field).copied().unwrap_or(("", "", false));
+    let (_, stored, default) = FLAG_KEYS
+        .iter()
+        .find(|(f, _, _)| *f == field)
+        .copied()
+        .unwrap_or(("", "", false));
     crate::settingsstore::stored_text(&key(stored)).map_or(default, |t| t == "true")
 }
 
@@ -91,11 +119,15 @@ fn uploaded_marker(log: &Path) -> PathBuf {
 }
 
 fn persistence() -> bool {
-    !crate::settingsstore::raw_setting("settings.appSettings.disableAllPersistence").and_then(|v| v.as_bool()).unwrap_or(false)
+    !crate::settingsstore::raw_setting("settings.appSettings.disableAllPersistence")
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
 }
 
 fn stem(name: &str) -> String {
-    name.strip_suffix(MAVLINK_LOG_EXTENSION).unwrap_or(name).to_string()
+    name.strip_suffix(MAVLINK_LOG_EXTENSION)
+        .unwrap_or(name)
+        .to_string()
 }
 
 fn file_of(name: &str) -> String {
@@ -104,7 +136,10 @@ fn file_of(name: &str) -> String {
 
 fn vehicle_logs() -> Vec<(u8, Value)> {
     let hub = crate::hub::lock();
-    hub.vehicle_ids().into_iter().filter_map(|id| hub.vehicle(id).map(|vehicle| (id, vehicle.log_snapshot()))).collect()
+    hub.vehicle_ids()
+        .into_iter()
+        .filter_map(|id| hub.vehicle(id).map(|vehicle| (id, vehicle.log_snapshot())))
+        .collect()
 }
 
 fn running_logs(logs: &[(u8, Value)]) -> Vec<(u8, String)> {
@@ -117,13 +152,27 @@ fn running_logs(logs: &[(u8, Value)]) -> Vec<(u8, String)> {
 fn finished_logs(before: &[(u8, String)], logs: &[(u8, Value)]) -> Vec<String> {
     before
         .iter()
-        .filter(|(id, file)| logs.iter().any(|(listed, state)| listed == id && (!state["running"].as_bool().unwrap_or(false) || state["file"].as_str() != Some(file.as_str())) && state["error"].is_null()))
+        .filter(|(id, file)| {
+            logs.iter().any(|(listed, state)| {
+                listed == id
+                    && (!state["running"].as_bool().unwrap_or(false)
+                        || state["file"].as_str() != Some(file.as_str()))
+                    && state["error"].is_null()
+            })
+        })
         .map(|(_, file)| file.clone())
         .collect()
 }
 
 fn writing_files() -> Vec<String> {
-    running_logs(&vehicle_logs()).into_iter().filter_map(|(_, file)| Path::new(&file).file_name().map(|n| n.to_string_lossy().into_owned())).collect()
+    running_logs(&vehicle_logs())
+        .into_iter()
+        .filter_map(|(_, file)| {
+            Path::new(&file)
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+        })
+        .collect()
 }
 
 pub fn configure_hub() {
@@ -132,22 +181,44 @@ pub fn configure_hub() {
 }
 
 fn files() -> Vec<Value> {
-    let Some(folder) = folder() else { return Vec::new() };
+    let Some(folder) = folder() else {
+        return Vec::new();
+    };
     let writing = writing_files();
     let entries = crate::vfs::list(&folder);
-    let marked = |name: &str| entries.iter().any(|entry| Path::new(&entry.name) == uploaded_marker(Path::new(name)));
-    let listed: std::collections::BTreeMap<String, (u64, bool)> =
-        entries.iter().filter(|entry| !entry.dir && entry.name.ends_with(MAVLINK_LOG_EXTENSION)).map(|entry| (entry.name.clone(), (entry.size, marked(&entry.name)))).collect();
+    let marked = |name: &str| {
+        entries
+            .iter()
+            .any(|entry| Path::new(&entry.name) == uploaded_marker(Path::new(name)))
+    };
+    let listed: std::collections::BTreeMap<String, (u64, bool)> = entries
+        .iter()
+        .filter(|entry| !entry.dir && entry.name.ends_with(MAVLINK_LOG_EXTENSION))
+        .map(|entry| (entry.name.clone(), (entry.size, marked(&entry.name))))
+        .collect();
     listed.into_iter().map(|(name, (size, uploaded))| json!({ "name": stem(&name), "size": size, "uploaded": uploaded, "writing": writing.contains(&name) })).collect()
 }
 
 pub fn multipart(fields: &[(&str, String)], file_name: &str, file: &[u8]) -> Vec<u8> {
     let parts: Vec<u8> = fields
         .iter()
-        .flat_map(|(name, value)| format!("--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n").into_bytes())
+        .flat_map(|(name, value)| {
+            format!(
+                "--{BOUNDARY}\r\nContent-Disposition: form-data; name=\"{name}\"\r\n\r\n{value}\r\n"
+            )
+            .into_bytes()
+        })
         .collect();
-    let header = format!("--{BOUNDARY}\r\nContent-Type: application/octet-stream\r\nContent-Disposition: form-data; name=\"filearg\"; filename=\"{file_name}\"\r\n\r\n");
-    [parts, header.into_bytes(), file.to_vec(), format!("\r\n--{BOUNDARY}--\r\n").into_bytes()].concat()
+    let header = format!(
+        "--{BOUNDARY}\r\nContent-Type: application/octet-stream\r\nContent-Disposition: form-data; name=\"filearg\"; filename=\"{file_name}\"\r\n\r\n"
+    );
+    [
+        parts,
+        header.into_bytes(),
+        file.to_vec(),
+        format!("\r\n--{BOUNDARY}--\r\n").into_bytes(),
+    ]
+    .concat()
 }
 
 fn form_fields(feedback: &str) -> Vec<(&'static str, String)> {
@@ -160,8 +231,20 @@ fn form_fields(feedback: &str) -> Vec<(&'static str, String)> {
         ("windSpeed", text("windSpeed")),
         ("rating", text("rating")),
         ("public", flag("publicLog").to_string()),
-        ("feedback", if feedback.is_empty() { "None Given".to_string() } else { feedback.to_string() }),
-        ("videoUrl", Some(text("videoURL")).filter(|v| !v.is_empty()).unwrap_or_else(|| "None".to_string())),
+        (
+            "feedback",
+            if feedback.is_empty() {
+                "None Given".to_string()
+            } else {
+                feedback.to_string()
+            },
+        ),
+        (
+            "videoUrl",
+            Some(text("videoURL"))
+                .filter(|v| !v.is_empty())
+                .unwrap_or_else(|| "None".to_string()),
+        ),
     ]
 }
 
@@ -176,7 +259,10 @@ impl std::io::Read for Sending<'_> {
             return Err(std::io::Error::other("upload cancelled"));
         }
         let read = self.body.read(buf)?;
-        UPLOADS.lock().unwrap_or_else(PoisonError::into_inner).progress = sent_fraction(self.body.position(), self.body.get_ref().len());
+        UPLOADS
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .progress = sent_fraction(self.body.position(), self.body.get_ref().len());
         Ok(read)
     }
 }
@@ -190,11 +276,27 @@ fn sent_fraction(sent: u64, total: usize) -> f64 {
 
 #[cfg(target_family = "wasm")]
 async fn send_later(path: &Path, feedback: &str) -> Result<(), String> {
-    let bytes = crate::vfs::read(path).map_err(|e| format!("Could not read {}: {e}", path.display()))?;
-    let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+    let bytes =
+        crate::vfs::read(path).map_err(|e| format!("Could not read {}: {e}", path.display()))?;
+    let name = path
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned();
     let body = multipart(&form_fields(feedback), &name, &bytes);
-    let headers = [("Content-Type".to_string(), format!("multipart/form-data; boundary={BOUNDARY}"))];
-    match crate::http::send_later("POST", &from_user_input(&text("uploadURL")), &headers, Some(&body), std::time::Duration::from_secs(600)).await {
+    let headers = [(
+        "Content-Type".to_string(),
+        format!("multipart/form-data; boundary={BOUNDARY}"),
+    )];
+    match crate::http::send_later(
+        "POST",
+        &from_user_input(&text("uploadURL")),
+        &headers,
+        Some(&body),
+        std::time::Duration::from_secs(600),
+    )
+    .await
+    {
         Ok((200, _)) => Ok(()),
         Ok((code, _)) => Err(format!("Log Upload Error: status {code}")),
         Err(error) => Err(format!("Log Upload Error: {error}")),
@@ -203,13 +305,24 @@ async fn send_later(path: &Path, feedback: &str) -> Result<(), String> {
 
 #[cfg(not(target_family = "wasm"))]
 fn send(path: &Path, feedback: &str, cancel: &AtomicBool) -> Result<(), String> {
-    let bytes = crate::vfs::read(path).map_err(|e| format!("Could not read {}: {e}", path.display()))?;
-    let name = path.file_name().unwrap_or_default().to_string_lossy().into_owned();
+    let bytes =
+        crate::vfs::read(path).map_err(|e| format!("Could not read {}: {e}", path.display()))?;
+    let name = path
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .into_owned();
     let body = multipart(&form_fields(feedback), &name, &bytes);
     let length = body.len();
-    let mut sending = Sending { body: std::io::Cursor::new(body), cancel };
+    let mut sending = Sending {
+        body: std::io::Cursor::new(body),
+        cancel,
+    };
     let response = ureq::post(&from_user_input(&text("uploadURL")))
-        .header("Content-Type", &format!("multipart/form-data; boundary={BOUNDARY}"))
+        .header(
+            "Content-Type",
+            &format!("multipart/form-data; boundary={BOUNDARY}"),
+        )
         .header("Content-Length", &length.to_string())
         .config()
         .timeout_connect(Some(std::time::Duration::from_secs(10)))
@@ -238,7 +351,12 @@ fn uploaded(path: &Path) {
 }
 
 #[cfg(not(target_family = "wasm"))]
-fn upload_one(folder: &Path, name: &str, feedback: &str, cancel: &AtomicBool) -> Result<(), String> {
+fn upload_one(
+    folder: &Path,
+    name: &str,
+    feedback: &str,
+    cancel: &AtomicBool,
+) -> Result<(), String> {
     begin_upload(name);
     let path = folder.join(name);
     send(&path, feedback, cancel)?;
@@ -249,7 +367,11 @@ fn upload_one(folder: &Path, name: &str, feedback: &str, cancel: &AtomicBool) ->
 #[cfg(not(target_family = "wasm"))]
 fn send_all(folder: PathBuf, names: Vec<String>, feedback: String, cancel: Arc<AtomicBool>) {
     std::thread::spawn(move || {
-        let failures: Vec<String> = names.iter().take_while(|_| !cancel.load(Ordering::Relaxed)).filter_map(|name| upload_one(&folder, name, &feedback, &cancel).err()).collect();
+        let failures: Vec<String> = names
+            .iter()
+            .take_while(|_| !cancel.load(Ordering::Relaxed))
+            .filter_map(|name| upload_one(&folder, name, &feedback, &cancel).err())
+            .collect();
         uploads_done(failures, cancel.load(Ordering::Relaxed));
     });
 }
@@ -281,8 +403,14 @@ fn uploads_done(failures: Vec<String>, cancelled: bool) {
         let queued = std::mem::take(&mut uploads.pending);
         if cancelled { Vec::new() } else { queued }
     };
-    if let Err(reason) = (!pending.is_empty()).then(|| upload(pending)).unwrap_or(Ok(())) {
-        UPLOADS.lock().unwrap_or_else(PoisonError::into_inner).message = Some(reason);
+    if let Err(reason) = (!pending.is_empty())
+        .then(|| upload(pending))
+        .unwrap_or(Ok(()))
+    {
+        UPLOADS
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .message = Some(reason);
     }
 }
 
@@ -292,7 +420,15 @@ fn upload(names: Vec<String>) -> Result<(), String> {
     }
     let folder = folder().ok_or("There is no log folder.")?;
     let writing = writing_files();
-    let names: Vec<String> = names.iter().map(|name| file_of(name)).filter(|name| !crate::vfs::exists(uploaded_marker(&folder.join(name))) && !writing.contains(name)).collect::<std::collections::BTreeSet<String>>().into_iter().collect();
+    let names: Vec<String> = names
+        .iter()
+        .map(|name| file_of(name))
+        .filter(|name| {
+            !crate::vfs::exists(uploaded_marker(&folder.join(name))) && !writing.contains(name)
+        })
+        .collect::<std::collections::BTreeSet<String>>()
+        .into_iter()
+        .collect();
     let cancel = Arc::new(AtomicBool::new(false));
     let feedback = {
         let mut uploads = UPLOADS.lock().unwrap_or_else(PoisonError::into_inner);
@@ -322,7 +458,12 @@ pub fn tick() {
         .filter(|_| flag("enableAutoUpload"))
         .map(Path::new)
         .filter(|path| path.exists())
-        .map(|path| path.file_name().unwrap_or_default().to_string_lossy().into_owned())
+        .map(|path| {
+            path.file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned()
+        })
         .collect();
     if !done.is_empty() {
         let _ = upload(done);
@@ -333,13 +474,28 @@ pub fn mavlink_log_view(_backend: &dyn Backend, _args: &[String]) -> Value {
     let (px4, state) = {
         let hub = crate::hub::lock();
         let active = hub.active();
-        (active.is_some_and(|v| v.autopilot == crate::modes::AUTOPILOT_PX4), active.map(|v| v.log_snapshot()))
+        (
+            active.is_some_and(|v| v.autopilot == crate::modes::AUTOPILOT_PX4),
+            active.map(|v| v.log_snapshot()),
+        )
     };
-    let running = state.as_ref().and_then(|s| s["running"].as_bool()).unwrap_or(false);
-    let denied = state.as_ref().and_then(|s| s["denied"].as_bool()).unwrap_or(false);
+    let running = state
+        .as_ref()
+        .and_then(|s| s["running"].as_bool())
+        .unwrap_or(false);
+    let denied = state
+        .as_ref()
+        .and_then(|s| s["denied"].as_bool())
+        .unwrap_or(false);
     let uploads = UPLOADS.lock().unwrap_or_else(PoisonError::into_inner);
-    let texts: serde_json::Map<String, Value> = TEXT_KEYS.iter().map(|(field, _, _)| (field.to_string(), json!(text(field)))).collect();
-    let flags: serde_json::Map<String, Value> = FLAG_KEYS.iter().map(|(field, _, _)| (field.to_string(), json!(flag(field)))).collect();
+    let texts: serde_json::Map<String, Value> = TEXT_KEYS
+        .iter()
+        .map(|(field, _, _)| (field.to_string(), json!(text(field))))
+        .collect();
+    let flags: serde_json::Map<String, Value> = FLAG_KEYS
+        .iter()
+        .map(|(field, _, _)| (field.to_string(), json!(flag(field))))
+        .collect();
     json!({
         "kind": "object",
         "class": "MavlinkLog",
@@ -358,11 +514,26 @@ pub fn mavlink_log_view(_backend: &dyn Backend, _args: &[String]) -> Value {
 }
 
 pub fn owns(path: &str) -> bool {
-    [MAVLINK_LOG_START, MAVLINK_LOG_STOP, MAVLINK_LOG_SET, MAVLINK_LOG_UPLOAD, MAVLINK_LOG_DELETE, MAVLINK_LOG_CANCEL].contains(&path)
+    [
+        MAVLINK_LOG_START,
+        MAVLINK_LOG_STOP,
+        MAVLINK_LOG_SET,
+        MAVLINK_LOG_UPLOAD,
+        MAVLINK_LOG_DELETE,
+        MAVLINK_LOG_CANCEL,
+    ]
+    .contains(&path)
 }
 
 fn names(args: &Value) -> Vec<String> {
-    args.as_array().map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default()
+    args.as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn outcome(result: Result<(), String>) -> Value {
@@ -374,14 +545,40 @@ fn outcome(result: Result<(), String>) -> Value {
 
 fn set(field: &str, value: &Value) -> Result<(), String> {
     if field == "feedback" {
-        UPLOADS.lock().unwrap_or_else(PoisonError::into_inner).feedback = value.as_str().unwrap_or_default().to_string();
+        UPLOADS
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .feedback = value.as_str().unwrap_or_default().to_string();
         return Ok(());
     }
-    let stored = TEXT_KEYS.iter().find(|(f, _, _)| *f == field).map(|(_, k, _)| (*k, value.as_str().map(str::to_string).or_else(|| value.as_i64().map(|n| n.to_string()))))
-        .or_else(|| FLAG_KEYS.iter().find(|(f, _, _)| *f == field).map(|(_, k, _)| (*k, value.as_bool().map(|b| b.to_string()))))
+    let stored = TEXT_KEYS
+        .iter()
+        .find(|(f, _, _)| *f == field)
+        .map(|(_, k, _)| {
+            (
+                *k,
+                value
+                    .as_str()
+                    .map(str::to_string)
+                    .or_else(|| value.as_i64().map(|n| n.to_string())),
+            )
+        })
+        .or_else(|| {
+            FLAG_KEYS
+                .iter()
+                .find(|(f, _, _)| *f == field)
+                .map(|(_, k, _)| (*k, value.as_bool().map(|b| b.to_string())))
+        })
         .ok_or_else(|| format!("{field} is not a log transfer setting"))?;
-    let (name, written) = (stored.0, stored.1.ok_or("That value does not fit the setting.")?);
-    let written = if field == "uploadURL" && written.trim().is_empty() { DEFAULT_URL.to_string() } else { written };
+    let (name, written) = (
+        stored.0,
+        stored.1.ok_or("That value does not fit the setting.")?,
+    );
+    let written = if field == "uploadURL" && written.trim().is_empty() {
+        DEFAULT_URL.to_string()
+    } else {
+        written
+    };
     crate::settingsstore::written(&key(name), &written);
     if field == "enableAutoStart" {
         configure_hub();
@@ -389,7 +586,11 @@ fn set(field: &str, value: &Value) -> Result<(), String> {
     match auto_upload_dropped(field, flag("enableAutoUpload"), &text("emailAddress")) {
         true => {
             crate::settingsstore::written(&key("EnableAutoUpload"), "false");
-            if field == "enableAutoUpload" { Err(NO_EMAIL.to_string()) } else { Ok(()) }
+            if field == "enableAutoUpload" {
+                Err(NO_EMAIL.to_string())
+            } else {
+                Ok(())
+            }
         }
         false => Ok(()),
     }
@@ -402,10 +603,13 @@ fn auto_upload_dropped(field: &str, auto_upload: bool, email: &str) -> bool {
 pub fn run(path: &str, args: &str) -> Value {
     let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
     match path {
-        MAVLINK_LOG_START if !persistence() => json!({ "ok": false, "reason": "MAVLink logging is off while all persistence is disabled." }),
+        MAVLINK_LOG_START if !persistence() => {
+            json!({ "ok": false, "reason": "MAVLink logging is off while all persistence is disabled." })
+        }
         MAVLINK_LOG_START | MAVLINK_LOG_STOP => {
             configure_hub();
-            let request = json!({ "action": if path == MAVLINK_LOG_START { "start" } else { "stop" } });
+            let request =
+                json!({ "action": if path == MAVLINK_LOG_START { "start" } else { "stop" } });
             let sent = crate::hub::lock().log_request(None, &request, crate::hub::now_ms());
             outcome(sent.map(|outbound| {
                 outbound.iter().for_each(|(link, bytes)| {
@@ -413,15 +617,23 @@ pub fn run(path: &str, args: &str) -> Value {
                 });
             }))
         }
-        MAVLINK_LOG_SET => outcome(set(given.get(0).and_then(Value::as_str).unwrap_or_default(), given.get(1).unwrap_or(&Value::Null))),
+        MAVLINK_LOG_SET => outcome(set(
+            given.get(0).and_then(Value::as_str).unwrap_or_default(),
+            given.get(1).unwrap_or(&Value::Null),
+        )),
         MAVLINK_LOG_UPLOAD => outcome(upload(names(&given))),
         MAVLINK_LOG_DELETE => {
             let folder = folder();
             let writing = writing_files();
-            names(&given).iter().map(|name| file_of(name)).filter(|name| !writing.contains(name)).filter_map(|name| folder.as_ref().map(|f| f.join(name))).for_each(|path| {
-                let _ = crate::vfs::remove(uploaded_marker(&path));
-                let _ = crate::vfs::remove(&path);
-            });
+            names(&given)
+                .iter()
+                .map(|name| file_of(name))
+                .filter(|name| !writing.contains(name))
+                .filter_map(|name| folder.as_ref().map(|f| f.join(name)))
+                .for_each(|path| {
+                    let _ = crate::vfs::remove(uploaded_marker(&path));
+                    let _ = crate::vfs::remove(&path);
+                });
             json!({ "ok": true })
         }
         MAVLINK_LOG_CANCEL => {
@@ -442,22 +654,66 @@ mod tests {
 
     #[test]
     fn the_flight_review_form_carries_qgcs_fields_and_the_log_as_filearg() {
-        let body = String::from_utf8(multipart(&[("email", "a@b.c".to_string()), ("type", "flightreport".to_string())], "001-x.ulg", b"ULog")).unwrap();
+        let body = String::from_utf8(multipart(
+            &[
+                ("email", "a@b.c".to_string()),
+                ("type", "flightreport".to_string()),
+            ],
+            "001-x.ulg",
+            b"ULog",
+        ))
+        .unwrap();
         assert!(body.contains("name=\"email\"\r\n\r\na@b.c\r\n"));
         assert!(body.contains("name=\"filearg\"; filename=\"001-x.ulg\"\r\n\r\nULog\r\n"));
         assert!(body.ends_with(&format!("--{BOUNDARY}--\r\n")));
         let fields = form_fields("");
-        let value = |name: &str| fields.iter().find(|(n, _)| *n == name).map(|(_, v)| v.clone()).unwrap();
-        assert_eq!((value("feedback"), value("videoUrl"), value("source"), value("rating")), ("None Given".to_string(), "None".to_string(), "QGroundControl".to_string(), "notset".to_string()));
-        assert_eq!(value("public"), "true", "PublicLog defaults on as in MAVLinkLogManager");
+        let value = |name: &str| {
+            fields
+                .iter()
+                .find(|(n, _)| *n == name)
+                .map(|(_, v)| v.clone())
+                .unwrap()
+        };
+        assert_eq!(
+            (
+                value("feedback"),
+                value("videoUrl"),
+                value("source"),
+                value("rating")
+            ),
+            (
+                "None Given".to_string(),
+                "None".to_string(),
+                "QGroundControl".to_string(),
+                "notset".to_string()
+            )
+        );
+        assert_eq!(
+            value("public"),
+            "true",
+            "PublicLog defaults on as in MAVLinkLogManager"
+        );
     }
 
     #[test]
     fn upload_progress_is_the_sent_share_of_the_body_and_cancel_aborts_the_body() {
-        assert_eq!((sent_fraction(0, 0), sent_fraction(25, 100), sent_fraction(100, 100)), (0.0, 0.25, 1.0));
+        assert_eq!(
+            (
+                sent_fraction(0, 0),
+                sent_fraction(25, 100),
+                sent_fraction(100, 100)
+            ),
+            (0.0, 0.25, 1.0)
+        );
         let cancel = AtomicBool::new(true);
-        let mut sending = Sending { body: std::io::Cursor::new(vec![1, 2, 3]), cancel: &cancel };
-        assert!(std::io::Read::read(&mut sending, &mut [0; 3]).is_err(), "QGC aborts the reply in flight on cancelUpload");
+        let mut sending = Sending {
+            body: std::io::Cursor::new(vec![1, 2, 3]),
+            cancel: &cancel,
+        };
+        assert!(
+            std::io::Read::read(&mut sending, &mut [0; 3]).is_err(),
+            "QGC aborts the reply in flight on cancelUpload"
+        );
     }
 
     #[test]
@@ -466,31 +722,67 @@ mod tests {
         assert!(auto_upload_dropped("rating", true, ""));
         assert!(!auto_upload_dropped("rating", true, "a@b.c"));
         assert!(!auto_upload_dropped("enableAutoUpload", false, ""));
-        assert!(!auto_upload_dropped("publicLog", true, ""), "publicLog writes the manager directly, without saveItems");
+        assert!(
+            !auto_upload_dropped("publicLog", true, ""),
+            "publicLog writes the manager directly, without saveItems"
+        );
     }
 
     #[test]
     fn the_upload_url_is_read_like_qurl_from_user_input() {
-        assert_eq!(from_user_input("logs.px4.io/upload"), "http://logs.px4.io/upload");
-        assert_eq!(from_user_input(" https://review.px4.io/upload "), "https://review.px4.io/upload");
+        assert_eq!(
+            from_user_input("logs.px4.io/upload"),
+            "http://logs.px4.io/upload"
+        );
+        assert_eq!(
+            from_user_input(" https://review.px4.io/upload "),
+            "https://review.px4.io/upload"
+        );
         assert_eq!(from_user_input(""), "");
     }
 
     #[test]
     fn auto_upload_follows_each_vehicles_own_log_and_skips_a_vehicle_that_went_away() {
-        let stopped = |error: Value| json!({ "running": false, "file": "/l/001-a.ulg", "error": error });
-        let before = vec![(1, "/l/001-a.ulg".to_string()), (2, "/l/002-b.ulg".to_string())];
+        let stopped =
+            |error: Value| json!({ "running": false, "file": "/l/001-a.ulg", "error": error });
+        let before = vec![
+            (1, "/l/001-a.ulg".to_string()),
+            (2, "/l/002-b.ulg".to_string()),
+        ];
         let still = json!({ "running": true, "file": "/l/002-b.ulg", "error": null });
-        assert_eq!(finished_logs(&before, &[(1, stopped(Value::Null)), (2, still.clone())]), vec!["/l/001-a.ulg".to_string()]);
-        assert!(finished_logs(&before, &[(2, still.clone())]).is_empty(), "MAVLinkLogManager dies with its vehicle, so a lost vehicle's log is not uploaded");
-        assert!(finished_logs(&before, &[(1, stopped(json!("Error writing MAVLink log file: x")))]).is_empty(), "a write error stops without stopLogging, so no auto upload");
+        assert_eq!(
+            finished_logs(&before, &[(1, stopped(Value::Null)), (2, still.clone())]),
+            vec!["/l/001-a.ulg".to_string()]
+        );
+        assert!(
+            finished_logs(&before, &[(2, still.clone())]).is_empty(),
+            "MAVLinkLogManager dies with its vehicle, so a lost vehicle's log is not uploaded"
+        );
+        assert!(
+            finished_logs(
+                &before,
+                &[(1, stopped(json!("Error writing MAVLink log file: x")))]
+            )
+            .is_empty(),
+            "a write error stops without stopLogging, so no auto upload"
+        );
         let restarted = json!({ "running": true, "file": "/l/001-c.ulg", "error": null });
-        assert_eq!(finished_logs(&before, &[(1, restarted)]), vec!["/l/001-a.ulg".to_string()], "a log restarted between ticks still uploads the stopped one");
-        assert_eq!(running_logs(&[(2, still)]), vec![(2, "/l/002-b.ulg".to_string())]);
+        assert_eq!(
+            finished_logs(&before, &[(1, restarted)]),
+            vec!["/l/001-a.ulg".to_string()],
+            "a log restarted between ticks still uploads the stopped one"
+        );
+        assert_eq!(
+            running_logs(&[(2, still)]),
+            vec![(2, "/l/002-b.ulg".to_string())]
+        );
     }
 
     #[test]
     fn an_uploaded_log_is_marked_by_a_sidecar_next_to_it() {
-        assert_eq!(uploaded_marker(Path::new("/logs/001-2026.ulg")), PathBuf::from("/logs/001-2026.uploaded"));
+        assert_eq!(
+            uploaded_marker(Path::new("/logs/001-2026.ulg")),
+            PathBuf::from("/logs/001-2026.uploaded")
+        );
     }
 }

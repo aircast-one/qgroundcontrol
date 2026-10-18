@@ -32,7 +32,12 @@ const INTEGRITY_WIRE_BYTES: usize = 17;
 const NOT_REPORTED: u8 = 255;
 
 pub fn integrity_of(payload: &[u8]) -> (u8, Integrity) {
-    let wire: Vec<u8> = payload.iter().copied().chain(std::iter::repeat(0)).take(INTEGRITY_WIRE_BYTES).collect();
+    let wire: Vec<u8> = payload
+        .iter()
+        .copied()
+        .chain(std::iter::repeat(0))
+        .take(INTEGRITY_WIRE_BYTES)
+        .collect();
     let integrity = Integrity {
         system_errors: u32::from_le_bytes([wire[0], wire[1], wire[2], wire[3]]),
         authentication: wire[9],
@@ -63,11 +68,17 @@ fn authentication_weight(value: u8) -> i32 {
 
 pub fn aggregate(first: &Integrity, second: &Integrity) -> (u8, u8, u8) {
     let worst = |a: u8, b: u8| reported(a).max(reported(b)).unwrap_or(NOT_REPORTED);
-    let authentication = match authentication_weight(first.authentication) >= authentication_weight(second.authentication) {
+    let authentication = match authentication_weight(first.authentication)
+        >= authentication_weight(second.authentication)
+    {
         true => first.authentication,
         false => second.authentication,
     };
-    (worst(first.spoofing, second.spoofing), worst(first.jamming, second.jamming), reported(authentication).unwrap_or(NOT_REPORTED))
+    (
+        worst(first.spoofing, second.spoofing),
+        worst(first.jamming, second.jamming),
+        reported(authentication).unwrap_or(NOT_REPORTED),
+    )
 }
 
 fn hundredths(raw: u16) -> Option<f64> {
@@ -80,10 +91,16 @@ fn tenths(raw: u8) -> Option<f64> {
 
 impl GpsFacts {
     pub fn apply_second(&mut self, message: &MavMessage) -> bool {
-        let MavMessage::GPS2_RAW(d) = message else { return false };
+        let MavMessage::GPS2_RAW(d) = message else {
+            return false;
+        };
         self.latitude = Some(d.lat as f64 * 1e-7);
         self.longitude = Some(d.lon as f64 * 1e-7);
-        self.count = if d.satellites_visible == 255 { 0 } else { d.satellites_visible as u32 };
+        self.count = if d.satellites_visible == 255 {
+            0
+        } else {
+            d.satellites_visible as u32
+        };
         self.hdop = hundredths(d.eph);
         self.vdop = hundredths(d.epv);
         self.course_over_ground = hundredths(d.cog);
@@ -98,7 +115,11 @@ impl GpsFacts {
             MavMessage::GPS_RAW_INT(d) => {
                 self.latitude = Some(d.lat as f64 * 1e-7);
                 self.longitude = Some(d.lon as f64 * 1e-7);
-                self.count = if d.satellites_visible == 255 { 0 } else { d.satellites_visible as u32 };
+                self.count = if d.satellites_visible == 255 {
+                    0
+                } else {
+                    d.satellites_visible as u32
+                };
                 self.hdop = hundredths(d.eph);
                 self.vdop = hundredths(d.epv);
                 self.course_over_ground = hundredths(d.cog);
@@ -141,17 +162,46 @@ mod tests {
         assert_eq!(receiver, 1);
         assert_eq!(
             integrity,
-            Integrity { system_errors: 5, authentication: 3, jamming: 2, spoofing: 1, corrections_quality: 7, system_quality: 8, signal_quality: 0, post_processing_quality: 0 }
+            Integrity {
+                system_errors: 5,
+                authentication: 3,
+                jamming: 2,
+                spoofing: 1,
+                corrections_quality: 7,
+                system_quality: 8,
+                signal_quality: 0,
+                post_processing_quality: 0
+            }
         );
     }
 
     #[test]
     fn the_aggregate_takes_the_worst_interference_and_the_most_telling_authentication() {
-        let receiver = |spoofing, jamming, authentication| Integrity { spoofing, jamming, authentication, ..Integrity::default() };
-        assert_eq!(aggregate(&receiver(1, 3, 3), &receiver(2, 255, 2)), (2, 3, 2), "Error outranks Ok");
-        assert_eq!(aggregate(&receiver(255, 255, 255), &receiver(255, 255, 255)), (255, 255, 255));
-        assert_eq!(aggregate(&receiver(0, 0, 4), &receiver(0, 0, 0)), (0, 0, 4), "Disabled outranks Unknown");
-        assert_eq!(aggregate(&receiver(0, 0, 1), &receiver(0, 0, 4)), (0, 0, 1), "Initializing outranks Disabled");
+        let receiver = |spoofing, jamming, authentication| Integrity {
+            spoofing,
+            jamming,
+            authentication,
+            ..Integrity::default()
+        };
+        assert_eq!(
+            aggregate(&receiver(1, 3, 3), &receiver(2, 255, 2)),
+            (2, 3, 2),
+            "Error outranks Ok"
+        );
+        assert_eq!(
+            aggregate(&receiver(255, 255, 255), &receiver(255, 255, 255)),
+            (255, 255, 255)
+        );
+        assert_eq!(
+            aggregate(&receiver(0, 0, 4), &receiver(0, 0, 0)),
+            (0, 0, 4),
+            "Disabled outranks Unknown"
+        );
+        assert_eq!(
+            aggregate(&receiver(0, 0, 1), &receiver(0, 0, 4)),
+            (0, 0, 1),
+            "Initializing outranks Disabled"
+        );
     }
 
     #[test]

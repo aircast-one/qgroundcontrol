@@ -26,17 +26,46 @@ pub fn parse(text: &str) -> Result<PlanFile, String> {
         return Err("fileType is not \"Plan\"".to_string());
     }
     let mission = root.get("mission").ok_or("no mission object")?;
-    let items: Vec<Value> = mission.get("items").and_then(Value::as_array).cloned().unwrap_or_default();
+    let items: Vec<Value> = mission
+        .get("items")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     let number = |v: &Value, key: &str| v.get(key).and_then(Value::as_f64).unwrap_or(0.0);
-    let home = mission.get("plannedHomePosition").and_then(Value::as_array).filter(|a| a.len() >= 3).map(|a| (a[0].as_f64().unwrap_or(0.0), a[1].as_f64().unwrap_or(0.0), a[2].as_f64().unwrap_or(0.0)));
+    let home = mission
+        .get("plannedHomePosition")
+        .and_then(Value::as_array)
+        .filter(|a| a.len() >= 3)
+        .map(|a| {
+            (
+                a[0].as_f64().unwrap_or(0.0),
+                a[1].as_f64().unwrap_or(0.0),
+                a[2].as_f64().unwrap_or(0.0),
+            )
+        });
     let fence = root.get("geoFence").cloned().unwrap_or(Value::Null);
     let rally = root.get("rallyPoints").cloned().unwrap_or(Value::Null);
-    let count = |v: &Value, key: &str| v.get(key).and_then(Value::as_array).map(|a| a.len()).unwrap_or(0);
+    let count = |v: &Value, key: &str| {
+        v.get(key)
+            .and_then(Value::as_array)
+            .map(|a| a.len())
+            .unwrap_or(0)
+    };
     Ok(PlanFile {
         version: root.get("version").and_then(Value::as_i64).unwrap_or(0),
-        ground_station: root.get("groundStation").and_then(Value::as_str).unwrap_or("").to_string(),
-        firmware_type: mission.get("firmwareType").and_then(Value::as_i64).unwrap_or(0),
-        vehicle_type: mission.get("vehicleType").and_then(Value::as_i64).unwrap_or(0),
+        ground_station: root
+            .get("groundStation")
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string(),
+        firmware_type: mission
+            .get("firmwareType")
+            .and_then(Value::as_i64)
+            .unwrap_or(0),
+        vehicle_type: mission
+            .get("vehicleType")
+            .and_then(Value::as_i64)
+            .unwrap_or(0),
         cruise_speed: number(mission, "cruiseSpeed"),
         hover_speed: number(mission, "hoverSpeed"),
         home,
@@ -49,9 +78,21 @@ pub fn parse(text: &str) -> Result<PlanFile, String> {
 
 fn item_json(item: &Value) -> Value {
     let kind = item.get("type").and_then(Value::as_str).unwrap_or("");
-    let params: Vec<Value> = item.get("params").and_then(Value::as_array).cloned().unwrap_or_default();
-    let listed = item.get("coordinate").and_then(Value::as_array).filter(|c| c.len() >= 3).map(|c| json!({ "latitude": c[0], "longitude": c[1], "altitude": c[2] }));
-    let coordinate = listed.or_else(|| (params.len() >= 7 && kind == "SimpleItem").then(|| json!({ "latitude": params[4], "longitude": params[5], "altitude": params[6] })));
+    let params: Vec<Value> = item
+        .get("params")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let listed = item
+        .get("coordinate")
+        .and_then(Value::as_array)
+        .filter(|c| c.len() >= 3)
+        .map(|c| json!({ "latitude": c[0], "longitude": c[1], "altitude": c[2] }));
+    let coordinate = listed.or_else(|| {
+        (params.len() >= 7 && kind == "SimpleItem").then(
+            || json!({ "latitude": params[4], "longitude": params[5], "altitude": params[6] }),
+        )
+    });
     json!({
         "type": kind,
         "command": item.get("command").cloned().unwrap_or(Value::Null),
@@ -99,23 +140,51 @@ fn item_object(sequence: usize, item: &SimpleItem) -> Value {
     ];
     let altitude = item
         .altitude_mode
-        .map(|mode| [("AltitudeMode", json!(mode)), ("Altitude", json!(item.params[6])), ("AMSLAltAboveTerrain", Value::Null)])
+        .map(|mode| {
+            [
+                ("AltitudeMode", json!(mode)),
+                ("Altitude", json!(item.params[6])),
+                ("AMSLAltAboveTerrain", Value::Null),
+            ]
+        })
         .into_iter()
         .flatten();
-    Value::Object(base.into_iter().chain(altitude).map(|(key, value)| (key.to_string(), value)).collect())
+    Value::Object(
+        base.into_iter()
+            .chain(altitude)
+            .map(|(key, value)| (key.to_string(), value))
+            .collect(),
+    )
 }
 
 pub fn write(mission: &Mission) -> String {
-    let items: Vec<Value> = mission.items.iter().enumerate().map(|(i, item)| item_object(i + 1, item)).collect();
+    let items: Vec<Value> = mission
+        .items
+        .iter()
+        .enumerate()
+        .map(|(i, item)| item_object(i + 1, item))
+        .collect();
     let fields = [
         ("version", json!(2)),
-        ("plannedHomePosition", json!([mission.home.0, mission.home.1, mission.home.2])),
+        (
+            "plannedHomePosition",
+            json!([mission.home.0, mission.home.1, mission.home.2]),
+        ),
         ("firmwareType", json!(mission.firmware_type)),
         ("vehicleType", json!(mission.vehicle_type)),
-        ("globalPlanAltitudeMode", json!(mission.global_altitude_mode)),
+        (
+            "globalPlanAltitudeMode",
+            json!(mission.global_altitude_mode),
+        ),
         ("items", json!(items)),
     ];
-    let speeds = [("cruiseSpeed", mission.cruise_speed), ("hoverSpeed", mission.hover_speed)].into_iter().filter(|(_, speed)| speed.is_finite()).map(|(key, speed)| (key, json!(speed)));
+    let speeds = [
+        ("cruiseSpeed", mission.cruise_speed),
+        ("hoverSpeed", mission.hover_speed),
+    ]
+    .into_iter()
+    .filter(|(_, speed)| speed.is_finite())
+    .map(|(key, speed)| (key, json!(speed)));
     let root = json!({
         "fileType": "Plan",
         "groundStation": "QGroundControl",
@@ -141,16 +210,31 @@ pub fn altitude_mode_for_frame(frame: i64) -> Option<i64> {
 const DO_JUMP: i64 = 177;
 
 fn jump_target(version: i64, row: &crate::waypoints::Row) -> f64 {
-    if version == 120 && row.command == DO_JUMP { f64::from(row.params[0] as i32 + 1) } else { row.params[0] }
+    if version == 120 && row.command == DO_JUMP {
+        f64::from(row.params[0] as i32 + 1)
+    } else {
+        row.params[0]
+    }
 }
 
 pub fn from_waypoints(file: &Waypoints, firmware_type: i64, vehicle_type: i64) -> Mission {
-    let commands = crate::cmdinfo::tree(crate::plandoc::firmware(firmware_type), crate::plandoc::vehicle_class(vehicle_type));
+    let commands = crate::cmdinfo::tree(
+        crate::plandoc::firmware(firmware_type),
+        crate::plandoc::vehicle_class(vehicle_type),
+    );
     let terrain_frame = |r: &crate::waypoints::Row| {
-        (r.frame == FRAME_GLOBAL_TERRAIN_ALT && commands.get(&r.command).is_some_and(|c| c.specifies_coordinate || c.specifies_altitude_only)).then_some(ALTITUDE_MODE_TERRAIN_FRAME)
+        (r.frame == FRAME_GLOBAL_TERRAIN_ALT
+            && commands
+                .get(&r.command)
+                .is_some_and(|c| c.specifies_coordinate || c.specifies_altitude_only))
+        .then_some(ALTITUDE_MODE_TERRAIN_FRAME)
     };
     Mission {
-        home: file.home.as_ref().map(|r| (r.latitude, r.longitude, r.altitude)).unwrap_or_default(),
+        home: file
+            .home
+            .as_ref()
+            .map(|r| (r.latitude, r.longitude, r.altitude))
+            .unwrap_or_default(),
         firmware_type,
         vehicle_type,
         cruise_speed: f64::NAN,
@@ -162,7 +246,15 @@ pub fn from_waypoints(file: &Waypoints, firmware_type: i64, vehicle_type: i64) -
             .map(|r| SimpleItem {
                 frame: r.frame,
                 command: r.command,
-                params: [jump_target(file.version, r), r.params[1], r.params[2], r.params[3], r.latitude, r.longitude, r.altitude],
+                params: [
+                    jump_target(file.version, r),
+                    r.params[1],
+                    r.params[2],
+                    r.params[3],
+                    r.latitude,
+                    r.longitude,
+                    r.altitude,
+                ],
                 auto_continue: r.auto_continue,
                 altitude_mode: terrain_frame(r),
             })
@@ -171,29 +263,47 @@ pub fn from_waypoints(file: &Waypoints, firmware_type: i64, vehicle_type: i64) -
 }
 
 pub fn plan_from_waypoints_view(_backend: &dyn Backend, args: &[String]) -> Value {
-    let Some(path) = args.first().filter(|p| !p.is_empty()) else { return crate::read::refused("this needs the path of a waypoints file to build a plan from, and none was given") };
+    let Some(path) = args.first().filter(|p| !p.is_empty()) else {
+        return crate::read::refused(
+            "this needs the path of a waypoints file to build a plan from, and none was given",
+        );
+    };
     let text = match std::fs::read_to_string(path) {
         Ok(t) => t,
-        Err(e) => return json!({ "kind": "planFromWaypoints", "readable": false, "valid": false, "error": e.to_string() }),
+        Err(e) => {
+            return json!({ "kind": "planFromWaypoints", "readable": false, "valid": false, "error": e.to_string() });
+        }
     };
     let (firmware_type, vehicle_type) = (
         args.get(1).and_then(|a| a.parse().ok()).unwrap_or(3),
         args.get(2).and_then(|a| a.parse().ok()).unwrap_or(2),
     );
     match crate::waypoints::parse(&text) {
-        Ok(file) => json!({ "kind": "planFromWaypoints", "readable": true, "valid": true, "itemCount": file.items.len(), "plan": write(&from_waypoints(&file, firmware_type, vehicle_type)) }),
-        Err(e) => json!({ "kind": "planFromWaypoints", "readable": true, "valid": false, "error": e }),
+        Ok(file) => {
+            json!({ "kind": "planFromWaypoints", "readable": true, "valid": true, "itemCount": file.items.len(), "plan": write(&from_waypoints(&file, firmware_type, vehicle_type)) })
+        }
+        Err(e) => {
+            json!({ "kind": "planFromWaypoints", "readable": true, "valid": false, "error": e })
+        }
     }
 }
 
 pub fn plan_file_view(_backend: &dyn Backend, args: &[String]) -> Value {
-    let Some(path) = args.first().filter(|p| !p.is_empty()) else { return crate::read::refused("this needs the path of a plan file to read, and none was given") };
+    let Some(path) = args.first().filter(|p| !p.is_empty()) else {
+        return crate::read::refused(
+            "this needs the path of a plan file to read, and none was given",
+        );
+    };
     let text = match std::fs::read_to_string(path) {
         Ok(t) => t,
-        Err(e) => return json!({ "kind": "object", "class": "PlanFile", "path": path, "readable": false, "error": e.to_string() }),
+        Err(e) => {
+            return json!({ "kind": "object", "class": "PlanFile", "path": path, "readable": false, "error": e.to_string() });
+        }
     };
     match parse(&text) {
-        Err(error) => json!({ "kind": "object", "class": "PlanFile", "path": path, "readable": true, "valid": false, "error": error }),
+        Err(error) => {
+            json!({ "kind": "object", "class": "PlanFile", "path": path, "readable": true, "valid": false, "error": error })
+        }
         Ok(plan) => json!({
             "kind": "object",
             "class": "PlanFile",
@@ -224,7 +334,11 @@ mod tests {
     use super::*;
 
     fn fixture() -> String {
-        std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../test/MissionManager/SectionTest.plan")).expect("the SectionTest fixture")
+        std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../test/MissionManager/SectionTest.plan"
+        ))
+        .expect("the SectionTest fixture")
     }
 
     #[test]
@@ -248,9 +362,27 @@ mod tests {
             hover_speed: 5.0,
             global_altitude_mode: ALTITUDE_MODE_RELATIVE,
             items: vec![
-                SimpleItem { frame: 3, command: 22, params: [0.0, 0.0, 0.0, f64::NAN, 47.6, -122.1, 30.0], auto_continue: true, altitude_mode: Some(ALTITUDE_MODE_RELATIVE) },
-                SimpleItem { frame: 3, command: 16, params: [0.0, 0.0, 0.0, f64::NAN, 47.61, -122.11, 30.0], auto_continue: true, altitude_mode: Some(ALTITUDE_MODE_RELATIVE) },
-                SimpleItem { frame: 2, command: 177, params: [1.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0], auto_continue: true, altitude_mode: None },
+                SimpleItem {
+                    frame: 3,
+                    command: 22,
+                    params: [0.0, 0.0, 0.0, f64::NAN, 47.6, -122.1, 30.0],
+                    auto_continue: true,
+                    altitude_mode: Some(ALTITUDE_MODE_RELATIVE),
+                },
+                SimpleItem {
+                    frame: 3,
+                    command: 16,
+                    params: [0.0, 0.0, 0.0, f64::NAN, 47.61, -122.11, 30.0],
+                    auto_continue: true,
+                    altitude_mode: Some(ALTITUDE_MODE_RELATIVE),
+                },
+                SimpleItem {
+                    frame: 2,
+                    command: 177,
+                    params: [1.0, 2.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+                    auto_continue: true,
+                    altitude_mode: None,
+                },
             ],
         }
     }
@@ -259,41 +391,93 @@ mod tests {
     fn a_written_plan_reads_back_through_the_reader() {
         let text = write(&sample());
         let plan = parse(&text).unwrap();
-        assert_eq!((plan.version, plan.ground_station.as_str(), plan.firmware_type, plan.vehicle_type), (1, "QGroundControl", 12, 2));
+        assert_eq!(
+            (
+                plan.version,
+                plan.ground_station.as_str(),
+                plan.firmware_type,
+                plan.vehicle_type
+            ),
+            (1, "QGroundControl", 12, 2)
+        );
         assert_eq!(plan.home, Some((47.6, -122.1, 20.0)));
         assert_eq!(plan.items.len(), 3);
         assert_eq!(plan.items[1]["coordinate"]["latitude"], json!(47.61));
         assert_eq!(plan.items[2]["doJumpId"], json!(3));
         let root: Value = serde_json::from_str(&text).unwrap();
         let items = root["mission"]["items"].as_array().unwrap();
-        assert_eq!((items[0]["AltitudeMode"].clone(), items[0]["Altitude"].clone(), items[0]["AMSLAltAboveTerrain"].clone()), (json!(1), json!(30.0), Value::Null));
+        assert_eq!(
+            (
+                items[0]["AltitudeMode"].clone(),
+                items[0]["Altitude"].clone(),
+                items[0]["AMSLAltAboveTerrain"].clone()
+            ),
+            (json!(1), json!(30.0), Value::Null)
+        );
         assert!(items[2].get("AltitudeMode").is_none());
         assert_eq!(items[0]["params"][3], Value::Null);
-        assert_eq!((root["geoFence"]["version"].clone(), root["rallyPoints"]["version"].clone()), (json!(2), json!(2)));
+        assert_eq!(
+            (
+                root["geoFence"]["version"].clone(),
+                root["rallyPoints"]["version"].clone()
+            ),
+            (json!(2), json!(2))
+        );
     }
 
     #[test]
     fn a_waypoints_file_becomes_a_plan_like_load_text_mission_file() {
-        let text = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../test/MissionManager/MissionPlanner.waypoints")).unwrap();
+        let text = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../test/MissionManager/MissionPlanner.waypoints"
+        ))
+        .unwrap();
         let file = crate::waypoints::parse(&text).unwrap();
         let mission = from_waypoints(&file, 12, 2);
         let home = file.home.as_ref().unwrap();
         assert_eq!(mission.home, (home.latitude, home.longitude, home.altitude));
         assert_eq!(mission.items.len(), file.items.len());
-        assert_eq!(mission.global_altitude_mode, ALTITUDE_MODE_MIXED, "loadTextFile sets the global altitude frame to Mixed");
+        assert_eq!(
+            mission.global_altitude_mode, ALTITUDE_MODE_MIXED,
+            "loadTextFile sets the global altitude frame to Mixed"
+        );
         let written: Value = serde_json::from_str(&write(&mission)).unwrap();
-        assert!(written["mission"].get("cruiseSpeed").is_none() && written["mission"].get("hoverSpeed").is_none(), "a text file carries no speeds, so the offline ones apply");
-        assert_eq!(parse(&write(&mission)).unwrap().items.len(), file.items.len());
+        assert!(
+            written["mission"].get("cruiseSpeed").is_none()
+                && written["mission"].get("hoverSpeed").is_none(),
+            "a text file carries no speeds, so the offline ones apply"
+        );
+        assert_eq!(
+            parse(&write(&mission)).unwrap().items.len(),
+            file.items.len()
+        );
         let rows = crate::waypoints::parse("QGC WPL 120\n0\t0\t10\t16\t0\t0\t0\t0\t1\t2\t30\t1\n1\t0\t3\t16\t0\t0\t0\t0\t1\t2\t30\t1\n2\t0\t10\t177\t1.7\t3\t0\t0\t0\t0\t0\t1\n").unwrap();
         let converted = from_waypoints(&rows, 3, 2);
-        assert_eq!(converted.items.iter().map(|i| i.altitude_mode).collect::<Vec<_>>(), vec![Some(ALTITUDE_MODE_TERRAIN_FRAME), None, None], "frames 0/3 are left to the loader's relative-or-absolute rule; a jump has no altitude");
-        assert_eq!(converted.items[2].params[0], 2.0, "a 120 file's jump target moves past the added home as static_cast<int>(param1) + 1");
+        assert_eq!(
+            converted
+                .items
+                .iter()
+                .map(|i| i.altitude_mode)
+                .collect::<Vec<_>>(),
+            vec![Some(ALTITUDE_MODE_TERRAIN_FRAME), None, None],
+            "frames 0/3 are left to the loader's relative-or-absolute rule; a jump has no altitude"
+        );
+        assert_eq!(
+            converted.items[2].params[0], 2.0,
+            "a 120 file's jump target moves past the added home as static_cast<int>(param1) + 1"
+        );
     }
 
     #[test]
     fn a_non_plan_file_is_refused_with_a_reason() {
         assert!(parse("not json").unwrap_err().starts_with("not JSON"));
-        assert_eq!(parse(r#"{"fileType":"Mission"}"#).unwrap_err(), "fileType is not \"Plan\"");
-        assert_eq!(parse(r#"{"fileType":"Plan"}"#).unwrap_err(), "no mission object");
+        assert_eq!(
+            parse(r#"{"fileType":"Mission"}"#).unwrap_err(),
+            "fileType is not \"Plan\""
+        );
+        assert_eq!(
+            parse(r#"{"fileType":"Plan"}"#).unwrap_err(),
+            "no mission object"
+        );
     }
 }

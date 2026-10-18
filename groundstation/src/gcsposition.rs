@@ -30,7 +30,12 @@ pub fn now() -> MonotonicMs {
 }
 
 pub fn wall_now() -> MonotonicMs {
-    MonotonicMs(web_time::SystemTime::now().duration_since(web_time::UNIX_EPOCH).map(|since| since.as_millis() as u64).unwrap_or(0))
+    MonotonicMs(
+        web_time::SystemTime::now()
+            .duration_since(web_time::UNIX_EPOCH)
+            .map(|since| since.as_millis() as u64)
+            .unwrap_or(0),
+    )
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -45,7 +50,15 @@ pub enum Source {
     External,
 }
 
-pub const SOURCES: &[Source] = &[Source::None, Source::Simulated, Source::InternalGps, Source::Plugin, Source::Nmea, Source::Log, Source::External];
+pub const SOURCES: &[Source] = &[
+    Source::None,
+    Source::Simulated,
+    Source::InternalGps,
+    Source::Plugin,
+    Source::Nmea,
+    Source::Log,
+    Source::External,
+];
 
 impl Source {
     pub fn token(self) -> &'static str {
@@ -61,11 +74,18 @@ impl Source {
     }
 
     pub fn from_token(token: &str) -> Self {
-        SOURCES.iter().copied().find(|source| source.token() == token).unwrap_or(Source::None)
+        SOURCES
+            .iter()
+            .copied()
+            .find(|source| source.token() == token)
+            .unwrap_or(Source::None)
     }
 
     pub fn listening(self) -> bool {
-        matches!(self, Source::Simulated | Source::InternalGps | Source::Plugin | Source::Nmea)
+        matches!(
+            self,
+            Source::Simulated | Source::InternalGps | Source::Plugin | Source::Nmea
+        )
     }
 
     pub fn trusts_heading_without_accuracy(self) -> bool {
@@ -145,7 +165,11 @@ pub enum Out {
     Source(Source),
     Error(Option<Error>),
     HorizontalAccuracy(Option<f64>),
-    Position { latitude: Option<f64>, longitude: Option<f64>, altitude: Option<f64> },
+    Position {
+        latitude: Option<f64>,
+        longitude: Option<f64>,
+        altitude: Option<f64>,
+    },
     Heading(Option<f64>),
 }
 
@@ -158,7 +182,11 @@ pub fn wrap_heading(degrees: f64) -> f64 {
 }
 
 pub fn wrap_longitude(degrees: f64) -> f64 {
-    if (-180.0..=180.0).contains(&degrees) { degrees } else { (degrees + 180.0).rem_euclid(360.0) - 180.0 }
+    if (-180.0..=180.0).contains(&degrees) {
+        degrees
+    } else {
+        (degrees + 180.0).rem_euclid(360.0) - 180.0
+    }
 }
 
 fn age_of(stamped_ms: Option<u64>, now: MonotonicMs) -> Option<u64> {
@@ -189,8 +217,13 @@ pub struct GcsPosition {
 fn diff(before: &GcsPosition, after: &GcsPosition) -> Vec<Out> {
     [
         (before.error != after.error).then_some(Out::Error(after.error)),
-        (before.horizontal_accuracy_m != after.horizontal_accuracy_m).then_some(Out::HorizontalAccuracy(after.horizontal_accuracy_m)),
-        (before.coordinate() != after.coordinate()).then_some(Out::Position { latitude: after.latitude, longitude: after.longitude, altitude: after.altitude }),
+        (before.horizontal_accuracy_m != after.horizontal_accuracy_m)
+            .then_some(Out::HorizontalAccuracy(after.horizontal_accuracy_m)),
+        (before.coordinate() != after.coordinate()).then_some(Out::Position {
+            latitude: after.latitude,
+            longitude: after.longitude,
+            altitude: after.altitude,
+        }),
         (before.heading_deg != after.heading_deg).then_some(Out::Heading(after.heading_deg)),
     ]
     .into_iter()
@@ -217,11 +250,20 @@ impl GcsPosition {
     }
 
     pub fn usable(&self, now: MonotonicMs) -> bool {
-        self.fixed() && !self.stale(now) && self.horizontal_accuracy_m.is_some_and(|accuracy| accuracy <= MIN_HORIZONTAL_ACCURACY_M)
+        self.fixed()
+            && !self.stale(now)
+            && self
+                .horizontal_accuracy_m
+                .is_some_and(|accuracy| accuracy <= MIN_HORIZONTAL_ACCURACY_M)
     }
 
     pub fn fix(&self, now: MonotonicMs) -> &'static str {
-        match (self.source.listening(), self.fixed(), self.stale(now), self.altitude.is_some()) {
+        match (
+            self.source.listening(),
+            self.fixed(),
+            self.stale(now),
+            self.altitude.is_some(),
+        ) {
             (false, false, ..) => "noSource",
             (_, false, ..) => "waiting",
             (_, _, true, true) => "staleThreeDimensional",
@@ -243,14 +285,22 @@ impl GcsPosition {
 
     pub fn select_source(&mut self, source: Source) -> Vec<Out> {
         let before = *self;
-        *self = GcsPosition { source, ..GcsPosition::default() };
+        *self = GcsPosition {
+            source,
+            ..GcsPosition::default()
+        };
         [
             Some(Out::Reported),
             (before.source != source).then_some(Out::Source(source)),
             (before.error != self.error).then_some(Out::Error(None)),
-            (before.coordinate() != self.coordinate()).then_some(Out::Position { latitude: None, longitude: None, altitude: None }),
+            (before.coordinate() != self.coordinate()).then_some(Out::Position {
+                latitude: None,
+                longitude: None,
+                altitude: None,
+            }),
             (before.heading_deg != self.heading_deg).then_some(Out::Heading(None)),
-            (before.horizontal_accuracy_m != self.horizontal_accuracy_m).then_some(Out::HorizontalAccuracy(None)),
+            (before.horizontal_accuracy_m != self.horizontal_accuracy_m)
+                .then_some(Out::HorizontalAccuracy(None)),
         ]
         .into_iter()
         .flatten()
@@ -259,41 +309,78 @@ impl GcsPosition {
 
     pub fn on_error(&mut self, code: i64) -> Vec<Out> {
         let before = self.error;
-        self.error = if code == ERROR_NONE { None } else { Error::from_code(code).or(before) };
-        (before != self.error).then(|| vec![Out::Error(self.error), Out::Reported]).unwrap_or_default()
+        self.error = if code == ERROR_NONE {
+            None
+        } else {
+            Error::from_code(code).or(before)
+        };
+        (before != self.error)
+            .then(|| vec![Out::Error(self.error), Out::Reported])
+            .unwrap_or_default()
     }
 
     pub fn on_update(&mut self, update: Update, now: MonotonicMs) -> Vec<Out> {
         let before = *self;
         self.error = None;
         if !self.source.listening() {
-            return (before.error != self.error).then(|| vec![Out::Error(None), Out::Reported]).unwrap_or_default();
+            return (before.error != self.error)
+                .then(|| vec![Out::Error(None), Out::Reported])
+                .unwrap_or_default();
         }
         let latitude = present(update.latitude);
         let longitude = present(update.longitude).map(wrap_longitude);
         let in_range = latitude.filter(|latitude| (-90.0..=90.0).contains(latitude));
         let coordinate = in_range.zip(longitude);
-        let off_null_island = coordinate.is_some_and(|(latitude, longitude)| latitude.abs() > NULL_ISLAND_DEG && longitude.abs() > NULL_ISLAND_DEG);
+        let off_null_island = coordinate.is_some_and(|(latitude, longitude)| {
+            latitude.abs() > NULL_ISLAND_DEG && longitude.abs() > NULL_ISLAND_DEG
+        });
 
         let reported_horizontal = present(update.horizontal_accuracy_m).filter(|_| off_null_island);
         self.horizontal_accuracy_m = reported_horizontal.or(self.horizontal_accuracy_m);
-        let accepted = coordinate.filter(|_| reported_horizontal.is_some_and(|accuracy| accuracy <= MIN_HORIZONTAL_ACCURACY_M));
-        (self.latitude, self.longitude, self.stamped_ms, self.stale_announced) = accepted
+        let accepted = coordinate.filter(|_| {
+            reported_horizontal.is_some_and(|accuracy| accuracy <= MIN_HORIZONTAL_ACCURACY_M)
+        });
+        (
+            self.latitude,
+            self.longitude,
+            self.stamped_ms,
+            self.stale_announced,
+        ) = accepted
             .map(|(latitude, longitude)| (Some(latitude), Some(longitude), Some(now.0), false))
-            .unwrap_or((self.latitude, self.longitude, self.stamped_ms, self.stale_announced));
-        self.motion = accepted.map_or(self.motion, |_| (present(update.direction_deg).map(wrap_heading), present(update.ground_speed_m_s)));
+            .unwrap_or((
+                self.latitude,
+                self.longitude,
+                self.stamped_ms,
+                self.stale_announced,
+            ));
+        self.motion = accepted.map_or(self.motion, |_| {
+            (
+                present(update.direction_deg).map(wrap_heading),
+                present(update.ground_speed_m_s),
+            )
+        });
 
         let reported_vertical = present(update.vertical_accuracy_m);
         self.vertical_accuracy_m = reported_vertical.or(self.vertical_accuracy_m);
-        self.altitude = if reported_vertical.is_some_and(|accuracy| accuracy <= MIN_VERTICAL_ACCURACY_M) { present(update.altitude) } else { self.altitude };
+        self.altitude =
+            if reported_vertical.is_some_and(|accuracy| accuracy <= MIN_VERTICAL_ACCURACY_M) {
+                present(update.altitude)
+            } else {
+                self.altitude
+            };
 
         self.refusal = match (latitude, longitude, in_range, reported_horizontal) {
             (None, ..) | (_, None, ..) => Some(Refusal::NoCoordinate),
             (_, _, None, _) => Some(Refusal::LatitudeOutOfRange),
             _ if !off_null_island => Some(Refusal::NullIsland),
             (.., None) => Some(Refusal::AccuracyUnknown),
-            (.., Some(accuracy)) if accuracy > MIN_HORIZONTAL_ACCURACY_M => Some(Refusal::AccuracyTooCoarse),
-            _ => present(update.altitude).and(reported_vertical).filter(|accuracy| *accuracy > MIN_VERTICAL_ACCURACY_M).map(|_| Refusal::VerticalAccuracyTooCoarse),
+            (.., Some(accuracy)) if accuracy > MIN_HORIZONTAL_ACCURACY_M => {
+                Some(Refusal::AccuracyTooCoarse)
+            }
+            _ => present(update.altitude)
+                .and(reported_vertical)
+                .filter(|accuracy| *accuracy > MIN_VERTICAL_ACCURACY_M)
+                .map(|_| Refusal::VerticalAccuracyTooCoarse),
         };
 
         let reported_direction = present(update.direction_accuracy_deg);
@@ -330,7 +417,9 @@ impl GcsPosition {
 
     pub fn property(&self, name: &str) -> Option<Value> {
         let coordinate = || match (self.latitude, self.longitude) {
-            (Some(latitude), Some(longitude)) => json!({ "valid": true, "latitude": latitude, "longitude": longitude, "altitude": self.altitude }),
+            (Some(latitude), Some(longitude)) => {
+                json!({ "valid": true, "latitude": latitude, "longitude": longitude, "altitude": self.altitude })
+            }
             _ => Value::Null,
         };
         self.hosted.then_some(())?;
@@ -383,7 +472,8 @@ impl GcsPosition {
     }
 }
 
-static POSITION: LazyLock<Mutex<GcsPosition>> = LazyLock::new(|| Mutex::new(GcsPosition::default()));
+static POSITION: LazyLock<Mutex<GcsPosition>> =
+    LazyLock::new(|| Mutex::new(GcsPosition::default()));
 
 pub fn lock() -> MutexGuard<'static, GcsPosition> {
     POSITION.lock().unwrap_or_else(PoisonError::into_inner)
@@ -401,9 +491,14 @@ pub fn gcs_position_view(backend: &dyn Backend, _args: &[String]) -> Value {
     // Every backend call blocks until the Qt thread services it, and the Qt thread reaches this
     // same view through Watcher::_notified, so a guard held across one is a deadlock that wedges
     // every bridge read for the life of the process rather than a slow path.
-    let fix = position.usable(wall).then(|| position.latitude.zip(position.longitude)).flatten();
+    let fix = position
+        .usable(wall)
+        .then(|| position.latitude.zip(position.longitude))
+        .flatten();
     drop(position);
-    let separation = fix.zip(live_vehicle(backend)).map(|(gcs, vehicle)| crate::track::distance_m(gcs, vehicle));
+    let separation = fix
+        .zip(live_vehicle(backend))
+        .map(|(gcs, vehicle)| crate::track::distance_m(gcs, vehicle));
     let unit = crate::read::Unit::horizontal(backend);
     snapshot["distanceToVehicleMeters"] = json!(separation);
     snapshot["distanceToVehicle"] = json!(separation.map(|metres| unit.show(metres)));
@@ -413,18 +508,34 @@ pub fn gcs_position_view(backend: &dyn Backend, _args: &[String]) -> Value {
 }
 
 fn fill_from_host(position: &mut GcsPosition, read: &Value) {
-    let number = |key: &str| read.get(key).and_then(Value::as_f64).filter(|value| value.is_finite());
+    let number = |key: &str| {
+        read.get(key)
+            .and_then(Value::as_f64)
+            .filter(|value| value.is_finite())
+    };
     // gcsPositionTimestamp is epoch milliseconds while now() counts from process start, and the
     // ladder subtracts one from the other. Converting the stamp into the process frame collapses
     // whenever the process is younger than the fix, so BOTH sides are read on the wall clock here
     // instead: every comparison in the struct is a difference, and a difference only needs the two
     // operands to share a frame.
-    let stamped = read.get("gcsPositionTimestamp").and_then(Value::as_i64).filter(|stamped| *stamped > 0).map(|stamped| stamped as u64);
+    let stamped = read
+        .get("gcsPositionTimestamp")
+        .and_then(Value::as_i64)
+        .filter(|stamped| *stamped > 0)
+        .map(|stamped| stamped as u64);
     let coordinate = crate::read::nested_coordinate_at(read, "gcsPosition");
-    position.source = Source::from_token(read.get("gcsPositionSource").and_then(Value::as_str).unwrap_or("none"));
+    position.source = Source::from_token(
+        read.get("gcsPositionSource")
+            .and_then(Value::as_str)
+            .unwrap_or("none"),
+    );
     position.latitude = coordinate.map(|(latitude, _)| latitude);
     position.longitude = coordinate.map(|(_, longitude)| longitude);
-    position.altitude = read.get("gcsPosition").and_then(|point| point.get("altitude")).and_then(Value::as_f64).filter(|metres| metres.is_finite());
+    position.altitude = read
+        .get("gcsPosition")
+        .and_then(|point| point.get("altitude"))
+        .and_then(Value::as_f64)
+        .filter(|metres| metres.is_finite());
     position.heading_deg = number("gcsHeading").map(wrap_heading);
     position.horizontal_accuracy_m = number("gcsPositionHorizontalAccuracy");
     position.stamped_ms = stamped;
@@ -433,15 +544,24 @@ fn fill_from_host(position: &mut GcsPosition, read: &Value) {
 // The vehicle's coordinate is held after the link drops, so a distance drawn from
 // it would keep counting against a position the vehicle left long ago.
 fn live_vehicle(backend: &dyn Backend) -> Option<(f64, f64)> {
-    let lost = backend.value("vehicle.vehicleLinkManager.communicationLost")
+    let lost = backend
+        .value("vehicle.vehicleLinkManager.communicationLost")
         .get("value")
         .and_then(Value::as_bool)
         .unwrap_or(false);
     if lost {
         return None;
     }
-    let read = |path: &str| backend.value(path).get("value").and_then(Value::as_f64).filter(|value| value.is_finite());
-    read("vehicle.latitude").zip(read("vehicle.longitude")).filter(|(latitude, longitude)| *latitude != 0.0 || *longitude != 0.0)
+    let read = |path: &str| {
+        backend
+            .value(path)
+            .get("value")
+            .and_then(Value::as_f64)
+            .filter(|value| value.is_finite())
+    };
+    read("vehicle.latitude")
+        .zip(read("vehicle.longitude"))
+        .filter(|(latitude, longitude)| *latitude != 0.0 || *longitude != 0.0)
 }
 
 pub fn report(update: Update) {
@@ -458,7 +578,9 @@ pub fn report_error(code: i64) {
 }
 
 pub fn positioning_failed() -> bool {
-    lock().error.is_some_and(|error| error != Error::UpdateTimeout)
+    lock()
+        .error
+        .is_some_and(|error| error != Error::UpdateTimeout)
 }
 
 pub fn report_nmea(update: Update) {
@@ -474,7 +596,12 @@ fn deliver(update: Update) {
         position.coordinate()
     };
     if let (Some(latitude), Some(longitude), altitude) = coordinate {
-        let outbound = crate::hub::lock().gcs_moved(latitude, longitude, altitude.unwrap_or(f64::NAN), crate::hub::now_ms());
+        let outbound = crate::hub::lock().gcs_moved(
+            latitude,
+            longitude,
+            altitude.unwrap_or(f64::NAN),
+            crate::hub::now_ms(),
+        );
         outbound.iter().for_each(|(link, bytes)| {
             crate::linkhost::write(&crate::linkhost::TRANSPORTS, *link, bytes);
         });
@@ -490,16 +617,30 @@ mod tests {
     fn an_nmea_source_outranks_the_hosts_gps_and_hands_back_when_turned_off() {
         let mut position = GcsPosition::default();
         position.host_source(Source::InternalGps);
-        assert!(position.use_nmea(true).contains(&Out::Source(Source::Nmea)), "setNmeaSourceDevice switches the position manager to the NMEA source");
+        assert!(
+            position.use_nmea(true).contains(&Out::Source(Source::Nmea)),
+            "setNmeaSourceDevice switches the position manager to the NMEA source"
+        );
         position.host_source(Source::InternalGps);
-        assert_eq!(position.source, Source::Nmea, "the host choosing its GPS again does not take over from NMEA");
-        assert!(position.use_nmea(false).contains(&Out::Source(Source::InternalGps)), "resetNmeaSourceDevice falls back to the internal GPS");
+        assert_eq!(
+            position.source,
+            Source::Nmea,
+            "the host choosing its GPS again does not take over from NMEA"
+        );
+        assert!(
+            position
+                .use_nmea(false)
+                .contains(&Out::Source(Source::InternalGps)),
+            "resetNmeaSourceDevice falls back to the internal GPS"
+        );
         assert!(position.use_nmea(false).is_empty());
     }
 
     struct Station(&'static str, i64);
     impl Backend for Station {
-        fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+        fn get(&self, p: &str) -> String {
+            self.get_fields(p, "")
+        }
         fn get_fields(&self, path: &str, _f: &str) -> String {
             match path {
                 // A nested read serialises an invalid QGeoCoordinate as a null rather than as
@@ -511,29 +652,48 @@ mod tests {
                 _ => json!({ "kind": "null" }).to_string(),
             }
         }
-        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            String::new()
+        }
         fn watch(&self, _p: &[String]) {}
     }
 
     fn epoch_now() -> i64 {
-        web_time::SystemTime::now().duration_since(web_time::UNIX_EPOCH).unwrap().as_millis() as i64
+        web_time::SystemTime::now()
+            .duration_since(web_time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64
     }
 
     #[test]
     fn the_view_reports_the_position_qgc_actually_has() {
         let live = gcs_position_view(&Station("internalGps", epoch_now()), &[]);
-        assert_eq!(live["latitude"], 47.397, "nothing ever wrote to this module's static, so every field was null in the running app while QGC held a fix");
+        assert_eq!(
+            live["latitude"], 47.397,
+            "nothing ever wrote to this module's static, so every field was null in the running app while QGC held a fix"
+        );
         assert_eq!(live["source"], "internalGps");
         assert_eq!(live["listening"], true);
         assert_eq!(live["fix"], "threeDimensional");
-        assert_eq!(live["usable"], true, "the timestamp is epoch milliseconds and every clock here counts from process start, so comparing them raw reports a live fix as permanently stale");
+        assert_eq!(
+            live["usable"], true,
+            "the timestamp is epoch milliseconds and every clock here counts from process start, so comparing them raw reports a live fix as permanently stale"
+        );
 
         let old = gcs_position_view(&Station("internalGps", epoch_now() - 600_000), &[]);
-        assert_eq!(old["fix"], "staleThreeDimensional", "a fix that aged out is not the same answer as never having had one");
+        assert_eq!(
+            old["fix"], "staleThreeDimensional",
+            "a fix that aged out is not the same answer as never having had one"
+        );
 
         let dark = gcs_position_view(&Station("none", 0), &[]);
-        assert_eq!(dark["fix"], "noSource", "nothing is listening, which an operator reads differently from a source that has not answered yet");
+        assert_eq!(
+            dark["fix"], "noSource",
+            "nothing is listening, which an operator reads differently from a source that has not answered yet"
+        );
         assert_eq!(dark["latitude"], Value::Null);
     }
 
@@ -549,7 +709,9 @@ mod tests {
                 match path {
                     "vehicle.latitude" => json!({ "kind": "value", "value": 47.4 }),
                     "vehicle.longitude" => json!({ "kind": "value", "value": 8.55 }),
-                    "vehicle.vehicleLinkManager.communicationLost" => json!({ "kind": "value", "value": self.1 }),
+                    "vehicle.vehicleLinkManager.communicationLost" => {
+                        json!({ "kind": "value", "value": self.1 })
+                    }
                     _ => json!({ "kind": "null" }),
                 }
                 .to_string()
@@ -563,44 +725,83 @@ mod tests {
                 })
                 .to_string()
             }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
             fn watch(&self, _p: &[String]) {}
         }
 
         let metres = |source, lost, accuracy| {
             lock().select_source(Source::None);
-            gcs_position_view(&Pair(source, lost, accuracy), &[])["distanceToVehicleMeters"].as_f64()
+            gcs_position_view(&Pair(source, lost, accuracy), &[])["distanceToVehicleMeters"]
+                .as_f64()
         };
 
         let feet = {
             struct Imperial(Pair);
             impl Backend for Imperial {
-                fn get(&self, path: &str) -> String { self.0.get(path) }
+                fn get(&self, path: &str) -> String {
+                    self.0.get(path)
+                }
                 fn get_fields(&self, path: &str, fields: &str) -> String {
                     match path {
-                        "units" => json!({ "appSettingsHorizontalDistanceUnitsString": "ft" }).to_string(),
+                        "units" => {
+                            json!({ "appSettingsHorizontalDistanceUnitsString": "ft" }).to_string()
+                        }
                         _ => self.0.get_fields(path, fields),
                     }
                 }
-                fn invoke(&self, _p: &str, _a: &str) -> String { json!({ "ok": true, "result": 3.28084 }).to_string() }
-                fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+                fn invoke(&self, _p: &str, _a: &str) -> String {
+                    json!({ "ok": true, "result": 3.28084 }).to_string()
+                }
+                fn set(&self, _p: &str, _v: &str) -> String {
+                    String::new()
+                }
                 fn watch(&self, _p: &[String]) {}
             }
             lock().select_source(Source::None);
             let view = gcs_position_view(&Imperial(Pair("gps", false, 3.0)), &[]);
-            (view["distanceToVehicle"].as_f64(), view["distanceToVehicleUnits"].as_str().map(str::to_string), view["distanceToVehicleMeters"].as_f64())
+            (
+                view["distanceToVehicle"].as_f64(),
+                view["distanceToVehicleUnits"].as_str().map(str::to_string),
+                view["distanceToVehicleMeters"].as_f64(),
+            )
         };
-        assert!((feet.0.unwrap() - 1_651.0).abs() < 20.0, "an operator working in feet is given feet, got {:?}", feet.0);
+        assert!(
+            (feet.0.unwrap() - 1_651.0).abs() < 20.0,
+            "an operator working in feet is given feet, got {:?}",
+            feet.0
+        );
         assert_eq!(feet.1.as_deref(), Some("ft"));
-        assert!((feet.2.unwrap() - 503.0).abs() < 5.0, "and the metres stay beside them for anything that needs the raw figure");
+        assert!(
+            (feet.2.unwrap() - 503.0).abs() < 5.0,
+            "and the metres stay beside them for anything that needs the raw figure"
+        );
 
         lock().select_source(Source::None);
-        let near = metres("gps", false, 3.0).expect("a usable fix and a live vehicle give a separation");
-        assert!((near - 503.0).abs() < 5.0, "0.003 degrees of latitude and 0.005 of longitude at Zurich, got {near}");
-        assert_eq!(metres("gps", true, 3.0), None, "the vehicle's coordinate is held after the link drops, so a distance from it would be counted against a place it has left");
-        assert_eq!(metres("gps", false, 500.0), None, "a fix too coarse to be usable cannot anchor a distance either");
-        assert!(metres("none", false, 3.0).is_some(), "the gate is usable(), which asks about the fix rather than about the source - a coordinate with no named source still reads as threeDimensional in the ladder above, so the distance agrees with it rather than inventing a stricter rule");
+        let near =
+            metres("gps", false, 3.0).expect("a usable fix and a live vehicle give a separation");
+        assert!(
+            (near - 503.0).abs() < 5.0,
+            "0.003 degrees of latitude and 0.005 of longitude at Zurich, got {near}"
+        );
+        assert_eq!(
+            metres("gps", true, 3.0),
+            None,
+            "the vehicle's coordinate is held after the link drops, so a distance from it would be counted against a place it has left"
+        );
+        assert_eq!(
+            metres("gps", false, 500.0),
+            None,
+            "a fix too coarse to be usable cannot anchor a distance either"
+        );
+        assert!(
+            metres("none", false, 3.0).is_some(),
+            "the gate is usable(), which asks about the fix rather than about the source - a coordinate with no named source still reads as threeDimensional in the ladder above, so the distance agrees with it rather than inventing a stricter rule"
+        );
         lock().select_source(Source::None);
     }
 
@@ -608,68 +809,192 @@ mod tests {
     fn a_fix_stamped_a_moment_in_the_future_is_current_rather_than_unknown() {
         let now = MonotonicMs(10_000);
 
-        assert_eq!(age_of(Some(9_500), now), Some(500), "a fix from half a second ago is half a second old");
-        assert_eq!(age_of(Some(10_400), now), Some(0), "android stamps a fix with gps time rounded to the second, so it runs ahead of the phone's own clock");
-        assert_eq!(age_of(Some(10_000 + STALE_AFTER_MS), now), Some(0), "the tolerance is inclusive of its own limit");
-        assert_eq!(age_of(Some(10_001 + STALE_AFTER_MS), now), None, "further ahead than a fix could ever be means the two sides are not the same clock, which is not an age at all");
-        assert_eq!(age_of(Some(1_789_326_842_000), now), None, "epoch milliseconds against a clock counting from process start stays unreadable, which is the mismatch this filter was written for");
+        assert_eq!(
+            age_of(Some(9_500), now),
+            Some(500),
+            "a fix from half a second ago is half a second old"
+        );
+        assert_eq!(
+            age_of(Some(10_400), now),
+            Some(0),
+            "android stamps a fix with gps time rounded to the second, so it runs ahead of the phone's own clock"
+        );
+        assert_eq!(
+            age_of(Some(10_000 + STALE_AFTER_MS), now),
+            Some(0),
+            "the tolerance is inclusive of its own limit"
+        );
+        assert_eq!(
+            age_of(Some(10_001 + STALE_AFTER_MS), now),
+            None,
+            "further ahead than a fix could ever be means the two sides are not the same clock, which is not an age at all"
+        );
+        assert_eq!(
+            age_of(Some(1_789_326_842_000), now),
+            None,
+            "epoch milliseconds against a clock counting from process start stays unreadable, which is the mismatch this filter was written for"
+        );
     }
 
     fn fix(horizontal: Option<f64>) -> Update {
-        Update { latitude: Some(47.397742), longitude: Some(8.545594), altitude: Some(488.0), horizontal_accuracy_m: horizontal, vertical_accuracy_m: Some(5.0), ..Update::default() }
+        Update {
+            latitude: Some(47.397742),
+            longitude: Some(8.545594),
+            altitude: Some(488.0),
+            horizontal_accuracy_m: horizontal,
+            vertical_accuracy_m: Some(5.0),
+            ..Update::default()
+        }
     }
 
     fn listening(source: Source) -> GcsPosition {
-        GcsPosition { source, ..GcsPosition::default() }
+        GcsPosition {
+            source,
+            ..GcsPosition::default()
+        }
     }
 
     #[test]
     fn the_gates_are_the_numbers_the_position_manager_ships() {
         assert_eq!(
-            (MIN_HORIZONTAL_ACCURACY_M, MIN_VERTICAL_ACCURACY_M, MIN_DIRECTION_ACCURACY_DEG, STALE_AFTER_MS),
+            (
+                MIN_HORIZONTAL_ACCURACY_M,
+                MIN_VERTICAL_ACCURACY_M,
+                MIN_DIRECTION_ACCURACY_DEG,
+                STALE_AFTER_MS
+            ),
             (100.0, 10.0, 30.0, 5000),
             "kMinHorizonalAccuracyMeters, kMinVerticalAccuracyMeters and kMinDirectionAccuracyDegrees are PositionManager.h:100-102, and the five second expiry is this module's own budget rather than remoteid's ALLOWED_GPS_DELAY_MS, so tuning one cannot retune the other"
         );
-        let source = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/gcsposition.rs")).unwrap();
+        let source =
+            std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/src/gcsposition.rs"))
+                .unwrap();
         assert!(
             !source.contains(&["use crate::", "remoteid"].concat()),
             "the expiry is this module's own budget and the Remote ID transmission budget is remoteid's; borrowing the constant across the module boundary means anyone tuning the UI staleness retunes an ODID compliance number, with no test pinning either"
         );
         let mut coarse = listening(Source::InternalGps);
-        coarse.on_update(Update { horizontal_accuracy_m: Some(100.1), ..fix(None) }, at(1_000));
-        assert_eq!((coarse.latitude, coarse.refusal), (None, Some(Refusal::AccuracyTooCoarse)), "a hundred point one metre fix is refused by the hard number, not by whatever the constant happens to say");
+        coarse.on_update(
+            Update {
+                horizontal_accuracy_m: Some(100.1),
+                ..fix(None)
+            },
+            at(1_000),
+        );
+        assert_eq!(
+            (coarse.latitude, coarse.refusal),
+            (None, Some(Refusal::AccuracyTooCoarse)),
+            "a hundred point one metre fix is refused by the hard number, not by whatever the constant happens to say"
+        );
         let mut exact = listening(Source::InternalGps);
-        exact.on_update(Update { horizontal_accuracy_m: Some(100.0), ..fix(None) }, at(1_000));
-        assert_eq!((exact.latitude, exact.refusal), (Some(47.397742), None), "and a hundred metre fix is accepted, because the comparison is less than or equal");
-        assert_eq!((Error::from_code(0), Error::from_code(1), Error::from_code(2), Error::from_code(4)), (Some(Error::Access), Some(Error::Closed), Some(Error::UnknownSource), Some(Error::UpdateTimeout)));
-        assert_eq!((ERROR_NONE, Error::from_code(ERROR_NONE)), (3, None), "QGeoPositionInfoSource::NoError is the third code and names no error");
+        exact.on_update(
+            Update {
+                horizontal_accuracy_m: Some(100.0),
+                ..fix(None)
+            },
+            at(1_000),
+        );
+        assert_eq!(
+            (exact.latitude, exact.refusal),
+            (Some(47.397742), None),
+            "and a hundred metre fix is accepted, because the comparison is less than or equal"
+        );
+        assert_eq!(
+            (
+                Error::from_code(0),
+                Error::from_code(1),
+                Error::from_code(2),
+                Error::from_code(4)
+            ),
+            (
+                Some(Error::Access),
+                Some(Error::Closed),
+                Some(Error::UnknownSource),
+                Some(Error::UpdateTimeout)
+            )
+        );
+        assert_eq!(
+            (ERROR_NONE, Error::from_code(ERROR_NONE)),
+            (3, None),
+            "QGeoPositionInfoSource::NoError is the third code and names no error"
+        );
     }
 
     #[test]
     fn a_coarse_fix_records_its_accuracy_and_keeps_the_last_trusted_coordinate() {
         let mut position = listening(Source::InternalGps);
         position.on_update(fix(Some(4.0)), at(1_000));
-        assert_eq!((position.latitude, position.stamped_ms), (Some(47.397742), Some(1_000)));
-        let outs = position.on_update(Update { latitude: Some(10.0), longitude: Some(10.0), horizontal_accuracy_m: Some(MIN_HORIZONTAL_ACCURACY_M + 0.1), ..Update::default() }, at(2_000));
-        assert_eq!((position.latitude, position.stamped_ms), (Some(47.397742), Some(1_000)), "an update outside the hundred metre gate leaves the coordinate alone, so it must leave the arrival stamp alone too or the old fix reads fresh");
-        assert_eq!(outs, vec![Out::HorizontalAccuracy(Some(MIN_HORIZONTAL_ACCURACY_M + 0.1)), Out::Reported], "the rejected accuracy is still what the receiver last reported");
+        assert_eq!(
+            (position.latitude, position.stamped_ms),
+            (Some(47.397742), Some(1_000))
+        );
+        let outs = position.on_update(
+            Update {
+                latitude: Some(10.0),
+                longitude: Some(10.0),
+                horizontal_accuracy_m: Some(MIN_HORIZONTAL_ACCURACY_M + 0.1),
+                ..Update::default()
+            },
+            at(2_000),
+        );
+        assert_eq!(
+            (position.latitude, position.stamped_ms),
+            (Some(47.397742), Some(1_000)),
+            "an update outside the hundred metre gate leaves the coordinate alone, so it must leave the arrival stamp alone too or the old fix reads fresh"
+        );
+        assert_eq!(
+            outs,
+            vec![
+                Out::HorizontalAccuracy(Some(MIN_HORIZONTAL_ACCURACY_M + 0.1)),
+                Out::Reported
+            ],
+            "the rejected accuracy is still what the receiver last reported"
+        );
         assert_eq!(
             position.refusal,
             Some(Refusal::AccuracyTooCoarse),
             "a receiver whose readings are all refused is still a receiver that is talking, and the reason it is refused is the only thing that tells the operator to walk outside"
         );
         position.on_update(fix(Some(MIN_HORIZONTAL_ACCURACY_M)), at(3_000));
-        assert_eq!((position.stamped_ms, position.refusal), (Some(3_000), None), "the gate is inclusive, exactly as kMinHorizonalAccuracyMeters is compared, and an accepted coordinate withdraws the refusal");
+        assert_eq!(
+            (position.stamped_ms, position.refusal),
+            (Some(3_000), None),
+            "the gate is inclusive, exactly as kMinHorizonalAccuracyMeters is compared, and an accepted coordinate withdraws the refusal"
+        );
     }
 
     #[test]
     fn an_update_carrying_no_accuracy_moves_nothing_and_says_why() {
         let mut position = listening(Source::InternalGps);
-        let outs = position.on_update(Update { latitude: Some(47.0), longitude: Some(8.0), altitude: Some(400.0), ..Update::default() }, at(500));
-        assert_eq!(position.coordinate(), (None, None, None), "a reading whose accuracy the receiver never stated is not a reading that passed a gate");
-        assert_eq!((position.horizontal_accuracy_m, position.stamped_ms, position.age_ms(at(500))), (None, None, None), "an unknown accuracy is absent, never zero, and an unstamped fix has no age at all");
+        let outs = position.on_update(
+            Update {
+                latitude: Some(47.0),
+                longitude: Some(8.0),
+                altitude: Some(400.0),
+                ..Update::default()
+            },
+            at(500),
+        );
+        assert_eq!(
+            position.coordinate(),
+            (None, None, None),
+            "a reading whose accuracy the receiver never stated is not a reading that passed a gate"
+        );
+        assert_eq!(
+            (
+                position.horizontal_accuracy_m,
+                position.stamped_ms,
+                position.age_ms(at(500))
+            ),
+            (None, None, None),
+            "an unknown accuracy is absent, never zero, and an unstamped fix has no age at all"
+        );
         assert_eq!(outs, vec![Out::Reported]);
-        assert_eq!(position.fix(at(500)), "waiting", "a live receiver that has not yet delivered a fix is waiting, which is a different story from having no receiver at all");
+        assert_eq!(
+            position.fix(at(500)),
+            "waiting",
+            "a live receiver that has not yet delivered a fix is waiting, which is a different story from having no receiver at all"
+        );
         let view = position.snapshot(at(700));
         assert_eq!(
             (view["refused"].as_str(), view["fix"].as_str()),
@@ -677,114 +1002,372 @@ mod tests {
             "a refused reading and no reading at all must not read the same, or the operator cannot choose between replugging the receiver and waiting for it"
         );
         let never = GcsPosition::default().snapshot(at(700));
-        assert_eq!((never["refused"].as_str(), never["fix"].as_str()), (None, Some("noSource")), "nothing has ever arrived, so there is nothing to explain");
+        assert_eq!(
+            (never["refused"].as_str(), never["fix"].as_str()),
+            (None, Some("noSource")),
+            "nothing has ever arrived, so there is nothing to explain"
+        );
     }
 
     #[test]
     fn altitude_needs_its_own_ten_metre_gate_and_is_absent_until_it_passes() {
         let mut position = listening(Source::InternalGps);
-        position.on_update(Update { vertical_accuracy_m: Some(MIN_VERTICAL_ACCURACY_M + 0.1), ..fix(Some(4.0)) }, at(1_000));
-        assert_eq!((position.altitude, position.vertical_accuracy_m), (None, Some(MIN_VERTICAL_ACCURACY_M + 0.1)), "the vertical gate is separate from the horizontal one, so a good lat/lon does not carry a bad altitude in with it");
-        assert_eq!((position.fix(at(1_000)), position.refusal), ("horizontal", Some(Refusal::VerticalAccuracyTooCoarse)), "the coordinate landed and the altitude did not, and the altitude is the half that needs explaining");
+        position.on_update(
+            Update {
+                vertical_accuracy_m: Some(MIN_VERTICAL_ACCURACY_M + 0.1),
+                ..fix(Some(4.0))
+            },
+            at(1_000),
+        );
+        assert_eq!(
+            (position.altitude, position.vertical_accuracy_m),
+            (None, Some(MIN_VERTICAL_ACCURACY_M + 0.1)),
+            "the vertical gate is separate from the horizontal one, so a good lat/lon does not carry a bad altitude in with it"
+        );
+        assert_eq!(
+            (position.fix(at(1_000)), position.refusal),
+            ("horizontal", Some(Refusal::VerticalAccuracyTooCoarse)),
+            "the coordinate landed and the altitude did not, and the altitude is the half that needs explaining"
+        );
         position.on_update(fix(Some(4.0)), at(1_500));
-        assert_eq!((position.altitude, position.fix(at(1_500)), position.refusal), (Some(488.0), "threeDimensional", None));
+        assert_eq!(
+            (position.altitude, position.fix(at(1_500)), position.refusal),
+            (Some(488.0), "threeDimensional", None)
+        );
         let mut alone = listening(Source::InternalGps);
-        alone.on_update(Update { vertical_accuracy_m: None, ..fix(Some(4.0)) }, at(1_000));
-        assert_eq!((alone.altitude, alone.vertical_accuracy_m), (None, None), "an accuracy the receiver never stated is unknown rather than zero, and an altitude it cannot vouch for does not land");
-        assert!(alone.snapshot(at(1_000)).get("accuracy").is_none(), "_gcsPositionAccuracy has no getter and no reader anywhere upstream, so the hypot of a horizontal CEP and a vertical accuracy is not a number this port publishes");
+        alone.on_update(
+            Update {
+                vertical_accuracy_m: None,
+                ..fix(Some(4.0))
+            },
+            at(1_000),
+        );
+        assert_eq!(
+            (alone.altitude, alone.vertical_accuracy_m),
+            (None, None),
+            "an accuracy the receiver never stated is unknown rather than zero, and an altitude it cannot vouch for does not land"
+        );
+        assert!(
+            alone.snapshot(at(1_000)).get("accuracy").is_none(),
+            "_gcsPositionAccuracy has no getter and no reader anywhere upstream, so the hypot of a horizontal CEP and a vertical accuracy is not a number this port publishes"
+        );
     }
 
     #[test]
     fn heading_is_only_trusted_inside_its_own_accuracy_and_the_trust_follows_the_live_source() {
         let mut position = listening(Source::InternalGps);
-        position.on_update(Update { direction_deg: Some(90.0), direction_accuracy_deg: Some(MIN_DIRECTION_ACCURACY_DEG), ..fix(Some(4.0)) }, at(1_000));
+        position.on_update(
+            Update {
+                direction_deg: Some(90.0),
+                direction_accuracy_deg: Some(MIN_DIRECTION_ACCURACY_DEG),
+                ..fix(Some(4.0))
+            },
+            at(1_000),
+        );
         assert_eq!(position.heading_deg, Some(90.0));
-        position.on_update(Update { direction_deg: Some(270.0), direction_accuracy_deg: Some(MIN_DIRECTION_ACCURACY_DEG + 0.1), ..fix(Some(4.0)) }, at(1_100));
-        assert_eq!(position.heading_deg, Some(90.0), "a bearing the receiver cannot vouch for leaves the last trusted one standing");
-        position.on_update(Update { direction_deg: Some(270.0), ..fix(Some(4.0)) }, at(1_200));
-        assert_eq!(position.heading_deg, Some(90.0), "an internal source that states no direction accuracy states no direction either");
+        position.on_update(
+            Update {
+                direction_deg: Some(270.0),
+                direction_accuracy_deg: Some(MIN_DIRECTION_ACCURACY_DEG + 0.1),
+                ..fix(Some(4.0))
+            },
+            at(1_100),
+        );
+        assert_eq!(
+            position.heading_deg,
+            Some(90.0),
+            "a bearing the receiver cannot vouch for leaves the last trusted one standing"
+        );
+        position.on_update(
+            Update {
+                direction_deg: Some(270.0),
+                ..fix(Some(4.0))
+            },
+            at(1_200),
+        );
+        assert_eq!(
+            position.heading_deg,
+            Some(90.0),
+            "an internal source that states no direction accuracy states no direction either"
+        );
         let mut plugin = listening(Source::Plugin);
-        plugin.on_update(Update { direction_deg: Some(270.0), ..fix(Some(4.0)) }, at(1_000));
-        assert_eq!(plugin.heading_deg, Some(270.0), "a plugin-supplied source reports a bearing without an accuracy attribute, so it is taken as given");
+        plugin.on_update(
+            Update {
+                direction_deg: Some(270.0),
+                ..fix(Some(4.0))
+            },
+            at(1_000),
+        );
+        assert_eq!(
+            plugin.heading_deg,
+            Some(270.0),
+            "a plugin-supplied source reports a bearing without an accuracy attribute, so it is taken as given"
+        );
         plugin.select_source(Source::Nmea);
-        plugin.on_update(Update { direction_deg: Some(10.0), ..fix(Some(4.0)) }, at(2_000));
-        assert_eq!(plugin.heading_deg, None, "QGCPositionManager::_usingPluginSource never clears, so the plugin's unconditional heading trust survives a switch to NMEA; here the trust is the live source's, and switching withdraws it");
+        plugin.on_update(
+            Update {
+                direction_deg: Some(10.0),
+                ..fix(Some(4.0))
+            },
+            at(2_000),
+        );
+        assert_eq!(
+            plugin.heading_deg, None,
+            "QGCPositionManager::_usingPluginSource never clears, so the plugin's unconditional heading trust survives a switch to NMEA; here the trust is the live source's, and switching withdraws it"
+        );
     }
 
     #[test]
     fn follow_me_motion_comes_from_the_same_update_as_the_accepted_position() {
         let mut position = listening(Source::InternalGps);
-        position.on_update(Update { direction_deg: Some(90.0), ground_speed_m_s: Some(2.0), ..fix(Some(4.0)) }, at(1_000));
+        position.on_update(
+            Update {
+                direction_deg: Some(90.0),
+                ground_speed_m_s: Some(2.0),
+                ..fix(Some(4.0))
+            },
+            at(1_000),
+        );
         assert_eq!(position.motion, (Some(90.0), Some(2.0)));
-        position.on_update(Update { direction_deg: None, ground_speed_m_s: Some(5.0), ..fix(Some(500.0)) }, at(1_100));
-        assert_eq!(position.motion, (Some(90.0), Some(2.0)), "a fix the accuracy gate refused does not pair its motion with the last accepted position");
-        position.on_update(Update { direction_deg: None, ground_speed_m_s: None, ..fix(Some(4.0)) }, at(1_200));
-        assert_eq!(position.motion, (None, None), "a fresh fix without a bearing says so, rather than repeating the old one");
+        position.on_update(
+            Update {
+                direction_deg: None,
+                ground_speed_m_s: Some(5.0),
+                ..fix(Some(500.0))
+            },
+            at(1_100),
+        );
+        assert_eq!(
+            position.motion,
+            (Some(90.0), Some(2.0)),
+            "a fix the accuracy gate refused does not pair its motion with the last accepted position"
+        );
+        position.on_update(
+            Update {
+                direction_deg: None,
+                ground_speed_m_s: None,
+                ..fix(Some(4.0))
+            },
+            at(1_200),
+        );
+        assert_eq!(
+            position.motion,
+            (None, None),
+            "a fresh fix without a bearing says so, rather than repeating the old one"
+        );
     }
 
     #[test]
     fn bearings_and_longitudes_wrap_before_anyone_reads_them() {
-        assert_eq!((wrap_heading(370.0), wrap_heading(-90.0), wrap_heading(360.0)), (10.0, 270.0, 0.0));
-        assert_eq!((wrap_longitude(185.0), wrap_longitude(-185.0), wrap_longitude(180.0), wrap_longitude(149.16599999999997)), (-175.0, 175.0, 180.0, 149.16599999999997), "a longitude already in range passes through untouched, as QGeoCoordinate keeps it");
+        assert_eq!(
+            (
+                wrap_heading(370.0),
+                wrap_heading(-90.0),
+                wrap_heading(360.0)
+            ),
+            (10.0, 270.0, 0.0)
+        );
+        assert_eq!(
+            (
+                wrap_longitude(185.0),
+                wrap_longitude(-185.0),
+                wrap_longitude(180.0),
+                wrap_longitude(149.16599999999997)
+            ),
+            (-175.0, 175.0, 180.0, 149.16599999999997),
+            "a longitude already in range passes through untouched, as QGeoCoordinate keeps it"
+        );
         let mut position = listening(Source::InternalGps);
-        position.on_update(Update { longitude: Some(185.0), direction_deg: Some(730.0), direction_accuracy_deg: Some(1.0), ..fix(Some(4.0)) }, at(1_000));
-        assert_eq!((position.longitude, position.heading_deg), (Some(-175.0), Some(10.0)), "a bearing past a full turn and a longitude past the antimeridian name real places, and every consumer expects them inside one turn");
+        position.on_update(
+            Update {
+                longitude: Some(185.0),
+                direction_deg: Some(730.0),
+                direction_accuracy_deg: Some(1.0),
+                ..fix(Some(4.0))
+            },
+            at(1_000),
+        );
+        assert_eq!(
+            (position.longitude, position.heading_deg),
+            (Some(-175.0), Some(10.0)),
+            "a bearing past a full turn and a longitude past the antimeridian name real places, and every consumer expects them inside one turn"
+        );
         let mut polar = listening(Source::InternalGps);
-        polar.on_update(Update { latitude: Some(91.0), ..fix(Some(4.0)) }, at(1_000));
-        assert_eq!((polar.latitude, polar.refusal), (None, Some(Refusal::LatitudeOutOfRange)), "latitude does not wrap over the pole without taking the longitude with it, so an impossible one is refused rather than folded, and the refusal is named");
+        polar.on_update(
+            Update {
+                latitude: Some(91.0),
+                ..fix(Some(4.0))
+            },
+            at(1_000),
+        );
+        assert_eq!(
+            (polar.latitude, polar.refusal),
+            (None, Some(Refusal::LatitudeOutOfRange)),
+            "latitude does not wrap over the pole without taking the longitude with it, so an impossible one is refused rather than folded, and the refusal is named"
+        );
         let mut empty = listening(Source::InternalGps);
-        empty.on_update(Update { latitude: None, longitude: None, ..fix(Some(4.0)) }, at(1_000));
-        assert_eq!(empty.refusal, Some(Refusal::NoCoordinate), "an update with no coordinate in it is a receiver that is answering without having a position");
+        empty.on_update(
+            Update {
+                latitude: None,
+                longitude: None,
+                ..fix(Some(4.0))
+            },
+            at(1_000),
+        );
+        assert_eq!(
+            empty.refusal,
+            Some(Refusal::NoCoordinate),
+            "an update with no coordinate in it is a receiver that is answering without having a position"
+        );
     }
 
     #[test]
     fn a_fix_on_the_null_island_axes_is_refused() {
         let mut position = listening(Source::InternalGps);
-        let outs = position.on_update(Update { latitude: Some(0.0), longitude: Some(0.0), ..fix(Some(4.0)) }, at(1_000));
-        assert_eq!((position.latitude, position.longitude, position.horizontal_accuracy_m, position.stamped_ms), (None, None, None, None), "an unset receiver reads out as zero, and the accuracy of a position nobody has is not recorded either");
-        assert_eq!((position.fixed(), position.fix(at(1_000)), position.refusal), (false, "waiting", Some(Refusal::NullIsland)), "the vertical gate carries no null island guard, so an altitude still lands; on its own it is not a fix, and the reason it is not has to be readable");
-        assert_eq!(outs, vec![Out::Position { latitude: None, longitude: None, altitude: Some(488.0) }, Out::Reported]);
+        let outs = position.on_update(
+            Update {
+                latitude: Some(0.0),
+                longitude: Some(0.0),
+                ..fix(Some(4.0))
+            },
+            at(1_000),
+        );
+        assert_eq!(
+            (
+                position.latitude,
+                position.longitude,
+                position.horizontal_accuracy_m,
+                position.stamped_ms
+            ),
+            (None, None, None, None),
+            "an unset receiver reads out as zero, and the accuracy of a position nobody has is not recorded either"
+        );
+        assert_eq!(
+            (position.fixed(), position.fix(at(1_000)), position.refusal),
+            (false, "waiting", Some(Refusal::NullIsland)),
+            "the vertical gate carries no null island guard, so an altitude still lands; on its own it is not a fix, and the reason it is not has to be readable"
+        );
+        assert_eq!(
+            outs,
+            vec![
+                Out::Position {
+                    latitude: None,
+                    longitude: None,
+                    altitude: Some(488.0)
+                },
+                Out::Reported
+            ]
+        );
         let mut equator = listening(Source::InternalGps);
-        equator.on_update(Update { latitude: Some(0.0), longitude: Some(8.545594), ..fix(Some(4.0)) }, at(1_000));
-        assert_eq!((equator.latitude, equator.refusal), (None, Some(Refusal::NullIsland)), "QGCPositionManager wants both axes away from zero, so a fix on the equator is dropped rather than trusted; the port keeps that refusal instead of widening it");
+        equator.on_update(
+            Update {
+                latitude: Some(0.0),
+                longitude: Some(8.545594),
+                ..fix(Some(4.0))
+            },
+            at(1_000),
+        );
+        assert_eq!(
+            (equator.latitude, equator.refusal),
+            (None, Some(Refusal::NullIsland)),
+            "QGCPositionManager wants both axes away from zero, so a fix on the equator is dropped rather than trusted; the port keeps that refusal instead of widening it"
+        );
     }
 
     #[test]
     fn a_fix_expires_and_a_fresh_one_revives_it() {
         let mut position = listening(Source::InternalGps);
         position.on_update(fix(Some(4.0)), at(1_000));
-        assert_eq!((position.stale(at(1_000 + STALE_AFTER_MS)), position.fix(at(1_000 + STALE_AFTER_MS))), (false, "threeDimensional"), "the expiry is inclusive of its own limit");
         assert_eq!(
-            (position.stale(at(1_001 + STALE_AFTER_MS)), position.fix(at(1_001 + STALE_AFTER_MS)), position.age_ms(at(1_001 + STALE_AFTER_MS))),
+            (
+                position.stale(at(1_000 + STALE_AFTER_MS)),
+                position.fix(at(1_000 + STALE_AFTER_MS))
+            ),
+            (false, "threeDimensional"),
+            "the expiry is inclusive of its own limit"
+        );
+        assert_eq!(
+            (
+                position.stale(at(1_001 + STALE_AFTER_MS)),
+                position.fix(at(1_001 + STALE_AFTER_MS)),
+                position.age_ms(at(1_001 + STALE_AFTER_MS))
+            ),
             (true, "staleThreeDimensional", Some(STALE_AFTER_MS + 1)),
             "an expired three dimensional fix says so without losing the fact that its altitude was once trusted"
         );
-        assert!(position.fixed(), "a stale fix is still the last known one, it just no longer counts as current");
-        assert!(!position.usable(at(1_001 + STALE_AFTER_MS)), "usable is the field a head binds 'centre on me' and 'use as home' to, and an expired coordinate is not usable");
-        assert!(position.went_stale(at(1_001 + STALE_AFTER_MS)), "the first pump tick past the limit is what announces the expiry, since no update arrives to announce it");
-        assert!(!position.went_stale(at(1_100 + STALE_AFTER_MS)), "and only the first, or the head is repainted ten times a second forever");
+        assert!(
+            position.fixed(),
+            "a stale fix is still the last known one, it just no longer counts as current"
+        );
+        assert!(
+            !position.usable(at(1_001 + STALE_AFTER_MS)),
+            "usable is the field a head binds 'centre on me' and 'use as home' to, and an expired coordinate is not usable"
+        );
+        assert!(
+            position.went_stale(at(1_001 + STALE_AFTER_MS)),
+            "the first pump tick past the limit is what announces the expiry, since no update arrives to announce it"
+        );
+        assert!(
+            !position.went_stale(at(1_100 + STALE_AFTER_MS)),
+            "and only the first, or the head is repainted ten times a second forever"
+        );
         position.on_update(fix(Some(4.0)), at(20_000));
-        assert!(!position.stale(at(20_100)), "an accepted update is what clears the expiry, so the staleness cannot latch");
-        assert!(position.went_stale(at(26_000)), "and the announcement arms again with the accepted update");
+        assert!(
+            !position.stale(at(20_100)),
+            "an accepted update is what clears the expiry, so the staleness cannot latch"
+        );
+        assert!(
+            position.went_stale(at(26_000)),
+            "and the announcement arms again with the accepted update"
+        );
     }
 
     #[test]
     fn an_expired_fix_is_withdrawn_from_the_payload_and_kept_as_the_last_known_one() {
         let mut position = listening(Source::InternalGps);
-        position.on_update(Update { direction_deg: Some(45.0), direction_accuracy_deg: Some(2.0), ..fix(Some(4.0)) }, at(1_000));
+        position.on_update(
+            Update {
+                direction_deg: Some(45.0),
+                direction_accuracy_deg: Some(2.0),
+                ..fix(Some(4.0))
+            },
+            at(1_000),
+        );
         let live = position.snapshot(at(1_500));
-        assert_eq!((live["usable"].as_bool(), live["latitude"].as_f64(), live["heading"].as_f64()), (Some(true), Some(47.397742), Some(45.0)));
+        assert_eq!(
+            (
+                live["usable"].as_bool(),
+                live["latitude"].as_f64(),
+                live["heading"].as_f64()
+            ),
+            (Some(true), Some(47.397742), Some(45.0))
+        );
         let expired = position.snapshot(at(1_001 + STALE_AFTER_MS));
         assert!(
-            [&expired["latitude"], &expired["longitude"], &expired["altitude"], &expired["heading"]].iter().all(|v| **v == Value::Null),
+            [
+                &expired["latitude"],
+                &expired["longitude"],
+                &expired["altitude"],
+                &expired["heading"]
+            ]
+            .iter()
+            .all(|v| **v == Value::Null),
             "detections blanks its boxes once they expire and this is the one module whose payload is a coordinate a vehicle can be commanded toward, so an expired position is withdrawn rather than published as current"
         );
         assert_eq!(
-            (expired["hasFix"].as_bool(), expired["usable"].as_bool(), expired["lastKnownLatitude"].as_f64(), expired["lastKnownHeading"].as_f64()),
+            (
+                expired["hasFix"].as_bool(),
+                expired["usable"].as_bool(),
+                expired["lastKnownLatitude"].as_f64(),
+                expired["lastKnownHeading"].as_f64()
+            ),
             (Some(true), Some(false), Some(47.397742), Some(45.0)),
             "the last known reading stays readable under a name no consumer can mistake for a live one"
         );
-        assert!(expired.get("available").is_none(), "'available' answered two questions at once and a head binding it to 'use as home' got a ten minute old coordinate; hasFix and usable answer one each");
+        assert!(
+            expired.get("available").is_none(),
+            "'available' answered two questions at once and a head binding it to 'use as home' got a ten minute old coordinate; hasFix and usable answer one each"
+        );
     }
 
     #[test]
@@ -792,38 +1375,85 @@ mod tests {
         let mut position = listening(Source::InternalGps);
         position.on_update(fix(Some(4.0)), at(1_700_000_000_000));
         assert_eq!(
-            (position.age_ms(at(60_000)), position.stale(at(60_000)), position.usable(at(60_000))),
+            (
+                position.age_ms(at(60_000)),
+                position.stale(at(60_000)),
+                position.usable(at(60_000))
+            ),
             (None, true, false),
             "a wall clock stamp against a monotonic reading saturates to a zero age, which would pin the fix fresh forever; a stamp from the future is no age at all and no fix to trust"
         );
-        assert_eq!(position.snapshot(at(60_000))["fix"].as_str(), Some("staleThreeDimensional"));
-        assert!(now() >= MonotonicMs(0), "the only stamp callers outside this module can build comes from hub::now_ms, so the head cannot feed the gates an epoch");
+        assert_eq!(
+            position.snapshot(at(60_000))["fix"].as_str(),
+            Some("staleThreeDimensional")
+        );
+        assert!(
+            now() >= MonotonicMs(0),
+            "the only stamp callers outside this module can build comes from hub::now_ms, so the head cannot feed the gates an epoch"
+        );
     }
 
     #[test]
     fn a_positioning_error_is_cleared_by_the_next_report_and_survives_a_code_nobody_knows() {
         let mut position = listening(Source::InternalGps);
-        assert_eq!(position.on_error(0), vec![Out::Error(Some(Error::Access)), Out::Reported], "an error the head is never told about is the same dead end as having no reason at all");
+        assert_eq!(
+            position.on_error(0),
+            vec![Out::Error(Some(Error::Access)), Out::Reported],
+            "an error the head is never told about is the same dead end as having no reason at all"
+        );
         assert_eq!(position.error, Some(Error::Access));
         position.on_update(fix(Some(4.0)), at(1_000));
-        assert_eq!(position.error, None, "any report from the source means it is answering again, which is the only thing that clears the error");
+        assert_eq!(
+            position.error, None,
+            "any report from the source means it is answering again, which is the only thing that clears the error"
+        );
         position.on_error(4);
-        assert_eq!(position.on_error(99), Vec::new(), "an unrecognised code says nothing about the receiver, so it announces nothing");
-        assert_eq!(position.error, Some(Error::UpdateTimeout), "a code Qt adds later must not read as 'everything is fine' and clobber a live timeout");
-        assert_eq!(position.on_error(ERROR_NONE), vec![Out::Error(None), Out::Reported]);
-        assert_eq!(position.error, None, "QGeoPositionInfoSource::NoError is a code the head pushes like any other, and it has to clear");
-        assert_eq!(Error::from_code(4).map(Error::token), Some("updateTimeoutError"));
+        assert_eq!(
+            position.on_error(99),
+            Vec::new(),
+            "an unrecognised code says nothing about the receiver, so it announces nothing"
+        );
+        assert_eq!(
+            position.error,
+            Some(Error::UpdateTimeout),
+            "a code Qt adds later must not read as 'everything is fine' and clobber a live timeout"
+        );
+        assert_eq!(
+            position.on_error(ERROR_NONE),
+            vec![Out::Error(None), Out::Reported]
+        );
+        assert_eq!(
+            position.error, None,
+            "QGeoPositionInfoSource::NoError is a code the head pushes like any other, and it has to clear"
+        );
+        assert_eq!(
+            Error::from_code(4).map(Error::token),
+            Some("updateTimeoutError")
+        );
         assert_eq!(Error::from_code(99), None);
         let mut quiet = listening(Source::Log);
         quiet.on_error(0);
-        assert_eq!(quiet.on_update(fix(Some(4.0)), at(1_000)), vec![Out::Error(None), Out::Reported], "a report clears the error whatever the source is, or an error raised while the source is silent can only be cleared by switching source");
-        assert_eq!((quiet.error, quiet.coordinate()), (None, (None, None, None)));
+        assert_eq!(
+            quiet.on_update(fix(Some(4.0)), at(1_000)),
+            vec![Out::Error(None), Out::Reported],
+            "a report clears the error whatever the source is, or an error raised while the source is silent can only be cleared by switching source"
+        );
+        assert_eq!(
+            (quiet.error, quiet.coordinate()),
+            (None, (None, None, None))
+        );
     }
 
     #[test]
     fn switching_source_throws_away_the_previous_receivers_fix() {
         let mut position = listening(Source::Plugin);
-        position.on_update(Update { direction_deg: Some(45.0), ..fix(Some(4.0)) }, at(1_000));
+        position.on_update(
+            Update {
+                direction_deg: Some(45.0),
+                ..fix(Some(4.0))
+            },
+            at(1_000),
+        );
         position.on_error(1);
         let outs = position.select_source(Source::Nmea);
         assert_eq!(
@@ -832,48 +1462,153 @@ mod tests {
                 Out::Reported,
                 Out::Source(Source::Nmea),
                 Out::Error(None),
-                Out::Position { latitude: None, longitude: None, altitude: None },
+                Out::Position {
+                    latitude: None,
+                    longitude: None,
+                    altitude: None
+                },
                 Out::Heading(None),
                 Out::HorizontalAccuracy(None)
             ],
             "PositionManager.cpp:181-192 withdraws in this order: the empty position report first, then the coordinate, then the heading, and the horizontal accuracy last"
         );
-        assert_eq!(position, GcsPosition { source: Source::Nmea, ..GcsPosition::default() });
-        assert_eq!((position.fix(at(1_000)), position.age_ms(at(1_000)), position.error), ("waiting", None, None), "a stale coordinate from a receiver that is gone would otherwise outlive it");
-        assert!(position.select_source(Source::Nmea) == vec![Out::Reported], "clearing what is already clear announces nothing but the empty report");
+        assert_eq!(
+            position,
+            GcsPosition {
+                source: Source::Nmea,
+                ..GcsPosition::default()
+            }
+        );
+        assert_eq!(
+            (
+                position.fix(at(1_000)),
+                position.age_ms(at(1_000)),
+                position.error
+            ),
+            ("waiting", None, None),
+            "a stale coordinate from a receiver that is gone would otherwise outlive it"
+        );
+        assert!(
+            position.select_source(Source::Nmea) == vec![Out::Reported],
+            "clearing what is already clear announces nothing but the empty report"
+        );
     }
 
     #[test]
     fn nothing_is_believed_until_a_source_is_live() {
         let mut position = GcsPosition::default();
-        assert_eq!((position.source, position.source.listening()), (Source::None, false));
-        assert!(position.on_update(fix(Some(4.0)), at(1_000)).is_empty(), "before the head names a source there is no receiver to have produced a fix");
+        assert_eq!(
+            (position.source, position.source.listening()),
+            (Source::None, false)
+        );
+        assert!(
+            position.on_update(fix(Some(4.0)), at(1_000)).is_empty(),
+            "before the head names a source there is no receiver to have produced a fix"
+        );
         assert_eq!(position.coordinate(), (None, None, None));
-        let quiet: Vec<&'static str> = SOURCES.iter().filter(|source| !source.listening()).map(|source| source.token()).collect();
-        assert_eq!(quiet, vec!["none", "log", "external"], "QGCPositionManager::_setPositionSource has no case that binds a receiver to Log or ExternalGPS, so this port models them as delivering nothing; upstream its clear block leaves _currentSource pointing at the previous receiver and restarts it, which this port deliberately does not");
+        let quiet: Vec<&'static str> = SOURCES
+            .iter()
+            .filter(|source| !source.listening())
+            .map(|source| source.token())
+            .collect();
+        assert_eq!(
+            quiet,
+            vec!["none", "log", "external"],
+            "QGCPositionManager::_setPositionSource has no case that binds a receiver to Log or ExternalGPS, so this port models them as delivering nothing; upstream its clear block leaves _currentSource pointing at the previous receiver and restarts it, which this port deliberately does not"
+        );
         position.select_source(Source::Log);
         assert!(position.on_update(fix(Some(4.0)), at(1_000)).is_empty());
         let sources = position.snapshot(at(1_000))["sources"].clone();
-        assert_eq!(sources.as_array().map(Vec::len), Some(SOURCES.len()), "a head offering a source picker reads the choices from here rather than hardcoding seven tokens");
-        assert_eq!(sources[5], json!({ "source": "log", "listening": false }), "and it is told which of them will never deliver a position");
+        assert_eq!(
+            sources.as_array().map(Vec::len),
+            Some(SOURCES.len()),
+            "a head offering a source picker reads the choices from here rather than hardcoding seven tokens"
+        );
+        assert_eq!(
+            sources[5],
+            json!({ "source": "log", "listening": false }),
+            "and it is told which of them will never deliver a position"
+        );
     }
 
     #[test]
     fn the_snapshot_hands_over_numbers_and_unit_names_only() {
         let mut position = listening(Source::Nmea);
-        position.on_update(Update { direction_deg: Some(45.0), direction_accuracy_deg: Some(2.0), ..fix(Some(4.0)) }, at(1_000));
+        position.on_update(
+            Update {
+                direction_deg: Some(45.0),
+                direction_accuracy_deg: Some(2.0),
+                ..fix(Some(4.0))
+            },
+            at(1_000),
+        );
         let view = position.snapshot(at(1_500));
-        assert_eq!((view["class"].as_str(), view["source"].as_str(), view["hasFix"].as_bool(), view["usable"].as_bool()), (Some("GcsPosition"), Some("nmea"), Some(true), Some(true)));
-        assert_eq!((view["latitude"].as_f64(), view["altitude"].as_f64(), view["heading"].as_f64()), (Some(47.397742), Some(488.0), Some(45.0)));
-        assert_eq!((view["altitudeUnits"].as_str(), view["accuracyUnits"].as_str(), view["headingUnits"].as_str(), view["coordinateUnits"].as_str()), (Some("m"), Some("m"), Some("deg"), Some("deg")));
-        assert_eq!((view["stale"].as_bool(), view["fix"].as_str()), (Some(false), Some("threeDimensional")));
-        assert_eq!((view["horizontalAccuracy"].as_f64(), view["verticalAccuracy"].as_f64(), view["minimumHorizontalAccuracy"].as_f64()), (Some(4.0), Some(5.0), Some(MIN_HORIZONTAL_ACCURACY_M)));
-        assert!(view.as_object().unwrap().values().all(|v| !v.as_str().is_some_and(|token| token.contains(['.', ',']))), "a token is not a formatted number, and the decimal separator belongs to whoever knows the locale");
+        assert_eq!(
+            (
+                view["class"].as_str(),
+                view["source"].as_str(),
+                view["hasFix"].as_bool(),
+                view["usable"].as_bool()
+            ),
+            (Some("GcsPosition"), Some("nmea"), Some(true), Some(true))
+        );
+        assert_eq!(
+            (
+                view["latitude"].as_f64(),
+                view["altitude"].as_f64(),
+                view["heading"].as_f64()
+            ),
+            (Some(47.397742), Some(488.0), Some(45.0))
+        );
+        assert_eq!(
+            (
+                view["altitudeUnits"].as_str(),
+                view["accuracyUnits"].as_str(),
+                view["headingUnits"].as_str(),
+                view["coordinateUnits"].as_str()
+            ),
+            (Some("m"), Some("m"), Some("deg"), Some("deg"))
+        );
+        assert_eq!(
+            (view["stale"].as_bool(), view["fix"].as_str()),
+            (Some(false), Some("threeDimensional"))
+        );
+        assert_eq!(
+            (
+                view["horizontalAccuracy"].as_f64(),
+                view["verticalAccuracy"].as_f64(),
+                view["minimumHorizontalAccuracy"].as_f64()
+            ),
+            (Some(4.0), Some(5.0), Some(MIN_HORIZONTAL_ACCURACY_M))
+        );
+        assert!(
+            view.as_object()
+                .unwrap()
+                .values()
+                .all(|v| !v.as_str().is_some_and(|token| token.contains(['.', ',']))),
+            "a token is not a formatted number, and the decimal separator belongs to whoever knows the locale"
+        );
         let empty = GcsPosition::default().snapshot(at(1_500));
         assert!(
-            [&empty["latitude"], &empty["heading"], &empty["horizontalAccuracy"], &empty["lastKnownLatitude"], &empty["error"]].iter().all(|v| **v == Value::Null),
+            [
+                &empty["latitude"],
+                &empty["heading"],
+                &empty["horizontalAccuracy"],
+                &empty["lastKnownLatitude"],
+                &empty["error"]
+            ]
+            .iter()
+            .all(|v| **v == Value::Null),
             "with no receiver every reading is absent, and absent is null rather than a zero a map would happily fly to"
         );
-        assert_eq!((empty["stale"].as_bool(), empty["fix"].as_str(), empty["usable"].as_bool()), (Some(false), Some("noSource"), Some(false)), "a fix that was never taken cannot be current, and it cannot be stale either: there is no reading to have expired");
+        assert_eq!(
+            (
+                empty["stale"].as_bool(),
+                empty["fix"].as_str(),
+                empty["usable"].as_bool()
+            ),
+            (Some(false), Some("noSource"), Some(false)),
+            "a fix that was never taken cannot be current, and it cannot be stale either: there is no reading to have expired"
+        );
     }
 }

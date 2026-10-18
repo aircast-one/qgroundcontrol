@@ -44,14 +44,18 @@ const VTOL: &str = include_str!("../../src/MissionManager/MavCmdInfoVTOL.json");
 const SUB: &str = include_str!("../../src/MissionManager/MavCmdInfoSub.json");
 const ROVER: &str = include_str!("../../src/MissionManager/MavCmdInfoRover.json");
 const PX4_COMMON: &str = include_str!("../../src/FirmwarePlugin/PX4/PX4-MavCmdInfoCommon.json");
-const PX4_FIXED_WING: &str = include_str!("../../src/FirmwarePlugin/PX4/PX4-MavCmdInfoFixedWing.json");
-const PX4_MULTI_ROTOR: &str = include_str!("../../src/FirmwarePlugin/PX4/PX4-MavCmdInfoMultiRotor.json");
+const PX4_FIXED_WING: &str =
+    include_str!("../../src/FirmwarePlugin/PX4/PX4-MavCmdInfoFixedWing.json");
+const PX4_MULTI_ROTOR: &str =
+    include_str!("../../src/FirmwarePlugin/PX4/PX4-MavCmdInfoMultiRotor.json");
 const PX4_VTOL: &str = include_str!("../../src/FirmwarePlugin/PX4/PX4-MavCmdInfoVTOL.json");
 const PX4_SUB: &str = include_str!("../../src/FirmwarePlugin/PX4/PX4-MavCmdInfoSub.json");
 const PX4_ROVER: &str = include_str!("../../src/FirmwarePlugin/PX4/PX4-MavCmdInfoRover.json");
 const APM_COMMON: &str = include_str!("../../src/FirmwarePlugin/APM/APM-MavCmdInfoCommon.json");
-const APM_FIXED_WING: &str = include_str!("../../src/FirmwarePlugin/APM/APM-MavCmdInfoFixedWing.json");
-const APM_MULTI_ROTOR: &str = include_str!("../../src/FirmwarePlugin/APM/APM-MavCmdInfoMultiRotor.json");
+const APM_FIXED_WING: &str =
+    include_str!("../../src/FirmwarePlugin/APM/APM-MavCmdInfoFixedWing.json");
+const APM_MULTI_ROTOR: &str =
+    include_str!("../../src/FirmwarePlugin/APM/APM-MavCmdInfoMultiRotor.json");
 const APM_VTOL: &str = include_str!("../../src/FirmwarePlugin/APM/APM-MavCmdInfoVTOL.json");
 const APM_SUB: &str = include_str!("../../src/FirmwarePlugin/APM/APM-MavCmdInfoSub.json");
 const APM_ROVER: &str = include_str!("../../src/FirmwarePlugin/APM/APM-MavCmdInfoRover.json");
@@ -83,8 +87,14 @@ fn file(firmware: Firmware, vehicle: VehicleClass) -> Option<&'static str> {
 
 fn entries(text: &str) -> Result<Vec<Map<String, Value>>, String> {
     let root: Value = serde_json::from_str(text).map_err(|e| e.to_string())?;
-    let list = root.get("mavCmdInfo").and_then(Value::as_array).ok_or("no mavCmdInfo array")?;
-    Ok(list.iter().filter_map(|entry| entry.as_object().cloned()).collect())
+    let list = root
+        .get("mavCmdInfo")
+        .and_then(Value::as_array)
+        .ok_or("no mavCmdInfo array")?;
+    Ok(list
+        .iter()
+        .filter_map(|entry| entry.as_object().cloned())
+        .collect())
 }
 
 #[derive(Default, Clone)]
@@ -95,32 +105,60 @@ struct Layered {
 }
 
 fn param_index(key: &str) -> Option<u8> {
-    key.strip_prefix("param").and_then(|n| n.parse().ok()).filter(|n| (1..=7).contains(n))
+    key.strip_prefix("param")
+        .and_then(|n| n.parse().ok())
+        .filter(|n| (1..=7).contains(n))
 }
 
 fn overlay(base: Layered, entry: &Map<String, Value>) -> Layered {
     let removed_now: BTreeSet<u8> = entry
         .get("paramRemove")
         .and_then(Value::as_str)
-        .map(|list| list.split(',').filter_map(|n| n.trim().parse().ok()).collect())
+        .map(|list| {
+            list.split(',')
+                .filter_map(|n| n.trim().parse().ok())
+                .collect()
+        })
         .unwrap_or_default();
-    let params_now: BTreeMap<u8, Value> = entry.iter().filter_map(|(k, v)| param_index(k).map(|i| (i, v.clone()))).collect();
+    let params_now: BTreeMap<u8, Value> = entry
+        .iter()
+        .filter_map(|(k, v)| param_index(k).map(|i| (i, v.clone())))
+        .collect();
     let info = base
         .info
         .into_iter()
-        .chain(entry.iter().filter(|(k, _)| param_index(k).is_none() && *k != "paramRemove").map(|(k, v)| (k.clone(), v.clone())))
+        .chain(
+            entry
+                .iter()
+                .filter(|(k, _)| param_index(k).is_none() && *k != "paramRemove")
+                .map(|(k, v)| (k.clone(), v.clone())),
+        )
         .chain((!params_now.is_empty()).then(|| ("friendlyEdit".to_string(), Value::Bool(true))))
         .collect();
-    let removed = base.removed.union(&removed_now).copied().filter(|i| !params_now.contains_key(i)).collect();
+    let removed = base
+        .removed
+        .union(&removed_now)
+        .copied()
+        .filter(|i| !params_now.contains_key(i))
+        .collect();
     let params = base.params.into_iter().chain(params_now).collect();
-    Layered { info, params, removed }
+    Layered {
+        info,
+        params,
+        removed,
+    }
 }
 
 fn collapse(commands: BTreeMap<i64, Layered>, text: &str) -> BTreeMap<i64, Layered> {
     let last_wins: BTreeMap<i64, Map<String, Value>> = entries(text)
         .unwrap_or_default()
         .into_iter()
-        .filter_map(|entry| entry.get("id").and_then(Value::as_i64).map(|id| (id, entry)))
+        .filter_map(|entry| {
+            entry
+                .get("id")
+                .and_then(Value::as_i64)
+                .map(|id| (id, entry))
+        })
         .collect();
     last_wins.iter().fold(commands, |mut acc, (id, entry)| {
         let base = acc.remove(id).unwrap_or_default();
@@ -130,9 +168,28 @@ fn collapse(commands: BTreeMap<i64, Layered>, text: &str) -> BTreeMap<i64, Layer
 }
 
 fn command(id: i64, layered: Layered) -> Command {
-    let text = |key: &str| layered.info.get(key).and_then(Value::as_str).unwrap_or("").to_string();
-    let flag = |key: &str| layered.info.get(key).and_then(Value::as_bool).unwrap_or(false);
-    let or = |value: String, fallback: &str| if value.is_empty() { fallback.to_string() } else { value };
+    let text = |key: &str| {
+        layered
+            .info
+            .get(key)
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string()
+    };
+    let flag = |key: &str| {
+        layered
+            .info
+            .get(key)
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+    };
+    let or = |value: String, fallback: &str| {
+        if value.is_empty() {
+            fallback.to_string()
+        } else {
+            value
+        }
+    };
     let raw_name = text("rawName");
     Command {
         id,
@@ -155,9 +212,15 @@ fn command(id: i64, layered: Layered) -> Command {
 pub fn tree(firmware: Firmware, vehicle: VehicleClass) -> BTreeMap<i64, Command> {
     let layers = [
         file(Firmware::Generic, VehicleClass::Generic),
-        (vehicle != VehicleClass::Generic).then(|| file(Firmware::Generic, vehicle)).flatten(),
-        (firmware != Firmware::Generic).then(|| file(firmware, VehicleClass::Generic)).flatten(),
-        (firmware != Firmware::Generic && vehicle != VehicleClass::Generic).then(|| file(firmware, vehicle)).flatten(),
+        (vehicle != VehicleClass::Generic)
+            .then(|| file(Firmware::Generic, vehicle))
+            .flatten(),
+        (firmware != Firmware::Generic)
+            .then(|| file(firmware, VehicleClass::Generic))
+            .flatten(),
+        (firmware != Firmware::Generic && vehicle != VehicleClass::Generic)
+            .then(|| file(firmware, vehicle))
+            .flatten(),
     ];
     layers
         .into_iter()
@@ -175,8 +238,19 @@ mod tests {
     #[test]
     fn every_bundled_file_parses_and_the_base_tree_has_the_common_commands() {
         let firmwares = [Firmware::Generic, Firmware::Px4, Firmware::ArduPilot];
-        let vehicles = [VehicleClass::Generic, VehicleClass::FixedWing, VehicleClass::MultiRotor, VehicleClass::Vtol, VehicleClass::Sub, VehicleClass::Rover];
-        assert!(firmwares.iter().all(|f| vehicles.iter().all(|v| file(*f, *v).is_some_and(|text| entries(text).is_ok()))));
+        let vehicles = [
+            VehicleClass::Generic,
+            VehicleClass::FixedWing,
+            VehicleClass::MultiRotor,
+            VehicleClass::Vtol,
+            VehicleClass::Sub,
+            VehicleClass::Rover,
+        ];
+        assert!(firmwares.iter().all(|f| {
+            vehicles
+                .iter()
+                .all(|v| file(*f, *v).is_some_and(|text| entries(text).is_ok()))
+        }));
         let base = tree(Firmware::Generic, VehicleClass::Generic);
         assert_eq!(base.len(), 89);
         assert_eq!(base[&176].friendly_name, "Set flight mode");
@@ -185,7 +259,10 @@ mod tests {
         assert!(base[&22].is_takeoff && base[&21].is_land && base[&17].is_loiter);
         assert_eq!(base[&220].friendly_name, base[&220].raw_name);
         assert_eq!(base[&23].category, "Advanced");
-        assert!(base[&178].friendly_edit, "MissionCommandUIInfo assumes friendly edit for any entry with params");
+        assert!(
+            base[&178].friendly_edit,
+            "MissionCommandUIInfo assumes friendly edit for any entry with params"
+        );
     }
 
     #[test]
@@ -212,6 +289,9 @@ mod tests {
     #[test]
     fn an_airship_has_no_override_files_so_it_gets_the_generic_tree() {
         assert!(file(Firmware::Px4, VehicleClass::Airship).is_none());
-        assert_eq!(tree(Firmware::Px4, VehicleClass::Airship), tree(Firmware::Px4, VehicleClass::Generic));
+        assert_eq!(
+            tree(Firmware::Px4, VehicleClass::Airship),
+            tree(Firmware::Px4, VehicleClass::Generic)
+        );
     }
 }

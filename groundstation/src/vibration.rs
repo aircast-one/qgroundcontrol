@@ -45,18 +45,53 @@ pub fn vibration_view(backend: &dyn Backend, _args: &[String]) -> Value {
     // changes and then dropped it. A head needing it had to fetch it in a second call, and a
     // vehicle disappearing between the two reads gave a reading that was connected with no axes,
     // or disconnected with axes.
-    let connected = flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable");
+    let connected = flag(
+        &backend.value_fields("vehicles", "activeVehicleAvailable"),
+        "activeVehicleAvailable",
+    );
     let group = backend.value("vehicle.vibration");
-    let fact = |name: &str| group.get("facts").and_then(Value::as_array).and_then(|facts| facts.iter().find(|f| f.get("name").and_then(Value::as_str) == Some(name)));
-    let number = |name: &str| fact(name).and_then(|f| f.get("value")).and_then(Value::as_f64).filter(|v| v.is_finite());
-    let axes: Vec<(&str, Option<f64>)> = [("x", "xAxis"), ("y", "yAxis"), ("z", "zAxis")].iter().map(|(axis, name)| (*axis, number(name))).collect();
-    let worst = axes.iter().filter_map(|(_, v)| *v).fold(None, |acc: Option<f64>, v| Some(acc.map_or(v, |a| a.max(v))));
-    let clip_counts: Vec<Value> = ["clipCount1", "clipCount2", "clipCount3"].iter().map(|name| json!(number(name).map(|v| v as i64).unwrap_or(0))).collect();
-    let units = fact("xAxis").and_then(|f| f.get("units")).and_then(Value::as_str).filter(|u| !u.is_empty()).unwrap_or(VIBRATION_UNITS);
+    let fact = |name: &str| {
+        group
+            .get("facts")
+            .and_then(Value::as_array)
+            .and_then(|facts| {
+                facts
+                    .iter()
+                    .find(|f| f.get("name").and_then(Value::as_str) == Some(name))
+            })
+    };
+    let number = |name: &str| {
+        fact(name)
+            .and_then(|f| f.get("value"))
+            .and_then(Value::as_f64)
+            .filter(|v| v.is_finite())
+    };
+    let axes: Vec<(&str, Option<f64>)> = [("x", "xAxis"), ("y", "yAxis"), ("z", "zAxis")]
+        .iter()
+        .map(|(axis, name)| (*axis, number(name)))
+        .collect();
+    let worst = axes
+        .iter()
+        .filter_map(|(_, v)| *v)
+        .fold(None, |acc: Option<f64>, v| {
+            Some(acc.map_or(v, |a| a.max(v)))
+        });
+    let clip_counts: Vec<Value> = ["clipCount1", "clipCount2", "clipCount3"]
+        .iter()
+        .map(|name| json!(number(name).map(|v| v as i64).unwrap_or(0)))
+        .collect();
+    let units = fact("xAxis")
+        .and_then(|f| f.get("units"))
+        .and_then(Value::as_str)
+        .filter(|u| !u.is_empty())
+        .unwrap_or(VIBRATION_UNITS);
     let silence = match (axes.iter().any(|(_, v)| v.is_some()), connected) {
         (true, _) => None,
         (false, false) => Some(("noVehicle", "No vehicle is connected.")),
-        (false, true) => Some(("notReported", "This vehicle reports no vibration measurements.")),
+        (false, true) => Some((
+            "notReported",
+            "This vehicle reports no vibration measurements.",
+        )),
     };
     json!({
         "kind": "object",
@@ -88,9 +123,15 @@ mod tests {
                 _ => json!({ "kind": "object", "facts": [ { "name": "xAxis", "value": null }, { "name": "yAxis" }, { "name": "zAxis" } ] }).to_string(),
             }
         }
-        fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
-        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn get_fields(&self, p: &str, _f: &str) -> String {
+            self.get(p)
+        }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            String::new()
+        }
         fn watch(&self, _p: &[String]) {}
     }
 
@@ -98,13 +139,27 @@ mod tests {
     fn no_axes_says_whether_there_is_a_vehicle_to_have_them() {
         let gone = vibration_view(&Quiet(false), &[]);
         assert_eq!(gone["connected"], false);
-        assert_eq!(gone["silentReason"], "noVehicle", "a head fetching this flag itself races the axes it qualifies, so it travels in the same read");
-        assert!(gone["silentText"].as_str().unwrap().contains("No vehicle"), "the sentence still travels beside the token; a head that wants to spell it its own way now can, and one that does not has the wording");
+        assert_eq!(
+            gone["silentReason"], "noVehicle",
+            "a head fetching this flag itself races the axes it qualifies, so it travels in the same read"
+        );
+        assert!(
+            gone["silentText"].as_str().unwrap().contains("No vehicle"),
+            "the sentence still travels beside the token; a head that wants to spell it its own way now can, and one that does not has the wording"
+        );
 
         let mute = vibration_view(&Quiet(true), &[]);
         assert_eq!(mute["connected"], true);
-        assert_eq!(mute["silentReason"], "notReported", "connected and not reporting is a different thing from absent, and available:false spells them the same");
-        assert!(mute["silentText"].as_str().unwrap().contains("no vibration measurements"));
+        assert_eq!(
+            mute["silentReason"], "notReported",
+            "connected and not reporting is a different thing from absent, and available:false spells them the same"
+        );
+        assert!(
+            mute["silentText"]
+                .as_str()
+                .unwrap()
+                .contains("no vibration measurements")
+        );
         assert_ne!(mute["silentReason"], gone["silentReason"]);
     }
 
@@ -112,7 +167,8 @@ mod tests {
     impl Backend for Fake {
         fn get(&self, path: &str) -> String {
             if path == "vehicles" {
-                return json!({ "kind": "object", "activeVehicleAvailable": self.0.is_some() }).to_string();
+                return json!({ "kind": "object", "activeVehicleAvailable": self.0.is_some() })
+                    .to_string();
             }
             match self.0 {
                 Some((x, y, z)) => json!({ "kind": "object", "facts": [
@@ -123,9 +179,15 @@ mod tests {
             }
             .to_string()
         }
-        fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
-        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn get_fields(&self, p: &str, _f: &str) -> String {
+            self.get(p)
+        }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            String::new()
+        }
         fn watch(&self, _p: &[String]) {}
     }
 
@@ -162,12 +224,22 @@ mod tests {
                     _ => json!({ "kind": "object", "facts": [{ "name": "xAxis", "value": 12.0, "units": "" }, { "name": "yAxis", "value": 9.0 }, { "name": "zAxis", "value": 18.0 }] }).to_string(),
                 }
             }
-            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn get_fields(&self, p: &str, _f: &str) -> String {
+                self.get(p)
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
             fn watch(&self, _p: &[String]) {}
         }
-        assert_eq!(vibration_view(&Bare, &[])["units"], "m/s²", "VibrationFact.json gives the axes no unit; MAVLink VIBRATION defines them in m/s/s");
+        assert_eq!(
+            vibration_view(&Bare, &[])["units"],
+            "m/s²",
+            "VibrationFact.json gives the axes no unit; MAVLink VIBRATION defines them in m/s/s"
+        );
     }
 
     #[test]
@@ -184,24 +256,43 @@ mod tests {
         impl Backend for Partial {
             fn get(&self, path: &str) -> String {
                 match path {
-                    "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": true }).to_string(),
+                    "vehicles" => {
+                        json!({ "kind": "object", "activeVehicleAvailable": true }).to_string()
+                    }
                     _ => json!({ "kind": "object", "facts": [
                         { "name": "xAxis", "value": 12.0, "units": "m/s/s" },
                         { "name": "yAxis", "value": 9.0 },
                         { "name": "zAxis" },
-                    ] }).to_string(),
+                    ] })
+                    .to_string(),
                 }
             }
-            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn get_fields(&self, p: &str, _f: &str) -> String {
+                self.get(p)
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
             fn watch(&self, _p: &[String]) {}
         }
 
         let view = vibration_view(&Partial, &[]);
-        assert_eq!(view["available"], false, "a head drawing three bars cannot draw two, so available asks whether every axis answered");
-        assert_eq!(view["silentReason"], Value::Null, "the vehicle is not silent - it reported two axes - so there is no reason to give, and a head reading anything other than notReported as noVehicle tells an operator to connect the vehicle they are looking at");
+        assert_eq!(
+            view["available"], false,
+            "a head drawing three bars cannot draw two, so available asks whether every axis answered"
+        );
+        assert_eq!(
+            view["silentReason"],
+            Value::Null,
+            "the vehicle is not silent - it reported two axes - so there is no reason to give, and a head reading anything other than notReported as noVehicle tells an operator to connect the vehicle they are looking at"
+        );
         assert_eq!(view["axes"][2]["value"], Value::Null);
-        assert_eq!(view["worst"], "normal", "the worst axis is the worst of the ones that answered, not of the ones that exist - a missing axis is not a quiet one");
+        assert_eq!(
+            view["worst"], "normal",
+            "the worst axis is the worst of the ones that answered, not of the ones that exist - a missing axis is not a quiet one"
+        );
     }
 }

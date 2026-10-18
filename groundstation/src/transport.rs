@@ -1,6 +1,6 @@
+use mavlink::MavHeader;
 use mavlink::MavlinkVersion;
 use mavlink::dialects::ardupilotmega::MavMessage;
-use mavlink::MavHeader;
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
 
@@ -68,7 +68,13 @@ pub struct Frame {
     pub raw: Vec<u8>,
 }
 
-fn drain(buffer: &mut Vec<u8>, stats: &mut Stats, extras: &mut Vec<Extra>, link: LinkId, replay: bool) -> Vec<Frame> {
+fn drain(
+    buffer: &mut Vec<u8>,
+    stats: &mut Stats,
+    extras: &mut Vec<Extra>,
+    link: LinkId,
+    replay: bool,
+) -> Vec<Frame> {
     let mut frames = Vec::new();
     let mut at = 0usize;
     while at < buffer.len() {
@@ -86,14 +92,27 @@ fn drain(buffer: &mut Vec<u8>, stats: &mut Stats, extras: &mut Vec<Extra>, link:
         match decode_frame(raw, version) {
             Some((header, message)) => {
                 stats.frames_in += 1;
-                frames.push(Frame { link, replay, v2: version == MavlinkVersion::V2, header, message, raw: raw.to_vec() });
+                frames.push(Frame {
+                    link,
+                    replay,
+                    v2: version == MavlinkVersion::V2,
+                    header,
+                    message,
+                    raw: raw.to_vec(),
+                });
                 at += length;
             }
             None => {
                 match crate::mavinspect::undecoded(raw, version == MavlinkVersion::V2) {
                     Some((header, msgid)) => {
                         stats.frames_in += 1;
-                        extras.push(Extra { link, v2: version == MavlinkVersion::V2, header, msgid, raw: raw.to_vec() });
+                        extras.push(Extra {
+                            link,
+                            v2: version == MavlinkVersion::V2,
+                            header,
+                            msgid,
+                            raw: raw.to_vec(),
+                        });
                     }
                     None => stats.dropped += 1,
                 }
@@ -114,20 +133,45 @@ impl Registry {
     pub fn open(&mut self, owner: Owner, kind: &str, name: &str) -> LinkId {
         self.next += 1;
         let id = self.next;
-        self.links.insert(id, Entry { id, kind: kind.to_string(), name: name.to_string(), owner, state: State::Open, up: true, reason: String::new(), stats: Stats::default(), buffer: Vec::new(), extras: Vec::new() });
+        self.links.insert(
+            id,
+            Entry {
+                id,
+                kind: kind.to_string(),
+                name: name.to_string(),
+                owner,
+                state: State::Open,
+                up: true,
+                reason: String::new(),
+                stats: Stats::default(),
+                buffer: Vec::new(),
+                extras: Vec::new(),
+            },
+        );
         id
     }
 
     pub fn bytes_in(&mut self, id: LinkId, bytes: &[u8]) -> Vec<Frame> {
-        let Some(entry) = self.links.get_mut(&id).filter(|e| e.state == State::Open) else { return Vec::new() };
+        let Some(entry) = self.links.get_mut(&id).filter(|e| e.state == State::Open) else {
+            return Vec::new();
+        };
         entry.stats.bytes_in += bytes.len() as u64;
         entry.buffer.extend_from_slice(bytes);
         let replay = entry.kind == "logReplay";
-        drain(&mut entry.buffer, &mut entry.stats, &mut entry.extras, id, replay)
+        drain(
+            &mut entry.buffer,
+            &mut entry.stats,
+            &mut entry.extras,
+            id,
+            replay,
+        )
     }
 
     pub fn take_extras(&mut self, id: LinkId) -> Vec<Extra> {
-        self.links.get_mut(&id).map(|entry| std::mem::take(&mut entry.extras)).unwrap_or_default()
+        self.links
+            .get_mut(&id)
+            .map(|entry| std::mem::take(&mut entry.extras))
+            .unwrap_or_default()
     }
 
     pub fn wrote(&mut self, id: LinkId, len: usize) -> bool {
@@ -153,7 +197,11 @@ impl Registry {
     }
 
     pub fn set_up(&mut self, id: LinkId, up: bool, reason: &str) -> bool {
-        match self.links.get_mut(&id).filter(|e| e.state == State::Open && (e.up != up || e.reason != reason)) {
+        match self
+            .links
+            .get_mut(&id)
+            .filter(|e| e.state == State::Open && (e.up != up || e.reason != reason))
+        {
             Some(entry) => {
                 entry.up = up;
                 entry.reason = reason.to_string();
@@ -164,11 +212,18 @@ impl Registry {
     }
 
     pub fn down_ids(&self) -> Vec<LinkId> {
-        self.links.values().filter(|e| e.state == State::Open && !e.up).map(|e| e.id).collect()
+        self.links
+            .values()
+            .filter(|e| e.state == State::Open && !e.up)
+            .map(|e| e.id)
+            .collect()
     }
 
     pub fn down_reason(&self, id: LinkId) -> Option<String> {
-        self.links.get(&id).filter(|e| e.state == State::Open && !e.up).map(|e| e.reason.clone())
+        self.links
+            .get(&id)
+            .filter(|e| e.state == State::Open && !e.up)
+            .map(|e| e.reason.clone())
     }
 
     pub fn remove_closed(&mut self) {
@@ -180,10 +235,18 @@ impl Registry {
     }
 
     pub fn prune_closed(&mut self, keep: usize) {
-        let closed: Vec<LinkId> = self.links.values().filter(|e| e.state == State::Closed).map(|e| e.id).collect();
-        closed.iter().take(closed.len().saturating_sub(keep)).for_each(|id| {
-            self.links.remove(id);
-        });
+        let closed: Vec<LinkId> = self
+            .links
+            .values()
+            .filter(|e| e.state == State::Closed)
+            .map(|e| e.id)
+            .collect();
+        closed
+            .iter()
+            .take(closed.len().saturating_sub(keep))
+            .for_each(|id| {
+                self.links.remove(id);
+            });
     }
 
     pub fn entry(&self, id: LinkId) -> Option<&Entry> {
@@ -191,7 +254,11 @@ impl Registry {
     }
 
     pub fn open_ids(&self) -> Vec<LinkId> {
-        self.links.values().filter(|e| e.state == State::Open).map(|e| e.id).collect()
+        self.links
+            .values()
+            .filter(|e| e.state == State::Open)
+            .map(|e| e.id)
+            .collect()
     }
 
     pub fn snapshot(&self) -> Value {
@@ -224,7 +291,10 @@ mod tests {
 
     fn frames_of_sample() -> Vec<Vec<u8>> {
         let bytes = crate::samplelog::bytes();
-        crate::tlog::entries(&bytes, u64::MAX).into_iter().map(|(_, f)| f).collect()
+        crate::tlog::entries(&bytes, u64::MAX)
+            .into_iter()
+            .map(|(_, f)| f)
+            .collect()
     }
 
     #[test]
@@ -232,15 +302,28 @@ mod tests {
         let mut registry = Registry::default();
         let id = registry.open(Owner::Core, "aircastCloud", "Aircast drone (cloud)");
         assert!(registry.down_ids().is_empty());
-        assert!(!registry.set_up(id, true, ""), "a link that is already up changes nothing");
+        assert!(
+            !registry.set_up(id, true, ""),
+            "a link that is already up changes nothing"
+        );
         assert!(registry.set_up(id, false, "relay lost"));
-        assert!(!registry.set_up(id, false, "relay lost"), "the same outage is reported once");
-        assert_eq!((registry.open_ids(), registry.down_ids()), (vec![id], vec![id]), "it stays open, so its vehicle is kept while it reconnects");
+        assert!(
+            !registry.set_up(id, false, "relay lost"),
+            "the same outage is reported once"
+        );
+        assert_eq!(
+            (registry.open_ids(), registry.down_ids()),
+            (vec![id], vec![id]),
+            "it stays open, so its vehicle is kept while it reconnects"
+        );
         assert_eq!(registry.snapshot()["links"][0]["up"], json!(false));
         assert!(registry.set_up(id, true, ""));
         assert!(registry.down_ids().is_empty());
         registry.close(id, "closed");
-        assert!(!registry.set_up(id, false, "late"), "a closed link is not brought back to life by a late report");
+        assert!(
+            !registry.set_up(id, false, "late"),
+            "a closed link is not brought back to life by a late report"
+        );
     }
 
     #[test]
@@ -251,9 +334,21 @@ mod tests {
         for chunk in [1usize, 7, 64, 300, 4096, stream.len()] {
             let mut registry = Registry::default();
             let id = registry.open(Owner::Host, "usb", "Pixhawk");
-            let seen: usize = stream.chunks(chunk).map(|c| registry.bytes_in(id, c).len()).sum();
+            let seen: usize = stream
+                .chunks(chunk)
+                .map(|c| registry.bytes_in(id, c).len())
+                .sum();
             let entry = registry.entry(id).unwrap();
-            assert_eq!((seen as u64, entry.stats.frames_in, entry.stats.dropped, entry.stats.bytes_in), (expected, expected, 0, stream.len() as u64), "chunk {chunk}");
+            assert_eq!(
+                (
+                    seen as u64,
+                    entry.stats.frames_in,
+                    entry.stats.dropped,
+                    entry.stats.bytes_in
+                ),
+                (expected, expected, 0, stream.len() as u64),
+                "chunk {chunk}"
+            );
         }
     }
 
@@ -264,11 +359,24 @@ mod tests {
         raw.extend(crate::mavinspect::x25(&covered).to_le_bytes());
         let mut registry = Registry::default();
         let id = registry.open(Owner::Core, "udp", "UDP Link");
-        assert!(registry.bytes_in(id, &raw).is_empty(), "CONTROL_STATUS is not in the ardupilotmega dialect the core decodes");
+        assert!(
+            registry.bytes_in(id, &raw).is_empty(),
+            "CONTROL_STATUS is not in the ardupilotmega dialect the core decodes"
+        );
         let extras = registry.take_extras(id);
-        assert_eq!(extras.iter().map(|e| (e.msgid, e.header.system_id)).collect::<Vec<_>>(), vec![(512, 1)]);
+        assert_eq!(
+            extras
+                .iter()
+                .map(|e| (e.msgid, e.header.system_id))
+                .collect::<Vec<_>>(),
+            vec![(512, 1)]
+        );
         let entry = registry.entry(id).unwrap();
-        assert_eq!((entry.stats.frames_in, entry.stats.dropped), (1, 0), "a frame with a good checksum is traffic, not a drop");
+        assert_eq!(
+            (entry.stats.frames_in, entry.stats.dropped),
+            (1, 0),
+            "a frame with a good checksum is traffic, not a drop"
+        );
         assert!(registry.take_extras(id).is_empty());
     }
 
@@ -281,7 +389,9 @@ mod tests {
         assert_eq!(first.len(), 1);
         assert_eq!(first[0].raw, frames[0]);
         let mut noisy = vec![0xFEu8, 0xFF, 1, 2, 3];
-        frames[1..=40].iter().for_each(|f| noisy.extend_from_slice(f));
+        frames[1..=40]
+            .iter()
+            .for_each(|f| noisy.extend_from_slice(f));
         let recovered = registry.bytes_in(id, &noisy).len();
         assert!(recovered >= 20, "recovered {recovered}");
         let stats = &registry.entry(id).unwrap().stats;
@@ -295,14 +405,26 @@ mod tests {
     #[test]
     fn noise_shaped_like_a_frame_never_decodes_as_the_frame_hiding_inside_it() {
         let mut heartbeat = Vec::new();
-        let header = MavHeader { system_id: 255, component_id: 190, sequence: 0 };
-        mavlink::write_v1_msg(&mut heartbeat, header, &MavMessage::HEARTBEAT(Default::default())).unwrap();
+        let header = MavHeader {
+            system_id: 255,
+            component_id: 190,
+            sequence: 0,
+        };
+        mavlink::write_v1_msg(
+            &mut heartbeat,
+            header,
+            &MavMessage::HEARTBEAT(Default::default()),
+        )
+        .unwrap();
         let mut noisy = vec![0xFEu8, 0xFF, 1, 2, 3];
         (0..30).for_each(|_| noisy.extend_from_slice(&heartbeat));
         let mut registry = Registry::default();
         let id = registry.open(Owner::Host, "usb", "v1 radio");
         let frames = registry.bytes_in(id, &noisy);
-        assert!(frames.iter().all(|f| f.raw == heartbeat), "a claimed length that fails its checksum is noise, not a container for whichever frame the decoder finds by scanning past it");
+        assert!(
+            frames.iter().all(|f| f.raw == heartbeat),
+            "a claimed length that fails its checksum is noise, not a container for whichever frame the decoder finds by scanning past it"
+        );
         let stats = &registry.entry(id).unwrap().stats;
         assert_eq!(stats.dropped, 1);
         assert_eq!(stats.frames_in, frames.len() as u64);

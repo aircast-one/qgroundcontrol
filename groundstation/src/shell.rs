@@ -12,13 +12,22 @@ pub struct Shell {
 
 impl Default for Shell {
     fn default() -> Self {
-        Shell { lines: Vec::new(), incoming: Vec::new(), cursor_x: 0, cursor_y: 0, home: None }
+        Shell {
+            lines: Vec::new(),
+            incoming: Vec::new(),
+            cursor_x: 0,
+            cursor_y: 0,
+            home: None,
+        }
     }
 }
 
 impl Shell {
     pub fn lines(&self) -> Vec<String> {
-        self.lines.iter().map(|line| line.iter().collect()).collect()
+        self.lines
+            .iter()
+            .map(|line| line.iter().collect())
+            .collect()
     }
 
     pub fn command_sent(&mut self) {
@@ -75,7 +84,11 @@ impl Shell {
                 },
                 b'K' => {
                     let erase = self.cursor_x + i;
-                    if let Some(row) = self.lines.get_mut(self.cursor_y).filter(|row| erase < row.len()) {
+                    if let Some(row) = self
+                        .lines
+                        .get_mut(self.cursor_y)
+                        .filter(|row| erase < row.len())
+                    {
                         row.truncate(erase);
                     }
                 }
@@ -106,7 +119,9 @@ impl Shell {
         self.lines.drain(..excess);
         self.cursor_y = self.cursor_y.saturating_sub(excess);
         self.home = self.home.and_then(|home| home.checked_sub(excess));
-        let Some(line) = line.checked_sub(excess) else { return };
+        let Some(line) = line.checked_sub(excess) else {
+            return;
+        };
         let row = &mut self.lines[line];
         if self.cursor_x <= row.len() {
             let end = (self.cursor_x + text.len()).min(row.len());
@@ -141,14 +156,22 @@ mod tests {
         let mut shell = Shell::default();
         shell.receive(&b"line\n".repeat(MAX_LINES + 10));
         shell.receive(b"\x1b[Hgone");
-        assert_eq!(shell.lines().len(), MAX_LINES, "MAVLinkConsoleController's row -1 is a harmless no-op");
+        assert_eq!(
+            shell.lines().len(),
+            MAX_LINES,
+            "MAVLinkConsoleController's row -1 is a harmless no-op"
+        );
     }
 
     #[test]
     fn an_escape_split_across_packets_waits_for_the_rest() {
         let mut shell = Shell::default();
         shell.receive(b"abcdef\x1b");
-        assert_eq!(shell.lines(), Vec::<String>::new(), "a fragment ending inside an escape writes nothing yet");
+        assert_eq!(
+            shell.lines(),
+            Vec::<String>::new(),
+            "a fragment ending inside an escape writes nothing yet"
+        );
         shell.receive(b"[Kxy\n");
         assert_eq!(shell.lines(), vec!["abcdefxy", ""]);
     }
@@ -158,7 +181,11 @@ mod tests {
         let mut shell = Shell::default();
         shell.receive(b"top\n\x1b[Hone\ntwo\n");
         shell.receive(b"\x1b[H\x1b[2Jnew\n");
-        assert_eq!(shell.lines(), vec!["top", "new", "", ""], "the second home rewinds to row 1 and 2J blanks every row from it");
+        assert_eq!(
+            shell.lines(),
+            vec!["top", "new", "", ""],
+            "the second home rewinds to row 1 and 2J blanks every row from it"
+        );
     }
 
     #[test]
@@ -167,7 +194,11 @@ mod tests {
         shell.receive(b"0123456789\n");
         shell.receive(b"\x1b[H");
         shell.receive(b"ab\x1b[K\n");
-        assert_eq!(shell.lines()[1], "ab", "K erases from cursor_x plus the escape's offset in the fragment");
+        assert_eq!(
+            shell.lines()[1],
+            "ab",
+            "K erases from cursor_x plus the escape's offset in the fragment"
+        );
     }
 
     #[test]
@@ -175,13 +206,25 @@ mod tests {
         let mut shell = Shell::default();
         (0..600).for_each(|n| shell.receive(format!("{n}\n").as_bytes()));
         let lines = shell.lines();
-        assert_eq!((lines.len(), lines[0].as_str(), lines[MAX_LINES - 1].as_str(), lines[MAX_LINES].as_str()), (MAX_LINES + 1, "100", "599", ""), "the trim runs on a write, so the row a newline opens sits one past the cap as it does in the model");
+        assert_eq!(
+            (
+                lines.len(),
+                lines[0].as_str(),
+                lines[MAX_LINES - 1].as_str(),
+                lines[MAX_LINES].as_str()
+            ),
+            (MAX_LINES + 1, "100", "599", ""),
+            "the trim runs on a write, so the row a newline opens sits one past the cap as it does in the model"
+        );
     }
 
     #[test]
     fn a_command_goes_out_in_70_byte_chunks_ending_with_a_newline() {
         let long = "x".repeat(75);
         let chunks = Shell::chunks(&long);
-        assert_eq!((chunks.len(), chunks[0].len(), chunks[1].as_slice()), (2, 70, b"xxxxx\n".as_slice()));
+        assert_eq!(
+            (chunks.len(), chunks[0].len(), chunks[1].as_slice()),
+            (2, 70, b"xxxxx\n".as_slice())
+        );
     }
 }

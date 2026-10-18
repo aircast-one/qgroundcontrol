@@ -6,12 +6,19 @@ use serde_json::{Value, json};
 use crate::view;
 
 pub fn raw_of(fact: &Value) -> Option<f64> {
-    fact.get("rawValue").or(fact.get("value")).and_then(Value::as_f64).filter(|v| v.is_finite())
+    fact.get("rawValue")
+        .or(fact.get("value"))
+        .and_then(Value::as_f64)
+        .filter(|v| v.is_finite())
 }
 
 pub fn point_of(at: &Value) -> Option<(f64, f64)> {
     let valid = at.get("valid").and_then(Value::as_bool).unwrap_or(true);
-    Some((at.get("latitude")?.as_f64()?, at.get("longitude")?.as_f64()?)).filter(|(lat, lon)| valid && lat.is_finite() && lon.is_finite() && (*lat, *lon) != (0.0, 0.0))
+    Some((
+        at.get("latitude")?.as_f64()?,
+        at.get("longitude")?.as_f64()?,
+    ))
+    .filter(|(lat, lon)| valid && lat.is_finite() && lon.is_finite() && (*lat, *lon) != (0.0, 0.0))
 }
 
 pub trait Backend {
@@ -66,7 +73,10 @@ pub struct Core<B> {
 
 impl<B: Backend> Core<B> {
     pub fn new(backend: B) -> Self {
-        Self { backend, watching: Mutex::new(Watching::default()) }
+        Self {
+            backend,
+            watching: Mutex::new(Watching::default()),
+        }
     }
 
     pub fn get(&self, path: &str) -> String {
@@ -87,7 +97,9 @@ impl<B: Backend> Core<B> {
             (true, Some(v)) => v.render_fields(&self.backend, path, fields),
             (true, None) => view::unknown(path).to_string(),
             (false, _) => match crate::renamed::fields(path, fields) {
-                Some(widened) => crate::renamed::patch(path, self.backend.get_fields(path, &widened)),
+                Some(widened) => {
+                    crate::renamed::patch(path, self.backend.get_fields(path, &widened))
+                }
                 None => self.backend.get_fields(path, fields),
             },
         })
@@ -95,7 +107,10 @@ impl<B: Backend> Core<B> {
 
     pub fn set(&self, path: &str, value: &str) -> String {
         crate::coreplan::poll_host(&self.backend);
-        if let Some(answer) = crate::coreplan::enabled().then(|| crate::coreplan::route_set(&self.backend, path, value)).flatten() {
+        if let Some(answer) = crate::coreplan::enabled()
+            .then(|| crate::coreplan::route_set(&self.backend, path, value))
+            .flatten()
+        {
             return answer.to_string();
         }
         if crate::actions::owns_write(path) {
@@ -112,7 +127,10 @@ impl<B: Backend> Core<B> {
 
     pub fn invoke(&self, path: &str, args: &str) -> String {
         crate::coreplan::poll_host(&self.backend);
-        if let Some(answer) = crate::coreplan::enabled().then(|| crate::coreplan::route_invoke(&self.backend, path, args)).flatten() {
+        if let Some(answer) = crate::coreplan::enabled()
+            .then(|| crate::coreplan::route_invoke(&self.backend, path, args))
+            .flatten()
+        {
             if path == "plan.loadFromVehicle" {
                 let asked = self.watching.lock().unwrap().asked();
                 self.rewatch(&asked, false);
@@ -134,13 +152,19 @@ impl<B: Backend> Core<B> {
             let held = watching.clients.get(client).cloned().unwrap_or_default();
             match paths.is_empty() {
                 true => watching.clients.remove(client),
-                false => watching.clients.insert(client.to_string(), paths.iter().cloned().collect()),
+                false => watching
+                    .clients
+                    .insert(client.to_string(), paths.iter().cloned().collect()),
             };
             let asked = watching.asked();
             watching.last.retain(|path, _| asked.contains(path));
             watching.shown.retain(|path, _| asked.contains(path));
             watching.inputs.retain(|path, _| asked.contains(path));
-            let fresh = paths.iter().filter(|path| !held.contains(*path) && view::lookup(path).is_some()).cloned().collect();
+            let fresh = paths
+                .iter()
+                .filter(|path| !held.contains(*path) && view::lookup(path).is_some())
+                .cloned()
+                .collect();
             (asked, fresh)
         };
         self.rewatch(&asked, !fresh.is_empty());
@@ -159,7 +183,16 @@ impl<B: Backend> Core<B> {
                 Some(v) => v.deps_for(&view::split(path).1),
                 None => vec![path.clone()],
             })
-            .filter(|dep| dep != crate::coreplan::CHANGED && dep != crate::terrainservice::TERRAIN_CHANGED && dep != crate::mavinspect::INSPECTOR_CHANGED && dep != crate::noticeboard::NOTICES_CHANGED && dep != crate::gimbal::GIMBAL_CHANGED && dep != crate::viewer3d::VIEWER3D_CHANGED && dep != crate::synthview::SYNTHETIC_CHANGED && dep != crate::deeplinksetup::SETUP_CHANGED)
+            .filter(|dep| {
+                dep != crate::coreplan::CHANGED
+                    && dep != crate::terrainservice::TERRAIN_CHANGED
+                    && dep != crate::mavinspect::INSPECTOR_CHANGED
+                    && dep != crate::noticeboard::NOTICES_CHANGED
+                    && dep != crate::gimbal::GIMBAL_CHANGED
+                    && dep != crate::viewer3d::VIEWER3D_CHANGED
+                    && dep != crate::synthview::SYNTHETIC_CHANGED
+                    && dep != crate::deeplinksetup::SETUP_CHANGED
+            })
             .chain(crate::coreplan::host_watches())
             .collect::<BTreeSet<_>>()
             .into_iter()
@@ -185,29 +218,45 @@ impl<B: Backend> Core<B> {
     }
 
     fn poll_where(&self, wanted: impl Fn(&str) -> bool) -> Vec<(String, String)> {
-        let (asked, kept): (BTreeSet<String>, BTreeMap<String, Vec<crate::changedriven::Input>>) = {
+        let (asked, kept): (
+            BTreeSet<String>,
+            BTreeMap<String, Vec<crate::changedriven::Input>>,
+        ) = {
             let watching = self.watching.lock().unwrap();
-            let kept = watching.inputs.iter().filter(|(path, _)| watching.shown.contains_key(*path)).map(|(path, inputs)| (path.clone(), inputs.clone())).collect();
+            let kept = watching
+                .inputs
+                .iter()
+                .filter(|(path, _)| watching.shown.contains_key(*path))
+                .map(|(path, inputs)| (path.clone(), inputs.clone()))
+                .collect();
             (watching.asked(), kept)
         };
-        let rendered: Vec<(String, Rendered, Option<Vec<crate::changedriven::Input>>)> = crate::vehiclefacade::one_pass(|| {
-            asked
-                .iter()
-                .filter(|path| wanted(path))
-                .map(|path| match view::lookup(path) {
-                    Some(v) if crate::changedriven::gated(path) => match kept.get(path).filter(|inputs| crate::changedriven::unchanged(inputs)) {
-                        Some(inputs) => (path.clone(), Rendered::Same, Some(inputs.clone())),
-                        None => {
-                            let recorder = crate::changedriven::Recorder::new(&self.backend);
-                            let value = v.value(&recorder, path);
-                            (path.clone(), Rendered::View(value), recorder.inputs())
-                        }
-                    },
-                    Some(v) => (path.clone(), Rendered::View(v.value(&self.backend, path)), None),
-                    None => (path.clone(), Rendered::Json(self.get(path)), None),
-                })
-                .collect()
-        });
+        let rendered: Vec<(String, Rendered, Option<Vec<crate::changedriven::Input>>)> =
+            crate::vehiclefacade::one_pass(|| {
+                asked
+                    .iter()
+                    .filter(|path| wanted(path))
+                    .map(|path| match view::lookup(path) {
+                        Some(v) if crate::changedriven::gated(path) => match kept
+                            .get(path)
+                            .filter(|inputs| crate::changedriven::unchanged(inputs))
+                        {
+                            Some(inputs) => (path.clone(), Rendered::Same, Some(inputs.clone())),
+                            None => {
+                                let recorder = crate::changedriven::Recorder::new(&self.backend);
+                                let value = v.value(&recorder, path);
+                                (path.clone(), Rendered::View(value), recorder.inputs())
+                            }
+                        },
+                        Some(v) => (
+                            path.clone(),
+                            Rendered::View(v.value(&self.backend, path)),
+                            None,
+                        ),
+                        None => (path.clone(), Rendered::Json(self.get(path)), None),
+                    })
+                    .collect()
+            });
         let mut watching = self.watching.lock().unwrap();
         rendered
             .into_iter()
@@ -218,12 +267,18 @@ impl<B: Backend> Core<B> {
                 };
                 match rendered {
                     Rendered::Same => None,
-                    Rendered::View(value) => (watching.shown.get(&path) != Some(&value)).then(|| {
-                        let json = value.to_string();
-                        watching.shown.insert(path.clone(), value);
-                        (path, json)
-                    }),
-                    Rendered::Json(json) => (watching.last.insert(path.clone(), json.clone()).as_deref() != Some(json.as_str())).then_some((path, json)),
+                    Rendered::View(value) => {
+                        (watching.shown.get(&path) != Some(&value)).then(|| {
+                            let json = value.to_string();
+                            watching.shown.insert(path.clone(), value);
+                            (path, json)
+                        })
+                    }
+                    Rendered::Json(json) => {
+                        (watching.last.insert(path.clone(), json.clone()).as_deref()
+                            != Some(json.as_str()))
+                        .then_some((path, json))
+                    }
                 }
             })
             .collect()
@@ -245,8 +300,12 @@ impl<B: Backend> Core<B> {
                     .collect(),
             )
         };
-        let recomputed: Vec<(String, Value)> =
-            crate::vehiclefacade::one_pass(|| dependents.iter().map(|(asked_path, v)| (asked_path.clone(), v.value(&self.backend, asked_path))).collect());
+        let recomputed: Vec<(String, Value)> = crate::vehiclefacade::one_pass(|| {
+            dependents
+                .iter()
+                .map(|(asked_path, v)| (asked_path.clone(), v.value(&self.backend, asked_path)))
+                .collect()
+        });
         let (changed, asked): (Vec<(String, String)>, BTreeSet<String>) = {
             let mut watching = self.watching.lock().unwrap();
             let changed = recomputed
@@ -265,7 +324,11 @@ impl<B: Backend> Core<B> {
         if !dependents.is_empty() {
             self.rewatch(&asked, false);
         }
-        direct.then(|| (path.to_string(), json.to_string())).into_iter().chain(changed).collect()
+        direct
+            .then(|| (path.to_string(), json.to_string()))
+            .into_iter()
+            .chain(changed)
+            .collect()
     }
 }
 
@@ -274,7 +337,8 @@ fn null() -> String {
 }
 
 fn refusal(path: &str) -> String {
-    json!({ "ok": false, "reason": format!("{path} is derived by the core and read-only") }).to_string()
+    json!({ "ok": false, "reason": format!("{path} is derived by the core and read-only") })
+        .to_string()
 }
 
 #[cfg(test)]
@@ -292,9 +356,13 @@ mod tests {
     impl Backend for Fake {
         fn get(&self, path: &str) -> String {
             match path {
-                "vehicle.formattedMessages" => json!({ "kind": "value", "value": *self.messages.borrow() }).to_string(),
+                "vehicle.formattedMessages" => {
+                    json!({ "kind": "value", "value": *self.messages.borrow() }).to_string()
+                }
                 "vehicle.armed" => json!({ "kind": "value", "value": true }).to_string(),
-                "vehicle.batteries.count" => json!({ "kind": "value", "value": *self.pack_count.borrow() }).to_string(),
+                "vehicle.batteries.count" => {
+                    json!({ "kind": "value", "value": *self.pack_count.borrow() }).to_string()
+                }
                 _ => null(),
             }
         }
@@ -322,28 +390,58 @@ mod tests {
     fn a_view_path_that_does_not_exist_says_so_instead_of_answering_null() {
         let core = Core::new(Fake::default());
         let missing = parsed(&core.get("view.obstacleDistance"));
-        assert_eq!(missing["kind"], "null", "kind stays null so nothing switching on it changes, and the reason rides beside it");
         assert_eq!(
-            missing["reason"],
-            "no such view: view.obstacleDistance - did you mean view.obstacle?",
+            missing["kind"], "null",
+            "kind stays null so nothing switching on it changes, and the reason rides beside it"
+        );
+        assert_eq!(
+            missing["reason"], "no such view: view.obstacleDistance - did you mean view.obstacle?",
             "a refusal for a path that does not exist and a refusal for a path with nothing to say were the same bytes, and the core is the only thing that knows the difference - a head reading a mistyped name got kind:null twice in two turns and took it as data both times"
         );
 
-        assert_eq!(parsed(&core.get("view.notAnythingAtAll"))["reason"], "no such view: view.notAnythingAtAll", "with no near name there is nothing to suggest, and suggesting something unrelated would be worse than suggesting nothing");
-        assert_eq!(parsed(&core.get_fields("view.obstacleDistance", "enabled"))["reason"], "no such view: view.obstacleDistance - did you mean view.obstacle?", "the field-list read refuses the same way, or a head that asks for fields learns nothing");
-        assert!(parsed(&core.get("view.obstacle")).get("reason").is_none(), "a view that exists and has nothing to say must not pick up a refusal, which would make every quiet answer look like a typo");
+        assert_eq!(
+            parsed(&core.get("view.notAnythingAtAll"))["reason"],
+            "no such view: view.notAnythingAtAll",
+            "with no near name there is nothing to suggest, and suggesting something unrelated would be worse than suggesting nothing"
+        );
+        assert_eq!(
+            parsed(&core.get_fields("view.obstacleDistance", "enabled"))["reason"],
+            "no such view: view.obstacleDistance - did you mean view.obstacle?",
+            "the field-list read refuses the same way, or a head that asks for fields learns nothing"
+        );
+        assert!(
+            parsed(&core.get("view.obstacle")).get("reason").is_none(),
+            "a view that exists and has nothing to say must not pick up a refusal, which would make every quiet answer look like a typo"
+        );
     }
 
     #[test]
     fn a_claimed_write_reaches_the_core_and_an_unclaimed_one_still_forwards() {
         let core = Core::new(Fake::default());
-        let claimed = parsed(&core.set("vehicle.cameraManager.currentCameraInstance.zoomLevel", &json!({ "value": 40.0 }).to_string()));
-        assert_eq!(claimed["ok"], false, "the fake serves no camera, so the core answers rather than writing");
-        assert!(claimed["reason"].as_str().unwrap().contains("No camera"), "and a bare passthrough would carry a path instead of a reason: {claimed}");
+        let claimed = parsed(&core.set(
+            "vehicle.cameraManager.currentCameraInstance.zoomLevel",
+            &json!({ "value": 40.0 }).to_string(),
+        ));
+        assert_eq!(
+            claimed["ok"], false,
+            "the fake serves no camera, so the core answers rather than writing"
+        );
+        assert!(
+            claimed["reason"].as_str().unwrap().contains("No camera"),
+            "and a bare passthrough would carry a path instead of a reason: {claimed}"
+        );
 
-        let forwarded = parsed(&core.set("vehicle.somethingElse", &json!({ "value": 1 }).to_string()));
-        assert_eq!(forwarded["path"], "vehicle.somethingElse", "an unclaimed write still forwards untouched");
-        assert_eq!(parsed(&core.set("view.messages", "{}"))["ok"], false, "a view is still not writable");
+        let forwarded =
+            parsed(&core.set("vehicle.somethingElse", &json!({ "value": 1 }).to_string()));
+        assert_eq!(
+            forwarded["path"], "vehicle.somethingElse",
+            "an unclaimed write still forwards untouched"
+        );
+        assert_eq!(
+            parsed(&core.set("view.messages", "{}"))["ok"],
+            false,
+            "a view is still not writable"
+        );
     }
 
     #[test]
@@ -361,9 +459,15 @@ mod tests {
     #[test]
     fn view_paths_refuse_writes_the_way_the_qt_bridge_does() {
         let core = Core::new(Fake::default());
-        assert_eq!(parsed(&core.set("view.messages", "{\"value\":1}"))["ok"], false);
+        assert_eq!(
+            parsed(&core.set("view.messages", "{\"value\":1}"))["ok"],
+            false
+        );
         assert_eq!(parsed(&core.invoke("view.messages", "[]"))["ok"], false);
-        assert_eq!(parsed(&core.set("vehicle.armed", "{\"value\":1}"))["ok"], true);
+        assert_eq!(
+            parsed(&core.set("vehicle.armed", "{\"value\":1}"))["ok"],
+            true
+        );
     }
 
     #[test]
@@ -378,46 +482,123 @@ mod tests {
     #[test]
     fn watching_a_view_watches_its_dependencies_upstream() {
         let core = Core::new(Fake::default());
-        core.watch("", &["view.messages".to_string(), "vehicle.armed".to_string()]);
-        assert_eq!(*core.backend.watched.borrow(), vec!["vehicle.armed".to_string(), "vehicle.formattedMessages".to_string(), "vehicle.messageCount".to_string()]);
+        core.watch(
+            "",
+            &["view.messages".to_string(), "vehicle.armed".to_string()],
+        );
+        assert_eq!(
+            *core.backend.watched.borrow(),
+            vec![
+                "vehicle.armed".to_string(),
+                "vehicle.formattedMessages".to_string(),
+                "vehicle.messageCount".to_string()
+            ]
+        );
     }
 
     #[test]
     fn a_view_with_arguments_watches_the_facts_those_arguments_name() {
         let core = Core::new(Fake::default());
-        core.watch("fly", &["view.instruments(gps/count, vehicle/heading)".to_string()]);
-        assert_eq!(*core.backend.watched.borrow(), vec!["settings.unitsSettings.areaUnits".to_string(), "settings.unitsSettings.horizontalDistanceUnits".to_string(), "settings.unitsSettings.speedUnits".to_string(), "settings.unitsSettings.verticalDistanceUnits".to_string(), "vehicle.airship".to_string(), "vehicle.fixedWing".to_string(), "vehicle.gps.count".to_string(), "vehicle.heading".to_string(), "vehicle.multiRotor".to_string(), "vehicle.rover".to_string(), "vehicle.sub".to_string(), "vehicle.vtol".to_string(), "vehicles.activeVehicleAvailable".to_string()], "the strip converts every reading itself, so a change of unit has to wake it");
+        core.watch(
+            "fly",
+            &["view.instruments(gps/count, vehicle/heading)".to_string()],
+        );
+        assert_eq!(
+            *core.backend.watched.borrow(),
+            vec![
+                "settings.unitsSettings.areaUnits".to_string(),
+                "settings.unitsSettings.horizontalDistanceUnits".to_string(),
+                "settings.unitsSettings.speedUnits".to_string(),
+                "settings.unitsSettings.verticalDistanceUnits".to_string(),
+                "vehicle.airship".to_string(),
+                "vehicle.fixedWing".to_string(),
+                "vehicle.gps.count".to_string(),
+                "vehicle.heading".to_string(),
+                "vehicle.multiRotor".to_string(),
+                "vehicle.rover".to_string(),
+                "vehicle.sub".to_string(),
+                "vehicle.vtol".to_string(),
+                "vehicles.activeVehicleAvailable".to_string()
+            ],
+            "the strip converts every reading itself, so a change of unit has to wake it"
+        );
         assert_eq!(core.on_event("vehicle.heading", "{}").len(), 1);
-        assert!(core.on_event("vehicle.vehicle", "{}").is_empty(), "the whole vehicle object is no longer a dependency");
+        assert!(
+            core.on_event("vehicle.vehicle", "{}").is_empty(),
+            "the whole vehicle object is no longer a dependency"
+        );
     }
 
     #[test]
     fn a_view_whose_dependencies_grow_after_a_read_is_re_watched() {
         let core = Core::new(Fake::default());
         core.watch("fly", &["view.battery".to_string()]);
-        assert!(core.backend.watched.borrow().contains(&"vehicle.batteries.count".to_string()));
-        assert!(!core.backend.watched.borrow().contains(&"vehicle.batteries.2.voltage".to_string()), "a third pack is not watched until a vehicle reports one");
+        assert!(
+            core.backend
+                .watched
+                .borrow()
+                .contains(&"vehicle.batteries.count".to_string())
+        );
+        assert!(
+            !core
+                .backend
+                .watched
+                .borrow()
+                .contains(&"vehicle.batteries.2.voltage".to_string()),
+            "a third pack is not watched until a vehicle reports one"
+        );
         *core.backend.pack_count.borrow_mut() = 3;
-        core.on_event("vehicle.batteries.count", "{\"kind\":\"value\",\"value\":3}");
+        core.on_event(
+            "vehicle.batteries.count",
+            "{\"kind\":\"value\",\"value\":3}",
+        );
         let after = core.backend.watched.borrow().clone();
-        assert!(after.contains(&"vehicle.batteries.2.voltage".to_string()), "the third pack's facts joined the watch after the count moved");
+        assert!(
+            after.contains(&"vehicle.batteries.2.voltage".to_string()),
+            "the third pack's facts joined the watch after the count moved"
+        );
     }
 
     #[test]
     fn the_motion_poll_refreshes_only_the_views_that_draw_the_aircraft_moving() {
         let core = Core::new(Fake::default());
-        core.watch("", &["view.attitude".to_string(), "vehicle.armed".to_string()]);
-        let moving: Vec<String> = core.poll_motion().into_iter().map(|(path, _)| path).collect();
-        assert_eq!(moving, vec!["view.attitude".to_string()], "the 100 ms lane leaves everything else to the 250 ms poll");
-        assert_eq!(core.poll().into_iter().map(|(path, _)| path).collect::<Vec<_>>(), vec!["vehicle.armed".to_string()], "and the full poll still delivers the rest, without repeating what the fast lane sent");
+        core.watch(
+            "",
+            &["view.attitude".to_string(), "vehicle.armed".to_string()],
+        );
+        let moving: Vec<String> = core
+            .poll_motion()
+            .into_iter()
+            .map(|(path, _)| path)
+            .collect();
+        assert_eq!(
+            moving,
+            vec!["view.attitude".to_string()],
+            "the 100 ms lane leaves everything else to the 250 ms poll"
+        );
+        assert_eq!(
+            core.poll()
+                .into_iter()
+                .map(|(path, _)| path)
+                .collect::<Vec<_>>(),
+            vec!["vehicle.armed".to_string()],
+            "and the full poll still delivers the rest, without repeating what the fast lane sent"
+        );
     }
 
     #[test]
     fn a_poll_delivers_each_watched_path_once_and_again_only_when_it_changes() {
         let core = Core::new(Fake::default());
         core.watch("", &["vehicle.armed".to_string()]);
-        assert_eq!(core.poll().len(), 1, "the first poll delivers what the head asked for");
-        assert!(core.poll().is_empty(), "an unchanged value is not delivered twice");
+        assert_eq!(
+            core.poll().len(),
+            1,
+            "the first poll delivers what the head asked for"
+        );
+        assert!(
+            core.poll().is_empty(),
+            "an unchanged value is not delivered twice"
+        );
     }
 
     #[test]
@@ -438,42 +619,91 @@ mod tests {
         let core = Core::new(Fake::default());
         core.watch("fly", &["vehicle.armed".to_string()]);
         core.watch("plan", &["view.messages".to_string()]);
-        assert_eq!(*core.backend.watched.borrow(), vec!["vehicle.armed".to_string(), "vehicle.formattedMessages".to_string(), "vehicle.messageCount".to_string()]);
+        assert_eq!(
+            *core.backend.watched.borrow(),
+            vec![
+                "vehicle.armed".to_string(),
+                "vehicle.formattedMessages".to_string(),
+                "vehicle.messageCount".to_string()
+            ]
+        );
         core.watch("fly", &["vehicle.flying".to_string()]);
-        assert_eq!(*core.backend.watched.borrow(), vec!["vehicle.flying".to_string(), "vehicle.formattedMessages".to_string(), "vehicle.messageCount".to_string()]);
+        assert_eq!(
+            *core.backend.watched.borrow(),
+            vec![
+                "vehicle.flying".to_string(),
+                "vehicle.formattedMessages".to_string(),
+                "vehicle.messageCount".to_string()
+            ]
+        );
         assert!(core.on_event("vehicle.armed", "{}").is_empty());
         core.watch("plan", &[]);
-        assert_eq!(*core.backend.watched.borrow(), vec!["vehicle.flying".to_string()]);
+        assert_eq!(
+            *core.backend.watched.borrow(),
+            vec!["vehicle.flying".to_string()]
+        );
         core.watch("fly", &[]);
         assert!(core.backend.watched.borrow().is_empty());
     }
 
     #[test]
     fn a_view_path_may_carry_arguments_in_parentheses() {
-        assert_eq!(view::split("view.guidedAltitude(68.5)"), ("view.guidedAltitude", vec!["68.5".to_string()]));
+        assert_eq!(
+            view::split("view.guidedAltitude(68.5)"),
+            ("view.guidedAltitude", vec!["68.5".to_string()])
+        );
         assert_eq!(view::split("view.plan"), ("view.plan", vec![]));
         assert_eq!(
             view::split("view.control(vehicle.parameterManager.getParameter(-1,RTL_ALT))"),
-            ("view.control", vec!["vehicle.parameterManager.getParameter(-1,RTL_ALT)".to_string()])
+            (
+                "view.control",
+                vec!["vehicle.parameterManager.getParameter(-1,RTL_ALT)".to_string()]
+            )
         );
-        assert_eq!(view::split("view.instruments(gps/count, vehicle/heading)").1.len(), 2);
-        assert_eq!(view::split("view.linkForm(udp,,14550)").1, vec!["udp".to_string(), String::new(), "14550".to_string()]);
+        assert_eq!(
+            view::split("view.instruments(gps/count, vehicle/heading)")
+                .1
+                .len(),
+            2
+        );
+        assert_eq!(
+            view::split("view.linkForm(udp,,14550)").1,
+            vec!["udp".to_string(), String::new(), "14550".to_string()]
+        );
         assert!(view::split("view.plan()").1.is_empty());
         assert_eq!(
-            view::split_paths("vehicle.armed,view.instruments(altitudeRelative,groundSpeed),view.plan"),
-            vec!["vehicle.armed".to_string(), "view.instruments(altitudeRelative,groundSpeed)".to_string(), "view.plan".to_string()]
+            view::split_paths(
+                "vehicle.armed,view.instruments(altitudeRelative,groundSpeed),view.plan"
+            ),
+            vec![
+                "vehicle.armed".to_string(),
+                "view.instruments(altitudeRelative,groundSpeed)".to_string(),
+                "view.plan".to_string()
+            ]
         );
         assert!(view::lookup("view.guidedAltitude(1, 2)").is_some());
         let core = Core::new(Fake::default());
-        assert_eq!(parsed(&core.get("view.messages(anything)"))["class"], "VehicleMessages");
+        assert_eq!(
+            parsed(&core.get("view.messages(anything)"))["class"],
+            "VehicleMessages"
+        );
     }
 
     #[test]
     fn directly_watched_paths_pass_through_untouched() {
         let core = Core::new(Fake::default());
-        core.watch("", &["vehicle.armed".to_string(), "view.messages".to_string()]);
+        core.watch(
+            "",
+            &["vehicle.armed".to_string(), "view.messages".to_string()],
+        );
         let events = core.on_event("vehicle.armed", "{\"kind\":\"value\",\"value\":true}");
-        assert_eq!(events, vec![("vehicle.armed".to_string(), "{\"kind\":\"value\",\"value\":true}".to_string())]);
+        assert_eq!(
+            events,
+            vec![(
+                "vehicle.armed".to_string(),
+                "{\"kind\":\"value\",\"value\":true}".to_string()
+            )]
+        );
     }
 
     #[test]
@@ -487,8 +717,15 @@ mod tests {
         let read = parsed(&core.get(&format!("view.tlog({})", awkward.display())));
         std::fs::remove_file(&awkward).ok();
 
-        assert_eq!(read["path"], awkward.display().to_string(), "split() returning one argument is not the same as the file being read, so this drives the whole door - owns, lookup, split, compute, std::fs - and the path echoed back has to be the whole name");
-        assert_eq!(read["readable"], true, "and it opened: a truncated path reads as a missing file, which is exactly how this failed before");
+        assert_eq!(
+            read["path"],
+            awkward.display().to_string(),
+            "split() returning one argument is not the same as the file being read, so this drives the whole door - owns, lookup, split, compute, std::fs - and the path echoed back has to be the whole name"
+        );
+        assert_eq!(
+            read["readable"], true,
+            "and it opened: a truncated path reads as a missing file, which is exactly how this failed before"
+        );
     }
 
     #[test]
@@ -499,19 +736,33 @@ mod tests {
 
         core.backend.watched.borrow_mut().clear();
         core.watch("plan", &["view.messages".to_string()]);
-        assert_eq!(*core.backend.watched.borrow(), first, "a second client asking for a view the first already watches changes no upstream path, so the backend was never re-asked - and the Qt watcher's re-emit is the only thing that runs the compute. view.adsbTraffic and view.detections spawn their feed inside that compute, so a head that only watches received nothing at all");
+        assert_eq!(
+            *core.backend.watched.borrow(),
+            first,
+            "a second client asking for a view the first already watches changes no upstream path, so the backend was never re-asked - and the Qt watcher's re-emit is the only thing that runs the compute. view.adsbTraffic and view.detections spawn their feed inside that compute, so a head that only watches received nothing at all"
+        );
     }
 
     #[test]
-    fn a_watched_view_is_delivered_again_rather_than_deduped_against_a_value_this_client_never_saw() {
+    fn a_watched_view_is_delivered_again_rather_than_deduped_against_a_value_this_client_never_saw()
+    {
         let core = Core::new(Fake::default());
         core.watch("fly", &["view.messages".to_string()]);
-        assert!(!core.on_event("vehicle.formattedMessages", "{}").is_empty(), "the first event after a subscribe has to reach the subscriber");
+        assert!(
+            !core.on_event("vehicle.formattedMessages", "{}").is_empty(),
+            "the first event after a subscribe has to reach the subscriber"
+        );
 
-        assert!(core.on_event("vehicle.formattedMessages", "{}").is_empty(), "and an unchanged value after that is still deduped, or every dep tick becomes a delivery");
+        assert!(
+            core.on_event("vehicle.formattedMessages", "{}").is_empty(),
+            "and an unchanged value after that is still deduped, or every dep tick becomes a delivery"
+        );
 
         core.watch("plan", &["view.messages".to_string()]);
-        assert!(!core.on_event("vehicle.formattedMessages", "{}").is_empty(), "a new subscriber drops the remembered value, because last is what the LAST client was sent and this one has been sent nothing");
+        assert!(
+            !core.on_event("vehicle.formattedMessages", "{}").is_empty(),
+            "a new subscriber drops the remembered value, because last is what the LAST client was sent and this one has been sent nothing"
+        );
     }
 
     #[test]
@@ -522,10 +773,22 @@ mod tests {
 
         core.backend.watched.borrow_mut().clear();
         core.watch("fly", &["view.messages".to_string()]);
-        assert!(core.backend.watched.borrow().is_empty(), "a head that re-subscribes on every recomposition asks for the same set repeatedly, and forcing a re-emit on each would turn one screen's lifecycle into a stream of identical deliveries");
-        assert!(core.on_event("vehicle.formattedMessages", "{}").is_empty(), "and the value it already has is still deduped");
+        assert!(
+            core.backend.watched.borrow().is_empty(),
+            "a head that re-subscribes on every recomposition asks for the same set repeatedly, and forcing a re-emit on each would turn one screen's lifecycle into a stream of identical deliveries"
+        );
+        assert!(
+            core.on_event("vehicle.formattedMessages", "{}").is_empty(),
+            "and the value it already has is still deduped"
+        );
 
-        core.watch("fly", &["view.messages".to_string(), "view.warnings".to_string()]);
-        assert!(!core.backend.watched.borrow().is_empty(), "adding a path to a set is a fresh subscription for that path, and it has to reach the backend");
+        core.watch(
+            "fly",
+            &["view.messages".to_string(), "view.warnings".to_string()],
+        );
+        assert!(
+            !core.backend.watched.borrow().is_empty(),
+            "adding a path to a set is a fresh subscription for that path, and it has to reach the backend"
+        );
     }
 }

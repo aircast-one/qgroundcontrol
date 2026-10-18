@@ -21,8 +21,13 @@ pub(crate) struct Range {
 pub fn altitude_view(backend: &dyn Backend, args: &[String]) -> Value {
     let unit = Unit::vertical(backend);
     let range = range_meters(backend);
-    let target = args.first().and_then(|a| a.parse::<f64>().ok()).filter(|t| t.is_finite());
-    let pause = args.get(1).is_some_and(|a| a.trim().eq_ignore_ascii_case("pause"));
+    let target = args
+        .first()
+        .and_then(|a| a.parse::<f64>().ok())
+        .filter(|t| t.is_finite());
+    let pause = args
+        .get(1)
+        .is_some_and(|a| a.trim().eq_ignore_ascii_case("pause"));
     let base = json!({
         "kind": "object",
         "class": "GuidedAltitude",
@@ -48,12 +53,34 @@ fn with_target(range: &Range, target: f64, unit: &Unit, pause: bool) -> Value {
     let changes = delta_meters.abs() >= SMALLEST_CHANGE_METERS;
     let sends = pause || changes;
     let sentence = match (pause, changes, delta_meters > 0.0) {
-        (true, false, _) => format!("The aircraft will stop and hold at {}.", unit.label(range.current)),
-        (true, true, true) => format!("The aircraft will stop, then climb {} to {}.", unit.label(delta_meters), unit.label(target_meters)),
-        (true, true, false) => format!("The aircraft will stop, then descend {} to {}.", unit.label(-delta_meters), unit.label(target_meters)),
-        (false, false, _) => format!("The aircraft is already at {} and will not move.", unit.label(range.current)),
-        (false, true, true) => format!("The aircraft will climb {} to {}.", unit.label(delta_meters), unit.label(target_meters)),
-        (false, true, false) => format!("The aircraft will descend {} to {}.", unit.label(-delta_meters), unit.label(target_meters)),
+        (true, false, _) => format!(
+            "The aircraft will stop and hold at {}.",
+            unit.label(range.current)
+        ),
+        (true, true, true) => format!(
+            "The aircraft will stop, then climb {} to {}.",
+            unit.label(delta_meters),
+            unit.label(target_meters)
+        ),
+        (true, true, false) => format!(
+            "The aircraft will stop, then descend {} to {}.",
+            unit.label(-delta_meters),
+            unit.label(target_meters)
+        ),
+        (false, false, _) => format!(
+            "The aircraft is already at {} and will not move.",
+            unit.label(range.current)
+        ),
+        (false, true, true) => format!(
+            "The aircraft will climb {} to {}.",
+            unit.label(delta_meters),
+            unit.label(target_meters)
+        ),
+        (false, true, false) => format!(
+            "The aircraft will descend {} to {}.",
+            unit.label(-delta_meters),
+            unit.label(target_meters)
+        ),
     };
     json!({
         "target": target,
@@ -68,16 +95,24 @@ fn with_target(range: &Range, target: f64, unit: &Unit, pause: bool) -> Value {
 
 pub fn merge(base: Value, extra: Value) -> Value {
     match (base, extra) {
-        (Value::Object(map), Value::Object(more)) => Value::Object(map.into_iter().chain(more).collect()),
+        (Value::Object(map), Value::Object(more)) => {
+            Value::Object(map.into_iter().chain(more).collect())
+        }
         (base, _) => base,
     }
 }
 
 pub(crate) fn range_meters(backend: &dyn Backend) -> Option<Range> {
     let current = value_number(&backend.value("vehicle.altitudeRelative.rawValue"))?;
-    let minimum = value_number(&backend.value("settings.flyViewSettings.guidedMinimumAltitude.rawValue"))?;
-    let maximum = value_number(&backend.value("settings.flyViewSettings.guidedMaximumAltitude.rawValue"))?;
-    (maximum > minimum).then_some(Range { current, minimum, maximum })
+    let minimum =
+        value_number(&backend.value("settings.flyViewSettings.guidedMinimumAltitude.rawValue"))?;
+    let maximum =
+        value_number(&backend.value("settings.flyViewSettings.guidedMaximumAltitude.rawValue"))?;
+    (maximum > minimum).then_some(Range {
+        current,
+        minimum,
+        maximum,
+    })
 }
 
 #[cfg(test)]
@@ -116,59 +151,149 @@ mod tests {
 
     #[test]
     fn the_range_stays_within_the_guided_limits_above_the_aircraft() {
-        let view = altitude_view(&Fake { current: Some(150.0), feet: false }, &[]);
+        let view = altitude_view(
+            &Fake {
+                current: Some(150.0),
+                feet: false,
+            },
+            &[],
+        );
         assert_eq!(view["available"], true);
         assert_eq!(view["minimum"], 2.0);
-        assert_eq!(view["maximum"], 121.0, "the slider clamps the aircraft to the guided limits rather than stretching to it");
+        assert_eq!(
+            view["maximum"], 121.0,
+            "the slider clamps the aircraft to the guided limits rather than stretching to it"
+        );
         assert_eq!(view["current"], 150.0);
         assert_eq!(view["unit"], "m");
         assert_eq!(view["label"], "Height above launch");
         assert!(view.get("sentence").is_none());
-        assert_eq!(view["rangeText"], "2 m to 121 m", "one precision comes from the wider end, so both ends lose the tenth together rather than reading 2.0 m to 150 m - and both heads were formatting these themselves");
+        assert_eq!(
+            view["rangeText"], "2 m to 121 m",
+            "one precision comes from the wider end, so both ends lose the tenth together rather than reading 2.0 m to 150 m - and both heads were formatting these themselves"
+        );
         assert_eq!(view["currentText"], "150.0 m");
 
-        let grounded = altitude_view(&Fake { current: Some(-0.04), feet: false }, &[]);
-        assert_eq!(grounded["currentText"], "0.0 m", "which is the reading two heads reported independently, and it is spelled here now rather than three times over");
+        let grounded = altitude_view(
+            &Fake {
+                current: Some(-0.04),
+                feet: false,
+            },
+            &[],
+        );
+        assert_eq!(
+            grounded["currentText"], "0.0 m",
+            "which is the reading two heads reported independently, and it is spelled here now rather than three times over"
+        );
     }
 
     #[test]
     fn a_target_gives_the_delta_to_send_and_the_sentence() {
-        let climb = altitude_view(&Fake { current: Some(25.0), feet: false }, &["68.5".to_string()]);
+        let climb = altitude_view(
+            &Fake {
+                current: Some(25.0),
+                feet: false,
+            },
+            &["68.5".to_string()],
+        );
         assert_eq!(climb["sends"], true);
         assert_eq!(climb["deltaMeters"], 43.5);
-        assert_eq!(climb["sentence"], "The aircraft will climb 43.5 m to 68.5 m.");
-        let descend = altitude_view(&Fake { current: Some(25.0), feet: false }, &["10".to_string()]);
-        assert_eq!(descend["sentence"], "The aircraft will descend 15.0 m to 10.0 m.");
+        assert_eq!(
+            climb["sentence"],
+            "The aircraft will climb 43.5 m to 68.5 m."
+        );
+        let descend = altitude_view(
+            &Fake {
+                current: Some(25.0),
+                feet: false,
+            },
+            &["10".to_string()],
+        );
+        assert_eq!(
+            descend["sentence"],
+            "The aircraft will descend 15.0 m to 10.0 m."
+        );
     }
 
     #[test]
     fn a_change_under_the_firmware_threshold_does_not_send_and_says_so() {
-        let same = altitude_view(&Fake { current: Some(25.0), feet: false }, &["25.005".to_string()]);
+        let same = altitude_view(
+            &Fake {
+                current: Some(25.0),
+                feet: false,
+            },
+            &["25.005".to_string()],
+        );
         assert_eq!(same["sends"], false);
-        assert_eq!(same["sentence"], "The aircraft is already at 25.0 m and will not move.");
-        let just = altitude_view(&Fake { current: Some(25.0), feet: false }, &["25.03".to_string()]);
+        assert_eq!(
+            same["sentence"],
+            "The aircraft is already at 25.0 m and will not move."
+        );
+        let just = altitude_view(
+            &Fake {
+                current: Some(25.0),
+                feet: false,
+            },
+            &["25.03".to_string()],
+        );
         assert_eq!(just["sends"], true);
-        let hold = altitude_view(&Fake { current: Some(25.0), feet: false }, &["25.0".to_string(), "pause".to_string()]);
-        assert_eq!((hold["sends"].clone(), hold["pause"].clone()), (json!(true), json!(true)));
-        assert_eq!(hold["sentence"], "The aircraft will stop and hold at 25.0 m.");
-        let stop_then_climb = altitude_view(&Fake { current: Some(25.0), feet: false }, &["30".to_string(), "pause".to_string()]);
-        assert_eq!(stop_then_climb["sentence"], "The aircraft will stop, then climb 5.0 m to 30.0 m.");
+        let hold = altitude_view(
+            &Fake {
+                current: Some(25.0),
+                feet: false,
+            },
+            &["25.0".to_string(), "pause".to_string()],
+        );
+        assert_eq!(
+            (hold["sends"].clone(), hold["pause"].clone()),
+            (json!(true), json!(true))
+        );
+        assert_eq!(
+            hold["sentence"],
+            "The aircraft will stop and hold at 25.0 m."
+        );
+        let stop_then_climb = altitude_view(
+            &Fake {
+                current: Some(25.0),
+                feet: false,
+            },
+            &["30".to_string(), "pause".to_string()],
+        );
+        assert_eq!(
+            stop_then_climb["sentence"],
+            "The aircraft will stop, then climb 5.0 m to 30.0 m."
+        );
         assert_eq!(same["pause"], false);
     }
 
     #[test]
     fn numbers_are_in_the_operators_unit_and_metres_ride_alongside() {
-        let feet = altitude_view(&Fake { current: Some(10.0), feet: true }, &["65.6168".to_string()]);
+        let feet = altitude_view(
+            &Fake {
+                current: Some(10.0),
+                feet: true,
+            },
+            &["65.6168".to_string()],
+        );
         assert_eq!(feet["unit"], "ft");
         assert!((feet["current"].as_f64().unwrap() - 32.8084).abs() < 1e-3);
         assert!((feet["targetMeters"].as_f64().unwrap() - 20.0).abs() < 1e-3);
         assert!((feet["deltaMeters"].as_f64().unwrap() - 10.0).abs() < 1e-3);
-        assert_eq!(feet["sentence"], "The aircraft will climb 32.8 ft to 65.6 ft.");
+        assert_eq!(
+            feet["sentence"],
+            "The aircraft will climb 32.8 ft to 65.6 ft."
+        );
     }
 
     #[test]
     fn without_a_vehicle_nothing_is_available() {
-        let view = altitude_view(&Fake { current: None, feet: false }, &["30".to_string()]);
+        let view = altitude_view(
+            &Fake {
+                current: None,
+                feet: false,
+            },
+            &["30".to_string()],
+        );
         assert_eq!(view["available"], false);
         assert_eq!(view["current"], Value::Null);
         assert!(view.get("sentence").is_none());

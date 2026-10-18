@@ -16,7 +16,15 @@ pub const SPEED: &str = "logReplay.speed";
 pub const SEEK: &str = "logReplay.seek";
 pub const CLOSE_REPLAY: &str = "logReplay.close";
 const SHOW_BAR: &str = "settings.flyViewSettings.showLogReplayStatusBar";
-const SPEEDS: [(&str, f64); 7] = [("0.1", 0.1), ("0.25", 0.25), ("0.5", 0.5), ("1x", 1.0), ("2x", 2.0), ("5x", 5.0), ("10x", 10.0)];
+const SPEEDS: [(&str, f64); 7] = [
+    ("0.1", 0.1),
+    ("0.25", 0.25),
+    ("0.5", 0.5),
+    ("1x", 1.0),
+    ("2x", 2.0),
+    ("5x", 5.0),
+    ("10x", 10.0),
+];
 const DEFAULT_SPEED_INDEX: usize = 3;
 const STEP: Duration = Duration::from_millis(5);
 const CLOSE_FIRST: &str = "You must close all connections prior to replaying a log.";
@@ -49,10 +57,14 @@ struct Controller {
     error: String,
 }
 
-static CONTROLLER: LazyLock<Mutex<Controller>> = LazyLock::new(|| Mutex::new(Controller::default()));
+static CONTROLLER: LazyLock<Mutex<Controller>> =
+    LazyLock::new(|| Mutex::new(Controller::default()));
 
 pub fn playing() -> bool {
-    lock().session.as_ref().is_some_and(|s| s.replay.is_playing())
+    lock()
+        .session
+        .as_ref()
+        .is_some_and(|s| s.replay.is_playing())
 }
 
 fn lock() -> MutexGuard<'static, Controller> {
@@ -64,8 +76,12 @@ pub struct ReplayLink {
 }
 
 impl ReplayLink {
-    pub fn open(file: &str, deliver: impl Fn(&[u8]) + Send + 'static) -> Result<ReplayLink, String> {
-        let bytes = crate::vfs::read(file).map_err(|e| format!("Unable to open log file: '{file}', error: {e}"))?;
+    pub fn open(
+        file: &str,
+        deliver: impl Fn(&[u8]) + Send + 'static,
+    ) -> Result<ReplayLink, String> {
+        let bytes = crate::vfs::read(file)
+            .map_err(|e| format!("Unable to open log file: '{file}', error: {e}"))?;
         let replay = Replay::from_tlog(&bytes, crate::hub::now_us());
         if replay.duration_us() == 0 {
             return Err(format!("The log file '{file}' is corrupt or empty."));
@@ -73,19 +89,33 @@ impl ReplayLink {
         let generation = {
             let mut controller = lock();
             controller.generation += 1;
-            let mut session = Session { generation: controller.generation, link: None, replay, speed_index: DEFAULT_SPEED_INDEX, playhead_s: 0, percent: 0.0 };
+            let mut session = Session {
+                generation: controller.generation,
+                link: None,
+                replay,
+                speed_index: DEFAULT_SPEED_INDEX,
+                playhead_s: 0,
+                percent: 0.0,
+            };
             session.replay.play(crate::hub::now_ms());
             controller.session = Some(session);
             controller.error.clear();
             controller.generation
         };
-        crate::background::poll("groundstation-log-replay", STEP, move || step(generation, &deliver)).map_err(|e| e.to_string())?;
+        crate::background::poll("groundstation-log-replay", STEP, move || {
+            step(generation, &deliver)
+        })
+        .map_err(|e| e.to_string())?;
         Ok(ReplayLink { generation })
     }
 
     pub fn close(&self) {
         let mut controller = lock();
-        if controller.session.as_ref().is_some_and(|s| s.generation == self.generation) {
+        if controller
+            .session
+            .as_ref()
+            .is_some_and(|s| s.generation == self.generation)
+        {
             controller.session = None;
         }
     }
@@ -94,7 +124,13 @@ impl ReplayLink {
 fn step(generation: u64, deliver: &impl Fn(&[u8])) -> bool {
     let batch = {
         let mut controller = lock();
-        let Some(session) = controller.session.as_mut().filter(|s| s.generation == generation) else { return true };
+        let Some(session) = controller
+            .session
+            .as_mut()
+            .filter(|s| s.generation == generation)
+        else {
+            return true;
+        };
         let now_ms = crate::hub::now_ms();
         match session.replay.is_playing() {
             true if session.replay.due_in_ms(now_ms) <= 0 => {
@@ -106,7 +142,10 @@ fn step(generation: u64, deliver: &impl Fn(&[u8])) -> bool {
             _ => None,
         }
     };
-    batch.iter().flat_map(|batch| batch.frames.iter()).for_each(|frame| deliver(frame));
+    batch
+        .iter()
+        .flat_map(|batch| batch.frames.iter())
+        .for_each(|frame| deliver(frame));
     false
 }
 
@@ -121,10 +160,20 @@ fn args(text: &str) -> Vec<Value> {
 }
 
 fn start(backend: &dyn Backend, path: &str) -> Value {
-    if flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable") {
+    if flag(
+        &backend.value_fields("vehicles", "activeVehicleAvailable"),
+        "activeVehicleAvailable",
+    ) {
         return json!({ "ok": false, "reason": CLOSE_FIRST });
     }
-    let config = LinkConfig { name: short_name(path), auto_connect: false, high_latency: false, kind: Kind::LogReplay { file: path.to_string() } };
+    let config = LinkConfig {
+        name: short_name(path),
+        auto_connect: false,
+        high_latency: false,
+        kind: Kind::LogReplay {
+            file: path.to_string(),
+        },
+    };
     match crate::linkhost::open(&crate::linkhost::TRANSPORTS, config, &[]) {
         Ok(link) => {
             bind_link(link);
@@ -176,7 +225,9 @@ pub fn run(backend: &dyn Backend, path: &str, text: &str) -> Value {
                 s.speed_index = index;
                 s.replay.set_speed(SPEEDS[index].1, now_ms);
             }),
-            None => json!({ "ok": false, "reason": "logReplay.speed takes one of the speed options" }),
+            None => {
+                json!({ "ok": false, "reason": "logReplay.speed takes one of the speed options" })
+            }
         },
         SEEK => match number {
             Some(percent) => with_session(&|s| {
@@ -196,7 +247,10 @@ pub fn owns(path: &str) -> bool {
 
 pub fn log_replay_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let shown = flag(&backend.value(SHOW_BAR), "value");
-    let vehicle = flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable");
+    let vehicle = flag(
+        &backend.value_fields("vehicles", "activeVehicleAvailable"),
+        "activeVehicleAvailable",
+    );
     let controller = lock();
     let session = controller.session.as_ref();
     json!({
@@ -226,7 +280,10 @@ mod tests {
         assert_eq!(hms(0), "00m:00s");
         assert_eq!(hms(75), "01m:15s");
         assert_eq!(hms(3725), "01h:02m:05s");
-        assert_eq!(short_name("/data/logs/2026-10-01 flight.tlog"), "2026-10-01 flight.tlog");
+        assert_eq!(
+            short_name("/data/logs/2026-10-01 flight.tlog"),
+            "2026-10-01 flight.tlog"
+        );
     }
 
     #[test]
@@ -236,8 +293,16 @@ mod tests {
             let _ = sent.send(bytes.len());
         })
         .unwrap();
-        assert!(received.recv_timeout(Duration::from_secs(5)).is_ok_and(|n| n > 0), "frames flow as soon as the log opens, as QGC plays on connect");
-        let view_state = lock().session.as_ref().map(|s| (s.replay.is_playing(), s.speed_index));
+        assert!(
+            received
+                .recv_timeout(Duration::from_secs(5))
+                .is_ok_and(|n| n > 0),
+            "frames flow as soon as the log opens, as QGC plays on connect"
+        );
+        let view_state = lock()
+            .session
+            .as_ref()
+            .map(|s| (s.replay.is_playing(), s.speed_index));
         assert_eq!(view_state, Some((true, DEFAULT_SPEED_INDEX)));
         link.close();
         assert!(lock().session.is_none());

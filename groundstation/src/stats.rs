@@ -21,7 +21,10 @@ mod tests {
     fn the_median_is_the_middle_value_whatever_the_order() {
         assert_eq!(median(&[40, 10, 30, 20, 50]), Some(30));
         assert_eq!(median(&[]), None);
-        assert_eq!((shown(Some(7)), shown(None)), ("7".to_string(), "none".to_string()));
+        assert_eq!(
+            (shown(Some(7)), shown(None)),
+            ("7".to_string(), "none".to_string())
+        );
         assert_eq!(percentile(&(1..=10).collect::<Vec<_>>(), 0.9), Some(10));
         assert_eq!(percentile(&[5], 0.9), Some(5));
         assert_eq!(percentile(&[], 0.9), None);

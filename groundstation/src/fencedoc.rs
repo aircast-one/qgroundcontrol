@@ -20,7 +20,11 @@ fn window(top_left: Point, bottom_right: Point) -> (Point, f64, f64) {
 }
 
 fn list(section: &Value, key: &str) -> Vec<Value> {
-    section.get(key).and_then(Value::as_array).cloned().unwrap_or_default()
+    section
+        .get(key)
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default()
 }
 
 fn with(section: &Value, key: &str, values: Vec<Value>) -> Value {
@@ -29,29 +33,70 @@ fn with(section: &Value, key: &str, values: Vec<Value>) -> Value {
     changed
 }
 
-fn replaced_at(values: &[Value], index: usize, change: impl FnOnce(&Value) -> Option<Value>) -> Option<Vec<Value>> {
+fn replaced_at(
+    values: &[Value],
+    index: usize,
+    change: impl FnOnce(&Value) -> Option<Value>,
+) -> Option<Vec<Value>> {
     let new = change(values.get(index)?)?;
-    Some(values.iter().enumerate().map(|(i, v)| if i == index { new.clone() } else { v.clone() }).collect())
+    Some(
+        values
+            .iter()
+            .enumerate()
+            .map(|(i, v)| if i == index { new.clone() } else { v.clone() })
+            .collect(),
+    )
 }
 
 fn without(values: &[Value], index: usize) -> Option<Vec<Value>> {
-    (index < values.len()).then(|| values.iter().enumerate().filter(|(i, _)| *i != index).map(|(_, v)| v.clone()).collect())
+    (index < values.len()).then(|| {
+        values
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i != index)
+            .map(|(_, v)| v.clone())
+            .collect()
+    })
 }
 
 pub fn add_polygon(fence: &Value, top_left: Point, bottom_right: Point) -> Value {
     let (centre, half_width, half_height) = window(top_left, bottom_right);
-    let (w, h) = ((half_width * INSET).min(LARGEST_HALF_METRES), (half_height * INSET).min(LARGEST_HALF_METRES));
-    let corner = |across: f64, up: f64| at_distance_and_azimuth(at_distance_and_azimuth(centre, w, across), h, up);
-    let vertices = [corner(-90.0, 0.0), corner(90.0, 0.0), corner(90.0, 180.0), corner(-90.0, 180.0)];
+    let (w, h) = (
+        (half_width * INSET).min(LARGEST_HALF_METRES),
+        (half_height * INSET).min(LARGEST_HALF_METRES),
+    );
+    let corner = |across: f64, up: f64| {
+        at_distance_and_azimuth(at_distance_and_azimuth(centre, w, across), h, up)
+    };
+    let vertices = [
+        corner(-90.0, 0.0),
+        corner(90.0, 0.0),
+        corner(90.0, 180.0),
+        corner(-90.0, 180.0),
+    ];
     let polygon = json!({ "inclusion": true, "polygon": vertices.iter().map(|(lat, lon)| json!([lat, lon])).collect::<Vec<_>>(), "version": 1 });
-    with(fence, "polygons", list(fence, "polygons").into_iter().chain(std::iter::once(polygon)).collect())
+    with(
+        fence,
+        "polygons",
+        list(fence, "polygons")
+            .into_iter()
+            .chain(std::iter::once(polygon))
+            .collect(),
+    )
 }
 
 pub fn add_circle(fence: &Value, top_left: Point, bottom_right: Point) -> Value {
     let (centre, half_width, half_height) = window(top_left, bottom_right);
     let radius = (half_width.min(half_height) * INSET).min(LARGEST_HALF_METRES);
     let circle = json!({ "inclusion": true, "circle": { "center": [centre.0, centre.1], "radius": radius }, "version": 1 });
-    with(fence, "circles", list(fence, "circles").into_iter().chain(std::iter::once(circle)).collect())
+    with(
+        fence,
+        "circles",
+        list(fence, "circles")
+            .into_iter()
+            .chain(std::iter::once(circle))
+            .collect(),
+    )
 }
 
 pub fn delete(fence: &Value, key: &str, index: usize) -> Option<Value> {
@@ -69,7 +114,9 @@ pub fn set_inclusion(fence: &Value, key: &str, index: usize, inclusion: bool) ->
 
 pub fn move_vertex(fence: &Value, polygon: usize, vertex: usize, at: Point) -> Option<Value> {
     replaced_at(&list(fence, "polygons"), polygon, |shape| {
-        let vertices = replaced_at(&list(shape, "polygon"), vertex, |_| Some(json!([at.0, at.1])))?;
+        let vertices = replaced_at(&list(shape, "polygon"), vertex, |_| {
+            Some(json!([at.0, at.1]))
+        })?;
         Some(with(shape, "polygon", vertices))
     })
     .map(|polygons| with(fence, "polygons", polygons))
@@ -84,7 +131,12 @@ pub fn remove_vertex(fence: &Value, polygon: usize, vertex: usize) -> Option<Val
     .map(|polygons| with(fence, "polygons", polygons))
 }
 
-pub fn set_circle(fence: &Value, index: usize, centre: Option<Point>, radius: Option<f64>) -> Option<Value> {
+pub fn set_circle(
+    fence: &Value,
+    index: usize,
+    centre: Option<Point>,
+    radius: Option<f64>,
+) -> Option<Value> {
     replaced_at(&list(fence, "circles"), index, |shape| {
         let mut changed = shape.clone();
         if let Some((lat, lon)) = centre {
@@ -113,7 +165,10 @@ pub fn clear_breach_return(fence: &Value) -> Value {
 }
 
 pub fn set_breach_altitude(fence: &Value, altitude: f64) -> Option<Value> {
-    let back = fence.get("breachReturn").and_then(Value::as_array).filter(|b| b.len() >= 2)?;
+    let back = fence
+        .get("breachReturn")
+        .and_then(Value::as_array)
+        .filter(|b| b.len() >= 2)?;
     let mut changed = fence.clone();
     changed["breachReturn"] = json!([back[0], back[1], altitude]);
     Some(changed)
@@ -121,8 +176,23 @@ pub fn set_breach_altitude(fence: &Value, altitude: f64) -> Option<Value> {
 
 pub fn add_rally(rally: &Value, at: Point, fixed_wing: bool, mission_altitude: f64) -> Value {
     let points = list(rally, "points");
-    let altitude = points.last().and_then(|last| last.get(2)).and_then(Value::as_f64).unwrap_or(if fixed_wing { mission_altitude } else { RALLY_DEFAULT_ALTITUDE });
-    with(rally, "points", points.into_iter().chain(std::iter::once(json!([at.0, at.1, altitude]))).collect())
+    let altitude = points
+        .last()
+        .and_then(|last| last.get(2))
+        .and_then(Value::as_f64)
+        .unwrap_or(if fixed_wing {
+            mission_altitude
+        } else {
+            RALLY_DEFAULT_ALTITUDE
+        });
+    with(
+        rally,
+        "points",
+        points
+            .into_iter()
+            .chain(std::iter::once(json!([at.0, at.1, altitude])))
+            .collect(),
+    )
 }
 
 pub fn remove_rally(rally: &Value, index: usize) -> Option<Value> {
@@ -145,8 +215,14 @@ mod tests {
     fn a_breach_return_point_is_set_raised_and_removed() {
         let fence = json!({ "version": 2, "polygons": [], "circles": [] });
         let set = set_breach_return(&fence, (47.4, 8.5), Some(30.0));
-        assert_eq!(set_breach_altitude(&set, 45.0).unwrap()["breachReturn"], json!([47.4, 8.5, 45.0]));
-        assert!(set_breach_altitude(&fence, 45.0).is_none(), "no point, no altitude to set");
+        assert_eq!(
+            set_breach_altitude(&set, 45.0).unwrap()["breachReturn"],
+            json!([47.4, 8.5, 45.0])
+        );
+        assert!(
+            set_breach_altitude(&fence, 45.0).is_none(),
+            "no point, no altitude to set"
+        );
         assert!(clear_breach_return(&set).get("breachReturn").is_none());
     }
 
@@ -159,8 +235,15 @@ mod tests {
         let fence = add_polygon(&empty_fence(), (-35.36, 149.16), (-35.37, 149.17));
         let vertices = fence["polygons"][0]["polygon"].as_array().unwrap().clone();
         let point = |v: &Value| (v[0].as_f64().unwrap(), v[1].as_f64().unwrap());
-        let (tl, tr, bl) = (point(&vertices[0]), point(&vertices[1]), point(&vertices[3]));
-        let (window_width, window_height) = (distance_between((-35.36, 149.16), (-35.36, 149.17)), distance_between((-35.36, 149.16), (-35.37, 149.16)));
+        let (tl, tr, bl) = (
+            point(&vertices[0]),
+            point(&vertices[1]),
+            point(&vertices[3]),
+        );
+        let (window_width, window_height) = (
+            distance_between((-35.36, 149.16), (-35.36, 149.17)),
+            distance_between((-35.36, 149.16), (-35.37, 149.16)),
+        );
         assert!((distance_between(tl, tr) / window_width - 0.75).abs() < 1e-3);
         assert!((distance_between(tl, bl) / window_height - 0.75).abs() < 1e-3);
         assert_eq!(fence["polygons"][0]["inclusion"], true);
@@ -185,8 +268,20 @@ mod tests {
         let rally = json!({ "points": [], "version": 2 });
         let copter = add_rally(&rally, (1.0, 2.0), false, 75.0);
         assert_eq!(copter["points"][0][2], 0.0);
-        assert_eq!(add_rally(&rally, (1.0, 2.0), true, 75.0)["points"][0][2], 75.0, "a plane's first rally point takes the mission altitude");
-        let second = add_rally(&move_rally(&copter, 0, (1.0, 2.0), Some(40.0)).unwrap(), (3.0, 4.0), false, 75.0);
-        assert_eq!(second["points"][1][2], 40.0, "a later point copies the one before");
+        assert_eq!(
+            add_rally(&rally, (1.0, 2.0), true, 75.0)["points"][0][2],
+            75.0,
+            "a plane's first rally point takes the mission altitude"
+        );
+        let second = add_rally(
+            &move_rally(&copter, 0, (1.0, 2.0), Some(40.0)).unwrap(),
+            (3.0, 4.0),
+            false,
+            75.0,
+        );
+        assert_eq!(
+            second["points"][1][2], 40.0,
+            "a later point copies the one before"
+        );
     }
 }

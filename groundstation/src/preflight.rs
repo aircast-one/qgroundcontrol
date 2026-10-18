@@ -72,7 +72,9 @@ impl Airframe {
             Airframe::MultiRotor => "Props mounted and secured?",
             Airframe::Rover => "Battery mounted and secured?",
             Airframe::Sub => "All seals in place?",
-            Airframe::Vtol | Airframe::FixedWing | Airframe::Generic => "Props mounted? Wings secured? Tail secured?",
+            Airframe::Vtol | Airframe::FixedWing | Airframe::Generic => {
+                "Props mounted? Wings secured? Tail secured?"
+            }
         }
     }
 
@@ -99,15 +101,23 @@ impl Airframe {
         match self {
             Airframe::Sub => None,
             Airframe::MultiRotor | Airframe::Rover => Some("OK for your platform?"),
-            Airframe::Vtol | Airframe::FixedWing | Airframe::Generic => Some("OK for your platform? Launching into the wind?"),
+            Airframe::Vtol | Airframe::FixedWing | Airframe::Generic => {
+                Some("OK for your platform? Launching into the wind?")
+            }
         }
     }
 
     fn area(self) -> Option<(&'static str, &'static str)> {
         match self {
             Airframe::Sub => None,
-            Airframe::Rover => Some(("Mission area", "Mission area and path free of obstacles/people?")),
-            _ => Some(("Flight area", "Launch area and path free of obstacles/people?")),
+            Airframe::Rover => Some((
+                "Mission area",
+                "Mission area and path free of obstacles/people?",
+            )),
+            _ => Some((
+                "Flight area",
+                "Launch area and path free of obstacles/people?",
+            )),
         }
     }
 }
@@ -123,16 +133,40 @@ pub struct Check {
 
 impl Check {
     fn manual(name: &'static str, prompt: &'static str) -> Check {
-        Check { name, prompt, verdict: "manual", reason: prompt.to_string(), blocked: false }
+        Check {
+            name,
+            prompt,
+            verdict: "manual",
+            reason: prompt.to_string(),
+            blocked: false,
+        }
     }
     fn passing(name: &'static str, prompt: &'static str) -> Check {
-        Check { name, prompt, verdict: "passing", reason: prompt.to_string(), blocked: false }
+        Check {
+            name,
+            prompt,
+            verdict: "passing",
+            reason: prompt.to_string(),
+            blocked: false,
+        }
     }
     fn failing(name: &'static str, prompt: &'static str, reason: String) -> Check {
-        Check { name, prompt, verdict: "failing", reason, blocked: true }
+        Check {
+            name,
+            prompt,
+            verdict: "failing",
+            reason,
+            blocked: true,
+        }
     }
     fn overridable(name: &'static str, prompt: &'static str, reason: String) -> Check {
-        Check { name, prompt, verdict: "overridable", reason, blocked: false }
+        Check {
+            name,
+            prompt,
+            verdict: "overridable",
+            reason,
+            blocked: false,
+        }
     }
 }
 
@@ -158,7 +192,11 @@ pub fn gps(lock: Option<i64>, satellites: Option<i64>) -> Check {
     match (lock, satellites.unwrap_or(0)) {
         (None, _) => Check::failing("GPS", PROMPT, "No vehicle is reporting a GPS.".to_string()),
         (Some(l), _) if l < 3 => Check::failing("GPS", PROMPT, "Waiting for 3D lock.".to_string()),
-        (Some(_), n) if n <= FAILURE_SATELLITES => Check::overridable("GPS", PROMPT, format!("Warning - Sat count below {}.", FAILURE_SATELLITES + 1)),
+        (Some(_), n) if n <= FAILURE_SATELLITES => Check::overridable(
+            "GPS",
+            PROMPT,
+            format!("Warning - Sat count below {}.", FAILURE_SATELLITES + 1),
+        ),
         _ => Check::passing("GPS", PROMPT),
     }
 }
@@ -166,8 +204,16 @@ pub fn gps(lock: Option<i64>, satellites: Option<i64>) -> Check {
 pub fn battery(percent: Option<f64>) -> Check {
     const PROMPT: &str = "Battery connector firmly plugged?";
     match percent {
-        None => Check::failing("Battery", PROMPT, "No vehicle is reporting a battery.".to_string()),
-        Some(p) if p < FAILURE_PERCENT => Check::failing("Battery", PROMPT, format!("Battery charge below {FAILURE_PERCENT:.0}%. Please recharge.")),
+        None => Check::failing(
+            "Battery",
+            PROMPT,
+            "No vehicle is reporting a battery.".to_string(),
+        ),
+        Some(p) if p < FAILURE_PERCENT => Check::failing(
+            "Battery",
+            PROMPT,
+            format!("Battery charge below {FAILURE_PERCENT:.0}%. Please recharge."),
+        ),
         Some(_) => Check::manual("Battery", PROMPT),
     }
 }
@@ -175,9 +221,21 @@ pub fn battery(percent: Option<f64>) -> Check {
 pub fn sensors(unhealthy_bits: Option<i64>) -> Check {
     const PROMPT: &str = "Every sensor the autopilot needs is healthy.";
     match unhealthy_bits.map(|b| b & SENSOR_MASK) {
-        None => Check::failing("Sensors", PROMPT, "No vehicle is reporting sensor health.".to_string()),
+        None => Check::failing(
+            "Sensors",
+            PROMPT,
+            "No vehicle is reporting sensor health.".to_string(),
+        ),
         Some(0) => Check::passing("Sensors", PROMPT),
-        Some(bits) => Check::failing("Sensors", PROMPT, SENSOR_FAILURES.iter().find(|(bit, _)| bits & bit != 0).map_or("Failure. Check console.", |(_, text)| text).to_string()),
+        Some(bits) => Check::failing(
+            "Sensors",
+            PROMPT,
+            SENSOR_FAILURES
+                .iter()
+                .find(|(bit, _)| bits & bit != 0)
+                .map_or("Failure. Check console.", |(_, text)| text)
+                .to_string(),
+        ),
     }
 }
 
@@ -211,7 +269,10 @@ pub fn groups(inputs: &Inputs) -> Vec<Group> {
                 Some(battery(inputs.battery_percent)),
                 Some(sensors(inputs.unhealthy_bits)),
                 Some(gps(inputs.lock, inputs.satellites)),
-                Some(Check::manual("Radio Control", "Receiving signal. Perform range test & confirm.")),
+                Some(Check::manual(
+                    "Radio Control",
+                    "Receiving signal. Perform range test & confirm.",
+                )),
             ]
             .into_iter()
             .flatten()
@@ -220,9 +281,22 @@ pub fn groups(inputs: &Inputs) -> Vec<Group> {
         Group {
             name: "Please arm the vehicle here",
             checks: [
-                airframe.checks_actuators().then(|| Check::manual("Actuators", "Move all control surfaces. Did they work properly?")),
-                airframe.checks_motors().then(|| Check::manual("Motors", "Propellers free? Then throttle up gently. Working properly?")),
-                Some(Check::manual("Mission", "Please confirm mission is valid (waypoints valid, no terrain collision).")),
+                airframe.checks_actuators().then(|| {
+                    Check::manual(
+                        "Actuators",
+                        "Move all control surfaces. Did they work properly?",
+                    )
+                }),
+                airframe.checks_motors().then(|| {
+                    Check::manual(
+                        "Motors",
+                        "Propellers free? Then throttle up gently. Working properly?",
+                    )
+                }),
+                Some(Check::manual(
+                    "Mission",
+                    "Please confirm mission is valid (waypoints valid, no terrain collision).",
+                )),
                 Some(sound(inputs.audio_muted, inputs.audio_volume)),
             ]
             .into_iter()
@@ -232,9 +306,16 @@ pub fn groups(inputs: &Inputs) -> Vec<Group> {
         Group {
             name: "Last preparations before launch",
             checks: [
-                Some(Check::manual("Payload", "Configured and started? Payload lid closed?")),
-                airframe.wind_prompt().map(|p| Check::manual("Wind & weather", p)),
-                airframe.area().map(|(name, prompt)| Check::manual(name, prompt)),
+                Some(Check::manual(
+                    "Payload",
+                    "Configured and started? Payload lid closed?",
+                )),
+                airframe
+                    .wind_prompt()
+                    .map(|p| Check::manual("Wind & weather", p)),
+                airframe
+                    .area()
+                    .map(|(name, prompt)| Check::manual(name, prompt)),
             ]
             .into_iter()
             .flatten()
@@ -247,7 +328,12 @@ pub fn preflight_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let inputs = read_inputs(backend);
     let groups = groups(&inputs);
     let total: usize = groups.iter().map(|g| g.checks.len()).sum();
-    let blocked: Vec<&str> = groups.iter().flat_map(|g| g.checks.iter()).filter(|c| c.blocked).map(|c| c.name).collect();
+    let blocked: Vec<&str> = groups
+        .iter()
+        .flat_map(|g| g.checks.iter())
+        .filter(|c| c.blocked)
+        .map(|c| c.name)
+        .collect();
     json!({
         "kind": "object",
         "class": "Preflight",
@@ -260,21 +346,39 @@ pub fn preflight_view(backend: &dyn Backend, _args: &[String]) -> Value {
 }
 
 fn offered(backend: &dyn Backend) -> bool {
-    crate::read::fact_flag(&backend.value_fields("settings.appSettings", "useChecklist"), "useChecklist")
+    crate::read::fact_flag(
+        &backend.value_fields("settings.appSettings", "useChecklist"),
+        "useChecklist",
+    )
 }
 
 fn read_inputs(backend: &dyn Backend) -> Inputs {
-    let vehicle = backend.value_fields("vehicle", "multiRotor,vtol,rover,sub,fixedWing,sensorsUnhealthyBits");
+    let vehicle = backend.value_fields(
+        "vehicle",
+        "multiRotor,vtol,rover,sub,fixedWing,sensorsUnhealthyBits",
+    );
     let gps_fact = |name: &str| value_number(&backend.value(&format!("vehicle.gps.{name}")));
     Inputs {
-        contact_lost: flag(&backend.value("vehicle.vehicleLinkManager.communicationLost"), "value"),
-        airframe: Airframe::of(flag(&vehicle, "multiRotor"), flag(&vehicle, "vtol"), flag(&vehicle, "rover"), flag(&vehicle, "sub"), flag(&vehicle, "fixedWing")),
+        contact_lost: flag(
+            &backend.value("vehicle.vehicleLinkManager.communicationLost"),
+            "value",
+        ),
+        airframe: Airframe::of(
+            flag(&vehicle, "multiRotor"),
+            flag(&vehicle, "vtol"),
+            flag(&vehicle, "rover"),
+            flag(&vehicle, "sub"),
+            flag(&vehicle, "fixedWing"),
+        ),
         lock: gps_fact("lock").map(|v| v as i64),
         satellites: gps_fact("count").map(|v| v as i64),
         battery_percent: value_number(&backend.value("vehicle.batteries.0.percentRemaining")),
         unhealthy_bits: integer(&vehicle, "sensorsUnhealthyBits"),
-        audio_muted: value_number(&backend.value("settings.appSettings.audioMuted.rawValue")).map(|v| v != 0.0).unwrap_or(false),
-        audio_volume: value_number(&backend.value("settings.appSettings.audioVolume.rawValue")).unwrap_or(100.0),
+        audio_muted: value_number(&backend.value("settings.appSettings.audioMuted.rawValue"))
+            .map(|v| v != 0.0)
+            .unwrap_or(false),
+        audio_volume: value_number(&backend.value("settings.appSettings.audioVolume.rawValue"))
+            .unwrap_or(100.0),
     }
 }
 
@@ -290,58 +394,156 @@ mod tests {
         assert_eq!(few.verdict, "overridable");
         assert_eq!(few.reason, "Warning - Sat count below 10.");
         assert!(!few.blocked);
-        assert_eq!(gps(Some(3), Some(9)).verdict, "overridable", "PreFlightGPSCheck fails a count at or below failureSatCount");
+        assert_eq!(
+            gps(Some(3), Some(9)).verdict,
+            "overridable",
+            "PreFlightGPSCheck fails a count at or below failureSatCount"
+        );
         assert_eq!(gps(Some(3), Some(10)).verdict, "passing");
     }
 
     #[test]
     fn battery_and_sensors_name_what_is_wrong() {
-        assert_eq!(battery(Some(35.0)).reason, "Battery charge below 40%. Please recharge.");
-        assert_eq!(battery(Some(40.0)).verdict, "manual", "PreFlightBatteryCheck has manualText, so a good charge still waits for the connector to be confirmed");
-        assert_eq!(sensors(Some(4 | 32)).reason, "Failure. Magnetometer issues. Check console.", "the first failure in PreFlightSensorsHealthCheck's order");
+        assert_eq!(
+            battery(Some(35.0)).reason,
+            "Battery charge below 40%. Please recharge."
+        );
+        assert_eq!(
+            battery(Some(40.0)).verdict,
+            "manual",
+            "PreFlightBatteryCheck has manualText, so a good charge still waits for the connector to be confirmed"
+        );
+        assert_eq!(
+            sensors(Some(4 | 32)).reason,
+            "Failure. Magnetometer issues. Check console.",
+            "the first failure in PreFlightSensorsHealthCheck's order"
+        );
         assert_eq!(sensors(Some(1 << 10)).verdict, "passing");
         assert_eq!(sensors(None).verdict, "failing");
     }
 
     #[test]
     fn the_groups_follow_the_airframe() {
-        let base = Inputs { airframe: Airframe::MultiRotor, contact_lost: false, lock: Some(3), satellites: Some(12), battery_percent: Some(90.0), unhealthy_bits: Some(0), audio_muted: false, audio_volume: 50.0 };
+        let base = Inputs {
+            airframe: Airframe::MultiRotor,
+            contact_lost: false,
+            lock: Some(3),
+            satellites: Some(12),
+            battery_percent: Some(90.0),
+            unhealthy_bits: Some(0),
+            audio_muted: false,
+            audio_volume: 50.0,
+        };
         let copter = groups(&base);
         assert_eq!(copter.len(), 3);
         assert_eq!(copter[0].checks[0].prompt, "Props mounted and secured?");
         assert!(copter[1].checks.iter().all(|c| c.name != "Actuators"));
-        let rover = groups(&Inputs { airframe: Airframe::Rover, ..base });
+        let rover = groups(&Inputs {
+            airframe: Airframe::Rover,
+            ..base
+        });
         assert!(rover[1].checks.iter().all(|c| c.name != "Motors"));
         assert_eq!(rover[2].checks.last().unwrap().name, "Mission area");
-        let sub = groups(&Inputs { airframe: Airframe::Sub, ..base });
+        let sub = groups(&Inputs {
+            airframe: Airframe::Sub,
+            ..base
+        });
         assert_eq!(sub[2].checks.len(), 1);
     }
 
     #[test]
     fn a_silent_vehicle_says_so_before_the_readings_it_makes_stale() {
-        let talking = Inputs { airframe: Airframe::MultiRotor, contact_lost: false, lock: Some(3), satellites: Some(12), battery_percent: Some(90.0), unhealthy_bits: Some(0), audio_muted: false, audio_volume: 50.0 };
-        assert!(groups(&talking)[0].checks.iter().all(|c| c.name != "Contact"), "a link that is up is the precondition for the list, not a line in it - a passing Contact row would be one more thing to read on every flight that is fine");
+        let talking = Inputs {
+            airframe: Airframe::MultiRotor,
+            contact_lost: false,
+            lock: Some(3),
+            satellites: Some(12),
+            battery_percent: Some(90.0),
+            unhealthy_bits: Some(0),
+            audio_muted: false,
+            audio_volume: 50.0,
+        };
+        assert!(
+            groups(&talking)[0]
+                .checks
+                .iter()
+                .all(|c| c.name != "Contact"),
+            "a link that is up is the precondition for the list, not a line in it - a passing Contact row would be one more thing to read on every flight that is fine"
+        );
 
-        let silent = groups(&Inputs { contact_lost: true, ..talking });
-        assert_eq!(silent[0].checks[0].name, "Contact", "it has to come first: every check under it is reading a figure the vehicle sent before it went quiet");
+        let silent = groups(&Inputs {
+            contact_lost: true,
+            ..talking
+        });
+        assert_eq!(
+            silent[0].checks[0].name, "Contact",
+            "it has to come first: every check under it is reading a figure the vehicle sent before it went quiet"
+        );
         assert!(silent[0].checks[0].blocked);
-        assert_eq!(silent[0].checks.iter().filter(|c| c.name == "Contact").count(), 1);
+        assert_eq!(
+            silent[0]
+                .checks
+                .iter()
+                .filter(|c| c.name == "Contact")
+                .count(),
+            1
+        );
         assert_eq!(
             silent[0].checks[1].name, "Hardware",
             "the rest of the group keeps its order and its content; the vehicle going quiet adds a check rather than replacing the ones whose inputs are now stale"
         );
-        assert_eq!(silent[0].checks[2].verdict, "manual", "battery still reads 90% because Vehicle latches its last value, which is exactly why Contact has to be the thing that says the number is old");
+        assert_eq!(
+            silent[0].checks[2].verdict, "manual",
+            "battery still reads 90% because Vehicle latches its last value, which is exactly why Contact has to be the thing that says the number is old"
+        );
     }
 
     #[test]
     fn a_muted_app_blocks_the_sound_check() {
-        let muted = Inputs { airframe: Airframe::Generic, contact_lost: false, lock: Some(3), satellites: Some(12), battery_percent: Some(90.0), unhealthy_bits: Some(0), audio_muted: true, audio_volume: 50.0 };
-        let sound = groups(&muted)[1].checks.iter().find(|c| c.name == "Sound output").unwrap().blocked;
+        let muted = Inputs {
+            airframe: Airframe::Generic,
+            contact_lost: false,
+            lock: Some(3),
+            satellites: Some(12),
+            battery_percent: Some(90.0),
+            unhealthy_bits: Some(0),
+            audio_muted: true,
+            audio_volume: 50.0,
+        };
+        let sound = groups(&muted)[1]
+            .checks
+            .iter()
+            .find(|c| c.name == "Sound output")
+            .unwrap()
+            .blocked;
         assert!(sound);
-        let silent = groups(&Inputs { audio_muted: false, audio_volume: 0.0, ..muted });
-        assert!(silent[1].checks.iter().find(|c| c.name == "Sound output").unwrap().blocked, "PreFlightSoundCheck fails at zero volume too");
-        let audible = groups(&Inputs { audio_muted: false, ..muted });
-        assert_eq!(audible[1].checks.iter().find(|c| c.name == "Sound output").unwrap().verdict, "manual");
+        let silent = groups(&Inputs {
+            audio_muted: false,
+            audio_volume: 0.0,
+            ..muted
+        });
+        assert!(
+            silent[1]
+                .checks
+                .iter()
+                .find(|c| c.name == "Sound output")
+                .unwrap()
+                .blocked,
+            "PreFlightSoundCheck fails at zero volume too"
+        );
+        let audible = groups(&Inputs {
+            audio_muted: false,
+            ..muted
+        });
+        assert_eq!(
+            audible[1]
+                .checks
+                .iter()
+                .find(|c| c.name == "Sound output")
+                .unwrap()
+                .verdict,
+            "manual"
+        );
     }
 
     #[test]
@@ -352,50 +554,95 @@ mod tests {
                 match path {
                     "vehicle.gps.lock" => json!({ "kind": "fact", "name": "lock", "value": 3 }),
                     "vehicle.gps.count" => json!({ "kind": "fact", "name": "count", "value": 12 }),
-                    "vehicle.batteries.0.percentRemaining" => json!({ "kind": "fact", "name": "percentRemaining", "value": 35.0 }),
+                    "vehicle.batteries.0.percentRemaining" => {
+                        json!({ "kind": "fact", "name": "percentRemaining", "value": 35.0 })
+                    }
                     _ => json!({ "kind": "value", "value": null }),
                 }
                 .to_string()
             }
-            fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "object", "multiRotor": true, "sensorsUnhealthyBits": 0 }).to_string() }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn get_fields(&self, _p: &str, _f: &str) -> String {
+                json!({ "kind": "object", "multiRotor": true, "sensorsUnhealthyBits": 0 })
+                    .to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
             fn watch(&self, _p: &[String]) {}
         }
         let inputs = read_inputs(&Fake);
-        assert_eq!((inputs.lock, inputs.satellites, inputs.battery_percent, inputs.airframe), (Some(3), Some(12), Some(35.0), Airframe::MultiRotor));
+        assert_eq!(
+            (
+                inputs.lock,
+                inputs.satellites,
+                inputs.battery_percent,
+                inputs.airframe
+            ),
+            (Some(3), Some(12), Some(35.0), Airframe::MultiRotor)
+        );
         struct Bare;
         impl Backend for Bare {
-            fn get(&self, _p: &str) -> String { json!({ "kind": "value", "value": null }).to_string() }
-            fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "null" }).to_string() }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn get(&self, _p: &str) -> String {
+                json!({ "kind": "value", "value": null }).to_string()
+            }
+            fn get_fields(&self, _p: &str, _f: &str) -> String {
+                json!({ "kind": "null" }).to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
             fn watch(&self, _p: &[String]) {}
         }
         let bare = read_inputs(&Bare);
-        assert_eq!((bare.lock, bare.satellites, bare.battery_percent), (None, None, None));
+        assert_eq!(
+            (bare.lock, bare.satellites, bare.battery_percent),
+            (None, None, None)
+        );
     }
 
     #[test]
-    fn the_checks_are_offered_when_the_operator_asked_for_them_and_not_when_a_head_cannot_draw_them() {
+    fn the_checks_are_offered_when_the_operator_asked_for_them_and_not_when_a_head_cannot_draw_them()
+     {
         struct Gate(bool);
         impl Backend for Gate {
-            fn get(&self, _p: &str) -> String { json!({ "kind": "value", "value": null }).to_string() }
+            fn get(&self, _p: &str) -> String {
+                json!({ "kind": "value", "value": null }).to_string()
+            }
             fn get_fields(&self, path: &str, _f: &str) -> String {
                 match path {
                     "settings.appSettings" => json!({ "kind": "object", "facts": [{ "name": "useChecklist", "value": self.0 }] }).to_string(),
                     _ => json!({ "kind": "object", "multiRotor": true }).to_string(),
                 }
             }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
             fn watch(&self, _p: &[String]) {}
         }
 
         assert_eq!(preflight_view(&Gate(true), &[])["offered"], true);
-        assert_eq!(preflight_view(&Gate(false), &[])["offered"], false, "an operator who turned the checklist off in Settings is still being offered it on every head that reads only the vehicle state");
+        assert_eq!(
+            preflight_view(&Gate(false), &[])["offered"],
+            false,
+            "an operator who turned the checklist off in Settings is still being offered it on every head that reads only the vehicle state"
+        );
 
-        let served = include_str!("preflight.rs").split("#[cfg(test)]").next().unwrap_or("");
-        assert!(!served.contains("preFlightChecklistUrl"), "QGC's own gate also requires corePlugin.options.preFlightChecklistUrl to be non-empty, and that is a statement about whether the QT head ships a checklist QML - a native head draws its own and can never load that qrc. Serving it here would let a build where one head cannot draw the checks disable a preference the operator never got to withdraw, on the same build where FlyViewSettings.qml hides the control they would withdraw it with");
+        let served = include_str!("preflight.rs")
+            .split("#[cfg(test)]")
+            .next()
+            .unwrap_or("");
+        assert!(
+            !served.contains("preFlightChecklistUrl"),
+            "QGC's own gate also requires corePlugin.options.preFlightChecklistUrl to be non-empty, and that is a statement about whether the QT head ships a checklist QML - a native head draws its own and can never load that qrc. Serving it here would let a build where one head cannot draw the checks disable a preference the operator never got to withdraw, on the same build where FlyViewSettings.qml hides the control they would withdraw it with"
+        );
     }
 }

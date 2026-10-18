@@ -161,48 +161,119 @@ fn entry(json: &Value) -> Option<Entry> {
     let build = Build::from_manifest(text("mav-firmware-version-type"))?;
     let format = text("format");
     let platform = text("platform");
-    if !matches!(format, "apj" | "px4") || (platform.contains("-heli") && vehicle != Vehicle::Heli) {
+    if !matches!(format, "apj" | "px4") || (platform.contains("-heli") && vehicle != Vehicle::Heli)
+    {
         return None;
     }
     let brand = text("brand_name");
     Some(Entry {
-        board_id: json.get("board_id").and_then(Value::as_u64).and_then(|id| u32::try_from(id).ok()).unwrap_or_default(),
+        board_id: json
+            .get("board_id")
+            .and_then(Value::as_u64)
+            .and_then(|id| u32::try_from(id).ok())
+            .unwrap_or_default(),
         build,
         vehicle,
         url: text("url").to_string(),
         chibios: format == "apj",
         fmuv2: platform.contains("fmuv2"),
-        bootloader_strings: json.get("bootloader_str").and_then(Value::as_array).map(|listed| listed.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default(),
-        name: format!("{} - {}", if brand.is_empty() { platform } else { brand }, text("mav-firmware-version")),
+        bootloader_strings: json
+            .get("bootloader_str")
+            .and_then(Value::as_array)
+            .map(|listed| {
+                listed
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .map(str::to_string)
+                    .collect()
+            })
+            .unwrap_or_default(),
+        name: format!(
+            "{} - {}",
+            if brand.is_empty() { platform } else { brand },
+            text("mav-firmware-version")
+        ),
     })
 }
 
 pub fn parse_manifest(text: &str) -> Result<Vec<Entry>, String> {
-    let json: Value = serde_json::from_str(text).map_err(|e| format!("The ArduPilot manifest is not JSON: {e}"))?;
-    Ok(json.get("firmware").and_then(Value::as_array).map(|listed| listed.iter().filter_map(entry).collect()).unwrap_or_default())
+    let json: Value = serde_json::from_str(text)
+        .map_err(|e| format!("The ArduPilot manifest is not JSON: {e}"))?;
+    Ok(json
+        .get("firmware")
+        .and_then(Value::as_array)
+        .map(|listed| listed.iter().filter_map(entry).collect())
+        .unwrap_or_default())
 }
 
-pub fn apm_url(entries: &[Entry], board_id: u32, build: Build, vehicle: Vehicle, chibios: bool, board_description: &str) -> Result<(Vec<(String, String)>, Option<usize>), String> {
-    let raw_board = if board_id == crate::bootloader::BOARD_ID_PX4_FMU_V3 { crate::bootloader::BOARD_ID_PX4_FMU_V2 } else { board_id };
+pub fn apm_url(
+    entries: &[Entry],
+    board_id: u32,
+    build: Build,
+    vehicle: Vehicle,
+    chibios: bool,
+    board_description: &str,
+) -> Result<(Vec<(String, String)>, Option<usize>), String> {
+    let raw_board = if board_id == crate::bootloader::BOARD_ID_PX4_FMU_V3 {
+        crate::bootloader::BOARD_ID_PX4_FMU_V2
+    } else {
+        board_id
+    };
     let fmuv3 = board_id == crate::bootloader::BOARD_ID_PX4_FMU_V3;
-    let matching: Vec<&Entry> = entries.iter().filter(|e| e.build == build && e.chibios == chibios && e.vehicle == vehicle && e.board_id == raw_board && !(e.fmuv2 && fmuv3)).collect();
-    let best = board_description.ends_with("-BL").then(|| matching.iter().position(|e| e.bootloader_strings.iter().any(|s| s == board_description))).flatten().or((matching.len() == 1).then_some(0));
+    let matching: Vec<&Entry> = entries
+        .iter()
+        .filter(|e| {
+            e.build == build
+                && e.chibios == chibios
+                && e.vehicle == vehicle
+                && e.board_id == raw_board
+                && !(e.fmuv2 && fmuv3)
+        })
+        .collect();
+    let best = board_description
+        .ends_with("-BL")
+        .then(|| {
+            matching
+                .iter()
+                .position(|e| e.bootloader_strings.iter().any(|s| s == board_description))
+        })
+        .flatten()
+        .or((matching.len() == 1).then_some(0));
     match matching.is_empty() {
         true => Err("No Firmware Available".to_string()),
-        false => Ok((matching.iter().map(|e| (e.name.clone(), e.url.clone())).collect(), best)),
+        false => Ok((
+            matching
+                .iter()
+                .map(|e| (e.name.clone(), e.url.clone()))
+                .collect(),
+            best,
+        )),
     }
 }
 
 #[cfg(not(target_family = "wasm"))]
 fn fetch(url: &str) -> Result<Vec<u8>, String> {
-    let request = ureq::get(url).config().timeout_connect(Some(std::time::Duration::from_secs(10))).timeout_recv_response(Some(std::time::Duration::from_secs(30))).timeout_recv_body(Some(std::time::Duration::from_secs(600))).build();
-    let mut response = request.call().map_err(|e| format!("Download of {url} failed: {e}"))?;
-    response.body_mut().with_config().limit(64 * 1024 * 1024).read_to_vec().map_err(|e| format!("Download of {url} failed: {e}"))
+    let request = ureq::get(url)
+        .config()
+        .timeout_connect(Some(std::time::Duration::from_secs(10)))
+        .timeout_recv_response(Some(std::time::Duration::from_secs(30)))
+        .timeout_recv_body(Some(std::time::Duration::from_secs(600)))
+        .build();
+    let mut response = request
+        .call()
+        .map_err(|e| format!("Download of {url} failed: {e}"))?;
+    response
+        .body_mut()
+        .with_config()
+        .limit(64 * 1024 * 1024)
+        .read_to_vec()
+        .map_err(|e| format!("Download of {url} failed: {e}"))
 }
 
 #[cfg(target_family = "wasm")]
 fn fetch(url: &str) -> Result<Vec<u8>, String> {
-    crate::http::get(url, &[], std::time::Duration::from_secs(600)).map_err(|e| format!("Download of {url} failed: {e}"))
+    crate::http::get(url, &[], std::time::Duration::from_secs(600))
+        .map_err(|e| format!("Download of {url} failed: {e}"))
 }
 
 pub fn download(url: &str) -> Result<Vec<u8>, String> {
@@ -211,7 +282,9 @@ pub fn download(url: &str) -> Result<Vec<u8>, String> {
 
 #[cfg(target_family = "wasm")]
 pub async fn download_later(url: &str) -> Result<Vec<u8>, String> {
-    let bytes = crate::http::get_later(url, &[], std::time::Duration::from_secs(600)).await.map_err(|e| format!("Download of {url} failed: {e}"))?;
+    let bytes = crate::http::get_later(url, &[], std::time::Duration::from_secs(600))
+        .await
+        .map_err(|e| format!("Download of {url} failed: {e}"))?;
     unpacked(url, bytes)
 }
 
@@ -219,7 +292,9 @@ fn unpacked(url: &str, bytes: Vec<u8>) -> Result<Vec<u8>, String> {
     match url.ends_with(".gz") {
         true => {
             let mut unpacked = Vec::new();
-            flate2::read::GzDecoder::new(bytes.as_slice()).read_to_end(&mut unpacked).map_err(|e| format!("{url} did not decompress: {e}"))?;
+            flate2::read::GzDecoder::new(bytes.as_slice())
+                .read_to_end(&mut unpacked)
+                .map_err(|e| format!("{url} did not decompress: {e}"))?;
             Ok(unpacked)
         }
         false => Ok(bytes),
@@ -243,29 +318,87 @@ mod tests {
     #[test]
     fn the_manifest_keeps_what_qts_filter_keeps() {
         let entries = parse_manifest(MANIFEST).unwrap();
-        assert_eq!(entries.iter().map(|e| e.url.as_str()).collect::<Vec<_>>(), ["https://f/copter-fmuv5.apj", "https://f/copter-cuav.apj", "https://f/plane-fmuv2.apj", "https://f/plane-nuttx.px4"], "pinned STABLE-x.y.z builds, hex images and a heli platform under another vehicle are dropped");
+        assert_eq!(
+            entries.iter().map(|e| e.url.as_str()).collect::<Vec<_>>(),
+            [
+                "https://f/copter-fmuv5.apj",
+                "https://f/copter-cuav.apj",
+                "https://f/plane-fmuv2.apj",
+                "https://f/plane-nuttx.px4"
+            ],
+            "pinned STABLE-x.y.z builds, hex images and a heli platform under another vehicle are dropped"
+        );
         assert_eq!(entries[1].name, "CUAVv5 - 4.6.2");
     }
 
     #[test]
     fn a_board_is_offered_every_fitting_build_with_the_bootloader_match_preselected() {
         let entries = parse_manifest(MANIFEST).unwrap();
-        let offered = |board: u32, build: Build, vehicle: Vehicle, chibios: bool, description: &str| {
-            apm_url(&entries, board, build, vehicle, chibios, description).map(|(listed, best)| (listed.into_iter().map(|(_, url)| url).collect::<Vec<_>>(), best))
-        };
-        let both = vec!["https://f/copter-fmuv5.apj".to_string(), "https://f/copter-cuav.apj".to_string()];
-        assert_eq!(offered(50, Build::Stable, Vehicle::Copter, true, "CUAVv5-BL"), Ok((both.clone(), Some(1))), "apmFirmwareNamesBestIndex is the bootloader string match");
-        assert_eq!(offered(50, Build::Stable, Vehicle::Copter, true, "PX4 BL FMU v5.x"), Ok((both, None)), "several builds and no bootloader match preselect nothing, as QGC's Choose board type placeholder");
-        assert_eq!(offered(9, Build::Beta, Vehicle::Plane, true, ""), Ok((vec!["https://f/plane-fmuv2.apj".to_string()], Some(0))), "a single fitting build is preselected and still shown with its version");
-        assert_eq!(offered(9, Build::Beta, Vehicle::Plane, false, ""), Ok((vec!["https://f/plane-nuttx.px4".to_string()], Some(0))), "the apmChibiOS setting at NuttX picks the .px4 build");
-        assert_eq!(offered(crate::bootloader::BOARD_ID_PX4_FMU_V3, Build::Beta, Vehicle::Plane, true, ""), Err("No Firmware Available".to_string()), "an fmuv2 build is never offered to an fmuv3 board");
+        let offered =
+            |board: u32, build: Build, vehicle: Vehicle, chibios: bool, description: &str| {
+                apm_url(&entries, board, build, vehicle, chibios, description).map(
+                    |(listed, best)| {
+                        (
+                            listed.into_iter().map(|(_, url)| url).collect::<Vec<_>>(),
+                            best,
+                        )
+                    },
+                )
+            };
+        let both = vec![
+            "https://f/copter-fmuv5.apj".to_string(),
+            "https://f/copter-cuav.apj".to_string(),
+        ];
+        assert_eq!(
+            offered(50, Build::Stable, Vehicle::Copter, true, "CUAVv5-BL"),
+            Ok((both.clone(), Some(1))),
+            "apmFirmwareNamesBestIndex is the bootloader string match"
+        );
+        assert_eq!(
+            offered(50, Build::Stable, Vehicle::Copter, true, "PX4 BL FMU v5.x"),
+            Ok((both, None)),
+            "several builds and no bootloader match preselect nothing, as QGC's Choose board type placeholder"
+        );
+        assert_eq!(
+            offered(9, Build::Beta, Vehicle::Plane, true, ""),
+            Ok((vec!["https://f/plane-fmuv2.apj".to_string()], Some(0))),
+            "a single fitting build is preselected and still shown with its version"
+        );
+        assert_eq!(
+            offered(9, Build::Beta, Vehicle::Plane, false, ""),
+            Ok((vec!["https://f/plane-nuttx.px4".to_string()], Some(0))),
+            "the apmChibiOS setting at NuttX picks the .px4 build"
+        );
+        assert_eq!(
+            offered(
+                crate::bootloader::BOARD_ID_PX4_FMU_V3,
+                Build::Beta,
+                Vehicle::Plane,
+                true,
+                ""
+            ),
+            Err("No Firmware Available".to_string()),
+            "an fmuv2 build is never offered to an fmuv3 board"
+        );
     }
 
     #[test]
     fn px4_files_are_named_from_the_bootloaders_board_id() {
-        assert_eq!(px4_url(50, Build::Stable).as_deref(), Some("http://px4-travis.s3.amazonaws.com/Firmware/stable/px4_fmu-v5_default.px4"));
-        assert_eq!(px4_url(140, Build::Beta).as_deref(), Some("http://px4-travis.s3.amazonaws.com/Firmware/beta/cubepilot_cubeorange_default.px4"));
+        assert_eq!(
+            px4_url(50, Build::Stable).as_deref(),
+            Some("http://px4-travis.s3.amazonaws.com/Firmware/stable/px4_fmu-v5_default.px4")
+        );
+        assert_eq!(
+            px4_url(140, Build::Beta).as_deref(),
+            Some(
+                "http://px4-travis.s3.amazonaws.com/Firmware/beta/cubepilot_cubeorange_default.px4"
+            )
+        );
         assert_eq!(px4_url(4242, Build::Stable), None);
-        assert_eq!(px4_url(50, Build::Developer).as_deref(), Some("http://px4-travis.s3.amazonaws.com/Firmware/master/px4_fmu-v5_default.px4"), "FirmwareUpgradeController files the developer build under master");
+        assert_eq!(
+            px4_url(50, Build::Developer).as_deref(),
+            Some("http://px4-travis.s3.amazonaws.com/Firmware/master/px4_fmu-v5_default.px4"),
+            "FirmwareUpgradeController files the developer build under master"
+        );
     }
 }

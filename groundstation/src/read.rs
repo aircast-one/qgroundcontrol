@@ -7,13 +7,21 @@ pub fn object(json: &str) -> Value {
 }
 
 pub fn switch_on(value: &Value) -> Option<bool> {
-    value.as_bool().or_else(|| value.as_f64().map(|number| number != 0.0))
+    value
+        .as_bool()
+        .or_else(|| value.as_f64().map(|number| number != 0.0))
 }
 
 pub fn user_slider(fact: &Value) -> Value {
-    let bound = |key: &str| fact.get(key).and_then(Value::as_f64).filter(|v| v.is_finite());
+    let bound = |key: &str| {
+        fact.get(key)
+            .and_then(Value::as_f64)
+            .filter(|v| v.is_finite())
+    };
     match (bound("userMin"), bound("userMax")) {
-        (Some(from), Some(to)) if to != from => json!({ "from": from, "to": to, "decimals": fact.get("decimalPlaces").and_then(Value::as_i64).unwrap_or(0) }),
+        (Some(from), Some(to)) if to != from => {
+            json!({ "from": from, "to": to, "decimals": fact.get("decimalPlaces").and_then(Value::as_i64).unwrap_or(0) })
+        }
         _ => Value::Null,
     }
 }
@@ -31,8 +39,15 @@ pub fn nested_coordinate_at(read: &Value, key: &str) -> Option<(f64, f64)> {
     if !flag(coordinate, "valid") {
         return None;
     }
-    let number = |key: &str| coordinate.get(key).and_then(Value::as_f64).filter(|v| v.is_finite());
-    number("latitude").zip(number("longitude")).filter(|(latitude, longitude)| *latitude != 0.0 || *longitude != 0.0)
+    let number = |key: &str| {
+        coordinate
+            .get(key)
+            .and_then(Value::as_f64)
+            .filter(|v| v.is_finite())
+    };
+    number("latitude")
+        .zip(number("longitude"))
+        .filter(|(latitude, longitude)| *latitude != 0.0 || *longitude != 0.0)
 }
 
 pub fn integer(object: &Value, key: &str) -> Option<i64> {
@@ -48,17 +63,30 @@ pub fn truthy(object: &Value, key: &str) -> bool {
 }
 
 pub fn enum_label(fact: &Value) -> String {
-    Some(text(fact, "enumStringValue")).filter(|label| !label.is_empty()).unwrap_or_else(|| text(fact, "enumOrValueString"))
+    Some(text(fact, "enumStringValue"))
+        .filter(|label| !label.is_empty())
+        .unwrap_or_else(|| text(fact, "enumOrValueString"))
 }
 
 pub fn text(object: &Value, key: &str) -> String {
-    object.get(key).and_then(Value::as_str).unwrap_or("").to_string()
+    object
+        .get(key)
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string()
 }
 
 pub fn metres(fact: &Value) -> Option<f64> {
-    matches!(text(fact, "rawUnits").as_str(), "m" | "meter" | "meters" | "vertical m")
-        .then(|| fact.get("rawValue").and_then(Value::as_f64).filter(|value| value.is_finite()))
-        .flatten()
+    matches!(
+        text(fact, "rawUnits").as_str(),
+        "m" | "meter" | "meters" | "vertical m"
+    )
+    .then(|| {
+        fact.get("rawValue")
+            .and_then(Value::as_f64)
+            .filter(|value| value.is_finite())
+    })
+    .flatten()
 }
 
 pub fn enum_labels(fact: &Value) -> Vec<String> {
@@ -95,7 +123,10 @@ pub fn value_number(read: &Value) -> Option<f64> {
 }
 
 pub fn value_string(read: &Value) -> String {
-    read.get("value").and_then(Value::as_str).unwrap_or("").to_string()
+    read.get("value")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string()
 }
 
 pub fn result_flag(json: &str) -> bool {
@@ -113,18 +144,28 @@ pub fn result_number(json: &str) -> Option<f64> {
 
 pub fn ok_result(json: &str) -> Option<Value> {
     let reply = object(json);
-    (reply.get("ok") == Some(&Value::Bool(true))).then(|| reply.get("result").cloned()).flatten()
+    (reply.get("ok") == Some(&Value::Bool(true)))
+        .then(|| reply.get("result").cloned())
+        .flatten()
 }
 
 pub fn fact_property<'a>(object: &'a Value, property: &str) -> Option<&'a Value> {
-    object.get("facts")?.as_array()?.iter().find(|fact| fact.get("property").and_then(Value::as_str) == Some(property))
+    object
+        .get("facts")?
+        .as_array()?
+        .iter()
+        .find(|fact| fact.get("property").and_then(Value::as_str) == Some(property))
 }
 
 pub fn fact_flag(object: &Value, name: &str) -> bool {
     object
         .get("facts")
         .and_then(Value::as_array)
-        .and_then(|facts| facts.iter().find(|f| f.get("name").and_then(Value::as_str) == Some(name)))
+        .and_then(|facts| {
+            facts
+                .iter()
+                .find(|f| f.get("name").and_then(Value::as_str) == Some(name))
+        })
         .and_then(|f| f.get("value"))
         .map(|v| v.as_bool().unwrap_or(v.as_i64().unwrap_or(0) != 0))
         .unwrap_or(false)
@@ -138,24 +179,47 @@ pub struct Unit {
 
 impl Unit {
     pub fn vertical(backend: &dyn Backend) -> Unit {
-        Unit::read(backend, "metersToAppSettingsVerticalDistanceUnits", "appSettingsVerticalDistanceUnitsString", "m")
+        Unit::read(
+            backend,
+            "metersToAppSettingsVerticalDistanceUnits",
+            "appSettingsVerticalDistanceUnitsString",
+            "m",
+        )
     }
 
     pub fn horizontal(backend: &dyn Backend) -> Unit {
-        Unit::read(backend, "metersToAppSettingsHorizontalDistanceUnits", "appSettingsHorizontalDistanceUnitsString", "m")
+        Unit::read(
+            backend,
+            "metersToAppSettingsHorizontalDistanceUnits",
+            "appSettingsHorizontalDistanceUnitsString",
+            "m",
+        )
     }
 
     pub fn area(backend: &dyn Backend) -> Unit {
-        Unit::read(backend, "squareMetersToAppSettingsAreaUnits", "appSettingsAreaUnitsString", "m\u{b2}")
+        Unit::read(
+            backend,
+            "squareMetersToAppSettingsAreaUnits",
+            "appSettingsAreaUnitsString",
+            "m\u{b2}",
+        )
     }
 
     pub fn speed(backend: &dyn Backend) -> Unit {
-        Unit::read(backend, "metersSecondToAppSettingsSpeedUnits", "appSettingsSpeedUnitsString", "m/s")
+        Unit::read(
+            backend,
+            "metersSecondToAppSettingsSpeedUnits",
+            "appSettingsSpeedUnitsString",
+            "m/s",
+        )
     }
 
     fn read(backend: &dyn Backend, conversion: &str, name_property: &str, fallback: &str) -> Unit {
-        let factor = result_number(&backend.invoke(&format!("units.{conversion}"), "[1.0]")).filter(|f| *f > 0.0).unwrap_or(1.0);
-        let name = backend.value_fields("units", name_property)
+        let factor = result_number(&backend.invoke(&format!("units.{conversion}"), "[1.0]"))
+            .filter(|f| *f > 0.0)
+            .unwrap_or(1.0);
+        let name = backend
+            .value_fields("units", name_property)
             .get(name_property)
             .and_then(Value::as_str)
             .filter(|u| !u.is_empty())
@@ -173,7 +237,11 @@ impl Unit {
     }
 
     pub fn label(&self, meters: f64) -> String {
-        format!("{} {}", settled(format!("{:.1}", self.show(meters))), self.name)
+        format!(
+            "{} {}",
+            settled(format!("{:.1}", self.show(meters))),
+            self.name
+        )
     }
 }
 
@@ -181,7 +249,11 @@ pub const WHOLE_NUMBER_FROM: f64 = 100.0;
 
 pub fn altitude_text(metres: f64, vertical: &Unit) -> String {
     let measure = format_measure(vertical.show(metres.abs()), &vertical.name);
-    let nothing = measure.split(' ').next().map(|number| number.chars().all(|c| c == '0' || c == '.')).unwrap_or(false);
+    let nothing = measure
+        .split(' ')
+        .next()
+        .map(|number| number.chars().all(|c| c == '0' || c == '.'))
+        .unwrap_or(false);
     let sign = if metres < 0.0 && !nothing { "-" } else { "" };
     format!("{sign}{measure}")
 }
@@ -189,11 +261,19 @@ pub fn altitude_text(metres: f64, vertical: &Unit) -> String {
 pub fn range_text(low: f64, high: f64, unit: &Unit) -> String {
     let (shown_low, shown_high) = (unit.show(low), unit.show(high));
     let whole = shown_low.abs().max(shown_high.abs()) >= WHOLE_NUMBER_FROM;
-    let spell = |value: f64| settled(match whole {
-        true => format!("{value:.0}"),
-        false => format!("{value:.1}"),
-    });
-    format!("{} {} to {} {}", spell(shown_low), unit.name, spell(shown_high), unit.name)
+    let spell = |value: f64| {
+        settled(match whole {
+            true => format!("{value:.0}"),
+            false => format!("{value:.1}"),
+        })
+    };
+    format!(
+        "{} {} to {} {}",
+        spell(shown_low),
+        unit.name,
+        spell(shown_high),
+        unit.name
+    )
 }
 
 pub fn refused(reason: &str) -> Value {
@@ -201,7 +281,10 @@ pub fn refused(reason: &str) -> Value {
 }
 
 pub fn settled(number: String) -> String {
-    match number.strip_prefix('-').filter(|rest| rest.chars().all(|c| c == '0' || c == '.')) {
+    match number
+        .strip_prefix('-')
+        .filter(|rest| rest.chars().all(|c| c == '0' || c == '.'))
+    {
         Some(rest) => rest.to_string(),
         None => number,
     }
@@ -210,12 +293,20 @@ pub fn settled(number: String) -> String {
 pub fn qml_fixed(value: f64, decimals: i32) -> String {
     let doubled = value * 2f64.powi(decimals + 1);
     let tie = doubled.fract() == 0.0 && doubled % 2.0 != 0.0;
-    let nudged = if tie { value + value.signum() * 0.5 * 10f64.powi(-decimals) } else { value + 0.0 };
+    let nudged = if tie {
+        value + value.signum() * 0.5 * 10f64.powi(-decimals)
+    } else {
+        value + 0.0
+    };
     format!("{nudged:.*}", decimals.max(0) as usize)
 }
 
 pub fn format_measure(value: f64, units: &str) -> String {
-    let number = settled(if value.abs() >= WHOLE_NUMBER_FROM { format!("{value:.0}") } else { format!("{value:.1}") });
+    let number = settled(if value.abs() >= WHOLE_NUMBER_FROM {
+        format!("{value:.0}")
+    } else {
+        format!("{value:.1}")
+    });
     format!("{number} {}", units.replace("^2", "\u{b2}"))
 }
 
@@ -226,21 +317,44 @@ mod measure_tests {
 
     #[test]
     fn a_range_and_a_signed_change_do_not_carry_a_minus_before_nothing() {
-        let metric = super::Unit { factor: 1.0, name: "m".to_string() };
-        assert_eq!(super::range_text(-0.04, 60.0, &metric), "0.0 m to 60.0 m", "a grounded vehicle a hair below launch made the climb control read -0.0 to 60.0 m on two heads and three drawing sites");
-        assert_eq!(super::range_text(-12.0, 60.0, &metric), "-12.0 m to 60.0 m", "a real low end keeps its sign");
+        let metric = super::Unit {
+            factor: 1.0,
+            name: "m".to_string(),
+        };
+        assert_eq!(
+            super::range_text(-0.04, 60.0, &metric),
+            "0.0 m to 60.0 m",
+            "a grounded vehicle a hair below launch made the climb control read -0.0 to 60.0 m on two heads and three drawing sites"
+        );
+        assert_eq!(
+            super::range_text(-12.0, 60.0, &metric),
+            "-12.0 m to 60.0 m",
+            "a real low end keeps its sign"
+        );
 
-        assert_eq!(super::altitude_text(-0.04, &metric), "0.0 m", "the sign was chosen from the raw value and pasted in front of a separately formatted magnitude, so settled() could not see it");
+        assert_eq!(
+            super::altitude_text(-0.04, &metric),
+            "0.0 m",
+            "the sign was chosen from the raw value and pasted in front of a separately formatted magnitude, so settled() could not see it"
+        );
         assert_eq!(super::altitude_text(-2.5, &metric), "-2.5 m");
         assert_eq!(super::altitude_text(2.5, &metric), "2.5 m");
     }
 
     #[test]
     fn qml_fixed_rounds_like_javascript_to_fixed() {
-        assert_eq!(super::qml_fixed(0.25, 1), "0.3", "an exact tie goes up like toFixed, not to even like Rust");
+        assert_eq!(
+            super::qml_fixed(0.25, 1),
+            "0.3",
+            "an exact tie goes up like toFixed, not to even like Rust"
+        );
         assert_eq!(super::qml_fixed(-0.25, 1), "-0.3");
         assert_eq!(super::qml_fixed(2.5, 0), "3");
-        assert_eq!(super::qml_fixed(1.15, 1), "1.1", "1.15 is stored just below the tie, and toFixed sees the stored value");
+        assert_eq!(
+            super::qml_fixed(1.15, 1),
+            "1.1",
+            "1.15 is stored just below the tie, and toFixed sees the stored value"
+        );
         assert_eq!(super::qml_fixed(-0.04, 1), "-0.0");
         assert_eq!(super::qml_fixed(-0.0, 1), "0.0");
         assert_eq!(super::qml_fixed(449.36, 1), "449.4");
@@ -248,18 +362,45 @@ mod measure_tests {
 
     #[test]
     fn a_guided_sentence_does_not_offer_to_hold_at_minus_nothing() {
-        let metric = super::Unit { factor: 1.0, name: "m".to_string() };
-        assert_eq!(metric.label(-0.04), "0.0 m", "the guided sentences read this back to the operator - a grounded vehicle would have been described as already at -0.0 m and not moving");
-        assert_eq!(metric.label(-1.5), "-1.5 m", "a real descent keeps its sign here too");
+        let metric = super::Unit {
+            factor: 1.0,
+            name: "m".to_string(),
+        };
+        assert_eq!(
+            metric.label(-0.04),
+            "0.0 m",
+            "the guided sentences read this back to the operator - a grounded vehicle would have been described as already at -0.0 m and not moving"
+        );
+        assert_eq!(
+            metric.label(-1.5),
+            "-1.5 m",
+            "a real descent keeps its sign here too"
+        );
     }
 
     #[test]
     fn a_vehicle_on_the_ground_does_not_read_as_below_its_launch_point() {
-        assert_eq!(super::format_measure(-0.04, "m"), "0.0 m", "a stationary vehicle reports a relative altitude a hair under zero and Rust rounds -0.04 to -0.0, which on an altimeter reads as the aircraft being below where it took off");
+        assert_eq!(
+            super::format_measure(-0.04, "m"),
+            "0.0 m",
+            "a stationary vehicle reports a relative altitude a hair under zero and Rust rounds -0.04 to -0.0, which on an altimeter reads as the aircraft being below where it took off"
+        );
         assert_eq!(super::format_measure(-0.004, "m"), "0.0 m");
-        assert_eq!(super::format_measure(-0.4, "m"), "-0.4 m", "a real descent keeps its sign");
-        assert_eq!(super::format_measure(-0.05, "m"), "-0.1 m", "and so does one that rounds to a tenth");
-        assert_eq!(super::format_measure(-120.0, "m"), "-120 m", "the whole-number threshold compared the signed value, so a depth of 120 metres carried a tenth that the same height above sea level does not");
+        assert_eq!(
+            super::format_measure(-0.4, "m"),
+            "-0.4 m",
+            "a real descent keeps its sign"
+        );
+        assert_eq!(
+            super::format_measure(-0.05, "m"),
+            "-0.1 m",
+            "and so does one that rounds to a tenth"
+        );
+        assert_eq!(
+            super::format_measure(-120.0, "m"),
+            "-120 m",
+            "the whole-number threshold compared the signed value, so a depth of 120 metres carried a tenth that the same height above sea level does not"
+        );
         assert_eq!(super::format_measure(0.04, "m"), "0.0 m");
     }
 
@@ -275,30 +416,62 @@ mod measure_tests {
     #[test]
     fn an_index_the_bridge_reports_before_it_appends_the_synthetic_label_is_not_served() {
         let unknown = json!({ "kind": "fact", "enumStrings": ["Manual", "Stabilize"], "enumIndex": 2, "valueString": "7" });
-        assert_eq!(enum_choice(&unknown), None, "factJson serialises enumStrings BEFORE enumIndex, and reading enumIndex is what appends the synthetic entry - so on the first read of an out-of-range value the same JSON carries two labels and an index of 2, and a head indexing by it reads off the end");
-        assert_eq!(shown_text(&unknown).as_deref(), Some("7"), "the value still has to travel; only the label is unavailable");
+        assert_eq!(
+            enum_choice(&unknown),
+            None,
+            "factJson serialises enumStrings BEFORE enumIndex, and reading enumIndex is what appends the synthetic entry - so on the first read of an out-of-range value the same JSON carries two labels and an index of 2, and a head indexing by it reads off the end"
+        );
+        assert_eq!(
+            shown_text(&unknown).as_deref(),
+            Some("7"),
+            "the value still has to travel; only the label is unavailable"
+        );
 
         let settled = json!({ "kind": "fact", "enumStrings": ["Manual", "Stabilize", "Unknown: 7"], "enumIndex": 2, "unknownEnumLabel": "Unknown: 7", "valueString": "7" });
-        assert_eq!(enum_labels(&settled), vec!["Manual", "Stabilize"], "the synthetic entry is Fact's own placeholder, not a mode anyone can pick");
-        assert_eq!(enum_choice(&settled), None, "once the synthetic entry is filtered out the index addresses nothing, which is the same answer as before Fact appended it");
+        assert_eq!(
+            enum_labels(&settled),
+            vec!["Manual", "Stabilize"],
+            "the synthetic entry is Fact's own placeholder, not a mode anyone can pick"
+        );
+        assert_eq!(
+            enum_choice(&settled),
+            None,
+            "once the synthetic entry is filtered out the index addresses nothing, which is the same answer as before Fact appended it"
+        );
     }
 
     #[test]
     fn a_plain_number_is_told_apart_from_an_enum_with_no_labels_yet() {
         let plain = json!({ "kind": "fact", "value": 12.0, "valueString": "12", "enumOrValueString": "12", "enumIndex": -1 });
         assert_eq!(enum_labels(&plain), Vec::<String>::new());
-        assert_eq!(enum_choice(&plain), None, "Fact::enumIndex answers -1 for anything with no enumValues");
+        assert_eq!(
+            enum_choice(&plain),
+            None,
+            "Fact::enumIndex answers -1 for anything with no enumValues"
+        );
         assert_eq!(shown_text(&plain).as_deref(), Some("12"));
 
         let chosen = json!({ "kind": "fact", "enumStrings": ["No change", "Take photo"], "enumValues": [0, 6], "enumIndex": 1, "valueString": "6", "enumOrValueString": "Take photo" });
         assert_eq!(enum_choice(&chosen), Some(1));
-        assert_eq!(shown_text(&chosen).as_deref(), Some("Take photo"), "enumValues here are 0,6,... so valueString is the raw 6 and indexing the label list by it would name a different action entirely");
+        assert_eq!(
+            shown_text(&chosen).as_deref(),
+            Some("Take photo"),
+            "enumValues here are 0,6,... so valueString is the raw 6 and indexing the label list by it would name a different action entirely"
+        );
 
         let outside = json!({ "kind": "fact", "enumStrings": ["Manual", "Stabilize", "Unknown: 7"], "enumValues": [0, 1, 7], "enumIndex": 2, "unknownEnumLabel": "Unknown: 7", "valueString": "7", "enumOrValueString": "Unknown: 7" });
-        assert_eq!(shown_text(&outside).as_deref(), Some("7"), "enumStringValue appends the placeholder and then returns it, so enumOrValueString IS the placeholder for a value outside the declared set - control.rs falls back to valueString there and these must not spell the same fact two ways");
+        assert_eq!(
+            shown_text(&outside).as_deref(),
+            Some("7"),
+            "enumStringValue appends the placeholder and then returns it, so enumOrValueString IS the placeholder for a value outside the declared set - control.rs falls back to valueString there and these must not spell the same fact two ways"
+        );
 
         let unlabelled = json!({ "kind": "fact", "valueString": "", "enumOrValueString": "" });
-        assert_eq!(shown_text(&unlabelled), None, "a fact with no metadata answers empty to both, which is not the string \"\"");
+        assert_eq!(
+            shown_text(&unlabelled),
+            None,
+            "a fact with no metadata answers empty to both, which is not the string \"\""
+        );
     }
 }
 
@@ -309,6 +482,15 @@ mod tests {
 
     #[test]
     fn an_enum_setting_reads_as_a_switch_by_its_number() {
-        assert_eq!((switch_on(&json!(1)), switch_on(&json!(0)), switch_on(&json!(true)), switch_on(&json!("x"))), (Some(true), Some(false), Some(true), None), "RTK useFixedBasePosition is a uint8 enum, so 1 is Fixed");
+        assert_eq!(
+            (
+                switch_on(&json!(1)),
+                switch_on(&json!(0)),
+                switch_on(&json!(true)),
+                switch_on(&json!("x"))
+            ),
+            (Some(true), Some(false), Some(true), None),
+            "RTK useFixedBasePosition is a uint8 enum, so 1 is Fixed"
+        );
     }
 }

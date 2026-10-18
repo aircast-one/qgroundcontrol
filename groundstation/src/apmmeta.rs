@@ -6,7 +6,11 @@ use crate::factmeta::{EnumEntry, MetaData, ValueType};
 pub const DEFAULT_GROUP: &str = "Misc";
 
 pub fn group_from_name(name: &str) -> String {
-    name.split('_').next().unwrap_or("").trim_end_matches(|c: char| c.is_ascii_digit()).to_string()
+    name.split('_')
+        .next()
+        .unwrap_or("")
+        .trim_end_matches(|c: char| c.is_ascii_digit())
+        .to_string()
 }
 
 include!(concat!(env!("OUT_DIR"), "/apm_parameter_files.rs"));
@@ -18,17 +22,44 @@ pub struct JsonParameters {
 
 pub fn parse_json(text: &str) -> Result<JsonParameters, String> {
     let root: Value = serde_json::from_str(text).map_err(|e| format!("not JSON: {e}"))?;
-    let groups = root.as_object().ok_or("the parameter file is not an object")?;
+    let groups = root
+        .as_object()
+        .ok_or("the parameter file is not an object")?;
     let by_name: BTreeMap<String, (String, serde_json::Map<String, Value>)> = groups
         .values()
         .filter_map(Value::as_object)
-        .flat_map(|params| params.iter().filter_map(|(name, fields)| Some((name.clone(), (group_from_name(name), fields.as_object()?.clone())))))
+        .flat_map(|params| {
+            params.iter().filter_map(|(name, fields)| {
+                Some((
+                    name.clone(),
+                    (group_from_name(name), fields.as_object()?.clone()),
+                ))
+            })
+        })
         .collect();
-    let members = by_name.values().fold(BTreeMap::<String, usize>::new(), |mut counts, (group, _)| {
-        *counts.entry(group.clone()).or_default() += 1;
-        counts
-    });
-    let by_name = by_name.into_iter().map(|(name, (group, fields))| (name, (if members.get(&group) == Some(&1) { DEFAULT_GROUP.to_string() } else { group }, fields))).collect();
+    let members = by_name.values().fold(
+        BTreeMap::<String, usize>::new(),
+        |mut counts, (group, _)| {
+            *counts.entry(group.clone()).or_default() += 1;
+            counts
+        },
+    );
+    let by_name = by_name
+        .into_iter()
+        .map(|(name, (group, fields))| {
+            (
+                name,
+                (
+                    if members.get(&group) == Some(&1) {
+                        DEFAULT_GROUP.to_string()
+                    } else {
+                        group
+                    },
+                    fields,
+                ),
+            )
+        })
+        .collect();
     Ok(JsonParameters { by_name })
 }
 
@@ -44,21 +75,34 @@ pub fn vehicle_file_name(mav_type: u8) -> Option<&'static str> {
 
 fn embedded(vehicle: &str, major: i64, minor: i64) -> Option<(&'static str, &'static [u8])> {
     let wanted = format!("{vehicle}-{major}.{minor}");
-    APM_PARAMETER_FILES.iter().find(|(name, _)| *name == wanted).copied()
+    APM_PARAMETER_FILES
+        .iter()
+        .find(|(name, _)| *name == wanted)
+        .copied()
 }
 
 pub fn file_for(vehicle: &str, major: i64, minor: i64) -> Option<(&'static str, &'static [u8])> {
-    let newest = std::iter::successors(Some((major, minor)), |&(major, minor)| Some(if minor - 1 == 0 { (major - 1, 10) } else { (major, minor - 1) }))
-        .take_while(|&(major, minor)| major >= 4 && minor > 0)
-        .find_map(|(major, minor)| embedded(vehicle, major, minor));
+    let newest = std::iter::successors(Some((major, minor)), |&(major, minor)| {
+        Some(if minor - 1 == 0 {
+            (major - 1, 10)
+        } else {
+            (major, minor - 1)
+        })
+    })
+    .take_while(|&(major, minor)| major >= 4 && minor > 0)
+    .find_map(|(major, minor)| embedded(vehicle, major, minor));
     newest.or_else(|| (0..10).find_map(|minor| embedded(vehicle, 4, minor)))
 }
 
-static LOADED: std::sync::LazyLock<std::sync::Mutex<BTreeMap<&'static str, std::sync::Arc<JsonParameters>>>> = std::sync::LazyLock::new(Default::default);
+static LOADED: std::sync::LazyLock<
+    std::sync::Mutex<BTreeMap<&'static str, std::sync::Arc<JsonParameters>>>,
+> = std::sync::LazyLock::new(Default::default);
 
 pub fn load(vehicle: &str, major: i64, minor: i64) -> Option<std::sync::Arc<JsonParameters>> {
     let (name, gz) = file_for(vehicle, major, minor)?;
-    let mut loaded = LOADED.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut loaded = LOADED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     if let Some(found) = loaded.get(name) {
         return Some(found.clone());
     }
@@ -71,7 +115,12 @@ pub fn load(vehicle: &str, major: i64, minor: i64) -> Option<std::sync::Arc<Json
 
 fn raw_converted(value_type: ValueType, text: &str) -> Option<Value> {
     let text = text.trim();
-    let whole = |low: f64, high: f64| text.parse::<i64>().ok().filter(|v| (low..=high).contains(&(*v as f64))).map(Value::from);
+    let whole = |low: f64, high: f64| {
+        text.parse::<i64>()
+            .ok()
+            .filter(|v| (low..=high).contains(&(*v as f64)))
+            .map(Value::from)
+    };
     match value_type {
         ValueType::Uint8 => whole(0.0, f64::from(u8::MAX)),
         ValueType::Int8 => whole(f64::from(i8::MIN), f64::from(i8::MAX)),
@@ -80,8 +129,16 @@ fn raw_converted(value_type: ValueType, text: &str) -> Option<Value> {
         ValueType::Uint32 => whole(0.0, f64::from(u32::MAX)),
         ValueType::Int32 => whole(f64::from(i32::MIN), f64::from(i32::MAX)),
         ValueType::Uint64 | ValueType::Int64 => text.parse::<i64>().ok().map(Value::from),
-        ValueType::Float => text.parse::<f64>().ok().filter(|v| v.is_finite() && v.abs() <= f64::from(f32::MAX)).map(|v| Value::from(f64::from(v as f32))),
-        _ => text.parse::<f64>().ok().filter(|v| v.is_finite()).map(Value::from),
+        ValueType::Float => text
+            .parse::<f64>()
+            .ok()
+            .filter(|v| v.is_finite() && v.abs() <= f64::from(f32::MAX))
+            .map(|v| Value::from(f64::from(v as f32))),
+        _ => text
+            .parse::<f64>()
+            .ok()
+            .filter(|v| v.is_finite())
+            .map(Value::from),
     }
 }
 
@@ -95,17 +152,34 @@ fn width(value_type: ValueType) -> u32 {
 }
 
 fn sorted_pairs(object: &serde_json::Map<String, Value>) -> Vec<(String, String)> {
-    let mut keyed: Vec<(f64, String, String)> = object.iter().filter_map(|(key, label)| Some((key.parse::<f64>().ok()?, key.clone(), label.as_str().unwrap_or("").to_string()))).collect();
+    let mut keyed: Vec<(f64, String, String)> = object
+        .iter()
+        .filter_map(|(key, label)| {
+            Some((
+                key.parse::<f64>().ok()?,
+                key.clone(),
+                label.as_str().unwrap_or("").to_string(),
+            ))
+        })
+        .collect();
     keyed.sort_by(|a, b| a.0.total_cmp(&b.0));
-    keyed.into_iter().map(|(_, key, label)| (key, label)).collect()
+    keyed
+        .into_iter()
+        .map(|(_, key, label)| (key, label))
+        .collect()
 }
 
 fn json_flag(value: &Value) -> bool {
-    value.as_bool().unwrap_or_else(|| value.as_str().is_some_and(|text| text.eq_ignore_ascii_case("true")))
+    value.as_bool().unwrap_or_else(|| {
+        value
+            .as_str()
+            .is_some_and(|text| text.eq_ignore_ascii_case("true"))
+    })
 }
 
 pub fn json_metadata(parameters: &JsonParameters, name: &str, value_type: ValueType) -> MetaData {
-    let gain = (name.ends_with("_P") || name.ends_with("_I") || name.ends_with("_D")) && matches!(value_type, ValueType::Float | ValueType::Double);
+    let gain = (name.ends_with("_P") || name.ends_with("_I") || name.ends_with("_D"))
+        && matches!(value_type, ValueType::Float | ValueType::Double);
     let bare = MetaData {
         bits: Vec::new(),
         name: name.to_string(),
@@ -132,10 +206,23 @@ pub fn json_metadata(parameters: &JsonParameters, name: &str, value_type: ValueT
         group: Some(group_from_name(name)),
         category: Some("Advanced".to_string()),
     };
-    let Some((group, fields)) = parameters.by_name.get(name) else { return bare };
-    let text = |key: &str| fields.get(key).and_then(Value::as_str).filter(|t| !t.is_empty()).map(str::to_string);
+    let Some((group, fields)) = parameters.by_name.get(name) else {
+        return bare;
+    };
+    let text = |key: &str| {
+        fields
+            .get(key)
+            .and_then(Value::as_str)
+            .filter(|t| !t.is_empty())
+            .map(str::to_string)
+    };
     let range = fields.get("Range").and_then(Value::as_object);
-    let bound = |key: &str| range.and_then(|r| r.get(key)).and_then(Value::as_str).and_then(|t| raw_converted(value_type, t));
+    let bound = |key: &str| {
+        range
+            .and_then(|r| r.get(key))
+            .and_then(Value::as_str)
+            .and_then(|t| raw_converted(value_type, t))
+    };
     let enums = fields
         .get("Values")
         .and_then(Value::as_object)
@@ -144,7 +231,9 @@ pub fn json_metadata(parameters: &JsonParameters, name: &str, value_type: ValueT
         .into_iter()
         .filter_map(|(code, label)| {
             let signed = match (value_type, code.parse::<i64>()) {
-                (ValueType::Int8, Ok(unsigned)) if (128..=255).contains(&unsigned) => (unsigned - 256).to_string(),
+                (ValueType::Int8, Ok(unsigned)) if (128..=255).contains(&unsigned) => {
+                    (unsigned - 256).to_string()
+                }
                 _ => code,
             };
             raw_converted(value_type, &signed).map(|value| EnumEntry { label, value })
@@ -195,19 +284,54 @@ mod tests {
     #[test]
     fn the_metadata_file_is_the_newest_at_or_below_the_firmware_then_the_oldest() {
         assert_eq!(file_for("Copter", 4, 5).map(|(n, _)| n), Some("Copter-4.5"));
-        let newest = APM_PARAMETER_FILES.iter().filter(|(n, _)| n.starts_with("Copter-4.")).map(|(n, _)| *n).max_by_key(|n| n["Copter-4.".len()..].parse::<u32>().unwrap_or(0)).unwrap();
-        assert_eq!(file_for("Copter", 4, 10).map(|(n, _)| n), Some(newest), "a firmware newer than any file takes the newest one below it");
-        let oldest = (0..10).find_map(|minor| APM_PARAMETER_FILES.iter().find(|(n, _)| *n == format!("Copter-4.{minor}"))).map(|(n, _)| *n);
-        assert_eq!(file_for("Copter", -1, -1).map(|(n, _)| n), oldest, "an unknown firmware falls back to the oldest 4.x");
+        let newest = APM_PARAMETER_FILES
+            .iter()
+            .filter(|(n, _)| n.starts_with("Copter-4."))
+            .map(|(n, _)| *n)
+            .max_by_key(|n| n["Copter-4.".len()..].parse::<u32>().unwrap_or(0))
+            .unwrap();
+        assert_eq!(
+            file_for("Copter", 4, 10).map(|(n, _)| n),
+            Some(newest),
+            "a firmware newer than any file takes the newest one below it"
+        );
+        let oldest = (0..10)
+            .find_map(|minor| {
+                APM_PARAMETER_FILES
+                    .iter()
+                    .find(|(n, _)| *n == format!("Copter-4.{minor}"))
+            })
+            .map(|(n, _)| *n);
+        assert_eq!(
+            file_for("Copter", -1, -1).map(|(n, _)| n),
+            oldest,
+            "an unknown firmware falls back to the oldest 4.x"
+        );
     }
 
     #[test]
     fn a_copter_flight_mode_reads_its_enum_from_the_json_file() {
         let parameters = load("Copter", 4, 5).unwrap();
         let mode = json_metadata(&parameters, "FLTMODE1", ValueType::Int8);
-        assert_eq!((mode.short_description.as_str(), mode.enums.first().map(|e| e.label.as_str()), mode.enums.len()), ("Flight Mode 1", Some("Stabilize"), 25));
+        assert_eq!(
+            (
+                mode.short_description.as_str(),
+                mode.enums.first().map(|e| e.label.as_str()),
+                mode.enums.len()
+            ),
+            ("Flight Mode 1", Some("Stabilize"), 25)
+        );
         let checks = json_metadata(&parameters, "ARMING_CHECK", ValueType::Int32);
-        assert!(checks.enums.is_empty() && checks.bits.len() > 10 && checks.bits[0].value == Value::from(1));
-        assert_eq!(json_metadata(&parameters, "NOT_A_PARAM", ValueType::Float).category.as_deref(), Some("Advanced"));
+        assert!(
+            checks.enums.is_empty()
+                && checks.bits.len() > 10
+                && checks.bits[0].value == Value::from(1)
+        );
+        assert_eq!(
+            json_metadata(&parameters, "NOT_A_PARAM", ValueType::Float)
+                .category
+                .as_deref(),
+            Some("Advanced")
+        );
     }
 }

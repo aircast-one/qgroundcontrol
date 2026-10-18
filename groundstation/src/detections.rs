@@ -5,7 +5,11 @@ use std::time::Duration;
 
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["video.cameraUrls", "settings.appSettings.detectionsHttpPort.rawValue", "video.activeVideoSource"];
+pub const DEPS: &[&str] = &[
+    "video.cameraUrls",
+    "settings.appSettings.detectionsHttpPort.rawValue",
+    "video.activeVideoSource",
+];
 pub const STALE_MS: u64 = 1000;
 const RETRY: Duration = Duration::from_secs(1);
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
@@ -25,7 +29,10 @@ pub struct Source {
 
 impl Source {
     fn base(&self) -> String {
-        let authority = self.port.map(|p| format!("{}:{p}", self.host)).unwrap_or_else(|| self.host.clone());
+        let authority = self
+            .port
+            .map(|p| format!("{}:{p}", self.host))
+            .unwrap_or_else(|| self.host.clone());
         format!("http://{authority}/api/streams/{}", self.camera)
     }
 
@@ -70,7 +77,11 @@ pub fn parse(url: &str, port: Option<u16>) -> Option<Source> {
         [.., before, last] if matches!(*last, "whep" | "whip") => before,
         [.., last] => last,
     };
-    Some(Source { host, camera: camera.to_string(), port })
+    Some(Source {
+        host,
+        camera: camera.to_string(),
+        port,
+    })
 }
 
 pub fn frame_from(payload: &Value, received_ms: u64) -> Frame {
@@ -94,11 +105,16 @@ pub fn frame_from(payload: &Value, received_ms: u64) -> Frame {
                 .collect()
         })
         .unwrap_or_default();
-    Frame { boxes, track: payload.get("track").cloned().unwrap_or(Value::Null), received_ms }
+    Frame {
+        boxes,
+        track: payload.get("track").cloned().unwrap_or(Value::Null),
+        received_ms,
+    }
 }
 
 pub fn event_payload(line: &str) -> Option<Value> {
-    line.strip_prefix("data:").and_then(|data| serde_json::from_str(data.trim()).ok())
+    line.strip_prefix("data:")
+        .and_then(|data| serde_json::from_str(data.trim()).ok())
 }
 
 impl Feed {
@@ -125,7 +141,10 @@ impl Feed {
     }
 
     pub fn went_stale(&mut self, now_ms: u64) -> bool {
-        let stale = self.frame.as_ref().is_some_and(|f| now_ms.saturating_sub(f.received_ms) > STALE_MS);
+        let stale = self
+            .frame
+            .as_ref()
+            .is_some_and(|f| now_ms.saturating_sub(f.received_ms) > STALE_MS);
         let first = stale && !self.stale_announced;
         self.stale_announced = self.stale_announced || first;
         first
@@ -140,11 +159,17 @@ impl Feed {
     }
 
     pub fn fresh_boxes(&self, now_ms: u64) -> Option<(Vec<Value>, u64)> {
-        self.frame.as_ref().filter(|f| now_ms.saturating_sub(f.received_ms) <= STALE_MS).map(|f| (f.boxes.clone(), f.received_ms))
+        self.frame
+            .as_ref()
+            .filter(|f| now_ms.saturating_sub(f.received_ms) <= STALE_MS)
+            .map(|f| (f.boxes.clone(), f.received_ms))
     }
 
     pub fn tracker(&self, now_ms: u64) -> Option<(Source, Option<Value>)> {
-        let frame = self.frame.as_ref().filter(|f| now_ms.saturating_sub(f.received_ms) <= STALE_MS)?;
+        let frame = self
+            .frame
+            .as_ref()
+            .filter(|f| now_ms.saturating_sub(f.received_ms) <= STALE_MS)?;
         let target = frame
             .boxes
             .iter()
@@ -154,7 +179,10 @@ impl Feed {
     }
 
     pub fn snapshot(&self, now_ms: u64) -> Value {
-        let age_ms = self.frame.as_ref().map(|f| now_ms.saturating_sub(f.received_ms));
+        let age_ms = self
+            .frame
+            .as_ref()
+            .map(|f| now_ms.saturating_sub(f.received_ms));
         let stale = age_ms.is_none_or(|age| age > STALE_MS);
         json!({
             "kind": "object",
@@ -172,7 +200,10 @@ impl Feed {
 }
 
 fn changed() {
-    let hook = ON_CHANGE.lock().unwrap_or_else(PoisonError::into_inner).clone();
+    let hook = ON_CHANGE
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone();
     if let Some(hook) = hook {
         hook();
     }
@@ -182,15 +213,16 @@ fn changed() {
 fn follow(source: Source, generation: u64) {
     wasm_bindgen_futures::spawn_local(async move {
         while lock().generation == generation {
-            let followed = crate::http::stream_lines(&source.stream_url(), MAX_EVENT_BYTES, |line| {
-                if let Some(payload) = event_payload(line)
-                    && lock().receive(generation, frame_from(&payload, crate::hub::now_ms()))
-                {
-                    changed();
-                }
-                lock().generation == generation
-            })
-            .await;
+            let followed =
+                crate::http::stream_lines(&source.stream_url(), MAX_EVENT_BYTES, |line| {
+                    if let Some(payload) = event_payload(line)
+                        && lock().receive(generation, frame_from(&payload, crate::hub::now_ms()))
+                    {
+                        changed();
+                    }
+                    lock().generation == generation
+                })
+                .await;
             if let Err(error) = followed
                 && lock().fail(generation, error)
             {
@@ -203,22 +235,30 @@ fn follow(source: Source, generation: u64) {
 
 #[cfg(not(target_family = "wasm"))]
 fn follow(source: Source, generation: u64) {
-    let agent: ureq::Agent = ureq::Agent::config_builder().timeout_connect(Some(CONNECT_TIMEOUT)).timeout_recv_body(Some(SILENCE_TIMEOUT)).build().into();
+    let agent: ureq::Agent = ureq::Agent::config_builder()
+        .timeout_connect(Some(CONNECT_TIMEOUT))
+        .timeout_recv_body(Some(SILENCE_TIMEOUT))
+        .build()
+        .into();
     while lock().generation == generation {
-        let outcome: Result<usize, String> = agent.get(source.stream_url()).call().map_err(|e| e.to_string()).map(|response| {
-            BufReader::new(response.into_body().into_reader())
-                .lines()
-                .map_while(Result::ok)
-                .take_while(|_| lock().generation == generation)
-                .filter_map(|line| event_payload(&line))
-                .map(|payload| {
-                    let frame = frame_from(&payload, crate::hub::now_ms());
-                    if lock().receive(generation, frame) {
-                        changed();
-                    }
-                })
-                .count()
-        });
+        let outcome: Result<usize, String> = agent
+            .get(source.stream_url())
+            .call()
+            .map_err(|e| e.to_string())
+            .map(|response| {
+                BufReader::new(response.into_body().into_reader())
+                    .lines()
+                    .map_while(Result::ok)
+                    .take_while(|_| lock().generation == generation)
+                    .filter_map(|line| event_payload(&line))
+                    .map(|payload| {
+                        let frame = frame_from(&payload, crate::hub::now_ms());
+                        if lock().receive(generation, frame) {
+                            changed();
+                        }
+                    })
+                    .count()
+            });
         match outcome {
             Ok(frames) if frames > 0 => {}
             Ok(_) => std::thread::sleep(RETRY),
@@ -233,17 +273,30 @@ fn follow(source: Source, generation: u64) {
 }
 
 pub fn detections_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let port = crate::read::value_number(&backend.value(DEPS[1])).filter(|p| *p > 0.0 && *p <= 65535.0).map(|p| p as u16);
+    let port = crate::read::value_number(&backend.value(DEPS[1]))
+        .filter(|p| *p > 0.0 && *p <= 65535.0)
+        .map(|p| p as u16);
     let video = backend.value_fields("video", "activeVideoSource,cameraUrls");
-    let active = crate::read::integer(&video, "activeVideoSource").and_then(|index| usize::try_from(index).ok()).unwrap_or(0);
-    let url = video.get("cameraUrls").and_then(Value::as_array).and_then(|urls| urls.get(active)).and_then(Value::as_str).unwrap_or_default().to_string();
+    let active = crate::read::integer(&video, "activeVideoSource")
+        .and_then(|index| usize::try_from(index).ok())
+        .unwrap_or(0);
+    let url = video
+        .get("cameraUrls")
+        .and_then(Value::as_array)
+        .and_then(|urls| urls.get(active))
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
     let source = parse(&url, port).filter(|_| follows());
     let mut feed = lock();
     if feed.retarget(source.clone())
         && let Some(source) = source
     {
         let generation = feed.generation;
-        crate::background::spawn("groundstation-detections", move || follow(source, generation)).expect("detections thread");
+        crate::background::spawn("groundstation-detections", move || {
+            follow(source, generation)
+        })
+        .expect("detections thread");
     }
     feed.snapshot(crate::hub::now_ms())
 }
@@ -254,26 +307,66 @@ mod tests {
 
     #[test]
     fn the_rtsp_url_names_the_host_and_the_camera_as_the_qml_overlay_did() {
-        let source = |host: &str, camera: &str| Some(Source { host: host.into(), camera: camera.into(), port: None });
-        assert_eq!(parse("rtsp://10.0.0.5:8554/front", None), source("10.0.0.5", "front"));
-        assert_eq!(parse("rtsp://user:pw@drone.local:8554/cams/rear/whep?x=1", None), source("drone.local", "rear"));
-        assert_eq!(parse("rtsp://drone.local/whep", None), source("drone.local", "whep"));
-        assert_eq!(parse("rtsp://cam:pw@cam/whep", None), source("cam", "whep"), "the host text inside the credentials does not confuse the path");
-        assert_eq!(parse("rtsp://[::1]:8554/front", None), source("[::1]", "front"));
+        let source = |host: &str, camera: &str| {
+            Some(Source {
+                host: host.into(),
+                camera: camera.into(),
+                port: None,
+            })
+        };
+        assert_eq!(
+            parse("rtsp://10.0.0.5:8554/front", None),
+            source("10.0.0.5", "front")
+        );
+        assert_eq!(
+            parse("rtsp://user:pw@drone.local:8554/cams/rear/whep?x=1", None),
+            source("drone.local", "rear")
+        );
+        assert_eq!(
+            parse("rtsp://drone.local/whep", None),
+            source("drone.local", "whep")
+        );
+        assert_eq!(
+            parse("rtsp://cam:pw@cam/whep", None),
+            source("cam", "whep"),
+            "the host text inside the credentials does not confuse the path"
+        );
+        assert_eq!(
+            parse("rtsp://[::1]:8554/front", None),
+            source("[::1]", "front")
+        );
         assert_eq!(parse("rtsp://drone.local:8554/", None), None);
         assert_eq!(parse("not a url", None), None);
         assert!(parse("", None).is_none());
-        assert_eq!(parse("rtsp://10.0.0.5:8554/front", None).unwrap().stream_url(), "http://10.0.0.5/api/streams/front/detections/stream");
-        assert_eq!(parse("rtsp://10.0.0.5:8554/front", Some(8080)).unwrap().stream_url(), "http://10.0.0.5:8080/api/streams/front/detections/stream", "a rig can serve the stream on an unprivileged port");
+        assert_eq!(
+            parse("rtsp://10.0.0.5:8554/front", None)
+                .unwrap()
+                .stream_url(),
+            "http://10.0.0.5/api/streams/front/detections/stream"
+        );
+        assert_eq!(
+            parse("rtsp://10.0.0.5:8554/front", Some(8080))
+                .unwrap()
+                .stream_url(),
+            "http://10.0.0.5:8080/api/streams/front/detections/stream",
+            "a rig can serve the stream on an unprivileged port"
+        );
     }
 
     #[test]
     fn a_box_the_detector_put_no_score_on_says_so_rather_than_saying_zero() {
         let mut feed = Feed::default();
         let generation = feed.generation;
-        let unscored = event_payload(r#"data: {"boxes":[{"label":"car","x":0.1,"y":0.2,"w":0.3,"h":0.4}],"ageMs":0}"#).unwrap();
+        let unscored = event_payload(
+            r#"data: {"boxes":[{"label":"car","x":0.1,"y":0.2,"w":0.3,"h":0.4}],"ageMs":0}"#,
+        )
+        .unwrap();
         assert!(feed.receive(generation, frame_from(&unscored, 1_000)));
-        assert_eq!(feed.snapshot(1_100)["boxes"][0]["confidence"], Value::Null, "this was served as 0.0, which draws \"car 0%\" and asserts the detector reported no confidence - a measurement it never made, and a low-confidence box then looks exactly like an unscored one");
+        assert_eq!(
+            feed.snapshot(1_100)["boxes"][0]["confidence"],
+            Value::Null,
+            "this was served as 0.0, which draws \"car 0%\" and asserts the detector reported no confidence - a measurement it never made, and a low-confidence box then looks exactly like an unscored one"
+        );
     }
 
     #[test]
@@ -281,8 +374,14 @@ mod tests {
         let mut feed = Feed::default();
         assert_eq!(feed.snapshot(0)["available"], false);
         assert!(feed.retarget(parse("rtsp://h:8554/cam", None)));
-        assert!(!feed.retarget(parse("rtsp://h:8554/cam", None)), "the same source does not restart the stream");
-        assert!(feed.retarget(parse("rtsp://h:8554/cam", Some(8080))), "a changed port is a new source");
+        assert!(
+            !feed.retarget(parse("rtsp://h:8554/cam", None)),
+            "the same source does not restart the stream"
+        );
+        assert!(
+            feed.retarget(parse("rtsp://h:8554/cam", Some(8080))),
+            "a changed port is a new source"
+        );
         let generation = feed.generation;
         let payload = event_payload(r#"data: {"boxes":[{"label":"car","conf":0.91,"x":0.1,"y":0.2,"w":0.3,"h":0.4,"target":true}],"ageMs":0}"#).unwrap();
         assert!(event_payload(": keepalive").is_none());
@@ -290,17 +389,32 @@ mod tests {
         let fresh = feed.snapshot(5_500);
         assert_eq!(fresh["stale"], false);
         assert_eq!(fresh["ageMs"], 500);
-        assert_eq!(fresh["boxes"][0], json!({ "x": 0.1, "y": 0.2, "w": 0.3, "h": 0.4, "label": "car", "confidence": 0.91, "target": true }));
+        assert_eq!(
+            fresh["boxes"][0],
+            json!({ "x": 0.1, "y": 0.2, "w": 0.3, "h": 0.4, "label": "car", "confidence": 0.91, "target": true })
+        );
 
         assert!(!feed.went_stale(5_500));
         let old = feed.snapshot(6_001);
-        assert_eq!((old["stale"].clone(), old["boxes"].as_array().unwrap().len()), (json!(true), 0));
-        assert!(feed.went_stale(6_001), "the first tick past a second announces the blank");
+        assert_eq!(
+            (old["stale"].clone(), old["boxes"].as_array().unwrap().len()),
+            (json!(true), 0)
+        );
+        assert!(
+            feed.went_stale(6_001),
+            "the first tick past a second announces the blank"
+        );
         assert!(!feed.went_stale(6_100), "and only the first");
-        assert!(!feed.receive(generation - 1, frame_from(&payload, 7_000)), "a frame from a superseded stream is dropped");
+        assert!(
+            !feed.receive(generation - 1, frame_from(&payload, 7_000)),
+            "a frame from a superseded stream is dropped"
+        );
         assert!(feed.fail(generation, "connection refused".into()));
         assert_eq!(feed.snapshot(7_000)["error"], "connection refused");
         assert!(feed.retarget(None));
-        assert_eq!(feed.snapshot(7_000), json!({ "kind": "object", "class": "Detections", "available": false, "host": null, "camera": null, "stale": true, "ageMs": null, "boxes": [], "track": null, "error": null }));
+        assert_eq!(
+            feed.snapshot(7_000),
+            json!({ "kind": "object", "class": "Detections", "available": false, "host": null, "camera": null, "stale": true, "ageMs": null, "boxes": [], "track": null, "error": null })
+        );
     }
 }

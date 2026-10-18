@@ -30,7 +30,11 @@ pub struct Simple {
 #[derive(Debug, Clone, PartialEq)]
 pub enum Item {
     Simple(Simple),
-    Complex { kind: String, json: Value, item_count: usize },
+    Complex {
+        kind: String,
+        json: Value,
+        item_count: usize,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -68,28 +72,75 @@ pub fn vehicle_class(vehicle_type: i64) -> VehicleClass {
 }
 
 fn validate_plan(root: &Value) -> Result<(), String> {
-    crate::qtjson::validate_keys(root, &[("groundStation", "String", true), ("fileType", "String", true), ("version", "Double", true)])?;
+    crate::qtjson::validate_keys(
+        root,
+        &[
+            ("groundStation", "String", true),
+            ("fileType", "String", true),
+            ("version", "Double", true),
+        ],
+    )?;
     let file_type = root["fileType"].as_str().unwrap_or("");
     if file_type != "Plan" {
-        return Err(format!("Incorrect file type key expected:Plan actual:{file_type}"));
+        return Err(format!(
+            "Incorrect file type key expected:Plan actual:{file_type}"
+        ));
     }
     let version = crate::qtjson::to_int(&root["version"], 0);
     match version {
         v if v < 1 => return Err(format!("File version {v} is no longer supported")),
-        v if v > 1 => return Err(format!("File version {v} is newer than current supported version 1")),
+        v if v > 1 => {
+            return Err(format!(
+                "File version {v} is newer than current supported version 1"
+            ));
+        }
         _ => {}
     }
-    crate::qtjson::validate_keys(root, &[("mission", "Object", true), ("geoFence", "Object", true), ("rallyPoints", "Object", true)])?;
-    crate::qtjson::validate_keys(&root["mission"], &[("plannedHomePosition", "Array", true), ("items", "Array", true), ("firmwareType", "Double", true), ("vehicleType", "Double", false), ("cruiseSpeed", "Double", false), ("hoverSpeed", "Double", false), ("globalPlanAltitudeMode", "Double", false)])
-        .map_err(|e| format!("Mission: {e}"))
+    crate::qtjson::validate_keys(
+        root,
+        &[
+            ("mission", "Object", true),
+            ("geoFence", "Object", true),
+            ("rallyPoints", "Object", true),
+        ],
+    )?;
+    crate::qtjson::validate_keys(
+        &root["mission"],
+        &[
+            ("plannedHomePosition", "Array", true),
+            ("items", "Array", true),
+            ("firmwareType", "Double", true),
+            ("vehicleType", "Double", false),
+            ("cruiseSpeed", "Double", false),
+            ("hoverSpeed", "Double", false),
+            ("globalPlanAltitudeMode", "Double", false),
+        ],
+    )
+    .map_err(|e| format!("Mission: {e}"))
 }
 
 fn validate_fence_and_rally(root: &Value) -> Result<(), String> {
-    validate_section(&root["geoFence"], FENCE_VERSION, &[("circles", "Array", true), ("polygons", "Array", true), ("breachReturn", "Array", false)], "GeoFence supports version", true)?;
+    validate_section(
+        &root["geoFence"],
+        FENCE_VERSION,
+        &[
+            ("circles", "Array", true),
+            ("polygons", "Array", true),
+            ("breachReturn", "Array", false),
+        ],
+        "GeoFence supports version",
+        true,
+    )?;
     if is_current(&root["geoFence"], FENCE_VERSION) {
         validate_fence(&root["geoFence"])?;
     }
-    validate_section(&root["rallyPoints"], RALLY_VERSION, &[("points", "Array", true)], "Rally Points supports version", false)?;
+    validate_section(
+        &root["rallyPoints"],
+        RALLY_VERSION,
+        &[("points", "Array", true)],
+        "Rally Points supports version",
+        false,
+    )?;
     if is_current(&root["rallyPoints"], RALLY_VERSION) {
         coordinates(&root["rallyPoints"]["points"], true).map_err(|e| format!("Rally: {e}"))?;
     }
@@ -97,38 +148,63 @@ fn validate_fence_and_rally(root: &Value) -> Result<(), String> {
 }
 
 fn is_current(section: &Value, version: i64) -> bool {
-    section.get("version").map(|v| i64::from(crate::qtjson::to_int(v, 0))) == Some(version)
+    section
+        .get("version")
+        .map(|v| i64::from(crate::qtjson::to_int(v, 0)))
+        == Some(version)
 }
 
 fn validate_fence(fence: &Value) -> Result<(), String> {
     let listed = |key: &str| fence[key].as_array().map(Vec::as_slice).unwrap_or_default();
     listed("polygons").iter().try_for_each(|polygon| {
         fence_shape(polygon, "Polygon")?;
-        polygon.get("polygon").ok_or_else(|| "The following required keys are missing: polygon".to_string()).and_then(|path| coordinates(path, false))
+        polygon
+            .get("polygon")
+            .ok_or_else(|| "The following required keys are missing: polygon".to_string())
+            .and_then(|path| coordinates(path, false))
     })?;
     listed("circles").iter().try_for_each(|circle| {
         fence_shape(circle, "Circle")?;
         crate::qtjson::validate_keys(circle, &[("circle", "Object", true)])?;
-        crate::qtjson::validate_keys(&circle["circle"], &[("center", "Array", true), ("radius", "Double", true)])?;
+        crate::qtjson::validate_keys(
+            &circle["circle"],
+            &[("center", "Array", true), ("radius", "Double", true)],
+        )?;
         coordinate(&circle["circle"]["center"], false)
     })?;
-    fence.get("breachReturn").map_or(Ok(()), |point| coordinate(point, true))
+    fence
+        .get("breachReturn")
+        .map_or(Ok(()), |point| coordinate(point, true))
 }
 
 fn fence_shape(shape: &Value, kind: &str) -> Result<(), String> {
     if !shape.is_object() {
-        return Err(format!("GeoFence {} not stored as object", kind.to_lowercase()));
+        return Err(format!(
+            "GeoFence {} not stored as object",
+            kind.to_lowercase()
+        ));
     }
-    crate::qtjson::validate_keys(shape, &[("version", "Double", true), ("inclusion", "Bool", true)])?;
-    is_current(shape, 1).then_some(()).ok_or_else(|| format!("GeoFence {kind} only supports version 1"))
+    crate::qtjson::validate_keys(
+        shape,
+        &[("version", "Double", true), ("inclusion", "Bool", true)],
+    )?;
+    is_current(shape, 1)
+        .then_some(())
+        .ok_or_else(|| format!("GeoFence {kind} only supports version 1"))
 }
 
 pub(crate) fn coordinates(value: &Value, altitude: bool) -> Result<(), String> {
-    value.as_array().ok_or_else(|| "value for coordinate array is not array".to_string())?.iter().try_for_each(|point| coordinate(point, altitude))
+    value
+        .as_array()
+        .ok_or_else(|| "value for coordinate array is not array".to_string())?
+        .iter()
+        .try_for_each(|point| coordinate(point, altitude))
 }
 
 pub(crate) fn coordinate(value: &Value, altitude: bool) -> Result<(), String> {
-    let values = value.as_array().ok_or_else(|| "value for coordinate is not array".to_string())?;
+    let values = value
+        .as_array()
+        .ok_or_else(|| "value for coordinate is not array".to_string())?;
     let count = if altitude { 3 } else { 2 };
     if values.len() != count {
         return Err(format!("Coordinate array must contain {count} values"));
@@ -136,7 +212,12 @@ pub(crate) fn coordinate(value: &Value, altitude: bool) -> Result<(), String> {
     values
         .iter()
         .find(|v| !(v.is_number() || v.is_null()))
-        .map_or(Ok(()), |v| Err(format!("Coordinate array may only contain double values, found: {}", qt_json_type(v))))
+        .map_or(Ok(()), |v| {
+            Err(format!(
+                "Coordinate array may only contain double values, found: {}",
+                qt_json_type(v)
+            ))
+        })
 }
 
 pub(crate) fn qt_json_type(value: &Value) -> u8 {
@@ -150,13 +231,23 @@ pub(crate) fn qt_json_type(value: &Value) -> u8 {
     }
 }
 
-fn validate_section(section: &Value, version: i64, keys: &[(&str, &str, bool)], refusal: &str, unversioned_is_old: bool) -> Result<(), String> {
-    let held = section.get("version").map(|v| i64::from(crate::qtjson::to_int(v, 0)));
+fn validate_section(
+    section: &Value,
+    version: i64,
+    keys: &[(&str, &str, bool)],
+    refusal: &str,
+    unversioned_is_old: bool,
+) -> Result<(), String> {
+    let held = section
+        .get("version")
+        .map(|v| i64::from(crate::qtjson::to_int(v, 0)));
     if held == Some(1) || (held.is_none() && unversioned_is_old) {
         return Ok(());
     }
     crate::qtjson::validate_keys(section, &[&[("version", "Double", true)], keys].concat())?;
-    (held == Some(version)).then_some(()).ok_or_else(|| format!("{refusal} {version}"))
+    (held == Some(version))
+        .then_some(())
+        .ok_or_else(|| format!("{refusal} {version}"))
 }
 
 pub fn load(text: &str, offline_vehicle_type: i64) -> Result<Document, String> {
@@ -170,17 +261,32 @@ pub fn load_text_mission(text: &str, offline_vehicle_type: i64) -> Result<Docume
 type Jumps = fn(Vec<Item>, &[Value]) -> Result<Vec<Item>, String>;
 
 fn load_with(text: &str, offline_vehicle_type: i64, jumps: Jumps) -> Result<Document, String> {
-    let root: Value = serde_json::from_str(text).map_err(|e| format!("The plan is not JSON: {e}"))?;
+    let root: Value =
+        serde_json::from_str(text).map_err(|e| format!("The plan is not JSON: {e}"))?;
     validate_plan(&root)?;
     let mission = &root["mission"];
-    let number = |key: &str, default: f64| mission.get(key).and_then(Value::as_f64).unwrap_or(default);
+    let number =
+        |key: &str, default: f64| mission.get(key).and_then(Value::as_f64).unwrap_or(default);
     let integer = |key: &str| mission.get(key).and_then(whole).unwrap_or(0);
     coordinate(&mission["plannedHomePosition"], true).map_err(|e| format!("Mission: {e}"))?;
-    let saved_home = |index: usize| mission["plannedHomePosition"][index].as_f64().unwrap_or(0.0);
+    let saved_home = |index: usize| {
+        mission["plannedHomePosition"][index]
+            .as_f64()
+            .unwrap_or(0.0)
+    };
     let home = [saved_home(0), saved_home(1), saved_home(2)];
-    let (firmware_type, vehicle_type) = (integer("firmwareType"), mission.get("vehicleType").and_then(Value::as_f64).map_or(offline_vehicle_type, |v| v as i64));
+    let (firmware_type, vehicle_type) = (
+        integer("firmwareType"),
+        mission
+            .get("vehicleType")
+            .and_then(Value::as_f64)
+            .map_or(offline_vehicle_type, |v| v as i64),
+    );
     let commands = cmdinfo::tree(firmware(firmware_type), vehicle_class(vehicle_type));
-    let saved = mission["items"].as_array().map(Vec::as_slice).unwrap_or_default();
+    let saved = mission["items"]
+        .as_array()
+        .map(Vec::as_slice)
+        .unwrap_or_default();
     let items = saved
         .iter()
         .enumerate()
@@ -200,8 +306,16 @@ fn load_with(text: &str, offline_vehicle_type: i64, jumps: Jumps) -> Result<Docu
         home: Some(home),
         settings_sections,
         items,
-        fence: current_or_empty(root.get("geoFence"), FENCE_VERSION, json!({ "circles": [], "polygons": [], "version": FENCE_VERSION })),
-        rally: current_or_empty(root.get("rallyPoints"), RALLY_VERSION, json!({ "points": [], "version": RALLY_VERSION })),
+        fence: current_or_empty(
+            root.get("geoFence"),
+            FENCE_VERSION,
+            json!({ "circles": [], "polygons": [], "version": FENCE_VERSION }),
+        ),
+        rally: current_or_empty(
+            root.get("rallyPoints"),
+            RALLY_VERSION,
+            json!({ "points": [], "version": RALLY_VERSION }),
+        ),
     })
 }
 
@@ -216,14 +330,29 @@ fn resolve_jumps(items: Vec<Item>, saved: &[Value]) -> Result<Vec<Item>, String>
         };
         Some(start)
     });
-    let targets: Vec<(i64, i64)> = saved.iter().zip(starts).filter(|(item, _)| item["type"] == "SimpleItem").filter_map(|(item, seq)| whole(&item["doJumpId"]).map(|id| (id, seq))).collect();
+    let targets: Vec<(i64, i64)> = saved
+        .iter()
+        .zip(starts)
+        .filter(|(item, _)| item["type"] == "SimpleItem")
+        .filter_map(|(item, seq)| whole(&item["doJumpId"]).map(|id| (id, seq)))
+        .collect();
     items
         .into_iter()
         .map(|item| match item {
             Item::Simple(jump) if jump.command == CMD_DO_JUMP => {
                 let id = jump.params[0].unwrap_or(f64::NAN) as i64;
-                let seq = targets.iter().find(|(target, _)| *target == id).map(|(_, seq)| *seq).ok_or_else(|| format!("Could not find doJumpId: {id}"))?;
-                let params = std::array::from_fn(|i| if i == 0 { Some(seq as f64) } else { jump.params[i] });
+                let seq = targets
+                    .iter()
+                    .find(|(target, _)| *target == id)
+                    .map(|(_, seq)| *seq)
+                    .ok_or_else(|| format!("Could not find doJumpId: {id}"))?;
+                let params = std::array::from_fn(|i| {
+                    if i == 0 {
+                        Some(seq as f64)
+                    } else {
+                        jump.params[i]
+                    }
+                });
                 Ok(Item::Simple(Simple { params, ..jump }))
             }
             other => Ok(other),
@@ -232,10 +361,18 @@ fn resolve_jumps(items: Vec<Item>, saved: &[Value]) -> Result<Vec<Item>, String>
 }
 
 fn current_or_empty(section: Option<&Value>, version: i64, empty: Value) -> Value {
-    section.filter(|s| s.get("version").and_then(whole) == Some(version)).cloned().unwrap_or(empty)
+    section
+        .filter(|s| s.get("version").and_then(whole) == Some(version))
+        .cloned()
+        .unwrap_or(empty)
 }
 
-fn load_item(index: usize, item: &Value, commands: &std::collections::BTreeMap<i64, cmdinfo::Command>, class: VehicleClass) -> Result<Item, String> {
+fn load_item(
+    index: usize,
+    item: &Value,
+    commands: &std::collections::BTreeMap<i64, cmdinfo::Command>,
+    class: VehicleClass,
+) -> Result<Item, String> {
     if !item.is_object() {
         return Err(format!("Mission item {index} is not an object"));
     }
@@ -247,22 +384,43 @@ fn load_item(index: usize, item: &Value, commands: &std::collections::BTreeMap<i
             let kind = item["complexItemType"].as_str().unwrap_or("").to_string();
             let json = crate::transectload::complex(&kind, item, class)?;
             let item_count = complex_count(&kind, &json)?;
-            Ok(Item::Complex { kind, json, item_count })
+            Ok(Item::Complex {
+                kind,
+                json,
+                item_count,
+            })
         }
         other => Err(format!("Unknown item type: {other}")),
     }
 }
 
-fn load_simple(saved: &Value, commands: &std::collections::BTreeMap<i64, cmdinfo::Command>) -> Result<Simple, String> {
+fn load_simple(
+    saved: &Value,
+    commands: &std::collections::BTreeMap<i64, cmdinfo::Command>,
+) -> Result<Simple, String> {
     let item = crate::transectload::mission_item(saved)?;
     let param = |index: usize| item["params"][index].as_f64();
     let params: [Option<f64>; 7] = std::array::from_fn(param);
-    let (command, frame) = (whole(&item["command"]).unwrap_or(0), whole(&item["frame"]).unwrap_or(0));
-    let specifies_altitude = commands.get(&command).is_some_and(|c| c.specifies_coordinate || c.specifies_altitude_only);
-    let saved_altitude = ["AltitudeMode", "Altitude", "AMSLAltAboveTerrain"].iter().any(|key| item.get(*key).is_some());
+    let (command, frame) = (
+        whole(&item["command"]).unwrap_or(0),
+        whole(&item["frame"]).unwrap_or(0),
+    );
+    let specifies_altitude = commands
+        .get(&command)
+        .is_some_and(|c| c.specifies_coordinate || c.specifies_altitude_only);
+    let saved_altitude = ["AltitudeMode", "Altitude", "AMSLAltAboveTerrain"]
+        .iter()
+        .any(|key| item.get(*key).is_some());
     let altitude = match (specifies_altitude, saved_altitude) {
         (true, true) => {
-            crate::qtjson::validate_keys(&item, &[("AltitudeMode", "Double", true), ("Altitude", "Double", true), ("AMSLAltAboveTerrain", "NULL", true)])?;
+            crate::qtjson::validate_keys(
+                &item,
+                &[
+                    ("AltitudeMode", "Double", true),
+                    ("Altitude", "Double", true),
+                    ("AMSLAltAboveTerrain", "NULL", true),
+                ],
+            )?;
             Some(Altitude {
                 mode: item["AltitudeMode"].as_f64().map_or(0, |v| v as i64),
                 altitude: item["Altitude"].as_f64().unwrap_or(f64::NAN),
@@ -298,7 +456,10 @@ pub struct Downloaded {
 }
 
 pub fn from_vehicle(items: &[Downloaded], sends_home: bool, template: &Document) -> Document {
-    let commands = cmdinfo::tree(firmware(template.firmware_type), vehicle_class(template.vehicle_type));
+    let commands = cmdinfo::tree(
+        firmware(template.firmware_type),
+        vehicle_class(template.vehicle_type),
+    );
     let fake_home = items.first().filter(|_| sends_home);
     let home = fake_home
         .filter(|h| h.params[4] != 0.0 || h.params[5] != 0.0)
@@ -306,10 +467,19 @@ pub fn from_vehicle(items: &[Downloaded], sends_home: bool, template: &Document)
     let listed = &items[usize::from(fake_home.is_some())..];
     let simple = |item: &Downloaded| {
         let info = commands.get(&item.command);
-        let specifies_altitude = info.is_some_and(|c| c.specifies_coordinate || c.specifies_altitude_only);
+        let specifies_altitude =
+            info.is_some_and(|c| c.specifies_coordinate || c.specifies_altitude_only);
         let launched_here = info.is_some_and(|c| c.is_takeoff && !c.specifies_coordinate);
         let params = match (launched_here, home) {
-            (true, Some(h)) => [item.params[0], item.params[1], item.params[2], item.params[3], h[0], h[1], item.params[6]],
+            (true, Some(h)) => [
+                item.params[0],
+                item.params[1],
+                item.params[2],
+                item.params[3],
+                h[0],
+                h[1],
+                item.params[6],
+            ],
             _ => item.params,
         };
         Item::Simple(Simple {
@@ -329,7 +499,10 @@ pub fn from_vehicle(items: &[Downloaded], sends_home: bool, template: &Document)
             sections: Vec::new(),
         })
     };
-    let landings = crate::landingpattern::fold(listed.iter().map(simple).collect(), firmware(template.firmware_type) == Firmware::ArduPilot);
+    let landings = crate::landingpattern::fold(
+        listed.iter().map(simple).collect(),
+        firmware(template.firmware_type) == Firmware::ArduPilot,
+    );
     let (settings_sections, items) = fold(landings, vehicle_class(template.vehicle_type));
     Document {
         home,
@@ -369,43 +542,82 @@ fn default_mode(doc: &Document) -> i64 {
     }
 }
 
-fn previous_altitude(doc: &Document, commands: &std::collections::BTreeMap<i64, cmdinfo::Command>, visual_index: i64) -> Option<(f64, i64)> {
+fn previous_altitude(
+    doc: &Document,
+    commands: &std::collections::BTreeMap<i64, cmdinfo::Command>,
+    visual_index: i64,
+) -> Option<(f64, i64)> {
     let before = usize::try_from(visual_index - 1).ok()?.min(doc.items.len());
-    doc.items[..before].iter().rev().find_map(|item| match item {
-        Item::Simple(s) if commands.get(&s.command).is_some_and(|c| c.specifies_coordinate && !c.standalone_coordinate) => s.altitude.as_ref().map(|a| (a.altitude, a.mode)),
-        _ => None,
-    })
+    doc.items[..before]
+        .iter()
+        .rev()
+        .find_map(|item| match item {
+            Item::Simple(s)
+                if commands
+                    .get(&s.command)
+                    .is_some_and(|c| c.specifies_coordinate && !c.standalone_coordinate) =>
+            {
+                s.altitude.as_ref().map(|a| (a.altitude, a.mode))
+            }
+            _ => None,
+        })
 }
 
 pub fn planned_home(doc: &Document, vehicle_home: Option<[f64; 3]>) -> Option<[f64; 3]> {
     let commands = cmdinfo::tree(firmware(doc.firmware_type), vehicle_class(doc.vehicle_type));
     let takes_off = doc.items.iter().any(|item| matches!(item, Item::Simple(s) if commands.get(&s.command).is_some_and(|c| c.is_takeoff)));
-    doc.home.or(vehicle_home.filter(|_| takes_off)).or_else(|| home_from_first_coordinate(doc, None))
+    doc.home
+        .or(vehicle_home.filter(|_| takes_off))
+        .or_else(|| home_from_first_coordinate(doc, None))
 }
 
 pub fn home_from_first_coordinate(doc: &Document, clicked: Option<(f64, f64)>) -> Option<[f64; 3]> {
     let commands = cmdinfo::tree(firmware(doc.firmware_type), vehicle_class(doc.vehicle_type));
     let first = doc.items.iter().find_map(|item| match item {
-        Item::Simple(s) if commands.get(&s.command).is_some_and(|c| c.specifies_coordinate) => s.params[4].zip(s.params[5]),
+        Item::Simple(s)
+            if commands
+                .get(&s.command)
+                .is_some_and(|c| c.specifies_coordinate) =>
+        {
+            s.params[4].zip(s.params[5])
+        }
         _ => None,
     });
     first.or(clicked).map(|from| {
-        let (latitude, longitude) = crate::surveygrid::at_distance_and_azimuth(from, PLANNED_HOME_OFFSET_M, 0.0);
+        let (latitude, longitude) =
+            crate::surveygrid::at_distance_and_azimuth(from, PLANNED_HOME_OFFSET_M, 0.0);
         [latitude, longitude, 0.0]
     })
 }
 
 fn whole(value: &Value) -> Option<i64> {
-    value.as_i64().or_else(|| value.as_f64().map(|f| if f.fract() == 0.0 && (f64::from(i32::MIN)..=f64::from(i32::MAX)).contains(&f) { f as i64 } else { 0 }))
+    value.as_i64().or_else(|| {
+        value.as_f64().map(|f| {
+            if f.fract() == 0.0 && (f64::from(i32::MIN)..=f64::from(i32::MAX)).contains(&f) {
+                f as i64
+            } else {
+                0
+            }
+        })
+    })
 }
 
 pub fn previous_coordinate(doc: &Document, visual_index: i64) -> Option<(f64, f64)> {
     let commands = cmdinfo::tree(firmware(doc.firmware_type), vehicle_class(doc.vehicle_type));
     let before = usize::try_from(visual_index - 1).ok()?.min(doc.items.len());
-    doc.items[..before].iter().rev().find_map(|item| match item {
-        Item::Simple(s) if commands.get(&s.command).is_some_and(|c| c.specifies_coordinate && !c.standalone_coordinate) => s.params[4].zip(s.params[5]),
-        _ => None,
-    })
+    doc.items[..before]
+        .iter()
+        .rev()
+        .find_map(|item| match item {
+            Item::Simple(s)
+                if commands
+                    .get(&s.command)
+                    .is_some_and(|c| c.specifies_coordinate && !c.standalone_coordinate) =>
+            {
+                s.params[4].zip(s.params[5])
+            }
+            _ => None,
+        })
 }
 
 pub fn previous_altitude_mode(doc: &Document, visual_index: i64) -> Option<i64> {
@@ -427,13 +639,23 @@ const CMD_NAV_RETURN_TO_LAUNCH: i64 = 20;
 const CMD_DO_SET_ROI_LOCATION: i64 = 195;
 const FRAME_MISSION: i64 = 2;
 
-fn with_command_defaults(doc: &Document, commands: &std::collections::BTreeMap<i64, cmdinfo::Command>, command: i64, kept: [Option<f64>; 7], defaults: &EditDefaults) -> Simple {
+fn with_command_defaults(
+    doc: &Document,
+    commands: &std::collections::BTreeMap<i64, cmdinfo::Command>,
+    command: i64,
+    kept: [Option<f64>; 7],
+    defaults: &EditDefaults,
+) -> Simple {
     let info = commands.get(&command);
     let coordinate = info.is_some_and(|c| c.specifies_coordinate || c.standalone_coordinate);
-    let specifies_altitude = info.is_some_and(|c| c.specifies_coordinate || c.specifies_altitude_only);
+    let specifies_altitude =
+        info.is_some_and(|c| c.specifies_coordinate || c.specifies_altitude_only);
     let listed = param_defaults(info);
     let unplaced = kept[4].unwrap_or(0.0) == 0.0 && kept[5].unwrap_or(0.0) == 0.0;
-    let (latitude, longitude) = match (coordinate, unplaced.then_some(defaults.map_center).flatten()) {
+    let (latitude, longitude) = match (
+        coordinate,
+        unplaced.then_some(defaults.map_center).flatten(),
+    ) {
         (true, Some((latitude, longitude))) => (Some(latitude), Some(longitude)),
         (true, None) => (kept[4], kept[5]),
         (false, _) => (Some(0.0), Some(0.0)),
@@ -449,32 +671,79 @@ fn with_command_defaults(doc: &Document, commands: &std::collections::BTreeMap<i
         (true, false) => Some(defaults.mission_item_altitude),
         (false, _) => None,
     };
-    let param = |i: usize| info.and_then(|c| c.params.get(&(i as u8 + 1))).map_or(Some(0.0), |_| listed[i]);
+    let param = |i: usize| {
+        info.and_then(|c| c.params.get(&(i as u8 + 1)))
+            .map_or(Some(0.0), |_| listed[i])
+    };
     let seventh = match altitude {
         Some(alt) => Some(alt),
-        None => info.and_then(|c| c.params.get(&7)).map_or(Some(0.0), |_| listed[6]),
+        None => info
+            .and_then(|c| c.params.get(&7))
+            .map_or(Some(0.0), |_| listed[6]),
     };
-    let fifth = info.and_then(|c| c.params.get(&5)).map_or(latitude, |_| listed[4]);
-    let sixth = info.and_then(|c| c.params.get(&6)).map_or(longitude, |_| listed[5]);
+    let fifth = info
+        .and_then(|c| c.params.get(&5))
+        .map_or(latitude, |_| listed[4]);
+    let sixth = info
+        .and_then(|c| c.params.get(&6))
+        .map_or(longitude, |_| listed[5]);
     Simple {
         command,
         frame: match altitude {
             Some(_) => frame_for(mode),
             None => FRAME_MISSION,
         },
-        params: [param(0), if command == CMD_NAV_WAYPOINT { Some(0.0) } else { param(1) }, param(2), param(3), fifth, sixth, seventh],
+        params: [
+            param(0),
+            if command == CMD_NAV_WAYPOINT {
+                Some(0.0)
+            } else {
+                param(1)
+            },
+            param(2),
+            param(3),
+            fifth,
+            sixth,
+            seventh,
+        ],
         auto_continue: true,
-        altitude: altitude.map(|altitude| Altitude { mode, altitude, amsl_above_terrain: None }),
+        altitude: altitude.map(|altitude| Altitude {
+            mode,
+            altitude,
+            amsl_above_terrain: None,
+        }),
         sections: Vec::new(),
     }
 }
 
-pub fn insert_simple(doc: &Document, command: i64, latitude: f64, longitude: f64, visual_index: i64, defaults: &EditDefaults) -> Document {
+pub fn insert_simple(
+    doc: &Document,
+    command: i64,
+    latitude: f64,
+    longitude: f64,
+    visual_index: i64,
+    defaults: &EditDefaults,
+) -> Document {
     let commands = cmdinfo::tree(firmware(doc.firmware_type), vehicle_class(doc.vehicle_type));
-    let fresh = with_command_defaults(doc, &commands, command, [None, None, None, None, Some(latitude), Some(longitude), None], defaults);
+    let fresh = with_command_defaults(
+        doc,
+        &commands,
+        command,
+        [
+            None,
+            None,
+            None,
+            None,
+            Some(latitude),
+            Some(longitude),
+            None,
+        ],
+        defaults,
+    );
     let land = commands.get(&command).is_some_and(|c| c.is_land);
     let takeoff = commands.get(&command).is_some_and(|c| c.is_takeoff);
-    let inherited = previous_altitude(doc, &commands, visual_index).filter(|_| fresh.altitude.is_some() && !land);
+    let inherited = previous_altitude(doc, &commands, visual_index)
+        .filter(|_| fresh.altitude.is_some() && !land);
     let placed = match inherited {
         Some((altitude, previous_mode)) => {
             let mode = match (takeoff, doc.global_altitude_mode) {
@@ -483,60 +752,167 @@ pub fn insert_simple(doc: &Document, command: i64, latitude: f64, longitude: f64
             };
             Simple {
                 frame: frame_for(mode),
-                params: [fresh.params[0], fresh.params[1], fresh.params[2], fresh.params[3], fresh.params[4], fresh.params[5], Some(altitude)],
-                altitude: Some(Altitude { mode, altitude, amsl_above_terrain: None }),
+                params: [
+                    fresh.params[0],
+                    fresh.params[1],
+                    fresh.params[2],
+                    fresh.params[3],
+                    fresh.params[4],
+                    fresh.params[5],
+                    Some(altitude),
+                ],
+                altitude: Some(Altitude {
+                    mode,
+                    altitude,
+                    amsl_above_terrain: None,
+                }),
                 ..fresh
             }
         }
         None => fresh,
     };
-    let at = usize::try_from(visual_index - 1).ok().filter(|i| *i <= doc.items.len()).unwrap_or(doc.items.len());
-    let items: Vec<Item> = doc.items[..at].iter().cloned().chain(std::iter::once(Item::Simple(placed))).chain(doc.items[at..].iter().cloned()).collect();
-    let placed = Document { items, ..doc.clone() };
-    Document { home: doc.home.or_else(|| home_from_first_coordinate(&placed, Some((latitude, longitude)))), ..placed }
+    let at = usize::try_from(visual_index - 1)
+        .ok()
+        .filter(|i| *i <= doc.items.len())
+        .unwrap_or(doc.items.len());
+    let items: Vec<Item> = doc.items[..at]
+        .iter()
+        .cloned()
+        .chain(std::iter::once(Item::Simple(placed)))
+        .chain(doc.items[at..].iter().cloned())
+        .collect();
+    let placed = Document {
+        items,
+        ..doc.clone()
+    };
+    Document {
+        home: doc
+            .home
+            .or_else(|| home_from_first_coordinate(&placed, Some((latitude, longitude)))),
+        ..placed
+    }
 }
 
 pub fn complex_count(kind: &str, item: &Value) -> Result<usize, String> {
     match TRANSECT_STYLE.contains(&kind) {
-        true => item.get("TransectStyleComplexItem").and_then(|t| t.get("Items")).and_then(Value::as_array).map(Vec::len).ok_or_else(|| format!("The {kind} item has no saved mission items.")),
-        false if kind == "StructureScan" => crate::structurescan::saved_items(item).map(|items| items.len()),
-        false if crate::landingpattern::is_landing(kind) => crate::landingpattern::items(item, false).map(|items| items.len()),
+        true => item
+            .get("TransectStyleComplexItem")
+            .and_then(|t| t.get("Items"))
+            .and_then(Value::as_array)
+            .map(Vec::len)
+            .ok_or_else(|| format!("The {kind} item has no saved mission items.")),
+        false if kind == "StructureScan" => {
+            crate::structurescan::saved_items(item).map(|items| items.len())
+        }
+        false if crate::landingpattern::is_landing(kind) => {
+            crate::landingpattern::items(item, false).map(|items| items.len())
+        }
         false => Err(format!("The core cannot hold a {kind} item yet.")),
     }
 }
 
-pub fn insert_complex(doc: &Document, kind: &str, json: Value, center: (f64, f64), visual_index: i64) -> Document {
+pub fn insert_complex(
+    doc: &Document,
+    kind: &str,
+    json: Value,
+    center: (f64, f64),
+    visual_index: i64,
+) -> Document {
     let item_count = complex_count(kind, &json).unwrap_or(0);
-    let at = usize::try_from(visual_index - 1).ok().filter(|i| *i <= doc.items.len()).unwrap_or(doc.items.len());
-    let item = Item::Complex { kind: kind.to_string(), json, item_count };
-    let items: Vec<Item> = doc.items[..at].iter().cloned().chain(std::iter::once(item)).chain(doc.items[at..].iter().cloned()).collect();
+    let at = usize::try_from(visual_index - 1)
+        .ok()
+        .filter(|i| *i <= doc.items.len())
+        .unwrap_or(doc.items.len());
+    let item = Item::Complex {
+        kind: kind.to_string(),
+        json,
+        item_count,
+    };
+    let items: Vec<Item> = doc.items[..at]
+        .iter()
+        .cloned()
+        .chain(std::iter::once(item))
+        .chain(doc.items[at..].iter().cloned())
+        .collect();
     let home = doc.home.or_else(|| {
-        let (lat, lon) = crate::surveygrid::at_distance_and_azimuth(center, PLANNED_HOME_OFFSET_M, 0.0);
+        let (lat, lon) =
+            crate::surveygrid::at_distance_and_azimuth(center, PLANNED_HOME_OFFSET_M, 0.0);
         Some([lat, lon, 0.0])
     });
-    Document { items, home, ..doc.clone() }
+    Document {
+        items,
+        home,
+        ..doc.clone()
+    }
 }
 
 const CMD_DO_SET_ROI: i64 = 201;
 const MAV_ROI_LOCATION: f64 = 3.0;
 
-pub fn insert_roi(doc: &Document, latitude: f64, longitude: f64, visual_index: i64, defaults: &EditDefaults) -> Document {
-    let placed = insert_simple(doc, CMD_DO_SET_ROI_LOCATION, latitude, longitude, visual_index, defaults);
+pub fn insert_roi(
+    doc: &Document,
+    latitude: f64,
+    longitude: f64,
+    visual_index: i64,
+    defaults: &EditDefaults,
+) -> Document {
+    let placed = insert_simple(
+        doc,
+        CMD_DO_SET_ROI_LOCATION,
+        latitude,
+        longitude,
+        visual_index,
+        defaults,
+    );
     if firmware(doc.firmware_type) == Firmware::Px4 {
         return placed;
     }
-    let at = usize::try_from(visual_index - 1).ok().filter(|i| *i <= doc.items.len()).unwrap_or(doc.items.len()) + 1;
-    set_command(&placed, at, CMD_DO_SET_ROI, defaults).and_then(|changed| set_param(&changed, at, 1, MAV_ROI_LOCATION)).unwrap_or(placed)
+    let at = usize::try_from(visual_index - 1)
+        .ok()
+        .filter(|i| *i <= doc.items.len())
+        .unwrap_or(doc.items.len())
+        + 1;
+    set_command(&placed, at, CMD_DO_SET_ROI, defaults)
+        .and_then(|changed| set_param(&changed, at, 1, MAV_ROI_LOCATION))
+        .unwrap_or(placed)
 }
 
-pub fn insert_waypoint(doc: &Document, latitude: f64, longitude: f64, visual_index: i64, defaults: &EditDefaults) -> Document {
-    insert_simple(doc, CMD_NAV_WAYPOINT, latitude, longitude, visual_index, defaults)
+pub fn insert_waypoint(
+    doc: &Document,
+    latitude: f64,
+    longitude: f64,
+    visual_index: i64,
+    defaults: &EditDefaults,
+) -> Document {
+    insert_simple(
+        doc,
+        CMD_NAV_WAYPOINT,
+        latitude,
+        longitude,
+        visual_index,
+        defaults,
+    )
 }
 
-pub fn insert_land(doc: &Document, latitude: f64, longitude: f64, visual_index: i64, defaults: &EditDefaults) -> Result<Document, String> {
+pub fn insert_land(
+    doc: &Document,
+    latitude: f64,
+    longitude: f64,
+    visual_index: i64,
+    defaults: &EditDefaults,
+) -> Result<Document, String> {
     match vehicle_class(doc.vehicle_type) {
-        VehicleClass::FixedWing | VehicleClass::Vtol => Err("The core cannot build a landing pattern yet.".to_string()),
-        _ => Ok(insert_simple(doc, CMD_NAV_RETURN_TO_LAUNCH, latitude, longitude, visual_index, defaults)),
+        VehicleClass::FixedWing | VehicleClass::Vtol => {
+            Err("The core cannot build a landing pattern yet.".to_string())
+        }
+        _ => Ok(insert_simple(
+            doc,
+            CMD_NAV_RETURN_TO_LAUNCH,
+            latitude,
+            longitude,
+            visual_index,
+            defaults,
+        )),
     }
 }
 
@@ -554,45 +930,127 @@ pub fn climb_out_distance(altitude: f64, relative: bool, fallback: f64) -> f64 {
     }
 }
 
-pub fn insert_takeoff(doc: &Document, visual_index: i64, defaults: &EditDefaults) -> Result<Document, String> {
-    let home = doc.home.ok_or("A takeoff is placed at the launch position, and this plan has none yet.")?;
+pub fn insert_takeoff(
+    doc: &Document,
+    visual_index: i64,
+    defaults: &EditDefaults,
+) -> Result<Document, String> {
+    let home = doc
+        .home
+        .ok_or("A takeoff is placed at the launch position, and this plan has none yet.")?;
     let class = vehicle_class(doc.vehicle_type);
     let relative = doc.global_altitude_mode != crate::altitudemodes::ABSOLUTE;
     let at_point = match class {
-        VehicleClass::Vtol => crate::surveygrid::at_distance_and_azimuth((home[0], home[1]), defaults.vtol_transition_distance, 0.0),
-        VehicleClass::FixedWing => crate::surveygrid::at_distance_and_azimuth((home[0], home[1]), climb_out_distance(defaults.mission_item_altitude, relative, defaults.vtol_transition_distance), 0.0),
+        VehicleClass::Vtol => crate::surveygrid::at_distance_and_azimuth(
+            (home[0], home[1]),
+            defaults.vtol_transition_distance,
+            0.0,
+        ),
+        VehicleClass::FixedWing => crate::surveygrid::at_distance_and_azimuth(
+            (home[0], home[1]),
+            climb_out_distance(
+                defaults.mission_item_altitude,
+                relative,
+                defaults.vtol_transition_distance,
+            ),
+            0.0,
+        ),
         _ => (home[0], home[1]),
     };
-    let command = if class == VehicleClass::Vtol { CMD_NAV_VTOL_TAKEOFF } else { CMD_NAV_TAKEOFF };
+    let command = if class == VehicleClass::Vtol {
+        CMD_NAV_VTOL_TAKEOFF
+    } else {
+        CMD_NAV_TAKEOFF
+    };
     let inserted = insert_simple(doc, command, at_point.0, at_point.1, visual_index, defaults);
-    let at = usize::try_from(visual_index - 1).ok().filter(|i| *i <= doc.items.len()).unwrap_or(doc.items.len());
+    let at = usize::try_from(visual_index - 1)
+        .ok()
+        .filter(|i| *i <= doc.items.len())
+        .unwrap_or(doc.items.len());
     let launched = |item: &Item| match item {
-        Item::Simple(s) => Item::Simple(Simple { params: [s.params[0], s.params[1], s.params[2], s.params[3], Some(at_point.0), Some(at_point.1), s.params[6]], ..s.clone() }),
+        Item::Simple(s) => Item::Simple(Simple {
+            params: [
+                s.params[0],
+                s.params[1],
+                s.params[2],
+                s.params[3],
+                Some(at_point.0),
+                Some(at_point.1),
+                s.params[6],
+            ],
+            ..s.clone()
+        }),
         other => other.clone(),
     };
-    Ok(Document { items: inserted.items.iter().enumerate().map(|(i, item)| if i == at { launched(item) } else { item.clone() }).collect(), ..inserted })
+    Ok(Document {
+        items: inserted
+            .items
+            .iter()
+            .enumerate()
+            .map(|(i, item)| {
+                if i == at {
+                    launched(item)
+                } else {
+                    item.clone()
+                }
+            })
+            .collect(),
+        ..inserted
+    })
 }
 
-pub fn set_launch(doc: &Document, visual_index: usize, latitude: f64, longitude: f64, same_location: bool, transition_distance: f64) -> Option<Document> {
+pub fn set_launch(
+    doc: &Document,
+    visual_index: usize,
+    latitude: f64,
+    longitude: f64,
+    same_location: bool,
+    transition_distance: f64,
+) -> Option<Document> {
     let (at, takeoff) = simple_at(doc, visual_index)?;
-    let moved = Document { home: Some([latitude, longitude, doc.home.map_or(0.0, |h| h[2])]), ..doc.clone() };
+    let moved = Document {
+        home: Some([latitude, longitude, doc.home.map_or(0.0, |h| h[2])]),
+        ..doc.clone()
+    };
     if takeoff.params[4].zip(takeoff.params[5]).is_some() {
         return Some(moved);
     }
     let distance = match vehicle_class(doc.vehicle_type) {
-        VehicleClass::FixedWing => climb_out_distance(takeoff.params[6].unwrap_or(0.0), takeoff.frame == FRAME_GLOBAL_RELATIVE_ALT, transition_distance),
+        VehicleClass::FixedWing => climb_out_distance(
+            takeoff.params[6].unwrap_or(0.0),
+            takeoff.frame == FRAME_GLOBAL_RELATIVE_ALT,
+            transition_distance,
+        ),
         _ => transition_distance,
     };
     let point = match same_location {
         true => (latitude, longitude),
         false => crate::surveygrid::at_distance_and_azimuth((latitude, longitude), distance, 0.0),
     };
-    let params = [takeoff.params[0], takeoff.params[1], takeoff.params[2], takeoff.params[3], Some(point.0), Some(point.1), takeoff.params[6]];
-    Some(replaced(&moved, at, Simple { params, ..takeoff.clone() }))
+    let params = [
+        takeoff.params[0],
+        takeoff.params[1],
+        takeoff.params[2],
+        takeoff.params[3],
+        Some(point.0),
+        Some(point.1),
+        takeoff.params[6],
+    ];
+    Some(replaced(
+        &moved,
+        at,
+        Simple {
+            params,
+            ..takeoff.clone()
+        },
+    ))
 }
 
 pub fn set_global_altitude_mode(doc: &Document, mode: i64) -> Document {
-    Document { global_altitude_mode: mode, ..doc.clone() }
+    Document {
+        global_altitude_mode: mode,
+        ..doc.clone()
+    }
 }
 
 fn simple_at(doc: &Document, visual_index: usize) -> Option<(usize, &Simple)> {
@@ -604,7 +1062,21 @@ fn simple_at(doc: &Document, visual_index: usize) -> Option<(usize, &Simple)> {
 }
 
 fn replaced(doc: &Document, at: usize, item: Simple) -> Document {
-    Document { items: doc.items.iter().enumerate().map(|(i, existing)| if i == at { Item::Simple(item.clone()) } else { existing.clone() }).collect(), ..doc.clone() }
+    Document {
+        items: doc
+            .items
+            .iter()
+            .enumerate()
+            .map(|(i, existing)| {
+                if i == at {
+                    Item::Simple(item.clone())
+                } else {
+                    existing.clone()
+                }
+            })
+            .collect(),
+        ..doc.clone()
+    }
 }
 
 const VTOL_STATE_MC: i64 = 3;
@@ -620,35 +1092,61 @@ pub fn command_class_at(doc: &Document, at: usize) -> VehicleClass {
         return class;
     }
     let before_rtl = doc.items.iter().position(is_rtl).unwrap_or(doc.items.len());
-    let last_takeoff = doc.items[..before_rtl].iter().rev().find_map(|item| match item {
-        Item::Simple(s) if s.command == 22 || s.command == 84 => Some(s.command),
-        _ => None,
-    });
-    let start = if last_takeoff == Some(84) { VehicleClass::MultiRotor } else { VehicleClass::FixedWing };
-    doc.items.iter().take(at).fold(start, |mode, item| match item {
-        Item::Simple(s) => match (s.command, s.params[0].map(|p| p as i64)) {
-            (22 | 84 | 21, _) => VehicleClass::FixedWing,
-            (85, _) => VehicleClass::MultiRotor,
-            (3000, Some(VTOL_STATE_MC)) => VehicleClass::MultiRotor,
-            (3000, Some(VTOL_STATE_FW)) => VehicleClass::FixedWing,
-            _ => mode,
-        },
-        Item::Complex { .. } => mode,
-    })
+    let last_takeoff = doc.items[..before_rtl]
+        .iter()
+        .rev()
+        .find_map(|item| match item {
+            Item::Simple(s) if s.command == 22 || s.command == 84 => Some(s.command),
+            _ => None,
+        });
+    let start = if last_takeoff == Some(84) {
+        VehicleClass::MultiRotor
+    } else {
+        VehicleClass::FixedWing
+    };
+    doc.items
+        .iter()
+        .take(at)
+        .fold(start, |mode, item| match item {
+            Item::Simple(s) => match (s.command, s.params[0].map(|p| p as i64)) {
+                (22 | 84 | 21, _) => VehicleClass::FixedWing,
+                (85, _) => VehicleClass::MultiRotor,
+                (3000, Some(VTOL_STATE_MC)) => VehicleClass::MultiRotor,
+                (3000, Some(VTOL_STATE_FW)) => VehicleClass::FixedWing,
+                _ => mode,
+            },
+            Item::Complex { .. } => mode,
+        })
 }
 
-pub fn set_command(doc: &Document, visual_index: usize, command: i64, defaults: &EditDefaults) -> Option<Document> {
+pub fn set_command(
+    doc: &Document,
+    visual_index: usize,
+    command: i64,
+    defaults: &EditDefaults,
+) -> Option<Document> {
     let (at, current) = simple_at(doc, visual_index)?;
     let commands = cmdinfo::tree(firmware(doc.firmware_type), command_class_at(doc, at));
     match current.command == command {
         true => Some(doc.clone()),
-        false => Some(replaced(doc, at, with_command_defaults(doc, &commands, command, current.params, defaults))),
+        false => Some(replaced(
+            doc,
+            at,
+            with_command_defaults(doc, &commands, command, current.params, defaults),
+        )),
     }
 }
 
 pub fn set_frame(doc: &Document, visual_index: usize, frame: i64) -> Option<Document> {
     let (at, current) = simple_at(doc, visual_index)?;
-    Some(replaced(doc, at, Simple { frame, ..current.clone() }))
+    Some(replaced(
+        doc,
+        at,
+        Simple {
+            frame,
+            ..current.clone()
+        },
+    ))
 }
 
 pub fn set_altitude_mode(doc: &Document, visual_index: usize, mode: i64) -> Option<Document> {
@@ -661,9 +1159,32 @@ pub fn set_altitude_mode(doc: &Document, visual_index: usize, mode: i64) -> Opti
         _ => return None,
     };
     let calculated = mode == crate::altitudemodes::CALC_ABOVE_TERRAIN;
-    let params: [Option<f64>; 7] = std::array::from_fn(|i| if i == 6 { (!calculated).then_some(held.altitude) } else { current.params[i] });
-    let amsl_above_terrain = if calculated { None } else { held.amsl_above_terrain };
-    Some(replaced(doc, at, Simple { frame, params, altitude: Some(Altitude { mode, amsl_above_terrain, ..held.clone() }), ..current.clone() }))
+    let params: [Option<f64>; 7] = std::array::from_fn(|i| {
+        if i == 6 {
+            (!calculated).then_some(held.altitude)
+        } else {
+            current.params[i]
+        }
+    });
+    let amsl_above_terrain = if calculated {
+        None
+    } else {
+        held.amsl_above_terrain
+    };
+    Some(replaced(
+        doc,
+        at,
+        Simple {
+            frame,
+            params,
+            altitude: Some(Altitude {
+                mode,
+                amsl_above_terrain,
+                ..held.clone()
+            }),
+            ..current.clone()
+        },
+    ))
 }
 
 pub fn above_terrain(doc: &Document, terrain: &dyn Fn(f64, f64) -> Option<f64>) -> Document {
@@ -675,15 +1196,30 @@ pub fn above_terrain(doc: &Document, terrain: &dyn Fn(f64, f64) -> Option<f64>) 
             other => other.clone(),
         })
         .collect();
-    Document { items, ..doc.clone() }
+    Document {
+        items,
+        ..doc.clone()
+    }
 }
 
 fn simple_above_terrain(simple: &Simple, terrain: &dyn Fn(f64, f64) -> Option<f64>) -> Simple {
     match (&simple.altitude, simple.params[4], simple.params[5]) {
-        (Some(held), Some(latitude), Some(longitude)) if held.mode == crate::altitudemodes::CALC_ABOVE_TERRAIN => {
-            let amsl = terrain(latitude, longitude).filter(|ground| ground.is_finite()).map(|ground| ground + held.altitude);
-            let params: [Option<f64>; 7] = std::array::from_fn(|i| if i == 6 { amsl } else { simple.params[i] });
-            Simple { params, altitude: Some(Altitude { amsl_above_terrain: amsl, ..held.clone() }), ..simple.clone() }
+        (Some(held), Some(latitude), Some(longitude))
+            if held.mode == crate::altitudemodes::CALC_ABOVE_TERRAIN =>
+        {
+            let amsl = terrain(latitude, longitude)
+                .filter(|ground| ground.is_finite())
+                .map(|ground| ground + held.altitude);
+            let params: [Option<f64>; 7] =
+                std::array::from_fn(|i| if i == 6 { amsl } else { simple.params[i] });
+            Simple {
+                params,
+                altitude: Some(Altitude {
+                    amsl_above_terrain: amsl,
+                    ..held.clone()
+                }),
+                ..simple.clone()
+            }
         }
         _ => simple.clone(),
     }
@@ -701,35 +1237,77 @@ pub fn drop_after(doc: &Document, visual_index: usize) -> Option<Option<usize>> 
     let at = visual_index.checked_sub(1)?;
     matches!(doc.items.get(at)?, Item::Simple(s) if s.command == CMD_NAV_WAYPOINT).then_some(())?;
     let following = doc.items.get(at + 1..).unwrap_or_default();
-    let unplaced = following.iter().take_while(|item| matches!(item, Item::Simple(s) if s.altitude.is_none())).count();
-    Some(following[..unplaced].iter().position(is_drop).map(|offset| visual_index + 1 + offset))
+    let unplaced = following
+        .iter()
+        .take_while(|item| matches!(item, Item::Simple(s) if s.altitude.is_none()))
+        .count();
+    Some(
+        following[..unplaced]
+            .iter()
+            .position(is_drop)
+            .map(|offset| visual_index + 1 + offset),
+    )
 }
 
 pub fn drop_has_a_place(doc: &Document, drop_at: usize) -> bool {
-    let last_place = doc.items.get(..drop_at).unwrap_or(&doc.items).iter().rposition(|item| !matches!(item, Item::Simple(s) if s.altitude.is_none()));
+    let last_place = doc
+        .items
+        .get(..drop_at)
+        .unwrap_or(&doc.items)
+        .iter()
+        .rposition(|item| !matches!(item, Item::Simple(s) if s.altitude.is_none()));
     last_place.is_some_and(|at| !matches!(&doc.items[at], Item::Simple(s) if s.command == CMD_NAV_TAKEOFF || s.command == CMD_NAV_VTOL_TAKEOFF))
 }
 
 const CMD_DO_GRIPPER_ITEM: i64 = 211;
 
 pub fn hold_before_drop(doc: &Document, drop_at: usize, seconds: f64) -> Document {
-    let last_place = doc.items.get(..drop_at).unwrap_or(&doc.items).iter().rposition(|item| !matches!(item, Item::Simple(s) if s.altitude.is_none()));
+    let last_place = doc
+        .items
+        .get(..drop_at)
+        .unwrap_or(&doc.items)
+        .iter()
+        .rposition(|item| !matches!(item, Item::Simple(s) if s.altitude.is_none()));
     let waypoint = last_place.filter(|at| matches!(&doc.items[*at], Item::Simple(s) if s.command == CMD_NAV_WAYPOINT && s.params[0].unwrap_or(0.0) == 0.0));
     match (vehicle_class(doc.vehicle_type), waypoint) {
-        (VehicleClass::MultiRotor, Some(at)) => set_param(doc, at + 1, 1, seconds).unwrap_or_else(|| doc.clone()),
+        (VehicleClass::MultiRotor, Some(at)) => {
+            set_param(doc, at + 1, 1, seconds).unwrap_or_else(|| doc.clone())
+        }
         _ => doc.clone(),
     }
 }
 
-pub fn set_param(doc: &Document, visual_index: usize, param: usize, value: f64) -> Option<Document> {
+pub fn set_param(
+    doc: &Document,
+    visual_index: usize,
+    param: usize,
+    value: f64,
+) -> Option<Document> {
     let (at, current) = simple_at(doc, visual_index)?;
     let slot = param.checked_sub(1).filter(|p| *p < 7)?;
-    let params: [Option<f64>; 7] = std::array::from_fn(|i| if i == slot { Some(value) } else { current.params[i] });
+    let params: [Option<f64>; 7] = std::array::from_fn(|i| {
+        if i == slot {
+            Some(value)
+        } else {
+            current.params[i]
+        }
+    });
     let altitude = match slot {
-        6 => current.altitude.as_ref().map(|a| Altitude { altitude: value, ..a.clone() }),
+        6 => current.altitude.as_ref().map(|a| Altitude {
+            altitude: value,
+            ..a.clone()
+        }),
         _ => current.altitude.clone(),
     };
-    Some(replaced(doc, at, Simple { params, altitude, ..current.clone() }))
+    Some(replaced(
+        doc,
+        at,
+        Simple {
+            params,
+            altitude,
+            ..current.clone()
+        },
+    ))
 }
 
 const LOITER_COMMANDS: [i64; 4] = [17, 18, 19, 31];
@@ -738,7 +1316,16 @@ const CMD_NAV_LOITER_TO_ALT: i64 = 31;
 pub fn set_loiter_radius(doc: &Document, visual_index: usize, radius: f64) -> Option<Document> {
     let (_, current) = simple_at(doc, visual_index)?;
     LOITER_COMMANDS.contains(&current.command).then_some(())?;
-    set_param(doc, visual_index, if current.command == CMD_NAV_LOITER_TO_ALT { 2 } else { 3 }, radius)
+    set_param(
+        doc,
+        visual_index,
+        if current.command == CMD_NAV_LOITER_TO_ALT {
+            2
+        } else {
+            3
+        },
+        radius,
+    )
 }
 
 fn speed_change(class: VehicleClass, speed: f64) -> Simple {
@@ -749,7 +1336,15 @@ fn speed_change(class: VehicleClass, speed: f64) -> Simple {
     Simple {
         command: CMD_DO_CHANGE_SPEED,
         frame: FRAME_MISSION,
-        params: [Some(ground), Some(speed), Some(-1.0), Some(0.0), Some(0.0), Some(0.0), Some(0.0)],
+        params: [
+            Some(ground),
+            Some(speed),
+            Some(-1.0),
+            Some(0.0),
+            Some(0.0),
+            Some(0.0),
+            Some(0.0),
+        ],
         auto_continue: true,
         altitude: None,
         sections: Vec::new(),
@@ -757,17 +1352,34 @@ fn speed_change(class: VehicleClass, speed: f64) -> Simple {
 }
 
 fn with_speed(sections: &[Simple], class: VehicleClass, speed: Option<f64>) -> Vec<Simple> {
-    let others = sections.iter().filter(|s| s.command != CMD_DO_CHANGE_SPEED).cloned();
-    others.chain(speed.map(|v| speed_change(class, v))).collect()
+    let others = sections
+        .iter()
+        .filter(|s| s.command != CMD_DO_CHANGE_SPEED)
+        .cloned();
+    others
+        .chain(speed.map(|v| speed_change(class, v)))
+        .collect()
 }
 
 pub fn set_speed(doc: &Document, visual_index: usize, speed: Option<f64>) -> Option<Document> {
     let class = vehicle_class(doc.vehicle_type);
     match visual_index {
-        0 => Some(Document { settings_sections: with_speed(&doc.settings_sections, class, speed), ..doc.clone() }),
+        0 => Some(Document {
+            settings_sections: with_speed(&doc.settings_sections, class, speed),
+            ..doc.clone()
+        }),
         _ => {
             let (at, current) = simple_at(doc, visual_index)?;
-            (current.command == CMD_NAV_WAYPOINT).then(|| replaced(doc, at, Simple { sections: with_speed(&current.sections, class, speed), ..current.clone() }))
+            (current.command == CMD_NAV_WAYPOINT).then(|| {
+                replaced(
+                    doc,
+                    at,
+                    Simple {
+                        sections: with_speed(&current.sections, class, speed),
+                        ..current.clone()
+                    },
+                )
+            })
         }
     }
 }
@@ -777,23 +1389,62 @@ pub fn specified_speed(doc: &Document, visual_index: usize) -> Option<f64> {
         0 => &doc.settings_sections,
         _ => &simple_at(doc, visual_index)?.1.sections,
     };
-    sections.iter().find(|s| s.command == CMD_DO_CHANGE_SPEED).and_then(|s| s.params[1])
+    sections
+        .iter()
+        .find(|s| s.command == CMD_DO_CHANGE_SPEED)
+        .and_then(|s| s.params[1])
 }
 
 pub fn set_altitude(doc: &Document, visual_index: usize, altitude: f64) -> Option<Document> {
     let (at, current) = simple_at(doc, visual_index)?;
     let held = current.altitude.as_ref()?;
-    let params = [current.params[0], current.params[1], current.params[2], current.params[3], current.params[4], current.params[5], Some(altitude)];
-    Some(replaced(doc, at, Simple { params, altitude: Some(Altitude { altitude, ..held.clone() }), ..current.clone() }))
+    let params = [
+        current.params[0],
+        current.params[1],
+        current.params[2],
+        current.params[3],
+        current.params[4],
+        current.params[5],
+        Some(altitude),
+    ];
+    Some(replaced(
+        doc,
+        at,
+        Simple {
+            params,
+            altitude: Some(Altitude {
+                altitude,
+                ..held.clone()
+            }),
+            ..current.clone()
+        },
+    ))
 }
 
 pub fn remove(doc: &Document, visual_index: usize) -> Option<Document> {
-    let at = visual_index.checked_sub(1).filter(|i| *i < doc.items.len())?;
-    Some(Document { items: doc.items.iter().enumerate().filter(|(i, _)| *i != at).map(|(_, item)| item.clone()).collect(), ..doc.clone() })
+    let at = visual_index
+        .checked_sub(1)
+        .filter(|i| *i < doc.items.len())?;
+    Some(Document {
+        items: doc
+            .items
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| *i != at)
+            .map(|(_, item)| item.clone())
+            .collect(),
+        ..doc.clone()
+    })
 }
 
 pub fn save(doc: &Document) -> Value {
-    encode(doc, &[crate::landingpattern::WIZARD, crate::structurescan::ENTRY_VERTEX])
+    encode(
+        doc,
+        &[
+            crate::landingpattern::WIZARD,
+            crate::structurescan::ENTRY_VERTEX,
+        ],
+    )
 }
 
 pub fn mission(doc: &Document) -> Value {
@@ -801,12 +1452,24 @@ pub fn mission(doc: &Document) -> Value {
 }
 
 fn encode(doc: &Document, unsaved: &[&str]) -> Value {
-    let section = |s: &Simple| Item::Simple(Simple { frame: FRAME_MISSION, ..s.clone() });
+    let section = |s: &Simple| {
+        Item::Simple(Simple {
+            frame: FRAME_MISSION,
+            ..s.clone()
+        })
+    };
     let settings = doc.settings_sections.iter().map(section);
     let spans: Vec<(Item, usize)> = settings
-        .chain(doc.items.iter().flat_map(|item| match item {
-            Item::Simple(simple) => std::iter::once(Item::Simple(Simple { sections: Vec::new(), ..simple.clone() })).chain(simple.sections.iter().map(section)).collect::<Vec<_>>(),
-            complex => vec![complex.clone()],
+        .chain(doc.items.iter().flat_map(|item| {
+            match item {
+                Item::Simple(simple) => std::iter::once(Item::Simple(Simple {
+                    sections: Vec::new(),
+                    ..simple.clone()
+                }))
+                .chain(simple.sections.iter().map(section))
+                .collect::<Vec<_>>(),
+                complex => vec![complex.clone()],
+            }
         }))
         .map(|item| {
             let span = match &item {
@@ -821,7 +1484,11 @@ fn encode(doc: &Document, unsaved: &[&str]) -> Value {
         *next += span;
         Some(start)
     });
-    let items: Vec<Value> = spans.iter().zip(starts).map(|((item, _), seq)| save_item(item, seq, unsaved)).collect();
+    let items: Vec<Value> = spans
+        .iter()
+        .zip(starts)
+        .map(|((item, _), seq)| save_item(item, seq, unsaved))
+        .collect();
     json!({
         "fileType": "Plan",
         "groundStation": "QGroundControl",
@@ -871,26 +1538,57 @@ fn camera_match(rest: &[Simple], found: &[Found]) -> Option<(Found, usize)> {
     let item = rest.first()?;
     let next = rest.get(1);
     let not = |kind: Found| !found.contains(&kind);
-    let gimbal = item.command == CMD_DO_MOUNT_CONTROL && p(item, 1) == 0.0 && p(item, 3) == 0.0 && p(item, 4) == 0.0 && p(item, 5) == 0.0 && p(item, 6) == MOUNT_MODE_MAVLINK_TARGETING;
-    let photo = item.command == CMD_IMAGE_START_CAPTURE && p(item, 0) == 0.0 && p(item, 1) == 0.0 && p(item, 2) == 1.0;
-    let interval = item.command == CMD_IMAGE_START_CAPTURE && p(item, 0) == 0.0 && p(item, 1) >= 1.0 && p(item, 2) == 0.0;
+    let gimbal = item.command == CMD_DO_MOUNT_CONTROL
+        && p(item, 1) == 0.0
+        && p(item, 3) == 0.0
+        && p(item, 4) == 0.0
+        && p(item, 5) == 0.0
+        && p(item, 6) == MOUNT_MODE_MAVLINK_TARGETING;
+    let photo = item.command == CMD_IMAGE_START_CAPTURE
+        && p(item, 0) == 0.0
+        && p(item, 1) == 0.0
+        && p(item, 2) == 1.0;
+    let interval = item.command == CMD_IMAGE_START_CAPTURE
+        && p(item, 0) == 0.0
+        && p(item, 1) >= 1.0
+        && p(item, 2) == 0.0;
     let trigger_zero = item.command == CMD_DO_SET_CAM_TRIGG_DIST && zero(item, 0);
-    let stop_photos = trigger_zero && next.is_some_and(|n| n.command == CMD_IMAGE_STOP_CAPTURE && p(n, 0) == 0.0);
-    let trigger_start = item.command == CMD_DO_SET_CAM_TRIGG_DIST && p(item, 0) > 0.0 && p(item, 1) == 0.0 && p(item, 2) == 1.0 && zero(item, 3);
-    let video = item.command == CMD_VIDEO_START_CAPTURE && p(item, 0) == 0.0 && p(item, 1) == VIDEO_CAPTURE_STATUS_INTERVAL;
+    let stop_photos =
+        trigger_zero && next.is_some_and(|n| n.command == CMD_IMAGE_STOP_CAPTURE && p(n, 0) == 0.0);
+    let trigger_start = item.command == CMD_DO_SET_CAM_TRIGG_DIST
+        && p(item, 0) > 0.0
+        && p(item, 1) == 0.0
+        && p(item, 2) == 1.0
+        && zero(item, 3);
+    let video = item.command == CMD_VIDEO_START_CAPTURE
+        && p(item, 0) == 0.0
+        && p(item, 1) == VIDEO_CAPTURE_STATUS_INTERVAL;
     let stop_video = item.command == CMD_VIDEO_STOP_CAPTURE && p(item, 0) == 0.0;
-    let mode = item.command == CMD_SET_CAMERA_MODE && p(item, 0) == 0.0 && [0.0, 1.0, 2.0].contains(&p(item, 1)) && p(item, 2).is_nan();
+    let mode = item.command == CMD_SET_CAMERA_MODE
+        && p(item, 0) == 0.0
+        && [0.0, 1.0, 2.0].contains(&p(item, 1))
+        && p(item, 2).is_nan();
     match () {
         _ if not(Found::Gimbal) && gimbal => Some((Found::Gimbal, 1)),
         _ if not(Found::Action) && (photo || interval) => Some((Found::Action, 1)),
         _ if not(Found::Action) && stop_photos => Some((Found::Action, 2)),
-        _ if not(Found::Action) && (trigger_start || trigger_zero || video || stop_video) => Some((Found::Action, 1)),
+        _ if not(Found::Action) && (trigger_start || trigger_zero || video || stop_video) => {
+            Some((Found::Action, 1))
+        }
         _ if not(Found::Mode) && mode => Some((Found::Mode, 1)),
         _ => None,
     }
 }
 
-const CAMERA_ACTIONS: [(&str, i64); 7] = [("No change", 0), ("Take photo", 6), ("Take photos (time)", 1), ("Take photos (distance)", 2), ("Stop taking photos", 3), ("Start recording video", 4), ("Stop recording video", 5)];
+const CAMERA_ACTIONS: [(&str, i64); 7] = [
+    ("No change", 0),
+    ("Take photo", 6),
+    ("Take photos (time)", 1),
+    ("Take photos (distance)", 2),
+    ("Stop taking photos", 3),
+    ("Start recording video", 4),
+    ("Stop recording video", 5),
+];
 
 pub fn camera_action_value(index: usize) -> Option<i64> {
     CAMERA_ACTIONS.get(index).map(|(_, value)| *value)
@@ -903,7 +1601,11 @@ pub fn camera_section(sections: &[Simple]) -> Value {
         match item.command {
             CMD_IMAGE_START_CAPTURE if p(item, 2) == 1.0 => Some(6),
             CMD_IMAGE_START_CAPTURE => Some(1),
-            CMD_DO_SET_CAM_TRIGG_DIST if zero(item, 0) && next.is_some_and(|n| n.command == CMD_IMAGE_STOP_CAPTURE) => Some(3),
+            CMD_DO_SET_CAM_TRIGG_DIST
+                if zero(item, 0) && next.is_some_and(|n| n.command == CMD_IMAGE_STOP_CAPTURE) =>
+            {
+                Some(3)
+            }
             CMD_DO_SET_CAM_TRIGG_DIST => Some(2),
             CMD_VIDEO_START_CAPTURE => Some(4),
             CMD_VIDEO_STOP_CAPTURE => Some(5),
@@ -912,9 +1614,20 @@ pub fn camera_section(sections: &[Simple]) -> Value {
     });
     let action = action.unwrap_or(0);
     let degrees = |property: &str, value: f64, (user_min, user_max): (f64, f64)| json!({ "property": property, "value": value, "valueString": format!("{value:.0}"), "enumOrValueString": format!("{value:.0}"), "units": "deg", "userMin": user_min, "userMax": user_max, "decimalPlaces": 0 });
-    let chosen = CAMERA_ACTIONS.iter().position(|(_, v)| *v == action).unwrap_or(0);
-    let state_mode = sections.iter().find(|s| s.command == CMD_SET_CAMERA_MODE).map(|m| p(m, 1));
-    let start = sections.iter().find(|s| s.command == CMD_IMAGE_START_CAPTURE).map(|s| p(s, 1)).filter(|t| *t >= 1.0).unwrap_or(DEFAULT_INTERVAL_TIME);
+    let chosen = CAMERA_ACTIONS
+        .iter()
+        .position(|(_, v)| *v == action)
+        .unwrap_or(0);
+    let state_mode = sections
+        .iter()
+        .find(|s| s.command == CMD_SET_CAMERA_MODE)
+        .map(|m| p(m, 1));
+    let start = sections
+        .iter()
+        .find(|s| s.command == CMD_IMAGE_START_CAPTURE)
+        .map(|s| p(s, 1))
+        .filter(|t| *t >= 1.0)
+        .unwrap_or(DEFAULT_INTERVAL_TIME);
     let distance = trigger_distance(sections, action);
     let number = |property: &str, value: f64, units: &str| json!({ "property": property, "value": value, "valueString": format!("{value}"), "enumOrValueString": format!("{value}"), "units": units });
     let modes = ["Photo", "Video", "Survey"];
@@ -957,7 +1670,15 @@ const GIMBAL_PITCH_USER_RANGE: (f64, f64) = (-90.0, 0.0);
 const GIMBAL_YAW_USER_RANGE: (f64, f64) = (-180.0, 180.0);
 const DEFAULT_INTERVAL_TIME: f64 = 10.0;
 const DEFAULT_INTERVAL_DISTANCE: f64 = 1.0;
-const CAMERA_COMMANDS: [i64; 7] = [CMD_SET_CAMERA_MODE, CMD_DO_MOUNT_CONTROL, CMD_IMAGE_START_CAPTURE, CMD_IMAGE_STOP_CAPTURE, CMD_DO_SET_CAM_TRIGG_DIST, CMD_VIDEO_START_CAPTURE, CMD_VIDEO_STOP_CAPTURE];
+const CAMERA_COMMANDS: [i64; 7] = [
+    CMD_SET_CAMERA_MODE,
+    CMD_DO_MOUNT_CONTROL,
+    CMD_IMAGE_START_CAPTURE,
+    CMD_IMAGE_STOP_CAPTURE,
+    CMD_DO_SET_CAM_TRIGG_DIST,
+    CMD_VIDEO_START_CAPTURE,
+    CMD_VIDEO_STOP_CAPTURE,
+];
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct CameraState {
@@ -969,37 +1690,80 @@ pub struct CameraState {
 }
 
 fn trigger_distance(sections: &[Simple], action: i64) -> f64 {
-    sections.iter().find(|s| s.command == CMD_DO_SET_CAM_TRIGG_DIST).filter(|_| action == 2).map_or(DEFAULT_INTERVAL_DISTANCE, |t| p(t, 0))
+    sections
+        .iter()
+        .find(|s| s.command == CMD_DO_SET_CAM_TRIGG_DIST)
+        .filter(|_| action == 2)
+        .map_or(DEFAULT_INTERVAL_DISTANCE, |t| p(t, 0))
 }
 
 pub fn camera_state(sections: &[Simple]) -> CameraState {
     let found = |command: i64| sections.iter().find(|s| s.command == command);
     let start = found(CMD_IMAGE_START_CAPTURE);
-    let action = camera_section(sections)["facts"].as_array().and_then(|facts| facts.iter().find(|f| f["property"] == "cameraAction")).and_then(|f| f["value"].as_i64()).unwrap_or(0);
+    let action = camera_section(sections)["facts"]
+        .as_array()
+        .and_then(|facts| facts.iter().find(|f| f["property"] == "cameraAction"))
+        .and_then(|f| f["value"].as_i64())
+        .unwrap_or(0);
     CameraState {
         mode: found(CMD_SET_CAMERA_MODE).map(|m| p(m, 1)),
         gimbal: found(CMD_DO_MOUNT_CONTROL).map(|g| (p(g, 0), p(g, 2))),
         action,
-        interval_time: start.map(|s| p(s, 1)).filter(|t| *t >= 1.0).unwrap_or(DEFAULT_INTERVAL_TIME),
+        interval_time: start
+            .map(|s| p(s, 1))
+            .filter(|t| *t >= 1.0)
+            .unwrap_or(DEFAULT_INTERVAL_TIME),
         interval_distance: trigger_distance(sections, action),
     }
 }
 
 fn mission_command(command: i64, params: [f64; 7]) -> Simple {
-    Simple { command, frame: FRAME_MISSION, params: params.map(Some), auto_continue: true, altitude: None, sections: Vec::new() }
+    Simple {
+        command,
+        frame: FRAME_MISSION,
+        params: params.map(Some),
+        auto_continue: true,
+        altitude: None,
+        sections: Vec::new(),
+    }
 }
 
 pub fn camera_items(state: &CameraState) -> Vec<Simple> {
     let nan = f64::NAN;
-    let mode = state.mode.map(|m| mission_command(CMD_SET_CAMERA_MODE, [0.0, m, nan, nan, nan, nan, nan]));
-    let gimbal = state.gimbal.map(|(pitch, yaw)| mission_command(CMD_DO_MOUNT_CONTROL, [pitch, 0.0, yaw, 0.0, 0.0, 0.0, MOUNT_MODE_MAVLINK_TARGETING]));
+    let mode = state
+        .mode
+        .map(|m| mission_command(CMD_SET_CAMERA_MODE, [0.0, m, nan, nan, nan, nan, nan]));
+    let gimbal = state.gimbal.map(|(pitch, yaw)| {
+        mission_command(
+            CMD_DO_MOUNT_CONTROL,
+            [pitch, 0.0, yaw, 0.0, 0.0, 0.0, MOUNT_MODE_MAVLINK_TARGETING],
+        )
+    });
     let action: Vec<Simple> = match state.action {
-        1 => vec![mission_command(CMD_IMAGE_START_CAPTURE, [0.0, state.interval_time.trunc(), 0.0, nan, nan, nan, nan])],
-        2 => vec![mission_command(CMD_DO_SET_CAM_TRIGG_DIST, [state.interval_distance, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0])],
-        3 => vec![mission_command(CMD_DO_SET_CAM_TRIGG_DIST, [0.0; 7]), mission_command(CMD_IMAGE_STOP_CAPTURE, [0.0, nan, nan, nan, nan, nan, nan])],
-        4 => vec![mission_command(CMD_VIDEO_START_CAPTURE, [0.0, VIDEO_CAPTURE_STATUS_INTERVAL, nan, nan, nan, nan, nan])],
-        5 => vec![mission_command(CMD_VIDEO_STOP_CAPTURE, [0.0, nan, nan, nan, nan, nan, nan])],
-        6 => vec![mission_command(CMD_IMAGE_START_CAPTURE, [0.0, 0.0, 1.0, 0.0, nan, nan, nan])],
+        1 => vec![mission_command(
+            CMD_IMAGE_START_CAPTURE,
+            [0.0, state.interval_time.trunc(), 0.0, nan, nan, nan, nan],
+        )],
+        2 => vec![mission_command(
+            CMD_DO_SET_CAM_TRIGG_DIST,
+            [state.interval_distance, 0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
+        )],
+        3 => vec![
+            mission_command(CMD_DO_SET_CAM_TRIGG_DIST, [0.0; 7]),
+            mission_command(CMD_IMAGE_STOP_CAPTURE, [0.0, nan, nan, nan, nan, nan, nan]),
+        ],
+        4 => vec![mission_command(
+            CMD_VIDEO_START_CAPTURE,
+            [0.0, VIDEO_CAPTURE_STATUS_INTERVAL, nan, nan, nan, nan, nan],
+        )],
+        5 => vec![mission_command(
+            CMD_VIDEO_STOP_CAPTURE,
+            [0.0, nan, nan, nan, nan, nan, nan],
+        )],
+        6 => vec![mission_command(
+            CMD_IMAGE_START_CAPTURE,
+            [0.0, 0.0, 1.0, 0.0, nan, nan, nan],
+        )],
         _ => Vec::new(),
     };
     mode.into_iter().chain(gimbal).chain(action).collect()
@@ -1009,21 +1773,51 @@ pub fn edited_camera(state: &CameraState, property: &str, value: &Value) -> Opti
     let number = value.as_f64().or_else(|| value.as_bool().map(f64::from));
     let on = value.as_bool().or_else(|| number.map(|n| n != 0.0));
     Some(match property {
-        "cameraAction" => CameraState { action: number? as i64, ..state.clone() },
-        "cameraPhotoIntervalTime" => CameraState { interval_time: number?.max(1.0), ..state.clone() },
-        "cameraPhotoIntervalDistance" => CameraState { interval_distance: number?.max(0.1), ..state.clone() },
-        "specifyCameraMode" => CameraState { mode: on?.then(|| state.mode.unwrap_or(0.0)), ..state.clone() },
-        "cameraMode" => CameraState { mode: Some(number?), ..state.clone() },
-        "specifyGimbal" => CameraState { gimbal: on?.then(|| state.gimbal.unwrap_or((0.0, 0.0))), ..state.clone() },
-        "gimbalPitch" => CameraState { gimbal: Some((number?.clamp(-90.0, 0.0), state.gimbal.map_or(0.0, |g| g.1))), ..state.clone() },
-        "gimbalYaw" => CameraState { gimbal: Some((state.gimbal.map_or(0.0, |g| g.0), number?.clamp(-180.0, 180.0))), ..state.clone() },
+        "cameraAction" => CameraState {
+            action: number? as i64,
+            ..state.clone()
+        },
+        "cameraPhotoIntervalTime" => CameraState {
+            interval_time: number?.max(1.0),
+            ..state.clone()
+        },
+        "cameraPhotoIntervalDistance" => CameraState {
+            interval_distance: number?.max(0.1),
+            ..state.clone()
+        },
+        "specifyCameraMode" => CameraState {
+            mode: on?.then(|| state.mode.unwrap_or(0.0)),
+            ..state.clone()
+        },
+        "cameraMode" => CameraState {
+            mode: Some(number?),
+            ..state.clone()
+        },
+        "specifyGimbal" => CameraState {
+            gimbal: on?.then(|| state.gimbal.unwrap_or((0.0, 0.0))),
+            ..state.clone()
+        },
+        "gimbalPitch" => CameraState {
+            gimbal: Some((number?.clamp(-90.0, 0.0), state.gimbal.map_or(0.0, |g| g.1))),
+            ..state.clone()
+        },
+        "gimbalYaw" => CameraState {
+            gimbal: Some((
+                state.gimbal.map_or(0.0, |g| g.0),
+                number?.clamp(-180.0, 180.0),
+            )),
+            ..state.clone()
+        },
         _ => return None,
     })
 }
 
 fn with_camera(sections: &[Simple], property: &str, value: &Value) -> Option<Vec<Simple>> {
     let state = edited_camera(&camera_state(sections), property, value)?;
-    let others = sections.iter().filter(|s| !CAMERA_COMMANDS.contains(&s.command)).cloned();
+    let others = sections
+        .iter()
+        .filter(|s| !CAMERA_COMMANDS.contains(&s.command))
+        .cloned();
     Some(camera_items(&state).into_iter().chain(others).collect())
 }
 
@@ -1031,12 +1825,16 @@ const CAMERA_MODE_IMAGE_SURVEY: f64 = 2.0;
 const CAMERA_MODE_IMAGE: f64 = 0.0;
 
 fn camera_mode_supported(doc: &Document) -> bool {
-    camera_state(&doc.settings_sections).mode.is_some() || cmdinfo::tree(firmware(doc.firmware_type), VehicleClass::Generic).contains_key(&CMD_SET_CAMERA_MODE)
+    camera_state(&doc.settings_sections).mode.is_some()
+        || cmdinfo::tree(firmware(doc.firmware_type), VehicleClass::Generic)
+            .contains_key(&CMD_SET_CAMERA_MODE)
 }
 
 pub fn with_survey_camera(doc: Document) -> Document {
     match camera_mode_supported(&doc) && camera_state(&doc.settings_sections).mode.is_none() {
-        true => set_camera(&doc, 0, "specifyCameraMode", &json!(true)).and_then(|moded| set_camera(&moded, 0, "cameraMode", &json!(CAMERA_MODE_IMAGE_SURVEY))).unwrap_or(doc),
+        true => set_camera(&doc, 0, "specifyCameraMode", &json!(true))
+            .and_then(|moded| set_camera(&moded, 0, "cameraMode", &json!(CAMERA_MODE_IMAGE_SURVEY)))
+            .unwrap_or(doc),
         false => doc,
     }
 }
@@ -1046,26 +1844,55 @@ fn has_area_scan(doc: &Document) -> bool {
 }
 
 pub fn after_scan_removed(before: &Document, after: Document) -> Document {
-    let undo = has_area_scan(before) && !has_area_scan(&after) && camera_state(&after.settings_sections).mode == Some(CAMERA_MODE_IMAGE);
+    let undo = has_area_scan(before)
+        && !has_area_scan(&after)
+        && camera_state(&after.settings_sections).mode == Some(CAMERA_MODE_IMAGE);
     match undo {
         true => set_camera(&after, 0, "specifyCameraMode", &json!(false)).unwrap_or(after),
         false => after,
     }
 }
 
-pub fn set_camera(doc: &Document, visual_index: usize, property: &str, value: &Value) -> Option<Document> {
+pub fn set_camera(
+    doc: &Document,
+    visual_index: usize,
+    property: &str,
+    value: &Value,
+) -> Option<Document> {
     match visual_index {
-        0 => Some(Document { settings_sections: with_camera(&doc.settings_sections, property, value)?, ..doc.clone() }),
+        0 => Some(Document {
+            settings_sections: with_camera(&doc.settings_sections, property, value)?,
+            ..doc.clone()
+        }),
         _ => {
             let (at, current) = simple_at(doc, visual_index)?;
-            (current.command == CMD_NAV_WAYPOINT).then(|| with_camera(&current.sections, property, value).map(|sections| replaced(doc, at, Simple { sections, ..current.clone() }))).flatten()
+            (current.command == CMD_NAV_WAYPOINT)
+                .then(|| {
+                    with_camera(&current.sections, property, value).map(|sections| {
+                        replaced(
+                            doc,
+                            at,
+                            Simple {
+                                sections,
+                                ..current.clone()
+                            },
+                        )
+                    })
+                })
+                .flatten()
         }
     }
 }
 
 fn camera_span(rest: &[Simple], found: Vec<Found>) -> usize {
     match camera_match(rest, &found) {
-        Some((kind, taken)) => taken + camera_span(&rest[taken..], found.into_iter().chain(std::iter::once(kind)).collect()),
+        Some((kind, taken)) => {
+            taken
+                + camera_span(
+                    &rest[taken..],
+                    found.into_iter().chain(std::iter::once(kind)).collect(),
+                )
+        }
         None => 0,
     }
 }
@@ -1108,16 +1935,26 @@ fn fold_rest(items: &[Item], class: VehicleClass) -> Vec<Item> {
         None => Vec::new(),
         Some((Item::Simple(owner), rest)) if owner.command == CMD_NAV_WAYPOINT => {
             let span = section_span(rest, class);
-            let folded = Simple { sections: simples(&rest[..span]), ..owner.clone() };
-            std::iter::once(Item::Simple(folded)).chain(fold_rest(&rest[span..], class)).collect()
+            let folded = Simple {
+                sections: simples(&rest[..span]),
+                ..owner.clone()
+            };
+            std::iter::once(Item::Simple(folded))
+                .chain(fold_rest(&rest[span..], class))
+                .collect()
         }
-        Some((first, rest)) => std::iter::once(first.clone()).chain(fold_rest(rest, class)).collect(),
+        Some((first, rest)) => std::iter::once(first.clone())
+            .chain(fold_rest(rest, class))
+            .collect(),
     }
 }
 
 fn fold(items: Vec<Item>, class: VehicleClass) -> (Vec<Simple>, Vec<Item>) {
     let settings = section_span(&items, class);
-    (simples(&items[..settings]), fold_rest(&items[settings..], class))
+    (
+        simples(&items[..settings]),
+        fold_rest(&items[settings..], class),
+    )
 }
 
 fn save_item(item: &Item, seq: usize, unsaved: &[&str]) -> Value {
@@ -1127,8 +1964,14 @@ fn save_item(item: &Item, seq: usize, unsaved: &[&str]) -> Value {
             if let Some(fields) = numbered.as_object_mut() {
                 fields.retain(|key, _| !unsaved.contains(&key.as_str()));
             }
-            if let Some(items) = numbered.pointer_mut("/TransectStyleComplexItem/Items").and_then(Value::as_array_mut) {
-                items.iter_mut().enumerate().for_each(|(i, item)| item["doJumpId"] = json!(seq + i));
+            if let Some(items) = numbered
+                .pointer_mut("/TransectStyleComplexItem/Items")
+                .and_then(Value::as_array_mut)
+            {
+                items
+                    .iter_mut()
+                    .enumerate()
+                    .for_each(|(i, item)| item["doJumpId"] = json!(seq + i));
             }
             numbered
         }
@@ -1144,11 +1987,19 @@ fn save_item(item: &Item, seq: usize, unsaved: &[&str]) -> Value {
             let altitude: Map<String, Value> = simple
                 .altitude
                 .iter()
-                .flat_map(|a| [("AltitudeMode", json!(a.mode)), ("Altitude", json!(a.altitude)), ("AMSLAltAboveTerrain", json!(a.amsl_above_terrain))])
+                .flat_map(|a| {
+                    [
+                        ("AltitudeMode", json!(a.mode)),
+                        ("Altitude", json!(a.altitude)),
+                        ("AMSLAltAboveTerrain", json!(a.amsl_above_terrain)),
+                    ]
+                })
                 .map(|(k, v)| (k.to_string(), v))
                 .collect();
             match base {
-                Value::Object(fields) => Value::Object(fields.into_iter().chain(altitude).collect()),
+                Value::Object(fields) => {
+                    Value::Object(fields.into_iter().chain(altitude).collect())
+                }
                 other => other,
             }
         }
@@ -1161,31 +2012,95 @@ mod tests {
 
     #[test]
     fn the_camera_section_writes_the_commands_camera_section_appends() {
-        let doc = Document { settings_sections: Vec::new(), ..section() };
+        let doc = Document {
+            settings_sections: Vec::new(),
+            ..section()
+        };
         let timed = set_camera(&doc, 0, "cameraAction", &json!(1)).unwrap();
-        assert_eq!(timed.settings_sections.iter().map(|s| (s.command, s.params[1])).collect::<Vec<_>>(), [(CMD_IMAGE_START_CAPTURE, Some(10.0))], "Take photos (time) starts with the default 10 s interval");
+        assert_eq!(
+            timed
+                .settings_sections
+                .iter()
+                .map(|s| (s.command, s.params[1]))
+                .collect::<Vec<_>>(),
+            [(CMD_IMAGE_START_CAPTURE, Some(10.0))],
+            "Take photos (time) starts with the default 10 s interval"
+        );
         let quicker = set_camera(&timed, 0, "cameraPhotoIntervalTime", &json!(5)).unwrap();
         assert_eq!(camera_state(&quicker.settings_sections).interval_time, 5.0);
-        let aimed = set_camera(&set_camera(&quicker, 0, "specifyGimbal", &json!(true)).unwrap(), 0, "gimbalPitch", &json!(-45.0)).unwrap();
+        let aimed = set_camera(
+            &set_camera(&quicker, 0, "specifyGimbal", &json!(true)).unwrap(),
+            0,
+            "gimbalPitch",
+            &json!(-45.0),
+        )
+        .unwrap();
         let commands: Vec<i64> = aimed.settings_sections.iter().map(|s| s.command).collect();
-        assert_eq!(commands, [CMD_DO_MOUNT_CONTROL, CMD_IMAGE_START_CAPTURE], "gimbal before the action, as appendSectionItems orders them");
-        assert_eq!(camera_state(&aimed.settings_sections).gimbal, Some((-45.0, 0.0)));
-        assert_eq!(aimed.settings_sections[0].params[0], Some(-45.0), "MAV_CMD_DO_MOUNT_CONTROL param1 is the pitch itself, as CameraSection writes and scans it");
+        assert_eq!(
+            commands,
+            [CMD_DO_MOUNT_CONTROL, CMD_IMAGE_START_CAPTURE],
+            "gimbal before the action, as appendSectionItems orders them"
+        );
+        assert_eq!(
+            camera_state(&aimed.settings_sections).gimbal,
+            Some((-45.0, 0.0))
+        );
+        assert_eq!(
+            aimed.settings_sections[0].params[0],
+            Some(-45.0),
+            "MAV_CMD_DO_MOUNT_CONTROL param1 is the pitch itself, as CameraSection writes and scans it"
+        );
         let moded = set_camera(&aimed, 0, "specifyCameraMode", &json!(true)).unwrap();
         assert_eq!(moded.settings_sections[0].command, CMD_SET_CAMERA_MODE);
         let stopped = set_camera(&moded, 0, "cameraAction", &json!(3)).unwrap();
-        assert_eq!(stopped.settings_sections.iter().map(|s| s.command).collect::<Vec<_>>(), [CMD_SET_CAMERA_MODE, CMD_DO_MOUNT_CONTROL, CMD_DO_SET_CAM_TRIGG_DIST, CMD_IMAGE_STOP_CAPTURE]);
-        assert_eq!(camera_state(&stopped.settings_sections).action, 3, "the written commands read back as the same action");
+        assert_eq!(
+            stopped
+                .settings_sections
+                .iter()
+                .map(|s| s.command)
+                .collect::<Vec<_>>(),
+            [
+                CMD_SET_CAMERA_MODE,
+                CMD_DO_MOUNT_CONTROL,
+                CMD_DO_SET_CAM_TRIGG_DIST,
+                CMD_IMAGE_STOP_CAPTURE
+            ]
+        );
+        assert_eq!(
+            camera_state(&stopped.settings_sections).action,
+            3,
+            "the written commands read back as the same action"
+        );
     }
 
     #[test]
-    fn a_lone_zero_trigger_distance_reads_as_take_photos_distance_at_zero_like_scan_trigger_stop_distance() {
+    fn a_lone_zero_trigger_distance_reads_as_take_photos_distance_at_zero_like_scan_trigger_stop_distance()
+     {
         let zero_trigger = mission_command(CMD_DO_SET_CAM_TRIGG_DIST, [0.0; 7]);
         let state = camera_state(std::slice::from_ref(&zero_trigger));
-        assert_eq!((state.action, state.interval_distance), (2, 0.0), "CameraSection::_scanTriggerStopDistance sets TakePhotoIntervalDistance with the raw 0 distance");
-        let stop = mission_command(CMD_IMAGE_STOP_CAPTURE, [0.0, f64::NAN, f64::NAN, f64::NAN, f64::NAN, f64::NAN, f64::NAN]);
+        assert_eq!(
+            (state.action, state.interval_distance),
+            (2, 0.0),
+            "CameraSection::_scanTriggerStopDistance sets TakePhotoIntervalDistance with the raw 0 distance"
+        );
+        let stop = mission_command(
+            CMD_IMAGE_STOP_CAPTURE,
+            [
+                0.0,
+                f64::NAN,
+                f64::NAN,
+                f64::NAN,
+                f64::NAN,
+                f64::NAN,
+                f64::NAN,
+            ],
+        );
         let stopping = camera_state(&[zero_trigger, stop]);
-        assert_eq!((stopping.action, stopping.interval_distance), (3, DEFAULT_INTERVAL_DISTANCE), "scanStopTakingPhotos leaves the distance fact at its default");
+        assert_eq!(
+            (stopping.action, stopping.interval_distance),
+            (3, DEFAULT_INTERVAL_DISTANCE),
+            "scanStopTakingPhotos leaves the distance fact at its default"
+        );
         let distance = camera_section(&[mission_command(CMD_DO_SET_CAM_TRIGG_DIST, [0.0; 7])])["facts"][1]["value"].as_f64();
         assert_eq!(distance, Some(0.0));
     }
@@ -1194,7 +2109,9 @@ mod tests {
         match value {
             Value::Number(n) => json!(n.as_f64()),
             Value::Array(items) => Value::Array(items.into_iter().map(by_value).collect()),
-            Value::Object(fields) => Value::Object(fields.into_iter().map(|(k, v)| (k, by_value(v))).collect()),
+            Value::Object(fields) => {
+                Value::Object(fields.into_iter().map(|(k, v)| (k, by_value(v))).collect())
+            }
             other => other,
         }
     }
@@ -1212,12 +2129,18 @@ mod tests {
 
     #[test]
     fn an_old_format_plan_is_written_back_the_way_qt_upgrades_it() {
-        resaves_as_qt(include_str!("../../test/MissionManager/SectionTest.plan"), include_str!("../tests/fixtures/sectiontest-resaved-by-qt.plan"));
+        resaves_as_qt(
+            include_str!("../../test/MissionManager/SectionTest.plan"),
+            include_str!("../tests/fixtures/sectiontest-resaved-by-qt.plan"),
+        );
     }
 
     #[test]
     fn a_survey_plan_is_written_back_the_way_qt_writes_it() {
-        resaves_as_qt(include_str!("../tests/fixtures/survey-upload.plan"), include_str!("../tests/fixtures/survey-resaved-by-qt.plan"));
+        resaves_as_qt(
+            include_str!("../tests/fixtures/survey-upload.plan"),
+            include_str!("../tests/fixtures/survey-resaved-by-qt.plan"),
+        );
     }
 
     #[test]
@@ -1233,53 +2156,164 @@ mod tests {
         let scan = json!({ "version": 3, "type": "ComplexItem", "complexItemType": "StructureScan", "polygon": [[47.0, 8.0], [47.001, 8.0], [47.001, 8.001]], "ScanBottomAlt": 0, "StructureHeight": 25, "Layers": 1, "CameraCalc": { "version": 2, "CameraName": "Manual (no camera specs)", "AdjustedFootprintSide": 25, "AdjustedFootprintFrontal": 25, "DistanceToSurface": 50, "DistanceMode": 1 }, "EntranceAltitude": 50, "GimbalPitch": 0, "StartFromTop": true });
         let plan = json!({ "fileType": "Plan", "version": 1, "groundStation": "QGroundControl", "geoFence": { "circles": [], "polygons": [], "version": 2 }, "rallyPoints": { "points": [], "version": 2 }, "mission": { "version": 2, "firmwareType": 3, "vehicleType": 2, "cruiseSpeed": 15, "hoverSpeed": 5, "globalPlanAltitudeMode": 1, "plannedHomePosition": [47.0, 8.0, 0], "items": [scan] } });
         let doc = load(&plan.to_string(), 2).unwrap();
-        let Item::Complex { kind, json, item_count } = &doc.items[0] else { panic!() };
-        let rotated = Document { items: vec![Item::Complex { kind: kind.clone(), json: crate::structurescan::rotated_entry(json).unwrap(), item_count: *item_count }], ..doc.clone() };
-        let first = |plan: &Value| crate::planitems::flatten(plan).unwrap().iter().skip(1).find(|i| i.command == 16).map(|i| (i.params[4], i.params[5])).unwrap();
-        assert_ne!(first(&mission(&rotated)), first(&mission(&doc)), "QGC appendMissionItems flies from the live _entryVertex");
-        assert_eq!(save(&rotated), save(&doc), "StructureScanComplexItem::save writes no entry vertex");
+        let Item::Complex {
+            kind,
+            json,
+            item_count,
+        } = &doc.items[0]
+        else {
+            panic!()
+        };
+        let rotated = Document {
+            items: vec![Item::Complex {
+                kind: kind.clone(),
+                json: crate::structurescan::rotated_entry(json).unwrap(),
+                item_count: *item_count,
+            }],
+            ..doc.clone()
+        };
+        let first = |plan: &Value| {
+            crate::planitems::flatten(plan)
+                .unwrap()
+                .iter()
+                .skip(1)
+                .find(|i| i.command == 16)
+                .map(|i| (i.params[4], i.params[5]))
+                .unwrap()
+        };
+        assert_ne!(
+            first(&mission(&rotated)),
+            first(&mission(&doc)),
+            "QGC appendMissionItems flies from the live _entryVertex"
+        );
+        assert_eq!(
+            save(&rotated),
+            save(&doc),
+            "StructureScanComplexItem::save writes no entry vertex"
+        );
     }
 
     fn section() -> Document {
-        load(include_str!("../../test/MissionManager/SectionTest.plan"), 2).unwrap()
+        load(
+            include_str!("../../test/MissionManager/SectionTest.plan"),
+            2,
+        )
+        .unwrap()
     }
 
-    const QT_DEFAULTS: EditDefaults = EditDefaults { mission_item_altitude: 75.0, map_center: None, vtol_transition_distance: VTOL_TRANSITION_DISTANCE_DEFAULT };
+    const QT_DEFAULTS: EditDefaults = EditDefaults {
+        mission_item_altitude: 75.0,
+        map_center: None,
+        vtol_transition_distance: VTOL_TRANSITION_DISTANCE_DEFAULT,
+    };
 
     #[test]
     fn whole_numbers_written_as_floats_load_as_qt_reads_them_with_to_int() {
         let text = r#"{"fileType":"Plan","version":1,"groundStation":"QGroundControl","mission":{"version":2,"firmwareType":12.0,"vehicleType":2,"cruiseSpeed":15,"hoverSpeed":5,"plannedHomePosition":[47.0,8.0,500],"items":[{"type":"SimpleItem","autoContinue":true,"command":16.0,"doJumpId":1.0,"frame":3.0,"params":[0,0,0,null,47.001,8.0,50]}]},"geoFence":{"version":2,"polygons":[],"circles":[]},"rallyPoints":{"version":2,"points":[]}}"#;
         let doc = load(text, 2).expect("16.0 is a command");
-        assert_eq!(doc.firmware_type, 12, "12.0 is PX4, not the generic firmware a failed integer read falls back to");
-        assert_eq!(whole(&json!(16.5)), Some(0), "QJsonValue::toInt gives the default for a fractional double");
+        assert_eq!(
+            doc.firmware_type, 12,
+            "12.0 is PX4, not the generic firmware a failed integer read falls back to"
+        );
+        assert_eq!(
+            whole(&json!(16.5)),
+            Some(0),
+            "QJsonValue::toInt gives the default for a fractional double"
+        );
     }
 
     #[test]
     fn a_downloaded_px4_mission_puts_home_thirty_metres_north_of_its_first_waypoint() {
-        let waypoint = Downloaded { frame: 3, command: 16, params: [0.0, 0.0, 0.0, 0.0, 47.0, 8.0, 50.0], auto_continue: true };
-        let template = Document { home: Some([-35.36, 149.17, 0.0]), ..section() };
+        let waypoint = Downloaded {
+            frame: 3,
+            command: 16,
+            params: [0.0, 0.0, 0.0, 0.0, 47.0, 8.0, 50.0],
+            auto_continue: true,
+        };
+        let template = Document {
+            home: Some([-35.36, 149.17, 0.0]),
+            ..section()
+        };
         let downloaded = from_vehicle(&[waypoint.clone()], false, &template);
-        assert_eq!(downloaded.home, None, "the fly view keeps no derived home; only the plan view places one");
-        let home = planned_home(&downloaded, Some([1.0, 2.0, 3.0])).expect("MissionController::_setPlannedHomePositionFromFirstCoordinate places one");
-        assert!((home[0] - 47.0 - 30.0 / 111_195.0).abs() < 1e-6 && (home[1] - 8.0).abs() < 1e-9 && home[2] == 0.0, "not the previous plan's home, and not the vehicle's without a takeoff: {home:?}");
-        let takeoff = Downloaded { command: 22, ..waypoint };
+        assert_eq!(
+            downloaded.home, None,
+            "the fly view keeps no derived home; only the plan view places one"
+        );
+        let home = planned_home(&downloaded, Some([1.0, 2.0, 3.0]))
+            .expect("MissionController::_setPlannedHomePositionFromFirstCoordinate places one");
+        assert!(
+            (home[0] - 47.0 - 30.0 / 111_195.0).abs() < 1e-6
+                && (home[1] - 8.0).abs() < 1e-9
+                && home[2] == 0.0,
+            "not the previous plan's home, and not the vehicle's without a takeoff: {home:?}"
+        );
+        let takeoff = Downloaded {
+            command: 22,
+            ..waypoint
+        };
         let launched = from_vehicle(&[takeoff], false, &template);
-        assert_eq!(planned_home(&launched, Some([1.0, 2.0, 3.0])), Some([1.0, 2.0, 3.0]), "TakeoffMissionItem copies the active vehicle's home into an unset planned home");
+        assert_eq!(
+            planned_home(&launched, Some([1.0, 2.0, 3.0])),
+            Some([1.0, 2.0, 3.0]),
+            "TakeoffMissionItem copies the active vehicle's home into an unset planned home"
+        );
     }
 
     #[test]
     fn a_command_that_gains_a_coordinate_lands_on_the_map_centre_hint() {
-        let rtl = Simple { command: 20, frame: FRAME_MISSION, params: [Some(0.0); 7], auto_continue: true, altitude: None, sections: Vec::new() };
-        let doc = Document { items: vec![Item::Simple(rtl.clone())], ..section() };
-        let hinted = EditDefaults { map_center: Some((47.39, 8.54)), ..QT_DEFAULTS };
-        let moved = |defaults: &EditDefaults| match &set_command(&doc, 1, CMD_NAV_WAYPOINT, defaults).unwrap().items[0] {
-            Item::Simple(s) => (s.params[4], s.params[5]),
-            Item::Complex { .. } => panic!("a waypoint is simple"),
+        let rtl = Simple {
+            command: 20,
+            frame: FRAME_MISSION,
+            params: [Some(0.0); 7],
+            auto_continue: true,
+            altitude: None,
+            sections: Vec::new(),
         };
-        assert_eq!(moved(&hinted), (Some(47.39), Some(8.54)), "SimpleMissionItem::_setDefaultsForCommand uses _mapCenterHint");
-        assert_eq!(moved(&QT_DEFAULTS), (Some(0.0), Some(0.0)), "without a hint it keeps the zeros it had");
-        let placed = Document { items: vec![Item::Simple(Simple { params: [Some(0.0), Some(0.0), Some(0.0), Some(0.0), Some(1.0), Some(2.0), Some(0.0)], ..rtl })], ..section() };
-        assert!(matches!(&set_command(&placed, 1, CMD_NAV_WAYPOINT, &hinted).unwrap().items[0], Item::Simple(s) if (s.params[4], s.params[5]) == (Some(1.0), Some(2.0))), "an item that already has a place keeps it");
+        let doc = Document {
+            items: vec![Item::Simple(rtl.clone())],
+            ..section()
+        };
+        let hinted = EditDefaults {
+            map_center: Some((47.39, 8.54)),
+            ..QT_DEFAULTS
+        };
+        let moved =
+            |defaults: &EditDefaults| match &set_command(&doc, 1, CMD_NAV_WAYPOINT, defaults)
+                .unwrap()
+                .items[0]
+            {
+                Item::Simple(s) => (s.params[4], s.params[5]),
+                Item::Complex { .. } => panic!("a waypoint is simple"),
+            };
+        assert_eq!(
+            moved(&hinted),
+            (Some(47.39), Some(8.54)),
+            "SimpleMissionItem::_setDefaultsForCommand uses _mapCenterHint"
+        );
+        assert_eq!(
+            moved(&QT_DEFAULTS),
+            (Some(0.0), Some(0.0)),
+            "without a hint it keeps the zeros it had"
+        );
+        let placed = Document {
+            items: vec![Item::Simple(Simple {
+                params: [
+                    Some(0.0),
+                    Some(0.0),
+                    Some(0.0),
+                    Some(0.0),
+                    Some(1.0),
+                    Some(2.0),
+                    Some(0.0),
+                ],
+                ..rtl
+            })],
+            ..section()
+        };
+        assert!(
+            matches!(&set_command(&placed, 1, CMD_NAV_WAYPOINT, &hinted).unwrap().items[0], Item::Simple(s) if (s.params[4], s.params[5]) == (Some(1.0), Some(2.0))),
+            "an item that already has a place keeps it"
+        );
     }
 
     fn matches_qt(doc: &Document, qt: &str) {
@@ -1289,24 +2323,40 @@ mod tests {
 
     #[test]
     fn an_appended_waypoint_takes_the_default_altitude_because_qt_never_looks_back_on_append() {
-        matches_qt(&insert_waypoint(&section(), 47.634, -122.089, -1, &QT_DEFAULTS), include_str!("../tests/fixtures/edit-A-by-qt.plan"));
+        matches_qt(
+            &insert_waypoint(&section(), 47.634, -122.089, -1, &QT_DEFAULTS),
+            include_str!("../tests/fixtures/edit-A-by-qt.plan"),
+        );
     }
 
     #[test]
     fn an_inserted_waypoint_copies_the_altitude_before_it() {
-        matches_qt(&insert_waypoint(&section(), 47.6335, -122.0885, 3, &QT_DEFAULTS), include_str!("../tests/fixtures/edit-B-by-qt.plan"));
+        matches_qt(
+            &insert_waypoint(&section(), 47.6335, -122.0885, 3, &QT_DEFAULTS),
+            include_str!("../tests/fixtures/edit-B-by-qt.plan"),
+        );
     }
 
     #[test]
     fn a_removed_item_renumbers_those_after_it() {
-        matches_qt(&remove(&section(), 2).unwrap(), include_str!("../tests/fixtures/edit-C-by-qt.plan"));
-        assert!(remove(&section(), 0).is_none(), "visual index zero is the mission settings item, which is never removed");
+        matches_qt(
+            &remove(&section(), 2).unwrap(),
+            include_str!("../tests/fixtures/edit-C-by-qt.plan"),
+        );
+        assert!(
+            remove(&section(), 0).is_none(),
+            "visual index zero is the mission settings item, which is never removed"
+        );
         assert!(remove(&section(), 6).is_none());
     }
 
     #[test]
     fn the_first_waypoint_of_an_empty_plan_puts_home_thirty_metres_north_of_it() {
-        let empty = Document { home: None, items: Vec::new(), ..section() };
+        let empty = Document {
+            home: None,
+            items: Vec::new(),
+            ..section()
+        };
         let placed = insert_waypoint(&empty, 47.64, -122.1, -1, &QT_DEFAULTS);
         matches_qt(&placed, include_str!("../tests/fixtures/edit-D-by-qt.plan"));
         let home = placed.home.unwrap();
@@ -1318,164 +2368,509 @@ mod tests {
         let doc = section();
         let amsl = Document {
             global_altitude_mode: crate::altitudemodes::ABSOLUTE,
-            items: doc.items.iter().map(|item| match item {
-                Item::Simple(s) if s.altitude.is_some() => Item::Simple(Simple { altitude: s.altitude.clone().map(|a| Altitude { mode: crate::altitudemodes::ABSOLUTE, ..a }), ..s.clone() }),
-                other => other.clone(),
-            }).collect(),
+            items: doc
+                .items
+                .iter()
+                .map(|item| match item {
+                    Item::Simple(s) if s.altitude.is_some() => Item::Simple(Simple {
+                        altitude: s.altitude.clone().map(|a| Altitude {
+                            mode: crate::altitudemodes::ABSOLUTE,
+                            ..a
+                        }),
+                        ..s.clone()
+                    }),
+                    other => other.clone(),
+                })
+                .collect(),
             ..doc
         };
         let end = amsl.items.len() as i64 + 1;
         let placed = insert_simple(&amsl, CMD_NAV_TAKEOFF, 47.63, -122.08, end, &QT_DEFAULTS);
-        let Some(Item::Simple(takeoff)) = placed.items.last() else { panic!("a takeoff is a simple item") };
-        assert_eq!(takeoff.altitude.as_ref().map(|a| a.mode), Some(crate::altitudemodes::ABSOLUTE), "insertTakeoffItem copies _findPreviousAltitude's frame, not the relative default");
+        let Some(Item::Simple(takeoff)) = placed.items.last() else {
+            panic!("a takeoff is a simple item")
+        };
+        assert_eq!(
+            takeoff.altitude.as_ref().map(|a| a.mode),
+            Some(crate::altitudemodes::ABSOLUTE),
+            "insertTakeoffItem copies _findPreviousAltitude's frame, not the relative default"
+        );
     }
 
     #[test]
     fn landing_a_multirotor_appends_a_return_to_launch_as_qt_does() {
-        matches_qt(&insert_land(&section(), 47.6325, -122.0870, -1, &QT_DEFAULTS).unwrap(), include_str!("../tests/fixtures/edit-F-by-qt.plan"));
-        let plane = Document { vehicle_type: 1, ..section() };
-        assert!(insert_land(&plane, 47.6325, -122.0870, -1, &QT_DEFAULTS).is_err(), "a fixed-wing landing is a pattern, not a simple item");
+        matches_qt(
+            &insert_land(&section(), 47.6325, -122.0870, -1, &QT_DEFAULTS).unwrap(),
+            include_str!("../tests/fixtures/edit-F-by-qt.plan"),
+        );
+        let plane = Document {
+            vehicle_type: 1,
+            ..section()
+        };
+        assert!(
+            insert_land(&plane, 47.6325, -122.0870, -1, &QT_DEFAULTS).is_err(),
+            "a fixed-wing landing is a pattern, not a simple item"
+        );
     }
 
     #[test]
     fn an_altitude_edit_moves_param_seven_with_it() {
-        matches_qt(&set_altitude(&section(), 2, 33.0).unwrap(), include_str!("../tests/fixtures/edit-G-by-qt.plan"));
-        assert!(set_altitude(&section(), 9, 33.0).is_none(), "there is no ninth item");
+        matches_qt(
+            &set_altitude(&section(), 2, 33.0).unwrap(),
+            include_str!("../tests/fixtures/edit-G-by-qt.plan"),
+        );
+        assert!(
+            set_altitude(&section(), 9, 33.0).is_none(),
+            "there is no ninth item"
+        );
     }
 
     #[test]
     fn changing_a_command_resets_its_parameters_and_altitude_but_keeps_the_position() {
-        matches_qt(&set_command(&section(), 2, 19, &QT_DEFAULTS).unwrap(), include_str!("../tests/fixtures/edit-H-by-qt.plan"));
+        matches_qt(
+            &set_command(&section(), 2, 19, &QT_DEFAULTS).unwrap(),
+            include_str!("../tests/fixtures/edit-H-by-qt.plan"),
+        );
     }
 
     #[test]
     fn a_takeoff_sits_on_the_launch_position_at_the_default_altitude() {
         let without_takeoff = remove(&section(), 1).unwrap();
-        matches_qt(&insert_takeoff(&without_takeoff, 1, &QT_DEFAULTS).unwrap(), include_str!("../tests/fixtures/edit-takeoff-by-qt.plan"));
-        assert!(insert_takeoff(&Document { home: None, ..without_takeoff.clone() }, 1, &QT_DEFAULTS).is_err());
-        let plane = insert_takeoff(&Document { vehicle_type: 1, ..without_takeoff.clone() }, 1, &QT_DEFAULTS).unwrap();
-        let Item::Simple(climb) = &plane.items[0] else { panic!("takeoff") };
+        matches_qt(
+            &insert_takeoff(&without_takeoff, 1, &QT_DEFAULTS).unwrap(),
+            include_str!("../tests/fixtures/edit-takeoff-by-qt.plan"),
+        );
+        assert!(
+            insert_takeoff(
+                &Document {
+                    home: None,
+                    ..without_takeoff.clone()
+                },
+                1,
+                &QT_DEFAULTS
+            )
+            .is_err()
+        );
+        let plane = insert_takeoff(
+            &Document {
+                vehicle_type: 1,
+                ..without_takeoff.clone()
+            },
+            1,
+            &QT_DEFAULTS,
+        )
+        .unwrap();
+        let Item::Simple(climb) = &plane.items[0] else {
+            panic!("takeoff")
+        };
         let launch = without_takeoff.home.unwrap();
-        let out = crate::terrain::qt_distance((launch[0], launch[1]), (climb.params[4].unwrap(), climb.params[5].unwrap()));
-        assert!((out - climb_out_distance(QT_DEFAULTS.mission_item_altitude, true, 0.0)).abs() < 0.5, "a plane's takeoff sits on a 30 degree climb-out due north of launch, as TakeoffMissionItem::_setLaunchCoordinate puts it: {out}");
+        let out = crate::terrain::qt_distance(
+            (launch[0], launch[1]),
+            (climb.params[4].unwrap(), climb.params[5].unwrap()),
+        );
+        assert!(
+            (out - climb_out_distance(QT_DEFAULTS.mission_item_altitude, true, 0.0)).abs() < 0.5,
+            "a plane's takeoff sits on a 30 degree climb-out due north of launch, as TakeoffMissionItem::_setLaunchCoordinate puts it: {out}"
+        );
         assert!(climb.params[4].unwrap() > launch[0]);
-        assert!((climb_out_distance(50.0, true, 300.0) - 50.0 / 30f64.to_radians().tan()).abs() < 1e-9);
-        assert_eq!(climb_out_distance(0.0, true, 300.0), 300.0, "a zero relative altitude falls back to the transition distance");
+        assert!(
+            (climb_out_distance(50.0, true, 300.0) - 50.0 / 30f64.to_radians().tan()).abs() < 1e-9
+        );
+        assert_eq!(
+            climb_out_distance(0.0, true, 300.0),
+            300.0,
+            "a zero relative altitude falls back to the transition distance"
+        );
         assert_eq!(climb_out_distance(50.0, false, 300.0), 75.0);
-        let vtol = insert_takeoff(&Document { vehicle_type: 20, ..without_takeoff.clone() }, 1, &QT_DEFAULTS).unwrap();
-        let Item::Simple(takeoff) = &vtol.items[0] else { panic!("takeoff") };
+        let vtol = insert_takeoff(
+            &Document {
+                vehicle_type: 20,
+                ..without_takeoff.clone()
+            },
+            1,
+            &QT_DEFAULTS,
+        )
+        .unwrap();
+        let Item::Simple(takeoff) = &vtol.items[0] else {
+            panic!("takeoff")
+        };
         let home = without_takeoff.home.unwrap();
         let at = (takeoff.params[4].unwrap(), takeoff.params[5].unwrap());
-        assert!((crate::surveygrid::distance_between((home[0], home[1]), at) - VTOL_TRANSITION_DISTANCE_DEFAULT).abs() < 0.5, "a VTOL takes off the transition distance north of launch");
-        assert_eq!(takeoff.command, CMD_NAV_VTOL_TAKEOFF, "insertTakeoffItem sends MAV_CMD_NAV_VTOL_TAKEOFF for a VTOL; command 22 is a fixed-wing takeoff on a QuadPlane");
+        assert!(
+            (crate::surveygrid::distance_between((home[0], home[1]), at)
+                - VTOL_TRANSITION_DISTANCE_DEFAULT)
+                .abs()
+                < 0.5,
+            "a VTOL takes off the transition distance north of launch"
+        );
+        assert_eq!(
+            takeoff.command, CMD_NAV_VTOL_TAKEOFF,
+            "insertTakeoffItem sends MAV_CMD_NAV_VTOL_TAKEOFF for a VTOL; command 22 is a fixed-wing takeoff on a QuadPlane"
+        );
     }
 
     #[test]
     fn moving_the_launch_moves_home_and_places_only_an_unplaced_takeoff() {
         let placed = insert_takeoff(&remove(&section(), 1).unwrap(), 1, &QT_DEFAULTS).unwrap();
-        let Item::Simple(takeoff) = &placed.items[0] else { panic!("takeoff") };
+        let Item::Simple(takeoff) = &placed.items[0] else {
+            panic!("takeoff")
+        };
         let moved = set_launch(&placed, 1, 47.5, 8.5, true, 300.0).unwrap();
-        assert_eq!((moved.home.map(|h| (h[0], h[1])), &moved.items[0]), (Some((47.5, 8.5)), &placed.items[0]), "TakeoffMissionItem::_setLaunchCoordinate leaves a valid takeoff where it is");
-        let unplaced = replaced(&placed, 0, Simple { params: [takeoff.params[0], takeoff.params[1], takeoff.params[2], takeoff.params[3], None, None, takeoff.params[6]], ..takeoff.clone() });
-        let Item::Simple(together) = &set_launch(&unplaced, 1, 47.5, 8.5, true, 300.0).unwrap().items[0] else { panic!("takeoff") };
-        assert_eq!((together.params[4], together.params[5]), (Some(47.5), Some(8.5)));
-        let Item::Simple(apart) = &set_launch(&unplaced, 1, 47.5, 8.5, false, 300.0).unwrap().items[0] else { panic!("takeoff") };
-        assert!((crate::surveygrid::distance_between((47.5, 8.5), (apart.params[4].unwrap(), apart.params[5].unwrap())) - 300.0).abs() < 0.5);
-        let plane = Document { vehicle_type: 1, ..unplaced.clone() };
-        let in_terrain = replaced(&plane, 0, Simple { frame: FRAME_GLOBAL_TERRAIN_ALT, params: [None, None, None, None, None, None, Some(100.0)], ..takeoff.clone() });
-        let Item::Simple(climb) = &set_launch(&in_terrain, 1, 47.5, 8.5, false, 300.0).unwrap().items[0] else { panic!("takeoff") };
-        assert!((crate::surveygrid::distance_between((47.5, 8.5), (climb.params[4].unwrap(), climb.params[5].unwrap())) - 150.0).abs() < 0.5, "only a relative-frame takeoff climbs out at 30 degrees");
+        assert_eq!(
+            (moved.home.map(|h| (h[0], h[1])), &moved.items[0]),
+            (Some((47.5, 8.5)), &placed.items[0]),
+            "TakeoffMissionItem::_setLaunchCoordinate leaves a valid takeoff where it is"
+        );
+        let unplaced = replaced(
+            &placed,
+            0,
+            Simple {
+                params: [
+                    takeoff.params[0],
+                    takeoff.params[1],
+                    takeoff.params[2],
+                    takeoff.params[3],
+                    None,
+                    None,
+                    takeoff.params[6],
+                ],
+                ..takeoff.clone()
+            },
+        );
+        let Item::Simple(together) = &set_launch(&unplaced, 1, 47.5, 8.5, true, 300.0)
+            .unwrap()
+            .items[0]
+        else {
+            panic!("takeoff")
+        };
+        assert_eq!(
+            (together.params[4], together.params[5]),
+            (Some(47.5), Some(8.5))
+        );
+        let Item::Simple(apart) = &set_launch(&unplaced, 1, 47.5, 8.5, false, 300.0)
+            .unwrap()
+            .items[0]
+        else {
+            panic!("takeoff")
+        };
+        assert!(
+            (crate::surveygrid::distance_between(
+                (47.5, 8.5),
+                (apart.params[4].unwrap(), apart.params[5].unwrap())
+            ) - 300.0)
+                .abs()
+                < 0.5
+        );
+        let plane = Document {
+            vehicle_type: 1,
+            ..unplaced.clone()
+        };
+        let in_terrain = replaced(
+            &plane,
+            0,
+            Simple {
+                frame: FRAME_GLOBAL_TERRAIN_ALT,
+                params: [None, None, None, None, None, None, Some(100.0)],
+                ..takeoff.clone()
+            },
+        );
+        let Item::Simple(climb) = &set_launch(&in_terrain, 1, 47.5, 8.5, false, 300.0)
+            .unwrap()
+            .items[0]
+        else {
+            panic!("takeoff")
+        };
+        assert!(
+            (crate::surveygrid::distance_between(
+                (47.5, 8.5),
+                (climb.params[4].unwrap(), climb.params[5].unwrap())
+            ) - 150.0)
+                .abs()
+                < 0.5,
+            "only a relative-frame takeoff climbs out at 30 degrees"
+        );
     }
 
     #[test]
     fn a_region_of_interest_is_the_location_command_only_where_the_firmware_takes_it() {
-        let px4 = Document { firmware_type: 12, ..section() };
+        let px4 = Document {
+            firmware_type: 12,
+            ..section()
+        };
         let placed = insert_roi(&px4, 47.63, -122.09, -1, &QT_DEFAULTS);
-        assert!(matches!(placed.items.last(), Some(Item::Simple(s)) if s.command == CMD_DO_SET_ROI_LOCATION));
-        let apm = Document { firmware_type: 3, ..section() };
+        assert!(
+            matches!(placed.items.last(), Some(Item::Simple(s)) if s.command == CMD_DO_SET_ROI_LOCATION)
+        );
+        let apm = Document {
+            firmware_type: 3,
+            ..section()
+        };
         let placed = insert_roi(&apm, 47.63, -122.09, 2, &QT_DEFAULTS);
-        let Some(Item::Simple(roi)) = placed.items.get(1) else { panic!("the region of interest goes where it was asked") };
-        assert_eq!((roi.command, roi.params[0], roi.params[4], roi.params[5]), (CMD_DO_SET_ROI, Some(MAV_ROI_LOCATION), Some(47.63), Some(-122.09)));
+        let Some(Item::Simple(roi)) = placed.items.get(1) else {
+            panic!("the region of interest goes where it was asked")
+        };
+        assert_eq!(
+            (roi.command, roi.params[0], roi.params[4], roi.params[5]),
+            (
+                CMD_DO_SET_ROI,
+                Some(MAV_ROI_LOCATION),
+                Some(47.63),
+                Some(-122.09)
+            )
+        );
     }
 
     #[test]
     fn a_payload_drop_is_a_gripper_release_with_no_place_of_its_own() {
-        let apm = Document { firmware_type: 3, ..section() };
+        let apm = Document {
+            firmware_type: 3,
+            ..section()
+        };
         let placed = insert_simple(&apm, 211, 0.0, 0.0, 2, &QT_DEFAULTS);
-        let Some(Item::Simple(drop)) = placed.items.get(1) else { panic!("the drop goes where it was asked") };
-        assert_eq!((drop.command, drop.params[0], drop.params[1], drop.params[4], drop.params[5], drop.altitude.is_none()), (211, Some(1.0), Some(0.0), Some(0.0), Some(0.0), true), "gripper 1, action 0 = release, no coordinate: it fires at the waypoint before it");
+        let Some(Item::Simple(drop)) = placed.items.get(1) else {
+            panic!("the drop goes where it was asked")
+        };
+        assert_eq!(
+            (
+                drop.command,
+                drop.params[0],
+                drop.params[1],
+                drop.params[4],
+                drop.params[5],
+                drop.altitude.is_none()
+            ),
+            (211, Some(1.0), Some(0.0), Some(0.0), Some(0.0), true),
+            "gripper 1, action 0 = release, no coordinate: it fires at the waypoint before it"
+        );
         assert_eq!(placed.items.len(), apm.items.len() + 1);
     }
 
     #[test]
     fn a_waypoint_knows_the_drop_that_follows_it() {
-        let copter = Document { firmware_type: 3, vehicle_type: 2, items: Vec::new(), ..section() };
+        let copter = Document {
+            firmware_type: 3,
+            vehicle_type: 2,
+            items: Vec::new(),
+            ..section()
+        };
         let takeoff = insert_simple(&copter, CMD_NAV_TAKEOFF, 47.63, -122.08, 1, &QT_DEFAULTS);
-        let waypoints = insert_simple(&insert_simple(&takeoff, CMD_NAV_WAYPOINT, 47.631, -122.08, 2, &QT_DEFAULTS), CMD_NAV_WAYPOINT, 47.632, -122.08, 3, &QT_DEFAULTS);
-        assert_eq!(drop_after(&waypoints, 2), Some(None), "a waypoint with nothing after it offers a drop");
+        let waypoints = insert_simple(
+            &insert_simple(&takeoff, CMD_NAV_WAYPOINT, 47.631, -122.08, 2, &QT_DEFAULTS),
+            CMD_NAV_WAYPOINT,
+            47.632,
+            -122.08,
+            3,
+            &QT_DEFAULTS,
+        );
+        assert_eq!(
+            drop_after(&waypoints, 2),
+            Some(None),
+            "a waypoint with nothing after it offers a drop"
+        );
         assert_eq!(drop_after(&waypoints, 1), None, "the takeoff offers none");
         let dropped = insert_simple(&waypoints, 211, 0.0, 0.0, 3, &QT_DEFAULTS);
-        assert_eq!(drop_after(&dropped, 2), Some(Some(3)), "the drop at item 3 belongs to waypoint 2");
-        assert_eq!(drop_after(&dropped, 4), Some(None), "the next waypoint has its own, not waypoint 2's");
+        assert_eq!(
+            drop_after(&dropped, 2),
+            Some(Some(3)),
+            "the drop at item 3 belongs to waypoint 2"
+        );
+        assert_eq!(
+            drop_after(&dropped, 4),
+            Some(None),
+            "the next waypoint has its own, not waypoint 2's"
+        );
         assert_eq!(drop_after(&dropped, 9), None);
     }
 
     #[test]
     fn a_drop_needs_a_waypoint_before_it_not_the_takeoff() {
-        let copter = Document { firmware_type: 3, vehicle_type: 2, ..section() };
-        let waypoint = copter.items.iter().rposition(|item| matches!(item, Item::Simple(s) if s.command == CMD_NAV_WAYPOINT)).unwrap();
-        assert!(drop_has_a_place(&copter, waypoint + 1), "after a waypoint the drop falls over it");
-        assert!(!drop_has_a_place(&Document { items: Vec::new(), ..copter.clone() }, 0), "an empty plan has nowhere to drop");
-        let takeoff_only = insert_simple(&Document { items: Vec::new(), ..copter.clone() }, CMD_NAV_TAKEOFF, 47.63, -122.08, 1, &QT_DEFAULTS);
-        assert!(!drop_has_a_place(&takeoff_only, 1), "straight after takeoff the drop would fall over the launch point");
+        let copter = Document {
+            firmware_type: 3,
+            vehicle_type: 2,
+            ..section()
+        };
+        let waypoint = copter
+            .items
+            .iter()
+            .rposition(|item| matches!(item, Item::Simple(s) if s.command == CMD_NAV_WAYPOINT))
+            .unwrap();
+        assert!(
+            drop_has_a_place(&copter, waypoint + 1),
+            "after a waypoint the drop falls over it"
+        );
+        assert!(
+            !drop_has_a_place(
+                &Document {
+                    items: Vec::new(),
+                    ..copter.clone()
+                },
+                0
+            ),
+            "an empty plan has nowhere to drop"
+        );
+        let takeoff_only = insert_simple(
+            &Document {
+                items: Vec::new(),
+                ..copter.clone()
+            },
+            CMD_NAV_TAKEOFF,
+            47.63,
+            -122.08,
+            1,
+            &QT_DEFAULTS,
+        );
+        assert!(
+            !drop_has_a_place(&takeoff_only, 1),
+            "straight after takeoff the drop would fall over the launch point"
+        );
         let dropped = insert_simple(&takeoff_only, 211, 0.0, 0.0, 2, &QT_DEFAULTS);
-        assert!(!drop_has_a_place(&dropped, 2), "a second drop looks past the first to the takeoff");
+        assert!(
+            !drop_has_a_place(&dropped, 2),
+            "a second drop looks past the first to the takeoff"
+        );
     }
 
     #[test]
     fn a_multirotor_stops_over_the_drop_and_a_plane_flies_through() {
-        let copter = Document { firmware_type: 3, vehicle_type: 2, ..section() };
-        let at = copter.items.iter().rposition(|item| matches!(item, Item::Simple(s) if s.command == CMD_NAV_WAYPOINT)).unwrap();
-        let hold = |doc: &Document| match &doc.items[at] { Item::Simple(s) => s.params[0], Item::Complex { .. } => None };
-        let dropped = hold_before_drop(&insert_simple(&copter, 211, 0.0, 0.0, at as i64 + 2, &QT_DEFAULTS), at + 1, 2.0);
-        assert_eq!(hold(&dropped), Some(2.0), "the waypoint before the drop holds, so the payload leaves a drone that is standing still");
+        let copter = Document {
+            firmware_type: 3,
+            vehicle_type: 2,
+            ..section()
+        };
+        let at = copter
+            .items
+            .iter()
+            .rposition(|item| matches!(item, Item::Simple(s) if s.command == CMD_NAV_WAYPOINT))
+            .unwrap();
+        let hold = |doc: &Document| match &doc.items[at] {
+            Item::Simple(s) => s.params[0],
+            Item::Complex { .. } => None,
+        };
+        let dropped = hold_before_drop(
+            &insert_simple(&copter, 211, 0.0, 0.0, at as i64 + 2, &QT_DEFAULTS),
+            at + 1,
+            2.0,
+        );
+        assert_eq!(
+            hold(&dropped),
+            Some(2.0),
+            "the waypoint before the drop holds, so the payload leaves a drone that is standing still"
+        );
         let held = set_param(&copter, at + 1, 1, 5.0).unwrap();
-        assert_eq!(hold(&hold_before_drop(&insert_simple(&held, 211, 0.0, 0.0, at as i64 + 2, &QT_DEFAULTS), at + 1, 2.0)), Some(5.0), "a hold the pilot set is kept");
-        let plane = Document { vehicle_type: 1, ..copter };
-        assert_eq!(hold(&hold_before_drop(&insert_simple(&plane, 211, 0.0, 0.0, at as i64 + 2, &QT_DEFAULTS), at + 1, 2.0)), hold(&plane), "a plane cannot stop over its target");
+        assert_eq!(
+            hold(&hold_before_drop(
+                &insert_simple(&held, 211, 0.0, 0.0, at as i64 + 2, &QT_DEFAULTS),
+                at + 1,
+                2.0
+            )),
+            Some(5.0),
+            "a hold the pilot set is kept"
+        );
+        let plane = Document {
+            vehicle_type: 1,
+            ..copter
+        };
+        assert_eq!(
+            hold(&hold_before_drop(
+                &insert_simple(&plane, 211, 0.0, 0.0, at as i64 + 2, &QT_DEFAULTS),
+                at + 1,
+                2.0
+            )),
+            hold(&plane),
+            "a plane cannot stop over its target"
+        );
     }
 
     #[test]
     fn an_items_altitude_mode_sets_its_mavlink_frame_as_simple_mission_item_does() {
         let doc = section();
-        let at = doc.items.iter().position(|item| matches!(item, Item::Simple(s) if s.altitude.is_some())).unwrap() + 1;
-        let simple = |d: &Document| match &d.items[at - 1] { Item::Simple(s) => s.clone(), _ => unreachable!() };
+        let at = doc
+            .items
+            .iter()
+            .position(|item| matches!(item, Item::Simple(s) if s.altitude.is_some()))
+            .unwrap()
+            + 1;
+        let simple = |d: &Document| match &d.items[at - 1] {
+            Item::Simple(s) => s.clone(),
+            _ => unreachable!(),
+        };
         let shown = simple(&doc).altitude.unwrap().altitude;
         let terrain = set_altitude_mode(&doc, at, crate::altitudemodes::TERRAIN_FRAME).unwrap();
-        assert_eq!((simple(&terrain).frame, simple(&terrain).altitude.unwrap().mode, simple(&terrain).params[6]), (FRAME_GLOBAL_TERRAIN_ALT, crate::altitudemodes::TERRAIN_FRAME, Some(shown)));
-        let calc = set_altitude_mode(&terrain, at, crate::altitudemodes::CALC_ABOVE_TERRAIN).unwrap();
+        assert_eq!(
+            (
+                simple(&terrain).frame,
+                simple(&terrain).altitude.unwrap().mode,
+                simple(&terrain).params[6]
+            ),
+            (
+                FRAME_GLOBAL_TERRAIN_ALT,
+                crate::altitudemodes::TERRAIN_FRAME,
+                Some(shown)
+            )
+        );
+        let calc =
+            set_altitude_mode(&terrain, at, crate::altitudemodes::CALC_ABOVE_TERRAIN).unwrap();
         assert_eq!(simple(&calc).frame, FRAME_GLOBAL);
-        assert_eq!(simple(&calc).params[6], None, "_altitudeFrameChanged clears param7 until terrain answers");
+        assert_eq!(
+            simple(&calc).params[6],
+            None,
+            "_altitudeFrameChanged clears param7 until terrain answers"
+        );
         let relative = set_altitude_mode(&calc, at, crate::altitudemodes::RELATIVE).unwrap();
-        assert_eq!((simple(&relative).frame, simple(&relative).params[6]), (FRAME_GLOBAL_RELATIVE_ALT, Some(shown)));
-        assert_eq!(set_altitude_mode(&doc, at, crate::altitudemodes::MIXED), None);
+        assert_eq!(
+            (simple(&relative).frame, simple(&relative).params[6]),
+            (FRAME_GLOBAL_RELATIVE_ALT, Some(shown))
+        );
+        assert_eq!(
+            set_altitude_mode(&doc, at, crate::altitudemodes::MIXED),
+            None
+        );
     }
 
     #[test]
     fn a_calc_above_terrain_waypoint_flies_terrain_plus_its_height_and_waits_without_terrain() {
         let doc = section();
-        let at = doc.items.iter().position(|item| matches!(item, Item::Simple(s) if s.altitude.is_some())).unwrap() + 1;
-        let simple = |d: &Document| match &d.items[at - 1] { Item::Simple(s) => s.clone(), _ => unreachable!() };
-        let calc = set_altitude(&set_altitude_mode(&doc, at, crate::altitudemodes::CALC_ABOVE_TERRAIN).unwrap(), at, 50.0).unwrap();
+        let at = doc
+            .items
+            .iter()
+            .position(|item| matches!(item, Item::Simple(s) if s.altitude.is_some()))
+            .unwrap()
+            + 1;
+        let simple = |d: &Document| match &d.items[at - 1] {
+            Item::Simple(s) => s.clone(),
+            _ => unreachable!(),
+        };
+        let calc = set_altitude(
+            &set_altitude_mode(&doc, at, crate::altitudemodes::CALC_ABOVE_TERRAIN).unwrap(),
+            at,
+            50.0,
+        )
+        .unwrap();
         let unknown = above_terrain(&calc, &|_, _| None);
-        assert_eq!(simple(&unknown).params[6], None, "50 m above ground is never sent as 50 m AMSL");
-        assert_eq!(unknown, above_terrain(&calc, &|_, _| None), "a plan waiting on terrain still equals itself, so undo and change checks see no change");
+        assert_eq!(
+            simple(&unknown).params[6],
+            None,
+            "50 m above ground is never sent as 50 m AMSL"
+        );
+        assert_eq!(
+            unknown,
+            above_terrain(&calc, &|_, _| None),
+            "a plan waiting on terrain still equals itself, so undo and change checks see no change"
+        );
         assert!(awaiting_terrain(&unknown), "upload waits for terrain");
         let known = above_terrain(&calc, &|_, _| Some(500.0));
-        assert_eq!((simple(&known).params[6], simple(&known).frame), (Some(550.0), FRAME_GLOBAL));
-        assert_eq!(simple(&known).altitude.unwrap().amsl_above_terrain, Some(550.0));
+        assert_eq!(
+            (simple(&known).params[6], simple(&known).frame),
+            (Some(550.0), FRAME_GLOBAL)
+        );
+        assert_eq!(
+            simple(&known).altitude.unwrap().amsl_above_terrain,
+            Some(550.0)
+        );
         assert!(!awaiting_terrain(&known));
-        assert!(!awaiting_terrain(&above_terrain(&doc, &|_, _| None)), "other altitude modes never wait");
+        assert!(
+            !awaiting_terrain(&above_terrain(&doc, &|_, _| None)),
+            "other altitude modes never wait"
+        );
     }
 
     #[test]
@@ -1484,55 +2879,118 @@ mod tests {
         let with_absolute = insert_waypoint(&absolute, 47.634, -122.089, -1, &QT_DEFAULTS);
         let mixed = set_global_altitude_mode(&with_absolute, crate::altitudemodes::MIXED);
         let last = mixed.items.len() as i64;
-        assert_eq!(previous_altitude_mode(&mixed, last + 1), Some(crate::altitudemodes::ABSOLUTE));
-        assert_eq!(previous_altitude_mode(&mixed, -1), None, "appending finds nothing, as _findPreviousAltitude walks down from index -2");
+        assert_eq!(
+            previous_altitude_mode(&mixed, last + 1),
+            Some(crate::altitudemodes::ABSOLUTE)
+        );
+        assert_eq!(
+            previous_altitude_mode(&mixed, -1),
+            None,
+            "appending finds nothing, as _findPreviousAltitude walks down from index -2"
+        );
     }
 
     #[test]
     fn move_to_previous_item_takes_the_last_positioned_item_before_this_one() {
-        let apm = Document { firmware_type: 3, ..section() };
+        let apm = Document {
+            firmware_type: 3,
+            ..section()
+        };
         let first = insert_waypoint(&apm, 47.1, 8.1, -1, &QT_DEFAULTS);
         let roi = insert_roi(&first, 47.9, 8.9, -1, &QT_DEFAULTS);
         let second = insert_waypoint(&roi, 47.2, 8.2, -1, &QT_DEFAULTS);
         let last = second.items.len() as i64;
-        assert_eq!(previous_coordinate(&second, last), Some((47.1, 8.1)), "an ROI is a standalone coordinate and is skipped, as _setPlanViewState skips it");
+        assert_eq!(
+            previous_coordinate(&second, last),
+            Some((47.1, 8.1)),
+            "an ROI is a standalone coordinate and is skipped, as _setPlanViewState skips it"
+        );
         assert_eq!(previous_coordinate(&second, 1), None);
     }
 
     #[test]
     fn a_scan_sets_the_mission_camera_to_survey_mode_unless_one_is_chosen() {
-        let px4 = Document { firmware_type: 12, ..section() };
+        let px4 = Document {
+            firmware_type: 12,
+            ..section()
+        };
         let surveyed = with_survey_camera(px4.clone());
-        assert_eq!(camera_state(&surveyed.settings_sections).mode, Some(CAMERA_MODE_IMAGE_SURVEY), "_insertComplexMissionItemWorker sets CAMERA_MODE_IMAGE_SURVEY on the mission's camera section");
+        assert_eq!(
+            camera_state(&surveyed.settings_sections).mode,
+            Some(CAMERA_MODE_IMAGE_SURVEY),
+            "_insertComplexMissionItemWorker sets CAMERA_MODE_IMAGE_SURVEY on the mission's camera section"
+        );
         let chosen = set_camera(&px4, 0, "specifyCameraMode", &json!(true)).unwrap();
-        assert_eq!(camera_state(&with_survey_camera(chosen).settings_sections).mode, Some(0.0), "a mode the operator already set is left alone");
+        assert_eq!(
+            camera_state(&with_survey_camera(chosen).settings_sections).mode,
+            Some(0.0),
+            "a mode the operator already set is left alone"
+        );
         let photo = set_camera(&surveyed, 0, "cameraMode", &json!(CAMERA_MODE_IMAGE)).unwrap();
-        let with_scan = Document { items: vec![Item::Complex { kind: "survey".into(), json: json!({}), item_count: 1 }], ..photo.clone() };
-        assert_eq!(camera_state(&after_scan_removed(&with_scan, photo.clone()).settings_sections).mode, None, "removing the last area scan unspecifies an Image mode, as removeVisualItem does");
-        assert_eq!(camera_state(&after_scan_removed(&with_scan, surveyed.clone()).settings_sections).mode, Some(CAMERA_MODE_IMAGE_SURVEY), "QGC only clears a mode left at 0");
+        let with_scan = Document {
+            items: vec![Item::Complex {
+                kind: "survey".into(),
+                json: json!({}),
+                item_count: 1,
+            }],
+            ..photo.clone()
+        };
+        assert_eq!(
+            camera_state(&after_scan_removed(&with_scan, photo.clone()).settings_sections).mode,
+            None,
+            "removing the last area scan unspecifies an Image mode, as removeVisualItem does"
+        );
+        assert_eq!(
+            camera_state(&after_scan_removed(&with_scan, surveyed.clone()).settings_sections).mode,
+            Some(CAMERA_MODE_IMAGE_SURVEY),
+            "QGC only clears a mode left at 0"
+        );
     }
 
     #[test]
     fn a_survey_numbers_its_items_from_the_sequence_it_lands_on() {
-        let fixture: Value = serde_json::from_str(include_str!("../tests/fixtures/survey-inserted-by-qt.json")).unwrap();
-        let placed = insert_complex(&section(), "survey", fixture["survey"].clone(), (47.63, -122.09), 2);
+        let fixture: Value =
+            serde_json::from_str(include_str!("../tests/fixtures/survey-inserted-by-qt.json"))
+                .unwrap();
+        let placed = insert_complex(
+            &section(),
+            "survey",
+            fixture["survey"].clone(),
+            (47.63, -122.09),
+            2,
+        );
         let saved = save(&placed);
         let survey = &saved["mission"]["items"][1]["TransectStyleComplexItem"]["Items"];
         let before = &saved["mission"]["items"][0]["doJumpId"];
-        assert_eq!(survey[0]["doJumpId"].as_i64(), before.as_i64().map(|n| n + 1));
+        assert_eq!(
+            survey[0]["doJumpId"].as_i64(),
+            before.as_i64().map(|n| n + 1)
+        );
         let after = saved["mission"]["items"][2]["doJumpId"].as_i64().unwrap();
-        assert_eq!(after, survey[0]["doJumpId"].as_i64().unwrap() + survey.as_array().unwrap().len() as i64);
+        assert_eq!(
+            after,
+            survey[0]["doJumpId"].as_i64().unwrap() + survey.as_array().unwrap().len() as i64
+        );
     }
 
     #[test]
     fn the_plan_altitude_mode_changes_new_items_and_leaves_existing_ones() {
         let absolute = set_global_altitude_mode(&section(), crate::altitudemodes::ABSOLUTE);
-        matches_qt(&absolute, include_str!("../tests/fixtures/edit-absolute-by-qt.plan"));
-        matches_qt(&insert_waypoint(&absolute, 47.634, -122.089, -1, &QT_DEFAULTS), include_str!("../tests/fixtures/edit-absolute-then-waypoint-by-qt.plan"));
+        matches_qt(
+            &absolute,
+            include_str!("../tests/fixtures/edit-absolute-by-qt.plan"),
+        );
+        matches_qt(
+            &insert_waypoint(&absolute, 47.634, -122.089, -1, &QT_DEFAULTS),
+            include_str!("../tests/fixtures/edit-absolute-then-waypoint-by-qt.plan"),
+        );
     }
 
     fn qt_view(text: &str) -> Vec<Value> {
-        serde_json::from_str::<Value>(text).unwrap()["items"].as_array().unwrap().clone()
+        serde_json::from_str::<Value>(text).unwrap()["items"]
+            .as_array()
+            .unwrap()
+            .clone()
     }
 
     fn folded_counts(doc: &Document) -> Vec<i64> {
@@ -1546,25 +3004,58 @@ mod tests {
 
     #[test]
     fn section_commands_fold_into_the_item_before_them_as_qt_shows_them() {
-        let qt = qt_view(include_str!("../tests/fixtures/missionitems-sectiontest-by-qt.json"));
-        assert_eq!(folded_counts(&section()), qt.iter().map(|i| i["foldedCommands"].as_i64().unwrap()).collect::<Vec<_>>(), "the mount control after the second waypoint is that waypoint's camera section, so Qt shows five rows where the file holds six items");
+        let qt = qt_view(include_str!(
+            "../tests/fixtures/missionitems-sectiontest-by-qt.json"
+        ));
+        assert_eq!(
+            folded_counts(&section()),
+            qt.iter()
+                .map(|i| i["foldedCommands"].as_i64().unwrap())
+                .collect::<Vec<_>>(),
+            "the mount control after the second waypoint is that waypoint's camera section, so Qt shows five rows where the file holds six items"
+        );
         let survey = load(include_str!("../tests/fixtures/survey-upload.plan"), 2).unwrap();
-        let qt = qt_view(include_str!("../tests/fixtures/missionitems-survey-by-qt.json"));
-        assert_eq!(folded_counts(&survey), qt.iter().map(|i| i["foldedCommands"].as_i64().unwrap()).collect::<Vec<_>>());
+        let qt = qt_view(include_str!(
+            "../tests/fixtures/missionitems-survey-by-qt.json"
+        ));
+        assert_eq!(
+            folded_counts(&survey),
+            qt.iter()
+                .map(|i| i["foldedCommands"].as_i64().unwrap())
+                .collect::<Vec<_>>()
+        );
     }
 
     #[test]
     fn a_speed_change_folds_only_when_it_is_the_kind_the_airframe_flies_by() {
         let speed = |ground: f64| json!({ "type": "SimpleItem", "autoContinue": true, "command": 178, "frame": 2, "doJumpId": 3, "params": [ground, 12, -1, 0, 0, 0, 0] });
-        let plan = |ground: f64, vehicle: i64| json!({ "fileType": "Plan", "version": 1, "groundStation": "QGroundControl", "geoFence": { "version": 2, "circles": [], "polygons": [] }, "rallyPoints": { "version": 2, "points": [] }, "mission": { "firmwareType": 3, "vehicleType": vehicle, "plannedHomePosition": [1, 2, 0], "items": [
+        let plan = |ground: f64, vehicle: i64| {
+            json!({ "fileType": "Plan", "version": 1, "groundStation": "QGroundControl", "geoFence": { "version": 2, "circles": [], "polygons": [] }, "rallyPoints": { "version": 2, "points": [] }, "mission": { "firmwareType": 3, "vehicleType": vehicle, "plannedHomePosition": [1, 2, 0], "items": [
             { "type": "SimpleItem", "autoContinue": true, "command": 16, "frame": 3, "doJumpId": 1, "params": [0, 0, 0, 0, 1.0, 2.0, 30] },
             speed(ground),
-        ] } }).to_string();
-        assert_eq!(load(&plan(1.0, 2), 2).unwrap().items.len(), 1, "a multirotor flies by ground speed");
-        assert_eq!(load(&plan(0.0, 2), 2).unwrap().items.len(), 2, "an airspeed change on a multirotor stays its own row");
-        assert_eq!(load(&plan(0.0, 1), 2).unwrap().items.len(), 1, "a plane flies by airspeed");
+        ] } }).to_string()
+        };
+        assert_eq!(
+            load(&plan(1.0, 2), 2).unwrap().items.len(),
+            1,
+            "a multirotor flies by ground speed"
+        );
+        assert_eq!(
+            load(&plan(0.0, 2), 2).unwrap().items.len(),
+            2,
+            "an airspeed change on a multirotor stays its own row"
+        );
+        assert_eq!(
+            load(&plan(0.0, 1), 2).unwrap().items.len(),
+            1,
+            "a plane flies by airspeed"
+        );
         let resaved = save(&load(&plan(1.0, 2), 2).unwrap());
-        assert_eq!(resaved["mission"]["items"].as_array().unwrap().len(), 2, "a folded section is still written out after its owner");
+        assert_eq!(
+            resaved["mission"]["items"].as_array().unwrap().len(),
+            2,
+            "a folded section is still written out after its owner"
+        );
         assert_eq!(resaved["mission"]["items"][1]["doJumpId"], 2);
     }
 
@@ -1574,51 +3065,129 @@ mod tests {
         assert_eq!(specified_speed(&with, 2), Some(8.0));
         let written = save(&with);
         let items = written["mission"]["items"].as_array().unwrap();
-        assert_eq!((items[2]["command"].as_i64(), items[2]["params"][0].as_f64(), items[2]["params"][2].as_f64()), (Some(178), Some(1.0), Some(-1.0)), "a multirotor's speed section is a ground speed with no throttle change, the shape SpeedSection writes");
-        assert_eq!(load(&written.to_string(), 2).unwrap().items.len(), section().items.len(), "and it folds back into its waypoint on load");
-        assert_eq!(specified_speed(&set_speed(&with, 2, None).unwrap(), 2), None);
-        assert!(set_speed(&section(), 1, Some(8.0)).is_none(), "a takeoff has no speed section");
-        assert_eq!(specified_speed(&set_speed(&section(), 0, Some(6.0)).unwrap(), 0), Some(6.0), "the settings item carries the plan's opening speed");
+        assert_eq!(
+            (
+                items[2]["command"].as_i64(),
+                items[2]["params"][0].as_f64(),
+                items[2]["params"][2].as_f64()
+            ),
+            (Some(178), Some(1.0), Some(-1.0)),
+            "a multirotor's speed section is a ground speed with no throttle change, the shape SpeedSection writes"
+        );
+        assert_eq!(
+            load(&written.to_string(), 2).unwrap().items.len(),
+            section().items.len(),
+            "and it folds back into its waypoint on load"
+        );
+        assert_eq!(
+            specified_speed(&set_speed(&with, 2, None).unwrap(), 2),
+            None
+        );
+        assert!(
+            set_speed(&section(), 1, Some(8.0)).is_none(),
+            "a takeoff has no speed section"
+        );
+        assert_eq!(
+            specified_speed(&set_speed(&section(), 0, Some(6.0)).unwrap(), 0),
+            Some(6.0),
+            "the settings item carries the plan's opening speed"
+        );
     }
 
     #[test]
     fn a_field_edit_moves_the_param_it_shows() {
         let edited = set_param(&section(), 2, 1, 4.0).unwrap();
-        let Item::Simple(s) = &edited.items[1] else { panic!() };
+        let Item::Simple(s) = &edited.items[1] else {
+            panic!()
+        };
         assert_eq!(s.params[0], Some(4.0));
         assert!(set_param(&section(), 2, 8, 1.0).is_none());
     }
 
     #[test]
     fn a_loiter_radius_lands_in_the_param_setradius_writes() {
-        let loiter = |command: i64| Document { items: vec![Item::Simple(Simple { command, frame: FRAME_MISSION, params: [Some(0.0); 7], auto_continue: true, altitude: None, sections: Vec::new() })], ..section() };
-        let radius = |doc: Document| match &doc.items[0] { Item::Simple(s) => (s.params[1], s.params[2]), _ => panic!() };
-        assert_eq!(radius(set_loiter_radius(&loiter(17), 1, -80.0).unwrap()), (Some(0.0), Some(-80.0)), "a negative radius turns counter-clockwise");
-        assert_eq!(radius(set_loiter_radius(&loiter(31), 1, 60.0).unwrap()), (Some(60.0), Some(0.0)), "loiter-to-altitude keeps its radius in param 2");
-        assert!(set_loiter_radius(&loiter(CMD_NAV_WAYPOINT), 1, 60.0).is_none(), "a waypoint has no loiter radius");
+        let loiter = |command: i64| Document {
+            items: vec![Item::Simple(Simple {
+                command,
+                frame: FRAME_MISSION,
+                params: [Some(0.0); 7],
+                auto_continue: true,
+                altitude: None,
+                sections: Vec::new(),
+            })],
+            ..section()
+        };
+        let radius = |doc: Document| match &doc.items[0] {
+            Item::Simple(s) => (s.params[1], s.params[2]),
+            _ => panic!(),
+        };
+        assert_eq!(
+            radius(set_loiter_radius(&loiter(17), 1, -80.0).unwrap()),
+            (Some(0.0), Some(-80.0)),
+            "a negative radius turns counter-clockwise"
+        );
+        assert_eq!(
+            radius(set_loiter_radius(&loiter(31), 1, 60.0).unwrap()),
+            (Some(60.0), Some(0.0)),
+            "loiter-to-altitude keeps its radius in param 2"
+        );
+        assert!(
+            set_loiter_radius(&loiter(CMD_NAV_WAYPOINT), 1, 60.0).is_none(),
+            "a waypoint has no loiter radius"
+        );
     }
 
     #[test]
     fn version_one_fences_and_rally_points_are_dropped_as_qt_drops_them() {
-        let doc = load(include_str!("../../test/MissionManager/SectionTest.plan"), 2).unwrap();
-        assert_eq!(doc.fence, json!({ "circles": [], "polygons": [], "version": 2 }));
+        let doc = load(
+            include_str!("../../test/MissionManager/SectionTest.plan"),
+            2,
+        )
+        .unwrap();
+        assert_eq!(
+            doc.fence,
+            json!({ "circles": [], "polygons": [], "version": 2 })
+        );
         assert_eq!(doc.rally, json!({ "points": [], "version": 2 }));
     }
 
     #[test]
     fn an_item_the_core_cannot_hold_refuses_the_whole_plan() {
         let plan = json!({ "fileType": "Plan", "version": 1, "groundStation": "QGroundControl", "geoFence": { "version": 2, "circles": [], "polygons": [] }, "rallyPoints": { "version": 2, "points": [] }, "mission": { "firmwareType": 12, "plannedHomePosition": [0, 0, 0], "items": [{ "type": "ComplexItem", "complexItemType": "FWLandingPattern" }] } });
-        assert!(load(&plan.to_string(), 2).unwrap_err().contains("FWLandingPattern"));
+        assert!(
+            load(&plan.to_string(), 2)
+                .unwrap_err()
+                .contains("FWLandingPattern")
+        );
     }
 
     #[test]
     fn a_jump_targets_the_sequence_of_the_item_carrying_its_do_jump_id() {
         let item = |command: i64, id: i64, p1: f64| json!({ "type": "SimpleItem", "command": command, "frame": 2, "doJumpId": id, "autoContinue": true, "params": [p1, 0, 0, 0, 0, 0, 0] });
-        let plan = |items: Value| json!({ "fileType": "Plan", "version": 1, "groundStation": "QGroundControl", "geoFence": { "version": 2, "circles": [], "polygons": [] }, "rallyPoints": { "version": 2, "points": [] }, "mission": { "firmwareType": 12, "vehicleType": 2, "plannedHomePosition": [0, 0, 0], "items": items } }).to_string();
-        let doc = load(&plan(json!([item(203, 40, 0.0), item(203, 50, 0.0), item(177, 60, 50.0)])), 2).unwrap();
-        let Item::Simple(jump) = &doc.items[2] else { panic!() };
-        assert_eq!(jump.params[0], Some(2.0), "doJumpId 50 is the second item, sequence 2 after home");
-        assert_eq!(load(&plan(json!([item(177, 1, 9.0)])), 2).unwrap_err(), "Mission: Could not find doJumpId: 9");
+        let plan = |items: Value| {
+            json!({ "fileType": "Plan", "version": 1, "groundStation": "QGroundControl", "geoFence": { "version": 2, "circles": [], "polygons": [] }, "rallyPoints": { "version": 2, "points": [] }, "mission": { "firmwareType": 12, "vehicleType": 2, "plannedHomePosition": [0, 0, 0], "items": items } }).to_string()
+        };
+        let doc = load(
+            &plan(json!([
+                item(203, 40, 0.0),
+                item(203, 50, 0.0),
+                item(177, 60, 50.0)
+            ])),
+            2,
+        )
+        .unwrap();
+        let Item::Simple(jump) = &doc.items[2] else {
+            panic!()
+        };
+        assert_eq!(
+            jump.params[0],
+            Some(2.0),
+            "doJumpId 50 is the second item, sequence 2 after home"
+        );
+        assert_eq!(
+            load(&plan(json!([item(177, 1, 9.0)])), 2).unwrap_err(),
+            "Mission: Could not find doJumpId: 9"
+        );
     }
 
     #[test]
@@ -1627,25 +3196,67 @@ mod tests {
         let without = |path: &[&str]| {
             let mut plan = valid();
             let (last, parents) = path.split_last().unwrap();
-            parents.iter().fold(&mut plan, |at, key| &mut at[*key]).as_object_mut().unwrap().remove(*last);
+            parents
+                .iter()
+                .fold(&mut plan, |at, key| &mut at[*key])
+                .as_object_mut()
+                .unwrap()
+                .remove(*last);
             load(&plan.to_string(), 2).unwrap_err()
         };
-        assert_eq!(without(&["groundStation"]), "The following required keys are missing: groundStation");
-        assert_eq!(without(&["rallyPoints"]), "The following required keys are missing: rallyPoints");
-        assert_eq!(without(&["mission", "firmwareType"]), "Mission: The following required keys are missing: firmwareType");
-        assert_eq!(without(&["geoFence", "polygons"]), "The following required keys are missing: polygons");
+        assert_eq!(
+            without(&["groundStation"]),
+            "The following required keys are missing: groundStation"
+        );
+        assert_eq!(
+            without(&["rallyPoints"]),
+            "The following required keys are missing: rallyPoints"
+        );
+        assert_eq!(
+            without(&["mission", "firmwareType"]),
+            "Mission: The following required keys are missing: firmwareType"
+        );
+        assert_eq!(
+            without(&["geoFence", "polygons"]),
+            "The following required keys are missing: polygons"
+        );
         let with = |path: &[&str], value: Value| {
             let mut plan = valid();
             *path.iter().fold(&mut plan, |at, key| &mut at[*key]) = value;
             load(&plan.to_string(), 2)
         };
-        assert_eq!(with(&["version"], json!(2)).unwrap_err(), "File version 2 is newer than current supported version 1");
-        assert_eq!(with(&["fileType"], json!("Mission")).unwrap_err(), "Incorrect file type key expected:Plan actual:Mission");
-        assert_eq!(with(&["mission", "items"], json!({})).unwrap_err(), "Mission: Incorrect value type - key:type:expected items:Object:Array");
-        assert_eq!(with(&["rallyPoints", "version"], json!(3)).unwrap_err(), "Rally Points supports version 2");
-        assert!(with(&["geoFence"], json!({})).is_ok(), "an unversioned fence is old data QGC ignores");
-        assert_eq!(with(&["rallyPoints"], json!({})).unwrap_err(), "The following required keys are missing: version, points", "while an unversioned rally section is not");
-        assert_eq!(with(&["mission", "firmwareType"], json!(3)).unwrap().vehicle_type, 2, "no vehicleType takes the offline vehicle class");
+        assert_eq!(
+            with(&["version"], json!(2)).unwrap_err(),
+            "File version 2 is newer than current supported version 1"
+        );
+        assert_eq!(
+            with(&["fileType"], json!("Mission")).unwrap_err(),
+            "Incorrect file type key expected:Plan actual:Mission"
+        );
+        assert_eq!(
+            with(&["mission", "items"], json!({})).unwrap_err(),
+            "Mission: Incorrect value type - key:type:expected items:Object:Array"
+        );
+        assert_eq!(
+            with(&["rallyPoints", "version"], json!(3)).unwrap_err(),
+            "Rally Points supports version 2"
+        );
+        assert!(
+            with(&["geoFence"], json!({})).is_ok(),
+            "an unversioned fence is old data QGC ignores"
+        );
+        assert_eq!(
+            with(&["rallyPoints"], json!({})).unwrap_err(),
+            "The following required keys are missing: version, points",
+            "while an unversioned rally section is not"
+        );
+        assert_eq!(
+            with(&["mission", "firmwareType"], json!(3))
+                .unwrap()
+                .vehicle_type,
+            2,
+            "no vehicleType takes the offline vehicle class"
+        );
     }
 
     #[test]
@@ -1653,42 +3264,145 @@ mod tests {
         let plan = |fence: Value, rally: Value| {
             json!({"fileType": "Plan", "version": 1, "groundStation": "QGroundControl", "mission": {"firmwareType": 12, "plannedHomePosition": [47.0, 8.0, 500], "items": []}, "geoFence": fence, "rallyPoints": rally}).to_string()
         };
-        let fence = |polygons: Value, circles: Value| plan(json!({"version": 2, "polygons": polygons, "circles": circles}), json!({"version": 2, "points": []}));
+        let fence = |polygons: Value, circles: Value| {
+            plan(
+                json!({"version": 2, "polygons": polygons, "circles": circles}),
+                json!({"version": 2, "points": []}),
+            )
+        };
         let error = |text: String| load(&text, 2).unwrap_err();
         let polygon = json!({"version": 1, "inclusion": true, "polygon": [[47.0, 8.0], [47.1, 8.0], [47.1, 8.1]]});
         let circle = json!({"version": 1, "inclusion": false, "circle": {"center": [47.0, 8.0], "radius": 30}});
         assert!(load(&fence(json!([polygon]), json!([circle])), 2).is_ok());
-        assert_eq!(error(fence(json!([1]), json!([]))), "GeoFence polygon not stored as object");
-        assert_eq!(error(fence(json!([]), json!(["x"]))), "GeoFence circle not stored as object");
-        assert_eq!(error(fence(json!([{"version": 1}]), json!([]))), "The following required keys are missing: inclusion");
-        assert_eq!(error(fence(json!([{"version": 2, "inclusion": true, "polygon": []}]), json!([]))), "GeoFence Polygon only supports version 1");
-        assert_eq!(error(fence(json!([{"version": 1, "inclusion": true}]), json!([]))), "The following required keys are missing: polygon");
-        assert_eq!(error(fence(json!([{"version": 1, "inclusion": true, "polygon": [[47.0, 8.0, 5.0]]}]), json!([]))), "Coordinate array must contain 2 values");
-        assert_eq!(error(fence(json!([{"version": 1, "inclusion": true, "polygon": {}}]), json!([]))), "value for coordinate array is not array");
-        assert_eq!(error(fence(json!([]), json!([{"version": 3, "inclusion": true}]))), "GeoFence Circle only supports version 1");
-        assert_eq!(error(fence(json!([]), json!([{"version": 1, "inclusion": true, "circle": {"center": [47.0, 8.0]}}]))), "The following required keys are missing: radius");
-        assert_eq!(error(fence(json!([]), json!([{"version": 1, "inclusion": true, "circle": {"center": ["47", 8.0], "radius": 1}}]))), "Coordinate array may only contain double values, found: 3");
-        assert_eq!(error(plan(json!({"version": 2, "polygons": [], "circles": [], "breachReturn": [47.0, 8.0]}), json!({"version": 2, "points": []}))), "Coordinate array must contain 3 values");
-        assert_eq!(error(plan(json!({"version": 2, "polygons": [], "circles": []}), json!({"version": 2, "points": [[47.0, 8.0]]}))), "Rally: Coordinate array must contain 3 values");
-        assert!(load(&plan(json!({"version": 1, "polygons": [1]}), json!({"version": 1, "points": [1]})), 2).is_ok(), "old version 1 sections are ignored, not checked");
+        assert_eq!(
+            error(fence(json!([1]), json!([]))),
+            "GeoFence polygon not stored as object"
+        );
+        assert_eq!(
+            error(fence(json!([]), json!(["x"]))),
+            "GeoFence circle not stored as object"
+        );
+        assert_eq!(
+            error(fence(json!([{"version": 1}]), json!([]))),
+            "The following required keys are missing: inclusion"
+        );
+        assert_eq!(
+            error(fence(
+                json!([{"version": 2, "inclusion": true, "polygon": []}]),
+                json!([])
+            )),
+            "GeoFence Polygon only supports version 1"
+        );
+        assert_eq!(
+            error(fence(json!([{"version": 1, "inclusion": true}]), json!([]))),
+            "The following required keys are missing: polygon"
+        );
+        assert_eq!(
+            error(fence(
+                json!([{"version": 1, "inclusion": true, "polygon": [[47.0, 8.0, 5.0]]}]),
+                json!([])
+            )),
+            "Coordinate array must contain 2 values"
+        );
+        assert_eq!(
+            error(fence(
+                json!([{"version": 1, "inclusion": true, "polygon": {}}]),
+                json!([])
+            )),
+            "value for coordinate array is not array"
+        );
+        assert_eq!(
+            error(fence(json!([]), json!([{"version": 3, "inclusion": true}]))),
+            "GeoFence Circle only supports version 1"
+        );
+        assert_eq!(
+            error(fence(
+                json!([]),
+                json!([{"version": 1, "inclusion": true, "circle": {"center": [47.0, 8.0]}}])
+            )),
+            "The following required keys are missing: radius"
+        );
+        assert_eq!(
+            error(fence(
+                json!([]),
+                json!([{"version": 1, "inclusion": true, "circle": {"center": ["47", 8.0], "radius": 1}}])
+            )),
+            "Coordinate array may only contain double values, found: 3"
+        );
+        assert_eq!(
+            error(plan(
+                json!({"version": 2, "polygons": [], "circles": [], "breachReturn": [47.0, 8.0]}),
+                json!({"version": 2, "points": []})
+            )),
+            "Coordinate array must contain 3 values"
+        );
+        assert_eq!(
+            error(plan(
+                json!({"version": 2, "polygons": [], "circles": []}),
+                json!({"version": 2, "points": [[47.0, 8.0]]})
+            )),
+            "Rally: Coordinate array must contain 3 values"
+        );
+        assert!(
+            load(
+                &plan(
+                    json!({"version": 1, "polygons": [1]}),
+                    json!({"version": 1, "points": [1]})
+                ),
+                2
+            )
+            .is_ok(),
+            "old version 1 sections are ignored, not checked"
+        );
         assert!(load(&plan(json!({"version": 2, "polygons": [{"version": 1, "inclusion": true, "polygon": [[null, 8.0]]}], "circles": []}), json!({"version": 2, "points": [[47.0, 8.0, null]]})), 2).is_ok(), "null is a NaN coordinate");
     }
 
     #[test]
     fn mission_items_load_like_mission_controller_load_json_mission_file_v2() {
-        let plan = |home: Value, items: Value| json!({"fileType": "Plan", "version": 1, "groundStation": "QGroundControl", "geoFence": {"version": 2, "polygons": [], "circles": []}, "rallyPoints": {"version": 2, "points": []}, "mission": {"firmwareType": 12, "vehicleType": 2, "plannedHomePosition": home, "items": items}}).to_string();
+        let plan = |home: Value, items: Value| {
+            json!({"fileType": "Plan", "version": 1, "groundStation": "QGroundControl", "geoFence": {"version": 2, "polygons": [], "circles": []}, "rallyPoints": {"version": 2, "points": []}, "mission": {"firmwareType": 12, "vehicleType": 2, "plannedHomePosition": home, "items": items}}).to_string()
+        };
         let error = |home: Value, items: Value| load(&plan(home, items), 2).unwrap_err();
-        assert_eq!(error(json!([47.0, 8.0]), json!([])), "Mission: Coordinate array must contain 3 values", "the planned home is read with GeoJsonHelper::loadGeoCoordinate");
-        assert_eq!(error(json!([47.0, 8.0, 0]), json!([7])), "Mission: Mission item 0 is not an object");
-        assert_eq!(error(json!([47.0, 8.0, 0]), json!([{"command": 16}])), "Mission: The following required keys are missing: type");
-        assert_eq!(error(json!([47.0, 8.0, 0]), json!([{"type": "ComplexItem"}])), "Mission: The following required keys are missing: complexItemType");
-        assert_eq!(error(json!([47.0, 8.0, 0]), json!([{"type": "ComplexItem", "complexItemType": "Orbit"}])), "Mission: Unsupported complex item type: Orbit");
+        assert_eq!(
+            error(json!([47.0, 8.0]), json!([])),
+            "Mission: Coordinate array must contain 3 values",
+            "the planned home is read with GeoJsonHelper::loadGeoCoordinate"
+        );
+        assert_eq!(
+            error(json!([47.0, 8.0, 0]), json!([7])),
+            "Mission: Mission item 0 is not an object"
+        );
+        assert_eq!(
+            error(json!([47.0, 8.0, 0]), json!([{"command": 16}])),
+            "Mission: The following required keys are missing: type"
+        );
+        assert_eq!(
+            error(json!([47.0, 8.0, 0]), json!([{"type": "ComplexItem"}])),
+            "Mission: The following required keys are missing: complexItemType"
+        );
+        assert_eq!(
+            error(
+                json!([47.0, 8.0, 0]),
+                json!([{"type": "ComplexItem", "complexItemType": "Orbit"}])
+            ),
+            "Mission: Unsupported complex item type: Orbit"
+        );
         let waypoint = json!({"type": "SimpleItem", "autoContinue": true, "command": 16, "frame": 3, "params": [0, 0, 0, 0, 47.0, 8.0, 50], "AltitudeMode": 1, "Altitude": 50});
-        assert_eq!(error(json!([47.0, 8.0, 0]), json!([waypoint])), "Mission: The following required keys are missing: AMSLAltAboveTerrain", "SimpleMissionItem::load wants all three altitude keys once one is saved");
+        assert_eq!(
+            error(json!([47.0, 8.0, 0]), json!([waypoint])),
+            "Mission: The following required keys are missing: AMSLAltAboveTerrain",
+            "SimpleMissionItem::load wants all three altitude keys once one is saved"
+        );
         let delay = json!({"type": "SimpleItem", "autoContinue": true, "command": 93, "frame": 2, "params": [5, 0, 0, 0, 0, 0, 0], "AltitudeMode": 1});
-        assert!(load(&plan(json!([47.0, 8.0, 0]), json!([delay])), 2).is_ok(), "a command without altitude never reads the altitude keys");
+        assert!(
+            load(&plan(json!([47.0, 8.0, 0]), json!([delay])), 2).is_ok(),
+            "a command without altitude never reads the altitude keys"
+        );
         let nan = json!({"type": "SimpleItem", "autoContinue": true, "command": 16, "frame": 3, "params": [0, 0, 0, 0, 47.0, 8.0, 50], "AltitudeMode": 1, "Altitude": 50, "AMSLAltAboveTerrain": null});
-        assert!(load(&plan(json!([47.0, 8.0, 0]), json!([nan])), 2).is_ok(), "a null AMSL altitude is a NaN double");
+        assert!(
+            load(&plan(json!([47.0, 8.0, 0]), json!([nan])), 2).is_ok(),
+            "a null AMSL altitude is a NaN double"
+        );
     }
 
     #[test]
@@ -1696,10 +3410,18 @@ mod tests {
         let plan = json!({"fileType": "Plan", "version": 1, "groundStation": "QGroundControl",
             "mission": {"firmwareType": 12, "plannedHomePosition": [47.0, 8.0, 500], "items": [{"type": "Bogus"}]},
             "geoFence": {"version": 2, "polygons": [1], "circles": []}, "rallyPoints": {"version": 3, "points": []}});
-        assert_eq!(load(&plan.to_string(), 2).unwrap_err(), "Mission: Unknown item type: Bogus", "MissionController::load prefixes every item error with Mission:");
+        assert_eq!(
+            load(&plan.to_string(), 2).unwrap_err(),
+            "Mission: Unknown item type: Bogus",
+            "MissionController::load prefixes every item error with Mission:"
+        );
         let fixed = json!({"fileType": "Plan", "version": 1, "groundStation": "QGroundControl",
             "mission": {"firmwareType": 12, "plannedHomePosition": [47.0, 8.0, 500], "items": []},
             "geoFence": {"version": 2, "polygons": [1], "circles": []}, "rallyPoints": {"version": 3, "points": []}});
-        assert_eq!(load(&fixed.to_string(), 2).unwrap_err(), "GeoFence polygon not stored as object", "fence before rally");
+        assert_eq!(
+            load(&fixed.to_string(), 2).unwrap_err(),
+            "GeoFence polygon not stored as object",
+            "fence before rally"
+        );
     }
 }

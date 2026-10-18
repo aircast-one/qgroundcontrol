@@ -73,7 +73,11 @@ pub const PREVIEW_DEPS: &[&str] = &[
 fn place(backend: &dyn Backend, path: &str) -> Option<(f64, f64)> {
     let at = backend.value(path);
     let valid = at.get("valid").and_then(Value::as_bool).unwrap_or(true);
-    Some((at.get("latitude")?.as_f64()?, at.get("longitude")?.as_f64()?)).filter(|(lat, lon)| valid && lat.is_finite() && lon.is_finite() && (*lat, *lon) != (0.0, 0.0))
+    Some((
+        at.get("latitude")?.as_f64()?,
+        at.get("longitude")?.as_f64()?,
+    ))
+    .filter(|(lat, lon)| valid && lat.is_finite() && lon.is_finite() && (*lat, *lon) != (0.0, 0.0))
 }
 
 fn raw(backend: &dyn Backend, path: &str) -> Option<f64> {
@@ -86,36 +90,67 @@ pub struct GotoBudget {
     pub past_return_point: bool,
 }
 
-pub fn goto_budget(percent: f64, seconds_left: f64, reserve: f64, there_seconds: f64, home_seconds: f64) -> Option<GotoBudget> {
+pub fn goto_budget(
+    percent: f64,
+    seconds_left: f64,
+    reserve: f64,
+    there_seconds: f64,
+    home_seconds: f64,
+) -> Option<GotoBudget> {
     (percent > 0.0 && seconds_left > 0.0).then(|| {
-        let landing_percent = (percent - (there_seconds + home_seconds) * percent / seconds_left).max(0.0);
-        GotoBudget { landing_percent, past_return_point: landing_percent <= reserve }
+        let landing_percent =
+            (percent - (there_seconds + home_seconds) * percent / seconds_left).max(0.0);
+        GotoBudget {
+            landing_percent,
+            past_return_point: landing_percent <= reserve,
+        }
     })
 }
 
 pub fn goto_verdict(budget: GotoBudget) -> String {
     match budget.past_return_point {
         true => "Past your return point. Return home instead?".to_string(),
-        false => format!("About {}% left on landing", budget.landing_percent.round() as i64),
+        false => format!(
+            "About {}% left on landing",
+            budget.landing_percent.round() as i64
+        ),
     }
 }
 
-pub fn goto_progress(remaining_m: f64, ground_speed: f64, distance: &str, height: &str) -> (bool, String) {
+pub fn goto_progress(
+    remaining_m: f64,
+    ground_speed: f64,
+    distance: &str,
+    height: &str,
+) -> (bool, String) {
     let arrived = remaining_m <= ARRIVED_METRES && ground_speed < SETTLED_MPS;
-    let eta = (ground_speed >= SETTLED_MPS).then(|| crate::battery::duration_text(remaining_m / ground_speed)).filter(|t| !t.is_empty());
+    let eta = (ground_speed >= SETTLED_MPS)
+        .then(|| crate::battery::duration_text(remaining_m / ground_speed))
+        .filter(|t| !t.is_empty());
     let text = match arrived {
         true => format!("Arrived \u{00b7} holding at {height}"),
-        false => std::iter::once(format!("Going to point \u{00b7} {distance}")).chain(eta).collect::<Vec<_>>().join(" \u{00b7} "),
+        false => std::iter::once(format!("Going to point \u{00b7} {distance}"))
+            .chain(eta)
+            .collect::<Vec<_>>()
+            .join(" \u{00b7} "),
     };
     (arrived, text)
 }
 
 pub fn goto_preview_view(backend: &dyn Backend, args: &[String]) -> Value {
-    let target = args.first().zip(args.get(1)).and_then(|(lat, lon)| Some((lat.trim().parse::<f64>().ok()?, lon.trim().parse::<f64>().ok()?)));
+    let target = args.first().zip(args.get(1)).and_then(|(lat, lon)| {
+        Some((
+            lat.trim().parse::<f64>().ok()?,
+            lon.trim().parse::<f64>().ok()?,
+        ))
+    });
     let (Some(target), Some(aircraft)) = (target, place(backend, "vehicle.coordinate")) else {
         return json!({ "kind": "object", "class": "GotoPreview", "available": false });
     };
-    let (horizontal, vertical) = (crate::read::Unit::horizontal(backend), crate::read::Unit::vertical(backend));
+    let (horizontal, vertical) = (
+        crate::read::Unit::horizontal(backend),
+        crate::read::Unit::vertical(backend),
+    );
     let height = raw(backend, "vehicle.altitudeRelative");
     let headline = crate::battery::battery_view(backend, &[])["headline"].clone();
     let trip = crate::battery::return_trip(backend);
@@ -123,8 +158,17 @@ pub fn goto_preview_view(backend: &dyn Backend, args: &[String]) -> Value {
         let trip = trip?;
         let home = place(backend, "vehicle.homePosition")?;
         let there = crate::track::distance_m(aircraft, target) / trip.cruise_mps;
-        let back = crate::battery::return_seconds(crate::battery::ReturnTrip { distance_m: crate::track::distance_m(target, home), ..trip })?;
-        goto_budget(headline["percent"].as_f64()?, headline["secondsLeft"].as_f64()?, headline["reserve"].as_f64().unwrap_or(0.0), there, back)
+        let back = crate::battery::return_seconds(crate::battery::ReturnTrip {
+            distance_m: crate::track::distance_m(target, home),
+            ..trip
+        })?;
+        goto_budget(
+            headline["percent"].as_f64()?,
+            headline["secondsLeft"].as_f64()?,
+            headline["reserve"].as_f64().unwrap_or(0.0),
+            there,
+            back,
+        )
     })();
     json!({
         "kind": "object",
@@ -149,10 +193,15 @@ struct GotoState {
     in_goto_mode: bool,
 }
 
-static LAST_GOTO: std::sync::Mutex<GotoState> = std::sync::Mutex::new(GotoState { mark: None, in_goto_mode: false });
+static LAST_GOTO: std::sync::Mutex<GotoState> = std::sync::Mutex::new(GotoState {
+    mark: None,
+    in_goto_mode: false,
+});
 
 fn goto_state() -> std::sync::MutexGuard<'static, GotoState> {
-    LAST_GOTO.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    LAST_GOTO
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 fn remember_goto(mark: GotoMark) {
@@ -169,20 +218,33 @@ fn goto_shown(in_goto_mode: bool) -> Option<GotoMark> {
 }
 
 fn goto_vehicle(backend: &dyn Backend) -> (Value, bool) {
-    let vehicle = backend.value_fields("vehicle", "armed,flying,px4Firmware,orbitActive,flightMode,gotoFlightMode");
-    let in_goto_mode = vehicle.get("flightMode").is_some() && vehicle.get("flightMode") == vehicle.get("gotoFlightMode");
+    let vehicle = backend.value_fields(
+        "vehicle",
+        "armed,flying,px4Firmware,orbitActive,flightMode,gotoFlightMode",
+    );
+    let in_goto_mode = vehicle.get("flightMode").is_some()
+        && vehicle.get("flightMode") == vehicle.get("gotoFlightMode");
     (vehicle, in_goto_mode)
 }
 
 fn loiter_circle_shown(backend: &dyn Backend, vehicle: &Value) -> bool {
-    !flag(vehicle, "px4Firmware") && !flag(vehicle, "orbitActive") && crate::guided::forward_flight(backend)
+    !flag(vehicle, "px4Firmware")
+        && !flag(vehicle, "orbitActive")
+        && crate::guided::forward_flight(backend)
 }
 
 fn loiter_offer(backend: &dyn Backend) -> Option<GotoMark> {
     let (vehicle, in_goto_mode) = goto_vehicle(backend);
     let mark = goto_shown(in_goto_mode).filter(|_| in_goto_mode)?;
-    let guided = flag(&backend.value_fields("vehicle.supports", "guidedMode"), "guidedMode");
-    let shown = flag(&vehicle, "armed") && flag(&vehicle, "flying") && guided && loiter_circle_shown(backend, &vehicle) && !crate::guided::mission_active(backend);
+    let guided = flag(
+        &backend.value_fields("vehicle.supports", "guidedMode"),
+        "guidedMode",
+    );
+    let shown = flag(&vehicle, "armed")
+        && flag(&vehicle, "flying")
+        && guided
+        && loiter_circle_shown(backend, &vehicle)
+        && !crate::guided::mission_active(backend);
     shown.then_some(mark)
 }
 
@@ -219,18 +281,33 @@ struct Offer {
 }
 
 fn offers(backend: &dyn Backend) -> Vec<Offer> {
-    let vehicle = backend.value_fields("vehicle", "flying,sensorsPresentBits,flightMode,gotoFlightMode");
+    let vehicle = backend.value_fields(
+        "vehicle",
+        "flying,sensorsPresentBits,flightMode,gotoFlightMode",
+    );
     let supports = backend.value_fields("vehicle.supports", "roiMode,orbitMode");
     if vehicle.get("kind").and_then(Value::as_str) != Some("object") {
         return vec![];
     }
     let flying = flag(&vehicle, "flying");
-    let gps = integer(&vehicle, "sensorsPresentBits").unwrap_or(GPS_SENSOR_BIT) & GPS_SENSOR_BIT != 0;
-    let in_goto_mode = vehicle.get("flightMode").is_some() && vehicle.get("flightMode") == vehicle.get("gotoFlightMode");
-    let confirm_in_guided = crate::read::value_number(&backend.value("settings.flyViewSettings.goToLocationRequiresConfirmInGuided.rawValue")).is_none_or(|v| v != 0.0);
+    let gps =
+        integer(&vehicle, "sensorsPresentBits").unwrap_or(GPS_SENSOR_BIT) & GPS_SENSOR_BIT != 0;
+    let in_goto_mode = vehicle.get("flightMode").is_some()
+        && vehicle.get("flightMode") == vehicle.get("gotoFlightMode");
+    let confirm_in_guided = crate::read::value_number(
+        &backend.value("settings.flyViewSettings.goToLocationRequiresConfirmInGuided.rawValue"),
+    )
+    .is_none_or(|v| v != 0.0);
     let home = backend.value("vehicle.homePosition");
-    let home_known = flag(&home, "valid") && home.get("altitude").and_then(Value::as_f64).is_some_and(f64::is_finite);
-    let orbit = flying && flag(&supports, "orbitMode") && home_known && !crate::guided::mission_active(backend);
+    let home_known = flag(&home, "valid")
+        && home
+            .get("altitude")
+            .and_then(Value::as_f64)
+            .is_some_and(f64::is_finite);
+    let orbit = flying
+        && flag(&supports, "orbitMode")
+        && home_known
+        && !crate::guided::mission_active(backend);
     [
         (flying, Offer { id: "GoTo", path: "vehicle.guidedModeGotoLocation", label: "Go to location", title: "Go To Location", message: "Move the vehicle to the specified location", confirm: !in_goto_mode || confirm_in_guided }),
         (orbit, Offer { id: "Orbit", path: "guided.orbit", label: "Orbit at location", title: "Orbit", message: "Orbit the vehicle around the specified location", confirm: true }),
@@ -292,47 +369,83 @@ fn aircraft(backend: &dyn Backend) -> Aircraft {
         flying: flag(&vehicle, "flying"),
         roi: flag(&supports, "roiMode"),
         heading: flag(&supports, "changeHeading"),
-        gps: integer(&vehicle, "sensorsPresentBits").unwrap_or(GPS_SENSOR_BIT) & GPS_SENSOR_BIT != 0,
+        gps: integer(&vehicle, "sensorsPresentBits").unwrap_or(GPS_SENSOR_BIT) & GPS_SENSOR_BIT
+            != 0,
     }
 }
 
 fn click_refusal(click: Click, a: Aircraft) -> Option<(&'static str, &'static str)> {
     match click {
         _ if !a.connected => Some(("noVehicle", "No vehicle is connected.")),
-        Click::GoTo | Click::Roi | Click::Heading if !a.flying => Some(("grounded", "The vehicle has to be flying for that.")),
-        Click::Roi | Click::HomeRoi if !a.roi => Some(("unsupported", "This vehicle cannot point at a location.")),
-        Click::Heading if !a.heading => Some(("unsupported", "This vehicle cannot be turned to face a point.")),
-        Click::EstimatorOrigin if a.gps => Some(("hasGps", "The vehicle has GPS, so it already knows where it is.")),
+        Click::GoTo | Click::Roi | Click::Heading if !a.flying => {
+            Some(("grounded", "The vehicle has to be flying for that."))
+        }
+        Click::Roi | Click::HomeRoi if !a.roi => {
+            Some(("unsupported", "This vehicle cannot point at a location."))
+        }
+        Click::Heading if !a.heading => Some((
+            "unsupported",
+            "This vehicle cannot be turned to face a point.",
+        )),
+        Click::EstimatorOrigin if a.gps => Some((
+            "hasGps",
+            "The vehicle has GPS, so it already knows where it is.",
+        )),
         _ => None,
     }
 }
 
 fn roi_action(backend: &dyn Backend, latitude: f64, longitude: f64, altitude: f64) -> Value {
-    match flag(&backend.value_fields("vehicle", "px4Firmware"), "px4Firmware") {
+    match flag(
+        &backend.value_fields("vehicle", "px4Firmware"),
+        "px4Firmware",
+    ) {
         true => {
-            let home = backend.value("vehicle.homePosition").get("altitude").and_then(Value::as_f64).unwrap_or(f64::NAN);
-            let terrain = crate::terrainservice::height_now(latitude, longitude).ok().flatten().unwrap_or(home);
+            let home = backend
+                .value("vehicle.homePosition")
+                .get("altitude")
+                .and_then(Value::as_f64)
+                .unwrap_or(f64::NAN);
+            let terrain = crate::terrainservice::height_now(latitude, longitude)
+                .ok()
+                .flatten()
+                .unwrap_or(home);
             json!({ "action": "roi", "latitude": latitude, "longitude": longitude, "altitude": terrain, "frame": crate::guidedcmd::FRAME_GLOBAL })
         }
-        false => json!({ "action": "roi", "latitude": latitude, "longitude": longitude, "altitude": altitude, "frame": crate::guidedcmd::FRAME_GLOBAL_RELATIVE_ALT }),
+        false => {
+            json!({ "action": "roi", "latitude": latitude, "longitude": longitude, "altitude": altitude, "frame": crate::guidedcmd::FRAME_GLOBAL_RELATIVE_ALT })
+        }
     }
 }
 
 pub fn send(backend: &dyn Backend, click: Click, path: &str, args: &str) -> Value {
-    let refused = |token: &str, reason: &str| json!({ "ok": false, "refusal": token, "reason": reason });
+    let refused =
+        |token: &str, reason: &str| json!({ "ok": false, "refusal": token, "reason": reason });
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
     let Some((latitude, longitude)) = crate::fenceedit::point(given.get(0)) else {
-        return refused("badCoordinate", "The point needs a latitude from -90 to 90 and a longitude from -180 to 180.");
+        return refused(
+            "badCoordinate",
+            "The point needs a latitude from -90 to 90 and a longitude from -180 to 180.",
+        );
     };
     let mut at = json!({ "latitude": latitude, "longitude": longitude });
-    if let Some(altitude) = given[0].get("altitude").and_then(Value::as_f64).filter(|a| a.is_finite()) {
+    if let Some(altitude) = given[0]
+        .get("altitude")
+        .and_then(Value::as_f64)
+        .filter(|a| a.is_finite())
+    {
         at["altitude"] = json!(altitude);
     }
     let forwarded = match click {
         Click::GoTo => match given.get(1).map(Value::as_f64) {
             None => json!([at, crate::guided::goto_loiter_radius(backend)]),
             Some(Some(radius)) if radius.is_finite() => json!([at, radius]),
-            Some(_) => return refused("badRadius", "A loiter radius is a number of metres; its sign is the direction."),
+            Some(_) => {
+                return refused(
+                    "badRadius",
+                    "A loiter radius is a number of metres; its sign is the direction.",
+                );
+            }
         },
         _ => json!([at]),
     };
@@ -340,16 +453,39 @@ pub fn send(backend: &dyn Backend, click: Click, path: &str, args: &str) -> Valu
         return refused(token, reason);
     }
     let core = match click {
-        Click::GoTo => Some(json!({ "action": "goto", "latitude": latitude, "longitude": longitude, "loiterRadius": forwarded[1] })),
-        Click::EstimatorOrigin => Some(json!({ "action": "estimatorOrigin", "latitude": latitude, "longitude": longitude, "altitude": at.get("altitude").cloned().unwrap_or(json!(0.0)) })),
+        Click::GoTo => Some(
+            json!({ "action": "goto", "latitude": latitude, "longitude": longitude, "loiterRadius": forwarded[1] }),
+        ),
+        Click::EstimatorOrigin => Some(
+            json!({ "action": "estimatorOrigin", "latitude": latitude, "longitude": longitude, "altitude": at.get("altitude").cloned().unwrap_or(json!(0.0)) }),
+        ),
         _ if crate::qthost::present() => None,
-        Click::Heading => Some(json!({ "action": "heading", "latitude": latitude, "longitude": longitude })),
-        Click::SetHome => Some(json!({ "action": "setHome", "latitude": latitude, "longitude": longitude, "terrain": crate::terrainservice::height_now(latitude, longitude).ok().flatten() })),
-        Click::Roi | Click::HomeRoi => Some(roi_action(backend, latitude, longitude, at.get("altitude").and_then(Value::as_f64).unwrap_or(0.0))),
+        Click::Heading => {
+            Some(json!({ "action": "heading", "latitude": latitude, "longitude": longitude }))
+        }
+        Click::SetHome => Some(
+            json!({ "action": "setHome", "latitude": latitude, "longitude": longitude, "terrain": crate::terrainservice::height_now(latitude, longitude).ok().flatten() }),
+        ),
+        Click::Roi | Click::HomeRoi => Some(roi_action(
+            backend,
+            latitude,
+            longitude,
+            at.get("altitude").and_then(Value::as_f64).unwrap_or(0.0),
+        )),
     };
-    let sent = crate::guided::dispatch(backend, core, crate::guided::active_id(backend), path, &forwarded.to_string());
+    let sent = crate::guided::dispatch(
+        backend,
+        core,
+        crate::guided::active_id(backend),
+        path,
+        &forwarded.to_string(),
+    );
     if click == Click::GoTo && flag(&sent, "ok") {
-        remember_goto(GotoMark { latitude, longitude, radius: forwarded[1].as_f64().unwrap_or(0.0) });
+        remember_goto(GotoMark {
+            latitude,
+            longitude,
+            radius: forwarded[1].as_f64().unwrap_or(0.0),
+        });
     }
     sent
 }
@@ -365,40 +501,147 @@ mod tests {
         assert!(!fine.past_return_point);
         assert_eq!(goto_verdict(fine), "About 42% left on landing");
         let late = goto_budget(13.0, 120.0, 7.0, 16.0, 40.0).unwrap();
-        assert!(late.past_return_point, "13 % with 56 s of flying at 0.108 %/s lands under the 7 % reserve");
-        assert_eq!(goto_verdict(late), "Past your return point. Return home instead?");
+        assert!(
+            late.past_return_point,
+            "13 % with 56 s of flying at 0.108 %/s lands under the 7 % reserve"
+        );
+        assert_eq!(
+            goto_verdict(late),
+            "Past your return point. Return home instead?"
+        );
         assert_eq!(goto_budget(13.0, 0.0, 7.0, 16.0, 40.0), None);
     }
 
     #[test]
     fn a_go_to_in_progress_counts_down_and_then_says_it_has_arrived() {
-        assert_eq!(goto_progress(45.0, 5.0, "45 m", "20 m"), (false, "Going to point \u{00b7} 45 m \u{00b7} 9 sec".to_string()));
-        assert_eq!(goto_progress(3.0, 0.1, "3 m", "20 m"), (true, "Arrived \u{00b7} holding at 20 m".to_string()));
-        assert_eq!(goto_progress(30.0, 0.1, "30 m", "20 m").0, false, "stopped short of the point is not arrived");
+        assert_eq!(
+            goto_progress(45.0, 5.0, "45 m", "20 m"),
+            (
+                false,
+                "Going to point \u{00b7} 45 m \u{00b7} 9 sec".to_string()
+            )
+        );
+        assert_eq!(
+            goto_progress(3.0, 0.1, "3 m", "20 m"),
+            (true, "Arrived \u{00b7} holding at 20 m".to_string())
+        );
+        assert_eq!(
+            goto_progress(30.0, 0.1, "30 m", "20 m").0,
+            false,
+            "stopped short of the point is not arrived"
+        );
     }
     use std::cell::RefCell;
 
     #[test]
     fn each_map_click_is_sent_only_where_the_head_offered_it() {
-        let flying = Aircraft { connected: true, flying: true, roi: true, heading: true, gps: true };
+        let flying = Aircraft {
+            connected: true,
+            flying: true,
+            roi: true,
+            heading: true,
+            gps: true,
+        };
         assert_eq!(click_refusal(Click::GoTo, flying), None);
-        assert_eq!(click_refusal(Click::GoTo, Aircraft { flying: false, ..flying }).map(|r| r.0), Some("grounded"));
-        assert_eq!(click_refusal(Click::Roi, Aircraft { roi: false, ..flying }).map(|r| r.0), Some("unsupported"), "Vehicle::guidedModeROI logs and returns while the bridge answers ok");
-        assert_eq!(click_refusal(Click::HomeRoi, Aircraft { flying: false, ..flying }), None, "GimbalIndicator's Point Home calls guidedModeROI(homePosition) on the ground too");
-        assert_eq!(click_refusal(Click::Heading, Aircraft { heading: false, ..flying }).map(|r| r.0), Some("unsupported"));
-        assert_eq!(click_refusal(Click::SetHome, Aircraft { flying: false, ..flying }), None, "home can be set on the ground");
-        assert_eq!(click_refusal(Click::EstimatorOrigin, flying).map(|r| r.0), Some("hasGps"));
-        assert_eq!(click_refusal(Click::EstimatorOrigin, Aircraft { gps: false, flying: false, ..flying }), None);
-        assert_eq!(click_refusal(Click::SetHome, Aircraft::default()).map(|r| r.0), Some("noVehicle"));
-        assert_eq!(Click::of("vehicle.guidedModeOrbit"), None, "the orbit is guided.orbit's, with a radius and altitude the operator chose");
+        assert_eq!(
+            click_refusal(
+                Click::GoTo,
+                Aircraft {
+                    flying: false,
+                    ..flying
+                }
+            )
+            .map(|r| r.0),
+            Some("grounded")
+        );
+        assert_eq!(
+            click_refusal(
+                Click::Roi,
+                Aircraft {
+                    roi: false,
+                    ..flying
+                }
+            )
+            .map(|r| r.0),
+            Some("unsupported"),
+            "Vehicle::guidedModeROI logs and returns while the bridge answers ok"
+        );
+        assert_eq!(
+            click_refusal(
+                Click::HomeRoi,
+                Aircraft {
+                    flying: false,
+                    ..flying
+                }
+            ),
+            None,
+            "GimbalIndicator's Point Home calls guidedModeROI(homePosition) on the ground too"
+        );
+        assert_eq!(
+            click_refusal(
+                Click::Heading,
+                Aircraft {
+                    heading: false,
+                    ..flying
+                }
+            )
+            .map(|r| r.0),
+            Some("unsupported")
+        );
+        assert_eq!(
+            click_refusal(
+                Click::SetHome,
+                Aircraft {
+                    flying: false,
+                    ..flying
+                }
+            ),
+            None,
+            "home can be set on the ground"
+        );
+        assert_eq!(
+            click_refusal(Click::EstimatorOrigin, flying).map(|r| r.0),
+            Some("hasGps")
+        );
+        assert_eq!(
+            click_refusal(
+                Click::EstimatorOrigin,
+                Aircraft {
+                    gps: false,
+                    flying: false,
+                    ..flying
+                }
+            ),
+            None
+        );
+        assert_eq!(
+            click_refusal(Click::SetHome, Aircraft::default()).map(|r| r.0),
+            Some("noVehicle")
+        );
+        assert_eq!(
+            Click::of("vehicle.guidedModeOrbit"),
+            None,
+            "the orbit is guided.orbit's, with a radius and altitude the operator chose"
+        );
     }
 
-    struct Offered { flying: bool, sensors: i64, mode: &'static str, roi: bool, confirm_in_guided: f64, orbit: bool }
+    struct Offered {
+        flying: bool,
+        sensors: i64,
+        mode: &'static str,
+        roi: bool,
+        confirm_in_guided: f64,
+        orbit: bool,
+    }
     impl Backend for Offered {
         fn get(&self, p: &str) -> String {
             match p {
-                "settings.flyViewSettings.goToLocationRequiresConfirmInGuided.rawValue" => json!({ "value": self.confirm_in_guided }).to_string(),
-                "vehicle.homePosition" => json!({ "kind": "object", "valid": true, "altitude": 480.0 }).to_string(),
+                "settings.flyViewSettings.goToLocationRequiresConfirmInGuided.rawValue" => {
+                    json!({ "value": self.confirm_in_guided }).to_string()
+                }
+                "vehicle.homePosition" => {
+                    json!({ "kind": "object", "valid": true, "altitude": 480.0 }).to_string()
+                }
                 _ => self.get_fields(p, ""),
             }
         }
@@ -410,8 +653,12 @@ mod tests {
             }
             .to_string()
         }
-        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            String::new()
+        }
         fn watch(&self, _p: &[String]) {}
     }
 
@@ -419,25 +666,98 @@ mod tests {
 
     #[test]
     fn the_menu_offers_what_qgc_offers() {
-        let _serial = SERIAL.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        let labels = |b: &Offered| map_click_view(b, &[])["actions"].as_array().unwrap().iter().map(|a| a["label"].as_str().unwrap().to_string()).collect::<Vec<_>>();
-        let flying = Offered { flying: true, sensors: 32, mode: "Loiter", roi: true, confirm_in_guided: 0.0, orbit: false };
-        assert_eq!(labels(&flying), ["Go to location", "ROI at location", "Set home here", "Set Heading"]);
-        assert_eq!(labels(&Offered { flying: false, ..flying }), ["Set home here"], "on the ground only home can be moved");
-        assert_eq!(labels(&Offered { flying: false, sensors: 0, ..flying }), ["Set home here", "Set Estimator Origin"], "a vehicle without GPS is offered an origin");
+        let _serial = SERIAL
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let labels = |b: &Offered| {
+            map_click_view(b, &[])["actions"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|a| a["label"].as_str().unwrap().to_string())
+                .collect::<Vec<_>>()
+        };
+        let flying = Offered {
+            flying: true,
+            sensors: 32,
+            mode: "Loiter",
+            roi: true,
+            confirm_in_guided: 0.0,
+            orbit: false,
+        };
+        assert_eq!(
+            labels(&flying),
+            [
+                "Go to location",
+                "ROI at location",
+                "Set home here",
+                "Set Heading"
+            ]
+        );
+        assert_eq!(
+            labels(&Offered {
+                flying: false,
+                ..flying
+            }),
+            ["Set home here"],
+            "on the ground only home can be moved"
+        );
+        assert_eq!(
+            labels(&Offered {
+                flying: false,
+                sensors: 0,
+                ..flying
+            }),
+            ["Set home here", "Set Estimator Origin"],
+            "a vehicle without GPS is offered an origin"
+        );
         let actions = |b: &Offered| map_click_view(b, &[])["actions"].clone();
-        assert_eq!(actions(&flying)[0]["confirm"], true, "outside the goto mode a goto is confirmed");
-        assert_eq!(actions(&Offered { mode: "Guided", ..flying })[0]["confirm"], false, "already in Guided the goto is sent at once unless the setting asks for a confirmation");
-        assert_eq!(actions(&Offered { mode: "Guided", confirm_in_guided: 1.0, ..flying })[0]["confirm"], true);
-        assert_eq!(actions(&flying)[1]["confirm"], false, "QGC sends an ROI without asking");
-        assert_eq!(labels(&Offered { orbit: true, ..flying })[1], "Orbit at location", "an orbit follows the goto when the vehicle supports it and home carries an altitude");
+        assert_eq!(
+            actions(&flying)[0]["confirm"],
+            true,
+            "outside the goto mode a goto is confirmed"
+        );
+        assert_eq!(
+            actions(&Offered {
+                mode: "Guided",
+                ..flying
+            })[0]["confirm"],
+            false,
+            "already in Guided the goto is sent at once unless the setting asks for a confirmation"
+        );
+        assert_eq!(
+            actions(&Offered {
+                mode: "Guided",
+                confirm_in_guided: 1.0,
+                ..flying
+            })[0]["confirm"],
+            true
+        );
+        assert_eq!(
+            actions(&flying)[1]["confirm"],
+            false,
+            "QGC sends an ROI without asking"
+        );
+        assert_eq!(
+            labels(&Offered {
+                orbit: true,
+                ..flying
+            })[1],
+            "Orbit at location",
+            "an orbit follows the goto when the vehicle supports it and home carries an altitude"
+        );
         assert_eq!(map_click_view(&flying, &[])["orbitDefaultRadius"], 30.0);
-        assert_eq!(map_click_view(&Vehicle(RefCell::new(vec![])), &[])["offered"], true);
+        assert_eq!(
+            map_click_view(&Vehicle(RefCell::new(vec![])), &[])["offered"],
+            true
+        );
     }
 
     struct Vehicle(RefCell<Vec<String>>);
     impl Backend for Vehicle {
-        fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+        fn get(&self, p: &str) -> String {
+            self.get_fields(p, "")
+        }
         fn get_fields(&self, p: &str, _f: &str) -> String {
             match p {
                 "vehicle" => json!({ "kind": "object", "flying": true, "sensorsPresentBits": 32 }),
@@ -445,7 +765,9 @@ mod tests {
             }
             .to_string()
         }
-        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
         fn invoke(&self, _p: &str, a: &str) -> String {
             self.0.borrow_mut().push(a.to_string());
             json!({ "ok": true }).to_string()
@@ -455,21 +777,81 @@ mod tests {
 
     #[test]
     fn the_point_and_radius_are_checked_before_anything_is_sent() {
-        let _serial = SERIAL.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _serial = SERIAL
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let vehicle = Vehicle(RefCell::new(Vec::new()));
-        assert_eq!(send(&vehicle, Click::GoTo, "vehicle.guidedModeGotoLocation", r#"[{"latitude":47.4,"longitude":8.5,"altitude":0},25]"#)["ok"], true);
-        assert_eq!(send(&vehicle, Click::GoTo, "vehicle.guidedModeGotoLocation", r#"[{"latitude":47.4,"longitude":8.5},"wide"]"#)["refusal"], "badRadius");
-        assert_eq!(send(&vehicle, Click::Roi, "vehicle.guidedModeROI", r#"[{"latitude":99,"longitude":8.5}]"#)["refusal"], "badCoordinate");
-        assert_eq!(send(&vehicle, Click::EstimatorOrigin, "vehicle.setEstimatorOrigin", r#"[{"latitude":47.4,"longitude":8.5}]"#)["refusal"], "hasGps");
-        assert_eq!(vehicle.0.borrow().as_slice(), &[r#"[{"altitude":0.0,"latitude":47.4,"longitude":8.5},25.0]"#.to_string()]);
-        assert_eq!(goto_state().mark, Some(GotoMark { latitude: 47.4, longitude: 8.5, radius: 25.0 }), "a goto that went out is the point a loiter radius change re-sends");
-        assert_eq!(send(&vehicle, Click::GoTo, "vehicle.guidedModeGotoLocation", r#"[{"latitude":47.4,"longitude":8.5},-40]"#)["ok"], true, "the sign of the radius is the loiter direction, as QGC sends it");
-        assert_eq!(goto_state().mark.map(|m| m.radius), Some(-40.0), "a loiter radius change is the radius the circle now draws");
+        assert_eq!(
+            send(
+                &vehicle,
+                Click::GoTo,
+                "vehicle.guidedModeGotoLocation",
+                r#"[{"latitude":47.4,"longitude":8.5,"altitude":0},25]"#
+            )["ok"],
+            true
+        );
+        assert_eq!(
+            send(
+                &vehicle,
+                Click::GoTo,
+                "vehicle.guidedModeGotoLocation",
+                r#"[{"latitude":47.4,"longitude":8.5},"wide"]"#
+            )["refusal"],
+            "badRadius"
+        );
+        assert_eq!(
+            send(
+                &vehicle,
+                Click::Roi,
+                "vehicle.guidedModeROI",
+                r#"[{"latitude":99,"longitude":8.5}]"#
+            )["refusal"],
+            "badCoordinate"
+        );
+        assert_eq!(
+            send(
+                &vehicle,
+                Click::EstimatorOrigin,
+                "vehicle.setEstimatorOrigin",
+                r#"[{"latitude":47.4,"longitude":8.5}]"#
+            )["refusal"],
+            "hasGps"
+        );
+        assert_eq!(
+            vehicle.0.borrow().as_slice(),
+            &[r#"[{"altitude":0.0,"latitude":47.4,"longitude":8.5},25.0]"#.to_string()]
+        );
+        assert_eq!(
+            goto_state().mark,
+            Some(GotoMark {
+                latitude: 47.4,
+                longitude: 8.5,
+                radius: 25.0
+            }),
+            "a goto that went out is the point a loiter radius change re-sends"
+        );
+        assert_eq!(
+            send(
+                &vehicle,
+                Click::GoTo,
+                "vehicle.guidedModeGotoLocation",
+                r#"[{"latitude":47.4,"longitude":8.5},-40]"#
+            )["ok"],
+            true,
+            "the sign of the radius is the loiter direction, as QGC sends it"
+        );
+        assert_eq!(
+            goto_state().mark.map(|m| m.radius),
+            Some(-40.0),
+            "a loiter radius change is the radius the circle now draws"
+        );
     }
 
     struct Plane;
     impl Backend for Plane {
-        fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+        fn get(&self, p: &str) -> String {
+            self.get_fields(p, "")
+        }
         fn get_fields(&self, p: &str, _f: &str) -> String {
             match p {
                 "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": true }),
@@ -479,35 +861,72 @@ mod tests {
             }
             .to_string()
         }
-        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            String::new()
+        }
         fn watch(&self, _p: &[String]) {}
     }
 
     #[test]
     fn the_loiter_circle_keeps_the_committed_radius_and_direction() {
-        let _serial = SERIAL.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let _serial = SERIAL
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         goto_shown(false);
-        remember_goto(GotoMark { latitude: 47.4, longitude: 8.5, radius: -120.0 });
+        remember_goto(GotoMark {
+            latitude: 47.4,
+            longitude: 8.5,
+            radius: -120.0,
+        });
         let view = map_click_view(&Plane, &[]);
         assert_eq!(view["gotoLocation"]["loiterRadiusMetres"], 120.0);
-        assert_eq!(view["gotoLocation"]["loiterClockwise"], false, "QGCMapCircleVisuals points its rotation arrows the way the circle was committed");
-        assert_eq!(view["loiter"]["defaultRadius"], 120.0, "the radius edit starts from the committed circle, not the setting");
+        assert_eq!(
+            view["gotoLocation"]["loiterClockwise"], false,
+            "QGCMapCircleVisuals points its rotation arrows the way the circle was committed"
+        );
+        assert_eq!(
+            view["loiter"]["defaultRadius"], 120.0,
+            "the radius edit starts from the committed circle, not the setting"
+        );
         assert_eq!(view["loiter"]["clockwise"], false);
-        remember_goto(GotoMark { latitude: 47.4, longitude: 8.5, radius: 80.0 });
-        assert_eq!(map_click_view(&Plane, &[])["gotoLocation"]["loiterClockwise"], true);
+        remember_goto(GotoMark {
+            latitude: 47.4,
+            longitude: 8.5,
+            radius: 80.0,
+        });
+        assert_eq!(
+            map_click_view(&Plane, &[])["gotoLocation"]["loiterClockwise"],
+            true
+        );
         goto_shown(false);
     }
 
     #[test]
     fn the_go_here_marker_stays_until_the_vehicle_leaves_the_goto_mode() {
-        let _serial = SERIAL.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        let mark = GotoMark { latitude: 47.4, longitude: 8.5, radius: 0.0 };
+        let _serial = SERIAL
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mark = GotoMark {
+            latitude: 47.4,
+            longitude: 8.5,
+            radius: 0.0,
+        };
         goto_shown(false);
         remember_goto(mark);
-        assert_eq!(goto_shown(false), Some(mark), "a goto sent from Loiter shows before the vehicle has switched to Guided");
+        assert_eq!(
+            goto_shown(false),
+            Some(mark),
+            "a goto sent from Loiter shows before the vehicle has switched to Guided"
+        );
         assert_eq!(goto_shown(true), Some(mark));
-        assert_eq!(goto_shown(false), None, "onInGotoFlightModeChanged hides the item when the goto mode is left");
+        assert_eq!(
+            goto_shown(false),
+            None,
+            "onInGotoFlightModeChanged hides the item when the goto mode is left"
+        );
         assert_eq!(goto_shown(true), None);
     }
 }

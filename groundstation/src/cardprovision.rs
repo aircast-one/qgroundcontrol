@@ -8,7 +8,8 @@ const RECOVERY_MARKER: &str = "/var/log/aircast-key-install-failed";
 const ACCESS_DROPIN: &str = "/etc/ssh/sshd_config.d/10-aircast-access.conf";
 const PSK_ITERATIONS: u32 = 4096;
 const SCRUB_USERDATA_ITEM: &str = "  - [ sh, -c, \"rm -f /boot/firmware/user-data /var/lib/cloud/instance/user-data.txt /var/lib/cloud/instances/*/user-data.txt 2>/dev/null; true\" ]\n";
-const DISABLE_SSH_ITEM: &str = "  - [ sh, -c, \"systemctl disable --now ssh.socket ssh.service 2>/dev/null; true\" ]\n";
+const DISABLE_SSH_ITEM: &str =
+    "  - [ sh, -c, \"systemctl disable --now ssh.socket ssh.service 2>/dev/null; true\" ]\n";
 pub const FIRSTRUN_CMDLINE: &str = " systemd.run=/boot/firstrun.sh systemd.run_success_action=reboot systemd.unit=kernel-command-line.target";
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
@@ -73,7 +74,10 @@ pub struct ProvisionConfig {
 
 impl ProvisionConfig {
     pub fn is_empty(&self) -> bool {
-        self.hostname.is_none() && self.wifi.is_none() && self.tailscale.is_none() && !self.access.as_ref().is_some_and(AccessConfig::is_effective)
+        self.hostname.is_none()
+            && self.wifi.is_none()
+            && self.tailscale.is_none()
+            && !self.access.as_ref().is_some_and(AccessConfig::is_effective)
     }
 }
 
@@ -86,15 +90,24 @@ pub struct ProvisionFile {
 
 impl ProvisionFile {
     fn plain(name: &str, contents: String) -> Self {
-        Self { name: name.into(), contents, executable: false }
+        Self {
+            name: name.into(),
+            contents,
+            executable: false,
+        }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ProvisionPlan {
     Noop,
-    CloudInit { files: Vec<ProvisionFile> },
-    FirstRun { script: ProvisionFile, cmdline_append: String },
+    CloudInit {
+        files: Vec<ProvisionFile>,
+    },
+    FirstRun {
+        script: ProvisionFile,
+        cmdline_append: String,
+    },
 }
 
 #[derive(Default)]
@@ -106,15 +119,25 @@ struct CloudAccess {
 }
 
 pub fn wpa_psk(ssid: &str, password: &str) -> String {
-    crate::signingkeys::to_hex(&pbkdf2::pbkdf2_hmac_array::<sha1::Sha1, 32>(password.as_bytes(), ssid.as_bytes(), PSK_ITERATIONS))
+    crate::signingkeys::to_hex(&pbkdf2::pbkdf2_hmac_array::<sha1::Sha1, 32>(
+        password.as_bytes(),
+        ssid.as_bytes(),
+        PSK_ITERATIONS,
+    ))
 }
 
 pub fn plan(config: &ProvisionConfig) -> ProvisionPlan {
     match (config.is_empty(), config.init_format) {
         (true, _) => ProvisionPlan::Noop,
-        (false, InitFormat::CloudInit) => ProvisionPlan::CloudInit { files: cloud_init_files(config) },
+        (false, InitFormat::CloudInit) => ProvisionPlan::CloudInit {
+            files: cloud_init_files(config),
+        },
         (false, InitFormat::FirstRun) => ProvisionPlan::FirstRun {
-            script: ProvisionFile { name: "firstrun.sh".into(), contents: firstrun_script(config), executable: true },
+            script: ProvisionFile {
+                name: "firstrun.sh".into(),
+                contents: firstrun_script(config),
+                executable: true,
+            },
             cmdline_append: FIRSTRUN_CMDLINE.to_string(),
         },
     }
@@ -129,11 +152,20 @@ fn sanitize_line(s: &str) -> String {
 }
 
 fn sanitized(value: &Option<String>) -> Option<String> {
-    Some(sanitize_line(value.as_deref().unwrap_or_default()).trim().to_string()).filter(|s| !s.is_empty())
+    Some(
+        sanitize_line(value.as_deref().unwrap_or_default())
+            .trim()
+            .to_string(),
+    )
+    .filter(|s| !s.is_empty())
 }
 
 fn provisioned_tailscale(ts: &TailscaleConfig) -> Option<(String, String)> {
-    Some((sanitize_line(&ts.control_server), sanitize_line(&ts.auth_key))).filter(|(_, key)| !key.is_empty())
+    Some((
+        sanitize_line(&ts.control_server),
+        sanitize_line(&ts.auth_key),
+    ))
+    .filter(|(_, key)| !key.is_empty())
 }
 
 fn json_string(s: &str) -> String {
@@ -167,22 +199,53 @@ fn cloud_init_files(config: &ProvisionConfig) -> Vec<ProvisionFile> {
     cloud_init_user_data(config)
         .map(|user_data| ProvisionFile::plain("user-data", user_data))
         .into_iter()
-        .chain(config.wifi.as_ref().map(|wifi| ProvisionFile::plain("network-config", network_config_v2(wifi))))
-        .chain(std::iter::once(ProvisionFile::plain("meta-data", String::new())))
+        .chain(
+            config
+                .wifi
+                .as_ref()
+                .map(|wifi| ProvisionFile::plain("network-config", network_config_v2(wifi))),
+        )
+        .chain(std::iter::once(ProvisionFile::plain(
+            "meta-data",
+            String::new(),
+        )))
         .collect()
 }
 
 fn cloud_init_user_data(config: &ProvisionConfig) -> Option<String> {
-    let host = config.hostname.as_ref().map(|host| format!("hostname: {host}\npreserve_hostname: false\nmanage_etc_hosts: localhost\n")).unwrap_or_default();
-    let access = config.access.as_ref().filter(|a| a.is_effective()).map(access_cloud_init).unwrap_or_default();
-    let tailscale = config.tailscale.as_ref().and_then(provisioned_tailscale).map(|(control, key)| tailscale_write_files_entry(&control, &key));
+    let host = config
+        .hostname
+        .as_ref()
+        .map(|host| {
+            format!("hostname: {host}\npreserve_hostname: false\nmanage_etc_hosts: localhost\n")
+        })
+        .unwrap_or_default();
+    let access = config
+        .access
+        .as_ref()
+        .filter(|a| a.is_effective())
+        .map(access_cloud_init)
+        .unwrap_or_default();
+    let tailscale = config
+        .tailscale
+        .as_ref()
+        .and_then(provisioned_tailscale)
+        .map(|(control, key)| tailscale_write_files_entry(&control, &key));
     let scrub = access.wrote_secret || tailscale.is_some();
     let top = format!("{host}{}", access.top);
     let write_files: Vec<String> = access.write_files.into_iter().chain(tailscale).collect();
-    let runcmd: Vec<String> = access.runcmd.into_iter().chain(scrub.then(|| SCRUB_USERDATA_ITEM.to_string())).collect();
+    let runcmd: Vec<String> = access
+        .runcmd
+        .into_iter()
+        .chain(scrub.then(|| SCRUB_USERDATA_ITEM.to_string()))
+        .collect();
     match top.is_empty() && write_files.is_empty() && runcmd.is_empty() {
         true => None,
-        false => Some(format!("#cloud-config\n{top}{}{}", section("write_files", &write_files), section("runcmd", &runcmd))),
+        false => Some(format!(
+            "#cloud-config\n{top}{}{}",
+            section("write_files", &write_files),
+            section("runcmd", &runcmd)
+        )),
     }
 }
 
@@ -239,8 +302,13 @@ fn install_key_script() -> String {
 }
 
 fn install_key_write_files(key: &str) -> String {
-    let script: String = install_key_script().lines().map(|line| format!("      {line}\n")).collect();
-    format!("  - path: {KEY_STAGE_PATH}\n    permissions: '0600'\n    content: |\n      {key}\n\x20 - path: {INSTALL_KEY_PATH}\n    permissions: '0700'\n    content: |\n{script}")
+    let script: String = install_key_script()
+        .lines()
+        .map(|line| format!("      {line}\n"))
+        .collect();
+    format!(
+        "  - path: {KEY_STAGE_PATH}\n    permissions: '0600'\n    content: |\n      {key}\n\x20 - path: {INSTALL_KEY_PATH}\n    permissions: '0700'\n    content: |\n{script}"
+    )
 }
 
 fn install_key_runcmd() -> String {
@@ -249,7 +317,9 @@ fn install_key_runcmd() -> String {
 
 fn tailscale_write_files_entry(control_server: &str, auth_key: &str) -> String {
     let json = tailscale_state_json(control_server);
-    format!("  - path: {TS_STATE_PATH}\n    permissions: '0644'\n    content: |\n      {json}\n  - path: {TS_KEY_PATH}\n    permissions: '0600'\n    content: |\n      {auth_key}\n")
+    format!(
+        "  - path: {TS_STATE_PATH}\n    permissions: '0644'\n    content: |\n      {json}\n  - path: {TS_KEY_PATH}\n    permissions: '0600'\n    content: |\n      {auth_key}\n"
+    )
 }
 
 fn network_config_v2(wifi: &WifiConfig) -> String {
@@ -296,7 +366,11 @@ fn firstrun_wifi(wifi: &WifiConfig) -> String {
          rfkill unblock wifi\n\
          for f in /var/lib/systemd/rfkill/*:wlan ; do echo 0 >\"$f\" 2>/dev/null || true ; done\n\n",
         country = wifi.country,
-        ssid = wifi.ssid.bytes().map(|b| format!("{b:02x}")).collect::<String>(),
+        ssid = wifi
+            .ssid
+            .bytes()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>(),
     )
 }
 
@@ -352,7 +426,11 @@ mod tests {
     fn cfg(init: InitFormat, with_wifi: bool, host: Option<&str>) -> ProvisionConfig {
         ProvisionConfig {
             hostname: host.map(String::from),
-            wifi: with_wifi.then(|| WifiConfig { ssid: "IEEE".into(), password: "password".into(), country: "US".into() }),
+            wifi: with_wifi.then(|| WifiConfig {
+                ssid: "IEEE".into(),
+                password: "password".into(),
+                country: "US".into(),
+            }),
             tailscale: None,
             access: None,
             init_format: init,
@@ -363,27 +441,52 @@ mod tests {
         ProvisionConfig {
             hostname: host.map(String::from),
             wifi: None,
-            tailscale: Some(TailscaleConfig { control_server: "https://headscale.example.com".into(), auth_key: "hskey-auth-abc123".into() }),
+            tailscale: Some(TailscaleConfig {
+                control_server: "https://headscale.example.com".into(),
+                auth_key: "hskey-auth-abc123".into(),
+            }),
             access: None,
             init_format: init,
         }
     }
 
     fn access_cfg(init: InitFormat, access: AccessConfig) -> ProvisionConfig {
-        ProvisionConfig { hostname: None, wifi: None, tailscale: None, access: Some(access), init_format: init }
+        ProvisionConfig {
+            hostname: None,
+            wifi: None,
+            tailscale: None,
+            access: Some(access),
+            init_format: init,
+        }
     }
 
     fn access(ssh: SshMode, key: Option<&str>, pw: Option<&str>) -> AccessConfig {
-        AccessConfig { ssh, authorized_key: key.map(String::from), password: pw.map(String::from) }
+        AccessConfig {
+            ssh,
+            authorized_key: key.map(String::from),
+            password: pw.map(String::from),
+        }
     }
 
     fn cloud_user_data(config: &ProvisionConfig) -> String {
-        let ProvisionPlan::CloudInit { files } = plan(config) else { panic!("expected CloudInit plan") };
-        files.into_iter().find(|f| f.name == "user-data").expect("user-data file").contents
+        let ProvisionPlan::CloudInit { files } = plan(config) else {
+            panic!("expected CloudInit plan")
+        };
+        files
+            .into_iter()
+            .find(|f| f.name == "user-data")
+            .expect("user-data file")
+            .contents
     }
 
     fn firstrun(config: &ProvisionConfig) -> (ProvisionFile, String) {
-        let ProvisionPlan::FirstRun { script, cmdline_append } = plan(config) else { panic!("expected FirstRun plan") };
+        let ProvisionPlan::FirstRun {
+            script,
+            cmdline_append,
+        } = plan(config)
+        else {
+            panic!("expected FirstRun plan")
+        };
         (script, cmdline_append)
     }
 
@@ -394,22 +497,36 @@ mod tests {
 
     #[test]
     fn empty_config_is_noop() {
-        assert_eq!(plan(&cfg(InitFormat::CloudInit, false, None)), ProvisionPlan::Noop);
+        assert_eq!(
+            plan(&cfg(InitFormat::CloudInit, false, None)),
+            ProvisionPlan::Noop
+        );
     }
 
     #[test]
     fn cloud_init_writes_psk_not_plaintext() {
-        let ProvisionPlan::CloudInit { files } = plan(&cfg(InitFormat::CloudInit, true, Some("aircast"))) else { panic!("expected CloudInit plan") };
+        let ProvisionPlan::CloudInit { files } =
+            plan(&cfg(InitFormat::CloudInit, true, Some("aircast")))
+        else {
+            panic!("expected CloudInit plan")
+        };
         let net = files.iter().find(|f| f.name == "network-config").unwrap();
         assert!(net.contents.contains(IEEE_PSK));
         assert!(!net.contents.contains("password: \"password\""));
-        assert!(files.iter().any(|f| f.name == "user-data" && f.contents.contains("hostname: aircast")));
+        assert!(
+            files
+                .iter()
+                .any(|f| f.name == "user-data" && f.contents.contains("hostname: aircast"))
+        );
         assert!(files.iter().any(|f| f.name == "meta-data"));
     }
 
     #[test]
     fn cloud_init_renames_the_host_in_etc_hosts_too() {
-        assert!(cloud_user_data(&cfg(InitFormat::CloudInit, true, Some("aircast"))).contains("manage_etc_hosts: localhost"));
+        assert!(
+            cloud_user_data(&cfg(InitFormat::CloudInit, true, Some("aircast")))
+                .contains("manage_etc_hosts: localhost")
+        );
     }
 
     #[test]
@@ -424,15 +541,28 @@ mod tests {
 
     #[test]
     fn an_ssid_with_quotes_or_backslashes_survives_both_wifi_configs() {
-        let wifi = WifiConfig { ssid: "Ole\"s \\ net".into(), password: "password".into(), country: "US".into() };
-        assert!(network_config_v2(&wifi).contains(r#""Ole\"s \\ net":"#), "a YAML double-quoted key escapes like JSON");
-        assert!(firstrun_wifi(&wifi).contains("ssid=4f6c652273205c206e6574\n"), "wpa_supplicant takes an unquoted hex SSID");
+        let wifi = WifiConfig {
+            ssid: "Ole\"s \\ net".into(),
+            password: "password".into(),
+            country: "US".into(),
+        };
+        assert!(
+            network_config_v2(&wifi).contains(r#""Ole\"s \\ net":"#),
+            "a YAML double-quoted key escapes like JSON"
+        );
+        assert!(
+            firstrun_wifi(&wifi).contains("ssid=4f6c652273205c206e6574\n"),
+            "wpa_supplicant takes an unquoted hex SSID"
+        );
     }
 
     #[test]
     fn tailscale_only_config_is_not_noop() {
         assert!(!ts_cfg(InitFormat::CloudInit, None).is_empty());
-        assert!(!matches!(plan(&ts_cfg(InitFormat::CloudInit, None)), ProvisionPlan::Noop));
+        assert!(!matches!(
+            plan(&ts_cfg(InitFormat::CloudInit, None)),
+            ProvisionPlan::Noop
+        ));
     }
 
     #[test]
@@ -451,11 +581,27 @@ mod tests {
     #[test]
     fn firstrun_provisions_tailscale_store() {
         let (script, _) = firstrun(&ts_cfg(InitFormat::FirstRun, None));
-        assert!(script.contents.contains("cat >/var/lib/aircastd/tailscale.json"));
-        assert!(script.contents.contains("{\"loginServer\":\"https://headscale.example.com\"}"));
-        assert!(script.contents.contains("cat >/var/lib/aircastd/tailscale.authkey"));
+        assert!(
+            script
+                .contents
+                .contains("cat >/var/lib/aircastd/tailscale.json")
+        );
+        assert!(
+            script
+                .contents
+                .contains("{\"loginServer\":\"https://headscale.example.com\"}")
+        );
+        assert!(
+            script
+                .contents
+                .contains("cat >/var/lib/aircastd/tailscale.authkey")
+        );
         assert!(script.contents.contains("hskey-auth-abc123"));
-        assert!(script.contents.contains("chmod 600 /var/lib/aircastd/tailscale.authkey"));
+        assert!(
+            script
+                .contents
+                .contains("chmod 600 /var/lib/aircastd/tailscale.authkey")
+        );
     }
 
     #[test]
@@ -472,7 +618,9 @@ mod tests {
 
     #[test]
     fn access_password_with_no_password_is_noop() {
-        assert!(access_cfg(InitFormat::CloudInit, access(SshMode::Password, None, None)).is_empty());
+        assert!(
+            access_cfg(InitFormat::CloudInit, access(SshMode::Password, None, None)).is_empty()
+        );
     }
 
     #[test]
@@ -486,7 +634,14 @@ mod tests {
 
     #[test]
     fn access_key_only_disables_password_auth_and_adds_key() {
-        let user_data = cloud_user_data(&access_cfg(InitFormat::CloudInit, access(SshMode::KeyOnly, Some("ssh-ed25519 AAAAkey operator@base"), None)));
+        let user_data = cloud_user_data(&access_cfg(
+            InitFormat::CloudInit,
+            access(
+                SshMode::KeyOnly,
+                Some("ssh-ed25519 AAAAkey operator@base"),
+                None,
+            ),
+        ));
         assert!(user_data.contains("ssh_pwauth: false"));
         assert!(user_data.contains(&format!("  - path: {KEY_STAGE_PATH}")));
         assert!(user_data.contains("      ssh-ed25519 AAAAkey operator@base\n"));
@@ -496,7 +651,14 @@ mod tests {
 
     #[test]
     fn key_only_never_leaves_the_key_to_cloud_inits_default_user() {
-        let user_data = cloud_user_data(&access_cfg(InitFormat::CloudInit, access(SshMode::KeyOnly, Some("ssh-ed25519 AAAAkey operator@base"), None)));
+        let user_data = cloud_user_data(&access_cfg(
+            InitFormat::CloudInit,
+            access(
+                SshMode::KeyOnly,
+                Some("ssh-ed25519 AAAAkey operator@base"),
+                None,
+            ),
+        ));
         assert!(!user_data.contains("ssh_authorized_keys:"));
         assert!(user_data.contains("  - [ sh, /root/aircast-install-key.sh ]"));
     }
@@ -508,14 +670,22 @@ mod tests {
         assert!(script.contains("home=$(getent passwd \"$user\" | cut -d: -f6)"));
         assert!(script.contains("group=$(getent passwd \"$user\" | cut -d: -f4)"));
         assert!(script.contains("install -d -m 700 -o \"$user\" -g \"$group\" \"$home/.ssh\""));
-        assert!(!script.contains("-g \"$user\""), "a group is not always named after its user");
+        assert!(
+            !script.contains("-g \"$user\""),
+            "a group is not always named after its user"
+        );
     }
 
     #[test]
     fn install_key_script_puts_passwords_back_when_the_key_does_not_land() {
         let script = install_key_script();
-        assert!(!script.contains("|| exit 0"), "a missing staged key is a failed install, not a reason to leave passwords off");
-        let (landed, failed) = script.rsplit_once("else").expect("the script branches on whether the key landed");
+        assert!(
+            !script.contains("|| exit 0"),
+            "a missing staged key is a failed install, not a reason to leave passwords off"
+        );
+        let (landed, failed) = script
+            .rsplit_once("else")
+            .expect("the script branches on whether the key landed");
         assert!(landed.contains("want=no"));
         assert!(failed.contains("want=yes"));
         assert!(failed.contains(RECOVERY_MARKER));
@@ -523,18 +693,46 @@ mod tests {
 
     #[test]
     fn key_only_user_data_is_valid_cloud_config() {
-        let user_data = cloud_user_data(&access_cfg(InitFormat::CloudInit, access(SshMode::KeyOnly, Some("ssh-ed25519 AAAAkey operator@base"), None)));
+        let user_data = cloud_user_data(&access_cfg(
+            InitFormat::CloudInit,
+            access(
+                SshMode::KeyOnly,
+                Some("ssh-ed25519 AAAAkey operator@base"),
+                None,
+            ),
+        ));
         let doc: serde_norway::Value = serde_norway::from_str(&user_data).expect("valid YAML");
         assert_eq!(doc["ssh_pwauth"].as_bool(), Some(false));
         assert!(doc.get("ssh_authorized_keys").is_none());
-        let files = doc["write_files"].as_sequence().expect("write_files is a list");
-        let staged = files.iter().find(|f| f["path"].as_str() == Some(KEY_STAGE_PATH)).expect("the key is staged");
-        assert_eq!(staged["content"].as_str(), Some("ssh-ed25519 AAAAkey operator@base\n"));
+        let files = doc["write_files"]
+            .as_sequence()
+            .expect("write_files is a list");
+        let staged = files
+            .iter()
+            .find(|f| f["path"].as_str() == Some(KEY_STAGE_PATH))
+            .expect("the key is staged");
+        assert_eq!(
+            staged["content"].as_str(),
+            Some("ssh-ed25519 AAAAkey operator@base\n")
+        );
         assert_eq!(staged["permissions"].as_str(), Some("0600"));
-        let script = files.iter().find(|f| f["path"].as_str() == Some(INSTALL_KEY_PATH)).expect("the script is written");
-        assert!(script["content"].as_str().unwrap().starts_with("#!/bin/sh\n"));
+        let script = files
+            .iter()
+            .find(|f| f["path"].as_str() == Some(INSTALL_KEY_PATH))
+            .expect("the script is written");
+        assert!(
+            script["content"]
+                .as_str()
+                .unwrap()
+                .starts_with("#!/bin/sh\n")
+        );
         let run = doc["runcmd"].as_sequence().expect("runcmd is a list");
-        let argv: Vec<&str> = run[0].as_sequence().expect("runcmd item is the argv list form").iter().map(|v| v.as_str().expect("argv entries are strings")).collect();
+        let argv: Vec<&str> = run[0]
+            .as_sequence()
+            .expect("runcmd item is the argv list form")
+            .iter()
+            .map(|v| v.as_str().expect("argv entries are strings"))
+            .collect();
         assert_eq!(argv, vec!["sh", INSTALL_KEY_PATH]);
     }
 
@@ -548,23 +746,39 @@ mod tests {
 
     #[test]
     fn install_key_script_checks_the_key_itself_not_just_a_non_empty_file() {
-        assert!(install_key_script().contains("grep -qxF \"$(cat \"$key\")\" \"$home/.ssh/authorized_keys\""));
+        assert!(
+            install_key_script()
+                .contains("grep -qxF \"$(cat \"$key\")\" \"$home/.ssh/authorized_keys\"")
+        );
     }
 
     #[test]
     fn both_init_formats_run_the_same_install_body() {
-        let key_only = access(SshMode::KeyOnly, Some("ssh-ed25519 AAAAkey operator@base"), None);
+        let key_only = access(
+            SshMode::KeyOnly,
+            Some("ssh-ed25519 AAAAkey operator@base"),
+            None,
+        );
         let cloud = cloud_user_data(&access_cfg(InitFormat::CloudInit, key_only.clone()));
         let (script, _) = firstrun(&access_cfg(InitFormat::FirstRun, key_only));
-        install_key_body().lines().filter(|l| !l.trim().is_empty()).for_each(|line| {
-            assert!(script.contents.contains(line), "firstrun is missing: {line}");
-            assert!(cloud.contains(line.trim()), "cloud-init is missing: {line}");
-        });
+        install_key_body()
+            .lines()
+            .filter(|l| !l.trim().is_empty())
+            .for_each(|line| {
+                assert!(
+                    script.contents.contains(line),
+                    "firstrun is missing: {line}"
+                );
+                assert!(cloud.contains(line.trim()), "cloud-init is missing: {line}");
+            });
     }
 
     #[test]
     fn access_password_sets_pi_password_and_scrubs_userdata() {
-        let user_data = cloud_user_data(&access_cfg(InitFormat::CloudInit, access(SshMode::Password, None, Some("s3cret-pass"))));
+        let user_data = cloud_user_data(&access_cfg(
+            InitFormat::CloudInit,
+            access(SshMode::Password, None, Some("s3cret-pass")),
+        ));
         assert!(user_data.contains("ssh_pwauth: true"));
         assert!(user_data.contains("chpasswd:"));
         assert!(user_data.contains("{name: pi, password: \"s3cret-pass\", type: text}"));
@@ -573,14 +787,24 @@ mod tests {
 
     #[test]
     fn access_value_newlines_are_stripped() {
-        let user_data = cloud_user_data(&access_cfg(InitFormat::CloudInit, access(SshMode::KeyOnly, Some("ssh-ed25519 KEY\nssh_pwauth: true"), None)));
+        let user_data = cloud_user_data(&access_cfg(
+            InitFormat::CloudInit,
+            access(
+                SshMode::KeyOnly,
+                Some("ssh-ed25519 KEY\nssh_pwauth: true"),
+                None,
+            ),
+        ));
         assert!(user_data.contains("      ssh-ed25519 KEYssh_pwauth: true\n"));
         assert!(!user_data.lines().any(|l| l == "ssh_pwauth: true"));
     }
 
     #[test]
     fn disabled_ssh_and_tailscale_share_one_runcmd() {
-        let config = ProvisionConfig { access: Some(access(SshMode::Disabled, None, None)), ..ts_cfg(InitFormat::CloudInit, None) };
+        let config = ProvisionConfig {
+            access: Some(access(SshMode::Disabled, None, None)),
+            ..ts_cfg(InitFormat::CloudInit, None)
+        };
         let user_data = cloud_user_data(&config);
         assert_eq!(user_data.matches("runcmd:").count(), 1);
         assert!(user_data.contains("systemctl disable --now ssh.socket ssh.service"));
@@ -589,14 +813,24 @@ mod tests {
 
     #[test]
     fn firstrun_password_sets_pi_password() {
-        let (script, _) = firstrun(&access_cfg(InitFormat::FirstRun, access(SshMode::Password, None, Some("s3cret"))));
-        assert!(script.contents.contains("printf 'pi:%s\\n' 's3cret' | chpasswd"));
+        let (script, _) = firstrun(&access_cfg(
+            InitFormat::FirstRun,
+            access(SshMode::Password, None, Some("s3cret")),
+        ));
+        assert!(
+            script
+                .contents
+                .contains("printf 'pi:%s\\n' 's3cret' | chpasswd")
+        );
         assert!(script.contents.contains("PasswordAuthentication yes"));
     }
 
     #[test]
     fn firstrun_key_only_escapes_single_quotes() {
-        let (script, _) = firstrun(&access_cfg(InitFormat::FirstRun, access(SshMode::KeyOnly, Some("key-with-'quote"), None)));
+        let (script, _) = firstrun(&access_cfg(
+            InitFormat::FirstRun,
+            access(SshMode::KeyOnly, Some("key-with-'quote"), None),
+        ));
         assert!(script.contents.contains(r"key-with-'\''quote"));
         assert!(script.contents.contains("PasswordAuthentication %s"));
         assert!(!script.contents.contains("-o pi -g pi"));
@@ -604,14 +838,28 @@ mod tests {
 
     #[test]
     fn empty_auth_key_is_not_provisioned() {
-        let config = ProvisionConfig { tailscale: Some(TailscaleConfig { control_server: "https://headscale.example.com".into(), auth_key: "".into() }), ..ts_cfg(InitFormat::CloudInit, None) };
-        let ProvisionPlan::CloudInit { files } = plan(&config) else { panic!("expected CloudInit plan") };
+        let config = ProvisionConfig {
+            tailscale: Some(TailscaleConfig {
+                control_server: "https://headscale.example.com".into(),
+                auth_key: "".into(),
+            }),
+            ..ts_cfg(InitFormat::CloudInit, None)
+        };
+        let ProvisionPlan::CloudInit { files } = plan(&config) else {
+            panic!("expected CloudInit plan")
+        };
         assert!(files.iter().all(|f| !f.contents.contains("write_files")));
     }
 
     #[test]
     fn tailscale_values_are_stripped_to_a_single_line() {
-        let config = ProvisionConfig { tailscale: Some(TailscaleConfig { control_server: "https://h\nevil: true".into(), auth_key: "hskey\nmore".into() }), ..ts_cfg(InitFormat::CloudInit, None) };
+        let config = ProvisionConfig {
+            tailscale: Some(TailscaleConfig {
+                control_server: "https://h\nevil: true".into(),
+                auth_key: "hskey\nmore".into(),
+            }),
+            ..ts_cfg(InitFormat::CloudInit, None)
+        };
         let user_data = cloud_user_data(&config);
         assert!(user_data.contains("https://hevil: true"));
         assert!(user_data.contains("hskeymore"));

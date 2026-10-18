@@ -12,7 +12,17 @@ pub const GCS_TIMESTAMP: &str = "positionManager.gcsPositionTimestamp";
 pub const GCS_DIRECTION: &str = "positionManager.gcsDirection";
 pub const GCS_GROUND_SPEED: &str = "positionManager.gcsGroundSpeed";
 
-pub const DEPS: &[&str] = &[SETTING, "vehicles.vehicles.count", "vehicle.id", "vehicle.flightMode", "vehicle.homePosition", GCS_POSITION, GCS_HEADING, GCS_HORIZONTAL_ACCURACY, GCS_TIMESTAMP];
+pub const DEPS: &[&str] = &[
+    SETTING,
+    "vehicles.vehicles.count",
+    "vehicle.id",
+    "vehicle.flightMode",
+    "vehicle.homePosition",
+    GCS_POSITION,
+    GCS_HEADING,
+    GCS_HORIZONTAL_ACCURACY,
+    GCS_TIMESTAMP,
+];
 
 const FIELDS: &str = "id,flightMode,followFlightMode,apmFirmware,homePosition";
 const WATCHED_PER_FOLLOWED: [&str; 2] = ["flightMode", "homePosition"];
@@ -21,9 +31,13 @@ static VEHICLES_SEEN: AtomicUsize = AtomicUsize::new(0);
 pub fn deps() -> Vec<String> {
     DEPS.iter()
         .map(|d| d.to_string())
-        .chain((0..VEHICLES_SEEN.load(Ordering::Relaxed)).flat_map(|index| {
-            WATCHED_PER_FOLLOWED.iter().map(move |name| format!("vehicles.vehicles.{index}.{name}"))
-        }))
+        .chain(
+            (0..VEHICLES_SEEN.load(Ordering::Relaxed)).flat_map(|index| {
+                WATCHED_PER_FOLLOWED
+                    .iter()
+                    .map(move |name| format!("vehicles.vehicles.{index}.{name}"))
+            }),
+        )
         .collect()
 }
 
@@ -94,11 +108,15 @@ pub struct Report {
 
 impl Report {
     pub fn estimation_tokens(&self) -> Vec<&'static str> {
-        [(ESTIMATION_POSITION, "position"), (ESTIMATION_VELOCITY, "velocity"), (ESTIMATION_HEADING, "heading")]
-            .into_iter()
-            .filter(|(bit, _)| self.estimation & bit != 0)
-            .map(|(_, token)| token)
-            .collect()
+        [
+            (ESTIMATION_POSITION, "position"),
+            (ESTIMATION_VELOCITY, "velocity"),
+            (ESTIMATION_HEADING, "heading"),
+        ]
+        .into_iter()
+        .filter(|(bit, _)| self.estimation & bit != 0)
+        .map(|(_, token)| token)
+        .collect()
     }
 }
 
@@ -218,8 +236,15 @@ pub fn motion_report(fix: &Fix) -> Option<Report> {
     let longitude = wrap_longitude(finite(Some(fix.longitude))?);
     let heading = finite(fix.heading_deg).map(wrap_heading);
     let speed = finite(fix.ground_speed_m_s);
-    let velocity = heading.zip(speed).map(|(heading, speed)| (heading.to_radians().cos() * speed, heading.to_radians().sin() * speed));
-    let estimation = ESTIMATION_POSITION | heading.map_or(0, |_| ESTIMATION_HEADING) | velocity.map_or(0, |_| ESTIMATION_VELOCITY);
+    let velocity = heading.zip(speed).map(|(heading, speed)| {
+        (
+            heading.to_radians().cos() * speed,
+            heading.to_radians().sin() * speed,
+        )
+    });
+    let estimation = ESTIMATION_POSITION
+        | heading.map_or(0, |_| ESTIMATION_HEADING)
+        | velocity.map_or(0, |_| ESTIMATION_VELOCITY);
     Some(Report {
         latitude,
         longitude,
@@ -256,7 +281,9 @@ pub fn stream(mode: Option<Mode>, target: &Target) -> Result<Stream, Refusal> {
     match mode {
         None => Err(Refusal::ModeUnknown),
         Some(Mode::Never) => Err(Refusal::ModeNever),
-        Some(Mode::FollowMe) if target.follow_flight_mode.is_empty() => Err(Refusal::FollowModeUnsupported),
+        Some(Mode::FollowMe) if target.follow_flight_mode.is_empty() => {
+            Err(Refusal::FollowModeUnsupported)
+        }
         Some(Mode::FollowMe) if !in_follow_mode(target) => Err(Refusal::NotInFollowMode),
         Some(_) => match (target.apm, finite(target.home_altitude_amsl_m)) {
             (false, _) => Ok(Stream::FollowTarget),
@@ -267,7 +294,9 @@ pub fn stream(mode: Option<Mode>, target: &Target) -> Result<Stream, Refusal> {
 }
 
 fn centimetres(value: Option<f64>) -> i16 {
-    (value.unwrap_or(0.0) * 100.0).round().clamp(i16::MIN as f64, i16::MAX as f64) as i16
+    (value.unwrap_or(0.0) * 100.0)
+        .round()
+        .clamp(i16::MIN as f64, i16::MAX as f64) as i16
 }
 
 fn metres(value: Option<f64>) -> f32 {
@@ -278,12 +307,16 @@ pub fn global_position(report: &Report, home_altitude_amsl_m: f64) -> GlobalPosi
     GlobalPosition {
         latitude_deg_e7: report.latitude_deg_e7,
         longitude_deg_e7: report.longitude_deg_e7,
-        altitude_amsl_mm: (home_altitude_amsl_m * 1000.0).round().clamp(i32::MIN as f64, i32::MAX as f64) as i32,
+        altitude_amsl_mm: (home_altitude_amsl_m * 1000.0)
+            .round()
+            .clamp(i32::MIN as f64, i32::MAX as f64) as i32,
         relative_altitude_mm: 0,
         velocity_north_cm_s: centimetres(report.velocity_north_m_s),
         velocity_east_cm_s: centimetres(report.velocity_east_m_s),
         velocity_down_cm_s: centimetres(report.velocity_down_m_s),
-        heading_cdeg: report.heading_deg.map_or(HEADING_UNKNOWN_CDEG, |heading| ((wrap_heading(heading) * 100.0).round() as u16) % 36000),
+        heading_cdeg: report.heading_deg.map_or(HEADING_UNKNOWN_CDEG, |heading| {
+            ((wrap_heading(heading) * 100.0).round() as u16) % 36000
+        }),
     }
 }
 
@@ -292,8 +325,16 @@ pub fn follow_target(report: &Report) -> FollowTargetWire {
         latitude_deg_e7: report.latitude_deg_e7,
         longitude_deg_e7: report.longitude_deg_e7,
         altitude_amsl_m: metres(report.altitude_amsl_m),
-        velocity_m_s: [report.velocity_north_m_s.unwrap_or(0.0) as f32, report.velocity_east_m_s.unwrap_or(0.0) as f32, 0.0],
-        position_cov: [report.position_std_dev_horizontal_m.unwrap_or(0.0) as f32, 0.0, report.position_std_dev_vertical_m.unwrap_or(0.0) as f32],
+        velocity_m_s: [
+            report.velocity_north_m_s.unwrap_or(0.0) as f32,
+            report.velocity_east_m_s.unwrap_or(0.0) as f32,
+            0.0,
+        ],
+        position_cov: [
+            report.position_std_dev_horizontal_m.unwrap_or(0.0) as f32,
+            0.0,
+            report.position_std_dev_vertical_m.unwrap_or(0.0) as f32,
+        ],
         estimation: report.estimation,
     }
 }
@@ -328,7 +369,13 @@ fn velocity_zeroed(stream: Option<Stream>, report: Option<&Report>) -> Option<bo
     Some(stream? == Stream::GlobalPositionInt && report.velocity_north_m_s.is_none())
 }
 
-fn reason(mode: Option<Mode>, fleet: &[Target], fix: Option<&Fix>, report: Option<&Report>, plans: &[Result<Stream, Refusal>]) -> Option<Reason> {
+fn reason(
+    mode: Option<Mode>,
+    fleet: &[Target],
+    fix: Option<&Fix>,
+    report: Option<&Report>,
+    plans: &[Result<Stream, Refusal>],
+) -> Option<Reason> {
     let mode = match mode {
         None => return Some(Reason::ModeUnknown),
         Some(Mode::Never) => return Some(Reason::ModeNever),
@@ -345,14 +392,18 @@ fn reason(mode: Option<Mode>, fleet: &[Target], fix: Option<&Fix>, report: Optio
         Some(fix) if !fix.valid => Some(Reason::FixInvalid),
         Some(fix) if fix.age_ms > ALLOWED_FIX_AGE_MS => Some(Reason::FixStale),
         Some(_) if report.is_none() => Some(Reason::FixUnusable),
-        _ => plans.iter().all(Result::is_err).then_some(Reason::AllVehiclesRefused),
+        _ => plans
+            .iter()
+            .all(Result::is_err)
+            .then_some(Reason::AllVehiclesRefused),
     }
 }
 
 pub fn snapshot(setting: Option<f64>, fleet: &[Target], fix: Option<&Fix>) -> Value {
     let mode = Mode::from_setting(setting);
     let report = fix.and_then(motion_report);
-    let plans: Vec<Result<Stream, Refusal>> = fleet.iter().map(|target| stream(mode, target)).collect();
+    let plans: Vec<Result<Stream, Refusal>> =
+        fleet.iter().map(|target| stream(mode, target)).collect();
     let refused = reason(mode, fleet, fix, report.as_ref(), &plans);
     let listed: Vec<Value> = fleet
         .iter()
@@ -393,7 +444,9 @@ pub fn snapshot(setting: Option<f64>, fleet: &[Target], fix: Option<&Fix>) -> Va
 
 fn home_altitude(vehicle: &Value) -> Option<f64> {
     let home = vehicle.get("homePosition")?;
-    flag(home, "valid").then(|| finite(home.get("altitude").and_then(Value::as_f64))).flatten()
+    flag(home, "valid")
+        .then(|| finite(home.get("altitude").and_then(Value::as_f64)))
+        .flatten()
 }
 
 fn target_of(read: &Value) -> Option<Target> {
@@ -407,13 +460,27 @@ fn target_of(read: &Value) -> Option<Target> {
     })
 }
 
-pub fn outbound(stream: Stream, report: &Report, home_altitude_amsl_m: Option<f64>, now_ms: u64) -> crate::mavout::Outbound {
+pub fn outbound(
+    stream: Stream,
+    report: &Report,
+    home_altitude_amsl_m: Option<f64>,
+    now_ms: u64,
+) -> crate::mavout::Outbound {
     use mavlink::dialects::ardupilotmega::{FOLLOW_TARGET_DATA, GLOBAL_POSITION_INT_DATA};
     match stream {
         Stream::FollowTarget => {
             let wire = follow_target(report);
             crate::mavout::Outbound::FollowTarget {
-                data: FOLLOW_TARGET_DATA { timestamp: now_ms, lat: wire.latitude_deg_e7, lon: wire.longitude_deg_e7, alt: wire.altitude_amsl_m, vel: wire.velocity_m_s, position_cov: wire.position_cov, est_capabilities: wire.estimation, ..Default::default() },
+                data: FOLLOW_TARGET_DATA {
+                    timestamp: now_ms,
+                    lat: wire.latitude_deg_e7,
+                    lon: wire.longitude_deg_e7,
+                    alt: wire.altitude_amsl_m,
+                    vel: wire.velocity_m_s,
+                    position_cov: wire.position_cov,
+                    est_capabilities: wire.estimation,
+                    ..Default::default()
+                },
             }
         }
         Stream::GlobalPositionInt => {
@@ -440,24 +507,39 @@ static HOME_NOT_SET_POSTED: AtomicBool = AtomicBool::new(false);
 pub const HOME_NOT_SET: &str = "Follow failed: Home position not set.";
 
 pub fn home_not_set(mode: Option<Mode>, fleet: &[Target]) -> bool {
-    fleet.iter().any(|target| stream(mode, target) == Err(Refusal::HomePositionUnknown))
+    fleet
+        .iter()
+        .any(|target| stream(mode, target) == Err(Refusal::HomePositionUnknown))
 }
 
 pub fn tick(backend: &dyn Backend, now_ms: u64) {
     {
-        let mut last = LAST_SENT_MS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut last = LAST_SENT_MS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         if last.is_some_and(|last| now_ms.saturating_sub(last) < MOTION_INTERVAL_MS) {
             return;
         }
-        *last = Some(last.filter(|last| now_ms.saturating_sub(*last) < 2 * MOTION_INTERVAL_MS).map_or(now_ms, |last| last + MOTION_INTERVAL_MS));
+        *last = Some(
+            last.filter(|last| now_ms.saturating_sub(*last) < 2 * MOTION_INTERVAL_MS)
+                .map_or(now_ms, |last| last + MOTION_INTERVAL_MS),
+        );
     }
     let mode = Mode::from_setting(value_number(&backend.value(SETTING)));
     if !matches!(mode, Some(Mode::Always | Mode::FollowMe)) {
         return;
     }
-    let Some(report) = gcs_fix(backend, crate::hub::now_us() / 1000).as_ref().and_then(motion_report) else { return };
+    let Some(report) = gcs_fix(backend, crate::hub::now_us() / 1000)
+        .as_ref()
+        .and_then(motion_report)
+    else {
+        return;
+    };
     let fleet = fleet_of(backend);
-    if !crate::qthost::present() && home_not_set(mode, &fleet) && !HOME_NOT_SET_POSTED.swap(true, Ordering::Relaxed) {
+    if !crate::qthost::present()
+        && home_not_set(mode, &fleet)
+        && !HOME_NOT_SET_POSTED.swap(true, Ordering::Relaxed)
+    {
         crate::noticeboard::post(crate::noticeboard::MESSAGE, "", HOME_NOT_SET);
     }
     let sends: Vec<(u8, crate::transport::LinkId, crate::mavout::Outbound)> = {
@@ -467,17 +549,27 @@ pub fn tick(backend: &dyn Backend, now_ms: u64) {
             .filter_map(|target| {
                 let stream = stream(mode, target).ok()?;
                 let id = u8::try_from(target.id).ok()?;
-                Some((id, hub.vehicle_link(id)?, outbound(stream, &report, target.home_altitude_amsl_m, now_ms)))
+                Some((
+                    id,
+                    hub.vehicle_link(id)?,
+                    outbound(stream, &report, target.home_altitude_amsl_m, now_ms),
+                ))
             })
             .collect()
     };
-    sends.into_iter().for_each(|(id, link, outbound)| crate::hub::send_for(id, link, &[outbound]));
+    sends
+        .into_iter()
+        .for_each(|(id, link, outbound)| crate::hub::send_for(id, link, &[outbound]));
 }
 
 pub fn gcs_fix(backend: &dyn Backend, wall_ms: u64) -> Option<Fix> {
     let stamp = value_number(&backend.value(GCS_TIMESTAMP)).filter(|t| *t > 0.0)? as u64;
     let position = backend.value(GCS_POSITION);
-    let coordinate = position.get("value").filter(|v| v.is_object()).unwrap_or(&position).clone();
+    let coordinate = position
+        .get("value")
+        .filter(|v| v.is_object())
+        .unwrap_or(&position)
+        .clone();
     let read = |key: &str| finite(coordinate.get(key).and_then(Value::as_f64));
     Some(Fix {
         valid: flag(&coordinate, "valid"),
@@ -485,7 +577,9 @@ pub fn gcs_fix(backend: &dyn Backend, wall_ms: u64) -> Option<Fix> {
         longitude: read("longitude").unwrap_or(f64::NAN),
         altitude_amsl_m: read("altitude"),
         heading_deg: match backend.value(GCS_DIRECTION) {
-            served if served.get("kind").and_then(Value::as_str) == Some("value") => finite(served.get("value").and_then(Value::as_f64)),
+            served if served.get("kind").and_then(Value::as_str) == Some("value") => {
+                finite(served.get("value").and_then(Value::as_f64))
+            }
             _ => value_number(&backend.value(GCS_HEADING)),
         },
         ground_speed_m_s: value_number(&backend.value(GCS_GROUND_SPEED)),
@@ -497,14 +591,24 @@ pub fn gcs_fix(backend: &dyn Backend, wall_ms: u64) -> Option<Fix> {
 }
 
 pub fn fleet_of(backend: &dyn Backend) -> Vec<Target> {
-    let count = integer(&backend.value("vehicles.vehicles.count"), "value").unwrap_or(0).max(0);
+    let count = integer(&backend.value("vehicles.vehicles.count"), "value")
+        .unwrap_or(0)
+        .max(0);
     VEHICLES_SEEN.store(usize::try_from(count).unwrap_or(0), Ordering::Relaxed);
-    (0..count).filter_map(|index| target_of(&backend.value_fields(&format!("vehicles.vehicles.{index}"), FIELDS))).collect()
+    (0..count)
+        .filter_map(|index| {
+            target_of(&backend.value_fields(&format!("vehicles.vehicles.{index}"), FIELDS))
+        })
+        .collect()
 }
 
 pub fn follow_me_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let fix = gcs_fix(backend, crate::hub::now_us() / 1000);
-    snapshot(value_number(&backend.value(SETTING)), &fleet_of(backend), fix.as_ref())
+    snapshot(
+        value_number(&backend.value(SETTING)),
+        &fleet_of(backend),
+        fix.as_ref(),
+    )
 }
 
 #[cfg(test)]
@@ -512,32 +616,103 @@ mod tests {
     use super::*;
     static FLEET_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     fn fleet_guard() -> std::sync::MutexGuard<'static, ()> {
-        FLEET_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+        FLEET_LOCK
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     fn fix() -> Fix {
-        Fix { valid: true, latitude: 47.5, longitude: 8.5, altitude_amsl_m: Some(400.0), heading_deg: Some(90.0), ground_speed_m_s: Some(4.0), ..Default::default() }
+        Fix {
+            valid: true,
+            latitude: 47.5,
+            longitude: 8.5,
+            altitude_amsl_m: Some(400.0),
+            heading_deg: Some(90.0),
+            ground_speed_m_s: Some(4.0),
+            ..Default::default()
+        }
     }
 
     fn follower(mode: &str, apm: bool) -> Target {
-        Target { id: 1, flight_mode: mode.to_string(), follow_flight_mode: "Follow Me".to_string(), apm, home_altitude_amsl_m: Some(500.0) }
+        Target {
+            id: 1,
+            flight_mode: mode.to_string(),
+            follow_flight_mode: "Follow Me".to_string(),
+            apm,
+            home_altitude_amsl_m: Some(500.0),
+        }
     }
 
     #[test]
     fn a_report_goes_out_as_follow_target_for_px4_and_global_position_for_ardupilot() {
         use mavlink::dialects::ardupilotmega::MavMessage;
-        let fix = Fix { valid: true, latitude: 47.5, longitude: 8.5, altitude_amsl_m: Some(400.0), heading_deg: Some(90.0), ground_speed_m_s: Some(2.0), horizontal_accuracy_m: Some(3.0), ..Default::default() };
+        let fix = Fix {
+            valid: true,
+            latitude: 47.5,
+            longitude: 8.5,
+            altitude_amsl_m: Some(400.0),
+            heading_deg: Some(90.0),
+            ground_speed_m_s: Some(2.0),
+            horizontal_accuracy_m: Some(3.0),
+            ..Default::default()
+        };
         let report = motion_report(&fix).unwrap();
-        let crate::mavout::Outbound::FollowTarget { data } = outbound(Stream::FollowTarget, &report, None, 1234) else { panic!("follow target") };
-        assert_eq!((data.timestamp, data.lat, data.alt, data.est_capabilities), (1234, 475_000_000, 400.0, ESTIMATION_POSITION | ESTIMATION_VELOCITY | ESTIMATION_HEADING));
-        assert!(data.vel[0].abs() < 1e-5 && (data.vel[1] - 2.0).abs() < 1e-5, "heading east at 2 m/s: {:?}", data.vel);
-        let still = motion_report(&Fix { ground_speed_m_s: None, ..fix }).unwrap();
-        let crate::mavout::Outbound::FollowTarget { data } = outbound(Stream::FollowTarget, &still, None, 0) else { panic!("follow target") };
-        assert_eq!((data.vel, data.est_capabilities & ESTIMATION_VELOCITY), ([0.0, 0.0, 0.0], 0), "FollowMe zero-initialises mavlink_follow_target_t and only fills vel[0..1] when it has a velocity");
-        let crate::mavout::Outbound::GlobalPositionInt { data } = outbound(Stream::GlobalPositionInt, &report, Some(500.0), 1234) else { panic!("global position") };
-        assert_eq!((data.time_boot_ms, data.alt, data.relative_alt, data.vy, data.hdg), (1234, 500_000, 0, 200, 9000), "APMFirmwarePlugin sends the home altitude and no relative altitude");
-        let bytes = crate::mavout::encode(0, &outbound(Stream::FollowTarget, &report, None, 1)).unwrap();
-        let (_, decoded) = mavlink::read_v2_msg::<MavMessage, _>(&mut mavlink::peek_reader::PeekReader::new(bytes.as_slice())).unwrap();
+        let crate::mavout::Outbound::FollowTarget { data } =
+            outbound(Stream::FollowTarget, &report, None, 1234)
+        else {
+            panic!("follow target")
+        };
+        assert_eq!(
+            (data.timestamp, data.lat, data.alt, data.est_capabilities),
+            (
+                1234,
+                475_000_000,
+                400.0,
+                ESTIMATION_POSITION | ESTIMATION_VELOCITY | ESTIMATION_HEADING
+            )
+        );
+        assert!(
+            data.vel[0].abs() < 1e-5 && (data.vel[1] - 2.0).abs() < 1e-5,
+            "heading east at 2 m/s: {:?}",
+            data.vel
+        );
+        let still = motion_report(&Fix {
+            ground_speed_m_s: None,
+            ..fix
+        })
+        .unwrap();
+        let crate::mavout::Outbound::FollowTarget { data } =
+            outbound(Stream::FollowTarget, &still, None, 0)
+        else {
+            panic!("follow target")
+        };
+        assert_eq!(
+            (data.vel, data.est_capabilities & ESTIMATION_VELOCITY),
+            ([0.0, 0.0, 0.0], 0),
+            "FollowMe zero-initialises mavlink_follow_target_t and only fills vel[0..1] when it has a velocity"
+        );
+        let crate::mavout::Outbound::GlobalPositionInt { data } =
+            outbound(Stream::GlobalPositionInt, &report, Some(500.0), 1234)
+        else {
+            panic!("global position")
+        };
+        assert_eq!(
+            (
+                data.time_boot_ms,
+                data.alt,
+                data.relative_alt,
+                data.vy,
+                data.hdg
+            ),
+            (1234, 500_000, 0, 200, 9000),
+            "APMFirmwarePlugin sends the home altitude and no relative altitude"
+        );
+        let bytes =
+            crate::mavout::encode(0, &outbound(Stream::FollowTarget, &report, None, 1)).unwrap();
+        let (_, decoded) = mavlink::read_v2_msg::<MavMessage, _>(
+            &mut mavlink::peek_reader::PeekReader::new(bytes.as_slice()),
+        )
+        .unwrap();
         assert!(matches!(decoded, MavMessage::FOLLOW_TARGET(_)));
     }
 
@@ -589,11 +764,20 @@ mod tests {
             json!({ "kind": "value", "value": value }).to_string()
         }
         fn get_fields(&self, path: &str, _fields: &str) -> String {
-            let index = path.strip_prefix("vehicles.vehicles.").and_then(|i| i.parse::<usize>().ok());
-            index.and_then(|i| self.fleet.get(i)).map(Value::to_string).unwrap_or_else(|| json!({ "kind": "null" }).to_string())
+            let index = path
+                .strip_prefix("vehicles.vehicles.")
+                .and_then(|i| i.parse::<usize>().ok());
+            index
+                .and_then(|i| self.fleet.get(i))
+                .map(Value::to_string)
+                .unwrap_or_else(|| json!({ "kind": "null" }).to_string())
         }
-        fn set(&self, _path: &str, _value: &str) -> String { String::new() }
-        fn invoke(&self, _path: &str, _args: &str) -> String { String::new() }
+        fn set(&self, _path: &str, _value: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _path: &str, _args: &str) -> String {
+            String::new()
+        }
         fn watch(&self, _paths: &[String]) {}
     }
 
@@ -610,12 +794,29 @@ mod tests {
         assert_eq!(Mode::from_setting(Some(0.0)), Some(Mode::Never));
         assert_eq!(Mode::from_setting(Some(1.0)), Some(Mode::Always));
         assert_eq!(Mode::from_setting(Some(2.0)), Some(Mode::FollowMe));
-        assert_eq!(Mode::from_setting(None), None, "a setting the core could not read is not a setting of never mind always, so nothing is sent");
-        assert_eq!(Mode::from_setting(Some(7.0)), None, "a value outside the three modes decodes to no mode rather than to the one that streams");
-        assert!(!enabled(None, &[follower("Follow Me", false)]), "an unknown mode withholds the stream");
+        assert_eq!(
+            Mode::from_setting(None),
+            None,
+            "a setting the core could not read is not a setting of never mind always, so nothing is sent"
+        );
+        assert_eq!(
+            Mode::from_setting(Some(7.0)),
+            None,
+            "a value outside the three modes decodes to no mode rather than to the one that streams"
+        );
+        assert!(
+            !enabled(None, &[follower("Follow Me", false)]),
+            "an unknown mode withholds the stream"
+        );
         assert!(!enabled(Some(Mode::Never), &[follower("Follow Me", false)]));
-        assert!(enabled(Some(Mode::Always), &[follower("Hold", false)]), "always means always, whatever the vehicle is doing");
-        assert!(!enabled(Some(Mode::Always), &[]), "with no vehicle there is nobody to send to");
+        assert!(
+            enabled(Some(Mode::Always), &[follower("Hold", false)]),
+            "always means always, whatever the vehicle is doing"
+        );
+        assert!(
+            !enabled(Some(Mode::Always), &[]),
+            "with no vehicle there is nobody to send to"
+        );
     }
 
     #[test]
@@ -624,170 +825,588 @@ mod tests {
         let fleet = vec![px4(1, "Follow Me")];
         let corrupt = follow_me_view(&placed(json!(7), fleet.clone(), 0), &[]);
         let missing = follow_me_view(&placed(Value::Null, fleet, 0), &[]);
-        assert_eq!((corrupt["mode"].as_str(), corrupt["reason"].as_str()), (None, Some("modeUnknown")));
-        assert_eq!(corrupt["modeRaw"], json!(7.0), "a setting outside the three modes is handed on raw, because a corrupt setting needs a reset and a missing one does not");
-        assert_eq!(missing["modeRaw"], Value::Null, "and a setting the core could not read at all has no raw value to show");
+        assert_eq!(
+            (corrupt["mode"].as_str(), corrupt["reason"].as_str()),
+            (None, Some("modeUnknown"))
+        );
+        assert_eq!(
+            corrupt["modeRaw"],
+            json!(7.0),
+            "a setting outside the three modes is handed on raw, because a corrupt setting needs a reset and a missing one does not"
+        );
+        assert_eq!(
+            missing["modeRaw"],
+            Value::Null,
+            "and a setting the core could not read at all has no raw value to show"
+        );
     }
 
     #[test]
     fn follow_me_mode_needs_a_vehicle_that_names_its_own_follow_mode() {
         assert!(receives(Mode::FollowMe, &follower("Follow Me", false)));
         assert!(!receives(Mode::FollowMe, &follower("Hold", false)));
-        let nameless = Target { follow_flight_mode: String::new(), flight_mode: String::new(), ..follower("", false) };
-        assert!(!in_follow_mode(&nameless), "a vehicle that reported no flight mode and no follow mode matches itself by string equality, and that empty match must not grant the stream");
-        assert!(enabled(Some(Mode::FollowMe), &[follower("Hold", false), follower("Follow Me", false)]), "one vehicle in follow mode is enough to run the timer");
-        assert!(!enabled(Some(Mode::FollowMe), &[follower("Hold", false)]), "and when it leaves follow mode the timer stops, because the decision is recomputed and never latched");
+        let nameless = Target {
+            follow_flight_mode: String::new(),
+            flight_mode: String::new(),
+            ..follower("", false)
+        };
+        assert!(
+            !in_follow_mode(&nameless),
+            "a vehicle that reported no flight mode and no follow mode matches itself by string equality, and that empty match must not grant the stream"
+        );
+        assert!(
+            enabled(
+                Some(Mode::FollowMe),
+                &[follower("Hold", false), follower("Follow Me", false)]
+            ),
+            "one vehicle in follow mode is enough to run the timer"
+        );
+        assert!(
+            !enabled(Some(Mode::FollowMe), &[follower("Hold", false)]),
+            "and when it leaves follow mode the timer stops, because the decision is recomputed and never latched"
+        );
     }
 
     #[test]
     fn the_report_wraps_its_angles_and_keeps_absence_absent() {
         let report = motion_report(&fix()).unwrap();
-        assert_eq!((report.latitude_deg_e7, report.longitude_deg_e7), (475000000, 85000000));
-        assert_eq!((report.latitude, report.longitude), (47.5, 8.5), "the marker on the map is drawn from degrees, so the core publishes the degrees it already had rather than making every head divide by ten million");
-        assert_eq!(report.estimation, 19, "the MAVLink est_capabilities bits are position, velocity and heading at 1, 2 and 16");
-        assert_eq!(report.estimation_tokens(), vec!["position", "velocity", "heading"]);
-        assert!(report.velocity_north_m_s.unwrap().abs() < 1.0e-9 && (report.velocity_east_m_s.unwrap() - 4.0).abs() < 1.0e-9, "a heading of ninety degrees puts the whole ground speed on the east axis");
-        assert_eq!(report.position_std_dev_horizontal_m, None, "an accuracy the position source never reported is unknown, not perfect");
-        assert_eq!(report.velocity_down_m_s, None, "and a vertical speed that was never reported is unknown, not still");
-        let wrapped = motion_report(&Fix { heading_deg: Some(370.0), longitude: 190.0, ..fix() }).unwrap();
-        assert_eq!(wrapped.heading_deg, Some(10.0), "a bearing wraps at three hundred and sixty");
-        assert_eq!(wrapped.longitude_deg_e7, -1700000000, "longitude wraps too, and the antimeridian is where a follow target crosses it");
-        assert_eq!(wrapped.longitude, -170.0, "the degrees a head draws wrap with the wire integer, never one of each");
-        let still = motion_report(&Fix { heading_deg: None, ..fix() }).unwrap();
-        assert_eq!((still.velocity_north_m_s, still.velocity_east_m_s), (None, None), "a ground speed without a direction is no velocity at all");
-        assert_eq!(still.estimation & ESTIMATION_VELOCITY, 0, "and the estimation bits must not claim a velocity the report does not carry");
-        assert_eq!(motion_report(&Fix { latitude: 91.0, ..fix() }), None, "a latitude off the globe is not a position");
-        assert_eq!(motion_report(&Fix { valid: false, ..fix() }), None);
+        assert_eq!(
+            (report.latitude_deg_e7, report.longitude_deg_e7),
+            (475000000, 85000000)
+        );
+        assert_eq!(
+            (report.latitude, report.longitude),
+            (47.5, 8.5),
+            "the marker on the map is drawn from degrees, so the core publishes the degrees it already had rather than making every head divide by ten million"
+        );
+        assert_eq!(
+            report.estimation, 19,
+            "the MAVLink est_capabilities bits are position, velocity and heading at 1, 2 and 16"
+        );
+        assert_eq!(
+            report.estimation_tokens(),
+            vec!["position", "velocity", "heading"]
+        );
+        assert!(
+            report.velocity_north_m_s.unwrap().abs() < 1.0e-9
+                && (report.velocity_east_m_s.unwrap() - 4.0).abs() < 1.0e-9,
+            "a heading of ninety degrees puts the whole ground speed on the east axis"
+        );
+        assert_eq!(
+            report.position_std_dev_horizontal_m, None,
+            "an accuracy the position source never reported is unknown, not perfect"
+        );
+        assert_eq!(
+            report.velocity_down_m_s, None,
+            "and a vertical speed that was never reported is unknown, not still"
+        );
+        let wrapped = motion_report(&Fix {
+            heading_deg: Some(370.0),
+            longitude: 190.0,
+            ..fix()
+        })
+        .unwrap();
+        assert_eq!(
+            wrapped.heading_deg,
+            Some(10.0),
+            "a bearing wraps at three hundred and sixty"
+        );
+        assert_eq!(
+            wrapped.longitude_deg_e7, -1700000000,
+            "longitude wraps too, and the antimeridian is where a follow target crosses it"
+        );
+        assert_eq!(
+            wrapped.longitude, -170.0,
+            "the degrees a head draws wrap with the wire integer, never one of each"
+        );
+        let still = motion_report(&Fix {
+            heading_deg: None,
+            ..fix()
+        })
+        .unwrap();
+        assert_eq!(
+            (still.velocity_north_m_s, still.velocity_east_m_s),
+            (None, None),
+            "a ground speed without a direction is no velocity at all"
+        );
+        assert_eq!(
+            still.estimation & ESTIMATION_VELOCITY,
+            0,
+            "and the estimation bits must not claim a velocity the report does not carry"
+        );
+        assert_eq!(
+            motion_report(&Fix {
+                latitude: 91.0,
+                ..fix()
+            }),
+            None,
+            "a latitude off the globe is not a position"
+        );
+        assert_eq!(
+            motion_report(&Fix {
+                valid: false,
+                ..fix()
+            }),
+            None
+        );
     }
 
     #[test]
     fn a_stale_fix_stops_the_report_and_a_fresh_one_starts_it_again() {
-        assert_eq!(ALLOWED_FIX_AGE_MS, 5000, "the age gate is the remote ID gate, because both age the same GCS fix");
-        assert_eq!(MOTION_INTERVAL_MS, 250, "the motion rate is FollowMe.h's fixed quarter second, never the interval the position device claims");
-        assert!(motion_report(&Fix { age_ms: 5000, ..fix() }).is_some());
-        assert_eq!(motion_report(&Fix { age_ms: 5001, ..fix() }), None, "a position this old is a ghost the vehicle would still chase");
-        assert!(motion_report(&Fix { age_ms: 0, ..fix() }).is_some(), "the age guard clears the moment the device fixes again, so it is a gate and not a latch");
-        let view = snapshot(ALWAYS, &[follower("Hold", false)], Some(&Fix { age_ms: 5001, ..fix() }));
-        assert_eq!((view["enabled"].as_bool(), view["wouldSend"].as_bool(), view["reason"].as_str()), (Some(true), Some(false), Some("fixStale")), "the timer keeps running while the fix is stale, it just sends nothing, and it says why");
-        assert_eq!((&view["report"], view["fixFresh"].as_bool()), (&Value::Null, Some(false)));
+        assert_eq!(
+            ALLOWED_FIX_AGE_MS, 5000,
+            "the age gate is the remote ID gate, because both age the same GCS fix"
+        );
+        assert_eq!(
+            MOTION_INTERVAL_MS, 250,
+            "the motion rate is FollowMe.h's fixed quarter second, never the interval the position device claims"
+        );
+        assert!(
+            motion_report(&Fix {
+                age_ms: 5000,
+                ..fix()
+            })
+            .is_some()
+        );
+        assert_eq!(
+            motion_report(&Fix {
+                age_ms: 5001,
+                ..fix()
+            }),
+            None,
+            "a position this old is a ghost the vehicle would still chase"
+        );
+        assert!(
+            motion_report(&Fix { age_ms: 0, ..fix() }).is_some(),
+            "the age guard clears the moment the device fixes again, so it is a gate and not a latch"
+        );
+        let view = snapshot(
+            ALWAYS,
+            &[follower("Hold", false)],
+            Some(&Fix {
+                age_ms: 5001,
+                ..fix()
+            }),
+        );
+        assert_eq!(
+            (
+                view["enabled"].as_bool(),
+                view["wouldSend"].as_bool(),
+                view["reason"].as_str()
+            ),
+            (Some(true), Some(false), Some("fixStale")),
+            "the timer keeps running while the fix is stale, it just sends nothing, and it says why"
+        );
+        assert_eq!(
+            (&view["report"], view["fixFresh"].as_bool()),
+            (&Value::Null, Some(false))
+        );
         let never_fixed = snapshot(ALWAYS, &[follower("Hold", false)], None);
-        assert_eq!((&never_fixed["fixFresh"], &never_fixed["fixValid"]), (&Value::Null, &Value::Null), "a fix the position manager never produced is neither fresh nor valid, rather than fresh and invalid");
+        assert_eq!(
+            (&never_fixed["fixFresh"], &never_fixed["fixValid"]),
+            (&Value::Null, &Value::Null),
+            "a fix the position manager never produced is neither fresh nor valid, rather than fresh and invalid"
+        );
     }
 
     #[test]
     fn every_dark_panel_names_the_one_thing_the_operator_must_fix() {
         let following = vec![follower("Follow Me", false)];
         let held = vec![follower("Hold", false)];
-        let reason = |setting, fleet: &[Target], fix: Option<&Fix>| snapshot(setting, fleet, fix)["reason"].as_str().map(str::to_string);
-        assert_eq!(reason(None, &following, Some(&fix())).as_deref(), Some("modeUnknown"));
-        assert_eq!(reason(NEVER, &following, Some(&fix())).as_deref(), Some("modeNever"));
-        assert_eq!(reason(ALWAYS, &[], Some(&fix())).as_deref(), Some("noVehicles"));
-        assert_eq!(reason(FOLLOW_ME, &held, Some(&fix())).as_deref(), Some("noVehicleInFollowMode"));
+        let reason = |setting, fleet: &[Target], fix: Option<&Fix>| {
+            snapshot(setting, fleet, fix)["reason"]
+                .as_str()
+                .map(str::to_string)
+        };
+        assert_eq!(
+            reason(None, &following, Some(&fix())).as_deref(),
+            Some("modeUnknown")
+        );
+        assert_eq!(
+            reason(NEVER, &following, Some(&fix())).as_deref(),
+            Some("modeNever")
+        );
+        assert_eq!(
+            reason(ALWAYS, &[], Some(&fix())).as_deref(),
+            Some("noVehicles")
+        );
+        assert_eq!(
+            reason(FOLLOW_ME, &held, Some(&fix())).as_deref(),
+            Some("noVehicleInFollowMode")
+        );
         assert_eq!(reason(ALWAYS, &held, None).as_deref(), Some("noFix"));
-        assert_eq!(reason(ALWAYS, &held, Some(&Fix { valid: false, ..fix() })).as_deref(), Some("fixInvalid"));
-        assert_eq!(reason(ALWAYS, &held, Some(&Fix { age_ms: ALLOWED_FIX_AGE_MS + 1, ..fix() })).as_deref(), Some("fixStale"));
-        assert_eq!(reason(ALWAYS, &held, Some(&Fix { latitude: 91.0, ..fix() })).as_deref(), Some("fixUnusable"), "a fix that is valid and fresh but off the globe was invisible before, and looked exactly like a core bug");
-        let homeless = vec![Target { home_altitude_amsl_m: None, ..follower("Follow Me", true) }];
-        assert_eq!(reason(FOLLOW_ME, &homeless, Some(&fix())).as_deref(), Some("allVehiclesRefused"));
-        assert_eq!(reason(FOLLOW_ME, &following, Some(&fix())), None, "the reason is null exactly when the report would go out, so a head never has to rank the causes itself");
-        assert_eq!(reason(FOLLOW_ME, &[follower("Hold", false), follower("Follow Me", false)], Some(&Fix { age_ms: ALLOWED_FIX_AGE_MS + 1, ..fix() })).as_deref(), Some("fixStale"), "with a vehicle asking to be followed the stale fix is the cause, and the core states that order rather than leaving heads to disagree on it");
+        assert_eq!(
+            reason(
+                ALWAYS,
+                &held,
+                Some(&Fix {
+                    valid: false,
+                    ..fix()
+                })
+            )
+            .as_deref(),
+            Some("fixInvalid")
+        );
+        assert_eq!(
+            reason(
+                ALWAYS,
+                &held,
+                Some(&Fix {
+                    age_ms: ALLOWED_FIX_AGE_MS + 1,
+                    ..fix()
+                })
+            )
+            .as_deref(),
+            Some("fixStale")
+        );
+        assert_eq!(
+            reason(
+                ALWAYS,
+                &held,
+                Some(&Fix {
+                    latitude: 91.0,
+                    ..fix()
+                })
+            )
+            .as_deref(),
+            Some("fixUnusable"),
+            "a fix that is valid and fresh but off the globe was invisible before, and looked exactly like a core bug"
+        );
+        let homeless = vec![Target {
+            home_altitude_amsl_m: None,
+            ..follower("Follow Me", true)
+        }];
+        assert_eq!(
+            reason(FOLLOW_ME, &homeless, Some(&fix())).as_deref(),
+            Some("allVehiclesRefused")
+        );
+        assert_eq!(
+            reason(FOLLOW_ME, &following, Some(&fix())),
+            None,
+            "the reason is null exactly when the report would go out, so a head never has to rank the causes itself"
+        );
+        assert_eq!(
+            reason(
+                FOLLOW_ME,
+                &[follower("Hold", false), follower("Follow Me", false)],
+                Some(&Fix {
+                    age_ms: ALLOWED_FIX_AGE_MS + 1,
+                    ..fix()
+                })
+            )
+            .as_deref(),
+            Some("fixStale"),
+            "with a vehicle asking to be followed the stale fix is the cause, and the core states that order rather than leaving heads to disagree on it"
+        );
     }
 
     #[test]
     fn the_snapshot_never_claims_to_have_sent_anything() {
         let view = snapshot(FOLLOW_ME, &[follower("Follow Me", false)], Some(&fix()));
-        assert_eq!(view["wouldSend"], json!(true), "nothing in this module touches a link, so the field says what would be sent");
-        assert!(view.get("sending").is_none(), "a field called sending would assert an action the core never performs");
-        assert!(view.get("headingUnknownCdeg").is_none() && view.get("estimationBits").is_none(), "the protocol's sentinels and raw masks are the send path's business, not a panel's");
-        assert!(view["vehicles"][0].get("globalPosition").is_none(), "one position in two representations makes a head choose which to trust");
-        let registered = crate::view::lookup("view.followMe").expect("the view is registered, or the port is inert");
+        assert_eq!(
+            view["wouldSend"],
+            json!(true),
+            "nothing in this module touches a link, so the field says what would be sent"
+        );
+        assert!(
+            view.get("sending").is_none(),
+            "a field called sending would assert an action the core never performs"
+        );
+        assert!(
+            view.get("headingUnknownCdeg").is_none() && view.get("estimationBits").is_none(),
+            "the protocol's sentinels and raw masks are the send path's business, not a panel's"
+        );
+        assert!(
+            view["vehicles"][0].get("globalPosition").is_none(),
+            "one position in two representations makes a head choose which to trust"
+        );
+        let registered = crate::view::lookup("view.followMe")
+            .expect("the view is registered, or the port is inert");
         assert_eq!(registered.deps, DEPS);
     }
 
     #[test]
     fn a_vehicle_that_is_not_followed_says_why_in_its_own_row() {
-        let row = |setting, target: Target| snapshot(setting, &[target], Some(&fix()))["vehicles"][0].clone();
-        assert_eq!(row(None, follower("Follow Me", false))["refusal"], json!("modeUnknown"));
-        assert_eq!(row(NEVER, follower("Follow Me", false))["refusal"], json!("modeNever"));
-        assert_eq!(row(FOLLOW_ME, follower("Hold", false))["refusal"], json!("notInFollowMode"), "switching this vehicle to its follow mode takes ten seconds, and the row says so");
-        let unsupported = Target { follow_flight_mode: String::new(), ..follower("Hold", false) };
-        assert_eq!(row(FOLLOW_ME, unsupported)["refusal"], json!("followModeUnsupported"), "a firmware that names no follow mode can never be followed, and hunting its mode menu is wasted time");
-        let homeless = Target { home_altitude_amsl_m: None, ..follower("Follow Me", true) };
-        assert_eq!(row(FOLLOW_ME, homeless.clone())["refusal"], json!("homePositionUnknown"));
-        assert_eq!(row(FOLLOW_ME, homeless)["following"], json!(false), "a refused vehicle is not being followed");
-        assert_eq!(row(FOLLOW_ME, follower("Follow Me", false))["refusal"], Value::Null);
+        let row = |setting, target: Target| {
+            snapshot(setting, &[target], Some(&fix()))["vehicles"][0].clone()
+        };
+        assert_eq!(
+            row(None, follower("Follow Me", false))["refusal"],
+            json!("modeUnknown")
+        );
+        assert_eq!(
+            row(NEVER, follower("Follow Me", false))["refusal"],
+            json!("modeNever")
+        );
+        assert_eq!(
+            row(FOLLOW_ME, follower("Hold", false))["refusal"],
+            json!("notInFollowMode"),
+            "switching this vehicle to its follow mode takes ten seconds, and the row says so"
+        );
+        let unsupported = Target {
+            follow_flight_mode: String::new(),
+            ..follower("Hold", false)
+        };
+        assert_eq!(
+            row(FOLLOW_ME, unsupported)["refusal"],
+            json!("followModeUnsupported"),
+            "a firmware that names no follow mode can never be followed, and hunting its mode menu is wasted time"
+        );
+        let homeless = Target {
+            home_altitude_amsl_m: None,
+            ..follower("Follow Me", true)
+        };
+        assert_eq!(
+            row(FOLLOW_ME, homeless.clone())["refusal"],
+            json!("homePositionUnknown")
+        );
+        assert_eq!(
+            row(FOLLOW_ME, homeless)["following"],
+            json!(false),
+            "a refused vehicle is not being followed"
+        );
+        assert_eq!(
+            row(FOLLOW_ME, follower("Follow Me", false))["refusal"],
+            Value::Null
+        );
     }
 
     #[test]
     fn each_vehicle_is_told_the_altitude_its_firmware_actually_carries() {
         let report = motion_report(&fix()).unwrap();
-        assert_eq!(stream(Mode::from_setting(FOLLOW_ME), &follower("Follow Me", false)), Ok(Stream::FollowTarget));
-        assert_eq!(stream(Mode::from_setting(FOLLOW_ME), &follower("Follow Me", true)), Ok(Stream::GlobalPositionInt));
-        let fleet = vec![follower("Follow Me", false), Target { id: 2, ..follower("Follow Me", true) }];
+        assert_eq!(
+            stream(Mode::from_setting(FOLLOW_ME), &follower("Follow Me", false)),
+            Ok(Stream::FollowTarget)
+        );
+        assert_eq!(
+            stream(Mode::from_setting(FOLLOW_ME), &follower("Follow Me", true)),
+            Ok(Stream::GlobalPositionInt)
+        );
+        let fleet = vec![
+            follower("Follow Me", false),
+            Target {
+                id: 2,
+                ..follower("Follow Me", true)
+            },
+        ];
         let view = snapshot(FOLLOW_ME, &fleet, Some(&fix()));
-        assert_eq!(view["vehicles"][0]["sentAltitudeAmsl"], json!(400.0), "the follow target message carries the operator's own altitude");
-        assert_eq!(view["vehicles"][1]["sentAltitudeAmsl"], json!(500.0), "and ArduPilot's global position carries the vehicle's home altitude, which is the height the drone holds over the operator");
+        assert_eq!(
+            view["vehicles"][0]["sentAltitudeAmsl"],
+            json!(400.0),
+            "the follow target message carries the operator's own altitude"
+        );
+        assert_eq!(
+            view["vehicles"][1]["sentAltitudeAmsl"],
+            json!(500.0),
+            "and ArduPilot's global position carries the vehicle's home altitude, which is the height the drone holds over the operator"
+        );
         assert_eq!(view["vehicles"][1]["stream"], json!("globalPositionInt"));
-        assert_eq!(global_position(&report, 500.0).altitude_amsl_mm, 500_000, "the metres a head shows and the millimetres on the wire are the same altitude");
-        let px4_only = snapshot(FOLLOW_ME, &[follower("Follow Me", false)], Some(&Fix { altitude_amsl_m: None, ..fix() }));
-        assert_eq!(px4_only["vehicles"][0]["sentAltitudeAmsl"], Value::Null, "an altitude the fix never carried is not an altitude the vehicle is told");
+        assert_eq!(
+            global_position(&report, 500.0).altitude_amsl_mm,
+            500_000,
+            "the metres a head shows and the millimetres on the wire are the same altitude"
+        );
+        let px4_only = snapshot(
+            FOLLOW_ME,
+            &[follower("Follow Me", false)],
+            Some(&Fix {
+                altitude_amsl_m: None,
+                ..fix()
+            }),
+        );
+        assert_eq!(
+            px4_only["vehicles"][0]["sentAltitudeAmsl"],
+            Value::Null,
+            "an altitude the fix never carried is not an altitude the vehicle is told"
+        );
     }
 
     #[test]
     fn only_an_ardupilot_follower_without_home_raises_the_home_not_set_message() {
-        let homeless = Target { home_altitude_amsl_m: None, ..follower("Follow Me", true) };
-        let px4_homeless = Target { home_altitude_amsl_m: None, ..follower("Follow Me", false) };
-        let idle_homeless = Target { home_altitude_amsl_m: None, ..follower("Loiter", true) };
-        assert!(home_not_set(Some(Mode::FollowMe), &[follower("Follow Me", true), homeless.clone()]), "APMFirmwarePlugin::sendGCSMotionReport refuses without a valid home");
-        assert!(!home_not_set(Some(Mode::FollowMe), &[px4_homeless]), "the PX4 FOLLOW_TARGET path needs no home");
-        assert!(!home_not_set(Some(Mode::FollowMe), &[idle_homeless.clone()]), "a vehicle outside Follow Me is never sent to");
-        assert!(home_not_set(Some(Mode::Always), &[idle_homeless.clone()]), "Always sends to every vehicle");
+        let homeless = Target {
+            home_altitude_amsl_m: None,
+            ..follower("Follow Me", true)
+        };
+        let px4_homeless = Target {
+            home_altitude_amsl_m: None,
+            ..follower("Follow Me", false)
+        };
+        let idle_homeless = Target {
+            home_altitude_amsl_m: None,
+            ..follower("Loiter", true)
+        };
+        assert!(
+            home_not_set(
+                Some(Mode::FollowMe),
+                &[follower("Follow Me", true), homeless.clone()]
+            ),
+            "APMFirmwarePlugin::sendGCSMotionReport refuses without a valid home"
+        );
+        assert!(
+            !home_not_set(Some(Mode::FollowMe), &[px4_homeless]),
+            "the PX4 FOLLOW_TARGET path needs no home"
+        );
+        assert!(
+            !home_not_set(Some(Mode::FollowMe), &[idle_homeless.clone()]),
+            "a vehicle outside Follow Me is never sent to"
+        );
+        assert!(
+            home_not_set(Some(Mode::Always), &[idle_homeless.clone()]),
+            "Always sends to every vehicle"
+        );
         assert!(!home_not_set(Some(Mode::Never), &[homeless]));
     }
 
     #[test]
     fn ardupilot_needs_a_home_altitude_and_the_wire_never_invents_one() {
-        let apm_follower = Target { home_altitude_amsl_m: None, ..follower("Follow Me", true) };
-        assert_eq!(stream(Some(Mode::FollowMe), &apm_follower), Err(Refusal::HomePositionUnknown), "the global position carries the home altitude, so without one there is nothing honest to send");
-        assert_eq!(stream(Some(Mode::FollowMe), &Target { home_altitude_amsl_m: None, ..follower("Follow Me", false) }), Ok(Stream::FollowTarget), "and the follow target message never needed a home position");
+        let apm_follower = Target {
+            home_altitude_amsl_m: None,
+            ..follower("Follow Me", true)
+        };
+        assert_eq!(
+            stream(Some(Mode::FollowMe), &apm_follower),
+            Err(Refusal::HomePositionUnknown),
+            "the global position carries the home altitude, so without one there is nothing honest to send"
+        );
+        assert_eq!(
+            stream(
+                Some(Mode::FollowMe),
+                &Target {
+                    home_altitude_amsl_m: None,
+                    ..follower("Follow Me", false)
+                }
+            ),
+            Ok(Stream::FollowTarget),
+            "and the follow target message never needed a home position"
+        );
         let wire = global_position(&motion_report(&fix()).unwrap(), 500.0);
-        assert_eq!((wire.altitude_amsl_mm, wire.relative_altitude_mm), (500_000, 0));
-        assert_eq!((wire.velocity_north_cm_s, wire.velocity_east_cm_s), (0, 400));
+        assert_eq!(
+            (wire.altitude_amsl_mm, wire.relative_altitude_mm),
+            (500_000, 0)
+        );
+        assert_eq!(
+            (wire.velocity_north_cm_s, wire.velocity_east_cm_s),
+            (0, 400)
+        );
         assert_eq!(wire.heading_cdeg, 9000);
-        assert_eq!(global_position(&motion_report(&Fix { heading_deg: Some(-90.0), ..fix() }).unwrap(), 0.0).heading_cdeg, 27000, "a negative bearing wraps before it is scaled, because the wire field is unsigned");
+        assert_eq!(
+            global_position(
+                &motion_report(&Fix {
+                    heading_deg: Some(-90.0),
+                    ..fix()
+                })
+                .unwrap(),
+                0.0
+            )
+            .heading_cdeg,
+            27000,
+            "a negative bearing wraps before it is scaled, because the wire field is unsigned"
+        );
     }
 
     #[test]
     fn an_unknown_velocity_and_heading_reach_the_wire_as_unknown_or_as_a_stated_zero() {
-        let blind = motion_report(&Fix { heading_deg: None, ..fix() }).unwrap();
+        let blind = motion_report(&Fix {
+            heading_deg: None,
+            ..fix()
+        })
+        .unwrap();
         let wire = global_position(&blind, 500.0);
-        assert_eq!(wire.heading_cdeg, HEADING_UNKNOWN_CDEG, "an unknown heading goes out as MAVLink's sentinel, never as zero centidegrees, which reads as due north");
-        assert_eq!(wire.velocity_north_cm_s, 0, "GLOBAL_POSITION_INT has no unknown velocity, so a zero is all the wire can carry");
-        let view = snapshot(FOLLOW_ME, &[follower("Follow Me", true), Target { id: 2, ..follower("Follow Me", false) }], Some(&Fix { heading_deg: None, ..fix() }));
-        assert_eq!(view["vehicles"][0]["sentVelocityZeroed"], json!(true), "so the snapshot says the ArduPilot vehicle is being told the operator is standing still, which is what makes it mispredict the lead");
-        assert_eq!(view["vehicles"][1]["sentVelocityZeroed"], json!(false), "the follow target message says unknown in its estimation bits instead, so nothing is faked there");
+        assert_eq!(
+            wire.heading_cdeg, HEADING_UNKNOWN_CDEG,
+            "an unknown heading goes out as MAVLink's sentinel, never as zero centidegrees, which reads as due north"
+        );
+        assert_eq!(
+            wire.velocity_north_cm_s, 0,
+            "GLOBAL_POSITION_INT has no unknown velocity, so a zero is all the wire can carry"
+        );
+        let view = snapshot(
+            FOLLOW_ME,
+            &[
+                follower("Follow Me", true),
+                Target {
+                    id: 2,
+                    ..follower("Follow Me", false)
+                },
+            ],
+            Some(&Fix {
+                heading_deg: None,
+                ..fix()
+            }),
+        );
+        assert_eq!(
+            view["vehicles"][0]["sentVelocityZeroed"],
+            json!(true),
+            "so the snapshot says the ArduPilot vehicle is being told the operator is standing still, which is what makes it mispredict the lead"
+        );
+        assert_eq!(
+            view["vehicles"][1]["sentVelocityZeroed"],
+            json!(false),
+            "the follow target message says unknown in its estimation bits instead, so nothing is faked there"
+        );
         let follow = follow_target(&blind);
-        assert_eq!(follow.velocity_m_s, [0.0, 0.0, 0.0], "FirmwarePlugin::sendGCSMotionReport ships a zero-initialised struct; PX4 drops a non-finite velocity");
+        assert_eq!(
+            follow.velocity_m_s,
+            [0.0, 0.0, 0.0],
+            "FirmwarePlugin::sendGCSMotionReport ships a zero-initialised struct; PX4 drops a non-finite velocity"
+        );
         assert_eq!(follow.position_cov, [0.0, 0.0, 0.0]);
         assert_eq!(follow.estimation & ESTIMATION_VELOCITY, 0);
-        let known = follow_target(&motion_report(&Fix { horizontal_accuracy_m: Some(2.5), vertical_accuracy_m: Some(4.0), ..fix() }).unwrap());
-        assert_eq!(known.position_cov, [2.5, 0.0, 4.0], "sendGCSMotionReport fills position_cov[0] and [2] only");
+        let known = follow_target(
+            &motion_report(&Fix {
+                horizontal_accuracy_m: Some(2.5),
+                vertical_accuracy_m: Some(4.0),
+                ..fix()
+            })
+            .unwrap(),
+        );
+        assert_eq!(
+            known.position_cov,
+            [2.5, 0.0, 4.0],
+            "sendGCSMotionReport fills position_cov[0] and [2] only"
+        );
     }
 
     #[test]
     fn a_vehicle_read_that_failed_is_not_a_vehicle_to_follow() {
         let _fleet = fleet_guard();
-        let raced = Fake { count: Some(3), ..placed(json!(1), vec![px4(1, "Hold")], 0) };
+        let raced = Fake {
+            count: Some(3),
+            ..placed(json!(1), vec![px4(1, "Hold")], 0)
+        };
         let view = follow_me_view(&raced, &[]);
-        assert_eq!(view["count"], json!(1), "a count that outran the reads must not list a vehicle nothing could read");
+        assert_eq!(
+            view["count"],
+            json!(1),
+            "a count that outran the reads must not list a vehicle nothing could read"
+        );
         assert_eq!(view["vehicles"][0]["id"], json!(1));
-        let phantom = Fake { count: Some(2), ..placed(json!(1), vec![], 0) };
+        let phantom = Fake {
+            count: Some(2),
+            ..placed(json!(1), vec![], 0)
+        };
         let dark = follow_me_view(&phantom, &[]);
-        assert_eq!((dark["count"].as_u64(), dark["wouldSend"].as_bool(), dark["reason"].as_str()), (Some(0), Some(false), Some("noVehicles")), "an absent read must not decode to a vehicle that is granted the stream under always");
+        assert_eq!(
+            (
+                dark["count"].as_u64(),
+                dark["wouldSend"].as_bool(),
+                dark["reason"].as_str()
+            ),
+            (Some(0), Some(false), Some("noVehicles")),
+            "an absent read must not decode to a vehicle that is granted the stream under always"
+        );
         assert_eq!(dark["enabled"], json!(false));
         assert_eq!(target_of(&json!({ "kind": "null" })), None);
-        assert_eq!(target_of(&json!({ "kind": "object", "flightMode": "Hold" })), None, "a vehicle with no id is nothing a head could send to");
-        assert_eq!(target_of(&json!({ "kind": "value", "value": null, "id": 5 })), None, "and only an object read is a vehicle, which is the kind track.rs checks before it trusts one");
+        assert_eq!(
+            target_of(&json!({ "kind": "object", "flightMode": "Hold" })),
+            None,
+            "a vehicle with no id is nothing a head could send to"
+        );
+        assert_eq!(
+            target_of(&json!({ "kind": "value", "value": null, "id": 5 })),
+            None,
+            "and only an object read is a vehicle, which is the kind track.rs checks before it trusts one"
+        );
     }
 
     #[test]
@@ -813,42 +1432,131 @@ mod tests {
                 self.0.watch(paths);
             }
         }
-        let off = Recorded(placed(json!(0), vec![px4(1, "Hold")], 120), std::cell::RefCell::default());
+        let off = Recorded(
+            placed(json!(0), vec![px4(1, "Hold")], 120),
+            std::cell::RefCell::default(),
+        );
         tick(&off, u64::MAX / 2);
-        assert_eq!(*off.1.borrow(), vec![SETTING.to_string()], "with Follow Me off nothing can be sent, so nothing else is worth reading every quarter second");
-        *LAST_SENT_MS.lock().unwrap_or_else(std::sync::PoisonError::into_inner) = None;
+        assert_eq!(
+            *off.1.borrow(),
+            vec![SETTING.to_string()],
+            "with Follow Me off nothing can be sent, so nothing else is worth reading every quarter second"
+        );
+        *LAST_SENT_MS
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner) = None;
     }
 
     #[test]
     fn the_view_reads_the_fix_from_the_position_manager_and_ages_it_from_the_manager_s_own_clock() {
         let _fleet = fleet_guard();
-        assert!(DEPS.contains(&GCS_POSITION) && DEPS.contains(&GCS_TIMESTAMP) && DEPS.contains(&GCS_HEADING), "a head watching the view is woken by the fix itself, or its panel freezes at whatever the last unrelated change left behind");
-        let backend = placed(json!(2), vec![apm(1, "Follow Me", true), px4(2, "Hold")], 120);
+        assert!(
+            DEPS.contains(&GCS_POSITION)
+                && DEPS.contains(&GCS_TIMESTAMP)
+                && DEPS.contains(&GCS_HEADING),
+            "a head watching the view is woken by the fix itself, or its panel freezes at whatever the last unrelated change left behind"
+        );
+        let backend = placed(
+            json!(2),
+            vec![apm(1, "Follow Me", true), px4(2, "Hold")],
+            120,
+        );
         let view = follow_me_view(&backend, &[]);
         assert_eq!(view["class"], "FollowMe");
-        assert_eq!((view["mode"].as_str(), view["enabled"].as_bool(), view["wouldSend"].as_bool()), (Some("followMe"), Some(true), Some(true)));
-        assert_eq!((view["fixValid"].as_bool(), view["fixFresh"].as_bool()), (Some(true), Some(true)));
+        assert_eq!(
+            (
+                view["mode"].as_str(),
+                view["enabled"].as_bool(),
+                view["wouldSend"].as_bool()
+            ),
+            (Some("followMe"), Some(true), Some(true))
+        );
+        assert_eq!(
+            (view["fixValid"].as_bool(), view["fixFresh"].as_bool()),
+            (Some(true), Some(true))
+        );
         let age = gcs_fix(&backend, crate::hub::now_us() / 1000).map(|fix| fix.age_ms);
-        assert!(age.is_some_and(|age| (120..3000).contains(&age)), "the age is the delta to the position manager's own timestamp, not the time since some head last pushed a cached position; got {age:?}");
+        assert!(
+            age.is_some_and(|age| (120..3000).contains(&age)),
+            "the age is the delta to the position manager's own timestamp, not the time since some head last pushed a cached position; got {age:?}"
+        );
         assert_eq!(view["report"]["latitudeDegE7"], json!(475000000));
-        assert_eq!((view["report"]["heading"].as_f64(), view["report"]["positionStdDevHorizontal"].as_f64()), (Some(90.0), Some(2.5)), "heading and accuracy come from the manager's own facts");
-        assert_eq!(view["units"]["altitude"], "m", "the head formats the numbers, the core only names their unit");
-        assert_eq!((view["vehicles"][0]["following"].as_bool(), view["vehicles"][0]["stream"].as_str()), (Some(true), Some("globalPositionInt")));
-        assert_eq!((view["vehicles"][1]["following"].as_bool(), view["vehicles"][1]["refusal"].as_str()), (Some(false), Some("notInFollowMode")));
-        let stale = follow_me_view(&placed(json!(2), vec![px4(1, "Follow Me")], ALLOWED_FIX_AGE_MS + 2000), &[]);
-        assert_eq!((stale["reason"].as_str(), &stale["report"]), (Some("fixStale"), &Value::Null), "a GPS that dies mid follow ages out on its own clock, so the panel stops reading fresh without anything else happening");
-        let dark = follow_me_view(&Fake { setting: json!(2), fleet: vec![px4(1, "Follow Me")], ..Default::default() }, &[]);
-        assert_eq!((dark["reason"].as_str(), &dark["fixFresh"]), (Some("noFix"), &Value::Null), "a position manager with no fix yet is neither fresh nor stale");
-        assert_eq!(gcs_fix(&placed(json!(1), vec![], 0), wall_ms()).unwrap().ground_speed_m_s, None, "the manager publishes no ground speed today, and unknown stays unknown rather than becoming a standstill");
+        assert_eq!(
+            (
+                view["report"]["heading"].as_f64(),
+                view["report"]["positionStdDevHorizontal"].as_f64()
+            ),
+            (Some(90.0), Some(2.5)),
+            "heading and accuracy come from the manager's own facts"
+        );
+        assert_eq!(
+            view["units"]["altitude"], "m",
+            "the head formats the numbers, the core only names their unit"
+        );
+        assert_eq!(
+            (
+                view["vehicles"][0]["following"].as_bool(),
+                view["vehicles"][0]["stream"].as_str()
+            ),
+            (Some(true), Some("globalPositionInt"))
+        );
+        assert_eq!(
+            (
+                view["vehicles"][1]["following"].as_bool(),
+                view["vehicles"][1]["refusal"].as_str()
+            ),
+            (Some(false), Some("notInFollowMode"))
+        );
+        let stale = follow_me_view(
+            &placed(
+                json!(2),
+                vec![px4(1, "Follow Me")],
+                ALLOWED_FIX_AGE_MS + 2000,
+            ),
+            &[],
+        );
+        assert_eq!(
+            (stale["reason"].as_str(), &stale["report"]),
+            (Some("fixStale"), &Value::Null),
+            "a GPS that dies mid follow ages out on its own clock, so the panel stops reading fresh without anything else happening"
+        );
+        let dark = follow_me_view(
+            &Fake {
+                setting: json!(2),
+                fleet: vec![px4(1, "Follow Me")],
+                ..Default::default()
+            },
+            &[],
+        );
+        assert_eq!(
+            (dark["reason"].as_str(), &dark["fixFresh"]),
+            (Some("noFix"), &Value::Null),
+            "a position manager with no fix yet is neither fresh nor stale"
+        );
+        assert_eq!(
+            gcs_fix(&placed(json!(1), vec![], 0), wall_ms())
+                .unwrap()
+                .ground_speed_m_s,
+            None,
+            "the manager publishes no ground speed today, and unknown stays unknown rather than becoming a standstill"
+        );
     }
 
     #[test]
     fn a_second_vehicle_entering_follow_mode_is_watched_rather_than_waited_for() {
         let _fleet = fleet_guard();
         fleet_of(&Fake::default());
-        assert!(deps().iter().all(|d| !d.starts_with("vehicles.vehicles.0.")), "with no vehicle there is nothing to watch, and a path that resolves to nothing binds to no signal and is silently downgraded to the idle poll");
+        assert!(
+            deps()
+                .iter()
+                .all(|d| !d.starts_with("vehicles.vehicles.0.")),
+            "with no vehicle there is nothing to watch, and a path that resolves to nothing binds to no signal and is silently downgraded to the idle poll"
+        );
 
-        fleet_of(&Fake { fleet: vec![px4(1, "Follow Me"), px4(2, "Hold")], ..Default::default() });
+        fleet_of(&Fake {
+            fleet: vec![px4(1, "Follow Me"), px4(2, "Hold")],
+            ..Default::default()
+        });
         let after = deps();
         ["flightMode", "homePosition"].iter().for_each(|name| {
             assert!(after.contains(&format!("vehicles.vehicles.1.{name}")), "{name} travels per vehicle, and vehicle.{name} in DEPS is the ACTIVE one - so a second aircraft changing it fires nothing");

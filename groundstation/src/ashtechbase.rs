@@ -60,11 +60,15 @@ fn ack(sentence: &str) -> Option<bool> {
 }
 
 fn port_of(sentence: &str) -> Option<char> {
-    (sentence.starts_with("$PASHR,PRT,") && commas(sentence) == PRT_COMMAS).then(|| sentence.chars().nth(11)).flatten()
+    (sentence.starts_with("$PASHR,PRT,") && commas(sentence) == PRT_COMMAS)
+        .then(|| sentence.chars().nth(11))
+        .flatten()
 }
 
 fn mb_two(sentence: &str) -> Option<bool> {
-    sentence.strip_prefix("$PASHR,RID,").map(|board| board.starts_with("MB2"))
+    sentence
+        .strip_prefix("$PASHR,RID,")
+        .map(|board| board.starts_with("MB2"))
 }
 
 fn receipt(sentence: &str) -> Option<()> {
@@ -72,7 +76,12 @@ fn receipt(sentence: &str) -> Option<()> {
 }
 
 fn leading_number(field: &str) -> Option<f64> {
-    let end = field.char_indices().find(|(at, c)| !(c.is_ascii_digit() || *c == '.' || (*at == 0 && (*c == '-' || *c == '+')))).map_or(field.len(), |(at, _)| at);
+    let end = field
+        .char_indices()
+        .find(|(at, c)| {
+            !(c.is_ascii_digit() || *c == '.' || (*at == 0 && (*c == '-' || *c == '+')))
+        })
+        .map_or(field.len(), |(at, _)| at);
     field[..end].parse().ok()
 }
 
@@ -85,17 +94,30 @@ fn ddmm(degrees: f64) -> f64 {
 }
 
 fn hemisphere(value: f64, positive: char, negative: char) -> (f64, char) {
-    if value < 0.0 { (-value, negative) } else { (value, positive) }
+    if value < 0.0 {
+        (-value, negative)
+    } else {
+        (value, positive)
+    }
 }
 
 fn fixed_position_command(position: BasePosition) -> String {
     let (latitude, ns) = hemisphere(position.latitude, 'N', 'S');
     let (longitude, ew) = hemisphere(position.longitude, 'E', 'W');
-    format!("$PASHS,POS,{:.8},{ns},{:.8},{ew},{:.5},PC1", ddmm(latitude), ddmm(longitude), f64::from(position.altitude_m))
+    format!(
+        "$PASHS,POS,{:.8},{ns},{:.8},{ew},{:.5},PC1",
+        ddmm(latitude),
+        ddmm(longitude),
+        f64::from(position.altitude_m)
+    )
 }
 
 fn signed(value: f64, sector: &str, negative: &str) -> f64 {
-    if sector.starts_with(negative) { -value } else { value }
+    if sector.starts_with(negative) {
+        -value
+    } else {
+        value
+    }
 }
 
 fn surveyed_position(sentence: &str) -> Option<(f64, f64, f32)> {
@@ -103,12 +125,29 @@ fn surveyed_position(sentence: &str) -> Option<(f64, f64, f32)> {
     let fields: Vec<&str> = finished.split(',').collect();
     let field = |index: usize| fields.get(index).copied().unwrap_or("");
     let number = |index: usize| leading_number(field(index)).unwrap_or(0.0);
-    (!sentence.contains("ERR")).then(|| (nmea_degrees(signed(number(2), field(3), "S")), nmea_degrees(signed(number(4), field(5), "W")), number(6) as f32))
+    (!sentence.contains("ERR")).then(|| {
+        (
+            nmea_degrees(signed(number(2), field(3), "S")),
+            nmea_degrees(signed(number(4), field(5), "W")),
+            number(6) as f32,
+        )
+    })
 }
 
 fn position_found(sentence: &str) -> bool {
     let fields: Vec<&str> = sentence.split(',').collect();
-    sentence.starts_with("$PASHR,POS,") && commas(sentence) == POS_COMMAS && [5, 7, 9].iter().filter(|index| fields.get(**index).and_then(|field| leading_number(field)).is_some()).count() == 3
+    sentence.starts_with("$PASHR,POS,")
+        && commas(sentence) == POS_COMMAS
+        && [5, 7, 9]
+            .iter()
+            .filter(|index| {
+                fields
+                    .get(**index)
+                    .and_then(|field| leading_number(field))
+                    .is_some()
+            })
+            .count()
+            == 3
 }
 
 pub struct AshtechBase<T: Transport> {
@@ -148,9 +187,18 @@ impl<T: Transport> AshtechBase<T> {
         if !self.transport.write(command.as_bytes()) {
             return None;
         }
-        heard_within(&mut self.transport, ASH_RESPONSE_TIMEOUT_MS, &mut self.transport_lost, |heard| sentences(heard).iter().any(|sentence| pick(sentence).is_some()))
-            .await
-            .and_then(|heard| sentences(&heard).iter().find_map(|sentence| pick(sentence)))
+        heard_within(
+            &mut self.transport,
+            ASH_RESPONSE_TIMEOUT_MS,
+            &mut self.transport_lost,
+            |heard| {
+                sentences(heard)
+                    .iter()
+                    .any(|sentence| pick(sentence).is_some())
+            },
+        )
+        .await
+        .and_then(|heard| sentences(&heard).iter().find_map(|sentence| pick(sentence)))
     }
 
     async fn acked(&mut self, command: &str) -> bool {
@@ -168,8 +216,22 @@ impl<T: Transport> AshtechBase<T> {
         }
     }
 
-    fn status(&self, active: bool, valid: bool, latitude: f64, longitude: f64, altitude_m: f32) -> Event {
-        Event::SurveyIn(SurveyStatus { duration_s: self.survey_s, mean_accuracy_mm: 0, latitude, longitude, altitude_m, flags: u8::from(valid) | (u8::from(active) << 1) })
+    fn status(
+        &self,
+        active: bool,
+        valid: bool,
+        latitude: f64,
+        longitude: f64,
+        altitude_m: f32,
+    ) -> Event {
+        Event::SurveyIn(SurveyStatus {
+            duration_s: self.survey_s,
+            mean_accuracy_mm: 0,
+            latitude,
+            longitude,
+            altitude_m,
+            flags: u8::from(valid) | (u8::from(active) << 1),
+        })
     }
 
     fn unknown_status(&self, active: bool, valid: bool) -> Event {
@@ -180,7 +242,8 @@ impl<T: Transport> AshtechBase<T> {
         self.corrections_on = true;
         match self.plan {
             BasePlan::SurveyIn(spec) => {
-                self.reply(&format!("$PASHS,POS,AVG,{}\r\n", spec.duration_s), receipt).await;
+                self.reply(&format!("$PASHS,POS,AVG,{}\r\n", spec.duration_s), receipt)
+                    .await;
                 for command in SURVEY_BASE {
                     self.acked(command).await;
                 }
@@ -191,7 +254,13 @@ impl<T: Transport> AshtechBase<T> {
             BasePlan::Fixed(position) => {
                 self.acked(&fixed_position_command(position)).await;
                 self.acked_on_port(&RTCM_OUTPUT).await;
-                self.events.push(self.status(false, true, position.latitude, position.longitude, position.altitude_m));
+                self.events.push(self.status(
+                    false,
+                    true,
+                    position.latitude,
+                    position.longitude,
+                    position.altitude_m,
+                ));
             }
         }
     }
@@ -204,17 +273,31 @@ impl<T: Transport> AshtechBase<T> {
             return;
         }
         let last = this == all;
-        let end = if last { visible - (this - 1) * SATELLITES_PER_GSV as i64 } else { SATELLITES_PER_GSV as i64 };
+        let end = if last {
+            visible - (this - 1) * SATELLITES_PER_GSV as i64
+        } else {
+            SATELLITES_PER_GSV as i64
+        };
         (0..end.clamp(0, SATELLITES_PER_GSV as i64) as usize).for_each(|y| {
             let field = |offset: usize| number(4 + y * 4 + offset) as u8;
             let slot = y + (this as usize - 1) * SATELLITES_PER_GSV;
             if let Some(satellite) = self.satellites.get_mut(slot) {
-                *satellite = Satellite { svid: field(0), used: field(3) > 0, elevation_raw: field(1), azimuth_raw: field(2), snr_db: field(3), prn: 0 };
+                *satellite = Satellite {
+                    svid: field(0),
+                    used: field(3) > 0,
+                    elevation_raw: field(1),
+                    azimuth_raw: field(2),
+                    snr_db: field(3),
+                    prn: 0,
+                };
             }
         });
         if last {
             let count = visible.clamp(0, MAX_SATELLITES as i64) as u8;
-            self.events.push(Event::Satellites { count, list: self.satellites[..count as usize].to_vec() });
+            self.events.push(Event::Satellites {
+                count,
+                list: self.satellites[..count as usize].to_vec(),
+            });
         }
     }
 
@@ -228,7 +311,8 @@ impl<T: Transport> AshtechBase<T> {
             match surveyed_position(sentence) {
                 None => self.events.push(self.unknown_status(false, false)),
                 Some((latitude, longitude, altitude_m)) => {
-                    self.events.push(self.status(false, true, latitude, longitude, altitude_m));
+                    self.events
+                        .push(self.status(false, true, latitude, longitude, altitude_m));
                     self.acked_on_port(&RTCM_OUTPUT).await;
                 }
             }
@@ -305,7 +389,10 @@ mod tests {
     use std::collections::VecDeque;
 
     fn checksummed(body: &str) -> String {
-        format!("${body}*{:02X}\r\n", body.bytes().fold(0u8, |sum, byte| sum ^ byte))
+        format!(
+            "${body}*{:02X}\r\n",
+            body.bytes().fold(0u8, |sum, byte| sum ^ byte)
+        )
     }
 
     struct Receiver {
@@ -334,7 +421,9 @@ mod tests {
                 (false, _) => String::new(),
                 (true, PORT_QUERY) => checksummed("PASHR,PRT,B,9"),
                 (true, BOARD_QUERY) => checksummed(&format!("PASHR,RID,{},30,D1A0,ZZ", self.board)),
-                (true, command) if command.starts_with("$PASHS,POS,AVG") => checksummed("PASHR,RECEIPT,POS,AVG,STARTED,INTERVAL,100,114502.56,28.12.2011"),
+                (true, command) if command.starts_with("$PASHS,POS,AVG") => {
+                    checksummed("PASHR,RECEIPT,POS,AVG,STARTED,INTERVAL,100,114502.56,28.12.2011")
+                }
                 (true, _) => checksummed("PASHR,ACK"),
             };
             self.pending.extend(reply.bytes());
@@ -353,20 +442,36 @@ mod tests {
     }
 
     fn receiver() -> Receiver {
-        Receiver { written: Vec::new(), pending: VecDeque::new(), clock_ms: 0, board: "MB2", answers: true, bauds: Vec::new() }
+        Receiver {
+            written: Vec::new(),
+            pending: VecDeque::new(),
+            clock_ms: 0,
+            board: "MB2",
+            answers: true,
+            bauds: Vec::new(),
+        }
     }
 
     fn survey() -> BasePlan {
-        BasePlan::SurveyIn(SurveySpec { accuracy_m: 2.0, accuracy_driver_units: 20000.0, duration_s: 100 })
+        BasePlan::SurveyIn(SurveySpec {
+            accuracy_m: 2.0,
+            accuracy_driver_units: 20000.0,
+            duration_s: 100,
+        })
     }
 
     fn on_port_b(templates: &[&str]) -> Vec<String> {
-        templates.iter().map(|template| template.replace("{port}", "B")).collect()
+        templates
+            .iter()
+            .map(|template| template.replace("{port}", "B"))
+            .collect()
     }
 
     fn flags(event: &Event) -> (u32, u8, bool) {
         match event {
-            Event::SurveyIn(status) => (status.duration_s, status.flags, status.latitude.is_finite()),
+            Event::SurveyIn(status) => {
+                (status.duration_s, status.flags, status.latitude.is_finite())
+            }
             other => panic!("survey status expected, got {other:?}"),
         }
     }
@@ -380,12 +485,26 @@ mod tests {
         let mut base = AshtechBase::new(receiver(), survey());
         assert!(block_on(base.configure()));
         assert_eq!(base.transport.bauds, [ASHTECH_BAUD]);
-        let expected: Vec<String> = [PORT_QUERY, BOARD_QUERY].into_iter().chain(SETUP).map(String::from).chain(on_port_b(&MESSAGES)).collect();
+        let expected: Vec<String> = [PORT_QUERY, BOARD_QUERY]
+            .into_iter()
+            .chain(SETUP)
+            .map(String::from)
+            .chain(on_port_b(&MESSAGES))
+            .collect();
         assert_eq!(base.transport.written, expected);
-        assert_eq!(base.take_events().iter().map(flags).collect::<Vec<_>>(), [(0, 0b10, false)]);
+        assert_eq!(
+            base.take_events().iter().map(flags).collect::<Vec<_>>(),
+            [(0, 0b10, false)]
+        );
 
-        base.transport.pending.extend(checksummed(NO_POSITION).bytes());
-        assert_eq!(block_on(base.receive(100)), Some(false), "no correction output before the receiver has a position");
+        base.transport
+            .pending
+            .extend(checksummed(NO_POSITION).bytes());
+        assert_eq!(
+            block_on(base.receive(100)),
+            Some(false),
+            "no correction output before the receiver has a position"
+        );
         assert_eq!(base.transport.written.len(), expected.len());
     }
 
@@ -398,26 +517,51 @@ mod tests {
 
         base.transport.pending.extend(checksummed(POSITION).bytes());
         assert_eq!(block_on(base.receive(100)), Some(true));
-        let started: Vec<String> = ["$PASHS,POS,AVG,100\r\n"].into_iter().chain(SURVEY_BASE).map(String::from).collect();
+        let started: Vec<String> = ["$PASHS,POS,AVG,100\r\n"]
+            .into_iter()
+            .chain(SURVEY_BASE)
+            .map(String::from)
+            .collect();
         assert_eq!(base.transport.written[configured..], started);
-        assert_eq!(base.take_events().iter().map(flags).collect::<Vec<_>>(), [(0, 0b10, false)]);
+        assert_eq!(
+            base.take_events().iter().map(flags).collect::<Vec<_>>(),
+            [(0, 0b10, false)]
+        );
 
         base.transport.clock_ms += 3_000;
         base.transport.pending.extend(checksummed(POSITION).bytes());
         block_on(base.receive(100));
-        assert_eq!(base.take_events().iter().map(flags).collect::<Vec<_>>(), [(3, 0b10, false)], "one tick per new second, the survey is not restarted");
+        assert_eq!(
+            base.take_events().iter().map(flags).collect::<Vec<_>>(),
+            [(3, 0b10, false)],
+            "one tick per new second, the survey is not restarted"
+        );
 
         base.transport.pending.extend(checksummed(FINISHED).bytes());
         block_on(base.receive(100));
-        let Event::SurveyIn(done) = base.take_events().remove(0) else { panic!("finished survey expected") };
+        let Event::SurveyIn(done) = base.take_events().remove(0) else {
+            panic!("finished survey expected")
+        };
         assert_eq!(done.flags, 0b01);
-        assert!((done.latitude - 55.708_630_801_666).abs() < 1e-9 && (done.longitude - 37.654_924_99).abs() < 1e-9, "{done:?}");
+        assert!(
+            (done.latitude - 55.708_630_801_666).abs() < 1e-9
+                && (done.longitude - 37.654_924_99).abs() < 1e-9,
+            "{done:?}"
+        );
         assert_eq!(done.altitude_m, 176.334);
-        assert_eq!(base.transport.written[configured + started.len()..], on_port_b(&RTCM_OUTPUT));
+        assert_eq!(
+            base.transport.written[configured + started.len()..],
+            on_port_b(&RTCM_OUTPUT)
+        );
 
-        base.transport.pending.extend([b'x', 0xd3, 0x00, 0x01, 0x42, 9, 9, 9]);
+        base.transport
+            .pending
+            .extend([b'x', 0xd3, 0x00, 0x01, 0x42, 9, 9, 9]);
         assert_eq!(block_on(base.receive(100)), Some(true));
-        assert_eq!(base.take_events(), [Event::Rtcm(vec![0xd3, 0x00, 0x01, 0x42, 9, 9, 9])]);
+        assert_eq!(
+            base.take_events(),
+            [Event::Rtcm(vec![0xd3, 0x00, 0x01, 0x42, 9, 9, 9])]
+        );
     }
 
     #[test]
@@ -428,30 +572,57 @@ mod tests {
         block_on(base.receive(100));
         base.take_events();
         let written = base.transport.written.len();
-        base.transport.pending.extend(checksummed("PASHR,RECEIPT,POS,AVG,100,FINISHED,124628.01,28.12.2011,ERR").bytes());
+        base.transport.pending.extend(
+            checksummed("PASHR,RECEIPT,POS,AVG,100,FINISHED,124628.01,28.12.2011,ERR").bytes(),
+        );
         block_on(base.receive(100));
-        assert_eq!(base.take_events().iter().map(flags).collect::<Vec<_>>(), [(0, 0, false)]);
+        assert_eq!(
+            base.take_events().iter().map(flags).collect::<Vec<_>>(),
+            [(0, 0, false)]
+        );
         assert_eq!(base.transport.written.len(), written);
     }
 
     #[test]
     fn a_fixed_base_is_told_its_position_in_ddmm_once_it_has_a_fix() {
-        let fixed = BasePlan::Fixed(BasePosition { latitude: -47.5, longitude: 8.25, altitude_m: 488.0, accuracy_mm: 1500.0 });
+        let fixed = BasePlan::Fixed(BasePosition {
+            latitude: -47.5,
+            longitude: 8.25,
+            altitude_m: 488.0,
+            accuracy_mm: 1500.0,
+        });
         let mut base = AshtechBase::new(receiver(), fixed);
         block_on(base.configure());
         base.take_events();
         let configured = base.transport.written.len();
         base.transport.pending.extend(checksummed(POSITION).bytes());
         block_on(base.receive(100));
-        assert_eq!(base.transport.written[configured], "$PASHS,POS,4730.00000000,S,815.00000000,E,488.00000,PC1");
-        assert_eq!(base.transport.written[configured + 1..], on_port_b(&RTCM_OUTPUT));
-        let Event::SurveyIn(done) = base.take_events().remove(0) else { panic!("fixed position status expected") };
-        assert_eq!((done.flags, done.latitude, done.longitude, done.altitude_m), (0b01, -47.5, 8.25, 488.0));
+        assert_eq!(
+            base.transport.written[configured],
+            "$PASHS,POS,4730.00000000,S,815.00000000,E,488.00000,PC1"
+        );
+        assert_eq!(
+            base.transport.written[configured + 1..],
+            on_port_b(&RTCM_OUTPUT)
+        );
+        let Event::SurveyIn(done) = base.take_events().remove(0) else {
+            panic!("fixed position status expected")
+        };
+        assert_eq!(
+            (done.flags, done.latitude, done.longitude, done.altitude_m),
+            (0b01, -47.5, 8.25, 488.0)
+        );
     }
 
     #[test]
     fn another_board_is_configured_but_never_becomes_a_base() {
-        let mut base = AshtechBase::new(Receiver { board: "BD9", ..receiver() }, survey());
+        let mut base = AshtechBase::new(
+            Receiver {
+                board: "BD9",
+                ..receiver()
+            },
+            survey(),
+        );
         assert!(block_on(base.configure()));
         assert!(base.take_events().is_empty());
         let written = base.transport.written.len();
@@ -465,20 +636,46 @@ mod tests {
         let mut base = AshtechBase::new(receiver(), survey());
         block_on(base.configure());
         base.take_events();
-        base.transport.pending.extend(checksummed("GLGSV,1,1,02,70,40,100,30,71,20,300,").bytes());
-        base.transport.pending.extend(checksummed("GPGSV,2,1,06,02,02,213,,03,-3,000,,11,00,121,,14,13,172,05").bytes());
-        base.transport.pending.extend(checksummed("GPGSV,2,2,06,20,45,090,41,21,10,270,").bytes());
+        base.transport
+            .pending
+            .extend(checksummed("GLGSV,1,1,02,70,40,100,30,71,20,300,").bytes());
+        base.transport.pending.extend(
+            checksummed("GPGSV,2,1,06,02,02,213,,03,-3,000,,11,00,121,,14,13,172,05").bytes(),
+        );
+        base.transport
+            .pending
+            .extend(checksummed("GPGSV,2,2,06,20,45,090,41,21,10,270,").bytes());
         assert_eq!(block_on(base.receive(100)), Some(true));
         let events = base.take_events();
-        let [Event::Satellites { count, list }] = events.as_slice() else { panic!("one satellite report expected, got {events:?}") };
+        let [Event::Satellites { count, list }] = events.as_slice() else {
+            panic!("one satellite report expected, got {events:?}")
+        };
         assert_eq!(*count, 6);
-        assert_eq!(list.iter().map(|satellite| (satellite.svid, satellite.used)).collect::<Vec<_>>(), [(2, false), (3, false), (11, false), (14, true), (20, true), (21, false)]);
+        assert_eq!(
+            list.iter()
+                .map(|satellite| (satellite.svid, satellite.used))
+                .collect::<Vec<_>>(),
+            [
+                (2, false),
+                (3, false),
+                (11, false),
+                (14, true),
+                (20, true),
+                (21, false)
+            ]
+        );
         assert_eq!(list[1].elevation_deg(), -3);
     }
 
     #[test]
     fn a_receiver_that_never_answers_is_asked_for_its_port_twice() {
-        let mut base = AshtechBase::new(Receiver { answers: false, ..receiver() }, survey());
+        let mut base = AshtechBase::new(
+            Receiver {
+                answers: false,
+                ..receiver()
+            },
+            survey(),
+        );
         assert!(!block_on(base.configure()));
         assert_eq!(base.transport.written, [PORT_QUERY, PORT_QUERY]);
     }

@@ -3,12 +3,15 @@ use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError};
 
 use serde_json::{Value, json};
 
-use crate::joystick::{ACTION_NONE, ACTIONS, AdditionalAxes, AxisCalibration, ButtonEvent, FUNCTIONS, Input, Joystick, Out, Polling, Settings, Support, ThrottleMode};
-use crate::settingsini::Setting;
-use crate::stickcal::{Outcome as CalOutcome, StickCal};
+use crate::joystick::{
+    ACTION_NONE, ACTIONS, AdditionalAxes, AxisCalibration, ButtonEvent, FUNCTIONS, Input, Joystick,
+    Out, Polling, Settings, Support, ThrottleMode,
+};
 use crate::mavout::Outbound;
 use crate::router::Backend;
+use crate::settingsini::Setting;
 use crate::setupsummary::{SummaryRow, row};
+use crate::stickcal::{Outcome as CalOutcome, StickCal};
 
 pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable"];
 pub const DEVICES: &str = "joystick.devices";
@@ -33,7 +36,11 @@ struct Throttles {
     camera_ms: Option<u64>,
 }
 
-static THROTTLES: Mutex<Throttles> = Mutex::new(Throttles { zoom_ms: None, focus_ms: None, camera_ms: None });
+static THROTTLES: Mutex<Throttles> = Mutex::new(Throttles {
+    zoom_ms: None,
+    focus_ms: None,
+    camera_ms: None,
+});
 
 fn passes(slot: fn(&mut Throttles) -> &mut Option<u64>, gap_ms: u64, now_ms: u64) -> bool {
     let mut throttles = THROTTLES.lock().unwrap_or_else(PoisonError::into_inner);
@@ -46,7 +53,9 @@ fn passes(slot: fn(&mut Throttles) -> &mut Option<u64>, gap_ms: u64, now_ms: u64
 }
 
 fn gimbal_speed() -> f64 {
-    crate::settingsstore::raw_setting(GIMBAL_SPEED_SETTING).and_then(|v| v.as_f64()).unwrap_or(GIMBAL_SPEED_DEFAULT)
+    crate::settingsstore::raw_setting(GIMBAL_SPEED_SETTING)
+        .and_then(|v| v.as_f64())
+        .unwrap_or(GIMBAL_SPEED_DEFAULT)
 }
 const AXIS_GROUP: &str = "JoystickAxisSettingsArray";
 const STORED_TRANSMITTER_MODE: u8 = 2;
@@ -62,7 +71,16 @@ const STANDBY_STALE_MS: u64 = 3000;
 const STANDBY_READY: i32 = 1;
 const STANDBY_FLYING: i32 = 2;
 const STANDBY_AIRFRAMES: [u8; 8] = [2, 3, 4, 13, 14, 15, 29, 35];
-const OPTIONAL_SETTINGS: [&str; 8] = ["enableManualControlPitchExtension", "enableManualControlRollExtension", "enableAdditionalAxis1", "enableAdditionalAxis2", "enableAdditionalAxis3", "enableAdditionalAxis4", "enableAdditionalAxis5", "enableAdditionalAxis6"];
+const OPTIONAL_SETTINGS: [&str; 8] = [
+    "enableManualControlPitchExtension",
+    "enableManualControlRollExtension",
+    "enableAdditionalAxis1",
+    "enableAdditionalAxis2",
+    "enableAdditionalAxis3",
+    "enableAdditionalAxis4",
+    "enableAdditionalAxis5",
+    "enableAdditionalAxis6",
+];
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Meta {
@@ -88,7 +106,16 @@ const PAGE_LABELS: [(&str, &str); 7] = [
 
 fn page_label(fact: &Value) -> &str {
     let name = fact["name"].as_str().unwrap_or_default();
-    PAGE_LABELS.iter().find(|(setting, _)| *setting == name).map(|(_, label)| *label).unwrap_or_else(|| fact["label"].as_str().or(fact["shortDesc"].as_str()).unwrap_or_default())
+    PAGE_LABELS
+        .iter()
+        .find(|(setting, _)| *setting == name)
+        .map(|(_, label)| *label)
+        .unwrap_or_else(|| {
+            fact["label"]
+                .as_str()
+                .or(fact["shortDesc"].as_str())
+                .unwrap_or_default()
+        })
 }
 
 pub static METADATA: LazyLock<Vec<Meta>> = LazyLock::new(|| {
@@ -112,7 +139,8 @@ pub static METADATA: LazyLock<Vec<Meta>> = LazyLock::new(|| {
                     name: STANDBY_SETTING.to_string(),
                     kind: "bool".to_string(),
                     default: json!(false),
-                    label: "4G standby: the radio flies, 4G takes over if its link drops".to_string(),
+                    label: "4G standby: the radio flies, 4G takes over if its link drops"
+                        .to_string(),
                     units: String::new(),
                     min: None,
                     max: None,
@@ -133,8 +161,12 @@ pub fn setting_value(joystick: &str, name: &str) -> Value {
     match (meta, stored) {
         (Some(meta), Some(text)) => match meta.kind.as_str() {
             "bool" => json!(text == "true" || text == "1"),
-            "double" => text.parse::<f64>().map_or(meta.default.clone(), |v| json!(v)),
-            _ => text.parse::<i64>().map_or(meta.default.clone(), |v| json!(v)),
+            "double" => text
+                .parse::<f64>()
+                .map_or(meta.default.clone(), |v| json!(v)),
+            _ => text
+                .parse::<i64>()
+                .map_or(meta.default.clone(), |v| json!(v)),
         },
         (Some(meta), None) => meta.default.clone(),
         (None, _) => Value::Null,
@@ -156,11 +188,19 @@ pub fn settings_for(joystick: &str) -> Settings {
         use_deadband: flag(joystick, "useDeadband"),
         negative_thrust: flag(joystick, "negativeThrust"),
         throttle_smoothing: flag(joystick, "throttleSmoothing"),
-        throttle_mode: if flag(joystick, "throttleModeCenterZero") { ThrottleMode::CenterZero } else { ThrottleMode::DownZero },
+        throttle_mode: if flag(joystick, "throttleModeCenterZero") {
+            ThrottleMode::CenterZero
+        } else {
+            ThrottleMode::DownZero
+        },
         axis_frequency_hz: number(joystick, "axisFrequencyHz"),
         button_frequency_hz: number(joystick, "buttonFrequencyHz"),
         exponential_pct: number(joystick, "exponentialPct"),
-        additional_axes: if number(joystick, "additionalAxesFunction") as i64 == 1 { AdditionalAxes::RcChannelsOverride } else { AdditionalAxes::ManualControl },
+        additional_axes: if number(joystick, "additionalAxesFunction") as i64 == 1 {
+            AdditionalAxes::RcChannelsOverride
+        } else {
+            AdditionalAxes::ManualControl
+        },
         optional_enabled: OPTIONAL_SETTINGS.map(|name| flag(joystick, name)),
         standby: flag(joystick, STANDBY_SETTING),
     }
@@ -169,8 +209,18 @@ pub fn settings_for(joystick: &str) -> Settings {
 fn coerce(meta: &Meta, value: &Value) -> Option<String> {
     match meta.kind.as_str() {
         "bool" => value.as_bool().map(|b| b.to_string()),
-        "double" => value.as_f64().filter(|v| meta.min.is_none_or(|m| *v >= m) && meta.max.is_none_or(|m| *v <= m)).map(|v| v.to_string()),
-        _ => value.as_f64().filter(|v| v.fract() == 0.0 && meta.min.is_none_or(|m| *v >= m) && meta.max.is_none_or(|m| *v <= m)).map(|v| (v as i64).to_string()),
+        "double" => value
+            .as_f64()
+            .filter(|v| meta.min.is_none_or(|m| *v >= m) && meta.max.is_none_or(|m| *v <= m))
+            .map(|v| v.to_string()),
+        _ => value
+            .as_f64()
+            .filter(|v| {
+                v.fract() == 0.0
+                    && meta.min.is_none_or(|m| *v >= m)
+                    && meta.max.is_none_or(|m| *v <= m)
+            })
+            .map(|v| (v as i64).to_string()),
     }
 }
 
@@ -218,15 +268,28 @@ impl DeviceDetails {
     }
 
     fn motion(&self) -> Vec<&'static str> {
-        [(self.gyroscope, "Gyro"), (self.accelerometer, "Accel")].into_iter().filter(|(has, _)| *has).map(|(_, name)| name).collect()
+        [(self.gyroscope, "Gyro"), (self.accelerometer, "Accel")]
+            .into_iter()
+            .filter(|(has, _)| *has)
+            .map(|(_, name)| name)
+            .collect()
     }
 
     fn features(&self) -> Vec<&'static str> {
-        [(self.rumble, "Rumble"), (self.led, "LED")].into_iter().filter(|(has, _)| *has).map(|(_, name)| name).chain(self.motion()).collect()
+        [(self.rumble, "Rumble"), (self.led, "LED")]
+            .into_iter()
+            .filter(|(has, _)| *has)
+            .map(|(_, name)| name)
+            .chain(self.motion())
+            .collect()
     }
 
     fn battery_text(&self, percent: i64) -> String {
-        if self.power_state.is_empty() { format!("{percent}%") } else { format!("{percent}% ({})", self.power_state) }
+        if self.power_state.is_empty() {
+            format!("{percent}%")
+        } else {
+            format!("{percent}% ({})", self.power_state)
+        }
     }
 
     fn rows(&self) -> Vec<Value> {
@@ -234,10 +297,18 @@ impl DeviceDetails {
         let features = self.features();
         let motion = self.motion();
         [
-            self.battery_percent.map(|p| row("Battery:", self.battery_text(p), p < LOW_JOYSTICK_BATTERY)),
+            self.battery_percent
+                .map(|p| row("Battery:", self.battery_text(p), p < LOW_JOYSTICK_BATTERY)),
             (!features.is_empty()).then(|| row("Features:", features.join(", "), false)),
-            self.player_index.map(|p| row("Player:", (p + 1).to_string(), false)),
-            (self.vendor_id > 0).then(|| row("Vendor/Product:", format!("0x{:04X} / 0x{:04X}", self.vendor_id, self.product_id), false)),
+            self.player_index
+                .map(|p| row("Player:", (p + 1).to_string(), false)),
+            (self.vendor_id > 0).then(|| {
+                row(
+                    "Vendor/Product:",
+                    format!("0x{:04X} / 0x{:04X}", self.vendor_id, self.product_id),
+                    false,
+                )
+            }),
             (!self.guid.is_empty()).then(|| row("GUID:", self.guid.clone(), false)),
             (!motion.is_empty()).then(|| row("Motion Sensors:", motion.join(", "), false)),
         ]
@@ -263,19 +334,40 @@ fn axis_group(joystick: &str) -> String {
 }
 
 fn transmitter_mode(joystick: &str) -> u8 {
-    setting_value(joystick, "transmitterMode").as_u64().and_then(|m| u8::try_from(m).ok()).filter(|m| (1..=4).contains(m)).unwrap_or(STORED_TRANSMITTER_MODE)
+    setting_value(joystick, "transmitterMode")
+        .as_u64()
+        .and_then(|m| u8::try_from(m).ok())
+        .filter(|m| (1..=4).contains(m))
+        .unwrap_or(STORED_TRANSMITTER_MODE)
 }
 
 pub fn load_axes(joystick: &str, model: &mut Joystick, entries: &BTreeMap<String, Setting>) {
     let group = axis_group(joystick);
     let read = |axis: usize, key: &str| match entries.get(&format!("{group}/{axis}/{key}")) {
-        Some(Setting::Text(text)) => text.parse::<i64>().ok().or_else(|| (text == "true").then_some(1)).or_else(|| (text == "false").then_some(0)),
+        Some(Setting::Text(text)) => text
+            .parse::<i64>()
+            .ok()
+            .or_else(|| (text == "true").then_some(1))
+            .or_else(|| (text == "false").then_some(0)),
         _ => None,
     };
     (0..model.axis_count()).for_each(|axis| {
-        let function = read(axis, "function").and_then(|f| FUNCTIONS.get(f as usize)).map(|(f, _)| *f);
-        if let (Some(function), Some(min), Some(max), Some(center)) = (function, read(axis, "min"), read(axis, "max"), read(axis, "center")) {
-            let calibration = AxisCalibration { min: min as i32, max: max as i32, center: center as i32, deadband: read(axis, "deadband").unwrap_or(0) as i32, reversed: read(axis, "reversed").unwrap_or(0) != 0 };
+        let function = read(axis, "function")
+            .and_then(|f| FUNCTIONS.get(f as usize))
+            .map(|(f, _)| *f);
+        if let (Some(function), Some(min), Some(max), Some(center)) = (
+            function,
+            read(axis, "min"),
+            read(axis, "max"),
+            read(axis, "center"),
+        ) {
+            let calibration = AxisCalibration {
+                min: min as i32,
+                max: max as i32,
+                center: center as i32,
+                deadband: read(axis, "deadband").unwrap_or(0) as i32,
+                reversed: read(axis, "reversed").unwrap_or(0) != 0,
+            };
             model.set_calibration(axis, calibration);
             model.set_axis_function(function, axis);
         }
@@ -322,32 +414,79 @@ pub fn button_entries(joystick: &str, model: &Joystick) -> BTreeMap<String, Sett
     let group = button_group(joystick);
     (0..model.total_button_count())
         .filter_map(|button| model.binding(button).map(|b| (button, b.clone())))
-        .flat_map(|(button, binding)| [(format!("{group}/{button}/actionName"), Setting::Text(binding.action)), (format!("{group}/{button}/repeat"), Setting::Text(binding.repeat.to_string()))])
+        .flat_map(|(button, binding)| {
+            [
+                (
+                    format!("{group}/{button}/actionName"),
+                    Setting::Text(binding.action),
+                ),
+                (
+                    format!("{group}/{button}/repeat"),
+                    Setting::Text(binding.repeat.to_string()),
+                ),
+            ]
+        })
         .collect()
 }
 
-pub fn assignable_actions(flight_modes: &[String], channels: &[usize], custom: &[String], assigned: &[String]) -> Vec<(String, bool)> {
-    let fixed = |range: std::ops::Range<usize>| ACTIONS[range].iter().map(|(_, name, _, repeat)| (name.to_string(), *repeat)).collect::<Vec<_>>();
+pub fn assignable_actions(
+    flight_modes: &[String],
+    channels: &[usize],
+    custom: &[String],
+    assigned: &[String],
+) -> Vec<(String, bool)> {
+    let fixed = |range: std::ops::Range<usize>| {
+        ACTIONS[range]
+            .iter()
+            .map(|(_, name, _, repeat)| (name.to_string(), *repeat))
+            .collect::<Vec<_>>()
+    };
     let listed: Vec<(String, bool)> = std::iter::once((ACTION_NONE.to_string(), false))
         .chain(fixed(0..3))
         .chain(flight_modes.iter().map(|mode| (mode.clone(), false)))
         .chain(fixed(3..ACTIONS.len()))
-        .chain(channels.iter().flat_map(|channel| crate::joystick::rc_channel_actions(*channel)).map(|action| (action.to_string(), false)))
+        .chain(
+            channels
+                .iter()
+                .flat_map(|channel| crate::joystick::rc_channel_actions(*channel))
+                .map(|action| (action.to_string(), false)),
+        )
         .chain(custom.iter().map(|label| (label.clone(), false)))
         .collect();
-    let extra: Vec<(String, bool)> = assigned.iter().filter(|a| !listed.iter().any(|(name, _)| name == *a)).map(|a| (a.clone(), false)).collect();
+    let extra: Vec<(String, bool)> = assigned
+        .iter()
+        .filter(|a| !listed.iter().any(|(name, _)| name == *a))
+        .map(|a| (a.clone(), false))
+        .collect();
     listed.into_iter().chain(extra).collect()
 }
 
 fn settable_modes() -> Vec<String> {
-    crate::hub::lock().active().map(|v| match v.flight_modes.is_empty() {
-        true => crate::modes::table(v.autopilot, v.vehicle_type).iter().filter(|m| m.can_be_set).map(|m| m.name.to_string()).collect(),
-        false => v.flight_modes.iter().filter(|m| m.can_be_set).map(|m| m.name.clone()).collect(),
-    }).unwrap_or_default()
+    crate::hub::lock()
+        .active()
+        .map(|v| match v.flight_modes.is_empty() {
+            true => crate::modes::table(v.autopilot, v.vehicle_type)
+                .iter()
+                .filter(|m| m.can_be_set)
+                .map(|m| m.name.to_string())
+                .collect(),
+            false => v
+                .flight_modes
+                .iter()
+                .filter(|m| m.can_be_set)
+                .map(|m| m.name.clone())
+                .collect(),
+        })
+        .unwrap_or_default()
 }
 
 fn stops_rates(action: &Value) -> bool {
-    let still = |key: &str| action.get(key).and_then(Value::as_f64).is_none_or(|rate| rate == 0.0);
+    let still = |key: &str| {
+        action
+            .get(key)
+            .and_then(Value::as_f64)
+            .is_none_or(|rate| rate == 0.0)
+    };
     action.get("op").and_then(Value::as_str) == Some("rates") && still("pitch") && still("yaw")
 }
 
@@ -357,7 +496,11 @@ fn guided(id: u8, action: Value) {
         Ok(frames) => frames.iter().for_each(|(link, bytes)| {
             crate::linkhost::write(&crate::linkhost::TRANSPORTS, *link, bytes);
         }),
-        Err(reason) if reason == crate::gimbal::REASON_OTHERS_HAVE_CONTROL && !stops_rates(&action) => crate::gimbal::ask_to_take_control(),
+        Err(reason)
+            if reason == crate::gimbal::REASON_OTHERS_HAVE_CONTROL && !stops_rates(&action) =>
+        {
+            crate::gimbal::ask_to_take_control()
+        }
         Err(reason) if reason == crate::gimbal::REASON_OTHERS_HAVE_CONTROL => {}
         Err(reason) => log::warn!("joystick action {action} was refused: {reason}"),
     }
@@ -370,9 +513,18 @@ pub fn execute(backend: &dyn Backend, id: u8, armed: bool, action: &str, event: 
         crate::actions::run(backend, "camera.toggleRecording", "[]");
     };
     let now_ms = crate::hub::now_ms();
-    let camera = |op: &str, axis: &str, direction: i32| guided(id, json!({ "action": "camera", "op": op, "axis": axis, "direction": direction }));
+    let camera = |op: &str, axis: &str, direction: i32| {
+        guided(
+            id,
+            json!({ "action": "camera", "op": op, "axis": axis, "direction": direction }),
+        )
+    };
     let step = |axis: &str, direction: i32| {
-        let slot: fn(&mut Throttles) -> &mut Option<u64> = if axis == "zoom" { |t| &mut t.zoom_ms } else { |t| &mut t.focus_ms };
+        let slot: fn(&mut Throttles) -> &mut Option<u64> = if axis == "zoom" {
+            |t| &mut t.zoom_ms
+        } else {
+            |t| &mut t.focus_ms
+        };
         if passes(slot, STEP_THROTTLE_MS, now_ms) {
             camera("step", axis, direction);
         }
@@ -382,15 +534,24 @@ pub fn execute(backend: &dyn Backend, id: u8, armed: bool, action: &str, event: 
             camera(op, "", direction);
         }
     };
-    let rates = |pitch: Option<f64>, yaw: Option<f64>| guided(id, json!({ "action": "gimbal", "op": "rates", "pitch": pitch, "yaw": yaw }));
+    let rates = |pitch: Option<f64>, yaw: Option<f64>| {
+        guided(
+            id,
+            json!({ "action": "gimbal", "op": "rates", "pitch": pitch, "yaw": yaw }),
+        )
+    };
     let speed = gimbal_speed();
     match (action, event) {
         ("Continuous Zoom In", ButtonEvent::Down) => camera("slew", "zoom", 1),
         ("Continuous Zoom Out", ButtonEvent::Down) => camera("slew", "zoom", -1),
-        ("Continuous Zoom In" | "Continuous Zoom Out", ButtonEvent::Up) => camera("slew", "zoom", 0),
+        ("Continuous Zoom In" | "Continuous Zoom Out", ButtonEvent::Up) => {
+            camera("slew", "zoom", 0)
+        }
         ("Continuous Focus In", ButtonEvent::Down) => camera("slew", "focus", 1),
         ("Continuous Focus Out", ButtonEvent::Down) => camera("slew", "focus", -1),
-        ("Continuous Focus In" | "Continuous Focus Out", ButtonEvent::Up) => camera("slew", "focus", 0),
+        ("Continuous Focus In" | "Continuous Focus Out", ButtonEvent::Up) => {
+            camera("slew", "focus", 0)
+        }
         ("Step Zoom In", ButtonEvent::Down | ButtonEvent::Repeat) => step("zoom", 1),
         ("Step Zoom Out", ButtonEvent::Down | ButtonEvent::Repeat) => step("zoom", -1),
         ("Step Focus In", ButtonEvent::Down | ButtonEvent::Repeat) => step("focus", 1),
@@ -408,26 +569,62 @@ pub fn execute(backend: &dyn Backend, id: u8, armed: bool, action: &str, event: 
         ("Arm", ButtonEvent::Down) => guided(id, json!({ "action": "arm", "arm": true })),
         ("Disarm", ButtonEvent::Down) => guided(id, json!({ "action": "arm", "arm": false })),
         ("Toggle Arm", ButtonEvent::Down) => guided(id, json!({ "action": "arm", "arm": !armed })),
-        ("VTOL: Fixed Wing", ButtonEvent::Down) => guided(id, json!({ "action": "vtolTransition", "forward": true })),
-        ("VTOL: Multi-Rotor", ButtonEvent::Down) => guided(id, json!({ "action": "vtolTransition", "forward": false })),
+        ("VTOL: Fixed Wing", ButtonEvent::Down) => {
+            guided(id, json!({ "action": "vtolTransition", "forward": true }))
+        }
+        ("VTOL: Multi-Rotor", ButtonEvent::Down) => {
+            guided(id, json!({ "action": "vtolTransition", "forward": false }))
+        }
         ("Trigger Camera", ButtonEvent::Down) => guided(id, json!({ "action": "triggerCamera" })),
         ("Start Recording Video", ButtonEvent::Down) if !recording() => toggle_recording(),
         ("Stop Recording Video", ButtonEvent::Down) if recording() => toggle_recording(),
         ("Toggle Recording Video", ButtonEvent::Down) => toggle_recording(),
-        ("Gimbal Center", ButtonEvent::Down) => guided(id, json!({ "action": "gimbal", "op": "center" })),
-        ("Gimbal Yaw Lock", ButtonEvent::Down) => guided(id, json!({ "action": "gimbal", "op": "yawLock", "lock": true })),
-        ("Gimbal Yaw Follow", ButtonEvent::Down) => guided(id, json!({ "action": "gimbal", "op": "yawLock", "lock": false })),
+        ("Gimbal Center", ButtonEvent::Down) => {
+            guided(id, json!({ "action": "gimbal", "op": "center" }))
+        }
+        ("Gimbal Yaw Lock", ButtonEvent::Down) => guided(
+            id,
+            json!({ "action": "gimbal", "op": "yawLock", "lock": true }),
+        ),
+        ("Gimbal Yaw Follow", ButtonEvent::Down) => guided(
+            id,
+            json!({ "action": "gimbal", "op": "yawLock", "lock": false }),
+        ),
         ("Emergency Stop", ButtonEvent::Down) => guided(id, json!({ "action": "emergencyStop" })),
-        ("Gripper Grab", ButtonEvent::Down) => guided(id, json!({ "action": "gripper", "gripAction": 1 })),
-        ("Gripper Release", ButtonEvent::Down) => guided(id, json!({ "action": "gripper", "gripAction": 0 })),
-        ("Gripper Hold", ButtonEvent::Down) => guided(id, json!({ "action": "gripper", "gripAction": 2 })),
-        ("Landing gear deploy", ButtonEvent::Down) => guided(id, json!({ "action": "landingGear", "retract": false })),
-        ("Landing gear retract", ButtonEvent::Down) => guided(id, json!({ "action": "landingGear", "retract": true })),
-        ("Motor Interlock enable", ButtonEvent::Down) => guided(id, json!({ "action": "motorInterlock", "enable": true })),
-        ("Motor Interlock disable", ButtonEvent::Down) => guided(id, json!({ "action": "motorInterlock", "enable": false })),
-        (mode, ButtonEvent::Down) if modes.iter().any(|m| m == mode) => guided(id, json!({ "action": "setMode", "mode": mode })),
-        (label, ButtonEvent::Down) if let Some(custom) = crate::mavlinkactions::joystick_actions(backend).iter().find(|a| a.label == label) => guided(id, crate::mavlinkactions::command(custom)),
-        (other, _) => log::info!("joystick action {other} is not a QGC action, flight mode or MAVLink action the core can run"),
+        ("Gripper Grab", ButtonEvent::Down) => {
+            guided(id, json!({ "action": "gripper", "gripAction": 1 }))
+        }
+        ("Gripper Release", ButtonEvent::Down) => {
+            guided(id, json!({ "action": "gripper", "gripAction": 0 }))
+        }
+        ("Gripper Hold", ButtonEvent::Down) => {
+            guided(id, json!({ "action": "gripper", "gripAction": 2 }))
+        }
+        ("Landing gear deploy", ButtonEvent::Down) => {
+            guided(id, json!({ "action": "landingGear", "retract": false }))
+        }
+        ("Landing gear retract", ButtonEvent::Down) => {
+            guided(id, json!({ "action": "landingGear", "retract": true }))
+        }
+        ("Motor Interlock enable", ButtonEvent::Down) => {
+            guided(id, json!({ "action": "motorInterlock", "enable": true }))
+        }
+        ("Motor Interlock disable", ButtonEvent::Down) => {
+            guided(id, json!({ "action": "motorInterlock", "enable": false }))
+        }
+        (mode, ButtonEvent::Down) if modes.iter().any(|m| m == mode) => {
+            guided(id, json!({ "action": "setMode", "mode": mode }))
+        }
+        (label, ButtonEvent::Down)
+            if let Some(custom) = crate::mavlinkactions::joystick_actions(backend)
+                .iter()
+                .find(|a| a.label == label) =>
+        {
+            guided(id, crate::mavlinkactions::command(custom))
+        }
+        (other, _) => log::info!(
+            "joystick action {other} is not a QGC action, flight mode or MAVLink action the core can run"
+        ),
     }
 }
 
@@ -437,16 +634,29 @@ fn save_buttons(joystick: &str, model: &Joystick) {
 
 fn button_change(text: &str, repeat: bool) -> Value {
     let args = serde_json::from_str::<Vec<Value>>(text).unwrap_or_default();
-    let Some(button) = args.first().and_then(Value::as_u64).map(|b| b as usize) else { return json!({ "ok": false, "reason": "A button index is required." }) };
+    let Some(button) = args.first().and_then(Value::as_u64).map(|b| b as usize) else {
+        return json!({ "ok": false, "reason": "A button index is required." });
+    };
     let mut host = host();
-    let Some(active) = active_name(&host.devices) else { return json!({ "ok": false, "reason": "No joystick is connected." }) };
-    let Some(model) = host.joysticks.get_mut(&active) else { return json!({ "ok": false, "reason": "No joystick is connected." }) };
+    let Some(active) = active_name(&host.devices) else {
+        return json!({ "ok": false, "reason": "No joystick is connected." });
+    };
+    let Some(model) = host.joysticks.get_mut(&active) else {
+        return json!({ "ok": false, "reason": "No joystick is connected." });
+    };
     let changed = match repeat {
         false => {
-            let action = args.get(1).and_then(Value::as_str).filter(|a| *a != ACTION_NONE);
+            let action = args
+                .get(1)
+                .and_then(Value::as_str)
+                .filter(|a| *a != ACTION_NONE);
             model.set_button_action(button, action)
         }
-        true => model.set_button_repeat(button, args.get(1).and_then(Value::as_bool).unwrap_or(false), false),
+        true => model.set_button_repeat(
+            button,
+            args.get(1).and_then(Value::as_bool).unwrap_or(false),
+            false,
+        ),
     };
     if changed {
         save_buttons(&active, model);
@@ -464,7 +674,10 @@ fn apply_calibration(joystick: &str, model: &mut Joystick, channels: &[crate::st
     });
     crate::settingsstore::replace_group(&axis_group(joystick), axis_entries(joystick, model));
     crate::settingsstore::written(&setting_key(joystick, "calibrated"), "true");
-    crate::settingsstore::written(&setting_key(joystick, "transmitterMode"), &model.transmitter_mode().to_string());
+    crate::settingsstore::written(
+        &setting_key(joystick, "transmitterMode"),
+        &model.transmitter_mode().to_string(),
+    );
 }
 
 static HOST: LazyLock<Mutex<Host>> = LazyLock::new(|| Mutex::new(Host::default()));
@@ -479,31 +692,73 @@ pub fn drives(vehicle: u8) -> bool {
 }
 
 pub fn enabled_vehicles() -> Vec<String> {
-    crate::settingsstore::stored_text(ENABLED_VEHICLES).unwrap_or_default().split(',').filter(|s| !s.is_empty()).map(str::to_string).collect()
+    crate::settingsstore::stored_text(ENABLED_VEHICLES)
+        .unwrap_or_default()
+        .split(',')
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect()
 }
 
 pub fn active_name(devices: &[Device]) -> Option<String> {
     let stored = crate::settingsstore::stored_text(ACTIVE_NAME).unwrap_or_default();
-    devices.iter().find(|d| d.name == stored).or_else(|| devices.first()).map(|d| d.name.clone())
+    devices
+        .iter()
+        .find(|d| d.name == stored)
+        .or_else(|| devices.first())
+        .map(|d| d.name.clone())
 }
 
 fn active_vehicle() -> Option<(u8, u32, u8, bool, u8)> {
-    crate::hub::lock().active().map(|v| (v.id, v.link, v.autopilot, crate::hub::Vehicle::armed(v), v.vehicle_type))
+    crate::hub::lock().active().map(|v| {
+        (
+            v.id,
+            v.link,
+            v.autopilot,
+            crate::hub::Vehicle::armed(v),
+            v.vehicle_type,
+        )
+    })
 }
 
 const MAV_TYPE_GROUND_ROVER: u8 = 10;
 const MAV_TYPE_SURFACE_BOAT: u8 = 11;
 const MAV_TYPE_SUBMARINE: u8 = 12;
 
-const ARDUPILOT_MANUAL_CONTROL: Support = Support { manual_control_aux: false, sticks_are_rc_overrides: true, throttle_mode_center_zero: true, negative_thrust: false, standby: false };
+const ARDUPILOT_MANUAL_CONTROL: Support = Support {
+    manual_control_aux: false,
+    sticks_are_rc_overrides: true,
+    throttle_mode_center_zero: true,
+    negative_thrust: false,
+    standby: false,
+};
 
 fn support_for(vehicle: Option<(u8, u8)>) -> Support {
     match vehicle {
-        Some((crate::modes::AUTOPILOT_ARDUPILOT, MAV_TYPE_SUBMARINE)) => Support { negative_thrust: true, ..Support::default() },
-        Some((crate::modes::AUTOPILOT_ARDUPILOT, MAV_TYPE_GROUND_ROVER | MAV_TYPE_SURFACE_BOAT)) => Support { negative_thrust: true, ..ARDUPILOT_MANUAL_CONTROL },
-        Some((crate::modes::AUTOPILOT_ARDUPILOT, kind)) if STANDBY_AIRFRAMES.contains(&kind) => Support { standby: true, ..ARDUPILOT_MANUAL_CONTROL },
+        Some((crate::modes::AUTOPILOT_ARDUPILOT, MAV_TYPE_SUBMARINE)) => Support {
+            negative_thrust: true,
+            ..Support::default()
+        },
+        Some((
+            crate::modes::AUTOPILOT_ARDUPILOT,
+            MAV_TYPE_GROUND_ROVER | MAV_TYPE_SURFACE_BOAT,
+        )) => Support {
+            negative_thrust: true,
+            ..ARDUPILOT_MANUAL_CONTROL
+        },
+        Some((crate::modes::AUTOPILOT_ARDUPILOT, kind)) if STANDBY_AIRFRAMES.contains(&kind) => {
+            Support {
+                standby: true,
+                ..ARDUPILOT_MANUAL_CONTROL
+            }
+        }
         Some((crate::modes::AUTOPILOT_ARDUPILOT, _)) => ARDUPILOT_MANUAL_CONTROL,
-        Some((crate::modes::AUTOPILOT_PX4, MAV_TYPE_GROUND_ROVER | MAV_TYPE_SUBMARINE)) => Support { negative_thrust: true, ..Support::default() },
+        Some((crate::modes::AUTOPILOT_PX4, MAV_TYPE_GROUND_ROVER | MAV_TYPE_SUBMARINE)) => {
+            Support {
+                negative_thrust: true,
+                ..Support::default()
+            }
+        }
         _ => Support::default(),
     }
 }
@@ -519,17 +774,23 @@ fn setting_visible(name: &str, center_zero: &Value, support: Support) -> bool {
 }
 
 fn polling(enabled_for_vehicle: bool, vehicle: bool, calibrated: bool) -> Polling {
-    Polling { vehicle: vehicle && enabled_for_vehicle && calibrated, configuration: false }
+    Polling {
+        vehicle: vehicle && enabled_for_vehicle && calibrated,
+        configuration: false,
+    }
 }
 
-static ACTIVE_UNCALIBRATED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static ACTIVE_UNCALIBRATED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 
 pub fn active_uncalibrated() -> bool {
     ACTIVE_UNCALIBRATED.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 pub fn standby_capable(vehicle: u8) -> bool {
-    let kind = crate::hub::lock().vehicle(vehicle).map(|v| (v.autopilot, v.vehicle_type));
+    let kind = crate::hub::lock()
+        .vehicle(vehicle)
+        .map(|v| (v.autopilot, v.vehicle_type));
     support_for(kind).standby
 }
 
@@ -545,35 +806,80 @@ pub fn addressed(id: u8, standby: bool, out: Out) -> Option<Outbound> {
         false => (id, (id, crate::hub::COMP_AUTOPILOT1)),
     };
     match out {
-        Out::ManualControl { x, y, z, r, buttons, buttons2, enabled_extensions, extensions } => Some(Outbound::JoystickManualControl { target: control, x, y, z, r, buttons, buttons2, enabled_extensions, extensions }),
-        Out::RcChannelsOverride { channels } => Some(Outbound::RcOverride { target: overrides, channels }),
+        Out::ManualControl {
+            x,
+            y,
+            z,
+            r,
+            buttons,
+            buttons2,
+            enabled_extensions,
+            extensions,
+        } => Some(Outbound::JoystickManualControl {
+            target: control,
+            x,
+            y,
+            z,
+            r,
+            buttons,
+            buttons2,
+            enabled_extensions,
+            extensions,
+        }),
+        Out::RcChannelsOverride { channels } => Some(Outbound::RcOverride {
+            target: overrides,
+            channels,
+        }),
         _ => None,
     }
 }
 
 fn send(vehicle: (u8, u32), outs: Vec<Out>) {
     let (id, link) = vehicle;
-    if crate::hub::lock().active().is_some_and(|v| v.id == id && v.on_high_latency_link()) {
+    if crate::hub::lock()
+        .active()
+        .is_some_and(|v| v.id == id && v.on_high_latency_link())
+    {
         return;
     }
     let standby = standby_now();
-    let outbound: Vec<Outbound> = outs.into_iter().filter_map(|out| addressed(id, standby, out)).collect();
+    let outbound: Vec<Outbound> = outs
+        .into_iter()
+        .filter_map(|out| addressed(id, standby, out))
+        .collect();
     crate::hub::send_for(id, link, &outbound);
 }
 
-pub fn standby_text(enabled: bool, commanding: bool, heard: Option<(i32, u64)>, now_ms: u64) -> Option<&'static str> {
-    let live = heard.filter(|(_, at)| now_ms.saturating_sub(*at) <= STANDBY_STALE_MS).map(|(state, _)| state);
+pub fn standby_text(
+    enabled: bool,
+    commanding: bool,
+    heard: Option<(i32, u64)>,
+    now_ms: u64,
+) -> Option<&'static str> {
+    let live = heard
+        .filter(|(_, at)| now_ms.saturating_sub(*at) <= STANDBY_STALE_MS)
+        .map(|(state, _)| state);
     match (enabled, commanding, live) {
         (false, ..) => None,
-        (true, _, None) => Some("The aircraft's computer is not answering for 4G standby. Update aircastd on the aircraft."),
-        (true, _, Some(STANDBY_FLYING)) => Some("4G is flying the aircraft. The radio takes over again once its link is good."),
-        (true, true, Some(STANDBY_READY)) => Some("The radio flies the aircraft. 4G is standing by."),
+        (true, _, None) => Some(
+            "The aircraft's computer is not answering for 4G standby. Update aircastd on the aircraft.",
+        ),
+        (true, _, Some(STANDBY_FLYING)) => {
+            Some("4G is flying the aircraft. The radio takes over again once its link is good.")
+        }
+        (true, true, Some(STANDBY_READY)) => {
+            Some("The radio flies the aircraft. 4G is standing by.")
+        }
         (true, ..) => Some("4G standby is waiting for the joystick to send."),
     }
 }
 
 fn hand_back(name: &str) {
-    let released = host().joysticks.get_mut(name).map(|joystick| joystick.stop(crate::hub::now_ms())).unwrap_or_default();
+    let released = host()
+        .joysticks
+        .get_mut(name)
+        .map(|joystick| joystick.stop(crate::hub::now_ms()))
+        .unwrap_or_default();
     if let Some((id, link, ..)) = active_vehicle() {
         send((id, link), released);
     }
@@ -588,26 +894,55 @@ fn sync_polling(now_ms: u64) {
     let enabled = enabled_vehicles();
     let mut host = host();
     let active = active_name(&host.devices);
-    let calibrated = active.as_deref().is_some_and(|name| settings_for(name).calibrated);
-    ACTIVE_UNCALIBRATED.store(active.is_some() && !calibrated, std::sync::atomic::Ordering::Relaxed);
-    let joystick_changed = host.setup_state.replace((active.clone(), calibrated)).is_some_and(|before| before != (active.clone(), calibrated));
+    let calibrated = active
+        .as_deref()
+        .is_some_and(|name| settings_for(name).calibrated);
+    ACTIVE_UNCALIBRATED.store(
+        active.is_some() && !calibrated,
+        std::sync::atomic::Ordering::Relaxed,
+    );
+    let joystick_changed = host
+        .setup_state
+        .replace((active.clone(), calibrated))
+        .is_some_and(|before| before != (active.clone(), calibrated));
     let names: Vec<String> = host.joysticks.keys().cloned().collect();
     let driving = vehicle.map(|(id, link, ..)| (id, link));
     let left = left_vehicle(std::mem::replace(&mut host.driven, driving), driving);
     let released: Vec<Out> = match left {
-        Some(_) => names.iter().flat_map(|name| host.joysticks.get_mut(name).map(|j| j.stop(now_ms)).unwrap_or_default()).collect(),
+        Some(_) => names
+            .iter()
+            .flat_map(|name| {
+                host.joysticks
+                    .get_mut(name)
+                    .map(|j| j.stop(now_ms))
+                    .unwrap_or_default()
+            })
+            .collect(),
         None => Vec::new(),
     };
     let outs: Vec<Out> = names
         .iter()
         .flat_map(|name| {
-            let configuring = host.calibration.as_ref().is_some_and(|(calibrating, _)| calibrating == name);
+            let configuring = host
+                .calibration
+                .as_ref()
+                .is_some_and(|(calibrating, _)| calibrating == name);
             let wanted = match (&active, vehicle) {
-                _ if configuring => Polling { vehicle: false, configuration: true },
-                (Some(active), Some((id, ..))) if active == name => polling(enabled.contains(&id.to_string()), true, settings_for(name).calibrated),
+                _ if configuring => Polling {
+                    vehicle: false,
+                    configuration: true,
+                },
+                (Some(active), Some((id, ..))) if active == name => polling(
+                    enabled.contains(&id.to_string()),
+                    true,
+                    settings_for(name).calibrated,
+                ),
                 _ => Polling::default(),
             };
-            host.joysticks.get_mut(name).map(|j| j.set_polling(wanted, now_ms)).unwrap_or_default()
+            host.joysticks
+                .get_mut(name)
+                .map(|j| j.set_polling(wanted, now_ms))
+                .unwrap_or_default()
         })
         .collect();
     drop(host);
@@ -630,7 +965,14 @@ fn devices(text: &str) -> Value {
         .iter()
         .filter_map(|d| {
             let count = |key: &str| d[key].as_u64().map(|n| n as usize);
-            Some(Device { name: d["name"].as_str().filter(|n| !n.is_empty())?.to_string(), axes: count("axes")?, buttons: count("buttons")?, hats: count("hats").unwrap_or(0), gamepad: d["gamepad"].as_bool().unwrap_or(false), details: DeviceDetails::from_json(d) })
+            Some(Device {
+                name: d["name"].as_str().filter(|n| !n.is_empty())?.to_string(),
+                axes: count("axes")?,
+                buttons: count("buttons")?,
+                hats: count("hats").unwrap_or(0),
+                gamepad: d["gamepad"].as_bool().unwrap_or(false),
+                details: DeviceDetails::from_json(d),
+            })
         })
         .collect();
     host().head_devices = parsed;
@@ -646,19 +988,40 @@ pub fn set_core_device(device: Option<Device>) {
 fn apply_devices() {
     let parsed: Vec<Device> = {
         let host = host();
-        host.head_devices.iter().cloned().chain(host.core_device.clone()).collect()
+        host.head_devices
+            .iter()
+            .cloned()
+            .chain(host.core_device.clone())
+            .collect()
     };
     let now_ms = crate::hub::now_ms();
     let (broken, released, driven) = {
         let mut host = host();
-        let gone: Vec<String> = host.joysticks.keys().filter(|name| !parsed.iter().any(|d| &d.name == *name)).cloned().collect();
-        let released: Vec<Out> = gone.iter().flat_map(|name| host.joysticks.remove(name).map(|mut joystick| joystick.stop(now_ms)).unwrap_or_default()).collect();
-        let fresh: Vec<&Device> = parsed.iter().filter(|d| !host.joysticks.contains_key(&d.name)).collect();
+        let gone: Vec<String> = host
+            .joysticks
+            .keys()
+            .filter(|name| !parsed.iter().any(|d| &d.name == *name))
+            .cloned()
+            .collect();
+        let released: Vec<Out> = gone
+            .iter()
+            .flat_map(|name| {
+                host.joysticks
+                    .remove(name)
+                    .map(|mut joystick| joystick.stop(now_ms))
+                    .unwrap_or_default()
+            })
+            .collect();
+        let fresh: Vec<&Device> = parsed
+            .iter()
+            .filter(|d| !host.joysticks.contains_key(&d.name))
+            .collect();
         let broken: Vec<String> = fresh
             .iter()
             .filter_map(|d| {
                 let mut model = Joystick::new(d.axes, d.buttons, d.hats);
-                let stored = crate::settingsstore::entries_under(&format!("{SETTINGS_PREFIX}/{}", d.name));
+                let stored =
+                    crate::settingsstore::entries_under(&format!("{SETTINGS_PREFIX}/{}", d.name));
                 load_axes(&d.name, &mut model, &stored);
                 load_buttons(&d.name, &mut model, &stored);
                 let invalid = !model.validate(&settings_for(&d.name)).is_empty();
@@ -666,7 +1029,11 @@ fn apply_devices() {
                 invalid.then(|| d.name.clone())
             })
             .collect();
-        if host.calibration.as_ref().is_some_and(|(name, _)| !parsed.iter().any(|d| &d.name == name)) {
+        if host
+            .calibration
+            .as_ref()
+            .is_some_and(|(name, _)| !parsed.iter().any(|d| &d.name == name))
+        {
             host.calibration = None;
         }
         host.devices = parsed;
@@ -687,19 +1054,47 @@ fn apply_devices() {
 
 fn input(backend: &dyn Backend, text: &str) -> Value {
     let args = serde_json::from_str::<Vec<Value>>(text).unwrap_or_default();
-    let Some(name) = args.first().and_then(Value::as_str) else { return json!({ "ok": false, "reason": "joystick.input takes the joystick name" }) };
-    let list = |at: usize| args.get(at).and_then(Value::as_array).cloned().unwrap_or_default();
-    let axes: Vec<i32> = list(1).iter().filter_map(Value::as_i64).map(|v| v.clamp(i64::from(crate::joystick::AXIS_MIN), i64::from(crate::joystick::AXIS_MAX)) as i32).collect();
-    let buttons: Vec<bool> = list(2).iter().map(|v| v.as_bool().unwrap_or(false)).collect();
-    let hats: Vec<u8> = list(3).iter().filter_map(Value::as_u64).map(|v| v as u8).collect();
+    let Some(name) = args.first().and_then(Value::as_str) else {
+        return json!({ "ok": false, "reason": "joystick.input takes the joystick name" });
+    };
+    let list = |at: usize| {
+        args.get(at)
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default()
+    };
+    let axes: Vec<i32> = list(1)
+        .iter()
+        .filter_map(Value::as_i64)
+        .map(|v| {
+            v.clamp(
+                i64::from(crate::joystick::AXIS_MIN),
+                i64::from(crate::joystick::AXIS_MAX),
+            ) as i32
+        })
+        .collect();
+    let buttons: Vec<bool> = list(2)
+        .iter()
+        .map(|v| v.as_bool().unwrap_or(false))
+        .collect();
+    let hats: Vec<u8> = list(3)
+        .iter()
+        .filter_map(Value::as_u64)
+        .map(|v| v as u8)
+        .collect();
     let (vehicle, outs) = feed(name, &axes, &buttons, &hats);
     if let Some((id, link, _, armed, _)) = vehicle {
-        let actions: Vec<(String, ButtonEvent)> = outs.iter().filter_map(|o| match o {
-            Out::Action { action, event } => Some((action.clone(), *event)),
-            _ => None,
-        }).collect();
+        let actions: Vec<(String, ButtonEvent)> = outs
+            .iter()
+            .filter_map(|o| match o {
+                Out::Action { action, event } => Some((action.clone(), *event)),
+                _ => None,
+            })
+            .collect();
         send((id, link), outs);
-        actions.iter().for_each(|(action, event)| execute(backend, id, armed, action, *event));
+        actions
+            .iter()
+            .for_each(|(action, event)| execute(backend, id, armed, action, *event));
     }
     json!({ "ok": true })
 }
@@ -710,25 +1105,54 @@ pub fn core_input(name: &str, axes: &[i32]) {
     }
 }
 
-fn feed(name: &str, axes: &[i32], buttons: &[bool], hats: &[u8]) -> (Option<(u8, u32, u8, bool, u8)>, Vec<Out>) {
+fn feed(
+    name: &str,
+    axes: &[i32],
+    buttons: &[bool],
+    hats: &[u8],
+) -> (Option<(u8, u32, u8, bool, u8)>, Vec<Out>) {
     let vehicle = active_vehicle();
     let support = support_for(vehicle.map(|v| (v.2, v.4)));
     let settings = settings_for(name);
     let now_ms = crate::hub::now_ms();
     let outs = {
         let mut host = host();
-        if let Some((_, cal)) = host.calibration.as_mut().filter(|(calibrating, _)| calibrating == name) {
+        if let Some((_, cal)) = host
+            .calibration
+            .as_mut()
+            .filter(|(calibrating, _)| calibrating == name)
+        {
             cal.channel_values(&axes, now_ms);
         }
-        host.joysticks.get_mut(name).map(|j| j.on_input(Input { axes, buttons, hats }, &settings, support, now_ms)).unwrap_or_default()
+        host.joysticks
+            .get_mut(name)
+            .map(|j| {
+                j.on_input(
+                    Input {
+                        axes,
+                        buttons,
+                        hats,
+                    },
+                    &settings,
+                    support,
+                    now_ms,
+                )
+            })
+            .unwrap_or_default()
     };
     (vehicle, outs)
 }
 
 fn enable(on: bool) -> Value {
-    let Some((id, ..)) = active_vehicle() else { return json!({ "ok": false, "reason": "No vehicle is connected." }) };
+    let Some((id, ..)) = active_vehicle() else {
+        return json!({ "ok": false, "reason": "No vehicle is connected." });
+    };
     let active = active_name(&host().devices);
-    if on && active.as_deref().is_none_or(|name| !settings_for(name).calibrated) {
+    if on
+        && active
+            .as_deref()
+            .is_none_or(|name| !settings_for(name).calibrated)
+    {
         return json!({ "ok": false, "reason": "The joystick must be calibrated before it can be enabled." });
     }
     write_enabled(id, on);
@@ -737,7 +1161,11 @@ fn enable(on: bool) -> Value {
 }
 
 fn write_enabled(id: u8, on: bool) {
-    let next: Vec<String> = enabled_vehicles().into_iter().filter(|v| *v != id.to_string()).chain(on.then(|| id.to_string())).collect();
+    let next: Vec<String> = enabled_vehicles()
+        .into_iter()
+        .filter(|v| *v != id.to_string())
+        .chain(on.then(|| id.to_string()))
+        .collect();
     crate::settingsstore::written(ENABLED_VEHICLES, &next.join(","));
 }
 
@@ -750,11 +1178,16 @@ fn set_enabled_for_active_vehicle(on: bool) {
 fn set_setting(text: &str) -> Value {
     let args = serde_json::from_str::<Vec<Value>>(text).unwrap_or_default();
     let name = args.first().and_then(Value::as_str).unwrap_or_default();
-    let Some(active) = active_name(&host().devices) else { return json!({ "ok": false, "reason": "No joystick is connected." }) };
-    let Some(meta) = METADATA.iter().find(|m| m.name == name) else { return json!({ "ok": false, "reason": format!("{name} is not a joystick setting") }) };
+    let Some(active) = active_name(&host().devices) else {
+        return json!({ "ok": false, "reason": "No joystick is connected." });
+    };
+    let Some(meta) = METADATA.iter().find(|m| m.name == name) else {
+        return json!({ "ok": false, "reason": format!("{name} is not a joystick setting") });
+    };
     match args.get(1).and_then(|v| coerce(meta, v)) {
         Some(text) => {
-            let changed = coerce(meta, &setting_value(&active, name)).as_deref() != Some(text.as_str());
+            let changed =
+                coerce(meta, &setting_value(&active, name)).as_deref() != Some(text.as_str());
             if changed && name == STANDBY_SETTING {
                 hand_back(&active);
             }
@@ -770,12 +1203,17 @@ fn set_setting(text: &str) -> Value {
             sync_polling(crate::hub::now_ms());
             json!({ "ok": true })
         }
-        None => json!({ "ok": false, "reason": format!("That value is out of range for {}.", meta.label) }),
+        None => {
+            json!({ "ok": false, "reason": format!("That value is out of range for {}.", meta.label) })
+        }
     }
 }
 
 fn calibration(text: &str) -> Value {
-    let op = serde_json::from_str::<Vec<Value>>(text).ok().and_then(|a| a.first().and_then(Value::as_str).map(str::to_string)).unwrap_or_default();
+    let op = serde_json::from_str::<Vec<Value>>(text)
+        .ok()
+        .and_then(|a| a.first().and_then(Value::as_str).map(str::to_string))
+        .unwrap_or_default();
     if active_vehicle().is_some_and(|v| v.3) {
         return json!({ "ok": false, "reason": "Calibration is not available while the vehicle is armed." });
     }
@@ -784,13 +1222,32 @@ fn calibration(text: &str) -> Value {
         if op == "cancel" && host.calibration.is_none() {
             return json!({ "ok": true });
         }
-        let Some(active) = active_name(&host.devices) else { return json!({ "ok": false, "reason": "No joystick is connected." }) };
-        let axes = host.devices.iter().find(|d| d.name == active).map_or(0, |d| d.axes);
-        let fresh = host.calibration.as_ref().is_none_or(|(name, _)| *name != active);
+        let Some(active) = active_name(&host.devices) else {
+            return json!({ "ok": false, "reason": "No joystick is connected." });
+        };
+        let axes = host
+            .devices
+            .iter()
+            .find(|d| d.name == active)
+            .map_or(0, |d| d.axes);
+        let fresh = host
+            .calibration
+            .as_ref()
+            .is_none_or(|(name, _)| *name != active);
         if fresh {
-            host.calibration = Some((active.clone(), StickCal::new(crate::stickcal::JOYSTICK, axes, settings_for(&active).optional_enabled)));
+            host.calibration = Some((
+                active.clone(),
+                StickCal::new(
+                    crate::stickcal::JOYSTICK,
+                    axes,
+                    settings_for(&active).optional_enabled,
+                ),
+            ));
         }
-        let (_, cal) = host.calibration.as_mut().expect("calibration was just created");
+        let (_, cal) = host
+            .calibration
+            .as_mut()
+            .expect("calibration was just created");
         let outcome = match op.as_str() {
             "next" => cal.next(),
             "oneSided" => {
@@ -827,7 +1284,10 @@ pub fn run(backend: &dyn Backend, path: &str, text: &str) -> Value {
     match path {
         DEVICES => devices(text),
         INPUT => input(backend, text),
-        SELECT => match serde_json::from_str::<Vec<Value>>(text).ok().and_then(|a| a.first().and_then(Value::as_str).map(str::to_string)) {
+        SELECT => match serde_json::from_str::<Vec<Value>>(text)
+            .ok()
+            .and_then(|a| a.first().and_then(Value::as_str).map(str::to_string))
+        {
             Some(name) => {
                 crate::settingsstore::written(ACTIVE_NAME, &name);
                 sync_polling(crate::hub::now_ms());
@@ -835,12 +1295,22 @@ pub fn run(backend: &dyn Backend, path: &str, text: &str) -> Value {
             }
             None => json!({ "ok": false, "reason": "joystick.select takes a joystick name" }),
         },
-        ENABLE_JOYSTICK => enable(serde_json::from_str::<Vec<Value>>(text).ok().and_then(|a| a.first().and_then(Value::as_bool)).unwrap_or(false)),
+        ENABLE_JOYSTICK => enable(
+            serde_json::from_str::<Vec<Value>>(text)
+                .ok()
+                .and_then(|a| a.first().and_then(Value::as_bool))
+                .unwrap_or(false),
+        ),
         SET_SETTING => set_setting(text),
         CALIBRATION => calibration(text),
         BUTTON_ACTION => button_change(text, false),
         BUTTON_REPEAT => button_change(text, true),
-        BUILT_IN_STICKS => match set_built_in_sticks(serde_json::from_str::<Vec<Value>>(text).ok().and_then(|a| a.first().and_then(Value::as_bool)).unwrap_or(false)) {
+        BUILT_IN_STICKS => match set_built_in_sticks(
+            serde_json::from_str::<Vec<Value>>(text)
+                .ok()
+                .and_then(|a| a.first().and_then(Value::as_bool))
+                .unwrap_or(false),
+        ) {
             Ok(()) => json!({ "ok": true }),
             Err(reason) => json!({ "ok": false, "reason": reason }),
         },
@@ -869,7 +1339,18 @@ fn built_in_sticks(_now_ms: u64) -> Value {
 }
 
 pub fn owns(path: &str) -> bool {
-    [DEVICES, INPUT, SELECT, ENABLE_JOYSTICK, SET_SETTING, CALIBRATION, BUTTON_ACTION, BUTTON_REPEAT, BUILT_IN_STICKS].contains(&path)
+    [
+        DEVICES,
+        INPUT,
+        SELECT,
+        ENABLE_JOYSTICK,
+        SET_SETTING,
+        CALIBRATION,
+        BUTTON_ACTION,
+        BUTTON_REPEAT,
+        BUILT_IN_STICKS,
+    ]
+    .contains(&path)
 }
 
 pub fn tick(now_ms: u64) {
@@ -877,28 +1358,48 @@ pub fn tick(now_ms: u64) {
 }
 
 fn type_text(device: &Device) -> &'static str {
-    if device.gamepad { "Gamepad" } else { "Joystick" }
+    if device.gamepad {
+        "Gamepad"
+    } else {
+        "Joystick"
+    }
 }
 
 pub fn summary_rows(device: Option<&Device>, calibrated: bool) -> Vec<SummaryRow> {
-    let Some(device) = device else { return vec![row("Status", "No joystick detected")] };
+    let Some(device) = device else {
+        return vec![row("Status", "No joystick detected")];
+    };
     let status = match (device.axes, device.gamepad, calibrated) {
         (0, ..) => "Buttons only",
         (_, true, _) => "Ready",
         (_, false, true) => "Calibrated",
         (_, false, false) => "Needs calibration",
     };
-    let inputs: Vec<String> = [(device.axes, "axes"), (device.buttons, "buttons")].into_iter().filter(|(count, _)| *count > 0).map(|(count, what)| format!("{count} {what}")).collect();
+    let inputs: Vec<String> = [(device.axes, "axes"), (device.buttons, "buttons")]
+        .into_iter()
+        .filter(|(count, _)| *count > 0)
+        .map(|(count, what)| format!("{count} {what}"))
+        .collect();
     let details = &device.details;
     let features = details.features();
     [
         Some(row("Status", status)),
         Some(row("Type", type_text(device))),
         Some(row("Inputs", inputs.join(", "))),
-        details.battery_percent.map(|p| SummaryRow { warn: p < LOW_JOYSTICK_BATTERY, ..row("Battery", details.battery_text(p)) }),
+        details.battery_percent.map(|p| SummaryRow {
+            warn: p < LOW_JOYSTICK_BATTERY,
+            ..row("Battery", details.battery_text(p))
+        }),
         (!features.is_empty()).then(|| row("Features", features.join(", "))),
-        (details.vendor_id > 0).then(|| row("Device ID", format!("0x{:04X}:0x{:04X}", details.vendor_id, details.product_id))),
-        details.player_index.map(|p| row("Player", (p + 1).to_string())),
+        (details.vendor_id > 0).then(|| {
+            row(
+                "Device ID",
+                format!("0x{:04X}:0x{:04X}", details.vendor_id, details.product_id),
+            )
+        }),
+        details
+            .player_index
+            .map(|p| row("Player", (p + 1).to_string())),
     ]
     .into_iter()
     .flatten()
@@ -907,12 +1408,18 @@ pub fn summary_rows(device: Option<&Device>, calibrated: bool) -> Vec<SummaryRow
 
 pub fn summary() -> Vec<SummaryRow> {
     let host = host();
-    let device = active_name(&host.devices).and_then(|name| host.devices.iter().find(|d| d.name == name));
-    summary_rows(device, device.is_some_and(|d| settings_for(&d.name).calibrated))
+    let device =
+        active_name(&host.devices).and_then(|name| host.devices.iter().find(|d| d.name == name));
+    summary_rows(
+        device,
+        device.is_some_and(|d| settings_for(&d.name).calibrated),
+    )
 }
 
 pub fn indicator(device: Option<&Device>, vehicle: bool, enabled: bool) -> Value {
-    let Some(device) = device else { return Value::Null };
+    let Some(device) = device else {
+        return Value::Null;
+    };
     json!({
         "heading": device.name,
         "enabledText": match (vehicle, enabled) {
@@ -930,18 +1437,40 @@ pub fn indicator(device: Option<&Device>, vehicle: bool, enabled: bool) -> Value
 pub fn joystick_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let built_in = built_in_sticks(crate::hub::now_ms());
     let vehicle = active_vehicle();
-    let standby_heard = vehicle.and_then(|(id, ..)| crate::hub::lock().vehicle(id).and_then(|v| v.standby));
+    let standby_heard =
+        vehicle.and_then(|(id, ..)| crate::hub::lock().vehicle(id).and_then(|v| v.standby));
     let modes = settable_modes();
-    let custom: Vec<String> = crate::mavlinkactions::joystick_actions(backend).into_iter().map(|a| a.label).collect();
+    let custom: Vec<String> = crate::mavlinkactions::joystick_actions(backend)
+        .into_iter()
+        .map(|a| a.label)
+        .collect();
     let support = support_for(vehicle.map(|v| (v.2, v.4)));
     let host = host();
     let active = active_name(&host.devices);
     let enabled = vehicle.is_some_and(|(id, ..)| enabled_vehicles().contains(&id.to_string()));
     let now_ms = crate::hub::now_ms();
-    let state = active.as_ref().and_then(|name| host.joysticks.get(name).map(|j| j.snapshot(&settings_for(name), support, now_ms)));
-    let assigned: Vec<String> = active.as_ref().and_then(|name| host.joysticks.get(name)).map(|j| (0..j.total_button_count()).filter_map(|b| j.binding(b).map(|binding| binding.action.clone())).collect()).unwrap_or_default();
-    let channels = active.as_ref().map(|name| settings_for(name).button_channels(support)).unwrap_or_default();
-    let assignable: Vec<Value> = assignable_actions(&modes, &channels, &custom, &assigned).into_iter().map(|(action, repeat)| json!({ "action": action, "canRepeat": repeat })).collect();
+    let state = active.as_ref().and_then(|name| {
+        host.joysticks
+            .get(name)
+            .map(|j| j.snapshot(&settings_for(name), support, now_ms))
+    });
+    let assigned: Vec<String> = active
+        .as_ref()
+        .and_then(|name| host.joysticks.get(name))
+        .map(|j| {
+            (0..j.total_button_count())
+                .filter_map(|b| j.binding(b).map(|binding| binding.action.clone()))
+                .collect()
+        })
+        .unwrap_or_default();
+    let channels = active
+        .as_ref()
+        .map(|name| settings_for(name).button_channels(support))
+        .unwrap_or_default();
+    let assignable: Vec<Value> = assignable_actions(&modes, &channels, &custom, &assigned)
+        .into_iter()
+        .map(|(action, repeat)| json!({ "action": action, "canRepeat": repeat }))
+        .collect();
     json!({
         "kind": "object",
         "class": "Joystick",
@@ -990,7 +1519,11 @@ mod tests {
     fn the_joystick_lets_go_of_a_vehicle_it_leaves_but_not_of_one_whose_link_fails_over() {
         assert_eq!(left_vehicle(Some((1, 7)), Some((2, 9))), Some((1, 7)));
         assert_eq!(left_vehicle(Some((1, 7)), None), Some((1, 7)));
-        assert_eq!(left_vehicle(Some((1, 7)), Some((1, 9))), None, "a primary-link failover keeps flying the same vehicle, throttle and all");
+        assert_eq!(
+            left_vehicle(Some((1, 7)), Some((1, 9))),
+            None,
+            "a primary-link failover keeps flying the same vehicle, throttle and all"
+        );
         assert_eq!(left_vehicle(None, Some((1, 7))), None);
     }
     use crate::joystick::{Function, OPTIONAL};
@@ -1001,59 +1534,184 @@ mod tests {
         assert!(!setting_visible("throttleSmoothing", &json!(false), plain));
         assert!(setting_visible("throttleSmoothing", &json!(true), plain));
         assert!(!setting_visible("negativeThrust", &json!(true), plain));
-        assert!(setting_visible("negativeThrust", &json!(true), Support { negative_thrust: true, ..plain }));
+        assert!(setting_visible(
+            "negativeThrust",
+            &json!(true),
+            Support {
+                negative_thrust: true,
+                ..plain
+            }
+        ));
         assert!(setting_visible("exponentialPct", &Value::Null, plain));
     }
 
     #[test]
     fn throttle_support_follows_each_firmware_plugin() {
-        assert!(support_for(Some((crate::modes::AUTOPILOT_ARDUPILOT, 2))).throttle_mode_center_zero, "FirmwarePlugin supports centre-zero throttle and no ArduPilot plugin turns it off");
+        assert!(
+            support_for(Some((crate::modes::AUTOPILOT_ARDUPILOT, 2))).throttle_mode_center_zero,
+            "FirmwarePlugin supports centre-zero throttle and no ArduPilot plugin turns it off"
+        );
         assert!(!support_for(Some((crate::modes::AUTOPILOT_ARDUPILOT, 2))).negative_thrust);
-        assert!(support_for(Some((crate::modes::AUTOPILOT_ARDUPILOT, MAV_TYPE_GROUND_ROVER))).negative_thrust, "ArduRoverFirmwarePlugin");
-        assert!(support_for(Some((crate::modes::AUTOPILOT_PX4, MAV_TYPE_SUBMARINE))).negative_thrust);
+        assert!(
+            support_for(Some((
+                crate::modes::AUTOPILOT_ARDUPILOT,
+                MAV_TYPE_GROUND_ROVER
+            )))
+            .negative_thrust,
+            "ArduRoverFirmwarePlugin"
+        );
+        assert!(
+            support_for(Some((crate::modes::AUTOPILOT_PX4, MAV_TYPE_SUBMARINE))).negative_thrust
+        );
         assert!(!support_for(Some((crate::modes::AUTOPILOT_PX4, 2))).negative_thrust);
     }
 
     #[test]
     fn in_4g_standby_the_sticks_are_addressed_to_the_aircraft_computer_which_arducopter_ignores() {
-        let sticks = Out::ManualControl { x: 1, y: 2, z: 3, r: 4, buttons: 0, buttons2: 0, enabled_extensions: 0, extensions: [0; 8] };
+        let sticks = Out::ManualControl {
+            x: 1,
+            y: 2,
+            z: 3,
+            r: 4,
+            buttons: 0,
+            buttons2: 0,
+            enabled_extensions: 0,
+            extensions: [0; 8],
+        };
         let switches = Out::RcChannelsOverride { channels: [7; 18] };
-        assert!(matches!(addressed(1, false, sticks.clone()), Some(Outbound::JoystickManualControl { target: 1, .. })));
-        assert!(matches!(addressed(1, true, sticks), Some(Outbound::JoystickManualControl { target: 0, .. })), "ArduPilot drops MANUAL_CONTROL whose target is not its system id, so an old aircastd or a direct link changes nothing");
-        assert!(matches!(addressed(1, false, switches.clone()), Some(Outbound::RcOverride { target: (1, 1), .. })));
-        assert!(matches!(addressed(1, true, switches), Some(Outbound::RcOverride { target: (1, STANDBY_COMPONENT), .. })), "ArduPilot's router processes an override for another component of its system nowhere");
-        assert_eq!(addressed(1, true, Out::Action { action: "Arm".into(), event: ButtonEvent::Down }), None);
+        assert!(matches!(
+            addressed(1, false, sticks.clone()),
+            Some(Outbound::JoystickManualControl { target: 1, .. })
+        ));
+        assert!(
+            matches!(
+                addressed(1, true, sticks),
+                Some(Outbound::JoystickManualControl { target: 0, .. })
+            ),
+            "ArduPilot drops MANUAL_CONTROL whose target is not its system id, so an old aircastd or a direct link changes nothing"
+        );
+        assert!(matches!(
+            addressed(1, false, switches.clone()),
+            Some(Outbound::RcOverride { target: (1, 1), .. })
+        ));
+        assert!(
+            matches!(
+                addressed(1, true, switches),
+                Some(Outbound::RcOverride {
+                    target: (1, STANDBY_COMPONENT),
+                    ..
+                })
+            ),
+            "ArduPilot's router processes an override for another component of its system nowhere"
+        );
+        assert_eq!(
+            addressed(
+                1,
+                true,
+                Out::Action {
+                    action: "Arm".into(),
+                    event: ButtonEvent::Down
+                }
+            ),
+            None
+        );
     }
 
     #[test]
     fn standby_is_offered_where_aircastd_can_fly_it_and_says_what_is_flying() {
-        assert!(support_for(Some((crate::modes::AUTOPILOT_ARDUPILOT, 2))).standby, "ArduCopter quad");
-        assert!(support_for(Some((crate::modes::AUTOPILOT_ARDUPILOT, 13))).standby, "hexa");
-        assert!(!support_for(Some((crate::modes::AUTOPILOT_ARDUPILOT, 1))).standby, "aircastd takes over multicopters only; a plane's RC failsafe is a different machine");
+        assert!(
+            support_for(Some((crate::modes::AUTOPILOT_ARDUPILOT, 2))).standby,
+            "ArduCopter quad"
+        );
+        assert!(
+            support_for(Some((crate::modes::AUTOPILOT_ARDUPILOT, 13))).standby,
+            "hexa"
+        );
+        assert!(
+            !support_for(Some((crate::modes::AUTOPILOT_ARDUPILOT, 1))).standby,
+            "aircastd takes over multicopters only; a plane's RC failsafe is a different machine"
+        );
         assert!(!support_for(Some((crate::modes::AUTOPILOT_PX4, 2))).standby);
-        assert!(!setting_visible(STANDBY_SETTING, &Value::Null, Support::default()));
-        assert!(METADATA.iter().any(|m| m.name == STANDBY_SETTING && m.default == json!(false)), "off unless the pilot turns it on");
+        assert!(!setting_visible(
+            STANDBY_SETTING,
+            &Value::Null,
+            Support::default()
+        ));
+        assert!(
+            METADATA
+                .iter()
+                .any(|m| m.name == STANDBY_SETTING && m.default == json!(false)),
+            "off unless the pilot turns it on"
+        );
         let now = 10_000;
-        assert_eq!(standby_text(false, true, Some((STANDBY_READY, now)), now), None);
-        assert!(standby_text(true, true, None, now).unwrap().contains("not answering"), "an aircastd without standby never answers");
-        assert!(standby_text(true, true, Some((STANDBY_READY, now - STANDBY_STALE_MS - 1)), now).unwrap().contains("not answering"));
-        assert_eq!(standby_text(true, true, Some((STANDBY_READY, now)), now), Some("The radio flies the aircraft. 4G is standing by."));
-        assert!(standby_text(true, true, Some((STANDBY_FLYING, now)), now).unwrap().starts_with("4G is flying"));
-        assert!(standby_text(true, false, Some((0, now)), now).unwrap().contains("waiting for the joystick"));
+        assert_eq!(
+            standby_text(false, true, Some((STANDBY_READY, now)), now),
+            None
+        );
+        assert!(
+            standby_text(true, true, None, now)
+                .unwrap()
+                .contains("not answering"),
+            "an aircastd without standby never answers"
+        );
+        assert!(
+            standby_text(
+                true,
+                true,
+                Some((STANDBY_READY, now - STANDBY_STALE_MS - 1)),
+                now
+            )
+            .unwrap()
+            .contains("not answering")
+        );
+        assert_eq!(
+            standby_text(true, true, Some((STANDBY_READY, now)), now),
+            Some("The radio flies the aircraft. 4G is standing by.")
+        );
+        assert!(
+            standby_text(true, true, Some((STANDBY_FLYING, now)), now)
+                .unwrap()
+                .starts_with("4G is flying")
+        );
+        assert!(
+            standby_text(true, false, Some((0, now)), now)
+                .unwrap()
+                .contains("waiting for the joystick")
+        );
     }
 
     #[test]
     fn ardupilot_reads_manual_control_as_stick_overrides_and_drops_its_aux_axes() {
         let copter = support_for(Some((crate::modes::AUTOPILOT_ARDUPILOT, 2)));
-        assert!(!copter.manual_control_aux, "GCS_MAVLINK_Copter::handle_manual_control_axes reads x, y, z and r only, so a switch sent as aux1 never reaches the vehicle");
-        assert!(copter.sticks_are_rc_overrides, "manual_override() turns the sticks into RC overrides that outlive the joystick by RC_OVERRIDE_TIME");
-        let rover = support_for(Some((crate::modes::AUTOPILOT_ARDUPILOT, MAV_TYPE_GROUND_ROVER)));
-        assert!(rover.negative_thrust && !rover.manual_control_aux && rover.sticks_are_rc_overrides);
-        let sub = support_for(Some((crate::modes::AUTOPILOT_ARDUPILOT, MAV_TYPE_SUBMARINE)));
-        assert!(sub.manual_control_aux && !sub.sticks_are_rc_overrides, "ArduSub decodes aux1-6 and maps every axis itself");
+        assert!(
+            !copter.manual_control_aux,
+            "GCS_MAVLINK_Copter::handle_manual_control_axes reads x, y, z and r only, so a switch sent as aux1 never reaches the vehicle"
+        );
+        assert!(
+            copter.sticks_are_rc_overrides,
+            "manual_override() turns the sticks into RC overrides that outlive the joystick by RC_OVERRIDE_TIME"
+        );
+        let rover = support_for(Some((
+            crate::modes::AUTOPILOT_ARDUPILOT,
+            MAV_TYPE_GROUND_ROVER,
+        )));
+        assert!(
+            rover.negative_thrust && !rover.manual_control_aux && rover.sticks_are_rc_overrides
+        );
+        let sub = support_for(Some((
+            crate::modes::AUTOPILOT_ARDUPILOT,
+            MAV_TYPE_SUBMARINE,
+        )));
+        assert!(
+            sub.manual_control_aux && !sub.sticks_are_rc_overrides,
+            "ArduSub decodes aux1-6 and maps every axis itself"
+        );
         let px4 = support_for(Some((crate::modes::AUTOPILOT_PX4, 2)));
         assert!(px4.manual_control_aux && !px4.sticks_are_rc_overrides);
-        assert!(!setting_visible("additionalAxesFunction", &Value::Null, copter), "there is no choice to offer when one of the two messages is ignored");
+        assert!(
+            !setting_visible("additionalAxesFunction", &Value::Null, copter),
+            "there is no choice to offer when one of the two messages is ignored"
+        );
         assert!(setting_visible("additionalAxesFunction", &Value::Null, px4));
     }
 
@@ -1062,74 +1720,255 @@ mod tests {
         let names: Vec<&str> = METADATA.iter().map(|m| m.name.as_str()).collect();
         assert!(names.contains(&"axisFrequencyHz") && names.contains(&"enableAdditionalAxis6"));
         let deadband = METADATA.iter().find(|m| m.name == "useDeadband").unwrap();
-        assert_eq!(deadband.default, json!(true), "QGC turns the deadband on by default");
-        let rate = METADATA.iter().find(|m| m.name == "axisFrequencyHz").unwrap();
-        assert_eq!((coerce(rate, &json!(30.0)), coerce(rate, &json!(500.0))), (Some("30".to_string()), None));
+        assert_eq!(
+            deadband.default,
+            json!(true),
+            "QGC turns the deadband on by default"
+        );
+        let rate = METADATA
+            .iter()
+            .find(|m| m.name == "axisFrequencyHz")
+            .unwrap();
+        assert_eq!(
+            (coerce(rate, &json!(30.0)), coerce(rate, &json!(500.0))),
+            (Some("30".to_string()), None)
+        );
         assert_eq!(OPTIONAL_SETTINGS.len(), OPTIONAL.len());
-        let slider = |name: &str| METADATA.iter().find(|m| m.name == name).unwrap().slider.clone();
-        assert_eq!(slider("exponentialPct"), json!({ "from": 0.0, "to": 50.0, "decimals": 1 }), "JoystickComponentSettings draws these three as FactTextFieldSlider over userMin..userMax");
-        assert_eq!(slider("axisFrequencyHz"), json!({ "from": 0.25, "to": 200.0, "decimals": 2 }));
-        assert_eq!(slider("buttonFrequencyHz"), json!({ "from": 0.25, "to": 50.0, "decimals": 2 }));
+        let slider = |name: &str| {
+            METADATA
+                .iter()
+                .find(|m| m.name == name)
+                .unwrap()
+                .slider
+                .clone()
+        };
+        assert_eq!(
+            slider("exponentialPct"),
+            json!({ "from": 0.0, "to": 50.0, "decimals": 1 }),
+            "JoystickComponentSettings draws these three as FactTextFieldSlider over userMin..userMax"
+        );
+        assert_eq!(
+            slider("axisFrequencyHz"),
+            json!({ "from": 0.25, "to": 200.0, "decimals": 2 })
+        );
+        assert_eq!(
+            slider("buttonFrequencyHz"),
+            json!({ "from": 0.25, "to": 50.0, "decimals": 2 })
+        );
         assert_eq!(slider("transmitterMode"), Value::Null);
     }
 
     #[test]
     fn the_toolbar_indicator_reads_like_joystick_indicator_qml() {
-        let pad = Device { name: "Xbox".into(), axes: 6, buttons: 15, hats: 1, gamepad: true, ..Device::default() };
+        let pad = Device {
+            name: "Xbox".into(),
+            axes: 6,
+            buttons: 15,
+            hats: 1,
+            gamepad: true,
+            ..Device::default()
+        };
         let shown = indicator(Some(&pad), true, false);
-        assert_eq!((shown["heading"].as_str(), shown["enabledText"].as_str(), shown["warn"].as_bool()), (Some("Xbox"), Some("No"), Some(true)), "a joystick not enabled for the vehicle shows orange");
-        assert_eq!((shown["typeText"].as_str(), shown["inputsText"].as_str()), (Some("Gamepad"), Some("6 axes, 15 buttons")));
-        assert_eq!(indicator(Some(&pad), false, false)["enabledText"], "No Vehicle");
+        assert_eq!(
+            (
+                shown["heading"].as_str(),
+                shown["enabledText"].as_str(),
+                shown["warn"].as_bool()
+            ),
+            (Some("Xbox"), Some("No"), Some(true)),
+            "a joystick not enabled for the vehicle shows orange"
+        );
+        assert_eq!(
+            (shown["typeText"].as_str(), shown["inputsText"].as_str()),
+            (Some("Gamepad"), Some("6 axes, 15 buttons"))
+        );
+        assert_eq!(
+            indicator(Some(&pad), false, false)["enabledText"],
+            "No Vehicle"
+        );
         assert_eq!(indicator(Some(&pad), false, false)["warn"], false);
-        assert!(indicator(None, true, true).is_null(), "no joystick, no indicator");
-        assert_eq!(shown["details"], json!([]), "a device that reports nothing more has no detail rows");
-        let detailed = DeviceDetails::from_json(&json!({ "batteryPercent": 15, "powerState": "Discharging", "rumble": true, "gyroscope": true, "playerIndex": 0, "vendorId": 1118, "productId": 2835, "guid": "abc" }));
+        assert!(
+            indicator(None, true, true).is_null(),
+            "no joystick, no indicator"
+        );
+        assert_eq!(
+            shown["details"],
+            json!([]),
+            "a device that reports nothing more has no detail rows"
+        );
+        let detailed = DeviceDetails::from_json(
+            &json!({ "batteryPercent": 15, "powerState": "Discharging", "rumble": true, "gyroscope": true, "playerIndex": 0, "vendorId": 1118, "productId": 2835, "guid": "abc" }),
+        );
         let rows = detailed.rows();
         let labels: Vec<&str> = rows.iter().filter_map(|r| r["label"].as_str()).collect();
-        assert_eq!(labels, ["Battery:", "Features:", "Player:", "Vendor/Product:", "GUID:", "Motion Sensors:"]);
-        assert_eq!((rows[0]["value"].as_str(), rows[0]["warn"].as_bool()), (Some("15% (Discharging)"), Some(true)), "JoystickIndicator paints a battery under twenty percent red");
+        assert_eq!(
+            labels,
+            [
+                "Battery:",
+                "Features:",
+                "Player:",
+                "Vendor/Product:",
+                "GUID:",
+                "Motion Sensors:"
+            ]
+        );
+        assert_eq!(
+            (rows[0]["value"].as_str(), rows[0]["warn"].as_bool()),
+            (Some("15% (Discharging)"), Some(true)),
+            "JoystickIndicator paints a battery under twenty percent red"
+        );
         assert_eq!(rows[3]["value"], "0x045E / 0x0B13");
         assert_eq!(rows[2]["value"], "1");
-        assert_eq!((rows[1]["value"].as_str(), rows[5]["value"].as_str()), (Some("Rumble, Gyro"), Some("Gyro")), "JoystickIndicator says Gyro and Accel");
+        assert_eq!(
+            (rows[1]["value"].as_str(), rows[5]["value"].as_str()),
+            (Some("Rumble, Gyro"), Some("Gyro")),
+            "JoystickIndicator says Gyro and Accel"
+        );
     }
 
     #[test]
     fn the_setup_summary_reads_like_joystick_component_summary_qml() {
-        let text = |rows: Vec<SummaryRow>| rows.into_iter().map(|r| format!("{}={}", r.label, r.value)).collect::<Vec<_>>();
-        assert_eq!(text(summary_rows(None, false)), ["Status=No joystick detected"]);
-        let details = DeviceDetails { battery_percent: Some(80), power_state: "Charging".into(), rumble: true, gyroscope: true, accelerometer: true, player_index: Some(0), vendor_id: 0x045E, product_id: 0x0B13, ..DeviceDetails::default() };
-        let pad = Device { name: "Xbox".into(), axes: 6, buttons: 15, hats: 1, gamepad: true, details };
-        assert_eq!(text(summary_rows(Some(&pad), false)), ["Status=Ready", "Type=Gamepad", "Inputs=6 axes, 15 buttons", "Battery=80% (Charging)", "Features=Rumble, Gyro, Accel", "Device ID=0x045E:0x0B13", "Player=1"], "a gamepad needs no calibration");
-        let stick = Device { name: "Stick".into(), axes: 4, buttons: 0, ..Device::default() };
-        let low = Device { details: DeviceDetails { battery_percent: Some(19), ..DeviceDetails::default() }, ..pad.clone() };
-        assert_eq!(summary_rows(Some(&low), false).iter().map(|r| (r.label.as_str(), r.warn)).filter(|(_, warn)| *warn).collect::<Vec<_>>(), [("Battery", true)], "JoystickComponentSummary paints a battery under twenty percent red");
+        let text = |rows: Vec<SummaryRow>| {
+            rows.into_iter()
+                .map(|r| format!("{}={}", r.label, r.value))
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            text(summary_rows(None, false)),
+            ["Status=No joystick detected"]
+        );
+        let details = DeviceDetails {
+            battery_percent: Some(80),
+            power_state: "Charging".into(),
+            rumble: true,
+            gyroscope: true,
+            accelerometer: true,
+            player_index: Some(0),
+            vendor_id: 0x045E,
+            product_id: 0x0B13,
+            ..DeviceDetails::default()
+        };
+        let pad = Device {
+            name: "Xbox".into(),
+            axes: 6,
+            buttons: 15,
+            hats: 1,
+            gamepad: true,
+            details,
+        };
+        assert_eq!(
+            text(summary_rows(Some(&pad), false)),
+            [
+                "Status=Ready",
+                "Type=Gamepad",
+                "Inputs=6 axes, 15 buttons",
+                "Battery=80% (Charging)",
+                "Features=Rumble, Gyro, Accel",
+                "Device ID=0x045E:0x0B13",
+                "Player=1"
+            ],
+            "a gamepad needs no calibration"
+        );
+        let stick = Device {
+            name: "Stick".into(),
+            axes: 4,
+            buttons: 0,
+            ..Device::default()
+        };
+        let low = Device {
+            details: DeviceDetails {
+                battery_percent: Some(19),
+                ..DeviceDetails::default()
+            },
+            ..pad.clone()
+        };
+        assert_eq!(
+            summary_rows(Some(&low), false)
+                .iter()
+                .map(|r| (r.label.as_str(), r.warn))
+                .filter(|(_, warn)| *warn)
+                .collect::<Vec<_>>(),
+            [("Battery", true)],
+            "JoystickComponentSummary paints a battery under twenty percent red"
+        );
         assert!(summary_rows(Some(&pad), false).iter().all(|r| !r.warn));
-        assert_eq!(text(summary_rows(Some(&stick), false)), ["Status=Needs calibration", "Type=Joystick", "Inputs=4 axes"], "zero counts are left out of Inputs");
+        assert_eq!(
+            text(summary_rows(Some(&stick), false)),
+            ["Status=Needs calibration", "Type=Joystick", "Inputs=4 axes"],
+            "zero counts are left out of Inputs"
+        );
         assert_eq!(summary_rows(Some(&stick), true)[0].value, "Calibrated");
-        assert_eq!(summary_rows(Some(&Device { axes: 0, buttons: 8, ..stick }), false)[0].value, "Buttons only");
+        assert_eq!(
+            summary_rows(
+                Some(&Device {
+                    axes: 0,
+                    buttons: 8,
+                    ..stick
+                }),
+                false
+            )[0]
+            .value,
+            "Buttons only"
+        );
     }
 
     #[test]
     fn an_unknown_stored_name_falls_back_to_the_first_device() {
-        let devices = vec![Device { name: "Pad".into(), axes: 4, buttons: 10, hats: 1, gamepad: true, ..Device::default() }];
+        let devices = vec![Device {
+            name: "Pad".into(),
+            axes: 4,
+            buttons: 10,
+            hats: 1,
+            gamepad: true,
+            ..Device::default()
+        }];
         assert_eq!(active_name(&devices), Some("Pad".into()));
         assert_eq!(active_name(&[]), None);
-        assert_eq!(polling(true, true, false), Polling::default(), "an uncalibrated stick never commands");
-        assert_eq!(polling(true, true, true), Polling { vehicle: true, configuration: false });
+        assert_eq!(
+            polling(true, true, false),
+            Polling::default(),
+            "an uncalibrated stick never commands"
+        );
+        assert_eq!(
+            polling(true, true, true),
+            Polling {
+                vehicle: true,
+                configuration: false
+            }
+        );
     }
 
     #[test]
     fn axes_round_trip_through_qgcs_axis_settings_array_in_mode_two() {
         let mut model = Joystick::new(4, 0, 0);
-        let calibration = AxisCalibration { min: -30000, max: 31000, center: 50, deadband: 400, reversed: true };
+        let calibration = AxisCalibration {
+            min: -30000,
+            max: 31000,
+            center: 50,
+            deadband: 400,
+            reversed: true,
+        };
         assert!(model.set_calibration(1, calibration));
         assert!(model.set_axis_function(Function::Throttle, 1));
         let entries = axis_entries("Pad", &model);
-        assert_eq!(entries.get("JoystickSettingsV2/Pad/JoystickAxisSettingsArray/1/function"), Some(&Setting::Text("3".into())), "QGC stores throttleFunction as 3");
-        assert_eq!(entries.get("JoystickSettingsV2/Pad/JoystickAxisSettingsArray/1/reversed"), Some(&Setting::Text("true".into())));
+        assert_eq!(
+            entries.get("JoystickSettingsV2/Pad/JoystickAxisSettingsArray/1/function"),
+            Some(&Setting::Text("3".into())),
+            "QGC stores throttleFunction as 3"
+        );
+        assert_eq!(
+            entries.get("JoystickSettingsV2/Pad/JoystickAxisSettingsArray/1/reversed"),
+            Some(&Setting::Text("true".into()))
+        );
         let mut restored = Joystick::new(4, 0, 0);
         load_axes("Pad", &mut restored, &entries);
-        assert_eq!((restored.axis_for(Function::Throttle), restored.calibration(1)), (Some(1), Some(calibration)));
+        assert_eq!(
+            (
+                restored.axis_for(Function::Throttle),
+                restored.calibration(1)
+            ),
+            (Some(1), Some(calibration))
+        );
     }
 
     #[test]
@@ -1138,13 +1977,45 @@ mod tests {
         assert!(model.set_button_action(2, Some("Step Zoom In")));
         assert!(model.set_button_repeat(2, true, false));
         let entries = button_entries("Pad", &model);
-        assert_eq!(entries.get("JoystickSettingsV2/Pad/JoystickButtonActionSettingsArray/2/actionName"), Some(&Setting::Text("Step Zoom In".into())));
+        assert_eq!(
+            entries.get("JoystickSettingsV2/Pad/JoystickButtonActionSettingsArray/2/actionName"),
+            Some(&Setting::Text("Step Zoom In".into()))
+        );
         let mut restored = Joystick::new(4, 6, 0);
         load_buttons("Pad", &mut restored, &entries);
-        assert_eq!(restored.binding(2).map(|b| (b.action.clone(), b.repeat)), Some(("Step Zoom In".to_string(), true)));
-        let list = assignable_actions(&["Loiter".to_string()], &[7, 12], &["Lights".to_string()], &["Old Mode".to_string()]);
+        assert_eq!(
+            restored.binding(2).map(|b| (b.action.clone(), b.repeat)),
+            Some(("Step Zoom In".to_string(), true))
+        );
+        let list = assignable_actions(
+            &["Loiter".to_string()],
+            &[7, 12],
+            &["Lights".to_string()],
+            &["Old Mode".to_string()],
+        );
         let names: Vec<&str> = list.iter().map(|(n, _)| n.as_str()).collect();
-        assert_eq!(names[..6], ["No Action", "Arm", "Disarm", "Toggle Arm", "Loiter", "VTOL: Fixed Wing"]);
-        assert_eq!(names[names.len() - 6..], ["RC Channel 7", "RC Channel 7 Middle", "RC Channel 12", "RC Channel 12 Middle", "Lights", "Old Mode"], "the free rc channels and then custom MAVLink actions follow the built-ins, and an assignment that is not available right now stays listed");
+        assert_eq!(
+            names[..6],
+            [
+                "No Action",
+                "Arm",
+                "Disarm",
+                "Toggle Arm",
+                "Loiter",
+                "VTOL: Fixed Wing"
+            ]
+        );
+        assert_eq!(
+            names[names.len() - 6..],
+            [
+                "RC Channel 7",
+                "RC Channel 7 Middle",
+                "RC Channel 12",
+                "RC Channel 12 Middle",
+                "Lights",
+                "Old Mode"
+            ],
+            "the free rc channels and then custom MAVLink actions follow the built-ins, and an assignment that is not available right now stays listed"
+        );
     }
 }

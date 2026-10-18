@@ -65,7 +65,11 @@ fn geodetic(x: f64, y: f64, z: f64) -> (f64, f64, f64) {
     for _ in 0..12 {
         let sin_lat = lat.sin();
         let n = WGS84_A / (1.0 - WGS84_E2 * sin_lat * sin_lat).sqrt();
-        alt = if lat.cos().abs() > 1e-12 { p / lat.cos() - n } else { z.abs() - n * (1.0 - WGS84_E2) };
+        alt = if lat.cos().abs() > 1e-12 {
+            p / lat.cos() - n
+        } else {
+            z.abs() - n * (1.0 - WGS84_E2)
+        };
         lat = z.atan2(p * (1.0 - WGS84_E2 * n / (n + alt)));
     }
     (lat.to_degrees(), lon.to_degrees(), alt)
@@ -112,33 +116,55 @@ pub fn utm_to_geo(easting: f64, northing: f64, zone: u8, southern: bool) -> Opti
 }
 
 fn numbers(args: &[String], count: usize) -> Option<Vec<f64>> {
-    let parsed: Vec<f64> = args.iter().take(count).filter_map(|a| a.parse::<f64>().ok()).filter(|v| v.is_finite()).collect();
+    let parsed: Vec<f64> = args
+        .iter()
+        .take(count)
+        .filter_map(|a| a.parse::<f64>().ok())
+        .filter(|v| v.is_finite())
+        .collect();
     (parsed.len() == count).then_some(parsed)
 }
 
 pub fn geo_to_ned_view(_backend: &dyn Backend, args: &[String]) -> Value {
-    let Some(v) = numbers(args, 6) else { return crate::read::refused("this needs six numbers: latitude, longitude, altitude, then the origin latitude, longitude and altitude") };
+    let Some(v) = numbers(args, 6) else {
+        return crate::read::refused(
+            "this needs six numbers: latitude, longitude, altitude, then the origin latitude, longitude and altitude",
+        );
+    };
     let (x, y, z) = geo_to_ned(v[0], v[1], v[2], (v[3], v[4], v[5]));
     json!({ "kind": "object", "class": "Ned", "x": x, "y": y, "z": z })
 }
 
 pub fn ned_to_geo_view(_backend: &dyn Backend, args: &[String]) -> Value {
-    let Some(v) = numbers(args, 6) else { return crate::read::refused("this needs six numbers: north, east, down, then the origin latitude, longitude and altitude") };
+    let Some(v) = numbers(args, 6) else {
+        return crate::read::refused(
+            "this needs six numbers: north, east, down, then the origin latitude, longitude and altitude",
+        );
+    };
     let (lat, lon, alt) = ned_to_geo(v[0], v[1], v[2], (v[3], v[4], v[5]));
     json!({ "kind": "coordinate", "valid": true, "latitude": lat, "longitude": lon, "altitude": alt })
 }
 
 pub fn geo_to_utm_view(_backend: &dyn Backend, args: &[String]) -> Value {
-    let Some(v) = numbers(args, 2) else { return crate::read::refused("this needs two numbers: latitude and longitude") };
+    let Some(v) = numbers(args, 2) else {
+        return crate::read::refused("this needs two numbers: latitude and longitude");
+    };
     let (zone, easting, northing) = geo_to_utm(v[0], v[1]);
     json!({ "kind": "object", "class": "Utm", "zone": zone, "southern": v[0] < 0.0, "easting": easting, "northing": northing })
 }
 
 pub fn utm_to_geo_view(_backend: &dyn Backend, args: &[String]) -> Value {
-    let Some(v) = numbers(args, 3) else { return crate::read::refused("this needs three numbers: easting, northing and zone") };
-    let southern = args.get(3).map(|s| s == "true" || s == "1" || s == "S").unwrap_or(false);
+    let Some(v) = numbers(args, 3) else {
+        return crate::read::refused("this needs three numbers: easting, northing and zone");
+    };
+    let southern = args
+        .get(3)
+        .map(|s| s == "true" || s == "1" || s == "S")
+        .unwrap_or(false);
     match utm_to_geo(v[0], v[1], v[2] as u8, southern) {
-        Some((lat, lon)) => json!({ "kind": "coordinate", "valid": true, "latitude": lat, "longitude": lon, "altitude": 0.0 }),
+        Some((lat, lon)) => {
+            json!({ "kind": "coordinate", "valid": true, "latitude": lat, "longitude": lon, "altitude": 0.0 })
+        }
         None => json!({ "kind": "coordinate", "valid": false }),
     }
 }
@@ -150,7 +176,9 @@ pub fn mgrs_to_geo(text: &str) -> Option<(f64, f64)> {
 }
 
 pub fn position_forms_view(_backend: &dyn Backend, args: &[String]) -> Value {
-    let Some(v) = numbers(args, 2) else { return crate::read::refused("this needs two numbers: latitude and longitude") };
+    let Some(v) = numbers(args, 2) else {
+        return crate::read::refused("this needs two numbers: latitude and longitude");
+    };
     let (zone, easting, northing) = geo_to_utm(v[0], v[1]);
     json!({
         "kind": "object",
@@ -164,7 +192,9 @@ pub fn position_forms_view(_backend: &dyn Backend, args: &[String]) -> Value {
 
 pub fn mgrs_to_geo_view(_backend: &dyn Backend, args: &[String]) -> Value {
     match args.first().and_then(|text| mgrs_to_geo(text)) {
-        Some((lat, lon)) => json!({ "kind": "coordinate", "valid": true, "latitude": lat, "longitude": lon, "altitude": 0.0 }),
+        Some((lat, lon)) => {
+            json!({ "kind": "coordinate", "valid": true, "latitude": lat, "longitude": lon, "altitude": 0.0 })
+        }
         None => json!({ "kind": "coordinate", "valid": false }),
     }
 }
@@ -182,11 +212,17 @@ mod tests {
     #[test]
     fn ned_matches_geo_test() {
         let (x, y, z) = geo_to_ned(47.364869, 8.594398, 0.0, ORIGIN);
-        assert!(close(x, -1280.954612) && close(y, 3497.196961) && close(z, 1.085830), "{x} {y} {z}");
+        assert!(
+            close(x, -1280.954612) && close(y, 3497.196961) && close(z, 1.085830),
+            "{x} {y} {z}"
+        );
         let (x, y, z) = geo_to_ned(ORIGIN.0, ORIGIN.1, 10.0, ORIGIN);
         assert!(close(x, 0.0) && close(y, 0.0) && close(z, -10.0));
         let (lat, lon, alt) = ned_to_geo(-1280.954612, 3497.196961, 1.085830, ORIGIN);
-        assert!(close(lat, 47.364869) && close(lon, 8.594398) && close(alt, 0.0), "{lat} {lon} {alt}");
+        assert!(
+            close(lat, 47.364869) && close(lon, 8.594398) && close(alt, 0.0),
+            "{lat} {lon} {alt}"
+        );
         let (lat, lon, alt) = ned_to_geo(0.0, 0.0, 0.0, ORIGIN);
         assert!(close(lat, ORIGIN.0) && close(lon, ORIGIN.1) && close(alt, 0.0));
     }
@@ -210,20 +246,40 @@ mod wraptests {
     fn a_coordinate_past_the_edge_of_the_world_comes_back_onto_it() {
         assert_eq!(wrap_longitude(180.0018), -179.9982);
         assert_eq!(wrap_longitude(-180.5), 179.5);
-        assert_eq!(wrap_longitude(8.5), 8.5, "an ordinary longitude is untouched");
-        assert_eq!(wrap_longitude(180.0), 180.0, "the dateline itself is a real longitude and stays one");
+        assert_eq!(
+            wrap_longitude(8.5),
+            8.5,
+            "an ordinary longitude is untouched"
+        );
+        assert_eq!(
+            wrap_longitude(180.0),
+            180.0,
+            "the dateline itself is a real longitude and stays one"
+        );
         assert_eq!(wrap_longitude(-180.0), 180.0);
-        assert_eq!(clamp_latitude(90.4), 90.0, "there is no latitude past the pole to seed a mission item at");
+        assert_eq!(
+            clamp_latitude(90.4),
+            90.0,
+            "there is no latitude past the pole to seed a mission item at"
+        );
         assert_eq!(clamp_latitude(-90.4), -90.0);
         assert_eq!(wrap(47.4, 8.5), (47.4, 8.5));
     }
 
     struct NoBackend;
     impl Backend for NoBackend {
-        fn get(&self, _p: &str) -> String { String::new() }
-        fn get_fields(&self, _p: &str, _f: &str) -> String { String::new() }
-        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn get(&self, _p: &str) -> String {
+            String::new()
+        }
+        fn get_fields(&self, _p: &str, _f: &str) -> String {
+            String::new()
+        }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            String::new()
+        }
         fn watch(&self, _p: &[String]) {}
     }
 
@@ -232,8 +288,14 @@ mod wraptests {
         let forms = position_forms_view(&NoBackend, &["47.3764".to_string(), "8.5481".to_string()]);
         assert_eq!(forms["utm"]["zone"], 32);
         let (lat, lon) = mgrs_to_geo(forms["mgrs"].as_str().unwrap()).unwrap();
-        assert!((lat - 47.3764).abs() < 1e-3 && (lon - 8.5481).abs() < 1e-3, "an MGRS grid square read back lands within its metre of precision");
+        assert!(
+            (lat - 47.3764).abs() < 1e-3 && (lon - 8.5481).abs() < 1e-3,
+            "an MGRS grid square read back lands within its metre of precision"
+        );
         assert!(mgrs_to_geo("not a grid").is_none());
-        assert_eq!(mgrs_to_geo_view(&NoBackend, &["32TMN".to_string()])["valid"], true);
+        assert_eq!(
+            mgrs_to_geo_view(&NoBackend, &["32TMN".to_string()])["valid"],
+            true
+        );
     }
 }

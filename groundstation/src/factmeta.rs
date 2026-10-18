@@ -57,7 +57,10 @@ const TYPE_NAMES: [(&str, ValueType); 14] = [
 
 pub fn value_type(name: &str) -> Option<ValueType> {
     let lowered = name.to_ascii_lowercase();
-    TYPE_NAMES.iter().find(|(n, _)| *n == lowered).map(|(_, t)| *t)
+    TYPE_NAMES
+        .iter()
+        .find(|(n, _)| *n == lowered)
+        .map(|(_, t)| *t)
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -98,42 +101,89 @@ pub const DEFINES_KEY: &str = "QGC.MetaData.Defines";
 pub const FACTS_KEY: &str = "QGC.MetaData.Facts";
 
 pub fn split_translated_list(text: &str) -> Vec<String> {
-    text.split([',', '，', '、']).map(str::trim).filter(|s| !s.is_empty()).map(str::to_string).collect()
+    text.split([',', '，', '、'])
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string)
+        .collect()
 }
 
 fn defines(root: &Value) -> BTreeMap<String, String> {
     root.get(DEFINES_KEY)
         .and_then(Value::as_object)
-        .map(|o| o.iter().filter_map(|(k, v)| v.as_str().map(|s| (format!("{DEFINES_KEY}.{k}"), s.to_string()))).collect())
+        .map(|o| {
+            o.iter()
+                .filter_map(|(k, v)| {
+                    v.as_str()
+                        .map(|s| (format!("{DEFINES_KEY}.{k}"), s.to_string()))
+                })
+                .collect()
+        })
         .unwrap_or_default()
 }
 
 fn typed(value_type: ValueType, raw: &Value) -> Value {
     match (value_type, raw) {
         (ValueType::Bool, Value::Number(n)) => Value::Bool(n.as_f64().unwrap_or(0.0) != 0.0),
-        (ValueType::Bool, Value::String(s)) => Value::Bool(s.eq_ignore_ascii_case("true") || s == "1"),
+        (ValueType::Bool, Value::String(s)) => {
+            Value::Bool(s.eq_ignore_ascii_case("true") || s == "1")
+        }
         (ValueType::String, Value::Number(n)) => Value::String(n.to_string()),
-        (ValueType::Float | ValueType::Double, Value::String(s)) => s.parse::<f64>().map(Value::from).unwrap_or(Value::Null),
-        (ValueType::Float | ValueType::Double, Value::Number(n)) => n.as_f64().map(Value::from).unwrap_or(Value::Null),
-        (ValueType::Uint8 | ValueType::Int8 | ValueType::Uint16 | ValueType::Int16 | ValueType::Uint32 | ValueType::Int32 | ValueType::Uint64 | ValueType::Int64, Value::String(s)) => {
-            s.parse::<f64>().ok().map(|n| Value::from(n.round() as i64)).unwrap_or(Value::Null)
+        (ValueType::Float | ValueType::Double, Value::String(s)) => {
+            s.parse::<f64>().map(Value::from).unwrap_or(Value::Null)
         }
-        (ValueType::Uint8 | ValueType::Int8 | ValueType::Uint16 | ValueType::Int16 | ValueType::Uint32 | ValueType::Int32 | ValueType::Uint64 | ValueType::Int64, Value::Number(n)) => {
-            Value::from(n.as_f64().unwrap_or(0.0).round() as i64)
+        (ValueType::Float | ValueType::Double, Value::Number(n)) => {
+            n.as_f64().map(Value::from).unwrap_or(Value::Null)
         }
+        (
+            ValueType::Uint8
+            | ValueType::Int8
+            | ValueType::Uint16
+            | ValueType::Int16
+            | ValueType::Uint32
+            | ValueType::Int32
+            | ValueType::Uint64
+            | ValueType::Int64,
+            Value::String(s),
+        ) => s
+            .parse::<f64>()
+            .ok()
+            .map(|n| Value::from(n.round() as i64))
+            .unwrap_or(Value::Null),
+        (
+            ValueType::Uint8
+            | ValueType::Int8
+            | ValueType::Uint16
+            | ValueType::Int16
+            | ValueType::Uint32
+            | ValueType::Int32
+            | ValueType::Uint64
+            | ValueType::Int64,
+            Value::Number(n),
+        ) => Value::from(n.as_f64().unwrap_or(0.0).round() as i64),
         (_, other) => other.clone(),
     }
 }
 
-fn labelled_array(json: &Map<String, Value>, key: &str, value_key: &str) -> Result<Vec<(String, f64)>, String> {
+fn labelled_array(
+    json: &Map<String, Value>,
+    key: &str,
+    value_key: &str,
+) -> Result<Vec<(String, f64)>, String> {
     json.get(key)
         .and_then(Value::as_array)
         .map(|entries| {
             entries
                 .iter()
                 .map(|entry| {
-                    let label = entry.get("description").and_then(Value::as_str).ok_or(format!("{key} entry without description"))?;
-                    let value = entry.get(value_key).and_then(Value::as_f64).ok_or(format!("{key} entry without {value_key}"))?;
+                    let label = entry
+                        .get("description")
+                        .and_then(Value::as_str)
+                        .ok_or(format!("{key} entry without description"))?;
+                    let value = entry
+                        .get(value_key)
+                        .and_then(Value::as_f64)
+                        .ok_or(format!("{key} entry without {value_key}"))?;
                     Ok((label.to_string(), value))
                 })
                 .collect()
@@ -141,44 +191,110 @@ fn labelled_array(json: &Map<String, Value>, key: &str, value_key: &str) -> Resu
         .unwrap_or(Ok(Vec::new()))
 }
 
-fn enums(name: &str, json: &Map<String, Value>, defines: &BTreeMap<String, String>, value_type: ValueType) -> Result<(Vec<EnumEntry>, bool), String> {
+fn enums(
+    name: &str,
+    json: &Map<String, Value>,
+    defines: &BTreeMap<String, String>,
+    value_type: ValueType,
+) -> Result<(Vec<EnumEntry>, bool), String> {
     let values = labelled_array(json, "values", "value")?;
     if !values.is_empty() {
-        return Ok((values.into_iter().map(|(label, v)| EnumEntry { label, value: typed(value_type, &Value::from(v)) }).collect(), false));
+        return Ok((
+            values
+                .into_iter()
+                .map(|(label, v)| EnumEntry {
+                    label,
+                    value: typed(value_type, &Value::from(v)),
+                })
+                .collect(),
+            false,
+        ));
     }
     let bitmask = labelled_array(json, "bitmask", "index")?;
     if !bitmask.is_empty() {
-        let bits: Option<Vec<EnumEntry>> = bitmask.into_iter().map(|(label, i)| (i >= 0.0 && i < 63.0).then(|| EnumEntry { label, value: Value::from(1i64 << (i as u32)) })).collect();
-        return bits.map(|b| (b, true)).ok_or_else(|| format!("bitmask index out of range for {name}"));
+        let bits: Option<Vec<EnumEntry>> = bitmask
+            .into_iter()
+            .map(|(label, i)| {
+                (i >= 0.0 && i < 63.0).then(|| EnumEntry {
+                    label,
+                    value: Value::from(1i64 << (i as u32)),
+                })
+            })
+            .collect();
+        return bits
+            .map(|b| (b, true))
+            .ok_or_else(|| format!("bitmask index out of range for {name}"));
     }
-    let Some(strings) = json.get("enumStrings").and_then(Value::as_str) else { return Ok((Vec::new(), false)) };
-    let resolve = |text: &str| defines.get(text).cloned().unwrap_or_else(|| text.to_string());
+    let Some(strings) = json.get("enumStrings").and_then(Value::as_str) else {
+        return Ok((Vec::new(), false));
+    };
+    let resolve = |text: &str| {
+        defines
+            .get(text)
+            .cloned()
+            .unwrap_or_else(|| text.to_string())
+    };
     let labels = split_translated_list(&resolve(strings));
-    let raws = split_translated_list(&resolve(json.get("enumValues").and_then(Value::as_str).unwrap_or("")));
+    let raws = split_translated_list(&resolve(
+        json.get("enumValues").and_then(Value::as_str).unwrap_or(""),
+    ));
     if labels.len() != raws.len() {
-        return Err(format!("Enum strings/values count mismatch - name: '{name}' strings: {} values: {}", labels.len(), raws.len()));
+        return Err(format!(
+            "Enum strings/values count mismatch - name: '{name}' strings: {} values: {}",
+            labels.len(),
+            raws.len()
+        ));
     }
-    Ok((labels.into_iter().zip(raws).map(|(label, raw)| EnumEntry { label, value: typed(value_type, &Value::String(raw)) }).collect(), false))
+    Ok((
+        labels
+            .into_iter()
+            .zip(raws)
+            .map(|(label, raw)| EnumEntry {
+                label,
+                value: typed(value_type, &Value::String(raw)),
+            })
+            .collect(),
+        false,
+    ))
 }
 
-pub fn from_object(json: &Map<String, Value>, defines: &BTreeMap<String, String>) -> Result<MetaData, String> {
+pub fn from_object(
+    json: &Map<String, Value>,
+    defines: &BTreeMap<String, String>,
+) -> Result<MetaData, String> {
     from_object_for(json, defines, false)
 }
 
-pub fn from_object_for(json: &Map<String, Value>, defines: &BTreeMap<String, String>, mobile: bool) -> Result<MetaData, String> {
-    let name = json.get("name").and_then(Value::as_str).ok_or("fact without a name")?.to_string();
-    let type_name = json.get("type").and_then(Value::as_str).ok_or(format!("fact {name} without a type"))?;
+pub fn from_object_for(
+    json: &Map<String, Value>,
+    defines: &BTreeMap<String, String>,
+    mobile: bool,
+) -> Result<MetaData, String> {
+    let name = json
+        .get("name")
+        .and_then(Value::as_str)
+        .ok_or("fact without a name")?
+        .to_string();
+    let type_name = json
+        .get("type")
+        .and_then(Value::as_str)
+        .ok_or(format!("fact {name} without a type"))?;
     let value_type = value_type(type_name).ok_or(format!("Unknown type {type_name}"))?;
     let (enums, bitmask) = enums(&name, json, defines, value_type)?;
     let text = |key: &str| json.get(key).and_then(Value::as_str).map(str::to_string);
-    let flag = |key: &str, fallback: bool| json.get(key).and_then(Value::as_bool).unwrap_or(fallback);
+    let flag =
+        |key: &str, fallback: bool| json.get(key).and_then(Value::as_bool).unwrap_or(fallback);
     let number = |key: &str| json.get(key).map(|v| typed(value_type, v));
     Ok(MetaData {
         bits: Vec::new(),
-        default: json.get("mobileDefault").filter(|_| mobile).or(json.get("default")).map(|v| match (v, value_type) {
-            (Value::Null, ValueType::Float | ValueType::Double) => Value::Null,
-            _ => typed(value_type, v),
-        }),
+        default: json
+            .get("mobileDefault")
+            .filter(|_| mobile)
+            .or(json.get("default"))
+            .map(|v| match (v, value_type) {
+                (Value::Null, ValueType::Float | ValueType::Double) => Value::Null,
+                _ => typed(value_type, v),
+            }),
         min: number("min"),
         max: number("max"),
         increment: json.get("increment").and_then(Value::as_f64),
@@ -206,10 +322,16 @@ pub fn from_object_for(json: &Map<String, Value>, defines: &BTreeMap<String, Str
 
 type Parsed = Arc<Result<BTreeMap<String, MetaData>, String>>;
 
-static PARSED: LazyLock<Mutex<HashMap<(usize, usize), Parsed>>> = LazyLock::new(|| Mutex::new(HashMap::new()));
+static PARSED: LazyLock<Mutex<HashMap<(usize, usize), Parsed>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
 
 pub fn parsed(text: &'static str) -> Parsed {
-    PARSED.lock().unwrap_or_else(PoisonError::into_inner).entry((text.as_ptr() as usize, text.len())).or_insert_with(|| Arc::new(from_file(text))).clone()
+    PARSED
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .entry((text.as_ptr() as usize, text.len()))
+        .or_insert_with(|| Arc::new(from_file(text)))
+        .clone()
 }
 
 pub fn fact(text: &'static str, name: &str) -> Option<MetaData> {
@@ -223,17 +345,23 @@ pub fn from_file(text: &str) -> Result<BTreeMap<String, MetaData>, String> {
 pub fn from_file_for(text: &str, mobile: bool) -> Result<BTreeMap<String, MetaData>, String> {
     let root: Value = serde_json::from_str(text).map_err(|e| format!("not JSON: {e}"))?;
     let defines = defines(&root);
-    let facts = root.get(FACTS_KEY).and_then(Value::as_array).ok_or(format!("no {FACTS_KEY} array"))?;
-    facts.iter().filter_map(Value::as_object).try_fold(BTreeMap::new(), |mut map, object| {
-        let meta = from_object_for(object, &defines, mobile)?;
-        match map.contains_key(&meta.name) {
-            true => Err(format!("Duplicate fact name: {}", meta.name)),
-            false => {
-                map.insert(meta.name.clone(), meta);
-                Ok(map)
+    let facts = root
+        .get(FACTS_KEY)
+        .and_then(Value::as_array)
+        .ok_or(format!("no {FACTS_KEY} array"))?;
+    facts
+        .iter()
+        .filter_map(Value::as_object)
+        .try_fold(BTreeMap::new(), |mut map, object| {
+            let meta = from_object_for(object, &defines, mobile)?;
+            match map.contains_key(&meta.name) {
+                true => Err(format!("Duplicate fact name: {}", meta.name)),
+                false => {
+                    map.insert(meta.name.clone(), meta);
+                    Ok(map)
+                }
             }
-        }
-    })
+        })
 }
 
 #[cfg(test)]
@@ -247,13 +375,18 @@ mod tests {
                 let name = path.file_name().unwrap().to_string_lossy().to_string();
                 if path.is_dir() {
                     walk(&path, out);
-                } else if name.ends_with(".SettingsGroup.json") || name.ends_with(".FactMetaData.json") {
+                } else if name.ends_with(".SettingsGroup.json")
+                    || name.ends_with(".FactMetaData.json")
+                {
                     out.push(path);
                 }
             }
         }
         let mut out = Vec::new();
-        walk(std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../src")), &mut out);
+        walk(
+            std::path::Path::new(concat!(env!("CARGO_MANIFEST_DIR"), "/../src")),
+            &mut out,
+        );
         out
     }
 
@@ -261,7 +394,10 @@ mod tests {
     fn a_metadata_file_is_parsed_once_and_answers_like_a_fresh_parse() {
         const FILE: &str = r#"{"version":1,"fileType":"FactMetaData","QGC.MetaData.Facts":[{"name":"Speed","type":"double","default":5}]}"#;
         assert!(Arc::ptr_eq(&parsed(FILE), &parsed(FILE)));
-        assert_eq!(fact(FILE, "Speed"), from_file(FILE).unwrap().remove("Speed"));
+        assert_eq!(
+            fact(FILE, "Speed"),
+            from_file(FILE).unwrap().remove("Speed")
+        );
         assert_eq!(fact(FILE, "Missing"), None);
     }
 
@@ -269,44 +405,121 @@ mod tests {
     fn every_bundled_metadata_file_loads_with_unique_names() {
         let files = files();
         assert!(files.len() >= 38, "found {} files", files.len());
-        let loaded: Vec<(String, Result<BTreeMap<String, MetaData>, String>)> = files.iter().map(|p| (p.display().to_string(), from_file(&std::fs::read_to_string(p).unwrap()))).collect();
-        let failures: Vec<&(String, Result<_, _>)> = loaded.iter().filter(|(_, r)| r.is_err()).collect();
+        let loaded: Vec<(String, Result<BTreeMap<String, MetaData>, String>)> = files
+            .iter()
+            .map(|p| {
+                (
+                    p.display().to_string(),
+                    from_file(&std::fs::read_to_string(p).unwrap()),
+                )
+            })
+            .collect();
+        let failures: Vec<&(String, Result<_, _>)> =
+            loaded.iter().filter(|(_, r)| r.is_err()).collect();
         assert!(failures.is_empty(), "{failures:?}");
         assert!(loaded.iter().all(|(_, r)| !r.as_ref().unwrap().is_empty()));
     }
 
     #[test]
     fn the_app_settings_carry_typed_enums_defaults_and_bounds() {
-        let app = from_file(&std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../src/Settings/App.SettingsGroup.json")).unwrap()).unwrap();
+        let app = from_file(
+            &std::fs::read_to_string(concat!(
+                env!("CARGO_MANIFEST_DIR"),
+                "/../src/Settings/App.SettingsGroup.json"
+            ))
+            .unwrap(),
+        )
+        .unwrap();
         let firmware = &app["offlineEditingFirmwareClass"];
         assert_eq!(firmware.value_type, ValueType::Uint32);
-        assert_eq!(firmware.enums.iter().map(|e| e.value.as_i64().unwrap()).collect::<Vec<_>>(), vec![3, 12, 0]);
+        assert_eq!(
+            firmware
+                .enums
+                .iter()
+                .map(|e| e.value.as_i64().unwrap())
+                .collect::<Vec<_>>(),
+            vec![3, 12, 0]
+        );
         assert_eq!(firmware.enums[1].label, "PX4 Pro");
         assert_eq!(firmware.default, Some(Value::from(12)));
         let cruise = &app["offlineEditingCruiseSpeed"];
-        assert_eq!((cruise.value_type, cruise.units.as_deref(), cruise.decimal_places), (ValueType::Double, Some("m/s"), Some(1)));
-        assert_eq!((cruise.min.clone(), cruise.default.clone()), (Some(Value::from(1.0)), Some(Value::from(15.0))));
+        assert_eq!(
+            (
+                cruise.value_type,
+                cruise.units.as_deref(),
+                cruise.decimal_places
+            ),
+            (ValueType::Double, Some("m/s"), Some(1))
+        );
+        assert_eq!(
+            (cruise.min.clone(), cruise.default.clone()),
+            (Some(Value::from(1.0)), Some(Value::from(15.0)))
+        );
         assert!(cruise.has_control && !cruise.qgc_reboot_required);
     }
 
     #[test]
     fn enum_values_come_from_defines_and_mismatches_are_refused() {
-        let defines = BTreeMap::from([(format!("{DEFINES_KEY}.Modes"), "A, B".to_string()), (format!("{DEFINES_KEY}.ModeValues"), "1，2".to_string())]);
+        let defines = BTreeMap::from([
+            (format!("{DEFINES_KEY}.Modes"), "A, B".to_string()),
+            (format!("{DEFINES_KEY}.ModeValues"), "1，2".to_string()),
+        ]);
         let object: Map<String, Value> = serde_json::from_str(&format!(r#"{{"name":"m","type":"Uint8","enumStrings":"{DEFINES_KEY}.Modes","enumValues":"{DEFINES_KEY}.ModeValues","default":"2"}}"#)).unwrap();
         let meta = from_object(&object, &defines).unwrap();
-        assert_eq!(meta.enums, vec![EnumEntry { label: "A".into(), value: Value::from(1) }, EnumEntry { label: "B".into(), value: Value::from(2) }]);
+        assert_eq!(
+            meta.enums,
+            vec![
+                EnumEntry {
+                    label: "A".into(),
+                    value: Value::from(1)
+                },
+                EnumEntry {
+                    label: "B".into(),
+                    value: Value::from(2)
+                }
+            ]
+        );
         assert_eq!(meta.default, Some(Value::from(2)));
-        let broken: Map<String, Value> = serde_json::from_str(r#"{"name":"m","type":"uint8","enumStrings":"A,B","enumValues":"1"}"#).unwrap();
-        assert!(from_object(&broken, &defines).unwrap_err().contains("count mismatch"));
-        let unknown: Map<String, Value> = serde_json::from_str(r#"{"name":"m","type":"quad"}"#).unwrap();
-        assert_eq!(from_object(&unknown, &defines).unwrap_err(), "Unknown type quad");
+        let broken: Map<String, Value> = serde_json::from_str(
+            r#"{"name":"m","type":"uint8","enumStrings":"A,B","enumValues":"1"}"#,
+        )
+        .unwrap();
+        assert!(
+            from_object(&broken, &defines)
+                .unwrap_err()
+                .contains("count mismatch")
+        );
+        let unknown: Map<String, Value> =
+            serde_json::from_str(r#"{"name":"m","type":"quad"}"#).unwrap();
+        assert_eq!(
+            from_object(&unknown, &defines).unwrap_err(),
+            "Unknown type quad"
+        );
         let bits: Map<String, Value> = serde_json::from_str(r#"{"name":"b","type":"uint32","bitmask":[{"index":0,"description":"one"},{"index":3,"description":"eight"}]}"#).unwrap();
-        let wild: Map<String, Value> = serde_json::from_str(r#"{"name":"b","type":"uint32","bitmask":[{"index":64,"description":"far"}]}"#).unwrap();
+        let wild: Map<String, Value> = serde_json::from_str(
+            r#"{"name":"b","type":"uint32","bitmask":[{"index":64,"description":"far"}]}"#,
+        )
+        .unwrap();
         assert!(from_object(&wild, &defines).is_err());
-        let mobile: Map<String, Value> = serde_json::from_str(r#"{"name":"m","type":"bool","default":"false","mobileDefault":"true"}"#).unwrap();
-        assert_eq!((from_object(&mobile, &defines).unwrap().default, from_object_for(&mobile, &defines, true).unwrap().default), (Some(Value::Bool(false)), Some(Value::Bool(true))));
+        let mobile: Map<String, Value> = serde_json::from_str(
+            r#"{"name":"m","type":"bool","default":"false","mobileDefault":"true"}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            (
+                from_object(&mobile, &defines).unwrap().default,
+                from_object_for(&mobile, &defines, true).unwrap().default
+            ),
+            (Some(Value::Bool(false)), Some(Value::Bool(true)))
+        );
         let meta = from_object(&bits, &defines).unwrap();
         assert!(meta.bitmask);
-        assert_eq!(meta.enums.iter().map(|e| e.value.as_i64().unwrap()).collect::<Vec<_>>(), vec![1, 8]);
+        assert_eq!(
+            meta.enums
+                .iter()
+                .map(|e| e.value.as_i64().unwrap())
+                .collect::<Vec<_>>(),
+            vec![1, 8]
+        );
     }
 }

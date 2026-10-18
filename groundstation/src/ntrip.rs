@@ -51,7 +51,9 @@ impl Config {
             _ if self.host.is_empty() => Some("No host address"),
             _ if self.port == 0 => Some("Invalid port"),
             _ if control(&self.host) => Some("Invalid host (contains control characters)"),
-            _ if control(&self.mountpoint) => Some("Invalid mountpoint name (contains control characters)"),
+            _ if control(&self.mountpoint) => {
+                Some("Invalid mountpoint name (contains control characters)")
+            }
             _ if self.username.contains(':') => Some("Invalid username (must not contain ':')"),
             _ => None,
         }
@@ -59,7 +61,13 @@ impl Config {
 
     pub fn request(&self) -> Vec<u8> {
         let auth = (!self.username.is_empty() || !self.password.is_empty())
-            .then(|| format!("Authorization: Basic {}\r\n", base64::engine::general_purpose::STANDARD.encode(format!("{}:{}", self.username, self.password))))
+            .then(|| {
+                format!(
+                    "Authorization: Basic {}\r\n",
+                    base64::engine::general_purpose::STANDARD
+                        .encode(format!("{}:{}", self.username, self.password))
+                )
+            })
             .unwrap_or_default();
         format!("GET /{} HTTP/1.1\r\nHost: {}\r\nNtrip-Version: Ntrip/2.0\r\nUser-Agent: NTRIP QGroundControl/1.0\r\n{auth}\r\n", self.mountpoint, self.host).into_bytes()
     }
@@ -70,7 +78,10 @@ impl Config {
 }
 
 pub fn parse_whitelist(csv: &str) -> Vec<u16> {
-    csv.split(',').filter_map(|token| token.trim().parse::<u16>().ok()).filter(|id| *id > 0).collect()
+    csv.split(',')
+        .filter_map(|token| token.trim().parse::<u16>().ok())
+        .filter(|id| *id > 0)
+        .collect()
 }
 
 #[derive(Debug, PartialEq)]
@@ -93,42 +104,87 @@ fn find(haystack: &[u8], needle: &[u8]) -> Option<usize> {
 }
 
 fn without_tags(body: &str) -> String {
-    let stripped: String = body.chars().take(500).fold((String::new(), false), |(out, tag), c| match (c, tag) {
-        ('<', _) => (out, true),
-        ('>', true) => (out, false),
-        (_, true) => (out, true),
-        (c, false) => (out + &c.to_string(), false),
-    }).0;
-    stripped.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(200).collect()
+    let stripped: String = body
+        .chars()
+        .take(500)
+        .fold((String::new(), false), |(out, tag), c| match (c, tag) {
+            ('<', _) => (out, true),
+            ('>', true) => (out, false),
+            (_, true) => (out, true),
+            (c, false) => (out + &c.to_string(), false),
+        })
+        .0;
+    stripped
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .chars()
+        .take(200)
+        .collect()
 }
 
 pub fn response(buffer: &[u8]) -> Response {
     let Some(end) = find(buffer, b"\r\n\r\n") else {
         let icy = find(buffer, b"\r\n").and_then(|at| {
             let line = String::from_utf8_lossy(&buffer[..at]).to_string();
-            line.to_ascii_uppercase().starts_with("ICY ").then(|| status_line(&line)).flatten().filter(|(code, _)| (200..300).contains(code)).map(|_| at)
+            line.to_ascii_uppercase()
+                .starts_with("ICY ")
+                .then(|| status_line(&line))
+                .flatten()
+                .filter(|(code, _)| (200..300).contains(code))
+                .map(|_| at)
         });
         return match (icy, buffer.len() >= MAX_HTTP_HEADER_BYTES) {
             (Some(at), _) => Response::Connected(buffer[at + 2..].to_vec()),
-            (None, true) => Response::Failed { fatal: false, message: "HTTP response header too large".to_string() },
+            (None, true) => Response::Failed {
+                fatal: false,
+                message: "HTTP response header too large".to_string(),
+            },
             (None, false) => Response::Pending,
         };
     };
     let header = String::from_utf8_lossy(&buffer[..end]).to_string();
-    let Some((code, reason)) = header.split('\n').find_map(status_line) else { return Response::Failed { fatal: false, message: "Invalid HTTP response from caster".to_string() } };
+    let Some((code, reason)) = header.split('\n').find_map(status_line) else {
+        return Response::Failed {
+            fatal: false,
+            message: "Invalid HTTP response from caster".to_string(),
+        };
+    };
     if (200..300).contains(&code) {
         return Response::Connected(buffer[end + 4..].to_vec());
     }
     if code == 401 {
-        return Response::Failed { fatal: true, message: "Authentication failed (401): check username and password".to_string() };
+        return Response::Failed {
+            fatal: true,
+            message: "Authentication failed (401): check username and password".to_string(),
+        };
     }
     let body = without_tags(String::from_utf8_lossy(&buffer[end + 4..]).trim());
-    let base = if reason.is_empty() { format!("HTTP {code}") } else { format!("HTTP {code}: {reason}") };
-    Response::Failed { fatal: false, message: if body.is_empty() { base } else { format!("{base} — {body}") } }
+    let base = if reason.is_empty() {
+        format!("HTTP {code}")
+    } else {
+        format!("HTTP {code}: {reason}")
+    };
+    Response::Failed {
+        fatal: false,
+        message: if body.is_empty() {
+            base
+        } else {
+            format!("{base} — {body}")
+        },
+    }
 }
 
 pub fn crc24q(data: &[u8]) -> u32 {
-    data.iter().fold(0u32, |crc, byte| (0..8).fold(crc ^ (u32::from(*byte) << 16), |crc, _| if (crc << 1) & 0x100_0000 != 0 { (crc << 1) ^ CRC24Q_POLY } else { crc << 1 })) & 0xFF_FFFF
+    data.iter().fold(0u32, |crc, byte| {
+        (0..8).fold(crc ^ (u32::from(*byte) << 16), |crc, _| {
+            if (crc << 1) & 0x100_0000 != 0 {
+                (crc << 1) ^ CRC24Q_POLY
+            } else {
+                crc << 1
+            }
+        })
+    }) & 0xFF_FFFF
 }
 
 #[derive(Debug, PartialEq)]
@@ -168,9 +224,18 @@ impl Framer {
             return None;
         }
         let frame: Vec<u8> = self.pending.drain(..total).collect();
-        let received = (u32::from(frame[total - 3]) << 16) | (u32::from(frame[total - 2]) << 8) | u32::from(frame[total - 1]);
-        let id = if length >= 2 { ((u16::from(frame[3]) << 4) | (u16::from(frame[4]) >> 4)) & 0xFFF } else { 0 };
-        Some((crc24q(&frame[..total - RTCM_CRC_BYTES]) == received).then_some(Frame { id, bytes: frame }))
+        let received = (u32::from(frame[total - 3]) << 16)
+            | (u32::from(frame[total - 2]) << 8)
+            | u32::from(frame[total - 1]);
+        let id = if length >= 2 {
+            ((u16::from(frame[3]) << 4) | (u16::from(frame[4]) >> 4)) & 0xFFF
+        } else {
+            0
+        };
+        Some(
+            (crc24q(&frame[..total - RTCM_CRC_BYTES]) == received)
+                .then_some(Frame { id, bytes: frame }),
+        )
     }
 }
 
@@ -265,7 +330,11 @@ impl Ntrip {
             self.gga_source = "";
         }
         self.status = status;
-        self.message = if detail.is_empty() { status.default_message().to_string() } else { detail.to_string() };
+        self.message = if detail.is_empty() {
+            status.default_message().to_string()
+        } else {
+            detail.to_string()
+        };
     }
 
     pub fn retarget(&mut self, wanted: Option<Config>) -> Option<(Config, u64)> {
@@ -326,10 +395,16 @@ impl Ntrip {
         let backoff = (MIN_RECONNECT_MS << self.attempts.min(5)).min(MAX_RECONNECT_MS);
         self.attempts += 1;
         if self.attempts > MAX_RECONNECT_ATTEMPTS {
-            self.enter(Status::Error, &format!("Gave up after {MAX_RECONNECT_ATTEMPTS} reconnect attempts"));
+            self.enter(
+                Status::Error,
+                &format!("Gave up after {MAX_RECONNECT_ATTEMPTS} reconnect attempts"),
+            );
             return None;
         }
-        self.enter(Status::Reconnecting, &format!("Reconnecting in {}s: {detail}", backoff / 1000));
+        self.enter(
+            Status::Reconnecting,
+            &format!("Reconnecting in {}s: {detail}", backoff / 1000),
+        );
         Some(backoff)
     }
 
@@ -351,7 +426,11 @@ impl Ntrip {
     }
 
     pub fn accept(&mut self, generation: u64, frame: &Frame, now_ms: u64) -> bool {
-        let wanted = generation == self.generation && self.config.as_ref().is_some_and(|c| c.whitelist.is_empty() || c.whitelist.contains(&frame.id));
+        let wanted = generation == self.generation
+            && self
+                .config
+                .as_ref()
+                .is_some_and(|c| c.whitelist.is_empty() || c.whitelist.contains(&frame.id));
         if wanted {
             self.messages += 1;
             *self.counts.entry(frame.id).or_default() += 1;
@@ -397,11 +476,16 @@ pub fn lock() -> MutexGuard<'static, Ntrip> {
 }
 
 fn setting(name: &str) -> Value {
-    crate::settingsstore::raw_setting(&format!("settings.ntripSettings.{name}")).unwrap_or(Value::Null)
+    crate::settingsstore::raw_setting(&format!("settings.ntripSettings.{name}"))
+        .unwrap_or(Value::Null)
 }
 
 fn text(name: &str) -> String {
-    setting(name).as_str().unwrap_or_default().trim().to_string()
+    setting(name)
+        .as_str()
+        .unwrap_or_default()
+        .trim()
+        .to_string()
 }
 
 fn truthy(name: &str) -> bool {
@@ -420,9 +504,18 @@ pub fn configured() -> Option<Config> {
 fn from_settings() -> Config {
     Config {
         host: text("ntripServerHostAddress"),
-        port: setting("ntripServerPort").as_f64().filter(|p| (1.0..=65535.0).contains(p)).map_or(0, |p| p as u16),
-        username: setting("ntripUsername").as_str().unwrap_or_default().to_string(),
-        password: setting("ntripPassword").as_str().unwrap_or_default().to_string(),
+        port: setting("ntripServerPort")
+            .as_f64()
+            .filter(|p| (1.0..=65535.0).contains(p))
+            .map_or(0, |p| p as u16),
+        username: setting("ntripUsername")
+            .as_str()
+            .unwrap_or_default()
+            .to_string(),
+        password: setting("ntripPassword")
+            .as_str()
+            .unwrap_or_default()
+            .to_string(),
         mountpoint: text("ntripMountpoint"),
         whitelist: parse_whitelist(&text("ntripWhitelist")),
         use_tls: truthy("ntripUseTls"),
@@ -431,9 +524,12 @@ fn from_settings() -> Config {
 }
 
 fn udp_target() -> Option<String> {
-    let port = setting("ntripUdpTargetPort").as_f64().filter(|p| (1.0..=65535.0).contains(p))?;
+    let port = setting("ntripUdpTargetPort")
+        .as_f64()
+        .filter(|p| (1.0..=65535.0).contains(p))?;
     let host = text("ntripUdpTargetAddress");
-    (truthy("ntripUdpForwardEnabled") && !host.is_empty()).then(|| format!("{host}:{}", port as u16))
+    (truthy("ntripUdpForwardEnabled") && !host.is_empty())
+        .then(|| format!("{host}:{}", port as u16))
 }
 
 pub const FETCH_MOUNTPOINTS: &str = "ntrip.fetchMountpoints";
@@ -455,7 +551,11 @@ pub struct Mountpoint {
 }
 
 fn coordinate_field(text: &str, limit: f64) -> f64 {
-    text.trim().parse::<f64>().ok().filter(|v| v.is_finite() && v.abs() <= limit).unwrap_or(0.0)
+    text.trim()
+        .parse::<f64>()
+        .ok()
+        .filter(|v| v.is_finite() && v.abs() <= limit)
+        .unwrap_or(0.0)
 }
 
 pub fn mountpoint_line(line: &str) -> Option<Mountpoint> {
@@ -474,11 +574,25 @@ pub fn mountpoint_line(line: &str) -> Option<Mountpoint> {
 
 pub fn source_table(raw: &str, from: Option<(f64, f64)>) -> Vec<Mountpoint> {
     let located = |m: Mountpoint| match from {
-        Some((lat, lon)) if !(m.latitude == 0.0 && m.longitude == 0.0) => Mountpoint { distance_km: crate::surveygrid::distance_between((lat, lon), (m.latitude, m.longitude)) / 1000.0, ..m },
+        Some((lat, lon)) if !(m.latitude == 0.0 && m.longitude == 0.0) => Mountpoint {
+            distance_km: crate::surveygrid::distance_between((lat, lon), (m.latitude, m.longitude))
+                / 1000.0,
+            ..m
+        },
         _ => m,
     };
-    let mut parsed: Vec<Mountpoint> = raw.lines().map(str::trim).filter(|l| !l.is_empty() && !l.starts_with("ENDSOURCETABLE")).filter_map(mountpoint_line).map(located).collect();
-    parsed.sort_by(|a, b| (a.distance_km < 0.0).cmp(&(b.distance_km < 0.0)).then(a.distance_km.total_cmp(&b.distance_km)));
+    let mut parsed: Vec<Mountpoint> = raw
+        .lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with("ENDSOURCETABLE"))
+        .filter_map(mountpoint_line)
+        .map(located)
+        .collect();
+    parsed.sort_by(|a, b| {
+        (a.distance_km < 0.0)
+            .cmp(&(b.distance_km < 0.0))
+            .then(a.distance_km.total_cmp(&b.distance_km))
+    });
     parsed
 }
 
@@ -512,12 +626,19 @@ fn browser() -> MutexGuard<'static, Browser> {
 }
 
 fn caster_key(config: &Config) -> (String, u16, String, String, bool) {
-    (config.host.clone(), config.port, config.username.clone(), config.password.clone(), config.use_tls)
+    (
+        config.host.clone(),
+        config.port,
+        config.username.clone(),
+        config.password.clone(),
+        config.use_tls,
+    )
 }
 
-
 fn vehicle_coordinate() -> Option<(f64, f64)> {
-    crate::hub::lock().active().and_then(|v| v.facts.coordinate.map(|(lat, lon, _)| (lat, lon)))
+    crate::hub::lock()
+        .active()
+        .and_then(|v| v.facts.coordinate.map(|(lat, lon, _)| (lat, lon)))
 }
 
 pub fn fetch_mountpoints() -> Value {
@@ -527,14 +648,27 @@ pub fn fetch_mountpoints() -> Value {
     {
         let mut browser = browser();
         let same = browser.key.as_ref() == Some(&key);
-        if same && (browser.fetching || (!browser.mountpoints.is_empty() && browser.fetched_at_ms.is_some_and(|at| now_ms.saturating_sub(at) < SOURCE_TABLE_TTL_MS))) {
+        if same
+            && (browser.fetching
+                || (!browser.mountpoints.is_empty()
+                    && browser
+                        .fetched_at_ms
+                        .is_some_and(|at| now_ms.saturating_sub(at) < SOURCE_TABLE_TTL_MS)))
+        {
             return json!({ "ok": true });
         }
         if let Some(reason) = config.validation_error() {
-            *browser = Browser { error: reason.to_string(), ..Browser::default() };
+            *browser = Browser {
+                error: reason.to_string(),
+                ..Browser::default()
+            };
             return json!({ "ok": true });
         }
-        *browser = Browser { fetching: true, key: Some(key.clone()), ..Browser::default() };
+        *browser = Browser {
+            fetching: true,
+            key: Some(key.clone()),
+            ..Browser::default()
+        };
     }
     let from = vehicle_coordinate();
     let finish = move |fetched: Result<String, String>| {
@@ -556,26 +690,48 @@ pub fn fetch_mountpoints() -> Value {
         }
     };
     if let Err(error) = fetch_source_table(config, finish) {
-        *browser() = Browser { error: format!("Could not start the source table download: {error}"), ..Browser::default() };
+        *browser() = Browser {
+            error: format!("Could not start the source table download: {error}"),
+            ..Browser::default()
+        };
     }
     json!({ "ok": true })
 }
 
 #[cfg(not(target_family = "wasm"))]
-fn fetch_source_table(config: Config, finish: impl FnOnce(Result<String, String>) + Send + 'static) -> std::io::Result<()> {
-    std::thread::Builder::new().name("groundstation-ntrip-sourcetable".to_string()).spawn(move || finish(download_source_table(&config))).map(drop)
+fn fetch_source_table(
+    config: Config,
+    finish: impl FnOnce(Result<String, String>) + Send + 'static,
+) -> std::io::Result<()> {
+    std::thread::Builder::new()
+        .name("groundstation-ntrip-sourcetable".to_string())
+        .spawn(move || finish(download_source_table(&config)))
+        .map(drop)
 }
 
 #[cfg(target_family = "wasm")]
-fn fetch_source_table(config: Config, finish: impl FnOnce(Result<String, String>) + Send + 'static) -> std::io::Result<()> {
+fn fetch_source_table(
+    config: Config,
+    finish: impl FnOnce(Result<String, String>) + Send + 'static,
+) -> std::io::Result<()> {
     let mut table = relayed::SourceTable::new(&config, finish);
-    crate::background::poll("ntrip-sourcetable", relayed::STEP, move || table.step(web_time::Instant::now()))
+    crate::background::poll("ntrip-sourcetable", relayed::STEP, move || {
+        table.step(web_time::Instant::now())
+    })
 }
 
 pub fn select_mountpoint(backend: &dyn Backend, args: &str) -> Value {
-    match serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0)?.as_str().map(str::to_string)) {
-        Some(mountpoint) => object(&backend.set("settings.ntripSettings.ntripMountpoint", &json!({ "value": mountpoint }).to_string())),
-        None => json!({ "ok": false, "reason": "ntrip.selectMountpoint takes the mountpoint name" }),
+    match serde_json::from_str::<Value>(args)
+        .ok()
+        .and_then(|a| a.get(0)?.as_str().map(str::to_string))
+    {
+        Some(mountpoint) => object(&backend.set(
+            "settings.ntripSettings.ntripMountpoint",
+            &json!({ "value": mountpoint }).to_string(),
+        )),
+        None => {
+            json!({ "ok": false, "reason": "ntrip.selectMountpoint takes the mountpoint name" })
+        }
     }
 }
 
@@ -607,7 +763,9 @@ fn udp_input() -> MutexGuard<'static, UdpInput> {
 }
 
 fn udp_input_wanted() -> Option<(u16, bool)> {
-    let port = setting("rtcmUdpInputPort").as_f64().filter(|p| (1.0..=65535.0).contains(p))? as u16;
+    let port = setting("rtcmUdpInputPort")
+        .as_f64()
+        .filter(|p| (1.0..=65535.0).contains(p))? as u16;
     truthy("rtcmUdpInputEnabled").then_some((port, truthy("rtcmUdpValidate")))
 }
 
@@ -620,7 +778,11 @@ pub fn inject(rtcm: &[u8]) {
 
 pub fn datagram_frames(framer: &mut Framer, datagram: &[u8], validate: bool) -> Vec<Vec<u8>> {
     match validate {
-        true => framer.push(datagram).into_iter().map(|frame| frame.bytes).collect(),
+        true => framer
+            .push(datagram)
+            .into_iter()
+            .map(|frame| frame.bytes)
+            .collect(),
         false => vec![datagram.to_vec()],
     }
 }
@@ -642,7 +804,12 @@ fn listen(port: u16, validate: bool, generation: u64) {
     let lost = crate::udplink::receive_until_lost(
         || udp_input().generation == generation,
         |buffer| socket.recv_from(buffer),
-        |datagram, _| datagram_frames(&mut framer, datagram, validate).iter().filter(|rtcm| !rtcm.is_empty()).for_each(|rtcm| inject(rtcm)),
+        |datagram, _| {
+            datagram_frames(&mut framer, datagram, validate)
+                .iter()
+                .filter(|rtcm| !rtcm.is_empty())
+                .for_each(|rtcm| inject(rtcm))
+        },
     );
     if let Some(error) = lost {
         log::warn!("UDP RTCM input on port {port} lost its socket: {error}");
@@ -675,12 +842,18 @@ fn sync_udp_input() {
 
 #[cfg(not(target_family = "wasm"))]
 fn start_udp_input(port: u16, validate: bool, generation: u64) -> std::io::Result<()> {
-    std::thread::Builder::new().name("groundstation-rtcm-udp".to_string()).spawn(move || listen(port, validate, generation)).map(drop)
+    std::thread::Builder::new()
+        .name("groundstation-rtcm-udp".to_string())
+        .spawn(move || listen(port, validate, generation))
+        .map(drop)
 }
 
 #[cfg(target_family = "wasm")]
 fn start_udp_input(port: u16, validate: bool, generation: u64) -> std::io::Result<()> {
-    crate::hostsocket::follow("rtcm-udp", relayed::udp_input_follower(port, validate, generation))
+    crate::hostsocket::follow(
+        "rtcm-udp",
+        relayed::udp_input_follower(port, validate, generation),
+    )
 }
 
 pub fn sync() {
@@ -701,13 +874,18 @@ pub fn sync() {
 
 #[cfg(not(target_family = "wasm"))]
 fn start_session(config: Config, generation: u64) -> std::io::Result<()> {
-    std::thread::Builder::new().name("groundstation-ntrip".to_string()).spawn(move || follow(config, generation)).map(drop)
+    std::thread::Builder::new()
+        .name("groundstation-ntrip".to_string())
+        .spawn(move || follow(config, generation))
+        .map(drop)
 }
 
 #[cfg(target_family = "wasm")]
 fn start_session(config: Config, generation: u64) -> std::io::Result<()> {
     let mut session = relayed::Session::new(config, generation);
-    crate::background::poll("ntrip", relayed::STEP, move || session.step(web_time::Instant::now()))
+    crate::background::poll("ntrip", relayed::STEP, move || {
+        session.step(web_time::Instant::now())
+    })
 }
 
 #[cfg(not(target_family = "wasm"))]
@@ -723,23 +901,28 @@ use caster::{download_source_table, open};
 #[cfg(any(target_family = "wasm", test))]
 mod relayed;
 
-
 fn forward(generation: u64, framer: &mut Framer, bytes: &[u8], to_udp: &dyn Fn(&[u8])) -> bool {
     let now_ms = crate::hub::now_ms();
     if !lock().received(generation, bytes.len(), now_ms) {
         return false;
     }
-    framer.push(bytes).iter().filter(|frame| lock().accept(generation, frame, now_ms)).for_each(|frame| {
-        to_udp(&frame.bytes);
-        inject(&frame.bytes);
-    });
+    framer
+        .push(bytes)
+        .iter()
+        .filter(|frame| lock().accept(generation, frame, now_ms))
+        .for_each(|frame| {
+            to_udp(&frame.bytes);
+            inject(&frame.bytes);
+        });
     true
 }
 
 #[cfg(not(target_family = "wasm"))]
 fn udp_forwarder() -> impl Fn(&[u8]) {
     let target = lock().udp_target.clone();
-    let udp = target.as_ref().and_then(|_| std::net::UdpSocket::bind("0.0.0.0:0").ok());
+    let udp = target
+        .as_ref()
+        .and_then(|_| std::net::UdpSocket::bind("0.0.0.0:0").ok());
     move |bytes| {
         if let (Some(socket), Some(target)) = (udp.as_ref(), target.as_ref())
             && let Err(e) = socket.send_to(bytes, target)
@@ -756,12 +939,20 @@ fn nmea_checksum(body: &str) -> u8 {
 fn degrees_minutes(degrees: f64, width: usize) -> String {
     let whole = degrees.abs().trunc();
     let minutes = ((degrees.abs() - whole) * 60.0 * 10000.0 + 0.5).trunc() / 10000.0;
-    let (whole, minutes) = if minutes >= 60.0 { (whole + 1.0, minutes - 60.0) } else { (whole, minutes) };
+    let (whole, minutes) = if minutes >= 60.0 {
+        (whole + 1.0, minutes - 60.0)
+    } else {
+        (whole, minutes)
+    };
     format!("{:0width$}{:07.4}", whole as u32, minutes)
 }
 
 pub fn gga(latitude: f64, longitude: f64, altitude_msl: f64, utc: (u32, u32, u32)) -> String {
-    let altitude = if altitude_msl.is_finite() { altitude_msl } else { 0.0 };
+    let altitude = if altitude_msl.is_finite() {
+        altitude_msl
+    } else {
+        0.0
+    };
     let body = format!(
         "GPGGA,{:02}{:02}{:02},{},{},{},{},{GGA_FIX_QUALITY},{GGA_SATELLITES},1.0,{altitude:.1},M,0.0,M,,",
         utc.0,
@@ -776,15 +967,30 @@ pub fn gga(latitude: f64, longitude: f64, altitude_msl: f64, utc: (u32, u32, u32
 }
 
 fn sane(latitude: f64, longitude: f64) -> bool {
-    latitude.is_finite() && longitude.is_finite() && !(latitude == 0.0 && longitude == 0.0) && latitude.abs() <= 90.0 && longitude.abs() <= 180.0
+    latitude.is_finite()
+        && longitude.is_finite()
+        && !(latitude == 0.0 && longitude == 0.0)
+        && latitude.abs() <= 90.0
+        && longitude.abs() <= 180.0
 }
 
-const GGA_SOURCES: [(u8, &str); 4] = [(1, "Vehicle GPS"), (2, "Vehicle EKF"), (3, "RTK Base"), (4, "GCS Position")];
+const GGA_SOURCES: [(u8, &str); 4] = [
+    (1, "Vehicle GPS"),
+    (2, "Vehicle EKF"),
+    (3, "RTK Base"),
+    (4, "GCS Position"),
+];
 
 fn position_from(source: u8) -> Option<(f64, f64, f64)> {
     let found = match source {
-        1 => crate::hub::lock().active().and_then(|v| Some((v.gps.latitude?, v.gps.longitude?, v.facts.altitude_amsl))),
-        2 => crate::hub::lock().active().and_then(|v| v.facts.coordinate.map(|(lat, lon, _)| (lat, lon, v.facts.altitude_amsl))),
+        1 => crate::hub::lock()
+            .active()
+            .and_then(|v| Some((v.gps.latitude?, v.gps.longitude?, v.facts.altitude_amsl))),
+        2 => crate::hub::lock().active().and_then(|v| {
+            v.facts
+                .coordinate
+                .map(|(lat, lon, _)| (lat, lon, v.facts.altitude_amsl))
+        }),
         3 => crate::rtkbase::surveyed_position(),
         4 => match crate::gcsposition::lock().coordinate() {
             (Some(lat), Some(lon), alt) => Some((lat, lon, alt.unwrap_or(0.0))),
@@ -797,8 +1003,13 @@ fn position_from(source: u8) -> Option<(f64, f64, f64)> {
 
 pub fn gga_position(source: u8) -> Option<((f64, f64, f64), &'static str)> {
     match source {
-        0 => GGA_SOURCES.iter().find_map(|(id, name)| position_from(*id).map(|p| (p, *name))),
-        id => GGA_SOURCES.iter().find(|(s, _)| *s == id).and_then(|(id, name)| position_from(*id).map(|p| (p, *name))),
+        0 => GGA_SOURCES
+            .iter()
+            .find_map(|(id, name)| position_from(*id).map(|p| (p, *name))),
+        id => GGA_SOURCES
+            .iter()
+            .find(|(s, _)| *s == id)
+            .and_then(|(id, name)| position_from(*id).map(|p| (p, *name))),
     }
 }
 
@@ -823,17 +1034,33 @@ impl GgaSchedule {
     pub fn missed(&mut self, now_ms: u64, interval_ms: u64) {
         self.misses += 1;
         self.settled = self.settled || self.misses >= GGA_FAST_RETRIES;
-        self.next_ms = now_ms + if self.settled { interval_ms } else { GGA_FAST_RETRY_MS };
+        self.next_ms = now_ms
+            + if self.settled {
+                interval_ms
+            } else {
+                GGA_FAST_RETRY_MS
+            };
     }
 }
 
-fn send_gga(write: &mut dyn FnMut(&[u8]) -> Result<(), String>, schedule: &mut GgaSchedule, generation: u64) -> Result<(), String> {
+fn send_gga(
+    write: &mut dyn FnMut(&[u8]) -> Result<(), String>,
+    schedule: &mut GgaSchedule,
+    generation: u64,
+) -> Result<(), String> {
     let now_ms = crate::hub::now_ms();
     if !schedule.due(now_ms) {
         return Ok(());
     }
-    let interval_ms = setting("ntripGgaIntervalSec").as_u64().filter(|s| *s > 0).unwrap_or(GGA_DEFAULT_INTERVAL_SEC) * 1000;
-    let source = setting("ntripGgaPositionSource").as_u64().and_then(|s| u8::try_from(s).ok()).unwrap_or(0);
+    let interval_ms = setting("ntripGgaIntervalSec")
+        .as_u64()
+        .filter(|s| *s > 0)
+        .unwrap_or(GGA_DEFAULT_INTERVAL_SEC)
+        * 1000;
+    let source = setting("ntripGgaPositionSource")
+        .as_u64()
+        .and_then(|s| u8::try_from(s).ok())
+        .unwrap_or(0);
     match gga_position(source) {
         None => {
             schedule.missed(now_ms, interval_ms);
@@ -862,7 +1089,12 @@ fn session(config: &Config, generation: u64) -> (bool, String) {
     let mut header = Vec::new();
     let mut chunk = [0u8; 4096];
     let mut quiet = Duration::ZERO;
-    let timed_out = |e: &std::io::Error| matches!(e.kind(), std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut);
+    let timed_out = |e: &std::io::Error| {
+        matches!(
+            e.kind(),
+            std::io::ErrorKind::WouldBlock | std::io::ErrorKind::TimedOut
+        )
+    };
     let watchdog = format!("No data received for {} seconds", DATA_WATCHDOG.as_secs());
     let rest = loop {
         match stream.read(&mut chunk) {
@@ -890,14 +1122,22 @@ fn session(config: &Config, generation: u64) -> (bool, String) {
     let mut schedule = GgaSchedule::default();
     let mut quiet = Duration::ZERO;
     loop {
-        if let Err(detail) = send_gga(&mut |bytes| stream.write_all(bytes).map_err(|e| e.to_string()), &mut schedule, generation) {
+        if let Err(detail) = send_gga(
+            &mut |bytes| stream.write_all(bytes).map_err(|e| e.to_string()),
+            &mut schedule,
+            generation,
+        ) {
             return (false, detail);
         }
         match stream.read(&mut chunk) {
             Ok(0) => return (false, "Server disconnected".to_string()),
-            Ok(n) if !forward(generation, &mut framer, &chunk[..n], &to_udp) => return (false, String::new()),
+            Ok(n) if !forward(generation, &mut framer, &chunk[..n], &to_udp) => {
+                return (false, String::new());
+            }
             Ok(_) => quiet = Duration::ZERO,
-            Err(e) if timed_out(&e) && lock().generation != generation => return (false, String::new()),
+            Err(e) if timed_out(&e) && lock().generation != generation => {
+                return (false, String::new());
+            }
             Err(e) if timed_out(&e) && quiet + READ_SLICE < DATA_WATCHDOG => quiet += READ_SLICE,
             Err(e) if timed_out(&e) => return (false, watchdog),
             Err(e) => return (false, e.to_string()),
@@ -909,7 +1149,9 @@ fn session(config: &Config, generation: u64) -> (bool, String) {
 fn follow(config: Config, generation: u64) {
     loop {
         let (fatal, detail) = session(&config, generation);
-        let Some(backoff) = lock().failed(generation, fatal, &detail) else { return };
+        let Some(backoff) = lock().failed(generation, fatal, &detail) else {
+            return;
+        };
         std::thread::sleep(Duration::from_millis(backoff));
         if !lock().reconnecting(generation) {
             return;
@@ -928,7 +1170,8 @@ pub fn ntrip_view(_backend: &dyn Backend, _args: &[String]) -> Value {
     let mut snapshot = lock().snapshot(crate::hub::now_ms());
     snapshot["browser"] = browser_json(active, has_host);
     snapshot["active"] = json!(active);
-    snapshot["buttonEnabled"] = json!(snapshot["buttonEnabled"].as_bool().unwrap_or(false) && can_connect);
+    snapshot["buttonEnabled"] =
+        json!(snapshot["buttonEnabled"].as_bool().unwrap_or(false) && can_connect);
     snapshot
 }
 
@@ -947,35 +1190,101 @@ mod tests {
     }
 
     fn config() -> Config {
-        Config { host: "caster.example".into(), port: 2101, username: "user".into(), password: "pass".into(), mountpoint: "MOUNT".into(), whitelist: vec![], use_tls: false, allow_self_signed: false }
+        Config {
+            host: "caster.example".into(),
+            port: 2101,
+            username: "user".into(),
+            password: "pass".into(),
+            mountpoint: "MOUNT".into(),
+            whitelist: vec![],
+            use_tls: false,
+            allow_self_signed: false,
+        }
     }
 
     #[test]
     fn the_request_is_ntrip_two_with_basic_auth() {
         let request = String::from_utf8(config().request()).unwrap();
-        assert_eq!(request, "GET /MOUNT HTTP/1.1\r\nHost: caster.example\r\nNtrip-Version: Ntrip/2.0\r\nUser-Agent: NTRIP QGroundControl/1.0\r\nAuthorization: Basic dXNlcjpwYXNz\r\n\r\n");
+        assert_eq!(
+            request,
+            "GET /MOUNT HTTP/1.1\r\nHost: caster.example\r\nNtrip-Version: Ntrip/2.0\r\nUser-Agent: NTRIP QGroundControl/1.0\r\nAuthorization: Basic dXNlcjpwYXNz\r\n\r\n"
+        );
         assert!(config().credentials_in_clear());
-        let anonymous = Config { username: String::new(), password: String::new(), ..config() };
-        assert!(!String::from_utf8(anonymous.request()).unwrap().contains("Authorization"));
+        let anonymous = Config {
+            username: String::new(),
+            password: String::new(),
+            ..config()
+        };
+        assert!(
+            !String::from_utf8(anonymous.request())
+                .unwrap()
+                .contains("Authorization")
+        );
     }
 
     #[test]
     fn the_config_is_refused_before_any_socket_opens() {
-        assert_eq!(Config { host: String::new(), ..config() }.validation_error(), Some("No host address"));
-        assert_eq!(Config { port: 0, ..config() }.validation_error(), Some("Invalid port"));
-        assert_eq!(Config { username: "a:b".into(), ..config() }.validation_error(), Some("Invalid username (must not contain ':')"));
+        assert_eq!(
+            Config {
+                host: String::new(),
+                ..config()
+            }
+            .validation_error(),
+            Some("No host address")
+        );
+        assert_eq!(
+            Config {
+                port: 0,
+                ..config()
+            }
+            .validation_error(),
+            Some("Invalid port")
+        );
+        assert_eq!(
+            Config {
+                username: "a:b".into(),
+                ..config()
+            }
+            .validation_error(),
+            Some("Invalid username (must not contain ':')")
+        );
         assert_eq!(config().validation_error(), None);
         assert_eq!(parse_whitelist("1005, 1077,x,0,,1087"), [1005, 1077, 1087]);
     }
 
     #[test]
     fn the_caster_reply_decides_connected_retry_or_give_up() {
-        assert_eq!(response(b"HTTP/1.1 200 OK\r\nServer: x\r\n\r\n\xD3\x00"), Response::Connected(vec![0xD3, 0x00]));
-        assert_eq!(response(b"ICY 200 OK\r\n\xD3"), Response::Connected(vec![0xD3]), "a v1 caster streams straight after the status line");
+        assert_eq!(
+            response(b"HTTP/1.1 200 OK\r\nServer: x\r\n\r\n\xD3\x00"),
+            Response::Connected(vec![0xD3, 0x00])
+        );
+        assert_eq!(
+            response(b"ICY 200 OK\r\n\xD3"),
+            Response::Connected(vec![0xD3]),
+            "a v1 caster streams straight after the status line"
+        );
         assert_eq!(response(b"HTTP/1.1 200 OK\r\n"), Response::Pending);
-        assert_eq!(response(b"HTTP/1.1 401 Unauthorized\r\n\r\n"), Response::Failed { fatal: true, message: "Authentication failed (401): check username and password".into() });
-        assert_eq!(response(b"HTTP/1.1 404 Not Found\r\n\r\n<html><b>No such</b> mount</html>"), Response::Failed { fatal: false, message: "HTTP 404: Not Found — No such mount".into() });
-        assert_eq!(response(b"garbage\r\n\r\n"), Response::Failed { fatal: false, message: "Invalid HTTP response from caster".into() });
+        assert_eq!(
+            response(b"HTTP/1.1 401 Unauthorized\r\n\r\n"),
+            Response::Failed {
+                fatal: true,
+                message: "Authentication failed (401): check username and password".into()
+            }
+        );
+        assert_eq!(
+            response(b"HTTP/1.1 404 Not Found\r\n\r\n<html><b>No such</b> mount</html>"),
+            Response::Failed {
+                fatal: false,
+                message: "HTTP 404: Not Found — No such mount".into()
+            }
+        );
+        assert_eq!(
+            response(b"garbage\r\n\r\n"),
+            Response::Failed {
+                fatal: false,
+                message: "Invalid HTTP response from caster".into()
+            }
+        );
     }
 
     #[test]
@@ -989,38 +1298,105 @@ mod tests {
         let (head, tail) = stream.split_at(10);
         assert!(framer.push(head).is_empty());
         let frames = framer.push(tail);
-        assert_eq!(frames, [Frame { id: 1005, bytes: first }, Frame { id: 1077, bytes: second }]);
+        assert_eq!(
+            frames,
+            [
+                Frame {
+                    id: 1005,
+                    bytes: first
+                },
+                Frame {
+                    id: 1077,
+                    bytes: second
+                }
+            ]
+        );
     }
 
     #[test]
     fn the_whitelist_filters_and_failures_back_off_until_auth_stops_it() {
         let mut ntrip = Ntrip::default();
-        let (_, generation) = ntrip.retarget(Some(Config { whitelist: vec![1005], ..config() })).unwrap();
+        let (_, generation) = ntrip
+            .retarget(Some(Config {
+                whitelist: vec![1005],
+                ..config()
+            }))
+            .unwrap();
         assert_eq!(ntrip.status, Status::Connecting);
         ntrip.connected(generation);
-        assert!(ntrip.accept(generation, &Frame { id: 1005, bytes: vec![0; 25] }, 0));
-        assert!(!ntrip.accept(generation, &Frame { id: 1077, bytes: vec![0; 25] }, 0));
+        assert!(ntrip.accept(
+            generation,
+            &Frame {
+                id: 1005,
+                bytes: vec![0; 25]
+            },
+            0
+        ));
+        assert!(!ntrip.accept(
+            generation,
+            &Frame {
+                id: 1077,
+                bytes: vec![0; 25]
+            },
+            0
+        ));
         let snapshot = ntrip.snapshot(6000);
-        assert_eq!((snapshot["messages"].clone(), snapshot["messageTypes"].clone(), snapshot["dataStale"].clone()), (json!(1), json!([[1005, 1]]), json!(true)));
-        assert_eq!(snapshot["securityWarning"], "Credentials are being sent without TLS encryption.");
+        assert_eq!(
+            (
+                snapshot["messages"].clone(),
+                snapshot["messageTypes"].clone(),
+                snapshot["dataStale"].clone()
+            ),
+            (json!(1), json!([[1005, 1]]), json!(true))
+        );
+        assert_eq!(
+            snapshot["securityWarning"],
+            "Credentials are being sent without TLS encryption."
+        );
         assert_eq!(ntrip.failed(generation, false, "boom"), Some(1000));
         assert_eq!(ntrip.message, "Reconnecting in 1s: boom");
         assert!(ntrip.reconnecting(generation));
         assert_eq!(ntrip.failed(generation, false, "boom"), Some(2000));
-        assert_eq!(ntrip.failed(generation, true, "Authentication failed"), None);
+        assert_eq!(
+            ntrip.failed(generation, true, "Authentication failed"),
+            None
+        );
         assert_eq!(ntrip.status, Status::Error);
-        assert_eq!(ntrip.failed(generation - 1, false, "stale thread"), None, "a superseded connection reports nothing");
+        assert_eq!(
+            ntrip.failed(generation - 1, false, "stale thread"),
+            None,
+            "a superseded connection reports nothing"
+        );
         assert_eq!(ntrip.retarget(None), None);
         assert_eq!(ntrip.status, Status::Disconnected);
-        assert_eq!(ntrip.retarget(Some(Config { host: String::new(), ..config() })), None);
-        assert_eq!((ntrip.status, ntrip.message.as_str()), (Status::Error, "No host address"));
+        assert_eq!(
+            ntrip.retarget(Some(Config {
+                host: String::new(),
+                ..config()
+            })),
+            None
+        );
+        assert_eq!(
+            (ntrip.status, ntrip.message.as_str()),
+            (Status::Error, "No host address")
+        );
     }
 
     #[test]
     fn the_gga_sentence_matches_qgc_make_gga() {
-        assert_eq!(gga(47.3977419, 8.5455938, 488.0, (12, 34, 56)), "$GPGGA,123456,4723.8645,N,00832.7356,E,1,12,1.0,488.0,M,0.0,M,,*70\r\n");
-        assert!(gga(-33.5, -70.25, f64::NAN, (0, 0, 0)).starts_with("$GPGGA,000000,3330.0000,S,07015.0000,W,1,12,1.0,0.0,M"));
-        assert_eq!(degrees_minutes(9.99999999, 3), "01000.0000", "minutes rounding to 60 carry into the degrees");
+        assert_eq!(
+            gga(47.3977419, 8.5455938, 488.0, (12, 34, 56)),
+            "$GPGGA,123456,4723.8645,N,00832.7356,E,1,12,1.0,488.0,M,0.0,M,,*70\r\n"
+        );
+        assert!(
+            gga(-33.5, -70.25, f64::NAN, (0, 0, 0))
+                .starts_with("$GPGGA,000000,3330.0000,S,07015.0000,W,1,12,1.0,0.0,M")
+        );
+        assert_eq!(
+            degrees_minutes(9.99999999, 3),
+            "01000.0000",
+            "minutes rounding to 60 carry into the degrees"
+        );
     }
 
     #[test]
@@ -1030,10 +1406,16 @@ mod tests {
         (0..4).for_each(|i| schedule.missed(i * 1000, 5000));
         assert!(schedule.due(4000) && !schedule.due(3999));
         schedule.missed(4000, 5000);
-        assert!(!schedule.due(8999) && schedule.due(9000), "after five misses it waits the full interval");
+        assert!(
+            !schedule.due(8999) && schedule.due(9000),
+            "after five misses it waits the full interval"
+        );
         schedule.sent(9000, 5000);
         schedule.missed(14000, 5000);
-        assert!(!schedule.due(15000), "once settled a miss does not go back to the fast retry");
+        assert!(
+            !schedule.due(15000),
+            "once settled a miss does not go back to the fast retry"
+        );
     }
 
     #[test]
@@ -1042,27 +1424,52 @@ mod tests {
         let mut bad = frame(1077, 10);
         bad[5] ^= 0xFF;
         let datagram = [good.clone(), bad].concat();
-        assert_eq!(datagram_frames(&mut Framer::default(), &datagram, true), [good]);
-        assert_eq!(datagram_frames(&mut Framer::default(), &datagram, false), [datagram.clone()]);
+        assert_eq!(
+            datagram_frames(&mut Framer::default(), &datagram, true),
+            [good]
+        );
+        assert_eq!(
+            datagram_frames(&mut Framer::default(), &datagram, false),
+            [datagram.clone()]
+        );
     }
 
     #[test]
     fn a_lost_udp_input_is_forgotten_so_the_next_sync_binds_a_fresh_socket() {
-        let mut input = UdpInput { wanted: Some((2101, true)), generation: 4 };
+        let mut input = UdpInput {
+            wanted: Some((2101, true)),
+            generation: 4,
+        };
         input_lost(&mut input, 3);
-        assert_eq!(input.wanted, Some((2101, true)), "a listener a later sync already replaced changes nothing");
+        assert_eq!(
+            input.wanted,
+            Some((2101, true)),
+            "a listener a later sync already replaced changes nothing"
+        );
         input_lost(&mut input, 4);
-        assert_eq!(input.wanted, None, "sync sees the setting differ from what runs and starts a new listener, one pump tick later");
+        assert_eq!(
+            input.wanted, None,
+            "sync sees the setting differ from what runs and starts a new listener, one pump tick later"
+        );
     }
 
     #[test]
     fn the_source_table_is_parsed_and_nearest_first() {
         let table = "SOURCETABLE 200 OK\r\nCAS;caster;2101;x\r\nSTR;FAR;Far;RTCM 3.2;1005;2;GPS+GLO;NET;DEU;52.5;13.4;0;0;gen;none;B;N;9600;\r\nSTR;NEAR;Near;RTCM 3.3;1077;2;GPS;NET;CHE;47.4;8.5;1;0;gen;none;B;N;4800;\r\nSTR;NOWHERE;x;RTCM 3;;2;GPS;NET;;0;0;0;0;gen;none;N;N;0;\r\nSTR;short;line\r\nENDSOURCETABLE\r\n";
         let parsed = source_table(table, Some((47.39, 8.54)));
-        assert_eq!(parsed.iter().map(|m| m.mountpoint.as_str()).collect::<Vec<_>>(), ["NEAR", "FAR", "NOWHERE"], "known distances ascend, unknown last");
+        assert_eq!(
+            parsed
+                .iter()
+                .map(|m| m.mountpoint.as_str())
+                .collect::<Vec<_>>(),
+            ["NEAR", "FAR", "NOWHERE"],
+            "known distances ascend, unknown last"
+        );
         assert!(parsed[0].distance_km < 5.0);
         assert_eq!(mountpoint_detail(&parsed[2]), "RTCM 3 · GPS");
-        assert!(mountpoint_detail(&parsed[1]).starts_with("RTCM 3.2 · GPS+GLO · DEU · 9600 bps · "));
+        assert!(
+            mountpoint_detail(&parsed[1]).starts_with("RTCM 3.2 · GPS+GLO · DEU · 9600 bps · ")
+        );
         assert_eq!(source_table(table, None)[0].distance_km, -1.0);
     }
 

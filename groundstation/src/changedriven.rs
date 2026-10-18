@@ -38,7 +38,10 @@ fn now(source: Source, settings: u64) -> Input {
 }
 
 pub fn gated(path: &str) -> bool {
-    !crate::qthost::present() && crate::vehiclefacade::switched_on() && crate::settingsstore::enabled() && VIEWS.contains(&crate::view::split(path).0)
+    !crate::qthost::present()
+        && crate::vehiclefacade::switched_on()
+        && crate::settingsstore::enabled()
+        && VIEWS.contains(&crate::view::split(path).0)
 }
 
 pub fn unchanged(inputs: &[Input]) -> bool {
@@ -61,13 +64,36 @@ pub struct Recorder<'a> {
 
 impl<'a> Recorder<'a> {
     pub fn new(inner: &'a dyn Backend) -> Self {
-        Self { inner, read: RefCell::default(), wrote: Cell::new(false), settings: crate::settingsstore::revision() }
+        Self {
+            inner,
+            read: RefCell::default(),
+            wrote: Cell::new(false),
+            settings: crate::settingsstore::revision(),
+        }
     }
 
     pub fn inputs(&self) -> Option<Vec<Input>> {
         (!self.wrote.get()).then_some(())?;
-        let sources: Vec<Source> = self.read.borrow().iter().map(|path| source(path)).collect::<Option<_>>()?;
-        Some(sources.iter().fold(Vec::new(), |seen: Vec<Source>, s| if seen.contains(s) { seen } else { [seen, vec![*s]].concat() }).into_iter().map(|s| now(s, self.settings)).collect())
+        let sources: Vec<Source> = self
+            .read
+            .borrow()
+            .iter()
+            .map(|path| source(path))
+            .collect::<Option<_>>()?;
+        Some(
+            sources
+                .iter()
+                .fold(Vec::new(), |seen: Vec<Source>, s| {
+                    if seen.contains(s) {
+                        seen
+                    } else {
+                        [seen, vec![*s]].concat()
+                    }
+                })
+                .into_iter()
+                .map(|s| now(s, self.settings))
+                .collect(),
+        )
     }
 
     fn reading(&self, path: &str) {
@@ -140,7 +166,11 @@ mod tests {
         let recorder = Recorder::new(&Answers);
         recorder.value("settings.batteryIndicatorSettings.threshold1.rawValue");
         recorder.value_fields("units", "horizontalDistanceUnits");
-        assert_eq!(recorder.inputs(), Some(vec![Input::Settings(recorder.settings)]), "two settings reads are one input");
+        assert_eq!(
+            recorder.inputs(),
+            Some(vec![Input::Settings(recorder.settings)]),
+            "two settings reads are one input"
+        );
     }
 
     #[test]
@@ -148,11 +178,19 @@ mod tests {
         let unmapped = Recorder::new(&Answers);
         unmapped.value("settings.appSettings.audioMuted");
         unmapped.value("vehicle.roll");
-        assert_eq!(unmapped.inputs(), None, "the roll changes without any revision the router can see");
+        assert_eq!(
+            unmapped.inputs(),
+            None,
+            "the roll changes without any revision the router can see"
+        );
         let writer = Recorder::new(&Answers);
         writer.value("settings.appSettings.audioMuted");
         writer.invoke("vehicle.guidedModeLand", "[]");
-        assert_eq!(writer.inputs(), None, "a render with a side effect runs every pass");
+        assert_eq!(
+            writer.inputs(),
+            None,
+            "a render with a side effect runs every pass"
+        );
     }
 
     #[test]
@@ -160,6 +198,9 @@ mod tests {
         let stamp = [Input::Settings(crate::settingsstore::revision())];
         assert!(unchanged(&stamp));
         crate::settingsstore::written("ChangeDriven/probe", "1");
-        assert!(!unchanged(&stamp), "the write bumps the revision after it lands");
+        assert!(
+            !unchanged(&stamp),
+            "the write bumps the revision after it lands"
+        );
     }
 }

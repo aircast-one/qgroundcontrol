@@ -14,7 +14,9 @@ const UNSIGNED_SHORT: u64 = 5123;
 const UNSIGNED_INT: u64 = 5125;
 const UNTEXTURED: [u8; 4] = [255, 255, 255, 255];
 
-const Y_UP_TO_Z_UP: DMat4 = DMat4::from_cols_array(&[1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0]);
+const Y_UP_TO_Z_UP: DMat4 = DMat4::from_cols_array(&[
+    1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, -1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 1.0,
+]);
 
 struct Glb<'a> {
     json: Value,
@@ -46,20 +48,39 @@ fn view_bytes<'a>(glb: &'a Glb, view: u64) -> Option<(&'a [u8], usize)> {
     let view = glb.json.get("bufferViews")?.get(view as usize)?;
     let start = number(view, "byteOffset").unwrap_or(0) as usize;
     let length = number(view, "byteLength")? as usize;
-    Some((glb.bin.get(start..start + length)?, number(view, "byteStride").unwrap_or(0) as usize))
+    Some((
+        glb.bin.get(start..start + length)?,
+        number(view, "byteStride").unwrap_or(0) as usize,
+    ))
 }
 
 fn scaled(value: f32, normalized: bool, range: f32) -> f32 {
-    if normalized { (value / range).max(-1.0) } else { value }
+    if normalized {
+        (value / range).max(-1.0)
+    } else {
+        value
+    }
 }
 
 fn component(bytes: &[u8], kind: u64, normalized: bool) -> Option<f32> {
     match kind {
         FLOAT => Some(f32::from_le_bytes(bytes.get(..4)?.try_into().ok()?)),
-        UNSIGNED_SHORT => Some(scaled(f32::from(u16::from_le_bytes(bytes.get(..2)?.try_into().ok()?)), normalized, 65535.0)),
-        SHORT => Some(scaled(f32::from(i16::from_le_bytes(bytes.get(..2)?.try_into().ok()?)), normalized, 32767.0)),
+        UNSIGNED_SHORT => Some(scaled(
+            f32::from(u16::from_le_bytes(bytes.get(..2)?.try_into().ok()?)),
+            normalized,
+            65535.0,
+        )),
+        SHORT => Some(scaled(
+            f32::from(i16::from_le_bytes(bytes.get(..2)?.try_into().ok()?)),
+            normalized,
+            32767.0,
+        )),
         UNSIGNED_BYTE => Some(scaled(f32::from(*bytes.first()?), normalized, 255.0)),
-        BYTE => Some(scaled(f32::from(i8::from_le_bytes([*bytes.first()?])), normalized, 127.0)),
+        BYTE => Some(scaled(
+            f32::from(i8::from_le_bytes([*bytes.first()?])),
+            normalized,
+            127.0,
+        )),
         _ => None,
     }
 }
@@ -75,7 +96,10 @@ fn component_size(kind: u64) -> usize {
 fn floats<const N: usize>(glb: &Glb, accessor: u64) -> Option<Vec<[f32; N]>> {
     let accessor = glb.json.get("accessors")?.get(accessor as usize)?;
     let kind = number(accessor, "componentType")?;
-    let normalized = accessor.get("normalized").and_then(Value::as_bool).unwrap_or(false);
+    let normalized = accessor
+        .get("normalized")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
     let (bytes, stride) = view_bytes(glb, number(accessor, "bufferView")?)?;
     let size = component_size(kind);
     let stride = if stride == 0 { size * N } else { stride };
@@ -83,7 +107,9 @@ fn floats<const N: usize>(glb: &Glb, accessor: u64) -> Option<Vec<[f32; N]>> {
     (0..number(accessor, "count")? as usize)
         .map(|item| {
             let at = offset + item * stride;
-            let values: Option<Vec<f32>> = (0..N).map(|lane| component(bytes.get(at + lane * size..)?, kind, normalized)).collect();
+            let values: Option<Vec<f32>> = (0..N)
+                .map(|lane| component(bytes.get(at + lane * size..)?, kind, normalized))
+                .collect();
             values?.try_into().ok()
         })
         .collect()
@@ -100,7 +126,9 @@ fn indices(glb: &Glb, accessor: u64) -> Option<Vec<u32>> {
             let at = offset + item * size;
             match kind {
                 UNSIGNED_INT => Some(u32::from_le_bytes(bytes.get(at..at + 4)?.try_into().ok()?)),
-                UNSIGNED_SHORT => Some(u32::from(u16::from_le_bytes(bytes.get(at..at + 2)?.try_into().ok()?))),
+                UNSIGNED_SHORT => Some(u32::from(u16::from_le_bytes(
+                    bytes.get(at..at + 2)?.try_into().ok()?,
+                ))),
                 UNSIGNED_BYTE => Some(u32::from(*bytes.get(at)?)),
                 _ => None,
             }
@@ -110,7 +138,12 @@ fn indices(glb: &Glb, accessor: u64) -> Option<Vec<u32>> {
 
 fn texture(glb: &Glb, material: Option<u64>) -> Option<image::RgbaImage> {
     let material = glb.json.get("materials")?.get(material? as usize)?;
-    let texture = number(material.get("pbrMetallicRoughness")?.get("baseColorTexture")?, "index")?;
+    let texture = number(
+        material
+            .get("pbrMetallicRoughness")?
+            .get("baseColorTexture")?,
+        "index",
+    )?;
     let source = number(glb.json.get("textures")?.get(texture as usize)?, "source")?;
     let image = glb.json.get("images")?.get(source as usize)?;
     let (bytes, _) = view_bytes(glb, number(image, "bufferView")?)?;
@@ -118,23 +151,40 @@ fn texture(glb: &Glb, material: Option<u64>) -> Option<image::RgbaImage> {
 }
 
 fn floats_of(node: &Value, key: &str) -> Option<Vec<f64>> {
-    node.get(key)?.as_array()?.iter().map(Value::as_f64).collect()
+    node.get(key)?
+        .as_array()?
+        .iter()
+        .map(Value::as_f64)
+        .collect()
 }
 
 fn local(node: &Value) -> DMat4 {
     match floats_of(node, "matrix").and_then(|m| <[f64; 16]>::try_from(m).ok()) {
         Some(matrix) => DMat4::from_cols_array(&matrix),
         None => {
-            let translation = floats_of(node, "translation").and_then(|t| <[f64; 3]>::try_from(t).ok()).map_or(DVec3::ZERO, DVec3::from_array);
-            let rotation = floats_of(node, "rotation").and_then(|r| <[f64; 4]>::try_from(r).ok()).map_or(DQuat::IDENTITY, DQuat::from_array);
-            let scale = floats_of(node, "scale").and_then(|s| <[f64; 3]>::try_from(s).ok()).map_or(DVec3::ONE, DVec3::from_array);
+            let translation = floats_of(node, "translation")
+                .and_then(|t| <[f64; 3]>::try_from(t).ok())
+                .map_or(DVec3::ZERO, DVec3::from_array);
+            let rotation = floats_of(node, "rotation")
+                .and_then(|r| <[f64; 4]>::try_from(r).ok())
+                .map_or(DQuat::IDENTITY, DQuat::from_array);
+            let scale = floats_of(node, "scale")
+                .and_then(|s| <[f64; 3]>::try_from(s).ok())
+                .map_or(DVec3::ONE, DVec3::from_array);
             DMat4::from_scale_rotation_translation(scale, rotation, translation)
         }
     }
 }
 
 fn primitives(glb: &Glb, mesh: u64, to_ecef: DMat4) -> Vec<Mesh> {
-    let listed = glb.json.get("meshes").and_then(|meshes| meshes.get(mesh as usize)).and_then(|mesh| mesh.get("primitives")).and_then(Value::as_array).cloned().unwrap_or_default();
+    let listed = glb
+        .json
+        .get("meshes")
+        .and_then(|meshes| meshes.get(mesh as usize))
+        .and_then(|mesh| mesh.get("primitives"))
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     listed
         .iter()
         .filter_map(|primitive| {
@@ -148,25 +198,64 @@ fn primitives(glb: &Glb, mesh: u64, to_ecef: DMat4) -> Vec<Mesh> {
                 Some(accessor) => indices(glb, accessor)?,
                 None => (0..positions.len() as u32).collect(),
             };
-            let picture = texture(glb, number(primitive, "material")).unwrap_or_else(|| solid(UNTEXTURED));
-            Some(Mesh::new(to_ecef, positions, uvs, indices, picture, Layer::Opaque))
+            let picture =
+                texture(glb, number(primitive, "material")).unwrap_or_else(|| solid(UNTEXTURED));
+            Some(Mesh::new(
+                to_ecef,
+                positions,
+                uvs,
+                indices,
+                picture,
+                Layer::Opaque,
+            ))
         })
         .collect()
 }
 
 fn walk(glb: &Glb, node: u64, parent: DMat4) -> Vec<Mesh> {
-    let Some(value) = glb.json.get("nodes").and_then(|nodes| nodes.get(node as usize)) else { return Vec::new() };
+    let Some(value) = glb
+        .json
+        .get("nodes")
+        .and_then(|nodes| nodes.get(node as usize))
+    else {
+        return Vec::new();
+    };
     let world = parent * local(value);
-    let own = number(value, "mesh").map(|mesh| primitives(glb, mesh, world)).unwrap_or_default();
-    let children = value.get("children").and_then(Value::as_array).cloned().unwrap_or_default();
-    own.into_iter().chain(children.iter().filter_map(Value::as_u64).flat_map(|child| walk(glb, child, world))).collect()
+    let own = number(value, "mesh")
+        .map(|mesh| primitives(glb, mesh, world))
+        .unwrap_or_default();
+    let children = value
+        .get("children")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    own.into_iter()
+        .chain(
+            children
+                .iter()
+                .filter_map(Value::as_u64)
+                .flat_map(|child| walk(glb, child, world)),
+        )
+        .collect()
 }
 
 pub fn meshes(bytes: &[u8]) -> Vec<Mesh> {
-    let Some(glb) = split(bytes) else { return Vec::new() };
+    let Some(glb) = split(bytes) else {
+        return Vec::new();
+    };
     let scene = number(&glb.json, "scene").unwrap_or(0);
-    let roots: Vec<u64> = glb.json.get("scenes").and_then(|scenes| scenes.get(scene as usize)).and_then(|scene| scene.get("nodes")).and_then(Value::as_array).map(|nodes| nodes.iter().filter_map(Value::as_u64).collect()).unwrap_or_default();
-    roots.into_iter().flat_map(|root| walk(&glb, root, Y_UP_TO_Z_UP)).collect()
+    let roots: Vec<u64> = glb
+        .json
+        .get("scenes")
+        .and_then(|scenes| scenes.get(scene as usize))
+        .and_then(|scene| scene.get("nodes"))
+        .and_then(Value::as_array)
+        .map(|nodes| nodes.iter().filter_map(Value::as_u64).collect())
+        .unwrap_or_default();
+    roots
+        .into_iter()
+        .flat_map(|root| walk(&glb, root, Y_UP_TO_Z_UP))
+        .collect()
 }
 
 #[cfg(test)]
@@ -177,31 +266,58 @@ mod tests {
         let text = {
             let raw = serde_json::to_vec(json).unwrap();
             let padding = (4 - raw.len() % 4) % 4;
-            raw.into_iter().chain(std::iter::repeat_n(b' ', padding)).collect::<Vec<u8>>()
+            raw.into_iter()
+                .chain(std::iter::repeat_n(b' ', padding))
+                .collect::<Vec<u8>>()
         };
-        let body: Vec<u8> = bin.iter().copied().chain(std::iter::repeat_n(0, (4 - bin.len() % 4) % 4)).collect();
+        let body: Vec<u8> = bin
+            .iter()
+            .copied()
+            .chain(std::iter::repeat_n(0, (4 - bin.len() % 4) % 4))
+            .collect();
         let total = 12 + 8 + text.len() + 8 + body.len();
-        [GLB_MAGIC.to_le_bytes(), 2u32.to_le_bytes(), (total as u32).to_le_bytes(), (text.len() as u32).to_le_bytes(), JSON_CHUNK.to_le_bytes()]
-            .concat()
-            .into_iter()
-            .chain(text)
-            .chain([(body.len() as u32).to_le_bytes(), BIN_CHUNK.to_le_bytes()].concat())
-            .chain(body)
-            .collect()
+        [
+            GLB_MAGIC.to_le_bytes(),
+            2u32.to_le_bytes(),
+            (total as u32).to_le_bytes(),
+            (text.len() as u32).to_le_bytes(),
+            JSON_CHUNK.to_le_bytes(),
+        ]
+        .concat()
+        .into_iter()
+        .chain(text)
+        .chain([(body.len() as u32).to_le_bytes(), BIN_CHUNK.to_le_bytes()].concat())
+        .chain(body)
+        .collect()
     }
 
     fn png() -> Vec<u8> {
         let mut out = std::io::Cursor::new(Vec::new());
-        image::RgbaImage::from_pixel(2, 2, image::Rgba([10, 20, 30, 255])).write_to(&mut out, image::ImageFormat::Png).unwrap();
+        image::RgbaImage::from_pixel(2, 2, image::Rgba([10, 20, 30, 255]))
+            .write_to(&mut out, image::ImageFormat::Png)
+            .unwrap();
         out.into_inner()
     }
 
     #[test]
     fn a_google_style_tile_lands_in_ecef_with_its_texture() {
-        let positions: Vec<u8> = [[0.0f32, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]].iter().flatten().flat_map(|v| v.to_le_bytes()).collect();
-        let uvs: Vec<u8> = [[0u16, 0], [65535, 0], [0, 65535]].iter().flatten().flat_map(|v| v.to_le_bytes()).collect();
+        let positions: Vec<u8> = [[0.0f32, 0.0, 0.0], [1.0, 0.0, 0.0], [0.0, 1.0, 0.0]]
+            .iter()
+            .flatten()
+            .flat_map(|v| v.to_le_bytes())
+            .collect();
+        let uvs: Vec<u8> = [[0u16, 0], [65535, 0], [0, 65535]]
+            .iter()
+            .flatten()
+            .flat_map(|v| v.to_le_bytes())
+            .collect();
         let picture = png();
-        let bin: Vec<u8> = positions.iter().chain(&uvs).chain(&picture).copied().collect();
+        let bin: Vec<u8> = positions
+            .iter()
+            .chain(&uvs)
+            .chain(&picture)
+            .copied()
+            .collect();
         let json = serde_json::json!({
             "scene": 0,
             "scenes": [{ "nodes": [0] }],
@@ -224,15 +340,31 @@ mod tests {
         assert_eq!(meshes.len(), 1);
         let mesh = &meshes[0];
         let origin = mesh.to_ecef.transform_point3(DVec3::ZERO);
-        assert!((origin - DVec3::new(-4_471_593.497_109_432, 2_669_273.854_156_598, -3_671_137.465_224_134)).length() < 1e-6, "the tile's origin sits at its ECEF spot to the millimetre, got {origin}");
+        assert!(
+            (origin
+                - DVec3::new(
+                    -4_471_593.497_109_432,
+                    2_669_273.854_156_598,
+                    -3_671_137.465_224_134
+                ))
+            .length()
+                < 1e-6,
+            "the tile's origin sits at its ECEF spot to the millimetre, got {origin}"
+        );
         assert_eq!(mesh.indices, vec![0, 1, 2]);
         assert_eq!(mesh.uvs[1], [1.0, 0.0]);
-        assert_eq!(mesh.take_texture().expect("texture")[0].get_pixel(1, 1).0, [10, 20, 30, 255]);
+        assert_eq!(
+            mesh.take_texture().expect("texture")[0].get_pixel(1, 1).0,
+            [10, 20, 30, 255]
+        );
     }
 
     #[test]
     fn signed_normalized_components_read_into_minus_one_to_one() {
-        assert_eq!(component(&(-32767i16).to_le_bytes(), SHORT, true), Some(-1.0));
+        assert_eq!(
+            component(&(-32767i16).to_le_bytes(), SHORT, true),
+            Some(-1.0)
+        );
         assert_eq!(component(&[127], BYTE, true), Some(1.0));
         assert_eq!(component(&(-5i16).to_le_bytes(), SHORT, false), Some(-5.0));
     }

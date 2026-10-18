@@ -77,7 +77,16 @@ pub fn attach(canvas: web_sys::OffscreenCanvas, width: u32, height: u32) -> u32 
         let mut web = web.borrow_mut();
         web.keys += 1;
         let key = web.keys;
-        web.views.push(View { key, canvas, wanted: (width, height), surface: None, refused: false, size: (0, 0), targets: None, drawn: false });
+        web.views.push(View {
+            key,
+            canvas,
+            wanted: (width, height),
+            surface: None,
+            refused: false,
+            size: (0, 0),
+            targets: None,
+            drawn: false,
+        });
         if matches!(web.start, Start::Failed) {
             web.start = Start::Idle;
         }
@@ -90,7 +99,13 @@ pub fn attach(canvas: web_sys::OffscreenCanvas, width: u32, height: u32) -> u32 
 }
 
 pub fn resize(key: u32, width: u32, height: u32) {
-    WEB.with(|web| web.borrow_mut().views.iter_mut().filter(|view| view.key == key).for_each(|view| view.wanted = (width, height)));
+    WEB.with(|web| {
+        web.borrow_mut()
+            .views
+            .iter_mut()
+            .filter(|view| view.key == key)
+            .for_each(|view| view.wanted = (width, height))
+    });
 }
 
 pub fn release(key: u32) {
@@ -127,7 +142,9 @@ fn read(path: &str) -> Option<serde_json::Value> {
 }
 
 fn token() -> String {
-    crate::settingsstore::raw_setting(SYNTHETIC_TOKEN).and_then(|value| value.as_str().map(str::trim).map(str::to_string)).unwrap_or_default()
+    crate::settingsstore::raw_setting(SYNTHETIC_TOKEN)
+        .and_then(|value| value.as_str().map(str::trim).map(str::to_string))
+        .unwrap_or_default()
 }
 
 fn start_session(token: &str) -> Option<Session> {
@@ -160,7 +177,9 @@ impl Web {
     }
 
     fn begin(&mut self) {
-        let Some(first) = self.views.first() else { return };
+        let Some(first) = self.views.first() else {
+            return;
+        };
         let (key, canvas) = (first.key, first.canvas.clone());
         self.starts += 1;
         let start = self.starts;
@@ -172,7 +191,12 @@ impl Web {
         });
     }
 
-    fn started(&mut self, start: u32, key: u32, built: Result<(Gpu, wgpu::Surface<'static>), String>) {
+    fn started(
+        &mut self,
+        start: u32,
+        key: u32,
+        built: Result<(Gpu, wgpu::Surface<'static>), String>,
+    ) {
         if !matches!(self.start, Start::Starting(current) if current == start) {
             return;
         }
@@ -195,27 +219,75 @@ impl Web {
 }
 
 impl Gpu {
-    async fn new(canvas: web_sys::OffscreenCanvas) -> Result<(Self, wgpu::Surface<'static>), String> {
-        let instance = wgpu::util::new_instance_with_webgpu_detection(wgpu::InstanceDescriptor { backends: wgpu::Backends::BROWSER_WEBGPU | wgpu::Backends::GL, ..wgpu::InstanceDescriptor::new_without_display_handle() }).await;
-        let surface = instance.create_surface(wgpu::SurfaceTarget::OffscreenCanvas(canvas)).map_err(|error| format!("no surface for the canvas: {error}"))?;
-        let adapter = instance.request_adapter(&wgpu::RequestAdapterOptions { compatible_surface: Some(&surface), ..Default::default() }).await.map_err(|error| format!("no GPU adapter for the canvas: {error}"))?;
+    async fn new(
+        canvas: web_sys::OffscreenCanvas,
+    ) -> Result<(Self, wgpu::Surface<'static>), String> {
+        let instance = wgpu::util::new_instance_with_webgpu_detection(wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::BROWSER_WEBGPU | wgpu::Backends::GL,
+            ..wgpu::InstanceDescriptor::new_without_display_handle()
+        })
+        .await;
+        let surface = instance
+            .create_surface(wgpu::SurfaceTarget::OffscreenCanvas(canvas))
+            .map_err(|error| format!("no surface for the canvas: {error}"))?;
+        let adapter = instance
+            .request_adapter(&wgpu::RequestAdapterOptions {
+                compatible_surface: Some(&surface),
+                ..Default::default()
+            })
+            .await
+            .map_err(|error| format!("no GPU adapter for the canvas: {error}"))?;
         let (device, queue) = adapter
-            .request_device(&wgpu::DeviceDescriptor { required_limits: wgpu::Limits::downlevel_webgl2_defaults().using_resolution(adapter.limits()), ..Default::default() })
+            .request_device(&wgpu::DeviceDescriptor {
+                required_limits: wgpu::Limits::downlevel_webgl2_defaults()
+                    .using_resolution(adapter.limits()),
+                ..Default::default()
+            })
             .await
             .map_err(|error| format!("the GPU refused a device: {error}"))?;
-        device.on_uncaptured_error(Arc::new(|error| log::error!(target: "synthetic", "event=gpu_error reason=\"{error}\"")));
+        device.on_uncaptured_error(Arc::new(
+            |error| log::error!(target: "synthetic", "event=gpu_error reason=\"{error}\""),
+        ));
         let formats = surface.get_capabilities(&adapter).formats;
-        let canvas_format = formats.iter().copied().find(wgpu::TextureFormat::is_srgb).or_else(|| formats.first().copied()).ok_or("the canvas offers no colour format")?;
+        let canvas_format = formats
+            .iter()
+            .copied()
+            .find(wgpu::TextureFormat::is_srgb)
+            .or_else(|| formats.first().copied())
+            .ok_or("the canvas offers no colour format")?;
         let format = canvas_format.add_srgb_suffix();
         let renderer = Renderer::with_device(device.clone(), queue, format);
-        Ok((Self { instance, adapter, device, canvas_format, format, renderer }, surface))
+        Ok((
+            Self {
+                instance,
+                adapter,
+                device,
+                canvas_format,
+                format,
+                renderer,
+            },
+            surface,
+        ))
     }
 
-    fn surface_for(&self, canvas: &web_sys::OffscreenCanvas) -> Result<wgpu::Surface<'static>, String> {
-        let surface = self.instance.create_surface(wgpu::SurfaceTarget::OffscreenCanvas(canvas.clone())).map_err(|error| format!("no surface for the canvas: {error}"))?;
-        match surface.get_capabilities(&self.adapter).formats.contains(&self.canvas_format) {
+    fn surface_for(
+        &self,
+        canvas: &web_sys::OffscreenCanvas,
+    ) -> Result<wgpu::Surface<'static>, String> {
+        let surface = self
+            .instance
+            .create_surface(wgpu::SurfaceTarget::OffscreenCanvas(canvas.clone()))
+            .map_err(|error| format!("no surface for the canvas: {error}"))?;
+        match surface
+            .get_capabilities(&self.adapter)
+            .formats
+            .contains(&self.canvas_format)
+        {
             true => Ok(surface),
-            false => Err(format!("the canvas does not offer the kept format {:?}", self.canvas_format)),
+            false => Err(format!(
+                "the canvas does not offer the kept format {:?}",
+                self.canvas_format
+            )),
         }
     }
 }
@@ -233,31 +305,63 @@ impl View {
         if self.wanted == self.size || width == 0 || height == 0 {
             return;
         }
-        let Some(surface) = self.surface.as_ref() else { return };
-        let Some(config) = surface.get_default_config(&gpu.adapter, width, height) else { return };
-        let view_formats = if gpu.format == gpu.canvas_format { Vec::new() } else { vec![gpu.format] };
-        surface.configure(&gpu.device, &wgpu::SurfaceConfiguration { format: gpu.canvas_format, view_formats, present_mode: wgpu::PresentMode::Fifo, ..config });
+        let Some(surface) = self.surface.as_ref() else {
+            return;
+        };
+        let Some(config) = surface.get_default_config(&gpu.adapter, width, height) else {
+            return;
+        };
+        let view_formats = if gpu.format == gpu.canvas_format {
+            Vec::new()
+        } else {
+            vec![gpu.format]
+        };
+        surface.configure(
+            &gpu.device,
+            &wgpu::SurfaceConfiguration {
+                format: gpu.canvas_format,
+                view_formats,
+                present_mode: wgpu::PresentMode::Fifo,
+                ..config
+            },
+        );
         self.targets = Some(gpu.renderer.targets(width, height));
         self.size = self.wanted;
         self.drawn = false;
     }
 
-    fn paint(&mut self, gpu: &mut Gpu, frame: Option<&Frame>, overlays: Option<&Overlays>) -> Result<bool, String> {
-        let (Some(surface), Some(targets)) = (self.surface.as_ref(), self.targets.as_ref()) else { return Ok(false) };
+    fn paint(
+        &mut self,
+        gpu: &mut Gpu,
+        frame: Option<&Frame>,
+        overlays: Option<&Overlays>,
+    ) -> Result<bool, String> {
+        let (Some(surface), Some(targets)) = (self.surface.as_ref(), self.targets.as_ref()) else {
+            return Ok(false);
+        };
         let texture = match surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(texture) | wgpu::CurrentSurfaceTexture::Suboptimal(texture) => texture,
-            wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => return Ok(false),
+            wgpu::CurrentSurfaceTexture::Success(texture)
+            | wgpu::CurrentSurfaceTexture::Suboptimal(texture) => texture,
+            wgpu::CurrentSurfaceTexture::Timeout | wgpu::CurrentSurfaceTexture::Occluded => {
+                return Ok(false);
+            }
             wgpu::CurrentSurfaceTexture::Outdated | wgpu::CurrentSurfaceTexture::Lost => {
                 self.size = (0, 0);
                 return Ok(false);
             }
-            wgpu::CurrentSurfaceTexture::Validation => return Err("the surface refused a frame".to_string()),
+            wgpu::CurrentSurfaceTexture::Validation => {
+                return Err("the surface refused a frame".to_string());
+            }
         };
-        let view = texture.texture.create_view(&wgpu::TextureViewDescriptor { format: Some(gpu.format), ..Default::default() });
+        let view = texture.texture.create_view(&wgpu::TextureViewDescriptor {
+            format: Some(gpu.format),
+            ..Default::default()
+        });
         let pictured = match frame {
             Some(frame) => {
                 let (camera, meshes) = frame.view(overlays, self.size.0, self.size.1);
-                gpu.renderer.draw(&view, targets, &camera, &frame.backfill, &meshes);
+                gpu.renderer
+                    .draw(&view, targets, &camera, &frame.backfill, &meshes);
                 !frame.ground.is_empty()
             }
             None => {
@@ -273,11 +377,18 @@ impl View {
 
 impl<T: PartialEq> Throttled<T> {
     fn new(every: Duration, value: T) -> Self {
-        Self { every, read: None, value }
+        Self {
+            every,
+            read: None,
+            value,
+        }
     }
 
     fn refresh(&mut self, now: Instant, read: impl FnOnce() -> T) -> bool {
-        if self.read.is_some_and(|at| now.duration_since(at) < self.every) {
+        if self
+            .read
+            .is_some_and(|at| now.duration_since(at) < self.every)
+        {
             return false;
         }
         self.read = Some(now);
@@ -290,7 +401,14 @@ impl<T: PartialEq> Throttled<T> {
 
 impl World {
     fn new(gpu: Gpu) -> Self {
-        Self { gpu, session: None, token: Throttled::new(TOKEN_EVERY, None), overlays: Throttled::new(OVERLAYS_EVERY, None), framed: false, draw: LOADING }
+        Self {
+            gpu,
+            session: None,
+            token: Throttled::new(TOKEN_EVERY, None),
+            overlays: Throttled::new(OVERLAYS_EVERY, None),
+            framed: false,
+            draw: LOADING,
+        }
     }
 
     fn adopt(&self, views: &mut [View]) -> bool {
@@ -320,19 +438,52 @@ impl World {
         if rekeyed {
             self.session = start_session(self.token.value.as_deref().unwrap_or_default());
         }
-        let restyled = self.overlays.refresh(now, || read("view.syntheticOverlays").as_ref().and_then(Overlays::from_view));
-        let target = read("view.syntheticView").as_ref().and_then(Target::from_view);
+        let restyled = self.overlays.refresh(now, || {
+            read("view.syntheticOverlays")
+                .as_ref()
+                .and_then(Overlays::from_view)
+        });
+        let target = read("view.syntheticView")
+            .as_ref()
+            .and_then(Target::from_view);
         let sticks = crate::virtualjoystick::sent_sticks();
-        let largest = views.iter().map(|view| view.size).max_by_key(|(width, height)| u64::from(*width) * u64::from(*height)).unwrap_or_default();
-        let mut frame = self.session.as_mut().filter(|_| largest.0 > 0 && largest.1 > 0).and_then(|session| session.frame(target.as_ref(), &sticks, largest.0, largest.1, now));
+        let largest = views
+            .iter()
+            .map(|view| view.size)
+            .max_by_key(|(width, height)| u64::from(*width) * u64::from(*height))
+            .unwrap_or_default();
+        let mut frame = self
+            .session
+            .as_mut()
+            .filter(|_| largest.0 > 0 && largest.1 > 0)
+            .and_then(|session| session.frame(target.as_ref(), &sticks, largest.0, largest.1, now));
         if let Some((frame, session)) = frame.as_mut().zip(self.session.as_mut()) {
-            session.warmed(self.gpu.renderer.warm(std::mem::take(&mut frame.warm), WARM_PER_TICK));
+            session.warmed(
+                self.gpu
+                    .renderer
+                    .warm(std::mem::take(&mut frame.warm), WARM_PER_TICK),
+            );
         }
-        let redraw = rekeyed || restyled || frame.as_ref().is_some_and(|frame| frame.changed) || frame.is_some() != self.framed;
+        let redraw = rekeyed
+            || restyled
+            || frame.as_ref().is_some_and(|frame| frame.changed)
+            || frame.is_some() != self.framed;
         self.framed = frame.is_some();
-        let painted: Vec<Result<bool, String>> = views.iter_mut().filter(|view| redraw || !view.drawn).map(|view| view.paint(&mut self.gpu, frame.as_ref(), self.overlays.value.as_ref())).collect();
-        painted.iter().filter_map(|result| result.as_ref().err()).for_each(|reason| log::error!(target: "synthetic", "event=paint_failed reason=\"{reason}\""));
-        let draw = match (self.session.is_some(), painted.iter().any(|result| result == &Ok(true))) {
+        let painted: Vec<Result<bool, String>> = views
+            .iter_mut()
+            .filter(|view| redraw || !view.drawn)
+            .map(|view| view.paint(&mut self.gpu, frame.as_ref(), self.overlays.value.as_ref()))
+            .collect();
+        painted
+            .iter()
+            .filter_map(|result| result.as_ref().err())
+            .for_each(
+                |reason| log::error!(target: "synthetic", "event=paint_failed reason=\"{reason}\""),
+            );
+        let draw = match (
+            self.session.is_some(),
+            painted.iter().any(|result| result == &Ok(true)),
+        ) {
             (false, _) => FAILED,
             (true, true) => DRAWN,
             (true, false) if painted.is_empty() => self.draw,

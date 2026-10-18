@@ -23,8 +23,17 @@ pub struct Batteries {
 }
 
 fn total_voltage(cells: &[u16], extended: &[u16]) -> Option<f64> {
-    let main = cells.iter().take_while(|cell| **cell != u16::MAX).map(|cell| *cell as f64 / 1000.0).reduce(|sum, cell| sum + cell)?;
-    Some(extended.iter().take_while(|cell| **cell != 0).fold(main, |sum, cell| sum + *cell as f64 / 1000.0))
+    let main = cells
+        .iter()
+        .take_while(|cell| **cell != u16::MAX)
+        .map(|cell| *cell as f64 / 1000.0)
+        .reduce(|sum, cell| sum + cell)?;
+    Some(
+        extended
+            .iter()
+            .take_while(|cell| **cell != 0)
+            .fold(main, |sum, cell| sum + *cell as f64 / 1000.0),
+    )
 }
 
 fn unless<T: PartialEq>(raw: T, sentinel: T, scale: impl Fn(T) -> f64) -> Option<f64> {
@@ -35,11 +44,13 @@ impl Batteries {
     pub fn apply(&mut self, message: &MavMessage) -> bool {
         match message {
             MavMessage::HIGH_LATENCY(d) => {
-                self.by_id.entry(0).or_default().percent_remaining = unless(d.battery_remaining, u8::MAX, f64::from);
+                self.by_id.entry(0).or_default().percent_remaining =
+                    unless(d.battery_remaining, u8::MAX, f64::from);
                 true
             }
             MavMessage::HIGH_LATENCY2(d) => {
-                self.by_id.entry(0).or_default().percent_remaining = unless(d.battery, -1, f64::from);
+                self.by_id.entry(0).or_default().percent_remaining =
+                    unless(d.battery, -1, f64::from);
                 true
             }
             MavMessage::BATTERY_STATUS(d) => {
@@ -68,7 +79,9 @@ impl Batteries {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mavlink::dialects::ardupilotmega::{BATTERY_STATUS_DATA, HIGH_LATENCY2_DATA, MavBatteryFunction};
+    use mavlink::dialects::ardupilotmega::{
+        BATTERY_STATUS_DATA, HIGH_LATENCY2_DATA, MavBatteryFunction,
+    };
 
     #[test]
     fn battery_status_sums_cells_and_scales_like_the_fact_group() {
@@ -86,20 +99,39 @@ mod tests {
         assert!((facts.voltage.unwrap() - 12.3).abs() < 1e-9);
         assert_eq!(facts.current, Some(12.5));
         assert!((facts.instant_power.unwrap() - 153.75).abs() < 1e-9);
-        assert_eq!((facts.mah_consumed, facts.percent_remaining, facts.temperature), (Some(340.0), Some(77.0), None));
+        assert_eq!(
+            (
+                facts.mah_consumed,
+                facts.percent_remaining,
+                facts.temperature
+            ),
+            (Some(340.0), Some(77.0), None)
+        );
         assert_eq!(facts.function, 2);
         let mut extended = BATTERY_STATUS_DATA::default();
         extended.id = 2;
         extended.voltages = [4000; 10];
         extended.voltages_ext = [4000, 3900, 0, 4100];
         batteries.apply(&MavMessage::BATTERY_STATUS(extended));
-        assert!((batteries.by_id[&2].voltage.unwrap() - 47.9).abs() < 1e-9, "cells past the tenth ride in the extension until the first zero");
+        assert!(
+            (batteries.by_id[&2].voltage.unwrap() - 47.9).abs() < 1e-9,
+            "cells past the tenth ride in the extension until the first zero"
+        );
         let mut unknown = BATTERY_STATUS_DATA::default();
         unknown.voltages = [u16::MAX; 10];
         unknown.current_battery = -1;
         batteries.apply(&MavMessage::BATTERY_STATUS(unknown));
-        assert_eq!(batteries.by_id.keys().copied().collect::<Vec<_>>(), vec![0, 1, 2]);
-        assert_eq!((batteries.by_id[&0].voltage, batteries.by_id[&0].instant_power), (None, None));
+        assert_eq!(
+            batteries.by_id.keys().copied().collect::<Vec<_>>(),
+            vec![0, 1, 2]
+        );
+        assert_eq!(
+            (
+                batteries.by_id[&0].voltage,
+                batteries.by_id[&0].instant_power
+            ),
+            (None, None)
+        );
     }
 
     #[test]

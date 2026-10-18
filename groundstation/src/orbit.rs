@@ -31,14 +31,21 @@ pub fn orbit_view(backend: &dyn Backend, _args: &[String]) -> Value {
             "reason": "No vehicle is connected.",
         });
     }
-    let lost = flag(&backend.value_fields("vehicle.vehicleLinkManager", "communicationLost"), "communicationLost");
+    let lost = flag(
+        &backend.value_fields("vehicle.vehicleLinkManager", "communicationLost"),
+        "communicationLost",
+    );
     let orbiting = (!lost).then(|| flag(&vehicle, "orbitActive"));
     let circle = backend.value("vehicle.orbitMapCircle");
     let unit = Unit::horizontal(backend);
     let radius = circle
         .get("facts")
         .and_then(Value::as_array)
-        .and_then(|facts| facts.iter().find(|f| f.get("property").and_then(Value::as_str) == Some("radius")))
+        .and_then(|facts| {
+            facts
+                .iter()
+                .find(|f| f.get("property").and_then(Value::as_str) == Some("radius"))
+        })
         .and_then(|f| f.get("rawValue").or_else(|| f.get("value")))
         .and_then(Value::as_f64)
         .filter(|metres| metres.is_finite() && *metres > 0.0);
@@ -85,30 +92,65 @@ mod tests {
         fn get_fields(&self, path: &str, _f: &str) -> String {
             match path {
                 "vehicle" => json!({ "kind": "object", "orbitActive": self.active }),
-                "vehicle.vehicleLinkManager" => json!({ "kind": "object", "communicationLost": self.lost }),
+                "vehicle.vehicleLinkManager" => {
+                    json!({ "kind": "object", "communicationLost": self.lost })
+                }
                 _ => json!({ "kind": "null" }),
             }
             .to_string()
         }
-        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            String::new()
+        }
         fn watch(&self, _p: &[String]) {}
     }
 
     #[test]
     fn an_orbit_that_stopped_reporting_is_not_an_orbit_that_stopped() {
-        let turning = orbit_view(&Flying { active: true, lost: false }, &[]);
+        let turning = orbit_view(
+            &Flying {
+                active: true,
+                lost: false,
+            },
+            &[],
+        );
         assert_eq!(turning["orbiting"], true);
         assert_eq!(turning["radiusText"], "120 m");
-        assert_eq!(turning["clockwise"], false, "ORBIT_EXECUTION_STATUS carries the direction in the SIGN of its radius, and the vehicle splits it into an absolute radius plus this flag - a head given only the radius has lost which way round the aircraft is turning");
+        assert_eq!(
+            turning["clockwise"], false,
+            "ORBIT_EXECUTION_STATUS carries the direction in the SIGN of its radius, and the vehicle splits it into an absolute radius plus this flag - a head given only the radius has lost which way round the aircraft is turning"
+        );
         assert_eq!(turning["centre"]["latitude"], 47.397);
 
-        let stopped = orbit_view(&Flying { active: false, lost: false }, &[]);
+        let stopped = orbit_view(
+            &Flying {
+                active: false,
+                lost: false,
+            },
+            &[],
+        );
         assert_eq!(stopped["orbiting"], false);
-        assert_eq!(stopped["centre"], Value::Null, "nothing is being flown, so there is no circle to draw");
+        assert_eq!(
+            stopped["centre"],
+            Value::Null,
+            "nothing is being flown, so there is no circle to draw"
+        );
 
-        let quiet = orbit_view(&Flying { active: true, lost: true }, &[]);
-        assert_eq!(quiet["orbiting"], Value::Null, "_orbitActive is set true by telemetry and cleared ONLY by a three second watchdog, so with contact lost false means 'no ORBIT_EXECUTION_STATUS arrived' rather than 'the vehicle stopped orbiting' - and the aircraft may still be turning");
+        let quiet = orbit_view(
+            &Flying {
+                active: true,
+                lost: true,
+            },
+            &[],
+        );
+        assert_eq!(
+            quiet["orbiting"],
+            Value::Null,
+            "_orbitActive is set true by telemetry and cleared ONLY by a three second watchdog, so with contact lost false means 'no ORBIT_EXECUTION_STATUS arrived' rather than 'the vehicle stopped orbiting' - and the aircraft may still be turning"
+        );
         assert!(quiet["reason"].as_str().unwrap().contains("No contact"));
     }
 
@@ -118,6 +160,9 @@ mod tests {
             let want = format!("vehicle.orbitMapCircle.{leaf}");
             assert!(DEPS.iter().any(|dep| *dep == want), "_handleOrbitExecutionStatus writes {leaf} on every ORBIT_EXECUTION_STATUS but emits orbitActiveChanged only on the transition into the orbit, so watching orbitActive alone draws the first circle reported and never another");
         });
-        assert!(!DEPS.contains(&"vehicle.orbitMapCircle"), "a dep stopping at the handle resolves to a QGCMapCircle* declared CONSTANT, fails the Fact special-case in _changeSignal, and asks a CONSTANT property for a notify signal it has not got: it would register and never fire");
+        assert!(
+            !DEPS.contains(&"vehicle.orbitMapCircle"),
+            "a dep stopping at the handle resolves to a QGCMapCircle* declared CONSTANT, fails the Fact special-case in _changeSignal, and asks a CONSTANT property for a notify signal it has not got: it would register and never fire"
+        );
     }
 }

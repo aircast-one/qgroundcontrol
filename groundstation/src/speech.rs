@@ -32,10 +32,14 @@ const ABBREVIATIONS: &[(&str, &str)] = &[
     ("SERVOX_FUNCTION", "Servo X Function"),
 ];
 
-static NEGATIVE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"-\s*(\d)").expect("negative number pattern"));
-static DECIMAL: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"([0-9]+)\.([0-9]+)").expect("decimal pattern"));
-static METERS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"([0-9]*\.?[0-9])\s?m([^A-Za-z]|$)").expect("meters pattern"));
-static MILLISECONDS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"([0-9]+)ms").expect("milliseconds pattern"));
+static NEGATIVE: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"-\s*(\d)").expect("negative number pattern"));
+static DECIMAL: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"([0-9]+)\.([0-9]+)").expect("decimal pattern"));
+static METERS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"([0-9]*\.?[0-9])\s?m([^A-Za-z]|$)").expect("meters pattern"));
+static MILLISECONDS: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"([0-9]+)ms").expect("milliseconds pattern"));
 static CLIP: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[^a-z0-9]+").expect("clip pattern"));
 
 struct Queue {
@@ -43,19 +47,31 @@ struct Queue {
     spoken: VecDeque<(u64, String, String, f64)>,
 }
 
-static QUEUE: Mutex<Queue> = Mutex::new(Queue { next: 1, spoken: VecDeque::new() });
+static QUEUE: Mutex<Queue> = Mutex::new(Queue {
+    next: 1,
+    spoken: VecDeque::new(),
+});
 
 fn replace_abbreviations(text: &str) -> String {
     text.split(' ')
-        .map(|word| ABBREVIATIONS.iter().find(|(short, _)| *short == word.to_uppercase()).map_or(word, |(_, long)| long))
+        .map(|word| {
+            ABBREVIATIONS
+                .iter()
+                .find(|(short, _)| *short == word.to_uppercase())
+                .map_or(word, |(_, long)| long)
+        })
         .collect::<Vec<_>>()
         .join(" ")
 }
 
 fn replace_decimal_points(text: &str) -> String {
-    std::iter::successors(Some(text.to_string()), |current| DECIMAL.is_match(current).then(|| DECIMAL.replacen(current, 1, "$1 point $2").into_owned()))
-        .last()
-        .unwrap_or_default()
+    std::iter::successors(Some(text.to_string()), |current| {
+        DECIMAL
+            .is_match(current)
+            .then(|| DECIMAL.replacen(current, 1, "$1 point $2").into_owned())
+    })
+    .last()
+    .unwrap_or_default()
 }
 
 fn plural(count: i64, word: &str) -> String {
@@ -66,17 +82,29 @@ fn milliseconds_text(number: i64) -> String {
     match number < 60_000 {
         true => {
             let (seconds, ms) = (number / 1000, number % 1000);
-            plural(seconds, "second") + &if ms > 0 { format!(" and {ms} millisecond") } else { String::new() }
+            plural(seconds, "second")
+                + &if ms > 0 {
+                    format!(" and {ms} millisecond")
+                } else {
+                    String::new()
+                }
         }
         false => {
             let (minutes, seconds) = (number / 60_000, (number % 60_000) / 1000);
-            plural(minutes, "minute") + &if seconds > 0 { format!(" and {}", plural(seconds, "second")) } else { String::new() }
+            plural(minutes, "minute")
+                + &if seconds > 0 {
+                    format!(" and {}", plural(seconds, "second"))
+                } else {
+                    String::new()
+                }
         }
     }
 }
 
 fn convert_milliseconds(text: &str) -> String {
-    let Some(found) = MILLISECONDS.captures(text) else { return text.to_string() };
+    let Some(found) = MILLISECONDS.captures(text) else {
+        return text.to_string();
+    };
     match found[1].parse::<i64>() {
         Ok(number) if number >= 1000 => text.replace(&found[0], &milliseconds_text(number)),
         _ => text.to_string(),
@@ -84,12 +112,18 @@ fn convert_milliseconds(text: &str) -> String {
 }
 
 pub fn clip_name(text: &str) -> String {
-    CLIP.replace_all(&text.to_lowercase(), "_").trim_matches('_').to_string()
+    CLIP.replace_all(&text.to_lowercase(), "_")
+        .trim_matches('_')
+        .to_string()
 }
 
 pub fn fix_text(text: &str) -> String {
-    let negatives = NEGATIVE.replace_all(&replace_abbreviations(text), "negative $1").into_owned();
-    let meters = METERS.replace_all(&replace_decimal_points(&negatives), "$1 meters$2").into_owned();
+    let negatives = NEGATIVE
+        .replace_all(&replace_abbreviations(text), "negative $1")
+        .into_owned();
+    let meters = METERS
+        .replace_all(&replace_decimal_points(&negatives), "$1 meters$2")
+        .into_owned();
     convert_milliseconds(&meters)
 }
 
@@ -98,11 +132,17 @@ fn setting(path: &str) -> Option<Value> {
 }
 
 fn volume() -> f64 {
-    setting(VOLUME_PATH).and_then(|v| v.as_f64()).unwrap_or(DEFAULT_VOLUME).clamp(0.0, 100.0)
+    setting(VOLUME_PATH)
+        .and_then(|v| v.as_f64())
+        .unwrap_or(DEFAULT_VOLUME)
+        .clamp(0.0, 100.0)
 }
 
 fn silenced() -> bool {
-    setting(MUTED_PATH).and_then(|v| v.as_bool()).unwrap_or(false) || volume() <= 0.0
+    setting(MUTED_PATH)
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false)
+        || volume() <= 0.0
 }
 
 pub fn say(text: &str) {
@@ -126,7 +166,9 @@ fn enqueue(text: &str, clip: &str, volume: f64) {
     let mut queue = QUEUE.lock().unwrap_or_else(PoisonError::into_inner);
     let sequence = queue.next;
     queue.next += 1;
-    queue.spoken.push_back((sequence, text.to_string(), clip.to_string(), volume));
+    queue
+        .spoken
+        .push_back((sequence, text.to_string(), clip.to_string(), volume));
     if queue.spoken.len() > MAX_QUEUED {
         queue.spoken.pop_front();
     }
@@ -145,7 +187,10 @@ pub fn vehicle_prefix(id: u8, vehicles: usize) -> String {
 }
 
 pub fn speech_view(_backend: &dyn Backend, args: &[String]) -> Value {
-    let after: u64 = args.first().and_then(|a| a.trim().parse().ok()).unwrap_or(0);
+    let after: u64 = args
+        .first()
+        .and_then(|a| a.trim().parse().ok())
+        .unwrap_or(0);
     let queue = QUEUE.lock().unwrap_or_else(PoisonError::into_inner);
     json!({
         "kind": "object",
@@ -162,21 +207,48 @@ mod tests {
 
     struct NoBackend;
     impl Backend for NoBackend {
-        fn get(&self, _path: &str) -> String { String::new() }
-        fn get_fields(&self, _path: &str, _fields: &str) -> String { String::new() }
-        fn set(&self, _path: &str, _value: &str) -> String { String::new() }
-        fn invoke(&self, _path: &str, _args: &str) -> String { String::new() }
+        fn get(&self, _path: &str) -> String {
+            String::new()
+        }
+        fn get_fields(&self, _path: &str, _fields: &str) -> String {
+            String::new()
+        }
+        fn set(&self, _path: &str, _value: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _path: &str, _args: &str) -> String {
+            String::new()
+        }
         fn watch(&self, _paths: &[String]) {}
     }
 
     #[test]
     fn spoken_text_is_fixed_up_the_way_audio_output_does() {
-        assert_eq!(fix_text("PreArm: EKF not ready"), "PreArm: E.K.F. not ready");
-        assert_eq!(fix_text("ALTCTL flight mode"), "Altitude Control flight mode");
-        assert_eq!(fix_text("altitude -12.5 m"), "altitude negative 12 point 5 meters");
-        assert_eq!(fix_text("timeout 2500ms"), "timeout 2 seconds and 500 millisecond");
-        assert_eq!(fix_text("waited 125000ms"), "waited 2 minutes and 5 seconds");
-        assert_eq!(fix_text("short 900ms"), "short 900ms", "under a second stays as written");
+        assert_eq!(
+            fix_text("PreArm: EKF not ready"),
+            "PreArm: E.K.F. not ready"
+        );
+        assert_eq!(
+            fix_text("ALTCTL flight mode"),
+            "Altitude Control flight mode"
+        );
+        assert_eq!(
+            fix_text("altitude -12.5 m"),
+            "altitude negative 12 point 5 meters"
+        );
+        assert_eq!(
+            fix_text("timeout 2500ms"),
+            "timeout 2 seconds and 500 millisecond"
+        );
+        assert_eq!(
+            fix_text("waited 125000ms"),
+            "waited 2 minutes and 5 seconds"
+        );
+        assert_eq!(
+            fix_text("short 900ms"),
+            "short 900ms",
+            "under a second stays as written"
+        );
         assert_eq!(fix_text("1.2.3"), "1 point 2 point 3");
     }
 
@@ -184,8 +256,14 @@ mod tests {
     fn a_line_names_its_recorded_clip_from_the_words_before_they_are_spelled_out() {
         assert_eq!(clip_name(" RTL flight mode"), "rtl_flight_mode");
         assert_eq!(clip_name(" battery  level low "), "battery_level_low");
-        assert_eq!(clip_name("Communication lost on primary link."), "communication_lost_on_primary_link");
-        assert_eq!(clip_name("Battery needed to return home. Return now."), "battery_needed_to_return_home_return_now");
+        assert_eq!(
+            clip_name("Communication lost on primary link."),
+            "communication_lost_on_primary_link"
+        );
+        assert_eq!(
+            clip_name("Battery needed to return home. Return now."),
+            "battery_needed_to_return_home_return_now"
+        );
     }
 
     #[test]
@@ -195,10 +273,26 @@ mod tests {
         enqueue("second line", "second_line", 0.5);
         let view = speech_view(&NoBackend, &[]);
         let lines = view["lines"].as_array().unwrap();
-        let first = lines.iter().find(|l| l["text"] == "first line").unwrap()["sequence"].as_u64().unwrap();
+        let first = lines.iter().find(|l| l["text"] == "first line").unwrap()["sequence"]
+            .as_u64()
+            .unwrap();
         let after = speech_view(&NoBackend, &[first.to_string()]);
-        assert!(after["lines"].as_array().unwrap().iter().any(|l| l["text"] == "second line" && l["clip"] == "second_line" && l["volume"] == 0.5));
-        assert!(!after["lines"].as_array().unwrap().iter().any(|l| l["text"] == "first line"));
+        assert!(
+            after["lines"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|l| l["text"] == "second line"
+                    && l["clip"] == "second_line"
+                    && l["volume"] == 0.5)
+        );
+        assert!(
+            !after["lines"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|l| l["text"] == "first line")
+        );
         assert_eq!(vehicle_prefix(2, 2), "Vehicle 2 ");
         assert_eq!(vehicle_prefix(2, 1), "");
     }

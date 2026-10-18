@@ -26,11 +26,16 @@ pub const GIMBAL_AIM: &str = "gimbal.aim";
 
 fn setting(backend: &dyn Backend, name: &str) -> bool {
     let fact = backend.value(&format!("settings.gimbalControllerSettings.{name}"));
-    fact.get("value").is_some_and(|v| v.as_bool().unwrap_or_else(|| v.as_f64().is_some_and(|n| n != 0.0)))
+    fact.get("value").is_some_and(|v| {
+        v.as_bool()
+            .unwrap_or_else(|| v.as_f64().is_some_and(|n| n != 0.0))
+    })
 }
 
 fn number_setting(backend: &dyn Backend, name: &str) -> Option<f64> {
-    crate::read::value_number(&backend.value(&format!("settings.gimbalControllerSettings.{name}.rawValue")))
+    crate::read::value_number(&backend.value(&format!(
+        "settings.gimbalControllerSettings.{name}.rawValue"
+    )))
 }
 
 fn angle(value: &Value) -> Option<String> {
@@ -45,9 +50,19 @@ pub fn status_text(gimbal: &Value) -> &'static str {
     }
 }
 
-pub fn indicator(snapshot: &Value, show_azimuth: bool, show_control: bool, on_screen: (bool, bool)) -> Value {
+pub fn indicator(
+    snapshot: &Value,
+    show_azimuth: bool,
+    show_control: bool,
+    on_screen: (bool, bool),
+) -> Value {
     let gimbals = snapshot["gimbals"].as_array().cloned().unwrap_or_default();
-    let Some(active) = gimbals.iter().find(|g| flag(g, "active")).or(gimbals.first()).cloned() else {
+    let Some(active) = gimbals
+        .iter()
+        .find(|g| flag(g, "active"))
+        .or(gimbals.first())
+        .cloned()
+    else {
         return json!({ "kind": "object", "class": "GimbalIndicator", "shown": false });
     };
     let yaw = match show_azimuth {
@@ -82,7 +97,10 @@ pub fn indicator_view(backend: &dyn Backend, _args: &[String]) -> Value {
         &snapshot,
         setting(backend, "toolbarIndicatorShowAzimuth"),
         setting(backend, "toolbarIndicatorShowAcquireReleaseControl"),
-        (setting(backend, "enableOnScreenControl"), setting(backend, "clickAndDrag")),
+        (
+            setting(backend, "enableOnScreenControl"),
+            setting(backend, "clickAndDrag"),
+        ),
     );
     shown["askSerial"] = json!(crate::gimbal::asked());
     shown
@@ -97,7 +115,14 @@ pub fn azimuths(snapshot: &Value, shown: bool) -> Vec<Value> {
         .unwrap_or_default()
         .iter()
         .filter(|_| shown)
-        .filter_map(|gimbal| gimbal["absoluteYaw"].as_f64().filter(|yaw| yaw.is_finite()).map(|yaw| json!({ "yaw": yaw.rem_euclid(360.0), "active": flag(gimbal, "active") })))
+        .filter_map(|gimbal| {
+            gimbal["absoluteYaw"]
+                .as_f64()
+                .filter(|yaw| yaw.is_finite())
+                .map(
+                    |yaw| json!({ "yaw": yaw.rem_euclid(360.0), "active": flag(gimbal, "active") }),
+                )
+        })
         .collect()
 }
 
@@ -107,7 +132,20 @@ pub fn azimuth_view(backend: &dyn Backend, _args: &[String]) -> Value {
 }
 
 pub fn owns(path: &str) -> bool {
-    [GIMBAL_CENTER, GIMBAL_TILT_90, GIMBAL_POINT_HOME, GIMBAL_RETRACT, GIMBAL_YAW_LOCK, GIMBAL_CONTROL, GIMBAL_SELECT, GIMBAL_ON_SCREEN, GIMBAL_DRAG, GIMBAL_PITCH, GIMBAL_AIM].contains(&path)
+    [
+        GIMBAL_CENTER,
+        GIMBAL_TILT_90,
+        GIMBAL_POINT_HOME,
+        GIMBAL_RETRACT,
+        GIMBAL_YAW_LOCK,
+        GIMBAL_CONTROL,
+        GIMBAL_SELECT,
+        GIMBAL_ON_SCREEN,
+        GIMBAL_DRAG,
+        GIMBAL_PITCH,
+        GIMBAL_AIM,
+    ]
+    .contains(&path)
 }
 
 fn qt_path(method: &str) -> String {
@@ -129,28 +167,103 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         action
     };
     match path {
-        GIMBAL_CENTER => crate::guided::dispatch(backend, Some(op("center", Value::Null)), vehicle, &qt_path("centerGimbal"), "[]"),
-        GIMBAL_TILT_90 => crate::guided::dispatch(backend, Some(op("tilt90", Value::Null)), vehicle, &qt_path("sendPitchBodyYaw"), "[-90, 0]"),
-        GIMBAL_PITCH => match given.get(0).and_then(Value::as_f64).filter(|v| v.is_finite()) {
+        GIMBAL_CENTER => crate::guided::dispatch(
+            backend,
+            Some(op("center", Value::Null)),
+            vehicle,
+            &qt_path("centerGimbal"),
+            "[]",
+        ),
+        GIMBAL_TILT_90 => crate::guided::dispatch(
+            backend,
+            Some(op("tilt90", Value::Null)),
+            vehicle,
+            &qt_path("sendPitchBodyYaw"),
+            "[-90, 0]",
+        ),
+        GIMBAL_PITCH => match given
+            .get(0)
+            .and_then(Value::as_f64)
+            .filter(|v| v.is_finite())
+        {
             Some(pitch) => {
-                let qt_body_yaw = crate::read::value_number(&backend.value(&qt_path("activeGimbal.bodyYaw"))).filter(|v| v.is_finite());
-                let qt_args = qt_body_yaw.map_or_else(|| "[]".to_string(), |yaw| json!([pitch, yaw, false]).to_string());
-                crate::guided::dispatch(backend, Some(op("pitch", json!({ "pitch": pitch }))), vehicle, &qt_path("sendPitchBodyYaw"), &qt_args)
+                let qt_body_yaw =
+                    crate::read::value_number(&backend.value(&qt_path("activeGimbal.bodyYaw")))
+                        .filter(|v| v.is_finite());
+                let qt_args = qt_body_yaw.map_or_else(
+                    || "[]".to_string(),
+                    |yaw| json!([pitch, yaw, false]).to_string(),
+                );
+                crate::guided::dispatch(
+                    backend,
+                    Some(op("pitch", json!({ "pitch": pitch }))),
+                    vehicle,
+                    &qt_path("sendPitchBodyYaw"),
+                    &qt_args,
+                )
             }
-            None => json!({ "ok": false, "refusal": "badPitch", "reason": "A tilt is a number of degrees." }),
+            None => {
+                json!({ "ok": false, "refusal": "badPitch", "reason": "A tilt is a number of degrees." })
+            }
         },
-        GIMBAL_AIM => match (given.get(0).and_then(Value::as_f64).filter(|v| v.is_finite()), given.get(1).and_then(Value::as_f64).filter(|v| v.is_finite())) {
-            (Some(pitch), Some(body_yaw)) => crate::guided::dispatch(backend, Some(op("aim", json!({ "pitch": pitch, "bodyYaw": body_yaw }))), vehicle, &qt_path("sendPitchBodyYaw"), &json!([pitch, body_yaw, false]).to_string()),
-            _ => json!({ "ok": false, "refusal": "badAim", "reason": "An aim is a tilt and a yaw from the nose, in degrees." }),
+        GIMBAL_AIM => match (
+            given
+                .get(0)
+                .and_then(Value::as_f64)
+                .filter(|v| v.is_finite()),
+            given
+                .get(1)
+                .and_then(Value::as_f64)
+                .filter(|v| v.is_finite()),
+        ) {
+            (Some(pitch), Some(body_yaw)) => crate::guided::dispatch(
+                backend,
+                Some(op("aim", json!({ "pitch": pitch, "bodyYaw": body_yaw }))),
+                vehicle,
+                &qt_path("sendPitchBodyYaw"),
+                &json!([pitch, body_yaw, false]).to_string(),
+            ),
+            _ => {
+                json!({ "ok": false, "refusal": "badAim", "reason": "An aim is a tilt and a yaw from the nose, in degrees." })
+            }
         },
-        GIMBAL_RETRACT => crate::guided::dispatch(backend, Some(op("retract", Value::Null)), vehicle, &qt_path("setGimbalRetract"), "[true]"),
-        GIMBAL_YAW_LOCK => crate::guided::dispatch(backend, Some(op("yawLock", json!({ "lock": on }))), vehicle, &qt_path("setGimbalYawLock"), &json!([on]).to_string()),
+        GIMBAL_RETRACT => crate::guided::dispatch(
+            backend,
+            Some(op("retract", Value::Null)),
+            vehicle,
+            &qt_path("setGimbalRetract"),
+            "[true]",
+        ),
+        GIMBAL_YAW_LOCK => crate::guided::dispatch(
+            backend,
+            Some(op("yawLock", json!({ "lock": on }))),
+            vehicle,
+            &qt_path("setGimbalYawLock"),
+            &json!([on]).to_string(),
+        ),
         GIMBAL_CONTROL => match on {
-            true => crate::guided::dispatch(backend, Some(op("acquire", Value::Null)), vehicle, &qt_path("acquireGimbalControl"), "[]"),
-            false => crate::guided::dispatch(backend, Some(op("release", Value::Null)), vehicle, &qt_path("releaseGimbalControl"), "[]"),
+            true => crate::guided::dispatch(
+                backend,
+                Some(op("acquire", Value::Null)),
+                vehicle,
+                &qt_path("acquireGimbalControl"),
+                "[]",
+            ),
+            false => crate::guided::dispatch(
+                backend,
+                Some(op("release", Value::Null)),
+                vehicle,
+                &qt_path("releaseGimbalControl"),
+                "[]",
+            ),
         },
         GIMBAL_ON_SCREEN => {
-            let number = |i: usize| given.get(i).and_then(Value::as_f64).filter(|v| v.is_finite() && (-1.0..=1.0).contains(v));
+            let number = |i: usize| {
+                given
+                    .get(i)
+                    .and_then(Value::as_f64)
+                    .filter(|v| v.is_finite() && (-1.0..=1.0).contains(v))
+            };
             let (Some(pan), Some(tilt)) = (number(0), number(1)) else {
                 return json!({ "ok": false, "refusal": "badPoint", "reason": "Pan and tilt are fractions of the screen from -1 to 1." });
             };
@@ -164,21 +277,42 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
                 "vFov": v_fov,
                 "slide": number_setting(backend, "cameraSlideSpeed"),
             });
-            crate::guided::dispatch(backend, Some(op("onScreen", screen)), vehicle, &qt_path("gimbalOnScreenControl"), &json!([pan, tilt, point, !point, !point]).to_string())
+            crate::guided::dispatch(
+                backend,
+                Some(op("onScreen", screen)),
+                vehicle,
+                &qt_path("gimbalOnScreenControl"),
+                &json!([pan, tilt, point, !point, !point]).to_string(),
+            )
         }
         GIMBAL_DRAG => {
-            let number = |i: usize| given.get(i).and_then(Value::as_f64).filter(|v| v.is_finite() && (-2.0..=2.0).contains(v));
+            let number = |i: usize| {
+                given
+                    .get(i)
+                    .and_then(Value::as_f64)
+                    .filter(|v| v.is_finite() && (-2.0..=2.0).contains(v))
+            };
             let (Some(pan), Some(tilt)) = (number(0), number(1)) else {
                 return json!({ "ok": false, "refusal": "badPoint", "reason": "A drag is how far across the picture it went, in fractions of half the width and height." });
             };
             let begin = given.get(2).and_then(Value::as_bool).unwrap_or(false);
             let (h_fov, v_fov, _) = crate::lens::field_of_view(backend);
-            let drag = json!({ "pan": pan, "tilt": tilt, "begin": begin, "hFov": h_fov, "vFov": v_fov });
-            crate::guided::dispatch(backend, Some(op("drag", drag)), vehicle, &qt_path("gimbalOnScreenControl"), &json!([pan, tilt, true, false, false]).to_string())
+            let drag =
+                json!({ "pan": pan, "tilt": tilt, "begin": begin, "hFov": h_fov, "vFov": v_fov });
+            crate::guided::dispatch(
+                backend,
+                Some(op("drag", drag)),
+                vehicle,
+                &qt_path("gimbalOnScreenControl"),
+                &json!([pan, tilt, true, false, false]).to_string(),
+            )
         }
         GIMBAL_SELECT => crate::guided::dispatch(
             backend,
-            Some(op("select", json!({ "managerCompid": given.get(0), "deviceId": given.get(1) }))),
+            Some(op(
+                "select",
+                json!({ "managerCompid": given.get(0), "deviceId": given.get(1) }),
+            )),
             vehicle,
             &qt_path("setActiveGimbal"),
             args,
@@ -205,7 +339,13 @@ mod tests {
     #[test]
     fn the_map_wedge_follows_each_gimbal_absolute_yaw_only_when_the_setting_asks() {
         let snapshot = json!({ "gimbals": [{ "active": true, "absoluteYaw": -90.0 }, { "active": false, "absoluteYaw": null }, { "active": false, "absoluteYaw": 10.0 }] });
-        assert_eq!(azimuths(&snapshot, true), vec![json!({ "yaw": 270.0, "active": true }), json!({ "yaw": 10.0, "active": false })]);
+        assert_eq!(
+            azimuths(&snapshot, true),
+            vec![
+                json!({ "yaw": 270.0, "active": true }),
+                json!({ "yaw": 10.0, "active": false })
+            ]
+        );
         assert!(azimuths(&snapshot, false).is_empty());
     }
 
@@ -215,20 +355,63 @@ mod tests {
 
     #[test]
     fn the_indicator_reads_as_the_toolbar_does() {
-        let shown = indicator(&snapshot(json!({ "active": true, "pitch": -12.34, "bodyYaw": 5.0, "absoluteYaw": 185.0, "yawLock": false, "retracted": false, "supportsRetract": true, "haveControl": false })), false, true, (true, false));
+        let shown = indicator(
+            &snapshot(
+                json!({ "active": true, "pitch": -12.34, "bodyYaw": 5.0, "absoluteYaw": 185.0, "yawLock": false, "retracted": false, "supportsRetract": true, "haveControl": false }),
+            ),
+            false,
+            true,
+            (true, false),
+        );
         assert_eq!(shown["statusText"], "Yaw follow");
         assert_eq!(shown["pitchText"], "P: -12.3");
         assert_eq!(shown["yawText"], "Y: 5.0");
-        assert_eq!(shown["bodyYawDegrees"], 5.0, "a recenter offer needs the yaw as a number");
+        assert_eq!(
+            shown["bodyYawDegrees"], 5.0,
+            "a recenter offer needs the yaw as a number"
+        );
         assert_eq!(shown["yawLockLabel"], "Yaw Lock");
         assert_eq!(shown["controlLabel"], "Acquire Control");
         assert_eq!(shown["onScreen"]["enabled"], true);
-        let azimuth = indicator(&snapshot(json!({ "active": true, "absoluteYaw": 185.0, "yawLock": true })), true, false, (false, false));
-        assert_eq!(azimuth["yawText"], "Az: 185.0", "the toolbar shows azimuth when the setting asks");
+        let azimuth = indicator(
+            &snapshot(json!({ "active": true, "absoluteYaw": 185.0, "yawLock": true })),
+            true,
+            false,
+            (false, false),
+        );
+        assert_eq!(
+            azimuth["yawText"], "Az: 185.0",
+            "the toolbar shows azimuth when the setting asks"
+        );
         assert_eq!(azimuth["statusText"], "Yaw locked");
         assert_eq!(azimuth["retractOffered"], false);
-        assert_eq!((shown["yawLockOffered"].clone(), indicator(&snapshot(json!({ "active": true, "supportsYawLock": true })), false, false, (false, false))["yawLockOffered"].clone()), (json!(false), json!(true)), "GimbalIndicator.qml shows Yaw Lock only when the gimbal reports the capability");
-        assert_eq!(indicator(&snapshot(json!({ "retracted": true, "yawLock": true })), false, false, (false, false))["statusText"], "Retracted");
-        assert_eq!(indicator(&json!({ "gimbals": [] }), false, false, (false, false))["shown"], false, "no gimbal, no indicator");
+        assert_eq!(
+            (
+                shown["yawLockOffered"].clone(),
+                indicator(
+                    &snapshot(json!({ "active": true, "supportsYawLock": true })),
+                    false,
+                    false,
+                    (false, false)
+                )["yawLockOffered"]
+                    .clone()
+            ),
+            (json!(false), json!(true)),
+            "GimbalIndicator.qml shows Yaw Lock only when the gimbal reports the capability"
+        );
+        assert_eq!(
+            indicator(
+                &snapshot(json!({ "retracted": true, "yawLock": true })),
+                false,
+                false,
+                (false, false)
+            )["statusText"],
+            "Retracted"
+        );
+        assert_eq!(
+            indicator(&json!({ "gimbals": [] }), false, false, (false, false))["shown"],
+            false,
+            "no gimbal, no indicator"
+        );
     }
 }

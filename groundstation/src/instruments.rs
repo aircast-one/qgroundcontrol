@@ -18,10 +18,20 @@ pub const DEPS: &[&str] = &[
     "settings.unitsSettings.areaUnits",
 ];
 
-pub const DEFAULTS: &[&str] = &["vehicle/distanceToHome", "vehicle/altitudeRelative", "vehicle/groundSpeed", "vehicle/climbRate"];
+pub const DEFAULTS: &[&str] = &[
+    "vehicle/distanceToHome",
+    "vehicle/altitudeRelative",
+    "vehicle/groundSpeed",
+    "vehicle/climbRate",
+];
 pub const FORWARD_FLIGHT_DEFAULTS: &[&str] = &["vehicle/airSpeed"];
 const DEFAULT_TEXT: &[(&str, &str)] = &[("vehicle/airSpeed", "AirSpd")];
-const DEFAULT_ICONS: &[(&str, &str)] = &[("vehicle/distanceToHome", "home.svg"), ("vehicle/altitudeRelative", "arrow-thick-up.svg"), ("vehicle/groundSpeed", "arrow-simple-right.svg"), ("vehicle/climbRate", "arrow-simple-up.svg")];
+const DEFAULT_ICONS: &[(&str, &str)] = &[
+    ("vehicle/distanceToHome", "home.svg"),
+    ("vehicle/altitudeRelative", "arrow-thick-up.svg"),
+    ("vehicle/groundSpeed", "arrow-simple-right.svg"),
+    ("vehicle/climbRate", "arrow-simple-up.svg"),
+];
 
 const ABSENT: &str = "\u{2014}";
 
@@ -53,16 +63,27 @@ fn split_selection(selection: &str) -> (String, String) {
 
 fn selections(args: &[String], forward_flight: bool) -> Vec<(String, String)> {
     let chosen: Vec<(String, String)> = match args.is_empty() {
-        true => DEFAULTS.iter().chain(FORWARD_FLIGHT_DEFAULTS.iter().filter(|_| forward_flight)).map(|s| split_selection(s)).collect(),
+        true => DEFAULTS
+            .iter()
+            .chain(FORWARD_FLIGHT_DEFAULTS.iter().filter(|_| forward_flight))
+            .map(|s| split_selection(s))
+            .collect(),
         false => args.iter().map(|s| split_selection(s)).collect(),
     };
-    chosen.into_iter().filter(|(_, name)| !name.is_empty()).collect()
+    chosen
+        .into_iter()
+        .filter(|(_, name)| !name.is_empty())
+        .collect()
 }
 
 pub fn deps_for(args: &[String]) -> Vec<String> {
     DEPS.iter()
         .map(|d| d.to_string())
-        .chain(selections(args, true).iter().map(|(group, name)| fact_path(group, name)))
+        .chain(
+            selections(args, true)
+                .iter()
+                .map(|(group, name)| fact_path(group, name)),
+        )
         .collect::<std::collections::BTreeSet<_>>()
         .into_iter()
         .collect()
@@ -81,18 +102,33 @@ fn dimensioned(backend: &dyn Backend, raw_units: &str) -> Option<Unit> {
 fn converted(backend: &dyn Backend, fact: &Value) -> Option<(String, String)> {
     let raw_units = fact.get("rawUnits").and_then(Value::as_str)?;
     let unit = dimensioned(backend, raw_units)?;
-    let raw = fact.get("rawValue").and_then(Value::as_f64).filter(|value| value.is_finite())?;
-    let places = fact.get("decimalPlaces").and_then(Value::as_i64).unwrap_or(1).clamp(0, 6) as usize;
-    Some((crate::read::settled(crate::settingsstore::fixed_as_qt(unit.show(raw), places)), unit.name.clone()))
+    let raw = fact
+        .get("rawValue")
+        .and_then(Value::as_f64)
+        .filter(|value| value.is_finite())?;
+    let places = fact
+        .get("decimalPlaces")
+        .and_then(Value::as_i64)
+        .unwrap_or(1)
+        .clamp(0, 6) as usize;
+    Some((
+        crate::read::settled(crate::settingsstore::fixed_as_qt(unit.show(raw), places)),
+        unit.name.clone(),
+    ))
 }
 
 pub fn vehicle_class_key(class: &Value) -> &'static str {
-    ["vtol", "fixedWing", "airship", "multiRotor", "rover", "sub"].into_iter().find(|key| crate::read::flag(class, key)).unwrap_or("generic")
+    ["vtol", "fixedWing", "airship", "multiRotor", "rover", "sub"]
+        .into_iter()
+        .find(|key| crate::read::flag(class, key))
+        .unwrap_or("generic")
 }
 
 pub fn instruments_view(backend: &dyn Backend, args: &[String]) -> Value {
     let class = backend.value_fields("vehicle", "fixedWing,vtol,airship,multiRotor,rover,sub");
-    let forward_flight = ["fixedWing", "vtol", "airship"].iter().any(|key| crate::read::flag(&class, key));
+    let forward_flight = ["fixedWing", "vtol", "airship"]
+        .iter()
+        .any(|key| crate::read::flag(&class, key));
     let items: Vec<Value> = selections(args, forward_flight)
         .iter()
         .map(|(group, name)| {
@@ -134,15 +170,21 @@ pub fn instruments_view(backend: &dyn Backend, args: &[String]) -> Value {
     })
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn the_layout_key_is_the_vehicle_class_like_fact_value_grid() {
-        assert_eq!(vehicle_class_key(&json!({ "multiRotor": true })), "multiRotor");
-        assert_eq!(vehicle_class_key(&json!({ "vtol": true, "fixedWing": true })), "vtol", "a VTOL is its own class, not a plane");
+        assert_eq!(
+            vehicle_class_key(&json!({ "multiRotor": true })),
+            "multiRotor"
+        );
+        assert_eq!(
+            vehicle_class_key(&json!({ "vtol": true, "fixedWing": true })),
+            "vtol",
+            "a VTOL is its own class, not a plane"
+        );
         assert_eq!(vehicle_class_key(&json!({})), "generic");
     }
 
@@ -157,9 +199,15 @@ mod tests {
             }
             .to_string()
         }
-        fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
-        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn get_fields(&self, p: &str, _f: &str) -> String {
+            self.get(p)
+        }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            String::new()
+        }
         fn watch(&self, _p: &[String]) {}
     }
 
@@ -167,15 +215,37 @@ mod tests {
     fn defaults_are_qgc_core_plugins_four_and_airspeed_in_forward_flight() {
         let view = instruments_view(&Fake, &[]);
         let items = view["items"].as_array().unwrap();
-        assert_eq!(items.iter().map(|i| i["name"].as_str().unwrap()).collect::<Vec<_>>(), ["distanceToHome", "altitudeRelative", "groundSpeed", "climbRate"], "QGCCorePlugin::factValueGridCreateDefaultSettings");
+        assert_eq!(
+            items
+                .iter()
+                .map(|i| i["name"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            [
+                "distanceToHome",
+                "altitudeRelative",
+                "groundSpeed",
+                "climbRate"
+            ],
+            "QGCCorePlugin::factValueGridCreateDefaultSettings"
+        );
         assert_eq!(items[1]["label"], "Alt (Rel)");
         assert_eq!(items[1]["value"], "25.0");
         assert_eq!(items[1]["units"], "m");
-        assert_eq!(items[2]["label"], "", "the cell text is the fact's shortDescription, even an empty one");
-        assert_eq!(selections(&[], true).last().map(|(_, name)| name.as_str()), Some("airSpeed"), "fixed wing, VTOL and airship add AirSpeed");
+        assert_eq!(
+            items[2]["label"], "",
+            "the cell text is the fact's shortDescription, even an empty one"
+        );
+        assert_eq!(
+            selections(&[], true).last().map(|(_, name)| name.as_str()),
+            Some("airSpeed"),
+            "fixed wing, VTOL and airship add AirSpeed"
+        );
         assert_eq!(items[2]["value"], "\u{2014}");
         assert_eq!(items[2]["missing"], true);
-        assert_eq!(items[3]["label"], "ClimbRate", "a fact the vehicle lacks keeps QGCCorePlugin's factName as its text");
+        assert_eq!(
+            items[3]["label"], "ClimbRate",
+            "a fact the vehicle lacks keeps QGCCorePlugin's factName as its text"
+        );
         assert_eq!(view["available"], true);
         struct Plane;
         impl Backend for Plane {
@@ -187,13 +257,27 @@ mod tests {
                 }
                 .to_string()
             }
-            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn get_fields(&self, p: &str, _f: &str) -> String {
+                self.get(p)
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
             fn watch(&self, _p: &[String]) {}
         }
-        assert_eq!(instruments_view(&Plane, &[])["items"][4]["label"], "AirSpd", "the default cell carries QGCCorePlugin's own text");
-        assert_eq!(instruments_view(&Plane, &["vehicle/airSpeed".to_string()])["items"][0]["label"], "Air Speed", "a picked cell takes the fact's description");
+        assert_eq!(
+            instruments_view(&Plane, &[])["items"][4]["label"],
+            "AirSpd",
+            "the default cell carries QGCCorePlugin's own text"
+        );
+        assert_eq!(
+            instruments_view(&Plane, &["vehicle/airSpeed".to_string()])["items"][0]["label"],
+            "Air Speed",
+            "a picked cell takes the fact's description"
+        );
     }
 
     #[test]
@@ -207,13 +291,22 @@ mod tests {
                 }
                 .to_string()
             }
-            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn get_fields(&self, p: &str, _f: &str) -> String {
+                self.get(p)
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
             fn watch(&self, _p: &[String]) {}
         }
         let view = instruments_view(&Resting, &["vehicle/altitudeRelative".to_string()]);
-        assert_eq!(view["items"][0]["value"], "0.0", "Qt spells the fact and a vehicle sitting on the ground reports a hair under zero, so valueString arrives as -0.0 - and neither of us formats that string, so nothing stripped the sign before it reached an altimeter reading as below the launch point");
+        assert_eq!(
+            view["items"][0]["value"], "0.0",
+            "Qt spells the fact and a vehicle sitting on the ground reports a hair under zero, so valueString arrives as -0.0 - and neither of us formats that string, so nothing stripped the sign before it reached an altimeter reading as below the launch point"
+        );
     }
 
     #[test]
@@ -227,17 +320,35 @@ mod tests {
                 }
                 .to_string()
             }
-            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn get_fields(&self, p: &str, _f: &str) -> String {
+                self.get(p)
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
             fn watch(&self, _p: &[String]) {}
         }
         let view = instruments_view(&Homeless, &["vehicle/distanceToHome".to_string()]);
         let row = &view["items"][0];
-        assert_eq!(row["missing"], true, "Qt writes --.-- when a numeric fact is NaN, and a vehicle that has sent no HOME_POSITION cannot compute a distance to it - serving the placeholder drew \"--.-- ft\" on the flight row as a reading");
-        assert_eq!(row["missingReason"], "notReported", "the fact resolves and the vehicle will report it once home is set, so this is not a fact that does not exist");
-        assert_eq!(row["value"], "\u{2014}", "the head gets the absent marker it already draws correctly");
-        assert_eq!(row["units"], "", "and no unit, because a unit beside an absence is what made the placeholder look measured");
+        assert_eq!(
+            row["missing"], true,
+            "Qt writes --.-- when a numeric fact is NaN, and a vehicle that has sent no HOME_POSITION cannot compute a distance to it - serving the placeholder drew \"--.-- ft\" on the flight row as a reading"
+        );
+        assert_eq!(
+            row["missingReason"], "notReported",
+            "the fact resolves and the vehicle will report it once home is set, so this is not a fact that does not exist"
+        );
+        assert_eq!(
+            row["value"], "\u{2014}",
+            "the head gets the absent marker it already draws correctly"
+        );
+        assert_eq!(
+            row["units"], "",
+            "and no unit, because a unit beside an absence is what made the placeholder look measured"
+        );
         assert_eq!(view["available"], false);
     }
 
@@ -252,19 +363,34 @@ mod tests {
                 }
                 .to_string()
             }
-            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn get_fields(&self, p: &str, _f: &str) -> String {
+                self.get(p)
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
             fn watch(&self, _p: &[String]) {}
         }
         let view = instruments_view(&Lettered, &["vehicle/flightMode".to_string()]);
-        assert_eq!(view["items"][0]["value"], "Return", "valueString is the raw enum value and enumValues here are 0,6 rather than positional, so an instrument reading it shows 6 - a number that is not an index into anything the operator can see");
+        assert_eq!(
+            view["items"][0]["value"], "Return",
+            "valueString is the raw enum value and enumValues here are 0,6 rather than positional, so an instrument reading it shows 6 - a number that is not an index into anything the operator can see"
+        );
         assert_eq!(view["items"][0]["missing"], false);
     }
 
     #[test]
     fn a_selection_may_reach_into_another_group_and_units_are_displayed() {
-        let view = instruments_view(&Fake, &["batteries.0/voltage".to_string(), "altitudeRelative".to_string()]);
+        let view = instruments_view(
+            &Fake,
+            &[
+                "batteries.0/voltage".to_string(),
+                "altitudeRelative".to_string(),
+            ],
+        );
         let items = view["items"].as_array().unwrap();
         assert_eq!(items[0]["id"], "batteries.0/voltage");
         assert_eq!(items[0]["units"], "V");
@@ -291,48 +417,118 @@ mod tests {
                     _ => self.get(path),
                 }
             }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
             fn invoke(&self, path: &str, args: &str) -> String {
                 let metres = || serde_json::from_str::<Vec<f64>>(args).unwrap()[0];
                 match path {
-                    "units.metersToAppSettingsVerticalDistanceUnits" => json!({ "ok": true, "result": metres() * 3.2808399 }).to_string(),
+                    "units.metersToAppSettingsVerticalDistanceUnits" => {
+                        json!({ "ok": true, "result": metres() * 3.2808399 }).to_string()
+                    }
                     _ => String::new(),
                 }
             }
             fn watch(&self, _p: &[String]) {}
         }
         let read = |name: &str| {
-            let view = instruments_view(&Feet, &["vehicle/altitudeRelative".to_string(), "vehicle/groundSpeed".to_string(), "vehicle/heading".to_string()]);
+            let view = instruments_view(
+                &Feet,
+                &[
+                    "vehicle/altitudeRelative".to_string(),
+                    "vehicle/groundSpeed".to_string(),
+                    "vehicle/heading".to_string(),
+                ],
+            );
             let items = view["items"].as_array().unwrap().clone();
             items.into_iter().find(|i| i["name"] == name).unwrap()
         };
         let altitude = read("altitudeRelative");
-        assert_eq!(altitude["value"], "82.0", "Fact::units is CONSTANT and its translator is bound once when the metadata is built, so valueString still said 25.0 metres after the operator chose feet");
+        assert_eq!(
+            altitude["value"], "82.0",
+            "Fact::units is CONSTANT and its translator is bound once when the metadata is built, so valueString still said 25.0 metres after the operator chose feet"
+        );
         assert_eq!(altitude["units"], "ft");
 
         let speed = read("groundSpeed");
-        assert_eq!(speed["value"], "8.3", "a tie rounds away from zero, as QString::number does, where Rust's formatter would round 8.25 to the even 8.2; a speed is converted by the speed preference, which this operator left metric - applying the distance choice to every reading would have turned it into feet per second");
+        assert_eq!(
+            speed["value"], "8.3",
+            "a tie rounds away from zero, as QString::number does, where Rust's formatter would round 8.25 to the even 8.2; a speed is converted by the speed preference, which this operator left metric - applying the distance choice to every reading would have turned it into feet per second"
+        );
         assert_eq!(speed["units"], "m/s");
 
         let heading = read("heading");
-        assert_eq!(heading["value"], "270", "a bearing has no unit preference at all, so it keeps the fact's own string");
+        assert_eq!(
+            heading["value"], "270",
+            "a bearing has no unit preference at all, so it keeps the fact's own string"
+        );
         assert_eq!(heading["units"], "deg");
     }
 
     #[test]
     fn dependencies_are_the_selected_facts_not_their_groups() {
-        assert_eq!(deps_for(&["gps/count".to_string(), "vehicle/heading".to_string(), "batteries.0/voltage".to_string()]), vec!["settings.unitsSettings.areaUnits", "settings.unitsSettings.horizontalDistanceUnits", "settings.unitsSettings.speedUnits", "settings.unitsSettings.verticalDistanceUnits", "vehicle.airship", "vehicle.batteries.0.voltage", "vehicle.fixedWing", "vehicle.gps.count", "vehicle.heading", "vehicle.multiRotor", "vehicle.rover", "vehicle.sub", "vehicle.vtol", "vehicles.activeVehicleAvailable"]);
+        assert_eq!(
+            deps_for(&[
+                "gps/count".to_string(),
+                "vehicle/heading".to_string(),
+                "batteries.0/voltage".to_string()
+            ]),
+            vec![
+                "settings.unitsSettings.areaUnits",
+                "settings.unitsSettings.horizontalDistanceUnits",
+                "settings.unitsSettings.speedUnits",
+                "settings.unitsSettings.verticalDistanceUnits",
+                "vehicle.airship",
+                "vehicle.batteries.0.voltage",
+                "vehicle.fixedWing",
+                "vehicle.gps.count",
+                "vehicle.heading",
+                "vehicle.multiRotor",
+                "vehicle.rover",
+                "vehicle.sub",
+                "vehicle.vtol",
+                "vehicles.activeVehicleAvailable"
+            ]
+        );
         assert_eq!(deps_for(&[]).len(), 16);
         assert!(deps_for(&[]).contains(&"vehicle.altitudeRelative".to_string()));
-        assert_eq!(deps_for(&["/".to_string(), "".to_string(), "gps/".to_string()]), vec!["settings.unitsSettings.areaUnits", "settings.unitsSettings.horizontalDistanceUnits", "settings.unitsSettings.speedUnits", "settings.unitsSettings.verticalDistanceUnits", "vehicle.airship", "vehicle.fixedWing", "vehicle.multiRotor", "vehicle.rover", "vehicle.sub", "vehicle.vtol", "vehicles.activeVehicleAvailable"], "an empty name never turns into a read of the whole vehicle");
-        assert!(instruments_view(&Fake, &["vehicle/".to_string()])["items"].as_array().unwrap().is_empty());
+        assert_eq!(
+            deps_for(&["/".to_string(), "".to_string(), "gps/".to_string()]),
+            vec![
+                "settings.unitsSettings.areaUnits",
+                "settings.unitsSettings.horizontalDistanceUnits",
+                "settings.unitsSettings.speedUnits",
+                "settings.unitsSettings.verticalDistanceUnits",
+                "vehicle.airship",
+                "vehicle.fixedWing",
+                "vehicle.multiRotor",
+                "vehicle.rover",
+                "vehicle.sub",
+                "vehicle.vtol",
+                "vehicles.activeVehicleAvailable"
+            ],
+            "an empty name never turns into a read of the whole vehicle"
+        );
+        assert!(
+            instruments_view(&Fake, &["vehicle/".to_string()])["items"]
+                .as_array()
+                .unwrap()
+                .is_empty()
+        );
     }
 
     #[test]
     fn a_selection_stored_in_the_old_dotted_spelling_reaches_the_same_fact() {
         assert_eq!(fact_path_of("gps/lon"), "vehicle.gps.lon");
-        assert_eq!(fact_path_of("gps.lon"), "vehicle.gps.lon", "a head that stored a fact as group.name before the slash form existed still resolves - the bare-name branch prefixes vehicle. and the dot the old format used is the dot the concatenation would have inserted. That is a coincidence of two independent decisions, not a design, and tightening this branch to reject a dotted name would silently invalidate every choice already stored on a device");
+        assert_eq!(
+            fact_path_of("gps.lon"),
+            "vehicle.gps.lon",
+            "a head that stored a fact as group.name before the slash form existed still resolves - the bare-name branch prefixes vehicle. and the dot the old format used is the dot the concatenation would have inserted. That is a coincidence of two independent decisions, not a design, and tightening this branch to reject a dotted name would silently invalidate every choice already stored on a device"
+        );
         assert_eq!(fact_path_of("altitudeRelative"), "vehicle.altitudeRelative");
-        assert_eq!(fact_path_of("batteries.0/voltage"), "vehicle.batteries.0.voltage");
+        assert_eq!(
+            fact_path_of("batteries.0/voltage"),
+            "vehicle.batteries.0.voltage"
+        );
     }
 }

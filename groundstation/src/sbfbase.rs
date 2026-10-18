@@ -12,7 +12,12 @@ const SURVEY_IN: &str = "setDataInOut, USB1, Auto, RTCMv3\nsetPVTMode, Static, A
 const STATIC_DYNAMICS: &str = "setReceiverDynamics, Low, Static\n";
 const STATIC_PVT: &str = "setPVTMode, Static, , Geodetic1\n";
 
-pub(crate) async fn heard_within<T: Transport>(transport: &mut T, timeout_ms: u64, lost: &mut bool, until: impl Fn(&str) -> bool) -> Option<String> {
+pub(crate) async fn heard_within<T: Transport>(
+    transport: &mut T,
+    timeout_ms: u64,
+    lost: &mut bool,
+    until: impl Fn(&str) -> bool,
+) -> Option<String> {
     let deadline = transport.now_ms() + timeout_ms;
     let mut heard = String::new();
     loop {
@@ -42,28 +47,53 @@ pub struct SbfBase<T: Transport> {
 
 impl<T: Transport> SbfBase<T> {
     pub fn new(transport: T, plan: BasePlan) -> SbfBase<T> {
-        SbfBase { transport, decoder: Decoder::default(), plan, configured: false, transport_lost: false, events: Vec::new() }
+        SbfBase {
+            transport,
+            decoder: Decoder::default(),
+            plan,
+            configured: false,
+            transport_lost: false,
+            events: Vec::new(),
+        }
     }
 
     async fn read_for(&mut self, timeout_ms: u64, until: impl Fn(&str) -> bool) -> Option<String> {
-        heard_within(&mut self.transport, timeout_ms, &mut self.transport_lost, until).await
+        heard_within(
+            &mut self.transport,
+            timeout_ms,
+            &mut self.transport_lost,
+            until,
+        )
+        .await
     }
 
     async fn command(&mut self, text: &str) -> bool {
-        self.transport.write(text.as_bytes()) && self.read_for(SBF_ACK_TIMEOUT_MS, |heard| heard.contains(ACK_MARKER)).await.is_some()
+        self.transport.write(text.as_bytes())
+            && self
+                .read_for(SBF_ACK_TIMEOUT_MS, |heard| heard.contains(ACK_MARKER))
+                .await
+                .is_some()
     }
 
     async fn port_name(&mut self) -> Option<String> {
         self.transport.write(b"\n\r");
-        let heard = self.read_for(SBF_ACK_TIMEOUT_MS, |heard| heard.contains(PROMPT)).await?;
+        let heard = self
+            .read_for(SBF_ACK_TIMEOUT_MS, |heard| heard.contains(PROMPT))
+            .await?;
         Some(heard.chars().take(PORT_NAME_LENGTH).collect())
     }
 
     fn rtcm_commands(&self) -> Vec<String> {
         match self.plan {
             BasePlan::Fixed(position) => vec![
-                format!("setStaticPosGeodetic, Geodetic1, {:.6}, {:.6}, {:.6}\n", position.latitude, position.longitude, position.altitude_m as f64),
-                format!("setAntennaOffset, Main, {:.6}, {:.6}, {:.6}\n", 0.0, 0.0, 0.0),
+                format!(
+                    "setStaticPosGeodetic, Geodetic1, {:.6}, {:.6}, {:.6}\n",
+                    position.latitude, position.longitude, position.altitude_m as f64
+                ),
+                format!(
+                    "setAntennaOffset, Main, {:.6}, {:.6}, {:.6}\n",
+                    0.0, 0.0, 0.0
+                ),
                 STATIC_DYNAMICS.to_string(),
                 STATIC_PVT.to_string(),
             ],
@@ -77,20 +107,38 @@ impl<T: Transport> BaseDriver for SbfBase<T> {
         self.configured = false;
         self.transport.set_baud(SBF_BAUD);
         self.transport.write(FORCE_INPUT.as_bytes());
-        let silence: Vec<String> = (1..=2).map(|i| format!("setDataInOut,COM{i},,-RTCMv3\n")).chain((1..=4).map(|i| format!("setDataInOut,USB{i},,-RTCMv3\n"))).collect();
+        let silence: Vec<String> = (1..=2)
+            .map(|i| format!("setDataInOut,COM{i},,-RTCMv3\n"))
+            .chain((1..=4).map(|i| format!("setDataInOut,USB{i},,-RTCMv3\n")))
+            .collect();
         for text in &silence {
             self.command(text).await;
         }
-        let Some(port) = self.port_name().await else { return false };
-        if !self.command(&format!("setSBFOutput, Stream1, {port}, none, off\n")).await {
+        let Some(port) = self.port_name().await else {
+            return false;
+        };
+        if !self
+            .command(&format!("setSBFOutput, Stream1, {port}, none, off\n"))
+            .await
+        {
             return false;
         }
         let usb = port.starts_with("USB1") || port.starts_with("USB2");
-        if !usb && !self.command(&format!("setCOMSettings, {port}, baud{SBF_BAUD}\n")).await {
+        if !usb
+            && !self
+                .command(&format!("setCOMSettings, {port}, baud{SBF_BAUD}\n"))
+                .await
+        {
             return false;
         }
         let data_io = format!("setDataInOut, {port}, Auto, SBF\n");
-        if !self.command(&data_io).await || first(0..DATA_IO_RETRIES, async |_| self.command(&data_io).await.then_some(())).await.is_none() {
+        if !self.command(&data_io).await
+            || first(0..DATA_IO_RETRIES, async |_| {
+                self.command(&data_io).await.then_some(())
+            })
+            .await
+            .is_none()
+        {
             return false;
         }
         for text in self.rtcm_commands() {
@@ -182,38 +230,99 @@ mod tests {
     }
 
     fn mosaic(port: &'static str) -> Mosaic {
-        Mosaic { written: Vec::new(), pending: VecDeque::new(), clock_ms: 0, port, prompts: true, bauds: Vec::new() }
+        Mosaic {
+            written: Vec::new(),
+            pending: VecDeque::new(),
+            clock_ms: 0,
+            port,
+            prompts: true,
+            bauds: Vec::new(),
+        }
     }
 
     #[test]
     fn a_usb_receiver_is_set_up_as_a_surveying_base_without_touching_its_baud() {
-        let survey = BasePlan::SurveyIn(SurveySpec { accuracy_m: 2.0, accuracy_driver_units: 20000.0, duration_s: 180 });
+        let survey = BasePlan::SurveyIn(SurveySpec {
+            accuracy_m: 2.0,
+            accuracy_driver_units: 20000.0,
+            duration_s: 180,
+        });
         let mut base = SbfBase::new(mosaic("USB1"), survey);
         assert!(block_on(base.configure()));
         let written = &base.transport.written;
         assert_eq!(written[0], FORCE_INPUT);
-        assert_eq!(written[1..7], ["setDataInOut,COM1,,-RTCMv3\n", "setDataInOut,COM2,,-RTCMv3\n", "setDataInOut,USB1,,-RTCMv3\n", "setDataInOut,USB2,,-RTCMv3\n", "setDataInOut,USB3,,-RTCMv3\n", "setDataInOut,USB4,,-RTCMv3\n"]);
-        assert_eq!(written[7..], ["\n\r", "setSBFOutput, Stream1, USB1, none, off\n", "setDataInOut, USB1, Auto, SBF\n", "setDataInOut, USB1, Auto, SBF\n", SURVEY_IN]);
+        assert_eq!(
+            written[1..7],
+            [
+                "setDataInOut,COM1,,-RTCMv3\n",
+                "setDataInOut,COM2,,-RTCMv3\n",
+                "setDataInOut,USB1,,-RTCMv3\n",
+                "setDataInOut,USB2,,-RTCMv3\n",
+                "setDataInOut,USB3,,-RTCMv3\n",
+                "setDataInOut,USB4,,-RTCMv3\n"
+            ]
+        );
+        assert_eq!(
+            written[7..],
+            [
+                "\n\r",
+                "setSBFOutput, Stream1, USB1, none, off\n",
+                "setDataInOut, USB1, Auto, SBF\n",
+                "setDataInOut, USB1, Auto, SBF\n",
+                SURVEY_IN
+            ]
+        );
         assert_eq!(base.transport.bauds, [SBF_BAUD]);
     }
 
     #[test]
     fn a_serial_receiver_gets_its_baud_and_a_fixed_position() {
-        let fixed = BasePlan::Fixed(BasePosition { latitude: 47.3977419, longitude: 8.5455938, altitude_m: 488.0, accuracy_mm: 1500.0 });
+        let fixed = BasePlan::Fixed(BasePosition {
+            latitude: 47.3977419,
+            longitude: 8.5455938,
+            altitude_m: 488.0,
+            accuracy_mm: 1500.0,
+        });
         let mut base = SbfBase::new(mosaic("COM1"), fixed);
         assert!(block_on(base.configure()));
         let written = &base.transport.written;
         assert!(written.contains(&"setCOMSettings, COM1, baud115200\n".to_string()));
-        assert_eq!(written[written.len() - 4..], ["setStaticPosGeodetic, Geodetic1, 47.397742, 8.545594, 488.000000\n", "setAntennaOffset, Main, 0.000000, 0.000000, 0.000000\n", STATIC_DYNAMICS, STATIC_PVT]);
-        base.transport.pending.extend([b'$', b'@', 1, 2, 0xd3, 0x00, 0x01, 0x42, 9, 9, 9]);
+        assert_eq!(
+            written[written.len() - 4..],
+            [
+                "setStaticPosGeodetic, Geodetic1, 47.397742, 8.545594, 488.000000\n",
+                "setAntennaOffset, Main, 0.000000, 0.000000, 0.000000\n",
+                STATIC_DYNAMICS,
+                STATIC_PVT
+            ]
+        );
+        base.transport
+            .pending
+            .extend([b'$', b'@', 1, 2, 0xd3, 0x00, 0x01, 0x42, 9, 9, 9]);
         assert_eq!(block_on(base.receive(100)), Some(true));
-        assert_eq!(base.take_events(), [Event::Rtcm(vec![0xd3, 0x00, 0x01, 0x42, 9, 9, 9])]);
+        assert_eq!(
+            base.take_events(),
+            [Event::Rtcm(vec![0xd3, 0x00, 0x01, 0x42, 9, 9, 9])]
+        );
     }
 
     #[test]
     fn a_receiver_that_never_shows_its_prompt_is_not_configured() {
-        let mut base = SbfBase::new(Mosaic { prompts: false, ..mosaic("USB1") }, BasePlan::SurveyIn(SurveySpec { accuracy_m: 2.0, accuracy_driver_units: 20000.0, duration_s: 180 }));
+        let mut base = SbfBase::new(
+            Mosaic {
+                prompts: false,
+                ..mosaic("USB1")
+            },
+            BasePlan::SurveyIn(SurveySpec {
+                accuracy_m: 2.0,
+                accuracy_driver_units: 20000.0,
+                duration_s: 180,
+            }),
+        );
         assert!(!block_on(base.configure()));
-        assert_eq!(base.transport.written.last().map(String::as_str), Some("\n\r"));
+        assert_eq!(
+            base.transport.written.last().map(String::as_str),
+            Some("\n\r")
+        );
     }
 }

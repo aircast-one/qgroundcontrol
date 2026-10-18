@@ -47,7 +47,11 @@ pub fn eu_operator_id_valid(operator_id: &str) -> bool {
     }
     let number: String = chars[3..15].iter().collect();
     let checksum = chars[15];
-    let secret: String = if dashed { chars[17..20].iter().collect() } else { chars[16..19].iter().collect() };
+    let secret: String = if dashed {
+        chars[17..20].iter().collect()
+    } else {
+        chars[16..19].iter().collect()
+    };
     luhn_mod36(&format!("{number}{secret}")) == Some(checksum)
 }
 
@@ -106,10 +110,32 @@ pub struct GcsFix {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Message {
-    System { location_type: u32, classification_type: u32, latitude: i32, longitude: i32, area_count: u16, area_radius: u16, category_eu: u32, class_eu: u32, altitude: f32, timestamp_2019: u32, gps_good: bool },
-    BasicId { id_type: u32, ua_type: u32, uas_id: String },
-    SelfId { description_type: u32, description: String },
-    OperatorId { id_type: u32, operator_id: String },
+    System {
+        location_type: u32,
+        classification_type: u32,
+        latitude: i32,
+        longitude: i32,
+        area_count: u16,
+        area_radius: u16,
+        category_eu: u32,
+        class_eu: u32,
+        altitude: f32,
+        timestamp_2019: u32,
+        gps_good: bool,
+    },
+    BasicId {
+        id_type: u32,
+        ua_type: u32,
+        uas_id: String,
+    },
+    SelfId {
+        description_type: u32,
+        description: String,
+    },
+    OperatorId {
+        id_type: u32,
+        operator_id: String,
+    },
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -139,12 +165,29 @@ pub struct RemoteId {
 
 impl Default for RemoteId {
     fn default() -> Self {
-        RemoteId { available: false, comms_good: false, arm_status_good: false, arm_status_error: String::new(), basic_id_good: true, gcs_gps_good: false, emergency: false, enforce_self_id: false, target_system: 0 }
+        RemoteId {
+            available: false,
+            comms_good: false,
+            arm_status_good: false,
+            arm_status_error: String::new(),
+            basic_id_good: true,
+            gcs_gps_good: false,
+            emergency: false,
+            enforce_self_id: false,
+            target_system: 0,
+        }
     }
 }
 
 impl RemoteId {
-    pub fn on_arm_status(&mut self, vehicle_id: u8, sysid: u8, compid: u8, status: u8, error: &str) -> Vec<Out> {
+    pub fn on_arm_status(
+        &mut self,
+        vehicle_id: u8,
+        sysid: u8,
+        compid: u8,
+        status: u8,
+        error: &str,
+    ) -> Vec<Out> {
         let from_odid = (COMP_ID_ODID_TXRX_1..=COMP_ID_ODID_TXRX_3).contains(&compid);
         if (!from_odid && compid != COMP_ID_AUTOPILOT1) || sysid != vehicle_id {
             return Vec::new();
@@ -169,7 +212,10 @@ impl RemoteId {
             if !self.arm_status_good || !self.arm_status_error.is_empty() {
                 self.arm_status_good = true;
                 self.arm_status_error.clear();
-                out.push(Out::ArmStatus { good: true, error: String::new() });
+                out.push(Out::ArmStatus {
+                    good: true,
+                    error: String::new(),
+                });
             }
         }
         if status == ARM_STATUS_PRE_ARM_FAIL_GENERIC {
@@ -180,7 +226,10 @@ impl RemoteId {
                 self.basic_id_good = basic_id_good;
                 out.push(Out::BasicIdGood(basic_id_good));
             }
-            out.push(Out::ArmStatus { good: false, error: error.to_string() });
+            out.push(Out::ArmStatus {
+                good: false,
+                error: error.to_string(),
+            });
         }
         out
     }
@@ -195,16 +244,40 @@ impl RemoteId {
         self.enforce_self_id = true;
     }
 
-    pub fn messages(&mut self, settings: &Settings, gcs: GcsFix, now_s: u64) -> (Vec<Message>, Vec<Out>) {
+    pub fn messages(
+        &mut self,
+        settings: &Settings,
+        gcs: GcsFix,
+        now_s: u64,
+    ) -> (Vec<Message>, Vec<Out>) {
         let mut out = Vec::new();
         let (position, good) = match settings.location_type {
             LOCATION_FIXED => {
-                let inside = (-90.0..=90.0).contains(&settings.latitude_fixed) && (-180.0..=180.0).contains(&settings.longitude_fixed);
-                if inside { ((settings.latitude_fixed, settings.longitude_fixed, settings.altitude_fixed), true) } else { ((0.0, 0.0, 0.0), false) }
+                let inside = (-90.0..=90.0).contains(&settings.latitude_fixed)
+                    && (-180.0..=180.0).contains(&settings.longitude_fixed);
+                if inside {
+                    (
+                        (
+                            settings.latitude_fixed,
+                            settings.longitude_fixed,
+                            settings.altitude_fixed,
+                        ),
+                        true,
+                    )
+                } else {
+                    ((0.0, 0.0, 0.0), false)
+                }
             }
-            _ if !gcs.valid || gcs.positioning_error => ((gcs.latitude, gcs.longitude, gcs.altitude), false),
-            _ if settings.region == REGION_FAA && !gcs.altitude.is_finite() => ((gcs.latitude, gcs.longitude, gcs.altitude), false),
-            _ => ((gcs.latitude, gcs.longitude, gcs.altitude), gcs.age_ms <= ALLOWED_GPS_DELAY_MS),
+            _ if !gcs.valid || gcs.positioning_error => {
+                ((gcs.latitude, gcs.longitude, gcs.altitude), false)
+            }
+            _ if settings.region == REGION_FAA && !gcs.altitude.is_finite() => {
+                ((gcs.latitude, gcs.longitude, gcs.altitude), false)
+            }
+            _ => (
+                (gcs.latitude, gcs.longitude, gcs.altitude),
+                gcs.age_ms <= ALLOWED_GPS_DELAY_MS,
+            ),
         };
         if good != self.gcs_gps_good {
             self.gcs_gps_good = good;
@@ -213,24 +286,51 @@ impl RemoteId {
         let mut messages = vec![Message::System {
             location_type: settings.location_type,
             classification_type: settings.classification_type,
-            latitude: if good { (position.0 * 1.0e7) as i32 } else { UNKNOWN_LAT },
-            longitude: if good { (position.1 * 1.0e7) as i32 } else { UNKNOWN_LON },
+            latitude: if good {
+                (position.0 * 1.0e7) as i32
+            } else {
+                UNKNOWN_LAT
+            },
+            longitude: if good {
+                (position.1 * 1.0e7) as i32
+            } else {
+                UNKNOWN_LON
+            },
             area_count: AREA_COUNT,
             area_radius: AREA_RADIUS,
             category_eu: settings.category_eu,
             class_eu: settings.class_eu,
-            altitude: if good { position.2 as f32 } else { UNKNOWN_METERS },
+            altitude: if good {
+                position.2 as f32
+            } else {
+                UNKNOWN_METERS
+            },
             timestamp_2019: now_s.saturating_sub(EPOCH_2019_S) as u32,
             gps_good: good,
         }];
         if gcs_basic_id_valid(settings) && settings.send_basic_id {
-            messages.push(Message::BasicId { id_type: settings.basic_id_type as u32, ua_type: settings.basic_id_ua_type as u32, uas_id: settings.basic_id.chars().take(20).collect() });
+            messages.push(Message::BasicId {
+                id_type: settings.basic_id_type as u32,
+                ua_type: settings.basic_id_ua_type as u32,
+                uas_id: settings.basic_id.chars().take(20).collect(),
+            });
         }
         if settings.send_self_id || self.emergency || self.enforce_self_id {
-            messages.push(Message::SelfId { description_type: if self.emergency { SELF_ID_EMERGENCY } else { settings.self_id_type as u32 }, description: self_id_description(settings, self.emergency) });
+            messages.push(Message::SelfId {
+                description_type: if self.emergency {
+                    SELF_ID_EMERGENCY
+                } else {
+                    settings.self_id_type as u32
+                },
+                description: self_id_description(settings, self.emergency),
+            });
         }
-        if (settings.send_operator_id || settings.region == REGION_EU) && operator_id_good(settings) {
-            messages.push(Message::OperatorId { id_type: settings.operator_id_type as u32, operator_id: settings.operator_id.chars().take(20).collect() });
+        if (settings.send_operator_id || settings.region == REGION_EU) && operator_id_good(settings)
+        {
+            messages.push(Message::OperatorId {
+                id_type: settings.operator_id_type as u32,
+                operator_id: settings.operator_id.chars().take(20).collect(),
+            });
         }
         (messages, out)
     }
@@ -241,7 +341,29 @@ mod tests {
     use super::*;
 
     fn settings() -> Settings {
-        Settings { region: REGION_FAA, operator_id: "FIN87astrdge12k8".into(), operator_id_type: 0, operator_id_valid: false, send_operator_id: true, basic_id: "1234".into(), basic_id_type: 1, basic_id_ua_type: 2, send_basic_id: true, send_self_id: false, self_id_type: 0, self_id_free: "Survey flight".into(), self_id_emergency: "Emergency".into(), self_id_extended: "Extended".into(), location_type: LOCATION_LIVE, classification_type: 0, latitude_fixed: 0.0, longitude_fixed: 0.0, altitude_fixed: 0.0, category_eu: 0, class_eu: 0 }
+        Settings {
+            region: REGION_FAA,
+            operator_id: "FIN87astrdge12k8".into(),
+            operator_id_type: 0,
+            operator_id_valid: false,
+            send_operator_id: true,
+            basic_id: "1234".into(),
+            basic_id_type: 1,
+            basic_id_ua_type: 2,
+            send_basic_id: true,
+            send_self_id: false,
+            self_id_type: 0,
+            self_id_free: "Survey flight".into(),
+            self_id_emergency: "Emergency".into(),
+            self_id_extended: "Extended".into(),
+            location_type: LOCATION_LIVE,
+            classification_type: 0,
+            latitude_fixed: 0.0,
+            longitude_fixed: 0.0,
+            altitude_fixed: 0.0,
+            category_eu: 0,
+            class_eu: 0,
+        }
     }
 
     #[test]
@@ -252,65 +374,247 @@ mod tests {
         let dashed = format!("FIN{number}{check}-{secret}");
         let plain = format!("FIN{number}{check}{secret}");
         assert!(eu_operator_id_valid(&dashed) && eu_operator_id_valid(&plain));
-        assert!(!eu_operator_id_valid(&format!("fin{number}{check}-{secret}")));
+        assert!(!eu_operator_id_valid(&format!(
+            "fin{number}{check}-{secret}"
+        )));
         assert!(!eu_operator_id_valid(&format!("FIN{number}0-{secret}")) || check == '0');
         assert!(!eu_operator_id_valid("FIN123"));
-        let stored = Settings { region: REGION_EU, operator_id: dashed.chars().take(16).collect(), operator_id_valid: false, ..settings() };
-        assert!(operator_id_good(&stored), "only the public 16 characters are stored, so presence is the test, as _updateOperatorIDValidForRegion uses");
-        assert!(!operator_id_good(&Settings { operator_id: String::new(), ..settings() }));
+        let stored = Settings {
+            region: REGION_EU,
+            operator_id: dashed.chars().take(16).collect(),
+            operator_id_valid: false,
+            ..settings()
+        };
+        assert!(
+            operator_id_good(&stored),
+            "only the public 16 characters are stored, so presence is the test, as _updateOperatorIDValidForRegion uses"
+        );
+        assert!(!operator_id_good(&Settings {
+            operator_id: String::new(),
+            ..settings()
+        }));
     }
 
     #[test]
     fn arm_status_marks_availability_comms_and_basic_id() {
         let mut remote = RemoteId::default();
-        assert!(remote.on_arm_status(1, 2, COMP_ID_ODID_TXRX_1, ARM_STATUS_GOOD_TO_ARM, "").is_empty());
-        assert!(remote.on_arm_status(1, 1, 42, ARM_STATUS_GOOD_TO_ARM, "").is_empty());
+        assert!(
+            remote
+                .on_arm_status(1, 2, COMP_ID_ODID_TXRX_1, ARM_STATUS_GOOD_TO_ARM, "")
+                .is_empty()
+        );
+        assert!(
+            remote
+                .on_arm_status(1, 1, 42, ARM_STATUS_GOOD_TO_ARM, "")
+                .is_empty()
+        );
         let first = remote.on_arm_status(1, 1, COMP_ID_AUTOPILOT1, ARM_STATUS_GOOD_TO_ARM, "");
-        assert_eq!(first, vec![Out::Available, Out::StartSendTimer, Out::CommsGood(true), Out::StartOdidTimeout, Out::ArmStatus { good: true, error: String::new() }]);
-        let failed = remote.on_arm_status(1, 1, COMP_ID_ODID_TXRX_1, ARM_STATUS_PRE_ARM_FAIL_GENERIC, "missing basic_id message");
-        assert_eq!(failed, vec![Out::StartOdidTimeout, Out::BasicIdGood(false), Out::ArmStatus { good: false, error: "missing basic_id message".into() }]);
-        assert_eq!(remote.on_odid_timeout(), vec![Out::StopSendTimer, Out::CommsGood(false)]);
+        assert_eq!(
+            first,
+            vec![
+                Out::Available,
+                Out::StartSendTimer,
+                Out::CommsGood(true),
+                Out::StartOdidTimeout,
+                Out::ArmStatus {
+                    good: true,
+                    error: String::new()
+                }
+            ]
+        );
+        let failed = remote.on_arm_status(
+            1,
+            1,
+            COMP_ID_ODID_TXRX_1,
+            ARM_STATUS_PRE_ARM_FAIL_GENERIC,
+            "missing basic_id message",
+        );
+        assert_eq!(
+            failed,
+            vec![
+                Out::StartOdidTimeout,
+                Out::BasicIdGood(false),
+                Out::ArmStatus {
+                    good: false,
+                    error: "missing basic_id message".into()
+                }
+            ]
+        );
+        assert_eq!(
+            remote.on_odid_timeout(),
+            vec![Out::StopSendTimer, Out::CommsGood(false)]
+        );
         assert!(!remote.comms_good && remote.available);
     }
 
     #[test]
     fn the_message_set_follows_the_settings_the_fix_and_the_emergency() {
         let mut remote = RemoteId::default();
-        let fresh = GcsFix { valid: true, latitude: 47.5, longitude: 8.5, altitude: 400.0, age_ms: 100, positioning_error: false };
+        let fresh = GcsFix {
+            valid: true,
+            latitude: 47.5,
+            longitude: 8.5,
+            altitude: 400.0,
+            age_ms: 100,
+            positioning_error: false,
+        };
         let (messages, out) = remote.messages(&settings(), fresh, EPOCH_2019_S + 60);
         assert_eq!(out, vec![Out::GcsGpsGood(true)]);
-        assert!(matches!(messages[0], Message::System { latitude: 475000000, longitude: 85000000, timestamp_2019: 60, gps_good: true, .. }));
-        assert!(matches!(messages[1], Message::BasicId { id_type: 1, ua_type: 2, ref uas_id } if uas_id == "1234"));
+        assert!(matches!(
+            messages[0],
+            Message::System {
+                latitude: 475000000,
+                longitude: 85000000,
+                timestamp_2019: 60,
+                gps_good: true,
+                ..
+            }
+        ));
+        assert!(
+            matches!(messages[1], Message::BasicId { id_type: 1, ua_type: 2, ref uas_id } if uas_id == "1234")
+        );
         assert!(matches!(messages[2], Message::OperatorId { .. }));
         assert_eq!(messages.len(), 3);
-        let stale = GcsFix { age_ms: ALLOWED_GPS_DELAY_MS + 1, ..fresh };
+        let stale = GcsFix {
+            age_ms: ALLOWED_GPS_DELAY_MS + 1,
+            ..fresh
+        };
         let (messages, out) = remote.messages(&settings(), stale, EPOCH_2019_S);
         assert_eq!(out, vec![Out::GcsGpsGood(false)]);
-        assert!(matches!(messages[0], Message::System { latitude: UNKNOWN_LAT, altitude, gps_good: false, .. } if altitude == UNKNOWN_METERS));
+        assert!(
+            matches!(messages[0], Message::System { latitude: UNKNOWN_LAT, altitude, gps_good: false, .. } if altitude == UNKNOWN_METERS)
+        );
         remote.set_emergency(true);
         let (messages, _) = remote.messages(&settings(), fresh, EPOCH_2019_S);
         assert!(messages.iter().any(|m| matches!(m, Message::SelfId { description_type: SELF_ID_EMERGENCY, description } if description == "Emergency")));
-        let fixed = Settings { location_type: LOCATION_FIXED, latitude_fixed: 10.0, longitude_fixed: 200.0, ..settings() };
-        let (messages, _) = remote.messages(&fixed, GcsFix { valid: false, ..fresh }, EPOCH_2019_S);
-        assert!(matches!(messages[0], Message::System { gps_good: false, .. }));
-        let mut failing = RemoteId { gcs_gps_good: true, ..Default::default() };
-        let (messages, out) = failing.messages(&settings(), GcsFix { positioning_error: true, ..fresh }, EPOCH_2019_S);
-        assert!(matches!(messages[0], Message::System { gps_good: false, latitude: UNKNOWN_LAT, .. }) && out == vec![Out::GcsGpsGood(false)], "a positioning error other than a timeout makes the last fix unusable, as RemoteIDManager::_sendMessages checks gcsPositioningError");
-        let mut faa = RemoteId { gcs_gps_good: true, ..Default::default() };
-        let (messages, out) = faa.messages(&settings(), GcsFix { altitude: f64::NAN, ..fresh }, EPOCH_2019_S);
-        assert!(matches!(messages[0], Message::System { gps_good: false, latitude: UNKNOWN_LAT, .. }) && out == vec![Out::GcsGpsGood(false)], "RemoteIDManager::_sendMessages always sends SYSTEM, with an unknown position when the FAA fix has no altitude");
-        assert!(messages.iter().any(|m| matches!(m, Message::BasicId { .. })), "and the rest of the set still goes out");
-        let (again, out) = faa.messages(&settings(), GcsFix { altitude: f64::NAN, ..fresh }, EPOCH_2019_S);
-        assert!(matches!(again[0], Message::System { gps_good: false, .. }) && out.is_empty(), "a fix with no altitude stays not good in the FAA region instead of going out on the next tick");
-        let (below_sea, _) = faa.messages(&settings(), GcsFix { altitude: -5.0, ..fresh }, EPOCH_2019_S);
-        assert!(!below_sea.is_empty(), "a 3D fix below sea level is a 3D fix");
+        let fixed = Settings {
+            location_type: LOCATION_FIXED,
+            latitude_fixed: 10.0,
+            longitude_fixed: 200.0,
+            ..settings()
+        };
+        let (messages, _) = remote.messages(
+            &fixed,
+            GcsFix {
+                valid: false,
+                ..fresh
+            },
+            EPOCH_2019_S,
+        );
+        assert!(matches!(
+            messages[0],
+            Message::System {
+                gps_good: false,
+                ..
+            }
+        ));
+        let mut failing = RemoteId {
+            gcs_gps_good: true,
+            ..Default::default()
+        };
+        let (messages, out) = failing.messages(
+            &settings(),
+            GcsFix {
+                positioning_error: true,
+                ..fresh
+            },
+            EPOCH_2019_S,
+        );
+        assert!(
+            matches!(
+                messages[0],
+                Message::System {
+                    gps_good: false,
+                    latitude: UNKNOWN_LAT,
+                    ..
+                }
+            ) && out == vec![Out::GcsGpsGood(false)],
+            "a positioning error other than a timeout makes the last fix unusable, as RemoteIDManager::_sendMessages checks gcsPositioningError"
+        );
+        let mut faa = RemoteId {
+            gcs_gps_good: true,
+            ..Default::default()
+        };
+        let (messages, out) = faa.messages(
+            &settings(),
+            GcsFix {
+                altitude: f64::NAN,
+                ..fresh
+            },
+            EPOCH_2019_S,
+        );
+        assert!(
+            matches!(
+                messages[0],
+                Message::System {
+                    gps_good: false,
+                    latitude: UNKNOWN_LAT,
+                    ..
+                }
+            ) && out == vec![Out::GcsGpsGood(false)],
+            "RemoteIDManager::_sendMessages always sends SYSTEM, with an unknown position when the FAA fix has no altitude"
+        );
+        assert!(
+            messages
+                .iter()
+                .any(|m| matches!(m, Message::BasicId { .. })),
+            "and the rest of the set still goes out"
+        );
+        let (again, out) = faa.messages(
+            &settings(),
+            GcsFix {
+                altitude: f64::NAN,
+                ..fresh
+            },
+            EPOCH_2019_S,
+        );
+        assert!(
+            matches!(
+                again[0],
+                Message::System {
+                    gps_good: false,
+                    ..
+                }
+            ) && out.is_empty(),
+            "a fix with no altitude stays not good in the FAA region instead of going out on the next tick"
+        );
+        let (below_sea, _) = faa.messages(
+            &settings(),
+            GcsFix {
+                altitude: -5.0,
+                ..fresh
+            },
+            EPOCH_2019_S,
+        );
+        assert!(
+            !below_sea.is_empty(),
+            "a 3D fix below sea level is a 3D fix"
+        );
 
         let mut arm = RemoteId::default();
-        arm.on_arm_status(1, 1, COMP_ID_AUTOPILOT1, ARM_STATUS_PRE_ARM_FAIL_GENERIC, BASIC_ID_MISSING);
+        arm.on_arm_status(
+            1,
+            1,
+            COMP_ID_AUTOPILOT1,
+            ARM_STATUS_PRE_ARM_FAIL_GENERIC,
+            BASIC_ID_MISSING,
+        );
         assert!(!arm.basic_id_good);
-        arm.on_arm_status(1, 1, COMP_ID_AUTOPILOT1, ARM_STATUS_PRE_ARM_FAIL_GENERIC, "missing operator_id");
-        assert!(arm.basic_id_good, "the basic-ID warning follows the error the device reports now");
+        arm.on_arm_status(
+            1,
+            1,
+            COMP_ID_AUTOPILOT1,
+            ARM_STATUS_PRE_ARM_FAIL_GENERIC,
+            "missing operator_id",
+        );
+        assert!(
+            arm.basic_id_good,
+            "the basic-ID warning follows the error the device reports now"
+        );
         arm.on_arm_status(1, 1, COMP_ID_AUTOPILOT1, ARM_STATUS_GOOD_TO_ARM, "");
-        assert!(arm.arm_status_error.is_empty(), "GOOD_TO_ARM clears the stale error text");
+        assert!(
+            arm.arm_status_error.is_empty(),
+            "GOOD_TO_ARM clears the stale error text"
+        );
     }
 }

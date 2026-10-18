@@ -43,12 +43,22 @@ pub fn offered_patterns(backend: &dyn Backend) -> Vec<&'static str> {
         false => offline_vehicle(backend),
     };
     let hovers = flag(&vehicle, "multiRotor") || flag(&vehicle, "vtol");
-    ["Survey", "Corridor Scan"].into_iter().chain(hovers.then_some("Structure Scan")).collect()
+    ["Survey", "Corridor Scan"]
+        .into_iter()
+        .chain(hovers.then_some("Structure Scan"))
+        .collect()
 }
 
 fn offline_vehicle(backend: &dyn Backend) -> Value {
-    let setting = |name: &str| crate::read::value_number(&backend.value(&format!("settings.appSettings.{name}.rawValue"))).map(|v| v as i64).unwrap_or(0);
-    let (firmware, class) = (setting("offlineEditingFirmwareClass"), setting("offlineEditingVehicleClass"));
+    let setting = |name: &str| {
+        crate::read::value_number(&backend.value(&format!("settings.appSettings.{name}.rawValue")))
+            .map(|v| v as i64)
+            .unwrap_or(0)
+    };
+    let (firmware, class) = (
+        setting("offlineEditingFirmwareClass"),
+        setting("offlineEditingVehicleClass"),
+    );
     let kind = crate::plandoc::vehicle_class(class);
     json!({
         "type": u8::try_from(class).map_or("", crate::vehiclefacade::mav_type_text),
@@ -67,9 +77,17 @@ fn offline_vehicle(backend: &dyn Backend) -> Value {
 fn planning_for(backend: &dyn Backend) -> Value {
     let read = match crate::coreplan::enabled() {
         true => crate::coreplan::controller_fields("plan.controllerVehicle").unwrap_or(Value::Null),
-        false => backend.value_fields("plan.controllerVehicle", "vehicleTypeString,firmwareTypeString,multiRotor,vtol,apmFirmware,homePosition"),
+        false => backend.value_fields(
+            "plan.controllerVehicle",
+            "vehicleTypeString,firmwareTypeString,multiRotor,vtol,apmFirmware,homePosition",
+        ),
     };
-    let text = |key: &str| read.get(key).and_then(Value::as_str).filter(|value| !value.is_empty()).map(str::to_string);
+    let text = |key: &str| {
+        read.get(key)
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string)
+    };
     match text("vehicleTypeString").zip(text("firmwareTypeString")) {
         Some((kind, firmware)) => json!({
             "type": kind,
@@ -84,7 +102,10 @@ fn planning_for(backend: &dyn Backend) -> Value {
 }
 
 pub fn capability(backend: &dyn Backend, controller: &str) -> bool {
-    flag(&backend.value_fields(&format!("plan.{controller}"), "supported"), "supported")
+    flag(
+        &backend.value_fields(&format!("plan.{controller}"), "supported"),
+        "supported",
+    )
 }
 
 fn plan_default(backend: &dyn Backend, name: &str) -> Value {
@@ -110,13 +131,19 @@ fn mission_flight_speed(backend: &dyn Backend) -> Value {
     }
 }
 
-const SPEED_NOTE: &str = "Speeds are used to estimate mission time only. They do not change the flight speed.";
+const SPEED_NOTE: &str =
+    "Speeds are used to estimate mission time only. They do not change the flight speed.";
 
 fn defaults_json(backend: &dyn Backend) -> Value {
     let altitude = plan_default(backend, "defaultMissionItemAltitude");
     let cruise = plan_default(backend, "offlineEditingCruiseSpeed");
     let hover = plan_default(backend, "offlineEditingHoverSpeed");
-    let unit_of = |c: &Value| c.get("units").and_then(Value::as_str).filter(|u| !u.is_empty()).map(str::to_string);
+    let unit_of = |c: &Value| {
+        c.get("units")
+            .and_then(Value::as_str)
+            .filter(|u| !u.is_empty())
+            .map(str::to_string)
+    };
     let speed_units = match (unit_of(&cruise), unit_of(&hover)) {
         (Some(c), Some(h)) if c == h => json!(c),
         (Some(c), None) => json!(c),
@@ -125,12 +152,21 @@ fn defaults_json(backend: &dyn Backend) -> Value {
     };
     let vehicle = planning_for(backend);
     let climbs = flag(&vehicle, "multiRotor") || flag(&vehicle, "vtol");
-    let vertical = |name: &str| if climbs { plan_default(backend, name) } else { Value::Null };
+    let vertical = |name: &str| {
+        if climbs {
+            plan_default(backend, name)
+        } else {
+            Value::Null
+        }
+    };
     let (shows_cruise, shows_hover) = (!flag(&vehicle, "multiRotor"), climbs);
     let vtol = flag(&vehicle, "vtol");
     let named = |control: Value, vtol_label: &str, plain: &str| match control {
         Value::Object(mut fields) => {
-            fields.insert("label".to_string(), json!(if vtol { vtol_label } else { plain }));
+            fields.insert(
+                "label".to_string(),
+                json!(if vtol { vtol_label } else { plain }),
+            );
             Value::Object(fields)
         }
         other => other,
@@ -170,23 +206,59 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
         None => backend.value_fields("plan", "syncInProgress,offline,dirty,containsItems,currentPlanFile,canUndo,canRedo,undoTracking"),
     };
     let mission = match core {
-        Some(_) => json!({ "kind": "object", "complexMissionItems": offered_patterns(backend).iter().map(|name| json!({ "canonicalName": name, "translatedName": name })).collect::<Vec<_>>() }),
-        None => backend.value_fields("plan.missionController", "containsItems,complexMissionItems,globalAltitudeFrame,progressPct"),
+        Some(_) => {
+            json!({ "kind": "object", "complexMissionItems": offered_patterns(backend).iter().map(|name| json!({ "canonicalName": name, "translatedName": name })).collect::<Vec<_>>() })
+        }
+        None => backend.value_fields(
+            "plan.missionController",
+            "containsItems,complexMissionItems,globalAltitudeFrame,progressPct",
+        ),
     };
-    let offline = core.as_ref().map_or_else(|| flag(&plan, "offline"), |_| crate::coreplan::offline());
-    let syncing = core.as_ref().map_or_else(|| flag(&plan, "syncInProgress"), |c| c.syncing);
-    let progress = core.as_ref().map_or_else(|| mission.get("progressPct").and_then(Value::as_f64).unwrap_or(0.0), |c| c.progress);
-    let dirty = core.as_ref().map_or_else(|| flag(&plan, "dirty"), |c| c.dirty);
-    let contains_items = core.as_ref().map_or_else(|| flag(&plan, "containsItems"), |c| c.contains_items);
-    let has_mission_items = core.as_ref().map_or_else(|| flag(&mission, "containsItems"), |c| c.has_mission_items);
+    let offline = core
+        .as_ref()
+        .map_or_else(|| flag(&plan, "offline"), |_| crate::coreplan::offline());
+    let syncing = core
+        .as_ref()
+        .map_or_else(|| flag(&plan, "syncInProgress"), |c| c.syncing);
+    let progress = core.as_ref().map_or_else(
+        || {
+            mission
+                .get("progressPct")
+                .and_then(Value::as_f64)
+                .unwrap_or(0.0)
+        },
+        |c| c.progress,
+    );
+    let dirty = core
+        .as_ref()
+        .map_or_else(|| flag(&plan, "dirty"), |c| c.dirty);
+    let contains_items = core
+        .as_ref()
+        .map_or_else(|| flag(&plan, "containsItems"), |c| c.contains_items);
+    let has_mission_items = core
+        .as_ref()
+        .map_or_else(|| flag(&mission, "containsItems"), |c| c.has_mission_items);
     let item_count = core.as_ref().map_or_else(
-        || crate::read::integer(&backend.value_fields("plan.missionController.visualItems", "count"), "count").map_or(0, |count| (count - 1).max(0)),
+        || {
+            crate::read::integer(
+                &backend.value_fields("plan.missionController.visualItems", "count"),
+                "count",
+            )
+            .map_or(0, |count| (count - 1).max(0))
+        },
         |c| c.item_count,
     );
-    let qt_file = plan.get("currentPlanFile").and_then(Value::as_str).unwrap_or("").to_string();
+    let qt_file = plan
+        .get("currentPlanFile")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string();
     let file = core.as_ref().map_or(qt_file.as_str(), |c| c.file.as_str());
     let name = file.rsplit('/').next().filter(|n| !n.is_empty());
-    let (fences, rally) = (capability(backend, "geoFenceController"), capability(backend, "rallyPointController"));
+    let (fences, rally) = (
+        capability(backend, "geoFenceController"),
+        capability(backend, "rallyPointController"),
+    );
     let readiness = match core {
         Some(_) if crate::coreplan::drawing() => Some(2),
         Some(_) if crate::coreplan::awaiting_terrain() => Some(1),
@@ -195,7 +267,9 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
     };
     let upload = match core {
         Some(_) => Some(send_precheck(backend)),
-        None => result_integer(&backend.invoke("plan.missionController.sendToVehiclePreCheck", "[]")),
+        None => {
+            result_integer(&backend.invoke("plan.missionController.sendToVehiclePreCheck", "[]"))
+        }
     };
     json!({
         "kind": "object",
@@ -236,16 +310,28 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
 }
 
 fn send_precheck(backend: &dyn Backend) -> i64 {
-    let manager = crate::hub::lock().active().map(|v| (i64::from(v.autopilot), i64::from(v.vehicle_type)));
-    let Some((autopilot, vehicle_type)) = manager.filter(|_| !crate::coreplan::offline()) else { return 1 };
+    let manager = crate::hub::lock()
+        .active()
+        .map(|v| (i64::from(v.autopilot), i64::from(v.vehicle_type)));
+    let Some((autopilot, vehicle_type)) = manager.filter(|_| !crate::coreplan::offline()) else {
+        return 1;
+    };
     let vehicle = backend.value_fields("vehicle", "armed,flightMode,missionFlightMode");
     let text = |key: &str| vehicle.get(key).and_then(Value::as_str).map(str::to_string);
     if flag(&vehicle, "armed") && text("flightMode") == text("missionFlightMode") {
         return 3;
     }
-    let setting = |name: &str| crate::read::value_number(&backend.value(&format!("settings.appSettings.{name}.rawValue"))).map(|v| v as i64);
-    let (firmware, class) = crate::coreplan::plan_types().unwrap_or((setting("offlineEditingFirmwareClass").unwrap_or(0), setting("offlineEditingVehicleClass").unwrap_or(0)));
-    match crate::plandoc::firmware(firmware) != crate::plandoc::firmware(autopilot) || crate::plandoc::vehicle_class(class) != crate::plandoc::vehicle_class(vehicle_type) {
+    let setting = |name: &str| {
+        crate::read::value_number(&backend.value(&format!("settings.appSettings.{name}.rawValue")))
+            .map(|v| v as i64)
+    };
+    let (firmware, class) = crate::coreplan::plan_types().unwrap_or((
+        setting("offlineEditingFirmwareClass").unwrap_or(0),
+        setting("offlineEditingVehicleClass").unwrap_or(0),
+    ));
+    match crate::plandoc::firmware(firmware) != crate::plandoc::firmware(autopilot)
+        || crate::plandoc::vehicle_class(class) != crate::plandoc::vehicle_class(vehicle_type)
+    {
         true => 2,
         false => 0,
     }
@@ -269,12 +355,28 @@ fn not_ready_items(backend: &dyn Backend) -> Vec<Value> {
 }
 
 fn readiness_json(state: Option<i64>, items: &[Value]) -> Value {
-    let listed = items.iter().map(|item| format!("\n\u{2022} Item {} \u{b7} {} \u{2014} {}", item["sequence"], item["name"].as_str().unwrap_or(""), item["reason"].as_str().unwrap_or(""))).collect::<String>();
+    let listed = items
+        .iter()
+        .map(|item| {
+            format!(
+                "\n\u{2022} Item {} \u{b7} {} \u{2014} {}",
+                item["sequence"],
+                item["name"].as_str().unwrap_or(""),
+                item["reason"].as_str().unwrap_or("")
+            )
+        })
+        .collect::<String>();
     let reason = match state {
         Some(0) => None,
-        Some(1) => Some("Plan is waiting on terrain data from server for correct altitude values.".to_string()),
-        Some(2) if !items.is_empty() => Some(format!("These items still need a position or a value:{listed}")),
-        Some(2) => Some("An item is still being drawn, so the plan cannot be saved or sent.".to_string()),
+        Some(1) => Some(
+            "Plan is waiting on terrain data from server for correct altitude values.".to_string(),
+        ),
+        Some(2) if !items.is_empty() => Some(format!(
+            "These items still need a position or a value:{listed}"
+        )),
+        Some(2) => {
+            Some("An item is still being drawn, so the plan cannot be saved or sent.".to_string())
+        }
         _ => Some("The plan could not be checked for saving.".to_string()),
     };
     json!({ "state": state, "ready": state == Some(0), "reason": reason, "items": items, "next": items.first().map(|item| item["index"].clone()) })
@@ -283,10 +385,26 @@ fn readiness_json(state: Option<i64>, items: &[Value]) -> Value {
 fn upload_json(state: Option<i64>) -> Value {
     let (refusal, proceed_title) = match state {
         Some(0) => (None, None),
-        Some(1) => (Some("No vehicle is connected, so there is nowhere to send this plan."), None),
-        Some(2) => (Some("This plan was made for a different firmware or vehicle type. Uploading it can make the vehicle behave incorrectly."), Some("Upload anyway")),
-        Some(3) => (Some("The vehicle is flying this mission. It has to be paused before a new plan goes up."), Some("Pause and upload")),
-        _ => (Some("The plan could not be checked against the vehicle."), None),
+        Some(1) => (
+            Some("No vehicle is connected, so there is nowhere to send this plan."),
+            None,
+        ),
+        Some(2) => (
+            Some(
+                "This plan was made for a different firmware or vehicle type. Uploading it can make the vehicle behave incorrectly.",
+            ),
+            Some("Upload anyway"),
+        ),
+        Some(3) => (
+            Some(
+                "The vehicle is flying this mission. It has to be paused before a new plan goes up.",
+            ),
+            Some("Pause and upload"),
+        ),
+        _ => (
+            Some("The plan could not be checked against the vehicle."),
+            None,
+        ),
     };
     let can_proceed = matches!(state, Some(2) | Some(3));
     json!({
@@ -338,8 +456,14 @@ fn folder_refusal(path: Option<&str>) -> Option<(&'static str, String)> {
     let Some(path) = path.filter(|p| !p.trim().is_empty()) else {
         return Some(("noFile", "Choose a file to save to.".to_string()));
     };
-    match std::path::Path::new(path).parent().filter(|d| !d.as_os_str().is_empty()) {
-        Some(folder) if !folder.is_dir() => Some(("folderMissing", format!("{} is not a folder that exists.", folder.display()))),
+    match std::path::Path::new(path)
+        .parent()
+        .filter(|d| !d.as_os_str().is_empty())
+    {
+        Some(folder) if !folder.is_dir() => Some((
+            "folderMissing",
+            format!("{} is not a folder that exists.", folder.display()),
+        )),
         _ => None,
     }
 }
@@ -352,48 +476,126 @@ fn open_refusal(path: Option<&str>) -> Option<(&'static str, String)> {
         return Some(("unreadable", format!("{path} could not be read.")));
     };
     let text = String::from_utf8_lossy(&bytes);
-    let suffix = std::path::Path::new(path).extension().and_then(|e| e.to_str()).unwrap_or("");
+    let suffix = std::path::Path::new(path)
+        .extension()
+        .and_then(|e| e.to_str())
+        .unwrap_or("");
     match suffix {
-        "waypoints" | "txt" if !matches!(text.lines().next(), Some("QGC WPL 110" | "QGC WPL 120")) => Some(("notAPlan", "A waypoints file starts with QGC WPL 110 or 120, and this one does not.".to_string())),
+        "waypoints" | "txt"
+            if !matches!(text.lines().next(), Some("QGC WPL 110" | "QGC WPL 120")) =>
+        {
+            Some((
+                "notAPlan",
+                "A waypoints file starts with QGC WPL 110 or 120, and this one does not."
+                    .to_string(),
+            ))
+        }
         "waypoints" | "txt" => None,
-        _ if serde_json::from_str::<Value>(&text).is_err() => Some(("notAPlan", "This file is not a plan: it is not JSON.".to_string())),
+        _ if serde_json::from_str::<Value>(&text).is_err() => Some((
+            "notAPlan",
+            "This file is not a plan: it is not JSON.".to_string(),
+        )),
         _ => None,
     }
 }
 
-fn plan_refusal(action: PlanAction, view: &Value, path: Option<&str>) -> Option<(&'static str, String)> {
+fn plan_refusal(
+    action: PlanAction,
+    view: &Value,
+    path: Option<&str>,
+) -> Option<(&'static str, String)> {
     let text = |v: &Value| v.as_str().unwrap_or("").to_string();
     let allowed = |name: &str| view["actions"][name].as_bool() == Some(true);
-    let sync_refusal = || (view["sync"]["state"] != "ready").then(|| (if view["sync"]["state"] == "offline" { "offline" } else { "busy" }, text(&view["sync"]["refusal"])));
-    let not_ready = || (view["readiness"]["ready"] != true).then(|| ("notReady", text(&view["readiness"]["reason"])));
+    let sync_refusal = || {
+        (view["sync"]["state"] != "ready").then(|| {
+            (
+                if view["sync"]["state"] == "offline" {
+                    "offline"
+                } else {
+                    "busy"
+                },
+                text(&view["sync"]["refusal"]),
+            )
+        })
+    };
+    let not_ready = || {
+        (view["readiness"]["ready"] != true)
+            .then(|| ("notReady", text(&view["readiness"]["reason"])))
+    };
     match action {
         PlanAction::Download | PlanAction::ClearVehicle => sync_refusal(),
-        PlanAction::Send => sync_refusal().or_else(|| (view["containsItems"] != true).then(|| ("empty", "There is nothing in this plan to upload.".to_string()))).or_else(not_ready).or_else(|| match view["upload"]["state"].as_i64() {
-            Some(0 | 2 | 3) => None,
-            _ => Some(("cannotUpload", text(&view["upload"]["refusal"]))),
-        }),
+        PlanAction::Send => sync_refusal()
+            .or_else(|| {
+                (view["containsItems"] != true).then(|| {
+                    (
+                        "empty",
+                        "There is nothing in this plan to upload.".to_string(),
+                    )
+                })
+            })
+            .or_else(not_ready)
+            .or_else(|| match view["upload"]["state"].as_i64() {
+                Some(0 | 2 | 3) => None,
+                _ => Some(("cannotUpload", text(&view["upload"]["refusal"]))),
+            }),
         PlanAction::SaveCurrent | PlanAction::SaveFile => not_ready()
-            .or_else(|| (!allowed("save")).then(|| ("nothingToSave", "There is nothing in this plan to save, or a sync is running.".to_string())))
+            .or_else(|| {
+                (!allowed("save")).then(|| {
+                    (
+                        "nothingToSave",
+                        "There is nothing in this plan to save, or a sync is running.".to_string(),
+                    )
+                })
+            })
             .or_else(|| match action {
-                PlanAction::SaveCurrent => view["file"].is_null().then(|| ("noFile", "This plan has not been saved to a file yet.".to_string())),
+                PlanAction::SaveCurrent => view["file"].is_null().then(|| {
+                    (
+                        "noFile",
+                        "This plan has not been saved to a file yet.".to_string(),
+                    )
+                }),
                 _ => folder_refusal(path),
             }),
-        PlanAction::Open => (!allowed("open")).then(|| ("busy", "Wait for the sync to finish before opening a plan.".to_string())).or_else(|| open_refusal(path)),
-        PlanAction::Clear => (!allowed("newPlan")).then(|| ("busy", "Wait for the sync to finish before clearing the plan.".to_string())),
+        PlanAction::Open => (!allowed("open"))
+            .then(|| {
+                (
+                    "busy",
+                    "Wait for the sync to finish before opening a plan.".to_string(),
+                )
+            })
+            .or_else(|| open_refusal(path)),
+        PlanAction::Clear => (!allowed("newPlan")).then(|| {
+            (
+                "busy",
+                "Wait for the sync to finish before clearing the plan.".to_string(),
+            )
+        }),
         PlanAction::SaveKml => (!allowed("exportKml"))
-            .then(|| ("nothingToExport", "There are no mission items to export, or a sync is running.".to_string()))
+            .then(|| {
+                (
+                    "nothingToExport",
+                    "There are no mission items to export, or a sync is running.".to_string(),
+                )
+            })
             .or_else(|| folder_refusal(path)),
     }
 }
 
 pub fn plan_action(backend: &dyn Backend, action: PlanAction, path: &str, args: &str) -> Value {
-    let file = serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0)?.as_str().map(str::to_string));
-    let returns = matches!(action, PlanAction::SaveCurrent | PlanAction::SaveFile | PlanAction::Open);
+    let file = serde_json::from_str::<Value>(args)
+        .ok()
+        .and_then(|a| a.get(0)?.as_str().map(str::to_string));
+    let returns = matches!(
+        action,
+        PlanAction::SaveCurrent | PlanAction::SaveFile | PlanAction::Open
+    );
     if let Some((token, reason)) = plan_refusal(action, &plan_view(backend, &[]), file.as_deref()) {
         return json!({ "ok": false, "result": returns.then_some(false), "refusal": token, "reason": reason });
     }
     let forwarded = match (action, &file) {
-        (PlanAction::SaveFile | PlanAction::SaveKml | PlanAction::Open, Some(file)) => json!([file]).to_string(),
+        (PlanAction::SaveFile | PlanAction::SaveKml | PlanAction::Open, Some(file)) => {
+            json!([file]).to_string()
+        }
         _ => "[]".to_string(),
     };
     let answer = object(&backend.invoke(path, &forwarded));
@@ -414,8 +616,14 @@ mod tests {
 
     fn declared(name: &str, value: f64, shown: &str, units: &str) -> Value {
         const APP: &str = include_str!("../../src/Settings/App.SettingsGroup.json");
-        let facts: Vec<Value> = serde_json::from_str::<Value>(APP).unwrap()["QGC.MetaData.Facts"].as_array().cloned().unwrap();
-        let fact = facts.iter().find(|f| f["name"] == json!(name)).unwrap_or_else(|| panic!("{name} is not declared in App.SettingsGroup.json"));
+        let facts: Vec<Value> = serde_json::from_str::<Value>(APP).unwrap()["QGC.MetaData.Facts"]
+            .as_array()
+            .cloned()
+            .unwrap();
+        let fact = facts
+            .iter()
+            .find(|f| f["name"] == json!(name))
+            .unwrap_or_else(|| panic!("{name} is not declared in App.SettingsGroup.json"));
         json!({
             "kind": "fact", "name": name, "value": value, "valueString": shown, "units": units,
             "min": fact["min"], "minIsDefaultForType": fact.get("min").is_none(),
@@ -428,15 +636,27 @@ mod tests {
     #[test]
     fn sync_carries_the_transfer_progress_only_while_syncing_as_plan_toolbar_draws_it() {
         assert_eq!(sync_json(false, true, 0.4)["progress"], 0.4);
-        assert_eq!(sync_json(false, false, 1.0)["progress"], 0.0, "the bar is hidden once the sync ends");
+        assert_eq!(
+            sync_json(false, false, 1.0)["progress"],
+            0.0,
+            "the bar is hidden once the sync ends"
+        );
         assert_eq!(sync_json(false, true, 1.7)["progress"], 1.0);
     }
 
     #[test]
     fn none_of_the_three_plan_defaults_declares_a_ceiling() {
         const APP: &str = include_str!("../../src/Settings/App.SettingsGroup.json");
-        let facts: Vec<Value> = serde_json::from_str::<Value>(APP).unwrap()["QGC.MetaData.Facts"].as_array().cloned().unwrap();
-        let named = |name: &str| facts.iter().find(|f| f["name"] == json!(name)).unwrap_or_else(|| panic!("{name} is not declared in App.SettingsGroup.json"));
+        let facts: Vec<Value> = serde_json::from_str::<Value>(APP).unwrap()["QGC.MetaData.Facts"]
+            .as_array()
+            .cloned()
+            .unwrap();
+        let named = |name: &str| {
+            facts
+                .iter()
+                .find(|f| f["name"] == json!(name))
+                .unwrap_or_else(|| panic!("{name} is not declared in App.SettingsGroup.json"))
+        };
 
         ["defaultMissionItemAltitude", "offlineEditingCruiseSpeed", "offlineEditingHoverSpeed"].iter().for_each(|name| {
             assert!(
@@ -451,7 +671,8 @@ mod tests {
         struct Defaults(&'static str, &'static str);
         impl Backend for Defaults {
             fn get(&self, path: &str) -> String {
-                let speed = |units: &str| declared("offlineEditingCruiseSpeed", 15.0, "15.00", units);
+                let speed =
+                    |units: &str| declared("offlineEditingCruiseSpeed", 15.0, "15.00", units);
                 match path {
                     "settings.appSettings.defaultMissionItemAltitude" => declared("defaultMissionItemAltitude", 50.0, "50.0", "m").to_string(),
                     "settings.appSettings.offlineEditingCruiseSpeed" => speed(self.0).to_string(),
@@ -461,36 +682,81 @@ mod tests {
                     _ => json!({ "kind": "null" }).to_string(),
                 }
             }
-            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn get_fields(&self, p: &str, _f: &str) -> String {
+                self.get(p)
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
             fn watch(&self, _p: &[String]) {}
         }
 
         let agreed = defaults_json(&Defaults("m/s", "m/s"));
         assert_eq!(agreed["speedUnits"], "m/s");
-        assert_eq!(agreed["altitude"]["units"], "m", "the altitude keeps its own unit; only the two speeds share one");
-        assert_eq!(agreed["cruise"]["valueString"], "15.00");
-        assert_eq!(agreed["cruise"]["label"], "Flight speed", "MissionDefaultsEditor's own label, 'FW - Flight speed' only for a VTOL");
-        assert_eq!(agreed["altitude"]["minimum"], 0.0, "the bound travels decoded, so a head does not rebuild FactRange from min and minIsDefaultForType");
         assert_eq!(
-            (agreed["altitude"]["maximum"].clone(), agreed["cruise"]["maximum"].clone(), agreed["hover"]["maximum"].clone()),
+            agreed["altitude"]["units"], "m",
+            "the altitude keeps its own unit; only the two speeds share one"
+        );
+        assert_eq!(agreed["cruise"]["valueString"], "15.00");
+        assert_eq!(
+            agreed["cruise"]["label"], "Flight speed",
+            "MissionDefaultsEditor's own label, 'FW - Flight speed' only for a VTOL"
+        );
+        assert_eq!(
+            agreed["altitude"]["minimum"], 0.0,
+            "the bound travels decoded, so a head does not rebuild FactRange from min and minIsDefaultForType"
+        );
+        assert_eq!(
+            (
+                agreed["altitude"]["maximum"].clone(),
+                agreed["cruise"]["maximum"].clone(),
+                agreed["hover"]["maximum"].clone()
+            ),
             (Value::Null, Value::Null, Value::Null),
             "App.SettingsGroup.json declares a min on all three and a max on none, so maxIsDefaultForType is the type's own limit rather than a real one and offering it as a ceiling invents a rule the setting does not have. This used to assert the altitude ceiling was 1000, a number the fake invented and QGC has never declared"
         );
 
-        assert_eq!(agreed["cruise"]["slider"], json!({ "from": 1.0, "to": 30.0, "decimals": 1 }), "MissionDefaultsEditor draws each default as a FactTextFieldSlider ranging userMin..userMax");
+        assert_eq!(
+            agreed["cruise"]["slider"],
+            json!({ "from": 1.0, "to": 30.0, "decimals": 1 }),
+            "MissionDefaultsEditor draws each default as a FactTextFieldSlider ranging userMin..userMax"
+        );
         assert_eq!(agreed["altitude"]["slider"]["to"], 121.92);
-        assert_eq!(agreed["flightSpeed"]["slider"], json!({ "from": 0.0, "to": 30.0, "decimals": 1 }), "MissionDefaultsEditor's Flight Speed is the mission settings item's speed section, drawn as a FactTextFieldSlider over SpeedSection's userMin..userMax");
-        assert_eq!(agreed["flightSpeed"]["specifyPath"], "plan.missionController.visualItems.0.speedSection.specifyFlightSpeed");
-        assert_eq!(defaults_json(&Defaults("", ""))["flightSpeed"], Value::Null, "the row is visible only while speedSection.available");
+        assert_eq!(
+            agreed["flightSpeed"]["slider"],
+            json!({ "from": 0.0, "to": 30.0, "decimals": 1 }),
+            "MissionDefaultsEditor's Flight Speed is the mission settings item's speed section, drawn as a FactTextFieldSlider over SpeedSection's userMin..userMax"
+        );
+        assert_eq!(
+            agreed["flightSpeed"]["specifyPath"],
+            "plan.missionController.visualItems.0.speedSection.specifyFlightSpeed"
+        );
+        assert_eq!(
+            defaults_json(&Defaults("", ""))["flightSpeed"],
+            Value::Null,
+            "the row is visible only while speedSection.available"
+        );
 
         let disagreeing = defaults_json(&Defaults("m/s", "ft/s"));
-        assert_eq!(disagreeing["speedUnits"], Value::Null, "two speeds in different units have no shared unit, and picking the first would draw one of them wrong");
-        assert_eq!(disagreeing["cruise"]["units"], "m/s", "each still carries its own, so nothing is lost by refusing to pick");
+        assert_eq!(
+            disagreeing["speedUnits"],
+            Value::Null,
+            "two speeds in different units have no shared unit, and picking the first would draw one of them wrong"
+        );
+        assert_eq!(
+            disagreeing["cruise"]["units"], "m/s",
+            "each still carries its own, so nothing is lost by refusing to pick"
+        );
 
         let silent = defaults_json(&Defaults("", ""));
-        assert_eq!(silent["speedUnits"], Value::Null, "Mission.swift falls back to \"m/s\" here; a guessed unit on a number an operator flies by is worse than none");
+        assert_eq!(
+            silent["speedUnits"],
+            Value::Null,
+            "Mission.swift falls back to \"m/s\" here; a guessed unit on a number an operator flies by is worse than none"
+        );
     }
     use super::*;
     use std::collections::BTreeMap;
@@ -506,7 +772,11 @@ mod tests {
             String::new()
         }
         fn get_fields(&self, path: &str, _fields: &str) -> String {
-            self.fields.get(path).cloned().unwrap_or(json!({ "kind": "null" })).to_string()
+            self.fields
+                .get(path)
+                .cloned()
+                .unwrap_or(json!({ "kind": "null" }))
+                .to_string()
         }
         fn set(&self, _path: &str, _value: &str) -> String {
             String::new()
@@ -524,10 +794,22 @@ mod tests {
         Fake {
             fields: BTreeMap::from([
                 ("plan", plan),
-                ("plan.controllerVehicle", json!({ "kind": "object", "vehicleTypeString": "Multi-Rotor", "firmwareTypeString": "PX4 Pro", "multiRotor": true, "vtol": false, "apmFirmware": false, "homePosition": { "valid": true, "latitude": 47.397, "longitude": 8.546, "altitude": 12.0 } })),
-                ("plan.missionController", json!({ "kind": "object", "containsItems": true })),
-                ("plan.geoFenceController", json!({ "kind": "object", "supported": fences })),
-                ("plan.rallyPointController", json!({ "kind": "object", "supported": rally })),
+                (
+                    "plan.controllerVehicle",
+                    json!({ "kind": "object", "vehicleTypeString": "Multi-Rotor", "firmwareTypeString": "PX4 Pro", "multiRotor": true, "vtol": false, "apmFirmware": false, "homePosition": { "valid": true, "latitude": 47.397, "longitude": 8.546, "altitude": 12.0 } }),
+                ),
+                (
+                    "plan.missionController",
+                    json!({ "kind": "object", "containsItems": true }),
+                ),
+                (
+                    "plan.geoFenceController",
+                    json!({ "kind": "object", "supported": fences }),
+                ),
+                (
+                    "plan.rallyPointController",
+                    json!({ "kind": "object", "supported": rally }),
+                ),
             ]),
             readiness: json!({ "ok": true, "result": 0 }),
             upload: json!({ "ok": true, "result": 0 }),
@@ -540,23 +822,39 @@ mod tests {
 
         let takes_both = plan_view(&supporting(connected.clone(), true, true), &[]);
         assert_eq!(takes_both["actions"]["addFence"], true);
-        assert_eq!(takes_both["unsupportedReason"], Value::Null, "QGC words the refusal per editor, so the view carries only the two capabilities");
+        assert_eq!(
+            takes_both["unsupportedReason"],
+            Value::Null,
+            "QGC words the refusal per editor, so the view carries only the two capabilities"
+        );
 
         let neither = plan_view(&supporting(connected.clone(), false, false), &[]);
-        assert_eq!(neither["actions"]["addFence"], false, "PlanElementController::supported is a vehicle capability, and both heads were offering a button for something the vehicle refuses when pressed");
+        assert_eq!(
+            neither["actions"]["addFence"], false,
+            "PlanElementController::supported is a vehicle capability, and both heads were offering a button for something the vehicle refuses when pressed"
+        );
         assert_eq!(neither["actions"]["addRally"], false);
         assert_eq!(neither["fenceSupported"], false);
         assert_eq!(neither["rallySupported"], false);
 
         let fence_only = plan_view(&supporting(connected.clone(), true, false), &[]);
-        assert_eq!(fence_only["actions"]["addFence"], true, "the two are separate capabilities and a vehicle can accept one and not the other");
+        assert_eq!(
+            fence_only["actions"]["addFence"], true,
+            "the two are separate capabilities and a vehicle can accept one and not the other"
+        );
         assert_eq!(fence_only["actions"]["addRally"], false);
         assert_eq!(fence_only["rallySupported"], false);
     }
 
     fn fake(plan: Value, mission_items: bool, readiness: Value, upload: Value) -> Fake {
         Fake {
-            fields: BTreeMap::from([("plan", plan), ("plan.missionController", json!({ "kind": "object", "containsItems": mission_items }))]),
+            fields: BTreeMap::from([
+                ("plan", plan),
+                (
+                    "plan.missionController",
+                    json!({ "kind": "object", "containsItems": mission_items }),
+                ),
+            ]),
             readiness,
             upload,
         }
@@ -571,12 +869,24 @@ mod tests {
             json!({ "ok": true, "result": 0 }),
         );
         let view = plan_view(&ready, &[]);
-        assert_eq!(view["actions"]["save"], true, "a connected plan holding items is exactly when saving is the thing the operator wants");
-        assert_eq!(view["actions"]["clearMission"], true, "clearing needs a vehicle to clear it from, and there is one");
+        assert_eq!(
+            view["actions"]["save"], true,
+            "a connected plan holding items is exactly when saving is the thing the operator wants"
+        );
+        assert_eq!(
+            view["actions"]["clearMission"], true,
+            "clearing needs a vehicle to clear it from, and there is one"
+        );
         assert_eq!(view["actions"]["exportKml"], true);
         assert_eq!(view["actions"]["open"], true);
-        assert_eq!(view["file"], "ridge.plan", "the name is the last segment, so a head does not have to split a path it was given whole");
-        assert_eq!(view["filePath"], "/plans/ridge.plan", "saving back needs the whole path, which a head had been reading raw");
+        assert_eq!(
+            view["file"], "ridge.plan",
+            "the name is the last segment, so a head does not have to split a path it was given whole"
+        );
+        assert_eq!(
+            view["filePath"], "/plans/ridge.plan",
+            "saving back needs the whole path, which a head had been reading raw"
+        );
 
         let syncing = fake(
             json!({ "kind": "object", "syncInProgress": true, "offline": false, "dirty": true, "containsItems": true, "currentPlanFile": "/plans/ridge.plan" }),
@@ -585,7 +895,10 @@ mod tests {
             json!({ "ok": true, "result": 0 }),
         );
         let mid = plan_view(&syncing, &[]);
-        assert_eq!(mid["actions"]["save"], false, "a plan being written to the vehicle is not a plan to save over");
+        assert_eq!(
+            mid["actions"]["save"], false,
+            "a plan being written to the vehicle is not a plan to save over"
+        );
         assert_eq!(mid["actions"]["clearMission"], false);
         assert_eq!(mid["actions"]["exportKml"], false);
     }
@@ -603,7 +916,10 @@ mod tests {
         assert_eq!(view["readiness"]["reason"], Value::Null);
         assert_eq!(view["upload"]["canSend"], false);
         assert_eq!(view["upload"]["canProceed"], false);
-        assert_eq!(view["upload"]["heading"], "This plan cannot be uploaded", "state 1 is a genuine refusal - no vehicle - so there is a heading to draw");
+        assert_eq!(
+            view["upload"]["heading"], "This plan cannot be uploaded",
+            "state 1 is a genuine refusal - no vehicle - so there is a heading to draw"
+        );
         assert_eq!(view["actions"]["newPlan"], true);
         assert_eq!(view["actions"]["save"], false);
         assert_eq!(view["actions"]["clearMission"], false);
@@ -613,26 +929,66 @@ mod tests {
         assert_eq!(state_line(true, true, true, 3), "Uploading\u{2026}");
         assert_eq!(state_line(false, false, true, 0), "Empty plan");
         assert_eq!(state_line(false, true, true, 1), "Edited \u{b7} 1 item");
-        assert_eq!(state_line(false, true, false, 4), "Uploaded \u{b7} 4 items", "PlanToolBarIndicators says Uploaded whenever the plan is clean, offline or not");
+        assert_eq!(
+            state_line(false, true, false, 4),
+            "Uploaded \u{b7} 4 items",
+            "PlanToolBarIndicators says Uploaded whenever the plan is clean, offline or not"
+        );
         assert_eq!(view["file"], Value::Null);
     }
 
     #[test]
     fn unfinished_items_are_listed_the_way_plan_view_lists_them() {
-        let items = [json!({ "index": 3, "sequence": 4, "name": "Survey", "reason": "Draw the area" }), json!({ "index": 1, "sequence": 1, "name": "Takeoff", "reason": "Set its location" })];
+        let items = [
+            json!({ "index": 3, "sequence": 4, "name": "Survey", "reason": "Draw the area" }),
+            json!({ "index": 1, "sequence": 1, "name": "Takeoff", "reason": "Set its location" }),
+        ];
         let readiness = readiness_json(Some(2), &items);
-        assert_eq!(readiness["reason"], "These items still need a position or a value:\n\u{2022} Item 4 \u{b7} Survey \u{2014} Draw the area\n\u{2022} Item 1 \u{b7} Takeoff \u{2014} Set its location", "PlanView.qml waitingOnIncompleteDataMessage");
-        assert_eq!(readiness["next"], 3, "selectNextNotReady goes to the first one");
+        assert_eq!(
+            readiness["reason"],
+            "These items still need a position or a value:\n\u{2022} Item 4 \u{b7} Survey \u{2014} Draw the area\n\u{2022} Item 1 \u{b7} Takeoff \u{2014} Set its location",
+            "PlanView.qml waitingOnIncompleteDataMessage"
+        );
+        assert_eq!(
+            readiness["next"], 3,
+            "selectNextNotReady goes to the first one"
+        );
         assert_eq!(readiness_json(Some(2), &[])["next"], Value::Null);
     }
 
     #[test]
     fn terrain_and_data_reasons_follow_the_cpp_enum_order() {
         let base = json!({ "kind": "object", "syncInProgress": false, "offline": false, "dirty": true, "containsItems": true, "currentPlanFile": "/tmp/field.plan" });
-        let terrain = plan_view(&fake(base.clone(), true, json!({ "ok": true, "result": 1 }), json!({ "ok": true, "result": 0 })), &[]);
-        assert!(terrain["readiness"]["reason"].as_str().unwrap().contains("terrain"));
-        let data = plan_view(&fake(base.clone(), true, json!({ "ok": true, "result": 2 }), json!({ "ok": true, "result": 0 })), &[]);
-        assert!(data["readiness"]["reason"].as_str().unwrap().contains("still being drawn"));
+        let terrain = plan_view(
+            &fake(
+                base.clone(),
+                true,
+                json!({ "ok": true, "result": 1 }),
+                json!({ "ok": true, "result": 0 }),
+            ),
+            &[],
+        );
+        assert!(
+            terrain["readiness"]["reason"]
+                .as_str()
+                .unwrap()
+                .contains("terrain")
+        );
+        let data = plan_view(
+            &fake(
+                base.clone(),
+                true,
+                json!({ "ok": true, "result": 2 }),
+                json!({ "ok": true, "result": 0 }),
+            ),
+            &[],
+        );
+        assert!(
+            data["readiness"]["reason"]
+                .as_str()
+                .unwrap()
+                .contains("still being drawn")
+        );
         assert_eq!(data["status"], "Edited \u{b7} 0 items");
         assert_eq!(data["actions"]["exportKml"], true);
         assert_eq!(data["sync"]["state"], "ready");
@@ -641,12 +997,28 @@ mod tests {
     #[test]
     fn mismatch_and_active_mission_can_proceed_with_their_own_button() {
         let base = json!({ "kind": "object", "syncInProgress": true, "offline": false, "dirty": true, "containsItems": true, "currentPlanFile": "a.plan" });
-        let mismatch = plan_view(&fake(base.clone(), true, json!({ "ok": true, "result": 0 }), json!({ "ok": true, "result": 2 })), &[]);
+        let mismatch = plan_view(
+            &fake(
+                base.clone(),
+                true,
+                json!({ "ok": true, "result": 0 }),
+                json!({ "ok": true, "result": 2 }),
+            ),
+            &[],
+        );
         assert_eq!(mismatch["upload"]["proceedTitle"], "Upload anyway");
         assert_eq!(mismatch["upload"]["pausesFirst"], false);
         assert_eq!(mismatch["actions"]["open"], false);
         assert_eq!(mismatch["sync"]["state"], "busy");
-        let flying = plan_view(&fake(base, true, json!({ "ok": true, "result": 0 }), json!({ "ok": true, "result": 3 })), &[]);
+        let flying = plan_view(
+            &fake(
+                base,
+                true,
+                json!({ "ok": true, "result": 0 }),
+                json!({ "ok": true, "result": 3 }),
+            ),
+            &[],
+        );
         assert_eq!(flying["upload"]["proceedTitle"], "Pause and upload");
         assert_eq!(flying["upload"]["pausesFirst"], true);
         assert_eq!(flying["upload"]["heading"], "Upload this plan?");
@@ -654,102 +1026,273 @@ mod tests {
 
     #[test]
     fn the_plan_names_the_vehicle_it_is_being_edited_against() {
-        let view = plan_view(&supporting(json!({ "kind": "object", "offline": true, "dirty": false, "containsItems": true }), true, true), &[]);
-        assert_eq!(view["planningFor"]["type"], "Multi-Rotor", "a plan is edited against a vehicle even with none connected, and a head asking which one had to read the controller object itself");
+        let view = plan_view(
+            &supporting(
+                json!({ "kind": "object", "offline": true, "dirty": false, "containsItems": true }),
+                true,
+                true,
+            ),
+            &[],
+        );
+        assert_eq!(
+            view["planningFor"]["type"], "Multi-Rotor",
+            "a plan is edited against a vehicle even with none connected, and a head asking which one had to read the controller object itself"
+        );
         assert_eq!(view["planningFor"]["firmware"], "PX4 Pro");
-        assert_eq!((view["planningFor"]["multiRotor"].clone(), view["planningFor"]["vtol"].clone(), view["planningFor"]["apmFirmware"].clone()), (json!(true), json!(false), json!(false)), "the reader branches on these three, so serving the names alone left it on plan.controllerVehicle and retired nothing");
-        assert!(view["defaults"]["ascent"].is_null() || view["defaults"]["ascent"].is_object(), "ascent and descent speeds appear only for a vehicle that climbs vertically");
-        assert!(view["defaults"]["altitude"]["path"].is_string(), "plan_view has to CARRY the defaults block; a head reads view.plan and never calls defaults_json, so testing that function alone leaves the wiring unpinned");
-        assert_eq!(view["planningFor"]["home"]["valid"], true, "LaunchPosition subscripts home[\"valid\"]; serving the coordinate without it answers no-home for every vehicle that has one");
-        assert_eq!(view["planningFor"]["home"]["latitude"], 47.397, "the sixth read on that group - five of six is not retirement");
+        assert_eq!(
+            (
+                view["planningFor"]["multiRotor"].clone(),
+                view["planningFor"]["vtol"].clone(),
+                view["planningFor"]["apmFirmware"].clone()
+            ),
+            (json!(true), json!(false), json!(false)),
+            "the reader branches on these three, so serving the names alone left it on plan.controllerVehicle and retired nothing"
+        );
+        assert!(
+            view["defaults"]["ascent"].is_null() || view["defaults"]["ascent"].is_object(),
+            "ascent and descent speeds appear only for a vehicle that climbs vertically"
+        );
+        assert!(
+            view["defaults"]["altitude"]["path"].is_string(),
+            "plan_view has to CARRY the defaults block; a head reads view.plan and never calls defaults_json, so testing that function alone leaves the wiring unpinned"
+        );
+        assert_eq!(
+            view["planningFor"]["home"]["valid"], true,
+            "LaunchPosition subscripts home[\"valid\"]; serving the coordinate without it answers no-home for every vehicle that has one"
+        );
+        assert_eq!(
+            view["planningFor"]["home"]["latitude"], 47.397,
+            "the sixth read on that group - five of six is not retirement"
+        );
 
-        let mut homeless = supporting(json!({ "kind": "object", "offline": true, "dirty": false, "containsItems": true }), true, true);
+        let mut homeless = supporting(
+            json!({ "kind": "object", "offline": true, "dirty": false, "containsItems": true }),
+            true,
+            true,
+        );
         homeless.fields.insert("plan.controllerVehicle", json!({ "kind": "object", "vehicleTypeString": "Multi-Rotor", "firmwareTypeString": "PX4 Pro", "multiRotor": true, "vtol": false, "apmFirmware": false }));
-        assert_eq!(plan_view(&homeless, &[])["planningFor"]["home"], Value::Null, "an unset home is absent rather than a point at nowhere");
+        assert_eq!(
+            plan_view(&homeless, &[])["planningFor"]["home"],
+            Value::Null,
+            "an unset home is absent rather than a point at nowhere"
+        );
 
-        let mut blank = supporting(json!({ "kind": "object", "offline": true, "dirty": false, "containsItems": true }), true, true);
-        blank.fields.insert("plan.controllerVehicle", json!({ "kind": "object", "vehicleTypeString": "", "firmwareTypeString": "" }));
-        assert_eq!(plan_view(&blank, &[])["planningFor"], Value::Null, "an unresolved controller is not a plan for a vehicle with an empty name");
+        let mut blank = supporting(
+            json!({ "kind": "object", "offline": true, "dirty": false, "containsItems": true }),
+            true,
+            true,
+        );
+        blank.fields.insert(
+            "plan.controllerVehicle",
+            json!({ "kind": "object", "vehicleTypeString": "", "firmwareTypeString": "" }),
+        );
+        assert_eq!(
+            plan_view(&blank, &[])["planningFor"],
+            Value::Null,
+            "an unresolved controller is not a plan for a vehicle with an empty name"
+        );
     }
 
     #[test]
     fn a_failed_check_is_reported_not_assumed_ready() {
-        let view = plan_view(&fake(json!({ "kind": "null" }), false, json!({ "ok": false, "reason": "no plan" }), json!({ "ok": false })), &[]);
+        let view = plan_view(
+            &fake(
+                json!({ "kind": "null" }),
+                false,
+                json!({ "ok": false, "reason": "no plan" }),
+                json!({ "ok": false }),
+            ),
+            &[],
+        );
         assert_eq!(view["readiness"]["ready"], false);
         assert_eq!(view["readiness"]["state"], Value::Null);
-        assert!(view["readiness"]["reason"].as_str().unwrap().contains("could not be checked"));
+        assert!(
+            view["readiness"]["reason"]
+                .as_str()
+                .unwrap()
+                .contains("could not be checked")
+        );
         assert_eq!(view["upload"]["canSend"], false);
     }
     #[test]
     fn the_undo_stacks_travel_with_the_plan_so_the_head_stops_reading_the_raw_object() {
         let with_history = json!({ "kind": "object", "syncInProgress": false, "offline": true, "dirty": true, "containsItems": true, "currentPlanFile": "", "canUndo": true, "canRedo": false });
-        let view = plan_view(&fake(with_history, true, json!({ "ok": true, "result": 0 }), json!({ "ok": true, "result": 0 })), &[]);
+        let view = plan_view(
+            &fake(
+                with_history,
+                true,
+                json!({ "ok": true, "result": 0 }),
+                json!({ "ok": true, "result": 0 }),
+            ),
+            &[],
+        );
         assert_eq!(
-            (view["canUndo"].clone(), view["canRedo"].clone()), (json!(true), json!(false)),
+            (view["canUndo"].clone(), view["canRedo"].clone()),
+            (json!(true), json!(false)),
             "Mission.swift took five keys off Bridge.group(\"plan\") and view.plan already served three of them; these two were the whole reason the raw read survived, and a head mixing a view with a separate raw snapshot reads one plan at two instants"
         );
 
         let fresh = json!({ "kind": "object", "syncInProgress": false, "offline": true, "dirty": false, "containsItems": false, "currentPlanFile": "" });
-        let empty = plan_view(&fake(fresh, false, json!({ "ok": true, "result": 0 }), json!({ "ok": true, "result": 0 })), &[]);
-        assert_eq!((empty["canUndo"].clone(), empty["canRedo"].clone()), (json!(false), json!(false)), "an object that does not report them has nothing to undo, which is what a fresh plan is");
+        let empty = plan_view(
+            &fake(
+                fresh,
+                false,
+                json!({ "ok": true, "result": 0 }),
+                json!({ "ok": true, "result": 0 }),
+            ),
+            &[],
+        );
+        assert_eq!(
+            (empty["canUndo"].clone(), empty["canRedo"].clone()),
+            (json!(false), json!(false)),
+            "an object that does not report them has nothing to undo, which is what a fresh plan is"
+        );
     }
 
     #[test]
     fn the_state_that_means_nothing_is_wrong_has_no_refusal_to_show() {
         let ready = upload_json(Some(0));
         assert_eq!(ready["canSend"], true);
-        assert_eq!(ready["heading"], Value::Null, "heading was a two-way choice on canProceed, so the state that means send it fell through the else and got the refusal sentence: canSend true beside 'This plan cannot be uploaded'");
+        assert_eq!(
+            ready["heading"],
+            Value::Null,
+            "heading was a two-way choice on canProceed, so the state that means send it fell through the else and got the refusal sentence: canSend true beside 'This plan cannot be uploaded'"
+        );
         assert_eq!(ready["refusal"], Value::Null);
         assert_eq!(ready["proceedTitle"], Value::Null);
 
         let no_vehicle = upload_json(Some(1));
-        assert_eq!(no_vehicle["heading"], "This plan cannot be uploaded", "a refusal with nothing to offer still needs a heading");
-        assert_eq!(no_vehicle["proceedTitle"], Value::Null, "and no button title, because there is no button");
+        assert_eq!(
+            no_vehicle["heading"], "This plan cannot be uploaded",
+            "a refusal with nothing to offer still needs a heading"
+        );
+        assert_eq!(
+            no_vehicle["proceedTitle"],
+            Value::Null,
+            "and no button title, because there is no button"
+        );
 
         let wrong_firmware = upload_json(Some(2));
-        assert_eq!(wrong_firmware["heading"], "Upload this plan?", "a question is only a question when there is something to answer");
+        assert_eq!(
+            wrong_firmware["heading"], "Upload this plan?",
+            "a question is only a question when there is something to answer"
+        );
         assert_eq!(wrong_firmware["proceedTitle"], "Upload anyway");
 
         let unchecked = upload_json(None);
-        assert_eq!(unchecked["heading"], "This plan cannot be uploaded", "an unknown state is a refusal, not a green light");
+        assert_eq!(
+            unchecked["heading"], "This plan cannot be uploaded",
+            "an unknown state is a refusal, not a green light"
+        );
     }
 
     #[test]
     fn a_plan_is_not_sent_or_saved_while_the_view_says_it_cannot_be() {
-        let view = |sync: &str, ready: bool, upload: i64, file: Value| json!({
-            "sync": { "state": sync, "refusal": if sync == "ready" { Value::Null } else { json!("No vehicle is connected.") } },
-            "readiness": { "ready": ready, "reason": if ready { Value::Null } else { json!("Waiting for terrain heights before the plan can be saved or sent.") } },
-            "upload": { "state": upload, "refusal": if upload == 0 { Value::Null } else { json!("No vehicle is connected, so there is nowhere to send this plan.") } },
-            "actions": { "save": true, "exportKml": true, "open": true, "newPlan": true },
-            "containsItems": true,
-            "file": file,
-        });
-        let token = |action, v: &Value, path: Option<&str>| plan_refusal(action, v, path).map(|(t, _)| t);
+        let view = |sync: &str, ready: bool, upload: i64, file: Value| {
+            json!({
+                "sync": { "state": sync, "refusal": if sync == "ready" { Value::Null } else { json!("No vehicle is connected.") } },
+                "readiness": { "ready": ready, "reason": if ready { Value::Null } else { json!("Waiting for terrain heights before the plan can be saved or sent.") } },
+                "upload": { "state": upload, "refusal": if upload == 0 { Value::Null } else { json!("No vehicle is connected, so there is nowhere to send this plan.") } },
+                "actions": { "save": true, "exportKml": true, "open": true, "newPlan": true },
+                "containsItems": true,
+                "file": file,
+            })
+        };
+        let token =
+            |action, v: &Value, path: Option<&str>| plan_refusal(action, v, path).map(|(t, _)| t);
         let good = view("ready", true, 0, json!("ridge.plan"));
         assert_eq!(token(PlanAction::Send, &good, None), None);
         let mut empty = good.clone();
         empty["containsItems"] = json!(false);
-        assert_eq!(token(PlanAction::Send, &empty, None), Some("empty"), "PlanToolBarIndicators greys Upload out on an empty plan; sending one would wipe the vehicle's mission");
         assert_eq!(
-            plan_refusal(PlanAction::Send, &view("ready", false, 0, Value::Null), None),
-            Some(("notReady", "Waiting for terrain heights before the plan can be saved or sent.".to_string())),
+            token(PlanAction::Send, &empty, None),
+            Some("empty"),
+            "PlanToolBarIndicators greys Upload out on an empty plan; sending one would wipe the vehicle's mission"
+        );
+        assert_eq!(
+            plan_refusal(
+                PlanAction::Send,
+                &view("ready", false, 0, Value::Null),
+                None
+            ),
+            Some((
+                "notReady",
+                "Waiting for terrain heights before the plan can be saved or sent.".to_string()
+            )),
             "PlanMasterController::sendToVehicle checks offline and syncing only, so a plan with its terrain heights still pending went up"
         );
-        assert_eq!(token(PlanAction::Send, &view("ready", true, 2, Value::Null), None), None, "a firmware mismatch is a warning the head has already put to the operator before it sends");
-        assert_eq!(token(PlanAction::Send, &view("ready", true, 3, Value::Null), None), None, "and the head pauses first for a mission in flight, after which the pre-check can still read 3 for a moment");
-        assert_eq!(token(PlanAction::Send, &view("ready", true, 1, Value::Null), None), Some("cannotUpload"));
-        assert_eq!(token(PlanAction::Send, &view("busy", true, 0, Value::Null), None), Some("busy"));
-        assert_eq!(token(PlanAction::Download, &view("offline", true, 0, Value::Null), None), Some("offline"));
-        assert_eq!(token(PlanAction::ClearVehicle, &view("offline", true, 0, Value::Null), None), Some("offline"), "an offline clear logs and returns, and the vehicle keeps its mission");
-        assert_eq!(token(PlanAction::ClearVehicle, &view("busy", true, 0, Value::Null), None), Some("busy"));
+        assert_eq!(
+            token(PlanAction::Send, &view("ready", true, 2, Value::Null), None),
+            None,
+            "a firmware mismatch is a warning the head has already put to the operator before it sends"
+        );
+        assert_eq!(
+            token(PlanAction::Send, &view("ready", true, 3, Value::Null), None),
+            None,
+            "and the head pauses first for a mission in flight, after which the pre-check can still read 3 for a moment"
+        );
+        assert_eq!(
+            token(PlanAction::Send, &view("ready", true, 1, Value::Null), None),
+            Some("cannotUpload")
+        );
+        assert_eq!(
+            token(PlanAction::Send, &view("busy", true, 0, Value::Null), None),
+            Some("busy")
+        );
+        assert_eq!(
+            token(
+                PlanAction::Download,
+                &view("offline", true, 0, Value::Null),
+                None
+            ),
+            Some("offline")
+        );
+        assert_eq!(
+            token(
+                PlanAction::ClearVehicle,
+                &view("offline", true, 0, Value::Null),
+                None
+            ),
+            Some("offline"),
+            "an offline clear logs and returns, and the vehicle keeps its mission"
+        );
+        assert_eq!(
+            token(
+                PlanAction::ClearVehicle,
+                &view("busy", true, 0, Value::Null),
+                None
+            ),
+            Some("busy")
+        );
         assert_eq!(token(PlanAction::ClearVehicle, &good, None), None);
-        assert_eq!(token(PlanAction::SaveCurrent, &view("ready", true, 0, Value::Null), None), Some("noFile"));
+        assert_eq!(
+            token(
+                PlanAction::SaveCurrent,
+                &view("ready", true, 0, Value::Null),
+                None
+            ),
+            Some("noFile")
+        );
         assert_eq!(token(PlanAction::SaveCurrent, &good, None), None);
-        assert_eq!(token(PlanAction::SaveFile, &good, Some("/no/such/folder/ridge.plan")), Some("folderMissing"));
+        assert_eq!(
+            token(
+                PlanAction::SaveFile,
+                &good,
+                Some("/no/such/folder/ridge.plan")
+            ),
+            Some("folderMissing")
+        );
         let here = std::env::temp_dir().join("ridge.plan");
         assert_eq!(token(PlanAction::SaveFile, &good, here.to_str()), None);
         assert_eq!(token(PlanAction::SaveKml, &good, Some("")), Some("noFile"));
-        assert_eq!(token(PlanAction::SaveFile, &view("ready", false, 0, Value::Null), here.to_str()), Some("notReady"));
+        assert_eq!(
+            token(
+                PlanAction::SaveFile,
+                &view("ready", false, 0, Value::Null),
+                here.to_str()
+            ),
+            Some("notReady")
+        );
 
         let folder = std::env::temp_dir().join(format!("qgc-plan-open-{}", std::process::id()));
         std::fs::create_dir_all(&folder).unwrap();
@@ -758,25 +1301,69 @@ mod tests {
             std::fs::write(&file, body).unwrap();
             file.to_string_lossy().into_owned()
         };
-        let (plan, waypoints, junk, headerless) = (write("a.plan", r#"{"fileType":"Plan"}"#), write("b.waypoints", "QGC WPL 110\n"), write("c.plan", "not json"), write("d.txt", "0\t1\t0\n"));
+        let (plan, waypoints, junk, headerless) = (
+            write("a.plan", r#"{"fileType":"Plan"}"#),
+            write("b.waypoints", "QGC WPL 110\n"),
+            write("c.plan", "not json"),
+            write("d.txt", "0\t1\t0\n"),
+        );
         assert_eq!(token(PlanAction::Open, &good, Some(&plan)), None);
         assert_eq!(token(PlanAction::Open, &good, Some(&waypoints)), None);
-        assert_eq!(token(PlanAction::Open, &good, Some(&junk)), Some("notAPlan"), "loadFromFile reports a bad file through showAppMessage, which no native head receives, and clears the current plan file on the way out");
-        assert_eq!(token(PlanAction::Open, &good, Some(&headerless)), Some("notAPlan"));
-        assert_eq!(token(PlanAction::Open, &good, Some(&write("e.waypoints", "QGC WPL 130\r\n"))), Some("notAPlan"), "_loadTextMissionFile knows only versions 110 and 120");
-        assert_eq!(token(PlanAction::Open, &good, Some(&write("f.waypoints", "QGC WPL 120\r\n0\t1\n"))), None, "a CRLF file reads the same as QTextStream::readLine sees it");
-        assert_eq!(token(PlanAction::Open, &good, Some("/no/such/file.plan")), Some("unreadable"));
+        assert_eq!(
+            token(PlanAction::Open, &good, Some(&junk)),
+            Some("notAPlan"),
+            "loadFromFile reports a bad file through showAppMessage, which no native head receives, and clears the current plan file on the way out"
+        );
+        assert_eq!(
+            token(PlanAction::Open, &good, Some(&headerless)),
+            Some("notAPlan")
+        );
+        assert_eq!(
+            token(
+                PlanAction::Open,
+                &good,
+                Some(&write("e.waypoints", "QGC WPL 130\r\n"))
+            ),
+            Some("notAPlan"),
+            "_loadTextMissionFile knows only versions 110 and 120"
+        );
+        assert_eq!(
+            token(
+                PlanAction::Open,
+                &good,
+                Some(&write("f.waypoints", "QGC WPL 120\r\n0\t1\n"))
+            ),
+            None,
+            "a CRLF file reads the same as QTextStream::readLine sees it"
+        );
+        assert_eq!(
+            token(PlanAction::Open, &good, Some("/no/such/file.plan")),
+            Some("unreadable")
+        );
         let syncing = json!({ "actions": { "open": false, "newPlan": false } });
         assert_eq!(token(PlanAction::Open, &syncing, Some(&plan)), Some("busy"));
-        assert_eq!(token(PlanAction::Clear, &syncing, None), Some("busy"), "removeAll in the middle of a sync pulls the items out from under the transfer");
-        assert_eq!(token(PlanAction::Clear, &json!({ "actions": { "newPlan": true } }), None), None);
+        assert_eq!(
+            token(PlanAction::Clear, &syncing, None),
+            Some("busy"),
+            "removeAll in the middle of a sync pulls the items out from under the transfer"
+        );
+        assert_eq!(
+            token(
+                PlanAction::Clear,
+                &json!({ "actions": { "newPlan": true } }),
+                None
+            ),
+            None
+        );
     }
 
     #[test]
     fn the_plan_view_carries_the_mission_controller_fields_by_their_current_names() {
         struct Controller(bool);
         impl Backend for Controller {
-            fn get(&self, p: &str) -> String { self.get_fields(p, "") }
+            fn get(&self, p: &str) -> String {
+                self.get_fields(p, "")
+            }
             fn get_fields(&self, p: &str, _f: &str) -> String {
                 match (p, self.0) {
                     ("plan.missionController", true) => json!({
@@ -794,22 +1381,47 @@ mod tests {
                 }
                 .to_string()
             }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { json!({ "ok": false }).to_string() }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                json!({ "ok": false }).to_string()
+            }
             fn watch(&self, _p: &[String]) {}
         }
         let view = plan_view(&Controller(true), &[]);
         assert_eq!(view["available"], true);
-        assert_eq!((&view["containsItems"], &view["offline"], &view["sync"]["state"]), (&json!(true), &json!(true), &json!("offline")), "both come from the same plan read as sync and status");
-        assert_eq!(view["filePath"], Value::Null, "no file is null rather than an empty path to save over");
-        assert_eq!(view["globalAltitudeFrame"], 1, "the head read globalAltitudeMode, which upstream renamed, so its read had been null since the merge");
+        assert_eq!(
+            (
+                &view["containsItems"],
+                &view["offline"],
+                &view["sync"]["state"]
+            ),
+            (&json!(true), &json!(true), &json!("offline")),
+            "both come from the same plan read as sync and status"
+        );
+        assert_eq!(
+            view["filePath"],
+            Value::Null,
+            "no file is null rather than an empty path to save over"
+        );
+        assert_eq!(
+            view["globalAltitudeFrame"], 1,
+            "the head read globalAltitudeMode, which upstream renamed, so its read had been null since the merge"
+        );
         assert_eq!(
             view["patterns"],
             json!([{ "name": "Survey", "title": "Survey" }, { "name": "Corridor Scan", "title": "Korridor-Scan" }]),
             "the canonical name is the insert key and the translated one is what is shown; a pattern without a key cannot be inserted"
         );
         let gone = plan_view(&Controller(false), &[]);
-        assert_eq!((&gone["available"], &gone["patterns"], &gone["globalAltitudeFrame"]), (&json!(false), &json!([]), &Value::Null));
+        assert_eq!(
+            (
+                &gone["available"],
+                &gone["patterns"],
+                &gone["globalAltitudeFrame"]
+            ),
+            (&json!(false), &json!([]), &Value::Null)
+        );
     }
 }
-

@@ -58,10 +58,17 @@ pub fn deep_link_setup_view(_backend: &dyn Backend, _args: &[String]) -> Value {
 
 pub fn setup_from_device(host: &str) {
     if let Some(config) = crate::devicesetup::fetch(host, crate::devicesetup::STREAM_CONFIG) {
-        let via = crate::devicesetup::fetch(host, crate::devicesetup::WATCH_VIA).unwrap_or(Value::Null);
-        crate::cameras::adopt_device(crate::devicesetup::bare_host(host), crate::devicesetup::device_cameras(host, &config, &via));
+        let via =
+            crate::devicesetup::fetch(host, crate::devicesetup::WATCH_VIA).unwrap_or(Value::Null);
+        crate::cameras::adopt_device(
+            crate::devicesetup::bare_host(host),
+            crate::devicesetup::device_cameras(host, &config, &via),
+        );
     }
-    let Some(telemetry) = crate::devicesetup::fetch(host, crate::devicesetup::TELEMETRY_CONFIG) else { return };
+    let Some(telemetry) = crate::devicesetup::fetch(host, crate::devicesetup::TELEMETRY_CONFIG)
+    else {
+        return;
+    };
     if let Some((api_base, link)) = crate::devicesetup::cloud_link(host, &telemetry) {
         crate::account::set_api_base(&api_base);
         crate::corelinks::replace_and_connect(link);
@@ -74,7 +81,9 @@ pub fn setup_from_device(host: &str) {
 pub const DEVICE_SETUP_UNAVAILABLE: &str = "Setting up a device is not available in this app yet.";
 
 pub fn run(path: &str, args: &str, setup: impl FnOnce(String) + Send + 'static) -> Value {
-    let shown = serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0)?.as_str().map(str::to_string));
+    let shown = serde_json::from_str::<Value>(args)
+        .ok()
+        .and_then(|a| a.get(0)?.as_str().map(str::to_string));
     let waiting = pending().clone();
     match (path, waiting) {
         (ACCEPT, Some(host)) if shown.as_deref() == Some(host.as_str()) => {
@@ -84,7 +93,9 @@ pub fn run(path: &str, args: &str, setup: impl FnOnce(String) + Send + 'static) 
                 Err(_) => json!({ "ok": false, "reason": DEVICE_SETUP_UNAVAILABLE }),
             }
         }
-        (ACCEPT, Some(_)) => json!({ "ok": false, "reason": "The device waiting to set up is not the one that was shown." }),
+        (ACCEPT, Some(_)) => {
+            json!({ "ok": false, "reason": "The device waiting to set up is not the one that was shown." })
+        }
         (ACCEPT, None) => json!({ "ok": false, "reason": "There is no device setup waiting." }),
         _ => {
             replace(None);
@@ -101,18 +112,44 @@ mod tests {
     fn a_device_link_waits_for_the_pilot_and_runs_only_when_accepted() {
         assert_eq!(view_of(None)["show"], false);
         let shown = view_of(Some("10.0.0.5"));
-        assert_eq!((shown["show"].as_bool(), shown["host"].as_str()), (Some(true), Some("10.0.0.5")));
+        assert_eq!(
+            (shown["show"].as_bool(), shown["host"].as_str()),
+            (Some(true), Some("10.0.0.5"))
+        );
         offer("evil.example");
         assert!(take_changed());
-        assert_eq!(run(DECLINE, "[]", |_| panic!("a declined link sets nothing up")), json!({ "ok": true }));
+        assert_eq!(
+            run(DECLINE, "[]", |_| panic!("a declined link sets nothing up")),
+            json!({ "ok": true })
+        );
         assert!(pending().is_none());
-        assert_eq!(run(ACCEPT, r#"["10.0.0.5"]"#, |_| panic!("nothing is waiting"))["ok"], false);
+        assert_eq!(
+            run(ACCEPT, r#"["10.0.0.5"]"#, |_| panic!("nothing is waiting"))["ok"],
+            false
+        );
         offer("10.0.0.5");
         offer("evil.example");
-        assert_eq!(pending().as_deref(), Some("10.0.0.5"), "a second link never replaces the one on screen");
-        assert_eq!(run(ACCEPT, r#"["evil.example"]"#, |_| panic!("only the host shown is accepted"))["ok"], false);
+        assert_eq!(
+            pending().as_deref(),
+            Some("10.0.0.5"),
+            "a second link never replaces the one on screen"
+        );
+        assert_eq!(
+            run(ACCEPT, r#"["evil.example"]"#, |_| panic!(
+                "only the host shown is accepted"
+            ))["ok"],
+            false
+        );
         let (sent, got) = std::sync::mpsc::channel();
-        assert_eq!(run(ACCEPT, r#"["10.0.0.5"]"#, move |host| sent.send(host).unwrap())["ok"], true);
-        assert_eq!(got.recv_timeout(std::time::Duration::from_secs(2)).unwrap(), "10.0.0.5");
+        assert_eq!(
+            run(ACCEPT, r#"["10.0.0.5"]"#, move |host| sent
+                .send(host)
+                .unwrap())["ok"],
+            true
+        );
+        assert_eq!(
+            got.recv_timeout(std::time::Duration::from_secs(2)).unwrap(),
+            "10.0.0.5"
+        );
     }
 }

@@ -34,18 +34,33 @@ pub struct Source {
 }
 
 pub fn parse_general(text: &str) -> Result<BTreeMap<u8, Uris>, String> {
-    let root: Value = serde_json::from_str(text).map_err(|e| format!("general metadata is not JSON: {e}"))?;
+    let root: Value =
+        serde_json::from_str(text).map_err(|e| format!("general metadata is not JSON: {e}"))?;
     if root.get("version").and_then(Value::as_i64) != Some(1) {
         return Err("general metadata version is not 1".to_string());
     }
-    let types = root.get("metadataTypes").and_then(Value::as_array).ok_or("general metadata has no metadataTypes")?;
+    let types = root
+        .get("metadataTypes")
+        .and_then(Value::as_array)
+        .ok_or("general metadata has no metadataTypes")?;
     Ok(types
         .iter()
         .filter_map(|entry| {
             let kind = u8::try_from(entry.get("type").and_then(Value::as_u64)?).ok()?;
-            let uri = entry.get("uri").and_then(Value::as_str).filter(|u| !u.is_empty())?.to_string();
+            let uri = entry
+                .get("uri")
+                .and_then(Value::as_str)
+                .filter(|u| !u.is_empty())?
+                .to_string();
             let crc = entry.get("fileCrc").and_then(Value::as_u64);
-            let fallback = entry.get("uriFallback").and_then(Value::as_str).filter(|u| !u.is_empty()).map(|u| Source { uri: u.to_string(), crc: entry.get("fileCrcFallback").and_then(Value::as_u64) });
+            let fallback = entry
+                .get("uriFallback")
+                .and_then(Value::as_str)
+                .filter(|u| !u.is_empty())
+                .map(|u| Source {
+                    uri: u.to_string(),
+                    crc: entry.get("fileCrcFallback").and_then(Value::as_u64),
+                });
             crc.map(|_| (kind, Uris { uri, crc, fallback }))
         })
         .collect())
@@ -60,11 +75,13 @@ pub fn inflate(uri: &str, bytes: &[u8]) -> Result<Vec<u8>, String> {
 }
 
 pub fn over_mavlink_ftp(uri: &str) -> bool {
-    uri.get(..MAVLINK_FTP_SCHEME.len()).is_some_and(|scheme| scheme.eq_ignore_ascii_case(MAVLINK_FTP_SCHEME))
+    uri.get(..MAVLINK_FTP_SCHEME.len())
+        .is_some_and(|scheme| scheme.eq_ignore_ascii_case(MAVLINK_FTP_SCHEME))
 }
 
 pub fn download_over_http(uri: &str) -> Result<Vec<u8>, String> {
-    crate::http::get(uri, &[], HTTP_TIMEOUT).map_err(|e| format!("Component metadata download failed: {e}"))
+    crate::http::get(uri, &[], HTTP_TIMEOUT)
+        .map_err(|e| format!("Component metadata download failed: {e}"))
 }
 
 pub fn cache_tag(kind: u8, crc: u64) -> String {
@@ -72,7 +89,12 @@ pub fn cache_tag(kind: u8, crc: u64) -> String {
 }
 
 pub fn cache_folder() -> Option<PathBuf> {
-    Some(crate::terrainservice::cache_path()?.parent()?.parent()?.join(CACHE_FOLDER))
+    Some(
+        crate::terrainservice::cache_path()?
+            .parent()?
+            .parent()?
+            .join(CACHE_FOLDER),
+    )
 }
 
 fn cache_file(folder: &Path, tag: &str) -> PathBuf {
@@ -82,13 +104,20 @@ fn cache_file(folder: &Path, tag: &str) -> PathBuf {
 pub fn cached(folder: &Path, tag: &str) -> Option<Vec<u8>> {
     let path = cache_file(folder, tag);
     let bytes = std::fs::read(&path).ok()?;
-    let _ = std::fs::File::options().write(true).open(&path).and_then(|f| f.set_modified(SystemTime::now()));
+    let _ = std::fs::File::options()
+        .write(true)
+        .open(&path)
+        .and_then(|f| f.set_modified(SystemTime::now()));
     Some(bytes)
 }
 
 pub fn insert(folder: &Path, tag: &str, bytes: &[u8]) {
     let path = cache_file(folder, tag);
-    if path.exists() || std::fs::create_dir_all(folder).and_then(|()| std::fs::write(&path, bytes)).is_err() {
+    if path.exists()
+        || std::fs::create_dir_all(folder)
+            .and_then(|()| std::fs::write(&path, bytes))
+            .is_err()
+    {
         return;
     }
     let others: Vec<(SystemTime, PathBuf)> = std::fs::read_dir(folder)
@@ -101,13 +130,21 @@ pub fn insert(folder: &Path, tag: &str, bytes: &[u8]) {
         })
         .unwrap_or_default();
     let excess = (others.len() + 1).saturating_sub(CACHE_MAX_FILES);
-    others.into_iter().collect::<std::collections::BTreeSet<_>>().into_iter().take(excess).for_each(|(_, p)| {
-        let _ = std::fs::remove_file(p);
-    });
+    others
+        .into_iter()
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .take(excess)
+        .for_each(|(_, p)| {
+            let _ = std::fs::remove_file(p);
+        });
 }
 
 pub fn too_slow(elapsed_ms: u64, progress: f64) -> bool {
-    elapsed_ms > SLOW_AFTER_MS && progress < 0.5 && progress > 0.0 && (elapsed_ms as f64 / progress) as u64 > SLOW_LIMIT_MS
+    elapsed_ms > SLOW_AFTER_MS
+        && progress < 0.5
+        && progress > 0.0
+        && (elapsed_ms as f64 / progress) as u64 > SLOW_LIMIT_MS
 }
 
 #[cfg(test)]
@@ -118,12 +155,35 @@ mod tests {
     fn the_general_file_lists_the_typed_uris_and_skips_entries_without_a_crc() {
         let types = parse_general(r#"{"version":1,"metadataTypes":[{"type":1,"uri":"mftp://etc/extras/parameters.json.xz","fileCrc":3735928559},{"type":2,"uri":"mftp://x"},{"type":4,"uri":"","fileCrc":1},{"type":257,"uri":"mftp://y","fileCrc":2}]}"#).unwrap();
         assert_eq!(types.len(), 1);
-        assert_eq!(types[&TYPE_PARAMETER], Uris { uri: "mftp://etc/extras/parameters.json.xz".into(), crc: Some(3735928559), fallback: None });
+        assert_eq!(
+            types[&TYPE_PARAMETER],
+            Uris {
+                uri: "mftp://etc/extras/parameters.json.xz".into(),
+                crc: Some(3735928559),
+                fallback: None
+            }
+        );
         let fallen = parse_general(r#"{"version":1,"metadataTypes":[{"type":4,"uri":"mftp://etc/extras/events.json.xz","fileCrc":1,"uriFallback":"https://px4.io/events.json.xz","fileCrcFallback":2},{"type":5,"uri":"mftp://a","fileCrc":3,"uriFallback":""}]}"#).unwrap();
-        assert_eq!(fallen[&TYPE_EVENTS].fallback, Some(Source { uri: "https://px4.io/events.json.xz".into(), crc: Some(2) }), "CompInfoGeneral reads uriFallback and fileCrcFallback beside the primary");
+        assert_eq!(
+            fallen[&TYPE_EVENTS].fallback,
+            Some(Source {
+                uri: "https://px4.io/events.json.xz".into(),
+                crc: Some(2)
+            }),
+            "CompInfoGeneral reads uriFallback and fileCrcFallback beside the primary"
+        );
         assert_eq!(fallen[&TYPE_ACTUATORS].fallback, None);
-        assert!(over_mavlink_ftp("MFTP://etc/x") && over_mavlink_ftp("mftp://[;comp=100]x") && !over_mavlink_ftp("https://x") && !over_mavlink_ftp("mft"));
-        assert_eq!(cache_tag(TYPE_PARAMETER, 0xdeadbeef), "deadbeef_01_0", "ComponentInformationManager::_getFileCacheTag");
+        assert!(
+            over_mavlink_ftp("MFTP://etc/x")
+                && over_mavlink_ftp("mftp://[;comp=100]x")
+                && !over_mavlink_ftp("https://x")
+                && !over_mavlink_ftp("mft")
+        );
+        assert_eq!(
+            cache_tag(TYPE_PARAMETER, 0xdeadbeef),
+            "deadbeef_01_0",
+            "ComponentInformationManager::_getFileCacheTag"
+        );
         assert!(parse_general("{}").is_err());
         assert!(parse_general(r#"{"version":2,"metadataTypes":[]}"#).is_err());
         assert_eq!(inflate("a.json", b"{}").unwrap(), b"{}");
@@ -141,14 +201,29 @@ mod tests {
         let old = SystemTime::UNIX_EPOCH + Duration::from_secs(1_000_000);
         (0..CACHE_MAX_FILES).for_each(|i| {
             insert(&folder, &format!("t{i:02}"), format!("{i}").as_bytes());
-            let _ = std::fs::File::options().write(true).open(cache_file(&folder, &format!("t{i:02}"))).and_then(|f| f.set_modified(old + Duration::from_secs(i as u64)));
+            let _ = std::fs::File::options()
+                .write(true)
+                .open(cache_file(&folder, &format!("t{i:02}")))
+                .and_then(|f| f.set_modified(old + Duration::from_secs(i as u64)));
         });
-        assert_eq!(cached(&folder, "t00").as_deref(), Some(b"0".as_slice()), "an access marks the entry as recently used");
+        assert_eq!(
+            cached(&folder, "t00").as_deref(),
+            Some(b"0".as_slice()),
+            "an access marks the entry as recently used"
+        );
         insert(&folder, "t00", b"other");
-        assert_eq!(cached(&folder, "t00").as_deref(), Some(b"0".as_slice()), "an existing entry is not replaced");
+        assert_eq!(
+            cached(&folder, "t00").as_deref(),
+            Some(b"0".as_slice()),
+            "an existing entry is not replaced"
+        );
         insert(&folder, "new", b"n");
         assert_eq!(cached(&folder, "new").as_deref(), Some(b"n".as_slice()));
-        assert_eq!(cached(&folder, "t01"), None, "the least recently used entry went to keep fifty");
+        assert_eq!(
+            cached(&folder, "t01"),
+            None,
+            "the least recently used entry went to keep fifty"
+        );
         assert!(cached(&folder, "t00").is_some() && cached(&folder, "t02").is_some());
         assert_eq!(std::fs::read_dir(&folder).unwrap().count(), CACHE_MAX_FILES);
         let _ = std::fs::remove_dir_all(&folder);

@@ -37,7 +37,9 @@ fn point(json: &Value) -> Option<(f64, f64)> {
 }
 
 fn points(json: Option<&Value>) -> Vec<(f64, f64)> {
-    json.and_then(Value::as_array).map(|a| a.iter().filter_map(point).collect()).unwrap_or_default()
+    json.and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(point).collect())
+        .unwrap_or_default()
 }
 
 pub fn area_text(area: f64, unit: &Unit) -> String {
@@ -45,25 +47,46 @@ pub fn area_text(area: f64, unit: &Unit) -> String {
 }
 
 fn elements(backend: &dyn Backend, path: &str) -> Vec<Value> {
-    backend.value(path).get("elements").and_then(Value::as_array).cloned().unwrap_or_default()
+    backend
+        .value(path)
+        .get("elements")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default()
 }
 
 fn radius_fact(json: &Value) -> (f64, f64, String) {
     json.get("facts")
         .and_then(Value::as_array)
-        .and_then(|f| f.iter().find(|x| x.get("name").and_then(Value::as_str) == Some("Radius")))
+        .and_then(|f| {
+            f.iter()
+                .find(|x| x.get("name").and_then(Value::as_str) == Some("Radius"))
+        })
         .map(|f| {
             let shown = f.get("value").and_then(Value::as_f64).unwrap_or(0.0);
             let metres = f.get("rawValue").and_then(Value::as_f64).unwrap_or(shown);
-            (metres, shown, f.get("units").and_then(Value::as_str).unwrap_or("m").to_string())
+            (
+                metres,
+                shown,
+                f.get("units")
+                    .and_then(Value::as_str)
+                    .unwrap_or("m")
+                    .to_string(),
+            )
         })
         .unwrap_or((0.0, 0.0, "m".to_string()))
 }
 
 fn polygon_json(index: usize, json: &Value, area_unit: &Unit) -> Value {
-    let inclusion = json.get("inclusion").and_then(Value::as_bool).unwrap_or(false);
+    let inclusion = json
+        .get("inclusion")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
     let vertices = points(json.get("path"));
-    let count = json.get("count").and_then(Value::as_i64).unwrap_or(vertices.len() as i64);
+    let count = json
+        .get("count")
+        .and_then(Value::as_i64)
+        .unwrap_or(vertices.len() as i64);
     let area = json.get("area").and_then(Value::as_f64).unwrap_or(0.0);
     let vertex_text = format!("{count} vertice{}", if count == 1 { "" } else { "s" });
     json!({
@@ -81,26 +104,47 @@ fn polygon_json(index: usize, json: &Value, area_unit: &Unit) -> Value {
 
 fn radius_bounds(backend: &dyn Backend, index: usize) -> (Option<f64>, Option<f64>) {
     let fact = backend.value(&format!("plan.geoFenceController.circles.{index}.radius"));
-    let bound = |key: &str, default_flag: &str| (!flag(&fact, default_flag)).then(|| fact.get(key).and_then(Value::as_f64).filter(|v| v.is_finite())).flatten();
-    (bound("min", "minIsDefaultForType"), bound("max", "maxIsDefaultForType"))
+    let bound = |key: &str, default_flag: &str| {
+        (!flag(&fact, default_flag))
+            .then(|| {
+                fact.get(key)
+                    .and_then(Value::as_f64)
+                    .filter(|v| v.is_finite())
+            })
+            .flatten()
+    };
+    (
+        bound("min", "minIsDefaultForType"),
+        bound("max", "maxIsDefaultForType"),
+    )
 }
 
 fn circle_json(backend: &dyn Backend, index: usize, json: &Value) -> Value {
     circle_json_bounded(index, json, radius_bounds(backend, index))
 }
 
-fn circle_json_bounded(index: usize, json: &Value, (smallest, largest): (Option<f64>, Option<f64>)) -> Value {
-    let inclusion = json.get("inclusion").and_then(Value::as_bool).unwrap_or(false);
+fn circle_json_bounded(
+    index: usize,
+    json: &Value,
+    (smallest, largest): (Option<f64>, Option<f64>),
+) -> Value {
+    let inclusion = json
+        .get("inclusion")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
     let centre = json.get("center").and_then(point);
     let (metres, radius, units) = radius_fact(json);
     let framing: Vec<Value> = centre
         .map(|(lat, lon)| {
             let lat_span = metres / METRES_PER_DEGREE;
             let lon_span = metres / (METRES_PER_DEGREE * lat.to_radians().cos().max(0.01));
-            [(lat - lat_span, lon - lon_span), (lat + lat_span, lon + lon_span)]
-                .map(|(lat, lon)| crate::geo::wrap(lat, lon))
-                .map(|(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude }))
-                .to_vec()
+            [
+                (lat - lat_span, lon - lon_span),
+                (lat + lat_span, lon + lon_span),
+            ]
+            .map(|(lat, lon)| crate::geo::wrap(lat, lon))
+            .map(|(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude }))
+            .to_vec()
         })
         .unwrap_or_default();
     json!({
@@ -123,14 +167,18 @@ fn circle_json_bounded(index: usize, json: &Value, (smallest, largest): (Option<
 }
 
 fn firmware_fence(backend: &dyn Backend) -> Value {
-    let radius = backend.value_fields("plan.geoFenceController", "paramCircularFence")
+    let radius = backend
+        .value_fields("plan.geoFenceController", "paramCircularFence")
         .get("paramCircularFence")
         .and_then(Value::as_f64)
         .filter(|metres| metres.is_finite() && *metres > 0.0);
-    let Some(metres) = radius else { return Value::Null };
+    let Some(metres) = radius else {
+        return Value::Null;
+    };
     let unit = Unit::horizontal(backend);
     let home = backend.value("vehicle.homePosition");
-    let centre = point(&home).map(|(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude }));
+    let centre = point(&home)
+        .map(|(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude }));
     json!({
         "radiusMetres": metres,
         "radiusText": crate::read::format_measure(unit.show(metres), &unit.name),
@@ -147,7 +195,13 @@ fn pair(value: &Value) -> Option<(f64, f64)> {
 fn document_fences(backend: &dyn Backend, fence: &Value, rally: &Value) -> Value {
     let vertical = Unit::vertical(backend);
     let horizontal = Unit::horizontal(backend);
-    let listed = |section: &Value, key: &str| section.get(key).and_then(Value::as_array).cloned().unwrap_or_default();
+    let listed = |section: &Value, key: &str| {
+        section
+            .get(key)
+            .and_then(Value::as_array)
+            .cloned()
+            .unwrap_or_default()
+    };
     let polygons: Vec<Value> = listed(fence, "polygons")
         .iter()
         .enumerate()
@@ -226,8 +280,16 @@ pub fn fences_view(backend: &dyn Backend, _args: &[String]) -> Value {
         return document_fences(backend, &fence, &rally);
     }
     let vertical = Unit::vertical(backend);
-    let polygons: Vec<Value> = elements(backend, "plan.geoFenceController.polygons").iter().enumerate().map(|(i, p)| polygon_json(i, p, &Unit::area(backend))).collect();
-    let circles: Vec<Value> = elements(backend, "plan.geoFenceController.circles").iter().enumerate().map(|(i, c)| circle_json(backend, i, c)).collect();
+    let polygons: Vec<Value> = elements(backend, "plan.geoFenceController.polygons")
+        .iter()
+        .enumerate()
+        .map(|(i, p)| polygon_json(i, p, &Unit::area(backend)))
+        .collect();
+    let circles: Vec<Value> = elements(backend, "plan.geoFenceController.circles")
+        .iter()
+        .enumerate()
+        .map(|(i, c)| circle_json(backend, i, c))
+        .collect();
     let rally: Vec<Value> = elements(backend, "plan.rallyPointController.points")
         .iter()
         .enumerate()
@@ -273,17 +335,25 @@ pub fn fences_view(backend: &dyn Backend, _args: &[String]) -> Value {
 }
 
 pub fn polygon_view(backend: &dyn Backend, args: &[String]) -> Value {
-    let Some(path) = args.first().filter(|p| !p.is_empty()) else { return refused("view.polygon needs the path of the shape to read") };
+    let Some(path) = args.first().filter(|p| !p.is_empty()) else {
+        return refused("view.polygon needs the path of the shape to read");
+    };
     let ring = args.get(1).map(|r| r != "line").unwrap_or(true);
     let json = match crate::coreplan::shape_vertices(path) {
-        Some(vertices) => json!({ "kind": "object", "path": vertices.iter().map(|(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude })).collect::<Vec<_>>() }),
+        Some(vertices) => {
+            json!({ "kind": "object", "path": vertices.iter().map(|(latitude, longitude)| json!({ "latitude": latitude, "longitude": longitude })).collect::<Vec<_>>() })
+        }
         None => backend.value(path),
     };
     if json.get("kind").and_then(Value::as_str) != Some("object") {
         return refused("nothing answers at that path, so there is no shape to read");
     }
     let vertices = points(json.get("path"));
-    let minimum = json.get("minVertexCount").and_then(Value::as_i64).map(|m| m as usize).unwrap_or(if ring { 3 } else { 2 });
+    let minimum = json
+        .get("minVertexCount")
+        .and_then(Value::as_i64)
+        .map(|m| m as usize)
+        .unwrap_or(if ring { 3 } else { 2 });
     let has_enough_vertices = vertices.len() >= minimum;
     let segments = match (has_enough_vertices, ring) {
         (false, _) => 0,
@@ -319,13 +389,31 @@ pub fn polygon_view(backend: &dyn Backend, args: &[String]) -> Value {
     })
 }
 
-pub fn shape_caption(vertices: &[(f64, f64)], ring: bool, horizontal: &Unit, area: &Unit) -> String {
-    let distance = |metres: f64| crate::read::format_measure(horizontal.show(metres), &horizontal.name);
-    let segments = if ring { vertices.len() } else { vertices.len().saturating_sub(1) };
-    let length: f64 = (0..segments).map(|i| crate::surveygrid::distance_between(vertices[i], vertices[(i + 1) % vertices.len()])).sum();
+pub fn shape_caption(
+    vertices: &[(f64, f64)],
+    ring: bool,
+    horizontal: &Unit,
+    area: &Unit,
+) -> String {
+    let distance =
+        |metres: f64| crate::read::format_measure(horizontal.show(metres), &horizontal.name);
+    let segments = if ring {
+        vertices.len()
+    } else {
+        vertices.len().saturating_sub(1)
+    };
+    let length: f64 = (0..segments)
+        .map(|i| {
+            crate::surveygrid::distance_between(vertices[i], vertices[(i + 1) % vertices.len()])
+        })
+        .sum();
     match (ring, vertices.len()) {
         (true, 0) => "Polygon Tools".to_string(),
-        (true, _) => format!("{} \u{b7} {}", area_text(crate::mappolygon::area(vertices), area), distance(length)),
+        (true, _) => format!(
+            "{} \u{b7} {}",
+            area_text(crate::mappolygon::area(vertices), area),
+            distance(length)
+        ),
         (false, 0 | 1) => "Polyline Tools".to_string(),
         (false, _) => format!("Length {}", distance(length)),
     }
@@ -334,13 +422,24 @@ pub fn shape_caption(vertices: &[(f64, f64)], ring: bool, horizontal: &Unit, are
 pub fn circle_caption(vertices: &[(f64, f64)], horizontal: &Unit) -> Option<String> {
     let first = vertices.first().filter(|_| vertices.len() >= 3)?;
     let count = vertices.len() as f64;
-    let centre = (vertices.iter().map(|v| v.0).sum::<f64>() / count, vertices.iter().map(|v| v.1).sum::<f64>() / count);
-    Some(format!("Radius {}", crate::read::format_measure(horizontal.show(crate::surveygrid::distance_between(centre, *first)), &horizontal.name)))
+    let centre = (
+        vertices.iter().map(|v| v.0).sum::<f64>() / count,
+        vertices.iter().map(|v| v.1).sum::<f64>() / count,
+    );
+    Some(format!(
+        "Radius {}",
+        crate::read::format_measure(
+            horizontal.show(crate::surveygrid::distance_between(centre, *first)),
+            &horizontal.name
+        )
+    ))
 }
 
 pub fn edge_lengths(vertices: &[(f64, f64)], segments: usize, unit: &Unit) -> Vec<String> {
     (0..segments)
-        .map(|i| crate::surveygrid::distance_between(vertices[i], vertices[(i + 1) % vertices.len()]))
+        .map(|i| {
+            crate::surveygrid::distance_between(vertices[i], vertices[(i + 1) % vertices.len()])
+        })
         .map(|metres| format!("{:.1} {}", unit.show(metres), unit.name))
         .collect()
 }
@@ -351,11 +450,21 @@ mod tests {
 
     #[test]
     fn each_edge_reads_its_length_like_the_polygon_drag_handles() {
-        let metres = Unit { name: "m".to_string(), factor: 1.0 };
+        let metres = Unit {
+            name: "m".to_string(),
+            factor: 1.0,
+        };
         let square = [(0.0, 0.0), (0.0, 0.001), (0.001, 0.001)];
         let lengths = edge_lengths(&square, 3, &metres);
-        assert_eq!(lengths.len(), 3, "a ring closes, so its last edge runs back to the first vertex");
-        assert!(lengths[0].starts_with("111.") && lengths[0].ends_with(" m"), "{lengths:?}: metersToAppSettingsHorizontalDistanceUnits(distance).toFixed(1) plus the unit");
+        assert_eq!(
+            lengths.len(),
+            3,
+            "a ring closes, so its last edge runs back to the first vertex"
+        );
+        assert!(
+            lengths[0].starts_with("111.") && lengths[0].ends_with(" m"),
+            "{lengths:?}: metersToAppSettingsHorizontalDistanceUnits(distance).toFixed(1) plus the unit"
+        );
     }
 
     struct Fake;
@@ -368,27 +477,60 @@ mod tests {
                 false => json!({ "kind": "null" }).to_string(),
             }
         }
-        fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "null" }).to_string() }
-        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn get_fields(&self, _p: &str, _f: &str) -> String {
+            json!({ "kind": "null" }).to_string()
+        }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            String::new()
+        }
         fn watch(&self, _p: &[String]) {}
     }
 
     #[test]
     fn a_circle_carries_the_radius_bound_somebody_declared_and_not_the_one_the_type_filled_in() {
-        let circle = circle_json(&RadiusFact, 0, &json!({ "center": { "latitude": 47.0, "longitude": 8.0 }, "facts": [ { "name": "Radius", "value": 60.0, "units": "m" } ] }));
-        assert_eq!(circle["radiusMinimum"], 0.1, "the fact declares this one, and a head hand-rolling value > 0 lets a five-centimetre keep-out fence into the plan");
-        assert_eq!(circle["radiusMaximum"], Value::Null, "no maximum was declared, so QGC filled it with the type's own extreme - serving that would tell an operator the radius must be under a 309-digit number");
-        let unbounded = circle_json(&Boundless, 0, &json!({ "center": { "latitude": 47.0, "longitude": 8.0 } }));
-        assert_eq!(unbounded["radiusMinimum"], Value::Null, "a fact that does not resolve declares nothing, which is not the same as declaring no floor");
+        let circle = circle_json(
+            &RadiusFact,
+            0,
+            &json!({ "center": { "latitude": 47.0, "longitude": 8.0 }, "facts": [ { "name": "Radius", "value": 60.0, "units": "m" } ] }),
+        );
+        assert_eq!(
+            circle["radiusMinimum"], 0.1,
+            "the fact declares this one, and a head hand-rolling value > 0 lets a five-centimetre keep-out fence into the plan"
+        );
+        assert_eq!(
+            circle["radiusMaximum"],
+            Value::Null,
+            "no maximum was declared, so QGC filled it with the type's own extreme - serving that would tell an operator the radius must be under a 309-digit number"
+        );
+        let unbounded = circle_json(
+            &Boundless,
+            0,
+            &json!({ "center": { "latitude": 47.0, "longitude": 8.0 } }),
+        );
+        assert_eq!(
+            unbounded["radiusMinimum"],
+            Value::Null,
+            "a fact that does not resolve declares nothing, which is not the same as declaring no floor"
+        );
     }
 
     struct Boundless;
     impl Backend for Boundless {
-        fn get(&self, _p: &str) -> String { json!({ "kind": "null" }).to_string() }
-        fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "null" }).to_string() }
-        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn get(&self, _p: &str) -> String {
+            json!({ "kind": "null" }).to_string()
+        }
+        fn get_fields(&self, _p: &str, _f: &str) -> String {
+            json!({ "kind": "null" }).to_string()
+        }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            String::new()
+        }
         fn watch(&self, _p: &[String]) {}
     }
 
@@ -405,9 +547,15 @@ mod tests {
             }
             .to_string()
         }
-        fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
-        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn get_fields(&self, p: &str, _f: &str) -> String {
+            self.get(p)
+        }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            String::new()
+        }
         fn watch(&self, _p: &[String]) {}
     }
 
@@ -424,29 +572,48 @@ mod tests {
             }
             fn get_fields(&self, path: &str, _f: &str) -> String {
                 match path {
-                    "plan.geoFenceController" => json!({ "kind": "object", "paramCircularFence": self.0 }),
+                    "plan.geoFenceController" => {
+                        json!({ "kind": "object", "paramCircularFence": self.0 })
+                    }
                     _ => json!({ "kind": "null" }),
                 }
                 .to_string()
             }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
             fn watch(&self, _p: &[String]) {}
         }
         let fence = fences_view(&Firmware(300.0), &[])["firmwareFence"].clone();
-        assert_eq!(fences_view(&Firmware(300.0), &[])["breachReturnPoint"], Value::Null, "a controller that sends no return point has none");
+        assert_eq!(
+            fences_view(&Firmware(300.0), &[])["breachReturnPoint"],
+            Value::Null,
+            "a controller that sends no return point has none"
+        );
         assert_eq!(fence["radiusMetres"], 300.0);
         assert_eq!(fence["radiusText"], "300 m");
-        assert_eq!(fence["centre"]["latitude"], 47.397, "a circular fence is centred on home rather than on anything the plan drew, so the centre has to come from the vehicle");
+        assert_eq!(
+            fence["centre"]["latitude"], 47.397,
+            "a circular fence is centred on home rather than on anything the plan drew, so the centre has to come from the vehicle"
+        );
 
-        assert_eq!(fences_view(&Firmware(0.0), &[])["firmwareFence"], Value::Null, "GeoFenceController::paramCircularFence returns 0 for an offline vehicle and 0 when the parameters are absent, so zero is no fence rather than a fence of no size - reporting a radius of 0 would draw a circle round home that the vehicle does not enforce");
+        assert_eq!(
+            fences_view(&Firmware(0.0), &[])["firmwareFence"],
+            Value::Null,
+            "GeoFenceController::paramCircularFence returns 0 for an offline vehicle and 0 when the parameters are absent, so zero is no fence rather than a fence of no size - reporting a radius of 0 would draw a circle round home that the vehicle does not enforce"
+        );
     }
 
     #[test]
     fn the_fences_view_answers_the_capability_with_the_same_voice_as_the_plan_view() {
         struct Vehicle(bool);
         impl Backend for Vehicle {
-            fn get(&self, _p: &str) -> String { json!({ "kind": "null" }).to_string() }
+            fn get(&self, _p: &str) -> String {
+                json!({ "kind": "null" }).to_string()
+            }
             fn get_fields(&self, path: &str, _f: &str) -> String {
                 match path {
                     "plan.geoFenceController" => json!({ "kind": "object", "supported": self.0 }),
@@ -455,14 +622,32 @@ mod tests {
                 }
                 .to_string()
             }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
             fn watch(&self, _p: &[String]) {}
         }
-        assert_eq!(fences_view(&Vehicle(true), &[])["fenceSupported"], json!(true));
-        assert_eq!(fences_view(&Vehicle(false), &[])["fenceSupported"], json!(false));
-        assert_eq!(fences_view(&Vehicle(false), &[])["rallySupported"], json!(false), "GeoFenceController/RallyPointController::supported is the capability bit alone, and a vehicle starts with no bits until AUTOPILOT_VERSION answers");
-        assert_eq!(fences_view(&Vehicle(false), &[])["available"], true, "a controller that refuses fences is still a plan to show");
+        assert_eq!(
+            fences_view(&Vehicle(true), &[])["fenceSupported"],
+            json!(true)
+        );
+        assert_eq!(
+            fences_view(&Vehicle(false), &[])["fenceSupported"],
+            json!(false)
+        );
+        assert_eq!(
+            fences_view(&Vehicle(false), &[])["rallySupported"],
+            json!(false),
+            "GeoFenceController/RallyPointController::supported is the capability bit alone, and a vehicle starts with no bits until AUTOPILOT_VERSION answers"
+        );
+        assert_eq!(
+            fences_view(&Vehicle(false), &[])["available"],
+            true,
+            "a controller that refuses fences is still a plan to show"
+        );
         assert_eq!(fences_view(&Fake, &[])["available"], false);
     }
 
@@ -470,8 +655,14 @@ mod tests {
     fn fences_are_described_and_framed() {
         let view = fences_view(&Fake, &[]);
         assert_eq!(view["count"], 2);
-        assert_eq!(view["polygons"][0]["kindText"], "Polygon 1", "GeoFenceEditor names the row; Inclusion/Exclusion is its description");
-        assert_eq!(view["polygons"][0]["detailText"], "4 vertices \u{b7} 25000 m\u{b2}", "the fence area follows the operator's unit now, the way the survey area always has - it stepped to km\u{b2} by hand before, whatever the five area settings said");
+        assert_eq!(
+            view["polygons"][0]["kindText"], "Polygon 1",
+            "GeoFenceEditor names the row; Inclusion/Exclusion is its description"
+        );
+        assert_eq!(
+            view["polygons"][0]["detailText"], "4 vertices \u{b7} 25000 m\u{b2}",
+            "the fence area follows the operator's unit now, the way the survey area always has - it stepped to km\u{b2} by hand before, whatever the five area settings said"
+        );
         assert_eq!(view["circles"][0]["detailText"], "150 m radius");
         assert_eq!(view["circles"][0]["centreText"], "47.000000, 8.000000");
         assert_eq!(view["circles"][0]["framing"].as_array().unwrap().len(), 2);
@@ -486,21 +677,51 @@ mod tests {
                     _ => json!({ "kind": "null" }).to_string(),
                 }
             }
-            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn get_fields(&self, p: &str, _f: &str) -> String {
+                self.get(p)
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
             fn watch(&self, _p: &[String]) {}
         }
         let imperial = fences_view(&Imperial(feet_circle), &[]);
         let circle = &imperial["circles"][0];
-        assert_eq!(circle["radius"], 328.084, "the cooked number is what the operator reads and types");
-        assert_eq!(circle["radiusMetres"], 100.0, "and this is what a map draws with - MKCircle takes metres, so handing it the cooked 328 drew a 100 m keep-out as a 328 m one and an operator planned round a boundary three times the size of the fence");
+        assert_eq!(
+            circle["radius"], 328.084,
+            "the cooked number is what the operator reads and types"
+        );
+        assert_eq!(
+            circle["radiusMetres"], 100.0,
+            "and this is what a map draws with - MKCircle takes metres, so handing it the cooked 328 drew a 100 m keep-out as a 328 m one and an operator planned round a boundary three times the size of the fence"
+        );
         let north = circle["framing"][1]["latitude"].as_f64().unwrap();
-        assert!((north - 47.0009).abs() < 0.0002, "the framing box divides by metres per degree, so feet went in as metres and zoom-to-shape overshot by the same factor: {north}");
-        assert_eq!(view["rallyPoints"][0]["path"], "plan.rallyPointController.points.0");
-        assert_eq!((view["rallyPoints"][0]["altitude"].clone(), view["rallyPoints"][0]["altitudeUnits"].clone()), (json!(50.0), json!("m")));
-        assert_eq!(view["rallyPoints"][0]["altitudeText"], "50.0 m", "the number and the unit stay beside it because a rally altitude is typed into, and a spelled string cannot be edited - but the head was spelling this itself from a copy of format_measure that had already drifted once by missing settled()");
-        assert_eq!(view["rallyPoints"][0]["altitudeMetres"], 50.0, "dragging a rally point writes back a whole coordinate and QGC copies the existing altitude onto it first, so a head that moves one needs a height the bridge will read as metres");
+        assert!(
+            (north - 47.0009).abs() < 0.0002,
+            "the framing box divides by metres per degree, so feet went in as metres and zoom-to-shape overshot by the same factor: {north}"
+        );
+        assert_eq!(
+            view["rallyPoints"][0]["path"],
+            "plan.rallyPointController.points.0"
+        );
+        assert_eq!(
+            (
+                view["rallyPoints"][0]["altitude"].clone(),
+                view["rallyPoints"][0]["altitudeUnits"].clone()
+            ),
+            (json!(50.0), json!("m"))
+        );
+        assert_eq!(
+            view["rallyPoints"][0]["altitudeText"], "50.0 m",
+            "the number and the unit stay beside it because a rally altitude is typed into, and a spelled string cannot be edited - but the head was spelling this itself from a copy of format_measure that had already drifted once by missing settled()"
+        );
+        assert_eq!(
+            view["rallyPoints"][0]["altitudeMetres"], 50.0,
+            "dragging a rally point writes back a whole coordinate and QGC copies the existing altitude onto it first, so a head that moves one needs a height the bridge will read as metres"
+        );
 
         struct Feet;
         impl Backend for Feet {
@@ -512,11 +733,16 @@ mod tests {
             }
             fn get_fields(&self, path: &str, fields: &str) -> String {
                 match path {
-                    "units" => json!({ "kind": "object", "appSettingsVerticalDistanceUnitsString": "ft" }).to_string(),
+                    "units" => {
+                        json!({ "kind": "object", "appSettingsVerticalDistanceUnitsString": "ft" })
+                            .to_string()
+                    }
                     _ => Fake.get_fields(path, fields),
                 }
             }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
             fn invoke(&self, path: &str, args: &str) -> String {
                 match path {
                     "units.metersToAppSettingsVerticalDistanceUnits" => json!({ "ok": true, "result": serde_json::from_str::<Vec<f64>>(args).unwrap()[0] * 3.2808399 }).to_string(),
@@ -525,9 +751,20 @@ mod tests {
             }
             fn watch(&self, _p: &[String]) {}
         }
-        assert_eq!(fences_view(&Feet, &[])["rallyPoints"][0]["altitudeMetres"], 50.0, "the cooked value is 164 on an imperial profile and the bridge reads a written altitude as metres, so a head dragging a rally point with the cooked number would drop it to a third of its height");
-        assert_eq!(fences_view(&Feet, &[])["rallyPoints"][0]["altitudeText"], "164 ft", "the altitude is held in metres and spelled in the operator's unit, so a head reading the raw number and the fact's own CONSTANT units would still say 50.0 m after they chose feet");
-        let metric = Unit { name: "m\u{b2}".to_string(), factor: 1.0 };
+        assert_eq!(
+            fences_view(&Feet, &[])["rallyPoints"][0]["altitudeMetres"],
+            50.0,
+            "the cooked value is 164 on an imperial profile and the bridge reads a written altitude as metres, so a head dragging a rally point with the cooked number would drop it to a third of its height"
+        );
+        assert_eq!(
+            fences_view(&Feet, &[])["rallyPoints"][0]["altitudeText"],
+            "164 ft",
+            "the altitude is held in metres and spelled in the operator's unit, so a head reading the raw number and the fact's own CONSTANT units would still say 50.0 m after they chose feet"
+        );
+        let metric = Unit {
+            name: "m\u{b2}".to_string(),
+            factor: 1.0,
+        };
         assert_eq!(area_text(9999.0, &metric), "9999 m\u{b2}");
         let across = [
             ("m\u{b2}", 1.0, "89999 m\u{b2}"),
@@ -541,8 +778,15 @@ mod tests {
             assert_eq!(&area_text(89999.0, &unit), spelled, "nine hectares in each of the five units QGC offers; a head with no vehicle cannot reach view.fences, so these are the sentences to build against");
         });
 
-        let hectares = Unit { name: "ha".to_string(), factor: 0.0001 };
-        assert_eq!(area_text(89999.0, &hectares), "9.0 ha", "the operator picks the area unit from five, and a fence that spelled km\u{b2} by hand ignored the choice - nine hectares read as 0.09 km\u{b2} whatever they asked for");
+        let hectares = Unit {
+            name: "ha".to_string(),
+            factor: 0.0001,
+        };
+        assert_eq!(
+            area_text(89999.0, &hectares),
+            "9.0 ha",
+            "the operator picks the area unit from five, and a fence that spelled km\u{b2} by hand ignored the choice - nine hectares read as 0.09 km\u{b2} whatever they asked for"
+        );
     }
 
     #[test]
@@ -551,7 +795,10 @@ mod tests {
         assert_eq!(ring["hasEnoughVertices"], true);
         let polyline = polygon_view(&Fake, &["line".to_string(), "line".to_string()]);
         assert_eq!(polyline["ring"], false);
-        assert_eq!(polyline["hasEnoughVertices"], true, "a polyline is never closed in the sense the word carries here, and this flag was called closed - a head reading it as the geometric term draws a corridor looping back to its start, which looks plausible because both ends are genuinely on the map");
+        assert_eq!(
+            polyline["hasEnoughVertices"], true,
+            "a polyline is never closed in the sense the word carries here, and this flag was called closed - a head reading it as the geometric term draws a corridor looping back to its start, which looks plausible because both ends are genuinely on the map"
+        );
         assert_eq!(ring["canRemoveVertex"], false);
         assert_eq!(ring["segments"], 3);
         assert_eq!(ring["midpoints"][2]["longitude"], 1.0);
@@ -565,39 +812,104 @@ mod tests {
 
     #[test]
     fn the_shape_toolbar_caption_reads_like_qgcs() {
-        let metres = Unit { name: "m".to_string(), factor: 1.0 };
-        let feet = Unit { name: "ft".to_string(), factor: 3.2808399 };
-        let square = Unit { name: "m^2".to_string(), factor: 1.0 };
+        let metres = Unit {
+            name: "m".to_string(),
+            factor: 1.0,
+        };
+        let feet = Unit {
+            name: "ft".to_string(),
+            factor: 3.2808399,
+        };
+        let square = Unit {
+            name: "m^2".to_string(),
+            factor: 1.0,
+        };
         assert_eq!(shape_caption(&[], true, &metres, &square), "Polygon Tools");
-        assert_eq!(shape_caption(&[(47.0, 8.0)], false, &metres, &square), "Polyline Tools", "QGC names the tools until a polyline has its two vertices");
-        assert_eq!(shape_caption(&[(47.0, 8.0), (47.0001, 8.0)], false, &feet, &square), "Length 36.5 ft", "11.1 m spelled in the operator's unit, one decimal below 100");
+        assert_eq!(
+            shape_caption(&[(47.0, 8.0)], false, &metres, &square),
+            "Polyline Tools",
+            "QGC names the tools until a polyline has its two vertices"
+        );
+        assert_eq!(
+            shape_caption(&[(47.0, 8.0), (47.0001, 8.0)], false, &feet, &square),
+            "Length 36.5 ft",
+            "11.1 m spelled in the operator's unit, one decimal below 100"
+        );
         let square_ring = [(0.0, 0.0), (0.001, 0.0), (0.001, 0.001), (0.0, 0.001)];
         let caption = shape_caption(&square_ring, true, &metres, &square);
-        assert!(caption.starts_with("12") && caption.contains(" m\u{b2} \u{b7} 44"), "area then perimeter, as QGCMapPolygonVisuals._shapeCaption: {caption}");
-        let ring: Vec<(f64, f64)> = (0..16).map(|i| crate::surveygrid::at_distance_and_azimuth((47.0, 8.0), 50.0, i as f64 * 22.5)).collect();
-        assert_eq!(circle_caption(&ring, &metres).as_deref(), Some("Radius 50.0 m"));
+        assert!(
+            caption.starts_with("12") && caption.contains(" m\u{b2} \u{b7} 44"),
+            "area then perimeter, as QGCMapPolygonVisuals._shapeCaption: {caption}"
+        );
+        let ring: Vec<(f64, f64)> = (0..16)
+            .map(|i| crate::surveygrid::at_distance_and_azimuth((47.0, 8.0), 50.0, i as f64 * 22.5))
+            .collect();
+        assert_eq!(
+            circle_caption(&ring, &metres).as_deref(),
+            Some("Radius 50.0 m")
+        );
         assert_eq!(circle_caption(&ring[..2], &metres), None);
     }
 
     #[test]
     fn a_fence_that_will_not_say_which_kind_it_is_reads_as_the_restrictive_one() {
-        let metres = Unit { name: "m\u{b2}".to_string(), factor: 1.0 };
-        let polygon = polygon_json(0, &json!({ "path": [ { "latitude": 47.0, "longitude": 8.0 }, { "latitude": 47.1, "longitude": 8.0 }, { "latitude": 47.1, "longitude": 8.1 } ] }), &metres);
+        let metres = Unit {
+            name: "m\u{b2}".to_string(),
+            factor: 1.0,
+        };
+        let polygon = polygon_json(
+            0,
+            &json!({ "path": [ { "latitude": 47.0, "longitude": 8.0 }, { "latitude": 47.1, "longitude": 8.0 }, { "latitude": 47.1, "longitude": 8.1 } ] }),
+            &metres,
+        );
         assert_eq!(polygon["inclusion"], false);
-        let circle = circle_json(&Boundless, 0, &json!({ "center": { "latitude": 47.0, "longitude": 8.0 } }));
-        assert_eq!((circle["inclusion"].clone(), circle["kindText"].clone()), (json!(false), json!("Circle 1")), "mistaking a keep-out zone for a boundary to stay inside flies an operator into forbidden airspace; the other way round only keeps them out of their own");
+        let circle = circle_json(
+            &Boundless,
+            0,
+            &json!({ "center": { "latitude": 47.0, "longitude": 8.0 } }),
+        );
+        assert_eq!(
+            (circle["inclusion"].clone(), circle["kindText"].clone()),
+            (json!(false), json!("Circle 1")),
+            "mistaking a keep-out zone for a boundary to stay inside flies an operator into forbidden airspace; the other way round only keeps them out of their own"
+        );
         let stated = polygon_json(0, &json!({ "inclusion": true, "path": [] }), &metres);
-        assert_eq!(stated["inclusion"], true, "a fence that says what it is is taken at its word");
+        assert_eq!(
+            stated["inclusion"], true,
+            "a fence that says what it is is taken at its word"
+        );
     }
 
     #[test]
     fn a_circle_beside_the_dateline_frames_onto_the_map() {
-        let circle = circle_json(&Boundless, 0, &json!({ "center": { "latitude": -16.5, "longitude": 179.999 }, "facts": [ { "name": "Radius", "value": 500.0, "units": "m" } ] }));
+        let circle = circle_json(
+            &Boundless,
+            0,
+            &json!({ "center": { "latitude": -16.5, "longitude": 179.999 }, "facts": [ { "name": "Radius", "value": 500.0, "units": "m" } ] }),
+        );
         let corners = circle["framing"].as_array().unwrap();
-        assert!(corners.iter().all(|c| (-180.0..=180.0).contains(&c["longitude"].as_f64().unwrap())), "a keep-out circle in Fiji framed past the dateline: {corners:?}");
-        assert!(corners[1]["longitude"].as_f64().unwrap() < 0.0, "the eastern corner is on the far side of the dateline, not off the end of the world");
-        let polar = circle_json(&Boundless, 0, &json!({ "center": { "latitude": 89.999, "longitude": 8.5 }, "facts": [ { "name": "Radius", "value": 500.0, "units": "m" } ] }));
-        assert!(polar["framing"].as_array().unwrap().iter().all(|c| (-90.0..=90.0).contains(&c["latitude"].as_f64().unwrap())));
+        assert!(
+            corners
+                .iter()
+                .all(|c| (-180.0..=180.0).contains(&c["longitude"].as_f64().unwrap())),
+            "a keep-out circle in Fiji framed past the dateline: {corners:?}"
+        );
+        assert!(
+            corners[1]["longitude"].as_f64().unwrap() < 0.0,
+            "the eastern corner is on the far side of the dateline, not off the end of the world"
+        );
+        let polar = circle_json(
+            &Boundless,
+            0,
+            &json!({ "center": { "latitude": 89.999, "longitude": 8.5 }, "facts": [ { "name": "Radius", "value": 500.0, "units": "m" } ] }),
+        );
+        assert!(
+            polar["framing"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|c| (-90.0..=90.0).contains(&c["latitude"].as_f64().unwrap()))
+        );
     }
 
     #[test]
@@ -615,22 +927,43 @@ mod tests {
     fn the_breach_return_point_is_served_only_when_it_is_set() {
         struct Controller(Value);
         impl Backend for Controller {
-            fn get(&self, _p: &str) -> String { json!({ "kind": "null" }).to_string() }
+            fn get(&self, _p: &str) -> String {
+                json!({ "kind": "null" }).to_string()
+            }
             fn get_fields(&self, path: &str, _f: &str) -> String {
                 match path {
-                    "plan.geoFenceController" => json!({ "kind": "object", "supported": true, "breachReturnPoint": self.0 }),
+                    "plan.geoFenceController" => {
+                        json!({ "kind": "object", "supported": true, "breachReturnPoint": self.0 })
+                    }
                     _ => json!({ "kind": "null" }),
                 }
                 .to_string()
             }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
             fn watch(&self, _p: &[String]) {}
         }
-        let set = fences_view(&Controller(json!({ "latitude": 47.39, "longitude": 8.54, "altitude": 0.0 })), &[]);
-        assert_eq!(set["breachReturnPoint"], json!({ "latitude": 47.39, "longitude": 8.54 }));
-        let unset = fences_view(&Controller(json!({ "latitude": null, "longitude": null, "altitude": null })), &[]);
-        assert_eq!(unset["breachReturnPoint"], Value::Null, "an invalid QGeoCoordinate's NaN arrives as null and is no point, not 0,0");
+        let set = fences_view(
+            &Controller(json!({ "latitude": 47.39, "longitude": 8.54, "altitude": 0.0 })),
+            &[],
+        );
+        assert_eq!(
+            set["breachReturnPoint"],
+            json!({ "latitude": 47.39, "longitude": 8.54 })
+        );
+        let unset = fences_view(
+            &Controller(json!({ "latitude": null, "longitude": null, "altitude": null })),
+            &[],
+        );
+        assert_eq!(
+            unset["breachReturnPoint"],
+            Value::Null,
+            "an invalid QGeoCoordinate's NaN arrives as null and is no point, not 0,0"
+        );
     }
 }
 
@@ -641,10 +974,18 @@ mod from_the_document {
     struct Metric;
 
     impl Backend for Metric {
-        fn get(&self, _p: &str) -> String { json!({ "kind": "null" }).to_string() }
-        fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "null" }).to_string() }
-        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn get(&self, _p: &str) -> String {
+            json!({ "kind": "null" }).to_string()
+        }
+        fn get_fields(&self, _p: &str, _f: &str) -> String {
+            json!({ "kind": "null" }).to_string()
+        }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            String::new()
+        }
         fn watch(&self, _p: &[String]) {}
     }
 
@@ -652,7 +993,9 @@ mod from_the_document {
         match value {
             Value::Number(n) => json!(n.as_f64()),
             Value::Array(items) => Value::Array(items.into_iter().map(by_value).collect()),
-            Value::Object(fields) => Value::Object(fields.into_iter().map(|(k, v)| (k, by_value(v))).collect()),
+            Value::Object(fields) => {
+                Value::Object(fields.into_iter().map(|(k, v)| (k, by_value(v))).collect())
+            }
             other => other,
         }
     }
@@ -661,7 +1004,22 @@ mod from_the_document {
     fn a_fence_the_core_holds_reads_as_qt_shows_it() {
         let doc = crate::plandoc::load(include_str!("../tests/fixtures/fence.plan"), 2).unwrap();
         let mine = document_fences(&Metric, &doc.fence, &doc.rally);
-        let qt: Value = serde_json::from_str(include_str!("../tests/fixtures/fences-by-qt.json")).unwrap();
-        ["polygons", "circles", "rallyPoints", "count", "breachReturnPoint"].iter().for_each(|key| assert_eq!(by_value(mine[key].clone()), by_value(qt[key].clone()), "{key}"));
+        let qt: Value =
+            serde_json::from_str(include_str!("../tests/fixtures/fences-by-qt.json")).unwrap();
+        [
+            "polygons",
+            "circles",
+            "rallyPoints",
+            "count",
+            "breachReturnPoint",
+        ]
+        .iter()
+        .for_each(|key| {
+            assert_eq!(
+                by_value(mine[key].clone()),
+                by_value(qt[key].clone()),
+                "{key}"
+            )
+        });
     }
 }

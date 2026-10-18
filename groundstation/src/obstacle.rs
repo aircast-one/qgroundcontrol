@@ -57,10 +57,19 @@ pub fn sector(bearing: f64) -> (&'static str, &'static str) {
         .unwrap_or(("ahead", "ahead"))
 }
 
-pub fn overlay_drawing(ring: &[i64], increment: Option<f64>, max_distance: i64, unit: &Unit) -> Option<Value> {
+pub fn overlay_drawing(
+    ring: &[i64],
+    increment: Option<f64>,
+    max_distance: i64,
+    unit: &Unit,
+) -> Option<Value> {
     let increment = increment?;
     let length = ring.len().min((360.0 / increment).ceil() as usize);
-    let ranges: Vec<f64> = ring.iter().take(length).map(|cm| *cm as f64 / CENTIMETRES_PER_METRE).collect();
+    let ranges: Vec<f64> = ring
+        .iter()
+        .take(length)
+        .map(|cm| *cm as f64 / CENTIMETRES_PER_METRE)
+        .collect();
     Some(json!({
         "ranges": ranges,
         "texts": ranges.iter().map(|metres| format!("{:.2}", unit.show(*metres))).collect::<Vec<String>>(),
@@ -75,13 +84,36 @@ pub fn obstacle_view(backend: &dyn Backend, _args: &[String]) -> Value {
     );
     let flag = |key: &str| avoidance.get(key).and_then(Value::as_bool) == Some(true);
     let whole = |key: &str| integer(&avoidance, key);
-    let real = |key: &str| avoidance.get(key).and_then(Value::as_f64).filter(|value| value.is_finite());
-    let overlay = read_flag(&backend.value("settings.flyViewSettings.showObstacleDistanceOverlay.rawValue"), "value");
+    let real = |key: &str| {
+        avoidance
+            .get(key)
+            .and_then(Value::as_f64)
+            .filter(|value| value.is_finite())
+    };
+    let overlay = read_flag(
+        &backend.value("settings.flyViewSettings.showObstacleDistanceOverlay.rawValue"),
+        "value",
+    );
     let available = flag("available") && overlay;
-    let ready = read_flag(&backend.value("vehicle.parameterManager.parametersReady"), "value");
-    let supported = ready.then(|| result_flag(&backend.invoke("vehicle.parameterManager.parameterExists", &json!([-1, AVOIDANCE_PARAM]).to_string())));
-    let ring: Vec<i64> = avoidance.get("distances").and_then(Value::as_array).map(|list| list.iter().filter_map(Value::as_i64).collect()).unwrap_or_default();
-    let (max_distance, min_distance) = (whole("maxDistance").unwrap_or(0), whole("minDistance").unwrap_or(0));
+    let ready = read_flag(
+        &backend.value("vehicle.parameterManager.parametersReady"),
+        "value",
+    );
+    let supported = ready.then(|| {
+        result_flag(&backend.invoke(
+            "vehicle.parameterManager.parameterExists",
+            &json!([-1, AVOIDANCE_PARAM]).to_string(),
+        ))
+    });
+    let ring: Vec<i64> = avoidance
+        .get("distances")
+        .and_then(Value::as_array)
+        .map(|list| list.iter().filter_map(Value::as_i64).collect())
+        .unwrap_or_default();
+    let (max_distance, min_distance) = (
+        whole("maxDistance").unwrap_or(0),
+        whole("minDistance").unwrap_or(0),
+    );
     let since = whole("msSinceUpdate");
     let stale = since.map(|ms| ms > STALE_AFTER_MS);
     let found = match available && max_distance > 0 {
@@ -134,7 +166,9 @@ mod tests {
     impl Backend for Ring {
         fn get(&self, path: &str) -> String {
             match path {
-                "settings.flyViewSettings.showObstacleDistanceOverlay.rawValue" => json!({ "kind": "value", "value": true }).to_string(),
+                "settings.flyViewSettings.showObstacleDistanceOverlay.rawValue" => {
+                    json!({ "kind": "value", "value": true }).to_string()
+                }
                 _ => String::new(),
             }
         }
@@ -144,8 +178,12 @@ mod tests {
                 _ => json!({ "kind": "object" }).to_string(),
             }
         }
-        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            String::new()
+        }
         fn watch(&self, _p: &[String]) {}
     }
 
@@ -158,13 +196,25 @@ mod tests {
     fn the_overlay_stays_off_unless_its_setting_is_on_as_obstacle_distance_overlay_shows_it() {
         struct Off;
         impl Backend for Off {
-            fn get(&self, _p: &str) -> String { String::new() }
-            fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "object", "available": true, "distances": [500], "increment": 5.0, "maxDistance": 1000 }).to_string() }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn get(&self, _p: &str) -> String {
+                String::new()
+            }
+            fn get_fields(&self, _p: &str, _f: &str) -> String {
+                json!({ "kind": "object", "available": true, "distances": [500], "increment": 5.0, "maxDistance": 1000 }).to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
             fn watch(&self, _p: &[String]) {}
         }
-        assert_eq!(obstacle_view(&Off, &[])["available"], false, "showObstacleDistanceOverlay defaults to off");
+        assert_eq!(
+            obstacle_view(&Off, &[])["available"],
+            false,
+            "showObstacleDistanceOverlay defaults to off"
+        );
     }
 
     #[test]
@@ -174,11 +224,14 @@ mod tests {
         let view = obstacle_view(&Ring(quiet), &[]);
         assert_eq!(view["stale"], true);
         assert_eq!(
-            view["nearest"]["stale"],
-            true,
+            view["nearest"]["stale"], true,
             "nothing else moves when the sensor stops - not the ring, not sectors, not available - so the whole distinction between an obstacle 3.2 metres away and one that was there 67 seconds ago rested on a sibling flag. A head drawing from nearest alone had no way to know, and this was measured on a rig where the fake stops sending after 45 seconds"
         );
-        assert_eq!(view["ringMetres"].as_array().unwrap()[1], json!(3.2), "the values are kept rather than blanked: QGC keeps showing the last ring, and destroying them here would make the core disagree with the Qt build about what was last seen");
+        assert_eq!(
+            view["ringMetres"].as_array().unwrap()[1],
+            json!(3.2),
+            "the values are kept rather than blanked: QGC keeps showing the last ring, and destroying them here would make the core disagree with the Qt build about what was last seen"
+        );
 
         let fresh = obstacle_view(&Ring(ring(vec![NO_READING, 500])), &[]);
         assert_eq!(fresh["nearest"]["stale"], false);
@@ -202,38 +255,74 @@ mod tests {
     fn an_unseen_sector_is_null_rather_than_a_number_a_head_could_draw() {
         let view = obstacle_view(&Ring(ring(vec![NO_READING, 500, 1200, 0])), &[]);
         let arc = view["ringMetres"].as_array().unwrap();
-        assert_eq!(arc.len(), 4, "one entry per sector, so the index still means the bearing");
+        assert_eq!(
+            arc.len(),
+            4,
+            "one entry per sector, so the index still means the bearing"
+        );
         assert_eq!(
             arc[0],
             Value::Null,
             "65535 is the wire's empty marker and it is a NUMBER - a head that forgets to filter it draws an obstacle 655 metres away, and one that treats 0 as empty hides an obstacle at zero. Null can be mistaken for neither"
         );
-        assert_eq!(arc[1], json!(5.0), "centimetres on the wire, metres on the view, because distanceMetres beside it is metres and two units in one view with the name carrying the difference is how the fence bounds went wrong");
-        assert_eq!(arc[2], Value::Null, "at or past maxDistance is dropped here exactly as nearest() drops it, so the arc and the nearest reading cannot disagree about what is in range");
-        assert_eq!(arc[3], json!(0.0), "and zero is a reading: the sensor saw something at the aircraft, which is the one sample never to hide");
+        assert_eq!(
+            arc[1],
+            json!(5.0),
+            "centimetres on the wire, metres on the view, because distanceMetres beside it is metres and two units in one view with the name carrying the difference is how the fence bounds went wrong"
+        );
+        assert_eq!(
+            arc[2],
+            Value::Null,
+            "at or past maxDistance is dropped here exactly as nearest() drops it, so the arc and the nearest reading cannot disagree about what is in range"
+        );
+        assert_eq!(
+            arc[3],
+            json!(0.0),
+            "and zero is a reading: the sensor saw something at the aircraft, which is the one sample never to hide"
+        );
 
         assert_eq!(view["ringIncrement"], json!(45.0));
         assert_eq!(view["ringOffset"], json!(0.0));
         assert_eq!(view["rangeMinMetres"], json!(1.0));
         assert_eq!(view["rangeMaxMetres"], json!(10.0));
 
-        let spacingless = obstacle_view(&Ring(json!({ "kind": "object", "available": true, "enabled": true, "distances": [500], "increment": 0.0, "minDistance": 0, "maxDistance": 0, "angleOffset": 0.0, "msSinceUpdate": 200 })), &[]);
+        let spacingless = obstacle_view(
+            &Ring(
+                json!({ "kind": "object", "available": true, "enabled": true, "distances": [500], "increment": 0.0, "minDistance": 0, "maxDistance": 0, "angleOffset": 0.0, "msSinceUpdate": 200 }),
+            ),
+            &[],
+        );
         assert_eq!(
             spacingless["ringIncrement"],
             Value::Null,
             "a ring with no angle between samples cannot be placed, and any default would place it wrongly - the head needs to know it cannot draw rather than draw at a guess"
         );
-        assert_eq!((spacingless["rangeMinMetres"].clone(), spacingless["rangeMaxMetres"].clone()), (Value::Null, Value::Null), "an unreported range is not a range of zero");
+        assert_eq!(
+            (
+                spacingless["rangeMinMetres"].clone(),
+                spacingless["rangeMaxMetres"].clone()
+            ),
+            (Value::Null, Value::Null),
+            "an unreported range is not a range of zero"
+        );
     }
 
     #[test]
     fn a_vehicle_with_no_collision_prevention_parameter_is_not_a_vehicle_with_it_switched_off() {
-        struct Avoidance { ready: bool, exists: bool, on: bool }
+        struct Avoidance {
+            ready: bool,
+            exists: bool,
+            on: bool,
+        }
         impl Backend for Avoidance {
             fn get(&self, path: &str) -> String {
                 match path {
-                    "vehicle.parameterManager.parametersReady" => json!({ "kind": "value", "value": self.ready }).to_string(),
-                    "settings.flyViewSettings.showObstacleDistanceOverlay.rawValue" => json!({ "kind": "value", "value": true }).to_string(),
+                    "vehicle.parameterManager.parametersReady" => {
+                        json!({ "kind": "value", "value": self.ready }).to_string()
+                    }
+                    "settings.flyViewSettings.showObstacleDistanceOverlay.rawValue" => {
+                        json!({ "kind": "value", "value": true }).to_string()
+                    }
                     _ => String::new(),
                 }
             }
@@ -244,11 +333,17 @@ mod tests {
                     _ => json!({ "kind": "object" }).to_string(),
                 }
             }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
             fn invoke(&self, path: &str, args: &str) -> String {
                 match path {
                     "vehicle.parameterManager.parameterExists" => {
-                        assert_eq!(args, json!([-1, "CP_DIST"]).to_string(), "the component id and the parameter name are what decide the answer, so a typo in either reads as an unfitted airframe");
+                        assert_eq!(
+                            args,
+                            json!([-1, "CP_DIST"]).to_string(),
+                            "the component id and the parameter name are what decide the answer, so a typo in either reads as an unfitted airframe"
+                        );
                         json!({ "ok": true, "result": self.exists }).to_string()
                     }
                     _ => String::new(),
@@ -256,68 +351,160 @@ mod tests {
             }
             fn watch(&self, _p: &[String]) {}
         }
-        let view = |ready: bool, exists: bool, on: bool| obstacle_view(&Avoidance { ready, exists, on }, &[]);
+        let view = |ready: bool, exists: bool, on: bool| {
+            obstacle_view(&Avoidance { ready, exists, on }, &[])
+        };
 
         let unfitted = view(true, false, false);
-        assert_eq!(unfitted["supported"], false, "VehicleObjectAvoidance::enabled returns false when CP_DIST does not exist at all, so an airframe that has never had collision prevention reads exactly like one an operator switched off");
-        assert_eq!(unfitted["enabled"], Value::Null, "and off is a claim about a feature this vehicle does not have - a panel drawing Avoidance Off there invites an operator to look for a switch that is not anywhere");
+        assert_eq!(
+            unfitted["supported"], false,
+            "VehicleObjectAvoidance::enabled returns false when CP_DIST does not exist at all, so an airframe that has never had collision prevention reads exactly like one an operator switched off"
+        );
+        assert_eq!(
+            unfitted["enabled"],
+            Value::Null,
+            "and off is a claim about a feature this vehicle does not have - a panel drawing Avoidance Off there invites an operator to look for a switch that is not anywhere"
+        );
 
         let waiting = view(false, false, false);
-        assert_eq!(waiting["supported"], Value::Null, "parameterExists is false for the whole of the parameter load, which is the window a head is most likely to draw in");
+        assert_eq!(
+            waiting["supported"],
+            Value::Null,
+            "parameterExists is false for the whole of the parameter load, which is the window a head is most likely to draw in"
+        );
         assert_eq!(waiting["enabled"], Value::Null);
 
         let off = view(true, true, false);
-        assert_eq!((off["supported"].clone(), off["enabled"].clone()), (json!(true), json!(false)), "a vehicle that HAS the parameter and is set below zero is the real off, and it is the only case that should read as one");
+        assert_eq!(
+            (off["supported"].clone(), off["enabled"].clone()),
+            (json!(true), json!(false)),
+            "a vehicle that HAS the parameter and is set below zero is the real off, and it is the only case that should read as one"
+        );
 
         let on = view(true, true, true);
-        assert_eq!((on["supported"].clone(), on["enabled"].clone()), (json!(true), json!(true)));
+        assert_eq!(
+            (on["supported"].clone(), on["enabled"].clone()),
+            (json!(true), json!(true))
+        );
     }
 
     #[test]
     fn the_overlay_carries_what_obstacle_distance_overlay_draws_from() {
-        let metres = Unit { name: "m".into(), factor: 1.0 };
-        let drawn = overlay_drawing(&[NO_READING, 320, 1200, 0, 77], Some(90.0), 1000, &metres).unwrap();
-        assert_eq!(drawn["ranges"], json!([655.35, 3.2, 12.0, 0.0]), "raw distances / 100 like _ranges, capped at 360 / increment like _rangesLen; the empty marker stays a far range so the wedge beside it keeps QGC's shape");
-        assert_eq!(drawn["texts"], json!(["655.35", "3.20", "12.00", "0.00"]), "_rangeToShow: toFixed(2), no unit suffix");
+        let metres = Unit {
+            name: "m".into(),
+            factor: 1.0,
+        };
+        let drawn =
+            overlay_drawing(&[NO_READING, 320, 1200, 0, 77], Some(90.0), 1000, &metres).unwrap();
+        assert_eq!(
+            drawn["ranges"],
+            json!([655.35, 3.2, 12.0, 0.0]),
+            "raw distances / 100 like _ranges, capped at 360 / increment like _rangesLen; the empty marker stays a far range so the wedge beside it keeps QGC's shape"
+        );
+        assert_eq!(
+            drawn["texts"],
+            json!(["655.35", "3.20", "12.00", "0.00"]),
+            "_rangeToShow: toFixed(2), no unit suffix"
+        );
         assert_eq!(drawn["maxMetres"], json!(10.0));
-        let feet = Unit { name: "ft".into(), factor: 3.2808399 };
-        assert_eq!(overlay_drawing(&[320], Some(5.0), 1000, &feet).unwrap()["texts"], json!(["10.50"]), "feet when horizontalDistanceUnits is Feet");
-        assert_eq!(overlay_drawing(&[320], None, 1000, &metres), None, "onPaint returns when increment is 0");
-        assert_eq!(obstacle_view(&Ring(ring(vec![320, 500])), &[])["overlay"]["ranges"], json!([3.2, 5.0]));
-        assert_eq!(obstacle_view(&Ring(json!({ "kind": "object", "available": false })), &[])["overlay"], Value::Null, "the Canvas is invisible without objectAvoidance.available");
+        let feet = Unit {
+            name: "ft".into(),
+            factor: 3.2808399,
+        };
+        assert_eq!(
+            overlay_drawing(&[320], Some(5.0), 1000, &feet).unwrap()["texts"],
+            json!(["10.50"]),
+            "feet when horizontalDistanceUnits is Feet"
+        );
+        assert_eq!(
+            overlay_drawing(&[320], None, 1000, &metres),
+            None,
+            "onPaint returns when increment is 0"
+        );
+        assert_eq!(
+            obstacle_view(&Ring(ring(vec![320, 500])), &[])["overlay"]["ranges"],
+            json!([3.2, 5.0])
+        );
+        assert_eq!(
+            obstacle_view(&Ring(json!({ "kind": "object", "available": false })), &[])["overlay"],
+            Value::Null,
+            "the Canvas is invisible without objectAvoidance.available"
+        );
     }
 
     #[test]
     fn a_sector_with_no_reading_is_not_the_nearest_obstacle() {
-        assert_eq!(nearest(&[NO_READING, 500, NO_READING], 1000), Some((1, 500)), "65535 is what the ring carries where the sensor saw nothing, and it is the smallest number in the array if you sort it as one");
-        assert_eq!(nearest(&[NO_READING, NO_READING], 1000), None, "nothing seen anywhere is no reading, not a reading of zero");
-        assert_eq!(nearest(&[1200, 1500], 1000), None, "QGC's own grid drops anything at or past maxDistance, so the core drops it too");
-        assert_eq!(nearest(&[50, 800], 1000), Some((0, 50)), "and it does not drop a reading below minDistance, which QGC also keeps - the aircraft is closer than the sensor is rated for, which is the last thing to hide");
-        assert_eq!(nearest(&[NO_READING, 40000], NO_READING), Some((1, 40000)), "QGC checks the empty marker and the range separately; the second implies the first, because max_distance is a uint16 and 65535 is never below it. One test, not two guards.");
+        assert_eq!(
+            nearest(&[NO_READING, 500, NO_READING], 1000),
+            Some((1, 500)),
+            "65535 is what the ring carries where the sensor saw nothing, and it is the smallest number in the array if you sort it as one"
+        );
+        assert_eq!(
+            nearest(&[NO_READING, NO_READING], 1000),
+            None,
+            "nothing seen anywhere is no reading, not a reading of zero"
+        );
+        assert_eq!(
+            nearest(&[1200, 1500], 1000),
+            None,
+            "QGC's own grid drops anything at or past maxDistance, so the core drops it too"
+        );
+        assert_eq!(
+            nearest(&[50, 800], 1000),
+            Some((0, 50)),
+            "and it does not drop a reading below minDistance, which QGC also keeps - the aircraft is closer than the sensor is rated for, which is the last thing to hide"
+        );
+        assert_eq!(
+            nearest(&[NO_READING, 40000], NO_READING),
+            Some((1, 40000)),
+            "QGC checks the empty marker and the range separately; the second implies the first, because max_distance is a uint16 and 65535 is never below it. One test, not two guards."
+        );
     }
 
     #[test]
     fn the_bearing_is_relative_to_the_aircraft_and_names_a_sector() {
         assert_eq!(bearing(0, 45.0, 0.0), 0.0);
         assert_eq!(bearing(2, 45.0, 0.0), 90.0);
-        assert_eq!(bearing(7, 45.0, 45.0), 0.0, "the offset wraps rather than running past a full turn");
+        assert_eq!(
+            bearing(7, 45.0, 45.0),
+            0.0,
+            "the offset wraps rather than running past a full turn"
+        );
         assert_eq!(sector(0.0).0, "ahead");
         assert_eq!(sector(90.0).0, "right");
         assert_eq!(sector(180.0).0, "behind");
         assert_eq!(sector(270.0).0, "left");
-        assert_eq!(sector(350.0).0, "ahead", "the last sector wraps back to dead ahead rather than falling off the end of the table");
-        assert_eq!(sector(22.5).0, "aheadRight", "a bearing exactly on a boundary belongs to the sector it opens, not the one it closes");
+        assert_eq!(
+            sector(350.0).0,
+            "ahead",
+            "the last sector wraps back to dead ahead rather than falling off the end of the table"
+        );
+        assert_eq!(
+            sector(22.5).0,
+            "aheadRight",
+            "a bearing exactly on a boundary belongs to the sector it opens, not the one it closes"
+        );
         assert_eq!(sector(22.4).0, "ahead");
-        assert_eq!(sector(90.0).1, "right", "the identifier is what a head keys on and the text is English prose, so a translation never changes the key");
+        assert_eq!(
+            sector(90.0).1,
+            "right",
+            "the identifier is what a head keys on and the text is English prose, so a translation never changes the key"
+        );
     }
 
     #[test]
     fn the_view_reports_the_nearest_obstacle_or_says_there_is_none() {
         let seen = obstacle_view(&Ring(ring(vec![NO_READING, 320, 900])), &[]);
         assert_eq!(seen["nearest"]["distanceMetres"], 3.2);
-        assert_eq!(seen["nearest"]["distanceText"], "3.2 m", "the sensor resolves centimetres and the operator is judging clearance, so this keeps the tenth that distance_text drops - 3.4 m and 2.6 m both reading \"3 m\" is the wrong trade for a proximity warning");
+        assert_eq!(
+            seen["nearest"]["distanceText"], "3.2 m",
+            "the sensor resolves centimetres and the operator is judging clearance, so this keeps the tenth that distance_text drops - 3.4 m and 2.6 m both reading \"3 m\" is the wrong trade for a proximity warning"
+        );
         assert_eq!(seen["nearest"]["sector"], "aheadRight");
-        assert_eq!(seen["nearest"]["close"], false, "3.2 m is more than twice the sensor's 1 m minimum");
+        assert_eq!(
+            seen["nearest"]["close"], false,
+            "3.2 m is more than twice the sensor's 1 m minimum"
+        );
         assert_eq!(seen["stale"], false);
         assert_eq!(seen["sectors"], 2);
 
@@ -325,7 +512,9 @@ mod tests {
         impl Backend for Feet {
             fn get(&self, path: &str) -> String {
                 match path {
-                    "settings.flyViewSettings.showObstacleDistanceOverlay.rawValue" => json!({ "kind": "value", "value": true }).to_string(),
+                    "settings.flyViewSettings.showObstacleDistanceOverlay.rawValue" => {
+                        json!({ "kind": "value", "value": true }).to_string()
+                    }
                     _ => String::new(),
                 }
             }
@@ -335,7 +524,9 @@ mod tests {
                     _ => Ring(self.0.clone()).get_fields(path, f),
                 }
             }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
             fn invoke(&self, path: &str, args: &str) -> String {
                 match path {
                     "units.metersToAppSettingsHorizontalDistanceUnits" => json!({ "ok": true, "result": serde_json::from_str::<Vec<f64>>(args).unwrap()[0] * 3.2808399 }).to_string(),
@@ -345,26 +536,51 @@ mod tests {
             fn watch(&self, _p: &[String]) {}
         }
         let feet = obstacle_view(&Feet(ring(vec![NO_READING, 320, 900])), &[]);
-        assert_eq!(feet["nearest"]["distanceText"], "10.5 ft", "the unit follows the operator, which was the whole defect - and the tenth survives the conversion");
-        assert_eq!(feet["nearest"]["distanceMetres"], 3.2, "the metres stay raw beside the text, so nothing downstream parses a spelling back");
+        assert_eq!(
+            feet["nearest"]["distanceText"], "10.5 ft",
+            "the unit follows the operator, which was the whole defect - and the tenth survives the conversion"
+        );
+        assert_eq!(
+            feet["nearest"]["distanceMetres"], 3.2,
+            "the metres stay raw beside the text, so nothing downstream parses a spelling back"
+        );
 
         let near = obstacle_view(&Ring(ring(vec![150, NO_READING])), &[]);
-        assert_eq!(near["nearest"]["close"], true, "inside twice the sensor's minimum is the band the operator is warned about");
+        assert_eq!(
+            near["nearest"]["close"], true,
+            "inside twice the sensor's minimum is the band the operator is warned about"
+        );
 
         let mut spaceless = ring(vec![NO_READING, 320]);
         spaceless["increment"] = json!(0.0);
-        assert_eq!(obstacle_view(&Ring(spaceless), &[])["nearest"], Value::Null, "without the angle between sectors an index names no direction, and defaulting it to zero would point every reading dead ahead - a bearing that looks like a measurement");
+        assert_eq!(
+            obstacle_view(&Ring(spaceless), &[])["nearest"],
+            Value::Null,
+            "without the angle between sectors an index names no direction, and defaulting it to zero would point every reading dead ahead - a bearing that looks like a measurement"
+        );
 
         let empty = obstacle_view(&Ring(ring(vec![NO_READING, NO_READING])), &[]);
-        assert_eq!(empty["nearest"], Value::Null, "no reading at all is absent rather than a distance of zero, which would read as a collision");
+        assert_eq!(
+            empty["nearest"],
+            Value::Null,
+            "no reading at all is absent rather than a distance of zero, which would read as a collision"
+        );
         assert_eq!(empty["sectors"], 0);
 
         let mut old = ring(vec![320]);
         old["msSinceUpdate"] = json!(4000);
-        assert_eq!(obstacle_view(&Ring(old), &[])["stale"], true, "the ring stops arriving when the sensor stops, and a frozen reading looks exactly like a live one");
+        assert_eq!(
+            obstacle_view(&Ring(old), &[])["stale"],
+            true,
+            "the ring stops arriving when the sensor stops, and a frozen reading looks exactly like a live one"
+        );
 
         let off = obstacle_view(&Ring(json!({ "kind": "object", "available": false })), &[]);
         assert_eq!(off["nearest"], Value::Null);
-        assert_eq!(off["stale"], Value::Null, "with no sensor there is nothing whose age could be judged");
+        assert_eq!(
+            off["stale"],
+            Value::Null,
+            "with no sensor there is nothing whose age could be judged"
+        );
     }
 }

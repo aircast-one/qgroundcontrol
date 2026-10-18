@@ -14,18 +14,36 @@ pub const DEPS: &[&str] = &[
     "vehicle.distanceSensors.maxDistance",
 ];
 
-const SECTORS: [&str; 8] = ["rotationNone", "rotationYaw45", "rotationYaw90", "rotationYaw135", "rotationYaw180", "rotationYaw225", "rotationYaw270", "rotationYaw315"];
+const SECTORS: [&str; 8] = [
+    "rotationNone",
+    "rotationYaw45",
+    "rotationYaw90",
+    "rotationYaw135",
+    "rotationYaw180",
+    "rotationYaw225",
+    "rotationYaw270",
+    "rotationYaw315",
+];
 const NO_VALUE: &str = "–.––";
 const RANGE_METERS: f64 = 6.0;
 
 fn facts(group: &Value) -> Vec<Value> {
-    group.get("facts").and_then(Value::as_array).cloned().unwrap_or_default()
+    group
+        .get("facts")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default()
 }
 
 pub fn max_meters(group: &Value) -> Option<f64> {
     facts(group)
         .iter()
-        .find(|fact| fact.get("property").or(fact.get("name")).and_then(Value::as_str) == Some("maxDistance"))
+        .find(|fact| {
+            fact.get("property")
+                .or(fact.get("name"))
+                .and_then(Value::as_str)
+                == Some("maxDistance")
+        })
         .and_then(|fact| fact.get("rawValue").or(fact.get("value")))
         .and_then(Value::as_f64)
         .filter(|m| m.is_finite() && *m > 0.0)
@@ -72,12 +90,32 @@ mod tests {
             { "property": "rotationPitch270", "rawValue": 1.0, "valueString": "1.00" },
         ] });
         let read = sectors(&group);
-        assert_eq!(read.len(), 8, "downward and upward sensors are not part of the radar");
-        assert_eq!((read[0]["bearing"].clone(), read[0]["meters"].clone(), read[0]["text"].clone()), (json!(0), json!(2.5), json!("2.50")));
-        assert_eq!((read[2]["meters"].clone(), read[2]["text"].clone()), (Value::Null, json!(NO_VALUE)));
+        assert_eq!(
+            read.len(),
+            8,
+            "downward and upward sensors are not part of the radar"
+        );
+        assert_eq!(
+            (
+                read[0]["bearing"].clone(),
+                read[0]["meters"].clone(),
+                read[0]["text"].clone()
+            ),
+            (json!(0), json!(2.5), json!("2.50"))
+        );
+        assert_eq!(
+            (read[2]["meters"].clone(), read[2]["text"].clone()),
+            (Value::Null, json!(NO_VALUE))
+        );
         assert_eq!(read[7]["bearing"], 315);
         assert_eq!(max_meters(&group), None);
-        assert_eq!(max_meters(&json!({ "facts": [{ "name": "maxDistance", "rawValue": 40.0 }] })), Some(40.0));
-        assert_eq!(max_meters(&json!({ "facts": [{ "name": "maxDistance", "rawValue": 0.0 }] })), None);
+        assert_eq!(
+            max_meters(&json!({ "facts": [{ "name": "maxDistance", "rawValue": 40.0 }] })),
+            Some(40.0)
+        );
+        assert_eq!(
+            max_meters(&json!({ "facts": [{ "name": "maxDistance", "rawValue": 0.0 }] })),
+            None
+        );
     }
 }

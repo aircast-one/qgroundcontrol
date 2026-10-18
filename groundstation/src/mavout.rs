@@ -1,5 +1,20 @@
 #[allow(deprecated)]
-use mavlink::dialects::ardupilotmega::{COMMAND_INT_DATA, COMMAND_LONG_DATA, FILE_TRANSFER_PROTOCOL_DATA, LOGGING_ACK_DATA, MavOdidCategoryEu, MavOdidClassEu, MavOdidClassificationType, MavOdidDescType, MavOdidIdType, MavOdidOperatorIdType, MavOdidOperatorLocationType, MavOdidUaType, OPEN_DRONE_ID_BASIC_ID_DATA, OPEN_DRONE_ID_OPERATOR_ID_DATA, OPEN_DRONE_ID_SELF_ID_DATA, OPEN_DRONE_ID_SYSTEM_DATA, MISSION_ACK_DATA, MISSION_CLEAR_ALL_DATA, REQUEST_EVENT_DATA, MISSION_COUNT_DATA, MISSION_ITEM_DATA, MISSION_ITEM_INT_DATA, MISSION_REQUEST_INT_DATA, MISSION_REQUEST_LIST_DATA, COMMAND_ACK_DATA, MavCmd, MavMissionResult, MavMissionType, MavFrame, MavMessage, MavParamType, MavResult, PARAM_EXT_REQUEST_LIST_DATA, PARAM_MAP_RC_DATA, PARAM_EXT_REQUEST_READ_DATA, PARAM_EXT_SET_DATA, MavParamExtType, PARAM_REQUEST_LIST_DATA, PARAM_REQUEST_READ_DATA, PARAM_SET_DATA, PositionTargetTypemask, RC_CHANNELS_OVERRIDE_DATA, LOG_ERASE_DATA, LOG_REQUEST_DATA_DATA, LOG_REQUEST_END_DATA, LOG_REQUEST_LIST_DATA, MANUAL_CONTROL_DATA, SET_POSITION_TARGET_LOCAL_NED_DATA, SERIAL_CONTROL_DATA, SerialControlDev, SerialControlFlag, SYSTEM_TIME_DATA, PING_DATA, TERRAIN_DATA_DATA};
+use mavlink::dialects::ardupilotmega::{
+    COMMAND_ACK_DATA, COMMAND_INT_DATA, COMMAND_LONG_DATA, FILE_TRANSFER_PROTOCOL_DATA,
+    LOG_ERASE_DATA, LOG_REQUEST_DATA_DATA, LOG_REQUEST_END_DATA, LOG_REQUEST_LIST_DATA,
+    LOGGING_ACK_DATA, MANUAL_CONTROL_DATA, MISSION_ACK_DATA, MISSION_CLEAR_ALL_DATA,
+    MISSION_COUNT_DATA, MISSION_ITEM_DATA, MISSION_ITEM_INT_DATA, MISSION_REQUEST_INT_DATA,
+    MISSION_REQUEST_LIST_DATA, MavCmd, MavFrame, MavMessage, MavMissionResult, MavMissionType,
+    MavOdidCategoryEu, MavOdidClassEu, MavOdidClassificationType, MavOdidDescType, MavOdidIdType,
+    MavOdidOperatorIdType, MavOdidOperatorLocationType, MavOdidUaType, MavParamExtType,
+    MavParamType, MavResult, OPEN_DRONE_ID_BASIC_ID_DATA, OPEN_DRONE_ID_OPERATOR_ID_DATA,
+    OPEN_DRONE_ID_SELF_ID_DATA, OPEN_DRONE_ID_SYSTEM_DATA, PARAM_EXT_REQUEST_LIST_DATA,
+    PARAM_EXT_REQUEST_READ_DATA, PARAM_EXT_SET_DATA, PARAM_MAP_RC_DATA, PARAM_REQUEST_LIST_DATA,
+    PARAM_REQUEST_READ_DATA, PARAM_SET_DATA, PING_DATA, PositionTargetTypemask,
+    RC_CHANNELS_OVERRIDE_DATA, REQUEST_EVENT_DATA, SERIAL_CONTROL_DATA,
+    SET_POSITION_TARGET_LOCAL_NED_DATA, SYSTEM_TIME_DATA, SerialControlDev, SerialControlFlag,
+    TERRAIN_DATA_DATA,
+};
 use mavlink::types::CharArray;
 use mavlink::{MAVLinkV2MessageRaw, MavHeader, MavlinkVersion, MessageData};
 use num_traits::FromPrimitive;
@@ -10,7 +25,11 @@ const ACCEL_CAL_ACK_COMMAND: MavCmd = MavCmd::MAV_CMD_ACCELCAL_VEHICLE_POS;
 pub const DEFAULT_GCS_SYSTEM: u8 = 255;
 
 pub fn gcs_system() -> u8 {
-    crate::settingsstore::raw_setting("settings.mavlinkSettings.gcsMavlinkSystemID").and_then(|v| v.as_u64()).and_then(|id| u8::try_from(id).ok()).filter(|id| *id != 0).unwrap_or(DEFAULT_GCS_SYSTEM)
+    crate::settingsstore::raw_setting("settings.mavlinkSettings.gcsMavlinkSystemID")
+        .and_then(|v| v.as_u64())
+        .and_then(|id| u8::try_from(id).ok())
+        .filter(|id| *id != 0)
+        .unwrap_or(DEFAULT_GCS_SYSTEM)
 }
 
 pub fn for_us(target_system: u8) -> bool {
@@ -26,52 +45,231 @@ static SEQUENCE: AtomicU8 = AtomicU8::new(0);
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Outbound {
-    CommandLong { target: (u8, u8), command: u16, params: [f64; 7] },
-    GpsGlobalOrigin { system: u8, latitude: f64, longitude: f64, altitude: f64 },
-    CommandLongTry { target: (u8, u8), command: u16, params: [f64; 7], confirmation: u8 },
-    CommandInt { target: (u8, u8), command: u16, frame: u8, params: [f64; 7], x: i32, y: i32 },
-    SetMode { system: u8, base_mode: u8, custom_mode: u32 },
-    RawCommandLong { target: (u8, u8), command: u16, params: [f64; 7] },
-    PositionTargetLocalNed { target: (u8, u8), frame: u8, type_mask: u16, x: f64, y: f64, z: f64 },
-    GuidedMissionItem { target: (u8, u8), latitude: f64, longitude: f64, altitude_relative: f64 },
-    ParamRequestList { target: (u8, u8) },
-    ParamRequestRead { target: (u8, u8), name: Option<String>, index: i16 },
-    ParamSet { target: (u8, u8), name: String, bits: f32, param_type: u8 },
-    Ftp { target: (u8, u8), payload: [u8; 251] },
-    MissionRequestList { target: (u8, u8), plan: u8 },
-    MissionClearAll { target: (u8, u8), plan: u8 },
-    RequestEvent { target: (u8, u8), sequence: u16 },
-    MissionRequestInt { target: (u8, u8), plan: u8, seq: u16 },
-    MissionCount { target: (u8, u8), plan: u8, count: u16 },
-    MissionItemInt { target: (u8, u8), plan: u8, item: crate::plantransfer::Item },
-    MissionAck { target: (u8, u8), plan: u8, result: u8 },
-    Odid { target: (u8, u8), message: crate::remoteid::Message },
-    LoggingAck { target: (u8, u8), sequence: u16 },
+    CommandLong {
+        target: (u8, u8),
+        command: u16,
+        params: [f64; 7],
+    },
+    GpsGlobalOrigin {
+        system: u8,
+        latitude: f64,
+        longitude: f64,
+        altitude: f64,
+    },
+    CommandLongTry {
+        target: (u8, u8),
+        command: u16,
+        params: [f64; 7],
+        confirmation: u8,
+    },
+    CommandInt {
+        target: (u8, u8),
+        command: u16,
+        frame: u8,
+        params: [f64; 7],
+        x: i32,
+        y: i32,
+    },
+    SetMode {
+        system: u8,
+        base_mode: u8,
+        custom_mode: u32,
+    },
+    RawCommandLong {
+        target: (u8, u8),
+        command: u16,
+        params: [f64; 7],
+    },
+    PositionTargetLocalNed {
+        target: (u8, u8),
+        frame: u8,
+        type_mask: u16,
+        x: f64,
+        y: f64,
+        z: f64,
+    },
+    GuidedMissionItem {
+        target: (u8, u8),
+        latitude: f64,
+        longitude: f64,
+        altitude_relative: f64,
+    },
+    ParamRequestList {
+        target: (u8, u8),
+    },
+    ParamRequestRead {
+        target: (u8, u8),
+        name: Option<String>,
+        index: i16,
+    },
+    ParamSet {
+        target: (u8, u8),
+        name: String,
+        bits: f32,
+        param_type: u8,
+    },
+    Ftp {
+        target: (u8, u8),
+        payload: [u8; 251],
+    },
+    MissionRequestList {
+        target: (u8, u8),
+        plan: u8,
+    },
+    MissionClearAll {
+        target: (u8, u8),
+        plan: u8,
+    },
+    RequestEvent {
+        target: (u8, u8),
+        sequence: u16,
+    },
+    MissionRequestInt {
+        target: (u8, u8),
+        plan: u8,
+        seq: u16,
+    },
+    MissionCount {
+        target: (u8, u8),
+        plan: u8,
+        count: u16,
+    },
+    MissionItemInt {
+        target: (u8, u8),
+        plan: u8,
+        item: crate::plantransfer::Item,
+    },
+    MissionAck {
+        target: (u8, u8),
+        plan: u8,
+        result: u8,
+    },
+    Odid {
+        target: (u8, u8),
+        message: crate::remoteid::Message,
+    },
+    LoggingAck {
+        target: (u8, u8),
+        sequence: u16,
+    },
     AccelCalAck,
-    SystemTime { time_unix_usec: u64 },
-    Ping { time_usec: u64, seq: u32, target: (u8, u8) },
-    TerrainData { lat: i32, lon: i32, grid_spacing: u16, gridbit: u8, data: [i16; 16] },
-    RcOverride { target: (u8, u8), channels: [u16; 18] },
-    ManualControl { target: u8, x: i16, y: i16, z: i16, r: i16 },
-    JoystickManualControl { target: u8, x: i16, y: i16, z: i16, r: i16, buttons: u16, buttons2: u16, enabled_extensions: u8, extensions: [i16; 8] },
-    LogRequestList { target: (u8, u8), start: u16, end: u16 },
-    LogRequestData { target: (u8, u8), id: u16, offset: u32, count: u32 },
-    LogRequestEnd { target: (u8, u8) },
-    ParamExtRequestList { target: (u8, u8) },
-    ParamMapRc { target: (u8, u8), id: String, index: i16, tuning: u8, center: f32, scale: f32, min: f32, max: f32 },
-    ParamExtRequestRead { target: (u8, u8), id: String },
-    ParamExtSet { target: (u8, u8), id: String, value: [u8; 128], param_type: u8 },
-    LogErase { target: (u8, u8) },
-    ShellData { target: (u8, u8), data: Vec<u8> },
-    GpsRtcmData { data: mavlink::dialects::ardupilotmega::GPS_RTCM_DATA_DATA },
-    FollowTarget { data: mavlink::dialects::ardupilotmega::FOLLOW_TARGET_DATA },
-    GimbalAttitudeRates { target: (u8, u8), flags: u32, device_id: u8, pitch_rate: f32, yaw_rate: f32 },
-    GimbalPitchYaw { target: (u8, u8), flags: u32, device_id: u8, pitch: f32, yaw: f32 },
-    GlobalPositionInt { data: mavlink::dialects::ardupilotmega::GLOBAL_POSITION_INT_DATA },
-    SetupSigning { data: mavlink::dialects::ardupilotmega::SETUP_SIGNING_DATA },
-    RequestDataStream { target: (u8, u8), stream: u8, rate: u16 },
+    SystemTime {
+        time_unix_usec: u64,
+    },
+    Ping {
+        time_usec: u64,
+        seq: u32,
+        target: (u8, u8),
+    },
+    TerrainData {
+        lat: i32,
+        lon: i32,
+        grid_spacing: u16,
+        gridbit: u8,
+        data: [i16; 16],
+    },
+    RcOverride {
+        target: (u8, u8),
+        channels: [u16; 18],
+    },
+    ManualControl {
+        target: u8,
+        x: i16,
+        y: i16,
+        z: i16,
+        r: i16,
+    },
+    JoystickManualControl {
+        target: u8,
+        x: i16,
+        y: i16,
+        z: i16,
+        r: i16,
+        buttons: u16,
+        buttons2: u16,
+        enabled_extensions: u8,
+        extensions: [i16; 8],
+    },
+    LogRequestList {
+        target: (u8, u8),
+        start: u16,
+        end: u16,
+    },
+    LogRequestData {
+        target: (u8, u8),
+        id: u16,
+        offset: u32,
+        count: u32,
+    },
+    LogRequestEnd {
+        target: (u8, u8),
+    },
+    ParamExtRequestList {
+        target: (u8, u8),
+    },
+    ParamMapRc {
+        target: (u8, u8),
+        id: String,
+        index: i16,
+        tuning: u8,
+        center: f32,
+        scale: f32,
+        min: f32,
+        max: f32,
+    },
+    ParamExtRequestRead {
+        target: (u8, u8),
+        id: String,
+    },
+    ParamExtSet {
+        target: (u8, u8),
+        id: String,
+        value: [u8; 128],
+        param_type: u8,
+    },
+    LogErase {
+        target: (u8, u8),
+    },
+    ShellData {
+        target: (u8, u8),
+        data: Vec<u8>,
+    },
+    GpsRtcmData {
+        data: mavlink::dialects::ardupilotmega::GPS_RTCM_DATA_DATA,
+    },
+    FollowTarget {
+        data: mavlink::dialects::ardupilotmega::FOLLOW_TARGET_DATA,
+    },
+    GimbalAttitudeRates {
+        target: (u8, u8),
+        flags: u32,
+        device_id: u8,
+        pitch_rate: f32,
+        yaw_rate: f32,
+    },
+    GimbalPitchYaw {
+        target: (u8, u8),
+        flags: u32,
+        device_id: u8,
+        pitch: f32,
+        yaw: f32,
+    },
+    GlobalPositionInt {
+        data: mavlink::dialects::ardupilotmega::GLOBAL_POSITION_INT_DATA,
+    },
+    SetupSigning {
+        data: mavlink::dialects::ardupilotmega::SETUP_SIGNING_DATA,
+    },
+    RequestDataStream {
+        target: (u8, u8),
+        stream: u8,
+        rate: u16,
+    },
     GcsHeartbeat,
-    Timesync { target: (u8, u8), ts1: i64 },
+    Timesync {
+        target: (u8, u8),
+        ts1: i64,
+    },
 }
 
 pub fn chars<const N: usize>(text: &str) -> CharArray<N> {
@@ -105,7 +303,10 @@ impl MessageData for CommandLongBits {
     const ENCODED_LEN: usize = 33;
 
     fn ser(&self, _version: MavlinkVersion, payload: &mut [u8]) -> usize {
-        self.params.iter().enumerate().for_each(|(i, p)| payload[i * 4..i * 4 + 4].copy_from_slice(&p.to_le_bytes()));
+        self.params
+            .iter()
+            .enumerate()
+            .for_each(|(i, p)| payload[i * 4..i * 4 + 4].copy_from_slice(&p.to_le_bytes()));
         payload[28..30].copy_from_slice(&self.command.to_le_bytes());
         payload[30] = self.target.0;
         payload[31] = self.target.1;
@@ -116,8 +317,19 @@ impl MessageData for CommandLongBits {
     fn deser(_version: MavlinkVersion, input: &[u8]) -> Result<Self, mavlink::error::ParserError> {
         let mut payload = [0u8; 33];
         payload[..input.len().min(33)].copy_from_slice(&input[..input.len().min(33)]);
-        let param = |i: usize| f32::from_le_bytes([payload[i * 4], payload[i * 4 + 1], payload[i * 4 + 2], payload[i * 4 + 3]]);
-        Ok(CommandLongBits { target: (payload[30], payload[31]), command: u16::from_le_bytes([payload[28], payload[29]]), params: std::array::from_fn(param) })
+        let param = |i: usize| {
+            f32::from_le_bytes([
+                payload[i * 4],
+                payload[i * 4 + 1],
+                payload[i * 4 + 2],
+                payload[i * 4 + 3],
+            ])
+        };
+        Ok(CommandLongBits {
+            target: (payload[30], payload[31]),
+            command: u16::from_le_bytes([payload[28], payload[29]]),
+            params: std::array::from_fn(param),
+        })
     }
 }
 
@@ -139,7 +351,10 @@ impl MessageData for CommandIntBits {
     const ENCODED_LEN: usize = 35;
 
     fn ser(&self, _version: MavlinkVersion, payload: &mut [u8]) -> usize {
-        self.params.iter().enumerate().for_each(|(i, p)| payload[i * 4..i * 4 + 4].copy_from_slice(&p.to_le_bytes()));
+        self.params
+            .iter()
+            .enumerate()
+            .for_each(|(i, p)| payload[i * 4..i * 4 + 4].copy_from_slice(&p.to_le_bytes()));
         payload[16..20].copy_from_slice(&self.x.to_le_bytes());
         payload[20..24].copy_from_slice(&self.y.to_le_bytes());
         payload[24..28].copy_from_slice(&self.z.to_le_bytes());
@@ -155,9 +370,31 @@ impl MessageData for CommandIntBits {
     fn deser(_version: MavlinkVersion, input: &[u8]) -> Result<Self, mavlink::error::ParserError> {
         let mut payload = [0u8; 35];
         payload[..input.len().min(35)].copy_from_slice(&input[..input.len().min(35)]);
-        let float = |at: usize| f32::from_le_bytes([payload[at], payload[at + 1], payload[at + 2], payload[at + 3]]);
-        let int = |at: usize| i32::from_le_bytes([payload[at], payload[at + 1], payload[at + 2], payload[at + 3]]);
-        Ok(CommandIntBits { target: (payload[30], payload[31]), command: u16::from_le_bytes([payload[28], payload[29]]), frame: payload[32], params: std::array::from_fn(|i| float(i * 4)), x: int(16), y: int(20), z: float(24) })
+        let float = |at: usize| {
+            f32::from_le_bytes([
+                payload[at],
+                payload[at + 1],
+                payload[at + 2],
+                payload[at + 3],
+            ])
+        };
+        let int = |at: usize| {
+            i32::from_le_bytes([
+                payload[at],
+                payload[at + 1],
+                payload[at + 2],
+                payload[at + 3],
+            ])
+        };
+        Ok(CommandIntBits {
+            target: (payload[30], payload[31]),
+            command: u16::from_le_bytes([payload[28], payload[29]]),
+            frame: payload[32],
+            params: std::array::from_fn(|i| float(i * 4)),
+            x: int(16),
+            y: int(20),
+            z: float(24),
+        })
     }
 }
 
@@ -184,7 +421,11 @@ impl MessageData for SetModeBits {
     fn deser(_version: MavlinkVersion, input: &[u8]) -> Result<Self, mavlink::error::ParserError> {
         let mut payload = [0u8; 6];
         payload[..input.len().min(6)].copy_from_slice(&input[..input.len().min(6)]);
-        Ok(SetModeBits { custom_mode: u32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]]), system: payload[4], base_mode: payload[5] })
+        Ok(SetModeBits {
+            custom_mode: u32::from_le_bytes([payload[0], payload[1], payload[2], payload[3]]),
+            system: payload[4],
+            base_mode: payload[5],
+        })
     }
 }
 
@@ -453,12 +694,56 @@ pub fn message(send: &Outbound) -> Option<MavMessage> {
 }
 
 pub fn encode(sequence: u8, send: &Outbound) -> Option<Vec<u8>> {
-    let header = MavHeader { system_id: gcs_system(), component_id: GCS_COMPONENT, sequence };
+    let header = MavHeader {
+        system_id: gcs_system(),
+        component_id: GCS_COMPONENT,
+        sequence,
+    };
     let mut raw = MAVLinkV2MessageRaw::new();
     match send {
-        Outbound::SetMode { system, base_mode, custom_mode } => raw.serialize_message_data(header, &SetModeBits { system: *system, base_mode: *base_mode, custom_mode: *custom_mode }),
-        Outbound::RawCommandLong { target, command, params } => raw.serialize_message_data(header, &CommandLongBits { target: *target, command: *command, params: params.map(|p| p as f32) }),
-        Outbound::CommandInt { target, command, frame, params, x, y } if message(send).is_none() => raw.serialize_message_data(header, &CommandIntBits { target: *target, command: *command, frame: *frame, params: [params[0], params[1], params[2], params[3]].map(|p| p as f32), x: *x, y: *y, z: params[6] as f32 }),
+        Outbound::SetMode {
+            system,
+            base_mode,
+            custom_mode,
+        } => raw.serialize_message_data(
+            header,
+            &SetModeBits {
+                system: *system,
+                base_mode: *base_mode,
+                custom_mode: *custom_mode,
+            },
+        ),
+        Outbound::RawCommandLong {
+            target,
+            command,
+            params,
+        } => raw.serialize_message_data(
+            header,
+            &CommandLongBits {
+                target: *target,
+                command: *command,
+                params: params.map(|p| p as f32),
+            },
+        ),
+        Outbound::CommandInt {
+            target,
+            command,
+            frame,
+            params,
+            x,
+            y,
+        } if message(send).is_none() => raw.serialize_message_data(
+            header,
+            &CommandIntBits {
+                target: *target,
+                command: *command,
+                frame: *frame,
+                params: [params[0], params[1], params[2], params[3]].map(|p| p as f32),
+                x: *x,
+                y: *y,
+                z: params[6] as f32,
+            },
+        ),
         other => raw.serialize_message(header, &message(other)?),
     }
     Some(raw.raw_bytes().to_vec())
@@ -483,10 +768,20 @@ struct FrameAt {
 
 fn frame_at(bytes: &[u8]) -> Option<FrameAt> {
     match bytes {
-        [V1_MAGIC, len, ..] => Some(FrameAt { sequence: 2, system: 3, end: *len as usize + 8, signed: false }),
+        [V1_MAGIC, len, ..] => Some(FrameAt {
+            sequence: 2,
+            system: 3,
+            end: *len as usize + 8,
+            signed: false,
+        }),
         [V2_MAGIC, len, incompat, ..] => {
             let signed = incompat & V2_SIGNED != 0;
-            Some(FrameAt { sequence: 4, system: 5, end: *len as usize + 12 + if signed { SIGNATURE_BYTES } else { 0 }, signed })
+            Some(FrameAt {
+                sequence: 4,
+                system: 5,
+                end: *len as usize + 12 + if signed { SIGNATURE_BYTES } else { 0 },
+                signed,
+            })
         }
         _ => None,
     }
@@ -508,16 +803,25 @@ fn resequenced(frame: &[u8], at: usize, sequence: u8) -> Option<Vec<u8>> {
     };
     let sent = digested(&frame[..crc_at]);
     let extra = (0..=u8::MAX).find(|extra| finished(&sent, *extra) == old)?;
-    let body: Vec<u8> = frame[..crc_at].iter().enumerate().map(|(i, b)| if i == at { sequence } else { *b }).collect();
+    let body: Vec<u8> = frame[..crc_at]
+        .iter()
+        .enumerate()
+        .map(|(i, b)| if i == at { sequence } else { *b })
+        .collect();
     let crc = finished(&digested(&body), extra);
     Some([body, crc.to_le_bytes().to_vec()].concat())
 }
 
 pub fn restamped(bytes: &[u8], system: u8, next: &mut impl FnMut() -> u8) -> Vec<u8> {
-    let Some(at) = frame_at(bytes) else { return bytes.to_vec() };
+    let Some(at) = frame_at(bytes) else {
+        return bytes.to_vec();
+    };
     let (frame, rest) = bytes.split_at(at.end);
     let ours = frame[at.system] == system && !at.signed;
-    let head = ours.then(|| resequenced(frame, at.sequence, next())).flatten().unwrap_or_else(|| frame.to_vec());
+    let head = ours
+        .then(|| resequenced(frame, at.sequence, next()))
+        .flatten()
+        .unwrap_or_else(|| frame.to_vec());
     [head, restamped(rest, system, next)].concat()
 }
 
@@ -528,7 +832,11 @@ mod tests {
     use mavlink::{ReadVersion, read_versioned_msg};
 
     fn decode(bytes: &[u8]) -> (MavHeader, MavMessage) {
-        read_versioned_msg::<MavMessage, _>(&mut mavlink::peek_reader::PeekReader::new(bytes), ReadVersion::Single(MavlinkVersion::V2)).unwrap()
+        read_versioned_msg::<MavMessage, _>(
+            &mut mavlink::peek_reader::PeekReader::new(bytes),
+            ReadVersion::Single(MavlinkVersion::V2),
+        )
+        .unwrap()
     }
 
     fn counter(from: u8) -> impl FnMut() -> u8 {
@@ -543,36 +851,86 @@ mod tests {
     #[test]
     fn each_link_numbers_the_station_frames_it_carries_like_a_qgc_mavlink_channel() {
         let beat = encode(200, &Outbound::GcsHeartbeat).unwrap();
-        let ping = encode(201, &Outbound::Ping { time_usec: 1, seq: 2, target: (1, 1) }).unwrap();
+        let ping = encode(
+            201,
+            &Outbound::Ping {
+                time_usec: 1,
+                seq: 2,
+                target: (1, 1),
+            },
+        )
+        .unwrap();
         let both = [beat.clone(), ping.clone()].concat();
         let sent = restamped(&both, DEFAULT_GCS_SYSTEM, &mut counter(7));
         let (first, message) = decode(&sent);
         let (second, _) = decode(&sent[beat.len()..]);
         assert_eq!((first.sequence, second.sequence), (7, 8));
-        assert!(matches!(message, MavMessage::HEARTBEAT(_)), "the checksum is rebuilt, so the frame still decodes");
-        assert_eq!(decode(&restamped(&beat, DEFAULT_GCS_SYSTEM, &mut counter(0))).0.sequence, 0, "another link keeps its own count");
+        assert!(
+            matches!(message, MavMessage::HEARTBEAT(_)),
+            "the checksum is rebuilt, so the frame still decodes"
+        );
+        assert_eq!(
+            decode(&restamped(&beat, DEFAULT_GCS_SYSTEM, &mut counter(0)))
+                .0
+                .sequence,
+            0,
+            "another link keeps its own count"
+        );
     }
 
     #[test]
     fn forwarded_signed_and_unparsed_bytes_pass_through_untouched() {
         let vehicle = {
             let mut raw = MAVLinkV2MessageRaw::new();
-            raw.serialize_message(MavHeader { system_id: 1, component_id: 1, sequence: 42 }, &MavMessage::HEARTBEAT(Default::default()));
+            raw.serialize_message(
+                MavHeader {
+                    system_id: 1,
+                    component_id: 1,
+                    sequence: 42,
+                },
+                &MavMessage::HEARTBEAT(Default::default()),
+            );
             raw.raw_bytes().to_vec()
         };
         let mut never = || -> u8 { panic!("only station frames take a number") };
         assert_eq!(restamped(&vehicle, DEFAULT_GCS_SYSTEM, &mut never), vehicle);
-        let signed = [encode(3, &Outbound::GcsHeartbeat).unwrap(), vec![0; SIGNATURE_BYTES]].concat();
-        let signed: Vec<u8> = signed.iter().enumerate().map(|(i, b)| if i == 2 { b | V2_SIGNED } else { *b }).collect();
+        let signed = [
+            encode(3, &Outbound::GcsHeartbeat).unwrap(),
+            vec![0; SIGNATURE_BYTES],
+        ]
+        .concat();
+        let signed: Vec<u8> = signed
+            .iter()
+            .enumerate()
+            .map(|(i, b)| if i == 2 { b | V2_SIGNED } else { *b })
+            .collect();
         assert_eq!(restamped(&signed, DEFAULT_GCS_SYSTEM, &mut never), signed);
-        assert_eq!(restamped(&[1, 2, 3], DEFAULT_GCS_SYSTEM, &mut never), vec![1, 2, 3]);
+        assert_eq!(
+            restamped(&[1, 2, 3], DEFAULT_GCS_SYSTEM, &mut never),
+            vec![1, 2, 3]
+        );
     }
 
     #[test]
     fn a_command_the_dialect_cannot_decode_still_leaves_with_a_valid_checksum() {
-        let raw = encode(9, &Outbound::CommandInt { target: (1, 1), command: 611, frame: 0, params: [0.0; 7], x: 0, y: 0 }).unwrap();
+        let raw = encode(
+            9,
+            &Outbound::CommandInt {
+                target: (1, 1),
+                command: 611,
+                frame: 0,
+                params: [0.0; 7],
+                x: 0,
+                y: 0,
+            },
+        )
+        .unwrap();
         let sent = restamped(&raw, DEFAULT_GCS_SYSTEM, &mut counter(1));
-        let expected: Vec<u8> = raw.iter().enumerate().map(|(i, b)| if i == 4 { 1 } else { *b }).collect();
+        let expected: Vec<u8> = raw
+            .iter()
+            .enumerate()
+            .map(|(i, b)| if i == 4 { 1 } else { *b })
+            .collect();
         assert_eq!(sent[..sent.len() - 2], expected[..expected.len() - 2]);
         let mut buffer = [0u8; 280];
         buffer[..sent.len()].copy_from_slice(&sent);
@@ -581,43 +939,193 @@ mod tests {
 
     #[test]
     fn a_mission_coordinate_is_truncated_toward_zero_as_qt_passes_it_to_an_int32() {
-        let item = crate::plantransfer::Item { seq: 1, frame: 3, command: 16, current: false, auto_continue: true, params: [0.0, 0.0, 0.0, f64::NAN, 47.63311996, -35.36193628, 20.0] };
-        let bytes = encode(0, &Outbound::MissionItemInt { target: (1, 1), plan: crate::plantransfer::PLAN_MISSION, item }).unwrap();
-        let MavMessage::MISSION_ITEM_INT(sent) = decode(&bytes).1 else { panic!() };
-        assert_eq!((sent.x, sent.y), (476331199, -353619362), "PlanManager hands param5 * 1e7 to mission_item_int_pack's int32_t, so 476331199.6 goes out as ...199, never rounded to ...200 (captured from Qt against SITL)");
+        let item = crate::plantransfer::Item {
+            seq: 1,
+            frame: 3,
+            command: 16,
+            current: false,
+            auto_continue: true,
+            params: [0.0, 0.0, 0.0, f64::NAN, 47.63311996, -35.36193628, 20.0],
+        };
+        let bytes = encode(
+            0,
+            &Outbound::MissionItemInt {
+                target: (1, 1),
+                plan: crate::plantransfer::PLAN_MISSION,
+                item,
+            },
+        )
+        .unwrap();
+        let MavMessage::MISSION_ITEM_INT(sent) = decode(&bytes).1 else {
+            panic!()
+        };
+        assert_eq!(
+            (sent.x, sent.y),
+            (476331199, -353619362),
+            "PlanManager hands param5 * 1e7 to mission_item_int_pack's int32_t, so 476331199.6 goes out as ...199, never rounded to ...200 (captured from Qt against SITL)"
+        );
     }
 
     #[test]
     fn commands_and_targets_decode_to_what_was_sent() {
-        assert_eq!(encode(0, &Outbound::CommandLong { target: (1, 1), command: 65000, params: [0.0; 7] }), None, "a command the dialect cannot name is not sent");
-        let long = encode(3, &Outbound::CommandLong { target: (1, 1), command: 22, params: [-1.0, 0.0, 0.0, f64::NAN, f64::NAN, f64::NAN, 515.0] }).unwrap();
+        assert_eq!(
+            encode(
+                0,
+                &Outbound::CommandLong {
+                    target: (1, 1),
+                    command: 65000,
+                    params: [0.0; 7]
+                }
+            ),
+            None,
+            "a command the dialect cannot name is not sent"
+        );
+        let long = encode(
+            3,
+            &Outbound::CommandLong {
+                target: (1, 1),
+                command: 22,
+                params: [-1.0, 0.0, 0.0, f64::NAN, f64::NAN, f64::NAN, 515.0],
+            },
+        )
+        .unwrap();
         let (header, message) = decode(&long);
-        assert_eq!((header.system_id, header.component_id, header.sequence), (255, 190, 3));
-        let MavMessage::COMMAND_LONG(c) = message else { panic!() };
-        assert_eq!((c.command, c.target_system, c.param1, c.param7), (MavCmd::MAV_CMD_NAV_TAKEOFF, 1, -1.0, 515.0));
+        assert_eq!(
+            (header.system_id, header.component_id, header.sequence),
+            (255, 190, 3)
+        );
+        let MavMessage::COMMAND_LONG(c) = message else {
+            panic!()
+        };
+        assert_eq!(
+            (c.command, c.target_system, c.param1, c.param7),
+            (MavCmd::MAV_CMD_NAV_TAKEOFF, 1, -1.0, 515.0)
+        );
         assert!(c.param4.is_nan());
-        let int = encode(4, &Outbound::CommandInt { target: (1, 1), command: 192, frame: 0, params: [-1.0, 1.0, 0.0, f64::NAN, 47.4, 8.5, 500.0], x: 474000000, y: 85000000 }).unwrap();
-        let MavMessage::COMMAND_INT(c) = decode(&int).1 else { panic!() };
-        assert_eq!((c.command, c.x, c.y, c.z, c.frame), (MavCmd::MAV_CMD_DO_REPOSITION, 474000000, 85000000, 500.0, MavFrame::MAV_FRAME_GLOBAL));
-        let target = encode(5, &Outbound::PositionTargetLocalNed { target: (1, 1), frame: 7, type_mask: 0xFFF8, x: 0.0, y: 0.0, z: -3.0 }).unwrap();
-        let MavMessage::SET_POSITION_TARGET_LOCAL_NED(t) = decode(&target).1 else { panic!() };
-        assert_eq!((t.type_mask.bits(), t.z, t.coordinate_frame), (0xFFF8, -3.0, MavFrame::MAV_FRAME_LOCAL_OFFSET_NED));
-        let item = encode(6, &Outbound::GuidedMissionItem { target: (1, 1), latitude: 47.4, longitude: 8.5, altitude_relative: 20.0 }).unwrap();
-        let MavMessage::MISSION_ITEM(i) = decode(&item).1 else { panic!() };
-        assert_eq!((i.seq, i.current, i.autocontinue, i.frame, i.z), (0, 2, 1, MavFrame::MAV_FRAME_GLOBAL_RELATIVE_ALT, 20.0));
-        let MavMessage::PARAM_REQUEST_LIST(l) = decode(&encode(7, &Outbound::ParamRequestList { target: (1, 0) }).unwrap()).1 else { panic!() };
+        let int = encode(
+            4,
+            &Outbound::CommandInt {
+                target: (1, 1),
+                command: 192,
+                frame: 0,
+                params: [-1.0, 1.0, 0.0, f64::NAN, 47.4, 8.5, 500.0],
+                x: 474000000,
+                y: 85000000,
+            },
+        )
+        .unwrap();
+        let MavMessage::COMMAND_INT(c) = decode(&int).1 else {
+            panic!()
+        };
+        assert_eq!(
+            (c.command, c.x, c.y, c.z, c.frame),
+            (
+                MavCmd::MAV_CMD_DO_REPOSITION,
+                474000000,
+                85000000,
+                500.0,
+                MavFrame::MAV_FRAME_GLOBAL
+            )
+        );
+        let target = encode(
+            5,
+            &Outbound::PositionTargetLocalNed {
+                target: (1, 1),
+                frame: 7,
+                type_mask: 0xFFF8,
+                x: 0.0,
+                y: 0.0,
+                z: -3.0,
+            },
+        )
+        .unwrap();
+        let MavMessage::SET_POSITION_TARGET_LOCAL_NED(t) = decode(&target).1 else {
+            panic!()
+        };
+        assert_eq!(
+            (t.type_mask.bits(), t.z, t.coordinate_frame),
+            (0xFFF8, -3.0, MavFrame::MAV_FRAME_LOCAL_OFFSET_NED)
+        );
+        let item = encode(
+            6,
+            &Outbound::GuidedMissionItem {
+                target: (1, 1),
+                latitude: 47.4,
+                longitude: 8.5,
+                altitude_relative: 20.0,
+            },
+        )
+        .unwrap();
+        let MavMessage::MISSION_ITEM(i) = decode(&item).1 else {
+            panic!()
+        };
+        assert_eq!(
+            (i.seq, i.current, i.autocontinue, i.frame, i.z),
+            (0, 2, 1, MavFrame::MAV_FRAME_GLOBAL_RELATIVE_ALT, 20.0)
+        );
+        let MavMessage::PARAM_REQUEST_LIST(l) =
+            decode(&encode(7, &Outbound::ParamRequestList { target: (1, 0) }).unwrap()).1
+        else {
+            panic!()
+        };
         assert_eq!((l.target_system, l.target_component), (1, 0));
-        let MavMessage::PARAM_REQUEST_READ(r) = decode(&encode(8, &Outbound::ParamRequestRead { target: (1, 1), name: Some("WPNAV_SPEED".into()), index: 0 }).unwrap()).1 else { panic!() };
-        assert_eq!((r.param_index, r.param_id.to_str().unwrap()), (-1, "WPNAV_SPEED"));
-        let MavMessage::PARAM_SET(p) = decode(&encode(9, &Outbound::ParamSet { target: (1, 1), name: "RTL_ALT".into(), bits: 1500.0, param_type: 9 }).unwrap()).1 else { panic!() };
-        assert_eq!((p.param_value, p.param_type), (1500.0, MavParamType::MAV_PARAM_TYPE_REAL32));
+        let MavMessage::PARAM_REQUEST_READ(r) = decode(
+            &encode(
+                8,
+                &Outbound::ParamRequestRead {
+                    target: (1, 1),
+                    name: Some("WPNAV_SPEED".into()),
+                    index: 0,
+                },
+            )
+            .unwrap(),
+        )
+        .1
+        else {
+            panic!()
+        };
+        assert_eq!(
+            (r.param_index, r.param_id.to_str().unwrap()),
+            (-1, "WPNAV_SPEED")
+        );
+        let MavMessage::PARAM_SET(p) = decode(
+            &encode(
+                9,
+                &Outbound::ParamSet {
+                    target: (1, 1),
+                    name: "RTL_ALT".into(),
+                    bits: 1500.0,
+                    param_type: 9,
+                },
+            )
+            .unwrap(),
+        )
+        .1
+        else {
+            panic!()
+        };
+        assert_eq!(
+            (p.param_value, p.param_type),
+            (1500.0, MavParamType::MAV_PARAM_TYPE_REAL32)
+        );
     }
 
     #[test]
     fn set_mode_carries_raw_base_mode_bits_the_dialect_enum_cannot_name() {
-        let bytes = encode(9, &Outbound::SetMode { system: 1, base_mode: 0x81, custom_mode: 0x0402_0000 }).unwrap();
+        let bytes = encode(
+            9,
+            &Outbound::SetMode {
+                system: 1,
+                base_mode: 0x81,
+                custom_mode: 0x0402_0000,
+            },
+        )
+        .unwrap();
         assert_eq!(bytes[0], 0xFD);
-        assert_eq!(bytes[1], 6, "the payload keeps its full length because the last byte is not zero");
+        assert_eq!(
+            bytes[1], 6,
+            "the payload keeps its full length because the last byte is not zero"
+        );
         assert_eq!(&bytes[7..10], &[11, 0, 0]);
         assert_eq!(&bytes[10..16], &[0, 0, 2, 4, 1, 0x81]);
         let expected = mavlink::calculate_crc(&bytes[1..16], 89);
@@ -628,23 +1136,66 @@ mod tests {
         use mavlink::dialects::ardupilotmega::{MavCmd, MavFrame};
 
         [
-            (crate::gimbal::CMD_DO_GIMBAL_MANAGER_PITCHYAW, MavCmd::MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW),
-            (crate::gimbal::CMD_DO_GIMBAL_MANAGER_CONFIGURE, MavCmd::MAV_CMD_DO_GIMBAL_MANAGER_CONFIGURE),
-            (crate::sensorcal::CMD_PREFLIGHT_CALIBRATION, MavCmd::MAV_CMD_PREFLIGHT_CALIBRATION),
-            (crate::sensorcal::CMD_DO_START_MAG_CAL, MavCmd::MAV_CMD_DO_START_MAG_CAL),
-            (crate::sensorcal::CMD_DO_CANCEL_MAG_CAL, MavCmd::MAV_CMD_DO_CANCEL_MAG_CAL),
-            (crate::sensorcal::CMD_ACCELCAL_VEHICLE_POS, MavCmd::MAV_CMD_ACCELCAL_VEHICLE_POS),
-            (crate::structurescan::CMD_DO_SET_ROI_WPNEXT_OFFSET, MavCmd::MAV_CMD_DO_SET_ROI_WPNEXT_OFFSET),
-            (crate::structurescan::CMD_DO_SET_ROI_NONE, MavCmd::MAV_CMD_DO_SET_ROI_NONE),
-            (crate::surveyitems::CMD_NAV_WAYPOINT, MavCmd::MAV_CMD_NAV_WAYPOINT),
-            (crate::surveyitems::CMD_DO_SET_CAM_TRIGG_DIST, MavCmd::MAV_CMD_DO_SET_CAM_TRIGG_DIST),
-            (crate::plantransfer::CMD_FENCE_RETURN_POINT, MavCmd::MAV_CMD_NAV_FENCE_RETURN_POINT),
-            (crate::plantransfer::CMD_FENCE_POLYGON_INCLUSION, MavCmd::MAV_CMD_NAV_FENCE_POLYGON_VERTEX_INCLUSION),
-            (crate::plantransfer::CMD_FENCE_POLYGON_EXCLUSION, MavCmd::MAV_CMD_NAV_FENCE_POLYGON_VERTEX_EXCLUSION),
+            (
+                crate::gimbal::CMD_DO_GIMBAL_MANAGER_PITCHYAW,
+                MavCmd::MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW,
+            ),
+            (
+                crate::gimbal::CMD_DO_GIMBAL_MANAGER_CONFIGURE,
+                MavCmd::MAV_CMD_DO_GIMBAL_MANAGER_CONFIGURE,
+            ),
+            (
+                crate::sensorcal::CMD_PREFLIGHT_CALIBRATION,
+                MavCmd::MAV_CMD_PREFLIGHT_CALIBRATION,
+            ),
+            (
+                crate::sensorcal::CMD_DO_START_MAG_CAL,
+                MavCmd::MAV_CMD_DO_START_MAG_CAL,
+            ),
+            (
+                crate::sensorcal::CMD_DO_CANCEL_MAG_CAL,
+                MavCmd::MAV_CMD_DO_CANCEL_MAG_CAL,
+            ),
+            (
+                crate::sensorcal::CMD_ACCELCAL_VEHICLE_POS,
+                MavCmd::MAV_CMD_ACCELCAL_VEHICLE_POS,
+            ),
+            (
+                crate::structurescan::CMD_DO_SET_ROI_WPNEXT_OFFSET,
+                MavCmd::MAV_CMD_DO_SET_ROI_WPNEXT_OFFSET,
+            ),
+            (
+                crate::structurescan::CMD_DO_SET_ROI_NONE,
+                MavCmd::MAV_CMD_DO_SET_ROI_NONE,
+            ),
+            (
+                crate::surveyitems::CMD_NAV_WAYPOINT,
+                MavCmd::MAV_CMD_NAV_WAYPOINT,
+            ),
+            (
+                crate::surveyitems::CMD_DO_SET_CAM_TRIGG_DIST,
+                MavCmd::MAV_CMD_DO_SET_CAM_TRIGG_DIST,
+            ),
+            (
+                crate::plantransfer::CMD_FENCE_RETURN_POINT,
+                MavCmd::MAV_CMD_NAV_FENCE_RETURN_POINT,
+            ),
+            (
+                crate::plantransfer::CMD_FENCE_POLYGON_INCLUSION,
+                MavCmd::MAV_CMD_NAV_FENCE_POLYGON_VERTEX_INCLUSION,
+            ),
+            (
+                crate::plantransfer::CMD_FENCE_POLYGON_EXCLUSION,
+                MavCmd::MAV_CMD_NAV_FENCE_POLYGON_VERTEX_EXCLUSION,
+            ),
         ]
         .iter()
         .for_each(|(number, named)| {
-            assert_eq!(MavCmd::from_u32(*number as u32), Some(*named), "{number} is what goes on the wire and {named:?} is what it is meant to mean");
+            assert_eq!(
+                MavCmd::from_u32(*number as u32),
+                Some(*named),
+                "{number} is what goes on the wire and {named:?} is what it is meant to mean"
+            );
         });
 
         [
@@ -661,7 +1212,13 @@ mod tests {
 
     #[test]
     fn every_message_id_the_core_asks_for_is_the_one_the_dialect_assigns() {
-        use mavlink::dialects::ardupilotmega::{AUTOPILOT_VERSION_DATA, CAMERA_CAPTURE_STATUS_DATA, CAMERA_INFORMATION_DATA, CAMERA_SETTINGS_DATA, COMPONENT_INFORMATION_DATA, COMPONENT_METADATA_DATA, GIMBAL_DEVICE_ATTITUDE_STATUS_DATA, GIMBAL_MANAGER_INFORMATION_DATA, GIMBAL_MANAGER_STATUS_DATA, STORAGE_INFORMATION_DATA, VIDEO_STREAM_INFORMATION_DATA, VIDEO_STREAM_STATUS_DATA};
+        use mavlink::dialects::ardupilotmega::{
+            AUTOPILOT_VERSION_DATA, CAMERA_CAPTURE_STATUS_DATA, CAMERA_INFORMATION_DATA,
+            CAMERA_SETTINGS_DATA, COMPONENT_INFORMATION_DATA, COMPONENT_METADATA_DATA,
+            GIMBAL_DEVICE_ATTITUDE_STATUS_DATA, GIMBAL_MANAGER_INFORMATION_DATA,
+            GIMBAL_MANAGER_STATUS_DATA, STORAGE_INFORMATION_DATA, VIDEO_STREAM_INFORMATION_DATA,
+            VIDEO_STREAM_STATUS_DATA,
+        };
 
         [
             (crate::cameraproto::MSG_CAMERA_INFORMATION, CAMERA_INFORMATION_DATA::ID, "CAMERA_INFORMATION"),
@@ -685,28 +1242,79 @@ mod tests {
 
     #[test]
     fn the_bit_and_enum_constants_agree_with_the_dialect_too() {
-        use mavlink::dialects::ardupilotmega::{GimbalDeviceCapFlags, MavAutopilot, MavMissionType, MavProtocolCapability, MavResult, MavType};
+        use mavlink::dialects::ardupilotmega::{
+            GimbalDeviceCapFlags, MavAutopilot, MavMissionType, MavProtocolCapability, MavResult,
+            MavType,
+        };
 
-        assert_eq!(crate::connect::CAP_MISSION_INT, MavProtocolCapability::MAV_PROTOCOL_CAPABILITY_MISSION_INT.bits() as u64);
-        assert_eq!(crate::connect::CAP_COMMAND_INT, MavProtocolCapability::MAV_PROTOCOL_CAPABILITY_COMMAND_INT.bits() as u64);
-        assert_eq!(crate::connect::CAP_MAVLINK2, MavProtocolCapability::MAV_PROTOCOL_CAPABILITY_MAVLINK2.bits() as u64);
-        assert_eq!(crate::connect::CAP_MISSION_FENCE, MavProtocolCapability::MAV_PROTOCOL_CAPABILITY_MISSION_FENCE.bits() as u64);
-        assert_eq!(crate::gimbal::CAP_HAS_RETRACT, GimbalDeviceCapFlags::GIMBAL_DEVICE_CAP_FLAGS_HAS_RETRACT.bits() as u32);
-        assert_eq!(crate::gimbal::CAP_HAS_YAW_LOCK, GimbalDeviceCapFlags::GIMBAL_DEVICE_CAP_FLAGS_HAS_YAW_LOCK.bits() as u32);
+        assert_eq!(
+            crate::connect::CAP_MISSION_INT,
+            MavProtocolCapability::MAV_PROTOCOL_CAPABILITY_MISSION_INT.bits() as u64
+        );
+        assert_eq!(
+            crate::connect::CAP_COMMAND_INT,
+            MavProtocolCapability::MAV_PROTOCOL_CAPABILITY_COMMAND_INT.bits() as u64
+        );
+        assert_eq!(
+            crate::connect::CAP_MAVLINK2,
+            MavProtocolCapability::MAV_PROTOCOL_CAPABILITY_MAVLINK2.bits() as u64
+        );
+        assert_eq!(
+            crate::connect::CAP_MISSION_FENCE,
+            MavProtocolCapability::MAV_PROTOCOL_CAPABILITY_MISSION_FENCE.bits() as u64
+        );
+        assert_eq!(
+            crate::gimbal::CAP_HAS_RETRACT,
+            GimbalDeviceCapFlags::GIMBAL_DEVICE_CAP_FLAGS_HAS_RETRACT.bits() as u32
+        );
+        assert_eq!(
+            crate::gimbal::CAP_HAS_YAW_LOCK,
+            GimbalDeviceCapFlags::GIMBAL_DEVICE_CAP_FLAGS_HAS_YAW_LOCK.bits() as u32
+        );
 
-        assert_eq!(crate::plantransfer::PLAN_MISSION, MavMissionType::MAV_MISSION_TYPE_MISSION as u8);
-        assert_eq!(crate::plantransfer::PLAN_FENCE, MavMissionType::MAV_MISSION_TYPE_FENCE as u8);
-        assert_eq!(crate::plantransfer::PLAN_RALLY, MavMissionType::MAV_MISSION_TYPE_RALLY as u8);
+        assert_eq!(
+            crate::plantransfer::PLAN_MISSION,
+            MavMissionType::MAV_MISSION_TYPE_MISSION as u8
+        );
+        assert_eq!(
+            crate::plantransfer::PLAN_FENCE,
+            MavMissionType::MAV_MISSION_TYPE_FENCE as u8
+        );
+        assert_eq!(
+            crate::plantransfer::PLAN_RALLY,
+            MavMissionType::MAV_MISSION_TYPE_RALLY as u8
+        );
 
-        assert_eq!(crate::mavcmd::RESULT_ACCEPTED, MavResult::MAV_RESULT_ACCEPTED as u8);
-        assert_eq!(crate::cameraproto::RESULT_TEMPORARILY_REJECTED, MavResult::MAV_RESULT_TEMPORARILY_REJECTED as u8);
-        assert_eq!(crate::cameraproto::RESULT_DENIED, MavResult::MAV_RESULT_DENIED as u8);
-        assert_eq!(crate::cameraproto::RESULT_UNSUPPORTED, MavResult::MAV_RESULT_UNSUPPORTED as u8);
+        assert_eq!(
+            crate::mavcmd::RESULT_ACCEPTED,
+            MavResult::MAV_RESULT_ACCEPTED as u8
+        );
+        assert_eq!(
+            crate::cameraproto::RESULT_TEMPORARILY_REJECTED,
+            MavResult::MAV_RESULT_TEMPORARILY_REJECTED as u8
+        );
+        assert_eq!(
+            crate::cameraproto::RESULT_DENIED,
+            MavResult::MAV_RESULT_DENIED as u8
+        );
+        assert_eq!(
+            crate::cameraproto::RESULT_UNSUPPORTED,
+            MavResult::MAV_RESULT_UNSUPPORTED as u8
+        );
 
-        assert_eq!(crate::modes::AUTOPILOT_ARDUPILOT, MavAutopilot::MAV_AUTOPILOT_ARDUPILOTMEGA as u8);
-        assert_eq!(crate::modes::AUTOPILOT_PX4, MavAutopilot::MAV_AUTOPILOT_PX4 as u8);
+        assert_eq!(
+            crate::modes::AUTOPILOT_ARDUPILOT,
+            MavAutopilot::MAV_AUTOPILOT_ARDUPILOTMEGA as u8
+        );
+        assert_eq!(
+            crate::modes::AUTOPILOT_PX4,
+            MavAutopilot::MAV_AUTOPILOT_PX4 as u8
+        );
         assert_eq!(crate::hub::TYPE_GCS, MavType::MAV_TYPE_GCS as u8);
-        assert_eq!(crate::hub::TYPE_ONBOARD_CONTROLLER, MavType::MAV_TYPE_ONBOARD_CONTROLLER as u8);
+        assert_eq!(
+            crate::hub::TYPE_ONBOARD_CONTROLLER,
+            MavType::MAV_TYPE_ONBOARD_CONTROLLER as u8
+        );
         assert_eq!(crate::hub::TYPE_GIMBAL, MavType::MAV_TYPE_GIMBAL as u8);
         assert_eq!(crate::hub::TYPE_ADSB, MavType::MAV_TYPE_ADSB as u8);
     }
@@ -714,52 +1322,102 @@ mod tests {
     #[test]
     fn a_constant_defined_in_two_modules_has_the_same_value_in_both() {
         const DELIBERATELY_PER_MODULE: &[(&str, &str)] = &[
-            ("ACK_TIMEOUT_MS", "a command ack and a mission item ack wait for different protocols"),
-            ("MAX_RETRY", "ftp and command retries are three, mission transfer allows five"),
-            ("STALE_MS", "how long a reading stays fresh is per subsystem"),
-            ("STALE_AFTER_MS", "same, and gpsrtk derives its own from its receive budget"),
-            ("CONNECT_TIMEOUT", "a tcp connect and a feed reconnect are different waits"),
-            ("DEPS", "every view declares its own; the name is a convention rather than a shared value"),
-            ("FIELDS", "same, the field list a module asks the bridge for"),
+            (
+                "ACK_TIMEOUT_MS",
+                "a command ack and a mission item ack wait for different protocols",
+            ),
+            (
+                "MAX_RETRY",
+                "ftp and command retries are three, mission transfer allows five",
+            ),
+            (
+                "STALE_MS",
+                "how long a reading stays fresh is per subsystem",
+            ),
+            (
+                "STALE_AFTER_MS",
+                "same, and gpsrtk derives its own from its receive budget",
+            ),
+            (
+                "CONNECT_TIMEOUT",
+                "a tcp connect and a feed reconnect are different waits",
+            ),
+            (
+                "DEPS",
+                "every view declares its own; the name is a convention rather than a shared value",
+            ),
+            (
+                "FIELDS",
+                "same, the field list a module asks the bridge for",
+            ),
             ("CAMERA_DEPS", "same"),
             ("BUNDLED", "each module bundles the QGC file it parses"),
-            ("UNKNOWN", "each module's own sentinel for a value it could not read"),
+            (
+                "UNKNOWN",
+                "each module's own sentinel for a value it could not read",
+            ),
         ];
 
-        let defined: Vec<(String, String, String)> = std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/src"))
-            .unwrap()
-            .filter_map(Result::ok)
-            .map(|entry| entry.path())
-            .filter(|path| path.extension().is_some_and(|e| e == "rs"))
-            .filter_map(|path| {
-                let source = std::fs::read_to_string(&path).ok()?;
-                let module = path.file_stem()?.to_string_lossy().to_string();
-                Some(source
-                    .split("#[cfg(test)]")
-                    .next()?
-                    .lines()
-                    .filter_map(|line| {
-                        let rest = line.strip_prefix("pub const ").or_else(|| line.strip_prefix("const "))?;
-                        let (name, tail) = rest.split_once(':')?;
-                        let value = tail.split_once('=')?.1.strip_suffix(';')?.trim().to_string();
-                        name.chars().all(|c| c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_').then(|| (name.to_string(), module.clone(), value))
-                    })
-                    .collect::<Vec<_>>())
-            })
-            .flatten()
-            .collect();
+        let defined: Vec<(String, String, String)> =
+            std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/src"))
+                .unwrap()
+                .filter_map(Result::ok)
+                .map(|entry| entry.path())
+                .filter(|path| path.extension().is_some_and(|e| e == "rs"))
+                .filter_map(|path| {
+                    let source = std::fs::read_to_string(&path).ok()?;
+                    let module = path.file_stem()?.to_string_lossy().to_string();
+                    Some(
+                        source
+                            .split("#[cfg(test)]")
+                            .next()?
+                            .lines()
+                            .filter_map(|line| {
+                                let rest = line
+                                    .strip_prefix("pub const ")
+                                    .or_else(|| line.strip_prefix("const "))?;
+                                let (name, tail) = rest.split_once(':')?;
+                                let value = tail
+                                    .split_once('=')?
+                                    .1
+                                    .strip_suffix(';')?
+                                    .trim()
+                                    .to_string();
+                                name.chars()
+                                    .all(|c| {
+                                        c.is_ascii_uppercase() || c.is_ascii_digit() || c == '_'
+                                    })
+                                    .then(|| (name.to_string(), module.clone(), value))
+                            })
+                            .collect::<Vec<_>>(),
+                    )
+                })
+                .flatten()
+                .collect();
 
-        assert!(defined.len() > 200, "only {} constants parsed, so a clean result would mean nothing", defined.len());
+        assert!(
+            defined.len() > 200,
+            "only {} constants parsed, so a clean result would mean nothing",
+            defined.len()
+        );
 
         let disagreeing: Vec<String> = defined
             .iter()
-            .filter(|(name, _, _)| !DELIBERATELY_PER_MODULE.iter().any(|(excused, _)| excused == name))
-            .filter_map(|(name, module, value)| {
-                let others: Vec<&(String, String, String)> = defined.iter().filter(|(n, m, _)| n == name && m != module).collect();
-                others
+            .filter(|(name, _, _)| {
+                !DELIBERATELY_PER_MODULE
                     .iter()
-                    .find(|(_, _, other)| other != value)
-                    .map(|(_, other_module, other)| format!("{name} is {value} in {module} and {other} in {other_module}"))
+                    .any(|(excused, _)| excused == name)
+            })
+            .filter_map(|(name, module, value)| {
+                let others: Vec<&(String, String, String)> = defined
+                    .iter()
+                    .filter(|(n, m, _)| n == name && m != module)
+                    .collect();
+                others.iter().find(|(_, _, other)| other != value).map(
+                    |(_, other_module, other)| {
+                        format!("{name} is {value} in {module} and {other} in {other_module}")
+                    },
+                )
             })
             .collect();
 
@@ -792,9 +1450,18 @@ mod tests {
             assert_eq!(*ours, *named as u8, "this decides how a camera definition parameter's bytes are read, so a wrong one misreads the setting rather than refusing it");
         });
 
-        assert_eq!(crate::debugapi::AUTOPILOT_ARDUPILOTMEGA, MavAutopilot::MAV_AUTOPILOT_ARDUPILOTMEGA as i64, "same value as modes::AUTOPILOT_ARDUPILOT under a different name, so the duplicate-name check cannot see it");
-        assert_eq!(crate::debugapi::AUTOPILOT_PX4, MavAutopilot::MAV_AUTOPILOT_PX4 as i64);
-        assert_eq!(crate::debugapi::VEHICLE_TYPE_QUADROTOR, MavType::MAV_TYPE_QUADROTOR as i64);
+        assert_eq!(
+            crate::debugapi::AUTOPILOT_ARDUPILOTMEGA,
+            MavAutopilot::MAV_AUTOPILOT_ARDUPILOTMEGA as i64,
+            "same value as modes::AUTOPILOT_ARDUPILOT under a different name, so the duplicate-name check cannot see it"
+        );
+        assert_eq!(
+            crate::debugapi::AUTOPILOT_PX4,
+            MavAutopilot::MAV_AUTOPILOT_PX4 as i64
+        );
+        assert_eq!(
+            crate::debugapi::VEHICLE_TYPE_QUADROTOR,
+            MavType::MAV_TYPE_QUADROTOR as i64
+        );
     }
-
 }

@@ -151,14 +151,26 @@ pub fn versioned(family: Option<&str>, version: Option<(u8, u8)>, name: &str) ->
     if let Some(literal) = name.strip_prefix(NO_REMAP) {
         return literal.to_string();
     }
-    let (Some(family), Some((major, minor))) = (family, version) else { return name.to_string() };
-    let Some(highest) = HIGHEST_MINOR.iter().find(|(m, _)| *m == major).map(|(_, highest)| *highest) else { return name.to_string() };
-    (minor.saturating_add(1)..=highest).rev().fold(name.to_string(), |current, step| {
-        REMAPS
-            .iter()
-            .find(|(f, ma, mi, from, _)| *f == family && *ma == major && *mi == step && *from == current)
-            .map_or(current, |(.., to)| (*to).to_string())
-    })
+    let (Some(family), Some((major, minor))) = (family, version) else {
+        return name.to_string();
+    };
+    let Some(highest) = HIGHEST_MINOR
+        .iter()
+        .find(|(m, _)| *m == major)
+        .map(|(_, highest)| *highest)
+    else {
+        return name.to_string();
+    };
+    (minor.saturating_add(1)..=highest)
+        .rev()
+        .fold(name.to_string(), |current, step| {
+            REMAPS
+                .iter()
+                .find(|(f, ma, mi, from, _)| {
+                    *f == family && *ma == major && *mi == step && *from == current
+                })
+                .map_or(current, |(.., to)| (*to).to_string())
+        })
 }
 
 #[cfg(test)]
@@ -167,19 +179,57 @@ mod tests {
 
     #[test]
     fn a_new_parameter_name_reads_the_name_older_firmware_uses() {
-        assert_eq!(versioned(Some("Copter"), Some((4, 5)), "PSC_D_ACC_P"), "PSC_ACCZ_P", "4.7 renamed it, so a 4.5 vehicle answers to the old name");
-        assert_eq!(versioned(Some("Copter"), Some((4, 7)), "PSC_D_ACC_P"), "PSC_D_ACC_P", "the vehicle already uses the new name");
-        assert_eq!(versioned(Some("Copter"), Some((3, 6)), "PSC_D_ACC_P"), "PSC_D_ACC_P", "no table for another major version");
-        assert_eq!(versioned(Some("Copter"), None, "PSC_D_ACC_P"), "PSC_D_ACC_P", "an unknown version is left alone, as _remapParamNameToVersion does");
-        assert_eq!(versioned(None, Some((4, 5)), "PSC_D_ACC_P"), "PSC_D_ACC_P", "PX4 has no remap table");
-        assert_eq!(versioned(Some("Copter"), Some((4, 5)), "noremap.PSC_D_ACC_P"), "PSC_D_ACC_P");
-        assert_eq!(versioned(Some("Copter"), Some((3, 9)), "TUNE_MIN"), "TUNE_MIN");
+        assert_eq!(
+            versioned(Some("Copter"), Some((4, 5)), "PSC_D_ACC_P"),
+            "PSC_ACCZ_P",
+            "4.7 renamed it, so a 4.5 vehicle answers to the old name"
+        );
+        assert_eq!(
+            versioned(Some("Copter"), Some((4, 7)), "PSC_D_ACC_P"),
+            "PSC_D_ACC_P",
+            "the vehicle already uses the new name"
+        );
+        assert_eq!(
+            versioned(Some("Copter"), Some((3, 6)), "PSC_D_ACC_P"),
+            "PSC_D_ACC_P",
+            "no table for another major version"
+        );
+        assert_eq!(
+            versioned(Some("Copter"), None, "PSC_D_ACC_P"),
+            "PSC_D_ACC_P",
+            "an unknown version is left alone, as _remapParamNameToVersion does"
+        );
+        assert_eq!(
+            versioned(None, Some((4, 5)), "PSC_D_ACC_P"),
+            "PSC_D_ACC_P",
+            "PX4 has no remap table"
+        );
+        assert_eq!(
+            versioned(Some("Copter"), Some((4, 5)), "noremap.PSC_D_ACC_P"),
+            "PSC_D_ACC_P"
+        );
+        assert_eq!(
+            versioned(Some("Copter"), Some((3, 9)), "TUNE_MIN"),
+            "TUNE_MIN"
+        );
     }
 
     #[test]
     fn every_minor_above_the_vehicle_applies() {
-        assert_eq!(versioned(Some("Plane"), Some((4, 4)), "AIRSPEED_MIN"), "ARSPD_FBW_MIN", "a 4.5 rename reaches a 4.4 plane");
-        assert_eq!(versioned(Some("Plane"), Some((4, 5)), "AIRSPEED_MIN"), "AIRSPEED_MIN", "a 4.5 plane already has it");
-        assert_eq!(versioned(Some("Copter"), Some((4, 0)), "TUNE_MIN"), "TUNE_MIN", "the vehicle's own minor is never walked, so the 4.0 table cannot apply to any 4.x");
+        assert_eq!(
+            versioned(Some("Plane"), Some((4, 4)), "AIRSPEED_MIN"),
+            "ARSPD_FBW_MIN",
+            "a 4.5 rename reaches a 4.4 plane"
+        );
+        assert_eq!(
+            versioned(Some("Plane"), Some((4, 5)), "AIRSPEED_MIN"),
+            "AIRSPEED_MIN",
+            "a 4.5 plane already has it"
+        );
+        assert_eq!(
+            versioned(Some("Copter"), Some((4, 0)), "TUNE_MIN"),
+            "TUNE_MIN",
+            "the vehicle's own minor is never walked, so the 4.0 table cannot apply to any 4.x"
+        );
     }
 }

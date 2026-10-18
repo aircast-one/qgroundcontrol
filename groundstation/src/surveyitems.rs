@@ -7,7 +7,8 @@ pub const CMD_DO_SET_CAM_TRIGG_DIST: u16 = 206;
 pub const CMD_IMAGE_START_CAPTURE: u16 = 2000;
 pub const HOVER_AND_CAPTURE_DELAY_SECONDS: f64 = 4.0;
 pub const CMD_CONDITION_GATE: u16 = 4501;
-pub static CONDITION_GATE_SUPPORTED: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub static CONDITION_GATE_SUPPORTED: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(false);
 pub const FRAME_GLOBAL: u8 = 0;
 pub const FRAME_MISSION: u8 = 2;
 pub const FRAME_GLOBAL_RELATIVE_ALT: u8 = 3;
@@ -39,24 +40,68 @@ pub fn frame_for(altitude_mode: i64) -> u8 {
 }
 
 fn waypoint(at: Point, altitude: f64, frame: u8, hold: f64) -> Item {
-    Item { command: CMD_NAV_WAYPOINT, frame, params: [Some(hold), Some(0.0), Some(0.0), None, Some(at.0), Some(at.1), Some(altitude)] }
+    Item {
+        command: CMD_NAV_WAYPOINT,
+        frame,
+        params: [
+            Some(hold),
+            Some(0.0),
+            Some(0.0),
+            None,
+            Some(at.0),
+            Some(at.1),
+            Some(altitude),
+        ],
+    }
 }
 
 fn trigger(distance: f64) -> Item {
-    Item { command: CMD_DO_SET_CAM_TRIGG_DIST, frame: FRAME_MISSION, params: [Some(distance), Some(0.0), Some(1.0), Some(0.0), Some(0.0), Some(0.0), Some(0.0)] }
+    Item {
+        command: CMD_DO_SET_CAM_TRIGG_DIST,
+        frame: FRAME_MISSION,
+        params: [
+            Some(distance),
+            Some(0.0),
+            Some(1.0),
+            Some(0.0),
+            Some(0.0),
+            Some(0.0),
+            Some(0.0),
+        ],
+    }
 }
 
 pub fn items(transects: &[Vec<Coord>], plan: &Plan) -> Vec<Item> {
-    let flight: Vec<(Coord, f64)> = transects.iter().flatten().map(|coord| (*coord, plan.altitude)).collect();
+    let flight: Vec<(Coord, f64)> = transects
+        .iter()
+        .flatten()
+        .map(|coord| (*coord, plan.altitude))
+        .collect();
     flown(&flight, plan)
 }
 
 fn gate(at: Point, altitude: f64, frame: u8) -> Item {
-    Item { command: CMD_CONDITION_GATE, frame, params: [Some(0.0), Some(1.0), Some(0.0), Some(0.0), Some(at.0), Some(at.1), Some(altitude)] }
+    Item {
+        command: CMD_CONDITION_GATE,
+        frame,
+        params: [
+            Some(0.0),
+            Some(1.0),
+            Some(0.0),
+            Some(0.0),
+            Some(at.0),
+            Some(at.1),
+            Some(altitude),
+        ],
+    }
 }
 
 fn single_photo() -> Item {
-    Item { command: CMD_IMAGE_START_CAPTURE, frame: FRAME_MISSION, params: [Some(0.0), Some(0.0), Some(1.0), Some(0.0), None, None, None] }
+    Item {
+        command: CMD_IMAGE_START_CAPTURE,
+        frame: FRAME_MISSION,
+        params: [Some(0.0), Some(0.0), Some(1.0), Some(0.0), None, None, None],
+    }
 }
 
 pub fn flown(flight: &[(Coord, f64)], plan: &Plan) -> Vec<Item> {
@@ -65,22 +110,40 @@ pub fn flown(flight: &[(Coord, f64)], plan: &Plan) -> Vec<Item> {
     let hover = triggering && plan.hover_and_capture;
     let first_and_last = !plan.hover_and_capture && plan.images_in_turnaround && triggering;
     let use_gate = plan.condition_gate_supported && triggering && !plan.hover_and_capture;
-    let has_turnarounds = flight.iter().any(|(coord, _)| coord.kind == Kind::Turnaround);
+    let has_turnarounds = flight
+        .iter()
+        .any(|(coord, _)| coord.kind == Kind::Turnaround);
     let last = flight.len().saturating_sub(1);
     flight
         .iter()
         .enumerate()
         .flat_map(|(index, (coord, altitude))| {
             let pass = |hold: f64| vec![waypoint(coord.at, *altitude, frame, hold)];
-            let update = |distance: f64| vec![if use_gate { gate(coord.at, *altitude, frame) } else { waypoint(coord.at, *altitude, frame, 0.0) }, trigger(distance)];
-            let captured = || vec![waypoint(coord.at, *altitude, frame, HOVER_AND_CAPTURE_DELAY_SECONDS), single_photo()];
+            let update = |distance: f64| {
+                vec![
+                    if use_gate {
+                        gate(coord.at, *altitude, frame)
+                    } else {
+                        waypoint(coord.at, *altitude, frame, 0.0)
+                    },
+                    trigger(distance),
+                ]
+            };
+            let captured = || {
+                vec![
+                    waypoint(coord.at, *altitude, frame, HOVER_AND_CAPTURE_DELAY_SECONDS),
+                    single_photo(),
+                ]
+            };
             match coord.kind {
                 Kind::Turnaround if first_and_last && index == 0 => update(plan.trigger_distance),
                 Kind::Turnaround if first_and_last && index == last => update(0.0),
                 Kind::InteriorHoverTrigger => captured(),
                 Kind::SurveyEntry | Kind::SurveyExit if hover => captured(),
                 Kind::SurveyEntry if triggering => update(plan.trigger_distance),
-                Kind::SurveyExit if first_and_last && !has_turnarounds && index == last => update(0.0),
+                Kind::SurveyExit if first_and_last && !has_turnarounds && index == last => {
+                    update(0.0)
+                }
                 Kind::SurveyExit if triggering && !plan.images_in_turnaround => update(0.0),
                 _ => pass(0.0),
             }
@@ -89,7 +152,15 @@ pub fn flown(flight: &[(Coord, f64)], plan: &Plan) -> Vec<Item> {
 }
 
 pub fn spelled(item: &Item) -> String {
-    let params: Vec<String> = item.params.iter().map(|value| value.map(|v| format!("{v}")).unwrap_or_else(|| "null".to_string())).collect();
+    let params: Vec<String> = item
+        .params
+        .iter()
+        .map(|value| {
+            value
+                .map(|v| format!("{v}"))
+                .unwrap_or_else(|| "null".to_string())
+        })
+        .collect();
     format!("{} {} [{}]", item.command, item.frame, params.join(","))
 }
 
@@ -99,7 +170,8 @@ mod tests {
     use serde_json::Value;
 
     fn oracle() -> Value {
-        let text = std::fs::read_to_string("../test/Bridge/fixtures/survey-transects.json").expect("the oracle is recorded by QGCCoreCTest");
+        let text = std::fs::read_to_string("../test/Bridge/fixtures/survey-transects.json")
+            .expect("the oracle is recorded by QGCCoreCTest");
         serde_json::from_str(&text).expect("the oracle is JSON")
     }
 
@@ -111,7 +183,17 @@ mod tests {
             .iter()
             .filter(|(_, case)| case["kind"] == "items")
             .map(|(name, case)| {
-                let polygon: Vec<Point> = case["polygon"].as_array().unwrap().iter().map(|v| (v["latitude"].as_f64().unwrap(), v["longitude"].as_f64().unwrap())).collect();
+                let polygon: Vec<Point> = case["polygon"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|v| {
+                        (
+                            v["latitude"].as_f64().unwrap(),
+                            v["longitude"].as_f64().unwrap(),
+                        )
+                    })
+                    .collect();
                 let grid = crate::surveygrid::Params {
                     grid_angle: case["gridAngle"].as_f64().unwrap(),
                     grid_spacing: case["gridSpacing"].as_f64().unwrap(),
@@ -121,46 +203,122 @@ mod tests {
                     entry: crate::altitudemodes::MIXED,
                 };
                 let transects = crate::surveygrid::typed_transects(&polygon, &grid);
-                let plan = Plan { altitude: case["distanceToSurface"].as_f64().unwrap(), trigger_distance: 40.0, altitude_mode: crate::altitudemodes::RELATIVE, images_in_turnaround: true, hover_and_capture: false, condition_gate_supported: false };
+                let plan = Plan {
+                    altitude: case["distanceToSurface"].as_f64().unwrap(),
+                    trigger_distance: 40.0,
+                    altitude_mode: crate::altitudemodes::RELATIVE,
+                    images_in_turnaround: true,
+                    hover_and_capture: false,
+                    condition_gate_supported: false,
+                };
                 let ours: Vec<String> = items(&transects, &plan).iter().map(spelled).collect();
-                let expected: Vec<String> = case["items"].as_array().unwrap().iter().map(|v| v.as_str().unwrap().to_string()).collect();
-                let matched = ours.len() == expected.len() && ours.iter().zip(expected.iter()).all(|(ours, theirs)| same_item(ours, theirs));
-                (name.clone(), matched, format!("{name}\n  qt:   {}\n  rust: {}", expected.join(" | "), ours.join(" | ")))
+                let expected: Vec<String> = case["items"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|v| v.as_str().unwrap().to_string())
+                    .collect();
+                let matched = ours.len() == expected.len()
+                    && ours
+                        .iter()
+                        .zip(expected.iter())
+                        .all(|(ours, theirs)| same_item(ours, theirs));
+                (
+                    name.clone(),
+                    matched,
+                    format!(
+                        "{name}\n  qt:   {}\n  rust: {}",
+                        expected.join(" | "),
+                        ours.join(" | ")
+                    ),
+                )
             })
             .collect();
-        assert_eq!(checked.len(), 3, "every recorded plan is checked, the turnaround one included");
-        let wrong: Vec<&str> = checked.iter().filter(|(_, matched, _)| !matched).map(|(_, _, report)| report.as_str()).collect();
-        assert!(wrong.is_empty(), "{} of {} plans differ from the Qt builder:\n{}", wrong.len(), checked.len(), wrong.join("\n"));
+        assert_eq!(
+            checked.len(),
+            3,
+            "every recorded plan is checked, the turnaround one included"
+        );
+        let wrong: Vec<&str> = checked
+            .iter()
+            .filter(|(_, matched, _)| !matched)
+            .map(|(_, _, report)| report.as_str())
+            .collect();
+        assert!(
+            wrong.is_empty(),
+            "{} of {} plans differ from the Qt builder:\n{}",
+            wrong.len(),
+            checked.len(),
+            wrong.join("\n")
+        );
     }
 
     #[test]
     fn a_terrain_path_flies_each_point_at_its_own_amsl_altitude() {
         let flight = [
-            (Coord { at: (47.0, 8.0), kind: Kind::SurveyEntry }, 150.0),
-            (Coord { at: (47.0, 8.001), kind: Kind::InteriorTerrainAdded }, 162.0),
-            (Coord { at: (47.0, 8.002), kind: Kind::SurveyExit }, 170.0),
+            (
+                Coord {
+                    at: (47.0, 8.0),
+                    kind: Kind::SurveyEntry,
+                },
+                150.0,
+            ),
+            (
+                Coord {
+                    at: (47.0, 8.001),
+                    kind: Kind::InteriorTerrainAdded,
+                },
+                162.0,
+            ),
+            (
+                Coord {
+                    at: (47.0, 8.002),
+                    kind: Kind::SurveyExit,
+                },
+                170.0,
+            ),
         ];
-        let plan = Plan { altitude: 50.0, trigger_distance: 0.0, altitude_mode: crate::altitudemodes::CALC_ABOVE_TERRAIN, images_in_turnaround: false, hover_and_capture: false, condition_gate_supported: false };
+        let plan = Plan {
+            altitude: 50.0,
+            trigger_distance: 0.0,
+            altitude_mode: crate::altitudemodes::CALC_ABOVE_TERRAIN,
+            images_in_turnaround: false,
+            hover_and_capture: false,
+            condition_gate_supported: false,
+        };
         let built = flown(&flight, &plan);
         assert!(built.iter().all(|i| i.frame == FRAME_GLOBAL));
-        assert_eq!(built.iter().map(|i| i.params[6].unwrap()).collect::<Vec<_>>(), [150.0, 162.0, 170.0]);
+        assert_eq!(
+            built
+                .iter()
+                .map(|i| i.params[6].unwrap())
+                .collect::<Vec<_>>(),
+            [150.0, 162.0, 170.0]
+        );
     }
 
     fn same_item(ours: &str, theirs: &str) -> bool {
         let split = |text: &str| {
             let (head, rest) = text.split_once(" [").unwrap();
-            let numbers: Vec<Option<f64>> = rest.trim_end_matches(']').split(',').map(|v| v.trim().parse::<f64>().ok()).collect();
+            let numbers: Vec<Option<f64>> = rest
+                .trim_end_matches(']')
+                .split(',')
+                .map(|v| v.trim().parse::<f64>().ok())
+                .collect();
             (head.to_string(), numbers)
         };
         let (ours_head, ours_params) = split(ours);
         let (theirs_head, theirs_params) = split(theirs);
         ours_head == theirs_head
             && ours_params.len() == theirs_params.len()
-            && ours_params.iter().zip(theirs_params.iter()).all(|(a, b)| match (a, b) {
-                (Some(a), Some(b)) => (a - b).abs() < 1e-7,
-                (None, None) => true,
-                _ => false,
-            })
+            && ours_params
+                .iter()
+                .zip(theirs_params.iter())
+                .all(|(a, b)| match (a, b) {
+                    (Some(a), Some(b)) => (a - b).abs() < 1e-7,
+                    (None, None) => true,
+                    _ => false,
+                })
     }
 
     #[test]
@@ -171,7 +329,17 @@ mod tests {
             .iter()
             .filter(|(_, case)| case["kind"] == "corridorItems")
             .map(|(name, case)| {
-                let polyline: Vec<Point> = case["polyline"].as_array().unwrap().iter().map(|v| (v["latitude"].as_f64().unwrap(), v["longitude"].as_f64().unwrap())).collect();
+                let polyline: Vec<Point> = case["polyline"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|v| {
+                        (
+                            v["latitude"].as_f64().unwrap(),
+                            v["longitude"].as_f64().unwrap(),
+                        )
+                    })
+                    .collect();
                 let corridor = crate::corridorscan::Params {
                     width: case["corridorWidth"].as_f64().unwrap(),
                     spacing: case["gridSpacing"].as_f64().unwrap(),
@@ -188,60 +356,187 @@ mod tests {
                     condition_gate_supported: false,
                 };
                 let ours: Vec<String> = items(&transects, &plan).iter().map(spelled).collect();
-                let expected: Vec<String> = case["items"].as_array().unwrap().iter().map(|v| v.as_str().unwrap().to_string()).collect();
-                let matched = ours.len() == expected.len() && ours.iter().zip(expected.iter()).all(|(ours, theirs)| same_item(ours, theirs));
-                (name.clone(), matched, format!("{name}\n  qt:   {}\n  rust: {}", expected.join(" | "), ours.join(" | ")))
+                let expected: Vec<String> = case["items"]
+                    .as_array()
+                    .unwrap()
+                    .iter()
+                    .map(|v| v.as_str().unwrap().to_string())
+                    .collect();
+                let matched = ours.len() == expected.len()
+                    && ours
+                        .iter()
+                        .zip(expected.iter())
+                        .all(|(ours, theirs)| same_item(ours, theirs));
+                (
+                    name.clone(),
+                    matched,
+                    format!(
+                        "{name}\n  qt:   {}\n  rust: {}",
+                        expected.join(" | "),
+                        ours.join(" | ")
+                    ),
+                )
             })
             .collect();
         assert_eq!(checked.len(), 3, "every recorded corridor plan is checked");
-        let wrong: Vec<&str> = checked.iter().filter(|(_, matched, _)| !matched).map(|(_, _, report)| report.as_str()).collect();
-        assert!(wrong.is_empty(), "{} of {} corridor plans differ from the Qt builder:\n{}", wrong.len(), checked.len(), wrong.join("\n"));
+        let wrong: Vec<&str> = checked
+            .iter()
+            .filter(|(_, matched, _)| !matched)
+            .map(|(_, _, report)| report.as_str())
+            .collect();
+        assert!(
+            wrong.is_empty(),
+            "{} of {} corridor plans differ from the Qt builder:\n{}",
+            wrong.len(),
+            checked.len(),
+            wrong.join("\n")
+        );
     }
 
     #[test]
     fn the_camera_is_switched_on_at_each_entry_and_off_once_at_the_end() {
-        let two = vec![crate::surveygrid::typed(vec![(47.0, 8.0), (47.1, 8.0)], 0.0), crate::surveygrid::typed(vec![(47.1, 8.1), (47.0, 8.1)], 0.0)];
-        let built = items(&two, &Plan { altitude: 60.0, trigger_distance: 40.0, altitude_mode: crate::altitudemodes::RELATIVE, images_in_turnaround: true, hover_and_capture: false, condition_gate_supported: false });
+        let two = vec![
+            crate::surveygrid::typed(vec![(47.0, 8.0), (47.1, 8.0)], 0.0),
+            crate::surveygrid::typed(vec![(47.1, 8.1), (47.0, 8.1)], 0.0),
+        ];
+        let built = items(
+            &two,
+            &Plan {
+                altitude: 60.0,
+                trigger_distance: 40.0,
+                altitude_mode: crate::altitudemodes::RELATIVE,
+                images_in_turnaround: true,
+                hover_and_capture: false,
+                condition_gate_supported: false,
+            },
+        );
         let commands: Vec<u16> = built.iter().map(|item| item.command).collect();
-        assert_eq!(commands, [16, 206, 16, 16, 206, 16, 206], "a trigger follows each entry, and one last trigger turns the camera off");
-        assert_eq!(built.last().unwrap().params[0], Some(0.0), "the closing trigger is a distance of zero, which is what stops the camera");
+        assert_eq!(
+            commands,
+            [16, 206, 16, 16, 206, 16, 206],
+            "a trigger follows each entry, and one last trigger turns the camera off"
+        );
+        assert_eq!(
+            built.last().unwrap().params[0],
+            Some(0.0),
+            "the closing trigger is a distance of zero, which is what stops the camera"
+        );
         assert_eq!(built[1].params[0], Some(40.0));
     }
 
     #[test]
     fn without_images_in_turnaround_each_exit_stops_the_camera_and_hover_captures_at_each_point() {
-        let two = vec![crate::surveygrid::typed(vec![(47.0, 8.0), (47.1, 8.0)], 0.0), crate::surveygrid::typed(vec![(47.1, 8.1), (47.0, 8.1)], 0.0)];
-        let base = Plan { altitude: 60.0, trigger_distance: 40.0, altitude_mode: crate::altitudemodes::RELATIVE, images_in_turnaround: false, hover_and_capture: false, condition_gate_supported: false };
-        let commands = |plan: &Plan| items(&two, plan).iter().map(|item| item.command).collect::<Vec<u16>>();
-        assert_eq!(commands(&base), [16, 206, 16, 206, 16, 206, 16, 206], "TransectStyleComplexItem stops the camera at every survey exit when it is not left on through turnarounds");
-        let hovering = items(&two, &Plan { hover_and_capture: true, ..base });
-        assert_eq!(hovering.iter().map(|item| item.command).collect::<Vec<_>>(), [16, 2000, 16, 2000, 16, 2000, 16, 2000], "hover and capture holds and takes one photo instead of distance triggering");
+        let two = vec![
+            crate::surveygrid::typed(vec![(47.0, 8.0), (47.1, 8.0)], 0.0),
+            crate::surveygrid::typed(vec![(47.1, 8.1), (47.0, 8.1)], 0.0),
+        ];
+        let base = Plan {
+            altitude: 60.0,
+            trigger_distance: 40.0,
+            altitude_mode: crate::altitudemodes::RELATIVE,
+            images_in_turnaround: false,
+            hover_and_capture: false,
+            condition_gate_supported: false,
+        };
+        let commands = |plan: &Plan| {
+            items(&two, plan)
+                .iter()
+                .map(|item| item.command)
+                .collect::<Vec<u16>>()
+        };
+        assert_eq!(
+            commands(&base),
+            [16, 206, 16, 206, 16, 206, 16, 206],
+            "TransectStyleComplexItem stops the camera at every survey exit when it is not left on through turnarounds"
+        );
+        let hovering = items(
+            &two,
+            &Plan {
+                hover_and_capture: true,
+                ..base
+            },
+        );
+        assert_eq!(
+            hovering.iter().map(|item| item.command).collect::<Vec<_>>(),
+            [16, 2000, 16, 2000, 16, 2000, 16, 2000],
+            "hover and capture holds and takes one photo instead of distance triggering"
+        );
         assert_eq!(hovering[0].params[0], Some(HOVER_AND_CAPTURE_DELAY_SECONDS));
         assert_eq!(hovering[1].params[2], Some(1.0));
     }
 
     #[test]
     fn a_px4_vehicle_with_condition_gates_switches_the_camera_at_gates() {
-        let one = vec![crate::surveygrid::typed(vec![(47.0, 8.0), (47.1, 8.0)], 0.0)];
-        let gated = items(&one, &Plan { altitude: 60.0, trigger_distance: 40.0, altitude_mode: crate::altitudemodes::RELATIVE, images_in_turnaround: false, hover_and_capture: false, condition_gate_supported: true });
-        assert_eq!(gated.iter().map(|item| item.command).collect::<Vec<_>>(), [CMD_CONDITION_GATE, 206, CMD_CONDITION_GATE, 206], "_appendCameraTriggerDistanceUpdatePoint writes a CONDITION_GATE instead of the waypoint");
-        assert_eq!((gated[0].params[1], gated[0].params[6]), (Some(1.0), Some(60.0)));
+        let one = vec![crate::surveygrid::typed(
+            vec![(47.0, 8.0), (47.1, 8.0)],
+            0.0,
+        )];
+        let gated = items(
+            &one,
+            &Plan {
+                altitude: 60.0,
+                trigger_distance: 40.0,
+                altitude_mode: crate::altitudemodes::RELATIVE,
+                images_in_turnaround: false,
+                hover_and_capture: false,
+                condition_gate_supported: true,
+            },
+        );
+        assert_eq!(
+            gated.iter().map(|item| item.command).collect::<Vec<_>>(),
+            [CMD_CONDITION_GATE, 206, CMD_CONDITION_GATE, 206],
+            "_appendCameraTriggerDistanceUpdatePoint writes a CONDITION_GATE instead of the waypoint"
+        );
+        assert_eq!(
+            (gated[0].params[1], gated[0].params[6]),
+            (Some(1.0), Some(60.0))
+        );
     }
 
     #[test]
     fn a_survey_with_no_camera_is_waypoints_alone() {
-        let one = vec![crate::surveygrid::typed(vec![(47.0, 8.0), (47.1, 8.0)], 0.0)];
-        let built = items(&one, &Plan { altitude: 60.0, trigger_distance: 0.0, altitude_mode: crate::altitudemodes::RELATIVE, images_in_turnaround: true, hover_and_capture: false, condition_gate_supported: false });
-        assert!(built.iter().all(|item| item.command == CMD_NAV_WAYPOINT), "no trigger distance means no camera commands at all");
+        let one = vec![crate::surveygrid::typed(
+            vec![(47.0, 8.0), (47.1, 8.0)],
+            0.0,
+        )];
+        let built = items(
+            &one,
+            &Plan {
+                altitude: 60.0,
+                trigger_distance: 0.0,
+                altitude_mode: crate::altitudemodes::RELATIVE,
+                images_in_turnaround: true,
+                hover_and_capture: false,
+                condition_gate_supported: false,
+            },
+        );
+        assert!(
+            built.iter().all(|item| item.command == CMD_NAV_WAYPOINT),
+            "no trigger distance means no camera commands at all"
+        );
         assert_eq!(built.len(), 2);
     }
 
     #[test]
     fn the_frame_follows_the_altitude_mode() {
-        assert_eq!(frame_for(crate::altitudemodes::RELATIVE), FRAME_GLOBAL_RELATIVE_ALT);
+        assert_eq!(
+            frame_for(crate::altitudemodes::RELATIVE),
+            FRAME_GLOBAL_RELATIVE_ALT
+        );
         assert_eq!(frame_for(crate::altitudemodes::ABSOLUTE), FRAME_GLOBAL);
-        assert_eq!(frame_for(crate::altitudemodes::CALC_ABOVE_TERRAIN), FRAME_GLOBAL, "terrain is converted to a height above sea level before upload, so it flies as an absolute frame");
-        assert_eq!(frame_for(crate::altitudemodes::TERRAIN_FRAME), FRAME_GLOBAL_TERRAIN_ALT);
-        assert_eq!(frame_for(crate::altitudemodes::MIXED), FRAME_GLOBAL_RELATIVE_ALT, "a mode that cannot be flown falls back to the relative frame, as the Qt builder does after warning");
+        assert_eq!(
+            frame_for(crate::altitudemodes::CALC_ABOVE_TERRAIN),
+            FRAME_GLOBAL,
+            "terrain is converted to a height above sea level before upload, so it flies as an absolute frame"
+        );
+        assert_eq!(
+            frame_for(crate::altitudemodes::TERRAIN_FRAME),
+            FRAME_GLOBAL_TERRAIN_ALT
+        );
+        assert_eq!(
+            frame_for(crate::altitudemodes::MIXED),
+            FRAME_GLOBAL_RELATIVE_ALT,
+            "a mode that cannot be flown falls back to the relative frame, as the Qt builder does after warning"
+        );
     }
 }

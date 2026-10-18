@@ -3,7 +3,12 @@ use serde_json::{Value, json};
 use crate::label::capitalised;
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.id", "vehicle.batteries.count", crate::gimbal::GIMBAL_CHANGED];
+pub const DEPS: &[&str] = &[
+    "vehicles.activeVehicleAvailable",
+    "vehicle.id",
+    "vehicle.batteries.count",
+    crate::gimbal::GIMBAL_CHANGED,
+];
 
 fn facts_of(group: &Value, prefix: &str) -> Vec<Value> {
     group
@@ -14,8 +19,15 @@ fn facts_of(group: &Value, prefix: &str) -> Vec<Value> {
                 .iter()
                 .filter_map(|fact| {
                     let property = fact.get("property").and_then(Value::as_str)?;
-                    let named = fact.get("name").and_then(Value::as_str).filter(|n| !n.is_empty()).unwrap_or(property);
-                    let described = fact.get("shortDescription").and_then(Value::as_str).filter(|d| !d.is_empty());
+                    let named = fact
+                        .get("name")
+                        .and_then(Value::as_str)
+                        .filter(|n| !n.is_empty())
+                        .unwrap_or(property);
+                    let described = fact
+                        .get("shortDescription")
+                        .and_then(Value::as_str)
+                        .filter(|d| !d.is_empty());
                     Some(json!({
                         "name": property,
                         "selection": format!("{prefix}{property}"),
@@ -35,13 +47,30 @@ fn title(group: &str) -> String {
 }
 
 fn group_facts(backend: &dyn Backend, group: &str) -> Vec<Value> {
-    facts_of(&backend.value(&format!("vehicle.{group}")), &format!("{group}/"))
+    facts_of(
+        &backend.value(&format!("vehicle.{group}")),
+        &format!("{group}/"),
+    )
 }
 
 fn catalogued() -> Option<(Vec<Value>, Value)> {
-    let (sub, fact_groups) = crate::vehiclefacade::switched_on().then(|| crate::hub::lock().active().map(|v| (v.is_ardusub(), v.gimbals.fact_groups()))).flatten()?;
+    let (sub, fact_groups) = crate::vehiclefacade::switched_on()
+        .then(|| {
+            crate::hub::lock()
+                .active()
+                .map(|v| (v.is_ardusub(), v.gimbals.fact_groups()))
+        })
+        .flatten()?;
     let (groups, vehicle) = crate::vehiclefact::instrument_catalogue(sub);
-    let gimbals: Vec<(String, Value)> = fact_groups.into_iter().map(|(pair, _)| (crate::vehiclefact::gimbal_group_name(pair), crate::vehiclefact::gimbal_listing())).collect();
+    let gimbals: Vec<(String, Value)> = fact_groups
+        .into_iter()
+        .map(|(pair, _)| {
+            (
+                crate::vehiclefact::gimbal_group_name(pair),
+                crate::vehiclefact::gimbal_listing(),
+            )
+        })
+        .collect();
     let listed = groups
         .into_iter()
         .map(|(group, listing)| (group.to_string(), listing))
@@ -50,7 +79,8 @@ fn catalogued() -> Option<(Vec<Value>, Value)> {
         .filter(|(group, _)| group != "orbitMapCircle")
         .filter_map(|(group, listing)| {
             let facts = facts_of(&listing, &format!("{group}/"));
-            (!facts.is_empty()).then(|| json!({ "group": group, "title": title(&group), "facts": facts }))
+            (!facts.is_empty())
+                .then(|| json!({ "group": group, "title": title(&group), "facts": facts }))
         })
         .collect();
     Some((listed, vehicle))
@@ -72,7 +102,8 @@ pub fn instrument_groups_view(backend: &dyn Backend, _args: &[String]) -> Value 
                 .filter(|group| *group != "vehicle")
                 .filter_map(|group| {
                     let facts = group_facts(backend, group);
-                    (!facts.is_empty()).then(|| json!({ "group": group, "title": title(group), "facts": facts }))
+                    (!facts.is_empty())
+                        .then(|| json!({ "group": group, "title": title(group), "facts": facts }))
                 })
                 .collect()
         })
@@ -80,14 +111,26 @@ pub fn instrument_groups_view(backend: &dyn Backend, _args: &[String]) -> Value 
     instrument_groups(backend, available, groups, &vehicle)
 }
 
-fn instrument_groups(backend: &dyn Backend, available: bool, groups: Vec<Value>, vehicle: &Value) -> Value {
-    let packs = crate::read::value_number(&backend.value("vehicle.batteries.count")).unwrap_or(0.0).max(0.0) as i64;
+fn instrument_groups(
+    backend: &dyn Backend,
+    available: bool,
+    groups: Vec<Value>,
+    vehicle: &Value,
+) -> Value {
+    let packs = crate::read::value_number(&backend.value("vehicle.batteries.count"))
+        .unwrap_or(0.0)
+        .max(0.0) as i64;
     let pack_groups: Vec<Value> = (0..packs)
         .filter_map(|pack| {
             let group = format!("batteries.{pack}");
-            let facts = facts_of(&backend.value(&format!("vehicle.{group}")), &format!("{group}/"));
-            let id = crate::read::value_number(&backend.value(&format!("vehicle.{group}.id"))).map_or(pack, |id| id as i64);
-            (!facts.is_empty()).then(|| json!({ "group": group, "title": format!("Battery{id}"), "facts": facts }))
+            let facts = facts_of(
+                &backend.value(&format!("vehicle.{group}")),
+                &format!("{group}/"),
+            );
+            let id = crate::read::value_number(&backend.value(&format!("vehicle.{group}.id")))
+                .map_or(pack, |id| id as i64);
+            (!facts.is_empty())
+                .then(|| json!({ "group": group, "title": format!("Battery{id}"), "facts": facts }))
         })
         .collect();
     json!({
@@ -137,8 +180,12 @@ mod tests {
                 _ => json!({ "kind": "null" }).to_string(),
             }
         }
-        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            String::new()
+        }
         fn watch(&self, _p: &[String]) {}
     }
 
@@ -149,33 +196,85 @@ mod tests {
         let named: Vec<&str> = groups.iter().filter_map(|g| g["group"].as_str()).collect();
         let (esc_group, gps_group) = (&groups[0], &groups[1]);
 
-        assert_eq!(named, ["escStatus", "gps"], "groups are listed in FactGroup::factGroupNames (QMap) order; parameterManager is one of vehicle's children and carries no facts, and the group literally named 'vehicle' is one the macOS head already builds itself under the id \"\" - serving it too would put two Vehicle groups in that picker over the same readings, and every default it has stored is in the other id's form");
+        assert_eq!(
+            named,
+            ["escStatus", "gps"],
+            "groups are listed in FactGroup::factGroupNames (QMap) order; parameterManager is one of vehicle's children and carries no facts, and the group literally named 'vehicle' is one the macOS head already builds itself under the id \"\" - serving it too would put two Vehicle groups in that picker over the same readings, and every default it has stored is in the other id's form"
+        );
         let served = gps_group["facts"][0]["selection"].as_str().unwrap();
         assert_eq!(
             crate::instruments::fact_path_of(served),
             "vehicle.gps.lock",
             "the selection is spelled here and parsed in instruments, and nothing but this stops the two drifting - a separator changed on one side would leave every picked reading resolving to a path the bridge does not have"
         );
-        assert_eq!(gps_group["facts"][0]["selection"], "gps/lock", "a head handing back a bare name gets it split against the vehicle group by default, so gps/lon spelled as lon resolves to vehicle.lon and answers noSuchFact - serving the whole selection removes the guess rather than documenting it");
+        assert_eq!(
+            gps_group["facts"][0]["selection"], "gps/lock",
+            "a head handing back a bare name gets it split against the vehicle group by default, so gps/lon spelled as lon resolves to vehicle.lon and answers noSuchFact - serving the whole selection removes the guess rather than documenting it"
+        );
 
         let esc = &esc_group["facts"][0];
-        assert_eq!(esc["name"], "rpmFirst", "the head hands this back as view.instruments(escStatus/<name>), which resolves it as a PATH, so it has to be the Q_PROPERTY and not the fact's own name");
-        assert_eq!(esc["label"], "rpm1", "a fact with no description is listed by its FACT name, as InstrumentValueData::factValueDescriptions does");
+        assert_eq!(
+            esc["name"], "rpmFirst",
+            "the head hands this back as view.instruments(escStatus/<name>), which resolves it as a PATH, so it has to be the Q_PROPERTY and not the fact's own name"
+        );
+        assert_eq!(
+            esc["label"], "rpm1",
+            "a fact with no description is listed by its FACT name, as InstrumentValueData::factValueDescriptions does"
+        );
 
-        assert_eq!(gps_group["facts"][0]["label"], "GPS Lock", "shortDescription wins whenever the fact has one");
-        assert_eq!(gps_group["facts"][1]["label"], "count", "and the fact name fills in when it does not");
-        assert_eq!(gps_group["title"], "Gps", "InstrumentValueData::factGroupNames only upper-cases the first letter");
-        assert_eq!(view["packs"], json!(2), "the head names its own battery groups from this count, so the core does not invent their ids");
+        assert_eq!(
+            gps_group["facts"][0]["label"], "GPS Lock",
+            "shortDescription wins whenever the fact has one"
+        );
+        assert_eq!(
+            gps_group["facts"][1]["label"], "count",
+            "and the fact name fills in when it does not"
+        );
+        assert_eq!(
+            gps_group["title"], "Gps",
+            "InstrumentValueData::factGroupNames only upper-cases the first letter"
+        );
+        assert_eq!(
+            view["packs"],
+            json!(2),
+            "the head names its own battery groups from this count, so the core does not invent their ids"
+        );
 
         let packs = view["packGroups"].as_array().unwrap();
-        assert_eq!(packs.len(), 1, "a pack that answers no facts is left out, as an empty child group is");
-        assert_eq!((&packs[0]["group"], &packs[0]["title"]), (&json!("batteries.0"), &json!("Battery3")), "BatteryFactGroupListModel names the group battery<BATTERY_STATUS id>");
+        assert_eq!(
+            packs.len(),
+            1,
+            "a pack that answers no facts is left out, as an empty child group is"
+        );
+        assert_eq!(
+            (&packs[0]["group"], &packs[0]["title"]),
+            (&json!("batteries.0"), &json!("Battery3")),
+            "BatteryFactGroupListModel names the group battery<BATTERY_STATUS id>"
+        );
         let voltage = packs[0]["facts"][0]["selection"].as_str().unwrap();
-        assert_eq!(crate::instruments::fact_path_of(voltage), "vehicle.batteries.0.voltage", "the selection resolves to the pack's own fact");
+        assert_eq!(
+            crate::instruments::fact_path_of(voltage),
+            "vehicle.batteries.0.voltage",
+            "the selection resolves to the pack's own fact"
+        );
 
         let own = view["vehicleFacts"].as_array().unwrap();
-        assert_eq!((&own[0]["name"], &own[0]["label"], &own[0]["selection"]), (&json!("altitudeRelative"), &json!("Rel. Alt."), &json!("altitudeRelative")));
-        assert_eq!(own[1]["label"], "groundSpeed", "a fact with no description reads its name like every other group's");
-        assert_eq!(crate::instruments::fact_path_of("altitudeRelative"), "vehicle.altitudeRelative", "a bare selection is the vehicle's own reading");
+        assert_eq!(
+            (&own[0]["name"], &own[0]["label"], &own[0]["selection"]),
+            (
+                &json!("altitudeRelative"),
+                &json!("Rel. Alt."),
+                &json!("altitudeRelative")
+            )
+        );
+        assert_eq!(
+            own[1]["label"], "groundSpeed",
+            "a fact with no description reads its name like every other group's"
+        );
+        assert_eq!(
+            crate::instruments::fact_path_of("altitudeRelative"),
+            "vehicle.altitudeRelative",
+            "a bare selection is the vehicle's own reading"
+        );
     }
 }

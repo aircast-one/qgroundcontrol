@@ -7,13 +7,21 @@ pub const DEPS: &[&str] = &[crate::noticeboard::NOTICES_CHANGED];
 const NAVIGATION_NOTICE: &str = "navigation";
 
 fn banner(title: &str, text: &str, app: &str) -> String {
-    [title, text].iter().filter(|part| !part.trim().is_empty() && part.trim() != app).copied().collect::<Vec<_>>().join(" \u{b7} ")
+    [title, text]
+        .iter()
+        .filter(|part| !part.trim().is_empty() && part.trim() != app)
+        .copied()
+        .collect::<Vec<_>>()
+        .join(" \u{b7} ")
 }
 
 pub fn host_notices_view(backend: &dyn Backend, args: &[String]) -> Value {
     let host = backend.value_fields("host", "notices,dropped");
     let app = crate::noticeboard::application_name();
-    let through = args.first().and_then(|a| a.trim().parse::<i64>().ok()).unwrap_or(-1);
+    let through = args
+        .first()
+        .and_then(|a| a.trim().parse::<i64>().ok())
+        .unwrap_or(-1);
     let notices: Vec<Value> = host
         .get("notices")
         .and_then(Value::as_array)
@@ -22,7 +30,12 @@ pub fn host_notices_view(backend: &dyn Backend, args: &[String]) -> Value {
                 .iter()
                 .filter_map(|n| {
                     let id = n.get("id")?.as_i64().filter(|id| *id >= 0)?;
-                    let text = |key: &str| n.get(key).and_then(Value::as_str).unwrap_or_default().to_string();
+                    let text = |key: &str| {
+                        n.get(key)
+                            .and_then(Value::as_str)
+                            .unwrap_or_default()
+                            .to_string()
+                    };
                     let kind = text("kind");
                     Some(json!({
                         "id": id,
@@ -37,14 +50,33 @@ pub fn host_notices_view(backend: &dyn Backend, args: &[String]) -> Value {
                 .collect()
         })
         .unwrap_or_default();
-    let after: Vec<&Value> = notices.iter().filter(|n| n["id"].as_i64().unwrap_or(-1) > through).collect();
-    let destination = after.iter().rev().find(|n| n["kind"] == NAVIGATION_NOTICE).and_then(|n| n["title"].as_str()).filter(|t| !t.trim().is_empty());
+    let after: Vec<&Value> = notices
+        .iter()
+        .filter(|n| n["id"].as_i64().unwrap_or(-1) > through)
+        .collect();
+    let destination = after
+        .iter()
+        .rev()
+        .find(|n| n["kind"] == NAVIGATION_NOTICE)
+        .and_then(|n| n["title"].as_str())
+        .filter(|t| !t.trim().is_empty());
     let banners: Vec<String> = after
         .iter()
-        .filter(|n| n["kind"] != NAVIGATION_NOTICE && (n["kind"] != crate::noticeboard::MESSAGE || n["brief"] == true))
+        .filter(|n| {
+            n["kind"] != NAVIGATION_NOTICE
+                && (n["kind"] != crate::noticeboard::MESSAGE || n["brief"] == true)
+        })
         .filter_map(|n| n["banner"].as_str())
         .filter(|line| !line.is_empty())
-        .fold(Vec::new(), |kept, line| if kept.iter().any(|k: &String| k == line) { kept } else { kept.into_iter().chain(std::iter::once(line.to_string())).collect() });
+        .fold(Vec::new(), |kept, line| {
+            if kept.iter().any(|k: &String| k == line) {
+                kept
+            } else {
+                kept.into_iter()
+                    .chain(std::iter::once(line.to_string()))
+                    .collect()
+            }
+        });
     let dialogs: Vec<Value> = after
         .iter()
         .filter(|n| n["kind"] == crate::noticeboard::MESSAGE && n["brief"] != true)
@@ -81,10 +113,18 @@ mod tests {
 
     struct Host(Value);
     impl Backend for Host {
-        fn get(&self, p: &str) -> String { self.get_fields(p, "") }
-        fn get_fields(&self, _p: &str, _f: &str) -> String { self.0.to_string() }
-        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn get(&self, p: &str) -> String {
+            self.get_fields(p, "")
+        }
+        fn get_fields(&self, _p: &str, _f: &str) -> String {
+            self.0.to_string()
+        }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            String::new()
+        }
         fn watch(&self, _p: &[String]) {}
     }
 
@@ -99,17 +139,55 @@ mod tests {
             { "id": -1, "kind": "message", "title": "no id", "text": "" },
         ] }));
         let view = host_notices_view(&host, &["3".to_string()]);
-        let unseen: Vec<i64> = view["unseen"].as_array().unwrap().iter().map(|n| n["id"].as_i64().unwrap()).collect();
-        assert_eq!(unseen, vec![4, 5, 6, 7], "only notices after the acknowledged id, and a notice without an id is dropped");
+        let unseen: Vec<i64> = view["unseen"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|n| n["id"].as_i64().unwrap())
+            .collect();
+        assert_eq!(
+            unseen,
+            vec![4, 5, 6, 7],
+            "only notices after the acknowledged id, and a notice without an id is dropped"
+        );
         assert_eq!(view["destination"], "plan");
-        assert_eq!(view["banners"], json!(["Battery \u{b7} Low voltage", "Unrecognised kinds are shown, not guessed at"]), "one banner per distinct line, and navigation is a destination rather than a banner");
-        assert_eq!(banner("Aircast QGC", "EKF variance", "Aircast QGC"), "EKF variance", "the application's own name says nothing about which vehicle or part spoke");
-        assert_eq!((&view["latestId"], &view["dropped"]), (&json!(7), &json!(2)));
+        assert_eq!(
+            view["banners"],
+            json!([
+                "Battery \u{b7} Low voltage",
+                "Unrecognised kinds are shown, not guessed at"
+            ]),
+            "one banner per distinct line, and navigation is a destination rather than a banner"
+        );
+        assert_eq!(
+            banner("Aircast QGC", "EKF variance", "Aircast QGC"),
+            "EKF variance",
+            "the application's own name says nothing about which vehicle or part spoke"
+        );
+        assert_eq!(
+            (&view["latestId"], &view["dropped"]),
+            (&json!(7), &json!(2))
+        );
         assert_eq!(view["notices"][4]["known"], false);
         let fresh = host_notices_view(&host, &[]);
-        assert_eq!(fresh["unseen"].as_array().unwrap().len(), 5, "no argument means nothing has been acknowledged yet");
-        assert_eq!(fresh["banners"].as_array().unwrap().iter().any(|b| b == "Old"), false, "an app message is a dialog, not a banner");
-        assert_eq!(host_notices_view(&Host(json!({ "kind": "null" })), &[])["available"], false);
+        assert_eq!(
+            fresh["unseen"].as_array().unwrap().len(),
+            5,
+            "no argument means nothing has been acknowledged yet"
+        );
+        assert_eq!(
+            fresh["banners"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|b| b == "Old"),
+            false,
+            "an app message is a dialog, not a banner"
+        );
+        assert_eq!(
+            host_notices_view(&Host(json!({ "kind": "null" })), &[])["available"],
+            false
+        );
     }
 
     #[test]
@@ -122,7 +200,10 @@ mod tests {
         ] }));
         let view = host_notices_view(&host, &[]);
         let app = crate::noticeboard::application_name();
-        assert_eq!(view["dialogs"], json!([{ "title": app, "text": "Parameters could not be loaded", "action": "" }, { "title": "Links", "text": "Connect not allowed", "action": "" }]));
+        assert_eq!(
+            view["dialogs"],
+            json!([{ "title": app, "text": "Parameters could not be loaded", "action": "" }, { "title": "Links", "text": "Connect not allowed", "action": "" }])
+        );
         assert_eq!(view["banners"], json!(["EKF failure"]));
     }
 
@@ -134,8 +215,15 @@ mod tests {
             { "id": 2, "kind": "message", "title": "", "text": "Parameters could not be loaded" },
         ] }));
         let view = host_notices_view(&host, &[]);
-        assert_eq!(view["banners"], json!(["Can't arm in Land mode. Switch to Loiter or Guided first."]));
-        assert_eq!(view["dialogs"].as_array().unwrap().len(), 1, "an ordinary app message stays a dialog");
+        assert_eq!(
+            view["banners"],
+            json!(["Can't arm in Land mode. Switch to Loiter or Guided first."])
+        );
+        assert_eq!(
+            view["dialogs"].as_array().unwrap().len(),
+            1,
+            "an ordinary app message stays a dialog"
+        );
     }
 
     #[test]
@@ -144,7 +232,15 @@ mod tests {
             { "id": 1, "kind": "message", "title": "", "text": crate::noticeboard::REBOOT_VEHICLE_TEXT },
         ] }));
         let dialog = &host_notices_view(&host, &[])["dialogs"][0];
-        assert_eq!((dialog["text"].as_str(), dialog["action"].as_str()), (Some("Reboot vehicle for changes to take effect. Click Ok to reboot the vehicle now."), Some("rebootVehicle")));
+        assert_eq!(
+            (dialog["text"].as_str(), dialog["action"].as_str()),
+            (
+                Some(
+                    "Reboot vehicle for changes to take effect. Click Ok to reboot the vehicle now."
+                ),
+                Some("rebootVehicle")
+            )
+        );
     }
 
     #[test]
@@ -152,7 +248,10 @@ mod tests {
         let host = Host(json!({ "kind": "object", "dropped": 0, "notices": [
             { "id": 1, "kind": "message", "title": "", "text": crate::connectnotices::SETUP_INCOMPLETE },
         ] }));
-        assert_eq!(host_notices_view(&host, &[])["dialogs"][0]["action"], "openSetup");
+        assert_eq!(
+            host_notices_view(&host, &[])["dialogs"][0]["action"],
+            "openSetup"
+        );
     }
 
     #[test]
@@ -160,6 +259,9 @@ mod tests {
         let host = Host(json!({ "kind": "object", "dropped": 0, "notices": [
             { "id": 1, "kind": "message", "title": "", "text": crate::usbradio::RADIO_FOUND },
         ] }));
-        assert_eq!(host_notices_view(&host, &[])["dialogs"][0]["action"], "useRadio");
+        assert_eq!(
+            host_notices_view(&host, &[])["dialogs"][0]["action"],
+            "useRadio"
+        );
     }
 }

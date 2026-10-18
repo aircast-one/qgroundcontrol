@@ -17,15 +17,31 @@ pub enum Mode {
 
 impl Mode {
     pub fn from_index(index: i64) -> Option<Mode> {
-        [Mode::Disabled, Mode::RateAndAttitude, Mode::VelocityAndPosition, Mode::AltitudeAndAirspeed].get(usize::try_from(index).ok()?).copied()
+        [
+            Mode::Disabled,
+            Mode::RateAndAttitude,
+            Mode::VelocityAndPosition,
+            Mode::AltitudeAndAirspeed,
+        ]
+        .get(usize::try_from(index).ok()?)
+        .copied()
     }
 
     fn rates(self) -> Vec<(u32, i32)> {
         match self {
             Mode::Disabled => Vec::new(),
-            Mode::RateAndAttitude => vec![(MSG_ATTITUDE_QUATERNION, HIGH_RATE_INTERVAL_US), (MSG_ATTITUDE_TARGET, HIGH_RATE_INTERVAL_US)],
-            Mode::VelocityAndPosition => vec![(MSG_LOCAL_POSITION_NED, HIGH_RATE_INTERVAL_US), (MSG_POSITION_TARGET_LOCAL_NED, HIGH_RATE_INTERVAL_US)],
-            Mode::AltitudeAndAirspeed => vec![(MSG_NAV_CONTROLLER_OUTPUT, HIGH_RATE_INTERVAL_US), (MSG_VFR_HUD, HIGH_RATE_INTERVAL_US)],
+            Mode::RateAndAttitude => vec![
+                (MSG_ATTITUDE_QUATERNION, HIGH_RATE_INTERVAL_US),
+                (MSG_ATTITUDE_TARGET, HIGH_RATE_INTERVAL_US),
+            ],
+            Mode::VelocityAndPosition => vec![
+                (MSG_LOCAL_POSITION_NED, HIGH_RATE_INTERVAL_US),
+                (MSG_POSITION_TARGET_LOCAL_NED, HIGH_RATE_INTERVAL_US),
+            ],
+            Mode::AltitudeAndAirspeed => vec![
+                (MSG_NAV_CONTROLLER_OUTPUT, HIGH_RATE_INTERVAL_US),
+                (MSG_VFR_HUD, HIGH_RATE_INTERVAL_US),
+            ],
         }
     }
 }
@@ -118,10 +134,18 @@ mod tests {
     #[test]
     fn rates_go_out_one_ack_at_a_time_and_are_restored_in_reverse() {
         let mut config = StreamConfig::default();
-        assert_eq!(config.set_mode(Mode::RateAndAttitude), Some((MSG_ATTITUDE_TARGET, 10_000)), "the last desired rate goes first, as _desiredRates.last()");
+        assert_eq!(
+            config.set_mode(Mode::RateAndAttitude),
+            Some((MSG_ATTITUDE_TARGET, 10_000)),
+            "the last desired rate goes first, as _desiredRates.last()"
+        );
         assert_eq!(config.got_ack(), Some((MSG_ATTITUDE_QUATERNION, 10_000)));
         assert_eq!(config.got_ack(), None, "configured, so idle");
-        assert_eq!(config.set_mode(Mode::Disabled), Some((MSG_ATTITUDE_QUATERNION, 0)), "defaults come back last changed first");
+        assert_eq!(
+            config.set_mode(Mode::Disabled),
+            Some((MSG_ATTITUDE_QUATERNION, 0)),
+            "defaults come back last changed first"
+        );
         assert_eq!(config.got_ack(), Some((MSG_ATTITUDE_TARGET, 0)));
         assert_eq!(config.got_ack(), None);
         assert_eq!(config.got_ack(), None, "an ack while idle sends nothing");
@@ -131,9 +155,20 @@ mod tests {
     fn a_new_mode_mid_configuration_restores_first_and_then_applies() {
         let mut config = StreamConfig::default();
         config.set_mode(Mode::RateAndAttitude);
-        assert_eq!(config.set_mode(Mode::VelocityAndPosition), None, "a request while busy waits for the next ack");
-        assert_eq!(config.got_ack(), Some((MSG_ATTITUDE_TARGET, 0)), "the half-done configuration is undone");
-        assert_eq!(config.got_ack(), Some((MSG_POSITION_TARGET_LOCAL_NED, 10_000)));
+        assert_eq!(
+            config.set_mode(Mode::VelocityAndPosition),
+            None,
+            "a request while busy waits for the next ack"
+        );
+        assert_eq!(
+            config.got_ack(),
+            Some((MSG_ATTITUDE_TARGET, 0)),
+            "the half-done configuration is undone"
+        );
+        assert_eq!(
+            config.got_ack(),
+            Some((MSG_POSITION_TARGET_LOCAL_NED, 10_000))
+        );
         assert_eq!(config.got_ack(), Some((MSG_LOCAL_POSITION_NED, 10_000)));
         assert_eq!(config.got_ack(), None);
         assert_eq!(Mode::from_index(2), Some(Mode::VelocityAndPosition));

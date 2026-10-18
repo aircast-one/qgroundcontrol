@@ -18,11 +18,23 @@ pub fn parse(text: &str) -> Result<ComponentParameters, String> {
     if root.get("version").and_then(Value::as_i64) != Some(1) {
         return Err("component parameter metadata version is not 1".to_string());
     }
-    let list = root.get(PARAMETERS_KEY).and_then(Value::as_array).ok_or(format!("no {PARAMETERS_KEY} array"))?;
+    let list = root
+        .get(PARAMETERS_KEY)
+        .and_then(Value::as_array)
+        .ok_or(format!("no {PARAMETERS_KEY} array"))?;
     let defines = BTreeMap::new();
-    let entries: Vec<MetaData> = list.iter().filter_map(Value::as_object).filter_map(|o: &Map<String, Value>| factmeta::from_object(o, &defines).ok()).collect();
-    let (indexed, named): (Vec<MetaData>, Vec<MetaData>) = entries.into_iter().partition(|m| m.name.contains(INDEXED_NAME_TAG));
-    Ok(ComponentParameters { named: named.into_iter().map(|m| (m.name.clone(), m)).collect(), indexed })
+    let entries: Vec<MetaData> = list
+        .iter()
+        .filter_map(Value::as_object)
+        .filter_map(|o: &Map<String, Value>| factmeta::from_object(o, &defines).ok())
+        .collect();
+    let (indexed, named): (Vec<MetaData>, Vec<MetaData>) = entries
+        .into_iter()
+        .partition(|m| m.name.contains(INDEXED_NAME_TAG));
+    Ok(ComponentParameters {
+        named: named.into_iter().map(|m| (m.name.clone(), m)).collect(),
+        indexed,
+    })
 }
 
 fn indexed_match<'a>(template: &'a str, name: &str) -> Option<String> {
@@ -55,7 +67,10 @@ fn bare(name: &str, value_type: ValueType, component: u8) -> MetaData {
         vehicle_reboot_required: false,
         volatile_value: false,
         read_only: false,
-        group: name.find('_').filter(|i| *i > 0).map(|i| name[..i].to_string()),
+        group: name
+            .find('_')
+            .filter(|i| *i > 0)
+            .map(|i| name[..i].to_string()),
         category: (component != AUTOPILOT_COMPONENT).then(|| format!("Component {component}")),
     }
 }
@@ -94,21 +109,59 @@ mod tests {
         let parsed = parse(SAMPLE).unwrap();
         assert_eq!((parsed.named.len(), parsed.indexed.len()), (1, 1));
         let roll = parsed.metadata_for("GIMBAL_ROLL", ValueType::Float, AUTOPILOT_COMPONENT);
-        assert_eq!((roll.units.as_deref(), roll.min.clone()), (Some("deg"), Some(Value::from(-90.0))));
+        assert_eq!(
+            (roll.units.as_deref(), roll.min.clone()),
+            (Some("deg"), Some(Value::from(-90.0)))
+        );
         let cam = parsed.metadata_for("CAM_3_MODE", ValueType::Uint8, 100);
-        assert_eq!((cam.name.as_str(), cam.short_description.as_str(), cam.long_description.as_str()), ("CAM_3_MODE", "Camera 3 mode", "Camera 3 mode"));
+        assert_eq!(
+            (
+                cam.name.as_str(),
+                cam.short_description.as_str(),
+                cam.long_description.as_str()
+            ),
+            ("CAM_3_MODE", "Camera 3 mode", "Camera 3 mode")
+        );
         assert_eq!(cam.enums.len(), 2);
         let unknown = parsed.metadata_for("BATT_CAPACITY", ValueType::Int32, 100);
-        assert_eq!((unknown.group.as_deref(), unknown.category.as_deref(), unknown.value_type), (Some("BATT"), Some("Component 100"), ValueType::Int32));
-        assert_eq!(parsed.metadata_for("X", ValueType::Int32, AUTOPILOT_COMPONENT).category, None);
-        assert_eq!(parsed.metadata_for("CAM_X_MODE", ValueType::Uint8, 1).short_description, "");
+        assert_eq!(
+            (
+                unknown.group.as_deref(),
+                unknown.category.as_deref(),
+                unknown.value_type
+            ),
+            (Some("BATT"), Some("Component 100"), ValueType::Int32)
+        );
+        assert_eq!(
+            parsed
+                .metadata_for("X", ValueType::Int32, AUTOPILOT_COMPONENT)
+                .category,
+            None
+        );
+        assert_eq!(
+            parsed
+                .metadata_for("CAM_X_MODE", ValueType::Uint8, 1)
+                .short_description,
+            ""
+        );
     }
 
     #[test]
     fn a_wrong_version_or_shape_is_refused() {
-        assert!(parse(r#"{"version":2,"parameters":[]}"#).unwrap_err().contains("version"));
-        assert!(parse(r#"{"version":1}"#).unwrap_err().contains("parameters"));
+        assert!(
+            parse(r#"{"version":2,"parameters":[]}"#)
+                .unwrap_err()
+                .contains("version")
+        );
+        assert!(
+            parse(r#"{"version":1}"#)
+                .unwrap_err()
+                .contains("parameters")
+        );
         let partial = parse(r#"{"version":1,"parameters":[{"name":"A"},{"name":"B","type":"uint8","enumStrings":"x,y","enumValues":"1"},{"name":"C","type":"float"}]}"#).unwrap();
-        assert_eq!(partial.named.keys().cloned().collect::<Vec<_>>(), vec!["C".to_string()]);
+        assert_eq!(
+            partial.named.keys().cloned().collect::<Vec<_>>(),
+            vec!["C".to_string()]
+        );
     }
 }

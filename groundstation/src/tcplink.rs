@@ -30,13 +30,23 @@ pub struct TcpLink {
 }
 
 impl TcpLink {
-    pub fn open(config: &TcpConfig, mut sink: impl FnMut(Event) + Send + 'static) -> io::Result<TcpLink> {
-        let addresses: Vec<SocketAddr> = (config.host.as_str(), config.port).to_socket_addrs()?.collect();
+    pub fn open(
+        config: &TcpConfig,
+        mut sink: impl FnMut(Event) + Send + 'static,
+    ) -> io::Result<TcpLink> {
+        let addresses: Vec<SocketAddr> = (config.host.as_str(), config.port)
+            .to_socket_addrs()?
+            .collect();
         let stream = addresses
             .iter()
             .map(|a| TcpStream::connect_timeout(a, CONNECT_TIMEOUT))
             .find_map(Result::ok)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::ConnectionRefused, format!("Connection to {}:{} failed", config.host, config.port)))?;
+            .ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::ConnectionRefused,
+                    format!("Connection to {}:{} failed", config.host, config.port),
+                )
+            })?;
         stream.set_read_timeout(Some(READ_TIMEOUT))?;
         stream.set_write_timeout(Some(WRITE_TIMEOUT))?;
         stream.set_nodelay(true)?;
@@ -45,25 +55,39 @@ impl TcpLink {
         let reader = {
             let mut socket = stream.try_clone()?;
             let stop = Arc::clone(&stop);
-            std::thread::Builder::new().name("qgc-tcp".into()).spawn(move || {
-                let mut buffer = vec![0u8; 16 * 1024];
-                while !stop.load(Ordering::Relaxed) {
-                    match socket.read(&mut buffer) {
-                        Ok(0) => {
-                            sink(Event::Disconnected("peer closed the connection".into()));
-                            return;
-                        }
-                        Ok(len) => sink(Event::Bytes(buffer[..len].to_vec())),
-                        Err(e) if matches!(e.kind(), io::ErrorKind::WouldBlock | io::ErrorKind::TimedOut | io::ErrorKind::Interrupted) => {}
-                        Err(e) => {
-                            sink(Event::Disconnected(e.to_string()));
-                            return;
+            std::thread::Builder::new()
+                .name("qgc-tcp".into())
+                .spawn(move || {
+                    let mut buffer = vec![0u8; 16 * 1024];
+                    while !stop.load(Ordering::Relaxed) {
+                        match socket.read(&mut buffer) {
+                            Ok(0) => {
+                                sink(Event::Disconnected("peer closed the connection".into()));
+                                return;
+                            }
+                            Ok(len) => sink(Event::Bytes(buffer[..len].to_vec())),
+                            Err(e)
+                                if matches!(
+                                    e.kind(),
+                                    io::ErrorKind::WouldBlock
+                                        | io::ErrorKind::TimedOut
+                                        | io::ErrorKind::Interrupted
+                                ) => {}
+                            Err(e) => {
+                                sink(Event::Disconnected(e.to_string()));
+                                return;
+                            }
                         }
                     }
-                }
-            })?
+                })?
         };
-        Ok(TcpLink { stream, stop, reader: Mutex::new(Some(reader)), peer, writing: Mutex::new(()) })
+        Ok(TcpLink {
+            stream,
+            stop,
+            reader: Mutex::new(Some(reader)),
+            peer,
+            writing: Mutex::new(()),
+        })
     }
 
     pub fn peer(&self) -> SocketAddr {
@@ -72,12 +96,21 @@ impl TcpLink {
 
     pub fn write(&self, bytes: &[u8]) -> io::Result<usize> {
         if bytes.is_empty() {
-            return Err(io::Error::new(io::ErrorKind::InvalidInput, "Data to Send is Empty"));
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Data to Send is Empty",
+            ));
         }
-        let _writing = self.writing.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        (&self.stream).write_all(bytes).map(|_| bytes.len()).inspect_err(|_| {
-            let _ = self.stream.shutdown(Shutdown::Both);
-        })
+        let _writing = self
+            .writing
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        (&self.stream)
+            .write_all(bytes)
+            .map(|_| bytes.len())
+            .inspect_err(|_| {
+                let _ = self.stream.shutdown(Shutdown::Both);
+            })
     }
 
     pub fn close(&self) {
@@ -114,12 +147,25 @@ mod tests {
             first
         });
         let (tx, rx) = mpsc::channel();
-        let link = TcpLink::open(&TcpConfig { host: "localhost".into(), port }, move |e| tx.send(e).unwrap()).unwrap();
+        let link = TcpLink::open(
+            &TcpConfig {
+                host: "localhost".into(),
+                port,
+            },
+            move |e| tx.send(e).unwrap(),
+        )
+        .unwrap();
         assert_eq!(link.peer().port(), port);
         assert_eq!(link.write(b"hello").unwrap(), 5);
-        assert_eq!(rx.recv_timeout(Duration::from_secs(2)).unwrap(), Event::Bytes(b"pong".to_vec()));
+        assert_eq!(
+            rx.recv_timeout(Duration::from_secs(2)).unwrap(),
+            Event::Bytes(b"pong".to_vec())
+        );
         assert_eq!(server.join().unwrap(), *b"hello");
-        assert!(matches!(rx.recv_timeout(Duration::from_secs(2)).unwrap(), Event::Disconnected(_)));
+        assert!(matches!(
+            rx.recv_timeout(Duration::from_secs(2)).unwrap(),
+            Event::Disconnected(_)
+        ));
         assert!(link.write(b"").is_err());
         link.close();
     }
@@ -130,8 +176,26 @@ mod tests {
         let port = listener.local_addr().unwrap().port();
         drop(listener);
         let started = web_time::Instant::now();
-        assert!(TcpLink::open(&TcpConfig { host: "127.0.0.1".into(), port }, |_| {}).is_err());
+        assert!(
+            TcpLink::open(
+                &TcpConfig {
+                    host: "127.0.0.1".into(),
+                    port
+                },
+                |_| {}
+            )
+            .is_err()
+        );
         assert!(started.elapsed() < Duration::from_secs(3));
-        assert!(TcpLink::open(&TcpConfig { host: "nonexistent.invalid".into(), port: 1 }, |_| {}).is_err());
+        assert!(
+            TcpLink::open(
+                &TcpConfig {
+                    host: "nonexistent.invalid".into(),
+                    port: 1
+                },
+                |_| {}
+            )
+            .is_err()
+        );
     }
 }

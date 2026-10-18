@@ -22,7 +22,9 @@ pub fn set(args: &str) -> Value {
             SHOWN.store(show, Ordering::Relaxed);
             json!({ "ok": true })
         }
-        None => json!({ "ok": false, "reason": "advancedUi.set takes whether Advanced Mode is on" }),
+        None => {
+            json!({ "ok": false, "reason": "advancedUi.set takes whether Advanced Mode is on" })
+        }
     }
 }
 
@@ -44,7 +46,10 @@ mod tests {
 
     #[test]
     fn the_view_serves_only_the_flag_since_help_settings_toggles_without_asking() {
-        assert_eq!(view_of(false), json!({ "kind": "object", "class": "AdvancedUi", "shown": false }));
+        assert_eq!(
+            view_of(false),
+            json!({ "kind": "object", "class": "AdvancedUi", "shown": false })
+        );
     }
 
     #[test]

@@ -23,28 +23,50 @@ struct Walk {
 }
 
 pub fn mass_storage(descriptors: &[u8]) -> Option<MassStorage> {
-    let records = std::iter::successors(Some(DEVICE_DESCRIPTOR_LEN), |&at| descriptors.get(at).map(|&len| at + usize::from(len.max(2))))
-        .take_while(|&at| at + 2 <= descriptors.len())
-        .map(|at| &descriptors[at..(at + usize::from(descriptors[at].max(2))).min(descriptors.len())]);
+    let records = std::iter::successors(Some(DEVICE_DESCRIPTOR_LEN), |&at| {
+        descriptors.get(at).map(|&len| at + usize::from(len.max(2)))
+    })
+    .take_while(|&at| at + 2 <= descriptors.len())
+    .map(|at| &descriptors[at..(at + usize::from(descriptors[at].max(2))).min(descriptors.len())]);
     records
-        .fold(Walk::default(), |walk, record| match (walk.found, record.get(1).copied()) {
-            (Some(_), _) => walk,
-            (None, Some(DESCRIPTOR_INTERFACE)) if record.len() >= 8 => Walk {
-                interface: Some((record[2], record[5] == CLASS_MASS_STORAGE && record[6] == SUBCLASS_SCSI && record[7] == PROTOCOL_BULK_ONLY)),
-                ..Walk::default()
-            },
-            (None, Some(DESCRIPTOR_ENDPOINT)) if record.len() >= 4 && record[3] & 0x03 == TRANSFER_BULK => {
-                let (endpoint_in, endpoint_out) = match record[2] & ENDPOINT_IN {
-                    0 => (walk.endpoint_in, walk.endpoint_out.or(Some(record[2]))),
-                    _ => (walk.endpoint_in.or(Some(record[2])), walk.endpoint_out),
-                };
-                let found = match (walk.interface, endpoint_in, endpoint_out) {
-                    (Some((interface, true)), Some(endpoint_in), Some(endpoint_out)) => Some(MassStorage { interface, endpoint_in, endpoint_out }),
-                    _ => None,
-                };
-                Walk { endpoint_in, endpoint_out, found, ..walk }
+        .fold(Walk::default(), |walk, record| {
+            match (walk.found, record.get(1).copied()) {
+                (Some(_), _) => walk,
+                (None, Some(DESCRIPTOR_INTERFACE)) if record.len() >= 8 => Walk {
+                    interface: Some((
+                        record[2],
+                        record[5] == CLASS_MASS_STORAGE
+                            && record[6] == SUBCLASS_SCSI
+                            && record[7] == PROTOCOL_BULK_ONLY,
+                    )),
+                    ..Walk::default()
+                },
+                (None, Some(DESCRIPTOR_ENDPOINT))
+                    if record.len() >= 4 && record[3] & 0x03 == TRANSFER_BULK =>
+                {
+                    let (endpoint_in, endpoint_out) = match record[2] & ENDPOINT_IN {
+                        0 => (walk.endpoint_in, walk.endpoint_out.or(Some(record[2]))),
+                        _ => (walk.endpoint_in.or(Some(record[2])), walk.endpoint_out),
+                    };
+                    let found = match (walk.interface, endpoint_in, endpoint_out) {
+                        (Some((interface, true)), Some(endpoint_in), Some(endpoint_out)) => {
+                            Some(MassStorage {
+                                interface,
+                                endpoint_in,
+                                endpoint_out,
+                            })
+                        }
+                        _ => None,
+                    };
+                    Walk {
+                        endpoint_in,
+                        endpoint_out,
+                        found,
+                        ..walk
+                    }
+                }
+                _ => walk,
             }
-            _ => walk,
         })
         .found
 }
@@ -102,17 +124,33 @@ mod transport {
     impl Transport {
         pub fn claim(fd: RawFd) -> io::Result<Self> {
             let mut descriptors = vec![0u8; DESCRIPTORS_MAX];
-            let read = checked(unsafe { libc::pread(fd, descriptors.as_mut_ptr().cast(), descriptors.len(), 0) } as c_int)? as usize;
-            let endpoints = mass_storage(&descriptors[..read]).ok_or_else(|| io::Error::new(io::ErrorKind::Unsupported, "this USB device is not a card reader"))?;
+            let read = checked(unsafe {
+                libc::pread(fd, descriptors.as_mut_ptr().cast(), descriptors.len(), 0)
+            } as c_int)? as usize;
+            let endpoints = mass_storage(&descriptors[..read]).ok_or_else(|| {
+                io::Error::new(
+                    io::ErrorKind::Unsupported,
+                    "this USB device is not a card reader",
+                )
+            })?;
             let mut interface = c_int::from(endpoints.interface);
-            let mut detach = InterfaceIoctl { interface, code: DISCONNECT as c_int, data: std::ptr::null_mut() };
+            let mut detach = InterfaceIoctl {
+                interface,
+                code: DISCONNECT as c_int,
+                data: std::ptr::null_mut(),
+            };
             let _ = unsafe { libc::ioctl(fd, INTERFACE_IOCTL as _, &mut detach) };
             checked(unsafe { libc::ioctl(fd, CLAIM_INTERFACE as _, &mut interface) })?;
             Ok(Self { fd, endpoints })
         }
 
         fn transfer(&mut self, endpoint: u8, data: *mut u8, len: usize) -> io::Result<usize> {
-            let mut request = BulkTransfer { endpoint: u32::from(endpoint), len: len as u32, timeout: TIMEOUT_MS, data: data.cast() };
+            let mut request = BulkTransfer {
+                endpoint: u32::from(endpoint),
+                len: len as u32,
+                timeout: TIMEOUT_MS,
+                data: data.cast(),
+            };
             checked(unsafe { libc::ioctl(self.fd, BULK as _, &mut request) }).map(|n| n as usize)
         }
     }
@@ -122,8 +160,17 @@ mod transport {
             let mut sent = 0;
             while sent < data.len() {
                 let rest = &data[sent..];
-                match self.transfer(self.endpoints.endpoint_out, rest.as_ptr() as *mut u8, rest.len())? {
-                    0 => return Err(io::Error::new(io::ErrorKind::WriteZero, "the card reader stopped accepting data")),
+                match self.transfer(
+                    self.endpoints.endpoint_out,
+                    rest.as_ptr() as *mut u8,
+                    rest.len(),
+                )? {
+                    0 => {
+                        return Err(io::Error::new(
+                            io::ErrorKind::WriteZero,
+                            "the card reader stopped accepting data",
+                        ));
+                    }
                     n => sent += n,
                 }
             }
@@ -159,7 +206,9 @@ mod tests {
     use super::*;
 
     fn device() -> Vec<u8> {
-        vec![18, 1, 0x00, 0x02, 0, 0, 0, 64, 0x05, 0x8f, 0x38, 0x63, 0x00, 0x01, 1, 2, 3, 1]
+        vec![
+            18, 1, 0x00, 0x02, 0, 0, 0, 64, 0x05, 0x8f, 0x38, 0x63, 0x00, 0x01, 1, 2, 3, 1,
+        ]
     }
 
     fn config(total: u16, interfaces: u8) -> Vec<u8> {
@@ -177,31 +226,81 @@ mod tests {
 
     #[test]
     fn a_card_reader_exposes_its_bulk_only_interface_and_endpoints() {
-        let bytes = [device(), config(32, 1), interface(0, 0x08, 0x06, 0x50, 2), endpoint(0x81, 0x02), endpoint(0x02, 0x02)].concat();
-        assert_eq!(mass_storage(&bytes), Some(MassStorage { interface: 0, endpoint_in: 0x81, endpoint_out: 0x02 }));
+        let bytes = [
+            device(),
+            config(32, 1),
+            interface(0, 0x08, 0x06, 0x50, 2),
+            endpoint(0x81, 0x02),
+            endpoint(0x02, 0x02),
+        ]
+        .concat();
+        assert_eq!(
+            mass_storage(&bytes),
+            Some(MassStorage {
+                interface: 0,
+                endpoint_in: 0x81,
+                endpoint_out: 0x02
+            })
+        );
     }
 
     #[test]
     fn a_composite_device_is_searched_past_its_other_interfaces() {
-        let bytes = [device(), config(55, 2), interface(0, 0x03, 0x01, 0x01, 1), endpoint(0x83, 0x03), interface(1, 0x08, 0x06, 0x50, 2), endpoint(0x02, 0x02), endpoint(0x81, 0x02)].concat();
-        assert_eq!(mass_storage(&bytes), Some(MassStorage { interface: 1, endpoint_in: 0x81, endpoint_out: 0x02 }));
+        let bytes = [
+            device(),
+            config(55, 2),
+            interface(0, 0x03, 0x01, 0x01, 1),
+            endpoint(0x83, 0x03),
+            interface(1, 0x08, 0x06, 0x50, 2),
+            endpoint(0x02, 0x02),
+            endpoint(0x81, 0x02),
+        ]
+        .concat();
+        assert_eq!(
+            mass_storage(&bytes),
+            Some(MassStorage {
+                interface: 1,
+                endpoint_in: 0x81,
+                endpoint_out: 0x02
+            })
+        );
     }
 
     #[test]
     fn bulk_endpoints_of_another_class_are_not_mistaken_for_storage() {
-        let bytes = [device(), config(32, 1), interface(0, 0xff, 0x00, 0x00, 2), endpoint(0x81, 0x02), endpoint(0x01, 0x02)].concat();
+        let bytes = [
+            device(),
+            config(32, 1),
+            interface(0, 0xff, 0x00, 0x00, 2),
+            endpoint(0x81, 0x02),
+            endpoint(0x01, 0x02),
+        ]
+        .concat();
         assert_eq!(mass_storage(&bytes), None);
     }
 
     #[test]
     fn a_uas_only_interface_is_not_bulk_only_transport() {
-        let bytes = [device(), config(32, 1), interface(0, 0x08, 0x06, 0x62, 2), endpoint(0x81, 0x02), endpoint(0x02, 0x02)].concat();
+        let bytes = [
+            device(),
+            config(32, 1),
+            interface(0, 0x08, 0x06, 0x62, 2),
+            endpoint(0x81, 0x02),
+            endpoint(0x02, 0x02),
+        ]
+        .concat();
         assert_eq!(mass_storage(&bytes), None);
     }
 
     #[test]
     fn truncated_descriptors_do_not_panic() {
-        let bytes = [device(), config(32, 1), interface(0, 0x08, 0x06, 0x50, 2), vec![7, 5, 0x81]].concat();
+        let bytes = [
+            device(),
+            config(32, 1),
+            interface(0, 0x08, 0x06, 0x50, 2),
+            vec![7, 5, 0x81],
+        ]
+        .concat();
         assert_eq!(mass_storage(&bytes), None);
         assert_eq!(mass_storage(&[]), None);
         assert_eq!(mass_storage(&[0u8; 40]), None);

@@ -25,17 +25,36 @@ pub fn version_url(px4: bool, apm_vehicle: Option<&str>) -> Option<String> {
 }
 
 pub fn parse(px4: bool, contents: &str) -> Option<String> {
-    let pattern = if px4 { r"v([0-9.]+)(?: -)? Stable" } else { r"(?m) V([0-9,\.]*)$" };
-    regex::Regex::new(pattern).ok()?.captures(contents)?.get(1).map(|m| m.as_str().to_string())
+    let pattern = if px4 {
+        r"v([0-9.]+)(?: -)? Stable"
+    } else {
+        r"(?m) V([0-9,\.]*)$"
+    };
+    regex::Regex::new(pattern)
+        .ok()?
+        .captures(contents)?
+        .get(1)
+        .map(|m| m.as_str().to_string())
 }
 
 fn numbers(version: &str) -> Vec<u64> {
-    version.split(['.', ',']).map(|part| part.trim().parse().unwrap_or(0)).collect()
+    version
+        .split(['.', ','])
+        .map(|part| part.trim().parse().unwrap_or(0))
+        .collect()
 }
 
 pub fn older(running: &str, latest: &str) -> bool {
     let (a, b) = (numbers(running), numbers(latest));
-    (0..3).map(|i| (a.get(i).copied().unwrap_or(0), b.get(i).copied().unwrap_or(0))).find(|(x, y)| x != y).is_some_and(|(x, y)| x < y)
+    (0..3)
+        .map(|i| {
+            (
+                a.get(i).copied().unwrap_or(0),
+                b.get(i).copied().unwrap_or(0),
+            )
+        })
+        .find(|(x, y)| x != y)
+        .is_some_and(|(x, y)| x < y)
 }
 
 pub fn update_text(running: &str, latest: &str) -> String {
@@ -47,7 +66,9 @@ fn fetches() -> bool {
 }
 
 fn fetched() -> std::sync::MutexGuard<'static, BTreeMap<String, Fetch>> {
-    FETCHED.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    FETCHED
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 fn text(url: &str) -> Option<String> {
@@ -66,7 +87,10 @@ fn text(url: &str) -> Option<String> {
 }
 
 fn settle(url: String, body: Option<String>) {
-    fetched().insert(url, body.map_or_else(|| Fetch::Failed(Instant::now()), Fetch::Done));
+    fetched().insert(
+        url,
+        body.map_or_else(|| Fetch::Failed(Instant::now()), Fetch::Done),
+    );
 }
 
 #[cfg(not(target_family = "wasm"))]
@@ -80,7 +104,10 @@ fn fetch_in_background(url: String) {
 #[cfg(target_family = "wasm")]
 fn fetch_in_background(url: String) {
     wasm_bindgen_futures::spawn_local(async move {
-        let body = crate::http::get_later(&url, &[], VERSION_FETCH_TIMEOUT).await.ok().and_then(|bytes| String::from_utf8(bytes).ok());
+        let body = crate::http::get_later(&url, &[], VERSION_FETCH_TIMEOUT)
+            .await
+            .ok()
+            .and_then(|bytes| String::from_utf8(bytes).ok());
         settle(url, body);
     });
 }
@@ -91,12 +118,20 @@ pub fn latest(url: &str, px4: bool) -> Option<String> {
 
 pub fn px4_release_names(releases: &str) -> (Option<String>, Option<String>) {
     let listed: Vec<serde_json::Value> = serde_json::from_str(releases).unwrap_or_default();
-    let first = |prerelease: bool| listed.iter().find(|r| r["prerelease"].as_bool().unwrap_or(false) == prerelease).and_then(|r| r["name"].as_str()).map(str::to_string);
+    let first = |prerelease: bool| {
+        listed
+            .iter()
+            .find(|r| r["prerelease"].as_bool().unwrap_or(false) == prerelease)
+            .and_then(|r| r["name"].as_str())
+            .map(str::to_string)
+    };
     (first(false), first(true))
 }
 
 pub fn px4_releases() -> (Option<String>, Option<String>) {
-    text(PX4_RELEASES).map(|body| px4_release_names(&body)).unwrap_or_default()
+    text(PX4_RELEASES)
+        .map(|body| px4_release_names(&body))
+        .unwrap_or_default()
 }
 
 #[cfg(test)]
@@ -105,17 +140,48 @@ mod tests {
 
     #[test]
     fn versions_are_read_and_compared_like_firmware_plugin() {
-        assert_eq!(parse(true, r#"[{"name":"v1.17.0 - Stable Release"},{"name":"v1.14.4 Stable Release"}]"#).as_deref(), Some("1.17.0"), "PX4 names releases \"v1.17.0 - Stable Release\" since 1.15; QGC's pattern skips those");
-        assert_eq!(parse(true, r#"[{"name":"v1.14.4 Stable Release"}]"#).as_deref(), Some("1.14.4"));
-        assert_eq!(parse(false, "APMVERSION: ArduCopter V4.5.7\nother").as_deref(), Some("4.5.7"), "APMFirmwarePlugin::_versionRegex");
-        assert!(older("4.5.6", "4.5.7") && older("1.9.9", "1.15.0") && !older("4.5.7", "4.5.7") && !older("4.6.0", "4.5.7"));
-        assert_eq!(version_url(false, Some("Copter")).as_deref(), Some("http://firmware.ardupilot.org/Copter/stable/Pixhawk1/git-version.txt"));
+        assert_eq!(
+            parse(
+                true,
+                r#"[{"name":"v1.17.0 - Stable Release"},{"name":"v1.14.4 Stable Release"}]"#
+            )
+            .as_deref(),
+            Some("1.17.0"),
+            "PX4 names releases \"v1.17.0 - Stable Release\" since 1.15; QGC's pattern skips those"
+        );
+        assert_eq!(
+            parse(true, r#"[{"name":"v1.14.4 Stable Release"}]"#).as_deref(),
+            Some("1.14.4")
+        );
+        assert_eq!(
+            parse(false, "APMVERSION: ArduCopter V4.5.7\nother").as_deref(),
+            Some("4.5.7"),
+            "APMFirmwarePlugin::_versionRegex"
+        );
+        assert!(
+            older("4.5.6", "4.5.7")
+                && older("1.9.9", "1.15.0")
+                && !older("4.5.7", "4.5.7")
+                && !older("4.6.0", "4.5.7")
+        );
+        assert_eq!(
+            version_url(false, Some("Copter")).as_deref(),
+            Some("http://firmware.ardupilot.org/Copter/stable/Pixhawk1/git-version.txt")
+        );
         assert_eq!(version_url(false, None), None);
         assert_eq!(
-            px4_release_names(r#"[{"name":"v1.16.0-beta2","prerelease":true},{"name":"v1.15.4","prerelease":false},{"name":"v1.15.3","prerelease":false}]"#),
-            (Some("v1.15.4".to_string()), Some("v1.16.0-beta2".to_string())),
+            px4_release_names(
+                r#"[{"name":"v1.16.0-beta2","prerelease":true},{"name":"v1.15.4","prerelease":false},{"name":"v1.15.3","prerelease":false}]"#
+            ),
+            (
+                Some("v1.15.4".to_string()),
+                Some("v1.16.0-beta2".to_string())
+            ),
             "FirmwareUpgradeController: the first non-prerelease is stable, the first prerelease is beta"
         );
-        assert_eq!(update_text("4.5.6", "4.5.7"), "Update available: this vehicle is running 4.5.6, latest stable is 4.5.7.");
+        assert_eq!(
+            update_text("4.5.6", "4.5.7"),
+            "Update available: this vehicle is running 4.5.6, latest stable is 4.5.7."
+        );
     }
 }

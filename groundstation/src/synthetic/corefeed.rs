@@ -14,7 +14,9 @@ impl Feed for CoreFeed {
     }
 
     fn token(&self) -> String {
-        crate::settingsstore::raw_setting(SYNTHETIC_TOKEN).and_then(|value| value.as_str().map(str::trim).map(str::to_string)).unwrap_or_default()
+        crate::settingsstore::raw_setting(SYNTHETIC_TOKEN)
+            .and_then(|value| value.as_str().map(str::trim).map(str::to_string))
+            .unwrap_or_default()
     }
 
     fn sticks(&self) -> Vec<crate::virtualjoystick::StickSample> {

@@ -36,35 +36,77 @@ pub struct Reading {
 pub fn step(latch: Latch, now: &Reading) -> Latch {
     let armed = !now.connected || now.armed;
     let in_mission = now.connected && now.in_mission;
-    let base = Latch { armed: now.connected.then_some(now.armed), open: latch.open && now.connected, ..latch };
+    let base = Latch {
+        armed: now.connected.then_some(now.armed),
+        open: latch.open && now.connected,
+        ..latch
+    };
     match (latch.armed.unwrap_or(true) != armed, armed) {
-        (true, true) => Latch { was_armed: true, was_in_mission: in_mission, ..base },
+        (true, true) => Latch {
+            was_armed: true,
+            was_in_mission: in_mission,
+            ..base
+        },
         (true, false) => {
             let show = latch.was_armed && latch.was_in_mission && now.has_plan;
-            Latch { was_armed: false, was_in_mission: false, shown: latch.shown + u64::from(show), open: latch.open || show, ..base }
+            Latch {
+                was_armed: false,
+                was_in_mission: false,
+                shown: latch.shown + u64::from(show),
+                open: latch.open || show,
+                ..base
+            }
         }
-        (false, true) => Latch { was_in_mission: latch.was_in_mission || in_mission, ..base },
+        (false, true) => Latch {
+            was_in_mission: latch.was_in_mission || in_mission,
+            ..base
+        },
         (false, false) => base,
     }
 }
 
-static LATCH: Mutex<Latch> = Mutex::new(Latch { armed: None, was_armed: false, was_in_mission: false, shown: 0, open: false });
+static LATCH: Mutex<Latch> = Mutex::new(Latch {
+    armed: None,
+    was_armed: false,
+    was_in_mission: false,
+    shown: 0,
+    open: false,
+});
 
 fn contains(backend: &dyn Backend, controller: &str) -> bool {
-    flag(&backend.value_fields(&format!("planFly.{controller}"), "containsItems"), "containsItems")
+    flag(
+        &backend.value_fields(&format!("planFly.{controller}"), "containsItems"),
+        "containsItems",
+    )
 }
 
 fn reading(backend: &dyn Backend) -> (Reading, i64) {
     let vehicle = backend.value_fields("vehicle", "armed,flightMode,missionFlightMode");
     let connected = vehicle.get("kind").and_then(Value::as_str) == Some("object");
-    let in_mission = vehicle.get("flightMode").is_some() && vehicle.get("flightMode") == vehicle.get("missionFlightMode");
-    let images = integer(&backend.value_fields("vehicle.cameraTriggerPoints", "count"), "count").unwrap_or(0);
+    let in_mission = vehicle.get("flightMode").is_some()
+        && vehicle.get("flightMode") == vehicle.get("missionFlightMode");
+    let images = integer(
+        &backend.value_fields("vehicle.cameraTriggerPoints", "count"),
+        "count",
+    )
+    .unwrap_or(0);
     let mission = match crate::coreplan::plan_state() {
         Some(plan) => plan.has_mission_items,
         None => contains(backend, "missionController"),
     };
-    let has_plan = mission || contains(backend, "geoFenceController") || contains(backend, "rallyPointController") || images != 0;
-    (Reading { connected, armed: flag(&vehicle, "armed"), in_mission, has_plan }, images)
+    let has_plan = mission
+        || contains(backend, "geoFenceController")
+        || contains(backend, "rallyPointController")
+        || images != 0;
+    (
+        Reading {
+            connected,
+            armed: flag(&vehicle, "armed"),
+            in_mission,
+            has_plan,
+        },
+        images,
+    )
 }
 
 pub fn mission_complete_view(backend: &dyn Backend, _args: &[String]) -> Value {
@@ -74,7 +116,10 @@ pub fn mission_complete_view(backend: &dyn Backend, _args: &[String]) -> Value {
         *held = step(*held, &now);
         *held
     };
-    let resume = latch.open.then(|| crate::guided::resume_offer(backend)).flatten();
+    let resume = latch
+        .open
+        .then(|| crate::guided::resume_offer(backend))
+        .flatten();
     let summary = resume.and_then(resume_summary);
     let interrupted = resume.is_some();
     json!({
@@ -101,7 +146,9 @@ pub fn interrupted_detail(waypoint: usize, drops: usize) -> String {
         1 => " One drop is still to come.".to_string(),
         n => format!(" {n} drops are still to come."),
     };
-    format!("The aircraft left the mission before finishing it. Resuming flies it again from waypoint {waypoint}.{rest}")
+    format!(
+        "The aircraft left the mission before finishing it. Resuming flies it again from waypoint {waypoint}.{rest}"
+    )
 }
 
 fn resume_summary(offer: i64) -> Option<(usize, usize)> {
@@ -109,8 +156,14 @@ fn resume_summary(offer: i64) -> Option<(usize, usize)> {
     let vehicle = hub.active()?;
     let shift = i64::from(!vehicle.sends_home());
     let asked = usize::try_from(offer - shift).ok()?;
-    let commands = crate::cmdinfo::tree(crate::plandoc::firmware(i64::from(vehicle.autopilot)), crate::plandoc::vehicle_class(i64::from(vehicle.vehicle_type)));
-    let (first, drops) = crate::resumemission::resume_summary(vehicle.mission_items(), asked, |command| crate::resumemission::shape(&commands, command));
+    let commands = crate::cmdinfo::tree(
+        crate::plandoc::firmware(i64::from(vehicle.autopilot)),
+        crate::plandoc::vehicle_class(i64::from(vehicle.vehicle_type)),
+    );
+    let (first, drops) =
+        crate::resumemission::resume_summary(vehicle.mission_items(), asked, |command| {
+            crate::resumemission::shape(&commands, command)
+        });
     Some((first + usize::try_from(shift).unwrap_or(0), drops))
 }
 
@@ -121,7 +174,9 @@ pub fn dismiss(id: u64) -> Value {
             held.open = false;
             json!({ "ok": true })
         }
-        false => json!({ "ok": false, "reason": "That mission complete notice is no longer open." }),
+        false => {
+            json!({ "ok": false, "reason": "That mission complete notice is no longer open." })
+        }
     }
 }
 
@@ -131,13 +186,27 @@ mod tests {
 
     #[test]
     fn an_interrupted_mission_says_where_it_resumes_and_what_is_left() {
-        assert_eq!(interrupted_detail(4, 2), "The aircraft left the mission before finishing it. Resuming flies it again from waypoint 4. 2 drops are still to come.");
-        assert_eq!(interrupted_detail(4, 1), "The aircraft left the mission before finishing it. Resuming flies it again from waypoint 4. One drop is still to come.");
-        assert_eq!(interrupted_detail(6, 0), "The aircraft left the mission before finishing it. Resuming flies it again from waypoint 6.");
+        assert_eq!(
+            interrupted_detail(4, 2),
+            "The aircraft left the mission before finishing it. Resuming flies it again from waypoint 4. 2 drops are still to come."
+        );
+        assert_eq!(
+            interrupted_detail(4, 1),
+            "The aircraft left the mission before finishing it. Resuming flies it again from waypoint 4. One drop is still to come."
+        );
+        assert_eq!(
+            interrupted_detail(6, 0),
+            "The aircraft left the mission before finishing it. Resuming flies it again from waypoint 6."
+        );
     }
 
     fn at(armed: bool, in_mission: bool) -> Reading {
-        Reading { connected: true, armed, in_mission, has_plan: true }
+        Reading {
+            connected: true,
+            armed,
+            in_mission,
+            has_plan: true,
+        }
     }
 
     fn run(readings: &[Reading]) -> Latch {
@@ -146,27 +215,88 @@ mod tests {
 
     #[test]
     fn opens_on_disarm_after_an_armed_mission() {
-        assert!(run(&[at(false, false), at(true, false), at(true, true), at(false, false)]).open, "armed, then Auto, then disarmed is a flown plan");
+        assert!(
+            run(&[
+                at(false, false),
+                at(true, false),
+                at(true, true),
+                at(false, false)
+            ])
+            .open,
+            "armed, then Auto, then disarmed is a flown plan"
+        );
         assert!(run(&[at(false, false), at(true, true), at(false, true)]).open);
-        assert!(!run(&[at(false, false), at(true, false), at(false, false)]).open, "a flight that never entered the mission mode finished nothing");
-        assert!(!run(&[at(false, false), at(true, true), at(true, true), at(true, true)]).open, "still armed is still flying");
-        let no_plan = [at(false, false), at(true, true), Reading { has_plan: false, ..at(false, false) }];
-        assert!(!run(&no_plan).open, "with no plan, fence, rally or photos there is nothing to report");
-        assert!(!run(&[at(false, false), at(true, true), Reading { connected: false, ..at(false, false) }]).open, "losing the vehicle closes it, as the dialog does when activeVehicle goes");
-        assert!(!run(&[at(true, true), at(false, true)]).open, "a vehicle first seen already armed never armed under QGC's eyes, since no vehicle reads as armed");
-        let gone = Reading { connected: false, ..at(false, false) };
-        assert!(run(&[at(false, false), at(true, true), gone, at(false, false)]).open, "a link lost in flight that returns disarmed is the finished mission QGC reports");
+        assert!(
+            !run(&[at(false, false), at(true, false), at(false, false)]).open,
+            "a flight that never entered the mission mode finished nothing"
+        );
+        assert!(
+            !run(&[
+                at(false, false),
+                at(true, true),
+                at(true, true),
+                at(true, true)
+            ])
+            .open,
+            "still armed is still flying"
+        );
+        let no_plan = [
+            at(false, false),
+            at(true, true),
+            Reading {
+                has_plan: false,
+                ..at(false, false)
+            },
+        ];
+        assert!(
+            !run(&no_plan).open,
+            "with no plan, fence, rally or photos there is nothing to report"
+        );
+        assert!(
+            !run(&[
+                at(false, false),
+                at(true, true),
+                Reading {
+                    connected: false,
+                    ..at(false, false)
+                }
+            ])
+            .open,
+            "losing the vehicle closes it, as the dialog does when activeVehicle goes"
+        );
+        assert!(
+            !run(&[at(true, true), at(false, true)]).open,
+            "a vehicle first seen already armed never armed under QGC's eyes, since no vehicle reads as armed"
+        );
+        let gone = Reading {
+            connected: false,
+            ..at(false, false)
+        };
+        assert!(
+            run(&[at(false, false), at(true, true), gone, at(false, false)]).open,
+            "a link lost in flight that returns disarmed is the finished mission QGC reports"
+        );
     }
 
     #[test]
     fn repeated_readings_do_not_retrigger() {
-        let opened = run(&[at(false, false), at(true, true), at(false, false), at(false, false), at(false, false)]);
+        let opened = run(&[
+            at(false, false),
+            at(true, true),
+            at(false, false),
+            at(false, false),
+            at(false, false),
+        ]);
         assert_eq!(opened.shown, 1);
     }
 
     #[test]
     fn dismissing_needs_the_open_id() {
-        *LATCH.lock().unwrap() = Latch { open: true, shown: 4, ..Latch::default() };
+        *LATCH.lock().unwrap() = Latch {
+            open: true,
+            shown: 4,
+            ..Latch::default()
+        };
         assert_eq!(dismiss(3)["ok"], false);
         assert_eq!(dismiss(4)["ok"], true);
         assert!(!LATCH.lock().unwrap().open);

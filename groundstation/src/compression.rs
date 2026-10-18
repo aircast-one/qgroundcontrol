@@ -4,8 +4,14 @@ pub const INFLATE_LIMIT: u64 = 256 * 1024 * 1024;
 
 fn bounded(mut reader: impl Read, codec: &str) -> Result<Vec<u8>, String> {
     let mut out = Vec::new();
-    reader.by_ref().take(INFLATE_LIMIT + 1).read_to_end(&mut out).map_err(|e| format!("{codec}: {e}"))?;
-    (out.len() as u64 <= INFLATE_LIMIT).then_some(out).ok_or_else(|| format!("{codec}: inflated payload exceeds {INFLATE_LIMIT} bytes"))
+    reader
+        .by_ref()
+        .take(INFLATE_LIMIT + 1)
+        .read_to_end(&mut out)
+        .map_err(|e| format!("{codec}: {e}"))?;
+    (out.len() as u64 <= INFLATE_LIMIT)
+        .then_some(out)
+        .ok_or_else(|| format!("{codec}: inflated payload exceeds {INFLATE_LIMIT} bytes"))
 }
 
 struct LimitedSink<'a> {
@@ -15,7 +21,9 @@ struct LimitedSink<'a> {
 impl std::io::Write for LimitedSink<'_> {
     fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
         if (self.out.len() + buf.len()) as u64 > INFLATE_LIMIT {
-            return Err(std::io::Error::other(format!("inflated payload exceeds {INFLATE_LIMIT} bytes")));
+            return Err(std::io::Error::other(format!(
+                "inflated payload exceeds {INFLATE_LIMIT} bytes"
+            )));
         }
         self.out.extend_from_slice(buf);
         Ok(buf.len())
@@ -41,7 +49,9 @@ pub fn unzip(bytes: &[u8]) -> Result<Vec<(String, Vec<u8>)>, String> {
     let mut archive = zip::ZipArchive::new(Cursor::new(bytes)).map_err(|e| format!("zip: {e}"))?;
     (0..archive.len())
         .map(|i| {
-            let entry = archive.by_index(i).map_err(|e| format!("zip entry {i}: {e}"))?;
+            let entry = archive
+                .by_index(i)
+                .map_err(|e| format!("zip entry {i}: {e}"))?;
             let name = entry.name().to_string();
             Ok((name, bounded(entry, "zip")?))
         })
@@ -54,7 +64,11 @@ mod tests {
     use super::*;
 
     fn fixture(name: &str) -> Vec<u8> {
-        std::fs::read(format!("{}/../test/Utilities/Compression/{name}", env!("CARGO_MANIFEST_DIR"))).unwrap()
+        std::fs::read(format!(
+            "{}/../test/Utilities/Compression/{name}",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .unwrap()
     }
 
     #[test]

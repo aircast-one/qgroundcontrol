@@ -42,8 +42,13 @@ fn parse_one(chunk: &str) -> Option<Message> {
     let (style, body) = chunk.split_once("\">").unwrap_or(("", chunk));
     let (head, rest) = body.strip_prefix('[')?.split_once(']')?;
     let (time, component_tag) = head.split_once(' ').unwrap_or((head, ""));
-    let component = component_tag.strip_prefix("COMP:").and_then(|id| id.parse().ok());
-    let (severity, html) = rest.trim_start().split_once(": ").unwrap_or(("", rest.trim_start()));
+    let component = component_tag
+        .strip_prefix("COMP:")
+        .and_then(|id| id.parse().ok());
+    let (severity, html) = rest
+        .trim_start()
+        .split_once(": ")
+        .unwrap_or(("", rest.trim_start()));
     let text = plain_text(html);
     Some(Message {
         index: 0,
@@ -58,7 +63,9 @@ fn parse_one(chunk: &str) -> Option<Message> {
 
 fn plain_text(html: &str) -> String {
     let with_newlines = html.replace("<br/>", "\n").replace("<br>", "\n");
-    html_escape::decode_html_entities(&strip_tags(&with_newlines)).trim().to_string()
+    html_escape::decode_html_entities(&strip_tags(&with_newlines))
+        .trim()
+        .to_string()
 }
 
 fn strip_tags(text: &str) -> String {
@@ -87,30 +94,62 @@ mod tests {
         assert_eq!(parsed[1].time, "12:34:56.789");
         assert_eq!(parsed[1].component, None);
         assert_eq!(parsed[1].severity, "Warning");
-        assert_eq!(parsed[1].level, "warning", "the level comes from the style token, not the translated word");
+        assert_eq!(
+            parsed[1].level, "warning",
+            "the level comes from the style token, not the translated word"
+        );
         assert_eq!(parsed[1].text, "PreArm: Compass & GPS <inconsistent>");
         assert_eq!((parsed[0].index, parsed[1].index), (0, 1));
         assert_eq!(parsed[0].component, Some(1));
         assert_eq!(parsed[0].level, "normal");
         assert_eq!(parsed[0].text, "ArduCopter V4.5.7");
-        assert_eq!((parsed[1].told_elsewhere, parsed[0].told_elsewhere), (true, false), "a PreArm line is in the readiness list, so the heads keep it out of the banner");
-        assert!(parse("<font style=\"<#I>\">[1:2:3.4 ] Warning: No such mode 26</font><br/>")[0].told_elsewhere, "the core already worded the refused mode change as a banner");
-        assert_eq!(parse("<font style=\"<#E>\">[1:2:3.4 ] Fehler: kaputt</font><br/>")[0].level, "error", "a localized severity word still buckets by the token");
-        assert_eq!(parse("<font style=\"<#I>\">[1:2:3.4 ] Notice: heads up</font><br/>")[0].level, "warning", "a notice buckets as a warning, as the Qt handler colours it");
+        assert_eq!(
+            (parsed[1].told_elsewhere, parsed[0].told_elsewhere),
+            (true, false),
+            "a PreArm line is in the readiness list, so the heads keep it out of the banner"
+        );
+        assert!(
+            parse("<font style=\"<#I>\">[1:2:3.4 ] Warning: No such mode 26</font><br/>")[0]
+                .told_elsewhere,
+            "the core already worded the refused mode change as a banner"
+        );
+        assert_eq!(
+            parse("<font style=\"<#E>\">[1:2:3.4 ] Fehler: kaputt</font><br/>")[0].level,
+            "error",
+            "a localized severity word still buckets by the token"
+        );
+        assert_eq!(
+            parse("<font style=\"<#I>\">[1:2:3.4 ] Notice: heads up</font><br/>")[0].level,
+            "warning",
+            "a notice buckets as a warning, as the Qt handler colours it"
+        );
     }
 
     #[test]
     fn the_newest_message_is_last_as_it_is_in_every_other_list_the_core_serves() {
         let parsed = parse(TWO);
-        assert_eq!(parsed.last().unwrap().time, "12:34:56.789", "the handler prepends, so the newest arrives first in the string and has to be moved to the end");
+        assert_eq!(
+            parsed.last().unwrap().time,
+            "12:34:56.789",
+            "the handler prepends, so the newest arrives first in the string and has to be moved to the end"
+        );
         assert_eq!(parsed.first().unwrap().time, "12:34:55.000");
-        assert!(parsed.first().unwrap().time < parsed.last().unwrap().time, "a head taking last() for the newest is right here, on the notices and on the track, rather than right on two of three");
-        assert_eq!((parsed[0].index, parsed[1].index), (0, 1), "the index counts from the oldest, so it does not jump around as messages arrive");
+        assert!(
+            parsed.first().unwrap().time < parsed.last().unwrap().time,
+            "a head taking last() for the newest is right here, on the notices and on the track, rather than right on two of three"
+        );
+        assert_eq!(
+            (parsed[0].index, parsed[1].index),
+            (0, 1),
+            "the index counts from the oldest, so it does not jump around as messages arrive"
+        );
     }
 
     #[test]
     fn keeps_multiline_text_in_one_message() {
-        let parsed = parse("<font style=\"c\">[1:2:3.4 ] Error: line one<br/>line two<br/><small><small>details</small></small></font><br/>");
+        let parsed = parse(
+            "<font style=\"c\">[1:2:3.4 ] Error: line one<br/>line two<br/><small><small>details</small></small></font><br/>",
+        );
         assert_eq!(parsed.len(), 1);
         assert_eq!(parsed[0].text, "line one\nline two\ndetails");
     }

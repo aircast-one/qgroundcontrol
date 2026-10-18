@@ -20,10 +20,29 @@ pub const DEPS: &[&str] = &[
 const ITEM_ROOT: &str = "plan.missionController.visualItems";
 const LISTS: [&str; 3] = ["comboboxFacts", "textFieldFacts", "nanFacts"];
 const LAUNCH_ALTITUDE: &str = "plannedHomePositionAltitude";
-const SURVEY_PROPERTIES: [&str; 4] = ["distanceToSurface", "imageDensity", "frontalOverlap", "sideOverlap"];
+const SURVEY_PROPERTIES: [&str; 4] = [
+    "distanceToSurface",
+    "imageDensity",
+    "frontalOverlap",
+    "sideOverlap",
+];
 const SPACING_PROPERTIES: [&str; 2] = ["adjustedFootprintFrontal", "adjustedFootprintSide"];
-const SENSOR_PROPERTIES: [&str; 5] = ["sensorWidth", "sensorHeight", "imageWidth", "imageHeight", "focalLength"];
-const OPTICS_PROPERTIES: [&str; 7] = ["sensorWidth", "sensorHeight", "imageWidth", "imageHeight", "focalLength", "landscape", "minTriggerInterval"];
+const SENSOR_PROPERTIES: [&str; 5] = [
+    "sensorWidth",
+    "sensorHeight",
+    "imageWidth",
+    "imageHeight",
+    "focalLength",
+];
+const OPTICS_PROPERTIES: [&str; 7] = [
+    "sensorWidth",
+    "sensorHeight",
+    "imageWidth",
+    "imageHeight",
+    "focalLength",
+    "landscape",
+    "minTriggerInterval",
+];
 
 fn field(fact: &Value, item: &str, suffix: &str, group: &str) -> Value {
     let mut control = crate::control::decode(fact, &format!("{item}.{suffix}"));
@@ -35,7 +54,9 @@ fn field(fact: &Value, item: &str, suffix: &str, group: &str) -> Value {
 }
 
 fn named(fact: &Value) -> bool {
-    fact.get("name").and_then(Value::as_str).is_some_and(|name| !name.is_empty())
+    fact.get("name")
+        .and_then(Value::as_str)
+        .is_some_and(|name| !name.is_empty())
 }
 
 fn listed(backend: &dyn Backend, item: &str) -> Vec<Value> {
@@ -43,14 +64,27 @@ fn listed(backend: &dyn Backend, item: &str) -> Vec<Value> {
         .iter()
         .flat_map(|list| {
             let read = backend.value(&format!("{item}.{list}"));
-            let elements = read.get("elements").and_then(Value::as_array).cloned().unwrap_or_default();
+            let elements = read
+                .get("elements")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default();
             elements
                 .into_iter()
                 .enumerate()
                 .filter(|(_, fact)| named(fact))
-                .map(move |(at, fact)| match (*list == "nanFacts", field(&fact, item, &format!("{list}.{at}"), "Settings")) {
-                    (true, Value::Object(map)) => Value::Object(map.into_iter().chain([("optional".to_string(), json!(true))]).collect()),
-                    (_, control) => control,
+                .map(move |(at, fact)| {
+                    match (
+                        *list == "nanFacts",
+                        field(&fact, item, &format!("{list}.{at}"), "Settings"),
+                    ) {
+                        (true, Value::Object(map)) => Value::Object(
+                            map.into_iter()
+                                .chain([("optional".to_string(), json!(true))])
+                                .collect(),
+                        ),
+                        (_, control) => control,
+                    }
                 })
                 .collect::<Vec<_>>()
         })
@@ -59,55 +93,111 @@ fn listed(backend: &dyn Backend, item: &str) -> Vec<Value> {
 
 pub fn area_help(kind: &str, complete: bool) -> Option<&'static str> {
     (!complete).then_some(match kind {
-        "CorridorScan" => "Use the Polyline Tools to create the polyline which defines the corridor.",
-        "StructureScan" => "Draw the structure outline with the Polygon Tools, at the top of the map.",
+        "CorridorScan" => {
+            "Use the Polyline Tools to create the polyline which defines the corridor."
+        }
+        "StructureScan" => {
+            "Draw the structure outline with the Polygon Tools, at the top of the map."
+        }
         _ => "Use the Polygon Tools to create the polygon which outlines your survey area.",
     })
 }
 
 pub fn grid_note(kind: &str) -> Option<&'static str> {
-    (kind == "StructureScan").then_some("The polygon outlines the structure's surface, not the flight path.")
+    (kind == "StructureScan")
+        .then_some("The polygon outlines the structure's surface, not the flight path.")
 }
 
 fn qt_area_help(backend: &dyn Backend, item: &str, read: &Value) -> Option<&'static str> {
-    let (kind, shape) = [("SurveyComplexItem", "survey", "surveyAreaPolygon"), ("CorridorScanComplexItem", "CorridorScan", "corridorPolyline"), ("StructureScanComplexItem", "StructureScan", "structurePolygon")]
-        .into_iter()
-        .find(|(class, _, _)| read.get("class").and_then(Value::as_str) == Some(*class))
-        .map(|(_, kind, shape)| (kind, shape))?;
-    area_help(kind, flag(&backend.value(&format!("{item}.{shape}")), "isValid"))
+    let (kind, shape) = [
+        ("SurveyComplexItem", "survey", "surveyAreaPolygon"),
+        (
+            "CorridorScanComplexItem",
+            "CorridorScan",
+            "corridorPolyline",
+        ),
+        (
+            "StructureScanComplexItem",
+            "StructureScan",
+            "structurePolygon",
+        ),
+    ]
+    .into_iter()
+    .find(|(class, _, _)| read.get("class").and_then(Value::as_str) == Some(*class))
+    .map(|(_, kind, shape)| (kind, shape))?;
+    area_help(
+        kind,
+        flag(&backend.value(&format!("{item}.{shape}")), "isValid"),
+    )
 }
 
 fn qt_entry_point(item: &str, read: &Value) -> Option<Value> {
     let kind = match read.get("class").and_then(Value::as_str)? {
         "SurveyComplexItem" => "survey",
         "CorridorScanComplexItem" => "CorridorScan",
-        "StructureScanComplexItem" => return Some(json!({ "label": "Entry vertex", "value": (read.get("entryVertex")?.as_i64()? + 1).to_string(), "path": format!("{item}.rotateEntryPoint") })),
+        "StructureScanComplexItem" => {
+            return Some(
+                json!({ "label": "Entry vertex", "value": (read.get("entryVertex")?.as_i64()? + 1).to_string(), "path": format!("{item}.rotateEntryPoint") }),
+            );
+        }
         _ => return None,
     };
     let name = crate::surveydoc::entry_point_name(kind, read.get("entryPoint")?.as_i64()?)?;
-    Some(json!({ "label": "Start from", "value": name, "path": format!("{item}.rotateEntryPoint") }))
+    Some(
+        json!({ "label": "Start from", "value": name, "path": format!("{item}.rotateEntryPoint") }),
+    )
 }
 
 fn value_set_is_distance(facts: &[Value]) -> bool {
-    facts.iter().find(|fact| fact.get("property").and_then(Value::as_str) == Some("valueSetIsDistance")).and_then(|fact| fact.get("value")).map_or(true, |value| value.as_bool().unwrap_or_else(|| value.as_f64().is_some_and(|v| v != 0.0)))
+    facts
+        .iter()
+        .find(|fact| fact.get("property").and_then(Value::as_str) == Some("valueSetIsDistance"))
+        .and_then(|fact| fact.get("value"))
+        .map_or(true, |value| {
+            value
+                .as_bool()
+                .unwrap_or_else(|| value.as_f64().is_some_and(|v| v != 0.0))
+        })
 }
 
 fn owned(read: &Value, item: &str, vehicle: crate::cmdinfo::VehicleClass) -> Vec<Value> {
     let class = read.get("class").and_then(Value::as_str);
     let vtol_landing = class == Some("VTOLLandingComplexItem");
     let landing = vtol_landing || class == Some("FixedWingLandingComplexItem");
-    let facts = read.get("facts").and_then(Value::as_array).cloned().unwrap_or_default();
+    let facts = read
+        .get("facts")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     let by_distance = value_set_is_distance(&facts);
     let mut rows: Vec<(&str, Value)> = facts
         .iter()
         .filter(|fact| named(fact))
-        .filter(|fact| crate::surveydoc::editor_shows(fact.get("name").and_then(Value::as_str).unwrap_or(""), vehicle))
+        .filter(|fact| {
+            crate::surveydoc::editor_shows(
+                fact.get("name").and_then(Value::as_str).unwrap_or(""),
+                vehicle,
+            )
+        })
         .filter_map(|fact| {
-            let property = fact.get("property").and_then(Value::as_str).filter(|p| !p.is_empty() && *p != LAUNCH_ALTITUDE)?;
+            let property = fact
+                .get("property")
+                .and_then(Value::as_str)
+                .filter(|p| !p.is_empty() && *p != LAUNCH_ALTITUDE)?;
             let control = field(fact, item, property, "Settings");
             match landing {
-                true => crate::landingpattern::radioed(crate::landingpattern::editor_row(control, vtol_landing, property), vtol_landing, item, property, by_distance).map(|row| (property, row)),
-                false => Some((property, crate::surveydoc::row_labelled(control, vtol_landing, property))),
+                true => crate::landingpattern::radioed(
+                    crate::landingpattern::editor_row(control, vtol_landing, property),
+                    vtol_landing,
+                    item,
+                    property,
+                    by_distance,
+                )
+                .map(|row| (property, row)),
+                false => Some((
+                    property,
+                    crate::surveydoc::row_labelled(control, vtol_landing, property),
+                )),
             }
         })
         .collect();
@@ -119,7 +209,15 @@ fn owned(read: &Value, item: &str, vehicle: crate::cmdinfo::VehicleClass) -> Vec
 }
 
 fn strings(read: &Value, key: &str) -> Vec<String> {
-    read.get(key).and_then(Value::as_array).map(|list| list.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default()
+    read.get(key)
+        .and_then(Value::as_array)
+        .map(|list| {
+            list.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn camera(backend: &dyn Backend, item: &str, structure: bool) -> Value {
@@ -127,16 +225,39 @@ fn camera(backend: &dyn Backend, item: &str, structure: bool) -> Value {
     if read.get("kind").and_then(Value::as_str) != Some("object") {
         return Value::Null;
     }
-    let text = |key: &str| read.get(key).and_then(Value::as_str).unwrap_or("").to_string();
+    let text = |key: &str| {
+        read.get(key)
+            .and_then(Value::as_str)
+            .unwrap_or("")
+            .to_string()
+    };
     let custom = flag(&read, "isCustomCamera");
-    let facts = read.get("facts").and_then(Value::as_array).cloned().unwrap_or_default();
-    let by_property = |property: &str| facts.iter().find(|fact| fact.get("property").and_then(Value::as_str) == Some(property));
-    let fixed_orientation = by_property("fixedOrientation").and_then(|fact| fact.get("value")).is_some_and(|value| value.as_bool().unwrap_or_else(|| value.as_f64().is_some_and(|v| v != 0.0)));
+    let facts = read
+        .get("facts")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let by_property = |property: &str| {
+        facts
+            .iter()
+            .find(|fact| fact.get("property").and_then(Value::as_str) == Some(property))
+    };
+    let fixed_orientation = by_property("fixedOrientation")
+        .and_then(|fact| fact.get("value"))
+        .is_some_and(|value| {
+            value
+                .as_bool()
+                .unwrap_or_else(|| value.as_f64().is_some_and(|v| v != 0.0))
+        });
     let manual = flag(&read, "isManualCamera");
     let optics: Vec<&str> = match (custom, manual) {
         (true, _) => OPTICS_PROPERTIES.to_vec(),
         (false, true) => Vec::new(),
-        (false, false) => SENSOR_PROPERTIES.iter().copied().chain((!fixed_orientation).then_some("landscape")).collect(),
+        (false, false) => SENSOR_PROPERTIES
+            .iter()
+            .copied()
+            .chain((!fixed_orientation).then_some("landscape"))
+            .collect(),
     };
     let shown: Vec<Value> = optics
         .iter()
@@ -145,13 +266,20 @@ fn camera(backend: &dyn Backend, item: &str, structure: bool) -> Value {
         .filter_map(|property| by_property(property))
         .filter(|fact| named(fact))
         .map(|fact| {
-            let property = fact.get("property").and_then(Value::as_str).unwrap_or_default();
+            let property = fact
+                .get("property")
+                .and_then(Value::as_str)
+                .unwrap_or_default();
             let built = field(fact, item, &format!("cameraCalc.{property}"), "Camera");
             let control = match crate::surveydoc::grid_label(structure, property) {
                 Some(label) => crate::surveydoc::labelled(built, label),
                 None => built,
             };
-            match (control, (!custom && SENSOR_PROPERTIES.contains(&property)) || (!manual && SPACING_PROPERTIES.contains(&property))) {
+            match (
+                control,
+                (!custom && SENSOR_PROPERTIES.contains(&property))
+                    || (!manual && SPACING_PROPERTIES.contains(&property)),
+            ) {
                 (Value::Object(mut map), true) => {
                     map.insert("readOnly".to_string(), json!(true));
                     Value::Object(map)
@@ -184,7 +312,9 @@ pub const LAND_ALTITUDE_HINT: &str = "Altitude is the approximate ground altitud
 pub fn altitude_hint(land: bool, mode: Option<i64>, amsl_sent: Option<String>) -> Option<String> {
     match (land, mode) {
         (true, _) => Some(LAND_ALTITUDE_HINT.to_string()),
-        (false, Some(crate::altitudemodes::CALC_ABOVE_TERRAIN)) => amsl_sent.map(|sent| format!("Actual AMSL alt sent: {sent}")),
+        (false, Some(crate::altitudemodes::CALC_ABOVE_TERRAIN)) => {
+            amsl_sent.map(|sent| format!("Actual AMSL alt sent: {sent}"))
+        }
         _ => None,
     }
 }
@@ -206,22 +336,45 @@ pub const CLEAR_TEXT: &str = "Ensure clear of obstacles and into the wind.";
 pub fn wizard_info(wizard: bool, vtol: bool) -> [(String, Value); 2] {
     [
         ("wizardMode".to_string(), json!(wizard)),
-        ("wizardText".to_string(), match wizard {
-            true => json!([if vtol { TRANSITION_TEXT } else { CLIMB_OUT_TEXT }, CLEAR_TEXT]),
-            false => json!([]),
-        }),
+        (
+            "wizardText".to_string(),
+            match wizard {
+                true => json!([
+                    if vtol {
+                        TRANSITION_TEXT
+                    } else {
+                        CLIMB_OUT_TEXT
+                    },
+                    CLEAR_TEXT
+                ]),
+                false => json!([]),
+            },
+        ),
     ]
 }
 
 pub fn command_info(read: &Value) -> [(String, Value); 6] {
-    let text = |key: &str| read.get(key).and_then(Value::as_str).filter(|t| !t.is_empty()).map_or(Value::Null, |t| json!(t));
+    let text = |key: &str| {
+        read.get(key)
+            .and_then(Value::as_str)
+            .filter(|t| !t.is_empty())
+            .map_or(Value::Null, |t| json!(t))
+    };
     [
         ("takeoff".to_string(), json!(flag(read, "isTakeoffItem"))),
         ("category".to_string(), text("category")),
         ("commandDescription".to_string(), text("commandDescription")),
         ("commandName".to_string(), text("commandName")),
-        ("sequenceNumber".to_string(), read.get("sequenceNumber").and_then(Value::as_i64).map_or(Value::Null, |n| json!(n))),
-        ("specifiesCoordinate".to_string(), json!(flag(read, "specifiesCoordinate"))),
+        (
+            "sequenceNumber".to_string(),
+            read.get("sequenceNumber")
+                .and_then(Value::as_i64)
+                .map_or(Value::Null, |n| json!(n)),
+        ),
+        (
+            "specifiesCoordinate".to_string(),
+            json!(flag(read, "specifiesCoordinate")),
+        ),
     ]
 }
 
@@ -236,7 +389,9 @@ fn qt_vehicle_class(backend: &dyn Backend) -> crate::cmdinfo::VehicleClass {
 
 pub fn item_facts_view(backend: &dyn Backend, args: &[String]) -> Value {
     let Some(index) = args.first().and_then(|a| a.parse::<usize>().ok()) else {
-        return refused("view.itemFacts needs the index of the item in the plan, as view.itemFacts(3)");
+        return refused(
+            "view.itemFacts needs the index of the item in the plan, as view.itemFacts(3)",
+        );
     };
     if crate::coreplan::enabled() {
         return crate::coreplan::item_facts(backend, index);
@@ -300,19 +455,38 @@ pub fn item_facts_view(backend: &dyn Backend, args: &[String]) -> Value {
         },
     });
     let controller = backend.value_fields("plan.controllerVehicle", "vtol,apmFirmware");
-    let wizard = wizard_info(simple && flag(&read, "isTakeoffItem") && flag(&read, "wizardMode"), flag(&controller, "vtol"));
+    let wizard = wizard_info(
+        simple && flag(&read, "isTakeoffItem") && flag(&read, "wizardMode"),
+        flag(&controller, "vtol"),
+    );
     match built {
-        Value::Object(map) => without_hidden_mission_speed(Value::Object(map.into_iter().chain(info).chain(wizard).collect()), index, flag(&controller, "vtol"), flag(&controller, "apmFirmware")),
+        Value::Object(map) => without_hidden_mission_speed(
+            Value::Object(map.into_iter().chain(info).chain(wizard).collect()),
+            index,
+            flag(&controller, "vtol"),
+            flag(&controller, "apmFirmware"),
+        ),
         other => other,
     }
 }
 
 fn qt_previous_coordinate(backend: &dyn Backend, index: usize) -> Option<(f64, f64)> {
     (1..index).rev().find_map(|before| {
-        let read = backend.value_fields(&format!("{ITEM_ROOT}.{before}"), "isSimpleItem,specifiesCoordinate,isStandaloneCoordinate,coordinate");
-        let placed = flag(&read, "isSimpleItem") && flag(&read, "specifiesCoordinate") && !flag(&read, "isStandaloneCoordinate");
+        let read = backend.value_fields(
+            &format!("{ITEM_ROOT}.{before}"),
+            "isSimpleItem,specifiesCoordinate,isStandaloneCoordinate,coordinate",
+        );
+        let placed = flag(&read, "isSimpleItem")
+            && flag(&read, "specifiesCoordinate")
+            && !flag(&read, "isStandaloneCoordinate");
         let at = read.get("coordinate")?;
-        placed.then(|| at.get("latitude")?.as_f64().zip(at.get("longitude")?.as_f64())).flatten()
+        placed
+            .then(|| {
+                at.get("latitude")?
+                    .as_f64()
+                    .zip(at.get("longitude")?.as_f64())
+            })
+            .flatten()
     })
 }
 
@@ -323,44 +497,117 @@ mod tests {
     #[test]
     fn mission_settings_flight_speed_is_dropped_where_mission_settings_editor_hides_it() {
         let facts = || json!({ "speedSection": { "available": true } });
-        assert_eq!(without_hidden_mission_speed(facts(), 0, false, false)["speedSection"]["available"], true);
-        assert_eq!(without_hidden_mission_speed(facts(), 0, true, false)["speedSection"], Value::Null, "_showFlightSpeed is false for a VTOL");
-        assert_eq!(without_hidden_mission_speed(facts(), 0, false, true)["speedSection"], Value::Null, "and for ArduPilot");
-        assert_eq!(without_hidden_mission_speed(facts(), 3, true, true)["speedSection"]["available"], true, "a waypoint's own speed section is not the mission settings one");
+        assert_eq!(
+            without_hidden_mission_speed(facts(), 0, false, false)["speedSection"]["available"],
+            true
+        );
+        assert_eq!(
+            without_hidden_mission_speed(facts(), 0, true, false)["speedSection"],
+            Value::Null,
+            "_showFlightSpeed is false for a VTOL"
+        );
+        assert_eq!(
+            without_hidden_mission_speed(facts(), 0, false, true)["speedSection"],
+            Value::Null,
+            "and for ArduPilot"
+        );
+        assert_eq!(
+            without_hidden_mission_speed(facts(), 3, true, true)["speedSection"]["available"],
+            true,
+            "a waypoint's own speed section is not the mission settings one"
+        );
     }
 
     #[test]
     fn the_climb_out_step_reads_like_simple_item_editor() {
-        assert_eq!(wizard_info(true, false)[1].1, json!([CLIMB_OUT_TEXT, CLEAR_TEXT]));
+        assert_eq!(
+            wizard_info(true, false)[1].1,
+            json!([CLIMB_OUT_TEXT, CLEAR_TEXT])
+        );
         assert_eq!(wizard_info(true, true)[1].1[0], TRANSITION_TEXT);
-        assert_eq!(wizard_info(false, false), [("wizardMode".to_string(), json!(false)), ("wizardText".to_string(), json!([]))]);
+        assert_eq!(
+            wizard_info(false, false),
+            [
+                ("wizardMode".to_string(), json!(false)),
+                ("wizardText".to_string(), json!([]))
+            ]
+        );
     }
 
     #[test]
     fn command_info_carries_what_the_command_picker_and_editor_read() {
-        let info = command_info(&json!({ "isTakeoffItem": true, "category": "Basic", "commandDescription": "Take off from the ground", "commandName": "Takeoff", "sequenceNumber": 1, "specifiesCoordinate": true }));
-        assert_eq!(info.map(|(k, v)| (k, v)), [("takeoff".to_string(), json!(true)), ("category".to_string(), json!("Basic")), ("commandDescription".to_string(), json!("Take off from the ground")), ("commandName".to_string(), json!("Takeoff")), ("sequenceNumber".to_string(), json!(1)), ("specifiesCoordinate".to_string(), json!(true))], "MissionItemEditor heads with commandName and the sequence seal, and offers a position for any item that specifiesCoordinate");
+        let info = command_info(
+            &json!({ "isTakeoffItem": true, "category": "Basic", "commandDescription": "Take off from the ground", "commandName": "Takeoff", "sequenceNumber": 1, "specifiesCoordinate": true }),
+        );
+        assert_eq!(
+            info.map(|(k, v)| (k, v)),
+            [
+                ("takeoff".to_string(), json!(true)),
+                ("category".to_string(), json!("Basic")),
+                (
+                    "commandDescription".to_string(),
+                    json!("Take off from the ground")
+                ),
+                ("commandName".to_string(), json!("Takeoff")),
+                ("sequenceNumber".to_string(), json!(1)),
+                ("specifiesCoordinate".to_string(), json!(true))
+            ],
+            "MissionItemEditor heads with commandName and the sequence seal, and offers a position for any item that specifiesCoordinate"
+        );
         assert_eq!(command_info(&json!({}))[1].1, Value::Null);
     }
 
     #[test]
     fn the_altitude_card_explains_land_and_calculated_terrain_altitudes() {
-        assert_eq!(altitude_hint(true, Some(crate::altitudemodes::RELATIVE), None).as_deref(), Some(LAND_ALTITUDE_HINT));
-        assert_eq!(altitude_hint(false, Some(crate::altitudemodes::CALC_ABOVE_TERRAIN), Some("512.3 m".into())).as_deref(), Some("Actual AMSL alt sent: 512.3 m"));
-        assert_eq!(altitude_hint(false, Some(crate::altitudemodes::RELATIVE), Some("512.3 m".into())), None);
+        assert_eq!(
+            altitude_hint(true, Some(crate::altitudemodes::RELATIVE), None).as_deref(),
+            Some(LAND_ALTITUDE_HINT)
+        );
+        assert_eq!(
+            altitude_hint(
+                false,
+                Some(crate::altitudemodes::CALC_ABOVE_TERRAIN),
+                Some("512.3 m".into())
+            )
+            .as_deref(),
+            Some("Actual AMSL alt sent: 512.3 m")
+        );
+        assert_eq!(
+            altitude_hint(
+                false,
+                Some(crate::altitudemodes::RELATIVE),
+                Some("512.3 m".into())
+            ),
+            None
+        );
     }
 
     #[test]
     fn an_unfinished_shape_names_the_tool_that_finishes_it() {
-        assert!(area_help("survey", false).unwrap().contains("Polygon Tools"));
-        assert!(area_help("CorridorScan", false).unwrap().contains("Polyline Tools"));
-        assert!(area_help("StructureScan", false).unwrap().starts_with("Draw the structure outline"));
+        assert!(
+            area_help("survey", false)
+                .unwrap()
+                .contains("Polygon Tools")
+        );
+        assert!(
+            area_help("CorridorScan", false)
+                .unwrap()
+                .contains("Polyline Tools")
+        );
+        assert!(
+            area_help("StructureScan", false)
+                .unwrap()
+                .starts_with("Draw the structure outline")
+        );
         assert_eq!(area_help("survey", true), None);
     }
 
     #[test]
     fn only_a_structure_scan_says_its_polygon_is_the_surface_not_the_path() {
-        assert_eq!(grid_note("StructureScan"), Some("The polygon outlines the structure's surface, not the flight path."));
+        assert_eq!(
+            grid_note("StructureScan"),
+            Some("The polygon outlines the structure's surface, not the flight path.")
+        );
         assert_eq!(grid_note("survey"), None);
         assert_eq!(grid_note("CorridorScan"), None);
     }
@@ -369,10 +616,34 @@ mod tests {
     fn qt_landing_rows_choose_distance_or_glide_slope_by_radio_button() {
         let read = json!({ "class": "FixedWingLandingComplexItem", "facts": [fact("ValueSetIsDistance", "valueSetIsDistance", 0.0), fact("LandingDistance", "landingDistance", 100.0), fact("GlideSlope", "glideSlope", 5.0)] });
         let rows = owned(&read, "item", crate::cmdinfo::VehicleClass::FixedWing);
-        let row = |suffix: &str| rows.iter().find(|r| r["pathSuffix"] == suffix).cloned().unwrap_or_default();
-        assert_eq!(rows.len(), 2, "FWLandingPatternEditor has no valueSetIsDistance row, the radio buttons set it");
-        assert_eq!((row("glideSlope")["enabled"].clone(), row("glideSlope")["choice"].clone()), (json!(true), json!({ "path": "item.valueSetIsDistance", "value": false, "selected": true })));
-        assert_eq!((row("landingDistance")["enabled"].clone(), row("landingDistance")["choice"]["selected"].clone()), (json!(false), json!(false)));
+        let row = |suffix: &str| {
+            rows.iter()
+                .find(|r| r["pathSuffix"] == suffix)
+                .cloned()
+                .unwrap_or_default()
+        };
+        assert_eq!(
+            rows.len(),
+            2,
+            "FWLandingPatternEditor has no valueSetIsDistance row, the radio buttons set it"
+        );
+        assert_eq!(
+            (
+                row("glideSlope")["enabled"].clone(),
+                row("glideSlope")["choice"].clone()
+            ),
+            (
+                json!(true),
+                json!({ "path": "item.valueSetIsDistance", "value": false, "selected": true })
+            )
+        );
+        assert_eq!(
+            (
+                row("landingDistance")["enabled"].clone(),
+                row("landingDistance")["choice"]["selected"].clone()
+            ),
+            (json!(false), json!(false))
+        );
     }
 
     fn fact(name: &str, property: &str, value: f64) -> Value {
@@ -401,57 +672,221 @@ mod tests {
             }
             .to_string()
         }
-        fn get_fields(&self, path: &str, _f: &str) -> String { self.get(path) }
-        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn get_fields(&self, path: &str, _f: &str) -> String {
+            self.get(path)
+        }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            String::new()
+        }
         fn watch(&self, _p: &[String]) {}
     }
 
     fn suffixes(view: &Value, key: &str) -> Vec<String> {
-        view[key].as_array().unwrap().iter().map(|f| f["pathSuffix"].as_str().unwrap().to_string()).collect()
+        view[key]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|f| f["pathSuffix"].as_str().unwrap().to_string())
+            .collect()
     }
 
     #[test]
     fn a_simple_item_edits_its_lists_and_carries_no_camera() {
-        let view = item_facts_view(&Plan { simple: true, lists: true, custom: false, fixed: false }, &["2".to_string()]);
-        assert_eq!(suffixes(&view, "fields"), ["comboboxFacts.0", "textFieldFacts.0"], "an unnamed element is not a field anyone can edit, the position stays the list's own, and dropdowns come first as SimpleItemEditor lays them out");
-        assert_eq!(view["fields"][1]["path"], "plan.missionController.visualItems.2.textFieldFacts.0", "the path is the one the head writes");
-        assert!(crate::factwrite::owns(view["fields"][0]["path"].as_str().unwrap()), "and that write is one the core validates");
-        assert_eq!(view["fields"][0]["class"], "Control", "each field is view.control's shape, which the head already decodes");
+        let view = item_facts_view(
+            &Plan {
+                simple: true,
+                lists: true,
+                custom: false,
+                fixed: false,
+            },
+            &["2".to_string()],
+        );
+        assert_eq!(
+            suffixes(&view, "fields"),
+            ["comboboxFacts.0", "textFieldFacts.0"],
+            "an unnamed element is not a field anyone can edit, the position stays the list's own, and dropdowns come first as SimpleItemEditor lays them out"
+        );
+        assert_eq!(
+            view["fields"][1]["path"], "plan.missionController.visualItems.2.textFieldFacts.0",
+            "the path is the one the head writes"
+        );
+        assert!(
+            crate::factwrite::owns(view["fields"][0]["path"].as_str().unwrap()),
+            "and that write is one the core validates"
+        );
+        assert_eq!(
+            view["fields"][0]["class"], "Control",
+            "each field is view.control's shape, which the head already decodes"
+        );
         assert_eq!(view["camera"], Value::Null);
-        assert_eq!(view["altitudeMode"], 1, "the item's own altitude mode, by the index asked about");
-        assert_eq!(view["speedSection"], Value::Null, "an item with no speedSection object carries none");
+        assert_eq!(
+            view["altitudeMode"], 1,
+            "the item's own altitude mode, by the index asked about"
+        );
+        assert_eq!(
+            view["speedSection"],
+            Value::Null,
+            "an item with no speedSection object carries none"
+        );
     }
 
     #[test]
     fn a_complex_item_without_lists_edits_its_own_facts_and_its_camera() {
-        let view = item_facts_view(&Plan { simple: false, lists: false, custom: false, fixed: false }, &["2".to_string()]);
-        assert_eq!(suffixes(&view, "fields"), ["altitude"], "Mission Settings edits the launch altitude through its own control");
+        let view = item_facts_view(
+            &Plan {
+                simple: false,
+                lists: false,
+                custom: false,
+                fixed: false,
+            },
+            &["2".to_string()],
+        );
+        assert_eq!(
+            suffixes(&view, "fields"),
+            ["altitude"],
+            "Mission Settings edits the launch altitude through its own control"
+        );
         let camera = &view["camera"];
-        assert_eq!((&camera["brand"], &camera["model"], &camera["custom"], &camera["distanceMode"]), (&json!("Sony"), &json!("RX100"), &json!(false), &json!(1)));
+        assert_eq!(
+            (
+                &camera["brand"],
+                &camera["model"],
+                &camera["custom"],
+                &camera["distanceMode"]
+            ),
+            (&json!("Sony"), &json!("RX100"), &json!(false), &json!(1))
+        );
         assert_eq!(camera["brands"], json!(["Manual", "Sony"]));
-        assert_eq!(camera["brandPath"], "plan.missionController.visualItems.2.cameraCalc.cameraBrand");
-        let shown: Vec<&str> = camera["facts"].as_array().unwrap().iter().map(|f| f["pathSuffix"].as_str().unwrap()).collect();
-        assert_eq!(shown, ["cameraCalc.sensorWidth", "cameraCalc.landscape", "cameraCalc.distanceToSurface", "cameraCalc.frontalOverlap"], "a catalogue camera shows its sensor and Orientation like CameraCalcCamera, then the survey figures");
-        assert_eq!((&camera["facts"][0]["readOnly"], &camera["facts"][1]["readOnly"]), (&json!(true), &json!(false)), "the SENSOR card is disabled unless the camera is custom; Orientation stays editable");
-        assert_eq!((&camera["facts"][2]["shortLabel"], &camera["facts"][3]["shortLabel"]), (&json!("Altitude"), &json!("Front overlap")), "CameraCalcGrid names the survey figures");
-        let fixed = item_facts_view(&Plan { simple: false, lists: false, custom: false, fixed: true }, &["2".to_string()]);
-        assert!(fixed["camera"]["facts"].as_array().unwrap().iter().all(|f| f["pathSuffix"] != "cameraCalc.landscape"), "a fixed-orientation camera offers no Orientation choice");
+        assert_eq!(
+            camera["brandPath"],
+            "plan.missionController.visualItems.2.cameraCalc.cameraBrand"
+        );
+        let shown: Vec<&str> = camera["facts"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|f| f["pathSuffix"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            shown,
+            [
+                "cameraCalc.sensorWidth",
+                "cameraCalc.landscape",
+                "cameraCalc.distanceToSurface",
+                "cameraCalc.frontalOverlap"
+            ],
+            "a catalogue camera shows its sensor and Orientation like CameraCalcCamera, then the survey figures"
+        );
+        assert_eq!(
+            (
+                &camera["facts"][0]["readOnly"],
+                &camera["facts"][1]["readOnly"]
+            ),
+            (&json!(true), &json!(false)),
+            "the SENSOR card is disabled unless the camera is custom; Orientation stays editable"
+        );
+        assert_eq!(
+            (
+                &camera["facts"][2]["shortLabel"],
+                &camera["facts"][3]["shortLabel"]
+            ),
+            (&json!("Altitude"), &json!("Front overlap")),
+            "CameraCalcGrid names the survey figures"
+        );
+        let fixed = item_facts_view(
+            &Plan {
+                simple: false,
+                lists: false,
+                custom: false,
+                fixed: true,
+            },
+            &["2".to_string()],
+        );
+        assert!(
+            fixed["camera"]["facts"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|f| f["pathSuffix"] != "cameraCalc.landscape"),
+            "a fixed-orientation camera offers no Orientation choice"
+        );
         assert_eq!(camera["facts"][0]["group"], "Camera");
-        assert_eq!((&camera["valueSetIsDistance"], &camera["valueSetIsDistancePath"]), (&json!(false), &json!("plan.missionController.visualItems.2.cameraCalc.valueSetIsDistance")), "Set by reads the bool fact, which Qt serves as a number");
+        assert_eq!(
+            (
+                &camera["valueSetIsDistance"],
+                &camera["valueSetIsDistancePath"]
+            ),
+            (
+                &json!(false),
+                &json!("plan.missionController.visualItems.2.cameraCalc.valueSetIsDistance")
+            ),
+            "Set by reads the bool fact, which Qt serves as a number"
+        );
 
-        let custom = item_facts_view(&Plan { simple: false, lists: false, custom: true, fixed: false }, &["2".to_string()]);
-        assert_eq!(custom["camera"]["facts"][0]["pathSuffix"], "cameraCalc.sensorWidth", "a custom camera's optics come first, then the survey figures");
-        assert_eq!(custom["camera"]["facts"][0]["readOnly"], json!(false), "a custom camera's sensor is typed in");
+        let custom = item_facts_view(
+            &Plan {
+                simple: false,
+                lists: false,
+                custom: true,
+                fixed: false,
+            },
+            &["2".to_string()],
+        );
+        assert_eq!(
+            custom["camera"]["facts"][0]["pathSuffix"], "cameraCalc.sensorWidth",
+            "a custom camera's optics come first, then the survey figures"
+        );
+        assert_eq!(
+            custom["camera"]["facts"][0]["readOnly"],
+            json!(false),
+            "a custom camera's sensor is typed in"
+        );
 
-        let listed = item_facts_view(&Plan { simple: false, lists: true, custom: false, fixed: false }, &["2".to_string()]);
-        assert_eq!(suffixes(&listed, "fields"), ["comboboxFacts.0", "textFieldFacts.0"], "a complex item with lists edits the lists, as the head chose");
+        let listed = item_facts_view(
+            &Plan {
+                simple: false,
+                lists: true,
+                custom: false,
+                fixed: false,
+            },
+            &["2".to_string()],
+        );
+        assert_eq!(
+            suffixes(&listed, "fields"),
+            ["comboboxFacts.0", "textFieldFacts.0"],
+            "a complex item with lists edits the lists, as the head chose"
+        );
     }
 
     #[test]
     fn an_item_that_is_not_there_says_so() {
-        let view = item_facts_view(&Plan { simple: true, lists: false, custom: false, fixed: false }, &["9".to_string()]);
-        assert_eq!((&view["available"], &view["fields"], &view["camera"]), (&json!(false), &json!([]), &Value::Null));
-        assert_eq!(item_facts_view(&Plan { simple: true, lists: false, custom: false, fixed: false }, &[])["kind"], "null");
+        let view = item_facts_view(
+            &Plan {
+                simple: true,
+                lists: false,
+                custom: false,
+                fixed: false,
+            },
+            &["9".to_string()],
+        );
+        assert_eq!(
+            (&view["available"], &view["fields"], &view["camera"]),
+            (&json!(false), &json!([]), &Value::Null)
+        );
+        assert_eq!(
+            item_facts_view(
+                &Plan {
+                    simple: true,
+                    lists: false,
+                    custom: false,
+                    fixed: false
+                },
+                &[]
+            )["kind"],
+            "null"
+        );
     }
 }

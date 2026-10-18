@@ -59,13 +59,26 @@ thread_local! {
 }
 
 fn persist() -> bool {
-    !crate::settingsstore::raw_setting(NO_PERSISTENCE).and_then(|value| value.as_bool()).unwrap_or(false)
+    !crate::settingsstore::raw_setting(NO_PERSISTENCE)
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false)
 }
 
 #[cfg(not(target_family = "wasm"))]
 fn send(url: &Url, headers: &HeaderMap) -> Result<Response<Vec<u8>>, String> {
-    let mut response = headers.iter().fold(AGENT.get(url.as_str()), |request, (name, value)| request.header(name, value)).call().map_err(|error| error.to_string())?;
-    let body = response.body_mut().with_config().limit(MAX_BODY_BYTES).read_to_vec().map_err(|error| error.to_string())?;
+    let mut response = headers
+        .iter()
+        .fold(AGENT.get(url.as_str()), |request, (name, value)| {
+            request.header(name, value)
+        })
+        .call()
+        .map_err(|error| error.to_string())?;
+    let body = response
+        .body_mut()
+        .with_config()
+        .limit(MAX_BODY_BYTES)
+        .read_to_vec()
+        .map_err(|error| error.to_string())?;
     Ok(response.map(|_| body))
 }
 
@@ -77,11 +90,17 @@ impl Fetcher for Network {
 
     fn map(&self, provider: &str, z: u32, x: u32, y: u32) -> Result<Vec<u8>, String> {
         let persist = persist();
-        let signed = |value: u32| i32::try_from(value).map_err(|_| format!("tile coordinate {value} out of range"));
+        let signed = |value: u32| {
+            i32::try_from(value).map_err(|_| format!("tile coordinate {value} out of range"))
+        };
         let (sx, sy, sz) = (signed(x)?, signed(y)?, signed(z)?);
         CACHE.with(|cache| {
-            let cache = cache.get_or_init(|| crate::terrainservice::cache_path().and_then(|path| crate::tilecache::Cache::open(&path).ok()));
-            crate::maptiles::fetch_remembered(provider, sx, sy, sz, cache.as_ref(), persist).ok_or_else(|| format!("no {provider} tile {z}/{x}/{y}"))
+            let cache = cache.get_or_init(|| {
+                crate::terrainservice::cache_path()
+                    .and_then(|path| crate::tilecache::Cache::open(&path).ok())
+            });
+            crate::maptiles::fetch_remembered(provider, sx, sy, sz, cache.as_ref(), persist)
+                .ok_or_else(|| format!("no {provider} tile {z}/{x}/{y}"))
         })
     }
 
@@ -97,10 +116,20 @@ impl Fetcher for Network {
 #[cfg(not(target_family = "wasm"))]
 fn cached(url: &Url, reuse_body_for: Duration) -> Result<(Vec<u8>, Answer), String> {
     TILES.with(|tiles| {
-        let opened = || crate::terrainservice::cache_path().and_then(|path| HttpCache::open(&path.with_file_name(TILE_CACHE_FILE), TILE_CACHE_BYTES).ok());
-        match persist().then(|| tiles.get_or_init(opened).as_ref()).flatten() {
-            Some(cache) => cache.fetch(url, SystemTime::now(), reuse_body_for, |headers| send(url, headers)),
-            None => send(url, &HeaderMap::new()).map(|response| (response.into_body(), Answer::Downloaded)),
+        let opened = || {
+            crate::terrainservice::cache_path().and_then(|path| {
+                HttpCache::open(&path.with_file_name(TILE_CACHE_FILE), TILE_CACHE_BYTES).ok()
+            })
+        };
+        match persist()
+            .then(|| tiles.get_or_init(opened).as_ref())
+            .flatten()
+        {
+            Some(cache) => cache.fetch(url, SystemTime::now(), reuse_body_for, |headers| {
+                send(url, headers)
+            }),
+            None => send(url, &HeaderMap::new())
+                .map(|response| (response.into_body(), Answer::Downloaded)),
         }
     })
 }
@@ -114,7 +143,12 @@ pub struct Pool<J, D> {
 
 #[cfg(not(target_family = "wasm"))]
 impl<J: Send + 'static, D: Send + 'static> Pool<J, D> {
-    pub fn new(workers: usize, name: &str, work: impl Fn(J) -> D + Send + Sync + 'static, lost: impl Fn(&J) -> D + Send + Sync + 'static) -> Result<Self, String> {
+    pub fn new(
+        workers: usize,
+        name: &str,
+        work: impl Fn(J) -> D + Send + Sync + 'static,
+        lost: impl Fn(&J) -> D + Send + Sync + 'static,
+    ) -> Result<Self, String> {
         let (jobs, queue) = mpsc::channel::<J>();
         let (finished, done) = mpsc::channel::<D>();
         let queue = Arc::new(Mutex::new(queue));
@@ -122,21 +156,34 @@ impl<J: Send + 'static, D: Send + 'static> Pool<J, D> {
         (0..workers)
             .map(|index| {
                 let (queue, finished, shared) = (queue.clone(), finished.clone(), shared.clone());
-                std::thread::Builder::new().name(format!("{name}-{index}")).spawn(move || {
-                    let next = || queue.lock().unwrap_or_else(PoisonError::into_inner).recv().ok();
-                    while let Some(job) = next() {
-                        let (work, lost) = (&shared.0, &shared.1);
-                        let fallback = lost(&job);
-                        let done = catch_unwind(AssertUnwindSafe(|| work(job))).unwrap_or(fallback);
-                        if finished.send(done).is_err() {
-                            break;
+                std::thread::Builder::new()
+                    .name(format!("{name}-{index}"))
+                    .spawn(move || {
+                        let next = || {
+                            queue
+                                .lock()
+                                .unwrap_or_else(PoisonError::into_inner)
+                                .recv()
+                                .ok()
+                        };
+                        while let Some(job) = next() {
+                            let (work, lost) = (&shared.0, &shared.1);
+                            let fallback = lost(&job);
+                            let done =
+                                catch_unwind(AssertUnwindSafe(|| work(job))).unwrap_or(fallback);
+                            if finished.send(done).is_err() {
+                                break;
+                            }
                         }
-                    }
-                })
+                    })
             })
             .collect::<Result<Vec<_>, _>>()
             .map_err(|error| format!("could not start {name} workers: {error}"))?;
-        Ok(Self { jobs, done, in_flight: 0 })
+        Ok(Self {
+            jobs,
+            done,
+            in_flight: 0,
+        })
     }
 
     pub fn send(&mut self, job: J) {
@@ -168,12 +215,22 @@ mod tests {
 
     fn drained<D: Send + 'static>(pool: &mut Pool<u32, D>, expected: usize) -> Vec<D> {
         let deadline = Instant::now() + Duration::from_secs(10);
-        std::iter::repeat_with(|| pool.finished()).take_while(|_| Instant::now() < deadline).flatten().take(expected).collect()
+        std::iter::repeat_with(|| pool.finished())
+            .take_while(|_| Instant::now() < deadline)
+            .flatten()
+            .take(expected)
+            .collect()
     }
 
     #[test]
     fn a_job_that_panics_still_reports_back_so_the_budget_never_leaks() {
-        let mut pool = Pool::new(2, "test-pool", |job: u32| if job == 2 { panic!("boom") } else { Ok(job) }, |job: &u32| Err(format!("job {job} panicked"))).expect("workers");
+        let mut pool = Pool::new(
+            2,
+            "test-pool",
+            |job: u32| if job == 2 { panic!("boom") } else { Ok(job) },
+            |job: &u32| Err(format!("job {job} panicked")),
+        )
+        .expect("workers");
         (1..=3).for_each(|job| pool.send(job));
         let seen: Vec<Result<u32, String>> = drained(&mut pool, 3);
         assert_eq!(seen.iter().filter(|done| done.is_ok()).count(), 2);
@@ -187,11 +244,19 @@ mod tests {
         let (signal, heard) = mpsc::channel::<()>();
         let heard = Mutex::new(heard);
         let work = move |job: u32| match job {
-            0 => heard.lock().unwrap_or_else(PoisonError::into_inner).recv_timeout(Duration::from_secs(5)).is_ok(),
+            0 => heard
+                .lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .recv_timeout(Duration::from_secs(5))
+                .is_ok(),
             _ => signal.send(()).is_ok(),
         };
         let mut pool = Pool::new(2, "test-pair", work, |_: &u32| false).expect("workers");
         (0..2).for_each(|job| pool.send(job));
-        assert_eq!(drained(&mut pool, 2), vec![true, true], "the waiting job heard its neighbour, so both ran at once");
+        assert_eq!(
+            drained(&mut pool, 2),
+            vec![true, true],
+            "the waiting job heard its neighbour, so both ran at once"
+        );
     }
 }

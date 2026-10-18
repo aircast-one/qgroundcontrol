@@ -43,118 +43,618 @@ pub struct Mode {
 }
 
 pub const PX4_MODES: [Mode; 22] = [
-    Mode { name: "Manual", custom_mode: px4(1, 0), can_be_set: true, advanced: false },
-    Mode { name: "Stabilized", custom_mode: px4(7, 0), can_be_set: true, advanced: false },
-    Mode { name: "Acro", custom_mode: px4(5, 0), can_be_set: true, advanced: true },
-    Mode { name: "Rattitude", custom_mode: px4(8, 0), can_be_set: true, advanced: true },
-    Mode { name: "Altitude", custom_mode: px4(2, 0), can_be_set: true, advanced: false },
-    Mode { name: "Offboard", custom_mode: px4(6, 0), can_be_set: true, advanced: true },
-    Mode { name: "Simple", custom_mode: px4(9, 0), can_be_set: false, advanced: true },
-    Mode { name: "Position", custom_mode: px4(3, 0), can_be_set: true, advanced: false },
-    Mode { name: "Position Slow", custom_mode: px4(3, 2), can_be_set: true, advanced: true },
-    Mode { name: "Altitude Cruise", custom_mode: px4(11, 0), can_be_set: true, advanced: true },
-    Mode { name: "Orbit", custom_mode: px4(3, 1), can_be_set: false, advanced: true },
-    Mode { name: "Hold", custom_mode: px4(4, 3), can_be_set: true, advanced: false },
-    Mode { name: "Mission", custom_mode: px4(4, 4), can_be_set: true, advanced: false },
-    Mode { name: "Return", custom_mode: px4(4, 5), can_be_set: true, advanced: false },
-    Mode { name: "Follow Me", custom_mode: px4(4, 8), can_be_set: false, advanced: true },
-    Mode { name: "Land", custom_mode: px4(4, 6), can_be_set: false, advanced: false },
-    Mode { name: "Precision Land", custom_mode: px4(4, 9), can_be_set: true, advanced: true },
-    Mode { name: "Ready", custom_mode: px4(4, 1), can_be_set: false, advanced: false },
-    Mode { name: "Takeoff", custom_mode: px4(4, 2), can_be_set: false, advanced: false },
-    Mode { name: "VTOL Takeoff", custom_mode: px4(4, 10), can_be_set: false, advanced: true },
-    Mode { name: "Termination", custom_mode: px4(10, 0), can_be_set: false, advanced: true },
-    Mode { name: "Guided Course", custom_mode: px4(4, 19), can_be_set: false, advanced: true },
+    Mode {
+        name: "Manual",
+        custom_mode: px4(1, 0),
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "Stabilized",
+        custom_mode: px4(7, 0),
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "Acro",
+        custom_mode: px4(5, 0),
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Rattitude",
+        custom_mode: px4(8, 0),
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Altitude",
+        custom_mode: px4(2, 0),
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "Offboard",
+        custom_mode: px4(6, 0),
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Simple",
+        custom_mode: px4(9, 0),
+        can_be_set: false,
+        advanced: true,
+    },
+    Mode {
+        name: "Position",
+        custom_mode: px4(3, 0),
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "Position Slow",
+        custom_mode: px4(3, 2),
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Altitude Cruise",
+        custom_mode: px4(11, 0),
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Orbit",
+        custom_mode: px4(3, 1),
+        can_be_set: false,
+        advanced: true,
+    },
+    Mode {
+        name: "Hold",
+        custom_mode: px4(4, 3),
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "Mission",
+        custom_mode: px4(4, 4),
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "Return",
+        custom_mode: px4(4, 5),
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "Follow Me",
+        custom_mode: px4(4, 8),
+        can_be_set: false,
+        advanced: true,
+    },
+    Mode {
+        name: "Land",
+        custom_mode: px4(4, 6),
+        can_be_set: false,
+        advanced: false,
+    },
+    Mode {
+        name: "Precision Land",
+        custom_mode: px4(4, 9),
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Ready",
+        custom_mode: px4(4, 1),
+        can_be_set: false,
+        advanced: false,
+    },
+    Mode {
+        name: "Takeoff",
+        custom_mode: px4(4, 2),
+        can_be_set: false,
+        advanced: false,
+    },
+    Mode {
+        name: "VTOL Takeoff",
+        custom_mode: px4(4, 10),
+        can_be_set: false,
+        advanced: true,
+    },
+    Mode {
+        name: "Termination",
+        custom_mode: px4(10, 0),
+        can_be_set: false,
+        advanced: true,
+    },
+    Mode {
+        name: "Guided Course",
+        custom_mode: px4(4, 19),
+        can_be_set: false,
+        advanced: true,
+    },
 ];
 
 pub const COPTER_MODES: [Mode; 26] = [
-    Mode { name: "Stabilize", custom_mode: 0, can_be_set: true, advanced: false },
-    Mode { name: "Acro", custom_mode: 1, can_be_set: true, advanced: true },
-    Mode { name: "Altitude Hold", custom_mode: 2, can_be_set: true, advanced: false },
-    Mode { name: "Auto", custom_mode: 3, can_be_set: true, advanced: false },
-    Mode { name: "Guided", custom_mode: 4, can_be_set: true, advanced: false },
-    Mode { name: "Loiter", custom_mode: 5, can_be_set: true, advanced: false },
-    Mode { name: "RTL", custom_mode: 6, can_be_set: true, advanced: false },
-    Mode { name: "Circle", custom_mode: 7, can_be_set: true, advanced: true },
-    Mode { name: "Land", custom_mode: 9, can_be_set: true, advanced: false },
-    Mode { name: "Drift", custom_mode: 11, can_be_set: true, advanced: true },
-    Mode { name: "Sport", custom_mode: 13, can_be_set: true, advanced: true },
-    Mode { name: "Flip", custom_mode: 14, can_be_set: true, advanced: true },
-    Mode { name: "Autotune", custom_mode: 15, can_be_set: true, advanced: true },
-    Mode { name: "Position Hold", custom_mode: 16, can_be_set: true, advanced: false },
-    Mode { name: "Brake", custom_mode: 17, can_be_set: true, advanced: true },
-    Mode { name: "Throw", custom_mode: 18, can_be_set: true, advanced: true },
-    Mode { name: "Avoid ADSB", custom_mode: 19, can_be_set: true, advanced: true },
-    Mode { name: "Guided No GPS", custom_mode: 20, can_be_set: true, advanced: true },
-    Mode { name: "Smart RTL", custom_mode: 21, can_be_set: true, advanced: true },
-    Mode { name: "Flow Hold", custom_mode: 22, can_be_set: true, advanced: true },
-    Mode { name: "Follow", custom_mode: 23, can_be_set: true, advanced: true },
-    Mode { name: "ZigZag", custom_mode: 24, can_be_set: true, advanced: true },
-    Mode { name: "SystemID", custom_mode: 25, can_be_set: true, advanced: true },
-    Mode { name: "AutoRotate", custom_mode: 26, can_be_set: true, advanced: true },
-    Mode { name: "AutoRTL", custom_mode: 27, can_be_set: true, advanced: true },
-    Mode { name: "Turtle", custom_mode: 28, can_be_set: true, advanced: true },
+    Mode {
+        name: "Stabilize",
+        custom_mode: 0,
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "Acro",
+        custom_mode: 1,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Altitude Hold",
+        custom_mode: 2,
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "Auto",
+        custom_mode: 3,
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "Guided",
+        custom_mode: 4,
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "Loiter",
+        custom_mode: 5,
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "RTL",
+        custom_mode: 6,
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "Circle",
+        custom_mode: 7,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Land",
+        custom_mode: 9,
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "Drift",
+        custom_mode: 11,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Sport",
+        custom_mode: 13,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Flip",
+        custom_mode: 14,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Autotune",
+        custom_mode: 15,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Position Hold",
+        custom_mode: 16,
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "Brake",
+        custom_mode: 17,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Throw",
+        custom_mode: 18,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Avoid ADSB",
+        custom_mode: 19,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Guided No GPS",
+        custom_mode: 20,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Smart RTL",
+        custom_mode: 21,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Flow Hold",
+        custom_mode: 22,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Follow",
+        custom_mode: 23,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "ZigZag",
+        custom_mode: 24,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "SystemID",
+        custom_mode: 25,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "AutoRotate",
+        custom_mode: 26,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "AutoRTL",
+        custom_mode: 27,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Turtle",
+        custom_mode: 28,
+        can_be_set: true,
+        advanced: true,
+    },
 ];
 
 pub const PLANE_MODES: [Mode; 26] = [
-    Mode { name: "Manual", custom_mode: 0, can_be_set: true, advanced: false },
-    Mode { name: "Circle", custom_mode: 1, can_be_set: true, advanced: true },
-    Mode { name: "Stabilize", custom_mode: 2, can_be_set: true, advanced: true },
-    Mode { name: "Training", custom_mode: 3, can_be_set: true, advanced: true },
-    Mode { name: "Acro", custom_mode: 4, can_be_set: true, advanced: true },
-    Mode { name: "FBW A", custom_mode: 5, can_be_set: true, advanced: false },
-    Mode { name: "FBW B", custom_mode: 6, can_be_set: true, advanced: true },
-    Mode { name: "Cruise", custom_mode: 7, can_be_set: true, advanced: false },
-    Mode { name: "Autotune", custom_mode: 8, can_be_set: true, advanced: true },
-    Mode { name: "Auto", custom_mode: 10, can_be_set: true, advanced: false },
-    Mode { name: "RTL", custom_mode: 11, can_be_set: true, advanced: false },
-    Mode { name: "Loiter", custom_mode: 12, can_be_set: true, advanced: false },
-    Mode { name: "Takeoff", custom_mode: 13, can_be_set: true, advanced: true },
-    Mode { name: "Avoid ADSB", custom_mode: 14, can_be_set: true, advanced: true },
-    Mode { name: "Guided", custom_mode: 15, can_be_set: true, advanced: false },
-    Mode { name: "Initializing", custom_mode: 16, can_be_set: false, advanced: true },
-    Mode { name: "QuadPlane Stabilize", custom_mode: 17, can_be_set: true, advanced: true },
-    Mode { name: "QuadPlane Hover", custom_mode: 18, can_be_set: true, advanced: true },
-    Mode { name: "QuadPlane Loiter", custom_mode: 19, can_be_set: true, advanced: false },
-    Mode { name: "QuadPlane Land", custom_mode: 20, can_be_set: true, advanced: false },
-    Mode { name: "QuadPlane RTL", custom_mode: 21, can_be_set: true, advanced: false },
-    Mode { name: "QuadPlane AutoTune", custom_mode: 22, can_be_set: true, advanced: true },
-    Mode { name: "QuadPlane Acro", custom_mode: 23, can_be_set: true, advanced: true },
-    Mode { name: "Thermal", custom_mode: 24, can_be_set: true, advanced: true },
-    Mode { name: "Loiter to QLand", custom_mode: 25, can_be_set: true, advanced: true },
-    Mode { name: "Autoland", custom_mode: 26, can_be_set: false, advanced: true },
+    Mode {
+        name: "Manual",
+        custom_mode: 0,
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "Circle",
+        custom_mode: 1,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Stabilize",
+        custom_mode: 2,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Training",
+        custom_mode: 3,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Acro",
+        custom_mode: 4,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "FBW A",
+        custom_mode: 5,
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "FBW B",
+        custom_mode: 6,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Cruise",
+        custom_mode: 7,
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "Autotune",
+        custom_mode: 8,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Auto",
+        custom_mode: 10,
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "RTL",
+        custom_mode: 11,
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "Loiter",
+        custom_mode: 12,
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "Takeoff",
+        custom_mode: 13,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Avoid ADSB",
+        custom_mode: 14,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Guided",
+        custom_mode: 15,
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "Initializing",
+        custom_mode: 16,
+        can_be_set: false,
+        advanced: true,
+    },
+    Mode {
+        name: "QuadPlane Stabilize",
+        custom_mode: 17,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "QuadPlane Hover",
+        custom_mode: 18,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "QuadPlane Loiter",
+        custom_mode: 19,
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "QuadPlane Land",
+        custom_mode: 20,
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "QuadPlane RTL",
+        custom_mode: 21,
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "QuadPlane AutoTune",
+        custom_mode: 22,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "QuadPlane Acro",
+        custom_mode: 23,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Thermal",
+        custom_mode: 24,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Loiter to QLand",
+        custom_mode: 25,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Autoland",
+        custom_mode: 26,
+        can_be_set: false,
+        advanced: true,
+    },
 ];
 
 pub const ROVER_MODES: [Mode; 15] = [
-    Mode { name: "Manual", custom_mode: 0, can_be_set: true, advanced: false },
-    Mode { name: "Acro", custom_mode: 1, can_be_set: true, advanced: true },
-    Mode { name: "Learning", custom_mode: 2, can_be_set: false, advanced: true },
-    Mode { name: "Steering", custom_mode: 3, can_be_set: true, advanced: false },
-    Mode { name: "Hold", custom_mode: 4, can_be_set: true, advanced: false },
-    Mode { name: "Loiter", custom_mode: 5, can_be_set: true, advanced: false },
-    Mode { name: "Follow", custom_mode: 6, can_be_set: true, advanced: true },
-    Mode { name: "Simple", custom_mode: 7, can_be_set: true, advanced: true },
-    Mode { name: "Dock", custom_mode: 8, can_be_set: true, advanced: true },
-    Mode { name: "Circle", custom_mode: 9, can_be_set: true, advanced: true },
-    Mode { name: "Auto", custom_mode: 10, can_be_set: true, advanced: false },
-    Mode { name: "RTL", custom_mode: 11, can_be_set: true, advanced: false },
-    Mode { name: "Smart RTL", custom_mode: 12, can_be_set: true, advanced: true },
-    Mode { name: "Guided", custom_mode: 15, can_be_set: true, advanced: false },
-    Mode { name: "Initializing", custom_mode: 16, can_be_set: false, advanced: true },
+    Mode {
+        name: "Manual",
+        custom_mode: 0,
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "Acro",
+        custom_mode: 1,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Learning",
+        custom_mode: 2,
+        can_be_set: false,
+        advanced: true,
+    },
+    Mode {
+        name: "Steering",
+        custom_mode: 3,
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "Hold",
+        custom_mode: 4,
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "Loiter",
+        custom_mode: 5,
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "Follow",
+        custom_mode: 6,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Simple",
+        custom_mode: 7,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Dock",
+        custom_mode: 8,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Circle",
+        custom_mode: 9,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Auto",
+        custom_mode: 10,
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "RTL",
+        custom_mode: 11,
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "Smart RTL",
+        custom_mode: 12,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Guided",
+        custom_mode: 15,
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "Initializing",
+        custom_mode: 16,
+        can_be_set: false,
+        advanced: true,
+    },
 ];
 
 pub const SUB_MODES: [Mode; 11] = [
-    Mode { name: "Manual", custom_mode: 19, can_be_set: true, advanced: false },
-    Mode { name: "Stabilize", custom_mode: 0, can_be_set: true, advanced: false },
-    Mode { name: "Acro", custom_mode: 1, can_be_set: true, advanced: true },
-    Mode { name: "Depth Hold", custom_mode: 2, can_be_set: true, advanced: false },
-    Mode { name: "Auto", custom_mode: 3, can_be_set: true, advanced: false },
-    Mode { name: "Guided", custom_mode: 4, can_be_set: true, advanced: false },
-    Mode { name: "Circle", custom_mode: 7, can_be_set: true, advanced: true },
-    Mode { name: "Surface", custom_mode: 9, can_be_set: true, advanced: false },
-    Mode { name: "Position Hold", custom_mode: 16, can_be_set: true, advanced: false },
-    Mode { name: "Motor Detection", custom_mode: 20, can_be_set: false, advanced: true },
-    Mode { name: "Surftrak", custom_mode: 21, can_be_set: true, advanced: true },
+    Mode {
+        name: "Manual",
+        custom_mode: 19,
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "Stabilize",
+        custom_mode: 0,
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "Acro",
+        custom_mode: 1,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Depth Hold",
+        custom_mode: 2,
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "Auto",
+        custom_mode: 3,
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "Guided",
+        custom_mode: 4,
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "Circle",
+        custom_mode: 7,
+        can_be_set: true,
+        advanced: true,
+    },
+    Mode {
+        name: "Surface",
+        custom_mode: 9,
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "Position Hold",
+        custom_mode: 16,
+        can_be_set: true,
+        advanced: false,
+    },
+    Mode {
+        name: "Motor Detection",
+        custom_mode: 20,
+        can_be_set: false,
+        advanced: true,
+    },
+    Mode {
+        name: "Surftrak",
+        custom_mode: 21,
+        can_be_set: true,
+        advanced: true,
+    },
 ];
 
 pub fn table(autopilot: u8, mav_type: u8) -> &'static [Mode] {
@@ -170,24 +670,44 @@ pub fn table(autopilot: u8, mav_type: u8) -> &'static [Mode] {
 
 pub fn name(autopilot: u8, mav_type: u8, base_mode: u8, custom_mode: u32) -> String {
     let modes = table(autopilot, mav_type);
-    let known = || modes.iter().find(|m| m.custom_mode == custom_mode).map(|m| m.name.to_string());
+    let known = || {
+        modes
+            .iter()
+            .find(|m| m.custom_mode == custom_mode)
+            .map(|m| m.name.to_string())
+    };
     match autopilot {
         AUTOPILOT_PX4 | AUTOPILOT_ARDUPILOT if !modes.is_empty() => {
-            if base_mode & FLAG_CUSTOM != 0 { known().unwrap_or_else(|| format!("Mode {custom_mode}")) } else { String::new() }
+            if base_mode & FLAG_CUSTOM != 0 {
+                known().unwrap_or_else(|| format!("Mode {custom_mode}"))
+            } else {
+                String::new()
+            }
         }
         _ if base_mode == 0 => "PreFlight".to_string(),
-        _ if base_mode & FLAG_CUSTOM != 0 => known().unwrap_or_else(|| format!("Custom:0x{custom_mode:x}")),
-        _ => [(FLAG_MANUAL, "Manual"), (FLAG_STABILIZE, "Stabilize"), (FLAG_GUIDED, "Guided"), (FLAG_AUTO, "Auto"), (FLAG_TEST, "Test")]
-            .iter()
-            .filter(|(bit, _)| base_mode & bit != 0)
-            .map(|(_, n)| *n)
-            .collect::<Vec<_>>()
-            .join(" "),
+        _ if base_mode & FLAG_CUSTOM != 0 => {
+            known().unwrap_or_else(|| format!("Custom:0x{custom_mode:x}"))
+        }
+        _ => [
+            (FLAG_MANUAL, "Manual"),
+            (FLAG_STABILIZE, "Stabilize"),
+            (FLAG_GUIDED, "Guided"),
+            (FLAG_AUTO, "Auto"),
+            (FLAG_TEST, "Test"),
+        ]
+        .iter()
+        .filter(|(bit, _)| base_mode & bit != 0)
+        .map(|(_, n)| *n)
+        .collect::<Vec<_>>()
+        .join(" "),
     }
 }
 
 pub fn custom_mode_for(autopilot: u8, mav_type: u8, mode_name: &str) -> Option<u32> {
-    table(autopilot, mav_type).iter().find(|m| m.name == mode_name).map(|m| m.custom_mode)
+    table(autopilot, mav_type)
+        .iter()
+        .find(|m| m.name == mode_name)
+        .map(|m| m.custom_mode)
 }
 
 #[cfg(test)]
@@ -199,8 +719,16 @@ mod tests {
         assert_eq!(name(AUTOPILOT_PX4, 2, FLAG_CUSTOM, px4(4, 4)), "Mission");
         assert_eq!(name(AUTOPILOT_PX4, 2, FLAG_CUSTOM, px4(3, 0)), "Position");
         assert_eq!(name(AUTOPILOT_PX4, 2, FLAG_CUSTOM, px4(3, 1)), "Orbit");
-        assert_eq!(name(AUTOPILOT_PX4, 2, FLAG_CUSTOM, px4(4, 8)), "Follow Me", "PX4FirmwarePlugin names every mode it knows, Follow Me included");
-        assert_eq!(name(AUTOPILOT_PX4, 2, FLAG_CUSTOM, px4(4, 7)), "Mode 117702656", "RTGS was deleted from PX4 and from QGC's table");
+        assert_eq!(
+            name(AUTOPILOT_PX4, 2, FLAG_CUSTOM, px4(4, 8)),
+            "Follow Me",
+            "PX4FirmwarePlugin names every mode it knows, Follow Me included"
+        );
+        assert_eq!(
+            name(AUTOPILOT_PX4, 2, FLAG_CUSTOM, px4(4, 7)),
+            "Mode 117702656",
+            "RTGS was deleted from PX4 and from QGC's table"
+        );
         assert_eq!(name(AUTOPILOT_PX4, 2, 0, px4(4, 4)), "");
         assert_eq!(custom_mode_for(AUTOPILOT_PX4, 1, "Return"), Some(px4(4, 5)));
         assert_eq!(PX4_MODES.iter().filter(|m| m.can_be_set).count(), 13);
@@ -214,9 +742,19 @@ mod tests {
         assert_eq!(name(AUTOPILOT_ARDUPILOT, 12, FLAG_CUSTOM, 19), "Manual");
         assert_eq!(name(AUTOPILOT_ARDUPILOT, 2, FLAG_CUSTOM, 99), "Mode 99");
         assert_eq!(name(0, 2, 0, 0), "PreFlight");
-        assert_eq!(name(0, 2, FLAG_MANUAL | FLAG_STABILIZE, 0), "Manual Stabilize");
+        assert_eq!(
+            name(0, 2, FLAG_MANUAL | FLAG_STABILIZE, 0),
+            "Manual Stabilize"
+        );
         assert_eq!(name(0, 2, FLAG_CUSTOM, 0x1f), "Custom:0x1f");
-        assert_eq!(name(AUTOPILOT_ARDUPILOT, 7, FLAG_CUSTOM, 1), "Custom:0x1", "a blimp has no ArduPilot table");
-        assert_eq!(custom_mode_for(AUTOPILOT_ARDUPILOT, 2, "Smart RTL"), Some(21));
+        assert_eq!(
+            name(AUTOPILOT_ARDUPILOT, 7, FLAG_CUSTOM, 1),
+            "Custom:0x1",
+            "a blimp has no ArduPilot table"
+        );
+        assert_eq!(
+            custom_mode_for(AUTOPILOT_ARDUPILOT, 2, "Smart RTL"),
+            Some(21)
+        );
     }
 }

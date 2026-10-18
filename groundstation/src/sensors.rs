@@ -36,20 +36,41 @@ fn rank(state: &str) -> u8 {
 }
 
 pub fn sensors(info: &Value) -> Vec<(String, &'static str)> {
-    let names: Vec<&str> = info.get("sensorNames").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).collect()).unwrap_or_default();
-    let flags = |key: &str| -> Vec<bool> { info.get(key).and_then(Value::as_array).map(|a| a.iter().map(|v| v.as_bool().unwrap_or(v.as_i64().unwrap_or(0) != 0)).collect()).unwrap_or_default() };
+    let names: Vec<&str> = info
+        .get("sensorNames")
+        .and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+    let flags = |key: &str| -> Vec<bool> {
+        info.get(key)
+            .and_then(Value::as_array)
+            .map(|a| {
+                a.iter()
+                    .map(|v| v.as_bool().unwrap_or(v.as_i64().unwrap_or(0) != 0))
+                    .collect()
+            })
+            .unwrap_or_default()
+    };
     let (enabled, healthy) = (flags("sensorEnabled"), flags("sensorHealthy"));
     if names.len() != enabled.len() || names.len() != healthy.len() {
         return Vec::new();
     }
-    let mut listed: Vec<(usize, String, &'static str)> = names.iter().enumerate().map(|(i, n)| (i, n.to_string(), state(enabled[i], healthy[i]))).collect();
+    let mut listed: Vec<(usize, String, &'static str)> = names
+        .iter()
+        .enumerate()
+        .map(|(i, n)| (i, n.to_string(), state(enabled[i], healthy[i])))
+        .collect();
     listed.sort_by_key(|(i, _, s)| (rank(s), *i));
     listed.into_iter().map(|(_, n, s)| (n, s)).collect()
 }
 
 pub fn sensors_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let listed = sensors(&backend.value("vehicle.sysStatusSensorInfo"));
-    let failing: Vec<&str> = listed.iter().filter(|(_, s)| *s == "unhealthy").map(|(n, _)| n.as_str()).collect();
+    let failing: Vec<&str> = listed
+        .iter()
+        .filter(|(_, s)| *s == "unhealthy")
+        .map(|(n, _)| n.as_str())
+        .collect();
     json!({
         "kind": "object",
         "class": "SensorHealth",
@@ -81,7 +102,12 @@ mod tests {
 
     #[test]
     fn mismatched_lists_are_treated_as_no_report() {
-        assert!(sensors(&json!({ "sensorNames": ["GPS"], "sensorEnabled": [true], "sensorHealthy": [] })).is_empty());
+        assert!(
+            sensors(
+                &json!({ "sensorNames": ["GPS"], "sensorEnabled": [true], "sensorHealthy": [] })
+            )
+            .is_empty()
+        );
     }
 
     #[test]
@@ -91,9 +117,15 @@ mod tests {
             fn get(&self, _p: &str) -> String {
                 json!({ "kind": "object", "sensorNames": ["GPS", "Gyro"], "sensorEnabled": [true, true], "sensorHealthy": [false, true] }).to_string()
             }
-            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn get_fields(&self, p: &str, _f: &str) -> String {
+                self.get(p)
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
             fn watch(&self, _p: &[String]) {}
         }
         let view = sensors_view(&Fake, &[]);

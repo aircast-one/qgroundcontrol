@@ -9,7 +9,8 @@ use crate::nativeargs::{deep_link_device, deep_link_writes, options};
 
 static QUIT: (Mutex<bool>, Condvar) = (Mutex::new(false), Condvar::new());
 static DEBUG_SERVER: OnceLock<u16> = OnceLock::new();
-static DEBUG_BUILD: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(cfg!(debug_assertions));
+static DEBUG_BUILD: std::sync::atomic::AtomicBool =
+    std::sync::atomic::AtomicBool::new(cfg!(debug_assertions));
 
 fn given(text: &str) -> *mut c_char {
     CString::new(text).unwrap_or_default().into_raw()
@@ -20,7 +21,13 @@ fn text(value: &str) -> CString {
 }
 
 fn read(raw: *const c_char) -> String {
-    if raw.is_null() { String::new() } else { unsafe { CStr::from_ptr(raw) }.to_string_lossy().into_owned() }
+    if raw.is_null() {
+        String::new()
+    } else {
+        unsafe { CStr::from_ptr(raw) }
+            .to_string_lossy()
+            .into_owned()
+    }
 }
 
 fn taken(raw: *mut c_char) -> String {
@@ -37,17 +44,26 @@ pub unsafe extern "C" fn qgc_bridge_get(path: *const c_char) -> *mut c_char {
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qgc_bridge_get_fields(path: *const c_char, fields_csv: *const c_char) -> *mut c_char {
+pub unsafe extern "C" fn qgc_bridge_get_fields(
+    path: *const c_char,
+    fields_csv: *const c_char,
+) -> *mut c_char {
     unsafe { crate::abi::qgc_core_get_fields(path, fields_csv) }
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qgc_bridge_set(path: *const c_char, value_json: *const c_char) -> *mut c_char {
+pub unsafe extern "C" fn qgc_bridge_set(
+    path: *const c_char,
+    value_json: *const c_char,
+) -> *mut c_char {
     unsafe { crate::abi::qgc_core_set(path, value_json) }
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qgc_bridge_invoke(path: *const c_char, args_json: *const c_char) -> *mut c_char {
+pub unsafe extern "C" fn qgc_bridge_invoke(
+    path: *const c_char,
+    args_json: *const c_char,
+) -> *mut c_char {
     unsafe { crate::abi::qgc_core_invoke(path, args_json) }
 }
 
@@ -67,7 +83,9 @@ pub extern "C" fn qgc_bridge_watch_status() -> *mut c_char {
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qgc_bridge_set_event_handler(handler: Option<unsafe extern "C" fn(*const c_char, *const c_char)>) {
+pub unsafe extern "C" fn qgc_bridge_set_event_handler(
+    handler: Option<unsafe extern "C" fn(*const c_char, *const c_char)>,
+) {
     unsafe { crate::abi::qgc_core_set_event_handler(handler) }
 }
 
@@ -77,14 +95,25 @@ pub unsafe extern "C" fn qgc_bridge_free(text: *mut c_char) {
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qgc_links_create(kind: c_int, name: *const c_char, host: *const c_char, port: c_int) -> c_int {
+pub unsafe extern "C" fn qgc_links_create(
+    kind: c_int,
+    name: *const c_char,
+    host: *const c_char,
+    port: c_int,
+) -> c_int {
     let name = read(name).trim().to_string();
     let host = read(host);
     let table = crate::corelinks::table();
     let config = match table.kind(i64::from(kind)) {
-        Some(crate::linkconfig::LinkKind::Tcp) => crate::corelinks::created("tcp", &name, &host, i64::from(port)),
-        Some(crate::linkconfig::LinkKind::Udp) => crate::corelinks::created("udp", &name, "", i64::from(port)),
-        Some(crate::linkconfig::LinkKind::Serial) => Some(crate::corelinks::serial_entry(&name, &host, u32::try_from(port).unwrap_or(0)).config),
+        Some(crate::linkconfig::LinkKind::Tcp) => {
+            crate::corelinks::created("tcp", &name, &host, i64::from(port))
+        }
+        Some(crate::linkconfig::LinkKind::Udp) => {
+            crate::corelinks::created("udp", &name, "", i64::from(port))
+        }
+        Some(crate::linkconfig::LinkKind::Serial) => Some(
+            crate::corelinks::serial_entry(&name, &host, u32::try_from(port).unwrap_or(0)).config,
+        ),
         _ => None,
     };
     c_int::from(config.is_some_and(|config| crate::corelinks::add(config)))
@@ -105,7 +134,15 @@ pub extern "C" fn qgc_set_host_provides_ui(_provides: c_int) {}
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_start(argc: c_int, argv: *const *const c_char) -> c_int {
-    let arguments: Vec<String> = (0..usize::try_from(argc).unwrap_or(0)).map(|i| read(if argv.is_null() { std::ptr::null() } else { unsafe { *argv.add(i) } })).collect();
+    let arguments: Vec<String> = (0..usize::try_from(argc).unwrap_or(0))
+        .map(|i| {
+            read(if argv.is_null() {
+                std::ptr::null()
+            } else {
+                unsafe { *argv.add(i) }
+            })
+        })
+        .collect();
     let chosen = options(&arguments);
     crate::mocklink::set_available(cfg!(debug_assertions) || chosen.debug_build);
     DEBUG_BUILD.fetch_or(chosen.debug_build, std::sync::atomic::Ordering::Relaxed);
@@ -115,7 +152,11 @@ pub unsafe extern "C" fn qgc_start(argc: c_int, argv: *const *const c_char) -> c
         crate::abi::qgc_core_settings_open(text(&chosen.settings.to_string_lossy()).as_ptr());
         crate::abi::qgc_core_gcs_position_source(text(&chosen.position_source).as_ptr());
     }
-    crate::settingsstore::establish_save_path(chosen.save_path.as_deref(), chosen.removable_save_path.as_deref(), &chosen.application);
+    crate::settingsstore::establish_save_path(
+        chosen.save_path.as_deref(),
+        chosen.removable_save_path.as_deref(),
+        &chosen.application,
+    );
     crate::hostdevice::adopt(chosen.device.as_deref());
     crate::telemetrylog::recover_lost();
     if let Some(version) = &chosen.application_version {
@@ -132,7 +173,11 @@ pub unsafe extern "C" fn qgc_start(argc: c_int, argv: *const *const c_char) -> c
     if let Some(port) = chosen.debug_port {
         start_debug_server(port);
     }
-    if let Some(link) = arguments.iter().skip(1).find(|a| a.starts_with("aircast-qgc://")) {
+    if let Some(link) = arguments
+        .iter()
+        .skip(1)
+        .find(|a| a.starts_with("aircast-qgc://"))
+    {
         unsafe { qgc_handle_deep_link(text(link).as_ptr()) };
     }
     0
@@ -142,7 +187,10 @@ pub unsafe extern "C" fn qgc_start(argc: c_int, argv: *const *const c_char) -> c
 pub extern "C" fn qgc_run() -> c_int {
     let (quit, wake) = &QUIT;
     let asked = quit.lock().unwrap_or_else(PoisonError::into_inner);
-    drop(wake.wait_while(asked, |asked| !*asked).unwrap_or_else(PoisonError::into_inner));
+    drop(
+        wake.wait_while(asked, |asked| !*asked)
+            .unwrap_or_else(PoisonError::into_inner),
+    );
     0
 }
 
@@ -164,7 +212,12 @@ pub unsafe extern "C" fn qgc_handle_deep_link(link: *const c_char) {
     if let Some(host) = deep_link_device(&link) {
         crate::deeplinksetup::offer(&host);
     }
-    let Some((debug, camera)) = deep_link_writes(&link, DEBUG_BUILD.load(std::sync::atomic::Ordering::Relaxed)) else { return };
+    let Some((debug, camera)) = deep_link_writes(
+        &link,
+        DEBUG_BUILD.load(std::sync::atomic::Ordering::Relaxed),
+    ) else {
+        return;
+    };
     if let Some(port) = debug {
         start_debug_server(port);
     }
@@ -175,30 +228,78 @@ pub unsafe extern "C" fn qgc_handle_deep_link(link: *const c_char) {
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_map_current_type() -> *mut c_char {
-    let value = |path: &str| serde_json::from_str::<Value>(&taken(unsafe { crate::abi::qgc_core_get(text(path).as_ptr()) })).ok().and_then(|v| v.get("value").and_then(Value::as_str).map(str::to_string)).unwrap_or_default();
-    given(&format!("{} {}", value("settings.flightMapSettings.mapProvider.rawValue"), value("settings.flightMapSettings.mapType.rawValue")))
+    let value = |path: &str| {
+        serde_json::from_str::<Value>(&taken(unsafe {
+            crate::abi::qgc_core_get(text(path).as_ptr())
+        }))
+        .ok()
+        .and_then(|v| v.get("value").and_then(Value::as_str).map(str::to_string))
+        .unwrap_or_default()
+    };
+    given(&format!(
+        "{} {}",
+        value("settings.flightMapSettings.mapProvider.rawValue"),
+        value("settings.flightMapSettings.mapType.rawValue")
+    ))
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qgc_map_tile_fetch(map_type: *const c_char, x: c_int, y: c_int, zoom: c_int, handler: Option<unsafe extern "C" fn(*const u8, c_int, *mut c_void)>, context: *mut c_void) {
+pub unsafe extern "C" fn qgc_map_tile_fetch(
+    map_type: *const c_char,
+    x: c_int,
+    y: c_int,
+    zoom: c_int,
+    handler: Option<unsafe extern "C" fn(*const u8, c_int, *mut c_void)>,
+    context: *mut c_void,
+) {
     unsafe { qgc_map_tile_fetch_cancellable(map_type, x, y, zoom, handler, context) };
 }
 
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qgc_map_tile_fetch_cancellable(map_type: *const c_char, x: c_int, y: c_int, zoom: c_int, handler: Option<unsafe extern "C" fn(*const u8, c_int, *mut c_void)>, context: *mut c_void) -> u64 {
+pub unsafe extern "C" fn qgc_map_tile_fetch_cancellable(
+    map_type: *const c_char,
+    x: c_int,
+    y: c_int,
+    zoom: c_int,
+    handler: Option<unsafe extern "C" fn(*const u8, c_int, *mut c_void)>,
+    context: *mut c_void,
+) -> u64 {
     let Some(handler) = handler else { return 0 };
     let provider = read(map_type);
     let context = context as usize;
     let fetch = move || {
-        let cache = crate::terrainservice::cache_path().and_then(|path| crate::tilecache::Cache::open(&path).ok());
-        let persist = !crate::settingsstore::raw_setting("settings.appSettings.disableAllPersistence").and_then(|v| v.as_bool()).unwrap_or(false);
-        crate::maptiles::fetch_remembered(&provider, x, y, zoom, cache.as_ref(), persist).or_else(|| cache.as_ref().filter(|_| !crate::tilecache::core_only(&provider)).and_then(|cache| offline_tile(cache, x, y, zoom)))
+        let cache = crate::terrainservice::cache_path()
+            .and_then(|path| crate::tilecache::Cache::open(&path).ok());
+        let persist =
+            !crate::settingsstore::raw_setting("settings.appSettings.disableAllPersistence")
+                .and_then(|v| v.as_bool())
+                .unwrap_or(false);
+        crate::maptiles::fetch_remembered(&provider, x, y, zoom, cache.as_ref(), persist).or_else(
+            || {
+                cache
+                    .as_ref()
+                    .filter(|_| !crate::tilecache::core_only(&provider))
+                    .and_then(|cache| offline_tile(cache, x, y, zoom))
+            },
+        )
     };
     let reply = move |image: Option<Vec<u8>>| match image {
-        Some(image) => unsafe { handler(image.as_ptr(), c_int::try_from(image.len()).unwrap_or(0), context as *mut c_void) },
+        Some(image) => unsafe {
+            handler(
+                image.as_ptr(),
+                c_int::try_from(image.len()).unwrap_or(0),
+                context as *mut c_void,
+            )
+        },
         None => unsafe { handler(std::ptr::null(), 0, context as *mut c_void) },
     };
-    crate::maptiles::fetch_ticketed(&TILE_TICKETS, &TILE_WORKERS, crate::maptiles::TileWorkers::start, fetch, reply)
+    crate::maptiles::fetch_ticketed(
+        &TILE_TICKETS,
+        &TILE_WORKERS,
+        crate::maptiles::TileWorkers::start,
+        fetch,
+        reply,
+    )
 }
 
 #[unsafe(no_mangle)]
@@ -208,10 +309,25 @@ pub extern "C" fn qgc_map_tile_cancel(ticket: u64) {
 
 #[cfg(target_os = "ios")]
 #[unsafe(no_mangle)]
-pub unsafe extern "C" fn qgc_synthetic_attach(layer: *mut c_void, width: c_int, height: c_int) -> c_int {
+pub unsafe extern "C" fn qgc_synthetic_attach(
+    layer: *mut c_void,
+    width: c_int,
+    height: c_int,
+) -> c_int {
     #[cfg(native_synthetic)]
-    return match unsafe { crate::synthetic::window::Window::from_layer(layer, (u32::try_from(width).unwrap_or(0), u32::try_from(height).unwrap_or(0))) } {
-        Some(window) => c_int::from(crate::synthetic::host::attach(window, std::sync::Arc::new(crate::synthetic::corefeed::CoreFeed))),
+    return match unsafe {
+        crate::synthetic::window::Window::from_layer(
+            layer,
+            (
+                u32::try_from(width).unwrap_or(0),
+                u32::try_from(height).unwrap_or(0),
+            ),
+        )
+    } {
+        Some(window) => c_int::from(crate::synthetic::host::attach(
+            window,
+            std::sync::Arc::new(crate::synthetic::corefeed::CoreFeed),
+        )),
         None => {
             log::error!(target: "synthetic", "event=attach_failed reason=\"no layer\"");
             0
@@ -233,14 +349,30 @@ pub extern "C" fn qgc_synthetic_release(layer: *mut c_void) {
     let _ = layer;
 }
 
-static TILE_WORKERS: once_cell::sync::OnceCell<crate::maptiles::TileWorkers> = once_cell::sync::OnceCell::new();
+static TILE_WORKERS: once_cell::sync::OnceCell<crate::maptiles::TileWorkers> =
+    once_cell::sync::OnceCell::new();
 static TILE_TICKETS: crate::maptiles::Tickets = crate::maptiles::Tickets::new();
 
 static OFFLINE_PROVIDER: OnceLock<i32> = OnceLock::new();
 
-fn offline_tile(cache: &crate::tilecache::Cache, x: c_int, y: c_int, zoom: c_int) -> Option<Vec<u8>> {
-    let provider = OFFLINE_PROVIDER.get().copied().or_else(|| cache.busiest_provider().ok().flatten().map(|found| *OFFLINE_PROVIDER.get_or_init(|| found)))?;
-    cache.tile(&crate::tilecache::tile_hash(provider, x, y, zoom)).ok().flatten().map(|tile| tile.image)
+fn offline_tile(
+    cache: &crate::tilecache::Cache,
+    x: c_int,
+    y: c_int,
+    zoom: c_int,
+) -> Option<Vec<u8>> {
+    let provider = OFFLINE_PROVIDER.get().copied().or_else(|| {
+        cache
+            .busiest_provider()
+            .ok()
+            .flatten()
+            .map(|found| *OFFLINE_PROVIDER.get_or_init(|| found))
+    })?;
+    cache
+        .tile(&crate::tilecache::tile_hash(provider, x, y, zoom))
+        .ok()
+        .flatten()
+        .map(|tile| tile.image)
 }
 
 struct CoreOnly;
@@ -256,20 +388,38 @@ impl Host for CoreOnly {
         taken(unsafe { crate::abi::qgc_core_invoke(text(path).as_ptr(), text(args_json).as_ptr()) })
     }
     fn link_configurations(&self) -> Value {
-        serde_json::from_str::<Value>(&self.bridge_get(crate::corelinks::MODEL)).unwrap_or(Value::Null)
+        serde_json::from_str::<Value>(&self.bridge_get(crate::corelinks::MODEL))
+            .unwrap_or(Value::Null)
     }
     fn link_open(&self, config_json: &str) -> Result<u32, String> {
-        let answer: Value = serde_json::from_str(&taken(unsafe { crate::abi::qgc_core_link_open(text(config_json).as_ptr()) })).unwrap_or(Value::Null);
-        answer["id"].as_u64().and_then(|id| u32::try_from(id).ok()).ok_or_else(|| answer["reason"].as_str().unwrap_or("the link did not open").to_string())
+        let answer: Value = serde_json::from_str(&taken(unsafe {
+            crate::abi::qgc_core_link_open(text(config_json).as_ptr())
+        }))
+        .unwrap_or(Value::Null);
+        answer["id"]
+            .as_u64()
+            .and_then(|id| u32::try_from(id).ok())
+            .ok_or_else(|| {
+                answer["reason"]
+                    .as_str()
+                    .unwrap_or("the link did not open")
+                    .to_string()
+            })
     }
     fn link_close(&self, _name: Option<&str>) -> Result<usize, String> {
         Err("closing by name needs the host's link list".to_string())
     }
     fn mission(&self, request_json: &str) -> Result<(), String> {
-        let answer: Value = serde_json::from_str(&taken(unsafe { crate::abi::qgc_core_mission(text(request_json).as_ptr()) })).unwrap_or(Value::Null);
+        let answer: Value = serde_json::from_str(&taken(unsafe {
+            crate::abi::qgc_core_mission(text(request_json).as_ptr())
+        }))
+        .unwrap_or(Value::Null);
         match answer["ok"].as_bool() {
             Some(true) => Ok(()),
-            _ => Err(answer["reason"].as_str().unwrap_or("the mission request failed").to_string()),
+            _ => Err(answer["reason"]
+                .as_str()
+                .unwrap_or("the mission request failed")
+                .to_string()),
         }
     }
     fn set_logging_rules(&self, _rules: &str) {}
@@ -289,7 +439,10 @@ impl Host for CoreOnly {
         crate::linkhost::change_mock_conditions(&crate::linkhost::TRANSPORTS, changes)
     }
     fn vehicle_connected(&self) -> bool {
-        serde_json::from_str::<Value>(&self.bridge_get("vehicles.activeVehicleAvailable")).ok().and_then(|v| v["value"].as_bool()).unwrap_or(false)
+        serde_json::from_str::<Value>(&self.bridge_get("vehicles.activeVehicleAvailable"))
+            .ok()
+            .and_then(|v| v["value"].as_bool())
+            .unwrap_or(false)
     }
 }
 
@@ -313,11 +466,19 @@ unsafe extern "C" {
 
 #[unsafe(no_mangle)]
 pub unsafe extern "C" fn qgc_native_debug_install(hooks: *const NativeDebugHooks) {
-    *NATIVE_HOOKS.lock().unwrap_or_else(PoisonError::into_inner) = if hooks.is_null() { None } else { Some(unsafe { *hooks }) };
+    *NATIVE_HOOKS.lock().unwrap_or_else(PoisonError::into_inner) = if hooks.is_null() {
+        None
+    } else {
+        Some(unsafe { *hooks })
+    };
 }
 
 fn hook_answer(raw: *mut c_char) -> String {
-    let answer = if raw.is_null() { "{}".to_string() } else { read(raw) };
+    let answer = if raw.is_null() {
+        "{}".to_string()
+    } else {
+        read(raw)
+    };
     if !raw.is_null() {
         unsafe { free(raw.cast()) };
     }
@@ -336,20 +497,43 @@ fn native_route(path: &str, query: &str) -> (u16, String) {
         "/native/menu" => hooks.menu.map(|f| unsafe { f() }),
         "/native/bridge" => hooks.bridge_stats.map(|f| unsafe { f() }),
         "/native/menu/invoke" => match value("path").filter(|p| !p.is_empty()) {
-            Some(item) => hooks.menu_invoke.map(|f| unsafe { f(text(&item).as_ptr()) }),
+            Some(item) => hooks
+                .menu_invoke
+                .map(|f| unsafe { f(text(&item).as_ptr()) }),
             None => return refuse("path is required, e.g. path=Window/Native Telemetry"),
         },
         "/native/probe" => {
-            let args: serde_json::Map<String, Value> = pairs.iter().filter(|(k, _)| k != "id" && k != "action").map(|(k, v)| (k.clone(), json!(v))).collect();
-            let (id, action, args) = (text(&value("id").unwrap_or_default()), text(&value("action").unwrap_or_default()), text(&Value::Object(args).to_string()));
-            hooks.probe.map(|f| unsafe { f(id.as_ptr(), action.as_ptr(), args.as_ptr()) })
+            let args: serde_json::Map<String, Value> = pairs
+                .iter()
+                .filter(|(k, _)| k != "id" && k != "action")
+                .map(|(k, v)| (k.clone(), json!(v)))
+                .collect();
+            let (id, action, args) = (
+                text(&value("id").unwrap_or_default()),
+                text(&value("action").unwrap_or_default()),
+                text(&Value::Object(args).to_string()),
+            );
+            hooks
+                .probe
+                .map(|f| unsafe { f(id.as_ptr(), action.as_ptr(), args.as_ptr()) })
         }
         "/native/type" => match value("window").filter(|w| !w.is_empty()) {
-            Some(window) => hooks.type_text.map(|f| unsafe { f(text(&window).as_ptr(), text(&value("text").unwrap_or_default()).as_ptr()) }),
+            Some(window) => hooks.type_text.map(|f| unsafe {
+                f(
+                    text(&window).as_ptr(),
+                    text(&value("text").unwrap_or_default()).as_ptr(),
+                )
+            }),
             None => return refuse("window is required"),
         },
-        "/native/click" => match (value("window").filter(|w| !w.is_empty()), value("x").and_then(|x| x.parse::<f64>().ok()), value("y").and_then(|y| y.parse::<f64>().ok())) {
-            (Some(window), Some(x), Some(y)) => hooks.click.map(|f| unsafe { f(text(&window).as_ptr(), x, y) }),
+        "/native/click" => match (
+            value("window").filter(|w| !w.is_empty()),
+            value("x").and_then(|x| x.parse::<f64>().ok()),
+            value("y").and_then(|y| y.parse::<f64>().ok()),
+        ) {
+            (Some(window), Some(x), Some(y)) => hooks
+                .click
+                .map(|f| unsafe { f(text(&window).as_ptr(), x, y) }),
             _ => return refuse("window, x and y are required"),
         },
         _ => return refuse(&format!("unknown native route: {path}")),
@@ -376,14 +560,20 @@ fn serve(stream: std::net::TcpStream, api: &DebugApi) -> std::io::Result<()> {
         }
     };
     let mut stream = stream;
-    write!(stream, "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}", body.len())
+    write!(
+        stream,
+        "HTTP/1.1 {status} X\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    )
 }
 
 fn start_debug_server(port: u16) {
     if DEBUG_SERVER.set(port).is_err() {
         return;
     }
-    let Ok(listener) = std::net::TcpListener::bind(("127.0.0.1", port)) else { return };
+    let Ok(listener) = std::net::TcpListener::bind(("127.0.0.1", port)) else {
+        return;
+    };
     std::thread::Builder::new()
         .name("qgc-debug-api".to_string())
         .spawn(move || {

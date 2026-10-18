@@ -40,13 +40,32 @@ impl Escs {
             self.by_id.entry(id).or_default();
         });
         self.by_id.iter_mut().for_each(|(id, esc)| match message {
-            MavMessage::ESC_INFO(d) if (u32::from(d.index)..u32::from(d.index) + 4).contains(id) => {
+            MavMessage::ESC_INFO(d)
+                if (u32::from(d.index)..u32::from(d.index) + 4).contains(id) =>
+            {
                 let slot = (*id % 4) as usize;
-                *esc = EscFacts { count: d.count, connection_type: d.connection_type as u8, info: d.info, failure_flags: d.failure_flags[slot], error_count: d.error_count[slot], temperature: d.temperature[slot], telemetry: true, ..esc.clone() };
+                *esc = EscFacts {
+                    count: d.count,
+                    connection_type: d.connection_type as u8,
+                    info: d.info,
+                    failure_flags: d.failure_flags[slot],
+                    error_count: d.error_count[slot],
+                    temperature: d.temperature[slot],
+                    telemetry: true,
+                    ..esc.clone()
+                };
             }
-            MavMessage::ESC_STATUS(d) if (u32::from(d.index)..u32::from(d.index) + 4).contains(id) => {
+            MavMessage::ESC_STATUS(d)
+                if (u32::from(d.index)..u32::from(d.index) + 4).contains(id) =>
+            {
                 let slot = (*id % 4) as usize;
-                *esc = EscFacts { rpm: d.rpm[slot], current: d.current[slot], voltage: d.voltage[slot], telemetry: true, ..esc.clone() };
+                *esc = EscFacts {
+                    rpm: d.rpm[slot],
+                    current: d.current[slot],
+                    voltage: d.voltage[slot],
+                    telemetry: true,
+                    ..esc.clone()
+                };
             }
             _ => {}
         });
@@ -54,7 +73,17 @@ impl Escs {
     }
 }
 
-pub const SUB_INFO_READINGS: [&str; 9] = ["cameraTilt", "tetherTurns", "lights1", "lights2", "pilotGain", "inputHold", "rollPitchToggle", "rangefinderDistance", "rangefinderTarget"];
+pub const SUB_INFO_READINGS: [&str; 9] = [
+    "cameraTilt",
+    "tetherTurns",
+    "lights1",
+    "lights2",
+    "pilotGain",
+    "inputHold",
+    "rollPitchToggle",
+    "rangefinderDistance",
+    "rangefinderTarget",
+];
 
 const SUB_NAMED_VALUES: [(&str, &str, f32); 8] = [
     ("CamTilt", "cameraTilt", 100.0),
@@ -78,20 +107,31 @@ impl SubInfoFacts {
         let update = match message {
             MavMessage::NAMED_VALUE_FLOAT(d) => {
                 let name = d.name.to_str().unwrap_or("");
-                SUB_NAMED_VALUES.iter().find(|(sent, _, _)| *sent == name).map(|(_, fact, scale)| (*fact, d.value * scale))
+                SUB_NAMED_VALUES
+                    .iter()
+                    .find(|(sent, _, _)| *sent == name)
+                    .map(|(_, fact, scale)| (*fact, d.value * scale))
             }
             MavMessage::RANGEFINDER(d) => Some(("rangefinderDistance", d.distance)),
             _ => None,
         };
-        let Some((fact, value)) = update else { return false };
-        let at = SUB_INFO_READINGS.iter().position(|n| *n == fact).unwrap_or(0);
+        let Some((fact, value)) = update else {
+            return false;
+        };
+        let at = SUB_INFO_READINGS
+            .iter()
+            .position(|n| *n == fact)
+            .unwrap_or(0);
         self.readings[at] = Some(value);
         self.seen = true;
         true
     }
 
     pub fn reading(&self, name: &str) -> Option<f32> {
-        SUB_INFO_READINGS.iter().position(|n| *n == name).and_then(|i| self.readings[i])
+        SUB_INFO_READINGS
+            .iter()
+            .position(|n| *n == name)
+            .and_then(|i| self.readings[i])
     }
 }
 
@@ -111,18 +151,40 @@ impl RpmFacts {
             MavMessage::RPM(d) => vec![(4, d.rpm1), (5, d.rpm2)],
             _ => return false,
         };
-        updates.into_iter().for_each(|(at, value)| self.readings[at] = Some(value));
+        updates
+            .into_iter()
+            .for_each(|(at, value)| self.readings[at] = Some(value));
         self.seen = true;
         true
     }
 
     pub fn reading(&self, name: &str) -> Option<f32> {
-        RPM_READINGS.iter().position(|n| *n == name).and_then(|i| self.readings[i])
+        RPM_READINGS
+            .iter()
+            .position(|n| *n == name)
+            .and_then(|i| self.readings[i])
     }
 }
 
 pub const EFI_READINGS: [&str; 18] = [
-    "ecuIndex", "rpm", "fuelConsumed", "fuelFlow", "engineLoad", "throttlePos", "sparkTime", "baroPress", "intakePress", "intakeTemp", "cylinderTemp", "ignTime", "injTime", "exGasTemp", "throttleOut", "ptComp", "ignVoltage", "fuelPressure",
+    "ecuIndex",
+    "rpm",
+    "fuelConsumed",
+    "fuelFlow",
+    "engineLoad",
+    "throttlePos",
+    "sparkTime",
+    "baroPress",
+    "intakePress",
+    "intakeTemp",
+    "cylinderTemp",
+    "ignTime",
+    "injTime",
+    "exGasTemp",
+    "throttleOut",
+    "ptComp",
+    "ignVoltage",
+    "fuelPressure",
 ];
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -234,7 +296,11 @@ pub const DISTANCE_ORIENTATIONS: [MavSensorOrientation; 10] = [
 ];
 
 fn compass(degrees: f32) -> f64 {
-    (if degrees < 0.0 { degrees + 360.0 } else { degrees }) as f64
+    (if degrees < 0.0 {
+        degrees + 360.0
+    } else {
+        degrees
+    }) as f64
 }
 
 impl WindFacts {
@@ -242,7 +308,8 @@ impl WindFacts {
         match message {
             MavMessage::WIND_COV(d) => {
                 self.direction = compass(d.wind_y.atan2(d.wind_x).to_degrees());
-                self.speed = ((d.wind_x as f64).powi(2) + (d.wind_y as f64).powi(2)).sqrt() as f32 as f64;
+                self.speed =
+                    ((d.wind_x as f64).powi(2) + (d.wind_y as f64).powi(2)).sqrt() as f32 as f64;
                 self.vertical_speed = d.wind_z as f64;
                 self.seen = [true; 3];
                 true
@@ -273,12 +340,30 @@ impl WindFacts {
 
 impl EfiFacts {
     pub fn apply(&mut self, message: &MavMessage) -> bool {
-        let MavMessage::EFI_STATUS(d) = message else { return false };
+        let MavMessage::EFI_STATUS(d) = message else {
+            return false;
+        };
         *self = EfiFacts {
             health: if d.health == 127 { 0 } else { d.health },
             readings: [
-                d.ecu_index, d.rpm, d.fuel_consumed, d.fuel_flow, d.engine_load, d.throttle_position, d.spark_dwell_time, d.barometric_pressure, d.intake_manifold_pressure, d.intake_manifold_temperature,
-                d.cylinder_head_temperature, d.ignition_timing, d.injection_time, d.exhaust_gas_temperature, d.throttle_out, d.pt_compensation, d.ignition_voltage, d.fuel_pressure,
+                d.ecu_index,
+                d.rpm,
+                d.fuel_consumed,
+                d.fuel_flow,
+                d.engine_load,
+                d.throttle_position,
+                d.spark_dwell_time,
+                d.barometric_pressure,
+                d.intake_manifold_pressure,
+                d.intake_manifold_temperature,
+                d.cylinder_head_temperature,
+                d.ignition_timing,
+                d.injection_time,
+                d.exhaust_gas_temperature,
+                d.throttle_out,
+                d.pt_compensation,
+                d.ignition_voltage,
+                d.fuel_pressure,
             ],
             seen: true,
         };
@@ -286,26 +371,51 @@ impl EfiFacts {
     }
 
     pub fn reading(&self, name: &str) -> Option<f32> {
-        EFI_READINGS.iter().position(|n| *n == name).map(|i| self.readings[i])
+        EFI_READINGS
+            .iter()
+            .position(|n| *n == name)
+            .map(|i| self.readings[i])
     }
 }
 
 impl GeneratorFacts {
     pub fn apply(&mut self, message: &MavMessage) -> bool {
-        let MavMessage::GENERATOR_STATUS(d) = message else { return false };
-        let status = if d.status.bits() == u64::from(u16::MAX) { 0 } else { d.status.bits() };
+        let MavMessage::GENERATOR_STATUS(d) = message else {
+            return false;
+        };
+        let status = if d.status.bits() == u64::from(u16::MAX) {
+            0
+        } else {
+            d.status.bits()
+        };
         *self = GeneratorFacts {
             status,
-            speed: if d.generator_speed == u16::MAX { 0 } else { d.generator_speed },
+            speed: if d.generator_speed == u16::MAX {
+                0
+            } else {
+                d.generator_speed
+            },
             battery_current: d.battery_current,
             load_current: d.load_current,
             power_generated: d.power_generated,
             bus_voltage: d.bus_voltage,
             battery_current_setpoint: d.bat_current_setpoint,
-            rectifier_temperature: if d.rectifier_temperature == i16::MAX { 0 } else { d.rectifier_temperature },
-            generator_temperature: if d.generator_temperature == i16::MAX { 0 } else { d.generator_temperature },
+            rectifier_temperature: if d.rectifier_temperature == i16::MAX {
+                0
+            } else {
+                d.rectifier_temperature
+            },
+            generator_temperature: if d.generator_temperature == i16::MAX {
+                0
+            } else {
+                d.generator_temperature
+            },
             runtime: if d.runtime == u32::MAX { 0 } else { d.runtime },
-            time_until_maintenance: if d.time_until_maintenance == i32::MAX { 0 } else { d.time_until_maintenance },
+            time_until_maintenance: if d.time_until_maintenance == i32::MAX {
+                0
+            } else {
+                d.time_until_maintenance
+            },
             status_changed: self.status_changed || status != self.status,
             seen: true,
         };
@@ -315,17 +425,30 @@ impl GeneratorFacts {
 
 impl HygrometerFacts {
     pub fn apply(&mut self, message: &MavMessage) -> bool {
-        let MavMessage::HYGROMETER_SENSOR(d) = message else { return false };
-        *self = HygrometerFacts { temperature: f64::from(f32::from(d.temperature) / 100.0), humidity: f64::from(d.humidity), id: d.id, seen: true };
+        let MavMessage::HYGROMETER_SENSOR(d) = message else {
+            return false;
+        };
+        *self = HygrometerFacts {
+            temperature: f64::from(f32::from(d.temperature) / 100.0),
+            humidity: f64::from(d.humidity),
+            id: d.id,
+            seen: true,
+        };
         true
     }
 }
 
 impl SetpointFacts {
     pub fn apply(&mut self, message: &MavMessage) -> bool {
-        let MavMessage::ATTITUDE_TARGET(d) = message else { return false };
+        let MavMessage::ATTITUDE_TARGET(d) = message else {
+            return false;
+        };
         let (roll, pitch, yaw) = crate::vehiclefacts::quaternion_to_euler(d.q.map(|q| q as f64));
-        let yaw = if (yaw as f32) < 0.0 { yaw as f32 + 2.0 * std::f32::consts::PI } else { yaw as f32 };
+        let yaw = if (yaw as f32) < 0.0 {
+            yaw as f32 + 2.0 * std::f32::consts::PI
+        } else {
+            yaw as f32
+        };
         let degrees = |radians: f32| radians.to_degrees() as f64;
         *self = SetpointFacts {
             roll: degrees(roll as f32),
@@ -375,9 +498,12 @@ impl TemperatureFacts {
 
 impl DistanceSensorFacts {
     pub fn apply(&mut self, message: &MavMessage) -> bool {
-        let MavMessage::DISTANCE_SENSOR(d) = message else { return false };
+        let MavMessage::DISTANCE_SENSOR(d) = message else {
+            return false;
+        };
         if DISTANCE_ORIENTATIONS.contains(&d.orientation) {
-            self.by_orientation.insert(d.orientation as u32, d.current_distance as f64 / 100.0);
+            self.by_orientation
+                .insert(d.orientation as u32, d.current_distance as f64 / 100.0);
         }
         self.min_distance = d.min_distance as f64 / 100.0;
         self.max_distance = d.max_distance as f64 / 100.0;
@@ -388,21 +514,43 @@ impl DistanceSensorFacts {
 
 impl LocalPositionFacts {
     pub fn apply(&mut self, message: &MavMessage) -> bool {
-        let MavMessage::LOCAL_POSITION_NED(d) = message else { return false };
-        *self = LocalPositionFacts { x: d.x as f64, y: d.y as f64, z: d.z as f64, vx: d.vx as f64, vy: d.vy as f64, vz: d.vz as f64, seen: true };
+        let MavMessage::LOCAL_POSITION_NED(d) = message else {
+            return false;
+        };
+        *self = LocalPositionFacts {
+            x: d.x as f64,
+            y: d.y as f64,
+            z: d.z as f64,
+            vx: d.vx as f64,
+            vy: d.vy as f64,
+            vz: d.vz as f64,
+            seen: true,
+        };
         true
     }
 
     pub fn apply_target(&mut self, message: &MavMessage) -> bool {
-        let MavMessage::POSITION_TARGET_LOCAL_NED(d) = message else { return false };
-        *self = LocalPositionFacts { x: d.x as f64, y: d.y as f64, z: d.z as f64, vx: d.vx as f64, vy: d.vy as f64, vz: d.vz as f64, seen: true };
+        let MavMessage::POSITION_TARGET_LOCAL_NED(d) = message else {
+            return false;
+        };
+        *self = LocalPositionFacts {
+            x: d.x as f64,
+            y: d.y as f64,
+            z: d.z as f64,
+            vx: d.vx as f64,
+            vy: d.vy as f64,
+            vz: d.vz as f64,
+            seen: true,
+        };
         true
     }
 }
 
 impl EstimatorStatusFacts {
     pub fn apply(&mut self, message: &MavMessage) -> bool {
-        let MavMessage::ESTIMATOR_STATUS(d) = message else { return false };
+        let MavMessage::ESTIMATOR_STATUS(d) = message else {
+            return false;
+        };
         let has = |flag: EstimatorStatusFlags| d.flags.contains(flag);
         *self = EstimatorStatusFacts {
             good_attitude: has(EstimatorStatusFlags::ESTIMATOR_ATTITUDE),
@@ -434,12 +582,19 @@ impl EstimatorStatusFacts {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use mavlink::dialects::ardupilotmega::{DISTANCE_SENSOR_DATA, ESTIMATOR_STATUS_DATA, HIGH_LATENCY2_DATA, SCALED_PRESSURE2_DATA, WIND_COV_DATA, WIND_DATA};
+    use mavlink::dialects::ardupilotmega::{
+        DISTANCE_SENSOR_DATA, ESTIMATOR_STATUS_DATA, HIGH_LATENCY2_DATA, SCALED_PRESSURE2_DATA,
+        WIND_COV_DATA, WIND_DATA,
+    };
 
     #[test]
     fn a_position_target_fills_the_setpoint_not_the_position() {
         let mut position = LocalPositionFacts::default();
-        let target = mavlink::dialects::ardupilotmega::POSITION_TARGET_LOCAL_NED_DATA { x: 1.5, vz: -0.25, ..Default::default() };
+        let target = mavlink::dialects::ardupilotmega::POSITION_TARGET_LOCAL_NED_DATA {
+            x: 1.5,
+            vz: -0.25,
+            ..Default::default()
+        };
         assert!(!position.apply(&MavMessage::POSITION_TARGET_LOCAL_NED(target.clone())));
         assert!(position.apply_target(&MavMessage::POSITION_TARGET_LOCAL_NED(target)));
         assert_eq!((position.x, position.vz, position.seen), (1.5, -0.25, true));
@@ -449,68 +604,189 @@ mod tests {
     fn esc_info_always_opens_the_first_four_because_qt_reads_its_index_from_the_wrong_message() {
         use mavlink::dialects::ardupilotmega::{ESC_INFO_DATA, ESC_STATUS_DATA};
         let mut escs = Escs::default();
-        escs.apply(&MavMessage::ESC_STATUS(ESC_STATUS_DATA { index: 4, rpm: [100, 200, 300, 400], ..Default::default() }));
-        assert_eq!(escs.by_id.keys().copied().collect::<Vec<_>>(), vec![4, 5, 6, 7]);
+        escs.apply(&MavMessage::ESC_STATUS(ESC_STATUS_DATA {
+            index: 4,
+            rpm: [100, 200, 300, 400],
+            ..Default::default()
+        }));
+        assert_eq!(
+            escs.by_id.keys().copied().collect::<Vec<_>>(),
+            vec![4, 5, 6, 7]
+        );
         assert_eq!((escs.by_id[&5].rpm, escs.by_id[&5].telemetry), (200, true));
-        escs.apply(&MavMessage::ESC_INFO(ESC_INFO_DATA { index: 4, count: 8, temperature: [0, 3150, 0, 0], ..Default::default() }));
-        assert_eq!(escs.by_id.keys().copied().collect::<Vec<_>>(), vec![0, 1, 2, 3, 4, 5, 6, 7]);
-        assert_eq!((escs.by_id[&5].temperature, escs.by_id[&5].count, escs.by_id[&5].rpm, escs.by_id[&0].telemetry), (3150, 8, 200, false));
+        escs.apply(&MavMessage::ESC_INFO(ESC_INFO_DATA {
+            index: 4,
+            count: 8,
+            temperature: [0, 3150, 0, 0],
+            ..Default::default()
+        }));
+        assert_eq!(
+            escs.by_id.keys().copied().collect::<Vec<_>>(),
+            vec![0, 1, 2, 3, 4, 5, 6, 7]
+        );
+        assert_eq!(
+            (
+                escs.by_id[&5].temperature,
+                escs.by_id[&5].count,
+                escs.by_id[&5].rpm,
+                escs.by_id[&0].telemetry
+            ),
+            (3150, 8, 200, false)
+        );
     }
 
     #[test]
     fn sub_info_follows_ardusub_named_values() {
-        let named = |name: &str, value: f32| MavMessage::NAMED_VALUE_FLOAT(mavlink::dialects::ardupilotmega::NAMED_VALUE_FLOAT_DATA { time_boot_ms: 0, value, name: name.into() });
+        let named = |name: &str, value: f32| {
+            MavMessage::NAMED_VALUE_FLOAT(
+                mavlink::dialects::ardupilotmega::NAMED_VALUE_FLOAT_DATA {
+                    time_boot_ms: 0,
+                    value,
+                    name: name.into(),
+                },
+            )
+        };
         let mut sub = SubInfoFacts::default();
         sub.apply(&named("CamTilt", 0.25));
         sub.apply(&named("TetherTrn", 3.0));
         sub.apply(&named("Other", 9.0));
-        sub.apply(&MavMessage::RANGEFINDER(mavlink::dialects::ardupilotmega::RANGEFINDER_DATA { distance: 1.5, voltage: 0.0 }));
-        assert_eq!((sub.reading("cameraTilt"), sub.reading("tetherTurns"), sub.reading("rangefinderDistance"), sub.reading("lights1")), (Some(25.0), Some(3.0), Some(1.5), None), "ArduSubFirmwarePlugin::_handleNamedValueFloat scales tilt, lights and gain to percent");
+        sub.apply(&MavMessage::RANGEFINDER(
+            mavlink::dialects::ardupilotmega::RANGEFINDER_DATA {
+                distance: 1.5,
+                voltage: 0.0,
+            },
+        ));
+        assert_eq!(
+            (
+                sub.reading("cameraTilt"),
+                sub.reading("tetherTurns"),
+                sub.reading("rangefinderDistance"),
+                sub.reading("lights1")
+            ),
+            (Some(25.0), Some(3.0), Some(1.5), None),
+            "ArduSubFirmwarePlugin::_handleNamedValueFloat scales tilt, lights and gain to percent"
+        );
     }
 
     #[test]
     fn rpm_readings_follow_vehicle_rpm_fact_group() {
         let mut rpm = RpmFacts::default();
-        rpm.apply(&MavMessage::RAW_RPM(mavlink::dialects::ardupilotmega::RAW_RPM_DATA { frequency: 1200.0, index: 2 }));
-        rpm.apply(&MavMessage::RAW_RPM(mavlink::dialects::ardupilotmega::RAW_RPM_DATA { frequency: 9.0, index: 7 }));
-        rpm.apply(&MavMessage::RPM(mavlink::dialects::ardupilotmega::RPM_DATA { rpm1: 3000.0, rpm2: 3100.0 }));
-        assert_eq!((rpm.reading("rpm3"), rpm.reading("rpm1"), rpm.reading("rpmSensor1"), rpm.reading("rpmSensor2")), (Some(1200.0), None, Some(3000.0), Some(3100.0)), "RAW_RPM fills rpm1-4 by index, ignoring others; ArduPilot RPM fills both sensors");
+        rpm.apply(&MavMessage::RAW_RPM(
+            mavlink::dialects::ardupilotmega::RAW_RPM_DATA {
+                frequency: 1200.0,
+                index: 2,
+            },
+        ));
+        rpm.apply(&MavMessage::RAW_RPM(
+            mavlink::dialects::ardupilotmega::RAW_RPM_DATA {
+                frequency: 9.0,
+                index: 7,
+            },
+        ));
+        rpm.apply(&MavMessage::RPM(
+            mavlink::dialects::ardupilotmega::RPM_DATA {
+                rpm1: 3000.0,
+                rpm2: 3100.0,
+            },
+        ));
+        assert_eq!(
+            (
+                rpm.reading("rpm3"),
+                rpm.reading("rpm1"),
+                rpm.reading("rpmSensor1"),
+                rpm.reading("rpmSensor2")
+            ),
+            (Some(1200.0), None, Some(3000.0), Some(3100.0)),
+            "RAW_RPM fills rpm1-4 by index, ignoring others; ArduPilot RPM fills both sensors"
+        );
         assert!(rpm.seen);
     }
 
     #[test]
     fn efi_readings_are_named_in_message_order() {
         let mut efi = EfiFacts::default();
-        let status = mavlink::dialects::ardupilotmega::EFI_STATUS_DATA { health: 127, rpm: 5200.0, fuel_pressure: 310.5, ..Default::default() };
+        let status = mavlink::dialects::ardupilotmega::EFI_STATUS_DATA {
+            health: 127,
+            rpm: 5200.0,
+            fuel_pressure: 310.5,
+            ..Default::default()
+        };
         efi.apply(&MavMessage::EFI_STATUS(status));
-        assert_eq!((efi.health, efi.reading("rpm"), efi.reading("fuelPressure"), efi.reading("health")), (0, Some(5200.0), Some(310.5), None));
+        assert_eq!(
+            (
+                efi.health,
+                efi.reading("rpm"),
+                efi.reading("fuelPressure"),
+                efi.reading("health")
+            ),
+            (0, Some(5200.0), Some(310.5), None)
+        );
     }
 
     #[test]
     fn generator_sentinels_read_as_zero_and_a_status_change_is_remembered() {
         use mavlink::dialects::ardupilotmega::{GENERATOR_STATUS_DATA, MavGeneratorStatusFlag};
         let mut generator = GeneratorFacts::default();
-        let unknown = GENERATOR_STATUS_DATA { status: MavGeneratorStatusFlag::from_bits_retain(u64::from(u16::MAX)), generator_speed: u16::MAX, runtime: u32::MAX, rectifier_temperature: i16::MAX, bus_voltage: 48.5, ..Default::default() };
+        let unknown = GENERATOR_STATUS_DATA {
+            status: MavGeneratorStatusFlag::from_bits_retain(u64::from(u16::MAX)),
+            generator_speed: u16::MAX,
+            runtime: u32::MAX,
+            rectifier_temperature: i16::MAX,
+            bus_voltage: 48.5,
+            ..Default::default()
+        };
         generator.apply(&MavMessage::GENERATOR_STATUS(unknown));
-        assert_eq!((generator.status, generator.speed, generator.runtime, generator.rectifier_temperature, generator.bus_voltage, generator.status_changed), (0, 0, 0, 0, 48.5, false));
-        generator.apply(&MavMessage::GENERATOR_STATUS(GENERATOR_STATUS_DATA { status: MavGeneratorStatusFlag::from_bits_retain(4), ..Default::default() }));
-        generator.apply(&MavMessage::GENERATOR_STATUS(GENERATOR_STATUS_DATA { status: MavGeneratorStatusFlag::empty(), ..Default::default() }));
+        assert_eq!(
+            (
+                generator.status,
+                generator.speed,
+                generator.runtime,
+                generator.rectifier_temperature,
+                generator.bus_voltage,
+                generator.status_changed
+            ),
+            (0, 0, 0, 0, 48.5, false)
+        );
+        generator.apply(&MavMessage::GENERATOR_STATUS(GENERATOR_STATUS_DATA {
+            status: MavGeneratorStatusFlag::from_bits_retain(4),
+            ..Default::default()
+        }));
+        generator.apply(&MavMessage::GENERATOR_STATUS(GENERATOR_STATUS_DATA {
+            status: MavGeneratorStatusFlag::empty(),
+            ..Default::default()
+        }));
         assert_eq!((generator.status, generator.status_changed), (0, true));
     }
 
     #[test]
     fn hygrometer_temperature_is_centidegrees_in_single_precision() {
         let mut hygrometer = HygrometerFacts::default();
-        let sensor = mavlink::dialects::ardupilotmega::HYGROMETER_SENSOR_DATA { temperature: 2137, humidity: 4550, id: 2 };
+        let sensor = mavlink::dialects::ardupilotmega::HYGROMETER_SENSOR_DATA {
+            temperature: 2137,
+            humidity: 4550,
+            id: 2,
+        };
         hygrometer.apply(&MavMessage::HYGROMETER_SENSOR(sensor));
-        assert_eq!((hygrometer.temperature, hygrometer.humidity, hygrometer.id, hygrometer.seen), (f64::from(21.37f32), 4550.0, 2, true));
+        assert_eq!(
+            (
+                hygrometer.temperature,
+                hygrometer.humidity,
+                hygrometer.id,
+                hygrometer.seen
+            ),
+            (f64::from(21.37f32), 4550.0, 2, true)
+        );
     }
 
     #[test]
     fn setpoint_yaw_is_brought_into_a_heading_range() {
         let mut setpoint = SetpointFacts::default();
         let half = std::f32::consts::FRAC_1_SQRT_2;
-        let target = mavlink::dialects::ardupilotmega::ATTITUDE_TARGET_DATA { q: [half, 0.0, 0.0, -half], body_yaw_rate: std::f32::consts::PI, ..Default::default() };
+        let target = mavlink::dialects::ardupilotmega::ATTITUDE_TARGET_DATA {
+            q: [half, 0.0, 0.0, -half],
+            body_yaw_rate: std::f32::consts::PI,
+            ..Default::default()
+        };
         setpoint.apply(&MavMessage::ATTITUDE_TARGET(target));
         assert!(setpoint.seen);
         assert!((setpoint.yaw - 270.0).abs() < 1e-3, "{}", setpoint.yaw);
@@ -532,7 +808,10 @@ mod tests {
         let mut cov = WIND_COV_DATA::default();
         (cov.wind_x, cov.wind_y, cov.wind_z) = (0.0, -3.0, 0.5);
         wind.apply(&MavMessage::WIND_COV(cov));
-        assert_eq!((wind.direction, wind.speed, wind.vertical_speed, wind.seen), (270.0, 3.0, 0.5, [true; 3]));
+        assert_eq!(
+            (wind.direction, wind.speed, wind.vertical_speed, wind.seen),
+            (270.0, 3.0, 0.5, [true; 3])
+        );
         let mut plain = WIND_DATA::default();
         (plain.direction, plain.speed) = (-10.0, 2.0);
         wind.apply(&MavMessage::WIND(plain));
@@ -546,7 +825,10 @@ mod tests {
         let mut pressure = SCALED_PRESSURE2_DATA::default();
         pressure.temperature = 2350;
         temperature.apply(&MavMessage::SCALED_PRESSURE2(pressure));
-        assert_eq!((temperature.temperature1, temperature.temperature2), (-7.0, 23.5));
+        assert_eq!(
+            (temperature.temperature1, temperature.temperature2),
+            (-7.0, 23.5)
+        );
     }
 
     #[test]
@@ -567,10 +849,16 @@ mod tests {
     fn estimator_flags_split_into_booleans() {
         let mut estimator = EstimatorStatusFacts::default();
         let mut d = ESTIMATOR_STATUS_DATA::default();
-        d.flags = EstimatorStatusFlags::ESTIMATOR_ATTITUDE | EstimatorStatusFlags::ESTIMATOR_GPS_GLITCH;
+        d.flags =
+            EstimatorStatusFlags::ESTIMATOR_ATTITUDE | EstimatorStatusFlags::ESTIMATOR_GPS_GLITCH;
         d.mag_ratio = 0.4;
         estimator.apply(&MavMessage::ESTIMATOR_STATUS(d));
-        assert!(estimator.good_attitude && estimator.gps_glitch && !estimator.good_horiz_vel && !estimator.accel_error);
+        assert!(
+            estimator.good_attitude
+                && estimator.gps_glitch
+                && !estimator.good_horiz_vel
+                && !estimator.accel_error
+        );
         assert!((estimator.mag_ratio - 0.4).abs() < 1e-6);
         assert!(!estimator.apply(&MavMessage::HEARTBEAT(Default::default())));
     }
@@ -578,14 +866,28 @@ mod tests {
     #[test]
     fn the_sample_log_feeds_at_least_one_sensor_group() {
         let bytes = crate::samplelog::bytes();
-        let (mut wind, mut temperature, mut distance, mut local, mut estimator) =
-            (WindFacts::default(), TemperatureFacts::default(), DistanceSensorFacts::default(), LocalPositionFacts::default(), EstimatorStatusFacts::default());
+        let (mut wind, mut temperature, mut distance, mut local, mut estimator) = (
+            WindFacts::default(),
+            TemperatureFacts::default(),
+            DistanceSensorFacts::default(),
+            LocalPositionFacts::default(),
+            EstimatorStatusFacts::default(),
+        );
         let mut applied = [0usize; 5];
         crate::tlog::for_each(&bytes, |_, _, message| {
-            let hits = [wind.apply(message), temperature.apply(message), distance.apply(message), local.apply(message), estimator.apply(message)];
+            let hits = [
+                wind.apply(message),
+                temperature.apply(message),
+                distance.apply(message),
+                local.apply(message),
+                estimator.apply(message),
+            ];
             applied = std::array::from_fn(|i| applied[i] + hits[i] as usize);
         });
-        assert!(applied.iter().any(|n| *n > 0), "no sensor fact messages in the sample log");
+        assert!(
+            applied.iter().any(|n| *n > 0),
+            "no sensor fact messages in the sample log"
+        );
         assert!(applied[0] == 0 || (0.0..360.0).contains(&wind.direction));
         assert!(applied[1] == 0 || temperature.temperature1.abs() < 100.0);
     }

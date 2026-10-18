@@ -82,17 +82,58 @@ pub struct Fence {
 }
 
 fn plain(command: u16, frame: u8, params: [f64; 7]) -> Item {
-    Item { seq: 0, frame, command, current: false, auto_continue: false, params }
+    Item {
+        seq: 0,
+        frame,
+        command,
+        current: false,
+        auto_continue: false,
+        params,
+    }
 }
 
 pub fn fence_items(fence: &Fence) -> Vec<Item> {
     let polygons = fence.polygons.iter().flat_map(|polygon| {
-        let command = if polygon.inclusion { CMD_FENCE_POLYGON_INCLUSION } else { CMD_FENCE_POLYGON_EXCLUSION };
+        let command = if polygon.inclusion {
+            CMD_FENCE_POLYGON_INCLUSION
+        } else {
+            CMD_FENCE_POLYGON_EXCLUSION
+        };
         let count = polygon.vertices.len() as f64;
-        polygon.vertices.iter().map(move |(lat, lon)| plain(command, FRAME_GLOBAL, [count, 0.0, 0.0, 0.0, *lat, *lon, 0.0]))
+        polygon.vertices.iter().map(move |(lat, lon)| {
+            plain(
+                command,
+                FRAME_GLOBAL,
+                [count, 0.0, 0.0, 0.0, *lat, *lon, 0.0],
+            )
+        })
     });
-    let circles = fence.circles.iter().map(|circle| plain(if circle.inclusion { CMD_FENCE_CIRCLE_INCLUSION } else { CMD_FENCE_CIRCLE_EXCLUSION }, FRAME_GLOBAL, [circle.radius, 0.0, 0.0, 0.0, circle.center.0, circle.center.1, 0.0]));
-    let breach = fence.breach_return.map(|(lat, lon, alt)| plain(CMD_FENCE_RETURN_POINT, FRAME_GLOBAL_RELATIVE_ALT, [0.0, 0.0, 0.0, 0.0, lat, lon, alt]));
+    let circles = fence.circles.iter().map(|circle| {
+        plain(
+            if circle.inclusion {
+                CMD_FENCE_CIRCLE_INCLUSION
+            } else {
+                CMD_FENCE_CIRCLE_EXCLUSION
+            },
+            FRAME_GLOBAL,
+            [
+                circle.radius,
+                0.0,
+                0.0,
+                0.0,
+                circle.center.0,
+                circle.center.1,
+                0.0,
+            ],
+        )
+    });
+    let breach = fence.breach_return.map(|(lat, lon, alt)| {
+        plain(
+            CMD_FENCE_RETURN_POINT,
+            FRAME_GLOBAL_RELATIVE_ALT,
+            [0.0, 0.0, 0.0, 0.0, lat, lon, alt],
+        )
+    });
     polygons.chain(circles).chain(breach).collect()
 }
 
@@ -106,13 +147,25 @@ pub fn fence_from_items(items: &[Item]) -> Result<Fence, String> {
                 let count = item.params[0] as usize;
                 match expected {
                     None => expected = Some((item.command, count)),
-                    Some((_, wanted)) if wanted != count => return Err(format!("GeoFence load: Vertex count change mid-polygon - actual:expected {count}:{wanted}")),
-                    Some((command, _)) if command != item.command => return Err(format!("GeoFence load: Polygon type changed before last load complete - actual:expected {}:{command}", item.command)),
+                    Some((_, wanted)) if wanted != count => {
+                        return Err(format!(
+                            "GeoFence load: Vertex count change mid-polygon - actual:expected {count}:{wanted}"
+                        ));
+                    }
+                    Some((command, _)) if command != item.command => {
+                        return Err(format!(
+                            "GeoFence load: Polygon type changed before last load complete - actual:expected {}:{command}",
+                            item.command
+                        ));
+                    }
                     _ => {}
                 }
                 open.push((item.params[4], item.params[5]));
                 if open.len() == count {
-                    fence.polygons.push(Polygon { inclusion: item.command == CMD_FENCE_POLYGON_INCLUSION, vertices: std::mem::take(&mut open) });
+                    fence.polygons.push(Polygon {
+                        inclusion: item.command == CMD_FENCE_POLYGON_INCLUSION,
+                        vertices: std::mem::take(&mut open),
+                    });
                     expected = None;
                 }
             }
@@ -120,9 +173,15 @@ pub fn fence_from_items(items: &[Item]) -> Result<Fence, String> {
                 if !open.is_empty() {
                     return Err("GeoFence load: Incomplete polygon loaded".to_string());
                 }
-                fence.circles.push(Circle { inclusion: item.command == CMD_FENCE_CIRCLE_INCLUSION, center: (item.params[4], item.params[5]), radius: item.params[0] });
+                fence.circles.push(Circle {
+                    inclusion: item.command == CMD_FENCE_CIRCLE_INCLUSION,
+                    center: (item.params[4], item.params[5]),
+                    radius: item.params[0],
+                });
             }
-            CMD_FENCE_RETURN_POINT => fence.breach_return = Some((item.params[4], item.params[5], item.params[6])),
+            CMD_FENCE_RETURN_POINT => {
+                fence.breach_return = Some((item.params[4], item.params[5], item.params[6]))
+            }
             other => return Err(format!("GeoFence load: Unsupported command {other}")),
         }
     }
@@ -130,11 +189,24 @@ pub fn fence_from_items(items: &[Item]) -> Result<Fence, String> {
 }
 
 pub fn rally_items(points: &[(f64, f64, f64)]) -> Vec<Item> {
-    points.iter().map(|(lat, lon, alt)| plain(CMD_RALLY_POINT, FRAME_GLOBAL_RELATIVE_ALT, [0.0, 0.0, 0.0, 0.0, *lat, *lon, *alt])).collect()
+    points
+        .iter()
+        .map(|(lat, lon, alt)| {
+            plain(
+                CMD_RALLY_POINT,
+                FRAME_GLOBAL_RELATIVE_ALT,
+                [0.0, 0.0, 0.0, 0.0, *lat, *lon, *alt],
+            )
+        })
+        .collect()
 }
 
 pub fn rally_from_items(items: &[Item]) -> Vec<(f64, f64, f64)> {
-    items.iter().take_while(|i| i.command == CMD_RALLY_POINT).map(|i| (i.params[4], i.params[5], i.params[6])).collect()
+    items
+        .iter()
+        .take_while(|i| i.command == CMD_RALLY_POINT)
+        .map(|i| (i.params[4], i.params[5], i.params[6]))
+        .collect()
 }
 
 #[derive(Debug, Default)]
@@ -170,28 +242,59 @@ fn result_text(result: u8) -> String {
 }
 
 fn friendly_name(command: u16) -> String {
-    crate::cmdinfo::tree(crate::cmdinfo::Firmware::Generic, crate::cmdinfo::VehicleClass::Generic)
-        .get(&i64::from(command))
-        .map_or_else(|| format!("MAV_CMD({command})"), |c| c.friendly_name.clone())
+    crate::cmdinfo::tree(
+        crate::cmdinfo::Firmware::Generic,
+        crate::cmdinfo::VehicleClass::Generic,
+    )
+    .get(&i64::from(command))
+    .map_or_else(
+        || format!("MAV_CMD({command})"),
+        |c| c.friendly_name.clone(),
+    )
 }
 
 fn last_request_text(item: Option<&Item>, result: u8) -> Option<String> {
     let item = item?;
     let postfix = match result {
         2 => Some(format!("Frame: {}", item.frame)),
-        6..=12 => Some(format!("Value: {}", crate::control::qt_shortest(item.params[usize::from(result - 6)]))),
+        6..=12 => Some(format!(
+            "Value: {}",
+            crate::control::qt_shortest(item.params[usize::from(result - 6)])
+        )),
         _ => None,
     };
-    Some([Some(format!("Item #{} Command: {}", item.seq, friendly_name(item.command))), postfix].into_iter().flatten().collect::<Vec<_>>().join(" "))
+    Some(
+        [
+            Some(format!(
+                "Item #{} Command: {}",
+                item.seq,
+                friendly_name(item.command)
+            )),
+            postfix,
+        ]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(" "),
+    )
 }
 
 fn rejection_text(item: Option<&Item>, result: u8) -> String {
-    [Some(result_text(result)), last_request_text(item, result)].into_iter().flatten().collect::<Vec<_>>().join(" ")
+    [Some(result_text(result)), last_request_text(item, result)]
+        .into_iter()
+        .flatten()
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 impl Transfer {
     pub fn new(apm: bool, plan_type: u8) -> Transfer {
-        Transfer { plan_type, apm, skip_first: !apm && plan_type == PLAN_MISSION, ..Transfer::default() }
+        Transfer {
+            plan_type,
+            apm,
+            skip_first: !apm && plan_type == PLAN_MISSION,
+            ..Transfer::default()
+        }
     }
 
     pub fn in_progress(&self) -> bool {
@@ -204,7 +307,11 @@ impl Transfer {
 
     fn expecting(&mut self, expect: Expect) -> Vec<Out> {
         self.expect = Some(expect);
-        vec![Out::StartTimer(if expect == Expect::Item { ITEM_TIMEOUT_MS } else { ACK_TIMEOUT_MS })]
+        vec![Out::StartTimer(if expect == Expect::Item {
+            ITEM_TIMEOUT_MS
+        } else {
+            ACK_TIMEOUT_MS
+        })]
     }
 
     fn take_expected(&mut self, expect: Expect) -> bool {
@@ -227,7 +334,14 @@ impl Transfer {
             _ => {}
         }
         self.writing.clear();
-        vec![Out::StopTimer, Out::Progress(1.0), Out::Done { success, error: error.to_string() }]
+        vec![
+            Out::StopTimer,
+            Out::Progress(1.0),
+            Out::Done {
+                success,
+                error: error.to_string(),
+            },
+        ]
     }
 
     pub fn load(&mut self) -> Vec<Out> {
@@ -248,7 +362,9 @@ impl Transfer {
     }
 
     fn request_next(&mut self) -> Vec<Out> {
-        let Some(next) = self.to_read.first().copied() else { return Vec::new() };
+        let Some(next) = self.to_read.first().copied() else {
+            return Vec::new();
+        };
         let mut out = vec![Out::RequestItem(next)];
         out.extend(self.expecting(Expect::Item));
         out
@@ -285,7 +401,14 @@ impl Transfer {
         let skip_first = self.skip_first;
         let first = usize::from(skip_first && !items.is_empty());
         if items.len() - first > usize::from(u16::MAX) {
-            return vec![Out::Done { success: false, error: format!("The plan has {} items; MAVLink carries at most {}.", items.len() - first, u16::MAX) }];
+            return vec![Out::Done {
+                success: false,
+                error: format!(
+                    "The plan has {} items; MAVLink carries at most {}.",
+                    items.len() - first,
+                    u16::MAX
+                ),
+            }];
         }
         self.writing = items
             .into_iter()
@@ -294,10 +417,23 @@ impl Transfer {
             .map(|(i, item)| {
                 let seq = i as u16;
                 let params = match (skip_first, item.command) {
-                    (true, CMD_DO_JUMP) => [item.params[0].trunc() - 1.0, item.params[1], item.params[2], item.params[3], item.params[4], item.params[5], item.params[6]],
+                    (true, CMD_DO_JUMP) => [
+                        item.params[0].trunc() - 1.0,
+                        item.params[1],
+                        item.params[2],
+                        item.params[3],
+                        item.params[4],
+                        item.params[5],
+                        item.params[6],
+                    ],
                     _ => item.params,
                 };
-                Item { seq, current: i == 0, params, ..item }
+                Item {
+                    seq,
+                    current: i == 0,
+                    params,
+                    ..item
+                }
             })
             .collect();
         self.to_write = (0..self.writing.len() as u16).collect();
@@ -318,29 +454,52 @@ impl Transfer {
     pub fn on_timeout(&mut self) -> Vec<Out> {
         match self.expect {
             None => Vec::new(),
-            Some(Expect::Count) if self.retries > MAX_RETRY => self.finish(false, "Mission request list failed, maximum retries exceeded."),
+            Some(Expect::Count) if self.retries > MAX_RETRY => self.finish(
+                false,
+                "Mission request list failed, maximum retries exceeded.",
+            ),
             Some(Expect::Count) => {
                 self.retries += 1;
                 self.request_list()
             }
-            Some(Expect::Item) if self.retries > MAX_RETRY => self.finish(false, "Mission read failed, maximum retries exceeded."),
+            Some(Expect::Item) if self.retries > MAX_RETRY => {
+                self.finish(false, "Mission read failed, maximum retries exceeded.")
+            }
             Some(Expect::Item) => {
                 self.retries += 1;
                 self.request_next()
             }
-            Some(Expect::Request) if self.to_write.is_empty() => self.finish(false, "Mission write failed, vehicle failed to send final ack."),
-            Some(Expect::Request) if self.to_write.first() == Some(&0) && self.retries > MAX_RETRY => self.finish(false, "Mission write mission count failed, maximum retries exceeded."),
+            Some(Expect::Request) if self.to_write.is_empty() => self.finish(
+                false,
+                "Mission write failed, vehicle failed to send final ack.",
+            ),
+            Some(Expect::Request)
+                if self.to_write.first() == Some(&0) && self.retries > MAX_RETRY =>
+            {
+                self.finish(
+                    false,
+                    "Mission write mission count failed, maximum retries exceeded.",
+                )
+            }
             Some(Expect::Request) if self.to_write.first() == Some(&0) => {
                 self.retries += 1;
                 self.write_count()
             }
-            Some(Expect::Request) => self.finish(false, "Vehicle did not request all items from ground station: MISSION_REQUEST"),
-            Some(Expect::ClearAck) if self.retries > MAX_RETRY => self.finish(false, "Mission remove all, maximum retries exceeded."),
+            Some(Expect::Request) => self.finish(
+                false,
+                "Vehicle did not request all items from ground station: MISSION_REQUEST",
+            ),
+            Some(Expect::ClearAck) if self.retries > MAX_RETRY => {
+                self.finish(false, "Mission remove all, maximum retries exceeded.")
+            }
             Some(Expect::ClearAck) => {
                 self.retries += 1;
                 self.clear_all()
             }
-            Some(Expect::GuidedItem) => self.finish(false, "Vehicle did not respond to mission item communication: Guided Mode Item"),
+            Some(Expect::GuidedItem) => self.finish(
+                false,
+                "Vehicle did not respond to mission item communication: Guided Mode Item",
+            ),
         }
     }
 
@@ -370,7 +529,11 @@ impl Transfer {
         let item = Item { frame, ..item };
         if !self.take_expected(Expect::Item) {
             return match (self.in_progress(), self.apm, self.plan_type, item.seq) {
-                (true, true, PLAN_MISSION, 0) => vec![Out::HomePosition(item.params[4], item.params[5], item.params[6])],
+                (true, true, PLAN_MISSION, 0) => vec![Out::HomePosition(
+                    item.params[4],
+                    item.params[5],
+                    item.params[6],
+                )],
                 _ => Vec::new(),
             };
         }
@@ -379,13 +542,24 @@ impl Transfer {
         }
         self.to_read.retain(|s| *s != item.seq);
         let params = match (item.command, self.skip_first) {
-            (CMD_DO_JUMP, true) => [item.params[0].trunc() + 1.0, item.params[1], item.params[2], item.params[3], item.params[4], item.params[5], item.params[6]],
+            (CMD_DO_JUMP, true) => [
+                item.params[0].trunc() + 1.0,
+                item.params[1],
+                item.params[2],
+                item.params[3],
+                item.params[4],
+                item.params[5],
+                item.params[6],
+            ],
             _ => item.params,
         };
         let seq = item.seq;
         self.items.push(Item { params, ..item });
         self.retries = 0;
-        let mut out = vec![Out::StopTimer, Out::Progress(seq as f64 / self.count_to_read.max(1) as f64)];
+        let mut out = vec![
+            Out::StopTimer,
+            Out::Progress(seq as f64 / self.count_to_read.max(1) as f64),
+        ];
         if self.to_read.is_empty() {
             out.push(Out::SendAck);
             out.extend(self.finish(true, ""));
@@ -405,7 +579,14 @@ impl Transfer {
         self.to_write.retain(|s| *s != seq);
         self.last_request = Some(seq);
         let item = self.writing[seq as usize].clone();
-        let mut out = vec![Out::StopTimer, Out::Progress(seq as f64 / self.writing.len() as f64), Out::SendItem(Item { current: seq == 0, ..item })];
+        let mut out = vec![
+            Out::StopTimer,
+            Out::Progress(seq as f64 / self.writing.len() as f64),
+            Out::SendItem(Item {
+                current: seq == 0,
+                ..item
+            }),
+        ];
         out.extend(self.expecting(Expect::Request));
         out
     }
@@ -414,15 +595,30 @@ impl Transfer {
         if self.apm && result == RESULT_INVALID_SEQUENCE {
             return Vec::new();
         }
-        let Some(expected) = self.expect else { return Vec::new() };
+        let Some(expected) = self.expect else {
+            return Vec::new();
+        };
         self.expect = None;
         match (expected, result, self.to_write.is_empty()) {
             (Expect::Request, RESULT_ACCEPTED, true) => self.finish(true, ""),
             (Expect::ClearAck | Expect::GuidedItem, RESULT_ACCEPTED, _) => self.finish(true, ""),
-            (Expect::GuidedItem, failed, _) => self.finish(false, &format!("Vehicle returned error: {}. Vehicle did not accept guided item.", result_text(failed))),
-            (Expect::ClearAck, failed, _) => self.finish(false, &format!("Vehicle remove all failed. Error: {}", result_text(failed))),
+            (Expect::GuidedItem, failed, _) => self.finish(
+                false,
+                &format!(
+                    "Vehicle returned error: {}. Vehicle did not accept guided item.",
+                    result_text(failed)
+                ),
+            ),
+            (Expect::ClearAck, failed, _) => self.finish(
+                false,
+                &format!("Vehicle remove all failed. Error: {}", result_text(failed)),
+            ),
             _ => {
-                let text = rejection_text(self.last_request.and_then(|seq| self.writing.get(usize::from(seq))), result);
+                let text = rejection_text(
+                    self.last_request
+                        .and_then(|seq| self.writing.get(usize::from(seq))),
+                    result,
+                );
                 self.finish(false, &text)
             }
         }
@@ -434,11 +630,21 @@ mod tests {
     use super::*;
 
     fn waypoint(seq: u16, lat: f64) -> Item {
-        Item { seq, frame: FRAME_GLOBAL_RELATIVE_ALT_INT, command: 16, current: false, auto_continue: true, params: [0.0, 0.0, 0.0, 0.0, lat, 8.5, 50.0] }
+        Item {
+            seq,
+            frame: FRAME_GLOBAL_RELATIVE_ALT_INT,
+            command: 16,
+            current: false,
+            auto_continue: true,
+            params: [0.0, 0.0, 0.0, 0.0, lat, 8.5, 50.0],
+        }
     }
 
     fn timer(out: &[Out]) -> Option<u64> {
-        out.iter().find_map(|o| match o { Out::StartTimer(ms) => Some(*ms), _ => None })
+        out.iter().find_map(|o| match o {
+            Out::StartTimer(ms) => Some(*ms),
+            _ => None,
+        })
     }
 
     #[test]
@@ -446,38 +652,74 @@ mod tests {
         let mut transfer = Transfer::new(true, PLAN_MISSION);
         transfer.items = vec![waypoint(0, 47.0)];
         let started = transfer.remove_all();
-        assert_eq!((started[0].clone(), timer(&started)), (Out::ClearAll, Some(ACK_TIMEOUT_MS)));
-        assert!(transfer.items.is_empty(), "_clearAndDeleteMissionItems runs before the vehicle answers");
-        assert!(transfer.remove_all().is_empty(), "one transaction at a time");
-        assert_eq!(transfer.on_timeout()[0], Out::ClearAll, "a lost ack is retried");
-        assert!(matches!(transfer.on_ack(RESULT_ACCEPTED).last(), Some(Out::Done { success: true, .. })));
-        assert!(!transfer.in_progress() && transfer.finished == Some(Transaction::RemoveAll), "Vehicle clears the trail on sendComplete and newMissionItemsAvailable, never on removeAllComplete");
+        assert_eq!(
+            (started[0].clone(), timer(&started)),
+            (Out::ClearAll, Some(ACK_TIMEOUT_MS))
+        );
+        assert!(
+            transfer.items.is_empty(),
+            "_clearAndDeleteMissionItems runs before the vehicle answers"
+        );
+        assert!(
+            transfer.remove_all().is_empty(),
+            "one transaction at a time"
+        );
+        assert_eq!(
+            transfer.on_timeout()[0],
+            Out::ClearAll,
+            "a lost ack is retried"
+        );
+        assert!(matches!(
+            transfer.on_ack(RESULT_ACCEPTED).last(),
+            Some(Out::Done { success: true, .. })
+        ));
+        assert!(
+            !transfer.in_progress() && transfer.finished == Some(Transaction::RemoveAll),
+            "Vehicle clears the trail on sendComplete and newMissionItemsAvailable, never on removeAllComplete"
+        );
         let mut refused = Transfer::new(true, PLAN_FENCE);
         refused.remove_all();
-        assert!(matches!(refused.on_ack(1).last(), Some(Out::Done { success: false, error }) if error == "Vehicle remove all failed. Error: Unspecified error."));
+        assert!(
+            matches!(refused.on_ack(1).last(), Some(Out::Done { success: false, error }) if error == "Vehicle remove all failed. Error: Unspecified error.")
+        );
         let mut lost = Transfer::new(true, PLAN_RALLY);
         lost.remove_all();
-        (0..=MAX_RETRY).for_each(|_| { lost.on_timeout(); });
-        assert!(matches!(lost.on_timeout().last(), Some(Out::Done { success: false, error }) if error == "Mission remove all, maximum retries exceeded."));
+        (0..=MAX_RETRY).for_each(|_| {
+            lost.on_timeout();
+        });
+        assert!(
+            matches!(lost.on_timeout().last(), Some(Out::Done { success: false, error }) if error == "Mission remove all, maximum retries exceeded.")
+        );
     }
 
     #[test]
     fn a_read_walks_count_and_items_and_acks_the_vehicle() {
         let mut transfer = Transfer::new(false, PLAN_MISSION);
         let started = transfer.load();
-        assert_eq!((started[0].clone(), timer(&started)), (Out::RequestList, Some(ACK_TIMEOUT_MS)));
+        assert_eq!(
+            (started[0].clone(), timer(&started)),
+            (Out::RequestList, Some(ACK_TIMEOUT_MS))
+        );
         assert!(transfer.load().is_empty(), "one transaction at a time");
         let counted = transfer.on_count(2);
         assert!(counted.contains(&Out::RequestItem(0)));
         assert_eq!(timer(&counted), Some(ITEM_TIMEOUT_MS));
-        assert!(transfer.on_item(waypoint(5, 1.0)).contains(&Out::StartTimer(ITEM_TIMEOUT_MS)), "an unexpected sequence keeps waiting");
+        assert!(
+            transfer
+                .on_item(waypoint(5, 1.0))
+                .contains(&Out::StartTimer(ITEM_TIMEOUT_MS)),
+            "an unexpected sequence keeps waiting"
+        );
         let first = transfer.on_item(waypoint(0, 47.0));
         assert!(first.contains(&Out::RequestItem(1)));
         let last = transfer.on_item(waypoint(1, 47.1));
         assert!(last.contains(&Out::SendAck));
         assert!(matches!(last.last(), Some(Out::Done { success: true, .. })));
         assert_eq!(transfer.items.len(), 2);
-        assert_eq!(transfer.items[1].frame, FRAME_GLOBAL_RELATIVE_ALT, "int frames come back as their float twins, as the Qt manager stores them");
+        assert_eq!(
+            transfer.items[1].frame, FRAME_GLOBAL_RELATIVE_ALT,
+            "int frames come back as their float twins, as the Qt manager stores them"
+        );
         assert!(!transfer.in_progress());
     }
 
@@ -488,7 +730,9 @@ mod tests {
         let retried: Vec<Vec<Out>> = (0..6).map(|_| transfer.on_timeout()).collect();
         assert!(retried.iter().all(|r| r.contains(&Out::RequestList)));
         let gave_up = transfer.on_timeout();
-        assert!(matches!(gave_up.last(), Some(Out::Done { success: false, error }) if error.contains("maximum retries")));
+        assert!(
+            matches!(gave_up.last(), Some(Out::Done { success: false, error }) if error.contains("maximum retries"))
+        );
         assert!(!transfer.in_progress());
     }
 
@@ -500,17 +744,37 @@ mod tests {
             transfer.on_request(0);
             transfer.on_request(1);
             match transfer.on_ack(result).last() {
-                Some(Out::Done { success: false, error }) => error.clone(),
+                Some(Out::Done {
+                    success: false,
+                    error,
+                }) => error.clone(),
                 other => panic!("{other:?}"),
             }
         };
-        assert_eq!(error(10), "Param 5 invalid value. Item #1 Command: Waypoint Value: 47.25", "PlanManager::_lastMissionReqestString");
-        assert_eq!(error(2), "Coordinate frame is not supported. Item #1 Command: Waypoint Frame: 6");
-        assert_eq!(error(3), "Command is not supported. Item #1 Command: Waypoint");
-        assert_eq!(error(15), "Unknown error: 15. Item #1 Command: Waypoint", "QGC has no case for a cancelled operation");
+        assert_eq!(
+            error(10),
+            "Param 5 invalid value. Item #1 Command: Waypoint Value: 47.25",
+            "PlanManager::_lastMissionReqestString"
+        );
+        assert_eq!(
+            error(2),
+            "Coordinate frame is not supported. Item #1 Command: Waypoint Frame: 6"
+        );
+        assert_eq!(
+            error(3),
+            "Command is not supported. Item #1 Command: Waypoint"
+        );
+        assert_eq!(
+            error(15),
+            "Unknown error: 15. Item #1 Command: Waypoint",
+            "QGC has no case for a cancelled operation"
+        );
         let mut unrequested = Transfer::new(true, PLAN_MISSION);
         unrequested.write(vec![waypoint(0, 0.0)]);
-        assert!(matches!(unrequested.on_ack(1).last(), Some(Out::Done { error, .. }) if error == "Unspecified error."), "before any request there is no item to name");
+        assert!(
+            matches!(unrequested.on_ack(1).last(), Some(Out::Done { error, .. }) if error == "Unspecified error."),
+            "before any request there is no item to name"
+        );
     }
 
     #[test]
@@ -519,32 +783,64 @@ mod tests {
         let out = transfer.write(vec![waypoint(0, 0.0); usize::from(u16::MAX) + 2]);
         assert!(matches!(out.as_slice(), [Out::Done { success: false, .. }]));
         assert!(!transfer.in_progress());
-        assert!(transfer.write(vec![waypoint(0, 0.0); usize::from(u16::MAX)]).contains(&Out::SendCount(u16::MAX)));
+        assert!(
+            transfer
+                .write(vec![waypoint(0, 0.0); usize::from(u16::MAX)])
+                .contains(&Out::SendCount(u16::MAX))
+        );
     }
 
     #[test]
     fn a_write_skips_the_home_item_on_px4_and_serves_requests_until_the_ack() {
         let mut ardupilot = Transfer::new(true, PLAN_MISSION);
-        let jump = Item { command: CMD_DO_JUMP, params: [3.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0], ..waypoint(2, 0.0) };
-        assert!(ardupilot.write(vec![waypoint(0, 0.0), waypoint(1, 47.0), jump.clone()]).contains(&Out::SendCount(3)), "ArduPilot is sent the planned home as item zero (APMFirmwarePlugin::sendHomePositionToVehicle is true), and without it the first real item would land in the slot ArduPilot overwrites with home");
+        let jump = Item {
+            command: CMD_DO_JUMP,
+            params: [3.0, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            ..waypoint(2, 0.0)
+        };
+        assert!(
+            ardupilot
+                .write(vec![waypoint(0, 0.0), waypoint(1, 47.0), jump.clone()])
+                .contains(&Out::SendCount(3)),
+            "ArduPilot is sent the planned home as item zero (APMFirmwarePlugin::sendHomePositionToVehicle is true), and without it the first real item would land in the slot ArduPilot overwrites with home"
+        );
         let kept = ardupilot.on_request(2);
-        assert!(matches!(kept.iter().find(|o| matches!(o, Out::SendItem(_))), Some(Out::SendItem(item)) if item.params[0] == 3.0), "with home sent, a jump target keeps its sequence");
+        assert!(
+            matches!(kept.iter().find(|o| matches!(o, Out::SendItem(_))), Some(Out::SendItem(item)) if item.params[0] == 3.0),
+            "with home sent, a jump target keeps its sequence"
+        );
         let mut transfer = Transfer::new(false, PLAN_MISSION);
         let started = transfer.write(vec![waypoint(0, 0.0), waypoint(1, 47.0), jump]);
-        assert!(started.contains(&Out::SendCount(2)), "the home item is not sent to PX4");
+        assert!(
+            started.contains(&Out::SendCount(2)),
+            "the home item is not sent to PX4"
+        );
         let first = transfer.on_request(0);
-        assert!(matches!(first.iter().find(|o| matches!(o, Out::SendItem(_))), Some(Out::SendItem(item)) if item.seq == 0 && item.current && item.params[4] == 47.0));
+        assert!(
+            matches!(first.iter().find(|o| matches!(o, Out::SendItem(_))), Some(Out::SendItem(item)) if item.seq == 0 && item.current && item.params[4] == 47.0)
+        );
         let second = transfer.on_request(1);
-        assert!(matches!(second.iter().find(|o| matches!(o, Out::SendItem(_))), Some(Out::SendItem(item)) if item.command == CMD_DO_JUMP && item.params[0] == 2.0), "a jump target moves down with the sequence");
+        assert!(
+            matches!(second.iter().find(|o| matches!(o, Out::SendItem(_))), Some(Out::SendItem(item)) if item.command == CMD_DO_JUMP && item.params[0] == 2.0),
+            "a jump target moves down with the sequence"
+        );
         let done = transfer.on_ack(RESULT_ACCEPTED);
         assert!(matches!(done.last(), Some(Out::Done { success: true, .. })));
-        assert_eq!(transfer.items.len(), 2, "a successful write becomes the known mission");
+        assert_eq!(
+            transfer.items.len(),
+            2,
+            "a successful write becomes the known mission"
+        );
         let mut refused = Transfer::new(true, PLAN_MISSION);
         refused.write(vec![waypoint(0, 0.0)]);
-        assert!(matches!(refused.on_ack(4).last(), Some(Out::Done { success: false, error }) if error.contains("storage")));
+        assert!(
+            matches!(refused.on_ack(4).last(), Some(Out::Done { success: false, error }) if error.contains("storage"))
+        );
         let mut outside = Transfer::new(true, PLAN_MISSION);
         outside.write(vec![waypoint(0, 0.0)]);
-        assert!(matches!(outside.on_request(7).last(), Some(Out::Done { success: false, error }) if error.contains("outside range")));
+        assert!(
+            matches!(outside.on_request(7).last(), Some(Out::Done { success: false, error }) if error.contains("outside range"))
+        );
     }
 
     #[test]
@@ -553,9 +849,19 @@ mod tests {
         transfer.load();
         transfer.on_count(1);
         let retried: Vec<Vec<Out>> = (0..6).map(|_| transfer.on_timeout()).collect();
-        assert!(retried.iter().all(|r| r.contains(&Out::RequestItem(0)) && timer(r) == Some(ITEM_TIMEOUT_MS)));
-        assert!(matches!(transfer.on_timeout().last(), Some(Out::Done { success: false, error }) if error.contains("Mission read failed")));
-        let jump = Item { command: CMD_DO_JUMP, params: [3.7, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0], ..waypoint(0, 0.0) };
+        assert!(
+            retried
+                .iter()
+                .all(|r| r.contains(&Out::RequestItem(0)) && timer(r) == Some(ITEM_TIMEOUT_MS))
+        );
+        assert!(
+            matches!(transfer.on_timeout().last(), Some(Out::Done { success: false, error }) if error.contains("Mission read failed"))
+        );
+        let jump = Item {
+            command: CMD_DO_JUMP,
+            params: [3.7, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            ..waypoint(0, 0.0)
+        };
         let read_jump = |apm: bool| {
             let mut reading = Transfer::new(apm, PLAN_MISSION);
             reading.load();
@@ -563,31 +869,56 @@ mod tests {
             reading.on_item(jump.clone());
             reading.items[0].params[0]
         };
-        assert_eq!(read_jump(false), 4.0, "a jump read from PX4 moves up past the home item the plan puts in front of it");
-        assert_eq!(read_jump(true), 3.7, "ArduPilot's list already holds home at zero, so its jumps are read as sent");
+        assert_eq!(
+            read_jump(false),
+            4.0,
+            "a jump read from PX4 moves up past the home item the plan puts in front of it"
+        );
+        assert_eq!(
+            read_jump(true),
+            3.7,
+            "ArduPilot's list already holds home at zero, so its jumps are read as sent"
+        );
         let mut early = Transfer::new(true, PLAN_MISSION);
         early.write(vec![waypoint(0, 0.0), waypoint(1, 1.0)]);
         early.on_request(0);
-        assert!(matches!(early.on_ack(RESULT_ACCEPTED).last(), Some(Out::Done { success: false, error }) if error == "Mission accepted. Item #0 Command: Waypoint"), "PlanManager reports an early accept as the result text naming the last requested item");
+        assert!(
+            matches!(early.on_ack(RESULT_ACCEPTED).last(), Some(Out::Done { success: false, error }) if error == "Mission accepted. Item #0 Command: Waypoint"),
+            "PlanManager reports an early accept as the result text naming the last requested item"
+        );
         let mut stalled = Transfer::new(true, PLAN_MISSION);
         stalled.write(vec![waypoint(0, 0.0), waypoint(1, 1.0)]);
         stalled.on_request(0);
-        assert!(matches!(stalled.on_timeout().last(), Some(Out::Done { success: false, error }) if error.contains("did not request all items")));
+        assert!(
+            matches!(stalled.on_timeout().last(), Some(Out::Done { success: false, error }) if error.contains("did not request all items"))
+        );
     }
 
     #[test]
     fn an_unrequested_first_item_on_ardupilot_is_the_home_position() {
         let mut idle = Transfer::new(true, PLAN_MISSION);
-        assert!(idle.on_item(waypoint(0, 47.5)).is_empty(), "PlanManager only listens to MAVLink while a transaction runs, so an idle stray item never moves home");
+        assert!(
+            idle.on_item(waypoint(0, 47.5)).is_empty(),
+            "PlanManager only listens to MAVLink while a transaction runs, so an idle stray item never moves home"
+        );
         let mut transfer = Transfer::new(true, PLAN_MISSION);
         transfer.write(vec![waypoint(0, 0.0)]);
-        assert_eq!(transfer.on_item(waypoint(0, 47.5)), vec![Out::HomePosition(47.5, 8.5, 50.0)]);
+        assert_eq!(
+            transfer.on_item(waypoint(0, 47.5)),
+            vec![Out::HomePosition(47.5, 8.5, 50.0)]
+        );
         let mut px4 = Transfer::new(false, PLAN_MISSION);
         assert!(px4.on_item(waypoint(0, 47.5)).is_empty());
-        assert!(px4.on_ack(RESULT_ACCEPTED).is_empty(), "an ack with nothing expected is ignored");
+        assert!(
+            px4.on_ack(RESULT_ACCEPTED).is_empty(),
+            "an ack with nothing expected is ignored"
+        );
         let mut apm = Transfer::new(true, PLAN_MISSION);
         apm.load();
-        assert!(apm.on_ack(RESULT_INVALID_SEQUENCE).is_empty(), "ArduPilot's invalid-sequence ack is ignored");
+        assert!(
+            apm.on_ack(RESULT_INVALID_SEQUENCE).is_empty(),
+            "ArduPilot's invalid-sequence ack is ignored"
+        );
     }
 
     #[test]
@@ -595,43 +926,104 @@ mod tests {
         let mut guided = Transfer::new(true, PLAN_MISSION);
         guided.items = vec![waypoint(0, 47.0)];
         assert_eq!(timer(&guided.guided_item()), Some(ACK_TIMEOUT_MS));
-        assert!(guided.in_progress() && guided.load().is_empty() && guided.guided_item().is_empty(), "the guided item holds the manager like any other transaction");
-        assert!(matches!(guided.on_ack(RESULT_ACCEPTED).last(), Some(Out::Done { success: true, .. })));
-        assert_eq!((guided.finished, guided.items.len()), (Some(Transaction::GuidedItem), 1), "a guided write never replaces the mission the manager holds");
+        assert!(
+            guided.in_progress() && guided.load().is_empty() && guided.guided_item().is_empty(),
+            "the guided item holds the manager like any other transaction"
+        );
+        assert!(matches!(
+            guided.on_ack(RESULT_ACCEPTED).last(),
+            Some(Out::Done { success: true, .. })
+        ));
+        assert_eq!(
+            (guided.finished, guided.items.len()),
+            (Some(Transaction::GuidedItem), 1),
+            "a guided write never replaces the mission the manager holds"
+        );
         guided.guided_item();
-        assert!(matches!(guided.on_ack(3).last(), Some(Out::Done { success: false, error }) if error == "Vehicle returned error: Command is not supported.. Vehicle did not accept guided item."));
+        assert!(
+            matches!(guided.on_ack(3).last(), Some(Out::Done { success: false, error }) if error == "Vehicle returned error: Command is not supported.. Vehicle did not accept guided item.")
+        );
         guided.guided_item();
-        assert!(matches!(guided.on_timeout().last(), Some(Out::Done { success: false, error }) if error == "Vehicle did not respond to mission item communication: Guided Mode Item"), "no retry: AckGuidedItem falls to the default timeout branch");
+        assert!(
+            matches!(guided.on_timeout().last(), Some(Out::Done { success: false, error }) if error == "Vehicle did not respond to mission item communication: Guided Mode Item"),
+            "no retry: AckGuidedItem falls to the default timeout branch"
+        );
         let mut busy = Transfer::new(true, PLAN_MISSION);
         busy.load();
-        assert!(busy.guided_item().is_empty(), "writeArduPilotGuidedMissionItem drops the item while a transfer runs");
+        assert!(
+            busy.guided_item().is_empty(),
+            "writeArduPilotGuidedMissionItem drops the item while a transfer runs"
+        );
     }
 
     #[test]
     fn fence_items_round_trip_and_bad_sequences_are_named_as_the_geofence_manager_names_them() {
         let fence = Fence {
-            polygons: vec![Polygon { inclusion: true, vertices: vec![(47.0, 8.0), (47.1, 8.0), (47.1, 8.1)] }, Polygon { inclusion: false, vertices: vec![(46.0, 7.0), (46.1, 7.0), (46.1, 7.1)] }],
-            circles: vec![Circle { inclusion: true, center: (47.05, 8.05), radius: 120.0 }],
+            polygons: vec![
+                Polygon {
+                    inclusion: true,
+                    vertices: vec![(47.0, 8.0), (47.1, 8.0), (47.1, 8.1)],
+                },
+                Polygon {
+                    inclusion: false,
+                    vertices: vec![(46.0, 7.0), (46.1, 7.0), (46.1, 7.1)],
+                },
+            ],
+            circles: vec![Circle {
+                inclusion: true,
+                center: (47.05, 8.05),
+                radius: 120.0,
+            }],
             breach_return: Some((47.02, 8.02, 30.0)),
         };
         let items = fence_items(&fence);
         assert_eq!(items.len(), 8);
-        assert_eq!((items[0].command, items[0].params[0], items[0].frame), (CMD_FENCE_POLYGON_INCLUSION, 3.0, FRAME_GLOBAL));
-        assert_eq!((items[7].command, items[7].frame, items[7].params[6]), (CMD_FENCE_RETURN_POINT, FRAME_GLOBAL_RELATIVE_ALT, 30.0));
+        assert_eq!(
+            (items[0].command, items[0].params[0], items[0].frame),
+            (CMD_FENCE_POLYGON_INCLUSION, 3.0, FRAME_GLOBAL)
+        );
+        assert_eq!(
+            (items[7].command, items[7].frame, items[7].params[6]),
+            (CMD_FENCE_RETURN_POINT, FRAME_GLOBAL_RELATIVE_ALT, 30.0)
+        );
         assert_eq!(fence_from_items(&items).unwrap(), fence);
         let mut broken = items.clone();
         broken[1].params[0] = 4.0;
-        assert!(fence_from_items(&broken).unwrap_err().contains("Vertex count change"));
+        assert!(
+            fence_from_items(&broken)
+                .unwrap_err()
+                .contains("Vertex count change")
+        );
         let mut mixed = items.clone();
         mixed[1].command = CMD_FENCE_POLYGON_EXCLUSION;
-        assert!(fence_from_items(&mixed).unwrap_err().contains("Polygon type changed"));
-        assert!(fence_from_items(&[items[0].clone(), items[6].clone()]).unwrap_err().contains("Incomplete polygon"));
-        assert!(fence_from_items(&[plain(16, 0, [0.0; 7])]).unwrap_err().contains("Unsupported command 16"));
+        assert!(
+            fence_from_items(&mixed)
+                .unwrap_err()
+                .contains("Polygon type changed")
+        );
+        assert!(
+            fence_from_items(&[items[0].clone(), items[6].clone()])
+                .unwrap_err()
+                .contains("Incomplete polygon")
+        );
+        assert!(
+            fence_from_items(&[plain(16, 0, [0.0; 7])])
+                .unwrap_err()
+                .contains("Unsupported command 16")
+        );
         let points = vec![(47.0, 8.0, 50.0), (47.1, 8.1, 60.0)];
         assert_eq!(rally_from_items(&rally_items(&points)), points);
         let mut fence_transfer = Transfer::new(true, PLAN_FENCE);
-        assert!(fence_transfer.write(vec![items[0].clone(), items[1].clone(), items[2].clone()]).contains(&Out::SendCount(3)), "a fence keeps its first item on ArduPilot");
+        assert!(
+            fence_transfer
+                .write(vec![items[0].clone(), items[1].clone(), items[2].clone()])
+                .contains(&Out::SendCount(3)),
+            "a fence keeps its first item on ArduPilot"
+        );
         let mut rally = Transfer::new(true, PLAN_RALLY);
-        assert!(rally.on_item(waypoint(0, 47.0)).is_empty(), "an unrequested rally item is not a home position");
+        assert!(
+            rally.on_item(waypoint(0, 47.0)).is_empty(),
+            "an unrequested rally item is not a home position"
+        );
     }
 }

@@ -6,15 +6,23 @@ use serde_json::{Value, json};
 use crate::control::decode;
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicle.parameterManager.parametersReady", crate::coreplan::CHANGED];
+pub const DEPS: &[&str] = &[
+    "vehicle.parameterManager.parametersReady",
+    crate::coreplan::CHANGED,
+];
 
-static CONDITION: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^([0-9A-Za-z_-]+)([!=<>]+)(-?\d+)$").expect("condition pattern"));
+static CONDITION: LazyLock<Regex> =
+    LazyLock::new(|| Regex::new(r"^([0-9A-Za-z_-]+)([!=<>]+)(-?\d+)$").expect("condition pattern"));
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Condition {
     AlwaysTrue,
     AlwaysFalse,
-    Compare { parameter: String, operation: String, value: i64 },
+    Compare {
+        parameter: String,
+        operation: String,
+        value: i64,
+    },
 }
 
 impl Condition {
@@ -25,7 +33,11 @@ impl Condition {
             _ => CONDITION.captures(text).map_or(Condition::AlwaysTrue, |c| {
                 let operation = c[2].to_string();
                 match ["==", "!=", ">", ">=", "<", "<="].contains(&operation.as_str()) {
-                    true => Condition::Compare { parameter: c[1].to_string(), operation, value: c[3].parse().unwrap_or(0) },
+                    true => Condition::Compare {
+                        parameter: c[1].to_string(),
+                        operation,
+                        value: c[3].parse().unwrap_or(0),
+                    },
                     false => Condition::AlwaysTrue,
                 }
             }),
@@ -36,7 +48,11 @@ impl Condition {
         match self {
             Condition::AlwaysTrue => true,
             Condition::AlwaysFalse => false,
-            Condition::Compare { parameter, operation, value } => value_of(parameter).is_some_and(|held| match operation.as_str() {
+            Condition::Compare {
+                parameter,
+                operation,
+                value,
+            } => value_of(parameter).is_some_and(|held| match operation.as_str() {
                 ">" => held > *value,
                 ">=" => held >= *value,
                 "==" => held == *value,
@@ -60,11 +76,17 @@ pub struct Param {
 }
 
 fn text(json: &Value, key: &str) -> String {
-    json.get(key).and_then(Value::as_str).unwrap_or("").to_string()
+    json.get(key)
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .to_string()
 }
 
 fn list<'a>(json: &'a Value, key: &str) -> impl Iterator<Item = &'a Value> {
-    json.get(key).and_then(Value::as_array).into_iter().flatten()
+    json.get(key)
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
 }
 
 impl Param {
@@ -72,9 +94,15 @@ impl Param {
         Param {
             label: text(json, "label"),
             name: text(json, "name"),
-            index_offset: json.get("index-offset").and_then(Value::as_i64).unwrap_or(0),
+            index_offset: json
+                .get("index-offset")
+                .and_then(Value::as_i64)
+                .unwrap_or(0),
             show_as: text(json, "show-as"),
-            advanced: json.get("advanced").and_then(Value::as_bool).unwrap_or(false),
+            advanced: json
+                .get("advanced")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
             function: text(json, "function"),
             show_if: Condition::parse(&text(json, "show-if")),
         }
@@ -183,7 +211,13 @@ pub struct TestActuator {
     pub is_motor: bool,
 }
 
-const ACTION_KINDS: [(&str, i64, &str); 5] = [("beep", 1, "Beep"), ("3d-mode-on", 2, "3D mode: On"), ("3d-mode-off", 3, "3D mode: Off"), ("set-spin-direction1", 4, "Set Spin Direction 1"), ("set-spin-direction2", 5, "Set Spin Direction 2")];
+const ACTION_KINDS: [(&str, i64, &str); 5] = [
+    ("beep", 1, "Beep"),
+    ("3d-mode-on", 2, "3D mode: On"),
+    ("3d-mode-off", 3, "3D mode: Off"),
+    ("set-spin-direction1", 4, "Set Spin Direction 1"),
+    ("set-spin-direction2", 5, "Set Spin Direction 2"),
+];
 pub const ACTION_TRIGGER: &str = "actuatorAction.trigger";
 pub const MOTOR_INIT: &str = "motorAssignment.init";
 pub const MOTOR_START: &str = "motorAssignment.start";
@@ -196,9 +230,15 @@ pub const TEST_SET: &str = "actuatorTest.setChannelTo";
 pub const TEST_STOP: &str = "actuatorTest.stopControl";
 
 pub fn parse(json: &Value) -> Result<Metadata, String> {
-    let missing: Vec<&str> = ["outputs_v1", "functions_v1", "mixer_v1"].into_iter().filter(|key| json.get(key).is_none_or(Value::is_null)).collect();
+    let missing: Vec<&str> = ["outputs_v1", "functions_v1", "mixer_v1"]
+        .into_iter()
+        .filter(|key| json.get(key).is_none_or(Value::is_null))
+        .collect();
     if !missing.is_empty() {
-        return Err(format!("Missing required JSON sections: {}", missing.join(", ")));
+        return Err(format!(
+            "Missing required JSON sections: {}",
+            missing.join(", ")
+        ));
     }
     let outputs = list(json, "outputs_v1")
         .map(|output| {
@@ -206,11 +246,20 @@ pub fn parse(json: &Value) -> Result<Metadata, String> {
             Output {
                 label: text(output, "label"),
                 show_subgroups_if: Condition::parse(&text(output, "show-subgroups-if")),
-                enable: params.iter().rev().find(|p| p.function == "enable").cloned(),
-                params: params.iter().filter(|p| p.function != "enable").cloned().collect(),
+                enable: params
+                    .iter()
+                    .rev()
+                    .find(|p| p.function == "enable")
+                    .cloned(),
+                params: params
+                    .iter()
+                    .filter(|p| p.function != "enable")
+                    .cloned()
+                    .collect(),
                 subgroups: list(output, "subgroups")
                     .map(|subgroup| {
-                        let config: Vec<Param> = list(subgroup, "parameters").map(Param::parse).collect();
+                        let config: Vec<Param> =
+                            list(subgroup, "parameters").map(Param::parse).collect();
                         Subgroup {
                             actions: subgroup
                                 .get("supported-actions")
@@ -218,15 +267,44 @@ pub fn parse(json: &Value) -> Result<Metadata, String> {
                                 .into_iter()
                                 .flatten()
                                 .filter_map(|(name, action)| {
-                                    let (kind, label) = ACTION_KINDS.iter().find(|(known, _, _)| known == name).map(|(_, kind, label)| (*kind, *label))?;
-                                    Some(SupportedAction { kind, label, condition: Condition::parse(&text(action, "supported-if")), actuator_types: list(action, "actuator-types").filter_map(Value::as_str).map(str::to_string).collect() })
+                                    let (kind, label) = ACTION_KINDS
+                                        .iter()
+                                        .find(|(known, _, _)| known == name)
+                                        .map(|(_, kind, label)| (*kind, *label))?;
+                                    Some(SupportedAction {
+                                        kind,
+                                        label,
+                                        condition: Condition::parse(&text(action, "supported-if")),
+                                        actuator_types: list(action, "actuator-types")
+                                            .filter_map(Value::as_str)
+                                            .map(str::to_string)
+                                            .collect(),
+                                    })
                                 })
                                 .collect(),
                             label: text(subgroup, "label"),
-                            primary: config.iter().rev().find(|p| p.function == "primary").cloned(),
-                            params: config.iter().filter(|p| p.function != "primary").cloned().collect(),
-                            channel_configs: list(subgroup, "per-channel-parameters").map(Param::parse).collect(),
-                            channels: list(subgroup, "channels").map(|c| Channel { label: text(c, "label"), param_index: c.get("param-index").and_then(Value::as_i64).unwrap_or(0) }).collect(),
+                            primary: config
+                                .iter()
+                                .rev()
+                                .find(|p| p.function == "primary")
+                                .cloned(),
+                            params: config
+                                .iter()
+                                .filter(|p| p.function != "primary")
+                                .cloned()
+                                .collect(),
+                            channel_configs: list(subgroup, "per-channel-parameters")
+                                .map(Param::parse)
+                                .collect(),
+                            channels: list(subgroup, "channels")
+                                .map(|c| Channel {
+                                    label: text(c, "label"),
+                                    param_index: c
+                                        .get("param-index")
+                                        .and_then(Value::as_i64)
+                                        .unwrap_or(0),
+                                })
+                                .collect(),
                         }
                     })
                     .collect(),
@@ -242,7 +320,18 @@ pub fn parse(json: &Value) -> Result<Metadata, String> {
             let label = text(f, "label");
             (!label.is_empty()).then(|| {
                 let note = f.get("note").cloned().unwrap_or(Value::Null);
-                Some((key.parse::<i64>().ok()?, Function { label, note: text(&note, "text"), note_if: Condition::parse(&text(&note, "condition")), exclude_from_testing: f.get("exclude-from-actuator-testing").and_then(Value::as_bool).unwrap_or(false) }))
+                Some((
+                    key.parse::<i64>().ok()?,
+                    Function {
+                        label,
+                        note: text(&note, "text"),
+                        note_if: Condition::parse(&text(&note, "condition")),
+                        exclude_from_testing: f
+                            .get("exclude-from-actuator-testing")
+                            .and_then(Value::as_bool)
+                            .unwrap_or(false),
+                    },
+                ))
             })?
         })
         .collect();
@@ -260,9 +349,16 @@ pub fn parse(json: &Value) -> Result<Metadata, String> {
                 function_max: t.get("function-max").and_then(Value::as_i64).unwrap_or(0),
                 min: number(&values, "min"),
                 max: number(&values, "max"),
-                default: (!values.get("default-is-nan").and_then(Value::as_bool).unwrap_or(false)).then(|| number(&values, "default")),
+                default: (!values
+                    .get("default-is-nan")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false))
+                .then(|| number(&values, "default")),
                 per_item: list(t, "per-item-parameters").map(Param::parse).collect(),
-                label_index_offset: t.get("label-index-offset").and_then(Value::as_i64).unwrap_or(0),
+                label_index_offset: t
+                    .get("label-index-offset")
+                    .and_then(Value::as_i64)
+                    .unwrap_or(0),
             }
         })
         .collect();
@@ -282,10 +378,17 @@ pub fn parse(json: &Value) -> Result<Metadata, String> {
                     let fixed_count = group.get("count").and_then(Value::as_i64).unwrap_or(0);
                     MixerGroup {
                         label: text(group, "group-label"),
-                        count_param: group.get("count").and_then(Value::as_str).unwrap_or("").to_string(),
+                        count_param: group
+                            .get("count")
+                            .and_then(Value::as_str)
+                            .unwrap_or("")
+                            .to_string(),
                         fixed_count,
                         actuator_type: text(group, "actuator-type"),
-                        required: group.get("required").and_then(Value::as_bool).unwrap_or(false),
+                        required: group
+                            .get("required")
+                            .and_then(Value::as_bool)
+                            .unwrap_or(false),
                         params: list(group, "parameters").map(Param::parse).collect(),
                         per_item: list(group, "per-item-parameters")
                             .map(|item| MixerParam {
@@ -294,11 +397,21 @@ pub fn parse(json: &Value) -> Result<Metadata, String> {
                                 function: text(item, "function"),
                                 values: list(item, "value").filter_map(Value::as_f64).collect(),
                             })
-                            .filter(|item| !item.param.name.is_empty() || item.values.len() == 1 || item.values.len() as i64 == fixed_count)
+                            .filter(|item| {
+                                !item.param.name.is_empty()
+                                    || item.values.len() == 1
+                                    || item.values.len() as i64 == fixed_count
+                            })
                             .collect(),
                         item_label_prefix: match group.get("item-label-prefix") {
                             Some(Value::String(one)) => vec![one.clone()],
-                            other => other.and_then(Value::as_array).into_iter().flatten().filter_map(Value::as_str).map(str::to_string).collect(),
+                            other => other
+                                .and_then(Value::as_array)
+                                .into_iter()
+                                .flatten()
+                                .filter_map(Value::as_str)
+                                .map(str::to_string)
+                                .collect(),
                         },
                     }
                 })
@@ -311,27 +424,48 @@ pub fn parse(json: &Value) -> Result<Metadata, String> {
         .into_iter()
         .flatten()
         .map(|rule| {
-            let apply: Vec<String> = list(rule, "apply-identifiers").filter_map(Value::as_str).map(str::to_string).collect();
+            let apply: Vec<String> = list(rule, "apply-identifiers")
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect();
             let items = rule
                 .get("items")
                 .and_then(Value::as_object)
                 .into_iter()
                 .flatten()
                 .filter_map(|(key, items)| {
-                    let parsed: Vec<RuleItem> = items.as_array()?.iter().map(|item| RuleItem {
-                        min: item.get("min").and_then(Value::as_f64),
-                        max: item.get("max").and_then(Value::as_f64),
-                        default: item.get("default").and_then(Value::as_f64),
-                        hidden: item.get("hidden").and_then(Value::as_bool).unwrap_or(false),
-                        disabled: item.get("disabled").and_then(Value::as_bool).unwrap_or(false),
-                    }).collect();
+                    let parsed: Vec<RuleItem> = items
+                        .as_array()?
+                        .iter()
+                        .map(|item| RuleItem {
+                            min: item.get("min").and_then(Value::as_f64),
+                            max: item.get("max").and_then(Value::as_f64),
+                            default: item.get("default").and_then(Value::as_f64),
+                            hidden: item.get("hidden").and_then(Value::as_bool).unwrap_or(false),
+                            disabled: item
+                                .get("disabled")
+                                .and_then(Value::as_bool)
+                                .unwrap_or(false),
+                        })
+                        .collect();
                     (parsed.len() == apply.len()).then_some((key.parse::<i64>().ok()?, parsed))
                 })
                 .collect();
-            Rule { select: text(rule, "select-identifier"), apply, items }
+            Rule {
+                select: text(rule, "select-identifier"),
+                apply,
+                items,
+            }
         })
         .collect();
-    Ok(Metadata { show_ui_if: Condition::parse(&text(json, "show-ui-if")), outputs, functions, actuator_types, mixer, rules })
+    Ok(Metadata {
+        show_ui_if: Condition::parse(&text(json, "show-ui-if")),
+        outputs,
+        functions,
+        actuator_types,
+        mixer,
+        rules,
+    })
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -364,18 +498,43 @@ pub struct Rule {
     pub items: std::collections::BTreeMap<i64, Vec<RuleItem>>,
 }
 
-pub const AXIS_DIRECTIONS: [&str; 7] = ["Custom", "Upwards", "Downwards", "Forwards", "Backwards", "Leftwards", "Rightwards"];
-const AXIS_VECTORS: [(f64, f64, f64); 6] = [(0.0, 0.0, -1.0), (0.0, 0.0, 1.0), (1.0, 0.0, 0.0), (-1.0, 0.0, 0.0), (0.0, -1.0, 0.0), (0.0, 1.0, 0.0)];
+pub const AXIS_DIRECTIONS: [&str; 7] = [
+    "Custom",
+    "Upwards",
+    "Downwards",
+    "Forwards",
+    "Backwards",
+    "Leftwards",
+    "Rightwards",
+];
+const AXIS_VECTORS: [(f64, f64, f64); 6] = [
+    (0.0, 0.0, -1.0),
+    (0.0, 0.0, 1.0),
+    (1.0, 0.0, 0.0),
+    (-1.0, 0.0, 0.0),
+    (0.0, -1.0, 0.0),
+    (0.0, 1.0, 0.0),
+];
 const AXIS_EPSILON: f64 = 0.00001;
 pub const MIXER_SET: &str = "actuatorMixer.set";
 pub const MIXER_AXIS: &str = "actuatorMixer.setAxis";
 
 pub fn axis_direction(x: f64, y: f64, z: f64) -> usize {
-    AXIS_VECTORS.iter().position(|(ax, ay, az)| (x - ax).abs() < AXIS_EPSILON && (y - ay).abs() < AXIS_EPSILON && (z - az).abs() < AXIS_EPSILON).map_or(0, |i| i + 1)
+    AXIS_VECTORS
+        .iter()
+        .position(|(ax, ay, az)| {
+            (x - ax).abs() < AXIS_EPSILON
+                && (y - ay).abs() < AXIS_EPSILON
+                && (z - az).abs() < AXIS_EPSILON
+        })
+        .map_or(0, |i| i + 1)
 }
 
 pub fn axis_vector(direction: usize) -> Option<(f64, f64, f64)> {
-    direction.checked_sub(1).and_then(|i| AXIS_VECTORS.get(i)).copied()
+    direction
+        .checked_sub(1)
+        .and_then(|i| AXIS_VECTORS.get(i))
+        .copied()
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -393,32 +552,62 @@ pub struct AxisMemory {
     pub choices: std::collections::BTreeMap<String, AxisChoice>,
 }
 
-static AXES: LazyLock<std::sync::Mutex<std::collections::BTreeMap<Option<i64>, AxisMemory>>> = LazyLock::new(Default::default);
+static AXES: LazyLock<std::sync::Mutex<std::collections::BTreeMap<Option<i64>, AxisMemory>>> =
+    LazyLock::new(Default::default);
 
 pub fn rebuilt(memory: AxisMemory, signature: &Signature) -> AxisMemory {
     match memory.signature == *signature {
         true => memory,
-        false => AxisMemory { signature: signature.clone(), ..AxisMemory::default() },
+        false => AxisMemory {
+            signature: signature.clone(),
+            ..AxisMemory::default()
+        },
     }
 }
 
 pub fn observed(memory: AxisMemory, key: &str, values: (f64, f64, f64)) -> AxisMemory {
     let changed = memory.seen.get(key).is_some_and(|seen| *seen != values);
     let choices = match changed {
-        true => memory.choices.into_iter().filter(|(k, _)| k != key).chain(std::iter::once((key.to_string(), AxisChoice::Kept))).collect(),
+        true => memory
+            .choices
+            .into_iter()
+            .filter(|(k, _)| k != key)
+            .chain(std::iter::once((key.to_string(), AxisChoice::Kept)))
+            .collect(),
         false => memory.choices,
     };
-    let seen = memory.seen.into_iter().filter(|(k, _)| k != key).chain(std::iter::once((key.to_string(), values))).collect();
-    AxisMemory { seen, choices, ..memory }
+    let seen = memory
+        .seen
+        .into_iter()
+        .filter(|(k, _)| k != key)
+        .chain(std::iter::once((key.to_string(), values)))
+        .collect();
+    AxisMemory {
+        seen,
+        choices,
+        ..memory
+    }
 }
 
 pub fn chosen(memory: AxisMemory, key: &str, direction: usize) -> AxisMemory {
-    let others = |choices: std::collections::BTreeMap<String, AxisChoice>| choices.into_iter().filter(|(k, _)| k != key);
+    let others = |choices: std::collections::BTreeMap<String, AxisChoice>| {
+        choices.into_iter().filter(|(k, _)| k != key)
+    };
     match axis_vector(direction) {
-        None => AxisMemory { choices: others(memory.choices).chain(std::iter::once((key.to_string(), AxisChoice::Custom))).collect(), ..memory },
+        None => AxisMemory {
+            choices: others(memory.choices)
+                .chain(std::iter::once((key.to_string(), AxisChoice::Custom)))
+                .collect(),
+            ..memory
+        },
         Some(vector) => AxisMemory {
             choices: others(memory.choices).collect(),
-            seen: memory.seen.into_iter().filter(|(k, _)| k != key).chain(std::iter::once((key.to_string(), vector))).collect(),
+            seen: memory
+                .seen
+                .into_iter()
+                .filter(|(k, _)| k != key)
+                .chain(std::iter::once((key.to_string(), vector)))
+                .collect(),
             ..memory
         },
     }
@@ -433,14 +622,18 @@ pub fn axis_shown(choice: Option<AxisChoice>, derived: usize) -> (usize, bool) {
 }
 
 fn with_axes<T>(vehicle: Option<i64>, change: impl FnOnce(AxisMemory) -> (AxisMemory, T)) -> T {
-    let mut held = AXES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut held = AXES
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let (memory, answer) = change(held.remove(&vehicle).unwrap_or_default());
     held.insert(vehicle, memory);
     answer
 }
 
 pub fn forget(vehicle: u8) {
-    AXES.lock().unwrap_or_else(std::sync::PoisonError::into_inner).remove(&Some(i64::from(vehicle)));
+    AXES.lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .remove(&Some(i64::from(vehicle)));
 }
 
 fn condition_param(condition: &Condition) -> Option<String> {
@@ -457,22 +650,70 @@ fn param_names(param: &Param) -> impl Iterator<Item = String> {
 pub fn rebuild_params(metadata: &Metadata, mixer: &MixerState) -> Vec<String> {
     let outputs = metadata.outputs.iter().flat_map(|output| {
         let subgroups = output.subgroups.iter().flat_map(|subgroup| {
-            let channels = subgroup.channels.iter().flat_map(move |channel| subgroup.channel_configs.iter().map(move |config| channel_param(config, channel)));
-            let conditions = subgroup.channel_configs.iter().filter_map(|c| condition_param(&c.show_if)).chain(subgroup.actions.iter().filter_map(|a| condition_param(&a.condition)));
-            subgroup.primary.iter().chain(subgroup.params.iter()).flat_map(param_names).chain(channels).chain(conditions)
+            let channels = subgroup.channels.iter().flat_map(move |channel| {
+                subgroup
+                    .channel_configs
+                    .iter()
+                    .map(move |config| channel_param(config, channel))
+            });
+            let conditions = subgroup
+                .channel_configs
+                .iter()
+                .filter_map(|c| condition_param(&c.show_if))
+                .chain(
+                    subgroup
+                        .actions
+                        .iter()
+                        .filter_map(|a| condition_param(&a.condition)),
+                );
+            subgroup
+                .primary
+                .iter()
+                .chain(subgroup.params.iter())
+                .flat_map(param_names)
+                .chain(channels)
+                .chain(conditions)
         });
-        condition_param(&output.show_subgroups_if).into_iter().chain(output.enable.iter().chain(output.params.iter()).flat_map(param_names)).chain(subgroups)
+        condition_param(&output.show_subgroups_if)
+            .into_iter()
+            .chain(
+                output
+                    .enable
+                    .iter()
+                    .chain(output.params.iter())
+                    .flat_map(param_names),
+            )
+            .chain(subgroups)
     });
-    let notes = metadata.functions.values().filter_map(|f| condition_param(&f.note_if));
-    let selected = mixer.option.iter().filter_map(|o| condition_param(&o.option));
+    let notes = metadata
+        .functions
+        .values()
+        .filter_map(|f| condition_param(&f.note_if));
+    let selected = mixer
+        .option
+        .iter()
+        .filter_map(|o| condition_param(&o.option));
     let groups = mixer.groups.iter().flat_map(|state| {
-        let types = state.channels.iter().flat_map(|c| c.cells.iter()).filter(|c| c.function == "type").filter_map(|c| match &c.source {
-            CellSource::Parameter(name, _) => Some(name.clone()),
-            CellSource::Fixed(_) => None,
-        });
-        std::iter::once(state.group.count_param.clone()).chain(state.group.params.iter().flat_map(param_names)).chain(types)
+        let types = state
+            .channels
+            .iter()
+            .flat_map(|c| c.cells.iter())
+            .filter(|c| c.function == "type")
+            .filter_map(|c| match &c.source {
+                CellSource::Parameter(name, _) => Some(name.clone()),
+                CellSource::Fixed(_) => None,
+            });
+        std::iter::once(state.group.count_param.clone())
+            .chain(state.group.params.iter().flat_map(param_names))
+            .chain(types)
     });
-    let names: std::collections::BTreeSet<String> = outputs.chain(notes).chain(condition_param(&metadata.show_ui_if)).chain(selected).chain(groups).filter(|n| !n.is_empty()).collect();
+    let names: std::collections::BTreeSet<String> = outputs
+        .chain(notes)
+        .chain(condition_param(&metadata.show_ui_if))
+        .chain(selected)
+        .chain(groups)
+        .filter(|n| !n.is_empty())
+        .collect();
     names.into_iter().collect()
 }
 
@@ -499,72 +740,199 @@ pub struct MixerState {
 }
 
 pub fn mixer_state(metadata: &Metadata, value_of: &dyn Fn(&str) -> Option<i64>) -> MixerState {
-    let Some(option) = metadata.mixer.iter().find(|o| o.option.evaluate(value_of)) else { return MixerState::default() };
-    let (groups, specific_labels, _) = option.groups.iter().fold((Vec::new(), std::collections::BTreeMap::new(), std::collections::BTreeMap::<String, i64>::new()), |(groups, labels, type_counts), group| {
-        let count = match group.count_param.is_empty() {
-            true => group.fixed_count,
-            false => value_of(&group.count_param).unwrap_or(group.fixed_count),
-        };
-        let start = type_counts.get(&group.actuator_type).copied().unwrap_or(0);
-        let kind = metadata.actuator_types.iter().find(|t| t.name == group.actuator_type);
-        let channels: Vec<(MixerChannel, Option<(i64, String)>)> = (0..count.max(0))
-            .map(|index| {
-                let type_index = start + index;
-                let function = kind.map_or(0, |t| t.function_min + type_index);
-                let base = metadata.functions.get(&function).map(|f| f.label.clone()).unwrap_or_default();
-                let prefix = match group.item_label_prefix.len() {
-                    1 => group.item_label_prefix[0].replace("${i}", &(index + 1).to_string()),
-                    _ => group.item_label_prefix.get(index as usize).cloned().unwrap_or_default(),
-                };
-                let label = if kind.is_some() && !prefix.is_empty() { format!("{prefix} ({base})") } else { base };
-                let type_cells = kind.into_iter().flat_map(|t| t.per_item.iter()).map(|config| MixerCell {
-                    config: config.clone(),
-                    function: String::new(),
-                    identifier: String::new(),
-                    source: CellSource::Parameter(config.name.replace("${i}", &(type_index + config.index_offset).to_string()), type_index + config.index_offset),
-                });
-                let item_cells = group.per_item.iter().map(|item| MixerCell {
-                    config: item.param.clone(),
-                    function: item.function.clone(),
-                    identifier: item.identifier.clone(),
-                    source: match item.param.name.is_empty() {
-                        true => CellSource::Fixed(if item.values.len() == 1 { item.values[0] } else { item.values.get(index as usize).copied().unwrap_or(0.0) }),
-                        false => CellSource::Parameter(item.param.name.replace("${i}", &(index + item.param.index_offset).to_string()), index + item.param.index_offset),
-                    },
-                });
-                let specific = (kind.is_some() && !prefix.is_empty()).then_some((function, prefix));
-                let rule = group.per_item.iter().filter(|item| !item.identifier.is_empty()).flat_map(|item| metadata.rules.iter().filter(move |rule| rule.select == item.identifier)).last().cloned();
-                (MixerChannel { label, function, type_index, cells: type_cells.chain(item_cells).collect(), rule }, specific)
-            })
-            .collect();
-        let labels = labels.into_iter().chain(channels.iter().filter_map(|(_, specific)| specific.clone())).collect();
-        let counts = type_counts.into_iter().chain(std::iter::once((group.actuator_type.clone(), start + count.max(0)))).collect();
-        let state = MixerGroupState { group: group.clone(), channels: channels.into_iter().map(|(channel, _)| channel).collect() };
-        (groups.into_iter().chain(std::iter::once(state)).collect(), labels, counts)
-    });
-    MixerState { option: Some(option.clone()), groups, specific_labels }
+    let Some(option) = metadata.mixer.iter().find(|o| o.option.evaluate(value_of)) else {
+        return MixerState::default();
+    };
+    let (groups, specific_labels, _) = option.groups.iter().fold(
+        (
+            Vec::new(),
+            std::collections::BTreeMap::new(),
+            std::collections::BTreeMap::<String, i64>::new(),
+        ),
+        |(groups, labels, type_counts), group| {
+            let count = match group.count_param.is_empty() {
+                true => group.fixed_count,
+                false => value_of(&group.count_param).unwrap_or(group.fixed_count),
+            };
+            let start = type_counts.get(&group.actuator_type).copied().unwrap_or(0);
+            let kind = metadata
+                .actuator_types
+                .iter()
+                .find(|t| t.name == group.actuator_type);
+            let channels: Vec<(MixerChannel, Option<(i64, String)>)> = (0..count.max(0))
+                .map(|index| {
+                    let type_index = start + index;
+                    let function = kind.map_or(0, |t| t.function_min + type_index);
+                    let base = metadata
+                        .functions
+                        .get(&function)
+                        .map(|f| f.label.clone())
+                        .unwrap_or_default();
+                    let prefix = match group.item_label_prefix.len() {
+                        1 => group.item_label_prefix[0].replace("${i}", &(index + 1).to_string()),
+                        _ => group
+                            .item_label_prefix
+                            .get(index as usize)
+                            .cloned()
+                            .unwrap_or_default(),
+                    };
+                    let label = if kind.is_some() && !prefix.is_empty() {
+                        format!("{prefix} ({base})")
+                    } else {
+                        base
+                    };
+                    let type_cells =
+                        kind.into_iter()
+                            .flat_map(|t| t.per_item.iter())
+                            .map(|config| MixerCell {
+                                config: config.clone(),
+                                function: String::new(),
+                                identifier: String::new(),
+                                source: CellSource::Parameter(
+                                    config.name.replace(
+                                        "${i}",
+                                        &(type_index + config.index_offset).to_string(),
+                                    ),
+                                    type_index + config.index_offset,
+                                ),
+                            });
+                    let item_cells = group.per_item.iter().map(|item| MixerCell {
+                        config: item.param.clone(),
+                        function: item.function.clone(),
+                        identifier: item.identifier.clone(),
+                        source: match item.param.name.is_empty() {
+                            true => CellSource::Fixed(if item.values.len() == 1 {
+                                item.values[0]
+                            } else {
+                                item.values.get(index as usize).copied().unwrap_or(0.0)
+                            }),
+                            false => CellSource::Parameter(
+                                item.param.name.replace(
+                                    "${i}",
+                                    &(index + item.param.index_offset).to_string(),
+                                ),
+                                index + item.param.index_offset,
+                            ),
+                        },
+                    });
+                    let specific =
+                        (kind.is_some() && !prefix.is_empty()).then_some((function, prefix));
+                    let rule = group
+                        .per_item
+                        .iter()
+                        .filter(|item| !item.identifier.is_empty())
+                        .flat_map(|item| {
+                            metadata
+                                .rules
+                                .iter()
+                                .filter(move |rule| rule.select == item.identifier)
+                        })
+                        .last()
+                        .cloned();
+                    (
+                        MixerChannel {
+                            label,
+                            function,
+                            type_index,
+                            cells: type_cells.chain(item_cells).collect(),
+                            rule,
+                        },
+                        specific,
+                    )
+                })
+                .collect();
+            let labels = labels
+                .into_iter()
+                .chain(channels.iter().filter_map(|(_, specific)| specific.clone()))
+                .collect();
+            let counts = type_counts
+                .into_iter()
+                .chain(std::iter::once((
+                    group.actuator_type.clone(),
+                    start + count.max(0),
+                )))
+                .collect();
+            let state = MixerGroupState {
+                group: group.clone(),
+                channels: channels.into_iter().map(|(channel, _)| channel).collect(),
+            };
+            (
+                groups.into_iter().chain(std::iter::once(state)).collect(),
+                labels,
+                counts,
+            )
+        },
+    );
+    MixerState {
+        option: Some(option.clone()),
+        groups,
+        specific_labels,
+    }
 }
 
-pub fn specific_label(metadata: &Metadata, mixer: &MixerState, function: i64, enum_text: &dyn Fn(&str) -> Option<(i64, String)>) -> String {
+pub fn specific_label(
+    metadata: &Metadata,
+    mixer: &MixerState,
+    function: i64,
+    enum_text: &dyn Fn(&str) -> Option<(i64, String)>,
+) -> String {
     let type_param = |channel: &MixerChannel| {
-        channel.cells.iter().find(|c| c.function == "type").and_then(|c| match &c.source {
-            CellSource::Parameter(name, _) => enum_text(name),
-            _ => None,
-        })
+        channel
+            .cells
+            .iter()
+            .find(|c| c.function == "type")
+            .and_then(|c| match &c.source {
+                CellSource::Parameter(name, _) => enum_text(name),
+                _ => None,
+            })
     };
-    let channels: Vec<&MixerChannel> = mixer.groups.iter().flat_map(|g| g.channels.iter()).collect();
-    let typed = channels.iter().find(|c| c.function == function).and_then(|c| type_param(c));
+    let channels: Vec<&MixerChannel> = mixer
+        .groups
+        .iter()
+        .flat_map(|g| g.channels.iter())
+        .collect();
+    let typed = channels
+        .iter()
+        .find(|c| c.function == function)
+        .and_then(|c| type_param(c));
     match typed {
-        Some((raw, shown)) => match channels.iter().filter(|c| c.function != function).any(|c| type_param(c).is_some_and(|(other, _)| other == raw)) {
-            true => format!("{shown} ({})", metadata.functions.get(&function).map(|f| f.label.as_str()).unwrap_or("")),
+        Some((raw, shown)) => match channels
+            .iter()
+            .filter(|c| c.function != function)
+            .any(|c| type_param(c).is_some_and(|(other, _)| other == raw))
+        {
+            true => format!(
+                "{shown} ({})",
+                metadata
+                    .functions
+                    .get(&function)
+                    .map(|f| f.label.as_str())
+                    .unwrap_or("")
+            ),
             false => shown,
         },
-        None => mixer.specific_labels.get(&function).cloned().unwrap_or_else(|| metadata.functions.get(&function).map(|f| f.label.clone()).unwrap_or_default()),
+        None => mixer
+            .specific_labels
+            .get(&function)
+            .cloned()
+            .unwrap_or_else(|| {
+                metadata
+                    .functions
+                    .get(&function)
+                    .map(|f| f.label.clone())
+                    .unwrap_or_default()
+            }),
     }
 }
 
 pub fn mixer_functions(mixer: &MixerState, required_only: bool) -> std::collections::BTreeSet<i64> {
-    mixer.groups.iter().filter(|g| !required_only || g.group.required).flat_map(|g| g.channels.iter().map(|c| c.function)).filter(|f| *f != 0).collect()
+    mixer
+        .groups
+        .iter()
+        .filter(|g| !required_only || g.group.required)
+        .flat_map(|g| g.channels.iter().map(|c| c.function))
+        .filter(|f| *f != 0)
+        .collect()
 }
 
 pub struct AssignmentPlan {
@@ -572,12 +940,31 @@ pub struct AssignmentPlan {
     pub message: String,
 }
 
-pub fn assignment_plan(groups: &[Vec<String>], labels: &[String], selected: usize, first: i64, count: i64, value_of: &dyn Fn(&str) -> Option<i64>) -> Result<AssignmentPlan, String> {
+pub fn assignment_plan(
+    groups: &[Vec<String>],
+    labels: &[String],
+    selected: usize,
+    first: i64,
+    count: i64,
+    value_of: &dyn Fn(&str) -> Option<i64>,
+) -> Result<AssignmentPlan, String> {
     let motor = |name: &String| value_of(name).filter(|f| (first..first + count).contains(f));
-    let assigned_in = |wanted: &dyn Fn(usize) -> bool| -> std::collections::BTreeSet<i64> { groups.iter().enumerate().filter(|(i, _)| wanted(*i)).flat_map(|(_, g)| g.iter().filter_map(motor)).collect() };
+    let assigned_in = |wanted: &dyn Fn(usize) -> bool| -> std::collections::BTreeSet<i64> {
+        groups
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| wanted(*i))
+            .flat_map(|(_, g)| g.iter().filter_map(motor))
+            .collect()
+    };
     let on_selected = assigned_in(&|i| i == selected);
-    let anywhere: std::collections::BTreeSet<i64> = on_selected.union(&assigned_in(&|i| i != selected)).copied().collect();
-    let fits = groups.get(selected).is_some_and(|g| g.len() as i64 >= count);
+    let anywhere: std::collections::BTreeSet<i64> = on_selected
+        .union(&assigned_in(&|i| i != selected))
+        .copied()
+        .collect();
+    let fits = groups
+        .get(selected)
+        .is_some_and(|g| g.len() as i64 >= count);
     let output = labels.get(selected).cloned().unwrap_or_default();
     let extra = match (anywhere.len(), on_selected.len(), fits) {
         (0, _, true) => Some(format!("<br />No motors are assigned yet.\nBy saying yes, all motors will be assigned to the first {count} channels of the selected output ({output})\n (you can also first assign all motors, then start the identification).<br />")),
@@ -585,24 +972,54 @@ pub fn assignment_plan(groups: &[Vec<String>], labels: &[String], selected: usiz
         (n, _, _) if (n as i64) < count => return Err("Not all motors are assigned yet. Either clear all existing assignments or assign all motors to an output.".to_string()),
         _ => None,
     };
-    let message = format!("This will automatically spin individual motors at 15% thrust.<br /><br />\n<b>Warning: Only proceed if you removed all propellers</b>.<br />\n{}\n<br />\nThe procedure is as following:<br />\n- After confirming, the first motor starts to spin for 0.5 seconds.<br />\n- Then click on the motor that was spinning.<br />\n- The above steps are repeated for all motors.<br />\n- The motor output functions will automatically be reassigned by the selected order.<br />\n<br />\nDo you wish to proceed?", extra.clone().unwrap_or_default());
-    Ok(AssignmentPlan { assign_motors: extra.is_some(), message })
+    let message = format!(
+        "This will automatically spin individual motors at 15% thrust.<br /><br />\n<b>Warning: Only proceed if you removed all propellers</b>.<br />\n{}\n<br />\nThe procedure is as following:<br />\n- After confirming, the first motor starts to spin for 0.5 seconds.<br />\n- Then click on the motor that was spinning.<br />\n- The above steps are repeated for all motors.<br />\n- The motor output functions will automatically be reassigned by the selected order.<br />\n<br />\nDo you wish to proceed?",
+        extra.clone().unwrap_or_default()
+    );
+    Ok(AssignmentPlan {
+        assign_motors: extra.is_some(),
+        message,
+    })
 }
 
-pub fn assignment_start_writes(groups: &[Vec<String>], selected: usize, first: i64, count: i64, value_of: &dyn Fn(&str) -> Option<i64>) -> Vec<(String, i64)> {
-    let cleared = groups.iter().flatten().filter(|name| value_of(name).is_some_and(|f| (first..first + count).contains(&f))).map(|name| (name.clone(), 0));
-    let assigned = groups.get(selected).into_iter().flatten().take(count.max(0) as usize).enumerate().map(|(i, name)| (name.clone(), first + i as i64));
+pub fn assignment_start_writes(
+    groups: &[Vec<String>],
+    selected: usize,
+    first: i64,
+    count: i64,
+    value_of: &dyn Fn(&str) -> Option<i64>,
+) -> Vec<(String, i64)> {
+    let cleared = groups
+        .iter()
+        .flatten()
+        .filter(|name| value_of(name).is_some_and(|f| (first..first + count).contains(&f)))
+        .map(|name| (name.clone(), 0));
+    let assigned = groups
+        .get(selected)
+        .into_iter()
+        .flatten()
+        .take(count.max(0) as usize)
+        .enumerate()
+        .map(|(i, name)| (name.clone(), first + i as i64));
     cleared.chain(assigned).collect()
 }
 
-pub fn assignment_finish_writes(groups: &[Vec<String>], first: i64, selected_motors: &[i64], value_of: &dyn Fn(&str) -> Option<i64>) -> Vec<(String, i64)> {
+pub fn assignment_finish_writes(
+    groups: &[Vec<String>],
+    first: i64,
+    selected_motors: &[i64],
+    value_of: &dyn Fn(&str) -> Option<i64>,
+) -> Vec<(String, i64)> {
     let count = selected_motors.len() as i64;
     groups
         .iter()
         .flatten()
         .filter_map(|name| {
             let function = value_of(name).filter(|f| (first..first + count).contains(f))?;
-            Some((name.clone(), first + selected_motors[(function - first) as usize]))
+            Some((
+                name.clone(),
+                first + selected_motors[(function - first) as usize],
+            ))
         })
         .collect()
 }
@@ -611,12 +1028,24 @@ pub fn function_params(output: &Output) -> Vec<String> {
     output
         .subgroups
         .iter()
-        .flat_map(|subgroup| subgroup.channels.iter().flat_map(move |channel| subgroup.channel_configs.iter().filter(|c| c.function == "function").map(move |c| channel_param(c, channel))))
+        .flat_map(|subgroup| {
+            subgroup.channels.iter().flat_map(move |channel| {
+                subgroup
+                    .channel_configs
+                    .iter()
+                    .filter(|c| c.function == "function")
+                    .map(move |c| channel_param(c, channel))
+            })
+        })
         .collect()
 }
 
 pub fn function_type(metadata: &Metadata, function: i64) -> Option<&str> {
-    metadata.actuator_types.iter().rfind(|t| t.name != "DEFAULT" && (t.function_min..=t.function_max).contains(&function)).map(|t| t.name.as_str())
+    metadata
+        .actuator_types
+        .iter()
+        .rfind(|t| t.name != "DEFAULT" && (t.function_min..=t.function_max).contains(&function))
+        .map(|t| t.name.as_str())
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -626,61 +1055,156 @@ pub struct ActionGroup {
     pub actions: Vec<(String, i64)>,
 }
 
-pub fn action_groups(metadata: &Metadata, outputs: &[&Output], value_of: &dyn Fn(&str) -> Option<i64>) -> Vec<ActionGroup> {
+pub fn action_groups(
+    metadata: &Metadata,
+    outputs: &[&Output],
+    value_of: &dyn Fn(&str) -> Option<i64>,
+) -> Vec<ActionGroup> {
     let candidates: Vec<(i64, &Subgroup)> = outputs
         .iter()
-        .flat_map(|output| output.subgroups.iter().flat_map(move |subgroup| subgroup.channels.iter().flat_map(move |channel| subgroup.channel_configs.iter().filter(|c| c.function == "function").map(move |c| (channel_param(c, channel), subgroup)))))
+        .flat_map(|output| {
+            output.subgroups.iter().flat_map(move |subgroup| {
+                subgroup.channels.iter().flat_map(move |channel| {
+                    subgroup
+                        .channel_configs
+                        .iter()
+                        .filter(|c| c.function == "function")
+                        .map(move |c| (channel_param(c, channel), subgroup))
+                })
+            })
+        })
         .filter_map(|(name, subgroup)| Some((value_of(&name)?, subgroup)))
         .filter(|(function, _)| *function != 0)
         .collect();
-    let (groups, _) = candidates.into_iter().fold((Vec::<ActionGroup>::new(), std::collections::BTreeSet::new()), |(groups, added), (function, subgroup)| {
-        let Some(known) = metadata.functions.get(&function).filter(|_| !added.contains(&function)) else { return (groups, added) };
-        let kind = function_type(metadata, function);
-        let usable: Vec<&SupportedAction> = subgroup
-            .actions
-            .iter()
-            .filter(|action| action.condition.evaluate(value_of))
-            .filter(|action| action.actuator_types.is_empty() || kind.is_some_and(|k| action.actuator_types.iter().any(|t| t == k)))
-            .collect();
-        let added = match usable.is_empty() {
-            true => added,
-            false => added.into_iter().chain(std::iter::once(function)).collect(),
-        };
-        let groups = usable.into_iter().fold(groups, |groups, action| match groups.iter().position(|g| g.kind == action.kind) {
-            Some(at) => groups.into_iter().enumerate().map(|(i, g)| if i == at { ActionGroup { actions: g.actions.into_iter().chain(std::iter::once((known.label.clone(), function))).collect(), ..g } } else { g }).collect(),
-            None => groups.into_iter().chain(std::iter::once(ActionGroup { kind: action.kind, label: action.label, actions: vec![(known.label.clone(), function)] })).collect(),
-        });
-        (groups, added)
-    });
+    let (groups, _) = candidates.into_iter().fold(
+        (Vec::<ActionGroup>::new(), std::collections::BTreeSet::new()),
+        |(groups, added), (function, subgroup)| {
+            let Some(known) = metadata
+                .functions
+                .get(&function)
+                .filter(|_| !added.contains(&function))
+            else {
+                return (groups, added);
+            };
+            let kind = function_type(metadata, function);
+            let usable: Vec<&SupportedAction> = subgroup
+                .actions
+                .iter()
+                .filter(|action| action.condition.evaluate(value_of))
+                .filter(|action| {
+                    action.actuator_types.is_empty()
+                        || kind.is_some_and(|k| action.actuator_types.iter().any(|t| t == k))
+                })
+                .collect();
+            let added = match usable.is_empty() {
+                true => added,
+                false => added.into_iter().chain(std::iter::once(function)).collect(),
+            };
+            let groups = usable.into_iter().fold(groups, |groups, action| {
+                match groups.iter().position(|g| g.kind == action.kind) {
+                    Some(at) => groups
+                        .into_iter()
+                        .enumerate()
+                        .map(|(i, g)| {
+                            if i == at {
+                                ActionGroup {
+                                    actions: g
+                                        .actions
+                                        .into_iter()
+                                        .chain(std::iter::once((known.label.clone(), function)))
+                                        .collect(),
+                                    ..g
+                                }
+                            } else {
+                                g
+                            }
+                        })
+                        .collect(),
+                    None => groups
+                        .into_iter()
+                        .chain(std::iter::once(ActionGroup {
+                            kind: action.kind,
+                            label: action.label,
+                            actions: vec![(known.label.clone(), function)],
+                        }))
+                        .collect(),
+                }
+            });
+            (groups, added)
+        },
+    );
     groups
 }
 
 pub fn kept_outputs<'a>(metadata: &'a Metadata, exists: &dyn Fn(&str) -> bool) -> Vec<&'a Output> {
-    metadata.outputs.iter().filter(|output| output.enable.is_some() || function_params(output).iter().any(|name| exists(name))).collect()
+    metadata
+        .outputs
+        .iter()
+        .filter(|output| {
+            output.enable.is_some() || function_params(output).iter().any(|name| exists(name))
+        })
+        .collect()
 }
 
-pub fn configured_functions(metadata: &Metadata, value_of: &dyn Fn(&str) -> Option<i64>) -> std::collections::BTreeSet<i64> {
-    metadata.outputs.iter().flat_map(function_params).filter_map(|name| value_of(&name)).filter(|f| *f != 0).collect()
+pub fn configured_functions(
+    metadata: &Metadata,
+    value_of: &dyn Fn(&str) -> Option<i64>,
+) -> std::collections::BTreeSet<i64> {
+    metadata
+        .outputs
+        .iter()
+        .flat_map(function_params)
+        .filter_map(|name| value_of(&name))
+        .filter(|f| *f != 0)
+        .collect()
 }
 
-pub fn test_actuators(metadata: &Metadata, value_of: &dyn Fn(&str) -> Option<i64>, label_of: &dyn Fn(i64) -> String) -> Vec<TestActuator> {
+pub fn test_actuators(
+    metadata: &Metadata,
+    value_of: &dyn Fn(&str) -> Option<i64>,
+    label_of: &dyn Fn(i64) -> String,
+) -> Vec<TestActuator> {
     configured_functions(metadata, value_of)
         .into_iter()
-        .filter(|f| !metadata.functions.get(f).is_some_and(|known| known.exclude_from_testing))
+        .filter(|f| {
+            !metadata
+                .functions
+                .get(f)
+                .is_some_and(|known| known.exclude_from_testing)
+        })
         .filter_map(|function| {
             let label = label_of(function);
-            let typed = metadata.actuator_types.iter().find(|t| (t.function_min..=t.function_max).contains(&function));
+            let typed = metadata
+                .actuator_types
+                .iter()
+                .find(|t| (t.function_min..=t.function_max).contains(&function));
             let (kind, is_motor) = match typed {
                 Some(t) => (t, t.name == "motor"),
-                None => (metadata.actuator_types.iter().find(|t| t.name == "DEFAULT")?, false),
+                None => (
+                    metadata
+                        .actuator_types
+                        .iter()
+                        .find(|t| t.name == "DEFAULT")?,
+                    false,
+                ),
             };
-            Some(TestActuator { label, function, min: kind.min, max: kind.max, default: kind.default, is_motor })
+            Some(TestActuator {
+                label,
+                function,
+                min: kind.min,
+                max: kind.max,
+                default: kind.default,
+                is_motor,
+            })
         })
         .collect()
 }
 
 pub fn channel_param(config: &Param, channel: &Channel) -> String {
-    config.name.replace("${i}", &(channel.param_index + config.index_offset).to_string())
+    config.name.replace(
+        "${i}",
+        &(channel.param_index + config.index_offset).to_string(),
+    )
 }
 
 fn parameter_path(name: &str) -> String {
@@ -695,7 +1219,9 @@ fn fact(backend: &dyn Backend, name: &str) -> Option<Value> {
 fn integer(backend: &dyn Backend, name: &str) -> Option<i64> {
     let read = fact(backend, name)?;
     let raw = read.get("rawValue").or_else(|| read.get("value"))?;
-    raw.as_i64().or_else(|| raw.as_bool().map(i64::from)).or_else(|| raw.as_f64().filter(|v| v.fract() == 0.0).map(|v| v as i64))
+    raw.as_i64()
+        .or_else(|| raw.as_bool().map(i64::from))
+        .or_else(|| raw.as_f64().filter(|v| v.fract() == 0.0).map(|v| v as i64))
 }
 
 fn control(backend: &dyn Backend, param: &Param, name: &str, bit: i64) -> Option<Value> {
@@ -708,11 +1234,27 @@ fn control(backend: &dyn Backend, param: &Param, name: &str, bit: i64) -> Option
     Some(decoded)
 }
 
-type FunctionEnumInfo = (std::collections::BTreeMap<i64, String>, std::collections::BTreeSet<i64>);
+type FunctionEnumInfo = (
+    std::collections::BTreeMap<i64, String>,
+    std::collections::BTreeSet<i64>,
+);
 
-fn function_enum_info(metadata: &Metadata, mixer: &MixerState, label_of: &dyn Fn(i64) -> String) -> FunctionEnumInfo {
-    let used: std::collections::BTreeMap<i64, String> = mixer_functions(mixer, false).into_iter().map(|f| (f, label_of(f))).collect();
-    let removed = metadata.actuator_types.iter().filter(|t| t.name != "DEFAULT").flat_map(|t| t.function_min..=t.function_max).filter(|f| !used.contains_key(f)).collect();
+fn function_enum_info(
+    metadata: &Metadata,
+    mixer: &MixerState,
+    label_of: &dyn Fn(i64) -> String,
+) -> FunctionEnumInfo {
+    let used: std::collections::BTreeMap<i64, String> = mixer_functions(mixer, false)
+        .into_iter()
+        .map(|f| (f, label_of(f)))
+        .collect();
+    let removed = metadata
+        .actuator_types
+        .iter()
+        .filter(|t| t.name != "DEFAULT")
+        .flat_map(|t| t.function_min..=t.function_max)
+        .filter(|f| !used.contains_key(f))
+        .collect();
     (used, removed)
 }
 
@@ -720,41 +1262,115 @@ pub fn output_function_fact(backend: &dyn Backend, path: &str, fact: Value) -> V
     if !path.starts_with("vehicle.parameterManager.getParameter(-1,") {
         return fact;
     }
-    let metadata = crate::hub::lock().active().and_then(|v| v.actuators_metadata.clone()).and_then(|m| parse(&m).ok());
-    let Some(metadata) = metadata else { return fact };
+    let metadata = crate::hub::lock()
+        .active()
+        .and_then(|v| v.actuators_metadata.clone())
+        .and_then(|m| parse(&m).ok());
+    let Some(metadata) = metadata else {
+        return fact;
+    };
     let exists = |name: &str| self::fact(backend, name).is_some();
-    let is_function = kept_outputs(&metadata, &exists).iter().any(|output| function_params(output).iter().any(|name| parameter_path(name) == path));
+    let is_function = kept_outputs(&metadata, &exists).iter().any(|output| {
+        function_params(output)
+            .iter()
+            .any(|name| parameter_path(name) == path)
+    });
     if !is_function {
         return fact;
     }
     let value_of = |name: &str| integer(backend, name);
     let mixer = mixer_state(&metadata, &value_of);
-    let enum_text = |name: &str| Some((integer(backend, name)?, self::fact(backend, name)?.get("valueString").and_then(Value::as_str).unwrap_or("").to_string()));
+    let enum_text = |name: &str| {
+        Some((
+            integer(backend, name)?,
+            self::fact(backend, name)?
+                .get("valueString")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
+        ))
+    };
     let label_of = |function: i64| specific_label(&metadata, &mixer, function, &enum_text);
     let (used, removed) = function_enum_info(&metadata, &mixer, &label_of);
     function_fact(fact, &used, &removed)
 }
 
-pub fn rewrite_function_enum(strings: &[String], values: &[i64], used: &std::collections::BTreeMap<i64, String>, removed: &std::collections::BTreeSet<i64>) -> (Vec<String>, Vec<i64>) {
-    let entries: Vec<(i64, String)> = values.iter().copied().zip(strings.iter().cloned()).collect();
-    let with_used = used.iter().fold(entries, |entries, (function, label)| match entries.iter().position(|(v, _)| v == function) {
-        Some(at) => entries.into_iter().enumerate().map(|(i, e)| if i == at { (e.0, label.clone()) } else { e }).collect(),
-        None => {
-            let at = entries.iter().position(|(v, _)| v > function).unwrap_or(entries.len());
-            entries[..at].iter().cloned().chain(std::iter::once((*function, label.clone()))).chain(entries[at..].iter().cloned()).collect()
+pub fn rewrite_function_enum(
+    strings: &[String],
+    values: &[i64],
+    used: &std::collections::BTreeMap<i64, String>,
+    removed: &std::collections::BTreeSet<i64>,
+) -> (Vec<String>, Vec<i64>) {
+    let entries: Vec<(i64, String)> = values
+        .iter()
+        .copied()
+        .zip(strings.iter().cloned())
+        .collect();
+    let with_used = used.iter().fold(entries, |entries, (function, label)| {
+        match entries.iter().position(|(v, _)| v == function) {
+            Some(at) => entries
+                .into_iter()
+                .enumerate()
+                .map(|(i, e)| if i == at { (e.0, label.clone()) } else { e })
+                .collect(),
+            None => {
+                let at = entries
+                    .iter()
+                    .position(|(v, _)| v > function)
+                    .unwrap_or(entries.len());
+                entries[..at]
+                    .iter()
+                    .cloned()
+                    .chain(std::iter::once((*function, label.clone())))
+                    .chain(entries[at..].iter().cloned())
+                    .collect()
+            }
         }
     });
-    with_used.into_iter().filter(|(v, _)| !removed.contains(v)).map(|(v, l)| (l, v)).unzip()
+    with_used
+        .into_iter()
+        .filter(|(v, _)| !removed.contains(v))
+        .map(|(v, l)| (l, v))
+        .unzip()
 }
 
-fn function_fact(read: Value, used: &std::collections::BTreeMap<i64, String>, removed: &std::collections::BTreeSet<i64>) -> Value {
-    let strings: Vec<String> = read.get("enumStrings").and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default();
+fn function_fact(
+    read: Value,
+    used: &std::collections::BTreeMap<i64, String>,
+    removed: &std::collections::BTreeSet<i64>,
+) -> Value {
+    let strings: Vec<String> = read
+        .get("enumStrings")
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
     if strings.is_empty() {
         return read;
     }
-    let values: Vec<i64> = read.get("enumValues").and_then(Value::as_array).map(|a| a.iter().filter_map(|v| v.as_i64().or_else(|| v.as_f64().map(|f| f as i64)).or_else(|| v.as_str()?.parse().ok())).collect()).unwrap_or_default();
+    let values: Vec<i64> = read
+        .get("enumValues")
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| {
+                    v.as_i64()
+                        .or_else(|| v.as_f64().map(|f| f as i64))
+                        .or_else(|| v.as_str()?.parse().ok())
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     let (labels, numbers) = rewrite_function_enum(&strings, &values, used, removed);
-    let current = read.get("rawValue").or_else(|| read.get("value")).and_then(Value::as_f64).map(|v| v as i64);
+    let current = read
+        .get("rawValue")
+        .or_else(|| read.get("value"))
+        .and_then(Value::as_f64)
+        .map(|v| v as i64);
     let index = current.and_then(|c| numbers.iter().position(|n| *n == c));
     let mut rewritten = read;
     rewritten["enumStrings"] = json!(labels);
@@ -767,7 +1383,14 @@ fn function_fact(read: Value, used: &std::collections::BTreeMap<i64, String>, re
     rewritten
 }
 
-fn function_control(backend: &dyn Backend, param: &Param, name: &str, bit: i64, used: &std::collections::BTreeMap<i64, String>, removed: &std::collections::BTreeSet<i64>) -> Option<Value> {
+fn function_control(
+    backend: &dyn Backend,
+    param: &Param,
+    name: &str,
+    bit: i64,
+    used: &std::collections::BTreeMap<i64, String>,
+    removed: &std::collections::BTreeSet<i64>,
+) -> Option<Value> {
     if param.function != "function" {
         return control(backend, param, name, bit);
     }
@@ -781,7 +1404,10 @@ fn function_control(backend: &dyn Backend, param: &Param, name: &str, bit: i64, 
 }
 
 fn params_json(backend: &dyn Backend, params: &[Param]) -> Vec<Value> {
-    params.iter().filter_map(|p| control(backend, p, &p.name, 0)).collect()
+    params
+        .iter()
+        .filter_map(|p| control(backend, p, &p.name, 0))
+        .collect()
 }
 
 fn actuator_json(actuator: &TestActuator) -> Value {
@@ -794,16 +1420,37 @@ pub fn outputs_json(backend: &dyn Backend, metadata: &Metadata) -> Value {
     let mixer = mixer_state(metadata, &value_of);
     let enum_text = |name: &str| {
         let read = fact(backend, name)?;
-        Some((integer(backend, name)?, read.get("valueString").and_then(Value::as_str).unwrap_or("").to_string()))
+        Some((
+            integer(backend, name)?,
+            read.get("valueString")
+                .and_then(Value::as_str)
+                .unwrap_or("")
+                .to_string(),
+        ))
     };
     let label_of = |function: i64| specific_label(metadata, &mixer, function, &enum_text);
     let testing = test_actuators(metadata, &value_of, &label_of);
     let configured = configured_functions(metadata, &value_of);
     let (used_labels, removed_functions) = function_enum_info(metadata, &mixer, &label_of);
-    let held = crate::hub::lock().active().map(|v| (v.actuator_test.had_failure, v.motor_assignment.active(), v.motor_assignment.message.clone(), v.motor_assignment.highlighted()));
+    let held = crate::hub::lock().active().map(|v| {
+        (
+            v.actuator_test.had_failure,
+            v.motor_assignment.active(),
+            v.motor_assignment.message.clone(),
+            v.motor_assignment.highlighted(),
+        )
+    });
     let (had_failure, assigning, assignment_message, highlighted) = held.unwrap_or_default();
-    let motors_drawn = !motor_geometry(metadata, &mixer, &|name| number_of(backend, name)).is_empty();
-    let all_motors = testing.iter().rev().find(|a| a.is_motor).map(|motor| TestActuator { label: "All Motors".to_string(), ..motor.clone() });
+    let motors_drawn =
+        !motor_geometry(metadata, &mixer, &|name| number_of(backend, name)).is_empty();
+    let all_motors = testing
+        .iter()
+        .rev()
+        .find(|a| a.is_motor)
+        .map(|motor| TestActuator {
+            label: "All Motors".to_string(),
+            ..motor.clone()
+        });
     json!({
         "showUi": metadata.show_ui_if.evaluate(&value_of),
         "testing": {
@@ -845,11 +1492,20 @@ pub fn outputs_json(backend: &dyn Backend, metadata: &Metadata) -> Value {
     })
 }
 
-fn rule_item<'a>(channel: &'a MixerChannel, cell: &MixerCell, value_of: &dyn Fn(&str) -> Option<i64>) -> Option<&'a RuleItem> {
+fn rule_item<'a>(
+    channel: &'a MixerChannel,
+    cell: &MixerCell,
+    value_of: &dyn Fn(&str) -> Option<i64>,
+) -> Option<&'a RuleItem> {
     let rule = channel.rule.as_ref()?;
-    let apply = rule.apply.iter().position(|id| !cell.identifier.is_empty() && *id == cell.identifier)?;
+    let apply = rule
+        .apply
+        .iter()
+        .position(|id| !cell.identifier.is_empty() && *id == cell.identifier)?;
     let selector = channel.cells.iter().find(|c| c.identifier == rule.select)?;
-    let CellSource::Parameter(name, _) = &selector.source else { return None };
+    let CellSource::Parameter(name, _) = &selector.source else {
+        return None;
+    };
     rule.items.get(&value_of(name)?)?.get(apply)
 }
 
@@ -857,7 +1513,11 @@ const AXIS_FUNCTIONS: [&str; 3] = ["axisx", "axisy", "axisz"];
 
 fn axis_cells(channel: &MixerChannel) -> Option<[&MixerCell; 3]> {
     let cell = |function: &str| channel.cells.iter().find(|c| c.function == function);
-    Some([cell(AXIS_FUNCTIONS[0])?, cell(AXIS_FUNCTIONS[1])?, cell(AXIS_FUNCTIONS[2])?])
+    Some([
+        cell(AXIS_FUNCTIONS[0])?,
+        cell(AXIS_FUNCTIONS[1])?,
+        cell(AXIS_FUNCTIONS[2])?,
+    ])
 }
 
 pub fn axis_key(names: &[String]) -> String {
@@ -866,7 +1526,9 @@ pub fn axis_key(names: &[String]) -> String {
 
 fn number_of(backend: &dyn Backend, name: &str) -> Option<f64> {
     let read = fact(backend, name)?;
-    read.get("rawValue").or_else(|| read.get("value")).and_then(Value::as_f64)
+    read.get("rawValue")
+        .or_else(|| read.get("value"))
+        .and_then(Value::as_f64)
 }
 
 type AxisUi<'a> = dyn FnMut(&str, (f64, f64, f64)) -> (usize, bool) + 'a;
@@ -874,11 +1536,16 @@ type AxisUi<'a> = dyn FnMut(&str, (f64, f64, f64)) -> (usize, bool) + 'a;
 const MAV_PARAM_TYPE_INT32: i64 = 6;
 
 fn selector_value(backend: &dyn Backend, name: &str) -> Option<i64> {
-    fact(backend, name).filter(|read| read.get("mavType").and_then(Value::as_i64) == Some(MAV_PARAM_TYPE_INT32))?;
+    fact(backend, name)
+        .filter(|read| read.get("mavType").and_then(Value::as_i64) == Some(MAV_PARAM_TYPE_INT32))?;
     integer(backend, name)
 }
 
-fn channel_cells(backend: &dyn Backend, channel: &MixerChannel, axis_ui: &mut AxisUi) -> Vec<Value> {
+fn channel_cells(
+    backend: &dyn Backend,
+    channel: &MixerChannel,
+    axis_ui: &mut AxisUi,
+) -> Vec<Value> {
     let selector = |name: &str| selector_value(backend, name);
     let axes = axis_cells(channel).map(|cells| {
         let names = cells.map(|c| match &c.source {
@@ -896,7 +1563,10 @@ fn channel_cells(backend: &dyn Backend, channel: &MixerChannel, axis_ui: &mut Ax
         };
         (names, shown)
     });
-    let axes_hidden = axes.as_ref().and_then(|(_, shown)| *shown).is_some_and(|(_, visible)| !visible);
+    let axes_hidden = axes
+        .as_ref()
+        .and_then(|(_, shown)| *shown)
+        .is_some_and(|(_, visible)| !visible);
     channel
         .cells
         .iter()
@@ -927,9 +1597,18 @@ fn channel_cells(backend: &dyn Backend, channel: &MixerChannel, axis_ui: &mut Ax
         .collect()
 }
 
-pub fn constrained(rule: &Rule, items_for: i64, current: f64, apply: usize, select_changed: bool) -> Option<f64> {
+pub fn constrained(
+    rule: &Rule,
+    items_for: i64,
+    current: f64,
+    apply: usize,
+    select_changed: bool,
+) -> Option<f64> {
     let item = rule.items.get(&items_for)?.get(apply)?;
-    let clamped = item.min.filter(|min| current < *min).or_else(|| item.max.filter(|max| current > *max));
+    let clamped = item
+        .min
+        .filter(|min| current < *min)
+        .or_else(|| item.max.filter(|max| current > *max));
     match (select_changed, item.default) {
         (true, Some(default)) => Some(default),
         _ => clamped,
@@ -938,7 +1617,11 @@ pub fn constrained(rule: &Rule, items_for: i64, current: f64, apply: usize, sele
 
 pub fn mixer_set(backend: &dyn Backend, args: &str) -> Value {
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
-    let (Some(name), Some(value), Some(function)) = (given.get(0).and_then(Value::as_str), given.get(1).and_then(Value::as_f64), given.get(2).and_then(Value::as_i64)) else {
+    let (Some(name), Some(value), Some(function)) = (
+        given.get(0).and_then(Value::as_str),
+        given.get(1).and_then(Value::as_f64),
+        given.get(2).and_then(Value::as_i64),
+    ) else {
         return json!({ "ok": false, "reason": "actuatorMixer.set takes a parameter, its value and the actuator function." });
     };
     let path = parameter_path(name);
@@ -947,41 +1630,111 @@ pub fn mixer_set(backend: &dyn Backend, args: &str) -> Value {
     if !crate::read::flag(&written, "ok") {
         return written;
     }
-    let metadata = crate::hub::lock().active().and_then(|v| v.actuators_metadata.clone()).and_then(|m| parse(&m).ok());
-    let Some(metadata) = metadata else { return written };
+    let metadata = crate::hub::lock()
+        .active()
+        .and_then(|v| v.actuators_metadata.clone())
+        .and_then(|m| parse(&m).ok());
+    let Some(metadata) = metadata else {
+        return written;
+    };
     let value_of = |n: &str| integer(backend, n);
     let mixer = mixer_state(&metadata, &value_of);
-    let Some(channel) = mixer.groups.iter().flat_map(|g| g.channels.iter()).find(|c| c.function == function) else { return written };
-    let Some(rule) = channel.rule.as_ref() else { return written };
-    let Some(selector) = channel.cells.iter().find(|c| c.identifier == rule.select) else { return written };
-    let CellSource::Parameter(select_name, _) = &selector.source else { return written };
-    let Some(selected) = selector_value(backend, select_name) else { return written };
+    let Some(channel) = mixer
+        .groups
+        .iter()
+        .flat_map(|g| g.channels.iter())
+        .find(|c| c.function == function)
+    else {
+        return written;
+    };
+    let Some(rule) = channel.rule.as_ref() else {
+        return written;
+    };
+    let Some(selector) = channel.cells.iter().find(|c| c.identifier == rule.select) else {
+        return written;
+    };
+    let CellSource::Parameter(select_name, _) = &selector.source else {
+        return written;
+    };
+    let Some(selected) = selector_value(backend, select_name) else {
+        return written;
+    };
     let select_changed = select_name == name && before != Some(selected);
     channel
         .cells
         .iter()
-        .filter_map(|cell| Some((rule.apply.iter().position(|id| !cell.identifier.is_empty() && *id == cell.identifier)?, cell)))
+        .filter_map(|cell| {
+            Some((
+                rule.apply
+                    .iter()
+                    .position(|id| !cell.identifier.is_empty() && *id == cell.identifier)?,
+                cell,
+            ))
+        })
         .filter_map(|(apply, cell)| match &cell.source {
-            CellSource::Parameter(param, _) => Some((param.clone(), constrained(rule, selected, number_of(backend, param)?, apply, select_changed)?)),
+            CellSource::Parameter(param, _) => Some((
+                param.clone(),
+                constrained(
+                    rule,
+                    selected,
+                    number_of(backend, param)?,
+                    apply,
+                    select_changed,
+                )?,
+            )),
             CellSource::Fixed(_) => None,
         })
         .for_each(|(param, value)| {
-            crate::factwrite::write(backend, &parameter_path(&param), &json!({ "value": value }).to_string());
+            crate::factwrite::write(
+                backend,
+                &parameter_path(&param),
+                &json!({ "value": value }).to_string(),
+            );
         });
     written
 }
 
 pub fn mixer_axis(backend: &dyn Backend, args: &str) -> Value {
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
-    let names: Vec<String> = given.get(0).and_then(Value::as_array).map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect()).unwrap_or_default();
-    let direction = given.get(1).and_then(Value::as_u64).and_then(|d| usize::try_from(d).ok()).filter(|d| *d < AXIS_DIRECTIONS.len());
+    let names: Vec<String> = given
+        .get(0)
+        .and_then(Value::as_array)
+        .map(|a| {
+            a.iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default();
+    let direction = given
+        .get(1)
+        .and_then(Value::as_u64)
+        .and_then(|d| usize::try_from(d).ok())
+        .filter(|d| *d < AXIS_DIRECTIONS.len());
     let (Some(direction), 3) = (direction, names.len()) else {
         return json!({ "ok": false, "reason": "An axis direction needs its three axis parameters." });
     };
     let vehicle = crate::guided::active_id(backend);
-    with_axes(vehicle, |memory| (chosen(memory, &axis_key(&names), direction), ()));
-    let Some((x, y, z)) = axis_vector(direction) else { return json!({ "ok": true }) };
-    let all = names.iter().zip([x, y, z]).filter(|(name, _)| !name.is_empty()).all(|(name, value)| crate::read::flag(&crate::factwrite::write(backend, &parameter_path(name), &json!({ "value": value }).to_string()), "ok"));
+    with_axes(vehicle, |memory| {
+        (chosen(memory, &axis_key(&names), direction), ())
+    });
+    let Some((x, y, z)) = axis_vector(direction) else {
+        return json!({ "ok": true });
+    };
+    let all = names
+        .iter()
+        .zip([x, y, z])
+        .filter(|(name, _)| !name.is_empty())
+        .all(|(name, value)| {
+            crate::read::flag(
+                &crate::factwrite::write(
+                    backend,
+                    &parameter_path(name),
+                    &json!({ "value": value }).to_string(),
+                ),
+                "ok",
+            )
+        });
     json!({ "ok": all })
 }
 
@@ -993,37 +1746,74 @@ pub struct MotorGeometry {
     pub counter_clockwise: bool,
 }
 
-pub fn motor_geometry(metadata: &Metadata, mixer: &MixerState, raw_of: &dyn Fn(&str) -> Option<f64>) -> Vec<MotorGeometry> {
+pub fn motor_geometry(
+    metadata: &Metadata,
+    mixer: &MixerState,
+    raw_of: &dyn Fn(&str) -> Option<f64>,
+) -> Vec<MotorGeometry> {
     mixer
         .groups
         .iter()
         .filter(|state| state.group.actuator_type == "motor")
         .flat_map(|state| {
-            let offset = metadata.actuator_types.iter().find(|t| t.name == state.group.actuator_type).map_or(0, |t| t.label_index_offset);
+            let offset = metadata
+                .actuator_types
+                .iter()
+                .find(|t| t.name == state.group.actuator_type)
+                .map_or(0, |t| t.label_index_offset);
             state.channels.iter().filter_map(move |channel| {
-                let value = |function: &str| channel.cells.iter().find(|c| c.function == function).and_then(|c| match &c.source {
-                    CellSource::Parameter(name, _) => raw_of(name).map(|raw| (raw, c.config.show_as.as_str())),
-                    CellSource::Fixed(v) => Some((*v, "")),
-                });
+                let value = |function: &str| {
+                    channel
+                        .cells
+                        .iter()
+                        .find(|c| c.function == function)
+                        .and_then(|c| match &c.source {
+                            CellSource::Parameter(name, _) => {
+                                raw_of(name).map(|raw| (raw, c.config.show_as.as_str()))
+                            }
+                            CellSource::Fixed(v) => Some((*v, "")),
+                        })
+                };
                 let position = (value("posx")?.0, value("posy")?.0, value("posz")?.0);
-                let counter_clockwise = value("spin-dir").is_some_and(|(raw, show_as)| if show_as == "true-if-positive" { raw > 0.0 } else { raw != 0.0 });
-                Some(MotorGeometry { index: channel.type_index, label: channel.type_index + offset, position, counter_clockwise })
+                let counter_clockwise = value("spin-dir").is_some_and(|(raw, show_as)| {
+                    if show_as == "true-if-positive" {
+                        raw > 0.0
+                    } else {
+                        raw != 0.0
+                    }
+                });
+                Some(MotorGeometry {
+                    index: channel.type_index,
+                    label: channel.type_index + offset,
+                    position,
+                    counter_clockwise,
+                })
             })
         })
         .collect()
 }
 
 fn geometry_json(backend: &dyn Backend, metadata: &Metadata, mixer: &MixerState) -> Value {
-    let Some(option) = mixer.option.as_ref().filter(|_| !mixer.groups.is_empty()) else { return Value::Null };
-    let signature: Signature = rebuild_params(metadata, mixer).into_iter().map(|name| {
-        let value = number_of(backend, &name).map(|v| v.to_string());
-        (name, value)
-    }).collect();
+    let Some(option) = mixer.option.as_ref().filter(|_| !mixer.groups.is_empty()) else {
+        return Value::Null;
+    };
+    let signature: Signature = rebuild_params(metadata, mixer)
+        .into_iter()
+        .map(|name| {
+            let value = number_of(backend, &name).map(|v| v.to_string());
+            (name, value)
+        })
+        .collect();
     let vehicle = crate::guided::active_id(backend);
-    let mut memory = Some(with_axes(vehicle, |held| (AxisMemory::default(), rebuilt(held, &signature))));
+    let mut memory = Some(with_axes(vehicle, |held| {
+        (AxisMemory::default(), rebuilt(held, &signature))
+    }));
     let mut axis_ui = |key: &str, values: (f64, f64, f64)| {
         let next = observed(memory.take().unwrap_or_default(), key, values);
-        let shown = axis_shown(next.choices.get(key).copied(), axis_direction(values.0, values.1, values.2));
+        let shown = axis_shown(
+            next.choices.get(key).copied(),
+            axis_direction(values.0, values.1, values.2),
+        );
         memory = Some(next);
         shown
     };
@@ -1049,7 +1839,9 @@ fn geometry_json(backend: &dyn Backend, metadata: &Metadata, mixer: &MixerState)
 }
 
 pub fn outputs_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let metadata = crate::hub::lock().active().and_then(|vehicle| vehicle.actuators_metadata.clone());
+    let metadata = crate::hub::lock()
+        .active()
+        .and_then(|vehicle| vehicle.actuators_metadata.clone());
     let parsed = metadata.as_ref().map(parse);
     match parsed {
         Some(Ok(metadata)) => {
@@ -1059,8 +1851,12 @@ pub fn outputs_view(backend: &dyn Backend, _args: &[String]) -> Value {
             answer["available"] = json!(true);
             answer
         }
-        Some(Err(reason)) => json!({ "kind": "object", "class": "ActuatorOutputs", "available": false, "reason": reason, "groups": [] }),
-        None => json!({ "kind": "object", "class": "ActuatorOutputs", "available": false, "reason": "This vehicle sent no actuator metadata.", "groups": [] }),
+        Some(Err(reason)) => {
+            json!({ "kind": "object", "class": "ActuatorOutputs", "available": false, "reason": reason, "groups": [] })
+        }
+        None => {
+            json!({ "kind": "object", "class": "ActuatorOutputs", "available": false, "reason": "This vehicle sent no actuator metadata.", "groups": [] })
+        }
     }
 }
 
@@ -1071,32 +1867,73 @@ pub fn test_action(backend: &dyn Backend, path: &str, args: &str) -> Value {
         MOTOR_INIT | MOTOR_START | MOTOR_SELECT | MOTOR_SPIN | MOTOR_ABORT => {
             let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
             let action = match path {
-                MOTOR_INIT => json!({ "action": "motorAssignment", "op": "init", "output": given.get(0) }),
+                MOTOR_INIT => {
+                    json!({ "action": "motorAssignment", "op": "init", "output": given.get(0) })
+                }
                 MOTOR_START => json!({ "action": "motorAssignment", "op": "start" }),
-                MOTOR_SELECT => json!({ "action": "motorAssignment", "op": "select", "motor": given.get(0) }),
+                MOTOR_SELECT => {
+                    json!({ "action": "motorAssignment", "op": "select", "motor": given.get(0) })
+                }
                 MOTOR_SPIN => json!({ "action": "motorAssignment", "op": "spinAgain" }),
                 _ => json!({ "action": "motorAssignment", "op": "abort" }),
             };
-            return crate::guided::dispatch(backend, Some(action), crate::guided::active_id(backend), path, args);
+            return crate::guided::dispatch(
+                backend,
+                Some(action),
+                crate::guided::active_id(backend),
+                path,
+                args,
+            );
         }
         ACTION_TRIGGER => {
             let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
             let action = json!({ "action": "actuatorAction", "type": given.get(0), "function": given.get(1) });
-            return crate::guided::dispatch(backend, Some(action), crate::guided::active_id(backend), path, args);
+            return crate::guided::dispatch(
+                backend,
+                Some(action),
+                crate::guided::active_id(backend),
+                path,
+                args,
+            );
         }
         _ => {}
     }
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
     let action = match path {
-        TEST_ACTIVE => json!({ "action": "actuatorTest", "op": "active", "on": given.get(0).and_then(Value::as_bool).unwrap_or(false) }),
-        TEST_SET => json!({ "action": "actuatorTest", "op": "set", "function": given.get(0), "value": given.get(1) }),
-        _ => json!({ "action": "actuatorTest", "op": "stop", "function": given.get(0).filter(|f| f.as_i64() != Some(-1)) }),
+        TEST_ACTIVE => {
+            json!({ "action": "actuatorTest", "op": "active", "on": given.get(0).and_then(Value::as_bool).unwrap_or(false) })
+        }
+        TEST_SET => {
+            json!({ "action": "actuatorTest", "op": "set", "function": given.get(0), "value": given.get(1) })
+        }
+        _ => {
+            json!({ "action": "actuatorTest", "op": "stop", "function": given.get(0).filter(|f| f.as_i64() != Some(-1)) })
+        }
     };
-    crate::guided::dispatch(backend, Some(action), crate::guided::active_id(backend), path, args)
+    crate::guided::dispatch(
+        backend,
+        Some(action),
+        crate::guided::active_id(backend),
+        path,
+        args,
+    )
 }
 
 pub fn owns(path: &str) -> bool {
-    [TEST_ACTIVE, TEST_SET, TEST_STOP, MIXER_SET, MIXER_AXIS, ACTION_TRIGGER, MOTOR_INIT, MOTOR_START, MOTOR_SELECT, MOTOR_SPIN, MOTOR_ABORT].contains(&path)
+    [
+        TEST_ACTIVE,
+        TEST_SET,
+        TEST_STOP,
+        MIXER_SET,
+        MIXER_AXIS,
+        ACTION_TRIGGER,
+        MOTOR_INIT,
+        MOTOR_START,
+        MOTOR_SELECT,
+        MOTOR_SPIN,
+        MOTOR_ABORT,
+    ]
+    .contains(&path)
 }
 
 #[cfg(test)]
@@ -1124,31 +1961,61 @@ mod tests {
     }
 
     #[test]
-    fn a_cell_whose_parameter_is_missing_stays_as_not_available_like_a_null_fact_channel_config_instance() {
+    fn a_cell_whose_parameter_is_missing_stays_as_not_available_like_a_null_fact_channel_config_instance()
+     {
         struct Missing;
         impl Backend for Missing {
-            fn get(&self, _p: &str) -> String { json!({ "kind": "null" }).to_string() }
-            fn get_fields(&self, _p: &str, _f: &str) -> String { self.get("") }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn get(&self, _p: &str) -> String {
+                json!({ "kind": "null" }).to_string()
+            }
+            fn get_fields(&self, _p: &str, _f: &str) -> String {
+                self.get("")
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
             fn watch(&self, _p: &[String]) {}
         }
         let metadata = ruled();
         let state = mixer_state(&metadata, &|_| None);
-        let cells = channel_cells(&Missing, &state.groups[0].channels[0], &mut |_, _| (0, true));
-        assert_eq!(cells.len(), 3, "ActuatorComponent.qml keeps the grid cell and its ActuatorFact shows '(Param not available)'");
-        assert_eq!((cells[1]["unavailable"].clone(), cells[1]["label"].clone(), cells[1]["hidden"].clone()), (json!(true), json!("Roll Torque"), json!(false)));
+        let cells = channel_cells(&Missing, &state.groups[0].channels[0], &mut |_, _| {
+            (0, true)
+        });
+        assert_eq!(
+            cells.len(),
+            3,
+            "ActuatorComponent.qml keeps the grid cell and its ActuatorFact shows '(Param not available)'"
+        );
+        assert_eq!(
+            (
+                cells[1]["unavailable"].clone(),
+                cells[1]["label"].clone(),
+                cells[1]["hidden"].clone()
+            ),
+            (json!(true), json!("Roll Torque"), json!(false))
+        );
     }
 
     struct Params(Vec<(&'static str, f64, i64)>);
     impl Backend for Params {
         fn get(&self, p: &str) -> String {
-            let name = p.trim_start_matches("vehicle.parameterManager.getParameter(-1,").trim_end_matches(')');
+            let name = p
+                .trim_start_matches("vehicle.parameterManager.getParameter(-1,")
+                .trim_end_matches(')');
             self.0.iter().find(|(n, _, _)| *n == name).map_or_else(|| json!({ "kind": "null" }), |(_, raw, mav)| json!({ "kind": "fact", "rawValue": raw, "value": raw, "mavType": mav, "valueString": raw.to_string() })).to_string()
         }
-        fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
-        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn get_fields(&self, p: &str, _f: &str) -> String {
+            self.get(p)
+        }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            String::new()
+        }
         fn watch(&self, _p: &[String]) {}
     }
 
@@ -1187,7 +2054,14 @@ mod tests {
         }))
         .unwrap();
         let state = mixer_state(&metadata, &|_| None);
-        assert_eq!(state.groups[0].channels[0].rule.as_ref().map(|r| r.select.as_str()), Some("a"), "per-item order decides, not the rule list order");
+        assert_eq!(
+            state.groups[0].channels[0]
+                .rule
+                .as_ref()
+                .map(|r| r.select.as_str()),
+            Some("a"),
+            "per-item order decides, not the rule list order"
+        );
     }
 
     #[test]
@@ -1195,13 +2069,37 @@ mod tests {
         let metadata = ruled();
         let state = mixer_state(&metadata, &|_| None);
         let channel = &state.groups[0].channels[0];
-        let hidden = |backend: &Params| channel_cells(backend, channel, &mut |_, _| (0, true)).iter().map(|c| c["hidden"] == true).collect::<Vec<_>>();
-        let int32 = Params(vec![("CA_SV_CS0_TYPE", 1.0, 6), ("CA_SV_CS0_TRQ_R", 0.0, 9), ("CA_SV_CS0_TRQ_P", 0.0, 9)]);
+        let hidden = |backend: &Params| {
+            channel_cells(backend, channel, &mut |_, _| (0, true))
+                .iter()
+                .map(|c| c["hidden"] == true)
+                .collect::<Vec<_>>()
+        };
+        let int32 = Params(vec![
+            ("CA_SV_CS0_TYPE", 1.0, 6),
+            ("CA_SV_CS0_TRQ_R", 0.0, 9),
+            ("CA_SV_CS0_TRQ_P", 0.0, 9),
+        ]);
         assert_eq!(hidden(&int32), [false, false, true]);
-        let float = Params(vec![("CA_SV_CS0_TYPE", 1.0, 9), ("CA_SV_CS0_TRQ_R", 0.0, 9), ("CA_SV_CS0_TRQ_P", 0.0, 9)]);
-        assert_eq!(hidden(&float), [false, false, false], "MixerChannel::applyRule needs valueTypeInt32");
-        let missing = Params(vec![("CA_SV_CS0_TYPE", 1.0, 6), ("CA_SV_CS0_TRQ_R", 0.0, 9)]);
-        assert_eq!(hidden(&missing), [false, false, false], "an instance without a fact keeps its default visibility");
+        let float = Params(vec![
+            ("CA_SV_CS0_TYPE", 1.0, 9),
+            ("CA_SV_CS0_TRQ_R", 0.0, 9),
+            ("CA_SV_CS0_TRQ_P", 0.0, 9),
+        ]);
+        assert_eq!(
+            hidden(&float),
+            [false, false, false],
+            "MixerChannel::applyRule needs valueTypeInt32"
+        );
+        let missing = Params(vec![
+            ("CA_SV_CS0_TYPE", 1.0, 6),
+            ("CA_SV_CS0_TRQ_R", 0.0, 9),
+        ]);
+        assert_eq!(
+            hidden(&missing),
+            [false, false, false],
+            "an instance without a fact keeps its default visibility"
+        );
     }
 
     #[test]
@@ -1210,27 +2108,66 @@ mod tests {
         let state = mixer_state(&metadata, &|_| None);
         let channel = &state.groups[0].channels[0];
         let backend = Params(vec![("CA_RTR0_AX", 0.0, 9), ("CA_RTR0_AY", 0.0, 9)]);
-        let cells = channel_cells(&backend, channel, &mut |_, _| unreachable!("no direction without all three facts"));
-        assert_eq!((cells[0]["unavailable"].clone(), cells[0]["label"].clone(), cells[0]["hidden"].clone()), (json!(true), json!("Axis"), json!(false)));
-        assert!(cells[1..].iter().all(|c| c["hidden"] == false), "setFactFromAxes never ran, so the axes stay shown");
+        let cells = channel_cells(&backend, channel, &mut |_, _| {
+            unreachable!("no direction without all three facts")
+        });
+        assert_eq!(
+            (
+                cells[0]["unavailable"].clone(),
+                cells[0]["label"].clone(),
+                cells[0]["hidden"].clone()
+            ),
+            (json!(true), json!("Axis"), json!(false))
+        );
+        assert!(
+            cells[1..].iter().all(|c| c["hidden"] == false),
+            "setFactFromAxes never ran, so the axes stay shown"
+        );
     }
 
     #[test]
-    fn axes_matching_a_direction_hide_unless_edited_or_custom_was_picked_like_channel_config_instance_virtual_axis() {
+    fn axes_matching_a_direction_hide_unless_edited_or_custom_was_picked_like_channel_config_instance_virtual_axis()
+     {
         let up = (0.0, 0.0, -1.0);
         let fresh = observed(AxisMemory::default(), "k", up);
-        assert_eq!(axis_shown(fresh.choices.get("k").copied(), axis_direction(up.0, up.1, up.2)), (1, false), "built with a matching direction: hidden");
-        let edited = observed(observed(AxisMemory::default(), "k", (0.0, 0.0, 0.5)), "k", up);
-        assert_eq!(axis_shown(edited.choices.get("k").copied(), 1), (1, true), "an axis value change keeps them visible (setFactFromAxes(true))");
+        assert_eq!(
+            axis_shown(
+                fresh.choices.get("k").copied(),
+                axis_direction(up.0, up.1, up.2)
+            ),
+            (1, false),
+            "built with a matching direction: hidden"
+        );
+        let edited = observed(
+            observed(AxisMemory::default(), "k", (0.0, 0.0, 0.5)),
+            "k",
+            up,
+        );
+        assert_eq!(
+            axis_shown(edited.choices.get("k").copied(), 1),
+            (1, true),
+            "an axis value change keeps them visible (setFactFromAxes(true))"
+        );
         let custom = chosen(fresh.clone(), "k", 0);
-        assert_eq!(axis_shown(custom.choices.get("k").copied(), 1), (0, true), "picking Custom shows Custom and the axes");
+        assert_eq!(
+            axis_shown(custom.choices.get("k").copied(), 1),
+            (0, true),
+            "picking Custom shows Custom and the axes"
+        );
         let picked = chosen(edited, "k", 3);
         assert_eq!(picked.seen.get("k"), Some(&(1.0, 0.0, 0.0)));
         let after = observed(picked, "k", (1.0, 0.0, 0.0));
-        assert_eq!(axis_shown(after.choices.get("k").copied(), 3), (3, false), "a picked direction hides the axes; its own writes are not an edit");
+        assert_eq!(
+            axis_shown(after.choices.get("k").copied(), 3),
+            (3, false),
+            "a picked direction hides the axes; its own writes are not an edit"
+        );
         let signature = vec![("CA_RTR0_TYPE".to_string(), Some("1".to_string()))];
         let rebuilt_once = rebuilt(custom, &signature);
-        assert!(rebuilt_once.choices.is_empty() && rebuilt_once.seen.is_empty(), "a non-geometry parameter change rebuilds the mixer");
+        assert!(
+            rebuilt_once.choices.is_empty() && rebuilt_once.seen.is_empty(),
+            "a non-geometry parameter change rebuilds the mixer"
+        );
         assert_eq!(rebuilt(rebuilt_once.clone(), &signature), rebuilt_once);
     }
 
@@ -1243,22 +2180,52 @@ mod tests {
             _ => None,
         };
         let names = rebuild_params(&parsed, &mixer_state(&parsed, &quad));
-        assert!(names.contains(&"CA_AIRFRAME".to_string()) && names.contains(&"CA_MC_R_COUNT".to_string()) && names.contains(&"PWM_AUX_FUNC1".to_string()));
-        assert!(!names.iter().any(|n| n.starts_with("CA_MC_R0_P")), "positions only redraw the geometry");
+        assert!(
+            names.contains(&"CA_AIRFRAME".to_string())
+                && names.contains(&"CA_MC_R_COUNT".to_string())
+                && names.contains(&"PWM_AUX_FUNC1".to_string())
+        );
+        assert!(
+            !names.iter().any(|n| n.starts_with("CA_MC_R0_P")),
+            "positions only redraw the geometry"
+        );
     }
 
     #[test]
     fn a_rule_follows_the_selector_and_clamps_or_resets_what_it_applies_to() {
         let metadata = ruled();
-        assert_eq!(metadata.rules[0].items.len(), 1, "an item list of the wrong length is dropped, as QGC drops it");
+        assert_eq!(
+            metadata.rules[0].items.len(),
+            1,
+            "an item list of the wrong length is dropped, as QGC drops it"
+        );
         let state = mixer_state(&metadata, &|_| None);
         let channel = &state.groups[0].channels[0];
-        assert_eq!(channel.rule.as_ref().map(|r| r.select.as_str()), Some("servo-type"));
+        assert_eq!(
+            channel.rule.as_ref().map(|r| r.select.as_str()),
+            Some("servo-type")
+        );
         let rule = channel.rule.as_ref().unwrap();
-        assert_eq!(constrained(rule, 1, 0.4, 0, false), Some(0.0), "above max is clamped");
-        assert_eq!(constrained(rule, 1, -0.2, 0, false), None, "inside the range is left alone");
-        assert_eq!(constrained(rule, 1, -0.2, 0, true), Some(-0.5), "a new selection applies the default");
-        assert_eq!(constrained(rule, 7, 0.4, 0, true), None, "a selection with no items changes nothing");
+        assert_eq!(
+            constrained(rule, 1, 0.4, 0, false),
+            Some(0.0),
+            "above max is clamped"
+        );
+        assert_eq!(
+            constrained(rule, 1, -0.2, 0, false),
+            None,
+            "inside the range is left alone"
+        );
+        assert_eq!(
+            constrained(rule, 1, -0.2, 0, true),
+            Some(-0.5),
+            "a new selection applies the default"
+        );
+        assert_eq!(
+            constrained(rule, 7, 0.4, 0, true),
+            None,
+            "a selection with no items changes nothing"
+        );
         let values = |name: &str| (name == "CA_SV_CS0_TYPE").then_some(1);
         let pitch = &channel.cells[2];
         assert!(rule_item(channel, pitch, &values).is_some_and(|item| item.hidden));
@@ -1268,7 +2235,13 @@ mod tests {
     fn actions_group_by_type_and_list_each_configured_function_once() {
         let parsed = parse(&example()).unwrap();
         let aux = &parsed.outputs[1].subgroups[0];
-        assert_eq!(aux.actions.iter().map(|a| (a.kind, a.label)).collect::<Vec<_>>(), [(4, "Set Spin Direction 1"), (5, "Set Spin Direction 2")]);
+        assert_eq!(
+            aux.actions
+                .iter()
+                .map(|a| (a.kind, a.label))
+                .collect::<Vec<_>>(),
+            [(4, "Set Spin Direction 1"), (5, "Set Spin Direction 2")]
+        );
         let outputs: Vec<&Output> = parsed.outputs.iter().collect();
         let dshot = |name: &str| match name {
             "PWM_AUX_TIM0" => Some(-5),
@@ -1278,9 +2251,28 @@ mod tests {
             _ => Some(0),
         };
         let groups = action_groups(&parsed, &outputs, &dshot);
-        assert_eq!(groups.iter().map(|g| (g.label, g.actions.clone())).collect::<Vec<_>>(), [("Set Spin Direction 1", vec![("Motor 1".to_string(), 101)]), ("Set Spin Direction 2", vec![("Motor 1".to_string(), 101)])], "the servo is not a motor and Motor 1 is listed once");
-        let pwm = |name: &str| if name == "PWM_AUX_TIM0" { Some(400) } else { dshot(name) };
-        assert!(action_groups(&parsed, &outputs, &pwm).is_empty(), "supported-if holds only on DShot");
+        assert_eq!(
+            groups
+                .iter()
+                .map(|g| (g.label, g.actions.clone()))
+                .collect::<Vec<_>>(),
+            [
+                ("Set Spin Direction 1", vec![("Motor 1".to_string(), 101)]),
+                ("Set Spin Direction 2", vec![("Motor 1".to_string(), 101)])
+            ],
+            "the servo is not a motor and Motor 1 is listed once"
+        );
+        let pwm = |name: &str| {
+            if name == "PWM_AUX_TIM0" {
+                Some(400)
+            } else {
+                dshot(name)
+            }
+        };
+        assert!(
+            action_groups(&parsed, &outputs, &pwm).is_empty(),
+            "supported-if holds only on DShot"
+        );
     }
 
     #[test]
@@ -1304,25 +2296,66 @@ mod tests {
             _ => None,
         };
         let motors = motor_geometry(&parsed, &state, &raw);
-        assert_eq!(motors, [
-            MotorGeometry { index: 0, label: 1, position: (0.15, 0.25, 0.0), counter_clockwise: true },
-            MotorGeometry { index: 1, label: 2, position: (-0.15, -0.25, 0.0), counter_clockwise: false },
-        ]);
+        assert_eq!(
+            motors,
+            [
+                MotorGeometry {
+                    index: 0,
+                    label: 1,
+                    position: (0.15, 0.25, 0.0),
+                    counter_clockwise: true
+                },
+                MotorGeometry {
+                    index: 1,
+                    label: 2,
+                    position: (-0.15, -0.25, 0.0),
+                    counter_clockwise: false
+                },
+            ]
+        );
         let tilt = |name: &str| (name == "CA_AIRFRAME").then_some(5);
-        assert!(motor_geometry(&parsed, &mixer_state(&parsed, &tilt), &|_| None).is_empty(), "fixed X and Y but no Z is not a full position, so nothing is drawn");
+        assert!(
+            motor_geometry(&parsed, &mixer_state(&parsed, &tilt), &|_| None).is_empty(),
+            "fixed X and Y but no Z is not a full position, so nothing is drawn"
+        );
     }
 
     #[test]
     fn the_function_dropdown_names_used_motors_specifically_and_drops_unused_ones() {
-        let strings: Vec<String> = ["Disabled", "Motor 1", "Motor 2", "Motor 3", "Servo 1"].iter().map(|s| s.to_string()).collect();
+        let strings: Vec<String> = ["Disabled", "Motor 1", "Motor 2", "Motor 3", "Servo 1"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         let values = [0, 101, 102, 103, 201];
-        let used: std::collections::BTreeMap<i64, String> = [(101, "Front Left Motor".to_string()), (102, "Front Right Motor".to_string()), (202, "Right Elevon".to_string())].into_iter().collect();
+        let used: std::collections::BTreeMap<i64, String> = [
+            (101, "Front Left Motor".to_string()),
+            (102, "Front Right Motor".to_string()),
+            (202, "Right Elevon".to_string()),
+        ]
+        .into_iter()
+        .collect();
         let removed: std::collections::BTreeSet<i64> = [103, 104, 201].into_iter().collect();
         let (labels, numbers) = rewrite_function_enum(&strings, &values, &used, &removed);
         assert_eq!(numbers, [0, 101, 102, 202]);
-        assert_eq!(labels, ["Disabled", "Front Left Motor", "Front Right Motor", "Right Elevon"], "a used function missing from the list is inserted in order");
-        let read = function_fact(json!({ "kind": "fact", "rawValue": 102, "value": 102, "enumStrings": strings, "enumValues": values, "enumIndex": 2, "valueString": "Motor 2" }), &used, &removed);
-        assert_eq!((read["enumIndex"].clone(), read["valueString"].clone()), (json!(2), json!("Front Right Motor")));
+        assert_eq!(
+            labels,
+            [
+                "Disabled",
+                "Front Left Motor",
+                "Front Right Motor",
+                "Right Elevon"
+            ],
+            "a used function missing from the list is inserted in order"
+        );
+        let read = function_fact(
+            json!({ "kind": "fact", "rawValue": 102, "value": 102, "enumStrings": strings, "enumValues": values, "enumIndex": 2, "valueString": "Motor 2" }),
+            &used,
+            &removed,
+        );
+        assert_eq!(
+            (read["enumIndex"].clone(), read["valueString"].clone()),
+            (json!(2), json!("Front Right Motor"))
+        );
     }
 
     #[test]
@@ -1343,19 +2376,69 @@ mod tests {
             _ => None,
         };
         let state = mixer_state(&parsed, &quad);
-        assert_eq!(state.option.as_ref().map(|o| o.kind.as_str()), Some("multirotor"));
+        assert_eq!(
+            state.option.as_ref().map(|o| o.kind.as_str()),
+            Some("multirotor")
+        );
         let motors = &state.groups[0];
-        assert_eq!(motors.channels.iter().map(|c| (c.function, c.label.as_str())).collect::<Vec<_>>(), [(101, "Motor 1"), (102, "Motor 2"), (103, "Motor 3"), (104, "Motor 4")]);
-        assert_eq!(motors.channels[1].cells.iter().map(|c| c.config.label.as_str()).collect::<Vec<_>>(), ["Reversible", "Position X", "Position Y", "Position Z", "Direction CCW", "Axis X"], "the actuator type's per-item parameters come first");
-        assert_eq!(motors.channels[1].cells[0].source, CellSource::Parameter("CA_MOT_REV".into(), 0), "a type parameter counts by type index plus its offset");
-        assert_eq!(motors.channels[1].cells[1].source, CellSource::Parameter("CA_MC_R1_PX".into(), 1));
-        assert_eq!(mixer_functions(&state, true), [101, 102, 103, 104].into_iter().collect());
+        assert_eq!(
+            motors
+                .channels
+                .iter()
+                .map(|c| (c.function, c.label.as_str()))
+                .collect::<Vec<_>>(),
+            [
+                (101, "Motor 1"),
+                (102, "Motor 2"),
+                (103, "Motor 3"),
+                (104, "Motor 4")
+            ]
+        );
+        assert_eq!(
+            motors.channels[1]
+                .cells
+                .iter()
+                .map(|c| c.config.label.as_str())
+                .collect::<Vec<_>>(),
+            [
+                "Reversible",
+                "Position X",
+                "Position Y",
+                "Position Z",
+                "Direction CCW",
+                "Axis X"
+            ],
+            "the actuator type's per-item parameters come first"
+        );
+        assert_eq!(
+            motors.channels[1].cells[0].source,
+            CellSource::Parameter("CA_MOT_REV".into(), 0),
+            "a type parameter counts by type index plus its offset"
+        );
+        assert_eq!(
+            motors.channels[1].cells[1].source,
+            CellSource::Parameter("CA_MC_R1_PX".into(), 1)
+        );
+        assert_eq!(
+            mixer_functions(&state, true),
+            [101, 102, 103, 104].into_iter().collect()
+        );
 
         let tilt = |name: &str| (name == "CA_AIRFRAME").then_some(5);
         let vtol = mixer_state(&parsed, &tilt);
         assert_eq!(vtol.groups[0].channels[2].label, "Rear Motor (Motor 3)");
-        assert_eq!(vtol.groups[1].channels[0].function, 201, "servos number from their own type");
-        assert_eq!(vtol.groups[0].channels[2].cells.iter().find(|c| c.config.label == "Position X").map(|c| c.source.clone()), Some(CellSource::Fixed(-0.75)));
+        assert_eq!(
+            vtol.groups[1].channels[0].function, 201,
+            "servos number from their own type"
+        );
+        assert_eq!(
+            vtol.groups[0].channels[2]
+                .cells
+                .iter()
+                .find(|c| c.config.label == "Position X")
+                .map(|c| c.source.clone()),
+            Some(CellSource::Fixed(-0.75))
+        );
         let none = |_: &str| None;
         assert_eq!(specific_label(&parsed, &vtol, 103, &none), "Rear Motor");
         assert_eq!(specific_label(&parsed, &vtol, 407, &none), "RC AUX 1");
@@ -1363,7 +2446,10 @@ mod tests {
     }
 
     fn example() -> Value {
-        serde_json::from_str(include_str!("../../test/Vehicle/ComponentInformation/actuators.example.json")).expect("the QGC example is JSON")
+        serde_json::from_str(include_str!(
+            "../../test/Vehicle/ComponentInformation/actuators.example.json"
+        ))
+        .expect("the QGC example is JSON")
     }
 
     #[test]
@@ -1372,12 +2458,20 @@ mod tests {
             "PWM_MAIN_TIM0" => Some(-1),
             _ => None,
         };
-        assert!(Condition::parse("").evaluate(&values) && Condition::parse("true").evaluate(&values));
+        assert!(
+            Condition::parse("").evaluate(&values) && Condition::parse("true").evaluate(&values)
+        );
         assert!(!Condition::parse("false").evaluate(&values));
         assert!(Condition::parse("PWM_MAIN_TIM0>=-1").evaluate(&values));
         assert!(!Condition::parse("PWM_MAIN_TIM0<-1").evaluate(&values));
-        assert!(!Condition::parse("MISSING==1").evaluate(&values), "a parameter the vehicle lacks makes a comparison false");
-        assert!(Condition::parse("what is this").evaluate(&values), "an unrecognised condition defaults to true");
+        assert!(
+            !Condition::parse("MISSING==1").evaluate(&values),
+            "a parameter the vehicle lacks makes a comparison false"
+        );
+        assert!(
+            Condition::parse("what is this").evaluate(&values),
+            "an unrecognised condition defaults to true"
+        );
     }
 
     #[test]
@@ -1387,15 +2481,47 @@ mod tests {
         assert_eq!(main.label, "MAIN");
         let first = &main.subgroups[0];
         assert_eq!(first.label, "MAIN 1-4");
-        assert_eq!(first.primary.as_ref().map(|p| p.name.as_str()), Some("PWM_MAIN_TIM0"));
-        assert_eq!(first.params.iter().map(|p| p.name.as_str()).collect::<Vec<_>>(), ["FMU_TIM0_EXTRA"]);
-        assert_eq!(first.channel_configs.iter().map(|c| c.label.as_str()).collect::<Vec<_>>(), ["Function", "Disarmed", "Min", "Max", "Failsafe"]);
-        assert_eq!(channel_param(&first.channel_configs[0], &first.channels[2]), "PWM_MAIN_FUNC3");
+        assert_eq!(
+            first.primary.as_ref().map(|p| p.name.as_str()),
+            Some("PWM_MAIN_TIM0")
+        );
+        assert_eq!(
+            first
+                .params
+                .iter()
+                .map(|p| p.name.as_str())
+                .collect::<Vec<_>>(),
+            ["FMU_TIM0_EXTRA"]
+        );
+        assert_eq!(
+            first
+                .channel_configs
+                .iter()
+                .map(|c| c.label.as_str())
+                .collect::<Vec<_>>(),
+            ["Function", "Disarmed", "Min", "Max", "Failsafe"]
+        );
+        assert_eq!(
+            channel_param(&first.channel_configs[0], &first.channels[2]),
+            "PWM_MAIN_FUNC3"
+        );
         assert!(first.channel_configs[1].advanced);
-        assert!(parse(&json!({ "outputs_v1": [] })).unwrap_err().contains("functions_v1, mixer_v1"));
+        assert!(
+            parse(&json!({ "outputs_v1": [] }))
+                .unwrap_err()
+                .contains("functions_v1, mixer_v1")
+        );
         assert_eq!(parsed.functions[&101].label, "Motor 1");
         assert!(parsed.functions[&2032].exclude_from_testing);
-        assert_eq!(parsed.actuator_types.iter().map(|t| t.name.as_str()).collect::<Vec<_>>(), ["DEFAULT", "motor", "servo"], "QMap order puts DEFAULT first");
+        assert_eq!(
+            parsed
+                .actuator_types
+                .iter()
+                .map(|t| t.name.as_str())
+                .collect::<Vec<_>>(),
+            ["DEFAULT", "motor", "servo"],
+            "QMap order puts DEFAULT first"
+        );
     }
 
     #[test]
@@ -1410,11 +2536,38 @@ mod tests {
             "PWM_AUX_FUNC2" => Some(407),
             _ => Some(0),
         };
-        let generic = |f: i64| parsed.functions.get(&f).map(|x| x.label.clone()).unwrap_or_default();
+        let generic = |f: i64| {
+            parsed
+                .functions
+                .get(&f)
+                .map(|x| x.label.clone())
+                .unwrap_or_default()
+        };
         let listed = test_actuators(&parsed, &functions, &generic);
-        assert_eq!(listed.iter().map(|a| (a.function, a.label.as_str(), a.is_motor)).collect::<Vec<_>>(), [(101, "Motor 1", true), (102, "Motor 2", true), (201, "Servo 1", false), (407, "RC AUX 1", false)], "sorted, unique, camera capture excluded, RC AUX falls to DEFAULT");
-        assert_eq!((listed[0].min, listed[0].max, listed[0].default), (0.0, 1.0, None), "a motor's default is NaN");
+        assert_eq!(
+            listed
+                .iter()
+                .map(|a| (a.function, a.label.as_str(), a.is_motor))
+                .collect::<Vec<_>>(),
+            [
+                (101, "Motor 1", true),
+                (102, "Motor 2", true),
+                (201, "Servo 1", false),
+                (407, "RC AUX 1", false)
+            ],
+            "sorted, unique, camera capture excluded, RC AUX falls to DEFAULT"
+        );
+        assert_eq!(
+            (listed[0].min, listed[0].max, listed[0].default),
+            (0.0, 1.0, None),
+            "a motor's default is NaN"
+        );
         assert_eq!((listed[3].min, listed[3].default), (-1.0, Some(-1.0)));
-        assert!(kept_outputs(&parsed, &|_| false).iter().all(|o| o.enable.is_some()), "a group with no enable and no function parameter the vehicle has is dropped");
+        assert!(
+            kept_outputs(&parsed, &|_| false)
+                .iter()
+                .all(|o| o.enable.is_some()),
+            "a group with no enable and no function parameter the vehicle has is dropped"
+        );
     }
 }

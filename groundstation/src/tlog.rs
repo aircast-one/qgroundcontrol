@@ -24,20 +24,32 @@ pub struct Summary {
 
 pub fn frame_length(bytes: &[u8]) -> Option<(MavlinkVersion, usize)> {
     match (bytes.first()?, bytes.get(1)?, bytes.get(2)) {
-        (0xFD, len, Some(flags)) => Some((MavlinkVersion::V2, 12 + *len as usize + if flags & 1 != 0 { 13 } else { 0 })),
+        (0xFD, len, Some(flags)) => Some((
+            MavlinkVersion::V2,
+            12 + *len as usize + if flags & 1 != 0 { 13 } else { 0 },
+        )),
         (0xFE, len, _) => Some((MavlinkVersion::V1, 8 + *len as usize)),
         _ => None,
     }
 }
 
-pub fn decode_frame(frame: &[u8], version: MavlinkVersion) -> Option<(mavlink::MavHeader, MavMessage)> {
+pub fn decode_frame(
+    frame: &[u8],
+    version: MavlinkVersion,
+) -> Option<(mavlink::MavHeader, MavMessage)> {
     let mut reader = PeekReader::new(frame);
-    let decoded = read_versioned_msg::<MavMessage, _>(&mut reader, ReadVersion::Single(version)).ok()?;
+    let decoded =
+        read_versioned_msg::<MavMessage, _>(&mut reader, ReadVersion::Single(version)).ok()?;
     reader.peek_exact(1).is_err().then_some(decoded)
 }
 
 pub fn record(timestamp_us: u64, frame: &[u8]) -> Vec<u8> {
-    timestamp_us.to_be_bytes().iter().copied().chain(frame.iter().copied()).collect()
+    timestamp_us
+        .to_be_bytes()
+        .iter()
+        .copied()
+        .chain(frame.iter().copied())
+        .collect()
 }
 
 pub fn parse_timestamp(raw: [u8; 8], now_us: u64) -> u64 {
@@ -54,19 +66,27 @@ pub fn entries(bytes: &[u8], now_us: u64) -> Vec<(u64, Vec<u8>)> {
             at += 1;
             continue;
         };
-        let Some(frame) = bytes.get(frame_start..frame_start + length) else { break };
+        let Some(frame) = bytes.get(frame_start..frame_start + length) else {
+            break;
+        };
         let (version, _) = frame_length(frame).unwrap();
         if decode_frame(frame, version).is_none() {
             at += 1;
             continue;
         }
-        out.push((parse_timestamp(bytes[at..frame_start].try_into().unwrap(), now_us), frame.to_vec()));
+        out.push((
+            parse_timestamp(bytes[at..frame_start].try_into().unwrap(), now_us),
+            frame.to_vec(),
+        ));
         at = frame_start + length;
     }
     out
 }
 
-pub fn for_each(bytes: &[u8], mut visit: impl FnMut(u64, &mavlink::MavHeader, &MavMessage)) -> usize {
+pub fn for_each(
+    bytes: &[u8],
+    mut visit: impl FnMut(u64, &mavlink::MavHeader, &MavMessage),
+) -> usize {
     let mut undecodable = 0usize;
     let mut at = 0usize;
     while at + TIMESTAMP_BYTES < bytes.len() {
@@ -75,7 +95,9 @@ pub fn for_each(bytes: &[u8], mut visit: impl FnMut(u64, &mavlink::MavHeader, &M
             at += 1;
             continue;
         };
-        let Some(frame) = bytes.get(frame_start..frame_start + length) else { break };
+        let Some(frame) = bytes.get(frame_start..frame_start + length) else {
+            break;
+        };
         let timestamp = u64::from_be_bytes(bytes[at..frame_start].try_into().unwrap());
         match decode_frame(frame, version) {
             Some((header, message)) => {
@@ -98,9 +120,17 @@ pub fn for_each(bytes: &[u8], mut visit: impl FnMut(u64, &mavlink::MavHeader, &M
 // to nothing still carries a system id, and a head listing those raw names a vehicle that was
 // never there.
 fn is_vehicle(header: &mavlink::MavHeader, message: &MavMessage) -> bool {
-    let MavMessage::HEARTBEAT(beat) = message else { return false };
+    let MavMessage::HEARTBEAT(beat) = message else {
+        return false;
+    };
     let kind = beat.mavtype as u8;
-    let excluded = matches!(kind, crate::hub::TYPE_GCS | crate::hub::TYPE_ONBOARD_CONTROLLER | crate::hub::TYPE_GIMBAL | crate::hub::TYPE_ADSB);
+    let excluded = matches!(
+        kind,
+        crate::hub::TYPE_GCS
+            | crate::hub::TYPE_ONBOARD_CONTROLLER
+            | crate::hub::TYPE_GIMBAL
+            | crate::hub::TYPE_ADSB
+    );
     header.component_id == crate::hub::COMP_AUTOPILOT1
         && !excluded
         && beat.autopilot as u8 != crate::hub::AUTOPILOT_INVALID
@@ -111,13 +141,21 @@ pub fn parse(bytes: &[u8]) -> Summary {
     let mut summary = Summary::default();
     summary.undecodable = for_each(bytes, |timestamp, header, message| {
         summary.frames += 1;
-        *summary.by_name.entry(message.message_name().to_string()).or_insert(0) += 1;
+        *summary
+            .by_name
+            .entry(message.message_name().to_string())
+            .or_insert(0) += 1;
         summary.first_timestamp_us.get_or_insert(timestamp);
         summary.last_timestamp_us = Some(timestamp);
         if !summary.system_ids.contains(&header.system_id) {
             summary.system_ids.push(header.system_id);
         }
-        *summary.by_system.entry(header.system_id).or_default().entry(message.message_name().to_string()).or_insert(0) += 1;
+        *summary
+            .by_system
+            .entry(header.system_id)
+            .or_default()
+            .entry(message.message_name().to_string())
+            .or_insert(0) += 1;
         if is_vehicle(header, message) && !summary.vehicle_system_ids.contains(&header.system_id) {
             summary.vehicle_system_ids.push(header.system_id);
         }
@@ -126,8 +164,14 @@ pub fn parse(bytes: &[u8]) -> Summary {
 }
 
 pub fn tlog_view(_backend: &dyn Backend, args: &[String]) -> Value {
-    let Some(path) = args.first().filter(|p| !p.is_empty()) else { return crate::read::refused("this needs the path of a telemetry log to read, and none was given") };
-    let Ok(bytes) = std::fs::read(path) else { return json!({ "kind": "object", "class": "Tlog", "path": path, "readable": false }) };
+    let Some(path) = args.first().filter(|p| !p.is_empty()) else {
+        return crate::read::refused(
+            "this needs the path of a telemetry log to read, and none was given",
+        );
+    };
+    let Ok(bytes) = std::fs::read(path) else {
+        return json!({ "kind": "object", "class": "Tlog", "path": path, "readable": false });
+    };
     let summary = parse(&bytes);
     let span = match (summary.first_timestamp_us, summary.last_timestamp_us) {
         (Some(a), Some(b)) if b >= a => (b - a) as f64 / 1_000_000.0,
@@ -162,7 +206,14 @@ mod tests {
         while i + TIMESTAMP_BYTES < bytes.len() {
             let magic = bytes[i + TIMESTAMP_BYTES];
             let total = match magic {
-                0xFD => 12 + bytes[i + TIMESTAMP_BYTES + 1] as usize + if bytes[i + TIMESTAMP_BYTES + 2] & 1 != 0 { 13 } else { 0 },
+                0xFD => {
+                    12 + bytes[i + TIMESTAMP_BYTES + 1] as usize
+                        + if bytes[i + TIMESTAMP_BYTES + 2] & 1 != 0 {
+                            13
+                        } else {
+                            0
+                        }
+                }
                 0xFE => 8 + bytes[i + TIMESTAMP_BYTES + 1] as usize,
                 _ => {
                     i += 1;
@@ -178,36 +229,106 @@ mod tests {
     #[test]
     fn the_ground_station_in_every_recording_is_not_one_of_its_vehicles() {
         use mavlink::dialects::ardupilotmega::{HEARTBEAT_DATA, MavAutopilot, MavType};
-        let beat = |kind: MavType, autopilot: MavAutopilot| MavMessage::HEARTBEAT(HEARTBEAT_DATA { mavtype: kind, autopilot, ..Default::default() });
-        let from = |system: u8, component: u8| mavlink::MavHeader { system_id: system, component_id: component, sequence: 0 };
-        let copter = beat(MavType::MAV_TYPE_QUADROTOR, MavAutopilot::MAV_AUTOPILOT_ARDUPILOTMEGA);
+        let beat = |kind: MavType, autopilot: MavAutopilot| {
+            MavMessage::HEARTBEAT(HEARTBEAT_DATA {
+                mavtype: kind,
+                autopilot,
+                ..Default::default()
+            })
+        };
+        let from = |system: u8, component: u8| mavlink::MavHeader {
+            system_id: system,
+            component_id: component,
+            sequence: 0,
+        };
+        let copter = beat(
+            MavType::MAV_TYPE_QUADROTOR,
+            MavAutopilot::MAV_AUTOPILOT_ARDUPILOTMEGA,
+        );
 
         assert!(is_vehicle(&from(1, 1), &copter));
         assert!(
-            !is_vehicle(&from(255, 190), &beat(MavType::MAV_TYPE_GCS, MavAutopilot::MAV_AUTOPILOT_INVALID)),
+            !is_vehicle(
+                &from(255, 190),
+                &beat(MavType::MAV_TYPE_GCS, MavAutopilot::MAV_AUTOPILOT_INVALID)
+            ),
             "gcsMavlinkSystemID defaults to 255 and sendGCSHeartbeat defaults true, so QGC's own heartbeat is in every log it records - a head listing system ids raw names a vehicle for a recording of the station talking to nothing"
         );
-        assert!(!is_vehicle(&from(2, 1), &beat(MavType::MAV_TYPE_GIMBAL, MavAutopilot::MAV_AUTOPILOT_INVALID)), "a gimbal heartbeats with its own system id and is not an aircraft, which a GCS-only filter would have missed");
-        assert!(!is_vehicle(&from(3, 1), &beat(MavType::MAV_TYPE_ADSB, MavAutopilot::MAV_AUTOPILOT_INVALID)));
-        assert!(!is_vehicle(&from(4, 1), &beat(MavType::MAV_TYPE_ONBOARD_CONTROLLER, MavAutopilot::MAV_AUTOPILOT_INVALID)));
-        assert!(!is_vehicle(&from(1, 2), &copter), "hub only accepts a heartbeat from the autopilot component, so a camera on the vehicle's own system id does not make a second aircraft");
-        assert!(!is_vehicle(&from(1, 1), &beat(MavType::MAV_TYPE_QUADROTOR, MavAutopilot::MAV_AUTOPILOT_INVALID)));
-        assert!(!is_vehicle(&from(0, 1), &copter), "system 0 is the broadcast address rather than an aircraft");
-        assert!(!is_vehicle(&from(1, 1), &MavMessage::ATTITUDE(Default::default())), "only a heartbeat identifies what a system IS - telemetry alone never promotes an id to an aircraft, which is the case the inclusion rule decides");
+        assert!(
+            !is_vehicle(
+                &from(2, 1),
+                &beat(
+                    MavType::MAV_TYPE_GIMBAL,
+                    MavAutopilot::MAV_AUTOPILOT_INVALID
+                )
+            ),
+            "a gimbal heartbeats with its own system id and is not an aircraft, which a GCS-only filter would have missed"
+        );
+        assert!(!is_vehicle(
+            &from(3, 1),
+            &beat(MavType::MAV_TYPE_ADSB, MavAutopilot::MAV_AUTOPILOT_INVALID)
+        ));
+        assert!(!is_vehicle(
+            &from(4, 1),
+            &beat(
+                MavType::MAV_TYPE_ONBOARD_CONTROLLER,
+                MavAutopilot::MAV_AUTOPILOT_INVALID
+            )
+        ));
+        assert!(
+            !is_vehicle(&from(1, 2), &copter),
+            "hub only accepts a heartbeat from the autopilot component, so a camera on the vehicle's own system id does not make a second aircraft"
+        );
+        assert!(!is_vehicle(
+            &from(1, 1),
+            &beat(
+                MavType::MAV_TYPE_QUADROTOR,
+                MavAutopilot::MAV_AUTOPILOT_INVALID
+            )
+        ));
+        assert!(
+            !is_vehicle(&from(0, 1), &copter),
+            "system 0 is the broadcast address rather than an aircraft"
+        );
+        assert!(
+            !is_vehicle(&from(1, 1), &MavMessage::ATTITUDE(Default::default())),
+            "only a heartbeat identifies what a system IS - telemetry alone never promotes an id to an aircraft, which is the case the inclusion rule decides"
+        );
     }
 
     #[test]
     fn the_per_system_census_accounts_for_every_frame_that_decoded() {
         let summary = parse(&sample());
-        let counted: usize = summary.by_system.values().flat_map(|names| names.values()).sum();
-        assert_eq!(counted, summary.frames, "every decoded frame belongs to exactly one system, so the census has to add up to the total or it is answering about a subset");
-        assert_eq!(summary.by_system.keys().copied().collect::<Vec<u8>>(), { let mut ids = summary.system_ids.clone(); ids.sort(); ids }, "the census covers the same systems the id list names and no others");
+        let counted: usize = summary
+            .by_system
+            .values()
+            .flat_map(|names| names.values())
+            .sum();
+        assert_eq!(
+            counted, summary.frames,
+            "every decoded frame belongs to exactly one system, so the census has to add up to the total or it is answering about a subset"
+        );
+        assert_eq!(
+            summary.by_system.keys().copied().collect::<Vec<u8>>(),
+            {
+                let mut ids = summary.system_ids.clone();
+                ids.sort();
+                ids
+            },
+            "the census covers the same systems the id list names and no others"
+        );
         assert!(
-            summary.vehicle_system_ids.iter().all(|id| summary.system_ids.contains(id)),
+            summary
+                .vehicle_system_ids
+                .iter()
+                .all(|id| summary.system_ids.contains(id)),
             "a vehicle id the system list does not carry would mean the two were counted from different frames"
         );
         assert!(
-            summary.by_system.values().all(|names| names.contains_key("HEARTBEAT")),
+            summary
+                .by_system
+                .values()
+                .all(|names| names.contains_key("HEARTBEAT")),
             "this is the case the inclusion rule turns on - a system with frames and no heartbeat would read as no aircraft. It does not occur in this log, and bySystem is what lets a head check that against its own corpus rather than take it as reasoned"
         );
     }
@@ -217,9 +338,17 @@ mod tests {
         let bytes = sample();
         let summary = parse(&bytes);
         let expected = independent_frame_count(&bytes);
-        assert!(summary.frames > 1000, "parsed only {} frames", summary.frames);
+        assert!(
+            summary.frames > 1000,
+            "parsed only {} frames",
+            summary.frames
+        );
         assert_eq!(summary.frames + summary.undecodable, expected);
-        assert!(summary.undecodable * 100 < expected, "{} of {expected} frames did not decode", summary.undecodable);
+        assert!(
+            summary.undecodable * 100 < expected,
+            "{} of {expected} frames did not decode",
+            summary.undecodable
+        );
         assert!(summary.by_name.contains_key("HEARTBEAT"));
         assert!(summary.first_timestamp_us.unwrap() <= summary.last_timestamp_us.unwrap());
         assert!(!summary.system_ids.is_empty());
@@ -232,7 +361,10 @@ mod tests {
         damaged.splice(4000..4000, [0xFEu8, 0xFF, 0, 1, 2, 3, 4, 5, 6, 7]);
         let clean = parse(&bytes).frames;
         let after = parse(&damaged).frames;
-        assert!(after + 3 >= clean && after <= clean + 1, "clean {clean}, damaged {after}");
+        assert!(
+            after + 3 >= clean && after <= clean + 1,
+            "clean {clean}, damaged {after}"
+        );
         assert_eq!(parse(&[]).frames, 0);
     }
 }

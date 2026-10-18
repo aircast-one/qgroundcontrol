@@ -29,7 +29,10 @@ pub struct Waypoints {
 pub const CORRUPTED: &str = "The mission file is corrupted.";
 
 pub fn not_compatible() -> String {
-    format!("The mission file is not compatible with this version of {}.", crate::noticeboard::application_name())
+    format!(
+        "The mission file is not compatible with this version of {}.",
+        crate::noticeboard::application_name()
+    )
 }
 
 fn qt_int(field: &str) -> i64 {
@@ -47,7 +50,12 @@ fn row(line: &str) -> Option<Row> {
         current: qt_int(fields[1]) == 1,
         frame: qt_int(fields[2]),
         command: qt_int(fields[3]),
-        params: [qt_double(fields[4]), qt_double(fields[5]), qt_double(fields[6]), qt_double(fields[7])],
+        params: [
+            qt_double(fields[4]),
+            qt_double(fields[5]),
+            qt_double(fields[6]),
+            qt_double(fields[7]),
+        ],
         latitude: qt_double(fields[8]),
         longitude: qt_double(fields[9]),
         altitude: qt_double(fields[10]),
@@ -57,15 +65,30 @@ fn row(line: &str) -> Option<Row> {
 
 pub fn parse(text: &str) -> Result<Waypoints, String> {
     let lines: Vec<&str> = text.lines().collect();
-    let (header, body) = lines.split_first().map_or(("", &[][..]), |(header, body)| (*header, body));
+    let (header, body) = lines
+        .split_first()
+        .map_or(("", &[][..]), |(header, body)| (*header, body));
     let version = match header.split(' ').collect::<Vec<&str>>().as_slice() {
         ["QGC", "WPL", "110"] => 110,
         ["QGC", "WPL", "120"] => 120,
         _ => return Err(not_compatible()),
     };
-    let rows: Vec<Row> = body.iter().copied().map(row).collect::<Option<_>>().ok_or(CORRUPTED)?;
+    let rows: Vec<Row> = body
+        .iter()
+        .copied()
+        .map(row)
+        .collect::<Option<_>>()
+        .ok_or(CORRUPTED)?;
     let home_in_file = version == 110;
-    Ok(Waypoints { version, home: rows.first().filter(|_| home_in_file).cloned(), items: rows.iter().skip(usize::from(home_in_file)).cloned().collect() })
+    Ok(Waypoints {
+        version,
+        home: rows.first().filter(|_| home_in_file).cloned(),
+        items: rows
+            .iter()
+            .skip(usize::from(home_in_file))
+            .cloned()
+            .collect(),
+    })
 }
 
 fn line(r: &Row) -> String {
@@ -88,7 +111,10 @@ fn line(r: &Row) -> String {
 
 pub fn write(file: &Waypoints) -> String {
     let rows = file.home.iter().chain(&file.items).map(line);
-    std::iter::once(format!("QGC WPL {}", file.version)).chain(rows).map(|l| l + "\n").collect()
+    std::iter::once(format!("QGC WPL {}", file.version))
+        .chain(rows)
+        .map(|l| l + "\n")
+        .collect()
 }
 
 fn row_json(r: &Row) -> Value {
@@ -105,13 +131,21 @@ fn row_json(r: &Row) -> Value {
 }
 
 pub fn waypoints_view(_backend: &dyn Backend, args: &[String]) -> Value {
-    let Some(path) = args.first().filter(|p| !p.is_empty()) else { return crate::read::refused("this needs the path of a waypoints file to read, and none was given") };
+    let Some(path) = args.first().filter(|p| !p.is_empty()) else {
+        return crate::read::refused(
+            "this needs the path of a waypoints file to read, and none was given",
+        );
+    };
     let text = match std::fs::read_to_string(path) {
         Ok(t) => t,
-        Err(e) => return json!({ "kind": "object", "class": "WaypointsFile", "path": path, "readable": false, "error": e.to_string() }),
+        Err(e) => {
+            return json!({ "kind": "object", "class": "WaypointsFile", "path": path, "readable": false, "error": e.to_string() });
+        }
     };
     match parse(&text) {
-        Err(error) => json!({ "kind": "object", "class": "WaypointsFile", "path": path, "readable": true, "valid": false, "error": error }),
+        Err(error) => {
+            json!({ "kind": "object", "class": "WaypointsFile", "path": path, "readable": true, "valid": false, "error": error })
+        }
         Ok(file) => json!({
             "kind": "object",
             "class": "WaypointsFile",
@@ -150,22 +184,38 @@ mod tests {
         assert!(file.home.is_none());
         assert_eq!(file.items.len(), 1);
         assert_eq!(parse("QGC WPL 130\n").unwrap_err(), not_compatible());
-        assert_eq!(parse("\nQGC WPL 110\n").unwrap_err(), not_compatible(), "the first line is the header, blank or not");
+        assert_eq!(
+            parse("\nQGC WPL 110\n").unwrap_err(),
+            not_compatible(),
+            "the first line is the header, blank or not"
+        );
         assert_eq!(parse("QGC WPL 110\n0\t1\t0\n").unwrap_err(), CORRUPTED);
-        assert_eq!(parse("QGC WPL 120\n0\t0\t3\t16\t0\t0\t0\t0\t1\t2\t3\t1\n\n").unwrap_err(), CORRUPTED, "a blank line is a row with one field, like readLine sees it");
+        assert_eq!(
+            parse("QGC WPL 120\n0\t0\t3\t16\t0\t0\t0\t0\t1\t2\t3\t1\n\n").unwrap_err(),
+            CORRUPTED,
+            "a blank line is a row with one field, like readLine sees it"
+        );
     }
 
     #[test]
     fn unreadable_numbers_read_as_zero_like_qstring_to_int_and_to_double() {
-        let file = parse("QGC WPL 120\n0\t2\t3\t16.0\t0\t0\t0\t0\tx\t-122.10\t 5.5 \tyes\n").unwrap();
+        let file =
+            parse("QGC WPL 120\n0\t2\t3\t16.0\t0\t0\t0\t0\tx\t-122.10\t 5.5 \tyes\n").unwrap();
         let item = &file.items[0];
-        assert_eq!((item.command, item.latitude, item.longitude, item.altitude), (0, 0.0, -122.10, 5.5));
+        assert_eq!(
+            (item.command, item.latitude, item.longitude, item.altitude),
+            (0, 0.0, -122.10, 5.5)
+        );
         assert!(!item.current && !item.auto_continue, "only 1 means true");
     }
 
     #[test]
     fn the_repository_fixture_parses() {
-        let text = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../test/MissionManager/MissionPlanner.waypoints")).unwrap();
+        let text = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../test/MissionManager/MissionPlanner.waypoints"
+        ))
+        .unwrap();
         let file = parse(&text).unwrap();
         assert_eq!(file.version, 110);
         assert!(file.home.is_some());
@@ -174,14 +224,42 @@ mod tests {
 
     #[test]
     fn a_written_file_reads_back_equal() {
-        let text = std::fs::read_to_string(concat!(env!("CARGO_MANIFEST_DIR"), "/../test/MissionManager/MissionPlanner.waypoints")).unwrap();
+        let text = std::fs::read_to_string(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../test/MissionManager/MissionPlanner.waypoints"
+        ))
+        .unwrap();
         let file = parse(&text).unwrap();
         let written = write(&file);
         assert!(written.starts_with("QGC WPL 110\n"));
-        assert_eq!(written.lines().count(), 1 + file.home.iter().count() + file.items.len());
+        assert_eq!(
+            written.lines().count(),
+            1 + file.home.iter().count() + file.items.len()
+        );
         assert_eq!(parse(&written).unwrap(), file);
-        let nan_row = Row { sequence: 1, current: false, frame: 3, command: 16, params: [0.0, 0.0, 0.0, f64::NAN, 0.0, 0.0, 0.0][..4].try_into().unwrap(), latitude: 1.5, longitude: -2.25, altitude: 30.0, auto_continue: true };
-        let round = parse(&write(&Waypoints { version: 120, home: None, items: vec![nan_row] })).unwrap();
-        assert!(round.items[0].params[3].is_nan() && round.items[0].latitude == 1.5 && round.version == 120);
+        let nan_row = Row {
+            sequence: 1,
+            current: false,
+            frame: 3,
+            command: 16,
+            params: [0.0, 0.0, 0.0, f64::NAN, 0.0, 0.0, 0.0][..4]
+                .try_into()
+                .unwrap(),
+            latitude: 1.5,
+            longitude: -2.25,
+            altitude: 30.0,
+            auto_continue: true,
+        };
+        let round = parse(&write(&Waypoints {
+            version: 120,
+            home: None,
+            items: vec![nan_row],
+        }))
+        .unwrap();
+        assert!(
+            round.items[0].params[3].is_nan()
+                && round.items[0].latitude == 1.5
+                && round.version == 120
+        );
     }
 }

@@ -6,11 +6,18 @@ use crate::view::VIEWS;
 pub const DEPS: &[&str] = &[];
 
 fn routine_ids() -> Vec<&'static str> {
-    crate::sensorcal::KINDS.iter().map(|(_, id, _)| *id).collect()
+    crate::sensorcal::KINDS
+        .iter()
+        .map(|(_, id, _)| *id)
+        .collect()
 }
 
 fn routine_ids_or_null() -> Vec<Value> {
-    routine_ids().iter().map(|id| json!(id)).chain(std::iter::once(Value::Null)).collect()
+    routine_ids()
+        .iter()
+        .map(|id| json!(id))
+        .chain(std::iter::once(Value::Null))
+        .collect()
 }
 
 pub const ORDERS: [&str; 1] = ["oldestFirst"];
@@ -93,19 +100,35 @@ mod tests {
 
     #[test]
     fn a_field_the_rig_can_never_leave_unknown_is_still_declared_nullable() {
-        let shapes: Value = serde_json::from_str(include_str!("../../test/Bridge/fixtures/view-shapes.json")).unwrap();
+        let shapes: Value =
+            serde_json::from_str(include_str!("../../test/Bridge/fixtures/view-shapes.json"))
+                .unwrap();
         let declared = |path: &str| -> String {
-            let top = shapes.as_object().into_iter().flatten().map(|(key, _)| key.as_str()).filter(|key| path == *key || path.starts_with(&format!("{key}."))).max_by_key(|key| key.len());
-            let Some(view) = top else { return format!("no view shape for {path}") };
+            let top = shapes
+                .as_object()
+                .into_iter()
+                .flatten()
+                .map(|(key, _)| key.as_str())
+                .filter(|key| path == *key || path.starts_with(&format!("{key}.")))
+                .max_by_key(|key| key.len());
+            let Some(view) = top else {
+                return format!("no view shape for {path}");
+            };
             path[view.len()..]
                 .trim_start_matches('.')
                 .split('.')
-                .fold(Some(&shapes[view]), |node, step| match step.strip_suffix("[0]") {
-                    Some(name) => node?.get(name)?.get(0),
-                    None => node?.get(step),
+                .fold(Some(&shapes[view]), |node, step| {
+                    match step.strip_suffix("[0]") {
+                        Some(name) => node?.get(name)?.get(0),
+                        None => node?.get(step),
+                    }
                 })
                 .map(|node| match node {
-                    Value::Array(of) => of.first().and_then(Value::as_str).unwrap_or("empty").to_string(),
+                    Value::Array(of) => of
+                        .first()
+                        .and_then(Value::as_str)
+                        .unwrap_or("empty")
+                        .to_string(),
                     other => other.as_str().unwrap_or("missing").to_string(),
                 })
                 .unwrap_or_else(|| "missing".to_string())
@@ -120,24 +143,39 @@ mod tests {
         });
 
         assert!(
-            contract_view(&Silent, &[])["nullableUnwitnessed"].as_array().unwrap().iter().any(|p| p == "view.plan.defaults.altitude.changedFromDefault"),
+            contract_view(&Silent, &[])["nullableUnwitnessed"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .any(|p| p == "view.plan.defaults.altitude.changedFromDefault"),
             "the list has to ride on the view a head actually reads, or it is a comment"
         );
     }
 
     struct Silent;
     impl Backend for Silent {
-        fn get(&self, _p: &str) -> String { String::new() }
-        fn get_fields(&self, _p: &str, _f: &str) -> String { String::new() }
-        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn get(&self, _p: &str) -> String {
+            String::new()
+        }
+        fn get_fields(&self, _p: &str, _f: &str) -> String {
+            String::new()
+        }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            String::new()
+        }
         fn watch(&self, _p: &[String]) {}
     }
 
     #[test]
     fn the_enumerations_agree_with_the_producers() {
         let listed = enumerations();
-        let ids: Vec<Value> = ACTIONS.iter().map(|a| serde_json::to_value(a).unwrap()).collect();
+        let ids: Vec<Value> = ACTIONS
+            .iter()
+            .map(|a| serde_json::to_value(a).unwrap())
+            .collect();
         assert_eq!(listed["view.guidedActions.actions[].id"], Value::Array(ids));
         let kinds: Vec<Value> = KINDS.iter().map(|k| json!(k.id)).collect();
         assert_eq!(listed["view.missionKinds.kinds[].id"], Value::Array(kinds));
@@ -148,18 +186,78 @@ mod tests {
             "both heads read the host root directly and each spells these three kinds itself - Android drops navigation from its banners and routes a tab, macOS keeps it and refuses any destination but setup. Neither policy belongs here, but the DOMAIN does: a fourth kind added to QGCHostNotices::token would otherwise be silently unhandled by whichever head nobody remembered to tell. QGCCoreCTest pins this list against the C++ enum, because nothing in Rust can see it"
         );
         assert!(VIEWS.iter().any(|v| v.path == "view.contract"));
-        let pages: Vec<Value> = crate::setup::PAGES.iter().flat_map(|(_, pages)| pages.iter().map(|p| json!(p))).collect();
-        assert_eq!(listed["view.setup.groups[].pages[].name"], Value::Array(pages), "the setup page names are the list the core ships, so a head can pin its glyph table against it");
-        let routines: Vec<Value> = crate::sensorcal::KINDS.iter().map(|(_, id, _)| json!(id)).collect();
-        assert_eq!(listed["view.coreCalibration.calibration.routines[].id"], Value::Array(routines), "every calibration the core accepts is listed, and nothing else is");
-        assert!(listed["view.coreCalibration.calibration.running"].as_array().unwrap().contains(&Value::Null), "a vehicle that has never calibrated answers null, so null is part of the contract");
+        let pages: Vec<Value> = crate::setup::PAGES
+            .iter()
+            .flat_map(|(_, pages)| pages.iter().map(|p| json!(p)))
+            .collect();
+        assert_eq!(
+            listed["view.setup.groups[].pages[].name"],
+            Value::Array(pages),
+            "the setup page names are the list the core ships, so a head can pin its glyph table against it"
+        );
+        let routines: Vec<Value> = crate::sensorcal::KINDS
+            .iter()
+            .map(|(_, id, _)| json!(id))
+            .collect();
+        assert_eq!(
+            listed["view.coreCalibration.calibration.routines[].id"],
+            Value::Array(routines),
+            "every calibration the core accepts is listed, and nothing else is"
+        );
+        assert!(
+            listed["view.coreCalibration.calibration.running"]
+                .as_array()
+                .unwrap()
+                .contains(&Value::Null),
+            "a vehicle that has never calibrated answers null, so null is part of the contract"
+        );
         let bit = |mask: u8, index: u8| mask & (1 << index) != 0;
-        let reachable: std::collections::BTreeSet<&str> = (0u8..32).map(|mask| crate::flystate::state_of(bit(mask, 0), bit(mask, 1), bit(mask, 2), bit(mask, 3), bit(mask, 4)).token()).collect();
-        let listed_raws: Vec<i64> = listed["view.altitudeModes.modes[].raw"].as_array().unwrap().iter().map(|v| v.as_i64().unwrap()).collect();
-        assert_eq!(listed_raws, vec![crate::altitudemodes::MIXED, crate::altitudemodes::RELATIVE, crate::altitudemodes::ABSOLUTE, crate::altitudemodes::CALC_ABOVE_TERRAIN, crate::altitudemodes::TERRAIN_FRAME], "the raw values are written back through plan.missionController, so a reordering upstream changes what every mode means");
-        let listed_states: std::collections::BTreeSet<&str> = listed["view.flyState.state"].as_array().unwrap().iter().map(|s| s.as_str().unwrap()).collect();
-        assert_eq!(listed_states, reachable, "the contract lists the states the view can answer, not a hand-kept parallel list");
-        assert!(listed["view.messages.items[].level"].as_array().unwrap().iter().all(|level| crate::messages::LEVELS.contains(&level.as_str().unwrap())));
+        let reachable: std::collections::BTreeSet<&str> = (0u8..32)
+            .map(|mask| {
+                crate::flystate::state_of(
+                    bit(mask, 0),
+                    bit(mask, 1),
+                    bit(mask, 2),
+                    bit(mask, 3),
+                    bit(mask, 4),
+                )
+                .token()
+            })
+            .collect();
+        let listed_raws: Vec<i64> = listed["view.altitudeModes.modes[].raw"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|v| v.as_i64().unwrap())
+            .collect();
+        assert_eq!(
+            listed_raws,
+            vec![
+                crate::altitudemodes::MIXED,
+                crate::altitudemodes::RELATIVE,
+                crate::altitudemodes::ABSOLUTE,
+                crate::altitudemodes::CALC_ABOVE_TERRAIN,
+                crate::altitudemodes::TERRAIN_FRAME
+            ],
+            "the raw values are written back through plan.missionController, so a reordering upstream changes what every mode means"
+        );
+        let listed_states: std::collections::BTreeSet<&str> = listed["view.flyState.state"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|s| s.as_str().unwrap())
+            .collect();
+        assert_eq!(
+            listed_states, reachable,
+            "the contract lists the states the view can answer, not a hand-kept parallel list"
+        );
+        assert!(
+            listed["view.messages.items[].level"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|level| crate::messages::LEVELS.contains(&level.as_str().unwrap()))
+        );
         ["view.messages.order", "view.track.order"].iter().for_each(|path| {
             assert_eq!(listed[path], json!([crate::view::ORDER]), "{path} is the field whose whole purpose is to stop a head guessing which end is newest, so it is the one that most needs pinning");
         });

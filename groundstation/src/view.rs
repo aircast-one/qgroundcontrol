@@ -2,126 +2,126 @@ use std::collections::BTreeSet;
 
 use serde_json::{Value, json};
 
+use crate::actuators;
+use crate::adsb;
 use crate::aircastlink;
 use crate::altitude;
 use crate::altitudemodes;
+use crate::apmairframe;
+use crate::apmfollow;
+use crate::apmservos;
+use crate::apmsubframe;
+use crate::apmsubmotors;
+use crate::applog;
+use crate::attitude;
+use crate::autotune;
 use crate::battery;
 use crate::calibration;
+use crate::cameradef;
+use crate::cameraproto;
+use crate::closechecks;
+use crate::console;
 use crate::contract;
 use crate::control;
-use crate::fences;
-use crate::flightmodes;
-use crate::missionitems;
-use crate::vehicles;
-use crate::missionsummary;
-use crate::modeslots;
-use crate::flystate;
-use crate::missionprogress;
-use crate::operatorcontrol;
-use crate::orbit;
-use crate::vehiclelinks;
-use crate::geo;
-use crate::adsb;
-use crate::cameradef;
 use crate::debugapi;
-use crate::packetradio;
-use crate::geotag;
-use crate::gpsrtk;
-use crate::gpsview;
-use crate::videostate;
-use crate::cameraproto;
-use crate::joystick;
-use crate::joystickhost;
 use crate::detections;
+use crate::escal;
+use crate::escview;
+use crate::espbridge;
+use crate::fences;
+use crate::firmwareinfo;
+use crate::firstrun;
+use crate::flightmodes;
+use crate::flowimage;
+use crate::flystate;
 use crate::followme;
 use crate::frame;
-use crate::firmwareinfo;
-use crate::console;
-use crate::itemcamera;
-use crate::itemfacts;
+use crate::gcsbattery;
 use crate::gcsposition;
+use crate::geo;
+use crate::geotag;
 use crate::gimbal;
+use crate::gimbalindicator;
+use crate::gpsresilience;
+use crate::gpsrtk;
+use crate::gpsview;
 use crate::guided;
+use crate::hostnoticeview;
+use crate::hub;
 use crate::inspector;
 use crate::instrumentgroups;
 use crate::instruments;
-use crate::landing;
-use crate::attitude;
-use crate::mapclick;
-use crate::missioncomplete;
-use crate::paramtools;
-use crate::gimbalindicator;
-use crate::escview;
-use crate::gcsbattery;
-use crate::gpsresilience;
-use crate::rtkbase;
-use crate::speech;
-use crate::proximity;
-use crate::powercalc;
-use crate::mavlinklog;
-use crate::escal;
-use crate::firstrun;
-use crate::applog;
-use crate::offlinemaps;
-use crate::virtualjoystick;
-use crate::plantransform;
-use crate::px4tuning;
-use crate::px4airframe;
-use crate::autotune;
-use crate::actuators;
-use crate::apmfollow;
-use crate::flowimage;
-use crate::maptypes;
-use crate::presets;
-use crate::apmairframe;
-use crate::closechecks;
-use crate::viewer3d;
-use crate::setupsummary;
-use crate::apmsubframe;
-use crate::apmsubmotors;
-use crate::apmservos;
-use crate::espbridge;
-use crate::syslink;
-use crate::logreplay;
-use crate::sensorsettings;
-use crate::mavlinkactions;
-use crate::ntrip;
-use crate::scripting;
-use crate::signingkeys;
-use crate::obstacle;
+use crate::itemcamera;
+use crate::itemfacts;
+use crate::joystick;
+use crate::joystickhost;
 use crate::kml;
 use crate::label;
-use crate::links;
-use crate::logs;
-use crate::mapscale;
-use crate::messages;
-use crate::missionkinds;
-use crate::plan;
-use crate::hub;
-use crate::hostnoticeview;
+use crate::landing;
 use crate::linkhost;
+use crate::links;
+use crate::logreplay;
+use crate::logs;
+use crate::mapclick;
+use crate::mapscale;
+use crate::maptypes;
+use crate::mavlinkactions;
+use crate::mavlinklog;
+use crate::messages;
 use crate::mission;
+use crate::missioncomplete;
+use crate::missionitems;
+use crate::missionkinds;
+use crate::missionprogress;
+use crate::missionsummary;
+use crate::modeslots;
+use crate::ntrip;
+use crate::obstacle;
+use crate::offlinemaps;
+use crate::operatorcontrol;
+use crate::orbit;
+use crate::packetradio;
+use crate::paramtools;
+use crate::plan;
 use crate::planfile;
+use crate::plantransform;
+use crate::powercalc;
 use crate::preflight;
+use crate::presets;
+use crate::proximity;
+use crate::px4airframe;
+use crate::px4tuning;
 use crate::radio;
 use crate::read::value_string;
+use crate::router::Backend;
+use crate::rtkbase;
+use crate::scripting;
 use crate::sensors;
+use crate::sensorsettings;
 use crate::settings;
-use crate::shp;
 use crate::setup;
+use crate::setupsummary;
+use crate::shp;
+use crate::signingkeys;
+use crate::speech;
 use crate::speed;
 use crate::survey;
+use crate::syslink;
 use crate::takeoff;
 use crate::terrain;
-use crate::terraintile;
 use crate::terraindownload;
-use crate::track;
+use crate::terraintile;
 use crate::tlog;
+use crate::track;
+use crate::vehiclelinks;
+use crate::vehicles;
 use crate::vibration;
 use crate::video;
+use crate::videostate;
+use crate::viewer3d;
+use crate::virtualjoystick;
 use crate::warnings;
 use crate::waypoints;
-use crate::router::Backend;
 
 pub struct View {
     pub path: &'static str,
@@ -140,7 +140,10 @@ pub const ARGUMENT_MODES: &[(&str, &str)] = &[
     ("view.geoTag", "<file path>[,<tolerance seconds>]"),
     ("view.packetRadio", "<status>[,<adapter>[,<stats>]]"),
     ("view.gpsRtkBase", "<gps type>"),
-    ("view.videoSource", "<source>[,<url>[,<rtsp timeout seconds>]]"),
+    (
+        "view.videoSource",
+        "<source>[,<url>[,<rtsp timeout seconds>]]",
+    ),
     ("view.control", "<fact path>"),
     ("view.guidedAltitude", "<metres>[,pause]"),
     ("view.guidedSpeed", "<metres per second>"),
@@ -165,15 +168,24 @@ pub const ARGUMENT_MODES: &[(&str, &str)] = &[
     ("view.tlog", "<file path>"),
     ("view.planFile", "<file path>"),
     ("view.waypointsFile", "<file path>"),
-    ("view.planFromWaypoints", "<file path>[,<firmware type>[,<vehicle type>]]"),
+    (
+        "view.planFromWaypoints",
+        "<file path>[,<firmware type>[,<vehicle type>]]",
+    ),
     ("view.missionFile", "<file path>"),
     ("view.kmlFile", "<file path>"),
     ("view.shapeFile", "<file path>"),
     ("view.areaFile", "<file path>"),
     ("view.lineFile", "<file path>"),
     ("view.terrainTile", "<file path>,<latitude>,<longitude>"),
-    ("view.geoToNed", "<lat>,<lon>,<alt>,<originLat>,<originLon>,<originAlt>"),
-    ("view.nedToGeo", "<north>,<east>,<down>,<originLat>,<originLon>,<originAlt>"),
+    (
+        "view.geoToNed",
+        "<lat>,<lon>,<alt>,<originLat>,<originLon>,<originAlt>",
+    ),
+    (
+        "view.nedToGeo",
+        "<north>,<east>,<down>,<originLat>,<originLon>,<originAlt>",
+    ),
     ("view.geoToUtm", "<latitude>,<longitude>"),
     ("view.utmToGeo", "<easting>,<northing>,<zone>[,<southern>]"),
     ("view.positionForms", "<latitude>,<longitude>"),
@@ -181,7 +193,10 @@ pub const ARGUMENT_MODES: &[(&str, &str)] = &[
     ("view.appLog", "<level>,<category>,<text>,<regex>,<after>"),
     ("view.speech", "<after>"),
     ("view.powerCalc", "<measure>,<batteryIndex>,<param>"),
-    ("view.offlineMaps", "<mapType>,<topLeftLon>,<topLeftLat>,<bottomRightLon>,<bottomRightLat>,<minZoom>,<maxZoom>"),
+    (
+        "view.offlineMaps",
+        "<mapType>,<topLeftLon>,<topLeftLat>,<bottomRightLon>,<bottomRightLat>,<minZoom>,<maxZoom>",
+    ),
     ("view.mgrsToGeo", "<mgrs>"),
     ("view.coreVehicle", "<vehicle id>"),
     ("view.coreGuided", "<vehicle id>"),
@@ -195,178 +210,844 @@ pub const ARGUMENT_MODES: &[(&str, &str)] = &[
 ];
 
 pub const VIEWS: &[View] = &[
-    View { path: "view.messages", deps: &["vehicle.formattedMessages", "vehicle.messageCount"], compute: messages_view },
-    View { path: "view.plan", deps: plan::DEPS, compute: plan::plan_view },
-    View { path: "view.guidedActions", deps: guided::DEPS, compute: guided::guided_view },
-    View { path: "view.guidedAltitude", deps: altitude::DEPS, compute: altitude::altitude_view },
-    View { path: "view.guidedTakeoff", deps: takeoff::DEPS, compute: takeoff::takeoff_view },
-    View { path: "view.guidedSpeed", deps: speed::DEPS, compute: speed::speed_view },
-    View { path: "view.battery", deps: battery::DEPS, compute: battery::battery_view },
-    View { path: "view.preflight", deps: preflight::DEPS, compute: preflight::preflight_view },
-    View { path: "view.warnings", deps: warnings::DEPS, compute: warnings::warnings_view },
-    View { path: "view.label", deps: label::DEPS, compute: label::label_view },
-    View { path: "view.instruments", deps: instruments::DEPS, compute: instruments::instruments_view },
-    View { path: "view.instrumentGroups", deps: instrumentgroups::DEPS, compute: instrumentgroups::instrument_groups_view },
-    View { path: "view.obstacle", deps: obstacle::DEPS, compute: obstacle::obstacle_view },
-    View { path: "view.attitude", deps: attitude::DEPS, compute: attitude::attitude_view },
-    View { path: "view.syntheticView", deps: crate::synthview::DEPS, compute: crate::synthview::synthetic_view },
-    View { path: "view.syntheticOverlays", deps: crate::synthview::OVERLAY_DEPS, compute: crate::synthview::overlays_view },
-    View { path: "view.videoAr", deps: crate::videoar::DEPS, compute: crate::videoar::video_ar_view },
-    View { path: "view.mapClick", deps: mapclick::DEPS, compute: mapclick::map_click_view },
-    View { path: "view.gotoPreview", deps: mapclick::PREVIEW_DEPS, compute: mapclick::goto_preview_view },
-    View { path: "view.firstRun", deps: firstrun::DEPS, compute: firstrun::first_run_view },
-    View { path: "view.deepLinkSetup", deps: crate::deeplinksetup::DEPS, compute: crate::deeplinksetup::deep_link_setup_view },
-    View { path: "view.advancedUi", deps: &[], compute: crate::advancedui::advanced_ui_view },
-    View { path: "view.gpsResilience", deps: gpsresilience::DEPS, compute: gpsresilience::resilience_view },
-    View { path: "view.gcsBattery", deps: &[], compute: gcsbattery::gcs_battery_view },
-    View { path: "view.appLog", deps: &[], compute: applog::log_view },
-    View { path: "view.logCategories", deps: &[], compute: applog::categories_view },
-    View { path: "view.offlineMaps", deps: offlinemaps::DEPS, compute: offlinemaps::offline_maps_view },
-    View { path: "view.virtualJoystick", deps: virtualjoystick::DEPS, compute: virtualjoystick::virtual_joystick_view },
-    View { path: "view.planTransform", deps: plantransform::DEPS, compute: plantransform::transform_view },
-    View { path: "view.px4Tuning", deps: px4tuning::DEPS, compute: px4tuning::tuning_view },
-    View { path: "view.px4Airframe", deps: px4airframe::DEPS, compute: px4airframe::airframe_view },
-    View { path: "view.autotune", deps: autotune::DEPS, compute: autotune::autotune_view },
-    View { path: "view.actuatorOutputs", deps: actuators::DEPS, compute: actuators::outputs_view },
-    View { path: "view.apmServos", deps: apmservos::DEPS, compute: apmservos::servos_view },
-    View { path: "view.patternPresets", deps: presets::DEPS, compute: presets::pattern_presets_view },
-    View { path: "view.opticalFlow", deps: flowimage::DEPS, compute: flowimage::optical_flow_view },
-    View { path: "view.mapTypes", deps: maptypes::DEPS, compute: maptypes::map_types_view },
-    View { path: "view.apmFollow", deps: apmfollow::DEPS, compute: apmfollow::follow_view },
-    View { path: "view.setupSummary", deps: setupsummary::DEPS, compute: setupsummary::setup_summary_view },
-    View { path: "view.closeChecks", deps: closechecks::DEPS, compute: closechecks::close_checks_view },
-    View { path: "view.apmAirframe", deps: apmairframe::DEPS, compute: apmairframe::apm_airframe_view },
-    View { path: "view.apmSubFrame", deps: apmsubframe::DEPS, compute: apmsubframe::apm_sub_frame_view },
-    View { path: "view.apmSubMotors", deps: apmsubmotors::DEPS, compute: apmsubmotors::apm_sub_motors_view },
-    View { path: "view.apmSubFrameImage", deps: &[], compute: apmsubframe::apm_sub_frame_image_view },
-    View { path: "view.ntrip", deps: ntrip::DEPS, compute: ntrip::ntrip_view },
-    View { path: "view.logReplay", deps: logreplay::DEPS, compute: logreplay::log_replay_view },
-    View { path: "view.sensorSettings", deps: sensorsettings::DEPS, compute: sensorsettings::sensor_settings_view },
-    View { path: "view.espBridge", deps: espbridge::DEPS, compute: espbridge::esp_bridge_view },
-    View { path: "view.syslink", deps: syslink::DEPS, compute: syslink::syslink_view },
-    View { path: "view.mavlinkActions", deps: mavlinkactions::DEPS, compute: mavlinkactions::mavlink_actions_view },
-    View { path: "view.scripting", deps: scripting::DEPS, compute: scripting::scripting_view },
-    View { path: "view.signingKeys", deps: signingkeys::DEPS, compute: signingkeys::signing_keys_view },
-    View { path: "view.remoteIdStatus", deps: &[], compute: crate::remoteidview::status_view },
-    View { path: "view.escs", deps: escview::DEPS, compute: escview::esc_view },
-    View { path: "view.gimbalIndicator", deps: gimbalindicator::DEPS, compute: gimbalindicator::indicator_view },
-    View { path: "view.parameterTools", deps: paramtools::DEPS, compute: paramtools::parameter_tools_view },
-    View { path: "view.missionComplete", deps: missioncomplete::DEPS, compute: missioncomplete::mission_complete_view },
-    View { path: "view.landingPattern", deps: landing::DEPS, compute: landing::landing_view },
-    View { path: "view.vibration", deps: vibration::DEPS, compute: vibration::vibration_view },
-    View { path: "view.sensors", deps: sensors::DEPS, compute: sensors::sensors_view },
-    View { path: "view.control", deps: control::DEPS, compute: control::control_view },
-    View { path: "view.links", deps: links::DEPS, compute: links::links_view },
-    View { path: "view.linkForm", deps: &[], compute: links::link_form_view },
-    View { path: "view.supportHost", deps: &[], compute: links::support_host_view },
-    View { path: "view.mapScale", deps: mapscale::DEPS, compute: mapscale::map_scale_view },
-    View { path: "view.terrainProfile", deps: terrain::DEPS, compute: terrain::terrain_view },
-    View { path: "view.vehicles", deps: vehicles::DEPS, compute: vehicles::vehicles_view },
-    View { path: "view.missionItems", deps: missionitems::DEPS, compute: missionitems::items_view },
-    View { path: "view.flyMissionItems", deps: missionitems::DEPS, compute: missionitems::fly_items_view },
-    View { path: "view.missionSummary", deps: missionsummary::DEPS, compute: missionsummary::summary_view },
-    View { path: "view.modeSlots", deps: modeslots::DEPS, compute: modeslots::slots_view },
-    View { path: "view.missionKinds", deps: missionkinds::DEPS, compute: missionkinds::kinds_view },
-    View { path: "view.missionSeed", deps: missionkinds::DEPS, compute: missionkinds::seed_view },
-    View { path: "view.calibration", deps: calibration::DEPS, compute: calibration::calibration_view },
-    View { path: "view.radio", deps: radio::DEPS, compute: radio::radio_view },
-    View { path: "view.rcControls", deps: crate::rcoverride::DEPS, compute: crate::rcoverride::controls_view },
-    View { path: "view.logs", deps: logs::DEPS, compute: logs::logs_view },
-    View { path: "view.inspector", deps: inspector::DEPS, compute: inspector::inspector_view },
-    View { path: "view.inspectorCharts", deps: &[], compute: crate::inspectorchart::charts_view },
-    View { path: "view.linkStatus", deps: crate::linkcount::DEPS, compute: crate::linkcount::link_status_view },
-    View { path: "view.offlineStatus", deps: crate::offlinestatus::DEPS, compute: crate::offlinestatus::offline_status_view },
-    View { path: "view.videoStats", deps: &[], compute: crate::videostats::video_stats_view },
-    View { path: "view.flightModes", deps: flightmodes::DEPS, compute: flightmodes::flight_modes_view },
-    View { path: "view.settings", deps: settings::DEPS, compute: settings::settings_view },
-    View { path: "view.surveyStats", deps: survey::DEPS, compute: survey::survey_stats_view },
-    View { path: "view.fences", deps: fences::DEPS, compute: fences::fences_view },
-    View { path: "view.flyFences", deps: fences::DEPS, compute: fences::fly_fences_view },
-    View { path: "view.polygon", deps: &[crate::coreplan::CHANGED], compute: fences::polygon_view },
-    View { path: "view.setup", deps: setup::DEPS, compute: setup::setup_view },
-    View { path: "view.video", deps: video::VIDEO_DEPS, compute: video::video_view },
-    View { path: "view.cameras", deps: crate::cameras::DEPS, compute: crate::cameras::cameras_view },
-    View { path: "view.camera", deps: video::CAMERA_DEPS, compute: video::camera_view },
-    View { path: "view.tlog", deps: tlog::DEPS, compute: tlog::tlog_view },
-    View { path: "view.contract", deps: contract::DEPS, compute: contract::contract_view },
-    View { path: "view.planFile", deps: planfile::DEPS, compute: planfile::plan_file_view },
-    View { path: "view.waypointsFile", deps: waypoints::DEPS, compute: waypoints::waypoints_view },
-    View { path: "view.planFromWaypoints", deps: planfile::DEPS, compute: planfile::plan_from_waypoints_view },
-    View { path: "view.missionFile", deps: mission::DEPS, compute: mission::mission_file_view },
-    View { path: "view.transports", deps: linkhost::DEPS, compute: linkhost::transports_view },
-    View { path: "view.track", deps: track::DEPS, compute: track::track_view },
-    View { path: "view.altitudeModes", deps: altitudemodes::DEPS, compute: altitudemodes::altitude_modes_view },
-    View { path: "view.flyState", deps: flystate::DEPS, compute: flystate::fly_state_view },
-    View { path: "view.missionProgress", deps: missionprogress::DEPS, compute: missionprogress::mission_progress_view },
-    View { path: "view.operatorControl", deps: operatorcontrol::DEPS, compute: operatorcontrol::operator_control_view },
-    View { path: "view.orbit", deps: orbit::DEPS, compute: orbit::orbit_view },
-    View { path: "view.vehicleLinks", deps: vehiclelinks::DEPS, compute: vehiclelinks::vehicle_links_view },
-    View { path: "view.coreVehicle", deps: &[], compute: hub::core_vehicle_view },
-    View { path: "view.coreGuided", deps: &[], compute: hub::core_guided_view },
-    View { path: "view.coreCameras", deps: &[], compute: hub::core_cameras_view },
-    View { path: "view.coreParameter", deps: &[], compute: hub::core_parameter_view },
-    View { path: "view.coreParameters", deps: &[], compute: hub::core_parameters_view },
-    View { path: "view.coreMission", deps: &[], compute: hub::core_mission_view },
-    View { path: "view.coreRemoteId", deps: &[], compute: hub::core_remote_id_view },
-    View { path: "view.coreCalibration", deps: &[], compute: hub::core_calibration_view },
-    View { path: "view.detections", deps: detections::DEPS, compute: detections::detections_view },
-    View { path: "view.lens", deps: crate::lens::DEPS, compute: crate::lens::lens_view },
-    View { path: "view.adsbTraffic", deps: adsb::DEPS, compute: adsb::adsb_traffic_view },
-    View { path: "view.cameraDefinition", deps: cameradef::DEPS, compute: cameradef::camera_definition_view },
-    View { path: "view.cameraProtocol", deps: &[], compute: cameraproto::protocol_view },
-    View { path: "view.cameraSettings", deps: crate::camsettings::DEPS, compute: crate::camsettings::camera_settings_view },
-    View { path: "view.joystickMapping", deps: &[], compute: joystick::joystick_view },
-    View { path: "view.joystick", deps: joystickhost::DEPS, compute: joystickhost::joystick_state_view },
-    View { path: "view.usbRadio", deps: &[], compute: crate::usbradio::indicator_view },
-    View { path: "view.followMe", deps: followme::DEPS, compute: followme::follow_me_view },
-    View { path: "view.frame", deps: frame::DEPS, compute: frame::frame_view },
-    View { path: "view.gcsPosition", deps: gcsposition::DEPS, compute: gcsposition::gcs_position_view },
-    View { path: "view.gimbal", deps: &[], compute: gimbal::gimbal_view },
-    View { path: "view.debugApi", deps: debugapi::DEPS, compute: debugapi::debug_api_view },
-    View { path: "view.geoTag", deps: geotag::DEPS, compute: geotag::geotag_view },
-    View { path: "view.packetRadio", deps: &[], compute: packetradio::packet_radio_view },
-    View { path: "view.firmwareUpgrade", deps: &[], compute: crate::firmwareflash::view },
-    View { path: "view.firmwarePorts", deps: &[], compute: crate::firmwareflash::ports_view },
-    View { path: "view.flasher", deps: crate::flasher::DEPS, compute: crate::flasher::view },
-    View { path: "view.viewer3d", deps: viewer3d::DEPS, compute: viewer3d::viewer3d_view },
-    View { path: "view.viewer3dPath", deps: viewer3d::PATH_DEPS, compute: viewer3d::path_view },
-    View { path: "view.viewer3dVehicle", deps: viewer3d::VEHICLE_DEPS, compute: viewer3d::vehicle_view },
-    View { path: "view.mavlinkConsole", deps: console::DEPS, compute: console::console_view },
-    View { path: "view.itemCamera", deps: itemcamera::DEPS, compute: itemcamera::item_camera_view },
-    View { path: "view.itemFacts", deps: itemfacts::DEPS, compute: itemfacts::item_facts_view },
-    View { path: "view.gpsRtkBase", deps: gpsrtk::DEPS, compute: gpsrtk::base_view },
-    View { path: "view.gpsRtk", deps: rtkbase::RTK_DEPS, compute: rtkbase::rtk_view },
-    View { path: "view.speech", deps: &[], compute: speech::speech_view },
-    View { path: "view.proximityRadar", deps: proximity::DEPS, compute: proximity::proximity_view },
-    View { path: "view.aircastLink", deps: aircastlink::DEPS, compute: aircastlink::aircast_link_view },
-    View { path: "view.gimbalAzimuth", deps: gimbalindicator::AZIMUTH_DEPS, compute: gimbalindicator::azimuth_view },
-    View { path: "view.powerCalc", deps: powercalc::DEPS, compute: powercalc::power_calc_view },
-    View { path: "view.mavlinkLog", deps: &[], compute: mavlinklog::mavlink_log_view },
-    View { path: "view.escCalibration", deps: &[], compute: escal::esc_calibration_view },
-    View { path: "view.videoSource", deps: videostate::DEPS, compute: videostate::video_source_view },
-    View { path: "view.kmlFile", deps: kml::DEPS, compute: kml::kml_view },
-    View { path: "view.shapeFile", deps: shp::DEPS, compute: shp::shp_view },
-    View { path: "view.areaFile", deps: shp::DEPS, compute: shp::area_file_view },
-    View { path: "view.lineFile", deps: shp::DEPS, compute: shp::line_file_view },
-    View { path: "view.geoToNed", deps: geo::DEPS, compute: geo::geo_to_ned_view },
-    View { path: "view.nedToGeo", deps: geo::DEPS, compute: geo::ned_to_geo_view },
-    View { path: "view.geoToUtm", deps: geo::DEPS, compute: geo::geo_to_utm_view },
-    View { path: "view.utmToGeo", deps: geo::DEPS, compute: geo::utm_to_geo_view },
-    View { path: "view.positionForms", deps: geo::DEPS, compute: geo::position_forms_view },
-    View { path: "view.mgrsToGeo", deps: geo::DEPS, compute: geo::mgrs_to_geo_view },
-    View { path: "view.terrainTile", deps: terraintile::DEPS, compute: terraintile::terrain_tile_view },
-    View { path: "view.gps", deps: gpsview::DEPS, compute: gpsview::gps_view },
-    View { path: "view.terrainDownload", deps: terraindownload::DEPS, compute: terraindownload::terrain_download_view },
-    View { path: "view.firmware", deps: firmwareinfo::DEPS, compute: firmwareinfo::firmware_view },
-    View { path: "view.hostNotices", deps: hostnoticeview::DEPS, compute: hostnoticeview::host_notices_view },
-    View { path: "view.dependencies", deps: &[], compute: dependencies_view },
+    View {
+        path: "view.messages",
+        deps: &["vehicle.formattedMessages", "vehicle.messageCount"],
+        compute: messages_view,
+    },
+    View {
+        path: "view.plan",
+        deps: plan::DEPS,
+        compute: plan::plan_view,
+    },
+    View {
+        path: "view.guidedActions",
+        deps: guided::DEPS,
+        compute: guided::guided_view,
+    },
+    View {
+        path: "view.guidedAltitude",
+        deps: altitude::DEPS,
+        compute: altitude::altitude_view,
+    },
+    View {
+        path: "view.guidedTakeoff",
+        deps: takeoff::DEPS,
+        compute: takeoff::takeoff_view,
+    },
+    View {
+        path: "view.guidedSpeed",
+        deps: speed::DEPS,
+        compute: speed::speed_view,
+    },
+    View {
+        path: "view.battery",
+        deps: battery::DEPS,
+        compute: battery::battery_view,
+    },
+    View {
+        path: "view.preflight",
+        deps: preflight::DEPS,
+        compute: preflight::preflight_view,
+    },
+    View {
+        path: "view.warnings",
+        deps: warnings::DEPS,
+        compute: warnings::warnings_view,
+    },
+    View {
+        path: "view.label",
+        deps: label::DEPS,
+        compute: label::label_view,
+    },
+    View {
+        path: "view.instruments",
+        deps: instruments::DEPS,
+        compute: instruments::instruments_view,
+    },
+    View {
+        path: "view.instrumentGroups",
+        deps: instrumentgroups::DEPS,
+        compute: instrumentgroups::instrument_groups_view,
+    },
+    View {
+        path: "view.obstacle",
+        deps: obstacle::DEPS,
+        compute: obstacle::obstacle_view,
+    },
+    View {
+        path: "view.attitude",
+        deps: attitude::DEPS,
+        compute: attitude::attitude_view,
+    },
+    View {
+        path: "view.syntheticView",
+        deps: crate::synthview::DEPS,
+        compute: crate::synthview::synthetic_view,
+    },
+    View {
+        path: "view.syntheticOverlays",
+        deps: crate::synthview::OVERLAY_DEPS,
+        compute: crate::synthview::overlays_view,
+    },
+    View {
+        path: "view.videoAr",
+        deps: crate::videoar::DEPS,
+        compute: crate::videoar::video_ar_view,
+    },
+    View {
+        path: "view.mapClick",
+        deps: mapclick::DEPS,
+        compute: mapclick::map_click_view,
+    },
+    View {
+        path: "view.gotoPreview",
+        deps: mapclick::PREVIEW_DEPS,
+        compute: mapclick::goto_preview_view,
+    },
+    View {
+        path: "view.firstRun",
+        deps: firstrun::DEPS,
+        compute: firstrun::first_run_view,
+    },
+    View {
+        path: "view.deepLinkSetup",
+        deps: crate::deeplinksetup::DEPS,
+        compute: crate::deeplinksetup::deep_link_setup_view,
+    },
+    View {
+        path: "view.advancedUi",
+        deps: &[],
+        compute: crate::advancedui::advanced_ui_view,
+    },
+    View {
+        path: "view.gpsResilience",
+        deps: gpsresilience::DEPS,
+        compute: gpsresilience::resilience_view,
+    },
+    View {
+        path: "view.gcsBattery",
+        deps: &[],
+        compute: gcsbattery::gcs_battery_view,
+    },
+    View {
+        path: "view.appLog",
+        deps: &[],
+        compute: applog::log_view,
+    },
+    View {
+        path: "view.logCategories",
+        deps: &[],
+        compute: applog::categories_view,
+    },
+    View {
+        path: "view.offlineMaps",
+        deps: offlinemaps::DEPS,
+        compute: offlinemaps::offline_maps_view,
+    },
+    View {
+        path: "view.virtualJoystick",
+        deps: virtualjoystick::DEPS,
+        compute: virtualjoystick::virtual_joystick_view,
+    },
+    View {
+        path: "view.planTransform",
+        deps: plantransform::DEPS,
+        compute: plantransform::transform_view,
+    },
+    View {
+        path: "view.px4Tuning",
+        deps: px4tuning::DEPS,
+        compute: px4tuning::tuning_view,
+    },
+    View {
+        path: "view.px4Airframe",
+        deps: px4airframe::DEPS,
+        compute: px4airframe::airframe_view,
+    },
+    View {
+        path: "view.autotune",
+        deps: autotune::DEPS,
+        compute: autotune::autotune_view,
+    },
+    View {
+        path: "view.actuatorOutputs",
+        deps: actuators::DEPS,
+        compute: actuators::outputs_view,
+    },
+    View {
+        path: "view.apmServos",
+        deps: apmservos::DEPS,
+        compute: apmservos::servos_view,
+    },
+    View {
+        path: "view.patternPresets",
+        deps: presets::DEPS,
+        compute: presets::pattern_presets_view,
+    },
+    View {
+        path: "view.opticalFlow",
+        deps: flowimage::DEPS,
+        compute: flowimage::optical_flow_view,
+    },
+    View {
+        path: "view.mapTypes",
+        deps: maptypes::DEPS,
+        compute: maptypes::map_types_view,
+    },
+    View {
+        path: "view.apmFollow",
+        deps: apmfollow::DEPS,
+        compute: apmfollow::follow_view,
+    },
+    View {
+        path: "view.setupSummary",
+        deps: setupsummary::DEPS,
+        compute: setupsummary::setup_summary_view,
+    },
+    View {
+        path: "view.closeChecks",
+        deps: closechecks::DEPS,
+        compute: closechecks::close_checks_view,
+    },
+    View {
+        path: "view.apmAirframe",
+        deps: apmairframe::DEPS,
+        compute: apmairframe::apm_airframe_view,
+    },
+    View {
+        path: "view.apmSubFrame",
+        deps: apmsubframe::DEPS,
+        compute: apmsubframe::apm_sub_frame_view,
+    },
+    View {
+        path: "view.apmSubMotors",
+        deps: apmsubmotors::DEPS,
+        compute: apmsubmotors::apm_sub_motors_view,
+    },
+    View {
+        path: "view.apmSubFrameImage",
+        deps: &[],
+        compute: apmsubframe::apm_sub_frame_image_view,
+    },
+    View {
+        path: "view.ntrip",
+        deps: ntrip::DEPS,
+        compute: ntrip::ntrip_view,
+    },
+    View {
+        path: "view.logReplay",
+        deps: logreplay::DEPS,
+        compute: logreplay::log_replay_view,
+    },
+    View {
+        path: "view.sensorSettings",
+        deps: sensorsettings::DEPS,
+        compute: sensorsettings::sensor_settings_view,
+    },
+    View {
+        path: "view.espBridge",
+        deps: espbridge::DEPS,
+        compute: espbridge::esp_bridge_view,
+    },
+    View {
+        path: "view.syslink",
+        deps: syslink::DEPS,
+        compute: syslink::syslink_view,
+    },
+    View {
+        path: "view.mavlinkActions",
+        deps: mavlinkactions::DEPS,
+        compute: mavlinkactions::mavlink_actions_view,
+    },
+    View {
+        path: "view.scripting",
+        deps: scripting::DEPS,
+        compute: scripting::scripting_view,
+    },
+    View {
+        path: "view.signingKeys",
+        deps: signingkeys::DEPS,
+        compute: signingkeys::signing_keys_view,
+    },
+    View {
+        path: "view.remoteIdStatus",
+        deps: &[],
+        compute: crate::remoteidview::status_view,
+    },
+    View {
+        path: "view.escs",
+        deps: escview::DEPS,
+        compute: escview::esc_view,
+    },
+    View {
+        path: "view.gimbalIndicator",
+        deps: gimbalindicator::DEPS,
+        compute: gimbalindicator::indicator_view,
+    },
+    View {
+        path: "view.parameterTools",
+        deps: paramtools::DEPS,
+        compute: paramtools::parameter_tools_view,
+    },
+    View {
+        path: "view.missionComplete",
+        deps: missioncomplete::DEPS,
+        compute: missioncomplete::mission_complete_view,
+    },
+    View {
+        path: "view.landingPattern",
+        deps: landing::DEPS,
+        compute: landing::landing_view,
+    },
+    View {
+        path: "view.vibration",
+        deps: vibration::DEPS,
+        compute: vibration::vibration_view,
+    },
+    View {
+        path: "view.sensors",
+        deps: sensors::DEPS,
+        compute: sensors::sensors_view,
+    },
+    View {
+        path: "view.control",
+        deps: control::DEPS,
+        compute: control::control_view,
+    },
+    View {
+        path: "view.links",
+        deps: links::DEPS,
+        compute: links::links_view,
+    },
+    View {
+        path: "view.linkForm",
+        deps: &[],
+        compute: links::link_form_view,
+    },
+    View {
+        path: "view.supportHost",
+        deps: &[],
+        compute: links::support_host_view,
+    },
+    View {
+        path: "view.mapScale",
+        deps: mapscale::DEPS,
+        compute: mapscale::map_scale_view,
+    },
+    View {
+        path: "view.terrainProfile",
+        deps: terrain::DEPS,
+        compute: terrain::terrain_view,
+    },
+    View {
+        path: "view.vehicles",
+        deps: vehicles::DEPS,
+        compute: vehicles::vehicles_view,
+    },
+    View {
+        path: "view.missionItems",
+        deps: missionitems::DEPS,
+        compute: missionitems::items_view,
+    },
+    View {
+        path: "view.flyMissionItems",
+        deps: missionitems::DEPS,
+        compute: missionitems::fly_items_view,
+    },
+    View {
+        path: "view.missionSummary",
+        deps: missionsummary::DEPS,
+        compute: missionsummary::summary_view,
+    },
+    View {
+        path: "view.modeSlots",
+        deps: modeslots::DEPS,
+        compute: modeslots::slots_view,
+    },
+    View {
+        path: "view.missionKinds",
+        deps: missionkinds::DEPS,
+        compute: missionkinds::kinds_view,
+    },
+    View {
+        path: "view.missionSeed",
+        deps: missionkinds::DEPS,
+        compute: missionkinds::seed_view,
+    },
+    View {
+        path: "view.calibration",
+        deps: calibration::DEPS,
+        compute: calibration::calibration_view,
+    },
+    View {
+        path: "view.radio",
+        deps: radio::DEPS,
+        compute: radio::radio_view,
+    },
+    View {
+        path: "view.rcControls",
+        deps: crate::rcoverride::DEPS,
+        compute: crate::rcoverride::controls_view,
+    },
+    View {
+        path: "view.logs",
+        deps: logs::DEPS,
+        compute: logs::logs_view,
+    },
+    View {
+        path: "view.inspector",
+        deps: inspector::DEPS,
+        compute: inspector::inspector_view,
+    },
+    View {
+        path: "view.inspectorCharts",
+        deps: &[],
+        compute: crate::inspectorchart::charts_view,
+    },
+    View {
+        path: "view.linkStatus",
+        deps: crate::linkcount::DEPS,
+        compute: crate::linkcount::link_status_view,
+    },
+    View {
+        path: "view.offlineStatus",
+        deps: crate::offlinestatus::DEPS,
+        compute: crate::offlinestatus::offline_status_view,
+    },
+    View {
+        path: "view.videoStats",
+        deps: &[],
+        compute: crate::videostats::video_stats_view,
+    },
+    View {
+        path: "view.flightModes",
+        deps: flightmodes::DEPS,
+        compute: flightmodes::flight_modes_view,
+    },
+    View {
+        path: "view.settings",
+        deps: settings::DEPS,
+        compute: settings::settings_view,
+    },
+    View {
+        path: "view.surveyStats",
+        deps: survey::DEPS,
+        compute: survey::survey_stats_view,
+    },
+    View {
+        path: "view.fences",
+        deps: fences::DEPS,
+        compute: fences::fences_view,
+    },
+    View {
+        path: "view.flyFences",
+        deps: fences::DEPS,
+        compute: fences::fly_fences_view,
+    },
+    View {
+        path: "view.polygon",
+        deps: &[crate::coreplan::CHANGED],
+        compute: fences::polygon_view,
+    },
+    View {
+        path: "view.setup",
+        deps: setup::DEPS,
+        compute: setup::setup_view,
+    },
+    View {
+        path: "view.video",
+        deps: video::VIDEO_DEPS,
+        compute: video::video_view,
+    },
+    View {
+        path: "view.cameras",
+        deps: crate::cameras::DEPS,
+        compute: crate::cameras::cameras_view,
+    },
+    View {
+        path: "view.camera",
+        deps: video::CAMERA_DEPS,
+        compute: video::camera_view,
+    },
+    View {
+        path: "view.tlog",
+        deps: tlog::DEPS,
+        compute: tlog::tlog_view,
+    },
+    View {
+        path: "view.contract",
+        deps: contract::DEPS,
+        compute: contract::contract_view,
+    },
+    View {
+        path: "view.planFile",
+        deps: planfile::DEPS,
+        compute: planfile::plan_file_view,
+    },
+    View {
+        path: "view.waypointsFile",
+        deps: waypoints::DEPS,
+        compute: waypoints::waypoints_view,
+    },
+    View {
+        path: "view.planFromWaypoints",
+        deps: planfile::DEPS,
+        compute: planfile::plan_from_waypoints_view,
+    },
+    View {
+        path: "view.missionFile",
+        deps: mission::DEPS,
+        compute: mission::mission_file_view,
+    },
+    View {
+        path: "view.transports",
+        deps: linkhost::DEPS,
+        compute: linkhost::transports_view,
+    },
+    View {
+        path: "view.track",
+        deps: track::DEPS,
+        compute: track::track_view,
+    },
+    View {
+        path: "view.altitudeModes",
+        deps: altitudemodes::DEPS,
+        compute: altitudemodes::altitude_modes_view,
+    },
+    View {
+        path: "view.flyState",
+        deps: flystate::DEPS,
+        compute: flystate::fly_state_view,
+    },
+    View {
+        path: "view.missionProgress",
+        deps: missionprogress::DEPS,
+        compute: missionprogress::mission_progress_view,
+    },
+    View {
+        path: "view.operatorControl",
+        deps: operatorcontrol::DEPS,
+        compute: operatorcontrol::operator_control_view,
+    },
+    View {
+        path: "view.orbit",
+        deps: orbit::DEPS,
+        compute: orbit::orbit_view,
+    },
+    View {
+        path: "view.vehicleLinks",
+        deps: vehiclelinks::DEPS,
+        compute: vehiclelinks::vehicle_links_view,
+    },
+    View {
+        path: "view.coreVehicle",
+        deps: &[],
+        compute: hub::core_vehicle_view,
+    },
+    View {
+        path: "view.coreGuided",
+        deps: &[],
+        compute: hub::core_guided_view,
+    },
+    View {
+        path: "view.coreCameras",
+        deps: &[],
+        compute: hub::core_cameras_view,
+    },
+    View {
+        path: "view.coreParameter",
+        deps: &[],
+        compute: hub::core_parameter_view,
+    },
+    View {
+        path: "view.coreParameters",
+        deps: &[],
+        compute: hub::core_parameters_view,
+    },
+    View {
+        path: "view.coreMission",
+        deps: &[],
+        compute: hub::core_mission_view,
+    },
+    View {
+        path: "view.coreRemoteId",
+        deps: &[],
+        compute: hub::core_remote_id_view,
+    },
+    View {
+        path: "view.coreCalibration",
+        deps: &[],
+        compute: hub::core_calibration_view,
+    },
+    View {
+        path: "view.detections",
+        deps: detections::DEPS,
+        compute: detections::detections_view,
+    },
+    View {
+        path: "view.lens",
+        deps: crate::lens::DEPS,
+        compute: crate::lens::lens_view,
+    },
+    View {
+        path: "view.adsbTraffic",
+        deps: adsb::DEPS,
+        compute: adsb::adsb_traffic_view,
+    },
+    View {
+        path: "view.cameraDefinition",
+        deps: cameradef::DEPS,
+        compute: cameradef::camera_definition_view,
+    },
+    View {
+        path: "view.cameraProtocol",
+        deps: &[],
+        compute: cameraproto::protocol_view,
+    },
+    View {
+        path: "view.cameraSettings",
+        deps: crate::camsettings::DEPS,
+        compute: crate::camsettings::camera_settings_view,
+    },
+    View {
+        path: "view.joystickMapping",
+        deps: &[],
+        compute: joystick::joystick_view,
+    },
+    View {
+        path: "view.joystick",
+        deps: joystickhost::DEPS,
+        compute: joystickhost::joystick_state_view,
+    },
+    View {
+        path: "view.usbRadio",
+        deps: &[],
+        compute: crate::usbradio::indicator_view,
+    },
+    View {
+        path: "view.followMe",
+        deps: followme::DEPS,
+        compute: followme::follow_me_view,
+    },
+    View {
+        path: "view.frame",
+        deps: frame::DEPS,
+        compute: frame::frame_view,
+    },
+    View {
+        path: "view.gcsPosition",
+        deps: gcsposition::DEPS,
+        compute: gcsposition::gcs_position_view,
+    },
+    View {
+        path: "view.gimbal",
+        deps: &[],
+        compute: gimbal::gimbal_view,
+    },
+    View {
+        path: "view.debugApi",
+        deps: debugapi::DEPS,
+        compute: debugapi::debug_api_view,
+    },
+    View {
+        path: "view.geoTag",
+        deps: geotag::DEPS,
+        compute: geotag::geotag_view,
+    },
+    View {
+        path: "view.packetRadio",
+        deps: &[],
+        compute: packetradio::packet_radio_view,
+    },
+    View {
+        path: "view.firmwareUpgrade",
+        deps: &[],
+        compute: crate::firmwareflash::view,
+    },
+    View {
+        path: "view.firmwarePorts",
+        deps: &[],
+        compute: crate::firmwareflash::ports_view,
+    },
+    View {
+        path: "view.flasher",
+        deps: crate::flasher::DEPS,
+        compute: crate::flasher::view,
+    },
+    View {
+        path: "view.viewer3d",
+        deps: viewer3d::DEPS,
+        compute: viewer3d::viewer3d_view,
+    },
+    View {
+        path: "view.viewer3dPath",
+        deps: viewer3d::PATH_DEPS,
+        compute: viewer3d::path_view,
+    },
+    View {
+        path: "view.viewer3dVehicle",
+        deps: viewer3d::VEHICLE_DEPS,
+        compute: viewer3d::vehicle_view,
+    },
+    View {
+        path: "view.mavlinkConsole",
+        deps: console::DEPS,
+        compute: console::console_view,
+    },
+    View {
+        path: "view.itemCamera",
+        deps: itemcamera::DEPS,
+        compute: itemcamera::item_camera_view,
+    },
+    View {
+        path: "view.itemFacts",
+        deps: itemfacts::DEPS,
+        compute: itemfacts::item_facts_view,
+    },
+    View {
+        path: "view.gpsRtkBase",
+        deps: gpsrtk::DEPS,
+        compute: gpsrtk::base_view,
+    },
+    View {
+        path: "view.gpsRtk",
+        deps: rtkbase::RTK_DEPS,
+        compute: rtkbase::rtk_view,
+    },
+    View {
+        path: "view.speech",
+        deps: &[],
+        compute: speech::speech_view,
+    },
+    View {
+        path: "view.proximityRadar",
+        deps: proximity::DEPS,
+        compute: proximity::proximity_view,
+    },
+    View {
+        path: "view.aircastLink",
+        deps: aircastlink::DEPS,
+        compute: aircastlink::aircast_link_view,
+    },
+    View {
+        path: "view.gimbalAzimuth",
+        deps: gimbalindicator::AZIMUTH_DEPS,
+        compute: gimbalindicator::azimuth_view,
+    },
+    View {
+        path: "view.powerCalc",
+        deps: powercalc::DEPS,
+        compute: powercalc::power_calc_view,
+    },
+    View {
+        path: "view.mavlinkLog",
+        deps: &[],
+        compute: mavlinklog::mavlink_log_view,
+    },
+    View {
+        path: "view.escCalibration",
+        deps: &[],
+        compute: escal::esc_calibration_view,
+    },
+    View {
+        path: "view.videoSource",
+        deps: videostate::DEPS,
+        compute: videostate::video_source_view,
+    },
+    View {
+        path: "view.kmlFile",
+        deps: kml::DEPS,
+        compute: kml::kml_view,
+    },
+    View {
+        path: "view.shapeFile",
+        deps: shp::DEPS,
+        compute: shp::shp_view,
+    },
+    View {
+        path: "view.areaFile",
+        deps: shp::DEPS,
+        compute: shp::area_file_view,
+    },
+    View {
+        path: "view.lineFile",
+        deps: shp::DEPS,
+        compute: shp::line_file_view,
+    },
+    View {
+        path: "view.geoToNed",
+        deps: geo::DEPS,
+        compute: geo::geo_to_ned_view,
+    },
+    View {
+        path: "view.nedToGeo",
+        deps: geo::DEPS,
+        compute: geo::ned_to_geo_view,
+    },
+    View {
+        path: "view.geoToUtm",
+        deps: geo::DEPS,
+        compute: geo::geo_to_utm_view,
+    },
+    View {
+        path: "view.utmToGeo",
+        deps: geo::DEPS,
+        compute: geo::utm_to_geo_view,
+    },
+    View {
+        path: "view.positionForms",
+        deps: geo::DEPS,
+        compute: geo::position_forms_view,
+    },
+    View {
+        path: "view.mgrsToGeo",
+        deps: geo::DEPS,
+        compute: geo::mgrs_to_geo_view,
+    },
+    View {
+        path: "view.terrainTile",
+        deps: terraintile::DEPS,
+        compute: terraintile::terrain_tile_view,
+    },
+    View {
+        path: "view.gps",
+        deps: gpsview::DEPS,
+        compute: gpsview::gps_view,
+    },
+    View {
+        path: "view.terrainDownload",
+        deps: terraindownload::DEPS,
+        compute: terraindownload::terrain_download_view,
+    },
+    View {
+        path: "view.firmware",
+        deps: firmwareinfo::DEPS,
+        compute: firmwareinfo::firmware_view,
+    },
+    View {
+        path: "view.hostNotices",
+        deps: hostnoticeview::DEPS,
+        compute: hostnoticeview::host_notices_view,
+    },
+    View {
+        path: "view.dependencies",
+        deps: &[],
+        compute: dependencies_view,
+    },
 ];
 
 pub fn owns(path: &str) -> bool {
     path.split(['.', '[']).next() == Some("view")
 }
 
-pub const MOTION_VIEWS: &[&str] = &["view.syntheticView", "view.vehicles", "view.attitude", "view.videoAr", "view.gimbal"];
+pub const MOTION_VIEWS: &[&str] = &[
+    "view.syntheticView",
+    "view.vehicles",
+    "view.attitude",
+    "view.videoAr",
+    "view.gimbal",
+];
 
 pub fn moves(path: &str) -> bool {
     MOTION_VIEWS.contains(&split(path).0)
@@ -391,55 +1072,77 @@ pub fn unknown(path: &str) -> Value {
 }
 
 pub fn split_paths(csv: &str) -> Vec<String> {
-    let (paths, last, _) = csv.chars().fold((Vec::new(), String::new(), 0usize), |(mut paths, mut current, depth), c| match (c, depth) {
-        (',', 0) => {
-            paths.push(std::mem::take(&mut current));
-            (paths, current, depth)
-        }
-        ('(', _) => {
-            current.push(c);
-            (paths, current, depth + 1)
-        }
-        (')', _) => {
-            current.push(c);
-            (paths, current, depth.saturating_sub(1))
-        }
-        _ => {
-            current.push(c);
-            (paths, current, depth)
-        }
-    });
-    paths.into_iter().chain(std::iter::once(last)).map(|p| p.trim().to_string()).filter(|p| !p.is_empty()).collect()
+    let (paths, last, _) = csv.chars().fold(
+        (Vec::new(), String::new(), 0usize),
+        |(mut paths, mut current, depth), c| match (c, depth) {
+            (',', 0) => {
+                paths.push(std::mem::take(&mut current));
+                (paths, current, depth)
+            }
+            ('(', _) => {
+                current.push(c);
+                (paths, current, depth + 1)
+            }
+            (')', _) => {
+                current.push(c);
+                (paths, current, depth.saturating_sub(1))
+            }
+            _ => {
+                current.push(c);
+                (paths, current, depth)
+            }
+        },
+    );
+    paths
+        .into_iter()
+        .chain(std::iter::once(last))
+        .map(|p| p.trim().to_string())
+        .filter(|p| !p.is_empty())
+        .collect()
 }
 
 pub fn split(path: &str) -> (&str, Vec<String>) {
-    let Some((base, rest)) = path.split_once('(') else { return (path, Vec::new()) };
+    let Some((base, rest)) = path.split_once('(') else {
+        return (path, Vec::new());
+    };
     let inner = rest.strip_suffix(')').unwrap_or(rest);
     if inner.trim().is_empty() {
         return (base, Vec::new());
     }
-    if ARGUMENT_MODES.iter().any(|(view, mode)| *view == base && *mode == "<file path>") {
+    if ARGUMENT_MODES
+        .iter()
+        .any(|(view, mode)| *view == base && *mode == "<file path>")
+    {
         return (base, vec![inner.to_string()]);
     }
-    let (args, last, _) = inner.chars().fold((Vec::new(), String::new(), 0usize), |(mut args, mut current, depth), c| match (c, depth) {
-        (',', 0) => {
-            args.push(std::mem::take(&mut current));
-            (args, current, depth)
-        }
-        ('(', _) => {
-            current.push(c);
-            (args, current, depth + 1)
-        }
-        (')', _) => {
-            current.push(c);
-            (args, current, depth.saturating_sub(1))
-        }
-        _ => {
-            current.push(c);
-            (args, current, depth)
-        }
-    });
-    (base, args.into_iter().chain(std::iter::once(last)).map(|a| a.trim().to_string()).collect())
+    let (args, last, _) = inner.chars().fold(
+        (Vec::new(), String::new(), 0usize),
+        |(mut args, mut current, depth), c| match (c, depth) {
+            (',', 0) => {
+                args.push(std::mem::take(&mut current));
+                (args, current, depth)
+            }
+            ('(', _) => {
+                current.push(c);
+                (args, current, depth + 1)
+            }
+            (')', _) => {
+                current.push(c);
+                (args, current, depth.saturating_sub(1))
+            }
+            _ => {
+                current.push(c);
+                (args, current, depth)
+            }
+        },
+    );
+    (
+        base,
+        args.into_iter()
+            .chain(std::iter::once(last))
+            .map(|a| a.trim().to_string())
+            .collect(),
+    )
 }
 
 impl View {
@@ -471,12 +1174,22 @@ impl View {
 
     pub fn render_fields(&self, backend: &dyn Backend, path: &str, fields: &str) -> String {
         let value = (self.compute)(backend, &split(path).1);
-        let Value::Object(map) = value else { return value.to_string() };
+        let Value::Object(map) = value else {
+            return value.to_string();
+        };
         if fields.trim() == "*" {
             return Value::Object(map).to_string();
         }
-        let wanted: BTreeSet<&str> = fields.split(',').map(str::trim).filter(|f| !f.is_empty()).collect();
-        let unknown: Vec<&str> = wanted.iter().copied().filter(|f| !map.contains_key(*f)).collect();
+        let wanted: BTreeSet<&str> = fields
+            .split(',')
+            .map(str::trim)
+            .filter(|f| !f.is_empty())
+            .collect();
+        let unknown: Vec<&str> = wanted
+            .iter()
+            .copied()
+            .filter(|f| !map.contains_key(*f))
+            .collect();
         let kept = map
             .into_iter()
             .filter(|(key, _)| key == "kind" || key == "class" || wanted.contains(key.as_str()))
@@ -500,7 +1213,12 @@ fn dependencies_view(_backend: &dyn Backend, _args: &[String]) -> Value {
 
 fn messages_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let items = messages::parse(&value_string(&backend.value("vehicle.formattedMessages")));
-    let unread = crate::read::integer(&backend.value_fields("vehicle", "messageCount"), "messageCount").unwrap_or(0).clamp(0, items.len() as i64);
+    let unread = crate::read::integer(
+        &backend.value_fields("vehicle", "messageCount"),
+        "messageCount",
+    )
+    .unwrap_or(0)
+    .clamp(0, items.len() as i64);
     json!({ "kind": "object", "class": "VehicleMessages", "order": ORDER, "count": items.len(), "unread": unread, "items": items })
 }
 
@@ -514,10 +1232,17 @@ mod watch_paths {
         assert_eq!(split_paths(asked), vec![asked.to_string()]);
         assert_eq!(
             split_paths(&format!("view.plan,{asked},view.messages")),
-            vec!["view.plan".to_string(), asked.to_string(), "view.messages".to_string()],
+            vec![
+                "view.plan".to_string(),
+                asked.to_string(),
+                "view.messages".to_string()
+            ],
             "and it survives having neighbours, which is the case that actually happens"
         );
-        assert_eq!(split_paths("view.a(x),view.b(y,z)"), vec!["view.a(x)".to_string(), "view.b(y,z)".to_string()]);
+        assert_eq!(
+            split_paths("view.a(x),view.b(y,z)"),
+            vec!["view.a(x)".to_string(), "view.b(y,z)".to_string()]
+        );
     }
 }
 
@@ -526,308 +1251,307 @@ mod deps_cover_reads {
     use std::collections::BTreeSet;
 
     const MODULES: &[(&str, &str)] = &[
-            ("actions", include_str!("actions.rs")),
-            ("adsb", include_str!("adsb.rs")),
-            ("altitude", include_str!("altitude.rs")),
-            ("altitudeedit", include_str!("altitudeedit.rs")),
-            ("altitudemodes", include_str!("altitudemodes.rs")),
-            ("apmmeta", include_str!("apmmeta.rs")),
-            ("autoconnect", include_str!("autoconnect.rs")),
-            ("battery", include_str!("battery.rs")),
-            ("batteryfacts", include_str!("batteryfacts.rs")),
-            ("buildings", include_str!("buildings.rs")),
-            ("boards", include_str!("boards.rs")),
-            ("calibration", include_str!("calibration.rs")),
-            ("cameracalc", include_str!("cameracalc.rs")),
-            ("cameradef", include_str!("cameradef.rs")),
-            ("cameratrack", include_str!("cameratrack.rs")),
-            ("cameraproto", include_str!("cameraproto.rs")),
-            ("changedriven", include_str!("changedriven.rs")),
-            ("camsettings", include_str!("camsettings.rs")),
-            ("onboardlogs", include_str!("onboardlogs.rs")),
-            ("shell", include_str!("shell.rs")),
-            ("forwarding", include_str!("forwarding.rs")),
-            ("gcsheartbeat", include_str!("gcsheartbeat.rs")),
-            ("messagelog", include_str!("messagelog.rs")),
-            ("noticeboard", include_str!("noticeboard.rs")),
-            ("nativeargs", include_str!("nativeargs.rs")),
-            ("nativehost", include_str!("nativehost.rs")),
-            ("qthost", include_str!("qthost.rs")),
-            ("terrainservice", include_str!("terrainservice.rs")),
-            ("mavinspect", include_str!("mavinspect.rs")),
-            ("videostats", include_str!("videostats.rs")),
-            ("linkcount", include_str!("linkcount.rs")),
-            ("offlinestatus", include_str!("offlinestatus.rs")),
-            ("resumemission", include_str!("resumemission.rs")),
-            ("payloadcheck", include_str!("payloadcheck.rs")),
-            ("connectnotices", include_str!("connectnotices.rs")),
-            ("inspectorchart", include_str!("inspectorchart.rs")),
-            ("rccal", include_str!("rccal.rs")),
-            ("cmdinfo", include_str!("cmdinfo.rs")),
-            ("compinfo", include_str!("compinfo.rs")),
-            ("compmeta", include_str!("compmeta.rs")),
-            ("compression", include_str!("compression.rs")),
+        ("actions", include_str!("actions.rs")),
+        ("adsb", include_str!("adsb.rs")),
+        ("altitude", include_str!("altitude.rs")),
+        ("altitudeedit", include_str!("altitudeedit.rs")),
+        ("altitudemodes", include_str!("altitudemodes.rs")),
+        ("apmmeta", include_str!("apmmeta.rs")),
+        ("autoconnect", include_str!("autoconnect.rs")),
+        ("battery", include_str!("battery.rs")),
+        ("batteryfacts", include_str!("batteryfacts.rs")),
+        ("buildings", include_str!("buildings.rs")),
+        ("boards", include_str!("boards.rs")),
+        ("calibration", include_str!("calibration.rs")),
+        ("cameracalc", include_str!("cameracalc.rs")),
+        ("cameradef", include_str!("cameradef.rs")),
+        ("cameratrack", include_str!("cameratrack.rs")),
+        ("cameraproto", include_str!("cameraproto.rs")),
+        ("changedriven", include_str!("changedriven.rs")),
+        ("camsettings", include_str!("camsettings.rs")),
+        ("onboardlogs", include_str!("onboardlogs.rs")),
+        ("shell", include_str!("shell.rs")),
+        ("forwarding", include_str!("forwarding.rs")),
+        ("gcsheartbeat", include_str!("gcsheartbeat.rs")),
+        ("messagelog", include_str!("messagelog.rs")),
+        ("noticeboard", include_str!("noticeboard.rs")),
+        ("nativeargs", include_str!("nativeargs.rs")),
+        ("nativehost", include_str!("nativehost.rs")),
+        ("qthost", include_str!("qthost.rs")),
+        ("terrainservice", include_str!("terrainservice.rs")),
+        ("mavinspect", include_str!("mavinspect.rs")),
+        ("videostats", include_str!("videostats.rs")),
+        ("linkcount", include_str!("linkcount.rs")),
+        ("offlinestatus", include_str!("offlinestatus.rs")),
+        ("resumemission", include_str!("resumemission.rs")),
+        ("payloadcheck", include_str!("payloadcheck.rs")),
+        ("connectnotices", include_str!("connectnotices.rs")),
+        ("inspectorchart", include_str!("inspectorchart.rs")),
+        ("rccal", include_str!("rccal.rs")),
+        ("cmdinfo", include_str!("cmdinfo.rs")),
+        ("compinfo", include_str!("compinfo.rs")),
+        ("compmeta", include_str!("compmeta.rs")),
+        ("compression", include_str!("compression.rs")),
         ("console", include_str!("console.rs")),
-            ("connect", include_str!("connect.rs")),
-            ("contract", include_str!("contract.rs")),
-            ("control", include_str!("control.rs")),
-            ("corridorscan", include_str!("corridorscan.rs")),
-            ("debugapi", include_str!("debugapi.rs")),
-            ("detections", include_str!("detections.rs")),
-            ("devicetrack", include_str!("devicetrack.rs")),
-            ("lens", include_str!("lens.rs")),
-            ("factmeta", include_str!("factmeta.rs")),
-            ("factwrite", include_str!("factwrite.rs")),
-            ("fenceedit", include_str!("fenceedit.rs")),
-            ("fencedoc", include_str!("fencedoc.rs")),
-            ("fences", include_str!("fences.rs")),
-            ("flightmodes", include_str!("flightmodes.rs")),
-            ("flystate", include_str!("flystate.rs")),
-            ("missionprogress", include_str!("missionprogress.rs")),
-            ("followme", include_str!("followme.rs")),
+        ("connect", include_str!("connect.rs")),
+        ("contract", include_str!("contract.rs")),
+        ("control", include_str!("control.rs")),
+        ("corridorscan", include_str!("corridorscan.rs")),
+        ("debugapi", include_str!("debugapi.rs")),
+        ("detections", include_str!("detections.rs")),
+        ("devicetrack", include_str!("devicetrack.rs")),
+        ("lens", include_str!("lens.rs")),
+        ("factmeta", include_str!("factmeta.rs")),
+        ("factwrite", include_str!("factwrite.rs")),
+        ("fenceedit", include_str!("fenceedit.rs")),
+        ("fencedoc", include_str!("fencedoc.rs")),
+        ("fences", include_str!("fences.rs")),
+        ("flightmodes", include_str!("flightmodes.rs")),
+        ("flystate", include_str!("flystate.rs")),
+        ("missionprogress", include_str!("missionprogress.rs")),
+        ("followme", include_str!("followme.rs")),
         ("frame", include_str!("frame.rs")),
-            ("firmwareinfo", include_str!("firmwareinfo.rs")),
-            ("ftp", include_str!("ftp.rs")),
-            ("gcsposition", include_str!("gcsposition.rs")),
-            ("geo", include_str!("geo.rs")),
-            ("geotag", include_str!("geotag.rs")),
-            ("geotagcontroller", include_str!("geotagcontroller.rs")),
-            ("geotagjob", include_str!("geotagjob.rs")),
-            ("gimbal", include_str!("gimbal.rs")),
-            ("gpsfacts", include_str!("gpsfacts.rs")),
-            ("gpsrtk", include_str!("gpsrtk.rs")),
-            ("gpsview", include_str!("gpsview.rs")),
-            ("guided", include_str!("guided.rs")),
-            ("guidedcmd", include_str!("guidedcmd.rs")),
-            ("guidedexec", include_str!("guidedexec.rs")),
-            ("hostnotice", include_str!("hostnotice.rs")),
-            ("hostnoticeview", include_str!("hostnoticeview.rs")),
-            ("hub", include_str!("hub.rs")),
-            ("inspector", include_str!("inspector.rs")),
-            ("itemshape", include_str!("itemshape.rs")),
-            ("itemposition", include_str!("itemposition.rs")),
-            ("instrumentgroups", include_str!("instrumentgroups.rs")),
-            ("instruments", include_str!("instruments.rs")),
+        ("firmwareinfo", include_str!("firmwareinfo.rs")),
+        ("ftp", include_str!("ftp.rs")),
+        ("gcsposition", include_str!("gcsposition.rs")),
+        ("geo", include_str!("geo.rs")),
+        ("geotag", include_str!("geotag.rs")),
+        ("geotagcontroller", include_str!("geotagcontroller.rs")),
+        ("geotagjob", include_str!("geotagjob.rs")),
+        ("gimbal", include_str!("gimbal.rs")),
+        ("gpsfacts", include_str!("gpsfacts.rs")),
+        ("gpsrtk", include_str!("gpsrtk.rs")),
+        ("gpsview", include_str!("gpsview.rs")),
+        ("guided", include_str!("guided.rs")),
+        ("guidedcmd", include_str!("guidedcmd.rs")),
+        ("guidedexec", include_str!("guidedexec.rs")),
+        ("hostnotice", include_str!("hostnotice.rs")),
+        ("hostnoticeview", include_str!("hostnoticeview.rs")),
+        ("hub", include_str!("hub.rs")),
+        ("inspector", include_str!("inspector.rs")),
+        ("itemshape", include_str!("itemshape.rs")),
+        ("itemposition", include_str!("itemposition.rs")),
+        ("instrumentgroups", include_str!("instrumentgroups.rs")),
+        ("instruments", include_str!("instruments.rs")),
         ("itemcamera", include_str!("itemcamera.rs")),
         ("itemfacts", include_str!("itemfacts.rs")),
-            ("joystick", include_str!("joystick.rs")),
-            ("joystickhost", include_str!("joystickhost.rs")),
-            ("stickcal", include_str!("stickcal.rs")),
-            ("mavlinkactions", include_str!("mavlinkactions.rs")),
-            ("espbridge", include_str!("espbridge.rs")),
-            ("syslink", include_str!("syslink.rs")),
-            ("sensorsettings", include_str!("sensorsettings.rs")),
-            ("kml", include_str!("kml.rs")),
-            ("label", include_str!("label.rs")),
-            ("landing", include_str!("landing.rs")),
-            ("linkconfig", include_str!("linkconfig.rs")),
-            ("linkhost", include_str!("linkhost.rs")),
-            ("links", include_str!("links.rs")),
-            ("linkconnect", include_str!("linkconnect.rs")),
-            ("landingpattern", include_str!("landingpattern.rs")),
-            ("vehiclefacade", include_str!("vehiclefacade.rs")),
-            ("units", include_str!("units.rs")),
-            ("usbfs", include_str!("usbfs.rs")),
-            ("usbmsc", include_str!("usbmsc.rs")),
-            ("usbradio", include_str!("usbradio.rs")),
-            ("vehiclefact", include_str!("vehiclefact.rs")),
-            ("linkremove", include_str!("linkremove.rs")),
-            ("mapclick", include_str!("mapclick.rs")),
-            ("missioncomplete", include_str!("missioncomplete.rs")),
-            ("paramtools", include_str!("paramtools.rs")),
-            ("paramfile", include_str!("paramfile.rs")),
-            ("gimbalindicator", include_str!("gimbalindicator.rs")),
-            ("escview", include_str!("escview.rs")),
-            ("gcsbattery", include_str!("gcsbattery.rs")),
-            ("gpsresilience", include_str!("gpsresilience.rs")),
-            ("ubxbase", include_str!("ubxbase.rs")),
-            ("rtkbase", include_str!("rtkbase.rs")),
-            ("sbfbase", include_str!("sbfbase.rs")),
-            ("femtobase", include_str!("femtobase.rs")),
-            ("ashtechbase", include_str!("ashtechbase.rs")),
-            ("speech", include_str!("speech.rs")),
-            ("telemetrylog", include_str!("telemetrylog.rs")),
-            ("proximity", include_str!("proximity.rs")),
-            ("aircastlink", include_str!("aircastlink.rs")),
-            ("powercalc", include_str!("powercalc.rs")),
-            ("mavlinklog", include_str!("mavlinklog.rs")),
-            ("escal", include_str!("escal.rs")),
-            ("csvlog", include_str!("csvlog.rs")),
-            ("firstrun", include_str!("firstrun.rs")),
-            ("deeplinksetup", include_str!("deeplinksetup.rs")),
-            ("pumpguard", include_str!("pumpguard.rs")),
-            ("advancedui", include_str!("advancedui.rs")),
-            ("applog", include_str!("applog.rs")),
-            ("offlinemaps", include_str!("offlinemaps.rs")),
-            ("virtualjoystick", include_str!("virtualjoystick.rs")),
-            ("linkhealth", include_str!("linkhealth.rs")),
-            ("stats", include_str!("stats.rs")),
-            ("plantemplates", include_str!("plantemplates.rs")),
-            ("plantransform", include_str!("plantransform.rs")),
-            ("px4tuning", include_str!("px4tuning.rs")),
-            ("px4airframe", include_str!("px4airframe.rs")),
-            ("streamconfig", include_str!("streamconfig.rs")),
-            ("autotune", include_str!("autotune.rs")),
-            ("actuators", include_str!("actuators.rs")),
-            ("apmfollow", include_str!("apmfollow.rs")),
-            ("apmairframe", include_str!("apmairframe.rs")),
-            ("closechecks", include_str!("closechecks.rs")),
-            ("setupsummary", include_str!("setupsummary.rs")),
-            ("apmsubframe", include_str!("apmsubframe.rs")),
-            ("apmsubmotors", include_str!("apmsubmotors.rs")),
-            ("apmservos", include_str!("apmservos.rs")),
-            ("logreplay", include_str!("logreplay.rs")),
-            ("mockcal", include_str!("mockcal.rs")),
-            ("mocklog", include_str!("mocklog.rs")),
-            ("mockcamera", include_str!("mockcamera.rs")),
-            ("mockbattery", include_str!("mockbattery.rs")),
-            ("mockfailsafe", include_str!("mockfailsafe.rs")),
-            ("mockfence", include_str!("mockfence.rs")),
-            ("mockgimbal", include_str!("mockgimbal.rs")),
-            ("mocklink", include_str!("mocklink.rs")),
-            ("mockmission", include_str!("mockmission.rs")),
-            ("mocktuning", include_str!("mocktuning.rs")),
-            ("ntrip", include_str!("ntrip.rs")),
-            ("filejobs", include_str!("filejobs.rs")),
-            ("scripting", include_str!("scripting.rs")),
-            ("signingkeys", include_str!("signingkeys.rs")),
-            ("actuatortest", include_str!("actuatortest.rs")),
-            ("motorassignment", include_str!("motorassignment.rs")),
-            ("commandtree", include_str!("commandtree.rs")),
-            ("account", include_str!("account.rs")),
-            ("cloudlink", include_str!("cloudlink.rs")),
-            ("components", include_str!("components.rs")),
-            ("flowimage", include_str!("flowimage.rs")),
-            ("maptypes", include_str!("maptypes.rs")),
-            ("mapurls", include_str!("mapurls.rs")),
-            ("maptiles", include_str!("maptiles.rs")),
-            ("corelinks", include_str!("corelinks.rs")),
-            ("devicesetup", include_str!("devicesetup.rs")),
-            ("paramnames", include_str!("paramnames.rs")),
-            ("logs", include_str!("logs.rs")),
-            ("mappolygon", include_str!("mappolygon.rs")),
-            ("mappolyline", include_str!("mappolyline.rs")),
-            ("mapscale", include_str!("mapscale.rs")),
-            ("mavcmd", include_str!("mavcmd.rs")),
-            ("mavout", include_str!("mavout.rs")),
-            ("messages", include_str!("messages.rs")),
-            ("mission", include_str!("mission.rs")),
-            ("missionitems", include_str!("missionitems.rs")),
-            ("missionkinds", include_str!("missionkinds.rs")),
-            ("missionsummary", include_str!("missionsummary.rs")),
-            ("modes", include_str!("modes.rs")),
-            ("modeslots", include_str!("modeslots.rs")),
-            ("obstacle", include_str!("obstacle.rs")),
-            ("attitude", include_str!("attitude.rs")),
-            ("synthview", include_str!("synthview.rs")),
-            ("synthetic", include_str!("synthetic/host.rs")),
-            ("videoar", include_str!("videoar.rs")),
-            ("operatorcontrol", include_str!("operatorcontrol.rs")),
-            ("operatorrequest", include_str!("operatorrequest.rs")),
-            ("orbit", include_str!("orbit.rs")),
-            ("packetradio", include_str!("packetradio.rs")),
-            ("params", include_str!("params.rs")),
-            ("plan", include_str!("plan.rs")),
-            ("planfile", include_str!("planfile.rs")),
-            ("coreplan", include_str!("coreplan.rs")),
-            ("plandoc", include_str!("plandoc.rs")),
-            ("qtjson", include_str!("qtjson.rs")),
-            ("transectload", include_str!("transectload.rs")),
-            ("planitems", include_str!("planitems.rs")),
-            ("plankml", include_str!("plankml.rs")),
-            ("platformbluetooth", include_str!("platformbluetooth.rs")),
-            ("paramremap", include_str!("paramremap.rs")),
-            ("libevents", include_str!("libevents.rs")),
-            ("wfbhost", include_str!("wfbhost.rs")),
-            ("bootloader", include_str!("bootloader.rs")),
-            ("latestfirmware", include_str!("latestfirmware.rs")),
-            ("viewer3d", include_str!("viewer3d.rs")),
-            ("firmwareflash", include_str!("firmwareflash.rs")),
-            ("flasher", include_str!("flasher.rs")),
-            ("flasherform", include_str!("flasherform.rs")),
-            ("firmwarecatalog", include_str!("firmwarecatalog.rs")),
-            ("settingsorder", include_str!("settingsorder.rs")),
-            ("platformdisk", include_str!("platformdisk.rs")),
-            ("platformserial", include_str!("platformserial.rs")),
-            ("device", include_str!("device.rs")),
-            ("hostsocket", include_str!("hostsocket.rs")),
-            ("hostdevice", include_str!("hostdevice.rs")),
-            ("pilotunits", include_str!("pilotunits.rs")),
-            ("refusal", include_str!("refusal.rs")),
-            ("presets", include_str!("presets.rs")),
-            ("rctoparam", include_str!("rctoparam.rs")),
-            ("planselect", include_str!("planselect.rs")),
-            ("plantransfer", include_str!("plantransfer.rs")),
-            ("preflight", include_str!("preflight.rs")),
-            ("px4meta", include_str!("px4meta.rs")),
-            ("radio", include_str!("radio.rs")),
-            ("rallyedit", include_str!("rallyedit.rs")),
-            ("rcoverride", include_str!("rcoverride.rs")),
-            ("builtinsticks", include_str!("builtinsticks.rs")),
-            ("umbus", include_str!("umbus.rs")),
-            ("read", include_str!("read.rs")),
-            ("remoteid", include_str!("remoteid.rs")),
-            ("remoteidview", include_str!("remoteidview.rs")),
-            ("renamed", include_str!("renamed.rs")),
-            ("replay", include_str!("replay.rs")),
-            ("router", include_str!("router.rs")),
-            ("rtcm", include_str!("rtcm.rs")),
-            ("sensorcal", include_str!("sensorcal.rs")),
-            ("sensorfacts", include_str!("sensorfacts.rs")),
-            ("sensors", include_str!("sensors.rs")),
-            ("seriallink", include_str!("seriallink.rs")),
-            ("settings", include_str!("settings.rs")),
-            ("settingsgroups", include_str!("settingsgroups.rs")),
-            ("settingsini", include_str!("settingsini.rs")),
-            ("settingsstore", include_str!("settingsstore.rs")),
-            ("simcamera", include_str!("simcamera.rs")),
-            ("setup", include_str!("setup.rs")),
-            ("vehicleconfig", include_str!("vehicleconfig.rs")),
-            ("shp", include_str!("shp.rs")),
-            ("signing", include_str!("signing.rs")),
-            ("speed", include_str!("speed.rs")),
-            ("standardmodes", include_str!("standardmodes.rs")),
-            ("statustext", include_str!("statustext.rs")),
-            ("structurescan", include_str!("structurescan.rs")),
-            ("survey", include_str!("survey.rs")),
-            ("surveydoc", include_str!("surveydoc.rs")),
-            ("surveygrid", include_str!("surveygrid.rs")),
-            ("surveyitems", include_str!("surveyitems.rs")),
-            ("sysstatus", include_str!("sysstatus.rs")),
-            ("takeoff", include_str!("takeoff.rs")),
-            ("tcplink", include_str!("tcplink.rs")),
-            ("terrain", include_str!("terrain.rs")),
-            ("terraindownload", include_str!("terraindownload.rs")),
-            ("terrainfollow", include_str!("terrainfollow.rs")),
-            ("terrainquery", include_str!("terrainquery.rs")),
-            ("terraintile", include_str!("terraintile.rs")),
-            ("tilecache", include_str!("tilecache.rs")),
-            ("tlog", include_str!("tlog.rs")),
-            ("track", include_str!("track.rs")),
-            ("background", include_str!("background.rs")),
-            ("http", include_str!("http.rs")),
-            ("vfs", include_str!("vfs.rs")),
-            ("transport", include_str!("transport.rs")),
-            ("udplink", include_str!("udplink.rs")),
-            ("ulogstream", include_str!("ulogstream.rs")),
-            ("vehiclefacts", include_str!("vehiclefacts.rs")),
-            ("vehiclelinks", include_str!("vehiclelinks.rs")),
-            ("vehicles", include_str!("vehicles.rs")),
-            ("vehicleselect", include_str!("vehicleselect.rs")),
-            ("vibration", include_str!("vibration.rs")),
-            ("video", include_str!("video.rs")),
-            ("cardimage", include_str!("cardimage.rs")),
-            ("cardprovision", include_str!("cardprovision.rs")),
-            ("cardwrite", include_str!("cardwrite.rs")),
-            ("cameras", include_str!("cameras.rs")),
-            ("videohost", include_str!("videohost.rs")),
-            ("videosource", include_str!("videosource.rs")),
-            ("videostate", include_str!("videostate.rs")),
-            ("view", include_str!("view.rs")),
-            ("warnings", include_str!("warnings.rs")),
-            ("waypoints", include_str!("waypoints.rs")),
+        ("joystick", include_str!("joystick.rs")),
+        ("joystickhost", include_str!("joystickhost.rs")),
+        ("stickcal", include_str!("stickcal.rs")),
+        ("mavlinkactions", include_str!("mavlinkactions.rs")),
+        ("espbridge", include_str!("espbridge.rs")),
+        ("syslink", include_str!("syslink.rs")),
+        ("sensorsettings", include_str!("sensorsettings.rs")),
+        ("kml", include_str!("kml.rs")),
+        ("label", include_str!("label.rs")),
+        ("landing", include_str!("landing.rs")),
+        ("linkconfig", include_str!("linkconfig.rs")),
+        ("linkhost", include_str!("linkhost.rs")),
+        ("links", include_str!("links.rs")),
+        ("linkconnect", include_str!("linkconnect.rs")),
+        ("landingpattern", include_str!("landingpattern.rs")),
+        ("vehiclefacade", include_str!("vehiclefacade.rs")),
+        ("units", include_str!("units.rs")),
+        ("usbfs", include_str!("usbfs.rs")),
+        ("usbmsc", include_str!("usbmsc.rs")),
+        ("usbradio", include_str!("usbradio.rs")),
+        ("vehiclefact", include_str!("vehiclefact.rs")),
+        ("linkremove", include_str!("linkremove.rs")),
+        ("mapclick", include_str!("mapclick.rs")),
+        ("missioncomplete", include_str!("missioncomplete.rs")),
+        ("paramtools", include_str!("paramtools.rs")),
+        ("paramfile", include_str!("paramfile.rs")),
+        ("gimbalindicator", include_str!("gimbalindicator.rs")),
+        ("escview", include_str!("escview.rs")),
+        ("gcsbattery", include_str!("gcsbattery.rs")),
+        ("gpsresilience", include_str!("gpsresilience.rs")),
+        ("ubxbase", include_str!("ubxbase.rs")),
+        ("rtkbase", include_str!("rtkbase.rs")),
+        ("sbfbase", include_str!("sbfbase.rs")),
+        ("femtobase", include_str!("femtobase.rs")),
+        ("ashtechbase", include_str!("ashtechbase.rs")),
+        ("speech", include_str!("speech.rs")),
+        ("telemetrylog", include_str!("telemetrylog.rs")),
+        ("proximity", include_str!("proximity.rs")),
+        ("aircastlink", include_str!("aircastlink.rs")),
+        ("powercalc", include_str!("powercalc.rs")),
+        ("mavlinklog", include_str!("mavlinklog.rs")),
+        ("escal", include_str!("escal.rs")),
+        ("csvlog", include_str!("csvlog.rs")),
+        ("firstrun", include_str!("firstrun.rs")),
+        ("deeplinksetup", include_str!("deeplinksetup.rs")),
+        ("pumpguard", include_str!("pumpguard.rs")),
+        ("advancedui", include_str!("advancedui.rs")),
+        ("applog", include_str!("applog.rs")),
+        ("offlinemaps", include_str!("offlinemaps.rs")),
+        ("virtualjoystick", include_str!("virtualjoystick.rs")),
+        ("linkhealth", include_str!("linkhealth.rs")),
+        ("stats", include_str!("stats.rs")),
+        ("plantemplates", include_str!("plantemplates.rs")),
+        ("plantransform", include_str!("plantransform.rs")),
+        ("px4tuning", include_str!("px4tuning.rs")),
+        ("px4airframe", include_str!("px4airframe.rs")),
+        ("streamconfig", include_str!("streamconfig.rs")),
+        ("autotune", include_str!("autotune.rs")),
+        ("actuators", include_str!("actuators.rs")),
+        ("apmfollow", include_str!("apmfollow.rs")),
+        ("apmairframe", include_str!("apmairframe.rs")),
+        ("closechecks", include_str!("closechecks.rs")),
+        ("setupsummary", include_str!("setupsummary.rs")),
+        ("apmsubframe", include_str!("apmsubframe.rs")),
+        ("apmsubmotors", include_str!("apmsubmotors.rs")),
+        ("apmservos", include_str!("apmservos.rs")),
+        ("logreplay", include_str!("logreplay.rs")),
+        ("mockcal", include_str!("mockcal.rs")),
+        ("mocklog", include_str!("mocklog.rs")),
+        ("mockcamera", include_str!("mockcamera.rs")),
+        ("mockbattery", include_str!("mockbattery.rs")),
+        ("mockfailsafe", include_str!("mockfailsafe.rs")),
+        ("mockfence", include_str!("mockfence.rs")),
+        ("mockgimbal", include_str!("mockgimbal.rs")),
+        ("mocklink", include_str!("mocklink.rs")),
+        ("mockmission", include_str!("mockmission.rs")),
+        ("mocktuning", include_str!("mocktuning.rs")),
+        ("ntrip", include_str!("ntrip.rs")),
+        ("filejobs", include_str!("filejobs.rs")),
+        ("scripting", include_str!("scripting.rs")),
+        ("signingkeys", include_str!("signingkeys.rs")),
+        ("actuatortest", include_str!("actuatortest.rs")),
+        ("motorassignment", include_str!("motorassignment.rs")),
+        ("commandtree", include_str!("commandtree.rs")),
+        ("account", include_str!("account.rs")),
+        ("cloudlink", include_str!("cloudlink.rs")),
+        ("components", include_str!("components.rs")),
+        ("flowimage", include_str!("flowimage.rs")),
+        ("maptypes", include_str!("maptypes.rs")),
+        ("mapurls", include_str!("mapurls.rs")),
+        ("maptiles", include_str!("maptiles.rs")),
+        ("corelinks", include_str!("corelinks.rs")),
+        ("devicesetup", include_str!("devicesetup.rs")),
+        ("paramnames", include_str!("paramnames.rs")),
+        ("logs", include_str!("logs.rs")),
+        ("mappolygon", include_str!("mappolygon.rs")),
+        ("mappolyline", include_str!("mappolyline.rs")),
+        ("mapscale", include_str!("mapscale.rs")),
+        ("mavcmd", include_str!("mavcmd.rs")),
+        ("mavout", include_str!("mavout.rs")),
+        ("messages", include_str!("messages.rs")),
+        ("mission", include_str!("mission.rs")),
+        ("missionitems", include_str!("missionitems.rs")),
+        ("missionkinds", include_str!("missionkinds.rs")),
+        ("missionsummary", include_str!("missionsummary.rs")),
+        ("modes", include_str!("modes.rs")),
+        ("modeslots", include_str!("modeslots.rs")),
+        ("obstacle", include_str!("obstacle.rs")),
+        ("attitude", include_str!("attitude.rs")),
+        ("synthview", include_str!("synthview.rs")),
+        ("synthetic", include_str!("synthetic/host.rs")),
+        ("videoar", include_str!("videoar.rs")),
+        ("operatorcontrol", include_str!("operatorcontrol.rs")),
+        ("operatorrequest", include_str!("operatorrequest.rs")),
+        ("orbit", include_str!("orbit.rs")),
+        ("packetradio", include_str!("packetradio.rs")),
+        ("params", include_str!("params.rs")),
+        ("plan", include_str!("plan.rs")),
+        ("planfile", include_str!("planfile.rs")),
+        ("coreplan", include_str!("coreplan.rs")),
+        ("plandoc", include_str!("plandoc.rs")),
+        ("qtjson", include_str!("qtjson.rs")),
+        ("transectload", include_str!("transectload.rs")),
+        ("planitems", include_str!("planitems.rs")),
+        ("plankml", include_str!("plankml.rs")),
+        ("platformbluetooth", include_str!("platformbluetooth.rs")),
+        ("paramremap", include_str!("paramremap.rs")),
+        ("libevents", include_str!("libevents.rs")),
+        ("wfbhost", include_str!("wfbhost.rs")),
+        ("bootloader", include_str!("bootloader.rs")),
+        ("latestfirmware", include_str!("latestfirmware.rs")),
+        ("viewer3d", include_str!("viewer3d.rs")),
+        ("firmwareflash", include_str!("firmwareflash.rs")),
+        ("flasher", include_str!("flasher.rs")),
+        ("flasherform", include_str!("flasherform.rs")),
+        ("firmwarecatalog", include_str!("firmwarecatalog.rs")),
+        ("settingsorder", include_str!("settingsorder.rs")),
+        ("platformdisk", include_str!("platformdisk.rs")),
+        ("platformserial", include_str!("platformserial.rs")),
+        ("device", include_str!("device.rs")),
+        ("hostsocket", include_str!("hostsocket.rs")),
+        ("hostdevice", include_str!("hostdevice.rs")),
+        ("pilotunits", include_str!("pilotunits.rs")),
+        ("refusal", include_str!("refusal.rs")),
+        ("presets", include_str!("presets.rs")),
+        ("rctoparam", include_str!("rctoparam.rs")),
+        ("planselect", include_str!("planselect.rs")),
+        ("plantransfer", include_str!("plantransfer.rs")),
+        ("preflight", include_str!("preflight.rs")),
+        ("px4meta", include_str!("px4meta.rs")),
+        ("radio", include_str!("radio.rs")),
+        ("rallyedit", include_str!("rallyedit.rs")),
+        ("rcoverride", include_str!("rcoverride.rs")),
+        ("builtinsticks", include_str!("builtinsticks.rs")),
+        ("umbus", include_str!("umbus.rs")),
+        ("read", include_str!("read.rs")),
+        ("remoteid", include_str!("remoteid.rs")),
+        ("remoteidview", include_str!("remoteidview.rs")),
+        ("renamed", include_str!("renamed.rs")),
+        ("replay", include_str!("replay.rs")),
+        ("router", include_str!("router.rs")),
+        ("rtcm", include_str!("rtcm.rs")),
+        ("sensorcal", include_str!("sensorcal.rs")),
+        ("sensorfacts", include_str!("sensorfacts.rs")),
+        ("sensors", include_str!("sensors.rs")),
+        ("seriallink", include_str!("seriallink.rs")),
+        ("settings", include_str!("settings.rs")),
+        ("settingsgroups", include_str!("settingsgroups.rs")),
+        ("settingsini", include_str!("settingsini.rs")),
+        ("settingsstore", include_str!("settingsstore.rs")),
+        ("simcamera", include_str!("simcamera.rs")),
+        ("setup", include_str!("setup.rs")),
+        ("vehicleconfig", include_str!("vehicleconfig.rs")),
+        ("shp", include_str!("shp.rs")),
+        ("signing", include_str!("signing.rs")),
+        ("speed", include_str!("speed.rs")),
+        ("standardmodes", include_str!("standardmodes.rs")),
+        ("statustext", include_str!("statustext.rs")),
+        ("structurescan", include_str!("structurescan.rs")),
+        ("survey", include_str!("survey.rs")),
+        ("surveydoc", include_str!("surveydoc.rs")),
+        ("surveygrid", include_str!("surveygrid.rs")),
+        ("surveyitems", include_str!("surveyitems.rs")),
+        ("sysstatus", include_str!("sysstatus.rs")),
+        ("takeoff", include_str!("takeoff.rs")),
+        ("tcplink", include_str!("tcplink.rs")),
+        ("terrain", include_str!("terrain.rs")),
+        ("terraindownload", include_str!("terraindownload.rs")),
+        ("terrainfollow", include_str!("terrainfollow.rs")),
+        ("terrainquery", include_str!("terrainquery.rs")),
+        ("terraintile", include_str!("terraintile.rs")),
+        ("tilecache", include_str!("tilecache.rs")),
+        ("tlog", include_str!("tlog.rs")),
+        ("track", include_str!("track.rs")),
+        ("background", include_str!("background.rs")),
+        ("http", include_str!("http.rs")),
+        ("vfs", include_str!("vfs.rs")),
+        ("transport", include_str!("transport.rs")),
+        ("udplink", include_str!("udplink.rs")),
+        ("ulogstream", include_str!("ulogstream.rs")),
+        ("vehiclefacts", include_str!("vehiclefacts.rs")),
+        ("vehiclelinks", include_str!("vehiclelinks.rs")),
+        ("vehicles", include_str!("vehicles.rs")),
+        ("vehicleselect", include_str!("vehicleselect.rs")),
+        ("vibration", include_str!("vibration.rs")),
+        ("video", include_str!("video.rs")),
+        ("cardimage", include_str!("cardimage.rs")),
+        ("cardprovision", include_str!("cardprovision.rs")),
+        ("cardwrite", include_str!("cardwrite.rs")),
+        ("cameras", include_str!("cameras.rs")),
+        ("videohost", include_str!("videohost.rs")),
+        ("videosource", include_str!("videosource.rs")),
+        ("videostate", include_str!("videostate.rs")),
+        ("view", include_str!("view.rs")),
+        ("warnings", include_str!("warnings.rs")),
+        ("waypoints", include_str!("waypoints.rs")),
     ];
-
 
     const UNWATCHED_BECAUSE_CONSTANT: &[&str] = &[
         "video.gstreamerEnabled",
@@ -839,13 +1563,13 @@ mod deps_cover_reads {
         "vehicle.motorDetectionFlightMode",
         "vehicle.landFlightMode",
         "links.linkTypeStrings",
-    "vehicle.supports.roiMode",
-    "vehicle.supports.smartRTL",
-    "vehicle.supports.changeHeading",
-    "vehicle.gotoFlightMode",
-    "vehicle.supports.orbitMode",
-    "vehicle.supports.radio",
-    "links.linkTypeIds",
+        "vehicle.supports.roiMode",
+        "vehicle.supports.smartRTL",
+        "vehicle.supports.changeHeading",
+        "vehicle.gotoFlightMode",
+        "vehicle.supports.orbitMode",
+        "vehicle.supports.radio",
+        "links.linkTypeIds",
         "links.serialBaudRates",
         "radioCal.channelCount",
         "vehicle.supports.guidedMode",
@@ -873,7 +1597,11 @@ mod deps_cover_reads {
     }
 
     fn literals(text: &str) -> Vec<String> {
-        text.split('"').skip(1).step_by(2).map(str::to_string).collect()
+        text.split('"')
+            .skip(1)
+            .step_by(2)
+            .map(str::to_string)
+            .collect()
     }
 
     fn literal_reads(body: &str) -> Vec<(String, String)> {
@@ -891,10 +1619,23 @@ mod deps_cover_reads {
             .collect()
     }
 
+    fn notified(dep: &str) -> String {
+        dep.split_once('@')
+            .and_then(|(object, signal)| {
+                Some(format!("{object}.{}", signal.strip_suffix("Changed")?))
+            })
+            .unwrap_or_else(|| dep.to_string())
+    }
+
     fn covered(path: &str, field: &str, deps: &BTreeSet<String>) -> bool {
         let full = format!("{path}.{field}");
         UNWATCHED_BECAUSE_CONSTANT.contains(&full.as_str())
-            || deps.iter().any(|dep| *dep == full || dep == path || full.starts_with(&format!("{dep}.")) || dep.starts_with(&format!("{full}.")))
+            || deps.iter().map(|dep| notified(dep)).any(|dep| {
+                *dep == full
+                    || dep == path
+                    || full.starts_with(&format!("{dep}."))
+                    || dep.starts_with(&format!("{full}."))
+            })
     }
 
     fn whole_reads(body: &str) -> Vec<String> {
@@ -904,51 +1645,73 @@ mod deps_cover_reads {
             .filter_map(|start| {
                 let tail = &body[start..];
                 let close = tail.find('"')?;
-                tail[close + 1..].starts_with(')').then(|| tail[..close].to_string())
+                tail[close + 1..]
+                    .starts_with(')')
+                    .then(|| tail[..close].to_string())
             })
             .collect()
     }
 
     #[test]
     fn every_path_a_view_reads_whole_is_one_it_watches() {
-        const WATCHED_THROUGH_A_SIBLING: &[(&str, &str)] = &[
-            ("vehicle.healthAndArmingCheckReport.problemsForCurrentMode", "vehicle.healthAndArmingCheckReport.supported"),
-        ];
+        const WATCHED_THROUGH_A_SIBLING: &[(&str, &str)] = &[(
+            "vehicle.healthAndArmingCheckReport.problemsForCurrentMode",
+            "vehicle.healthAndArmingCheckReport.supported",
+        )];
 
         let seen: usize = MODULES
             .iter()
             .filter_map(|(_, source)| Some(whole_reads(source.split("#[cfg(test)]").next()?).len()))
             .sum();
-        assert!(seen > 25, "the parser found only {seen} whole-path reads, so a clean result would mean nothing");
+        assert!(
+            seen > 25,
+            "the parser found only {seen} whole-path reads, so a clean result would mean nothing"
+        );
 
         let unwatched: Vec<String> = MODULES
             .iter()
             .filter_map(|(name, source)| {
                 let body = source.split("#[cfg(test)]").next()?;
                 let deps = deps_of(body)?;
-                Some(whole_reads(body)
-                    .into_iter()
-                    .filter(|read| {
-                        !WATCHED_THROUGH_A_SIBLING.iter().any(|(path, sibling)| path == read && deps.contains(*sibling))
-                            && !deps.iter().any(|dep| {
-                                let dep = dep.split('@').next().unwrap_or(dep);
-                                dep == read || dep.starts_with(&format!("{read}.")) || read.starts_with(&format!("{dep}."))
-                            })
-                    })
-                    .map(|read| format!("{name} reads {read} and nothing it watches covers it"))
-                    .collect::<Vec<_>>())
+                Some(
+                    whole_reads(body)
+                        .into_iter()
+                        .filter(|read| {
+                            !WATCHED_THROUGH_A_SIBLING
+                                .iter()
+                                .any(|(path, sibling)| path == read && deps.contains(*sibling))
+                                && !deps.iter().any(|dep| {
+                                    let dep = dep.split('@').next().unwrap_or(dep);
+                                    dep == read
+                                        || dep.starts_with(&format!("{read}."))
+                                        || read.starts_with(&format!("{dep}."))
+                                })
+                        })
+                        .map(|read| format!("{name} reads {read} and nothing it watches covers it"))
+                        .collect::<Vec<_>>(),
+                )
             })
             .flatten()
             .collect();
 
-        assert!(unwatched.is_empty(), "a view reading a subject it does not watch renders once and then holds whatever that read said: {}", unwatched.join("; "));
+        assert!(
+            unwatched.is_empty(),
+            "a view reading a subject it does not watch renders once and then holds whatever that read said: {}",
+            unwatched.join("; ")
+        );
     }
 
     #[test]
     fn a_view_that_shows_a_unit_watches_the_setting_that_chooses_it() {
         const CHOSEN_BY: &[(&str, &str)] = &[
-            ("Unit::horizontal(", "settings.unitsSettings.horizontalDistanceUnits"),
-            ("Unit::vertical(", "settings.unitsSettings.verticalDistanceUnits"),
+            (
+                "Unit::horizontal(",
+                "settings.unitsSettings.horizontalDistanceUnits",
+            ),
+            (
+                "Unit::vertical(",
+                "settings.unitsSettings.verticalDistanceUnits",
+            ),
             ("Unit::area(", "settings.unitsSettings.areaUnits"),
             ("Unit::speed(", "settings.unitsSettings.speedUnits"),
         ];
@@ -998,7 +1761,6 @@ mod deps_cover_reads {
             "these are read by a view and named in no dep, so the view is never recomputed when they change. Watch them, or add them to \
              UNWATCHED_BECAUSE_CONSTANT once you have checked the Q_PROPERTY really is CONSTANT: {unwatched:?}"
         );
-
     }
 
     #[test]
@@ -1012,7 +1774,9 @@ mod deps_cover_reads {
             .iter()
             .filter(|(name, source)| {
                 let body = source.split("#[cfg(test)]").next().unwrap_or("");
-                backing.contains(name) && body.contains("backend.get") && !body.contains("DEPS: &[&str]")
+                backing.contains(name)
+                    && body.contains("backend.get")
+                    && !body.contains("DEPS: &[&str]")
             })
             .map(|(name, _)| *name)
             .collect();
@@ -1029,13 +1793,21 @@ mod deps_cover_reads {
             .split("pub fn deps_for")
             .nth(1)
             .and_then(|tail| tail.split("_ =>").next())
-            .map(|arms| arms.split("=> ").skip(1).filter_map(|arm| arm.split("::").next()).map(str::trim).collect())
+            .map(|arms| {
+                arms.split("=> ")
+                    .skip(1)
+                    .filter_map(|arm| arm.split("::").next())
+                    .map(str::trim)
+                    .collect()
+            })
             .unwrap_or_default();
 
         let indexed = |body: &str| {
             body.match_indices("&format!(\"").any(|(at, _)| {
                 let tail = &body[at + "&format!(\"".len()..];
-                tail.find('"').is_some_and(|close| tail[..close].contains("{index}") || tail[..close].contains("{i}"))
+                tail.find('"').is_some_and(|close| {
+                    tail[..close].contains("{index}") || tail[..close].contains("{i}")
+                })
             })
         };
 
@@ -1067,11 +1839,23 @@ mod deps_cover_reads {
             .split("pub fn deps_for")
             .nth(1)
             .and_then(|tail| tail.split("_ =>").next())
-            .map(|arms| arms.split("=> ").skip(1).filter_map(|arm| arm.split("::").next()).map(str::trim).collect())
+            .map(|arms| {
+                arms.split("=> ")
+                    .skip(1)
+                    .filter_map(|arm| arm.split("::").next())
+                    .map(str::trim)
+                    .collect()
+            })
             .unwrap_or_default();
-        assert!(overridden.contains("vehicles"), "the parser has to actually find the arms, or the check above passes because it found none");
+        assert!(
+            overridden.contains("vehicles"),
+            "the parser has to actually find the arms, or the check above passes because it found none"
+        );
         assert!(overridden.contains("battery"));
-        assert!(!overridden.contains("preflight"), "a module with no arm must not read as overridden");
+        assert!(
+            !overridden.contains("preflight"),
+            "a module with no arm must not read as overridden"
+        );
     }
 
     #[test]
@@ -1080,8 +1864,13 @@ mod deps_cover_reads {
             body.match_indices("= lock();")
                 .filter_map(|(at, _)| {
                     let line_start = body[..at].rfind('\n').map_or(0, |n| n + 1);
-                    let indent = body[line_start..at].len() - body[line_start..at].trim_start().len();
-                    let name = body[line_start..at].trim().trim_start_matches("let ").trim_start_matches("mut ").trim();
+                    let indent =
+                        body[line_start..at].len() - body[line_start..at].trim_start().len();
+                    let name = body[line_start..at]
+                        .trim()
+                        .trim_start_matches("let ")
+                        .trim_start_matches("mut ")
+                        .trim();
                     let scope_start = body[at..].find('\n').map_or(body.len(), |n| at + n + 1);
                     let scope_end = body[scope_start..]
                         .match_indices('\n')
@@ -1097,15 +1886,25 @@ mod deps_cover_reads {
                         Some(cut) => &scope[..cut],
                         None => scope,
                     };
-                    (live.contains("backend.") || live.contains("(backend") || live.contains("(&backend")).then(|| body[..at].matches('\n').count() + 1)
+                    (live.contains("backend.")
+                        || live.contains("(backend")
+                        || live.contains("(&backend"))
+                    .then(|| body[..at].matches('\n').count() + 1)
                 })
                 .collect()
         };
 
         const CAUGHT: &str = "fn v(backend: &dyn Backend) {\n    let mut g = lock();\n    g.set(read(backend));\n}\n";
         const RELEASED: &str = "fn v(backend: &dyn Backend) {\n    let mut g = lock();\n    g.tick();\n    drop(g);\n    read(backend);\n}\n";
-        assert_eq!(held_across_a_backend_call(CAUGHT).len(), 1, "the scanner has to catch the shape it is about, or the clean result below means nothing");
-        assert!(held_across_a_backend_call(RELEASED).is_empty(), "a guard dropped before the call is the fix, and flagging it would make the rule unfollowable");
+        assert_eq!(
+            held_across_a_backend_call(CAUGHT).len(),
+            1,
+            "the scanner has to catch the shape it is about, or the clean result below means nothing"
+        );
+        assert!(
+            held_across_a_backend_call(RELEASED).is_empty(),
+            "a guard dropped before the call is the fix, and flagging it would make the rule unfollowable"
+        );
 
         let offenders: Vec<String> = MODULES
             .iter()
@@ -1134,11 +1933,14 @@ mod deps_cover_reads {
                     let quote = tail.find('"')?;
                     (brace < quote).then(|| tail[..brace].trim_end_matches('.').to_string())
                 })
-                .filter(|prefix| !prefix.is_empty() && prefix.contains('.') && !prefix.contains('('))
+                .filter(|prefix| {
+                    !prefix.is_empty() && prefix.contains('.') && !prefix.contains('(')
+                })
                 .collect()
         };
 
-        let under = |prefix: &str, path: &str| path == prefix || path.starts_with(&format!("{prefix}."));
+        let under =
+            |prefix: &str, path: &str| path == prefix || path.starts_with(&format!("{prefix}."));
 
         assert_eq!(
             prefixes(r#"backend.get_fields(&format!("vehicles.vehicles.{index}"), FIELDS)"#),
@@ -1159,14 +1961,23 @@ mod deps_cover_reads {
             .filter_map(|(name, source)| {
                 let body = source.split("#[cfg(test)]").next()?;
                 let deps = deps_of(body)?;
-                Some(prefixes(body)
-                    .into_iter()
-                    .filter(|prefix| !UNVERIFIABLE.contains(&prefix.as_str()))
-                    .filter(|prefix| !deps.iter().any(|dep| {
-                        under(prefix, dep) || dep.split_once('@').is_some_and(|(object, _)| under(object, prefix))
-                    }))
-                    .map(|prefix| format!("{name} builds a read under {prefix} and watches nothing there"))
-                    .collect::<Vec<_>>())
+                Some(
+                    prefixes(body)
+                        .into_iter()
+                        .filter(|prefix| !UNVERIFIABLE.contains(&prefix.as_str()))
+                        .filter(|prefix| {
+                            !deps.iter().any(|dep| {
+                                under(prefix, dep)
+                                    || dep
+                                        .split_once('@')
+                                        .is_some_and(|(object, _)| under(object, prefix))
+                            })
+                        })
+                        .map(|prefix| {
+                            format!("{name} builds a read under {prefix} and watches nothing there")
+                        })
+                        .collect::<Vec<_>>(),
+                )
             })
             .flatten()
             .collect();
@@ -1183,7 +1994,11 @@ mod deps_cover_reads {
         let listed: BTreeSet<&str> = MODULES.iter().map(|(name, _)| *name).collect();
         let missing: Vec<&str> = include_str!("lib.rs")
             .lines()
-            .filter_map(|line| line.trim().strip_prefix("pub mod ").and_then(|rest| rest.strip_suffix(';')))
+            .filter_map(|line| {
+                line.trim()
+                    .strip_prefix("pub mod ")
+                    .and_then(|rest| rest.strip_suffix(';'))
+            })
             .filter(|name| !listed.contains(name))
             .collect();
         assert!(
@@ -1197,9 +2012,18 @@ mod deps_cover_reads {
     fn the_check_can_fail() {
         let deps: BTreeSet<String> = ["vehicle.armed".to_string()].into_iter().collect();
         assert!(covered("vehicle", "armed", &deps));
-        assert!(!covered("vehicle", "flying", &deps), "a field named in no dep and on no constant list has to come back uncovered, or the sweep above passes by construction");
-        assert!(covered("vehicle", "rtlFlightMode", &deps), "the constant list is the escape hatch, and it has to work");
-        assert_eq!(literal_reads(r#"let x = backend.get_fields("vehicle", "armed,flying");"#), vec![("vehicle".to_string(), "armed,flying".to_string())]);
+        assert!(
+            !covered("vehicle", "flying", &deps),
+            "a field named in no dep and on no constant list has to come back uncovered, or the sweep above passes by construction"
+        );
+        assert!(
+            covered("vehicle", "rtlFlightMode", &deps),
+            "the constant list is the escape hatch, and it has to work"
+        );
+        assert_eq!(
+            literal_reads(r#"let x = backend.get_fields("vehicle", "armed,flying");"#),
+            vec![("vehicle".to_string(), "armed,flying".to_string())]
+        );
     }
 }
 
@@ -1211,47 +2035,66 @@ mod argument_modes {
     fn every_view_a_message_names_is_one_that_exists() {
         let registered: Vec<&str> = VIEWS.iter().map(|view| view.path).collect();
         let quoted = |line: &str| -> Vec<String> {
-            line.split('"').skip(1).step_by(2).map(str::to_string).collect()
+            line.split('"')
+                .skip(1)
+                .step_by(2)
+                .map(str::to_string)
+                .collect()
         };
         let named = |text: &str| -> Vec<String> {
             text.match_indices("view.")
                 .map(|(at, _)| {
                     let tail = &text[at..];
-                    let end = tail.char_indices().find(|(i, c)| *i > 4 && !c.is_ascii_alphanumeric()).map(|(i, _)| i).unwrap_or(tail.len());
+                    let end = tail
+                        .char_indices()
+                        .find(|(i, c)| *i > 4 && !c.is_ascii_alphanumeric())
+                        .map(|(i, _)| i)
+                        .unwrap_or(tail.len());
                     tail[..end].to_string()
                 })
                 .filter(|name| name.len() > 5 && !name.ends_with(".rs"))
                 .collect()
         };
 
-        let all: Vec<(String, String)> = std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/src"))
-            .unwrap()
-            .filter_map(Result::ok)
-            .map(|entry| entry.path())
-            .filter(|path| path.extension().is_some_and(|e| e == "rs"))
-            .filter_map(|path| {
-                let source = std::fs::read_to_string(&path).ok()?;
-                let file = path.file_name()?.to_string_lossy().to_string();
-                Some(source
-                    .split("#[cfg(test)]")
-                    .next()?
-                    .lines()
-                    .flat_map(quoted)
-                    .flat_map(|literal| named(&literal))
-                    .map(|name| (file.clone(), name))
-                    .collect::<Vec<_>>())
-            })
-            .flatten()
-            .collect();
+        let all: Vec<(String, String)> =
+            std::fs::read_dir(concat!(env!("CARGO_MANIFEST_DIR"), "/src"))
+                .unwrap()
+                .filter_map(Result::ok)
+                .map(|entry| entry.path())
+                .filter(|path| path.extension().is_some_and(|e| e == "rs"))
+                .filter_map(|path| {
+                    let source = std::fs::read_to_string(&path).ok()?;
+                    let file = path.file_name()?.to_string_lossy().to_string();
+                    Some(
+                        source
+                            .split("#[cfg(test)]")
+                            .next()?
+                            .lines()
+                            .flat_map(quoted)
+                            .flat_map(|literal| named(&literal))
+                            .map(|name| (file.clone(), name))
+                            .collect::<Vec<_>>(),
+                    )
+                })
+                .flatten()
+                .collect();
 
-        assert!(all.len() > 20, "only {} view names found in messages, so a clean result would mean nothing", all.len());
+        assert!(
+            all.len() > 20,
+            "only {} view names found in messages, so a clean result would mean nothing",
+            all.len()
+        );
         let wrong: Vec<String> = all
             .iter()
             .filter(|(_, name)| !registered.contains(&name.as_str()))
             .map(|(file, name)| format!("{file} names {name}"))
             .collect();
 
-        assert!(wrong.is_empty(), "a refusal exists to tell a caller how to call correctly, so a name in one that resolves to nothing is worse than no message: {}", wrong.join("; "));
+        assert!(
+            wrong.is_empty(),
+            "a refusal exists to tell a caller how to call correctly, so a name in one that resolves to nothing is worse than no message: {}",
+            wrong.join("; ")
+        );
     }
 
     #[test]
@@ -1259,15 +2102,12 @@ mod argument_modes {
         let dir = concat!(env!("CARGO_MANIFEST_DIR"), "/src");
         let read = |name: &str| std::fs::read_to_string(format!("{dir}/{name}.rs")).ok();
         let table = read("view").expect("view.rs is readable from its own test");
-        let computes: Vec<(String, String)> = table
-            .lines()
-            .filter_map(|line| {
-                let path = line.split_once("View { path: \"")?.1.split_once('"')?.0;
-                let compute = line.rsplit_once("compute: ")?.1.split_once(' ')?.0;
-                Some((path.to_string(), compute.to_string()))
-            })
-            .collect();
-        assert!(computes.len() > 60, "parsed only {} rows of the VIEWS table, so a clean result would mean nothing", computes.len());
+        let computes = registry_rows(&table);
+        assert!(
+            computes.len() > 60,
+            "parsed only {} rows of the VIEWS table, so a clean result would mean nothing",
+            computes.len()
+        );
 
         let overreaching: Vec<String> = ARGUMENT_MODES
             .iter()
@@ -1279,78 +2119,157 @@ mod argument_modes {
                 let body = source.split("#[cfg(test)]").next()?.to_string();
                 let at = body.find(&format!("fn {function}("))?;
                 let segment = body[at..body.len().min(at + 2500)].to_string();
-                (segment.contains("args.get(1)") || segment.contains("args[1]"))
-                    .then(|| format!("{view} declares \"{mode}\" but {compute} reads a second argument"))
+                (segment.contains("args.get(1)") || segment.contains("args[1]")).then(|| {
+                    format!("{view} declares \"{mode}\" but {compute} reads a second argument")
+                })
             })
             .collect();
 
-        assert!(overreaching.is_empty(), "the declared shape is what a head builds its call from, and view::split trusts it to decide whether a comma separates arguments or belongs to the value: {}", overreaching.join("; "));
+        assert!(
+            overreaching.is_empty(),
+            "the declared shape is what a head builds its call from, and view::split trusts it to decide whether a comma separates arguments or belongs to the value: {}",
+            overreaching.join("; ")
+        );
     }
 
     #[test]
     fn a_lone_file_path_argument_survives_the_commas_and_brackets_a_filename_may_hold() {
         let awkward = "/Users/p/Flights, 2026/log (2).tlog";
-        assert_eq!(split(&format!("view.tlog({awkward})")), ("view.tlog", vec![awkward.to_string()]));
-        assert_eq!(split("view.kmlFile(/a/b,c/d.kml)").1, vec!["/a/b,c/d.kml".to_string()]);
+        assert_eq!(
+            split(&format!("view.tlog({awkward})")),
+            ("view.tlog", vec![awkward.to_string()])
+        );
+        assert_eq!(
+            split("view.kmlFile(/a/b,c/d.kml)").1,
+            vec!["/a/b,c/d.kml".to_string()]
+        );
 
         assert_eq!(
             split("view.terrainTile(/a/b.tif,47.4,8.5)").1,
-            vec!["/a/b.tif".to_string(), "47.4".to_string(), "8.5".to_string()],
+            vec![
+                "/a/b.tif".to_string(),
+                "47.4".to_string(),
+                "8.5".to_string()
+            ],
             "a file path followed by declared arguments still splits, so this is not a licence to stop splitting wherever a path appears"
         );
-        assert_eq!(split("view.altitudeModes(item,4)").1, vec!["item".to_string(), "4".to_string()]);
+        assert_eq!(
+            split("view.altitudeModes(item,4)").1,
+            vec!["item".to_string(), "4".to_string()]
+        );
         assert_eq!(
             split("view.missionItems(geometry,fields)").1,
             vec!["geometry".to_string(), "fields".to_string()],
             "items_view reads both flags independently, so the pair has to arrive as two even though no caller sends it today"
         );
 
-        ARGUMENT_MODES.iter().filter(|(_, mode)| *mode == "<file path>").for_each(|(view, _)| {
-            assert_eq!(split(&format!("{view}(/x/y,z.dat)")).1.len(), 1, "{view} declares a single file path, so a comma in it is part of the name");
-        });
+        ARGUMENT_MODES
+            .iter()
+            .filter(|(_, mode)| *mode == "<file path>")
+            .for_each(|(view, _)| {
+                assert_eq!(
+                    split(&format!("{view}(/x/y,z.dat)")).1.len(),
+                    1,
+                    "{view} declares a single file path, so a comma in it is part of the name"
+                );
+            });
+    }
+
+    fn registry_rows(table: &str) -> Vec<(String, String)> {
+        table
+            .split("View {")
+            .skip(1)
+            .filter_map(|row| {
+                let row = row.split('}').next()?;
+                let path = row.split("path: \"").nth(1)?.split('"').next()?;
+                let compute = row
+                    .split("compute: ")
+                    .nth(1)?
+                    .split(&[',', ' ', '\n'][..])
+                    .next()?;
+                Some((path.to_string(), compute.to_string()))
+            })
+            .collect()
     }
 
     fn source(module: &str) -> String {
-        std::fs::read_to_string(format!("{}/src/{module}.rs", env!("CARGO_MANIFEST_DIR"))).unwrap_or_default()
+        std::fs::read_to_string(format!("{}/src/{module}.rs", env!("CARGO_MANIFEST_DIR")))
+            .unwrap_or_default()
     }
 
     #[test]
     fn a_view_that_refuses_its_arguments_says_what_it_wanted() {
         let modules: std::collections::BTreeSet<String> = source("view")
             .lines()
-            .filter_map(|line| Some(line.split("compute: ").nth(1)?.split("::").next()?.to_string()))
+            .filter_map(|line| {
+                Some(
+                    line.split("compute: ")
+                        .nth(1)?
+                        .split("::")
+                        .next()?
+                        .to_string(),
+                )
+            })
             .collect();
-        assert!(modules.len() > 20, "the registry parsed, so an empty answer below would mean nothing");
+        assert!(
+            modules.len() > 20,
+            "the registry parsed, so an empty answer below would mean nothing"
+        );
         let silent: Vec<&String> = modules
             .iter()
-            .filter(|module| source(module).lines().any(|line| line.contains("return json!({ \"kind\": \"null\" })") && !line.contains(".to_string()")))
+            .filter(|module| {
+                source(module).lines().any(|line| {
+                    line.contains("return json!({ \"kind\": \"null\" })")
+                        && !line.contains(".to_string()")
+                })
+            })
             .collect();
-        assert!(silent.is_empty(), "these refuse an argument they cannot use and say nothing about what they wanted, which is the case where a caller most needs telling: {silent:?}");
+        assert!(
+            silent.is_empty(),
+            "these refuse an argument they cannot use and say nothing about what they wanted, which is the case where a caller most needs telling: {silent:?}"
+        );
     }
 
     #[test]
     fn every_view_that_reads_its_arguments_declares_what_they_are() {
-        let registry = source("view");
-        let wired: Vec<(String, String)> = registry
-            .lines()
-            .filter_map(|line| {
-                let path = line.split("View { path: \"").nth(1)?.split('"').next()?;
-                let compute = line.split("compute: ").nth(1)?.split(&[',', ' ', '}'][..]).next()?;
-                Some((path.to_string(), compute.to_string()))
-            })
-            .collect();
-        assert!(wired.len() > 40, "the registry parsed, so an empty answer below would mean something");
+        let wired = registry_rows(&source("view"));
+        assert!(
+            wired.len() > 40,
+            "the registry parsed, so an empty answer below would mean something"
+        );
 
         let declared: Vec<&str> = ARGUMENT_MODES.iter().map(|(path, _)| *path).collect();
         let reads_arguments = |compute: &str| {
             let (module, function) = compute.split_once("::").unwrap_or(("view", compute));
-            source(module).lines().any(|line| line.contains(&format!("fn {function}(")) && line.contains(", args: &[String]"))
+            let text = source(module);
+            text.split(&format!("fn {function}(")).skip(1).any(|after| {
+                after.split('{').next().is_some_and(|signature| {
+                    signature
+                        .split([',', '(', ')', ' ', '\n'])
+                        .collect::<Vec<_>>()
+                        .windows(2)
+                        .any(|pair| pair == ["args:", "&[String]"])
+                })
+            })
         };
 
-        let undeclared: Vec<&String> = wired.iter().filter(|(path, m)| reads_arguments(m) && !declared.contains(&path.as_str())).map(|(p, _)| p).collect();
-        assert!(undeclared.is_empty(), "these views read their arguments and ARGUMENT_MODES does not say so, which is the list both heads' sweeps enumerate from: {undeclared:?}");
+        let undeclared: Vec<&String> = wired
+            .iter()
+            .filter(|(path, m)| reads_arguments(m) && !declared.contains(&path.as_str()))
+            .map(|(p, _)| p)
+            .collect();
+        assert!(
+            undeclared.is_empty(),
+            "these views read their arguments and ARGUMENT_MODES does not say so, which is the list both heads' sweeps enumerate from: {undeclared:?}"
+        );
 
-        let unread: Vec<&&str> = declared.iter().filter(|path| wired.iter().any(|(p, m)| p == *path && !reads_arguments(m))).collect();
-        assert!(unread.is_empty(), "and these are declared as taking arguments by a compute function that ignores them: {unread:?}");
+        let unread: Vec<&&str> = declared
+            .iter()
+            .filter(|path| wired.iter().any(|(p, m)| p == *path && !reads_arguments(m)))
+            .collect();
+        assert!(
+            unread.is_empty(),
+            "and these are declared as taking arguments by a compute function that ignores them: {unread:?}"
+        );
     }
 }

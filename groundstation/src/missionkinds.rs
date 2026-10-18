@@ -3,7 +3,21 @@ use serde_json::{Value, json};
 use crate::read::refused;
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["plan.missionController.complexMissionItems", "plan.missionController.homePositionSet", "plan.missionController.currentPlanViewSeqNum", "plan.missionController.onlyInsertTakeoffValid", "plan.missionController.isInsertTakeoffValid", "plan.missionController.isInsertLandValid", "plan.missionController.flyThroughCommandsAllowed", "plan.missionController.hasLandItem", "plan.controllerVehicle.multiRotor", "plan.controllerVehicle.rover", crate::coreplan::CHANGED, "settings.planViewSettings.takeoffItemNotRequired", "settings.planViewSettings.allowMultipleLandingPatterns"];
+pub const DEPS: &[&str] = &[
+    "plan.missionController.complexMissionItems",
+    "plan.missionController.homePositionSet",
+    "plan.missionController.currentPlanViewSeqNum",
+    "plan.missionController.onlyInsertTakeoffValid",
+    "plan.missionController.isInsertTakeoffValid",
+    "plan.missionController.isInsertLandValid",
+    "plan.missionController.flyThroughCommandsAllowed",
+    "plan.missionController.hasLandItem",
+    "plan.controllerVehicle.multiRotor",
+    "plan.controllerVehicle.rover",
+    crate::coreplan::CHANGED,
+    "settings.planViewSettings.takeoffItemNotRequired",
+    "settings.planViewSettings.allowMultipleLandingPatterns",
+];
 const DEFAULT_AREA_METRES: f64 = 150.0;
 const METRES_PER_DEGREE: f64 = 111_320.0;
 
@@ -18,14 +32,78 @@ pub struct Kind {
 }
 
 pub const KINDS: &[Kind] = &[
-    Kind { id: "waypoint", title: "Waypoint", invokable: "addWaypoint", complex_name: None, class_name: None, geometry: None, placement_hint: "Click the map to place a waypoint" },
-    Kind { id: "takeoff", title: "Takeoff", invokable: "insertTakeoffItem", complex_name: None, class_name: None, geometry: None, placement_hint: "Click the map to place a takeoff." },
-    Kind { id: "land", title: "Land", invokable: "insertLandItem", complex_name: None, class_name: None, geometry: None, placement_hint: "Click the map to place a land." },
-    Kind { id: "roi", title: "Region of Interest", invokable: "insertROIMissionItem", complex_name: None, class_name: None, geometry: None, placement_hint: "Click the map to place the region of interest" },
-    Kind { id: "drop", title: "Drop payload", invokable: "", complex_name: None, class_name: None, geometry: None, placement_hint: "The payload drops at the selected waypoint." },
-    Kind { id: "survey", title: "Survey", invokable: "insertComplexMissionItem", complex_name: Some("Survey"), class_name: Some("SurveyComplexItem"), geometry: Some(("area", "surveyAreaPolygon")), placement_hint: "Click the map to place a survey area." },
-    Kind { id: "corridor", title: "Corridor Scan", invokable: "insertComplexMissionItem", complex_name: Some("Corridor Scan"), class_name: Some("CorridorScanComplexItem"), geometry: Some(("line", "corridorPolyline")), placement_hint: "Click the map to place a corridor to scan along." },
-    Kind { id: "structure", title: "Structure Scan", invokable: "insertComplexMissionItem", complex_name: Some("Structure Scan"), class_name: Some("StructureScanComplexItem"), geometry: Some(("area", "structurePolygon")), placement_hint: "Click the map to place a structure to scan around." },
+    Kind {
+        id: "waypoint",
+        title: "Waypoint",
+        invokable: "addWaypoint",
+        complex_name: None,
+        class_name: None,
+        geometry: None,
+        placement_hint: "Click the map to place a waypoint",
+    },
+    Kind {
+        id: "takeoff",
+        title: "Takeoff",
+        invokable: "insertTakeoffItem",
+        complex_name: None,
+        class_name: None,
+        geometry: None,
+        placement_hint: "Click the map to place a takeoff.",
+    },
+    Kind {
+        id: "land",
+        title: "Land",
+        invokable: "insertLandItem",
+        complex_name: None,
+        class_name: None,
+        geometry: None,
+        placement_hint: "Click the map to place a land.",
+    },
+    Kind {
+        id: "roi",
+        title: "Region of Interest",
+        invokable: "insertROIMissionItem",
+        complex_name: None,
+        class_name: None,
+        geometry: None,
+        placement_hint: "Click the map to place the region of interest",
+    },
+    Kind {
+        id: "drop",
+        title: "Drop payload",
+        invokable: "",
+        complex_name: None,
+        class_name: None,
+        geometry: None,
+        placement_hint: "The payload drops at the selected waypoint.",
+    },
+    Kind {
+        id: "survey",
+        title: "Survey",
+        invokable: "insertComplexMissionItem",
+        complex_name: Some("Survey"),
+        class_name: Some("SurveyComplexItem"),
+        geometry: Some(("area", "surveyAreaPolygon")),
+        placement_hint: "Click the map to place a survey area.",
+    },
+    Kind {
+        id: "corridor",
+        title: "Corridor Scan",
+        invokable: "insertComplexMissionItem",
+        complex_name: Some("Corridor Scan"),
+        class_name: Some("CorridorScanComplexItem"),
+        geometry: Some(("line", "corridorPolyline")),
+        placement_hint: "Click the map to place a corridor to scan along.",
+    },
+    Kind {
+        id: "structure",
+        title: "Structure Scan",
+        invokable: "insertComplexMissionItem",
+        complex_name: Some("Structure Scan"),
+        class_name: Some("StructureScanComplexItem"),
+        geometry: Some(("area", "structurePolygon")),
+        placement_hint: "Click the map to place a structure to scan around.",
+    },
 ];
 
 impl Kind {
@@ -39,17 +117,21 @@ impl Kind {
 }
 
 pub fn lookup(id_or_name: &str) -> Option<&'static Kind> {
-    KINDS.iter().find(|k| k.id == id_or_name || k.complex_name == Some(id_or_name))
+    KINDS
+        .iter()
+        .find(|k| k.id == id_or_name || k.complex_name == Some(id_or_name))
 }
 
 pub fn by_class(class: &str) -> Option<&'static Kind> {
     KINDS.iter().find(|k| k.class_name == Some(class))
 }
 
-const NEEDS_TAKEOFF_FIRST: &str = "This mission starts from the ground, so a takeoff has to come before anything else.";
+const NEEDS_TAKEOFF_FIRST: &str =
+    "This mission starts from the ground, so a takeoff has to come before anything else.";
 const ALREADY_TAKES_OFF: &str = "The mission already takes off before this point.";
 const NEEDS_HOME_FIRST: &str = "Set the home position before adding anything to the mission.";
-const LAND_COMES_LAST: &str = "A landing goes after the takeoff and after every place the vehicle flies through.";
+const LAND_COMES_LAST: &str =
+    "A landing goes after the takeoff and after every place the vehicle flies through.";
 const NOT_AFTER_LANDING: &str = "The vehicle has already landed at this point in the mission.";
 const NOT_BEFORE_TAKEOFF: &str = "The vehicle has not taken off yet at this point in the mission.";
 const NOT_FOR_THIS_VEHICLE: &str = "This kind of vehicle does not fly that pattern.";
@@ -99,18 +181,27 @@ const LANDING_COMMANDS: [i64; 4] = [21, 85, 189, 20];
 pub fn has_land(document: &crate::plandoc::Document) -> bool {
     document.items.iter().any(|item| match item {
         crate::plandoc::Item::Simple(simple) => LANDING_COMMANDS.contains(&simple.command),
-        crate::plandoc::Item::Complex { kind, .. } => kind == crate::landingpattern::FIXED_WING_PATTERN,
+        crate::plandoc::Item::Complex { kind, .. } => {
+            kind == crate::landingpattern::FIXED_WING_PATTERN
+        }
     })
 }
 
-pub fn insert_state(document: &crate::plandoc::Document, spans: &[(i64, i64)], sequence: i64, rules: &Rules) -> InsertState {
+pub fn insert_state(
+    document: &crate::plandoc::Document,
+    spans: &[(i64, i64)],
+    sequence: i64,
+    rules: &Rules,
+) -> InsertState {
     use crate::cmdinfo::{Firmware, VehicleClass};
     use crate::plandoc::Item;
     let class = crate::plandoc::vehicle_class(document.vehicle_type);
     let firmware = crate::plandoc::firmware(document.firmware_type);
     let commands = crate::cmdinfo::tree(firmware, class);
     let flown = |item: &Item| match item {
-        Item::Simple(simple) => commands.get(&simple.command).is_some_and(|c| c.specifies_coordinate && !c.standalone_coordinate),
+        Item::Simple(simple) => commands
+            .get(&simple.command)
+            .is_some_and(|c| c.specifies_coordinate && !c.standalone_coordinate),
         Item::Complex { .. } => true,
     };
     let takes_off = |item: &Item| matches!(item, Item::Simple(simple) if commands.get(&simple.command).is_some_and(|c| c.is_takeoff));
@@ -118,13 +209,35 @@ pub fn insert_state(document: &crate::plandoc::Document, spans: &[(i64, i64)], s
         Item::Simple(simple) => LANDING_COMMANDS.contains(&simple.command),
         Item::Complex { kind, .. } => kind == crate::landingpattern::FIXED_WING_PATTERN,
     };
-    let numbered: Vec<(i64, &Item)> = spans.iter().skip(1).map(|(first, _)| *first).zip(&document.items).collect();
-    let takeoff_at = numbered.iter().filter(|(_, item)| takes_off(item)).map(|(at, _)| *at).last();
-    let land_at = numbered.iter().find(|(_, item)| lands(item)).map(|(at, _)| *at);
-    let last_flown = numbered.iter().filter(|(_, item)| flown(item)).map(|(at, _)| *at).last();
-    let takeoff_capable = firmware != Firmware::Generic && matches!(class, VehicleClass::FixedWing | VehicleClass::MultiRotor | VehicleClass::Vtol);
+    let numbered: Vec<(i64, &Item)> = spans
+        .iter()
+        .skip(1)
+        .map(|(first, _)| *first)
+        .zip(&document.items)
+        .collect();
+    let takeoff_at = numbered
+        .iter()
+        .filter(|(_, item)| takes_off(item))
+        .map(|(at, _)| *at)
+        .last();
+    let land_at = numbered
+        .iter()
+        .find(|(_, item)| lands(item))
+        .map(|(at, _)| *at);
+    let last_flown = numbered
+        .iter()
+        .filter(|(_, item)| flown(item))
+        .map(|(at, _)| *at)
+        .last();
+    let takeoff_capable = firmware != Firmware::Generic
+        && matches!(
+            class,
+            VehicleClass::FixedWing | VehicleClass::MultiRotor | VehicleClass::Vtol
+        );
     let only_takeoff = takeoff_capable && !rules.takeoff_not_required && document.items.is_empty();
-    let multiple_landings = matches!(class, VehicleClass::FixedWing | VehicleClass::Vtol) && rules.multiple_landings && firmware != Firmware::Px4;
+    let multiple_landings = matches!(class, VehicleClass::FixedWing | VehicleClass::Vtol)
+        && rules.multiple_landings
+        && firmware != Firmware::Px4;
     let before_takeoff = takeoff_at.is_some_and(|at| sequence < at);
     let single_land = land_at.filter(|_| !multiple_landings);
     let home_set = document.home.is_some();
@@ -133,9 +246,16 @@ pub fn insert_state(document: &crate::plandoc::Document, spans: &[(i64, i64)], s
         only_takeoff,
         before_takeoff,
         takeoff: home_set && sequence == 0 && takeoff_at.is_none(),
-        land: home_set && !only_takeoff && !before_takeoff && !last_flown.is_some_and(|at| sequence < at) && single_land.is_none(),
+        land: home_set
+            && !only_takeoff
+            && !before_takeoff
+            && !last_flown.is_some_and(|at| sequence < at)
+            && single_land.is_none(),
         roi: home_set && !only_takeoff,
-        fly_through: home_set && !only_takeoff && !before_takeoff && !single_land.is_some_and(|at| sequence >= at),
+        fly_through: home_set
+            && !only_takeoff
+            && !before_takeoff
+            && !single_land.is_some_and(|at| sequence >= at),
     }
 }
 
@@ -144,9 +264,13 @@ pub fn insertable(backend: &dyn Backend) -> Insertable {
         "plan.missionController",
         if crate::coreplan::enabled() { "homePositionSet,currentPlanViewSeqNum,onlyInsertTakeoffValid,isInsertTakeoffValid,isInsertLandValid,flyThroughCommandsAllowed,hasLandItem,insertBeforeTakeoff" } else { "complexMissionItems,homePositionSet,currentPlanViewSeqNum,onlyInsertTakeoffValid,isInsertTakeoffValid,isInsertLandValid,flyThroughCommandsAllowed,hasLandItem" },
     );
-    let answered = |key: &str, unset: bool| mission.get(key).and_then(Value::as_bool).unwrap_or(unset);
+    let answered =
+        |key: &str, unset: bool| mission.get(key).and_then(Value::as_bool).unwrap_or(unset);
     Insertable {
-        at_sequence: mission.get("currentPlanViewSeqNum").and_then(Value::as_i64).filter(|sequence| *sequence >= 0),
+        at_sequence: mission
+            .get("currentPlanViewSeqNum")
+            .and_then(Value::as_i64)
+            .filter(|sequence| *sequence >= 0),
         home_set: answered("homePositionSet", true),
         only_takeoff: answered("onlyInsertTakeoffValid", true),
         takeoff: answered("isInsertTakeoffValid", true),
@@ -154,11 +278,36 @@ pub fn insertable(backend: &dyn Backend) -> Insertable {
         fly_through: answered("flyThroughCommandsAllowed", true),
         has_land: answered("hasLandItem", false),
         before_takeoff: mission.get("insertBeforeTakeoff").and_then(Value::as_bool),
-        multi_rotor: crate::read::flag(&backend.value_fields("plan.controllerVehicle", "multiRotor"), "multiRotor"),
-        rover: crate::read::flag(&backend.value_fields("plan.controllerVehicle", "rover"), "rover"),
-        patterns: if crate::coreplan::enabled() { Some(crate::plan::offered_patterns(backend).into_iter().map(str::to_string).collect()) } else { mission.get("complexMissionItems").and_then(Value::as_array).map(|names| {
-            names.iter().filter_map(|name| name.as_str().or_else(|| name.get("canonicalName").and_then(Value::as_str))).map(str::to_string).collect()
-        }) },
+        multi_rotor: crate::read::flag(
+            &backend.value_fields("plan.controllerVehicle", "multiRotor"),
+            "multiRotor",
+        ),
+        rover: crate::read::flag(
+            &backend.value_fields("plan.controllerVehicle", "rover"),
+            "rover",
+        ),
+        patterns: if crate::coreplan::enabled() {
+            Some(
+                crate::plan::offered_patterns(backend)
+                    .into_iter()
+                    .map(str::to_string)
+                    .collect(),
+            )
+        } else {
+            mission
+                .get("complexMissionItems")
+                .and_then(Value::as_array)
+                .map(|names| {
+                    names
+                        .iter()
+                        .filter_map(|name| {
+                            name.as_str()
+                                .or_else(|| name.get("canonicalName").and_then(Value::as_str))
+                        })
+                        .map(str::to_string)
+                        .collect()
+                })
+        },
     }
 }
 
@@ -172,7 +321,9 @@ pub fn refusal(kind: &Kind, insertable: &Insertable) -> Option<&'static str> {
     match kind.id {
         "takeoff" if !insertable.takeoff => Some(ALREADY_TAKES_OFF),
         "takeoff" => None,
-        "waypoint" => (!insertable.only_takeoff && !insertable.fly_through).then(|| grounded(insertable)),
+        "waypoint" => {
+            (!insertable.only_takeoff && !insertable.fly_through).then(|| grounded(insertable))
+        }
         _ if insertable.only_takeoff => Some(NEEDS_TAKEOFF_FIRST),
         "land" if !insertable.land => Some(LAND_COMES_LAST),
         "land" => None,
@@ -218,15 +369,26 @@ fn offered(kind: &Kind, insertable: &Insertable) -> Value {
     let refused = refusal(kind, insertable);
     let mut json = kind_json(kind);
     if kind.id == "land" {
-        json["title"] = json!(land_title(insertable.multi_rotor, insertable.land, insertable.has_land));
+        json["title"] = json!(land_title(
+            insertable.multi_rotor,
+            insertable.land,
+            insertable.has_land
+        ));
     }
     let asked = insertable.at_sequence.is_some();
-    json["enabled"] = if asked { json!(refused.is_none()) } else { Value::Null };
+    json["enabled"] = if asked {
+        json!(refused.is_none())
+    } else {
+        Value::Null
+    };
     json["disabledReason"] = match asked {
         true => refused.map(|reason| json!(reason)).unwrap_or(Value::Null),
         false => Value::Null,
     };
-    json["atSequence"] = insertable.at_sequence.map(|sequence| json!(sequence)).unwrap_or(Value::Null);
+    json["atSequence"] = insertable
+        .at_sequence
+        .map(|sequence| json!(sequence))
+        .unwrap_or(Value::Null);
     json
 }
 
@@ -242,7 +404,8 @@ pub fn kinds_view(backend: &dyn Backend, args: &[String]) -> Value {
 
 pub fn default_area(latitude: f64, longitude: f64) -> Vec<(f64, f64)> {
     let latitude_span = DEFAULT_AREA_METRES / METRES_PER_DEGREE;
-    let longitude_span = DEFAULT_AREA_METRES / (METRES_PER_DEGREE * latitude.to_radians().cos().max(0.01));
+    let longitude_span =
+        DEFAULT_AREA_METRES / (METRES_PER_DEGREE * latitude.to_radians().cos().max(0.01));
     [
         (latitude - latitude_span, longitude - longitude_span),
         (latitude - latitude_span, longitude + longitude_span),
@@ -256,15 +419,28 @@ pub fn default_area(latitude: f64, longitude: f64) -> Vec<(f64, f64)> {
 
 pub fn default_line(latitude: f64, longitude: f64) -> Vec<(f64, f64)> {
     let span = DEFAULT_AREA_METRES / METRES_PER_DEGREE;
-    [(latitude - span, longitude), (latitude + span, longitude)].into_iter().map(|(lat, lon)| crate::geo::wrap(lat, lon)).collect()
+    [(latitude - span, longitude), (latitude + span, longitude)]
+        .into_iter()
+        .map(|(lat, lon)| crate::geo::wrap(lat, lon))
+        .collect()
 }
 
 pub fn seed_view(_backend: &dyn Backend, args: &[String]) -> Value {
-    let number = |i: usize| args.get(i).and_then(|a| a.parse::<f64>().ok()).filter(|v| v.is_finite());
-    let (Some(kind), Some(latitude), Some(longitude)) = (args.first().and_then(|k| lookup(k)), number(1), number(2)) else {
-        return refused("view.missionSeed needs a kind from view.missionKinds and a place, as view.missionSeed(survey,47.4,8.5)");
+    let number = |i: usize| {
+        args.get(i)
+            .and_then(|a| a.parse::<f64>().ok())
+            .filter(|v| v.is_finite())
     };
-    let Some((shape, property)) = kind.geometry else { return refused("that kind draws no shape, so there is nothing to seed") };
+    let (Some(kind), Some(latitude), Some(longitude)) =
+        (args.first().and_then(|k| lookup(k)), number(1), number(2))
+    else {
+        return refused(
+            "view.missionSeed needs a kind from view.missionKinds and a place, as view.missionSeed(survey,47.4,8.5)",
+        );
+    };
+    let Some((shape, property)) = kind.geometry else {
+        return refused("that kind draws no shape, so there is nothing to seed");
+    };
     let points = match shape {
         "line" => default_line(latitude, longitude),
         _ => default_area(latitude, longitude),
@@ -284,7 +460,19 @@ mod tests {
 
     #[test]
     fn a_rover_is_offered_no_takeoff_like_plan_view_add_menu() {
-        let insertable = |rover: bool| Insertable { at_sequence: None, home_set: true, only_takeoff: false, takeoff: true, land: true, fly_through: true, patterns: None, has_land: false, before_takeoff: None, multi_rotor: false, rover };
+        let insertable = |rover: bool| Insertable {
+            at_sequence: None,
+            home_set: true,
+            only_takeoff: false,
+            takeoff: true,
+            land: true,
+            fly_through: true,
+            patterns: None,
+            has_land: false,
+            before_takeoff: None,
+            multi_rotor: false,
+            rover,
+        };
         let takeoff = KINDS.iter().find(|k| k.id == "takeoff").unwrap();
         assert!(insertable(false).offers(takeoff));
         assert!(!insertable(true).offers(takeoff));
@@ -293,8 +481,16 @@ mod tests {
 
     #[test]
     fn the_land_button_reads_as_plan_view_labels_it() {
-        assert_eq!(land_title(true, true, true), "Return", "a multirotor's land button inserts a return");
-        assert_eq!(land_title(false, true, true), "Alt Land", "a second landing where multiple patterns are allowed");
+        assert_eq!(
+            land_title(true, true, true),
+            "Return",
+            "a multirotor's land button inserts a return"
+        );
+        assert_eq!(
+            land_title(false, true, true),
+            "Alt Land",
+            "a second landing where multiple patterns are allowed"
+        );
         assert_eq!(land_title(false, false, true), "Land");
         assert_eq!(land_title(false, true, false), "Land");
     }
@@ -304,44 +500,136 @@ mod tests {
         let item = |command: i64, seq: i64| json!({ "type": "SimpleItem", "autoContinue": true, "command": command, "frame": 3, "doJumpId": seq, "params": [0, 0, 0, 0, 47.0, 8.0, 30] });
         let plan = |firmware: i64, vehicle: i64, home: bool, items: Vec<Value>| {
             let loaded = crate::plandoc::load(&json!({ "fileType": "Plan", "version": 1, "groundStation": "QGroundControl", "geoFence": { "version": 2, "circles": [], "polygons": [] }, "rallyPoints": { "version": 2, "points": [] }, "mission": { "firmwareType": firmware, "vehicleType": vehicle, "plannedHomePosition": [47.0, 8.0, 0], "items": items } }).to_string(), 2).unwrap();
-            crate::plandoc::Document { home: loaded.home.filter(|_| home), ..loaded }
+            crate::plandoc::Document {
+                home: loaded.home.filter(|_| home),
+                ..loaded
+            }
         };
-        let rules = Rules { takeoff_not_required: false, multiple_landings: true };
-        let positioned = |document: &crate::plandoc::Document, sequence: i64| insert_state(document, &crate::coreplan::visual_spans(document), sequence, &rules);
-        let at = |document: &crate::plandoc::Document, sequence: i64| InsertState { before_takeoff: false, ..positioned(document, sequence) };
-        let state = |home_set, only_takeoff, takeoff, land, roi, fly_through| InsertState { home_set, only_takeoff, before_takeoff: false, takeoff, land, roi, fly_through };
+        let rules = Rules {
+            takeoff_not_required: false,
+            multiple_landings: true,
+        };
+        let positioned = |document: &crate::plandoc::Document, sequence: i64| {
+            insert_state(
+                document,
+                &crate::coreplan::visual_spans(document),
+                sequence,
+                &rules,
+            )
+        };
+        let at = |document: &crate::plandoc::Document, sequence: i64| InsertState {
+            before_takeoff: false,
+            ..positioned(document, sequence)
+        };
+        let state = |home_set, only_takeoff, takeoff, land, roi, fly_through| InsertState {
+            home_set,
+            only_takeoff,
+            before_takeoff: false,
+            takeoff,
+            land,
+            roi,
+            fly_through,
+        };
 
         let empty = plan(12, 2, true, Vec::new());
-        assert_eq!(at(&empty, 0), state(true, true, true, false, false, false), "an empty ground-start mission offers only a takeoff");
-        assert_eq!(at(&plan(12, 10, true, Vec::new()), 0), state(true, false, true, true, true, true), "a rover never needs a takeoff first");
-        assert_eq!(at(&plan(12, 2, false, Vec::new()), 0), state(false, true, false, false, false, false), "nothing is insertable before home is set");
+        assert_eq!(
+            at(&empty, 0),
+            state(true, true, true, false, false, false),
+            "an empty ground-start mission offers only a takeoff"
+        );
+        assert_eq!(
+            at(&plan(12, 10, true, Vec::new()), 0),
+            state(true, false, true, true, true, true),
+            "a rover never needs a takeoff first"
+        );
+        assert_eq!(
+            at(&plan(12, 2, false, Vec::new()), 0),
+            state(false, true, false, false, false, false),
+            "nothing is insertable before home is set"
+        );
 
         let flown = plan(12, 2, true, vec![item(22, 1), item(16, 2), item(21, 3)]);
-        assert_eq!(at(&flown, 0), state(true, false, false, false, true, false), "before the takeoff neither a landing nor a fly-through fits");
-        assert_eq!(at(&flown, 2), state(true, false, false, false, true, true), "a copter holds one landing, so a second is refused");
-        assert_eq!(at(&flown, 3), state(true, false, false, false, true, false), "after the landing nothing flies through");
-        assert_eq!((positioned(&flown, 0).before_takeoff, positioned(&flown, 3).before_takeoff), (true, false), "which of the two it is decides the refusal the operator reads");
+        assert_eq!(
+            at(&flown, 0),
+            state(true, false, false, false, true, false),
+            "before the takeoff neither a landing nor a fly-through fits"
+        );
+        assert_eq!(
+            at(&flown, 2),
+            state(true, false, false, false, true, true),
+            "a copter holds one landing, so a second is refused"
+        );
+        assert_eq!(
+            at(&flown, 3),
+            state(true, false, false, false, true, false),
+            "after the landing nothing flies through"
+        );
+        assert_eq!(
+            (
+                positioned(&flown, 0).before_takeoff,
+                positioned(&flown, 3).before_takeoff
+            ),
+            (true, false),
+            "which of the two it is decides the refusal the operator reads"
+        );
 
         let plane = plan(3, 1, true, vec![item(22, 1), item(16, 2), item(21, 3)]);
-        assert_eq!(at(&plane, 3), state(true, false, false, true, true, true), "an ArduPilot plane may carry several landing sequences");
-        assert_eq!(at(&plan(12, 1, true, vec![item(22, 1), item(16, 2), item(21, 3)]), 3), state(true, false, false, false, true, false), "PX4 never takes a second landing");
-        assert_eq!(at(&plane, 1), state(true, false, false, false, true, true), "a landing goes after the last place flown through");
+        assert_eq!(
+            at(&plane, 3),
+            state(true, false, false, true, true, true),
+            "an ArduPilot plane may carry several landing sequences"
+        );
+        assert_eq!(
+            at(
+                &plan(12, 1, true, vec![item(22, 1), item(16, 2), item(21, 3)]),
+                3
+            ),
+            state(true, false, false, false, true, false),
+            "PX4 never takes a second landing"
+        );
+        assert_eq!(
+            at(&plane, 1),
+            state(true, false, false, false, true, true),
+            "a landing goes after the last place flown through"
+        );
     }
 
     #[test]
-    fn every_kind_that_names_a_geometry_has_a_seed_that_answers_and_every_kind_without_one_refuses() {
+    fn every_kind_that_names_a_geometry_has_a_seed_that_answers_and_every_kind_without_one_refuses()
+    {
         struct Nothing;
         impl Backend for Nothing {
-            fn get(&self, _p: &str) -> String { String::new() }
-            fn get_fields(&self, _p: &str, _f: &str) -> String { String::new() }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn get(&self, _p: &str) -> String {
+                String::new()
+            }
+            fn get_fields(&self, _p: &str, _f: &str) -> String {
+                String::new()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
             fn watch(&self, _p: &[String]) {}
         }
-        let seeded = |id: &str| seed_view(&Nothing, &[id.to_string(), "47".to_string(), "8".to_string()]);
+        let seeded = |id: &str| {
+            seed_view(
+                &Nothing,
+                &[id.to_string(), "47".to_string(), "8".to_string()],
+            )
+        };
 
-        let shaped: Vec<&str> = KINDS.iter().filter(|k| k.geometry.is_some()).map(|k| k.id).collect();
-        assert!(shaped.len() >= 3, "only {} kinds name a geometry, so a clean sweep below would mean nothing", shaped.len());
+        let shaped: Vec<&str> = KINDS
+            .iter()
+            .filter(|k| k.geometry.is_some())
+            .map(|k| k.id)
+            .collect();
+        assert!(
+            shaped.len() >= 3,
+            "only {} kinds name a geometry, so a clean sweep below would mean nothing",
+            shaped.len()
+        );
 
         shaped.iter().for_each(|id| {
             let answer = seeded(id);
@@ -365,35 +653,80 @@ mod tests {
     fn an_argument_that_names_no_kind_says_what_it_wanted() {
         struct Nothing;
         impl Backend for Nothing {
-            fn get(&self, _p: &str) -> String { String::new() }
-            fn get_fields(&self, _p: &str, _f: &str) -> String { String::new() }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn get(&self, _p: &str) -> String {
+                String::new()
+            }
+            fn get_fields(&self, _p: &str, _f: &str) -> String {
+                String::new()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
             fn watch(&self, _p: &[String]) {}
         }
         let refused = kinds_view(&Nothing, &["1".to_string()]);
         assert_eq!(refused["kind"], "null");
         let reason = refused["reason"].as_str().expect("a refusal without a reason is the one case where the caller most needs to be told what the view wanted, and this one answered a bare null while landingPattern and control both answer a sentence");
-        assert!(reason.contains("survey"), "naming the ids it accepts is what turns the refusal into an answer: {reason}");
-        assert!(kinds_view(&Nothing, &["survey".to_string()])["id"] == "survey", "and a real id still resolves, so the refusal is not swallowing everything");
+        assert!(
+            reason.contains("survey"),
+            "naming the ids it accepts is what turns the refusal into an answer: {reason}"
+        );
+        assert!(
+            kinds_view(&Nothing, &["survey".to_string()])["id"] == "survey",
+            "and a real id still resolves, so the refusal is not swallowing everything"
+        );
     }
 
     #[test]
     fn the_simple_kinds_come_first_and_only_the_complex_ones_carry_a_shape() {
-        let (simple, complex): (Vec<&Kind>, Vec<&Kind>) = KINDS.iter().partition(|kind| kind.geometry.is_none());
-        assert_eq!(simple.iter().map(|k| k.id).collect::<Vec<_>>(), vec!["waypoint", "takeoff", "land", "roi", "drop"]);
-        assert_eq!(complex.iter().map(|k| k.id).collect::<Vec<_>>(), vec!["survey", "corridor", "structure"]);
-        assert_eq!(&KINDS[..simple.len()].iter().map(|k| k.id).collect::<Vec<_>>(), &simple.iter().map(|k| k.id).collect::<Vec<_>>(), "the simple kinds are the leading run, which is what makes items 0 to 3 of view.missionKinds carry no className, complexName or geometry");
-        assert!(simple.iter().all(|k| k.class_name.is_none() && k.complex_name.is_none()), "a kind with no shape has no complex class behind it either, so those three fields are absent together or not at all");
-        assert!(complex.iter().all(|k| k.class_name.is_some() && k.complex_name.is_some()));
+        let (simple, complex): (Vec<&Kind>, Vec<&Kind>) =
+            KINDS.iter().partition(|kind| kind.geometry.is_none());
+        assert_eq!(
+            simple.iter().map(|k| k.id).collect::<Vec<_>>(),
+            vec!["waypoint", "takeoff", "land", "roi", "drop"]
+        );
+        assert_eq!(
+            complex.iter().map(|k| k.id).collect::<Vec<_>>(),
+            vec!["survey", "corridor", "structure"]
+        );
+        assert_eq!(
+            &KINDS[..simple.len()]
+                .iter()
+                .map(|k| k.id)
+                .collect::<Vec<_>>(),
+            &simple.iter().map(|k| k.id).collect::<Vec<_>>(),
+            "the simple kinds are the leading run, which is what makes items 0 to 3 of view.missionKinds carry no className, complexName or geometry"
+        );
+        assert!(
+            simple
+                .iter()
+                .all(|k| k.class_name.is_none() && k.complex_name.is_none()),
+            "a kind with no shape has no complex class behind it either, so those three fields are absent together or not at all"
+        );
+        assert!(
+            complex
+                .iter()
+                .all(|k| k.class_name.is_some() && k.complex_name.is_some())
+        );
     }
 
     struct Nothing;
     impl Backend for Nothing {
-        fn get(&self, _p: &str) -> String { String::new() }
-        fn get_fields(&self, _p: &str, _f: &str) -> String { String::new() }
-        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn get(&self, _p: &str) -> String {
+            String::new()
+        }
+        fn get_fields(&self, _p: &str, _f: &str) -> String {
+            String::new()
+        }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            String::new()
+        }
         fn watch(&self, _p: &[String]) {}
     }
 
@@ -402,7 +735,15 @@ mod tests {
         let all = kinds_view(&Nothing, &[]);
         assert_eq!(all["kinds"].as_array().unwrap().len(), 8);
         let drop = kinds_view(&Nothing, &["drop".to_string()]);
-        assert_eq!((drop["simple"].as_bool(), drop["invokable"].as_str(), drop["title"].as_str()), (Some(true), Some(""), Some("Drop payload")), "a drop is a DO_GRIPPER item the core plan inserts itself; the Qt plan has no invokable for it");
+        assert_eq!(
+            (
+                drop["simple"].as_bool(),
+                drop["invokable"].as_str(),
+                drop["title"].as_str()
+            ),
+            (Some(true), Some(""), Some("Drop payload")),
+            "a drop is a DO_GRIPPER item the core plan inserts itself; the Qt plan has no invokable for it"
+        );
         let corridor = kinds_view(&Nothing, &["Corridor Scan".to_string()]);
         assert_eq!(corridor["id"], "corridor");
         assert_eq!(corridor["invokable"], "insertComplexMissionItem");
@@ -416,29 +757,57 @@ mod tests {
 
     #[test]
     fn a_seed_is_a_square_for_areas_and_a_north_south_line_for_corridors() {
-        let survey = seed_view(&Nothing, &["survey".to_string(), "47.0".to_string(), "8.0".to_string()]);
+        let survey = seed_view(
+            &Nothing,
+            &["survey".to_string(), "47.0".to_string(), "8.0".to_string()],
+        );
         assert_eq!(survey["property"], "surveyAreaPolygon");
         assert_eq!(survey["points"].as_array().unwrap().len(), 4);
-        let width = survey["points"][1]["longitude"].as_f64().unwrap() - survey["points"][0]["longitude"].as_f64().unwrap();
+        let width = survey["points"][1]["longitude"].as_f64().unwrap()
+            - survey["points"][0]["longitude"].as_f64().unwrap();
         assert!(width > 2.0 * DEFAULT_AREA_METRES / METRES_PER_DEGREE);
-        let corridor = seed_view(&Nothing, &["corridor".to_string(), "0".to_string(), "0".to_string()]);
+        let corridor = seed_view(
+            &Nothing,
+            &["corridor".to_string(), "0".to_string(), "0".to_string()],
+        );
         assert_eq!(corridor["points"].as_array().unwrap().len(), 2);
         assert_eq!(corridor["points"][0]["longitude"], 0.0);
-        assert_eq!(seed_view(&Nothing, &["waypoint".to_string(), "0".to_string(), "0".to_string()])["kind"], "null");
+        assert_eq!(
+            seed_view(
+                &Nothing,
+                &["waypoint".to_string(), "0".to_string(), "0".to_string()]
+            )["kind"],
+            "null"
+        );
         assert_eq!(seed_view(&Nothing, &["survey".to_string()])["kind"], "null");
     }
 
     #[test]
     fn a_seed_beside_the_dateline_stays_on_the_map() {
         let area = default_area(-16.5, 179.999);
-        assert!(area.iter().all(|(lat, lon)| (-90.0..=90.0).contains(lat) && (-180.0..=180.0).contains(lon)), "a survey seeded in Fiji must not carry a longitude no autopilot will accept: {area:?}");
-        assert!(area.iter().any(|(_, lon)| *lon < 0.0) && area.iter().any(|(_, lon)| *lon > 0.0), "the area still straddles the dateline rather than collapsing to one side");
+        assert!(
+            area.iter()
+                .all(|(lat, lon)| (-90.0..=90.0).contains(lat) && (-180.0..=180.0).contains(lon)),
+            "a survey seeded in Fiji must not carry a longitude no autopilot will accept: {area:?}"
+        );
+        assert!(
+            area.iter().any(|(_, lon)| *lon < 0.0) && area.iter().any(|(_, lon)| *lon > 0.0),
+            "the area still straddles the dateline rather than collapsing to one side"
+        );
         let pole = default_area(89.999, 8.5);
         assert!(pole.iter().all(|(lat, _)| (-90.0..=90.0).contains(lat)));
         let line = default_line(89.999, 179.999);
-        assert!(line.iter().all(|(lat, lon)| (-90.0..=90.0).contains(lat) && (-180.0..=180.0).contains(lon)));
+        assert!(
+            line.iter()
+                .all(|(lat, lon)| (-90.0..=90.0).contains(lat) && (-180.0..=180.0).contains(lon))
+        );
         let ordinary = default_area(47.4, 8.5);
-        assert!(ordinary.iter().all(|(lat, lon)| *lat > 47.0 && *lat < 48.0 && *lon > 8.0 && *lon < 9.0), "an ordinary seed is unchanged");
+        assert!(
+            ordinary
+                .iter()
+                .all(|(lat, lon)| *lat > 47.0 && *lat < 48.0 && *lon > 8.0 && *lon < 9.0),
+            "an ordinary seed is unchanged"
+        );
     }
 }
 
@@ -448,15 +817,21 @@ mod offering {
 
     struct Mission(Value);
     impl Backend for Mission {
-        fn get(&self, _p: &str) -> String { String::new() }
+        fn get(&self, _p: &str) -> String {
+            String::new()
+        }
         fn get_fields(&self, path: &str, _f: &str) -> String {
             match path {
                 "plan.missionController" => self.0.to_string(),
                 _ => String::new(),
             }
         }
-        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            String::new()
+        }
         fn watch(&self, _p: &[String]) {}
     }
 
@@ -496,34 +871,71 @@ mod offering {
         state
     }
 
-    fn named<'a>(offered: &'a [(String, Option<bool>, String)], id: &str) -> &'a (String, Option<bool>, String) {
+    fn named<'a>(
+        offered: &'a [(String, Option<bool>, String)],
+        id: &str,
+    ) -> &'a (String, Option<bool>, String) {
         offered.iter().find(|(kind, _, _)| kind == id).unwrap()
     }
 
     #[test]
     fn a_pattern_the_vehicle_cannot_fly_is_not_offered_at_all() {
-        let plane = flying(state(false, false, true, true), &["Survey", "Corridor Scan"]);
+        let plane = flying(
+            state(false, false, true, true),
+            &["Survey", "Corridor Scan"],
+        );
         let offered = offering(plane.clone());
-        assert!(offered.iter().all(|(id, _, _)| id != "structure"), "QGC withholds Structure Scan from anything that is not a multirotor or a VTOL, so a head must not be able to draw one");
-        assert!(offered.iter().any(|(id, _, _)| id == "survey"), "the patterns it does fly stay");
+        assert!(
+            offered.iter().all(|(id, _, _)| id != "structure"),
+            "QGC withholds Structure Scan from anything that is not a multirotor or a VTOL, so a head must not be able to draw one"
+        );
+        assert!(
+            offered.iter().any(|(id, _, _)| id == "survey"),
+            "the patterns it does fly stay"
+        );
         let asked = kinds_view(&Mission(plane), &["structure".to_string()]);
         assert_eq!(asked["enabled"], json!(false));
-        assert_eq!(asked["disabledReason"], json!(NOT_FOR_THIS_VEHICLE), "asking by name has to answer with the reason rather than silently succeeding");
+        assert_eq!(
+            asked["disabledReason"],
+            json!(NOT_FOR_THIS_VEHICLE),
+            "asking by name has to answer with the reason rather than silently succeeding"
+        );
     }
 
     #[test]
     fn a_plan_that_does_not_name_its_patterns_keeps_every_one_of_them() {
         let offered = offering(state(false, false, true, true));
-        assert!(offered.iter().any(|(id, _, _)| id == "structure"), "a missing list is not a vehicle that flies nothing; it is a plan that has not said, and erasing the catalogue would be a worse answer than the status quo");
+        assert!(
+            offered.iter().any(|(id, _, _)| id == "structure"),
+            "a missing list is not a vehicle that flies nothing; it is a plan that has not said, and erasing the catalogue would be a worse answer than the status quo"
+        );
     }
 
     #[test]
     fn an_empty_ground_mission_offers_a_takeoff_or_a_waypoint_that_brings_one() {
         let offered = offering(state(true, true, false, true));
-        assert_eq!(named(&offered, "takeoff").1, Some(true), "the one thing that can be added is the one thing offered");
-        assert_eq!(named(&offered, "waypoint").1, Some(true), "PlanView keeps Waypoint enabled while onlyInsertTakeoffValid; addWaypoint inserts the takeoff first");
-        assert_eq!(named(&offered, "survey").1, Some(false), "a complex item is no more insertable than a waypoint before a takeoff");
-        assert_eq!(offered.iter().filter(|(_, enabled, _)| *enabled == Some(true)).count(), 2);
+        assert_eq!(
+            named(&offered, "takeoff").1,
+            Some(true),
+            "the one thing that can be added is the one thing offered"
+        );
+        assert_eq!(
+            named(&offered, "waypoint").1,
+            Some(true),
+            "PlanView keeps Waypoint enabled while onlyInsertTakeoffValid; addWaypoint inserts the takeoff first"
+        );
+        assert_eq!(
+            named(&offered, "survey").1,
+            Some(false),
+            "a complex item is no more insertable than a waypoint before a takeoff"
+        );
+        assert_eq!(
+            offered
+                .iter()
+                .filter(|(_, enabled, _)| *enabled == Some(true))
+                .count(),
+            2
+        );
     }
 
     #[test]
@@ -534,7 +946,12 @@ mod offering {
         assert_eq!(named(&offered, "waypoint").1, Some(true));
         assert_eq!(named(&offered, "land").1, Some(true));
         assert_eq!(named(&offered, "survey").1, Some(true));
-        assert!(offered.iter().filter(|(kind, _, _)| kind != "takeoff").all(|(_, enabled, _)| *enabled == Some(true)));
+        assert!(
+            offered
+                .iter()
+                .filter(|(kind, _, _)| kind != "takeoff")
+                .all(|(_, enabled, _)| *enabled == Some(true))
+        );
     }
 
     #[test]
@@ -542,7 +959,11 @@ mod offering {
         let offered = offering(state(false, false, false, true));
         assert_eq!(named(&offered, "land").1, Some(false));
         assert_eq!(named(&offered, "land").2, LAND_COMES_LAST);
-        assert_eq!(named(&offered, "waypoint").1, Some(true), "the rest of the mission is still editable at a point a landing cannot go");
+        assert_eq!(
+            named(&offered, "waypoint").1,
+            Some(true),
+            "the rest of the mission is still editable at a point a landing cannot go"
+        );
     }
 
     #[test]
@@ -551,25 +972,43 @@ mod offering {
         assert_eq!(named(&offered, "waypoint").1, Some(false));
         assert_eq!(named(&offered, "waypoint").2, NOT_AFTER_LANDING);
         assert_eq!(named(&offered, "survey").1, Some(false));
-        assert_eq!(named(&offered, "roi").1, Some(true), "a region of interest is a camera instruction rather than a place to fly, so it is still allowed");
+        assert_eq!(
+            named(&offered, "roi").1,
+            Some(true),
+            "a region of interest is a camera instruction rather than a place to fly, so it is still allowed"
+        );
     }
 
     #[test]
     fn a_point_ahead_of_the_takeoff_is_refused_as_before_takeoff_rather_than_after_a_landing() {
         let offered = offering(state(false, false, false, false));
         assert_eq!(named(&offered, "waypoint").1, Some(false));
-        assert_eq!(named(&offered, "waypoint").2, NOT_BEFORE_TAKEOFF, "with no landing in the mission the only place nothing flies is ahead of the takeoff");
+        assert_eq!(
+            named(&offered, "waypoint").2,
+            NOT_BEFORE_TAKEOFF,
+            "with no landing in the mission the only place nothing flies is ahead of the takeoff"
+        );
         assert_eq!(named(&offered, "survey").2, NOT_BEFORE_TAKEOFF);
         let mut ahead = landing(state(false, false, false, false));
         ahead["insertBeforeTakeoff"] = json!(true);
-        assert_eq!(named(&offering(ahead), "waypoint").2, NOT_BEFORE_TAKEOFF, "a camera command ahead of the takeoff in a mission that also lands is still before the takeoff, which the core plan knows by position");
+        assert_eq!(
+            named(&offering(ahead), "waypoint").2,
+            NOT_BEFORE_TAKEOFF,
+            "a camera command ahead of the takeoff in a mission that also lands is still before the takeoff, which the core plan knows by position"
+        );
     }
 
     #[test]
     fn a_plan_view_that_has_never_selected_anything_answers_that_it_does_not_know() {
         let offered = offering(json!({ "kind": "object" }));
-        assert!(offered.iter().all(|(_, enabled, _)| enabled.is_none()), "these flags are only assigned when the plan view selects an item, so a head that never selects one would otherwise read the controller's constructor values as a verdict, and they say a landing can never be added");
-        assert!(offered.iter().all(|(_, _, reason)| reason.is_empty()), "nothing is refused, so nothing has a reason to show");
+        assert!(
+            offered.iter().all(|(_, enabled, _)| enabled.is_none()),
+            "these flags are only assigned when the plan view selects an item, so a head that never selects one would otherwise read the controller's constructor values as a verdict, and they say a landing can never be added"
+        );
+        assert!(
+            offered.iter().all(|(_, _, reason)| reason.is_empty()),
+            "nothing is refused, so nothing has a reason to show"
+        );
     }
 
     #[test]
@@ -577,7 +1016,11 @@ mod offering {
         let asked = kinds_view(&Mission(state(false, false, true, true)), &[]);
         assert_eq!(asked["kinds"][0]["atSequence"], 1);
         let unasked = kinds_view(&Mission(json!({ "kind": "object" })), &[]);
-        assert_eq!(unasked["kinds"][0]["atSequence"], Value::Null, "what can be inserted depends on where, so an answer with no where is not an answer");
+        assert_eq!(
+            unasked["kinds"][0]["atSequence"],
+            Value::Null,
+            "what can be inserted depends on where, so an answer with no where is not an answer"
+        );
     }
 
     #[test]

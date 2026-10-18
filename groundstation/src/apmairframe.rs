@@ -3,7 +3,13 @@ use serde_json::{Value, json};
 use crate::read::{enum_label, flag, object, text};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicle.parameterManager.parametersReady", "vehicle.apmFirmware", "vehicle.multiRotor", "vehicle.rover", "vehicle.sub"];
+pub const DEPS: &[&str] = &[
+    "vehicle.parameterManager.parametersReady",
+    "vehicle.apmFirmware",
+    "vehicle.multiRotor",
+    "vehicle.rover",
+    "vehicle.sub",
+];
 pub const AIRFRAME_SCREEN: &str = "apmAirframe";
 pub const PICK_CLASS: &str = "apmAirframe.pickClass";
 pub const PICK_TYPE: &str = "apmAirframe.pickType";
@@ -69,17 +75,33 @@ fn present(fact: &Value) -> bool {
 }
 
 fn raw(fact: &Value) -> Option<i64> {
-    fact.get("rawValue").or(fact.get("value")).and_then(Value::as_f64).map(|v| v as i64)
+    fact.get("rawValue")
+        .or(fact.get("value"))
+        .and_then(Value::as_f64)
+        .map(|v| v as i64)
 }
 
 pub fn enum_pairs(fact: &Value) -> Vec<(String, i64)> {
     let synthetic = text(fact, "unknownEnumLabel");
-    let labels = fact.get("enumStrings").and_then(Value::as_array).cloned().unwrap_or_default();
-    let values = fact.get("enumValues").and_then(Value::as_array).cloned().unwrap_or_default();
+    let labels = fact
+        .get("enumStrings")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let values = fact
+        .get("enumValues")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
     labels
         .iter()
         .zip(values.iter())
-        .filter_map(|(label, value)| Some((label.as_str()?.to_string(), value.as_f64().or_else(|| value.as_str()?.parse().ok())? as i64)))
+        .filter_map(|(label, value)| {
+            Some((
+                label.as_str()?.to_string(),
+                value.as_f64().or_else(|| value.as_str()?.parse().ok())? as i64,
+            ))
+        })
         .filter(|(label, _)| synthetic.is_empty() || *label != synthetic)
         .collect()
 }
@@ -92,7 +114,10 @@ pub fn copter_image(class: i64, frame_type: i64) -> &'static str {
 }
 
 fn rover_image(class: i64) -> &'static str {
-    ROVER_IMAGES.iter().find(|(c, _)| *c == class).map_or(UNKNOWN_IMAGE, |(_, image)| image)
+    ROVER_IMAGES
+        .iter()
+        .find(|(c, _)| *c == class)
+        .map_or(UNKNOWN_IMAGE, |(_, image)| image)
 }
 
 #[derive(Debug, PartialEq)]
@@ -103,37 +128,63 @@ pub struct FrameClass {
     pub types: Vec<(String, i64)>,
 }
 
-pub fn frame_classes(classes: &[(String, i64)], types: &[(String, i64)], copter: bool) -> Vec<FrameClass> {
+pub fn frame_classes(
+    classes: &[(String, i64)],
+    types: &[(String, i64)],
+    copter: bool,
+) -> Vec<FrameClass> {
     classes
         .iter()
         .skip(1)
         .filter(|(_, value)| !(copter && *value == CLASS_HELI))
         .map(|(name, value)| {
-            let rows: Vec<&(i64, i64, &str)> = COPTER_IMAGES.iter().filter(|(c, _, _)| copter && c == value).collect();
+            let rows: Vec<&(i64, i64, &str)> = COPTER_IMAGES
+                .iter()
+                .filter(|(c, _, _)| copter && c == value)
+                .collect();
             FrameClass {
                 name: name.clone(),
                 value: *value,
                 default_type: rows.first().map(|(_, t, _)| *t),
-                types: rows.iter().filter(|(_, t, _)| *t != ANY_TYPE).filter_map(|(_, t, _)| types.iter().find(|(_, v)| v == t).cloned()).collect(),
+                types: rows
+                    .iter()
+                    .filter(|(_, t, _)| *t != ANY_TYPE)
+                    .filter_map(|(_, t, _)| types.iter().find(|(_, v)| v == t).cloned())
+                    .collect(),
             }
         })
         .collect()
 }
 
 pub fn type_valid(class: &FrameClass, frame_type: Option<i64>) -> bool {
-    class.default_type.is_none_or(|t| t == ANY_TYPE) || class.types.iter().any(|(_, v)| Some(*v) == frame_type)
+    class.default_type.is_none_or(|t| t == ANY_TYPE)
+        || class.types.iter().any(|(_, v)| Some(*v) == frame_type)
 }
 
 fn image(copter: bool, class: i64, frame_type: i64) -> String {
-    format!("{}.svg", if copter { copter_image(class, frame_type) } else { rover_image(class) })
+    format!(
+        "{}.svg",
+        if copter {
+            copter_image(class, frame_type)
+        } else {
+            rover_image(class)
+        }
+    )
 }
 
 pub fn help_text(class_value: Option<i64>, class_label: &str, type_label: Option<&str>) -> String {
     let current = match class_value {
         Some(0) | None => "Airframe is currently not set.".to_string(),
-        Some(_) => format!("Currently set to frame class '{class_label}'{}.", type_label.map(|t| format!(" and frame type '{t}'")).unwrap_or_default()),
+        Some(_) => format!(
+            "Currently set to frame class '{class_label}'{}.",
+            type_label
+                .map(|t| format!(" and frame type '{t}'"))
+                .unwrap_or_default()
+        ),
     };
-    format!("{current} To change this configuration, select the desired frame class below and then reboot the vehicle.")
+    format!(
+        "{current} To change this configuration, select the desired frame class below and then reboot the vehicle."
+    )
 }
 
 struct Read {
@@ -146,25 +197,35 @@ struct Read {
 fn read(backend: &dyn Backend) -> Option<Read> {
     let vehicle = backend.value_fields("vehicle", "apmFirmware,sub,multiRotor,rover");
     let class_fact = backend.value(&param_path(FRAME_CLASS));
-    (flag(&vehicle, "apmFirmware") && !flag(&vehicle, "sub") && present(&class_fact)).then(|| Read {
-        copter: flag(&vehicle, "multiRotor"),
-        rover: flag(&vehicle, "rover"),
-        class_fact,
-        type_fact: backend.value(&param_path(FRAME_TYPE)),
+    (flag(&vehicle, "apmFirmware") && !flag(&vehicle, "sub") && present(&class_fact)).then(|| {
+        Read {
+            copter: flag(&vehicle, "multiRotor"),
+            rover: flag(&vehicle, "rover"),
+            class_fact,
+            type_fact: backend.value(&param_path(FRAME_TYPE)),
+        }
     })
 }
 
 fn classes_of(read: &Read) -> Vec<FrameClass> {
     match read.copter || read.rover {
-        true => frame_classes(&enum_pairs(&read.class_fact), &enum_pairs(&read.type_fact), read.copter),
+        true => frame_classes(
+            &enum_pairs(&read.class_fact),
+            &enum_pairs(&read.type_fact),
+            read.copter,
+        ),
         false => Vec::new(),
     }
 }
 
 pub fn apm_airframe_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let Some(read) = read(backend) else { return json!({ "kind": "object", "class": "ApmAirframe", "available": false }) };
+    let Some(read) = read(backend) else {
+        return json!({ "kind": "object", "class": "ApmAirframe", "available": false });
+    };
     let class_value = raw(&read.class_fact);
-    let type_value = present(&read.type_fact).then(|| raw(&read.type_fact)).flatten();
+    let type_value = present(&read.type_fact)
+        .then(|| raw(&read.type_fact))
+        .flatten();
     let type_label = enum_label(&read.type_fact);
     json!({
         "kind": "object",
@@ -189,20 +250,32 @@ pub fn apm_airframe_view(backend: &dyn Backend, _args: &[String]) -> Value {
 }
 
 fn write(backend: &dyn Backend, name: &str, value: i64) -> Value {
-    object(&backend.set(&format!("{}.rawValue", param_path(name)), &json!({ "value": value }).to_string()))
+    object(&backend.set(
+        &format!("{}.rawValue", param_path(name)),
+        &json!({ "value": value }).to_string(),
+    ))
 }
 
 pub fn run(backend: &dyn Backend, action: &str, args: &str) -> Value {
-    let Some(read) = read(backend) else { return json!({ "ok": false, "reason": "This page is for an ArduPilot copter or rover." }) };
+    let Some(read) = read(backend) else {
+        return json!({ "ok": false, "reason": "This page is for an ArduPilot copter or rover." });
+    };
     let given = serde_json::from_str::<Vec<Value>>(args).unwrap_or_default();
     let picked = given.first().and_then(Value::as_i64);
     let classes = classes_of(&read);
     match action {
         PICK_CLASS => {
-            let Some(class) = classes.iter().find(|c| Some(c.value) == picked) else { return json!({ "ok": false, "reason": "Pick one of the listed frame classes." }) };
+            let Some(class) = classes.iter().find(|c| Some(c.value) == picked) else {
+                return json!({ "ok": false, "reason": "Pick one of the listed frame classes." });
+            };
             let current_type = raw(&read.type_fact);
-            let unchanged = raw(&read.class_fact) == Some(class.value) && type_valid(class, current_type);
-            match (unchanged, read.copter && present(&read.type_fact), class.default_type.filter(|t| *t != ANY_TYPE)) {
+            let unchanged =
+                raw(&read.class_fact) == Some(class.value) && type_valid(class, current_type);
+            match (
+                unchanged,
+                read.copter && present(&read.type_fact),
+                class.default_type.filter(|t| *t != ANY_TYPE),
+            ) {
                 (true, _, _) => json!({ "ok": true }),
                 (false, true, Some(default_type)) => {
                     let typed = write(backend, FRAME_TYPE, default_type);
@@ -215,10 +288,14 @@ pub fn run(backend: &dyn Backend, action: &str, args: &str) -> Value {
             }
         }
         PICK_TYPE => {
-            let chosen = classes.iter().find(|c| Some(c.value) == raw(&read.class_fact));
+            let chosen = classes
+                .iter()
+                .find(|c| Some(c.value) == raw(&read.class_fact));
             match chosen.and_then(|c| c.types.iter().find(|(_, v)| Some(*v) == picked)) {
                 Some((_, value)) => write(backend, FRAME_TYPE, *value),
-                None => json!({ "ok": false, "reason": "Pick one of the frame types listed for this class." }),
+                None => {
+                    json!({ "ok": false, "reason": "Pick one of the frame types listed for this class." })
+                }
             }
         }
         _ => json!({ "ok": false, "reason": format!("{action} is not an airframe action") }),
@@ -234,8 +311,15 @@ mod tests {
     #[test]
     fn the_frame_labels_come_from_whichever_name_the_fact_serialiser_used() {
         assert_eq!(enum_label(&json!({ "enumStringValue": "Quad" })), "Quad");
-        assert_eq!(enum_label(&json!({ "enumOrValueString": "Quad" })), "Quad", "the core flavor serves enumOrValueString, so the help line read class ''");
-        assert_eq!(enum_label(&json!({ "enumStringValue": "", "enumOrValueString": "X" })), "X");
+        assert_eq!(
+            enum_label(&json!({ "enumOrValueString": "Quad" })),
+            "Quad",
+            "the core flavor serves enumOrValueString, so the help line read class ''"
+        );
+        assert_eq!(
+            enum_label(&json!({ "enumStringValue": "", "enumOrValueString": "X" })),
+            "X"
+        );
     }
 
     use super::*;
@@ -245,21 +329,52 @@ mod tests {
     }
 
     fn classes() -> Vec<(String, i64)> {
-        pairs(&[("Undefined", 0), ("Quad", 1), ("Hexa", 2), ("Y6", 5), ("Heli", 6), ("Tri", 7)])
+        pairs(&[
+            ("Undefined", 0),
+            ("Quad", 1),
+            ("Hexa", 2),
+            ("Y6", 5),
+            ("Heli", 6),
+            ("Tri", 7),
+        ])
     }
 
     fn types() -> Vec<(String, i64)> {
-        pairs(&[("Plus", 0), ("X", 1), ("V", 2), ("H", 3), ("V-Tail", 4), ("A-Tail", 5), ("Y6B", 10), ("BetaFlightX", 12)])
+        pairs(&[
+            ("Plus", 0),
+            ("X", 1),
+            ("V", 2),
+            ("H", 3),
+            ("V-Tail", 4),
+            ("A-Tail", 5),
+            ("Y6B", 10),
+            ("BetaFlightX", 12),
+        ])
     }
 
     #[test]
     fn copter_classes_skip_undefined_and_heli_and_offer_only_the_types_their_layout_supports() {
         let listed = frame_classes(&classes(), &types(), true);
-        assert_eq!(listed.iter().map(|c| c.value).collect::<Vec<_>>(), [1, 2, 5, 7]);
+        assert_eq!(
+            listed.iter().map(|c| c.value).collect::<Vec<_>>(),
+            [1, 2, 5, 7]
+        );
         let quad = &listed[0];
-        assert_eq!(quad.default_type, Some(TYPE_X), "the first row of the table is the default");
-        assert_eq!(quad.types.iter().map(|(_, v)| *v).collect::<Vec<_>>(), [1, 0, 2, 3, 4, 5], "BetaFlightX is in the enum but not in the table");
-        assert_eq!(listed[2].types.iter().map(|(_, v)| *v).collect::<Vec<_>>(), [10], "Y6F is missing from this enum and the any-type row is not a choice");
+        assert_eq!(
+            quad.default_type,
+            Some(TYPE_X),
+            "the first row of the table is the default"
+        );
+        assert_eq!(
+            quad.types.iter().map(|(_, v)| *v).collect::<Vec<_>>(),
+            [1, 0, 2, 3, 4, 5],
+            "BetaFlightX is in the enum but not in the table"
+        );
+        assert_eq!(
+            listed[2].types.iter().map(|(_, v)| *v).collect::<Vec<_>>(),
+            [10],
+            "Y6F is missing from this enum and the any-type row is not a choice"
+        );
         assert_eq!(listed[3].default_type, Some(ANY_TYPE));
         assert!(listed[3].types.is_empty(), "Tri hides the frame type list");
     }
@@ -268,24 +383,65 @@ mod tests {
     fn a_type_outside_the_class_list_is_invalid_and_rovers_never_are() {
         let listed = frame_classes(&classes(), &types(), true);
         assert!(type_valid(&listed[0], Some(TYPE_H)));
-        assert!(!type_valid(&listed[1], Some(TYPE_H)), "Hexa has no H layout");
+        assert!(
+            !type_valid(&listed[1], Some(TYPE_H)),
+            "Hexa has no H layout"
+        );
         assert!(!type_valid(&listed[0], None));
-        let rovers = frame_classes(&pairs(&[("Undefined", 0), ("Rover", 1), ("Boat", 2), ("BalanceBot", 3)]), &[], false);
-        assert_eq!(rovers.len(), 3, "rover lists every class including the last");
-        assert!(rovers.iter().all(|c| c.default_type.is_none() && type_valid(c, Some(99))));
-        let tri = FrameClass { name: "Tri".into(), value: 7, default_type: Some(ANY_TYPE), types: Vec::new() };
-        assert!(type_valid(&tri, Some(3)), "a class whose layout takes any type hides the type combo (frameTypeSupported false), so no FRAME_TYPE is invalid");
+        let rovers = frame_classes(
+            &pairs(&[
+                ("Undefined", 0),
+                ("Rover", 1),
+                ("Boat", 2),
+                ("BalanceBot", 3),
+            ]),
+            &[],
+            false,
+        );
+        assert_eq!(
+            rovers.len(),
+            3,
+            "rover lists every class including the last"
+        );
+        assert!(
+            rovers
+                .iter()
+                .all(|c| c.default_type.is_none() && type_valid(c, Some(99)))
+        );
+        let tri = FrameClass {
+            name: "Tri".into(),
+            value: 7,
+            default_type: Some(ANY_TYPE),
+            types: Vec::new(),
+        };
+        assert!(
+            type_valid(&tri, Some(3)),
+            "a class whose layout takes any type hides the type combo (frameTypeSupported false), so no FRAME_TYPE is invalid"
+        );
     }
 
     #[test]
     fn images_and_help_follow_the_controller() {
         assert_eq!(copter_image(CLASS_QUAD, TYPE_H), "QuadRotorH");
         assert_eq!(copter_image(CLASS_QUAD, ANY_TYPE), "QuadRotorX");
-        assert_eq!(copter_image(CLASS_Y6, 3), UNKNOWN_IMAGE, "the any-type row only answers a lookup without a type");
+        assert_eq!(
+            copter_image(CLASS_Y6, 3),
+            UNKNOWN_IMAGE,
+            "the any-type row only answers a lookup without a type"
+        );
         assert_eq!(copter_image(CLASS_HEX, TYPE_H), UNKNOWN_IMAGE);
         assert_eq!(image(false, CLASS_BOAT, ANY_TYPE), "Boat.svg");
-        assert_eq!(help_text(Some(0), "Undefined", Some("X")), "Airframe is currently not set. To change this configuration, select the desired frame class below and then reboot the vehicle.");
-        assert_eq!(help_text(Some(1), "Quad", Some("X")), "Currently set to frame class 'Quad' and frame type 'X'. To change this configuration, select the desired frame class below and then reboot the vehicle.");
-        assert_eq!(help_text(Some(1), "Rover", None), "Currently set to frame class 'Rover'. To change this configuration, select the desired frame class below and then reboot the vehicle.");
+        assert_eq!(
+            help_text(Some(0), "Undefined", Some("X")),
+            "Airframe is currently not set. To change this configuration, select the desired frame class below and then reboot the vehicle."
+        );
+        assert_eq!(
+            help_text(Some(1), "Quad", Some("X")),
+            "Currently set to frame class 'Quad' and frame type 'X'. To change this configuration, select the desired frame class below and then reboot the vehicle."
+        );
+        assert_eq!(
+            help_text(Some(1), "Rover", None),
+            "Currently set to frame class 'Rover'. To change this configuration, select the desired frame class below and then reboot the vehicle."
+        );
     }
 }

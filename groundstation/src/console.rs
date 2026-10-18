@@ -15,7 +15,10 @@ pub struct CommandHistory {
 
 impl CommandHistory {
     pub fn sent(&mut self, command: &str) {
-        command.split('\n').filter(|line| !line.is_empty()).for_each(|line| self.append(line));
+        command
+            .split('\n')
+            .filter(|line| !line.is_empty())
+            .for_each(|line| self.append(line));
     }
 
     fn append(&mut self, command: &str) {
@@ -45,10 +48,16 @@ impl CommandHistory {
     }
 }
 
-pub static HISTORY: std::sync::Mutex<CommandHistory> = std::sync::Mutex::new(CommandHistory { lines: Vec::new(), index: 0 });
+pub static HISTORY: std::sync::Mutex<CommandHistory> = std::sync::Mutex::new(CommandHistory {
+    lines: Vec::new(),
+    index: 0,
+});
 
 pub fn console_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let connected = flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable");
+    let connected = flag(
+        &backend.value_fields("vehicles", "activeVehicleAvailable"),
+        "activeVehicleAvailable",
+    );
     let read = backend.value_fields("mavlinkConsole", "lines");
     let mut lines: Vec<&str> = read
         .get("lines")
@@ -76,11 +85,23 @@ mod tests {
     fn command_history_recalls_like_the_console_controller() {
         let mut history = CommandHistory::default();
         history.sent("ver all\nver all\n\nparam show");
-        assert_eq!(history.up("typed"), "param show", "each line of a multi-line send is its own entry, and a repeat is kept once");
+        assert_eq!(
+            history.up("typed"),
+            "param show",
+            "each line of a multi-line send is its own entry, and a repeat is kept once"
+        );
         assert_eq!(history.up(""), "ver all");
-        assert_eq!(history.up("x"), "x", "at the oldest entry up keeps what is typed");
+        assert_eq!(
+            history.up("x"),
+            "x",
+            "at the oldest entry up keeps what is typed"
+        );
         assert_eq!(history.down(""), "param show");
-        assert_eq!(history.down(""), "", "past the newest entry the line is blank");
+        assert_eq!(
+            history.down(""),
+            "",
+            "past the newest entry the line is blank"
+        );
         assert_eq!(history.down("draft"), "draft");
     }
 
@@ -91,7 +112,9 @@ mod tests {
         }
         fn get_fields(&self, path: &str, _fields: &str) -> String {
             match path {
-                "vehicles" => json!({ "kind": "object", "activeVehicleAvailable": self.1 }).to_string(),
+                "vehicles" => {
+                    json!({ "kind": "object", "activeVehicleAvailable": self.1 }).to_string()
+                }
                 "mavlinkConsole" => match &self.0 {
                     Some(lines) => json!({ "kind": "object", "lines": lines }).to_string(),
                     None => json!({ "kind": "null" }).to_string(),
@@ -111,19 +134,37 @@ mod tests {
     #[test]
     fn the_console_serves_only_what_the_shell_printed() {
         let unplugged = console_view(&Console(Some(vec![]), false), &[]);
-        assert_eq!((unplugged["count"].clone(), unplugged["connected"].clone()), (json!(0), json!(false)));
-        assert!(unplugged.get("emptyReason").is_none(), "MAVLinkConsolePage has no empty-state sentence; an empty console is an empty text area");
+        assert_eq!(
+            (unplugged["count"].clone(), unplugged["connected"].clone()),
+            (json!(0), json!(false))
+        );
+        assert!(
+            unplugged.get("emptyReason").is_none(),
+            "MAVLinkConsolePage has no empty-state sentence; an empty console is an empty text area"
+        );
 
         let talking = console_view(&Console(Some(vec!["nsh> ", "ekf2 status"]), true), &[]);
         assert_eq!(talking["count"], 2);
         assert_eq!(talking["last"], "ekf2 status");
 
         let mid_line = console_view(&Console(Some(vec!["nsh> ", "ekf2 status", ""]), true), &[]);
-        assert_eq!(mid_line["count"], 2, "the controller adds the row for the line being assembled the moment a newline lands");
+        assert_eq!(
+            mid_line["count"], 2,
+            "the controller adds the row for the line being assembled the moment a newline lands"
+        );
         assert_eq!(mid_line["last"], "ekf2 status");
 
-        let blank_inside = console_view(&Console(Some(vec!["nsh> ver all", "", "HW arch: PX4_FMU_V5", ""]), true), &[]);
-        assert_eq!(blank_inside["count"], 3, "only the row being assembled goes; a blank line the vehicle printed stays");
+        let blank_inside = console_view(
+            &Console(
+                Some(vec!["nsh> ver all", "", "HW arch: PX4_FMU_V5", ""]),
+                true,
+            ),
+            &[],
+        );
+        assert_eq!(
+            blank_inside["count"], 3,
+            "only the row being assembled goes; a blank line the vehicle printed stays"
+        );
         assert_eq!(blank_inside["lines"][1], "");
 
         let only_partial = console_view(&Console(Some(vec![""]), true), &[]);

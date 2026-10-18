@@ -3,7 +3,11 @@ use serde_json::{Value, json};
 use crate::router::Backend;
 
 const INTEGRITY_FACTS: [&str; 3] = ["jammingState", "spoofingState", "authenticationState"];
-const GROUPS: [(&str, &str); 3] = [("vehicle.gpsAggregate", "GPS Resilience Status"), ("vehicle.gps", "GPS 1 Details"), ("vehicle.gps2", "GPS 2 Details")];
+const GROUPS: [(&str, &str); 3] = [
+    ("vehicle.gpsAggregate", "GPS Resilience Status"),
+    ("vehicle.gps", "GPS 1 Details"),
+    ("vehicle.gps2", "GPS 2 Details"),
+];
 const UNKNOWN: i64 = 255;
 
 pub const DEPS: &[&str] = &[
@@ -29,8 +33,20 @@ fn read(backend: &dyn Backend, group: &str, state: &str) -> State {
     let fact = backend.value(&format!("{group}.{state}"));
     let is_fact = fact.get("kind").and_then(Value::as_str) == Some("fact");
     State {
-        value: is_fact.then(|| fact.get("rawValue").or(fact.get("value")).and_then(Value::as_f64)).flatten().map(|v| v as i64),
-        text: fact.get("enumOrValueString").and_then(Value::as_str).filter(|s| !s.is_empty()).unwrap_or("n/a").to_string(),
+        value: is_fact
+            .then(|| {
+                fact.get("rawValue")
+                    .or(fact.get("value"))
+                    .and_then(Value::as_f64)
+            })
+            .flatten()
+            .map(|v| v as i64),
+        text: fact
+            .get("enumOrValueString")
+            .and_then(Value::as_str)
+            .filter(|s| !s.is_empty())
+            .unwrap_or("n/a")
+            .to_string(),
     }
 }
 
@@ -59,7 +75,12 @@ pub fn interference_colour(value: Option<i64>) -> &'static str {
 const DETAIL_LABELS: [&str; 3] = ["Jamming", "Spoofing", "Authentication"];
 
 fn section(title: &str, states: &[State; 3]) -> Value {
-    let rows: Vec<Value> = DETAIL_LABELS.iter().zip(states.iter()).filter(|(_, s)| reported(s)).map(|(label, s)| json!({ "label": label, "text": s.text })).collect();
+    let rows: Vec<Value> = DETAIL_LABELS
+        .iter()
+        .zip(states.iter())
+        .filter(|(_, s)| reported(s))
+        .map(|(label, s)| json!({ "label": label, "text": s.text }))
+        .collect();
     json!({ "title": title, "rows": rows })
 }
 
@@ -98,19 +119,45 @@ mod tests {
     use super::*;
 
     fn states(jam: Option<i64>, spoof: Option<i64>, auth: Option<i64>) -> [State; 3] {
-        [jam, spoof, auth].map(|value| State { value, text: value.map_or("n/a".to_string(), |v| format!("state {v}")) })
+        [jam, spoof, auth].map(|value| State {
+            value,
+            text: value.map_or("n/a".to_string(), |v| format!("state {v}")),
+        })
     }
 
     #[test]
     fn it_shows_only_what_the_receiver_reports() {
-        let unknown = [states(Some(0), Some(255), None), states(None, None, None), states(None, None, None)];
-        assert_eq!(resilience(&unknown)["shown"], false, "0 is unknown and 255 not reported, as the toolbar treats them");
-        let spoofed = [states(Some(1), Some(3), Some(3)), states(Some(1), Some(3), Some(3)), states(None, None, None)];
+        let unknown = [
+            states(Some(0), Some(255), None),
+            states(None, None, None),
+            states(None, None, None),
+        ];
+        assert_eq!(
+            resilience(&unknown)["shown"],
+            false,
+            "0 is unknown and 255 not reported, as the toolbar treats them"
+        );
+        let spoofed = [
+            states(Some(1), Some(3), Some(3)),
+            states(Some(1), Some(3), Some(3)),
+            states(None, None, None),
+        ];
         let shown = resilience(&spoofed);
-        assert_eq!(shown["interference"]["colour"], "error", "the worse of jamming and spoofing sets the colour");
+        assert_eq!(
+            shown["interference"]["colour"], "error",
+            "the worse of jamming and spoofing sets the colour"
+        );
         assert_eq!(shown["authentication"]["colour"], "good");
-        assert_eq!(shown["sections"].as_array().unwrap().len(), 2, "the second receiver's section is left out when it reports nothing");
+        assert_eq!(
+            shown["sections"].as_array().unwrap().len(),
+            2,
+            "the second receiver's section is left out when it reports nothing"
+        );
         assert_eq!(interference_colour(Some(2)), "alert", "mitigated is orange");
-        assert_eq!(authentication_colour(Some(1)), "warning", "initializing is yellow");
+        assert_eq!(
+            authentication_colour(Some(1)),
+            "warning",
+            "initializing is yellow"
+        );
     }
 }

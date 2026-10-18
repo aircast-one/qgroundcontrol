@@ -19,7 +19,9 @@ fn c(text: &str) -> CString {
 }
 
 fn read(raw: *const c_char) -> String {
-    unsafe { CStr::from_ptr(raw) }.to_string_lossy().into_owned()
+    unsafe { CStr::from_ptr(raw) }
+        .to_string_lossy()
+        .into_owned()
 }
 
 fn taken(raw: *mut c_char) -> String {
@@ -30,7 +32,9 @@ fn taken(raw: *mut c_char) -> String {
 
 #[wasm_bindgen(start)]
 fn start() {
-    std::panic::set_hook(Box::new(|info| web_sys::console::error_1(&info.to_string().into())));
+    std::panic::set_hook(Box::new(|info| {
+        web_sys::console::error_1(&info.to_string().into())
+    }));
     crate::applog::install();
 }
 
@@ -82,7 +86,12 @@ pub fn on_event(handler: js_sys::Function) {
 
 unsafe extern "C" fn event(path: *const c_char, json: *const c_char) {
     let (path, json) = (JsValue::from(read(path)), JsValue::from(read(json)));
-    EVENTS.with(|events| events.borrow().as_ref().map(|handler| handler.call2(&JsValue::NULL, &path, &json)));
+    EVENTS.with(|events| {
+        events
+            .borrow()
+            .as_ref()
+            .map(|handler| handler.call2(&JsValue::NULL, &path, &json))
+    });
 }
 
 #[wasm_bindgen(js_name = settingsOpen)]
@@ -121,7 +130,11 @@ pub fn link_close(id: u32, reason: &str) -> bool {
     unsafe { crate::abi::qgc_core_link_close(id, c(reason).as_ptr()) }
 }
 
-fn host_call(host: &'static std::thread::LocalKey<RefCell<Option<js_sys::Object>>>, name: &str, args: js_sys::Array) -> JsValue {
+fn host_call(
+    host: &'static std::thread::LocalKey<RefCell<Option<js_sys::Object>>>,
+    name: &str,
+    args: js_sys::Array,
+) -> JsValue {
     host.with(|host| {
         host.borrow()
             .as_ref()
@@ -136,13 +149,31 @@ fn serial_call(name: &str, args: js_sys::Array) -> JsValue {
     host_call(&SERIAL_HOST, name, args)
 }
 
-fn serial_open(id: u32, name: &str, baud: u32, data_bits: i64, stop_bits: i64, parity: i64) -> bool {
-    let args: js_sys::Array = [JsValue::from(id), name.into(), baud.into(), (data_bits as f64).into(), (stop_bits as f64).into(), (parity as f64).into()].into_iter().collect();
+fn serial_open(
+    id: u32,
+    name: &str,
+    baud: u32,
+    data_bits: i64,
+    stop_bits: i64,
+    parity: i64,
+) -> bool {
+    let args: js_sys::Array = [
+        JsValue::from(id),
+        name.into(),
+        baud.into(),
+        (data_bits as f64).into(),
+        (stop_bits as f64).into(),
+        (parity as f64).into(),
+    ]
+    .into_iter()
+    .collect();
     serial_call("open", args).as_bool().unwrap_or(false)
 }
 
 fn serial_write(id: u32, bytes: &[u8]) -> bool {
-    let args: js_sys::Array = [JsValue::from(id), js_sys::Uint8Array::from(bytes).into()].into_iter().collect();
+    let args: js_sys::Array = [JsValue::from(id), js_sys::Uint8Array::from(bytes).into()]
+        .into_iter()
+        .collect();
     serial_call("write", args).as_bool().unwrap_or(false)
 }
 
@@ -157,12 +188,20 @@ fn serial_ports() -> Vec<crate::boards::PortInfo> {
 #[wasm_bindgen(js_name = setSerialHost)]
 pub fn set_serial_host(host: js_sys::Object) {
     SERIAL_HOST.with(|held| *held.borrow_mut() = Some(host));
-    crate::platformserial::install(crate::platformserial::Hooks { open: serial_open, write: serial_write, close: serial_close, ports: serial_ports });
+    crate::platformserial::install(crate::platformserial::Hooks {
+        open: serial_open,
+        write: serial_write,
+        close: serial_close,
+        ports: serial_ports,
+    });
 }
 
 #[wasm_bindgen(js_name = setSerialPorts)]
 pub fn set_serial_ports(lines: Vec<String>) {
-    let ports = lines.iter().filter_map(|line| crate::platformserial::port_from_info(line)).collect();
+    let ports = lines
+        .iter()
+        .filter_map(|line| crate::platformserial::port_from_info(line))
+        .collect();
     SERIAL_PORTS.with(|held| *held.borrow_mut() = ports);
 }
 
@@ -177,23 +216,44 @@ pub fn serial_closed(id: u32, reason: &str) {
 }
 
 fn cloud_open(id: u32, token_url: &str, session_url: &str, bearer: &str) -> bool {
-    let args: js_sys::Array = [JsValue::from(id), token_url.into(), session_url.into(), bearer.into()].into_iter().collect();
-    host_call(&CLOUD_HOST, "open", args).as_bool().unwrap_or(false)
+    let args: js_sys::Array = [
+        JsValue::from(id),
+        token_url.into(),
+        session_url.into(),
+        bearer.into(),
+    ]
+    .into_iter()
+    .collect();
+    host_call(&CLOUD_HOST, "open", args)
+        .as_bool()
+        .unwrap_or(false)
 }
 
 fn cloud_send(id: u32, bytes: &[u8]) -> bool {
-    let args: js_sys::Array = [JsValue::from(id), js_sys::Uint8Array::from(bytes).into()].into_iter().collect();
-    host_call(&CLOUD_HOST, "send", args).as_bool().unwrap_or(false)
+    let args: js_sys::Array = [JsValue::from(id), js_sys::Uint8Array::from(bytes).into()]
+        .into_iter()
+        .collect();
+    host_call(&CLOUD_HOST, "send", args)
+        .as_bool()
+        .unwrap_or(false)
 }
 
 fn cloud_close(id: u32) {
-    host_call(&CLOUD_HOST, "close", std::iter::once(JsValue::from(id)).collect());
+    host_call(
+        &CLOUD_HOST,
+        "close",
+        std::iter::once(JsValue::from(id)).collect(),
+    );
 }
 
 #[wasm_bindgen(js_name = setCloudHost)]
 pub fn set_cloud_host(host: js_sys::Object) {
     CLOUD_HOST.with(|held| *held.borrow_mut() = Some(host));
-    crate::cloudlink::install(crate::cloudlink::HostHooks { open: cloud_open, send: cloud_send, close: cloud_close });
+    crate::cloudlink::install(crate::cloudlink::HostHooks {
+        open: cloud_open,
+        send: cloud_send,
+        close: cloud_close,
+    });
 }
 
 #[wasm_bindgen(js_name = cloudOpened)]
@@ -213,22 +273,36 @@ pub fn cloud_closed(id: u32, reason: &str) {
 
 fn socket_open(id: u32, url: &str) -> bool {
     let args: js_sys::Array = [JsValue::from(id), url.into()].into_iter().collect();
-    host_call(&SOCKET_HOST, "open", args).as_bool().unwrap_or(false)
+    host_call(&SOCKET_HOST, "open", args)
+        .as_bool()
+        .unwrap_or(false)
 }
 
 fn socket_send(id: u32, bytes: &[u8]) -> bool {
-    let args: js_sys::Array = [JsValue::from(id), js_sys::Uint8Array::from(bytes).into()].into_iter().collect();
-    host_call(&SOCKET_HOST, "send", args).as_bool().unwrap_or(false)
+    let args: js_sys::Array = [JsValue::from(id), js_sys::Uint8Array::from(bytes).into()]
+        .into_iter()
+        .collect();
+    host_call(&SOCKET_HOST, "send", args)
+        .as_bool()
+        .unwrap_or(false)
 }
 
 fn socket_close(id: u32) {
-    host_call(&SOCKET_HOST, "close", std::iter::once(JsValue::from(id)).collect());
+    host_call(
+        &SOCKET_HOST,
+        "close",
+        std::iter::once(JsValue::from(id)).collect(),
+    );
 }
 
 #[wasm_bindgen(js_name = setSocketHost)]
 pub fn set_socket_host(host: js_sys::Object) {
     SOCKET_HOST.with(|held| *held.borrow_mut() = Some(host));
-    crate::hostsocket::install(crate::hostsocket::Hooks { open: socket_open, send: socket_send, close: socket_close });
+    crate::hostsocket::install(crate::hostsocket::Hooks {
+        open: socket_open,
+        send: socket_send,
+        close: socket_close,
+    });
 }
 
 #[wasm_bindgen(js_name = socketOpened)]
@@ -248,7 +322,11 @@ pub fn socket_closed(id: u32, reason: &str) {
 
 #[wasm_bindgen(js_name = mapTile)]
 pub async fn map_tile(map_type: String, x: i32, y: i32, zoom: i32) -> JsValue {
-    crate::maptiles::fetch_remembered_later(map_type, x, y, zoom).await.map_or(JsValue::NULL, |tile| js_sys::Uint8Array::from(tile.as_slice()).into())
+    crate::maptiles::fetch_remembered_later(map_type, x, y, zoom)
+        .await
+        .map_or(JsValue::NULL, |tile| {
+            js_sys::Uint8Array::from(tile.as_slice()).into()
+        })
 }
 
 #[cfg(feature = "synthetic")]
@@ -305,7 +383,16 @@ fn reading(value: f64) -> Option<f64> {
 
 #[wasm_bindgen(js_name = gcsPositionUpdate)]
 #[allow(clippy::too_many_arguments)]
-pub fn gcs_position_update(latitude: f64, longitude: f64, altitude: f64, horizontal_accuracy_m: f64, vertical_accuracy_m: f64, direction_deg: f64, direction_accuracy_deg: f64, ground_speed_m_s: f64) {
+pub fn gcs_position_update(
+    latitude: f64,
+    longitude: f64,
+    altitude: f64,
+    horizontal_accuracy_m: f64,
+    vertical_accuracy_m: f64,
+    direction_deg: f64,
+    direction_accuracy_deg: f64,
+    ground_speed_m_s: f64,
+) {
     crate::gcsposition::report(crate::gcsposition::Update {
         latitude: reading(latitude),
         longitude: reading(longitude),
@@ -328,7 +415,9 @@ pub fn notify_deep_link(link: &str) {
     if let Some(host) = crate::nativeargs::deep_link_device(link) {
         crate::deeplinksetup::offer(&host);
     }
-    if let Some((_, Some(camera))) = crate::nativeargs::deep_link_writes(link, crate::mocklink::available()) {
+    if let Some((_, Some(camera))) =
+        crate::nativeargs::deep_link_writes(link, crate::mocklink::available())
+    {
         crate::cameras::adopt(camera);
     }
 }

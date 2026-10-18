@@ -11,29 +11,51 @@ struct Sources {
 
 fn sources(backend: &dyn Backend) -> Sources {
     let video = backend.value_fields("video", "cameraStatuses,activeVideoSource,cameraUsable");
-    let count = video.get("cameraStatuses").and_then(Value::as_array).map_or(0, Vec::len);
-    let usable: Vec<bool> = video.get("cameraUsable").and_then(Value::as_array).map(|a| a.iter().map(|v| v.as_bool().unwrap_or(false)).collect()).unwrap_or_default();
+    let count = video
+        .get("cameraStatuses")
+        .and_then(Value::as_array)
+        .map_or(0, Vec::len);
+    let usable: Vec<bool> = video
+        .get("cameraUsable")
+        .and_then(Value::as_array)
+        .map(|a| a.iter().map(|v| v.as_bool().unwrap_or(false)).collect())
+        .unwrap_or_default();
     Sources {
         count,
         active: integer(&video, "activeVideoSource"),
-        configured: (0..count).map(|slot| usable.get(slot).copied().unwrap_or(false)).collect(),
+        configured: (0..count)
+            .map(|slot| usable.get(slot).copied().unwrap_or(false))
+            .collect(),
     }
 }
 
 fn set_refusal(slot: Option<i64>, state: &Sources) -> Option<(&'static str, String)> {
     let Some(slot) = slot else {
-        return Some(("malformed", "A video source is chosen by its slot number.".to_string()));
+        return Some((
+            "malformed",
+            "A video source is chosen by its slot number.".to_string(),
+        ));
     };
     match () {
         _ if state.count == 0 => Some(("noSources", "There are no video sources.".to_string())),
-        _ if slot < 0 || slot as usize >= state.count => Some(("noSuchSource", format!("Video sources run from 0 to {}.", state.count - 1))),
-        _ if !state.configured[slot as usize] => Some(("notConfigured", format!("Camera {} is not set up.", slot + 1))),
+        _ if slot < 0 || slot as usize >= state.count => Some((
+            "noSuchSource",
+            format!("Video sources run from 0 to {}.", state.count - 1),
+        )),
+        _ if !state.configured[slot as usize] => Some((
+            "notConfigured",
+            format!("Camera {} is not set up.", slot + 1),
+        )),
         _ => None,
     }
 }
 
 pub fn set(backend: &dyn Backend, path: &str, args: &str) -> Value {
-    let slot = serde_json::from_str::<Value>(args).ok().and_then(|a| a.get(0)?.as_f64()).filter(|v| v.fract() == 0.0).map(|v| v as i64);
+    let slot = serde_json::from_str::<Value>(args)
+        .ok()
+        .and_then(|a| a.get(0)?.as_f64())
+        .filter(|v| v.fract() == 0.0)
+        .map(|v| v as i64);
     let before = sources(backend);
     if let Some((token, reason)) = set_refusal(slot, &before) {
         return json!({ "ok": false, "refusal": token, "reason": reason });
@@ -41,7 +63,10 @@ pub fn set(backend: &dyn Backend, path: &str, args: &str) -> Value {
     if before.active == slot {
         return json!({ "ok": true, "refusal": Value::Null, "activeSource": slot, "unchanged": true, "reason": Value::Null });
     }
-    let dispatched = flag(&object(&backend.invoke(path, &json!([slot]).to_string())), "ok");
+    let dispatched = flag(
+        &object(&backend.invoke(path, &json!([slot]).to_string())),
+        "ok",
+    );
     let now = sources(backend).active;
     let took = dispatched && now == slot;
     json!({
@@ -81,11 +106,15 @@ mod tests {
     }
 
     impl Backend for Video {
-        fn get(&self, _p: &str) -> String { String::new() }
+        fn get(&self, _p: &str) -> String {
+            String::new()
+        }
         fn get_fields(&self, _p: &str, _f: &str) -> String {
             json!({ "kind": "object", "cameraStatuses": vec!["ok"; self.configured.len()], "cameraUsable": self.configured, "activeVideoSource": *self.active.borrow() }).to_string()
         }
-        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
         fn invoke(&self, p: &str, a: &str) -> String {
             if self.obeys {
                 let next = match p.ends_with("switchActiveVideoSource") {
@@ -101,22 +130,67 @@ mod tests {
 
     #[test]
     fn a_video_source_is_chosen_only_from_the_cameras_that_are_set_up() {
-        let video = Video { active: RefCell::new(0), configured: vec![true, true, false], obeys: true };
+        let video = Video {
+            active: RefCell::new(0),
+            configured: vec![true, true, false],
+            obeys: true,
+        };
         let state = sources(&video);
         assert_eq!(set_refusal(Some(1), &state), None);
-        assert_eq!(set_refusal(Some(5), &state).map(|r| r.0), Some("noSuchSource"), "setActiveVideoSource clamps 5 to the last slot without a word, so a head asking for a camera that does not exist is shown a different one");
-        assert_eq!(set_refusal(Some(2), &state).map(|r| r.0), Some("notConfigured"));
-        assert_eq!(set(&video, "video.setActiveVideoSource", "[0]")["unchanged"], true);
+        assert_eq!(
+            set_refusal(Some(5), &state).map(|r| r.0),
+            Some("noSuchSource"),
+            "setActiveVideoSource clamps 5 to the last slot without a word, so a head asking for a camera that does not exist is shown a different one"
+        );
+        assert_eq!(
+            set_refusal(Some(2), &state).map(|r| r.0),
+            Some("notConfigured")
+        );
+        assert_eq!(
+            set(&video, "video.setActiveVideoSource", "[0]")["unchanged"],
+            true
+        );
         let moved = set(&video, "video.setActiveVideoSource", "[1]");
-        assert_eq!((&moved["ok"], &moved["activeSource"]), (&json!(true), &json!(1)));
+        assert_eq!(
+            (&moved["ok"], &moved["activeSource"]),
+            (&json!(true), &json!(1))
+        );
         assert_eq!(switch(&video, "video.switchActiveVideoSource")["ok"], true);
 
-        let first_unset = Video { active: RefCell::new(1), configured: vec![false, true], obeys: true };
-        assert_eq!(switch(&first_unset, "video.switchActiveVideoSource")["refusal"], "nothingToSwitch", "no camera is the primary: one that is not set up is not something to switch to, whatever its place in the list");
-        assert_eq!(set_refusal(Some(0), &sources(&first_unset)).map(|r| r.0), Some("notConfigured"), "and the first camera is refused like any other when it cannot show");
-        let single = Video { active: RefCell::new(0), configured: vec![true, false], obeys: true };
-        assert_eq!(switch(&single, "video.switchActiveVideoSource")["refusal"], "nothingToSwitch", "switchActiveVideoSource returns in silence with one switchable source");
-        let deaf = Video { active: RefCell::new(0), configured: vec![true, true], obeys: false };
-        assert_eq!(set(&deaf, "video.setActiveVideoSource", "[1]")["ok"], false, "the active source is read back rather than assumed");
+        let first_unset = Video {
+            active: RefCell::new(1),
+            configured: vec![false, true],
+            obeys: true,
+        };
+        assert_eq!(
+            switch(&first_unset, "video.switchActiveVideoSource")["refusal"],
+            "nothingToSwitch",
+            "no camera is the primary: one that is not set up is not something to switch to, whatever its place in the list"
+        );
+        assert_eq!(
+            set_refusal(Some(0), &sources(&first_unset)).map(|r| r.0),
+            Some("notConfigured"),
+            "and the first camera is refused like any other when it cannot show"
+        );
+        let single = Video {
+            active: RefCell::new(0),
+            configured: vec![true, false],
+            obeys: true,
+        };
+        assert_eq!(
+            switch(&single, "video.switchActiveVideoSource")["refusal"],
+            "nothingToSwitch",
+            "switchActiveVideoSource returns in silence with one switchable source"
+        );
+        let deaf = Video {
+            active: RefCell::new(0),
+            configured: vec![true, true],
+            obeys: false,
+        };
+        assert_eq!(
+            set(&deaf, "video.setActiveVideoSource", "[1]")["ok"],
+            false,
+            "the active source is read back rather than assumed"
+        );
     }
 }

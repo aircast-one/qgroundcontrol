@@ -11,16 +11,25 @@ pub const DEPS: &[&str] = &[
     "settings.unitsSettings.verticalDistanceUnits",
 ];
 
-const FIELDS: &str = "isSimpleItem,landingCoordinate,slopeStartCoordinate,finalApproachCoordinate,mapVisualQML";
+const FIELDS: &str =
+    "isSimpleItem,landingCoordinate,slopeStartCoordinate,finalApproachCoordinate,mapVisualQML";
 
 fn place(item: &Value, key: &str) -> Option<Value> {
     let at = item.get(key)?;
-    let number = |name: &str| at.get(name).and_then(Value::as_f64).filter(|value| value.is_finite());
+    let number = |name: &str| {
+        at.get(name)
+            .and_then(Value::as_f64)
+            .filter(|value| value.is_finite())
+    };
     let (Some(latitude), Some(longitude)) = (number("latitude"), number("longitude")) else {
         return None;
     };
-    match at.get("valid").and_then(Value::as_bool) == Some(true) && !(latitude == 0.0 && longitude == 0.0) {
-        true => Some(json!({ "latitude": latitude, "longitude": longitude, "altitude": number("altitude") })),
+    match at.get("valid").and_then(Value::as_bool) == Some(true)
+        && !(latitude == 0.0 && longitude == 0.0)
+    {
+        true => Some(
+            json!({ "latitude": latitude, "longitude": longitude, "altitude": number("altitude") }),
+        ),
         false => None,
     }
 }
@@ -30,27 +39,44 @@ const LANDING_LENGTH_M: f64 = 100.0;
 pub fn glide_slope_heights(adjacent: f64, opposite: f64) -> (f64, f64) {
     let slope = (opposite / adjacent).atan().tan();
     let transition = LANDING_LENGTH_M / 2.0;
-    (slope * transition, slope * (transition + (adjacent - transition) / 2.0))
+    (
+        slope * transition,
+        slope * (transition + (adjacent - transition) / 2.0),
+    )
 }
 
 pub fn landing_view(backend: &dyn Backend, args: &[String]) -> Value {
     let Some(index) = args.first().and_then(|a| a.parse::<usize>().ok()) else {
-        return refused("view.landingPattern needs the index of the item in the plan, as view.landingPattern(4)");
+        return refused(
+            "view.landingPattern needs the index of the item in the plan, as view.landingPattern(4)",
+        );
     };
     let path = format!("plan.missionController.visualItems.{index}");
-    let (item, facts) = crate::coreplan::landing_inputs(index).unwrap_or_else(|| (backend.value_fields(&path, FIELDS), backend.value(&path)));
+    let (item, facts) = crate::coreplan::landing_inputs(index)
+        .unwrap_or_else(|| (backend.value_fields(&path, FIELDS), backend.value(&path)));
     if crate::read::flag(&item, "isSimpleItem") {
-        return refused("that item draws no landing pattern; only a fixed wing or a VTOL gets one, and a multirotor land is a plain return");
+        return refused(
+            "that item draws no landing pattern; only a fixed wing or a VTOL gets one, and a multirotor land is a plain return",
+        );
     }
     if item.get("landingCoordinate").is_none() {
-        return refused("that item is not a landing pattern; being complex is not the same as being one, and the launch row and every survey are complex too");
+        return refused(
+            "that item is not a landing pattern; being complex is not the same as being one, and the launch row and every survey are complex too",
+        );
     }
-    let (landing, slope_start, approach) = (place(&item, "landingCoordinate"), place(&item, "slopeStartCoordinate"), place(&item, "finalApproachCoordinate"));
+    let (landing, slope_start, approach) = (
+        place(&item, "landingCoordinate"),
+        place(&item, "slopeStartCoordinate"),
+        place(&item, "finalApproachCoordinate"),
+    );
     let fact = |property: &str| {
         facts
             .get("facts")
             .and_then(Value::as_array)
-            .and_then(|list| list.iter().find(|f| f.get("property").and_then(Value::as_str) == Some(property)))
+            .and_then(|list| {
+                list.iter()
+                    .find(|f| f.get("property").and_then(Value::as_str) == Some(property))
+            })
             .and_then(|f| f.get("value"))
             .and_then(Value::as_f64)
             .filter(|value| value.is_finite())
@@ -59,15 +85,25 @@ pub fn landing_view(backend: &dyn Backend, args: &[String]) -> Value {
         facts
             .get("facts")
             .and_then(Value::as_array)
-            .and_then(|list| list.iter().find(|f| f.get("property").and_then(Value::as_str) == Some(property)))
+            .and_then(|list| {
+                list.iter()
+                    .find(|f| f.get("property").and_then(Value::as_str) == Some(property))
+            })
             .and_then(|f| f.get("value"))
-            .and_then(|value| value.as_bool().or_else(|| value.as_f64().map(|number| number != 0.0)))
+            .and_then(|value| {
+                value
+                    .as_bool()
+                    .or_else(|| value.as_f64().map(|number| number != 0.0))
+            })
     };
     let unit = Unit::horizontal(backend);
     let vertical = Unit::vertical(backend);
     let radius = fact("loiterRadius").filter(|metres| *metres > 0.0);
     let loiter = truth("useLoiterToAlt").unwrap_or(false);
-    let point = |at: &Option<Value>| at.as_ref().and_then(|p| Some((p.get("latitude")?.as_f64()?, p.get("longitude")?.as_f64()?)));
+    let point = |at: &Option<Value>| {
+        at.as_ref()
+            .and_then(|p| Some((p.get("latitude")?.as_f64()?, p.get("longitude")?.as_f64()?)))
+    };
     let heights = point(&landing).zip(point(if loiter { &slope_start } else { &approach })).zip(fact("finalApproachAltitude").zip(fact("landingAltitude"))).map(|((touchdown, top), (approach_alt, landing_alt))| {
         let (transition, mid) = glide_slope_heights(crate::surveygrid::distance_between(touchdown, top), approach_alt - landing_alt);
         let approximate = |metres: f64| format!("{} {}*", vertical.show(metres).floor(), vertical.name);
@@ -106,12 +142,19 @@ mod tests {
         }
         fn get_fields(&self, path: &str, _f: &str) -> String {
             match path {
-                "units" => json!({ "kind": "object", "appSettingsHorizontalDistanceUnitsString": "m" }).to_string(),
+                "units" => {
+                    json!({ "kind": "object", "appSettingsHorizontalDistanceUnitsString": "m" })
+                        .to_string()
+                }
                 _ => self.get(path),
             }
         }
-        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            String::new()
+        }
         fn watch(&self, _p: &[String]) {}
     }
 
@@ -138,50 +181,94 @@ mod tests {
     #[test]
     fn glide_slope_heights_follow_fw_landing_pattern_map_visual() {
         let (transition, mid) = glide_slope_heights(1000.0, 100.0);
-        assert!((transition - 5.0).abs() < 1e-9 && (mid - 52.5).abs() < 1e-9, "tan(slope) times 50 m, and times halfway along the rest");
+        assert!(
+            (transition - 5.0).abs() < 1e-9 && (mid - 52.5).abs() < 1e-9,
+            "tan(slope) times 50 m, and times halfway along the rest"
+        );
     }
 
     #[test]
     fn the_three_places_a_landing_pattern_is_drawn_from_all_travel() {
         let view = landing_view(&Plan(pattern()), &["4".to_string()]);
-        assert_eq!(view["heights"]["approach"], "100.0 m", "the final approach altitude to one decimal");
-        assert!(view["heights"]["transition"].as_str().unwrap().ends_with(" m*"), "glide slope heights are floored and starred as approximate");
+        assert_eq!(
+            view["heights"]["approach"], "100.0 m",
+            "the final approach altitude to one decimal"
+        );
+        assert!(
+            view["heights"]["transition"]
+                .as_str()
+                .unwrap()
+                .ends_with(" m*"),
+            "glide slope heights are floored and starred as approximate"
+        );
         assert_eq!(view["landing"]["latitude"], 47.400);
         assert_eq!(view["slopeStart"]["longitude"], 8.546);
         assert_eq!(view["finalApproach"]["latitude"], 47.410);
         assert_eq!(view["loiterRadiusMetres"], 75.0);
         assert_eq!(view["loiterRadiusText"], "75.0 m");
-        assert_eq!(view["loiterClockwise"], true, "LoiterClockwise is declared bool in FWLandingPattern.FactMetaData.json, so cookedValue serialises a JSON bool and reading it as a number gave null on every real pattern - a circle drawn the wrong way round is an approach from the wrong side, and null read as no");
+        assert_eq!(
+            view["loiterClockwise"], true,
+            "LoiterClockwise is declared bool in FWLandingPattern.FactMetaData.json, so cookedValue serialises a JSON bool and reading it as a number gave null on every real pattern - a circle drawn the wrong way round is an approach from the wrong side, and null read as no"
+        );
         assert_eq!(view["loiterToAltitude"], false);
         assert_eq!(view["landingHeadingDegrees"], 130.0);
-        assert_eq!(view["landingAltitudeMetres"], 0.0, "a touchdown at field elevation is zero and that is a measurement, not an absence");
+        assert_eq!(
+            view["landingAltitudeMetres"], 0.0,
+            "a touchdown at field elevation is zero and that is a measurement, not an absence"
+        );
     }
 
     #[test]
     fn a_land_that_is_not_a_pattern_says_so_rather_than_answering_empty() {
-        let plain = json!({ "kind": "object", "sequenceNumber": 5, "isSimpleItem": true, "facts": [] });
+        let plain =
+            json!({ "kind": "object", "sequenceNumber": 5, "isSimpleItem": true, "facts": [] });
         let refusal = landing_view(&Plan(plain), &["4".to_string()]);
         assert_eq!(refusal["kind"], "null");
-        assert!(refusal["reason"].as_str().unwrap().contains("multirotor"), "MissionController::insertLandItem builds a pattern only for a fixed wing or a VTOL, so a rotor's land is a plain return and a head asking for its pattern deserves that answer rather than silence");
+        assert!(
+            refusal["reason"].as_str().unwrap().contains("multirotor"),
+            "MissionController::insertLandItem builds a pattern only for a fixed wing or a VTOL, so a rotor's land is a plain return and a head asking for its pattern deserves that answer rather than silence"
+        );
 
         let settings = json!({ "kind": "object", "sequenceNumber": 0, "isSimpleItem": false, "homePosition": true, "facts": [] });
         let launch = landing_view(&Plan(settings), &["4".to_string()]);
-        assert_eq!(launch["kind"], "null", "MissionSettingsItem is a ComplexMissionItem, so isSimpleItem is false for the launch row - complex is not the same as being a pattern");
-        assert!(launch["reason"].as_str().unwrap().contains("not a landing pattern"));
+        assert_eq!(
+            launch["kind"], "null",
+            "MissionSettingsItem is a ComplexMissionItem, so isSimpleItem is false for the launch row - complex is not the same as being a pattern"
+        );
+        assert!(
+            launch["reason"]
+                .as_str()
+                .unwrap()
+                .contains("not a landing pattern")
+        );
 
         let survey = json!({ "kind": "object", "sequenceNumber": 3, "isSimpleItem": false, "isSurveyItem": true, "facts": [] });
-        assert_eq!(landing_view(&Plan(survey), &["4".to_string()])["kind"], "null", "and so is every complex pattern that is not a landing");
+        assert_eq!(
+            landing_view(&Plan(survey), &["4".to_string()])["kind"],
+            "null",
+            "and so is every complex pattern that is not a landing"
+        );
 
         let unset = json!({ "kind": "object", "sequenceNumber": 3, "isSimpleItem": false, "landingCoordinate": Value::Null, "facts": [] });
-        assert_eq!(landing_view(&Plan(unset), &["4".to_string()])["kind"], "object", "get_fields lists a property the object has not got under unknownFields and omits the key entirely, so a key present holding null means the property exists and is unset - which is a landing pattern nobody has placed yet, the state every operator sees first");
+        assert_eq!(
+            landing_view(&Plan(unset), &["4".to_string()])["kind"],
+            "object",
+            "get_fields lists a property the object has not got under unknownFields and omits the key entirely, so a key present holding null means the property exists and is unset - which is a landing pattern nobody has placed yet, the state every operator sees first"
+        );
 
         let unplaced = json!({ "kind": "object", "sequenceNumber": 5, "isSimpleItem": false,
             "landingCoordinate": Value::Null,
             "facts": [ { "property": "loiterRadius", "value": 75.0 } ] });
         let fresh = landing_view(&Plan(unplaced), &["4".to_string()]);
-        assert_eq!(fresh["kind"], "object", "a pattern whose corners are not placed yet is still a pattern - refusing on absent coordinates alone would blame the airframe for a plan that is merely unfinished");
+        assert_eq!(
+            fresh["kind"], "object",
+            "a pattern whose corners are not placed yet is still a pattern - refusing on absent coordinates alone would blame the airframe for a plan that is merely unfinished"
+        );
         assert_eq!(fresh["landing"], Value::Null);
-        assert_eq!(fresh["loiterRadiusMetres"], 75.0, "and the settings it does have still travel");
+        assert_eq!(
+            fresh["loiterRadiusMetres"], 75.0,
+            "and the settings it does have still travel"
+        );
 
         let missing = landing_view(&Plan(pattern()), &[]);
         assert!(missing["reason"].as_str().unwrap().contains("index"));
@@ -192,17 +279,32 @@ mod tests {
         let mut flat = pattern();
         flat["facts"][0] = json!({ "property": "loiterRadius", "value": 0.0 });
         let view = landing_view(&Plan(flat), &["4".to_string()]);
-        assert_eq!(view["loiterRadiusMetres"], Value::Null, "a radius of zero draws a dot, and a head given the number would draw one rather than skip the circle");
+        assert_eq!(
+            view["loiterRadiusMetres"],
+            Value::Null,
+            "a radius of zero draws a dot, and a head given the number would draw one rather than skip the circle"
+        );
         assert_eq!(view["loiterRadiusText"], Value::Null);
-        assert_eq!(view["landing"]["latitude"], 47.400, "the rest of the pattern is unaffected");
+        assert_eq!(
+            view["landing"]["latitude"], 47.400,
+            "the rest of the pattern is unaffected"
+        );
     }
 
     #[test]
     fn an_unplaced_corner_is_absent_and_the_rest_still_draws() {
         let mut partial = pattern();
-        partial["slopeStartCoordinate"] = json!({ "valid": false, "latitude": 0.0, "longitude": 0.0 });
+        partial["slopeStartCoordinate"] =
+            json!({ "valid": false, "latitude": 0.0, "longitude": 0.0 });
         let view = landing_view(&Plan(partial), &["4".to_string()]);
-        assert_eq!(view["slopeStart"], Value::Null, "an unset corner reads as 0,0 valid:false, which is the Gulf of Guinea if a head plots it");
-        assert_eq!(view["landing"]["latitude"], 47.400, "and the corners that are placed still travel, so a partial pattern draws what it has");
+        assert_eq!(
+            view["slopeStart"],
+            Value::Null,
+            "an unset corner reads as 0,0 valid:false, which is the Gulf of Guinea if a head plots it"
+        );
+        assert_eq!(
+            view["landing"]["latitude"], 47.400,
+            "and the corners that are placed still travel, so a partial pattern draws what it has"
+        );
     }
 }

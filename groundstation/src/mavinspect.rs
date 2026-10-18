@@ -29,15 +29,29 @@ struct Info {
 }
 
 static TABLE: LazyLock<BTreeMap<u32, Info>> = LazyLock::new(|| {
-    let parsed: BTreeMap<String, Value> = serde_json::from_str(include_str!("mavlinkfields.json")).unwrap_or_default();
+    let parsed: BTreeMap<String, Value> =
+        serde_json::from_str(include_str!("mavlinkfields.json")).unwrap_or_default();
     parsed
         .into_iter()
         .filter_map(|(id, entry)| {
             let fields = entry.get(1)?.as_array()?.iter().filter_map(|f| {
-                Some(Field { name: f.get(0)?.as_str()?.to_string(), kind: f.get(1)?.as_str()?.to_string(), array: usize::try_from(f.get(2)?.as_u64()?).ok()?, offset: usize::try_from(f.get(3)?.as_u64()?).ok()? })
+                Some(Field {
+                    name: f.get(0)?.as_str()?.to_string(),
+                    kind: f.get(1)?.as_str()?.to_string(),
+                    array: usize::try_from(f.get(2)?.as_u64()?).ok()?,
+                    offset: usize::try_from(f.get(3)?.as_u64()?).ok()?,
+                })
             });
             let crc_extra = u8::try_from(entry.get(3)?.as_u64()?).ok()?;
-            Some((id.parse().ok()?, Info { name: entry.get(0)?.as_str()?.to_string(), fields: fields.collect(), instance: entry.get(2).and_then(Value::as_str).map(str::to_string), crc_extra }))
+            Some((
+                id.parse().ok()?,
+                Info {
+                    name: entry.get(0)?.as_str()?.to_string(),
+                    fields: fields.collect(),
+                    instance: entry.get(2).and_then(Value::as_str).map(str::to_string),
+                    crc_extra,
+                },
+            ))
         })
         .collect()
 });
@@ -54,20 +68,47 @@ pub fn undecoded(raw: &[u8], v2: bool) -> Option<(mavlink::MavHeader, u32)> {
     let header = if v2 { V2_HEADER } else { V1_HEADER };
     let length = usize::from(*raw.get(1)?);
     let msgid = match v2 {
-        true => u32::from(*raw.get(7)?) | (u32::from(*raw.get(8)?) << 8) | (u32::from(*raw.get(9)?) << 16),
+        true => {
+            u32::from(*raw.get(7)?)
+                | (u32::from(*raw.get(8)?) << 8)
+                | (u32::from(*raw.get(9)?) << 16)
+        }
         false => u32::from(*raw.get(5)?),
     };
-    let (sequence, system_id, component_id) = if v2 { (*raw.get(4)?, *raw.get(5)?, *raw.get(6)?) } else { (*raw.get(2)?, *raw.get(3)?, *raw.get(4)?) };
-    let covered: Vec<u8> = raw.get(1..header + length)?.iter().copied().chain([TABLE.get(&msgid)?.crc_extra]).collect();
+    let (sequence, system_id, component_id) = if v2 {
+        (*raw.get(4)?, *raw.get(5)?, *raw.get(6)?)
+    } else {
+        (*raw.get(2)?, *raw.get(3)?, *raw.get(4)?)
+    };
+    let covered: Vec<u8> = raw
+        .get(1..header + length)?
+        .iter()
+        .copied()
+        .chain([TABLE.get(&msgid)?.crc_extra])
+        .collect();
     let sent = u16::from_le_bytes([*raw.get(header + length)?, *raw.get(header + length + 1)?]);
-    (x25(&covered) == sent).then_some((mavlink::MavHeader { system_id, component_id, sequence }, msgid))
+    (x25(&covered) == sent).then_some((
+        mavlink::MavHeader {
+            system_id,
+            component_id,
+            sequence,
+        },
+        msgid,
+    ))
 }
 
 pub fn payload(raw: &[u8], v2: bool) -> Vec<u8> {
     let header = if v2 { V2_HEADER } else { V1_HEADER };
     let length = usize::from(raw.get(1).copied().unwrap_or(0));
-    let carried = raw.get(header..(header + length).min(raw.len())).unwrap_or(&[]);
-    carried.iter().copied().chain(std::iter::repeat(0)).take(PAYLOAD_ROOM).collect()
+    let carried = raw
+        .get(header..(header + length).min(raw.len()))
+        .unwrap_or(&[]);
+    carried
+        .iter()
+        .copied()
+        .chain(std::iter::repeat(0))
+        .take(PAYLOAD_ROOM)
+        .collect()
 }
 
 fn size_of(kind: &str) -> usize {
@@ -80,39 +121,77 @@ fn size_of(kind: &str) -> usize {
 }
 
 fn bytes<const N: usize>(payload: &[u8], at: usize) -> [u8; N] {
-    payload.get(at..at + N).and_then(|b| b.try_into().ok()).unwrap_or([0; N])
+    payload
+        .get(at..at + N)
+        .and_then(|b| b.try_into().ok())
+        .unwrap_or([0; N])
 }
 
 fn latin1_until_nul(bytes: &[u8]) -> String {
-    bytes.iter().take_while(|b| **b != 0).map(|b| char::from(*b)).collect()
+    bytes
+        .iter()
+        .take_while(|b| **b != 0)
+        .map(|b| char::from(*b))
+        .collect()
 }
 
 fn integer_text(kind: &str, payload: &[u8], at: usize) -> Option<(String, f64)> {
     Some(match kind {
         "uint8_t" => (payload.get(at)?.to_string(), f64::from(*payload.get(at)?)),
-        "int8_t" => ((*payload.get(at)? as i8).to_string(), f64::from(*payload.get(at)? as i8)),
-        "uint16_t" => { let n = u16::from_le_bytes(bytes(payload, at)); (n.to_string(), f64::from(n)) }
-        "int16_t" => { let n = i16::from_le_bytes(bytes(payload, at)); (n.to_string(), f64::from(n)) }
-        "uint32_t" => { let n = u32::from_le_bytes(bytes(payload, at)); (n.to_string(), f64::from(n)) }
-        "int32_t" => { let n = i32::from_le_bytes(bytes(payload, at)); (n.to_string(), f64::from(n)) }
-        "uint64_t" => { let n = u64::from_le_bytes(bytes(payload, at)); (n.to_string(), n as f64) }
-        "int64_t" => { let n = i64::from_le_bytes(bytes(payload, at)); (n.to_string(), n as f64) }
+        "int8_t" => (
+            (*payload.get(at)? as i8).to_string(),
+            f64::from(*payload.get(at)? as i8),
+        ),
+        "uint16_t" => {
+            let n = u16::from_le_bytes(bytes(payload, at));
+            (n.to_string(), f64::from(n))
+        }
+        "int16_t" => {
+            let n = i16::from_le_bytes(bytes(payload, at));
+            (n.to_string(), f64::from(n))
+        }
+        "uint32_t" => {
+            let n = u32::from_le_bytes(bytes(payload, at));
+            (n.to_string(), f64::from(n))
+        }
+        "int32_t" => {
+            let n = i32::from_le_bytes(bytes(payload, at));
+            (n.to_string(), f64::from(n))
+        }
+        "uint64_t" => {
+            let n = u64::from_le_bytes(bytes(payload, at));
+            (n.to_string(), n as f64)
+        }
+        "int64_t" => {
+            let n = i64::from_le_bytes(bytes(payload, at));
+            (n.to_string(), n as f64)
+        }
         _ => return None,
     })
 }
 
 pub fn field_chartable(msgid: u32, wanted: &str) -> bool {
     let base = wanted.split_once('[').map_or(wanted, |(base, _)| base);
-    TABLE.get(&msgid).is_some_and(|info| info.fields.iter().any(|f| f.name == base && f.kind != "char"))
+    TABLE.get(&msgid).is_some_and(|info| {
+        info.fields
+            .iter()
+            .any(|f| f.name == base && f.kind != "char")
+    })
 }
 
 pub fn field_number(msgid: u32, payload: &[u8], wanted: &str) -> Option<f64> {
     let info = TABLE.get(&msgid)?;
     let (base, element) = match wanted.split_once('[') {
-        Some((base, rest)) => (base, Some(rest.trim_end_matches(']').parse::<usize>().ok()?)),
+        Some((base, rest)) => (
+            base,
+            Some(rest.trim_end_matches(']').parse::<usize>().ok()?),
+        ),
         None => (wanted, None),
     };
-    let field = info.fields.iter().find(|f| f.name == base && f.kind != "char")?;
+    let field = info
+        .fields
+        .iter()
+        .find(|f| f.name == base && f.kind != "char")?;
     let at = field.offset + element.unwrap_or(0) * size_of(&field.kind);
     match field.kind.as_str() {
         "float" => Some(f64::from(f32::from_le_bytes(bytes(payload, at)))),
@@ -123,7 +202,9 @@ pub fn field_number(msgid: u32, payload: &[u8], wanted: &str) -> Option<f64> {
 }
 
 pub fn instance_value(msgid: u32, payload: &[u8]) -> String {
-    let Some(info) = TABLE.get(&msgid) else { return String::new() };
+    let Some(info) = TABLE.get(&msgid) else {
+        return String::new();
+    };
     let named = |field: &str| info.fields.iter().find(|f| f.name == field);
     let wanted = match (info.instance.as_deref(), msgid) {
         (Some(name), _) => named(name),
@@ -131,16 +212,32 @@ pub fn instance_value(msgid: u32, payload: &[u8]) -> String {
         (None, DEBUG) => named("ind"),
         _ => None,
     };
-    let Some(field) = wanted else { return String::new() };
+    let Some(field) = wanted else {
+        return String::new();
+    };
     match field.kind.as_str() {
-        "char" if field.array > 0 => latin1_until_nul(payload.get(field.offset..field.offset + field.array).unwrap_or(&[])).trim().to_string(),
-        "char" => payload.get(field.offset).map(|b| char::from(*b).to_string()).unwrap_or_default(),
-        kind => integer_text(kind, payload, field.offset).map(|(text, _)| text).unwrap_or_default(),
+        "char" if field.array > 0 => latin1_until_nul(
+            payload
+                .get(field.offset..field.offset + field.array)
+                .unwrap_or(&[]),
+        )
+        .trim()
+        .to_string(),
+        "char" => payload
+            .get(field.offset)
+            .map(|b| char::from(*b).to_string())
+            .unwrap_or_default(),
+        kind => integer_text(kind, payload, field.offset)
+            .map(|(text, _)| text)
+            .unwrap_or_default(),
     }
 }
 
 pub fn display_name(msgid: u32, instance: &str) -> String {
-    let name = TABLE.get(&msgid).map(|i| i.name.clone()).unwrap_or_default();
+    let name = TABLE
+        .get(&msgid)
+        .map(|i| i.name.clone())
+        .unwrap_or_default();
     match instance.is_empty() {
         true => name,
         false => format!("{name} [{instance}]"),
@@ -167,17 +264,30 @@ pub fn g_format(value: f64, precision: usize) -> String {
         false => text,
     };
     match exponent >= -4 && exponent < precision as i32 {
-        true => trim(format!("{:.*}", usize::try_from(precision as i32 - 1 - exponent).unwrap_or(0), value)),
-        false => format!("{}e{}{:02}", trim(mantissa.to_string()), if exponent < 0 { '-' } else { '+' }, exponent.abs()),
+        true => trim(format!(
+            "{:.*}",
+            usize::try_from(precision as i32 - 1 - exponent).unwrap_or(0),
+            value
+        )),
+        false => format!(
+            "{}e{}{:02}",
+            trim(mantissa.to_string()),
+            if exponent < 0 { '-' } else { '+' },
+            exponent.abs()
+        ),
     }
 }
 
 fn utc(ms: i64, pattern: &str) -> String {
-    chrono::DateTime::from_timestamp_millis(ms).map(|t| t.format(pattern).to_string()).unwrap_or_default()
+    chrono::DateTime::from_timestamp_millis(ms)
+        .map(|t| t.format(pattern).to_string())
+        .unwrap_or_default()
 }
 
 pub fn fields(msgid: u32, payload: &[u8]) -> Vec<Value> {
-    let Some(info) = TABLE.get(&msgid) else { return Vec::new() };
+    let Some(info) = TABLE.get(&msgid) else {
+        return Vec::new();
+    };
     info.fields
         .iter()
         .flat_map(|field| {
@@ -186,16 +296,32 @@ pub fn fields(msgid: u32, payload: &[u8]) -> Vec<Value> {
                 false => vec![None],
             };
             elements.into_iter().map(move |element| {
-                let name = element.map_or_else(|| field.name.clone(), |j| format!("{}[{j}]", field.name));
+                let name =
+                    element.map_or_else(|| field.name.clone(), |j| format!("{}[{j}]", field.name));
                 let at = field.offset + element.unwrap_or(0) * size_of(&field.kind);
                 let value = match (field.kind.as_str(), element) {
-                    ("char", _) if field.array > 0 => latin1_until_nul(payload.get(field.offset..field.offset + field.array - 1).unwrap_or(&[])),
-                    ("char", _) => payload.get(at).map(|b| char::from(*b).to_string()).unwrap_or_default(),
+                    ("char", _) if field.array > 0 => latin1_until_nul(
+                        payload
+                            .get(field.offset..field.offset + field.array - 1)
+                            .unwrap_or(&[]),
+                    ),
+                    ("char", _) => payload
+                        .get(at)
+                        .map(|b| char::from(*b).to_string())
+                        .unwrap_or_default(),
                     ("float", _) => g_format(f64::from(f32::from_le_bytes(bytes(payload, at))), 10),
                     ("double", _) => g_format(f64::from_le_bytes(bytes(payload, at)), 15),
-                    ("uint32_t", None) if msgid == SYSTEM_TIME => utc(i64::from(u32::from_le_bytes(bytes(payload, at))), "%H:%M:%S"),
-                    ("uint64_t", None) if msgid == SYSTEM_TIME => utc(i64::try_from(u64::from_le_bytes(bytes(payload, at)) / 1000).unwrap_or(0), "%Y %m %d %H:%M:%S"),
-                    (kind, _) => integer_text(kind, payload, at).map(|(text, _)| text).unwrap_or_default(),
+                    ("uint32_t", None) if msgid == SYSTEM_TIME => utc(
+                        i64::from(u32::from_le_bytes(bytes(payload, at))),
+                        "%H:%M:%S",
+                    ),
+                    ("uint64_t", None) if msgid == SYSTEM_TIME => utc(
+                        i64::try_from(u64::from_le_bytes(bytes(payload, at)) / 1000).unwrap_or(0),
+                        "%Y %m %d %H:%M:%S",
+                    ),
+                    (kind, _) => integer_text(kind, payload, at)
+                        .map(|(text, _)| text)
+                        .unwrap_or_default(),
                 };
                 json!({ "name": name, "type": field.kind, "value": value })
             })
@@ -226,11 +352,18 @@ pub struct System {
 
 impl System {
     fn append(&mut self, mut message: Message) {
-        let held = self.messages.get(self.selected).map(|m| (m.id, m.comp_id, m.instance.clone()));
+        let held = self
+            .messages
+            .get(self.selected)
+            .map(|m| (m.id, m.comp_id, m.instance.clone()));
         message.selected |= self.messages.is_empty();
         let at = self.messages.partition_point(|m| m.name < message.name);
         self.messages.insert(at, message);
-        if let Some(index) = held.and_then(|(id, comp, instance)| self.messages.iter().position(|m| m.id == id && m.comp_id == comp && m.instance == instance)) {
+        if let Some(index) = held.and_then(|(id, comp, instance)| {
+            self.messages
+                .iter()
+                .position(|m| m.id == id && m.comp_id == comp && m.instance == instance)
+        }) {
             self.selected = index;
         }
     }
@@ -240,7 +373,10 @@ impl System {
             return;
         }
         self.selected = index;
-        self.messages.iter_mut().enumerate().for_each(|(i, m)| m.selected = i == index);
+        self.messages
+            .iter_mut()
+            .enumerate()
+            .for_each(|(i, m)| m.selected = i == index);
     }
 }
 
@@ -258,10 +394,18 @@ pub const INSPECTOR_CHANGED: &str = "core.inspector@changed";
 const HEARTBEAT: u32 = 0;
 const RADIO_STATUS: u32 = 109;
 
-static INSPECTOR: std::sync::Mutex<Inspector> = std::sync::Mutex::new(Inspector { systems: Vec::new(), active: None, vehicles: Vec::new(), followed: None, refreshed_ms: None });
+static INSPECTOR: std::sync::Mutex<Inspector> = std::sync::Mutex::new(Inspector {
+    systems: Vec::new(),
+    active: None,
+    vehicles: Vec::new(),
+    followed: None,
+    refreshed_ms: None,
+});
 
 pub fn lock() -> std::sync::MutexGuard<'static, Inspector> {
-    INSPECTOR.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+    INSPECTOR
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 fn message_json(system: &System, message: &Message) -> Value {
@@ -295,35 +439,75 @@ impl Inspector {
         let index = match self.systems.iter().position(|s| s.id == sysid) {
             Some(index) => index,
             None => {
-                self.systems.push(System { id: sysid, ..System::default() });
+                self.systems.push(System {
+                    id: sysid,
+                    ..System::default()
+                });
                 self.active = self.active.or(Some(sysid));
                 self.systems.len() - 1
             }
         };
         let system = &mut self.systems[index];
-        match system.messages.iter_mut().find(|m| m.id == msgid && m.comp_id == compid && m.instance == instance) {
+        match system
+            .messages
+            .iter_mut()
+            .find(|m| m.id == msgid && m.comp_id == compid && m.instance == instance)
+        {
             Some(message) => {
                 message.count += 1;
                 message.payload = payload;
             }
             None => {
                 let name = display_name(msgid, &instance);
-                system.append(Message { id: msgid, comp_id: compid, instance, name, count: 1, last_count: 0, actual_rate_hz: 0.0, target_rate_hz: 0, selected: false, payload });
+                system.append(Message {
+                    id: msgid,
+                    comp_id: compid,
+                    instance,
+                    name,
+                    count: 1,
+                    last_count: 0,
+                    actual_rate_hz: 0.0,
+                    target_rate_hz: 0,
+                    selected: false,
+                    payload,
+                });
             }
         }
     }
 
-    pub fn observe_extra(&mut self, extra: &crate::transport::Extra, vehicles: &[u8], active_vehicle: Option<u8>) {
+    pub fn observe_extra(
+        &mut self,
+        extra: &crate::transport::Extra,
+        vehicles: &[u8],
+        active_vehicle: Option<u8>,
+    ) {
         self.sync(vehicles, active_vehicle);
         if extra.v2 {
-            self.receive(extra.header.system_id, extra.header.component_id, extra.msgid, payload(&extra.raw, true));
+            self.receive(
+                extra.header.system_id,
+                extra.header.component_id,
+                extra.msgid,
+                payload(&extra.raw, true),
+            );
         }
     }
 
     fn sync(&mut self, vehicles: &[u8], active_vehicle: Option<u8>) {
-        let added: Vec<u8> = vehicles.iter().filter(|id| !self.vehicles.contains(id)).copied().collect();
-        let removed: Vec<u8> = self.vehicles.iter().filter(|id| !vehicles.contains(id)).copied().collect();
-        added.iter().chain(&removed).for_each(|id| crate::inspectorchart::forget_system(*id));
+        let added: Vec<u8> = vehicles
+            .iter()
+            .filter(|id| !self.vehicles.contains(id))
+            .copied()
+            .collect();
+        let removed: Vec<u8> = self
+            .vehicles
+            .iter()
+            .filter(|id| !vehicles.contains(id))
+            .copied()
+            .collect();
+        added
+            .iter()
+            .chain(&removed)
+            .for_each(|id| crate::inspectorchart::forget_system(*id));
         added.into_iter().for_each(|id| self.vehicle_added(id));
         removed.into_iter().for_each(|id| self.vehicle_removed(id));
         self.vehicles = vehicles.to_vec();
@@ -333,22 +517,47 @@ impl Inspector {
         }
     }
 
-    pub fn observe(&mut self, frame: &crate::transport::Frame, vehicles: &[u8], active_vehicle: Option<u8>) {
+    pub fn observe(
+        &mut self,
+        frame: &crate::transport::Frame,
+        vehicles: &[u8],
+        active_vehicle: Option<u8>,
+    ) {
         self.sync(vehicles, active_vehicle);
         let msgid = mavlink::Message::message_id(&frame.message);
         if !frame.v2 && msgid != HEARTBEAT && msgid != RADIO_STATUS {
             return;
         }
-        if let mavlink::dialects::ardupilotmega::MavMessage::MESSAGE_INTERVAL(interval) = &frame.message {
-            self.note_interval(frame.header.system_id, frame.header.component_id, u32::from(interval.message_id), interval.interval_us);
+        if let mavlink::dialects::ardupilotmega::MavMessage::MESSAGE_INTERVAL(interval) =
+            &frame.message
+        {
+            self.note_interval(
+                frame.header.system_id,
+                frame.header.component_id,
+                u32::from(interval.message_id),
+                interval.interval_us,
+            );
         }
         let bytes = payload(&frame.raw, frame.v2);
-        crate::inspectorchart::record(frame.header.system_id, frame.header.component_id, msgid, &bytes, crate::hub::now_ms());
-        self.receive(frame.header.system_id, frame.header.component_id, msgid, bytes);
+        crate::inspectorchart::record(
+            frame.header.system_id,
+            frame.header.component_id,
+            msgid,
+            &bytes,
+            crate::hub::now_ms(),
+        );
+        self.receive(
+            frame.header.system_id,
+            frame.header.component_id,
+            msgid,
+            bytes,
+        );
     }
 
     pub fn tick(&mut self, now_ms: u64) -> bool {
-        let due = self.refreshed_ms.is_none_or(|last| now_ms.saturating_sub(last) >= RATE_PERIOD_MS);
+        let due = self
+            .refreshed_ms
+            .is_none_or(|last| now_ms.saturating_sub(last) >= RATE_PERIOD_MS);
         if due {
             self.refreshed_ms = Some(now_ms);
             self.refresh_rates();
@@ -358,7 +567,12 @@ impl Inspector {
 
     pub fn get(&self, path: &str) -> Option<Value> {
         if path == "mavlinkInspector.systems" {
-            return Some(list_json(self.systems.iter().map(|s| json!({ "kind": "object", "id": s.id })).collect()));
+            return Some(list_json(
+                self.systems
+                    .iter()
+                    .map(|s| json!({ "kind": "object", "id": s.id }))
+                    .collect(),
+            ));
         }
         let rest = path.strip_prefix("mavlinkInspector.activeSystem")?;
         let system = self.active_system();
@@ -403,20 +617,29 @@ impl Inspector {
 
     pub fn selected_instance(&self) -> Option<String> {
         let system = self.active_system()?;
-        system.messages.get(system.selected).map(|m| m.instance.clone())
+        system
+            .messages
+            .get(system.selected)
+            .map(|m| m.instance.clone())
     }
 
     pub fn refresh_rates(&mut self) {
-        self.systems.iter_mut().flat_map(|s| s.messages.iter_mut()).for_each(|m| {
-            m.actual_rate_hz = 0.2 * m.actual_rate_hz + 0.8 * (m.count - m.last_count) as f64;
-            m.last_count = m.count;
-        });
+        self.systems
+            .iter_mut()
+            .flat_map(|s| s.messages.iter_mut())
+            .for_each(|m| {
+                m.actual_rate_hz = 0.2 * m.actual_rate_hz + 0.8 * (m.count - m.last_count) as f64;
+                m.last_count = m.count;
+            });
     }
 
     pub fn vehicle_added(&mut self, id: u8) {
         match self.systems.iter_mut().find(|s| s.id == id) {
             Some(system) => system.messages.clear(),
-            None => self.systems.push(System { id, ..System::default() }),
+            None => self.systems.push(System {
+                id,
+                ..System::default()
+            }),
         }
     }
 
@@ -436,8 +659,18 @@ impl Inspector {
     }
 
     pub fn note_interval(&mut self, sysid: u8, compid: u8, msgid: u32, interval_us: i32) {
-        let rate = if interval_us > 0 { (1_000_000.0 / f64::from(interval_us)) as i32 } else { interval_us };
-        if let Some(message) = self.systems.iter_mut().filter(|s| s.id == sysid).flat_map(|s| s.messages.iter_mut()).find(|m| m.comp_id == compid && m.id == msgid) {
+        let rate = if interval_us > 0 {
+            (1_000_000.0 / f64::from(interval_us)) as i32
+        } else {
+            interval_us
+        };
+        if let Some(message) = self
+            .systems
+            .iter_mut()
+            .filter(|s| s.id == sysid)
+            .flat_map(|s| s.messages.iter_mut())
+            .find(|m| m.comp_id == compid && m.id == msgid)
+        {
             message.target_rate_hz = rate;
         }
     }
@@ -457,9 +690,24 @@ mod tests {
     use super::*;
 
     fn signed(msgid: u32, payload: &[u8]) -> Vec<u8> {
-        let mut raw = vec![0xFD, payload.len() as u8, 0, 0, 7, 1, 1, msgid as u8, (msgid >> 8) as u8, (msgid >> 16) as u8];
+        let mut raw = vec![
+            0xFD,
+            payload.len() as u8,
+            0,
+            0,
+            7,
+            1,
+            1,
+            msgid as u8,
+            (msgid >> 8) as u8,
+            (msgid >> 16) as u8,
+        ];
         raw.extend_from_slice(payload);
-        let covered: Vec<u8> = raw[1..].iter().copied().chain([TABLE[&msgid].crc_extra]).collect();
+        let covered: Vec<u8> = raw[1..]
+            .iter()
+            .copied()
+            .chain([TABLE[&msgid].crc_extra])
+            .collect();
         raw.extend(x25(&covered).to_le_bytes());
         raw
     }
@@ -468,13 +716,28 @@ mod tests {
     fn a_frame_outside_the_decoded_dialect_is_kept_when_its_checksum_holds() {
         let control = signed(512, &[0x02, 255]);
         let (header, msgid) = undecoded(&control, true).unwrap();
-        assert_eq!((header.system_id, header.component_id, header.sequence, msgid), (1, 1, 7, 512));
+        assert_eq!(
+            (
+                header.system_id,
+                header.component_id,
+                header.sequence,
+                msgid
+            ),
+            (1, 1, 7, 512)
+        );
         let mut corrupt = control.clone();
         corrupt[10] ^= 1;
-        assert_eq!(undecoded(&corrupt, true), None, "a flipped byte fails the checksum and stays dropped");
+        assert_eq!(
+            undecoded(&corrupt, true),
+            None,
+            "a flipped byte fails the checksum and stays dropped"
+        );
         assert_eq!(x25(b"123456789"), 0x6F91, "MCRF4XX check value");
         let listed = fields(512, &payload(&control, true));
-        assert_eq!((listed[0]["value"].as_str(), listed[1]["value"].as_str()), (Some("2"), Some("255")));
+        assert_eq!(
+            (listed[0]["value"].as_str(), listed[1]["value"].as_str()),
+            (Some("2"), Some("255"))
+        );
     }
 
     #[test]
@@ -490,7 +753,18 @@ mod tests {
     }
 
     fn frame(msgid: u32, payload: &[u8]) -> Vec<u8> {
-        let mut raw = vec![0xFD, payload.len() as u8, 0, 0, 0, 1, 1, msgid as u8, (msgid >> 8) as u8, (msgid >> 16) as u8];
+        let mut raw = vec![
+            0xFD,
+            payload.len() as u8,
+            0,
+            0,
+            0,
+            1,
+            1,
+            msgid as u8,
+            (msgid >> 8) as u8,
+            (msgid >> 16) as u8,
+        ];
         raw.extend_from_slice(payload);
         raw.extend([0, 0]);
         raw
@@ -500,8 +774,27 @@ mod tests {
     fn a_heartbeat_lists_its_fields_in_xml_order_read_at_their_wire_offsets() {
         let beat = frame(0, &[0x04, 0, 0, 0, 2, 3, 81, 3]);
         let payload = payload(&beat, true);
-        let listed: Vec<(String, String)> = fields(0, &payload).iter().map(|f| (f["name"].as_str().unwrap().to_string(), f["value"].as_str().unwrap().to_string())).collect();
-        assert_eq!(listed, vec![("type".into(), "2".into()), ("autopilot".into(), "3".into()), ("base_mode".into(), "81".into()), ("custom_mode".into(), "4".into()), ("system_status".into(), "3".into()), ("mavlink_version".into(), "0".into())], "the trailing zero the sender trimmed reads back as zero");
+        let listed: Vec<(String, String)> = fields(0, &payload)
+            .iter()
+            .map(|f| {
+                (
+                    f["name"].as_str().unwrap().to_string(),
+                    f["value"].as_str().unwrap().to_string(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            listed,
+            vec![
+                ("type".into(), "2".into()),
+                ("autopilot".into(), "3".into()),
+                ("base_mode".into(), "81".into()),
+                ("custom_mode".into(), "4".into()),
+                ("system_status".into(), "3".into()),
+                ("mavlink_version".into(), "0".into())
+            ],
+            "the trailing zero the sender trimmed reads back as zero"
+        );
     }
 
     #[test]
@@ -512,10 +805,29 @@ mod tests {
         assert_eq!(listed[1]["value"], "ArduCopter V4.5.7");
         assert_eq!(listed[1]["type"], "char");
         let mut quaternion = vec![0u8; 8];
-        [1.0f32, 0.5, 0.25, 0.125].iter().for_each(|v| quaternion.extend(v.to_le_bytes()));
+        [1.0f32, 0.5, 0.25, 0.125]
+            .iter()
+            .for_each(|v| quaternion.extend(v.to_le_bytes()));
         let listed = fields(61, &payload(&frame(61, &quaternion), true));
-        let q: Vec<(String, String)> = listed.iter().filter(|f| f["name"].as_str().unwrap_or("").starts_with("q[")).map(|f| (f["name"].as_str().unwrap().to_string(), f["value"].as_str().unwrap().to_string())).collect();
-        assert_eq!(q, vec![("q[0]".into(), "1".into()), ("q[1]".into(), "0.5".into()), ("q[2]".into(), "0.25".into()), ("q[3]".into(), "0.125".into())]);
+        let q: Vec<(String, String)> = listed
+            .iter()
+            .filter(|f| f["name"].as_str().unwrap_or("").starts_with("q["))
+            .map(|f| {
+                (
+                    f["name"].as_str().unwrap().to_string(),
+                    f["value"].as_str().unwrap().to_string(),
+                )
+            })
+            .collect();
+        assert_eq!(
+            q,
+            vec![
+                ("q[0]".into(), "1".into()),
+                ("q[1]".into(), "0.5".into()),
+                ("q[2]".into(), "0.25".into()),
+                ("q[3]".into(), "0.125".into())
+            ]
+        );
     }
 
     #[test]
@@ -535,15 +847,33 @@ mod tests {
         inspector.receive(1, 1, 0, vec![0; 280]);
         inspector.receive(1, 1, 30, vec![0; 280]);
         let system = inspector.active_system().unwrap();
-        assert_eq!(system.messages.iter().map(|m| m.name.as_str()).collect::<Vec<_>>(), vec!["ATTITUDE", "HEARTBEAT"]);
-        assert_eq!((system.selected, system.messages[0].selected, system.messages[0].count), (0, true, 2), "the first message a system sends is selected, and counts start at one");
+        assert_eq!(
+            system
+                .messages
+                .iter()
+                .map(|m| m.name.as_str())
+                .collect::<Vec<_>>(),
+            vec!["ATTITUDE", "HEARTBEAT"]
+        );
+        assert_eq!(
+            (
+                system.selected,
+                system.messages[0].selected,
+                system.messages[0].count
+            ),
+            (0, true, 2),
+            "the first message a system sends is selected, and counts start at one"
+        );
         inspector.receive(1, 1, 1, vec![0; 280]);
         inspector.receive(1, 1, 2, vec![0; 280]);
         let system = inspector.active_system_mut().unwrap();
         system.select(3);
         inspector.receive(1, 1, 24, vec![0; 280]);
         let system = inspector.active_system().unwrap();
-        assert_eq!(system.messages[system.selected].name, "SYS_STATUS", "inserting a message ahead of the selection moves the index with it");
+        assert_eq!(
+            system.messages[system.selected].name, "SYS_STATUS",
+            "inserting a message ahead of the selection moves the index with it"
+        );
     }
 
     #[test]
@@ -551,10 +881,19 @@ mod tests {
         let mut inspector = Inspector::default();
         (0..5).for_each(|_| inspector.receive(1, 1, 30, vec![0; 280]));
         inspector.refresh_rates();
-        assert!((inspector.active_system().unwrap().messages[0].actual_rate_hz - 4.0).abs() < 1e-9, "0.2 * 0 + 0.8 * 5");
+        assert!(
+            (inspector.active_system().unwrap().messages[0].actual_rate_hz - 4.0).abs() < 1e-9,
+            "0.2 * 0 + 0.8 * 5"
+        );
         inspector.note_interval(1, 1, 30, 100_000);
-        assert_eq!(inspector.active_system().unwrap().messages[0].target_rate_hz, 10);
+        assert_eq!(
+            inspector.active_system().unwrap().messages[0].target_rate_hz,
+            10
+        );
         inspector.note_interval(1, 1, 30, -1);
-        assert_eq!(inspector.active_system().unwrap().messages[0].target_rate_hz, -1);
+        assert_eq!(
+            inspector.active_system().unwrap().messages[0].target_rate_hz,
+            -1
+        );
     }
 }

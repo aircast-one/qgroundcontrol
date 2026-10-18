@@ -76,43 +76,95 @@ pub struct Definitions {
 }
 
 fn text(value: &Value, key: &str) -> String {
-    value.get(key).and_then(Value::as_str).unwrap_or_default().to_string()
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string()
 }
 
 fn parse_enum(value: &Value) -> Option<Enum> {
-    let entries = value.get("entries").and_then(Value::as_object).map(|entries| entries.iter().filter_map(|(key, entry)| Some((key.parse().ok()?, (text(entry, "name"), text(entry, "description"))))).collect()).unwrap_or_default();
+    let entries = value
+        .get("entries")
+        .and_then(Value::as_object)
+        .map(|entries| {
+            entries
+                .iter()
+                .filter_map(|(key, entry)| {
+                    Some((
+                        key.parse().ok()?,
+                        (text(entry, "name"), text(entry, "description")),
+                    ))
+                })
+                .collect()
+        })
+        .unwrap_or_default();
     Some(Enum {
         base: base(value.get("type")?.as_str()?)?,
-        bitfield: value.get("is_bitfield").and_then(Value::as_bool).unwrap_or(false),
-        separator: value.get("separator").and_then(Value::as_str).unwrap_or("|").to_string(),
+        bitfield: value
+            .get("is_bitfield")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
+        separator: value
+            .get("separator")
+            .and_then(Value::as_str)
+            .unwrap_or("|")
+            .to_string(),
         entries,
     })
 }
 
 pub fn parse(text_json: &str) -> Result<Definitions, String> {
-    let root: Value = serde_json::from_str(text_json).map_err(|e| format!("Event metadata could not be parsed: {e}"))?;
+    let root: Value = serde_json::from_str(text_json)
+        .map_err(|e| format!("Event metadata could not be parsed: {e}"))?;
     if root.get("version").and_then(Value::as_i64).unwrap_or(0) < 1 {
         return Err("Event metadata has no supported version".into());
     }
     let components: Vec<(u8, &Value, String)> = root
         .get("components")
         .and_then(Value::as_object)
-        .map(|c| c.iter().filter_map(|(key, component)| Some(((key.parse::<u32>().ok()? & 0xff) as u8, component, component.get("namespace")?.as_str()?.to_string()))).collect())
+        .map(|c| {
+            c.iter()
+                .filter_map(|(key, component)| {
+                    Some((
+                        (key.parse::<u32>().ok()? & 0xff) as u8,
+                        component,
+                        component.get("namespace")?.as_str()?.to_string(),
+                    ))
+                })
+                .collect()
+        })
         .unwrap_or_default();
     let enums: HashMap<(String, String), Arc<Enum>> = components
         .iter()
         .flat_map(|(_, component, namespace)| {
-            component.get("enums").and_then(Value::as_object).into_iter().flatten().filter_map(move |(name, value)| Some(((namespace.clone(), name.clone()), Arc::new(parse_enum(value)?))))
+            component
+                .get("enums")
+                .and_then(Value::as_object)
+                .into_iter()
+                .flatten()
+                .filter_map(move |(name, value)| {
+                    Some((
+                        (namespace.clone(), name.clone()),
+                        Arc::new(parse_enum(value)?),
+                    ))
+                })
         })
         .collect();
     let argument = |namespace: &str, value: &Value| -> Option<Argument> {
         let named = value.get("type")?.as_str()?;
         match base(named) {
-            Some(base) => Some(Argument { base, enumeration: None }),
+            Some(base) => Some(Argument {
+                base,
+                enumeration: None,
+            }),
             None => {
                 let (space, name) = named.split_once("::").unwrap_or((namespace, named));
                 let enumeration = enums.get(&(space.to_string(), name.to_string()))?.clone();
-                Some(Argument { base: enumeration.base, enumeration: Some(enumeration) })
+                Some(Argument {
+                    base: enumeration.base,
+                    enumeration: Some(enumeration),
+                })
             }
         }
     };
@@ -120,27 +172,91 @@ pub fn parse(text_json: &str) -> Result<Definitions, String> {
         .iter()
         .flat_map(|(id, component, namespace)| {
             let argument = &argument;
-            component.get("event_groups").and_then(Value::as_object).into_iter().flatten().flat_map(move |(group, value)| {
-                value.get("events").and_then(Value::as_object).into_iter().flatten().filter_map(move |(key, event)| {
-                    let arguments = event.get("arguments").and_then(Value::as_array).map(|listed| listed.iter().map(|a| argument(namespace, a)).collect::<Option<Vec<_>>>()).unwrap_or(Some(Vec::new()))?;
-                    let full_id = (key.parse::<u32>().ok()? & 0x00ff_ffff) | (u32::from(*id) << 24);
-                    Some((full_id, Event { group: group.clone(), kind: text(event, "type"), message: event.get("message")?.as_str()?.to_string(), description: text(event, "description"), arguments }))
+            component
+                .get("event_groups")
+                .and_then(Value::as_object)
+                .into_iter()
+                .flatten()
+                .flat_map(move |(group, value)| {
+                    value
+                        .get("events")
+                        .and_then(Value::as_object)
+                        .into_iter()
+                        .flatten()
+                        .filter_map(move |(key, event)| {
+                            let arguments = event
+                                .get("arguments")
+                                .and_then(Value::as_array)
+                                .map(|listed| {
+                                    listed
+                                        .iter()
+                                        .map(|a| argument(namespace, a))
+                                        .collect::<Option<Vec<_>>>()
+                                })
+                                .unwrap_or(Some(Vec::new()))?;
+                            let full_id =
+                                (key.parse::<u32>().ok()? & 0x00ff_ffff) | (u32::from(*id) << 24);
+                            Some((
+                                full_id,
+                                Event {
+                                    group: group.clone(),
+                                    kind: text(event, "type"),
+                                    message: event.get("message")?.as_str()?.to_string(),
+                                    description: text(event, "description"),
+                                    arguments,
+                                },
+                            ))
+                        })
                 })
-            })
         })
         .fold(HashMap::new(), |mut found, (id, event)| {
             found.entry(id).or_insert(event);
             found
         });
-    let protocols = components.iter().filter_map(|(id, component, _)| Some((*id, component.get("supported_protocols")?.as_array()?.iter().filter_map(|p| p.as_str().map(str::to_string)).collect()))).collect();
+    let protocols = components
+        .iter()
+        .filter_map(|(id, component, _)| {
+            Some((
+                *id,
+                component
+                    .get("supported_protocols")?
+                    .as_array()?
+                    .iter()
+                    .filter_map(|p| p.as_str().map(str::to_string))
+                    .collect(),
+            ))
+        })
+        .collect();
     let mode_groups = components
         .iter()
         .filter_map(|(id, component, _)| {
-            let groups = component.get("navigation_mode_groups")?.get("groups")?.as_object()?;
-            Some((*id, groups.iter().filter_map(|(index, modes)| Some((index.parse().ok()?, modes.as_array()?.iter().filter_map(|m| m.as_u64().and_then(|m| u32::try_from(m).ok())).collect()))).collect()))
+            let groups = component
+                .get("navigation_mode_groups")?
+                .get("groups")?
+                .as_object()?;
+            Some((
+                *id,
+                groups
+                    .iter()
+                    .filter_map(|(index, modes)| {
+                        Some((
+                            index.parse().ok()?,
+                            modes
+                                .as_array()?
+                                .iter()
+                                .filter_map(|m| m.as_u64().and_then(|m| u32::try_from(m).ok()))
+                                .collect(),
+                        ))
+                    })
+                    .collect(),
+            ))
         })
         .collect();
-    Ok(Definitions { events, protocols, mode_groups })
+    Ok(Definitions {
+        events,
+        protocols,
+        mode_groups,
+    })
 }
 
 pub struct Parsed<'a> {
@@ -150,21 +266,39 @@ pub struct Parsed<'a> {
 }
 
 impl Definitions {
-    pub fn parse_event(&self, id: u32, arguments: [u8; ARGUMENT_BYTES], log_levels: u8) -> Option<Parsed<'_>> {
-        self.events.get(&id).map(|event| Parsed { event, arguments, log_levels })
+    pub fn parse_event(
+        &self,
+        id: u32,
+        arguments: [u8; ARGUMENT_BYTES],
+        log_levels: u8,
+    ) -> Option<Parsed<'_>> {
+        self.events.get(&id).map(|event| Parsed {
+            event,
+            arguments,
+            log_levels,
+        })
     }
 
     pub fn mode_group(&self, component: u8, custom_mode: u32) -> Option<usize> {
-        self.mode_groups.get(&component)?.iter().find(|(_, modes)| modes.contains(&custom_mode)).map(|(group, _)| *group)
+        self.mode_groups
+            .get(&component)?
+            .iter()
+            .find(|(_, modes)| modes.contains(&custom_mode))
+            .map(|(group, _)| *group)
     }
 
     pub fn supports_checks(&self, component: u8) -> bool {
-        self.protocols.get(&component).is_some_and(|p| p.contains("health_and_arming_check"))
+        self.protocols
+            .get(&component)
+            .is_some_and(|p| p.contains("health_and_arming_check"))
     }
 }
 
 fn escape(text: &str) -> String {
-    text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 fn find_unescaped(chars: &[char], wanted: &[char], from: usize) -> Option<usize> {
@@ -184,7 +318,8 @@ fn find_unescaped(chars: &[char], wanted: &[char], from: usize) -> Option<usize>
 
 fn find_text(chars: &[char], needle: &str, from: usize) -> Option<usize> {
     let needle: Vec<char> = needle.chars().collect();
-    (from..chars.len().saturating_sub(needle.len() - 1)).find(|at| chars[*at..*at + needle.len()] == needle[..])
+    (from..chars.len().saturating_sub(needle.len() - 1))
+        .find(|at| chars[*at..*at + needle.len()] == needle[..])
 }
 
 impl Parsed<'_> {
@@ -201,22 +336,50 @@ impl Parsed<'_> {
     }
 
     pub fn is_enum(&self, index: usize) -> bool {
-        self.event.arguments.get(index).is_some_and(|a| a.enumeration.is_some())
+        self.event
+            .arguments
+            .get(index)
+            .is_some_and(|a| a.enumeration.is_some())
     }
 
     pub fn enum_entries(&self, index: usize) -> Vec<(u64, String, String)> {
-        self.event.arguments.get(index).and_then(|a| a.enumeration.as_ref()).map(|e| e.entries.iter().map(|(value, (name, description))| (*value, name.clone(), description.clone())).collect()).unwrap_or_default()
+        self.event
+            .arguments
+            .get(index)
+            .and_then(|a| a.enumeration.as_ref())
+            .map(|e| {
+                e.entries
+                    .iter()
+                    .map(|(value, (name, description))| (*value, name.clone(), description.clone()))
+                    .collect()
+            })
+            .unwrap_or_default()
     }
 
     fn bytes(&self, index: usize) -> Option<(Base, &[u8])> {
-        let offset: usize = self.event.arguments.get(..index)?.iter().map(|a| size(a.base)).sum();
+        let offset: usize = self
+            .event
+            .arguments
+            .get(..index)?
+            .iter()
+            .map(|a| size(a.base))
+            .sum();
         let base = self.event.arguments.get(index)?.base;
-        self.arguments.get(offset..offset + size(base)).map(|bytes| (base, bytes))
+        self.arguments
+            .get(offset..offset + size(base))
+            .map(|bytes| (base, bytes))
     }
 
     pub fn int(&self, index: usize) -> u64 {
-        let Some((base, b)) = self.bytes(index) else { return 0 };
-        let raw = |n: usize| b[..n].iter().rev().fold(0u64, |acc, byte| (acc << 8) | u64::from(*byte));
+        let Some((base, b)) = self.bytes(index) else {
+            return 0;
+        };
+        let raw = |n: usize| {
+            b[..n]
+                .iter()
+                .rev()
+                .fold(0u64, |acc, byte| (acc << 8) | u64::from(*byte))
+        };
         match base {
             Base::U8 | Base::U16 | Base::U32 | Base::U64 => raw(size(base)),
             Base::I8 => i64::from(b[0] as i8) as u64,
@@ -228,16 +391,29 @@ impl Parsed<'_> {
     }
 
     fn float(&self, index: usize) -> f32 {
-        self.bytes(index).map(|(_, b)| f32::from_le_bytes([b[0], b[1], b[2], b[3]])).unwrap_or(0.0)
+        self.bytes(index)
+            .map(|(_, b)| f32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+            .unwrap_or(0.0)
     }
 
     fn formatted(&self, index: usize, digits: Option<usize>, unit: &str) -> String {
         let argument = &self.event.arguments[index];
         let value = self.int(index);
         if let Some(enumeration) = &argument.enumeration {
-            let describe = |v: u64| enumeration.entries.get(&v).map(|(_, d)| d.clone()).unwrap_or_else(|| format!("(unknown: {value})"));
+            let describe = |v: u64| {
+                enumeration
+                    .entries
+                    .get(&v)
+                    .map(|(_, d)| d.clone())
+                    .unwrap_or_else(|| format!("(unknown: {value})"))
+            };
             return match enumeration.bitfield {
-                true => (0..size(enumeration.base) * 8).map(|bit| 1u64 << bit).filter(|bit| value & bit != 0).map(describe).collect::<Vec<_>>().join(&enumeration.separator),
+                true => (0..size(enumeration.base) * 8)
+                    .map(|bit| 1u64 << bit)
+                    .filter(|bit| value & bit != 0)
+                    .map(describe)
+                    .collect::<Vec<_>>()
+                    .join(&enumeration.separator),
                 false => describe(value),
             };
         }
@@ -281,7 +457,10 @@ impl Parsed<'_> {
                     at += 1;
                 }
                 '<' => {
-                    let (Some(tag_end), Some(content_start)) = (find_unescaped(&chars, &['>', ' '], at), find_unescaped(&chars, &['>'], at)) else {
+                    let (Some(tag_end), Some(content_start)) = (
+                        find_unescaped(&chars, &['>', ' '], at),
+                        find_unescaped(&chars, &['>'], at),
+                    ) else {
                         at += 1;
                         continue;
                     };
@@ -293,10 +472,14 @@ impl Parsed<'_> {
                     let content: String = chars[content_start + 1..closing].iter().collect();
                     let attribute = (chars[tag_end] == ' ')
                         .then(|| {
-                            let attributes: String = chars[tag_end + 1..content_start].iter().collect();
+                            let attributes: String =
+                                chars[tag_end + 1..content_start].iter().collect();
                             let equal = attributes.find("=\"")?;
                             let rest = &attributes[equal + 2..];
-                            Some((attributes[..equal].to_string(), rest[..rest.find('"')?].to_string()))
+                            Some((
+                                attributes[..equal].to_string(),
+                                rest[..rest.find('"')?].to_string(),
+                            ))
                         })
                         .flatten();
                     let (replacement, skip) = match tag.as_str() {
@@ -306,13 +489,20 @@ impl Parsed<'_> {
                             (link, length)
                         }
                         "a" => {
-                            let href = attribute.as_ref().filter(|(name, value)| name == "href" && !value.is_empty()).map(|(_, value)| value.clone()).unwrap_or_else(|| content.clone());
+                            let href = attribute
+                                .as_ref()
+                                .filter(|(name, value)| name == "href" && !value.is_empty())
+                                .map(|(_, value)| value.clone())
+                                .unwrap_or_else(|| content.clone());
                             let link = format!("<a href=\"{href}\">{}</a>", escape(&content));
                             let length = link.chars().count();
                             (link, length)
                         }
                         "profile" => {
-                            let shown = match attribute.as_ref().filter(|(name, value)| name == "name" && !value.is_empty()) {
+                            let shown = match attribute
+                                .as_ref()
+                                .filter(|(name, value)| name == "name" && !value.is_empty())
+                            {
                                 Some((_, value)) => match value.strip_prefix('!') {
                                     Some(excluded) => excluded != PROFILE,
                                     None => value == PROFILE,
@@ -330,20 +520,30 @@ impl Parsed<'_> {
                     escape_start = at;
                 }
                 '{' => {
-                    let Some(end) = chars[at..].iter().position(|c| *c == '}').map(|p| p + at) else {
+                    let Some(end) = chars[at..].iter().position(|c| *c == '}').map(|p| p + at)
+                    else {
                         at += 1;
                         continue;
                     };
                     let format: String = chars[at + 1..end].iter().collect();
-                    let digits_end = format.find(|c: char| !c.is_ascii_digit()).unwrap_or(format.len());
-                    let Some(index) = format[..digits_end].parse::<usize>().ok().and_then(|i| i.checked_sub(1)).filter(|i| *i < self.event.arguments.len()) else {
+                    let digits_end = format
+                        .find(|c: char| !c.is_ascii_digit())
+                        .unwrap_or(format.len());
+                    let Some(index) = format[..digits_end]
+                        .parse::<usize>()
+                        .ok()
+                        .and_then(|i| i.checked_sub(1))
+                        .filter(|i| *i < self.event.arguments.len())
+                    else {
                         at += 1;
                         continue;
                     };
                     let rest = &format[digits_end..];
                     let (decimals, unit) = match rest.strip_prefix(":.") {
                         Some(after) => {
-                            let split = after.find(|c: char| !c.is_ascii_digit()).unwrap_or(after.len());
+                            let split = after
+                                .find(|c: char| !c.is_ascii_digit())
+                                .unwrap_or(after.len());
                             (after[..split].parse().ok(), &after[split..])
                         }
                         None => (None, rest.strip_prefix(':').unwrap_or(rest)),
@@ -359,7 +559,9 @@ impl Parsed<'_> {
             }
         }
         let (whole, _) = escape_up_to(&chars, escape_start, chars.len());
-        whole.trim_matches([' ', '\n', '\r', '\t', '\u{c}', '\u{b}']).to_string()
+        whole
+            .trim_matches([' ', '\n', '\r', '\t', '\u{c}', '\u{b}'])
+            .to_string()
     }
 }
 
@@ -408,7 +610,9 @@ impl Receiver {
         if self.last_timestamp_ms == 0 {
             self.last_timestamp_ms = event.timestamp_ms;
         }
-        if event.timestamp_ms.saturating_add(10_000) < self.last_timestamp_ms && self.last_timestamp_ms < u32::MAX - 60_000 {
+        if event.timestamp_ms.saturating_add(10_000) < self.last_timestamp_ms
+            && self.last_timestamp_ms < u32::MAX - 60_000
+        {
             self.latest = None;
             self.current = None;
         }
@@ -420,7 +624,10 @@ impl Receiver {
         }
         self.last_timestamp_ms = event.timestamp_ms;
         self.retry = None;
-        let behind = self.current.filter(|current| compare(event.sequence, *current) == Sequence::Newer).and_then(|_| self.request(event.sequence.wrapping_add(1), now_ms));
+        let behind = self
+            .current
+            .filter(|current| compare(event.sequence, *current) == Sequence::Newer)
+            .and_then(|_| self.request(event.sequence.wrapping_add(1), now_ms));
         (event.for_us, behind)
     }
 
@@ -430,20 +637,27 @@ impl Receiver {
         }
         let latest = *self.latest.get_or_insert(sequence);
         self.current = Some(sequence);
-        (compare(latest, sequence) == Sequence::Newer).then(|| self.request(latest.wrapping_add(1), now_ms)).flatten()
+        (compare(latest, sequence) == Sequence::Newer)
+            .then(|| self.request(latest.wrapping_add(1), now_ms))
+            .flatten()
     }
 
     pub fn on_error(&mut self, sequence: u16, oldest_available: u16, now_ms: u64) -> Option<u16> {
         let latest = self.latest?;
-        (compare(latest.wrapping_add(1), sequence) == Sequence::Equal).then(|| {
-            self.latest = Some(oldest_available.wrapping_sub(1));
-            oldest_available
-        }).and_then(|next| self.request(next, now_ms))
+        (compare(latest.wrapping_add(1), sequence) == Sequence::Equal)
+            .then(|| {
+                self.latest = Some(oldest_available.wrapping_sub(1));
+                oldest_available
+            })
+            .and_then(|next| self.request(next, now_ms))
     }
 
     pub fn on_tick(&mut self, now_ms: u64) -> Option<u16> {
         let (due, _) = self.retry?;
-        (now_ms >= due).then(|| self.latest.map(|l| l.wrapping_add(1))).flatten().and_then(|next| self.request(next, now_ms))
+        (now_ms >= due)
+            .then(|| self.latest.map(|l| l.wrapping_add(1)))
+            .flatten()
+            .and_then(|next| self.request(next, now_ms))
     }
 }
 
@@ -477,7 +691,10 @@ impl Results {
     }
 
     pub fn checks_for(&self, group: usize) -> Vec<&Check> {
-        self.checks.iter().filter(|c| group < 64 && c.groups & (1u64 << group) != 0).collect()
+        self.checks
+            .iter()
+            .filter(|c| group < 64 && c.groups & (1u64 << group) != 0)
+            .collect()
     }
 
     pub fn gps_state(&self) -> Option<&'static str> {
@@ -505,7 +722,12 @@ pub struct Checks {
 
 impl Default for Checks {
     fn default() -> Self {
-        Self { expect: Expect::ArmingSummary, chunk: 0, chunks: BTreeMap::new(), results: None }
+        Self {
+            expect: Expect::ArmingSummary,
+            chunk: 0,
+            chunks: BTreeMap::new(),
+            results: None,
+        }
     }
 }
 
@@ -524,24 +746,58 @@ impl Checks {
                 self.reset();
                 if event.argument_count() >= 5 && event.is_enum(1) && event.is_enum(3) {
                     self.chunk = event.int(0) as i64;
-                    let (error, warning, can_arm, can_run) = (event.int(1), event.int(2), event.int(3), event.int(4));
-                    let groups = event.enum_entries(3).into_iter().fold(Vec::new(), |mut groups: Vec<(bool, bool)>, (bit, _, _)| {
-                        let index = bit.checked_ilog2().unwrap_or(0) as usize;
-                        if index >= groups.len() {
-                            groups.resize(index + 1, (false, false));
-                        }
-                        groups[index] = (can_arm & bit != 0, can_run & bit != 0);
-                        groups
-                    });
-                    let health = event.enum_entries(1).into_iter().map(|(bit, name, _)| (name, HealthComponent { bitmask: bit, arming_error: error & bit != 0, arming_warning: warning & bit != 0, ..HealthComponent::default() })).collect();
-                    self.chunks.insert(self.chunk, Results { groups, health, checks: Vec::new() });
+                    let (error, warning, can_arm, can_run) =
+                        (event.int(1), event.int(2), event.int(3), event.int(4));
+                    let groups = event.enum_entries(3).into_iter().fold(
+                        Vec::new(),
+                        |mut groups: Vec<(bool, bool)>, (bit, _, _)| {
+                            let index = bit.checked_ilog2().unwrap_or(0) as usize;
+                            if index >= groups.len() {
+                                groups.resize(index + 1, (false, false));
+                            }
+                            groups[index] = (can_arm & bit != 0, can_run & bit != 0);
+                            groups
+                        },
+                    );
+                    let health = event
+                        .enum_entries(1)
+                        .into_iter()
+                        .map(|(bit, name, _)| {
+                            (
+                                name,
+                                HealthComponent {
+                                    bitmask: bit,
+                                    arming_error: error & bit != 0,
+                                    arming_warning: warning & bit != 0,
+                                    ..HealthComponent::default()
+                                },
+                            )
+                        })
+                        .collect();
+                    self.chunks.insert(
+                        self.chunk,
+                        Results {
+                            groups,
+                            health,
+                            checks: Vec::new(),
+                        },
+                    );
                     self.expect = Expect::Other;
                 }
                 false
             }
             (true, false, _) if self.expect == Expect::Other => {
-                let check = Check { message: event.message(), description: event.description(), groups: event.int(0), log_levels: event.log_levels };
-                self.chunks.entry(self.chunk).or_default().checks.push(check);
+                let check = Check {
+                    message: event.message(),
+                    description: event.description(),
+                    groups: event.int(0),
+                    log_levels: event.log_levels,
+                };
+                self.chunks
+                    .entry(self.chunk)
+                    .or_default()
+                    .checks
+                    .push(check);
                 false
             }
             (true, true, false) if self.expect == Expect::Other => {
@@ -566,23 +822,34 @@ impl Checks {
     }
 
     fn combined(&self) -> Results {
-        self.chunks.values().fold(Results::default(), |mut all, chunk| {
-            if all.groups.is_empty() {
-                all.groups = chunk.groups.clone();
-            } else if all.groups.len() == chunk.groups.len() {
-                all.groups.iter_mut().zip(&chunk.groups).for_each(|(a, c)| *a = (a.0 && c.0, a.1 && c.1));
-            }
-            chunk.health.iter().for_each(|(name, component)| {
-                all.health
-                    .entry(name.clone())
-                    .and_modify(|known| {
-                        *known = HealthComponent { bitmask: 0, arming_error: known.arming_error || component.arming_error, arming_warning: known.arming_warning || component.arming_warning, error: known.error || component.error, warning: known.warning || component.warning };
-                    })
-                    .or_insert_with(|| component.clone());
-            });
-            all.checks.extend(chunk.checks.iter().cloned());
-            all
-        })
+        self.chunks
+            .values()
+            .fold(Results::default(), |mut all, chunk| {
+                if all.groups.is_empty() {
+                    all.groups = chunk.groups.clone();
+                } else if all.groups.len() == chunk.groups.len() {
+                    all.groups
+                        .iter_mut()
+                        .zip(&chunk.groups)
+                        .for_each(|(a, c)| *a = (a.0 && c.0, a.1 && c.1));
+                }
+                chunk.health.iter().for_each(|(name, component)| {
+                    all.health
+                        .entry(name.clone())
+                        .and_modify(|known| {
+                            *known = HealthComponent {
+                                bitmask: 0,
+                                arming_error: known.arming_error || component.arming_error,
+                                arming_warning: known.arming_warning || component.arming_warning,
+                                error: known.error || component.error,
+                                warning: known.warning || component.warning,
+                            };
+                        })
+                        .or_insert_with(|| component.clone());
+                });
+                all.checks.extend(chunk.checks.iter().cloned());
+                all
+            })
     }
 }
 
@@ -604,14 +871,38 @@ pub fn severity(log_levels: u8) -> &'static str {
     }
 }
 
-pub fn report(results: &Results, group: usize, takeoff_group: Option<usize>, mission_group: Option<usize>, previous: Option<&Report>) -> Report {
-    let problems: Vec<(String, String, &'static str)> = results.checks_for(group).into_iter().map(|c| (c.message.clone(), c.description.replace('\n', "<br/>"), severity(c.log_levels))).collect();
+pub fn report(
+    results: &Results,
+    group: usize,
+    takeoff_group: Option<usize>,
+    mission_group: Option<usize>,
+    previous: Option<&Report>,
+) -> Report {
+    let problems: Vec<(String, String, &'static str)> = results
+        .checks_for(group)
+        .into_iter()
+        .map(|c| {
+            (
+                c.message.clone(),
+                c.description.replace('\n', "<br/>"),
+                severity(c.log_levels),
+            )
+        })
+        .collect();
     Report {
         can_arm: results.can_arm(group),
-        can_takeoff: takeoff_group.map(|g| results.can_arm(g)).unwrap_or(previous.is_none_or(|p| p.can_takeoff)),
-        can_start_mission: mission_group.map(|g| results.can_arm(g)).unwrap_or(previous.is_none_or(|p| p.can_start_mission)),
+        can_takeoff: takeoff_group
+            .map(|g| results.can_arm(g))
+            .unwrap_or(previous.is_none_or(|p| p.can_takeoff)),
+        can_start_mission: mission_group
+            .map(|g| results.can_arm(g))
+            .unwrap_or(previous.is_none_or(|p| p.can_start_mission)),
         has_warnings_or_errors: problems.iter().any(|(_, _, s)| !s.is_empty()),
-        gps_state: results.gps_state().map(str::to_string).or_else(|| previous.map(|p| p.gps_state.clone())).unwrap_or_default(),
+        gps_state: results
+            .gps_state()
+            .map(str::to_string)
+            .or_else(|| previous.map(|p| p.gps_state.clone()))
+            .unwrap_or_default(),
         problems,
     }
 }
@@ -629,7 +920,11 @@ pub struct Raw {
 #[derive(Debug, PartialEq)]
 pub enum Delivered {
     Checks,
-    Message { severity: u8, text: String, description: String },
+    Message {
+        severity: u8,
+        text: String,
+        description: String,
+    },
 }
 
 #[derive(Debug, Default)]
@@ -643,12 +938,17 @@ pub struct Session {
 
 impl Session {
     pub fn supports_checks(&self, component: u8) -> bool {
-        self.definitions.as_ref().is_some_and(|d| d.supports_checks(component))
+        self.definitions
+            .as_ref()
+            .is_some_and(|d| d.supports_checks(component))
     }
 
     pub fn load(&mut self, definitions: Definitions, component: u8) -> Vec<Delivered> {
         self.definitions = Some(definitions);
-        std::mem::take(&mut self.pending).into_iter().filter_map(|raw| self.deliver(raw, component)).collect()
+        std::mem::take(&mut self.pending)
+            .into_iter()
+            .filter_map(|raw| self.deliver(raw, component))
+            .collect()
     }
 
     pub fn deliver(&mut self, raw: Raw, component: u8) -> Option<Delivered> {
@@ -667,12 +967,26 @@ impl Session {
         if parsed.group() != "default" || level > LOG_INFO {
             return None;
         }
-        let appended = (parsed.kind() == "append_health_and_arming_messages" && parsed.argument_count() > 0)
+        let appended = (parsed.kind() == "append_health_and_arming_messages"
+            && parsed.argument_count() > 0)
             .then(|| {
                 let group = definitions.mode_group(component, parsed.int(0) as u32)?;
-                let checks = self.checks.results.as_ref().map(|r| r.checks_for(group)).unwrap_or_default();
-                let serious: Vec<&str> = checks.iter().filter(|c| external_level(c.log_levels) <= LOG_WARNING).map(|c| c.message.as_str()).collect();
-                Some(if serious.is_empty() { checks.iter().map(|c| c.message.as_str()).collect() } else { serious })
+                let checks = self
+                    .checks
+                    .results
+                    .as_ref()
+                    .map(|r| r.checks_for(group))
+                    .unwrap_or_default();
+                let serious: Vec<&str> = checks
+                    .iter()
+                    .filter(|c| external_level(c.log_levels) <= LOG_WARNING)
+                    .map(|c| c.message.as_str())
+                    .collect();
+                Some(if serious.is_empty() {
+                    checks.iter().map(|c| c.message.as_str()).collect()
+                } else {
+                    serious
+                })
             })
             .flatten()
             .unwrap_or_default();
@@ -682,18 +996,44 @@ impl Session {
             [only] => (*only).to_string(),
             many => many.iter().map(|m| format!("- {m}\n")).collect(),
         };
-        let separator = if !message.is_empty() && !joined.is_empty() { "\n" } else { "" };
+        let separator = if !message.is_empty() && !joined.is_empty() {
+            "\n"
+        } else {
+            ""
+        };
         let text = format!("{message}{separator}{joined}");
-        (!text.is_empty()).then(|| Delivered::Message { severity: level, text, description: parsed.description() })
+        (!text.is_empty()).then(|| Delivered::Message {
+            severity: level,
+            text,
+            description: parsed.description(),
+        })
     }
 
-    pub fn refresh(&mut self, component: u8, custom_mode: u32, takeoff_mode: Option<u32>, mission_mode: Option<u32>) {
-        let Some(definitions) = &self.definitions else { return };
-        let Some(results) = &self.checks.results else { return };
-        let Some(group) = definitions.mode_group(component, custom_mode) else { return };
+    pub fn refresh(
+        &mut self,
+        component: u8,
+        custom_mode: u32,
+        takeoff_mode: Option<u32>,
+        mission_mode: Option<u32>,
+    ) {
+        let Some(definitions) = &self.definitions else {
+            return;
+        };
+        let Some(results) = &self.checks.results else {
+            return;
+        };
+        let Some(group) = definitions.mode_group(component, custom_mode) else {
+            return;
+        };
         let takeoff = takeoff_mode.and_then(|m| definitions.mode_group(component, m));
         let mission = mission_mode.and_then(|m| definitions.mode_group(component, m));
-        self.report = Some(report(results, group, takeoff, mission, self.report.as_ref()));
+        self.report = Some(report(
+            results,
+            group,
+            takeoff,
+            mission,
+            self.report.as_ref(),
+        ));
     }
 }
 
@@ -725,20 +1065,44 @@ mod tests {
         assert!(definitions.supports_checks(1));
         assert_eq!(definitions.mode_group(1, 65536), Some(0));
         assert_eq!(definitions.mode_group(1, 33816576), Some(17));
-        let summary = bytes(&[&[0], &2u64.to_le_bytes(), &0u64.to_le_bytes(), &(1u32 | 131072).to_le_bytes(), &(1u32 | 8 | 131072).to_le_bytes()]);
+        let summary = bytes(&[
+            &[0],
+            &2u64.to_le_bytes(),
+            &0u64.to_le_bytes(),
+            &(1u32 | 131072).to_le_bytes(),
+            &(1u32 | 8 | 131072).to_le_bytes(),
+        ]);
         let check = bytes(&[&(1u32 | 8).to_le_bytes(), &[1], &2.25f32.to_le_bytes()]);
-        let health = bytes(&[&[0], &6u64.to_le_bytes(), &2u64.to_le_bytes(), &0u64.to_le_bytes()]);
+        let health = bytes(&[
+            &[0],
+            &6u64.to_le_bytes(),
+            &2u64.to_le_bytes(),
+            &0u64.to_le_bytes(),
+        ]);
         let mut checks = Checks::default();
         assert!(!checks.handle(&definitions.parse_event(0x0100_0001, summary, 0).unwrap()));
         assert!(!checks.handle(&definitions.parse_event(0x0100_0002, check, 3).unwrap()));
         assert!(checks.handle(&definitions.parse_event(0x0100_0003, health, 0).unwrap()));
         let results = checks.results.unwrap();
         let mode = report(&results, 0, Some(17), Some(3), None);
-        assert!(mode.can_arm && mode.can_takeoff && !mode.can_start_mission, "the takeoff group is bit 17, mission bit 3");
+        assert!(
+            mode.can_arm && mode.can_takeoff && !mode.can_start_mission,
+            "the takeoff group is bit 17, mission bit 3"
+        );
         assert_eq!(mode.gps_state, "red");
-        assert_eq!(mode.problems, vec![("GPS PDOP 2.2 too high".to_string(), "Set <a href=\"param://EKF2_GPS_CHECK\">EKF2_GPS_CHECK</a>.".to_string(), "error")]);
+        assert_eq!(
+            mode.problems,
+            vec![(
+                "GPS PDOP 2.2 too high".to_string(),
+                "Set <a href=\"param://EKF2_GPS_CHECK\">EKF2_GPS_CHECK</a>.".to_string(),
+                "error"
+            )]
+        );
         assert!(mode.has_warnings_or_errors);
-        assert!(report(&results, 17, None, None, None).problems.is_empty(), "the check only names manual and mission");
+        assert!(
+            report(&results, 17, None, None, None).problems.is_empty(),
+            "the check only names manual and mission"
+        );
     }
 
     #[test]
@@ -753,7 +1117,11 @@ mod tests {
     #[test]
     fn a_gap_asks_for_the_missing_event_and_duplicates_are_dropped() {
         let mut receiver = Receiver::default();
-        let event = |sequence| Incoming { sequence, timestamp_ms: 1000, for_us: true };
+        let event = |sequence| Incoming {
+            sequence,
+            timestamp_ms: 1000,
+            for_us: true,
+        };
         assert_eq!(receiver.on_event(&event(10), 0), (true, None));
         assert_eq!(receiver.on_event(&event(10), 0), (false, None));
         assert_eq!(receiver.on_event(&event(13), 0), (false, Some(11)));
@@ -767,7 +1135,12 @@ mod tests {
     #[test]
     fn text_outside_tags_is_html_escaped_and_unknown_tags_drop_their_content() {
         let definitions = parse(r#"{"version":1,"components":{"1":{"namespace":"px4","event_groups":{"default":{"events":{"5":{"name":"x","message":"a < b <b>gone</b> \\{1\\} <a href=\"https://x\">doc</a>"}}}}}}}"#).unwrap();
-        let parsed = definitions.parse_event(0x0100_0005, [0; ARGUMENT_BYTES], 6).unwrap();
-        assert_eq!(parsed.message(), "a &lt; b  {1} <a href=\"https://x\">doc</a>");
+        let parsed = definitions
+            .parse_event(0x0100_0005, [0; ARGUMENT_BYTES], 6)
+            .unwrap();
+        assert_eq!(
+            parsed.message(),
+            "a &lt; b  {1} <a href=\"https://x\">doc</a>"
+        );
     }
 }

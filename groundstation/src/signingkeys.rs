@@ -30,7 +30,11 @@ const ADD_REFUSED: &str = "Could not add key. Name may already exist or input is
 pub type Key = [u8; KEY_BYTES];
 
 pub fn derive(passphrase: &str, iterations: u32) -> Key {
-    pbkdf2::pbkdf2_hmac_array::<sha2::Sha256, KEY_BYTES>(passphrase.as_bytes(), PBKDF2_SALT, iterations)
+    pbkdf2::pbkdf2_hmac_array::<sha2::Sha256, KEY_BYTES>(
+        passphrase.as_bytes(),
+        PBKDF2_SALT,
+        iterations,
+    )
 }
 
 pub fn to_hex(bytes: &[u8]) -> String {
@@ -39,7 +43,11 @@ pub fn to_hex(bytes: &[u8]) -> String {
 
 pub fn from_hex(text: &str) -> Option<Key> {
     let bytes: Option<Vec<u8>> = (text.len() == KEY_BYTES * 2 && text.is_ascii())
-        .then(|| (0..KEY_BYTES).map(|i| u8::from_str_radix(&text[i * 2..i * 2 + 2], 16).ok()).collect())
+        .then(|| {
+            (0..KEY_BYTES)
+                .map(|i| u8::from_str_radix(&text[i * 2..i * 2 + 2], 16).ok())
+                .collect()
+        })
         .flatten();
     bytes.and_then(|b| b.try_into().ok())
 }
@@ -62,7 +70,10 @@ impl Keys {
     }
 
     pub fn all(&self) -> Vec<(String, Key, u64)> {
-        self.keys.iter().map(|(name, key)| (name.clone(), *key, self.last_timestamp(name))).collect()
+        self.keys
+            .iter()
+            .map(|(name, key)| (name.clone(), *key, self.last_timestamp(name)))
+            .collect()
     }
 
     pub fn last_timestamp(&self, name: &str) -> u64 {
@@ -70,7 +81,10 @@ impl Keys {
     }
 
     pub fn record(&mut self, batch: &[(String, u64)]) -> bool {
-        let newer: Vec<&(String, u64)> = batch.iter().filter(|(name, ts)| self.key(name).is_some() && *ts > self.last_timestamp(name)).collect();
+        let newer: Vec<&(String, u64)> = batch
+            .iter()
+            .filter(|(name, ts)| self.key(name).is_some() && *ts > self.last_timestamp(name))
+            .collect();
         newer.iter().for_each(|(name, ts)| {
             self.timestamps.insert(name.clone(), *ts);
         });
@@ -78,7 +92,10 @@ impl Keys {
     }
 
     pub fn key(&self, name: &str) -> Option<Key> {
-        self.keys.iter().find(|(n, _)| n == name).map(|(_, key)| *key)
+        self.keys
+            .iter()
+            .find(|(n, _)| n == name)
+            .map(|(_, key)| *key)
     }
 
     fn accepts(&self, name: &str) -> bool {
@@ -108,26 +125,49 @@ impl Keys {
         };
         let keys = manifest
             .iter()
-            .filter_map(|name| match entries.get(&format!("{KEYS_SETTINGS_GROUP}/{KEY_SUBGROUP}/{name}")) {
-                Some(Setting::Text(hex)) => from_hex(hex).map(|key| (name.clone(), key)),
-                _ => None,
+            .filter_map(|name| {
+                match entries.get(&format!("{KEYS_SETTINGS_GROUP}/{KEY_SUBGROUP}/{name}")) {
+                    Some(Setting::Text(hex)) => from_hex(hex).map(|key| (name.clone(), key)),
+                    _ => None,
+                }
             })
             .collect();
         let timestamps = manifest
             .iter()
-            .filter_map(|name| match entries.get(&format!("{KEYS_SETTINGS_GROUP}/{TIMESTAMP_SUBGROUP}/{name}")) {
-                Some(Setting::Text(ts)) => ts.parse::<u64>().ok().filter(|ts| *ts > 0).map(|ts| (name.clone(), ts)),
-                _ => None,
+            .filter_map(|name| {
+                match entries.get(&format!(
+                    "{KEYS_SETTINGS_GROUP}/{TIMESTAMP_SUBGROUP}/{name}"
+                )) {
+                    Some(Setting::Text(ts)) => ts
+                        .parse::<u64>()
+                        .ok()
+                        .filter(|ts| *ts > 0)
+                        .map(|ts| (name.clone(), ts)),
+                    _ => None,
+                }
             })
             .collect();
         Keys { keys, timestamps }
     }
 
     pub fn entries(&self) -> BTreeMap<String, Setting> {
-        std::iter::once((format!("{KEYS_SETTINGS_GROUP}/{KEY_MANIFEST}"), Setting::List(self.names())))
-            .chain(self.keys.iter().map(|(name, key)| (format!("{KEYS_SETTINGS_GROUP}/{KEY_SUBGROUP}/{name}"), Setting::Text(to_hex(key)))))
-            .chain(self.timestamps.iter().map(|(name, ts)| (format!("{KEYS_SETTINGS_GROUP}/{TIMESTAMP_SUBGROUP}/{name}"), Setting::Text(ts.to_string()))))
-            .collect()
+        std::iter::once((
+            format!("{KEYS_SETTINGS_GROUP}/{KEY_MANIFEST}"),
+            Setting::List(self.names()),
+        ))
+        .chain(self.keys.iter().map(|(name, key)| {
+            (
+                format!("{KEYS_SETTINGS_GROUP}/{KEY_SUBGROUP}/{name}"),
+                Setting::Text(to_hex(key)),
+            )
+        }))
+        .chain(self.timestamps.iter().map(|(name, ts)| {
+            (
+                format!("{KEYS_SETTINGS_GROUP}/{TIMESTAMP_SUBGROUP}/{name}"),
+                Setting::Text(ts.to_string()),
+            )
+        }))
+        .collect()
     }
 }
 
@@ -140,7 +180,11 @@ fn save(keys: &Keys) {
 }
 
 fn args(text: &str) -> Vec<String> {
-    serde_json::from_str::<Vec<Value>>(text).unwrap_or_default().iter().map(|v| v.as_str().unwrap_or_default().to_string()).collect()
+    serde_json::from_str::<Vec<Value>>(text)
+        .unwrap_or_default()
+        .iter()
+        .map(|v| v.as_str().unwrap_or_default().to_string())
+        .collect()
 }
 
 fn added(keys: Keys, name: &str, key: Option<Key>) -> Value {
@@ -158,7 +202,12 @@ pub fn run(path: &str, text: &str) -> Value {
     let given = args(text);
     let arg = |i: usize| given.get(i).map(String::as_str).unwrap_or_default();
     match path {
-        ADD_PASSPHRASE_KEY => added(load(), arg(0), (arg(1).chars().count() >= MIN_PASSPHRASE_LENGTH).then(|| derive(arg(1), PBKDF2_ITERATIONS))),
+        ADD_PASSPHRASE_KEY => added(
+            load(),
+            arg(0),
+            (arg(1).chars().count() >= MIN_PASSPHRASE_LENGTH)
+                .then(|| derive(arg(1), PBKDF2_ITERATIONS)),
+        ),
         ADD_RAW_KEY => added(load(), arg(0), from_hex(arg(1))),
         GENERATE_KEY => match random_hex() {
             Some(hex) => json!({ "ok": true, "result": hex }),
@@ -178,28 +227,49 @@ pub fn run(path: &str, text: &str) -> Value {
         ENABLE_SIGNING => match load().key(arg(0)) {
             Some(key) => {
                 let seed = load().last_timestamp(arg(0));
-                change_signing(|signing, link, target, now_ms| signing.begin_enable(link, target, arg(0), key, seed, now_ms))
+                change_signing(|signing, link, target, now_ms| {
+                    signing.begin_enable(link, target, arg(0), key, seed, now_ms)
+                })
             }
             None => json!({ "ok": false, "reason": format!("No key is called {}", arg(0)) }),
         },
-        DISABLE_SIGNING => change_signing(|signing, link, target, now_ms| signing.begin_disable(link, target, now_ms)),
+        DISABLE_SIGNING => change_signing(|signing, link, target, now_ms| {
+            signing.begin_disable(link, target, now_ms)
+        }),
         _ => json!({ "ok": false, "reason": format!("{path} is not a signing key action") }),
     }
 }
 
 fn active_link() -> Option<(LinkId, (u8, u8))> {
-    crate::hub::lock().active().map(|v| (v.link, (v.id, v.component)))
+    crate::hub::lock()
+        .active()
+        .map(|v| (v.link, (v.id, v.component)))
 }
 
 fn send_setup(link: LinkId, data: &mavlink::dialects::ardupilotmega::SETUP_SIGNING_DATA) {
-    let copies: Vec<crate::mavout::Outbound> = (0..crate::signing::SETUP_COPIES).map(|_| crate::mavout::Outbound::SetupSigning { data: data.clone() }).collect();
+    let copies: Vec<crate::mavout::Outbound> = (0..crate::signing::SETUP_COPIES)
+        .map(|_| crate::mavout::Outbound::SetupSigning { data: data.clone() })
+        .collect();
     crate::hub::send_for(data.target_system, link, &copies);
 }
 
-
-fn change_signing(begin: impl Fn(&mut crate::signing::Signing, LinkId, (u8, u8), u64) -> Result<mavlink::dialects::ardupilotmega::SETUP_SIGNING_DATA, String>) -> Value {
-    let Some((link, target)) = active_link() else { return json!({ "ok": false, "reason": "No vehicle is connected." }) };
-    let begun = begin(&mut crate::signing::lock(), link, target, crate::hub::now_ms());
+fn change_signing(
+    begin: impl Fn(
+        &mut crate::signing::Signing,
+        LinkId,
+        (u8, u8),
+        u64,
+    ) -> Result<mavlink::dialects::ardupilotmega::SETUP_SIGNING_DATA, String>,
+) -> Value {
+    let Some((link, target)) = active_link() else {
+        return json!({ "ok": false, "reason": "No vehicle is connected." });
+    };
+    let begun = begin(
+        &mut crate::signing::lock(),
+        link,
+        target,
+        crate::hub::now_ms(),
+    );
     match begun {
         Ok(data) => {
             send_setup(link, &data);
@@ -230,23 +300,50 @@ fn flush_timestamps(now_ms: u64) {
 pub fn tick(now_ms: u64) {
     flush_timestamps(now_ms);
     let (resend, notices) = crate::signing::lock().tick(now_ms);
-    resend.iter().for_each(|(link, data)| send_setup(*link, data));
+    resend
+        .iter()
+        .for_each(|(link, data)| send_setup(*link, data));
     notices.iter().for_each(|notice| {
         crate::noticeboard::post_from_vehicle(crate::noticeboard::MESSAGE, notice);
     });
 }
 
 pub fn owns(path: &str) -> bool {
-    [ADD_PASSPHRASE_KEY, ADD_RAW_KEY, GENERATE_KEY, REMOVE_KEY, EXPORT_KEY, ENABLE_SIGNING, DISABLE_SIGNING].contains(&path)
+    [
+        ADD_PASSPHRASE_KEY,
+        ADD_RAW_KEY,
+        GENERATE_KEY,
+        REMOVE_KEY,
+        EXPORT_KEY,
+        ENABLE_SIGNING,
+        DISABLE_SIGNING,
+    ]
+    .contains(&path)
 }
 
 pub fn signing_keys_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let vehicle = crate::read::flag(&backend.value_fields("vehicles", "activeVehicleAvailable"), "activeVehicleAvailable");
+    let vehicle = crate::read::flag(
+        &backend.value_fields("vehicles", "activeVehicleAvailable"),
+        "activeVehicleAvailable",
+    );
     let available = crate::vehiclefacade::switched_on();
-    let names = if available { load().names() } else { Vec::new() };
-    let armed = crate::hub::lock().active().is_some_and(crate::hub::Vehicle::armed);
+    let names = if available {
+        load().names()
+    } else {
+        Vec::new()
+    };
+    let armed = crate::hub::lock()
+        .active()
+        .is_some_and(crate::hub::Vehicle::armed);
     let link = active_link().map(|(link, _)| link);
-    let link_name = link.and_then(|link| crate::linkhost::TRANSPORTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).describe(link)).map_or_else(|| "active link".to_string(), |(name, _, _)| name);
+    let link_name = link
+        .and_then(|link| {
+            crate::linkhost::TRANSPORTS
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner)
+                .describe(link)
+        })
+        .map_or_else(|| "active link".to_string(), |(name, _, _)| name);
     let signing = crate::signing::lock();
     let status = link.map(|link| signing.status(link)).unwrap_or_default();
     json!({
@@ -269,9 +366,20 @@ mod tests {
 
     #[test]
     fn the_passphrase_is_stretched_with_pbkdf2_hmac_sha256_and_qgcs_salt() {
-        assert_eq!(to_hex(&pbkdf2::pbkdf2_hmac_array::<sha2::Sha256, 32>(b"password", b"salt", 1)), "120fb6cffcf8b32c43e7225256c4f837a86548c92ccc35480805987cb70be17b", "RFC 7914 vector");
+        assert_eq!(
+            to_hex(&pbkdf2::pbkdf2_hmac_array::<sha2::Sha256, 32>(
+                b"password",
+                b"salt",
+                1
+            )),
+            "120fb6cffcf8b32c43e7225256c4f837a86548c92ccc35480805987cb70be17b",
+            "RFC 7914 vector"
+        );
         assert_ne!(derive("correct horse", 2), derive("correct horse", 1));
-        assert_eq!(derive("correct horse", 1), pbkdf2::pbkdf2_hmac_array::<sha2::Sha256, 32>(b"correct horse", PBKDF2_SALT, 1));
+        assert_eq!(
+            derive("correct horse", 1),
+            pbkdf2::pbkdf2_hmac_array::<sha2::Sha256, 32>(b"correct horse", PBKDF2_SALT, 1)
+        );
     }
 
     #[test]
@@ -292,15 +400,27 @@ mod tests {
         assert!(!keys.add("", [2; 32]));
         assert!(keys.add("bench", [3; 32]));
         let entries = keys.entries();
-        assert_eq!(entries.get("MAVLinkSigningKeys/manifest"), Some(&Setting::List(vec!["field".into(), "bench".into()])));
+        assert_eq!(
+            entries.get("MAVLinkSigningKeys/manifest"),
+            Some(&Setting::List(vec!["field".into(), "bench".into()]))
+        );
         assert_eq!(Keys::from_entries(&entries), keys);
         assert!(keys.remove("field"));
         assert_eq!(keys.names(), ["bench"]);
         assert!(!keys.remove("field"));
         assert!(keys.record(&[("bench".into(), 500), ("gone".into(), 900)]));
-        assert!(!keys.record(&[("bench".into(), 400)]), "a timestamp only moves forward");
+        assert!(
+            !keys.record(&[("bench".into(), 400)]),
+            "a timestamp only moves forward"
+        );
         let restored = Keys::from_entries(&keys.entries());
-        assert_eq!((restored.last_timestamp("bench"), restored.last_timestamp("gone")), (500, 0));
+        assert_eq!(
+            (
+                restored.last_timestamp("bench"),
+                restored.last_timestamp("gone")
+            ),
+            (500, 0)
+        );
         assert_eq!(restored.all(), [("bench".to_string(), [3; 32], 500)]);
     }
 }

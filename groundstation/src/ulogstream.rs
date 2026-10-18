@@ -72,7 +72,9 @@ impl Processor {
     }
 
     pub fn process(&mut self, sequence: u16, first_message: u8, input: &[u8]) -> bool {
-        let Some(mut drops) = self.check_sequence(sequence) else { return true };
+        let Some(mut drops) = self.check_sequence(sequence) else {
+            return true;
+        };
         let mut data = input.to_vec();
         let mut first_message = first_message;
         if !self.got_header {
@@ -139,13 +141,19 @@ mod tests {
         first.extend_from_slice(&a);
         first.extend_from_slice(&b[..4]);
         assert!(processor.process(0, 0, &first));
-        assert_eq!(processor.take_output(), [header.to_vec(), a.clone()].concat());
+        assert_eq!(
+            processor.take_output(),
+            [header.to_vec(), a.clone()].concat()
+        );
         let mut second = b[4..].to_vec();
         let c = message(b'L', b"z");
         second.extend_from_slice(&c);
         assert!(processor.process(1, (b.len() - 4) as u8, &second));
         assert_eq!(processor.take_output(), [b.clone(), c.clone()].concat());
-        assert_eq!((processor.drops(), processor.written()), (0, (16 + a.len() + b.len() + c.len()) as u64));
+        assert_eq!(
+            (processor.drops(), processor.written()),
+            (0, (16 + a.len() + b.len() + c.len()) as u64)
+        );
         assert!(!Processor::default().process(0, 0, &[1, 2, 3]));
     }
 
@@ -157,9 +165,15 @@ mod tests {
         processor.process(10, 0, &first);
         processor.take_output();
         assert!(processor.process(10, 0, &[9, 9, 9]));
-        assert!(processor.take_output().is_empty(), "a duplicate sequence writes nothing");
+        assert!(
+            processor.take_output().is_empty(),
+            "a duplicate sequence writes nothing"
+        );
         assert!(processor.process(9, 0, &[9, 9, 9]));
-        assert!(processor.take_output().is_empty(), "a reordered packet writes nothing");
+        assert!(
+            processor.take_output().is_empty(),
+            "a reordered packet writes nothing"
+        );
         let next = message(b'D', b"after gap");
         assert!(processor.process(14, 0, &next));
         let out = processor.take_output();

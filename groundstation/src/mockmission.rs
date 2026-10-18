@@ -24,19 +24,35 @@ pub struct Photos {
 
 impl Photos {
     pub fn every_metres(self, metres: f64) -> Photos {
-        Photos { every_m: (metres > 0.0).then_some(metres), since_m: 0.0, ..self }
+        Photos {
+            every_m: (metres > 0.0).then_some(metres),
+            since_m: 0.0,
+            ..self
+        }
     }
 
     pub fn every_seconds(self, seconds: f64, count: u32) -> Photos {
-        Photos { every_s: Some(seconds), left: (count > 0).then_some(count), since_s: 0.0, ..self }
+        Photos {
+            every_s: Some(seconds),
+            left: (count > 0).then_some(count),
+            since_s: 0.0,
+            ..self
+        }
     }
 
     pub fn stopped(self) -> Photos {
-        Photos { every_s: None, left: None, ..self }
+        Photos {
+            every_s: None,
+            left: None,
+            ..self
+        }
     }
 
     pub fn snapped(self) -> Photos {
-        Photos { taken: self.taken.saturating_add(1), ..self }
+        Photos {
+            taken: self.taken.saturating_add(1),
+            ..self
+        }
     }
 
     pub fn advanced(self, travelled_m: f64, dt: f64) -> (Photos, bool) {
@@ -47,7 +63,13 @@ impl Photos {
         let next = Photos {
             since_m: if by_distance { 0.0 } else { since_m },
             since_s: if by_time { 0.0 } else { since_s },
-            left: self.left.map(|left| if by_time { left.saturating_sub(1) } else { left }),
+            left: self.left.map(|left| {
+                if by_time {
+                    left.saturating_sub(1)
+                } else {
+                    left
+                }
+            }),
             ..self
         };
         (next, by_distance || by_time)
@@ -71,7 +93,12 @@ pub struct Runner {
 
 impl Default for Runner {
     fn default() -> Runner {
-        Runner { current: 0, state: MissionState::MISSION_STATE_NOT_STARTED, arrived_at: None, jumps: BTreeMap::new() }
+        Runner {
+            current: 0,
+            state: MissionState::MISSION_STATE_NOT_STARTED,
+            arrived_at: None,
+            jumps: BTreeMap::new(),
+        }
     }
 }
 
@@ -81,7 +108,11 @@ impl Runner {
     }
 
     pub fn pause(&mut self) {
-        self.state = if self.active() { MissionState::MISSION_STATE_PAUSED } else { self.state };
+        self.state = if self.active() {
+            MissionState::MISSION_STATE_PAUSED
+        } else {
+            self.state
+        };
     }
 
     pub fn complete(&mut self) {
@@ -100,10 +131,21 @@ impl Runner {
 
     pub fn walk<'a>(&mut self, items: &'a [MISSION_ITEM_INT_DATA], from: usize) -> Vec<Act<'a>> {
         self.arrived_at = None;
-        self.step(items, from, items.len() * JUMP_BUDGET_PER_ITEM + 1, Vec::new())
+        self.step(
+            items,
+            from,
+            items.len() * JUMP_BUDGET_PER_ITEM + 1,
+            Vec::new(),
+        )
     }
 
-    fn step<'a>(&mut self, items: &'a [MISSION_ITEM_INT_DATA], at: usize, budget: usize, acts: Vec<Act<'a>>) -> Vec<Act<'a>> {
+    fn step<'a>(
+        &mut self,
+        items: &'a [MISSION_ITEM_INT_DATA],
+        at: usize,
+        budget: usize,
+        acts: Vec<Act<'a>>,
+    ) -> Vec<Act<'a>> {
         match items.get(at) {
             Some(item) if budget > 0 && flies(item.command) => {
                 self.current = at as u16;
@@ -114,7 +156,12 @@ impl Runner {
                 let next = self.jump(item, at);
                 self.step(items, next, budget - 1, acts)
             }
-            Some(item) if budget > 0 => self.step(items, at + 1, budget - 1, acts.into_iter().chain([Act::Perform(item)]).collect()),
+            Some(item) if budget > 0 => self.step(
+                items,
+                at + 1,
+                budget - 1,
+                acts.into_iter().chain([Act::Perform(item)]).collect(),
+            ),
             _ => {
                 self.complete();
                 acts.into_iter().chain([Act::Complete]).collect()
@@ -123,7 +170,11 @@ impl Runner {
     }
 
     fn jump(&mut self, item: &MISSION_ITEM_INT_DATA, at: usize) -> usize {
-        let left = self.jumps.get(&(at as u16)).copied().unwrap_or(item.param2 as i32);
+        let left = self
+            .jumps
+            .get(&(at as u16))
+            .copied()
+            .unwrap_or(item.param2 as i32);
         match left {
             0 => at + 1,
             n => {
@@ -140,13 +191,28 @@ impl Runner {
     }
 
     pub fn report(&self, total: u16) -> MISSION_CURRENT_DATA {
-        let state = if total == 0 { MissionState::MISSION_STATE_NO_MISSION } else { self.state };
-        MISSION_CURRENT_DATA { seq: self.current, total, mission_state: state, ..Default::default() }
+        let state = if total == 0 {
+            MissionState::MISSION_STATE_NO_MISSION
+        } else {
+            self.state
+        };
+        MISSION_CURRENT_DATA {
+            seq: self.current,
+            total,
+            mission_state: state,
+            ..Default::default()
+        }
     }
 }
 
 pub fn loiters(command: MavCmd) -> bool {
-    matches!(command, MavCmd::MAV_CMD_NAV_LOITER_UNLIM | MavCmd::MAV_CMD_NAV_LOITER_TURNS | MavCmd::MAV_CMD_NAV_LOITER_TIME | MavCmd::MAV_CMD_NAV_LOITER_TO_ALT)
+    matches!(
+        command,
+        MavCmd::MAV_CMD_NAV_LOITER_UNLIM
+            | MavCmd::MAV_CMD_NAV_LOITER_TURNS
+            | MavCmd::MAV_CMD_NAV_LOITER_TIME
+            | MavCmd::MAV_CMD_NAV_LOITER_TO_ALT
+    )
 }
 
 pub fn flies(command: MavCmd) -> bool {
@@ -172,19 +238,41 @@ mod tests {
     use super::*;
 
     fn item(command: MavCmd, param1: f32, param2: f32) -> MISSION_ITEM_INT_DATA {
-        MISSION_ITEM_INT_DATA { command, param1, param2, ..Default::default() }
+        MISSION_ITEM_INT_DATA {
+            command,
+            param1,
+            param2,
+            ..Default::default()
+        }
     }
 
     #[test]
     fn a_walk_performs_do_items_on_the_way_to_the_next_nav_item_and_jumps_count_down() {
-        let items = [item(MavCmd::MAV_CMD_NAV_WAYPOINT, 0.0, 0.0), item(MavCmd::MAV_CMD_DO_CHANGE_SPEED, 1.0, 3.0), item(MavCmd::MAV_CMD_DO_JUMP, 0.0, 1.0), item(MavCmd::MAV_CMD_NAV_LAND, 0.0, 0.0)];
+        let items = [
+            item(MavCmd::MAV_CMD_NAV_WAYPOINT, 0.0, 0.0),
+            item(MavCmd::MAV_CMD_DO_CHANGE_SPEED, 1.0, 3.0),
+            item(MavCmd::MAV_CMD_DO_JUMP, 0.0, 1.0),
+            item(MavCmd::MAV_CMD_NAV_LAND, 0.0, 0.0),
+        ];
         let mut runner = Runner::default();
-        assert_eq!(runner.walk(&items, 1), [Act::Perform(&items[1]), Act::Fly(&items[0])], "the jump sends it back to item 0 once");
-        assert_eq!(runner.walk(&items, 1), [Act::Perform(&items[1]), Act::Fly(&items[3])], "and is spent the second time round");
+        assert_eq!(
+            runner.walk(&items, 1),
+            [Act::Perform(&items[1]), Act::Fly(&items[0])],
+            "the jump sends it back to item 0 once"
+        );
+        assert_eq!(
+            runner.walk(&items, 1),
+            [Act::Perform(&items[1]), Act::Fly(&items[3])],
+            "and is spent the second time round"
+        );
         assert_eq!((runner.current, runner.active()), (3, true));
         assert_eq!(runner.walk(&items, 4), [Act::Complete]);
         let forever = [item(MavCmd::MAV_CMD_DO_JUMP, 0.0, -1.0)];
-        assert_eq!(Runner::default().walk(&forever, 0), [Act::Complete], "a loop with nothing to fly runs out of budget instead of spinning");
+        assert_eq!(
+            Runner::default().walk(&forever, 0),
+            [Act::Complete],
+            "a loop with nothing to fly runs out of budget instead of spinning"
+        );
     }
 
     #[test]
@@ -192,14 +280,24 @@ mod tests {
         let by_distance = Photos::default().every_metres(10.0);
         let (after_nine, due) = by_distance.advanced(9.0, 0.1);
         assert!(!due);
-        assert!(after_nine.advanced(1.0, 0.1).1, "the tenth metre takes a photo");
+        assert!(
+            after_nine.advanced(1.0, 0.1).1,
+            "the tenth metre takes a photo"
+        );
         let twice = Photos::default().every_seconds(1.0, 2);
         let shots = (0..50).scan(twice, |photos, _| {
             let (next, due) = photos.advanced(0.0, 0.1);
             *photos = next;
             Some(due)
         });
-        assert_eq!(shots.filter(|due| *due).count(), 2, "a count of two stops after two");
-        assert!(!Photos::default().every_metres(0.0).advanced(100.0, 0.1).1, "a zero distance turns the trigger off");
+        assert_eq!(
+            shots.filter(|due| *due).count(),
+            2,
+            "a count of two stops after two"
+        );
+        assert!(
+            !Photos::default().every_metres(0.0).advanced(100.0, 0.1).1,
+            "a zero distance turns the trigger off"
+        );
     }
 }

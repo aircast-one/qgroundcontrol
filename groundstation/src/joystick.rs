@@ -84,7 +84,12 @@ pub const FUNCTIONS: [(Function, &str); 12] = [
     (Function::Additional6, "additionalAxis6"),
 ];
 
-pub const ATTITUDE: [Function; 4] = [Function::Roll, Function::Pitch, Function::Yaw, Function::Throttle];
+pub const ATTITUDE: [Function; 4] = [
+    Function::Roll,
+    Function::Pitch,
+    Function::Yaw,
+    Function::Throttle,
+];
 
 pub const OPTIONAL: [Function; MANUAL_CONTROL_EXTENSIONS] = [
     Function::PitchExtension,
@@ -103,27 +108,62 @@ const _: () = assert!(MANUAL_CONTROL_EXTENSIONS == 8);
 const _: () = assert!(OPTIONAL.len() == MANUAL_CONTROL_ONLY_EXTENSIONS + ADDITIONAL_AXES);
 
 pub const fn rc_release(channel: usize) -> u16 {
-    if channel <= RC_LOW_CHANNELS { 0 } else { u16::MAX - 1 }
+    if channel <= RC_LOW_CHANNELS {
+        0
+    } else {
+        u16::MAX - 1
+    }
 }
 
 pub const fn rc_ignore(channel: usize) -> u16 {
-    if channel <= RC_LOW_CHANNELS { u16::MAX } else { 0 }
+    if channel <= RC_LOW_CHANNELS {
+        u16::MAX
+    } else {
+        0
+    }
 }
 
 pub const TRANSMITTER_MODES: [[Function; 4]; 4] = [
-    [Function::Yaw, Function::Pitch, Function::Roll, Function::Throttle],
-    [Function::Yaw, Function::Throttle, Function::Roll, Function::Pitch],
-    [Function::Roll, Function::Pitch, Function::Yaw, Function::Throttle],
-    [Function::Roll, Function::Throttle, Function::Yaw, Function::Pitch],
+    [
+        Function::Yaw,
+        Function::Pitch,
+        Function::Roll,
+        Function::Throttle,
+    ],
+    [
+        Function::Yaw,
+        Function::Throttle,
+        Function::Roll,
+        Function::Pitch,
+    ],
+    [
+        Function::Roll,
+        Function::Pitch,
+        Function::Yaw,
+        Function::Throttle,
+    ],
+    [
+        Function::Roll,
+        Function::Throttle,
+        Function::Yaw,
+        Function::Pitch,
+    ],
 ];
 
 impl Function {
     pub fn id(self) -> &'static str {
-        FUNCTIONS.iter().find(|(f, _)| *f == self).map(|(_, id)| *id).unwrap_or("")
+        FUNCTIONS
+            .iter()
+            .find(|(f, _)| *f == self)
+            .map(|(_, id)| *id)
+            .unwrap_or("")
     }
 
     pub fn parse(id: &str) -> Option<Function> {
-        FUNCTIONS.iter().find(|(_, name)| *name == id).map(|(f, _)| *f)
+        FUNCTIONS
+            .iter()
+            .find(|(_, name)| *name == id)
+            .map(|(f, _)| *f)
     }
 
     pub fn index(self) -> usize {
@@ -135,7 +175,9 @@ impl Function {
     }
 
     pub fn rc_channel(self) -> Option<usize> {
-        self.extension_bit().filter(|bit| *bit >= MANUAL_CONTROL_ONLY_EXTENSIONS).map(|bit| RC_OVERRIDE_FIRST_CHANNEL + bit - MANUAL_CONTROL_ONLY_EXTENSIONS)
+        self.extension_bit()
+            .filter(|bit| *bit >= MANUAL_CONTROL_ONLY_EXTENSIONS)
+            .map(|bit| RC_OVERRIDE_FIRST_CHANNEL + bit - MANUAL_CONTROL_ONLY_EXTENSIONS)
     }
 
     pub fn carried_by(self) -> &'static [&'static str] {
@@ -202,7 +244,12 @@ pub const ACTIONS: [(&str, &str, bool, bool); 36] = [
     ("triggerCamera", "Trigger Camera", false, false),
     ("startRecordingVideo", "Start Recording Video", false, false),
     ("stopRecordingVideo", "Stop Recording Video", false, false),
-    ("toggleRecordingVideo", "Toggle Recording Video", false, false),
+    (
+        "toggleRecordingVideo",
+        "Toggle Recording Video",
+        false,
+        false,
+    ),
     ("gimbalDown", "Gimbal Down", true, false),
     ("gimbalUp", "Gimbal Up", true, false),
     ("gimbalLeft", "Gimbal Left", true, false),
@@ -216,8 +263,18 @@ pub const ACTIONS: [(&str, &str, bool, bool); 36] = [
     ("gripperHold", "Gripper Hold", false, false),
     ("landingGearDeploy", "Landing gear deploy", false, false),
     ("landingGearRetract", "Landing gear retract", false, false),
-    ("motorInterlockEnable", "Motor Interlock enable", false, false),
-    ("motorInterlockDisable", "Motor Interlock disable", false, false),
+    (
+        "motorInterlockEnable",
+        "Motor Interlock enable",
+        false,
+        false,
+    ),
+    (
+        "motorInterlockDisable",
+        "Motor Interlock disable",
+        false,
+        false,
+    ),
 ];
 
 pub const RC_CHANNEL_ACTIONS: [(&str, &str, usize); 12] = [
@@ -250,17 +307,25 @@ pub const RC_CHANNEL_MIDDLE_ACTIONS: [(&str, &str, usize); 12] = [
     ("rcChannel16Middle", "RC Channel 16 Middle", 16),
 ];
 
-const _: () = assert!(RC_CHANNEL_ACTIONS.len() == *RC_BUTTON_CHANNELS.end() - *RC_BUTTON_CHANNELS.start() + 1);
+const _: () = assert!(
+    RC_CHANNEL_ACTIONS.len() == *RC_BUTTON_CHANNELS.end() - *RC_BUTTON_CHANNELS.start() + 1
+);
 const _: () = assert!(RC_CHANNEL_MIDDLE_ACTIONS.len() == RC_CHANNEL_ACTIONS.len());
 
 fn rc_channel_entries() -> impl Iterator<Item = (&'static str, &'static str, usize, u16)> {
-    let high = RC_CHANNEL_ACTIONS.iter().map(|(id, name, channel)| (*id, *name, *channel, PWM_MAX as u16));
-    let middle = RC_CHANNEL_MIDDLE_ACTIONS.iter().map(|(id, name, channel)| (*id, *name, *channel, PWM_CENTER as u16));
+    let high = RC_CHANNEL_ACTIONS
+        .iter()
+        .map(|(id, name, channel)| (*id, *name, *channel, PWM_MAX as u16));
+    let middle = RC_CHANNEL_MIDDLE_ACTIONS
+        .iter()
+        .map(|(id, name, channel)| (*id, *name, *channel, PWM_CENTER as u16));
     high.chain(middle)
 }
 
 fn rc_binding(action: &str) -> Option<(usize, u16)> {
-    rc_channel_entries().find(|(_, name, _, _)| *name == action).map(|(_, _, channel, pwm)| (channel, pwm))
+    rc_channel_entries()
+        .find(|(_, name, _, _)| *name == action)
+        .map(|(_, _, channel, pwm)| (channel, pwm))
 }
 
 pub fn rc_channel_of(action: &str) -> Option<usize> {
@@ -268,7 +333,10 @@ pub fn rc_channel_of(action: &str) -> Option<usize> {
 }
 
 pub fn rc_channel_actions(channel: usize) -> Vec<&'static str> {
-    rc_channel_entries().filter(|(_, _, c, _)| *c == channel).map(|(_, name, _, _)| name).collect()
+    rc_channel_entries()
+        .filter(|(_, _, c, _)| *c == channel)
+        .map(|(_, name, _, _)| name)
+        .collect()
 }
 
 pub fn action_id(action: &str) -> Option<&'static str> {
@@ -278,19 +346,28 @@ pub fn action_id(action: &str) -> Option<&'static str> {
             .iter()
             .find(|(_, name, _, _)| *name == action)
             .map(|(id, _, _, _)| *id)
-            .or_else(|| rc_channel_entries().find(|(_, name, _, _)| *name == action).map(|(id, _, _, _)| id)),
+            .or_else(|| {
+                rc_channel_entries()
+                    .find(|(_, name, _, _)| *name == action)
+                    .map(|(id, _, _, _)| id)
+            }),
     }
 }
 
 pub fn can_repeat(action: &str) -> bool {
-    ACTIONS.iter().any(|(_, name, _, repeat)| *name == action && *repeat)
+    ACTIONS
+        .iter()
+        .any(|(_, name, _, repeat)| *name == action && *repeat)
 }
 
 pub fn accepts(action: &str, event: ButtonEvent) -> bool {
     if action.is_empty() || action == ACTION_NONE || rc_channel_of(action).is_some() {
         return false;
     }
-    match (ACTIONS.iter().find(|(_, name, _, _)| *name == action), event) {
+    match (
+        ACTIONS.iter().find(|(_, name, _, _)| *name == action),
+        event,
+    ) {
         (_, ButtonEvent::None) => false,
         (_, ButtonEvent::Down) => true,
         (Some((_, _, up, _)), ButtonEvent::Up) => *up,
@@ -310,18 +387,35 @@ pub struct AxisCalibration {
 
 impl Default for AxisCalibration {
     fn default() -> Self {
-        AxisCalibration { min: AXIS_MIN, max: AXIS_MAX, center: 0, deadband: 0, reversed: false }
+        AxisCalibration {
+            min: AXIS_MIN,
+            max: AXIS_MAX,
+            center: 0,
+            deadband: 0,
+            reversed: false,
+        }
     }
 }
 
 impl AxisCalibration {
     pub fn fault(&self) -> Option<&'static str> {
-        let travel = [self.max.saturating_sub(self.center), self.center.saturating_sub(self.min)];
+        let travel = [
+            self.max.saturating_sub(self.center),
+            self.center.saturating_sub(self.min),
+        ];
         [
             (self.min >= self.max, CALIBRATION_MIN_NOT_BELOW_MAX),
-            (self.center < self.min || self.center > self.max, CALIBRATION_CENTRE_OUT_OF_RANGE),
+            (
+                self.center < self.min || self.center > self.max,
+                CALIBRATION_CENTRE_OUT_OF_RANGE,
+            ),
             (self.deadband < 0, CALIBRATION_DEADBAND_NEGATIVE),
-            (travel.iter().any(|span| *span > 0 && self.deadband >= *span), CALIBRATION_DEADBAND_EXCEEDS_TRAVEL),
+            (
+                travel
+                    .iter()
+                    .any(|span| *span > 0 && self.deadband >= *span),
+                CALIBRATION_DEADBAND_EXCEEDS_TRAVEL,
+            ),
         ]
         .into_iter()
         .find_map(|(broken, reason)| broken.then_some(reason))
@@ -423,26 +517,50 @@ fn interval_ms(hz: f64, low: f64, high: f64, fallback: f64) -> u64 {
 }
 
 pub fn poll_interval_ms() -> u64 {
-    interval_ms(AXIS_FREQUENCY_MAX_HZ, AXIS_FREQUENCY_MIN_HZ, AXIS_FREQUENCY_MAX_HZ, AXIS_FREQUENCY_DEFAULT_HZ)
-        .min(interval_ms(BUTTON_FREQUENCY_MAX_HZ, BUTTON_FREQUENCY_MIN_HZ, BUTTON_FREQUENCY_MAX_HZ, BUTTON_FREQUENCY_DEFAULT_HZ))
-        / 2
+    interval_ms(
+        AXIS_FREQUENCY_MAX_HZ,
+        AXIS_FREQUENCY_MIN_HZ,
+        AXIS_FREQUENCY_MAX_HZ,
+        AXIS_FREQUENCY_DEFAULT_HZ,
+    )
+    .min(interval_ms(
+        BUTTON_FREQUENCY_MAX_HZ,
+        BUTTON_FREQUENCY_MIN_HZ,
+        BUTTON_FREQUENCY_MAX_HZ,
+        BUTTON_FREQUENCY_DEFAULT_HZ,
+    )) / 2
 }
 
 impl Settings {
     pub fn enabled(&self, function: Function) -> bool {
-        function.extension_bit().is_none_or(|bit| self.optional_enabled[bit])
+        function
+            .extension_bit()
+            .is_none_or(|bit| self.optional_enabled[bit])
     }
 
     pub fn wanted(&self) -> Vec<Function> {
-        ATTITUDE.into_iter().chain(OPTIONAL.into_iter().filter(|f| self.enabled(*f))).collect()
+        ATTITUDE
+            .into_iter()
+            .chain(OPTIONAL.into_iter().filter(|f| self.enabled(*f)))
+            .collect()
     }
 
     pub fn axis_interval_ms(&self) -> u64 {
-        interval_ms(self.axis_frequency_hz, AXIS_FREQUENCY_MIN_HZ, AXIS_FREQUENCY_MAX_HZ, AXIS_FREQUENCY_DEFAULT_HZ)
+        interval_ms(
+            self.axis_frequency_hz,
+            AXIS_FREQUENCY_MIN_HZ,
+            AXIS_FREQUENCY_MAX_HZ,
+            AXIS_FREQUENCY_DEFAULT_HZ,
+        )
     }
 
     pub fn button_interval_ms(&self) -> u64 {
-        interval_ms(self.button_frequency_hz, BUTTON_FREQUENCY_MIN_HZ, BUTTON_FREQUENCY_MAX_HZ, BUTTON_FREQUENCY_DEFAULT_HZ)
+        interval_ms(
+            self.button_frequency_hz,
+            BUTTON_FREQUENCY_MIN_HZ,
+            BUTTON_FREQUENCY_MAX_HZ,
+            BUTTON_FREQUENCY_DEFAULT_HZ,
+        )
     }
 
     pub fn effective_throttle_mode(&self, support: Support) -> ThrottleMode {
@@ -474,13 +592,19 @@ impl Settings {
     pub fn axis_channels(&self, support: Support) -> Vec<usize> {
         match self.additional_axes_via(support) {
             AdditionalAxes::ManualControl => Vec::new(),
-            AdditionalAxes::RcChannelsOverride => OPTIONAL.iter().filter(|f| self.enabled(**f)).filter_map(|f| f.rc_channel()).collect(),
+            AdditionalAxes::RcChannelsOverride => OPTIONAL
+                .iter()
+                .filter(|f| self.enabled(**f))
+                .filter_map(|f| f.rc_channel())
+                .collect(),
         }
     }
 
     pub fn button_channels(&self, support: Support) -> Vec<usize> {
         let taken = self.axis_channels(support);
-        RC_BUTTON_CHANNELS.filter(|channel| !taken.contains(channel)).collect()
+        RC_BUTTON_CHANNELS
+            .filter(|channel| !taken.contains(channel))
+            .collect()
     }
 }
 
@@ -495,7 +619,13 @@ pub struct Support {
 
 impl Default for Support {
     fn default() -> Self {
-        Support { throttle_mode_center_zero: true, negative_thrust: false, manual_control_aux: true, sticks_are_rc_overrides: false, standby: false }
+        Support {
+            throttle_mode_center_zero: true,
+            negative_thrust: false,
+            manual_control_aux: true,
+            sticks_are_rc_overrides: false,
+            standby: false,
+        }
     }
 }
 
@@ -530,26 +660,72 @@ pub struct Binding {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Out {
-    Axes { roll: f32, pitch: f32, yaw: f32, throttle: f32 },
-    ManualControl { x: i16, y: i16, z: i16, r: i16, buttons: u16, buttons2: u16, enabled_extensions: u8, extensions: [i16; MANUAL_CONTROL_EXTENSIONS] },
-    RcChannelsOverride { channels: [u16; RC_FRAME_CHANNELS] },
-    Action { action: String, event: ButtonEvent },
-    RawAxes { values: Vec<Option<i32>> },
-    RawButton { index: usize, pressed: bool },
-    MappingIncomplete { missing: Vec<Function> },
-    MissingAxisData { axes: Vec<usize> },
-    RequireCalibration { missing: Vec<Function> },
+    Axes {
+        roll: f32,
+        pitch: f32,
+        yaw: f32,
+        throttle: f32,
+    },
+    ManualControl {
+        x: i16,
+        y: i16,
+        z: i16,
+        r: i16,
+        buttons: u16,
+        buttons2: u16,
+        enabled_extensions: u8,
+        extensions: [i16; MANUAL_CONTROL_EXTENSIONS],
+    },
+    RcChannelsOverride {
+        channels: [u16; RC_FRAME_CHANNELS],
+    },
+    Action {
+        action: String,
+        event: ButtonEvent,
+    },
+    RawAxes {
+        values: Vec<Option<i32>>,
+    },
+    RawButton {
+        index: usize,
+        pressed: bool,
+    },
+    MappingIncomplete {
+        missing: Vec<Function>,
+    },
+    MissingAxisData {
+        axes: Vec<usize>,
+    },
+    RequireCalibration {
+        missing: Vec<Function>,
+    },
 }
 
 pub fn adjust_range(value: i32, calibration: &AxisCalibration, with_deadband: bool) -> f32 {
     let (basis, normalized, length) = if calibration.center == calibration.min {
-        (1.0, 0.max(value - calibration.center) as f32, (calibration.max - calibration.center) as f32)
+        (
+            1.0,
+            0.max(value - calibration.center) as f32,
+            (calibration.max - calibration.center) as f32,
+        )
     } else if calibration.center == calibration.max {
-        (-1.0, 0.max(calibration.center - value) as f32, (calibration.center - calibration.min) as f32)
+        (
+            -1.0,
+            0.max(calibration.center - value) as f32,
+            (calibration.center - calibration.min) as f32,
+        )
     } else if value > calibration.center {
-        (1.0, (value - calibration.center) as f32, (calibration.max - calibration.center) as f32)
+        (
+            1.0,
+            (value - calibration.center) as f32,
+            (calibration.max - calibration.center) as f32,
+        )
     } else {
-        (-1.0, (calibration.center - value) as f32, (calibration.center - calibration.min) as f32)
+        (
+            -1.0,
+            (calibration.center - value) as f32,
+            (calibration.center - calibration.min) as f32,
+        )
     };
     let deadband = calibration.deadband.max(0) as f32;
     if length <= 0.0 || length - deadband <= 0.0 {
@@ -564,7 +740,11 @@ pub fn adjust_range(value: i32, calibration: &AxisCalibration, with_deadband: bo
     corrected.clamp(-1.0, 1.0)
 }
 
-pub fn adjust_range_to_pwm(value: i32, calibration: &AxisCalibration, with_deadband: bool) -> Option<u16> {
+pub fn adjust_range_to_pwm(
+    value: i32,
+    calibration: &AxisCalibration,
+    with_deadband: bool,
+) -> Option<u16> {
     calibration.valid().then(|| {
         let normalized = adjust_range(value, calibration, with_deadband);
         let pwm = match calibration.one_sided() {
@@ -576,7 +756,11 @@ pub fn adjust_range_to_pwm(value: i32, calibration: &AxisCalibration, with_deadb
 }
 
 pub fn circle_correct(value: f32) -> f32 {
-    value.clamp(-CIRCLE_CORRECTION_LIMIT, CIRCLE_CORRECTION_LIMIT).asin().tan().clamp(-1.0, 1.0)
+    value
+        .clamp(-CIRCLE_CORRECTION_LIMIT, CIRCLE_CORRECTION_LIMIT)
+        .asin()
+        .tan()
+        .clamp(-1.0, 1.0)
 }
 
 pub fn exponential(value: f32, percent: f64) -> f32 {
@@ -653,11 +837,16 @@ impl Joystick {
     }
 
     pub fn function_for(&self, axis: usize) -> Option<Function> {
-        FUNCTIONS.iter().map(|(f, _)| *f).find(|f| self.axis_for(*f) == Some(axis))
+        FUNCTIONS
+            .iter()
+            .map(|(f, _)| *f)
+            .find(|f| self.axis_for(*f) == Some(axis))
     }
 
     pub fn set_axis_function(&mut self, function: Function, axis: usize) -> bool {
-        let taken = FUNCTIONS.iter().any(|(f, _)| *f != function && self.axis_for(*f) == Some(axis));
+        let taken = FUNCTIONS
+            .iter()
+            .any(|(f, _)| *f != function && self.axis_for(*f) == Some(axis));
         if axis >= self.axis_count || taken {
             return false;
         }
@@ -696,17 +885,24 @@ impl Joystick {
         if button >= self.bindings.len() {
             return false;
         }
-        let repeating = self.bindings[button].as_ref().is_some_and(|binding| binding.repeat);
+        let repeating = self.bindings[button]
+            .as_ref()
+            .is_some_and(|binding| binding.repeat);
         self.bindings[button] = action
             .map(str::trim)
             .filter(|name| !name.is_empty() && *name != ACTION_NONE)
-            .map(|name| Binding { action: name.to_string(), repeat: repeating && can_repeat(name) });
+            .map(|name| Binding {
+                action: name.to_string(),
+                repeat: repeating && can_repeat(name),
+            });
         self.repeat_fired_ms[button] = None;
         true
     }
 
     pub fn set_button_repeat(&mut self, button: usize, repeat: bool, capable: bool) -> bool {
-        let Some(Some(binding)) = self.bindings.get_mut(button) else { return false };
+        let Some(Some(binding)) = self.bindings.get_mut(button) else {
+            return false;
+        };
         binding.repeat = repeat && (capable || can_repeat(&binding.action));
         self.repeat_fired_ms[button] = None;
         true
@@ -733,11 +929,17 @@ impl Joystick {
     }
 
     pub fn missing_functions(&self, settings: &Settings) -> Vec<Function> {
-        settings.wanted().into_iter().filter(|f| self.axis_for(*f).is_none()).collect()
+        settings
+            .wanted()
+            .into_iter()
+            .filter(|f| self.axis_for(*f).is_none())
+            .collect()
     }
 
     pub fn invalid_axes(&self) -> Vec<usize> {
-        (0..self.axis_count).filter(|axis| !self.calibration[*axis].valid()).collect()
+        (0..self.axis_count)
+            .filter(|axis| !self.calibration[*axis].valid())
+            .collect()
     }
 
     pub fn validate(&mut self, settings: &Settings) -> Vec<Out> {
@@ -768,13 +970,19 @@ impl Joystick {
     fn begin_release(&mut self, sticks: bool) {
         let held = std::mem::replace(&mut self.rc_held, [false; RC_FRAME_CHANNELS]);
         let sticks = sticks && std::mem::take(&mut self.sticks_held);
-        self.queue_release(std::array::from_fn(|i| held[i] || (sticks && i < RC_STICK_CHANNELS)));
+        self.queue_release(std::array::from_fn(|i| {
+            held[i] || (sticks && i < RC_STICK_CHANNELS)
+        }));
     }
 
     fn drain_release(&mut self, frames: u8) -> Vec<Out> {
         let sending = self.release_pending.min(frames);
         self.release_pending -= sending;
-        (0..sending).map(|_| Out::RcChannelsOverride { channels: self.release_frame }).collect()
+        (0..sending)
+            .map(|_| Out::RcChannelsOverride {
+                channels: self.release_frame,
+            })
+            .collect()
     }
 
     fn release(&mut self, frames: u8) -> Vec<Out> {
@@ -785,19 +993,26 @@ impl Joystick {
     fn queue_release(&mut self, channels: [bool; RC_FRAME_CHANNELS]) {
         if channels.iter().any(|channel| *channel) {
             let pending = self.release_pending > 0;
-            self.release_frame = std::array::from_fn(|i| match channels[i] || (pending && self.release_frame[i] == rc_release(i + 1)) {
-                true => rc_release(i + 1),
-                false => rc_ignore(i + 1),
+            self.release_frame = std::array::from_fn(|i| {
+                match channels[i] || (pending && self.release_frame[i] == rc_release(i + 1)) {
+                    true => rc_release(i + 1),
+                    false => rc_ignore(i + 1),
+                }
             });
             self.release_pending = RC_OVERRIDE_RELEASE_COUNT;
         }
     }
 
     fn override_frame(&mut self, driven: [Option<u16>; RC_FRAME_CHANNELS]) -> Vec<Out> {
-        let dropped: [bool; RC_FRAME_CHANNELS] = std::array::from_fn(|i| self.rc_held[i] && driven[i].is_none());
+        let dropped: [bool; RC_FRAME_CHANNELS] =
+            std::array::from_fn(|i| self.rc_held[i] && driven[i].is_none());
         self.rc_held = std::array::from_fn(|i| driven[i].is_some());
         self.queue_release(dropped);
-        let releasing: [bool; RC_FRAME_CHANNELS] = std::array::from_fn(|i| self.release_pending > 0 && driven[i].is_none() && self.release_frame[i] == rc_release(i + 1));
+        let releasing: [bool; RC_FRAME_CHANNELS] = std::array::from_fn(|i| {
+            self.release_pending > 0
+                && driven[i].is_none()
+                && self.release_frame[i] == rc_release(i + 1)
+        });
         self.release_pending = self.release_pending.saturating_sub(1);
         match driven.iter().any(Option::is_some) || releasing.iter().any(|channel| *channel) {
             true => vec![Out::RcChannelsOverride {
@@ -822,7 +1037,14 @@ impl Joystick {
                 (bound_to == channel).then(|| event.held().then_some(pwm))
             })
             .collect();
-        (!bound.is_empty()).then(|| bound.iter().flatten().max().copied().unwrap_or(PWM_MIN as u16))
+        (!bound.is_empty()).then(|| {
+            bound
+                .iter()
+                .flatten()
+                .max()
+                .copied()
+                .unwrap_or(PWM_MIN as u16)
+        })
     }
 
     fn hand_back(&mut self) -> Vec<Out> {
@@ -852,7 +1074,8 @@ impl Joystick {
     }
 
     fn pressed(&self, input: &Input) -> Vec<bool> {
-        let buttons = (0..self.button_count).map(|i| input.buttons.get(i).copied().unwrap_or(false));
+        let buttons =
+            (0..self.button_count).map(|i| input.buttons.get(i).copied().unwrap_or(false));
         let hats = (0..self.hat_count).flat_map(|hat| {
             let bits = input.hats.get(hat).copied().unwrap_or(0);
             HAT_DIRECTIONS.map(|direction| bits & direction != 0)
@@ -860,14 +1083,29 @@ impl Joystick {
         buttons.chain(hats).collect()
     }
 
-    pub fn on_input(&mut self, input: Input<'_>, settings: &Settings, support: Support, now_ms: u64) -> Vec<Out> {
+    pub fn on_input(
+        &mut self,
+        input: Input<'_>,
+        settings: &Settings,
+        support: Support,
+        now_ms: u64,
+    ) -> Vec<Out> {
         if self.polling.idle() {
             return Vec::new();
         }
-        self.sample = Some(Sample { axes: (0..self.axis_count).map(|axis| input.axes.get(axis).copied()).collect(), at_ms: now_ms });
+        self.sample = Some(Sample {
+            axes: (0..self.axis_count)
+                .map(|axis| input.axes.get(axis).copied())
+                .collect(),
+            at_ms: now_ms,
+        });
         let pressed = self.pressed(&input);
         let before = std::mem::take(&mut self.events);
-        self.events = before.iter().zip(pressed).map(|(event, down)| event.step(down)).collect();
+        self.events = before
+            .iter()
+            .zip(pressed)
+            .map(|(event, down)| event.step(down))
+            .collect();
         let buttons = self.button_out(settings, now_ms);
         let axes = match self.axis_count {
             0 => Vec::new(),
@@ -883,8 +1121,14 @@ impl Joystick {
                 .iter()
                 .enumerate()
                 .filter_map(|(index, event)| match event {
-                    ButtonEvent::Down => Some(Out::RawButton { index, pressed: true }),
-                    ButtonEvent::Up => Some(Out::RawButton { index, pressed: false }),
+                    ButtonEvent::Down => Some(Out::RawButton {
+                        index,
+                        pressed: true,
+                    }),
+                    ButtonEvent::Up => Some(Out::RawButton {
+                        index,
+                        pressed: false,
+                    }),
                     _ => None,
                 })
                 .collect();
@@ -893,18 +1137,37 @@ impl Joystick {
             return Vec::new();
         }
         let delay = settings.button_interval_ms();
-        let fired = (0..self.bindings.len()).fold(Vec::new(), |fired: Vec<(usize, String, ButtonEvent)>, button| {
-            let Some(binding) = self.bindings[button].clone() else { return fired };
-            let event = self.events[button];
-            let already = fired.iter().any(|(_, action, _)| *action == binding.action);
-            let due = self.repeat_fired_ms[button].is_none_or(|last| now_ms.saturating_sub(last) > delay);
-            match (event, binding.repeat) {
-                (ButtonEvent::Down | ButtonEvent::Repeat, true) if due => fired.into_iter().chain([(button, binding.action, ButtonEvent::Repeat)]).collect(),
-                (ButtonEvent::Down, false) if !already && self.all_sharing_held(button, &binding.action) => fired.into_iter().chain([(button, binding.action, ButtonEvent::Down)]).collect(),
-                (ButtonEvent::Up, _) if !already => fired.into_iter().chain([(button, binding.action, ButtonEvent::Up)]).collect(),
-                _ => fired,
-            }
-        });
+        let fired = (0..self.bindings.len()).fold(
+            Vec::new(),
+            |fired: Vec<(usize, String, ButtonEvent)>, button| {
+                let Some(binding) = self.bindings[button].clone() else {
+                    return fired;
+                };
+                let event = self.events[button];
+                let already = fired.iter().any(|(_, action, _)| *action == binding.action);
+                let due = self.repeat_fired_ms[button]
+                    .is_none_or(|last| now_ms.saturating_sub(last) > delay);
+                match (event, binding.repeat) {
+                    (ButtonEvent::Down | ButtonEvent::Repeat, true) if due => fired
+                        .into_iter()
+                        .chain([(button, binding.action, ButtonEvent::Repeat)])
+                        .collect(),
+                    (ButtonEvent::Down, false)
+                        if !already && self.all_sharing_held(button, &binding.action) =>
+                    {
+                        fired
+                            .into_iter()
+                            .chain([(button, binding.action, ButtonEvent::Down)])
+                            .collect()
+                    }
+                    (ButtonEvent::Up, _) if !already => fired
+                        .into_iter()
+                        .chain([(button, binding.action, ButtonEvent::Up)])
+                        .collect(),
+                    _ => fired,
+                }
+            },
+        );
         fired
             .into_iter()
             .filter_map(|(button, action, event)| {
@@ -920,13 +1183,18 @@ impl Joystick {
         self.bindings
             .iter()
             .enumerate()
-            .filter(|(index, binding)| *index != button && binding.as_ref().is_some_and(|b| b.action == action))
+            .filter(|(index, binding)| {
+                *index != button && binding.as_ref().is_some_and(|b| b.action == action)
+            })
             .all(|(index, _)| self.events[index].held())
     }
 
     fn raw(&self, function: Function) -> Option<Option<(usize, i32)>> {
         let axis = self.axis_for(function)?;
-        let value = self.sample.as_ref().and_then(|sample| sample.axes.get(axis).copied().flatten());
+        let value = self
+            .sample
+            .as_ref()
+            .and_then(|sample| sample.axes.get(axis).copied().flatten());
         Some(value.map(|value| (axis, value)))
     }
 
@@ -940,40 +1208,85 @@ impl Joystick {
             (self.polling.configuration, BLOCKED_CONFIGURING),
             (!settings.calibrated, BLOCKED_NOT_CALIBRATED),
             (!self.polling.vehicle, BLOCKED_NOT_POLLING),
-            (!self.missing_functions(settings).is_empty(), BLOCKED_MAPPING_INCOMPLETE),
+            (
+                !self.missing_functions(settings).is_empty(),
+                BLOCKED_MAPPING_INCOMPLETE,
+            ),
             (!self.invalid_axes().is_empty(), BLOCKED_INVALID_CALIBRATION),
             (self.sample.is_none(), BLOCKED_NO_SAMPLE),
-            (settings.wanted().iter().any(|f| self.raw(*f).flatten().is_none()), BLOCKED_MISSING_AXIS_DATA),
+            (
+                settings
+                    .wanted()
+                    .iter()
+                    .any(|f| self.raw(*f).flatten().is_none()),
+                BLOCKED_MISSING_AXIS_DATA,
+            ),
         ]
         .into_iter()
         .find_map(|(blocked, reason)| blocked.then_some(reason))
     }
 
     fn axis_out(&mut self, settings: &Settings, support: Support, now_ms: u64) -> Vec<Out> {
-        let due = self.axis_sent_ms.is_none_or(|sent| now_ms.saturating_sub(sent) >= settings.axis_interval_ms());
+        let due = self
+            .axis_sent_ms
+            .is_none_or(|sent| now_ms.saturating_sub(sent) >= settings.axis_interval_ms());
         if !due {
             return Vec::new();
         }
         self.axis_sent_ms = Some(now_ms);
         if self.polling.configuration {
-            let values = self.sample.as_ref().map(|sample| sample.axes.clone()).unwrap_or_else(|| vec![None; self.axis_count]);
-            return [Out::RawAxes { values }].into_iter().chain(self.release(1)).collect();
+            let values = self
+                .sample
+                .as_ref()
+                .map(|sample| sample.axes.clone())
+                .unwrap_or_else(|| vec![None; self.axis_count]);
+            return [Out::RawAxes { values }]
+                .into_iter()
+                .chain(self.release(1))
+                .collect();
         }
         if !self.polling.vehicle || !settings.calibrated {
             return self.release(1);
         }
         let wanted = settings.wanted();
-        let missing: Vec<Function> = wanted.iter().copied().filter(|f| self.axis_for(*f).is_none()).collect();
+        let missing: Vec<Function> = wanted
+            .iter()
+            .copied()
+            .filter(|f| self.axis_for(*f).is_none())
+            .collect();
         if !missing.is_empty() {
-            return [Out::MappingIncomplete { missing }].into_iter().chain(self.release(1)).collect();
+            return [Out::MappingIncomplete { missing }]
+                .into_iter()
+                .chain(self.release(1))
+                .collect();
         }
         let broken = self.invalid_axes();
         if !broken.is_empty() {
-            return [Out::RequireCalibration { missing: broken.iter().filter_map(|axis| self.function_for(*axis)).collect() }].into_iter().chain(self.release(1)).collect();
+            return [Out::RequireCalibration {
+                missing: broken
+                    .iter()
+                    .filter_map(|axis| self.function_for(*axis))
+                    .collect(),
+            }]
+            .into_iter()
+            .chain(self.release(1))
+            .collect();
         }
-        let blind: Vec<usize> = wanted.iter().filter_map(|f| self.raw(*f).flatten().is_none().then(|| self.axis_for(*f)).flatten()).collect();
+        let blind: Vec<usize> = wanted
+            .iter()
+            .filter_map(|f| {
+                self.raw(*f)
+                    .flatten()
+                    .is_none()
+                    .then(|| self.axis_for(*f))
+                    .flatten()
+            })
+            .collect();
         if !blind.is_empty() {
-            return [Out::MissingAxisData { axes: blind }].into_iter().chain(self.release(1)).collect();
+            return [Out::MissingAxisData { axes: blind }]
+                .into_iter()
+                .chain(self.release(1))
+                .collect();
         }
         let deadband = settings.use_deadband;
         let centre_zero = settings.centre_zero(support);
@@ -983,10 +1296,14 @@ impl Joystick {
             self.shape(Function::Yaw, deadband),
             self.shape(Function::Throttle, centre_zero && deadband),
         ];
-        let [Some(roll), Some(pitch), Some(yaw), Some(raw_throttle)] = attitude else { return self.release(1) };
+        let [Some(roll), Some(pitch), Some(yaw), Some(raw_throttle)] = attitude else {
+            return self.release(1);
+        };
         let throttle = match settings.smoothing_active(support) {
             true => {
-                self.throttle_accumulator = (self.throttle_accumulator + raw_throttle * THROTTLE_SMOOTHING_STEP).clamp(-1.0, 1.0);
+                self.throttle_accumulator = (self.throttle_accumulator
+                    + raw_throttle * THROTTLE_SMOOTHING_STEP)
+                    .clamp(-1.0, 1.0);
                 self.throttle_accumulator
             }
             false => {
@@ -995,7 +1312,12 @@ impl Joystick {
             }
         };
         let circled = match settings.circle_correction {
-            true => [circle_correct(roll), circle_correct(pitch), circle_correct(yaw), circle_correct(throttle)],
+            true => [
+                circle_correct(roll),
+                circle_correct(pitch),
+                circle_correct(yaw),
+                circle_correct(throttle),
+            ],
             false => [roll, pitch, yaw, throttle],
         };
         let [roll, pitch, yaw, throttle] = circled;
@@ -1013,19 +1335,36 @@ impl Joystick {
         let extensions: [Option<f32>; MANUAL_CONTROL_EXTENSIONS] = std::array::from_fn(|bit| {
             let function = OPTIONAL[bit];
             let sent_as_manual_control = bit < MANUAL_CONTROL_ONLY_EXTENSIONS || manual;
-            (settings.enabled(function) && sent_as_manual_control).then(|| self.shape(function, deadband)).flatten()
+            (settings.enabled(function) && sent_as_manual_control)
+                .then(|| self.shape(function, deadband))
+                .flatten()
         });
         let axis_channels: Vec<(usize, Option<u16>)> = OPTIONAL[MANUAL_CONTROL_ONLY_EXTENSIONS..]
             .iter()
             .filter(|function| !manual && settings.enabled(**function))
-            .filter_map(|function| Some((function.rc_channel()?, self.raw(*function).flatten().and_then(|(axis, value)| adjust_range_to_pwm(value, &self.calibration[axis], deadband)))))
+            .filter_map(|function| {
+                Some((
+                    function.rc_channel()?,
+                    self.raw(*function).flatten().and_then(|(axis, value)| {
+                        adjust_range_to_pwm(value, &self.calibration[axis], deadband)
+                    }),
+                ))
+            })
             .collect();
-        let driven: [Option<u16>; RC_FRAME_CHANNELS] = std::array::from_fn(|i| match axis_channels.iter().find(|(channel, _)| *channel == i + 1) {
+        let driven: [Option<u16>; RC_FRAME_CHANNELS] = std::array::from_fn(|i| match axis_channels
+            .iter()
+            .find(|(channel, _)| *channel == i + 1)
+        {
             Some((_, pwm)) => *pwm,
             None => self.button_channel(i + 1),
         });
 
-        let held = self.events.iter().enumerate().filter(|(index, event)| *index < VEHICLE_BUTTON_BITS && event.held()).fold(0u32, |bits, (index, _)| bits | (1u32 << index));
+        let held = self
+            .events
+            .iter()
+            .enumerate()
+            .filter(|(index, event)| *index < VEHICLE_BUTTON_BITS && event.held())
+            .fold(0u32, |bits, (index, _)| bits | (1u32 << index));
         let scaled = |value: f32| (value * AXES_SCALING) as i16;
         let control = Out::ManualControl {
             x: scaled(pitch),
@@ -1034,16 +1373,34 @@ impl Joystick {
             r: scaled(yaw),
             buttons: (held & 0xFFFF) as u16,
             buttons2: (held >> 16) as u16,
-            enabled_extensions: extensions.iter().enumerate().filter(|(_, value)| value.is_some()).fold(0u8, |bits, (bit, _)| bits | (1u8 << bit)),
+            enabled_extensions: extensions
+                .iter()
+                .enumerate()
+                .filter(|(_, value)| value.is_some())
+                .fold(0u8, |bits, (bit, _)| bits | (1u8 << bit)),
             extensions: std::array::from_fn(|bit| extensions[bit].map(scaled).unwrap_or(0)),
         };
         self.sticks_held |= support.sticks_are_rc_overrides;
         let override_out = self.override_frame(driven);
-        [Out::Axes { roll, pitch, yaw, throttle }, control].into_iter().chain(override_out).collect()
+        [
+            Out::Axes {
+                roll,
+                pitch,
+                yaw,
+                throttle,
+            },
+            control,
+        ]
+        .into_iter()
+        .chain(override_out)
+        .collect()
     }
 
     pub fn snapshot(&self, settings: &Settings, support: Support, now_ms: u64) -> Value {
-        let age = self.sample.as_ref().map(|sample| now_ms.saturating_sub(sample.at_ms));
+        let age = self
+            .sample
+            .as_ref()
+            .map(|sample| now_ms.saturating_sub(sample.at_ms));
         let stale = age.map(|age| age > settings.axis_interval_ms());
         let deadband = settings.use_deadband;
         let reason = self.blocking_reason(settings);
@@ -1119,7 +1476,14 @@ impl Joystick {
     }
 }
 
-fn setting_meta(name: &str, value_type: &str, default: Value, units: Option<&str>, bounds: Option<(f64, f64)>, enums: &[&str]) -> Value {
+fn setting_meta(
+    name: &str,
+    value_type: &str,
+    default: Value,
+    units: Option<&str>,
+    bounds: Option<(f64, f64)>,
+    enums: &[&str],
+) -> Value {
     json!({
         "name": name,
         "type": value_type,
@@ -1138,15 +1502,69 @@ fn settings_catalog() -> Vec<Value> {
         setting_meta("useDeadband", "bool", json!(true), None, None, &[]),
         setting_meta("negativeThrust", "bool", json!(false), None, None, &[]),
         setting_meta("throttleSmoothing", "bool", json!(false), None, None, &[]),
-        setting_meta("throttleMode", "uint32", json!(ThrottleMode::default().stored()), None, None, &[ThrottleMode::CenterZero.id(), ThrottleMode::DownZero.id()]),
-        setting_meta("axisFrequencyHz", "double", json!(AXIS_FREQUENCY_DEFAULT_HZ), Some("Hz"), Some((AXIS_FREQUENCY_MIN_HZ, AXIS_FREQUENCY_MAX_HZ)), &[]),
-        setting_meta("buttonFrequencyHz", "double", json!(BUTTON_FREQUENCY_DEFAULT_HZ), Some("Hz"), Some((BUTTON_FREQUENCY_MIN_HZ, BUTTON_FREQUENCY_MAX_HZ)), &[]),
-        setting_meta("transmitterMode", "uint32", json!(TRANSMITTER_MODE_DEFAULT), None, Some((1.0, 4.0)), &[]),
-        setting_meta("exponentialPct", "double", json!(EXPONENTIAL_PCT_DEFAULT), Some("%"), Some((EXPONENTIAL_PCT_MIN, EXPONENTIAL_PCT_MAX)), &[]),
-        setting_meta("additionalAxesFunction", "uint32", json!(AdditionalAxes::default().stored()), None, None, &[AdditionalAxes::ManualControl.id(), AdditionalAxes::RcChannelsOverride.id()]),
+        setting_meta(
+            "throttleMode",
+            "uint32",
+            json!(ThrottleMode::default().stored()),
+            None,
+            None,
+            &[ThrottleMode::CenterZero.id(), ThrottleMode::DownZero.id()],
+        ),
+        setting_meta(
+            "axisFrequencyHz",
+            "double",
+            json!(AXIS_FREQUENCY_DEFAULT_HZ),
+            Some("Hz"),
+            Some((AXIS_FREQUENCY_MIN_HZ, AXIS_FREQUENCY_MAX_HZ)),
+            &[],
+        ),
+        setting_meta(
+            "buttonFrequencyHz",
+            "double",
+            json!(BUTTON_FREQUENCY_DEFAULT_HZ),
+            Some("Hz"),
+            Some((BUTTON_FREQUENCY_MIN_HZ, BUTTON_FREQUENCY_MAX_HZ)),
+            &[],
+        ),
+        setting_meta(
+            "transmitterMode",
+            "uint32",
+            json!(TRANSMITTER_MODE_DEFAULT),
+            None,
+            Some((1.0, 4.0)),
+            &[],
+        ),
+        setting_meta(
+            "exponentialPct",
+            "double",
+            json!(EXPONENTIAL_PCT_DEFAULT),
+            Some("%"),
+            Some((EXPONENTIAL_PCT_MIN, EXPONENTIAL_PCT_MAX)),
+            &[],
+        ),
+        setting_meta(
+            "additionalAxesFunction",
+            "uint32",
+            json!(AdditionalAxes::default().stored()),
+            None,
+            None,
+            &[
+                AdditionalAxes::ManualControl.id(),
+                AdditionalAxes::RcChannelsOverride.id(),
+            ],
+        ),
     ]
     .into_iter()
-    .chain(OPTIONAL.iter().map(|function| setting_meta(&format!("enable_{}", function.id()), "bool", json!(false), None, None, &[])))
+    .chain(OPTIONAL.iter().map(|function| {
+        setting_meta(
+            &format!("enable_{}", function.id()),
+            "bool",
+            json!(false),
+            None,
+            None,
+            &[],
+        )
+    }))
     .collect()
 }
 
@@ -1197,19 +1615,35 @@ mod tests {
     use super::*;
 
     fn centered() -> AxisCalibration {
-        AxisCalibration { min: -32768, max: 32767, center: 0, deadband: 0, reversed: false }
+        AxisCalibration {
+            min: -32768,
+            max: 32767,
+            center: 0,
+            deadband: 0,
+            reversed: false,
+        }
     }
 
     fn flying() -> Settings {
-        Settings { calibrated: true, use_deadband: false, ..Settings::default() }
+        Settings {
+            calibrated: true,
+            use_deadband: false,
+            ..Settings::default()
+        }
     }
 
     fn centre_zero_flying() -> Settings {
-        Settings { throttle_mode: ThrottleMode::CenterZero, ..flying() }
+        Settings {
+            throttle_mode: ThrottleMode::CenterZero,
+            ..flying()
+        }
     }
 
     fn down_zero_firmware() -> Support {
-        Support { throttle_mode_center_zero: false, ..Support::default() }
+        Support {
+            throttle_mode_center_zero: false,
+            ..Support::default()
+        }
     }
 
     fn mapped() -> Joystick {
@@ -1223,7 +1657,12 @@ mod tests {
 
     fn axes_of(out: &[Out]) -> Option<(f32, f32, f32, f32)> {
         out.iter().find_map(|o| match o {
-            Out::Axes { roll, pitch, yaw, throttle } => Some((*roll, *pitch, *yaw, *throttle)),
+            Out::Axes {
+                roll,
+                pitch,
+                yaw,
+                throttle,
+            } => Some((*roll, *pitch, *yaw, *throttle)),
             _ => None,
         })
     }
@@ -1233,11 +1672,22 @@ mod tests {
     }
 
     fn frame(driven: &[(usize, u16)]) -> [u16; RC_FRAME_CHANNELS] {
-        std::array::from_fn(|i| driven.iter().find(|(channel, _)| *channel == i + 1).map(|(_, pwm)| *pwm).unwrap_or(rc_ignore(i + 1)))
+        std::array::from_fn(|i| {
+            driven
+                .iter()
+                .find(|(channel, _)| *channel == i + 1)
+                .map(|(_, pwm)| *pwm)
+                .unwrap_or(rc_ignore(i + 1))
+        })
     }
 
     fn released(channels: &[usize]) -> [u16; RC_FRAME_CHANNELS] {
-        frame(&channels.iter().map(|channel| (*channel, rc_release(*channel))).collect::<Vec<_>>())
+        frame(
+            &channels
+                .iter()
+                .map(|channel| (*channel, rc_release(*channel)))
+                .collect::<Vec<_>>(),
+        )
     }
 
     fn overrides_of(out: &[Out]) -> Vec<[u16; RC_FRAME_CHANNELS]> {
@@ -1251,105 +1701,379 @@ mod tests {
 
     #[test]
     fn a_raw_axis_becomes_minus_one_to_one_around_the_calibrated_centre() {
-        let calibration = AxisCalibration { min: -10000, max: 20000, center: 0, deadband: 2000, reversed: false };
+        let calibration = AxisCalibration {
+            min: -10000,
+            max: 20000,
+            center: 0,
+            deadband: 2000,
+            reversed: false,
+        };
         assert_eq!(adjust_range(20000, &calibration, false), 1.0);
         assert_eq!(adjust_range(-10000, &calibration, false), -1.0);
         assert_eq!(adjust_range(0, &calibration, false), 0.0);
-        assert_eq!(adjust_range(10000, &calibration, false), 0.5, "above centre the span is centre..max, not min..max");
-        assert_eq!(adjust_range(-5000, &calibration, false), -0.5, "below centre the span is centre..min, so an asymmetric axis stays asymmetric");
-        assert_eq!(adjust_range(1999, &calibration, true), 0.0, "inside the deadband the answer is a real zero, not a small number");
-        assert_eq!(adjust_range(11000, &calibration, true), 0.5, "outside the deadband the remaining travel is rescaled to the full range");
-        assert_eq!(adjust_range(30000, &calibration, false), 1.0, "a value past max clamps instead of overshooting the protocol range");
-        assert_eq!(adjust_range(20000, &AxisCalibration { reversed: true, ..calibration }, false), -1.0);
-        let dead = AxisCalibration { min: 0, max: 0, center: 0, deadband: 0, reversed: false };
-        assert_eq!(adjust_range(500, &dead, false), 0.0, "an axis with no travel answers zero rather than dividing by zero");
-        let one_sided = AxisCalibration { min: 0, max: 32767, center: 0, deadband: 0, reversed: false };
+        assert_eq!(
+            adjust_range(10000, &calibration, false),
+            0.5,
+            "above centre the span is centre..max, not min..max"
+        );
+        assert_eq!(
+            adjust_range(-5000, &calibration, false),
+            -0.5,
+            "below centre the span is centre..min, so an asymmetric axis stays asymmetric"
+        );
+        assert_eq!(
+            adjust_range(1999, &calibration, true),
+            0.0,
+            "inside the deadband the answer is a real zero, not a small number"
+        );
+        assert_eq!(
+            adjust_range(11000, &calibration, true),
+            0.5,
+            "outside the deadband the remaining travel is rescaled to the full range"
+        );
+        assert_eq!(
+            adjust_range(30000, &calibration, false),
+            1.0,
+            "a value past max clamps instead of overshooting the protocol range"
+        );
+        assert_eq!(
+            adjust_range(
+                20000,
+                &AxisCalibration {
+                    reversed: true,
+                    ..calibration
+                },
+                false
+            ),
+            -1.0
+        );
+        let dead = AxisCalibration {
+            min: 0,
+            max: 0,
+            center: 0,
+            deadband: 0,
+            reversed: false,
+        };
+        assert_eq!(
+            adjust_range(500, &dead, false),
+            0.0,
+            "an axis with no travel answers zero rather than dividing by zero"
+        );
+        let one_sided = AxisCalibration {
+            min: 0,
+            max: 32767,
+            center: 0,
+            deadband: 0,
+            reversed: false,
+        };
         assert_eq!(adjust_range(16384, &one_sided, false), 0.50001526);
-        assert_eq!(adjust_range(-500, &one_sided, false), 0.0, "a trigger pinned at its centre never reports negative travel");
+        assert_eq!(
+            adjust_range(-500, &one_sided, false),
+            0.0,
+            "a trigger pinned at its centre never reports negative travel"
+        );
     }
 
     #[test]
     fn a_deadband_wider_than_the_travel_reads_zero_instead_of_inverting_the_stick() {
-        let swallowed = AxisCalibration { min: -10000, max: 10000, center: 0, deadband: 20000, reversed: false };
-        assert_eq!(adjust_range(25000, &swallowed, true), 0.0, "a deadband past the end of travel must not divide by a negative span and hand back stick-left for stick-right");
-        assert_eq!(adjust_range(25000, &swallowed, false), 0.0, "and it stays zero with the deadband switched off, because the stored numbers are still self-contradictory");
-        let clipping = AxisCalibration { deadband: 12000, ..swallowed };
+        let swallowed = AxisCalibration {
+            min: -10000,
+            max: 10000,
+            center: 0,
+            deadband: 20000,
+            reversed: false,
+        };
+        assert_eq!(
+            adjust_range(25000, &swallowed, true),
+            0.0,
+            "a deadband past the end of travel must not divide by a negative span and hand back stick-left for stick-right"
+        );
+        assert_eq!(
+            adjust_range(25000, &swallowed, false),
+            0.0,
+            "and it stays zero with the deadband switched off, because the stored numbers are still self-contradictory"
+        );
+        let clipping = AxisCalibration {
+            deadband: 12000,
+            ..swallowed
+        };
         assert_eq!(adjust_range(9000, &clipping, true), 0.0);
         assert_eq!(adjust_range(-9000, &clipping, true), 0.0);
-        assert_eq!(adjust_range_to_pwm(9000, &clipping, true), None, "an axis nobody can trust drives no rc channel at all");
-        assert_eq!(adjust_range_to_pwm(0, &AxisCalibration { min: 0, max: 0, center: 0, deadband: 0, reversed: false }, false), None, "a zero-travel axis releases its channel rather than commanding the bottom of the pwm range");
+        assert_eq!(
+            adjust_range_to_pwm(9000, &clipping, true),
+            None,
+            "an axis nobody can trust drives no rc channel at all"
+        );
+        assert_eq!(
+            adjust_range_to_pwm(
+                0,
+                &AxisCalibration {
+                    min: 0,
+                    max: 0,
+                    center: 0,
+                    deadband: 0,
+                    reversed: false
+                },
+                false
+            ),
+            None,
+            "a zero-travel axis releases its channel rather than commanding the bottom of the pwm range"
+        );
     }
 
     #[test]
     fn a_self_contradictory_calibration_is_refused_and_named_in_the_state() {
         let mut stick = Joystick::new(2, 1, 0);
         assert!(stick.set_calibration(0, centered()));
-        assert!(!stick.set_calibration(0, AxisCalibration { min: 10, max: 10, center: 10, deadband: 0, reversed: false }), "min must sit below max");
-        assert!(!stick.set_calibration(0, AxisCalibration { min: -100, max: 100, center: 500, deadband: 0, reversed: false }), "centre outside the travel would read a hard deflection at rest");
-        assert!(!stick.set_calibration(0, AxisCalibration { min: -100, max: 100, center: 0, deadband: -5, reversed: false }));
-        assert!(!stick.set_calibration(0, AxisCalibration { min: -100, max: 100, center: 0, deadband: 100, reversed: false }), "a deadband as wide as the travel leaves no travel");
-        assert_eq!(stick.calibration(0), Some(centered()), "a refused calibration leaves the last good one in place");
-        assert_eq!(AxisCalibration { min: 0, max: 100, center: 0, deadband: 50, reversed: false }.fault(), None, "a one-sided axis is judged on the side it actually travels");
+        assert!(
+            !stick.set_calibration(
+                0,
+                AxisCalibration {
+                    min: 10,
+                    max: 10,
+                    center: 10,
+                    deadband: 0,
+                    reversed: false
+                }
+            ),
+            "min must sit below max"
+        );
+        assert!(
+            !stick.set_calibration(
+                0,
+                AxisCalibration {
+                    min: -100,
+                    max: 100,
+                    center: 500,
+                    deadband: 0,
+                    reversed: false
+                }
+            ),
+            "centre outside the travel would read a hard deflection at rest"
+        );
+        assert!(!stick.set_calibration(
+            0,
+            AxisCalibration {
+                min: -100,
+                max: 100,
+                center: 0,
+                deadband: -5,
+                reversed: false
+            }
+        ));
+        assert!(
+            !stick.set_calibration(
+                0,
+                AxisCalibration {
+                    min: -100,
+                    max: 100,
+                    center: 0,
+                    deadband: 100,
+                    reversed: false
+                }
+            ),
+            "a deadband as wide as the travel leaves no travel"
+        );
+        assert_eq!(
+            stick.calibration(0),
+            Some(centered()),
+            "a refused calibration leaves the last good one in place"
+        );
+        assert_eq!(
+            AxisCalibration {
+                min: 0,
+                max: 100,
+                center: 0,
+                deadband: 50,
+                reversed: false
+            }
+            .fault(),
+            None,
+            "a one-sided axis is judged on the side it actually travels"
+        );
 
         let settings = flying();
         let fresh = Joystick::new(1, 1, 0);
-        assert_eq!(fresh.snapshot(&settings, Support::default(), 0)["axes"][0]["valid"], true);
-        assert_eq!(fresh.snapshot(&settings, Support::default(), 0)["axes"][0]["invalidReason"], Value::Null);
+        assert_eq!(
+            fresh.snapshot(&settings, Support::default(), 0)["axes"][0]["valid"],
+            true
+        );
+        assert_eq!(
+            fresh.snapshot(&settings, Support::default(), 0)["axes"][0]["invalidReason"],
+            Value::Null
+        );
         let mut broken = Joystick::new(1, 1, 0);
-        broken.calibration[0] = AxisCalibration { min: -100, max: 100, center: 0, deadband: 200, reversed: false };
+        broken.calibration[0] = AxisCalibration {
+            min: -100,
+            max: 100,
+            center: 0,
+            deadband: 200,
+            reversed: false,
+        };
         let view = broken.snapshot(&settings, Support::default(), 0);
-        assert_eq!(view["axes"][0]["valid"], false, "the calibration display has to be able to mark the axis instead of drawing the bad numbers as if they were fine");
-        assert_eq!(view["axes"][0]["invalidReason"], CALIBRATION_DEADBAND_EXCEEDS_TRAVEL);
+        assert_eq!(
+            view["axes"][0]["valid"], false,
+            "the calibration display has to be able to mark the axis instead of drawing the bad numbers as if they were fine"
+        );
+        assert_eq!(
+            view["axes"][0]["invalidReason"],
+            CALIBRATION_DEADBAND_EXCEEDS_TRAVEL
+        );
         assert_eq!(view["invalidAxes"], json!([0]));
 
         let mut flying_on_bad_numbers = mapped();
-        flying_on_bad_numbers.calibration[3] = AxisCalibration { min: -100, max: 100, center: 0, deadband: 200, reversed: false };
-        flying_on_bad_numbers.set_polling(Polling { vehicle: true, configuration: false }, 0);
-        let out = flying_on_bad_numbers.on_input(Input { axes: &[0, 0, 0, 0], buttons: &[false; 4], hats: &[0] }, &settings, Support::default(), 41);
-        assert_eq!(out, vec![Out::RequireCalibration { missing: vec![Function::Throttle] }], "a range nobody can trust commands nothing and names the function it belongs to");
-        assert_eq!(flying_on_bad_numbers.snapshot(&settings, Support::default(), 41)["notCommandingReason"], BLOCKED_INVALID_CALIBRATION);
+        flying_on_bad_numbers.calibration[3] = AxisCalibration {
+            min: -100,
+            max: 100,
+            center: 0,
+            deadband: 200,
+            reversed: false,
+        };
+        flying_on_bad_numbers.set_polling(
+            Polling {
+                vehicle: true,
+                configuration: false,
+            },
+            0,
+        );
+        let out = flying_on_bad_numbers.on_input(
+            Input {
+                axes: &[0, 0, 0, 0],
+                buttons: &[false; 4],
+                hats: &[0],
+            },
+            &settings,
+            Support::default(),
+            41,
+        );
+        assert_eq!(
+            out,
+            vec![Out::RequireCalibration {
+                missing: vec![Function::Throttle]
+            }],
+            "a range nobody can trust commands nothing and names the function it belongs to"
+        );
+        assert_eq!(
+            flying_on_bad_numbers.snapshot(&settings, Support::default(), 41)["notCommandingReason"],
+            BLOCKED_INVALID_CALIBRATION
+        );
     }
 
     #[test]
     fn an_rc_override_axis_maps_to_pwm_over_the_span_the_rest_of_the_app_allows() {
         let two_sided = centered();
         assert_eq!(adjust_range_to_pwm(0, &two_sided, false), Some(1500));
-        assert_eq!(adjust_range_to_pwm(32767, &two_sided, false), Some(2000), "Joystick::_adjustRangeToRcOverridePwm spans 1000..2000 µs");
+        assert_eq!(
+            adjust_range_to_pwm(32767, &two_sided, false),
+            Some(2000),
+            "Joystick::_adjustRangeToRcOverridePwm spans 1000..2000 µs"
+        );
         assert_eq!(adjust_range_to_pwm(-32768, &two_sided, false), Some(1000));
-        let trigger = AxisCalibration { min: 0, max: 32767, center: 0, deadband: 0, reversed: false };
-        assert_eq!(adjust_range_to_pwm(0, &trigger, false), Some(1000), "a one-sided axis starts at the bottom of the pwm range, not the middle");
+        let trigger = AxisCalibration {
+            min: 0,
+            max: 32767,
+            center: 0,
+            deadband: 0,
+            reversed: false,
+        };
+        assert_eq!(
+            adjust_range_to_pwm(0, &trigger, false),
+            Some(1000),
+            "a one-sided axis starts at the bottom of the pwm range, not the middle"
+        );
         assert_eq!(adjust_range_to_pwm(32767, &trigger, false), Some(2000));
         assert_eq!(adjust_range_to_pwm(16384, &trigger, false), Some(1500));
-        assert_eq!((rc_release(1), rc_release(8), rc_release(9), rc_release(18)), (0, 0, u16::MAX - 1, u16::MAX - 1), "channels 1-8 release with 0 and channels 9-18 with UINT16_MAX-1");
-        assert_eq!((rc_ignore(1), rc_ignore(8), rc_ignore(9), rc_ignore(18)), (u16::MAX, u16::MAX, 0, 0), "leaving a channel alone is UINT16_MAX below channel 9 and 0 above it, which is the opposite encoding");
+        assert_eq!(
+            (rc_release(1), rc_release(8), rc_release(9), rc_release(18)),
+            (0, 0, u16::MAX - 1, u16::MAX - 1),
+            "channels 1-8 release with 0 and channels 9-18 with UINT16_MAX-1"
+        );
+        assert_eq!(
+            (rc_ignore(1), rc_ignore(8), rc_ignore(9), rc_ignore(18)),
+            (u16::MAX, u16::MAX, 0, 0),
+            "leaving a channel alone is UINT16_MAX below channel 9 and 0 above it, which is the opposite encoding"
+        );
     }
 
     #[test]
     fn expo_and_circle_correction_shape_the_sticks_but_leave_the_ends_alone() {
-        assert_eq!(exponential(0.5, 0.0), 0.5, "zero percent is the identity curve, not a no-op guard to forget");
+        assert_eq!(
+            exponential(0.5, 0.0),
+            0.5,
+            "zero percent is the identity curve, not a no-op guard to forget"
+        );
         assert_eq!(exponential(1.0, 50.0), 1.0);
         assert_eq!(exponential(-1.0, 50.0), -1.0);
-        assert_eq!(exponential(0.5, 50.0), 0.3125, "half expo softens the middle of the travel");
+        assert_eq!(
+            exponential(0.5, 50.0),
+            0.3125,
+            "half expo softens the middle of the travel"
+        );
         assert!(exponential(0.5, 50.0) < 0.5 && exponential(0.9, 50.0) < 0.9);
         assert_eq!(circle_correct(0.0), 0.0);
-        assert!(circle_correct(0.5) > 0.5, "the unit circle maps to a linear range, so mid travel grows");
-        assert_eq!(circle_correct(1.0), 1.0, "past the quarter-turn limit the answer clamps instead of running to infinity");
+        assert!(
+            circle_correct(0.5) > 0.5,
+            "the unit circle maps to a linear range, so mid travel grows"
+        );
+        assert_eq!(
+            circle_correct(1.0),
+            1.0,
+            "past the quarter-turn limit the answer clamps instead of running to infinity"
+        );
         assert_eq!(circle_correct(-1.0), -1.0);
     }
 
     #[test]
     fn manual_control_carries_the_shaped_axes_scaled_by_a_thousand() {
         let mut stick = mapped();
-        stick.set_polling(Polling { vehicle: true, configuration: false }, 0);
+        stick.set_polling(
+            Polling {
+                vehicle: true,
+                configuration: false,
+            },
+            0,
+        );
         let settings = flying();
-        let out = stick.on_input(Input { axes: &[16384, -16384, 32767, 0], buttons: &[false; 4], hats: &[0] }, &settings, Support::default(), 41);
-        let (roll, pitch, yaw, throttle) = axes_of(&out).expect("a mapped calibrated stick reports its axes");
-        assert!((roll - 0.5).abs() < 0.001 && (pitch + 0.5).abs() < 0.001 && (yaw - 1.0).abs() < 0.001);
-        assert_eq!(throttle, 0.5, "with down-zero throttle the stick centre is half thrust");
+        let out = stick.on_input(
+            Input {
+                axes: &[16384, -16384, 32767, 0],
+                buttons: &[false; 4],
+                hats: &[0],
+            },
+            &settings,
+            Support::default(),
+            41,
+        );
+        let (roll, pitch, yaw, throttle) =
+            axes_of(&out).expect("a mapped calibrated stick reports its axes");
+        assert!(
+            (roll - 0.5).abs() < 0.001 && (pitch + 0.5).abs() < 0.001 && (yaw - 1.0).abs() < 0.001
+        );
+        assert_eq!(
+            throttle, 0.5,
+            "with down-zero throttle the stick centre is half thrust"
+        );
         match control_of(&out).unwrap() {
-            Out::ManualControl { x, y, z, r, buttons, buttons2, enabled_extensions, .. } => {
-                assert_eq!((*x, *y, *z, *r), (-500, 500, 500, 1000), "x is pitch, y is roll, z is thrust, r is yaw");
-                assert_eq!((*buttons, *buttons2, *enabled_extensions), (0, 0, 0), "no button held and no extension enabled is three zeroes, not an absent field");
+            Out::ManualControl {
+                x,
+                y,
+                z,
+                r,
+                buttons,
+                buttons2,
+                enabled_extensions,
+                ..
+            } => {
+                assert_eq!(
+                    (*x, *y, *z, *r),
+                    (-500, 500, 500, 1000),
+                    "x is pitch, y is roll, z is thrust, r is yaw"
+                );
+                assert_eq!(
+                    (*buttons, *buttons2, *enabled_extensions),
+                    (0, 0, 0),
+                    "no button held and no extension enabled is three zeroes, not an absent field"
+                );
             }
             other => panic!("expected a manual control message, got {other:?}"),
         }
@@ -1357,21 +2081,70 @@ mod tests {
 
     #[test]
     fn the_axis_rate_comes_from_the_settings_and_nothing_is_sent_early() {
-        let settings = Settings { axis_frequency_hz: 25.0, button_frequency_hz: 5.0, ..flying() };
-        assert_eq!((settings.axis_interval_ms(), settings.button_interval_ms()), (40, 200));
-        assert_eq!(poll_interval_ms(), 2, "the poll loop runs off the maximum rates, so a 25Hz axis setting still samples button edges every 2ms");
-        let fast = Settings { axis_frequency_hz: 200.0, button_frequency_hz: 50.0, ..settings };
+        let settings = Settings {
+            axis_frequency_hz: 25.0,
+            button_frequency_hz: 5.0,
+            ..flying()
+        };
+        assert_eq!(
+            (settings.axis_interval_ms(), settings.button_interval_ms()),
+            (40, 200)
+        );
+        assert_eq!(
+            poll_interval_ms(),
+            2,
+            "the poll loop runs off the maximum rates, so a 25Hz axis setting still samples button edges every 2ms"
+        );
+        let fast = Settings {
+            axis_frequency_hz: 200.0,
+            button_frequency_hz: 50.0,
+            ..settings
+        };
         assert_eq!(fast.axis_interval_ms(), 5);
-        let nonsense = Settings { axis_frequency_hz: 0.0, button_frequency_hz: -1.0, ..settings };
-        assert_eq!(nonsense.axis_interval_ms(), 4000, "a zero rate clamps to the documented minimum instead of dividing by zero");
-        let broken = Settings { axis_frequency_hz: f64::NAN, ..settings };
-        assert_eq!(broken.axis_interval_ms(), 40, "a NaN out of a stored setting falls back to the default rate rather than telling the head to spin");
+        let nonsense = Settings {
+            axis_frequency_hz: 0.0,
+            button_frequency_hz: -1.0,
+            ..settings
+        };
+        assert_eq!(
+            nonsense.axis_interval_ms(),
+            4000,
+            "a zero rate clamps to the documented minimum instead of dividing by zero"
+        );
+        let broken = Settings {
+            axis_frequency_hz: f64::NAN,
+            ..settings
+        };
+        assert_eq!(
+            broken.axis_interval_ms(),
+            40,
+            "a NaN out of a stored setting falls back to the default rate rather than telling the head to spin"
+        );
         let mut stick = mapped();
-        stick.set_polling(Polling { vehicle: true, configuration: false }, 1000);
-        let input = Input { axes: &[0, 0, 0, 0], buttons: &[false; 4], hats: &[0] };
-        assert!(control_of(&stick.on_input(input, &settings, Support::default(), 1039)).is_none(), "nothing is sent before the period");
-        assert!(control_of(&stick.on_input(input, &settings, Support::default(), 1040)).is_some(), "Joystick::_axisUpdateDue sends once the period is reached, so 20 ms samples keep a 25 Hz rate");
-        assert!(control_of(&stick.on_input(input, &settings, Support::default(), 1079)).is_none(), "the period restarts from the send, so the next one waits again");
+        stick.set_polling(
+            Polling {
+                vehicle: true,
+                configuration: false,
+            },
+            1000,
+        );
+        let input = Input {
+            axes: &[0, 0, 0, 0],
+            buttons: &[false; 4],
+            hats: &[0],
+        };
+        assert!(
+            control_of(&stick.on_input(input, &settings, Support::default(), 1039)).is_none(),
+            "nothing is sent before the period"
+        );
+        assert!(
+            control_of(&stick.on_input(input, &settings, Support::default(), 1040)).is_some(),
+            "Joystick::_axisUpdateDue sends once the period is reached, so 20 ms samples keep a 25 Hz rate"
+        );
+        assert!(
+            control_of(&stick.on_input(input, &settings, Support::default(), 1079)).is_none(),
+            "the period restarts from the send, so the next one waits again"
+        );
         assert!(control_of(&stick.on_input(input, &settings, Support::default(), 1080)).is_some());
     }
 
@@ -1380,20 +2153,81 @@ mod tests {
         let mut stick = mapped();
         stick.set_button_action(0, Some("Continuous Zoom In"));
         stick.set_button_action(1, Some("Arm"));
-        stick.set_polling(Polling { vehicle: true, configuration: false }, 0);
+        stick.set_polling(
+            Polling {
+                vehicle: true,
+                configuration: false,
+            },
+            0,
+        );
         let settings = flying();
-        let down = stick.on_input(Input { axes: &[0, 0, 0, 0], buttons: &[true, true, false, false], hats: &[0] }, &settings, Support::default(), 0);
-        let actions: Vec<&Out> = down.iter().filter(|o| matches!(o, Out::Action { .. })).collect();
-        assert_eq!(actions.len(), 2, "both bound buttons fire once on the press");
-        let held = stick.on_input(Input { axes: &[0, 0, 0, 0], buttons: &[true, true, false, false], hats: &[0] }, &settings, Support::default(), 1);
-        assert!(!held.iter().any(|o| matches!(o, Out::Action { .. })), "holding a non-repeat action fires nothing more");
-        let up = stick.on_input(Input { axes: &[0, 0, 0, 0], buttons: &[false, false, false, false], hats: &[0] }, &settings, Support::default(), 2);
-        let released: Vec<&Out> = up.iter().filter(|o| matches!(o, Out::Action { .. })).collect();
-        assert_eq!(released, vec![&Out::Action { action: "Continuous Zoom In".into(), event: ButtonEvent::Up }], "only an action with a release handler hears the release, so Arm never fires on let-go");
+        let down = stick.on_input(
+            Input {
+                axes: &[0, 0, 0, 0],
+                buttons: &[true, true, false, false],
+                hats: &[0],
+            },
+            &settings,
+            Support::default(),
+            0,
+        );
+        let actions: Vec<&Out> = down
+            .iter()
+            .filter(|o| matches!(o, Out::Action { .. }))
+            .collect();
+        assert_eq!(
+            actions.len(),
+            2,
+            "both bound buttons fire once on the press"
+        );
+        let held = stick.on_input(
+            Input {
+                axes: &[0, 0, 0, 0],
+                buttons: &[true, true, false, false],
+                hats: &[0],
+            },
+            &settings,
+            Support::default(),
+            1,
+        );
+        assert!(
+            !held.iter().any(|o| matches!(o, Out::Action { .. })),
+            "holding a non-repeat action fires nothing more"
+        );
+        let up = stick.on_input(
+            Input {
+                axes: &[0, 0, 0, 0],
+                buttons: &[false, false, false, false],
+                hats: &[0],
+            },
+            &settings,
+            Support::default(),
+            2,
+        );
+        let released: Vec<&Out> = up
+            .iter()
+            .filter(|o| matches!(o, Out::Action { .. }))
+            .collect();
+        assert_eq!(
+            released,
+            vec![&Out::Action {
+                action: "Continuous Zoom In".into(),
+                event: ButtonEvent::Up
+            }],
+            "only an action with a release handler hears the release, so Arm never fires on let-go"
+        );
         assert!(!accepts("Arm", ButtonEvent::Up) && accepts("Gimbal Up", ButtonEvent::Up));
-        assert!(accepts("Step Zoom In", ButtonEvent::Repeat) && !accepts("Arm", ButtonEvent::Repeat));
-        assert!(accepts("Loiter", ButtonEvent::Down), "a flight mode the core does not know is still dispatched on the press");
-        assert!(!accepts("Loiter", ButtonEvent::Up), "but an unknown action gets no release, because nothing would handle it");
+        assert!(
+            accepts("Step Zoom In", ButtonEvent::Repeat) && !accepts("Arm", ButtonEvent::Repeat)
+        );
+        assert!(
+            accepts("Loiter", ButtonEvent::Down),
+            "a flight mode the core does not know is still dispatched on the press"
+        );
+        assert!(
+            !accepts("Loiter", ButtonEvent::Up),
+            "but an unknown action gets no release, because nothing would handle it"
+        );
         assert!(!accepts(ACTION_NONE, ButtonEvent::Down) && !accepts("", ButtonEvent::Down));
     }
 
@@ -1402,40 +2236,120 @@ mod tests {
         let mut stick = mapped();
         stick.set_button_action(0, Some("Step Zoom In"));
         stick.set_button_repeat(0, true, false);
-        stick.set_polling(Polling { vehicle: true, configuration: false }, 0);
-        let settings = Settings { button_frequency_hz: 5.0, ..flying() };
-        let pressed = Input { axes: &[0, 0, 0, 0], buttons: &[true, false, false, false], hats: &[0] };
+        stick.set_polling(
+            Polling {
+                vehicle: true,
+                configuration: false,
+            },
+            0,
+        );
+        let settings = Settings {
+            button_frequency_hz: 5.0,
+            ..flying()
+        };
+        let pressed = Input {
+            axes: &[0, 0, 0, 0],
+            buttons: &[true, false, false, false],
+            hats: &[0],
+        };
         let first = stick.on_input(pressed, &settings, Support::default(), 0);
-        assert!(first.contains(&Out::Action { action: "Step Zoom In".into(), event: ButtonEvent::Repeat }), "a fresh binding has never fired, so the first press is not held back");
-        assert!(!stick.on_input(pressed, &settings, Support::default(), 200).iter().any(|o| matches!(o, Out::Action { .. })), "200ms is not yet past a 200ms period");
-        assert!(stick.on_input(pressed, &settings, Support::default(), 201).contains(&Out::Action { action: "Step Zoom In".into(), event: ButtonEvent::Repeat }));
+        assert!(
+            first.contains(&Out::Action {
+                action: "Step Zoom In".into(),
+                event: ButtonEvent::Repeat
+            }),
+            "a fresh binding has never fired, so the first press is not held back"
+        );
+        assert!(
+            !stick
+                .on_input(pressed, &settings, Support::default(), 200)
+                .iter()
+                .any(|o| matches!(o, Out::Action { .. })),
+            "200ms is not yet past a 200ms period"
+        );
+        assert!(
+            stick
+                .on_input(pressed, &settings, Support::default(), 201)
+                .contains(&Out::Action {
+                    action: "Step Zoom In".into(),
+                    event: ButtonEvent::Repeat
+                })
+        );
 
         let mut shared = mapped();
         shared.set_button_action(0, Some("Emergency Stop"));
         shared.set_button_action(1, Some("Emergency Stop"));
-        shared.set_polling(Polling { vehicle: true, configuration: false }, 0);
-        let one = shared.on_input(Input { axes: &[0, 0, 0, 0], buttons: &[true, false, false, false], hats: &[0] }, &settings, Support::default(), 0);
-        assert!(!one.iter().any(|o| matches!(o, Out::Action { .. })), "an action bound to two buttons waits for both, which is the whole point of the two-button guard");
-        let both = shared.on_input(Input { axes: &[0, 0, 0, 0], buttons: &[true, true, false, false], hats: &[0] }, &settings, Support::default(), 1);
-        assert_eq!(both.iter().filter(|o| matches!(o, Out::Action { .. })).count(), 1, "and it fires once, not once per button");
-        assert!(!shared.set_button_repeat(99, true, false), "an index past the last button is refused rather than panicking");
+        shared.set_polling(
+            Polling {
+                vehicle: true,
+                configuration: false,
+            },
+            0,
+        );
+        let one = shared.on_input(
+            Input {
+                axes: &[0, 0, 0, 0],
+                buttons: &[true, false, false, false],
+                hats: &[0],
+            },
+            &settings,
+            Support::default(),
+            0,
+        );
+        assert!(
+            !one.iter().any(|o| matches!(o, Out::Action { .. })),
+            "an action bound to two buttons waits for both, which is the whole point of the two-button guard"
+        );
+        let both = shared.on_input(
+            Input {
+                axes: &[0, 0, 0, 0],
+                buttons: &[true, true, false, false],
+                hats: &[0],
+            },
+            &settings,
+            Support::default(),
+            1,
+        );
+        assert_eq!(
+            both.iter()
+                .filter(|o| matches!(o, Out::Action { .. }))
+                .count(),
+            1,
+            "and it fires once, not once per button"
+        );
+        assert!(
+            !shared.set_button_repeat(99, true, false),
+            "an index past the last button is refused rather than panicking"
+        );
     }
 
     #[test]
     fn repeat_capability_is_the_heads_to_declare_because_the_core_holds_half_the_table() {
-        assert!(!can_repeat("Continuous Zoom In") && can_repeat("Step Zoom In"), "a continuous zoom stops on release; only the step zooms and focuses repeat");
+        assert!(
+            !can_repeat("Continuous Zoom In") && can_repeat("Step Zoom In"),
+            "a continuous zoom stops on release; only the step zooms and focuses repeat"
+        );
         let mut stick = mapped();
         stick.set_button_action(0, Some("Step Zoom In"));
         assert!(stick.set_button_repeat(0, true, false));
         assert!(stick.binding(0).is_some_and(|b| b.repeat));
         stick.set_button_action(1, Some("Loiter"));
         assert!(stick.set_button_repeat(1, true, false));
-        assert!(stick.binding(1).is_some_and(|b| !b.repeat), "an action the core does not know stays un-repeated while nobody vouches for it");
+        assert!(
+            stick.binding(1).is_some_and(|b| !b.repeat),
+            "an action the core does not know stays un-repeated while nobody vouches for it"
+        );
         assert!(stick.set_button_repeat(1, true, true));
-        assert!(stick.binding(1).is_some_and(|b| b.repeat), "a plugin action the head declares repeat-capable can be made to repeat, which the core alone could never know");
+        assert!(
+            stick.binding(1).is_some_and(|b| b.repeat),
+            "a plugin action the head declares repeat-capable can be made to repeat, which the core alone could never know"
+        );
         stick.set_button_action(2, Some("Emergency Stop"));
         assert!(stick.set_button_repeat(2, true, false));
-        assert!(stick.binding(2).is_some_and(|b| !b.repeat), "and an action with no repeat handler stays un-repeated however hard the head asks");
+        assert!(
+            stick.binding(2).is_some_and(|b| !b.repeat),
+            "and an action with no repeat handler stays un-repeated however hard the head asks"
+        );
     }
 
     #[test]
@@ -1445,25 +2359,61 @@ mod tests {
             stick.set_axis_function(*function, axis);
             stick.set_calibration(axis, centered());
         });
-        assert_eq!(stick.total_button_count(), 24, "each hat contributes four buttons after the real ones");
-        stick.set_polling(Polling { vehicle: true, configuration: false }, 0);
+        assert_eq!(
+            stick.total_button_count(),
+            24,
+            "each hat contributes four buttons after the real ones"
+        );
+        stick.set_polling(
+            Polling {
+                vehicle: true,
+                configuration: false,
+            },
+            0,
+        );
         let settings = flying();
         let mut buttons = [false; 20];
         buttons[0] = true;
         buttons[17] = true;
-        let out = stick.on_input(Input { axes: &[0, 0, 0, 0], buttons: &buttons, hats: &[0x01] }, &settings, Support::default(), 41);
+        let out = stick.on_input(
+            Input {
+                axes: &[0, 0, 0, 0],
+                buttons: &buttons,
+                hats: &[0x01],
+            },
+            &settings,
+            Support::default(),
+            41,
+        );
         match control_of(&out).unwrap() {
-            Out::ManualControl { buttons, buttons2, .. } => {
+            Out::ManualControl {
+                buttons, buttons2, ..
+            } => {
                 assert_eq!(*buttons, 1, "button 0 is the low word's first bit");
-                assert_eq!(*buttons2, 1 << 1 | 1 << 4, "button 17 and hat-up (button 20) land in the high word");
+                assert_eq!(
+                    *buttons2,
+                    1 << 1 | 1 << 4,
+                    "button 17 and hat-up (button 20) land in the high word"
+                );
             }
             other => panic!("expected a manual control message, got {other:?}"),
         }
-        assert_eq!(HAT_DIRECTIONS, [0x01, 0x04, 0x08, 0x02], "the hat button order is up, down, left, right");
+        assert_eq!(
+            HAT_DIRECTIONS,
+            [0x01, 0x04, 0x08, 0x02],
+            "the hat button order is up, down, left, right"
+        );
         let state = stick.snapshot(&settings, Support::default(), 41);
-        assert_eq!(state["buttons"][19]["hatIndex"], Value::Null, "a real button belongs to no hat");
+        assert_eq!(
+            state["buttons"][19]["hatIndex"],
+            Value::Null,
+            "a real button belongs to no hat"
+        );
         assert_eq!(state["buttons"][20]["hatIndex"], 0);
-        assert_eq!(state["buttons"][20]["direction"], "up", "the head must not have to guess which of the four hat buttons is which, or it will bind gimbal-left to hat-down");
+        assert_eq!(
+            state["buttons"][20]["direction"], "up",
+            "the head must not have to guess which of the four hat buttons is which, or it will bind gimbal-left to hat-down"
+        );
         assert_eq!(state["buttons"][21]["direction"], "down");
         assert_eq!(state["buttons"][22]["direction"], "left");
         assert_eq!(state["buttons"][23]["direction"], "right");
@@ -1473,88 +2423,258 @@ mod tests {
             wide.set_axis_function(*function, axis);
             wide.set_calibration(axis, centered());
         });
-        wide.set_polling(Polling { vehicle: true, configuration: false }, 0);
+        wide.set_polling(
+            Polling {
+                vehicle: true,
+                configuration: false,
+            },
+            0,
+        );
         let mut far = [false; 40];
         far[35] = true;
-        let out = wide.on_input(Input { axes: &[0, 0, 0, 0], buttons: &far, hats: &[] }, &settings, Support::default(), 41);
+        let out = wide.on_input(
+            Input {
+                axes: &[0, 0, 0, 0],
+                buttons: &far,
+                hats: &[],
+            },
+            &settings,
+            Support::default(),
+            41,
+        );
         match control_of(&out).unwrap() {
-            Out::ManualControl { buttons, buttons2, .. } => assert_eq!((*buttons, *buttons2), (0, 0), "the message carries 32 button bits, so a 36th button is dropped rather than aliased onto another button's bit"),
+            Out::ManualControl {
+                buttons, buttons2, ..
+            } => assert_eq!(
+                (*buttons, *buttons2),
+                (0, 0),
+                "the message carries 32 button bits, so a 36th button is dropped rather than aliased onto another button's bit"
+            ),
             other => panic!("expected a manual control message, got {other:?}"),
         }
         let state = wide.snapshot(&settings, Support::default(), 41);
         assert_eq!(state["vehicleButtonBits"], VEHICLE_BUTTON_BITS);
         assert_eq!(state["buttons"][31]["reachesVehicle"], true);
-        assert_eq!(state["buttons"][35]["reachesVehicle"], false, "a binding past the bitmap has to be visibly dead, not silently accepted");
+        assert_eq!(
+            state["buttons"][35]["reachesVehicle"], false,
+            "a binding past the bitmap has to be visibly dead, not silently accepted"
+        );
     }
 
     #[test]
     fn throttle_follows_the_mode_the_firmware_supports_and_the_smoothing_accumulator_clears() {
         let mut stick = mapped();
-        stick.set_polling(Polling { vehicle: true, configuration: false }, 0);
-        let bottom = Input { axes: &[0, 0, 0, -32768], buttons: &[false; 4], hats: &[0] };
+        stick.set_polling(
+            Polling {
+                vehicle: true,
+                configuration: false,
+            },
+            0,
+        );
+        let bottom = Input {
+            axes: &[0, 0, 0, -32768],
+            buttons: &[false; 4],
+            hats: &[0],
+        };
         let base = flying();
         let out = stick.on_input(bottom, &base, Support::default(), 41);
-        assert_eq!(axes_of(&out).unwrap().3, 0.0, "with down-zero throttle the stick bottom is zero thrust");
+        assert_eq!(
+            axes_of(&out).unwrap().3,
+            0.0,
+            "with down-zero throttle the stick bottom is zero thrust"
+        );
 
         let centre_zero = centre_zero_flying();
         let out = stick.on_input(bottom, &centre_zero, Support::default(), 82);
-        assert_eq!(axes_of(&out).unwrap().3, 0.0, "centre-zero throttle without negative thrust floors at zero rather than reversing");
-        let reversing = Settings { negative_thrust: true, ..centre_zero };
-        let out = stick.on_input(bottom, &reversing, Support { negative_thrust: true, ..Support::default() }, 123);
-        assert_eq!(axes_of(&out).unwrap().3, -1.0, "both the setting and the firmware have to allow reverse thrust");
-        let centre = Input { axes: &[0, 0, 0, 0], buttons: &[false; 4], hats: &[0] };
+        assert_eq!(
+            axes_of(&out).unwrap().3,
+            0.0,
+            "centre-zero throttle without negative thrust floors at zero rather than reversing"
+        );
+        let reversing = Settings {
+            negative_thrust: true,
+            ..centre_zero
+        };
+        let out = stick.on_input(
+            bottom,
+            &reversing,
+            Support {
+                negative_thrust: true,
+                ..Support::default()
+            },
+            123,
+        );
+        assert_eq!(
+            axes_of(&out).unwrap().3,
+            -1.0,
+            "both the setting and the firmware have to allow reverse thrust"
+        );
+        let centre = Input {
+            axes: &[0, 0, 0, 0],
+            buttons: &[false; 4],
+            hats: &[0],
+        };
         let out = stick.on_input(centre, &centre_zero, Support::default(), 164);
-        assert_eq!(axes_of(&out).unwrap().3, 0.0, "with centre zero the stick centre means no thrust");
+        assert_eq!(
+            axes_of(&out).unwrap().3,
+            0.0,
+            "with centre zero the stick centre means no thrust"
+        );
         let out = stick.on_input(centre, &centre_zero, down_zero_firmware(), 205);
-        assert_eq!(axes_of(&out).unwrap().3, 0.5, "a firmware that does not support centre zero gets the 0:1 conversion regardless of the setting, so the same stick means half thrust");
+        assert_eq!(
+            axes_of(&out).unwrap().3,
+            0.5,
+            "a firmware that does not support centre zero gets the 0:1 conversion regardless of the setting, so the same stick means half thrust"
+        );
 
-        let smoothing = Settings { throttle_smoothing: true, ..centre_zero };
-        let top = Input { axes: &[0, 0, 0, 32767], buttons: &[false; 4], hats: &[0] };
-        let first = axes_of(&stick.on_input(top, &smoothing, Support::default(), 246)).unwrap().3;
-        let second = axes_of(&stick.on_input(top, &smoothing, Support::default(), 287)).unwrap().3;
-        assert!(first > 0.0 && second > first && second < 1.0, "smoothing ramps instead of jumping");
+        let smoothing = Settings {
+            throttle_smoothing: true,
+            ..centre_zero
+        };
+        let top = Input {
+            axes: &[0, 0, 0, 32767],
+            buttons: &[false; 4],
+            hats: &[0],
+        };
+        let first = axes_of(&stick.on_input(top, &smoothing, Support::default(), 246))
+            .unwrap()
+            .3;
+        let second = axes_of(&stick.on_input(top, &smoothing, Support::default(), 287))
+            .unwrap()
+            .3;
+        assert!(
+            first > 0.0 && second > first && second < 1.0,
+            "smoothing ramps instead of jumping"
+        );
         stick.stop(320);
-        stick.set_polling(Polling { vehicle: true, configuration: false }, 320);
-        let after = axes_of(&stick.on_input(top, &smoothing, Support::default(), 362)).unwrap().3;
-        assert_eq!(after, first, "the accumulator is cleared when polling stops, so a new session does not inherit the last flight's throttle");
+        stick.set_polling(
+            Polling {
+                vehicle: true,
+                configuration: false,
+            },
+            320,
+        );
+        let after = axes_of(&stick.on_input(top, &smoothing, Support::default(), 362))
+            .unwrap()
+            .3;
+        assert_eq!(
+            after, first,
+            "the accumulator is cleared when polling stops, so a new session does not inherit the last flight's throttle"
+        );
     }
 
     #[test]
     fn an_unknown_firmware_capability_must_not_flip_the_throttle_mapping() {
-        assert!(Support::default().throttle_mode_center_zero, "the base firmware plugin supports centre zero, so a forgotten capability field has to be the upstream answer, not the opposite one");
+        assert!(
+            Support::default().throttle_mode_center_zero,
+            "the base firmware plugin supports centre zero, so a forgotten capability field has to be the upstream answer, not the opposite one"
+        );
         assert!(!Support::default().negative_thrust);
         let mut stick = mapped();
-        stick.set_polling(Polling { vehicle: true, configuration: false }, 0);
-        let centre = Input { axes: &[0, 0, 0, 0], buttons: &[false; 4], hats: &[0] };
+        stick.set_polling(
+            Polling {
+                vehicle: true,
+                configuration: false,
+            },
+            0,
+        );
+        let centre = Input {
+            axes: &[0, 0, 0, 0],
+            buttons: &[false; 4],
+            hats: &[0],
+        };
         let settings = centre_zero_flying();
         let out = stick.on_input(centre, &settings, Support::default(), 41);
-        assert_eq!(axes_of(&out).unwrap().3, 0.0, "an operator who ticked centre-zero and flies a default vehicle gets zero thrust at the neutral stick, not fifty percent");
+        assert_eq!(
+            axes_of(&out).unwrap().3,
+            0.0,
+            "an operator who ticked centre-zero and flies a default vehicle gets zero thrust at the neutral stick, not fifty percent"
+        );
         let state = stick.snapshot(&settings, down_zero_firmware(), 41);
         assert_eq!(state["support"]["throttleModeCenterZero"], false);
         assert_eq!(state["requestedThrottleMode"], "CENTER_ZERO");
-        assert_eq!(state["effectiveThrottleMode"], "DOWN_ZERO", "the head can only grey the control and show what is actually flying if the capability reaches it");
+        assert_eq!(
+            state["effectiveThrottleMode"], "DOWN_ZERO",
+            "the head can only grey the control and show what is actually flying if the capability reaches it"
+        );
         assert_eq!(state["negativeThrustActive"], false);
-        let supported = stick.snapshot(&Settings { negative_thrust: true, ..settings }, Support { negative_thrust: true, ..Support::default() }, 41);
+        let supported = stick.snapshot(
+            &Settings {
+                negative_thrust: true,
+                ..settings
+            },
+            Support {
+                negative_thrust: true,
+                ..Support::default()
+            },
+            41,
+        );
         assert_eq!(supported["effectiveThrottleMode"], "CENTER_ZERO");
         assert_eq!(supported["negativeThrustActive"], true);
     }
 
     #[test]
     fn smoothing_is_refused_in_down_zero_mode_so_releasing_the_throttle_still_reduces_thrust() {
-        let smoothing = Settings { throttle_smoothing: true, ..flying() };
-        assert!(!smoothing.smoothing_active(Support::default()), "accumulation is only ever legal with centre-zero throttle");
-        assert!(Settings { throttle_smoothing: true, ..centre_zero_flying() }.smoothing_active(Support::default()));
-        assert!(!Settings { throttle_smoothing: true, ..centre_zero_flying() }.smoothing_active(down_zero_firmware()), "a firmware that cannot do centre zero cannot accumulate either");
+        let smoothing = Settings {
+            throttle_smoothing: true,
+            ..flying()
+        };
+        assert!(
+            !smoothing.smoothing_active(Support::default()),
+            "accumulation is only ever legal with centre-zero throttle"
+        );
+        assert!(
+            Settings {
+                throttle_smoothing: true,
+                ..centre_zero_flying()
+            }
+            .smoothing_active(Support::default())
+        );
+        assert!(
+            !Settings {
+                throttle_smoothing: true,
+                ..centre_zero_flying()
+            }
+            .smoothing_active(down_zero_firmware()),
+            "a firmware that cannot do centre zero cannot accumulate either"
+        );
 
         let mut stick = mapped();
-        stick.set_polling(Polling { vehicle: true, configuration: false }, 0);
-        let top = Input { axes: &[0, 0, 0, 32767], buttons: &[false; 4], hats: &[0] };
-        let centre = Input { axes: &[0, 0, 0, 0], buttons: &[false; 4], hats: &[0] };
-        let ramped = axes_of(&stick.on_input(top, &smoothing, Support::default(), 41)).unwrap().3;
-        assert_eq!(ramped, 1.0, "in down-zero mode the throttle stick is followed directly");
-        let released = axes_of(&stick.on_input(centre, &smoothing, Support::default(), 82)).unwrap().3;
-        assert_eq!(released, 0.5, "returning the stick reduces thrust instead of freezing it where the integrator stopped");
-        assert_eq!(stick.snapshot(&smoothing, Support::default(), 82)["throttleSmoothingActive"], false);
+        stick.set_polling(
+            Polling {
+                vehicle: true,
+                configuration: false,
+            },
+            0,
+        );
+        let top = Input {
+            axes: &[0, 0, 0, 32767],
+            buttons: &[false; 4],
+            hats: &[0],
+        };
+        let centre = Input {
+            axes: &[0, 0, 0, 0],
+            buttons: &[false; 4],
+            hats: &[0],
+        };
+        let ramped = axes_of(&stick.on_input(top, &smoothing, Support::default(), 41))
+            .unwrap()
+            .3;
+        assert_eq!(
+            ramped, 1.0,
+            "in down-zero mode the throttle stick is followed directly"
+        );
+        let released = axes_of(&stick.on_input(centre, &smoothing, Support::default(), 82))
+            .unwrap()
+            .3;
+        assert_eq!(
+            released, 0.5,
+            "returning the stick reduces thrust instead of freezing it where the integrator stopped"
+        );
+        assert_eq!(
+            stick.snapshot(&smoothing, Support::default(), 82)["throttleSmoothingActive"],
+            false
+        );
     }
 
     #[test]
@@ -1564,24 +2684,47 @@ mod tests {
         stick.set_calibration(4, centered());
         stick.set_axis_function(Function::PitchExtension, 5);
         stick.set_calibration(5, centered());
-        stick.set_polling(Polling { vehicle: true, configuration: false }, 0);
+        stick.set_polling(
+            Polling {
+                vehicle: true,
+                configuration: false,
+            },
+            0,
+        );
         let mut settings = flying();
         settings.optional_enabled[Function::Additional1.extension_bit().unwrap()] = true;
         settings.optional_enabled[Function::PitchExtension.extension_bit().unwrap()] = true;
-        let input = Input { axes: &[0, 0, 0, 0, 32767, 16384], buttons: &[false; 4], hats: &[0] };
+        let input = Input {
+            axes: &[0, 0, 0, 0, 32767, 16384],
+            buttons: &[false; 4],
+            hats: &[0],
+        };
         let out = stick.on_input(input, &settings, Support::default(), 41);
         match control_of(&out).unwrap() {
-            Out::ManualControl { enabled_extensions, extensions, .. } => {
-                assert_eq!(*enabled_extensions, 0b0000_0101, "the pitch extension is bit 0 and additional axis 1 is bit 2");
+            Out::ManualControl {
+                enabled_extensions,
+                extensions,
+                ..
+            } => {
+                assert_eq!(
+                    *enabled_extensions, 0b0000_0101,
+                    "the pitch extension is bit 0 and additional axis 1 is bit 2"
+                );
                 assert_eq!(extensions[0], 500);
                 assert_eq!(extensions[2], 1000);
-                assert_eq!(extensions[1], 0, "a disabled extension sends zero and, crucially, leaves its enable bit clear so the vehicle ignores it");
+                assert_eq!(
+                    extensions[1], 0,
+                    "a disabled extension sends zero and, crucially, leaves its enable bit clear so the vehicle ignores it"
+                );
             }
             other => panic!("expected a manual control message, got {other:?}"),
         }
         assert!(overrides_of(&out).is_empty());
 
-        let overriding = Settings { additional_axes: AdditionalAxes::RcChannelsOverride, ..settings };
+        let overriding = Settings {
+            additional_axes: AdditionalAxes::RcChannelsOverride,
+            ..settings
+        };
         let out = stick.on_input(input, &overriding, Support::default(), 82);
         assert_eq!(
             overrides_of(&out),
@@ -1589,16 +2732,32 @@ mod tests {
             "the enabled aux axis drives channel 5 and every channel this joystick does not hold is left alone, because the camera layer overrides the same block"
         );
         match control_of(&out).unwrap() {
-            Out::ManualControl { enabled_extensions, .. } => assert_eq!(*enabled_extensions, 0b0000_0001, "in override mode only the roll and pitch extensions still ride in manual control"),
+            Out::ManualControl {
+                enabled_extensions, ..
+            } => assert_eq!(
+                *enabled_extensions, 0b0000_0001,
+                "in override mode only the roll and pitch extensions still ride in manual control"
+            ),
             other => panic!("expected a manual control message, got {other:?}"),
         }
         let back = stick.on_input(input, &settings, Support::default(), 123);
-        assert_eq!(overrides_of(&back), vec![released(&[5])], "leaving override mode releases only the channel it held");
+        assert_eq!(
+            overrides_of(&back),
+            vec![released(&[5])],
+            "leaving override mode releases only the channel it held"
+        );
         let again = stick.on_input(input, &settings, Support::default(), 164);
         let third = stick.on_input(input, &settings, Support::default(), 205);
-        assert_eq!(overrides_of(&again).len() + overrides_of(&third).len(), 2, "the release is repeated for a few ticks, because one dropped packet would leave the channel overridden until the vehicle's own timeout");
+        assert_eq!(
+            overrides_of(&again).len() + overrides_of(&third).len(),
+            2,
+            "the release is repeated for a few ticks, because one dropped packet would leave the channel overridden until the vehicle's own timeout"
+        );
         let settled = stick.on_input(input, &settings, Support::default(), 246);
-        assert!(overrides_of(&settled).is_empty(), "and then it stops, rather than releasing forever");
+        assert!(
+            overrides_of(&settled).is_empty(),
+            "and then it stops, rather than releasing forever"
+        );
     }
 
     #[test]
@@ -1606,17 +2765,39 @@ mod tests {
         let mut stick = mapped();
         stick.set_axis_function(Function::Additional1, 4);
         stick.set_calibration(4, centered());
-        stick.set_polling(Polling { vehicle: true, configuration: false }, 0);
+        stick.set_polling(
+            Polling {
+                vehicle: true,
+                configuration: false,
+            },
+            0,
+        );
         let mut settings = flying();
         settings.additional_axes = AdditionalAxes::RcChannelsOverride;
         settings.optional_enabled[Function::Additional1.extension_bit().unwrap()] = true;
-        let full = Input { axes: &[0, 0, 0, 0, 32767], buttons: &[false; 4], hats: &[0] };
-        assert_eq!(overrides_of(&stick.on_input(full, &settings, Support::default(), 41)), vec![frame(&[(5, 2000)])]);
+        let full = Input {
+            axes: &[0, 0, 0, 0, 32767],
+            buttons: &[false; 4],
+            hats: &[0],
+        };
+        assert_eq!(
+            overrides_of(&stick.on_input(full, &settings, Support::default(), 41)),
+            vec![frame(&[(5, 2000)])]
+        );
         assert!(stick.rc_override_active());
 
-        let short = Input { axes: &[0, 0, 0, 0], buttons: &[false; 4], hats: &[0] };
+        let short = Input {
+            axes: &[0, 0, 0, 0],
+            buttons: &[false; 4],
+            hats: &[0],
+        };
         let dropped = stick.on_input(short, &settings, Support::default(), 82);
-        assert!(dropped.iter().any(|o| matches!(o, Out::MissingAxisData { .. })), "the head dropping an axis for a frame is still a missing-data fault");
+        assert!(
+            dropped
+                .iter()
+                .any(|o| matches!(o, Out::MissingAxisData { .. })),
+            "the head dropping an axis for a frame is still a missing-data fault"
+        );
         assert_eq!(
             overrides_of(&dropped),
             vec![released(&[5])],
@@ -1624,7 +2805,11 @@ mod tests {
         );
         assert!(!stick.rc_override_active());
         let next = stick.on_input(short, &settings, Support::default(), 123);
-        assert_eq!(overrides_of(&next).len(), 1, "and the repeat keeps draining while the fault persists");
+        assert_eq!(
+            overrides_of(&next).len(),
+            1,
+            "and the repeat keeps draining while the fault persists"
+        );
     }
 
     #[test]
@@ -1632,13 +2817,34 @@ mod tests {
         let mut stick = mapped();
         stick.set_axis_function(Function::Additional1, 4);
         stick.set_calibration(4, centered());
-        stick.set_polling(Polling { vehicle: true, configuration: false }, 0);
+        stick.set_polling(
+            Polling {
+                vehicle: true,
+                configuration: false,
+            },
+            0,
+        );
         let mut settings = flying();
         settings.additional_axes = AdditionalAxes::RcChannelsOverride;
         settings.optional_enabled[Function::Additional1.extension_bit().unwrap()] = true;
-        stick.on_input(Input { axes: &[0, 0, 0, 0, 32767], buttons: &[false; 4], hats: &[0] }, &settings, Support::default(), 41);
+        stick.on_input(
+            Input {
+                axes: &[0, 0, 0, 0, 32767],
+                buttons: &[false; 4],
+                hats: &[0],
+            },
+            &settings,
+            Support::default(),
+            41,
+        );
         assert!(stick.rc_override_active());
-        let opened = stick.set_polling(Polling { vehicle: true, configuration: true }, 82);
+        let opened = stick.set_polling(
+            Polling {
+                vehicle: true,
+                configuration: true,
+            },
+            82,
+        );
         assert_eq!(
             overrides_of(&opened),
             vec![released(&[5]); RC_OVERRIDE_RELEASE_COUNT as usize],
@@ -1648,7 +2854,11 @@ mod tests {
     }
 
     fn ardupilot() -> Support {
-        Support { manual_control_aux: false, sticks_are_rc_overrides: true, ..Support::default() }
+        Support {
+            manual_control_aux: false,
+            sticks_are_rc_overrides: true,
+            ..Support::default()
+        }
     }
 
     #[test]
@@ -1656,18 +2866,52 @@ mod tests {
         let mut stick = mapped();
         stick.set_axis_function(Function::Additional1, 4);
         stick.set_calibration(4, centered());
-        stick.set_polling(Polling { vehicle: true, configuration: false }, 0);
+        stick.set_polling(
+            Polling {
+                vehicle: true,
+                configuration: false,
+            },
+            0,
+        );
         let mut settings = flying();
         settings.optional_enabled[Function::Additional1.extension_bit().unwrap()] = true;
-        assert_eq!(settings.additional_axes, AdditionalAxes::ManualControl, "the stored default is QGC's");
-        let out = stick.on_input(Input { axes: &[0, 0, 0, 0, 32767], buttons: &[false; 4], hats: &[0] }, &settings, ardupilot(), 41);
-        assert_eq!(overrides_of(&out), vec![frame(&[(5, 2000)])], "a flight-mode switch on channel 5 has to reach ArduPilot, which never reads MANUAL_CONTROL aux1");
+        assert_eq!(
+            settings.additional_axes,
+            AdditionalAxes::ManualControl,
+            "the stored default is QGC's"
+        );
+        let out = stick.on_input(
+            Input {
+                axes: &[0, 0, 0, 0, 32767],
+                buttons: &[false; 4],
+                hats: &[0],
+            },
+            &settings,
+            ardupilot(),
+            41,
+        );
+        assert_eq!(
+            overrides_of(&out),
+            vec![frame(&[(5, 2000)])],
+            "a flight-mode switch on channel 5 has to reach ArduPilot, which never reads MANUAL_CONTROL aux1"
+        );
         match control_of(&out).unwrap() {
-            Out::ManualControl { enabled_extensions, .. } => assert_eq!(*enabled_extensions, 0, "and the switch is not also sent where it is ignored"),
+            Out::ManualControl {
+                enabled_extensions, ..
+            } => assert_eq!(
+                *enabled_extensions, 0,
+                "and the switch is not also sent where it is ignored"
+            ),
             other => panic!("expected a manual control message, got {other:?}"),
         }
-        assert_eq!(stick.snapshot(&settings, ardupilot(), 41)["additionalAxesVia"], RC_CHANNELS_OVERRIDE);
-        assert_eq!(stick.snapshot(&settings, Support::default(), 41)["additionalAxesVia"], MANUAL_CONTROL);
+        assert_eq!(
+            stick.snapshot(&settings, ardupilot(), 41)["additionalAxesVia"],
+            RC_CHANNELS_OVERRIDE
+        );
+        assert_eq!(
+            stick.snapshot(&settings, Support::default(), 41)["additionalAxesVia"],
+            MANUAL_CONTROL
+        );
     }
 
     #[test]
@@ -1676,17 +2920,51 @@ mod tests {
         assert!(stick.set_button_action(0, Some("RC Channel 12")));
         assert!(stick.set_button_action(1, Some("RC Channel 9")));
         assert!(stick.set_button_action(2, Some("RC Channel 9")));
-        stick.set_polling(Polling { vehicle: true, configuration: false }, 0);
+        stick.set_polling(
+            Polling {
+                vehicle: true,
+                configuration: false,
+            },
+            0,
+        );
         let settings = flying();
-        let press = |stick: &mut Joystick, buttons: [bool; 4], at: u64| stick.on_input(Input { axes: &[0, 0, 0, 0], buttons: &buttons, hats: &[0] }, &settings, ardupilot(), at);
+        let press = |stick: &mut Joystick, buttons: [bool; 4], at: u64| {
+            stick.on_input(
+                Input {
+                    axes: &[0, 0, 0, 0],
+                    buttons: &buttons,
+                    hats: &[0],
+                },
+                &settings,
+                ardupilot(),
+                at,
+            )
+        };
         let resting = press(&mut stick, [false; 4], 41);
-        assert_eq!(overrides_of(&resting), vec![frame(&[(9, 1000), (12, 1000)])], "a two-position switch reported as a button is asserted low, the way the radio sends its off position");
+        assert_eq!(
+            overrides_of(&resting),
+            vec![frame(&[(9, 1000), (12, 1000)])],
+            "a two-position switch reported as a button is asserted low, the way the radio sends its off position"
+        );
         let held = press(&mut stick, [true, false, true, false], 82);
-        assert_eq!(overrides_of(&held), vec![frame(&[(9, 2000), (12, 2000)])], "either button on a shared channel lifts it");
-        assert!(!held.iter().any(|o| matches!(o, Out::Action { .. })), "a channel binding is carried in the frame, never dispatched as an action");
+        assert_eq!(
+            overrides_of(&held),
+            vec![frame(&[(9, 2000), (12, 2000)])],
+            "either button on a shared channel lifts it"
+        );
+        assert!(
+            !held.iter().any(|o| matches!(o, Out::Action { .. })),
+            "a channel binding is carried in the frame, never dispatched as an action"
+        );
         let released = press(&mut stick, [false; 4], 123);
-        assert_eq!(overrides_of(&released), vec![frame(&[(9, 1000), (12, 1000)])]);
-        assert_eq!(stick.snapshot(&settings, ardupilot(), 123)["buttons"][0]["rcChannel"], 12);
+        assert_eq!(
+            overrides_of(&released),
+            vec![frame(&[(9, 1000), (12, 1000)])]
+        );
+        assert_eq!(
+            stick.snapshot(&settings, ardupilot(), 123)["buttons"][0]["rcChannel"],
+            12
+        );
         assert_eq!(action_id("RC Channel 12"), Some("rcChannel12"));
     }
 
@@ -1695,46 +2973,128 @@ mod tests {
         let mut stick = mapped();
         assert!(stick.set_button_action(1, Some("RC Channel 12 Middle")));
         assert!(stick.set_button_action(2, Some("RC Channel 12")));
-        stick.set_polling(Polling { vehicle: true, configuration: false }, 0);
+        stick.set_polling(
+            Polling {
+                vehicle: true,
+                configuration: false,
+            },
+            0,
+        );
         let settings = flying();
-        let switch = |stick: &mut Joystick, buttons: [bool; 4], at: u64| overrides_of(&stick.on_input(Input { axes: &[0, 0, 0, 0], buttons: &buttons, hats: &[0] }, &settings, ardupilot(), at));
-        assert_eq!(switch(&mut stick, [true, false, false, false], 41), vec![frame(&[(12, 1000)])], "EdgeTX holds the button of the low position, which nothing is bound to");
-        assert_eq!(switch(&mut stick, [false, true, false, false], 82), vec![frame(&[(12, 1500)])]);
-        assert_eq!(switch(&mut stick, [false, false, true, false], 123), vec![frame(&[(12, 2000)])]);
-        assert_eq!(switch(&mut stick, [false, true, true, false], 164), vec![frame(&[(12, 2000)])], "if two positions ever read held together, the higher one wins");
-        assert_eq!(stick.snapshot(&settings, ardupilot(), 164)["buttons"][1]["rcChannel"], 12);
+        let switch = |stick: &mut Joystick, buttons: [bool; 4], at: u64| {
+            overrides_of(&stick.on_input(
+                Input {
+                    axes: &[0, 0, 0, 0],
+                    buttons: &buttons,
+                    hats: &[0],
+                },
+                &settings,
+                ardupilot(),
+                at,
+            ))
+        };
+        assert_eq!(
+            switch(&mut stick, [true, false, false, false], 41),
+            vec![frame(&[(12, 1000)])],
+            "EdgeTX holds the button of the low position, which nothing is bound to"
+        );
+        assert_eq!(
+            switch(&mut stick, [false, true, false, false], 82),
+            vec![frame(&[(12, 1500)])]
+        );
+        assert_eq!(
+            switch(&mut stick, [false, false, true, false], 123),
+            vec![frame(&[(12, 2000)])]
+        );
+        assert_eq!(
+            switch(&mut stick, [false, true, true, false], 164),
+            vec![frame(&[(12, 2000)])],
+            "if two positions ever read held together, the higher one wins"
+        );
+        assert_eq!(
+            stick.snapshot(&settings, ardupilot(), 164)["buttons"][1]["rcChannel"],
+            12
+        );
         assert_eq!(action_id("RC Channel 12 Middle"), Some("rcChannel12Middle"));
-        assert!(!accepts("RC Channel 12 Middle", ButtonEvent::Down), "a channel binding is never dispatched as an action");
-        assert_eq!(rc_channel_actions(12), vec!["RC Channel 12", "RC Channel 12 Middle"]);
+        assert!(
+            !accepts("RC Channel 12 Middle", ButtonEvent::Down),
+            "a channel binding is never dispatched as an action"
+        );
+        assert_eq!(
+            rc_channel_actions(12),
+            vec!["RC Channel 12", "RC Channel 12 Middle"]
+        );
     }
 
     #[test]
     fn an_enabled_additional_axis_owns_its_channel_so_buttons_are_offered_the_rest() {
         let mut settings = flying();
-        assert_eq!(settings.button_channels(ardupilot()), RC_BUTTON_CHANNELS.collect::<Vec<_>>());
+        assert_eq!(
+            settings.button_channels(ardupilot()),
+            RC_BUTTON_CHANNELS.collect::<Vec<_>>()
+        );
         settings.optional_enabled[Function::Additional1.extension_bit().unwrap()] = true;
         settings.optional_enabled[Function::Additional3.extension_bit().unwrap()] = true;
         assert_eq!(settings.axis_channels(ardupilot()), vec![5, 7]);
-        assert_eq!(settings.button_channels(ardupilot()), vec![6, 8, 9, 10, 11, 12, 13, 14, 15, 16]);
-        assert_eq!(settings.button_channels(Support::default()), RC_BUTTON_CHANNELS.collect::<Vec<_>>(), "axes sent as MANUAL_CONTROL aux occupy no channel");
+        assert_eq!(
+            settings.button_channels(ardupilot()),
+            vec![6, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+        );
+        assert_eq!(
+            settings.button_channels(Support::default()),
+            RC_BUTTON_CHANNELS.collect::<Vec<_>>(),
+            "axes sent as MANUAL_CONTROL aux occupy no channel"
+        );
 
         let mut stick = mapped();
         stick.set_axis_function(Function::Additional1, 4);
         stick.set_calibration(4, centered());
         assert!(stick.set_button_action(0, Some("RC Channel 5")));
-        stick.set_polling(Polling { vehicle: true, configuration: false }, 0);
+        stick.set_polling(
+            Polling {
+                vehicle: true,
+                configuration: false,
+            },
+            0,
+        );
         settings.optional_enabled[Function::Additional3.extension_bit().unwrap()] = false;
-        let out = stick.on_input(Input { axes: &[0, 0, 0, 0, -32768], buttons: &[true, false, false, false], hats: &[0] }, &settings, ardupilot(), 41);
-        assert_eq!(overrides_of(&out)[0][4], 1000, "a binding left over from before the axis was enabled cannot fight the axis for the channel");
+        let out = stick.on_input(
+            Input {
+                axes: &[0, 0, 0, 0, -32768],
+                buttons: &[true, false, false, false],
+                hats: &[0],
+            },
+            &settings,
+            ardupilot(),
+            41,
+        );
+        assert_eq!(
+            overrides_of(&out)[0][4],
+            1000,
+            "a binding left over from before the axis was enabled cannot fight the axis for the channel"
+        );
     }
 
     #[test]
     fn stopping_on_ardupilot_hands_the_sticks_back_to_the_radio_at_once() {
         let mut stick = mapped();
-        stick.set_polling(Polling { vehicle: true, configuration: false }, 0);
+        stick.set_polling(
+            Polling {
+                vehicle: true,
+                configuration: false,
+            },
+            0,
+        );
         let settings = flying();
-        let sticks = Input { axes: &[0, 32767, 0, 0], buttons: &[false; 4], hats: &[0] };
-        assert!(overrides_of(&stick.on_input(sticks, &settings, ardupilot(), 41)).is_empty(), "flying the sticks sends MANUAL_CONTROL only");
+        let sticks = Input {
+            axes: &[0, 32767, 0, 0],
+            buttons: &[false; 4],
+            hats: &[0],
+        };
+        assert!(
+            overrides_of(&stick.on_input(sticks, &settings, ardupilot(), 41)).is_empty(),
+            "flying the sticks sends MANUAL_CONTROL only"
+        );
         assert!(stick.sticks_overriding());
         let stopped = stick.stop(82);
         assert_eq!(
@@ -1745,9 +3105,18 @@ mod tests {
         assert!(!stick.sticks_overriding());
 
         let mut px4 = mapped();
-        px4.set_polling(Polling { vehicle: true, configuration: false }, 0);
+        px4.set_polling(
+            Polling {
+                vehicle: true,
+                configuration: false,
+            },
+            0,
+        );
         px4.on_input(sticks, &settings, Support::default(), 41);
-        assert!(overrides_of(&px4.stop(82)).is_empty(), "PX4 times MANUAL_CONTROL out by itself and never sees the sticks as RC overrides");
+        assert!(
+            overrides_of(&px4.stop(82)).is_empty(),
+            "PX4 times MANUAL_CONTROL out by itself and never sees the sticks as RC overrides"
+        );
     }
 
     #[test]
@@ -1755,13 +3124,41 @@ mod tests {
         let mut stick = mapped();
         stick.set_axis_function(Function::Additional1, 4);
         stick.set_calibration(4, centered());
-        stick.set_polling(Polling { vehicle: true, configuration: false }, 0);
+        stick.set_polling(
+            Polling {
+                vehicle: true,
+                configuration: false,
+            },
+            0,
+        );
         let mut settings = flying();
         settings.optional_enabled[Function::Additional1.extension_bit().unwrap()] = true;
-        stick.on_input(Input { axes: &[0, 0, 0, 0, 32767], buttons: &[false; 4], hats: &[0] }, &settings, ardupilot(), 41);
-        let dropped = stick.on_input(Input { axes: &[0, 0, 0, 0], buttons: &[false; 4], hats: &[0] }, &settings, ardupilot(), 82);
+        stick.on_input(
+            Input {
+                axes: &[0, 0, 0, 0, 32767],
+                buttons: &[false; 4],
+                hats: &[0],
+            },
+            &settings,
+            ardupilot(),
+            41,
+        );
+        let dropped = stick.on_input(
+            Input {
+                axes: &[0, 0, 0, 0],
+                buttons: &[false; 4],
+                hats: &[0],
+            },
+            &settings,
+            ardupilot(),
+            82,
+        );
         assert_eq!(overrides_of(&dropped), vec![released(&[5])]);
-        assert_eq!(overrides_of(&stick.stop(123)), vec![released(&[1, 2, 3, 4, 5]); RC_OVERRIDE_RELEASE_COUNT as usize], "the sticks join the switch release instead of cutting its repeats short");
+        assert_eq!(
+            overrides_of(&stick.stop(123)),
+            vec![released(&[1, 2, 3, 4, 5]); RC_OVERRIDE_RELEASE_COUNT as usize],
+            "the sticks join the switch release instead of cutting its repeats short"
+        );
     }
 
     #[test]
@@ -1769,61 +3166,179 @@ mod tests {
         let mut stick = mapped();
         let settings = flying();
         let idle = stick.snapshot(&settings, Support::default(), 0);
-        assert_eq!(idle["sampleAgeMs"], Value::Null, "before the head pushes anything the age is absent, not zero");
+        assert_eq!(
+            idle["sampleAgeMs"],
+            Value::Null,
+            "before the head pushes anything the age is absent, not zero"
+        );
         assert_eq!(idle["stale"], Value::Null);
-        assert_eq!(idle["axes"][0]["raw"], Value::Null, "and an axis with no reading is null, not a centred stick");
+        assert_eq!(
+            idle["axes"][0]["raw"],
+            Value::Null,
+            "and an axis with no reading is null, not a centred stick"
+        );
         assert_eq!(idle["shaped"], Value::Null);
 
-        stick.set_polling(Polling { vehicle: true, configuration: false }, 0);
-        stick.on_input(Input { axes: &[0, 0, 0, 0], buttons: &[false; 4], hats: &[0] }, &settings, Support::default(), 100);
+        stick.set_polling(
+            Polling {
+                vehicle: true,
+                configuration: false,
+            },
+            0,
+        );
+        stick.on_input(
+            Input {
+                axes: &[0, 0, 0, 0],
+                buttons: &[false; 4],
+                hats: &[0],
+            },
+            &settings,
+            Support::default(),
+            100,
+        );
         let fresh = stick.snapshot(&settings, Support::default(), 100);
         assert_eq!(fresh["sampleAgeMs"], 0);
         assert_eq!(fresh["stale"], false);
-        assert_eq!(fresh["axes"][0]["raw"], 0, "a stick truly at rest reads zero, which is a reading");
+        assert_eq!(
+            fresh["axes"][0]["raw"], 0,
+            "a stick truly at rest reads zero, which is a reading"
+        );
         assert!(fresh["shaped"].is_object());
         let stale = stick.snapshot(&settings, Support::default(), 141);
-        assert_eq!(stale["stale"], true, "a sample older than one axis period could not have fed the last message");
-        assert_eq!(stale["shaped"], Value::Null, "and the last commanded attitude goes with it, instead of drawing frozen sticks that look live");
+        assert_eq!(
+            stale["stale"], true,
+            "a sample older than one axis period could not have fed the last message"
+        );
+        assert_eq!(
+            stale["shaped"],
+            Value::Null,
+            "and the last commanded attitude goes with it, instead of drawing frozen sticks that look live"
+        );
         stick.stop(200);
-        assert_eq!(stick.snapshot(&settings, Support::default(), 200)["sampleAgeMs"], Value::Null, "stopping forgets the sample instead of leaving a stale one to look live");
+        assert_eq!(
+            stick.snapshot(&settings, Support::default(), 200)["sampleAgeMs"],
+            Value::Null,
+            "stopping forgets the sample instead of leaving a stale one to look live"
+        );
     }
 
     #[test]
     fn the_state_says_why_nothing_is_reaching_the_vehicle() {
         let mut stick = mapped();
         let settings = flying();
-        assert_eq!(stick.snapshot(&settings, Support::default(), 0)["notCommandingReason"], BLOCKED_NOT_POLLING);
-        stick.set_polling(Polling { vehicle: true, configuration: false }, 0);
-        assert_eq!(stick.snapshot(&Settings { calibrated: false, ..settings }, Support::default(), 0)["notCommandingReason"], BLOCKED_NOT_CALIBRATED);
-        assert_eq!(stick.snapshot(&settings, Support::default(), 0)["notCommandingReason"], BLOCKED_NO_SAMPLE);
-        stick.on_input(Input { axes: &[0, 0], buttons: &[false; 4], hats: &[0] }, &settings, Support::default(), 41);
+        assert_eq!(
+            stick.snapshot(&settings, Support::default(), 0)["notCommandingReason"],
+            BLOCKED_NOT_POLLING
+        );
+        stick.set_polling(
+            Polling {
+                vehicle: true,
+                configuration: false,
+            },
+            0,
+        );
+        assert_eq!(
+            stick.snapshot(
+                &Settings {
+                    calibrated: false,
+                    ..settings
+                },
+                Support::default(),
+                0
+            )["notCommandingReason"],
+            BLOCKED_NOT_CALIBRATED
+        );
+        assert_eq!(
+            stick.snapshot(&settings, Support::default(), 0)["notCommandingReason"],
+            BLOCKED_NO_SAMPLE
+        );
+        stick.on_input(
+            Input {
+                axes: &[0, 0],
+                buttons: &[false; 4],
+                hats: &[0],
+            },
+            &settings,
+            Support::default(),
+            41,
+        );
         let blind = stick.snapshot(&settings, Support::default(), 41);
         assert_eq!(blind["commanding"], false);
-        assert_eq!(blind["notCommandingReason"], BLOCKED_MISSING_AXIS_DATA, "a mapped axis the head stopped reporting must not render as a healthy mapping while nothing flies");
-        assert_eq!(blind["stale"], false, "which it would, because the sample itself is fresh");
-        stick.on_input(Input { axes: &[0, 0, 0, 0], buttons: &[false; 4], hats: &[0] }, &settings, Support::default(), 82);
+        assert_eq!(
+            blind["notCommandingReason"], BLOCKED_MISSING_AXIS_DATA,
+            "a mapped axis the head stopped reporting must not render as a healthy mapping while nothing flies"
+        );
+        assert_eq!(
+            blind["stale"], false,
+            "which it would, because the sample itself is fresh"
+        );
+        stick.on_input(
+            Input {
+                axes: &[0, 0, 0, 0],
+                buttons: &[false; 4],
+                hats: &[0],
+            },
+            &settings,
+            Support::default(),
+            82,
+        );
         let healthy = stick.snapshot(&settings, Support::default(), 82);
         assert_eq!(healthy["commanding"], true);
         assert_eq!(healthy["notCommandingReason"], Value::Null);
         let mut configuring = mapped();
-        configuring.set_polling(Polling { vehicle: false, configuration: true }, 0);
-        assert_eq!(configuring.snapshot(&settings, Support::default(), 0)["notCommandingReason"], BLOCKED_CONFIGURING, "the host stops vehicle polling while calibrating, and the reason must still say calibrating");
+        configuring.set_polling(
+            Polling {
+                vehicle: false,
+                configuration: true,
+            },
+            0,
+        );
+        assert_eq!(
+            configuring.snapshot(&settings, Support::default(), 0)["notCommandingReason"],
+            BLOCKED_CONFIGURING,
+            "the host stops vehicle polling while calibrating, and the reason must still say calibrating"
+        );
         let idle = mapped();
-        assert_eq!(idle.snapshot(&Settings { calibrated: false, ..settings }, Support::default(), 0)["notCommandingReason"], BLOCKED_NOT_CALIBRATED, "an uncalibrated joystick is never polled, and the reason must say why");
+        assert_eq!(
+            idle.snapshot(
+                &Settings {
+                    calibrated: false,
+                    ..settings
+                },
+                Support::default(),
+                0
+            )["notCommandingReason"],
+            BLOCKED_NOT_CALIBRATED,
+            "an uncalibrated joystick is never polled, and the reason must say why"
+        );
     }
 
     #[test]
     fn the_state_names_the_axis_for_every_function_and_refuses_to_share_one() {
         let mut stick = mapped();
-        assert!(!stick.set_axis_function(Function::Yaw, 0), "roll already owns axis 0, and a coupled mapping rolls the vehicle when the operator yaws");
-        assert_eq!(stick.axis_for(Function::Yaw), Some(2), "the refused assignment leaves the old one intact");
+        assert!(
+            !stick.set_axis_function(Function::Yaw, 0),
+            "roll already owns axis 0, and a coupled mapping rolls the vehicle when the operator yaws"
+        );
+        assert_eq!(
+            stick.axis_for(Function::Yaw),
+            Some(2),
+            "the refused assignment leaves the old one intact"
+        );
         stick.clear_axis_function(Function::Roll);
-        assert!(stick.set_axis_function(Function::Yaw, 0), "once the axis is free it can be reassigned");
+        assert!(
+            stick.set_axis_function(Function::Yaw, 0),
+            "once the axis is free it can be reassigned"
+        );
         let settings = flying();
         let state = stick.snapshot(&settings, Support::default(), 0);
         let functions = state["functions"].as_array().unwrap();
         assert_eq!(functions.len(), FUNCTIONS.len());
-        assert_eq!(functions[0], json!({ "id": "roll", "axis": Value::Null }), "the mapping has to be renderable in the direction the operator thinks in");
+        assert_eq!(
+            functions[0],
+            json!({ "id": "roll", "axis": Value::Null }),
+            "the mapping has to be renderable in the direction the operator thinks in"
+        );
         assert_eq!(functions[2], json!({ "id": "yaw", "axis": 0 }));
         assert_eq!(state["missingFunctions"], json!(["roll"]));
     }
@@ -1834,33 +3349,126 @@ mod tests {
         let settings = flying();
         stick.set_axis_function(Function::Roll, 0);
         stick.set_axis_function(Function::Pitch, 1);
-        stick.set_polling(Polling { vehicle: true, configuration: false }, 0);
-        let out = stick.on_input(Input { axes: &[0, 0, 0, 0], buttons: &[false; 2], hats: &[] }, &settings, Support::default(), 41);
-        assert_eq!(out, vec![Out::MappingIncomplete { missing: vec![Function::Yaw, Function::Throttle] }], "an unmapped attitude axis stops the whole message rather than sending a zero for it");
+        stick.set_polling(
+            Polling {
+                vehicle: true,
+                configuration: false,
+            },
+            0,
+        );
+        let out = stick.on_input(
+            Input {
+                axes: &[0, 0, 0, 0],
+                buttons: &[false; 2],
+                hats: &[],
+            },
+            &settings,
+            Support::default(),
+            41,
+        );
+        assert_eq!(
+            out,
+            vec![Out::MappingIncomplete {
+                missing: vec![Function::Yaw, Function::Throttle]
+            }],
+            "an unmapped attitude axis stops the whole message rather than sending a zero for it"
+        );
         ATTITUDE.iter().enumerate().for_each(|(axis, function)| {
             stick.set_axis_function(*function, axis);
         });
-        let short = stick.on_input(Input { axes: &[0, 0], buttons: &[false; 2], hats: &[] }, &settings, Support::default(), 82);
-        assert_eq!(short, vec![Out::MissingAxisData { axes: vec![2, 3] }], "a mapped axis the head did not report is missing data, which is a different fault from a missing mapping");
-        let enabled_but_unmapped = Settings { optional_enabled: [true, false, false, false, false, false, false, false], ..settings };
-        let out = stick.on_input(Input { axes: &[0, 0, 0, 0], buttons: &[false; 2], hats: &[] }, &enabled_but_unmapped, Support::default(), 123);
-        assert_eq!(out, vec![Out::MappingIncomplete { missing: vec![Function::PitchExtension] }], "an enabled extension is as required as the attitude axes");
-        assert_eq!(stick.missing_functions(&enabled_but_unmapped), vec![Function::PitchExtension]);
+        let short = stick.on_input(
+            Input {
+                axes: &[0, 0],
+                buttons: &[false; 2],
+                hats: &[],
+            },
+            &settings,
+            Support::default(),
+            82,
+        );
+        assert_eq!(
+            short,
+            vec![Out::MissingAxisData { axes: vec![2, 3] }],
+            "a mapped axis the head did not report is missing data, which is a different fault from a missing mapping"
+        );
+        let enabled_but_unmapped = Settings {
+            optional_enabled: [true, false, false, false, false, false, false, false],
+            ..settings
+        };
+        let out = stick.on_input(
+            Input {
+                axes: &[0, 0, 0, 0],
+                buttons: &[false; 2],
+                hats: &[],
+            },
+            &enabled_but_unmapped,
+            Support::default(),
+            123,
+        );
+        assert_eq!(
+            out,
+            vec![Out::MappingIncomplete {
+                missing: vec![Function::PitchExtension]
+            }],
+            "an enabled extension is as required as the attitude axes"
+        );
+        assert_eq!(
+            stick.missing_functions(&enabled_but_unmapped),
+            vec![Function::PitchExtension]
+        );
     }
 
     #[test]
     fn stored_settings_that_do_not_cover_the_enabled_axes_demand_a_new_calibration() {
         let mut stick = mapped();
-        assert!(stick.validate(&flying()).is_empty(), "a complete mapping loads as it is");
-        let with_extension = Settings { optional_enabled: [true, false, false, false, false, false, false, false], ..flying() };
-        assert_eq!(stick.validate(&with_extension), vec![Out::RequireCalibration { missing: vec![Function::PitchExtension] }]);
-        assert_eq!(stick.axis_for(Function::Roll), None, "the incomplete mapping is thrown away, so nothing half-loaded reaches a vehicle");
+        assert!(
+            stick.validate(&flying()).is_empty(),
+            "a complete mapping loads as it is"
+        );
+        let with_extension = Settings {
+            optional_enabled: [true, false, false, false, false, false, false, false],
+            ..flying()
+        };
+        assert_eq!(
+            stick.validate(&with_extension),
+            vec![Out::RequireCalibration {
+                missing: vec![Function::PitchExtension]
+            }]
+        );
+        assert_eq!(
+            stick.axis_for(Function::Roll),
+            None,
+            "the incomplete mapping is thrown away, so nothing half-loaded reaches a vehicle"
+        );
         let mut fresh = mapped();
-        assert!(fresh.validate(&Settings { calibrated: false, ..flying() }).is_empty());
-        assert_eq!(fresh.axis_for(Function::Roll), None, "an uncalibrated stick keeps no stored ranges at all");
+        assert!(
+            fresh
+                .validate(&Settings {
+                    calibrated: false,
+                    ..flying()
+                })
+                .is_empty()
+        );
+        assert_eq!(
+            fresh.axis_for(Function::Roll),
+            None,
+            "an uncalibrated stick keeps no stored ranges at all"
+        );
         let mut bad = mapped();
-        bad.calibration[0] = AxisCalibration { min: 100, max: -100, center: 0, deadband: 0, reversed: false };
-        assert_eq!(bad.validate(&flying()), vec![Out::RequireCalibration { missing: Vec::new() }], "a stored range that cannot be believed is thrown away too, mapping or no mapping");
+        bad.calibration[0] = AxisCalibration {
+            min: 100,
+            max: -100,
+            center: 0,
+            deadband: 0,
+            reversed: false,
+        };
+        assert_eq!(
+            bad.validate(&flying()),
+            vec![Out::RequireCalibration {
+                missing: Vec::new()
+            }],
+            "a stored range that cannot be believed is thrown away too, mapping or no mapping"
+        );
         assert_eq!(bad.axis_for(Function::Roll), None);
     }
 
@@ -1868,36 +3476,69 @@ mod tests {
     fn the_transmitter_mode_has_one_owner_and_a_repeated_apply_changes_nothing() {
         let mut stick = mapped();
         stick.set_axis_function(Function::Additional1, 4);
-        assert_eq!(stick.transmitter_mode(), TRANSMITTER_MODE_STORED, "a stick loads in the mode its stored mapping was saved in");
+        assert_eq!(
+            stick.transmitter_mode(),
+            TRANSMITTER_MODE_STORED,
+            "a stick loads in the mode its stored mapping was saved in"
+        );
         assert!(stick.set_transmitter_mode(1));
-        assert_eq!(stick.axis_for(Function::Throttle), Some(1), "mode 1 swaps throttle and pitch against mode 2");
+        assert_eq!(
+            stick.axis_for(Function::Throttle),
+            Some(1),
+            "mode 1 swaps throttle and pitch against mode 2"
+        );
         assert_eq!(stick.axis_for(Function::Pitch), Some(3));
         assert_eq!(stick.axis_for(Function::Roll), Some(0));
         assert_eq!(stick.axis_for(Function::Yaw), Some(2));
-        assert_eq!(stick.axis_for(Function::Additional1), Some(4), "an extension axis is not part of the transmitter mode table");
+        assert_eq!(
+            stick.axis_for(Function::Additional1),
+            Some(4),
+            "an extension axis is not part of the transmitter mode table"
+        );
         assert_eq!(stick.transmitter_mode(), 1);
         stick.set_transmitter_mode(1);
-        assert_eq!(stick.axis_for(Function::Throttle), Some(1), "applying the mode the stick is already in is a no-op, so a settings-changed signal cannot double-remap the sticks");
+        assert_eq!(
+            stick.axis_for(Function::Throttle),
+            Some(1),
+            "applying the mode the stick is already in is a no-op, so a settings-changed signal cannot double-remap the sticks"
+        );
         assert!(stick.set_transmitter_mode(TRANSMITTER_MODE_STORED));
         assert_eq!(
             ATTITUDE.map(|f| stick.axis_for(f)),
             [Some(0), Some(1), Some(2), Some(3)],
             "the round trip through the stored mode is the identity, which is what makes saving in mode 2 safe"
         );
-        assert!(!stick.set_transmitter_mode(9), "a mode outside 1..4 is refused");
+        assert!(
+            !stick.set_transmitter_mode(9),
+            "a mode outside 1..4 is refused"
+        );
         assert_eq!(stick.transmitter_mode(), TRANSMITTER_MODE_STORED);
-        assert_eq!(stick.snapshot(&flying(), Support::default(), 0)["transmitterMode"], TRANSMITTER_MODE_STORED);
+        assert_eq!(
+            stick.snapshot(&flying(), Support::default(), 0)["transmitterMode"],
+            TRANSMITTER_MODE_STORED
+        );
     }
 
     #[test]
     fn changing_a_buttons_action_keeps_repeat_when_the_new_action_can_repeat() {
         let mut stick = Joystick::new(4, 2, 0);
-        let repeatable = ACTIONS.iter().map(|(_, name, ..)| *name).find(|name| can_repeat(name)).unwrap();
-        let single = ACTIONS.iter().map(|(_, name, ..)| *name).find(|name| !can_repeat(name)).unwrap();
+        let repeatable = ACTIONS
+            .iter()
+            .map(|(_, name, ..)| *name)
+            .find(|name| can_repeat(name))
+            .unwrap();
+        let single = ACTIONS
+            .iter()
+            .map(|(_, name, ..)| *name)
+            .find(|name| !can_repeat(name))
+            .unwrap();
         stick.set_button_action(0, Some(repeatable));
         stick.set_button_repeat(0, true, false);
         stick.set_button_action(0, Some(repeatable));
-        assert!(stick.binding(0).unwrap().repeat, "Joystick::setButtonAction carries repeat over");
+        assert!(
+            stick.binding(0).unwrap().repeat,
+            "Joystick::setButtonAction carries repeat over"
+        );
         stick.set_button_action(0, Some(single));
         assert!(!stick.binding(0).unwrap().repeat);
     }
@@ -1905,8 +3546,20 @@ mod tests {
     #[test]
     fn the_catalog_defaults_are_the_joystick_settings_group_json_ones() {
         let catalog = joystick_view(&Nothing, &[]);
-        let default_of = |name: &str| catalog["settings"].as_array().unwrap().iter().find(|s| s["name"] == name).unwrap()["default"].clone();
-        assert_eq!(default_of("transmitterMode"), 2, "Joystick.SettingsGroup.json defaults every vehicle to mode 2; defaultJoystickTXMode is never read");
+        let default_of = |name: &str| {
+            catalog["settings"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|s| s["name"] == name)
+                .unwrap()["default"]
+                .clone()
+        };
+        assert_eq!(
+            default_of("transmitterMode"),
+            2,
+            "Joystick.SettingsGroup.json defaults every vehicle to mode 2; defaultJoystickTXMode is never read"
+        );
         assert_eq!(default_of("useDeadband"), true);
     }
 
@@ -1914,33 +3567,95 @@ mod tests {
     fn configuration_polling_reports_raw_travel_and_never_touches_the_vehicle() {
         let mut stick = mapped();
         stick.set_button_action(0, Some("Arm"));
-        stick.set_polling(Polling { vehicle: false, configuration: true }, 0);
+        stick.set_polling(
+            Polling {
+                vehicle: false,
+                configuration: true,
+            },
+            0,
+        );
         let settings = flying();
-        let out = stick.on_input(Input { axes: &[123, 0, 0, 0], buttons: &[true, false, false, false], hats: &[0] }, &settings, Support::default(), 41);
-        assert!(out.contains(&Out::RawButton { index: 0, pressed: true }));
-        assert!(out.contains(&Out::RawAxes { values: vec![Some(123), Some(0), Some(0), Some(0), None, None] }), "an axis the head did not report stays absent in the calibration display");
-        assert!(!out.iter().any(|o| matches!(o, Out::ManualControl { .. } | Out::Action { .. })), "calibrating a stick must not fly the vehicle");
-        let released = stick.on_input(Input { axes: &[123, 0, 0, 0], buttons: &[false; 4], hats: &[0] }, &settings, Support::default(), 82);
-        assert!(released.contains(&Out::RawButton { index: 0, pressed: false }));
+        let out = stick.on_input(
+            Input {
+                axes: &[123, 0, 0, 0],
+                buttons: &[true, false, false, false],
+                hats: &[0],
+            },
+            &settings,
+            Support::default(),
+            41,
+        );
+        assert!(out.contains(&Out::RawButton {
+            index: 0,
+            pressed: true
+        }));
+        assert!(
+            out.contains(&Out::RawAxes {
+                values: vec![Some(123), Some(0), Some(0), Some(0), None, None]
+            }),
+            "an axis the head did not report stays absent in the calibration display"
+        );
+        assert!(
+            !out.iter()
+                .any(|o| matches!(o, Out::ManualControl { .. } | Out::Action { .. })),
+            "calibrating a stick must not fly the vehicle"
+        );
+        let released = stick.on_input(
+            Input {
+                axes: &[123, 0, 0, 0],
+                buttons: &[false; 4],
+                hats: &[0],
+            },
+            &settings,
+            Support::default(),
+            82,
+        );
+        assert!(released.contains(&Out::RawButton {
+            index: 0,
+            pressed: false
+        }));
     }
 
     #[test]
     fn the_calibration_display_shapes_an_assigned_axis_the_same_way_as_an_unassigned_one() {
-        let with_deadband = AxisCalibration { min: -32768, max: 32767, center: 0, deadband: 5000, reversed: false };
+        let with_deadband = AxisCalibration {
+            min: -32768,
+            max: 32767,
+            center: 0,
+            deadband: 5000,
+            reversed: false,
+        };
         let mut stick = mapped();
         [0, 4].iter().for_each(|axis| {
             stick.set_calibration(*axis, with_deadband);
         });
-        stick.set_polling(Polling { vehicle: false, configuration: true }, 0);
-        let settings = Settings { use_deadband: true, ..flying() };
-        stick.on_input(Input { axes: &[1000, 1000, 1000, 1000, 1000, 1000], buttons: &[false; 4], hats: &[0] }, &settings, Support::default(), 41);
+        stick.set_polling(
+            Polling {
+                vehicle: false,
+                configuration: true,
+            },
+            0,
+        );
+        let settings = Settings {
+            use_deadband: true,
+            ..flying()
+        };
+        stick.on_input(
+            Input {
+                axes: &[1000, 1000, 1000, 1000, 1000, 1000],
+                buttons: &[false; 4],
+                hats: &[0],
+            },
+            &settings,
+            Support::default(),
+            41,
+        );
         let state = stick.snapshot(&settings, Support::default(), 41);
         assert_eq!(state["axes"][0]["function"], "roll");
         assert_eq!(state["axes"][4]["function"], Value::Null);
         assert_eq!(state["axes"][0]["shaped"], 0.0);
         assert_eq!(
-            state["axes"][4]["shaped"],
-            state["axes"][0]["shaped"],
+            state["axes"][4]["shaped"], state["axes"][0]["shaped"],
             "an identical reading on an identical range renders identically whether or not a function is assigned, or the trace jumps the instant the operator picks one and reads as a broken axis"
         );
     }
@@ -1949,18 +3664,76 @@ mod tests {
     fn an_uncalibrated_or_unpolled_stick_sends_nothing_at_all() {
         let mut stick = mapped();
         let settings = flying();
-        let input = Input { axes: &[0, 0, 0, 0], buttons: &[false; 4], hats: &[0] };
-        assert!(stick.on_input(input, &settings, Support::default(), 41).is_empty(), "with no polling asked for, a pushed sample is dropped");
-        stick.set_polling(Polling { vehicle: true, configuration: false }, 0);
-        assert!(stick.on_input(input, &Settings { calibrated: false, ..settings }, Support::default(), 41).is_empty(), "an uncalibrated stick is never allowed to command a vehicle");
+        let input = Input {
+            axes: &[0, 0, 0, 0],
+            buttons: &[false; 4],
+            hats: &[0],
+        };
+        assert!(
+            stick
+                .on_input(input, &settings, Support::default(), 41)
+                .is_empty(),
+            "with no polling asked for, a pushed sample is dropped"
+        );
+        stick.set_polling(
+            Polling {
+                vehicle: true,
+                configuration: false,
+            },
+            0,
+        );
+        assert!(
+            stick
+                .on_input(
+                    input,
+                    &Settings {
+                        calibrated: false,
+                        ..settings
+                    },
+                    Support::default(),
+                    41
+                )
+                .is_empty(),
+            "an uncalibrated stick is never allowed to command a vehicle"
+        );
         stick.set_button_action(0, Some("Arm"));
-        let pressed = Input { axes: &[0, 0, 0, 0], buttons: &[true, false, false, false], hats: &[0] };
-        assert!(stick.on_input(pressed, &Settings { calibrated: false, ..settings }, Support::default(), 82).is_empty(), "and its buttons are dead too");
+        let pressed = Input {
+            axes: &[0, 0, 0, 0],
+            buttons: &[true, false, false, false],
+            hats: &[0],
+        };
+        assert!(
+            stick
+                .on_input(
+                    pressed,
+                    &Settings {
+                        calibrated: false,
+                        ..settings
+                    },
+                    Support::default(),
+                    82
+                )
+                .is_empty(),
+            "and its buttons are dead too"
+        );
         [123, 164].iter().for_each(|now| {
-            stick.on_input(input, &Settings { calibrated: false, ..settings }, Support::default(), *now);
+            stick.on_input(
+                input,
+                &Settings {
+                    calibrated: false,
+                    ..settings
+                },
+                Support::default(),
+                *now,
+            );
         });
         assert!(
-            stick.on_input(pressed, &settings, Support::default(), 205).contains(&Out::Action { action: "Arm".into(), event: ButtonEvent::Down }),
+            stick
+                .on_input(pressed, &settings, Support::default(), 205)
+                .contains(&Out::Action {
+                    action: "Arm".into(),
+                    event: ButtonEvent::Down
+                }),
             "the press has to be a fresh down transition, because a button already held while the stick was uncalibrated must not arm the moment calibration lands"
         );
     }
@@ -1969,23 +3742,61 @@ mod tests {
     fn a_button_the_head_stops_reporting_releases_instead_of_latching_down() {
         let mut stick = mapped();
         stick.set_button_action(0, Some("Gimbal Up"));
-        stick.set_polling(Polling { vehicle: true, configuration: false }, 0);
+        stick.set_polling(
+            Polling {
+                vehicle: true,
+                configuration: false,
+            },
+            0,
+        );
         let settings = flying();
-        stick.on_input(Input { axes: &[0, 0, 0, 0], buttons: &[true, false, false, false], hats: &[0] }, &settings, Support::default(), 0);
-        let short = stick.on_input(Input { axes: &[0, 0, 0, 0], buttons: &[], hats: &[] }, &settings, Support::default(), 1);
-        assert!(short.contains(&Out::Action { action: "Gimbal Up".into(), event: ButtonEvent::Up }), "a gimbal left moving is worse than one that stops, so an unreported button counts as released");
+        stick.on_input(
+            Input {
+                axes: &[0, 0, 0, 0],
+                buttons: &[true, false, false, false],
+                hats: &[0],
+            },
+            &settings,
+            Support::default(),
+            0,
+        );
+        let short = stick.on_input(
+            Input {
+                axes: &[0, 0, 0, 0],
+                buttons: &[],
+                hats: &[],
+            },
+            &settings,
+            Support::default(),
+            1,
+        );
+        assert!(
+            short.contains(&Out::Action {
+                action: "Gimbal Up".into(),
+                event: ButtonEvent::Up
+            }),
+            "a gimbal left moving is worse than one that stops, so an unreported button counts as released"
+        );
         assert_eq!(ButtonEvent::None.step(true), ButtonEvent::Down);
         assert_eq!(ButtonEvent::Down.step(true), ButtonEvent::Repeat);
         assert_eq!(ButtonEvent::Repeat.step(true), ButtonEvent::Repeat);
         assert_eq!(ButtonEvent::Repeat.step(false), ButtonEvent::Up);
         assert_eq!(ButtonEvent::Up.step(false), ButtonEvent::None);
-        assert_eq!(ButtonEvent::Up.step(true), ButtonEvent::Up, "a press seen in the same cycle as the release waits for the next one, exactly as the polled version did");
+        assert_eq!(
+            ButtonEvent::Up.step(true),
+            ButtonEvent::Up,
+            "a press seen in the same cycle as the release waits for the next one, exactly as the polled version did"
+        );
     }
 
     #[test]
     fn the_internal_smoothing_integrator_is_a_diagnostic_not_hardware_state() {
         let state = mapped().snapshot(&flying(), Support::default(), 0);
-        assert_eq!(state["throttleAccumulator"], Value::Null, "a head has no correct way to draw the module's own integrator alongside stick positions");
+        assert_eq!(
+            state["throttleAccumulator"],
+            Value::Null,
+            "a head has no correct way to draw the module's own integrator alongside stick positions"
+        );
         assert_eq!(state["diagnostics"]["throttleAccumulator"], 0.0);
     }
 
@@ -2011,44 +3822,122 @@ mod tests {
         let view = joystick_view(&Nothing, &[]);
         assert_eq!(view["class"], "JoystickMapping");
         assert_eq!(view["functions"].as_array().unwrap().len(), 12);
-        assert_eq!(view["functions"][0], json!({ "id": "roll", "required": true, "extensionBit": Value::Null, "rcChannel": Value::Null, "carriedBy": ["MANUAL_CONTROL"] }));
-        assert_eq!(view["functions"][4], json!({ "id": "pitchExtension", "required": false, "extensionBit": 0, "rcChannel": Value::Null, "carriedBy": ["MANUAL_CONTROL"] }));
+        assert_eq!(
+            view["functions"][0],
+            json!({ "id": "roll", "required": true, "extensionBit": Value::Null, "rcChannel": Value::Null, "carriedBy": ["MANUAL_CONTROL"] })
+        );
+        assert_eq!(
+            view["functions"][4],
+            json!({ "id": "pitchExtension", "required": false, "extensionBit": 0, "rcChannel": Value::Null, "carriedBy": ["MANUAL_CONTROL"] })
+        );
         assert_eq!(
             view["functions"][6],
             json!({ "id": "additionalAxis1", "required": false, "extensionBit": 2, "rcChannel": 5, "carriedBy": ["MANUAL_CONTROL", "RC_CHANNELS_OVERRIDE"] }),
             "the operator wiring a payload has to be told which rc channel the axis drives, and that flipping the mode moves it onto a different message"
         );
-        assert_eq!(view["functions"][11]["rcChannel"], 10, "the override block is channels 5 to 10, not a bare count of six");
-        assert_eq!(view["rcOverride"]["firstChannel"], RC_OVERRIDE_FIRST_CHANNEL);
+        assert_eq!(
+            view["functions"][11]["rcChannel"], 10,
+            "the override block is channels 5 to 10, not a bare count of six"
+        );
+        assert_eq!(
+            view["rcOverride"]["firstChannel"],
+            RC_OVERRIDE_FIRST_CHANNEL
+        );
         assert_eq!(view["rcOverride"]["pwmMin"], 1000.0);
         assert_eq!(view["rcOverride"]["pwmMax"], 2000.0);
-        assert_eq!(view["rcOverride"]["releaseFrames"], RC_OVERRIDE_RELEASE_COUNT);
-        assert_eq!(view["hatDirections"], json!(["up", "down", "left", "right"]), "four buttons per hat is useless without the order they come in");
+        assert_eq!(
+            view["rcOverride"]["releaseFrames"],
+            RC_OVERRIDE_RELEASE_COUNT
+        );
+        assert_eq!(
+            view["hatDirections"],
+            json!(["up", "down", "left", "right"]),
+            "four buttons per hat is useless without the order they come in"
+        );
         assert_eq!(view["vehicleButtonBits"], 32);
-        assert_eq!(view["transmitterModes"][1]["functions"], json!(["yaw", "throttle", "roll", "pitch"]));
+        assert_eq!(
+            view["transmitterModes"][1]["functions"],
+            json!(["yaw", "throttle", "roll", "pitch"])
+        );
         let actions = view["actions"].as_array().unwrap();
         assert_eq!(actions[0]["action"], ACTION_NONE);
         assert_eq!(actions[0]["id"], ACTION_NONE_ID);
         assert!(
-            actions.iter().all(|a| a["id"].as_str().is_some_and(|id| !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric()))),
+            actions.iter().all(|a| a["id"]
+                .as_str()
+                .is_some_and(|id| !id.is_empty() && id.chars().all(|c| c.is_ascii_alphanumeric()))),
             "the operators read Ukrainian, so every binding label needs a stable id to localise from instead of untranslatable English prose"
         );
-        assert!(actions.iter().any(|a| a["id"] == "motorInterlockDisable" && a["action"] == "Motor Interlock disable"));
-        assert!(actions.iter().any(|a| a["action"] == "Step Zoom In" && a["repeat"] == true));
-        assert!(actions.iter().any(|a| a["action"] == "Gimbal Up" && a["up"] == true && a["repeat"] == false));
-        assert_eq!(actions.iter().filter(|a| a["repeat"] == true).count(), 4, "the step zooms and step focuses repeat, and nothing else does");
-        assert!(actions.iter().any(|a| a["action"] == "Continuous Zoom In" && a["repeat"] == false && a["up"] == true));
+        assert!(actions.iter().any(
+            |a| a["id"] == "motorInterlockDisable" && a["action"] == "Motor Interlock disable"
+        ));
+        assert!(
+            actions
+                .iter()
+                .any(|a| a["action"] == "Step Zoom In" && a["repeat"] == true)
+        );
+        assert!(
+            actions
+                .iter()
+                .any(|a| a["action"] == "Gimbal Up" && a["up"] == true && a["repeat"] == false)
+        );
+        assert_eq!(
+            actions.iter().filter(|a| a["repeat"] == true).count(),
+            4,
+            "the step zooms and step focuses repeat, and nothing else does"
+        );
+        assert!(actions.iter().any(|a| a["action"] == "Continuous Zoom In"
+            && a["repeat"] == false
+            && a["up"] == true));
         let settings = view["settings"].as_array().unwrap();
-        let rate = settings.iter().find(|s| s["name"] == "axisFrequencyHz").unwrap();
-        assert_eq!(rate["units"], "Hz", "the head formats the number, the core only names the unit");
-        assert_eq!((rate["min"].as_f64(), rate["max"].as_f64(), rate["default"].as_f64()), (Some(0.25), Some(200.0), Some(25.0)));
-        assert_eq!(settings.iter().find(|s| s["name"] == "exponentialPct").unwrap()["units"], "%");
-        assert_eq!(settings.iter().find(|s| s["name"] == "additionalAxesFunction").unwrap()["enumValues"], json!(["MANUAL_CONTROL", "RC_CHANNELS_OVERRIDE"]));
-        assert_eq!(settings.iter().filter(|s| s["name"].as_str().is_some_and(|name| name.starts_with("enable_"))).count(), 8);
+        let rate = settings
+            .iter()
+            .find(|s| s["name"] == "axisFrequencyHz")
+            .unwrap();
+        assert_eq!(
+            rate["units"], "Hz",
+            "the head formats the number, the core only names the unit"
+        );
+        assert_eq!(
+            (
+                rate["min"].as_f64(),
+                rate["max"].as_f64(),
+                rate["default"].as_f64()
+            ),
+            (Some(0.25), Some(200.0), Some(25.0))
+        );
+        assert_eq!(
+            settings
+                .iter()
+                .find(|s| s["name"] == "exponentialPct")
+                .unwrap()["units"],
+            "%"
+        );
+        assert_eq!(
+            settings
+                .iter()
+                .find(|s| s["name"] == "additionalAxesFunction")
+                .unwrap()["enumValues"],
+            json!(["MANUAL_CONTROL", "RC_CHANNELS_OVERRIDE"])
+        );
+        assert_eq!(
+            settings
+                .iter()
+                .filter(|s| s["name"]
+                    .as_str()
+                    .is_some_and(|name| name.starts_with("enable_")))
+                .count(),
+            8
+        );
         let numeric_text: Vec<(&String, &Value)> = settings
             .iter()
             .flat_map(|entry| entry.as_object().unwrap())
-            .filter(|(key, value)| ["default", "min", "max", "units"].contains(&key.as_str()) && value.as_str().is_some_and(|text| text.chars().any(char::is_numeric)))
+            .filter(|(key, value)| {
+                ["default", "min", "max", "units"].contains(&key.as_str())
+                    && value
+                        .as_str()
+                        .is_some_and(|text| text.chars().any(char::is_numeric))
+            })
             .collect();
         assert!(
             numeric_text.is_empty(),
@@ -2058,24 +3947,62 @@ mod tests {
 
     #[test]
     fn the_action_names_are_the_ones_joystick_cc_builds() {
-        let named = ["Gripper Grab", "Gripper Release", "Gripper Hold", "Continuous Focus In", "Step Focus Out"];
-        named.iter().for_each(|action| assert!(ACTIONS.iter().any(|(_, name, _, _)| name == action), "{action} is in Joystick::_buildAvailableButtonsActionList"));
-        assert!(!ACTIONS.iter().any(|(_, name, _, _)| *name == "Gripper Close"), "QGC renamed the gripper actions");
+        let named = [
+            "Gripper Grab",
+            "Gripper Release",
+            "Gripper Hold",
+            "Continuous Focus In",
+            "Step Focus Out",
+        ];
+        named.iter().for_each(|action| {
+            assert!(
+                ACTIONS.iter().any(|(_, name, _, _)| name == action),
+                "{action} is in Joystick::_buildAvailableButtonsActionList"
+            )
+        });
+        assert!(
+            !ACTIONS
+                .iter()
+                .any(|(_, name, _, _)| *name == "Gripper Close"),
+            "QGC renamed the gripper actions"
+        );
         assert_eq!(ACTIONS.len(), 36);
         assert_eq!(action_id("Gripper Grab"), Some("gripperGrab"));
-        assert_eq!(action_id("Loiter"), None, "a flight mode the core does not know has no id to localise, which the head has to see");
+        assert_eq!(
+            action_id("Loiter"),
+            None,
+            "a flight mode the core does not know has no id to localise, which the head has to see"
+        );
     }
 
     #[test]
     fn the_deadband_and_throttle_mode_defaults_match_the_settings_the_head_reads_back() {
-        assert!(!Settings::default().use_deadband, "the stored default is off, and a head that trusts a catalog saying otherwise gets the opposite of every existing profile");
+        assert!(
+            !Settings::default().use_deadband,
+            "the stored default is off, and a head that trusts a catalog saying otherwise gets the opposite of every existing profile"
+        );
         assert_eq!(Settings::default().throttle_mode, ThrottleMode::DownZero);
         assert_eq!(ThrottleMode::CenterZero.stored(), 0);
-        assert_eq!(ThrottleMode::DownZero.stored(), 1, "the old encoding is an int where centre-zero is 0, so a bool named for centre-zero inverts on migration");
-        let settings = joystick_view(&Nothing, &[])["settings"].as_array().unwrap().clone();
-        let mode = settings.iter().find(|s| s["name"] == "throttleMode").unwrap();
+        assert_eq!(
+            ThrottleMode::DownZero.stored(),
+            1,
+            "the old encoding is an int where centre-zero is 0, so a bool named for centre-zero inverts on migration"
+        );
+        let settings = joystick_view(&Nothing, &[])["settings"]
+            .as_array()
+            .unwrap()
+            .clone();
+        let mode = settings
+            .iter()
+            .find(|s| s["name"] == "throttleMode")
+            .unwrap();
         assert_eq!(mode["default"], 1);
         assert_eq!(mode["enumValues"], json!(["CENTER_ZERO", "DOWN_ZERO"]));
-        assert!(!settings.iter().any(|s| s["name"] == "throttleModeCenterZero"), "a bool whose polarity nobody can check has no place in the catalog");
+        assert!(
+            !settings
+                .iter()
+                .any(|s| s["name"] == "throttleModeCenterZero"),
+            "a bool whose polarity nobody can check has no place in the catalog"
+        );
     }
 }

@@ -122,11 +122,15 @@ pub enum Driver {
 impl Driver {
     pub fn parse(gps_type: &str) -> Driver {
         let lowered = gps_type.to_lowercase();
-        [("trimble", Driver::Trimble), ("septentrio", Driver::Septentrio), ("femtomes", Driver::Femtomes)]
-            .into_iter()
-            .find(|(needle, _)| lowered.contains(needle))
-            .map(|(_, driver)| driver)
-            .unwrap_or(Driver::UBlox)
+        [
+            ("trimble", Driver::Trimble),
+            ("septentrio", Driver::Septentrio),
+            ("femtomes", Driver::Femtomes),
+        ]
+        .into_iter()
+        .find(|(needle, _)| lowered.contains(needle))
+        .map(|(_, driver)| driver)
+        .unwrap_or(Driver::UBlox)
     }
 
     pub fn id(self) -> &'static str {
@@ -245,7 +249,10 @@ pub fn survey_spec(settings: &Settings) -> SurveySpec {
 
 pub fn base_position(settings: &Settings) -> Option<BasePosition> {
     let latitude = settings.fixed_latitude;
-    let inside = settings.use_fixed_base && latitude.is_finite() && settings.fixed_longitude.is_finite() && (-90.0..=90.0).contains(&latitude);
+    let inside = settings.use_fixed_base
+        && latitude.is_finite()
+        && settings.fixed_longitude.is_finite()
+        && (-90.0..=90.0).contains(&latitude);
     inside.then(|| BasePosition {
         latitude,
         longitude: wrap_longitude(settings.fixed_longitude),
@@ -255,7 +262,9 @@ pub fn base_position(settings: &Settings) -> Option<BasePosition> {
 }
 
 pub fn base_plan(settings: &Settings) -> BasePlan {
-    base_position(settings).map(BasePlan::Fixed).unwrap_or(BasePlan::SurveyIn(survey_spec(settings)))
+    base_position(settings)
+        .map(BasePlan::Fixed)
+        .unwrap_or(BasePlan::SurveyIn(survey_spec(settings)))
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -361,7 +370,8 @@ impl Relative {
     }
 
     pub fn heading_deg(&self) -> Option<f64> {
-        self.heading_valid.then(|| radians_to_wrapped_degrees(self.heading_rad))
+        self.heading_valid
+            .then(|| radians_to_wrapped_degrees(self.heading_rad))
     }
 }
 
@@ -390,7 +400,9 @@ pub struct Fix {
 
 impl Fix {
     pub fn heading_deg(&self) -> Option<f64> {
-        self.heading_rad.is_finite().then(|| radians_to_wrapped_degrees(self.heading_rad))
+        self.heading_rad
+            .is_finite()
+            .then(|| radians_to_wrapped_degrees(self.heading_rad))
     }
 }
 
@@ -421,13 +433,28 @@ fn freshness(at_ms: Option<u64>, now_ms: u64) -> Freshness {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Out {
-    OpenSerial { device: String, baud: u32 },
-    RetryOpenSerial { retries_left: u32, delay_ms: u64 },
-    OpenFailed { reason: Fault },
-    ConfigureDriver { driver: Driver, baud: u32, heading_offset_rad: Option<f32>, plan: BasePlan },
+    OpenSerial {
+        device: String,
+        baud: u32,
+    },
+    RetryOpenSerial {
+        retries_left: u32,
+        delay_ms: u64,
+    },
+    OpenFailed {
+        reason: Fault,
+    },
+    ConfigureDriver {
+        driver: Driver,
+        baud: u32,
+        heading_offset_rad: Option<f32>,
+        plan: BasePlan,
+    },
     RestartDriver,
     Connected(bool),
-    WaitForThreadExit { timeout_ms: u32 },
+    WaitForThreadExit {
+        timeout_ms: u32,
+    },
     Rtcm(Vec<GPS_RTCM_DATA_DATA>),
 }
 
@@ -464,8 +491,16 @@ impl Session {
         self.driver = Some(Driver::parse(gps_type));
         self.device = device.to_string();
         self.settings = settings;
-        self.link = Link::Opening { retries_left: SERIAL_OPEN_RETRIES };
-        stopping.into_iter().chain([Out::OpenSerial { device: device.to_string(), baud: INITIAL_BAUD }]).collect()
+        self.link = Link::Opening {
+            retries_left: SERIAL_OPEN_RETRIES,
+        };
+        stopping
+            .into_iter()
+            .chain([Out::OpenSerial {
+                device: device.to_string(),
+                baud: INITIAL_BAUD,
+            }])
+            .collect()
     }
 
     pub fn disconnect(&mut self) -> Vec<Out> {
@@ -481,19 +516,35 @@ impl Session {
         self.corrections = None;
         self.failed_receives = 0;
         self.failed_configures = 0;
-        was_live.then(|| vec![Out::WaitForThreadExit { timeout_ms: THREAD_DISCONNECT_TIMEOUT_MS }, Out::Connected(false)]).unwrap_or_default()
+        was_live
+            .then(|| {
+                vec![
+                    Out::WaitForThreadExit {
+                        timeout_ms: THREAD_DISCONNECT_TIMEOUT_MS,
+                    },
+                    Out::Connected(false),
+                ]
+            })
+            .unwrap_or_default()
     }
 
     pub fn serial_permission_denied(&mut self) -> Vec<Out> {
         match self.link {
             Link::Opening { retries_left } if retries_left > 0 => {
-                self.link = Link::Opening { retries_left: retries_left - 1 };
-                vec![Out::RetryOpenSerial { retries_left: retries_left - 1, delay_ms: SERIAL_OPEN_RETRY_DELAY_MS }]
+                self.link = Link::Opening {
+                    retries_left: retries_left - 1,
+                };
+                vec![Out::RetryOpenSerial {
+                    retries_left: retries_left - 1,
+                    delay_ms: SERIAL_OPEN_RETRY_DELAY_MS,
+                }]
             }
             Link::Opening { .. } => {
                 self.link = Link::Failed;
                 self.fault = Some(Fault::PermissionDenied);
-                vec![Out::OpenFailed { reason: Fault::PermissionDenied }]
+                vec![Out::OpenFailed {
+                    reason: Fault::PermissionDenied,
+                }]
             }
             _ => Vec::new(),
         }
@@ -514,7 +565,12 @@ impl Session {
     }
 
     pub fn serial_opened(&mut self) -> Vec<Out> {
-        let Some(driver) = self.driver.filter(|_| matches!(self.link, Link::Opening { .. })) else { return Vec::new() };
+        let Some(driver) = self
+            .driver
+            .filter(|_| matches!(self.link, Link::Opening { .. }))
+        else {
+            return Vec::new();
+        };
         self.link = Link::Configuring;
         vec![Out::ConfigureDriver {
             driver,
@@ -565,7 +621,16 @@ impl Session {
         vec![Out::RestartDriver]
     }
 
-    pub fn survey_in_status(&mut self, duration_s: f32, mean_accuracy_mm: f32, latitude: f64, longitude: f64, altitude_m: f32, flags: u8, now_ms: u64) {
+    pub fn survey_in_status(
+        &mut self,
+        duration_s: f32,
+        mean_accuracy_mm: f32,
+        latitude: f64,
+        longitude: f64,
+        altitude_m: f32,
+        flags: u8,
+        now_ms: u64,
+    ) {
         if !self.live() {
             return;
         }
@@ -587,7 +652,11 @@ impl Session {
         }
         self.satellites = Some(Satellites {
             count,
-            list: satellites.iter().take(MAX_SATELLITES.min(count as usize)).copied().collect(),
+            list: satellites
+                .iter()
+                .take(MAX_SATELLITES.min(count as usize))
+                .copied()
+                .collect(),
             at_ms: now_ms,
         });
     }
@@ -608,12 +677,20 @@ impl Session {
         if !self.live() {
             return Vec::new();
         }
-        self.corrections = Some(Corrections { bytes: self.corrections.map(|flow| flow.bytes).unwrap_or(0) + data.len() as u64, at_ms: now_ms });
+        self.corrections = Some(Corrections {
+            bytes: self.corrections.map(|flow| flow.bytes).unwrap_or(0) + data.len() as u64,
+            at_ms: now_ms,
+        });
         vec![Out::Rtcm(self.fragmenter.fragments(data))]
     }
 
     pub fn streaming_corrections(&self, now_ms: u64) -> bool {
-        freshness(self.corrections.filter(|_| self.live()).map(|flow| flow.at_ms), now_ms) == Freshness::Fresh
+        freshness(
+            self.corrections
+                .filter(|_| self.live())
+                .map(|flow| flow.at_ms),
+            now_ms,
+        ) == Freshness::Fresh
     }
 
     pub fn survey_state_token(&self, now_ms: u64) -> &'static str {
@@ -624,7 +701,10 @@ impl Session {
         match base_plan(&self.settings) {
             BasePlan::Fixed(_) if streaming => "rtkStreaming",
             BasePlan::Fixed(_) => "waitingForCorrections",
-            BasePlan::SurveyIn(_) => match self.survey.filter(|survey| freshness(Some(survey.at_ms), now_ms) == Freshness::Fresh) {
+            BasePlan::SurveyIn(_) => match self
+                .survey
+                .filter(|survey| freshness(Some(survey.at_ms), now_ms) == Freshness::Fresh)
+            {
                 Some(survey) if survey.active => "surveyInActive",
                 Some(survey) if survey.valid && streaming => "rtkStreaming",
                 Some(survey) if survey.valid => "waitingForCorrections",
@@ -746,7 +826,11 @@ pub fn settings_from(backend: &dyn Backend) -> Settings {
     Settings {
         survey_in_accuracy_m: number("surveyInAccuracyLimit"),
         survey_in_duration_s: number("surveyInMinObservationDuration") as u32,
-        use_fixed_base: backend.value(&fact_path("useFixedBasePosition")).get("value").and_then(crate::read::switch_on).unwrap_or(false),
+        use_fixed_base: backend
+            .value(&fact_path("useFixedBasePosition"))
+            .get("value")
+            .and_then(crate::read::switch_on)
+            .unwrap_or(false),
         fixed_latitude: number("fixedBasePositionLatitude"),
         fixed_longitude: number("fixedBasePositionLongitude"),
         fixed_altitude_m: number("fixedBasePositionAltitude") as f32,
@@ -801,11 +885,25 @@ mod tests {
     }
 
     fn fixed_settings() -> Settings {
-        Settings { use_fixed_base: true, fixed_latitude: 47.4, fixed_longitude: 8.5, fixed_altitude_m: 410.0, fixed_accuracy_m: 0.05, ..settings() }
+        Settings {
+            use_fixed_base: true,
+            fixed_latitude: 47.4,
+            fixed_longitude: 8.5,
+            fixed_altitude_m: 410.0,
+            fixed_accuracy_m: 0.05,
+            ..settings()
+        }
     }
 
     fn satellite(svid: u8, used: bool, azimuth_raw: u8) -> Satellite {
-        Satellite { svid, used, elevation_raw: 40, azimuth_raw, snr_db: 42, prn: svid }
+        Satellite {
+            svid,
+            used,
+            elevation_raw: 40,
+            azimuth_raw,
+            snr_db: 42,
+            prn: svid,
+        }
     }
 
     fn relative() -> Relative {
@@ -865,46 +963,120 @@ mod tests {
 
     #[test]
     fn the_gps_type_string_picks_the_driver_its_baud_and_its_heading_offset() {
-        assert_eq!(Driver::parse("Trimble BX992"), Driver::Trimble, "the C++ matches the vendor name case-insensitively anywhere in the string");
+        assert_eq!(
+            Driver::parse("Trimble BX992"),
+            Driver::Trimble,
+            "the C++ matches the vendor name case-insensitively anywhere in the string"
+        );
         assert_eq!(Driver::parse("SEPTENTRIO mosaic"), Driver::Septentrio);
         assert_eq!(Driver::parse("femtomes-x"), Driver::Femtomes);
-        assert_eq!(Driver::parse("anything else"), Driver::UBlox, "an unrecognised type falls back to u-blox, never to nothing");
-        assert_eq!(Driver::Trimble.baud(), 115200, "only the Ashtech driver is given a fixed baud; the rest autodetect from 0");
-        assert_eq!((Driver::UBlox.baud(), Driver::Septentrio.baud(), Driver::Femtomes.baud()), (0, 0, 0));
-        assert_eq!(Driver::Septentrio.heading_offset_rad(), Some(5.0), "the SBF driver is the only one QGC hands a heading offset, and the number is 5 exactly");
+        assert_eq!(
+            Driver::parse("anything else"),
+            Driver::UBlox,
+            "an unrecognised type falls back to u-blox, never to nothing"
+        );
+        assert_eq!(
+            Driver::Trimble.baud(),
+            115200,
+            "only the Ashtech driver is given a fixed baud; the rest autodetect from 0"
+        );
+        assert_eq!(
+            (
+                Driver::UBlox.baud(),
+                Driver::Septentrio.baud(),
+                Driver::Femtomes.baud()
+            ),
+            (0, 0, 0)
+        );
+        assert_eq!(
+            Driver::Septentrio.heading_offset_rad(),
+            Some(5.0),
+            "the SBF driver is the only one QGC hands a heading offset, and the number is 5 exactly"
+        );
         assert_eq!(Driver::UBlox.heading_offset_rad(), None);
     }
 
     #[test]
     fn the_survey_spec_and_the_fixed_base_keep_the_cpp_unit_scales() {
-        let spec = survey_spec(&Settings { survey_in_accuracy_m: 2.0, ..settings() });
+        let spec = survey_spec(&Settings {
+            survey_in_accuracy_m: 2.0,
+            ..settings()
+        });
         assert_eq!(
             (spec.accuracy_m, spec.accuracy_driver_units, spec.duration_s),
             (2.0, 20000.0, 180),
             "the driver wants 0.1mm, so metres scale by 10000 and never by 1000 - asserted as the literal the C++ multiplies by, not by calling survey_spec twice"
         );
-        assert_eq!(STALE_AFTER_MS, 3600, "three receive timeouts of 1200ms is the staleness window, spelled out so the derivation cannot drift");
-        assert_eq!(base_position(&settings()), None, "with the fixed base switched off there is no base position to send, not a zero one");
-        let fixed = Settings { fixed_longitude: 200.0, ..fixed_settings() };
+        assert_eq!(
+            STALE_AFTER_MS, 3600,
+            "three receive timeouts of 1200ms is the staleness window, spelled out so the derivation cannot drift"
+        );
+        assert_eq!(
+            base_position(&settings()),
+            None,
+            "with the fixed base switched off there is no base position to send, not a zero one"
+        );
+        let fixed = Settings {
+            fixed_longitude: 200.0,
+            ..fixed_settings()
+        };
         let position = base_position(&fixed).expect("a switched-on fixed base yields a position");
-        assert_eq!(position.longitude, -160.0, "longitude wraps into [-180,180] instead of being sent past the antimeridian");
-        assert_eq!(position.accuracy_mm, 50.0, "the fixed base accuracy goes to the driver in millimetres, and 0.05m is 50mm exactly");
-        assert_eq!(base_position(&Settings { fixed_latitude: 91.0, ..fixed }), None, "a latitude off the globe is refused, since it cannot wrap into one");
-        assert_eq!(base_position(&Settings { fixed_latitude: f64::NAN, ..fixed }), None);
+        assert_eq!(
+            position.longitude, -160.0,
+            "longitude wraps into [-180,180] instead of being sent past the antimeridian"
+        );
+        assert_eq!(
+            position.accuracy_mm, 50.0,
+            "the fixed base accuracy goes to the driver in millimetres, and 0.05m is 50mm exactly"
+        );
+        assert_eq!(
+            base_position(&Settings {
+                fixed_latitude: 91.0,
+                ..fixed
+            }),
+            None,
+            "a latitude off the globe is refused, since it cannot wrap into one"
+        );
+        assert_eq!(
+            base_position(&Settings {
+                fixed_latitude: f64::NAN,
+                ..fixed
+            }),
+            None
+        );
     }
 
     #[test]
     fn the_base_plan_is_one_value_so_a_fixed_base_cannot_be_overwritten_by_a_survey_spec() {
-        assert_eq!(base_plan(&settings()), BasePlan::SurveyIn(survey_spec(&settings())), "with no fixed base the only plan is to survey in");
+        assert_eq!(
+            base_plan(&settings()),
+            BasePlan::SurveyIn(survey_spec(&settings())),
+            "with no fixed base the only plan is to survey in"
+        );
         let plan = base_plan(&fixed_settings());
-        assert_eq!(plan, BasePlan::Fixed(base_position(&fixed_settings()).unwrap()));
-        assert_eq!(plan.survey(), None, "the C++ union is last-call-wins, so a plan that is fixed carries no survey spec a host could apply after it");
-        assert_eq!((plan.token(), base_plan(&settings()).token()), ("fixedBase", "surveyIn"));
+        assert_eq!(
+            plan,
+            BasePlan::Fixed(base_position(&fixed_settings()).unwrap())
+        );
+        assert_eq!(
+            plan.survey(),
+            None,
+            "the C++ union is last-call-wins, so a plan that is fixed carries no survey spec a host could apply after it"
+        );
+        assert_eq!(
+            (plan.token(), base_plan(&settings()).token()),
+            ("fixedBase", "surveyIn")
+        );
         let mut session = Session::default();
         session.connect("/dev/ttyACM0", "u-blox", fixed_settings());
         assert_eq!(
             session.serial_opened(),
-            vec![Out::ConfigureDriver { driver: Driver::UBlox, baud: 0, heading_offset_rad: None, plan: BasePlan::Fixed(base_position(&fixed_settings()).unwrap()) }],
+            vec![Out::ConfigureDriver {
+                driver: Driver::UBlox,
+                baud: 0,
+                heading_offset_rad: None,
+                plan: BasePlan::Fixed(base_position(&fixed_settings()).unwrap())
+            }],
             "one field means the ordering of setSurveyInSpecs and setBasePosition is no longer the caller's to get wrong"
         );
     }
@@ -912,17 +1084,60 @@ mod tests {
     #[test]
     fn connecting_opens_the_port_retries_permission_denials_and_then_names_the_cause() {
         let mut session = Session::default();
-        assert_eq!(session.connect("/dev/ttyACM0", "u-blox", settings()), vec![Out::OpenSerial { device: "/dev/ttyACM0".into(), baud: 9600 }]);
-        assert_eq!(session.link, Link::Opening { retries_left: 60 }, "the C++ retries a permission error sixty times, and the budget is visible");
-        assert_eq!(session.facts(0)["attemptsRemaining"], 60, "the operator can tell patient retrying from hung, which one opening token cannot say");
-        assert_eq!(session.facts(0)["device"], "/dev/ttyACM0", "and which port is being waited on, since that is what a udev rule names");
-        assert_eq!(session.serial_permission_denied(), vec![Out::RetryOpenSerial { retries_left: 59, delay_ms: 500 }]);
+        assert_eq!(
+            session.connect("/dev/ttyACM0", "u-blox", settings()),
+            vec![Out::OpenSerial {
+                device: "/dev/ttyACM0".into(),
+                baud: 9600
+            }]
+        );
+        assert_eq!(
+            session.link,
+            Link::Opening { retries_left: 60 },
+            "the C++ retries a permission error sixty times, and the budget is visible"
+        );
+        assert_eq!(
+            session.facts(0)["attemptsRemaining"],
+            60,
+            "the operator can tell patient retrying from hung, which one opening token cannot say"
+        );
+        assert_eq!(
+            session.facts(0)["device"],
+            "/dev/ttyACM0",
+            "and which port is being waited on, since that is what a udev rule names"
+        );
+        assert_eq!(
+            session.serial_permission_denied(),
+            vec![Out::RetryOpenSerial {
+                retries_left: 59,
+                delay_ms: 500
+            }]
+        );
         let exhausted = (0..59).fold(Vec::new(), |_, _| session.serial_permission_denied());
-        assert_eq!(exhausted, vec![Out::RetryOpenSerial { retries_left: 0, delay_ms: 500 }]);
-        assert_eq!(session.serial_permission_denied(), vec![Out::OpenFailed { reason: Fault::PermissionDenied }], "once the budget is spent the retry stops, and the failure says which of the three cures applies");
+        assert_eq!(
+            exhausted,
+            vec![Out::RetryOpenSerial {
+                retries_left: 0,
+                delay_ms: 500
+            }]
+        );
+        assert_eq!(
+            session.serial_permission_denied(),
+            vec![Out::OpenFailed {
+                reason: Fault::PermissionDenied
+            }],
+            "once the budget is spent the retry stops, and the failure says which of the three cures applies"
+        );
         assert_eq!(session.link, Link::Failed);
-        assert_eq!(session.facts(0)["reason"], "permissionDenied", "a udev rule fixes this one; a missing device does not, so the two cannot share a token");
-        assert!(session.serial_opened().is_empty(), "a port that opened after the session gave up does not resurrect it");
+        assert_eq!(
+            session.facts(0)["reason"],
+            "permissionDenied",
+            "a udev rule fixes this one; a missing device does not, so the two cannot share a token"
+        );
+        assert!(
+            session.serial_opened().is_empty(),
+            "a port that opened after the session gave up does not resurrect it"
+        );
     }
 
     #[test]
@@ -930,17 +1145,40 @@ mod tests {
         let mut missing = Session::default();
         missing.connect("/dev/ttyACM0", "u-blox", settings());
         missing.serial_opened();
-        assert_eq!(missing.serial_failed(Fault::DeviceMissing), vec![Out::OpenFailed { reason: Fault::DeviceMissing }, Out::Connected(false)]);
-        assert_eq!(missing.facts(0)["reason"], "deviceMissing", "replug the cable, do not go hunting for a permission");
+        assert_eq!(
+            missing.serial_failed(Fault::DeviceMissing),
+            vec![
+                Out::OpenFailed {
+                    reason: Fault::DeviceMissing
+                },
+                Out::Connected(false)
+            ]
+        );
+        assert_eq!(
+            missing.facts(0)["reason"],
+            "deviceMissing",
+            "replug the cable, do not go hunting for a permission"
+        );
 
         let mut stubborn = streaming("u-blox", settings());
         stubborn.driver_configure_failed();
         stubborn.driver_configure_failed();
         let facts = stubborn.facts(0);
-        assert_eq!((&facts["link"], &facts["reason"]), (&json!("configuring"), &json!("configureFailed")), "a receiver that never configures is not silently configuring forever");
-        assert_eq!(facts["configureFailures"], 2, "the attempts are counted, so a stuck rebuild is distinguishable from a first try");
+        assert_eq!(
+            (&facts["link"], &facts["reason"]),
+            (&json!("configuring"), &json!("configureFailed")),
+            "a receiver that never configures is not silently configuring forever"
+        );
+        assert_eq!(
+            facts["configureFailures"], 2,
+            "the attempts are counted, so a stuck rebuild is distinguishable from a first try"
+        );
         assert_eq!(stubborn.driver_configured()[0], Out::Connected(true));
-        assert_eq!(stubborn.facts(0)["reason"], Value::Null, "and a configure that finally works clears the cause");
+        assert_eq!(
+            stubborn.facts(0)["reason"],
+            Value::Null,
+            "and a configure that finally works clears the cause"
+        );
     }
 
     #[test]
@@ -948,11 +1186,32 @@ mod tests {
         let mut session = streaming("u-blox", settings());
         assert!(session.serial_timeout().is_empty());
         assert!(session.serial_timeout().is_empty());
-        assert_eq!(session.link, Link::Streaming, "the C++ explicitly excludes TimeoutError from the errors that end the session, and 1200ms is the timeout this module itself sets");
-        assert_eq!(session.serial_timeout(), vec![Out::RestartDriver], "three of them rebuild the driver, which is the same budget an empty receive spends");
-        assert_eq!(session.link, Link::Configuring, "and the session lives, so the operator does not have to re-press connect mid-mission");
+        assert_eq!(
+            session.link,
+            Link::Streaming,
+            "the C++ explicitly excludes TimeoutError from the errors that end the session, and 1200ms is the timeout this module itself sets"
+        );
+        assert_eq!(
+            session.serial_timeout(),
+            vec![Out::RestartDriver],
+            "three of them rebuild the driver, which is the same budget an empty receive spends"
+        );
+        assert_eq!(
+            session.link,
+            Link::Configuring,
+            "and the session lives, so the operator does not have to re-press connect mid-mission"
+        );
         session.driver_configured();
-        assert_eq!(session.serial_failed(Fault::SerialError), vec![Out::OpenFailed { reason: Fault::SerialError }, Out::Connected(false)], "a real serial error still ends it");
+        assert_eq!(
+            session.serial_failed(Fault::SerialError),
+            vec![
+                Out::OpenFailed {
+                    reason: Fault::SerialError
+                },
+                Out::Connected(false)
+            ],
+            "a real serial error still ends it"
+        );
         assert_eq!(session.link, Link::Failed);
     }
 
@@ -966,15 +1225,26 @@ mod tests {
                 driver: Driver::Septentrio,
                 baud: 0,
                 heading_offset_rad: Some(5.0),
-                plan: BasePlan::Fixed(BasePosition { latitude: 47.4, longitude: 8.5, altitude_m: 410.0, accuracy_mm: 50.0 }),
+                plan: BasePlan::Fixed(BasePosition {
+                    latitude: 47.4,
+                    longitude: 8.5,
+                    altitude_m: 410.0,
+                    accuracy_mm: 50.0
+                }),
             }],
             "the plan is asserted against the numbers the driver is owed, not against the functions that produce them"
         );
         assert_eq!(session.link, Link::Configuring);
         session.sensor_gps(fix());
         assert_eq!(session.driver_configured(), vec![Out::Connected(true)]);
-        assert_eq!(session.fix, None, "the C++ memsets the gps struct on every driver start, so a fix from the last driver is not reported as this one's");
-        assert!(session.driver_configured().is_empty(), "connected is announced once per driver start, not on every call");
+        assert_eq!(
+            session.fix, None,
+            "the C++ memsets the gps struct on every driver start, so a fix from the last driver is not reported as this one's"
+        );
+        assert!(
+            session.driver_configured().is_empty(),
+            "connected is announced once per driver start, not on every call"
+        );
     }
 
     #[test]
@@ -982,12 +1252,25 @@ mod tests {
         let mut session = streaming("u-blox", settings());
         assert!(session.received(0).is_empty());
         assert!(session.received(-1).is_empty());
-        assert_eq!(session.received(0), vec![Out::RestartDriver], "the C++ gives the driver three failed receives before rebuilding it");
-        assert_eq!(session.failed_receives, 0, "and the counter clears, so the next restart needs three more failures");
+        assert_eq!(
+            session.received(0),
+            vec![Out::RestartDriver],
+            "the C++ gives the driver three failed receives before rebuilding it"
+        );
+        assert_eq!(
+            session.failed_receives, 0,
+            "and the counter clears, so the next restart needs three more failures"
+        );
         session.driver_configured();
         assert!(session.received(-1).is_empty());
-        assert!(session.received(3).is_empty(), "the host passed the mask in, so echoing it back as a publish order tells it nothing it did not already know");
-        assert_eq!(session.failed_receives, 0, "any successful receive clears the budget");
+        assert!(
+            session.received(3).is_empty(),
+            "the host passed the mask in, so echoing it back as a publish order tells it nothing it did not already know"
+        );
+        assert_eq!(
+            session.failed_receives, 0,
+            "any successful receive clears the budget"
+        );
         assert_eq!(RECEIVE_TIMEOUT_MS, 1200);
     }
 
@@ -1000,11 +1283,23 @@ mod tests {
         assert_eq!(session.received(0), vec![]);
         assert_eq!(session.received(0), vec![Out::RestartDriver]);
         let facts = session.facts(1_100);
-        assert_eq!(facts["currentDuration"], 42.0, "the C++ resets no fact when GPSProvider::run rebuilds the driver, so a 3.6s USB hiccup does not erase the operator's survey progress");
-        assert_eq!(facts["surveyFreshness"], "fresh", "the age is what the freshness token is for; blanking the reading bypasses it");
-        assert_eq!(facts["connected"], true, "_onGPSConnect fires once per connectGPS, so a rebuild does not report the base station as disconnected");
+        assert_eq!(
+            facts["currentDuration"], 42.0,
+            "the C++ resets no fact when GPSProvider::run rebuilds the driver, so a 3.6s USB hiccup does not erase the operator's survey progress"
+        );
+        assert_eq!(
+            facts["surveyFreshness"], "fresh",
+            "the age is what the freshness token is for; blanking the reading bypasses it"
+        );
+        assert_eq!(
+            facts["connected"], true,
+            "_onGPSConnect fires once per connectGPS, so a rebuild does not report the base station as disconnected"
+        );
         assert_eq!(facts["state"], "surveyInActive");
-        assert_eq!(facts["numSatellites"], 11, "and the satellite count ages by the same rule as the survey, not a different one");
+        assert_eq!(
+            facts["numSatellites"], 11,
+            "and the satellite count ages by the same rule as the survey, not a different one"
+        );
     }
 
     #[test]
@@ -1012,9 +1307,19 @@ mod tests {
         let mut session = streaming("u-blox", settings());
         session.survey_in_status(12.0, 2500.0, 47.4, 190.0, 410.0, 0b10, 5_000);
         let survey = session.survey.expect("a survey-in report is stored");
-        assert_eq!((survey.valid, survey.active), (false, true), "bit 0 is valid and bit 1 is active, and they are independent");
-        assert!((survey.accuracy_m - 2.5).abs() < 1e-9, "the driver reports millimetres and the core reports metres");
-        assert_eq!(survey.longitude, -170.0, "a survey-in longitude past the antimeridian wraps rather than being reported out of range");
+        assert_eq!(
+            (survey.valid, survey.active),
+            (false, true),
+            "bit 0 is valid and bit 1 is active, and they are independent"
+        );
+        assert!(
+            (survey.accuracy_m - 2.5).abs() < 1e-9,
+            "the driver reports millimetres and the core reports metres"
+        );
+        assert_eq!(
+            survey.longitude, -170.0,
+            "a survey-in longitude past the antimeridian wraps rather than being reported out of range"
+        );
         assert_eq!(session.survey_state_token(5_000), "surveyInActive");
         assert_eq!(
             session.survey_state_token(5_000 + STALE_AFTER_MS + 1),
@@ -1022,25 +1327,53 @@ mod tests {
             "the largest token on the screen cannot say a survey is in progress while the freshness field beside it says the report is stale"
         );
         session.survey_in_status(180.0, 900.0, 47.4, 8.5, 410.0, 0b01, 6_000);
-        assert_eq!(session.survey_state_token(6_000), "waitingForCorrections", "a validated survey is not streaming until bytes move; that is the failure that flies a drone on a non-RTK fix under an RTK label");
+        assert_eq!(
+            session.survey_state_token(6_000),
+            "waitingForCorrections",
+            "a validated survey is not streaming until bytes move; that is the failure that flies a drone on a non-RTK fix under an RTK label"
+        );
         session.rtcm(&[1u8; 200], 6_000);
-        assert_eq!(session.survey_state_token(6_000), "rtkStreaming", "valid, no longer active, and corrections leaving is the streaming state the head draws");
+        assert_eq!(
+            session.survey_state_token(6_000),
+            "rtkStreaming",
+            "valid, no longer active, and corrections leaving is the streaming state the head draws"
+        );
         session.survey_in_status(1.0, 0.0, 47.4, 8.5, 410.0, 0, 6_000);
-        assert_eq!(session.survey_state_token(6_000), "surveyInWaiting", "neither valid nor active is its own answer, not streaming");
+        assert_eq!(
+            session.survey_state_token(6_000),
+            "surveyInWaiting",
+            "neither valid nor active is its own answer, not streaming"
+        );
     }
 
     #[test]
     fn a_fixed_base_reports_its_mode_and_streams_without_a_survey_report() {
         let mut session = streaming("u-blox", fixed_settings());
         let waiting = session.facts(1_000);
-        assert_eq!(waiting["mode"], "fixedBase", "the driver activates RTCM at configure time in fixed mode and never sends NAV-SVIN, so the mode has to reach the head some other way");
-        assert_eq!(waiting["state"], "waitingForCorrections", "and not surveyInWaiting, which would be a survey the receiver was never asked to run");
+        assert_eq!(
+            waiting["mode"], "fixedBase",
+            "the driver activates RTCM at configure time in fixed mode and never sends NAV-SVIN, so the mode has to reach the head some other way"
+        );
+        assert_eq!(
+            waiting["state"], "waitingForCorrections",
+            "and not surveyInWaiting, which would be a survey the receiver was never asked to run"
+        );
         session.rtcm(&[1u8; 300], 1_000);
         let facts = session.facts(1_000);
-        assert_eq!(facts["state"], "rtkStreaming", "a fixed base with corrections flowing is streaming, with no survey report to wait for");
-        assert_eq!(facts["surveyFreshness"], "noData", "the survey block stays honestly absent rather than being invented");
+        assert_eq!(
+            facts["state"], "rtkStreaming",
+            "a fixed base with corrections flowing is streaming, with no survey report to wait for"
+        );
+        assert_eq!(
+            facts["surveyFreshness"], "noData",
+            "the survey block stays honestly absent rather than being invented"
+        );
         assert_eq!(facts["rtcmBytes"], 300);
-        assert_eq!(session.facts(1_000 + STALE_AFTER_MS + 1)["state"], "waitingForCorrections", "and a base whose RTCM stopped stops claiming to stream");
+        assert_eq!(
+            session.facts(1_000 + STALE_AFTER_MS + 1)["state"],
+            "waitingForCorrections",
+            "and a base whose RTCM stopped stops claiming to stream"
+        );
     }
 
     #[test]
@@ -1048,14 +1381,27 @@ mod tests {
         let mut session = streaming("u-blox", settings());
         session.survey_in_status(45.0, 0.0, f64::NAN, f64::NAN, f32::NAN, 0b10, 1_000);
         let early = session.facts(1_000);
-        assert_eq!((&early["targetDuration"], &early["targetAccuracy"]), (&json!(180), &json!(2.0)), "42 seconds and 3.1 metres answer nothing without the limits the survey is racing");
+        assert_eq!(
+            (&early["targetDuration"], &early["targetAccuracy"]),
+            (&json!(180), &json!(2.0)),
+            "42 seconds and 3.1 metres answer nothing without the limits the survey is racing"
+        );
         assert_eq!(early["progress"], 0.25);
-        assert_eq!(early["withinAccuracyLimit"], false, "ublox reports meanAcc 0 before it has computed anything, and zero must not read as perfect convergence");
-        assert_eq!(early["positionKnown"], false, "the driver documents lat/lon as NAN until known, which is a different answer from never reported");
+        assert_eq!(
+            early["withinAccuracyLimit"], false,
+            "ublox reports meanAcc 0 before it has computed anything, and zero must not read as perfect convergence"
+        );
+        assert_eq!(
+            early["positionKnown"], false,
+            "the driver documents lat/lon as NAN until known, which is a different answer from never reported"
+        );
         assert_eq!(early["currentLatitude"], Value::Null);
         session.survey_in_status(200.0, 1500.0, 47.4, 8.5, 410.0, 0b01, 2_000);
         let converged = session.facts(2_000);
-        assert_eq!(converged["progress"], 1.0, "past the minimum duration the fraction clamps instead of reading over 100%");
+        assert_eq!(
+            converged["progress"], 1.0,
+            "past the minimum duration the fraction clamps instead of reading over 100%"
+        );
         assert_eq!(converged["withinAccuracyLimit"], true);
         assert_eq!(converged["positionKnown"], true);
     }
@@ -1064,19 +1410,40 @@ mod tests {
     fn no_data_stale_data_and_zero_data_stay_three_answers() {
         let mut session = streaming("u-blox", settings());
         let empty = session.facts(0);
-        assert_eq!(empty["currentDuration"], Value::Null, "before any report the duration is absent, not zero");
+        assert_eq!(
+            empty["currentDuration"],
+            Value::Null,
+            "before any report the duration is absent, not zero"
+        );
         assert_eq!(empty["numSatellites"], Value::Null);
         assert_eq!(empty["surveyFreshness"], "noData");
-        assert_eq!(empty["rtcmFreshness"], "noData", "and a base that has sent no corrections says so, rather than looking like one whose stream died");
+        assert_eq!(
+            empty["rtcmFreshness"], "noData",
+            "and a base that has sent no corrections says so, rather than looking like one whose stream died"
+        );
         session.survey_in_status(0.0, 0.0, 0.0, 0.0, 0.0, 0, 1_000);
         session.satellite_info(0, &[], 1_000);
         let zeroed = session.facts(1_000);
-        assert_eq!(zeroed["currentDuration"], 0.0, "a report of zero seconds is a number, and distinguishable from absence");
+        assert_eq!(
+            zeroed["currentDuration"], 0.0,
+            "a report of zero seconds is a number, and distinguishable from absence"
+        );
         assert_eq!(zeroed["numSatellites"], 0);
         assert_eq!(zeroed["surveyFreshness"], "fresh");
-        assert_eq!(session.facts(1_000 + STALE_AFTER_MS + 1)["surveyFreshness"], "stale", "a report older than three receive timeouts is stale, and still carries its last numbers");
-        assert_eq!(session.facts(1_000 + STALE_AFTER_MS + 1)["currentDuration"], 0.0);
-        assert_eq!(session.facts(1_000 + STALE_AFTER_MS + 1)["state"], "surveyInWaiting", "and the biggest token on the screen agrees with the freshness beside it instead of contradicting it");
+        assert_eq!(
+            session.facts(1_000 + STALE_AFTER_MS + 1)["surveyFreshness"],
+            "stale",
+            "a report older than three receive timeouts is stale, and still carries its last numbers"
+        );
+        assert_eq!(
+            session.facts(1_000 + STALE_AFTER_MS + 1)["currentDuration"],
+            0.0
+        );
+        assert_eq!(
+            session.facts(1_000 + STALE_AFTER_MS + 1)["state"],
+            "surveyInWaiting",
+            "and the biggest token on the screen agrees with the freshness beside it instead of contradicting it"
+        );
     }
 
     #[test]
@@ -1088,17 +1455,34 @@ mod tests {
         session.sensor_gps(fix());
         session.rtcm(&[1u8; 100], 1_000);
         assert_eq!(session.facts(1_000)["connected"], true);
-        assert_eq!(session.disconnect(), vec![Out::WaitForThreadExit { timeout_ms: 2000 }, Out::Connected(false)]);
+        assert_eq!(
+            session.disconnect(),
+            vec![
+                Out::WaitForThreadExit { timeout_ms: 2000 },
+                Out::Connected(false)
+            ]
+        );
         let after = session.facts(1_000);
         assert_eq!(after["connected"], false);
         assert_eq!(
-            (&after["numSatellites"], &after["valid"], &after["relative"], &after["fix"]),
+            (
+                &after["numSatellites"],
+                &after["valid"],
+                &after["relative"],
+                &after["fix"]
+            ),
             (&Value::Null, &Value::Null, &Value::Null, &Value::Null),
             "nothing survives a disconnect as a latched reading"
         );
-        assert_eq!(after["rtcmFreshness"], "noData", "including the correction stream, whose byte count would otherwise span the gap to the next connect");
+        assert_eq!(
+            after["rtcmFreshness"], "noData",
+            "including the correction stream, whose byte count would otherwise span the gap to the next connect"
+        );
         assert_eq!(after["state"], "idle");
-        assert!(session.disconnect().is_empty(), "disconnecting twice announces the drop once");
+        assert!(
+            session.disconnect().is_empty(),
+            "disconnecting twice announces the drop once"
+        );
     }
 
     #[test]
@@ -1108,7 +1492,15 @@ mod tests {
         session.sensor_gps(fix());
         session.gnss_relative(relative());
         session.rtcm(&[1u8; 100], 1_000);
-        assert_eq!(session.serial_failed(Fault::SerialError), vec![Out::OpenFailed { reason: Fault::SerialError }, Out::Connected(false)]);
+        assert_eq!(
+            session.serial_failed(Fault::SerialError),
+            vec![
+                Out::OpenFailed {
+                    reason: Fault::SerialError
+                },
+                Out::Connected(false)
+            ]
+        );
         let after = session.facts(1_000);
         assert_eq!(after["connected"], false);
         assert_eq!(
@@ -1120,35 +1512,84 @@ mod tests {
         session.satellite_info(9, &[satellite(1, true, 0)], 1_200);
         session.sensor_gps(fix());
         session.gnss_relative(relative());
-        assert!(session.rtcm(&[1u8; 100], 1_200).is_empty(), "the C++ queues these across threads while disconnect waits, so in-flight callbacks land after the stop and must not resurrect the session");
+        assert!(
+            session.rtcm(&[1u8; 100], 1_200).is_empty(),
+            "the C++ queues these across threads while disconnect waits, so in-flight callbacks land after the stop and must not resurrect the session"
+        );
         let late = session.facts(1_200);
-        assert_eq!((&late["numSatellites"], &late["fix"], &late["rtcmFreshness"]), (&Value::Null, &Value::Null, &json!("noData")));
-        assert!(session.received(1).is_empty(), "a dead link accepts no further receives");
-        assert!(session.serial_failed(Fault::SerialError).is_empty(), "and the drop is announced once");
+        assert_eq!(
+            (&late["numSatellites"], &late["fix"], &late["rtcmFreshness"]),
+            (&Value::Null, &Value::Null, &json!("noData"))
+        );
+        assert!(
+            session.received(1).is_empty(),
+            "a dead link accepts no further receives"
+        );
+        assert!(
+            session.serial_failed(Fault::SerialError).is_empty(),
+            "and the drop is announced once"
+        );
     }
 
     #[test]
     fn satellite_azimuth_is_decoded_per_driver_and_elevation_can_be_below_the_horizon() {
         assert_eq!(Driver::UBlox.azimuth_degrees(0), 0.0);
-        assert!((Driver::UBlox.azimuth_degrees(128) - 180.7).abs() < 0.1, "the ublox driver stores azimuth as 0..255 over a full turn");
-        assert_eq!(Driver::UBlox.azimuth_degrees(255), 0.0, "a full turn wraps back to zero instead of reading 360");
-        assert_eq!(Driver::Trimble.azimuth_degrees(200), 200.0, "ashtech parses the NMEA GSV azimuth in degrees and femtomes documents azi in degrees, so scaling them points the sky plot 40% off");
+        assert!(
+            (Driver::UBlox.azimuth_degrees(128) - 180.7).abs() < 0.1,
+            "the ublox driver stores azimuth as 0..255 over a full turn"
+        );
+        assert_eq!(
+            Driver::UBlox.azimuth_degrees(255),
+            0.0,
+            "a full turn wraps back to zero instead of reading 360"
+        );
+        assert_eq!(
+            Driver::Trimble.azimuth_degrees(200),
+            200.0,
+            "ashtech parses the NMEA GSV azimuth in degrees and femtomes documents azi in degrees, so scaling them points the sky plot 40% off"
+        );
         assert_eq!(Driver::Femtomes.azimuth_degrees(200), 200.0);
         assert_eq!(wrap_degrees(-90.0), 270.0);
-        assert_eq!(wrap_degrees(-360.0), 0.0, "a reverse turn is zero, wrapped with the rem_euclid every other module in the crate uses");
+        assert_eq!(
+            wrap_degrees(-360.0),
+            0.0,
+            "a reverse turn is zero, wrapped with the rem_euclid every other module in the crate uses"
+        );
 
         let mut trimble = streaming("trimble", settings());
-        trimble.satellite_info(1, &[Satellite { elevation_raw: (-5i8) as u8, azimuth_raw: 200, ..satellite(9, true, 200) }], 0);
+        trimble.satellite_info(
+            1,
+            &[Satellite {
+                elevation_raw: (-5i8) as u8,
+                azimuth_raw: 200,
+                ..satellite(9, true, 200)
+            }],
+            0,
+        );
         let entry = &trimble.facts(0)["satellites"][0];
         assert_eq!(entry["azimuthDeg"], 200.0);
-        assert_eq!(entry["elevationDeg"], -5, "ubx stores elev as int8 cast to uint8, so a satellite below the horizon read as 251 degrees up");
+        assert_eq!(
+            entry["elevationDeg"], -5,
+            "ubx stores elev as int8 cast to uint8, so a satellite below the horizon read as 251 degrees up"
+        );
 
         let mut septentrio = streaming("septentrio", settings());
         septentrio.satellite_info(12, &[], 0);
         let facts = septentrio.facts(0);
-        assert_eq!(facts["numSatellites"], 12, "the sbf driver fills only count, and that count is already satellites-used");
-        assert_eq!(facts["satellites"], Value::Null, "so there is no per-satellite table to draw, rather than twenty zeroed rows");
-        assert_eq!(facts["satellitesUsed"], Value::Null, "and used-of-total is not invented as 0 of 12 under a good RTK fix");
+        assert_eq!(
+            facts["numSatellites"], 12,
+            "the sbf driver fills only count, and that count is already satellites-used"
+        );
+        assert_eq!(
+            facts["satellites"],
+            Value::Null,
+            "so there is no per-satellite table to draw, rather than twenty zeroed rows"
+        );
+        assert_eq!(
+            facts["satellitesUsed"],
+            Value::Null,
+            "and used-of-total is not invented as 0 of 12 under a good RTK fix"
+        );
     }
 
     #[test]
@@ -1157,8 +1598,15 @@ mod tests {
         let many: Vec<Satellite> = (0..30u8).map(|i| satellite(i, i % 2 == 0, i)).collect();
         session.satellite_info(30, &many, 0);
         let stored = session.satellites.as_ref().unwrap();
-        assert_eq!(stored.count, 30, "the driver's own count is reported as given");
-        assert_eq!(stored.list.len(), MAX_SATELLITES, "but the per-satellite table is the twenty slots the struct has");
+        assert_eq!(
+            stored.count, 30,
+            "the driver's own count is reported as given"
+        );
+        assert_eq!(
+            stored.list.len(),
+            MAX_SATELLITES,
+            "but the per-satellite table is the twenty slots the struct has"
+        );
         assert_eq!(stored.used_count(), 10);
     }
 
@@ -1166,10 +1614,35 @@ mod tests {
     fn the_relative_reading_reports_a_wrapped_bearing_and_a_carrier_token() {
         let floating = relative();
         assert_eq!(floating.carrier_token(), "floating");
-        assert_eq!(Relative { carrier_fixed: true, ..floating }.carrier_token(), "fixed");
-        assert_eq!(Relative { carrier_floating: false, ..floating }.carrier_token(), "none");
-        assert!((floating.heading_deg().unwrap() - 270.0).abs() < 1e-4, "a negative heading in radians comes back as a bearing in 0..360");
-        assert_eq!(Relative { heading_valid: false, ..floating }.heading_deg(), None, "an invalid heading is absent, not north");
+        assert_eq!(
+            Relative {
+                carrier_fixed: true,
+                ..floating
+            }
+            .carrier_token(),
+            "fixed"
+        );
+        assert_eq!(
+            Relative {
+                carrier_floating: false,
+                ..floating
+            }
+            .carrier_token(),
+            "none"
+        );
+        assert!(
+            (floating.heading_deg().unwrap() - 270.0).abs() < 1e-4,
+            "a negative heading in radians comes back as a bearing in 0..360"
+        );
+        assert_eq!(
+            Relative {
+                heading_valid: false,
+                ..floating
+            }
+            .heading_deg(),
+            None,
+            "an invalid heading is absent, not north"
+        );
     }
 
     #[test]
@@ -1196,39 +1669,63 @@ mod tests {
         assert_eq!(facts["relative"]["carrierSolution"], "floating");
         assert_eq!(facts["satellites"][0]["used"], true);
         assert_eq!(facts["satellites"][0]["azimuthDeg"], 64.0);
-        assert_eq!(fix_type_token(0), "unknown", "a fix type the firmware never defined is unknown, not none");
+        assert_eq!(
+            fix_type_token(0),
+            "unknown",
+            "a fix type the firmware never defined is unknown, not none"
+        );
         assert_eq!(fix_type_token(FIX_TYPE_EXTRAPOLATED), "extrapolated");
         let text = facts.to_string();
-        assert!(!text.contains(" m\"") && !text.contains(" s\""), "no value is emitted with its unit glued on, since the operators read Ukrainian: {text}");
+        assert!(
+            !text.contains(" m\"") && !text.contains(" s\""),
+            "no value is emitted with its unit glued on, since the operators read Ukrainian: {text}"
+        );
     }
 
     #[test]
     fn a_mounting_offset_keeps_its_sign_where_a_bearing_wraps() {
         let mut session = streaming("septentrio", settings());
-        session.sensor_gps(Fix { heading_offset_rad: -0.1, heading_rad: -std::f32::consts::FRAC_PI_2, ..fix() });
+        session.sensor_gps(Fix {
+            heading_offset_rad: -0.1,
+            heading_rad: -std::f32::consts::FRAC_PI_2,
+            ..fix()
+        });
         let block = &session.facts(1_000)["fix"];
         assert!(
             (block["headingOffsetDeg"].as_f64().unwrap() + 5.729).abs() < 1e-3,
             "sbf documents the offset as radians [-pi,pi] subtracted from the measurement, so wrapping -0.1 rad into 354.3 degrees reads as an almost-north offset"
         );
-        assert!((block["headingDeg"].as_f64().unwrap() - 270.0).abs() < 1e-3, "the measurement itself is a bearing and still wraps");
+        assert!(
+            (block["headingDeg"].as_f64().unwrap() - 270.0).abs() < 1e-3,
+            "the measurement itself is a bearing and still wraps"
+        );
     }
 
     #[test]
     fn rtcm_goes_out_through_the_shared_fragmenter_and_the_bytes_are_counted() {
         let mut session = streaming("u-blox", settings());
         let out = session.rtcm(&[1u8; 400], 0);
-        let Out::Rtcm(fragments) = &out[0] else { panic!("rtcm is fragmented for the wire") };
+        let Out::Rtcm(fragments) = &out[0] else {
+            panic!("rtcm is fragmented for the wire")
+        };
         assert_eq!(
             fragments.iter().map(|f| f.len as usize).collect::<Vec<_>>(),
             vec![180, 180, 40],
             "the crate's own fragmenter does the cutting, not a copy of it"
         );
-        assert_eq!(out.len(), 1, "and nothing else rides along; the kB/s figure the C++ computed lives inside QT_DEBUG behind a single qCDebug line");
+        assert_eq!(
+            out.len(),
+            1,
+            "and nothing else rides along; the kB/s figure the C++ computed lives inside QT_DEBUG behind a single qCDebug line"
+        );
         session.rtcm(&[1u8; 100], 1_001);
         assert_eq!(session.facts(1_001)["rtcmBytes"], 500);
         assert_eq!(session.facts(1_001)["rtcmFreshness"], "fresh");
-        assert_eq!(session.facts(1_001 + STALE_AFTER_MS + 1)["rtcmFreshness"], "stale", "a stream that stopped is stale rather than silently unchanged, which is the whole point of watching it");
+        assert_eq!(
+            session.facts(1_001 + STALE_AFTER_MS + 1)["rtcmFreshness"],
+            "stale",
+            "a stream that stopped is stale rather than silently unchanged, which is the whole point of watching it"
+        );
     }
 
     struct Fake;
@@ -1236,13 +1733,27 @@ mod tests {
     impl Backend for Fake {
         fn get(&self, path: &str) -> String {
             match path {
-                "settings.rtkSettings.surveyInAccuracyLimit.rawValue" => json!({ "kind": "value", "value": 1.5 }),
-                "settings.rtkSettings.surveyInMinObservationDuration.rawValue" => json!({ "kind": "value", "value": 120 }),
-                "settings.rtkSettings.useFixedBasePosition.rawValue" => json!({ "kind": "value", "value": true }),
-                "settings.rtkSettings.fixedBasePositionLatitude.rawValue" => json!({ "kind": "value", "value": 47.4 }),
-                "settings.rtkSettings.fixedBasePositionLongitude.rawValue" => json!({ "kind": "value", "value": -181.0 }),
-                "settings.rtkSettings.fixedBasePositionAltitude.rawValue" => json!({ "kind": "value", "value": 410.0 }),
-                "settings.rtkSettings.fixedBasePositionAccuracy.rawValue" => json!({ "kind": "value", "value": 0.1 }),
+                "settings.rtkSettings.surveyInAccuracyLimit.rawValue" => {
+                    json!({ "kind": "value", "value": 1.5 })
+                }
+                "settings.rtkSettings.surveyInMinObservationDuration.rawValue" => {
+                    json!({ "kind": "value", "value": 120 })
+                }
+                "settings.rtkSettings.useFixedBasePosition.rawValue" => {
+                    json!({ "kind": "value", "value": true })
+                }
+                "settings.rtkSettings.fixedBasePositionLatitude.rawValue" => {
+                    json!({ "kind": "value", "value": 47.4 })
+                }
+                "settings.rtkSettings.fixedBasePositionLongitude.rawValue" => {
+                    json!({ "kind": "value", "value": -181.0 })
+                }
+                "settings.rtkSettings.fixedBasePositionAltitude.rawValue" => {
+                    json!({ "kind": "value", "value": 410.0 })
+                }
+                "settings.rtkSettings.fixedBasePositionAccuracy.rawValue" => {
+                    json!({ "kind": "value", "value": 0.1 })
+                }
                 _ => json!({ "kind": "value", "value": null }),
             }
             .to_string()
@@ -1267,18 +1778,32 @@ mod tests {
         assert_eq!(view["mode"], "fixedBase");
         assert_eq!(view["surveyInAccuracy"], 1.5);
         assert_eq!(view["surveyInMinDuration"], 120);
-        assert_eq!(view["fixedBase"]["longitude"], 179.0, "a longitude the operator typed past the antimeridian wraps back onto the globe");
+        assert_eq!(
+            view["fixedBase"]["longitude"], 179.0,
+            "a longitude the operator typed past the antimeridian wraps back onto the globe"
+        );
         assert_eq!(view["fixedBase"]["accuracy"], 100.0);
         assert_eq!(view["fixedBase"]["accuracyUnit"], "mm");
         assert_eq!(
-            (&view["receiveTimeoutMs"], &view["threadDisconnectTimeoutMs"], &view["surveyInAccuracyDriverUnits"], &view["initialBaud"]),
+            (
+                &view["receiveTimeoutMs"],
+                &view["threadDisconnectTimeoutMs"],
+                &view["surveyInAccuracyDriverUnits"],
+                &view["initialBaud"]
+            ),
             (&Value::Null, &Value::Null, &Value::Null, &Value::Null),
             "a head can draw nothing with a thread-join timeout or a driver-scaled 0.1mm figure, and these were crowding out the numbers it can"
         );
         let defaulted = base_view(&Fake, &[]);
-        assert_eq!(defaulted["driver"], "ublox", "no argument means the u-blox the C++ falls back to, and the view still answers");
+        assert_eq!(
+            defaulted["driver"], "ublox",
+            "no argument means the u-blox the C++ falls back to, and the view still answers"
+        );
         assert_eq!(defaulted["headingOffsetRad"], Value::Null);
-        assert_eq!(base_view(&Fake, &["septentrio".to_string()])["headingOffsetRad"], 5.0);
+        assert_eq!(
+            base_view(&Fake, &["septentrio".to_string()])["headingOffsetRad"],
+            5.0
+        );
     }
 
     #[test]
@@ -1296,6 +1821,17 @@ mod tests {
             ],
             "the paths are asserted as strings, since a duplicate list of the same length proved nothing about whether the two agreed"
         );
-        assert_eq!(settings_from(&Fake), Settings { survey_in_accuracy_m: 1.5, survey_in_duration_s: 120, use_fixed_base: true, fixed_latitude: 47.4, fixed_longitude: -181.0, fixed_altitude_m: 410.0, fixed_accuracy_m: 0.1 });
+        assert_eq!(
+            settings_from(&Fake),
+            Settings {
+                survey_in_accuracy_m: 1.5,
+                survey_in_duration_s: 120,
+                use_fixed_base: true,
+                fixed_latitude: 47.4,
+                fixed_longitude: -181.0,
+                fixed_altitude_m: 410.0,
+                fixed_accuracy_m: 0.1
+            }
+        );
     }
 }

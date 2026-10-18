@@ -8,7 +8,7 @@ use serde_json::{Value, json};
 use crate::joystick::{AXIS_MAX, AXIS_MIN};
 use crate::joystickhost::{Device, DeviceDetails};
 use crate::seriallink::{Event, SerialConfig, SerialLink};
-use crate::umbus::{CHANNEL_CENTER, Decoder, APP_HEARTBEAT, APP_KEEPALIVE, MCU_POLL, Sticks};
+use crate::umbus::{APP_HEARTBEAT, APP_KEEPALIVE, CHANNEL_CENTER, Decoder, MCU_POLL, Sticks};
 
 pub const STICKS_NAME: &str = "Built-in sticks";
 pub const STICKS_STALE_AFTER_MS: u64 = 500;
@@ -40,14 +40,23 @@ pub const AXES: [(Source, &str); 13] = [
 pub fn axes(sticks: &Sticks) -> Vec<i32> {
     AXES.iter()
         .map(|(source, _)| match source {
-            Source::Gimbal(at) => (i32::from(sticks.gimbals[*at]) * GIMBAL_SCALE).clamp(AXIS_MIN, AXIS_MAX),
+            Source::Gimbal(at) => {
+                (i32::from(sticks.gimbals[*at]) * GIMBAL_SCALE).clamp(AXIS_MIN, AXIS_MAX)
+            }
             Source::Channel(at) => i32::from(sticks.channels[*at]) - i32::from(CHANNEL_CENTER),
         })
         .collect()
 }
 
 pub fn device() -> Device {
-    Device { name: STICKS_NAME.to_string(), axes: AXES.len(), buttons: 0, hats: 0, gamepad: false, details: DeviceDetails::default() }
+    Device {
+        name: STICKS_NAME.to_string(),
+        axes: AXES.len(),
+        buttons: 0,
+        hats: 0,
+        gamepad: false,
+        details: DeviceDetails::default(),
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -104,19 +113,33 @@ static STATE: LazyLock<Mutex<State>> = LazyLock::new(Mutex::default);
 static LAST_FRAME_MS: AtomicU64 = AtomicU64::new(0);
 
 fn state() -> MutexGuard<'static, State> {
-    STATE.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    STATE
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
-pub fn reader(mut deliver: impl FnMut(Vec<i32>) + Send + 'static, mut gone: impl FnMut(String) + Send + 'static) -> impl FnMut(Event) + Send + 'static {
+pub fn reader(
+    mut deliver: impl FnMut(Vec<i32>) + Send + 'static,
+    mut gone: impl FnMut(String) + Send + 'static,
+) -> impl FnMut(Event) + Send + 'static {
     let mut decoder = Decoder::default();
     move |event| match event {
-        Event::Bytes(bytes) => decoder.feed(&bytes).iter().filter_map(|frame| crate::umbus::sticks(frame)).for_each(|sticks| deliver(axes(&sticks))),
+        Event::Bytes(bytes) => decoder
+            .feed(&bytes)
+            .iter()
+            .filter_map(|frame| crate::umbus::sticks(frame))
+            .for_each(|sticks| deliver(axes(&sticks))),
         Event::Disconnected(why) => gone(why),
     }
 }
 
 pub fn spawn_pump(link: Arc<SerialLink>, stop: Arc<AtomicBool>) -> Option<JoinHandle<()>> {
-    let batch: Vec<u8> = [MCU_POLL.as_slice(), APP_HEARTBEAT.as_slice(), APP_KEEPALIVE.as_slice()].concat();
+    let batch: Vec<u8> = [
+        MCU_POLL.as_slice(),
+        APP_HEARTBEAT.as_slice(),
+        APP_KEEPALIVE.as_slice(),
+    ]
+    .concat();
     std::thread::Builder::new()
         .name("qgc-sticks-pump".into())
         .spawn(move || {
@@ -155,18 +178,30 @@ pub fn set(on: bool) -> Result<(), String> {
 }
 
 fn start() -> Result<(), String> {
-    let sticks = crate::hostdevice::built_in_sticks().ok_or_else(|| "This controller has no built-in sticks.".to_string())?;
+    let sticks = crate::hostdevice::built_in_sticks()
+        .ok_or_else(|| "This controller has no built-in sticks.".to_string())?;
     if state().status == Status::Live {
         return Ok(());
     }
     stop();
-    let config = SerialConfig { port_name: sticks.port.to_string(), baud: sticks.baud, data_bits: 8, parity: 0, stop_bits: 1, flow_control: 0, usb_direct: false };
+    let config = SerialConfig {
+        port_name: sticks.port.to_string(),
+        baud: sticks.baud,
+        data_bits: 8,
+        parity: 0,
+        stop_bits: 1,
+        flow_control: 0,
+        usb_direct: false,
+    };
     match SerialLink::open(&config, reader(delivered, lost)) {
         Ok(link) => {
             let link = Arc::new(link);
             let stop = Arc::new(AtomicBool::new(false));
             let pump = spawn_pump(Arc::clone(&link), Arc::clone(&stop));
-            *state() = State { running: Some(Running { link, stop, pump }), status: Status::Live };
+            *state() = State {
+                running: Some(Running { link, stop, pump }),
+                status: Status::Live,
+            };
             crate::joystickhost::set_core_device(Some(device()));
             Ok(())
         }
@@ -219,7 +254,10 @@ mod tests {
     const IDLE_APP_CLOSED: &str = "a657100204010300ffff36fe01000cfef4010080008000800080008000800cfef401008000800080008000800080f401000000000cfe0cfe0cfe0080008000800080008000800080008000806400000000000800a401cb";
 
     fn hex(text: &str) -> Vec<u8> {
-        (0..text.len()).step_by(2).map(|at| u8::from_str_radix(&text[at..at + 2], 16).unwrap()).collect()
+        (0..text.len())
+            .step_by(2)
+            .map(|at| u8::from_str_radix(&text[at..at + 2], 16).unwrap())
+            .collect()
     }
 
     #[test]
@@ -227,44 +265,119 @@ mod tests {
         let idle = crate::umbus::sticks(&hex(IDLE_APP_CLOSED)).unwrap();
         let values = axes(&idle);
         assert_eq!(values.len(), AXES.len());
-        assert_eq!(values[..4], [3 * 64, -64, -458 * 64, 64], "gimbals swing about ±500, scaled so calibration has real travel to measure");
-        assert_eq!((values[4], values[5]), (65036 - 32768, 500 - 32768), "S1 and S2 are pots centred on 0x8000");
-        assert_eq!((values[6], values[9]), (500 - 32768, 65036 - 32768), "SA and SD sit at opposite ends of their travel");
-        assert!(values.iter().all(|value| (AXIS_MIN..=AXIS_MAX).contains(value)));
+        assert_eq!(
+            values[..4],
+            [3 * 64, -64, -458 * 64, 64],
+            "gimbals swing about ±500, scaled so calibration has real travel to measure"
+        );
+        assert_eq!(
+            (values[4], values[5]),
+            (65036 - 32768, 500 - 32768),
+            "S1 and S2 are pots centred on 0x8000"
+        );
+        assert_eq!(
+            (values[6], values[9]),
+            (500 - 32768, 65036 - 32768),
+            "SA and SD sit at opposite ends of their travel"
+        );
+        assert!(
+            values
+                .iter()
+                .all(|value| (AXIS_MIN..=AXIS_MAX).contains(value))
+        );
     }
 
     #[test]
     fn an_ax12_frame_flies_through_the_joystick_model_with_its_switch_on_an_rc_channel() {
-        use crate::joystick::{AdditionalAxes, AxisCalibration, Function, Input, Joystick, Out, Polling, Settings, Support};
-        let gimbal = AxisCalibration { min: -500 * 64, max: 500 * 64, center: 0, deadband: 0, reversed: false };
-        let switch = AxisCalibration { min: 500 - 32768, max: 65036 - 32768, center: 500 - 32768, deadband: 0, reversed: false };
+        use crate::joystick::{
+            AdditionalAxes, AxisCalibration, Function, Input, Joystick, Out, Polling, Settings,
+            Support,
+        };
+        let gimbal = AxisCalibration {
+            min: -500 * 64,
+            max: 500 * 64,
+            center: 0,
+            deadband: 0,
+            reversed: false,
+        };
+        let switch = AxisCalibration {
+            min: 500 - 32768,
+            max: 65036 - 32768,
+            center: 500 - 32768,
+            deadband: 0,
+            reversed: false,
+        };
         let mut stick = Joystick::new(AXES.len(), 0, 0);
-        [(Function::Yaw, 0, gimbal), (Function::Pitch, 1, gimbal), (Function::Throttle, 2, gimbal), (Function::Roll, 3, gimbal), (Function::Additional1, 6, switch)].iter().for_each(|(function, axis, calibration)| {
+        [
+            (Function::Yaw, 0, gimbal),
+            (Function::Pitch, 1, gimbal),
+            (Function::Throttle, 2, gimbal),
+            (Function::Roll, 3, gimbal),
+            (Function::Additional1, 6, switch),
+        ]
+        .iter()
+        .for_each(|(function, axis, calibration)| {
             assert!(stick.set_axis_function(*function, *axis));
             assert!(stick.set_calibration(*axis, *calibration));
         });
-        let mut settings = Settings { calibrated: true, use_deadband: false, additional_axes: AdditionalAxes::RcChannelsOverride, ..Settings::default() };
+        let mut settings = Settings {
+            calibrated: true,
+            use_deadband: false,
+            additional_axes: AdditionalAxes::RcChannelsOverride,
+            ..Settings::default()
+        };
         settings.optional_enabled[Function::Additional1.extension_bit().unwrap()] = true;
-        stick.set_polling(Polling { vehicle: true, configuration: false }, 0);
+        stick.set_polling(
+            Polling {
+                vehicle: true,
+                configuration: false,
+            },
+            0,
+        );
         let frame = crate::umbus::sticks(&hex(IDLE_APP_CLOSED)).unwrap();
-        let out = stick.on_input(Input { axes: &axes(&frame), buttons: &[], hats: &[] }, &settings, Support::default(), 41);
+        let out = stick.on_input(
+            Input {
+                axes: &axes(&frame),
+                buttons: &[],
+                hats: &[],
+            },
+            &settings,
+            Support::default(),
+            41,
+        );
         let control = out.iter().find_map(|o| match o {
             Out::ManualControl { z, .. } => Some(*z),
             _ => None,
         });
-        assert_eq!(control, Some(41), "throttle at -458 of a -500..500 stick is about 4% up, so the aircraft gets the stick where the pilot left it");
+        assert_eq!(
+            control,
+            Some(41),
+            "throttle at -458 of a -500..500 stick is about 4% up, so the aircraft gets the stick where the pilot left it"
+        );
         let channels = out.iter().find_map(|o| match o {
             Out::RcChannelsOverride { channels } => Some(*channels),
             _ => None,
         });
-        assert_eq!(channels.map(|c| c[4]), Some(1000), "SA at its low end drives channel 5 low, the way RadioMaster's own mixer would send it");
+        assert_eq!(
+            channels.map(|c| c[4]),
+            Some(1000),
+            "SA at its low end drives channel 5 low, the way RadioMaster's own mixer would send it"
+        );
     }
 
     #[test]
     fn a_port_held_by_radiomasters_app_is_reported_as_busy_not_broken() {
-        assert_eq!(refusal("/dev/ttyS0: Device or resource busy"), Status::Busy, "RadioMaster's app takes an exclusive TIOCEXCL lock on ttyS0");
+        assert_eq!(
+            refusal("/dev/ttyS0: Device or resource busy"),
+            Status::Busy,
+            "RadioMaster's app takes an exclusive TIOCEXCL lock on ttyS0"
+        );
         assert_eq!(refusal("Permission denied").id(), "failed");
-        assert_eq!(set(true), Err("This controller has no built-in sticks.".to_string()), "a phone or tablet never opens ttyS0");
+        assert_eq!(
+            set(true),
+            Err("This controller has no built-in sticks.".to_string()),
+            "a phone or tablet never opens ttyS0"
+        );
         assert_eq!(status_json(0)["available"], false);
     }
 
@@ -275,23 +388,46 @@ mod tests {
         mcu.set_timeout(Duration::from_secs(2)).unwrap();
         let (frames, received) = mpsc::channel();
         let (gone_tx, gone) = mpsc::channel();
-        let link = Arc::new(SerialLink::from_port(Box::new(app), reader(move |axes| frames.send(axes).unwrap(), move |why| gone_tx.send(why).unwrap())).unwrap());
+        let link = Arc::new(
+            SerialLink::from_port(
+                Box::new(app),
+                reader(
+                    move |axes| frames.send(axes).unwrap(),
+                    move |why| gone_tx.send(why).unwrap(),
+                ),
+            )
+            .unwrap(),
+        );
         let stop = Arc::new(AtomicBool::new(false));
         let pump = spawn_pump(Arc::clone(&link), Arc::clone(&stop)).unwrap();
 
         let mut asked = vec![0u8; MCU_POLL.len() + APP_HEARTBEAT.len() + APP_KEEPALIVE.len()];
         mcu.read_exact(&mut asked).unwrap();
-        assert_eq!(asked, [MCU_POLL.as_slice(), APP_HEARTBEAT.as_slice(), APP_KEEPALIVE.as_slice()].concat(), "the MCU only streams at 25 Hz while it hears RadioMaster's poll, heartbeat and keep-alive");
+        assert_eq!(
+            asked,
+            [
+                MCU_POLL.as_slice(),
+                APP_HEARTBEAT.as_slice(),
+                APP_KEEPALIVE.as_slice()
+            ]
+            .concat(),
+            "the MCU only streams at 25 Hz while it hears RadioMaster's poll, heartbeat and keep-alive"
+        );
 
         let frame = hex(IDLE_APP_CLOSED);
         mcu.write_all(&frame[..40]).unwrap();
         mcu.write_all(&frame[40..]).unwrap();
-        let axes = received.recv_timeout(Duration::from_secs(2)).expect("a frame split across reads still arrives");
+        let axes = received
+            .recv_timeout(Duration::from_secs(2))
+            .expect("a frame split across reads still arrives");
         assert_eq!(axes[2], -458 * 64);
 
         stop.store(true, Ordering::Relaxed);
         pump.join().unwrap();
         link.close();
-        assert!(gone.try_recv().is_err(), "closing on purpose is not reported as a lost port");
+        assert!(
+            gone.try_recv().is_err(),
+            "closing on purpose is not reported as a lost port"
+        );
     }
 }

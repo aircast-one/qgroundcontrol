@@ -49,13 +49,44 @@ pub struct Command {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Out {
-    Send { component: u8, command: u16, command_int: bool, frame: u8, params: [f64; 7], x: i32, y: i32, confirmation: u8 },
-    Result { tag: u64, component: u8, command: u16, result: u8, failure: Failure },
-    Progress { tag: u64, component: u8, command: u16 },
+    Send {
+        component: u8,
+        command: u16,
+        command_int: bool,
+        frame: u8,
+        params: [f64; 7],
+        x: i32,
+        y: i32,
+        confirmation: u8,
+    },
+    Result {
+        tag: u64,
+        component: u8,
+        command: u16,
+        result: u8,
+        failure: Failure,
+    },
+    Progress {
+        tag: u64,
+        component: u8,
+        command: u16,
+    },
     ShowError(String),
-    ArmRefused { arming: bool, unanswered: bool },
-    ModeRefused { custom_mode: u32, unanswered: bool },
-    RequestResult { tag: u64, component: u8, message_id: u32, result: u8, failure: RequestFailure },
+    ArmRefused {
+        arming: bool,
+        unanswered: bool,
+    },
+    ModeRefused {
+        custom_mode: u32,
+        unanswered: bool,
+    },
+    RequestResult {
+        tag: u64,
+        component: u8,
+        message_id: u32,
+        result: u8,
+        failure: RequestFailure,
+    },
 }
 
 #[derive(Debug, Clone)]
@@ -93,7 +124,13 @@ pub struct Commands {
 }
 
 fn retries(command: u16) -> bool {
-    matches!(command, CMD_REQUEST_AUTOPILOT_CAPABILITIES | CMD_REQUEST_MESSAGE | CMD_PREFLIGHT_STORAGE | CMD_RUN_PREARM_CHECKS)
+    matches!(
+        command,
+        CMD_REQUEST_AUTOPILOT_CAPABILITIES
+            | CMD_REQUEST_MESSAGE
+            | CMD_PREFLIGHT_STORAGE
+            | CMD_RUN_PREARM_CHECKS
+    )
 }
 
 fn can_duplicate(command: u16) -> bool {
@@ -101,13 +138,21 @@ fn can_duplicate(command: u16) -> bool {
 }
 
 fn emergency_stop(command: &Command) -> bool {
-    command.command == crate::guidedcmd::CMD_COMPONENT_ARM_DISARM && command.params[0] == 0.0 && command.params[1] == crate::guidedcmd::ARM_MAGIC
+    command.command == crate::guidedcmd::CMD_COMPONENT_ARM_DISARM
+        && command.params[0] == 0.0
+        && command.params[1] == crate::guidedcmd::ARM_MAGIC
 }
 
 fn failure_shown(command: &Command, unanswered: bool, text: String) -> Out {
     match command.command {
-        crate::guidedcmd::CMD_COMPONENT_ARM_DISARM => Out::ArmRefused { arming: command.params[0] != 0.0, unanswered },
-        crate::guidedcmd::CMD_DO_SET_MODE => Out::ModeRefused { custom_mode: command.params[1] as u32, unanswered },
+        crate::guidedcmd::CMD_COMPONENT_ARM_DISARM => Out::ArmRefused {
+            arming: command.params[0] != 0.0,
+            unanswered,
+        },
+        crate::guidedcmd::CMD_DO_SET_MODE => Out::ModeRefused {
+            custom_mode: command.params[1] as u32,
+            unanswered,
+        },
         _ => Out::ShowError(text),
     }
 }
@@ -123,15 +168,34 @@ fn result_text(command: u16, result: u8) -> Option<String> {
     Some(format!("{} command {verb}", command_text(command)))
 }
 
-static NAMES: std::sync::LazyLock<std::collections::BTreeMap<i64, (String, String)>> = std::sync::LazyLock::new(|| {
-    crate::cmdinfo::tree(crate::cmdinfo::Firmware::Generic, crate::cmdinfo::VehicleClass::Generic)
+static NAMES: std::sync::LazyLock<std::collections::BTreeMap<i64, (String, String)>> =
+    std::sync::LazyLock::new(|| {
+        crate::cmdinfo::tree(
+            crate::cmdinfo::Firmware::Generic,
+            crate::cmdinfo::VehicleClass::Generic,
+        )
         .into_iter()
-        .map(|(id, c)| (id, (if c.friendly_name == c.raw_name { String::new() } else { c.friendly_name }, c.raw_name)))
+        .map(|(id, c)| {
+            (
+                id,
+                (
+                    if c.friendly_name == c.raw_name {
+                        String::new()
+                    } else {
+                        c.friendly_name
+                    },
+                    c.raw_name,
+                ),
+            )
+        })
         .collect()
-});
+    });
 
 fn names(command: u16) -> (String, String) {
-    NAMES.get(&i64::from(command)).cloned().unwrap_or_else(|| (format!("MAV_CMD({command})"), format!("MAV_CMD({command})")))
+    NAMES
+        .get(&i64::from(command))
+        .cloned()
+        .unwrap_or_else(|| (format!("MAV_CMD({command})"), format!("MAV_CMD({command})")))
 }
 
 fn command_text(command: u16) -> String {
@@ -148,25 +212,42 @@ fn friendly_text(command: u16) -> String {
 
 impl Commands {
     pub fn for_firmware(px4: bool) -> Commands {
-        Commands { px4, ..Commands::default() }
+        Commands {
+            px4,
+            ..Commands::default()
+        }
     }
 
     pub fn pending(&self, component: u8, command: u16) -> bool {
-        self.entries.iter().any(|e| e.command.component == component && e.command.command == command)
+        self.entries
+            .iter()
+            .any(|e| e.command.component == component && e.command.command == command)
     }
 
     fn index(&self, component: u8, command: u16) -> Option<usize> {
-        self.entries.iter().position(|e| e.command.component == component && e.command.command == command)
+        self.entries
+            .iter()
+            .position(|e| e.command.component == component && e.command.command == command)
     }
 
     pub fn send(&mut self, command: Command, now_ms: u64) -> Vec<Out> {
         if emergency_stop(&command) {
-            let (superseded, kept): (Vec<Entry>, Vec<Entry>) = std::mem::take(&mut self.entries).into_iter().partition(|e| e.command.component == command.component && e.command.command == command.command);
+            let (superseded, kept): (Vec<Entry>, Vec<Entry>) = std::mem::take(&mut self.entries)
+                .into_iter()
+                .partition(|e| {
+                    e.command.component == command.component && e.command.command == command.command
+                });
             self.entries = kept;
             if !superseded.is_empty() {
                 self.superseded.insert((command.component, command.command));
             }
-            let failed = superseded.into_iter().map(|e| Out::Result { tag: e.command.tag, component: e.command.component, command: e.command.command, result: RESULT_FAILED, failure: Failure::ResultOnly });
+            let failed = superseded.into_iter().map(|e| Out::Result {
+                tag: e.command.tag,
+                component: e.command.component,
+                command: e.command.command,
+                result: RESULT_FAILED,
+                failure: Failure::ResultOnly,
+            });
             return failed.chain(self.enqueue(command, now_ms)).collect();
         }
         self.enqueue(command, now_ms)
@@ -174,17 +255,50 @@ impl Commands {
 
     fn enqueue(&mut self, command: Command, now_ms: u64) -> Vec<Out> {
         let all = command.component == COMP_ID_ALL;
-        if all || (self.pending(command.component, command.command) && !can_duplicate(command.command)) {
-            let failure = if all { Failure::ResultOnly } else { Failure::Duplicate };
-            let mut out = vec![Out::Result { tag: command.tag, component: command.component, command: command.command, result: RESULT_FAILED, failure }];
+        if all
+            || (self.pending(command.component, command.command) && !can_duplicate(command.command))
+        {
+            let failure = if all {
+                Failure::ResultOnly
+            } else {
+                Failure::Duplicate
+            };
+            let mut out = vec![Out::Result {
+                tag: command.tag,
+                component: command.component,
+                command: command.command,
+                result: RESULT_FAILED,
+                failure,
+            }];
             if command.show_error {
-                out.push(Out::ShowError(format!("Unable to send command: {}.", if all { "Internal error - MAV_COMP_ID_ALL not supported" } else { "Waiting on previous response to same command." })));
+                out.push(Out::ShowError(format!(
+                    "Unable to send command: {}.",
+                    if all {
+                        "Internal error - MAV_COMP_ID_ALL not supported"
+                    } else {
+                        "Waiting on previous response to same command."
+                    }
+                )));
             }
             return out;
         }
-        let max_tries = if retries(command.command) { MAX_RETRY } else { 1 };
-        let ack_timeout_ms = if self.high_latency { ACK_TIMEOUT_HIGH_LATENCY_MS } else { ACK_TIMEOUT_MS };
-        self.entries.push(Entry { command, tries: 0, max_tries, ack_timeout_ms, sent_at_ms: now_ms });
+        let max_tries = if retries(command.command) {
+            MAX_RETRY
+        } else {
+            1
+        };
+        let ack_timeout_ms = if self.high_latency {
+            ACK_TIMEOUT_HIGH_LATENCY_MS
+        } else {
+            ACK_TIMEOUT_MS
+        };
+        self.entries.push(Entry {
+            command,
+            tries: 0,
+            max_tries,
+            ack_timeout_ms,
+            sent_at_ms: now_ms,
+        });
         let index = self.entries.len() - 1;
         self.transmit(index, now_ms)
     }
@@ -195,25 +309,85 @@ impl Commands {
         if entry.tries > entry.max_tries {
             let entry = self.entries.remove(index);
             let c = entry.command;
-            let out = Out::Result { tag: c.tag, component: c.component, command: c.command, result: RESULT_FAILED, failure: Failure::NoResponse };
-            return std::iter::once(out).chain(c.show_error.then(|| failure_shown(&c, true, format!("Vehicle did not respond to command: {}", friendly_text(c.command))))).collect();
+            let out = Out::Result {
+                tag: c.tag,
+                component: c.component,
+                command: c.command,
+                result: RESULT_FAILED,
+                failure: Failure::NoResponse,
+            };
+            return std::iter::once(out)
+                .chain(c.show_error.then(|| {
+                    failure_shown(
+                        &c,
+                        true,
+                        format!(
+                            "Vehicle did not respond to command: {}",
+                            friendly_text(c.command)
+                        ),
+                    )
+                }))
+                .collect();
         }
         if entry.tries > 1 && !self.px4 && entry.command.command == CMD_START_RX_PAIR {
             return Vec::new();
         }
         let c = &entry.command;
-        let scale = |v: f64| if c.frame == FRAME_MISSION { v as i32 } else { (v * 1e7) as i32 };
+        let scale = |v: f64| {
+            if c.frame == FRAME_MISSION {
+                v as i32
+            } else {
+                (v * 1e7) as i32
+            }
+        };
         let confirmation = u8::try_from(entry.tries - 1).unwrap_or(u8::MAX);
-        vec![Out::Send { component: c.component, command: c.command, command_int: c.command_int, frame: c.frame, params: c.params, x: scale(c.params[4]), y: scale(c.params[5]), confirmation }]
+        vec![Out::Send {
+            component: c.component,
+            command: c.command,
+            command_int: c.command_int,
+            frame: c.frame,
+            params: c.params,
+            x: scale(c.params[4]),
+            y: scale(c.params[5]),
+            confirmation,
+        }]
     }
 
     pub fn tick(&mut self, now_ms: u64) -> Vec<Out> {
-        let due: Vec<usize> = (0..self.entries.len()).rev().filter(|i| now_ms.saturating_sub(self.entries[*i].sent_at_ms) > self.entries[*i].ack_timeout_ms).collect();
-        let raw: Vec<Out> = due.into_iter().flat_map(|i| self.transmit(i, now_ms)).collect();
+        let due: Vec<usize> = (0..self.entries.len())
+            .rev()
+            .filter(|i| {
+                now_ms.saturating_sub(self.entries[*i].sent_at_ms) > self.entries[*i].ack_timeout_ms
+            })
+            .collect();
+        let raw: Vec<Out> = due
+            .into_iter()
+            .flat_map(|i| self.transmit(i, now_ms))
+            .collect();
         let resolved = self.resolve(raw, now_ms);
-        let expired = self.requests.iter().find(|(_, r)| r.wait_started_ms.is_some_and(|started| now_ms.saturating_sub(started) > MESSAGE_WAIT_MS)).map(|(k, r)| (*k, r.tag));
+        let expired = self
+            .requests
+            .iter()
+            .find(|(_, r)| {
+                r.wait_started_ms
+                    .is_some_and(|started| now_ms.saturating_sub(started) > MESSAGE_WAIT_MS)
+            })
+            .map(|(k, r)| (*k, r.tag));
         let timed_out = expired
-            .map(|((component, message_id), tag)| self.finish(component, message_id, Out::RequestResult { tag, component, message_id, result: RESULT_FAILED, failure: RequestFailure::MessageNotReceived }, now_ms))
+            .map(|((component, message_id), tag)| {
+                self.finish(
+                    component,
+                    message_id,
+                    Out::RequestResult {
+                        tag,
+                        component,
+                        message_id,
+                        result: RESULT_FAILED,
+                        failure: RequestFailure::MessageNotReceived,
+                    },
+                    now_ms,
+                )
+            })
             .unwrap_or_default();
         resolved.into_iter().chain(timed_out).collect()
     }
@@ -222,7 +396,9 @@ impl Commands {
         if self.superseded.remove(&(component, command)) {
             return Vec::new();
         }
-        let Some(index) = self.index(component, command) else { return Vec::new() };
+        let Some(index) = self.index(component, command) else {
+            return Vec::new();
+        };
         if result == RESULT_IN_PROGRESS {
             let entry = if self.px4 && command == CMD_DO_AUTOTUNE_ENABLE {
                 self.entries.remove(index)
@@ -232,11 +408,21 @@ impl Commands {
                 entry.sent_at_ms = now_ms;
                 entry.clone()
             };
-            return vec![Out::Progress { tag: entry.command.tag, component, command }];
+            return vec![Out::Progress {
+                tag: entry.command.tag,
+                component,
+                command,
+            }];
         }
         let entry = self.entries.remove(index);
         let c = entry.command;
-        let mut out = vec![Out::Result { tag: c.tag, component, command, result, failure: Failure::ResultOnly }];
+        let mut out = vec![Out::Result {
+            tag: c.tag,
+            component,
+            command,
+            result,
+            failure: Failure::ResultOnly,
+        }];
         if c.show_error {
             out.extend(result_text(command, result).map(|text| failure_shown(&c, false, text)));
         }
@@ -246,12 +432,36 @@ impl Commands {
         out
     }
 
-    pub fn request_message(&mut self, tag: u64, component: u8, message_id: u32, params: [f64; 5], now_ms: u64) -> Vec<Out> {
-        let duplicate = self.requests.get(&(component, message_id)).is_some_and(|r| !r.message_received) || self.queued.get(&component).is_some_and(|queue| queue.iter().any(|q| q.message_id == message_id));
+    pub fn request_message(
+        &mut self,
+        tag: u64,
+        component: u8,
+        message_id: u32,
+        params: [f64; 5],
+        now_ms: u64,
+    ) -> Vec<Out> {
+        let duplicate = self
+            .requests
+            .get(&(component, message_id))
+            .is_some_and(|r| !r.message_received)
+            || self
+                .queued
+                .get(&component)
+                .is_some_and(|queue| queue.iter().any(|q| q.message_id == message_id));
         if duplicate {
-            return vec![Out::RequestResult { tag, component, message_id, result: RESULT_FAILED, failure: RequestFailure::DuplicateCommand }];
+            return vec![Out::RequestResult {
+                tag,
+                component,
+                message_id,
+                result: RESULT_FAILED,
+                failure: RequestFailure::DuplicateCommand,
+            }];
         }
-        let request = Queued { tag, message_id, params };
+        let request = Queued {
+            tag,
+            message_id,
+            params,
+        };
         if self.active(component) {
             self.queued.entry(component).or_default().push(request);
             return Vec::new();
@@ -268,15 +478,60 @@ impl Commands {
     }
 
     fn send_request(&mut self, component: u8, request: Queued, now_ms: u64) -> Vec<Out> {
-        let Queued { tag, message_id, params } = request;
-        self.requests.insert((component, message_id), Request { tag, ack_received: false, message_received: false, wait_started_ms: None });
-        let command = Command { component, command: CMD_REQUEST_MESSAGE, command_int: false, frame: 0, params: [message_id as f64, params[0], params[1], params[2], params[3], params[4], 0.0], show_error: false, tag };
+        let Queued {
+            tag,
+            message_id,
+            params,
+        } = request;
+        self.requests.insert(
+            (component, message_id),
+            Request {
+                tag,
+                ack_received: false,
+                message_received: false,
+                wait_started_ms: None,
+            },
+        );
+        let command = Command {
+            component,
+            command: CMD_REQUEST_MESSAGE,
+            command_int: false,
+            frame: 0,
+            params: [
+                message_id as f64,
+                params[0],
+                params[1],
+                params[2],
+                params[3],
+                params[4],
+                0.0,
+            ],
+            show_error: false,
+            tag,
+        };
         let out = self.send(command, now_ms);
         out.into_iter()
             .flat_map(|o| match o {
-                Out::Result { failure, result, .. } => {
-                    let failure = if failure == Failure::Duplicate { RequestFailure::DuplicateCommand } else { RequestFailure::CommandError };
-                    self.finish(component, message_id, Out::RequestResult { tag, component, message_id, result, failure }, now_ms)
+                Out::Result {
+                    failure, result, ..
+                } => {
+                    let failure = if failure == Failure::Duplicate {
+                        RequestFailure::DuplicateCommand
+                    } else {
+                        RequestFailure::CommandError
+                    };
+                    self.finish(
+                        component,
+                        message_id,
+                        Out::RequestResult {
+                            tag,
+                            component,
+                            message_id,
+                            result,
+                            failure,
+                        },
+                        now_ms,
+                    )
                 }
                 other => vec![other],
             })
@@ -284,7 +539,10 @@ impl Commands {
     }
 
     fn finish(&mut self, component: u8, message_id: u32, result: Out, now_ms: u64) -> Vec<Out> {
-        self.release(component, message_id, now_ms).into_iter().chain([result]).collect()
+        self.release(component, message_id, now_ms)
+            .into_iter()
+            .chain([result])
+            .collect()
     }
 
     fn release(&mut self, component: u8, message_id: u32, now_ms: u64) -> Vec<Out> {
@@ -296,32 +554,65 @@ impl Commands {
         if self.active(component) {
             return Vec::new();
         }
-        let next = self.queued.get_mut(&component).filter(|queue| !queue.is_empty()).map(|queue| queue.remove(0));
+        let next = self
+            .queued
+            .get_mut(&component)
+            .filter(|queue| !queue.is_empty())
+            .map(|queue| queue.remove(0));
         if self.queued.get(&component).is_some_and(Vec::is_empty) {
             self.queued.remove(&component);
         }
-        next.map(|request| self.send_request(component, request, now_ms)).unwrap_or_default()
+        next.map(|request| self.send_request(component, request, now_ms))
+            .unwrap_or_default()
     }
 
-    fn request_acked(&mut self, component: u8, message_id: u32, result: u8, now_ms: u64, tag: u64) -> Vec<Out> {
-        let Some(request) = self.requests.get_mut(&(component, message_id)) else { return Vec::new() };
+    fn request_acked(
+        &mut self,
+        component: u8,
+        message_id: u32,
+        result: u8,
+        now_ms: u64,
+        tag: u64,
+    ) -> Vec<Out> {
+        let Some(request) = self.requests.get_mut(&(component, message_id)) else {
+            return Vec::new();
+        };
         request.ack_received = true;
         if request.message_received {
             return self.release(component, message_id, now_ms);
         }
         if result != RESULT_ACCEPTED {
-            return self.finish(component, message_id, Out::RequestResult { tag, component, message_id, result, failure: RequestFailure::CommandError }, now_ms);
+            return self.finish(
+                component,
+                message_id,
+                Out::RequestResult {
+                    tag,
+                    component,
+                    message_id,
+                    result,
+                    failure: RequestFailure::CommandError,
+                },
+                now_ms,
+            );
         }
         request.wait_started_ms = Some(now_ms);
         Vec::new()
     }
 
     pub fn on_message(&mut self, component: u8, message_id: u32, now_ms: u64) -> Vec<Out> {
-        let Some(request) = self.requests.get_mut(&(component, message_id)) else { return Vec::new() };
+        let Some(request) = self.requests.get_mut(&(component, message_id)) else {
+            return Vec::new();
+        };
         if request.message_received {
             return Vec::new();
         }
-        let delivered = Out::RequestResult { tag: request.tag, component, message_id, result: RESULT_ACCEPTED, failure: RequestFailure::None };
+        let delivered = Out::RequestResult {
+            tag: request.tag,
+            component,
+            message_id,
+            result: RESULT_ACCEPTED,
+            failure: RequestFailure::None,
+        };
         if request.ack_received {
             return self.finish(component, message_id, delivered, now_ms);
         }
@@ -330,9 +621,24 @@ impl Commands {
     }
 
     fn no_response(&mut self, component: u8, message_id: u32, now_ms: u64) -> Vec<Out> {
-        match self.requests.get(&(component, message_id)).map(|r| (r.tag, r.message_received)) {
+        match self
+            .requests
+            .get(&(component, message_id))
+            .map(|r| (r.tag, r.message_received))
+        {
             Some((_, true)) => self.release(component, message_id, now_ms),
-            Some((tag, false)) => self.finish(component, message_id, Out::RequestResult { tag, component, message_id, result: RESULT_FAILED, failure: RequestFailure::CommandNotAcked }, now_ms),
+            Some((tag, false)) => self.finish(
+                component,
+                message_id,
+                Out::RequestResult {
+                    tag,
+                    component,
+                    message_id,
+                    result: RESULT_FAILED,
+                    failure: RequestFailure::CommandNotAcked,
+                },
+                now_ms,
+            ),
             None => Vec::new(),
         }
     }
@@ -340,9 +646,25 @@ impl Commands {
     fn resolve(&mut self, out: Vec<Out>, now_ms: u64) -> Vec<Out> {
         out.into_iter()
             .flat_map(|o| match o {
-                Out::Result { component, command: CMD_REQUEST_MESSAGE, failure: Failure::NoResponse, tag, .. } => {
-                    let message_id = self.requests.iter().find(|(k, r)| k.0 == component && r.tag == tag).map(|(k, _)| k.1);
-                    let mut all = vec![Out::Result { tag, component, command: CMD_REQUEST_MESSAGE, result: RESULT_FAILED, failure: Failure::NoResponse }];
+                Out::Result {
+                    component,
+                    command: CMD_REQUEST_MESSAGE,
+                    failure: Failure::NoResponse,
+                    tag,
+                    ..
+                } => {
+                    let message_id = self
+                        .requests
+                        .iter()
+                        .find(|(k, r)| k.0 == component && r.tag == tag)
+                        .map(|(k, _)| k.1);
+                    let mut all = vec![Out::Result {
+                        tag,
+                        component,
+                        command: CMD_REQUEST_MESSAGE,
+                        result: RESULT_FAILED,
+                        failure: Failure::NoResponse,
+                    }];
                     if let Some(message_id) = message_id {
                         all.extend(self.no_response(component, message_id, now_ms));
                     }
@@ -361,43 +683,157 @@ mod tests {
     #[test]
     fn each_retry_counts_up_its_confirmation_as_mav_command_queue_does() {
         let mut commands = Commands::default();
-        let command = Command { component: 1, command: CMD_RUN_PREARM_CHECKS, command_int: false, frame: 0, params: [0.0; 7], show_error: false, tag: 0 };
+        let command = Command {
+            component: 1,
+            command: CMD_RUN_PREARM_CHECKS,
+            command_int: false,
+            frame: 0,
+            params: [0.0; 7],
+            show_error: false,
+            tag: 0,
+        };
         let first = commands.send(command, 0);
-        let retries: Vec<Vec<Out>> = [ACK_TIMEOUT_MS + 1, ACK_TIMEOUT_MS + 501].iter().map(|at| commands.tick(*at)).collect();
-        let confirmation = |outs: &[Out]| outs.iter().find_map(|o| match o { Out::Send { confirmation, .. } => Some(*confirmation), _ => None });
-        assert_eq!((confirmation(&first), confirmation(&retries[0]), confirmation(&retries[1])), (Some(0), Some(1), Some(2)));
+        let retries: Vec<Vec<Out>> = [ACK_TIMEOUT_MS + 1, ACK_TIMEOUT_MS + 501]
+            .iter()
+            .map(|at| commands.tick(*at))
+            .collect();
+        let confirmation = |outs: &[Out]| {
+            outs.iter().find_map(|o| match o {
+                Out::Send { confirmation, .. } => Some(*confirmation),
+                _ => None,
+            })
+        };
+        assert_eq!(
+            (
+                confirmation(&first),
+                confirmation(&retries[0]),
+                confirmation(&retries[1])
+            ),
+            (Some(0), Some(1), Some(2))
+        );
     }
 
     fn arm(tag: u64) -> Command {
-        Command { component: 1, command: 400, command_int: false, frame: 0, params: [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], show_error: true, tag }
+        Command {
+            component: 1,
+            command: 400,
+            command_int: false,
+            frame: 0,
+            params: [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            show_error: true,
+            tag,
+        }
     }
 
     #[test]
     fn an_emergency_stop_goes_out_while_an_arm_is_still_waiting_for_its_ack() {
         let mut commands = Commands::default();
         commands.send(arm(7), 0);
-        let stop = Command { params: [0.0, crate::guidedcmd::ARM_MAGIC, 0.0, 0.0, 0.0, 0.0, 0.0], ..arm(8) };
+        let stop = Command {
+            params: [0.0, crate::guidedcmd::ARM_MAGIC, 0.0, 0.0, 0.0, 0.0, 0.0],
+            ..arm(8)
+        };
         let out = commands.send(stop, 10);
-        assert_eq!(out[0], Out::Result { tag: 7, component: 1, command: 400, result: RESULT_FAILED, failure: Failure::ResultOnly }, "the pending arm gives way");
-        assert!(matches!(out[1], Out::Send { command: 400, params, .. } if params[1] == crate::guidedcmd::ARM_MAGIC));
-        assert!(matches!(commands.send(arm(9), 20).as_slice(), [Out::Result { failure: Failure::Duplicate, .. }, ..]), "a plain arm still waits on the stop");
-        assert!(commands.on_ack(1, 400, 2, 30).is_empty(), "the vehicle answers the arm it was sent first; that late denial is not the stop's");
-        assert!(matches!(commands.on_ack(1, 400, RESULT_ACCEPTED, 40).as_slice(), [Out::Result { tag: 8, result: RESULT_ACCEPTED, .. }]), "the next answer is the stop's");
+        assert_eq!(
+            out[0],
+            Out::Result {
+                tag: 7,
+                component: 1,
+                command: 400,
+                result: RESULT_FAILED,
+                failure: Failure::ResultOnly
+            },
+            "the pending arm gives way"
+        );
+        assert!(
+            matches!(out[1], Out::Send { command: 400, params, .. } if params[1] == crate::guidedcmd::ARM_MAGIC)
+        );
+        assert!(
+            matches!(
+                commands.send(arm(9), 20).as_slice(),
+                [
+                    Out::Result {
+                        failure: Failure::Duplicate,
+                        ..
+                    },
+                    ..
+                ]
+            ),
+            "a plain arm still waits on the stop"
+        );
+        assert!(
+            commands.on_ack(1, 400, 2, 30).is_empty(),
+            "the vehicle answers the arm it was sent first; that late denial is not the stop's"
+        );
+        assert!(
+            matches!(
+                commands.on_ack(1, 400, RESULT_ACCEPTED, 40).as_slice(),
+                [Out::Result {
+                    tag: 8,
+                    result: RESULT_ACCEPTED,
+                    ..
+                }]
+            ),
+            "the next answer is the stop's"
+        );
     }
 
     #[test]
     fn a_plain_command_is_sent_once_and_its_ack_reports_the_result() {
         let mut commands = Commands::default();
         let sent = commands.send(arm(7), 0);
-        assert!(matches!(sent.as_slice(), [Out::Send { component: 1, command: 400, command_int: false, .. }]));
+        assert!(matches!(
+            sent.as_slice(),
+            [Out::Send {
+                component: 1,
+                command: 400,
+                command_int: false,
+                ..
+            }]
+        ));
         assert!(commands.pending(1, 400));
-        assert_eq!(commands.on_ack(1, 400, 2, 10), vec![Out::Result { tag: 7, component: 1, command: 400, result: 2, failure: Failure::ResultOnly }, Out::ArmRefused { arming: true, unanswered: false }], "the hub words an arm refusal itself, with the autopilot's reason");
-        assert_eq!(command_text(9999), "MAV_CMD(9999) (MAV_CMD(9999))", "MissionCommandTree names an unknown command MAV_CMD(n) for both halves");
+        assert_eq!(
+            commands.on_ack(1, 400, 2, 10),
+            vec![
+                Out::Result {
+                    tag: 7,
+                    component: 1,
+                    command: 400,
+                    result: 2,
+                    failure: Failure::ResultOnly
+                },
+                Out::ArmRefused {
+                    arming: true,
+                    unanswered: false
+                }
+            ],
+            "the hub words an arm refusal itself, with the autopilot's reason"
+        );
+        assert_eq!(
+            command_text(9999),
+            "MAV_CMD(9999) (MAV_CMD(9999))",
+            "MissionCommandTree names an unknown command MAV_CMD(n) for both halves"
+        );
         assert!(!commands.pending(1, 400));
         assert!(commands.on_ack(1, 400, 0, 10).is_empty());
         let unretried = commands.send(arm(8), 100);
         assert_eq!(unretried.len(), 1);
-        assert_eq!(commands.tick(100 + ACK_TIMEOUT_MS + 1), vec![Out::Result { tag: 8, component: 1, command: 400, result: RESULT_FAILED, failure: Failure::NoResponse }, Out::ArmRefused { arming: true, unanswered: true }]);
+        assert_eq!(
+            commands.tick(100 + ACK_TIMEOUT_MS + 1),
+            vec![
+                Out::Result {
+                    tag: 8,
+                    component: 1,
+                    command: 400,
+                    result: RESULT_FAILED,
+                    failure: Failure::NoResponse
+                },
+                Out::ArmRefused {
+                    arming: true,
+                    unanswered: true
+                }
+            ]
+        );
     }
 
     #[test]
@@ -405,87 +841,317 @@ mod tests {
         let mut commands = Commands::default();
         commands.send(arm(1), 0);
         let duplicate = commands.send(arm(2), 1);
-        assert_eq!(duplicate[0], Out::Result { tag: 2, component: 1, command: 400, result: RESULT_FAILED, failure: Failure::Duplicate });
-        let all = commands.send(Command { component: COMP_ID_ALL, ..arm(3) }, 1);
-        assert_eq!(all[0], Out::Result { tag: 3, component: 0, command: 400, result: RESULT_FAILED, failure: Failure::ResultOnly });
-        let motor = Command { command: CMD_DO_MOTOR_TEST, ..arm(4) };
+        assert_eq!(
+            duplicate[0],
+            Out::Result {
+                tag: 2,
+                component: 1,
+                command: 400,
+                result: RESULT_FAILED,
+                failure: Failure::Duplicate
+            }
+        );
+        let all = commands.send(
+            Command {
+                component: COMP_ID_ALL,
+                ..arm(3)
+            },
+            1,
+        );
+        assert_eq!(
+            all[0],
+            Out::Result {
+                tag: 3,
+                component: 0,
+                command: 400,
+                result: RESULT_FAILED,
+                failure: Failure::ResultOnly
+            }
+        );
+        let motor = Command {
+            command: CMD_DO_MOTOR_TEST,
+            ..arm(4)
+        };
         commands.send(motor.clone(), 2);
-        assert!(matches!(commands.send(motor, 3).as_slice(), [Out::Send { .. }]));
+        assert!(matches!(
+            commands.send(motor, 3).as_slice(),
+            [Out::Send { .. }]
+        ));
     }
 
     #[test]
     fn a_retried_command_goes_out_three_times_then_fails_and_in_progress_stops_the_retries() {
         let mut commands = Commands::default();
-        let check = Command { command: CMD_RUN_PREARM_CHECKS, show_error: false, ..arm(5) };
+        let check = Command {
+            command: CMD_RUN_PREARM_CHECKS,
+            show_error: false,
+            ..arm(5)
+        };
         assert_eq!(commands.send(check, 0).len(), 1);
         assert!(commands.tick(ACK_TIMEOUT_MS).is_empty());
         assert_eq!(commands.tick(ACK_TIMEOUT_MS + 1).len(), 1);
-        assert_eq!(commands.tick(ACK_TIMEOUT_MS + 501).len(), 1, "retries follow the tick, the clock is not restarted");
-        assert_eq!(commands.tick(ACK_TIMEOUT_MS + 1001), vec![Out::Result { tag: 5, component: 1, command: CMD_RUN_PREARM_CHECKS, result: RESULT_FAILED, failure: Failure::NoResponse }]);
-        let mut slow = Commands { high_latency: true, ..Default::default() };
-        slow.send(Command { command: CMD_RUN_PREARM_CHECKS, ..arm(6) }, 0);
+        assert_eq!(
+            commands.tick(ACK_TIMEOUT_MS + 501).len(),
+            1,
+            "retries follow the tick, the clock is not restarted"
+        );
+        assert_eq!(
+            commands.tick(ACK_TIMEOUT_MS + 1001),
+            vec![Out::Result {
+                tag: 5,
+                component: 1,
+                command: CMD_RUN_PREARM_CHECKS,
+                result: RESULT_FAILED,
+                failure: Failure::NoResponse
+            }]
+        );
+        let mut slow = Commands {
+            high_latency: true,
+            ..Default::default()
+        };
+        slow.send(
+            Command {
+                command: CMD_RUN_PREARM_CHECKS,
+                ..arm(6)
+            },
+            0,
+        );
         assert!(slow.tick(ACK_TIMEOUT_MS + 1).is_empty());
         let mut busy = Commands::default();
-        busy.send(Command { command: CMD_RUN_PREARM_CHECKS, show_error: false, ..arm(9) }, 0);
-        assert_eq!(busy.on_ack(1, CMD_RUN_PREARM_CHECKS, RESULT_IN_PROGRESS, 100), vec![Out::Progress { tag: 9, component: 1, command: CMD_RUN_PREARM_CHECKS }]);
+        busy.send(
+            Command {
+                command: CMD_RUN_PREARM_CHECKS,
+                show_error: false,
+                ..arm(9)
+            },
+            0,
+        );
+        assert_eq!(
+            busy.on_ack(1, CMD_RUN_PREARM_CHECKS, RESULT_IN_PROGRESS, 100),
+            vec![Out::Progress {
+                tag: 9,
+                component: 1,
+                command: CMD_RUN_PREARM_CHECKS
+            }]
+        );
         assert!(busy.tick(100 + ACK_TIMEOUT_MS - 1).is_empty());
-        assert!(matches!(busy.tick(100 + ACK_TIMEOUT_MS + 1).as_slice(), [Out::Result { failure: Failure::NoResponse, .. }]));
+        assert!(matches!(
+            busy.tick(100 + ACK_TIMEOUT_MS + 1).as_slice(),
+            [Out::Result {
+                failure: Failure::NoResponse,
+                ..
+            }]
+        ));
         let mut apm = Commands::default();
-        apm.send(Command { command: CMD_START_RX_PAIR, show_error: false, ..arm(10) }, 0);
-        assert!(matches!(apm.tick(ACK_TIMEOUT_MS + 1).as_slice(), [Out::Result { failure: Failure::NoResponse, .. }]));
+        apm.send(
+            Command {
+                command: CMD_START_RX_PAIR,
+                show_error: false,
+                ..arm(10)
+            },
+            0,
+        );
+        assert!(matches!(
+            apm.tick(ACK_TIMEOUT_MS + 1).as_slice(),
+            [Out::Result {
+                failure: Failure::NoResponse,
+                ..
+            }]
+        ));
     }
 
     fn sent_requests(outs: &[Out]) -> Vec<f64> {
-        outs.iter().filter_map(|o| match o { Out::Send { command: CMD_REQUEST_MESSAGE, params, .. } => Some(params[0]), _ => None }).collect()
+        outs.iter()
+            .filter_map(|o| match o {
+                Out::Send {
+                    command: CMD_REQUEST_MESSAGE,
+                    params,
+                    ..
+                } => Some(params[0]),
+                _ => None,
+            })
+            .collect()
     }
 
     #[test]
     fn a_requested_message_succeeds_after_the_ack_or_before_it_and_times_out_without_it() {
         let mut commands = Commands::default();
         let sent = commands.request_message(11, 1, 148, [0.0; 5], 0);
-        assert!(matches!(sent.as_slice(), [Out::Send { command: CMD_REQUEST_MESSAGE, params, .. }] if params[0] == 148.0));
-        assert!(commands.on_ack(1, CMD_REQUEST_MESSAGE, RESULT_ACCEPTED, 5).iter().all(|o| !matches!(o, Out::RequestResult { .. })));
-        assert_eq!(commands.on_message(1, 148, 6), vec![Out::RequestResult { tag: 11, component: 1, message_id: 148, result: RESULT_ACCEPTED, failure: RequestFailure::None }]);
+        assert!(
+            matches!(sent.as_slice(), [Out::Send { command: CMD_REQUEST_MESSAGE, params, .. }] if params[0] == 148.0)
+        );
+        assert!(
+            commands
+                .on_ack(1, CMD_REQUEST_MESSAGE, RESULT_ACCEPTED, 5)
+                .iter()
+                .all(|o| !matches!(o, Out::RequestResult { .. }))
+        );
+        assert_eq!(
+            commands.on_message(1, 148, 6),
+            vec![Out::RequestResult {
+                tag: 11,
+                component: 1,
+                message_id: 148,
+                result: RESULT_ACCEPTED,
+                failure: RequestFailure::None
+            }]
+        );
         commands.request_message(12, 1, 300, [0.0; 5], 100);
-        assert_eq!(commands.on_message(1, 300, 101), vec![Out::RequestResult { tag: 12, component: 1, message_id: 300, result: RESULT_ACCEPTED, failure: RequestFailure::None }]);
-        assert!(commands.on_message(1, 300, 102).is_empty(), "a second copy of the message is not a second answer");
-        assert!(commands.pending(1, CMD_REQUEST_MESSAGE), "MavCommandQueue keeps the command until its ack even when the message came first");
-        assert!(commands.request_message(18, 1, 300, [2.0, 0.0, 0.0, 0.0, 0.0], 103).is_empty(), "asking again after the early answer waits for the ack, as QGC only answers after it");
+        assert_eq!(
+            commands.on_message(1, 300, 101),
+            vec![Out::RequestResult {
+                tag: 12,
+                component: 1,
+                message_id: 300,
+                result: RESULT_ACCEPTED,
+                failure: RequestFailure::None
+            }]
+        );
+        assert!(
+            commands.on_message(1, 300, 102).is_empty(),
+            "a second copy of the message is not a second answer"
+        );
+        assert!(
+            commands.pending(1, CMD_REQUEST_MESSAGE),
+            "MavCommandQueue keeps the command until its ack even when the message came first"
+        );
+        assert!(
+            commands
+                .request_message(18, 1, 300, [2.0, 0.0, 0.0, 0.0, 0.0], 103)
+                .is_empty(),
+            "asking again after the early answer waits for the ack, as QGC only answers after it"
+        );
         let released = commands.on_ack(1, CMD_REQUEST_MESSAGE, RESULT_ACCEPTED, 110);
-        assert!(released.iter().all(|o| !matches!(o, Out::RequestResult { .. })), "the late ack only releases the request");
+        assert!(
+            released
+                .iter()
+                .all(|o| !matches!(o, Out::RequestResult { .. })),
+            "the late ack only releases the request"
+        );
         assert_eq!(sent_requests(&released), vec![300.0]);
-        assert_eq!(commands.on_message(1, 300, 111), vec![Out::RequestResult { tag: 18, component: 1, message_id: 300, result: RESULT_ACCEPTED, failure: RequestFailure::None }]);
+        assert_eq!(
+            commands.on_message(1, 300, 111),
+            vec![Out::RequestResult {
+                tag: 18,
+                component: 1,
+                message_id: 300,
+                result: RESULT_ACCEPTED,
+                failure: RequestFailure::None
+            }]
+        );
         commands.on_ack(1, CMD_REQUEST_MESSAGE, RESULT_ACCEPTED, 112);
         assert!(commands.requests_idle());
         commands.request_message(13, 1, 148, [0.0; 5], 200);
         commands.on_ack(1, CMD_REQUEST_MESSAGE, RESULT_ACCEPTED, 205);
         assert!(commands.tick(205 + MESSAGE_WAIT_MS).is_empty());
-        assert_eq!(commands.tick(205 + MESSAGE_WAIT_MS + 1), vec![Out::RequestResult { tag: 13, component: 1, message_id: 148, result: RESULT_FAILED, failure: RequestFailure::MessageNotReceived }]);
+        assert_eq!(
+            commands.tick(205 + MESSAGE_WAIT_MS + 1),
+            vec![Out::RequestResult {
+                tag: 13,
+                component: 1,
+                message_id: 148,
+                result: RESULT_FAILED,
+                failure: RequestFailure::MessageNotReceived
+            }]
+        );
         commands.request_message(14, 1, 148, [0.0; 5], 300);
         let denied = commands.on_ack(1, CMD_REQUEST_MESSAGE, 2, 305);
-        assert!(denied.contains(&Out::RequestResult { tag: 14, component: 1, message_id: 148, result: 2, failure: RequestFailure::CommandError }));
+        assert!(denied.contains(&Out::RequestResult {
+            tag: 14,
+            component: 1,
+            message_id: 148,
+            result: 2,
+            failure: RequestFailure::CommandError
+        }));
         let mut unanswered = Commands::default();
         unanswered.request_message(17, 1, 148, [0.0; 5], 0);
-        let gave_up = (1..=3).flat_map(|n| unanswered.tick(ACK_TIMEOUT_MS + n)).collect::<Vec<_>>();
-        assert!(gave_up.contains(&Out::RequestResult { tag: 17, component: 1, message_id: 148, result: RESULT_FAILED, failure: RequestFailure::CommandNotAcked }));
+        let gave_up = (1..=3)
+            .flat_map(|n| unanswered.tick(ACK_TIMEOUT_MS + n))
+            .collect::<Vec<_>>();
+        assert!(gave_up.contains(&Out::RequestResult {
+            tag: 17,
+            component: 1,
+            message_id: 148,
+            result: RESULT_FAILED,
+            failure: RequestFailure::CommandNotAcked
+        }));
         assert!(unanswered.requests.is_empty());
     }
 
     #[test]
     fn requests_to_one_component_wait_their_turn_and_an_exact_duplicate_fails_alone() {
         let mut commands = Commands::default();
-        assert_eq!(sent_requests(&commands.request_message(1, 1, 148, [0.0; 5], 0)), vec![148.0]);
-        assert!(commands.request_message(2, 1, 244, [33.0, 0.0, 0.0, 0.0, 0.0], 1).is_empty(), "queued behind the active request");
-        assert_eq!(sent_requests(&commands.request_message(3, 2, 244, [0.0; 5], 2)), vec![244.0], "another component has its own queue");
-        assert_eq!(commands.request_message(4, 1, 148, [0.0; 5], 3), vec![Out::RequestResult { tag: 4, component: 1, message_id: 148, result: RESULT_FAILED, failure: RequestFailure::DuplicateCommand }]);
-        assert_eq!(commands.request_message(5, 1, 244, [0.0; 5], 4), vec![Out::RequestResult { tag: 5, component: 1, message_id: 244, result: RESULT_FAILED, failure: RequestFailure::DuplicateCommand }], "a duplicate of a queued request fails too");
-        assert!(commands.on_ack(1, CMD_REQUEST_MESSAGE, RESULT_ACCEPTED, 5).iter().all(|o| !matches!(o, Out::RequestResult { .. } | Out::Send { .. })));
+        assert_eq!(
+            sent_requests(&commands.request_message(1, 1, 148, [0.0; 5], 0)),
+            vec![148.0]
+        );
+        assert!(
+            commands
+                .request_message(2, 1, 244, [33.0, 0.0, 0.0, 0.0, 0.0], 1)
+                .is_empty(),
+            "queued behind the active request"
+        );
+        assert_eq!(
+            sent_requests(&commands.request_message(3, 2, 244, [0.0; 5], 2)),
+            vec![244.0],
+            "another component has its own queue"
+        );
+        assert_eq!(
+            commands.request_message(4, 1, 148, [0.0; 5], 3),
+            vec![Out::RequestResult {
+                tag: 4,
+                component: 1,
+                message_id: 148,
+                result: RESULT_FAILED,
+                failure: RequestFailure::DuplicateCommand
+            }]
+        );
+        assert_eq!(
+            commands.request_message(5, 1, 244, [0.0; 5], 4),
+            vec![Out::RequestResult {
+                tag: 5,
+                component: 1,
+                message_id: 244,
+                result: RESULT_FAILED,
+                failure: RequestFailure::DuplicateCommand
+            }],
+            "a duplicate of a queued request fails too"
+        );
+        assert!(
+            commands
+                .on_ack(1, CMD_REQUEST_MESSAGE, RESULT_ACCEPTED, 5)
+                .iter()
+                .all(|o| !matches!(o, Out::RequestResult { .. } | Out::Send { .. }))
+        );
         let answered = commands.on_message(1, 148, 6);
-        assert_eq!(answered.last(), Some(&Out::RequestResult { tag: 1, component: 1, message_id: 148, result: RESULT_ACCEPTED, failure: RequestFailure::None }), "the duplicate left the original request tracked");
-        assert!(matches!(answered.first(), Some(Out::Send { command: CMD_REQUEST_MESSAGE, params, .. }) if params[0] == 244.0 && params[1] == 33.0), "the queued request goes out before the answer is handed on");
+        assert_eq!(
+            answered.last(),
+            Some(&Out::RequestResult {
+                tag: 1,
+                component: 1,
+                message_id: 148,
+                result: RESULT_ACCEPTED,
+                failure: RequestFailure::None
+            }),
+            "the duplicate left the original request tracked"
+        );
+        assert!(
+            matches!(answered.first(), Some(Out::Send { command: CMD_REQUEST_MESSAGE, params, .. }) if params[0] == 244.0 && params[1] == 33.0),
+            "the queued request goes out before the answer is handed on"
+        );
         let refused = commands.on_ack(1, CMD_REQUEST_MESSAGE, 3, 10);
-        assert!(refused.contains(&Out::RequestResult { tag: 2, component: 1, message_id: 244, result: 3, failure: RequestFailure::CommandError }));
+        assert!(refused.contains(&Out::RequestResult {
+            tag: 2,
+            component: 1,
+            message_id: 244,
+            result: 3,
+            failure: RequestFailure::CommandError
+        }));
         assert!(commands.queued.is_empty());
-        assert_eq!(sent_requests(&commands.request_message(6, 1, 244, [0.0; 5], 11)), vec![244.0], "an idle component sends at once");
+        assert_eq!(
+            sent_requests(&commands.request_message(6, 1, 244, [0.0; 5], 11)),
+            vec![244.0],
+            "an idle component sends at once"
+        );
     }
 }

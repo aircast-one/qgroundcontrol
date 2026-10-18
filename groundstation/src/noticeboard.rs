@@ -23,7 +23,9 @@ pub fn reboot_notice_after_write(vehicle_reboot: bool, application_restart: bool
         (false, false) => return,
     };
     let debounced = {
-        let mut last = LAST_REBOOT_NOTICE_MS.lock().unwrap_or_else(PoisonError::into_inner);
+        let mut last = LAST_REBOOT_NOTICE_MS
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         let debounced = reboot_debounced(*last, now_ms);
         *last = Some(now_ms);
         debounced
@@ -58,7 +60,11 @@ pub struct Board {
 
 impl Default for Board {
     fn default() -> Self {
-        Board { notices: Vec::new(), next_id: 1, dropped: 0 }
+        Board {
+            notices: Vec::new(),
+            next_id: 1,
+            dropped: 0,
+        }
     }
 }
 
@@ -67,11 +73,22 @@ impl Board {
         self.post_with(kind, title, text, false, now_ms)
     }
 
-    pub fn post_with(&mut self, kind: &str, title: &str, text: &str, brief: bool, now_ms: i64) -> bool {
+    pub fn post_with(
+        &mut self,
+        kind: &str,
+        title: &str,
+        text: &str,
+        brief: bool,
+        now_ms: i64,
+    ) -> bool {
         if !KINDS.contains(&kind) {
             return false;
         }
-        if let Some(newest) = self.notices.last_mut().filter(|n| n.kind == kind && n.title == title && n.text == text) {
+        if let Some(newest) = self
+            .notices
+            .last_mut()
+            .filter(|n| n.kind == kind && n.title == title && n.text == text)
+        {
             newest.repeated += 1;
             newest.last_at = now_ms;
             return true;
@@ -80,7 +97,16 @@ impl Board {
             self.notices.remove(KEEP_OLDEST.min(self.notices.len() - 1));
             self.dropped += 1;
         }
-        self.notices.push(Notice { id: self.next_id, kind: kind.to_string(), title: title.to_string(), text: text.to_string(), repeated: 0, at: now_ms, last_at: now_ms, brief });
+        self.notices.push(Notice {
+            id: self.next_id,
+            kind: kind.to_string(),
+            title: title.to_string(),
+            text: text.to_string(),
+            repeated: 0,
+            at: now_ms,
+            last_at: now_ms,
+            brief,
+        });
         self.next_id += 1;
         true
     }
@@ -112,20 +138,35 @@ static CHANGED_SINCE: AtomicBool = AtomicBool::new(false);
 static APPLICATION_NAME: Mutex<String> = Mutex::new(String::new());
 
 pub fn application_name() -> String {
-    APPLICATION_NAME.lock().unwrap_or_else(PoisonError::into_inner).clone()
+    APPLICATION_NAME
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .clone()
 }
 
 pub fn set_application_name(name: &str) {
-    *APPLICATION_NAME.lock().unwrap_or_else(PoisonError::into_inner) = name.to_string();
+    *APPLICATION_NAME
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner) = name.to_string();
 }
 
 fn silenced(kind: &str, text: &str) -> bool {
-    kind == VEHICLE_ERROR && (text.starts_with("PreArm") || text.get(..9).is_some_and(|head| head.eq_ignore_ascii_case("preflight")))
+    kind == VEHICLE_ERROR
+        && (text.starts_with("PreArm")
+            || text
+                .get(..9)
+                .is_some_and(|head| head.eq_ignore_ascii_case("preflight")))
 }
 
 pub fn post_from_vehicle(kind: &str, text: &str) -> bool {
     let title = application_name();
-    !crate::qthost::present() && !silenced(kind, text) && if kind == BRIEF { post_with(MESSAGE, &title, text, true) } else { post(kind, &title, text) }
+    !crate::qthost::present()
+        && !silenced(kind, text)
+        && if kind == BRIEF {
+            post_with(MESSAGE, &title, text, true)
+        } else {
+            post(kind, &title, text)
+        }
 }
 
 pub fn lock() -> MutexGuard<'static, Board> {
@@ -145,7 +186,13 @@ pub fn post(kind: &str, title: &str, text: &str) -> bool {
 }
 
 fn post_with(kind: &str, title: &str, text: &str, brief: bool) -> bool {
-    let posted = lock().post_with(kind, title, text, brief, chrono::Utc::now().timestamp_millis());
+    let posted = lock().post_with(
+        kind,
+        title,
+        text,
+        brief,
+        chrono::Utc::now().timestamp_millis(),
+    );
     if posted {
         mark_changed();
     }
@@ -169,7 +216,13 @@ pub fn get(path: &str) -> Option<Value> {
 pub fn invoke(path: &str, args: &str) -> Option<Value> {
     let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
     let id = || given.get(0).and_then(Value::as_i64);
-    let text = |i: usize| given.get(i).and_then(Value::as_str).unwrap_or_default().to_string();
+    let text = |i: usize| {
+        given
+            .get(i)
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string()
+    };
     let result = match path {
         "host.postNotice" => json!(post(&text(0), &text(1), &text(2))),
         "host.acknowledge" => json!(id().is_some_and(|id| lock().acknowledge(id))),
@@ -193,9 +246,18 @@ mod tests {
 
     #[test]
     fn a_vehicle_error_about_prearm_is_left_to_the_health_report() {
-        assert!(silenced(VEHICLE_ERROR, "PreArm: RC not calibrated") && silenced(VEHICLE_ERROR, "PREFLIGHT fail"));
-        assert!(!silenced(MESSAGE, "PreArm: RC not calibrated"), "showAppMessage has no such filter");
-        assert!(!silenced(VEHICLE_ERROR, "Vehicle 2: PreArm: RC not calibrated"), "QGCApplication checks the text after Vehicle has prefixed it");
+        assert!(
+            silenced(VEHICLE_ERROR, "PreArm: RC not calibrated")
+                && silenced(VEHICLE_ERROR, "PREFLIGHT fail")
+        );
+        assert!(
+            !silenced(MESSAGE, "PreArm: RC not calibrated"),
+            "showAppMessage has no such filter"
+        );
+        assert!(
+            !silenced(VEHICLE_ERROR, "Vehicle 2: PreArm: RC not calibrated"),
+            "QGCApplication checks the text after Vehicle has prefixed it"
+        );
     }
 
     #[test]
@@ -205,15 +267,36 @@ mod tests {
         assert!(board.post("message", "Parameters", "missing", 20));
         assert!(!board.post("shouting", "x", "y", 30));
         let listed = board.object();
-        assert_eq!((listed["count"].as_i64(), listed["notices"][0]["repeated"].as_i64(), listed["notices"][0]["lastAt"].as_i64()), (Some(1), Some(1), Some(20)));
+        assert_eq!(
+            (
+                listed["count"].as_i64(),
+                listed["notices"][0]["repeated"].as_i64(),
+                listed["notices"][0]["lastAt"].as_i64()
+            ),
+            (Some(1), Some(1), Some(20))
+        );
         assert!(board.acknowledge(1) && !board.acknowledge(1));
         (0..70).for_each(|i| {
             board.post("message", "", &format!("message {i}"), i);
         });
         let flooded = board.object();
         let text = |i: usize| flooded["notices"][i]["text"].as_str().unwrap().to_string();
-        assert_eq!((flooded["count"].as_i64(), flooded["dropped"].as_i64()), (Some(64), Some(6)));
-        assert_eq!((text(0), text(7), text(8), text(63)), ("message 0".into(), "message 7".into(), "message 14".into(), "message 69".into()));
-        assert_eq!(board.acknowledge_through(flooded["notices"][9]["id"].as_i64().unwrap()), 10);
+        assert_eq!(
+            (flooded["count"].as_i64(), flooded["dropped"].as_i64()),
+            (Some(64), Some(6))
+        );
+        assert_eq!(
+            (text(0), text(7), text(8), text(63)),
+            (
+                "message 0".into(),
+                "message 7".into(),
+                "message 14".into(),
+                "message 69".into()
+            )
+        );
+        assert_eq!(
+            board.acknowledge_through(flooded["notices"][9]["id"].as_i64().unwrap()),
+            10
+        );
     }
 }

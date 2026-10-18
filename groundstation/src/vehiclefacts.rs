@@ -35,8 +35,14 @@ pub fn limit_angle_to_pm_pi(angle: f64) -> f64 {
     let (pi, eps) = (std::f32::consts::PI as f64, f32::EPSILON as f64);
     match angle {
         a if a > -20.0 * PI && a < 20.0 * PI => {
-            let down = (0..).map(|n| a - n as f64 * 2.0 * pi).find(|v| *v <= pi + eps).unwrap();
-            (0..).map(|n| down + n as f64 * 2.0 * pi).find(|v| *v > -(pi + eps)).unwrap()
+            let down = (0..)
+                .map(|n| a - n as f64 * 2.0 * pi)
+                .find(|v| *v <= pi + eps)
+                .unwrap();
+            (0..)
+                .map(|n| down + n as f64 * 2.0 * pi)
+                .find(|v| *v > -(pi + eps))
+                .unwrap()
         }
         a => (a as f32 % std::f32::consts::PI) as f64,
     }
@@ -52,16 +58,31 @@ fn quaternion_product([a1, b1, c1, d1]: [f64; 4], [a2, b2, c2, d2]: [f64; 4]) ->
 }
 
 fn rotated(q: [f64; 4], [x, y, z]: [f64; 3]) -> [f64; 3] {
-    let [_, x, y, z] = quaternion_product(quaternion_product(q, [0.0, x, y, z]), [q[0], -q[1], -q[2], -q[3]]);
+    let [_, x, y, z] = quaternion_product(
+        quaternion_product(q, [0.0, x, y, z]),
+        [q[0], -q[1], -q[2], -q[3]],
+    );
     [x, y, z]
 }
 
 pub fn quaternion_to_euler([a, b, c, d]: [f64; 4]) -> (f64, f64, f64) {
     let (a2, b2, c2, d2) = (a * a, b * b, c * c, d * d);
     let dcm = [
-        [(a2 + b2 - c2 - d2) as f32, (2.0 * (b * c - a * d)) as f32, (2.0 * (a * c + b * d)) as f32],
-        [(2.0 * (b * c + a * d)) as f32, (a2 - b2 + c2 - d2) as f32, (2.0 * (c * d - a * b)) as f32],
-        [(2.0 * (b * d - a * c)) as f32, (2.0 * (a * b + c * d)) as f32, (a2 - b2 - c2 + d2) as f32],
+        [
+            (a2 + b2 - c2 - d2) as f32,
+            (2.0 * (b * c - a * d)) as f32,
+            (2.0 * (a * c + b * d)) as f32,
+        ],
+        [
+            (2.0 * (b * c + a * d)) as f32,
+            (a2 - b2 + c2 - d2) as f32,
+            (2.0 * (c * d - a * b)) as f32,
+        ],
+        [
+            (2.0 * (b * d - a * c)) as f32,
+            (2.0 * (a * b + c * d)) as f32,
+            (a2 - b2 - c2 + d2) as f32,
+        ],
     ];
     let theta = (-dcm[2][0]).asin();
     let gimbal_lock = (theta.abs() - FRAC_PI_2 as f32).abs() < 1.0e-3;
@@ -75,8 +96,16 @@ pub fn quaternion_to_euler([a, b, c, d]: [f64; 4]) -> (f64, f64, f64) {
 
 fn attitude_degrees(roll: f64, pitch: f64, yaw: f64) -> (f64, f64, f64) {
     let yaw_degrees = limit_angle_to_pm_pi(yaw).to_degrees();
-    let heading = if yaw_degrees < 0.0 { yaw_degrees + 360.0 } else { yaw_degrees };
-    (limit_angle_to_pm_pi(roll).to_degrees(), limit_angle_to_pm_pi(pitch).to_degrees(), heading.trunc())
+    let heading = if yaw_degrees < 0.0 {
+        yaw_degrees + 360.0
+    } else {
+        yaw_degrees
+    };
+    (
+        limit_angle_to_pm_pi(roll).to_degrees(),
+        limit_angle_to_pm_pi(pitch).to_degrees(),
+        heading.trunc(),
+    )
 }
 
 pub fn imu_temperature(centidegrees: i16) -> f64 {
@@ -87,7 +116,9 @@ pub fn imu_temperature(centidegrees: i16) -> f64 {
 }
 
 pub fn time_to_home(distance_to_home: Option<f64>, ground_speed: f64) -> Option<f64> {
-    distance_to_home.filter(|d| !d.is_nan()).map(|d| d / ground_speed)
+    distance_to_home
+        .filter(|d| !d.is_nan())
+        .map(|d| d / ground_speed)
 }
 
 fn zero_if_nan(value: f32) -> f64 {
@@ -96,7 +127,10 @@ fn zero_if_nan(value: f32) -> f64 {
 
 impl VehicleFacts {
     pub fn for_vehicle(system_id: u8, component_id: u8) -> Self {
-        VehicleFacts { vehicle: (system_id, component_id), ..Default::default() }
+        VehicleFacts {
+            vehicle: (system_id, component_id),
+            ..Default::default()
+        }
     }
 
     fn set_attitude(&mut self, roll: f64, pitch: f64, yaw: f64) {
@@ -108,7 +142,11 @@ impl VehicleFacts {
             MavMessage::ATTITUDE(d) => {
                 if from == self.vehicle && !self.receiving_quaternion {
                     self.set_attitude(d.roll as f64, d.pitch as f64, d.yaw as f64);
-                    (self.roll_rate, self.pitch_rate, self.yaw_rate) = (f64::from(d.rollspeed).to_degrees(), f64::from(d.pitchspeed).to_degrees(), f64::from(d.yawspeed).to_degrees());
+                    (self.roll_rate, self.pitch_rate, self.yaw_rate) = (
+                        f64::from(d.rollspeed).to_degrees(),
+                        f64::from(d.pitchspeed).to_degrees(),
+                        f64::from(d.yawspeed).to_degrees(),
+                    );
                 }
                 true
             }
@@ -117,10 +155,11 @@ impl VehicleFacts {
                 let q = [d.q1 as f64, d.q2 as f64, d.q3 as f64, d.q4 as f64];
                 let rates = [d.rollspeed as f64, d.pitchspeed as f64, d.yawspeed as f64];
                 let offset = d.repr_offset_q.map(f64::from);
-                let (q, [roll_rate, pitch_rate, yaw_rate]) = match offset.iter().map(|v| v * v).sum::<f64>().sqrt() >= 0.5 {
-                    true => (quaternion_product(q, offset), rotated(offset, rates)),
-                    false => (q, rates),
-                };
+                let (q, [roll_rate, pitch_rate, yaw_rate]) =
+                    match offset.iter().map(|v| v * v).sum::<f64>().sqrt() >= 0.5 {
+                        true => (quaternion_product(q, offset), rotated(offset, rates)),
+                        false => (q, rates),
+                    };
                 let (roll, pitch, yaw) = quaternion_to_euler(q);
                 self.set_attitude(roll, pitch, yaw);
                 self.roll_rate = roll_rate.to_degrees();
@@ -141,13 +180,21 @@ impl VehicleFacts {
                 }
                 if d.lat != 0 || d.lon != 0 {
                     self.global_position_seen = true;
-                    self.coordinate = Some((d.lat as f64 / 1e7, d.lon as f64 / 1e7, d.alt as f64 / 1000.0));
+                    self.coordinate = Some((
+                        d.lat as f64 / 1e7,
+                        d.lon as f64 / 1e7,
+                        d.alt as f64 / 1000.0,
+                    ));
                 }
                 true
             }
             MavMessage::GPS_RAW_INT(d) if from == self.vehicle => {
                 if (d.fix_type as u8) >= 3 && !self.global_position_seen {
-                    self.coordinate = Some((d.lat as f64 / 1e7, d.lon as f64 / 1e7, d.alt as f64 / 1000.0));
+                    self.coordinate = Some((
+                        d.lat as f64 / 1e7,
+                        d.lon as f64 / 1e7,
+                        d.alt as f64 / 1000.0,
+                    ));
                     if !self.altitude_message_seen {
                         self.altitude_amsl = d.alt as f64 / 1000.0;
                     }
@@ -159,7 +206,10 @@ impl VehicleFacts {
                 self.ground_speed = zero_if_nan(d.groundspeed);
                 self.climb_rate = zero_if_nan(d.climb);
                 self.throttle_pct = d.throttle as i16;
-                let offset = self.altitude_tuning_offset.filter(|o| !o.is_nan()).unwrap_or(d.alt as f64);
+                let offset = self
+                    .altitude_tuning_offset
+                    .filter(|o| !o.is_nan())
+                    .unwrap_or(d.alt as f64);
                 self.altitude_tuning_offset = Some(offset);
                 self.altitude_tuning = d.alt as f64 - offset;
                 true
@@ -180,7 +230,11 @@ impl VehicleFacts {
                 true
             }
             MavMessage::HIGH_LATENCY2(d) => {
-                self.coordinate = Some((d.latitude as f64 / 1e7, d.longitude as f64 / 1e7, f64::from(d.altitude)));
+                self.coordinate = Some((
+                    d.latitude as f64 / 1e7,
+                    d.longitude as f64 / 1e7,
+                    f64::from(d.altitude),
+                ));
                 self.air_speed = f64::from(d.airspeed) / 5.0;
                 self.ground_speed = f64::from(d.groundspeed) / 5.0;
                 self.climb_rate = f64::from(d.climb_rate) / 10.0;
@@ -190,7 +244,11 @@ impl VehicleFacts {
                 true
             }
             MavMessage::HIGH_LATENCY(d) => {
-                self.coordinate = Some((d.latitude as f64 / 1e7, d.longitude as f64 / 1e7, f64::from(d.altitude_amsl)));
+                self.coordinate = Some((
+                    d.latitude as f64 / 1e7,
+                    d.longitude as f64 / 1e7,
+                    f64::from(d.altitude_amsl),
+                ));
                 self.altitude_relative = f64::NAN;
                 self.altitude_amsl = d.altitude_amsl as f64;
                 self.air_speed = f64::from(d.airspeed) / 5.0;
@@ -211,12 +269,21 @@ mod tests {
     #[test]
     fn imu_temperature_and_time_to_home_follow_vehicle_fact_group() {
         assert_eq!(imu_temperature(4512), 45.12);
-        assert_eq!(imu_temperature(0), 0.0, "zero means not reported and stays zero");
+        assert_eq!(
+            imu_temperature(0),
+            0.0,
+            "zero means not reported and stays zero"
+        );
         assert_eq!(time_to_home(Some(100.0), 5.0), Some(20.0));
         assert_eq!(time_to_home(None, 5.0), None);
-        assert!(time_to_home(Some(100.0), 0.0).is_some_and(f64::is_infinite), "QGC divides by a zero ground speed too");
+        assert!(
+            time_to_home(Some(100.0), 0.0).is_some_and(f64::is_infinite),
+            "QGC divides by a zero ground speed too"
+        );
     }
-    use mavlink::dialects::ardupilotmega::{ATTITUDE_DATA, ATTITUDE_QUATERNION_DATA, NAV_CONTROLLER_OUTPUT_DATA, VFR_HUD_DATA};
+    use mavlink::dialects::ardupilotmega::{
+        ATTITUDE_DATA, ATTITUDE_QUATERNION_DATA, NAV_CONTROLLER_OUTPUT_DATA, VFR_HUD_DATA,
+    };
 
     fn near(a: f64, b: f64) -> bool {
         (a - b).abs() < 1e-4
@@ -232,8 +299,19 @@ mod tests {
         data.heading = 90;
         data.roll = 1000;
         facts.apply((1, 1), &MavMessage::HIGH_LATENCY(data));
-        assert_eq!((facts.air_speed, facts.ground_speed, facts.climb_rate, facts.heading), (10.0, 8.0, 2.5, 180.0));
-        assert_eq!(facts.roll, 0.0, "Vehicle::_handleHighLatency leaves the attitude alone");
+        assert_eq!(
+            (
+                facts.air_speed,
+                facts.ground_speed,
+                facts.climb_rate,
+                facts.heading
+            ),
+            (10.0, 8.0, 2.5, 180.0)
+        );
+        assert_eq!(
+            facts.roll, 0.0,
+            "Vehicle::_handleHighLatency leaves the attitude alone"
+        );
     }
 
     #[test]
@@ -246,7 +324,10 @@ mod tests {
         data.yawspeed = 0.5;
         facts.apply((1, 1), &MavMessage::ATTITUDE(data.clone()));
         assert!(near(facts.roll, 28.6479) && near(facts.pitch, -14.3239));
-        assert!(near(facts.yaw_rate, 28.6479) && facts.roll_rate == 0.0, "ArduPilot's plain ATTITUDE carries body rates too, so the yaw rate is not stuck at 0");
+        assert!(
+            near(facts.yaw_rate, 28.6479) && facts.roll_rate == 0.0,
+            "ArduPilot's plain ATTITUDE carries body rates too, so the yaw rate is not stuck at 0"
+        );
         assert_eq!(facts.heading, 274.0);
         data.yaw = 7.0;
         facts.apply((1, 1), &MavMessage::ATTITUDE(data));
@@ -281,43 +362,92 @@ mod tests {
         facts.apply((1, 1), &MavMessage::VFR_HUD(hud.clone()));
         hud.alt = 112.5;
         facts.apply((1, 1), &MavMessage::VFR_HUD(hud));
-        assert_eq!((facts.altitude_tuning, facts.air_speed, facts.ground_speed, facts.throttle_pct), (12.5, 0.0, 4.5, 55));
+        assert_eq!(
+            (
+                facts.altitude_tuning,
+                facts.air_speed,
+                facts.ground_speed,
+                facts.throttle_pct
+            ),
+            (12.5, 0.0, 4.5, 55)
+        );
         let mut nav = NAV_CONTROLLER_OUTPUT_DATA::default();
         (nav.alt_error, nav.wp_dist) = (2.5, 40);
         facts.apply((1, 1), &MavMessage::NAV_CONTROLLER_OUTPUT(nav));
-        assert_eq!((facts.altitude_tuning_setpoint, facts.distance_to_next_wp), (10.0, 40.0));
+        assert_eq!(
+            (facts.altitude_tuning_setpoint, facts.distance_to_next_wp),
+            (10.0, 40.0)
+        );
         assert!(!facts.apply((1, 1), &MavMessage::HEARTBEAT(Default::default())));
     }
 
     #[test]
     fn altitude_and_position_fall_back_through_the_messages_in_the_vehicle_order() {
-        use mavlink::dialects::ardupilotmega::{ALTITUDE_DATA, GLOBAL_POSITION_INT_DATA, GPS_RAW_INT_DATA, GpsFixType};
+        use mavlink::dialects::ardupilotmega::{
+            ALTITUDE_DATA, GLOBAL_POSITION_INT_DATA, GPS_RAW_INT_DATA, GpsFixType,
+        };
         let mut facts = VehicleFacts::for_vehicle(1, 1);
         let mut raw = GPS_RAW_INT_DATA::default();
-        (raw.lat, raw.lon, raw.alt, raw.fix_type) = (473_000_000, 85_000_000, 500_000, GpsFixType::GPS_FIX_TYPE_3D_FIX);
+        (raw.lat, raw.lon, raw.alt, raw.fix_type) = (
+            473_000_000,
+            85_000_000,
+            500_000,
+            GpsFixType::GPS_FIX_TYPE_3D_FIX,
+        );
         facts.apply((1, 1), &MavMessage::GPS_RAW_INT(raw.clone()));
-        assert_eq!((facts.coordinate, facts.altitude_amsl), (Some((47.3, 8.5, 500.0)), 500.0));
+        assert_eq!(
+            (facts.coordinate, facts.altitude_amsl),
+            (Some((47.3, 8.5, 500.0)), 500.0)
+        );
         let mut elsewhere = raw.clone();
         elsewhere.lat = 0;
         facts.apply((1, 191), &MavMessage::GPS_RAW_INT(elsewhere.clone()));
-        assert_eq!(facts.coordinate, Some((47.3, 8.5, 500.0)), "Vehicle::_handleGpsRawInt ignores a companion's position");
+        assert_eq!(
+            facts.coordinate,
+            Some((47.3, 8.5, 500.0)),
+            "Vehicle::_handleGpsRawInt ignores a companion's position"
+        );
         let mut global = GLOBAL_POSITION_INT_DATA::default();
-        (global.lat, global.lon, global.alt, global.relative_alt) = (474_000_000, 86_000_000, 520_000, 20_000);
+        (global.lat, global.lon, global.alt, global.relative_alt) =
+            (474_000_000, 86_000_000, 520_000, 20_000);
         facts.apply((1, 191), &MavMessage::GLOBAL_POSITION_INT(global.clone()));
-        assert_eq!(facts.coordinate, Some((47.3, 8.5, 500.0)), "and _handleGlobalPositionInt too");
+        assert_eq!(
+            facts.coordinate,
+            Some((47.3, 8.5, 500.0)),
+            "and _handleGlobalPositionInt too"
+        );
         facts.apply((1, 1), &MavMessage::GLOBAL_POSITION_INT(global.clone()));
-        assert_eq!((facts.coordinate, facts.altitude_relative, facts.altitude_amsl), (Some((47.4, 8.6, 520.0)), 20.0, 520.0));
+        assert_eq!(
+            (
+                facts.coordinate,
+                facts.altitude_relative,
+                facts.altitude_amsl
+            ),
+            (Some((47.4, 8.6, 520.0)), 20.0, 520.0)
+        );
         facts.apply((1, 1), &MavMessage::GPS_RAW_INT(raw));
-        assert_eq!(facts.coordinate, Some((47.4, 8.6, 520.0)), "global position wins over raw gps once seen");
+        assert_eq!(
+            facts.coordinate,
+            Some((47.4, 8.6, 520.0)),
+            "global position wins over raw gps once seen"
+        );
         let mut bogus = GLOBAL_POSITION_INT_DATA::default();
         bogus.relative_alt = 30_000;
         facts.apply((1, 1), &MavMessage::GLOBAL_POSITION_INT(bogus));
-        assert_eq!((facts.coordinate, facts.altitude_relative), (Some((47.4, 8.6, 520.0)), 30.0), "a 0,0 position still carries altitude");
+        assert_eq!(
+            (facts.coordinate, facts.altitude_relative),
+            (Some((47.4, 8.6, 520.0)), 30.0),
+            "a 0,0 position still carries altitude"
+        );
         let mut altitude = ALTITUDE_DATA::default();
         (altitude.altitude_relative, altitude.altitude_amsl) = (12.5, 512.5);
         facts.apply((1, 1), &MavMessage::ALTITUDE(altitude));
         facts.apply((1, 1), &MavMessage::GLOBAL_POSITION_INT(global));
-        assert_eq!((facts.altitude_relative, facts.altitude_amsl), (12.5, 512.5), "the ALTITUDE message takes precedence");
+        assert_eq!(
+            (facts.altitude_relative, facts.altitude_amsl),
+            (12.5, 512.5),
+            "the ALTITUDE message takes precedence"
+        );
     }
 
     #[test]
@@ -330,11 +460,23 @@ mod tests {
         tailsitter.rollspeed = 1.0;
         tailsitter.repr_offset_q = [half, 0.0, half, 0.0];
         facts.apply((1, 1), &MavMessage::ATTITUDE_QUATERNION(tailsitter.clone()));
-        assert!((facts.pitch - 90.0).abs() < 0.1, "pitched by the offset: {}", facts.pitch);
-        assert!(facts.roll_rate.abs() < 1e-3 && (facts.yaw_rate.abs() - 1f64.to_degrees()).abs() < 1e-3, "rates turned with it: {} {}", facts.roll_rate, facts.yaw_rate);
+        assert!(
+            (facts.pitch - 90.0).abs() < 0.1,
+            "pitched by the offset: {}",
+            facts.pitch
+        );
+        assert!(
+            facts.roll_rate.abs() < 1e-3 && (facts.yaw_rate.abs() - 1f64.to_degrees()).abs() < 1e-3,
+            "rates turned with it: {} {}",
+            facts.roll_rate,
+            facts.yaw_rate
+        );
         tailsitter.repr_offset_q = [0.0; 4];
         facts.apply((1, 1), &MavMessage::ATTITUDE_QUATERNION(tailsitter));
-        assert!(facts.pitch.abs() < 1e-6 && (facts.roll_rate - 1f64.to_degrees()).abs() < 1e-3, "a zero offset is ignored");
+        assert!(
+            facts.pitch.abs() < 1e-6 && (facts.roll_rate - 1f64.to_degrees()).abs() < 1e-3,
+            "a zero offset is ignored"
+        );
     }
 
     #[test]
@@ -347,8 +489,15 @@ mod tests {
                 headings.push(facts.heading);
             }
         });
-        assert!(!headings.is_empty(), "no vehicle fact messages in the sample log");
-        assert!(headings.iter().all(|h| (0.0..360.0).contains(h) && h.fract() == 0.0));
+        assert!(
+            !headings.is_empty(),
+            "no vehicle fact messages in the sample log"
+        );
+        assert!(
+            headings
+                .iter()
+                .all(|h| (0.0..360.0).contains(h) && h.fract() == 0.0)
+        );
     }
 
     #[test]

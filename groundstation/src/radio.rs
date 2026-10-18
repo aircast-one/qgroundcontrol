@@ -3,11 +3,20 @@ use serde_json::{Value, json};
 use crate::read::{integer, object, text, truthy};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["radioCal", "vehicles.activeVehicleAvailable", "vehicle.px4Firmware"];
+pub const DEPS: &[&str] = &[
+    "radioCal",
+    "vehicles.activeVehicleAvailable",
+    "vehicle.px4Firmware",
+];
 
 const LOW_PWM: f64 = 1000.0;
 const HIGH_PWM: f64 = 2000.0;
-const STICKS: &[(&str, &str)] = &[("roll", "Roll"), ("pitch", "Pitch"), ("yaw", "Yaw"), ("throttle", "Throttle")];
+const STICKS: &[(&str, &str)] = &[
+    ("roll", "Roll"),
+    ("pitch", "Pitch"),
+    ("yaw", "Yaw"),
+    ("throttle", "Throttle"),
+];
 const ABSENT: &str = "\u{2014}";
 
 pub fn fraction(pwm: i64) -> f64 {
@@ -21,16 +30,29 @@ pub fn summary(connected: bool, channel_count: i64, live: usize) -> String {
     match (connected, channel_count) {
         (false, _) => "No vehicle is connected.".to_string(),
         (true, 0) => "No transmitter is being heard.".to_string(),
-        (true, n) => format!("{n} channel{} reported, {live} carrying a signal.", if n == 1 { "" } else { "s" }),
+        (true, n) => format!(
+            "{n} channel{} reported, {live} carrying a signal.",
+            if n == 1 { "" } else { "s" }
+        ),
     }
 }
 
 pub fn not_ready(connected: bool, joystick: bool, channel_count: i64, minimum: i64) -> Value {
-    match (connected && channel_count < minimum, joystick, channel_count) {
+    match (
+        connected && channel_count < minimum,
+        joystick,
+        channel_count,
+    ) {
         (false, _, _) => Value::Null,
-        (true, true, n) => json!({ "title": "Joystick Not Ready", "message": format!("{minimum} axes or more are needed to fly. Joystick is reporting {n} axes.") }),
-        (true, false, 0) => json!({ "title": "Not Ready", "message": "Please turn on RC transmitter." }),
-        (true, false, _) => json!({ "title": "Not Ready", "message": format!("{minimum} channels or more are needed to fly.") }),
+        (true, true, n) => {
+            json!({ "title": "Joystick Not Ready", "message": format!("{minimum} axes or more are needed to fly. Joystick is reporting {n} axes.") })
+        }
+        (true, false, 0) => {
+            json!({ "title": "Not Ready", "message": "Please turn on RC transmitter." })
+        }
+        (true, false, _) => {
+            json!({ "title": "Not Ready", "message": format!("{minimum} channels or more are needed to fly.") })
+        }
     }
 }
 
@@ -67,7 +89,10 @@ pub fn radio_view(backend: &dyn Backend, _args: &[String]) -> Value {
         })
         .unwrap_or_default();
     let live = channels.iter().filter(|c| c["live"] == true).count();
-    let px4 = crate::read::flag(&backend.value_fields("vehicle", "px4Firmware"), "px4Firmware");
+    let px4 = crate::read::flag(
+        &backend.value_fields("vehicle", "px4Firmware"),
+        "px4Firmware",
+    );
     let sticks: Vec<Value> = STICKS
         .iter()
         .zip(crate::rccal::FUNCTIONS)
@@ -145,12 +170,26 @@ fn calibration(cal: &Value) -> Calibration {
 
 fn refusal(action: Action, state: Calibration) -> Option<(&'static str, String)> {
     match action {
-        Action::Skip => Some(("unsupported", "This calibration has no step that can be skipped.".to_string())),
+        Action::Skip => Some((
+            "unsupported",
+            "This calibration has no step that can be skipped.".to_string(),
+        )),
         _ if !state.connected => Some(("noVehicle", "No vehicle is connected.".to_string())),
-        Action::Cancel if !state.cancel_enabled => Some(("idle", "No radio calibration is running.".to_string())),
+        Action::Cancel if !state.cancel_enabled => {
+            Some(("idle", "No radio calibration is running.".to_string()))
+        }
         Action::Cancel => None,
-        Action::Next if !state.calibrating && state.channels < state.minimum => Some(("tooFewChannels", format!("Detected {} channels. To operate vehicle, you need at least {} channels.", state.channels, state.minimum))),
-        Action::Next if !state.next_enabled => Some(("waiting", "Follow the instruction on screen before continuing.".to_string())),
+        Action::Next if !state.calibrating && state.channels < state.minimum => Some((
+            "tooFewChannels",
+            format!(
+                "Detected {} channels. To operate vehicle, you need at least {} channels.",
+                state.channels, state.minimum
+            ),
+        )),
+        Action::Next if !state.next_enabled => Some((
+            "waiting",
+            "Follow the instruction on screen before continuing.".to_string(),
+        )),
         Action::Next => None,
     }
 }
@@ -168,14 +207,22 @@ pub fn act(backend: &dyn Backend, action: Action, path: &str) -> Value {
 }
 
 pub fn write_transmitter_mode(backend: &dyn Backend, path: &str, value: &str) -> Value {
-    let asked = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value")?.as_f64());
-    let Some(mode) = asked.filter(|m| m.fract() == 0.0 && (1.0..=4.0).contains(m)).map(|m| m as i64) else {
+    let asked = serde_json::from_str::<Value>(value)
+        .ok()
+        .and_then(|v| v.get("value")?.as_f64());
+    let Some(mode) = asked
+        .filter(|m| m.fract() == 0.0 && (1.0..=4.0).contains(m))
+        .map(|m| m as i64)
+    else {
         return json!({ "ok": false, "result": false, "refusal": "outOfRange", "reason": "A transmitter mode is 1, 2, 3 or 4." });
     };
     if calibration(&backend.value("radioCal")).calibrating {
         return json!({ "ok": false, "result": false, "refusal": "calibrating", "reason": "Finish or cancel the calibration before changing the transmitter mode." });
     }
-    let answered = crate::read::flag(&object(&backend.set(path, &json!({ "value": mode }).to_string())), "ok");
+    let answered = crate::read::flag(
+        &object(&backend.set(path, &json!({ "value": mode }).to_string())),
+        "ok",
+    );
     json!({
         "ok": answered,
         "result": answered,
@@ -186,13 +233,19 @@ pub fn write_transmitter_mode(backend: &dyn Backend, path: &str, value: &str) ->
 }
 
 pub fn write_centered_throttle(backend: &dyn Backend, path: &str, value: &str) -> Value {
-    let Some(centered) = serde_json::from_str::<Value>(value).ok().and_then(|v| v.get("value")?.as_bool()) else {
+    let Some(centered) = serde_json::from_str::<Value>(value)
+        .ok()
+        .and_then(|v| v.get("value")?.as_bool())
+    else {
         return json!({ "ok": false, "result": false, "refusal": "malformed", "reason": "Centered throttle is on or off." });
     };
     if calibration(&backend.value("radioCal")).calibrating {
         return json!({ "ok": false, "result": false, "refusal": "calibrating", "reason": "Finish or cancel the calibration before changing the throttle position." });
     }
-    let answered = crate::read::flag(&object(&backend.set(path, &json!({ "value": centered }).to_string())), "ok");
+    let answered = crate::read::flag(
+        &object(&backend.set(path, &json!({ "value": centered }).to_string())),
+        "ok",
+    );
     json!({ "ok": answered, "result": answered, "refusal": Value::Null, "centeredThrottle": centered })
 }
 
@@ -202,18 +255,38 @@ mod tests {
 
     #[test]
     fn the_zero_trims_prompt_warns_about_props_except_on_px4() {
-        assert_eq!(start_prompt(true, false, true)["message"], "Before calibrating you should zero all your trims and subtrims. Click Ok to start Calibration.");
-        assert!(start_prompt(true, false, false)["message"].as_str().unwrap().ends_with("all props are removed from the vehicle."));
-        assert_eq!(start_prompt(true, true, false), Value::Null, "a joystick calibration starts without the prompt");
+        assert_eq!(
+            start_prompt(true, false, true)["message"],
+            "Before calibrating you should zero all your trims and subtrims. Click Ok to start Calibration."
+        );
+        assert!(
+            start_prompt(true, false, false)["message"]
+                .as_str()
+                .unwrap()
+                .ends_with("all props are removed from the vehicle.")
+        );
+        assert_eq!(
+            start_prompt(true, true, false),
+            Value::Null,
+            "a joystick calibration starts without the prompt"
+        );
         assert_eq!(start_prompt(false, false, false), Value::Null);
     }
 
     struct Fake(Value);
     impl Backend for Fake {
-        fn get(&self, _p: &str) -> String { self.0.to_string() }
-        fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
-        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn get(&self, _p: &str) -> String {
+            self.0.to_string()
+        }
+        fn get_fields(&self, p: &str, _f: &str) -> String {
+            self.get(p)
+        }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            String::new()
+        }
         fn watch(&self, _p: &[String]) {}
     }
 
@@ -231,13 +304,28 @@ mod tests {
                 }
                 .to_string()
             }
-            fn get_fields(&self, _p: &str, _f: &str) -> String { json!({ "kind": "object", "px4Firmware": false }).to_string() }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn get_fields(&self, _p: &str, _f: &str) -> String {
+                json!({ "kind": "object", "px4Firmware": false }).to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
             fn watch(&self, _p: &[String]) {}
         }
-        let channels: Vec<Value> = radio_view(&Mapped, &[])["sticks"].as_array().unwrap().iter().map(|s| s["channel"].clone()).collect();
-        assert_eq!(channels, vec![json!(1), Value::Null, Value::Null, json!(3)], "roll, pitch, yaw, throttle: a zero RCMAP is unassigned and an unread one is unknown");
+        let channels: Vec<Value> = radio_view(&Mapped, &[])["sticks"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|s| s["channel"].clone())
+            .collect();
+        assert_eq!(
+            channels,
+            vec![json!(1), Value::Null, Value::Null, json!(3)],
+            "roll, pitch, yaw, throttle: a zero RCMAP is unassigned and an unread one is unknown"
+        );
     }
 
     #[test]
@@ -252,21 +340,36 @@ mod tests {
     fn the_summary_and_not_ready_dialog_say_what_the_transmitter_reports() {
         assert_eq!(summary(false, 8, 8), "No vehicle is connected.");
         assert_eq!(summary(true, 0, 0), "No transmitter is being heard.");
-        assert_eq!(summary(true, 1, 1), "1 channel reported, 1 carrying a signal.");
-        assert_eq!(not_ready(true, false, 4, 5), json!({ "title": "Not Ready", "message": "5 channels or more are needed to fly." }));
-        assert_eq!(not_ready(true, false, 0, 4), json!({ "title": "Not Ready", "message": "Please turn on RC transmitter." }));
-        assert_eq!(not_ready(true, true, 2, 4), json!({ "title": "Joystick Not Ready", "message": "4 axes or more are needed to fly. Joystick is reporting 2 axes." }));
+        assert_eq!(
+            summary(true, 1, 1),
+            "1 channel reported, 1 carrying a signal."
+        );
+        assert_eq!(
+            not_ready(true, false, 4, 5),
+            json!({ "title": "Not Ready", "message": "5 channels or more are needed to fly." })
+        );
+        assert_eq!(
+            not_ready(true, false, 0, 4),
+            json!({ "title": "Not Ready", "message": "Please turn on RC transmitter." })
+        );
+        assert_eq!(
+            not_ready(true, true, 2, 4),
+            json!({ "title": "Joystick Not Ready", "message": "4 axes or more are needed to fly. Joystick is reporting 2 axes." })
+        );
         assert_eq!(not_ready(true, false, 8, 5), Value::Null);
         assert_eq!(not_ready(false, false, 0, 4), Value::Null);
     }
 
     #[test]
     fn the_view_lists_channels_and_sticks() {
-        let view = radio_view(&Fake(json!({
-            "kind": "object", "channelCount": 3, "minChannelCount": 5, "rcValues": [1500, 0, 2000],
-            "rollChannelMapped": true, "rollChannelRCValue": 1500, "rollChannelReversed": 1,
-            "throttleChannelMapped": false, "cancelEnabled": true, "nextText": "Next",
-        })), &[]);
+        let view = radio_view(
+            &Fake(json!({
+                "kind": "object", "channelCount": 3, "minChannelCount": 5, "rcValues": [1500, 0, 2000],
+                "rollChannelMapped": true, "rollChannelRCValue": 1500, "rollChannelReversed": 1,
+                "throttleChannelMapped": false, "cancelEnabled": true, "nextText": "Next",
+            })),
+            &[],
+        );
         assert_eq!(view["connected"], true);
         assert_eq!(view["liveChannels"], 2);
         assert_eq!(view["channels"][1]["valueText"], "\u{2014}");
@@ -274,21 +377,30 @@ mod tests {
         assert_eq!(view["sticks"][0]["reversed"], true);
         assert_eq!(view["sticks"][3]["valueText"], "Not mapped");
         assert_eq!(view["calibrating"], true);
-        assert_eq!(view["notReady"]["message"], "5 channels or more are needed to fly.");
-        let declared_bool = radio_view(&Fake(json!({
-            "kind": "object", "channelCount": 3, "minChannelCount": 5, "rcValues": [1500, 0, 2000],
-            "rollChannelMapped": true, "rollChannelRCValue": 1500, "rollChannelReversed": true,
-            "throttleChannelMapped": false, "cancelEnabled": true, "nextText": "Next",
-        })), &[]);
+        assert_eq!(
+            view["notReady"]["message"],
+            "5 channels or more are needed to fly."
+        );
+        let declared_bool = radio_view(
+            &Fake(json!({
+                "kind": "object", "channelCount": 3, "minChannelCount": 5, "rcValues": [1500, 0, 2000],
+                "rollChannelMapped": true, "rollChannelRCValue": 1500, "rollChannelReversed": true,
+                "throttleChannelMapped": false, "cancelEnabled": true, "nextText": "Next",
+            })),
+            &[],
+        );
         assert_eq!(declared_bool["sticks"][0]["reversed"], true);
         assert_eq!(declared_bool["sticks"][3]["valueText"], "Not mapped");
         assert_eq!(declared_bool["calibrating"], true);
 
-        let mapped_as_number = radio_view(&Fake(json!({
-            "kind": "object", "channelCount": 3, "minChannelCount": 5, "rcValues": [1500, 0, 2000],
-            "rollChannelMapped": 1, "rollChannelRCValue": 1500, "rollChannelReversed": 0,
-            "cancelEnabled": 1, "nextText": "Next",
-        })), &[]);
+        let mapped_as_number = radio_view(
+            &Fake(json!({
+                "kind": "object", "channelCount": 3, "minChannelCount": 5, "rcValues": [1500, 0, 2000],
+                "rollChannelMapped": 1, "rollChannelRCValue": 1500, "rollChannelReversed": 0,
+                "cancelEnabled": 1, "nextText": "Next",
+            })),
+            &[],
+        );
         assert_eq!(mapped_as_number["sticks"][0]["mapped"], true);
         assert_eq!(mapped_as_number["sticks"][0]["reversed"], false);
         assert_eq!(mapped_as_number["calibrating"], true);
@@ -301,17 +413,98 @@ mod tests {
 
     #[test]
     fn a_radio_button_that_would_do_nothing_says_why() {
-        let ready = Calibration { connected: true, calibrating: false, next_enabled: true, cancel_enabled: false, channels: 8, minimum: 5 };
+        let ready = Calibration {
+            connected: true,
+            calibrating: false,
+            next_enabled: true,
+            cancel_enabled: false,
+            channels: 8,
+            minimum: 5,
+        };
         let token = |action, state| refusal(action, state).map(|(t, _)| t);
         assert_eq!(token(Action::Next, ready), None);
-        assert_eq!(token(Action::Next, Calibration { channels: 4, ..ready }), Some("tooFewChannels"), "nextButtonClicked reports this through showAppMessage, which no native head receives");
-        assert!(refusal(Action::Next, Calibration { channels: 4, ..ready }).unwrap().1.contains("at least 5"));
-        assert_eq!(token(Action::Next, Calibration { calibrating: true, channels: 4, next_enabled: true, ..ready }), None, "the channel count gates only the start, as _currentStep == -1 does");
-        assert_eq!(token(Action::Next, Calibration { calibrating: true, next_enabled: false, ..ready }), Some("waiting"), "a step with no nextButtonFn ignores the click");
+        assert_eq!(
+            token(
+                Action::Next,
+                Calibration {
+                    channels: 4,
+                    ..ready
+                }
+            ),
+            Some("tooFewChannels"),
+            "nextButtonClicked reports this through showAppMessage, which no native head receives"
+        );
+        assert!(
+            refusal(
+                Action::Next,
+                Calibration {
+                    channels: 4,
+                    ..ready
+                }
+            )
+            .unwrap()
+            .1
+            .contains("at least 5")
+        );
+        assert_eq!(
+            token(
+                Action::Next,
+                Calibration {
+                    calibrating: true,
+                    channels: 4,
+                    next_enabled: true,
+                    ..ready
+                }
+            ),
+            None,
+            "the channel count gates only the start, as _currentStep == -1 does"
+        );
+        assert_eq!(
+            token(
+                Action::Next,
+                Calibration {
+                    calibrating: true,
+                    next_enabled: false,
+                    ..ready
+                }
+            ),
+            Some("waiting"),
+            "a step with no nextButtonFn ignores the click"
+        );
         assert_eq!(token(Action::Cancel, ready), Some("idle"));
-        assert_eq!(token(Action::Cancel, Calibration { calibrating: true, cancel_enabled: true, ..ready }), None);
-        assert_eq!(token(Action::Next, Calibration { connected: false, ..ready }), Some("noVehicle"));
-        assert_eq!(token(Action::Skip, Calibration { calibrating: true, cancel_enabled: true, ..ready }), Some("unsupported"), "RemoteControlCalibrationController has no skipButtonClicked since the upstream merge, so a head invoking it reaches a method that does not exist");
+        assert_eq!(
+            token(
+                Action::Cancel,
+                Calibration {
+                    calibrating: true,
+                    cancel_enabled: true,
+                    ..ready
+                }
+            ),
+            None
+        );
+        assert_eq!(
+            token(
+                Action::Next,
+                Calibration {
+                    connected: false,
+                    ..ready
+                }
+            ),
+            Some("noVehicle")
+        );
+        assert_eq!(
+            token(
+                Action::Skip,
+                Calibration {
+                    calibrating: true,
+                    cancel_enabled: true,
+                    ..ready
+                }
+            ),
+            Some("unsupported"),
+            "RemoteControlCalibrationController has no skipButtonClicked since the upstream merge, so a head invoking it reaches a method that does not exist"
+        );
     }
 
     #[test]
@@ -319,36 +512,66 @@ mod tests {
         use std::cell::RefCell;
         struct Recording(Value, RefCell<Vec<String>>);
         impl Backend for Recording {
-            fn get(&self, _p: &str) -> String { self.0.to_string() }
-            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
+            fn get(&self, _p: &str) -> String {
+                self.0.to_string()
+            }
+            fn get_fields(&self, p: &str, _f: &str) -> String {
+                self.get(p)
+            }
             fn set(&self, _p: &str, v: &str) -> String {
                 self.1.borrow_mut().push(v.to_string());
                 json!({ "ok": true }).to_string()
             }
-            fn invoke(&self, _p: &str, _a: &str) -> String { json!({ "ok": true }).to_string() }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                json!({ "ok": true }).to_string()
+            }
             fn watch(&self, _p: &[String]) {}
         }
-        let idle = Recording(json!({ "kind": "object", "cancelEnabled": false }), RefCell::new(Vec::new()));
+        let idle = Recording(
+            json!({ "kind": "object", "cancelEnabled": false }),
+            RefCell::new(Vec::new()),
+        );
         [json!({ "value": 5 }), json!({ "value": 0 }), json!({ "value": 2.5 }), json!({ "value": "2" })].iter().for_each(|v| {
             assert_eq!(write_transmitter_mode(&idle, "radioCal.transmitterMode", &v.to_string())["refusal"], "outOfRange", "setTransmitterMode logs a warning and stores 2 for {v}, so the head's stick diagram changes to a mode nobody chose");
         });
         assert!(idle.1.borrow().is_empty());
         let taken = write_transmitter_mode(&idle, "radioCal.transmitterMode", r#"{"value":1}"#);
-        assert_eq!((&taken["ok"], &taken["result"], &taken["mode"]), (&json!(true), &json!(true), &json!(1)));
+        assert_eq!(
+            (&taken["ok"], &taken["result"], &taken["mode"]),
+            (&json!(true), &json!(true), &json!(1))
+        );
         assert_eq!(idle.1.borrow().as_slice(), &[r#"{"value":1}"#.to_string()]);
 
-        let running = Recording(json!({ "kind": "object", "cancelEnabled": true }), RefCell::new(Vec::new()));
-        assert_eq!(write_transmitter_mode(&running, "radioCal.transmitterMode", r#"{"value":3}"#)["refusal"], "calibrating");
+        let running = Recording(
+            json!({ "kind": "object", "cancelEnabled": true }),
+            RefCell::new(Vec::new()),
+        );
+        assert_eq!(
+            write_transmitter_mode(&running, "radioCal.transmitterMode", r#"{"value":3}"#)["refusal"],
+            "calibrating"
+        );
         assert!(running.1.borrow().is_empty());
-        assert_eq!(act(&running, Action::Cancel, "radioCal.cancelButtonClicked")["ok"], true);
+        assert_eq!(
+            act(&running, Action::Cancel, "radioCal.cancelButtonClicked")["ok"],
+            true
+        );
     }
 
     #[test]
     fn centered_throttle_is_a_switch_held_still_while_calibrating() {
         let idle = Fake(json!({ "kind": "object", "cancelEnabled": false }));
-        assert_eq!(write_centered_throttle(&idle, "radioCal.centeredThrottle", r#"{"value":"yes"}"#)["refusal"], "malformed");
-        assert_eq!(write_centered_throttle(&idle, "radioCal.centeredThrottle", r#"{"value":true}"#)["centeredThrottle"], true);
+        assert_eq!(
+            write_centered_throttle(&idle, "radioCal.centeredThrottle", r#"{"value":"yes"}"#)["refusal"],
+            "malformed"
+        );
+        assert_eq!(
+            write_centered_throttle(&idle, "radioCal.centeredThrottle", r#"{"value":true}"#)["centeredThrottle"],
+            true
+        );
         let running = Fake(json!({ "kind": "object", "cancelEnabled": true }));
-        assert_eq!(write_centered_throttle(&running, "radioCal.centeredThrottle", r#"{"value":true}"#)["refusal"], "calibrating");
+        assert_eq!(
+            write_centered_throttle(&running, "radioCal.centeredThrottle", r#"{"value":true}"#)["refusal"],
+            "calibrating"
+        );
     }
 }

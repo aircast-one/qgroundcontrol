@@ -40,23 +40,39 @@ fn apm_loss_action(action: i64) -> Option<&'static str> {
     }
 }
 
-pub fn loss_failsafe(px4: (Option<f64>, Option<f64>), apm: (Option<f64>, Option<f64>)) -> (Option<&'static str>, Option<f64>) {
+pub fn loss_failsafe(
+    px4: (Option<f64>, Option<f64>),
+    apm: (Option<f64>, Option<f64>),
+) -> (Option<&'static str>, Option<f64>) {
     let (action, after) = match (px4, apm) {
         ((Some(action), after), _) => (px4_loss_action(action as i64), after),
-        (_, (Some(action), after)) => (apm_loss_action(action as i64), after.or(Some(APM_DEFAULT_GCS_TIMEOUT_S))),
+        (_, (Some(action), after)) => (
+            apm_loss_action(action as i64),
+            after.or(Some(APM_DEFAULT_GCS_TIMEOUT_S)),
+        ),
         _ => (None, None),
     };
-    (action, after.filter(|_| action.is_some_and(|a| a != NO_FAILSAFE)))
+    (
+        action,
+        after.filter(|_| action.is_some_and(|a| a != NO_FAILSAFE)),
+    )
 }
 
 fn parameter(backend: &dyn Backend, name: &str) -> Option<f64> {
-    value_number(&backend.value(&format!("vehicle.parameterManager.getParameter(-1,{name}).rawValue")))
+    value_number(&backend.value(&format!(
+        "vehicle.parameterManager.getParameter(-1,{name}).rawValue"
+    )))
 }
 
 fn strings(read: &Value, key: &str) -> Vec<String> {
     read.get(key)
         .and_then(Value::as_array)
-        .map(|listed| listed.iter().map(|v| v.as_str().unwrap_or("").to_string()).collect())
+        .map(|listed| {
+            listed
+                .iter()
+                .map(|v| v.as_str().unwrap_or("").to_string())
+                .collect()
+        })
         .unwrap_or_default()
 }
 
@@ -88,8 +104,14 @@ pub fn vehicle_links_view(backend: &dyn Backend, _args: &[String]) -> Value {
         })
         .collect();
     let (loss_action, loss_after) = loss_failsafe(
-        (parameter(backend, "NAV_DLL_ACT"), parameter(backend, "COM_DL_LOSS_T")),
-        (parameter(backend, "FS_GCS_ENABLE"), parameter(backend, "FS_GCS_TIMEOUT")),
+        (
+            parameter(backend, "NAV_DLL_ACT"),
+            parameter(backend, "COM_DL_LOSS_T"),
+        ),
+        (
+            parameter(backend, "FS_GCS_ENABLE"),
+            parameter(backend, "FS_GCS_TIMEOUT"),
+        ),
     );
     json!({
         "kind": "object",
@@ -120,7 +142,9 @@ mod tests {
     }
 
     impl Backend for Radios {
-        fn get(&self, path: &str) -> String { self.get_fields(path, "") }
+        fn get(&self, path: &str) -> String {
+            self.get_fields(path, "")
+        }
         fn get_fields(&self, path: &str, _f: &str) -> String {
             match path {
                 "vehicle.vehicleLinkManager" => json!({
@@ -136,33 +160,89 @@ mod tests {
             }
             .to_string()
         }
-        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            String::new()
+        }
         fn watch(&self, _p: &[String]) {}
     }
 
     #[test]
     fn a_lost_link_names_the_failsafe_the_aircraft_will_fly() {
-        assert_eq!(loss_failsafe((Some(2.0), Some(10.0)), (None, None)), (Some("Return home"), Some(10.0)));
-        assert_eq!(loss_failsafe((Some(0.0), Some(10.0)), (None, None)), (Some("No failsafe"), None), "a disabled failsafe never counts down");
-        assert_eq!(loss_failsafe((None, None), (Some(5.0), None)), (Some("Land"), Some(5.0)), "older ArduPilot has no FS_GCS_TIMEOUT and waits its fixed 5 s");
-        assert_eq!(loss_failsafe((None, None), (Some(2.0), Some(8.0))), (Some("Continue mission"), Some(8.0)));
-        assert_eq!(loss_failsafe((None, None), (None, None)), (None, None), "before parameters load nothing is promised");
-        assert_eq!(loss_failsafe((Some(42.0), Some(10.0)), (None, None)), (None, None));
+        assert_eq!(
+            loss_failsafe((Some(2.0), Some(10.0)), (None, None)),
+            (Some("Return home"), Some(10.0))
+        );
+        assert_eq!(
+            loss_failsafe((Some(0.0), Some(10.0)), (None, None)),
+            (Some("No failsafe"), None),
+            "a disabled failsafe never counts down"
+        );
+        assert_eq!(
+            loss_failsafe((None, None), (Some(5.0), None)),
+            (Some("Land"), Some(5.0)),
+            "older ArduPilot has no FS_GCS_TIMEOUT and waits its fixed 5 s"
+        );
+        assert_eq!(
+            loss_failsafe((None, None), (Some(2.0), Some(8.0))),
+            (Some("Continue mission"), Some(8.0))
+        );
+        assert_eq!(
+            loss_failsafe((None, None), (None, None)),
+            (None, None),
+            "before parameters load nothing is promised"
+        );
+        assert_eq!(
+            loss_failsafe((Some(42.0), Some(10.0)), (None, None)),
+            (None, None)
+        );
     }
 
     #[test]
     fn the_roster_says_which_radio_carries_this_vehicle_and_which_has_gone_quiet() {
-        let view = vehicle_links_view(&Radios { watching: true, lost_second: true }, &[]);
+        let view = vehicle_links_view(
+            &Radios {
+                watching: true,
+                lost_second: true,
+            },
+            &[],
+        );
         let links = view["links"].as_array().unwrap();
         assert_eq!(links[0]["name"], "Telemetry");
-        assert_eq!(links[0]["primary"], true, "this is the radio actually carrying the operator's commands, which view.links cannot answer - that reads the application-wide configuration list, whose connected flag says a link is up SOMEWHERE rather than that this vehicle is still heard on it");
+        assert_eq!(
+            links[0]["primary"], true,
+            "this is the radio actually carrying the operator's commands, which view.links cannot answer - that reads the application-wide configuration list, whose connected flag says a link is up SOMEWHERE rather than that this vehicle is still heard on it"
+        );
         assert_eq!(links[0]["commLost"], false);
-        assert_eq!(links[1]["commLost"], true, "linkStatuses is a parallel QStringList of tr(\"Comm Lost\") or an empty string, so it has to be zipped to linkNames by index and turned into a boolean here - keying on the words breaks in any other locale, and it is the seventh time today");
+        assert_eq!(
+            links[1]["commLost"], true,
+            "linkStatuses is a parallel QStringList of tr(\"Comm Lost\") or an empty string, so it has to be zipped to linkNames by index and turned into a boolean here - keying on the words breaks in any other locale, and it is the seventh time today"
+        );
 
-        let unwatched = vehicle_links_view(&Radios { watching: false, lost_second: true }, &[]);
-        assert_eq!(unwatched["contactLost"], Value::Null, "_commLostCheck returns early when the watch is disabled, so the flags never update and false means 'nobody is looking' rather than 'every link is fine'");
-        assert_eq!(unwatched["links"][1]["commLost"], Value::Null, "same for the per-link flags, which are the same stale array");
-        assert!(unwatched["reason"].as_str().unwrap().contains("not being watched"));
+        let unwatched = vehicle_links_view(
+            &Radios {
+                watching: false,
+                lost_second: true,
+            },
+            &[],
+        );
+        assert_eq!(
+            unwatched["contactLost"],
+            Value::Null,
+            "_commLostCheck returns early when the watch is disabled, so the flags never update and false means 'nobody is looking' rather than 'every link is fine'"
+        );
+        assert_eq!(
+            unwatched["links"][1]["commLost"],
+            Value::Null,
+            "same for the per-link flags, which are the same stale array"
+        );
+        assert!(
+            unwatched["reason"]
+                .as_str()
+                .unwrap()
+                .contains("not being watched")
+        );
     }
 }

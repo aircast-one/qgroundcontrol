@@ -16,13 +16,17 @@ const OFFLINE_STALL_MS: u64 = 10_000;
 static CONNECTING_SINCE: Mutex<Option<(String, u64)>> = Mutex::new(None);
 
 fn connecting_stalled(name: &str, now: u64) -> bool {
-    let mut since = CONNECTING_SINCE.lock().unwrap_or_else(PoisonError::into_inner);
+    let mut since = CONNECTING_SINCE
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner);
     match (name.is_empty(), since.as_ref()) {
         (true, _) => {
             *since = None;
             false
         }
-        (false, Some((current, started))) if current == name => now.saturating_sub(*started) >= OFFLINE_STALL_MS,
+        (false, Some((current, started))) if current == name => {
+            now.saturating_sub(*started) >= OFFLINE_STALL_MS
+        }
         (false, _) => {
             *since = Some((name.to_string(), now));
             false
@@ -31,7 +35,10 @@ fn connecting_stalled(name: &str, now: u64) -> bool {
 }
 
 fn auto_connect(backend: &dyn Backend, name: &str) -> bool {
-    crate::read::value_number(&backend.value(&format!("settings.autoConnectSettings.{name}.rawValue"))).is_none_or(|v| v != 0.0)
+    crate::read::value_number(
+        &backend.value(&format!("settings.autoConnectSettings.{name}.rawValue")),
+    )
+    .is_none_or(|v| v != 0.0)
 }
 
 pub struct Offline {
@@ -43,12 +50,26 @@ pub struct Offline {
     pub edit_address: bool,
 }
 
-pub fn offline(links: &[Value], watched: &[&str], stalled_for: impl FnOnce(&str) -> bool) -> Offline {
+pub fn offline(
+    links: &[Value],
+    watched: &[&str],
+    stalled_for: impl FnOnce(&str) -> bool,
+) -> Offline {
     let configured: Vec<&Value> = links.iter().filter(|l| l["dynamic"] != true).collect();
     let no_links = configured.is_empty();
-    let connecting = configured.iter().find(|l| l["connected"] == true).and_then(|l| l["name"].as_str()).unwrap_or("").to_string();
-    let failed = configured.iter().find(|l| l["connected"] != true && l["lastError"].as_str().is_some_and(|e| !e.is_empty()));
-    let failed_name = failed.and_then(|l| l["name"].as_str()).unwrap_or("").to_string();
+    let connecting = configured
+        .iter()
+        .find(|l| l["connected"] == true)
+        .and_then(|l| l["name"].as_str())
+        .unwrap_or("")
+        .to_string();
+    let failed = configured
+        .iter()
+        .find(|l| l["connected"] != true && l["lastError"].as_str().is_some_and(|e| !e.is_empty()));
+    let failed_name = failed
+        .and_then(|l| l["name"].as_str())
+        .unwrap_or("")
+        .to_string();
     let edit_address = failed.is_some_and(|l| l["errorRemedy"] == "editAddress");
     let stalled = stalled_for(&connecting);
     let watching = !watched.is_empty();
@@ -64,10 +85,16 @@ pub fn offline(links: &[Value], watched: &[&str], stalled_for: impl FnOnce(&str)
         (true, true) => "Not Connected",
     };
     let footnote = match () {
-        _ if !connecting.is_empty() && stalled => format!("No telemetry from {connecting} yet. Check the port is the drone's MAVLink port."),
+        _ if !connecting.is_empty() && stalled => format!(
+            "No telemetry from {connecting} yet. Check the port is the drone's MAVLink port."
+        ),
         _ if !connecting.is_empty() => format!("Connecting to {connecting}…"),
-        _ if edit_address => format!("Couldn't connect to {failed_name}. Check its address in Connection Settings."),
-        _ if !failed_name.is_empty() => format!("Couldn't connect to {failed_name}. Check the drone is powered on and on the same network, then tap it to retry."),
+        _ if edit_address => {
+            format!("Couldn't connect to {failed_name}. Check its address in Connection Settings.")
+        }
+        _ if !failed_name.is_empty() => format!(
+            "Couldn't connect to {failed_name}. Check the drone is powered on and on the same network, then tap it to retry."
+        ),
         _ if !watching => "Automatic connection is off.".to_string(),
         _ if no_links => format!("Looking for a vehicle on {watched_links}…"),
         _ => format!("Auto-connect watches {watched_links}. Tap a link to connect."),
@@ -84,13 +111,28 @@ pub fn offline(links: &[Value], watched: &[&str], stalled_for: impl FnOnce(&str)
 
 pub fn offline_status_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let model = backend.value("links.linkConfigurations");
-    let links: Vec<Value> = model.get("elements").and_then(Value::as_array).map(|e| e.iter().enumerate().map(|(i, el)| crate::links::link_json(i, el)).collect()).unwrap_or_default();
-    let watched: Vec<&str> = [("autoConnectPixhawk", "USB"), ("autoConnectSiKRadio", "SiK radio"), ("autoConnectUDP", "Wi\u{2011}Fi")]
-        .into_iter()
-        .filter(|(setting, _)| auto_connect(backend, setting))
-        .map(|(_, name)| name)
-        .collect();
-    let shown = offline(&links, &watched, |name| connecting_stalled(name, crate::hub::now_ms()));
+    let links: Vec<Value> = model
+        .get("elements")
+        .and_then(Value::as_array)
+        .map(|e| {
+            e.iter()
+                .enumerate()
+                .map(|(i, el)| crate::links::link_json(i, el))
+                .collect()
+        })
+        .unwrap_or_default();
+    let watched: Vec<&str> = [
+        ("autoConnectPixhawk", "USB"),
+        ("autoConnectSiKRadio", "SiK radio"),
+        ("autoConnectUDP", "Wi\u{2011}Fi"),
+    ]
+    .into_iter()
+    .filter(|(setting, _)| auto_connect(backend, setting))
+    .map(|(_, name)| name)
+    .collect();
+    let shown = offline(&links, &watched, |name| {
+        connecting_stalled(name, crate::hub::now_ms())
+    });
     json!({
         "kind": "object",
         "class": "OfflineStatus",
@@ -129,21 +171,62 @@ mod tests {
     fn the_footnote_follows_the_offline_page() {
         let all = ["USB", "SiK radio", "Wi\u{2011}Fi"];
         let looking = offline(&[], &all, |_| false);
-        assert_eq!((looking.title.as_str(), looking.busy, looking.no_links), ("Not Connected", true, true));
-        assert_eq!(looking.footnote, "Looking for a vehicle on USB, SiK radio, Wi\u{2011}Fi…");
-        assert_eq!(offline(&[], &[], |_| false).footnote, "Automatic connection is off.");
+        assert_eq!(
+            (looking.title.as_str(), looking.busy, looking.no_links),
+            ("Not Connected", true, true)
+        );
+        assert_eq!(
+            looking.footnote,
+            "Looking for a vehicle on USB, SiK radio, Wi\u{2011}Fi…"
+        );
+        assert_eq!(
+            offline(&[], &[], |_| false).footnote,
+            "Automatic connection is off."
+        );
         let idle = offline(&[link("Drone", false, "", "")], &["USB"], |_| false);
-        assert_eq!((idle.footnote.as_str(), idle.busy), ("Auto-connect watches USB. Tap a link to connect.", false));
+        assert_eq!(
+            (idle.footnote.as_str(), idle.busy),
+            ("Auto-connect watches USB. Tap a link to connect.", false)
+        );
         let connecting = offline(&[link("Drone", true, "", "")], &all, |name| name == "Drone");
-        assert_eq!((connecting.title.as_str(), connecting.busy), ("Connecting…", false), "a stalled connect stops the spinner");
-        assert_eq!(connecting.footnote, "No telemetry from Drone yet. Check the port is the drone's MAVLink port.");
-        let refused = offline(&[link("Drone", false, "Reached host but nothing is listening.", "editAddress")], &all, |_| false);
-        assert_eq!((refused.title.as_str(), refused.edit_address), ("Connection Failed", true));
-        assert_eq!(refused.footnote, "Couldn't connect to Drone. Check its address in Connection Settings.");
+        assert_eq!(
+            (connecting.title.as_str(), connecting.busy),
+            ("Connecting…", false),
+            "a stalled connect stops the spinner"
+        );
+        assert_eq!(
+            connecting.footnote,
+            "No telemetry from Drone yet. Check the port is the drone's MAVLink port."
+        );
+        let refused = offline(
+            &[link(
+                "Drone",
+                false,
+                "Reached host but nothing is listening.",
+                "editAddress",
+            )],
+            &all,
+            |_| false,
+        );
+        assert_eq!(
+            (refused.title.as_str(), refused.edit_address),
+            ("Connection Failed", true)
+        );
+        assert_eq!(
+            refused.footnote,
+            "Couldn't connect to Drone. Check its address in Connection Settings."
+        );
         let retry = offline(&[link("Drone", false, "timeout", "retry")], &all, |_| false);
         assert!(retry.footnote.ends_with("then tap it to retry."));
-        let dynamic = offline(&[json!({ "name": "UDP", "dynamic": true, "connected": true })], &all, |_| false);
-        assert!(dynamic.no_links, "auto-connect links are not the operator's links");
+        let dynamic = offline(
+            &[json!({ "name": "UDP", "dynamic": true, "connected": true })],
+            &all,
+            |_| false,
+        );
+        assert!(
+            dynamic.no_links,
+            "auto-connect links are not the operator's links"
+        );
     }
 
     #[test]
@@ -152,8 +235,18 @@ mod tests {
         assert_eq!(status(&[]), "Not Connected", "a state, not an instruction");
         assert_eq!(status(&[link("Drone", false, "", "")]), "Not Connected");
         assert_eq!(status(&[link("Drone", true, "", "")]), "Connecting…");
-        assert_eq!(status(&[link("Drone", false, "timeout", "retry")]), "Can't Connect");
-        assert_eq!(status(&[link("Drone", true, "", ""), link("Other", false, "timeout", "retry")]), "Connecting…", "a connecting link outranks a failed one");
+        assert_eq!(
+            status(&[link("Drone", false, "timeout", "retry")]),
+            "Can't Connect"
+        );
+        assert_eq!(
+            status(&[
+                link("Drone", true, "", ""),
+                link("Other", false, "timeout", "retry")
+            ]),
+            "Connecting…",
+            "a connecting link outranks a failed one"
+        );
     }
 
     #[test]
@@ -161,7 +254,10 @@ mod tests {
         assert!(!connecting_stalled("Drone", 1_000));
         assert!(!connecting_stalled("Drone", 10_999));
         assert!(connecting_stalled("Drone", 11_000));
-        assert!(!connecting_stalled("Other", 12_000), "another link starts its own clock");
+        assert!(
+            !connecting_stalled("Other", 12_000),
+            "another link starts its own clock"
+        );
         assert!(!connecting_stalled("", 30_000));
     }
 }

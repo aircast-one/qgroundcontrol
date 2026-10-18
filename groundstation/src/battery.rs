@@ -17,8 +17,27 @@ pub const DEPS: &[&str] = &[
 ];
 
 const MAX_PACKS: usize = 8;
-const PACK_FACTS: [&str; 10] = ["voltage", "current", "percentRemaining", "chargeState", "timeRemaining", "timeRemainingStr", "instantPower", "mahConsumed", "temperature", "function"];
-const DETAIL_FACTS: [&str; 7] = ["function", "voltage", "current", "instantPower", "mahConsumed", "timeRemainingStr", "temperature"];
+const PACK_FACTS: [&str; 10] = [
+    "voltage",
+    "current",
+    "percentRemaining",
+    "chargeState",
+    "timeRemaining",
+    "timeRemainingStr",
+    "instantPower",
+    "mahConsumed",
+    "temperature",
+    "function",
+];
+const DETAIL_FACTS: [&str; 7] = [
+    "function",
+    "voltage",
+    "current",
+    "instantPower",
+    "mahConsumed",
+    "timeRemainingStr",
+    "temperature",
+];
 const FUNCTION_UNKNOWN: f64 = 0.0;
 const FUNCTION_ALL: f64 = 1.0;
 static PACKS_SEEN: AtomicUsize = AtomicUsize::new(0);
@@ -28,11 +47,16 @@ fn pack_fact_path(index: usize, name: &str) -> String {
 }
 
 fn pack_paths(facts: &'static [&'static str]) -> Vec<String> {
-    (0..PACKS_SEEN.load(Ordering::Relaxed).clamp(1, MAX_PACKS)).flat_map(|i| facts.iter().map(move |name| pack_fact_path(i, name))).collect()
+    (0..PACKS_SEEN.load(Ordering::Relaxed).clamp(1, MAX_PACKS))
+        .flat_map(|i| facts.iter().map(move |name| pack_fact_path(i, name)))
+        .collect()
 }
 
 pub fn deps() -> Vec<String> {
-    DEPS.iter().map(|d| d.to_string()).chain(pack_paths(&PACK_FACTS)).collect()
+    DEPS.iter()
+        .map(|d| d.to_string())
+        .chain(pack_paths(&PACK_FACTS))
+        .collect()
 }
 
 const CHARGE_DEPS: &[&str] = &[
@@ -44,7 +68,11 @@ const CHARGE_DEPS: &[&str] = &[
 const CHARGE_FACTS: [&str; 2] = ["percentRemaining", "chargeState"];
 
 pub fn charge_deps() -> Vec<String> {
-    CHARGE_DEPS.iter().map(|d| d.to_string()).chain(pack_paths(&CHARGE_FACTS)).collect()
+    CHARGE_DEPS
+        .iter()
+        .map(|d| d.to_string())
+        .chain(pack_paths(&CHARGE_FACTS))
+        .collect()
 }
 
 const CHARGE_UNDEFINED: i64 = 0;
@@ -68,10 +96,18 @@ pub struct Pack {
 const BATTERY_LEVELS: [&str; 4] = ["critical", "warning", "caution", "normal"];
 
 fn rank(level: &str) -> usize {
-    BATTERY_LEVELS.iter().position(|known| *known == level).unwrap_or(BATTERY_LEVELS.len() - 1)
+    BATTERY_LEVELS
+        .iter()
+        .position(|known| *known == level)
+        .unwrap_or(BATTERY_LEVELS.len() - 1)
 }
 
-pub fn level(charge_state: i64, percent: Option<f64>, threshold1: f64, threshold2: f64) -> &'static str {
+pub fn level(
+    charge_state: i64,
+    percent: Option<f64>,
+    threshold1: f64,
+    threshold2: f64,
+) -> &'static str {
     let by_charge = match charge_state {
         CHARGE_LOW => "warning",
         3..=6 => "critical",
@@ -82,7 +118,10 @@ pub fn level(charge_state: i64, percent: Option<f64>, threshold1: f64, threshold
         Some(p) if p <= threshold1 => "caution",
         _ => "normal",
     };
-    [by_charge, by_percent].into_iter().min_by_key(|shown| rank(shown)).unwrap_or(by_charge)
+    [by_charge, by_percent]
+        .into_iter()
+        .min_by_key(|shown| rank(shown))
+        .unwrap_or(by_charge)
 }
 
 pub fn text(pack: &Pack) -> String {
@@ -116,30 +155,61 @@ pub fn indicator_lines(pack: &Pack, value_display: i64) -> Vec<String> {
 }
 
 fn pack_count(backend: &dyn Backend) -> usize {
-    let count = value_number(&backend.value("vehicle.batteries.count")).map(|n| n as usize).unwrap_or(0).min(MAX_PACKS);
+    let count = value_number(&backend.value("vehicle.batteries.count"))
+        .map(|n| n as usize)
+        .unwrap_or(0)
+        .min(MAX_PACKS);
     PACKS_SEEN.fetch_max(count, Ordering::Relaxed);
     count
 }
 
 fn remembered(backend: &dyn Backend, index: usize) -> impl Fn(&str) -> Value + '_ {
-    let read: std::cell::RefCell<std::collections::HashMap<String, Value>> = std::cell::RefCell::default();
-    move |name: &str| read.borrow_mut().entry(name.to_string()).or_insert_with(|| backend.value(&pack_fact_path(index, name))).clone()
+    let read: std::cell::RefCell<std::collections::HashMap<String, Value>> =
+        std::cell::RefCell::default();
+    move |name: &str| {
+        read.borrow_mut()
+            .entry(name.to_string())
+            .or_insert_with(|| backend.value(&pack_fact_path(index, name)))
+            .clone()
+    }
 }
 
 fn pack(fact: &dyn Fn(&str) -> Value) -> Pack {
-    let text = |name: &str, key: &str| fact(name).get(key).and_then(Value::as_str).map(str::to_string).unwrap_or_default();
-    let number = |name: &str| fact(name).get("value").and_then(Value::as_f64).filter(|v| v.is_finite());
-    let shown = |name: &str| format!("{}{}", text(name, "valueString"), display_units(&text(name, "units")));
+    let text = |name: &str, key: &str| {
+        fact(name)
+            .get(key)
+            .and_then(Value::as_str)
+            .map(str::to_string)
+            .unwrap_or_default()
+    };
+    let number = |name: &str| {
+        fact(name)
+            .get("value")
+            .and_then(Value::as_f64)
+            .filter(|v| v.is_finite())
+    };
+    let shown = |name: &str| {
+        format!(
+            "{}{}",
+            text(name, "valueString"),
+            display_units(&text(name, "units"))
+        )
+    };
     Pack {
         voltage: number("voltage"),
         current: number("current"),
         percent: number("percentRemaining"),
-        charge_state: fact("chargeState").get("value").and_then(Value::as_i64).unwrap_or(CHARGE_UNDEFINED),
+        charge_state: fact("chargeState")
+            .get("value")
+            .and_then(Value::as_i64)
+            .unwrap_or(CHARGE_UNDEFINED),
         charge_label: text("chargeState", "enumOrValueString"),
         percent_text: shown("percentRemaining"),
         voltage_text: shown("voltage"),
         current_text: shown("current"),
-        time_remaining_text: number("timeRemaining").map(|_| text("timeRemainingStr", "valueString")).filter(|t| !t.is_empty()),
+        time_remaining_text: number("timeRemaining")
+            .map(|_| text("timeRemainingStr", "valueString"))
+            .filter(|t| !t.is_empty()),
     }
 }
 
@@ -193,19 +263,31 @@ pub struct PopupPack {
 }
 
 fn limiting_percent(pack: &PopupPack) -> f64 {
-    pack.percent.filter(|p| p.is_finite()).unwrap_or(f64::INFINITY)
+    pack.percent
+        .filter(|p| p.is_finite())
+        .unwrap_or(f64::INFINITY)
 }
 
 pub fn headline(packs: &[PopupPack]) -> Option<Value> {
-    let (index, worst) = packs
-        .iter()
-        .enumerate()
-        .min_by(|(_, a), (_, b)| severity(b.charge_state).cmp(&severity(a.charge_state)).then(limiting_percent(a).total_cmp(&limiting_percent(b))))?;
+    let (index, worst) = packs.iter().enumerate().min_by(|(_, a), (_, b)| {
+        severity(b.charge_state)
+            .cmp(&severity(a.charge_state))
+            .then(limiting_percent(a).total_cmp(&limiting_percent(b)))
+    })?;
     let alarming = severity(worst.charge_state) > 0;
     let percent = worst.percent.map(|p| format!("{}%", p.round() as i64));
-    let left = worst.time_remaining.map(duration_text).filter(|t| !t.is_empty()).map(|t| format!("{t} left"));
+    let left = worst
+        .time_remaining
+        .map(duration_text)
+        .filter(|t| !t.is_empty())
+        .map(|t| format!("{t} left"));
     let lowest = (packs.len() > 1).then(|| format!("lowest of {}", packs.len()));
-    let detail = left.into_iter().chain(percent.clone().filter(|_| alarming)).chain(lowest).collect::<Vec<_>>().join("  \u{00b7}  ");
+    let detail = left
+        .into_iter()
+        .chain(percent.clone().filter(|_| alarming))
+        .chain(lowest)
+        .collect::<Vec<_>>()
+        .join("  \u{00b7}  ");
     Some(json!({
         "text": if alarming || percent.is_none() { worst.charge_label.clone() } else { percent.unwrap_or_default() },
         "detail": detail,
@@ -220,10 +302,20 @@ const PX4_LOW_BATTERY_LAND: i64 = 2;
 const PX4_LOW_BATTERY_RETURN_THEN_LAND: i64 = 3;
 
 fn minutes_to_go(seconds: f64) -> String {
-    if seconds < 60.0 { "under a minute to go".to_string() } else { format!("about {} min to go", (seconds / 60.0).round() as i64) }
+    if seconds < 60.0 {
+        "under a minute to go".to_string()
+    } else {
+        format!("about {} min to go", (seconds / 60.0).round() as i64)
+    }
 }
 
-pub fn margin_text(action: Option<i64>, low: Option<f64>, critical: Option<f64>, percent: Option<f64>, seconds_left: Option<f64>) -> Option<String> {
+pub fn margin_text(
+    action: Option<i64>,
+    low: Option<f64>,
+    critical: Option<f64>,
+    percent: Option<f64>,
+    seconds_left: Option<f64>,
+) -> Option<String> {
     let (verb, at) = match action? {
         PX4_LOW_BATTERY_WARN => ("Warns", low?),
         PX4_LOW_BATTERY_RETURN | PX4_LOW_BATTERY_RETURN_THEN_LAND => ("Returns home", critical?),
@@ -231,11 +323,13 @@ pub fn margin_text(action: Option<i64>, low: Option<f64>, critical: Option<f64>,
         _ => return None,
     };
     let rule = format!("{verb} at {}%", at.round() as i64);
-    let to_go = percent.filter(|p| *p > 0.0).map(|p| match seconds_left.filter(|s| *s > 0.0) {
-        _ if p <= at => "reached".to_string(),
-        Some(seconds) => minutes_to_go(seconds * (p - at) / p),
-        None => format!("{} points to go", (p - at).round() as i64),
-    });
+    let to_go = percent
+        .filter(|p| *p > 0.0)
+        .map(|p| match seconds_left.filter(|s| *s > 0.0) {
+            _ if p <= at => "reached".to_string(),
+            Some(seconds) => minutes_to_go(seconds * (p - at) / p),
+            None => format!("{} points to go", (p - at).round() as i64),
+        });
     Some(to_go.map_or(rule.clone(), |go| format!("{rule}  \u{00b7}  {go}")))
 }
 
@@ -250,31 +344,69 @@ pub struct ReturnTrip {
 }
 
 pub fn return_seconds(trip: ReturnTrip) -> Option<f64> {
-    let speeds_known = [trip.cruise_mps, trip.climb_mps, trip.descent_mps].iter().all(|s| s.is_finite() && *s > 0.0);
-    let place_known = [trip.distance_m, trip.altitude_m].iter().all(|v| v.is_finite());
+    let speeds_known = [trip.cruise_mps, trip.climb_mps, trip.descent_mps]
+        .iter()
+        .all(|s| s.is_finite() && *s > 0.0);
+    let place_known = [trip.distance_m, trip.altitude_m]
+        .iter()
+        .all(|v| v.is_finite());
     let flown_at = trip.altitude_m.max(trip.return_altitude_m.max(0.0));
-    (speeds_known && place_known).then(|| (flown_at - trip.altitude_m) / trip.climb_mps + trip.distance_m / trip.cruise_mps + flown_at.max(0.0) / trip.descent_mps)
+    (speeds_known && place_known).then(|| {
+        (flown_at - trip.altitude_m) / trip.climb_mps
+            + trip.distance_m / trip.cruise_mps
+            + flown_at.max(0.0) / trip.descent_mps
+    })
 }
 
-pub fn return_charge(percent: f64, seconds_left: f64, reserve_percent: f64, trip_seconds: f64) -> Option<f64> {
-    (percent > 0.0 && seconds_left > 0.0).then(|| (reserve_percent + trip_seconds * percent / seconds_left).min(100.0))
+pub fn return_charge(
+    percent: f64,
+    seconds_left: f64,
+    reserve_percent: f64,
+    trip_seconds: f64,
+) -> Option<f64> {
+    (percent > 0.0 && seconds_left > 0.0)
+        .then(|| (reserve_percent + trip_seconds * percent / seconds_left).min(100.0))
 }
 
 pub fn return_trip(backend: &dyn Backend) -> Option<ReturnTrip> {
     let si = |names: &[&str]| parameter_si(backend, names);
     let fact = |path: &str| value_number(&backend.value(&format!("{path}.rawValue")));
-    let (distance_m, altitude_m) = (fact("vehicle.distanceToHome")?, fact("vehicle.altitudeRelative")?);
-    let px4 = || Some(ReturnTrip { distance_m, altitude_m, return_altitude_m: si(&["RTL_RETURN_ALT"])?, cruise_mps: si(&["MPC_XY_CRUISE"])?, climb_mps: si(&["MPC_Z_V_AUTO_UP"])?, descent_mps: si(&["MPC_LAND_SPEED"])? });
+    let (distance_m, altitude_m) = (
+        fact("vehicle.distanceToHome")?,
+        fact("vehicle.altitudeRelative")?,
+    );
+    let px4 = || {
+        Some(ReturnTrip {
+            distance_m,
+            altitude_m,
+            return_altitude_m: si(&["RTL_RETURN_ALT"])?,
+            cruise_mps: si(&["MPC_XY_CRUISE"])?,
+            climb_mps: si(&["MPC_Z_V_AUTO_UP"])?,
+            descent_mps: si(&["MPC_LAND_SPEED"])?,
+        })
+    };
     let apm = || {
-        let rtl = si(&["RTL_SPEED_MS", "RTL_SPEED"]).filter(|s| *s > 0.0).or_else(|| si(&["WP_SPD", "WPNAV_SPEED"]))?;
-        Some(ReturnTrip { distance_m, altitude_m, return_altitude_m: si(&["RTL_ALT_M", "RTL_ALT"])?, cruise_mps: rtl, climb_mps: si(&["WP_SPD_UP", "WPNAV_SPEED_UP"])?, descent_mps: si(&["LAND_SPD_MS", "LAND_SPEED"])? })
+        let rtl = si(&["RTL_SPEED_MS", "RTL_SPEED"])
+            .filter(|s| *s > 0.0)
+            .or_else(|| si(&["WP_SPD", "WPNAV_SPEED"]))?;
+        Some(ReturnTrip {
+            distance_m,
+            altitude_m,
+            return_altitude_m: si(&["RTL_ALT_M", "RTL_ALT"])?,
+            cruise_mps: rtl,
+            climb_mps: si(&["WP_SPD_UP", "WPNAV_SPEED_UP"])?,
+            descent_mps: si(&["LAND_SPD_MS", "LAND_SPEED"])?,
+        })
     };
     px4().or_else(apm)
 }
 
 fn parameter(backend: &dyn Backend, name: &str) -> Option<Value> {
     let fact = backend.value(&format!("vehicle.parameterManager.getParameter(-1,{name})"));
-    fact.get("name").and_then(Value::as_str).is_some_and(|n| !n.is_empty()).then_some(fact)
+    fact.get("name")
+        .and_then(Value::as_str)
+        .is_some_and(|n| !n.is_empty())
+        .then_some(fact)
 }
 
 fn parameter_value(backend: &dyn Backend, name: &str, field: &str) -> Option<f64> {
@@ -284,7 +416,11 @@ fn parameter_value(backend: &dyn Backend, name: &str, field: &str) -> Option<f64
 fn parameter_si(backend: &dyn Backend, names: &[&str]) -> Option<f64> {
     names.iter().find_map(|name| {
         let fact = parameter(backend, name)?;
-        let per_base = crate::pilotunits::raw_per_base(fact.get("rawUnits").and_then(Value::as_str).unwrap_or_default())?;
+        let per_base = crate::pilotunits::raw_per_base(
+            fact.get("rawUnits")
+                .and_then(Value::as_str)
+                .unwrap_or_default(),
+        )?;
         Some(fact.get("rawValue")?.as_f64()? / per_base)
     })
 }
@@ -306,12 +442,39 @@ pub fn popup_rows(pack: &PopupPack) -> Vec<Value> {
 }
 
 fn popup_pack(fact: &dyn Fn(&str) -> Value) -> PopupPack {
-    let raw = |name: &str| { let f = fact(name); f.get("rawValue").or(f.get("value")).and_then(Value::as_f64).filter(|v| v.is_finite()) };
-    let spelled = |name: &str| raw(name).and_then(|_| fact(name).get("valueString").and_then(Value::as_str).map(str::to_string));
-    let function = raw("function").filter(|f| *f != FUNCTION_UNKNOWN && *f != FUNCTION_ALL).and_then(|_| fact("function").get("enumOrValueString").and_then(Value::as_str).map(str::to_string));
+    let raw = |name: &str| {
+        let f = fact(name);
+        f.get("rawValue")
+            .or(f.get("value"))
+            .and_then(Value::as_f64)
+            .filter(|v| v.is_finite())
+    };
+    let spelled = |name: &str| {
+        raw(name).and_then(|_| {
+            fact(name)
+                .get("valueString")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        })
+    };
+    let function = raw("function")
+        .filter(|f| *f != FUNCTION_UNKNOWN && *f != FUNCTION_ALL)
+        .and_then(|_| {
+            fact("function")
+                .get("enumOrValueString")
+                .and_then(Value::as_str)
+                .map(str::to_string)
+        });
     PopupPack {
-        charge_state: fact("chargeState").get("value").and_then(Value::as_i64).unwrap_or(CHARGE_UNDEFINED),
-        charge_label: fact("chargeState").get("enumOrValueString").and_then(Value::as_str).unwrap_or_default().to_string(),
+        charge_state: fact("chargeState")
+            .get("value")
+            .and_then(Value::as_i64)
+            .unwrap_or(CHARGE_UNDEFINED),
+        charge_label: fact("chargeState")
+            .get("enumOrValueString")
+            .and_then(Value::as_str)
+            .unwrap_or_default()
+            .to_string(),
         percent: raw("percentRemaining"),
         time_remaining: raw("timeRemaining"),
         voltage: spelled("voltage"),
@@ -321,7 +484,8 @@ fn popup_pack(fact: &dyn Fn(&str) -> Value) -> PopupPack {
     }
 }
 
-const COMBINE_PACKS: &str = "settings.batteryIndicatorSettings.consolidateMultipleBatteries.rawValue";
+const COMBINE_PACKS: &str =
+    "settings.batteryIndicatorSettings.consolidateMultipleBatteries.rawValue";
 const COMBINE_PACKS_UNSET: bool = true;
 
 fn severity_rank(level: &Value) -> usize {
@@ -330,8 +494,10 @@ fn severity_rank(level: &Value) -> usize {
 
 fn thresholds(backend: &dyn Backend) -> (f64, f64) {
     (
-        value_number(&backend.value("settings.batteryIndicatorSettings.threshold1.rawValue")).unwrap_or(80.0),
-        value_number(&backend.value("settings.batteryIndicatorSettings.threshold2.rawValue")).unwrap_or(60.0),
+        value_number(&backend.value("settings.batteryIndicatorSettings.threshold1.rawValue"))
+            .unwrap_or(80.0),
+        value_number(&backend.value("settings.batteryIndicatorSettings.threshold2.rawValue"))
+            .unwrap_or(60.0),
     )
 }
 
@@ -339,24 +505,43 @@ pub fn indicator_packs(described: &[Value], combine: bool) -> Vec<Value> {
     if !combine || described.len() < 2 {
         return described.to_vec();
     }
-    let limiting_percent = |pack: &Value| pack["percent"].as_f64().filter(|p| p.is_finite()).unwrap_or(f64::INFINITY);
+    let limiting_percent = |pack: &Value| {
+        pack["percent"]
+            .as_f64()
+            .filter(|p| p.is_finite())
+            .unwrap_or(f64::INFINITY)
+    };
     described
         .iter()
-        .min_by(|a, b| severity_rank(&a["level"]).cmp(&severity_rank(&b["level"])).then(limiting_percent(a).total_cmp(&limiting_percent(b))))
+        .min_by(|a, b| {
+            severity_rank(&a["level"])
+                .cmp(&severity_rank(&b["level"]))
+                .then(limiting_percent(a).total_cmp(&limiting_percent(b)))
+        })
         .and_then(Value::as_object)
         .map(|limiting| {
-            let combined = [(String::from("indicatorLabel"), Value::Null), (String::from("packCount"), json!(described.len()))];
-            vec![Value::Object(limiting.clone().into_iter().chain(combined).collect())]
+            let combined = [
+                (String::from("indicatorLabel"), Value::Null),
+                (String::from("packCount"), json!(described.len())),
+            ];
+            vec![Value::Object(
+                limiting.clone().into_iter().chain(combined).collect(),
+            )]
         })
         .unwrap_or_default()
 }
 
 pub fn battery_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let readers: Vec<_> = (0..pack_count(backend)).map(|index| remembered(backend, index)).collect();
+    let readers: Vec<_> = (0..pack_count(backend))
+        .map(|index| remembered(backend, index))
+        .collect();
     let packs: Vec<Pack> = readers.iter().map(|read| pack(read)).collect();
     let popup_packs: Vec<PopupPack> = readers.iter().map(|read| popup_pack(read)).collect();
     let (threshold1, threshold2) = thresholds(backend);
-    let value_display = value_number(&backend.value("settings.batteryIndicatorSettings.valueDisplay.rawValue")).map(|v| v as i64).unwrap_or(0);
+    let value_display =
+        value_number(&backend.value("settings.batteryIndicatorSettings.valueDisplay.rawValue"))
+            .map(|v| v as i64)
+            .unwrap_or(0);
     let numbered = packs.len() > 1;
     let described: Vec<Value> = packs
         .iter()
@@ -399,51 +584,95 @@ pub fn battery_view(backend: &dyn Backend, _args: &[String]) -> Value {
 }
 
 fn low_charge_text(percent: Option<f64>) -> String {
-    percent.map_or_else(|| "Battery low.".to_string(), |p| format!("Battery at {}%.", p.round() as i64))
+    percent.map_or_else(
+        || "Battery low.".to_string(),
+        |p| format!("Battery at {}%.", p.round() as i64),
+    )
 }
 
-pub fn lowest_charge(packs: &[(i64, Option<f64>)], threshold1: f64, threshold2: f64) -> Option<String> {
+pub fn lowest_charge(
+    packs: &[(i64, Option<f64>)],
+    threshold1: f64,
+    threshold2: f64,
+) -> Option<String> {
     let low = rank("warning");
     packs
         .iter()
-        .map(|(state, percent)| (rank(level(*state, *percent, threshold1, threshold2)), *percent))
+        .map(|(state, percent)| {
+            (
+                rank(level(*state, *percent, threshold1, threshold2)),
+                *percent,
+            )
+        })
         .filter(|(severity, _)| *severity <= low)
-        .min_by(|(a, pa), (b, pb)| a.cmp(b).then(pa.unwrap_or(f64::INFINITY).total_cmp(&pb.unwrap_or(f64::INFINITY))))
+        .min_by(|(a, pa), (b, pb)| {
+            a.cmp(b).then(
+                pa.unwrap_or(f64::INFINITY)
+                    .total_cmp(&pb.unwrap_or(f64::INFINITY)),
+            )
+        })
         .map(|(_, percent)| low_charge_text(percent))
 }
 
 fn charge_of(backend: &dyn Backend, index: usize) -> (i64, Option<f64>) {
     let fact = |name: &str| backend.value(&pack_fact_path(index, name));
-    (fact("chargeState").get("value").and_then(Value::as_i64).unwrap_or(CHARGE_UNDEFINED), value_number(&fact("percentRemaining")))
+    (
+        fact("chargeState")
+            .get("value")
+            .and_then(Value::as_i64)
+            .unwrap_or(CHARGE_UNDEFINED),
+        value_number(&fact("percentRemaining")),
+    )
 }
 
 pub fn low_charge(backend: &dyn Backend) -> Option<String> {
     let (threshold1, threshold2) = thresholds(backend);
-    let packs: Vec<(i64, Option<f64>)> = (0..pack_count(backend)).map(|index| charge_of(backend, index)).collect();
+    let packs: Vec<(i64, Option<f64>)> = (0..pack_count(backend))
+        .map(|index| charge_of(backend, index))
+        .collect();
     lowest_charge(&packs, threshold1, threshold2)
 }
 
 pub fn failsafe_reserve(action: Option<i64>, critical: Option<f64>) -> f64 {
     match action {
-        Some(PX4_LOW_BATTERY_RETURN | PX4_LOW_BATTERY_LAND | PX4_LOW_BATTERY_RETURN_THEN_LAND) => critical.unwrap_or(0.0),
+        Some(PX4_LOW_BATTERY_RETURN | PX4_LOW_BATTERY_LAND | PX4_LOW_BATTERY_RETURN_THEN_LAND) => {
+            critical.unwrap_or(0.0)
+        }
         _ => 0.0,
     }
 }
 
 pub fn must_return(percent: Option<f64>, return_at: Option<f64>, flying: bool) -> bool {
-    flying && percent.zip(return_at).is_some_and(|(percent, at)| percent <= at)
+    flying
+        && percent
+            .zip(return_at)
+            .is_some_and(|(percent, at)| percent <= at)
 }
 
 pub fn drain_per_minute(amps: Option<f64>, capacity_mah: Option<f64>) -> Option<f64> {
-    amps.filter(|a| *a > 0.0).zip(capacity_mah.filter(|c| *c > 0.0)).map(|(amps, mah)| amps * 1000.0 / mah * 100.0 / 60.0)
+    amps.filter(|a| *a > 0.0)
+        .zip(capacity_mah.filter(|c| *c > 0.0))
+        .map(|(amps, mah)| amps * 1000.0 / mah * 100.0 / 60.0)
 }
 
 fn capacity_mah(backend: &dyn Backend, index: usize) -> Option<f64> {
-    let apm = if index == 0 { "BATT_CAPACITY".to_string() } else { format!("BATT{}_CAPACITY", index + 1) };
-    [apm, format!("BAT{}_CAPACITY", index + 1)].iter().find_map(|name| parameter_value(backend, name, "value"))
+    let apm = if index == 0 {
+        "BATT_CAPACITY".to_string()
+    } else {
+        format!("BATT{}_CAPACITY", index + 1)
+    };
+    [apm, format!("BAT{}_CAPACITY", index + 1)]
+        .iter()
+        .find_map(|name| parameter_value(backend, name, "value"))
 }
 
-fn limiting_pack_extras(backend: &dyn Backend, mut shown: Value, popup_packs: &[PopupPack], packs: &[Pack], described: &[Value]) -> Value {
+fn limiting_pack_extras(
+    backend: &dyn Backend,
+    mut shown: Value,
+    popup_packs: &[PopupPack],
+    packs: &[Pack],
+    described: &[Value],
+) -> Value {
     let index = shown["index"].as_u64().unwrap_or(0) as usize;
     let limiting = &popup_packs[index];
     let action = parameter_value(backend, "COM_LOW_BAT_ACT", "rawValue").map(|v| v as i64);
@@ -455,15 +684,32 @@ fn limiting_pack_extras(backend: &dyn Backend, mut shown: Value, popup_packs: &[
         .zip(return_trip(backend).and_then(return_seconds))
         .and_then(|((percent, left), trip)| return_charge(percent, left, reserve, trip));
     let flying = crate::read::flag(&backend.value_fields("vehicle", "flying"), "flying");
-    shown["level"] = described.get(index).map_or(Value::Null, |pack| pack["level"].clone());
-    shown["margin"] = margin_text(action, parameter_value(backend, "BAT_LOW_THR", "value"), critical, limiting.percent, limiting.time_remaining).map_or(Value::Null, Value::String);
+    shown["level"] = described
+        .get(index)
+        .map_or(Value::Null, |pack| pack["level"].clone());
+    shown["margin"] = margin_text(
+        action,
+        parameter_value(backend, "BAT_LOW_THR", "value"),
+        critical,
+        limiting.percent,
+        limiting.time_remaining,
+    )
+    .map_or(Value::Null, Value::String);
     shown["percent"] = limiting.percent.map_or(Value::Null, |p| json!(p));
     shown["secondsLeft"] = limiting.time_remaining.map_or(Value::Null, |s| json!(s));
-    shown["timeLeft"] = limiting.time_remaining.map(duration_text).filter(|t| !t.is_empty()).map_or(Value::Null, Value::String);
+    shown["timeLeft"] = limiting
+        .time_remaining
+        .map(duration_text)
+        .filter(|t| !t.is_empty())
+        .map_or(Value::Null, Value::String);
     shown["reserve"] = json!(reserve);
     shown["returnAt"] = return_at.map_or(Value::Null, |at| json!(at));
     shown["returnNow"] = json!(must_return(limiting.percent, return_at, flying));
-    shown["drainPerMinute"] = drain_per_minute(packs.get(index).and_then(|pack| pack.current), capacity_mah(backend, index)).map_or(Value::Null, |d| json!(d));
+    shown["drainPerMinute"] = drain_per_minute(
+        packs.get(index).and_then(|pack| pack.current),
+        capacity_mah(backend, index),
+    )
+    .map_or(Value::Null, |d| json!(d));
     shown
 }
 
@@ -473,11 +719,39 @@ mod tests {
 
     #[test]
     fn the_readiness_line_names_the_lowest_pack_with_its_own_percent() {
-        assert_eq!(lowest_charge(&[(CHARGE_OK, Some(0.2))], 80.0, 60.0), Some("Battery at 0%.".to_string()), "OK at 0% is the SITL case the readiness line missed");
-        assert_eq!(lowest_charge(&[(3, None)], 80.0, 60.0), Some("Battery low.".to_string()), "a pack with only a charge state still reads as low");
-        assert_eq!(lowest_charge(&[(CHARGE_OK, Some(70.0))], 80.0, 60.0), None, "the yellow band is not a reason to hold a takeoff");
-        assert_eq!(lowest_charge(&[(CHARGE_OK, Some(55.0)), (CHARGE_LOW, Some(80.0)), (CHARGE_OK, Some(40.0))], 80.0, 60.0), Some("Battery at 40%.".to_string()), "the worst pack is picked once, so the percent named is that pack's own");
-        assert_eq!(lowest_charge(&[(3, Some(90.0)), (CHARGE_OK, Some(10.0))], 80.0, 60.0), Some("Battery at 90%.".to_string()), "a critical charge state outranks a low percent elsewhere");
+        assert_eq!(
+            lowest_charge(&[(CHARGE_OK, Some(0.2))], 80.0, 60.0),
+            Some("Battery at 0%.".to_string()),
+            "OK at 0% is the SITL case the readiness line missed"
+        );
+        assert_eq!(
+            lowest_charge(&[(3, None)], 80.0, 60.0),
+            Some("Battery low.".to_string()),
+            "a pack with only a charge state still reads as low"
+        );
+        assert_eq!(
+            lowest_charge(&[(CHARGE_OK, Some(70.0))], 80.0, 60.0),
+            None,
+            "the yellow band is not a reason to hold a takeoff"
+        );
+        assert_eq!(
+            lowest_charge(
+                &[
+                    (CHARGE_OK, Some(55.0)),
+                    (CHARGE_LOW, Some(80.0)),
+                    (CHARGE_OK, Some(40.0))
+                ],
+                80.0,
+                60.0
+            ),
+            Some("Battery at 40%.".to_string()),
+            "the worst pack is picked once, so the percent named is that pack's own"
+        );
+        assert_eq!(
+            lowest_charge(&[(3, Some(90.0)), (CHARGE_OK, Some(10.0))], 80.0, 60.0),
+            Some("Battery at 90%.".to_string()),
+            "a critical charge state outranks a low percent elsewhere"
+        );
         assert_eq!(lowest_charge(&[], 80.0, 60.0), None);
     }
 
@@ -493,56 +767,161 @@ mod tests {
                 }
                 .to_string()
             }
-            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn get_fields(&self, p: &str, _f: &str) -> String {
+                self.get(p)
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
             fn watch(&self, _p: &[String]) {}
         }
         let counted = Counted(std::cell::RefCell::default());
         battery_view(&counted, &[]);
         let read = counted.0.borrow();
-        let repeated: Vec<&String> = read.iter().filter(|path| read.iter().filter(|other| other == path).count() > 1).collect();
-        assert!(repeated.is_empty(), "read more than once in one render: {repeated:?}");
+        let repeated: Vec<&String> = read
+            .iter()
+            .filter(|path| read.iter().filter(|other| other == path).count() > 1)
+            .collect();
+        assert!(
+            repeated.is_empty(),
+            "read more than once in one render: {repeated:?}"
+        );
     }
 
     fn popup(state: i64, label: &str, percent: Option<f64>, left: Option<f64>) -> PopupPack {
-        PopupPack { charge_state: state, charge_label: label.into(), percent, time_remaining: left, voltage: Some("15.80".into()), consumed: None, temperature: None, function: None }
+        PopupPack {
+            charge_state: state,
+            charge_label: label.into(),
+            percent,
+            time_remaining: left,
+            voltage: Some("15.80".into()),
+            consumed: None,
+            temperature: None,
+            function: None,
+        }
     }
 
     #[test]
     fn durations_read_like_battery_indicator() {
-        assert_eq!((duration_text(42.4), duration_text(125.0), duration_text(3725.0), duration_text(-1.0)), ("42 sec".to_string(), "2:05".to_string(), "1:02:05".to_string(), String::new()));
+        assert_eq!(
+            (
+                duration_text(42.4),
+                duration_text(125.0),
+                duration_text(3725.0),
+                duration_text(-1.0)
+            ),
+            (
+                "42 sec".to_string(),
+                "2:05".to_string(),
+                "1:02:05".to_string(),
+                String::new()
+            )
+        );
     }
 
     #[test]
     fn the_headline_follows_the_worst_pack_like_battery_indicator() {
         let calm = headline(&[popup(1, "Ok", Some(72.6), Some(600.0))]).unwrap();
-        assert_eq!((calm["text"].as_str(), calm["detail"].as_str(), calm["severity"].as_i64()), (Some("73%"), Some("10:00 left"), Some(0)), "a healthy pack leads with its charge");
-        let mixed = headline(&[popup(1, "Ok", Some(80.0), None), popup(3, "Critical", Some(12.0), Some(90.0))]).unwrap();
-        assert_eq!((mixed["text"].as_str(), mixed["detail"].as_str(), mixed["severity"].as_i64()), (Some("Critical"), Some("1:30 left  \u{00b7}  12%  \u{00b7}  lowest of 2"), Some(2)), "an alarming pack leads with its state and adds its charge");
+        assert_eq!(
+            (
+                calm["text"].as_str(),
+                calm["detail"].as_str(),
+                calm["severity"].as_i64()
+            ),
+            (Some("73%"), Some("10:00 left"), Some(0)),
+            "a healthy pack leads with its charge"
+        );
+        let mixed = headline(&[
+            popup(1, "Ok", Some(80.0), None),
+            popup(3, "Critical", Some(12.0), Some(90.0)),
+        ])
+        .unwrap();
+        assert_eq!(
+            (
+                mixed["text"].as_str(),
+                mixed["detail"].as_str(),
+                mixed["severity"].as_i64()
+            ),
+            (
+                Some("Critical"),
+                Some("1:30 left  \u{00b7}  12%  \u{00b7}  lowest of 2"),
+                Some(2)
+            ),
+            "an alarming pack leads with its state and adds its charge"
+        );
         assert!(headline(&[]).is_none());
     }
 
     #[test]
     fn two_healthy_packs_lead_with_the_lower_one_and_say_so() {
-        let both = headline(&[popup(1, "Ok", Some(90.0), Some(810.0)), popup(1, "Ok", Some(79.0), Some(711.0))]).unwrap();
-        assert_eq!((both["text"].as_str(), both["detail"].as_str(), both["index"].as_u64()), (Some("79%"), Some("11:51 left  \u{00b7}  lowest of 2"), Some(1)));
+        let both = headline(&[
+            popup(1, "Ok", Some(90.0), Some(810.0)),
+            popup(1, "Ok", Some(79.0), Some(711.0)),
+        ])
+        .unwrap();
+        assert_eq!(
+            (
+                both["text"].as_str(),
+                both["detail"].as_str(),
+                both["index"].as_u64()
+            ),
+            (
+                Some("79%"),
+                Some("11:51 left  \u{00b7}  lowest of 2"),
+                Some(1)
+            )
+        );
     }
 
     #[test]
     fn the_turn_back_point_is_the_charge_the_flight_home_costs_on_top_of_the_reserve() {
-        let trip = ReturnTrip { distance_m: 600.0, altitude_m: 40.0, return_altitude_m: 60.0, cruise_mps: 5.0, climb_mps: 2.0, descent_mps: 1.0 };
-        assert_eq!(return_seconds(trip), Some(10.0 + 120.0 + 60.0), "climb to the return altitude, fly home, then descend at landing speed the whole way");
-        assert_eq!(return_seconds(ReturnTrip { altitude_m: 90.0, ..trip }), Some(0.0 + 120.0 + 90.0), "already above the return altitude it comes home where it is");
-        assert_eq!(return_seconds(ReturnTrip { cruise_mps: 0.0, ..trip }), None, "an unknown speed promises nothing");
-        assert_eq!(return_charge(60.0, 600.0, 7.0, 190.0), Some(7.0 + 19.0), "190 s at 0.1 %/s costs 19 % on top of the 7 % the aircraft lands at");
+        let trip = ReturnTrip {
+            distance_m: 600.0,
+            altitude_m: 40.0,
+            return_altitude_m: 60.0,
+            cruise_mps: 5.0,
+            climb_mps: 2.0,
+            descent_mps: 1.0,
+        };
+        assert_eq!(
+            return_seconds(trip),
+            Some(10.0 + 120.0 + 60.0),
+            "climb to the return altitude, fly home, then descend at landing speed the whole way"
+        );
+        assert_eq!(
+            return_seconds(ReturnTrip {
+                altitude_m: 90.0,
+                ..trip
+            }),
+            Some(0.0 + 120.0 + 90.0),
+            "already above the return altitude it comes home where it is"
+        );
+        assert_eq!(
+            return_seconds(ReturnTrip {
+                cruise_mps: 0.0,
+                ..trip
+            }),
+            None,
+            "an unknown speed promises nothing"
+        );
+        assert_eq!(
+            return_charge(60.0, 600.0, 7.0, 190.0),
+            Some(7.0 + 19.0),
+            "190 s at 0.1 %/s costs 19 % on top of the 7 % the aircraft lands at"
+        );
         assert_eq!(return_charge(60.0, 0.0, 7.0, 190.0), None);
     }
 
     struct Params(Vec<(&'static str, f64)>);
     impl Backend for Params {
         fn get(&self, path: &str) -> String {
-            let name = path.trim_end_matches(".rawValue").trim_start_matches("vehicle.parameterManager.getParameter(-1,").trim_end_matches(')');
+            let name = path
+                .trim_end_matches(".rawValue")
+                .trim_start_matches("vehicle.parameterManager.getParameter(-1,")
+                .trim_end_matches(')');
             let units = match name {
                 "RTL_ALT" => "cm",
                 "RTL_SPEED" | "WPNAV_SPEED" | "WPNAV_SPEED_UP" | "LAND_SPEED" => "cm/s",
@@ -550,57 +929,160 @@ mod tests {
                 _ => "m/s",
             };
             let absent = match path.starts_with("vehicle.parameterManager.") {
-                true => json!({ "kind": "fact", "name": "", "value": 0, "rawValue": 0, "rawUnits": "" }),
+                true => {
+                    json!({ "kind": "fact", "name": "", "value": 0, "rawValue": 0, "rawUnits": "" })
+                }
                 false => json!({ "kind": "null" }),
             };
             self.0.iter().find(|(n, _)| *n == name).map_or(absent, |(n, v)| json!({ "kind": "fact", "name": n, "value": v, "rawValue": v, "rawUnits": units })).to_string()
         }
-        fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
-        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn get_fields(&self, p: &str, _f: &str) -> String {
+            self.get(p)
+        }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            String::new()
+        }
         fn watch(&self, _p: &[String]) {}
     }
 
     #[test]
     fn the_trip_home_reads_each_firmware_in_its_own_units() {
-        let place = [("vehicle.distanceToHome", 600.0), ("vehicle.altitudeRelative", 40.0)];
-        let px4 = Params(place.into_iter().chain([("RTL_RETURN_ALT", 60.0), ("MPC_XY_CRUISE", 5.0), ("MPC_Z_V_AUTO_UP", 2.0), ("MPC_LAND_SPEED", 1.0)]).collect());
+        let place = [
+            ("vehicle.distanceToHome", 600.0),
+            ("vehicle.altitudeRelative", 40.0),
+        ];
+        let px4 = Params(
+            place
+                .into_iter()
+                .chain([
+                    ("RTL_RETURN_ALT", 60.0),
+                    ("MPC_XY_CRUISE", 5.0),
+                    ("MPC_Z_V_AUTO_UP", 2.0),
+                    ("MPC_LAND_SPEED", 1.0),
+                ])
+                .collect(),
+        );
         assert_eq!(return_trip(&px4).and_then(return_seconds), Some(190.0));
-        let apm = Params(place.into_iter().chain([("RTL_ALT", 6000.0), ("RTL_SPEED", 0.0), ("WPNAV_SPEED", 500.0), ("WPNAV_SPEED_UP", 200.0), ("LAND_SPEED", 100.0)]).collect());
-        assert_eq!(return_trip(&apm).and_then(return_seconds), Some(190.0), "ArduPilot speaks centimetres, and RTL_SPEED 0 means fly home at WPNAV_SPEED; the PX4 names it lacks read as absent, not 0");
-        let copter_4_7 = Params(place.into_iter().chain([("RTL_ALT_M", 60.0), ("RTL_SPEED_MS", 0.0), ("WP_SPD", 5.0), ("WP_SPD_UP", 2.0), ("LAND_SPD_MS", 1.0)]).collect());
-        assert_eq!(return_trip(&copter_4_7).and_then(return_seconds), Some(190.0), "ArduCopter 4.7 renamed these into metres");
-        let unplaced = Params(vec![("vehicle.distanceToHome", 600.0), ("RTL_RETURN_ALT", 60.0), ("MPC_XY_CRUISE", 5.0), ("MPC_Z_V_AUTO_UP", 2.0), ("MPC_LAND_SPEED", 1.0)]);
-        assert_eq!(return_trip(&unplaced), None, "an unknown height is not guessed as the ground");
+        let apm = Params(
+            place
+                .into_iter()
+                .chain([
+                    ("RTL_ALT", 6000.0),
+                    ("RTL_SPEED", 0.0),
+                    ("WPNAV_SPEED", 500.0),
+                    ("WPNAV_SPEED_UP", 200.0),
+                    ("LAND_SPEED", 100.0),
+                ])
+                .collect(),
+        );
+        assert_eq!(
+            return_trip(&apm).and_then(return_seconds),
+            Some(190.0),
+            "ArduPilot speaks centimetres, and RTL_SPEED 0 means fly home at WPNAV_SPEED; the PX4 names it lacks read as absent, not 0"
+        );
+        let copter_4_7 = Params(
+            place
+                .into_iter()
+                .chain([
+                    ("RTL_ALT_M", 60.0),
+                    ("RTL_SPEED_MS", 0.0),
+                    ("WP_SPD", 5.0),
+                    ("WP_SPD_UP", 2.0),
+                    ("LAND_SPD_MS", 1.0),
+                ])
+                .collect(),
+        );
+        assert_eq!(
+            return_trip(&copter_4_7).and_then(return_seconds),
+            Some(190.0),
+            "ArduCopter 4.7 renamed these into metres"
+        );
+        let unplaced = Params(vec![
+            ("vehicle.distanceToHome", 600.0),
+            ("RTL_RETURN_ALT", 60.0),
+            ("MPC_XY_CRUISE", 5.0),
+            ("MPC_Z_V_AUTO_UP", 2.0),
+            ("MPC_LAND_SPEED", 1.0),
+        ]);
+        assert_eq!(
+            return_trip(&unplaced),
+            None,
+            "an unknown height is not guessed as the ground"
+        );
     }
 
     #[test]
     fn the_turn_back_warning_is_for_the_air_and_the_reserve_follows_the_failsafe() {
         assert!(must_return(Some(20.0), Some(26.0), true));
-        assert!(!must_return(Some(20.0), Some(26.0), false), "on the pad a low pack is not a reason to shout return now");
+        assert!(
+            !must_return(Some(20.0), Some(26.0), false),
+            "on the pad a low pack is not a reason to shout return now"
+        );
         assert!(!must_return(Some(30.0), Some(26.0), true));
         assert_eq!(failsafe_reserve(Some(3), Some(7.0)), 7.0);
-        assert_eq!(failsafe_reserve(Some(0), Some(7.0)), 0.0, "a warn-only failsafe never lands, so there is no reserve to keep");
+        assert_eq!(
+            failsafe_reserve(Some(0), Some(7.0)),
+            0.0,
+            "a warn-only failsafe never lands, so there is no reserve to keep"
+        );
         assert_eq!(failsafe_reserve(None, None), 0.0);
     }
 
     #[test]
     fn the_drain_is_the_share_of_the_pack_a_minute_at_this_current_costs() {
-        assert!((drain_per_minute(Some(36.0), Some(3300.0)).unwrap() - 18.18).abs() < 0.01, "36 A on a 3.3 Ah pack empties 18% a minute");
-        assert_eq!(drain_per_minute(Some(0.0), Some(3300.0)), None, "no draw, nothing to show");
-        assert_eq!(drain_per_minute(Some(-2.0), Some(3300.0)), None, "a charging pack is not drained");
-        assert_eq!(drain_per_minute(Some(10.0), Some(0.0)), None, "an unset capacity gives no scale");
+        assert!(
+            (drain_per_minute(Some(36.0), Some(3300.0)).unwrap() - 18.18).abs() < 0.01,
+            "36 A on a 3.3 Ah pack empties 18% a minute"
+        );
+        assert_eq!(
+            drain_per_minute(Some(0.0), Some(3300.0)),
+            None,
+            "no draw, nothing to show"
+        );
+        assert_eq!(
+            drain_per_minute(Some(-2.0), Some(3300.0)),
+            None,
+            "a charging pack is not drained"
+        );
+        assert_eq!(
+            drain_per_minute(Some(10.0), Some(0.0)),
+            None,
+            "an unset capacity gives no scale"
+        );
         assert_eq!(drain_per_minute(Some(10.0), None), None);
     }
 
     #[test]
     fn the_margin_names_the_failsafe_and_the_time_before_it() {
-        assert_eq!(margin_text(Some(3), Some(15.0), Some(7.0), Some(79.0), Some(711.0)).as_deref(), Some("Returns home at 7%  \u{00b7}  about 11 min to go"));
-        assert_eq!(margin_text(Some(2), Some(15.0), Some(7.0), Some(50.0), None).as_deref(), Some("Lands at 7%  \u{00b7}  43 points to go"));
-        assert_eq!(margin_text(Some(2), Some(15.0), Some(7.0), Some(50.0), Some(9.0)).as_deref(), Some("Lands at 7%  \u{00b7}  under a minute to go"), "nine seconds left is not a minute");
-        assert_eq!(margin_text(Some(0), Some(15.0), Some(7.0), Some(12.0), Some(300.0)).as_deref(), Some("Warns at 15%  \u{00b7}  reached"));
-        assert_eq!(margin_text(None, Some(15.0), Some(7.0), Some(79.0), Some(711.0)), None, "a firmware without these parameters says nothing rather than guess");
-        assert_eq!(margin_text(Some(3), None, None, Some(79.0), Some(711.0)), None);
+        assert_eq!(
+            margin_text(Some(3), Some(15.0), Some(7.0), Some(79.0), Some(711.0)).as_deref(),
+            Some("Returns home at 7%  \u{00b7}  about 11 min to go")
+        );
+        assert_eq!(
+            margin_text(Some(2), Some(15.0), Some(7.0), Some(50.0), None).as_deref(),
+            Some("Lands at 7%  \u{00b7}  43 points to go")
+        );
+        assert_eq!(
+            margin_text(Some(2), Some(15.0), Some(7.0), Some(50.0), Some(9.0)).as_deref(),
+            Some("Lands at 7%  \u{00b7}  under a minute to go"),
+            "nine seconds left is not a minute"
+        );
+        assert_eq!(
+            margin_text(Some(0), Some(15.0), Some(7.0), Some(12.0), Some(300.0)).as_deref(),
+            Some("Warns at 15%  \u{00b7}  reached")
+        );
+        assert_eq!(
+            margin_text(None, Some(15.0), Some(7.0), Some(79.0), Some(711.0)),
+            None,
+            "a firmware without these parameters says nothing rather than guess"
+        );
+        assert_eq!(
+            margin_text(Some(3), None, None, Some(79.0), Some(711.0)),
+            None
+        );
     }
 
     #[test]
@@ -608,16 +1090,39 @@ mod tests {
         let rows = popup_rows(&popup(2, "Low", Some(30.0), Some(65.0)));
         let labels: Vec<&str> = rows.iter().filter_map(|r| r["label"].as_str()).collect();
         assert_eq!(labels, vec!["Time left", "Charge", "Voltage"]);
-        assert_eq!((rows[0]["severity"].as_i64(), rows[2]["severity"].as_i64(), rows[2]["value"].as_str()), (Some(1), Some(-1), Some("15.80 V")));
-        assert_eq!(popup_rows(&popup(1, "Ok", Some(80.0), None))[0]["severity"].as_i64(), Some(-1), "a healthy pack's charge is grey, as _packColor defaults to colorGrey");
+        assert_eq!(
+            (
+                rows[0]["severity"].as_i64(),
+                rows[2]["severity"].as_i64(),
+                rows[2]["value"].as_str()
+            ),
+            (Some(1), Some(-1), Some("15.80 V"))
+        );
+        assert_eq!(
+            popup_rows(&popup(1, "Ok", Some(80.0), None))[0]["severity"].as_i64(),
+            Some(-1),
+            "a healthy pack's charge is grey, as _packColor defaults to colorGrey"
+        );
     }
 
     #[test]
     fn severity_ranks_charge_states_like_severity_of() {
         assert_eq!((4..=6).map(severity).collect::<Vec<_>>(), vec![3, 3, 3]);
-        assert_eq!((severity(3), severity(2), severity(7), severity(0)), (2, 1, 0, 0), "charging is not alarming");
-        let tie = headline(&[popup(2, "Low", Some(40.0), None), popup(2, "Low", Some(20.0), None)]).unwrap();
-        assert_eq!((tie["detail"].as_str(), tie["index"].as_u64()), (Some("20%  \u{00b7}  lowest of 2"), Some(1)), "an equal severity leads with the lower charge, as the Fly bar ring does");
+        assert_eq!(
+            (severity(3), severity(2), severity(7), severity(0)),
+            (2, 1, 0, 0),
+            "charging is not alarming"
+        );
+        let tie = headline(&[
+            popup(2, "Low", Some(40.0), None),
+            popup(2, "Low", Some(20.0), None),
+        ])
+        .unwrap();
+        assert_eq!(
+            (tie["detail"].as_str(), tie["index"].as_u64()),
+            (Some("20%  \u{00b7}  lowest of 2"), Some(1)),
+            "an equal severity leads with the lower charge, as the Fly bar ring does"
+        );
     }
 
     fn pack_facts(percent: Option<f64>, state: i64, label: &str) -> Vec<(String, Value)> {
@@ -640,65 +1145,144 @@ mod tests {
         impl Backend for One {
             fn get(&self, path: &str) -> String {
                 let name = path.rsplit('.').next().unwrap_or_default();
-                self.0.iter().find(|(n, _)| n == name).map(|(_, f)| f.clone()).unwrap_or(json!({ "kind": "null" })).to_string()
+                self.0
+                    .iter()
+                    .find(|(n, _)| n == name)
+                    .map(|(_, f)| f.clone())
+                    .unwrap_or(json!({ "kind": "null" }))
+                    .to_string()
             }
-            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn get_fields(&self, p: &str, _f: &str) -> String {
+                self.get(p)
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
             fn watch(&self, _p: &[String]) {}
         }
         detail_facts(&remembered(&One(facts.to_vec()), 0))
     }
 
     fn pack_of(facts: &[(String, Value)]) -> Pack {
-        pack(&|name: &str| facts.iter().find(|(n, _)| n == name).map(|(_, f)| f.clone()).unwrap_or(Value::Null))
+        pack(&|name: &str| {
+            facts
+                .iter()
+                .find(|(n, _)| n == name)
+                .map(|(_, f)| f.clone())
+                .unwrap_or(Value::Null)
+        })
     }
 
     #[test]
     fn details_carry_the_value_for_total_draw_and_a_function_qgc_names() {
         let base = pack_facts(Some(50.0), 1, "OK");
         let shown = detail_facts_of(&base);
-        assert_eq!(shown.as_array().unwrap().iter().find(|f| f["name"] == "instantPower").unwrap()["value"], 197.5, "BatteryIndicator sums instantPower, so the number has to travel");
+        assert_eq!(
+            shown
+                .as_array()
+                .unwrap()
+                .iter()
+                .find(|f| f["name"] == "instantPower")
+                .unwrap()["value"],
+            197.5,
+            "BatteryIndicator sums instantPower, so the number has to travel"
+        );
         let propulsion = base.iter().cloned().chain(std::iter::once(("function".to_string(), json!({ "kind": "fact", "name": "function", "value": 2, "enumOrValueString": "Propulsion" })))).collect::<Vec<_>>();
-        assert_eq!(detail_facts_of(&propulsion)[0], json!({ "name": "function", "valueString": "Propulsion", "value": 2, "units": "" }));
+        assert_eq!(
+            detail_facts_of(&propulsion)[0],
+            json!({ "name": "function", "valueString": "Propulsion", "value": 2, "units": "" })
+        );
         let all = base.iter().cloned().chain(std::iter::once(("function".to_string(), json!({ "kind": "fact", "name": "function", "value": 1, "enumOrValueString": "All" })))).collect::<Vec<_>>();
-        assert!(detail_facts_of(&all).as_array().unwrap().iter().all(|f| f["name"] != "function"), "UNKNOWN and ALL are not shown");
+        assert!(
+            detail_facts_of(&all)
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|f| f["name"] != "function"),
+            "UNKNOWN and ALL are not shown"
+        );
     }
 
     #[test]
     fn the_indicator_thresholds_apply_whatever_charge_state_the_vehicle_reports() {
-        assert_eq!(level(CHARGE_OK, Some(0.0), 80.0, 60.0), "warning", "ArduPilot reports OK until a low-battery failsafe trips, and SITL drained to 0% by consumption never trips one; QGC's rule drew that as a normal pack");
+        assert_eq!(
+            level(CHARGE_OK, Some(0.0), 80.0, 60.0),
+            "warning",
+            "ArduPilot reports OK until a low-battery failsafe trips, and SITL drained to 0% by consumption never trips one; QGC's rule drew that as a normal pack"
+        );
         assert_eq!(level(CHARGE_OK, Some(70.0), 80.0, 60.0), "caution");
         assert_eq!(level(CHARGE_OK, Some(95.0), 80.0, 60.0), "normal");
         assert_eq!(level(CHARGE_OK, None, 80.0, 60.0), "normal");
-        assert_eq!(level(7, Some(10.0), 80.0, 60.0), "warning", "a pack on charge is still nearly empty");
+        assert_eq!(
+            level(7, Some(10.0), 80.0, 60.0),
+            "warning",
+            "a pack on charge is still nearly empty"
+        );
         assert_eq!(level(CHARGE_UNDEFINED, Some(85.0), 80.0, 60.0), "normal");
         assert_eq!(level(CHARGE_UNDEFINED, Some(70.0), 80.0, 60.0), "caution");
         assert_eq!(level(CHARGE_UNDEFINED, Some(55.0), 80.0, 60.0), "warning");
         assert_eq!(level(CHARGE_UNDEFINED, None, 80.0, 60.0), "normal");
         assert_eq!(level(CHARGE_LOW, Some(90.0), 80.0, 60.0), "warning");
-        assert_eq!(level(3, Some(90.0), 80.0, 60.0), "critical", "a charge state can only make the reading worse than the percent says");
+        assert_eq!(
+            level(3, Some(90.0), 80.0, 60.0),
+            "critical",
+            "a charge state can only make the reading worse than the percent says"
+        );
         assert_eq!(level(6, None, 80.0, 60.0), "critical");
         assert_eq!(level(7, None, 80.0, 60.0), "normal");
     }
 
     #[test]
     fn nearly_full_reads_as_full_and_a_missing_percent_falls_back_to_voltage_then_charge_state() {
-        let packs: Vec<Pack> = [pack_facts(Some(99.2), CHARGE_OK, "OK"), pack_facts(Some(72.0), CHARGE_UNDEFINED, "Undefined"), pack_facts(None, CHARGE_LOW, "Low")].iter().map(|f| pack_of(f)).collect();
+        let packs: Vec<Pack> = [
+            pack_facts(Some(99.2), CHARGE_OK, "OK"),
+            pack_facts(Some(72.0), CHARGE_UNDEFINED, "Undefined"),
+            pack_facts(None, CHARGE_LOW, "Low"),
+        ]
+        .iter()
+        .map(|f| pack_of(f))
+        .collect();
         assert_eq!(text(&packs[0]), "100%");
         assert_eq!(text(&packs[1]), "72%");
         assert_eq!(text(&packs[2]), "15.80V");
         assert_eq!(packs[0].voltage_text, "15.80V");
-        let bare = Pack { voltage: None, current: None, percent: None, charge_state: CHARGE_LOW, charge_label: "Low".into(), percent_text: String::new(), voltage_text: String::new(), current_text: String::new(), time_remaining_text: None };
+        let bare = Pack {
+            voltage: None,
+            current: None,
+            percent: None,
+            charge_state: CHARGE_LOW,
+            charge_label: "Low".into(),
+            percent_text: String::new(),
+            voltage_text: String::new(),
+            current_text: String::new(),
+            time_remaining_text: None,
+        };
         assert_eq!(text(&bare), "Low");
         assert_eq!(secondary_text(&bare), "Low");
-        let empty = Pack { charge_state: CHARGE_UNDEFINED, charge_label: String::new(), ..bare };
+        let empty = Pack {
+            charge_state: CHARGE_UNDEFINED,
+            charge_label: String::new(),
+            ..bare
+        };
         assert_eq!(text(&empty), "n/a");
     }
 
     #[test]
     fn indicator_lines_follow_value_display_like_battery_indicator() {
-        let pack = Pack { voltage: Some(15.8), current: None, percent: Some(42.0), charge_state: CHARGE_OK, charge_label: "OK".into(), percent_text: "42%".into(), voltage_text: "15.80V".into(), current_text: String::new(), time_remaining_text: Some("00:12:00".into()) };
+        let pack = Pack {
+            voltage: Some(15.8),
+            current: None,
+            percent: Some(42.0),
+            charge_state: CHARGE_OK,
+            charge_label: "OK".into(),
+            percent_text: "42%".into(),
+            voltage_text: "15.80V".into(),
+            current_text: String::new(),
+            time_remaining_text: Some("00:12:00".into()),
+        };
         assert_eq!(indicator_lines(&pack, 0), ["42%"]);
         assert_eq!(indicator_lines(&pack, 1), ["00:12:00"]);
         assert_eq!(indicator_lines(&pack, 2), ["42%", "00:12:00"]);
@@ -709,36 +1293,79 @@ mod tests {
         struct Fake;
         impl Backend for Fake {
             fn get(&self, path: &str) -> String {
-                let packs = [pack_facts(Some(90.0), CHARGE_OK, "OK"), pack_facts(Some(50.0), CHARGE_UNDEFINED, "Undefined")];
-                let fact = path.strip_prefix("vehicle.batteries.").and_then(|rest| rest.split_once('.')).and_then(|(index, name)| packs.get(index.parse::<usize>().ok()?)?.iter().find(|(n, _)| n == name).map(|(_, f)| f.clone()));
+                let packs = [
+                    pack_facts(Some(90.0), CHARGE_OK, "OK"),
+                    pack_facts(Some(50.0), CHARGE_UNDEFINED, "Undefined"),
+                ];
+                let fact = path
+                    .strip_prefix("vehicle.batteries.")
+                    .and_then(|rest| rest.split_once('.'))
+                    .and_then(|(index, name)| {
+                        packs
+                            .get(index.parse::<usize>().ok()?)?
+                            .iter()
+                            .find(|(n, _)| n == name)
+                            .map(|(_, f)| f.clone())
+                    });
                 match (path, fact) {
                     (_, Some(fact)) => fact,
                     ("vehicle.batteries.count", _) => json!({ "kind": "value", "value": 2 }),
-                    ("settings.batteryIndicatorSettings.threshold1.rawValue", _) => json!({ "kind": "value", "value": 80 }),
-                    ("settings.batteryIndicatorSettings.threshold2.rawValue", _) => json!({ "kind": "value", "value": 60 }),
-                    ("settings.batteryIndicatorSettings.valueDisplay.rawValue", _) => json!({ "kind": "value", "value": 2 }),
+                    ("settings.batteryIndicatorSettings.threshold1.rawValue", _) => {
+                        json!({ "kind": "value", "value": 80 })
+                    }
+                    ("settings.batteryIndicatorSettings.threshold2.rawValue", _) => {
+                        json!({ "kind": "value", "value": 60 })
+                    }
+                    ("settings.batteryIndicatorSettings.valueDisplay.rawValue", _) => {
+                        json!({ "kind": "value", "value": 2 })
+                    }
                     _ => json!({ "kind": "null" }),
                 }
                 .to_string()
             }
-            fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn get_fields(&self, p: &str, _f: &str) -> String {
+                self.get(p)
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
             fn watch(&self, _p: &[String]) {}
         }
         let view = battery_view(&Fake, &[]);
-        assert!(deps().len() >= 4 + 12, "after a read the packs the vehicle reported are watched");
+        assert!(
+            deps().len() >= 4 + 12,
+            "after a read the packs the vehicle reported are watched"
+        );
         assert!(deps().contains(&"vehicle.batteries.1.chargeState".to_string()));
         assert_eq!(view["available"], true);
         assert_eq!(view["level"], "warning");
         assert_eq!(view["text"], "90%");
         assert_eq!(view["packs"][1]["level"], "warning");
         assert_eq!(view["packs"][0]["secondaryText"], "15.80V");
-        assert_eq!(view["packs"][0]["currentText"], "12.50A", "the head was formatting this itself as %.2f A, which is locale-independent and prints a full stop where the Fact prints whatever the operator's locale does");
-        assert_eq!((view["packs"][0]["indicatorLabel"].clone(), view["packs"][1]["indicatorLabel"].clone()), (json!("B1"), json!("B2")));
+        assert_eq!(
+            view["packs"][0]["currentText"], "12.50A",
+            "the head was formatting this itself as %.2f A, which is locale-independent and prints a full stop where the Fact prints whatever the operator's locale does"
+        );
+        assert_eq!(
+            (
+                view["packs"][0]["indicatorLabel"].clone(),
+                view["packs"][1]["indicatorLabel"].clone()
+            ),
+            (json!("B1"), json!("B2"))
+        );
         assert_eq!(view["packs"][0]["indicatorLines"], json!(["90%", "15.80V"]));
-        assert_eq!(view["packs"][0]["percentText"], "90%", "and this was on the struct already and simply never served, so a head had nothing to read and spelled its own");
-        assert_eq!(view["indicatorPacks"].as_array().map(Vec::len), Some(1), "two packs show as one indicator unless the pilot turns combining off");
+        assert_eq!(
+            view["packs"][0]["percentText"], "90%",
+            "and this was on the struct already and simply never served, so a head had nothing to read and spelled its own"
+        );
+        assert_eq!(
+            view["indicatorPacks"].as_array().map(Vec::len),
+            Some(1),
+            "two packs show as one indicator unless the pilot turns combining off"
+        );
         assert_eq!(view["indicatorPacks"][0]["level"], "warning");
         assert_eq!(view["indicatorPacks"][0]["packCount"], 2);
     }
@@ -746,11 +1373,26 @@ mod tests {
     #[test]
     fn the_combined_indicator_shows_the_pack_that_limits_the_flight() {
         let pack = |level: &str, percent: f64| json!({ "level": level, "percent": percent, "indicatorLabel": "B" });
-        let packs = [pack("normal", 79.0), pack("normal", 57.0), pack("normal", 91.0)];
+        let packs = [
+            pack("normal", 79.0),
+            pack("normal", 57.0),
+            pack("normal", 91.0),
+        ];
         let shown = indicator_packs(&packs, true);
-        assert_eq!((shown.len(), shown[0]["percent"].as_f64(), shown[0]["packCount"].clone(), shown[0]["indicatorLabel"].clone()), (1, Some(57.0), json!(3), Value::Null));
+        assert_eq!(
+            (
+                shown.len(),
+                shown[0]["percent"].as_f64(),
+                shown[0]["packCount"].clone(),
+                shown[0]["indicatorLabel"].clone()
+            ),
+            (1, Some(57.0), json!(3), Value::Null)
+        );
         let warned = indicator_packs(&[pack("normal", 40.0), pack("warning", 60.0)], true);
-        assert_eq!(warned[0]["level"], "warning", "a pack the vehicle flags outranks a lower charge it does not");
+        assert_eq!(
+            warned[0]["level"], "warning",
+            "a pack the vehicle flags outranks a lower charge it does not"
+        );
         assert_eq!(indicator_packs(&packs, false).len(), 3);
         assert_eq!(indicator_packs(&packs[..1], true)[0]["indicatorLabel"], "B");
     }
@@ -759,21 +1401,44 @@ mod tests {
     fn a_pack_carries_the_facts_the_detail_panel_names() {
         let facts = pack_facts(Some(90.0), CHARGE_OK, "OK");
         let view = detail_facts_of(&facts);
-        let named: Vec<&str> = view.as_array().unwrap().iter().map(|f| f["name"].as_str().unwrap()).collect();
-        assert_eq!(named, ["voltage", "current", "instantPower", "mahConsumed"], "the head reads a list, not scalars, and a fact the vehicle never spelled is absent rather than blank");
+        let named: Vec<&str> = view
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|f| f["name"].as_str().unwrap())
+            .collect();
+        assert_eq!(
+            named,
+            ["voltage", "current", "instantPower", "mahConsumed"],
+            "the head reads a list, not scalars, and a fact the vehicle never spelled is absent rather than blank"
+        );
         assert_eq!(view[2]["valueString"], "197.50");
-        assert_eq!(view[2]["units"], "W", "raw, because the head runs its own Units.display over it");
-        assert!(PACK_FACTS.contains(&"temperature"), "watched even when unspelled, or the view never recomputes when it starts arriving");
+        assert_eq!(
+            view[2]["units"], "W",
+            "raw, because the head runs its own Units.display over it"
+        );
+        assert!(
+            PACK_FACTS.contains(&"temperature"),
+            "watched even when unspelled, or the view never recomputes when it starts arriving"
+        );
     }
 
     #[test]
     fn without_packs_nothing_is_available() {
         struct Empty;
         impl Backend for Empty {
-            fn get(&self, _p: &str) -> String { json!({ "kind": "null" }).to_string() }
-            fn get_fields(&self, _p: &str, _f: &str) -> String { self.get("") }
-            fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-            fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+            fn get(&self, _p: &str) -> String {
+                json!({ "kind": "null" }).to_string()
+            }
+            fn get_fields(&self, _p: &str, _f: &str) -> String {
+                self.get("")
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
             fn watch(&self, _p: &[String]) {}
         }
         let view = battery_view(&Empty, &[]);

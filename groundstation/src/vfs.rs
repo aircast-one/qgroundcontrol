@@ -28,13 +28,18 @@ pub enum Kind {
 
 #[cfg(not(target_family = "wasm"))]
 pub fn kind(path: impl AsRef<Path>) -> Option<Kind> {
-    std::fs::metadata(path).ok().map(|meta| if meta.is_dir() { Kind::Dir } else { Kind::File })
+    std::fs::metadata(path)
+        .ok()
+        .map(|meta| if meta.is_dir() { Kind::Dir } else { Kind::File })
 }
 
 #[cfg(not(target_family = "wasm"))]
 pub fn replace(path: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> std::io::Result<()> {
     let target = path.as_ref();
-    let staged = target.with_extension(format!("{}.part", target.extension().and_then(|e| e.to_str()).unwrap_or("")));
+    let staged = target.with_extension(format!(
+        "{}.part",
+        target.extension().and_then(|e| e.to_str()).unwrap_or("")
+    ));
     std::fs::write(&staged, contents).and_then(|()| std::fs::rename(&staged, target))
 }
 
@@ -66,7 +71,13 @@ pub fn list(dir: impl AsRef<Path>) -> Vec<Entry> {
         .map(|entries| {
             entries
                 .filter_map(Result::ok)
-                .filter_map(|entry| std::fs::metadata(entry.path()).ok().map(|meta| Entry { name: entry.file_name().to_string_lossy().into_owned(), size: meta.len(), dir: meta.is_dir() }))
+                .filter_map(|entry| {
+                    std::fs::metadata(entry.path()).ok().map(|meta| Entry {
+                        name: entry.file_name().to_string_lossy().into_owned(),
+                        size: meta.len(),
+                        dir: meta.is_dir(),
+                    })
+                })
                 .collect()
         })
         .unwrap_or_default()
@@ -88,7 +99,9 @@ impl Sink {
 
     pub fn write_at(&mut self, offset: u64, data: &[u8]) -> std::io::Result<()> {
         use std::io::{Seek, SeekFrom, Write};
-        self.0.seek(SeekFrom::Start(offset)).and_then(|_| self.0.write_all(data))
+        self.0
+            .seek(SeekFrom::Start(offset))
+            .and_then(|_| self.0.write_all(data))
     }
 
     pub fn sync(&mut self) {}
@@ -111,9 +124,17 @@ impl Sink {
     pub fn create(path: impl AsRef<Path>) -> std::io::Result<Sink> {
         let path = path.as_ref().to_path_buf();
         if let Some(url) = on_device(&path) {
-            remote::send(remote::Change { path: path.clone(), url, body: remote::Body::Put(Vec::new()) });
+            remote::send(remote::Change {
+                path: path.clone(),
+                url,
+                body: remote::Body::Put(Vec::new()),
+            });
         }
-        Ok(Sink { path, bytes: std::io::Cursor::default(), dirty_from: None })
+        Ok(Sink {
+            path,
+            bytes: std::io::Cursor::default(),
+            dirty_from: None,
+        })
     }
 
     pub fn set_len(&mut self, len: u64) -> std::io::Result<()> {
@@ -125,13 +146,24 @@ impl Sink {
     pub fn write_at(&mut self, offset: u64, data: &[u8]) -> std::io::Result<()> {
         use std::io::{Seek, SeekFrom, Write};
         self.dirty_from = Some(self.dirty_from.map_or(offset, |from| from.min(offset)));
-        self.bytes.seek(SeekFrom::Start(offset)).and_then(|_| self.bytes.write_all(data))
+        self.bytes
+            .seek(SeekFrom::Start(offset))
+            .and_then(|_| self.bytes.write_all(data))
     }
 
     pub fn sync(&mut self) {
         if let (Some(from), Some(url)) = (self.dirty_from.take(), on_device(&self.path)) {
-            let tail = self.bytes.get_ref().get(from as usize..).unwrap_or_default().to_vec();
-            remote::send(remote::Change { path: self.path.clone(), url, body: remote::Body::Patch(from, tail) });
+            let tail = self
+                .bytes
+                .get_ref()
+                .get(from as usize..)
+                .unwrap_or_default()
+                .to_vec();
+            remote::send(remote::Change {
+                path: self.path.clone(),
+                url,
+                body: remote::Body::Patch(from, tail),
+            });
         }
     }
 
@@ -148,7 +180,10 @@ impl Sink {
 fn on_device(path: &Path) -> Option<String> {
     let root = crate::settingsstore::save_root()?;
     let path = path.to_str()?;
-    path.strip_prefix(root.as_str()).is_some_and(|rest| rest.starts_with('/')).then(|| crate::device::files(path)).flatten()
+    path.strip_prefix(root.as_str())
+        .is_some_and(|rest| rest.starts_with('/'))
+        .then(|| crate::device::files(path))
+        .flatten()
 }
 
 #[cfg(target_family = "wasm")]
@@ -184,7 +219,11 @@ mod remote {
         pub fn request(&self) -> (&'static str, String, Option<&[u8]>) {
             match &self.body {
                 Body::Put(bytes) => ("PUT", self.url.clone(), Some(bytes)),
-                Body::Patch(offset, bytes) => ("PATCH", format!("{}?offset={offset}", self.url), Some(bytes)),
+                Body::Patch(offset, bytes) => (
+                    "PATCH",
+                    format!("{}?offset={offset}", self.url),
+                    Some(bytes),
+                ),
                 Body::Delete => ("DELETE", self.url.clone(), None),
             }
         }
@@ -192,8 +231,14 @@ mod remote {
 
     pub fn outcome(method: &str, answer: Result<(u16, Vec<u8>), String>) -> Outcome {
         match answer {
-            Ok((status, _)) if (200..300).contains(&status) || (method == "DELETE" && status == 404) => Outcome::Stored,
-            Ok((status, text)) if (400..500).contains(&status) && ![408, 429].contains(&status) => Outcome::Refused(format!("{status} {}", String::from_utf8_lossy(&text))),
+            Ok((status, _))
+                if (200..300).contains(&status) || (method == "DELETE" && status == 404) =>
+            {
+                Outcome::Stored
+            }
+            Ok((status, text)) if (400..500).contains(&status) && ![408, 429].contains(&status) => {
+                Outcome::Refused(format!("{status} {}", String::from_utf8_lossy(&text)))
+            }
             Ok((status, _)) => Outcome::Unreached(format!("the device answered {status}")),
             Err(error) => Outcome::Unreached(error),
         }
@@ -218,7 +263,10 @@ mod remote {
             return wait(change);
         }
         let (method, url, body) = change.request();
-        match outcome(method, crate::http::send(method, &url, &[], body, super::REMOTE_TIMEOUT)) {
+        match outcome(
+            method,
+            crate::http::send(method, &url, &[], body, super::REMOTE_TIMEOUT),
+        ) {
             Outcome::Stored => true,
             Outcome::Refused(why) => {
                 log::warn!("The device refused {method} {url}: {why}");
@@ -243,11 +291,17 @@ mod remote {
     #[cfg(target_family = "wasm")]
     async fn retry() {
         let mut failures = 0;
-        while let Some((method, url, body, path)) = WAITING.with(|waiting| waiting.borrow().front().map(|change| {
-            let (method, url, body) = change.request();
-            (method, url, body.map(<[u8]>::to_vec), change.path.clone())
-        })) {
-            match outcome(method, crate::http::send_later(method, &url, &[], body.as_deref(), super::REMOTE_TIMEOUT).await) {
+        while let Some((method, url, body, path)) = WAITING.with(|waiting| {
+            waiting.borrow().front().map(|change| {
+                let (method, url, body) = change.request();
+                (method, url, body.map(<[u8]>::to_vec), change.path.clone())
+            })
+        }) {
+            match outcome(
+                method,
+                crate::http::send_later(method, &url, &[], body.as_deref(), super::REMOTE_TIMEOUT)
+                    .await,
+            ) {
                 Outcome::Unreached(_) => {
                     crate::background::pause(backoff(failures)).await;
                     failures += 1;
@@ -286,16 +340,31 @@ pub fn list(dir: impl AsRef<Path>) -> Vec<Entry> {
             let mut parts = rest.components();
             let name = parts.next()?.as_os_str().to_string_lossy().into_owned();
             Some(match parts.next() {
-                Some(_) => Entry { name, size: 0, dir: true },
-                None => Entry { name, size: bytes.len() as u64, dir: false },
+                Some(_) => Entry {
+                    name,
+                    size: 0,
+                    dir: true,
+                },
+                None => Entry {
+                    name,
+                    size: bytes.len() as u64,
+                    dir: false,
+                },
             })
         })
         .collect();
-    let stored: Vec<Entry> = on_device(dir).and_then(|url| remote_get(&url, dir).ok()).and_then(|answer| serde_json::from_slice(&answer).ok()).unwrap_or_default();
-    held.into_iter().chain(stored).fold(Vec::new(), |listed: Vec<Entry>, entry| match listed.iter().any(|seen| seen.name == entry.name) {
-        true => listed,
-        false => listed.into_iter().chain(std::iter::once(entry)).collect(),
-    })
+    let stored: Vec<Entry> = on_device(dir)
+        .and_then(|url| remote_get(&url, dir).ok())
+        .and_then(|answer| serde_json::from_slice(&answer).ok())
+        .unwrap_or_default();
+    held.into_iter()
+        .chain(stored)
+        .fold(Vec::new(), |listed: Vec<Entry>, entry| {
+            match listed.iter().any(|seen| seen.name == entry.name) {
+                true => listed,
+                false => listed.into_iter().chain(std::iter::once(entry)).collect(),
+            }
+        })
 }
 
 #[cfg(target_family = "wasm")]
@@ -312,7 +381,10 @@ pub fn kind(path: impl AsRef<Path>) -> Option<Kind> {
     held.or_else(|| {
         on_device(path)?;
         let (dir, name) = path.parent().zip(path.file_name())?;
-        list(dir).into_iter().find(|entry| std::ffi::OsStr::new(&entry.name) == name).map(|entry| if entry.dir { Kind::Dir } else { Kind::File })
+        list(dir)
+            .into_iter()
+            .find(|entry| std::ffi::OsStr::new(&entry.name) == name)
+            .map(|entry| if entry.dir { Kind::Dir } else { Kind::File })
     })
 }
 
@@ -322,16 +394,24 @@ pub fn exists(path: impl AsRef<Path>) -> bool {
 }
 
 #[cfg(target_family = "wasm")]
-static FILES: std::sync::LazyLock<std::sync::Mutex<std::collections::BTreeMap<std::path::PathBuf, Vec<u8>>>> = std::sync::LazyLock::new(Default::default);
+static FILES: std::sync::LazyLock<
+    std::sync::Mutex<std::collections::BTreeMap<std::path::PathBuf, Vec<u8>>>,
+> = std::sync::LazyLock::new(Default::default);
 
 #[cfg(target_family = "wasm")]
-fn files() -> std::sync::MutexGuard<'static, std::collections::BTreeMap<std::path::PathBuf, Vec<u8>>> {
-    FILES.lock().unwrap_or_else(std::sync::PoisonError::into_inner)
+fn files() -> std::sync::MutexGuard<'static, std::collections::BTreeMap<std::path::PathBuf, Vec<u8>>>
+{
+    FILES
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
 }
 
 #[cfg(target_family = "wasm")]
 fn missing(path: &Path) -> std::io::Error {
-    std::io::Error::new(std::io::ErrorKind::NotFound, format!("{} is not in the browser's file store", path.display()))
+    std::io::Error::new(
+        std::io::ErrorKind::NotFound,
+        format!("{} is not in the browser's file store", path.display()),
+    )
 }
 
 #[cfg(target_family = "wasm")]
@@ -348,7 +428,13 @@ pub fn read(path: impl AsRef<Path>) -> std::io::Result<Vec<u8>> {
 #[cfg(target_family = "wasm")]
 pub fn write(path: impl AsRef<Path>, contents: impl AsRef<[u8]>) -> std::io::Result<()> {
     let path = path.as_ref();
-    let stored = on_device(path).is_some_and(|url| remote::send(remote::Change { path: path.to_path_buf(), url, body: remote::Body::Put(contents.as_ref().to_vec()) }));
+    let stored = on_device(path).is_some_and(|url| {
+        remote::send(remote::Change {
+            path: path.to_path_buf(),
+            url,
+            body: remote::Body::Put(contents.as_ref().to_vec()),
+        })
+    });
     match stored {
         true => files().remove(path),
         false => files().insert(path.to_path_buf(), contents.as_ref().to_vec()),
@@ -362,7 +448,11 @@ pub fn remove(path: impl AsRef<Path>) -> std::io::Result<()> {
     let held = files().remove(path).is_some();
     match on_device(path) {
         Some(url) => {
-            remote::send(remote::Change { path: path.to_path_buf(), url, body: remote::Body::Delete });
+            remote::send(remote::Change {
+                path: path.to_path_buf(),
+                url,
+                body: remote::Body::Delete,
+            });
             Ok(())
         }
         None if held => Ok(()),
@@ -379,14 +469,16 @@ pub fn remove_prefixed(prefix: &str, keep: Option<&str>) {
 }
 
 pub fn read_to_string(path: impl AsRef<Path>) -> std::io::Result<String> {
-    String::from_utf8(read(path)?).map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
+    String::from_utf8(read(path)?)
+        .map_err(|error| std::io::Error::new(std::io::ErrorKind::InvalidData, error))
 }
 
 #[cfg(test)]
 mod tests {
     #[test]
     fn a_written_file_reads_back_and_is_gone_after_removal() {
-        let path = std::env::temp_dir().join(format!("groundstation-vfs-{}.txt", std::process::id()));
+        let path =
+            std::env::temp_dir().join(format!("groundstation-vfs-{}.txt", std::process::id()));
         super::write(&path, "plan").unwrap();
         assert_eq!(super::read_to_string(&path).unwrap(), "plan");
         super::remove(&path).unwrap();
@@ -397,11 +489,35 @@ mod tests {
     fn the_device_store_retries_what_it_could_not_reach_and_drops_what_it_refused() {
         use super::remote::{Outcome, backoff, outcome};
         assert_eq!(outcome("PUT", Ok((204, Vec::new()))), Outcome::Stored);
-        assert_eq!(outcome("DELETE", Ok((404, Vec::new()))), Outcome::Stored, "deleting what is already gone is done");
-        assert_eq!(outcome("PUT", Ok((413, b"not enough space".to_vec()))), Outcome::Refused("413 not enough space".into()), "a full device will not take it on a retry either");
-        assert!(matches!(outcome("PUT", Ok((502, Vec::new()))), Outcome::Unreached(_)));
-        assert!(matches!(outcome("PATCH", Ok((429, Vec::new()))), Outcome::Unreached(_)));
-        assert!(matches!(outcome("PUT", Err("No answer from falcon.local".into())), Outcome::Unreached(_)));
-        assert_eq!((backoff(0), backoff(3), backoff(9)), (std::time::Duration::from_secs(1), std::time::Duration::from_secs(8), std::time::Duration::from_secs(30)));
+        assert_eq!(
+            outcome("DELETE", Ok((404, Vec::new()))),
+            Outcome::Stored,
+            "deleting what is already gone is done"
+        );
+        assert_eq!(
+            outcome("PUT", Ok((413, b"not enough space".to_vec()))),
+            Outcome::Refused("413 not enough space".into()),
+            "a full device will not take it on a retry either"
+        );
+        assert!(matches!(
+            outcome("PUT", Ok((502, Vec::new()))),
+            Outcome::Unreached(_)
+        ));
+        assert!(matches!(
+            outcome("PATCH", Ok((429, Vec::new()))),
+            Outcome::Unreached(_)
+        ));
+        assert!(matches!(
+            outcome("PUT", Err("No answer from falcon.local".into())),
+            Outcome::Unreached(_)
+        ));
+        assert_eq!(
+            (backoff(0), backoff(3), backoff(9)),
+            (
+                std::time::Duration::from_secs(1),
+                std::time::Duration::from_secs(8),
+                std::time::Duration::from_secs(30)
+            )
+        );
     }
 }

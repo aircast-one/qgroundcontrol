@@ -18,7 +18,9 @@ const KEEP_CLOSED: usize = 16;
 static SEQUENCES: Mutex<BTreeMap<LinkId, u8>> = Mutex::new(BTreeMap::new());
 
 fn next_sequence(id: LinkId) -> u8 {
-    let mut sequences = SEQUENCES.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+    let mut sequences = SEQUENCES
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
     let sequence = sequences.entry(id).or_insert(0);
     let next = *sequence;
     *sequence = next.wrapping_add(1);
@@ -26,7 +28,10 @@ fn next_sequence(id: LinkId) -> u8 {
 }
 
 fn forget_sequence(id: LinkId) {
-    SEQUENCES.lock().unwrap_or_else(std::sync::PoisonError::into_inner).remove(&id);
+    SEQUENCES
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .remove(&id);
 }
 
 pub enum Owned {
@@ -154,7 +159,8 @@ pub struct Transports {
     writer: Option<Writer>,
 }
 
-pub static TRANSPORTS: LazyLock<Mutex<Transports>> = LazyLock::new(|| Mutex::new(Transports::default()));
+pub static TRANSPORTS: LazyLock<Mutex<Transports>> =
+    LazyLock::new(|| Mutex::new(Transports::default()));
 
 impl Transports {
     pub fn set_writer(&mut self, writer: Option<Writer>) {
@@ -196,7 +202,11 @@ impl Transports {
     pub fn describe(&self, id: LinkId) -> Option<(String, String, bool)> {
         let registry = self.shared.registry.lock().unwrap();
         let entry = registry.entry(id)?;
-        Some((entry.name.clone(), entry.kind.clone(), self.configs.get(&id).is_some_and(|c| c.high_latency)))
+        Some((
+            entry.name.clone(),
+            entry.kind.clone(),
+            self.configs.get(&id).is_some_and(|c| c.high_latency),
+        ))
     }
 
     pub fn config(&self, id: LinkId) -> Option<LinkConfig> {
@@ -213,13 +223,21 @@ impl Transports {
     fn take_dead(&mut self) -> Vec<Arc<Owned>> {
         let dead: Vec<LinkId> = {
             let registry = self.shared.registry.lock().unwrap();
-            self.owned.keys().copied().filter(|id| registry.entry(*id).is_none_or(|e| e.state == State::Closed)).collect()
+            self.owned
+                .keys()
+                .copied()
+                .filter(|id| registry.entry(*id).is_none_or(|e| e.state == State::Closed))
+                .collect()
         };
         let links: Vec<Arc<Owned>> = dead.iter().filter_map(|id| self.owned.remove(id)).collect();
         dead.iter().for_each(|id| {
             self.configs.remove(id);
         });
-        self.shared.registry.lock().unwrap().prune_closed(KEEP_CLOSED);
+        self.shared
+            .registry
+            .lock()
+            .unwrap()
+            .prune_closed(KEEP_CLOSED);
         links
     }
 
@@ -228,11 +246,26 @@ impl Transports {
         if let Some(links) = snapshot.get_mut("links").and_then(Value::as_array_mut) {
             links.iter_mut().for_each(|link| {
                 let id = link.get("id").and_then(Value::as_u64).unwrap_or(0) as LinkId;
-                let owner = link.get("owner").and_then(Value::as_str).unwrap_or("").to_string();
-                let state = link.get("state").and_then(Value::as_str).unwrap_or("").to_string();
+                let owner = link
+                    .get("owner")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                let state = link
+                    .get("state")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
                 let frames = link.get("framesIn").and_then(Value::as_u64).unwrap_or(0);
-                link["summary"] = json!(format!("{} link, {owner}-owned, {state}, {frames} frames", link.get("kind").and_then(Value::as_str).unwrap_or("")));
-                link["config"] = self.configs.get(&id).map(linkconfig::to_json).unwrap_or(Value::Null);
+                link["summary"] = json!(format!(
+                    "{} link, {owner}-owned, {state}, {frames} frames",
+                    link.get("kind").and_then(Value::as_str).unwrap_or("")
+                ));
+                link["config"] = self
+                    .configs
+                    .get(&id)
+                    .map(linkconfig::to_json)
+                    .unwrap_or(Value::Null);
                 link["localPort"] = self.local_port(id).map(Value::from).unwrap_or(Value::Null);
             });
         }
@@ -248,25 +281,37 @@ pub struct Failure {
 
 impl Failure {
     fn retry(reason: impl Into<String>) -> Failure {
-        Failure { reason: reason.into(), remedy: "retry" }
+        Failure {
+            reason: reason.into(),
+            remedy: "retry",
+        }
     }
 
     fn edit_address(reason: impl Into<String>) -> Failure {
-        Failure { reason: reason.into(), remedy: "editAddress" }
+        Failure {
+            reason: reason.into(),
+            remedy: "editAddress",
+        }
     }
 }
 
 fn tcp_failure(name: &str, host: &str, port: u16, error: &std::io::Error) -> Failure {
     match (host.trim().is_empty(), error.kind()) {
         (true, _) => Failure::edit_address(format!("{name} has no address.")),
-        (_, std::io::ErrorKind::ConnectionRefused) => Failure::edit_address(format!("Reached {host} but nothing is listening on port {port}.")),
-        _ if !resolves(host, port) => Failure::edit_address(format!("Can't find {host} on this network.")),
+        (_, std::io::ErrorKind::ConnectionRefused) => Failure::edit_address(format!(
+            "Reached {host} but nothing is listening on port {port}."
+        )),
+        _ if !resolves(host, port) => {
+            Failure::edit_address(format!("Can't find {host} on this network."))
+        }
         _ => Failure::retry(format!("No answer from {host}:{port} ({error}).")),
     }
 }
 
 fn serial_failure(name: &str, port_name: &str, error: &str) -> Failure {
-    Failure::retry(format!("Link {name}: (Port: {port_name}) Could not open port: {error}"))
+    Failure::retry(format!(
+        "Link {name}: (Port: {port_name}) Could not open port: {error}"
+    ))
 }
 
 fn resolves(host: &str, port: u16) -> bool {
@@ -278,94 +323,182 @@ fn resolves(host: &str, port: u16) -> bool {
 fn through_device(shared: &Shared, id: LinkId, url: Option<String>) -> Result<Owned, Failure> {
     let url = url.ok_or_else(|| Failure::retry(crate::device::NEEDS_DEVICE.to_string()))?;
     let (shared, relay) = (shared.clone(), shared.clone());
-    Ok(Owned::Cloud(crate::cloudlink::CloudLink::open_socket(url, move |bytes| shared.deliver(id, bytes), move |up, reason| relay.relay_state(id, up, reason))))
+    Ok(Owned::Cloud(crate::cloudlink::CloudLink::open_socket(
+        url,
+        move |bytes| shared.deliver(id, bytes),
+        move |up, reason| relay.relay_state(id, up, reason),
+    )))
 }
 
 fn build(shared: &Shared, id: LinkId, config: &LinkConfig) -> Result<Owned, Failure> {
     match &config.kind {
         #[cfg(target_family = "wasm")]
-        Kind::Udp { local_port, hosts } => through_device(shared, id, crate::device::udp(*local_port, hosts)),
+        Kind::Udp { local_port, hosts } => {
+            through_device(shared, id, crate::device::udp(*local_port, hosts))
+        }
         #[cfg(target_family = "wasm")]
         Kind::Tcp { host, port } => through_device(shared, id, crate::device::tcp(host, *port)),
         #[cfg(not(target_family = "wasm"))]
         Kind::Udp { local_port, hosts } => {
             let (shared, lost) = (shared.clone(), shared.clone());
-            UdpLink::open(&UdpConfig { local_port: *local_port, targets: hosts.clone() }, crate::udplink::local_addresses(), move |bytes| shared.deliver(id, bytes), move |reason| lost.closed_by_reader(id, &reason))
-                .map(Owned::Udp)
-                .map_err(|_| Failure::retry(format!("Link {}: Failed to bind UDP socket to port", config.name)))
+            UdpLink::open(
+                &UdpConfig {
+                    local_port: *local_port,
+                    targets: hosts.clone(),
+                },
+                crate::udplink::local_addresses(),
+                move |bytes| shared.deliver(id, bytes),
+                move |reason| lost.closed_by_reader(id, &reason),
+            )
+            .map(Owned::Udp)
+            .map_err(|_| {
+                Failure::retry(format!(
+                    "Link {}: Failed to bind UDP socket to port",
+                    config.name
+                ))
+            })
         }
         #[cfg(not(target_family = "wasm"))]
         Kind::Tcp { host, port } => {
             let shared = shared.clone();
-            TcpLink::open(&TcpConfig { host: host.clone(), port: *port }, move |event| match event {
-                tcplink::Event::Bytes(bytes) => shared.deliver(id, &bytes),
-                tcplink::Event::Disconnected(reason) => shared.closed_by_reader(id, &reason),
-            })
+            TcpLink::open(
+                &TcpConfig {
+                    host: host.clone(),
+                    port: *port,
+                },
+                move |event| match event {
+                    tcplink::Event::Bytes(bytes) => shared.deliver(id, &bytes),
+                    tcplink::Event::Disconnected(reason) => shared.closed_by_reader(id, &reason),
+                },
+            )
             .map(Owned::Tcp)
             .map_err(|e| tcp_failure(&config.name, host, *port, &e))
         }
         #[cfg(not(hosted_serial))]
-        Kind::Serial { baud, data_bits, flow_control, stop_bits, parity, port_name, .. } => {
+        Kind::Serial {
+            baud,
+            data_bits,
+            flow_control,
+            stop_bits,
+            parity,
+            port_name,
+            ..
+        } => {
             let shared = shared.clone();
             let sniffed = port_name.clone();
             crate::seriallink::SerialLink::open(
-                &crate::seriallink::SerialConfig { port_name: port_name.clone(), baud: *baud as u32, data_bits: *data_bits, parity: *parity, stop_bits: *stop_bits, flow_control: *flow_control, usb_direct: false },
+                &crate::seriallink::SerialConfig {
+                    port_name: port_name.clone(),
+                    baud: *baud as u32,
+                    data_bits: *data_bits,
+                    parity: *parity,
+                    stop_bits: *stop_bits,
+                    flow_control: *flow_control,
+                    usb_direct: false,
+                },
                 move |event| match event {
                     crate::seriallink::Event::Bytes(bytes) => {
                         crate::usbradio::sniff(&sniffed, &bytes);
                         shared.deliver(id, &bytes)
                     }
-                    crate::seriallink::Event::Disconnected(reason) => shared.closed_by_reader(id, &reason),
+                    crate::seriallink::Event::Disconnected(reason) => {
+                        shared.closed_by_reader(id, &reason)
+                    }
                 },
             )
             .map(Owned::Serial)
             .map_err(|e| serial_failure(&config.name, port_name, &e.to_string()))
         }
         #[cfg(hosted_serial)]
-        Kind::Serial { baud, data_bits, stop_bits, parity, port_name, .. } => {
+        Kind::Serial {
+            baud,
+            data_bits,
+            stop_bits,
+            parity,
+            port_name,
+            ..
+        } => {
             let shared = shared.clone();
             let sniffed = port_name.clone();
-            crate::platformserial::PlatformSerial::open(id, port_name, *baud as u32, *data_bits, *stop_bits, *parity, move |event| match event {
-                crate::platformserial::Event::Bytes(bytes) => {
-                    crate::usbradio::sniff(&sniffed, &bytes);
-                    shared.deliver(id, &bytes)
-                }
-                crate::platformserial::Event::Disconnected(reason) => shared.closed_by_reader(id, &reason),
-            })
+            crate::platformserial::PlatformSerial::open(
+                id,
+                port_name,
+                *baud as u32,
+                *data_bits,
+                *stop_bits,
+                *parity,
+                move |event| match event {
+                    crate::platformserial::Event::Bytes(bytes) => {
+                        crate::usbradio::sniff(&sniffed, &bytes);
+                        shared.deliver(id, &bytes)
+                    }
+                    crate::platformserial::Event::Disconnected(reason) => {
+                        shared.closed_by_reader(id, &reason)
+                    }
+                },
+            )
             .map(Owned::PlatformSerial)
             .map_err(|e| serial_failure(&config.name, port_name, &e))
         }
         Kind::Bluetooth { address, .. } if crate::platformbluetooth::available() => {
             let shared = shared.clone();
-            crate::platformbluetooth::PlatformBluetooth::open(id, address, move |event| match event {
+            crate::platformbluetooth::PlatformBluetooth::open(id, address, move |event| match event
+            {
                 crate::platformserial::Event::Bytes(bytes) => shared.deliver(id, &bytes),
-                crate::platformserial::Event::Disconnected(reason) => shared.closed_by_reader(id, &reason),
+                crate::platformserial::Event::Disconnected(reason) => {
+                    shared.closed_by_reader(id, &reason)
+                }
             })
             .map(Owned::PlatformBluetooth)
             .map_err(Failure::retry)
         }
-        Kind::AircastCloud { api_base, device_id } => {
-            let url = crate::cloudlink::relay_url(api_base, device_id).ok_or_else(|| Failure::edit_address(format!("{} has no device to reach.", config.name)))?;
-            let token = crate::cloudlink::token_key(api_base).and_then(|key| crate::settingsstore::stored_text(&key)).filter(|t| !t.is_empty());
+        Kind::AircastCloud {
+            api_base,
+            device_id,
+        } => {
+            let url = crate::cloudlink::relay_url(api_base, device_id).ok_or_else(|| {
+                Failure::edit_address(format!("{} has no device to reach.", config.name))
+            })?;
+            let token = crate::cloudlink::token_key(api_base)
+                .and_then(|key| crate::settingsstore::stored_text(&key))
+                .filter(|t| !t.is_empty());
             let token = token.ok_or_else(|| Failure::edit_address("Sign in to your Aircast account in this link's settings to use the cloud backup link."))?;
             let (shared, relay) = (shared.clone(), shared.clone());
-            Ok(Owned::Cloud(crate::cloudlink::CloudLink::open(url, token, move |bytes| shared.deliver(id, bytes), move |up, reason| relay.relay_state(id, up, reason))))
+            Ok(Owned::Cloud(crate::cloudlink::CloudLink::open(
+                url,
+                token,
+                move |bytes| shared.deliver(id, bytes),
+                move |up, reason| relay.relay_state(id, up, reason),
+            )))
         }
         #[cfg(target_family = "wasm")]
         Kind::WebSocket { url } => {
             let (shared, relay) = (shared.clone(), shared.clone());
-            Ok(Owned::Cloud(crate::cloudlink::CloudLink::open_socket(url.clone(), move |bytes| shared.deliver(id, bytes), move |up, reason| relay.relay_state(id, up, reason))))
+            Ok(Owned::Cloud(crate::cloudlink::CloudLink::open_socket(
+                url.clone(),
+                move |bytes| shared.deliver(id, bytes),
+                move |up, reason| relay.relay_state(id, up, reason),
+            )))
         }
         Kind::LogReplay { file } => {
             let shared = shared.clone();
-            crate::logreplay::ReplayLink::open(file, move |bytes| shared.deliver(id, bytes)).map(Owned::Replay).map_err(Failure::retry)
+            crate::logreplay::ReplayLink::open(file, move |bytes| shared.deliver(id, bytes))
+                .map(Owned::Replay)
+                .map_err(Failure::retry)
         }
         Kind::Mock { .. } if crate::mocklink::available() => {
-            let options = crate::mocklink::Options::from_kind(&config.kind).ok_or_else(|| Failure::retry("not a mock link"))?;
+            let options = crate::mocklink::Options::from_kind(&config.kind)
+                .ok_or_else(|| Failure::retry("not a mock link"))?;
             let shared = shared.clone();
-            crate::mocklink::MockLink::open(options, crate::mocklink::World::live(), move |bytes| shared.deliver(id, bytes)).map(Owned::Mock).map_err(Failure::retry)
+            crate::mocklink::MockLink::open(options, crate::mocklink::World::live(), move |bytes| {
+                shared.deliver(id, bytes)
+            })
+            .map(Owned::Mock)
+            .map_err(Failure::retry)
         }
-        other => Err(Failure::retry(format!("the core does not own {other:?} links on this platform"))),
+        other => Err(Failure::retry(format!(
+            "the core does not own {other:?} links on this platform"
+        ))),
     }
 }
 
@@ -382,16 +515,26 @@ fn kind_name(kind: &Kind) -> &'static str {
     }
 }
 
-pub fn open(transports: &Mutex<Transports>, config: LinkConfig, reserved_udp_ports: &[u16]) -> Result<LinkId, Failure> {
+pub fn open(
+    transports: &Mutex<Transports>,
+    config: LinkConfig,
+    reserved_udp_ports: &[u16],
+) -> Result<LinkId, Failure> {
     if let Kind::Udp { local_port, .. } = &config.kind {
         if *local_port != 0 && reserved_udp_ports.contains(local_port) {
-            return Err(Failure::retry(format!("port {local_port} is already served by a Qt link; opening a core link there would starve it")));
+            return Err(Failure::retry(format!(
+                "port {local_port} is already served by a Qt link; opening a core link there would starve it"
+            )));
         }
     }
     reap(transports);
     let (shared, id) = {
         let guard = transports.lock().unwrap();
-        let id = guard.shared.registry.lock().unwrap().open(Owner::Core, kind_name(&config.kind), &config.name);
+        let id = guard.shared.registry.lock().unwrap().open(
+            Owner::Core,
+            kind_name(&config.kind),
+            &config.name,
+        );
         (guard.shared.clone(), id)
     };
     match build(&shared, id, &config) {
@@ -408,35 +551,76 @@ pub fn open(transports: &Mutex<Transports>, config: LinkConfig, reserved_udp_por
     }
 }
 
-static USB_DIRECT_PORTS: Mutex<std::collections::BTreeSet<String>> = Mutex::new(std::collections::BTreeSet::new());
+static USB_DIRECT_PORTS: Mutex<std::collections::BTreeSet<String>> =
+    Mutex::new(std::collections::BTreeSet::new());
 
 pub fn mark_usb_direct(port: &str, usb_direct: bool) {
-    let mut direct = USB_DIRECT_PORTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-    if usb_direct { direct.insert(port.to_string()) } else { direct.remove(port) };
+    let mut direct = USB_DIRECT_PORTS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if usb_direct {
+        direct.insert(port.to_string())
+    } else {
+        direct.remove(port)
+    };
 }
 
 pub fn is_usb_direct(port: &str) -> bool {
-    USB_DIRECT_PORTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).contains(port)
+    USB_DIRECT_PORTS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .contains(port)
 }
 
-pub fn open_json(transports: &Mutex<Transports>, json: &str, reserved_udp_ports: &[u16]) -> Result<LinkId, Failure> {
-    let value: Value = serde_json::from_str(json).map_err(|e| Failure::retry(format!("not JSON: {e}")))?;
-    let via_link_manager = value.get("viaLinkManager").and_then(Value::as_bool).unwrap_or(false);
+pub fn open_json(
+    transports: &Mutex<Transports>,
+    json: &str,
+    reserved_udp_ports: &[u16],
+) -> Result<LinkId, Failure> {
+    let value: Value =
+        serde_json::from_str(json).map_err(|e| Failure::retry(format!("not JSON: {e}")))?;
+    let via_link_manager = value
+        .get("viaLinkManager")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
     let config = linkconfig::from_json(&value).map_err(Failure::retry)?;
     if let linkconfig::Kind::Serial { port_name, .. } = &config.kind {
-        mark_usb_direct(port_name, value.get("usbDirect").and_then(Value::as_bool).unwrap_or(false));
+        mark_usb_direct(
+            port_name,
+            value
+                .get("usbDirect")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+        );
     }
-    open(transports, config, if via_link_manager { &[] } else { reserved_udp_ports })
+    open(
+        transports,
+        config,
+        if via_link_manager {
+            &[]
+        } else {
+            reserved_udp_ports
+        },
+    )
 }
 
 pub fn reconfigure(transports: &Mutex<Transports>, was: &str, config: &LinkConfig) {
     let live: Vec<Arc<Owned>> = {
-        let mut guard = transports.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        let ids: Vec<LinkId> = guard.configs.iter().filter(|(_, c)| c.name == was).map(|(id, _)| *id).collect();
+        let mut guard = transports
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let ids: Vec<LinkId> = guard
+            .configs
+            .iter()
+            .filter(|(_, c)| c.name == was)
+            .map(|(id, _)| *id)
+            .collect();
         ids.iter().for_each(|id| {
             guard.configs.insert(*id, config.clone());
         });
-        ids.iter().filter_map(|id| guard.owned.get(id).cloned()).collect()
+        ids.iter()
+            .filter_map(|id| guard.owned.get(id).cloned())
+            .collect()
     };
     if let Kind::Udp { hosts, .. } = &config.kind {
         live.iter().for_each(|link| {
@@ -453,17 +637,36 @@ pub fn reap(transports: &Mutex<Transports>) {
 }
 
 pub fn silence_mocks(transports: &Mutex<Transports>, silent: bool) -> usize {
-    transports.lock().unwrap().owned.values().filter(|link| link.silence(silent)).count()
+    transports
+        .lock()
+        .unwrap()
+        .owned
+        .values()
+        .filter(|link| link.silence(silent))
+        .count()
 }
 
-pub fn change_mock_conditions(transports: &Mutex<Transports>, changes: &[crate::mocklink::Change]) -> usize {
-    transports.lock().unwrap().owned.values().filter(|link| link.change_conditions(changes)).count()
+pub fn change_mock_conditions(
+    transports: &Mutex<Transports>,
+    changes: &[crate::mocklink::Change],
+) -> usize {
+    transports
+        .lock()
+        .unwrap()
+        .owned
+        .values()
+        .filter(|link| link.change_conditions(changes))
+        .count()
 }
 
 pub fn host_open(transports: &Mutex<Transports>, kind: &str, name: &str) -> LinkId {
     reap(transports);
     let shared = transports.lock().unwrap().shared.clone();
-    let id = shared.registry.lock().unwrap().open(Owner::Host, kind, name);
+    let id = shared
+        .registry
+        .lock()
+        .unwrap()
+        .open(Owner::Host, kind, name);
     id
 }
 
@@ -484,7 +687,9 @@ pub fn write(transports: &Mutex<Transports>, id: LinkId, bytes: &[u8]) -> bool {
     if bytes.is_empty() {
         return false;
     }
-    let sequenced = crate::mavout::restamped(bytes, crate::mavout::gcs_system(), &mut || next_sequence(id));
+    let sequenced = crate::mavout::restamped(bytes, crate::mavout::gcs_system(), &mut || {
+        next_sequence(id)
+    });
     if crate::vehiclefacade::switched_on() {
         crate::telemetrylog::sent(&sequenced);
     }
@@ -492,16 +697,30 @@ pub fn write(transports: &Mutex<Transports>, id: LinkId, bytes: &[u8]) -> bool {
     let bytes = signed.as_slice();
     let (owned, writer, shared) = {
         let guard = transports.lock().unwrap();
-        (guard.owned.get(&id).cloned(), guard.writer.clone(), guard.shared.clone())
+        (
+            guard.owned.get(&id).cloned(),
+            guard.writer.clone(),
+            guard.shared.clone(),
+        )
     };
-    let open = shared.registry.lock().unwrap().entry(id).is_some_and(|e| e.state == State::Open);
+    let open = shared
+        .registry
+        .lock()
+        .unwrap()
+        .entry(id)
+        .is_some_and(|e| e.state == State::Open);
     if !open {
         return false;
     }
     let sent = match (owned, writer) {
         (Some(link), _) => link.write(bytes),
         (None, Some(writer)) => {
-            let host_owned = shared.registry.lock().unwrap().entry(id).is_some_and(|e| e.owner == Owner::Host);
+            let host_owned = shared
+                .registry
+                .lock()
+                .unwrap()
+                .entry(id)
+                .is_some_and(|e| e.owner == Owner::Host);
             host_owned && {
                 writer(id, bytes);
                 true
@@ -516,7 +735,9 @@ pub fn close(transports: &Mutex<Transports>, id: LinkId, reason: &str) -> bool {
     forget_sequence(id);
     let (owned, shared) = {
         let mut guard = transports.lock().unwrap();
-        if let Some(linkconfig::Kind::Serial { port_name, .. }) = guard.configs.remove(&id).map(|config| config.kind) {
+        if let Some(linkconfig::Kind::Serial { port_name, .. }) =
+            guard.configs.remove(&id).map(|config| config.kind)
+        {
             mark_usb_direct(&port_name, false);
         }
         (guard.owned.remove(&id), guard.shared.clone())
@@ -574,7 +795,10 @@ pub fn qt_udp_ports(backend: &dyn crate::router::Backend) -> Vec<u16> {
 }
 
 pub fn transports_view(backend: &dyn crate::router::Backend, _args: &[String]) -> Value {
-    let mut snapshot = TRANSPORTS.lock().unwrap_or_else(std::sync::PoisonError::into_inner).snapshot();
+    let mut snapshot = TRANSPORTS
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .snapshot();
     let qt = qt_links(backend);
     snapshot["qtOpenCount"] = json!(qt.iter().filter(|l| l["state"] == "open").count());
     if let Some(links) = snapshot.get_mut("links").and_then(Value::as_array_mut) {
@@ -593,7 +817,11 @@ mod tests {
 
     fn heartbeat() -> Vec<u8> {
         let bytes = crate::samplelog::bytes();
-        crate::tlog::entries(&bytes, u64::MAX).into_iter().map(|(_, f)| f).find(|f| f.len() == 21).unwrap()
+        crate::tlog::entries(&bytes, u64::MAX)
+            .into_iter()
+            .map(|(_, f)| f)
+            .find(|f| f.len() == 21)
+            .unwrap()
     }
 
     fn wait_for(check: impl Fn() -> bool) -> bool {
@@ -621,22 +849,47 @@ mod tests {
     fn a_link_that_cannot_open_says_whether_retrying_could_ever_work() {
         let transports = Mutex::new(Transports::default());
 
-        let refused = open_json(&transports, r#"{"kind":"tcp","name":"Dead","host":"127.0.0.1","port":1}"#, &[]).unwrap_err();
+        let refused = open_json(
+            &transports,
+            r#"{"kind":"tcp","name":"Dead","host":"127.0.0.1","port":1}"#,
+            &[],
+        )
+        .unwrap_err();
         assert_eq!(
             (refused.remedy, refused.reason.as_str()),
-            ("editAddress", "Reached 127.0.0.1 but nothing is listening on port 1."),
+            (
+                "editAddress",
+                "Reached 127.0.0.1 but nothing is listening on port 1."
+            ),
             "this is the measurement that settles whether the core detects a link failure at all: it does, and it is the case TCPLink.cc:290 raises RemedyEditAddress for. Serving retry here leaves an operator tapping a button that cannot succeed until the port changes"
         );
 
-        let nowhere = open_json(&transports, r#"{"kind":"tcp","name":"Nowhere","host":"no-such-host.invalid","port":5760}"#, &[]).unwrap_err();
+        let nowhere = open_json(
+            &transports,
+            r#"{"kind":"tcp","name":"Nowhere","host":"no-such-host.invalid","port":5760}"#,
+            &[],
+        )
+        .unwrap_err();
         assert_eq!(
             (nowhere.remedy, nowhere.reason.as_str()),
-            ("editAddress", "Can't find no-such-host.invalid on this network."),
+            (
+                "editAddress",
+                "Can't find no-such-host.invalid on this network."
+            ),
             "TCPLink.cc:287's HostNotFoundError - .invalid is reserved by RFC 2606 precisely so it never resolves"
         );
 
-        let unnamed = open_json(&transports, r#"{"kind":"tcp","name":"Blank","host":"","port":5760}"#, &[]).unwrap_err();
-        assert_eq!((unnamed.remedy, unnamed.reason.as_str()), ("editAddress", "Blank has no address."), "TCPLink.cc:282 names the configuration, not the empty host");
+        let unnamed = open_json(
+            &transports,
+            r#"{"kind":"tcp","name":"Blank","host":"","port":5760}"#,
+            &[],
+        )
+        .unwrap_err();
+        assert_eq!(
+            (unnamed.remedy, unnamed.reason.as_str()),
+            ("editAddress", "Blank has no address."),
+            "TCPLink.cc:282 names the configuration, not the empty host"
+        );
 
         assert_eq!(
             serial_failure("Radio", "ttyUSB0", "Permission denied").reason,
@@ -646,11 +899,25 @@ mod tests {
         #[cfg(not(hosted_serial))]
         {
             let absent = open_json(&transports, r#"{"kind":"serial","name":"Gone","portName":"/dev/no-such-serial-port","baud":57600}"#, &[]).unwrap_err();
-            assert!(absent.reason.starts_with("Link Gone: (Port: /dev/no-such-serial-port) Could not open port: "), "{}", absent.reason);
+            assert!(
+                absent.reason.starts_with(
+                    "Link Gone: (Port: /dev/no-such-serial-port) Could not open port: "
+                ),
+                "{}",
+                absent.reason
+            );
         }
 
-        let clash = open_json(&transports, r#"{"kind":"udp","name":"Clash","port":14550,"hosts":[]}"#, &[14550]).unwrap_err();
-        assert_eq!(clash.remedy, "retry", "a port held by a Qt link is the one failure on this list that a later attempt can genuinely succeed at, so it must not tell the operator to edit an address that is correct");
+        let clash = open_json(
+            &transports,
+            r#"{"kind":"udp","name":"Clash","port":14550,"hosts":[]}"#,
+            &[14550],
+        )
+        .unwrap_err();
+        assert_eq!(
+            clash.remedy, "retry",
+            "a port held by a Qt link is the one failure on this list that a later attempt can genuinely succeed at, so it must not tell the operator to edit an address that is correct"
+        );
     }
 
     #[test]
@@ -658,29 +925,53 @@ mod tests {
         let transports = Mutex::new(Transports::default());
         let seen = Arc::new(AtomicUsize::new(0));
         let counter = Arc::clone(&seen);
-        let id = open_json(&transports, r#"{"kind":"udp","name":"Loop","port":0,"hosts":[]}"#, &[]).unwrap();
-        transports.lock().unwrap().set_frame_sink(Some(Arc::new(move |_| {
-            counter.fetch_add(1, Ordering::Relaxed);
-        })));
+        let id = open_json(
+            &transports,
+            r#"{"kind":"udp","name":"Loop","port":0,"hosts":[]}"#,
+            &[],
+        )
+        .unwrap();
+        transports
+            .lock()
+            .unwrap()
+            .set_frame_sink(Some(Arc::new(move |_| {
+                counter.fetch_add(1, Ordering::Relaxed);
+            })));
         let raw_seen = Arc::new(AtomicUsize::new(0));
         let raw_counter = Arc::clone(&raw_seen);
-        transports.lock().unwrap().set_bytes_sink(Some(Arc::new(move |_, bytes| {
-            raw_counter.fetch_add(bytes.len(), Ordering::Relaxed);
-        })));
+        transports
+            .lock()
+            .unwrap()
+            .set_bytes_sink(Some(Arc::new(move |_, bytes| {
+                raw_counter.fetch_add(bytes.len(), Ordering::Relaxed);
+            })));
         let port = local_port(&transports, id);
-        assert_eq!(transports.lock().unwrap().snapshot()["links"][0]["localPort"], json!(port));
+        assert_eq!(
+            transports.lock().unwrap().snapshot()["links"][0]["localPort"],
+            json!(port)
+        );
         let peer = UdpSocket::bind("127.0.0.1:0").unwrap();
         peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
         let frame = heartbeat();
         peer.send_to(&frame, ("127.0.0.1", port)).unwrap();
-        assert!(wait_for(|| seen.load(Ordering::Relaxed) == 1), "a sink set after open still receives frames");
+        assert!(
+            wait_for(|| seen.load(Ordering::Relaxed) == 1),
+            "a sink set after open still receives frames"
+        );
         assert_eq!(raw_seen.load(Ordering::Relaxed), 21);
         assert!(write(&transports, id, &frame));
         let mut back = [0u8; 64];
         assert_eq!(peer.recv_from(&mut back).unwrap().0, frame.len());
         let snapshot = transports.lock().unwrap().snapshot();
         let link = &snapshot["links"][0];
-        assert_eq!((link["owner"].as_str(), link["framesIn"].as_u64(), link["bytesOut"].as_u64()), (Some("core"), Some(1), Some(21)));
+        assert_eq!(
+            (
+                link["owner"].as_str(),
+                link["framesIn"].as_u64(),
+                link["bytesOut"].as_u64()
+            ),
+            (Some("core"), Some(1), Some(21))
+        );
         assert_eq!(link["config"]["kind"], "udp");
         assert!(link["summary"].as_str().unwrap().contains("core-owned"));
         assert!(close(&transports, id, "test done"));
@@ -693,7 +984,12 @@ mod tests {
         let transports = Mutex::new(Transports::default());
         let written = Arc::new(Mutex::new(Vec::new()));
         let sink = Arc::clone(&written);
-        transports.lock().unwrap().set_writer(Some(Arc::new(move |id, bytes| sink.lock().unwrap().push((id, bytes.to_vec())))));
+        transports
+            .lock()
+            .unwrap()
+            .set_writer(Some(Arc::new(move |id, bytes| {
+                sink.lock().unwrap().push((id, bytes.to_vec()))
+            })));
         let id = host_open(&transports, "usb", "Pixhawk");
         let frame = heartbeat();
         host_bytes(&transports, id, &frame[..10]);
@@ -701,15 +997,56 @@ mod tests {
         assert!(write(&transports, id, b"cmd"));
         assert_eq!(*written.lock().unwrap(), vec![(id, b"cmd".to_vec())]);
         let snapshot = transports.lock().unwrap().snapshot();
-        assert_eq!((snapshot["links"][0]["owner"].as_str(), snapshot["links"][0]["framesIn"].as_u64()), (Some("host"), Some(1)));
+        assert_eq!(
+            (
+                snapshot["links"][0]["owner"].as_str(),
+                snapshot["links"][0]["framesIn"].as_u64()
+            ),
+            (Some("host"), Some(1))
+        );
         assert!(host_closed(&transports, id, "unplugged"));
         assert!(!write(&transports, id, b"x"));
         assert_eq!(written.lock().unwrap().len(), 1);
-        assert!(open_json(&transports, r#"{"kind":"serial","name":"S","portName":"/dev/none"}"#, &[]).is_err());
-        assert!(open_json(&transports, r#"{"kind":"udp","name":"Clash","port":14550,"hosts":[]}"#, &[14550]).unwrap_err().reason.contains("starve"));
-        assert!(open_json(&transports, r#"{"kind":"tcp","name":"T","host":"127.0.0.1","port":1}"#, &[]).is_err());
-        assert_eq!(transports.lock().unwrap().snapshot()["links"].as_array().unwrap().len(), 1, "failed opens leave no entry");
-        let managed = open_json(&transports, r#"{"kind":"udp","name":"Managed","port":0,"hosts":[],"viaLinkManager":true}"#, &[14550]).unwrap();
+        assert!(
+            open_json(
+                &transports,
+                r#"{"kind":"serial","name":"S","portName":"/dev/none"}"#,
+                &[]
+            )
+            .is_err()
+        );
+        assert!(
+            open_json(
+                &transports,
+                r#"{"kind":"udp","name":"Clash","port":14550,"hosts":[]}"#,
+                &[14550]
+            )
+            .unwrap_err()
+            .reason
+            .contains("starve")
+        );
+        assert!(
+            open_json(
+                &transports,
+                r#"{"kind":"tcp","name":"T","host":"127.0.0.1","port":1}"#,
+                &[]
+            )
+            .is_err()
+        );
+        assert_eq!(
+            transports.lock().unwrap().snapshot()["links"]
+                .as_array()
+                .unwrap()
+                .len(),
+            1,
+            "failed opens leave no entry"
+        );
+        let managed = open_json(
+            &transports,
+            r#"{"kind":"udp","name":"Managed","port":0,"hosts":[],"viaLinkManager":true}"#,
+            &[14550],
+        )
+        .unwrap();
         assert!(close(&transports, managed, "done"));
     }
 
@@ -720,13 +1057,29 @@ mod tests {
         let transports = Mutex::new(Transports::default());
         let fired = Arc::new(AtomicUsize::new(0));
         let hook = Arc::clone(&fired);
-        transports.lock().unwrap().set_state_hook(Some(Arc::new(move || {
-            hook.fetch_add(1, Ordering::Relaxed);
-        })));
+        transports
+            .lock()
+            .unwrap()
+            .set_state_hook(Some(Arc::new(move || {
+                hook.fetch_add(1, Ordering::Relaxed);
+            })));
         let reasons = Arc::new(Mutex::new(Vec::new()));
         let reasons_sink = Arc::clone(&reasons);
-        transports.lock().unwrap().set_state_sink(Some(Arc::new(move |id, open, reason| reasons_sink.lock().unwrap().push((id, open, reason.to_string())))));
-        let id = open_json(&transports, &format!(r#"{{"kind":"tcp","name":"SITL","host":"127.0.0.1","port":{port}}}"#), &[]).unwrap();
+        transports
+            .lock()
+            .unwrap()
+            .set_state_sink(Some(Arc::new(move |id, open, reason| {
+                reasons_sink
+                    .lock()
+                    .unwrap()
+                    .push((id, open, reason.to_string()))
+            })));
+        let id = open_json(
+            &transports,
+            &format!(r#"{{"kind":"tcp","name":"SITL","host":"127.0.0.1","port":{port}}}"#),
+            &[],
+        )
+        .unwrap();
         let (socket, _) = listener.accept().unwrap();
         drop(socket);
         assert!(wait_for(|| fired.load(Ordering::Relaxed) == 1));
@@ -737,6 +1090,9 @@ mod tests {
         let snapshot = transports.lock().unwrap().snapshot();
         assert_eq!(snapshot["links"][0]["state"], "closed");
         host_open(&transports, "usb", "next");
-        assert!(transports.lock().unwrap().owned.is_empty(), "the dead link was reaped");
+        assert!(
+            transports.lock().unwrap().owned.is_empty(),
+            "the dead link was reaped"
+        );
     }
 }

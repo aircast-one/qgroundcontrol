@@ -8,52 +8,96 @@ pub const TILE_FORMAT: &str = "bin";
 const TERRAIN_ZOOM: i32 = 1;
 
 pub fn tile_xy(latitude: f64, longitude: f64) -> (i32, i32) {
-    (((longitude + 180.0) / TILE_SIZE_DEGREES).floor() as i32, ((latitude + 90.0) / TILE_SIZE_DEGREES).floor() as i32)
+    (
+        ((longitude + 180.0) / TILE_SIZE_DEGREES).floor() as i32,
+        ((latitude + 90.0) / TILE_SIZE_DEGREES).floor() as i32,
+    )
 }
 
 fn significant_six(value: f64) -> String {
-    let magnitude = if value == 0.0 { 0 } else { value.abs().log10().floor() as i32 };
+    let magnitude = if value == 0.0 {
+        0
+    } else {
+        value.abs().log10().floor() as i32
+    };
     let decimals = usize::try_from(5 - magnitude).unwrap_or(0);
     let fixed = format!("{value:.decimals$}");
     match fixed.contains('.') {
-        true => fixed.trim_end_matches('0').trim_end_matches('.').to_string(),
+        true => fixed
+            .trim_end_matches('0')
+            .trim_end_matches('.')
+            .to_string(),
         false => fixed,
     }
 }
 
 pub fn url(x: i32, y: i32) -> String {
     let corner = |i: i32, origin: f64| significant_six(f64::from(i) * TILE_SIZE_DEGREES - origin);
-    format!("{PROVIDER_URL}/api/v1/carpet?points={},{},{},{}", corner(y, 90.0), corner(x, 180.0), corner(y + 1, 90.0), corner(x + 1, 180.0))
+    format!(
+        "{PROVIDER_URL}/api/v1/carpet?points={},{},{},{}",
+        corner(y, 90.0),
+        corner(x, 180.0),
+        corner(y + 1, 90.0),
+        corner(x + 1, 180.0)
+    )
 }
 
 pub fn region_tiles(top_left: (f64, f64), bottom_right: (f64, f64)) -> Vec<(i32, i32, i32)> {
     let (x0, y1) = tile_xy(top_left.0, top_left.1);
     let (x1, y0) = tile_xy(bottom_right.0, bottom_right.1);
-    (x0.min(x1)..=x0.max(x1)).flat_map(|x| (y0.min(y1)..=y0.max(y1)).map(move |y| (x, y, TERRAIN_ZOOM))).collect()
+    (x0.min(x1)..=x0.max(x1))
+        .flat_map(|x| (y0.min(y1)..=y0.max(y1)).map(move |y| (x, y, TERRAIN_ZOOM)))
+        .collect()
 }
 
-pub fn fetched_tile(x: i32, y: i32, fetch: &dyn Fn(&str) -> Result<String, String>) -> Option<(String, Vec<u8>)> {
-    terraintile::serialize(&fetch(&url(x, y)).ok()?).ok().map(|bytes| (TILE_FORMAT.to_string(), bytes))
+pub fn fetched_tile(
+    x: i32,
+    y: i32,
+    fetch: &dyn Fn(&str) -> Result<String, String>,
+) -> Option<(String, Vec<u8>)> {
+    terraintile::serialize(&fetch(&url(x, y)).ok()?)
+        .ok()
+        .map(|bytes| (TILE_FORMAT.to_string(), bytes))
 }
 
 pub fn tile_hash(x: i32, y: i32) -> Option<String> {
-    tilecache::provider_hash(PROVIDER).map(|provider| tilecache::tile_hash(provider, x, y, TERRAIN_ZOOM))
+    tilecache::provider_hash(PROVIDER)
+        .map(|provider| tilecache::tile_hash(provider, x, y, TERRAIN_ZOOM))
 }
 
 pub fn cached_tile(x: i32, y: i32, cache: &Cache) -> Option<Tile> {
     let hash = tile_hash(x, y)?;
-    cache.tile(&hash).ok().flatten().and_then(|saved| terraintile::decode(&saved.image))
+    cache
+        .tile(&hash)
+        .ok()
+        .flatten()
+        .and_then(|saved| terraintile::decode(&saved.image))
 }
 
-pub fn load_tile(x: i32, y: i32, cache: Option<&Cache>, fetch: &dyn Fn(&str) -> Result<String, String>) -> Result<Tile, String> {
+pub fn load_tile(
+    x: i32,
+    y: i32,
+    cache: Option<&Cache>,
+    fetch: &dyn Fn(&str) -> Result<String, String>,
+) -> Result<Tile, String> {
     let hash = tile_hash(x, y).ok_or("The Copernicus provider is not in the tile table.")?;
-    let cached = cache.and_then(|c| c.tile(&hash).ok().flatten()).map(|t| t.image);
+    let cached = cache
+        .and_then(|c| c.tile(&hash).ok().flatten())
+        .map(|t| t.image);
     let bytes = match cached {
         Some(bytes) => bytes,
         None => {
             let bytes = fetched_bytes(x, y, fetch)?;
             if let Some(c) = cache {
-                let _ = c.save(&tilecache::Tile { hash, format: TILE_FORMAT.to_string(), image: bytes.clone(), kind: tilecache::provider_hash(PROVIDER).unwrap_or(0) }, None);
+                let _ = c.save(
+                    &tilecache::Tile {
+                        hash,
+                        format: TILE_FORMAT.to_string(),
+                        image: bytes.clone(),
+                        kind: tilecache::provider_hash(PROVIDER).unwrap_or(0),
+                    },
+                    None,
+                );
             }
             bytes
         }
@@ -62,12 +106,20 @@ pub fn load_tile(x: i32, y: i32, cache: Option<&Cache>, fetch: &dyn Fn(&str) -> 
 }
 
 #[cfg(not(target_family = "wasm"))]
-fn fetched_bytes(x: i32, y: i32, fetch: &dyn Fn(&str) -> Result<String, String>) -> Result<Vec<u8>, String> {
+fn fetched_bytes(
+    x: i32,
+    y: i32,
+    fetch: &dyn Fn(&str) -> Result<String, String>,
+) -> Result<Vec<u8>, String> {
     terraintile::serialize(&fetch(&url(x, y))?)
 }
 
 #[cfg(target_family = "wasm")]
-fn fetched_bytes(x: i32, y: i32, _fetch: &dyn Fn(&str) -> Result<String, String>) -> Result<Vec<u8>, String> {
+fn fetched_bytes(
+    x: i32,
+    y: i32,
+    _fetch: &dyn Fn(&str) -> Result<String, String>,
+) -> Result<Vec<u8>, String> {
     terrarium::tile(x, y).map(|tile| terraintile::encode(&tile))
 }
 
@@ -84,18 +136,35 @@ mod terrarium {
         let n = f64::from(1u32 << ZOOM);
         let column = (longitude + 180.0) / 360.0 * n;
         let radians = latitude.to_radians();
-        let row = (1.0 - (radians.tan() + 1.0 / radians.cos()).ln() / std::f64::consts::PI) / 2.0 * n;
+        let row =
+            (1.0 - (radians.tan() + 1.0 / radians.cos()).ln() / std::f64::consts::PI) / 2.0 * n;
         let (tile_x, tile_y) = (column.floor(), row.floor());
-        ((tile_x as i32, tile_y as i32), (((column - tile_x) * 256.0) as u32, ((row - tile_y) * 256.0) as u32))
+        (
+            (tile_x as i32, tile_y as i32),
+            (
+                ((column - tile_x) * 256.0) as u32,
+                ((row - tile_y) * 256.0) as u32,
+            ),
+        )
     }
 
     fn address(tile: (i32, i32)) -> Result<String, String> {
-        Ok(crate::mapurls::tile_request(crate::maptypes::TERRAIN_TILES, tile.0, tile.1, ZOOM, &crate::mapurls::keys_from_settings()).ok_or("No terrain tile address.")?.url)
+        Ok(crate::mapurls::tile_request(
+            crate::maptypes::TERRAIN_TILES,
+            tile.0,
+            tile.1,
+            ZOOM,
+            &crate::mapurls::keys_from_settings(),
+        )
+        .ok_or("No terrain tile address.")?
+        .url)
     }
 
     fn decoded(png: Result<Vec<u8>, String>) -> Result<image::RgbImage, String> {
         let png = png.map_err(|e| format!("The terrain server did not answer: {e}"))?;
-        image::load_from_memory(&png).map(|decoded| decoded.to_rgb8()).map_err(|e| format!("The terrain tile could not be read: {e}"))
+        image::load_from_memory(&png)
+            .map(|decoded| decoded.to_rgb8())
+            .map_err(|e| format!("The terrain tile could not be read: {e}"))
     }
 
     fn image(tile: (i32, i32)) -> Result<image::RgbImage, String> {
@@ -103,17 +172,35 @@ mod terrarium {
     }
 
     fn points(x: i32, y: i32) -> Vec<(f64, f64)> {
-        let (sw_lat, sw_lon) = (f64::from(y) * TILE_SIZE_DEGREES - 90.0, f64::from(x) * TILE_SIZE_DEGREES - 180.0);
+        let (sw_lat, sw_lon) = (
+            f64::from(y) * TILE_SIZE_DEGREES - 90.0,
+            f64::from(x) * TILE_SIZE_DEGREES - 180.0,
+        );
         let cell = TILE_SIZE_DEGREES / GRID as f64;
-        (0..GRID).flat_map(|row| (0..GRID).map(move |column| (sw_lat + (row as f64 + 0.5) * cell, sw_lon + (column as f64 + 0.5) * cell))).collect()
+        (0..GRID)
+            .flat_map(|row| {
+                (0..GRID).map(move |column| {
+                    (
+                        sw_lat + (row as f64 + 0.5) * cell,
+                        sw_lon + (column as f64 + 0.5) * cell,
+                    )
+                })
+            })
+            .collect()
     }
 
     fn needed(x: i32, y: i32) -> BTreeSet<(i32, i32)> {
-        points(x, y).iter().map(|&(lat, lon)| pixel(lat, lon).0).collect()
+        points(x, y)
+            .iter()
+            .map(|&(lat, lon)| pixel(lat, lon).0)
+            .collect()
     }
 
     pub fn tile(x: i32, y: i32) -> Result<Tile, String> {
-        let images: BTreeMap<(i32, i32), image::RgbImage> = needed(x, y).into_iter().map(|tile| image(tile).map(|decoded| (tile, decoded))).collect::<Result<_, String>>()?;
+        let images: BTreeMap<(i32, i32), image::RgbImage> = needed(x, y)
+            .into_iter()
+            .map(|tile| image(tile).map(|decoded| (tile, decoded)))
+            .collect::<Result<_, String>>()?;
         Ok(assembled(x, y, &images))
     }
 
@@ -125,7 +212,10 @@ mod terrarium {
             .map(|tile| {
                 address(*tile).map(|url| {
                     wasm_bindgen_futures::future_to_promise(async move {
-                        crate::http::get_later(&url, &[], FETCH_TIMEOUT).await.map(|png| JsValue::from(js_sys::Uint8Array::from(png.as_slice()))).map_err(|e| JsValue::from_str(&e))
+                        crate::http::get_later(&url, &[], FETCH_TIMEOUT)
+                            .await
+                            .map(|png| JsValue::from(js_sys::Uint8Array::from(png.as_slice())))
+                            .map_err(|e| JsValue::from_str(&e))
                     })
                 })
             })
@@ -135,27 +225,56 @@ mod terrarium {
         let pngs = wasm_bindgen_futures::JsFuture::from(js_sys::Promise::all(&downloads))
             .await
             .map(|all| js_sys::Array::from(&all))
-            .map_err(|e| format!("The terrain server did not answer: {}", e.as_string().unwrap_or_else(|| format!("{e:?}"))))?;
-        let images: BTreeMap<(i32, i32), image::RgbImage> = tiles.into_iter().zip(pngs.iter()).map(|(tile, png)| decoded(Ok(js_sys::Uint8Array::new(&png).to_vec())).map(|image| (tile, image))).collect::<Result<_, String>>()?;
+            .map_err(|e| {
+                format!(
+                    "The terrain server did not answer: {}",
+                    e.as_string().unwrap_or_else(|| format!("{e:?}"))
+                )
+            })?;
+        let images: BTreeMap<(i32, i32), image::RgbImage> = tiles
+            .into_iter()
+            .zip(pngs.iter())
+            .map(|(tile, png)| {
+                decoded(Ok(js_sys::Uint8Array::new(&png).to_vec())).map(|image| (tile, image))
+            })
+            .collect::<Result<_, String>>()?;
         Ok(assembled(x, y, &images))
     }
 
     fn assembled(x: i32, y: i32, images: &BTreeMap<(i32, i32), image::RgbImage>) -> Tile {
-        let (sw_lat, sw_lon) = (f64::from(y) * TILE_SIZE_DEGREES - 90.0, f64::from(x) * TILE_SIZE_DEGREES - 180.0);
+        let (sw_lat, sw_lon) = (
+            f64::from(y) * TILE_SIZE_DEGREES - 90.0,
+            f64::from(x) * TILE_SIZE_DEGREES - 180.0,
+        );
         let points = points(x, y);
         let elevations: Vec<i16> = points
             .iter()
             .map(|&(lat, lon)| {
                 let (tile, (px, py)) = pixel(lat, lon);
                 let decoded = &images[&tile];
-                let rgb = decoded.get_pixel(px.min(decoded.width() - 1), py.min(decoded.height() - 1));
-                (f64::from(rgb[0]) * 256.0 + f64::from(rgb[1]) + f64::from(rgb[2]) / 256.0 - 32768.0).round() as i16
+                let rgb =
+                    decoded.get_pixel(px.min(decoded.width() - 1), py.min(decoded.height() - 1));
+                (f64::from(rgb[0]) * 256.0 + f64::from(rgb[1]) + f64::from(rgb[2]) / 256.0
+                    - 32768.0)
+                    .round() as i16
             })
             .collect();
         let min_elevation = elevations.iter().copied().min().unwrap_or(0);
         let max_elevation = elevations.iter().copied().max().unwrap_or(0);
-        let avg_elevation = elevations.iter().map(|e| f64::from(*e)).sum::<f64>() / elevations.len().max(1) as f64;
-        Tile { sw_lat, sw_lon, ne_lat: sw_lat + TILE_SIZE_DEGREES, ne_lon: sw_lon + TILE_SIZE_DEGREES, min_elevation, max_elevation, avg_elevation, grid_lat: GRID, grid_lon: GRID, elevations }
+        let avg_elevation =
+            elevations.iter().map(|e| f64::from(*e)).sum::<f64>() / elevations.len().max(1) as f64;
+        Tile {
+            sw_lat,
+            sw_lon,
+            ne_lat: sw_lat + TILE_SIZE_DEGREES,
+            ne_lon: sw_lon + TILE_SIZE_DEGREES,
+            min_elevation,
+            max_elevation,
+            avg_elevation,
+            grid_lat: GRID,
+            grid_lon: GRID,
+            elevations,
+        }
     }
 }
 
@@ -164,16 +283,23 @@ pub async fn tile_later(x: i32, y: i32) -> Result<crate::terraintile::Tile, Stri
     terrarium::tile_later(x, y).await
 }
 
-pub fn elevation(latitude: f64, longitude: f64, cache: Option<&Cache>, fetch: &dyn Fn(&str) -> Result<String, String>) -> Result<f64, String> {
+pub fn elevation(
+    latitude: f64,
+    longitude: f64,
+    cache: Option<&Cache>,
+    fetch: &dyn Fn(&str) -> Result<String, String>,
+) -> Result<f64, String> {
     let (x, y) = tile_xy(latitude, longitude);
     let tile = load_tile(x, y, cache, fetch)?;
-    tile.elevation(latitude, longitude).ok_or_else(|| "The terrain tile does not cover that position.".to_string())
+    tile.elevation(latitude, longitude)
+        .ok_or_else(|| "The terrain tile does not cover that position.".to_string())
 }
 
 const FETCH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(30);
 
 pub fn fetch_over_http(url: &str) -> Result<String, String> {
-    crate::http::get_text(url, FETCH_TIMEOUT).map_err(|e| format!("The terrain server did not answer: {e}"))
+    crate::http::get_text(url, FETCH_TIMEOUT)
+        .map_err(|e| format!("The terrain server did not answer: {e}"))
 }
 
 #[cfg(test)]
@@ -183,14 +309,25 @@ mod tests {
     #[test]
     fn an_offline_elevation_set_lists_the_tiles_terrain_queries_read() {
         let tiles = region_tiles((47.405, 8.50), (47.395, 8.52));
-        assert_eq!(tiles.len(), 2 * 3, "0.01 degree tiles over the box, as the Copernicus provider cuts them");
+        assert_eq!(
+            tiles.len(),
+            2 * 3,
+            "0.01 degree tiles over the box, as the Copernicus provider cuts them"
+        );
         let (x, y, z) = tiles[0];
         let kind = tilecache::provider_hash(PROVIDER).unwrap();
-        assert_eq!(Some(tilecache::tile_hash(kind, x, y, z)), tile_hash(x, y), "a tile the offline download stores is the one height lookups find in the cache");
+        assert_eq!(
+            Some(tilecache::tile_hash(kind, x, y, z)),
+            tile_hash(x, y),
+            "a tile the offline download stores is the one height lookups find in the cache"
+        );
         assert!(tiles.contains(&(tile_xy(47.40, 8.51).0, tile_xy(47.40, 8.51).1, TERRAIN_ZOOM)));
     }
 
-    fn serving<'a>(body: &'static str, asked: &'a std::cell::RefCell<Vec<String>>) -> impl Fn(&str) -> Result<String, String> + 'a {
+    fn serving<'a>(
+        body: &'static str,
+        asked: &'a std::cell::RefCell<Vec<String>>,
+    ) -> impl Fn(&str) -> Result<String, String> + 'a {
         move |url: &str| {
             asked.borrow_mut().push(url.to_string());
             Ok(body.to_string())
@@ -199,17 +336,48 @@ mod tests {
 
     #[test]
     fn the_url_spells_the_tile_corners_as_qt_formats_a_double() {
-        assert_eq!(tile_xy(47.633389756176875, -122.09076300000001), (5790, 13763));
-        assert_eq!(url(5790, 13763), "https://terrain-ce.suite.auterion.com/api/v1/carpet?points=47.63,-122.1,47.64,-122.09");
-        assert_eq!(url(32916, 5463), "https://terrain-ce.suite.auterion.com/api/v1/carpet?points=-35.37,149.16,-35.36,149.17", "y * 0.01 - 90 is -35.370000000000005 in binary; QString::arg prints six significant digits");
+        assert_eq!(
+            tile_xy(47.633389756176875, -122.09076300000001),
+            (5790, 13763)
+        );
+        assert_eq!(
+            url(5790, 13763),
+            "https://terrain-ce.suite.auterion.com/api/v1/carpet?points=47.63,-122.1,47.64,-122.09"
+        );
+        assert_eq!(
+            url(32916, 5463),
+            "https://terrain-ce.suite.auterion.com/api/v1/carpet?points=-35.37,149.16,-35.36,149.17",
+            "y * 0.01 - 90 is -35.370000000000005 in binary; QString::arg prints six significant digits"
+        );
     }
 
     #[test]
     fn the_elevation_under_home_is_the_altitude_qt_gave_the_planned_home() {
         let asked = std::cell::RefCell::new(Vec::new());
-        let seattle = elevation(47.633389756176875, -122.09076300000001, None, &serving(include_str!("../tests/fixtures/copernicus-sectiontest.json"), &asked)).unwrap();
-        assert_eq!(seattle, 35.0, "Qt re-saved SectionTest.plan with home at 35");
-        let canberra = elevation(-35.363262399999996, 149.1652378, None, &serving(include_str!("../tests/fixtures/copernicus-survey.json"), &asked)).unwrap();
+        let seattle = elevation(
+            47.633389756176875,
+            -122.09076300000001,
+            None,
+            &serving(
+                include_str!("../tests/fixtures/copernicus-sectiontest.json"),
+                &asked,
+            ),
+        )
+        .unwrap();
+        assert_eq!(
+            seattle, 35.0,
+            "Qt re-saved SectionTest.plan with home at 35"
+        );
+        let canberra = elevation(
+            -35.363262399999996,
+            149.1652378,
+            None,
+            &serving(
+                include_str!("../tests/fixtures/copernicus-survey.json"),
+                &asked,
+            ),
+        )
+        .unwrap();
         assert_eq!(canberra, 585.0, "and the survey plan at 585");
     }
 
@@ -217,7 +385,10 @@ mod tests {
     fn a_cached_tile_is_not_fetched_again() {
         let cache = Cache::open_in_memory().unwrap();
         let asked = std::cell::RefCell::new(Vec::new());
-        let fetch = serving(include_str!("../tests/fixtures/copernicus-sectiontest.json"), &asked);
+        let fetch = serving(
+            include_str!("../tests/fixtures/copernicus-sectiontest.json"),
+            &asked,
+        );
         elevation(47.6334, -122.0907, Some(&cache), &fetch).unwrap();
         elevation(47.6335, -122.0906, Some(&cache), &fetch).unwrap();
         assert_eq!(asked.borrow().len(), 1);

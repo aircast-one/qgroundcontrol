@@ -7,10 +7,40 @@ use crate::router::Backend;
 pub const GROUP: &str = "settings.remoteIDSettings";
 pub const GCS_POSITION: &str = "positionManager.gcsPosition";
 pub const GCS_TIMESTAMP: &str = "positionManager.gcsPositionTimestamp";
-const FACTS: [&str; 21] = ["operatorIDEU", "operatorIDFAA", "operatorIDType", "sendOperatorID", "selfIDFree", "selfIDEmergency", "selfIDExtended", "selfIDType", "sendSelfID", "basicID", "basicIDType", "basicIDUaType", "sendBasicID", "region", "locationType", "latitudeFixed", "longitudeFixed", "altitudeFixed", "classificationType", "categoryEU", "classEU"];
+const FACTS: [&str; 21] = [
+    "operatorIDEU",
+    "operatorIDFAA",
+    "operatorIDType",
+    "sendOperatorID",
+    "selfIDFree",
+    "selfIDEmergency",
+    "selfIDExtended",
+    "selfIDType",
+    "sendSelfID",
+    "basicID",
+    "basicIDType",
+    "basicIDUaType",
+    "sendBasicID",
+    "region",
+    "locationType",
+    "latitudeFixed",
+    "longitudeFixed",
+    "altitudeFixed",
+    "classificationType",
+    "categoryEU",
+    "classEU",
+];
 
 pub fn deps() -> Vec<String> {
-    FACTS.iter().map(|f| format!("{GROUP}.{f}.rawValue")).chain([format!("{GROUP}.operatorIDValidForRegion"), GCS_POSITION.to_string(), GCS_TIMESTAMP.to_string()]).collect()
+    FACTS
+        .iter()
+        .map(|f| format!("{GROUP}.{f}.rawValue"))
+        .chain([
+            format!("{GROUP}.operatorIDValidForRegion"),
+            GCS_POSITION.to_string(),
+            GCS_TIMESTAMP.to_string(),
+        ])
+        .collect()
 }
 
 fn fact_path(name: &str) -> String {
@@ -23,12 +53,27 @@ const DECLARE_HOLD_MS: u64 = 800;
 const CANCEL_HOLD_MS: u64 = 3000;
 
 pub fn status_deps() -> Vec<String> {
-    ["available", "armStatusGoodToArm", "armStatusError", "ridDeviceCommsGood", "gcsPositionUsable", "vehicleReportsBasicIDMissing", "emergencyDeclared"]
-        .iter()
-        .map(|p| format!("{MANAGER}.{p}"))
-        .chain(["vehicles.activeVehicleAvailable".to_string(), format!("{GROUP}.operatorIDValidForRegion")])
-        .chain(["sendBasicID", "sendOperatorID", "sendSelfID", "region"].iter().map(|f| fact_path(f)))
-        .collect()
+    [
+        "available",
+        "armStatusGoodToArm",
+        "armStatusError",
+        "ridDeviceCommsGood",
+        "gcsPositionUsable",
+        "vehicleReportsBasicIDMissing",
+        "emergencyDeclared",
+    ]
+    .iter()
+    .map(|p| format!("{MANAGER}.{p}"))
+    .chain([
+        "vehicles.activeVehicleAvailable".to_string(),
+        format!("{GROUP}.operatorIDValidForRegion"),
+    ])
+    .chain(
+        ["sendBasicID", "sendOperatorID", "sendSelfID", "region"]
+            .iter()
+            .map(|f| fact_path(f)),
+    )
+    .collect()
 }
 
 pub struct Flags {
@@ -89,19 +134,39 @@ pub fn status_view(backend: &dyn Backend, _args: &[String]) -> Value {
         operator_id_checked: set.region == REGION_EU || set.send_operator_id,
         broadcasting: set.send_basic_id || set.send_operator_id || set.send_self_id,
     };
-    status_json(&flags, manager.get("armStatusError").and_then(Value::as_str).unwrap_or_default())
+    status_json(
+        &flags,
+        manager
+            .get("armStatusError")
+            .and_then(Value::as_str)
+            .unwrap_or_default(),
+    )
 }
 
 pub fn settings(backend: &dyn Backend) -> Settings {
     let number = |name: &str| value_number(&backend.value(&fact_path(name))).unwrap_or(0.0);
     let text = |name: &str| value_string(&backend.value(&fact_path(name)));
-    let flag = |name: &str| backend.value(&fact_path(name)).get("value").and_then(Value::as_bool).unwrap_or(false);
+    let flag = |name: &str| {
+        backend
+            .value(&fact_path(name))
+            .get("value")
+            .and_then(Value::as_bool)
+            .unwrap_or(false)
+    };
     let region = number("region") as i64;
     Settings {
         region,
-        operator_id: text(if region == 1 { "operatorIDEU" } else { "operatorIDFAA" }),
+        operator_id: text(if region == 1 {
+            "operatorIDEU"
+        } else {
+            "operatorIDFAA"
+        }),
         operator_id_type: number("operatorIDType") as i64,
-        operator_id_valid: backend.value(&format!("{GROUP}.operatorIDValidForRegion")).get("value").and_then(Value::as_bool).unwrap_or(false),
+        operator_id_valid: backend
+            .value(&format!("{GROUP}.operatorIDValidForRegion"))
+            .get("value")
+            .and_then(Value::as_bool)
+            .unwrap_or(false),
         send_operator_id: flag("sendOperatorID"),
         basic_id: text("basicID"),
         basic_id_type: number("basicIDType") as i64,
@@ -124,11 +189,31 @@ pub fn settings(backend: &dyn Backend) -> Settings {
 
 pub fn fix(backend: &dyn Backend, wall_ms: u64) -> GcsFix {
     let position = backend.value(GCS_POSITION);
-    let coordinate = position.get("value").filter(|v| v.is_object()).unwrap_or(&position);
-    let valid = coordinate.get("valid").and_then(Value::as_bool).unwrap_or(false);
-    let read = |key: &str| coordinate.get(key).and_then(Value::as_f64).unwrap_or(f64::NAN);
-    let stamp = value_number(&backend.value(GCS_TIMESTAMP)).filter(|t| *t > 0.0).map(|t| t as u64);
-    GcsFix { valid: valid && stamp.is_some(), latitude: read("latitude"), longitude: read("longitude"), altitude: read("altitude"), age_ms: stamp.map(|t| wall_ms.saturating_sub(t)).unwrap_or(u64::MAX), positioning_error: crate::gcsposition::positioning_failed() }
+    let coordinate = position
+        .get("value")
+        .filter(|v| v.is_object())
+        .unwrap_or(&position);
+    let valid = coordinate
+        .get("valid")
+        .and_then(Value::as_bool)
+        .unwrap_or(false);
+    let read = |key: &str| {
+        coordinate
+            .get(key)
+            .and_then(Value::as_f64)
+            .unwrap_or(f64::NAN)
+    };
+    let stamp = value_number(&backend.value(GCS_TIMESTAMP))
+        .filter(|t| *t > 0.0)
+        .map(|t| t as u64);
+    GcsFix {
+        valid: valid && stamp.is_some(),
+        latitude: read("latitude"),
+        longitude: read("longitude"),
+        altitude: read("altitude"),
+        age_ms: stamp.map(|t| wall_ms.saturating_sub(t)).unwrap_or(u64::MAX),
+        positioning_error: crate::gcsposition::positioning_failed(),
+    }
 }
 
 pub fn inputs(backend: &dyn Backend, wall_ms: u64) -> (Settings, GcsFix) {
@@ -154,36 +239,122 @@ mod tests {
             }
             .to_string()
         }
-        fn get_fields(&self, p: &str, _f: &str) -> String { self.get(p) }
-        fn set(&self, _p: &str, _v: &str) -> String { String::new() }
-        fn invoke(&self, _p: &str, _a: &str) -> String { String::new() }
+        fn get_fields(&self, p: &str, _f: &str) -> String {
+            self.get(p)
+        }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            String::new()
+        }
         fn watch(&self, _p: &[String]) {}
     }
 
     #[test]
     fn settings_and_the_gcs_fix_come_from_the_facts_and_the_fix_ages_until_it_moves() {
         let settings = settings(&Fake);
-        assert_eq!((settings.region, settings.operator_id.as_str(), settings.send_basic_id, settings.latitude_fixed, settings.send_self_id), (1, "FIN87astrdge12k8", true, 47.25, false));
+        assert_eq!(
+            (
+                settings.region,
+                settings.operator_id.as_str(),
+                settings.send_basic_id,
+                settings.latitude_fixed,
+                settings.send_self_id
+            ),
+            (1, "FIN87astrdge12k8", true, 47.25, false)
+        );
         let fresh = fix(&Fake, 1_700_000_000_100);
         assert!(fresh.valid && fresh.latitude == 47.5 && fresh.age_ms == 100);
-        assert!(fresh.altitude.is_nan(), "a coordinate without an altitude keeps saying so, for the FAA rule");
-        assert_eq!(fix(&Fake, 1_700_000_006_000).age_ms, 6_000, "the fix ages from the position manager's own timestamp");
+        assert!(
+            fresh.altitude.is_nan(),
+            "a coordinate without an altitude keeps saying so, for the FAA rule"
+        );
+        assert_eq!(
+            fix(&Fake, 1_700_000_006_000).age_ms,
+            6_000,
+            "the fix ages from the position manager's own timestamp"
+        );
         assert_eq!(deps().len(), 24);
         assert!(deps().contains(&"settings.remoteIDSettings.classEU.rawValue".to_string()));
     }
 
     #[test]
     fn the_indicator_state_follows_remote_id_indicator() {
-        let good = Flags { connected: true, available: true, comms: true, arm: true, gps: true, basic_id: true, emergency: false, operator_id: true, operator_id_checked: true, broadcasting: true };
+        let good = Flags {
+            connected: true,
+            available: true,
+            comms: true,
+            arm: true,
+            gps: true,
+            basic_id: true,
+            emergency: false,
+            operator_id: true,
+            operator_id_checked: true,
+            broadcasting: true,
+        };
         assert_eq!(state(&good), "healthy");
-        assert_eq!(state(&Flags { emergency: true, ..good }), "error", "a declared emergency is an error state");
-        assert_eq!(state(&Flags { comms: false, ..good }), "error");
+        assert_eq!(
+            state(&Flags {
+                emergency: true,
+                ..good
+            }),
+            "error",
+            "a declared emergency is an error state"
+        );
+        assert_eq!(
+            state(&Flags {
+                comms: false,
+                ..good
+            }),
+            "error"
+        );
         assert_eq!(state(&Flags { gps: false, ..good }), "warning");
-        assert_eq!(state(&Flags { operator_id: false, ..good }), "warning", "an operator id is checked in the EU or when it is broadcast");
-        assert_eq!(state(&Flags { operator_id: false, operator_id_checked: false, ..good }), "healthy");
-        assert_eq!(state(&Flags { connected: false, ..good }), "unavailable");
-        assert_eq!(status_json(&Flags { broadcasting: false, ..good }, "")["shown"], false, "nothing is broadcast, so the indicator stays away");
+        assert_eq!(
+            state(&Flags {
+                operator_id: false,
+                ..good
+            }),
+            "warning",
+            "an operator id is checked in the EU or when it is broadcast"
+        );
+        assert_eq!(
+            state(&Flags {
+                operator_id: false,
+                operator_id_checked: false,
+                ..good
+            }),
+            "healthy"
+        );
+        assert_eq!(
+            state(&Flags {
+                connected: false,
+                ..good
+            }),
+            "unavailable"
+        );
+        assert_eq!(
+            status_json(
+                &Flags {
+                    broadcasting: false,
+                    ..good
+                },
+                ""
+            )["shown"],
+            false,
+            "nothing is broadcast, so the indicator stays away"
+        );
         assert_eq!(status_json(&good, "")["emergencyHoldMs"], 800);
-        assert_eq!(status_json(&Flags { emergency: true, ..good }, "")["emergencyHoldMs"], 3000, "cancelling takes the longer hold QGC asks for");
+        assert_eq!(
+            status_json(
+                &Flags {
+                    emergency: true,
+                    ..good
+                },
+                ""
+            )["emergencyHoldMs"],
+            3000,
+            "cancelling takes the longer hold QGC asks for"
+        );
     }
 }

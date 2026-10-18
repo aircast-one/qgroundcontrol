@@ -54,7 +54,17 @@ pub struct UsbDisk<B: Bulk> {
 
 impl<B: Bulk> UsbDisk<B> {
     pub fn open(bulk: B) -> io::Result<Self> {
-        let mut disk = Self { bulk, tag: 0, block_size: 512, blocks: 0, pos: 0, identity: Identity { vendor: String::new(), product: String::new() } };
+        let mut disk = Self {
+            bulk,
+            tag: 0,
+            block_size: 512,
+            blocks: 0,
+            pos: 0,
+            identity: Identity {
+                vendor: String::new(),
+                product: String::new(),
+            },
+        };
         disk.identity = disk.inquiry()?;
         disk.wait_until_ready()?;
         let (blocks, block_size) = disk.read_capacity()?;
@@ -77,41 +87,76 @@ impl<B: Bulk> UsbDisk<B> {
 
     fn inquiry(&mut self) -> io::Result<Identity> {
         let mut answer = [0u8; INQUIRY_LEN];
-        self.command(&[INQUIRY, 0, 0, 0, INQUIRY_LEN as u8, 0], Data::In(&mut answer))?;
-        let text = |range: std::ops::Range<usize>| String::from_utf8_lossy(&answer[range]).trim().to_string();
-        Ok(Identity { vendor: text(8..16), product: text(16..32) })
+        self.command(
+            &[INQUIRY, 0, 0, 0, INQUIRY_LEN as u8, 0],
+            Data::In(&mut answer),
+        )?;
+        let text = |range: std::ops::Range<usize>| {
+            String::from_utf8_lossy(&answer[range]).trim().to_string()
+        };
+        Ok(Identity {
+            vendor: text(8..16),
+            product: text(16..32),
+        })
     }
 
     fn wait_until_ready(&mut self) -> io::Result<()> {
         (0..READY_ATTEMPTS)
-            .find_map(|attempt| match self.command(&[TEST_UNIT_READY, 0, 0, 0, 0, 0], Data::None) {
-                Ok(()) => Some(Ok(())),
-                Err(_) => match self.request_sense() {
-                    Ok(NO_MEDIUM) => Some(Err(io::Error::new(io::ErrorKind::NotFound, "no card in the reader"))),
-                    _ if attempt + 1 == READY_ATTEMPTS => Some(Err(io::Error::new(io::ErrorKind::TimedOut, "the card reader never became ready"))),
-                    _ => {
-                        std::thread::sleep(READY_BACKOFF);
-                        None
-                    }
+            .find_map(
+                |attempt| match self.command(&[TEST_UNIT_READY, 0, 0, 0, 0, 0], Data::None) {
+                    Ok(()) => Some(Ok(())),
+                    Err(_) => match self.request_sense() {
+                        Ok(NO_MEDIUM) => Some(Err(io::Error::new(
+                            io::ErrorKind::NotFound,
+                            "no card in the reader",
+                        ))),
+                        _ if attempt + 1 == READY_ATTEMPTS => Some(Err(io::Error::new(
+                            io::ErrorKind::TimedOut,
+                            "the card reader never became ready",
+                        ))),
+                        _ => {
+                            std::thread::sleep(READY_BACKOFF);
+                            None
+                        }
+                    },
                 },
+            )
+            .unwrap_or_else(|| {
+                Err(io::Error::new(
+                    io::ErrorKind::TimedOut,
+                    "the card reader never became ready",
+                ))
             })
-            .unwrap_or_else(|| Err(io::Error::new(io::ErrorKind::TimedOut, "the card reader never became ready")))
     }
 
     fn request_sense(&mut self) -> io::Result<u8> {
         let mut answer = [0u8; SENSE_LEN];
-        self.command(&[REQUEST_SENSE, 0, 0, 0, SENSE_LEN as u8, 0], Data::In(&mut answer))?;
+        self.command(
+            &[REQUEST_SENSE, 0, 0, 0, SENSE_LEN as u8, 0],
+            Data::In(&mut answer),
+        )?;
         Ok(answer[12])
     }
 
     fn read_capacity(&mut self) -> io::Result<(u64, u32)> {
         let mut answer = [0u8; 8];
-        self.command(&[READ_CAPACITY_10, 0, 0, 0, 0, 0, 0, 0, 0, 0], Data::In(&mut answer))?;
+        self.command(
+            &[READ_CAPACITY_10, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            Data::In(&mut answer),
+        )?;
         let last_lba = u32::from_be_bytes([answer[0], answer[1], answer[2], answer[3]]);
         let block_size = u32::from_be_bytes([answer[4], answer[5], answer[6], answer[7]]);
         match (last_lba, block_size) {
-            (u32::MAX, _) => Err(io::Error::new(io::ErrorKind::Unsupported, "cards larger than 2 TB are not supported")),
-            (_, size) if size == 0 || crate::cardwrite::ALIGN % u64::from(size) != 0 => Err(io::Error::new(io::ErrorKind::Unsupported, format!("unsupported block size {size}"))),
+            (u32::MAX, _) => Err(io::Error::new(
+                io::ErrorKind::Unsupported,
+                "cards larger than 2 TB are not supported",
+            )),
+            (_, size) if size == 0 || crate::cardwrite::ALIGN % u64::from(size) != 0 => {
+                Err(io::Error::new(
+                    io::ErrorKind::Unsupported,
+                    format!("unsupported block size {size}"),
+                ))
+            }
             (last, size) => Ok((u64::from(last) + 1, size)),
         }
     }
@@ -134,8 +179,14 @@ impl<B: Bulk> UsbDisk<B> {
         let tag = u32::from_le_bytes([csw[4], csw[5], csw[6], csw[7]]);
         match (signature, tag, csw[12]) {
             (CSW_SIGNATURE, t, 0) if t == self.tag => Ok(()),
-            (CSW_SIGNATURE, t, status) if t == self.tag => Err(io::Error::other(format!("SCSI command 0x{:02x} failed with status {status}", cb[0]))),
-            _ => Err(io::Error::new(io::ErrorKind::InvalidData, "the card reader answered out of step")),
+            (CSW_SIGNATURE, t, status) if t == self.tag => Err(io::Error::other(format!(
+                "SCSI command 0x{:02x} failed with status {status}",
+                cb[0]
+            ))),
+            _ => Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                "the card reader answered out of step",
+            )),
         }
     }
 
@@ -163,10 +214,16 @@ impl<B: Bulk> UsbDisk<B> {
                 self.bulk.clear_halt(true)?;
                 match self.bulk.receive(&mut csw)? {
                     CSW_LEN => Ok(csw),
-                    n => Err(io::Error::new(io::ErrorKind::InvalidData, format!("short status from the card reader ({n} bytes)"))),
+                    n => Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("short status from the card reader ({n} bytes)"),
+                    )),
                 }
             }
-            Ok(n) => Err(io::Error::new(io::ErrorKind::InvalidData, format!("short status from the card reader ({n} bytes)"))),
+            Ok(n) => Err(io::Error::new(
+                io::ErrorKind::InvalidData,
+                format!("short status from the card reader ({n} bytes)"),
+            )),
             Err(e) => Err(e),
         }
     }
@@ -174,8 +231,12 @@ impl<B: Bulk> UsbDisk<B> {
     fn lba(&self, offset: u64) -> io::Result<u32> {
         let block = u64::from(self.block_size);
         match offset % block == 0 {
-            true => u32::try_from(offset / block).map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "offset beyond 2 TB")),
-            false => Err(io::Error::new(io::ErrorKind::InvalidInput, format!("offset {offset} is not on a {block}-byte block"))),
+            true => u32::try_from(offset / block)
+                .map_err(|_| io::Error::new(io::ErrorKind::InvalidInput, "offset beyond 2 TB")),
+            false => Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("offset {offset} is not on a {block}-byte block"),
+            )),
         }
     }
 
@@ -183,7 +244,10 @@ impl<B: Bulk> UsbDisk<B> {
         let block = self.block_size as usize;
         match len % block == 0 {
             true => Ok(len.min(MAX_TRANSFER - MAX_TRANSFER % block)),
-            false => Err(io::Error::new(io::ErrorKind::InvalidInput, format!("length {len} is not whole {block}-byte blocks"))),
+            false => Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                format!("length {len} is not whole {block}-byte blocks"),
+            )),
         }
     }
 }
@@ -227,7 +291,10 @@ impl<B: Bulk> Write for UsbDisk<B> {
             return Ok(0);
         }
         match self.pos + want as u64 > self.capacity() {
-            true => Err(io::Error::new(io::ErrorKind::WriteZero, "the image does not fit on the card")),
+            true => Err(io::Error::new(
+                io::ErrorKind::WriteZero,
+                "the image does not fit on the card",
+            )),
             false => {
                 let lba = self.lba(self.pos)?;
                 let blocks = (want / self.block_size as usize) as u16;
@@ -251,7 +318,10 @@ impl<B: Bulk> Seek for UsbDisk<B> {
             SeekFrom::End(delta) => self.capacity() as i64 + delta,
         };
         match new < 0 {
-            true => Err(io::Error::new(io::ErrorKind::InvalidInput, "seek to a negative position")),
+            true => Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "seek to a negative position",
+            )),
             false => {
                 self.pos = new as u64;
                 Ok(self.pos)
@@ -262,7 +332,10 @@ impl<B: Bulk> Seek for UsbDisk<B> {
 
 impl<B: Bulk> BlockDevice for UsbDisk<B> {
     fn sync(&mut self) -> io::Result<()> {
-        let _ = self.command(&[SYNCHRONIZE_CACHE_10, 0, 0, 0, 0, 0, 0, 0, 0, 0], Data::None);
+        let _ = self.command(
+            &[SYNCHRONIZE_CACHE_10, 0, 0, 0, 0, 0, 0, 0, 0, 0],
+            Data::None,
+        );
         Ok(())
     }
 }
@@ -277,7 +350,11 @@ pub mod tests {
 
     enum Pending {
         Idle,
-        Write { offset: usize, remaining: usize, tag: u32 },
+        Write {
+            offset: usize,
+            remaining: usize,
+            tag: u32,
+        },
     }
 
     pub struct SimulatedReader {
@@ -292,7 +369,15 @@ pub mod tests {
 
     impl SimulatedReader {
         pub fn new(card_len: usize) -> Self {
-            Self { card: vec![0u8; card_len], block_size: 512, not_ready_for: 0, medium_present: true, pending: Pending::Idle, outbox: VecDeque::new(), commands: Vec::new() }
+            Self {
+                card: vec![0u8; card_len],
+                block_size: 512,
+                not_ready_for: 0,
+                medium_present: true,
+                pending: Pending::Idle,
+                outbox: VecDeque::new(),
+                commands: Vec::new(),
+            }
         }
 
         fn csw(&mut self, tag: u32, status: u8) {
@@ -332,14 +417,22 @@ pub mod tests {
                 }
                 READ_CAPACITY_10 => {
                     let last = (self.card.len() / block - 1) as u32;
-                    self.outbox.push_back([last.to_be_bytes(), self.block_size.to_be_bytes()].concat());
+                    self.outbox
+                        .push_back([last.to_be_bytes(), self.block_size.to_be_bytes()].concat());
                     self.csw(tag, 0);
                 }
                 READ_10 => {
-                    self.outbox.push_back(self.card[lba * block..(lba + blocks) * block].to_vec());
+                    self.outbox
+                        .push_back(self.card[lba * block..(lba + blocks) * block].to_vec());
                     self.csw(tag, 0);
                 }
-                WRITE_10 => self.pending = Pending::Write { offset: lba * block, remaining: blocks * block, tag },
+                WRITE_10 => {
+                    self.pending = Pending::Write {
+                        offset: lba * block,
+                        remaining: blocks * block,
+                        tag,
+                    }
+                }
                 _ => self.csw(tag, 1),
             }
         }
@@ -350,14 +443,27 @@ pub mod tests {
             match std::mem::replace(&mut self.pending, Pending::Idle) {
                 Pending::Idle => {
                     assert_eq!(data.len(), CBW_LEN, "a command block is always 31 bytes");
-                    assert_eq!(u32::from_le_bytes([data[0], data[1], data[2], data[3]]), CBW_SIGNATURE);
+                    assert_eq!(
+                        u32::from_le_bytes([data[0], data[1], data[2], data[3]]),
+                        CBW_SIGNATURE
+                    );
                     self.execute(data);
                 }
-                Pending::Write { offset, remaining, tag } => {
+                Pending::Write {
+                    offset,
+                    remaining,
+                    tag,
+                } => {
                     self.card[offset..offset + data.len()].copy_from_slice(data);
                     match remaining - data.len() {
                         0 => self.csw(tag, 0),
-                        left => self.pending = Pending::Write { offset: offset + data.len(), remaining: left, tag },
+                        left => {
+                            self.pending = Pending::Write {
+                                offset: offset + data.len(),
+                                remaining: left,
+                                tag,
+                            }
+                        }
                     }
                 }
             }
@@ -365,7 +471,10 @@ pub mod tests {
         }
 
         fn receive(&mut self, buf: &mut [u8]) -> io::Result<usize> {
-            let chunk = self.outbox.pop_front().ok_or_else(|| io::Error::new(io::ErrorKind::TimedOut, "nothing to receive"))?;
+            let chunk = self
+                .outbox
+                .pop_front()
+                .ok_or_else(|| io::Error::new(io::ErrorKind::TimedOut, "nothing to receive"))?;
             let n = chunk.len().min(buf.len());
             buf[..n].copy_from_slice(&chunk[..n]);
             Ok(n)
@@ -380,19 +489,38 @@ pub mod tests {
     fn opening_reads_the_identity_and_capacity() {
         let disk = UsbDisk::open(SimulatedReader::new(8 * 1024 * 1024)).expect("open");
         assert_eq!(disk.capacity(), 8 * 1024 * 1024);
-        assert_eq!(disk.identity(), &Identity { vendor: "Generic".into(), product: "SD Card Reader".into() });
+        assert_eq!(
+            disk.identity(),
+            &Identity {
+                vendor: "Generic".into(),
+                product: "SD Card Reader".into()
+            }
+        );
     }
 
     #[test]
     fn a_reader_that_is_slow_to_spin_up_is_waited_for() {
-        let reader = SimulatedReader { not_ready_for: 2, ..SimulatedReader::new(1024 * 1024) };
+        let reader = SimulatedReader {
+            not_ready_for: 2,
+            ..SimulatedReader::new(1024 * 1024)
+        };
         let disk = UsbDisk::open(reader).expect("open once ready");
-        assert_eq!(disk.into_bulk().commands.iter().filter(|c| **c == TEST_UNIT_READY).count(), 3);
+        assert_eq!(
+            disk.into_bulk()
+                .commands
+                .iter()
+                .filter(|c| **c == TEST_UNIT_READY)
+                .count(),
+            3
+        );
     }
 
     #[test]
     fn an_empty_reader_says_there_is_no_card() {
-        let reader = SimulatedReader { medium_present: false, ..SimulatedReader::new(1024 * 1024) };
+        let reader = SimulatedReader {
+            medium_present: false,
+            ..SimulatedReader::new(1024 * 1024)
+        };
         let err = UsbDisk::open(reader).err().expect("no medium");
         assert_eq!(err.kind(), io::ErrorKind::NotFound);
         assert!(err.to_string().contains("no card"));
@@ -408,33 +536,69 @@ pub mod tests {
         let mut back = vec![0u8; data.len()];
         disk.read_exact(&mut back).unwrap();
         assert_eq!(back, data);
-        assert!(disk.into_bulk().commands.iter().filter(|c| **c == WRITE_10).count() >= 6, "a 3 MiB write is split into transfers of at most 512 KiB");
+        assert!(
+            disk.into_bulk()
+                .commands
+                .iter()
+                .filter(|c| **c == WRITE_10)
+                .count()
+                >= 6,
+            "a 3 MiB write is split into transfers of at most 512 KiB"
+        );
     }
 
     #[test]
     fn unaligned_access_is_refused_rather_than_corrupting_neighbours() {
         let mut disk = UsbDisk::open(SimulatedReader::new(1024 * 1024)).expect("open");
         disk.seek(SeekFrom::Start(100)).unwrap();
-        assert_eq!(disk.write(&[1u8; 512]).unwrap_err().kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(
+            disk.write(&[1u8; 512]).unwrap_err().kind(),
+            io::ErrorKind::InvalidInput
+        );
         disk.seek(SeekFrom::Start(0)).unwrap();
-        assert_eq!(disk.write(&[1u8; 100]).unwrap_err().kind(), io::ErrorKind::InvalidInput);
+        assert_eq!(
+            disk.write(&[1u8; 100]).unwrap_err().kind(),
+            io::ErrorKind::InvalidInput
+        );
     }
 
     #[test]
     fn writing_past_the_end_of_the_card_fails() {
         let mut disk = UsbDisk::open(SimulatedReader::new(1024 * 1024)).expect("open");
         disk.seek(SeekFrom::End(-512)).unwrap();
-        assert_eq!(disk.write(&[0u8; 1024]).unwrap_err().kind(), io::ErrorKind::WriteZero);
+        assert_eq!(
+            disk.write(&[0u8; 1024]).unwrap_err().kind(),
+            io::ErrorKind::WriteZero
+        );
     }
 
     #[test]
     fn a_whole_image_flashes_through_the_reader() {
         let image = crate::cardwrite::tests::build_image();
         let card_len = image.len() + 2 * crate::cardwrite::BLOCK;
-        let mut device = AlignedDevice::new(UsbDisk::open(SimulatedReader::new(card_len)).expect("open"));
-        flash(&mut device, &mut Cursor::new(image.clone()), &Params { image_len: image.len() as u64, verify: true }, &crate::cardwrite::tests::cloud_init_config(), &mut |_, _, _| {}).expect("flash through USB mass storage");
+        let mut device =
+            AlignedDevice::new(UsbDisk::open(SimulatedReader::new(card_len)).expect("open"));
+        flash(
+            &mut device,
+            &mut Cursor::new(image.clone()),
+            &Params {
+                image_len: image.len() as u64,
+                verify: true,
+            },
+            &crate::cardwrite::tests::cloud_init_config(),
+            &mut |_, _, _| {},
+        )
+        .expect("flash through USB mass storage");
         let card = device.into_inner().into_bulk().card;
-        assert_eq!(&card[..512], &image[..512], "the partition table lands last and intact");
-        assert!(crate::cardwrite::tests::read_fat_file(&card, "user-data").expect("user-data").contains("hostname: aircast"));
+        assert_eq!(
+            &card[..512],
+            &image[..512],
+            "the partition table lands last and intact"
+        );
+        assert!(
+            crate::cardwrite::tests::read_fat_file(&card, "user-data")
+                .expect("user-data")
+                .contains("hostname: aircast")
+        );
     }
 }

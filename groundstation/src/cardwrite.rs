@@ -28,19 +28,36 @@ pub struct Params {
     pub verify: bool,
 }
 
-pub fn flash(device: &mut dyn BlockDevice, image: &mut dyn Read, params: &Params, provision: &ProvisionConfig, progress: &mut dyn FnMut(Stage, u64, u64)) -> Result<(), String> {
+pub fn flash(
+    device: &mut dyn BlockDevice,
+    image: &mut dyn Read,
+    params: &Params,
+    provision: &ProvisionConfig,
+    progress: &mut dyn FnMut(Stage, u64, u64),
+) -> Result<(), String> {
     let partition_table = read_partition_table(image)?;
     wipe_stale_backup_gpt(device)?;
-    let write_digest = write_after_partition_table(device, image, &partition_table, params.image_len, progress)?;
+    let write_digest =
+        write_after_partition_table(device, image, &partition_table, params.image_len, progress)?;
     device.sync().map_err(|e| ioerr("sync after write", e))?;
     match params.verify {
-        true => verify(device, &partition_table, params.image_len, &write_digest, progress)?,
+        true => verify(
+            device,
+            &partition_table,
+            params.image_len,
+            &write_digest,
+            progress,
+        )?,
         false => {}
     }
     progress(Stage::Customize, 0, 0);
     customize(device, &partition_table, provision)?;
-    device.seek(SeekFrom::Start(0)).map_err(|e| ioerr("seek to block 0", e))?;
-    device.write_all(&partition_table).map_err(|e| ioerr("write block 0", e))?;
+    device
+        .seek(SeekFrom::Start(0))
+        .map_err(|e| ioerr("seek to block 0", e))?;
+    device
+        .write_all(&partition_table)
+        .map_err(|e| ioerr("write block 0", e))?;
     device.sync().map_err(|e| ioerr("final sync", e))
 }
 
@@ -52,18 +69,32 @@ fn read_partition_table(image: &mut dyn Read) -> Result<Vec<u8>, String> {
 }
 
 fn wipe_stale_backup_gpt(device: &mut dyn BlockDevice) -> Result<(), String> {
-    let end = device.seek(SeekFrom::End(0)).map_err(|e| ioerr("seek to end of device", e))?;
+    let end = device
+        .seek(SeekFrom::End(0))
+        .map_err(|e| ioerr("seek to end of device", e))?;
     match end <= BLOCK as u64 {
         true => Ok(()),
         false => {
-            device.seek(SeekFrom::Start(end - BLOCK as u64)).map_err(|e| ioerr("seek to tail of device", e))?;
-            device.write_all(&vec![0u8; BLOCK]).map_err(|e| ioerr("wipe tail of device", e))
+            device
+                .seek(SeekFrom::Start(end - BLOCK as u64))
+                .map_err(|e| ioerr("seek to tail of device", e))?;
+            device
+                .write_all(&vec![0u8; BLOCK])
+                .map_err(|e| ioerr("wipe tail of device", e))
         }
     }
 }
 
-fn write_after_partition_table(device: &mut dyn BlockDevice, image: &mut dyn Read, partition_table: &[u8], image_len: u64, progress: &mut dyn FnMut(Stage, u64, u64)) -> Result<Vec<u8>, String> {
-    device.seek(SeekFrom::Start(BLOCK as u64)).map_err(|e| ioerr("seek past block 0", e))?;
+fn write_after_partition_table(
+    device: &mut dyn BlockDevice,
+    image: &mut dyn Read,
+    partition_table: &[u8],
+    image_len: u64,
+    progress: &mut dyn FnMut(Stage, u64, u64),
+) -> Result<Vec<u8>, String> {
+    device
+        .seek(SeekFrom::Start(BLOCK as u64))
+        .map_err(|e| ioerr("seek past block 0", e))?;
     let mut hash = Sha256::new();
     hash.update(partition_table);
     let mut written = partition_table.len() as u64;
@@ -76,7 +107,9 @@ fn write_after_partition_table(device: &mut dyn BlockDevice, image: &mut dyn Rea
             break;
         }
         hash.update(&buf[..n]);
-        device.write_all(&buf[..n]).map_err(|e| ioerr("write to device", e))?;
+        device
+            .write_all(&buf[..n])
+            .map_err(|e| ioerr("write to device", e))?;
         written += n as u64;
         if last_tick.elapsed() >= PROGRESS_INTERVAL {
             progress(Stage::Write, written, image_len);
@@ -90,8 +123,16 @@ fn write_after_partition_table(device: &mut dyn BlockDevice, image: &mut dyn Rea
     Ok(hash.finalize().to_vec())
 }
 
-fn verify(device: &mut dyn BlockDevice, partition_table: &[u8], image_len: u64, write_digest: &[u8], progress: &mut dyn FnMut(Stage, u64, u64)) -> Result<(), String> {
-    device.seek(SeekFrom::Start(BLOCK as u64)).map_err(|e| ioerr("seek for verify", e))?;
+fn verify(
+    device: &mut dyn BlockDevice,
+    partition_table: &[u8],
+    image_len: u64,
+    write_digest: &[u8],
+    progress: &mut dyn FnMut(Stage, u64, u64),
+) -> Result<(), String> {
+    device
+        .seek(SeekFrom::Start(BLOCK as u64))
+        .map_err(|e| ioerr("seek for verify", e))?;
     let mut hash = Sha256::new();
     hash.update(partition_table);
     let mut checked = partition_table.len() as u64;
@@ -117,20 +158,31 @@ fn verify(device: &mut dyn BlockDevice, partition_table: &[u8], image_len: u64, 
     }
 }
 
-fn customize(device: &mut dyn BlockDevice, partition_table: &[u8], provision: &ProvisionConfig) -> Result<(), String> {
+fn customize(
+    device: &mut dyn BlockDevice,
+    partition_table: &[u8],
+    provision: &ProvisionConfig,
+) -> Result<(), String> {
     let plan = crate::cardprovision::plan(provision);
     if plan == ProvisionPlan::Noop {
         return Ok(());
     }
     let (offset, length) = fat_partition_extent(partition_table)?;
     {
-        let slice = fscommon::StreamSlice::new(&mut *device, offset, offset + length).map_err(|e| ioerr("slice boot partition", e))?;
-        let fs = fatfs::FileSystem::new(slice, fatfs::FsOptions::new()).map_err(|e| ioerr("open FAT filesystem", e))?;
+        let slice = fscommon::StreamSlice::new(&mut *device, offset, offset + length)
+            .map_err(|e| ioerr("slice boot partition", e))?;
+        let fs = fatfs::FileSystem::new(slice, fatfs::FsOptions::new())
+            .map_err(|e| ioerr("open FAT filesystem", e))?;
         let root = fs.root_dir();
         match plan {
             ProvisionPlan::Noop => {}
-            ProvisionPlan::CloudInit { files } => files.iter().try_for_each(|file| write_fat_file(&root, file))?,
-            ProvisionPlan::FirstRun { script, cmdline_append } => {
+            ProvisionPlan::CloudInit { files } => files
+                .iter()
+                .try_for_each(|file| write_fat_file(&root, file))?,
+            ProvisionPlan::FirstRun {
+                script,
+                cmdline_append,
+            } => {
                 write_fat_file(&root, &script)?;
                 append_cmdline(&root, &cmdline_append)?;
             }
@@ -139,17 +191,31 @@ fn customize(device: &mut dyn BlockDevice, partition_table: &[u8], provision: &P
     device.sync().map_err(|e| ioerr("sync after customize", e))
 }
 
-fn write_fat_file<T: fatfs::ReadWriteSeek>(root: &fatfs::Dir<'_, T>, file: &ProvisionFile) -> Result<(), String> {
-    let mut handle = root.create_file(&file.name).map_err(|e| ioerr(&format!("create {}", file.name), e))?;
-    handle.truncate().map_err(|e| ioerr(&format!("truncate {}", file.name), e))?;
-    handle.write_all(file.contents.as_bytes()).map_err(|e| ioerr(&format!("write {}", file.name), e))
+fn write_fat_file<T: fatfs::ReadWriteSeek>(
+    root: &fatfs::Dir<'_, T>,
+    file: &ProvisionFile,
+) -> Result<(), String> {
+    let mut handle = root
+        .create_file(&file.name)
+        .map_err(|e| ioerr(&format!("create {}", file.name), e))?;
+    handle
+        .truncate()
+        .map_err(|e| ioerr(&format!("truncate {}", file.name), e))?;
+    handle
+        .write_all(file.contents.as_bytes())
+        .map_err(|e| ioerr(&format!("write {}", file.name), e))
 }
 
-fn append_cmdline<T: fatfs::ReadWriteSeek>(root: &fatfs::Dir<'_, T>, fragment: &str) -> Result<(), String> {
+fn append_cmdline<T: fatfs::ReadWriteSeek>(
+    root: &fatfs::Dir<'_, T>,
+    fragment: &str,
+) -> Result<(), String> {
     let current = match root.open_file("cmdline.txt") {
         Ok(mut handle) => {
             let mut text = String::new();
-            handle.read_to_string(&mut text).map_err(|e| ioerr("read cmdline.txt", e))?;
+            handle
+                .read_to_string(&mut text)
+                .map_err(|e| ioerr("read cmdline.txt", e))?;
             text
         }
         Err(_) => String::new(),
@@ -158,17 +224,29 @@ fn append_cmdline<T: fatfs::ReadWriteSeek>(root: &fatfs::Dir<'_, T>, fragment: &
         return Ok(());
     }
     let updated = format!("{}{fragment}", current.trim_end_matches(['\r', '\n']));
-    let mut handle = root.create_file("cmdline.txt").map_err(|e| ioerr("create cmdline.txt", e))?;
-    handle.truncate().map_err(|e| ioerr("truncate cmdline.txt", e))?;
-    handle.write_all(updated.as_bytes()).map_err(|e| ioerr("write cmdline.txt", e))
+    let mut handle = root
+        .create_file("cmdline.txt")
+        .map_err(|e| ioerr("create cmdline.txt", e))?;
+    handle
+        .truncate()
+        .map_err(|e| ioerr("truncate cmdline.txt", e))?;
+    handle
+        .write_all(updated.as_bytes())
+        .map_err(|e| ioerr("write cmdline.txt", e))
 }
 
 fn fat_partition_extent(partition_table: &[u8]) -> Result<(u64, u64), String> {
-    let mbr = MBR::read_from(&mut Cursor::new(partition_table), SECTOR as u32).map_err(|e| format!("parse MBR: {e}"))?;
+    let mbr = MBR::read_from(&mut Cursor::new(partition_table), SECTOR as u32)
+        .map_err(|e| format!("parse MBR: {e}"))?;
     mbr.iter()
         .map(|(_, part)| part)
         .find(|part| part.is_used() && is_fat(part.sys))
-        .map(|part| (u64::from(part.starting_lba) * SECTOR, u64::from(part.sectors) * SECTOR))
+        .map(|part| {
+            (
+                u64::from(part.starting_lba) * SECTOR,
+                u64::from(part.sectors) * SECTOR,
+            )
+        })
         .ok_or_else(|| "no FAT boot partition found in image MBR".to_string())
 }
 
@@ -192,7 +270,10 @@ pub fn read_full(reader: &mut dyn Read, buf: &mut [u8]) -> io::Result<usize> {
 fn read_exact_from(reader: &mut dyn Read, buf: &mut [u8]) -> io::Result<()> {
     match read_full(reader, buf)? == buf.len() {
         true => Ok(()),
-        false => Err(io::Error::new(io::ErrorKind::UnexpectedEof, "device returned fewer bytes than the image length")),
+        false => Err(io::Error::new(
+            io::ErrorKind::UnexpectedEof,
+            "device returned fewer bytes than the image length",
+        )),
     }
 }
 
@@ -293,7 +374,10 @@ impl<T: Read + Write + Seek> Seek for AlignedDevice<T> {
             SeekFrom::End(delta) => self.inner.seek(SeekFrom::End(0))? as i64 + delta,
         };
         match new < 0 {
-            true => Err(io::Error::new(io::ErrorKind::InvalidInput, "seek to a negative position")),
+            true => Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "seek to a negative position",
+            )),
             false => {
                 self.pos = new as u64;
                 Ok(self.pos)
@@ -324,7 +408,9 @@ pub mod tests {
 
     impl MemDevice {
         pub fn zeroed(len: usize) -> Self {
-            Self { cur: Cursor::new(vec![0u8; len]) }
+            Self {
+                cur: Cursor::new(vec![0u8; len]),
+            }
         }
     }
 
@@ -398,17 +484,47 @@ pub mod tests {
         let total = IMAGE_SECTORS as usize * SECTOR as usize;
         let mut image = vec![0u8; total];
         let mut scratch = Cursor::new(vec![0u8; total]);
-        let mut mbr = MBR::new_from(&mut scratch, SECTOR as u32, [0x12, 0x34, 0x56, 0x78]).expect("new MBR");
-        mbr[1] = mbrman::MBRPartitionEntry { boot: 0, first_chs: mbrman::CHS::empty(), sys: 0x0c, last_chs: mbrman::CHS::empty(), starting_lba: PART_START_SECTOR, sectors: FAT_SECTORS };
+        let mut mbr =
+            MBR::new_from(&mut scratch, SECTOR as u32, [0x12, 0x34, 0x56, 0x78]).expect("new MBR");
+        mbr[1] = mbrman::MBRPartitionEntry {
+            boot: 0,
+            first_chs: mbrman::CHS::empty(),
+            sys: 0x0c,
+            last_chs: mbrman::CHS::empty(),
+            starting_lba: PART_START_SECTOR,
+            sectors: FAT_SECTORS,
+        };
         let mut mbr_bytes = Cursor::new(vec![0u8; SECTOR as usize]);
         mbr.write_into(&mut mbr_bytes).expect("write MBR");
         image[..SECTOR as usize].copy_from_slice(&mbr_bytes.into_inner());
         let part_off = PART_START_SECTOR as usize * SECTOR as usize;
         let part_len = FAT_SECTORS as usize * SECTOR as usize;
-        fatfs::format_volume(fscommon::StreamSlice::new(Cursor::new(&mut image[part_off..part_off + part_len]), 0, part_len as u64).expect("slice"), fatfs::FormatVolumeOptions::new().fat_type(fatfs::FatType::Fat32)).expect("format FAT");
+        fatfs::format_volume(
+            fscommon::StreamSlice::new(
+                Cursor::new(&mut image[part_off..part_off + part_len]),
+                0,
+                part_len as u64,
+            )
+            .expect("slice"),
+            fatfs::FormatVolumeOptions::new().fat_type(fatfs::FatType::Fat32),
+        )
+        .expect("format FAT");
         {
-            let fs = fatfs::FileSystem::new(fscommon::StreamSlice::new(Cursor::new(&mut image[part_off..part_off + part_len]), 0, part_len as u64).expect("slice"), fatfs::FsOptions::new()).expect("open seed fs");
-            fs.root_dir().create_file("cmdline.txt").expect("create cmdline").write_all(b"console=serial0,115200 root=PARTUUID=abcd rootwait").expect("write cmdline");
+            let fs = fatfs::FileSystem::new(
+                fscommon::StreamSlice::new(
+                    Cursor::new(&mut image[part_off..part_off + part_len]),
+                    0,
+                    part_len as u64,
+                )
+                .expect("slice"),
+                fatfs::FsOptions::new(),
+            )
+            .expect("open seed fs");
+            fs.root_dir()
+                .create_file("cmdline.txt")
+                .expect("create cmdline")
+                .write_all(b"console=serial0,115200 root=PARTUUID=abcd rootwait")
+                .expect("write cmdline");
         }
         image
     }
@@ -417,27 +533,66 @@ pub mod tests {
         let part_off = PART_START_SECTOR as usize * SECTOR as usize;
         let part_len = FAT_SECTORS as usize * SECTOR as usize;
         let mut owned = image[part_off..part_off + part_len].to_vec();
-        let fs = fatfs::FileSystem::new(fscommon::StreamSlice::new(Cursor::new(&mut owned), 0, part_len as u64).ok()?, fatfs::FsOptions::new()).ok()?;
+        let fs = fatfs::FileSystem::new(
+            fscommon::StreamSlice::new(Cursor::new(&mut owned), 0, part_len as u64).ok()?,
+            fatfs::FsOptions::new(),
+        )
+        .ok()?;
         let mut text = String::new();
-        fs.root_dir().open_file(name).ok()?.read_to_string(&mut text).ok()?;
+        fs.root_dir()
+            .open_file(name)
+            .ok()?
+            .read_to_string(&mut text)
+            .ok()?;
         Some(text)
     }
 
     pub fn cloud_init_config() -> ProvisionConfig {
-        ProvisionConfig { hostname: Some("aircast".into()), wifi: Some(WifiConfig { ssid: "IEEE".into(), password: "password".into(), country: "US".into() }), tailscale: None, access: None, init_format: InitFormat::CloudInit }
+        ProvisionConfig {
+            hostname: Some("aircast".into()),
+            wifi: Some(WifiConfig {
+                ssid: "IEEE".into(),
+                password: "password".into(),
+                country: "US".into(),
+            }),
+            tailscale: None,
+            access: None,
+            init_format: InitFormat::CloudInit,
+        }
     }
 
     #[test]
     fn flash_writes_verifies_and_customizes() {
         let image = build_image();
         let mut device = MemDevice::zeroed(image.len());
-        flash(&mut device, &mut Cursor::new(image.clone()), &Params { image_len: image.len() as u64, verify: true }, &cloud_init_config(), &mut |_, _, _| {}).expect("flash should succeed and verify");
+        flash(
+            &mut device,
+            &mut Cursor::new(image.clone()),
+            &Params {
+                image_len: image.len() as u64,
+                verify: true,
+            },
+            &cloud_init_config(),
+            &mut |_, _, _| {},
+        )
+        .expect("flash should succeed and verify");
         let written = device.cur.into_inner();
-        assert_eq!(&written[..SECTOR as usize], &image[..SECTOR as usize], "MBR on device must match the image");
+        assert_eq!(
+            &written[..SECTOR as usize],
+            &image[..SECTOR as usize],
+            "MBR on device must match the image"
+        );
         let net = read_fat_file(&written, "network-config").expect("network-config exists");
         assert!(net.contains(PSK), "network-config must contain derived PSK");
-        assert!(!net.contains("password: \"password\""), "no plaintext passphrase");
-        assert!(read_fat_file(&written, "user-data").expect("user-data exists").contains("hostname: aircast"));
+        assert!(
+            !net.contains("password: \"password\""),
+            "no plaintext passphrase"
+        );
+        assert!(
+            read_fat_file(&written, "user-data")
+                .expect("user-data exists")
+                .contains("hostname: aircast")
+        );
         assert!(read_fat_file(&written, "meta-data").is_some());
     }
 
@@ -445,13 +600,36 @@ pub mod tests {
     fn firstrun_appends_cmdline() {
         let image = build_image();
         let mut device = MemDevice::zeroed(image.len());
-        let config = ProvisionConfig { init_format: InitFormat::FirstRun, ..cloud_init_config() };
-        flash(&mut device, &mut Cursor::new(image.clone()), &Params { image_len: image.len() as u64, verify: false }, &config, &mut |_, _, _| {}).expect("flash firstrun");
+        let config = ProvisionConfig {
+            init_format: InitFormat::FirstRun,
+            ..cloud_init_config()
+        };
+        flash(
+            &mut device,
+            &mut Cursor::new(image.clone()),
+            &Params {
+                image_len: image.len() as u64,
+                verify: false,
+            },
+            &config,
+            &mut |_, _, _| {},
+        )
+        .expect("flash firstrun");
         let written = device.cur.into_inner();
-        assert!(read_fat_file(&written, "firstrun.sh").expect("firstrun.sh exists").contains(&format!("psk={PSK}")));
+        assert!(
+            read_fat_file(&written, "firstrun.sh")
+                .expect("firstrun.sh exists")
+                .contains(&format!("psk={PSK}"))
+        );
         let cmdline = read_fat_file(&written, "cmdline.txt").expect("cmdline.txt exists");
-        assert!(cmdline.contains("console=serial0,115200"), "kept original cmdline");
-        assert!(cmdline.contains("systemd.run=/boot/firstrun.sh"), "appended firstrun fragment");
+        assert!(
+            cmdline.contains("console=serial0,115200"),
+            "kept original cmdline"
+        );
+        assert!(
+            cmdline.contains("systemd.run=/boot/firstrun.sh"),
+            "appended firstrun fragment"
+        );
     }
 
     #[test]
@@ -461,17 +639,44 @@ pub mod tests {
         let mut device = MemDevice::zeroed(card_len);
         let last_sector = card_len - SECTOR as usize;
         device.cur.get_mut()[last_sector..last_sector + 8].copy_from_slice(b"EFI PART");
-        flash(&mut device, &mut Cursor::new(image.clone()), &Params { image_len: image.len() as u64, verify: true }, &cloud_init_config(), &mut |_, _, _| {}).expect("flash onto an oversized card");
+        flash(
+            &mut device,
+            &mut Cursor::new(image.clone()),
+            &Params {
+                image_len: image.len() as u64,
+                verify: true,
+            },
+            &cloud_init_config(),
+            &mut |_, _, _| {},
+        )
+        .expect("flash onto an oversized card");
         let written = device.cur.into_inner();
         assert_eq!(written.len(), card_len, "the card must not grow or shrink");
-        assert!(written[card_len - BLOCK..].iter().all(|&b| b == 0), "a previous card's backup GPT must not survive the flash");
+        assert!(
+            written[card_len - BLOCK..].iter().all(|&b| b == 0),
+            "a previous card's backup GPT must not survive the flash"
+        );
     }
 
     #[test]
     fn verify_catches_corruption() {
         let image = build_image();
-        let mut device = FlakyDevice { cur: Cursor::new(vec![0u8; image.len()]), corrupt_at: (PART_START_SECTOR as u64 + 100) * SECTOR, corrupted: false };
-        let err = flash(&mut device, &mut Cursor::new(image.clone()), &Params { image_len: image.len() as u64, verify: true }, &cloud_init_config(), &mut |_, _, _| {}).expect_err("verify must fail on a corrupted card");
+        let mut device = FlakyDevice {
+            cur: Cursor::new(vec![0u8; image.len()]),
+            corrupt_at: (PART_START_SECTOR as u64 + 100) * SECTOR,
+            corrupted: false,
+        };
+        let err = flash(
+            &mut device,
+            &mut Cursor::new(image.clone()),
+            &Params {
+                image_len: image.len() as u64,
+                verify: true,
+            },
+            &cloud_init_config(),
+            &mut |_, _, _| {},
+        )
+        .expect_err("verify must fail on a corrupted card");
         assert!(err.contains("Verification failed"), "got: {err}");
     }
 
@@ -480,10 +685,26 @@ pub mod tests {
         let image = build_image();
         let mut device = MemDevice::zeroed(image.len());
         let mut seen: Vec<(Stage, u64, u64)> = Vec::new();
-        flash(&mut device, &mut Cursor::new(image.clone()), &Params { image_len: image.len() as u64, verify: true }, &cloud_init_config(), &mut |stage, done, total| seen.push((stage, done, total))).expect("flash");
+        flash(
+            &mut device,
+            &mut Cursor::new(image.clone()),
+            &Params {
+                image_len: image.len() as u64,
+                verify: true,
+            },
+            &cloud_init_config(),
+            &mut |stage, done, total| seen.push((stage, done, total)),
+        )
+        .expect("flash");
         let last = |stage: Stage| seen.iter().filter(|(s, _, _)| *s == stage).last().copied();
-        assert_eq!(last(Stage::Write), Some((Stage::Write, image.len() as u64, image.len() as u64)));
-        assert_eq!(last(Stage::Verify), Some((Stage::Verify, image.len() as u64, image.len() as u64)));
+        assert_eq!(
+            last(Stage::Write),
+            Some((Stage::Write, image.len() as u64, image.len() as u64))
+        );
+        assert_eq!(
+            last(Stage::Verify),
+            Some((Stage::Verify, image.len() as u64, image.len() as u64))
+        );
         assert_eq!(last(Stage::Customize), Some((Stage::Customize, 0, 0)));
     }
 
@@ -492,7 +713,15 @@ pub mod tests {
         let size = 4 * ALIGN as usize + 777;
         let mut aligned = AlignedDevice::new(MemDevice::zeroed(size));
         let mut plain = Cursor::new(vec![0u8; size]);
-        let ops: &[(u64, usize, u8)] = &[(0, 10, 0x11), (10, 4096, 0x22), (4090, 20, 0x33), (8192, 4096, 0x44), (8000, 500, 0x55), (12345, 1234, 0x66), (size as u64 - 5, 5, 0x77)];
+        let ops: &[(u64, usize, u8)] = &[
+            (0, 10, 0x11),
+            (10, 4096, 0x22),
+            (4090, 20, 0x33),
+            (8192, 4096, 0x44),
+            (8000, 500, 0x55),
+            (12345, 1234, 0x66),
+            (size as u64 - 5, 5, 0x77),
+        ];
         ops.iter().for_each(|&(off, len, val)| {
             aligned.seek(SeekFrom::Start(off)).unwrap();
             aligned.write_all(&vec![val; len]).unwrap();
@@ -502,19 +731,38 @@ pub mod tests {
         let mut got = vec![0u8; size];
         aligned.seek(SeekFrom::Start(0)).unwrap();
         aligned.read_exact(&mut got).unwrap();
-        assert_eq!(got, plain.into_inner(), "aligned read-back must match plain cursor");
+        assert_eq!(
+            got,
+            plain.into_inner(),
+            "aligned read-back must match plain cursor"
+        );
     }
 
     #[test]
     fn unaligned_reads_match_plain_cursor() {
         let size = 3 * ALIGN as usize + 123;
         let source: Vec<u8> = (0..size).map(|i| (i % 251) as u8).collect();
-        let mut aligned = AlignedDevice::new(MemDevice { cur: Cursor::new(source.clone()) });
-        [(0u64, 1usize), (1, 5), (4095, 2), (4096, 4096), (5000, 3000), (size as u64 - 10, 10)].iter().for_each(|&(off, len)| {
+        let mut aligned = AlignedDevice::new(MemDevice {
+            cur: Cursor::new(source.clone()),
+        });
+        [
+            (0u64, 1usize),
+            (1, 5),
+            (4095, 2),
+            (4096, 4096),
+            (5000, 3000),
+            (size as u64 - 10, 10),
+        ]
+        .iter()
+        .for_each(|&(off, len)| {
             aligned.seek(SeekFrom::Start(off)).unwrap();
             let mut got = vec![0u8; len];
             aligned.read_exact(&mut got).unwrap();
-            assert_eq!(got, &source[off as usize..off as usize + len], "unaligned read at off={off} len={len}");
+            assert_eq!(
+                got,
+                &source[off as usize..off as usize + len],
+                "unaligned read at off={off} len={len}"
+            );
         });
     }
 

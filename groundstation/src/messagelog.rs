@@ -20,7 +20,11 @@ pub struct MessageLog {
 }
 
 pub fn admitted(px4: bool, checks_supported: bool, severity: u8, text: &str) -> Option<String> {
-    let prearm = text.starts_with("PreArm") || (text.get(..9).is_some_and(|head| head.eq_ignore_ascii_case("preflight")) && severity >= SEVERITY_CRITICAL);
+    let prearm = text.starts_with("PreArm")
+        || (text
+            .get(..9)
+            .is_some_and(|head| head.eq_ignore_ascii_case("preflight"))
+            && severity >= SEVERITY_CRITICAL);
     match (px4 && text.ends_with('\t'), prearm && checks_supported) {
         (false, false) => Some(text.strip_prefix('#').unwrap_or(text).to_string()),
         _ => None,
@@ -28,7 +32,10 @@ pub fn admitted(px4: bool, checks_supported: bool, severity: u8, text: &str) -> 
 }
 
 fn escaped(text: &str) -> String {
-    text.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;").replace('"', "&quot;")
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }
 
 pub fn clock_now() -> String {
@@ -43,7 +50,13 @@ impl MessageLog {
     pub fn record_html(&mut self, component: u8, severity: u8, text: String, time: String) {
         let active = *self.active.get_or_insert(component);
         self.multi |= component != active;
-        self.items.push(Logged { component: self.multi.then_some(component), severity, time, text, dismissed: false });
+        self.items.push(Logged {
+            component: self.multi.then_some(component),
+            severity,
+            time,
+            text,
+            dismissed: false,
+        });
     }
 
     pub fn count(&self) -> usize {
@@ -56,7 +69,9 @@ impl MessageLog {
     }
 
     fn unread_items(&self) -> impl Iterator<Item = &Logged> {
-        self.items[self.read_through..].iter().filter(|m| !m.dismissed)
+        self.items[self.read_through..]
+            .iter()
+            .filter(|m| !m.dismissed)
     }
 
     pub fn unread(&self) -> usize {
@@ -64,7 +79,10 @@ impl MessageLog {
     }
 
     pub fn reset_errors(&mut self) {
-        self.items[self.read_through..].iter_mut().filter(|m| kind(m.severity) == Kind::Error).for_each(|m| m.dismissed = true);
+        self.items[self.read_through..]
+            .iter_mut()
+            .filter(|m| kind(m.severity) == Kind::Error)
+            .for_each(|m| m.dismissed = true);
     }
 
     pub fn reset_all(&mut self) {
@@ -92,7 +110,12 @@ impl MessageLog {
                     Kind::Normal => "<#N>",
                 };
                 let component = m.component.map(|c| format!("COMP:{c}")).unwrap_or_default();
-                format!("<font style=\"{style}\">[{} {component}] {}: {}</font><br/>", m.time, severity_label(m.severity), m.text.replace('\n', "<br/>"))
+                format!(
+                    "<font style=\"{style}\">[{} {component}] {}: {}</font><br/>",
+                    m.time,
+                    severity_label(m.severity),
+                    m.text.replace('\n', "<br/>")
+                )
             })
             .collect()
     }
@@ -104,13 +127,32 @@ mod tests {
 
     #[test]
     fn vehicle_drops_px4_event_duplicates_and_prearm_text_a_health_report_supersedes() {
-        assert_eq!(admitted(true, false, 6, "Takeoff detected\t"), None, "PX4 sends event-backed messages twice, the text copy ending in a tab");
-        assert_eq!(admitted(false, false, 6, "Takeoff detected\t").as_deref(), Some("Takeoff detected\t"));
+        assert_eq!(
+            admitted(true, false, 6, "Takeoff detected\t"),
+            None,
+            "PX4 sends event-backed messages twice, the text copy ending in a tab"
+        );
+        assert_eq!(
+            admitted(false, false, 6, "Takeoff detected\t").as_deref(),
+            Some("Takeoff detected\t")
+        );
         assert_eq!(admitted(false, true, 2, "PreArm: RC not calibrated"), None);
         assert_eq!(admitted(true, true, 3, "Preflight Fail: baro"), None);
-        assert_eq!(admitted(true, true, 1, "Preflight Fail: baro").as_deref(), Some("Preflight Fail: baro"), "PX4's preflight rule only covers critical and milder, as Vehicle compares severity >= CRITICAL");
-        assert_eq!(admitted(false, false, 2, "PreArm: RC not calibrated").as_deref(), Some("PreArm: RC not calibrated"), "without a health report the text is the only place the operator learns it");
-        assert_eq!(admitted(false, false, 6, "#Spoken").as_deref(), Some("Spoken"), "a leading # asks to be read aloud and is not part of the message");
+        assert_eq!(
+            admitted(true, true, 1, "Preflight Fail: baro").as_deref(),
+            Some("Preflight Fail: baro"),
+            "PX4's preflight rule only covers critical and milder, as Vehicle compares severity >= CRITICAL"
+        );
+        assert_eq!(
+            admitted(false, false, 2, "PreArm: RC not calibrated").as_deref(),
+            Some("PreArm: RC not calibrated"),
+            "without a health report the text is the only place the operator learns it"
+        );
+        assert_eq!(
+            admitted(false, false, 6, "#Spoken").as_deref(),
+            Some("Spoken"),
+            "a leading # asks to be read aloud and is not part of the message"
+        );
     }
 
     #[test]
@@ -121,7 +163,11 @@ mod tests {
         log.record(1, 3, "b".into(), "t".into());
         assert_eq!((log.unread(), log.unread_type()), (2, "error"));
         log.reset_all();
-        assert_eq!((log.unread(), log.unread_type(), log.count()), (0, "none", 2), "reading keeps the messages and clears only what is new");
+        assert_eq!(
+            (log.unread(), log.unread_type(), log.count()),
+            (0, "none", 2),
+            "reading keeps the messages and clears only what is new"
+        );
         log.record(1, 4, "c".into(), "t".into());
         assert_eq!((log.unread(), log.unread_type()), (1, "warning"));
         log.clear();
@@ -134,9 +180,16 @@ mod tests {
         log.record(1, 3, "error".into(), "t".into());
         log.record(1, 4, "warning".into(), "t".into());
         log.reset_errors();
-        assert_eq!((log.unread(), log.unread_type(), log.count()), (1, "warning", 2));
+        assert_eq!(
+            (log.unread(), log.unread_type(), log.count()),
+            (1, "warning", 2)
+        );
         log.record(1, 2, "critical".into(), "t".into());
-        assert_eq!((log.unread(), log.unread_type()), (2, "error"), "a later error counts again");
+        assert_eq!(
+            (log.unread(), log.unread_type()),
+            (2, "error"),
+            "a later error counts again"
+        );
         log.reset_errors();
         log.reset_all();
         assert_eq!((log.unread(), log.unread_type()), (0, "none"));
@@ -145,7 +198,12 @@ mod tests {
     #[test]
     fn the_log_reads_as_qt_formats_it_newest_first_with_a_component_tag_once_two_speak() {
         let mut log = MessageLog::default();
-        log.record(1, 6, "ArduCopter V4.5 <SITL> & \"x\"".to_string(), "12:00:00.001".to_string());
+        log.record(
+            1,
+            6,
+            "ArduCopter V4.5 <SITL> & \"x\"".to_string(),
+            "12:00:00.001".to_string(),
+        );
         log.record(1, 4, "two\nlines".to_string(), "12:00:01.002".to_string());
         log.record(100, 3, "camera".to_string(), "12:00:02.003".to_string());
         assert_eq!(
