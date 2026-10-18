@@ -8,9 +8,9 @@ use crate::detections::Source;
 use crate::read::flag;
 use crate::router::Backend;
 
-pub const CHANGED: &str = "core.deviceTrack@changed";
+pub const TRACK_CHANGED: &str = "core.deviceTrack@changed";
 const CAMERA: &str = "vehicle.cameraManager.currentCameraInstance";
-const TIMEOUT: Duration = Duration::from_secs(3);
+const TRACK_TIMEOUT: Duration = Duration::from_secs(3);
 const JSON: [(&str, &str); 2] = [("Content-Type", "application/json"), ("Accept", "application/json")];
 
 static ARMED: AtomicBool = AtomicBool::new(false);
@@ -79,12 +79,12 @@ pub fn start(source: &Source, args: &str) -> Value {
         Some(Request::Point { x, y, .. }) => (source.track_url(), json!({ "x": x, "y": y })),
         Some(Request::Rect { x, y, width, height }) => (format!("{}/visual", source.track_url()), json!({ "x": x, "y": y, "w": width, "h": height })),
     };
-    let sent = crate::http::send("PUT", &url, &JSON, Some(body.to_string().as_bytes()), TIMEOUT);
+    let sent = crate::http::send("PUT", &url, &JSON, Some(body.to_string().as_bytes()), TRACK_TIMEOUT);
     answer(sent, |reply| (reply.get("status").and_then(Value::as_str) == Some("no-target")).then_some("Nothing to track there."))
 }
 
 pub fn stop(source: &Source) -> Value {
-    answer(crate::http::send("DELETE", &source.track_url(), &JSON, None, TIMEOUT), |_| None)
+    answer(crate::http::send("DELETE", &source.track_url(), &JSON, None, TRACK_TIMEOUT), |_| None)
 }
 
 pub fn write(value: &str) -> Value {

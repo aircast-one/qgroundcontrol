@@ -570,6 +570,7 @@ mod deps_cover_reads {
             ("corridorscan", include_str!("corridorscan.rs")),
             ("debugapi", include_str!("debugapi.rs")),
             ("detections", include_str!("detections.rs")),
+            ("devicetrack", include_str!("devicetrack.rs")),
             ("factmeta", include_str!("factmeta.rs")),
             ("factwrite", include_str!("factwrite.rs")),
             ("fenceedit", include_str!("fenceedit.rs")),

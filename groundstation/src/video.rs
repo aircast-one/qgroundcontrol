@@ -56,7 +56,7 @@ pub const CAMERA_DEPS: &[&str] = &[
     "vehicle.cameraManager.currentCameraInstance.currentStream",
     "vehicle.cameraManager.currentCamera",
     "vehicle.cameraTriggerPoints.count",
-    crate::devicetrack::CHANGED,
+    crate::devicetrack::TRACK_CHANGED,
 ];
 
 const UNDEFINED_MODE: i64 = -1;

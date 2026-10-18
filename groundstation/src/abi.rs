@@ -344,7 +344,7 @@ pub(crate) fn pump_once() {
             CORE.on_event(crate::synthview::SYNTHETIC_CHANGED, "null").iter().for_each(|(path, json)| announce(path, json));
         }
         if crate::devicetrack::take_changed() {
-            CORE.on_event(crate::devicetrack::CHANGED, "null").iter().for_each(|(path, json)| announce(path, json));
+            CORE.on_event(crate::devicetrack::TRACK_CHANGED, "null").iter().for_each(|(path, json)| announce(path, json));
         }
         crate::adsb::pump(crate::hub::now_ms());
         if !crate::qthost::present() {
