@@ -666,10 +666,13 @@ export const VehicleMap = ({
     if (map !== null) placeMapChrome(map, bottomInsetPx, leftInsetPx, logoEndInsetPx);
   }, [map, bottomInsetPx, leftInsetPx, logoEndInsetPx, pip]);
 
+  const centred = useRef(0);
   useEffect(() => {
-    if (centreRequest === 0) return;
+    const map = style?.map;
+    if (centreRequest === 0 || centreRequest === centred.current || map === undefined) return;
+    centred.current = centreRequest;
     const at = centreOn !== null && isPlottable(centreOn.latitude, centreOn.longitude) ? centreOn : null;
-    if (at === null || map === null) return;
+    if (at === null) return;
     const target: [number, number] = [at.longitude, at.latitude];
     if (centreZoom !== null) {
       map.jumpTo({ center: target, zoom: centreZoom });
@@ -679,14 +682,17 @@ export const VehicleMap = ({
     } else {
       map.easeTo({ center: target, zoom: DEFAULT_ZOOM });
     }
-  }, [centreRequest, map]);
+  }, [centreRequest, style]);
 
   useEffect(() => {
     if (map !== null) setAllGesturesEnabled(map, gestures);
   }, [map, gestures]);
 
+  const fitted = useRef(0);
   useEffect(() => {
-    if (fitRequest === 0 || map === null) return;
+    const map = style?.map;
+    if (fitRequest === 0 || fitRequest === fitted.current || map === undefined) return;
+    fitted.current = fitRequest;
     const bounds = planBounds(fitPoints(fitOnly ?? planPoints(missionItems, fencePolygons, fenceCircles, rallyPoints, surveys), latitude, longitude));
     if (bounds === null) {
       onFitFailed();
@@ -704,7 +710,7 @@ export const VehicleMap = ({
         bottom: FIT_PADDING_PIXELS + bottomInsetPx + Math.trunc((container.current?.clientHeight ?? 0) * fitBottomShare),
       },
     });
-  }, [fitRequest]);
+  }, [fitRequest, style]);
 
   useEffect(() => {
     const loaded = style?.map;
