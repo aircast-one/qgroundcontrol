@@ -799,9 +799,9 @@ impl Joystick {
 
     fn blocking_reason(&self, settings: &Settings) -> Option<&'static str> {
         [
-            (!self.polling.vehicle, BLOCKED_NOT_POLLING),
             (self.polling.configuration, BLOCKED_CONFIGURING),
             (!settings.calibrated, BLOCKED_NOT_CALIBRATED),
+            (!self.polling.vehicle, BLOCKED_NOT_POLLING),
             (!self.missing_functions(settings).is_empty(), BLOCKED_MAPPING_INCOMPLETE),
             (!self.invalid_axes().is_empty(), BLOCKED_INVALID_CALIBRATION),
             (self.sample.is_none(), BLOCKED_NO_SAMPLE),
@@ -1544,8 +1544,10 @@ mod tests {
         assert_eq!(healthy["commanding"], true);
         assert_eq!(healthy["notCommandingReason"], Value::Null);
         let mut configuring = mapped();
-        configuring.set_polling(Polling { vehicle: true, configuration: true }, 0);
-        assert_eq!(configuring.snapshot(&settings, Support::default(), 0)["notCommandingReason"], BLOCKED_CONFIGURING);
+        configuring.set_polling(Polling { vehicle: false, configuration: true }, 0);
+        assert_eq!(configuring.snapshot(&settings, Support::default(), 0)["notCommandingReason"], BLOCKED_CONFIGURING, "the host stops vehicle polling while calibrating, and the reason must still say calibrating");
+        let idle = mapped();
+        assert_eq!(idle.snapshot(&Settings { calibrated: false, ..settings }, Support::default(), 0)["notCommandingReason"], BLOCKED_NOT_CALIBRATED, "an uncalibrated joystick is never polled, and the reason must say why");
     }
 
     #[test]

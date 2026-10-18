@@ -1,7 +1,7 @@
 import type { Page } from '@playwright/test';
 import { expect, openAircraftSetup, openApp, test } from './fixtures';
 import { moveSticks, plugInRadio, type Sticks } from './radio';
-import { SITL_WS, type Sitl, startSitl } from './sitl';
+import { type Sitl, startSitl } from './sitl';
 
 const CENTRE: Sticks = { roll: 0, pitch: 0, throttle: 0, yaw: 0 };
 const IDLE: Sticks = { ...CENTRE, throttle: -1 };
@@ -35,13 +35,18 @@ test.beforeAll(async () => {
 
 test.afterAll(() => sitl.running?.stop());
 
-const channel = (index: number) => () => sitl.running?.heard.rc[index] ?? 0;
+const running = (): Sitl => {
+  if (sitl.running === null) throw new Error('The SITL did not start');
+  return sitl.running;
+};
+
+const channel = (index: number) => () => running().heard.rc[index] ?? 0;
 
 const connectSitl = async (page: Page) => {
   await page.getByRole('button', { name: /How to connect/ }).click();
   await page.getByRole('button', { name: 'Add link…' }).click();
   await page.getByRole('button', { name: /^Network \(WebSocket\)/ }).click();
-  await page.getByRole('textbox', { name: 'WebSocket address' }).fill(SITL_WS);
+  await page.getByRole('textbox', { name: 'WebSocket address' }).fill(running().ws);
   await page.getByRole('button', { name: 'Connect', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Open Setup', exact: true })).toBeVisible({ timeout: 120_000 });
 };

@@ -118,11 +118,25 @@ mod terrarium {
     }
 
     pub async fn tile_later(x: i32, y: i32) -> Result<Tile, String> {
-        let mut images = BTreeMap::new();
-        for tile in needed(x, y) {
-            let png = crate::http::get_later(&address(tile)?, &[], FETCH_TIMEOUT).await;
-            images.insert(tile, decoded(png)?);
-        }
+        use wasm_bindgen::JsValue;
+        let tiles: Vec<(i32, i32)> = needed(x, y).into_iter().collect();
+        let downloads: js_sys::Array = tiles
+            .iter()
+            .map(|tile| {
+                address(*tile).map(|url| {
+                    wasm_bindgen_futures::future_to_promise(async move {
+                        crate::http::get_later(&url, &[], FETCH_TIMEOUT).await.map(|png| JsValue::from(js_sys::Uint8Array::from(png.as_slice()))).map_err(|e| JsValue::from_str(&e))
+                    })
+                })
+            })
+            .collect::<Result<Vec<_>, String>>()?
+            .into_iter()
+            .collect();
+        let pngs = wasm_bindgen_futures::JsFuture::from(js_sys::Promise::all(&downloads))
+            .await
+            .map(|all| js_sys::Array::from(&all))
+            .map_err(|e| format!("The terrain server did not answer: {}", e.as_string().unwrap_or_else(|| format!("{e:?}"))))?;
+        let images: BTreeMap<(i32, i32), image::RgbImage> = tiles.into_iter().zip(pngs.iter()).map(|(tile, png)| decoded(Ok(js_sys::Uint8Array::new(&png).to_vec())).map(|image| (tile, image))).collect::<Result<_, String>>()?;
         Ok(assembled(x, y, &images))
     }
 

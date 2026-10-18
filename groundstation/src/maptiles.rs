@@ -158,14 +158,36 @@ pub fn fetch(provider: &str, x: i32, y: i32, zoom: i32, keys: &Keys, cache: Opti
 #[cfg(target_family = "wasm")]
 thread_local! {
     static WEB_TILES: Option<Cache> = crate::terrainservice::cache_path().and_then(|path| Cache::open(&path).ok()).or_else(|| Cache::open_in_memory().ok());
+    static IN_FLIGHT: std::cell::RefCell<std::collections::HashMap<TileKey, js_sys::Promise>> = std::cell::RefCell::new(std::collections::HashMap::new());
 }
 
 #[cfg(target_family = "wasm")]
 pub async fn fetch_remembered_later(provider: String, x: i32, y: i32, zoom: i32) -> Option<Vec<u8>> {
+    use wasm_bindgen::JsCast;
     let key = (provider.clone(), x, y, zoom);
     if let Some(image) = MEMORY.0.get(&key) {
         return Some(image.to_vec());
     }
+    let shared = IN_FLIGHT.with(|held| {
+        held.borrow_mut()
+            .entry(key.clone())
+            .or_insert_with(|| {
+                let key = key.clone();
+                wasm_bindgen_futures::future_to_promise(async move {
+                    let tile = downloaded_tile(key.0.clone(), key.1, key.2, key.3).await;
+                    IN_FLIGHT.with(|held| held.borrow_mut().remove(&key));
+                    Ok(tile.map_or(wasm_bindgen::JsValue::NULL, |tile| js_sys::Uint8Array::from(tile.as_slice()).into()))
+                })
+            })
+            .clone()
+    });
+    let value = wasm_bindgen_futures::JsFuture::from(shared).await.ok()?;
+    value.dyn_into::<js_sys::Uint8Array>().ok().map(|bytes| bytes.to_vec())
+}
+
+#[cfg(target_family = "wasm")]
+async fn downloaded_tile(provider: String, x: i32, y: i32, zoom: i32) -> Option<Vec<u8>> {
+    let key = (provider.clone(), x, y, zoom);
     let image = match WEB_TILES.with(|cache| plan(&provider, x, y, zoom, &crate::mapurls::keys_from_settings(), cache.as_ref()))? {
         Plan::Cached(image) => image,
         Plan::Download(request) => {

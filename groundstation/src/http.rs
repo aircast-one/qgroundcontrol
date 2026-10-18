@@ -132,9 +132,10 @@ pub fn get(url: &str, headers: &[(&str, &str)], timeout: Duration) -> Result<Vec
 async fn fetch_once(method: &str, url: &str, headers: &[(String, String)], body: Option<&[u8]>, timeout: Duration) -> Result<(u16, Vec<u8>), Failure> {
     use wasm_bindgen::JsCast;
     use wasm_bindgen_futures::JsFuture;
+    let host = url::Url::parse(url).ok().and_then(|parsed| parsed.host_str().map(str::to_string)).unwrap_or_else(|| url.to_string());
     let failed = |error: wasm_bindgen::JsValue| match thrown(&error) {
-        (name, message) if name == "TypeError" => Failure::Unreachable(message),
-        (_, message) => Failure::Refused(message),
+        (name, _) if ["TypeError", "TimeoutError", "AbortError"].contains(&name.as_str()) => Failure::Unreachable(format!("No answer from {host}")),
+        (_, message) => Failure::Refused(format!("{host}: {message}")),
     };
     let sent = web_sys::Headers::new().map_err(failed)?;
     headers.iter().try_for_each(|(name, value)| sent.append(name, value)).map_err(failed)?;
@@ -171,7 +172,7 @@ pub async fn send_later(method: &str, url: &str, headers: &[(String, String)], b
 pub async fn get_later(url: &str, headers: &[(String, String)], timeout: Duration) -> Result<Vec<u8>, String> {
     match send_later("GET", url, headers, None, timeout).await? {
         (status, bytes) if (200..300).contains(&status) => Ok(bytes),
-        (status, _) => Err(format!("http status: {status}")),
+        (status, _) => Err(format!("http status: {status} from {url}")),
     }
 }
 

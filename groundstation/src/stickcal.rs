@@ -492,6 +492,7 @@ impl StickCal {
             "warning": self.warning(),
             "live": { "roll": self.live(Function::Roll), "pitch": self.live(Function::Pitch), "yaw": self.live(Function::Yaw), "throttle": self.live(Function::Throttle) },
             "livePositions": self.live_positions(transmitter_mode),
+            "stickPositions": self.stick_positions(transmitter_mode),
             "nextEnabled": self.next_enabled,
             "cancelEnabled": self.calibrating(),
             "oneSidedVisible": self.one_sided_visible(),

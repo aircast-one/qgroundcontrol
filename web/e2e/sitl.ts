@@ -2,9 +2,8 @@ import { execFileSync } from 'node:child_process';
 import { connect, type Socket } from 'node:net';
 
 const IMAGE = 'ghcr.io/aircast-one/aircast-sitl:v0.0.12-95148b0';
-const NAME = 'qgc-web-e2e-sitl';
-const WS_PORT = 18790;
-const TCP_PORT = 18791;
+const WS_PORT = '8889/tcp';
+const TCP_PORT = '5760/tcp';
 const STX = 0xfd;
 const SIGNED = 0x01;
 const HEARTBEAT = 0;
@@ -12,8 +11,6 @@ const RC_CHANNELS = 65;
 const RC_CHANNELS_LENGTH = 42;
 const VEHICLE = 1;
 const RECONNECT_MS = 500;
-
-export const SITL_WS = `ws://localhost:${WS_PORT}/ws/mavlink`;
 
 type Frame = { message: number; system: number; payload: Buffer };
 
@@ -34,25 +31,20 @@ const channels = (payload: Buffer): number[] => {
   return Array.from({ length: 4 }, (_, index) => full.readUInt16LE(4 + index * 2));
 };
 
-export type Sitl = { heard: { heartbeat: boolean; rc: readonly number[] }; stop: () => void };
+export type Sitl = { ws: string; heard: { heartbeat: boolean; rc: readonly number[] }; stop: () => void };
 
-const docker = (...args: string[]) => execFileSync('docker', args, { stdio: 'pipe' });
+const docker = (...args: string[]) => execFileSync('docker', args, { stdio: 'pipe' }).toString().trim();
 
-const removeContainer = () => {
-  try {
-    docker('rm', '-f', NAME);
-  } catch {
-    return;
-  }
-};
+const publishedPort = (name: string, port: string): number => Number(docker('port', name, port).split('\n')[0]?.split(':').at(-1));
 
 export const startSitl = (): Sitl => {
-  removeContainer();
-  docker('run', '-d', '--rm', '--name', NAME, '-p', `${WS_PORT}:8889`, '-p', `${TCP_PORT}:5760`, IMAGE);
+  const name = `qgc-web-e2e-sitl-${process.pid}-${Date.now()}`;
+  docker('run', '-d', '--rm', '--name', name, '-p', `127.0.0.1::${WS_PORT}`, '-p', `127.0.0.1::${TCP_PORT}`, IMAGE);
+  const tcpPort = publishedPort(name, TCP_PORT);
   const state: { heard: Sitl['heard']; pending: Buffer; socket: Socket | null; stopped: boolean } = { heard: { heartbeat: false, rc: [] }, pending: Buffer.alloc(0), socket: null, stopped: false };
   const open = () => {
     if (state.stopped) return;
-    const socket = connect(TCP_PORT, 'localhost');
+    const socket = connect(tcpPort, '127.0.0.1');
     state.socket = socket;
     socket.on('data', (data: Buffer) => {
       const { rest, found } = frames(Buffer.concat([state.pending, data]));
@@ -69,13 +61,14 @@ export const startSitl = (): Sitl => {
   };
   open();
   return {
+    ws: `ws://127.0.0.1:${publishedPort(name, WS_PORT)}/ws/mavlink`,
     get heard() {
       return state.heard;
     },
     stop: () => {
       state.stopped = true;
       state.socket?.destroy();
-      removeContainer();
+      docker('rm', '-f', name);
     },
   };
 };

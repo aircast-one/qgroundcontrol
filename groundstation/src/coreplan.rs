@@ -231,8 +231,8 @@ fn settle_home_on_terrain(before: Option<(f64, f64)>) {
         return;
     };
     HOME_GROUND_PENDING.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
-    let _ = crate::background::spawn("groundstation-home-ground", move || {
-        if let Ok(ground) = crate::terrainquery::elevation(latitude, longitude, None, &crate::terrainquery::fetch_over_http) {
+    crate::terrainservice::height_then(latitude, longitude, move |ground| {
+        if let Some(ground) = ground {
             let mut state = held();
             if home_of(state.document.as_ref()) == Some((latitude, longitude)) {
                 state.document = state.document.take().map(|d| Document { home: d.home.map(|h| [h[0], h[1], ground]), ..d });

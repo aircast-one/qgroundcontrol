@@ -126,6 +126,24 @@ const NOT_SENDING: Record<string, string> = {
   missingAxisData: 'Not sending: the radio stopped reporting a stick',
 };
 
+const LEAVE_GRACE_MS = 1000;
+
+const shown = { pages: 0 };
+
+const cancelIfLeft = async () => {
+  if (shown.pages > 0) return;
+  if (optBoolean(await Qgc.get(JOYSTICK_VIEW), 'vehicle')) await Qgc.call(JOYSTICK_CALIBRATION, 'cancel');
+};
+
+const useCancelWhenLeft = () =>
+  useEffect(() => {
+    shown.pages += 1;
+    return () => {
+      shown.pages -= 1;
+      setTimeout(() => void cancelIfLeft(), LEAVE_GRACE_MS);
+    };
+  }, []);
+
 export const sendingText = (page: Pick<JoystickPage, 'enabled' | 'commanding' | 'notCommandingReason'>): string | null =>
   !page.enabled ? null : page.commanding ? 'Sending your sticks to the aircraft' : (NOT_SENDING[page.notCommandingReason ?? ''] ?? 'Not sending your sticks to the aircraft');
 
@@ -194,12 +212,7 @@ export const JoystickScreen = ({ className }: { className?: string }) => {
   const [offerEnable, setOfferEnable] = useState<string | null>(null);
 
   useTicker(JOYSTICK_POLL_MS, [], async () => setPage(joystickPage(await Qgc.get(JOYSTICK_VIEW))));
-  useEffect(
-    () => () => {
-      void Qgc.call(JOYSTICK_CALIBRATION, 'cancel');
-    },
-    [],
-  );
+  useCancelWhenLeft();
 
   const act = (path: string, ...args: unknown[]) =>
     void (async () => {
@@ -216,6 +229,7 @@ export const JoystickScreen = ({ className }: { className?: string }) => {
   const additionalAxes = setting('additionalAxesFunction')?.value;
   const viaRc = typeof additionalAxes === 'number' && Math.trunc(additionalAxes) === 1;
   const calibrating = read.calibration.calibrating;
+  const sending = sendingText(read);
   const step = (op: string) =>
     void (async () => {
       const answer = await Qgc.call(JOYSTICK_CALIBRATION, op);
@@ -228,12 +242,12 @@ export const JoystickScreen = ({ className }: { className?: string }) => {
       <div className={`flex w-full flex-col gap-2 overflow-auto px-5 py-3 ${className ?? ''}`}>
         {read.names.length > 1 ? <JoystickPicker page={read} onPick={(it) => act(JOYSTICK_SELECT, it)} /> : null}
         <div className="flex items-center gap-3">
-          <Checkbox checked={read.enabled} enabled={read.vehicle && read.calibrated} onCheckedChange={(it) => act(JOYSTICK_ENABLE, it)} label="Enable" />
+          <Checkbox checked={read.enabled} enabled={read.vehicle && (read.calibrated || read.enabled)} onCheckedChange={(it) => act(JOYSTICK_ENABLE, it)} label="Enable" />
           <Text>Enable</Text>
           {!read.vehicle ? <Text color={md('onSurfaceVariant')}>Not currently available</Text> : null}
         </div>
         <Text color={read.calibrated ? md('onSurface') : md('error')}>{read.calibrated ? `Calibrated · saved in this browser for ${thisSite()}` : 'Calibrate before enabling'}</Text>
-        {sendingText(read) !== null ? <Text color={read.commanding ? md('primary') : md('error')}>{sendingText(read)}</Text> : null}
+        {sending !== null ? <Text color={read.commanding ? md('primary') : md('error')}>{sending}</Text> : null}
         {refusal !== null ? <Text color={md('error')}>{refusal}</Text> : null}
 
         {!read.armed ? (

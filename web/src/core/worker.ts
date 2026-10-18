@@ -81,6 +81,11 @@ const reply = (id: string) => (result: unknown) => scope.postMessage({ id, resul
 
 scope.onmessage = ({ data: { id, call, args } }) => {
   const result = (calls[call] as (...given: unknown[]) => unknown)(...args);
-  return result instanceof Promise ? void result.then(reply(id), () => reply(id)(null)) : reply(id)(result);
+  return result instanceof Promise
+    ? void result.then(reply(id), (reason: unknown) => {
+        console.error(`core call ${call} failed`, reason);
+        reply(id)(null);
+      })
+    : reply(id)(result);
 };
 scope.postMessage({ ready: true });

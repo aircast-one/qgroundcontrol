@@ -118,6 +118,28 @@ pub fn cached_height(latitude: f64, longitude: f64) -> Option<Option<f64>> {
     }
 }
 
+#[cfg(target_family = "wasm")]
+pub fn height_now(latitude: f64, longitude: f64) -> Result<Option<f64>, String> {
+    cached_height(latitude, longitude).ok_or_else(|| "The terrain here is still loading.".to_string())
+}
+
+#[cfg(not(target_family = "wasm"))]
+pub fn height_then(latitude: f64, longitude: f64, done: impl FnOnce(Option<f64>) + Send + 'static) {
+    let _ = crate::background::spawn("groundstation-terrain-height", move || done(height_now(latitude, longitude).ok().flatten()));
+}
+
+#[cfg(target_family = "wasm")]
+pub fn height_then(latitude: f64, longitude: f64, done: impl FnOnce(Option<f64>) + 'static) {
+    wasm_bindgen_futures::spawn_local(async move {
+        let key = crate::terrainquery::tile_xy(latitude, longitude);
+        let fetched = crate::terrainquery::tile_later(key.0, key.1).await;
+        let height = fetched.as_ref().ok().and_then(|tile| tile.elevation(latitude, longitude));
+        stored(key, fetched);
+        done(height);
+    });
+}
+
+#[cfg(not(target_family = "wasm"))]
 pub fn height_now(latitude: f64, longitude: f64) -> Result<Option<f64>, String> {
     let lookup = TABLE.lock().unwrap_or_else(PoisonError::into_inner).lookup(latitude, longitude, crate::hub::now_ms());
     match lookup {
