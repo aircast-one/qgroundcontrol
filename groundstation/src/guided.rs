@@ -91,7 +91,6 @@ pub struct GuidedState {
     pub payload_bays: i64,
     pub empty_bays: Vec<i64>,
     pub payload: crate::payloadcheck::Setup,
-    pub payload_released_ms: Option<i64>,
     pub initial_connect_complete: bool,
     pub in_rtl: bool,
     pub in_land: bool,
@@ -125,9 +124,11 @@ impl GuidedState {
     }
 
     pub fn next_bay(&self) -> Option<i64> {
-        (self.payload_bays > 1)
-            .then(|| (1..=self.payload_bays).find(|bay| !self.empty_bays.contains(bay)))
-            .flatten()
+        (self.payload_bays > 1).then(|| {
+            (1..=self.payload_bays)
+                .find(|bay| !self.empty_bays.contains(bay))
+                .unwrap_or(1)
+        })
     }
 
     pub fn can_resume(&self) -> bool {
@@ -514,10 +515,6 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
             .and_then(|p| p.get("setup"))
             .map(crate::payloadcheck::Setup::from_json)
             .unwrap_or_default(),
-        payload_released_ms: vehicle
-            .get("payloadSetup")
-            .and_then(|p| p.get("releasedAtMs"))
-            .and_then(Value::as_i64),
         initial_connect_complete: flag(&vehicle, "initialConnectComplete"),
         in_rtl: same_mode("rtlFlightMode") || same_mode("smartRTLFlightMode"),
         in_land: same_mode("landFlightMode"),
@@ -944,18 +941,6 @@ pub fn invoke_valued(backend: &dyn Backend, kind: Valued, path: &str, args: &str
         Ok(checked) => checked,
         Err((token, reason)) => return json!({ "ok": false, "refusal": token, "reason": reason }),
     };
-    if let Some(reason) = (offered == [Action::Release])
-        .then(|| {
-            crate::payloadcheck::open_refusal(
-                &state.payload,
-                state.payload_released_ms,
-                crate::hub::wall_ms(),
-            )
-        })
-        .flatten()
-    {
-        return json!({ "ok": false, "refusal": "gripperOpen", "reason": reason });
-    }
     dispatch(
         backend,
         core_action(&offered, &forwarded, &state),
@@ -1856,8 +1841,8 @@ mod tests {
                 ..basket.clone()
             }
             .next_bay(),
-            None,
-            "every bay dropped: nothing left for the deck to drop"
+            Some(1),
+            "every bay counted empty: the pilot may have reloaded, so the deck never runs dry"
         );
         assert_eq!(
             GuidedState {

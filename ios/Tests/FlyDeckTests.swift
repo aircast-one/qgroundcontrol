@@ -23,6 +23,11 @@ final class FlyDeckTests: XCTestCase {
         XCTAssertEqual(primaries(deck), [false, true, false])
     }
 
+    func testAGripperAddsDropToTheFlyingDeckInAnyModeButNotOnTheGround() {
+        XCTAssertEqual(ids(deckIds(["arm", PAUSE, "rtl", "land", RELEASE], true)), [PAUSE, "rtl", "land", RELEASE])
+        XCTAssertEqual(ids(deckIds(["arm", "takeoff", RELEASE], false)), ["takeoff"])
+    }
+
     func testArmedOnTheGroundKeepsTheGroundDeck() {
         let deck = deckIds(["arm", "takeoff"], true)
         XCTAssertEqual(ids(deck), ["takeoff"])

@@ -10,7 +10,7 @@ let SHEET_ACTIONS = [
     "vtolTransitionToMultiRotor", "forceArm",
 ]
 
-private let GRIPPER_RELEASE = 0
+let GRIPPER_RELEASE = 0
 private let GRIPPER_GRAB = 1
 private let GRIPPER_HOLD = 2
 private let LAND_ABORT_CLIMB_METERS = 50.0

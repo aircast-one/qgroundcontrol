@@ -45,7 +45,7 @@ class FlightDeckEntriesTest {
         fun drop(empty: List<Int>, next: Int?) =
             flightDeckEntries(deck(listOf(offer(RELEASE).copy(title = "Drop")), payload = Payload(3, empty, next))).first { it.id == RELEASE }
         assertEquals(listOf("Slide to drop 1", "Slide to drop 2"), listOf(drop(emptyList(), 1).label, drop(listOf(1), 2).label))
-        assertEquals(BAYS_EMPTY to false, drop(listOf(1, 2, 3), null).let { it.label to it.enabled })
+        assertEquals("Slide to drop 1" to true, drop(listOf(1, 2, 3), 1).let { it.label to it.enabled })
     }
 
     @Test

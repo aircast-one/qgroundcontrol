@@ -262,7 +262,15 @@ pub fn problems_json(s: &Setup, bays: i64) -> Value {
         .collect::<Vec<_>>())
 }
 
-pub fn open_refusal(s: &Setup, released_at_ms: Option<i64>, now_ms: i64) -> Option<String> {
+pub fn release_refusal(s: &Setup, released_at_ms: Option<i64>, now_ms: i64) -> Option<String> {
+    [Problem::NeedsReboot, Problem::NoType, Problem::NoOutput]
+        .into_iter()
+        .find(|problem| problem.applies(s, 1))
+        .map(|problem| format!("Nothing would fall. {}", problem.text(s, 1)))
+        .or_else(|| open_refusal(s, released_at_ms, now_ms))
+}
+
+fn open_refusal(s: &Setup, released_at_ms: Option<i64>, now_ms: i64) -> Option<String> {
     let since = released_at_ms?;
     match s.ardupilot && s.enabled {
         false => None,
@@ -502,6 +510,63 @@ mod tests {
                     0
                 )
                 .typed
+        );
+    }
+
+    #[test]
+    fn a_hand_drop_is_refused_only_when_nothing_would_fall() {
+        assert_eq!(release_refusal(&copter(0), None, 0), None);
+        assert!(
+            release_refusal(
+                &Setup {
+                    typed: false,
+                    ..copter(0)
+                },
+                None,
+                0
+            )
+            .is_some_and(
+                |reason| reason.starts_with("Nothing would fall.") && reason.contains("GRIP_TYPE")
+            )
+        );
+        assert!(
+            release_refusal(
+                &Setup {
+                    stale: true,
+                    ..copter(0)
+                },
+                None,
+                0
+            )
+            .is_some_and(|reason| reason.contains("Reboot"))
+        );
+        assert!(
+            release_refusal(
+                &Setup {
+                    output: false,
+                    ..copter(0)
+                },
+                None,
+                0
+            )
+            .is_some_and(|reason| reason.contains("SERVOn_FUNCTION 28"))
+        );
+        assert!(
+            release_refusal(&copter(0), Some(1_000), 60_000)
+                .is_some_and(|reason| reason.starts_with("The gripper is still open")),
+            "a servo gripper left open has nothing more to drop"
+        );
+        assert_eq!(
+            release_refusal(
+                &Setup {
+                    enabled: false,
+                    ..copter(0)
+                },
+                None,
+                0
+            ),
+            None,
+            "without GRIP_ENABLE the drop is not offered at all"
         );
     }
 

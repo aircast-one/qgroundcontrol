@@ -502,7 +502,10 @@ fn guided(id: u8, action: Value) {
             crate::gimbal::ask_to_take_control()
         }
         Err(reason) if reason == crate::gimbal::REASON_OTHERS_HAVE_CONTROL => {}
-        Err(reason) => log::warn!("joystick action {action} was refused: {reason}"),
+        Err(reason) => {
+            log::warn!("joystick action {action} was refused: {reason}");
+            crate::noticeboard::post_from_vehicle(crate::noticeboard::BRIEF, &reason);
+        }
     }
 }
 

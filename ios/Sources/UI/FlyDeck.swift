@@ -188,8 +188,9 @@ private struct DeckPress<Content: View>: View {
 func deckIds(_ shown: Set<String>, _ armed: Bool) -> [(String, Bool)] {
     let flying = armed && (shown.contains("rtl") || shown.contains("land"))
     let ground = [CHECKLIST, shown.contains("takeoff") ? "takeoff" : "arm"]
-    let chosen = (flying ? [PAUSE, "rtl", "land"] : ground).filter { shown.contains($0) }
-    let primary = flying ? (chosen.contains("rtl") ? "rtl" : nil) : chosen.last
+    let flown = (flying ? [PAUSE, "rtl", "land"] : ground).filter { shown.contains($0) }
+    let primary = flying ? (flown.contains("rtl") ? "rtl" : nil) : flown.last
+    let chosen = flying && shown.contains(RELEASE) ? flown + [RELEASE] : flown
     return chosen.map { ($0, $0 == primary) }
 }
 

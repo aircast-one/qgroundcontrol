@@ -987,13 +987,8 @@ internal class FlightDeckContext(
     val payload: Payload = SINGLE_GRIPPER,
 )
 
-internal const val BAYS_EMPTY = "Bays empty"
-
-private fun dropLabel(title: String, payload: Payload): String = when {
-    !payload.multiBay -> holdLabel(title)
-    payload.next == null -> BAYS_EMPTY
-    else -> holdLabel("$title ${payload.next}")
-}
+private fun dropLabel(title: String, payload: Payload): String =
+    holdLabel(payload.next?.takeIf { payload.multiBay }?.let { "$title $it" } ?: title)
 
 internal fun flightDeckEntries(deck: FlightDeckContext): List<DeckEntry> = with(deck) {
     val armAction = offers[if (armed) "disarm" else "arm"]
@@ -1096,7 +1091,7 @@ internal fun flightDeckEntries(deck: FlightDeckContext): List<DeckEntry> = with(
             RELEASE,
             dropLabel(offers[RELEASE]?.title ?: "Drop", payload),
             R.drawable.ic_drop,
-            offers[RELEASE]?.ready == true && (!payload.multiBay || payload.next != null),
+            offers[RELEASE]?.ready == true,
             onHold = {
                 scope.launch { report(withContext(Dispatchers.Default) { VehicleCommands.gripperRefusal(GRIPPER_RELEASE, payload.next ?: 0) }) }
             },
@@ -1109,7 +1104,7 @@ internal fun flightDeckEntries(deck: FlightDeckContext): List<DeckEntry> = with(
                 confirm = offers[RELEASE]?.prompt?.ifBlank { null } ?: "Open the gripper and drop the payload.",
                 destructive = false,
             ) {
-                offMainDetached { VehicleCommands.gripper(GRIPPER_RELEASE, bay) }
+                scope.launch { report(withContext(Dispatchers.Default) { VehicleCommands.gripperRefusal(GRIPPER_RELEASE, bay) }) }
             })
         }.takeIf { offers[RELEASE]?.shown == true },
         DeckEntry(CHECKLIST, "Checklist", R.drawable.ic_check_circle, true) {

@@ -2607,6 +2607,19 @@ impl Vehicle {
             "startMission" => guidedcmd::start_mission(&state, flag("flying")),
             "emergencyStop" => guidedcmd::emergency_stop(),
             "abortLanding" => guidedcmd::abort_landing(number("climbOut")),
+            "gripper" if number("gripAction") == GRIPPER_RELEASE_ACTION => {
+                match crate::payloadcheck::release_refusal(
+                    &self.payload_setup(),
+                    self.gripper_released_ms,
+                    wall_ms(),
+                ) {
+                    Some(reason) => Plan::Refused(reason),
+                    None => guidedcmd::gripper(
+                        number("gripAction"),
+                        action.get("bay").and_then(Value::as_f64).unwrap_or(0.0),
+                    ),
+                }
+            }
             "gripper" => guidedcmd::gripper(
                 number("gripAction"),
                 action.get("bay").and_then(Value::as_f64).unwrap_or(0.0),
@@ -3653,6 +3666,9 @@ impl Vehicle {
             None => self.gripper_released_ms,
         };
         self.empty_bays = match answered.empties() {
+            Some(true) if answered.bay > 0 && self.empty_bays.contains(&answered.bay) => {
+                [answered.bay].into_iter().collect()
+            }
             Some(true) => self
                 .empty_bays
                 .iter()
@@ -6858,6 +6874,7 @@ pub struct LinkKinds {
 
 const SENSOR_REFRESH_DELAY_MS: u64 = 1000;
 const REBOOT_TAG: u64 = 0x5245_424F_4F54;
+const GRIPPER_RELEASE_ACTION: f64 = 0.0;
 const FACTORY_RESET_TAG: u64 = 0x5245_5345_5446;
 const ESP_BRIDGE_TAG: u64 = 0x4553_5042_5247;
 const INSPECTOR_RATE_TAG: u64 = 0x4D53_4749_0000_0000;
@@ -10163,6 +10180,77 @@ mod tests {
         assert!(
             empty(&hub).is_empty(),
             "grabbing a fresh payload loads the bay again"
+        );
+        [(2, 30_000), (3, 40_000), (2, 50_000)]
+            .iter()
+            .for_each(|(bay, at)| {
+                hub.guided(
+                    None,
+                    &json!({ "action": "gripper", "gripAction": 0, "bay": bay }),
+                    *at,
+                )
+                .unwrap();
+                hub.on_frame(
+                    origin(0),
+                    &header,
+                    &ack(MavResult::MAV_RESULT_ACCEPTED),
+                    at + 1,
+                    0,
+                );
+            });
+        assert_eq!(
+            empty(&hub),
+            [2],
+            "dropping a bay already counted empty means the pilot reloaded, so the count starts again from it"
+        );
+    }
+
+    #[test]
+    fn a_drop_the_gripper_cannot_make_is_refused_in_any_mode() {
+        const STABILIZE: u32 = 0;
+        let mut hub = Hub::default();
+        let header = MavHeader {
+            system_id: 1,
+            component_id: 1,
+            sequence: 0,
+        };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(STABILIZE, true), 0, 0);
+        hub.vehicles.get_mut(&1).unwrap().pack_declined = true;
+        [("GRIP_ENABLE", 0, 1.0), ("GRIP_TYPE", 1, 0.0)]
+            .iter()
+            .for_each(|(name, index, value)| {
+                hub.on_frame(
+                    origin(0),
+                    &header,
+                    &param_value(name, 2, *index, *value),
+                    0,
+                    10,
+                );
+            });
+        let drop = |hub: &mut Hub, at| {
+            hub.guided(None, &json!({ "action": "gripper", "gripAction": 0 }), at)
+        };
+        assert!(
+            drop(&mut hub, 20)
+                .is_err_and(|reason| reason.starts_with("Nothing would fall.")
+                    && reason.contains("GRIP_TYPE")),
+            "ArduPilot accepts DO_GRIPPER with no gripper built and moves nothing, so the app would report a drop that never fell"
+        );
+        hub.on_frame(
+            origin(0),
+            &header,
+            &param_value("GRIP_TYPE", 2, 1, 1.0),
+            0,
+            30,
+        );
+        assert!(
+            drop(&mut hub, 40).is_err_and(|reason| reason.contains("Reboot the flight controller")),
+            "a type set since startup is not built until the reboot"
+        );
+        assert!(
+            hub.guided(None, &json!({ "action": "gripper", "gripAction": 1 }), 50)
+                .is_ok(),
+            "a grab moves nothing either, but refusing it would strand a pilot reloading on the ground"
         );
     }
 

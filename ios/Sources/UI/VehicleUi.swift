@@ -486,7 +486,8 @@ struct FlightActions<Center: View>: View {
             openValue: openValue,
             report: { flyScreen.refusal = $0 },
             openChecklist: preflightOffered(preflightJson) ? { checklist.open() } : nil,
-            readiness: readiness
+            readiness: readiness,
+            dropBay: payloadNextBay(actionsJson)
         ))
     }
 
@@ -1111,8 +1112,9 @@ final class FlightDeckContext {
     let report: (String?) -> Void
     let openChecklist: (() -> Void)?
     let readiness: Readiness?
+    let dropBay: Int
 
-    init(offers: [String: GuidedOffer], armed: Bool, scope: ViewScope = ViewScope(), confirm: @escaping (GuidedAction) -> Void, openValue: @escaping (GuidedValueKind) -> Void, report: @escaping (String?) -> Void, openChecklist: (() -> Void)?, readiness: Readiness? = nil) {
+    init(offers: [String: GuidedOffer], armed: Bool, scope: ViewScope = ViewScope(), confirm: @escaping (GuidedAction) -> Void, openValue: @escaping (GuidedValueKind) -> Void, report: @escaping (String?) -> Void, openChecklist: (() -> Void)?, readiness: Readiness? = nil, dropBay: Int = 0) {
         self.offers = offers
         self.armed = armed
         self.scope = scope
@@ -1121,8 +1123,11 @@ final class FlightDeckContext {
         self.report = report
         self.openChecklist = openChecklist
         self.readiness = readiness
+        self.dropBay = dropBay
     }
 }
+
+let RELEASE = "release"
 
 @MainActor
 func flightDeckEntries(_ deck: FlightDeckContext) -> [DeckEntry] {
@@ -1133,6 +1138,10 @@ func flightDeckEntries(_ deck: FlightDeckContext) -> [DeckEntry] {
     let takeoff = offers["takeoff"]
     let rtl = offers["rtl"]
     let land = offers["land"]
+    let release = offers[RELEASE]
+    let dropTitle = release?.title.nonBlank ?? "Drop"
+    let bay = deck.dropBay
+    let drop: () -> Void = { deck.scope.launch { deck.report(await offMain { VehicleCommands.gripperRefusal(GRIPPER_RELEASE, bay: bay) }) } }
     let entries: [DeckEntry?] = [
         armAction?.shown == true ? DeckEntry(id: "arm", label: armTitle, icon: .bolt, enabled: armAction?.ready == true, warning: armed, onClick: {
             deck.confirm(GuidedAction(
@@ -1214,6 +1223,22 @@ func flightDeckEntries(_ deck: FlightDeckContext) -> [DeckEntry] {
         offers["changeAltitude"]?.shown == true ? DeckEntry(id: "changeAltitude", label: "Altitude", icon: .height, enabled: offers["changeAltitude"]?.ready == true, onClick: {
             deck.openValue(altitudeValue(false))
         }) : nil,
+        release?.shown == true ? DeckEntry(
+            id: RELEASE,
+            label: holdLabel(bay > 0 ? "\(dropTitle) \(bay)" : dropTitle),
+            icon: .planDrop,
+            enabled: release?.ready == true,
+            onHold: drop,
+            onClick: {
+                deck.confirm(GuidedAction(
+                    name: bay > 0 ? "\(dropTitle) \(bay)" : dropTitle,
+                    confirm: release?.prompt.nonBlank ?? "Open the gripper and drop the payload.",
+                    destructive: false,
+                    offerId: RELEASE,
+                    run: drop
+                ))
+            }
+        ) : nil,
         deck.openChecklist != nil && checklistOffered(armed) == nil ? DeckEntry(id: CHECKLIST, label: "Checklist", icon: .checkCircle, enabled: true, onClick: {
             deck.openChecklist?()
         }) : nil,

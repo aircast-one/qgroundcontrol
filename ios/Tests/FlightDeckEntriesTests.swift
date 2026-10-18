@@ -11,7 +11,7 @@ final class FlightDeckEntriesTests: XCTestCase {
         var ids: [String] = []
     }
 
-    private func deck(_ offers: [GuidedOffer], armed: Bool = false, openChecklist: (() -> Void)? = nil, opened: Opened = Opened(), readiness: Readiness? = nil) -> FlightDeckContext {
+    private func deck(_ offers: [GuidedOffer], armed: Bool = false, openChecklist: (() -> Void)? = nil, opened: Opened = Opened(), readiness: Readiness? = nil, dropBay: Int = 0) -> FlightDeckContext {
         FlightDeckContext(
             offers: Dictionary(offers.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last }),
             armed: armed,
@@ -19,8 +19,17 @@ final class FlightDeckEntriesTests: XCTestCase {
             openValue: { opened.ids.append($0.offerId) },
             report: { _ in },
             openChecklist: openChecklist,
-            readiness: readiness
+            readiness: readiness,
+            dropBay: dropBay
         )
+    }
+
+    func testAGripperGetsADropOnTheDeckThatLandsOnAHoldAndNamesTheBay() throws {
+        let release = GuidedOffer(id: RELEASE, title: "Drop", offer: "ready", reason: "", prompt: "", destructive: false, carriesValue: false)
+        let single = try XCTUnwrap(flightDeckEntries(deck([release], armed: true)).first { $0.id == RELEASE })
+        XCTAssertEqual(single.label, holdLabel("Drop"))
+        XCTAssertTrue(single.onHold != nil && single.enabled)
+        XCTAssertEqual(flightDeckEntries(deck([release], armed: true, dropBay: 2)).first { $0.id == RELEASE }?.label, holdLabel("Drop 2"))
     }
 
     func testTheDeckShowsTheOffersTheVehicleShowsAndTheChecklistOnlyOnTheGroundWhenOffered() {

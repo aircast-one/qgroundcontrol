@@ -1101,9 +1101,8 @@ export const FlightDeckContext = (fields: Omit<FlightDeckContext, 'readiness' | 
   ...fields,
 });
 
-export const BAYS_EMPTY = 'Bays empty';
 
-const dropLabel = (title: string, payload: Payload): string => (!multiBay(payload) ? holdLabel(title) : payload.next === null ? BAYS_EMPTY : holdLabel(`${title} ${payload.next}`));
+const dropLabel = (title: string, payload: Payload): string => holdLabel(multiBay(payload) && payload.next !== null ? `${title} ${payload.next}` : title);
 
 const promptOr = (offer: GuidedOffer | undefined, fallback: string): string => {
   const prompt = offer?.prompt ?? '';
@@ -1217,7 +1216,7 @@ export const flightDeckEntries = (deck: FlightDeckContext): readonly DeckEntry[]
           id: RELEASE,
           label: dropLabel(release.title, payload),
           icon: 'ic_drop',
-          enabled: release.ready && (!multiBay(payload) || payload.next !== null),
+          enabled: release.ready,
           onHold: () => void VehicleCommands.gripperRefusal(GRIPPER_RELEASE, dropBay).then(report),
           onClick: () =>
             confirm(
@@ -1226,7 +1225,7 @@ export const flightDeckEntries = (deck: FlightDeckContext): readonly DeckEntry[]
                 name: multiBay(payload) ? `${release.title} ${dropBay}` : release.title,
                 confirm: promptOr(release, 'Open the gripper and drop the payload.'),
                 destructive: false,
-                run: () => void VehicleCommands.gripper(GRIPPER_RELEASE, dropBay),
+                run: () => void VehicleCommands.gripperRefusal(GRIPPER_RELEASE, dropBay).then(report),
               }),
             ),
         })

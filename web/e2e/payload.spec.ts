@@ -1,4 +1,4 @@
-import { connectMock, expect, itemCount, openPlanAtVehicle, slideAcross, tapPlanMission, test, vehicleStatus } from './fixtures';
+import { connectMock, expect, flightMode, itemCount, openPlanAtVehicle, slideAcross, takeOff, tapPlanMission, test, vehicleStatus } from './fixtures';
 
 test.describe.configure({ timeout: 180_000 });
 
@@ -60,4 +60,19 @@ test('a waypoint takes a drop from its actions and gives it back', async ({ app:
   await vehicle.getByRole('button', { name: 'Remove Drop payload' }).click();
   await expect.poll(() => itemCount(vehicle), { timeout: 30_000 }).toBe(before);
   await expect(vehicle.getByRole('button', { name: 'Add', exact: true })).toBeVisible();
+});
+
+test('a pilot flying by hand drops from the deck, and a drop that cannot fall says why', async ({ app: vehicle }) => {
+  await connectMock(vehicle, [], 'APM ArduCopter Vehicle');
+  await takeOff(vehicle, '10 m');
+  await expect(vehicle.getByRole('button', { name: 'Slide to land' })).toBeVisible({ timeout: 60_000 });
+  await vehicle.getByRole('button', { name: 'Change flight mode', exact: true }).click();
+  await vehicle.getByRole('menu').getByRole('menuitem', { name: 'Loiter' }).click();
+  await expect(flightMode(vehicle)).toHaveAccessibleName(/^Loiter/);
+  const drop = vehicle.getByRole('button', { name: 'Slide to drop' });
+  await slideAcross(vehicle, drop);
+  await expect(vehicle.getByText('Payload dropped')).toBeVisible({ timeout: 30_000 });
+  await drop.click();
+  await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to drop' }));
+  await expect(vehicle.getByText('The gripper is still open from the last drop, so nothing would fall. Grab first, or turn on auto-close.')).toBeVisible({ timeout: 30_000 });
 });
