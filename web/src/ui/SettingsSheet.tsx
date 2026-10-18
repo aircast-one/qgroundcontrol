@@ -36,6 +36,7 @@ type PagerState = {
   readonly element: RefObject<HTMLDivElement | null>;
   readonly targetPage: number;
   readonly currentPage: () => number;
+  readonly animatingTo: () => number | null;
   readonly animateScrollToPage: (page: number) => void;
   readonly scrollToPage: (page: number) => void;
   readonly onScroll: (onSettled: (page: number) => void) => void;
@@ -56,6 +57,7 @@ const usePagerState = (initialPage: number): PagerState => {
       element,
       targetPage,
       currentPage: nearest,
+      animatingTo: () => animating.current,
       animateScrollToPage: (page) => {
         animating.current = page;
         setTargetPage(page);
@@ -176,7 +178,10 @@ export const SettingsSheet = ({ requested, onClose }: { requested: string | null
   const tabsShown = query === null && !drilled;
   const drilledTitle =
     openPage !== null && query === null && !setupOpen ? (heading?.title ?? pageTitle(openPage)) : query === null && setupOpen ? (heading?.title ?? AIRCRAFT_SETUP) : null;
-  const showTab = (entry: SettingsGroup) => pager.animateScrollToPage(entry.ordinal);
+  const showTab = (entry: SettingsGroup) => {
+    pickTab(entry);
+    pager.animateScrollToPage(entry.ordinal);
+  };
   const contentKey = `${group.name}|${page ?? ''}|${query !== null}|${setupOpen}`;
 
   return (
@@ -331,7 +336,7 @@ const SettingsTabsPager = ({
   const shownGroup = useUpdatedRef(group);
   const settled = useUpdatedRef(onSettled);
   useLayoutEffect(() => {
-    if (pager.currentPage() !== group.ordinal) pager.scrollToPage(group.ordinal);
+    if (pager.currentPage() !== group.ordinal && pager.animatingTo() !== group.ordinal) pager.scrollToPage(group.ordinal);
   }, [group]);
   const land = (page: number) => {
     const landed = groups[page];
