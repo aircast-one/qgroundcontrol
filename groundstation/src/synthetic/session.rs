@@ -67,6 +67,7 @@ pub struct Target {
     pub pitch: f64,
     pub roll: f64,
     pub fov: f64,
+    pub aim: (f64, f64),
     pub imagery: String,
     pub north_speed: f64,
     pub east_speed: f64,
@@ -148,6 +149,10 @@ impl Target {
             pitch: number("pitch")?,
             roll: number("roll")?,
             fov: number("fov")?,
+            aim: match view.get("aimable").and_then(serde_json::Value::as_bool) {
+                Some(true) => (number("pan").unwrap_or(0.0), number("tilt").unwrap_or(0.0)),
+                _ => (0.0, 0.0),
+            },
             imagery: view.get("imagery")?.as_str()?.to_string(),
             north_speed: number("northSpeed")?,
             east_speed: number("eastSpeed")?,
@@ -344,6 +349,7 @@ pub struct Session {
     telemetry_since: Option<(Telemetry, Instant)>,
     shown_touch: Option<Instant>,
     turn: Option<Turn>,
+    aim: (f64, f64),
     spot_since: Option<((f64, f64), Instant)>,
     height_since: Option<(f64, Instant)>,
     attitude_since: Option<((f64, f64, f64), Instant)>,
@@ -593,6 +599,7 @@ impl Session {
             telemetry_since: None,
             shown_touch: None,
             turn: None,
+            aim: (0.0, 0.0),
             spot_since: None,
             height_since: None,
             attitude_since: None,
@@ -889,7 +896,12 @@ impl Session {
         };
         let elapsed = self.ticked.map(|at| now.duration_since(at));
         self.ticked = Some(now);
-        let pose = self.shown.zip(elapsed).map_or(goal, |(shown, elapsed)| toward(advanced(shown, &motion, elapsed), goal, follow(elapsed)));
+        let reaimed = (wrapped(target.aim.0 - self.aim.0), target.aim.1 - self.aim.1);
+        self.aim = target.aim;
+        let pose = self.shown.zip(elapsed).map_or(goal, |(shown, elapsed)| {
+            let aimed = Pose { heading: shown.heading + reaimed.0, pitch: shown.pitch + reaimed.1, ..shown };
+            toward(advanced(aimed, &motion, elapsed), goal, follow(elapsed))
+        });
         let moving = self.shown.is_none_or(|before| !settled(&before, &pose));
         self.spin = spun(self.spin, self.shown.zip(elapsed).map(|(before, elapsed)| spin_of(&before, &pose, elapsed)));
         self.shown = Some(pose);
@@ -934,7 +946,7 @@ mod tests {
     }
 
     fn target(imagery: &str) -> Target {
-        Target { latitude: -35.36213, longitude: 149.16514, above_home: 30.0, home_latitude: -35.363262, home_longitude: 149.165237, heading: 200.0, pitch: -15.0, roll: 0.0, fov: 70.0, imagery: imagery.to_string(), north_speed: 0.0, east_speed: 0.0, climb_speed: 0.0, heading_rate: Some(0.0), pitch_rate: Some(0.0), roll_rate: 0.0, response: Response::default(), round_trip: None }
+        Target { latitude: -35.36213, longitude: 149.16514, above_home: 30.0, home_latitude: -35.363262, home_longitude: 149.165237, heading: 200.0, pitch: -15.0, roll: 0.0, fov: 70.0, aim: (0.0, 0.0), imagery: imagery.to_string(), north_speed: 0.0, east_speed: 0.0, climb_speed: 0.0, heading_rate: Some(0.0), pitch_rate: Some(0.0), roll_rate: 0.0, response: Response::default(), round_trip: None }
     }
 
     fn settle(session: &mut Session, target: &Target, start: Instant) -> Option<Frame> {
@@ -1179,6 +1191,21 @@ mod tests {
         let start = Instant::now();
         let frames: Vec<Frame> = (0..20).map(|tick| session.frame(Some(&flying), &[], 640, 360, start + Duration::from_millis(tick * 16)).expect("a frame")).collect();
         assert!(frames.windows(2).all(|pair| pair[1].pose.latitude > pair[0].pose.latitude && pair[1].changed), "one reading at 10 m/s keeps every frame moving north instead of settling on the reading");
+    }
+
+    #[test]
+    fn the_pilots_own_aim_is_drawn_at_once_while_telemetry_is_still_eased_in() {
+        let mut session = Session::new("", Arc::new(Fake)).expect("workers");
+        let start = Instant::now();
+        let at = |ms: u64| start + Duration::from_millis(ms);
+        let still = target("Bing Satellite");
+        session.frame(Some(&still), &[], 640, 360, at(0)).expect("a frame");
+        let dragged = Target { heading: still.heading + 30.0, pitch: still.pitch - 10.0, aim: (30.0, -10.0), ..still.clone() };
+        let pose = session.frame(Some(&dragged), &[], 640, 360, at(20)).expect("a frame").pose;
+        assert!(wrapped(pose.heading - dragged.heading).abs() < 1e-6 && (pose.pitch - dragged.pitch).abs() < 1e-6, "a drag turns the view the whole way in the next frame ({}, {})", pose.heading, pose.pitch);
+        let turned = Target { heading: dragged.heading + 30.0, ..dragged.clone() };
+        let pose = session.frame(Some(&turned), &[], 640, 360, at(40)).expect("a frame").pose;
+        assert!(wrapped(turned.heading - pose.heading) > 1.0, "the drone's own turn is still eased in ({})", pose.heading);
     }
 
     #[test]
