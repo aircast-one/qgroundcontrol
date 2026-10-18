@@ -17,7 +17,7 @@ import { CameraStatusDot, showCamera, useShownSecondCamera } from '@/ui/CameraSw
 import { DetectionOverlay } from '@/ui/DetectionOverlay';
 import { Rect, activate, useElementSize } from '@/ui/FlyShell';
 import { useHasVehicle } from '@/ui/FlyState';
-import { GimbalScreenControl } from '@/ui/GimbalIndicator';
+import { GimbalModeSwitch, GimbalScreenControl } from '@/ui/GimbalIndicator';
 import { LocalNoVideoSize, NoVideoPanel, NoVideoSize } from '@/ui/NoVideoPanel';
 import { osdShadow } from '@/ui/Osd';
 import { ProximityRadarOverlay } from '@/ui/ProximityRadar';
@@ -264,6 +264,7 @@ const MainPane = ({
           </>
         ) : null}
       </div>
+      {expanded && decoding ? <GimbalModeSwitch className="absolute end-2 bottom-2" /> : null}
       {!decoding && synthetic && !expanded ? (
         <SyntheticThumb className="absolute inset-0" />
       ) : !decoding && synthetic ? (

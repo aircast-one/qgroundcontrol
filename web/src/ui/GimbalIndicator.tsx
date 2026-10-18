@@ -7,7 +7,8 @@ import { useLaunchedEffect } from '@/kotlin/Compose';
 import { mutableStateOf, useValue } from '@/kotlin/State';
 import { AlertDialog, Button, FilterChip, OutlinedButton, Text, TextButton } from '@/m3';
 import { AircastSheet } from '@/map/AircastSheet';
-import { md } from '@/theme/Colors';
+import { MaterialIcon } from '@/res/Icon';
+import { Color, md, withAlpha } from '@/theme/Colors';
 import { JOYSTICK_VIEW } from '@/ui/JoystickScreen';
 import { APPROXIMATE_AIM, LENS_VIEW, lensReading } from '@/ui/Lens';
 import { FactRow, type SettingsBlock, type SettingsSectionRows, sentenceCase, settingsPagePath, settingsSections } from '@/ui/SettingsScreen';
@@ -245,36 +246,72 @@ export type VideoGimbalMode = 'drag' | 'point' | 'hold';
 const ON_SCREEN_SETTING = 'settings.gimbalControllerSettings.enableOnScreenControl';
 const CLICK_AND_DRAG_SETTING = 'settings.gimbalControllerSettings.clickAndDrag';
 
-export const VIDEO_GIMBAL_MODES: readonly { mode: VideoGimbalMode; label: string; hint: string; onScreen: boolean; clickAndDrag: boolean }[] = [
-  { mode: 'drag', label: 'Drag to move', hint: 'The camera follows your drag on the video.', onScreen: false, clickAndDrag: false },
-  { mode: 'point', label: 'Tap to point', hint: 'The camera turns to where you tap on the video.', onScreen: true, clickAndDrag: false },
-  { mode: 'hold', label: 'Hold and drag', hint: 'Press, then drag away from that spot; the further you drag, the faster the camera turns.', onScreen: true, clickAndDrag: true },
+type VideoGimbalModeChoice = { mode: VideoGimbalMode; label: string; icon: string; hint: string; onScreen: boolean; clickAndDrag: boolean };
+
+export const VIDEO_GIMBAL_MODES: readonly VideoGimbalModeChoice[] = [
+  { mode: 'drag', label: 'Drag to move', icon: 'pan_tool', hint: 'The camera follows your drag on the video.', onScreen: false, clickAndDrag: false },
+  { mode: 'point', label: 'Tap to point', icon: 'ads_click', hint: 'The camera turns to where you tap on the video.', onScreen: true, clickAndDrag: false },
+  { mode: 'hold', label: 'Hold and drag', icon: 'joystick', hint: 'Press, then drag away from that spot; the further you drag, the faster the camera turns.', onScreen: true, clickAndDrag: true },
 ];
 
 export const videoGimbalMode = (control: OnScreenGimbal): VideoGimbalMode => (!control.enabled ? 'drag' : control.clickAndDrag ? 'hold' : 'point');
+
+const modeChoice = (mode: VideoGimbalMode): VideoGimbalModeChoice => VIDEO_GIMBAL_MODES.find((it) => it.mode === mode)!;
+
+export const nextVideoGimbalMode = (mode: VideoGimbalMode): VideoGimbalMode => VIDEO_GIMBAL_MODES[(VIDEO_GIMBAL_MODES.indexOf(modeChoice(mode)) + 1) % VIDEO_GIMBAL_MODES.length]!.mode;
+
+const chooseVideoGimbalMode = (mode: VideoGimbalMode) =>
+  void (async () => {
+    const choice = modeChoice(mode);
+    await Qgc.set(ON_SCREEN_SETTING, choice.onScreen);
+    await Qgc.set(CLICK_AND_DRAG_SETTING, choice.clickAndDrag);
+  })();
 
 export const GimbalVideoMode = () => {
   const view = useQgcPath(GIMBAL_INDICATOR_PATH);
   const control = useMemo(() => onScreenGimbal(view), [view]);
   if (control === null) return null;
   const current = videoGimbalMode(control);
-  const choose = (mode: (typeof VIDEO_GIMBAL_MODES)[number]) =>
-    void (async () => {
-      await Qgc.set(ON_SCREEN_SETTING, mode.onScreen);
-      await Qgc.set(CLICK_AND_DRAG_SETTING, mode.clickAndDrag);
-    })();
   return (
     <div className="flex flex-col gap-1">
       <Text typography="titleSmall">On the video</Text>
       <div className="flex flex-wrap gap-2">
         {VIDEO_GIMBAL_MODES.map((mode) => (
-          <FilterChip key={mode.mode} selected={current === mode.mode} onClick={() => choose(mode)} label={mode.label} />
+          <FilterChip key={mode.mode} selected={current === mode.mode} onClick={() => chooseVideoGimbalMode(mode.mode)} label={mode.label} />
         ))}
       </div>
       <Text typography="bodySmall" color={md('onSurfaceVariant')}>
-        {VIDEO_GIMBAL_MODES.find((mode) => mode.mode === current)?.hint}
+        {modeChoice(current).hint}
       </Text>
     </div>
+  );
+};
+
+export const GimbalModeSwitch = ({ className }: { className?: string }) => {
+  const view = useQgcPath(GIMBAL_INDICATOR_PATH);
+  const control = useMemo(() => onScreenGimbal(view), [view]);
+  if (control === null) return null;
+  const current = modeChoice(videoGimbalMode(control));
+  const next = modeChoice(nextVideoGimbalMode(current.mode));
+  return (
+    <button
+      type="button"
+      aria-label={`Video gimbal mode, ${current.label}`}
+      aria-description={`Switch to ${next.label}`}
+      title={current.hint}
+      onPointerDown={(event) => event.stopPropagation()}
+      onClick={(event) => {
+        event.stopPropagation();
+        chooseVideoGimbalMode(next.mode);
+      }}
+      className={`flex items-center gap-1.5 rounded-full py-1.5 ps-2 pe-3 ${className ?? ''}`}
+      style={{ background: withAlpha(Color.Black, 0.6), color: Color.White }}
+    >
+      <MaterialIcon name={current.icon} filled size={18} />
+      <Text typography="labelMedium" color={Color.White}>
+        {current.label}
+      </Text>
+    </button>
   );
 };
 

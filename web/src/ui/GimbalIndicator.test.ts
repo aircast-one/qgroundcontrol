@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { parseJson } from '@/bridge/Json';
 import { makeFact } from '@/bridge/Qgc';
 import type { SettingsSectionRows } from './SettingsScreen';
-import { aimFraction, gimbalAsksForControl, gimbalCellText, gimbalIndicator, gimbalRefusal, gimbalSettingsBlocks, joystickButtonsAvailable, onScreenGimbal, screenFraction, serialAsks, VIDEO_GIMBAL_MODES, videoGimbalMode } from './GimbalIndicator';
+import { aimFraction, gimbalAsksForControl, gimbalCellText, gimbalIndicator, gimbalRefusal, gimbalSettingsBlocks, joystickButtonsAvailable, onScreenGimbal, screenFraction, nextVideoGimbalMode, serialAsks, VIDEO_GIMBAL_MODES, videoGimbalMode } from './GimbalIndicator';
 
 describe('GimbalIndicatorTest', () => {
   it('the cell reads status, pitch and yaw as the toolbar does', () => {
@@ -104,5 +104,9 @@ describe('GimbalTakeControlTest', () => {
     expect(VIDEO_GIMBAL_MODES.map((mode) => videoGimbalMode({ enabled: mode.onScreen, clickAndDrag: mode.clickAndDrag }))).toEqual(VIDEO_GIMBAL_MODES.map((mode) => mode.mode));
     expect(videoGimbalMode({ enabled: false, clickAndDrag: true })).toBe('drag');
     expect(VIDEO_GIMBAL_MODES.map((mode) => mode.label)).toEqual(['Drag to move', 'Tap to point', 'Hold and drag']);
+  });
+
+  it('the switch on the video steps through every mode and back to the first', () => {
+    expect(VIDEO_GIMBAL_MODES.map((mode) => nextVideoGimbalMode(mode.mode))).toEqual(['point', 'hold', 'drag']);
   });
 });

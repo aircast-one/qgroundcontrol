@@ -119,6 +119,25 @@ test('the gimbal sheet chooses what a drag on the video does and opens every gim
   await expect(app.getByText('Show gimbal azimuth indicator in map')).toBeVisible();
 });
 
+test('the switch on the video steps through every way a drag steers the gimbal', async ({ app }) => {
+  await addVideoSource(app, /^WebRTC \(WHEP\)/, WHEP_STREAM);
+  await connectMock(app, ['Enable gimbal']);
+  const video = app.locator('video').first();
+  await expect.poll(() => video.evaluate((element: HTMLVideoElement) => element.videoWidth), { timeout: 30_000 }).toBe(640);
+  const later = app.getByRole('button', { name: 'Fly now, finish loading in background' });
+  if (await later.isVisible()) await later.click();
+  await expect(later).toBeHidden();
+  const mode = app.getByRole('button', { name: /^Video gimbal mode/ });
+  await expect(mode).toHaveAccessibleName('Video gimbal mode, Tap to point');
+  await mode.click();
+  await expect(mode).toHaveAccessibleName('Video gimbal mode, Hold and drag');
+  await mode.click();
+  await expect(mode).toHaveAccessibleName('Video gimbal mode, Drag to move');
+  await app.getByRole('button', { name: /^Cameras, showing/ }).click();
+  await app.getByRole('menuitem', { name: 'Gimbal settings' }).click();
+  await expect(app.getByRole('button', { name: 'Drag to move' })).toHaveAttribute('aria-pressed', 'true');
+});
+
 test('a tap on the live picture turns the gimbal along the ray through that point of the lens', async ({ app }) => {
   await addVideoSource(app, /^WebRTC \(WHEP\)/, WHEP_STREAM);
   await connectMock(app, ['Enable gimbal']);

@@ -79,9 +79,9 @@ const capture = (element: Element | null, pointer: number) => {
 
 const INTERACTIVE = 'button, a, input, textarea, select, [role=button], [role=slider], [role=switch], [role=tab], [data-gesture]';
 
-const consumedBelow = (event: PointerEvent<HTMLElement>): boolean => {
+const onControl = (event: PointerEvent<HTMLElement>): boolean => {
   const hit = event.target instanceof Element ? event.target.closest(INTERACTIVE) : null;
-  return event.defaultPrevented || (hit !== null && hit !== event.currentTarget && event.currentTarget.contains(hit));
+  return hit !== null && hit !== event.currentTarget && event.currentTarget.contains(hit);
 };
 
 type Phase = 'idle' | 'ignored' | 'pressing' | 'swiping' | 'holding' | 'waiting' | 'again';
@@ -112,6 +112,10 @@ export const videoGestures = (handlers: VideoGestureHandlers, pass: 'Initial' | 
     capture(state.element, state.pointer);
   };
   const down = (event: PointerEvent<HTMLElement>) => {
+    if (onControl(event)) {
+      state.swallow = false;
+      return;
+    }
     if (event.isPrimary && state.phase !== 'waiting') {
       stopTimer();
       state.pressed = new Set();
@@ -133,7 +137,7 @@ export const videoGestures = (handlers: VideoGestureHandlers, pass: 'Initial' | 
     }
     if (state.phase !== 'idle') return;
     state.swallow = false;
-    if (pass === 'Main' ? consumedBelow(event) : event.defaultPrevented) {
+    if (event.defaultPrevented) {
       state.phase = 'ignored';
       return;
     }
