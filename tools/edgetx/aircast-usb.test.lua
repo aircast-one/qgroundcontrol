@@ -3,7 +3,7 @@ local here = arg[0]:match("(.*/)") or "./"
 local function radio(screen)
   local sent, drawn = {}, {}
   local env = setmetatable({
-    SMLSIZE = 0, MIDSIZE = 0, COLOR_THEME_PRIMARY1 = 0, COLOR_THEME_WARNING = 0,
+    SMLSIZE = 0, MIDSIZE = 0, INVERS = 0,
     LCD_W = screen.w, LCD_H = screen.h,
     getOutputValue = function(index) return ({ [0] = -1024, [1] = 1024, [3] = -512, [10] = -1024, [17] = 1024 })[index] or 0 end,
     getValue = function() return 8.3 end,
@@ -48,6 +48,8 @@ for _, screen in ipairs({ { w = 480, h = 272 }, { w = 480, h = 320, lvgl = true 
   assert(not shown(drawn, "R2D2 USB-VCP") and not shown(drawn, "TEST VERSION"))
   if screen.w == 480 then
     assert(shown(drawn, "Aircast USB") and shown(drawn, "Keep open while flying"), "a colour screen says to keep the script open")
+  else
+    assert(shown(drawn, "AIRCAST"))
   end
 end
 

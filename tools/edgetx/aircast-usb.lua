@@ -50,14 +50,22 @@ local function pwm(i)
   return (channelValues[i] // 2) + 1500
 end
 
+local function brand()
+  return {
+    background = lcd.RGB(0x0D, 0x0E, 0x11),
+    foreground = lcd.RGB(0xFA, 0xFA, 0xFA),
+    muted = lcd.RGB(0xD2, 0xD4, 0xD8),
+    primary = lcd.RGB(0x00, 0x88, 0xF2),
+    warning = lcd.RGB(0xF4, 0xA4, 0x37),
+  }
+end
+
 local function drawSmall()
   lcd.clear()
-  lcd.drawText(0, 0, modelInfo.name, SMLSIZE)
-  lcd.drawText(56, 1, "USB", SMLSIZE)
+  lcd.drawText(0, 0, "AIRCAST", SMLSIZE + INVERS)
+  lcd.drawText(40, 0, string.sub(modelInfo.name, 1, 8), SMLSIZE)
   lcd.drawText(84, 0, string.format("Batt: %1.1fV", battVolt), SMLSIZE)
-
   lcd.drawFilledRectangle(0, 7, 128, 1)
-  lcd.drawFilledRectangle(53, 0, 22, 7)
 
   for i = 1, CHANNEL_COUNT do
     local x = ((i - 1) // 8) * 42
@@ -71,28 +79,28 @@ local function drawSmall()
 end
 
 local function drawLarge()
-  local front = lcd.RGB(255, 255, 255)
-  local fTitle = MIDSIZE + front
-  local fSmall = SMLSIZE + front
+  local color = brand()
+  local fSmall = SMLSIZE + color.foreground
 
-  lcd.clear(lcd.RGB(0, 0, 0))
-  lcd.drawText(10, 10, "Aircast USB", fTitle)
-  lcd.drawText(240, 10, modelInfo.name, fTitle)
-  lcd.drawText(240, 240, KEEP_OPEN, MIDSIZE + lcd.RGB(255, 165, 0))
-  lcd.drawText(10, 240, string.format("RC BATTERY: %.2fV", battVolt), fTitle)
+  lcd.clear(color.background)
+  lcd.drawText(10, 10, "Aircast USB", MIDSIZE + color.primary)
+  lcd.drawText(240, 10, modelInfo.name, MIDSIZE + color.foreground)
+  lcd.drawText(240, 240, KEEP_OPEN, MIDSIZE + color.warning)
+  lcd.drawText(10, 240, string.format("RC BATTERY: %.2fV", battVolt), MIDSIZE + color.foreground)
 
   for i = 1, CHANNEL_COUNT do
     local colBase = (i <= 12) and 10 or 240
     local row = (i <= 12) and i or (i - 12)
     local y = 30 + row * 16
     lcd.drawText(colBase, y, string.format("CH%02d:%04d", i, pwm(i)), fSmall)
-    lcd.drawFilledRectangle(colBase, y + 14, (channelValues[i] + 1024 + 34) // 34, 2, front)
-    lcd.drawText(colBase + 80, y, mixesInfo[i].src, fSmall)
-    lcd.drawText(colBase + 140, y, mixesInfo[i].name, fSmall)
+    lcd.drawFilledRectangle(colBase, y + 14, (channelValues[i] + 1024 + 34) // 34, 2, color.primary)
+    lcd.drawText(colBase + 80, y, mixesInfo[i].src, SMLSIZE + color.muted)
+    lcd.drawText(colBase + 140, y, mixesInfo[i].name, SMLSIZE + color.muted)
   end
 end
 
 local function buildLvglUI()
+  local color = brand()
   local pg = lvgl.page({
     title = "Aircast USB",
     subtitle = modelInfo.name,
@@ -102,7 +110,7 @@ local function buildLvglUI()
   pg:label({ x = 0, y = 0, font = MIDSIZE,
     text = function() return string.format("Batt: %.1fV", battVolt) end,
   })
-  pg:label({ x = 230, y = 0, font = MIDSIZE, color = COLOR_THEME_WARNING, text = KEEP_OPEN })
+  pg:label({ x = 230, y = 0, font = MIDSIZE, color = color.warning, text = KEEP_OPEN })
 
   for i = 1, CHANNEL_COUNT do
     local colBase = (i <= 12) and 0 or 230
@@ -114,7 +122,7 @@ local function buildLvglUI()
     })
 
     pg:rectangle({ x = colBase, y = yOfs + 14, w = BAR_MAX_W, h = 3, filled = true,
-      color = COLOR_THEME_PRIMARY1,
+      color = color.primary,
       size = function()
         local w = (channelValues[i] + 1024) * BAR_MAX_W // 2048
         if w < 1 then w = 1 elseif w > BAR_MAX_W then w = BAR_MAX_W end
