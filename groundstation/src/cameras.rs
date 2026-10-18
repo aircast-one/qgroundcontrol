@@ -286,8 +286,7 @@ fn synthetic_here() -> bool {
 
 fn adopted(cameras: &[Camera], host: &str, device: Vec<Camera>, synthetic_here: bool) -> (Vec<Camera>, i64) {
     let kept = cameras.iter().filter(|camera| url_host(&camera.url) != host).count();
-    let first_visit = kept == cameras.len() && !device.is_empty();
-    let fallback = (first_visit && synthetic_here && !cameras.iter().any(|camera| camera.source == SOURCE_SYNTHETIC)).then(|| Camera::new(SYNTHETIC_NAME, SOURCE_SYNTHETIC, ""));
+    let fallback = (synthetic_here && !cameras.iter().any(|camera| camera.source == SOURCE_SYNTHETIC)).then(|| Camera::new(SYNTHETIC_NAME, SOURCE_SYNTHETIC, ""));
     let next: Vec<Camera> = with_device(cameras, host, device).into_iter().chain(fallback).collect();
     let at = if next.len() > kept { kept as i64 } else { 0 };
     (next, at)
@@ -616,12 +615,13 @@ mod tests {
     }
 
     #[test]
-    fn the_first_visit_to_a_device_also_brings_the_synthetic_view_once() {
+    fn a_device_page_always_carries_the_synthetic_view() {
         let siyi = || vec![cam("siyi", SOURCE_WEBRTC, "http://192.168.1.100:8889/siyi/whep")];
         let synthetic = cam(SYNTHETIC_NAME, SOURCE_SYNTHETIC, "");
         let (first, active) = adopted(&[], "192.168.1.100", siyi(), true);
         assert_eq!((first.clone(), active), ([siyi(), vec![synthetic.clone()]].concat(), 0), "the device's camera goes on screen and the synthetic view waits beside it");
-        assert_eq!(adopted(&first[..1], "192.168.1.100", siyi(), true).0, siyi(), "removed later, it stays removed");
+        assert_eq!(adopted(&first[..1], "192.168.1.100", siyi(), true), (first.clone(), 0), "a device seen before the synthetic view was offered gets it too");
+        assert_eq!(adopted(&[], "192.168.1.100", vec![], true).0, vec![synthetic.clone()], "a device with no camera still has the synthetic view");
         assert_eq!(adopted(&[synthetic.clone()], "192.168.1.100", siyi(), true).0, [vec![synthetic], siyi()].concat(), "one is enough");
         assert_eq!(adopted(&[], "192.168.1.100", siyi(), false).0, siyi(), "where it cannot be drawn it is not offered");
     }
