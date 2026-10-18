@@ -334,10 +334,18 @@ pub fn stored() -> Option<Vec<Camera>> {
     listed().0
 }
 
-pub fn active_tilt(backend: &dyn Backend) -> Option<f64> {
+fn active_camera(backend: &dyn Backend) -> Option<Camera> {
     let (cameras, stored_active) = listed();
     let active = crate::read::integer(&backend.value_fields("video", "activeVideoSource"), "activeVideoSource").unwrap_or(stored_active);
-    cameras?.get(usize::try_from(active).ok()?)?.tilt
+    cameras?.into_iter().nth(usize::try_from(active).ok()?)
+}
+
+pub fn active_tilt(backend: &dyn Backend) -> Option<f64> {
+    active_camera(backend)?.tilt
+}
+
+pub fn synthetic_picked(backend: &dyn Backend) -> bool {
+    active_camera(backend).is_some_and(|camera| camera.source == SOURCE_SYNTHETIC)
 }
 
 pub fn edit<T>(backend: Option<&dyn Backend>, change: impl FnOnce(&[Camera], i64) -> (Option<(Vec<Camera>, i64)>, T)) -> Option<T> {

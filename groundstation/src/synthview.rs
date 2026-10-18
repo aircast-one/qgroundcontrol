@@ -18,6 +18,9 @@ pub const DEPS: &[&str] = &[
     "vehicle.customMode",
     "settings.flightMapSettings.mapProvider",
     crate::gimbal::GIMBAL_CHANGED,
+    crate::cameras::CAMERAS_PATH,
+    crate::cameras::ACTIVE_PATH,
+    "video.activeVideoSource",
     SYNTHETIC_CHANGED,
 ];
 
@@ -309,7 +312,11 @@ pub fn overlays_view(backend: &dyn Backend, _args: &[String]) -> Value {
 }
 
 pub fn synthetic_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    synthetic(backend, &crate::gimbal::gimbal_view(backend, &[]), aimed())
+    let gimbals = match crate::cameras::synthetic_picked(backend) {
+        true => json!({ "gimbals": [] }),
+        false => crate::gimbal::gimbal_view(backend, &[]),
+    };
+    synthetic(backend, &gimbals, aimed())
 }
 
 #[cfg(test)]
