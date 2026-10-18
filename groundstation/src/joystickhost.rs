@@ -19,6 +19,7 @@ pub const SET_SETTING: &str = "joystick.setting";
 pub const CALIBRATION: &str = "joystick.calibration";
 pub const BUTTON_ACTION: &str = "joystick.buttonAction";
 pub const BUTTON_REPEAT: &str = "joystick.buttonRepeat";
+pub const BUILT_IN_STICKS: &str = "joystick.builtInSticks";
 const BUTTON_GROUP: &str = "JoystickButtonActionSettingsArray";
 const STEP_THROTTLE_MS: u64 = 40;
 const CAMERA_CHANGE_THROTTLE_MS: u64 = 1000;
@@ -230,6 +231,8 @@ impl DeviceDetails {
 #[derive(Default)]
 struct Host {
     devices: Vec<Device>,
+    head_devices: Vec<Device>,
+    core_device: Option<Device>,
     joysticks: BTreeMap<String, Joystick>,
     calibration: Option<(String, StickCal)>,
     setup_state: Option<(Option<String>, bool)>,
@@ -574,11 +577,28 @@ fn devices(text: &str) -> Value {
             Some(Device { name: d["name"].as_str().filter(|n| !n.is_empty())?.to_string(), axes: count("axes")?, buttons: count("buttons")?, hats: count("hats").unwrap_or(0), gamepad: d["gamepad"].as_bool().unwrap_or(false), details: DeviceDetails::from_json(d) })
         })
         .collect();
-    let broken: Vec<String> = {
+    host().head_devices = parsed;
+    apply_devices();
+    json!({ "ok": true })
+}
+
+pub fn set_core_device(device: Option<Device>) {
+    host().core_device = device;
+    apply_devices();
+}
+
+fn apply_devices() {
+    let parsed: Vec<Device> = {
+        let host = host();
+        host.head_devices.iter().cloned().chain(host.core_device.clone()).collect()
+    };
+    let now_ms = crate::hub::now_ms();
+    let (broken, released, driven) = {
         let mut host = host();
-        host.joysticks.retain(|name, _| parsed.iter().any(|d| &d.name == name));
+        let gone: Vec<String> = host.joysticks.keys().filter(|name| !parsed.iter().any(|d| &d.name == *name)).cloned().collect();
+        let released: Vec<Out> = gone.iter().flat_map(|name| host.joysticks.remove(name).map(|mut joystick| joystick.stop(now_ms)).unwrap_or_default()).collect();
         let fresh: Vec<&Device> = parsed.iter().filter(|d| !host.joysticks.contains_key(&d.name)).collect();
-        let broken = fresh
+        let broken: Vec<String> = fresh
             .iter()
             .filter_map(|d| {
                 let mut model = Joystick::new(d.axes, d.buttons, d.hats);
@@ -594,8 +614,11 @@ fn devices(text: &str) -> Value {
             host.calibration = None;
         }
         host.devices = parsed;
-        broken
+        (broken, released, host.driven)
     };
+    if let Some(vehicle) = driven {
+        send(vehicle, released);
+    }
     broken.iter().for_each(|name| {
         crate::settingsstore::replace_group(&axis_group(name), BTreeMap::new());
         crate::settingsstore::written(&setting_key(name, "calibrated"), "false");
@@ -603,8 +626,7 @@ fn devices(text: &str) -> Value {
     if !broken.is_empty() {
         set_enabled_for_active_vehicle(false);
     }
-    sync_polling(crate::hub::now_ms());
-    json!({ "ok": true })
+    sync_polling(now_ms);
 }
 
 fn input(backend: &dyn Backend, text: &str) -> Value {
@@ -614,17 +636,7 @@ fn input(backend: &dyn Backend, text: &str) -> Value {
     let axes: Vec<i32> = list(1).iter().filter_map(Value::as_i64).map(|v| v.clamp(i64::from(crate::joystick::AXIS_MIN), i64::from(crate::joystick::AXIS_MAX)) as i32).collect();
     let buttons: Vec<bool> = list(2).iter().map(|v| v.as_bool().unwrap_or(false)).collect();
     let hats: Vec<u8> = list(3).iter().filter_map(Value::as_u64).map(|v| v as u8).collect();
-    let vehicle = active_vehicle();
-    let support = support_for(vehicle.map(|v| (v.2, v.4)));
-    let settings = settings_for(name);
-    let now_ms = crate::hub::now_ms();
-    let outs = {
-        let mut host = host();
-        if let Some((_, cal)) = host.calibration.as_mut().filter(|(calibrating, _)| calibrating == name) {
-            cal.channel_values(&axes, now_ms);
-        }
-        host.joysticks.get_mut(name).map(|j| j.on_input(Input { axes: &axes, buttons: &buttons, hats: &hats }, &settings, support, now_ms)).unwrap_or_default()
-    };
+    let (vehicle, outs) = feed(name, &axes, &buttons, &hats);
     if let Some((id, link, _, armed, _)) = vehicle {
         let actions: Vec<(String, ButtonEvent)> = outs.iter().filter_map(|o| match o {
             Out::Action { action, event } => Some((action.clone(), *event)),
@@ -634,6 +646,27 @@ fn input(backend: &dyn Backend, text: &str) -> Value {
         actions.iter().for_each(|(action, event)| execute(backend, id, armed, action, *event));
     }
     json!({ "ok": true })
+}
+
+pub fn core_input(name: &str, axes: &[i32]) {
+    if let (Some((id, link, ..)), outs) = feed(name, axes, &[], &[]) {
+        send((id, link), outs);
+    }
+}
+
+fn feed(name: &str, axes: &[i32], buttons: &[bool], hats: &[u8]) -> (Option<(u8, u32, u8, bool, u8)>, Vec<Out>) {
+    let vehicle = active_vehicle();
+    let support = support_for(vehicle.map(|v| (v.2, v.4)));
+    let settings = settings_for(name);
+    let now_ms = crate::hub::now_ms();
+    let outs = {
+        let mut host = host();
+        if let Some((_, cal)) = host.calibration.as_mut().filter(|(calibrating, _)| calibrating == name) {
+            cal.channel_values(&axes, now_ms);
+        }
+        host.joysticks.get_mut(name).map(|j| j.on_input(Input { axes, buttons, hats }, &settings, support, now_ms)).unwrap_or_default()
+    };
+    (vehicle, outs)
 }
 
 fn enable(on: bool) -> Value {
@@ -748,12 +781,36 @@ pub fn run(backend: &dyn Backend, path: &str, text: &str) -> Value {
         CALIBRATION => calibration(text),
         BUTTON_ACTION => button_change(text, false),
         BUTTON_REPEAT => button_change(text, true),
+        BUILT_IN_STICKS => match set_built_in_sticks(serde_json::from_str::<Vec<Value>>(text).ok().and_then(|a| a.first().and_then(Value::as_bool)).unwrap_or(false)) {
+            Ok(()) => json!({ "ok": true }),
+            Err(reason) => json!({ "ok": false, "reason": reason }),
+        },
         _ => json!({ "ok": false, "reason": format!("{path} is not a joystick action") }),
     }
 }
 
+#[cfg(not(any(target_os = "ios", target_family = "wasm")))]
+fn set_built_in_sticks(on: bool) -> Result<(), String> {
+    crate::builtinsticks::set(on)
+}
+
+#[cfg(any(target_os = "ios", target_family = "wasm"))]
+fn set_built_in_sticks(_on: bool) -> Result<(), String> {
+    Err("This controller has no built-in sticks.".to_string())
+}
+
+#[cfg(not(any(target_os = "ios", target_family = "wasm")))]
+fn built_in_sticks(now_ms: u64) -> Value {
+    crate::builtinsticks::status_json(now_ms)
+}
+
+#[cfg(any(target_os = "ios", target_family = "wasm"))]
+fn built_in_sticks(_now_ms: u64) -> Value {
+    json!({ "available": false, "status": "off" })
+}
+
 pub fn owns(path: &str) -> bool {
-    [DEVICES, INPUT, SELECT, ENABLE_JOYSTICK, SET_SETTING, CALIBRATION, BUTTON_ACTION, BUTTON_REPEAT].contains(&path)
+    [DEVICES, INPUT, SELECT, ENABLE_JOYSTICK, SET_SETTING, CALIBRATION, BUTTON_ACTION, BUTTON_REPEAT, BUILT_IN_STICKS].contains(&path)
 }
 
 pub fn tick(now_ms: u64) {
@@ -812,6 +869,7 @@ pub fn indicator(device: Option<&Device>, vehicle: bool, enabled: bool) -> Value
 }
 
 pub fn joystick_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
+    let built_in = built_in_sticks(crate::hub::now_ms());
     let vehicle = active_vehicle();
     let modes = settable_modes();
     let custom: Vec<String> = crate::mavlinkactions::joystick_actions(backend).into_iter().map(|a| a.label).collect();
@@ -849,6 +907,7 @@ pub fn joystick_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "calibration": host.calibration.as_ref().filter(|(name, _)| Some(name) == active.as_ref()).map(|(name, cal)| cal.json(crate::hub::now_ms(), transmitter_mode(name))),
         "transmitterMode": active.as_ref().map(|name| transmitter_mode(name)),
         "assignableActions": assignable,
+        "builtInSticks": built_in,
         "indicator": indicator(active.as_ref().and_then(|name| host.devices.iter().find(|d| &d.name == name)), vehicle.is_some(), enabled),
     })
 }

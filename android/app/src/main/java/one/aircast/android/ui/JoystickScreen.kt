@@ -33,6 +33,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
@@ -40,6 +41,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
+import one.aircast.android.openApp
+import one.aircast.android.stopApp
 import one.aircast.map.optText
 import org.json.JSONObject
 
@@ -51,6 +54,9 @@ internal const val JOYSTICK_SETTING = "joystick.setting"
 internal const val JOYSTICK_CALIBRATION = "joystick.calibration"
 internal const val JOYSTICK_BUTTON_ACTION = "joystick.buttonAction"
 internal const val JOYSTICK_BUTTON_REPEAT = "joystick.buttonRepeat"
+internal const val JOYSTICK_BUILT_IN_STICKS = "joystick.builtInSticks"
+private const val TAKE_OVER_TRIES = 10
+private const val TAKE_OVER_RETRY_MS = 200L
 internal const val NO_ACTION = "No Action"
 private const val JOYSTICK_POLL_MS = 100L
 private const val AXIS_RANGE = 32767f
@@ -62,6 +68,20 @@ internal data class JoystickAxis(val index: Int, val raw: Int?, val function: St
 internal data class JoystickButton(val index: Int, val action: String, val repeat: Boolean, val pressed: Boolean)
 
 internal data class AssignableAction(val action: String, val canRepeat: Boolean)
+
+internal data class BuiltInSticks(val status: String, val reason: String?, val owner: String?, val receiving: Boolean) {
+    val live: Boolean get() = status == "live"
+}
+
+internal fun builtInSticks(json: JSONObject?): BuiltInSticks? = json?.takeIf { it.optBoolean("available") }?.let {
+    BuiltInSticks(it.optText("status"), it.optText("reason").ifBlank { null }, it.optText("owner").ifBlank { null }, it.optBoolean("receiving"))
+}
+
+internal fun builtInSticksText(sticks: BuiltInSticks): String = when {
+    sticks.live && sticks.receiving -> "The AX12's own sticks and switches are flying the aircraft over this app's link."
+    sticks.live -> "Waiting for the sticks."
+    else -> sticks.reason ?: "Fly with the AX12's own sticks and switches over any link, 4G included."
+}
 
 internal data class JoystickCalibration(
     val calibrating: Boolean,
@@ -98,6 +118,7 @@ internal data class JoystickPage(
     val transmitterMode: Int = 2,
     val buttons: List<JoystickButton> = emptyList(),
     val actions: List<AssignableAction> = emptyList(),
+    val builtInSticks: BuiltInSticks? = null,
 )
 
 internal fun joystickPage(view: JSONObject?): JoystickPage? = view?.takeIf { it.optBoolean("available") }?.let {
@@ -127,6 +148,7 @@ internal fun joystickPage(view: JSONObject?): JoystickPage? = view?.takeIf { it.
         actions = it.optJSONArray("assignableActions")?.let { list ->
             (0 until list.length()).mapNotNull { at -> list.optJSONObject(at)?.let { a -> AssignableAction(a.optText("action"), a.optBoolean("canRepeat")) } }
         }.orEmpty(),
+        builtInSticks = builtInSticks(it.optJSONObject("builtInSticks")),
     )
 }
 
@@ -142,6 +164,8 @@ fun JoystickScreen(modifier: Modifier = Modifier) {
     var refusal by remember { mutableStateOf<String?>(null) }
     var advanced by remember { mutableStateOf(false) }
     var offerEnable by remember { mutableStateOf<String?>(null) }
+    var confirmTakeOver by remember { mutableStateOf<String?>(null) }
+    var stoppedOwner by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
 
     LaunchedEffect(revision) {
@@ -155,13 +179,51 @@ fun JoystickScreen(modifier: Modifier = Modifier) {
     }
 
     val read = page ?: return
+    val context = LocalContext.current
+    val sticksSection: @Composable () -> Unit = {
+        read.builtInSticks?.let { sticks ->
+            BuiltInSticksSection(
+                sticks,
+                stopped = stoppedOwner != null,
+                onToggle = { act(JOYSTICK_BUILT_IN_STICKS, it) },
+                onTakeOver = { confirmTakeOver = sticks.owner },
+                onOpenOwner = {
+                    stoppedOwner?.let { owner -> openApp(context, owner) }
+                    stoppedOwner = null
+                },
+            )
+        }
+    }
+    confirmTakeOver?.let { owner ->
+        androidx.compose.material3.AlertDialog(
+            onDismissRequest = { confirmTakeOver = null },
+            title = { Text("Stop RadioMaster's radio app?") },
+            text = { Text("The AX12's sticks can only be read while RadioMaster's radio app is closed, and stopping it may stop the AX12's own radio link to the aircraft. Have the aircraft on 4G or another link first. To get the radio link back, turn the built-in sticks off and open RadioMaster's app.") },
+            confirmButton = {
+                androidx.compose.material3.TextButton(onClick = {
+                    confirmTakeOver = null
+                    stoppedOwner = owner
+                    scope.launch { refusal = takeOverSticks(owner) }
+                }) { Text("Stop it") }
+            },
+            dismissButton = { androidx.compose.material3.TextButton(onClick = { confirmTakeOver = null }) { Text("Cancel") } },
+        )
+    }
     if (read.names.isEmpty() || read.active == null) {
-        EmptyState(R.drawable.ic_gamepad, "No joystick", "No joysticks or gamepads detected. Pair one over Bluetooth or plug it in over USB.", modifier)
+        if (read.builtInSticks == null) {
+            EmptyState(R.drawable.ic_gamepad, "No joystick", "No joysticks or gamepads detected. Pair one over Bluetooth or plug it in over USB.", modifier)
+        } else {
+            Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                sticksSection()
+                refusal?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+            }
+        }
         return
     }
     val setting = { name: String -> read.settings.find { it.name == name } }
     Column(modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         if (read.names.size > 1) JoystickPicker(read) { act(JOYSTICK_SELECT, it) }
+        sticksSection()
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
             Checkbox(checked = read.enabled, enabled = read.vehicle, onCheckedChange = { act(JOYSTICK_ENABLE, it) })
             Text("Enable")
@@ -238,6 +300,26 @@ fun JoystickScreen(modifier: Modifier = Modifier) {
             dismissButton = { androidx.compose.material3.TextButton(onClick = { offerEnable = null }) { Text("No") } },
         )
     }
+}
+
+private suspend fun takeOverSticks(owner: String): String? = withContext(Dispatchers.IO) {
+    if (!stopApp(owner)) return@withContext "RadioMaster's radio app could not be stopped. That needs the AX12's factory root."
+    repeat(TAKE_OVER_TRIES) {
+        Qgc.refusalOf(JOYSTICK_BUILT_IN_STICKS, true) ?: return@withContext null
+        delay(TAKE_OVER_RETRY_MS)
+    }
+    Qgc.refusalOf(JOYSTICK_BUILT_IN_STICKS, true)
+}
+
+@Composable
+private fun BuiltInSticksSection(sticks: BuiltInSticks, stopped: Boolean, onToggle: (Boolean) -> Unit, onTakeOver: () -> Unit, onOpenOwner: () -> Unit) {
+    SectionHeader("Built-in sticks")
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+        Switch(checked = sticks.live, onCheckedChange = onToggle)
+        Text(builtInSticksText(sticks), modifier = Modifier.weight(1f))
+    }
+    if (sticks.status == "busy" && sticks.owner != null) OutlinedButton(onClick = onTakeOver) { Text("Stop RadioMaster's radio app") }
+    if (stopped && !sticks.live) OutlinedButton(onClick = onOpenOwner) { Text("Open RadioMaster's radio app") }
 }
 
 @Composable

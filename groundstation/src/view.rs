@@ -760,6 +760,8 @@ mod deps_cover_reads {
             ("radio", include_str!("radio.rs")),
             ("rallyedit", include_str!("rallyedit.rs")),
             ("rcoverride", include_str!("rcoverride.rs")),
+            ("builtinsticks", include_str!("builtinsticks.rs")),
+            ("umbus", include_str!("umbus.rs")),
             ("read", include_str!("read.rs")),
             ("remoteid", include_str!("remoteid.rs")),
             ("remoteidview", include_str!("remoteidview.rs")),

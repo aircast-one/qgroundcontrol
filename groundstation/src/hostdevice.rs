@@ -9,14 +9,29 @@ pub struct BuiltInRadio {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct BuiltInSticks {
+    pub port: &'static str,
+    pub baud: u32,
+    pub owner: &'static str,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Profile {
     pub radio: BuiltInRadio,
+    pub sticks: Option<BuiltInSticks>,
     pub udp_auto_connect: bool,
 }
 
 pub const BUILT_IN_RADIO_NAME: &str = "Built-in radio";
 const UDP_AUTO_CONNECT: &str = "settings.autoConnectSettings.autoConnectUDP";
-const PROFILES: [(&str, Profile); 1] = [("radiomaster-ax12", Profile { radio: BuiltInRadio { port: "/dev/ttyS1", baud: 460_800 }, udp_auto_connect: true })];
+const PROFILES: [(&str, Profile); 1] = [(
+    "radiomaster-ax12",
+    Profile {
+        radio: BuiltInRadio { port: "/dev/ttyS1", baud: 460_800 },
+        sticks: Some(BuiltInSticks { port: "/dev/ttyS0", baud: 921_600, owner: "com.Flyshark.RadioMasterAX" }),
+        udp_auto_connect: true,
+    },
+)];
 
 static PROFILE: OnceLock<Option<Profile>> = OnceLock::new();
 
@@ -34,6 +49,10 @@ pub fn adopt(device: Option<&str>) {
 
 pub fn built_in_radio() -> Option<BuiltInRadio> {
     PROFILE.get().copied().flatten().map(|profile| profile.radio).filter(|radio| usable(radio.port))
+}
+
+pub fn built_in_sticks() -> Option<BuiltInSticks> {
+    PROFILE.get().copied().flatten().and_then(|profile| profile.sticks).filter(|sticks| usable(sticks.port))
 }
 
 pub fn problem(reason: &str) -> String {
@@ -62,6 +81,7 @@ mod tests {
         let ax12 = profile_for("radiomaster-ax12").unwrap();
         assert_eq!(ax12.radio, BuiltInRadio { port: "/dev/ttyS1", baud: 460_800 }, "RadioMaster's QGC release notes: Serial, ttyS1, 460800");
         assert!(ax12.udp_auto_connect, "the ELRS backpack sends MAVLink to UDP 14550 over Wi-Fi");
+        assert_eq!(ax12.sticks, Some(BuiltInSticks { port: "/dev/ttyS0", baud: 921_600, owner: "com.Flyshark.RadioMasterAX" }), "ax12-research: the gimbals reach Android as UMBUS on ttyS0 @ 921600, held by RadioMaster's app");
         assert_eq!(profile_for("pixel-8"), None, "an unknown device gets no built-in radio, so no UART is ever opened on it");
     }
 

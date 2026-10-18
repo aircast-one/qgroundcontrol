@@ -98,6 +98,9 @@ pub mod itemcamera;
 pub mod itemfacts;
 pub mod joystick;
 pub mod joystickhost;
+#[cfg(not(any(target_os = "ios", target_family = "wasm")))]
+pub mod builtinsticks;
+pub mod umbus;
 pub mod instrumentgroups;
 pub mod instruments;
 pub mod kml;

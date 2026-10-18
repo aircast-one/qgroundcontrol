@@ -9,6 +9,18 @@ import org.junit.Test
 
 class JoystickScreenTest {
     @Test
+    fun the_ax12_built_in_sticks_show_only_where_they_exist_and_say_what_holds_them() {
+        assertNull("a phone has no built-in sticks to offer", builtInSticks(JSONObject("""{"available":false,"status":"off"}""")))
+        val busy = builtInSticks(JSONObject("""{"available":true,"status":"busy","reason":"RadioMaster's radio app is using the sticks.","owner":"com.Flyshark.RadioMasterAX","receiving":false}"""))!!
+        assertEquals(BuiltInSticks("busy", "RadioMaster's radio app is using the sticks.", "com.Flyshark.RadioMasterAX", false), busy)
+        assertEquals("RadioMaster's radio app is using the sticks.", builtInSticksText(busy))
+        assertEquals("Waiting for the sticks.", builtInSticksText(busy.copy(status = "live", reason = null)))
+        assertEquals(true, builtInSticksText(busy.copy(status = "live", reason = null, receiving = true)).startsWith("The AX12's own sticks"))
+        val page = joystickPage(JSONObject("""{"available":true,"names":[],"active":null,"builtInSticks":{"available":true,"status":"off","receiving":false}}"""))!!
+        assertEquals("off", page.builtInSticks?.status)
+    }
+
+    @Test
     fun the_page_reads_devices_settings_and_axes() {
         assertNull(joystickPage(JSONObject("""{"available":false}""")))
         val page = joystickPage(JSONObject("""{"available":true,"names":["Pad"],"active":"Pad","vehicle":true,"enabled":false,"calibrated":false,
