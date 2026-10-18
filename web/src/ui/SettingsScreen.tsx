@@ -18,7 +18,7 @@ import { LocalAppNavigation } from '@/ui/AppNavigation';
 import { CAMERAS_VIEW, VIDEO_SOURCES_PAGE, camerasGlance, camerasReading } from '@/ui/Cameras';
 import { CamerasEditor } from '@/ui/CamerasEditor';
 import { DeviceTab } from '@/ui/DeviceScreen';
-import { DEVICE_PAGE } from '@/ui/DeviceStatus';
+import { DEVICE_PAGE } from '@/ui/DevicePage';
 import { FLASHER_PAGE, FlasherScreen } from '@/ui/FlasherScreen';
 import { useHasVehicle } from '@/ui/FlyState';
 import { GCS_LOCATION_BLOCK, GcsPositionStatus, REMOTE_ID_GROUP } from '@/ui/GcsPositionStatus';
@@ -138,9 +138,7 @@ export const SettingsGroup = {
   Transmission: { name: 'Transmission', ordinal: 4, title: 'Transmission' },
   Device: { name: 'Device', ordinal: 5, title: 'Device' },
 } as const satisfies Record<string, SettingsGroup>;
-export const SettingsGroupEntries: readonly SettingsGroup[] = [SettingsGroup.General, SettingsGroup.Safety, SettingsGroup.Control, SettingsGroup.Camera, SettingsGroup.Transmission];
-
-export const sheetGroups = (deviceAnswers: boolean): readonly SettingsGroup[] => (deviceAnswers ? [...SettingsGroupEntries, SettingsGroup.Device] : SettingsGroupEntries);
+export const SettingsGroupEntries: readonly SettingsGroup[] = [SettingsGroup.General, SettingsGroup.Safety, SettingsGroup.Control, SettingsGroup.Camera, SettingsGroup.Transmission, SettingsGroup.Device];
 
 export type PageLook = { group: SettingsGroup; icon: DrawableName; inline: boolean; tabHome: boolean };
 export const PageLook = (fields: { group: SettingsGroup; icon: DrawableName; inline?: boolean; tabHome?: boolean }): PageLook => ({ inline: false, tabHome: false, ...fields });

@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { chipText, framedElsewhere, framedTitle, openedTitle } from '@/ui/DeviceScreen';
-import { DEVICE_PAGE, DeviceLevel, deviceNeedsAttention, devicePageIcon, parseDeviceStatus } from '@/ui/DeviceStatus';
-import { SettingsGroup, SettingsGroupEntries, pageLook, sheetGroups } from '@/ui/SettingsScreen';
+import { DeviceLevel, deviceNeedsAttention, devicePageIcon, parseDeviceStatus } from '@/ui/DeviceStatus';
+import { DEVICE_PAGE } from '@/ui/DevicePage';
+import { SettingsGroup, SettingsGroupEntries, pageLook } from '@/ui/SettingsScreen';
 import { openingGroup } from '@/ui/SettingsSheet';
 
 const served = {
@@ -50,10 +51,9 @@ describe('DeviceScreenTest', () => {
     expect(framedElsewhere('/network', undefined)).toBe(false);
   });
 
-  it('the Device tab is there only once the device has answered', () => {
-    expect(sheetGroups(false)).toEqual(SettingsGroupEntries);
-    expect(sheetGroups(true).at(-1)).toBe(SettingsGroup.Device);
-    expect(sheetGroups(true).map((group) => group.ordinal)).toEqual(sheetGroups(true).map((_, index) => index));
+  it('the Device tab is always there, and a requested device page opens on it', () => {
+    expect(SettingsGroupEntries.at(-1)).toBe(SettingsGroup.Device);
+    expect(SettingsGroupEntries.map((group) => group.ordinal)).toEqual(SettingsGroupEntries.map((_, index) => index));
     expect(openingGroup(DEVICE_PAGE)).toBe(SettingsGroup.Device);
     expect(pageLook(DEVICE_PAGE).inline).toBe(true);
   });

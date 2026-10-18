@@ -108,7 +108,6 @@ export const deviceNeedsAttention = (status: DeviceStatus | null): boolean => st
 
 export const DEVICE_HOME = 'aircast:home';
 
-export const DEVICE_PAGE = 'Aircast device';
 
 export const deviceStatus = mutableStateOf<DeviceStatus | null>(null);
 

@@ -9,8 +9,7 @@ import { osdShadow } from '@/ui/Osd';
 import { LocalPageHeading, type PageHeading, SearchPill } from '@/ui/SetupRow';
 import { SetupScreen } from '@/ui/SetupScreen';
 import { type ChangeNotice, LocalChangeNotice } from '@/ui/ValueRow';
-import { deviceAnswered } from '@/ui/DeviceStatus';
-import { AIRCRAFT_SETUP, SettingsGroup, SettingsScreen, SettingsSearch, pageLook, pageTitle, sheetGroups, useRememberSettingsPages } from '@/ui/SettingsScreen';
+import { AIRCRAFT_SETUP, SettingsGroup, SettingsGroupEntries, SettingsScreen, SettingsSearch, pageLook, pageTitle, useRememberSettingsPages } from '@/ui/SettingsScreen';
 
 export const sheetDrilled = (openPage: string | null, setupOpen: boolean): boolean => openPage !== null || setupOpen;
 
@@ -167,7 +166,7 @@ export const SettingsSheet = ({ requested, onClose }: { requested: string | null
     [],
   );
   const landscape = useLandscape();
-  const groups = sheetGroups(useValue(deviceAnswered));
+  const groups = SettingsGroupEntries;
   const pickTab = (entry: SettingsGroup) => {
     setGroup(entry);
     setPage(null);

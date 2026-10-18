@@ -44,7 +44,7 @@ test('on a desktop Fly stays full screen with no rail, and the map inset is a re
 test('menu opens the settings sheet with its tabs', async ({ app }) => {
   await openMenu(app, 'Settings');
   const tabs = app.getByRole('tablist');
-  await expect(tabs.getByRole('tab')).toHaveText(['General', 'Safety', 'Control', 'Camera', 'Transmission']);
+  await expect(tabs.getByRole('tab')).toHaveText(['General', 'Safety', 'Control', 'Camera', 'Transmission', 'Device']);
   await expect(tabs.getByRole('tab', { name: 'General' })).toHaveAttribute('aria-selected', 'true');
   await app.getByRole('button', { name: 'Close settings' }).click();
   await expect(tabs).toBeHidden();

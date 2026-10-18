@@ -5,7 +5,7 @@ import { AlertDialog, BasicAlertDialog, DropdownMenu, DropdownMenuItem, FilledTo
 import { MaterialIcon } from '@/res/Icon';
 import { aircast, md } from '@/theme/Colors';
 import { DeviceLevel } from '@/ui/DeviceStatus';
-import { type DeviceMethod, type DeviceRefusal, deviceCall } from '@/ui/DeviceView';
+import { type DeviceMethod, type DeviceRefusal, deviceCall, deviceUrl } from '@/ui/DeviceView';
 import { LocalChangeNotice } from '@/ui/ValueRow';
 
 export type DeviceBadge = { readonly level: number; readonly text: string };
@@ -104,7 +104,7 @@ export const useCopy = (): ((text: string) => void) => {
     );
 };
 
-export const qrSource = (text: string): string => `/qr?d=${encodeURIComponent(text)}`;
+export const qrSource = (text: string): string => deviceUrl(`/qr?d=${encodeURIComponent(text)}`);
 
 export const CopyRow = ({ label, text, hint = '', qr = false, level = DeviceLevel.Neutral }: { label: string; text: string; hint?: string; qr?: boolean; level?: number }) => {
   const copy = useCopy();

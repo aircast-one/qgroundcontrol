@@ -1,14 +1,16 @@
 import { useContext, useEffect, useRef, useState } from 'react';
 import { useBackHandler, useKeyedState } from '@/kotlin/Compose';
 import { useValue } from '@/kotlin/State';
-import { FilledTonalButton, Surface, Text } from '@/m3';
+import { FilledTonalButton, OutlinedTextField, Surface, Text, TextButton } from '@/m3';
+import { DeviceLink, deviceAddress, deviceConnected, deviceServed, telemetryReachable } from '@/app/DeviceLink';
 import { Color, aircast, md, withAlpha } from '@/theme/Colors';
 import { LocalAppNavigation } from '@/ui/AppNavigation';
 import { useOsdBackdrop } from '@/ui/Osd';
 import { useFlyIsPortrait } from '@/ui/FlyShell';
 import { MaterialIcon } from '@/res/Icon';
 import { FootNote, OverridePageHeading, SectionHeader, SetupRow, SetupState } from '@/ui/SetupRow';
-import { DEVICE_HOME, DEVICE_PAGE, type DeviceHealth, DeviceLevel, type DeviceStatus, type DeviceUplink, deviceAnswered, deviceNeedsAttention, devicePageIcon, deviceRequested, deviceStatus } from '@/ui/DeviceStatus';
+import { DEVICE_HOME, type DeviceHealth, DeviceLevel, type DeviceStatus, type DeviceUplink, deviceAnswered, deviceNeedsAttention, devicePageIcon, deviceRequested, deviceStatus } from '@/ui/DeviceStatus';
+import { DEVICE_PAGE } from '@/ui/DevicePage';
 import { DEVICE_SCREENS, type DeviceScreenEntry, devicePath } from '@/ui/DeviceScreens';
 import { DeviceChart, DeviceFact, DeviceNotice, DeviceSection, DeviceText, levelColor } from '@/ui/DeviceKit';
 
@@ -26,6 +28,8 @@ const checkState = (level: number): SetupState => (level === DeviceLevel.Ready ?
 
 export const DeviceTab = ({ open, onOpen, onClose }: { open: string | null; onOpen: (href: string) => void; onClose: () => void }) => {
   const status = useValue(deviceStatus);
+  const served = useValue(deviceServed);
+  const connected = useValue(deviceConnected);
   const requested = useValue(deviceRequested);
   const [stack, setStack] = useKeyedState<readonly string[]>([open], () => (open === null ? [] : [open]));
   useEffect(() => {
@@ -44,7 +48,14 @@ export const DeviceTab = ({ open, onOpen, onClose }: { open: string | null; onOp
       <DevicePageFrame key={current} href={current} title={openedTitle(status, current)} onBack={back} />
     );
   }
-  if (status === null) return <FootNote text="Waiting for the device to answer…" />;
+  if (!served && connected === null) return <ConnectDevice />;
+  if (status === null)
+    return (
+      <div className="h-full w-full overflow-y-auto">
+        <FootNote text="Waiting for the device to answer…" />
+        {connected !== null ? <HostedDevice origin={connected} /> : null}
+      </div>
+    );
   return (
     <div className="h-full w-full overflow-y-auto">
       <div className="flex flex-col gap-1 px-list pt-4 pb-2">
@@ -86,9 +97,65 @@ export const DeviceTab = ({ open, onOpen, onClose }: { open: string | null; onOp
           onClick={() => onOpen(page.href)}
         />
       ))}
+      {connected !== null ? <HostedDevice origin={connected} /> : null}
     </div>
   );
 };
+
+const ConnectDevice = () => {
+  const [address, setAddress] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [refusal, setRefusal] = useState('');
+  const connect = () => {
+    const origin = deviceAddress(address);
+    if (origin === null) {
+      setRefusal('Type an address like 192.168.1.100 or falcon.local.');
+      return;
+    }
+    setBusy(true);
+    void DeviceLink.connect(origin).then((refused) => {
+      setBusy(false);
+      setRefusal(refused ?? '');
+    });
+  };
+  return (
+    <div className="flex h-full w-full flex-col gap-3 overflow-y-auto px-list py-4">
+      <Text typography="titleMedium">Connect to an Aircast device</Text>
+      <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
+        Type the address of a device on this network. Its status, cameras and settings open here.
+      </Text>
+      <OutlinedTextField
+        label="Device address"
+        value={address}
+        placeholder="192.168.1.100 or falcon.local"
+        keyboardType="uri"
+        autoCorrect={false}
+        isError={refusal !== ''}
+        supportingText={refusal !== '' ? refusal : undefined}
+        onValueChange={setAddress}
+        onDone={connect}
+      />
+      <div>
+        <FilledTonalButton enabled={!busy} onClick={connect}>
+          Connect
+        </FilledTonalButton>
+      </div>
+    </div>
+  );
+};
+
+export const flyHereText = (origin: string): string =>
+  `To fly from here, open ${origin}/fly/ — a browser lets this page read the device's settings and video, but not hold a telemetry link to a device without https.`;
+
+const HostedDevice = ({ origin }: { origin: string }) => (
+  <DeviceSection title="This app">
+    <DeviceFact label="Connected to" value={new URL(origin).host} />
+    {!telemetryReachable(location.href, origin) ? <DeviceNotice notice={{ level: DeviceLevel.Neutral, text: flyHereText(origin) }} /> : null}
+    <div className="px-list py-2">
+      <TextButton onClick={() => DeviceLink.disconnect()}>Disconnect</TextButton>
+    </div>
+  </DeviceSection>
+);
 
 const UplinkSection = ({ link }: { link: DeviceUplink }) => (
   <DeviceSection title="Link">
