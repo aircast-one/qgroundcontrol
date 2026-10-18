@@ -11,7 +11,8 @@ local COLUMN_ROWS = 12
 local EXIT_HINT = "RTN: stop sending sticks and exit"
 local CONFIRM_HINT = "Stop sending sticks? RTN again to exit"
 local NO_CABLE = "USB cable not connected"
-local NO_ANSWER = "Waiting for the Aircast app"
+local NO_ANSWER = "Waiting for the app"
+local NEXT_STEP = "In app: Links > Radio on USB"
 
 local battVolt = 0
 local modelInfo
@@ -99,6 +100,10 @@ local function status()
   return NO_ANSWER, false
 end
 
+local function nextStep()
+  return status() == NO_ANSWER and NEXT_STEP or ""
+end
+
 local function confirming()
   return confirmUntil ~= nil and now() <= confirmUntil
 end
@@ -175,6 +180,7 @@ local function drawLarge()
   lcd.drawText(170, 6, modelInfo.name, MIDSIZE + color.foreground)
   lcd.drawText(380, 6, string.format("%.2fV", battVolt), MIDSIZE + color.foreground)
   lcd.drawText(10, 36, said, MIDSIZE + (ok and color.good or color.warning))
+  lcd.drawText(270, 42, nextStep(), SMLSIZE + color.warning)
   for slot = 1, #used do
     local i = used[slot]
     local column, row = place(slot)
@@ -223,7 +229,8 @@ local function buildLvglUI()
   end
   local column, row = place(#used + 1)
   pg:label({ x = column == 1 and 0 or 230, y = 10 + row * 24, font = SMLSIZE, color = color.muted, text = unusedText() })
-  pg:label({ x = 0, y = 10 + (COLUMN_ROWS + 2) * 24, font = SMLSIZE, text = hint })
+  pg:label({ x = 0, y = 10 + (COLUMN_ROWS + 2) * 24, font = SMLSIZE, color = color.warning, text = nextStep })
+  pg:label({ x = 0, y = 10 + (COLUMN_ROWS + 3) * 24, font = SMLSIZE, text = hint })
 end
 
 local function init()

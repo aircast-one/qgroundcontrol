@@ -69,7 +69,7 @@ for _, screen in ipairs({ { w = 480, h = 272 }, { w = 480, h = 320, lvgl = true 
   assert(#values == 24 and values[1] == -1024 and values[2] == 1024 and values[4] == -512 and values[11] == -1024 and values[18] == 1024)
 
   if screen.w == 480 then
-    assert(shows(r, "Waiting for the Aircast app"), "silence blames nothing it cannot see")
+    assert(shows(r, "Waiting for the app") and shows(r, "In app: Links > Radio on USB"), "silence says where in the app to pick the radio")
     assert(shows(r, "CH1  src0 m0      988") and shows(r, "CH4  src3 m3     1244"), "each row names the channel the app receives, the stick on it and the mix's name")
     assert(shows(r, "+20 unused channels") and not shows(r, "CH24"), "only the channels this model mixes are listed")
     assert(shows(r, "RTN: stop sending sticks and exit"), "the way out is on the screen")
@@ -77,13 +77,14 @@ for _, screen in ipairs({ { w = 480, h = 272 }, { w = 480, h = 320, lvgl = true 
     r.hear("@F,1\n")
     r.script.run(0)
     assert(shows(r, "App flying vehicle 1"), "the app's echo says the sticks reach a vehicle")
+    assert(not shows(r, "In app: Links > Radio on USB"), "a hearing app needs no instructions")
     r.hear("@S,2\n@N")
     r.script.run(0)
     assert(shows(r, "App: 4G standby, vehicle 2"), "a half-sent line waits for its newline")
 
     r.at(151)
     r.script.run(0)
-    assert(shows(r, "Waiting for the Aircast app"), "an app silent for 1.5 s is not receiving")
+    assert(shows(r, "Waiting for the app"), "an app silent for 1.5 s is not receiving")
     r.unplug()
     r.script.run(0)
     assert(shows(r, "USB cable not connected"))
