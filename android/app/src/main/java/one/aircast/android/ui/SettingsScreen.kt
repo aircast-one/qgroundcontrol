@@ -155,7 +155,7 @@ internal fun activeLinksGlance(view: JSONObject?): String =
 
 internal fun activeLinksText(count: Int): String = if (count > 0) "$count active" else ""
 
-internal enum class SettingsGroup(val title: String) { General("General"), Safety("Safety"), Control("Control"), Camera("Camera"), Transmission("Transmission") }
+internal enum class SettingsGroup(val title: String) { General("General"), Safety("Safety"), Control("Control"), Camera("Camera"), Transmission("Transmission"), Device("Device") }
 
 internal data class PageLook(val group: SettingsGroup, @DrawableRes val icon: Int, val inline: Boolean = false, val tabHome: Boolean = false)
 
@@ -181,6 +181,7 @@ internal val PAGE_LOOKS = mapOf(
     "App Logging" to PageLook(SettingsGroup.General, R.drawable.ic_description),
     "Console" to PageLook(SettingsGroup.General, R.drawable.ic_terminal),
     "About" to PageLook(SettingsGroup.General, R.drawable.ic_help),
+    DEVICE_PAGE to PageLook(SettingsGroup.Device, R.drawable.ic_developer_board, inline = true, tabHome = true),
 )
 
 internal const val RADIO_ON_USB_BLOCK = "Radio on USB (EdgeTX script)"
@@ -368,7 +369,9 @@ internal fun SettingsScreen(group: SettingsGroup, everyPage: List<SettingsPageEn
     CompositionLocalProvider(LocalPageHeading provides heading, LocalSettingsList provides true) {
         Box(modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
             val column = Modifier.fillMaxHeight().widthIn(max = DETAIL_PANE_MAX_WIDTH)
-            if (current == null) {
+            if (group == SettingsGroup.Device) {
+                Box(column.fillMaxWidth()) { DeviceTab(open, onOpen, onClose) }
+            } else if (current == null) {
                 SettingsTab(group, everyPage, column, onOpenSetup, onOpen)
             } else {
                 SettingsPageBody(current, column.fillMaxWidth())

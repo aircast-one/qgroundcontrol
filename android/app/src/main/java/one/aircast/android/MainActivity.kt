@@ -558,6 +558,7 @@ fun AircastShell(hostView: android.view.View?) {
                         Box(Modifier.weight(1f), contentAlignment = Alignment.CenterStart) { LayoutWidget("vehicleState", movable = false, hideable = false) { VehicleStateChip() } }
                         LayoutWidget("vtolState", movable = false, hideable = false) { VtolStateCell() }
                         ControlRequestPrompt()
+                        one.aircast.android.ui.DeviceStatusChip()
                         LayoutWidget("statusPill", movable = false, hideable = false) { StatusPill() }
                         one.aircast.android.ui.FlySettingsButton()
                     }
