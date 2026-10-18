@@ -2,6 +2,10 @@
 
 `aircast-usb.lua` turns an EdgeTX radio into a USB joystick for the Aircast app. It streams every channel the model mixes over the radio's USB serial port, and shows on the radio whether the app is getting them.
 
+## Needs EdgeTX 2.10 or newer
+
+The radio streams its sticks on any EdgeTX, but on 2.9 and older it never hears the app: `serialRead()` returns nothing on firmware built with the serial CLI, which includes the standard builds (EdgeTX #4605, fixed in 2.10.0 by #4644). The radio then stays on "Waiting for the app" however the app is set up. Check **SYS → About** and update first; a TX16S on 2.9.4 answered as soon as it ran 2.12.5.
+
 ## Install on the radio
 
 1. Plug the radio into a computer and pick **USB Storage (SD)** on the radio.
