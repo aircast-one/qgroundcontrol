@@ -154,12 +154,13 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
                 return json!({ "ok": false, "refusal": "badPoint", "reason": "Pan and tilt are fractions of the screen from -1 to 1." });
             };
             let point = given.get(2).and_then(Value::as_bool).unwrap_or(true);
+            let (h_fov, v_fov, _) = crate::lens::field_of_view(backend);
             let screen = json!({
                 "pan": pan,
                 "tilt": tilt,
                 "point": point,
-                "hFov": number_setting(backend, "cameraHFov"),
-                "vFov": number_setting(backend, "cameraVFov"),
+                "hFov": h_fov,
+                "vFov": v_fov,
                 "slide": number_setting(backend, "cameraSlideSpeed"),
             });
             crate::guided::dispatch(backend, Some(op("onScreen", screen)), vehicle, &qt_path("gimbalOnScreenControl"), &json!([pan, tilt, point, !point, !point]).to_string())

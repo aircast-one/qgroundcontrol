@@ -34,6 +34,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -254,6 +258,8 @@ internal fun aimFraction(delta: Float, width: Int): Float = delta / (maxOf(width
 @Composable
 internal fun GimbalScreenControl(modifier: Modifier = Modifier) {
     val view by qgcPath(GIMBAL_INDICATOR_PATH)
+    val lensJson by qgcPath(LENS_VIEW)
+    val approximate = remember(lensJson) { lensReading(lensJson)?.approximate == true }
     val control = remember(view) { onScreenGimbal(view) } ?: return
     val scope = rememberCoroutineScope()
     val send = { pan: Float, tilt: Float, point: Boolean ->
@@ -297,5 +303,17 @@ internal fun GimbalScreenControl(modifier: Modifier = Modifier) {
                 }
             }
         },
+    ) {
+        if (approximate && !control.clickAndDrag) ApproximateAim(Modifier.align(Alignment.TopCenter).padding(top = 72.dp))
+    }
+}
+
+@Composable
+private fun ApproximateAim(modifier: Modifier = Modifier) {
+    Text(
+        APPROXIMATE_AIM,
+        style = MaterialTheme.typography.labelMedium,
+        color = Color.White,
+        modifier = modifier.background(Color.Black.copy(alpha = 0.55f), RoundedCornerShape(8.dp)).padding(horizontal = 10.dp, vertical = 6.dp),
     )
 }

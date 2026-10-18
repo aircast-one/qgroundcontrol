@@ -139,6 +139,10 @@ impl Feed {
         true
     }
 
+    pub fn fresh_boxes(&self, now_ms: u64) -> Option<(Vec<Value>, u64)> {
+        self.frame.as_ref().filter(|f| now_ms.saturating_sub(f.received_ms) <= STALE_MS).map(|f| (f.boxes.clone(), f.received_ms))
+    }
+
     pub fn tracker(&self, now_ms: u64) -> Option<(Source, Option<Value>)> {
         let frame = self.frame.as_ref().filter(|f| now_ms.saturating_sub(f.received_ms) <= STALE_MS)?;
         let target = frame

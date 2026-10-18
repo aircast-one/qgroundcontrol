@@ -114,3 +114,48 @@ test('a tap on the live picture points the gimbal there', async ({ app }) => {
   await app.mouse.click(box.x + box.width / 2, box.y + box.height * 0.9);
   await expect.poll(pitch, { timeout: 30_000 }).toBeLessThan(before - 5);
 });
+
+test('measuring the lens learns how wide the camera sees from how far a detection slides', async ({ app }) => {
+  test.setTimeout(240_000);
+  const DEVICE = 'http://localhost:18780';
+  const LENS = { h: 60, v: 34 };
+  await addVideoSource(app, /^WebRTC \(WHEP\)/, WHEP_STREAM);
+  await connectMock(app, ['Enable camera', 'Enable gimbal']);
+  await app.evaluate(
+    async ([module, device]) => {
+      const { Qgc } = (await import(module)) as { Qgc: { set: (path: string, value: unknown) => Promise<unknown>; invoke: (path: string, ...args: unknown[]) => Promise<boolean> } };
+      await Qgc.set('settings.appSettings.detectionsHttpPort', 18780);
+      await Qgc.invoke('device.pair', `${device}/`);
+    },
+    ['/src/bridge/Qgc.ts', DEVICE] as const,
+  );
+  const read = (path: string) => app.evaluate(async ([module, watched]) => ((await import(module)) as { Qgc: { get: (path: string) => Promise<unknown> } }).Qgc.get(watched), ['/src/bridge/Qgc.ts', path] as const);
+  const aim = async () => ((await read('view.gimbal')) as { gimbals?: { pitch: number | null; bodyYaw: number | null }[] } | null)?.gimbals?.[0] ?? null;
+  await expect.poll(async () => (await aim())?.pitch ?? null, { timeout: 60_000 }).not.toBeNull();
+  const start = (await aim()) as { pitch: number; bodyYaw: number };
+  const sliding = { on: true };
+  const slide = (async () => {
+    while (sliding.on) {
+      const now = await aim().catch(() => null);
+      if (now !== null && now.pitch !== null && now.bodyYaw !== null) {
+        const scene = { x: 0.4 + (start.bodyYaw - now.bodyYaw) / LENS.h, y: 0.4 + (now.pitch - start.pitch) / LENS.v };
+        await fetch(`${DEVICE}/scene`, { method: 'PUT', body: JSON.stringify(scene) });
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+  })();
+  await expect(app.getByText('Approximate aim · measure the lens in camera details')).toBeVisible({ timeout: 30_000 });
+  await app.getByRole('button', { name: /^Cameras, showing/ }).click();
+  await app.getByRole('menuitem', { name: 'Camera settings' }).click();
+  await app.getByRole('button', { name: 'Measure the lens' }).click();
+  await expect(app.getByText(/· measured$/)).toBeVisible({ timeout: 200_000 });
+  sliding.on = false;
+  await slide;
+  const lens = (await read('view.lens')) as { hFov: number; vFov: number; source: string };
+  expect(lens.source).toBe('measured');
+  await app.keyboard.press('Escape');
+  await expect(app.getByText('Approximate aim · measure the lens in camera details')).toHaveCount(0);
+  expect(Math.abs(lens.hFov - LENS.h), `measured ${lens.hFov}°`).toBeLessThan(3);
+  expect(Math.abs(lens.vFov - LENS.v), `measured ${lens.vFov}°`).toBeLessThan(3);
+  await fetch(`${DEVICE}/scene`, { method: 'PUT', body: JSON.stringify({ x: 0.4, y: 0.4 }) });
+});

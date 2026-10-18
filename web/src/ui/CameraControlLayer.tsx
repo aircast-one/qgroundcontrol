@@ -53,6 +53,7 @@ import {
 import { CameraDefinitionSettings } from '@/ui/CameraSettingsSection';
 import { OpenOnRequest } from '@/ui/FlyScreenState';
 import { useHasVehicle } from '@/ui/FlyState';
+import { LensSection } from '@/ui/LensSection';
 import { osdShadow, useOsdBackdrop } from '@/ui/Osd';
 import { factFromControl } from '@/ui/ParameterForm';
 import { RailSlider, RcCameraControls } from '@/ui/RcCameraControls';
@@ -587,6 +588,7 @@ const CameraDetailsSheet = ({
         <TrackingToggle reading={tracking} />
       </div>
     ) : null}
+    <LensSection />
     {thermal !== null ? (
       <>
         <SectionHeader text="Thermal view mode" />

@@ -54,8 +54,13 @@ impl Backend for QtBackend {
     }
 }
 
+fn guide(action: &serde_json::Value) -> Option<Result<(), String>> {
+    QtBackend.core_guided(action)
+}
+
 static CORE: LazyLock<Core<crate::settingsstore::Owner<crate::vehiclefacade::Facade<QtBackend>>>> = LazyLock::new(|| {
     crate::corelinks::set_hooks(registry_open, registry_close);
+    let _ = crate::lens::GUIDE.set(guide);
     Core::new(crate::settingsstore::Owner(crate::vehiclefacade::Facade(QtBackend)))
 });
 
@@ -342,6 +347,9 @@ pub(crate) fn pump_once() {
         }
         if crate::synthview::take_changed() {
             CORE.on_event(crate::synthview::SYNTHETIC_CHANGED, "null").iter().for_each(|(path, json)| announce(path, json));
+        }
+        if crate::lens::take_changed() {
+            CORE.on_event(crate::lens::LENS_CHANGED, "null").iter().for_each(|(path, json)| announce(path, json));
         }
         if crate::devicetrack::take_changed() {
             CORE.on_event(crate::devicetrack::TRACK_CHANGED, "null").iter().for_each(|(path, json)| announce(path, json));

@@ -43,6 +43,7 @@ pub mod cmdinfo;
 pub mod debugapi;
 pub mod detections;
 pub mod devicetrack;
+pub mod lens;
 pub mod contract;
 pub mod factmeta;
 pub mod control;

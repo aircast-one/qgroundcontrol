@@ -551,6 +551,7 @@ private fun CameraDetailsSheet(
             }
         }
         tracking?.let { reading -> TrackingToggle(reading, Modifier.padding(horizontal = 12.dp)) }
+        LensSection()
 
         thermal?.let { thermal ->
             SectionHeader("Thermal view mode")

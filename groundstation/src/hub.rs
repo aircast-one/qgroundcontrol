@@ -3278,6 +3278,9 @@ impl Vehicle {
                 Vec::new()
             }
             MavMessage::CAMERA_FOV_STATUS(d) => {
+                if d.hfov.is_finite() && d.hfov > 0.0 {
+                    crate::lens::reported(now_ms);
+                }
                 let aspect = self.cameras.camera(compid).and_then(|camera| camera.info.aspect_vertical_over_horizontal());
                 if let Some(vertical) = crate::cameraproto::vertical_field_of_view_degrees(f64::from(d.hfov), aspect) {
                     [("settings.gimbalControllerSettings.cameraHFov", f64::from(d.hfov)), ("settings.gimbalControllerSettings.cameraVFov", vertical)]

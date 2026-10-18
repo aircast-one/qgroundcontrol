@@ -19,6 +19,7 @@ const TICK_MS = 250;
 const store = mkdtempSync(join(tmpdir(), 'aircastd-store-'));
 const seen = { uploads: [] as string[], firmware: [] as number[], relays: [] as string[], gcsHeartbeats: 0, tcpHeartbeats: 0, tracks: [] as string[] };
 const tracker = { on: false };
+const scene = { x: 0.4, y: 0.4 };
 
 const body = (request: IncomingMessage): Promise<Buffer> =>
   new Promise((resolve) => {
@@ -93,8 +94,8 @@ const firmware = async (request: IncomingMessage, response: ServerResponse) => {
 };
 
 const detections = (response: ServerResponse) => {
-  response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
-  const timer = setInterval(() => response.write(`data: ${JSON.stringify({ boxes: [{ label: 'car', conf: 0.9, x: 0.4, y: 0.4, w: 0.2, h: 0.2, target: tracker.on }], ageMs: 0 })}\n\n`), 200);
+  response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' });
+  const timer = setInterval(() => response.write(`data: ${JSON.stringify({ boxes: [{ label: 'car', conf: 0.9, x: scene.x, y: scene.y, w: 0.2, h: 0.2, target: tracker.on }], ageMs: 0 })}\n\n`), 100);
   response.on('close', () => clearInterval(timer));
 };
 
@@ -120,6 +121,12 @@ const http = createServer((request, response) => {
   if (url.pathname === '/fly/device.json') return json(response, 200, { name: 'e2e-device', cameras: [{ name: 'e2e', url: 'http://localhost:18889/e2e/whep' }] });
   if (url.pathname === '/api/streams/e2e/detections/stream') return detections(response);
   if (url.pathname.startsWith('/api/streams/e2e/track')) return void track(request, response, url);
+  if (url.pathname === '/scene' && request.method === 'PUT') {
+    return void body(request).then((sent) => {
+      Object.assign(scene, JSON.parse(sent.toString()) as { x: number; y: number });
+      json(response, 200, scene);
+    });
+  }
   if (url.pathname === '/stats') return json(response, 200, { ...seen, store });
   if (url.pathname.startsWith('/fly/files/') || url.pathname === '/fly/files') return void files(request, response, url);
   if (url.pathname === '/fly/proxy') return void proxy(request, response);

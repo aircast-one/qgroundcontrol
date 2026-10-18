@@ -9,6 +9,7 @@ import { AlertDialog, Button, FilterChip, OutlinedButton, Text, TextButton } fro
 import { AircastSheet } from '@/map/AircastSheet';
 import { md } from '@/theme/Colors';
 import { JOYSTICK_VIEW } from '@/ui/JoystickScreen';
+import { APPROXIMATE_AIM, LENS_VIEW, lensReading } from '@/ui/Lens';
 import { FactRow, type SettingsBlock, type SettingsSectionRows, sentenceCase, settingsPagePath, settingsSections } from '@/ui/SettingsScreen';
 
 export const GIMBAL_INDICATOR_PATH = 'view.gimbalIndicator';
@@ -251,6 +252,8 @@ const pointIn = (event: PointerEvent<HTMLDivElement>): Point & { width: number; 
 export const GimbalScreenControl = ({ className }: { className?: string }) => {
   const view = useQgcPath(GIMBAL_INDICATOR_PATH);
   const control = useMemo(() => onScreenGimbal(view), [view]);
+  const lensJson = useQgcPath(LENS_VIEW);
+  const approximate = useMemo(() => lensReading(lensJson)?.approximate === true, [lensJson]);
   const drag = useRef<Point | null>(null);
   const tapping = useRef(false);
   const press = useRef<{ latest: Point; width: number; height: number; repeating: ReturnType<typeof setInterval> } | null>(null);
@@ -308,7 +311,13 @@ export const GimbalScreenControl = ({ className }: { className?: string }) => {
           const [pan, tilt] = screenFraction(at.x, at.y, at.width, at.height);
           send(pan, tilt, true);
         }}
-      />
+      >
+        {approximate ? (
+          <Text typography="labelMedium" color="#ffffff" className="pointer-events-none absolute start-1/2 top-[72px] -translate-x-1/2 rounded-lg bg-black/55 px-2.5 py-1.5 whitespace-nowrap">
+            {APPROXIMATE_AIM}
+          </Text>
+        ) : null}
+      </div>
     );
   }
 
