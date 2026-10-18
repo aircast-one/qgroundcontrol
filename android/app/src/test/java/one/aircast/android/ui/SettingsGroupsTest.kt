@@ -49,7 +49,7 @@ class SettingsSheetTest {
     fun `the sheet opens on the tab that holds the asked-for page, or Safety`() {
         org.junit.Assert.assertEquals(SettingsGroup.Transmission, openingGroup("Connections"))
         org.junit.Assert.assertEquals(SettingsGroup.Camera, openingGroup("Video"))
-        org.junit.Assert.assertEquals(SettingsGroup.Safety, openingGroup(null))
+        org.junit.Assert.assertEquals(SettingsGroup.General, openingGroup(null))
         org.junit.Assert.assertEquals(null, one.aircast.android.Tab.from("settings"))
         org.junit.Assert.assertEquals(null, one.aircast.android.Tab.from("setup"))
     }

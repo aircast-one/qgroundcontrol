@@ -2,7 +2,7 @@ import SwiftUI
 
 func sheetDrilled(_ openPage: String?, _ setupOpen: Bool) -> Bool { openPage != nil || setupOpen }
 
-func openingGroup(_ requested: String?) -> SettingsGroup { requested.map { pageLook($0).group } ?? .Safety }
+func openingGroup(_ requested: String?) -> SettingsGroup { requested.map { pageLook($0).group } ?? .General }
 
 private let STACKED_HEADER_WIDTH: CGFloat = 600
 private let SETTINGS_SHEET_LAYER: Double = 10

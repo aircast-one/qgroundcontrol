@@ -5,7 +5,7 @@ final class SettingsSheetTests: XCTestCase {
     func testAPageOpensOnTheTabThatHoldsIt() {
         XCTAssertEqual(openingGroup("Connections"), .Transmission)
         XCTAssertEqual(openingGroup("Video"), .Camera)
-        XCTAssertEqual(openingGroup(nil), .Safety)
+        XCTAssertEqual(openingGroup(nil), .General)
     }
 
     func testTheTabsGiveWayToATitleOnceAPageOrSetupIsOpen() {

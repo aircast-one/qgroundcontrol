@@ -57,7 +57,7 @@ import one.aircast.map.aircast
 
 internal fun sheetDrilled(openPage: String?, setupOpen: Boolean): Boolean = openPage != null || setupOpen
 
-internal fun openingGroup(requested: String?): SettingsGroup = requested?.let { pageLook(it).group } ?: SettingsGroup.Safety
+internal fun openingGroup(requested: String?): SettingsGroup = requested?.let { pageLook(it).group } ?: SettingsGroup.General
 
 @Composable
 internal fun SettingsSheet(requested: String?, onClose: () -> Unit) {

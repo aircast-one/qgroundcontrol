@@ -45,7 +45,6 @@ test('menu opens the settings sheet with its tabs', async ({ app }) => {
   await openMenu(app, 'Settings');
   const tabs = app.getByRole('tablist');
   await expect(tabs.getByRole('tab')).toHaveText(['General', 'Safety', 'Control', 'Camera', 'Transmission']);
-  await tabs.getByRole('tab', { name: 'General' }).click();
   await expect(tabs.getByRole('tab', { name: 'General' })).toHaveAttribute('aria-selected', 'true');
   await app.getByRole('button', { name: 'Close settings' }).click();
   await expect(tabs).toBeHidden();

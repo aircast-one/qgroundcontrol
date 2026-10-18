@@ -13,7 +13,7 @@ import { AIRCRAFT_SETUP, SettingsGroup, SettingsGroupEntries, SettingsScreen, Se
 
 export const sheetDrilled = (openPage: string | null, setupOpen: boolean): boolean => openPage !== null || setupOpen;
 
-export const openingGroup = (requested: string | null): SettingsGroup => (requested === null ? SettingsGroup.Safety : pageLook(requested).group);
+export const openingGroup = (requested: string | null): SettingsGroup => (requested === null ? SettingsGroup.General : pageLook(requested).group);
 
 const LANDSCAPE = '(orientation: landscape)';
 
