@@ -189,7 +189,7 @@ impl<J: Clone + 'static, D: 'static> Pool<J, D> {
         let started = Instant::now();
         let (done, waiting): (Vec<_>, Vec<_>) = std::mem::take(&mut self.waiting)
             .into_iter()
-            .map(|waiting| match (waiting.touched.is_empty() || started.elapsed() < WORK_PER_TICK) && self.ready(&waiting) {
+            .map(|waiting| match started.elapsed() < WORK_PER_TICK && self.ready(&waiting) {
                 true => self.attempt(waiting),
                 false => Err(waiting),
             })

@@ -368,15 +368,18 @@ struct Part {
 }
 
 fn joined(parts: impl Iterator<Item = Part>) -> Part {
-    parts.fold(Part::default(), |whole, part| {
-        let offset = whole.positions.len() as u32;
-        Part {
-            positions: whole.positions.into_iter().chain(part.positions).collect(),
-            uvs: whole.uvs.into_iter().chain(part.uvs).collect(),
-            normals: whole.normals.into_iter().chain(part.normals).collect(),
-            indices: whole.indices.into_iter().chain(part.indices.into_iter().map(|i| i + offset)).collect(),
-        }
-    })
+    let parts: Vec<Part> = parts.collect();
+    let offsets = parts.iter().scan(0u32, |at, part| {
+        let start = *at;
+        *at += part.positions.len() as u32;
+        Some(start)
+    });
+    Part {
+        positions: parts.iter().flat_map(|part| part.positions.iter().copied()).collect(),
+        uvs: parts.iter().flat_map(|part| part.uvs.iter().copied()).collect(),
+        normals: parts.iter().flat_map(|part| part.normals.iter().copied()).collect(),
+        indices: parts.iter().zip(offsets).flat_map(|(part, offset)| part.indices.iter().map(move |index| index + offset)).collect(),
+    }
 }
 
 fn wall(a: DVec3, b: DVec3, low: f64, high: f64) -> Part {
@@ -845,5 +848,18 @@ mod tests {
         let middles: Vec<[f32; 2]> = mesh.positions.chunks(4).take(4).map(|wall| [(wall[0][0] + wall[1][0]) / 2.0 - centre(0), (wall[0][1] + wall[1][1]) / 2.0 - centre(1)]).collect();
         assert!(facing.iter().zip(&middles).all(|(n, m)| n[0] * m[0] + n[1] * m[1] > 0.0 && n[2] == 0.0), "each wall faces away from the middle of the building: {facing:?}");
         assert!(mesh.normals[16..].iter().all(|n| *n == [0.0, 0.0, 1.0]), "the roof faces up");
+    }
+
+    #[test]
+    fn a_dense_tile_joins_every_building_into_one_mesh_whose_roofs_point_at_their_own_corners() {
+        let square = |n: usize| {
+            let (x, y) = ((n % 40) * 100, (n / 40) * 100);
+            serde_json::json!({ "rings": [[x, y, x + 50, y, x + 50, y + 50, x, y + 50]], "height": 9.0 })
+        };
+        let json = serde_json::json!({ "extent": 4096, "buildings": (0..1600).map(square).collect::<Vec<_>>() });
+        let mesh = building_mesh(TileKey { z: 14, x: 14980, y: 9903 }, &serde_json::to_vec(&json).unwrap(), None).expect("buildings");
+        assert_eq!((mesh.positions.len(), mesh.indices.len()), (1600 * 20, 1600 * 30));
+        let last_roof = &mesh.indices[mesh.indices.len() - 6..];
+        assert!(last_roof.iter().all(|&i| (1599 * 20 + 16..1600 * 20).contains(&(i as usize))), "{last_roof:?}");
     }
 }
