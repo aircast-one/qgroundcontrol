@@ -10,7 +10,7 @@ local BAR_MAX_W = 60
 local EXIT_HINT = "RTN: stop sending sticks and exit"
 local CONFIRM_HINT = "Stop sending sticks? RTN again to exit"
 local NO_CABLE = "USB cable not connected"
-local NO_ANSWER = "App silent: set USB-VCP to LUA"
+local NO_ANSWER = "Waiting for the Aircast app"
 
 local battVolt = 0
 local modelInfo
@@ -122,6 +122,10 @@ local function pwm(i)
   return math.floor(channelValues[i] / 2) + 1500
 end
 
+local function channelText(i)
+  return string.format("CH%-2d %-5s %4d", i, mixesInfo[i].src, pwm(i))
+end
+
 local function afterList()
   local shown = math.min(#used, 16) + 1
   return (shown <= 8) and 1 or 2, (shown <= 8) and shown or (shown - 8)
@@ -155,7 +159,7 @@ local function drawSmall()
     local i = used[slot]
     local x = math.floor((slot - 1) / 5) * 43
     local y = 17 + ((slot - 1) % 5) * 8
-    lcd.drawText(x, y, string.sub(mixesInfo[i].src ~= "" and mixesInfo[i].src or ("CH" .. i), 1, 4), SMLSIZE)
+    lcd.drawText(x, y, "CH" .. i, SMLSIZE)
     local w = math.floor((channelValues[i] + 1024 + 128) / 128)
     if w < 1 then w = 1 elseif w > 17 then w = 17 end
     lcd.drawFilledRectangle(x + 22, y + 1, w, 5)
@@ -176,9 +180,8 @@ local function drawLarge()
     local colBase = (slot <= 8) and 10 or 245
     local row = (slot <= 8) and slot or (slot - 8)
     local y = 46 + row * 22
-    local label = mixesInfo[i].src ~= "" and mixesInfo[i].src or ("CH" .. i)
-    lcd.drawText(colBase, y, string.format("%-6s %4d", label, pwm(i)), SMLSIZE + color.foreground)
-    lcd.drawFilledRectangle(colBase + 100, y + 4, math.floor((channelValues[i] + 1024) * 100 / 2048) + 1, 6, color.primary)
+    lcd.drawText(colBase, y, channelText(i), SMLSIZE + color.foreground)
+    lcd.drawFilledRectangle(colBase + 130, y + 4, math.floor((channelValues[i] + 1024) * 100 / 2048) + 1, 6, color.primary)
   end
   local column, row = afterList()
   lcd.drawText(column == 1 and 10 or 245, 46 + row * 22, unusedText(), SMLSIZE + color.muted)
@@ -205,10 +208,9 @@ local function buildLvglUI()
     local colBase = (slot <= 8) and 0 or 230
     local row = (slot <= 8) and slot or (slot - 8)
     local yOfs = 10 + row * 24
-    local label = mixesInfo[i].src ~= "" and mixesInfo[i].src or ("CH" .. i)
 
     pg:label({ x = colBase, y = yOfs, font = SMLSIZE,
-      text = function() return string.format("%-6s %5d", label, pwm(i)) end,
+      text = function() return channelText(i) end,
     })
 
     pg:rectangle({ x = colBase, y = yOfs + 15, w = BAR_MAX_W, h = 3, filled = true,
