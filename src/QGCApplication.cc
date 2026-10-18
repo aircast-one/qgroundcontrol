@@ -30,6 +30,9 @@
 #include "FollowMe.h"
 #include "GraphicsSetup.h"
 #include "JoystickManager.h"
+#ifndef QGC_NO_SERIAL_LINK
+#include "UsbRadio.h"
+#endif
 #include "JsonParsing.h"
 #include "LinkManager.h"
 #include "LogManager.h"
@@ -361,6 +364,9 @@ void QGCApplication::_initForNormalAppBoot()
 #endif
 
     JoystickManager::instance()->init();
+#ifndef QGC_NO_SERIAL_LINK
+    UsbRadio::instance()->init();
+#endif
 
     if (_settingsUpgraded) {
         showAppMessage(tr("The format for %1 saved settings has been modified. "

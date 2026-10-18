@@ -16,6 +16,20 @@
             ]
         },
         {
+            "component": "UsbRadioSettings",
+            "sectionName": "Radio on USB (EdgeTX script)",
+            "keywords": [
+                "radio",
+                "edgetx",
+                "radiomaster",
+                "rc",
+                "sticks",
+                "usb",
+                "transmitter",
+                "4g standby"
+            ]
+        },
+        {
             "component": "NmeaGpsSettings",
             "sectionName": "NMEA GPS",
             "keywords": [

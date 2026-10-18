@@ -29,6 +29,10 @@
 #include "MockLink.h"
 #endif
 
+#ifndef QGC_NO_SERIAL_LINK
+#include "UsbRadio.h"
+#endif
+
 #include <QtCore/QLineF>
 #include <QtCore/QSettings>
 #include <QtGui/QClipboard>
@@ -397,4 +401,13 @@ QString QGroundControlQmlGlobal::appName()
 bool QGroundControlQmlGlobal::isRadiomasterAx12()
 {
     return RadiomasterAx12::isThisRemote();
+}
+
+QObject* QGroundControlQmlGlobal::usbRadio()
+{
+#ifndef QGC_NO_SERIAL_LINK
+    return UsbRadio::instance();
+#else
+    return nullptr;
+#endif
 }

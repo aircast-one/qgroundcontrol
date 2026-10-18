@@ -18,3 +18,11 @@ target_sources(${CMAKE_PROJECT_NAME}
         JoystickSDL.cc
         JoystickSDL.h
 )
+
+if(NOT QGC_NO_SERIAL_LINK)
+    target_sources(${CMAKE_PROJECT_NAME}
+        PRIVATE
+            UsbRadio.cc
+            UsbRadio.h
+    )
+endif()

@@ -182,6 +182,7 @@ private:
     bool _allowAutoConnectToBoard(QGCSerialPortInfo::BoardType_t boardType) const;
     void _addSerialAutoConnectLink();
     bool _portAlreadyConnected(const QString &portName);
+    void _releaseAutoConnectPort(const QString& portName);
     void _filterCompositePorts(QList<QGCSerialPortInfo> &portList);
 
     QMap<QString, int> _autoconnectPortWaitList;   ///< key: QGCSerialPortInfo::systemLocation, value: wait count

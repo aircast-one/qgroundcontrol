@@ -74,6 +74,22 @@
             "label": "NMEA GPS Baudrate"
         },
         {
+            "name": "usbRadioPort",
+            "shortDesc": "Radio streaming its channels over USB with an EdgeTX script",
+            "longDesc": "A radio running the Aircast USB radio script (aircast-usb.lua) streams its channels over USB serial. While it streams, its channels 1 to 18 fly the active vehicle as RC overrides. Off sends nothing.",
+            "type": "string",
+            "default": "",
+            "label": "Radio on USB (EdgeTX script)"
+        },
+        {
+            "name": "usbRadioStandby",
+            "shortDesc": "4G standby: the radio flies over its own link, and 4G takes over with its channels if that link drops",
+            "longDesc": "The radio's channels go to the aircraft's computer instead of the flight controller. While the radio's own link flies the aircraft they are held back; if that link fades or the flight controller reports a radio failsafe, the aircraft's computer flies these channels until the link is good again. ArduPilot multicopters with aircastd only.",
+            "type": "bool",
+            "default": false,
+            "label": "4G standby"
+        },
+        {
             "name": "autoConnectZeroConf",
             "shortDesc": "Automatically open a connection with Zero-Conf",
             "longDesc": "If this option is enabled GroundControl will automatically connect to a vehicle which is detected over Zero-Conf.",

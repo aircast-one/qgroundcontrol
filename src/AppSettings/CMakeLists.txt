@@ -98,6 +98,7 @@ qt_add_qml_module(AppSettingsModule
         SettingsPage.qml
         TcpSettings.qml
         UdpSettings.qml
+        UsbRadioSettings.qml
     NO_PLUGIN
 )
 

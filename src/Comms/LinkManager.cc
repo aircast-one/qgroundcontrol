@@ -33,6 +33,7 @@
 
 #include <QtCore/QApplicationStatic>
 #include <QtCore/QTimer>
+#include <algorithm>
 
 QGC_LOGGING_CATEGORY(LinkManagerLog, "Comms.LinkManager")
 QGC_LOGGING_CATEGORY(LinkManagerVerboseLog, "Comms.LinkManager:verbose")
@@ -852,6 +853,12 @@ void LinkManager::_addSerialAutoConnectLink()
         QGCSerialPortInfo::BoardType_t boardType;
         QString boardName;
 
+        if (portInfo.systemLocation().trimmed() ==
+            _autoConnectSettings->usbRadioPort()->rawValue().toString().trimmed()) {
+            _releaseAutoConnectPort(portInfo.systemLocation().trimmed());
+            continue;
+        }
+
         // check to see if nmea gps is configured for current Serial port, if so, set it up to connect
         if ((_autoConnectSettings->nmeaSource()->rawValue().toInt() == AutoConnectSettings::NmeaSourceSerial) &&
                 (portInfo.systemLocation().trimmed() == _autoConnectSettings->autoConnectNmeaPort()->cookedValueString())) {
@@ -967,6 +974,26 @@ bool LinkManager::_allowAutoConnectToBoard(QGCSerialPortInfo::BoardType_t boardT
     }
 
     return false;
+}
+
+void LinkManager::_releaseAutoConnectPort(const QString& portName)
+{
+    const QList<SharedLinkInterfacePtr> holding = [this, &portName]() {
+        QMutexLocker locker(&_linksMutex);
+        QList<SharedLinkInterfacePtr> found;
+        std::copy_if(_rgLinks.cbegin(), _rgLinks.cend(), std::back_inserter(found),
+                     [&portName](const SharedLinkInterfacePtr& link) {
+                         const SharedLinkConfigurationPtr config = link->linkConfiguration();
+                         const SerialConfiguration* const serial =
+                             qobject_cast<const SerialConfiguration*>(config.get());
+                         return serial && config->isAutoConnect() && (serial->portName() == portName);
+                     });
+        return found;
+    }();
+    std::ranges::for_each(holding, [this, &portName](const SharedLinkInterfacePtr& link) {
+        qCDebug(LinkManagerLog) << "Releasing" << portName << "to the radio on USB";
+        disconnectLink(link.get());
+    });
 }
 
 bool LinkManager::_portAlreadyConnected(const QString &portName)
