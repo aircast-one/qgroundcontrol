@@ -6,6 +6,7 @@ local SERIAL_PREFIX = "$"
 local UPDATE_INTERVAL_TICKS = 10
 local APP_SILENT_TICKS = 150
 local CONFIRM_TICKS = 300
+local SAME_PRESS_TICKS = 20
 local BAR_MAX_W = 60
 local COLUMN_ROWS = 12
 local EXIT_HINT = "RTN: stop sending sticks and exit"
@@ -22,6 +23,7 @@ local used = {}
 local useLvglUI = false
 local leaving = false
 local confirmUntil = nil
+local askedAt = nil
 local heard = ""
 local app = { state = nil, vehicle = nil, at = nil }
 
@@ -113,10 +115,13 @@ local function hint()
 end
 
 local function askToLeave()
+  local t = now()
+  if askedAt ~= nil and t - askedAt < SAME_PRESS_TICKS then return end
+  askedAt = t
   if not flying() or confirming() then
     leaving = true
   else
-    confirmUntil = now() + CONFIRM_TICKS
+    confirmUntil = t + CONFIRM_TICKS
   end
 end
 
