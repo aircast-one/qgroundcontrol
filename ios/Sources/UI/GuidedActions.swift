@@ -39,6 +39,19 @@ func guidedOffers(_ view: JSON?) -> [String: GuidedOffer] {
     return Dictionary(offers.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
 }
 
+struct PayloadProblem: Equatable {
+    var code: String
+    var text: String
+    var blocking: Bool
+    var fix: String
+}
+
+func payloadProblems(_ view: JSON?) -> [PayloadProblem] {
+    (view?["payload"]["problems"].arrayOrNil ?? []).filter { $0.object != nil }.map {
+        PayloadProblem(code: $0["code"].string, text: $0["text"].string, blocking: $0["blocking"].bool, fix: $0["fix"].string)
+    }
+}
+
 func resumeFromSequence(_ view: JSON?) -> Int? {
     guard let view, !view["resumeFromSequence"].isNull else { return nil }
     let sequence = view["resumeFromSequence"].int(0)

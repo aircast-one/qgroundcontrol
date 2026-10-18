@@ -563,7 +563,7 @@ struct FlightActions<Center: View>: View {
         }
         let gripper = gripperOffers(moreActions(offers))
         if actions.showGripper && !gripper.isEmpty {
-            GripperPanel(offers: gripper) { actions.showGripper = false }
+            GripperPanel(offers: gripper, problems: payloadProblems(actionsJson)) { actions.showGripper = false }
         }
     }
 

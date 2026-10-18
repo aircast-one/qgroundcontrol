@@ -39,6 +39,28 @@ class PayloadStatusTest {
     }
 
     @Test
+    fun `the payload carries what would stop it dropping and how to fix it`() {
+        val view = JSONObject(
+            """{"payload":{"bays":4,"empty":[1],"next":2,"problems":[
+                {"code":"staysOpen","text":"The gripper stays open after the first drop.","blocking":true,"fix":"Turn on auto-close"},
+                {"code":"noGripper","text":"No gripper.","blocking":true,"fix":""}]}}""",
+        )
+        assertEquals(
+            Payload(
+                4,
+                listOf(1),
+                2,
+                listOf(
+                    PayloadProblem("staysOpen", "The gripper stays open after the first drop.", blocking = true, fix = "Turn on auto-close"),
+                    PayloadProblem("noGripper", "No gripper.", blocking = true, fix = ""),
+                ),
+            ),
+            payloadOf(view),
+        )
+        assertEquals(SINGLE_GRIPPER, payloadOf(JSONObject("""{"payload":{"bays":1,"empty":[],"next":null}}""")))
+    }
+
+    @Test
     fun `time since is coarse and never negative`() {
         assertEquals(listOf("0 s ago", "59 s ago", "1 h ago"), listOf(agoText(at, at - 5_000), agoText(at, at + 59_999), agoText(at, at + 3_600_000)))
     }

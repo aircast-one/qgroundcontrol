@@ -13,6 +13,7 @@ private let vehicleChangeAltitude = "vehicle.guidedModeChangeAltitude"
 private let vehicleStartMission = "vehicle.startMission"
 private let vehicleAbortLanding = "vehicle.abortLanding"
 private let vehicleGripper = "vehicle.sendGripperAction"
+private let vehicleFixPayload = "vehicle.fixPayload"
 private let vehicleStopRoi = "vehicle.stopGuidedModeROI"
 private let vehicleForceArm = "vehicle.forceArm"
 private let vehicleEmergencyStop = "vehicle.emergencyStop"
@@ -45,6 +46,8 @@ enum VehicleCommands {
     @discardableResult static func startMission() -> Bool { Qgc.invoke(vehicleStartMission) }
     @discardableResult static func abortLanding(_ climbMeters: Double) -> Bool { Qgc.invoke(vehicleAbortLanding, climbMeters) }
     @discardableResult static func gripper(_ action: Int) -> Bool { Qgc.invoke(vehicleGripper, action) }
+    static func gripperRefusal(_ action: Int) -> String? { Qgc.refusalOf(vehicleGripper, action) }
+    static func fixPayloadRefusal(_ code: String) -> String? { Qgc.refusalOf(vehicleFixPayload, code) }
     @discardableResult static func stopRoi() -> Bool { Qgc.invoke(vehicleStopRoi) }
     @discardableResult static func forceArm() -> Bool { Qgc.invoke(vehicleForceArm) }
     @discardableResult static func emergencyStop() -> Bool { Qgc.invoke(vehicleEmergencyStop) }

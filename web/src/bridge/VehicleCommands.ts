@@ -14,6 +14,7 @@ const VEHICLE_CHANGE_ALTITUDE = 'vehicle.guidedModeChangeAltitude';
 const VEHICLE_START_MISSION = 'vehicle.startMission';
 const VEHICLE_ABORT_LANDING = 'vehicle.abortLanding';
 const VEHICLE_GRIPPER = 'vehicle.sendGripperAction';
+const VEHICLE_FIX_PAYLOAD = 'vehicle.fixPayload';
 const VEHICLE_STOP_ROI = 'vehicle.stopGuidedModeROI';
 const VEHICLE_FORCE_ARM = 'vehicle.forceArm';
 const VEHICLE_EMERGENCY_STOP = 'vehicle.emergencyStop';
@@ -45,6 +46,7 @@ export const VehicleCommands = {
   abortLanding: (climbMeters: number): Promise<boolean> => Qgc.invoke(VEHICLE_ABORT_LANDING, climbMeters),
   gripper: (action: number, bay = 0): Promise<boolean> => Qgc.invoke(VEHICLE_GRIPPER, action, bay),
   gripperRefusal: (action: number, bay = 0): Promise<string | null> => Qgc.refusalOf(VEHICLE_GRIPPER, action, bay),
+  fixPayloadRefusal: (code: string): Promise<string | null> => Qgc.refusalOf(VEHICLE_FIX_PAYLOAD, code),
   stopRoi: (): Promise<boolean> => Qgc.invoke(VEHICLE_STOP_ROI),
   forceArm: (): Promise<boolean> => Qgc.invoke(VEHICLE_FORCE_ARM),
   emergencyStop: (): Promise<boolean> => Qgc.invoke(VEHICLE_EMERGENCY_STOP),

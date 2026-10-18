@@ -13,14 +13,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.VehicleCommands
-import one.aircast.android.bridge.offMainDetached
 import one.aircast.android.bridge.qgcPath
 import one.aircast.map.AircastSheet
 import org.json.JSONObject
@@ -72,26 +76,47 @@ internal fun bayLabel(bay: Int, payload: Payload): String =
 
 private fun List<GuidedOffer>.ready(id: String): Boolean = any { it.id == id && it.ready }
 
+private val ACTION_CODES = mapOf(RELEASE to GRIPPER_RELEASE, "grab" to GRIPPER_GRAB, "hold" to GRIPPER_HOLD)
+
+private typealias Ask = (suspend () -> String?) -> Unit
+
 @Composable
-private fun SingleGripper(offers: List<GuidedOffer>) {
+private fun SingleGripper(offers: List<GuidedOffer>, ask: Ask) {
     offers.filter { it.id == RELEASE }.forEach { offer ->
-        HoldToConfirm(holdLabel(offer.title), enabled = offer.ready) { guidedCommand(offer.id, null)?.invoke() }
+        HoldToConfirm(holdLabel(offer.title), enabled = offer.ready) { ask { VehicleCommands.gripperRefusal(GRIPPER_RELEASE) } }
     }
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         offers.filter { it.id != RELEASE }.forEach { offer ->
-            OutlinedButton(onClick = { guidedCommand(offer.id, null)?.invoke() }, enabled = offer.ready) { Text(offer.title) }
+            OutlinedButton(onClick = { ask { VehicleCommands.gripperRefusal(ACTION_CODES[offer.id] ?: GRIPPER_GRAB) } }, enabled = offer.ready) { Text(offer.title) }
         }
     }
 }
 
 @Composable
-private fun Bays(offers: List<GuidedOffer>, payload: Payload) {
+private fun Bays(offers: List<GuidedOffer>, payload: Payload, ask: Ask) {
     payload.bayNumbers.forEach { bay ->
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             HoldToConfirm(bayLabel(bay, payload), Modifier.weight(1f), enabled = offers.ready(RELEASE)) {
-                offMainDetached { VehicleCommands.gripper(GRIPPER_RELEASE, bay) }
+                ask { VehicleCommands.gripperRefusal(GRIPPER_RELEASE, bay) }
             }
-            OutlinedButton(onClick = { offMainDetached { VehicleCommands.gripper(GRIPPER_GRAB, bay) } }, enabled = offers.ready("grab")) { Text("Grab") }
+            OutlinedButton(onClick = { ask { VehicleCommands.gripperRefusal(GRIPPER_GRAB, bay) } }, enabled = offers.ready("grab")) { Text("Grab") }
+        }
+    }
+}
+
+@Composable
+private fun Problems(problems: List<PayloadProblem>, ask: Ask) {
+    problems.forEach { problem ->
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                problem.text,
+                Modifier.weight(1f),
+                style = MaterialTheme.typography.bodySmall,
+                color = if (problem.blocking) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (problem.fix.isNotEmpty()) {
+                OutlinedButton(onClick = { ask { VehicleCommands.fixPayloadRefusal(problem.code) } }) { Text(problem.fix) }
+            }
         }
     }
 }
@@ -107,18 +132,22 @@ internal fun GripperPanel(offers: List<GuidedOffer>, payload: Payload, onDismiss
             now = System.currentTimeMillis()
         }
     }
-    val status = payloadStatus(stateJson?.optJSONObject("value"), now)
+    var refusal by remember { mutableStateOf<String?>(null) }
+    val scope = rememberCoroutineScope()
+    val ask: Ask = { call -> scope.launch { refusal = withContext(Dispatchers.Default) { call() } } }
+    val status = refusal?.let { PayloadStatus(it, warning = true) } ?: payloadStatus(stateJson?.optJSONObject("value"), now)
     AircastSheet(onDismissRequest = onDismiss) {
         Column(
             Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
+            Problems(payload.problems, ask)
             Text(
                 status?.text ?: "No payload command sent yet",
                 style = MaterialTheme.typography.bodyMedium,
                 color = if (status?.warning == true) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (payload.multiBay) Bays(offers, payload) else SingleGripper(offers)
+            if (payload.multiBay) Bays(offers, payload, ask) else SingleGripper(offers, ask)
         }
     }
 }

@@ -278,7 +278,7 @@ fn firmware_fields(autopilot: u8, firmware: Option<crate::connect::Firmware>) ->
     })
 }
 
-fn has_gripper(autopilot: u8, parameter: impl Fn(&str) -> Option<f64>) -> bool {
+pub fn has_gripper(autopilot: u8, parameter: impl Fn(&str) -> Option<f64>) -> bool {
     match autopilot {
         crate::modes::AUTOPILOT_ARDUPILOT => parameter("GRIP_ENABLE") == Some(1.0),
         crate::modes::AUTOPILOT_PX4 => parameter("PD_GRIPPER_EN").map(|v| v != 0.0).or_else(|| parameter("PD_GRIPPER_TYPE").map(|v| v >= 0.0)).unwrap_or(false),
@@ -607,6 +607,7 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         "vtolInFwdFlight": v.vtol_in_forward_flight,
         "hasGripper": has_gripper(v.autopilot, |name| v.parameter(v.component, name).map(|p| p.as_f64())),
         "gripper": v.gripper.map(|g| g.json(&v.empty_bays)),
+        "payloadSetup": json!({ "setup": v.payload_setup().json(), "releasedAtMs": v.gripper_released_ms, "empty": v.empty_bays }),
         "readyToFlyAvailable": v.status_bits.ready_to_fly_available,
         "readyToFly": v.status_bits.ready_to_fly,
         "allSensorsHealthy": v.status_bits.all_healthy,

@@ -23,7 +23,7 @@ pub fn remember_flight(previous: Option<FlightMemory>, vehicle: i64, flying: boo
 pub const DEPS: &[&str] = &[
     "settings.flyViewSettings.forwardFlightGoToLocationLoiterRad",
     "settings.flyViewSettings.payloadBays",
-    "vehicle.gripper",
+    "vehicle.payloadSetup",
     "vehicles.activeVehicleAvailable",
     "vehicle.parameterManager.parametersReady",
     "vehicle.id",
@@ -58,6 +58,7 @@ pub const DEPS: &[&str] = &[
 
 const CHECKLIST_PASSED: i64 = 1;
 pub const NO_SIGNAL: &str = "No signal from the aircraft.";
+const PAYLOAD_BLOCKED: &str = "The mission's drops would not all fall. The gripper panel says what to change.";
 pub const NO_SIGNAL_CODE: &str = "noSignal";
 
 #[derive(Default, PartialEq, Debug, Clone)]
@@ -79,6 +80,8 @@ pub struct GuidedState {
     pub apm: bool,
     pub payload_bays: i64,
     pub empty_bays: Vec<i64>,
+    pub payload: crate::payloadcheck::Setup,
+    pub payload_released_ms: Option<i64>,
     pub initial_connect_complete: bool,
     pub in_rtl: bool,
     pub in_land: bool,
@@ -275,6 +278,9 @@ impl Action {
         if s.contact_lost && matches!(self, Action::Arm | Action::Takeoff | Action::StartMission) {
             return Some(NO_SIGNAL);
         }
+        if matches!(self, Action::StartMission | Action::ResumeMission) && !s.flying && crate::payloadcheck::blocking(&s.payload, 1).is_some() {
+            return Some(PAYLOAD_BLOCKED);
+        }
         let passes = match self {
             Action::Arm => s.can_arm,
             Action::Takeoff => s.can_takeoff,
@@ -339,7 +345,7 @@ pub fn guided_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "flying": state.flying,
         "gotoLoiterRadius": state.goto_loiter_radius,
         "actions": offers,
-        "payload": { "bays": state.payload_bays.max(1), "empty": state.empty_bays, "next": state.next_bay() },
+        "payload": { "bays": state.payload_bays.max(1), "empty": state.empty_bays, "next": state.next_bay(), "problems": crate::payloadcheck::problems_json(&state.payload, state.payload_bays) },
     })
 }
 
@@ -378,7 +384,7 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
     }
     let vehicle = backend.value_fields(
         "vehicle",
-        "id,armed,flying,isROIEnabled,fixedWing,vtol,vtolInFwdFlight,haveFWSpeedLimits,haveMRSpeedLimits,px4Firmware,apmFirmware,landing,hasGripper,gripper,initialConnectComplete,checkListState,flightMode,rtlFlightMode,smartRTLFlightMode,landFlightMode,missionFlightMode,pauseFlightMode",
+        "id,armed,flying,isROIEnabled,fixedWing,vtol,vtolInFwdFlight,haveFWSpeedLimits,haveMRSpeedLimits,px4Firmware,apmFirmware,landing,hasGripper,payloadSetup,initialConnectComplete,checkListState,flightMode,rtlFlightMode,smartRTLFlightMode,landFlightMode,missionFlightMode,pauseFlightMode",
     );
     let supports = backend.value_fields("vehicle.supports", "guidedMode,pauseVehicle,roiMode,guidedTakeoffWithAltitude,guidedTakeoffWithoutAltitude,smartRTL");
     let report = backend.value_fields("vehicle.healthAndArmingCheckReport", "supported,canArm,canTakeoff,canStartMission");
@@ -420,7 +426,9 @@ fn read_state(backend: &dyn Backend) -> GuidedState {
         has_gripper: flag(&vehicle, "hasGripper"),
         apm: flag(&vehicle, "apmFirmware"),
         payload_bays: value_number(&backend.value("settings.flyViewSettings.payloadBays.rawValue")).map_or(1, |bays| bays as i64),
-        empty_bays: vehicle.get("gripper").and_then(|g| g.get("empty")).and_then(Value::as_array).map(|bays| bays.iter().filter_map(Value::as_i64).collect()).unwrap_or_default(),
+        empty_bays: vehicle.get("payloadSetup").and_then(|p| p.get("empty")).and_then(Value::as_array).map(|bays| bays.iter().filter_map(Value::as_i64).collect()).unwrap_or_default(),
+        payload: vehicle.get("payloadSetup").and_then(|p| p.get("setup")).map(crate::payloadcheck::Setup::from_json).unwrap_or_default(),
+        payload_released_ms: vehicle.get("payloadSetup").and_then(|p| p.get("releasedAtMs")).and_then(Value::as_i64),
         initial_connect_complete: flag(&vehicle, "initialConnectComplete"),
         in_rtl: same_mode("rtlFlightMode") || same_mode("smartRTLFlightMode"),
         in_land: same_mode("landFlightMode"),
@@ -461,6 +469,10 @@ fn invoke_refusal(offered: &[Action], s: &GuidedState) -> Option<(&'static str, 
         };
     }
     let offers: Vec<Offer> = offered.iter().map(|a| a.offer(s)).collect();
+    let starts_a_mission = offered.iter().any(|a| matches!(a, Action::StartMission | Action::ResumeMission)) && !s.flying;
+    if let Some(reason) = starts_a_mission.then(|| crate::payloadcheck::blocking(&s.payload, 1)).flatten() {
+        return Some(("payload", reason));
+    }
     if offers.iter().any(|o| o.offer == "ready") {
         return None;
     }
@@ -702,7 +714,23 @@ pub fn invoke_valued(backend: &dyn Backend, kind: Valued, path: &str, args: &str
         Ok(checked) => checked,
         Err((token, reason)) => return json!({ "ok": false, "refusal": token, "reason": reason }),
     };
+    if let Some(reason) = (offered == [Action::Release]).then(|| crate::payloadcheck::open_refusal(&state.payload, state.payload_released_ms, crate::hub::wall_ms())).flatten() {
+        return json!({ "ok": false, "refusal": "gripperOpen", "reason": reason });
+    }
     dispatch(backend, core_action(&offered, &forwarded, &state), active_id(backend), path, &forwarded)
+}
+
+pub fn fix_payload(backend: &dyn Backend, path: &str, args: &str) -> Value {
+    let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
+    let Some(problem) = given.get(0).and_then(Value::as_str).and_then(crate::payloadcheck::Problem::of_code) else {
+        return json!({ "ok": false, "refusal": "malformed", "reason": "Name the payload problem to fix." });
+    };
+    let state = read_state(backend);
+    let fix = crate::payloadcheck::problems(&state.payload, state.payload_bays).contains(&problem).then(|| problem.fix(&state.payload)).flatten();
+    match fix {
+        None => json!({ "ok": false, "refusal": "notOffered", "reason": "There is nothing to change for that payload problem now." }),
+        Some((name, value)) => dispatch(backend, Some(json!({ "action": "paramSet", "name": name, "value": value })), active_id(backend), path, args),
+    }
 }
 
 pub fn write_vtol(backend: &dyn Backend, path: &str, value: &str) -> Value {
@@ -1012,6 +1040,20 @@ mod tests {
         assert_eq!(offer_of(&done, Action::ContinueMission), "hidden");
         let ground = GuidedState { armed: false, flying: false, ..mid };
         assert_eq!(offer_of(&ground, Action::StartMission), "ready");
+    }
+
+    #[test]
+    fn a_mission_whose_drops_would_not_fall_does_not_start() {
+        let stuck = crate::payloadcheck::Setup { ardupilot: true, enabled: true, output: true, drops: 4, ..Default::default() };
+        let ground = GuidedState { mission_available: true, can_start_mission: true, payload: stuck.clone(), ..ready_on_ground() };
+        let refused = invoke_refusal(&[Action::StartMission, Action::ContinueMission], &ground);
+        assert_eq!(refused.as_ref().map(|r| r.0), Some("payload"));
+        assert!(refused.unwrap().1.starts_with("The gripper stays open after the first drop"), "the refusal says what to change");
+        assert_eq!((offer_of(&ground, Action::StartMission), Action::StartMission.offer(&ground).reason), ("hidden", PAYLOAD_BLOCKED), "hidden like a failing arming check, while the status line names the problem");
+        let closing = GuidedState { payload: crate::payloadcheck::Setup { auto_close_s: 2.0, ..stuck.clone() }, ..ground.clone() };
+        assert_eq!(invoke_refusal(&[Action::StartMission, Action::ContinueMission], &closing), None);
+        let airborne = GuidedState { armed: true, flying: true, mission_item_count: 9, current_mission_index: 2, ..ground };
+        assert_eq!(invoke_refusal(&[Action::StartMission, Action::ContinueMission], &airborne), None, "a drone in the air is never refused its mission");
     }
 
     #[test]

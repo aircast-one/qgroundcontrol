@@ -61,15 +61,24 @@ export const guidedOffers = (view: Json | null): ReadonlyMap<string, GuidedOffer
       }),
   );
 
-export type Payload = { readonly bays: number; readonly empty: readonly number[]; readonly next: number | null };
+export type PayloadProblem = { readonly code: string; readonly text: string; readonly blocking: boolean; readonly fix: string };
 
-export const SINGLE_GRIPPER: Payload = { bays: 1, empty: [], next: null };
+export type Payload = { readonly bays: number; readonly empty: readonly number[]; readonly next: number | null; readonly problems: readonly PayloadProblem[] };
+
+export const SINGLE_GRIPPER: Payload = { bays: 1, empty: [], next: null, problems: [] };
+
+const problemOf = (json: Json): PayloadProblem => ({ code: optText(json, 'code'), text: optText(json, 'text'), blocking: optBoolean(json, 'blocking'), fix: optText(json, 'fix') });
 
 export const payloadOf = (view: Json | null): Payload => {
   const payload = optJSONObject(view, 'payload');
   if (payload === null) return SINGLE_GRIPPER;
   const bays = Math.max(1, optInt(payload, 'bays', 1));
-  return { bays, empty: (optJSONArray(payload, 'empty') ?? []).filter((it): it is number => typeof it === 'number'), next: isNull(payload, 'next') ? null : optInt(payload, 'next') };
+  return {
+    bays,
+    empty: (optJSONArray(payload, 'empty') ?? []).filter((it): it is number => typeof it === 'number'),
+    next: isNull(payload, 'next') ? null : optInt(payload, 'next'),
+    problems: jsonObjects(optJSONArray(payload, 'problems')).map(problemOf),
+  };
 };
 
 export const multiBay = (payload: Payload): boolean => payload.bays > 1;

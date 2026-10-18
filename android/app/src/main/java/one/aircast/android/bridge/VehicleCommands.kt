@@ -15,6 +15,7 @@ private const val VEHICLE_CHANGE_ALTITUDE = "vehicle.guidedModeChangeAltitude"
 private const val VEHICLE_START_MISSION = "vehicle.startMission"
 private const val VEHICLE_ABORT_LANDING = "vehicle.abortLanding"
 private const val VEHICLE_GRIPPER = "vehicle.sendGripperAction"
+private const val VEHICLE_FIX_PAYLOAD = "vehicle.fixPayload"
 private const val VEHICLE_STOP_ROI = "vehicle.stopGuidedModeROI"
 private const val VEHICLE_FORCE_ARM = "vehicle.forceArm"
 private const val VEHICLE_EMERGENCY_STOP = "vehicle.emergencyStop"
@@ -50,6 +51,7 @@ internal object VehicleCommands {
     fun abortLanding(climbMeters: Double): Boolean = Qgc.invoke(VEHICLE_ABORT_LANDING, climbMeters)
     fun gripper(action: Int, bay: Int = 0): Boolean = Qgc.invoke(VEHICLE_GRIPPER, action, bay)
     fun gripperRefusal(action: Int, bay: Int = 0): String? = Qgc.refusalOf(VEHICLE_GRIPPER, action, bay)
+    fun fixPayloadRefusal(code: String): String? = Qgc.refusalOf(VEHICLE_FIX_PAYLOAD, code)
     fun stopRoi(): Boolean = Qgc.invoke(VEHICLE_STOP_ROI)
     fun forceArm(): Boolean = Qgc.invoke(VEHICLE_FORCE_ARM)
     fun emergencyStop(): Boolean = Qgc.invoke(VEHICLE_EMERGENCY_STOP)

@@ -398,7 +398,10 @@ fn insert_drop(backend: &dyn Backend, args: &str) -> Value {
     let Some(defaults) = edit_defaults(backend) else {
         return refused("The default mission item altitude is not known.");
     };
-    edit(|doc| Ok(plandoc::insert_simple(doc, CMD_DO_GRIPPER, 0.0, 0.0, index, &defaults)))
+    edit(|doc| {
+        let at = usize::try_from(index - 1).ok().filter(|i| *i <= doc.items.len()).unwrap_or(doc.items.len());
+        Ok(plandoc::hold_before_drop(&plandoc::insert_simple(doc, CMD_DO_GRIPPER, 0.0, 0.0, index, &defaults), at, crate::payloadcheck::DROP_HOLD_SECONDS))
+    })
 }
 
 fn insert_scan(backend: &dyn Backend, args: &str, corridor: bool) -> Value {

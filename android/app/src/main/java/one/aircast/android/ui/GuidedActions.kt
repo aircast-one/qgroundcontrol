@@ -46,14 +46,19 @@ internal fun guidedOffers(view: JSONObject?): Map<String, GuidedOffer> {
     }.toMap()
 }
 
-internal data class Payload(val bays: Int, val empty: List<Int>, val next: Int?)
+internal data class PayloadProblem(val code: String, val text: String, val blocking: Boolean, val fix: String)
+
+internal data class Payload(val bays: Int, val empty: List<Int>, val next: Int?, val problems: List<PayloadProblem> = emptyList())
 
 internal val SINGLE_GRIPPER = Payload(bays = 1, empty = emptyList(), next = null)
 
 internal fun payloadOf(view: JSONObject?): Payload {
     val payload = view?.optJSONObject("payload") ?: return SINGLE_GRIPPER
     val empty = payload.optJSONArray("empty")?.let { array -> (0 until array.length()).map { array.optInt(it) } }.orEmpty()
-    return Payload(bays = payload.optInt("bays", 1).coerceAtLeast(1), empty = empty, next = payload.takeUnless { it.isNull("next") }?.optInt("next"))
+    val problems = payload.optJSONArray("problems")?.let { array ->
+        (0 until array.length()).mapNotNull { array.optJSONObject(it) }.map { PayloadProblem(it.optText("code"), it.optText("text"), it.optBoolean("blocking"), it.optText("fix")) }
+    }.orEmpty()
+    return Payload(bays = payload.optInt("bays", 1).coerceAtLeast(1), empty = empty, next = payload.takeUnless { it.isNull("next") }?.optInt("next"), problems = problems)
 }
 
 internal val Payload.multiBay: Boolean get() = bays > 1

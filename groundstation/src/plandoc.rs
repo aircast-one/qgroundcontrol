@@ -693,6 +693,15 @@ pub fn awaiting_terrain(doc: &Document) -> bool {
     doc.items.iter().any(|item| matches!(item, Item::Simple(Simple { altitude: Some(held), .. }) if held.mode == crate::altitudemodes::CALC_ABOVE_TERRAIN && !held.amsl_above_terrain.is_some_and(f64::is_finite)))
 }
 
+pub fn hold_before_drop(doc: &Document, drop_at: usize, seconds: f64) -> Document {
+    let last_place = doc.items.get(..drop_at).unwrap_or(&doc.items).iter().rposition(|item| !matches!(item, Item::Simple(s) if s.altitude.is_none()));
+    let waypoint = last_place.filter(|at| matches!(&doc.items[*at], Item::Simple(s) if s.command == CMD_NAV_WAYPOINT && s.params[0].unwrap_or(0.0) == 0.0));
+    match (vehicle_class(doc.vehicle_type), waypoint) {
+        (VehicleClass::MultiRotor, Some(at)) => set_param(doc, at + 1, 1, seconds).unwrap_or_else(|| doc.clone()),
+        _ => doc.clone(),
+    }
+}
+
 pub fn set_param(doc: &Document, visual_index: usize, param: usize, value: f64) -> Option<Document> {
     let (at, current) = simple_at(doc, visual_index)?;
     let slot = param.checked_sub(1).filter(|p| *p < 7)?;
@@ -1377,6 +1386,19 @@ mod tests {
         let Some(Item::Simple(drop)) = placed.items.get(1) else { panic!("the drop goes where it was asked") };
         assert_eq!((drop.command, drop.params[0], drop.params[1], drop.params[4], drop.params[5], drop.altitude.is_none()), (211, Some(1.0), Some(0.0), Some(0.0), Some(0.0), true), "gripper 1, action 0 = release, no coordinate: it fires at the waypoint before it");
         assert_eq!(placed.items.len(), apm.items.len() + 1);
+    }
+
+    #[test]
+    fn a_multirotor_stops_over_the_drop_and_a_plane_flies_through() {
+        let copter = Document { firmware_type: 3, vehicle_type: 2, ..section() };
+        let at = copter.items.iter().rposition(|item| matches!(item, Item::Simple(s) if s.command == CMD_NAV_WAYPOINT)).unwrap();
+        let hold = |doc: &Document| match &doc.items[at] { Item::Simple(s) => s.params[0], Item::Complex { .. } => None };
+        let dropped = hold_before_drop(&insert_simple(&copter, 211, 0.0, 0.0, at as i64 + 2, &QT_DEFAULTS), at + 1, 2.0);
+        assert_eq!(hold(&dropped), Some(2.0), "the waypoint before the drop holds, so the payload leaves a drone that is standing still");
+        let held = set_param(&copter, at + 1, 1, 5.0).unwrap();
+        assert_eq!(hold(&hold_before_drop(&insert_simple(&held, 211, 0.0, 0.0, at as i64 + 2, &QT_DEFAULTS), at + 1, 2.0)), Some(5.0), "a hold the pilot set is kept");
+        let plane = Document { vehicle_type: 1, ..copter };
+        assert_eq!(hold(&hold_before_drop(&insert_simple(&plane, 211, 0.0, 0.0, at as i64 + 2, &QT_DEFAULTS), at + 1, 2.0)), hold(&plane), "a plane cannot stop over its target");
     }
 
     #[test]

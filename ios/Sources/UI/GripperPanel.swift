@@ -6,6 +6,7 @@ let HOLD_TO_CONFIRM_HELP = "Hold to Confirm"
 private let HOLD_FILL_ALPHA = 0.35
 
 let GRIPPER_ACTIONS = ["release", "grab", "hold"]
+private let GRIPPER_CODES = ["release": 0, "grab": 1, "hold": 2]
 
 func gripperOffers(_ extras: [GuidedOffer]) -> [GuidedOffer] {
     GRIPPER_ACTIONS.compactMap { id in extras.first { $0.id == id } }
@@ -63,15 +64,41 @@ struct HoldToConfirmButton: View {
 
 struct GripperPanel: View {
     let offers: [GuidedOffer]
+    let problems: [PayloadProblem]
     let onDismiss: () -> Void
+    @State private var refusal: String?
+    @Environment(\.theme) private var theme
+
+    private func ask(_ call: @escaping @Sendable () -> String?, dismissing: Bool) {
+        Task {
+            let refused = await offMain(call)
+            refusal = refused
+            if refused == nil && dismissing { onDismiss() }
+        }
+    }
 
     var body: some View {
         AircastSheet(onDismissRequest: onDismiss) {
             VStack(spacing: Space.s2) {
+                ForEach(problems, id: \.code) { problem in
+                    HStack(spacing: Space.s2) {
+                        Text(problem.text)
+                            .font(.bodySmall)
+                            .foregroundStyle(problem.blocking ? theme.colors.error : theme.colors.onSurfaceVariant)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        if !problem.fix.isEmpty {
+                            let code = problem.code
+                            Button(problem.fix) { ask({ VehicleCommands.fixPayloadRefusal(code) }, dismissing: false) }.buttonStyle(.bordered)
+                        }
+                    }
+                }
+                if let refusal {
+                    Text(refusal).font(.bodyMedium).foregroundStyle(theme.colors.error).frame(maxWidth: .infinity, alignment: .leading)
+                }
                 ForEach(offers, id: \.id) { offer in
                     HoldToConfirmButton(text: offer.title, enabled: offer.ready) {
-                        guidedCommand(offer.id, nil)?()
-                        onDismiss()
+                        let action = GRIPPER_CODES[offer.id] ?? 0
+                        ask({ VehicleCommands.gripperRefusal(action) }, dismissing: true)
                     }
                 }
             }

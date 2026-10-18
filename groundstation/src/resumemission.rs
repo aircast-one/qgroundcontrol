@@ -84,6 +84,7 @@ pub fn resume_items(items: &[Item], asked: usize, sends_home: bool, shape_of: im
         .iter()
         .enumerate()
         .filter(|(i, item)| (*i == 0 && sends_home) || *i >= resume || CARRIED_FORWARD.contains(&item.command) || shape_of(item.command).takeoff)
+        .filter(|(i, item)| !(crate::payloadcheck::is_release(item) && (resume..=asked).contains(i)))
         .collect();
     let prefix = picked.iter().filter(|(i, _)| *i < resume).count();
     let mut seen = Seen::default();
@@ -131,6 +132,18 @@ mod tests {
         let resumed = resume_items(&mission, 2, false, shape_of).unwrap();
         assert_eq!(resumed.iter().map(|i| i.params[4]).collect::<Vec<_>>(), [1.0, 2.0, 3.0]);
         assert_eq!(resumed.iter().position(|i| i.current), Some(0));
+    }
+
+    #[test]
+    fn a_drop_on_the_leg_flown_again_is_not_dropped_twice() {
+        let release = |seq: u16| Item { params: [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0], ..item(seq, crate::payloadcheck::CMD_DO_GRIPPER) };
+        let mission = [item(0, NAV_WAYPOINT), item(1, NAV_TAKEOFF), item(2, NAV_WAYPOINT), release(3), item(4, NAV_WAYPOINT), release(5), item(6, NAV_WAYPOINT), release(7), item(8, NAV_WAYPOINT)];
+        let resumed = resume_items(&mission, 5, true, shape_of).unwrap();
+        let drops = |items: &[Item]| items.iter().filter(|i| crate::payloadcheck::is_release(i)).count();
+        assert_eq!(resumed.iter().map(|i| i.command).collect::<Vec<_>>(), [NAV_WAYPOINT, NAV_TAKEOFF, NAV_WAYPOINT, NAV_WAYPOINT, crate::payloadcheck::CMD_DO_GRIPPER, NAV_WAYPOINT], "heading to 6, it flies 4 again, but the drop at 5 already fell");
+        assert_eq!(drops(&resumed), 1, "only the drop still to come");
+        assert_eq!(drops(&resume_items(&mission, 3, true, shape_of).unwrap()), 2, "heading to 4, the drop at 3 already fell");
+        assert_eq!(drops(&resume_items(&mission, 2, true, shape_of).unwrap()), 3, "resuming at the waypoint before a drop keeps that drop");
     }
 
     #[test]

@@ -3,7 +3,7 @@ use serde_json::{Value, json};
 use crate::read::{flag, text};
 use crate::router::Backend;
 
-pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.armed", "vehicle.flying", "vehicle.landing", "vehicle.flightMode", "vehicle.vehicleLinkManager.communicationLost", "vehicle.vehicleLinkManager.communicationLostEnabled", "planFly.missionController.currentMissionIndex", "vehicle.rcRSSI", "vehicle.rcChannelOverrideActive", "vehicle.radioStatus.lrssi", "vehicle.radioStatus.rrssi", "vehicle.radioStatus.lNoise", "vehicle.radioStatus.rNoise", "vehicle.radioStatus.rxErrors", "vehicle.radioStatus.fixed", "vehicle.radioStatus.txBuffer", "vehicle.healthAndArmingCheckReport.supported", "vehicle.healthAndArmingCheckReport.canArm", "vehicle.healthAndArmingCheckReport.hasWarningsOrErrors", "vehicle.sysStatusSensorInfo.sensorNames", "vehicle.sysStatusSensorInfo.sensorEnabled", "vehicle.sysStatusSensorInfo.sensorHealthy", "vehicle.readyToFlyAvailable", "vehicle.readyToFly", "vehicle.allSensorsHealthy", crate::setup::COMPONENTS];
+pub const DEPS: &[&str] = &["vehicles.activeVehicleAvailable", "vehicle.armed", "vehicle.payloadSetup", "settings.flyViewSettings.payloadBays", "vehicle.flying", "vehicle.landing", "vehicle.flightMode", "vehicle.vehicleLinkManager.communicationLost", "vehicle.vehicleLinkManager.communicationLostEnabled", "planFly.missionController.currentMissionIndex", "vehicle.rcRSSI", "vehicle.rcChannelOverrideActive", "vehicle.radioStatus.lrssi", "vehicle.radioStatus.rrssi", "vehicle.radioStatus.lNoise", "vehicle.radioStatus.rNoise", "vehicle.radioStatus.rxErrors", "vehicle.radioStatus.fixed", "vehicle.radioStatus.txBuffer", "vehicle.healthAndArmingCheckReport.supported", "vehicle.healthAndArmingCheckReport.canArm", "vehicle.healthAndArmingCheckReport.hasWarningsOrErrors", "vehicle.sysStatusSensorInfo.sensorNames", "vehicle.sysStatusSensorInfo.sensorEnabled", "vehicle.sysStatusSensorInfo.sensorHealthy", "vehicle.readyToFlyAvailable", "vehicle.readyToFly", "vehicle.allSensorsHealthy", crate::setup::COMPONENTS];
 
 pub fn deps() -> Vec<String> {
     DEPS.iter().map(|d| d.to_string()).chain(crate::battery::charge_deps()).collect()
@@ -113,7 +113,7 @@ fn telemetry(radio: &Value) -> Value {
 }
 
 pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
-    let vehicle = backend.value_fields("vehicle", "armed,flying,landing,flightMode,rcRSSI,rcChannelOverrideActive");
+    let vehicle = backend.value_fields("vehicle", "armed,flying,landing,flightMode,rcRSSI,rcChannelOverrideActive,payloadSetup");
     let radio = backend.value_fields("vehicle.radioStatus", "lrssi,rrssi,lNoise,rNoise,rxErrors,fixed,txBuffer");
     let connected = vehicle.get("kind").and_then(Value::as_str) == Some("object");
     let links = backend.value_fields("vehicle.vehicleLinkManager", "communicationLost,communicationLostEnabled");
@@ -124,7 +124,8 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let health = health(backend);
     let ready = state == State::Disarmed && disarmed_ready(backend);
     let low_battery = (state == State::Disarmed).then(|| crate::battery::low_charge(backend)).flatten();
-    let nominal = health.nominal() && low_battery.is_none();
+    let payload = (state == State::Disarmed).then(|| payload_problem(backend, &vehicle)).flatten();
+    let nominal = health.nominal() && low_battery.is_none() && payload.is_none();
     json!({
         "kind": "object",
         "class": "FlyState",
@@ -139,7 +140,7 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "nominal": nominal,
         "fault": health.fault(),
         "canArm": flag(&vehicle, "armed") || health.report.is_none_or(|(can_arm, _)| can_arm),
-        "summaryDetail": connected.then(|| summary_detail(flag(&vehicle, "armed"), flag(&vehicle, "flying") || flag(&vehicle, "landing"), health.check_issues, &health.sensors, low_battery.as_deref())),
+        "summaryDetail": connected.then(|| summary_detail(flag(&vehicle, "armed"), flag(&vehicle, "flying") || flag(&vehicle, "landing"), health.check_issues, &health.sensors, low_battery.as_deref(), payload.as_deref())),
         "staleNotice": if contact_lost { STALE_NOTICE } else { "" },
         "mode": text(&vehicle, "flightMode"),
         "flyingToSequence": flying_to(backend),
@@ -199,7 +200,13 @@ impl Health {
     }
 }
 
-pub fn summary_detail(armed: bool, in_air: bool, check_issues: usize, sensors: &[(String, bool, bool)], low_battery: Option<&str>) -> String {
+fn payload_problem(backend: &dyn Backend, vehicle: &Value) -> Option<String> {
+    let setup = crate::payloadcheck::Setup::from_json(vehicle.get("payloadSetup")?.get("setup")?);
+    let bays = crate::read::value_number(&backend.value("settings.flyViewSettings.payloadBays.rawValue")).map_or(1, |bays| bays as i64);
+    crate::payloadcheck::problems(&setup, bays).first().map(|problem| problem.text(&setup, bays))
+}
+
+pub fn summary_detail(armed: bool, in_air: bool, check_issues: usize, sensors: &[(String, bool, bool)], low_battery: Option<&str>, payload: Option<&str>) -> String {
     let listed = |pick: fn(bool, bool) -> bool| sensors.iter().filter(|(_, enabled, healthy)| pick(*enabled, *healthy)).map(|(name, ..)| name.as_str()).collect::<Vec<_>>().join(", ");
     let (faults, disabled) = (listed(|enabled, healthy| enabled && !healthy), listed(|enabled, _| !enabled));
     match (armed, in_air) {
@@ -208,6 +215,7 @@ pub fn summary_detail(armed: bool, in_air: bool, check_issues: usize, sensors: &
         _ if check_issues > 0 => format!("{check_issues} check(s) need attention before arming."),
         _ if !faults.is_empty() => format!("{faults} not working. Position modes and Return to Launch may not work."),
         _ if let Some(low) = low_battery => format!("{low} Charge or swap it before flight."),
+        _ if let Some(problem) = payload => problem.to_string(),
         _ if !disabled.is_empty() => format!("{disabled} turned off. Everything else reports normal."),
         _ => "All checks passed.".to_string(),
     }
@@ -284,16 +292,18 @@ mod tests {
     #[test]
     fn summary_detail_reads_like_main_status_indicator() {
         let sensors = |list: &[(&str, bool, bool)]| list.iter().map(|(n, e, h)| (n.to_string(), *e, *h)).collect::<Vec<_>>();
-        assert_eq!(summary_detail(true, true, 3, &[], None), "Motors are armed and the vehicle is in the air.");
-        assert_eq!(summary_detail(true, false, 0, &[], None), "Motors are armed. Keep clear of the propellers.");
-        assert_eq!(summary_detail(false, false, 2, &sensors(&[("GPS", true, false)]), None), "2 check(s) need attention before arming.");
-        assert_eq!(summary_detail(false, false, 0, &sensors(&[("GPS", true, false), ("Gyro", true, false), ("Mag", false, false)]), None), "GPS, Gyro not working. Position modes and Return to Launch may not work.");
-        assert_eq!(summary_detail(false, false, 0, &sensors(&[("GPS", true, true), ("Mag", false, false)]), None), "Mag turned off. Everything else reports normal.");
-        assert_eq!(summary_detail(false, false, 0, &sensors(&[("GPS", true, true)]), None), "All checks passed.");
-        assert_eq!(summary_detail(false, false, 0, &sensors(&[("Mag", false, false)]), Some("Battery at 0%.")), "Battery at 0%. Charge or swap it before flight.", "a flat battery outranks a switched-off sensor; the banner said everything else reports normal over a 0% pack");
-        assert_eq!(summary_detail(false, false, 0, &sensors(&[("GPS", true, false)]), Some("Battery at 0%.")), "GPS not working. Position modes and Return to Launch may not work.", "a fault keeps the line it shares with the red chip");
-        assert_eq!(summary_detail(false, false, 1, &[], Some("Battery at 0%.")), "1 check(s) need attention before arming.", "the refusal to arm stays attached to the checks that cause it");
-        assert_eq!(summary_detail(true, false, 0, &[], Some("Battery at 0%.")), "Motors are armed. Keep clear of the propellers.");
+        assert_eq!(summary_detail(true, true, 3, &[], None, None), "Motors are armed and the vehicle is in the air.");
+        assert_eq!(summary_detail(true, false, 0, &[], None, None), "Motors are armed. Keep clear of the propellers.");
+        assert_eq!(summary_detail(false, false, 2, &sensors(&[("GPS", true, false)]), None, None), "2 check(s) need attention before arming.");
+        assert_eq!(summary_detail(false, false, 0, &sensors(&[("GPS", true, false), ("Gyro", true, false), ("Mag", false, false)]), None, None), "GPS, Gyro not working. Position modes and Return to Launch may not work.");
+        assert_eq!(summary_detail(false, false, 0, &sensors(&[("GPS", true, true), ("Mag", false, false)]), None, None), "Mag turned off. Everything else reports normal.");
+        assert_eq!(summary_detail(false, false, 0, &sensors(&[("GPS", true, true)]), None, None), "All checks passed.");
+        assert_eq!(summary_detail(false, false, 0, &sensors(&[("Mag", false, false)]), Some("Battery at 0%."), None), "Battery at 0%. Charge or swap it before flight.", "a flat battery outranks a switched-off sensor; the banner said everything else reports normal over a 0% pack");
+        assert_eq!(summary_detail(false, false, 0, &sensors(&[("GPS", true, false)]), Some("Battery at 0%."), None), "GPS not working. Position modes and Return to Launch may not work.", "a fault keeps the line it shares with the red chip");
+        assert_eq!(summary_detail(false, false, 1, &[], Some("Battery at 0%."), None), "1 check(s) need attention before arming.", "the refusal to arm stays attached to the checks that cause it");
+        assert_eq!(summary_detail(true, false, 0, &[], Some("Battery at 0%."), None), "Motors are armed. Keep clear of the propellers.");
+        assert_eq!(summary_detail(false, false, 0, &sensors(&[("Mag", false, false)]), None, Some("The gripper stays open.")), "The gripper stays open.", "a payload that would not drop outranks a switched-off sensor");
+        assert_eq!(summary_detail(false, false, 0, &[], Some("Battery at 0%."), Some("The gripper stays open.")), "Battery at 0%. Charge or swap it before flight.");
     }
 
     #[test]

@@ -24,7 +24,7 @@ describe('PayloadStatusTest', () => {
   it('a basket names the bay in every line', () => {
     expect(payloadStatus({ action: 'release', bay: 2, outcome: 'confirmed', atMs: at }, at + 4_000)).toEqual({ text: 'Bay 2 dropped 4 s ago', warning: false });
     expect(payloadStatus({ action: 'release', bay: 3, outcome: 'unanswered', atMs: at }, at)).toEqual({ text: 'Drop 3 not confirmed 0 s ago. It may have dropped, check before dropping again.', warning: true });
-    expect([bayLabel(1, { bays: 3, empty: [2], next: 1 }), bayLabel(2, { bays: 3, empty: [2], next: 1 })]).toEqual(['Slide to drop bay 1', 'Bay 2 empty, slide to drop']);
+    expect([bayLabel(1, { bays: 3, empty: [2], next: 1, problems: [] }), bayLabel(2, { bays: 3, empty: [2], next: 1, problems: [] })]).toEqual(['Slide to drop bay 1', 'Bay 2 empty, slide to drop']);
   });
 
   it('time since is coarse and never negative', () => {

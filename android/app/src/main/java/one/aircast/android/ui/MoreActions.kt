@@ -21,7 +21,7 @@ internal val SHEET_ACTIONS =
 
 internal const val GRIPPER_RELEASE = 0
 internal const val GRIPPER_GRAB = 1
-private const val GRIPPER_HOLD = 2
+internal const val GRIPPER_HOLD = 2
 internal const val RELEASE = "release"
 private const val LAND_ABORT_CLIMB_METERS = 50.0
 

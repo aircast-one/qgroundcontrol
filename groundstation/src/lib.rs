@@ -226,6 +226,7 @@ pub mod videostats;
 pub mod linkcount;
 pub mod offlinestatus;
 pub mod resumemission;
+pub mod payloadcheck;
 pub mod connectnotices;
 pub mod inspectorchart;
 pub mod rccal;

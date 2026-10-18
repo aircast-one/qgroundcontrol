@@ -312,6 +312,10 @@ pub struct Vehicle {
     pub resume_failed: Option<i64>,
     pub gripper: Option<crate::guided::GripperState>,
     pub empty_bays: std::collections::BTreeSet<i64>,
+    pub gripper_released_ms: Option<i64>,
+    mission_drop_watch: i32,
+    mission_running: bool,
+    mission_interrupted: bool,
     pub trigger_points: Vec<(f64, f64, f64)>,
     pub trigger_points_appended: bool,
     image_captured_seen: bool,
@@ -544,6 +548,10 @@ impl Vehicle {
             resume_failed: None,
             gripper: None,
             empty_bays: std::collections::BTreeSet::new(),
+            gripper_released_ms: None,
+            mission_drop_watch: -1,
+            mission_running: false,
+            mission_interrupted: false,
             trigger_points: Vec::new(),
             trigger_points_appended: false,
             image_captured_seen: false,
@@ -925,7 +933,7 @@ impl Vehicle {
                         self.clear_trigger_points();
                         crate::track::clear(i64::from(self.id));
                         if success && finished == Some(plantransfer::Transaction::Write) {
-                            (self.mission_current, self.mission_last_current) = (-1, -1);
+                            (self.mission_current, self.mission_last_current, self.mission_drop_watch, self.mission_interrupted) = (-1, -1, -1, false);
                         }
                     }
                     self.plans[plan].due = None;
@@ -1014,7 +1022,7 @@ impl Vehicle {
             "load" => Ok(self.load_plan(kind, now_ms)),
             "removeAll" => {
                 if kind == PLAN_MISSION {
-                    (self.mission_current, self.mission_last_current) = (-1, -1);
+                    (self.mission_current, self.mission_last_current, self.mission_drop_watch, self.mission_interrupted) = (-1, -1, -1, false);
                 }
                 let outs = self.plans[kind as usize].transfer.remove_all();
                 Ok(self.follow_plan(kind, outs, now_ms))
@@ -2342,6 +2350,9 @@ impl Vehicle {
                     let number = |key: &str| action.get(key).and_then(Value::as_f64).unwrap_or(0.0) as i64;
                     self.gripper = Some(crate::guided::GripperState::sent(number("gripAction"), number("bay"), wall_ms()));
                 }
+                if action.get("action").and_then(Value::as_str) == Some("setCurrentMission") && !steps.is_empty() {
+                    self.mission_drop_watch = -1;
+                }
                 if action.get("action").and_then(Value::as_str) == Some("roi") && !steps.is_empty() {
                     let number = |key: &str| action.get(key).and_then(Value::as_f64).unwrap_or(f64::NAN);
                     self.roi_coord = Some((number("latitude"), number("longitude"), number("altitude")));
@@ -2356,6 +2367,11 @@ impl Vehicle {
         let Some(sent) = self.gripper.filter(|g| g.outcome == crate::guided::GripperOutcome::Sent) else { return };
         let answered = sent.answered(accepted, wall_ms());
         self.gripper = Some(answered);
+        self.gripper_released_ms = match answered.empties() {
+            Some(true) => Some(answered.at_ms),
+            Some(false) => None,
+            None => self.gripper_released_ms,
+        };
         self.empty_bays = match answered.empties() {
             Some(true) => self.empty_bays.iter().copied().chain([answered.bay]).collect(),
             Some(false) => self.empty_bays.iter().copied().filter(|bay| *bay != answered.bay).collect(),
@@ -3358,18 +3374,41 @@ impl Vehicle {
             MavMessage::HIGH_LATENCY(d) => i32::from(d.wp_num),
             MavMessage::HIGH_LATENCY2(d) => i32::from(d.wp_num),
             MavMessage::HEARTBEAT(_) => {
-                if self.mission_cached_last != -1 && self.flight_mode() == crate::vehiclefacade::mission_flight_mode(self.autopilot, self.vehicle_type, &self.flight_modes) {
+                let mode = self.flight_mode();
+                let running = mode == crate::vehiclefacade::mission_flight_mode(self.autopilot, self.vehicle_type, &self.flight_modes);
+                let interrupted = !running && self.autopilot == crate::modes::AUTOPILOT_ARDUPILOT && mode != ARDUPILOT_AUTO_RTL && (self.mission_running || self.mission_interrupted);
+                if self.mission_cached_last != -1 && (running || (interrupted && self.mission_cached_last > self.mission_last_current)) {
                     self.mission_last_current = self.mission_cached_last;
                     self.mission_cached_last = -1;
                 }
+                (self.mission_running, self.mission_interrupted) = (running, interrupted);
                 return;
             }
             _ => return,
         };
+        self.note_mission_drops(index);
         self.mission_current = index;
         if self.mission_current != self.mission_last_current && self.mission_cached_last != self.mission_current {
             self.mission_cached_last = self.mission_current;
         }
+    }
+
+    fn note_mission_drops(&mut self, index: i32) {
+        let from = std::mem::replace(&mut self.mission_drop_watch, index);
+        if from < 0 || index <= from || !self.armed_now {
+            return;
+        }
+        let dropped = self.mission_items().iter().filter(|item| (from + 1..index).contains(&i32::from(item.seq)) && crate::payloadcheck::is_release(item)).count();
+        if dropped > 0 {
+            self.empty_bays = (1..).filter(|bay| !self.empty_bays.contains(bay)).take(dropped).chain(self.empty_bays.iter().copied()).collect();
+            self.gripper_released_ms = Some(wall_ms());
+        }
+    }
+
+    pub fn payload_setup(&self) -> crate::payloadcheck::Setup {
+        let parameter = |name: &str| self.parameter(self.component, name).map(|p| p.as_f64());
+        let enabled = crate::vehiclefacade::has_gripper(self.autopilot, parameter);
+        crate::payloadcheck::Setup::read(self.autopilot == crate::modes::AUTOPILOT_ARDUPILOT, enabled, parameter, crate::payloadcheck::drops_in(self.mission_items()))
     }
 
     pub fn mission_items(&self) -> &[plantransfer::Item] {
@@ -4863,6 +4902,8 @@ pub fn now_ms() -> u64 {
     STARTED.elapsed().as_millis() as u64
 }
 
+const ARDUPILOT_AUTO_RTL: &str = "AutoRTL";
+
 pub fn wall_ms() -> i64 {
     chrono::Utc::now().timestamp_millis()
 }
@@ -5639,6 +5680,60 @@ mod tests {
         assert_eq!(hub.active().unwrap().mission_last_current, 4);
         assert_eq!(hub.active().unwrap().fly_items(), 1, "with nothing loaded the fly view holds only its settings item");
         assert_eq!(hub.active().unwrap().resume_mission_index(), 3, "resume at the item before the one it was heading to");
+    }
+
+    #[test]
+    fn an_index_heard_after_a_failsafe_out_of_sight_is_where_the_mission_resumes() {
+        use mavlink::dialects::ardupilotmega::MISSION_CURRENT_DATA;
+        const AUTO: u32 = 3;
+        const RTL: u32 = 6;
+        const AUTO_RTL: u32 = 27;
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let current = |seq: u16| MavMessage::MISSION_CURRENT(MISSION_CURRENT_DATA { seq, ..Default::default() });
+        let last = |hub: &Hub| hub.active().unwrap().mission_last_current;
+        hub.on_frame(origin(0), &header, &copter_heartbeat(AUTO, true), 0, 0);
+        hub.on_frame(origin(0), &header, &current(2), 1, 0);
+        hub.on_frame(origin(0), &header, &copter_heartbeat(AUTO, true), 2, 0);
+        assert_eq!(last(&hub), 2);
+        hub.on_frame(origin(0), &header, &copter_heartbeat(RTL, true), 3, 0);
+        hub.on_frame(origin(0), &header, &current(4), 4, 0);
+        hub.on_frame(origin(0), &header, &copter_heartbeat(RTL, true), 5, 0);
+        assert_eq!(last(&hub), 4, "the link came back in RTL with the mission at 4: it reached 4 while nobody was listening");
+        hub.on_frame(origin(0), &header, &current(3), 6, 0);
+        hub.on_frame(origin(0), &header, &copter_heartbeat(RTL, true), 7, 0);
+        assert_eq!(last(&hub), 4, "outside Auto the index only ever moves forward");
+        hub.on_frame(origin(0), &header, &copter_heartbeat(AUTO_RTL, true), 8, 0);
+        hub.on_frame(origin(0), &header, &current(9), 9, 0);
+        hub.on_frame(origin(0), &header, &copter_heartbeat(AUTO_RTL, true), 10, 0);
+        assert_eq!(last(&hub), 4, "AutoRTL jumps to the landing sequence, which is not progress through the mission");
+    }
+
+    #[test]
+    fn drops_the_mission_flies_past_empty_the_next_bays() {
+        use mavlink::dialects::ardupilotmega::MISSION_CURRENT_DATA;
+        const AUTO: u32 = 3;
+        let mut hub = Hub::default();
+        let header = MavHeader { system_id: 1, component_id: 1, sequence: 0 };
+        let current = |seq: u16| MavMessage::MISSION_CURRENT(MISSION_CURRENT_DATA { seq, ..Default::default() });
+        let item = |seq: u16, command: u16| plantransfer::Item { seq, frame: 3, command, current: false, auto_continue: true, params: [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 10.0] };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(AUTO, false), 0, 0);
+        hub.vehicles.get_mut(&1).unwrap().plans[PLAN_MISSION as usize].transfer.items = vec![item(0, 16), item(1, 22), item(2, 16), item(3, 211), item(4, 16), item(5, 211), item(6, 16), item(7, 211), item(8, 20)];
+        let empty = |hub: &Hub| hub.active().unwrap().empty_bays.iter().copied().collect::<Vec<i64>>();
+        hub.on_frame(origin(0), &header, &current(1), 1, 0);
+        hub.on_frame(origin(0), &header, &current(2), 2, 0);
+        assert!(empty(&hub).is_empty(), "nothing counts while the vehicle is on the ground");
+        hub.vehicles.get_mut(&1).unwrap().empty_bays.insert(2);
+        hub.on_frame(origin(0), &header, &copter_heartbeat(AUTO, true), 3, 0);
+        hub.on_frame(origin(0), &header, &current(4), 4, 0);
+        assert_eq!(empty(&hub), [1, 2], "flying past the drop at 3 emptied the first loaded bay, and bay 2 was already empty");
+        assert!(hub.active().unwrap().gripper_released_ms.is_some(), "and left the gripper open");
+        hub.on_frame(origin(0), &header, &current(8), 5, 0);
+        assert_eq!(empty(&hub), [1, 2, 3, 4], "a gap in what was heard still counts the drops in it");
+        hub.on_frame(origin(0), &header, &copter_heartbeat(AUTO, false), 6, 0);
+        hub.on_frame(origin(0), &header, &copter_heartbeat(AUTO, true), 7, 0);
+        assert_eq!(empty(&hub), [1, 2, 3, 4], "arming again to resume the sortie does not reload the bays; only a grab does");
+        assert_eq!(hub.active().unwrap().payload_setup().drops, 3);
     }
 
     #[test]

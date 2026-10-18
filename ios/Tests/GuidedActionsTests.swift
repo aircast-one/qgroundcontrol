@@ -40,4 +40,14 @@ final class GuidedActionsTests: XCTestCase {
         XCTAssertEqual(guidedOffers(nil), [:])
         XCTAssertEqual(guidedOffers(JSON.parse("{}")), [:])
     }
+
+    func testThePayloadCarriesWhatWouldStopItDroppingAndHowToFixIt() {
+        let view = JSON.parse(#"{"payload":{"bays":4,"problems":[{"code":"staysOpen","text":"The gripper stays open after the first drop.","blocking":true,"fix":"Turn on auto-close"},{"code":"noGripper","text":"No gripper.","blocking":true,"fix":""}]}}"#)
+        XCTAssertEqual(payloadProblems(view), [
+            PayloadProblem(code: "staysOpen", text: "The gripper stays open after the first drop.", blocking: true, fix: "Turn on auto-close"),
+            PayloadProblem(code: "noGripper", text: "No gripper.", blocking: true, fix: ""),
+        ])
+        XCTAssertEqual(payloadProblems(JSON.parse(#"{"payload":{"bays":1}}"#)), [])
+        XCTAssertEqual(payloadProblems(nil), [])
+    }
 }

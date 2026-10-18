@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type Json, parseJson } from '@/bridge/Json';
-import { guidedOffers } from './GuidedActions';
+import { SINGLE_GRIPPER, guidedOffers, payloadOf } from './GuidedActions';
 import { GuidedAction, needsConfirm } from './VehicleUi';
 
 const json = (text: string): Json => parseJson(text) ?? {};
@@ -40,6 +40,24 @@ describe('GuidedActionsTest', () => {
     expect(needsConfirm(action('land'), offers)).toBe(true);
     expect(needsConfirm(action('rtl'), offers), 'an offer that does not say asks first').toBe(true);
     expect(needsConfirm(action('gone'), offers), 'an action with no offer behind it asks first').toBe(true);
+  });
+
+  it('the payload carries what would stop it dropping and how to fix it', () => {
+    const payload = payloadOf(
+      json(`{"payload":{"bays":4,"empty":[1],"next":2,"problems":[
+        {"code":"staysOpen","text":"The gripper stays open after the first drop.","blocking":true,"fix":"Turn on auto-close"},
+        {"code":"noGripper","text":"No gripper.","blocking":true,"fix":""}]}}`),
+    );
+    expect(payload).toEqual({
+      bays: 4,
+      empty: [1],
+      next: 2,
+      problems: [
+        { code: 'staysOpen', text: 'The gripper stays open after the first drop.', blocking: true, fix: 'Turn on auto-close' },
+        { code: 'noGripper', text: 'No gripper.', blocking: true, fix: '' },
+      ],
+    });
+    expect(payloadOf(json('{"payload":{"bays":1,"empty":[],"next":null}}'))).toEqual(SINGLE_GRIPPER);
   });
 
   it('no view is no offers rather than a crash', () => {

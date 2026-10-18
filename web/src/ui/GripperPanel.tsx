@@ -6,13 +6,17 @@ import { useTicker } from '@/kotlin/Compose';
 import { OutlinedButton, Text } from '@/m3';
 import { AircastSheet } from '@/map/AircastSheet';
 import { md } from '@/theme/Colors';
-import { type GuidedOffer, type Payload, bayNumbers, multiBay } from './GuidedActions';
+import { type GuidedOffer, type Payload, type PayloadProblem, bayNumbers, multiBay } from './GuidedActions';
 import { HoldToConfirm, holdLabel } from './HoldToConfirm';
-import { GRIPPER_GRAB, GRIPPER_RELEASE, guidedCommand } from './MoreActions';
+import { GRIPPER_GRAB, GRIPPER_RELEASE } from './MoreActions';
 
 export const GRIPPER_ACTIONS: readonly string[] = ['release', 'grab', 'hold'];
 export const PAYLOAD_STATE = 'vehicle.gripper';
 const STATUS_TICK_MS = 1000;
+const GRIPPER_HOLD = 2;
+const ACTION_CODES: Readonly<Record<string, number>> = { release: GRIPPER_RELEASE, grab: GRIPPER_GRAB, hold: GRIPPER_HOLD };
+
+type Refused = (reason: string | null) => void;
 
 export const gripperOffers = (extras: readonly GuidedOffer[]): readonly GuidedOffer[] => GRIPPER_ACTIONS.flatMap((id) => extras.find((it) => it.id === id) ?? []);
 
@@ -52,18 +56,20 @@ export const bayLabel = (bay: number, payload: Payload): string => (payload.empt
 
 const offerReady = (offers: readonly GuidedOffer[], id: string): boolean => offers.some((it) => it.id === id && it.ready);
 
-const SingleGripper = ({ offers }: { offers: readonly GuidedOffer[] }) => (
+const send = (action: number, bay: number, onRefused: Refused) => void VehicleCommands.gripperRefusal(action, bay).then(onRefused);
+
+const SingleGripper = ({ offers, onRefused }: { offers: readonly GuidedOffer[]; onRefused: Refused }) => (
   <>
     {offers
       .filter((it) => it.id === 'release')
       .map((offer) => (
-        <HoldToConfirm key={offer.id} label={holdLabel(offer.title)} enabled={offer.ready} onConfirm={() => guidedCommand(offer.id, null)?.()} />
+        <HoldToConfirm key={offer.id} label={holdLabel(offer.title)} enabled={offer.ready} onConfirm={() => send(GRIPPER_RELEASE, 0, onRefused)} />
       ))}
     <div className="flex gap-2">
       {offers
         .filter((it) => it.id !== 'release')
         .map((offer) => (
-          <OutlinedButton key={offer.id} enabled={offer.ready} onClick={() => guidedCommand(offer.id, null)?.()}>
+          <OutlinedButton key={offer.id} enabled={offer.ready} onClick={() => send(ACTION_CODES[offer.id] ?? GRIPPER_GRAB, 0, onRefused)}>
             {offer.title}
           </OutlinedButton>
         ))}
@@ -71,14 +77,27 @@ const SingleGripper = ({ offers }: { offers: readonly GuidedOffer[] }) => (
   </>
 );
 
-const Bays = ({ offers, payload }: { offers: readonly GuidedOffer[]; payload: Payload }) => (
+const Bays = ({ offers, payload, onRefused }: { offers: readonly GuidedOffer[]; payload: Payload; onRefused: Refused }) => (
   <>
     {bayNumbers(payload).map((bay) => (
       <div key={bay} className="flex items-center gap-2">
-        <HoldToConfirm className="flex-1" label={bayLabel(bay, payload)} enabled={offerReady(offers, 'release')} onConfirm={() => void VehicleCommands.gripper(GRIPPER_RELEASE, bay)} />
-        <OutlinedButton enabled={offerReady(offers, 'grab')} label={`Grab bay ${bay}`} onClick={() => void VehicleCommands.gripper(GRIPPER_GRAB, bay)}>
+        <HoldToConfirm className="flex-1" label={bayLabel(bay, payload)} enabled={offerReady(offers, 'release')} onConfirm={() => send(GRIPPER_RELEASE, bay, onRefused)} />
+        <OutlinedButton enabled={offerReady(offers, 'grab')} label={`Grab bay ${bay}`} onClick={() => send(GRIPPER_GRAB, bay, onRefused)}>
           Grab
         </OutlinedButton>
+      </div>
+    ))}
+  </>
+);
+
+const Problems = ({ problems, onRefused }: { problems: readonly PayloadProblem[]; onRefused: Refused }) => (
+  <>
+    {problems.map((problem) => (
+      <div key={problem.code} className="flex items-center gap-2">
+        <Text className="flex-1" typography="bodySmall" color={problem.blocking ? md('error') : md('onSurfaceVariant')}>
+          {problem.text}
+        </Text>
+        {problem.fix === '' ? null : <OutlinedButton onClick={() => void VehicleCommands.fixPayloadRefusal(problem.code).then(onRefused)}>{problem.fix}</OutlinedButton>}
       </div>
     ))}
   </>
@@ -88,14 +107,16 @@ export const GripperPanel = ({ offers, payload, onDismiss }: { offers: readonly 
   const stateJson = useQgcValue(PAYLOAD_STATE) as Json | null;
   const [now, setNow] = useState(() => Date.now());
   useTicker(STATUS_TICK_MS, [], () => setNow(Date.now()));
-  const status = payloadStatus(stateJson, now);
+  const [refusal, setRefusal] = useState<string | null>(null);
+  const status = refusal === null ? payloadStatus(stateJson, now) : { text: refusal, warning: true };
   return (
     <AircastSheet onDismissRequest={onDismiss}>
       <div className="flex w-full flex-col gap-3 px-sheet pb-6">
+        <Problems problems={payload.problems} onRefused={setRefusal} />
         <Text typography="bodyMedium" color={status?.warning === true ? md('error') : md('onSurfaceVariant')}>
           {status?.text ?? 'No payload command sent yet'}
         </Text>
-        {multiBay(payload) ? <Bays offers={offers} payload={payload} /> : <SingleGripper offers={offers} />}
+        {multiBay(payload) ? <Bays offers={offers} payload={payload} onRefused={setRefusal} /> : <SingleGripper offers={offers} onRefused={setRefusal} />}
       </div>
     </AircastSheet>
   );

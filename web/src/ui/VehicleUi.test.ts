@@ -42,7 +42,7 @@ describe('FlightDeckEntriesTest', () => {
 
   it('a basket drops its next loaded bay from the deck and says which', () => {
     const drop = (empty: readonly number[], next: number | null) =>
-      flightDeckEntries(deck([{ ...offer('release'), title: 'Drop' }], { payload: { bays: 3, empty, next } })).find((it) => it.id === 'release');
+      flightDeckEntries(deck([{ ...offer('release'), title: 'Drop' }], { payload: { bays: 3, empty, next, problems: [] } })).find((it) => it.id === 'release');
     expect([drop([], 1)?.label, drop([1], 2)?.label]).toEqual(['Slide to drop 1', 'Slide to drop 2']);
     expect([drop([1, 2, 3], null)?.label, drop([1, 2, 3], null)?.enabled]).toEqual(['Bays empty', false]);
   });

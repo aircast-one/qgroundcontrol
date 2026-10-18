@@ -559,6 +559,7 @@ mod deps_cover_reads {
             ("linkcount", include_str!("linkcount.rs")),
             ("offlinestatus", include_str!("offlinestatus.rs")),
             ("resumemission", include_str!("resumemission.rs")),
+            ("payloadcheck", include_str!("payloadcheck.rs")),
             ("connectnotices", include_str!("connectnotices.rs")),
             ("inspectorchart", include_str!("inspectorchart.rs")),
             ("rccal", include_str!("rccal.rs")),
