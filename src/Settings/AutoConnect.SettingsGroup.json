@@ -74,6 +74,14 @@
             "label": "NMEA GPS Baudrate"
         },
         {
+            "name": "usbRadioPort",
+            "shortDesc": "Radio streaming its channels over USB with the R2D2 script",
+            "longDesc": "A radio running the r2d2-usb-vcp.lua script streams its channels over USB serial. While it streams, its channels 1 to 18 fly the active vehicle as RC overrides. Off sends nothing.",
+            "type": "string",
+            "default": "",
+            "label": "Radio on USB (R2D2 script)"
+        },
+        {
             "name": "autoConnectZeroConf",
             "shortDesc": "Automatically open a connection with Zero-Conf",
             "longDesc": "If this option is enabled GroundControl will automatically connect to a vehicle which is detected over Zero-Conf.",

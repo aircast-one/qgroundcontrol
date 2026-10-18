@@ -627,6 +627,7 @@ mod deps_cover_reads {
             ("units", include_str!("units.rs")),
             ("usbfs", include_str!("usbfs.rs")),
             ("usbmsc", include_str!("usbmsc.rs")),
+            ("usbradio", include_str!("usbradio.rs")),
             ("vehiclefact", include_str!("vehiclefact.rs")),
             ("linkremove", include_str!("linkremove.rs")),
             ("mapclick", include_str!("mapclick.rs")),

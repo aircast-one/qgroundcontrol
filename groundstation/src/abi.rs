@@ -308,6 +308,7 @@ pub(crate) fn pump_once() {
     crate::pumpguard::guarded("sticks", || crate::virtualjoystick::flush(web_time::Instant::now()));
     crate::pumpguard::guarded("rest", || {
         crate::nmea::maintain();
+        crate::usbradio::maintain();
         crate::applog::flush_to_disk();
         crate::signingkeys::tick(crate::hub::now_ms());
         if crate::vehiclefacade::switched_on() {

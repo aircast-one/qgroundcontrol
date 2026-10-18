@@ -179,6 +179,7 @@ pub mod flasher;
 pub mod platformdisk;
 pub mod usbmsc;
 pub mod usbfs;
+pub mod usbradio;
 pub mod firmwarecatalog;
 pub mod platformserial;
 pub mod device;
