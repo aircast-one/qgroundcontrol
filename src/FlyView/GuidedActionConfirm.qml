@@ -37,8 +37,6 @@ Item {
         if (immediate) {
             _reallyShow()
         } else {
-            // We delay showing the confirmation for a small amount in order for any other state
-            // changes to propogate through the system. This way only the final state shows up.
             visibleTimer.restart()
         }
     }
@@ -53,12 +51,6 @@ Item {
         messageOpacityAnimation.stop()
     }
 
-    // Cancel the current pending action and notify its map indicator.
-    // Pass incomingIndicator when superseding one action with another (e.g. from confirmAction):
-    // if the old and new indicator are the same object, actionCancelled() is intentionally skipped
-    // so that a show() call made before confirmAction() is not undone (e.g. goto -> goto).
-    // Omit incomingIndicator (or pass undefined) for explicit user cancellation via the X button
-    // or auto-hide trigger, where the indicator must always be notified.
     function confirmCancelled(incomingIndicator) {
         reset()
         if (mapIndicator && mapIndicator !== incomingIndicator) {
@@ -89,6 +81,7 @@ Item {
         spacing:    ScreenTools.defaultFontPixelWidth
 
         QGCDelayButton {
+            objectName:         "guidedActionConfirmButton"
             text:               control.title
             enabled:            true
 
@@ -110,6 +103,11 @@ Item {
                     mapIndicator = undefined
                 }
             }
+        }
+
+        QGCLabel {
+            text:               qsTr("Hold to confirm")
+            font.pointSize:     ScreenTools.smallFontPointSize
         }
 
         QGCCheckBox {

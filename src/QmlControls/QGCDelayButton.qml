@@ -10,7 +10,7 @@ DelayButton {
     hoverEnabled:   !ScreenTools.isMobile
     topPadding:     _verticalPadding
     bottomPadding:  _verticalPadding
-    leftPadding:    _horizontalPadding
+    leftPadding:    _horizontalPadding + _chevronSize
     rightPadding:   _horizontalPadding
     focusPolicy:    Qt.ClickFocus
     font.family:    ScreenTools.normalFontFamily
@@ -19,7 +19,7 @@ DelayButton {
     property bool   showBorder:     qgcPal.globalTheme === QGCPalette.Light
     property real   backRadius:     ScreenTools.defaultBorderRadius
     property real   heightFactor:   0.5
-    property real   fontWeight:     Font.Normal // default for qml Text
+    property real   fontWeight:     Font.Normal
     property real   pointSize:      ScreenTools.defaultFontPointSize
     property int    defaultDelay:   500
 
@@ -30,6 +30,7 @@ DelayButton {
 
     property bool   _showHighlight:     enabled && pressed
     property int    _horizontalPadding: ScreenTools.defaultFontPixelWidth * 2
+    property real   _chevronSize:       ScreenTools.defaultFontPixelHeight
     property int    _verticalPadding:   Math.round(ScreenTools.defaultFontPixelHeight * heightFactor)
     property bool   _showHelp:          false
     property bool   _activated:         false
@@ -67,23 +68,29 @@ DelayButton {
         implicitHeight: ScreenTools.implicitButtonHeight
         border.width:   showBorder ? 1 : 0
         border.color:   qgcPal.buttonBorder
-        color:          control._showHighlight ? qgcPal.buttonHighlight : qgcPal.button
+        color:          qgcPal.button
+
+        Rectangle {
+            anchors.left:   parent.left
+            anchors.top:    parent.top
+            anchors.bottom: parent.bottom
+            width:          parent.width * control.progress
+            radius:         parent.radius
+            color:          qgcPal.buttonHighlight
+            visible:        control.progress > 0
+        }
 
         QGCColoredImage {
-            anchors.topMargin:      _sliderIndicatorMargin
-            anchors.bottomMargin:   _sliderIndicatorMargin
-            anchors.leftMargin:     control.pressed ? (parent.width - width) * control.progress : 0
             anchors.left:           parent.left
-            anchors.top:            parent.top
-            anchors.bottom:         parent.bottom
-            width:                  height
+            anchors.leftMargin:     control._horizontalPadding / 2
+            anchors.verticalCenter: parent.verticalCenter
+            width:                  control._chevronSize
+            height:                 control._chevronSize
             source:                 "qrc:/res/chevron-double-right.svg"
-            sourceSize.height:      parent.height
+            sourceSize.height:      height
             fillMode:               Image.PreserveAspectFit
             color:                  control._showHighlight ? qgcPal.buttonHighlightText : qgcPal.buttonText
-            opacity:                control._showHighlight ? 0.75 : 0.2
-
-            property real _sliderIndicatorMargin: ScreenTools.defaultFontPixelWidth * 0.5
+            opacity:                control._showHighlight ? 1 : 0.6
         }
 
         QGCLabel {
