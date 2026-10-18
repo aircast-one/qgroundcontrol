@@ -12,6 +12,7 @@ local modelInfo
 local mixesInfo = {}
 local channelValues = {}
 local useLvglUI = false
+local leaving = false
 
 local function readChannels()
   for i = 1, CHANNEL_COUNT do
@@ -104,7 +105,7 @@ local function buildLvglUI()
   local pg = lvgl.page({
     title = "Aircast USB",
     subtitle = modelInfo.name,
-    back = function() return 2 end,
+    back = function() leaving = true end,
   })
 
   pg:label({ x = 0, y = 0, font = MIDSIZE,
@@ -143,7 +144,14 @@ local function init()
   end
 end
 
-local function run()
+local function exiting(event)
+  return event ~= nil and event ~= 0 and (event == EVT_VIRTUAL_EXIT or event == EVT_EXIT_BREAK)
+end
+
+local function run(event)
+  if leaving or exiting(event) then
+    return 1
+  end
   battVolt = getValue("tx-voltage")
   stream()
   if not useLvglUI then

@@ -21,8 +21,11 @@ local function radio(screen)
     },
     lcd = setmetatable({ RGB = function() return 0 end }, { __index = function(_, name) return function(_, _, text) drawn[#drawn + 1] = { name, text } end end }),
   }, { __index = _G })
+  local back
+  env.EVT_VIRTUAL_EXIT = 1537
   if screen.lvgl then
     env.lvgl = { page = function(page)
+      back = page.back
       drawn[#drawn + 1] = { "page", page.title }
       return setmetatable({}, { __index = function(_, name) return function(_, spec)
         drawn[#drawn + 1] = { name, type(spec.text) == "function" and spec.text() or spec.text }
@@ -33,7 +36,19 @@ local function radio(screen)
   local script = assert(loadfile(here .. "aircast-usb.lua", "t", env))()
   script.init()
   assert(script.run() == 0)
-  return sent, drawn
+  local first = {}
+  for i = 1, #sent do first[i] = sent[i] end
+  assert(script.run(0) == 0, "no key pressed keeps the script running")
+  local streamed = #sent
+  assert(script.run(env.EVT_VIRTUAL_EXIT) == 1, "the radio's RTN key leaves the script")
+  assert(#sent == streamed, "leaving sends nothing more")
+  if screen.lvgl then
+    local again = assert(loadfile(here .. "aircast-usb.lua", "t", env))()
+    again.init()
+    back()
+    assert(again.run(0) == 1, "the page's back button leaves the script")
+  end
+  return first, drawn
 end
 
 local function shown(drawn, text)
