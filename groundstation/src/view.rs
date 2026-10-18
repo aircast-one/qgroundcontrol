@@ -25,6 +25,7 @@ use crate::contract;
 use crate::control;
 use crate::debugapi;
 use crate::detections;
+use crate::deviceviews;
 use crate::escal;
 use crate::escview;
 use crate::espbridge;
@@ -145,6 +146,7 @@ pub const ARGUMENT_MODES: &[(&str, &str)] = &[
         "<source>[,<url>[,<rtsp timeout seconds>]]",
     ),
     ("view.control", "<fact path>"),
+    ("view.device", "<page>"),
     ("view.guidedAltitude", "<metres>[,pause]"),
     ("view.guidedSpeed", "<metres per second>"),
     ("view.guidedTakeoff", "<metres>"),
@@ -314,6 +316,11 @@ pub const VIEWS: &[View] = &[
         path: "view.deepLinkSetup",
         deps: crate::deeplinksetup::DEPS,
         compute: crate::deeplinksetup::deep_link_setup_view,
+    },
+    View {
+        path: "view.device",
+        deps: deviceviews::DEPS,
+        compute: deviceviews::device_view,
     },
     View {
         path: "view.advancedUi",
@@ -1380,6 +1387,7 @@ mod deps_cover_reads {
         ("csvlog", include_str!("csvlog.rs")),
         ("firstrun", include_str!("firstrun.rs")),
         ("deeplinksetup", include_str!("deeplinksetup.rs")),
+        ("deviceviews", include_str!("deviceviews.rs")),
         ("pumpguard", include_str!("pumpguard.rs")),
         ("advancedui", include_str!("advancedui.rs")),
         ("applog", include_str!("applog.rs")),

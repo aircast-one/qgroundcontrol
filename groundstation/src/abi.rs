@@ -485,6 +485,11 @@ pub(crate) fn pump_once() {
                 .iter()
                 .for_each(|(path, json)| announce(path, json));
         }
+        if crate::deviceviews::take_changed() {
+            CORE.on_event(crate::deviceviews::VIEWS_CHANGED, "null")
+                .iter()
+                .for_each(|(path, json)| announce(path, json));
+        }
         if crate::synthview::take_changed() {
             CORE.on_event(crate::synthview::SYNTHETIC_CHANGED, "null")
                 .iter()

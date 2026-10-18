@@ -67,6 +67,7 @@ pub mod detections;
 pub mod device;
 pub mod devicesetup;
 pub mod devicetrack;
+pub mod deviceviews;
 pub mod escal;
 pub mod escview;
 pub mod espbridge;

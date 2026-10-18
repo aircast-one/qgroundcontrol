@@ -83,6 +83,16 @@ pub fn send(
             .timeout_global(Some(timeout))
             .build()
             .call(),
+        "HEAD" => headers
+            .iter()
+            .fold(AGENT.head(url), |asked, (name, value)| {
+                asked.header(*name, *value)
+            })
+            .config()
+            .http_status_as_error(false)
+            .timeout_global(Some(timeout))
+            .build()
+            .call(),
         _ => headers
             .iter()
             .fold(AGENT.get(url), |asked, (name, value)| {
