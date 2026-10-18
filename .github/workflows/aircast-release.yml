@@ -946,6 +946,23 @@ jobs:
               $PRE assets/*
           fi
 
+      - name: Hand the web build to aircastd
+        if: needs.setup.outputs.environment == 'production' || needs.setup.outputs.environment == 'beta'
+        env:
+          PAT_TOKEN: ${{ secrets.PAT_TOKEN }}
+          V: ${{ needs.setup.outputs.version }}
+        run: |
+          if [ ! -f assets/qgc-web.tar.gz ]; then
+            echo "This release has no web build, so aircastd keeps its pin."
+            exit 0
+          fi
+          jq -n --arg version "$V" '{event_type: "qgc-web-release", client_payload: {version: $version}}' \
+            | curl -fsS -X POST \
+                -H "Accept: application/vnd.github+json" \
+                -H "Authorization: token ${PAT_TOKEN}" \
+                https://api.github.com/repos/aircast-one/aircastd/dispatches \
+                -d @-
+
   cleanup-old-releases:
     needs: [setup, publish]
     if: always() && needs.publish.result == 'success'
