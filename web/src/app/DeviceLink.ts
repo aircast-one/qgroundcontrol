@@ -1,7 +1,8 @@
 import { AppCommands, CameraCommands, DeviceCommands, LinkCommands } from '@/bridge/BridgeCommands';
-import { isJson } from '@/bridge/Json';
+import { isJson, optText } from '@/bridge/Json';
 import { Qgc, refusal } from '@/bridge/Qgc';
 import { mutableStateOf } from '@/kotlin/State';
+import { REACH_TIMEOUT_MS } from '@/ui/DeviceConnect';
 import { DEVICE_CONNECT, DEVICE_DISCONNECT, deviceInvoke, deviceRead, deviceReading, deviceViewPath, resolveDeviceUrl } from '@/ui/DeviceView';
 
 type Device = { name?: string; cameras?: { name: string; url: string }[] };
@@ -18,6 +19,11 @@ export const deviceSocket = (page: string): string => {
 
 export const deviceBase = (page: string): string => new URL('.', page).href;
 
+export const securePage = (page: string, secureOrigin: string): string | null => {
+  const at = new URL(page);
+  return at.protocol === 'http:' && secureOrigin.startsWith('https://') ? `${new URL(secureOrigin).origin}${at.pathname}${at.search}${at.hash}` : null;
+};
+
 export const deviceLinkName = (device: Device, hostname: string): string => `Aircast ${device.name?.trim() || hostname}`;
 
 export const deviceCameras = (device: Device): [string, string][] => (device.cameras ?? []).map(({ name, url }) => [name, url]);
@@ -30,6 +36,24 @@ const readServed = async (): Promise<Device | null> => {
 };
 
 const parseDevice = (json: unknown): Device | null => (isJson(json) ? (json as Device) : null);
+
+const servedSecureOrigin = async (): Promise<string> => {
+  const answer: unknown = await fetch('/api/tls', { cache: 'no-store' })
+    .then((response) => (response.ok ? response.json() : null))
+    .catch(() => null);
+  return optText(isJson(answer) ? answer : null, 'origin');
+};
+
+const reachable = (page: string): Promise<boolean> =>
+  fetch(new URL('/api/tls', page), { mode: 'no-cors', cache: 'no-store', signal: AbortSignal.timeout(REACH_TIMEOUT_MS) }).then(
+    () => true,
+    () => false,
+  );
+
+const upgradeRemembered = async (): Promise<void> => {
+  const { origin } = deviceReading(await Qgc.get(deviceViewPath('aircraft')));
+  if (origin.startsWith('http://')) await deviceInvoke(DEVICE_CONNECT, origin);
+};
 
 const linkDevice = async (): Promise<void> => {
   const { origin } = deviceReading(await Qgc.get(deviceViewPath('aircraft')));
@@ -45,7 +69,12 @@ const linkDevice = async (): Promise<void> => {
 export const DeviceLink = {
   async start(): Promise<void> {
     const device = await readServed();
-    if (device === null) return linkDevice();
+    if (device === null) {
+      await upgradeRemembered();
+      return linkDevice();
+    }
+    const secure = securePage(location.href, await servedSecureOrigin());
+    if (secure !== null && (await reachable(secure))) return location.replace(secure);
     deviceServed.value = true;
     await Promise.all([
       DeviceCommands.pair(deviceBase(location.href)),

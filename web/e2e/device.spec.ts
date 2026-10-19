@@ -2,10 +2,12 @@ import { expect, test as base, type Page } from '@playwright/test';
 import { openMenu, test as hosted } from './fixtures';
 
 const DEVICE = 'http://localhost:18780';
+const UPGRADING = 'localhost:18786';
+const SECURE = 'localhost:18785';
 const SBS1 = 30003;
 const UPLOADS = 18782;
 
-type Stats = { uploads: string[]; firmware: number[]; relays: string[]; store: string; tcpHeartbeats: number; tracks: string[] };
+type Stats = { uploads: string[]; firmware: number[]; relays: string[]; store: string; tcpHeartbeats: number; tracks: string[]; secure: string[] };
 
 const stats = async (): Promise<Stats> => (await fetch(`${DEVICE}/stats`)).json() as Promise<Stats>;
 
@@ -176,4 +178,22 @@ hosted('an app served elsewhere connects to a device by its address and remember
   await openMenu(app, 'Settings');
   await app.getByRole('tablist').getByRole('tab', { name: 'Device' }).click();
   await expect(app.getByRole('textbox', { name: 'Device address' })).toBeVisible();
+});
+
+hosted('an app served elsewhere moves to the https address the device names, so nothing it loads is insecure', async ({ app }) => {
+  await openMenu(app, 'Settings');
+  await app.getByRole('tablist').getByRole('tab', { name: 'Device' }).click();
+  await app.getByRole('textbox', { name: 'Device address' }).fill(UPGRADING);
+  await app.getByRole('button', { name: 'Connect', exact: true }).click();
+  await expect(app.getByText('Before you fly')).toBeVisible({ timeout: 30_000 });
+  await expect(app.getByText(SECURE, { exact: true })).toBeVisible();
+  await expect.poll(async () => (await stats()).secure, { timeout: 30_000 }).toContain('/api/views/aircraft/events');
+  await Promise.all([app.waitForEvent('load'), app.getByRole('button', { name: 'Disconnect' }).click()]);
+});
+
+base('a page the device served over http moves to its https address and flies from there', async ({ page }) => {
+  await page.goto(`http://${UPGRADING}/fly/?from=e2e`);
+  await page.waitForURL(`https://${SECURE}/fly/?from=e2e`, { timeout: 60_000 });
+  await expect(page.getByRole('region', { name: 'Map' })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
 });

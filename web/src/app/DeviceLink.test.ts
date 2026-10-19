@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deviceBase, deviceCameras, deviceLinkName, deviceSocket } from './DeviceLink';
+import { deviceBase, deviceCameras, deviceLinkName, deviceSocket, securePage } from './DeviceLink';
 
 describe('the link to the device serving this page', () => {
   it('reaches telemetry beside the page, on the address the browser already used', () => {
@@ -17,6 +17,15 @@ describe('the link to the device serving this page', () => {
     expect(deviceLinkName({ name: 'falcon' }, '192.168.1.100')).toBe('Aircast falcon');
     expect(deviceLinkName({ name: ' ' }, '192.168.1.100')).toBe('Aircast 192.168.1.100');
     expect(deviceLinkName({}, 'falcon.local')).toBe('Aircast falcon.local');
+  });
+
+  it('moves a page the device served over http to the https address it names, keeping where the pilot was', () => {
+    const secure = 'https://192-168-1-50.6f1c2a9e-3b7d-4e21-9a55-0c8d7e6f5a41.d.aircast.one';
+    expect(securePage('http://192.168.1.50/fly/?x=1#plan', secure)).toBe(`${secure}/fly/?x=1#plan`);
+    expect(securePage('http://192.168.1.50/fly/', `${secure}/ignored/path`)).toBe(`${secure}/fly/`);
+    expect(securePage(`${secure}/fly/`, secure)).toBeNull();
+    expect(securePage('http://192.168.1.50/fly/', '')).toBeNull();
+    expect(securePage('http://192.168.1.50/fly/', 'http://192.168.1.50')).toBeNull();
   });
 
   it('hands the core each camera as a name and the WHEP address the device gave', () => {

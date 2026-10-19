@@ -1,7 +1,10 @@
 import { createSocket, type RemoteInfo } from 'node:dgram';
 import { mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync, openSync, writeSync, closeSync, existsSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
 import { createServer, request as forward, type IncomingMessage, type ServerResponse } from 'node:http';
+import { createServer as createSecureServer } from 'node:https';
 import { connect, createServer as createTcpServer } from 'node:net';
+import type { Duplex } from 'node:stream';
 import { tmpdir } from 'node:os';
 import { dirname, join, normalize } from 'node:path';
 import { WebSocketServer, type WebSocket } from 'ws';
@@ -12,12 +15,15 @@ export const SBS1_PORT = 30003;
 export const UPLOAD_PORT = 18782;
 export const UDP_VEHICLE_PORT = 18783;
 export const TCP_VEHICLE_PORT = 18784;
+export const DEVICE_TLS_PORT = 18785;
+export const UPGRADING_PORT = 18786;
+const SECURE_ORIGIN = `https://localhost:${DEVICE_TLS_PORT}`;
 const VITE = Number(process.env.E2E_PORT ?? 8800);
 const HOME = { lat: 47.3977, lon: 8.5456 };
 const TICK_MS = 250;
 
 const store = mkdtempSync(join(tmpdir(), 'aircastd-store-'));
-const seen = { uploads: [] as string[], firmware: [] as number[], relays: [] as string[], gcsHeartbeats: 0, tcpHeartbeats: 0, tracks: [] as string[] };
+const seen = { uploads: [] as string[], firmware: [] as number[], relays: [] as string[], gcsHeartbeats: 0, tcpHeartbeats: 0, tracks: [] as string[], secure: [] as string[] };
 const tracker = { on: false };
 const scenes = new Map<string, { x: number; y: number }>([['e2e', { x: 0.4, y: 0.4 }], ['lens', { x: 0.4, y: 0.4 }]]);
 
@@ -135,8 +141,10 @@ const app = (request: IncomingMessage, response: ServerResponse) => {
   request.pipe(upstream);
 };
 
-const http = createServer((request, response) => {
+const device = (secureOrigin: string, secure: boolean) => (request: IncomingMessage, response: ServerResponse) => {
   const url = new URL(request.url ?? '/', `http://localhost:${DEVICE_PORT}`);
+  if (secure) seen.secure = [...seen.secure, url.pathname];
+  if (url.pathname === '/api/tls') return json(response, 200, { origin: secureOrigin });
   if (url.pathname === '/fly/device.json') return json(response, 200, { name: 'e2e-device', cameras: [{ name: 'e2e', url: 'http://localhost:18889/e2e/whep' }] });
   const streamed = /^\/api\/streams\/(e2e|lens)\/detections\/stream$/.exec(url.pathname);
   if (streamed !== null) return detections(response, streamed[1]);
@@ -158,7 +166,17 @@ const http = createServer((request, response) => {
   if (url.pathname === '/fly/proxy') return void proxy(request, response);
   if (url.pathname === '/api/telemetry/firmware' && request.method === 'POST') return void firmware(request, response);
   return app(request, response);
-});
+};
+
+const certificate = (): { key: Buffer; cert: Buffer } => {
+  const dir = mkdtempSync(join(tmpdir(), 'aircastd-tls-'));
+  execFileSync('openssl', ['req', '-x509', '-newkey', 'ec', '-pkeyopt', 'ec_paramgen_curve:prime256v1', '-nodes', '-days', '2', '-subj', '/CN=localhost', '-addext', 'subjectAltName=DNS:localhost', '-keyout', join(dir, 'key.pem'), '-out', join(dir, 'cert.pem')], { stdio: 'ignore' });
+  return { key: readFileSync(join(dir, 'key.pem')), cert: readFileSync(join(dir, 'cert.pem')) };
+};
+
+const http = createServer(device('', false));
+const upgrading = createServer(device(SECURE_ORIGIN, false));
+const https = createSecureServer(certificate(), device(SECURE_ORIGIN, true));
 
 const pipeTcp = (socket: WebSocket, address: string) => {
   const [host, port] = [address.slice(0, address.lastIndexOf(':')).replace(/^\[|\]$/g, ''), Number(address.slice(address.lastIndexOf(':') + 1))];
@@ -186,7 +204,7 @@ const pipeUdp = (socket: WebSocket, port: number, to: readonly string[]) => {
 const relay = new WebSocketServer({ noServer: true });
 const mavlink = new WebSocketServer({ noServer: true });
 
-http.on('upgrade', (request, socket, head) => {
+const upgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => {
   const url = new URL(request.url ?? '/', `http://localhost:${DEVICE_PORT}`);
   if (url.pathname === '/fly/socket') {
     seen.relays = [...seen.relays, url.search];
@@ -218,7 +236,8 @@ http.on('upgrade', (request, socket, head) => {
     socket.pipe(upstream);
   });
   upstream.on('error', () => socket.destroy());
-});
+};
+[http, upgrading, https].forEach((server) => server.on('upgrade', upgrade));
 
 const sbs1 = (icao: string, lat: number, lon: number): string =>
   ['MSG', '3', '1', '1', icao, '1', '', '', '', '', '', '4000', '', '', String(lat), String(lon), '', '', '', '', '', '0'].join(',') + '\r\n';
@@ -265,3 +284,5 @@ createTcpServer((socket) => {
 }).listen(TCP_VEHICLE_PORT);
 
 http.listen(DEVICE_PORT);
+upgrading.listen(UPGRADING_PORT);
+https.listen(DEVICE_TLS_PORT);

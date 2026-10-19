@@ -32,6 +32,8 @@ const NO_ANSWER: &str = "The device did not answer.";
 const NOT_CONNECTED: &str = "No Aircast device is connected.";
 const TYPE_AN_ADDRESS: &str = "Type an address like 192.168.1.100 or falcon.local.";
 const ACCEPT_JSON: (&str, &str) = ("Accept", "application/json");
+const HOME_VIEW: &str = "/api/views/aircraft";
+const SECURE_ORIGIN: &str = "/api/tls";
 
 #[derive(Default)]
 struct Page {
@@ -313,6 +315,42 @@ fn unreachable(origin: &str) -> String {
     )
 }
 
+fn secure_origin(sent: Result<(u16, Vec<u8>), String>) -> Option<String> {
+    sent.ok()
+        .filter(|(status, _)| (200..300).contains(status))
+        .and_then(|(_, bytes)| serde_json::from_slice::<Value>(&bytes).ok())
+        .and_then(|answer| {
+            answer
+                .get("origin")
+                .and_then(Value::as_str)
+                .and_then(|origin| Url::parse(origin).ok())
+        })
+        .filter(|url| {
+            url.scheme() == "https" && url.host_str().is_some_and(|host| !host.is_empty())
+        })
+        .map(|url| url.origin().ascii_serialization())
+}
+
+fn upgraded(origin: &str) -> Option<String> {
+    let asked = resolve(origin, SECURE_ORIGIN).filter(|_| origin.starts_with("http://"))?;
+    let secure = secure_origin(crate::http::send(
+        "GET",
+        &asked,
+        &[ACCEPT_JSON],
+        None,
+        PROBE_TIMEOUT,
+    ))?;
+    let home = resolve(&secure, HOME_VIEW)?;
+    answers_as_device(&crate::http::send(
+        "GET",
+        &home,
+        &[ACCEPT_JSON],
+        None,
+        PROBE_TIMEOUT,
+    ))
+    .then_some(secure)
+}
+
 fn answers_as_device(sent: &Result<(u16, Vec<u8>), String>) -> bool {
     sent.as_ref()
         .ok()
@@ -525,7 +563,7 @@ fn step(path: &str, args: &[Value]) -> Step {
     match path {
         CONNECT => match address(argument(args, 0)) {
             None => Step::Answered(refused(TYPE_AN_ADDRESS)),
-            Some(origin) => match resolve(&origin, "/api/views/aircraft") {
+            Some(origin) => match resolve(&origin, HOME_VIEW) {
                 None => Step::Answered(refused(&unreachable(&origin))),
                 Some(url) => get(url, ACCEPT_JSON.1, PROBE_TIMEOUT, Then::Adopt(origin)),
             },
@@ -608,7 +646,7 @@ fn finish(then: Then, sent: Result<(u16, Vec<u8>), String>) -> Value {
     match then {
         Then::Answer => answer(sent),
         Then::Adopt(origin) if answers_as_device(&sent) => {
-            adopt(&origin);
+            adopt(&upgraded(&origin).unwrap_or(origin));
             json!({ "ok": true })
         }
         Then::Adopt(origin) => refused(&unreachable(&origin)),
@@ -848,6 +886,7 @@ mod tests {
                 "application/json",
                 r#"{"headline":"Ready to fly","level":0}"#.into(),
             ),
+            ("application/json", r#"{"origin":""}"#.into()),
             ("application/json", r#"{"ok":true}"#.into()),
             (
                 "application/json",
@@ -869,6 +908,7 @@ mod tests {
                 .unwrap()
                 .starts_with("GET /api/views/aircraft ")
         );
+        assert!(asked.recv().unwrap().starts_with("GET /api/tls "));
         assert_eq!(lock().origin(), origin);
         assert_eq!(
             run(CALL, r#"["PUT","/api/streams/front/record",{"on":true}]"#)["ok"],
@@ -932,6 +972,60 @@ mod tests {
             ),
             (Some(""), Some(false), true)
         );
+    }
+
+    #[test]
+    fn only_an_https_origin_the_device_names_is_taken_as_its_secure_origin() {
+        let named = |body: &str| secure_origin(Ok((200, body.as_bytes().to_vec())));
+        assert_eq!(
+            named(r#"{"origin":"https://192-168-1-50.6f1c2a9e-3b7d-4e21-9a55-0c8d7e6f5a41.d.aircast.one"}"#).as_deref(),
+            Some("https://192-168-1-50.6f1c2a9e-3b7d-4e21-9a55-0c8d7e6f5a41.d.aircast.one")
+        );
+        assert_eq!(
+            named(r#"{"origin":"https://10-42-0-1.dev.d.aircast.one:8443/fly/"}"#).as_deref(),
+            Some("https://10-42-0-1.dev.d.aircast.one:8443")
+        );
+        assert_eq!(named(r#"{"origin":""}"#), None);
+        assert_eq!(named(r#"{"origin":"http://192.168.1.50"}"#), None);
+        assert_eq!(named(r#"{"origin":"https://"}"#), None);
+        assert_eq!(named("<html>router</html>"), None);
+        assert_eq!(
+            secure_origin(Ok((404, br#"{"origin":"https://a.b"}"#.to_vec()))),
+            None
+        );
+        assert_eq!(secure_origin(Err("refused".into())), None);
+    }
+
+    #[test]
+    fn a_secure_origin_that_does_not_answer_leaves_the_device_on_http() {
+        let _one = ONE_AT_A_TIME.lock().unwrap_or_else(PoisonError::into_inner);
+        run(DISCONNECT, "[]");
+        let silent = TcpListener::bind("127.0.0.1:0").unwrap();
+        let unreachable_secure = format!("https://{}", silent.local_addr().unwrap());
+        drop(silent);
+        let (origin, asked) = serve(vec![
+            (
+                "application/json",
+                r#"{"headline":"Ready to fly","level":0}"#.into(),
+            ),
+            (
+                "application/json",
+                json!({ "origin": unreachable_secure }).to_string(),
+            ),
+        ]);
+        assert_eq!(
+            run(CONNECT, &json!([origin]).to_string()),
+            json!({ "ok": true })
+        );
+        assert!(
+            asked
+                .recv()
+                .unwrap()
+                .starts_with("GET /api/views/aircraft ")
+        );
+        assert!(asked.recv().unwrap().starts_with("GET /api/tls "));
+        assert_eq!(lock().origin(), origin);
+        run(DISCONNECT, "[]");
     }
 
     #[test]
