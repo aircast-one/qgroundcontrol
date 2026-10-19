@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { onPort } from './client';
+import { onPort, reloadDue } from './client';
 
 describe('onPort', () => {
   it('lets a port finish closing before it is opened again, even after a failure', async () => {
@@ -16,5 +16,13 @@ describe('onPort', () => {
     await expect(slowClose).rejects.toThrow('close failed');
     await reopen;
     expect(steps).toEqual(['closed', 'opened']);
+  });
+});
+
+describe('reloadDue', () => {
+  it('reloads a page whose core never started at most once a minute, so a missing build cannot loop', () => {
+    expect(reloadDue(0, Date.now())).toBe(true);
+    expect(reloadDue(1_000, 30_000)).toBe(false);
+    expect(reloadDue(1_000, 61_000)).toBe(true);
   });
 });

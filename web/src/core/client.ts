@@ -18,12 +18,31 @@ const serialSessions = new Map<number, { port: SerialPort; writer: Promise<Writa
 
 const connection: { worker: Worker | null; ready: Promise<Worker> | null } = { worker: null, ready: null };
 
+const RELOADED_KEY = 'aircast.reloadedForBuild';
+const RELOAD_GAP_MS = 60_000;
+
+export const reloadDue = (last: number, now: number): boolean => now - last >= RELOAD_GAP_MS;
+
+const reloadForThisBuild = () => {
+  try {
+    if (!reloadDue(Number(sessionStorage.getItem(RELOADED_KEY) ?? 0), Date.now())) return;
+    sessionStorage.setItem(RELOADED_KEY, String(Date.now()));
+  } catch {
+    return;
+  }
+  location.reload();
+};
+
 const connect = (): Promise<Worker> => {
   connection.ready ??= new Promise<Worker>((resolve) => {
     const worker = new Worker(new URL('./worker.ts', import.meta.url), { type: 'module' });
     connection.worker = worker;
+    worker.onerror = reloadForThisBuild;
     worker.onmessage = ({ data }: MessageEvent<Message>) => {
-      if ('ready' in data) return resolve(worker);
+      if ('ready' in data) {
+        worker.onerror = null;
+        return resolve(worker);
+      }
       if ('event' in data) return eventListeners.forEach((listener) => listener(data.event.path, data.event.json));
       if ('serial' in data) return void serialOp(data.serial);
       if ('settings' in data) return store(data.settings);
