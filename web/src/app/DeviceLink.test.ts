@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deviceBase, deviceCameras, deviceLinkName, deviceSocket, securePage } from './DeviceLink';
+import { deviceBase, deviceCameras, deviceLinkName, deviceSocket, securePage, typedOrigin } from './DeviceLink';
 
 describe('the link to the device serving this page', () => {
   it('reaches telemetry beside the page, on the address the browser already used', () => {
@@ -26,6 +26,15 @@ describe('the link to the device serving this page', () => {
     expect(securePage(`${secure}/fly/`, secure)).toBeNull();
     expect(securePage('http://192.168.1.50/fly/', '')).toBeNull();
     expect(securePage('http://192.168.1.50/fly/', 'http://192.168.1.50')).toBeNull();
+  });
+
+  it('asks a typed plain-http address for its https origin, and nothing else', () => {
+    expect(typedOrigin(' 192.168.1.100 ')).toBe('http://192.168.1.100');
+    expect(typedOrigin('falcon.local:8080/fly/')).toBe('http://falcon.local:8080');
+    expect(typedOrigin('http://Falcon.Local/')).toBe('http://falcon.local');
+    expect(typedOrigin('https://192-168-1-100.a.d.aircast.one')).toBeNull();
+    expect(typedOrigin('')).toBeNull();
+    expect(typedOrigin('not a host at all/')).toBeNull();
   });
 
   it('hands the core each camera as a name and the WHEP address the device gave', () => {

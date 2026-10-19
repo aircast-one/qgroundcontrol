@@ -37,11 +37,29 @@ const readServed = async (): Promise<Device | null> => {
 
 const parseDevice = (json: unknown): Device | null => (isJson(json) ? (json as Device) : null);
 
-const servedSecureOrigin = async (): Promise<string> => {
-  const answer: unknown = await fetch('/api/tls', { cache: 'no-store' })
+export const typedOrigin = (address: string): string | null => {
+  const text = address.trim();
+  try {
+    const url = new URL(text.includes('://') ? text : `http://${text}`);
+    return url.protocol === 'http:' && url.hostname !== '' ? url.origin : null;
+  } catch {
+    return null;
+  }
+};
+
+const secureOriginAt = async (page: string): Promise<string> => {
+  const answer: unknown = await fetch(new URL('/api/tls', page), { cache: 'no-store', signal: AbortSignal.timeout(REACH_TIMEOUT_MS) })
     .then((response) => (response.ok ? response.json() : null))
     .catch(() => null);
-  return optText(isJson(answer) ? answer : null, 'origin');
+  const named = optText(isJson(answer) ? answer : null, 'origin');
+  return named.startsWith('https://') ? named : '';
+};
+
+const connectSecurelyFirst = async (address: string): Promise<string | null> => {
+  const origin = typedOrigin(address);
+  const secure = origin === null ? '' : await secureOriginAt(origin);
+  if (secure !== '' && refusal(await deviceInvoke(DEVICE_CONNECT, secure), DEVICE_SUBJECT) === null) return null;
+  return refusal(await deviceInvoke(DEVICE_CONNECT, address), DEVICE_SUBJECT);
 };
 
 const reachable = (page: string): Promise<boolean> =>
@@ -52,7 +70,8 @@ const reachable = (page: string): Promise<boolean> =>
 
 const upgradeRemembered = async (): Promise<void> => {
   const { origin } = deviceReading(await Qgc.get(deviceViewPath('aircraft')));
-  if (origin.startsWith('http://')) await deviceInvoke(DEVICE_CONNECT, origin);
+  const secure = origin.startsWith('http://') ? await secureOriginAt(origin) : '';
+  if (secure !== '') await deviceInvoke(DEVICE_CONNECT, secure);
 };
 
 const linkDevice = async (): Promise<void> => {
@@ -73,7 +92,7 @@ export const DeviceLink = {
       await upgradeRemembered();
       return linkDevice();
     }
-    const secure = securePage(location.href, await servedSecureOrigin());
+    const secure = securePage(location.href, await secureOriginAt(location.href));
     if (secure !== null && (await reachable(secure))) return location.replace(secure);
     deviceServed.value = true;
     await Promise.all([
@@ -85,7 +104,7 @@ export const DeviceLink = {
   },
 
   async connect(address: string): Promise<string | null> {
-    const refused = refusal(await deviceInvoke(DEVICE_CONNECT, address), DEVICE_SUBJECT);
+    const refused = await connectSecurelyFirst(address);
     if (refused === null) await linkDevice();
     return refused;
   },
