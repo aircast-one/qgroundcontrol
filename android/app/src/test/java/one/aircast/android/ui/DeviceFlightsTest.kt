@@ -100,13 +100,13 @@ class DeviceFlightsTest {
     }
 
     @Test
-    fun `a render reports how far it got and why it stopped`() {
-        val uploading = parseRenderJob(JSONObject("""{"id":"r1","state":"uploading","sent":300,"total":1200}"""))
-        assertTrue(renderRunning(uploading))
-        assertEquals(25, renderPercent(uploading))
-        assertEquals(0, renderPercent(parseRenderJob(JSONObject("""{"state":"uploading"}"""))))
-        assertFalse(renderRunning(parseRenderJob(JSONObject("""{"state":"done","url":"https://r2/x.mp4"}"""))))
-        assertEquals("The cloud could not render this video.", parseRenderJob(JSONObject("""{"state":"failed"}""")).error)
-        assertEquals("the cloud could not render this video", parseRenderJob(JSONObject("""{"state":"failed","error":"the cloud could not render this video"}""")).error)
+    fun `a share version shows the render the core is following for it`() {
+        val share = SortieShare("Share version · cam2", "Send?", "cam2", "20260922T140210", "20260922T141240")
+        assertEquals("view.deviceRender(cam2,20260922T140210,20260922T141240)", renderPath(share))
+        assertEquals(FlightRender(canStart = true, progress = "", error = "", url = "", expiry = ""), parseRender(null))
+        assertEquals(
+            FlightRender(canStart = false, progress = "", error = "", url = "https://r2/x.mp4", expiry = "Link works until 22 Oct"),
+            parseRender(JSONObject("""{"canStart":false,"progress":"","error":"","url":"https://r2/x.mp4","expiry":"Link works until 22 Oct"}""")),
+        )
     }
 }

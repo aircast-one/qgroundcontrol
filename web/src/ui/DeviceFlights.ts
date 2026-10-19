@@ -2,7 +2,6 @@ import { type Json, isJson, jsonObjects, jsonStrings, optBoolean, optDouble, opt
 import { Qgc } from '@/bridge/Qgc';
 import { type DeviceBadge, parseBadge } from '@/ui/DeviceKit';
 import { readStored, writeStored } from '@/ui/DeviceConnect';
-import { deviceRead, deviceSend } from '@/ui/DeviceView';
 import { DeviceLevel } from '@/ui/DeviceLevel';
 
 export type FlightLine = { readonly index: number; readonly clock: string; readonly text: string; readonly level: number; readonly alert: boolean; readonly repeats: string; readonly heldBack: boolean };
@@ -149,38 +148,18 @@ export const sampleAt = (count: number, fraction: number): { readonly index: num
   return { index, x: count > 1 ? (index / (count - 1)) * 100 : 0 };
 };
 
-export type RenderJob = { readonly id: string; readonly state: string; readonly sent: number; readonly total: number; readonly url: string; readonly expiresAt: string; readonly error: string };
+export type FlightRender = { readonly canStart: boolean; readonly progress: string; readonly error: string; readonly url: string; readonly expiry: string };
 
-export const RENDER_POLL_MS = 2000;
+const FLIGHT_RENDER = 'deviceFlight.render';
 
-export const IDLE_RENDER: RenderJob = { id: '', state: '', sent: 0, total: 0, url: '', expiresAt: '', error: '' };
+export const renderPath = (share: SortieShare): string => `view.deviceRender(${share.camera},${share.from},${share.to})`;
 
-export const parseRenderJob = (json: unknown): RenderJob => {
-  const it = isJson(json) ? json : null;
-  const state = optText(it, 'state');
-  return {
-    id: optText(it, 'id'),
-    state,
-    sent: optInt(it, 'sent'),
-    total: optInt(it, 'total'),
-    url: optText(it, 'url'),
-    expiresAt: optText(it, 'expiresAt'),
-    error: state === 'failed' ? optText(it, 'error') || 'The cloud could not render this video.' : '',
-  };
-};
+export const parseRender = (json: Json | null): FlightRender => ({
+  canStart: optBoolean(json, 'canStart', true),
+  progress: optText(json, 'progress'),
+  error: optText(json, 'error'),
+  url: optText(json, 'url'),
+  expiry: optText(json, 'expiry'),
+});
 
-const failedRender = (error: string): RenderJob => ({ ...IDLE_RENDER, state: 'failed', error });
-
-export const renderRunning = (job: RenderJob): boolean => job.state === 'uploading' || job.state === 'rendering';
-
-export const renderPercent = (job: RenderJob): number => (job.total > 0 ? Math.floor((job.sent / job.total) * 100) : 0);
-
-export const renderExpiry = (job: RenderJob): string =>
-  job.expiresAt === '' ? '' : `Link works until ${new Date(job.expiresAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`;
-
-export const startRender = async (share: SortieShare): Promise<RenderJob> => {
-  const { refusal, result } = await deviceSend('POST', '/api/renders', { camera: share.camera, from: share.from, to: share.to });
-  return refusal === null ? parseRenderJob(result) : failedRender(refusal.message);
-};
-
-export const readRender = async (id: string): Promise<RenderJob> => (await deviceRead(`/api/renders/${encodeURIComponent(id)}`, parseRenderJob)) ?? failedRender('Lost track of the render.');
+export const requestRender = (share: SortieShare): Promise<boolean> => Qgc.invoke(FLIGHT_RENDER, share.camera, share.from, share.to);

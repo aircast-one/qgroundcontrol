@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DeviceLevel } from '@/ui/DeviceLevel';
-import { composeZoom, flightLink, hasLines, laneKeys, parseFlightChart, parseFlights, parseRenderJob, renderPercent, renderRunning, sampleAt, toggled } from '@/ui/DeviceFlights';
+import { composeZoom, flightLink, hasLines, laneKeys, parseFlightChart, parseFlights, parseRender, renderPath, sampleAt, toggled } from '@/ui/DeviceFlights';
 
 describe('DeviceFlightsTest', () => {
   it('reads the flight log the device serves', () => {
@@ -104,13 +104,11 @@ describe('DeviceFlightsTest', () => {
     expect(composeZoom([0.5, 1], 0, 0.5)).toEqual([0.5, 0.75]);
   });
 
-  it('a render reports how far it got and why it stopped', () => {
-    const uploading = parseRenderJob({ id: 'r1', state: 'uploading', sent: 300, total: 1200 });
-    expect(renderRunning(uploading)).toBe(true);
-    expect(renderPercent(uploading)).toBe(25);
-    expect(renderPercent(parseRenderJob({ state: 'uploading' }))).toBe(0);
-    expect(renderRunning(parseRenderJob({ state: 'done', url: 'https://r2/x.mp4' }))).toBe(false);
-    expect(parseRenderJob({ state: 'failed' }).error).toBe('The cloud could not render this video.');
-    expect(parseRenderJob({ state: 'failed', error: 'the cloud could not render this video' }).error).toBe('the cloud could not render this video');
+  it('a share version shows the render the core is following for it', () => {
+    const share = { label: 'Share version · cam2', confirm: 'Send?', camera: 'cam2', from: '20260922T140210', to: '20260922T141240' };
+    expect(renderPath(share)).toBe('view.deviceRender(cam2,20260922T140210,20260922T141240)');
+    expect(parseRender(null)).toEqual({ canStart: true, progress: '', error: '', url: '', expiry: '' });
+    expect(parseRender({ canStart: false, progress: 'Sending to Aircast cloud… 25%', error: '', url: '', expiry: '' }).progress).toBe('Sending to Aircast cloud… 25%');
+    expect(parseRender({ canStart: false, url: 'https://r2/x.mp4', expiry: 'Link works until 22 Oct' })).toMatchObject({ canStart: false, url: 'https://r2/x.mp4', expiry: 'Link works until 22 Oct' });
   });
 });

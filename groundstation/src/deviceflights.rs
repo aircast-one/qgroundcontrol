@@ -1,10 +1,17 @@
+use std::collections::BTreeMap;
 use std::ops::Range;
+use std::sync::{Mutex, MutexGuard, PoisonError};
+use std::time::Duration;
 
+use chrono::TimeZone;
 use serde_json::{Value, json};
 
 use crate::router::Backend;
 
 pub const FLIGHT_CHART: &str = "deviceFlight.chart";
+pub const FLIGHT_RENDER: &str = "deviceFlight.render";
+pub const RENDER_CHANGED: &str = "core.deviceRender@changed";
+pub const RENDER_DEPS: &[&str] = &[RENDER_CHANGED];
 
 const PLOT_TOP: f64 = 5.0;
 const PLOT_HEIGHT: f64 = 90.0;
@@ -15,6 +22,14 @@ const SECONDS_PER_DAY: i64 = 86_400;
 const DEVICE_LEVEL_NEUTRAL: i64 = 3;
 const UNREAD_SAMPLE: &str = "no reading";
 const CHART_TAKES: &str = "deviceFlight.chart takes a flight's trace as the device serves it, then the zoom's from and to as fractions of the flight, or nothing for the whole flight.";
+const RENDER_TAKES: &str =
+    "deviceFlight.render takes the camera, from and to of a sortie's share version.";
+const RENDER_POLL: Duration = Duration::from_secs(2);
+const CLOUD_FAILED: &str = "The cloud could not render this video.";
+const NOT_SENT: &str = "Could not send the video.";
+const LOST_TRACK: &str = "Lost track of the render.";
+const BURNING_IN: &str =
+    "Burning the telemetry in… this takes a few minutes; you can leave this page.";
 
 fn text<'a>(json: &'a Value, key: &str) -> &'a str {
     json.get(key).and_then(Value::as_str).unwrap_or_default()
@@ -257,6 +272,242 @@ fn answer(args: &str, imperial: bool) -> Value {
 
 pub fn chart(backend: &dyn Backend, args: &str) -> Value {
     answer(args, crate::missionsummary::imperial(backend))
+}
+
+type Share = [String; 3];
+
+#[derive(Clone, Debug, Default, PartialEq)]
+struct Render {
+    id: String,
+    state: String,
+    sent: u64,
+    total: u64,
+    url: String,
+    expires_at: String,
+    error: String,
+}
+
+impl Render {
+    fn running(&self) -> bool {
+        matches!(self.state.as_str(), "uploading" | "rendering")
+    }
+}
+
+struct Renders {
+    jobs: BTreeMap<Share, Render>,
+    dirty: bool,
+}
+
+static RENDERS: Mutex<Renders> = Mutex::new(Renders {
+    jobs: BTreeMap::new(),
+    dirty: false,
+});
+
+fn renders() -> MutexGuard<'static, Renders> {
+    RENDERS.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+pub fn take_render_changed() -> bool {
+    std::mem::take(&mut renders().dirty)
+}
+
+fn failed(error: &str) -> Render {
+    Render {
+        state: "failed".into(),
+        error: error.into(),
+        ..Render::default()
+    }
+}
+
+fn job(json: &Value) -> Render {
+    let state = text(json, "state");
+    Render {
+        id: text(json, "id").into(),
+        state: state.into(),
+        sent: json.get("sent").and_then(Value::as_u64).unwrap_or_default(),
+        total: json
+            .get("total")
+            .and_then(Value::as_u64)
+            .unwrap_or_default(),
+        url: text(json, "url").into(),
+        expires_at: text(json, "expiresAt").into(),
+        error: match (state, text(json, "error")) {
+            ("failed", "") => CLOUD_FAILED.into(),
+            ("failed", error) => error.into(),
+            _ => String::new(),
+        },
+    }
+}
+
+fn started(answer: &Value) -> Render {
+    match answer["ok"] == true {
+        true => job(&answer["result"]),
+        false => failed(
+            Some(text(answer, "reason"))
+                .filter(|reason| !reason.is_empty())
+                .unwrap_or(NOT_SENT),
+        ),
+    }
+}
+
+fn polled(answer: &Value) -> Render {
+    match answer["ok"] == true {
+        true => job(&answer["result"]),
+        false => failed(LOST_TRACK),
+    }
+}
+
+fn record(share: &Share, job: Render) -> Option<String> {
+    let next = (job.running() && !job.id.is_empty()).then(|| job.id.clone());
+    let mut held = renders();
+    held.jobs.insert(share.clone(), job);
+    held.dirty = true;
+    next
+}
+
+fn claim(share: &Share) -> bool {
+    let mut held = renders();
+    let free = !held.jobs.get(share).is_some_and(Render::running);
+    if free {
+        held.jobs.insert(
+            share.clone(),
+            Render {
+                state: "uploading".into(),
+                ..Render::default()
+            },
+        );
+        held.dirty = true;
+    }
+    free
+}
+
+fn start_args(share: &Share) -> String {
+    json!(["POST", "/api/renders", { "camera": share[0], "from": share[1], "to": share[2] }])
+        .to_string()
+}
+
+fn read_args(id: &str) -> String {
+    let segment = url::form_urlencoded::byte_serialize(id.as_bytes())
+        .collect::<String>()
+        .replace('+', "%20");
+    json!([format!("/api/renders/{segment}")]).to_string()
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn render(share: &Share, every: Duration, send: impl Fn(&str, &str) -> Value) {
+    let mut polling = record(
+        share,
+        started(&send(crate::deviceviews::CALL, &start_args(share))),
+    );
+    while let Some(id) = polling {
+        std::thread::sleep(every);
+        polling = record(
+            share,
+            polled(&send(crate::deviceviews::READ, &read_args(&id))),
+        );
+    }
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn follow_render(share: Share) {
+    render(&share, RENDER_POLL, crate::deviceviews::run);
+}
+
+#[cfg(target_family = "wasm")]
+fn follow_render(share: Share) {
+    wasm_bindgen_futures::spawn_local(async move {
+        let mut polling = record(
+            &share,
+            started(
+                &crate::deviceviews::run_later(crate::deviceviews::CALL, &start_args(&share)).await,
+            ),
+        );
+        while let Some(id) = polling {
+            crate::background::pause(RENDER_POLL).await;
+            polling = record(
+                &share,
+                polled(
+                    &crate::deviceviews::run_later(crate::deviceviews::READ, &read_args(&id)).await,
+                ),
+            );
+        }
+    });
+}
+
+fn share_of(args: &str) -> Option<Share> {
+    let given: Vec<String> = serde_json::from_str::<Vec<Value>>(args)
+        .unwrap_or_default()
+        .iter()
+        .map(|it| it.as_str().unwrap_or_default().to_string())
+        .collect();
+    Share::try_from(given)
+        .ok()
+        .filter(|share| share.iter().all(|part| !part.is_empty()))
+}
+
+pub fn request_render(args: &str) -> Value {
+    match share_of(args) {
+        None => json!({ "ok": false, "reason": RENDER_TAKES }),
+        Some(share) => {
+            let followed = share.clone();
+            if claim(&share)
+                && crate::background::spawn("groundstation-device-render", move || {
+                    follow_render(followed)
+                })
+                .is_err()
+            {
+                record(&share, failed(NOT_SENT));
+            }
+            json!({ "ok": true })
+        }
+    }
+}
+
+fn progress(job: &Render) -> String {
+    match job.state.as_str() {
+        "uploading" => format!(
+            "Sending to Aircast cloud… {}%",
+            (job.sent * 100).checked_div(job.total).unwrap_or_default()
+        ),
+        "rendering" => BURNING_IN.to_string(),
+        _ => String::new(),
+    }
+}
+
+fn expiry<Tz: TimeZone>(expires_at: &str, zone: &Tz) -> String
+where
+    Tz::Offset: std::fmt::Display,
+{
+    chrono::DateTime::parse_from_rfc3339(expires_at)
+        .map(|at| {
+            format!(
+                "Link works until {}",
+                at.with_timezone(zone).format("%-d %b")
+            )
+        })
+        .unwrap_or_default()
+}
+
+fn progress_view<Tz: TimeZone>(job: &Render, zone: &Tz) -> Value
+where
+    Tz::Offset: std::fmt::Display,
+{
+    let done = job.state == "done";
+    json!({
+        "kind": "object",
+        "class": "DeviceRender",
+        "canStart": matches!(job.state.as_str(), "" | "failed"),
+        "progress": progress(job),
+        "error": job.error,
+        "url": if done { job.url.as_str() } else { "" },
+        "expiry": if done { expiry(&job.expires_at, zone) } else { String::new() },
+    })
+}
+
+pub fn render_view(_backend: &dyn Backend, args: &[String]) -> Value {
+    let share: Share = [0, 1, 2].map(|index| args.get(index).cloned().unwrap_or_default());
+    let job = renders().jobs.get(&share).cloned().unwrap_or_default();
+    progress_view(&job, &chrono::Local)
 }
 
 #[cfg(test)]
@@ -551,5 +802,145 @@ mod tests {
         assert_eq!(readings(json!([traced, 0.5])), Some(5));
         assert_eq!(readings(json!([traced, 0.5, 1.0])), Some(3));
         assert_eq!(readings(json!([traced, null, null])), Some(5));
+    }
+
+    fn share(camera: &str) -> Share {
+        [camera.to_string(), "a".to_string(), "b".to_string()]
+    }
+
+    fn gmt4() -> chrono::FixedOffset {
+        chrono::FixedOffset::east_opt(4 * 3600).unwrap()
+    }
+
+    #[test]
+    fn a_render_reports_how_far_it_got_and_why_it_stopped() {
+        let uploading =
+            job(&json!({ "id": "r1", "state": "uploading", "sent": 300, "total": 1200 }));
+        assert!(uploading.running());
+        assert_eq!(progress(&uploading), "Sending to Aircast cloud… 25%");
+        assert_eq!(
+            progress(&job(&json!({ "state": "uploading" }))),
+            "Sending to Aircast cloud… 0%"
+        );
+        assert_eq!(progress(&job(&json!({ "state": "rendering" }))), BURNING_IN);
+        assert!(!job(&json!({ "state": "done", "url": "https://r2/x.mp4" })).running());
+        assert_eq!(job(&json!({ "state": "failed" })).error, CLOUD_FAILED);
+        assert_eq!(
+            job(&json!({ "state": "failed", "error": "the cloud could not render this video" }))
+                .error,
+            "the cloud could not render this video"
+        );
+    }
+
+    #[test]
+    fn a_finished_render_offers_its_link_until_it_expires() {
+        let done = job(
+            &json!({ "state": "done", "url": "https://r2/x.mp4", "expiresAt": "2026-10-22T22:30:00Z" }),
+        );
+        let shown = progress_view(&done, &gmt4());
+        assert_eq!(
+            (
+                shown["canStart"].as_bool(),
+                shown["url"].as_str(),
+                shown["expiry"].as_str(),
+                shown["progress"].as_str()
+            ),
+            (
+                Some(false),
+                Some("https://r2/x.mp4"),
+                Some("Link works until 23 Oct"),
+                Some("")
+            ),
+            "the date is the viewer's, past midnight there"
+        );
+        assert_eq!(expiry("", &gmt4()), "");
+        assert_eq!(expiry("next week", &gmt4()), "");
+        let sending = progress_view(
+            &job(&json!({ "state": "uploading", "url": "https://r2/x.mp4" })),
+            &gmt4(),
+        );
+        assert_eq!(
+            (sending["canStart"].as_bool(), sending["url"].as_str()),
+            (Some(false), Some(""))
+        );
+        let failed_view = progress_view(&failed(LOST_TRACK), &gmt4());
+        assert_eq!(
+            (
+                failed_view["canStart"].as_bool(),
+                failed_view["error"].as_str()
+            ),
+            (Some(true), Some(LOST_TRACK)),
+            "a failed render can be sent again"
+        );
+        assert_eq!(progress_view(&Render::default(), &gmt4())["canStart"], true);
+    }
+
+    #[test]
+    fn a_render_is_sent_then_followed_until_the_cloud_has_it() {
+        let sent = std::cell::RefCell::new(Vec::new());
+        let answers = std::cell::RefCell::new(vec![
+            json!({ "ok": true, "result": { "id": "r 1", "state": "uploading", "sent": 0, "total": 10 } }),
+            json!({ "ok": true, "result": { "id": "r 1", "state": "rendering" } }),
+            json!({ "ok": true, "result": { "id": "r 1", "state": "done", "url": "https://r2/x.mp4" } }),
+        ]);
+        let followed = share("followed");
+        render(&followed, Duration::ZERO, |path, args| {
+            sent.borrow_mut().push(format!("{path} {args}"));
+            answers.borrow_mut().remove(0)
+        });
+        assert_eq!(
+            sent.into_inner(),
+            vec![
+                r#"device.call ["POST","/api/renders",{"camera":"followed","from":"a","to":"b"}]"#
+                    .to_string(),
+                r#"device.read ["/api/renders/r%201"]"#.to_string(),
+                r#"device.read ["/api/renders/r%201"]"#.to_string(),
+            ]
+        );
+        assert_eq!(renders().jobs[&followed].url, "https://r2/x.mp4");
+        assert!(take_render_changed());
+    }
+
+    #[test]
+    fn a_refused_send_or_a_lost_render_says_so_and_stops() {
+        let calls = std::cell::Cell::new(0);
+        let refused = share("refused");
+        render(&refused, Duration::ZERO, |_, _| {
+            calls.set(calls.get() + 1);
+            json!({ "ok": false, "reason": "No Aircast device is connected.", "field": "" })
+        });
+        assert_eq!(
+            calls.get(),
+            1,
+            "nothing is polled after the send is refused"
+        );
+        assert_eq!(
+            renders().jobs[&refused].error,
+            "No Aircast device is connected."
+        );
+        assert_eq!(started(&json!({ "ok": false })).error, NOT_SENT);
+        let lost = share("lost");
+        let answers = std::cell::RefCell::new(vec![
+            json!({ "ok": true, "result": { "id": "r2", "state": "rendering" } }),
+            json!({ "ok": false, "reason": "The device did not answer." }),
+        ]);
+        render(&lost, Duration::ZERO, |_, _| answers.borrow_mut().remove(0));
+        assert_eq!(renders().jobs[&lost], failed(LOST_TRACK));
+    }
+
+    #[test]
+    fn one_render_runs_per_share_version_at_a_time() {
+        let once = share("once");
+        assert!(claim(&once));
+        assert_eq!(
+            progress(&renders().jobs[&once]),
+            "Sending to Aircast cloud… 0%"
+        );
+        assert!(!claim(&once), "a second press while it runs starts nothing");
+        record(&once, failed(CLOUD_FAILED));
+        assert!(claim(&once), "a failed render can be sent again");
+        assert_eq!(request_render(r#"["cam2","a"]"#)["reason"], RENDER_TAKES);
+        assert_eq!(request_render(r#"["cam2","","b"]"#)["ok"], false);
+        assert_eq!(share_of(r#"["cam2","a","b"]"#), Some(share("cam2")));
     }
 }

@@ -25,6 +25,7 @@ use crate::contract;
 use crate::control;
 use crate::debugapi;
 use crate::detections;
+use crate::deviceflights;
 use crate::deviceviews;
 use crate::escal;
 use crate::escview;
@@ -148,6 +149,7 @@ pub const ARGUMENT_MODES: &[(&str, &str)] = &[
     ("view.control", "<fact path>"),
     ("view.device", "<page>"),
     ("view.videoPreview", "<url>"),
+    ("view.deviceRender", "<camera>,<from>,<to>"),
     ("view.guidedAltitude", "<metres>[,pause]"),
     ("view.guidedSpeed", "<metres per second>"),
     ("view.guidedTakeoff", "<metres>"),
@@ -327,6 +329,11 @@ pub const VIEWS: &[View] = &[
         path: "view.deviceWizard",
         deps: crate::devicewizard::DEPS,
         compute: crate::devicewizard::device_wizard_view,
+    },
+    View {
+        path: "view.deviceRender",
+        deps: deviceflights::RENDER_DEPS,
+        compute: deviceflights::render_view,
     },
     View {
         path: "view.advancedUi",

@@ -1,5 +1,6 @@
 import { type PointerEvent, useContext, useEffect, useRef, useState } from 'react';
 import type { Json } from '@/bridge/Json';
+import { useQgcPath } from '@/bridge/QgcState';
 import { useProduceState } from '@/kotlin/Compose';
 import { copyToClipboard } from '@/kotlin/Platform';
 import { mutableStateOf, useValue } from '@/kotlin/State';
@@ -13,10 +14,7 @@ import {
   type FlightEntry,
   type FlightLine,
   type FlightPart,
-  IDLE_RENDER,
   MIN_BRUSH,
-  RENDER_POLL_MS,
-  type RenderJob,
   type SortieShare,
   type SortieVideo,
   type Zoom,
@@ -26,13 +24,11 @@ import {
   hasLines,
   laneKeys,
   parseFlights,
-  readRender,
+  parseRender,
   rememberLanes,
-  renderExpiry,
-  renderPercent,
-  renderRunning,
+  renderPath,
+  requestRender,
   sampleAt,
-  startRender,
   storedLanes,
   toggled,
 } from '@/ui/DeviceFlights';
@@ -187,56 +183,42 @@ const SortieVideoLinks = ({ video }: { video: SortieVideo }) => (
 
 const SortieShareRow = ({ share }: { share: SortieShare }) => {
   const copy = useCopy();
-  const [job, setJob] = useState<RenderJob>(IDLE_RENDER);
+  const render = parseRender(useQgcPath(renderPath(share)));
   const [asking, setAsking] = useState(false);
-  useEffect(() => {
-    if (!renderRunning(job) || job.id === '') return undefined;
-    const abort = new AbortController();
-    const timer = setTimeout(() => void readRender(job.id).then((next) => (abort.signal.aborted ? undefined : setJob(next))), RENDER_POLL_MS);
-    return () => {
-      clearTimeout(timer);
-      abort.abort();
-    };
-  }, [job]);
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {job.state === '' || job.state === 'failed' ? (
+      {render.canStart ? (
         <OutlinedButton title="Burns the telemetry into the picture in Aircast cloud, so it survives Telegram, WhatsApp and any player" onClick={() => setAsking(true)}>
           {share.label}
         </OutlinedButton>
       ) : null}
-      {job.state === 'uploading' ? (
+      {render.progress !== '' ? (
         <Text typography="bodySmall" color={muted}>
-          {`Sending to Aircast cloud… ${renderPercent(job)}%`}
+          {render.progress}
         </Text>
       ) : null}
-      {job.state === 'rendering' ? (
-        <Text typography="bodySmall" color={muted}>
-          Burning the telemetry in… this takes a few minutes; you can leave this page.
-        </Text>
-      ) : null}
-      {job.state === 'failed' ? (
+      {render.error !== '' ? (
         <div role="alert">
           <Text typography="bodySmall" color={md('error')}>
-            {job.error}
+            {render.error}
           </Text>
         </div>
       ) : null}
-      {job.state === 'done' ? (
+      {render.url !== '' ? (
         <div role="group" aria-label="Share version" className="flex basis-full flex-wrap items-center gap-3">
-          <QrImage text={job.url} alt="QR code for the share link" className="size-24 rounded-shape-xs bg-white p-1" />
+          <QrImage text={render.url} alt="QR code for the share link" className="size-24 rounded-shape-xs bg-white p-1" />
           <div className="flex flex-col items-start gap-1">
-            <a href={job.url} target="_blank" rel="noopener noreferrer" className="text-label-large text-primary underline">
+            <a href={render.url} target="_blank" rel="noopener noreferrer" className="text-label-large text-primary underline">
               Open the share version
             </a>
-            <TextButton onClick={() => copy(job.url)}>Copy link</TextButton>
+            <TextButton onClick={() => copy(render.url)}>Copy link</TextButton>
             <Text typography="labelSmall" color={muted}>
-              {renderExpiry(job)}
+              {render.expiry}
             </Text>
           </div>
         </div>
       ) : null}
-      {asking ? <ConfirmDialog title={share.label} text={share.confirm} confirm="Send" onConfirm={() => void startRender(share).then(setJob)} onDismiss={() => setAsking(false)} /> : null}
+      {asking ? <ConfirmDialog title={share.label} text={share.confirm} confirm="Send" onConfirm={() => void requestRender(share)} onDismiss={() => setAsking(false)} /> : null}
     </div>
   );
 };

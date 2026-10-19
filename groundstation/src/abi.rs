@@ -498,6 +498,11 @@ pub(crate) fn pump_once() {
                 .iter()
                 .for_each(|(path, json)| announce(path, json));
         }
+        if crate::deviceflights::take_render_changed() {
+            CORE.on_event(crate::deviceflights::RENDER_CHANGED, "null")
+                .iter()
+                .for_each(|(path, json)| announce(path, json));
+        }
         if crate::synthview::take_changed() {
             CORE.on_event(crate::synthview::SYNTHETIC_CHANGED, "null")
                 .iter()

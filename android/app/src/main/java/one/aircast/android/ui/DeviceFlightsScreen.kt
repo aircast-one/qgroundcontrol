@@ -35,7 +35,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
@@ -58,9 +57,9 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import one.aircast.android.R
+import one.aircast.android.bridge.qgcPath
 import one.aircast.map.aircast
 import org.json.JSONObject
 import kotlin.math.abs
@@ -177,35 +176,25 @@ private fun SortieShareRow(share: SortieShare) {
     val scope = rememberCoroutineScope()
     val copy = rememberCopy()
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
-    var job by remember { mutableStateOf(IDLE_RENDER) }
-    var polls by remember { mutableIntStateOf(0) }
+    val json by qgcPath(renderPath(share))
+    val render = remember(json) { parseRender(json) }
     var asking by remember { mutableStateOf(false) }
     var showingQr by remember { mutableStateOf(false) }
-    LaunchedEffect(job.id, polls) {
-        if (renderRunning(job) && job.id.isNotEmpty()) {
-            delay(RENDER_POLL_MS)
-            job = readRender(job.id)
-            polls++
-        }
-    }
     Column {
-        if (job.state.isEmpty() || job.state == "failed") OutlinedButton(onClick = { asking = true }) { Text(share.label) }
-        when (job.state) {
-            "uploading" -> Text("Sending to Aircast cloud… ${renderPercent(job)}%", style = MaterialTheme.typography.bodySmall, color = muted)
-            "rendering" -> Text("Burning the telemetry in… this takes a few minutes; you can leave this page.", style = MaterialTheme.typography.bodySmall, color = muted)
-            "failed" -> Text(job.error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-            "done" -> {
-                FlowRow {
-                    IconButton(onClick = { showingQr = true }) { Icon(painterResource(R.drawable.ic_qr_code_2), "Show the share link as a QR code") }
-                    LinkButton(job.url, "Open the share version", look = LinkLook.Text, external = true)
-                    TextButton(onClick = { copy(job.url) }) { Text("Copy link") }
-                }
-                Text(renderExpiry(job), style = MaterialTheme.typography.labelSmall, color = muted)
+        if (render.canStart) OutlinedButton(onClick = { asking = true }) { Text(share.label) }
+        if (render.progress.isNotEmpty()) Text(render.progress, style = MaterialTheme.typography.bodySmall, color = muted)
+        if (render.error.isNotEmpty()) Text(render.error, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        if (render.url.isNotEmpty()) {
+            FlowRow {
+                IconButton(onClick = { showingQr = true }) { Icon(painterResource(R.drawable.ic_qr_code_2), "Show the share link as a QR code") }
+                LinkButton(render.url, "Open the share version", look = LinkLook.Text, external = true)
+                TextButton(onClick = { copy(render.url) }) { Text("Copy link") }
             }
+            Text(render.expiry, style = MaterialTheme.typography.labelSmall, color = muted)
         }
     }
-    if (showingQr) QrDialog("Share version", job.url) { showingQr = false }
-    if (asking) ConfirmDialog(ActionConfirm(share.label, share.confirm, "Send"), { scope.launch { job = startRender(share) } }) { asking = false }
+    if (showingQr) QrDialog("Share version", render.url) { showingQr = false }
+    if (asking) ConfirmDialog(ActionConfirm(share.label, share.confirm, "Send"), { scope.launch { requestRender(share) } }) { asking = false }
 }
 
 private class LanePlot {

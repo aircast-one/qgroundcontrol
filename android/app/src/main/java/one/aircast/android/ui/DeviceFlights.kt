@@ -8,9 +8,6 @@ import one.aircast.android.bridge.Qgc
 import one.aircast.map.optText
 import org.json.JSONArray
 import org.json.JSONObject
-import java.time.OffsetDateTime
-import java.time.ZoneId
-import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
 
 internal data class FlightLine(val index: Int, val clock: String, val text: String, val level: Int, val alert: Boolean, val repeats: String, val heldBack: Boolean)
@@ -145,39 +142,13 @@ internal data class ChartSample(val index: Int, val x: Float)
 internal fun sampleAt(count: Int, fraction: Double): ChartSample? =
     if (count == 0) null else (fraction * (count - 1)).roundToInt().coerceIn(0, count - 1).let { ChartSample(it, if (count > 1) it.toFloat() / (count - 1) * 100 else 0f) }
 
-internal data class RenderJob(val id: String, val state: String, val sent: Long, val total: Long, val url: String, val expiresAt: String, val error: String)
+internal data class FlightRender(val canStart: Boolean, val progress: String, val error: String, val url: String, val expiry: String)
 
-internal const val RENDER_POLL_MS = 2000L
+private const val FLIGHT_RENDER = "deviceFlight.render"
 
-internal val IDLE_RENDER = RenderJob("", "", 0, 0, "", "", "")
+internal fun renderPath(share: SortieShare): String = "view.deviceRender(${share.camera},${share.from},${share.to})"
 
-internal fun parseRenderJob(json: JSONObject?): RenderJob = (json ?: JSONObject()).let {
-    val state = it.optText("state")
-    RenderJob(
-        id = it.optText("id"),
-        state = state,
-        sent = it.optLong("sent"),
-        total = it.optLong("total"),
-        url = it.optText("url"),
-        expiresAt = it.optText("expiresAt"),
-        error = if (state == "failed") it.optText("error").ifEmpty { "The cloud could not render this video." } else "",
-    )
-}
+internal fun parseRender(json: JSONObject?): FlightRender =
+    FlightRender(json?.optBoolean("canStart", true) ?: true, json?.optText("progress").orEmpty(), json?.optText("error").orEmpty(), json?.optText("url").orEmpty(), json?.optText("expiry").orEmpty())
 
-private fun failedRender(error: String): RenderJob = IDLE_RENDER.copy(state = "failed", error = error)
-
-internal fun renderRunning(job: RenderJob): Boolean = job.state == "uploading" || job.state == "rendering"
-
-internal fun renderPercent(job: RenderJob): Int = if (job.total > 0) (job.sent * 100 / job.total).toInt() else 0
-
-private val EXPIRY_DATE = DateTimeFormatter.ofPattern("d MMM")
-
-internal fun renderExpiry(job: RenderJob): String =
-    runCatching { OffsetDateTime.parse(job.expiresAt).atZoneSameInstant(ZoneId.systemDefault()).format(EXPIRY_DATE) }.getOrNull()?.let { "Link works until $it" }.orEmpty()
-
-internal suspend fun startRender(share: SortieShare): RenderJob =
-    deviceSend(DeviceMethod.POST, "/api/renders", JSONObject(mapOf("camera" to share.camera, "from" to share.from, "to" to share.to))).let { answer ->
-        answer.refusal?.let { failedRender(it.message) } ?: parseRenderJob(answer.result)
-    }
-
-internal suspend fun readRender(id: String): RenderJob = deviceRead("/api/renders/${uriComponent(id)}", ::parseRenderJob) ?: failedRender("Lost track of the render.")
+internal suspend fun requestRender(share: SortieShare): Boolean = withContext(Dispatchers.Default) { Qgc.invoke(FLIGHT_RENDER, share.camera, share.from, share.to) }
