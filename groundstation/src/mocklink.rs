@@ -949,6 +949,19 @@ impl Sim {
                     }
                 })
             }
+            MavMessage::MISSION_ITEM(m)
+                if self.mine(m.target_system)
+                    && self.options.vehicle.apm()
+                    && m.current == crate::mavout::GUIDED_ITEM_CURRENT
+                    && m.mission_type == MavMissionType::MAV_MISSION_TYPE_MISSION =>
+            {
+                self.fly_to(self.placed(m.frame, f64::from(m.x), f64::from(m.y), f64::from(m.z)));
+                Some(vec![mission_ack(
+                    from,
+                    m.mission_type,
+                    MavMissionResult::MAV_MISSION_ACCEPTED,
+                )])
+            }
             MavMessage::MISSION_REQUEST_LIST(m) if self.mine(m.target_system) => {
                 let count = self
                     .missions

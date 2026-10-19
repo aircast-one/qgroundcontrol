@@ -1,4 +1,4 @@
-import { expect, flightMode, mapMenuAt, showMapFull, slideAcross, takeOff, test } from './fixtures';
+import { connectMock, expect, flightMode, mapMenuAt, showMapFull, slideAcross, takeOff, telemetry, test } from './fixtures';
 
 test.describe.configure({ timeout: 120_000 });
 
@@ -19,6 +19,23 @@ test('in flight the map menu flies to the clicked point', async ({ vehicle }) =>
   await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to go to location' }));
   await expect(vehicle.getByText('Going to point')).toBeVisible();
   await expect(vehicle.getByText(/^Arrived/)).toBeVisible({ timeout: 90_000 });
+  await expect(vehicle.getByText(/transfer failed/)).toBeHidden();
+});
+
+test('in flight an ArduCopter flies to the clicked point without saying the transfer failed', async ({ app: vehicle }) => {
+  await connectMock(vehicle, [], 'APM ArduCopter Vehicle');
+  await takeOff(vehicle, '10 m');
+  await expect(telemetry(vehicle, 'H')).toHaveText(/^H(9\.[5-9]|10\.[0-4])m$/, { timeout: 60_000 });
+  await showMapFull(vehicle);
+  await mapMenuAt(vehicle, 200, -100);
+  await vehicle.getByRole('button', { name: 'Go to location' }).click();
+  const slide = vehicle.getByRole('button', { name: 'Slide to go to location' });
+  await expect(async () => {
+    if (await slide.isVisible()) await slideAcross(vehicle, slide);
+    await expect(slide).toBeHidden({ timeout: 2_000 });
+  }).toPass({ timeout: 20_000 });
+  await expect(vehicle.getByText(/^Arrived/)).toBeVisible({ timeout: 90_000 });
+  await expect(vehicle.getByText(/transfer failed/)).toBeHidden();
 });
 
 test('in flight the map menu offers an orbit with a radius range', async ({ vehicle }) => {

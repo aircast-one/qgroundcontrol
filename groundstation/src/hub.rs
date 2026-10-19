@@ -12104,6 +12104,79 @@ mod tests {
         );
     }
 
+    #[test]
+    #[allow(deprecated)]
+    fn the_first_ardupilot_go_to_is_answered_by_the_mock_vehicle_without_a_transfer_failure() {
+        use crate::mocklink::{Options, Sim, Vehicle};
+        use mavlink::dialects::ardupilotmega::{GLOBAL_POSITION_INT_DATA, MavMissionResult};
+        let autopilot = MavHeader {
+            system_id: 1,
+            component_id: 1,
+            sequence: 0,
+        };
+        let gcs = MavHeader {
+            system_id: 255,
+            component_id: 190,
+            sequence: 0,
+        };
+        let mut hub = Hub::default();
+        connect_copter(&mut hub, &autopilot);
+        hub.on_frame(
+            origin(4),
+            &autopilot,
+            &copter_heartbeat(4, true),
+            1_000_000,
+            1_000,
+        );
+        let position = MavMessage::GLOBAL_POSITION_INT(GLOBAL_POSITION_INT_DATA {
+            lat: 474000000,
+            lon: 85000000,
+            alt: 520_000,
+            relative_alt: 20_000,
+            ..Default::default()
+        });
+        hub.on_frame(origin(4), &autopilot, &position, 1_100_000, 1_100);
+        let mut sim = Sim::new(
+            Options {
+                vehicle: Vehicle::Copter,
+                send_status_text: false,
+                enable_camera: false,
+                enable_gimbal: false,
+                enable_proximity: false,
+                apm_start_fresh_params: false,
+                increment_vehicle_id: false,
+                video: crate::mockcamera::StreamKind::None,
+            },
+            1,
+            None,
+        );
+        let goto = hub
+            .guided(
+                None,
+                &json!({ "action": "goto", "latitude": 47.4009, "longitude": 8.5 }),
+                1_200,
+            )
+            .unwrap();
+        let replies: Vec<MavMessage> = goto
+            .iter()
+            .flat_map(|(_, bytes)| sim.receive(gcs, &decode(bytes)))
+            .map(|(_, reply)| reply)
+            .collect();
+        assert!(
+            replies.iter().any(|reply| matches!(reply, MavMessage::MISSION_ACK(a) if a.mavtype == MavMissionResult::MAV_MISSION_ACCEPTED)),
+            "ArduPilot answers a guided mode item with MISSION_ACK: {replies:?}"
+        );
+        replies.iter().for_each(|reply| {
+            hub.on_frame(origin(4), &autopilot, reply, 1_300_000, 1_300);
+        });
+        hub.tick(1_300 + plantransfer::ACK_TIMEOUT_MS);
+        assert_eq!(
+            hub.guided_snapshot(None)["guided"]["errors"],
+            json!([]),
+            "a go-to the vehicle accepted is not reported as a failed transfer"
+        );
+    }
+
     fn refuse_pack(
         hub: &mut Hub,
         autopilot: &MavHeader,
