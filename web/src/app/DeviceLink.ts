@@ -68,14 +68,17 @@ const connectSecurelyFirst = async (address: string): Promise<string | null> => 
   return refusal(await deviceInvoke(DEVICE_CONNECT, address), DEVICE_SUBJECT);
 };
 
-const firstReachablePage = (pages: readonly string[]): Promise<string | null> =>
-  pages.reduce<Promise<string | null>>(async (found, page) => (await found) ?? ((await reachable(page)) ? page : null), Promise.resolve(null));
+const SECURE_PROBE_MS = 2000;
+
+export const firstAnswered = (pages: readonly string[], answered: readonly boolean[]): string | null => pages.find((_, at) => answered[at]) ?? null;
 
 const reachable = (page: string): Promise<boolean> =>
-  fetch(new URL('/api/tls', page), { mode: 'no-cors', cache: 'no-store', signal: AbortSignal.timeout(REACH_TIMEOUT_MS) }).then(
+  fetch(new URL('/api/tls', page), { mode: 'no-cors', cache: 'no-store', signal: AbortSignal.timeout(SECURE_PROBE_MS) }).then(
     () => true,
     () => false,
   );
+
+const firstReachablePage = async (pages: readonly string[]): Promise<string | null> => firstAnswered(pages, await Promise.all(pages.map(reachable)));
 
 const upgradeRemembered = async (): Promise<void> => {
   const { origin } = deviceReading(await Qgc.get(deviceViewPath('aircraft')));

@@ -209,3 +209,12 @@ base('a page the device served over http moves to its https address and flies fr
   await expect(page.getByRole('region', { name: 'Map' })).toBeVisible({ timeout: 60_000 });
   await expect(page.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
 });
+
+base('a page the device served stays on http when its https name never answers, as it must once the cloud is gone', async ({ page }) => {
+  const started = Date.now();
+  await page.goto('http://localhost:18787/fly/');
+  await expect(page.getByRole('region', { name: 'Map' })).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
+  expect(new URL(page.url()).origin).toBe('http://localhost:18787');
+  expect(Date.now() - started).toBeLessThan(30_000);
+});

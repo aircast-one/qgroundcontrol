@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deviceBase, deviceCameras, deviceLinkName, deviceSocket, secureOrigins, securePage, typedOrigin } from './DeviceLink';
+import { deviceBase, deviceCameras, deviceLinkName, deviceSocket, firstAnswered, secureOrigins, securePage, typedOrigin } from './DeviceLink';
 
 describe('the link to the device serving this page', () => {
   it('reaches telemetry beside the page, on the address the browser already used', () => {
@@ -43,6 +43,14 @@ describe('the link to the device serving this page', () => {
     expect(secureOrigins({ origin: '' })).toEqual([]);
     expect(secureOrigins({ origin: 'http://192.168.1.100' })).toEqual([]);
     expect(secureOrigins(null)).toEqual([]);
+  });
+
+  it('moves to the preferred https page that answered, whichever answered first', () => {
+    const pages = ['https://falcon-gb3v.d.aircast.one/fly/', 'https://192-168-1-100.falcon-gb3v.d.aircast.one/fly/'];
+    expect(firstAnswered(pages, [true, true])).toBe(pages[0]);
+    expect(firstAnswered(pages, [false, true])).toBe(pages[1]);
+    expect(firstAnswered(pages, [false, false])).toBeNull();
+    expect(firstAnswered([], [])).toBeNull();
   });
 
   it('hands the core each camera as a name and the WHEP address the device gave', () => {

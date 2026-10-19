@@ -17,6 +17,7 @@ export const UDP_VEHICLE_PORT = 18783;
 export const TCP_VEHICLE_PORT = 18784;
 export const DEVICE_TLS_PORT = 18785;
 export const UPGRADING_PORT = 18786;
+export const OFFLINE_PORT = 18787;
 const SECURE_ORIGIN = `https://localhost:${DEVICE_TLS_PORT}`;
 const UNANSWERED_NAME = 'https://localhost:1';
 const VITE = Number(process.env.E2E_PORT ?? 8800);
@@ -179,6 +180,7 @@ const certificate = (): { key: Buffer; cert: Buffer } => {
 const http = createServer(device({ origin: '' }, false));
 const upgrading = createServer(device({ origin: UNANSWERED_NAME, fallback: SECURE_ORIGIN }, false));
 const https = createSecureServer(certificate(), device({ origin: SECURE_ORIGIN }, true));
+const offline = createServer(device({ origin: 'https://10.255.255.1' }, false));
 
 const pipeTcp = (socket: WebSocket, address: string) => {
   const [host, port] = [address.slice(0, address.lastIndexOf(':')).replace(/^\[|\]$/g, ''), Number(address.slice(address.lastIndexOf(':') + 1))];
@@ -239,7 +241,7 @@ const upgrade = (request: IncomingMessage, socket: Duplex, head: Buffer) => {
   });
   upstream.on('error', () => socket.destroy());
 };
-[http, upgrading, https].forEach((server) => server.on('upgrade', upgrade));
+[http, upgrading, https, offline].forEach((server) => server.on('upgrade', upgrade));
 
 const sbs1 = (icao: string, lat: number, lon: number): string =>
   ['MSG', '3', '1', '1', icao, '1', '', '', '', '', '', '4000', '', '', String(lat), String(lon), '', '', '', '', '', '0'].join(',') + '\r\n';
@@ -288,3 +290,4 @@ createTcpServer((socket) => {
 http.listen(DEVICE_PORT);
 upgrading.listen(UPGRADING_PORT);
 https.listen(DEVICE_TLS_PORT);
+offline.listen(OFFLINE_PORT);
