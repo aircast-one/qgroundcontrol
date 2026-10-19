@@ -122,18 +122,26 @@ execute_process(
 
 set(_notarize_zip "${CMAKE_BINARY_DIR}/qgc_notarization_upload.zip")
 message(STATUS "QGC: Archiving Bundle for Notarization upload")
+function(_qgc_apple_retry what)
+    foreach(_attempt RANGE 1 6)
+        execute_process(COMMAND ${ARGN} RESULT_VARIABLE _result)
+        if(_result EQUAL 0)
+            return()
+        endif()
+        message(STATUS "QGC: ${what} failed (attempt ${_attempt} of 6), retrying in 20 s")
+        execute_process(COMMAND sleep 20)
+    endforeach()
+    message(FATAL_ERROR "QGC: ${what} failed after 6 attempts")
+endfunction()
+
 file(REMOVE "${_notarize_zip}")
 execute_process(
     COMMAND ditto -c -k --keepParent "${QGC_STAGING_BUNDLE_PATH}" "${_notarize_zip}"
     COMMAND_ERROR_IS_FATAL ANY
 )
 message(STATUS "QGC: Notarizing app bundle. This may take a while...")
-execute_process(
-    COMMAND xcrun notarytool submit "${_notarize_zip}" --apple-id "$ENV{QGC_MACOS_NOTARIZATION_USERNAME}" --team-id "$ENV{QGC_MACOS_NOTARIZATION_TEAM_ID}" --password "$ENV{QGC_MACOS_NOTARIZATION_PASSWORD}" --wait
-    COMMAND_ERROR_IS_FATAL ANY
+_qgc_apple_retry("Notarizing"
+    xcrun notarytool submit "${_notarize_zip}" --apple-id "$ENV{QGC_MACOS_NOTARIZATION_USERNAME}" --team-id "$ENV{QGC_MACOS_NOTARIZATION_TEAM_ID}" --password "$ENV{QGC_MACOS_NOTARIZATION_PASSWORD}" --wait
 )
 message(STATUS "QGC: Stapling notarization ticket to app bundle")
-execute_process(
-    COMMAND xcrun stapler staple "${QGC_STAGING_BUNDLE_PATH}"
-    COMMAND_ERROR_IS_FATAL ANY
-)
+_qgc_apple_retry("Stapling" xcrun stapler staple "${QGC_STAGING_BUNDLE_PATH}")
