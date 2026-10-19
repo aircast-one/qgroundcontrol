@@ -1,8 +1,3 @@
-# ============================================================================
-# Joystick Module
-# Game controller and joystick input support
-# ============================================================================
-
 target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
         Joystick.cc
@@ -24,5 +19,10 @@ if(NOT QGC_NO_SERIAL_LINK)
         PRIVATE
             UsbRadio.cc
             UsbRadio.h
+    )
+    qt_add_resources(${CMAKE_PROJECT_NAME} "edgetx_script"
+        PREFIX "/edgetx"
+        BASE "${CMAKE_SOURCE_DIR}/tools/edgetx"
+        FILES "${CMAKE_SOURCE_DIR}/tools/edgetx/aircast-usb.lua"
     )
 endif()

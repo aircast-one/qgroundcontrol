@@ -1,5 +1,8 @@
 #include "UsbRadioTest.h"
 
+#include <QtCore/QDir>
+#include <QtCore/QFile>
+#include <QtCore/QTemporaryDir>
 #include <algorithm>
 #include <ranges>
 
@@ -136,6 +139,51 @@ void UsbRadioTest::_losingTheVehicleHandsBackAndANewVehicleIsFlown_test()
     const Step moved = radio.step(200, 1, sticks);
     QCOMPARE(moved.handedBack, std::optional<int>(2));
     QVERIFY(moved.sends.last() == (Send{1, sticks}));
+}
+
+void UsbRadioTest::_statusSaysWhatToDoWhenTheRadioIsBusyOrSilent_test()
+{
+    QVERIFY(busyText(QStringLiteral("/dev/cu.radio")).contains(QStringLiteral("Chrome")));
+    QVERIFY(busyText(QStringLiteral("/dev/cu.radio")).contains(QStringLiteral("Only one app can hold the radio")));
+    QCOMPARE(silentText(QStringLiteral("/dev/cu.radio"), kSilentHelpAfterMs - 1),
+             QStringLiteral("Waiting for the radio on /dev/cu.radio"));
+    QVERIFY(silentText(QStringLiteral("/dev/cu.radio"), kSilentHelpAfterMs)
+                .contains(QStringLiteral("SYS → Tools → Aircast USB radio")));
+    QVERIFY(
+        silentText(QStringLiteral("/dev/cu.radio"), kSilentHelpAfterMs).contains(QStringLiteral("USB Serial (VCP)")));
+    QCOMPARE(flightText(Flying::Standby, 3), QStringLiteral("Network standby for vehicle 3"));
+    QCOMPARE(flightText(Flying::Vehicle, 1), QStringLiteral("Flying vehicle 1"));
+}
+
+void UsbRadioTest::_radioCardIsFoundByItsToolsFolder_test()
+{
+    QTemporaryDir disk;
+    QTemporaryDir card;
+    QVERIFY(QDir(card.path()).mkpath(QStringLiteral("SCRIPTS/TOOLS")));
+    QCOMPARE(toolsFolder({disk.path(), card.path()}), QDir(card.path()).filePath(QStringLiteral("SCRIPTS/TOOLS")));
+    QCOMPARE(toolsFolder({disk.path()}), QString());
+}
+
+void UsbRadioTest::_savedScriptReplacesTheOldOneAndItsCompiledCopy_test()
+{
+    QTemporaryDir tools;
+    const QDir dir(tools.path());
+    QFile old(dir.filePath(QStringLiteral("aircast-usb.lua")));
+    QVERIFY(old.open(QIODevice::WriteOnly));
+    (void) old.write("old");
+    old.close();
+    QFile compiled(dir.filePath(QStringLiteral("aircast-usb.luac")));
+    QVERIFY(compiled.open(QIODevice::WriteOnly));
+    compiled.close();
+    QCOMPARE(saveScript(tools.path()), QString());
+    QFile saved(dir.filePath(QStringLiteral("aircast-usb.lua")));
+    QVERIFY(saved.open(QIODevice::ReadOnly));
+    QFile bundled(QStringLiteral(":/edgetx/aircast-usb.lua"));
+    QVERIFY(bundled.open(QIODevice::ReadOnly));
+    QCOMPARE(saved.readAll(), bundled.readAll());
+    QVERIFY(!QFile::exists(dir.filePath(QStringLiteral("aircast-usb.luac"))));
+    QVERIFY(QFileInfo(saved).isWritable());
+    QCOMPARE(saveScript(tools.path()), QString());
 }
 
 UT_REGISTER_TEST_LIGHTWEIGHT(UsbRadioTest, TestLabel::Unit, TestLabel::Joystick)

@@ -1,6 +1,10 @@
 #include "UsbRadio.h"
 
 #include <QtCore/QApplicationStatic>
+#include <QtCore/QCoreApplication>
+#include <QtCore/QDir>
+#include <QtCore/QFile>
+#include <QtCore/QStorageInfo>
 #include <QtSerialPort/QSerialPort>
 #include <algorithm>
 #include <numeric>
@@ -142,6 +146,61 @@ QList<Frame> Lines::feed(const QByteArray& bytes)
                            });
 }
 
+QString busyText(const QString& port)
+{
+    return QCoreApplication::translate("UsbRadio",
+                                       "%1 is open in another app: Chrome with the Aircast web app, or another "
+                                       "QGroundControl. Only one app can hold the radio. Close it there and the radio "
+                                       "connects by itself.")
+        .arg(port);
+}
+
+QString silentText(const QString& port, qint64 silentMs)
+{
+    return silentMs < kSilentHelpAfterMs
+               ? QCoreApplication::translate("UsbRadio", "Waiting for the radio on %1").arg(port)
+               : QCoreApplication::translate("UsbRadio",
+                                             "No sticks from the radio on %1. On the radio open SYS → Tools → Aircast "
+                                             "USB radio, and choose USB Serial (VCP) when you plug it in.")
+                     .arg(port);
+}
+
+QString flightText(Flying flying, int vehicle)
+{
+    return flying == Flying::Vehicle ? QCoreApplication::translate("UsbRadio", "Flying vehicle %1").arg(vehicle)
+           : flying == Flying::Standby
+               ? QCoreApplication::translate("UsbRadio", "Network standby for vehicle %1").arg(vehicle)
+           : flying == Flying::Joystick
+               ? QCoreApplication::translate("UsbRadio", "Receiving; a joystick is flying vehicle %1").arg(vehicle)
+               : QCoreApplication::translate("UsbRadio", "Receiving; no vehicle connected");
+}
+
+QString toolsFolder(const QStringList& roots)
+{
+    const auto card = std::ranges::find_if(
+        roots, [](const QString& root) { return QDir(root).exists(QStringLiteral("SCRIPTS/TOOLS")); });
+    return card == roots.end() ? QString() : QDir(*card).filePath(QStringLiteral("SCRIPTS/TOOLS"));
+}
+
+QString saveScript(const QString& folder)
+{
+    const QDir dir(folder);
+    const QString target = dir.filePath(QStringLiteral("aircast-usb.lua"));
+    (void) QFile::remove(target);
+    (void) QFile::remove(dir.filePath(QStringLiteral("aircast-usb.luac")));
+    if (!QFile::copy(QStringLiteral(":/edgetx/aircast-usb.lua"), target)) {
+        return QCoreApplication::translate("UsbRadio", "Could not write %1").arg(target);
+    }
+    (void) QFile::setPermissions(
+        target, QFileDevice::ReadOwner | QFileDevice::WriteOwner | QFileDevice::ReadGroup | QFileDevice::ReadOther);
+    return QString();
+}
+
+std::optional<qint64> Radio::heardAt() const
+{
+    return _latest ? std::optional<qint64>(_latest->second) : std::nullopt;
+}
+
 bool Radio::live(qint64 nowMs) const
 {
     return _latest && (nowMs - _latest->second) <= kStaleAfterMs;
@@ -154,7 +213,8 @@ Step Radio::step(qint64 nowMs, std::optional<int> target, std::optional<Frame> f
     }
     const int flying = live(nowMs) ? target.value_or(0) : 0;
     const int holding = _holding.value_or(0);
-    const std::optional<int> handedBack = (holding != 0 && flying != holding) ? std::optional<int>(holding) : std::nullopt;
+    const std::optional<int> handedBack =
+        (holding != 0 && flying != holding) ? std::optional<int>(holding) : std::nullopt;
     const bool due = fresh && (!_sentAt || (nowMs - *_sentAt) >= kSendEveryMs);
     const std::optional<Send> send =
         (flying != 0 && _latest && due) ? std::optional<Send>(Send{flying, _latest->first}) : std::nullopt;
@@ -192,6 +252,19 @@ void UsbRadio::init()
 {
     _timer.start();
     _maintain();
+}
+
+QString UsbRadio::scriptFolder() const
+{
+    const QList<QStorageInfo> volumes = QStorageInfo::mountedVolumes();
+    QStringList roots(volumes.size());
+    std::ranges::transform(volumes, roots.begin(), &QStorageInfo::rootPath);
+    return toolsFolder(roots);
+}
+
+QString UsbRadio::saveScript(const QString& folder) const
+{
+    return UsbRadioProtocol::saveScript(folder);
 }
 
 QVariantList UsbRadio::ports() const
@@ -247,9 +320,7 @@ void UsbRadio::_open(const QString& port)
     if (!_port->open(QIODevice::ReadWrite)) {
         qCDebug(UsbRadioLog) << "Cannot open" << port << _port->errorString();
         _setStatus(_port->error() == QSerialPort::PermissionError
-                       ? tr("%1 is open in another app. Close it there (another QGroundControl, a serial link to it) "
-                            "and the radio connects by itself.")
-                             .arg(port)
+                       ? busyText(port)
                        : tr("Cannot open %1: %2").arg(port, _port->errorString()));
         return;
     }
@@ -362,15 +433,10 @@ void UsbRadio::_advance(std::optional<Frame> fresh)
         _echoedAt = now;
         (void) _port->write(echo(flight.flying, flight.vehicle, flight.kind, flight.sticks));
     }
-    const QString quiet =
-        _portName.isEmpty() ? tr("Off") : tr("Waiting for the radio's Aircast USB script on %1").arg(_portName);
-    const QString flyingText = flight.flying == Flying::Vehicle   ? tr("Flying vehicle %1").arg(flight.vehicle)
-                               : flight.flying == Flying::Standby ? tr("4G standby for vehicle %1").arg(flight.vehicle)
-                               : flight.flying == Flying::Joystick
-                                   ? tr("Receiving; a joystick is flying vehicle %1").arg(flight.vehicle)
-                                   : tr("Receiving; no vehicle connected");
+    const qint64 quietSince = std::max(_openedAt.value_or(now), _radio.heardAt().value_or(0));
+    const QString quiet = _portName.isEmpty() ? tr("Off") : silentText(_portName, now - quietSince);
     if (!_port || _port->isOpen()) {
-        _setStatus(live ? flyingText : quiet);
+        _setStatus(live ? flightText(flight.flying, flight.vehicle) : quiet);
     }
 }
 

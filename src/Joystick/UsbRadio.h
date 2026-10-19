@@ -5,6 +5,7 @@
 #include <QtCore/QList>
 #include <QtCore/QLoggingCategory>
 #include <QtCore/QObject>
+#include <QtCore/QStringList>
 #include <QtCore/QTimer>
 #include <QtCore/QVariantList>
 #include <QtQmlIntegration/QtQmlIntegration>
@@ -23,6 +24,7 @@ constexpr qint64 kStaleAfterMs = 500;
 constexpr qint64 kReopenAfterMs = 1000;
 constexpr qint64 kEchoEveryMs = 250;
 constexpr int kReleaseFrames = 3;
+constexpr qint64 kSilentHelpAfterMs = 1500;
 constexpr int kBaud = 115200;
 constexpr int kMaxLineBytes = 1024;
 constexpr int kMinValues = 4;
@@ -69,6 +71,11 @@ Sticks sticks(int roll, int pitch, int throttle, int yaw);
 bool echoDue(std::optional<qint64> last, qint64 nowMs, bool live);
 uint8_t component(bool standby);
 bool standbyAirframe(bool ardupilot, int mavType);
+QString busyText(const QString& port);
+QString silentText(const QString& port, qint64 silentMs);
+QString flightText(Flying flying, int vehicle);
+QString toolsFolder(const QStringList& roots);
+QString saveScript(const QString& folder);
 
 class Lines
 {
@@ -97,6 +104,7 @@ class Radio
 {
 public:
     bool live(qint64 nowMs) const;
+    std::optional<qint64> heardAt() const;
     Step step(qint64 nowMs, std::optional<int> target, std::optional<Frame> fresh);
 
 private:
@@ -129,6 +137,8 @@ public:
     bool receiving() const { return _radio.live(_clock.elapsed()); }
 
     Q_INVOKABLE QVariantList ports() const;
+    Q_INVOKABLE QString scriptFolder() const;
+    Q_INVOKABLE QString saveScript(const QString& folder) const;
 
 signals:
     void statusChanged();
