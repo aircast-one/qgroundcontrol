@@ -99,6 +99,8 @@ const FlightsSplit = ({ flights, linked }: { flights: readonly FlightEntry[]; li
   const [chosen, setChosen] = useState(linked ?? flights.find((flight) => flight.open)?.id ?? null);
   const [active, setActive] = useState<number | null>(null);
   const shown = flights.find((flight) => flight.id === chosen);
+  const picked = useRef<HTMLDivElement>(null);
+  useEffect(() => void picked.current?.scrollIntoView({ block: 'nearest' }), []);
   const pick = (id: string) => {
     setChosen(id);
     setActive(null);
@@ -107,13 +109,13 @@ const FlightsSplit = ({ flights, linked }: { flights: readonly FlightEntry[]; li
     <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-start gap-x-6">
       <div className="flex min-w-0 flex-col">
         {flights.map((flight) => (
-          <div key={flight.id} className="border-b border-outline-variant">
+          <div key={flight.id} ref={flight.id === shown?.id ? picked : undefined} className="border-b border-outline-variant">
             <FlightHeader flight={flight} open={flight.id === shown?.id} icon="chevron_right" onClick={() => pick(flight.id)} />
           </div>
         ))}
       </div>
       {shown !== undefined ? (
-        <section aria-label={shown.title} className="min-w-0 rounded-shape-md bg-surface-container-low pt-2">
+        <section aria-label={shown.title} className="sticky top-0 max-h-[calc(100dvh-8rem)] min-w-0 overflow-y-auto rounded-shape-md bg-surface-container-low pt-2">
           <FlightBody key={shown.id} flight={shown} active={active} onActive={setActive} />
         </section>
       ) : (
