@@ -93,7 +93,7 @@ export const DeviceTab = ({ open, onOpen, onClose }: { open: string | null; onOp
                 onClick={check.href !== '' ? () => onOpen(check.href) : null}
               />
             ))}
-            <SetupRow title={status.events !== '' ? status.events : 'Flight log'} status="" state={status.events !== '' ? SetupState.NeedsAttention : SetupState.Neutral} onClick={() => onOpen('/flights')} />
+            <SetupRow title={status.events !== '' ? status.events : 'Flight log'} status="" state={status.eventsAlert ? SetupState.NeedsAttention : SetupState.Neutral} onClick={() => onOpen('/flights')} />
           </section>
           <div className="@min-[880px]:col-start-2 @min-[880px]:row-span-2 @min-[880px]:row-start-1">
             {status.link !== null ? <UplinkSection link={status.link} /> : null}

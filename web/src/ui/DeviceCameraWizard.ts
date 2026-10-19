@@ -242,6 +242,8 @@ export const openWizard = async (view: CameraWizardView, scan: boolean): Promise
 
 export const scanForCameras = async (): Promise<void> => void (await Qgc.call(WIZARD_SCAN));
 
+export type PortAddress = { readonly port: string; readonly address: string };
+
 export const fixWizardPort = async (iface: string, address: string): Promise<void> => void (await Qgc.call(WIZARD_FIX_PORT, iface, address));
 
 export const setUpCameraMake = async (id: string): Promise<void> => void (await Qgc.call(WIZARD_TEMPLATE, id));

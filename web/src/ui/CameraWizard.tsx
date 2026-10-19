@@ -14,6 +14,7 @@ import {
   PI_CAMERA,
   STEP_NAMES,
   type WizardCamera,
+  type PortAddress,
   type WizardPort,
   type WizardRefusal,
   applyCamera,
@@ -42,12 +43,14 @@ type PortInput = { readonly open: boolean; readonly text: string };
 export const CameraWizard = ({
   view,
   scan = false,
+  fixPort = null,
   onCancel = null,
   onStep = () => undefined,
   onDone,
 }: {
   view: CameraWizardView;
   scan?: boolean;
+  fixPort?: PortAddress | null;
   onCancel?: (() => void) | null;
   onStep?: (step: 1 | 2 | 3) => void;
   onDone: (name: string) => void;
@@ -58,12 +61,12 @@ export const CameraWizard = ({
   const [name, setName] = useState(view.suggestedName);
   const address = useFold(view.addressOpen);
   const naming = useFold(false);
-  const tech = useFold(false);
+  const tech = useFold(fixPort !== null);
   const portFold = useFold(false);
   const fileFold = useFold(false);
   const [refusal, setRefusal] = useState<WizardRefusal | null>(null);
   const [dupAck, setDupAck] = useState('');
-  const [inputs, setInputs] = useState<Readonly<Record<string, PortInput>>>({});
+  const [inputs, setInputs] = useState<Readonly<Record<string, PortInput>>>(fixPort === null ? {} : { [fixPort.port]: { open: true, text: fixPort.address } });
   const [picked, setPicked] = useState<WizardCamera | null>(null);
   const [editRtsp, setEditRtsp] = useState(false);
   const [base, setBase] = useState('');
@@ -101,7 +104,10 @@ export const CameraWizard = ({
   }, [step]);
 
   useEffect(() => {
-    void openWizard(view, scan).then(setSession);
+    void openWizard(view, scan).then((opened) => {
+      setSession(opened);
+      if (fixPort !== null) void fixWizardPort(fixPort.port, fixPort.address);
+    });
   }, []);
 
   useEffect(() => {

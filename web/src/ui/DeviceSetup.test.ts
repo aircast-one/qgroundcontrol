@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DeviceLevel } from '@/ui/DeviceLevel';
-import { cameraHoldsTheWizard, clampStep, parseSetup, setupNav } from '@/ui/DeviceSetup';
+import { cameraHoldsTheWizard, cameraStuck, clampStep, parseSetup, setupNav } from '@/ui/DeviceSetup';
 
 const served = {
   start: 3,
@@ -64,9 +64,16 @@ describe('DeviceSetupTest', () => {
   });
 
   it('the footer offers what each step allows', () => {
-    expect(setupNav(1, 5, false)).toEqual({ back: false, later: true, next: 'next', finish: false });
-    expect(setupNav(3, 5, false)).toEqual({ back: true, later: true, next: 'next', finish: false });
-    expect(setupNav(5, 5, false)).toEqual({ back: true, later: false, next: null, finish: true });
+    expect(setupNav(1, 5, false, false)).toEqual({ back: false, later: true, next: 'next', finish: false });
+    expect(setupNav(3, 5, false, false)).toEqual({ back: true, later: true, next: 'next', finish: false });
+    expect(setupNav(5, 5, false, false)).toEqual({ back: true, later: false, next: null, finish: true });
+  });
+
+  it('a camera with a problem leaves Reconfigure as the one thing to press, and moving on is a quiet skip', () => {
+    expect(cameraStuck('camera', 'Camera offline — the source is saved but no video is arriving.')).toBe(true);
+    expect(cameraStuck('camera', '')).toBe(false);
+    expect(cameraStuck('network', 'No uplink')).toBe(false);
+    expect(setupNav(3, 5, false, true)).toEqual({ back: true, later: true, next: 'skip', finish: false });
   });
 
   it('a camera being edited holds the wizard until it is applied or skipped', () => {
@@ -75,6 +82,6 @@ describe('DeviceSetupTest', () => {
     expect(cameraHoldsTheWizard('camera', true, 3)).toBe(false);
     expect(cameraHoldsTheWizard('camera', false, 1)).toBe(false);
     expect(cameraHoldsTheWizard('telemetry', true, 1)).toBe(false);
-    expect(setupNav(3, 5, true)).toEqual({ back: false, later: true, next: 'skip', finish: false });
+    expect(setupNav(3, 5, true, false)).toEqual({ back: false, later: true, next: 'skip', finish: false });
   });
 });

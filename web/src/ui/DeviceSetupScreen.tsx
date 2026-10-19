@@ -8,7 +8,7 @@ import { ActionButton, DeviceBadgeText, DeviceNotice, DeviceText, LinkButton } f
 import { DeviceLevel } from '@/ui/DeviceLevel';
 import { TailscaleSection } from '@/ui/DeviceNetworkScreen';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
-import { type SetupCamera, type SetupInternet, type SetupStep, type SetupTelemetry, type SetupView, cameraHoldsTheWizard, clampStep, parseSetup, setupNav } from '@/ui/DeviceSetup';
+import { type SetupCamera, type SetupInternet, type SetupStep, type SetupTelemetry, type SetupView, cameraHoldsTheWizard, cameraStuck, clampStep, parseSetup, setupNav } from '@/ui/DeviceSetup';
 import { type DevicePage, devicePageIcon } from '@/ui/DeviceStatus';
 import { EndpointRows } from '@/ui/DeviceTelemetryScreen';
 import { deviceUrl, useDeviceView } from '@/ui/DeviceView';
@@ -34,7 +34,7 @@ const SetupWizard = ({ view, onOpen }: { view: SetupView; onOpen: (href: string)
   const current = view.steps[clampStep(step, total) - 1] ?? view.steps[0];
   if (current === undefined) return null;
   const wizardShown = view.camera.wizard.isNew || reconfiguring;
-  const nav = setupNav(step, total, cameraHoldsTheWizard(current.key, wizardShown, wizardStep));
+  const nav = setupNav(step, total, cameraHoldsTheWizard(current.key, wizardShown, wizardStep), cameraStuck(current.key, view.camera.problem));
   const go = (next: number) => setStep(clampStep(next, total));
   const close = () => {
     navigation.settingsOpen.value = false;

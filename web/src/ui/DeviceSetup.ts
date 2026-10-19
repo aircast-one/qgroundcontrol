@@ -77,9 +77,11 @@ export const CAMERA_APPLYING = 3;
 
 export const cameraHoldsTheWizard = (key: string, wizardShown: boolean, wizardStep: number): boolean => key === 'camera' && wizardShown && wizardStep !== CAMERA_APPLYING;
 
-export const setupNav = (step: number, total: number, held: boolean): SetupNav => ({
+export const cameraStuck = (key: string, problem: string): boolean => key === 'camera' && problem !== '';
+
+export const setupNav = (step: number, total: number, held: boolean, stuck: boolean): SetupNav => ({
   back: step > 1 && !held,
   later: step < total,
-  next: step >= total ? null : held ? 'skip' : 'next',
+  next: step >= total ? null : held || stuck ? 'skip' : 'next',
   finish: step === total,
 });

@@ -1,6 +1,6 @@
 import { type Json, isJson, jsonObjects, optBoolean, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { type DeviceBadge, type DeviceChartView, type DeviceOption, parseBadge, parseChart, parseOptions } from '@/ui/DeviceKit';
-import { type CameraWizardView, parseCameraWizard } from '@/ui/DeviceCameraWizard';
+import { type CameraWizardView, type PortAddress, parseCameraWizard } from '@/ui/DeviceCameraWizard';
 import { type DevicePage } from '@/ui/DeviceStatus';
 import { DeviceLevel } from '@/ui/DeviceLevel';
 import { type ConnectTarget, parseTargets } from '@/ui/DeviceConnect';
@@ -8,7 +8,9 @@ import { type DeviceEndpoint, parseEndpointList } from '@/ui/DeviceTelemetry';
 
 export type CameraCopy = { readonly label: string; readonly text: string; readonly qr: boolean };
 export type CameraFact = { readonly label: string; readonly value: string };
-export type CameraFix = { readonly label: string; readonly scan: boolean };
+export type CameraFix = { readonly label: string; readonly scan: boolean; readonly port: string; readonly address: string };
+
+export const portToAddress = (fix: CameraFix | null): PortAddress | null => (fix !== null && fix.port !== '' && fix.address !== '' ? { port: fix.port, address: fix.address } : null);
 export type CameraChip = {
   readonly key: string;
   readonly label: string;
@@ -221,7 +223,7 @@ const parseCamera = (json: Json): CameraView | null => {
         })),
         bitrate: parseChart(json.bitrate),
         diagnosis: isJson(json.diagnosis) ? parseBadge(json.diagnosis) : null,
-        fix: isJson(json.fix) ? { label: optText(json.fix, 'label'), scan: optBoolean(json.fix, 'scan') } : null,
+        fix: isJson(json.fix) ? { label: optText(json.fix, 'label'), scan: optBoolean(json.fix, 'scan'), port: optText(json.fix, 'port'), address: optText(json.fix, 'address') } : null,
         links: parseTargets(json, 'links'),
         chips: jsonObjects(optJSONArray(json, 'chips')).map((it) => ({
           key: optText(it, 'key'),

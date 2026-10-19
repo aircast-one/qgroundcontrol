@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { type CameraView, cameBack, camerasShown, cloudflareTarget, liveness, openedSection, parseCameras } from '@/ui/DeviceCameras';
+import { type CameraView, cameBack, camerasShown, cloudflareTarget, liveness, openedSection, parseCameras, portToAddress } from '@/ui/DeviceCameras';
 import { DeviceLevel } from '@/ui/DeviceLevel';
 
 const wizard = {
@@ -115,7 +115,8 @@ describe('DeviceCamerasTest', () => {
     expect(live?.bitrate?.max).toBe(2);
     expect(live?.diagnosis).toBeNull();
     expect(live?.links[0]?.alternatives).toEqual([{ label: 'Ethernet port (eth0)', url: 'rtsp://192.168.1.5:8554/cam2' }]);
-    expect(dark?.fix).toEqual({ label: 'Scan for it', scan: true });
+    expect(dark?.fix).toEqual({ label: 'Scan for it', scan: true, port: '', address: '' });
+    expect(portToAddress(dark?.fix ?? null)).toBeNull();
     expect(dark?.diagnosis?.level).toBe(DeviceLevel.Blocked);
     expect(live?.setup.watch.part.badge).toEqual({ level: DeviceLevel.Warn, text: 'cloud sign-in' });
     expect(live?.setup.radio.notice.link).toEqual({
@@ -168,5 +169,12 @@ describe('DeviceCamerasTest', () => {
   it('a chip opens the setting it names', () => {
     expect(openedSection('/settings/camera?camera=cam2#cam-watch')).toBe('cam-watch');
     expect(openedSection('/settings/camera?camera=cam2')).toBe('');
+  });
+});
+
+describe('a camera on another subnet', () => {
+  it('hands the wizard the port and the address the device worked out', () => {
+    const view = parseCameras({ ...served, cameras: [{ ...camera('cam9', false), fix: { label: "Give eth0 an address on the camera's network", port: 'eth0', address: '192.168.144.2/24' } }] });
+    expect(portToAddress(view?.cameras[0]?.fix ?? null)).toEqual({ port: 'eth0', address: '192.168.144.2/24' });
   });
 });

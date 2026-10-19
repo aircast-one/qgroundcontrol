@@ -3,7 +3,8 @@ import { AssistChip, Button, FilledTonalButton, IconButton, ScrollableTabRow, Ta
 import { MaterialIcon } from '@/res/Icon';
 import { md } from '@/theme/Colors';
 import { CameraWizard } from '@/ui/CameraWizard';
-import { type CameraCopy, type CameraView, type CamerasView, cameBack, camerasShown, liveness, parseCameras } from '@/ui/DeviceCameras';
+import { type CameraCopy, type CameraView, type CamerasView, cameBack, camerasShown, liveness, parseCameras, portToAddress } from '@/ui/DeviceCameras';
+import { type PortAddress } from '@/ui/DeviceCameraWizard';
 import { DeviceBadgeText, DeviceChart, DeviceDisclosure, DeviceFact, DeviceNotice, DeviceSection, DeviceSwitchRow, LinkButton, QrDialog, levelColor, useCopy } from '@/ui/DeviceKit';
 import { PreviewPlaceholder, WhepPreview } from '@/ui/DeviceKitCamera';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
@@ -127,14 +128,14 @@ const CameraTile = ({ camera, onPick }: { camera: CameraView; onPick: () => void
 );
 
 const CameraDetail = ({ camera, scan, onOpen }: { camera: CameraView; scan: boolean; onOpen: (href: string) => void }) => {
-  const [wizard, setWizard] = useState<{ readonly scan: boolean } | null>(scan ? { scan: true } : null);
+  const [wizard, setWizard] = useState<{ readonly scan: boolean; readonly fixPort: PortAddress | null } | null>(scan ? { scan: true, fixPort: null } : null);
   if (wizard !== null)
     return (
       <DeviceSection title={`Set up ${camera.name}`} badge={camera.status}>
-        <CameraWizard view={camera.wizard} scan={wizard.scan} onCancel={() => setWizard(null)} onDone={() => setWizard(null)} />
+        <CameraWizard view={camera.wizard} scan={wizard.scan} fixPort={wizard.fixPort} onCancel={() => setWizard(null)} onDone={() => setWizard(null)} />
       </DeviceSection>
     );
-  const reconfigure = () => setWizard({ scan: !camera.live });
+  const reconfigure = () => setWizard({ scan: !camera.live, fixPort: null });
   return (
     <DeviceSection title={camera.name} badge={camera.status} action={camera.live ? <TextButton onClick={reconfigure}>Edit</TextButton> : null}>
       {camera.shared ? (
@@ -175,7 +176,7 @@ const CameraDetail = ({ camera, scan, onOpen }: { camera: CameraView; scan: bool
             <DeviceNotice notice={camera.diagnosis} />
             {camera.fix !== null ? (
               <div className="px-list">
-                <Button onClick={() => setWizard({ scan: camera.fix?.scan ?? false })}>{camera.fix.label}</Button>
+                <Button onClick={() => setWizard({ scan: camera.fix?.scan ?? false, fixPort: portToAddress(camera.fix) })}>{camera.fix.label}</Button>
               </div>
             ) : null}
             <div className="px-list py-1">

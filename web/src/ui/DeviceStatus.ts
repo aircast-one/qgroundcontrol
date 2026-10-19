@@ -33,6 +33,7 @@ export type DeviceStatus = {
   readonly link: DeviceUplink | null;
   readonly health: DeviceHealth | null;
   readonly events: string;
+  readonly eventsAlert: boolean;
 };
 
 const parseCharts = (json: Json | null): readonly DeviceChartView[] => jsonObjects(optJSONArray(json, 'charts')).flatMap((chart) => {
@@ -88,6 +89,7 @@ export const parseDeviceStatus = (json: unknown): DeviceStatus | null =>
         link: parseUplink(optJSONObject(json, 'link')),
         health: parseHealth(optJSONObject(json, 'health')),
         events: optText(json, 'events'),
+        eventsAlert: optBoolean(json, 'eventsAlert'),
       }
     : null;
 
