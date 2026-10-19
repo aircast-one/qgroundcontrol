@@ -18,8 +18,8 @@ final class RecenterCameraTests: XCTestCase {
     }
 
     func testTheReadoutRoundsToWholeDegrees() {
-        XCTAssertEqual(tiltText(-11.4), "-11\u{00B0}")
-        XCTAssertEqual(tiltText(0.2), "0\u{00B0}")
+        XCTAssertEqual(tiltReadoutText(-11.4), "-11\u{00B0}")
+        XCTAssertEqual(tiltReadoutText(0.2), "0\u{00B0}")
     }
 
     func testNothingToRecenterWithoutAnAimableViewOrAGimbal() {

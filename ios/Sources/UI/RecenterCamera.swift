@@ -27,7 +27,7 @@ func recenter(_ target: RecenterTarget, onRefused: @escaping @MainActor (String?
     }
 }
 
-func tiltText(_ degrees: Double) -> String { "\(Int(degrees.rounded()))\u{00B0}" }
+func tiltReadoutText(_ degrees: Double) -> String { "\(Int(degrees.rounded()))\u{00B0}" }
 
 struct TiltReadout: View {
     let degrees: Double
@@ -37,7 +37,7 @@ struct TiltReadout: View {
     @Environment(\.theme) private var theme
 
     var body: some View {
-        let text = tiltText(degrees)
+        let text = tiltReadoutText(degrees)
         let action = onRecenter ?? onTap
         let label = HStack(spacing: 4) {
             if onRecenter != nil { Image(.planMyLocation).font(.system(size: RECENTER_GLYPH, weight: .semibold)) }
