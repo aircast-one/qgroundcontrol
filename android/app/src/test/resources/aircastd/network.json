@@ -1,0 +1,331 @@
+{
+  "uplink": {
+    "icon": "wifi",
+    "title": "Wi-Fi (wlan0)",
+    "status": {
+      "level": 0,
+      "text": "carrying traffic"
+    },
+    "verdict": {
+      "level": 3,
+      "text": "No video going to the cloud"
+    },
+    "addr": "192.168.1.20/24",
+    "failover": [],
+    "backup": "No backup link \u2014 video stops if this one drops."
+  },
+  "modem": {
+    "status": {
+      "level": 0,
+      "text": "connected"
+    },
+    "summary": "HARNESS",
+    "notices": [],
+    "operator": "HARNESS",
+    "detail": "lte \u00b7 home \u00b7 signal 72%",
+    "facts": [
+      {
+        "label": "APN (in use)",
+        "value": "internet"
+      },
+      {
+        "label": "IP address",
+        "value": "10.0.0.2"
+      }
+    ],
+    "messages": {
+      "summary": "2 on the SIM \u00b7 latest from MAGTICOM",
+      "items": [
+        {
+          "from": "MAGTICOM",
+          "text": "MyMagti code: 2157",
+          "when": "Sep 25 17:41"
+        },
+        {
+          "from": "MAGTICOM",
+          "text": "Unlimited internet package expired.",
+          "when": "Sep 25 17:24"
+        }
+      ]
+    },
+    "sim": {
+      "summary": "APN internet",
+      "apn": "internet",
+      "placeholder": "auto \u2014 currently internet",
+      "metered": "auto",
+      "options": [
+        {
+          "value": "auto",
+          "label": "Automatic"
+        },
+        {
+          "value": "yes",
+          "label": "Metered"
+        },
+        {
+          "value": "no",
+          "label": "Unmetered"
+        }
+      ]
+    }
+  },
+  "starlink": {
+    "status": {
+      "level": 3,
+      "text": "no dish"
+    },
+    "summary": "",
+    "notices": [],
+    "facts": [],
+    "address": {
+      "value": "192.168.100.1:9200",
+      "defaultFirst": false,
+      "open": false
+    }
+  },
+  "wifi": {
+    "status": {
+      "level": 3,
+      "text": "not joined"
+    },
+    "summary": "join a network",
+    "reopen": {
+      "host": "harness.local",
+      "hostname": "harness"
+    }
+  },
+  "interfaces": {
+    "status": {
+      "level": 3,
+      "text": ""
+    },
+    "summary": "3 in use \u00b7 1 known",
+    "links": [
+      {
+        "name": "hotspot-uplink",
+        "kind": "wi-fi",
+        "role": {
+          "level": 0,
+          "text": "primary uplink"
+        },
+        "where": "wlan0 \u00b7 192.168.1.20/24",
+        "local": false,
+        "editor": {
+          "interface": "wlan0",
+          "ipv4": {
+            "method": "auto",
+            "metric": "",
+            "metricPlaceholder": "automatic (600)",
+            "address": "192.168.1.20/24",
+            "gateway": "",
+            "dns": ""
+          },
+          "confirm": "Reconfiguring wlan0 changes the only internet path \u2014 there is no backup to take over. If it doesn't come back you lose access to this device until someone reaches it on site. Continue?",
+          "uuid": "uuid-wlan0",
+          "deactivateConfirm": "Deactivate hotspot-uplink? It is the only internet path \u2014 there is no backup to take over, and you lose access to this device until someone reaches it on site. Continue?",
+          "deleteConfirm": "Delete connection hotspot-uplink? This removes the saved profile and can't be undone."
+        }
+      },
+      {
+        "name": "camera (eth0)",
+        "kind": "ethernet",
+        "where": "eth0 \u00b7 192.168.8.2/24",
+        "local": true,
+        "editor": {
+          "interface": "eth0",
+          "ipv4": {
+            "method": "manual",
+            "metric": "",
+            "metricPlaceholder": "automatic",
+            "address": "192.168.8.2/24",
+            "gateway": "",
+            "dns": ""
+          },
+          "uuid": "uuid-eth0",
+          "deactivateConfirm": "Deactivate camera (eth0)? This brings the connection down on eth0.",
+          "deleteConfirm": "Delete connection camera (eth0)? This removes the saved profile and can't be undone."
+        }
+      },
+      {
+        "name": "cellular",
+        "kind": "cellular",
+        "where": "wwan0 \u00b7 10.64.1.5/30",
+        "local": true,
+        "editor": {
+          "interface": "wwan0",
+          "ipv4": {
+            "method": "auto",
+            "metric": "",
+            "metricPlaceholder": "automatic",
+            "address": "10.64.1.5/30",
+            "gateway": "",
+            "dns": ""
+          },
+          "uuid": "uuid-wwan0",
+          "deactivateConfirm": "Deactivate cellular? This brings the connection down on wwan0.",
+          "deleteConfirm": "Delete connection cellular? This removes the saved profile and can't be undone."
+        }
+      }
+    ],
+    "saved": [
+      {
+        "uuid": "uuid-spare",
+        "name": "spare-net",
+        "kind": "ethernet",
+        "ipv4": {
+          "method": "auto",
+          "metric": "",
+          "metricPlaceholder": "automatic",
+          "address": "",
+          "gateway": "",
+          "dns": ""
+        },
+        "activateConfirm": "Activate spare-net? This can change routing \u2014 you may lose access if it takes over the uplink. Continue?",
+        "deleteConfirm": "Delete connection spare-net? This removes the saved profile and can't be undone."
+      }
+    ],
+    "other": [],
+    "methods": [
+      {
+        "value": "auto",
+        "label": "DHCP (auto)"
+      },
+      {
+        "value": "manual",
+        "label": "Manual"
+      },
+      {
+        "value": "link-local",
+        "label": "Link-local"
+      },
+      {
+        "value": "disabled",
+        "label": "Disabled"
+      }
+    ],
+    "add": {
+      "types": [
+        {
+          "value": "ethernet",
+          "label": "Ethernet"
+        },
+        {
+          "value": "wifi",
+          "label": "Wi-Fi"
+        },
+        {
+          "value": "gsm",
+          "label": "Cellular (GSM)"
+        }
+      ],
+      "ports": [
+        {
+          "value": "eth0",
+          "label": "Ethernet port (eth0) \u2014 192.168.8.2/24"
+        },
+        {
+          "value": "eth1",
+          "label": "Ethernet port (eth1) \u2014 no address"
+        },
+        {
+          "value": "wlan0",
+          "label": "Wi-Fi (wlan0) \u2014 192.168.1.20/24 (this device's uplink)"
+        }
+      ],
+      "autoconnect": [
+        {
+          "value": "false",
+          "label": "No (create inactive)"
+        },
+        {
+          "value": "true",
+          "label": "Yes"
+        }
+      ]
+    }
+  },
+  "data": {
+    "status": {
+      "level": 3,
+      "text": "no caps"
+    },
+    "summary": "0 B this month",
+    "gauge": {
+      "badges": [
+        {
+          "level": 3,
+          "text": "idle"
+        }
+      ],
+      "hero": "0 B",
+      "heroCaption": "this month",
+      "uplinkPercent": 0,
+      "uplink": "\u2191 0 B uplink",
+      "downlink": "\u2193 0 B downlink",
+      "meters": [],
+      "stats": [
+        {
+          "label": "This flight",
+          "value": "0 B"
+        },
+        {
+          "label": "This month",
+          "value": "0 B"
+        },
+        {
+          "label": "All-time",
+          "value": "0 B"
+        }
+      ]
+    },
+    "budget": {
+      "summary": "no caps set",
+      "monthlyCapGB": "",
+      "flightCapMB": "",
+      "warnPercent": "0"
+    }
+  },
+  "tailscale": {
+    "status": {
+      "level": 2,
+      "text": "offline"
+    },
+    "summary": "no remote access",
+    "banner": {
+      "title": "Not connected",
+      "subtitle": "Join this device to your tailnet for secure remote access.",
+      "status": {
+        "level": 3,
+        "text": ""
+      }
+    },
+    "facts": [],
+    "addresses": [],
+    "connect": "Connect to Tailscale",
+    "cancel": false,
+    "hint": "Starts a sign-in \u2014 on a cellular link this can take ~20s. A login link will then appear here to finish in your browser.",
+    "control": {
+      "title": "Control server \u2014 Tailscale",
+      "open": false,
+      "server": "",
+      "authKeyPlaceholder": "tskey-auth-\u2026 (enables safe remote switching)",
+      "authKeySet": false,
+      "hint": "Most setups need nothing here \u2014 just use Connect to Tailscale above. Enter your own Headscale server URL only if you self-host. An auth key lets it sign in unattended."
+    }
+  },
+  "relay": {
+    "status": {
+      "level": 3,
+      "text": "off"
+    },
+    "summary": "Send remote video over your own relay instead of Tailscale.",
+    "on": false,
+    "configured": false,
+    "reason": "Add a relay server first",
+    "notice": {
+      "level": 3,
+      "text": "Video keeps working either way; Tailscale's fallback path is the slow one. Turn this on to use your own relay instead."
+    },
+    "servers": []
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "radio": {
+    "status": {
+      "level": 3,
+      "text": "not reporting"
+    },
+    "channel": "165",
+    "region": "BO",
+    "txPower": "",
+    "details": "Saving rewrites /etc/wifibroadcast.cfg and restarts wifibroadcast@drone. The file is generated whole from these settings, so hand edits to it are overwritten. Video reaches the radio on UDP 5602 and telemetry on 14560. The ground station has to run the matching gs profile on the same channel, with the key paired from this device's /etc/gs.key."
+  },
+  "sharing": {
+    "status": {
+      "level": 3,
+      "text": "off"
+    },
+    "stage": "intro"
+  },
+  "detection": {
+    "status": {
+      "level": 3,
+      "text": "no model active"
+    },
+    "unavailable": false,
+    "models": []
+  },
+  "engineering": {
+    "title": "Engineering",
+    "href": "/settings/engineering",
+    "icon": "server",
+    "summary": "mediamtx \u00b7 signed in \u00b7 106751d 23h ago"
+  }
+}

@@ -1,0 +1,136 @@
+{
+  "backend": {
+    "status": {
+      "level": 3,
+      "text": "mediamtx"
+    },
+    "text": "Video is carried by mediamtx as a separate service. It has no radio output, so the packet radio link cannot work on this device until you switch.",
+    "switch": "engine",
+    "label": "Switch to the engine",
+    "confirm": "Switch to the engine and restart? Video drops for a few seconds while the ports change hands.",
+    "success": "Switching to the engine \u2014 this device restarts now."
+  },
+  "publish": {
+    "status": {
+      "level": 3,
+      "text": "no sign-in needed"
+    },
+    "awaitingCloud": false,
+    "mode": "open",
+    "modes": [
+      {
+        "value": "aircast",
+        "title": "Aircast cloud",
+        "desc": "Managed automatically \u2014 credentials arrive when this device is connected to a cloud account. Nothing to fill in.",
+        "fields": [],
+        "clears": [
+          "token"
+        ],
+        "submit": "Test sign-in",
+        "unsaved": "Unsaved change \u2014 press Test sign-in to apply."
+      },
+      {
+        "value": "oauth",
+        "title": "Custom OAuth server",
+        "desc": "For a video server that hands out OAuth client credentials.",
+        "fields": [
+          "issuer",
+          "clientId",
+          "clientSecret",
+          "tokenUrl",
+          "scope"
+        ],
+        "clears": [
+          "token"
+        ],
+        "submit": "Save",
+        "unsaved": "Unsaved changes \u2014 press Save to apply and re-test."
+      },
+      {
+        "value": "token",
+        "title": "Access token (WHIP)",
+        "desc": "A pre-shared token or API key \u2014 verified by the first publish.",
+        "fields": [
+          "token"
+        ],
+        "clears": [],
+        "submit": "Save",
+        "unsaved": "Unsaved changes \u2014 press Save to apply and re-test."
+      },
+      {
+        "value": "open",
+        "title": "None \u2014 open server",
+        "desc": "The server accepts any publisher. Saving clears all stored sign-in settings, including the cloud issuer.",
+        "fields": [],
+        "clears": [
+          "issuer",
+          "clientId",
+          "clientSecret",
+          "tokenUrl",
+          "scope",
+          "token"
+        ],
+        "submit": "Save",
+        "unsaved": "Unsaved changes \u2014 press Save to apply and re-test.",
+        "confirm": "Clear all stored sign-in settings, including the cloud issuer?"
+      }
+    ],
+    "fields": [
+      {
+        "name": "issuer",
+        "label": "Issuer URL",
+        "value": "",
+        "placeholder": "https://auth.example.com"
+      },
+      {
+        "name": "clientId",
+        "label": "Client ID",
+        "value": "",
+        "placeholder": "drone"
+      },
+      {
+        "name": "clientSecret",
+        "label": "Client secret",
+        "value": "",
+        "placeholder": "client secret",
+        "secret": true
+      },
+      {
+        "name": "tokenUrl",
+        "label": "Token URL (optional \u2014 derived from the issuer)",
+        "value": ""
+      },
+      {
+        "name": "scope",
+        "label": "Scope (optional, default sfu:publish)",
+        "value": "",
+        "placeholder": "sfu:publish"
+      },
+      {
+        "name": "token",
+        "label": "Access token",
+        "value": "",
+        "placeholder": "paste a token / API key",
+        "secret": true
+      }
+    ],
+    "verdict": {
+      "level": 3,
+      "text": "Nothing to test \u2014 the server accepts any publisher."
+    }
+  },
+  "diagnostics": {
+    "status": {
+      "level": 3,
+      "text": "off"
+    },
+    "hint": "Stream this device's logs to an observability endpoint so support can diagnose issues remotely. The collector for the cloud this device is signed in to is already filled in \u2014 paste the token support gave you and save. Both are stored on the device; logs ship only while streaming is on.",
+    "endpoint": "otel.aircast.one:443",
+    "token": "",
+    "tokenLabel": "Bearer token",
+    "streaming": false,
+    "canStream": false,
+    "state": "Save the endpoint and token above, then turn on remote log streaming.",
+    "confirm": "Stream this device's logs to ?"
+  }
+}

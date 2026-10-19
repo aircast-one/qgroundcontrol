@@ -1,0 +1,39 @@
+{
+  "limit": {
+    "value": "8589934592",
+    "options": [
+      {
+        "value": "2147483648",
+        "label": "2 GB"
+      },
+      {
+        "value": "4294967296",
+        "label": "4 GB"
+      },
+      {
+        "value": "8589934592",
+        "label": "8 GB"
+      },
+      {
+        "value": "17179869184",
+        "label": "16 GB"
+      },
+      {
+        "value": "34359738368",
+        "label": "32 GB"
+      },
+      {
+        "value": "68719476736",
+        "label": "64 GB"
+      }
+    ]
+  },
+  "cameras": [
+    {
+      "name": "cam2",
+      "recording": false,
+      "note": "Not recording"
+    }
+  ],
+  "recorded": []
+}

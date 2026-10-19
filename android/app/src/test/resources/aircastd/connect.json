@@ -1,0 +1,82 @@
+{
+  "choices": [
+    {
+      "value": "rtsp",
+      "label": "QGroundControl",
+      "hides": [
+        "WHEP"
+      ]
+    },
+    {
+      "value": "whep",
+      "label": "Browser or Aircast QGC",
+      "hides": [
+        "RTSP"
+      ]
+    },
+    {
+      "value": "all",
+      "label": "Show all",
+      "hides": []
+    }
+  ],
+  "scope": "Every link reaches this device at harness.tail.ts.net. The ground station has to reach that name too \u2014 on another machine, scan a link's QR code from there.",
+  "cameras": [
+    {
+      "name": "cam2",
+      "status": {
+        "level": 0,
+        "text": "live"
+      },
+      "targets": [
+        {
+          "proto": "RTSP",
+          "label": "RTSP \u00b7 QGroundControl, Mission Planner or VLC",
+          "url": "rtsp://harness.tail.ts.net:8554/cam2",
+          "hint": "QGroundControl: Application Settings \u2192 Video \u2192 Source \"RTSP Video Stream\" \u2192 paste. Mission Planner: right-click the HUD \u2192 Video \u2192 Set RTSP Source.",
+          "qr": true,
+          "alternatives": []
+        },
+        {
+          "proto": "WHEP",
+          "label": "WHEP \u00b7 Aircast QGroundControl, a browser or OBS",
+          "url": "http://harness.tail.ts.net:8889/cam2/whep",
+          "hint": "Browser: open the link. OBS: Media Source \u2192 paste.",
+          "reach": "http://harness.tail.ts.net:8889/cam2/whep",
+          "qr": true,
+          "alternatives": []
+        }
+      ]
+    }
+  ],
+  "telemetry": {
+    "status": {
+      "level": 0,
+      "text": "connected"
+    },
+    "targets": [
+      {
+        "proto": "UDP",
+        "label": "UDP \u00b7 MAVLink",
+        "url": "harness.tail.ts.net:14550",
+        "hint": "QGroundControl: Application Settings \u2192 Comm Links \u2192 Add \u2192 Type UDP \u2192 Server: this host and port. Mission Planner: pick UDPCl and enter it.",
+        "qr": false,
+        "alternatives": []
+      }
+    ]
+  },
+  "trouble": {
+    "fallback": [
+      {
+        "proto": "HLS",
+        "label": "Web players and Safari",
+        "url": "http://harness.tail.ts.net:8888/cam2/index.m3u8",
+        "hint": "When nothing else will play. Reaches the device over your network or Tailscale.",
+        "tag": "High latency",
+        "reach": "http://harness.tail.ts.net:8888/cam2/index.m3u8",
+        "qr": true,
+        "alternatives": []
+      }
+    ]
+  }
+}

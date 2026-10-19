@@ -1,0 +1,59 @@
+{
+  "health": {
+    "level": 0,
+    "text": "All systems operational"
+  },
+  "stats": [
+    {
+      "label": "Services",
+      "value": "All running",
+      "hint": "3 supervised units",
+      "level": 0
+    },
+    {
+      "label": "Remote access",
+      "value": "Connected",
+      "hint": "harness.tail.ts.net",
+      "level": 0
+    }
+  ],
+  "services": [
+    {
+      "label": "Video server",
+      "state": "running",
+      "level": 0
+    },
+    {
+      "label": "MAVLink proxy",
+      "state": "running",
+      "level": 0
+    },
+    {
+      "label": "Tailscale",
+      "state": "running",
+      "level": 0
+    }
+  ],
+  "cloud": {
+    "status": {
+      "level": 3,
+      "text": "not connected"
+    },
+    "stage": "connect",
+    "issuer": "https://api.aircast.one"
+  },
+  "software": {
+    "status": {
+      "level": 3,
+      "text": ""
+    },
+    "summary": "v0.9.0",
+    "notices": [],
+    "notes": [
+      "Updates come from the Stable channel."
+    ],
+    "checked": "Checks by itself once a day.",
+    "canCheck": true
+  },
+  "hostname": "harness"
+}

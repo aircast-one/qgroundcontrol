@@ -1,0 +1,208 @@
+{
+  "start": 1,
+  "steps": [
+    {
+      "key": "network",
+      "label": "Internet",
+      "title": "Connect to the internet",
+      "lead": "This device needs internet for remote access and video. Cellular usually connects on its own \u2014 join Wi-Fi here if you'd rather use it."
+    },
+    {
+      "key": "tailscale",
+      "label": "Remote access",
+      "title": "Remote access",
+      "lead": "Reach this device securely from anywhere, without opening ports. Connecting opens a Tailscale sign-in page \u2014 you'll need a Tailscale account, and the free tier covers a device like this. Optional, and you can do it later from Connection."
+    },
+    {
+      "key": "camera",
+      "label": "Camera",
+      "title": "Camera",
+      "lead": "Point the device at your camera's RTSP stream. We'll give the camera's network port a fixed address, apply the source, then check video is flowing.",
+      "status": {
+        "level": 0,
+        "text": "ready"
+      }
+    },
+    {
+      "key": "telemetry",
+      "label": "Telemetry",
+      "title": "Telemetry",
+      "lead": "Telemetry starts on its own once the flight controller is plugged into one of this device's USB ports with a data cable \u2014 wiring to the Pi's pins is not picked up. Power it on and the endpoint appears below."
+    },
+    {
+      "key": "done",
+      "label": "Done",
+      "title": "Almost there",
+      "lead": "One item still needs attention \u2014 tap it to go back and finish, or leave it and set it up later from the Device tab."
+    }
+  ],
+  "internet": {
+    "online": {
+      "level": 3,
+      "text": "Not online yet \u2014 waiting for cellular, or join Wi-Fi below."
+    },
+    "joinOpen": true,
+    "reopen": {
+      "host": "harness.local",
+      "hostname": "harness"
+    },
+    "connection": {
+      "title": "Connection",
+      "href": "/network",
+      "icon": "network",
+      "summary": "no uplink",
+      "needs": true
+    },
+    "hint": "Detailed cellular and link status lives on Connection. You can continue either way."
+  },
+  "remote": {
+    "status": {
+      "level": 2,
+      "text": "offline"
+    },
+    "summary": "no remote access",
+    "banner": {
+      "title": "Not connected",
+      "subtitle": "Join this device to your tailnet for secure remote access.",
+      "status": {
+        "level": 3,
+        "text": ""
+      }
+    },
+    "facts": [],
+    "addresses": [],
+    "connect": "Connect to Tailscale",
+    "cancel": false,
+    "hint": "Starts a sign-in \u2014 on a cellular link this can take ~20s. A login link will then appear here to finish in your browser.",
+    "control": {
+      "title": "Control server \u2014 Tailscale",
+      "open": false,
+      "server": "",
+      "authKeyPlaceholder": "tskey-auth-\u2026 (enables safe remote switching)",
+      "authKeySet": false,
+      "hint": "Most setups need nothing here \u2014 just use Connect to Tailscale above. Enter your own Headscale server URL only if you self-host. An auth key lets it sign in unattended."
+    }
+  },
+  "camera": {
+    "wizard": {
+      "name": "cam2",
+      "new": false,
+      "source": "rtsp://192.168.8.10:554/stream",
+      "live": true,
+      "rtsp": "rtsp://192.168.8.10:554/stream",
+      "addressOpen": true,
+      "interface": "eth0",
+      "interfaces": [
+        {
+          "value": "eth0",
+          "label": "Ethernet port (eth0) \u2014 no address"
+        },
+        {
+          "value": "eth1",
+          "label": "Ethernet port (eth1) \u2014 no address"
+        }
+      ],
+      "transport": "automatic",
+      "transports": [
+        {
+          "value": "automatic",
+          "label": "Automatic \u2014 UDP for low latency, switches to TCP if it drops frames"
+        },
+        {
+          "value": "tcp",
+          "label": "TCP \u2014 reliable, fixes black/choppy video"
+        },
+        {
+          "value": "udp",
+          "label": "UDP \u2014 lowest latency"
+        }
+      ],
+      "others": [],
+      "templates": [],
+      "subnets": [
+        {
+          "cidr": "192.168.144.2/24",
+          "label": "SIYI, Topotek gimbals, Herelink"
+        },
+        {
+          "cidr": "192.168.2.2/24",
+          "label": "Viewpro gimbals"
+        },
+        {
+          "cidr": "192.168.168.2/24",
+          "label": "Microhard radios"
+        },
+        {
+          "cidr": "192.168.1.2/24",
+          "label": "OpenIPC, Hikvision, Dahua, most ONVIF"
+        },
+        {
+          "cidr": "192.168.0.2/24",
+          "label": "Reolink, Amcrest, NextVision"
+        },
+        {
+          "cidr": "192.168.10.2/24",
+          "label": "IP video encoders"
+        },
+        {
+          "cidr": "192.168.100.2/24",
+          "label": "IP video encoders"
+        },
+        {
+          "cidr": "192.168.8.2/24",
+          "label": "LTE routers"
+        }
+      ],
+      "coverage": "Only RTSP ports 554 and 8554 are checked, on subnets of 254 addresses or fewer. Ports that found nothing are then asked over ARP, which reaches the subnets drone cameras ship on even when this device has no address there. A camera outside all of that needs its address typed below."
+    },
+    "watch": "/watch/cam2",
+    "cameras": {
+      "title": "Cameras",
+      "href": "/streaming",
+      "icon": "video",
+      "summary": "1 camera"
+    },
+    "hint": "Ground station links, publishing and the rest of this camera's settings live on Cameras."
+  },
+  "telemetry": {
+    "waiting": {
+      "level": 3,
+      "text": "Waiting for a flight controller on USB \u2014 this is optional, you can finish without it."
+    },
+    "endpoints": []
+  },
+  "checks": [
+    {
+      "label": "Internet",
+      "status": {
+        "level": 3,
+        "text": "not set up"
+      },
+      "step": 1
+    },
+    {
+      "label": "Remote access (Tailscale)",
+      "status": {
+        "level": 3,
+        "text": "optional \u00b7 not set up"
+      },
+      "step": 2
+    },
+    {
+      "label": "Camera stream",
+      "status": {
+        "level": 0,
+        "text": "ready"
+      },
+      "step": 3
+    },
+    {
+      "label": "Telemetry",
+      "status": {
+        "level": 3,
+        "text": "optional \u00b7 not set up"
+      },
+      "step": 4
+    }
+  ]
+}

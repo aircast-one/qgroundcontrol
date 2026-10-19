@@ -1,0 +1,68 @@
+{
+  "status": {
+    "level": 0,
+    "text": "ready"
+  },
+  "notices": [],
+  "endpoints": [
+    {
+      "proto": "UDP",
+      "label": "MAVLink",
+      "url": "harness.tail.ts.net:14550",
+      "hint": "QGroundControl: Application Settings \u2192 Comm Links \u2192 Add \u2192 Type UDP \u2192 Server: this host and port. Mission Planner: pick UDPCl and enter it.",
+      "appLink": "aircast-qgc://setup?host=harness.tail.ts.net",
+      "appHint": "Aircast QGroundControl sets itself up from the button below \u2014 cameras and telemetry in one tap."
+    }
+  ],
+  "settings": {
+    "endpoints": "udps:0.0.0.0:14550",
+    "baud": "115200"
+  },
+  "schemes": [
+    {
+      "value": "udps",
+      "label": "UDP \u00b7 listen",
+      "host": "0.0.0.0",
+      "port": "14550",
+      "hostLabel": "Listen address",
+      "placeholder": "0.0.0.0",
+      "hint": "The device listens here and any ground station on the network can connect. This is the usual choice."
+    },
+    {
+      "value": "udpc",
+      "label": "UDP \u00b7 send to",
+      "host": "",
+      "port": "14550",
+      "hostLabel": "Ground station address",
+      "placeholder": "192.168.1.20",
+      "hint": "The device pushes telemetry to this address. Use it when the ground station cannot reach the device first."
+    },
+    {
+      "value": "udpb",
+      "label": "UDP \u00b7 broadcast",
+      "host": "255.255.255.255",
+      "port": "14550",
+      "hostLabel": "Broadcast address",
+      "placeholder": "255.255.255.255",
+      "hint": "Telemetry goes to every host on this subnet \u2014 one link, several ground stations."
+    },
+    {
+      "value": "tcps",
+      "label": "TCP \u00b7 listen",
+      "host": "0.0.0.0",
+      "port": "5760",
+      "hostLabel": "Listen address",
+      "placeholder": "0.0.0.0",
+      "hint": "The device listens for a TCP connection. Slower to recover on a lossy link than UDP."
+    },
+    {
+      "value": "tcpc",
+      "label": "TCP \u00b7 connect out",
+      "host": "",
+      "port": "5760",
+      "hostLabel": "Server address",
+      "placeholder": "192.168.1.20",
+      "hint": "The device opens a TCP connection out to this server."
+    }
+  ]
+}
