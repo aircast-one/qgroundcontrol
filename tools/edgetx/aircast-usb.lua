@@ -13,7 +13,7 @@ local EXIT_HINT = "RTN: stop sending sticks and exit"
 local CONFIRM_HINT = "Stop sending sticks? RTN again to exit"
 local NO_CABLE = "USB cable not connected"
 local NO_ANSWER = "Waiting for the app"
-local NEXT_STEP = "In app: Control > Radio on USB"
+local NEXT_STEP = "Pick it under Radio on USB"
 
 local battVolt = 0
 local modelInfo
@@ -46,7 +46,7 @@ end
 
 local SAYS = {
   F = function(vehicle) return "App flying vehicle " .. vehicle end,
-  S = function(vehicle) return "App: 4G standby, vehicle " .. vehicle end,
+  S = function(vehicle) return "App: network standby, vehicle " .. vehicle end,
   J = function(vehicle) return "A joystick is flying vehicle " .. vehicle end,
   N = function() return "App receiving, no vehicle connected" end,
 }

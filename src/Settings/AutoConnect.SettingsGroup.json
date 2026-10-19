@@ -83,11 +83,11 @@
         },
         {
             "name": "usbRadioStandby",
-            "shortDesc": "4G standby: the radio flies over its own link, and 4G takes over with its channels if that link drops",
-            "longDesc": "The radio's channels go to the aircraft's computer instead of the flight controller. While the radio's own link flies the aircraft they are held back; if that link fades or the flight controller reports a radio failsafe, the aircraft's computer flies these channels until the link is good again. ArduPilot multicopters with aircastd only.",
+            "shortDesc": "Network standby (4G / Starlink): the radio flies over its own link, and the aircraft's network link takes over with its channels if that link drops",
+            "longDesc": "The radio's channels go to the aircraft's computer instead of the flight controller. While the radio's own link flies the aircraft they are held back; if that link fades or the flight controller reports a radio failsafe, the aircraft's computer flies these channels over its network link (4G, Starlink or any IP link) until the radio's link is good again. ArduPilot multicopters with aircastd only.",
             "type": "bool",
             "default": false,
-            "label": "4G standby"
+            "label": "Network standby (4G / Starlink)"
         },
         {
             "name": "autoConnectZeroConf",

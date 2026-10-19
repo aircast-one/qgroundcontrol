@@ -732,7 +732,7 @@ const QML_LABELS: &[(&str, &str, &str)] = &[
     ("autoConnectSettings", "autoConnectNmeaBaud", "Baudrate"),
     ("autoConnectSettings", "nmeaUdpPort", "NMEA stream UDP port"),
     ("autoConnectSettings", "usbRadioPort", "Device"),
-    ("autoConnectSettings", "usbRadioStandby", "4G standby"),
+    ("autoConnectSettings", "usbRadioStandby", "Network standby (4G / Starlink)"),
     ("videoSettings", "rtspTimeout", "Connection Timeout"),
     (
         "videoSettings",

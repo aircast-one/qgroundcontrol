@@ -1,6 +1,8 @@
 # Aircast USB radio
 
-`aircast-usb.lua` turns an EdgeTX radio into a USB joystick for the Aircast app. It streams every channel the model mixes over the radio's USB serial port, and shows on the radio whether the app is getting them.
+`aircast-usb.lua` turns an EdgeTX radio into a USB joystick for the Aircast app. It streams every channel the model mixes over the radio's USB serial port, and shows on the radio whether the app is getting them. The sticks travel over whatever link the app uses to reach the aircraft, so with the aircraft connected over Starlink or 4G the radio flies it over that link.
+
+Setup guide: https://aircast.one/docs/software/usb-radio
 
 ## Needs EdgeTX 2.10 or newer
 
@@ -9,15 +11,17 @@ The radio streams its sticks on any EdgeTX, but on 2.9 and older it never hears 
 ## Install on the radio
 
 1. Plug the radio into a computer and pick **USB Storage (SD)** on the radio.
-2. Copy `aircast-usb.lua` to `SCRIPTS/TOOLS/` on the SD card. Delete `SCRIPTS/TOOLS/aircast-usb.luac` if it is there, so the radio does not keep running an older compiled copy.
-3. Eject the card and unplug.
-4. On the radio, open **SYS → Hardware** and set **USB-VCP** to **LUA**.
+2. Get `aircast-usb.lua`: the desktop app's **Save radio script…** button under **Radio on USB (EdgeTX script)** saves it, and opens on the card's `SCRIPTS/TOOLS` when the card is mounted. Otherwise copy it from this folder.
+3. Copy `aircast-usb.lua` to `SCRIPTS/TOOLS/` on the SD card. Delete `SCRIPTS/TOOLS/aircast-usb.luac` if it is there, so the radio does not keep running an older compiled copy.
+4. Eject the card and unplug.
+5. On the radio, open **SYS → Hardware** and set **USB-VCP** to **LUA**.
 
 ## Connect it to the app
 
 1. Plug the radio into the device running the app and pick **USB Serial (VCP)** on the radio.
 2. On the radio, open **SYS → Tools → Aircast USB radio**.
-3. The app recognises the radio by the stick lines it sends and asks "An EdgeTX radio is streaming its sticks on USB. Fly with it?" — press **Use**. To pick it yourself, open **Links → Add link… → RC transmitter (EdgeTX script)**, or **Settings → Control → Radio on USB (EdgeTX script) → Device**. In a browser, allow the USB port there first and choose the radio.
+3. Desktop app (v5.5): **Application Settings → Comm Links → Radio on USB (EdgeTX script) → Device**, pick the radio by its USB name (for example "RM TX16S Serial Port").
+4. Web, Android and iOS app: the app recognises the radio by the stick lines it sends and asks "An EdgeTX radio is streaming its sticks on USB. Fly with it?" — press **Use**. To pick it yourself, open **Links → Add link… → RC transmitter (EdgeTX script)**, or **Settings → Control → Radio on USB (EdgeTX script) → Device**. In a browser, allow the USB port there first and choose the radio.
 
 Do not add the radio as a **USB telemetry radio**: that link reads MAVLink, which the radio does not send.
 
@@ -40,10 +44,10 @@ Safari and Firefox have no USB serial in web pages at all; use Chrome or Edge.
 | On the radio | Meaning |
 |---|---|
 | App flying vehicle N | The app is receiving the sticks and flying vehicle N with them |
-| App: 4G standby, vehicle N | The app is receiving the sticks and takes over if the vehicle's own radio link fails |
+| App: network standby, vehicle N | The app is receiving the sticks; the aircraft's network link (4G, Starlink) takes over with them if the radio's own link fails |
 | A joystick is flying vehicle N | The app is receiving, but another joystick is flying |
 | App receiving, no vehicle connected | The app is receiving, but no vehicle is linked |
-| Waiting for the app · In app: Control > Radio on USB | Nothing has answered for 1.5 s: the app is closed, the radio is not picked under Control > Radio on USB, or the app is older than this script |
+| Waiting for the app · Pick it under Radio on USB | Nothing has answered for 1.5 s: the app is closed, the radio is not picked under Radio on USB, or the app is older than this script |
 | USB cable not connected | The radio sees no USB cable |
 
 **RTN** leaves the script. While the app is flying on these sticks, the first RTN only asks; press it again within 3 s to stop sending sticks.
