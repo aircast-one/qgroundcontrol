@@ -1,5 +1,5 @@
 import { useContext, useEffect, useRef, useState } from 'react';
-import { AssistChip, Button, FilledTonalButton, IconButton, ScrollableTabRow, Tab, Text, TextButton } from '@/m3';
+import { AssistChip, Button, FilledTonalButton, IconButton, OutlinedButton, ScrollableTabRow, Tab, Text, TextButton } from '@/m3';
 import { MaterialIcon } from '@/res/Icon';
 import { md } from '@/theme/Colors';
 import { CameraWizard } from '@/ui/CameraWizard';
@@ -136,6 +136,7 @@ const CameraDetail = ({ camera, scan, onOpen }: { camera: CameraView; scan: bool
       </DeviceSection>
     );
   const reconfigure = () => setWizard({ scan: !camera.live, fixPort: null });
+  const Reconfigure = camera.diagnosis !== null ? OutlinedButton : Button;
   return (
     <DeviceSection title={camera.name} badge={camera.status} action={camera.live ? <TextButton onClick={reconfigure}>Edit</TextButton> : null}>
       {camera.shared ? (
@@ -188,7 +189,7 @@ const CameraDetail = ({ camera, scan, onOpen }: { camera: CameraView; scan: bool
         ) : null}
         {!camera.live && camera.fix === null ? (
           <div className="px-list py-2">
-            <Button onClick={reconfigure}>Reconfigure</Button>
+            <Reconfigure onClick={reconfigure}>Reconfigure</Reconfigure>
           </div>
         ) : null}
       </div>
