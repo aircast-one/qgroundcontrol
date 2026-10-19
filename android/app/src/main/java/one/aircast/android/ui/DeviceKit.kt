@@ -154,6 +154,11 @@ internal fun DeviceNotice(notice: DeviceBadge) {
 }
 
 @Composable
+internal fun DeviceHint(text: String, modifier: Modifier = Modifier) {
+    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = modifier)
+}
+
+@Composable
 internal fun DeviceText(text: String) {
     if (text.isEmpty()) return
     Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(horizontal = LIST_PADDING, vertical = 8.dp))

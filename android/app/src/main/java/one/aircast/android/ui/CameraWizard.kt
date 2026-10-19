@@ -335,19 +335,19 @@ internal fun CameraWizard(view: CameraWizardView, scan: Boolean = false, onCance
                             }
                         }
                     }
-                    if (wizard.templateNote.isNotEmpty()) Hint(wizard.templateNote)
+                    if (wizard.templateNote.isNotEmpty()) DeviceHint(wizard.templateNote)
                 }
             }
             if (view.lookingFor.isNotEmpty()) Text(view.lookingFor, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.aircast.warning)
             if (wizard.checklist.isEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Hint("Plug the camera in and look for it.")
+                    DeviceHint("Plug the camera in and look for it.")
                     LeadButton(scanLeads(rtsp, picked != null), onClick = { scope.launch { scanForCameras() } }, enabled = !wizard.scanning) {
                         Text(if (wizard.scanning) "Looking…" else "Scan for cameras")
                     }
                 }
             }
-            if (wizard.note.isNotEmpty()) Hint(wizard.note)
+            if (wizard.note.isNotEmpty()) DeviceHint(wizard.note)
             if (wizard.checklist.isNotEmpty()) {
                 Column(Modifier.boxed(MaterialTheme.colorScheme.outlineVariant), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text(wizard.checklist, style = MaterialTheme.typography.titleSmall)
@@ -381,7 +381,7 @@ internal fun CameraWizard(view: CameraWizardView, scan: Boolean = false, onCance
                             }
                         }
                     }
-                    if (wizard.camsHint.isNotEmpty()) Hint(wizard.camsHint)
+                    if (wizard.camsHint.isNotEmpty()) DeviceHint(wizard.camsHint)
                 }
             }
             if (wizard.details.isNotEmpty()) {
@@ -397,7 +397,7 @@ internal fun CameraWizard(view: CameraWizardView, scan: Boolean = false, onCance
                     if (signIn.asked) userFocus.requestFocus()
                 }
                 Column(Modifier.boxed(MaterialTheme.colorScheme.outlineVariant), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                    Hint("This camera asked for a sign-in. Enter the username and password set in the camera's own app.")
+                    DeviceHint("This camera asked for a sign-in. Enter the username and password set in the camera's own app.")
                     WizardField("Camera username", user, { credentials(it, pass) }, Modifier.focusRequester(userFocus))
                     SecretField("Camera password", pass, { credentials(user, it) })
                 }
@@ -448,7 +448,7 @@ internal fun CameraWizard(view: CameraWizardView, scan: Boolean = false, onCance
                 onCancel?.let { TextButton(onClick = it) { Text("Cancel") } }
             }
             Fold("No camera? Use a video file", fileOpen, { fileOpen = it }) {
-                Hint("Upload a video and the device loops it as a stream — a stand-in camera for trying out detection and the overlays.")
+                DeviceHint("Upload a video and the device loops it as a stream — a stand-in camera for trying out detection and the overlays.")
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedButton(onClick = { picker.launch(arrayOf("video/*")) }) { Text("Choose a video file") }
                     Text(file?.name ?: "H.264 .mp4 works best", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -467,7 +467,7 @@ internal fun CameraWizard(view: CameraWizardView, scan: Boolean = false, onCance
                 },
                 Modifier.fillMaxWidth(),
             )
-            Hint("Usually the Ethernet port your camera's cable connects to. Each port shows its own address — the camera has to be on that same subnet to be reachable.")
+            DeviceHint("Usually the Ethernet port your camera's cable connects to. Each port shows its own address — the camera has to be on that same subnet to be reachable.")
             Fold("Port address & transport", portOpen, { portOpen = it }, summary = "This device's address must be on the same subnet as the camera's URL above — change it only if yours differs.") {
                 WizardField(
                     "This device's IP on the camera subnet",
@@ -479,13 +479,13 @@ internal fun CameraWizard(view: CameraWizardView, scan: Boolean = false, onCance
                     supportingText = "Suggested from the camera's address — edit if your subnet differs.",
                 )
                 DeviceSelect("RTSP transport", transport, view.transports, { transport = it }, Modifier.fillMaxWidth())
-                Hint("Leave on Automatic; switch to TCP if the video stays black or choppy.")
+                DeviceHint("Leave on Automatic; switch to TCP if the video stays black or choppy.")
             }
             FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 OutlinedButton(onClick = { step = 1 }) { Text("← Back") }
                 Button(onClick = { applySetup(rtsp, cameraName, iface, ip, transport) }) { Text("Set up & verify") }
             }
-            if (form.applyNote.isNotEmpty()) Hint(form.applyNote)
+            if (form.applyNote.isNotEmpty()) DeviceHint(form.applyNote)
         }
         if (step == 3) {
             val failed = wizard.apply.state == "failed"
@@ -508,11 +508,6 @@ internal fun CameraWizard(view: CameraWizardView, scan: Boolean = false, onCance
             }
         }
     }
-}
-
-@Composable
-private fun Hint(text: String) {
-    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
 }
 
 @Composable
@@ -602,13 +597,13 @@ private fun ScanDetails(
     }
     if (wizard.rest.isNotEmpty() && wizard.todo.isEmpty() && wizard.cams.isNotEmpty()) {
         rest()
-        Hint(coverage)
+        DeviceHint(coverage)
     }
     if (wizard.rest.isNotEmpty() && wizard.todo.isEmpty() && wizard.cams.isEmpty()) {
         Text("Ports checked", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         rest()
     }
-    if (wizard.cams.isEmpty()) Fold("What was checked?", checkedOpen, { checkedOpen = it }) { Hint(coverage) }
+    if (wizard.cams.isEmpty()) Fold("What was checked?", checkedOpen, { checkedOpen = it }) { DeviceHint(coverage) }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -626,9 +621,9 @@ private fun PortFix(port: WizardPort, input: PortInput, onInput: (PortInput) -> 
                     }
                 }
             }
-            Hint(port.hint)
+            DeviceHint(port.hint)
             LeadButton(port.suggest.isNotEmpty(), onClick = onFix, enabled = !port.busy && input.text.isNotBlank()) { Text(port.go) }
-            if (port.status.isNotEmpty()) Hint(port.status)
+            if (port.status.isNotEmpty()) DeviceHint(port.status)
         } else {
             OutlinedButton(onClick = { onInput(input.copy(open = true)) }) { Text("Change this port's address") }
         }

@@ -128,12 +128,12 @@ private fun WifiWizard(reopen: WifiReopen) {
     }
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Hint("Pick a nearby network or type its name. Scanning is limited while the hotspot is on, so typing is usually fastest.", Modifier.weight(1f))
+            DeviceHint("Pick a nearby network or type its name. Scanning is limited while the hotspot is on, so typing is usually fastest.", Modifier.weight(1f))
             OutlinedButton(onClick = { scan() }, enabled = !scanning) { Text(if (scanning) "Scanning…" else "Scan") }
         }
-        if (scanFailed) Hint("Scan failed — type your network name below.")
+        if (scanFailed) DeviceHint("Scan failed — type your network name below.")
         networks?.let { found ->
-            if (found.isEmpty()) Hint("No networks found — type your network name below.")
+            if (found.isEmpty()) DeviceHint("No networks found — type your network name below.")
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 found.map { network -> key(network.ssid) { NetworkRow(network) { pick(network) } } }
             }
@@ -152,7 +152,7 @@ private fun WifiWizard(reopen: WifiReopen) {
         SecretField("Password", psk, { psk = it }, isError = problem?.field == "psk", supportingText = "Leave blank for an open network.")
         problem?.let { Text(it.message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error) }
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Hint("Saved with autoconnect, ahead of the hotspot.", Modifier.weight(1f))
+            DeviceHint("Saved with autoconnect, ahead of the hotspot.", Modifier.weight(1f))
             FilledTonalButton(onClick = { connect() }) { Text("Connect") }
         }
     }
@@ -170,14 +170,9 @@ private fun NetworkRow(network: WifiNetwork, onPick: () -> Unit) {
             Text(network.ssid, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
             if (network.active) Text("connected", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.aircast.success)
         }
-        Hint("${network.signal}%")
+        DeviceHint("${network.signal}%")
         if (network.secured) Icon(painterResource(R.drawable.ic_lock), "secured", tint = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.size(18.dp))
     }
-}
-
-@Composable
-private fun Hint(text: String, modifier: Modifier = Modifier) {
-    Text(text, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = modifier)
 }
 
 @Composable
@@ -203,9 +198,9 @@ private fun WifiJoining(join: WifiJoinAttempt, reopen: WifiReopen, onBack: () ->
                 Text("2. Reconnect this app to the device on that network.", style = MaterialTheme.typography.bodyMedium, color = muted)
                 ReconnectDevice(reopen.host, onBack)
                 if (reopen.host.isNotEmpty()) {
-                    Hint("Doesn't connect? Android can't always reach .local names — find ${reopen.hostname} in your router's list of connected devices and use its address instead.")
+                    DeviceHint("Doesn't connect? Android can't always reach .local names — find ${reopen.hostname} in your router's list of connected devices and use its address instead.")
                 }
-                Hint("The app reaches the device over the link that's going away, so it can't follow it on its own.")
+                DeviceHint("The app reaches the device over the link that's going away, so it can't follow it on its own.")
             }
         }
         OutlinedButton(onClick = onBack) { Text("← Back") }
