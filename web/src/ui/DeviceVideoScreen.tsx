@@ -1,7 +1,7 @@
 import { useContext, useState } from 'react';
 import { Checkbox, FilledTonalButton, OutlinedTextField, Text } from '@/m3';
 import { md } from '@/theme/Colors';
-import { ActionButton, CopyRow, DeviceBadgeText, DeviceDisclosure, DeviceForm, DeviceNotice, DeviceSection, DeviceText, LinkButton, RefusalText } from '@/ui/DeviceKit';
+import { ActionButton, CopyRow, DeviceBadgeText, DeviceColumns, DeviceDisclosure, DeviceForm, DeviceNotice, DeviceSection, DeviceText, LinkButton, RefusalText } from '@/ui/DeviceKit';
 import { ButtonRow, StackedFact, StatusLine, StepText } from '@/ui/DeviceKitSettings';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
 import { DeviceLevel } from '@/ui/DeviceLevel';
@@ -13,13 +13,33 @@ import { LocalChangeNotice } from '@/ui/ValueRow';
 export const VideoScreen = ({ onOpen }: DeviceScreenProps) => {
   const view = useDeviceView('video', parseVideo);
   if (view === null) return <FootNote text="Waiting for the device to answer…" />;
-  return (
+  const sharing = (
     <>
-      {view.radio !== null ? <RadioSection radio={view.radio} /> : null}
       <SharingSection sharing={view.sharing} />
       <StatusLine text="These apply to every camera on this device. Which camera goes where is set on the camera itself." />
+    </>
+  );
+  const detection = (
+    <>
       <DetectionSection detection={view.detection} />
       <StatusLine text="Detection runs on the device and sends boxes as data — the picture itself is untouched. Pick the model for what the camera is looking at: an aerial model hallucinates trucks on a desk. Draw-a-box tracking works whichever model is active." />
+    </>
+  );
+  return (
+    <>
+      {view.radio !== null ? (
+        <DeviceColumns
+          left={<RadioSection radio={view.radio} />}
+          right={
+            <>
+              {sharing}
+              {detection}
+            </>
+          }
+        />
+      ) : (
+        <DeviceColumns left={sharing} right={detection} />
+      )}
       <SetupRow title={view.engineering.title} subtitle={view.engineering.summary} icon="ic_terminal" onClick={() => onOpen(view.engineering.href)} />
     </>
   );

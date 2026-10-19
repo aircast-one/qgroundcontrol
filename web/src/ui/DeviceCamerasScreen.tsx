@@ -5,7 +5,7 @@ import { md } from '@/theme/Colors';
 import { CameraWizard } from '@/ui/CameraWizard';
 import { type CameraCopy, type CameraView, type CamerasView, cameBack, camerasShown, liveness, parseCameras, portToAddress } from '@/ui/DeviceCameras';
 import { type PortAddress } from '@/ui/DeviceCameraWizard';
-import { DeviceBadgeText, DeviceChart, DeviceDisclosure, DeviceFact, DeviceNotice, DeviceSection, DeviceSwitchRow, LinkButton, QrDialog, levelColor, useCopy } from '@/ui/DeviceKit';
+import { DeviceBadgeText, DeviceChart, DeviceColumns, DeviceDisclosure, DeviceFact, DeviceNotice, DeviceSection, DeviceSwitchRow, LinkButton, QrDialog, levelColor, useCopy } from '@/ui/DeviceKit';
 import { PreviewPlaceholder, WhepPreview } from '@/ui/DeviceKitCamera';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
 import { devicePageIcon } from '@/ui/DeviceStatus';
@@ -152,76 +152,84 @@ const CameraDetail = ({ camera, scan, onOpen }: { camera: CameraView; scan: bool
           />
         </>
       ) : null}
-      <div className="px-list py-2">
-        <div className="max-w-xl">
-          <Picture camera={camera} />
-        </div>
-      </div>
-      <div className="flex min-w-0 flex-col">
-        {camera.live ? (
-          <div className="flex flex-wrap items-center gap-2 px-list py-2" role="group" aria-label="Watch">
-            <LinkButton href={deviceUrl(camera.watch)} look="filled" external>
-              ▶ Watch live
-            </LinkButton>
-            {camera.copies.map((copy) => (
-              <CopyButton key={copy.label} copy={copy} />
-            ))}
+      <DeviceColumns
+        left={
+          <div className="px-list py-2">
+            <div className="max-w-xl">
+              <Picture camera={camera} />
+            </div>
           </div>
-        ) : null}
-        {camera.facts.map((fact) => (
-          <DeviceFact key={fact.label} label={fact.label} value={fact.value} />
-        ))}
-        {camera.bitrate !== null ? <DeviceChart chart={camera.bitrate} /> : null}
-        {camera.diagnosis !== null ? (
+        }
+        right={
           <>
-            <DeviceNotice notice={camera.diagnosis} />
-            {camera.fix !== null ? (
-              <div className="px-list">
-                <Button onClick={() => setWizard({ scan: camera.fix?.scan ?? false, fixPort: portToAddress(camera.fix) })}>{camera.fix.label}</Button>
+            <div className="flex min-w-0 flex-col">
+              {camera.live ? (
+                <div className="flex flex-wrap items-center gap-2 px-list py-2" role="group" aria-label="Watch">
+                  <LinkButton href={deviceUrl(camera.watch)} look="filled" external>
+                    ▶ Watch live
+                  </LinkButton>
+                  {camera.copies.map((copy) => (
+                    <CopyButton key={copy.label} copy={copy} />
+                  ))}
+                </div>
+              ) : null}
+              {camera.facts.map((fact) => (
+                <DeviceFact key={fact.label} label={fact.label} value={fact.value} />
+              ))}
+              {camera.bitrate !== null ? <DeviceChart chart={camera.bitrate} /> : null}
+              {camera.diagnosis !== null ? (
+                <>
+                  <DeviceNotice notice={camera.diagnosis} />
+                  {camera.fix !== null ? (
+                    <div className="px-list">
+                      <Button onClick={() => setWizard({ scan: camera.fix?.scan ?? false, fixPort: portToAddress(camera.fix) })}>{camera.fix.label}</Button>
+                    </div>
+                  ) : null}
+                  <div className="px-list py-1">
+                    <Text typography="bodySmall" color={md('onSurfaceVariant')}>
+                      This page keeps checking — it updates by itself the moment the camera answers again.
+                    </Text>
+                  </div>
+                </>
+              ) : null}
+              {!camera.live && camera.fix === null ? (
+                <div className="px-list py-2">
+                  <Reconfigure onClick={reconfigure}>Reconfigure</Reconfigure>
+                </div>
+              ) : null}
+            </div>
+            {camera.links.length > 0 ? (
+              camera.live ? (
+                <section aria-label="Watch in another app">
+                  <div className="px-list pt-3">
+                    <Text typography="labelLarge" color={md('onSurfaceVariant')}>
+                      Watch in another app
+                    </Text>
+                  </div>
+                  <CameraLinks links={camera.links} />
+                </section>
+              ) : (
+                <DeviceDisclosure title="Links — they will play once it's back">
+                  <CameraLinks links={camera.links} />
+                </DeviceDisclosure>
+              )
+            ) : null}
+            {camera.chips.length > 0 ? (
+              <div className="flex flex-wrap gap-2 px-list py-3" role="group" aria-label="Where it goes">
+                {camera.chips.map((chip) => (
+                  <AssistChip
+                    key={chip.key}
+                    onClick={() => onOpen(chip.href)}
+                    leadingIcon={<span className="size-2 rounded-full" style={{ background: levelColor(chip.level) }} />}
+                    label={chip.label}
+                    trailingIcon={<MaterialIcon name="arrow_forward" size={16} />}
+                  />
+                ))}
               </div>
             ) : null}
-            <div className="px-list py-1">
-              <Text typography="bodySmall" color={md('onSurfaceVariant')}>
-                This page keeps checking — it updates by itself the moment the camera answers again.
-              </Text>
-            </div>
           </>
-        ) : null}
-        {!camera.live && camera.fix === null ? (
-          <div className="px-list py-2">
-            <Reconfigure onClick={reconfigure}>Reconfigure</Reconfigure>
-          </div>
-        ) : null}
-      </div>
-      {camera.links.length > 0 ? (
-        camera.live ? (
-          <section aria-label="Watch in another app">
-            <div className="px-list pt-3">
-              <Text typography="labelLarge" color={md('onSurfaceVariant')}>
-                Watch in another app
-              </Text>
-            </div>
-            <CameraLinks links={camera.links} />
-          </section>
-        ) : (
-          <DeviceDisclosure title="Links — they will play once it's back">
-            <CameraLinks links={camera.links} />
-          </DeviceDisclosure>
-        )
-      ) : null}
-      {camera.chips.length > 0 ? (
-        <div className="flex flex-wrap gap-2 px-list py-3" role="group" aria-label="Where it goes">
-          {camera.chips.map((chip) => (
-            <AssistChip
-              key={chip.key}
-              onClick={() => onOpen(chip.href)}
-              leadingIcon={<span className="size-2 rounded-full" style={{ background: levelColor(chip.level) }} />}
-              label={chip.label}
-              trailingIcon={<MaterialIcon name="arrow_forward" size={16} />}
-            />
-          ))}
-        </div>
-      ) : null}
+        }
+      />
     </DeviceSection>
   );
 };

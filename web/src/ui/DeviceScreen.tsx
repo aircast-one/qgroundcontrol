@@ -19,8 +19,8 @@ import { DASHBOARD_MAX_WIDTH, DETAIL_PANE_MAX_WIDTH } from '@/ui/DesktopLayout';
 
 const checkState = (level: number): SetupState => (level === DeviceLevel.Ready ? SetupState.Done : SetupState.NeedsAttention);
 
-const PageColumn = ({ children }: { children: ReactNode }) => (
-  <div className="h-full w-full" style={{ maxWidth: DETAIL_PANE_MAX_WIDTH }}>
+const PageColumn = ({ wide = false, children }: { wide?: boolean; children: ReactNode }) => (
+  <div className="h-full w-full" style={{ maxWidth: wide ? DASHBOARD_MAX_WIDTH : DETAIL_PANE_MAX_WIDTH }}>
     {children}
   </div>
 );
@@ -43,7 +43,7 @@ export const DeviceTab = ({ open, onOpen, onClose }: { open: string | null; onOp
   const entry = opened === null ? undefined : DEVICE_SCREENS.get(opened.path);
   if (current !== null && opened !== null && entry !== undefined)
     return (
-      <PageColumn>
+      <PageColumn wide={entry.narrow !== true}>
         <NativeDevicePage key={current} entry={entry} href={current} query={opened.query} onOpen={(href) => setStack([...stack, href])} onBack={back} />
       </PageColumn>
     );

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { IconButton, Text } from '@/m3';
 import { MaterialIcon } from '@/res/Icon';
 import { md } from '@/theme/Colors';
-import { ActionButton, ConfirmDialog, DeviceNotice, DeviceSection, DeviceSelect, DeviceSwitchRow, DeviceText, LinkButton, RefusalText, useDeviceAction } from '@/ui/DeviceKit';
+import { ActionButton, ConfirmDialog, DeviceColumns, DeviceNotice, DeviceSection, DeviceSelect, DeviceSwitchRow, DeviceText, LinkButton, RefusalText, useDeviceAction } from '@/ui/DeviceKit';
 import { StatusLine } from '@/ui/DeviceKitSettings';
 import { type RecordedCamera, type RecordingSegment, type RecordingsLimit, lowersLimit, parseRecordings, recordPath, recordingsPath, segmentDetail, segmentPath } from '@/ui/DeviceRecordings';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
@@ -14,35 +14,41 @@ export const RecordingsScreen = (_: DeviceScreenProps) => {
   const view = useDeviceView('recordings', parseRecordings);
   if (view === null) return <FootNote text="Waiting for the device to answer…" />;
   return (
-    <>
-      <DeviceSection title="Storage">
-        <LimitPicker key={view.limit.value} limit={view.limit} />
-        <StatusLine text="Recordings share the card this device boots from. Past the limit the oldest go first, so recording can never fill the card." />
-      </DeviceSection>
-      {view.cameras.length > 0 ? (
-        <DeviceSection title="Cameras">
-          {view.cameras.map((camera) => (
-            <DeviceSwitchRow
-              key={camera.name}
-              title={camera.name}
-              detail={camera.note}
-              checked={camera.recording}
-              on={{ method: 'PUT', path: recordPath(camera.name) }}
-              off={{ method: 'DELETE', path: recordPath(camera.name) }}
-              success={`Recording turned on for ${camera.name}.`}
-              offSuccess={`Recording turned off for ${camera.name} — its recordings stay below.`}
-            />
-          ))}
-        </DeviceSection>
-      ) : null}
-      {view.recorded.length > 0 ? (
-        view.recorded.map((camera) => <RecordedSection key={camera.name} camera={camera} />)
-      ) : (
-        <DeviceSection title="On this device">
-          <DeviceText text="Nothing recorded yet. Turn recording on for a camera above." />
-        </DeviceSection>
-      )}
-    </>
+    <DeviceColumns
+      left={
+        <>
+          <DeviceSection title="Storage">
+            <LimitPicker key={view.limit.value} limit={view.limit} />
+            <StatusLine text="Recordings share the card this device boots from. Past the limit the oldest go first, so recording can never fill the card." />
+          </DeviceSection>
+          {view.cameras.length > 0 ? (
+            <DeviceSection title="Cameras">
+              {view.cameras.map((camera) => (
+                <DeviceSwitchRow
+                  key={camera.name}
+                  title={camera.name}
+                  detail={camera.note}
+                  checked={camera.recording}
+                  on={{ method: 'PUT', path: recordPath(camera.name) }}
+                  off={{ method: 'DELETE', path: recordPath(camera.name) }}
+                  success={`Recording turned on for ${camera.name}.`}
+                  offSuccess={`Recording turned off for ${camera.name} — its recordings stay below.`}
+                />
+              ))}
+            </DeviceSection>
+          ) : null}
+        </>
+      }
+      right={
+        view.recorded.length > 0 ? (
+          view.recorded.map((camera) => <RecordedSection key={camera.name} camera={camera} />)
+        ) : (
+          <DeviceSection title="On this device">
+            <DeviceText text="Nothing recorded yet. Turn recording on for a camera above." />
+          </DeviceSection>
+        )
+      }
+    />
   );
 };
 

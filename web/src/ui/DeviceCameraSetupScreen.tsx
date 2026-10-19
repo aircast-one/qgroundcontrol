@@ -2,7 +2,7 @@ import { type ReactNode, useState } from 'react';
 import { FilledTonalButton, OutlinedTextField, Text, TextButton } from '@/m3';
 import { md } from '@/theme/Colors';
 import { type CameraView, type ServerDest, type ShareLink, SETUP_SECTIONS, cloudflareTarget, openedSection, parseCameras } from '@/ui/DeviceCameras';
-import { ActionButton, CopyRow, DeviceForm, DeviceNotice, DeviceSwitchRow, DeviceText, LinkButton, RefusalText, useDeviceAction } from '@/ui/DeviceKit';
+import { ActionButton, CopyRow, DeviceColumns, DeviceForm, DeviceNotice, DeviceSwitchRow, DeviceText, LinkButton, RefusalText, useDeviceAction } from '@/ui/DeviceKit';
 import { LinkedNoticeView, PartDisclosure } from '@/ui/DeviceKitCamera';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
 import { DeviceLevel } from '@/ui/DeviceLevel';
@@ -39,142 +39,152 @@ const CameraSetup = ({ camera, opened, onOpen, onClose }: { camera: CameraView; 
   const { name, setup } = camera;
   return (
     <>
-      <PartDisclosure part={setup.watch.part} id={SETUP_SECTIONS.watch} opened={opened}>
-        <WatchBody camera={camera} onOpen={onOpen} />
-      </PartDisclosure>
-      <PartDisclosure part={setup.radio.part} id={SETUP_SECTIONS.radio} opened={opened}>
-        <LinkedNoticeView notice={setup.radio.notice} onOpen={onOpen} />
-        {setup.radio.form ? (
-          <DeviceForm
-            key={setup.radio.address}
-            method="PUT"
-            path={`/api/streams/${name}/wfb`}
-            submit="Save"
-            success={`${name} is now going over the radio.`}
-            note="Takes effect immediately — no restart."
-            fields={[
-              {
-                name: 'address',
-                label: 'Address wfb_tx reads from',
-                value: setup.radio.address,
-                keyboard: 'uri',
-                hint: 'The default is where a stock wfb-ng install reads from.',
-              },
-            ]}
-          />
-        ) : null}
-        {setup.radio.stop ? (
-          <Row>
-            <ActionButton
-              label="Stop"
-              tonal={false}
-              request={{ method: 'DELETE', path: `/api/streams/${name}/wfb` }}
-              success={`Stopped sending ${name} over the radio.`}
-              confirm={{
-                title: 'Stop the radio',
-                text: `Stop sending ${name} over the radio link?`,
-                confirm: 'Stop',
-              }}
-            />
-          </Row>
-        ) : null}
-      </PartDisclosure>
-      <PartDisclosure part={setup.servers.part} id={SETUP_SECTIONS.servers} opened={opened}>
-        <div className="mx-list overflow-hidden rounded-shape-md border border-outline-variant">
-          {setup.servers.dests.map((dest) => (
-            <PartDisclosure key={dest.kind} part={dest.part} id={`cam-dest-${dest.kind}`} opened={opened}>
-              <ServerBody camera={camera} dest={dest} onOpen={onOpen} />
+      <DeviceColumns
+        left={
+          <>
+            <PartDisclosure part={setup.watch.part} id={SETUP_SECTIONS.watch} opened={opened}>
+              <WatchBody camera={camera} onOpen={onOpen} />
             </PartDisclosure>
-          ))}
-        </div>
-      </PartDisclosure>
-      <PartDisclosure part={setup.shares.part} id={SETUP_SECTIONS.shares} opened={opened}>
-        {setup.shares.links.map((link) => (
-          <ShareRow key={link.id} link={link} />
-        ))}
-        <DeviceForm
-          method="POST"
-          path="/api/share"
-          submit="Create link"
-          success="Share link created."
-          note="The link opens on a page that is the picture and nothing else — no settings, no addresses."
-          extra={{ camera: name }}
-          fields={[
-            { name: 'label', label: 'Who is it for', value: '', placeholder: 'e.g. command post' },
-            {
-              name: 'hours',
-              label: 'Stops working after',
-              value: setup.shares.hours[0]?.value ?? '24',
-              options: setup.shares.hours,
-            },
-          ]}
-        />
-        <DeviceText text="A link stops working when it expires or when you turn it off. It is not a lock: anyone who can already reach this device on your network can watch the camera anyway." />
-      </PartDisclosure>
-      <PartDisclosure part={setup.detect.part} id={SETUP_SECTIONS.detect} opened={opened}>
-        <DeviceSwitchRow
-          title={`Draw detection boxes for ${name}`}
-          checked={setup.detect.on}
-          on={{ method: 'PUT', path: `/api/streams/${name}/detect` }}
-          off={{ method: 'DELETE', path: `/api/streams/${name}/detect` }}
-          success={setup.detect.on ? `Detection turned off for ${name}.` : `Detection turned on for ${name}.`}
-        />
-        <DeviceText text="Draw object-detection boxes over this camera. The video is untouched — boxes are sent as data and drawn by viewers, so there's no added latency. Needs the detection sidecar running on the device." />
-        {setup.detect.model !== '' ? (
-          <Row>
-            <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
-              {setup.detect.model}
-            </Text>
-            <TextButton onClick={() => onOpen('/settings/video')}>Change model →</TextButton>
-          </Row>
-        ) : null}
-        {setup.detect.notice !== null ? <LinkedNoticeView notice={setup.detect.notice} onOpen={onOpen} /> : null}
-      </PartDisclosure>
-      <PartDisclosure part={setup.record.part} id={SETUP_SECTIONS.record} opened={opened}>
-        <DeviceSwitchRow
-          title={`Record ${name} to disk`}
-          checked={setup.record.on}
-          on={{ method: 'PUT', path: `/api/streams/${name}/record` }}
-          off={{ method: 'DELETE', path: `/api/streams/${name}/record` }}
-          success={setup.record.on ? `Recording turned off for ${name} — download it under Settings → Recordings.` : `Recording turned on for ${name}.`}
-        />
-        <DeviceText text="Recorded in ten-minute segments to this device's storage, and playable as soon as a segment closes. The oldest go when the size limit is reached, so recording can never fill the card and take the device down with it." />
-        {setup.record.full ? (
-          <DeviceNotice
-            notice={{
-              level: DeviceLevel.Warn,
-              text: 'Recordings have reached the size limit, so the oldest are being deleted to make room for new ones.',
-            }}
-          />
-        ) : null}
-        {setup.record.usage !== '' ? (
-          <Row>
-            <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
-              {setup.record.usage}
-            </Text>
-            <TextButton onClick={() => onOpen('/settings/recordings')}>Open recordings →</TextButton>
-          </Row>
-        ) : null}
-      </PartDisclosure>
-      {setup.gimbal !== null ? (
-        <PartDisclosure part={setup.gimbal.part} id={SETUP_SECTIONS.gimbal} opened={opened}>
-          {setup.gimbal.owner ? (
-            <>
-              <DeviceText text="Tracking from QGroundControl steers the gimbal from this camera's picture. Only one camera can be on the gimbal — naming another one moves tracking there." />
-              <Row>
-                <ActionButton label="Not this camera" tonal={false} request={{ method: 'DELETE', path: `/api/streams/${name}/gimbal/owner` }} success={`Tracking turned off for ${name}.`} />
-              </Row>
-            </>
-          ) : (
-            <>
-              <DeviceText text="This device has a gimbal, but it is not this camera's, so QGroundControl cannot track from this picture. Say it is the gimbal camera to track from it." />
-              <Row>
-                <ActionButton label="This is the gimbal camera" request={{ method: 'PUT', path: `/api/streams/${name}/gimbal/owner` }} success={`${name} is now the gimbal camera.`} />
-              </Row>
-            </>
-          )}
-        </PartDisclosure>
-      ) : null}
+            <PartDisclosure part={setup.radio.part} id={SETUP_SECTIONS.radio} opened={opened}>
+              <LinkedNoticeView notice={setup.radio.notice} onOpen={onOpen} />
+              {setup.radio.form ? (
+                <DeviceForm
+                  key={setup.radio.address}
+                  method="PUT"
+                  path={`/api/streams/${name}/wfb`}
+                  submit="Save"
+                  success={`${name} is now going over the radio.`}
+                  note="Takes effect immediately — no restart."
+                  fields={[
+                    {
+                      name: 'address',
+                      label: 'Address wfb_tx reads from',
+                      value: setup.radio.address,
+                      keyboard: 'uri',
+                      hint: 'The default is where a stock wfb-ng install reads from.',
+                    },
+                  ]}
+                />
+              ) : null}
+              {setup.radio.stop ? (
+                <Row>
+                  <ActionButton
+                    label="Stop"
+                    tonal={false}
+                    request={{ method: 'DELETE', path: `/api/streams/${name}/wfb` }}
+                    success={`Stopped sending ${name} over the radio.`}
+                    confirm={{
+                      title: 'Stop the radio',
+                      text: `Stop sending ${name} over the radio link?`,
+                      confirm: 'Stop',
+                    }}
+                  />
+                </Row>
+              ) : null}
+            </PartDisclosure>
+            <PartDisclosure part={setup.servers.part} id={SETUP_SECTIONS.servers} opened={opened}>
+              <div className="mx-list overflow-hidden rounded-shape-md border border-outline-variant">
+                {setup.servers.dests.map((dest) => (
+                  <PartDisclosure key={dest.kind} part={dest.part} id={`cam-dest-${dest.kind}`} opened={opened}>
+                    <ServerBody camera={camera} dest={dest} onOpen={onOpen} />
+                  </PartDisclosure>
+                ))}
+              </div>
+            </PartDisclosure>
+          </>
+        }
+        right={
+          <>
+            <PartDisclosure part={setup.shares.part} id={SETUP_SECTIONS.shares} opened={opened}>
+              {setup.shares.links.map((link) => (
+                <ShareRow key={link.id} link={link} />
+              ))}
+              <DeviceForm
+                method="POST"
+                path="/api/share"
+                submit="Create link"
+                success="Share link created."
+                note="The link opens on a page that is the picture and nothing else — no settings, no addresses."
+                extra={{ camera: name }}
+                fields={[
+                  { name: 'label', label: 'Who is it for', value: '', placeholder: 'e.g. command post' },
+                  {
+                    name: 'hours',
+                    label: 'Stops working after',
+                    value: setup.shares.hours[0]?.value ?? '24',
+                    options: setup.shares.hours,
+                  },
+                ]}
+              />
+              <DeviceText text="A link stops working when it expires or when you turn it off. It is not a lock: anyone who can already reach this device on your network can watch the camera anyway." />
+            </PartDisclosure>
+            <PartDisclosure part={setup.detect.part} id={SETUP_SECTIONS.detect} opened={opened}>
+              <DeviceSwitchRow
+                title={`Draw detection boxes for ${name}`}
+                checked={setup.detect.on}
+                on={{ method: 'PUT', path: `/api/streams/${name}/detect` }}
+                off={{ method: 'DELETE', path: `/api/streams/${name}/detect` }}
+                success={setup.detect.on ? `Detection turned off for ${name}.` : `Detection turned on for ${name}.`}
+              />
+              <DeviceText text="Draw object-detection boxes over this camera. The video is untouched — boxes are sent as data and drawn by viewers, so there's no added latency. Needs the detection sidecar running on the device." />
+              {setup.detect.model !== '' ? (
+                <Row>
+                  <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
+                    {setup.detect.model}
+                  </Text>
+                  <TextButton onClick={() => onOpen('/settings/video')}>Change model →</TextButton>
+                </Row>
+              ) : null}
+              {setup.detect.notice !== null ? <LinkedNoticeView notice={setup.detect.notice} onOpen={onOpen} /> : null}
+            </PartDisclosure>
+            <PartDisclosure part={setup.record.part} id={SETUP_SECTIONS.record} opened={opened}>
+              <DeviceSwitchRow
+                title={`Record ${name} to disk`}
+                checked={setup.record.on}
+                on={{ method: 'PUT', path: `/api/streams/${name}/record` }}
+                off={{ method: 'DELETE', path: `/api/streams/${name}/record` }}
+                success={setup.record.on ? `Recording turned off for ${name} — download it under Settings → Recordings.` : `Recording turned on for ${name}.`}
+              />
+              <DeviceText text="Recorded in ten-minute segments to this device's storage, and playable as soon as a segment closes. The oldest go when the size limit is reached, so recording can never fill the card and take the device down with it." />
+              {setup.record.full ? (
+                <DeviceNotice
+                  notice={{
+                    level: DeviceLevel.Warn,
+                    text: 'Recordings have reached the size limit, so the oldest are being deleted to make room for new ones.',
+                  }}
+                />
+              ) : null}
+              {setup.record.usage !== '' ? (
+                <Row>
+                  <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
+                    {setup.record.usage}
+                  </Text>
+                  <TextButton onClick={() => onOpen('/settings/recordings')}>Open recordings →</TextButton>
+                </Row>
+              ) : null}
+            </PartDisclosure>
+            {setup.gimbal !== null ? (
+              <PartDisclosure part={setup.gimbal.part} id={SETUP_SECTIONS.gimbal} opened={opened}>
+                {setup.gimbal.owner ? (
+                  <>
+                    <DeviceText text="Tracking from QGroundControl steers the gimbal from this camera's picture. Only one camera can be on the gimbal — naming another one moves tracking there." />
+                    <Row>
+                      <ActionButton label="Not this camera" tonal={false} request={{ method: 'DELETE', path: `/api/streams/${name}/gimbal/owner` }} success={`Tracking turned off for ${name}.`} />
+                    </Row>
+                  </>
+                ) : (
+                  <>
+                    <DeviceText text="This device has a gimbal, but it is not this camera's, so QGroundControl cannot track from this picture. Say it is the gimbal camera to track from it." />
+                    <Row>
+                      <ActionButton label="This is the gimbal camera" request={{ method: 'PUT', path: `/api/streams/${name}/gimbal/owner` }} success={`${name} is now the gimbal camera.`} />
+                    </Row>
+                  </>
+                )}
+              </PartDisclosure>
+            ) : null}
+          </>
+        }
+      />
       <div className="flex justify-end px-list py-4">
         <ActionButton
           label="Remove this camera"

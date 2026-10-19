@@ -13,7 +13,7 @@ import { VideoScreen } from '@/ui/DeviceVideoScreen';
 
 export type DeviceScreenProps = { readonly href: string; readonly query: URLSearchParams; readonly onOpen: (href: string) => void; readonly onClose: () => void };
 
-export type DeviceScreenEntry = { readonly title: string; readonly screen: (props: DeviceScreenProps) => ReactNode };
+export type DeviceScreenEntry = { readonly title: string; readonly screen: (props: DeviceScreenProps) => ReactNode; readonly narrow?: boolean };
 
 export const DEVICE_SCREENS: ReadonlyMap<string, DeviceScreenEntry> = new Map<string, DeviceScreenEntry>([
   ['/telemetry', { title: 'Telemetry', screen: TelemetryScreen }],
@@ -26,7 +26,7 @@ export const DEVICE_SCREENS: ReadonlyMap<string, DeviceScreenEntry> = new Map<st
   ['/network', { title: 'Connection', screen: NetworkScreen }],
   ['/streaming', { title: 'Cameras', screen: CamerasScreen }],
   ['/settings/camera', { title: 'Sharing & recording', screen: CameraSetupScreen }],
-  ['/setup', { title: 'Device setup', screen: SetupScreen }],
+  ['/setup', { title: 'Device setup', screen: SetupScreen, narrow: true }],
 ]);
 
 export const devicePath = (href: string): { path: string; query: URLSearchParams } => {

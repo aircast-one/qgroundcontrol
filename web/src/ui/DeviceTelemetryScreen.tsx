@@ -3,7 +3,7 @@ import { useProduceState } from '@/kotlin/Compose';
 import { FilledTonalButton, IconButton, OutlinedTextField, Text, TextButton } from '@/m3';
 import { MaterialIcon } from '@/res/Icon';
 import { md } from '@/theme/Colors';
-import { CopyRow, DeviceBadgeText, DeviceForm, DeviceNotice, DeviceSection, DeviceSelect, DeviceText, RefusalText, useDeviceAction } from '@/ui/DeviceKit';
+import { CopyRow, DeviceBadgeText, DeviceColumns, DeviceForm, DeviceNotice, DeviceSection, DeviceSelect, DeviceText, RefusalText, useDeviceAction } from '@/ui/DeviceKit';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
 import { DeviceLevel } from '@/ui/DeviceLevel';
 import {
@@ -40,30 +40,36 @@ export const TelemetryScreen = (_: DeviceScreenProps) => {
   const view = useDeviceView('telemetry', parseTelemetry);
   if (view === null) return <FootNote text="Waiting for the device to answer…" />;
   return (
-    <>
-      <DeviceSection title="Ground station" badge={view.status}>
-        {view.notices.map((notice) => (
-          <DeviceNotice key={notice.text} notice={notice} />
-        ))}
-        <EndpointRows endpoints={view.endpoints} />
-        {view.endpointNotice !== null ? <DeviceNotice notice={view.endpointNotice} /> : null}
-        {view.cloud !== null ? (
-          <div className="px-list py-2" role="group" aria-label="Cloud path">
-            <div className="flex items-center justify-between gap-3">
-              <Text typography="bodyLarge">Cloud path</Text>
-              <DeviceBadgeText badge={view.cloud.status} />
+    <DeviceColumns
+      left={
+        <DeviceSection title="Ground station" badge={view.status}>
+          {view.notices.map((notice) => (
+            <DeviceNotice key={notice.text} notice={notice} />
+          ))}
+          <EndpointRows endpoints={view.endpoints} />
+          {view.endpointNotice !== null ? <DeviceNotice notice={view.endpointNotice} /> : null}
+          {view.cloud !== null ? (
+            <div className="px-list py-2" role="group" aria-label="Cloud path">
+              <div className="flex items-center justify-between gap-3">
+                <Text typography="bodyLarge">Cloud path</Text>
+                <DeviceBadgeText badge={view.cloud.status} />
+              </div>
+              <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
+                {view.cloud.text}
+              </Text>
             </div>
-            <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
-              {view.cloud.text}
-            </Text>
-          </div>
-        ) : null}
-      </DeviceSection>
-      <DeviceSection title="MAVLink settings">
-        <MavlinkEditor key={`${view.settings.endpoints}|${view.settings.baud}`} view={view} />
-      </DeviceSection>
-      {view.gimbal !== null ? <GimbalSection gimbal={view.gimbal} /> : null}
-    </>
+          ) : null}
+        </DeviceSection>
+      }
+      right={
+        <>
+          <DeviceSection title="MAVLink settings">
+            <MavlinkEditor key={`${view.settings.endpoints}|${view.settings.baud}`} view={view} />
+          </DeviceSection>
+          {view.gimbal !== null ? <GimbalSection gimbal={view.gimbal} /> : null}
+        </>
+      }
+    />
   );
 };
 

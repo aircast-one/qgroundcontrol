@@ -17,7 +17,7 @@ import {
   shownTargets,
   writeStored,
 } from '@/ui/DeviceConnect';
-import { CopyRow, DeviceDisclosure, DeviceNotice, DeviceSection, DeviceText } from '@/ui/DeviceKit';
+import { CopyRow, DeviceColumns, DeviceDisclosure, DeviceNotice, DeviceSection, DeviceText } from '@/ui/DeviceKit';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
 import { DeviceLevel } from '@/ui/DeviceLevel';
 import { useDeviceView } from '@/ui/DeviceView';
@@ -120,60 +120,68 @@ export const ConnectScreen = ({ onOpen }: DeviceScreenProps) => {
 };
 
 const ConnectLinks = ({ view, choice, onPick, onOpen }: { view: ConnectView; choice: GcsChoice | null; onPick: (value: string) => void; onOpen: (href: string) => void }) => (
-  <>
-    <DeviceSection title="Your ground station">
-      <GcsChooser choices={view.choices} choice={choice} onPick={onPick} />
-      <DeviceText text="QGroundControl and Mission Planner play the RTSP link; a browser, OBS or Aircast QGC play WebRTC. This browser remembers your answer." />
-      <DeviceText text={view.scope} />
-      <DeviceDisclosure title="How to connect a ground station">
-        <DeviceText text="Each link below says where to paste it in your app; video and telemetry are two separate links." />
-        <DeviceText text="Ground station on another device? Scan that link's QR code from there — no retyping." />
-      </DeviceDisclosure>
-    </DeviceSection>
-    {view.cameras.map((camera) => (
-      <DeviceSection key={camera.name} title={camera.name} badge={camera.status}>
-        {camera.notice !== '' ? <DeviceNotice notice={{ level: DeviceLevel.Warn, text: camera.notice }} /> : null}
-        {camera.fix !== null ? (
-          <div className="px-list py-2">
-            <FilledTonalButton onClick={() => camera.fix !== null && onOpen(camera.fix.href)}>{camera.fix.label}</FilledTonalButton>
-          </div>
+  <DeviceColumns
+    left={
+      <>
+        <DeviceSection title="Your ground station">
+          <GcsChooser choices={view.choices} choice={choice} onPick={onPick} />
+          <DeviceText text="QGroundControl and Mission Planner play the RTSP link; a browser, OBS or Aircast QGC play WebRTC. This browser remembers your answer." />
+          <DeviceText text={view.scope} />
+          <DeviceDisclosure title="How to connect a ground station">
+            <DeviceText text="Each link below says where to paste it in your app; video and telemetry are two separate links." />
+            <DeviceText text="Ground station on another device? Scan that link's QR code from there — no retyping." />
+          </DeviceDisclosure>
+        </DeviceSection>
+        {view.cameras.map((camera) => (
+          <DeviceSection key={camera.name} title={camera.name} badge={camera.status}>
+            {camera.notice !== '' ? <DeviceNotice notice={{ level: DeviceLevel.Warn, text: camera.notice }} /> : null}
+            {camera.fix !== null ? (
+              <div className="px-list py-2">
+                <FilledTonalButton onClick={() => camera.fix !== null && onOpen(camera.fix.href)}>{camera.fix.label}</FilledTonalButton>
+              </div>
+            ) : null}
+            <TargetRows targets={camera.targets} choice={choice} />
+          </DeviceSection>
+        ))}
+      </>
+    }
+    right={
+      <>
+        {view.telemetry !== null ? (
+          <DeviceSection title="Telemetry" badge={view.telemetry.status}>
+            <DeviceText text="Video and telemetry are separate links — a ground station needs both." />
+            <TargetRows targets={view.telemetry.targets} choice={choice} />
+          </DeviceSection>
         ) : null}
-        <TargetRows targets={camera.targets} choice={choice} />
-      </DeviceSection>
-    ))}
-    {view.telemetry !== null ? (
-      <DeviceSection title="Telemetry" badge={view.telemetry.status}>
-        <DeviceText text="Video and telemetry are separate links — a ground station needs both." />
-        <TargetRows targets={view.telemetry.targets} choice={choice} />
-      </DeviceSection>
-    ) : null}
-    {view.trouble !== null ? (
-      <DeviceSection title="Troubleshooting">
-        <DeviceDisclosure title="This link didn't play in my app" summary="Reach the device by address, or fall back to a player that takes anything.">
-          {view.trouble.fallback.length > 0 ? (
-            <>
-              <Subheading text="When nothing else will play" />
-              <TargetRows targets={view.trouble.fallback} choice={choice} />
-            </>
-          ) : null}
-          {view.trouble.addresses !== null ? (
-            <>
-              <Subheading text={view.trouble.addresses.title} />
-              <DeviceText text="Windows without Bonjour, and some networks, cannot look up a .local name — and a tailnet name needs Tailscale running there too. These links use this device's address instead: pick the one on the same network as your ground station." />
-              {view.trouble.addresses.groups.map((group) => (
-                <div key={group.label}>
-                  <div className="px-list pt-3">
-                    <Text typography="labelMedium" color={md('onSurfaceVariant')}>
-                      {group.label}
-                    </Text>
-                  </div>
-                  <TargetRows targets={group.targets} choice={choice} />
-                </div>
-              ))}
-            </>
-          ) : null}
-        </DeviceDisclosure>
-      </DeviceSection>
-    ) : null}
-  </>
+        {view.trouble !== null ? (
+          <DeviceSection title="Troubleshooting">
+            <DeviceDisclosure title="This link didn't play in my app" summary="Reach the device by address, or fall back to a player that takes anything.">
+              {view.trouble.fallback.length > 0 ? (
+                <>
+                  <Subheading text="When nothing else will play" />
+                  <TargetRows targets={view.trouble.fallback} choice={choice} />
+                </>
+              ) : null}
+              {view.trouble.addresses !== null ? (
+                <>
+                  <Subheading text={view.trouble.addresses.title} />
+                  <DeviceText text="Windows without Bonjour, and some networks, cannot look up a .local name — and a tailnet name needs Tailscale running there too. These links use this device's address instead: pick the one on the same network as your ground station." />
+                  {view.trouble.addresses.groups.map((group) => (
+                    <div key={group.label}>
+                      <div className="px-list pt-3">
+                        <Text typography="labelMedium" color={md('onSurfaceVariant')}>
+                          {group.label}
+                        </Text>
+                      </div>
+                      <TargetRows targets={group.targets} choice={choice} />
+                    </div>
+                  ))}
+                </>
+              ) : null}
+            </DeviceDisclosure>
+          </DeviceSection>
+        ) : null}
+      </>
+    }
+  />
 );

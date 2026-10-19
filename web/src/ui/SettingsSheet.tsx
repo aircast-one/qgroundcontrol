@@ -224,7 +224,7 @@ export const SettingsSheet = ({ requested, onClose }: { requested: string | null
       <SetupBranch key={contentKey} heading={pageHeading} enabled={setupFromTab && query === null} onBack={setupBack} />
     );
   const snackbarHost = (
-    <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center pb-[max(16px,env(safe-area-inset-bottom))]">
+    <div className={`pointer-events-none absolute inset-x-0 bottom-0 flex pb-[max(16px,env(safe-area-inset-bottom))] ${desktop ? 'justify-start px-menu' : 'justify-center'}`}>
       <SnackbarHost hostState={snackbars} />
     </div>
   );

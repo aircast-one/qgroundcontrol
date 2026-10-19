@@ -34,6 +34,7 @@ import {
 } from '@/ui/DeviceFlights';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
 import { DeviceLevel } from '@/ui/DeviceLevel';
+import { useDesktopLayout } from '@/ui/DesktopLayout';
 import { deviceUrl, useDeviceView } from '@/ui/DeviceView';
 import { FootNote } from '@/ui/SetupRow';
 import { LocalChangeNotice } from '@/ui/ValueRow';
@@ -44,18 +45,42 @@ const muted = md('onSurfaceVariant');
 
 export const FlightsScreen = ({ query }: DeviceScreenProps) => {
   const view = useDeviceView('flights', parseFlights);
+  const desktop = useDesktopLayout();
   if (view === null) return <FootNote text="Waiting for the device to answer…" />;
+  const linked = query.get('flight');
   return (
     <>
       <DeviceText text="One entry per run of this device. None of it reaches you in the air — the ground station only gets the few lines worth interrupting a flight for." />
       {view.flights.length === 0 ? (
         <DeviceNotice notice={{ level: DeviceLevel.Neutral, text: 'No flights recorded yet. This device starts one every time it powers up.' }} />
+      ) : desktop ? (
+        <FlightsSplit flights={view.flights} linked={linked} />
       ) : (
-        view.flights.map((flight) => <FlightRow key={flight.id} flight={flight} linked={query.get('flight') === flight.id} />)
+        view.flights.map((flight) => <FlightRow key={flight.id} flight={flight} linked={linked === flight.id} />)
       )}
     </>
   );
 };
+
+const FlightHeader = ({ flight, open, icon, onClick }: { flight: FlightEntry; open: boolean; icon: string; onClick: () => void }) => (
+  <button
+    type="button"
+    aria-expanded={open}
+    onClick={onClick}
+    className={`flex min-h-16 w-full items-center gap-3 px-list py-3 text-left hover:bg-[color-mix(in_srgb,var(--md-on-surface)_8%,transparent)] ${open && icon === 'chevron_right' ? 'bg-surface-container-high' : ''}`}
+  >
+    <span className="flex min-w-0 flex-1 flex-col">
+      <Text typography="bodyLarge">{flight.title}</Text>
+      {flight.summary !== '' ? (
+        <Text typography="bodyMedium" color={muted}>
+          {flight.summary}
+        </Text>
+      ) : null}
+    </span>
+    <DeviceBadgeText badge={flight.badge} />
+    <MaterialIcon name={icon} style={{ color: muted }} />
+  </button>
+);
 
 const FlightRow = ({ flight, linked }: { flight: FlightEntry; linked: boolean }) => {
   const [open, setOpen] = useState(flight.open || linked);
@@ -64,25 +89,41 @@ const FlightRow = ({ flight, linked }: { flight: FlightEntry; linked: boolean })
   useEffect(() => void (linked ? anchor.current?.scrollIntoView({ block: 'start' }) : undefined), []);
   return (
     <section ref={anchor} aria-label={flight.title} className="border-b border-outline-variant">
-      <button
-        type="button"
-        aria-expanded={open}
-        onClick={() => setOpen(!open)}
-        className="flex min-h-16 w-full items-center gap-3 px-list py-3 text-left hover:bg-[color-mix(in_srgb,var(--md-on-surface)_8%,transparent)]"
-      >
-        <span className="flex min-w-0 flex-1 flex-col">
-          <Text typography="bodyLarge">{flight.title}</Text>
-          {flight.summary !== '' ? (
-            <Text typography="bodyMedium" color={muted}>
-              {flight.summary}
-            </Text>
-          ) : null}
-        </span>
-        <DeviceBadgeText badge={flight.badge} />
-        <MaterialIcon name={open ? 'expand_less' : 'expand_more'} style={{ color: muted }} />
-      </button>
+      <FlightHeader flight={flight} open={open} icon={open ? 'expand_less' : 'expand_more'} onClick={() => setOpen(!open)} />
       {open ? <FlightBody flight={flight} active={active} onActive={setActive} /> : null}
     </section>
+  );
+};
+
+const FlightsSplit = ({ flights, linked }: { flights: readonly FlightEntry[]; linked: string | null }) => {
+  const [chosen, setChosen] = useState(linked ?? flights.find((flight) => flight.open)?.id ?? null);
+  const [active, setActive] = useState<number | null>(null);
+  const shown = flights.find((flight) => flight.id === chosen);
+  const pick = (id: string) => {
+    setChosen(id);
+    setActive(null);
+  };
+  return (
+    <div className="grid grid-cols-[minmax(0,2fr)_minmax(0,3fr)] items-start gap-x-6">
+      <div className="flex min-w-0 flex-col">
+        {flights.map((flight) => (
+          <div key={flight.id} className="border-b border-outline-variant">
+            <FlightHeader flight={flight} open={flight.id === shown?.id} icon="chevron_right" onClick={() => pick(flight.id)} />
+          </div>
+        ))}
+      </div>
+      {shown !== undefined ? (
+        <section aria-label={shown.title} className="min-w-0 rounded-shape-md bg-surface-container-low pt-2">
+          <FlightBody key={shown.id} flight={shown} active={active} onActive={setActive} />
+        </section>
+      ) : (
+        <div className="grid min-h-40 place-items-center rounded-shape-md bg-surface-container-low px-list">
+          <Text typography="bodyMedium" color={muted}>
+            Pick a run to see what happened.
+          </Text>
+        </div>
+      )}
+    </div>
   );
 };
 

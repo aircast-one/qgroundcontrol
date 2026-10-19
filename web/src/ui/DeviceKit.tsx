@@ -5,6 +5,7 @@ import { AlertDialog, BasicAlertDialog, DropdownMenu, DropdownMenuItem, FilledTo
 import { MaterialIcon } from '@/res/Icon';
 import { aircast, md } from '@/theme/Colors';
 import { DeviceLevel } from '@/ui/DeviceLevel';
+import { useDesktopLayout } from '@/ui/DesktopLayout';
 import { type DeviceMethod, type DeviceRefusal, deviceCall, deviceQr } from '@/ui/DeviceView';
 import { LocalChangeNotice } from '@/ui/ValueRow';
 
@@ -43,6 +44,21 @@ export const levelColor = (level: number): string =>
   level === DeviceLevel.Ready ? aircast('success') : level === DeviceLevel.Warn ? aircast('warning') : level === DeviceLevel.Blocked ? aircast('alert') : md('onSurfaceVariant');
 
 const levelIcon = (level: number): string => (level === DeviceLevel.Ready ? 'check_circle' : level === DeviceLevel.Neutral ? 'info' : 'warning');
+
+export const DeviceColumns = ({ left, right }: { left: ReactNode; right: ReactNode }) => {
+  const desktop = useDesktopLayout();
+  return desktop ? (
+    <div className="grid grid-cols-2 items-start gap-x-6">
+      <div className="flex min-w-0 flex-col">{left}</div>
+      <div className="flex min-w-0 flex-col">{right}</div>
+    </div>
+  ) : (
+    <>
+      {left}
+      {right}
+    </>
+  );
+};
 
 export const DeviceSection = ({ title, badge, action, children }: { title: string; badge?: DeviceBadge | null; action?: ReactNode; children: ReactNode }) => (
   <section aria-label={title}>

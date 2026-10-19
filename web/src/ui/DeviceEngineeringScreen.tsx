@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { FilledTonalButton, OutlinedTextField, RadioButton, Text, TextButton } from '@/m3';
 import { md } from '@/theme/Colors';
-import { ActionButton, ConfirmDialog, DeviceDisclosure, DeviceNotice, DeviceSection, DeviceSwitchRow, DeviceText, LinkButton, RefusalText, SecretField, useDeviceAction } from '@/ui/DeviceKit';
+import { ActionButton, ConfirmDialog, DeviceColumns, DeviceDisclosure, DeviceNotice, DeviceSection, DeviceSwitchRow, DeviceText, LinkButton, RefusalText, SecretField, useDeviceAction } from '@/ui/DeviceKit';
 import { ButtonRow, StatusLine } from '@/ui/DeviceKitSettings';
 import { type DiagnosticsSettings, type EngineeringView, type PublishSignIn, modeNamed, parseEngineering, shownFields, signInBody, signInKey } from '@/ui/DeviceEngineering';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
@@ -13,19 +13,27 @@ export const EngineeringScreen = ({ onOpen }: DeviceScreenProps) => {
   const view = useDeviceView('engineering', parseEngineering);
   if (view === null) return <FootNote text="Waiting for the device to answer…" />;
   return (
-    <>
-      <BackendSection view={view} />
-      <PublishSection publish={view.publish} onOpen={onOpen} />
-      <DeviceSection title="Device logs">
-        <DeviceText text="Everything every service on this device has logged, gzipped." />
-        <ButtonRow>
-          <LinkButton href={deviceUrl('/api/logs')} download>
-            Download logs
-          </LinkButton>
-        </ButtonRow>
-      </DeviceSection>
-      <DiagnosticsSection diagnostics={view.diagnostics} />
-    </>
+    <DeviceColumns
+      left={
+        <>
+          <BackendSection view={view} />
+          <PublishSection publish={view.publish} onOpen={onOpen} />
+        </>
+      }
+      right={
+        <>
+          <DeviceSection title="Device logs">
+            <DeviceText text="Everything every service on this device has logged, gzipped." />
+            <ButtonRow>
+              <LinkButton href={deviceUrl('/api/logs')} download>
+                Download logs
+              </LinkButton>
+            </ButtonRow>
+          </DeviceSection>
+          <DiagnosticsSection diagnostics={view.diagnostics} />
+        </>
+      }
+    />
   );
 };
 

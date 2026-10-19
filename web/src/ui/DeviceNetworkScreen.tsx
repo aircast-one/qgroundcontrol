@@ -2,24 +2,7 @@ import { type ReactNode, useState } from 'react';
 import { FilledTonalButton, IconButton, LinearProgressIndicator, OutlinedTextField, Switch, Text, TextButton } from '@/m3';
 import { MaterialIcon } from '@/res/Icon';
 import { md } from '@/theme/Colors';
-import {
-  ActionButton,
-  type DeviceBadge,
-  DeviceBadgeText,
-  DeviceChart,
-  DeviceDisclosure,
-  DeviceFact,
-  DeviceForm,
-  DeviceNotice,
-  DeviceSection,
-  DeviceSelect,
-  DeviceSwitchRow,
-  DeviceText,
-  type DeviceOption,
-  RefusalText,
-  levelColor,
-  useDeviceAction,
-} from '@/ui/DeviceKit';
+import { ActionButton, type DeviceBadge, DeviceBadgeText, DeviceChart, DeviceColumns, DeviceDisclosure, DeviceFact, DeviceForm, DeviceNotice, DeviceSection, DeviceSelect, DeviceSwitchRow, DeviceText, type DeviceOption, RefusalText, levelColor, useDeviceAction } from '@/ui/DeviceKit';
 import { type ShapedField, ShapedForm } from '@/ui/DeviceKitForms';
 import {
   type DataCard,
@@ -56,23 +39,31 @@ export const NetworkScreen = ({ onOpen }: DeviceScreenProps) => {
   const view = useDeviceView('network', parseNetwork);
   if (view === null) return <FootNote text="Waiting for the device to answer…" />;
   return (
-    <>
-      <UplinkSection uplink={view.uplink} onOpen={onOpen} />
-      {view.modem !== null ? <ModemSection modem={view.modem} /> : null}
-      <StarlinkSection starlink={view.starlink} />
-      <DeviceSection title="Wi-Fi" badge={view.wifi.status}>
-        <Summary text={view.wifi.summary} />
-        {view.wifi.joined !== null ? <DeviceNotice notice={view.wifi.joined} /> : null}
-        <WifiJoin reopen={view.wifi.reopen} />
-      </DeviceSection>
-      <InterfacesSection interfaces={view.interfaces} />
-      <FootNote text="The device routes through the best uplink that reaches the internet and moves off one that stops — this is where you say what it may use." />
-      <DataSection data={view.data} />
-      <FootNote text="Mobile data is metered; the budget here is what keeps a flight from spending a month of it — set it before a SIM goes in." />
-      <TailscaleSection tailscale={view.tailscale} />
-      <RelaySection relay={view.relay} />
-      <FootNote text="Reaching this device from somewhere else — it is not needed to fly." />
-    </>
+    <DeviceColumns
+      left={
+        <>
+          <UplinkSection uplink={view.uplink} onOpen={onOpen} />
+          {view.modem !== null ? <ModemSection modem={view.modem} /> : null}
+          <StarlinkSection starlink={view.starlink} />
+          <DeviceSection title="Wi-Fi" badge={view.wifi.status}>
+            <Summary text={view.wifi.summary} />
+            {view.wifi.joined !== null ? <DeviceNotice notice={view.wifi.joined} /> : null}
+            <WifiJoin reopen={view.wifi.reopen} />
+          </DeviceSection>
+          <InterfacesSection interfaces={view.interfaces} />
+          <FootNote text="The device routes through the best uplink that reaches the internet and moves off one that stops — this is where you say what it may use." />
+        </>
+      }
+      right={
+        <>
+          <DataSection data={view.data} />
+          <FootNote text="Mobile data is metered; the budget here is what keeps a flight from spending a month of it — set it before a SIM goes in." />
+          <TailscaleSection tailscale={view.tailscale} />
+          <RelaySection relay={view.relay} />
+          <FootNote text="Reaching this device from somewhere else — it is not needed to fly." />
+        </>
+      }
+    />
   );
 };
 

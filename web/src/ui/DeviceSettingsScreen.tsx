@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { FilledTonalButton, OutlinedTextField, Text } from '@/m3';
 import { MaterialIcon } from '@/res/Icon';
 import { md } from '@/theme/Colors';
-import { ActionButton, CopyRow, DeviceDisclosure, DeviceNotice, DeviceSection, DeviceText, LinkButton, RefusalText, levelColor, useDeviceAction } from '@/ui/DeviceKit';
+import { ActionButton, CopyRow, DeviceColumns, DeviceDisclosure, DeviceNotice, DeviceSection, DeviceText, LinkButton, RefusalText, levelColor, useDeviceAction } from '@/ui/DeviceKit';
 import { ButtonRow, StackedFact, StatusLine, TypedConfirmDialog } from '@/ui/DeviceKitSettings';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
 import { CloudStage, type CloudAccount, type DeviceSettingsView, type DeviceStat, SERVICES, type ServiceRow, type SoftwareNotice, type SoftwareStatus, parseDeviceSettings } from '@/ui/DeviceSettings';
@@ -17,15 +17,25 @@ export const DeviceSettingsScreen = ({ onOpen }: DeviceScreenProps) => {
     <>
       <HealthLine view={view} onOpen={onOpen} />
       {view.notice !== null ? <DeviceNotice notice={view.notice} /> : null}
-      <DeviceSection title="Status">
-        {view.stats.map((stat) => (stat.label === SERVICES ? <ServicesStat key={stat.label} stat={stat} services={view.services} /> : <StatRow key={stat.label} stat={stat} />))}
-      </DeviceSection>
-      <CloudSection cloud={view.cloud} />
-      <SoftwareSection software={view.software} />
-      <DeviceSection title="More devices">
-        <ProvisionSteps />
-      </DeviceSection>
-      <ResetSection hostname={view.hostname} />
+      <DeviceColumns
+        left={
+          <>
+            <DeviceSection title="Status">
+              {view.stats.map((stat) => (stat.label === SERVICES ? <ServicesStat key={stat.label} stat={stat} services={view.services} /> : <StatRow key={stat.label} stat={stat} />))}
+            </DeviceSection>
+            <CloudSection cloud={view.cloud} />
+            <SoftwareSection software={view.software} />
+          </>
+        }
+        right={
+          <>
+            <DeviceSection title="More devices">
+              <ProvisionSteps />
+            </DeviceSection>
+            <ResetSection hostname={view.hostname} />
+          </>
+        }
+      />
     </>
   );
 };
