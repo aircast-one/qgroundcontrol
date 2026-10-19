@@ -141,8 +141,14 @@ const serialOp = async (op: SerialOp) => {
   });
 };
 
+const adoptOtherTabs = () =>
+  window.addEventListener('storage', ({ key, newValue }) => {
+    if (key === SETTINGS_KEY && newValue !== null) void call('settingsAdopt', newValue);
+  });
+
 export const startCore = async (): Promise<void> => {
   await call('settingsOpen', stored());
+  adoptOtherTabs();
   await call('setMockLinksAvailable', true);
   await refreshSerialPorts();
   await call('linksStart');

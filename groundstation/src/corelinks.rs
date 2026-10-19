@@ -158,6 +158,10 @@ fn with_saved<T>(change: impl FnOnce(&mut Vec<Entry>) -> T) -> T {
     }))
 }
 
+pub fn reload_saved() {
+    *entries() = None;
+}
+
 fn saved() -> Vec<Entry> {
     with_saved(|entries| entries.clone())
 }

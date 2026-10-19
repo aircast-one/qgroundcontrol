@@ -109,6 +109,16 @@ pub fn settings_open(text: &str) {
     crate::applog::load_categories();
 }
 
+#[wasm_bindgen(js_name = settingsAdopt)]
+pub fn settings_adopt(text: &str) -> bool {
+    let adopted = crate::settingsstore::adopt_text(text);
+    if adopted {
+        crate::corelinks::reload_saved();
+        crate::applog::load_categories();
+    }
+    adopted
+}
+
 #[wasm_bindgen(js_name = settingsText)]
 pub fn settings_text() -> String {
     crate::settingsstore::text().unwrap_or_default()

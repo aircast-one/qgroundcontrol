@@ -140,3 +140,26 @@ test('a radio calibrated in the browser moves each ArduPilot channel the way its
   await moveSticks(page, { ...CENTRE, throttle: 1 });
   await expect.poll(channel(THROTTLE), { message: 'throttle up' }).toBeGreaterThan(1900);
 });
+
+const showTab = (page: Page, shown: boolean) =>
+  page.evaluate((visible) => {
+    Object.defineProperty(document, 'visibilityState', { configurable: true, get: () => (visible ? 'visible' : 'hidden') });
+    document.dispatchEvent(new Event('visibilitychange'));
+  }, shown);
+
+test('a tab in the background lets go of the sticks, so another tab can fly', async ({ page }) => {
+  test.setTimeout(300_000);
+  await page.context().route((url) => !['localhost', '127.0.0.1'].includes(url.hostname), (route) => route.abort());
+  await plugInRadio(page);
+  await openApp(page);
+  await connectSitl(page);
+  await page.getByRole('button', { name: 'Open Setup', exact: true }).click();
+  await calibrate(page);
+
+  await moveSticks(page, { ...IDLE, roll: 1 });
+  await expect.poll(channel(ROLL), { timeout: 20_000 }).toBeGreaterThan(1900);
+  await showTab(page, false);
+  await expect.poll(channel(ROLL), { message: 'hidden, the tab stops overriding roll', timeout: 20_000 }).toBeLessThan(1600);
+  await showTab(page, true);
+  await expect.poll(channel(ROLL), { message: 'shown again, the stick flies again', timeout: 20_000 }).toBeGreaterThan(1900);
+});

@@ -684,6 +684,18 @@ pub fn open_text(text: &str) {
     *changing() = Some(versioned(cleared_on_boot(crate::settingsini::read(text))).0);
 }
 
+pub fn adoptable(text: &str) -> Option<BTreeMap<String, Setting>> {
+    let values = crate::settingsini::read(text);
+    matches!(values.get(SETTINGS_VERSION_KEY), Some(Setting::Text(version)) if version.trim() == SETTINGS_VERSION)
+        .then_some(values)
+}
+
+pub fn adopt_text(text: &str) -> bool {
+    adoptable(text)
+        .map(|values| *changing() = Some(values))
+        .is_some()
+}
+
 pub fn text() -> Option<String> {
     stored().as_ref().map(crate::settingsini::write)
 }
@@ -1995,6 +2007,36 @@ mod tests {
         );
         assert!(follow_ups("FlightMap", "mapProvider", &json!("Nope")).is_empty());
         assert_eq!(text_enums(vec!["Google".into()])[0].value, json!("Google"));
+    }
+
+    #[test]
+    fn another_tab_is_adopted_only_when_it_runs_this_settings_version() {
+        let saved = |version: &str| {
+            crate::settingsini::write(&BTreeMap::from([
+                (
+                    SETTINGS_VERSION_KEY.to_string(),
+                    Setting::Text(version.to_string()),
+                ),
+                (
+                    key("Audio", "audioMuted"),
+                    Setting::Text("true".to_string()),
+                ),
+            ]))
+        };
+        assert_eq!(
+            adoptable(&saved(SETTINGS_VERSION))
+                .and_then(|values| values.get(&key("Audio", "audioMuted")).cloned()),
+            Some(Setting::Text("true".to_string())),
+            "the same build's settings are taken whole"
+        );
+        assert!(
+            adoptable(&saved("8")).is_none(),
+            "another build's settings are left alone, not reset to defaults"
+        );
+        assert!(
+            adoptable("").is_none(),
+            "an emptied store is not taken as everything cleared"
+        );
     }
 
     #[test]

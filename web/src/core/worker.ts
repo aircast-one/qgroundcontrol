@@ -35,6 +35,12 @@ const openSettings = (text: string) => {
   return opened;
 };
 
+const adoptSettings = (text: string) => {
+  const adopted = core.settingsAdopt(text);
+  settings.revision = core.settingsRevision();
+  return adopted;
+};
+
 const keepSettings = () => {
   if (settings.revision === null) return;
   const revision = core.settingsRevision();
@@ -64,6 +70,7 @@ const calls = {
   linkClose: core.linkClose,
   linksStart: core.linksStart,
   settingsOpen: openSettings,
+  settingsAdopt: adoptSettings,
   setMockLinksAvailable: core.setMockLinksAvailable,
   setSerialPorts: core.setSerialPorts,
   serialReceived: core.serialReceived,

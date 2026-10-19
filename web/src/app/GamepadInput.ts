@@ -80,7 +80,9 @@ const hatOf = (pad: Gamepad): number =>
 
 const pressedOf = (pad: Gamepad): boolean[] => (isStandard(pad) ? GAMEPAD_BUTTONS.map((index) => held(pad, index)) : GAMEPAD_BUTTONS.map((_, index) => held(pad, index)));
 
-const pads = (): Gamepad[] => (typeof navigator !== 'undefined' && 'getGamepads' in navigator ? navigator.getGamepads().filter((pad): pad is Gamepad => pad !== null && pad.connected) : []);
+const shown = (): boolean => typeof document === 'undefined' || document.visibilityState === 'visible';
+
+const pads = (): Gamepad[] => (typeof navigator !== 'undefined' && 'getGamepads' in navigator && shown() ? navigator.getGamepads().filter((pad): pad is Gamepad => pad !== null && pad.connected) : []);
 
 type Sample = { name: string; axes: number[]; pressed: boolean[]; hat: number };
 
@@ -110,6 +112,7 @@ export const GamepadInput = {
       gamepad.listening = true;
       window.addEventListener('gamepadconnected', rescan);
       window.addEventListener('gamepaddisconnected', rescan);
+      document.addEventListener('visibilitychange', rescan);
     }
     rescan();
     gamepad.sampler = scope;
