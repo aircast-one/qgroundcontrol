@@ -223,13 +223,14 @@ jobs:
         env:
           SIGNED: ${{ env.MACOS_SIGN }}
         run: |
+          apple_retry() { for attempt in 1 2 3 4 5 6; do "$@" && return 0; echo "Apple check failed (attempt $attempt of 6), retrying in 20 s: $*"; sleep 20; done; return 1; }
           hdiutil attach AircastQGC.dmg
           APP=/Volumes/AircastQGC/AircastQGC.app
           test -x "$APP/Contents/MacOS/AircastQGC"
           if [ "$SIGNED" == "true" ]; then
             codesign --verify --deep --strict --verbose=2 "$APP"
-            spctl --assess --type execute --verbose=2 "$APP"
-            xcrun stapler validate "$APP"
+            apple_retry spctl --assess --type execute --verbose=2 "$APP"
+            apple_retry xcrun stapler validate "$APP"
           fi
           for _ in 1 2 3 4 5; do
             hdiutil detach /Volumes/AircastQGC -force && break || sleep 3
