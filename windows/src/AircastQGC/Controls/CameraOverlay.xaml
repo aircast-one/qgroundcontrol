@@ -1,0 +1,247 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="AircastQGC.Controls.CameraOverlay"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    Width="320">
+
+    <UserControl.Resources>
+        <Style x:Key="CameraTitle" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="{ThemeResource AppFontFamily}" />
+            <Setter Property="FontSize" Value="{ThemeResource FontSizeBody}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{ThemeResource TextPrimaryBrush}" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            <Setter Property="MaxLines" Value="1" />
+        </Style>
+        <Style x:Key="CameraCaption" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="{ThemeResource AppFontFamily}" />
+            <Setter Property="FontSize" Value="{ThemeResource FontSizeCaption}" />
+            <Setter Property="Foreground" Value="{ThemeResource TextSecondaryBrush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style x:Key="CameraNote" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="{ThemeResource AppFontFamily}" />
+            <Setter Property="FontSize" Value="{ThemeResource FontSizeCaption}" />
+            <Setter Property="Foreground" Value="{ThemeResource TextTertiaryBrush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style x:Key="CameraRowLabel" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="{ThemeResource AppFontFamily}" />
+            <Setter Property="FontSize" Value="{ThemeResource FontSizeBody}" />
+            <Setter Property="Foreground" Value="{ThemeResource TextSecondaryBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+        <Style x:Key="CameraRowValue" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="{ThemeResource AppFontFamily}" />
+            <Setter Property="FontSize" Value="{ThemeResource FontSizeBody}" />
+            <Setter Property="Foreground" Value="{ThemeResource TextPrimaryBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="HorizontalAlignment" Value="Right" />
+        </Style>
+        <Style x:Key="CameraButton" TargetType="Button">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Center" />
+            <Setter Property="Height" Value="{ThemeResource SizeControl}" />
+            <Setter Property="CornerRadius" Value="{ThemeResource RadiusControl}" />
+            <Setter Property="Background" Value="{ThemeResource ControlBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource ControlStrokeBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="Foreground" Value="{ThemeResource TextPrimaryBrush}" />
+            <Setter Property="FontFamily" Value="{ThemeResource AppFontFamily}" />
+            <Setter Property="FontSize" Value="{ThemeResource FontSizeBody}" />
+        </Style>
+        <Style x:Key="CameraButtonAccent" TargetType="Button" BasedOn="{StaticResource CameraButton}">
+            <Setter Property="Background" Value="{ThemeResource AccentBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource AccentBrush}" />
+            <Setter Property="Foreground" Value="{ThemeResource AccentOnBrush}" />
+        </Style>
+        <Style x:Key="CameraIconIdle" TargetType="FontIcon">
+            <Setter Property="Foreground" Value="{ThemeResource TextSecondaryBrush}" />
+        </Style>
+        <Style x:Key="CameraIconRecording" TargetType="FontIcon">
+            <Setter Property="Foreground" Value="{ThemeResource CriticalBrush}" />
+        </Style>
+    </UserControl.Resources>
+
+    <Border Background="{ThemeResource CardBrush}"
+            BorderBrush="{ThemeResource CardStrokeBrush}"
+            BorderThickness="1"
+            CornerRadius="{ThemeResource RadiusOverlay}">
+        <ScrollViewer HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <StackPanel Padding="16" Spacing="{ThemeResource SpaceMd}">
+
+                <Grid ColumnSpacing="{ThemeResource SpaceMd}">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <FontIcon x:Name="StateIcon"
+                              Glyph="&#xE722;"
+                              FontSize="16"
+                              VerticalAlignment="Center"
+                              Style="{StaticResource CameraIconIdle}" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock x:Name="TitleText" Text="Camera" Style="{StaticResource CameraTitle}" />
+                        <TextBlock x:Name="StateText" Style="{StaticResource CameraCaption}" />
+                    </StackPanel>
+                    <Button Grid.Column="2"
+                            Click="OnClose"
+                            Width="32"
+                            Height="32"
+                            Padding="0"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            CornerRadius="{ThemeResource RadiusControl}"
+                            Foreground="{ThemeResource TextSecondaryBrush}"
+                            AutomationProperties.Name="Close camera controls"
+                            ToolTipService.ToolTip="Close">
+                        <FontIcon Glyph="&#xE711;" FontSize="12" />
+                    </Button>
+                </Grid>
+
+                <TextBlock x:Name="EmptyText"
+                           Text="No camera on this vehicle."
+                           Style="{StaticResource CameraNote}"
+                           Visibility="Collapsed" />
+
+                <StackPanel x:Name="Body" Spacing="{ThemeResource SpaceMd}">
+
+                    <StackPanel x:Name="ModeRow" Spacing="{ThemeResource SpaceXs}">
+                        <Grid ColumnSpacing="{ThemeResource SpaceXs}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="*" />
+                            </Grid.ColumnDefinitions>
+                            <Button x:Name="PhotoModeButton"
+                                    Click="OnPhotoMode"
+                                    Style="{StaticResource CameraButton}"
+                                    AutomationProperties.Name="Photo mode"
+                                    ToolTipService.ToolTip="Switch between photo and video">
+                                <StackPanel Orientation="Horizontal" Spacing="{ThemeResource SpaceSm}">
+                                    <FontIcon Glyph="&#xE722;" FontSize="14" />
+                                    <TextBlock Text="Photo" />
+                                </StackPanel>
+                            </Button>
+                            <Button x:Name="VideoModeButton"
+                                    Grid.Column="1"
+                                    Click="OnVideoMode"
+                                    Style="{StaticResource CameraButton}"
+                                    AutomationProperties.Name="Video mode"
+                                    ToolTipService.ToolTip="Switch between photo and video">
+                                <StackPanel Orientation="Horizontal" Spacing="{ThemeResource SpaceSm}">
+                                    <FontIcon Glyph="&#xE714;" FontSize="14" />
+                                    <TextBlock Text="Video" />
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+                        <TextBlock x:Name="ModeAside" Style="{StaticResource CameraNote}" Visibility="Collapsed" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="{ThemeResource SpaceSm}">
+                        <Button x:Name="ShutterButton"
+                                Click="OnShutter"
+                                Style="{StaticResource CameraButtonAccent}"
+                                Visibility="Collapsed">
+                            <StackPanel Orientation="Horizontal" Spacing="{ThemeResource SpaceSm}">
+                                <FontIcon Glyph="&#xE722;" FontSize="14" />
+                                <TextBlock x:Name="ShutterText" Text="Take photo" />
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="StopIntervalButton"
+                                Click="OnStopInterval"
+                                Style="{StaticResource CameraButton}"
+                                Visibility="Collapsed">
+                            <StackPanel Orientation="Horizontal" Spacing="{ThemeResource SpaceSm}">
+                                <FontIcon Glyph="&#xE71A;" FontSize="14" Style="{StaticResource CameraIconRecording}" />
+                                <TextBlock Text="Stop interval" />
+                            </StackPanel>
+                        </Button>
+                        <Button x:Name="RecordButton"
+                                Click="OnRecord"
+                                Style="{StaticResource CameraButton}"
+                                Visibility="Collapsed">
+                            <StackPanel Orientation="Horizontal" Spacing="{ThemeResource SpaceSm}">
+                                <FontIcon x:Name="RecordIcon" Glyph="&#xE7C8;" FontSize="14" Style="{StaticResource CameraIconRecording}" />
+                                <TextBlock x:Name="RecordText" Text="Record" />
+                            </StackPanel>
+                        </Button>
+                        <TextBlock x:Name="NoticeText" Style="{StaticResource CameraCaption}" Visibility="Collapsed" />
+                    </StackPanel>
+
+                    <StackPanel Spacing="{ThemeResource SpaceSm}">
+                        <Grid x:Name="ShotsRow" ColumnSpacing="{ThemeResource SpaceSm}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Photos taken" Style="{StaticResource CameraRowLabel}" />
+                            <TextBlock x:Name="ShotsText" Grid.Column="1" Style="{StaticResource CameraRowValue}" />
+                        </Grid>
+                        <Grid x:Name="ClockRow" ColumnSpacing="{ThemeResource SpaceSm}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Recording time" Style="{StaticResource CameraRowLabel}" />
+                            <TextBlock x:Name="ClockText" Grid.Column="1" Style="{StaticResource CameraRowValue}" />
+                        </Grid>
+                        <Grid x:Name="BatteryRow" ColumnSpacing="{ThemeResource SpaceSm}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Camera battery" Style="{StaticResource CameraRowLabel}" />
+                            <TextBlock x:Name="BatteryText" Grid.Column="1" Style="{StaticResource CameraRowValue}" />
+                        </Grid>
+                        <Grid x:Name="StorageRow" ColumnSpacing="{ThemeResource SpaceSm}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Storage" Style="{StaticResource CameraRowLabel}" />
+                            <TextBlock x:Name="StorageText" Grid.Column="1" Style="{StaticResource CameraRowValue}" />
+                        </Grid>
+                    </StackPanel>
+
+                    <StackPanel x:Name="ZoomRow" Spacing="{ThemeResource SpaceXs}" Visibility="Collapsed">
+                        <Grid ColumnSpacing="{ThemeResource SpaceSm}">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+                            <TextBlock Text="Zoom" Style="{StaticResource CameraRowLabel}" />
+                            <TextBlock x:Name="ZoomText" Grid.Column="1" Style="{StaticResource CameraRowValue}" />
+                        </Grid>
+                        <Slider x:Name="ZoomSlider"
+                                Minimum="0"
+                                Maximum="100"
+                                ValueChanged="OnZoomChanged"
+                                AutomationProperties.Name="Zoom" />
+                    </StackPanel>
+
+                    <StackPanel x:Name="SettingsSection" Spacing="{ThemeResource SpaceSm}" Visibility="Collapsed">
+                        <TextBlock Text="SETTINGS" Style="{StaticResource StatLabel}" />
+                        <TextBlock x:Name="SettingsState" Style="{StaticResource CameraNote}" Visibility="Collapsed" />
+                        <StackPanel x:Name="SettingsList" Spacing="{ThemeResource SpaceSm}" />
+                    </StackPanel>
+
+                    <TextBlock x:Name="ModeUnknownText"
+                               Text="The camera has not said which mode it is in."
+                               Style="{StaticResource CameraNote}"
+                               Visibility="Collapsed" />
+                </StackPanel>
+
+                <Border x:Name="RefusalBox"
+                        Background="{ThemeResource CriticalBgBrush}"
+                        CornerRadius="{ThemeResource RadiusControl}"
+                        Padding="8"
+                        Visibility="Collapsed">
+                    <TextBlock x:Name="RefusalText" Style="{StaticResource CameraCaption}" Foreground="{ThemeResource CriticalBrush}" />
+                </Border>
+            </StackPanel>
+        </ScrollViewer>
+    </Border>
+</UserControl>

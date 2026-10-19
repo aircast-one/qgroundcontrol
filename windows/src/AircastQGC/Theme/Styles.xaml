@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Style x:Key="NavItem" TargetType="Border">
+        <Setter Property="Height" Value="36" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="Padding" Value="12,0" />
+        <Setter Property="Background" Value="Transparent" />
+    </Style>
+
+    <Style x:Key="NavItemSelected" TargetType="Border" BasedOn="{StaticResource NavItem}">
+        <Setter Property="Background" Value="{ThemeResource SubtleSelectedBrush}" />
+    </Style>
+
+    <Style x:Key="NavLabel" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{ThemeResource AppFontFamily}" />
+        <Setter Property="FontSize" Value="{ThemeResource FontSizeBody}" />
+        <Setter Property="Foreground" Value="{ThemeResource TextSecondaryBrush}" />
+        <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <Style x:Key="StatLabel" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{ThemeResource AppFontFamily}" />
+        <Setter Property="FontSize" Value="{ThemeResource FontSizeCaption}" />
+        <Setter Property="Foreground" Value="{ThemeResource TextTertiaryBrush}" />
+        <Setter Property="CharacterSpacing" Value="60" />
+    </Style>
+
+    <Style x:Key="StatValue" TargetType="TextBlock">
+        <Setter Property="FontFamily" Value="{ThemeResource AppFontFamily}" />
+        <Setter Property="FontSize" Value="{ThemeResource FontSizeSubtitle}" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Foreground" Value="{ThemeResource TextPrimaryBrush}" />
+    </Style>
+
+    <Style x:Key="MapControl" TargetType="Button">
+        <Setter Property="Width" Value="36" />
+        <Setter Property="Height" Value="36" />
+        <Setter Property="Padding" Value="0" />
+        <Setter Property="CornerRadius" Value="4" />
+        <Setter Property="Background" Value="{ThemeResource ControlBrush}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource ControlStrokeBrush}" />
+        <Setter Property="BorderThickness" Value="1" />
+        <Setter Property="Foreground" Value="{ThemeResource TextPrimaryBrush}" />
+        <Setter Property="FontFamily" Value="Segoe Fluent Icons" />
+        <Setter Property="FontSize" Value="16" />
+        <Setter Property="HorizontalContentAlignment" Value="Center" />
+        <Setter Property="VerticalContentAlignment" Value="Center" />
+    </Style>
+
+</ResourceDictionary>

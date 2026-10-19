@@ -1,0 +1,103 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="AircastQGC.Controls.VideoThumbnail"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <UserControl.Resources>
+        <Style x:Key="VideoHeadline" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="{ThemeResource AppFontFamily}" />
+            <Setter Property="FontSize" Value="{ThemeResource FontSizeBody}" />
+            <Setter Property="Foreground" Value="{ThemeResource TextSecondaryBrush}" />
+            <Setter Property="TextAlignment" Value="Center" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="MaxLines" Value="2" />
+        </Style>
+        <Style x:Key="VideoDetail" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="{ThemeResource AppFontFamily}" />
+            <Setter Property="FontSize" Value="{ThemeResource FontSizeCaption}" />
+            <Setter Property="Foreground" Value="{ThemeResource TextTertiaryBrush}" />
+            <Setter Property="TextAlignment" Value="Center" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+            <Setter Property="MaxLines" Value="2" />
+        </Style>
+        <Style x:Key="VideoCaption" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="{ThemeResource AppFontFamily}" />
+            <Setter Property="FontSize" Value="{ThemeResource FontSizeCaption}" />
+            <Setter Property="Foreground" Value="{ThemeResource TextPrimaryBrush}" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+            <Setter Property="MaxLines" Value="1" />
+        </Style>
+        <Style x:Key="VideoDotLive" TargetType="Ellipse">
+            <Setter Property="Fill" Value="{ThemeResource SuccessBrush}" />
+        </Style>
+        <Style x:Key="VideoDotConnecting" TargetType="Ellipse">
+            <Setter Property="Fill" Value="{ThemeResource CautionBrush}" />
+        </Style>
+        <Style x:Key="VideoDotIdle" TargetType="Ellipse">
+            <Setter Property="Fill" Value="{ThemeResource TextTertiaryBrush}" />
+        </Style>
+    </UserControl.Resources>
+
+    <Grid>
+        <Button x:Name="Tile"
+                Click="OnTileClick"
+                HorizontalAlignment="Stretch"
+                VerticalAlignment="Stretch"
+                HorizontalContentAlignment="Stretch"
+                VerticalContentAlignment="Stretch"
+                Padding="0"
+                Background="{ThemeResource BgSecondaryBrush}"
+                BorderBrush="{ThemeResource CardStrokeBrush}"
+                BorderThickness="1"
+                CornerRadius="{ThemeResource RadiusOverlay}"
+                AutomationProperties.Name="Swap video and map"
+                ToolTipService.ToolTip="Swap video and map">
+            <Grid>
+                <StackPanel HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Margin="12,0,12,24"
+                            Spacing="{ThemeResource SpaceXs}">
+                    <FontIcon Glyph="&#xE714;" FontSize="24" Foreground="{ThemeResource TextTertiaryBrush}" />
+                    <TextBlock x:Name="Headline" Text="No video" Style="{StaticResource VideoHeadline}" />
+                    <TextBlock x:Name="Detail" Style="{StaticResource VideoDetail}" Visibility="Collapsed" />
+                </StackPanel>
+                <Border HorizontalAlignment="Left"
+                        VerticalAlignment="Bottom"
+                        Margin="8"
+                        Height="20"
+                        Padding="8,0"
+                        CornerRadius="10"
+                        Background="{ThemeResource LayerBrush}">
+                    <StackPanel Orientation="Horizontal" Spacing="{ThemeResource SpaceXs}">
+                        <Ellipse x:Name="Dot" Width="6" Height="6" VerticalAlignment="Center" Style="{StaticResource VideoDotIdle}" />
+                        <TextBlock x:Name="Caption" Text="Video" Style="{StaticResource VideoCaption}" />
+                    </StackPanel>
+                </Border>
+            </Grid>
+        </Button>
+
+        <Button x:Name="SwitchSource"
+                Click="OnSwitchSource"
+                HorizontalAlignment="Right"
+                VerticalAlignment="Top"
+                Margin="8"
+                Padding="8,0"
+                Height="24"
+                MinHeight="0"
+                Background="{ThemeResource LayerBrush}"
+                BorderBrush="{ThemeResource ControlStrokeBrush}"
+                BorderThickness="1"
+                CornerRadius="12"
+                Foreground="{ThemeResource TextPrimaryBrush}"
+                Visibility="Collapsed"
+                AutomationProperties.Name="Show the next camera"
+                ToolTipService.ToolTip="Show the next camera">
+            <StackPanel Orientation="Horizontal" Spacing="{ThemeResource SpaceXs}">
+                <FontIcon Glyph="&#xE8AB;" FontSize="12" />
+                <TextBlock x:Name="SourceTitle" Style="{StaticResource VideoCaption}" MaxWidth="120" />
+            </StackPanel>
+        </Button>
+    </Grid>
+</UserControl>

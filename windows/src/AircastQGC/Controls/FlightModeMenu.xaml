@@ -1,0 +1,150 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="AircastQGC.Controls.FlightModeMenu"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    FontFamily="{ThemeResource AppFontFamily}"
+    FontSize="{ThemeResource FontSizeBody}">
+
+    <UserControl.Resources>
+        <Style x:Key="MenuPresenter" TargetType="FlyoutPresenter">
+            <Setter Property="Background" Value="{ThemeResource CardBrush}" />
+            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeBrush}" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="{ThemeResource RadiusOverlay}" />
+            <Setter Property="Padding" Value="0" />
+            <Setter Property="MaxWidth" Value="400" />
+        </Style>
+
+        <Style x:Key="ModeRow" TargetType="Button">
+            <Setter Property="HorizontalAlignment" Value="Stretch" />
+            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+            <Setter Property="Padding" Value="8" />
+            <Setter Property="MinHeight" Value="{ThemeResource SizeNavItem}" />
+            <Setter Property="CornerRadius" Value="{ThemeResource RadiusControl}" />
+            <Setter Property="BorderThickness" Value="0" />
+            <Setter Property="Background" Value="Transparent" />
+        </Style>
+
+        <Style x:Key="FooterButton" TargetType="Button">
+            <Setter Property="FontFamily" Value="{ThemeResource AppFontFamily}" />
+            <Setter Property="FontSize" Value="{ThemeResource FontSizeBody}" />
+            <Setter Property="MinWidth" Value="80" />
+            <Setter Property="MinHeight" Value="{ThemeResource SizeControl}" />
+            <Setter Property="Padding" Value="12,4" />
+            <Setter Property="BorderThickness" Value="1" />
+            <Setter Property="CornerRadius" Value="{ThemeResource RadiusControl}" />
+        </Style>
+
+        <Style x:Key="ModeName" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="{ThemeResource AppFontFamily}" />
+            <Setter Property="FontSize" Value="{ThemeResource FontSizeBody}" />
+            <Setter Property="Foreground" Value="{ThemeResource TextPrimaryBrush}" />
+            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
+        </Style>
+
+        <Style x:Key="ModeSummary" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="{ThemeResource AppFontFamily}" />
+            <Setter Property="FontSize" Value="{ThemeResource FontSizeCaption}" />
+            <Setter Property="Foreground" Value="{ThemeResource TextTertiaryBrush}" />
+            <Setter Property="TextWrapping" Value="Wrap" />
+        </Style>
+
+        <Style x:Key="ModeGlyph" TargetType="FontIcon">
+            <Setter Property="FontSize" Value="16" />
+            <Setter Property="Width" Value="20" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{ThemeResource TextSecondaryBrush}" />
+        </Style>
+
+        <Style x:Key="ModeGlyphCurrent" TargetType="FontIcon" BasedOn="{StaticResource ModeGlyph}">
+            <Setter Property="Foreground" Value="{ThemeResource AccentBrush}" />
+        </Style>
+
+        <Style x:Key="ModeCheck" TargetType="FontIcon">
+            <Setter Property="FontSize" Value="12" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+            <Setter Property="Foreground" Value="{ThemeResource AccentBrush}" />
+        </Style>
+
+        <Style x:Key="CautionChip" TargetType="Border">
+            <Setter Property="Background" Value="{ThemeResource CautionBgBrush}" />
+            <Setter Property="CornerRadius" Value="{ThemeResource RadiusControl}" />
+            <Setter Property="Padding" Value="6,2" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <Style x:Key="CautionChipText" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="{ThemeResource AppFontFamily}" />
+            <Setter Property="FontSize" Value="{ThemeResource FontSizeCaption}" />
+            <Setter Property="Foreground" Value="{ThemeResource CautionBrush}" />
+        </Style>
+
+        <Style x:Key="SectionDivider" TargetType="Rectangle">
+            <Setter Property="Height" Value="1" />
+            <Setter Property="Margin" Value="8,4" />
+            <Setter Property="Fill" Value="{ThemeResource DividerBrush}" />
+        </Style>
+    </UserControl.Resources>
+
+    <StackPanel Width="360" Padding="12" Spacing="8">
+        <StackPanel Spacing="2" Padding="8,0">
+            <TextBlock Text="Flight mode" FontWeight="SemiBold"
+                       FontSize="{ThemeResource FontSizeBody}" Foreground="{ThemeResource TextPrimaryBrush}" />
+            <TextBlock x:Name="SummaryText" Visibility="Collapsed" TextWrapping="Wrap"
+                       FontSize="{ThemeResource FontSizeCaption}" Foreground="{ThemeResource TextTertiaryBrush}" />
+        </StackPanel>
+
+        <Border x:Name="NoticeBox" Visibility="Collapsed" Padding="8"
+                Background="{ThemeResource CautionBgBrush}" CornerRadius="{ThemeResource RadiusControl}">
+            <Grid ColumnSpacing="8">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <FontIcon Glyph="&#xE7BA;" FontSize="14" VerticalAlignment="Top" Foreground="{ThemeResource CautionBrush}" />
+                <TextBlock x:Name="NoticeText" Grid.Column="1" TextWrapping="Wrap"
+                           FontSize="{ThemeResource FontSizeCaption}" Foreground="{ThemeResource TextPrimaryBrush}" />
+            </Grid>
+        </Border>
+
+        <TextBlock x:Name="EmptyText" Padding="8,4" TextWrapping="Wrap"
+                   Text="No vehicle with flight modes is connected."
+                   FontSize="{ThemeResource FontSizeBody}" Foreground="{ThemeResource TextSecondaryBrush}" />
+
+        <ScrollViewer x:Name="ListScroll" MaxHeight="380" VerticalScrollBarVisibility="Auto">
+            <StackPanel x:Name="Lists" Spacing="4">
+                <StackPanel x:Name="EverydayList" Spacing="2" />
+                <StackPanel x:Name="FoldedList" Spacing="2" Visibility="Collapsed" />
+            </StackPanel>
+        </ScrollViewer>
+
+        <Button x:Name="MoreButton" Style="{StaticResource ModeRow}" Visibility="Collapsed" Click="OnMoreClick">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <FontIcon x:Name="MoreGlyph" Glyph="&#xE70D;" FontSize="12" Foreground="{ThemeResource AccentTextBrush}" />
+                <TextBlock x:Name="MoreText" FontSize="{ThemeResource FontSizeBody}" Foreground="{ThemeResource AccentTextBrush}" />
+            </StackPanel>
+        </Button>
+
+        <TextBlock x:Name="ErrorText" Visibility="Collapsed" Padding="8,0" TextWrapping="Wrap"
+                   FontSize="{ThemeResource FontSizeCaption}" Foreground="{ThemeResource CriticalBrush}" />
+
+        <Rectangle Height="1" Margin="-12,0" Fill="{ThemeResource DividerBrush}" />
+
+        <Grid x:Name="Footer" ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBlock x:Name="ConfirmText" Visibility="Collapsed" VerticalAlignment="Center" TextWrapping="Wrap"
+                       FontSize="{ThemeResource FontSizeCaption}" Foreground="{ThemeResource CautionBrush}" />
+            <Button x:Name="BackButton" Grid.Column="1" Content="Back" Visibility="Collapsed"
+                    Style="{StaticResource FooterButton}" Click="OnBackClick" />
+            <Button x:Name="CancelButton" Grid.Column="2" Content="Cancel"
+                    Style="{StaticResource FooterButton}" Click="OnCancelClick" />
+            <Button x:Name="ConfirmButton" Grid.Column="2" Visibility="Collapsed"
+                    Style="{StaticResource FooterButton}" Click="OnConfirmClick" />
+        </Grid>
+    </StackPanel>
+</UserControl>

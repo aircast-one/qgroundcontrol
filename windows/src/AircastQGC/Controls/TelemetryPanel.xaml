@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="AircastQGC.Controls.TelemetryPanel"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Border Background="{ThemeResource CardBrush}" BorderBrush="{ThemeResource CardStrokeBrush}" BorderThickness="1"
+            CornerRadius="{StaticResource RadiusOverlay}" Padding="16">
+        <StackPanel Spacing="{StaticResource SpaceMd}">
+            <Canvas x:Name="Dial" Width="120" Height="120" HorizontalAlignment="Center">
+                <Ellipse Width="120" Height="120" Fill="{ThemeResource BgSecondaryBrush}" />
+                <Line x:Name="Horizon" Stroke="{ThemeResource TextTertiaryBrush}" StrokeThickness="1.5" />
+                <Ellipse x:Name="Ring" Width="120" Height="120" Stroke="{ThemeResource TextSecondaryBrush}" StrokeThickness="1.5" />
+                <Canvas x:Name="Ticks" />
+                <Grid x:Name="Pilot" Width="10" Height="10" Visibility="Collapsed">
+                    <Ellipse Fill="{ThemeResource TextPrimaryBrush}" />
+                    <Ellipse Width="7" Height="7" Fill="{ThemeResource AccentBrush}" />
+                </Grid>
+                <Grid x:Name="North" Width="16" Height="16">
+                    <TextBlock Text="N" FontFamily="{ThemeResource AppFontFamily}" FontSize="11" FontWeight="Bold"
+                               Foreground="{ThemeResource CriticalBrush}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Grid>
+                <Grid x:Name="Home" Width="14" Height="14" Visibility="Collapsed">
+                    <Ellipse Fill="{ThemeResource SuccessBrush}" />
+                    <TextBlock Text="H" FontFamily="{ThemeResource AppFontFamily}" FontSize="9" FontWeight="Bold"
+                               Foreground="{ThemeResource AccentOnBrush}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center" />
+                </Grid>
+                <Polygon Points="60,34.8 78,78 60,68.4 42,78" Fill="{ThemeResource TextPrimaryBrush}"
+                         Stroke="{ThemeResource BgSecondaryBrush}" StrokeThickness="1" />
+                <TextBlock x:Name="DialHeading" Canvas.Top="90" Width="120" TextAlignment="Center"
+                           FontFamily="{ThemeResource AppFontFamily}" FontSize="11" FontWeight="Bold"
+                           Foreground="{ThemeResource TextPrimaryBrush}" />
+            </Canvas>
+
+            <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceLg}" HorizontalAlignment="Center">
+                <StackPanel Spacing="2">
+                    <TextBlock Text="HEADING" Style="{StaticResource StatLabel}" />
+                    <TextBlock x:Name="HeadingValue" Text="&#x2014;" Style="{StaticResource StatValue}" />
+                </StackPanel>
+                <StackPanel Spacing="2">
+                    <TextBlock Text="ROLL" Style="{StaticResource StatLabel}" />
+                    <TextBlock x:Name="RollValue" Text="&#x2014;" Style="{StaticResource StatValue}" />
+                </StackPanel>
+                <StackPanel Spacing="2">
+                    <TextBlock Text="PITCH" Style="{StaticResource StatLabel}" />
+                    <TextBlock x:Name="PitchValue" Text="&#x2014;" Style="{StaticResource StatValue}" />
+                </StackPanel>
+            </StackPanel>
+        </StackPanel>
+    </Border>
+</UserControl>

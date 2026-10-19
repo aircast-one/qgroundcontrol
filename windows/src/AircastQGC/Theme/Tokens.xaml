@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ResourceDictionary.ThemeDictionaries>
+
+        <ResourceDictionary x:Key="Default">
+            <SolidColorBrush x:Key="BgBaseBrush" Color="#202020" />
+            <SolidColorBrush x:Key="BgSecondaryBrush" Color="#1C1C1C" />
+            <SolidColorBrush x:Key="LayerBrush" Color="#272727" />
+            <SolidColorBrush x:Key="CardBrush" Color="#2B2B2B" />
+            <SolidColorBrush x:Key="CardStrokeBrush" Color="#1D1D1D" />
+            <SolidColorBrush x:Key="ControlBrush" Color="#2D2D2D" />
+            <SolidColorBrush x:Key="ControlHoverBrush" Color="#323232" />
+            <SolidColorBrush x:Key="ControlStrokeBrush" Color="#3B3B3B" />
+            <SolidColorBrush x:Key="SubtleHoverBrush" Color="#2D2D2D" />
+            <SolidColorBrush x:Key="SubtleSelectedBrush" Color="#2D2D2D" />
+            <SolidColorBrush x:Key="DividerBrush" Color="#333333" />
+            <SolidColorBrush x:Key="TextPrimaryBrush" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="TextSecondaryBrush" Color="#C5C5C5" />
+            <SolidColorBrush x:Key="TextTertiaryBrush" Color="#9E9E9E" />
+            <SolidColorBrush x:Key="TextDisabledBrush" Color="#5D5D5D" />
+            <SolidColorBrush x:Key="AccentBrush" Color="#60CDFF" />
+            <SolidColorBrush x:Key="AccentHoverBrush" Color="#5AB9E6" />
+            <SolidColorBrush x:Key="AccentOnBrush" Color="#000000" />
+            <SolidColorBrush x:Key="AccentTextBrush" Color="#99EBFF" />
+            <SolidColorBrush x:Key="SuccessBrush" Color="#6CCB5F" />
+            <SolidColorBrush x:Key="SuccessBgBrush" Color="#393D1B" />
+            <SolidColorBrush x:Key="CautionBrush" Color="#FCE100" />
+            <SolidColorBrush x:Key="CautionBgBrush" Color="#433519" />
+            <SolidColorBrush x:Key="CriticalBrush" Color="#FF99A4" />
+            <SolidColorBrush x:Key="CriticalBgBrush" Color="#442726" />
+            <SolidColorBrush x:Key="InfoBgBrush" Color="#2B2B2B" />
+            <SolidColorBrush x:Key="MapWaterBrush" Color="#1B2733" />
+            <SolidColorBrush x:Key="MapLandBrush" Color="#23282B" />
+            <SolidColorBrush x:Key="MapRoadBrush" Color="#343B40" />
+            <SolidColorBrush x:Key="MapPathBrush" Color="#60CDFF" />
+            <SolidColorBrush x:Key="MapFieldBrush" Color="#293034" />
+        </ResourceDictionary>
+
+        <ResourceDictionary x:Key="Light">
+            <SolidColorBrush x:Key="BgBaseBrush" Color="#202020" />
+            <SolidColorBrush x:Key="BgSecondaryBrush" Color="#1C1C1C" />
+            <SolidColorBrush x:Key="LayerBrush" Color="#272727" />
+            <SolidColorBrush x:Key="CardBrush" Color="#2B2B2B" />
+            <SolidColorBrush x:Key="CardStrokeBrush" Color="#1D1D1D" />
+            <SolidColorBrush x:Key="ControlBrush" Color="#2D2D2D" />
+            <SolidColorBrush x:Key="ControlHoverBrush" Color="#323232" />
+            <SolidColorBrush x:Key="ControlStrokeBrush" Color="#3B3B3B" />
+            <SolidColorBrush x:Key="SubtleHoverBrush" Color="#2D2D2D" />
+            <SolidColorBrush x:Key="SubtleSelectedBrush" Color="#2D2D2D" />
+            <SolidColorBrush x:Key="DividerBrush" Color="#333333" />
+            <SolidColorBrush x:Key="TextPrimaryBrush" Color="#FFFFFF" />
+            <SolidColorBrush x:Key="TextSecondaryBrush" Color="#C5C5C5" />
+            <SolidColorBrush x:Key="TextTertiaryBrush" Color="#9E9E9E" />
+            <SolidColorBrush x:Key="TextDisabledBrush" Color="#5D5D5D" />
+            <SolidColorBrush x:Key="AccentBrush" Color="#60CDFF" />
+            <SolidColorBrush x:Key="AccentHoverBrush" Color="#5AB9E6" />
+            <SolidColorBrush x:Key="AccentOnBrush" Color="#000000" />
+            <SolidColorBrush x:Key="AccentTextBrush" Color="#99EBFF" />
+            <SolidColorBrush x:Key="SuccessBrush" Color="#6CCB5F" />
+            <SolidColorBrush x:Key="SuccessBgBrush" Color="#393D1B" />
+            <SolidColorBrush x:Key="CautionBrush" Color="#FCE100" />
+            <SolidColorBrush x:Key="CautionBgBrush" Color="#433519" />
+            <SolidColorBrush x:Key="CriticalBrush" Color="#FF99A4" />
+            <SolidColorBrush x:Key="CriticalBgBrush" Color="#442726" />
+            <SolidColorBrush x:Key="InfoBgBrush" Color="#2B2B2B" />
+            <SolidColorBrush x:Key="MapWaterBrush" Color="#1B2733" />
+            <SolidColorBrush x:Key="MapLandBrush" Color="#23282B" />
+            <SolidColorBrush x:Key="MapRoadBrush" Color="#343B40" />
+            <SolidColorBrush x:Key="MapPathBrush" Color="#60CDFF" />
+            <SolidColorBrush x:Key="MapFieldBrush" Color="#293034" />
+        </ResourceDictionary>
+
+    </ResourceDictionary.ThemeDictionaries>
+
+    <FontFamily x:Key="AppFontFamily">Inter</FontFamily>
+
+    <x:Double x:Key="FontSizeCaption">12</x:Double>
+    <x:Double x:Key="FontSizeBody">14</x:Double>
+    <x:Double x:Key="FontSizeBodyLarge">18</x:Double>
+    <x:Double x:Key="FontSizeSubtitle">20</x:Double>
+    <x:Double x:Key="FontSizeTitle">28</x:Double>
+    <x:Double x:Key="FontSizeTitleLarge">40</x:Double>
+
+    <x:Double x:Key="FontWeightRegularValue">400</x:Double>
+    <x:Double x:Key="FontWeightSemiboldValue">600</x:Double>
+
+    <x:Double x:Key="SpaceXs">4</x:Double>
+    <x:Double x:Key="SpaceSm">8</x:Double>
+    <x:Double x:Key="SpaceMd">12</x:Double>
+    <x:Double x:Key="SpaceLg">16</x:Double>
+    <x:Double x:Key="SpaceXl">24</x:Double>
+    <x:Double x:Key="SpaceXxl">32</x:Double>
+
+    <x:Double x:Key="SizeControl">32</x:Double>
+    <x:Double x:Key="SizeNavItem">36</x:Double>
+    <x:Double x:Key="SizeTitlebar">48</x:Double>
+    <x:Double x:Key="SizeNavPane">280</x:Double>
+
+    <x:Double x:Key="StrokeDefault">1</x:Double>
+
+    <CornerRadius x:Key="RadiusControl">4</CornerRadius>
+    <CornerRadius x:Key="RadiusOverlay">8</CornerRadius>
+    <CornerRadius x:Key="RadiusPill">999</CornerRadius>
+
+</ResourceDictionary>

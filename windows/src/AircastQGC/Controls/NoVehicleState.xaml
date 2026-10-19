@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="AircastQGC.Controls.NoVehicleState"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Border HorizontalAlignment="Center"
+            VerticalAlignment="Center"
+            MaxWidth="360"
+            Padding="24"
+            Background="{ThemeResource CardBrush}"
+            BorderBrush="{ThemeResource CardStrokeBrush}"
+            BorderThickness="1"
+            CornerRadius="{ThemeResource RadiusOverlay}">
+        <StackPanel Spacing="12">
+            <Border Width="64"
+                    Height="64"
+                    HorizontalAlignment="Center"
+                    CornerRadius="{ThemeResource RadiusPill}"
+                    Background="{ThemeResource LayerBrush}">
+                <FontIcon Glyph="&#xE709;" FontSize="28" Foreground="{ThemeResource TextTertiaryBrush}" />
+            </Border>
+            <TextBlock Text="No vehicle connected"
+                       HorizontalAlignment="Center"
+                       TextAlignment="Center"
+                       FontFamily="{ThemeResource AppFontFamily}"
+                       FontSize="{ThemeResource FontSizeSubtitle}"
+                       FontWeight="SemiBold"
+                       Foreground="{ThemeResource TextPrimaryBrush}" />
+            <TextBlock Text="Power on the vehicle and its radio, then start its link in Connections."
+                       HorizontalAlignment="Center"
+                       TextAlignment="Center"
+                       TextWrapping="Wrap"
+                       FontFamily="{ThemeResource AppFontFamily}"
+                       FontSize="{ThemeResource FontSizeBody}"
+                       Foreground="{ThemeResource TextSecondaryBrush}" />
+            <Button x:Name="OpenConnectionsButton"
+                    AutomationProperties.Name="Open connections"
+                    HorizontalAlignment="Center"
+                    Margin="0,4,0,0"
+                    Padding="16,6"
+                    Click="OnOpenConnections">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <FontIcon Glyph="&#xE71B;" FontSize="16" VerticalAlignment="Center" />
+                    <TextBlock Text="Open connections"
+                               VerticalAlignment="Center"
+                               FontFamily="{ThemeResource AppFontFamily}"
+                               FontSize="{ThemeResource FontSizeBody}" />
+                </StackPanel>
+            </Button>
+        </StackPanel>
+    </Border>
+</UserControl>
