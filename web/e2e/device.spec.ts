@@ -134,6 +134,18 @@ test('the Device tab holds the device pages, drawn natively, and device trouble 
   await expect(device.getByText('Before you fly')).toBeVisible();
 });
 
+test('on a desktop the device home is a dashboard, with device health beside the checks', async ({ device }) => {
+  await device.getByRole('button', { name: 'e2e-device: No camera yet' }).click();
+  const checks = device.getByRole('region', { name: 'Before you fly' });
+  const health = device.getByRole('region', { name: 'Device health' });
+  await expect(health).toBeVisible();
+  const [left, right] = await Promise.all([checks.boundingBox(), health.boundingBox()]);
+  expect(left).not.toBeNull();
+  expect(right).not.toBeNull();
+  expect(right!.x).toBeGreaterThanOrEqual(left!.x + left!.width);
+  expect(right!.y).toBeLessThan(left!.y + left!.height);
+});
+
 test('a device page offers its synthetic view on every visit, even after it was removed', async ({ device }) => {
   const offered = async () => {
     await device.getByRole('button', { name: /^Cameras, showing/ }).click();

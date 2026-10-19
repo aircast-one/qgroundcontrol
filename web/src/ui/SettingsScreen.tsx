@@ -18,6 +18,7 @@ import { LocalAppNavigation } from '@/ui/AppNavigation';
 import { CAMERAS_VIEW, VIDEO_SOURCES_PAGE, camerasGlance, camerasReading } from '@/ui/Cameras';
 import { CamerasEditor } from '@/ui/CamerasEditor';
 import { DeviceTab } from '@/ui/DeviceScreen';
+import { DETAIL_PANE_MAX_WIDTH, useDesktopLayout } from '@/ui/DesktopLayout';
 import { DEVICE_PAGE } from '@/ui/DevicePage';
 import { FLASHER_PAGE, FlasherScreen } from '@/ui/FlasherScreen';
 import { useHasVehicle } from '@/ui/FlyState';
@@ -363,11 +364,12 @@ export const SettingsScreen = ({
 }) => {
   useBackHandler(open !== null, onClose);
   const current = everyPage.find((it) => it.title === open) ?? null;
+  const desktop = useDesktopLayout();
   return (
     <LocalPageHeading.Provider value={heading}>
       <LocalSettingsList.Provider value>
-        <div className={`flex h-full w-full justify-center ${className ?? ''}`}>
-          <div className="h-full w-full" style={{ maxWidth: DETAIL_PANE_MAX_WIDTH }}>
+        <div className={`flex h-full w-full ${desktop ? 'justify-start' : 'justify-center'} ${className ?? ''}`}>
+          <div className="h-full w-full" style={desktop && group === SettingsGroup.Device ? undefined : { maxWidth: DETAIL_PANE_MAX_WIDTH }}>
             {group === SettingsGroup.Device ? (
               <DeviceTab open={open} onOpen={onOpen} onClose={onClose} />
             ) : current === null ? (
@@ -381,10 +383,6 @@ export const SettingsScreen = ({
     </LocalPageHeading.Provider>
   );
 };
-
-export const LIST_DETAIL_MIN_WIDTH = 840;
-export const LIST_PANE_WIDTH = 380;
-export const DETAIL_PANE_MAX_WIDTH = 720;
 
 const PageEntryRow = ({ page, linksJson, onOpen }: { page: SettingsPageEntry; linksJson: Json | null; onOpen: (title: string) => void }) => {
   const glance = usePageGlance(page.title);
@@ -529,9 +527,10 @@ export const SettingsSearch = ({
 
   const pageHits = pages.filter((page) => pageMatches(page, query));
   const nothing = hits.length === 0 && pageHits.length === 0 && setupHits.length === 0 && pilotHits.length === 0;
+  const desktop = useDesktopLayout();
 
   return (
-    <div className={`flex h-full w-full justify-center ${className ?? ''}`}>
+    <div className={`flex h-full w-full ${desktop ? 'justify-start' : 'justify-center'} ${className ?? ''}`}>
       <div className="h-full w-full overflow-y-auto" style={{ maxWidth: DETAIL_PANE_MAX_WIDTH }}>
         {!searching ? null : nothing ? (
           <>

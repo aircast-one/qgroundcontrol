@@ -14,7 +14,7 @@ import { useHasVehicle } from '@/ui/FlyState';
 import { GeoTagScreen } from '@/ui/GeoTagScreen';
 import { INSPECTOR_VIEW, InspectorScreen, inspectorRateText } from '@/ui/InspectorScreen';
 import { LogDownloadScreen } from '@/ui/LogDownloadScreen';
-import { DETAIL_PANE_MAX_WIDTH, LIST_DETAIL_MIN_WIDTH, LIST_PANE_WIDTH } from '@/ui/SettingsScreen';
+import { DETAIL_PANE_MAX_WIDTH, LIST_DETAIL_MIN_WIDTH, LIST_PANE_WIDTH } from '@/ui/DesktopLayout';
 import { EmptyState, LocalTwoPane, PageTopBar, SectionHeader, SetupRow, SetupState } from '@/ui/SetupRow';
 import { MESSAGES, type VehicleMessage, VehicleMessagesPage, severitySummary, unreadCount, vehicleMessages } from '@/ui/VehicleMessages';
 import { VIBRATION_VIEW, type VibrationReading, VibrationScreen, severityLabel, vibrationCaveat, vibrationGlance, vibrationReading, worstSeverity } from '@/ui/VibrationScreen';

@@ -129,6 +129,7 @@ const AIRCRAFT = {
     { title: 'Ground station links', href: '/connect', icon: 'qr-code' },
     { title: 'Connection', href: '/network', icon: 'network', summary: 'Wi-Fi' },
   ],
+  health: { memory: '120 MB of 415 MB', charts: [{ label: 'CPU', values: [3, 5, 4], max: 100, value: '4%', level: 3 }] },
 };
 
 const app = (request: IncomingMessage, response: ServerResponse) => {

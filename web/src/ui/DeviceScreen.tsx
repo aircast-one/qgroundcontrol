@@ -1,4 +1,4 @@
-import { useContext, useEffect, useState } from 'react';
+import { type ReactNode, useContext, useEffect, useState } from 'react';
 import { useBackHandler, useKeyedState } from '@/kotlin/Compose';
 import { useValue } from '@/kotlin/State';
 import { FilledTonalButton, OutlinedTextField, Surface, Text, TextButton } from '@/m3';
@@ -15,8 +15,15 @@ import { DeviceLevel } from '@/ui/DeviceLevel';
 import { DEVICE_PAGE } from '@/ui/DevicePage';
 import { DEVICE_SCREENS, type DeviceScreenEntry, devicePath } from '@/ui/DeviceScreens';
 import { DeviceChart, DeviceFact, DeviceNotice, DeviceSection, DeviceText, levelColor } from '@/ui/DeviceKit';
+import { DASHBOARD_MAX_WIDTH, DETAIL_PANE_MAX_WIDTH } from '@/ui/DesktopLayout';
 
 const checkState = (level: number): SetupState => (level === DeviceLevel.Ready ? SetupState.Done : SetupState.NeedsAttention);
+
+const PageColumn = ({ children }: { children: ReactNode }) => (
+  <div className="h-full w-full" style={{ maxWidth: DETAIL_PANE_MAX_WIDTH }}>
+    {children}
+  </div>
+);
 
 export const DeviceTab = ({ open, onOpen, onClose }: { open: string | null; onOpen: (href: string) => void; onClose: () => void }) => {
   const reading = useDeviceReading();
@@ -35,58 +42,79 @@ export const DeviceTab = ({ open, onOpen, onClose }: { open: string | null; onOp
   const opened = current === null ? null : devicePath(current);
   const entry = opened === null ? undefined : DEVICE_SCREENS.get(opened.path);
   if (current !== null && opened !== null && entry !== undefined)
-    return <NativeDevicePage key={current} entry={entry} href={current} query={opened.query} onOpen={(href) => setStack([...stack, href])} onBack={back} />;
-  if (!served && reading.origin === '') return <ConnectDevice />;
+    return (
+      <PageColumn>
+        <NativeDevicePage key={current} entry={entry} href={current} query={opened.query} onOpen={(href) => setStack([...stack, href])} onBack={back} />
+      </PageColumn>
+    );
+  if (!served && reading.origin === '')
+    return (
+      <PageColumn>
+        <ConnectDevice />
+      </PageColumn>
+    );
   if (status === null)
     return (
-      <div className="h-full w-full overflow-y-auto">
-        <FootNote text="Waiting for the device to answer…" />
-        {hosted}
-      </div>
+      <PageColumn>
+        <div className="h-full w-full overflow-y-auto">
+          <FootNote text="Waiting for the device to answer…" />
+          {hosted}
+        </div>
+      </PageColumn>
     );
   return (
-    <div className="h-full w-full overflow-y-auto">
-      <div className="flex flex-col gap-1 px-list pt-4 pb-2">
-        <Text typography="titleMedium" color={levelColor(status.level)}>
-          {status.headline}
-        </Text>
-        {status.detail !== '' ? (
-          <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
-            {status.detail}
+    <div className="@container h-full w-full overflow-y-auto">
+      <div style={{ maxWidth: DASHBOARD_MAX_WIDTH }}>
+        <div className="flex flex-col gap-1 px-list pt-4 pb-2">
+          <Text typography="titleMedium" color={levelColor(status.level)}>
+            {status.headline}
           </Text>
-        ) : null}
-        {status.action !== null ? (
-          <div className="pt-2">
-            <FilledTonalButton onClick={() => status.action !== null && onOpen(status.action.href)}>{status.action.label}</FilledTonalButton>
+          {status.detail !== '' ? (
+            <Text typography="bodyMedium" color={md('onSurfaceVariant')}>
+              {status.detail}
+            </Text>
+          ) : null}
+          {status.action !== null ? (
+            <div className="pt-2">
+              <FilledTonalButton onClick={() => status.action !== null && onOpen(status.action.href)}>{status.action.label}</FilledTonalButton>
+            </div>
+          ) : null}
+        </div>
+        {status.setup !== null ? <SetupRow title={status.setup.label} icon="ic_build" state={SetupState.NeedsAttention} onClick={() => status.setup !== null && onOpen(status.setup.href)} /> : null}
+        <div className="grid items-start @min-[880px]:grid-cols-2 @min-[880px]:grid-rows-[auto_1fr] @min-[880px]:gap-x-6">
+          <section aria-label="Before you fly">
+            <SectionHeader text="Before you fly" />
+            {status.checks.map((check) => (
+              <SetupRow
+                key={check.label}
+                title={check.label}
+                status={check.value}
+                state={checkState(check.level)}
+                onClick={check.href !== '' ? () => onOpen(check.href) : null}
+              />
+            ))}
+            <SetupRow title={status.events !== '' ? status.events : 'Flight log'} status="" state={status.events !== '' ? SetupState.NeedsAttention : SetupState.Neutral} onClick={() => onOpen('/flights')} />
+          </section>
+          <div className="@min-[880px]:col-start-2 @min-[880px]:row-span-2 @min-[880px]:row-start-1">
+            {status.link !== null ? <UplinkSection link={status.link} /> : null}
+            {status.health !== null ? <HealthSection health={status.health} /> : null}
           </div>
-        ) : null}
+          <div>
+            <SectionHeader text={status.name !== '' ? status.name : 'Device'} />
+            {status.pages.map((page) => (
+              <SetupRow
+                key={page.href}
+                title={page.title}
+                status={page.summary}
+                icon={devicePageIcon(page.icon)}
+                state={page.needs ? SetupState.NeedsAttention : SetupState.Neutral}
+                onClick={() => onOpen(page.href)}
+              />
+            ))}
+            {hosted}
+          </div>
+        </div>
       </div>
-      {status.setup !== null ? <SetupRow title={status.setup.label} icon="ic_build" state={SetupState.NeedsAttention} onClick={() => status.setup !== null && onOpen(status.setup.href)} /> : null}
-      <SectionHeader text="Before you fly" />
-      {status.checks.map((check) => (
-        <SetupRow
-          key={check.label}
-          title={check.label}
-          status={check.value}
-          state={checkState(check.level)}
-          onClick={check.href !== '' ? () => onOpen(check.href) : null}
-        />
-      ))}
-      <SetupRow title={status.events !== '' ? status.events : 'Flight log'} status="" state={status.events !== '' ? SetupState.NeedsAttention : SetupState.Neutral} onClick={() => onOpen('/flights')} />
-      {status.link !== null ? <UplinkSection link={status.link} /> : null}
-      {status.health !== null ? <HealthSection health={status.health} /> : null}
-      <SectionHeader text={status.name !== '' ? status.name : 'Device'} />
-      {status.pages.map((page) => (
-        <SetupRow
-          key={page.href}
-          title={page.title}
-          status={page.summary}
-          icon={devicePageIcon(page.icon)}
-          state={page.needs ? SetupState.NeedsAttention : SetupState.Neutral}
-          onClick={() => onOpen(page.href)}
-        />
-      ))}
-      {hosted}
     </div>
   );
 };

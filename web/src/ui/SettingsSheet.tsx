@@ -8,10 +8,10 @@ import { AircastSpace, aircast, md, withAlpha } from '@/theme/Colors';
 import { LocalAppNavigation } from '@/ui/AppNavigation';
 import { osdShadow } from '@/ui/Osd';
 import { LocalPageHeading, type PageHeading, SearchPill } from '@/ui/SetupRow';
-import { useDesktopLayout } from '@/ui/DesktopLayout';
+import { DETAIL_PANE_MAX_WIDTH, useDesktopLayout } from '@/ui/DesktopLayout';
 import { SetupScreen } from '@/ui/SetupScreen';
 import { type ChangeNotice, LocalChangeNotice } from '@/ui/ValueRow';
-import { AIRCRAFT_SETUP, DETAIL_PANE_MAX_WIDTH, SettingsGroup, SettingsGroupEntries, SettingsScreen, SettingsSearch, pageLook, pageTitle, useRememberSettingsPages } from '@/ui/SettingsScreen';
+import { AIRCRAFT_SETUP, SettingsGroup, SettingsGroupEntries, SettingsScreen, SettingsSearch, pageLook, pageTitle, useRememberSettingsPages } from '@/ui/SettingsScreen';
 
 export const sheetDrilled = (openPage: string | null, setupOpen: boolean): boolean => openPage !== null || setupOpen;
 
@@ -242,7 +242,7 @@ export const SettingsSheet = ({ requested, onClose }: { requested: string | null
               <SideTabs groups={groups} selected={query === null && !setupOpen ? group : null} onPick={pickTab} />
             </nav>
             <div className="relative flex min-w-0 flex-1 flex-col">
-              <div className={`mx-auto flex w-full items-center gap-2 pt-page pb-2 ${setupOpen ? 'px-page pr-16' : 'px-list'}`} style={setupOpen ? undefined : { maxWidth: DETAIL_PANE_MAX_WIDTH }}>
+              <div className={`flex w-full items-center gap-2 pt-page pb-2 ${setupOpen ? 'px-page pr-16' : 'px-list'}`} style={setupOpen ? undefined : { maxWidth: DETAIL_PANE_MAX_WIDTH }}>
                 {drilledTitle !== null ? (
                   <IconButton onClick={setupOpen ? setupBack : pageBack} label="Back" className="-ml-2">
                     <Drawable name="ic_arrow_back" />
