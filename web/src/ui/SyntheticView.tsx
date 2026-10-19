@@ -262,7 +262,7 @@ export const SyntheticView = ({ className, aimable = false, standIn = null }: { 
 };
 
 const SyntheticNote = ({ note, loading }: { note: string; loading: boolean }) => (
-  <div className={`absolute inset-0 flex items-center justify-center px-4 ${osdShadow()}`}>
+  <div className={`pointer-events-none absolute inset-0 flex items-center justify-center px-4 select-none ${osdShadow()}`}>
     <div className="flex items-center gap-2">
       {loading ? <CircularProgressIndicator size={NOTE_SPINNER} strokeWidth={NOTE_SPINNER_STROKE} color={aircast('outdoorForeground')} /> : null}
       <Text typography="labelLarge" color={aircast('outdoorForeground')} textAlign="center" maxLines={2}>

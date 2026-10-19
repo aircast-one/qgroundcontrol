@@ -79,3 +79,21 @@ test('with a gimbal, a drag on the picked synthetic view turns the view and leav
   await expect.poll(async () => (await pan()) - panBefore, { timeout: 10_000 }).toBeGreaterThan(12);
   expect(Math.abs(((await yaw()) as number) - yawBefore), 'the gimbal is not the picked camera').toBeLessThan(2);
 });
+
+test('with a gimbal and the synthetic view standing in for the camera, the tilt slider takes the drag: pulled down, the camera tilts down', async ({ app }) => {
+  await connectMock(app, ['Enable camera', 'Enable gimbal']);
+  const notice = app.getByText(/showing synthetic view$/);
+  await expect(notice).toBeVisible({ timeout: 30_000 });
+  const tilt = app.getByRole('slider', { name: 'Camera tilt' });
+  const thumb = tilt.locator('..');
+  const box = (await thumb.boundingBox())!;
+  const [x, y] = [box.x + box.width / 2, box.y + box.height / 2];
+  expect(await thumb.evaluate((it, [atX, atY]) => it.contains(document.elementFromPoint(atX, atY)), [x, y] as const), 'the pointer lands on the thumb').toBe(true);
+  const before = Number(await tilt.getAttribute('aria-valuenow'));
+  await app.mouse.move(x, y);
+  await app.mouse.down();
+  await app.mouse.move(x, y + 40, { steps: 10 });
+  await app.mouse.up();
+  await expect.poll(async () => Number(await tilt.getAttribute('aria-valuenow')), { timeout: 10_000 }).toBeLessThan(before - 10);
+  await expect(notice).toHaveCSS('user-select', 'none');
+});

@@ -58,7 +58,7 @@ export const RailSlider = ({
     className="h-full transition-opacity"
     style={{ width: RAIL_SLIDER_THICKNESS, ...style }}
   >
-    <BaseSlider.Control className="flex h-full w-full touch-none justify-center">
+    <BaseSlider.Control data-gesture className="flex h-full w-full touch-none justify-center">
       <BaseSlider.Track className={`relative h-full w-1 rounded-full ${colors === null ? 'bg-secondary-container' : ''}`} style={{ background: colors?.inactiveTrack }}>
         <BaseSlider.Indicator className={`w-full rounded-full ${colors === null ? 'bg-primary' : ''}`} style={{ background: colors?.activeTrack }} />
         <BaseSlider.Thumb getAriaLabel={label === undefined ? null : () => label} className={`size-5 rounded-full shadow outline-none focus-visible:ring-4 focus-visible:ring-primary/30 ${colors === null ? 'bg-primary' : ''}`} style={{ background: colors?.thumb }} />

@@ -144,7 +144,7 @@ export const Slider = ({ value, onValueChange, valueRange = [0, 1], steps = 0, o
     aria-label={label}
     className={`w-full data-[disabled]:opacity-40 ${className ?? ''}`}
   >
-    <BaseSlider.Control className="flex h-11 w-full touch-none items-center">
+    <BaseSlider.Control data-gesture className="flex h-11 w-full touch-none items-center">
       <BaseSlider.Track className="h-1 w-full rounded-full bg-secondary-container">
         <BaseSlider.Indicator className="rounded-full bg-primary" />
         <BaseSlider.Thumb getAriaLabel={label === undefined ? null : () => label} className="size-5 rounded-full bg-primary shadow outline-none focus-visible:ring-4 focus-visible:ring-primary/30" />
@@ -165,7 +165,7 @@ export const RangeSlider = ({ value, onValueChange, valueRange = [0, 1], steps =
     aria-label={label}
     className="w-full data-[disabled]:opacity-40"
   >
-    <BaseSlider.Control className="flex h-11 w-full touch-none items-center">
+    <BaseSlider.Control data-gesture className="flex h-11 w-full touch-none items-center">
       <BaseSlider.Track className="h-1 w-full rounded-full bg-secondary-container">
         <BaseSlider.Indicator className="rounded-full bg-primary" />
         <BaseSlider.Thumb index={0} getAriaLabel={label === undefined ? null : () => `${label}, from`} className="size-5 rounded-full bg-primary shadow outline-none" />
