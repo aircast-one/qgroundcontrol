@@ -285,7 +285,6 @@ const HIDDEN: &[&str] = &[
     "androidUsePosixSerial",
     "keepSceneAlive",
     "qLocaleLanguage",
-    "overlayGlassFrost",
     "batteryPercentRemainingAnnounce",
     "loginAirLink",
     "passAirLink",
@@ -1138,12 +1137,7 @@ const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
         &[
             (
                 "Appearance",
-                &[
-                    "indoorPalette",
-                    "appFontPointSize",
-                    "overlayGlassFrost",
-                    "qLocaleLanguage",
-                ],
+                &["indoorPalette", "appFontPointSize", "qLocaleLanguage"],
             ),
             ("Sound", &["audioMuted", "batteryPercentRemainingAnnounce"]),
             ("Preflight checklist", &["useChecklist", "enforceChecklist"]),

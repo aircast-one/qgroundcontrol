@@ -20,8 +20,6 @@ Item {
     id: _root
 
     function switchVideoSource(anchorItem, x, y) {
-        // Two cameras: one tap cycles between them. Three or more: open the menu so the
-        // target is one tap away rather than several cycles.
         if (QGroundControl.videoManager.videoSourceCount > 2) {
             videoSourceMenu.parent = anchorItem
             videoSourceMenu.open(x, y)
@@ -52,7 +50,7 @@ Item {
         visible:    opacity > 0
         opacity:    _overlayRig.dropPreviewVisible ? 1 : 0
 
-        OverlayGlass {
+        OverlaySurface {
             anchors.fill: parent
             radius:       _overlayRig.dropPreviewRadius
             highlight:    true
@@ -145,19 +143,6 @@ Item {
     }
 
     property bool   _mainWindowIsMap:       mapControl.pipState.state === mapControl.pipState.fullState
-    Binding {
-        target:     OverlayBackdrop
-        property:   "sourceAnimating"
-        value:      QGroundControl.videoManager.decoding ||
-                        QGroundControl.multiVehicleManager.activeVehicle !== null ||
-                        _overlayRig.editMode
-    }
-    Connections {
-        target:                 mapControl
-        ignoreUnknownSignals:   true
-        function onCenterChanged()    { OverlayBackdrop.refresh() }
-        function onZoomLevelChanged() { OverlayBackdrop.refresh() }
-    }
     property var    _activeVehicle:         QGroundControl.multiVehicleManager.activeVehicle
     property var    _missionController:     _planController.missionController
     property var    _geoFenceController:    _planController.geoFenceController
@@ -287,7 +272,6 @@ Item {
             viewer3DCameraController: viewer3DLoader.item ? viewer3DLoader.item.cameraController : null
         }
 
-
         FlyViewCustomLayer {
             id:                 customOverlay
             anchors.fill:       widgetLayer
@@ -393,74 +377,6 @@ Item {
         }
     }
 
-    ShaderEffectSource {
-        id:           backdropCapture
-        width:        backdropContent.width
-        height:       backdropContent.height
-        sourceItem:   backdropContent
-        live:         false
-        visible:      false
-        textureSize:  Qt.size(Math.max(1, Math.round(backdropContent.width  / _backdropDownscale)),
-                              Math.max(1, Math.round(backdropContent.height / _backdropDownscale)))
-
-        readonly property int _backdropDownscale: 4
-    }
-
-    MultiEffect {
-        id:            frostedBackdrop
-        width:         backdropContent.width
-        height:        backdropContent.height
-        source:        backdropCapture
-        blurEnabled:   true
-        blur:          1.0
-        blurMax:       32
-        saturation:    0.25
-        visible:       false
-        layer.enabled: true
-
-        Component.onCompleted: {
-            OverlayBackdrop.contentSource   = backdropContent
-            OverlayBackdrop.contentBackdrop = frostedBackdrop
-        }
-
-        Connections {
-            target: OverlayBackdrop
-            function onRefreshed() {
-                backdropCapture.scheduleUpdate()
-                chromeCapture.scheduleUpdate()
-            }
-        }
-    }
-
-    ShaderEffectSource {
-        id:           chromeCapture
-        width:        mapHolder.width
-        height:       mapHolder.height
-        sourceItem:   mapHolder
-        live:         false
-        visible:      false
-        textureSize:  Qt.size(Math.max(1, Math.round(mapHolder.width  / 4)),
-                              Math.max(1, Math.round(mapHolder.height / 4)))
-    }
-
-    MultiEffect {
-        id:            frostedBackdropFull
-        width:         mapHolder.width
-        height:        mapHolder.height
-        source:        chromeCapture
-        blurEnabled:   true
-        blur:          1.0
-        blurMax:       32
-        saturation:    0.25
-        visible:       false
-        layer.enabled: true
-
-        Component.onCompleted: {
-            OverlayBackdrop.fullSource   = mapHolder
-            OverlayBackdrop.fullBackdrop = frostedBackdropFull
-        }
-    }
-
     TelemetryChipsLayer {
         id:             telemetryChipsLayer
         objectName:     "telemetryChipsLayer"
@@ -485,7 +401,7 @@ Item {
         radius:                     height / 2
         color:                      "transparent"
 
-        OverlayGlass {
+        OverlaySurface {
             anchors.fill: parent
             radius:       parent.radius
         }

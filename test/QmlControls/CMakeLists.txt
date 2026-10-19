@@ -1,6 +1,3 @@
-# ============================================================================
-# QmlControls Unit Tests
-# ============================================================================
 
 target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
@@ -17,12 +14,8 @@ target_sources(${CMAKE_PROJECT_NAME}
         DragToPositionTest.h
         FlyViewToolBarEditTest.cc
         FlyViewToolBarEditTest.h
-        OverlayBackdropTest.cc
-        OverlayBackdropTest.h
-        OverlayPaletteTest.cc
-        OverlayPaletteTest.h
-        PlatformThemeTest.cc
-        PlatformThemeTest.h
+        AircastPaletteTest.cc
+        AircastPaletteTest.h
         OverlaySegmentedControlTest.cc
         OverlaySegmentedControlTest.h
         OverlayViewSwitchTest.cc
@@ -62,15 +55,13 @@ add_qgc_test(DragToPositionTest LABELS Unit)
 add_qgc_test(PipViewTest LABELS Unit)
 add_qgc_test(ColoredSvgImageProviderTest LABELS Unit)
 add_qgc_test(FlyViewToolBarEditTest LABELS Unit)
-add_qgc_test(OverlayBackdropTest LABELS Unit)
-add_qgc_test(OverlayPaletteTest LABELS Unit)
+add_qgc_test(AircastPaletteTest LABELS Unit)
 add_qgc_test(OverlayRigTest LABELS Unit)
 add_qgc_test(OverlaySegmentedControlTest LABELS Unit)
 add_qgc_test(OverlayViewSwitchTest LABELS Unit)
 add_qgc_test(PipRevealTest LABELS Unit)
 add_qgc_test(PlanToolBarIndicatorsTest LABELS Unit)
 add_qgc_test(PlanViewLayoutTest LABELS Unit)
-add_qgc_test(PlatformThemeTest LABELS Unit)
 add_qgc_test(SafeAreaTest LABELS Unit)
 add_qgc_test(ScreenToolsTest LABELS Unit)
 add_qgc_test(SettingsSearchTest LABELS Unit)

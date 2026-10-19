@@ -338,7 +338,7 @@ Item {
                 font.pointSize:           ScreenTools.smallFontPointSize
                 opacity:                  guidedSlot.actionable ? 1 : _unavailableOpacity
                 style:                    Text.Outline
-                styleColor:               QGroundControl.globalPalette.overlayInkInverse
+                styleColor:               QGroundControl.globalPalette.window
             }
         }
     }

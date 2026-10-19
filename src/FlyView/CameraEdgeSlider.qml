@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQuick
 import QtQuick.Controls
 
@@ -64,7 +55,7 @@ Item {
     readonly property real _fillLen:   _axisLen * (_fillHi - _fillLo)
     readonly property real _fillStart: vertical ? height * (1 - _fillHi) : width * _fillLo
 
-    OverlayGlass {
+    OverlaySurface {
         objectName:   "edgeSliderGlass"
         anchors.fill: parent
         radius:       _root._radius
@@ -79,7 +70,7 @@ Item {
         width:   _root.vertical ? _root._fillThick : _root._fillLen
         height:  _root.vertical ? _root._fillLen : _root._fillThick
         radius:  _root.centered ? _root._fillThick / 2 : _root._radius
-        color:   _root.centered ? qgcPal.colorBlue : qgcPal.overlayInk
+        color:   _root.centered ? qgcPal.colorBlue : qgcPal.text
         opacity: slider.pressed ? 1.0 : _root._fillOpacity
         visible: _root._fillLen > 0.5
 
@@ -105,7 +96,7 @@ Item {
         width:   _root.vertical ? _root.width * 0.42 : Math.max(2, ScreenTools.defaultFontPixelWidth / 4)
         height:  _root.vertical ? Math.max(2, ScreenTools.defaultFontPixelWidth / 4) : _root.height * 0.42
         radius:  Math.min(width, height) / 2
-        color:   qgcPal.overlayInk
+        color:   qgcPal.text
         opacity: 0.55
         visible: _root.centered
     }
@@ -113,7 +104,7 @@ Item {
     readonly property real _labelZone: ScreenTools.defaultFontPixelHeight * 2.2
     readonly property real _labelFrac: (_labelZone / 2) / Math.max(1, _axisLen)
     readonly property bool _labelOnFill: !centered && _fillLen > 0.5 && _fillLo <= _labelFrac && _labelFrac <= _fillHi
-    readonly property color _labelColor: _labelOnFill ? qgcPal.overlayInkInverse : qgcPal.overlayInk
+    readonly property color _labelColor: _labelOnFill ? qgcPal.window : qgcPal.text
 
     Item {
         id:         labelZone

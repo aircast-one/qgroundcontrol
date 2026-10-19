@@ -1,15 +1,6 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #include "QGCPalette.h"
 #include "QGCCorePlugin.h"
-#include "PlatformTheme.h"
+#include "AircastTheme.h"
 
 #include <QtCore/QDebug>
 
@@ -41,58 +32,56 @@ QGCPalette::~QGCPalette()
 
 void QGCPalette::_buildMap()
 {
-    const PlatformTheme *platform = PlatformTheme::instance();
-    const PlatformTheme::Tones l = platform->tones(PlatformTheme::LightAppearance);
-    const PlatformTheme::Tones d = platform->tones(PlatformTheme::DarkAppearance);
+    const AircastTokens::Scheme &l = AircastTheme::scheme(AircastTheme::LightAppearance);
+    const AircastTokens::Scheme &d = AircastTheme::scheme(AircastTheme::DarkAppearance);
 
-    const auto alpha = [](const QColor &color, int a) { QColor c(color); c.setAlpha(a); return c; };
+    const auto rgb = [](std::uint32_t hex) { return QColor::fromRgb(hex); };
+    const auto alpha = [&rgb](std::uint32_t hex, int a) { QColor c = rgb(hex); c.setAlpha(a); return c; };
+    const auto between = [&rgb](std::uint32_t a, std::uint32_t b) {
+        const QColor x = rgb(a);
+        const QColor y = rgb(b);
+        return QColor((x.red() + y.red()) / 2, (x.green() + y.green()) / 2, (x.blue() + y.blue()) / 2);
+    };
 
-    DECLARE_QGC_COLOR(window,               l.background, l.background, d.background, d.background)
-    DECLARE_QGC_COLOR(toolbarBackground,    l.background, l.background, d.background, d.background)
-    DECLARE_QGC_COLOR(windowShade,          l.surface, l.surface, d.surface, d.surface)
-    DECLARE_QGC_COLOR(windowShadeDark,      l.surfaceSunken, l.surfaceSunken, d.surfaceSunken, d.surfaceSunken)
-    DECLARE_QGC_COLOR(windowShadeLight,     l.outline, l.fill, d.outline, d.fill)
+    DECLARE_QGC_COLOR(window,               rgb(l.surface), rgb(l.surface), rgb(d.surface), rgb(d.surface))
+    DECLARE_QGC_COLOR(toolbarBackground,    rgb(l.surface), rgb(l.surface), rgb(d.surface), rgb(d.surface))
+    DECLARE_QGC_COLOR(windowShade,          rgb(l.surfaceContainer), rgb(l.surfaceContainer), rgb(d.surfaceContainer), rgb(d.surfaceContainer))
+    DECLARE_QGC_COLOR(windowShadeDark,      rgb(l.surfaceContainerLowest), rgb(l.surfaceContainerLowest), rgb(d.surfaceContainerLowest), rgb(d.surfaceContainerLowest))
+    DECLARE_QGC_COLOR(windowShadeLight,     rgb(l.outlineVariant), rgb(l.outline), rgb(d.outlineVariant), rgb(d.outline))
 
-    DECLARE_QGC_COLOR(overlayBackground,    l.scrim, l.scrim, d.scrim, d.scrim)
-    DECLARE_QGC_COLOR(overlayGlass,         l.glass, l.glass, d.glass, d.glass)
-    DECLARE_QGC_COLOR(overlayBorder,        alpha(l.ink, 0x26), alpha(l.ink, 0x26), alpha(d.ink, 0x26), alpha(d.ink, 0x26))
-    DECLARE_QGC_COLOR(overlayCard,          alpha(l.ink, 0x1c), alpha(l.ink, 0x1c), alpha(d.ink, 0x1c), alpha(d.ink, 0x1c))
-    DECLARE_QGC_COLOR(overlayInk,           l.inkMuted, l.ink, d.inkMuted, d.ink)
-    DECLARE_QGC_COLOR(overlayInkInverse,    d.inkMuted, d.ink, l.inkMuted, l.ink)
+    DECLARE_QGC_COLOR(text,                 rgb(l.onSurfaceVariant), rgb(l.onSurface), rgb(d.onSurfaceVariant), rgb(d.onSurface))
+    DECLARE_QGC_COLOR(toolbarText,          rgb(l.onSurfaceVariant), rgb(l.onSurface), rgb(d.onSurfaceVariant), rgb(d.onSurface))
+    DECLARE_QGC_COLOR(buttonText,           rgb(l.onSurfaceVariant), rgb(l.onSecondaryContainer), rgb(d.onSurfaceVariant), rgb(d.onSecondaryContainer))
+    DECLARE_QGC_COLOR(textFieldText,        rgb(l.onSurfaceVariant), rgb(l.onSurface), rgb(d.onSurfaceVariant), rgb(d.onSurface))
+    DECLARE_QGC_COLOR(statusFailedText,     rgb(l.onSurfaceVariant), rgb(l.onSurface), rgb(d.onSurfaceVariant), rgb(d.onSurface))
+    DECLARE_QGC_COLOR(statusPassedText,     rgb(l.onSurfaceVariant), rgb(l.onSurface), rgb(d.onSurfaceVariant), rgb(d.onSurface))
+    DECLARE_QGC_COLOR(statusPendingText,    rgb(l.onSurfaceVariant), rgb(l.onSurface), rgb(d.onSurfaceVariant), rgb(d.onSurface))
+    DECLARE_QGC_COLOR(warningText,          rgb(l.error), rgb(l.error), rgb(d.error), rgb(d.error))
 
-    DECLARE_QGC_COLOR(text,                 l.inkMuted, l.ink, d.inkMuted, d.ink)
-    DECLARE_QGC_COLOR(toolbarText,          l.inkMuted, l.ink, d.inkMuted, d.ink)
-    DECLARE_QGC_COLOR(buttonText,           l.inkMuted, l.ink, d.inkMuted, d.ink)
-    DECLARE_QGC_COLOR(textFieldText,        l.inkMuted, l.ink, d.inkMuted, d.ink)
-    DECLARE_QGC_COLOR(statusFailedText,     l.inkMuted, l.ink, d.inkMuted, d.ink)
-    DECLARE_QGC_COLOR(statusPassedText,     l.inkMuted, l.ink, d.inkMuted, d.ink)
-    DECLARE_QGC_COLOR(statusPendingText,    l.inkMuted, l.ink, d.inkMuted, d.ink)
-    DECLARE_QGC_COLOR(warningText,          l.red, l.red, d.red, d.red)
+    DECLARE_QGC_COLOR(button,               rgb(l.secondaryContainer), rgb(l.secondaryContainer), rgb(d.secondaryContainer), rgb(d.secondaryContainer))
+    DECLARE_QGC_COLOR(buttonBorder,         rgb(l.secondaryContainer), rgb(l.outlineVariant), rgb(d.secondaryContainer), rgb(d.outlineVariant))
+    DECLARE_QGC_COLOR(buttonHighlight,      rgb(l.surfaceVariant), rgb(l.primary), rgb(d.surfaceVariant), rgb(d.primary))
+    DECLARE_QGC_COLOR(buttonHighlightText,  rgb(l.onSurfaceVariant), rgb(l.onPrimary), rgb(d.onSurfaceVariant), rgb(d.onPrimary))
+    DECLARE_QGC_COLOR(primaryButton,        rgb(l.surfaceVariant), rgb(l.primary), rgb(d.surfaceVariant), rgb(d.primary))
+    DECLARE_QGC_COLOR(primaryButtonText,    rgb(l.onSurfaceVariant), rgb(l.onPrimary), rgb(d.onSurfaceVariant), rgb(d.onPrimary))
+    DECLARE_QGC_COLOR(textField,            rgb(l.surface), rgb(l.surfaceContainerLow), rgb(d.surface), rgb(d.surfaceContainerLow))
+    DECLARE_QGC_COLOR(groupBorder,          rgb(l.outlineVariant), rgb(l.outlineVariant), rgb(d.outlineVariant), rgb(d.outlineVariant))
+    DECLARE_QGC_COLOR(toolStripHoverColor,  rgb(l.surfaceContainerLowest), rgb(l.surfaceContainerHighest), rgb(d.surfaceContainerLowest), rgb(d.surfaceContainerHighest))
+    DECLARE_QGC_COLOR(missionItemEditor,    rgb(l.surfaceContainerLowest), rgb(l.primaryContainer), rgb(d.surfaceContainerLowest), rgb(d.primaryContainer))
 
-    DECLARE_QGC_COLOR(button,               l.surfaceRaised, l.surfaceRaised, d.surfaceRaised, d.surfaceRaised)
-    DECLARE_QGC_COLOR(buttonBorder,         l.surfaceRaised, l.outline, d.surfaceRaised, d.outline)
-    DECLARE_QGC_COLOR(buttonHighlight,      l.accentMuted, l.accent, d.accentMuted, d.accent)
-    DECLARE_QGC_COLOR(buttonHighlightText,  l.inkMuted, l.onAccent, d.inkMuted, d.onAccent)
-    DECLARE_QGC_COLOR(primaryButton,        l.accentMuted, l.accent, d.accentMuted, d.accent)
-    DECLARE_QGC_COLOR(primaryButtonText,    l.inkMuted, l.onAccent, d.inkMuted, d.onAccent)
-    DECLARE_QGC_COLOR(textField,            l.background, l.surface, d.background, d.surface)
-    DECLARE_QGC_COLOR(groupBorder,          l.outlineWeak, l.outlineWeak, d.outlineWeak, d.outlineWeak)
-    DECLARE_QGC_COLOR(toolStripHoverColor,  l.surfaceSunken, l.outline, d.surfaceSunken, d.outline)
-    DECLARE_QGC_COLOR(missionItemEditor,    l.surfaceSunken, l.accentContainer, d.surfaceSunken, d.accentContainer)
+    DECLARE_QGC_COLOR(colorGreen,           rgb(l.success), rgb(l.success), rgb(d.success), rgb(d.success))
+    DECLARE_QGC_COLOR(colorYellow,          rgb(l.warning), rgb(l.warning), rgb(d.warning), rgb(d.warning))
+    DECLARE_QGC_COLOR(colorYellowGreen,     between(l.success, l.warning), between(l.success, l.warning), between(d.success, d.warning), between(d.success, d.warning))
+    DECLARE_QGC_COLOR(colorOrange,          rgb(l.warning), rgb(l.warning), rgb(d.warning), rgb(d.warning))
+    DECLARE_QGC_COLOR(colorRed,             rgb(l.error), rgb(l.error), rgb(d.error), rgb(d.error))
+    DECLARE_QGC_COLOR(colorGrey,            rgb(l.secondary), rgb(l.secondary), rgb(d.secondary), rgb(d.secondary))
+    DECLARE_QGC_COLOR(colorBlue,            rgb(l.primary), rgb(l.primary), rgb(d.primary), rgb(d.primary))
+    DECLARE_QGC_COLOR(alertBackground,      rgb(l.warning), rgb(l.warning), rgb(d.warning), rgb(d.warning))
+    DECLARE_QGC_COLOR(alertBorder,          rgb(l.outline), rgb(l.outline), rgb(d.outline), rgb(d.outline))
+    DECLARE_QGC_COLOR(windowTransparent,    alpha(l.surface, 0xcc), alpha(l.surface, 0xcc), alpha(d.surface, 0xcc), alpha(d.surface, 0xcc))
+    DECLARE_QGC_COLOR(modifiedParamValue,   rgb(l.warning), rgb(l.warning), rgb(d.warning), rgb(d.warning))
 
-    DECLARE_QGC_COLOR(colorGreen,           l.green, l.green, d.green, d.green)
-    DECLARE_QGC_COLOR(colorYellow,          l.yellow, l.yellow, d.yellow, d.yellow)
-    DECLARE_QGC_COLOR(colorYellowGreen,     l.yellowGreen, l.yellowGreen, d.yellowGreen, d.yellowGreen)
-    DECLARE_QGC_COLOR(colorOrange,          l.orange, l.orange, d.orange, d.orange)
-    DECLARE_QGC_COLOR(colorRed,             l.red, l.red, d.red, d.red)
-    DECLARE_QGC_COLOR(colorGrey,            l.grey, l.grey, d.grey, d.grey)
-    DECLARE_QGC_COLOR(colorBlue,            l.accent, l.accent, d.accent, d.accent)
-    DECLARE_QGC_COLOR(alertBackground,      l.yellow, l.yellow, d.yellow, d.yellow)
-    DECLARE_QGC_COLOR(alertBorder,          l.grey, l.grey, d.grey, d.grey)
-    DECLARE_QGC_COLOR(windowTransparent,    alpha(l.background, 0xcc), alpha(l.background, 0xcc), alpha(d.background, 0xcc), alpha(d.background, 0xcc))
-    DECLARE_QGC_COLOR(modifiedParamValue,   l.orange, l.orange, d.orange, d.orange)
-
-    DECLARE_QGC_COLOR(mapIndicator,         "#585858", l.accent, "#585858", d.accent)
+    DECLARE_QGC_COLOR(mapIndicator,         "#585858", rgb(l.primary), "#585858", rgb(d.primary))
     DECLARE_QGC_NONTHEMED_COLOR(mapButton,          "#585858", "#000000")
     DECLARE_QGC_NONTHEMED_COLOR(mapButtonHighlight, "#585858", "#be781c")
     DECLARE_QGC_NONTHEMED_COLOR(mapIndicatorChild,  "#585858", "#4b7ba8")

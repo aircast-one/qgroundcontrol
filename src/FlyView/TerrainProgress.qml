@@ -13,7 +13,7 @@ Rectangle {
     layer.enabled: true
     layer.effect:  OverlayShadowEffect { }
 
-    OverlayGlass {
+    OverlaySurface {
         anchors.fill: parent
         radius:       parent.radius
     }
@@ -27,7 +27,6 @@ Rectangle {
 
     on_BlocksPendingChanged: {
         if (_blocksPending == 0) {
-            // UI doesn't go away immediately
             visibilityTimer.restart()
         } else {
             visible = true
@@ -37,7 +36,6 @@ Rectangle {
 
     on_BlocksLoadedChanged: {
         if (_blocksLoaded != 0) {
-            // This causes the progress indicator to display even if it starts out as complete
             visible = true
             if (_blocksPending == 0) {
                 visibilityTimer.restart()

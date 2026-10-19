@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Dialogs
@@ -105,12 +96,6 @@ Item {
         map:                        _root.map
         usePlannedHomePosition:     true
         planMasterController:       _planMasterController
-    }
-
-    onVisibleChanged: {
-        if (visible) {
-            OverlayBackdrop.refresh()
-        }
     }
 
     Connections {
@@ -482,7 +467,7 @@ Item {
             readonly property real  _cell:   Math.max(_icon, captionMetrics.width + ScreenTools.defaultFontPixelWidth * 2)
             readonly property real  _caption: captionMetrics.height
             readonly property real  _radius: ScreenTools.defaultFontPixelHeight * 0.7
-            readonly property color _ink:    _qgcPal.overlayInk
+            readonly property color _ink:    _qgcPal.text
 
             TextMetrics {
                 id:   captionMetrics
@@ -916,11 +901,11 @@ Item {
                 layer.enabled:  true
                 layer.effect:   OverlayShadowEffect { elevated: true }
 
-                OverlayGlass {
+                OverlaySurface {
                     id:            panelGlass
                     anchors.fill:  parent
                     radius:        _panelRadius
-                    material:      OverlayGlass.Panel
+                    material:      OverlaySurface.Panel
                 }
             }
 
@@ -1121,7 +1106,7 @@ Item {
                                 width:   parent.width
                                 height:  detailLoader.height + ScreenTools.defaultFontPixelHeight * 0.8
                                 radius:  ScreenTools.defaultFontPixelHeight * 0.9
-                                color:   _qgcPal.overlayCard
+                                color:   _qgcPal.windowShade
 
                                 Loader {
                                     id:                 detailLoader
@@ -1235,10 +1220,10 @@ Item {
                 layer.enabled:  true
                 layer.effect:   OverlayShadowEffect { elevated: true }
 
-                OverlayGlass {
+                OverlaySurface {
                     anchors.fill:  parent
                     radius:        _panelRadius
-                    material:      OverlayGlass.Panel
+                    material:      OverlaySurface.Panel
                 }
             }
 

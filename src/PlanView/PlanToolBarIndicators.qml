@@ -8,9 +8,6 @@ import QGroundControl.Controls
 import QGroundControl.Toolbar
 import QGroundControl.FactControls
 
-// Plan view toolbar contents: what the plan is, what it adds up to, and the one action that
-// matters. This was nine loose chips in three rows plus a button - every number the controller
-// could produce, laid out flat, so nothing was easier to find than anything else.
 RowLayout {
     id:      _root
     spacing: ScreenTools.defaultFontPixelWidth
@@ -60,7 +57,6 @@ RowLayout {
     property string _missionMaxTelemetryText:       isNaN(_missionMaxTelemetry) ?       _noValue : QGroundControl.unitsConversion.metersToAppSettingsHorizontalDistanceUnits(_missionMaxTelemetry).toFixed(0) + " " + QGroundControl.unitsConversion.appSettingsHorizontalDistanceUnitsString
     property string _batteriesRequiredText:         _batteriesRequired < 0 ?            _noValue : _batteriesRequired
 
-    // An em dash, the way every readout in the system shows "there is no number here".
     readonly property string _noValue: "—"
 
     readonly property var  _qgcPal:      QGroundControl.globalPalette
@@ -94,8 +90,6 @@ RowLayout {
         return dot > 0 ? base.substring(0, dot) : base
     }
 
-    // One line for the state of the plan against the vehicle, in the place a document's title
-    // sits in every other editor. The upload button says the same thing in the same words.
     readonly property string _planState: {
         if (_controllerSyncInProgress) {
             return qsTr("Uploading…")
@@ -144,7 +138,7 @@ RowLayout {
             text:                     stat.label.toUpperCase()
             font.pointSize:           ScreenTools.smallFontPointSize
             font.bold:                true
-            color:                    Qt.alpha(_root._qgcPal.overlayInk, 0.45)
+            color:                    Qt.alpha(_root._qgcPal.text, 0.45)
         }
 
         QGCLabel {
@@ -160,13 +154,11 @@ RowLayout {
             anchors.verticalCenter: parent.verticalCenter
             width:                  1
             height:                 parent.height * 0.55
-            color:                  Qt.alpha(_root._qgcPal.overlayInk, 0.12)
+            color:                  Qt.alpha(_root._qgcPal.text, 0.12)
             visible:                stat.x > 0
         }
     }
 
-    // The same switch the fly view carries, in the same place, so it stays put while the views
-    // dissolve under it.
     OverlayCapsule {
         id:                     viewSwitch
         visible:                !mainWindow.hostProvidesNavigation
@@ -190,18 +182,11 @@ RowLayout {
         }
     }
 
-    // The one piece of furniture that stays put across both modes, in the same place it sits in
-    // the fly view. Planning is planning for a vehicle, so whether that vehicle is there and ready
-    // is context the plan needs - and something persisting across the switch is what makes this
-    // read as one app changing mode rather than two that happen to share a map.
     MainStatusIndicator {
         id:                     statusIndicator
         Layout.preferredHeight: _capsuleHeight
     }
 
-    // The plan, named, with its state against the vehicle underneath it. Width comes from
-    // measured text rather than from the labels themselves - a label that elides to its own
-    // container's width cannot also be what sets that width.
     OverlayCapsule {
         objectName:             "planNameCapsule"
         Layout.preferredHeight: _capsuleHeight
@@ -237,16 +222,13 @@ RowLayout {
                 elide:          Text.ElideRight
                 color:          !_controllerDirty && _containsItems && !_controllerSyncInProgress
                                     ? _qgcPal.colorGreen
-                                    : Qt.alpha(_qgcPal.overlayInk, 0.5)
+                                    : Qt.alpha(_qgcPal.text, 0.5)
             }
         }
     }
 
     Item { Layout.fillWidth: true }
 
-    // One capsule of figures with hairline dividers instead of a scatter of pills. Tapping it
-    // pages to the per-item numbers, which matter while an item is selected and are noise the
-    // rest of the time.
     OverlayCapsule {
         id:                     statsCapsule
         objectName:             "planStatsCapsule"
@@ -281,8 +263,6 @@ RowLayout {
         }
     }
 
-    // The only filled action on screen. Progress runs inside it rather than as a separate bar,
-    // so the thing you pressed is the thing that reports back.
     Rectangle {
         id:                     uploadButton
         objectName:             "planUploadButton"
@@ -290,11 +270,9 @@ RowLayout {
         Layout.preferredWidth:  uploadLabel.implicitWidth + ScreenTools.defaultFontPixelWidth * 5
         Layout.minimumWidth:    Layout.preferredWidth
         radius:                 height / 2
-        // With no vehicle there is nothing to upload to. Dimmed-to-invisible on glass reads as
-        // a rendering fault; an action that cannot apply is simply not offered.
         visible:                !QGroundControl.corePlugin.options.disableVehicleConnection && !_controllerOffline
         clip:                   true
-        color:                  !_uploadEnabled  ? Qt.alpha(_qgcPal.overlayInk, 0.08)
+        color:                  !_uploadEnabled  ? Qt.alpha(_qgcPal.text, 0.08)
                               : _uploadedClean   ? _qgcPal.colorGreen
                                                  : _qgcPal.primaryButton
 
@@ -309,7 +287,7 @@ RowLayout {
             anchors.bottom: parent.bottom
             anchors.left:   parent.left
             width:          parent.width * _progressPct
-            color:          Qt.alpha(_qgcPal.overlayInk, 0.28)
+            color:          Qt.alpha(_qgcPal.text, 0.28)
             visible:        _controllerSyncInProgress
         }
 
@@ -319,7 +297,7 @@ RowLayout {
             font.bold:          true
             color:              uploadButton._uploadEnabled || uploadButton._uploadedClean
                                     ? _qgcPal.primaryButtonText
-                                    : Qt.alpha(_qgcPal.overlayInk, 0.4)
+                                    : Qt.alpha(_qgcPal.text, 0.4)
             text:               _controllerSyncInProgress ? qsTr("Uploading…")
                               : uploadButton._uploadedClean ? qsTr("✓ Uploaded")
                                                             : qsTr("Upload")

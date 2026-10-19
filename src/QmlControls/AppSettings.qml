@@ -1,13 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
-
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -96,7 +86,7 @@ ToolDrawerPage {
 
     SettingsPagesModel { id: settingsPagesModel }
 
-    OverlayGlass {
+    OverlaySurface {
         id:                     sidebarSlab
         visible:                !_stacked
         anchors.left:           parent.left
@@ -105,9 +95,8 @@ ToolDrawerPage {
         anchors.margins:        _inset
         width:                  buttonColumn.width + _horizontalMargin * 2
         radius:                 _sidebarRadius
-        frosted:                mainWindow.flyViewBackdropVisible
         tint:                   QGroundControl.globalPalette.windowShade
-        material:               OverlayGlass.Panel
+        material:               OverlaySurface.Panel
     }
 
     QGCTextField {
@@ -221,7 +210,7 @@ ToolDrawerPage {
                         text:               name
                         description:        _stacked ? summary : ""
                         icon.source:        iconUrl
-                        tileColor:          model.tileColor
+                        tiled:              true
                         checked:            !_stacked && _pageTitle === name
                         onClicked:          openPage(url, name)
                     }

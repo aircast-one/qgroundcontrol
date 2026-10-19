@@ -1,14 +1,5 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #include "ScreenToolsController.h"
-#include "PlatformTheme.h"
+#include "AircastTheme.h"
 #if defined(Q_OS_IOS)
 #include "iOSSafeArea.h"
 #include <QtGui/QGuiApplication>
@@ -149,17 +140,12 @@ QString ScreenToolsController::iOSDevice()
 
 qreal ScreenToolsController::controlRadiusRatio()
 {
-    return PlatformTheme::instance()->shape().controlRadiusRatio;
-}
-
-bool ScreenToolsController::capsuleControls()
-{
-    return PlatformTheme::instance()->shape().capsuleControls;
+    return AircastTheme::controlRadiusRatio();
 }
 
 QString ScreenToolsController::fixedFontFamily()
 {
-    return QFontDatabase::systemFont(QFontDatabase::FixedFont).family();
+    return AircastTheme::monoFontFamily();
 }
 
 QString ScreenToolsController::normalFontFamily()
@@ -169,7 +155,7 @@ QString ScreenToolsController::normalFontFamily()
         return QStringLiteral("NanumGothic");
     }
 
-    return PlatformTheme::instance()->fontFamily();
+    return AircastTheme::fontFamily();
 }
 
 double ScreenToolsController::defaultFontDescent(int pointSize)

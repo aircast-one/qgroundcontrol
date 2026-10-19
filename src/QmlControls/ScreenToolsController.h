@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
 #include <QtCore/QLoggingCategory>
@@ -35,7 +26,6 @@ class ScreenToolsController : public QObject
     Q_PROPERTY(QString  fixedFontFamily     READ fixedFontFamily    CONSTANT)
     Q_PROPERTY(QString  normalFontFamily    READ normalFontFamily   CONSTANT)
     Q_PROPERTY(qreal    controlRadiusRatio  READ controlRadiusRatio CONSTANT)
-    Q_PROPERTY(bool     capsuleControls     READ capsuleControls    CONSTANT)
     Q_PROPERTY(qreal    safeAreaLeft        READ safeAreaLeft       NOTIFY safeAreaChanged)
     Q_PROPERTY(qreal    safeAreaTop         READ safeAreaTop        NOTIFY safeAreaChanged)
     Q_PROPERTY(qreal    safeAreaRight       READ safeAreaRight      NOTIFY safeAreaChanged)
@@ -115,7 +105,6 @@ public:
     static bool hasTouch();
     static QString iOSDevice();
     static qreal controlRadiusRatio();
-    static bool capsuleControls();
 
     static QString fixedFontFamily();
     static QString normalFontFamily();

@@ -10,7 +10,7 @@ Rectangle {
     radius: _outerRadius
     color:  "transparent"
 
-    OverlayGlass {
+    OverlaySurface {
         anchors.fill: parent
         radius:       parent.radius
     }
@@ -25,7 +25,6 @@ Rectangle {
     property real _outerRadius: width / 2
     property real _innerRadius: _outerRadius - _outerMargin
 
-    // Prevent all clicks from going through to lower layers
     DeadMouseArea {
         anchors.fill: parent
     }

@@ -18,10 +18,10 @@ Rectangle {
 
     Behavior on scale { NumberAnimation { duration: 200; easing.type: Easing.OutBack; easing.overshoot: 1.4 } }
 
-    OverlayGlass {
+    OverlaySurface {
         anchors.fill: parent
         radius:       _root.radius
-        material:     OverlayGlass.Panel
+        material:     OverlaySurface.Panel
     }
 
     property var    guidedController
@@ -39,7 +39,6 @@ Rectangle {
     property real _padding:         ScreenTools.defaultFontPixelHeight * 0.85
     property bool _emergencyAction: action === guidedController.actionEmergencyStop
 
-    // Properties of UTM adapter
     property bool   utmspSliderTrigger
     property bool   _utmspEnabled:                       false
 
@@ -61,8 +60,6 @@ Rectangle {
         if (immediate) {
             visible = true
         } else {
-            // We delay showing the confirmation for a small amount in order for any other state
-            // changes to propogate through the system. This way only the final state shows up.
             visibleTimer.restart()
         }
     }

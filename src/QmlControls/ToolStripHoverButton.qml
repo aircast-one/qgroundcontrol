@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQuick
 import QtQuick.Controls
 
@@ -89,11 +80,11 @@ Button {
         anchors.horizontalCenter:   parent.horizontalCenter
         y:                          control.discSize + control._captionSpacing
         text:                       control.text
-        color:                      QGroundControl.globalPalette.overlayInk
+        color:                      QGroundControl.globalPalette.text
         opacity:                    toolStripAction.enabled ? 1 : control._disabledOpacity
         font.pointSize:             ScreenTools.smallFontPointSize
         style:                      Text.Outline
-        styleColor:                 QGroundControl.globalPalette.overlayInkInverse
+        styleColor:                 QGroundControl.globalPalette.window
         visible:                    control.iconOnly && control.text !== ""
     }
 
@@ -183,7 +174,7 @@ Button {
         layer.enabled:  control.iconOnly
         layer.effect:   OverlayShadowEffect { }
 
-        OverlayGlass {
+        OverlaySurface {
             anchors.fill: parent
             visible:      control.glass && !control.checked && !control.pressed
             radius:       buttonBkRect.radius

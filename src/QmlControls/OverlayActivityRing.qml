@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQuick
 
 import QGroundControl
@@ -17,7 +8,7 @@ Canvas {
 
     property real  progress:     -1
     property bool  done:         false
-    property color contentColor: QGroundControl.globalPalette.overlayInk
+    property color contentColor: QGroundControl.globalPalette.text
 
     readonly property var _qgcPal: QGroundControl.globalPalette
 

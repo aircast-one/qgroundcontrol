@@ -1,20 +1,9 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQuick
 
 import QGroundControl
 
 import QGroundControl.Controls
 
-// Translucent dark rounded overlay button used over the video feed to switch the
-// active camera/video source. Styled to match QGroundControl's on-video overlays.
 Rectangle {
     id:         _root
     width:      contentRow.width + (_margin * 2)
@@ -24,7 +13,7 @@ Rectangle {
 
     readonly property var _qgcPal: QGroundControl.globalPalette
 
-    OverlayGlass {
+    OverlaySurface {
         id:           glass
         anchors.fill: parent
         radius:       _root.radius

@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQuick
 import QtQuick.Controls
 
@@ -22,7 +13,6 @@ Item {
     property real   viewportMargins:    0
     property var    toolStrip
 
-    // Should be an enum but that get's into the whole problem of creating a singleton which isn't worth the effort
     readonly property int dropLeft:     1
     readonly property int dropRight:    2
     readonly property int dropUp:       3
@@ -67,16 +57,13 @@ Item {
         dropDownItem.x = _dropEdgeTopPoint.x + _dropMargin
         dropDownItem.y = _dropEdgeTopPoint.y -(dropDownItem.height / 2) + radius
 
-        // Validate that dropdown is within viewport
         dropDownItem.y = Math.min(dropDownItem.y + dropDownItem.height, _viewportMaxBottom) - dropDownItem.height
         dropDownItem.y = Math.max(dropDownItem.y, _viewportMaxTop)
 
-        // Adjust height to not exceed viewport bounds
         dropDownItem.height = Math.min(dropDownItem.height, _viewportMaxHeight - dropDownItem.y)
     }
 
     Component {
-        // Overlay which is used to cancel the panel when the user clicks away
         id: dropPanelCancelComponent
 
         MouseArea {
@@ -100,10 +87,10 @@ Item {
             layer.enabled: true
             layer.effect:  OverlayShadowEffect { elevated: true }
 
-            OverlayGlass {
+            OverlaySurface {
                 anchors.fill: parent
                 radius:       parent.radius
-                material:     OverlayGlass.Panel
+                material:     OverlaySurface.Panel
             }
         }
 

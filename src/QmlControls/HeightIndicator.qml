@@ -12,7 +12,7 @@ ColumnLayout {
     property var    map
     property string heightText: qsTr("30 ft")
 
-    property color _textColor:  QGroundControl.globalPalette.overlayInk
+    property color _textColor:  QGroundControl.globalPalette.text
 
     Rectangle {
         width:              ScreenTools.defaultFontPixelWidth * 3

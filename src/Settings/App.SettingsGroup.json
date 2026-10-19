@@ -431,17 +431,6 @@
             "label": "AirLink User Name"
         },
         {
-            "name": "overlayGlassFrost",
-            "shortDesc": "Overlay glass frost",
-            "longDesc": "How much the floating overlay panels frost what is behind them. Clear glass refracts the picture without diffusing it.",
-            "type": "uint32",
-            "units": "%",
-            "min": 0,
-            "max": 100,
-            "default": 100,
-            "label": "Overlay glass frost"
-        },
-        {
             "name": "passAirLink",
             "shortDesc": "AirLink Password",
             "type": "string",

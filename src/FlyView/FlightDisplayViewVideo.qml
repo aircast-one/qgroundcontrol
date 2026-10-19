@@ -51,7 +51,7 @@ Item {
             color:          "transparent"
             visible:        !(QGroundControl.videoManager.decoding)
 
-            OverlayGlass {
+            OverlaySurface {
                 id:           noVideoGlass
                 anchors.fill: parent
                 radius:       0
@@ -122,8 +122,6 @@ Item {
                 running:        noVideo.visible && !noVideo.prolonged
                 onTriggered:    noVideo.prolonged = true
             }
-
-
 
         }
 

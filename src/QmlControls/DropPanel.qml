@@ -5,9 +5,6 @@ import QtQuick.Layouts
 import QGroundControl
 import QGroundControl.Controls
 
-/// Drop panel that displays positioned next to the specified click position.
-/// By default the panel drops to the right of the click position. If there isn't
-/// enough room to the right then the panel will drop to the left.
 Popup {
     id:             _root
     padding:        _innerMargin
@@ -30,20 +27,16 @@ Popup {
     property bool _dropRight:           true
 
     onAboutToShow: {
-        // Panel defaults to dropping to the right of click position
         let xPos = clickRect.x + clickRect.width
 
-        // If there isn't room to the right then we switch to drop to the left
         if (xPos + _root.width > dropViewPort.x + dropViewPort.width) {
             _dropRight = false
             xPos = clickRect.x - _root.width
         }
 
-        // Default position of panel is vertically centered on click position
         let yPos = clickRect.y + (clickRect.height / 2)
         yPos -= _root.height / 2
 
-        // Make sure panel is within viewport
         let originalYPos = yPos
         yPos = Math.max(yPos, dropViewPort.y)
         yPos = Math.min(yPos, dropViewPort.y + dropViewPort.height - _root.height)
@@ -51,7 +44,6 @@ Popup {
         _root.x = xPos
         _root.y = yPos
 
-        // Adjust arrow position back to point at click position
         _arrowPointPositionY += originalYPos - yPos
     }
 
@@ -61,14 +53,13 @@ Popup {
         implicitWidth:  contentItem.implicitWidth + _innerMargin * 2 + _arrowPointWidth
         implicitHeight: contentItem.implicitHeight + _innerMargin * 2
 
-        OverlayGlass {
+        OverlaySurface {
             x:      _dropRight ? _arrowPointWidth : 0
             radius: ScreenTools.defaultFontPixelHeight * 0.75
             width:  parent.implicitWidth - _arrowPointWidth
             height: parent.implicitHeight
         }
 
-        // Arrowhead
         Canvas {
             x:      _dropRight ? 0 : parent.width - _arrowPointWidth
             y:      _arrowPointPositionY - _arrowPointWidth
@@ -83,7 +74,7 @@ Popup {
                 context.lineTo(_dropRight ? _arrowPointWidth : 0, 0)
                 context.lineTo(_dropRight ? _arrowPointWidth : 0, _arrowPointWidth * 2)
                 context.closePath()
-                context.fillStyle = _qgcPal.overlayBackground
+                context.fillStyle = _qgcPal.window
                 context.fill()
             }
         }

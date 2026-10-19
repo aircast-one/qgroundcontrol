@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQuick
 import QtQuick.Controls
 
@@ -35,7 +26,7 @@ Rectangle {
 
     signal held()
 
-    readonly property color _discColor: qgcPal.overlayBackground
+    readonly property color _discColor: qgcPal.window
 
     property var _dropPanel: dropPanel
 
@@ -94,10 +85,10 @@ Rectangle {
                     glass:              _root.roundButtons
                     bkColor:            _root.roundButtons ? _root._discColor : qgcPal.toolbarBackground
                     bkHoverColor:       _root.roundButtons ? Qt.rgba(_root._discColor.r, _root._discColor.g, _root._discColor.b, 1) : qgcPal.toolStripHoverColor
-                    bkCheckedColor:     _root.roundButtons ? qgcPal.overlayInk : qgcPal.buttonHighlight
-                    contentColor:       _root.roundButtons ? qgcPal.overlayInk : qgcPal.buttonText
-                    contentCheckedColor: _root.roundButtons ? qgcPal.overlayInkInverse : qgcPal.buttonHighlightText
-                    borderColor:        _root.roundButtons ? qgcPal.overlayBorder : "transparent"
+                    bkCheckedColor:     _root.roundButtons ? qgcPal.text : qgcPal.buttonHighlight
+                    contentColor:       _root.roundButtons ? qgcPal.text : qgcPal.buttonText
+                    contentCheckedColor: _root.roundButtons ? qgcPal.window : qgcPal.buttonHighlightText
+                    borderColor:        _root.roundButtons ? qgcPal.groupBorder : "transparent"
                     borderWidth:        _root.roundButtons ? 1 : 0
                     toolStripAction:    modelData
                     dropPanel:          _dropPanel

@@ -10,10 +10,10 @@ Rectangle {
     color:          "transparent"
     clip:           true
 
-    OverlayGlass {
+    OverlaySurface {
         anchors.fill: parent
         radius:       root.radius
-        material:     OverlayGlass.Panel
+        material:     OverlaySurface.Panel
     }
 
     property var missionController
@@ -111,10 +111,6 @@ Rectangle {
                     tickInterval:               (max - min) > 0 ? (max - min) / 3 : 1
                     labelDecimals:              1
                 }
-
-                // The order of the LineSeries is important to work around nasty bugs in QtGraphs where series just don't display. If you put
-                // terrain and flight first you end up with cases where flight doesn't display no matter what other sorts of workarounds you try.
-                // Putting missing and collision first seems to prevent the problem.
 
                 LineSeries {
                     id:         missingSeries

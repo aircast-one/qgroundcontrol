@@ -1,20 +1,8 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQuick
 
 import QGroundControl
 import QGroundControl.Controls
 
-// Renders the user-defined on-screen controls from Settings > Fly View > Custom RC Controls.
-// CameraControlLayer owns the built-in camera/gimbal chrome and hands this layer the already
-// deduped, already-reserved-channel-filtered list to draw.
 Item {
     id: _root
 
@@ -47,9 +35,6 @@ Item {
     readonly property var _switches3:   rcControls.filter((control) => control.type === "switch3")
     readonly property var _momentaries: rcControls.filter((control) => control.type === "momentary")
 
-    // The Settings page stamps the channel it just added into this global setting. Pick it up
-    // the moment the control list changes (i.e. as soon as this layer exists to show it) and
-    // clear it so the pulse plays once, not every time the user revisits the fly view.
     property int _justAddedChannel: -1
 
     function _checkJustAdded() {
@@ -61,17 +46,11 @@ Item {
         }
     }
 
-    // onRcControlsChanged alone misses the case where the control was added and the app was
-    // restarted before this layer ever existed to see the change - the flag would otherwise
-    // sit there and wrongly highlight whatever channel happens to change next.
     Component.onCompleted: _checkJustAdded()
     onRcControlsChanged:   _checkJustAdded()
 
     Timer { id: _clearJustAdded; interval: 1500; onTriggered: _root._justAddedChannel = -1 }
 
-    // Long-press is the only way to arrange, hide, or rotate a control, and nothing on this
-    // screen says so - the Settings page description is the only place that's written down.
-    // Nudge once per fly view visit until the user actually discovers it for themselves.
     property bool _editModeDiscovered: QGroundControl.loadBoolGlobalSetting("rcControlEditModeDiscovered", false)
 
     Connections {
@@ -87,9 +66,6 @@ Item {
     Item {
         id:      _longPressHint
         visible: opacity > 0
-        // _autoFaded is a plain flag rather than the Timer assigning opacity directly: writing
-        // to a bound property snaps the binding off for good, so the hint could never come back
-        // once conditions change (e.g. the fly view is revisited before discovery happens).
         property bool _autoFaded: false
         opacity: (_root.rcControls.length > 0 && !_root._editModeDiscovered && !overlayRig.editMode && !_autoFaded) ? 1 : 0
         anchors.top:              parent.top
@@ -103,7 +79,7 @@ Item {
 
         Timer { interval: 6000; running: _longPressHint.opacity > 0; onTriggered: _longPressHint._autoFaded = true }
 
-        OverlayGlass {
+        OverlaySurface {
             anchors.fill: parent
             radius:       parent.height / 2
         }
@@ -175,8 +151,6 @@ Item {
                 NewControlPulse { target: rcSlider; running: rcSliderSlot.modelData.channel === _root._justAddedChannel }
             }
 
-            // Mirrors OverlayEditBadge's hide/show badge on the opposite corner: edit mode is
-            // also the only time a slider's orientation is worth changing.
             OverlayCapsule {
                 id:         rotateBadge
                 objectName: "rcControlRotate" + rcSliderSlot.modelData.channel
@@ -280,7 +254,7 @@ Item {
                     id:           rcSwitch3
                     objectName:   "rcControlSwitch3" + rcSwitch3Slot.modelData.channel
                     glass:        true
-                    contentColor: QGroundControl.globalPalette.overlayInk
+                    contentColor: QGroundControl.globalPalette.text
                     width:      ScreenTools.defaultFontPixelWidth * 12
                     enabled:    !overlayRig.editMode && _root.hasVehicle
                     segments:   ["1", "2", "3"]
@@ -349,9 +323,6 @@ Item {
                         function onActiveVehicleChanged() { rcMomentaryButton._release() }
                     }
 
-                    // Entering edit mode (triggered by this same long-press) disables this
-                    // button's own MouseArea mid-press, so no onReleased fires - force the
-                    // channel back down here instead of leaving it latched at max PWM.
                     Connections {
                         target: overlayRig
                         function onEditModeChanged() {

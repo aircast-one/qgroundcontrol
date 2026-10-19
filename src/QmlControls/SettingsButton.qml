@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -24,7 +15,7 @@ Button {
                              listStyle ? ScreenTools.minTouchPixels : 0)
 
     property color  textColor:    checked ? qgcPal.buttonHighlightText : qgcPal.buttonText
-    property color  tileColor:    "transparent"
+    property bool   tiled:        false
     property bool   badgeVisible: false
     property string description:  ""
     property bool   listStyle:    false
@@ -33,7 +24,7 @@ Button {
 
     signal toggleExpand()
 
-    readonly property bool _hasTile: tileColor.a > 0 && !listStyle
+    readonly property bool _hasTile: tiled && !listStyle
     readonly property real _tileSize: Math.round(ScreenTools.defaultFontPixelHeight * 1.35)
 
     QGCPalette {
@@ -100,14 +91,14 @@ Button {
         Rectangle {
             Layout.preferredWidth:  _hasTile ? _tileSize : ScreenTools.defaultFontPixelHeight
             Layout.preferredHeight: Layout.preferredWidth
-            radius:                 Math.round(_tileSize * 0.28)
-            color:                  _hasTile ? control.tileColor : "transparent"
+            radius:                 width / 2
+            color:                  _hasTile ? qgcPal.windowShade : "transparent"
 
             QGCColoredImage {
                 anchors.centerIn:   parent
                 source:             control.icon.source
-                color:              _hasTile ? "white" : control.icon.color
-                width:              _hasTile ? Math.round(_tileSize * 0.68) : parent.width
+                color:              control.icon.color
+                width:              _hasTile ? Math.round(_tileSize * 0.6) : parent.width
                 height:             width
                 sourceSize.height:  height
                 fillMode:           Image.PreserveAspectFit

@@ -10,7 +10,7 @@ Rectangle {
     radius: _outerRadius
     color:  "transparent"
 
-    OverlayGlass {
+    OverlaySurface {
         anchors.fill: parent
         radius:       control.radius
     }

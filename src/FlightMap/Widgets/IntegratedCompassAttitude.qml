@@ -28,7 +28,7 @@ Item {
         layer.enabled: true
         layer.effect:  OverlayShadowEffect { }
 
-        OverlayGlass {
+        OverlaySurface {
             anchors.fill: parent
             radius:       parent.radius
         }

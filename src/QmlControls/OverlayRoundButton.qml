@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQuick
 
 import QGroundControl
@@ -21,7 +12,7 @@ Rectangle {
     layer.enabled: true
     layer.effect:  OverlayShadowEffect { elevated: _root.lifted }
 
-    OverlayGlass {
+    OverlaySurface {
         id:           glass
         anchors.fill: parent
         visible:      !_root.checked
@@ -34,7 +25,6 @@ Rectangle {
     property bool   checked:      false
     property real   aspect:       1
     property real   iconRotation: 0
-    property alias  backdrop:      glass.backdrop
 
     signal clicked()
     signal held()

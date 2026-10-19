@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Dialogs
@@ -76,19 +67,6 @@ SettingsPage {
             fact:       _appSettings.indoorPalette
             indexModel: false
             visible:    _appSettings.indoorPalette.visible
-        }
-
-        LabelledSlider {
-            Layout.fillWidth:       true
-            label:                  qsTr("Glass Frost")
-            description:            qsTr("How much the map blurs behind panels and pills")
-            from:                   0
-            to:                     100
-            stepSize:               5
-            sliderPreferredWidth:   ScreenTools.defaultFontPixelWidth * 20
-            value:                  _appSettings.overlayGlassFrost.rawValue
-            visible:                _appSettings.overlayGlassFrost.visible
-            onMoved:                (v) => _appSettings.overlayGlassFrost.rawValue = v
         }
 
         LabelledComboBox {

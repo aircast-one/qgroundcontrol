@@ -210,8 +210,8 @@ Item {
                                             objectName:             "summaryTile" + modelData.name.replace(/\s/g, "")
                                             Layout.preferredWidth:  _tileSize
                                             Layout.preferredHeight: _tileSize
-                                            radius:                 Math.round(_tileSize * 0.28)
-                                            color:                  setupView.componentColor(modelData)
+                                            radius:                 width / 2
+                                            color:                  qgcPal.windowShade
 
                                             QGCColoredImage {
                                                 anchors.centerIn:   parent
@@ -220,7 +220,7 @@ Item {
                                                 sourceSize.height:  height
                                                 fillMode:           Image.PreserveAspectFit
                                                 source:             setupView.componentIcon(modelData)
-                                                color:              "white"
+                                                color:              qgcPal.text
                                             }
                                         }
 

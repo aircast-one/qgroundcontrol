@@ -8,7 +8,7 @@
 #include "QGCMAVLink.h"
 #include "LinkManager.h"
 #ifndef QGC_HEADLESS_CORE
-#include "PlatformTheme.h"
+#include "AircastTheme.h"
 #endif
 
 #ifdef Q_OS_ANDROID
@@ -25,7 +25,6 @@
 
 QGC_LOGGING_CATEGORY(AppSettingsLog, "Settings.AppSettings")
 
-// Release languages are 90%+ complete
 QList<QLocale::Language> AppSettings::_rgReleaseLanguages = {
     QLocale::English,
     QLocale::Azerbaijani,
@@ -36,7 +35,6 @@ QList<QLocale::Language> AppSettings::_rgReleaseLanguages = {
     QLocale::Russian,
 };
 
-// Partial languages are 40%+ complete
 QList<QLocale::Language> AppSettings::_rgPartialLanguages = {
     QLocale::Ukrainian,
 };
@@ -78,7 +76,6 @@ DECLARE_SETTINGGROUP(App, "")
 
     QSettings settings;
 
-    // These two "type" keys were changed to "class" values
     static const char* deprecatedFirmwareTypeKey    = "offlineEditingFirmwareType";
     static const char* deprecatedVehicleTypeKey     = "offlineEditingVehicleType";
     if (settings.contains(deprecatedFirmwareTypeKey)) {
@@ -98,7 +95,6 @@ DECLARE_SETTINGGROUP(App, "")
         }
     }
 
-    // Don't offer firmware classes whose plugin factory is not registered in this build
     const QList<QGCMAVLink::FirmwareClass_t> supportedFirmwareClasses = FirmwarePluginManager::instance()->supportedFirmwareClasses();
     const auto isSupported = [&supportedFirmwareClasses](const QVariant &value) {
         return supportedFirmwareClasses.contains(static_cast<QGCMAVLink::FirmwareClass_t>(value.toUInt()));
@@ -117,7 +113,6 @@ DECLARE_SETTINGGROUP(App, "")
         }
     }
 
-    // A previously stored value (or even the default) may no longer be supported by this build
     for (Fact *const fact : { preferredFirmwareClass(), offlineEditingFirmwareClass() }) {
         if (!isSupported(fact->rawValue())) {
             if (isSupported(fact->rawDefaultValue())) {
@@ -128,12 +123,9 @@ DECLARE_SETTINGGROUP(App, "")
         }
     }
 
-    // Instantiate savePath so we can check for override and setup default path if needed
-
     SettingsFact* savePathFact = qobject_cast<SettingsFact*>(savePath());
     QString appName = QCoreApplication::applicationName();
 #if defined(Q_OS_ANDROID) || defined(Q_OS_IOS)
-    // Mobile builds always use the runtime generated location for savePath.
     bool userHasModifiedSavePath = false;
 #else
     bool userHasModifiedSavePath = !savePathFact->rawValue().toString().isEmpty() || !_nameToMetaDataMap[savePathName]->rawDefaultValue().toString().isEmpty();
@@ -142,7 +134,6 @@ DECLARE_SETTINGGROUP(App, "")
     if (!userHasModifiedSavePath) {
 #if defined(Q_OS_ANDROID) || defined(Q_OS_IOS)
     #ifdef Q_OS_IOS
-        // This will expose the directories directly to the File iOs app
         QDir rootDir = QDir(QStandardPaths::writableLocation(QStandardPaths::DocumentsLocation));
         savePathFact->setRawValue(rootDir.absolutePath());
     #else
@@ -181,16 +172,12 @@ DECLARE_SETTINGGROUP(App, "")
     connect(savePathFact, &Fact::rawValueChanged, this, &AppSettings::_checkSavePathDirectories);
 
 #ifdef Q_OS_ANDROID
-    // React to runtime toggling of the SD card setting
     connect(androidDontSaveToSDCard(), &Fact::rawValueChanged, this, [this, appName](QVariant value) {
         Fact* const fact = savePath();
         if (value.toBool()) {
             const QString internalBasePath = QStandardPaths::writableLocation(QStandardPaths::GenericDataLocation);
             fact->setRawValue(QDir(internalBasePath).filePath(appName));
         } else {
-            // If permission is already granted this returns the SD card root and we set the path here.
-            // If not, it returns empty and launches the system permission UI. The result comes back through
-            // jniStoragePermissionsResult, which sets the SD card save path (or reverts this setting on denial).
             const QString sdRootPath = AndroidInterface::getSDCardPath();
             if (!sdRootPath.isEmpty() && QDir(sdRootPath).exists() && QFileInfo(sdRootPath).isWritable()) {
                 fact->setRawValue(QDir(sdRootPath).filePath(appName));
@@ -201,7 +188,6 @@ DECLARE_SETTINGGROUP(App, "")
 
     _checkSavePathDirectories();
 
-    // When a specific preferred firmware/vehicle is chosen, keep the offline editing settings in sync
     connect(preferredFirmwareClass(), &Fact::rawValueChanged, this, [this](QVariant value) {
         if (value.toUInt() != 0) {
             offlineEditingFirmwareClass()->setRawValue(value);
@@ -230,7 +216,6 @@ DECLARE_SETTINGSFACT(AppSettings, virtualJoystick)
 DECLARE_SETTINGSFACT(AppSettings, virtualJoystickAutoCenterThrottle)
 DECLARE_SETTINGSFACT(AppSettings, virtualJoystickLeftHandedMode)
 DECLARE_SETTINGSFACT(AppSettings, appFontPointSize)
-DECLARE_SETTINGSFACT(AppSettings, overlayGlassFrost)
 DECLARE_SETTINGSFACT(AppSettings, uiScalePercent)
 DECLARE_SETTINGSFACT(AppSettings, savePath)
 DECLARE_SETTINGSFACT(AppSettings, androidDontSaveToSDCard)
@@ -277,7 +262,6 @@ DECLARE_SETTINGSFACT_NO_FUNC(AppSettings, qLocaleLanguage)
         QStringList     rgEnumStrings;
         QVariantList    rgEnumValues;
 
-        // System is always an available selection
         rgEnumStrings.append(_rgLanguageInfo[0].languageName);
         rgEnumValues.append(_rgLanguageInfo[0].languageId);
 
@@ -294,7 +278,6 @@ DECLARE_SETTINGSFACT_NO_FUNC(AppSettings, qLocaleLanguage)
             }
         }
 #ifdef QGC_DAILY_BUILD
-        // Only daily builds include full set of languages for testing purposes
         for (const auto& languageInfo: _rgLanguageInfo) {
             if (!_rgReleaseLanguages.contains(languageInfo.languageId) && !_rgPartialLanguages.contains(languageInfo.languageId)) {
                 rgEnumStrings.append(QString(languageInfo.languageName) + AppSettings::tr(" (Test Only)"));
@@ -303,7 +286,6 @@ DECLARE_SETTINGSFACT_NO_FUNC(AppSettings, qLocaleLanguage)
         }
 #endif
 #ifdef QT_DEBUG
-        // Debug builds include pseudo-localization for UI layout testing
         rgEnumStrings.append(AppSettings::tr("Pseudo Localization (Test Only)"));
         rgEnumValues.append(QLocale::Esperanto);
 #endif
@@ -325,7 +307,6 @@ void AppSettings::_checkSavePathDirectories(void)
 {
     const QString savePath = this->savePath()->rawValue().toString();
     if (QGCFileHelper::ensureDirectoryExists(savePath)) {
-        // Create all subdirectories
         QGCFileHelper::ensureDirectoryExists(QGCFileHelper::joinPath(savePath, parameterDirectory));
         QGCFileHelper::ensureDirectoryExists(QGCFileHelper::joinPath(savePath, telemetryDirectory));
         QGCFileHelper::ensureDirectoryExists(QGCFileHelper::joinPath(savePath, missionDirectory));
@@ -368,9 +349,7 @@ void AppSettings::_applyPaletteTheme()
         : (setting != 0);
     QGCPalette::setGlobalTheme(dark ? QGCPalette::Dark : QGCPalette::Light);
 
-    PlatformTheme *platform = PlatformTheme::instance();
-    const PlatformTheme::Appearance appearance = dark ? PlatformTheme::DarkAppearance : PlatformTheme::LightAppearance;
-    platform->applySystemChrome(appearance, platform->tones(appearance));
+    AircastTheme::applySystemChrome(dark ? AircastTheme::DarkAppearance : AircastTheme::LightAppearance);
 #endif
 }
 
@@ -449,16 +428,10 @@ void AppSettings::firstRunPromptIdsMarkIdAsShown(int id)
     }
 }
 
-/// Returns the current qLocaleLanguage setting bypassing the standard SettingsGroup path. It also validates
-/// that the value is a supported language. This should only be used by QGCApplication::setLanguage to query
-/// the language setting as early in the boot process as possible. Specfically prior to any JSON files being
-/// loaded such that JSON file can be translated. Also since this is a one-off mechanism custom build overrides
-/// for language are not currently supported.
 QLocale::Language AppSettings::_qLocaleLanguageEarlyAccess(void)
 {
     QSettings settings;
 
-    // Note that the AppSettings group has no group name
     QLocale::Language localeLanguage = static_cast<QLocale::Language>(settings.value(qLocaleLanguageName).toInt());
     for (auto& languageInfo: _rgLanguageInfo) {
         if (languageInfo.languageId == localeLanguage) {

@@ -52,7 +52,6 @@ pub const ORDER: &[(&str, &[&str])] = &[
             "virtualJoystickLeftHandedMode",
             "uiScalePercent",
             "indoorPalette",
-            "overlayGlassFrost",
             "savePath",
             "androidDontSaveToSDCard",
             "androidUsePosixSerial",

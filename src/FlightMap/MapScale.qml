@@ -1,19 +1,9 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQuick
 import QtQuick.Controls
 
 import QGroundControl
 import QGroundControl.Controls
 
-/// Map scale control
 Item {
     id:     scale
     width:  buttonsOnLeft || !_zoomButtonsVisible ? rightEnd.x + rightEnd.width : zoomDownButton.x + zoomDownButton.width
@@ -30,7 +20,7 @@ Item {
     property var    _scaleLengthsMeters:    [5, 10, 25, 50, 100, 150, 250, 500, 1000, 2000, 5000, 10000, 20000, 50000, 100000, 200000, 500000, 1000000, 2000000]
     property var    _scaleLengthsFeet:      [10, 25, 50, 100, 250, 500, 1000, 2000, 3000, 4000, 5280, 5280*2, 5280*5, 5280*10, 5280*25, 5280*50, 5280*100, 5280*250, 5280*500, 5280*1000]
     property bool   _zoomButtonsVisible:    zoomButtonsVisible && !ScreenTools.isMobile
-    property var    _color:                 QGroundControl.globalPalette.overlayInk
+    property var    _color:                 QGroundControl.globalPalette.text
     function formatDistanceMeters(meters) {
         var dist = Math.round(meters)
         if (dist > 1000 ){
@@ -67,7 +57,6 @@ Item {
         var scaleLineRatio = 0
 
         if (scaleLineMeters === 0) {
-            // not visible
         } else {
             for (var i = 0; i < _scaleLengthsMeters.length - 1; i++) {
                 if (scaleLineMeters < (_scaleLengthsMeters[i] + _scaleLengthsMeters[i+1]) / 2 ) {
@@ -92,7 +81,6 @@ Item {
         var scaleLineFeet = scaleLineMeters * 3.2808399
 
         if (scaleLineFeet === 0) {
-            // not visible
         } else {
             for (var i = 0; i < _scaleLengthsFeet.length - 1; i++) {
                 if (scaleLineFeet < (_scaleLengthsFeet[i] + _scaleLengthsFeet[i+1]) / 2 ) {

@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 #pragma once
 
 #include <QtCore/QObject>
@@ -70,23 +61,6 @@
     } \
     void SETNAME(const QColor& color) { _colorInfoMap[_theme][_colorGroupEnabled  ? ColorGroupEnabled : ColorGroupDisabled][QStringLiteral(#NAME)] = color; _signalPaletteChangeToAll(); }
 
-/*!
- QGCPalette exposes the colour roles the QML ui draws with. Every role is derived from the
- running platform's PlatformTheme tones, in a light and a dark appearance, each with enabled
- and disabled colour groups.
-
- Usage:
-
-        import QGroundControl.Palette 1.0
-
-        Rectangle {
-            anchors.fill:   parent
-            color:          qgcPal.window
-
-            QGCPalette { id: qgcPal: colorGroupEnabled: enabled }
-        }
-*/
-
 class QGCPalette : public QObject
 {
     Q_OBJECT
@@ -113,12 +87,6 @@ public:
     Q_PROPERTY(QStringList  colors              READ colors             CONSTANT)
 
     DEFINE_QGC_COLOR(window,                        setWindow)
-    DEFINE_QGC_COLOR(overlayBackground,             setOverlayBackground)
-    DEFINE_QGC_COLOR(overlayBorder,                 setOverlayBorder)
-    DEFINE_QGC_COLOR(overlayGlass,                  setOverlayGlass)
-    DEFINE_QGC_COLOR(overlayInk,                    setOverlayInk)
-    DEFINE_QGC_COLOR(overlayInkInverse,             setOverlayInkInverse)
-    DEFINE_QGC_COLOR(overlayCard,                   setOverlayCard)
     DEFINE_QGC_COLOR(toolbarText,                   setToolbarText)
     DEFINE_QGC_COLOR(windowTransparent,             setWindowTransparent)
     DEFINE_QGC_COLOR(modifiedParamValue,            setModifiedParamValue)

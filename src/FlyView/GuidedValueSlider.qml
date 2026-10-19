@@ -51,23 +51,15 @@ Item {
         setCurrentValue(Math.min(Math.max(getOutputValue() + delta, _sliderMinVal), _sliderMaxVal))
     }
 
-    // Calculate the full range of the slider. We have been given a min/max but that is for clamping the selected slider values.
-    // We need expand that range to take into account additional values that must be displayed above/below the value indicator
-    // when it is at min/max.
-
-    // Add additional major ticks above/below min/max to ensure we can display the full visual range of the slider
     property int    _majorTicksVisibleAboveIndicator:   Math.floor(_indicatorCenterPos / _majorTickPixelHeight)
     property int    _majorTickAdjustment:               _majorTicksVisibleAboveIndicator * _majorTickValueStep
 
-    // Calculate the next major tick above/below min/max
     property int    _majorTickMaxValue:     Math.ceil((_sliderMaxVal + _majorTickAdjustment)/ _majorTickValueStep) * _majorTickValueStep
     property int    _majorTickMinValue:     Math.floor((_sliderMinVal - _majorTickAdjustment)/ _majorTickValueStep) * _majorTickValueStep
 
-    // Now calculate the position we draw the first tick mark such that we are not allowed to flick above the max value
     property real   _firstTickPixelOffset:  _indicatorCenterPos - ((_majorTickMaxValue - _sliderMaxVal) / _sliderValuePerPixel)
     property real   _firstPixelValue:       _majorTickMaxValue + (_firstTickPixelOffset * _sliderValuePerPixel)
 
-    // Calculate the slider height such that we can flick below the min value
     property real   _sliderHeight:          (_firstPixelValue - _sliderMinVal) / _sliderValuePerPixel + (sliderFlickable.height - _indicatorCenterPos)
 
     property int     _cMajorTicks:          (_majorTickMaxValue - _majorTickMinValue) / _majorTickValueStep + 1
@@ -75,7 +67,6 @@ Item {
     property var _qgcPal: QGroundControl.globalPalette
 
     function setCurrentValue(currentValue, animate = true) {
-        // Position the slider such that the indicator is pointing to the current value
         var contentY = (_firstPixelValue - currentValue) / _sliderValuePerPixel - _indicatorCenterPos
         if (animate) {
             flickableAnimation.from = sliderFlickable.contentY
@@ -86,9 +77,7 @@ Item {
         }
     }
 
-    /// Slider values should be in converted app units.
     function setupSlider(sliderType, minValue, maxValue, currentValue, displayText) {
-        //console.log("setupSlider: sliderType: ", sliderType, " minValue: ", minValue, " maxValue: ", maxValue, " currentValue: ", currentValue, " displayText: ", displayText)
         _sliderType = sliderType
         _sliderMinVal = minValue
         _sliderMaxVal = maxValue
@@ -112,7 +101,7 @@ Item {
         anchors.fill:   parent
     }
 
-    OverlayGlass {
+    OverlaySurface {
         anchors.fill: parent
         radius:       ScreenTools.defaultFontPixelHeight / 2
     }
@@ -136,8 +125,6 @@ Item {
             contentHeight:      sliderContainer.height
             flickableDirection: Flickable.VerticalFlick
 
-            // The default deceleration is too fast for the slider. We need to slow it down a bit. This allows for large movements of the slider
-            // to set large altitudes.
             Component.onCompleted: flickDeceleration = flickDeceleration / 2
 
             PropertyAnimation on contentY {
@@ -157,7 +144,6 @@ Item {
                 width:  control.width
                 height: _sliderHeight
 
-                // Major tick marks
                 Repeater {
                     model: _cMajorTicks
 
@@ -173,7 +159,7 @@ Item {
                             id:     majorTick
                             width:  _majorTickWidth
                             height: 1
-                            color:  _qgcPal.overlayInk
+                            color:  _qgcPal.text
                         }
 
                         QGCLabel {
@@ -186,7 +172,6 @@ Item {
                     }
                 }
 
-                // Minor tick marks
                 Repeater {
                     model: _cMajorTicks * 2
 
@@ -194,7 +179,7 @@ Item {
                         y:          _majorTickPixelHeight / 2 * index +  + _firstTickPixelOffset
                         width:      _minorTickWidth
                         height:     1
-                        color:      _qgcPal.overlayInk
+                        color:      _qgcPal.text
                         visible:    index % 2 === 1 && tickValue >= _sliderMinVal && tickValue <= _sliderMaxVal
 
                         property real tickValue: _majorTickMaxValue - ((_majorTickValueStep  / 2) * index)
@@ -204,7 +189,6 @@ Item {
         }
     }
 
-    // Value indicator
     Canvas {
         id:     indicatorCanvas
         y:      sliderFlickable.y + _indicatorCenterPos - height / 2
@@ -229,8 +213,8 @@ Item {
 
         onPaint: {
             var ctx = getContext("2d")
-            ctx.strokeStyle = _qgcPal.overlayInk
-            ctx.fillStyle = _qgcPal.overlayInkInverse
+            ctx.strokeStyle = _qgcPal.text
+            ctx.fillStyle = _qgcPal.window
             ctx.lineWidth = 1
             ctx.beginPath()
             ctx.moveTo(0, indicatorHeight / 2)
@@ -245,7 +229,6 @@ Item {
             ctx.stroke()
         }
 
-        // Repaint when palette changes
         Connections {
             target: _qgcPal
             function onPaletteChanged() {

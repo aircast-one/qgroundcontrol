@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQml.Models
 
 import QGroundControl
@@ -35,11 +26,10 @@ ListModel {
         summary: qsTr("Appearance, files, units")
         //: Comma-separated search terms for this settings page. Translate the words a
         //: user would type to look for these settings; keep product names as-is.
-        keywords: qsTr("language, locale, units, metric, imperial, feet, meters, metres, altitude, distance, speed, temperature, area, colour, color, scheme, theme, dark, light, glass, frost, blur, ui, scaling, font, size, brand, image, load, save, path, files, sd, card, audio, mute, sound, stream, gcs, position, follow, me, reset, all, settings")
+        keywords: qsTr("language, locale, units, metric, imperial, feet, meters, metres, altitude, distance, speed, temperature, area, colour, color, scheme, theme, dark, light, ui, scaling, font, size, brand, image, load, save, path, files, sd, card, audio, mute, sound, stream, gcs, position, follow, me, reset, all, settings")
         section: qsTr("Application")
         url: "qrc:/qml/QGroundControl/AppSettings/GeneralSettings.qml"
         iconUrl: "qrc:/res/QGCLogoWhite.svg"
-        tileColor: "#8e8e93"
         newSection: true
         pageVisible: function() { return true }
     }
@@ -53,7 +43,6 @@ ListModel {
         section: qsTr("Views")
         url: "qrc:/qml/QGroundControl/AppSettings/FlyViewSettings.qml"
         iconUrl: "qrc:/qmlimages/PaperPlane.svg"
-        tileColor: "#0a84ff"
         newSection: true
         pageVisible: function() { return true }
     }
@@ -67,7 +56,6 @@ ListModel {
         section: ""
         url: "qrc:/qml/QGroundControl/AppSettings/PlanViewSettings.qml"
         iconUrl: "qrc:/qmlimages/Plan.svg"
-        tileColor: "#30d158"
         newSection: false
         pageVisible: function() { return true }
     }
@@ -81,7 +69,6 @@ ListModel {
         section: ""
         url: "qrc:/qml/QGroundControl/AppSettings/Viewer3DSettings.qml"
         iconUrl: "qrc:/InstrumentValueIcons/globe.svg"
-        tileColor: "#64d2ff"
         newSection: false
         pageVisible: function() { return QGroundControl.settingsManager.viewer3DSettings.userVisible }
     }
@@ -95,7 +82,6 @@ ListModel {
         section: ""
         url: "qrc:/qml/QGroundControl/AppSettings/VideoSettings.qml"
         iconUrl: "qrc:/InstrumentValueIcons/camera.svg"
-        tileColor: "#ff375f"
         newSection: false
         pageVisible: function() { return QGroundControl.settingsManager.videoSettings.userVisible }
     }
@@ -109,7 +95,6 @@ ListModel {
         section: qsTr("Vehicle & Links")
         url: "qrc:/qml/QGroundControl/AppSettings/TelemetrySettings.qml"
         iconUrl: "qrc:/InstrumentValueIcons/drone.svg"
-        tileColor: "#5e5ce6"
         newSection: true
         pageVisible: function() { return true }
     }
@@ -123,7 +108,6 @@ ListModel {
         section: ""
         url: "qrc:/qml/QGroundControl/AppSettings/PacketRadioSettings.qml"
         iconUrl: "qrc:/InstrumentValueIcons/radio.svg"
-        tileColor: "#ff9f0a"
         newSection: false
         pageVisible: function() { return QGroundControl.settingsManager.packetRadioSettings.userVisible }
     }
@@ -137,7 +121,6 @@ ListModel {
         section: ""
         url: "qrc:/qml/QGroundControl/AppSettings/ADSBServerSettings.qml"
         iconUrl: "qrc:/InstrumentValueIcons/airplane.svg"
-        tileColor: "#64d2ff"
         newSection: false
         pageVisible: function() { return true }
     }
@@ -151,7 +134,6 @@ ListModel {
         section: ""
         url: "qrc:/qml/QGroundControl/AppSettings/LinkSettings.qml"
         iconUrl: "qrc:/InstrumentValueIcons/usb.svg"
-        tileColor: "#bf5af2"
         newSection: false
         pageVisible: function() { return true }
     }
@@ -165,7 +147,6 @@ ListModel {
         section: ""
         url: "qrc:/qml/QGroundControl/AppSettings/NTRIPSettings.qml"
         iconUrl: "qrc:/InstrumentValueIcons/target.svg"
-        tileColor: "#ff9f0a"
         newSection: false
         pageVisible: function() { return true }
     }
@@ -179,7 +160,6 @@ ListModel {
         section: ""
         url: "qrc:/qml/QGroundControl/AppSettings/MapSettings.qml"
         iconUrl: "qrc:/InstrumentValueIcons/globe.svg"
-        tileColor: "#30d158"
         newSection: false
         pageVisible: function() { return true }
     }
@@ -193,7 +173,6 @@ ListModel {
         section: qsTr("Compliance")
         url: "qrc:/qml/QGroundControl/AppSettings/RemoteIDSettings.qml"
         iconUrl: "qrc:/qmlimages/RidIconManNoID.svg"
-        tileColor: "#0a84ff"
         newSection: true
         pageVisible: function() { return true }
     }
@@ -207,7 +186,6 @@ ListModel {
         section: ""
         url: "qrc:/qml/QGroundControl/AppSettings/PX4LogTransferSettings.qml"
         iconUrl: "qrc:/InstrumentValueIcons/inbox-download.svg"
-        tileColor: "#ac8e68"
         newSection: false
         pageVisible: function() { 
             var activeVehicle = QGroundControl.multiVehicleManager.activeVehicle
@@ -226,7 +204,6 @@ ListModel {
         section: qsTr("Support")
         url: "qrc:/qml/QGroundControl/AppSettings/HelpSettings.qml"
         iconUrl: "qrc:/InstrumentValueIcons/question.svg"
-        tileColor: "#0a84ff"
         newSection: true
         pageVisible: function() { return true }
     }
@@ -240,7 +217,6 @@ ListModel {
         section: qsTr("Diagnostics")
         url: "qrc:/qml/QGroundControl/AppSettings/AppLogging.qml"
         iconUrl: "qrc:/InstrumentValueIcons/conversation.svg"
-        tileColor: "#8e8e93"
         newSection: true
         pageVisible: function() { return true }
     }
@@ -254,7 +230,6 @@ ListModel {
         section: ""
         url: "qrc:/qml/QGroundControl/AppSettings/LoggingSettings.qml"
         iconUrl: "qrc:/InstrumentValueIcons/conversation.svg"
-        tileColor: "#8e8e93"
         newSection: false
         pageVisible: function() { return true }
     }
@@ -268,7 +243,6 @@ ListModel {
         section: ""
         url: "qrc:/qml/QGroundControl/AppSettings/MockLink.qml"
         iconUrl: "qrc:/InstrumentValueIcons/drone.svg"
-        tileColor: "#ffd60a"
         newSection: false
         pageVisible: function() { return ScreenTools.isDebug }
     }
@@ -282,7 +256,6 @@ ListModel {
         section: ""
         url: "qrc:/qml/QGroundControl/AppSettings/DebugWindow.qml"
         iconUrl: "qrc:/InstrumentValueIcons/bug.svg"
-        tileColor: "#ff453a"
         newSection: false
         pageVisible: function() { return ScreenTools.isDebug }
     }
@@ -296,7 +269,6 @@ ListModel {
         section: ""
         url: "qrc:/qml/QGroundControl/AppSettings/QmlTest.qml"
         iconUrl: "qrc:/InstrumentValueIcons/photo.svg"
-        tileColor: "#ff375f"
         newSection: false
         pageVisible: function() { return ScreenTools.isDebug }
     }

@@ -55,7 +55,7 @@ Item {
     function _addInteractiveVisuals() {
         if (_objMgrInteractiveVisuals.empty) {
             _objMgrInteractiveVisuals.createObjects([ dragHandlesComponent, splitHandlesComponent, edgeLengthHandlesComponent ], mapControl)
-            _objMgrInteractiveVisuals.createObject(toolbarComponent, OverlayBackdrop.chromeLayer || mapControl, false)
+            _objMgrInteractiveVisuals.createObject(toolbarComponent, mapControl, false)
         }
     }
 
@@ -295,7 +295,6 @@ Item {
         }
     }
 
-    // Control which is used to drag polygon vertices
     Component {
         id: dragAreaComponent
 

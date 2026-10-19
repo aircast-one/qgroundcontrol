@@ -74,7 +74,7 @@ ColumnLayout {
         Layout.fillWidth:   true
         implicitWidth:      _contentLayout.implicitWidth + (control.insetContent ? _margins * 2 : 0)
         implicitHeight:     _contentLayout.implicitHeight + (control.insetContent ? _margins * 2: 0)
-        color:              cardStyle  ? QGroundControl.globalPalette.overlayCard
+        color:              cardStyle  ? QGroundControl.globalPalette.windowShade
                           : showBorder ? Qt.alpha(QGroundControl.globalPalette.windowShade, 0.72)
                                        : "transparent"
         border.color:       outerBorderColor

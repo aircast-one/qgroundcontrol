@@ -88,7 +88,7 @@ Item {
 
     function addToolbarVisuals() {
         if (_objMgrToolVisuals.empty) {
-            var toolbar = _objMgrToolVisuals.createObject(toolbarComponent, OverlayBackdrop.chromeLayer || mapControl)
+            var toolbar = _objMgrToolVisuals.createObject(toolbarComponent, mapControl)
             toolbar.z = QGroundControl.zOrderWidgets
         }
     }
@@ -706,7 +706,6 @@ Item {
             }
 
             onItemCoordinateChanged: {
-                // Keep the handle visually attached to the cursor while radius updates are de-bounced.
                 _circleRadiusDragCoord = itemCoordinate
 
                 var radius = mapPolygon.center.distanceTo(itemCoordinate)

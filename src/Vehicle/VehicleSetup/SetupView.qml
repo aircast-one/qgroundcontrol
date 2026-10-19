@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
@@ -54,21 +45,21 @@ ToolDrawerPage {
     preferredHeight: ScreenTools.isMobile ? 0 : Math.max(_defaultTextHeight * 34, mainWindow.height * 0.86)
 
     readonly property var    _componentStyles: ({
-        "/qmlimages/AirframeComponentIcon.png":    { icon: "/InstrumentValueIcons/box.svg",              color: "#ff9f0a" },
-        "/qmlimages/SubFrameComponentIcon.png":    { icon: "/InstrumentValueIcons/box.svg",              color: "#ff9f0a" },
-        "/res/helicoptericon.svg":                 { icon: "/InstrumentValueIcons/box.svg",              color: "#ff9f0a" },
-        "/qmlimages/RadioComponentIcon.png":       { icon: "/InstrumentValueIcons/radio.svg",            color: "#0a84ff" },
-        "/qmlimages/FlightModesComponentIcon.png": { icon: "/InstrumentValueIcons/swap.svg",             color: "#5e5ce6" },
-        "/qmlimages/SensorsComponentIcon.png":     { icon: "/InstrumentValueIcons/radar.svg",            color: "#30d158" },
-        "/qmlimages/PowerComponentIcon.png":       { icon: "/InstrumentValueIcons/bolt.svg",             color: "#ff375f" },
-        "/qmlimages/MotorComponentIcon.svg":       { icon: "/InstrumentValueIcons/refresh.svg",          color: "#bf5af2" },
-        "/qmlimages/SafetyComponentIcon.png":      { icon: "/InstrumentValueIcons/shield.svg",           color: "#ff453a" },
-        "/qmlimages/TuningComponentIcon.png":      { icon: "/InstrumentValueIcons/tuning.svg",           color: "#ac8e68" },
-        "/qmlimages/CameraComponentIcon.png":      { icon: "/InstrumentValueIcons/camera.svg",           color: "#64d2ff" },
-        "/qmlimages/LightsComponentIcon.png":      { icon: "/InstrumentValueIcons/light-bulb.svg",       color: "#ffd60a" },
-        "/qmlimages/FollowComponentIcon.png":      { icon: "/InstrumentValueIcons/location-current.svg", color: "#30d158" },
-        "/qmlimages/ForwardingSupportIcon.svg":    { icon: "/InstrumentValueIcons/network.svg",          color: "#8e8e93" },
-        "/qmlimages/wifi.svg":                     { icon: "/InstrumentValueIcons/network.svg",          color: "#8e8e93" }
+        "/qmlimages/AirframeComponentIcon.png":    { icon: "/InstrumentValueIcons/box.svg" },
+        "/qmlimages/SubFrameComponentIcon.png":    { icon: "/InstrumentValueIcons/box.svg" },
+        "/res/helicoptericon.svg":                 { icon: "/InstrumentValueIcons/box.svg" },
+        "/qmlimages/RadioComponentIcon.png":       { icon: "/InstrumentValueIcons/radio.svg" },
+        "/qmlimages/FlightModesComponentIcon.png": { icon: "/InstrumentValueIcons/swap.svg" },
+        "/qmlimages/SensorsComponentIcon.png":     { icon: "/InstrumentValueIcons/radar.svg" },
+        "/qmlimages/PowerComponentIcon.png":       { icon: "/InstrumentValueIcons/bolt.svg" },
+        "/qmlimages/MotorComponentIcon.svg":       { icon: "/InstrumentValueIcons/refresh.svg" },
+        "/qmlimages/SafetyComponentIcon.png":      { icon: "/InstrumentValueIcons/shield.svg" },
+        "/qmlimages/TuningComponentIcon.png":      { icon: "/InstrumentValueIcons/tuning.svg" },
+        "/qmlimages/CameraComponentIcon.png":      { icon: "/InstrumentValueIcons/camera.svg" },
+        "/qmlimages/LightsComponentIcon.png":      { icon: "/InstrumentValueIcons/light-bulb.svg" },
+        "/qmlimages/FollowComponentIcon.png":      { icon: "/InstrumentValueIcons/location-current.svg" },
+        "/qmlimages/ForwardingSupportIcon.svg":    { icon: "/InstrumentValueIcons/network.svg" },
+        "/qmlimages/wifi.svg":                     { icon: "/InstrumentValueIcons/network.svg" }
     })
 
     readonly property var    _tuningResources: [
@@ -79,8 +70,6 @@ ToolDrawerPage {
         "/qmlimages/ForwardingSupportIcon.svg"
     ]
 
-    readonly property string _fallbackTileColor: "#8e8e93"
-
     function _componentStyle(component) {
         return _componentStyles[String(component.iconResource)]
     }
@@ -88,11 +77,6 @@ ToolDrawerPage {
     function componentIcon(component) {
         const style = _componentStyle(component)
         return style ? style.icon : component.iconResource
-    }
-
-    function componentColor(component) {
-        const style = _componentStyle(component)
-        return style ? style.color : _fallbackTileColor
     }
 
     function isTuning(component) {
@@ -396,7 +380,7 @@ ToolDrawerPage {
                 objectName:         "setupSummaryButton"
                 Layout.fillWidth:   true
                 icon.source:        "/InstrumentValueIcons/drone.svg"
-                tileColor:          "#8e8e93"
+                tiled:              true
                 checked:            true
                 text:               qsTr("Summary")
                 badgeVisible:       !_setupComplete
@@ -408,7 +392,7 @@ ToolDrawerPage {
                 id:                 firmwareButton
                 Layout.fillWidth:   true
                 icon.source:        "/InstrumentValueIcons/cloud-upload.svg"
-                tileColor:          "#64d2ff"
+                tiled:              true
                 visible:            !ScreenTools.isMobile && _corePlugin.options.showFirmwareUpgrade && matchesSearch(text)
                 text:               qsTr("Firmware")
                 badgeVisible:       _firmwareUpdateAvailable
@@ -419,7 +403,7 @@ ToolDrawerPage {
                 Layout.fillWidth:   true
                 Layout.topMargin:   _sectionGap
                 icon.source:        "/InstrumentValueIcons/target.svg"
-                tileColor:          "#30d158"
+                tiled:              true
                 visible:            (QGroundControl.multiVehicleManager.activeVehicle ? QGroundControl.multiVehicleManager.activeVehicle.flowImageIndex > 0 : false) && matchesSearch(text)
                 text:               qsTr("Optical Flow")
                 onClicked:          showPanel(this, "qrc:/qml/QGroundControl/VehicleSetup/OpticalFlowSensor.qml")
@@ -434,7 +418,7 @@ ToolDrawerPage {
                     Layout.fillWidth:   true
                     Layout.topMargin:   index === 0 ? _sectionGap : 0
                     icon.source:        componentIcon(modelData)
-                    tileColor:          componentColor(modelData)
+                    tiled:              true
                     badgeVisible:       modelData.requiresSetup && !modelData.setupComplete
                     text:               modelData.name
                     visible:            modelData.setupSource.toString() !== "" && !isTuning(modelData) && matchesSearch(text)
@@ -455,7 +439,7 @@ ToolDrawerPage {
                     objectName:         "setupComponent" + modelData.name.replace(/\s/g, "")
                     Layout.fillWidth:   true
                     icon.source:        componentIcon(modelData)
-                    tileColor:          componentColor(modelData)
+                    tiled:              true
                     badgeVisible:       modelData.requiresSetup && !modelData.setupComplete
                     text:               modelData.name
                     visible:            modelData.setupSource.toString() !== "" && isTuning(modelData) && matchesSearch(text)
@@ -468,7 +452,7 @@ ToolDrawerPage {
                 Layout.fillWidth:   true
                 Layout.topMargin:   _sectionGap
                 icon.source:        "/InstrumentValueIcons/dial-pad.svg"
-                tileColor:          "#8e8e93"
+                tiled:              true
                 badgeVisible:       _activeJoystick ? !(_activeJoystick.calibrated || _buttonsOnly) : false
                 visible:            _fullParameterVehicleAvailable && joystickManager.joystickCount !== 0 && matchesSearch(text)
                 text:               _forcedToButtonsOnly ? qsTr("Buttons") : qsTr("Joystick")
@@ -485,7 +469,7 @@ ToolDrawerPage {
                 Layout.fillWidth:   true
                 Layout.topMargin:   joystickButton.visible ? 0 : _sectionGap
                 icon.source:        "/InstrumentValueIcons/list.svg"
-                tileColor:          "#8e8e93"
+                tiled:              true
                 visible:            _parametersAvailable && matchesSearch(text)
                 text:               qsTr("Parameters")
                 onClicked:          showParametersPanel()

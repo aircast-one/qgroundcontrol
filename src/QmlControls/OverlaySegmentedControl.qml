@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQuick
 
 import QGroundControl
@@ -45,7 +36,7 @@ Item {
         border.color: Qt.alpha(_root.contentColor, 0.08)
     }
 
-    OverlayGlass {
+    OverlaySurface {
         anchors.fill: parent
         radius:       _root._trackRadius
         visible:      _root.glass
@@ -98,8 +89,6 @@ Item {
                 QGCMouseArea {
                     anchors.fill: parent
                     enabled:      parent._isEnabled
-                    // Only reports. Assigning currentIndex here would overwrite whatever binding
-                    // the owner set it from, so the control would stop following its own model.
                     onClicked: _root.activated(index)
                 }
             }

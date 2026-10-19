@@ -1,31 +1,20 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQuick
 
 import QGroundControl
 import QGroundControl.Controls
 
-// The shutter, in the shape every camera app uses: a ring with a red centre that becomes a
-// square while recording, so the state is readable without a label.
 Rectangle {
     id:             _root
     width:          Math.max(ScreenTools.minTouchPixels * 1.2, ScreenTools.defaultFontPixelHeight * 3.2)
     height:         width
     radius:         width / 2
     color:          "transparent"
-    border.color:   qgcPal.overlayInk
+    border.color:   qgcPal.text
     border.width:   Math.max(3, width / 16)
     layer.enabled: true
     layer.effect:  OverlayShadowEffect { elevated: _root.lifted }
 
-    OverlayGlass {
+    OverlaySurface {
         anchors.fill:    parent
         anchors.margins: _root.border.width
         radius:          width / 2

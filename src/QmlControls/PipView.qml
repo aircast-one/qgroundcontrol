@@ -304,14 +304,14 @@ Item {
         color:              "transparent"
         visible:            _isExpanded && !ScreenTools.isMobile && pipHover.hovered && !_root._editMode
 
-        OverlayGlass {
+        OverlaySurface {
             anchors.fill: parent
             radius:       parent.radius
         }
 
         QGCColoredImage {
             source:             "/InstrumentValueIcons/browser-window-new.svg"
-            color:              QGroundControl.globalPalette.overlayInk
+            color:              QGroundControl.globalPalette.text
             mipmap:             true
             fillMode:           Image.PreserveAspectFit
             anchors.centerIn:   parent
@@ -337,7 +337,7 @@ Item {
         color:              "transparent"
         scale:              resizeArea.pressed ? 1.1 : 1
 
-        OverlayGlass {
+        OverlaySurface {
             anchors.fill: parent
             radius:       parent.radius
         }
@@ -347,7 +347,7 @@ Item {
 
         QGCColoredImage {
             source:             "/InstrumentValueIcons/arrow-simple-right.svg"
-            color:              QGroundControl.globalPalette.overlayInk
+            color:              QGroundControl.globalPalette.text
             mipmap:             true
             fillMode:           Image.PreserveAspectFit
             anchors.centerIn:   parent
@@ -398,7 +398,7 @@ Item {
         Behavior on opacity { NumberAnimation { duration: revealDuration; easing.type: revealEasing } }
         Behavior on scale   { NumberAnimation { duration: 120; easing.type: Easing.OutCubic } }
 
-        OverlayGlass {
+        OverlaySurface {
             anchors.fill: parent
             radius:       parent.radius
         }
@@ -406,7 +406,7 @@ Item {
         QGCColoredImage {
             objectName:         "pipToggleChevron"
             source:             "/InstrumentValueIcons/cheveron-left.svg"
-            color:              QGroundControl.globalPalette.overlayInk
+            color:              QGroundControl.globalPalette.text
             mipmap:             true
             fillMode:           Image.PreserveAspectFit
             anchors.centerIn:   parent

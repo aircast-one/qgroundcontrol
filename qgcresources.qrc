@@ -1,7 +1,9 @@
 <RCC>
     <qresource prefix="/fonts">
-        <file alias="opensans">resources/fonts/OpenSans-Regular.ttf</file>
-        <file alias="opensans-demibold">resources/fonts/OpenSans-Semibold.ttf</file>
+        <file alias="geist">resources/fonts/Geist-Regular.ttf</file>
+        <file alias="geist-medium">resources/fonts/Geist-Medium.ttf</file>
+        <file alias="geist-semibold">resources/fonts/Geist-SemiBold.ttf</file>
+        <file alias="geist-mono">resources/fonts/GeistMono-Regular.ttf</file>
         <file alias="NanumGothic-Regular">resources/fonts/NanumGothic-Regular.ttf</file>
         <file alias="NanumGothic-Bold">resources/fonts/NanumGothic-Bold.ttf</file>
     </qresource>

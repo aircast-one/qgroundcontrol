@@ -1,12 +1,3 @@
-/****************************************************************************
- *
- * (c) 2009-2020 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
- *
- * QGroundControl is licensed according to the terms in the file
- * COPYING.md in the root of the source code directory.
- *
- ****************************************************************************/
-
 import QtQuick
 import QtQuick.Controls
 import QtQuick.Dialogs
@@ -69,9 +60,7 @@ ApplicationWindow {
     readonly property real windowChromeLeftInset:  windowChromeLoader.item ? windowChromeLoader.item.leftInset : 0
     readonly property real windowChromeRightInset: windowChromeLoader.item ? windowChromeLoader.item.rightInset : 0
 
-    readonly property bool glassBackdropVisible: flyView.visible && !toolDrawer.visible
     readonly property bool toolDrawerVisible:    toolDrawer.visible
-    readonly property bool flyViewBackdropVisible: flyView.visible
     readonly property real panelRadius: Math.round(ScreenTools.defaultFontPixelHeight * 1.6)
 
     property var _windowDragExclusions: []
@@ -438,12 +427,11 @@ ApplicationWindow {
             radius:             toolDrawer.floating ? mainWindow.panelRadius : 0
             clip:               true
 
-            OverlayGlass {
+            OverlaySurface {
                 anchors.fill:   parent
                 radius:         toolPanel.radius
                 visible:        toolDrawer.floating
-                frosted:        mainWindow.flyViewBackdropVisible
-                material:       OverlayGlass.Panel
+                material:       OverlaySurface.Panel
             }
 
             layer.enabled:      toolDrawer.floating
@@ -781,11 +769,11 @@ ApplicationWindow {
                 layer.enabled:  true
                 layer.effect:   OverlayShadowEffect { }
 
-                OverlayGlass {
+                OverlaySurface {
                     objectName:   "drawerGlass"
                     anchors.fill: parent
                     radius:       parent.radius
-                    material:     OverlayGlass.Panel
+                    material:     OverlaySurface.Panel
                 }
             }
 
@@ -839,7 +827,7 @@ ApplicationWindow {
                 implicitWidth:          detailsLabel.implicitWidth + detailsChevron.width + ScreenTools.defaultFontPixelWidth * 4
                 radius:                 Math.round(ScreenTools.defaultFontPixelHeight * 0.85)
                 color:                  moreArea.containsMouse ? Qt.alpha(QGroundControl.globalPalette.text, 0.16)
-                                                               : QGroundControl.globalPalette.overlayCard
+                                                               : QGroundControl.globalPalette.windowShade
                 visible:                indicatorDrawerLoader.item &&
                                             indicatorDrawerLoader.item.showExpand && !indicatorDrawer._expanded
 

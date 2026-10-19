@@ -4,8 +4,6 @@
 
 #include "SettingsGroup.h"
 
-/// \brief Application Settings
-///
 class AppSettings : public SettingsGroup
 {
     Q_OBJECT
@@ -36,7 +34,6 @@ public:
     DEFINE_SETTINGFACT(virtualJoystickLeftHandedMode)
     DEFINE_SETTINGFACT(uiScalePercent)
     DEFINE_SETTINGFACT(indoorPalette)
-    DEFINE_SETTINGFACT(overlayGlassFrost)
     DEFINE_SETTINGFACT(savePath)
     DEFINE_SETTINGFACT(androidDontSaveToSDCard)
     DEFINE_SETTINGFACT(androidUsePosixSerial)
@@ -64,8 +61,6 @@ public:
     DEFINE_SETTINGFACT(favoriteParameters)
     DEFINE_SETTINGFACT(showAppLogTimestampAsElapsedTime)
 
-    // QSettings key for clearSettingsNextBoot. Accessed directly by QGCApplication
-    // at startup before SettingsManager is initialized.
     static constexpr const char *clearSettingsNextBootKey = "clearSettingsNextBoot";
 
     Q_PROPERTY(QString missionSavePath          READ missionSavePath            NOTIFY savePathsChanged)
@@ -88,7 +83,6 @@ public:
     Q_PROPERTY(QString tilesetFileExtension     MEMBER tilesetFileExtension     CONSTANT)
     Q_PROPERTY(QString settingsFileExtension    MEMBER settingsFileExtension    CONSTANT)
 
-
     QString missionSavePath       ();
     QString parameterSavePath     ();
     QString telemetrySavePath     ();
@@ -99,12 +93,10 @@ public:
     QString mavlinkActionsSavePath();
     QString settingsSavePath      ();
 
-    // Helper methods for working with firstRunPromptIds QVariant settings string list
     static QList<int> firstRunPromptsIdsVariantToList   (const QVariant& firstRunPromptIds);
     static QVariant   firstRunPromptsIdsListToVariant   (const QList<int>& rgIds);
     Q_INVOKABLE void  firstRunPromptIdsMarkIdAsShown    (int id);
 
-    // Application wide file extensions
     static constexpr const char* parameterFileExtension =   "params";
     static constexpr const char* planFileExtension =        "plan";
     static constexpr const char* waypointsFileExtension =   "waypoints";
@@ -115,7 +107,6 @@ public:
     static constexpr const char* tilesetFileExtension =     "qgctiledb";
     static constexpr const char* settingsFileExtension =    "settings";
 
-    // Child directories of savePath for specific file types
     static constexpr const char* parameterDirectory =       QT_TRANSLATE_NOOP("AppSettings", "Parameters");
     static constexpr const char* telemetryDirectory =       QT_TRANSLATE_NOOP("AppSettings", "Telemetry");
     static constexpr const char* missionDirectory =         QT_TRANSLATE_NOOP("AppSettings", "Missions");

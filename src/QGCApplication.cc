@@ -25,7 +25,6 @@
 #include <QtQuickControls2/QQuickStyle>
 #include <QtSvg/QSvgRenderer>
 
-#include "PlatformTheme.h"
 #endif
 
 #include <QtCore/private/qthread_p.h>
@@ -269,12 +268,10 @@ void QGCApplication::init()
 #ifndef QGC_HEADLESS_CORE
     qmlRegisterType<OverlayPhysics>("QGroundControl.Controls", 1, 0, "OverlayPhysics");
 
-    if (QFontDatabase::addApplicationFont(":/fonts/opensans") < 0) {
-        qCWarning(QGCApplicationLog) << "Could not load /fonts/opensans font";
-    }
-
-    if (QFontDatabase::addApplicationFont(":/fonts/opensans-demibold") < 0) {
-        qCWarning(QGCApplicationLog) << "Could not load /fonts/opensans-demibold font";
+    for (const QString &font : { QStringLiteral(":/fonts/geist"), QStringLiteral(":/fonts/geist-medium"), QStringLiteral(":/fonts/geist-semibold"), QStringLiteral(":/fonts/geist-mono") }) {
+        if (QFontDatabase::addApplicationFont(font) < 0) {
+            qCWarning(QGCApplicationLog) << "Could not load" << font;
+        }
     }
 #endif
 
@@ -313,7 +310,7 @@ bool QGCApplication::_initVideo()
 #ifndef QGC_HEADLESS_CORE
 bool QGCApplication::_initQmlRootWindow()
 {
-    QQuickStyle::setStyle(PlatformTheme::instance()->controlStyle());
+    QQuickStyle::setStyle(QStringLiteral("Basic"));
     QGCCorePlugin::instance()->init();
     MAVLinkProtocol::instance()->init();
     MultiVehicleManager::instance()->init();

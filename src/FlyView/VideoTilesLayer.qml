@@ -97,13 +97,13 @@ Item {
                     radius:       _root._radius
                     color:        noSignal ? "transparent" : "black"
                     border.width: noSignal ? 0 : 1
-                    border.color: tileMouseArea.containsMouse ? Qt.alpha(_root._qgcPal.overlayInk, 0.6)
-                                                              : _root._qgcPal.overlayBorder
+                    border.color: tileMouseArea.containsMouse ? Qt.alpha(_root._qgcPal.text, 0.6)
+                                                              : _root._qgcPal.groupBorder
                     visible:      _root._cameraNumber > 0
                     layer.enabled: true
                     layer.effect:  OverlayShadowEffect { elevated: false }
 
-                    OverlayGlass {
+                    OverlaySurface {
                         anchors.fill: parent
                         visible:      tile.noSignal
                         radius:       parent.radius

@@ -13,7 +13,7 @@ build_type := env_var_or_default("BUILD_TYPE", "Debug")
 build_dir := "build"
 # Use all cores by default; override with JOBS=N.
 jobs := env_var_or_default("JOBS", `python3 -c "import os; print(os.cpu_count() or 4)" 2>/dev/null || echo 4`)
-aircast_tokens := "26c9049718f588be2b8587e44de7307fc72a924c"
+aircast_tokens := "369042d6be25bc14057925bff414404963fcec48"
 
 # Default: show available commands
 default:
@@ -148,11 +148,12 @@ web-checks:
     ./web/build-core.sh
     cd web && npm ci && npm run check
 
-# Regenerate the Android and iOS colour schemes from the pinned aircast-tokens commit
+# Regenerate the Android, iOS, web and Qt colour schemes from the pinned aircast-tokens commit
 tokens:
     GOWORK=off go run github.com/aircast-one/aircast-tokens/cmd/aircast-tokens@{{aircast_tokens}} -format kotlin -package one.aircast.map > android/map/src/main/java/one/aircast/map/AircastTokens.kt
     GOWORK=off go run github.com/aircast-one/aircast-tokens/cmd/aircast-tokens@{{aircast_tokens}} -format swift > ios/Sources/Theme/AircastTokens.swift
     GOWORK=off go run github.com/aircast-one/aircast-tokens/cmd/aircast-tokens@{{aircast_tokens}} -format material-css > web/src/theme/AircastTokens.css
+    GOWORK=off go run github.com/aircast-one/aircast-tokens/cmd/aircast-tokens@{{aircast_tokens}} -format qt > src/Theme/AircastTokens.h
 
 # Build documentation
 docs:

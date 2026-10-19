@@ -11,7 +11,7 @@ Rectangle {
     layer.enabled: true
     layer.effect:  OverlayShadowEffect { }
 
-    OverlayGlass {
+    OverlaySurface {
         anchors.fill: parent
         radius:       parent.radius
     }
@@ -47,13 +47,13 @@ Rectangle {
 
             QGCLabel {
                 visible:    _noGPSLockVisible
-                color:      _qgcPal.overlayInk
+                color:      _qgcPal.text
                 text:       qsTr("No GPS Lock for Vehicle")
             }
 
             QGCLabel {
                 visible:    _prearmErrorVisible
-                color:      _qgcPal.overlayInk
+                color:      _qgcPal.text
                 text:       _activeVehicle ? _activeVehicle.prearmError : ""
             }
 
@@ -61,7 +61,7 @@ Rectangle {
                 visible:    _prearmErrorVisible
                 width:      ScreenTools.defaultFontPixelWidth * 50
                 wrapMode:   Text.WordWrap
-                color:      _qgcPal.overlayInk
+                color:      _qgcPal.text
                 opacity:    0.7
                 font.pointSize: ScreenTools.smallFontPointSize
                 text:       qsTr("The vehicle has failed a pre-arm check. In order to arm the vehicle, resolve the failure.")
