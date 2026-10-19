@@ -55,7 +55,7 @@ internal fun setupStateColor(state: SetupState): Color = when (state) {
 }
 
 @Composable
-internal fun SectionHeader(text: String, image: String = "") {
+internal fun SectionHeader(text: String, image: String = "", trailing: (@Composable () -> Unit)? = null) {
     val band = LocalSettingsList.current
     Row(
         if (band) {
@@ -79,7 +79,9 @@ internal fun SectionHeader(text: String, image: String = "") {
             text = text,
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f),
         )
+        trailing?.invoke()
     }
 }
 

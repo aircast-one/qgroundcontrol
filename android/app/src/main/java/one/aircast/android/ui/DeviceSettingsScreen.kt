@@ -15,6 +15,9 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -78,7 +81,7 @@ private fun ServicesStat(stat: DeviceStat, services: List<ServiceRow>) {
     Row(Modifier.fillMaxWidth().clickable { open = !open }.padding(horizontal = 16.dp, vertical = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(16.dp)) {
         StatText(stat, Modifier.weight(1f))
         Text(if (open) "Hide" else "Show details", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
-        Icon(painterResource(if (open) R.drawable.ic_expand_less else R.drawable.ic_expand_more), null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+        Icon(if (open) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     if (open) {
         Column(Modifier.fillMaxWidth().padding(bottom = 8.dp).semantics { contentDescription = "Supervised units" }) {

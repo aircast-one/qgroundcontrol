@@ -24,10 +24,11 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -127,10 +128,7 @@ private val LIST_PADDING = 16.dp
 @Composable
 internal fun DeviceSection(title: String, badge: DeviceBadge? = null, content: @Composable () -> Unit) {
     Column(Modifier.fillMaxWidth().semantics { contentDescription = title }) {
-        Row(Modifier.fillMaxWidth().padding(start = LIST_PADDING, end = LIST_PADDING, top = 20.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1f))
-            badge?.let { DeviceBadgeText(it) }
-        }
+        SectionHeader(title, trailing = badge?.let { { DeviceBadgeText(it) } })
         content()
     }
 }
@@ -332,7 +330,7 @@ internal fun SecretField(
     isError: Boolean = false,
     supportingText: String = "",
 ) {
-    var shown by rememberSaveable { mutableStateOf(false) }
+    var revealed by rememberSaveable { mutableStateOf(false) }
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
@@ -341,13 +339,9 @@ internal fun SecretField(
         singleLine = true,
         isError = isError,
         supportingText = supportingText.takeIf { it.isNotEmpty() }?.let { { Text(it) } },
-        visualTransformation = if (shown) VisualTransformation.None else PasswordVisualTransformation(),
-        keyboardOptions = KeyboardOptions(keyboardType = if (shown) KeyboardType.Text else KeyboardType.Password, autoCorrectEnabled = false),
-        trailingIcon = {
-            IconButton(onClick = { shown = !shown }) {
-                Icon(painterResource(if (shown) R.drawable.ic_visibility_off else R.drawable.ic_visibility), if (shown) "Hide $label" else "Show $label")
-            }
-        },
+        visualTransformation = if (revealed) VisualTransformation.None else PasswordVisualTransformation(),
+        keyboardOptions = KeyboardOptions(keyboardType = if (revealed) KeyboardType.Text else KeyboardType.Password, autoCorrectEnabled = false),
+        leadingIcon = { TextButton(onClick = { revealed = !revealed }) { Text(if (revealed) "Hide" else "Show") } },
         modifier = modifier.fillMaxWidth(),
     )
 }
@@ -375,33 +369,8 @@ internal fun LinkButton(href: String, text: String, look: LinkLook = LinkLook.To
 
 @Composable
 internal fun DeviceSelect(label: String, value: String, options: List<DeviceOption>, onPick: (String) -> Unit, modifier: Modifier = Modifier, enabled: Boolean = true) {
-    var open by remember { mutableStateOf(false) }
-    val shown = options.firstOrNull { it.value == value }?.label ?: value
-    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(label, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        Box {
-            OutlinedButton(
-                onClick = { open = true },
-                enabled = enabled,
-                shape = RoundedCornerShape(4.dp),
-                modifier = Modifier.fillMaxWidth().heightIn(min = 56.dp).semantics { contentDescription = label },
-            ) {
-                Text(shown, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onSurface, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f))
-                Icon(painterResource(R.drawable.ic_arrow_drop_down), null)
-            }
-            DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
-                options.map { option ->
-                    DropdownMenuItem(
-                        text = { Text(option.label) },
-                        trailingIcon = if (option.value == value) ({ Icon(painterResource(R.drawable.ic_check_circle), null) }) else null,
-                        onClick = {
-                            open = false
-                            onPick(option.value)
-                        },
-                    )
-                }
-            }
-        }
+    ChoiceField(label, options.firstOrNull { it.value == value }?.label ?: value, options.map { it.label }, modifier.fillMaxWidth(), enabled = enabled) { index ->
+        options.getOrNull(index)?.let { onPick(it.value) }
     }
 }
 
@@ -528,7 +497,7 @@ internal fun DeviceDisclosure(title: String, summary: String = "", badge: Device
                 if (summary.isNotEmpty()) Text(summary, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             badge?.let { DeviceBadgeText(it) }
-            Icon(painterResource(if (open) R.drawable.ic_expand_less else R.drawable.ic_expand_more), if (open) "Collapse $title" else "Expand $title", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(if (open) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, if (open) "Collapse $title" else "Expand $title", tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (open) content()
     }
@@ -595,7 +564,7 @@ internal fun Fold(title: String, open: Boolean, onToggle: (Boolean) -> Unit, sum
                 Text(title, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (summary.isNotEmpty()) Text(summary, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            Icon(painterResource(if (open) R.drawable.ic_expand_less else R.drawable.ic_expand_more), if (open) "Collapse $title" else "Expand $title", tint = MaterialTheme.colorScheme.onSurfaceVariant)
+            Icon(if (open) Icons.Default.KeyboardArrowUp else Icons.Default.KeyboardArrowDown, if (open) "Collapse $title" else "Expand $title", tint = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         if (open) Column(Modifier.fillMaxWidth().padding(bottom = 8.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) { content() }
     }
