@@ -230,7 +230,7 @@ jobs:
           package_name: one.aircast.app
           artifact: out/AircastAndroidCore-${{ needs.setup.outputs.short_version }}.aab
           service_account_json_file: ${{ steps.play_auth.outputs.credentials_file_path }}
-          track: ${{ needs.setup.outputs.is_production == 'true' && (vars.PLAY_PRODUCTION_TRACK || 'production') || 'internal' }}
+          track: ${{ needs.setup.outputs.is_production == 'true' && (vars.PLAY_PRODUCTION_TRACK || 'production') || (needs.setup.outputs.environment == 'beta' && (vars.PLAY_BETA_TRACK || 'alpha') || 'internal') }}
           status: completed
 
       - name: Collect the native head APK
