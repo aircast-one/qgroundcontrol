@@ -337,7 +337,12 @@ jobs:
               --changelog "Aircast $SHORT. Release notes: https://github.com/$GITHUB_REPOSITORY/releases/tag/$VERSION"
           }
           for attempt in $(seq 1 40); do
-            distribute && exit 0
+            distribute 2>&1 | tee "$RUNNER_TEMP/distribute.log" && exit 0
+            if grep -q "Another build is in review" "$RUNNER_TEMP/distribute.log"; then
+              echo "::warning::An earlier $MARKETING_VERSION build is still in TestFlight beta review; this build reaches internal testers now and external testers once Apple approves the train"
+              exit 0
+            fi
+            grep -q "No build to distribute" "$RUNNER_TEMP/distribute.log" || exit 1
             echo "App Store Connect is still processing the upload (attempt $attempt of 40); trying again in a minute"
             sleep 60
           done
