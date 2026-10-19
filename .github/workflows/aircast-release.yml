@@ -325,15 +325,23 @@ jobs:
           SHORT: ${{ needs.setup.outputs.short_version }}
         run: |
           MARKETING_VERSION=$(echo "$SHORT" | grep -oE '^v[0-9]+\.[0-9]+\.[0-9]+' | cut -c2-)
-          fastlane pilot distribute \
-            --api_key_path "$RUNNER_TEMP/asc.json" \
-            --app_identifier one.aircast.app \
-            --app_version "$MARKETING_VERSION" \
-            --app_platform ios \
-            --distribute_external true \
-            --groups Public \
-            --notify_external_testers true \
-            --changelog "Aircast $SHORT. Release notes: https://github.com/$GITHUB_REPOSITORY/releases/tag/$VERSION"
+          distribute() {
+            fastlane pilot distribute \
+              --api_key_path "$RUNNER_TEMP/asc.json" \
+              --app_identifier one.aircast.app \
+              --app_version "$MARKETING_VERSION" \
+              --app_platform ios \
+              --distribute_external true \
+              --groups Public \
+              --notify_external_testers true \
+              --changelog "Aircast $SHORT. Release notes: https://github.com/$GITHUB_REPOSITORY/releases/tag/$VERSION"
+          }
+          for attempt in $(seq 1 40); do
+            distribute && exit 0
+            echo "App Store Connect is still processing the upload (attempt $attempt of 40); trying again in a minute"
+            sleep 60
+          done
+          exit 1
 
       - name: Submit to App Store review
         if: ${{ env.HAS_ASC_KEY == 'true' && needs.setup.outputs.is_production == 'true' }}
