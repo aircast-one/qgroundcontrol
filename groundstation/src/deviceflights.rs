@@ -74,6 +74,10 @@ fn window(count: usize, zoom: Option<(f64, f64)>) -> Range<usize> {
     }
 }
 
+fn scaled(values: &[f64], max: f64) -> bool {
+    max > 0.0 || values.iter().any(|value| *value > 0.0)
+}
+
 fn ceiling(values: &[f64], max: f64) -> f64 {
     let peak = values.iter().copied().fold(0.0, f64::max);
     match (max > 0.0, peak > 0.0) {
@@ -147,13 +151,10 @@ fn clock(unix: i64, tz_offset: i64, with_seconds: bool) -> String {
 }
 
 fn span_label(seconds: i64) -> String {
-    match seconds >= 3600 {
-        true => format!(
-            "{}h {}m",
-            seconds / 3600,
-            ((seconds % 3600) as f64 / 60.0).round()
-        ),
-        false => format!("{}m", (seconds as f64 / 60.0).round()),
+    let minutes = (seconds as f64 / 60.0).round() as i64;
+    match minutes >= 60 {
+        true => format!("{}h {}m", minutes / 60, minutes % 60),
+        false => format!("{minutes}m"),
     }
 }
 
@@ -241,7 +242,7 @@ fn lane(lane: &Value, trace: &Value, zoom: Option<(f64, f64)>, imperial: bool) -
         "peak": text(lane, "peak"),
         "default": lane.get("default").and_then(Value::as_bool).unwrap_or(false),
         "lines": lines(values, top),
-        "grid": grid(top, unit, imperial),
+        "grid": scaled(values, number(lane, "max", 0.0)).then(|| grid(top, unit, imperial)).unwrap_or_default(),
         "markers": markers(trace, step, values.len(), shown.start as i64 * step),
         "readings": readings,
         "ticks": ticks(start, step, values.len(), tz_offset),
@@ -628,6 +629,12 @@ mod tests {
     fn the_caption_names_the_span_in_minutes_or_hours() {
         assert_eq!(span_label(360), "6m");
         assert_eq!(span_label(4500), "1h 15m");
+        assert_eq!(
+            span_label(21_590),
+            "6h 0m",
+            "rounding up to a whole hour carries into the hour"
+        );
+        assert_eq!(span_label(3_590), "1h 0m");
         let chart = chart_of(
             &trace(
                 json!([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]),
@@ -647,6 +654,16 @@ mod tests {
         assert_eq!(clock(1_700_000_000, 0, false), "22:13");
         assert_eq!(clock(1_700_000_000, 3 * 3600, true), "01:13:20");
         assert_eq!(clock(0, -3600, false), "23:00");
+    }
+
+    #[test]
+    fn a_lane_with_nothing_above_zero_and_no_declared_maximum_draws_no_gridlines() {
+        assert!(
+            !scaled(&[0.0, 0.0, 0.0], 0.0),
+            "an all-zero distance lane would label every gridline 0 m"
+        );
+        assert!(scaled(&[0.0, 0.0], 100.0), "a declared maximum is a scale");
+        assert!(scaled(&[0.0, 2.5], 0.0));
     }
 
     #[test]
