@@ -1,37 +1,26 @@
 #!/usr/bin/env python3
-"""Flag readiness predicates the core computes that the head never reads.
-
-The head keeps reaching for the flag whose name sounds like the question and
-getting a weaker one. Four instances so far, one of them dangerous:
-
-  blocked          vs ready           guided actions - arm stayed live on an unknown state
-  setupComplete    vs ready           Setup said "Ready to fly" ignoring sensor health
-  hasModes         vs canChangeMode   camera offered a mode change mid-recording
-  connected+syncing vs canSend        Upload overwrote a mission a vehicle was flying
-
-A capability flag says the thing exists. A readiness flag says it is allowed
-right now. Gating on the first is how a head offers what the core refused.
-
-Every hit is a question. Three known-good reasons a key lands here:
-a rule the head reimplements correctly for the narrower case it uses (fences'
-cornerRemovable), and the hub family, which is empty unless the core owns the
-link and which no head consumes, and a threshold constant served so a head
-could word a sentence, where the head shows the core's own reason instead.
-"""
 import re
 import sys
 from pathlib import Path
 
+from fixturekeys import without_tests
+
 QGC = Path(__file__).resolve().parents[2]
 HEAD = Path(__file__).resolve().parents[1]
 
-READINESS = re.compile(r"^(can[A-Z]|ready$|ready[A-Z]|is[A-Z].*(Valid|Allowed|Permitted)$|allowed|permitted)")
-KNOWN = {"canRemoveVertex": "fences: head's minimum of 3 matches on the handset - offered at 4 corners, withheld at 3",
-         "canBeSet": "hub family - empty unless the core owns the link, no head consumes it",
-         "allowedFixAgeMs": "a THRESHOLD, not a verdict: followme.rs serves the constant so a head "
-                            "could word its own sentence, and serves fixFresh and wouldSend beside "
-                            "it. This head reads wouldSend and the core's reason, and never touches "
-                            "fixAgeMs, so it re-derives nothing"}
+READINESS = re.compile(
+    r"^(can[A-Z]|ready$|ready[A-Z]|is[A-Z].*(Valid|Allowed|Permitted)$|allowed|permitted)"
+)
+KNOWN = {
+    "isInsertROIValid": "the MissionController-shaped plan object mirrors QGC's property; heads offer a "
+    "region of interest from view.missionKinds, which missionkinds.rs derives from the same insert_state.roi",
+    "canRemoveVertex": "fences: head's minimum of 3 matches on the handset - offered at 4 corners, withheld at 3",
+    "canBeSet": "hub family - empty unless the core owns the link, no head consumes it",
+    "allowedFixAgeMs": "a THRESHOLD, not a verdict: followme.rs serves the constant so a head "
+    "could word its own sentence, and serves fixFresh and wouldSend beside "
+    "it. This head reads wouldSend and the core's reason, and never touches "
+    "fixAgeMs, so it re-derives nothing",
+}
 
 
 def head_reads():
@@ -39,15 +28,28 @@ def head_reads():
     return set(re.findall(r'"([A-Za-z_][A-Za-z0-9_]*)"', "\n".join(p.read_text() for p in sources)))
 
 
+def core_bodies():
+    return {
+        path.name: without_tests(path.read_text(errors="ignore"))
+        for path in sorted((QGC / "groundstation/src").rglob("*.rs"))
+    }
+
+
+def core_reads(bodies):
+    return {
+        key for body in bodies.values() for key in re.findall(r'"([a-zA-Z_]\w*)"(?!\s*:)', body)
+    }
+
+
 def flagged():
-    read = head_reads()
-    out = []
-    for path in sorted((QGC / "groundstation/src").rglob("*.rs")):
-        body = path.read_text(errors="ignore").split("#[cfg(test)]")[0]
-        for key in sorted(set(re.findall(r'"([a-zA-Z_]\w*)"\s*:', body))):
-            if READINESS.match(key) and key not in read:
-                out.append((path.name, key))
-    return out
+    bodies = core_bodies()
+    read = head_reads() | core_reads(bodies)
+    return [
+        (name, key)
+        for name, body in bodies.items()
+        for key in sorted(set(re.findall(r'"([a-zA-Z_]\w*)"\s*:', body)))
+        if READINESS.match(key) and key not in read
+    ]
 
 
 def unexplained():
@@ -64,6 +66,9 @@ def selftest():
     assert READINESS.match("canChangeMode"), "the camera key is the shape this looks for"
     assert not READINESS.match("hasModes"), "capability flags are not readiness flags"
     assert not READINESS.match("cancelled"), "a word starting with can is not a can-flag"
+    assert "canTakeoff" not in keys, (
+        "guided.rs gates takeoff on it, so the core reads it for the head"
+    )
     print("readinesskeys selftest OK")
 
 
