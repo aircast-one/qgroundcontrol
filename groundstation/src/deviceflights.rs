@@ -159,11 +159,20 @@ fn span_label(seconds: i64) -> String {
 }
 
 fn grid(ceiling: f64, unit: &str, imperial: bool) -> Vec<Value> {
+    let labels: Vec<String> = GRID_FRACTIONS
+        .iter()
+        .map(|fraction| reading(ceiling * fraction, unit, imperial))
+        .collect();
+    let distinct = labels
+        .iter()
+        .collect::<std::collections::BTreeSet<_>>()
+        .len()
+        == labels.len();
     GRID_FRACTIONS
         .iter()
-        .map(|fraction| {
-            json!({ "y": PLOT_BOTTOM - PLOT_HEIGHT * fraction, "label": reading(ceiling * fraction, unit, imperial) })
-        })
+        .zip(labels)
+        .filter(|_| distinct)
+        .map(|(fraction, label)| json!({ "y": PLOT_BOTTOM - PLOT_HEIGHT * fraction, "label": label }))
         .collect()
 }
 
@@ -654,6 +663,16 @@ mod tests {
         assert_eq!(clock(1_700_000_000, 0, false), "22:13");
         assert_eq!(clock(1_700_000_000, 3 * 3600, true), "01:13:20");
         assert_eq!(clock(0, -3600, false), "23:00");
+    }
+
+    #[test]
+    fn gridlines_that_would_read_the_same_are_left_out() {
+        assert_eq!(
+            grid(0.4, "meters", false),
+            Vec::<Value>::new(),
+            "a few decimetres of drift would label every gridline 0 m"
+        );
+        assert_eq!(grid(400.0, "meters", false).len(), 3);
     }
 
     #[test]
