@@ -349,7 +349,7 @@ const SettingsTabsPager = ({
       className={`flex w-full snap-x snap-mandatory [scrollbar-width:none] ${swipeable ? 'overflow-x-auto' : 'overflow-x-hidden'} overflow-y-hidden ${className}`}
     >
       {groups.map((entry, index) => (
-        <div key={entry.name} className="h-full w-full shrink-0 snap-start snap-always overflow-hidden">
+        <div key={entry.name} inert={entry !== group} aria-hidden={entry !== group || undefined} className="h-full w-full shrink-0 snap-start snap-always overflow-hidden">
           {near(index) ? children(entry, everyPage) : null}
         </div>
       ))}
