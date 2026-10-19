@@ -37,6 +37,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
@@ -61,6 +62,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import one.aircast.android.R
 import one.aircast.map.aircast
+import org.json.JSONObject
 import kotlin.math.abs
 
 private val CHART_HEIGHT = 112.dp
@@ -227,14 +229,16 @@ private class LanePlot {
 }
 
 @Composable
-private fun FlightLanes(trace: FlightTrace, active: Int?, lanes: List<String>?, onLanes: (List<String>) -> Unit) {
+private fun FlightLanes(trace: JSONObject, active: Int?, lanes: List<String>?, onLanes: (List<String>) -> Unit) {
     val plot = remember { LanePlot() }
-    val keys = laneKeys(lanes, trace.lanes.filter { it.default }.map { it.key })
-    val shown = trace.lanes.filter { it.key in keys }
+    val chart by produceState<FlightChart?>(null, trace, plot.zoom) { value = flightChart(trace, plot.zoom) }
+    val drawn = chart ?: return
+    val keys = laneKeys(lanes, drawn.lanes.filter { it.default }.map { it.key })
+    val shown = drawn.lanes.filter { it.key in keys }
     Column(Modifier.fillMaxWidth().padding(top = 8.dp)) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
         ButtonRow {
-            trace.lanes.map { lane ->
+            drawn.lanes.map { lane ->
                 key(lane.key) {
                     FilterChip(
                         selected = lane.key in keys,
@@ -249,15 +253,15 @@ private fun FlightLanes(trace: FlightTrace, active: Int?, lanes: List<String>?, 
                 }
             }
         }
-        if (trace.spans.isNotEmpty() || plot.zoom != null) {
+        if (drawn.spans.isNotEmpty() || plot.zoom != null) {
             ButtonRow {
-                trace.spans.map { span ->
+                drawn.spans.map { span ->
                     key(span.label) { FilterChip(selected = plot.zoom == Zoom(span.from, span.to), onClick = { plot.zoom = Zoom(span.from, span.to) }, label = { Text(span.label) }) }
                 }
                 if (plot.zoom != null) TextButton(onClick = { plot.zoom = null }) { Text("Whole flight") }
             }
         }
-        shown.mapIndexed { index, lane -> key(lane.key) { LaneChart(lane, trace, plot, active, index == shown.lastIndex) } }
+        shown.mapIndexed { index, lane -> key(lane.key) { LaneChart(lane, plot, active, index == shown.lastIndex) } }
         Text(
             "Pick the lanes you want above. One cursor across them: point at any lane to read every sample at that moment. Drag across a lane to zoom them all, or jump to one sortie with the chips above. " +
                 "Dashed lines are the moments listed above, in their colour; point at a line to pick out its mark.",
@@ -274,22 +278,16 @@ private fun fractionIn(x: Float, width: Int): Double = if (width > 0) (x / width
 private fun markerColor(level: Int): Color = if (level == DeviceLevel.Neutral) MaterialTheme.colorScheme.onSurfaceVariant else deviceLevelColor(level)
 
 @Composable
-private fun LaneChart(lane: TraceLane, trace: FlightTrace, plot: LanePlot, active: Int?, last: Boolean) {
-    val slice = zoomSlice(lane.values.size, plot.zoom)
-    val shown = lane.values.slice(slice)
-    val start = trace.startUnix + slice.first.toLong() * trace.step
-    val grid = gridLines(ceilingOf(shown, lane.max), lane.unit)
-    val markers = markerLines(trace.markers, trace.step, shown.size, slice.first * trace.step)
-    val readout = plot.cursor?.let { readoutAt(shown, lane.notes.drop(slice.first).take(shown.size), it, lane.unit) }
-    val lines = remember(shown, lane.max) { segments(shown, lane.max) }
+private fun LaneChart(lane: ChartLane, plot: LanePlot, active: Int?, last: Boolean) {
+    val sample = plot.cursor?.let { sampleAt(lane.readings.size, it) }
     val muted = MaterialTheme.colorScheme.onSurfaceVariant
     val ink = MaterialTheme.colorScheme.primary
     val rule = MaterialTheme.colorScheme.onSurface
-    val markerInks = markers.map { markerColor(it.level) }
+    val markerInks = lane.markers.map { markerColor(it.level) }
     Column(Modifier.fillMaxWidth().padding(start = 16.dp, end = 16.dp, top = 16.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(lane.label.uppercase(), style = MaterialTheme.typography.labelSmall, color = muted, modifier = Modifier.weight(1f))
-            readout?.let { Text("${clockAt(start + it.index.toLong() * trace.step, trace.tzOffset, true)} · ${it.text}", style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace) }
+            sample?.let { Text(lane.readings[it.index], style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace) }
         }
         Box(
             Modifier.fillMaxWidth()
@@ -306,14 +304,14 @@ private fun LaneChart(lane: TraceLane, trace: FlightTrace, plot: LanePlot, activ
         ) {
             Canvas(Modifier.matchParentSize().semantics { contentDescription = "${lane.label} over the flight" }) {
                 val across = size.width / 100f
-                val down = size.height / PLOT_BOX.toFloat()
-                grid.map { line -> drawLine(rule.copy(alpha = 0.12f), Offset(0f, line.y.toFloat() * down), Offset(size.width, line.y.toFloat() * down), 1.dp.toPx()) }
-                markers.zip(markerInks).map { (marker, color) ->
+                val down = size.height / 100f
+                lane.grid.map { line -> drawLine(rule.copy(alpha = 0.12f), Offset(0f, line.y * down), Offset(size.width, line.y * down), 1.dp.toPx()) }
+                lane.markers.zip(markerInks).map { (marker, color) ->
                     val picked = marker.index == active
-                    val x = marker.x.toFloat() * across
+                    val x = marker.x * across
                     drawLine(color.copy(alpha = if (picked) 1f else 0.7f), Offset(x, 0f), Offset(x, size.height), 1.dp.toPx(), pathEffect = if (picked) null else PathEffect.dashPathEffect(floatArrayOf(2.dp.toPx(), 2.dp.toPx())))
                 }
-                lines.map { run ->
+                lane.lines.map { run ->
                     val path = Path().apply {
                         moveTo(run.first().x * across, run.first().y * down)
                         run.drop(1).map { lineTo(it.x * across, it.y * down) }
@@ -321,9 +319,9 @@ private fun LaneChart(lane: TraceLane, trace: FlightTrace, plot: LanePlot, activ
                     drawPath(path, ink, style = Stroke(width = 1.5.dp.toPx()))
                 }
                 plot.brush?.let { brush -> drawRect(ink.copy(alpha = 0.15f), Offset(minOf(brush.from, brush.to).toFloat() * size.width, 0f), Size(abs(brush.to - brush.from).toFloat() * size.width, size.height)) }
-                readout?.let { drawLine(rule.copy(alpha = 0.4f), Offset(it.x.toFloat() * across, 0f), Offset(it.x.toFloat() * across, size.height), 1.dp.toPx()) }
+                sample?.let { drawLine(rule.copy(alpha = 0.4f), Offset(it.x * across, 0f), Offset(it.x * across, size.height), 1.dp.toPx()) }
             }
-            grid.map { line ->
+            lane.grid.map { line ->
                 key(line.y) {
                     Text(
                         line.label,
@@ -331,7 +329,7 @@ private fun LaneChart(lane: TraceLane, trace: FlightTrace, plot: LanePlot, activ
                         fontFamily = FontFamily.Monospace,
                         color = muted,
                         modifier = Modifier.align(Alignment.TopEnd)
-                            .offset(y = CHART_HEIGHT * (line.y / PLOT_BOX).toFloat() - 8.dp)
+                            .offset(y = CHART_HEIGHT * (line.y / 100f) - 8.dp)
                             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.8f), RoundedCornerShape(4.dp))
                             .padding(horizontal = 4.dp),
                     )
@@ -340,11 +338,11 @@ private fun LaneChart(lane: TraceLane, trace: FlightTrace, plot: LanePlot, activ
         }
         if (last) {
             Row(Modifier.fillMaxWidth().padding(top = 2.dp), horizontalArrangement = Arrangement.SpaceBetween) {
-                ticks(start, trace.step, shown.size) { clockAt(it, trace.tzOffset, false) }.map { tick ->
+                lane.ticks.map { tick ->
                     key(tick.x) { Text(tick.label, style = MaterialTheme.typography.labelSmall, fontFamily = FontFamily.Monospace, color = muted) }
                 }
             }
-            if (shown.size > 1) Text("${spanLabel(trace.step * (shown.size - 1))} of flight", style = MaterialTheme.typography.labelSmall, color = muted)
+            if (lane.span.isNotEmpty()) Text(lane.span, style = MaterialTheme.typography.labelSmall, color = muted)
         }
     }
 }

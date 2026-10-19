@@ -1,4 +1,5 @@
 import { type Json, isJson, jsonObjects, jsonStrings, optBoolean, optDouble, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
+import { Qgc } from '@/bridge/Qgc';
 import { type DeviceBadge, parseBadge } from '@/ui/DeviceKit';
 import { readStored, writeStored } from '@/ui/DeviceConnect';
 import { deviceRead, deviceSend } from '@/ui/DeviceView';
@@ -12,31 +13,6 @@ export type SortieVideo = { readonly camera: string; readonly label: string; rea
 
 export type FlightPart = { readonly title: string; readonly span: string; readonly videos: readonly SortieVideo[]; readonly lines: readonly FlightLine[] };
 
-export type TraceLane = {
-  readonly key: string;
-  readonly label: string;
-  readonly chip: string;
-  readonly values: readonly number[];
-  readonly notes: readonly string[];
-  readonly unit: string;
-  readonly max: number;
-  readonly default: boolean;
-  readonly peak: string;
-};
-
-export type TraceMarker = { readonly offset: number; readonly label: string; readonly level: number };
-
-export type TraceSpan = { readonly label: string; readonly from: number; readonly to: number };
-
-export type FlightTrace = {
-  readonly step: number;
-  readonly startUnix: number;
-  readonly tzOffset: number;
-  readonly lanes: readonly TraceLane[];
-  readonly markers: readonly TraceMarker[];
-  readonly spans: readonly TraceSpan[];
-};
-
 export type FlightEntry = {
   readonly id: string;
   readonly title: string;
@@ -44,15 +20,13 @@ export type FlightEntry = {
   readonly badge: DeviceBadge;
   readonly open: boolean;
   readonly sections: readonly FlightPart[];
-  readonly trace: FlightTrace | null;
+  readonly trace: Json | null;
   readonly dropped: string;
   readonly csv: string;
   readonly json: string;
 };
 
 export type FlightsView = { readonly flights: readonly FlightEntry[] };
-
-const numbers = (json: Json | null, key: string): readonly number[] => (optJSONArray(json, key) ?? []).map((value) => (typeof value === 'number' ? value : -1));
 
 const parseShare = (json: Json | null): SortieShare | null =>
   json === null ? null : { label: optText(json, 'label'), confirm: optText(json, 'confirm'), camera: optText(json, 'camera'), from: optText(json, 'from'), to: optText(json, 'to') };
@@ -72,28 +46,6 @@ const parsePart = (json: Json): FlightPart => ({
   })),
 });
 
-const parseTrace = (json: Json | null): FlightTrace | null =>
-  json === null
-    ? null
-    : {
-        step: optInt(json, 'step'),
-        startUnix: optInt(json, 'startUnix'),
-        tzOffset: optInt(json, 'tzOffset'),
-        lanes: jsonObjects(optJSONArray(json, 'lanes')).map((it) => ({
-          key: optText(it, 'key'),
-          label: optText(it, 'label'),
-          chip: optText(it, 'chip'),
-          values: numbers(it, 'values'),
-          notes: jsonStrings(optJSONArray(it, 'notes')),
-          unit: optText(it, 'unit'),
-          max: optDouble(it, 'max', 0),
-          default: optBoolean(it, 'default'),
-          peak: optText(it, 'peak'),
-        })),
-        markers: jsonObjects(optJSONArray(json, 'markers')).map((it) => ({ offset: optInt(it, 'offset'), label: optText(it, 'label'), level: optInt(it, 'level', DeviceLevel.Neutral) })),
-        spans: jsonObjects(optJSONArray(json, 'spans')).map((it) => ({ label: optText(it, 'label'), from: optDouble(it, 'from', 0), to: optDouble(it, 'to', 1) })),
-      };
-
 export const parseFlights = (json: unknown): FlightsView | null =>
   isJson(json) && Array.isArray(json.flights)
     ? {
@@ -104,7 +56,7 @@ export const parseFlights = (json: unknown): FlightsView | null =>
           badge: parseBadge(it.badge),
           open: optBoolean(it, 'open'),
           sections: jsonObjects(optJSONArray(it, 'sections')).map(parsePart),
-          trace: parseTrace(optJSONObject(it, 'trace')),
+          trace: optJSONObject(it, 'trace'),
           dropped: optText(it, 'dropped'),
           csv: optText(it, 'csv'),
           json: optText(it, 'json'),
@@ -131,70 +83,6 @@ export const rememberLanes = (keys: readonly string[]): void => writeStored(LANE
 
 export type Zoom = readonly [number, number];
 
-export const PLOT_TOP = 1;
-export const PLOT_HEIGHT = 18;
-export const PLOT_BOTTOM = PLOT_TOP + PLOT_HEIGHT;
-export const PLOT_BOX = 20;
-
-export const ceilingOf = (values: readonly number[], max: number): number => {
-  const peak = values.reduce((top, value) => Math.max(top, value), 0);
-  return max > 0 ? max : peak > 0 ? peak : 1;
-};
-
-export const segments = (values: readonly number[], max: number): readonly string[] => {
-  const ceiling = ceilingOf(values, max);
-  const step = values.length > 1 ? 100 / (values.length - 1) : 100;
-  return values
-    .reduce<readonly (readonly string[])[]>(
-      (runs, value, index) =>
-        value < 0 ? [...runs, []] : [...runs.slice(0, -1), [...(runs.at(-1) ?? []), `${(index * step).toFixed(1)},${(PLOT_BOTTOM - (PLOT_HEIGHT * Math.min(value, ceiling)) / ceiling).toFixed(1)}`]],
-      [[]],
-    )
-    .filter((run) => run.length > 1)
-    .map((run) => run.join(' '));
-};
-
-export const formatRate = (bytesPerSecond: number): string => {
-  const bits = bytesPerSecond * 8;
-  return bits >= 1e6 ? `${(bits / 1e6).toFixed(1)} Mbps` : bits >= 1e3 ? `${Math.round(bits / 1e3)} kbps` : `${Math.round(bits)} bps`;
-};
-
-const UNIT_FORMATS: Readonly<Record<string, (value: number) => string>> = {
-  rate: formatRate,
-  meters: (value) => (value >= 1000 ? `${(value / 1000).toFixed(1)} km` : `${Math.round(value)} m`),
-  count: (value) => `${Math.round(value)}`,
-  mb: (value) => (value >= 1024 ? `${(value / 1024).toFixed(1)} GB` : `${Math.round(value)} MB`),
-  seconds: (value) => (value >= 60 ? `${Math.round(value / 60)} m` : `${Math.round(value)} s`),
-  number: (value) => `${Math.round(value * 10) / 10}`,
-};
-
-export const formatValue = (value: number, unit: string): string => (UNIT_FORMATS[unit] ?? ((it: number) => `${Math.round(it)}%`))(value);
-
-export const ticks = (startUnix: number, step: number, count: number, clock: (unix: number) => string): readonly { x: number; label: string }[] => {
-  if (!(count > 1) || !(step > 0)) return [];
-  const span = step * (count - 1);
-  const want = Math.min(5, Math.max(2, Math.floor(span / 60) + 1));
-  return Array.from({ length: want }, (_, i) => ({ x: (i / (want - 1)) * 100, label: clock(startUnix + (span * i) / (want - 1)) }));
-};
-
-export type MarkerLine = { readonly x: number; readonly label: string; readonly level: number; readonly index: number };
-
-export const markerLines = (markers: readonly TraceMarker[], step: number, count: number, shift = 0): readonly MarkerLine[] => {
-  const span = step * (count - 1);
-  return span > 0
-    ? markers
-        .map((marker, index) => ({ ...marker, offset: marker.offset - shift, index }))
-        .filter((marker) => marker.offset >= 0 && marker.offset <= span)
-        .map((marker) => ({ x: (marker.offset / span) * 100, label: marker.label, level: marker.level, index: marker.index }))
-    : [];
-};
-
-export const zoomSlice = (count: number, zoom: Zoom | null): { readonly from: number; readonly to: number } => {
-  if (zoom === null || count < 2) return { from: 0, to: count - 1 };
-  const from = Math.max(0, Math.min(count - 2, Math.round(zoom[0] * (count - 1))));
-  return { from, to: Math.max(from + 1, Math.min(count - 1, Math.round(zoom[1] * (count - 1)))) };
-};
-
 export const composeZoom = (current: Zoom | null, a: number, b: number): Zoom => {
   const low = Math.min(a, b);
   const high = Math.max(a, b);
@@ -205,25 +93,60 @@ export const composeZoom = (current: Zoom | null, a: number, b: number): Zoom =>
 
 export const MIN_BRUSH = 0.02;
 
-export const spanLabel = (seconds: number): string => (seconds >= 3600 ? `${Math.floor(seconds / 3600)}h ${Math.round((seconds % 3600) / 60)}m` : `${Math.round(seconds / 60)}m`);
+export type ChartGrid = { readonly y: number; readonly label: string };
 
-const two = (n: number): string => String(n).padStart(2, '0');
+export type ChartTick = { readonly x: number; readonly label: string };
 
-export const clockAt = (unix: number, tzOffset: number, withSeconds: boolean): string => {
-  const at = new Date((unix + tzOffset) * 1000);
-  const base = `${two(at.getUTCHours())}:${two(at.getUTCMinutes())}`;
-  return withSeconds ? `${base}:${two(at.getUTCSeconds())}` : base;
+export type ChartMarker = { readonly x: number; readonly label: string; readonly level: number; readonly index: number };
+
+export type ChartLane = {
+  readonly key: string;
+  readonly label: string;
+  readonly chip: string;
+  readonly peak: string;
+  readonly default: boolean;
+  readonly lines: readonly string[];
+  readonly grid: readonly ChartGrid[];
+  readonly markers: readonly ChartMarker[];
+  readonly readings: readonly string[];
+  readonly ticks: readonly ChartTick[];
+  readonly span: string;
 };
 
-export const gridLines = (ceiling: number, unit: string): readonly { y: number; label: string }[] =>
-  ceiling > 0 ? [0.25, 0.5, 0.75].map((fraction) => ({ y: PLOT_BOTTOM - PLOT_HEIGHT * fraction, label: formatValue(ceiling * fraction, unit) })) : [];
+export type ChartSpan = { readonly label: string; readonly from: number; readonly to: number };
 
-export const readoutAt = (values: readonly number[], notes: readonly string[], fraction: number, unit: string): { index: number; x: number; text: string } | null => {
-  if (values.length === 0) return null;
-  const index = Math.max(0, Math.min(values.length - 1, Math.round(fraction * (values.length - 1))));
-  const value = values[index] ?? -1;
-  const note = notes[index] ?? '';
-  return { index, x: values.length > 1 ? (index / (values.length - 1)) * 100 : 0, text: `${value < 0 ? 'no reading' : formatValue(value, unit)}${note !== '' ? ` · ${note}` : ''}` };
+export type FlightChart = { readonly lanes: readonly ChartLane[]; readonly spans: readonly ChartSpan[] };
+
+const FLIGHT_CHART = 'deviceFlight.chart';
+
+const polyline = (run: unknown): string => (Array.isArray(run) ? run.map((point) => jsonStrings(Array.isArray(point) ? point : []).join(',')).join(' ') : '');
+
+export const parseFlightChart = (json: unknown): FlightChart | null =>
+  isJson(json)
+    ? {
+        lanes: jsonObjects(optJSONArray(json, 'lanes')).map((it) => ({
+          key: optText(it, 'key'),
+          label: optText(it, 'label'),
+          chip: optText(it, 'chip'),
+          peak: optText(it, 'peak'),
+          default: optBoolean(it, 'default'),
+          lines: (optJSONArray(it, 'lines') ?? []).map(polyline),
+          grid: jsonObjects(optJSONArray(it, 'grid')).map((line) => ({ y: optDouble(line, 'y', 0), label: optText(line, 'label') })),
+          markers: jsonObjects(optJSONArray(it, 'markers')).map((marker) => ({ x: optDouble(marker, 'x', 0), label: optText(marker, 'label'), level: optInt(marker, 'level', DeviceLevel.Neutral), index: optInt(marker, 'index') })),
+          readings: jsonStrings(optJSONArray(it, 'readings')),
+          ticks: jsonObjects(optJSONArray(it, 'ticks')).map((tick) => ({ x: optDouble(tick, 'x', 0), label: optText(tick, 'label') })),
+          span: optText(it, 'span'),
+        })),
+        spans: jsonObjects(optJSONArray(json, 'spans')).map((it) => ({ label: optText(it, 'label'), from: optDouble(it, 'from', 0), to: optDouble(it, 'to', 1) })),
+      }
+    : null;
+
+export const flightChart = async (trace: Json, zoom: Zoom | null): Promise<FlightChart | null> => parseFlightChart(await Qgc.invokeResult(FLIGHT_CHART, trace, ...(zoom ?? [])));
+
+export const sampleAt = (count: number, fraction: number): { readonly index: number; readonly x: number } | null => {
+  if (count === 0) return null;
+  const index = Math.max(0, Math.min(count - 1, Math.round(fraction * (count - 1))));
+  return { index, x: count > 1 ? (index / (count - 1)) * 100 : 0 };
 };
 
 export type RenderJob = { readonly id: string; readonly state: string; readonly sent: number; readonly total: number; readonly url: string; readonly expiresAt: string; readonly error: string };

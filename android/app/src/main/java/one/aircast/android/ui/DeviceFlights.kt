@@ -2,13 +2,16 @@ package one.aircast.android.ui
 
 import android.content.Context
 import androidx.compose.ui.geometry.Offset
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import one.aircast.android.bridge.Qgc
 import one.aircast.map.optText
+import org.json.JSONArray
 import org.json.JSONObject
 import java.time.OffsetDateTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
-import kotlin.math.roundToLong
 
 internal data class FlightLine(val index: Int, val clock: String, val text: String, val level: Int, val alert: Boolean, val repeats: String, val heldBack: Boolean)
 
@@ -18,31 +21,6 @@ internal data class SortieVideo(val camera: String, val label: String, val url: 
 
 internal data class FlightPart(val title: String, val span: String, val videos: List<SortieVideo>, val lines: List<FlightLine>)
 
-internal data class TraceLane(
-    val key: String,
-    val label: String,
-    val chip: String,
-    val values: List<Double>,
-    val notes: List<String>,
-    val unit: String,
-    val max: Double,
-    val default: Boolean,
-    val peak: String,
-)
-
-internal data class TraceMarker(val offset: Int, val label: String, val level: Int)
-
-internal data class TraceSpan(val label: String, val from: Double, val to: Double)
-
-internal data class FlightTrace(
-    val step: Int,
-    val startUnix: Long,
-    val tzOffset: Int,
-    val lanes: List<TraceLane>,
-    val markers: List<TraceMarker>,
-    val spans: List<TraceSpan>,
-)
-
 internal data class FlightEntry(
     val id: String,
     val title: String,
@@ -50,16 +28,13 @@ internal data class FlightEntry(
     val badge: DeviceBadge,
     val open: Boolean,
     val sections: List<FlightPart>,
-    val trace: FlightTrace?,
+    val trace: JSONObject?,
     val dropped: String,
     val csv: String,
     val json: String,
 )
 
 internal data class FlightsView(val flights: List<FlightEntry>)
-
-private fun traceValues(json: JSONObject, key: String): List<Double> =
-    json.optJSONArray(key)?.let { array -> (0 until array.length()).map { index -> (array.opt(index) as? Number)?.toDouble() ?: -1.0 } }.orEmpty()
 
 private fun parseShare(json: JSONObject?): SortieShare? = json?.let {
     SortieShare(it.optText("label"), it.optText("confirm"), it.optText("camera"), it.optText("from"), it.optText("to"))
@@ -75,29 +50,6 @@ private fun parsePart(json: JSONObject): FlightPart =
         },
     )
 
-private fun parseTrace(json: JSONObject?): FlightTrace? = json?.let {
-    FlightTrace(
-        step = it.optInt("step"),
-        startUnix = it.optLong("startUnix"),
-        tzOffset = it.optInt("tzOffset"),
-        lanes = it.deviceObjects("lanes").map { lane ->
-            TraceLane(
-                key = lane.optText("key"),
-                label = lane.optText("label"),
-                chip = lane.optText("chip"),
-                values = traceValues(lane, "values"),
-                notes = lane.deviceTexts("notes"),
-                unit = lane.optText("unit"),
-                max = lane.optDouble("max", 0.0),
-                default = lane.optBoolean("default"),
-                peak = lane.optText("peak"),
-            )
-        },
-        markers = it.deviceObjects("markers").map { marker -> TraceMarker(marker.optInt("offset"), marker.optText("label"), marker.optInt("level", DeviceLevel.Neutral)) },
-        spans = it.deviceObjects("spans").map { span -> TraceSpan(span.optText("label"), span.optDouble("from", 0.0), span.optDouble("to", 1.0)) },
-    )
-}
-
 private fun parseFlight(json: JSONObject): FlightEntry =
     FlightEntry(
         id = json.optText("id"),
@@ -106,7 +58,7 @@ private fun parseFlight(json: JSONObject): FlightEntry =
         badge = parseBadge(json.optJSONObject("badge")),
         open = json.optBoolean("open"),
         sections = json.deviceObjects("sections").map(::parsePart),
-        trace = parseTrace(json.optJSONObject("trace")),
+        trace = json.optJSONObject("trace"),
         dropped = json.optText("dropped"),
         csv = json.optText("csv"),
         json = json.optText("json"),
@@ -130,73 +82,6 @@ internal fun storeLanes(context: Context, keys: List<String>) = writeStored(cont
 
 internal data class Zoom(val from: Double, val to: Double)
 
-internal const val PLOT_TOP = 1.0
-internal const val PLOT_HEIGHT = 18.0
-internal const val PLOT_BOTTOM = PLOT_TOP + PLOT_HEIGHT
-internal const val PLOT_BOX = 20.0
-
-internal fun ceilingOf(values: List<Double>, max: Double): Double {
-    val peak = values.fold(0.0) { top, value -> maxOf(top, value) }
-    return if (max > 0) max else if (peak > 0) peak else 1.0
-}
-
-internal fun segments(values: List<Double>, max: Double): List<List<Offset>> {
-    val ceiling = ceilingOf(values, max)
-    val step = if (values.size > 1) 100.0 / (values.size - 1) else 100.0
-    val gaps = values.indices.filter { values[it] < 0 }
-    return (listOf(-1) + gaps + values.size).zipWithNext { after, before ->
-        (after + 1 until before).map { index -> Offset((index * step).toFloat(), (PLOT_BOTTOM - PLOT_HEIGHT * minOf(values[index], ceiling) / ceiling).toFloat()) }
-    }.filter { it.size > 1 }
-}
-
-internal fun formatRate(bytesPerSecond: Double): String {
-    val bits = bytesPerSecond * 8
-    return when {
-        bits >= 1e6 -> "${oneDecimal(bits / 1e6)} Mbps"
-        bits >= 1e3 -> "${(bits / 1e3).roundToLong()} kbps"
-        else -> "${bits.roundToLong()} bps"
-    }
-}
-
-private val UNIT_FORMATS: Map<String, (Double) -> String> = mapOf(
-    "rate" to ::formatRate,
-    "meters" to { value -> if (value >= 1000) "${oneDecimal(value / 1000)} km" else "${value.roundToLong()} m" },
-    "count" to { value -> "${value.roundToLong()}" },
-    "mb" to { value -> if (value >= 1024) "${oneDecimal(value / 1024)} GB" else "${value.roundToLong()} MB" },
-    "seconds" to { value -> if (value >= 60) "${(value / 60).roundToLong()} m" else "${value.roundToLong()} s" },
-    "number" to { value -> ((value * 10).roundToLong() / 10.0).let { if (it % 1.0 == 0.0) "${it.toLong()}" else "$it" } },
-)
-
-internal fun formatValue(value: Double, unit: String): String = UNIT_FORMATS[unit]?.invoke(value) ?: "${value.roundToLong()}%"
-
-internal data class LaneTick(val x: Double, val label: String)
-
-internal fun ticks(startUnix: Long, step: Int, count: Int, clock: (Long) -> String): List<LaneTick> {
-    if (count <= 1 || step <= 0) return emptyList()
-    val span = step.toLong() * (count - 1)
-    val want = (span / 60 + 1).toInt().coerceIn(2, 5)
-    return (0 until want).map { i -> LaneTick(i.toDouble() / (want - 1) * 100, clock(startUnix + span * i / (want - 1))) }
-}
-
-internal data class MarkerLine(val x: Double, val label: String, val level: Int, val index: Int)
-
-internal fun markerLines(markers: List<TraceMarker>, step: Int, count: Int, shift: Int = 0): List<MarkerLine> {
-    val span = step * (count - 1)
-    return if (span > 0) {
-        markers.mapIndexedNotNull { index, marker ->
-            (marker.offset - shift).takeIf { it in 0..span }?.let { offset -> MarkerLine(offset.toDouble() / span * 100, marker.label, marker.level, index) }
-        }
-    } else {
-        emptyList()
-    }
-}
-
-internal fun zoomSlice(count: Int, zoom: Zoom?): IntRange {
-    if (zoom == null || count < 2) return 0 until count
-    val from = (zoom.from * (count - 1)).roundToInt().coerceIn(0, count - 2)
-    return from..(zoom.to * (count - 1)).roundToInt().coerceIn(from + 1, count - 1)
-}
-
 internal fun composeZoom(current: Zoom?, a: Double, b: Double): Zoom {
     val window = current ?: Zoom(0.0, 1.0)
     val span = window.to - window.from
@@ -205,32 +90,60 @@ internal fun composeZoom(current: Zoom?, a: Double, b: Double): Zoom {
 
 internal const val MIN_BRUSH = 0.02
 
-internal fun spanLabel(seconds: Int): String =
-    if (seconds >= 3600) "${seconds / 3600}h ${(seconds % 3600 / 60.0).roundToInt()}m" else "${(seconds / 60.0).roundToInt()}m"
+internal data class ChartGrid(val y: Float, val label: String)
 
-private fun two(n: Long): String = n.toString().padStart(2, '0')
+internal data class ChartTick(val x: Float, val label: String)
 
-internal fun clockAt(unix: Long, tzOffset: Int, withSeconds: Boolean): String {
-    val day = Math.floorMod(unix + tzOffset, 86_400L)
-    val base = "${two(day / 3600)}:${two(day % 3600 / 60)}"
-    return if (withSeconds) "$base:${two(day % 60)}" else base
+internal data class ChartMarker(val x: Float, val label: String, val level: Int, val index: Int)
+
+internal data class ChartLane(
+    val key: String,
+    val label: String,
+    val chip: String,
+    val peak: String,
+    val default: Boolean,
+    val lines: List<List<Offset>>,
+    val grid: List<ChartGrid>,
+    val markers: List<ChartMarker>,
+    val readings: List<String>,
+    val ticks: List<ChartTick>,
+    val span: String,
+)
+
+internal data class ChartSpan(val label: String, val from: Double, val to: Double)
+
+internal data class FlightChart(val lanes: List<ChartLane>, val spans: List<ChartSpan>)
+
+private const val FLIGHT_CHART = "deviceFlight.chart"
+
+private fun JSONArray?.chartArrays(): List<JSONArray> = this?.let { array -> (0 until array.length()).mapNotNull(array::optJSONArray) }.orEmpty()
+
+private fun parseChartLane(json: JSONObject): ChartLane =
+    ChartLane(
+        key = json.optText("key"),
+        label = json.optText("label"),
+        chip = json.optText("chip"),
+        peak = json.optText("peak"),
+        default = json.optBoolean("default"),
+        lines = json.optJSONArray("lines").chartArrays().map { run -> run.chartArrays().map { Offset(it.optDouble(0).toFloat(), it.optDouble(1).toFloat()) } },
+        grid = json.deviceObjects("grid").map { ChartGrid(it.optDouble("y").toFloat(), it.optText("label")) },
+        markers = json.deviceObjects("markers").map { ChartMarker(it.optDouble("x").toFloat(), it.optText("label"), it.optInt("level", DeviceLevel.Neutral), it.optInt("index")) },
+        readings = json.deviceTexts("readings"),
+        ticks = json.deviceObjects("ticks").map { ChartTick(it.optDouble("x").toFloat(), it.optText("label")) },
+        span = json.optText("span"),
+    )
+
+internal fun parseFlightChart(json: JSONObject?): FlightChart? = json?.let {
+    FlightChart(it.deviceObjects("lanes").map(::parseChartLane), it.deviceObjects("spans").map { span -> ChartSpan(span.optText("label"), span.optDouble("from", 0.0), span.optDouble("to", 1.0)) })
 }
 
-internal data class LaneGridLine(val y: Double, val label: String)
+internal suspend fun flightChart(trace: JSONObject, zoom: Zoom?): FlightChart? =
+    withContext(Dispatchers.Default) { parseFlightChart(Qgc.call(FLIGHT_CHART, trace, zoom?.from, zoom?.to)?.optJSONObject("result")) }
 
-internal fun gridLines(ceiling: Double, unit: String): List<LaneGridLine> =
-    if (ceiling > 0) listOf(0.25, 0.5, 0.75).map { LaneGridLine(PLOT_BOTTOM - PLOT_HEIGHT * it, formatValue(ceiling * it, unit)) } else emptyList()
+internal data class ChartSample(val index: Int, val x: Float)
 
-internal data class LaneReadout(val index: Int, val x: Double, val text: String)
-
-internal fun readoutAt(values: List<Double>, notes: List<String>, fraction: Double, unit: String): LaneReadout? {
-    if (values.isEmpty()) return null
-    val index = (fraction * (values.size - 1)).roundToInt().coerceIn(0, values.size - 1)
-    val value = values[index]
-    val note = notes.getOrNull(index).orEmpty()
-    val reading = if (value < 0) "no reading" else formatValue(value, unit)
-    return LaneReadout(index, if (values.size > 1) index.toDouble() / (values.size - 1) * 100 else 0.0, if (note.isNotEmpty()) "$reading · $note" else reading)
-}
+internal fun sampleAt(count: Int, fraction: Double): ChartSample? =
+    if (count == 0) null else (fraction * (count - 1)).roundToInt().coerceIn(0, count - 1).let { ChartSample(it, if (count > 1) it.toFloat() / (count - 1) * 100 else 0f) }
 
 internal data class RenderJob(val id: String, val state: String, val sent: Long, val total: Long, val url: String, val expiresAt: String, val error: String)
 

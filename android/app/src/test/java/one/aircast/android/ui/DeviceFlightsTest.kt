@@ -9,8 +9,6 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DeviceFlightsTest {
-    private fun marker(offset: Int, label: String) = TraceMarker(offset, label, DeviceLevel.Neutral)
-
     @Test
     fun `reads the flight log the device serves`() {
         val view = parseFlights(
@@ -32,9 +30,7 @@ class DeviceFlightsTest {
         val live = view?.flights?.get(1)
         assertEquals(FlightLine(1, "14:02:14", "cam stopped sending video", DeviceLevel.Blocked, alert = true, repeats = "repeated ×4 until 14:02:44", heldBack = false), traced?.sections?.first()?.lines?.first())
         assertEquals("cam2", traced?.sections?.first()?.videos?.first()?.share?.camera)
-        assertEquals(TraceLane("signal", "Modem signal", "Signal", listOf(80.0, 41.0), listOf("4G", "3G"), "percent", 100.0, default = true, peak = "41%"), traced?.trace?.lanes?.first())
-        assertEquals(DeviceLevel.Blocked, traced?.trace?.markers?.first()?.level)
-        assertEquals(TraceSpan("Sortie 1", 0.1, 0.9), traced?.trace?.spans?.first())
+        assertEquals(30, traced?.trace?.optInt("step"))
         assertTrue(traced != null && hasLines(traced))
         assertNull(live?.trace)
         assertTrue(live?.open == true)
@@ -66,104 +62,41 @@ class DeviceFlightsTest {
     }
 
     @Test
-    fun `the line breaks where the value is unknown`() {
-        assertEquals(listOf(listOf(Offset(0f, 1f), Offset(25f, 10f)), listOf(Offset(75f, 19f), Offset(100f, 1f))), segments(listOf(100.0, 50.0, -1.0, 0.0, 100.0), 100.0))
-    }
-
-    @Test
-    fun `without a ceiling the line scales to its own peak`() {
-        assertEquals(listOf(listOf(Offset(0f, 19f), Offset(50f, 10f), Offset(100f, 1f))), segments(listOf(0.0, 250000.0, 500000.0), 0.0))
-    }
-
-    @Test
-    fun `a single point draws nothing`() {
-        assertEquals(emptyList<List<Offset>>(), segments(listOf(42.0), 100.0))
-        assertEquals(emptyList<List<Offset>>(), segments(emptyList(), 100.0))
-    }
-
-    @Test
-    fun `a lane gets evenly spaced clock ticks from first to last sample`() {
-        val ticked = ticks(1_700_000_000, 30, 13) { it.toString() }
-        assertEquals(listOf(0.0, 25.0, 50.0, 75.0, 100.0), ticked.map { it.x })
-        assertEquals("1700000000", ticked.first().label)
-        assertEquals("1700000360", ticked[4].label)
-        assertEquals(emptyList<LaneTick>(), ticks(1, 30, 1) { it.toString() })
-    }
-
-    @Test
-    fun `markers land where their moment falls on the series, or not at all`() {
-        assertEquals(
-            listOf(MarkerLine(0.0, "a", DeviceLevel.Neutral, 0), MarkerLine(50.0, "b", DeviceLevel.Neutral, 1)),
-            markerLines(listOf(marker(0, "a"), marker(180, "b"), marker(361, "late"), marker(-1, "early")), 30, 13),
+    fun `draws the chart the core computed in the core's plot units`() {
+        val chart = parseFlightChart(
+            JSONObject(
+                """{"lanes":[{"key":"signal","label":"Modem signal","chip":"Signal","peak":"41%","default":true,
+                  "lines":[[[0,5],[25,50.5]],[[75,95],[100,5]]],
+                  "grid":[{"y":72.5,"label":"25%"}],
+                  "markers":[{"x":50,"label":"14:02:05 modem","index":1}],
+                  "readings":["14:00:00 · 80% · 4G","14:00:30 · no reading"],
+                  "ticks":[{"x":0,"label":"14:00"}],
+                  "span":"6m of flight"}],
+                "spans":[{"label":"Sortie 1","from":0.1,"to":0.9}]}""",
+            ),
         )
+        val lane = chart?.lanes?.first()
+        assertEquals(listOf(listOf(Offset(0f, 5f), Offset(25f, 50.5f)), listOf(Offset(75f, 95f), Offset(100f, 5f))), lane?.lines)
+        assertEquals(ChartMarker(50f, "14:02:05 modem", DeviceLevel.Neutral, 1), lane?.markers?.first())
+        assertEquals(ChartGrid(72.5f, "25%"), lane?.grid?.first())
+        assertEquals("14:00:30 · no reading", lane?.readings?.get(1))
+        assertTrue(lane?.default == true)
+        assertEquals(ChartSpan("Sortie 1", 0.1, 0.9), chart?.spans?.first())
+        assertNull(parseFlightChart(null))
     }
 
     @Test
-    fun `a zoomed lane keeps each marker on its moment and its index on its line`() {
-        assertEquals(listOf(MarkerLine(50.0, "inside", DeviceLevel.Neutral, 1)), markerLines(listOf(marker(30, "before"), marker(90, "inside")), 30, 3, 60))
-    }
-
-    @Test
-    fun `the caption names the span in minutes or hours`() {
-        assertEquals("6m", spanLabel(360))
-        assertEquals("1h 15m", spanLabel(4500))
-    }
-
-    @Test
-    fun `the axis reads in the device's clock, not the phone's`() {
-        assertEquals("22:13", clockAt(1_700_000_000, 0, false))
-        assertEquals("01:13:20", clockAt(1_700_000_000, 3 * 3600, true))
-    }
-
-    @Test
-    fun `gridlines sit at quarters of the ceiling with the unit's label`() {
-        assertEquals(listOf("25%", "50%", "75%"), gridLines(100.0, "percent").map { it.label })
-        assertEquals(listOf("500 kbps", "1.0 Mbps", "1.5 Mbps"), gridLines(250000.0, "rate").map { it.label })
-        assertEquals(emptyList<LaneGridLine>(), gridLines(0.0, "percent"))
-    }
-
-    @Test
-    fun `a tap reads the nearest sample with its note`() {
-        assertEquals(LaneReadout(2, 100.0, "18% · 3G"), readoutAt(listOf(80.0, 41.0, 18.0), listOf("4G (LTE)", "3G", "3G"), 0.9, "percent"))
-        assertEquals("no reading", readoutAt(listOf(80.0, -1.0), emptyList(), 1.0, "percent")?.text)
-        assertNull(readoutAt(emptyList(), emptyList(), 0.5, "rate"))
-    }
-
-    @Test
-    fun `counts read as bare numbers`() {
-        assertEquals("512", formatValue(512.4, "count"))
-    }
-
-    @Test
-    fun `distances read in metres until a kilometre`() {
-        assertEquals("640 m", formatValue(640.0, "meters"))
-        assertEquals("1.3 km", formatValue(1250.0, "meters"))
-        assertEquals(listOf("500 m", "1.0 km", "1.5 km"), gridLines(2000.0, "meters").map { it.label })
-    }
-
-    @Test
-    fun `a zoom window picks a run of samples and never fewer than two`() {
-        assertEquals(0..13, zoomSlice(14, null))
-        assertEquals(3..7, zoomSlice(14, Zoom(0.25, 0.5)))
-        assertEquals(12..13, zoomSlice(14, Zoom(0.99, 1.0)))
-        assertEquals(4..5, zoomSlice(14, Zoom(0.3, 0.31)))
+    fun `a cursor snaps to the nearest sample of the lane it is under`() {
+        assertEquals(ChartSample(2, 100f), sampleAt(3, 0.9))
+        assertEquals(ChartSample(1, 25f), sampleAt(5, 0.3))
+        assertEquals(ChartSample(0, 0f), sampleAt(1, 0.7))
+        assertNull(sampleAt(0, 0.5))
     }
 
     @Test
     fun `a drag inside a zoom narrows the zoom it is in`() {
         assertEquals(Zoom(0.2, 0.6), composeZoom(null, 0.6, 0.2))
         assertEquals(Zoom(0.5, 0.75), composeZoom(Zoom(0.5, 1.0), 0.0, 0.5))
-    }
-
-    @Test
-    fun `each lane's unit is spelled the way that lane is read`() {
-        assertEquals("0.7", formatValue(0.72, "number"))
-        assertEquals("2.0 GB", formatValue(2048.0, "mb"))
-        assertEquals("512 MB", formatValue(512.0, "mb"))
-        assertEquals("45 s", formatValue(45.0, "seconds"))
-        assertEquals("3 m", formatValue(180.0, "seconds"))
-        assertEquals("73%", formatValue(73.0, "percent"))
-        assertEquals("4", formatValue(4.0, "count"))
     }
 
     @Test

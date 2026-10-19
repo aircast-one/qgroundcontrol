@@ -65,6 +65,7 @@ pub mod debugapi;
 pub mod deeplinksetup;
 pub mod detections;
 pub mod device;
+pub mod deviceflights;
 pub mod deviceforms;
 pub mod devicesetup;
 pub mod devicetrack;

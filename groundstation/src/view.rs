@@ -1490,6 +1490,7 @@ mod deps_cover_reads {
         ("platformdisk", include_str!("platformdisk.rs")),
         ("platformserial", include_str!("platformserial.rs")),
         ("device", include_str!("device.rs")),
+        ("deviceflights", include_str!("deviceflights.rs")),
         ("hostsocket", include_str!("hostsocket.rs")),
         ("hostdevice", include_str!("hostdevice.rs")),
         ("pilotunits", include_str!("pilotunits.rs")),

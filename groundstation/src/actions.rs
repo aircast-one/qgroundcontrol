@@ -238,6 +238,7 @@ pub fn owns(path: &str) -> bool {
         || [crate::lens::MEASURE, crate::lens::FORGET].contains(&path)
         || path == crate::firstrun::MARK_SHOWN
         || path == crate::device::PAIR
+        || path == crate::deviceflights::FLIGHT_CHART
         || crate::deeplinksetup::owns(path)
         || crate::deviceviews::owns(path)
         || crate::deviceforms::owns(path)
@@ -454,6 +455,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         UNDO | REDO => step(backend, path),
         crate::firstrun::MARK_SHOWN => crate::firstrun::mark_shown(backend),
         crate::device::PAIR => crate::deviceviews::pair(args),
+        crate::deviceflights::FLIGHT_CHART => crate::deviceflights::chart(backend, args),
         _ if crate::deeplinksetup::owns(path) => crate::deeplinksetup::run(path, args, |host| {
             crate::deviceviews::adopt_host(&host);
             crate::deeplinksetup::setup_from_device(&host);

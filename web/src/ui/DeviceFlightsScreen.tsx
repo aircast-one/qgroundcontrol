@@ -1,4 +1,6 @@
 import { type PointerEvent, useContext, useEffect, useRef, useState } from 'react';
+import type { Json } from '@/bridge/Json';
+import { useProduceState } from '@/kotlin/Compose';
 import { copyToClipboard } from '@/kotlin/Platform';
 import { mutableStateOf, useValue } from '@/kotlin/State';
 import { FilterChip, OutlinedButton, Text, TextButton } from '@/m3';
@@ -6,41 +8,33 @@ import { MaterialIcon } from '@/res/Icon';
 import { aircast, md } from '@/theme/Colors';
 import { ConfirmDialog, DeviceBadgeText, DeviceNotice, DeviceText, LinkButton, QrImage, levelColor, useCopy } from '@/ui/DeviceKit';
 import {
+  type ChartLane,
+  type FlightChart,
   type FlightEntry,
   type FlightLine,
   type FlightPart,
-  type FlightTrace,
   IDLE_RENDER,
   MIN_BRUSH,
-  PLOT_BOX,
   RENDER_POLL_MS,
   type RenderJob,
   type SortieShare,
   type SortieVideo,
-  type TraceLane,
   type Zoom,
-  ceilingOf,
-  clockAt,
   composeZoom,
+  flightChart,
   flightLink,
-  gridLines,
   hasLines,
   laneKeys,
-  markerLines,
   parseFlights,
   readRender,
-  readoutAt,
   rememberLanes,
   renderExpiry,
   renderPercent,
   renderRunning,
-  segments,
-  spanLabel,
+  sampleAt,
   startRender,
   storedLanes,
-  ticks,
   toggled,
-  zoomSlice,
 } from '@/ui/DeviceFlights';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
 import { DeviceLevel } from '@/ui/DeviceLevel';
@@ -71,7 +65,7 @@ const FlightRow = ({ flight, linked }: { flight: FlightEntry; linked: boolean })
   const [open, setOpen] = useState(flight.open || linked);
   const [active, setActive] = useState<number | null>(null);
   const anchor = useRef<HTMLElement>(null);
-  useEffect(() => (linked ? anchor.current?.scrollIntoView({ block: 'start' }) : undefined), []);
+  useEffect(() => void (linked ? anchor.current?.scrollIntoView({ block: 'start' }) : undefined), []);
   return (
     <section ref={anchor} aria-label={flight.title} className="border-b border-outline-variant">
       <button
@@ -250,7 +244,6 @@ const SortieShareRow = ({ share }: { share: SortieShare }) => {
 type Brush = { readonly from: number; readonly to: number };
 
 type Plot = {
-  readonly zoom: Zoom | null;
   readonly cursor: number | null;
   readonly brush: Brush | null;
   readonly active: number | null;
@@ -265,22 +258,23 @@ const fractionIn = (event: PointerEvent<HTMLElement>): number => {
   return box.width > 0 ? Math.max(0, Math.min(1, (event.clientX - box.left) / box.width)) : 0;
 };
 
-const FlightLanes = ({ trace, active }: { trace: FlightTrace; active: number | null }) => {
+const FlightLanes = ({ trace, active }: { trace: Json; active: number | null }) => {
   const chosen = useValue(laneChoice);
-  const keys = laneKeys(
-    chosen ?? storedLanes(),
-    trace.lanes.filter((lane) => lane.default).map((lane) => lane.key),
-  );
   const [zoom, setZoom] = useState<Zoom | null>(null);
   const [cursor, setCursor] = useState<number | null>(null);
   const [brush, setBrush] = useState<Brush | null>(null);
+  const chart = useProduceState<FlightChart | null>(null, [trace, zoom], async (set) => set(await flightChart(trace, zoom)));
+  if (chart === null) return null;
+  const keys = laneKeys(
+    chosen ?? storedLanes(),
+    chart.lanes.filter((lane) => lane.default).map((lane) => lane.key),
+  );
   const toggle = (key: string) => {
     const next = toggled(keys, key);
     rememberLanes(next);
     laneChoice.value = next;
   };
   const plot: Plot = {
-    zoom,
     cursor,
     brush,
     active,
@@ -301,11 +295,11 @@ const FlightLanes = ({ trace, active }: { trace: FlightTrace; active: number | n
     },
     leave: (event) => (event.pointerType === 'mouse' && brush === null ? setCursor(null) : undefined),
   };
-  const shown = trace.lanes.filter((lane) => keys.includes(lane.key));
+  const shown = chart.lanes.filter((lane) => keys.includes(lane.key));
   return (
     <div className="mt-2 border-t border-outline-variant pt-3">
       <div role="group" aria-label="Lanes" className="flex flex-wrap items-center gap-2 px-list">
-        {trace.lanes.map((lane) => (
+        {chart.lanes.map((lane) => (
           <FilterChip
             key={lane.key}
             selected={keys.includes(lane.key)}
@@ -323,16 +317,16 @@ const FlightLanes = ({ trace, active }: { trace: FlightTrace; active: number | n
           />
         ))}
       </div>
-      {trace.spans.length > 0 || zoom !== null ? (
+      {chart.spans.length > 0 || zoom !== null ? (
         <div role="group" aria-label="Zoom" className="flex flex-wrap items-center gap-2 px-list pt-2">
-          {trace.spans.map((span) => (
+          {chart.spans.map((span) => (
             <FilterChip key={span.label} selected={zoom !== null && zoom[0] === span.from && zoom[1] === span.to} onClick={() => setZoom([span.from, span.to])} label={span.label} />
           ))}
           {zoom !== null ? <TextButton onClick={() => setZoom(null)}>Whole flight</TextButton> : null}
         </div>
       ) : null}
       {shown.map((lane, index) => (
-        <LaneChart key={lane.key} lane={lane} trace={trace} plot={plot} last={index === shown.length - 1} />
+        <LaneChart key={lane.key} lane={lane} plot={plot} last={index === shown.length - 1} />
       ))}
       <div className="px-list pt-3">
         <Text typography="bodySmall" color={muted}>
@@ -350,30 +344,25 @@ const percent = (fraction: number): string => `${(fraction * 100).toFixed(1)}%`;
 
 const readoutAlign = (x: number): string => (x < 15 ? '' : x > 85 ? '-translate-x-full' : '-translate-x-1/2');
 
-const LaneChart = ({ lane, trace, plot, last }: { lane: TraceLane; trace: FlightTrace; plot: Plot; last: boolean }) => {
-  const slice = zoomSlice(lane.values.length, plot.zoom);
-  const shown = lane.values.slice(slice.from, slice.to + 1);
-  const start = trace.startUnix + slice.from * trace.step;
-  const grid = gridLines(ceilingOf(shown, lane.max), lane.unit);
-  const markers = markerLines(trace.markers, trace.step, shown.length, slice.from * trace.step);
-  const readout = plot.cursor === null ? null : readoutAt(shown, lane.notes.slice(slice.from, slice.to + 1), plot.cursor, lane.unit);
+const LaneChart = ({ lane, plot, last }: { lane: ChartLane; plot: Plot; last: boolean }) => {
+  const sample = plot.cursor === null ? null : sampleAt(lane.readings.length, plot.cursor);
   return (
     <div role="group" aria-label={lane.label} className="px-list pt-4">
       <Text typography="labelSmall" color={muted} className="tracking-wide uppercase">
         {lane.label}
       </Text>
       <div className="relative mt-1 h-28 touch-none select-none" onPointerDown={plot.down} onPointerMove={plot.move} onPointerUp={plot.up} onPointerLeave={plot.leave}>
-        <svg viewBox={`0 0 100 ${PLOT_BOX}`} preserveAspectRatio="none" className="absolute inset-0 size-full" role="img" aria-label={`${lane.label} over the flight`}>
-          {grid.map((line) => (
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" className="absolute inset-0 size-full" role="img" aria-label={`${lane.label} over the flight`}>
+          {lane.grid.map((line) => (
             <line key={line.y} x1="0" x2="100" y1={line.y} y2={line.y} stroke={md('onSurface')} strokeOpacity={0.12} strokeWidth="1" vectorEffect="non-scaling-stroke" />
           ))}
-          {markers.map((marker) => (
+          {lane.markers.map((marker) => (
             <line
               key={marker.index}
               x1={marker.x}
               x2={marker.x}
               y1="0"
-              y2={PLOT_BOX}
+              y2="100"
               stroke={markerColor(marker.level)}
               strokeWidth="1"
               vectorEffect="non-scaling-stroke"
@@ -385,13 +374,13 @@ const LaneChart = ({ lane, trace, plot, last }: { lane: TraceLane; trace: Flight
               <title>{marker.label}</title>
             </line>
           ))}
-          {segments(shown, lane.max).map((points) => (
+          {lane.lines.map((points) => (
             <polyline key={points} points={points} fill="none" stroke={md('primary')} strokeWidth="1.5" vectorEffect="non-scaling-stroke" />
           ))}
         </svg>
         <div aria-label={`${lane.label} scale`} className="pointer-events-none absolute inset-y-0 right-0">
-          {grid.map((line) => (
-            <span key={line.y} className="absolute right-0 -translate-y-1/2 rounded-shape-xs bg-surface/80 px-1 whitespace-nowrap" style={{ top: percent(line.y / PLOT_BOX) }}>
+          {lane.grid.map((line) => (
+            <span key={line.y} className="absolute right-0 -translate-y-1/2 rounded-shape-xs bg-surface/80 px-1 whitespace-nowrap" style={{ top: `${line.y}%` }}>
               <Text typography="labelSmall" monospace color={muted}>
                 {line.label}
               </Text>
@@ -401,16 +390,16 @@ const LaneChart = ({ lane, trace, plot, last }: { lane: TraceLane; trace: Flight
         {plot.brush !== null ? (
           <div className="pointer-events-none absolute inset-y-0 bg-primary/15" style={{ left: percent(Math.min(plot.brush.from, plot.brush.to)), width: percent(Math.abs(plot.brush.to - plot.brush.from)) }} />
         ) : null}
-        {readout !== null ? (
+        {sample !== null ? (
           <>
-            <div className="pointer-events-none absolute inset-y-0 w-px bg-on-surface/40" style={{ left: `${readout.x}%` }} />
+            <div className="pointer-events-none absolute inset-y-0 w-px bg-on-surface/40" style={{ left: `${sample.x}%` }} />
             <div
               role="tooltip"
-              className={`pointer-events-none absolute top-0 z-10 rounded-shape-xs border border-outline-variant bg-surface-container-highest px-2 py-1 whitespace-nowrap shadow-sm ${readoutAlign(readout.x)}`}
-              style={{ left: `${readout.x}%` }}
+              className={`pointer-events-none absolute top-0 z-10 rounded-shape-xs border border-outline-variant bg-surface-container-highest px-2 py-1 whitespace-nowrap shadow-sm ${readoutAlign(sample.x)}`}
+              style={{ left: `${sample.x}%` }}
             >
               <Text typography="labelSmall" monospace>
-                {`${clockAt(start + readout.index * trace.step, trace.tzOffset, true)} · ${readout.text}`}
+                {lane.readings[sample.index]}
               </Text>
             </div>
           </>
@@ -419,7 +408,7 @@ const LaneChart = ({ lane, trace, plot, last }: { lane: TraceLane; trace: Flight
       {last ? (
         <>
           <div className="relative h-5" aria-label="Time">
-            {ticks(start, trace.step, shown.length, (unix) => clockAt(unix, trace.tzOffset, false)).map((tick, index, all) => (
+            {lane.ticks.map((tick, index, all) => (
               <span key={tick.x} className={`absolute top-0.5 ${index === 0 ? '' : index === all.length - 1 ? '-translate-x-full' : '-translate-x-1/2'}`} style={{ left: `${tick.x}%` }}>
                 <Text typography="labelSmall" monospace color={muted}>
                   {tick.label}
@@ -428,7 +417,7 @@ const LaneChart = ({ lane, trace, plot, last }: { lane: TraceLane; trace: Flight
             ))}
           </div>
           <Text typography="labelSmall" color={muted}>
-            {shown.length > 1 ? `${spanLabel(trace.step * (shown.length - 1))} of flight` : ''}
+            {lane.span}
           </Text>
         </>
       ) : null}
