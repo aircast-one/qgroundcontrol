@@ -35,13 +35,12 @@ pub const SYNTHETIC_AIM: &str = "syntheticView.aim";
 pub const FIXED_CAMERA_TILT_DEG: f64 = -15.0;
 pub const CAMERA_FOV_DEG: f64 = 70.0;
 const FALLBACK_IMAGERY: &str = "Bing Satellite";
-const TILT_RANGE_DEG: (f64, f64) = (-90.0, 0.0);
+const TILT_RANGE_DEG: (f64, f64) = (-90.0, 30.0);
 const BEAM_REACH_M: f64 = 1500.0;
 const FRAME_ASPECT: f64 = 9.0 / 16.0;
 const BELOW_HORIZON_DEG: f64 = -0.5;
 const LOWEST_HEIGHT_M: f64 = 1.0;
-const NEEDS_DEGREES: &str =
-    "Give the tilt, from 0 (level) to -90 (straight down), and the pan from the nose, in degrees.";
+const NEEDS_DEGREES: &str = "Give the tilt, from 30 (up) through 0 (level) to -90 (straight down), and the pan from the nose, in degrees.";
 
 pub const DEFAULT_AIM: (f64, f64) = (FIXED_CAMERA_TILT_DEG, 0.0);
 const FASTEST_TURN_DEG_S: f64 = 720.0;
@@ -812,9 +811,9 @@ mod tests {
         );
         assert_eq!(run(SYNTHETIC_AIM, "[-140, 0]")["tilt"], -90.0);
         assert_eq!(
-            run(SYNTHETIC_AIM, "[30, 0]")["tilt"],
-            0.0,
-            "it never looks up past the horizon"
+            run(SYNTHETIC_AIM, "[45, 0]")["tilt"],
+            30.0,
+            "it looks up as far as the tilt slider reaches"
         );
         assert_eq!(
             run(SYNTHETIC_AIM, "[0, 200]")["pan"],
