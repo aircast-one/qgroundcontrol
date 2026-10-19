@@ -23,6 +23,7 @@ const ORIGIN_KEY: &str = "AircastDevice/origin";
 const RECONNECT: Duration = Duration::from_secs(2);
 const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 const CALL_TIMEOUT: Duration = Duration::from_secs(20);
+const LONGEST_CALL_S: u64 = 300;
 const UPLOAD_TIMEOUT: Duration = Duration::from_secs(600);
 const REACH_TIMEOUT: Duration = Duration::from_secs(5);
 #[cfg(target_family = "wasm")]
@@ -554,7 +555,7 @@ fn step(path: &str, args: &[Value]) -> Step {
                     url,
                     headers: owned(headers),
                     body: body.map(String::into_bytes),
-                    timeout: CALL_TIMEOUT,
+                    timeout: call_timeout(args.get(3)),
                     then: Then::Answer,
                 })
             }
@@ -594,6 +595,13 @@ fn step(path: &str, args: &[Value]) -> Step {
         },
         _ => Step::Answered(refused(&format!("{path} is not a device action"))),
     }
+}
+
+fn call_timeout(wait: Option<&Value>) -> Duration {
+    wait.and_then(Value::as_u64)
+        .map_or(CALL_TIMEOUT, |seconds| {
+            Duration::from_secs(seconds.clamp(1, LONGEST_CALL_S))
+        })
 }
 
 fn finish(then: Then, sent: Result<(u16, Vec<u8>), String>) -> Value {
@@ -786,6 +794,17 @@ mod tests {
             read_part(&json!({ "name": "hef", "file": "/nonexistent/yolo.hef" }))
                 .is_err_and(|reason| reason.starts_with("Could not read yolo.hef"))
         );
+    }
+
+    #[test]
+    fn a_call_waits_as_long_as_it_asks_within_a_limit() {
+        assert_eq!(call_timeout(None), CALL_TIMEOUT);
+        assert_eq!(call_timeout(Some(&json!(60))), Duration::from_secs(60));
+        assert_eq!(
+            call_timeout(Some(&json!(86_400))),
+            Duration::from_secs(LONGEST_CALL_S)
+        );
+        assert_eq!(call_timeout(Some(&json!("soon"))), CALL_TIMEOUT);
     }
 
     #[test]

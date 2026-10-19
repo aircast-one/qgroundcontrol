@@ -1,88 +1,43 @@
-import { useContext, useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { isJson, optText } from '@/bridge/Json';
+import { useQgcPath } from '@/bridge/QgcState';
 import { openDocument } from '@/kotlin/Platform';
-import { delay } from '@/kotlin/Std';
 import { AssistChip, Button, CircularProgressIndicator, OutlinedButton, OutlinedTextField, Text, TextButton } from '@/m3';
 import { MaterialIcon } from '@/res/Icon';
 import { aircast, md } from '@/theme/Colors';
 import {
-  type CameraTemplate,
   type CameraWizardView,
-  type FoundCamera,
-  NO_ANSWER_CHECKLIST,
-  type PortFixer,
-  SCANNING_NOTE,
-  SCAN_FAILED_NOTE,
+  DEVICE_WIZARD,
+  type DeviceWizard,
+  NO_FORM,
+  NO_WIZARD,
+  PI_CAMERA,
   STEP_NAMES,
-  type ScanOutcome,
-  type ScanPort,
+  type WizardCamera,
+  type WizardPort,
   type WizardRefusal,
-  adoptedCamera,
-  applyNote,
-  camHeading,
-  camURL,
-  checklistHint,
-  commitsNow,
+  applyCamera,
   continueLeads,
-  fixerGoLabel,
-  fixerHint,
-  fixersFor,
-  nextLabel,
-  nextStep,
-  parseCameraStatus,
-  parseFoundCameras,
-  parseScanPorts,
-  portDetail,
-  portHasSubnet,
-  portToSuggest,
-  rowNote,
-  rtspHost,
+  fixWizardPort,
+  openWizard,
+  parseDeviceWizard,
+  restartWizard,
+  sameCamera,
+  scanForCameras,
   scanLeads,
-  scanOutcome,
-  subnetOptions,
-  suggestIP,
-  templateAction,
-  templateHolderError,
-  templatePort,
-  templateReadyPort,
-  templateSub,
-  todoHeading,
+  setUpCameraMake,
+  signedInUrl,
+  wizardForm,
+  wizardNext,
 } from '@/ui/DeviceCameraWizard';
 import { DeviceSelect } from '@/ui/DeviceKit';
 import { Fold, useFold } from '@/ui/DeviceKitCamera';
-import { NO_ANSWER, deviceRead, deviceSend, deviceUpload } from '@/ui/DeviceView';
+import { NO_ANSWER, deviceUpload } from '@/ui/DeviceView';
 import { LocalChangeNotice } from '@/ui/ValueRow';
-
-const VERIFY_ATTEMPTS = 10;
-const VERIFY_POLL_MS = 1500;
-const PORT_UP_ATTEMPTS = 15;
-const PORT_UP_POLL_MS = 1000;
 
 const errorOf = (json: unknown, fallback: string): string => optText(isJson(json) ? json : null, 'error') || fallback;
 
-const fetchPorts = async (): Promise<readonly ScanPort[]> => (await deviceRead('/api/streams/scan/ports', parseScanPorts)) ?? [];
-
-const waitForPort = async (iface: string, want: string, attempt = 0): Promise<void> => {
-  if (attempt >= PORT_UP_ATTEMPTS) return;
-  const port = (await deviceRead('/api/streams/scan/ports', parseScanPorts))?.find((it) => it.iface === iface);
-  if (port === undefined || (want !== '' ? portHasSubnet(port, want) : port.state !== 'configuring')) return;
-  await delay(PORT_UP_POLL_MS);
-  return waitForPort(iface, want, attempt + 1);
-};
-
-const setPortAddress = async (iface: string, address: string): Promise<string> => {
-  const { result: json, refusal } = await deviceSend('POST', '/api/setup/camera/port', {
-    interface: iface,
-    address,
-  });
-  return refusal === null ? '' : refusal === NO_ANSWER ? refusal.message : errorOf(json, 'Could not set up this port.');
-};
-
-type Status = { readonly state: 'loading' | 'error'; readonly text: string };
-
-const APPLYING: Status = { state: 'loading', text: 'Applying…' };
-
-const NO_FIXER: PortFixer = { open: false, input: '', suggest: '', status: '', busy: false };
+type PortInput = { readonly open: boolean; readonly text: string };
 
 export const CameraWizard = ({
   view,
@@ -108,11 +63,8 @@ export const CameraWizard = ({
   const fileFold = useFold(false);
   const [refusal, setRefusal] = useState<WizardRefusal | null>(null);
   const [dupAck, setDupAck] = useState('');
-  const [scanning, setScanning] = useState(false);
-  const [scanNote, setScanNote] = useState('');
-  const [outcome, setOutcome] = useState<ScanOutcome | null>(null);
-  const [fixers, setFixers] = useState<Readonly<Record<string, PortFixer>>>({});
-  const [picked, setPicked] = useState<FoundCamera | null>(null);
+  const [inputs, setInputs] = useState<Readonly<Record<string, PortInput>>>({});
+  const [picked, setPicked] = useState<WizardCamera | null>(null);
   const [editRtsp, setEditRtsp] = useState(false);
   const [base, setBase] = useState('');
   const [signIn, setSignIn] = useState({ shown: false, asked: false });
@@ -122,20 +74,23 @@ export const CameraWizard = ({
   const [ifaceTouched, setIfaceTouched] = useState(false);
   const [ip, setIp] = useState('');
   const [transport, setTransport] = useState(view.transport);
-  const [status, setStatus] = useState<Status>(APPLYING);
-  const [applyField, setApplyField] = useState('');
-  const [added, setAdded] = useState(false);
-  const [template, setTemplate] = useState({ busy: '', note: '' });
-  const [noPort, setNoPort] = useState(false);
+  const [form, setForm] = useState(NO_FORM);
+  const [session, setSession] = useState(-1);
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
-  const generation = useRef(0);
+  const seen = useRef<DeviceWizard>(NO_WIZARD);
+  const handling = useRef<Promise<void>>(Promise.resolve());
   const errorLine = useRef<HTMLDivElement>(null);
+  const shown = useQgcPath(DEVICE_WIZARD);
+  const wizard = useMemo(() => {
+    const parsed = parseDeviceWizard(shown);
+    return parsed.session === session ? parsed : NO_WIZARD;
+  }, [shown, session]);
 
-  const ports = outcome?.ports ?? [];
-  const cams = outcome?.cams ?? [];
   const locked = picked !== null && picked.pathFound && !editRtsp;
   const cameraName = view.isNew ? name.trim().toLowerCase() : view.name;
+  const current = view.interfaces.find((option) => option.value === iface)?.address ?? '';
+  const applyField = wizard.apply.state === 'failed' ? wizard.apply.field : '';
 
   useEffect(() => {
     if (refusal !== null) errorLine.current?.scrollIntoView({ block: 'nearest' });
@@ -145,7 +100,15 @@ export const CameraWizard = ({
     onStep(step);
   }, [step]);
 
-  const pick = (cam: FoundCamera): string => {
+  useEffect(() => {
+    void openWizard(view, scan).then(setSession);
+  }, []);
+
+  useEffect(() => {
+    void wizardForm(rtsp, iface, ip, current).then(setForm);
+  }, [rtsp, iface, ip, current, wizard.scans, wizard.scanning]);
+
+  const pick = async (cam: WizardCamera): Promise<string> => {
     const keep = cam.needsAuth;
     setPicked(cam);
     setEditRtsp(false);
@@ -156,39 +119,10 @@ export const CameraWizard = ({
       setUser('');
       setPass('');
     }
-    const url = camURL(cam.url, keep ? user : '', keep ? pass : '');
+    const url = await signedInUrl(cam.url, keep ? user : '', keep ? pass : '');
     if (cam.url !== '') setRtsp(url);
     return url;
   };
-
-  const runScan = async (auto: boolean, typed: string): Promise<ScanOutcome | null> => {
-    setScanning(true);
-    setScanNote(SCANNING_NOTE);
-    setOutcome(null);
-    const { result: json, refusal: refused } = await deviceSend('POST', '/api/streams/scan');
-    setScanning(false);
-    if (refused !== null) {
-      setScanNote(SCAN_FAILED_NOTE);
-      return null;
-    }
-    const result = scanOutcome(parseFoundCameras(json, view.name), parseScanPorts(json), rtspHost(view.source));
-    setOutcome(result);
-    setFixers(fixersFor(result, view.subnets));
-    setScanNote(result.note);
-    setPicked(null);
-    setBase('');
-    setSignIn({ shown: false, asked: false });
-    const adopt = adoptedCamera(result, auto, typed);
-    if (adopt !== null) pick(adopt);
-    return result;
-  };
-
-  useEffect(() => {
-    if (view.isNew) {
-      void fetchPorts().then((found) => setNoPort(found.length > 0 && !found.some((port) => !port.isUplink && port.type === 'ethernet')));
-      void runScan(true, view.rtsp);
-    } else if (scan) void runScan(false, view.rtsp);
-  }, []);
 
   const askSignIn = (url: string, reason: string) => {
     setBase(url);
@@ -197,72 +131,19 @@ export const CameraWizard = ({
     setRefusal({ text: reason, warn: false, field: null });
   };
 
-  const verify = async (gen: number, url: string, camera: string, attempt: number, reason: string): Promise<void> => {
-    if (generation.current !== gen) return;
-    if (attempt >= VERIFY_ATTEMPTS) {
-      setStatus({
-        state: 'error',
-        text: reason || 'No video yet — check the cable, IP and RTSP URL.',
-      });
-      return;
-    }
-    const answer = await deviceRead(`/api/setup/camera/status?source=${encodeURIComponent(url)}&name=${encodeURIComponent(camera)}`, parseCameraStatus);
-    if (generation.current !== gen) return;
-    if (answer?.state === 'live') {
-      notice.show(view.isNew ? `Camera ${camera} added.` : 'Stream is live — receiving video from the camera.', null);
-      onDone(camera);
-      return;
-    }
-    if (answer?.state === 'needs_auth') {
-      askSignIn(url, answer.reason);
-      return;
-    }
-    setStatus({ state: 'loading', text: 'Verifying the stream is live…' });
-    await delay(VERIFY_POLL_MS);
-    return verify(gen, url, camera, attempt + 1, answer === null ? reason : answer.reason);
-  };
-
-  const apply = async (url: string, camera: string, port: string, portIp: string, how: string) => {
-    const gen = generation.current + 1;
-    generation.current = gen;
+  const apply = (url: string, camera: string, port: string, portIp: string, how: string) => {
     setStep(3);
-    setApplyField('');
-    setStatus({ state: 'loading', text: 'Applying network and stream settings…' });
-    const { result: json, refusal: refused } = await deviceSend('POST', '/api/setup/camera', {
-      name: camera,
-      new: view.isNew && !added,
-      rtsp: url,
-      interface: port,
-      address: portIp.trim(),
-      transport: how,
-    });
-    if (generation.current !== gen) return;
-    if (refused !== null) {
-      setStatus({
-        state: 'error',
-        text: refused === NO_ANSWER ? 'Network error — try again.' : errorOf(json, 'Setup failed.'),
-      });
-      setApplyField(refused.field);
-      return;
-    }
-    setAdded(true);
-    setStatus({ state: 'loading', text: 'Verifying the stream is live…' });
-    await verify(gen, url, camera, 0, '');
+    void applyCamera(url, camera, port, portIp, how);
   };
 
-  const advance = (typed: string, typedName: string, known: readonly ScanPort[]) => {
-    const out = nextStep({
-      rtsp: typed,
-      name: view.isNew ? typedName : null,
-      others: view.others,
-      ports: known,
-      dupAck,
-    });
+  const advance = async (typed: string, typedName: string): Promise<void> => {
+    const out = await wizardNext(typed, typedName, dupAck);
+    if (out === null) return;
     setRtsp(out.rtsp);
     if (out.name !== null) setName(out.name);
-    if (out.kind === 'refuse') {
+    setDupAck(out.dupAck);
+    if (out.refusal !== null) {
       setRefusal(out.refusal);
-      setDupAck(out.dupAck);
       if (out.refusal.field === 'rtsp') {
         setEditRtsp(true);
         address.onToggle(true);
@@ -271,93 +152,67 @@ export const CameraWizard = ({
       return;
     }
     setRefusal(null);
-    const camera = out.name ?? view.name;
     if (out.kind === 'apply') {
       setIface('');
       setIp('');
-      void apply(out.rtsp, camera, '', '', transport);
+      apply(out.rtsp, out.camera, '', '', transport);
       return;
     }
-    const suggested = portToSuggest(known);
-    if (suggested !== '' && !ifaceTouched) setIface(suggested);
-    if (ip === '') setIp(suggestIP(out.rtsp));
+    if (out.iface !== '' && !ifaceTouched) setIface(out.iface);
+    if (ip === '') setIp(out.ip);
     setStep(2);
   };
 
+  const happened = async (before: DeviceWizard, now: DeviceWizard): Promise<void> => {
+    if (now.scans > before.scans) {
+      setPicked(null);
+      setBase('');
+      setSignIn({ shown: false, asked: false });
+      setInputs({});
+      if (now.adopt !== null) await pick(now.adopt);
+    }
+    if (now.template.n > before.template.n) {
+      const found = now.template.camera;
+      if (found === null) setRefusal({ text: now.template.refusal, warn: false, field: null });
+      else {
+        const url = await pick(found);
+        const camera = now.template.name || name;
+        setName(camera);
+        await advance(url, camera);
+      }
+    }
+    if (now.notice.n > before.notice.n) notice.show(now.notice.text, null);
+    if (now.apply.n > before.apply.n && now.apply.state === 'live') onDone(now.apply.camera);
+    if (now.apply.n > before.apply.n && now.apply.state === 'signIn') askSignIn(now.apply.url, now.apply.text);
+  };
+
+  useEffect(() => {
+    const before = seen.current;
+    seen.current = wizard;
+    handling.current = handling.current.then(() => happened(before, wizard));
+  }, [wizard]);
+
   const restart = () => {
-    generation.current += 1;
+    void restartWizard();
     setRtsp('');
     setIp('');
     setTransport(view.transports[0]?.value ?? view.transport);
     setRefusal(null);
-    setAdded(false);
     setPicked(null);
     setBase('');
     setSignIn({ shown: false, asked: false });
     setEditRtsp(false);
-    setStatus(APPLYING);
     setStep(1);
   };
 
   const credentials = (nextUser: string, nextPass: string) => {
     setUser(nextUser);
     setPass(nextPass);
-    if (base !== '') setRtsp(camURL(base, nextUser, nextPass));
+    if (base !== '') void signedInUrl(base, nextUser, nextPass).then(setRtsp);
   };
 
-  const setUpTemplate = async (t: CameraTemplate) => {
-    if (template.busy !== '') return;
-    const fail = (text: string) => {
-      setTemplate({ busy: '', note: '' });
-      setRefusal({ text, warn: false, field: null });
-    };
-    setRefusal(null);
-    setTemplate({ busy: t.id, note: `Finding the Ethernet port for the ${t.label}…` });
-    const known = await fetchPorts();
-    const port = templatePort(known, t);
-    if (port === null) return fail(`This device has no Ethernet port to plug the ${t.label} into.`);
-    if (!portHasSubnet(port, t.cidr)) {
-      const holder = known.find((other) => other.iface !== port.iface && portHasSubnet(other, t.cidr));
-      if (holder !== undefined) return fail(templateHolderError(holder, t));
-      setTemplate({
-        busy: t.id,
-        note: `Putting ${port.iface} on the ${t.label}'s network (${t.cidr})…`,
-      });
-      const refused = await setPortAddress(port.iface, t.cidr);
-      if (refused !== '') return fail(refused);
-      await waitForPort(port.iface, t.cidr);
-    }
-    setTemplate({ busy: t.id, note: `Looking for the ${t.label} at ${t.host}…` });
-    const result = await runScan(false, rtsp);
-    const found = result?.cams.find((cam) => cam.host === t.host && cam.pathFound);
-    if (result === null || found === undefined) return fail(`No ${t.label} answered at ${t.host} — check its Ethernet cable and that it has power, then try again.`);
-    const url = pick(found);
-    const camera = view.others.some((other) => other.name.toLowerCase() === t.name) ? name : t.name;
-    setName(camera);
-    if (t.gimbal !== '') {
-      void deviceSend('PUT', '/api/gimbal/config', { vendor: t.gimbal, cameraAddr: t.gimbalAddr }).then(({ refusal: refused }) =>
-        refused === null ? undefined : notice.show(`Gimbal control was not switched to this camera — ${refused.message}`, null),
-      );
-    }
-    setTemplate({ busy: '', note: '' });
-    advance(url, camera, result.ports);
-  };
-
-  const fixer = (port: ScanPort): PortFixer => fixers[port.iface] ?? NO_FIXER;
-  const changeFixer = (port: ScanPort, change: Partial<PortFixer>) => setFixers((all) => ({ ...all, [port.iface]: { ...(all[port.iface] ?? NO_FIXER), ...change } }));
-
-  const fixPort = async (port: ScanPort) => {
-    const want = fixer(port).input.trim();
-    changeFixer(port, { busy: true, status: `Setting up ${port.iface}…` });
-    const refused = await setPortAddress(port.iface, want);
-    if (refused !== '') {
-      changeFixer(port, { busy: false, status: refused });
-      return;
-    }
-    changeFixer(port, { status: `Waiting for ${port.iface} to come up on ${want}…` });
-    await waitForPort(port.iface, want);
-    await runScan(false, rtsp);
-  };
+  const input = (port: WizardPort): PortInput => inputs[port.iface] ?? { open: port.open, text: port.suggest };
+  const changeInput = (port: WizardPort, change: Partial<PortInput>) => setInputs((all) => ({ ...all, [port.iface]: { ...input(port), ...change } }));
 
   const upload = async () => {
     if (cameraName === '') return notice.show('Name the camera first.', null);
@@ -371,16 +226,12 @@ export const CameraWizard = ({
     onDone(cameraName);
   };
 
-  const commits = commitsNow(rtsp, ports);
-  const fresh = cams.filter((cam) => cam.used === '');
-  const checklist = scanNote !== '' && cams.length === 0 && ports.length > 0;
   const Scan = scanLeads(rtsp, picked !== null) ? Button : OutlinedButton;
   const Next = continueLeads(rtsp) ? Button : OutlinedButton;
-  const current = view.interfaces.find((option) => option.value === iface)?.address ?? '';
 
   return (
     <div className="flex flex-col gap-3 px-list py-2" role="group" aria-label={view.isNew ? 'New camera' : `Set up ${view.name}`}>
-      <StepNames step={step} skipsPort={step === 1 && commits} />
+      <StepNames step={step} skipsPort={step === 1 && form.skipsPort} />
       {step === 1 ? (
         <>
           {view.piCamera !== null ? (
@@ -388,34 +239,34 @@ export const CameraWizard = ({
               <Text typography="bodyMedium" className="min-w-0 flex-1">
                 {view.piCamera.note}
               </Text>
-              <Button onClick={() => advance('rpiCamera', name, ports)}>{view.piCamera.action}</Button>
+              <Button onClick={() => void advance(PI_CAMERA, name)}>{view.piCamera.action}</Button>
             </div>
           ) : null}
-          {view.templates.length > 0 && !noPort ? (
+          {wizard.templates.length > 0 ? (
             <div className="flex flex-col gap-2" role="group" aria-label="Camera makes">
-              {view.templates.map((t) => {
-                const ready = templateReadyPort(t, cams, ports);
-                return (
-                  <button
-                    key={t.id}
-                    type="button"
-                    disabled={template.busy !== ''}
-                    onClick={() => void setUpTemplate(t)}
-                    className="flex w-full items-center gap-3 rounded-shape-md border border-outline-variant px-4 py-3 text-left hover:bg-[color-mix(in_srgb,var(--md-on-surface)_8%,transparent)] disabled:opacity-60"
-                  >
-                    <span className="flex min-w-0 flex-1 flex-col">
-                      <Text typography="bodyLarge">{t.label}</Text>
-                      <Text typography="bodySmall" color={md('onSurfaceVariant')}>
-                        {templateSub(t, ready)}
-                      </Text>
-                    </span>
-                    <Text typography="labelLarge" color={md('primary')}>
-                      {templateAction(template.busy === t.id, ready)}
+              {wizard.templates.map((t) => (
+                <button
+                  key={t.id}
+                  type="button"
+                  disabled={wizard.templateBusy}
+                  onClick={() => {
+                    setRefusal(null);
+                    void setUpCameraMake(t.id);
+                  }}
+                  className="flex w-full items-center gap-3 rounded-shape-md border border-outline-variant px-4 py-3 text-left hover:bg-[color-mix(in_srgb,var(--md-on-surface)_8%,transparent)] disabled:opacity-60"
+                >
+                  <span className="flex min-w-0 flex-1 flex-col">
+                    <Text typography="bodyLarge">{t.label}</Text>
+                    <Text typography="bodySmall" color={md('onSurfaceVariant')}>
+                      {t.sub}
                     </Text>
-                  </button>
-                );
-              })}
-              {template.note !== '' ? <Hint text={template.note} /> : null}
+                  </span>
+                  <Text typography="labelLarge" color={md('primary')}>
+                    {t.action}
+                  </Text>
+                </button>
+              ))}
+              {wizard.templateNote !== '' ? <Hint text={wizard.templateNote} /> : null}
             </div>
           ) : null}
           {view.lookingFor !== '' ? (
@@ -423,63 +274,66 @@ export const CameraWizard = ({
               {view.lookingFor}
             </Text>
           ) : null}
-          {!checklist ? (
+          {wizard.checklist === '' ? (
             <div className="flex flex-col items-start gap-2">
               <Hint text="Plug the camera in and look for it." />
-              <Scan enabled={!scanning} onClick={() => void runScan(false, rtsp)}>
-                {scanning ? 'Looking…' : 'Scan for cameras'}
+              <Scan enabled={!wizard.scanning} onClick={() => void scanForCameras()}>
+                {wizard.scanning ? 'Looking…' : 'Scan for cameras'}
               </Scan>
             </div>
           ) : null}
-          {scanNote !== '' && !(ports.length > 0 && cams.length === 0) ? <Hint text={scanNote} /> : null}
-          {checklist ? (
+          {wizard.note !== '' ? <Hint text={wizard.note} /> : null}
+          {wizard.checklist !== '' ? (
             <div className="flex flex-col gap-2 rounded-shape-md border border-outline-variant px-4 py-3" role="group" aria-label="Checklist">
-              <Text typography="titleSmall">{checklistHint(ports, view.subnets) || NO_ANSWER_CHECKLIST}</Text>
+              <Text typography="titleSmall">{wizard.checklist}</Text>
               <ul className="flex list-none flex-col gap-1 text-body-medium text-on-surface-variant">
                 <li>☐ The cable goes from the camera to this device's camera port</li>
                 <li>☐ The camera has power — its light is on</li>
                 <li>☐ Give it 30 seconds after power-on</li>
               </ul>
               <div>
-                <Button enabled={!scanning} onClick={() => void runScan(false, rtsp)}>
-                  {scanning ? 'Looking…' : 'Scan again'}
+                <Button enabled={!wizard.scanning} onClick={() => void scanForCameras()}>
+                  {wizard.scanning ? 'Looking…' : 'Scan again'}
                 </Button>
               </div>
             </div>
           ) : null}
-          {cams.length > 0 ? (
+          {wizard.cams.length > 0 ? (
             <div className="flex flex-col gap-2">
               <Text typography="labelLarge" color={md('onSurfaceVariant')}>
-                {camHeading(cams)}
+                {wizard.camHeading}
               </Text>
-              {cams.map((cam) => (
-                <button
-                  key={`${cam.host} ${cam.url}`}
-                  type="button"
-                  aria-pressed={picked === cam}
-                  aria-label={`${cam.host} — ${rowNote(cam)}`}
-                  onClick={() => pick(cam)}
-                  className={`flex w-full items-center gap-3 rounded-shape-md border px-4 py-3 text-left ${picked === cam ? 'border-primary bg-[color-mix(in_srgb,var(--md-primary)_8%,transparent)]' : 'border-outline-variant hover:bg-[color-mix(in_srgb,var(--md-on-surface)_8%,transparent)]'}`}
-                >
-                  <span className="flex min-w-0 flex-1 flex-col">
-                    <Text typography="bodyLarge" monospace>
-                      {cam.host}
+              {wizard.cams.map((cam) => {
+                const selected = sameCamera(picked, cam);
+                return (
+                  <button
+                    key={`${cam.host} ${cam.url}`}
+                    type="button"
+                    aria-pressed={selected}
+                    aria-label={`${cam.host} — ${cam.note}`}
+                    onClick={() => void pick(cam)}
+                    className={`flex w-full items-center gap-3 rounded-shape-md border px-4 py-3 text-left ${selected ? 'border-primary bg-[color-mix(in_srgb,var(--md-primary)_8%,transparent)]' : 'border-outline-variant hover:bg-[color-mix(in_srgb,var(--md-on-surface)_8%,transparent)]'}`}
+                  >
+                    <span className="flex min-w-0 flex-1 flex-col">
+                      <Text typography="bodyLarge" monospace>
+                        {cam.host}
+                      </Text>
+                      <Text typography="bodySmall" color={md('onSurfaceVariant')}>
+                        {cam.note}
+                      </Text>
+                    </span>
+                    <Text typography="labelLarge" color={md('primary')}>
+                      {selected ? 'Selected' : cam.action}
                     </Text>
-                    <Text typography="bodySmall" color={md('onSurfaceVariant')}>
-                      {rowNote(cam)}
-                    </Text>
-                  </span>
-                  <Text typography="labelLarge" color={md('primary')}>
-                    {picked === cam ? 'Selected' : cam.used !== '' ? 'Add again' : 'Use'}
-                  </Text>
-                </button>
-              ))}
-              {fresh.length === 0 ? <Hint text="Every camera that answered is already set up on this device — a newly plugged-in one has not answered yet." /> : null}
+                  </button>
+                );
+              })}
+              {wizard.camsHint !== '' ? <Hint text={wizard.camsHint} /> : null}
             </div>
           ) : null}
-          {ports.length > 0 && outcome !== null ? (
-            <Fold title={cams.length > 0 ? 'Scan details' : 'Details for a technician'} {...tech}>
-              <ScanDetails outcome={outcome} view={view} fixer={fixer} onFixer={changeFixer} onFix={(port) => void fixPort(port)} />
+          {wizard.details !== '' ? (
+            <Fold title={wizard.details} {...tech}>
+              <ScanDetails wizard={wizard} coverage={view.coverage} input={input} onInput={changeInput} onFix={(port) => void fixWizardPort(port.iface, input(port).text.trim())} />
             </Fold>
           ) : null}
           {signIn.shown ? (
@@ -546,7 +400,7 @@ export const CameraWizard = ({
             </div>
           ) : null}
           <div className="flex flex-wrap items-center gap-2">
-            <Next onClick={() => advance(rtsp, name, ports)}>{nextLabel(rtsp, ports, view.isNew)}</Next>
+            <Next onClick={() => void advance(rtsp, name)}>{form.next}</Next>
             {onCancel !== null ? <TextButton onClick={onCancel}>Cancel</TextButton> : null}
           </div>
           <Fold title="No camera? Use a video file" {...fileFold}>
@@ -596,25 +450,25 @@ export const CameraWizard = ({
           </Fold>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <OutlinedButton onClick={() => setStep(1)}>← Back</OutlinedButton>
-            <Button onClick={() => void apply(rtsp, cameraName, iface, ip, transport)}>Set up & verify</Button>
+            <Button onClick={() => apply(rtsp, cameraName, iface, ip, transport)}>Set up & verify</Button>
           </div>
-          {applyNote(iface, ip, current) !== '' ? <Hint text={applyNote(iface, ip, current)} /> : null}
+          {form.applyNote !== '' ? <Hint text={form.applyNote} /> : null}
         </>
       ) : null}
       {step === 3 ? (
         <>
           <div role="status" aria-live="polite" className="flex items-center gap-3">
-            {status.state === 'loading' ? <CircularProgressIndicator size={20} strokeWidth={3} label="Working" /> : <MaterialIcon name="error" size={20} style={{ color: md('error') }} />}
-            <Text typography="bodyLarge" color={status.state === 'error' ? md('error') : md('onSurface')}>
-              {status.text}
+            {wizard.apply.state !== 'failed' ? <CircularProgressIndicator size={20} strokeWidth={3} label="Working" /> : <MaterialIcon name="error" size={20} style={{ color: md('error') }} />}
+            <Text typography="bodyLarge" color={wizard.apply.state === 'failed' ? md('error') : md('onSurface')}>
+              {wizard.apply.text || 'Applying…'}
             </Text>
           </div>
           <div className="flex flex-wrap items-center justify-between gap-2">
             <TextButton onClick={restart}>Start over</TextButton>
-            {status.state === 'error' ? (
+            {wizard.apply.state === 'failed' ? (
               <span className="flex flex-wrap gap-2">
                 <OutlinedButton onClick={() => setStep(2)}>Change settings</OutlinedButton>
-                <Button onClick={() => void apply(rtsp, cameraName, iface, ip, transport)}>Try again</Button>
+                <Button onClick={() => apply(rtsp, cameraName, iface, ip, transport)}>Try again</Button>
               </span>
             ) : null}
           </div>
@@ -653,56 +507,46 @@ const PortRow = ({ label, detail }: { label: string; detail: string }) => (
 );
 
 const ScanDetails = ({
-  outcome,
-  view,
-  fixer,
-  onFixer,
+  wizard,
+  coverage,
+  input,
+  onInput,
   onFix,
 }: {
-  outcome: ScanOutcome;
-  view: CameraWizardView;
-  fixer: (port: ScanPort) => PortFixer;
-  onFixer: (port: ScanPort, change: Partial<PortFixer>) => void;
-  onFix: (port: ScanPort) => void;
+  wizard: DeviceWizard;
+  coverage: string;
+  input: (port: WizardPort) => PortInput;
+  onInput: (port: WizardPort, change: Partial<PortInput>) => void;
+  onFix: (port: WizardPort) => void;
 }) => {
   const restFold = useFold(false);
   const checkedFold = useFold(false);
-  const host = rtspHost(view.source);
-  const rest = outcome.rest.map((it) => <PortRow key={it.port.iface} label={it.port.label} detail={portDetail(it, view.subnets, host)} />);
-  const coverage = <Hint text={view.coverage} />;
+  const rest = wizard.rest.map((it) => <PortRow key={it.iface} label={it.label} detail={it.detail} />);
+  const covered = <Hint text={coverage} />;
   return (
     <>
-      {outcome.todo.length > 0 ? (
+      {wizard.todo.length > 0 ? (
         <div className="flex flex-col gap-2">
           <Text typography="labelLarge" color={md('onSurfaceVariant')}>
-            {todoHeading(outcome.todo, view.subnets)}
+            {wizard.todoHeading}
           </Text>
-          {outcome.todo.map((it) => (
-            <PortFix
-              key={it.port.iface}
-              port={it.port}
-              detail={portDetail(it, view.subnets, host)}
-              ports={outcome.ports}
-              view={view}
-              fixer={fixer(it.port)}
-              onFixer={(change) => onFixer(it.port, change)}
-              onFix={() => onFix(it.port)}
-            />
+          {wizard.todo.map((it) => (
+            <PortFix key={it.iface} port={it} input={input(it)} onInput={(change) => onInput(it, change)} onFix={() => onFix(it)} />
           ))}
         </div>
       ) : null}
-      {outcome.rest.length > 0 && outcome.todo.length > 0 ? (
-        <Fold title={`${outcome.rest.map((it) => it.port.label).join(', ')} — nothing answered`} {...restFold}>
+      {wizard.rest.length > 0 && wizard.todo.length > 0 ? (
+        <Fold title={wizard.restTitle} {...restFold}>
           {rest}
         </Fold>
       ) : null}
-      {outcome.rest.length > 0 && outcome.todo.length === 0 && outcome.cams.length > 0 ? (
+      {wizard.rest.length > 0 && wizard.todo.length === 0 && wizard.cams.length > 0 ? (
         <>
           {rest}
-          {coverage}
+          {covered}
         </>
       ) : null}
-      {outcome.rest.length > 0 && outcome.todo.length === 0 && outcome.cams.length === 0 ? (
+      {wizard.rest.length > 0 && wizard.todo.length === 0 && wizard.cams.length === 0 ? (
         <>
           <Text typography="labelLarge" color={md('onSurfaceVariant')}>
             Ports checked
@@ -710,66 +554,50 @@ const ScanDetails = ({
           {rest}
         </>
       ) : null}
-      {outcome.cams.length === 0 ? (
+      {wizard.cams.length === 0 ? (
         <Fold title="What was checked?" {...checkedFold}>
-          {coverage}
+          {covered}
         </Fold>
       ) : null}
     </>
   );
 };
 
-const PortFix = ({
-  port,
-  detail,
-  ports,
-  view,
-  fixer,
-  onFixer,
-  onFix,
-}: {
-  port: ScanPort;
-  detail: string;
-  ports: readonly ScanPort[];
-  view: CameraWizardView;
-  fixer: PortFixer;
-  onFixer: (change: Partial<PortFixer>) => void;
-  onFix: () => void;
-}) => {
-  const Go = fixer.suggest !== '' ? Button : OutlinedButton;
+const PortFix = ({ port, input, onInput, onFix }: { port: WizardPort; input: PortInput; onInput: (change: Partial<PortInput>) => void; onFix: () => void }) => {
+  const Go = port.suggest !== '' ? Button : OutlinedButton;
   return (
     <div className="flex flex-col gap-2 rounded-shape-md border border-primary px-4 py-3" role="group" aria-label={port.label}>
       <Text typography="bodyLarge">{port.label}</Text>
       <Text typography="bodySmall" color={md('onSurfaceVariant')}>
-        {detail}
+        {port.detail}
       </Text>
-      {fixer.open ? (
+      {input.open ? (
         <>
           <OutlinedTextField
             label="This port's address"
-            value={fixer.input}
+            value={input.text}
             placeholder="192.168.144.2/24"
             keyboardType="uri"
             autoCorrect={false}
             className="max-w-xs"
-            onValueChange={(input) => onFixer({ input })}
+            onValueChange={(text) => onInput({ text })}
           />
           <div className="flex flex-wrap gap-2">
-            {subnetOptions(port, ports, view.subnets).map((option) => (
-              <AssistChip key={option.cidr} onClick={() => onFixer({ input: option.cidr })} label={option.label !== '' ? `${option.cidr} · ${option.label}` : option.cidr} />
+            {port.options.map((option) => (
+              <AssistChip key={option.cidr} onClick={() => onInput({ text: option.cidr })} label={option.text} />
             ))}
           </div>
-          <Hint text={fixerHint(fixer)} />
+          <Hint text={port.hint} />
           <div>
-            <Go enabled={!fixer.busy && fixer.input.trim() !== ''} onClick={onFix}>
-              {fixerGoLabel(port, fixer)}
+            <Go enabled={!port.busy && input.text.trim() !== ''} onClick={onFix}>
+              {port.go}
             </Go>
           </div>
-          {fixer.status !== '' ? <Hint text={fixer.status} /> : null}
+          {port.status !== '' ? <Hint text={port.status} /> : null}
         </>
       ) : (
         <div>
-          <OutlinedButton onClick={() => onFixer({ open: true })}>Change this port's address</OutlinedButton>
+          <OutlinedButton onClick={() => onInput({ open: true })}>Change this port's address</OutlinedButton>
         </div>
       )}
     </div>

@@ -324,6 +324,11 @@ pub const VIEWS: &[View] = &[
         compute: deviceviews::device_view,
     },
     View {
+        path: "view.deviceWizard",
+        deps: crate::devicewizard::DEPS,
+        compute: crate::devicewizard::device_wizard_view,
+    },
+    View {
         path: "view.advancedUi",
         deps: &[],
         compute: crate::advancedui::advanced_ui_view,
@@ -1401,6 +1406,7 @@ mod deps_cover_reads {
         ("deeplinksetup", include_str!("deeplinksetup.rs")),
         ("deviceviews", include_str!("deviceviews.rs")),
         ("deviceforms", include_str!("deviceforms.rs")),
+        ("devicewizard", include_str!("devicewizard.rs")),
         ("pumpguard", include_str!("pumpguard.rs")),
         ("advancedui", include_str!("advancedui.rs")),
         ("applog", include_str!("applog.rs")),

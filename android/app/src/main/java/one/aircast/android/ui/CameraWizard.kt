@@ -38,11 +38,14 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -62,21 +65,16 @@ import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.Job
-import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.fold
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.R
+import one.aircast.android.bridge.qgcPath
 import one.aircast.map.aircast
 import one.aircast.map.optText
 import org.json.JSONObject
 import java.io.File
 
-private const val VERIFY_ATTEMPTS = 10
-private const val VERIFY_POLL_MS = 1500L
-private const val PORT_UP_ATTEMPTS = 15
-private const val PORT_UP_POLL_MS = 1000L
-private const val SCAN_PORTS = "/api/streams/scan/ports"
 private val BOX_SHAPE = RoundedCornerShape(12.dp)
 private val CABLE_CHECKS = listOf(
     "The cable goes from the camera to this device's camera port",
@@ -86,35 +84,12 @@ private val CABLE_CHECKS = listOf(
 
 private data class CameraSignIn(val shown: Boolean, val asked: Boolean)
 
-private data class TemplateRun(val busy: String, val note: String)
+private data class PortInput(val open: Boolean, val text: String)
 
-private data class ApplyStatus(val error: Boolean, val text: String)
-
-private val APPLYING = ApplyStatus(false, "Applying…")
-private val NO_FIXER = PortFixer(open = false, input = "", suggest = "", status = "", busy = false)
 private val NO_SIGN_IN = CameraSignIn(shown = false, asked = false)
-private val NO_TEMPLATE = TemplateRun("", "")
+private val NO_WIZARD = parseDeviceWizard(null)
 
 private fun errorOf(json: JSONObject?, fallback: String): String = json?.optText("error").orEmpty().ifEmpty { fallback }
-
-private suspend fun fetchPorts(): List<ScanPort> = deviceRead(SCAN_PORTS, ::parseScanPorts).orEmpty()
-
-private suspend fun waitForPort(iface: String, want: String, attempt: Int = 0) {
-    if (attempt >= PORT_UP_ATTEMPTS) return
-    val port = fetchPorts().firstOrNull { it.iface == iface }
-    if (port == null || (if (want.isNotEmpty()) portHasSubnet(port, want) else port.state != "configuring")) return
-    delay(PORT_UP_POLL_MS)
-    waitForPort(iface, want, attempt + 1)
-}
-
-private suspend fun setPortAddress(iface: String, address: String): String {
-    val sent = deviceSend(DeviceMethod.POST, "/api/setup/camera/port", JSONObject(mapOf("interface" to iface, "address" to address)))
-    return when (sent.refusal) {
-        null -> ""
-        NO_ANSWER -> NO_ANSWER.message
-        else -> errorOf(sent.result, "Could not set up this port.")
-    }
-}
 
 private fun stagedVideo(context: Context, uri: Uri): File? = runCatching {
     val name = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
@@ -134,6 +109,7 @@ internal fun CameraWizard(view: CameraWizardView, scan: Boolean = false, onCance
     val notice = LocalChangeNotice.current
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val done by rememberUpdatedState(onDone)
     var step by remember { mutableIntStateOf(1) }
     var rtsp by remember { mutableStateOf(view.rtsp) }
     var name by remember { mutableStateOf(view.suggestedName) }
@@ -144,11 +120,8 @@ internal fun CameraWizard(view: CameraWizardView, scan: Boolean = false, onCance
     var fileOpen by rememberSaveable { mutableStateOf(false) }
     var refusal by remember { mutableStateOf<WizardRefusal?>(null) }
     var dupAck by remember { mutableStateOf("") }
-    var scanning by remember { mutableStateOf(false) }
-    var scanNote by remember { mutableStateOf("") }
-    var outcome by remember { mutableStateOf<ScanOutcome?>(null) }
-    var fixers by remember { mutableStateOf(emptyMap<String, PortFixer>()) }
-    var picked by remember { mutableStateOf<FoundCamera?>(null) }
+    var inputs by remember { mutableStateOf(emptyMap<String, PortInput>()) }
+    var picked by remember { mutableStateOf<WizardCamera?>(null) }
     var editRtsp by remember { mutableStateOf(false) }
     var base by remember { mutableStateOf("") }
     var signIn by remember { mutableStateOf(NO_SIGN_IN) }
@@ -158,20 +131,18 @@ internal fun CameraWizard(view: CameraWizardView, scan: Boolean = false, onCance
     var ifaceTouched by remember { mutableStateOf(false) }
     var ip by remember { mutableStateOf("") }
     var transport by remember { mutableStateOf(view.transport) }
-    var status by remember { mutableStateOf(APPLYING) }
-    var applyField by remember { mutableStateOf("") }
-    var added by remember { mutableStateOf(false) }
-    var template by remember { mutableStateOf(NO_TEMPLATE) }
-    var noPort by remember { mutableStateOf(false) }
+    var form by remember { mutableStateOf(NO_FORM) }
+    var session by remember { mutableLongStateOf(-1L) }
     var file by remember { mutableStateOf<File?>(null) }
     var uploading by remember { mutableStateOf(false) }
-    var applying by remember { mutableStateOf<Job?>(null) }
     val errorLine = remember { BringIntoViewRequester() }
+    val shown by qgcPath(DEVICE_WIZARD)
+    val wizard = remember(shown, session) { parseDeviceWizard(shown).takeIf { it.session == session } ?: NO_WIZARD }
 
-    val ports = outcome?.ports.orEmpty()
-    val cams = outcome?.cams.orEmpty()
     val locked = picked?.pathFound == true && !editRtsp
     val cameraName = if (view.isNew) name.trim().lowercase() else view.name
+    val current = view.interfaces.firstOrNull { it.value == iface }?.address.orEmpty()
+    val applyField = if (wizard.apply.state == "failed") wizard.apply.field else ""
 
     LaunchedEffect(refusal) {
         if (refusal != null) errorLine.bringIntoView()
@@ -179,7 +150,9 @@ internal fun CameraWizard(view: CameraWizardView, scan: Boolean = false, onCance
 
     LaunchedEffect(step) { onStep(step) }
 
-    fun pick(cam: FoundCamera): String {
+    LaunchedEffect(rtsp, iface, ip, current, wizard.scans, wizard.scanning) { form = wizardForm(rtsp, iface, ip, current) }
+
+    suspend fun pick(cam: WizardCamera): String {
         picked = cam
         editRtsp = false
         if (!cam.pathFound) addressOpen = true
@@ -189,39 +162,9 @@ internal fun CameraWizard(view: CameraWizardView, scan: Boolean = false, onCance
             user = ""
             pass = ""
         }
-        val url = camURL(cam.url, user, pass)
+        val url = signedInUrl(cam.url, user, pass)
         if (cam.url.isNotEmpty()) rtsp = url
         return url
-    }
-
-    suspend fun runScan(auto: Boolean, typed: String): ScanOutcome? {
-        scanning = true
-        scanNote = SCANNING_NOTE
-        outcome = null
-        val sent = deviceSend(DeviceMethod.POST, "/api/streams/scan")
-        scanning = false
-        if (sent.refusal != null) {
-            scanNote = SCAN_FAILED_NOTE
-            return null
-        }
-        val result = scanOutcome(parseFoundCameras(sent.result, view.name), parseScanPorts(sent.result), rtspHost(view.source))
-        outcome = result
-        fixers = fixersFor(result, view.subnets)
-        scanNote = result.note
-        picked = null
-        base = ""
-        signIn = NO_SIGN_IN
-        adoptedCamera(result, auto, typed)?.let { pick(it) }
-        return result
-    }
-
-    LaunchedEffect(Unit) {
-        if (view.isNew) {
-            launch { noPort = fetchPorts().let { found -> found.isNotEmpty() && found.none { !it.isUplink && it.type == "ethernet" } } }
-            runScan(true, view.rtsp)
-        } else if (scan) {
-            runScan(false, view.rtsp)
-        }
     }
 
     fun askSignIn(url: String, reason: String) {
@@ -231,148 +174,99 @@ internal fun CameraWizard(view: CameraWizardView, scan: Boolean = false, onCance
         refusal = WizardRefusal(reason, false, null)
     }
 
-    suspend fun verify(url: String, camera: String, attempt: Int, reason: String) {
-        if (attempt >= VERIFY_ATTEMPTS) {
-            status = ApplyStatus(true, reason.ifEmpty { "No video yet — check the cable, IP and RTSP URL." })
-            return
-        }
-        val answer = deviceRead("/api/setup/camera/status?source=${uriComponent(url)}&name=${uriComponent(camera)}", ::parseCameraStatus)
-        when (answer?.state) {
-            "live" -> {
-                notice.show(if (view.isNew) "Camera $camera added." else "Stream is live — receiving video from the camera.", null)
-                onDone(camera)
-            }
-            "needs_auth" -> askSignIn(url, answer?.reason.orEmpty())
-            else -> {
-                status = ApplyStatus(false, "Verifying the stream is live…")
-                delay(VERIFY_POLL_MS)
-                verify(url, camera, attempt + 1, answer?.reason ?: reason)
-            }
-        }
-    }
-
     fun applySetup(url: String, camera: String, port: String, portIp: String, how: String) {
-        applying?.cancel()
         step = 3
-        applyField = ""
-        status = ApplyStatus(false, "Applying network and stream settings…")
-        applying = scope.launch {
-            val body = JSONObject(mapOf("name" to camera, "new" to (view.isNew && !added), "rtsp" to url, "interface" to port, "address" to portIp.trim(), "transport" to how))
-            val sent = deviceSend(DeviceMethod.POST, "/api/setup/camera", body)
-            val refused = sent.refusal
-            if (refused != null) {
-                status = ApplyStatus(true, if (refused == NO_ANSWER) "Network error — try again." else errorOf(sent.result, "Setup failed."))
-                applyField = refused.field
-                return@launch
-            }
-            added = true
-            status = ApplyStatus(false, "Verifying the stream is live…")
-            verify(url, camera, 0, "")
-        }
+        scope.launch { applyCamera(url, camera, port, portIp, how) }
     }
 
-    fun advance(typed: String, typedName: String, known: List<ScanPort>) {
-        val out = nextStep(NextInput(typed, if (view.isNew) typedName else null, view.others, known, dupAck))
+    suspend fun advance(typed: String, typedName: String) {
+        val out = wizardNext(typed, typedName, dupAck) ?: return
         rtsp = out.rtsp
         out.name?.let { name = it }
-        when (out) {
-            is NextOutcome.Refuse -> {
-                refusal = out.refusal
-                dupAck = out.dupAck
-                if (out.refusal.field == "rtsp") {
+        dupAck = out.dupAck
+        val refused = out.refusal
+        when {
+            refused != null -> {
+                refusal = refused
+                if (refused.field == "rtsp") {
                     editRtsp = true
                     addressOpen = true
                 }
-                if (out.refusal.field == "name") namingOpen = true
+                if (refused.field == "name") namingOpen = true
             }
-            is NextOutcome.Apply -> {
+            out.kind == "apply" -> {
                 refusal = null
                 iface = ""
                 ip = ""
-                applySetup(out.rtsp, out.name ?: view.name, "", "", transport)
+                applySetup(out.rtsp, out.camera, "", "", transport)
             }
-            is NextOutcome.Port -> {
+            else -> {
                 refusal = null
-                val suggested = portToSuggest(known)
-                if (suggested.isNotEmpty() && !ifaceTouched) iface = suggested
-                if (ip.isEmpty()) ip = suggestIP(out.rtsp)
+                if (out.iface.isNotEmpty() && !ifaceTouched) iface = out.iface
+                if (ip.isEmpty()) ip = out.ip
                 step = 2
             }
         }
     }
 
+    LaunchedEffect(Unit) {
+        session = openWizard(view, scan)
+        snapshotFlow { parseDeviceWizard(shown).takeIf { it.session == session } ?: NO_WIZARD }.fold(NO_WIZARD) { seen, now ->
+            if (now.scans > seen.scans) {
+                picked = null
+                base = ""
+                signIn = NO_SIGN_IN
+                inputs = emptyMap()
+                now.adopt?.let { pick(it) }
+            }
+            if (now.template.n > seen.template.n) {
+                val found = now.template.camera
+                if (found == null) {
+                    refusal = WizardRefusal(now.template.refusal, false, null)
+                } else {
+                    val url = pick(found)
+                    val camera = now.template.name.ifEmpty { name }
+                    name = camera
+                    advance(url, camera)
+                }
+            }
+            if (now.notice.n > seen.notice.n) notice.show(now.notice.text, null)
+            if (now.apply.n > seen.apply.n) {
+                when (now.apply.state) {
+                    "live" -> done(now.apply.camera)
+                    "signIn" -> askSignIn(now.apply.url, now.apply.text)
+                }
+            }
+            now
+        }
+    }
+
     fun restart() {
-        applying?.cancel()
+        scope.launch { restartWizard() }
         rtsp = ""
         ip = ""
         transport = view.transports.firstOrNull()?.value ?: view.transport
         refusal = null
-        added = false
         picked = null
         base = ""
         signIn = NO_SIGN_IN
         editRtsp = false
-        status = APPLYING
         step = 1
     }
 
     fun credentials(nextUser: String, nextPass: String) {
         user = nextUser
         pass = nextPass
-        if (base.isNotEmpty()) rtsp = camURL(base, nextUser, nextPass)
-    }
-
-    suspend fun setUpTemplate(t: CameraTemplate) {
-        if (template.busy.isNotEmpty()) return
-        fun fail(text: String) {
-            template = NO_TEMPLATE
-            refusal = WizardRefusal(text, false, null)
-        }
-        refusal = null
-        template = TemplateRun(t.id, "Finding the Ethernet port for the ${t.label}…")
-        val known = fetchPorts()
-        val port = templatePort(known, t) ?: return fail("This device has no Ethernet port to plug the ${t.label} into.")
-        if (!portHasSubnet(port, t.cidr)) {
-            val holder = known.firstOrNull { it.iface != port.iface && portHasSubnet(it, t.cidr) }
-            if (holder != null) return fail(templateHolderError(holder, t))
-            template = TemplateRun(t.id, "Putting ${port.iface} on the ${t.label}'s network (${t.cidr})…")
-            val refused = setPortAddress(port.iface, t.cidr)
-            if (refused.isNotEmpty()) return fail(refused)
-            waitForPort(port.iface, t.cidr)
-        }
-        template = TemplateRun(t.id, "Looking for the ${t.label} at ${t.host}…")
-        val result = runScan(false, rtsp)
-        val found = result?.cams?.firstOrNull { it.host == t.host && it.pathFound }
-        if (result == null || found == null) return fail("No ${t.label} answered at ${t.host} — check its Ethernet cable and that it has power, then try again.")
-        val url = pick(found)
-        val camera = if (view.others.any { it.name.lowercase() == t.name }) name else t.name
-        name = camera
-        if (t.gimbal.isNotEmpty()) {
+        val from = base
+        if (from.isNotEmpty()) {
             scope.launch {
-                deviceCall(DeviceMethod.PUT, "/api/gimbal/config", JSONObject(mapOf("vendor" to t.gimbal, "cameraAddr" to t.gimbalAddr)))?.let {
-                    notice.show("Gimbal control was not switched to this camera — ${it.message}", null)
-                }
+                val url = signedInUrl(from, nextUser, nextPass)
+                if (user == nextUser && pass == nextPass) rtsp = url
             }
         }
-        template = NO_TEMPLATE
-        advance(url, camera, result.ports)
     }
 
-    fun fixer(port: ScanPort): PortFixer = fixers[port.iface] ?: NO_FIXER
-
-    fun changeFixer(port: ScanPort, change: (PortFixer) -> PortFixer) {
-        fixers = fixers + (port.iface to change(fixer(port)))
-    }
-
-    suspend fun fixPort(port: ScanPort) {
-        val want = fixer(port).input.trim()
-        changeFixer(port) { it.copy(busy = true, status = "Setting up ${port.iface}…") }
-        val refused = setPortAddress(port.iface, want)
-        if (refused.isNotEmpty()) return changeFixer(port) { it.copy(busy = false, status = refused) }
-        changeFixer(port) { it.copy(status = "Waiting for ${port.iface} to come up on $want…") }
-        waitForPort(port.iface, want)
-        runScan(false, rtsp)
-    }
+    fun input(port: WizardPort): PortInput = inputs[port.iface] ?: PortInput(port.open, port.suggest)
 
     fun upload() {
         val chosen = file
@@ -400,16 +294,11 @@ internal fun CameraWizard(view: CameraWizardView, scan: Boolean = false, onCance
         scope.launch { file = withContext(Dispatchers.IO) { stagedVideo(context, chosen) } ?: file }
     }
 
-    val commits = commitsNow(rtsp, ports)
-    val fresh = cams.filter { it.used.isEmpty() }
-    val checklist = scanNote.isNotEmpty() && cams.isEmpty() && ports.isNotEmpty()
-    val current = view.interfaces.firstOrNull { it.value == iface }?.address.orEmpty()
-
     Column(
         Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).semantics { contentDescription = if (view.isNew) "New camera" else "Set up ${view.name}" },
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        StepNames(step, skipsPort = step == 1 && commits)
+        StepNames(step, skipsPort = step == 1 && form.skipsPort)
         if (step == 1) {
             view.piCamera?.let { pi ->
                 Row(
@@ -418,61 +307,67 @@ internal fun CameraWizard(view: CameraWizardView, scan: Boolean = false, onCance
                     horizontalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Text(pi.note, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
-                    Button(onClick = { advance(PI_CAMERA, name, ports) }) { Text(pi.action) }
+                    Button(onClick = { scope.launch { advance(PI_CAMERA, name) } }) { Text(pi.action) }
                 }
             }
-            if (view.templates.isNotEmpty() && !noPort) {
+            if (wizard.templates.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    view.templates.map { t ->
+                    wizard.templates.map { t ->
                         key(t.id) {
-                            val ready = templateReadyPort(t, cams, ports)
-                            val idle = template.busy.isEmpty()
+                            val idle = !wizard.templateBusy
                             Row(
-                                Modifier.alpha(if (idle) 1f else 0.6f).boxed(MaterialTheme.colorScheme.outlineVariant, onClick = { scope.launch { setUpTemplate(t) } }, enabled = idle),
+                                Modifier.alpha(if (idle) 1f else 0.6f).boxed(
+                                    MaterialTheme.colorScheme.outlineVariant,
+                                    onClick = {
+                                        refusal = null
+                                        scope.launch { setUpCameraMake(t.id) }
+                                    },
+                                    enabled = idle,
+                                ),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(12.dp),
                             ) {
                                 Column(Modifier.weight(1f)) {
                                     Text(t.label, style = MaterialTheme.typography.bodyLarge)
-                                    Text(templateSub(t, ready), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(t.sub, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
-                                Text(templateAction(template.busy == t.id, ready), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                                Text(t.action, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
                             }
                         }
                     }
-                    if (template.note.isNotEmpty()) Hint(template.note)
+                    if (wizard.templateNote.isNotEmpty()) Hint(wizard.templateNote)
                 }
             }
             if (view.lookingFor.isNotEmpty()) Text(view.lookingFor, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.aircast.warning)
-            if (!checklist) {
+            if (wizard.checklist.isEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Hint("Plug the camera in and look for it.")
-                    LeadButton(scanLeads(rtsp, picked != null), onClick = { scope.launch { runScan(false, rtsp) } }, enabled = !scanning) {
-                        Text(if (scanning) "Looking…" else "Scan for cameras")
+                    LeadButton(scanLeads(rtsp, picked != null), onClick = { scope.launch { scanForCameras() } }, enabled = !wizard.scanning) {
+                        Text(if (wizard.scanning) "Looking…" else "Scan for cameras")
                     }
                 }
             }
-            if (scanNote.isNotEmpty() && !(ports.isNotEmpty() && cams.isEmpty())) Hint(scanNote)
-            if (checklist) {
+            if (wizard.note.isNotEmpty()) Hint(wizard.note)
+            if (wizard.checklist.isNotEmpty()) {
                 Column(Modifier.boxed(MaterialTheme.colorScheme.outlineVariant), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(checklistHint(ports, view.subnets).ifEmpty { NO_ANSWER_CHECKLIST }, style = MaterialTheme.typography.titleSmall)
+                    Text(wizard.checklist, style = MaterialTheme.typography.titleSmall)
                     Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                         CABLE_CHECKS.map { Text("☐ $it", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant) }
                     }
-                    Button(onClick = { scope.launch { runScan(false, rtsp) } }, enabled = !scanning) { Text(if (scanning) "Looking…" else "Scan again") }
+                    Button(onClick = { scope.launch { scanForCameras() } }, enabled = !wizard.scanning) { Text(if (wizard.scanning) "Looking…" else "Scan again") }
                 }
             }
-            if (cams.isNotEmpty()) {
+            if (wizard.cams.isNotEmpty()) {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(camHeading(cams), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                    cams.map { cam ->
+                    Text(wizard.camHeading, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    wizard.cams.map { cam ->
                         key("${cam.host} ${cam.url}") {
                             val selected = picked == cam
                             val primary = MaterialTheme.colorScheme.primary
                             Row(
                                 Modifier.boxed(
                                     if (selected) primary else MaterialTheme.colorScheme.outlineVariant,
-                                    onClick = { pick(cam) },
+                                    onClick = { scope.launch { pick(cam) } },
                                     fill = if (selected) primary.copy(alpha = 0.08f) else Color.Transparent,
                                 ),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -480,26 +375,20 @@ internal fun CameraWizard(view: CameraWizardView, scan: Boolean = false, onCance
                             ) {
                                 Column(Modifier.weight(1f)) {
                                     Text(cam.host, style = MaterialTheme.typography.bodyLarge, fontFamily = FontFamily.Monospace)
-                                    Text(rowNote(cam), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text(cam.note, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
-                                Text(
-                                    when {
-                                        selected -> "Selected"
-                                        cam.used.isNotEmpty() -> "Add again"
-                                        else -> "Use"
-                                    },
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = primary,
-                                )
+                                Text(if (selected) "Selected" else cam.action, style = MaterialTheme.typography.labelLarge, color = primary)
                             }
                         }
                     }
-                    if (fresh.isEmpty()) Hint("Every camera that answered is already set up on this device — a newly plugged-in one has not answered yet.")
+                    if (wizard.camsHint.isNotEmpty()) Hint(wizard.camsHint)
                 }
             }
-            outcome?.takeIf { ports.isNotEmpty() }?.let { shown ->
-                Fold(if (cams.isNotEmpty()) "Scan details" else "Details for a technician", techOpen, { techOpen = it }) {
-                    ScanDetails(shown, view, ::fixer, ::changeFixer) { port -> scope.launch { fixPort(port) } }
+            if (wizard.details.isNotEmpty()) {
+                Fold(wizard.details, techOpen, { techOpen = it }) {
+                    ScanDetails(wizard, view.coverage, ::input, { port, change -> inputs = inputs + (port.iface to change) }) { port ->
+                        scope.launch { fixWizardPort(port.iface, input(port).text.trim()) }
+                    }
                 }
             }
             if (signIn.shown) {
@@ -555,7 +444,7 @@ internal fun CameraWizard(view: CameraWizardView, scan: Boolean = false, onCance
                 }
             }
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                LeadButton(continueLeads(rtsp), onClick = { advance(rtsp, name, ports) }) { Text(nextLabel(rtsp, ports, view.isNew)) }
+                LeadButton(continueLeads(rtsp), onClick = { scope.launch { advance(rtsp, name) } }) { Text(form.next) }
                 onCancel?.let { TextButton(onClick = it) { Text("Cancel") } }
             }
             Fold("No camera? Use a video file", fileOpen, { fileOpen = it }) {
@@ -596,20 +485,21 @@ internal fun CameraWizard(view: CameraWizardView, scan: Boolean = false, onCance
                 OutlinedButton(onClick = { step = 1 }) { Text("← Back") }
                 Button(onClick = { applySetup(rtsp, cameraName, iface, ip, transport) }) { Text("Set up & verify") }
             }
-            applyNote(iface, ip, current).takeIf { it.isNotEmpty() }?.let { Hint(it) }
+            if (form.applyNote.isNotEmpty()) Hint(form.applyNote)
         }
         if (step == 3) {
+            val failed = wizard.apply.state == "failed"
             Row(Modifier.semantics { liveRegion = LiveRegionMode.Polite }, verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                if (status.error) {
+                if (failed) {
                     Icon(painterResource(R.drawable.ic_error), null, tint = MaterialTheme.colorScheme.error, modifier = Modifier.size(20.dp))
                 } else {
                     CircularProgressIndicator(Modifier.size(20.dp).semantics { contentDescription = "Working" }, strokeWidth = 3.dp)
                 }
-                Text(status.text, style = MaterialTheme.typography.bodyLarge, color = if (status.error) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+                Text(wizard.apply.text.ifEmpty { "Applying…" }, style = MaterialTheme.typography.bodyLarge, color = if (failed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
             }
             FlowRow(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = { restart() }) { Text("Start over") }
-                if (status.error) {
+                if (failed) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         OutlinedButton(onClick = { step = 2 }) { Text("Change settings") }
                         Button(onClick = { applySetup(rtsp, cameraName, iface, ip, transport) }) { Text("Try again") }
@@ -686,70 +576,61 @@ private fun PortRow(label: String, detail: String) {
 
 @Composable
 private fun ScanDetails(
-    outcome: ScanOutcome,
-    view: CameraWizardView,
-    fixer: (ScanPort) -> PortFixer,
-    onFixer: (ScanPort, (PortFixer) -> PortFixer) -> Unit,
-    onFix: (ScanPort) -> Unit,
+    wizard: DeviceWizard,
+    coverage: String,
+    input: (WizardPort) -> PortInput,
+    onInput: (WizardPort, PortInput) -> Unit,
+    onFix: (WizardPort) -> Unit,
 ) {
     var restOpen by rememberSaveable { mutableStateOf(false) }
     var checkedOpen by rememberSaveable { mutableStateOf(false) }
-    val host = rtspHost(view.source)
     val rest: @Composable () -> Unit = {
-        outcome.rest.map { key(it.port.iface) { PortRow(it.port.label, portDetail(it, view.subnets, host)) } }
+        wizard.rest.map { key(it.iface) { PortRow(it.label, it.detail) } }
     }
-    if (outcome.todo.isNotEmpty()) {
+    if (wizard.todo.isNotEmpty()) {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Text(todoHeading(outcome.todo, view.subnets), style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            outcome.todo.map {
-                key(it.port.iface) {
-                    PortFix(it.port, portDetail(it, view.subnets, host), outcome.ports, view, fixer(it.port), { change -> onFixer(it.port, change) }) { onFix(it.port) }
+            Text(wizard.todoHeading, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            wizard.todo.map {
+                key(it.iface) {
+                    PortFix(it, input(it), { change -> onInput(it, change) }) { onFix(it) }
                 }
             }
         }
     }
-    if (outcome.rest.isNotEmpty() && outcome.todo.isNotEmpty()) {
-        Fold("${outcome.rest.joinToString(", ") { it.port.label }} — nothing answered", restOpen, { restOpen = it }) { rest() }
+    if (wizard.rest.isNotEmpty() && wizard.todo.isNotEmpty()) {
+        Fold(wizard.restTitle, restOpen, { restOpen = it }) { rest() }
     }
-    if (outcome.rest.isNotEmpty() && outcome.todo.isEmpty() && outcome.cams.isNotEmpty()) {
+    if (wizard.rest.isNotEmpty() && wizard.todo.isEmpty() && wizard.cams.isNotEmpty()) {
         rest()
-        Hint(view.coverage)
+        Hint(coverage)
     }
-    if (outcome.rest.isNotEmpty() && outcome.todo.isEmpty() && outcome.cams.isEmpty()) {
+    if (wizard.rest.isNotEmpty() && wizard.todo.isEmpty() && wizard.cams.isEmpty()) {
         Text("Ports checked", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
         rest()
     }
-    if (outcome.cams.isEmpty()) Fold("What was checked?", checkedOpen, { checkedOpen = it }) { Hint(view.coverage) }
+    if (wizard.cams.isEmpty()) Fold("What was checked?", checkedOpen, { checkedOpen = it }) { Hint(coverage) }
 }
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun PortFix(
-    port: ScanPort,
-    detail: String,
-    ports: List<ScanPort>,
-    view: CameraWizardView,
-    fixer: PortFixer,
-    onFixer: ((PortFixer) -> PortFixer) -> Unit,
-    onFix: () -> Unit,
-) {
+private fun PortFix(port: WizardPort, input: PortInput, onInput: (PortInput) -> Unit, onFix: () -> Unit) {
     Column(Modifier.boxed(MaterialTheme.colorScheme.primary), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(port.label, style = MaterialTheme.typography.bodyLarge)
-        Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (fixer.open) {
-            WizardField("This port's address", fixer.input, { input -> onFixer { it.copy(input = input) } }, placeholder = "192.168.144.2/24", keyboard = KeyboardType.Uri)
+        Text(port.detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        if (input.open) {
+            WizardField("This port's address", input.text, { onInput(input.copy(text = it)) }, placeholder = "192.168.144.2/24", keyboard = KeyboardType.Uri)
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                subnetOptions(port, ports, view.subnets).map { option ->
+                port.options.map { option ->
                     key(option.cidr) {
-                        AssistChip(onClick = { onFixer { it.copy(input = option.cidr) } }, label = { Text(if (option.label.isNotEmpty()) "${option.cidr} · ${option.label}" else option.cidr) })
+                        AssistChip(onClick = { onInput(input.copy(text = option.cidr)) }, label = { Text(option.text) })
                     }
                 }
             }
-            Hint(fixerHint(fixer))
-            LeadButton(fixer.suggest.isNotEmpty(), onClick = onFix, enabled = !fixer.busy && fixer.input.isNotBlank()) { Text(fixerGoLabel(port, fixer)) }
-            if (fixer.status.isNotEmpty()) Hint(fixer.status)
+            Hint(port.hint)
+            LeadButton(port.suggest.isNotEmpty(), onClick = onFix, enabled = !port.busy && input.text.isNotBlank()) { Text(port.go) }
+            if (port.status.isNotEmpty()) Hint(port.status)
         } else {
-            OutlinedButton(onClick = { onFixer { it.copy(open = true) } }) { Text("Change this port's address") }
+            OutlinedButton(onClick = { onInput(input.copy(open = true)) }) { Text("Change this port's address") }
         }
     }
 }

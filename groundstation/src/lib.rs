@@ -70,6 +70,7 @@ pub mod deviceforms;
 pub mod devicesetup;
 pub mod devicetrack;
 pub mod deviceviews;
+pub mod devicewizard;
 pub mod escal;
 pub mod escview;
 pub mod espbridge;
