@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useProduceState } from '@/kotlin/Compose';
 import { FilledTonalButton, IconButton, OutlinedTextField, Text, TextButton } from '@/m3';
 import { MaterialIcon } from '@/res/Icon';
 import { md } from '@/theme/Colors';
@@ -7,20 +8,13 @@ import type { DeviceScreenProps } from '@/ui/DeviceScreens';
 import { DeviceLevel } from '@/ui/DeviceLevel';
 import {
   type DeviceEndpoint,
+  type EndpointEditor,
   type EndpointRow,
+  type EndpointRowView,
   type GimbalSettings,
-  type MavlinkScheme,
   type TelemetryView,
-  describeEndpoint,
-  endpointError,
-  hostLabel,
-  hostPlaceholder,
-  newRow,
-  parseEndpointSpecs,
+  endpointEditor,
   parseTelemetry,
-  retargetRow,
-  schemeOptions,
-  serializeEndpoints,
 } from '@/ui/DeviceTelemetry';
 import { useDeviceView } from '@/ui/DeviceView';
 import { FootNote } from '@/ui/SetupRow';
@@ -73,30 +67,32 @@ export const TelemetryScreen = (_: DeviceScreenProps) => {
   );
 };
 
-const startingRows = (view: TelemetryView): readonly EndpointRow[] => {
-  const rows = parseEndpointSpecs(view.settings.endpoints);
-  return rows.length > 0 ? rows : [newRow(view.schemes)];
-};
-
 const MavlinkEditor = ({ view }: { view: TelemetryView }) => {
-  const [rows, setRows] = useState(() => startingRows(view));
+  const [typed, setTyped] = useState<readonly EndpointRow[] | null>(null);
   const [baud, setBaud] = useState(view.settings.baud);
   const action = useDeviceAction();
-  const change = (index: number, next: EndpointRow) => setRows(rows.map((row, at) => (at === index ? next : row)));
+  const editor = useProduceState<EndpointEditor | null>(null, [typed], async (set) => set(await endpointEditor(view.schemes, typed, view.settings.endpoints)));
+  if (editor === null) return null;
+  const rows = typed ?? editor.rows.map((it) => it.row);
+  const change = (index: number, next: EndpointRow) => setTyped(rows.map((row, at) => (at === index ? next : row)));
+  const save = async () => {
+    const saved = await endpointEditor(view.schemes, rows, view.settings.endpoints);
+    return saved === null ? false : action.run({ method: 'PUT', path: '/api/telemetry/config', body: { endpoints: saved.endpoints, baud } }, 'MAVLink settings applied.');
+  };
   return (
     <div className="flex flex-col gap-3 px-list py-2">
       <Text typography="bodyLarge">Ground-station endpoints</Text>
       {rows.map((row, index) => (
         <EndpointEditorRow
           key={index}
-          schemes={view.schemes}
           row={row}
+          shown={editor.rows[index] ?? editor.blank}
           onChange={(next) => change(index, next)}
-          onRemove={() => setRows(rows.filter((_, at) => at !== index))}
+          onRemove={() => setTyped(rows.filter((_, at) => at !== index))}
         />
       ))}
       <div>
-        <TextButton onClick={() => setRows([...rows, newRow(view.schemes)])}>+ Add endpoint</TextButton>
+        <TextButton onClick={() => setTyped([...rows, editor.blank.row])}>+ Add endpoint</TextButton>
       </div>
       <OutlinedTextField
         label="Serial baud"
@@ -113,10 +109,7 @@ const MavlinkEditor = ({ view }: { view: TelemetryView }) => {
       </Text>
       <RefusalText refusal={action.refusal?.field === 'baud' ? null : action.refusal} field={action.refusal?.field ?? ''} />
       <div>
-        <FilledTonalButton
-          enabled={!action.busy}
-          onClick={() => void action.run({ method: 'PUT', path: '/api/telemetry/config', body: { endpoints: serializeEndpoints(view.schemes, rows), baud } }, 'MAVLink settings applied.')}
-        >
+        <FilledTonalButton enabled={!action.busy} onClick={() => void save()}>
           Save
         </FilledTonalButton>
       </div>
@@ -124,41 +117,38 @@ const MavlinkEditor = ({ view }: { view: TelemetryView }) => {
   );
 };
 
-const EndpointEditorRow = ({ schemes, row, onChange, onRemove }: { schemes: readonly MavlinkScheme[]; row: EndpointRow; onChange: (row: EndpointRow) => void; onRemove: () => void }) => {
-  const error = endpointError(schemes, row);
-  return (
-    <div className="flex flex-col gap-2 rounded-shape-md bg-surface-container-high p-3" role="group" aria-label="Endpoint">
-      <div className="flex flex-wrap items-end gap-2">
-        <div className="w-48 max-sm:w-full">
-          <DeviceSelect label="Connection type" value={row.scheme} options={schemeOptions(schemes, row)} onPick={(scheme) => onChange(retargetRow(schemes, { ...row, scheme }))} />
-        </div>
-        <OutlinedTextField
-          label={hostLabel(schemes, row)}
-          ariaLabel={hostLabel(schemes, row)}
-          value={row.host}
-          placeholder={hostPlaceholder(schemes, row)}
-          keyboardType="uri"
-          autoCorrect={false}
-          className="min-w-40 flex-1"
-          onValueChange={(host) => onChange({ ...row, host })}
-        />
-        <OutlinedTextField label="Port" ariaLabel="Port" value={row.port} placeholder="14550" keyboardType="number" className="w-28" onValueChange={(port) => onChange({ ...row, port })} />
-        <IconButton label="Remove endpoint" onClick={onRemove}>
-          <MaterialIcon name="close" />
-        </IconButton>
+const EndpointEditorRow = ({ row, shown, onChange, onRemove }: { row: EndpointRow; shown: EndpointRowView; onChange: (row: EndpointRow) => void; onRemove: () => void }) => (
+  <div className="flex flex-col gap-2 rounded-shape-md bg-surface-container-high p-3" role="group" aria-label="Endpoint">
+    <div className="flex flex-wrap items-end gap-2">
+      <div className="w-48 max-sm:w-full">
+        <DeviceSelect label="Connection type" value={row.scheme} options={shown.options} onPick={(scheme) => onChange(shown.options.find((it) => it.value === scheme)?.row ?? row)} />
       </div>
-      {error !== '' ? (
-        <Text typography="bodySmall" color={md('error')}>
-          {`${error} It is not saved until it has one.`}
-        </Text>
-      ) : (
-        <Text typography="bodySmall" color={md('onSurfaceVariant')}>
-          {describeEndpoint(schemes, row)}
-        </Text>
-      )}
+      <OutlinedTextField
+        label={shown.hostLabel}
+        ariaLabel={shown.hostLabel}
+        value={row.host}
+        placeholder={shown.placeholder}
+        keyboardType="uri"
+        autoCorrect={false}
+        className="min-w-40 flex-1"
+        onValueChange={(host) => onChange({ ...row, host })}
+      />
+      <OutlinedTextField label="Port" ariaLabel="Port" value={row.port} placeholder="14550" keyboardType="number" className="w-28" onValueChange={(port) => onChange({ ...row, port })} />
+      <IconButton label="Remove endpoint" onClick={onRemove}>
+        <MaterialIcon name="close" />
+      </IconButton>
     </div>
-  );
-};
+    {shown.problem !== '' ? (
+      <Text typography="bodySmall" color={md('error')}>
+        {shown.problem}
+      </Text>
+    ) : (
+      <Text typography="bodySmall" color={md('onSurfaceVariant')}>
+        {shown.note}
+      </Text>
+    )}
+  </div>
+);
 
 const GimbalSection = ({ gimbal }: { gimbal: GimbalSettings }) => (
   <DeviceSection title={gimbal.title} badge={gimbal.status}>

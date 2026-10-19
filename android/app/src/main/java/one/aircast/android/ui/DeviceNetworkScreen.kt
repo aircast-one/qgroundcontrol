@@ -569,7 +569,7 @@ private fun RelaySection(relay: RelayCard) {
             enabled = relay.configured,
         )
         DeviceNotice(relay.notice)
-        key(serializeIceServers(relay.servers)) { IceEditor(relay.servers) }
+        key(relay.servers) { IceEditor(relay.servers) }
         DeviceDisclosure("Technical details") {
             DeviceText(
                 "Off (default) advertises the tailscale 100.x and LAN host candidates. On stops advertising the tailscale host candidate and routes WebRTC media through the configured STUN/TURN ICE servers over UDP, so symmetric-CGNAT sessions on cellular relay over UDP instead of falling back to Tailscale DERP (TCP). Same-LAN viewers still use the direct LAN candidate.",
@@ -623,7 +623,7 @@ private fun IceEditor(servers: List<IceServer>) {
         }
         action.refusal?.let { Text(it.message, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
         FilledTonalButton(
-            onClick = { scope.launch { action.run(DeviceRequest(DeviceMethod.PUT, "/api/stream/webrtc-ice-servers", JSONObject().put("servers", serializeIceServers(rows))), "Servers saved.") } },
+            onClick = { scope.launch { iceServerLines(rows)?.let { servers -> action.run(DeviceRequest(DeviceMethod.PUT, "/api/stream/webrtc-ice-servers", JSONObject().put("servers", servers)), "Servers saved.") } } },
             enabled = !action.busy,
         ) { Text("Save servers") }
         Text(

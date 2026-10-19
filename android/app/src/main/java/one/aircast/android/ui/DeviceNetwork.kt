@@ -1,8 +1,12 @@
 package one.aircast.android.ui
 
 import androidx.annotation.DrawableRes
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import one.aircast.android.R
+import one.aircast.android.bridge.Qgc
 import one.aircast.map.optText
+import org.json.JSONArray
 import org.json.JSONObject
 
 internal data class NetworkFact(val label: String, val value: String)
@@ -339,10 +343,14 @@ internal const val GOOGLE_STUN = "stun:stun.l.google.com:19302"
 
 internal fun iceRows(servers: List<IceServer>): List<IceServer> = servers.ifEmpty { listOf(IceServer()) }
 
-internal fun serializeIceServers(rows: List<IceServer>): String =
-    rows.map { IceServer(it.url.trim(), it.username.trim(), it.password.trim()) }
-        .filter { it.url.isNotEmpty() }
-        .joinToString("\n") { if (it.username.isNotEmpty() || it.password.isNotEmpty()) "${it.url} | ${it.username} | ${it.password}" else it.url }
+internal const val ICE_SERVERS = "deviceNetwork.iceServers"
+
+internal fun parseIceServerLines(answer: JSONObject?): String? = answer?.takeIf { it.optBoolean("ok") }?.optText("result")
+
+internal suspend fun iceServerLines(rows: List<IceServer>): String? =
+    withContext(Dispatchers.Default) {
+        parseIceServerLines(Qgc.call(ICE_SERVERS, JSONArray(rows.map { JSONObject().put("url", it.url).put("username", it.username).put("password", it.password) })))
+    }
 
 internal fun manualAddressing(method: String): Boolean = method == "manual"
 

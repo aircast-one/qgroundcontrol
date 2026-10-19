@@ -240,6 +240,7 @@ pub fn owns(path: &str) -> bool {
         || path == crate::device::PAIR
         || crate::deeplinksetup::owns(path)
         || crate::deviceviews::owns(path)
+        || crate::deviceforms::owns(path)
         || path == crate::advancedui::SET_ADVANCED_UI
         || [
             crate::applog::LOG_CLEAR,
@@ -458,6 +459,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
             crate::deeplinksetup::setup_from_device(&host);
         }),
         _ if crate::deviceviews::owns(path) => crate::deviceviews::run(path, args),
+        _ if crate::deviceforms::owns(path) => crate::deviceforms::run(path, args),
         crate::advancedui::SET_ADVANCED_UI => crate::advancedui::set(args),
         crate::applog::LOG_CLEAR => crate::applog::clear(backend),
         _ if crate::offlinemaps::owns(path) => crate::offlinemaps::run(path, args),

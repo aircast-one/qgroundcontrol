@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { shownFields } from '@/ui/DeviceKitForms';
-import { GOOGLE_STUN, connectionFieldShown, iceRows, manualAddressing, parseNetwork, serializeIceServers, uplinkIcon } from '@/ui/DeviceNetwork';
+import { GOOGLE_STUN, connectionFieldShown, iceRows, manualAddressing, parseIceServerLines, parseNetwork, uplinkIcon } from '@/ui/DeviceNetwork';
 import { DeviceLevel } from '@/ui/DeviceLevel';
 import { NO_ANSWER } from '@/ui/DeviceView';
 import { joinOutcome, parseWifiScan, reopenLabel, reopenLink, wifiJoinProblem } from '@/ui/DeviceWifiWizard';
@@ -89,15 +89,11 @@ describe('DeviceNetworkTest', () => {
     expect(uplinkIcon('')).toBe('lan');
   });
 
-  it('relay servers serialize to the lines the device parses, credentials only where given', () => {
-    expect(
-      serializeIceServers([
-        { url: ' turn:turn.example.com:3478 ', username: 'drone', password: '' },
-        { url: GOOGLE_STUN, username: '', password: '' },
-        { url: '  ', username: 'orphan', password: 'x' },
-      ]),
-    ).toBe(`turn:turn.example.com:3478 | drone | \n${GOOGLE_STUN}`);
-    expect(serializeIceServers([])).toBe('');
+  it('relay servers are sent as the lines the core makes of them, and not at all when it refuses', () => {
+    expect(parseIceServerLines({ ok: true, result: GOOGLE_STUN })).toBe(GOOGLE_STUN);
+    expect(parseIceServerLines({ ok: true, result: '' })).toBe('');
+    expect(parseIceServerLines({ ok: false, reason: 'no' })).toBeNull();
+    expect(parseIceServerLines(null)).toBeNull();
   });
 
   it('an empty server list still offers one row to fill in', () => {

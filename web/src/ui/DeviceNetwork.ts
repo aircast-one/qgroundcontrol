@@ -1,4 +1,5 @@
 import { type Json, isJson, jsonObjects, jsonStrings, optBoolean, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
+import { Qgc } from '@/bridge/Qgc';
 import { type DeviceBadge, type DeviceChartView, type DeviceOption, parseBadge, parseBadges, parseChart, parseOptions } from '@/ui/DeviceKit';
 
 export type DeviceFact = { readonly label: string; readonly value: string };
@@ -344,12 +345,11 @@ export const emptyIceServer: IceServer = { url: '', username: '', password: '' }
 
 export const iceRows = (servers: readonly IceServer[]): readonly IceServer[] => (servers.length > 0 ? servers : [emptyIceServer]);
 
-export const serializeIceServers = (rows: readonly IceServer[]): string =>
-  rows
-    .map((row) => ({ url: row.url.trim(), username: row.username.trim(), password: row.password.trim() }))
-    .filter((row) => row.url !== '')
-    .map((row) => (row.username !== '' || row.password !== '' ? `${row.url} | ${row.username} | ${row.password}` : row.url))
-    .join('\n');
+export const ICE_SERVERS = 'deviceNetwork.iceServers';
+
+export const parseIceServerLines = (answer: Json | null): string | null => (optBoolean(answer, 'ok') ? optText(answer, 'result') : null);
+
+export const iceServerLines = async (rows: readonly IceServer[]): Promise<string | null> => parseIceServerLines(await Qgc.call(ICE_SERVERS, rows));
 
 export const manualAddressing = (method: string): boolean => method === 'manual';
 

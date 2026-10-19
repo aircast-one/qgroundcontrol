@@ -41,9 +41,9 @@ import {
   connectionFieldShown,
   emptyIceServer,
   iceRows,
+  iceServerLines,
   manualAddressing,
   parseNetwork,
-  serializeIceServers,
   uplinkIcon,
 } from '@/ui/DeviceNetwork';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
@@ -674,7 +674,7 @@ const RelaySection = ({ relay }: { relay: RelayCard }) => (
       </div>
     )}
     <DeviceNotice notice={relay.notice} />
-    <IceEditor key={serializeIceServers(relay.servers)} servers={relay.servers} />
+    <IceEditor key={JSON.stringify(relay.servers)} servers={relay.servers} />
     <DeviceDisclosure title="Technical details">
       <DeviceText text="Off (default) advertises the tailscale 100.x and LAN host candidates. On stops advertising the tailscale host candidate and routes WebRTC media through the configured STUN/TURN ICE servers over UDP, so symmetric-CGNAT sessions on cellular relay over UDP instead of falling back to Tailscale DERP (TCP). Same-LAN viewers still use the direct LAN candidate." />
     </DeviceDisclosure>
@@ -685,6 +685,10 @@ const IceEditor = ({ servers }: { servers: readonly IceServer[] }) => {
   const [rows, setRows] = useState(() => iceRows(servers));
   const action = useDeviceAction();
   const change = (index: number, next: IceServer) => setRows(rows.map((row, at) => (at === index ? next : row)));
+  const save = async () => {
+    const servers = await iceServerLines(rows);
+    return servers === null ? false : action.run({ method: 'PUT', path: '/api/stream/webrtc-ice-servers', body: { servers } }, 'Servers saved.');
+  };
   return (
     <div className="flex flex-col gap-3 px-list py-2">
       <Text typography="bodyLarge">Relay (TURN / STUN) servers</Text>
@@ -721,7 +725,7 @@ const IceEditor = ({ servers }: { servers: readonly IceServer[] }) => {
       </div>
       <RefusalText refusal={action.refusal} />
       <div>
-        <FilledTonalButton enabled={!action.busy} onClick={() => void action.run({ method: 'PUT', path: '/api/stream/webrtc-ice-servers', body: { servers: serializeIceServers(rows) } }, 'Servers saved.')}>
+        <FilledTonalButton enabled={!action.busy} onClick={() => void save()}>
           Save servers
         </FilledTonalButton>
       </div>

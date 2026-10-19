@@ -1388,6 +1388,7 @@ mod deps_cover_reads {
         ("firstrun", include_str!("firstrun.rs")),
         ("deeplinksetup", include_str!("deeplinksetup.rs")),
         ("deviceviews", include_str!("deviceviews.rs")),
+        ("deviceforms", include_str!("deviceforms.rs")),
         ("pumpguard", include_str!("pumpguard.rs")),
         ("advancedui", include_str!("advancedui.rs")),
         ("applog", include_str!("applog.rs")),

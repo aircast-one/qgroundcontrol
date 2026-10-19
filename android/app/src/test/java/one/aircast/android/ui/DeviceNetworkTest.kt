@@ -96,12 +96,11 @@ class DeviceNetworkTest {
     }
 
     @Test
-    fun `relay servers serialize to the lines the device parses, credentials only where given`() {
-        assertEquals(
-            "turn:turn.example.com:3478 | drone | \n$GOOGLE_STUN",
-            serializeIceServers(listOf(IceServer(" turn:turn.example.com:3478 ", "drone", ""), IceServer(GOOGLE_STUN, "", ""), IceServer("  ", "orphan", "x"))),
-        )
-        assertEquals("", serializeIceServers(emptyList()))
+    fun `relay servers are sent as the lines the core makes of them, and not at all when it refuses`() {
+        assertEquals(GOOGLE_STUN, parseIceServerLines(JSONObject().put("ok", true).put("result", GOOGLE_STUN)))
+        assertEquals("", parseIceServerLines(JSONObject().put("ok", true).put("result", "")))
+        assertNull(parseIceServerLines(JSONObject().put("ok", false).put("reason", "no")))
+        assertNull(parseIceServerLines(null))
     }
 
     @Test
