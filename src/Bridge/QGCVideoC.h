@@ -9,7 +9,7 @@ extern "C" {
 
 #define QGC_VIDEO_MAIN 0
 #define QGC_VIDEO_PIP 1
-#define QGC_VIDEO_CHANNELS 2
+#define QGC_VIDEO_CHANNELS 6
 
 int qgc_video_abi_version(void);
 bool qgc_video_available(void);

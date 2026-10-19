@@ -535,7 +535,7 @@ void releaseElsewhere(const Channel &keeper, GstElement *element)
 
 int qgc_video_abi_version(void)
 {
-    return 3;
+    return 4;
 }
 
 void qgc_video_set_pipeline_callback(qgc_video_pipeline_callback callback)

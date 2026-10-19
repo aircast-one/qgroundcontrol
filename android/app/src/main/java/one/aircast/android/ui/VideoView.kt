@@ -59,6 +59,20 @@ internal fun videoReading(view: JSONObject?): VideoReading? {
     )
 }
 
+internal fun videoPreviewPath(endpoint: String): String = "view.videoPreview($endpoint)"
+
+internal data class VideoPreview(val channel: Int?, val playing: Boolean, val trying: Boolean, val text: String)
+
+internal fun videoPreview(view: JSONObject?): VideoPreview? {
+    if (view == null || view.optText("class") != "VideoPreview") return null
+    return VideoPreview(
+        channel = if (view.isNull("channel")) null else view.optInt("channel"),
+        playing = view.optBoolean("playing"),
+        trying = view.optBoolean("trying"),
+        text = view.optText("text"),
+    )
+}
+
 internal data class PaintedRect(val left: Double, val top: Double, val width: Double, val height: Double)
 
 internal fun paintedRect(surfaceWidth: Double, surfaceHeight: Double, source: SourceSize?): PaintedRect {

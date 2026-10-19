@@ -16,7 +16,10 @@ const NATIVE_SINK: &str =
 pub const VIDEO_CHANNELS: usize = 2;
 pub const MAIN_CHANNEL: usize = 0;
 pub const PIP_CHANNEL: usize = 1;
-pub const VIDEO_ABI_VERSION: i32 = 3;
+pub const PREVIEW_CHANNELS: usize = 4;
+pub const NATIVE_CHANNELS: usize = VIDEO_CHANNELS + PREVIEW_CHANNELS;
+pub const VIDEO_ABI_VERSION: i32 = 4;
+const PREVIEW_VIEW: &str = "view.videoPreview";
 const CHANNEL_RECEIVERS: [&str; VIDEO_CHANNELS] = [MAIN_RECEIVER, PIP_RECEIVER];
 
 #[derive(Default)]
@@ -31,11 +34,19 @@ struct Channel {
     restarts: u64,
 }
 
+struct Preview {
+    uri: String,
+    progress: Option<Watch>,
+    decoding: bool,
+    problem: String,
+}
+
 #[derive(Default)]
 struct Host {
     state: VideoState,
     registered: usize,
     channels: [Channel; VIDEO_CHANNELS],
+    previews: [Option<Preview>; PREVIEW_CHANNELS],
     recording_file: Option<String>,
     vehicle: Option<u8>,
     camera_rotation: u32,
@@ -722,6 +733,12 @@ fn object(host: &Host) -> Value {
         "nativeRecording": host.recording_file,
         "nativeRecordingFormat": recording_format(),
         "streamProblem": host.channels[MAIN_CHANNEL].problem.as_ref().filter(|(at, _)| *at == uri).map_or("", |(_, text)| text.as_str()),
+        "previews": host.previews.iter().map(|held| held.as_ref().map(|shown| json!({
+            "uri": shown.uri,
+            "decoding": shown.decoding,
+            "problem": shown.problem,
+            "pipeline": preview_pipeline(host, shown),
+        }))).collect::<Vec<_>>(),
     })
 }
 
@@ -736,6 +753,70 @@ fn pipeline_for(host: &Host, channel: usize) -> Option<String> {
             )
         })
         .flatten()
+}
+
+fn preview_pipeline(host: &Host, shown: &Preview) -> Option<String> {
+    pipeline(
+        &shown.uri,
+        setting("rtpJitterLatencyMs").as_i64().unwrap_or(80),
+        host.state.settings.low_latency,
+    )
+}
+
+fn preview_on(host: &Host, channel: usize) -> Option<String> {
+    preview_pipeline(
+        host,
+        host.previews
+            .get(channel.checked_sub(VIDEO_CHANNELS)?)?
+            .as_ref()?,
+    )
+}
+
+fn previewed(path: &str) -> Option<String> {
+    match crate::view::split(path) {
+        (PREVIEW_VIEW, args) => args
+            .into_iter()
+            .next()
+            .filter(|uri| whep_endpoint(uri).is_some()),
+        _ => None,
+    }
+}
+
+fn placed(
+    previews: [Option<Preview>; PREVIEW_CHANNELS],
+    wanted: &[String],
+    now_ms: u64,
+) -> [Option<Preview>; PREVIEW_CHANNELS] {
+    let kept = previews.map(|held| held.filter(|shown| wanted.contains(&shown.uri)));
+    let waiting: Vec<&String> = wanted
+        .iter()
+        .filter(|uri| !kept.iter().flatten().any(|shown| shown.uri == **uri))
+        .collect();
+    let mut waiting = waiting.into_iter();
+    kept.map(|held| {
+        held.or_else(|| {
+            waiting.next().map(|uri| Preview {
+                uri: uri.clone(),
+                progress: Some(Watch::fresh(now_ms)),
+                decoding: false,
+                problem: String::new(),
+            })
+        })
+    })
+}
+
+pub fn follow_previews(paths: &std::collections::BTreeSet<String>) {
+    if !served() {
+        return;
+    }
+    let wanted: Vec<String> = paths.iter().filter_map(|path| previewed(path)).collect();
+    let mut guard = HOST.lock().unwrap_or_else(PoisonError::into_inner);
+    let host = guard.get_or_insert_with(Host::default);
+    host.previews = placed(
+        std::mem::take(&mut host.previews),
+        &wanted,
+        crate::hub::now_ms(),
+    );
 }
 
 fn whep_for(host: &Host, channel: usize) -> Option<String> {
@@ -783,8 +864,8 @@ pub fn native_recording() -> Option<Value> {
     Some(json!({ "file": file, "format": recording_format() }))
 }
 
-static RESTART: [std::sync::atomic::AtomicBool; VIDEO_CHANNELS] =
-    [const { std::sync::atomic::AtomicBool::new(false) }; VIDEO_CHANNELS];
+static RESTART: [std::sync::atomic::AtomicBool; NATIVE_CHANNELS] =
+    [const { std::sync::atomic::AtomicBool::new(false) }; NATIVE_CHANNELS];
 
 pub fn take_restart(channel: usize) -> bool {
     RESTART
@@ -826,8 +907,15 @@ pub fn pip_pipeline() -> Option<String> {
 
 pub fn channel_pipeline(channel: usize) -> Option<String> {
     served().then_some(())?;
-    let guard = synced();
-    pipeline_for(guard.as_ref()?, channel)
+    match channel < VIDEO_CHANNELS {
+        true => pipeline_for(synced().as_ref()?, channel),
+        false => preview_on(
+            HOST.lock()
+                .unwrap_or_else(PoisonError::into_inner)
+                .as_ref()?,
+            channel,
+        ),
+    }
 }
 
 pub fn get(path: &str) -> Option<Value> {
@@ -975,6 +1063,38 @@ fn report(
     apply(host, outs, now_ms);
 }
 
+fn report_preview(
+    shown: &mut Preview,
+    channel: usize,
+    running: bool,
+    frames: i64,
+    source: Option<i64>,
+    restarted: bool,
+    error: &str,
+    now_ms: u64,
+) {
+    let buffers = source.unwrap_or(frames);
+    let watched = restarted.then(|| Watch::fresh(now_ms)).or(shown.progress);
+    let (progress, stall) = stalled(watched, buffers, frames, WHEP_TIMEOUT_S, now_ms);
+    if stall {
+        log::warn!(
+            "Video preview on channel {channel} stalled after {buffers} source buffers and {frames} frames"
+        );
+        RESTART[channel].store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+    shown.progress = if stall {
+        Some(Watch::fresh(now_ms))
+    } else {
+        progress
+    };
+    shown.decoding = running && frames > 0 && !stall;
+    if shown.decoding {
+        shown.problem.clear();
+    } else if stall || !error.is_empty() {
+        shown.problem = stream_problem(&shown.uri, buffers, frames, error);
+    }
+}
+
 fn place(uri: &str) -> String {
     let rest = uri.split_once("://").map_or(uri, |(_, rest)| rest);
     let authority = rest.split(['/', '?']).next().unwrap_or(rest);
@@ -1102,8 +1222,23 @@ pub fn invoke(path: &str, args: &str) -> Option<Value> {
             let size = |i: usize| u32::try_from(number(i)).unwrap_or(0);
             match usize::try_from(number(7))
                 .ok()
-                .filter(|channel| *channel < VIDEO_CHANNELS)
+                .filter(|channel| *channel < NATIVE_CHANNELS)
             {
+                Some(channel) if channel >= VIDEO_CHANNELS => {
+                    if let Some(shown) = host.previews[channel - VIDEO_CHANNELS].as_mut() {
+                        report_preview(
+                            shown,
+                            channel,
+                            given.get(0).and_then(Value::as_bool).unwrap_or(false),
+                            number(1),
+                            given.get(5).and_then(Value::as_i64),
+                            given.get(6).and_then(Value::as_bool).unwrap_or(false),
+                            given.get(4).and_then(Value::as_str).unwrap_or_default(),
+                            crate::hub::now_ms(),
+                        );
+                    }
+                    Some(json!({ "ok": true }))
+                }
                 Some(channel) => {
                     let running = given.get(0).and_then(Value::as_bool).unwrap_or(false);
                     if channel == MAIN_CHANNEL {
@@ -2071,18 +2206,30 @@ mod tests {
     #[test]
     fn the_native_channels_and_abi_are_the_numbers_the_c_header_defines() {
         assert_eq!(
-            (MAIN_CHANNEL, PIP_CHANNEL, VIDEO_CHANNELS, VIDEO_ABI_VERSION),
-            (0, 1, 2, 3)
+            (
+                MAIN_CHANNEL,
+                PIP_CHANNEL,
+                VIDEO_CHANNELS,
+                NATIVE_CHANNELS,
+                VIDEO_ABI_VERSION
+            ),
+            (0, 1, 2, 6, 4)
         );
         let header = include_str!("../../src/Bridge/QGCVideoC.h");
         [
             "#define QGC_VIDEO_MAIN 0",
             "#define QGC_VIDEO_PIP 1",
-            "#define QGC_VIDEO_CHANNELS 2",
+            "#define QGC_VIDEO_CHANNELS 6",
             "int qgc_video_abi_version(void);",
         ]
         .iter()
         .for_each(|line| assert!(header.contains(line), "QGCVideoC.h no longer says {line}"));
+        assert!(
+            include_str!("../../src/Bridge/QGCVideoC.cc").contains(&format!(
+                "int qgc_video_abi_version(void)\n{{\n    return {VIDEO_ABI_VERSION};"
+            )),
+            "the library answers the ABI this core speaks"
+        );
         assert_eq!(CHANNEL_RECEIVERS, [MAIN_RECEIVER, PIP_RECEIVER]);
     }
 
@@ -2098,7 +2245,7 @@ mod tests {
             "and taking it clears it, so the pipeline restarts once rather than on every poll"
         );
         assert!(
-            !take_restart(VIDEO_CHANNELS),
+            !take_restart(NATIVE_CHANNELS),
             "a channel the core does not have never restarts"
         );
         assert!(
@@ -2106,5 +2253,106 @@ mod tests {
                 .contains("bool qgc_core_video_take_restart(int channel);"),
             "the iOS head reaches it through QGCCoreC.h"
         );
+    }
+
+    fn previews_of(host: &Host) -> Vec<Option<String>> {
+        host.previews
+            .iter()
+            .map(|held| held.as_ref().map(|shown| shown.uri.clone()))
+            .collect()
+    }
+
+    #[test]
+    fn a_watched_preview_holds_a_native_channel_until_no_head_shows_it() {
+        let front = "http://falcon:8889/whep/front".to_string();
+        let belly = "http://falcon:8889/whep/belly".to_string();
+        let watched: std::collections::BTreeSet<String> = [
+            format!("view.videoPreview({front})"),
+            "view.videoPreview(rtsp://falcon:8554/front)".to_string(),
+            "view.device(cameras)".to_string(),
+        ]
+        .into_iter()
+        .collect();
+        assert_eq!(
+            watched
+                .iter()
+                .filter_map(|path| previewed(path))
+                .collect::<Vec<_>>(),
+            vec![front.clone()],
+            "only a WHEP address is previewed"
+        );
+        assert_eq!(
+            previewed("view.videoPreview(http://falcon:8889/whep/a,b?x=(1))").as_deref(),
+            Some("http://falcon:8889/whep/a,b?x=(1)"),
+            "a comma or bracket in the address is part of it"
+        );
+        let mut host = Host::default();
+        host.previews = placed(
+            std::mem::take(&mut host.previews),
+            &[front.clone(), belly.clone()],
+            0,
+        );
+        assert_eq!(
+            previews_of(&host),
+            vec![Some(front.clone()), Some(belly.clone()), None, None]
+        );
+        host.previews = placed(std::mem::take(&mut host.previews), &[belly.clone()], 0);
+        assert_eq!(
+            previews_of(&host),
+            vec![None, Some(belly.clone()), None, None],
+            "a preview keeps its channel while another leaves, so its surface never moves"
+        );
+        let many: Vec<String> = (0..6)
+            .map(|n| format!("http://falcon:8889/whep/cam{n}"))
+            .collect();
+        host.previews = placed(std::mem::take(&mut host.previews), &many, 0);
+        assert_eq!(
+            previews_of(&host),
+            many[..4].iter().cloned().map(Some).collect::<Vec<_>>(),
+            "the channels fill in watch order and a fifth preview waits for one to free"
+        );
+        assert!(
+            preview_on(&host, 2).is_some_and(|played| played.starts_with(
+                "whepsrc name=whep_latency_80 whep-endpoint=\"http://falcon:8889/whep/cam0\""
+            )),
+            "a preview channel plays its address through the same pipeline a camera would"
+        );
+        assert_eq!(preview_on(&host, NATIVE_CHANNELS), None);
+        assert_eq!(
+            object(&host)["previews"][1]["uri"],
+            json!("http://falcon:8889/whep/cam1")
+        );
+        host.previews = placed(std::mem::take(&mut host.previews), &[], 0);
+        assert_eq!(previews_of(&host), vec![None; PREVIEW_CHANNELS]);
+    }
+
+    #[test]
+    fn a_preview_reports_decoding_and_restarts_once_it_stalls() {
+        let uri = "http://192.168.1.50:8889/whep/front".to_string();
+        let channel = VIDEO_CHANNELS + 2;
+        let mut shown = Preview {
+            uri,
+            progress: Some(Watch::fresh(0)),
+            decoding: false,
+            problem: String::new(),
+        };
+        report_preview(&mut shown, channel, true, 0, Some(0), true, "", 1_000);
+        assert!(!shown.decoding && shown.problem.is_empty());
+        report_preview(&mut shown, channel, true, 30, Some(90), false, "", 2_000);
+        assert!(shown.decoding, "frames on the sink are a playing preview");
+        report_preview(&mut shown, channel, true, 30, Some(90), false, "", 18_001);
+        assert!(!shown.decoding);
+        assert_eq!(shown.problem, "The stream from 192.168.1.50:8889 stopped.");
+        assert!(
+            take_restart(channel) && !take_restart(channel),
+            "a stalled preview asks its channel for one restart"
+        );
+        report_preview(&mut shown, channel, true, 0, Some(0), true, "", 18_500);
+        assert_eq!(
+            shown.problem, "The stream from 192.168.1.50:8889 stopped.",
+            "the reason stays until the restarted stream plays"
+        );
+        report_preview(&mut shown, channel, true, 5, Some(9), false, "", 19_000);
+        assert!(shown.decoding && shown.problem.is_empty());
     }
 }

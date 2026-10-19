@@ -147,6 +147,7 @@ pub const ARGUMENT_MODES: &[(&str, &str)] = &[
     ),
     ("view.control", "<fact path>"),
     ("view.device", "<page>"),
+    ("view.videoPreview", "<url>"),
     ("view.guidedAltitude", "<metres>[,pause]"),
     ("view.guidedSpeed", "<metres per second>"),
     ("view.guidedTakeoff", "<metres>"),
@@ -668,6 +669,11 @@ pub const VIEWS: &[View] = &[
         compute: video::video_view,
     },
     View {
+        path: "view.videoPreview",
+        deps: video::VIDEO_PREVIEW_DEPS,
+        compute: video::video_preview_view,
+    },
+    View {
         path: "view.cameras",
         deps: crate::cameras::DEPS,
         compute: crate::cameras::cameras_view,
@@ -1124,7 +1130,7 @@ pub fn split(path: &str) -> (&str, Vec<String>) {
     }
     if ARGUMENT_MODES
         .iter()
-        .any(|(view, mode)| *view == base && *mode == "<file path>")
+        .any(|(view, mode)| *view == base && matches!(*mode, "<file path>" | "<url>"))
     {
         return (base, vec![inner.to_string()]);
     }

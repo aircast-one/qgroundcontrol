@@ -261,7 +261,7 @@ impl Channel {
 
 #[derive(Default)]
 struct Driver {
-    channels: [Channel; crate::videohost::VIDEO_CHANNELS],
+    channels: [Channel; crate::videohost::NATIVE_CHANNELS],
     decoders_ranked: bool,
     recording: Option<serde_json::Value>,
     recording_reported: bool,
@@ -296,7 +296,7 @@ impl Driver {
     }
 
     fn step(&mut self, video: &Video) {
-        let wanted: Vec<Option<String>> = (0..crate::videohost::VIDEO_CHANNELS)
+        let wanted: Vec<Option<String>> = (0..crate::videohost::NATIVE_CHANNELS)
             .map(crate::videohost::channel_pipeline)
             .collect();
         if wanted.iter().any(Option::is_some) && !std::mem::replace(&mut self.decoders_ranked, true)

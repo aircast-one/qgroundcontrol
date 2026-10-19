@@ -94,6 +94,20 @@ class VideoViewTest {
         assertNull(videoReading(null))
         assertNull(videoReading(JSONObject("""{"kind":"null"}""")))
     }
+
+    @Test
+    fun `a preview names the channel to hand its surface to, or none while the core has no channel for it`() {
+        assertEquals("view.videoPreview(http://falcon/whep/cam2)", videoPreviewPath("http://falcon/whep/cam2"))
+        assertEquals(
+            VideoPreview(channel = 3, playing = false, trying = true, text = "Connecting…"),
+            videoPreview(JSONObject("""{"kind":"object","class":"VideoPreview","channel":3,"playing":false,"trying":true,"text":"Connecting…","pipeline":"whepsrc"}""")),
+        )
+        assertEquals(
+            VideoPreview(channel = null, playing = false, trying = false, text = "Open the camera to watch it."),
+            videoPreview(JSONObject("""{"kind":"object","class":"VideoPreview","channel":null,"playing":false,"trying":false,"text":"Open the camera to watch it.","pipeline":null}""")),
+        )
+        assertNull(videoPreview(JSONObject("""{"kind":"refused","reason":"view.videoPreview takes a WHEP address"}""")))
+    }
 }
 
 class VideoPanelVisibilityTest {

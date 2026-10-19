@@ -129,7 +129,7 @@ private fun TopicRow(page: DevicePage, onOpen: (String) -> Unit) {
 
 @Composable
 private fun CameraPicture(camera: CameraView) {
-    if (camera.preview.isNotEmpty()) WhepPreview(deviceUrl(camera.watch), camera.name) else PreviewPlaceholder(camera.placeholder)
+    if (camera.preview.isNotEmpty()) WhepPreview(deviceUrl(camera.preview), deviceUrl(camera.watch), camera.name) else PreviewPlaceholder(camera.placeholder)
 }
 
 @Composable

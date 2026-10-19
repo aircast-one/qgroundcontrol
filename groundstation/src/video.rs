@@ -246,6 +246,44 @@ pub fn video_view(backend: &dyn Backend, _args: &[String]) -> Value {
     })
 }
 
+pub const VIDEO_PREVIEW_DEPS: &[&str] = &["video.previews"];
+const VIDEO_PREVIEW_CONNECTING: &str = "Connecting\u{2026}";
+const VIDEO_PREVIEW_UNAVAILABLE: &str = "Open the camera to watch it.";
+
+pub fn video_preview_view(backend: &dyn Backend, args: &[String]) -> Value {
+    let Some(uri) = args
+        .first()
+        .filter(|uri| crate::videohost::whep_endpoint(uri).is_some())
+    else {
+        return json!({ "kind": "refused", "reason": "view.videoPreview takes a WHEP address, as view.videoPreview(http://falcon.local:8889/whep/front)" });
+    };
+    let held = backend
+        .value("video.previews")
+        .get("value")
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default();
+    let slot = held.iter().position(|shown| text(shown, "uri") == *uri);
+    let shown = slot.map_or(Value::Null, |at| held[at].clone());
+    let playing = flag(&shown, "decoding");
+    let trying = slot.is_some() || held.iter().any(Value::is_null);
+    let problem = text(&shown, "problem");
+    json!({
+        "kind": "object",
+        "class": "VideoPreview",
+        "channel": slot.map(|at| at + crate::videohost::VIDEO_CHANNELS),
+        "playing": playing,
+        "trying": trying,
+        "text": match () {
+            _ if playing => String::new(),
+            _ if !problem.is_empty() => problem,
+            _ if trying => VIDEO_PREVIEW_CONNECTING.to_string(),
+            _ => VIDEO_PREVIEW_UNAVAILABLE.to_string(),
+        },
+        "pipeline": shown.get("pipeline").cloned().unwrap_or(Value::Null),
+    })
+}
+
 pub fn camera_present(camera: &Value) -> bool {
     camera.get("kind").and_then(Value::as_str) == Some("object")
         && !text(camera, "modelName").is_empty()
@@ -1375,6 +1413,82 @@ mod tests {
             camera_view(&Fresh, &[])["shotsText"],
             "\u{2014}",
             "zero padded to five digits read 'Photos taken 00000' on a fresh session - the padding suits a camera's own frame counter and shots is vehicle.cameraTriggerPoints.count, which is trigger points received"
+        );
+    }
+
+    struct Previews(Value);
+
+    impl Backend for Previews {
+        fn get(&self, path: &str) -> String {
+            match path {
+                "video.previews" => json!({ "kind": "value", "value": self.0 }).to_string(),
+                _ => json!({ "kind": "null" }).to_string(),
+            }
+        }
+        fn get_fields(&self, path: &str, _fields: &str) -> String {
+            self.get(path)
+        }
+        fn set(&self, _path: &str, _value: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _path: &str, _args: &str) -> String {
+            String::new()
+        }
+        fn watch(&self, _paths: &[String]) {}
+    }
+
+    #[test]
+    fn a_preview_names_the_channel_a_head_hands_its_surface_to_and_says_how_it_plays() {
+        let front = "http://falcon:8889/whep/front";
+        let preview = |previews: Value, uri: &str| {
+            video_preview_view(&Previews(previews), &[uri.to_string()])
+        };
+        let shown = |decoding: bool, problem: &str| json!({ "uri": front, "decoding": decoding, "problem": problem, "pipeline": "whepsrc ! nativesink" });
+        let playing = preview(json!([null, shown(true, "")]), front);
+        assert_eq!(
+            (
+                &playing["channel"],
+                &playing["playing"],
+                &playing["text"],
+                &playing["pipeline"]
+            ),
+            (
+                &json!(3),
+                &json!(true),
+                &json!(""),
+                &json!("whepsrc ! nativesink")
+            ),
+            "the second preview slot is native channel 3, after the main and picture in picture"
+        );
+        assert_eq!(
+            preview(json!([shown(false, "")]), front)["text"],
+            "Connecting\u{2026}"
+        );
+        let failing = preview(json!([shown(false, "No answer from falcon:8889.")]), front);
+        assert_eq!(
+            (&failing["text"], &failing["trying"]),
+            (&json!("No answer from falcon:8889."), &json!(true)),
+            "a failing preview says why while the core keeps retrying it"
+        );
+        let waiting = preview(json!([null, null]), front);
+        assert_eq!(
+            (&waiting["channel"], &waiting["trying"], &waiting["text"]),
+            (&Value::Null, &json!(true), &json!("Connecting\u{2026}")),
+            "a preview just watched waits for the core to give it a free channel"
+        );
+        let full = preview(json!([shown(true, "")]), "http://falcon:8889/whep/belly");
+        assert_eq!(
+            (&full["channel"], &full["trying"], &full["text"]),
+            (
+                &Value::Null,
+                &json!(false),
+                &json!("Open the camera to watch it.")
+            ),
+            "with every channel taken, and on a host that plays no previews, the preview says so"
+        );
+        assert_eq!(
+            preview(json!([]), "rtsp://falcon:8554/front")["kind"],
+            "refused"
         );
     }
 }

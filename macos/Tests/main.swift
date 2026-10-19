@@ -4061,8 +4061,8 @@ func checkVideoStatus() {
 checkVideoStatus()
 
 func checkTheNativeChannelsSwapAndReport() {
-    expect(QGC_VIDEO_MAIN == 0 && QGC_VIDEO_PIP == 1 && QGC_VIDEO_CHANNELS == 2,
-           "the head plays the channels the header numbers, 0 main and 1 picture in picture")
+    expect(QGC_VIDEO_MAIN == 0 && QGC_VIDEO_PIP == 1 && QGC_VIDEO_CHANNELS == 6,
+           "the head plays the channels the header numbers, 0 main and 1 picture in picture, and the core lends 2 to 5 to previews")
 
     let swapped = VideoSwap(driven: [QGC_VIDEO_MAIN: "a", QGC_VIDEO_PIP: "b"],
                             wanted: [QGC_VIDEO_MAIN: "b", QGC_VIDEO_PIP: "a"])
