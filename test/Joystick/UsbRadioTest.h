@@ -20,4 +20,6 @@ private slots:
     void _statusSaysWhatToDoWhenTheRadioIsBusyOrSilent_test();
     void _radioCardIsFoundByItsToolsFolder_test();
     void _savedScriptReplacesTheOldOneAndItsCompiledCopy_test();
+    void _aPortStreamingTheScriptIsARadioAndMavlinkIsNot_test();
+    void _indicatorStateFollowsTheRadioAndWhoFlies_test();
 };

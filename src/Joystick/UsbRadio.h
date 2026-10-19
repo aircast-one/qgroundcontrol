@@ -2,9 +2,11 @@
 
 #include <QtCore/QByteArray>
 #include <QtCore/QElapsedTimer>
+#include <QtCore/QHash>
 #include <QtCore/QList>
 #include <QtCore/QLoggingCategory>
 #include <QtCore/QObject>
+#include <QtCore/QSet>
 #include <QtCore/QStringList>
 #include <QtCore/QTimer>
 #include <QtCore/QVariantList>
@@ -13,6 +15,7 @@
 #include <optional>
 
 class QSerialPort;
+class LinkInterface;
 
 Q_DECLARE_LOGGING_CATEGORY(UsbRadioLog)
 
@@ -34,6 +37,8 @@ constexpr int kOverrideMax = 2200;
 constexpr int kLowChannels = 8;
 constexpr uint8_t kAutopilotComponent = 1;
 constexpr uint8_t kStandbyComponent = 191;
+constexpr int kRadioFrames = 3;
+constexpr qsizetype kSniffBytes = 16 * 1024;
 
 using Frame = std::array<uint16_t, kChannels>;
 
@@ -62,6 +67,23 @@ struct Sticks
     bool operator==(const Sticks& other) const = default;
 };
 
+enum class Verdict
+{
+    Undecided,
+    Radio,
+    NotRadio
+};
+
+enum class State
+{
+    Off,
+    Live,
+    Ready,
+    Paused,
+    Standby,
+    Stopped
+};
+
 uint16_t pwm(int raw);
 std::optional<Frame> parse(const QByteArray& line);
 Frame released();
@@ -76,6 +98,8 @@ QString silentText(const QString& port, qint64 silentMs);
 QString flightText(Flying flying, int vehicle);
 QString toolsFolder(const QStringList& roots);
 QString saveScript(const QString& folder);
+State state(bool on, bool live, Flying flying);
+QString stateName(State state);
 
 class Lines
 {
@@ -84,6 +108,17 @@ public:
 
 private:
     QByteArray _pending;
+};
+
+class Sniffer
+{
+public:
+    Verdict feed(const QByteArray& bytes);
+
+private:
+    Lines _lines;
+    int _frames = 0;
+    qsizetype _seen = 0;
 };
 
 struct Send
@@ -123,6 +158,9 @@ class UsbRadio : public QObject
 
     Q_PROPERTY(QString status READ status NOTIFY statusChanged)
     Q_PROPERTY(bool receiving READ receiving NOTIFY statusChanged)
+    Q_PROPERTY(QString state READ state NOTIFY stateChanged)
+    Q_PROPERTY(QString offerPort READ offerPort NOTIFY offerChanged)
+    Q_PROPERTY(QString offerLabel READ offerLabel NOTIFY offerChanged)
 
 public:
     explicit UsbRadio(QObject* parent = nullptr);
@@ -136,12 +174,29 @@ public:
 
     bool receiving() const { return _radio.live(_clock.elapsed()); }
 
+    QString state() const { return _state; }
+
+    QString offerPort() const { return _offerPort; }
+
+    QString offerLabel() const { return _offerLabel; }
+
+    bool isRadioPort(const QString& port) const;
+    UsbRadioProtocol::Verdict sniff(const LinkInterface* link, const QByteArray& bytes);
+    void forgetLink(const LinkInterface* link);
+    void radioSeen(const QString& port);
+    void portsPresent(const QStringList& ports);
+
+    Q_INVOKABLE void useOffer(const QString& port);
+    Q_INVOKABLE void dismissOffer(const QString& port);
+
     Q_INVOKABLE QVariantList ports() const;
     Q_INVOKABLE QString scriptFolder() const;
     Q_INVOKABLE QString saveScript(const QString& folder) const;
 
 signals:
     void statusChanged();
+    void stateChanged();
+    void offerChanged();
 
 private:
     struct Flight
@@ -159,6 +214,8 @@ private:
     void _advance(std::optional<UsbRadioProtocol::Frame> fresh);
     void _send(int vehicle, bool standby, const UsbRadioProtocol::Frame& frame) const;
     void _setStatus(const QString& status);
+    void _setState(const QString& state);
+    void _setOffer(const QString& port, const QString& label);
     QString _wanted() const;
     bool _standby(int vehicle) const;
     std::optional<int> _target() const;
@@ -174,4 +231,9 @@ private:
     UsbRadioProtocol::Lines _lines;
     UsbRadioProtocol::Radio _radio;
     QString _status;
+    QString _state = UsbRadioProtocol::stateName(UsbRadioProtocol::State::Off);
+    QHash<const LinkInterface*, UsbRadioProtocol::Sniffer> _sniffers;
+    QSet<QString> _radioPorts;
+    QString _offerPort;
+    QString _offerLabel;
 };

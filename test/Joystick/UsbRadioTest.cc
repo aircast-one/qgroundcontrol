@@ -186,4 +186,33 @@ void UsbRadioTest::_savedScriptReplacesTheOldOneAndItsCompiledCopy_test()
     QCOMPARE(saveScript(tools.path()), QString());
 }
 
+void UsbRadioTest::_aPortStreamingTheScriptIsARadioAndMavlinkIsNot_test()
+{
+    Sniffer radio;
+    QCOMPARE(radio.feed(kLine.left(40)), Verdict::Undecided);
+    QCOMPARE(radio.feed(kLine.mid(40) + kLine), Verdict::Undecided);
+    QCOMPARE(radio.feed(kLine), Verdict::Radio);
+
+    mavlink_message_t message;
+    (void) mavlink_msg_heartbeat_pack(1, 1, &message, MAV_TYPE_QUADROTOR, MAV_AUTOPILOT_ARDUPILOTMEGA, 0, 0, 0);
+    QByteArray frame(MAVLINK_MAX_PACKET_LEN, Qt::Uninitialized);
+    frame.resize(mavlink_msg_to_send_buffer(reinterpret_cast<uint8_t*>(frame.data()), &message));
+    Sniffer autopilot;
+    QCOMPARE(autopilot.feed(frame), Verdict::Undecided);
+    QCOMPARE(autopilot.feed(frame.repeated(static_cast<qsizetype>(kSniffBytes / frame.size()) + 1)), Verdict::NotRadio);
+}
+
+void UsbRadioTest::_indicatorStateFollowsTheRadioAndWhoFlies_test()
+{
+    QCOMPARE(state(false, true, Flying::Vehicle), State::Off);
+    QCOMPARE(state(true, false, Flying::Vehicle), State::Stopped);
+    QCOMPARE(state(true, true, Flying::Vehicle), State::Live);
+    QCOMPARE(state(true, true, Flying::NoVehicle), State::Ready);
+    QCOMPARE(state(true, true, Flying::Joystick), State::Paused);
+    QCOMPARE(state(true, true, Flying::Standby), State::Standby);
+    QCOMPARE(stateName(State::Live), QStringLiteral("live"));
+    QCOMPARE(stateName(State::Stopped), QStringLiteral("stopped"));
+    QCOMPARE(stateName(State::Off), QStringLiteral("off"));
+}
+
 UT_REGISTER_TEST_LIGHTWEIGHT(UsbRadioTest, TestLabel::Unit, TestLabel::Joystick)

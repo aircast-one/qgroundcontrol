@@ -222,6 +222,27 @@ ApplicationWindow {
         }
     }
 
+    Connections {
+        target: QGroundControl.usbRadio
+
+        function onOfferChanged() {
+            const usbRadio = QGroundControl.usbRadio
+            const port = usbRadio.offerPort
+            if (port === "") {
+                return
+            }
+            simpleMessageDialogComponent.createObject(mainWindow, {
+                title:              qsTr("Radio on USB"),
+                text:               qsTr("An EdgeTX radio is streaming its sticks on USB (%1). Fly with it?").arg(usbRadio.offerLabel),
+                buttons:            Dialog.Yes | Dialog.No,
+                acceptButtonText:   qsTr("Use"),
+                rejectButtonText:   qsTr("Not now"),
+                acceptFunction:     () => usbRadio.useOffer(port),
+                closeFunction:      () => usbRadio.dismissOffer(port)
+            }).open()
+        }
+    }
+
     property bool _forceClose: false
     property bool suppressCriticalVehicleMessages: false
 

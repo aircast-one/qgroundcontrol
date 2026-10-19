@@ -51,6 +51,8 @@ Popup {
     property bool   destroyOnClose:         true
     property bool   preventClose:           false
     property bool   bypassNavigationCheck:  false
+    property string acceptButtonText
+    property string rejectButtonText
 
     property real maxContentAvailableWidth:    mainWindow.width - _contentMargin * 6
     property real maxContentAvailableHeight:   mainWindow.height - titleRowLayout.height - _contentMargin * 7
@@ -186,6 +188,13 @@ Popup {
         } else if (buttons & Dialog.Abort) {
             rejectButton.text = qsTr("Abort")
             rejectButton.visible = true
+        }
+
+        if (acceptButtonText !== "") {
+            acceptButton.text = acceptButtonText
+        }
+        if (rejectButtonText !== "") {
+            rejectButton.text = rejectButtonText
         }
 
         closePolicy = Popup.NoAutoClose

@@ -183,6 +183,7 @@ private:
     void _addSerialAutoConnectLink();
     bool _portAlreadyConnected(const QString &portName);
     void _releaseAutoConnectPort(const QString& portName);
+    void _sniffRadio(LinkInterface* link, const QByteArray& data);
     void _filterCompositePorts(QList<QGCSerialPortInfo> &portList);
 
     QMap<QString, int> _autoconnectPortWaitList;   ///< key: QGCSerialPortInfo::systemLocation, value: wait count

@@ -196,6 +196,42 @@ QString saveScript(const QString& folder)
     return QString();
 }
 
+State state(bool on, bool live, Flying flying)
+{
+    return !on                          ? State::Off
+           : !live                      ? State::Stopped
+           : flying == Flying::Vehicle  ? State::Live
+           : flying == Flying::Standby  ? State::Standby
+           : flying == Flying::Joystick ? State::Paused
+                                        : State::Ready;
+}
+
+QString stateName(State state)
+{
+    switch (state) {
+        case State::Live:
+            return QStringLiteral("live");
+        case State::Ready:
+            return QStringLiteral("ready");
+        case State::Paused:
+            return QStringLiteral("paused");
+        case State::Standby:
+            return QStringLiteral("standby");
+        case State::Stopped:
+            return QStringLiteral("stopped");
+        case State::Off:
+        default:
+            return QStringLiteral("off");
+    }
+}
+
+Verdict Sniffer::feed(const QByteArray& bytes)
+{
+    _seen += bytes.size();
+    _frames += static_cast<int>(_lines.feed(bytes).size());
+    return _frames >= kRadioFrames ? Verdict::Radio : (_seen >= kSniffBytes ? Verdict::NotRadio : Verdict::Undecided);
+}
+
 std::optional<qint64> Radio::heardAt() const
 {
     return _latest ? std::optional<qint64>(_latest->second) : std::nullopt;
@@ -230,6 +266,16 @@ Step Radio::step(qint64 nowMs, std::optional<int> target, std::optional<Frame> f
 }  // namespace UsbRadioProtocol
 
 using namespace UsbRadioProtocol;
+
+namespace {
+
+QString portLabel(const QGCSerialPortInfo& info)
+{
+    const QString product = info.description().trimmed();
+    return product.isEmpty() ? info.portName() : QStringLiteral("%1 (%2)").arg(product, info.portName());
+}
+
+}  // namespace
 
 UsbRadio::UsbRadio(QObject* parent) : QObject(parent)
 {
@@ -272,11 +318,8 @@ QVariantList UsbRadio::ports() const
     const QList<QGCSerialPortInfo> available = QGCSerialPortInfo::availablePorts();
     const QVariantList listed = std::accumulate(
         available.cbegin(), available.cend(), QVariantList{}, [](QVariantList rows, const QGCSerialPortInfo& info) {
-            const QString port = info.systemLocation().trimmed();
-            const QString product = info.description().trimmed();
-            const QString label =
-                product.isEmpty() ? info.portName() : QStringLiteral("%1 (%2)").arg(product, info.portName());
-            return rows << QVariantMap{{QStringLiteral("port"), port}, {QStringLiteral("label"), label}};
+            return rows << QVariantMap{{QStringLiteral("port"), info.systemLocation().trimmed()},
+                                       {QStringLiteral("label"), portLabel(info)}};
         });
     const QString current = _wanted();
     const bool missing = !current.isEmpty() && std::ranges::none_of(listed, [&current](const QVariant& row) {
@@ -288,6 +331,89 @@ QVariantList UsbRadio::ports() const
                                            {QStringLiteral("label"), tr("%1 (not plugged in)").arg(current)}}}
                 : QVariantList{};
     return off + listed + gone;
+}
+
+bool UsbRadio::isRadioPort(const QString& port) const
+{
+    const QString trimmed = port.trimmed();
+    return !trimmed.isEmpty() && (trimmed == _wanted() || _radioPorts.contains(trimmed));
+}
+
+Verdict UsbRadio::sniff(const LinkInterface* link, const QByteArray& bytes)
+{
+    const Verdict verdict = _sniffers[link].feed(bytes);
+    if (verdict != Verdict::Undecided) {
+        (void) _sniffers.remove(link);
+    }
+    return verdict;
+}
+
+void UsbRadio::forgetLink(const LinkInterface* link)
+{
+    (void) _sniffers.remove(link);
+}
+
+void UsbRadio::radioSeen(const QString& port)
+{
+    const QString trimmed = port.trimmed();
+    if (trimmed.isEmpty() || _radioPorts.contains(trimmed)) {
+        return;
+    }
+    _radioPorts.insert(trimmed);
+    qCInfo(UsbRadioLog) << "A radio is streaming its sticks on" << trimmed;
+    if (!_wanted().isEmpty()) {
+        return;
+    }
+    const QList<QGCSerialPortInfo> available = QGCSerialPortInfo::availablePorts();
+    const auto found = std::ranges::find_if(
+        available, [&trimmed](const QGCSerialPortInfo& info) { return info.systemLocation().trimmed() == trimmed; });
+    _setOffer(trimmed, found == available.end() ? trimmed : portLabel(*found));
+}
+
+void UsbRadio::portsPresent(const QStringList& ports)
+{
+    const QSet<QString> present =
+        std::accumulate(ports.cbegin(), ports.cend(), QSet<QString>{}, [](QSet<QString> kept, const QString& port) {
+            kept.insert(port.trimmed());
+            return kept;
+        });
+    _radioPorts.intersect(present);
+    if (!_offerPort.isEmpty() && !present.contains(_offerPort)) {
+        _setOffer(QString(), QString());
+    }
+}
+
+void UsbRadio::useOffer(const QString& port)
+{
+    if (port.trimmed().isEmpty()) {
+        return;
+    }
+    SettingsManager::instance()->autoConnectSettings()->usbRadioPort()->setRawValue(port.trimmed());
+    _setOffer(QString(), QString());
+}
+
+void UsbRadio::dismissOffer(const QString& port)
+{
+    if (port.trimmed() == _offerPort) {
+        _setOffer(QString(), QString());
+    }
+}
+
+void UsbRadio::_setOffer(const QString& port, const QString& label)
+{
+    if (port != _offerPort || label != _offerLabel) {
+        _offerPort = port;
+        _offerLabel = label;
+        emit offerChanged();
+    }
+}
+
+void UsbRadio::_setState(const QString& state)
+{
+    if (state != _state) {
+        _state = state;
+        emit stateChanged();
+    }
 }
 
 QString UsbRadio::_wanted() const
@@ -438,6 +564,7 @@ void UsbRadio::_advance(std::optional<Frame> fresh)
     if (!_port || _port->isOpen()) {
         _setStatus(live ? flightText(flight.flying, flight.vehicle) : quiet);
     }
+    _setState(UsbRadioProtocol::stateName(UsbRadioProtocol::state(!_portName.isEmpty(), live, flight.flying)));
 }
 
 void UsbRadio::_setStatus(const QString& status)

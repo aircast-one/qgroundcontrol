@@ -15,6 +15,8 @@ target_sources(${CMAKE_PROJECT_NAME}
         MockJoystickTest.h
         SDLTest.cc
         SDLTest.h
+        UsbRadioOfferTest.cc
+        UsbRadioOfferTest.h
         UsbRadioTest.cc
         UsbRadioTest.h
 )
@@ -26,3 +28,4 @@ add_qgc_test(JoystickManagerTest LABELS Unit Joystick RESOURCE_LOCK Joystick TIM
 add_qgc_test(MockJoystickTest LABELS Unit Joystick RESOURCE_LOCK Joystick)
 add_qgc_test(SDLTest LABELS Unit Joystick RESOURCE_LOCK Joystick)
 add_qgc_test(UsbRadioTest LABELS Unit Joystick)
+add_qgc_test(UsbRadioOfferTest LABELS Unit Joystick RESOURCE_LOCK Settings)

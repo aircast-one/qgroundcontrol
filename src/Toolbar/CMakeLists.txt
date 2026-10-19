@@ -34,6 +34,7 @@ qt_add_qml_module(ToolbarModule
         SignalStrength.qml
         Sparkline.qml
         TelemetryRSSIIndicator.qml
+        UsbRadioIndicator.qml
         VehicleGPSIndicator.qml
         VehicleMessageList.qml
     NO_PLUGIN

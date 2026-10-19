@@ -32,7 +32,7 @@ SettingsGroupLayout {
                                  "2. Save the radio script below into SCRIPTS/TOOLS on the radio's SD card.\n" +
                                  "3. On the radio set SYS → Hardware → USB-VCP to LUA.\n" +
                                  "4. Plug the radio in, choose USB Serial (VCP), and open SYS → Tools → Aircast USB radio.\n" +
-                                 "5. Pick the radio as Device here. The radio's screen then says \"App flying vehicle N\".")
+                                 "5. The app asks \"Fly with it?\" once the radio streams: press Use, or pick the radio as Device here. The radio's screen then says \"App flying vehicle N\".")
     }
 
     RowLayout {

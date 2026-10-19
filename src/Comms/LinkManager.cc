@@ -19,6 +19,7 @@
 
 #ifndef QGC_NO_SERIAL_LINK
 #include "SerialLink.h"
+#include "UsbRadio.h"
 #include "GPSManager.h"
 #include "GPSRtk.h"
 #ifdef Q_OS_ANDROID
@@ -198,6 +199,11 @@ bool LinkManager::createConnectedLink(SharedLinkConfigurationPtr &config)
         _rgLinks.append(link);
     }
     config->setLink(link);
+#ifndef QGC_NO_SERIAL_LINK
+    if (qobject_cast<SerialLink*>(link.get())) {
+        (void) connect(link.get(), &LinkInterface::bytesReceived, this, &LinkManager::_sniffRadio);
+    }
+#endif
 
     return true;
 }
@@ -273,6 +279,9 @@ void LinkManager::_linkDisconnected()
     if (!link) {
         return;
     }
+#ifndef QGC_NO_SERIAL_LINK
+    UsbRadio::instance()->forgetLink(link);
+#endif
 
     SharedLinkInterfacePtr linkToCleanup;
     SharedLinkConfigurationPtr config;
@@ -828,10 +837,12 @@ void LinkManager::_addSerialAutoConnectLink()
     // availablePorts after that one serial port is connected leaks file handles due to a bug somewhere in the
     // android serial code. In order to work around that bug after we connect the first serial port we stop
     // probing for additional ports. The POSIX backend does not have this problem.
-    if (AndroidSerial::usePosixSerial() || !_isSerialPortConnected()) {
+    const bool probed = AndroidSerial::usePosixSerial() || !_isSerialPortConnected();
+    if (probed) {
         portList = QGCSerialPortInfo::availablePorts();
     }
 #else
+    const bool probed = true;
     portList = QGCSerialPortInfo::availablePorts();
 #endif
 
@@ -853,8 +864,7 @@ void LinkManager::_addSerialAutoConnectLink()
         QGCSerialPortInfo::BoardType_t boardType;
         QString boardName;
 
-        if (portInfo.systemLocation().trimmed() ==
-            _autoConnectSettings->usbRadioPort()->rawValue().toString().trimmed()) {
+        if (UsbRadio::instance()->isRadioPort(portInfo.systemLocation())) {
             _releaseAutoConnectPort(portInfo.systemLocation().trimmed());
             continue;
         }
@@ -937,6 +947,10 @@ void LinkManager::_addSerialAutoConnectLink()
         }
     }
 
+    if (probed) {
+        UsbRadio::instance()->portsPresent(currentPorts);
+    }
+
     // Check for RTK GPS connection gone
     if (!_autoConnectRTKPort.isEmpty() && !currentPorts.contains(_autoConnectRTKPort)) {
         qCDebug(LinkManagerLog) << "RTK GPS disconnected" << _autoConnectRTKPort;
@@ -974,6 +988,23 @@ bool LinkManager::_allowAutoConnectToBoard(QGCSerialPortInfo::BoardType_t boardT
     }
 
     return false;
+}
+
+void LinkManager::_sniffRadio(LinkInterface* link, const QByteArray& data)
+{
+    const UsbRadioProtocol::Verdict verdict = UsbRadio::instance()->sniff(link, data);
+    if (verdict == UsbRadioProtocol::Verdict::Undecided) {
+        return;
+    }
+    (void) disconnect(link, &LinkInterface::bytesReceived, this, &LinkManager::_sniffRadio);
+    const SerialConfiguration* const serial = qobject_cast<const SerialConfiguration*>(link->linkConfiguration().get());
+    if (verdict != UsbRadioProtocol::Verdict::Radio || !serial) {
+        return;
+    }
+    const QString port = serial->portName().trimmed();
+    qCDebug(LinkManagerLog) << port << "streams a radio's sticks, not MAVLink";
+    UsbRadio::instance()->radioSeen(port);
+    QTimer::singleShot(0, this, [this, port]() { _releaseAutoConnectPort(port); });
 }
 
 void LinkManager::_releaseAutoConnectPort(const QString& portName)
