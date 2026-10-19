@@ -1,11 +1,11 @@
-import { type ReactNode, useContext, useState } from 'react';
+import { type ReactNode, useContext, useEffect, useState } from 'react';
 import { isJson, jsonObjects, optInt, optJSONArray, optText } from '@/bridge/Json';
 import { copyToClipboard } from '@/kotlin/Platform';
 import { AlertDialog, BasicAlertDialog, DropdownMenu, DropdownMenuItem, FilledTonalButton, IconButton, type KeyboardType, OutlinedTextField, Switch, Text, TextButton } from '@/m3';
 import { MaterialIcon } from '@/res/Icon';
 import { aircast, md } from '@/theme/Colors';
 import { DeviceLevel } from '@/ui/DeviceLevel';
-import { type DeviceMethod, type DeviceRefusal, deviceCall, deviceUrl } from '@/ui/DeviceView';
+import { type DeviceMethod, type DeviceRefusal, deviceCall, deviceQr } from '@/ui/DeviceView';
 import { LocalChangeNotice } from '@/ui/ValueRow';
 
 export type DeviceBadge = { readonly level: number; readonly text: string };
@@ -104,7 +104,11 @@ export const useCopy = (): ((text: string) => void) => {
     );
 };
 
-export const qrSource = (text: string): string => deviceUrl(`/qr?d=${encodeURIComponent(text)}`);
+export const QrImage = ({ text, alt, className }: { text: string; alt: string; className: string }) => {
+  const [shown, setShown] = useState<{ readonly text: string; readonly source: string | null } | null>(null);
+  useEffect(() => void deviceQr(text).then((source) => setShown({ text, source })), [text]);
+  return shown?.text === text && shown.source !== null ? <img src={shown.source} alt={alt} className={className} /> : <span role="img" aria-label={alt} className={className} />;
+};
 
 export const CopyRow = ({ label, text, hint = '', qr = false, level = DeviceLevel.Neutral }: { label: string; text: string; hint?: string; qr?: boolean; level?: number }) => {
   const copy = useCopy();
@@ -141,7 +145,7 @@ export const QrDialog = ({ title, text, onDismiss }: { title: string; text: stri
   <BasicAlertDialog onDismissRequest={onDismiss} label={title}>
     <div className="flex flex-col items-center gap-3 p-6">
       <Text typography="titleMedium">{title}</Text>
-      <img src={qrSource(text)} alt={`QR code for ${text}`} className="size-64 rounded-shape-sm bg-white p-2" />
+      <QrImage text={text} alt={`QR code for ${text}`} className="size-64 rounded-shape-sm bg-white p-2" />
       <Text typography="bodySmall" monospace className="max-w-64 break-all text-center">
         {text}
       </Text>

@@ -1,25 +1,29 @@
 import { describe, expect, it } from 'vitest';
-import { eventData, refusalOf, resolveDeviceUrl, splitEvents } from '@/ui/DeviceView';
+import { NO_ANSWER, deviceAnswer, deviceReading, deviceRefusal, resolveDeviceUrl } from '@/ui/DeviceView';
 
 describe('DeviceViewTest', () => {
   it('a device URL is the path itself on the device, and the device address anywhere else', () => {
     expect(resolveDeviceUrl('', '/api/views/aircraft')).toBe('/api/views/aircraft');
-    expect(resolveDeviceUrl('http://192.168.1.100', '/api/views/aircraft')).toBe('http://192.168.1.100/api/views/aircraft');
-    expect(resolveDeviceUrl('http://falcon.local:8080', '/qr?d=x')).toBe('http://falcon.local:8080/qr?d=x');
+    expect(resolveDeviceUrl('http://192.168.1.100', '/api/logs')).toBe('http://192.168.1.100/api/logs');
+    expect(resolveDeviceUrl('http://falcon.local:8080', '/fly/')).toBe('http://falcon.local:8080/fly/');
   });
 
-  it('a view stream is read event by event, across chunks, skipping heartbeats', () => {
-    const first = splitEvents('data: {"a":1}\n\nevent: alive\ndata: \n\ndata: {"a"');
-    expect(first.events).toEqual(['{"a":1}']);
-    const second = splitEvents(`${first.rest}:2}\n\n`);
-    expect(second.events).toEqual(['{"a":2}']);
-    expect(second.rest).toBe('');
-    expect(splitEvents('data: x\r\n\r\n').events).toEqual(['x']);
-    expect(eventData('event: alive\ndata: ')).toBeNull();
+  it('a page reads as the device it came from and the view the device last sent', () => {
+    expect(deviceReading({ kind: 'object', page: 'aircraft', origin: 'http://falcon.local', host: 'falcon.local', answered: true, view: { headline: 'Ready' } })).toEqual({
+      origin: 'http://falcon.local',
+      host: 'falcon.local',
+      answered: true,
+      view: { headline: 'Ready' },
+    });
+    expect(deviceReading({ origin: '', host: '', answered: false, view: null })).toEqual({ origin: '', host: '', answered: false, view: null });
+    expect(deviceReading(null).origin).toBe('');
   });
 
-  it('a refusal names the field the device blamed', () => {
-    expect(refusalOf(400, { error: 'baud must be a number', field: 'baud' })).toEqual({ message: 'baud must be a number', field: 'baud' });
-    expect(refusalOf(502, null)).toEqual({ message: 'The device refused (502).', field: '' });
+  it('a refusal names the field the device blamed, and silence is the one no-answer', () => {
+    expect(deviceRefusal({ ok: true, result: {} })).toBeNull();
+    expect(deviceRefusal({ ok: false, reason: 'baud must be a number', field: 'baud' })).toEqual({ message: 'baud must be a number', field: 'baud' });
+    expect(deviceRefusal({ ok: false, reason: 'The device did not answer.', field: '' })).toBe(NO_ANSWER);
+    expect(deviceRefusal(null)).toBe(NO_ANSWER);
+    expect(deviceAnswer({ ok: false, reason: 'Name it first', field: 'name', result: { error: 'Name it first' } }).result).toEqual({ error: 'Name it first' });
   });
 });

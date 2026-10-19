@@ -299,23 +299,37 @@ pub fn adopt_host(host: &str) {
     }
 }
 
+#[cfg(target_family = "wasm")]
+const ALLOW_LOCAL_NETWORK: &str =
+    " When the browser asks to let this site reach devices on your local network, allow it.";
+#[cfg(not(target_family = "wasm"))]
+const ALLOW_LOCAL_NETWORK: &str = "";
+
 fn unreachable(origin: &str) -> String {
     format!(
-        "{} did not answer as an Aircast device. Check it is on this network.",
+        "{} did not answer as an Aircast device. Check it is on this network.{ALLOW_LOCAL_NETWORK}",
         host_of(origin)
     )
 }
 
-fn answers_as_device(origin: &str) -> bool {
-    resolve(origin, "/api/views/aircraft")
-        .and_then(|url| crate::http::send("GET", &url, &[ACCEPT_JSON], None, PROBE_TIMEOUT).ok())
+fn answers_as_device(sent: &Result<(u16, Vec<u8>), String>) -> bool {
+    sent.as_ref()
+        .ok()
         .filter(|(status, _)| (200..300).contains(status))
-        .and_then(|(_, bytes)| serde_json::from_slice::<Value>(&bytes).ok())
+        .and_then(|(_, bytes)| serde_json::from_slice::<Value>(bytes).ok())
         .is_some_and(|view| {
             view.get("headline")
                 .and_then(Value::as_str)
                 .is_some_and(|headline| !headline.is_empty())
         })
+}
+
+pub fn pair(args: &str) -> Value {
+    let paired = crate::device::pair_command(args);
+    if paired["ok"] == true {
+        adopt_host(argument(&arguments(args), 0));
+    }
+    paired
 }
 
 fn refused(reason: &str) -> Value {
@@ -412,7 +426,7 @@ fn read_part(part: &Value) -> Result<Part, String> {
                 .and_then(|it| it.to_str())
                 .unwrap_or("file")
                 .replace('"', "");
-            std::fs::read(file)
+            crate::vfs::read(file)
                 .map(|bytes| Part::File {
                     name,
                     file_name: file_name.clone(),
@@ -423,67 +437,108 @@ fn read_part(part: &Value) -> Result<Part, String> {
     }
 }
 
-fn upload(method: &str, url: &str, parts: &[Value]) -> Value {
+enum Then {
+    Answer,
+    Adopt(String),
+    Qr,
+    Reach,
+}
+
+struct Request {
+    method: &'static str,
+    url: String,
+    headers: Vec<(String, String)>,
+    body: Option<Vec<u8>>,
+    timeout: Duration,
+    then: Then,
+}
+
+enum Step {
+    Answered(Value),
+    Send(Request),
+}
+
+fn owned(headers: &[(&str, &str)]) -> Vec<(String, String)> {
+    headers
+        .iter()
+        .map(|(name, value)| (name.to_string(), value.to_string()))
+        .collect()
+}
+
+fn get(url: String, accept: &str, timeout: Duration, then: Then) -> Step {
+    Step::Send(Request {
+        method: "GET",
+        url,
+        headers: owned(&[("Accept", accept)]),
+        body: None,
+        timeout,
+        then,
+    })
+}
+
+fn upload(method: &'static str, url: String, parts: &[Value]) -> Step {
     match parts
         .iter()
         .map(read_part)
         .collect::<Result<Vec<Part>, String>>()
     {
-        Err(reason) => refused(&reason),
+        Err(reason) => Step::Answered(refused(&reason)),
         Ok(parts) => {
             let boundary = format!("aircast{:x}", crate::hub::now_ms());
-            let content_type = format!("multipart/form-data; boundary={boundary}");
-            answer(crate::http::send(
+            Step::Send(Request {
                 method,
                 url,
-                &[ACCEPT_JSON, ("Content-Type", &content_type)],
-                Some(&multipart(&boundary, &parts)),
-                UPLOAD_TIMEOUT,
-            ))
+                headers: owned(&[
+                    ACCEPT_JSON,
+                    (
+                        "Content-Type",
+                        &format!("multipart/form-data; boundary={boundary}"),
+                    ),
+                ]),
+                body: Some(multipart(&boundary, &parts)),
+                timeout: UPLOAD_TIMEOUT,
+                then: Then::Answer,
+            })
         }
     }
 }
 
-fn qr(text: &str) -> Value {
-    let path = format!(
+fn qr_path(text: &str) -> String {
+    format!(
         "/qr?d={}",
         url::form_urlencoded::byte_serialize(text.as_bytes()).collect::<String>()
-    );
-    match target(&path) {
-        Err(refusal) => refusal,
-        Ok(url) => {
-            match crate::http::send("GET", &url, &[("Accept", "image/png")], None, CALL_TIMEOUT) {
-                Ok((status, bytes)) if (200..300).contains(&status) => {
-                    json!({ "ok": true, "result": base64::engine::general_purpose::STANDARD.encode(bytes) })
-                }
-                Ok((status, _)) => refused(&format!("The device refused ({status}).")),
-                Err(_) => refused(NO_ANSWER),
-            }
+    )
+}
+
+fn qr_image(sent: Result<(u16, Vec<u8>), String>) -> Value {
+    match sent {
+        Ok((status, bytes)) if (200..300).contains(&status) => {
+            json!({ "ok": true, "result": base64::engine::general_purpose::STANDARD.encode(bytes) })
         }
+        Ok((status, _)) => refused(&format!("The device refused ({status}).")),
+        Err(_) => refused(NO_ANSWER),
     }
 }
 
-pub fn run(path: &str, args: &str) -> Value {
-    let args = serde_json::from_str::<Vec<Value>>(args).unwrap_or_default();
+fn step(path: &str, args: &[Value]) -> Step {
     match path {
-        CONNECT => match address(argument(&args, 0)) {
-            None => refused(TYPE_AN_ADDRESS),
-            Some(origin) if answers_as_device(&origin) => {
-                adopt(&origin);
-                json!({ "ok": true })
-            }
-            Some(origin) => refused(&unreachable(&origin)),
+        CONNECT => match address(argument(args, 0)) {
+            None => Step::Answered(refused(TYPE_AN_ADDRESS)),
+            Some(origin) => match resolve(&origin, "/api/views/aircraft") {
+                None => Step::Answered(refused(&unreachable(&origin))),
+                Some(url) => get(url, ACCEPT_JSON.1, PROBE_TIMEOUT, Then::Adopt(origin)),
+            },
         },
         DISCONNECT => {
             lock().retarget("");
             crate::settingsstore::forgotten(ORIGIN_KEY);
-            json!({ "ok": true })
+            Step::Answered(json!({ "ok": true }))
         }
-        CALL => match (method_of(&args), target(argument(&args, 1))) {
-            (None, _) => refused(
+        CALL => match (method_of(args), target(argument(args, 1))) {
+            (None, _) => Step::Answered(refused(
                 "device.call takes POST, PUT or DELETE, a path on the device and an optional JSON body.",
-            ),
-            (_, Err(refusal)) => refusal,
+            )),
+            (_, Err(refusal)) => Step::Answered(refusal),
             (Some(method), Ok(url)) => {
                 let body = args
                     .get(2)
@@ -494,47 +549,108 @@ pub fn run(path: &str, args: &str) -> Value {
                 } else {
                     &[ACCEPT_JSON]
                 };
-                answer(crate::http::send(
+                Step::Send(Request {
                     method,
-                    &url,
-                    headers,
-                    body.as_deref().map(str::as_bytes),
-                    CALL_TIMEOUT,
-                ))
+                    url,
+                    headers: owned(headers),
+                    body: body.map(String::into_bytes),
+                    timeout: CALL_TIMEOUT,
+                    then: Then::Answer,
+                })
             }
         },
-        READ => match target(argument(&args, 0)) {
-            Err(refusal) => refusal,
-            Ok(url) => answer(crate::http::send(
-                "GET",
-                &url,
-                &[ACCEPT_JSON],
-                None,
-                CALL_TIMEOUT,
-            )),
+        READ => match target(argument(args, 0)) {
+            Err(refusal) => Step::Answered(refusal),
+            Ok(url) => get(url, ACCEPT_JSON.1, CALL_TIMEOUT, Then::Answer),
         },
         UPLOAD => match (
-            method_of(&args),
-            target(argument(&args, 1)),
+            method_of(args),
+            target(argument(args, 1)),
             args.get(2).and_then(Value::as_array),
         ) {
-            (Some(method), Ok(url), Some(parts)) => upload(method, &url, parts),
-            (_, Err(refusal), _) => refusal,
-            _ => refused(
+            (Some(method), Ok(url), Some(parts)) => upload(method, url, parts),
+            (_, Err(refusal), _) => Step::Answered(refusal),
+            _ => Step::Answered(refused(
                 "device.upload takes POST or PUT, a path on the device and the form's parts, each a name with a file or a value.",
-            ),
+            )),
         },
-        QR => qr(argument(&args, 0)),
-        REACH => match Url::parse(argument(&args, 0))
+        QR => match target(&qr_path(argument(args, 0))) {
+            Err(refusal) => Step::Answered(refusal),
+            Ok(url) => get(url, "image/png", CALL_TIMEOUT, Then::Qr),
+        },
+        REACH => match Url::parse(argument(args, 0))
             .ok()
             .filter(|url| matches!(url.scheme(), "http" | "https"))
         {
-            None => refused("device.reach takes an http or https address."),
-            Some(url) => {
-                json!({ "ok": true, "result": crate::http::send("HEAD", url.as_str(), &[], None, REACH_TIMEOUT).is_ok() })
-            }
+            None => Step::Answered(refused("device.reach takes an http or https address.")),
+            Some(url) => Step::Send(Request {
+                method: "HEAD",
+                url: url.into(),
+                headers: Vec::new(),
+                body: None,
+                timeout: REACH_TIMEOUT,
+                then: Then::Reach,
+            }),
         },
-        _ => refused(&format!("{path} is not a device action")),
+        _ => Step::Answered(refused(&format!("{path} is not a device action"))),
+    }
+}
+
+fn finish(then: Then, sent: Result<(u16, Vec<u8>), String>) -> Value {
+    match then {
+        Then::Answer => answer(sent),
+        Then::Adopt(origin) if answers_as_device(&sent) => {
+            adopt(&origin);
+            json!({ "ok": true })
+        }
+        Then::Adopt(origin) => refused(&unreachable(&origin)),
+        Then::Qr => qr_image(sent),
+        Then::Reach => json!({ "ok": true, "result": sent.is_ok() }),
+    }
+}
+
+fn arguments(args: &str) -> Vec<Value> {
+    serde_json::from_str::<Vec<Value>>(args).unwrap_or_default()
+}
+
+pub fn run(path: &str, args: &str) -> Value {
+    match step(path, &arguments(args)) {
+        Step::Answered(answer) => answer,
+        Step::Send(request) => {
+            let headers: Vec<(&str, &str)> = request
+                .headers
+                .iter()
+                .map(|(name, value)| (name.as_str(), value.as_str()))
+                .collect();
+            finish(
+                request.then,
+                crate::http::send(
+                    request.method,
+                    &request.url,
+                    &headers,
+                    request.body.as_deref(),
+                    request.timeout,
+                ),
+            )
+        }
+    }
+}
+
+#[cfg(target_family = "wasm")]
+pub async fn run_later(path: &str, args: &str) -> Value {
+    match step(path, &arguments(args)) {
+        Step::Answered(answer) => answer,
+        Step::Send(request) => finish(
+            request.then,
+            crate::http::send_later(
+                request.method,
+                &request.url,
+                &request.headers,
+                request.body.as_deref(),
+                request.timeout,
+            )
+            .await,
+        ),
     }
 }
 
@@ -809,6 +925,31 @@ mod tests {
             unreachable(&origin)
         );
         assert_eq!(lock().origin(), "");
+    }
+
+    #[test]
+    fn the_device_serving_the_page_is_the_device_whose_pages_are_followed() {
+        let _one = ONE_AT_A_TIME.lock().unwrap_or_else(PoisonError::into_inner);
+        let _pairing = crate::device::TEST_PAIRING
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        assert_eq!(
+            pair(r#"["http://falcon.local:8080/fly/"]"#),
+            json!({ "ok": true })
+        );
+        let shown = page_view("aircraft");
+        assert_eq!(
+            (shown["origin"].as_str(), shown["host"].as_str()),
+            (Some("http://falcon.local:8080"), Some("falcon.local:8080"))
+        );
+        assert_eq!(pair(r#"["mailto:x@y"]"#)["ok"], false);
+        assert_eq!(
+            lock().origin(),
+            "http://falcon.local:8080",
+            "a page that cannot pair keeps the device it had"
+        );
+        crate::device::unpair();
+        run(DISCONNECT, "[]");
     }
 
     #[test]

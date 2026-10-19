@@ -2,14 +2,15 @@ import { useContext, useEffect, useState } from 'react';
 import { useBackHandler, useKeyedState } from '@/kotlin/Compose';
 import { useValue } from '@/kotlin/State';
 import { FilledTonalButton, OutlinedTextField, Surface, Text, TextButton } from '@/m3';
-import { DeviceLink, deviceAddress, deviceConnected, deviceServed } from '@/app/DeviceLink';
+import { DeviceLink, deviceServed } from '@/app/DeviceLink';
 import { Color, aircast, md, withAlpha } from '@/theme/Colors';
 import { LocalAppNavigation } from '@/ui/AppNavigation';
 import { useOsdBackdrop } from '@/ui/Osd';
 import { useFlyIsPortrait } from '@/ui/FlyShell';
 import { MaterialIcon } from '@/res/Icon';
 import { FootNote, OverridePageHeading, SectionHeader, SetupRow, SetupState } from '@/ui/SetupRow';
-import { type DeviceHealth, type DeviceStatus, type DeviceUplink, deviceAnswered, deviceNeedsAttention, devicePageIcon, deviceRequested, deviceStatus } from '@/ui/DeviceStatus';
+import { type DeviceHealth, type DeviceStatus, type DeviceUplink, deviceNeedsAttention, devicePageIcon, deviceRequested, useDeviceStatus } from '@/ui/DeviceStatus';
+import { useDeviceReading } from '@/ui/DeviceView';
 import { DeviceLevel } from '@/ui/DeviceLevel';
 import { DEVICE_PAGE } from '@/ui/DevicePage';
 import { DEVICE_SCREENS, type DeviceScreenEntry, devicePath } from '@/ui/DeviceScreens';
@@ -18,9 +19,10 @@ import { DeviceChart, DeviceFact, DeviceNotice, DeviceSection, DeviceText, level
 const checkState = (level: number): SetupState => (level === DeviceLevel.Ready ? SetupState.Done : SetupState.NeedsAttention);
 
 export const DeviceTab = ({ open, onOpen, onClose }: { open: string | null; onOpen: (href: string) => void; onClose: () => void }) => {
-  const status = useValue(deviceStatus);
+  const reading = useDeviceReading();
+  const status = useDeviceStatus();
   const served = useValue(deviceServed);
-  const connected = useValue(deviceConnected);
+  const hosted = served ? null : <HostedDevice host={reading.host} />;
   const requested = useValue(deviceRequested);
   const [stack, setStack] = useKeyedState<readonly string[]>([open], () => (open === null ? [] : [open]));
   useEffect(() => {
@@ -34,12 +36,12 @@ export const DeviceTab = ({ open, onOpen, onClose }: { open: string | null; onOp
   const entry = opened === null ? undefined : DEVICE_SCREENS.get(opened.path);
   if (current !== null && opened !== null && entry !== undefined)
     return <NativeDevicePage key={current} entry={entry} href={current} query={opened.query} onOpen={(href) => setStack([...stack, href])} onBack={back} />;
-  if (!served && connected === null) return <ConnectDevice />;
+  if (!served && reading.origin === '') return <ConnectDevice />;
   if (status === null)
     return (
       <div className="h-full w-full overflow-y-auto">
         <FootNote text="Waiting for the device to answer…" />
-        {connected !== null ? <HostedDevice origin={connected} /> : null}
+        {hosted}
       </div>
     );
   return (
@@ -84,7 +86,7 @@ export const DeviceTab = ({ open, onOpen, onClose }: { open: string | null; onOp
           onClick={() => onOpen(page.href)}
         />
       ))}
-      {connected !== null ? <HostedDevice origin={connected} /> : null}
+      {hosted}
     </div>
   );
 };
@@ -94,13 +96,8 @@ const ConnectDevice = () => {
   const [busy, setBusy] = useState(false);
   const [refusal, setRefusal] = useState('');
   const connect = () => {
-    const origin = deviceAddress(address);
-    if (origin === null) {
-      setRefusal('Type an address like 192.168.1.100 or falcon.local.');
-      return;
-    }
     setBusy(true);
-    void DeviceLink.connect(origin).then((refused) => {
+    void DeviceLink.connect(address).then((refused) => {
       setBusy(false);
       setRefusal(refused ?? '');
     });
@@ -131,11 +128,11 @@ const ConnectDevice = () => {
   );
 };
 
-const HostedDevice = ({ origin }: { origin: string }) => (
+const HostedDevice = ({ host }: { host: string }) => (
   <DeviceSection title="This app">
-    <DeviceFact label="Connected to" value={new URL(origin).host} />
+    <DeviceFact label="Connected to" value={host} />
     <div className="px-list py-2">
-      <TextButton onClick={() => DeviceLink.disconnect()}>Disconnect</TextButton>
+      <TextButton onClick={() => void DeviceLink.disconnect()}>Disconnect</TextButton>
     </div>
   </DeviceSection>
 );
@@ -176,7 +173,7 @@ const NativeDevicePage = ({ entry, href, query, onOpen, onBack }: { entry: Devic
 
 export const DeviceDeepLink = () => {
   const navigation = useContext(LocalAppNavigation);
-  const answered = useValue(deviceAnswered);
+  const { answered } = useDeviceReading();
   const requested = useValue(deviceRequested);
   useEffect(() => {
     if (!answered || requested === null || navigation.settingsOpen.value) return;
@@ -190,7 +187,7 @@ export const chipText = (status: DeviceStatus): string => (status.name !== '' ? 
 
 export const DeviceStatusChip = () => {
   const navigation = useContext(LocalAppNavigation);
-  const status = useValue(deviceStatus);
+  const status = useDeviceStatus();
   const backdrop = useOsdBackdrop(withAlpha(Color.Black, 0.45));
   const narrow = useFlyIsPortrait();
   if (status === null || !deviceNeedsAttention(status)) return null;

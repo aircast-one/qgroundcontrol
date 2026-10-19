@@ -35,13 +35,18 @@ const openSettings = (text: string) => {
   return opened;
 };
 
-const pumpAndKeepSettings = () => {
+const keepSettings = () => {
   if (settings.revision === null) return;
-  core.pump();
   const revision = core.settingsRevision();
   if (revision === settings.revision) return;
   settings.revision = revision;
   scope.postMessage({ settings: core.settingsText() });
+};
+
+const pumpAndKeepSettings = () => {
+  if (settings.revision === null) return;
+  core.pump();
+  keepSettings();
 };
 
 setInterval(pumpAndKeepSettings, PUMP_MS);
@@ -52,6 +57,7 @@ const calls = {
   getMany: (paths: string[]) => paths.map((path) => core.get(path)),
   set: core.set,
   invoke: core.invoke,
+  deviceInvoke: core.deviceInvoke,
   guided: core.guided,
   watchClient: core.watchClient,
   linkOpen: core.linkOpen,
@@ -77,7 +83,10 @@ const calls = {
   syntheticRelease: core.syntheticRelease,
 } as const;
 
-const reply = (id: string) => (result: unknown) => scope.postMessage({ id, result });
+const reply = (id: string) => (result: unknown) => {
+  keepSettings();
+  scope.postMessage({ id, result });
+};
 
 scope.onmessage = ({ data: { id, call, args } }) => {
   const result = (calls[call] as (...given: unknown[]) => unknown)(...args);

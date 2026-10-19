@@ -50,26 +50,13 @@ import {
 } from '@/ui/DeviceCameraWizard';
 import { DeviceSelect } from '@/ui/DeviceKit';
 import { Fold, useFold } from '@/ui/DeviceKitCamera';
-import { type DeviceMethod, type DeviceRefusal, NO_ANSWER, deviceRead, deviceUrl, refusalOf } from '@/ui/DeviceView';
+import { NO_ANSWER, deviceRead, deviceSend, deviceUpload } from '@/ui/DeviceView';
 import { LocalChangeNotice } from '@/ui/ValueRow';
 
 const VERIFY_ATTEMPTS = 10;
 const VERIFY_POLL_MS = 1500;
 const PORT_UP_ATTEMPTS = 15;
 const PORT_UP_POLL_MS = 1000;
-
-type Sent = { readonly json: unknown; readonly refusal: DeviceRefusal | null };
-
-const send = async (method: DeviceMethod, path: string, body?: unknown): Promise<Sent> => {
-  const response = await fetch(deviceUrl(path), {
-    method,
-    headers: body === undefined ? { Accept: 'application/json' } : { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  }).catch(() => null);
-  if (response === null) return { json: null, refusal: NO_ANSWER };
-  const json: unknown = await response.json().catch(() => null);
-  return { json, refusal: response.ok ? null : refusalOf(response.status, json) };
-};
 
 const errorOf = (json: unknown, fallback: string): string => optText(isJson(json) ? json : null, 'error') || fallback;
 
@@ -84,7 +71,7 @@ const waitForPort = async (iface: string, want: string, attempt = 0): Promise<vo
 };
 
 const setPortAddress = async (iface: string, address: string): Promise<string> => {
-  const { json, refusal } = await send('POST', '/api/setup/camera/port', {
+  const { result: json, refusal } = await deviceSend('POST', '/api/setup/camera/port', {
     interface: iface,
     address,
   });
@@ -178,7 +165,7 @@ export const CameraWizard = ({
     setScanning(true);
     setScanNote(SCANNING_NOTE);
     setOutcome(null);
-    const { json, refusal: refused } = await send('POST', '/api/streams/scan');
+    const { result: json, refusal: refused } = await deviceSend('POST', '/api/streams/scan');
     setScanning(false);
     if (refused !== null) {
       setScanNote(SCAN_FAILED_NOTE);
@@ -241,7 +228,7 @@ export const CameraWizard = ({
     setStep(3);
     setApplyField('');
     setStatus({ state: 'loading', text: 'Applying network and stream settings…' });
-    const { json, refusal: refused } = await send('POST', '/api/setup/camera', {
+    const { result: json, refusal: refused } = await deviceSend('POST', '/api/setup/camera', {
       name: camera,
       new: view.isNew && !added,
       rtsp: url,
@@ -348,7 +335,7 @@ export const CameraWizard = ({
     const camera = view.others.some((other) => other.name.toLowerCase() === t.name) ? name : t.name;
     setName(camera);
     if (t.gimbal !== '') {
-      void send('PUT', '/api/gimbal/config', { vendor: t.gimbal, cameraAddr: t.gimbalAddr }).then(({ refusal: refused }) =>
+      void deviceSend('PUT', '/api/gimbal/config', { vendor: t.gimbal, cameraAddr: t.gimbalAddr }).then(({ refusal: refused }) =>
         refused === null ? undefined : notice.show(`Gimbal control was not switched to this camera — ${refused.message}`, null),
       );
     }
@@ -376,17 +363,10 @@ export const CameraWizard = ({
     if (cameraName === '') return notice.show('Name the camera first.', null);
     if (file === null) return notice.show('Choose a video file.', null);
     setUploading(true);
-    const form = new FormData();
-    form.append('file', file);
-    const response = await fetch(deviceUrl(`/api/streams/${encodeURIComponent(cameraName)}/file`), {
-      method: 'PUT',
-      headers: { Accept: 'application/json' },
-      body: form,
-    }).catch(() => null);
+    const { refusal, result } = await deviceUpload('PUT', `/api/streams/${encodeURIComponent(cameraName)}/file`, [{ name: 'file', file }]);
     setUploading(false);
-    if (response === null) return notice.show('Upload failed — check the file size and try again.', null);
-    const json: unknown = await response.json().catch(() => null);
-    if (!response.ok) return notice.show(errorOf(json, 'Upload failed.'), null);
+    if (refusal === NO_ANSWER) return notice.show('Upload failed — check the file size and try again.', null);
+    if (refusal !== null) return notice.show(errorOf(result, 'Upload failed.'), null);
     notice.show('Video source added.', null);
     onDone(cameraName);
   };

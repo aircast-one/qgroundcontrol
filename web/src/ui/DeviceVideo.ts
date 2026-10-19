@@ -1,6 +1,6 @@
 import { isJson, jsonObjects, optBoolean, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { type DeviceBadge, parseBadge } from '@/ui/DeviceKit';
-import { type DeviceRefusal, NO_ANSWER, deviceUrl, refusalOf } from '@/ui/DeviceView';
+import { type DevicePart, type DeviceRefusal, deviceUpload } from '@/ui/DeviceView';
 
 export type RadioSettings = { readonly status: DeviceBadge; readonly channel: string; readonly region: string; readonly txPower: string; readonly details: string };
 
@@ -58,18 +58,12 @@ export const modelPath = (name: string): string => `/api/detect/models/${encodeU
 
 export type ModelUpload = { readonly hef: File; readonly labels: File | null; readonly about: string; readonly use: boolean };
 
-export const modelFields = (upload: ModelUpload): readonly (readonly [string, string | File])[] => [
-  ['hef', upload.hef],
-  ...(upload.labels !== null ? [['labels', upload.labels] as const] : []),
-  ...(upload.about.trim() !== '' ? [['about', upload.about.trim()] as const] : []),
-  ...(upload.use ? [['use', '1'] as const] : []),
+export const modelFields = (upload: ModelUpload): readonly DevicePart[] => [
+  { name: 'hef', file: upload.hef },
+  ...(upload.labels !== null ? [{ name: 'labels', file: upload.labels }] : []),
+  ...(upload.about.trim() !== '' ? [{ name: 'about', value: upload.about.trim() }] : []),
+  ...(upload.use ? [{ name: 'use', value: '1' }] : []),
 ];
-
-const modelForm = (upload: ModelUpload): FormData =>
-  modelFields(upload).reduce((form, [name, value]) => {
-    form.append(name, value);
-    return form;
-  }, new FormData());
 
 export type UploadOutcome = { readonly refusal: DeviceRefusal | null; readonly message: string };
 
@@ -81,8 +75,6 @@ export const uploadMessage = (switched: boolean, use: boolean): UploadOutcome =>
       : { refusal: null, message: 'Model uploaded — use it from the list when you want it.' };
 
 export const uploadModel = async (upload: ModelUpload): Promise<UploadOutcome> => {
-  const response = await fetch(deviceUrl('/api/detect/models'), { method: 'POST', headers: { Accept: 'application/json' }, body: modelForm(upload) }).catch(() => null);
-  if (response === null) return { refusal: NO_ANSWER, message: '' };
-  const body: unknown = await response.json().catch(() => null);
-  return response.ok ? uploadMessage(isJson(body) && optBoolean(body, 'switched'), upload.use) : { refusal: refusalOf(response.status, body), message: '' };
+  const { refusal, result } = await deviceUpload('POST', '/api/detect/models', modelFields(upload));
+  return refusal === null ? uploadMessage(isJson(result) && optBoolean(result, 'switched'), upload.use) : { refusal, message: '' };
 };

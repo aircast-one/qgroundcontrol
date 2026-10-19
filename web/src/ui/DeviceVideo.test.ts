@@ -30,12 +30,12 @@ describe('DeviceVideoTest', () => {
   it('an upload sends the model and only the extras that were given', () => {
     const hef = new File(['x'], 'm.hef');
     const labels = new File(['a\nb'], 'm.labels');
-    expect(modelFields({ hef, labels: null, about: '  ', use: false })).toEqual([['hef', hef]]);
+    expect(modelFields({ hef, labels: null, about: '  ', use: false })).toEqual([{ name: 'hef', file: hef }]);
     expect(modelFields({ hef, labels, about: ' Aerial ', use: true })).toEqual([
-      ['hef', hef],
-      ['labels', labels],
-      ['about', 'Aerial'],
-      ['use', '1'],
+      { name: 'hef', file: hef },
+      { name: 'labels', file: labels },
+      { name: 'about', value: 'Aerial' },
+      { name: 'use', value: '1' },
     ]);
   });
 

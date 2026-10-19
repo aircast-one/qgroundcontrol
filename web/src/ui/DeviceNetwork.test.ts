@@ -134,9 +134,9 @@ describe('DeviceNetworkTest', () => {
     expect(joinOutcome(join, { message: 'SSID is too long', field: 'ssid' })).toMatchObject({ instructions: false, status: '✗ SSID is too long' });
     expect(reopenLabel('http://harness.local/fly/#device=%2Fnetwork')).toBe('harness.local/fly/#device=%2Fnetwork');
     const here = { pathname: '/fly/', hash: '#device=%2Fnetwork' };
-    expect(reopenLink('harness.local', '', here)).toBe('http://harness.local/fly/#device=%2Fnetwork');
-    expect(reopenLink('harness.local', 'https://racer.ts.net', here)).toBe('http://harness.local');
-    expect(reopenLink('', '', here)).toBe('');
+    expect(reopenLink('harness.local', true, here)).toBe('http://harness.local/fly/#device=%2Fnetwork');
+    expect(reopenLink('harness.local', false, here)).toBe('http://harness.local');
+    expect(reopenLink('', true, here)).toBe('');
     expect(reopenLabel('')).toBe("the device's address on your network");
   });
 

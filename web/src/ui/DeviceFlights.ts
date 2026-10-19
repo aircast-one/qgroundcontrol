@@ -1,7 +1,7 @@
 import { type Json, isJson, jsonObjects, jsonStrings, optBoolean, optDouble, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { type DeviceBadge, parseBadge } from '@/ui/DeviceKit';
 import { readStored, writeStored } from '@/ui/DeviceConnect';
-import { deviceUrl } from '@/ui/DeviceView';
+import { deviceRead, deviceSend } from '@/ui/DeviceView';
 import { DeviceLevel } from '@/ui/DeviceLevel';
 
 export type FlightLine = { readonly index: number; readonly clock: string; readonly text: string; readonly level: number; readonly alert: boolean; readonly repeats: string; readonly heldBack: boolean };
@@ -256,16 +256,8 @@ export const renderExpiry = (job: RenderJob): string =>
   job.expiresAt === '' ? '' : `Link works until ${new Date(job.expiresAt).toLocaleDateString(undefined, { day: 'numeric', month: 'short' })}`;
 
 export const startRender = async (share: SortieShare): Promise<RenderJob> => {
-  const response = await fetch(deviceUrl('/api/renders'), {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
-    body: JSON.stringify({ camera: share.camera, from: share.from, to: share.to }),
-  }).catch(() => null);
-  const body: unknown = await response?.json().catch(() => null);
-  return response?.ok ? parseRenderJob(body) : failedRender(optText(isJson(body) ? body : null, 'error') || 'Could not send the video.');
+  const { refusal, result } = await deviceSend('POST', '/api/renders', { camera: share.camera, from: share.from, to: share.to });
+  return refusal === null ? parseRenderJob(result) : failedRender(refusal.message);
 };
 
-export const readRender = async (id: string, signal: AbortSignal): Promise<RenderJob> => {
-  const response = await fetch(deviceUrl(`/api/renders/${encodeURIComponent(id)}`), { headers: { Accept: 'application/json' }, signal }).catch(() => null);
-  return response?.ok ? parseRenderJob(await response.json().catch(() => null)) : failedRender('Lost track of the render.');
-};
+export const readRender = async (id: string): Promise<RenderJob> => (await deviceRead(`/api/renders/${encodeURIComponent(id)}`, parseRenderJob)) ?? failedRender('Lost track of the render.');

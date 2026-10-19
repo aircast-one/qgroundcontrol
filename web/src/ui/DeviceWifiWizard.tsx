@@ -5,7 +5,8 @@ import { MaterialIcon } from '@/res/Icon';
 import { aircast, md } from '@/theme/Colors';
 import { DeviceDisclosure, SecretField } from '@/ui/DeviceKit';
 import { useValue } from '@/kotlin/State';
-import { type DeviceRefusal, NO_ANSWER, deviceCall, deviceOrigin, deviceRead } from '@/ui/DeviceView';
+import { deviceServed } from '@/app/DeviceLink';
+import { type DeviceRefusal, NO_ANSWER, deviceCall, deviceRead } from '@/ui/DeviceView';
 
 export type WifiNetwork = { readonly ssid: string; readonly signal: number; readonly secured: boolean; readonly active: boolean };
 
@@ -37,7 +38,7 @@ export const joinOutcome = (join: WifiJoin, refusal: DeviceRefusal | null): Wifi
       ? { ...join, status: "Lost contact with the device — it may be switching networks. If it doesn't come back, reconnect using the steps below." }
       : { ...join, instructions: false, status: `✗ ${refusal.message || "Couldn't join that network."}` };
 
-export const reopenLink = (host: string, origin: string, at: AppPlace): string => (host === '' ? '' : origin === '' ? `http://${host}${at.pathname}${at.hash}` : `http://${host}`);
+export const reopenLink = (host: string, served: boolean, at: AppPlace): string => (host === '' ? '' : served ? `http://${host}${at.pathname}${at.hash}` : `http://${host}`);
 
 export const reopenLabel = (url: string): string => (url === '' ? "the device's address on your network" : url.replace(/^https?:\/\//, ''));
 
@@ -162,7 +163,7 @@ const Hint = ({ text }: { text: string }) => (
 );
 
 const WifiJoining = ({ join, reopen, onBack }: { join: WifiJoin; reopen: WifiReopen; onBack: () => void }) => {
-  const link = reopenLink(reopen.host, useValue(deviceOrigin), window.location);
+  const link = reopenLink(reopen.host, useValue(deviceServed), window.location);
   return (
     <div className="flex flex-col gap-3 px-list py-2" role="group" aria-label="Joining a Wi-Fi network">
       <div role="status">

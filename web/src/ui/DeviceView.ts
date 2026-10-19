@@ -1,89 +1,90 @@
-import { useEffect, useState } from 'react';
-import { isJson, optText, parseJson } from '@/bridge/Json';
-import { mutableStateOf } from '@/kotlin/State';
+import { useMemo } from 'react';
+import { type Json, opt, optBoolean, optJSONObject, optText, parseJson } from '@/bridge/Json';
+import { Qgc } from '@/bridge/Qgc';
+import { useQgcPath } from '@/bridge/QgcState';
+import { call } from '@/core/client';
+import { stageFile, unstage } from '@/core/files';
 
-export const deviceOrigin = mutableStateOf('');
+export const DEVICE_CONNECT = 'device.connect';
+export const DEVICE_DISCONNECT = 'device.disconnect';
+const DEVICE_CALL = 'device.call';
+const DEVICE_READ = 'device.read';
+const DEVICE_UPLOAD = 'device.upload';
+const DEVICE_QR = 'device.qr';
+const DEVICE_HOME = 'aircraft';
+const UPLOAD_STAGE = '/cache/device-upload';
 
-export const resolveDeviceUrl = (origin: string, path: string): string => (origin === '' ? path : new URL(path, origin).href);
+export const deviceViewPath = (page: string): string => `view.device(${page})`;
 
-export const deviceUrl = (path: string): string => resolveDeviceUrl(deviceOrigin.value, path);
+export type DeviceReading = { readonly origin: string; readonly host: string; readonly answered: boolean; readonly view: Json | null };
 
-export const deviceViewEvents = (page: string): string => deviceUrl(`/api/views/${page}/events`);
+export const deviceReading = (json: Json | null): DeviceReading => ({
+  origin: optText(json, 'origin'),
+  host: optText(json, 'host'),
+  answered: optBoolean(json, 'answered'),
+  view: optJSONObject(json, 'view'),
+});
 
-export const eventData = (block: string): string | null => {
-  const data = block
-    .split('\n')
-    .filter((line) => line.startsWith('data:'))
-    .map((line) => line.slice(5).replace(/^ /, ''));
-  return data.length === 0 || data.join('') === '' ? null : data.join('\n');
-};
-
-export const splitEvents = (buffer: string): { readonly events: readonly string[]; readonly rest: string } => {
-  const blocks = buffer.replace(/\r\n/g, '\n').split('\n\n');
-  return { events: blocks.slice(0, -1).flatMap((block) => eventData(block) ?? []), rest: blocks.at(-1) ?? '' };
-};
-
-const RECONNECT_MS = 2000;
-
-const readEvents = async (url: string, signal: AbortSignal, onEvent: (data: string) => void): Promise<void> => {
-  const response = await fetch(url, { headers: { Accept: 'text/event-stream' }, cache: 'no-store', signal });
-  if (!response.ok || response.body === null) return;
-  const reader = response.body.pipeThrough(new TextDecoderStream()).getReader();
-  let buffer = '';
-  while (!signal.aborted) {
-    const { done, value } = await reader.read();
-    if (done) return;
-    const { events, rest } = splitEvents(buffer + value);
-    buffer = rest;
-    const latest = events.at(-1);
-    if (latest !== undefined) onEvent(latest);
-  }
-};
-
-const follow = (url: string, signal: AbortSignal, onEvent: (data: string) => void): void =>
-  void readEvents(url, signal, onEvent)
-    .catch(() => undefined)
-    .then(() => {
-      if (!signal.aborted) setTimeout(() => follow(url, signal, onEvent), RECONNECT_MS);
-    });
-
-export const followDeviceView = <T,>(page: string, parse: (json: unknown) => T | null, onView: (view: T) => void): (() => void) => {
-  const stop = new AbortController();
-  follow(deviceViewEvents(page), stop.signal, (data) => {
-    const view = parse(parseJson(data));
-    if (view !== null) onView(view);
-  });
-  return () => stop.abort();
+export const useDeviceReading = (page: string = DEVICE_HOME): DeviceReading => {
+  const json = useQgcPath(deviceViewPath(page));
+  return useMemo(() => deviceReading(json), [json]);
 };
 
 export const useDeviceView = <T,>(page: string, parse: (json: unknown) => T | null): T | null => {
-  const [view, setView] = useState<T | null>(null);
-  useEffect(() => followDeviceView(page, parse, setView), [page]);
-  return view;
+  const { view } = useDeviceReading(page);
+  return useMemo(() => (view === null ? null : parse(view)), [view]);
 };
+
+export const resolveDeviceUrl = (origin: string, path: string): string => (origin === '' ? path : new URL(path, origin).href);
+
+export const deviceUrl = (path: string): string => resolveDeviceUrl(deviceReading(Qgc.path(deviceViewPath(DEVICE_HOME))).origin, path);
 
 export type DeviceRefusal = { readonly message: string; readonly field: string };
 
-export type DeviceMethod = 'POST' | 'PUT' | 'PATCH' | 'DELETE';
-
-export const refusalOf = (status: number, body: unknown): DeviceRefusal => {
-  const json = isJson(body) ? body : null;
-  return { message: optText(json, 'error') || `The device refused (${status}).`, field: optText(json, 'field') };
-};
+export type DeviceMethod = 'POST' | 'PUT' | 'DELETE';
 
 export const NO_ANSWER: DeviceRefusal = { message: 'The device did not answer.', field: '' };
 
-export const deviceCall = async (method: DeviceMethod, path: string, body?: unknown): Promise<DeviceRefusal | null> => {
-  const response = await fetch(deviceUrl(path), {
-    method,
-    headers: body === undefined ? { Accept: 'application/json' } : { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: body === undefined ? undefined : JSON.stringify(body),
-  }).catch(() => null);
-  if (response === null) return NO_ANSWER;
-  return response.ok ? null : refusalOf(response.status, await response.json().catch(() => null));
+export const deviceRefusal = (answer: Json | null): DeviceRefusal | null => {
+  if (answer === null) return NO_ANSWER;
+  if (optBoolean(answer, 'ok')) return null;
+  const message = optText(answer, 'reason') || NO_ANSWER.message;
+  const field = optText(answer, 'field');
+  return message === NO_ANSWER.message && field === '' ? NO_ANSWER : { message, field };
 };
 
+export type DeviceAnswer = { readonly refusal: DeviceRefusal | null; readonly result: unknown };
+
+export const deviceAnswer = (answer: Json | null): DeviceAnswer => ({ refusal: deviceRefusal(answer), result: opt(answer, 'result') });
+
+export const deviceInvoke = async (path: string, ...args: unknown[]): Promise<Json | null> => {
+  const reply = await call<unknown>('deviceInvoke', path, JSON.stringify(args));
+  return typeof reply === 'string' ? parseJson(reply) : null;
+};
+
+export const deviceSend = async (method: DeviceMethod, path: string, body?: unknown): Promise<DeviceAnswer> => deviceAnswer(await deviceInvoke(DEVICE_CALL, method, path, body ?? null));
+
+export const deviceCall = async (method: DeviceMethod, path: string, body?: unknown): Promise<DeviceRefusal | null> => (await deviceSend(method, path, body)).refusal;
+
 export const deviceRead = async <T,>(path: string, parse: (json: unknown) => T | null): Promise<T | null> => {
-  const response = await fetch(deviceUrl(path), { headers: { Accept: 'application/json' }, cache: 'no-store' }).catch(() => null);
-  return response?.ok ? parse(await response.json().catch(() => null)) : null;
+  const answer = await deviceInvoke(DEVICE_READ, path);
+  return optBoolean(answer, 'ok') ? parse(opt(answer, 'result')) : null;
+};
+
+export type DevicePart = { readonly name: string; readonly file?: File; readonly value?: string };
+
+const stagedAt = (part: DevicePart, file: File): string => `${UPLOAD_STAGE}/${part.name}/${file.name}`;
+
+export const deviceUpload = async (method: DeviceMethod, path: string, parts: readonly DevicePart[]): Promise<DeviceAnswer> => {
+  const files = parts.flatMap((part) => (part.file === undefined ? [] : [[stagedAt(part, part.file), part.file] as const]));
+  await Promise.all(files.map(([at, file]) => stageFile(at, file).catch(() => false)));
+  const answer = await deviceInvoke(DEVICE_UPLOAD, method, path, parts.map((part) => (part.file === undefined ? { name: part.name, value: part.value ?? '' } : { name: part.name, file: stagedAt(part, part.file) })));
+  await Promise.all(files.map(([at]) => unstage(at).catch(() => false)));
+  return deviceAnswer(answer);
+};
+
+export const deviceQr = async (text: string): Promise<string | null> => {
+  const answer = await deviceInvoke(DEVICE_QR, text);
+  const png = optText(answer, 'result');
+  return optBoolean(answer, 'ok') && png !== '' ? `data:image/png;base64,${png}` : null;
 };

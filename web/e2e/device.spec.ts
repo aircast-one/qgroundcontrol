@@ -1,5 +1,5 @@
 import { expect, test as base, type Page } from '@playwright/test';
-import { openMenu } from './fixtures';
+import { openMenu, test as hosted } from './fixtures';
 
 const DEVICE = 'http://localhost:18780';
 const SBS1 = 30003;
@@ -156,4 +156,25 @@ test('a device page offers its synthetic view on every visit, even after it was 
   await device.getByRole('button', { name: 'Close settings' }).click();
   await device.reload();
   await offered();
+});
+
+hosted('an app served elsewhere connects to a device by its address and remembers it until let go', async ({ app }) => {
+  await openMenu(app, 'Settings');
+  await app.getByRole('tablist').getByRole('tab', { name: 'Device' }).click();
+  const address = app.getByRole('textbox', { name: 'Device address' });
+  const connect = app.getByRole('button', { name: 'Connect', exact: true });
+  await address.fill('localhost:1');
+  await connect.click();
+  await expect(app.getByText(/^localhost:1 did not answer as an Aircast device/)).toBeVisible({ timeout: 30_000 });
+  await address.fill(new URL(DEVICE).host);
+  await connect.click();
+  await expect(app.getByText('Before you fly')).toBeVisible({ timeout: 30_000 });
+  await expect(app.getByText(new URL(DEVICE).host, { exact: true })).toBeVisible();
+  await app.reload();
+  await app.getByRole('button', { name: 'e2e-device: No camera yet' }).click();
+  await expect(app.getByText('Before you fly')).toBeVisible();
+  await Promise.all([app.waitForEvent('load'), app.getByRole('button', { name: 'Disconnect' }).click()]);
+  await openMenu(app, 'Settings');
+  await app.getByRole('tablist').getByRole('tab', { name: 'Device' }).click();
+  await expect(app.getByRole('textbox', { name: 'Device address' })).toBeVisible();
 });

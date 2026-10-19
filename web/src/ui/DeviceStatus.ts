@@ -3,7 +3,7 @@ import { type DeviceBadge, type DeviceChartView, parseBadge, parseChart } from '
 import { mutableStateOf } from '@/kotlin/State';
 import type { DrawableName } from '@/res/drawables';
 import { DeviceLevel } from '@/ui/DeviceLevel';
-import { followDeviceView } from '@/ui/DeviceView';
+import { useDeviceView } from '@/ui/DeviceView';
 
 export type DeviceAction = { readonly label: string; readonly href: string };
 export type DeviceCheck = { readonly label: string; readonly value: string; readonly level: number; readonly href: string; readonly action: string };
@@ -108,14 +108,6 @@ export const devicePageIcon = (icon: string): DrawableName => PAGE_ICONS.get(ico
 
 export const deviceNeedsAttention = (status: DeviceStatus | null): boolean => status !== null && status.level !== DeviceLevel.Ready;
 
-export const deviceStatus = mutableStateOf<DeviceStatus | null>(null);
-
-export const deviceAnswered = mutableStateOf(false);
-
 export const deviceRequested = mutableStateOf<string | null>(null);
 
-export const followDeviceStatus = (): (() => void) =>
-  followDeviceView('aircraft', parseDeviceStatus, (status) => {
-    deviceStatus.value = status;
-    deviceAnswered.value = true;
-  });
+export const useDeviceStatus = (): DeviceStatus | null => useDeviceView('aircraft', parseDeviceStatus);

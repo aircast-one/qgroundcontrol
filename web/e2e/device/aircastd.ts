@@ -29,7 +29,7 @@ const body = (request: IncomingMessage): Promise<Buffer> =>
   });
 
 const json = (response: ServerResponse, status: number, value: unknown) => {
-  response.writeHead(status, { 'Content-Type': 'application/json' });
+  response.writeHead(status, { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' });
   response.end(JSON.stringify(value));
 };
 
@@ -150,7 +150,7 @@ const http = createServer((request, response) => {
   }
   if (url.pathname === '/api/views/aircraft') return json(response, 200, AIRCRAFT);
   if (url.pathname === '/api/views/aircraft/events') {
-    response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache' });
+    response.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Access-Control-Allow-Origin': '*' });
     return void response.write(`data: ${JSON.stringify(AIRCRAFT)}\n\n`);
   }
   if (url.pathname === '/stats') return json(response, 200, { ...seen, store });

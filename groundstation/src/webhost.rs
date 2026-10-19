@@ -63,6 +63,15 @@ pub fn invoke(path: &str, args: &str) -> String {
     answer
 }
 
+#[wasm_bindgen(js_name = deviceInvoke)]
+pub async fn device_invoke(path: String, args: String) -> JsValue {
+    JsValue::from(
+        crate::deviceviews::run_later(&path, &args)
+            .await
+            .to_string(),
+    )
+}
+
 #[wasm_bindgen]
 pub fn guided(action: &str) -> String {
     taken(unsafe { crate::abi::qgc_core_guided(c(action).as_ptr()) })

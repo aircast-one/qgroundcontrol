@@ -4,7 +4,7 @@ import { mutableStateOf, useValue } from '@/kotlin/State';
 import { FilterChip, OutlinedButton, Text, TextButton } from '@/m3';
 import { MaterialIcon } from '@/res/Icon';
 import { aircast, md } from '@/theme/Colors';
-import { ConfirmDialog, DeviceBadgeText, DeviceNotice, DeviceText, LinkButton, levelColor, qrSource, useCopy } from '@/ui/DeviceKit';
+import { ConfirmDialog, DeviceBadgeText, DeviceNotice, DeviceText, LinkButton, QrImage, levelColor, useCopy } from '@/ui/DeviceKit';
 import {
   type FlightEntry,
   type FlightLine,
@@ -198,7 +198,7 @@ const SortieShareRow = ({ share }: { share: SortieShare }) => {
   useEffect(() => {
     if (!renderRunning(job) || job.id === '') return undefined;
     const abort = new AbortController();
-    const timer = setTimeout(() => void readRender(job.id, abort.signal).then((next) => (abort.signal.aborted ? undefined : setJob(next))), RENDER_POLL_MS);
+    const timer = setTimeout(() => void readRender(job.id).then((next) => (abort.signal.aborted ? undefined : setJob(next))), RENDER_POLL_MS);
     return () => {
       clearTimeout(timer);
       abort.abort();
@@ -230,7 +230,7 @@ const SortieShareRow = ({ share }: { share: SortieShare }) => {
       ) : null}
       {job.state === 'done' ? (
         <div role="group" aria-label="Share version" className="flex basis-full flex-wrap items-center gap-3">
-          <img src={qrSource(job.url)} alt="QR code for the share link" className="size-24 rounded-shape-xs bg-white p-1" />
+          <QrImage text={job.url} alt="QR code for the share link" className="size-24 rounded-shape-xs bg-white p-1" />
           <div className="flex flex-col items-start gap-1">
             <a href={job.url} target="_blank" rel="noopener noreferrer" className="text-label-large text-primary underline">
               Open the share version

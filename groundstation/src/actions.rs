@@ -453,7 +453,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         PHOTO | RECORD | MODE | STOP_PHOTO => camera(backend, path, args),
         UNDO | REDO => step(backend, path),
         crate::firstrun::MARK_SHOWN => crate::firstrun::mark_shown(backend),
-        crate::device::PAIR => crate::device::pair_command(args),
+        crate::device::PAIR => crate::deviceviews::pair(args),
         _ if crate::deeplinksetup::owns(path) => crate::deeplinksetup::run(path, args, |host| {
             crate::deviceviews::adopt_host(&host);
             crate::deeplinksetup::setup_from_device(&host);
