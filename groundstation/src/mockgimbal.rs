@@ -7,7 +7,8 @@ const STATUS_DEFAULT_INTERVAL_US: i64 = 1_000_000;
 const MANAGER_INFORMATION: u32 = 280;
 const MANAGER_STATUS: u32 = 281;
 const DEVICE_ATTITUDE_STATUS: u32 = 285;
-const PITCH_LIMIT: f32 = 45.0;
+const PITCH_RANGE: (f32, f32) = (-90.0, 30.0);
+const ROLL_LIMIT: f32 = 45.0;
 const YAW_LIMIT: f32 = 180.0;
 
 #[derive(Debug, Clone, PartialEq)]
@@ -110,7 +111,7 @@ impl Gimbal {
                     true => reply(MavResult::MAV_RESULT_DENIED),
                     false => {
                         if !pitch.is_nan() {
-                            self.pitch = pitch.clamp(-PITCH_LIMIT, PITCH_LIMIT);
+                            self.pitch = pitch.clamp(PITCH_RANGE.0, PITCH_RANGE.1);
                         }
                         if !yaw.is_nan() {
                             self.yaw = yaw.clamp(-YAW_LIMIT, YAW_LIMIT);
@@ -184,10 +185,10 @@ fn information() -> Out {
                 | GimbalManagerCapFlags::GIMBAL_MANAGER_CAP_FLAGS_HAS_RETRACT
                 | GimbalManagerCapFlags::GIMBAL_MANAGER_CAP_FLAGS_HAS_NEUTRAL,
             gimbal_device_id: GIMBAL,
-            roll_min: (-PITCH_LIMIT).to_radians(),
-            roll_max: PITCH_LIMIT.to_radians(),
-            pitch_min: (-PITCH_LIMIT).to_radians(),
-            pitch_max: PITCH_LIMIT.to_radians(),
+            roll_min: (-ROLL_LIMIT).to_radians(),
+            roll_max: ROLL_LIMIT.to_radians(),
+            pitch_min: PITCH_RANGE.0.to_radians(),
+            pitch_max: PITCH_RANGE.1.to_radians(),
             yaw_min: (-YAW_LIMIT).to_radians(),
             yaw_max: YAW_LIMIT.to_radians(),
             ..Default::default()
@@ -236,7 +237,7 @@ mod tests {
         gimbal.once_a_second(5000);
         assert_eq!(
             (gimbal.pitch, gimbal.yaw),
-            (-45.0, 30.0),
+            (-90.0, 30.0),
             "manual control holds the commanded angles"
         );
         assert!(
@@ -249,6 +250,43 @@ mod tests {
                 )
                 .is_none(),
             "other intervals are the autopilot's"
+        );
+    }
+
+    #[test]
+    fn the_gimbal_looks_straight_down_and_tells_the_app_it_can() {
+        let mut gimbal = Gimbal::default();
+        let aim = |gimbal: &mut Gimbal, pitch: f32| {
+            gimbal.command(
+                GCS,
+                1,
+                MavCmd::MAV_CMD_DO_GIMBAL_MANAGER_PITCHYAW,
+                [pitch, 20.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            )
+        };
+        gimbal
+            .command(
+                GCS,
+                1,
+                MavCmd::MAV_CMD_SET_MESSAGE_INTERVAL,
+                [285.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            )
+            .unwrap();
+        aim(&mut gimbal, -90.0).unwrap();
+        let reported = gimbal.once_a_second(60_000);
+        assert_eq!(gimbal.pitch, -90.0, "straight down holds");
+        assert!(
+            matches!(&reported[..], [(GIMBAL, MavMessage::GIMBAL_DEVICE_ATTITUDE_STATUS(a))]
+                if (crate::gimbal::euler_degrees(a.q).1 + 90.0).abs() < 0.1),
+            "the attitude it reports is straight down"
+        );
+        aim(&mut gimbal, 60.0).unwrap();
+        assert_eq!(gimbal.pitch, 30.0, "it tilts up no further than 30");
+        assert!(
+            matches!(information(), (AUTOPILOT, MavMessage::GIMBAL_MANAGER_INFORMATION(i))
+                if (i.pitch_min.to_degrees() + 90.0).abs() < 0.01
+                    && (i.pitch_max.to_degrees() - 30.0).abs() < 0.01),
+            "the app is told the same range"
         );
     }
 }

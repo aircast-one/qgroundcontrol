@@ -195,7 +195,7 @@ test('a tap on the live picture turns the gimbal along the ray through that poin
   const before = (await aim()) as { pitch: number; yaw: number };
   await app.mouse.click(box.x + box.width * 0.75, box.y + box.height * 0.9);
   const [yawOff, tilt] = aimThroughLens(0.5, -0.8, 80, 80, before.pitch);
-  const expected = { pitch: Math.max(-45, Math.min(45, tilt)), yaw: before.yaw + yawOff };
+  const expected = { pitch: Math.max(-90, Math.min(30, tilt)), yaw: before.yaw + yawOff };
   await expect.poll(async () => {
     const now = await aim();
     return now === null ? null : Math.max(Math.abs(now.pitch - expected.pitch), Math.abs(now.yaw - expected.yaw));
