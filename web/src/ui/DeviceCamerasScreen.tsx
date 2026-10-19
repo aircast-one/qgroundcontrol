@@ -9,7 +9,7 @@ import { PreviewPlaceholder, WhepPreview } from '@/ui/DeviceKitCamera';
 import type { DeviceScreenProps } from '@/ui/DeviceScreens';
 import { devicePageIcon } from '@/ui/DeviceStatus';
 import { DeviceLevel } from '@/ui/DeviceLevel';
-import { EndpointRows } from '@/ui/DeviceTelemetryScreen';
+import { TargetRow } from '@/ui/DeviceConnectScreen';
 import { deviceUrl, useDeviceView } from '@/ui/DeviceView';
 import { FootNote, SetupRow, SetupState } from '@/ui/SetupRow';
 import { LocalChangeNotice } from '@/ui/ValueRow';
@@ -134,9 +134,9 @@ const CameraDetail = ({ camera, scan, onOpen }: { camera: CameraView; scan: bool
         <CameraWizard view={camera.wizard} scan={wizard.scan} onCancel={() => setWizard(null)} onDone={() => setWizard(null)} />
       </DeviceSection>
     );
-  const Reconfigure = camera.live ? FilledTonalButton : Button;
+  const reconfigure = () => setWizard({ scan: !camera.live });
   return (
-    <DeviceSection title={camera.name} badge={camera.status}>
+    <DeviceSection title={camera.name} badge={camera.status} action={camera.live ? <TextButton onClick={reconfigure}>Edit</TextButton> : null}>
       {camera.shared ? (
         <>
           <div className="px-list">
@@ -185,27 +185,25 @@ const CameraDetail = ({ camera, scan, onOpen }: { camera: CameraView; scan: bool
             </div>
           </>
         ) : null}
-        {camera.fix === null ? (
+        {!camera.live && camera.fix === null ? (
           <div className="px-list py-2">
-            <Reconfigure onClick={() => setWizard({ scan: !camera.live })}>Reconfigure</Reconfigure>
+            <Button onClick={reconfigure}>Reconfigure</Button>
           </div>
         ) : null}
       </div>
       {camera.links.length > 0 ? (
         camera.live ? (
-          <section aria-label="Every way to watch this camera">
+          <section aria-label="Watch in another app">
             <div className="px-list pt-3">
               <Text typography="labelLarge" color={md('onSurfaceVariant')}>
-                Every way to watch this camera
+                Watch in another app
               </Text>
             </div>
-            <EndpointRows endpoints={camera.links} />
-            <MoreWays onOpen={onOpen} />
+            <CameraLinks links={camera.links} />
           </section>
         ) : (
           <DeviceDisclosure title="Links — they will play once it's back">
-            <EndpointRows endpoints={camera.links} />
-            <MoreWays onOpen={onOpen} />
+            <CameraLinks links={camera.links} />
           </DeviceDisclosure>
         )
       ) : null}
@@ -226,13 +224,12 @@ const CameraDetail = ({ camera, scan, onOpen }: { camera: CameraView; scan: bool
   );
 };
 
-const MoreWays = ({ onOpen }: { onOpen: (href: string) => void }) => (
-  <div className="flex flex-wrap items-center gap-1 px-list py-2">
-    <Text typography="bodySmall" color={md('onSurfaceVariant')}>
-      Didn't play, or the ground station is another machine?
-    </Text>
-    <TextButton onClick={() => onOpen('/connect')}>Ground station links →</TextButton>
-  </div>
+const CameraLinks = ({ links }: { links: CameraView['links'] }) => (
+  <>
+    {links.map((link) => (
+      <TargetRow key={link.url} target={link} />
+    ))}
+  </>
 );
 
 const CopyButton = ({ copy }: { copy: CameraCopy }) => {

@@ -38,7 +38,7 @@ const aircraft = {
     { title: 'Flight log', href: '/flights', icon: 'clock' },
     { title: 'Device', href: '/settings/device', icon: 'settings' },
     { title: 'Engineering', href: '/settings/engineering', icon: 'server' },
-    { title: 'Watching & recording', href: '/settings/camera?camera=cam', icon: 'sliders-horizontal' },
+    { title: 'Sharing & recording', href: '/settings/camera?camera=cam', icon: 'sliders-horizontal' },
     { title: 'Set up this device step by step', href: '/setup', icon: 'scan-search' },
   ],
 };

@@ -25,7 +25,7 @@ export const DEVICE_SCREENS: ReadonlyMap<string, DeviceScreenEntry> = new Map<st
   ['/settings/recordings', { title: 'Recordings', screen: RecordingsScreen }],
   ['/network', { title: 'Connection', screen: NetworkScreen }],
   ['/streaming', { title: 'Cameras', screen: CamerasScreen }],
-  ['/settings/camera', { title: 'Watching & recording', screen: CameraSetupScreen }],
+  ['/settings/camera', { title: 'Sharing & recording', screen: CameraSetupScreen }],
   ['/setup', { title: 'Device setup', screen: SetupScreen }],
 ]);
 

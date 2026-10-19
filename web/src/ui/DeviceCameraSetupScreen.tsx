@@ -33,14 +33,6 @@ export const CameraSetupScreen = ({ href, query, onOpen, onClose }: DeviceScreen
   return <CameraSetup key={camera.name} camera={camera} opened={openedSection(href)} onOpen={onOpen} onClose={onClose} />;
 };
 
-const Sub = ({ text }: { text: string }) => (
-  <div className="px-list pt-3 pb-1">
-    <Text typography="labelLarge" color={md('onSurfaceVariant')}>
-      {text}
-    </Text>
-  </div>
-);
-
 const Row = ({ children }: { children: ReactNode }) => <div className="flex flex-wrap items-center gap-2 px-list py-2">{children}</div>;
 
 const CameraSetup = ({ camera, opened, onOpen, onClose }: { camera: CameraView; opened: string; onOpen: Open; onClose: () => void }) => {
@@ -206,7 +198,6 @@ const WatchBody = ({ camera, onOpen }: { camera: CameraView; onOpen: Open }) => 
   const watch = camera.setup.watch;
   return (
     <>
-      <Sub text="From anywhere" />
       {watch.cloud ? (
         <>
           <EndpointRows endpoints={watch.cloudLinks} />
@@ -252,14 +243,6 @@ const WatchBody = ({ camera, onOpen }: { camera: CameraView; onOpen: Open }) => 
           onOpen={onOpen}
         />
       )}
-      <Sub text="On this network" />
-      <EndpointRows endpoints={watch.links} />
-      <Row>
-        <Text typography="bodySmall" color={md('onSurfaceVariant')}>
-          Didn't play, or the ground station is another machine?
-        </Text>
-        <TextButton onClick={() => onOpen('/connect')}>Ground station links →</TextButton>
-      </Row>
     </>
   );
 };

@@ -3,6 +3,7 @@ import { type DeviceBadge, type DeviceChartView, type DeviceOption, parseBadge, 
 import { type CameraWizardView, parseCameraWizard } from '@/ui/DeviceCameraWizard';
 import { type DevicePage } from '@/ui/DeviceStatus';
 import { DeviceLevel } from '@/ui/DeviceLevel';
+import { type ConnectTarget, parseTargets } from '@/ui/DeviceConnect';
 import { type DeviceEndpoint, parseEndpointList } from '@/ui/DeviceTelemetry';
 
 export type CameraCopy = { readonly label: string; readonly text: string; readonly qr: boolean };
@@ -49,7 +50,6 @@ export type CameraSetup = {
     readonly signIn: boolean;
     readonly cloudLinks: readonly DeviceEndpoint[];
     readonly cloudCopy: string;
-    readonly links: readonly DeviceEndpoint[];
   };
   readonly radio: {
     readonly part: SetupPart;
@@ -92,7 +92,7 @@ export type CameraView = {
   readonly bitrate: DeviceChartView | null;
   readonly diagnosis: DeviceBadge | null;
   readonly fix: CameraFix | null;
-  readonly links: readonly DeviceEndpoint[];
+  readonly links: readonly ConnectTarget[];
   readonly chips: readonly CameraChip[];
   readonly recording: boolean;
   readonly wizard: CameraWizardView;
@@ -149,7 +149,6 @@ const parseSetup = (json: Json | null): CameraSetup => {
       signIn: optBoolean(watch, 'signIn'),
       cloudLinks: parseEndpointList(watch, 'cloudLinks'),
       cloudCopy: optText(watch, 'cloudCopy'),
-      links: parseEndpointList(watch, 'links'),
     },
     radio: {
       part: parsePart(optJSONObject(radio, 'part')),
@@ -223,7 +222,7 @@ const parseCamera = (json: Json): CameraView | null => {
         bitrate: parseChart(json.bitrate),
         diagnosis: isJson(json.diagnosis) ? parseBadge(json.diagnosis) : null,
         fix: isJson(json.fix) ? { label: optText(json.fix, 'label'), scan: optBoolean(json.fix, 'scan') } : null,
-        links: parseEndpointList(json, 'links'),
+        links: parseTargets(json, 'links'),
         chips: jsonObjects(optJSONArray(json, 'chips')).map((it) => ({
           key: optText(it, 'key'),
           label: optText(it, 'label'),

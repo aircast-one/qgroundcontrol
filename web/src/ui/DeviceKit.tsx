@@ -44,13 +44,14 @@ export const levelColor = (level: number): string =>
 
 const levelIcon = (level: number): string => (level === DeviceLevel.Ready ? 'check_circle' : level === DeviceLevel.Neutral ? 'info' : 'warning');
 
-export const DeviceSection = ({ title, badge, children }: { title: string; badge?: DeviceBadge | null; children: ReactNode }) => (
+export const DeviceSection = ({ title, badge, action, children }: { title: string; badge?: DeviceBadge | null; action?: ReactNode; children: ReactNode }) => (
   <section aria-label={title}>
     <div className="flex items-center gap-3 px-list pt-5 pb-2">
       <Text typography="labelLarge" color={md('onSurfaceVariant')} className="min-w-0 flex-1">
         {title}
       </Text>
       {badge ? <DeviceBadgeText badge={badge} /> : null}
+      {action}
     </div>
     {children}
   </section>
@@ -123,7 +124,7 @@ export const CopyRow = ({ label, text, hint = '', qr = false, level = DeviceLeve
           {text}
         </Text>
         {hint !== '' ? (
-          <Text typography="bodySmall" color={md('onSurfaceVariant')}>
+          <Text typography="bodySmall" color={md('onSurfaceVariant')} className="whitespace-pre-line">
             {hint}
           </Text>
         ) : null}

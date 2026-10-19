@@ -36,7 +36,7 @@ export type ConnectView = {
 
 const parseLink = (json: Json | null): PageLink | null => (json === null ? null : { label: optText(json, 'label'), href: optText(json, 'href') });
 
-const parseTargets = (json: Json | null, key: string): readonly ConnectTarget[] =>
+export const parseTargets = (json: Json | null, key: string): readonly ConnectTarget[] =>
   jsonObjects(optJSONArray(json, key)).map((it) => ({
     proto: optText(it, 'proto'),
     label: optText(it, 'label'),

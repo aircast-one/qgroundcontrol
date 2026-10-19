@@ -47,7 +47,7 @@ const ReachLine = ({ reach }: { reach: Reach }) => (
   </div>
 );
 
-const TargetRow = ({ target }: { target: ConnectTarget }) => {
+export const TargetRow = ({ target }: { target: ConnectTarget }) => {
   const reach = useReach(target.reach);
   const label = target.tag === '' ? target.label : `${target.label} · ${target.tag}`;
   return (

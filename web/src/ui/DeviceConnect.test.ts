@@ -16,8 +16,8 @@ const served = {
       notice: 'The link below is still the right one.',
       fix: { label: 'Fix cam2 →', href: '/streaming?camera=cam2' },
       targets: [
-        { proto: 'RTSP', label: 'RTSP · QGroundControl', url: 'rtsp://falcon:8554/cam2', hint: 'Paste it.', qr: true, down: true, alternatives: [{ label: 'Ethernet port (eth0)', url: 'rtsp://192.168.1.5:8554/cam2' }] },
-        { proto: 'WHEP', label: 'WHEP · Browser', url: 'http://falcon:8889/cam2/whep', reach: 'http://falcon:8889/cam2/whep', qr: true, alternatives: [] },
+        { proto: 'RTSP', label: 'QGroundControl · RTSP', url: 'rtsp://falcon:8554/cam2', hint: 'Paste it.', qr: true, down: true, alternatives: [{ label: 'Ethernet port (eth0)', url: 'rtsp://192.168.1.5:8554/cam2' }] },
+        { proto: 'WHEP', label: 'Browser · WHEP', url: 'http://falcon:8889/cam2/whep', reach: 'http://falcon:8889/cam2/whep', qr: true, alternatives: [] },
       ],
     },
   ],

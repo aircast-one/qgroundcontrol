@@ -25,7 +25,15 @@ const camera = (name: string, live: boolean) => ({
   bitrate: { label: 'Bitrate', values: [1, 2], max: 2, value: '16 bps', level: 3 },
   diagnosis: live ? undefined : { level: 2, text: 'Camera not responding' },
   fix: live ? undefined : { label: 'Scan for it', scan: true },
-  links: [{ proto: 'RTSP', label: 'QGroundControl', url: `rtsp://dev:8554/${name}` }],
+  links: [
+    {
+      proto: 'RTSP',
+      label: 'QGroundControl · RTSP',
+      url: `rtsp://dev.local:8554/${name}`,
+      qr: true,
+      alternatives: [{ label: 'Ethernet port (eth0)', url: `rtsp://192.168.1.5:8554/${name}` }],
+    },
+  ],
   chips: [
     {
       key: 'cloud',
@@ -38,7 +46,7 @@ const camera = (name: string, live: boolean) => ({
   setup: {
     watch: {
       part: {
-        title: 'Where to watch',
+        title: 'Watch from anywhere',
         summary: 'Ground station, browser, QR codes.',
         badge: { level: 1, text: 'cloud sign-in' },
         open: true,
@@ -79,7 +87,7 @@ const camera = (name: string, live: boolean) => ({
     record: { part: { title: 'Recording', summary: 's' }, on: true, full: true },
   },
   topic: {
-    title: 'Watching & recording',
+    title: 'Sharing & recording',
     href: `/settings/camera?camera=${name}`,
     icon: 'sliders-horizontal',
     summary: 'where it goes',
@@ -106,6 +114,7 @@ describe('DeviceCamerasTest', () => {
     expect(live?.preview).toBe('/whep/cam2');
     expect(live?.bitrate?.max).toBe(2);
     expect(live?.diagnosis).toBeNull();
+    expect(live?.links[0]?.alternatives).toEqual([{ label: 'Ethernet port (eth0)', url: 'rtsp://192.168.1.5:8554/cam2' }]);
     expect(dark?.fix).toEqual({ label: 'Scan for it', scan: true });
     expect(dark?.diagnosis?.level).toBe(DeviceLevel.Blocked);
     expect(live?.setup.watch.part.badge).toEqual({ level: DeviceLevel.Warn, text: 'cloud sign-in' });
