@@ -36,15 +36,13 @@ test('the enforce checklist switch unlocks only with the checklist on', async ({
 
 test('settings search finds a setting by name', async ({ app }) => {
   await app.getByRole('button', { name: 'Settings', exact: true }).click();
-  await app.getByRole('button', { name: 'Search settings' }).click();
-  await app.getByRole('textbox').first().fill('mute');
+  await app.getByPlaceholder('Search settings').fill('mute');
   await expect(app.getByText('Mute all audio output')).toBeVisible();
 });
 
 test('turning on the ADS-B server connection keeps the core running', async ({ app }) => {
   await app.getByRole('button', { name: 'Settings', exact: true }).click();
-  await app.getByRole('button', { name: 'Search settings' }).click();
-  await app.getByRole('textbox').first().fill('ADS-B');
+  await app.getByPlaceholder('Search settings').fill('ADS-B');
   const adsb = app.getByRole('switch', { name: 'Show nearby aircraft (ADS-B)' });
   await adsb.click();
   await expect(adsb).toBeChecked();

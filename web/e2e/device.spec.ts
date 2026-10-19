@@ -40,8 +40,7 @@ const typeSetting = async (page: Page, label: string, value: string) => {
 
 test('a device page reads an ADS-B server on its network through the device', async ({ device }) => {
   await device.getByRole('button', { name: 'Settings', exact: true }).click();
-  await device.getByRole('button', { name: 'Search settings' }).click();
-  await device.getByRole('textbox').first().fill('ADS-B');
+  await device.getByPlaceholder('Search settings').fill('ADS-B');
   await device.getByRole('switch', { name: 'Show nearby aircraft (ADS-B)' }).click();
   await expect.poll(async () => (await stats()).relays.some((query) => query.includes(`tcp=127.0.0.1%3A${SBS1}`)), { timeout: 30_000 }).toBe(true);
   await expect(device.getByText(/ADSB Server Error/)).toHaveCount(0);

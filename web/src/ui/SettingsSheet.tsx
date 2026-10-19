@@ -2,14 +2,16 @@ import { type ReactNode, type RefObject, useContext, useEffect, useLayoutEffect,
 import { useBackHandler, useKeyedState, useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
 import { type MutableState, mutableStateOf, useValue } from '@/kotlin/State';
 import { HorizontalDivider, IconButton, ScrollableTabRow, SnackbarHost, Tab, Text, TextButton, useSnackbarHostState } from '@/m3';
+import { type DrawableName } from '@/res/drawables';
 import { Drawable } from '@/res/Icon';
 import { AircastSpace, aircast, md, withAlpha } from '@/theme/Colors';
 import { LocalAppNavigation } from '@/ui/AppNavigation';
 import { osdShadow } from '@/ui/Osd';
 import { LocalPageHeading, type PageHeading, SearchPill } from '@/ui/SetupRow';
+import { useDesktopLayout } from '@/ui/DesktopLayout';
 import { SetupScreen } from '@/ui/SetupScreen';
 import { type ChangeNotice, LocalChangeNotice } from '@/ui/ValueRow';
-import { AIRCRAFT_SETUP, SettingsGroup, SettingsGroupEntries, SettingsScreen, SettingsSearch, pageLook, pageTitle, useRememberSettingsPages } from '@/ui/SettingsScreen';
+import { AIRCRAFT_SETUP, DETAIL_PANE_MAX_WIDTH, SettingsGroup, SettingsGroupEntries, SettingsScreen, SettingsSearch, pageLook, pageTitle, useRememberSettingsPages } from '@/ui/SettingsScreen';
 
 export const sheetDrilled = (openPage: string | null, setupOpen: boolean): boolean => openPage !== null || setupOpen;
 
@@ -172,6 +174,7 @@ export const SettingsSheet = ({ requested, onClose }: { requested: string | null
     setPage(null);
     setSetupOpen(false);
     setReturnQuery(null);
+    setQuery(null);
   };
   const drilled = sheetDrilled(openPage, setupOpen);
   const tabsShown = query === null && !drilled;
@@ -182,17 +185,91 @@ export const SettingsSheet = ({ requested, onClose }: { requested: string | null
     pager.animateScrollToPage(entry.ordinal);
   };
   const contentKey = `${group.name}|${page ?? ''}|${query !== null}|${setupOpen}`;
+  const desktop = useDesktopLayout();
+  const content =
+    query === null && !setupOpen ? (
+      <SettingsTabsPager pager={pager} groups={groups} group={group} swipeable={openPage === null && !desktop} onSettled={pickTab} className="min-h-0 flex-1">
+        {(shown, everyPage) => {
+          const current = shown === group;
+          return (
+            <SettingsScreen
+              key={current && page !== null ? `page:${page}` : 'none'}
+              group={shown}
+              everyPage={everyPage}
+              open={current ? openPage : null}
+              onOpen={setOpenPage}
+              onClose={closePage}
+              heading={pageHeading}
+              className="h-full w-full"
+              onOpenSetup={openSetup}
+            />
+          );
+        }}
+      </SettingsTabsPager>
+    ) : query !== null ? (
+      <SettingsSearch
+        key={contentKey}
+        query={query}
+        className="min-h-0 flex-1"
+        onOpenSetup={openSetup}
+        onOpen={(title) => {
+          setGroup(pageLook(title).group);
+          setPage(title);
+          setReturnQuery(pageLook(title).inline ? null : query);
+          setQuery(null);
+          setSetupOpen(false);
+        }}
+      />
+    ) : (
+      <SetupBranch key={contentKey} heading={pageHeading} enabled={setupFromTab && query === null} onBack={setupBack} />
+    );
+  const snackbarHost = (
+    <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center pb-[max(16px,env(safe-area-inset-bottom))]">
+      <SnackbarHost hostState={snackbars} />
+    </div>
+  );
+
+  if (desktop)
+    return (
+      <div className="fixed inset-0 bg-surface text-on-surface" style={{ zIndex: SETTINGS_SHEET_LAYER }}>
+        <LocalChangeNotice.Provider value={notice}>
+          <div className="relative flex h-full w-full">
+            <nav aria-label="Settings" className="flex w-[300px] shrink-0 flex-col gap-section overflow-y-auto bg-surface-container-low px-menu py-page">
+              <Text typography="titleLarge" className="px-menu pt-2">
+                Settings
+              </Text>
+              <SearchPill value={query ?? ''} onValueChange={(value) => setQuery(value === '' ? null : value)} placeholder="Search settings" />
+              <SideTabs groups={groups} selected={query === null && !setupOpen ? group : null} onPick={pickTab} />
+            </nav>
+            <div className="relative flex min-w-0 flex-1 flex-col">
+              <div className={`mx-auto flex w-full items-center gap-2 pt-page pb-2 ${setupOpen ? 'px-page pr-16' : 'px-list'}`} style={setupOpen ? undefined : { maxWidth: DETAIL_PANE_MAX_WIDTH }}>
+                {drilledTitle !== null ? (
+                  <IconButton onClick={setupOpen ? setupBack : pageBack} label="Back" className="-ml-2">
+                    <Drawable name="ic_arrow_back" />
+                  </IconButton>
+                ) : null}
+                <Text typography="headlineSmall" maxLines={1} ellipsis className="min-w-0 flex-1">
+                  {drilledTitle ?? (query !== null ? 'Search results' : group.title)}
+                </Text>
+              </div>
+              <IconButton onClick={onClose} label="Close settings" className="absolute top-page right-page">
+                <Drawable name="ic_close" />
+              </IconButton>
+              {content}
+            </div>
+            {snackbarHost}
+          </div>
+        </LocalChangeNotice.Provider>
+      </div>
+    );
 
   return (
     <div
-      className="fixed inset-0 bg-(--settings-backdrop) text-on-surface desktop:bg-scrim/50"
+      className="fixed inset-0 bg-(--settings-backdrop) text-on-surface"
       style={{ zIndex: SETTINGS_SHEET_LAYER, '--settings-backdrop': withAlpha(md('surface'), landscape ? SETTINGS_PANEL_ALPHA : 1) } as CSSProperties}
-      onClick={(event) => {
-        if (event.target === event.currentTarget) onClose();
-      }}
     >
       <LocalChangeNotice.Provider value={notice}>
-        <div className={`relative h-full w-full desktop:absolute desktop:top-1/2 desktop:left-1/2 desktop:h-[min(760px,calc(100vh-48px))] ${setupOpen ? 'desktop:w-[min(1100px,calc(100vw-48px))]' : 'desktop:w-[min(760px,calc(100vw-48px))]'} desktop:-translate-x-1/2 desktop:-translate-y-1/2 desktop:overflow-hidden desktop:rounded-shape-xl desktop:bg-surface-container-low desktop:shadow-2xl`}>
+        <div className="relative h-full w-full">
           <div className="flex h-full w-full flex-col pt-[env(safe-area-inset-top)] pr-[env(safe-area-inset-right)] pb-[env(safe-area-inset-bottom)] pl-[env(safe-area-inset-left)]">
             <div className="@container">
               <div
@@ -245,46 +322,9 @@ export const SettingsSheet = ({ requested, onClose }: { requested: string | null
               ) : null}
               {tabsShown ? <HorizontalDivider /> : null}
             </div>
-            {query === null && !setupOpen ? (
-              <SettingsTabsPager pager={pager} groups={groups} group={group} swipeable={openPage === null} onSettled={pickTab} className="min-h-0 flex-1">
-                {(shown, everyPage) => {
-                  const current = shown === group;
-                  return (
-                    <SettingsScreen
-                      key={current && page !== null ? `page:${page}` : 'none'}
-                      group={shown}
-                      everyPage={everyPage}
-                      open={current ? openPage : null}
-                      onOpen={setOpenPage}
-                      onClose={closePage}
-                      heading={pageHeading}
-                      className="h-full w-full"
-                      onOpenSetup={openSetup}
-                    />
-                  );
-                }}
-              </SettingsTabsPager>
-            ) : query !== null ? (
-              <SettingsSearch
-                key={contentKey}
-                query={query}
-                className="min-h-0 flex-1"
-                onOpenSetup={openSetup}
-                onOpen={(title) => {
-                  setGroup(pageLook(title).group);
-                  setPage(title);
-                  setReturnQuery(pageLook(title).inline ? null : query);
-                  setQuery(null);
-                  setSetupOpen(false);
-                }}
-              />
-            ) : (
-              <SetupBranch key={contentKey} heading={pageHeading} enabled={setupFromTab && query === null} onBack={setupBack} />
-            )}
+            {content}
           </div>
-          <div className="pointer-events-none absolute inset-x-0 bottom-0 flex justify-center pb-[max(16px,env(safe-area-inset-bottom))]">
-            <SnackbarHost hostState={snackbars} />
-          </div>
+          {snackbarHost}
         </div>
       </LocalChangeNotice.Provider>
     </div>
@@ -365,6 +405,33 @@ const SheetTabs = ({ groups, selected, edgePadding, onPick }: { groups: readonly
     ))}
     <span className="shrink-0" style={{ width: edgePadding }} />
   </ScrollableTabRow>
+);
+
+const GROUP_ICONS: Record<SettingsGroup['name'], DrawableName> = {
+  General: 'ic_tune',
+  Safety: 'ic_shield',
+  Control: 'ic_gamepad',
+  Camera: 'ic_videocam',
+  Transmission: 'ic_wifi',
+  Device: 'ic_developer_board',
+};
+
+const SideTabs = ({ groups, selected, onPick }: { groups: readonly SettingsGroup[]; selected: SettingsGroup | null; onPick: (group: SettingsGroup) => void }) => (
+  <div role="tablist" aria-orientation="vertical" className="flex flex-col gap-1">
+    {groups.map((entry) => (
+      <button
+        key={entry.name}
+        type="button"
+        role="tab"
+        aria-selected={entry === selected}
+        onClick={() => onPick(entry)}
+        className={`flex h-14 shrink-0 items-center gap-3 rounded-full px-list text-label-large ${entry === selected ? 'bg-secondary-container text-on-secondary-container' : 'text-on-surface-variant hover:bg-[color-mix(in_srgb,currentColor_8%,transparent)]'}`}
+      >
+        <Drawable name={GROUP_ICONS[entry.name]} />
+        {entry.title}
+      </button>
+    ))}
+  </div>
 );
 
 const SETTINGS_SHEET_LAYER = 10;

@@ -6,8 +6,7 @@ const HOME = { lat: 47.3977, lon: 8.5456 };
 
 const showReplayBar = async (page: Page) => {
   await page.getByRole('button', { name: 'Settings', exact: true }).click();
-  await page.getByRole('button', { name: 'Search settings' }).click();
-  await page.getByRole('textbox').first().fill('replay');
+  await page.getByPlaceholder('Search settings').fill('replay');
   const bar = page.getByRole('switch', { name: /replay/i });
   await bar.click();
   await expect(bar).toBeChecked();
