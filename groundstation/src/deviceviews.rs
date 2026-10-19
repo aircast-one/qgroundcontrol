@@ -1,4 +1,4 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::Duration;
 
@@ -20,8 +20,6 @@ pub const REACH: &str = "device.reach";
 const DEVICE_ACTIONS: &[&str] = &[CONNECT, DISCONNECT, CALL, READ, UPLOAD, QR, REACH];
 
 const ORIGIN_KEY: &str = "AircastDevice/origin";
-const IDLE_MS: u64 = 30_000;
-const REMIND_MS: u64 = 10_000;
 const RECONNECT: Duration = Duration::from_secs(2);
 const PROBE_TIMEOUT: Duration = Duration::from_secs(5);
 const CALL_TIMEOUT: Duration = Duration::from_secs(20);
@@ -37,7 +35,6 @@ const ACCEPT_JSON: (&str, &str) = ("Accept", "application/json");
 #[derive(Default)]
 struct Page {
     view: Value,
-    read_ms: u64,
     following: bool,
 }
 
@@ -46,16 +43,16 @@ struct Feed {
     origin: Option<String>,
     generation: u64,
     pages: BTreeMap<String, Page>,
+    watched: BTreeSet<String>,
     dirty: bool,
-    reminded_ms: u64,
 }
 
 static FEED: Mutex<Feed> = Mutex::new(Feed {
     origin: None,
     generation: 0,
     pages: BTreeMap::new(),
+    watched: BTreeSet::new(),
     dirty: false,
-    reminded_ms: 0,
 });
 
 fn lock() -> MutexGuard<'static, Feed> {
@@ -77,12 +74,8 @@ impl Feed {
         self.dirty = true;
     }
 
-    fn wanted(&self, generation: u64, page: &str, now_ms: u64) -> bool {
-        self.generation == generation
-            && self
-                .pages
-                .get(page)
-                .is_some_and(|it| still_read(it.read_ms, now_ms))
+    fn wanted(&self, generation: u64, page: &str) -> bool {
+        self.generation == generation && self.watched.contains(page)
     }
 
     fn receive(&mut self, generation: u64, page: &str, view: Value) {
@@ -107,21 +100,45 @@ impl Feed {
     }
 }
 
-fn still_read(read_ms: u64, now_ms: u64) -> bool {
-    now_ms.saturating_sub(read_ms) < IDLE_MS
+pub fn take_changed() -> bool {
+    std::mem::take(&mut lock().dirty)
 }
 
-pub fn take_changed() -> bool {
-    let now = crate::hub::now_ms();
-    let mut feed = lock();
-    let remind = feed.pages.values().any(|page| page.following)
-        && now.saturating_sub(feed.reminded_ms) >= REMIND_MS;
-    let changed = feed.dirty || remind;
-    feed.dirty = false;
-    if changed {
-        feed.reminded_ms = now;
+fn watched_page(path: &str) -> Option<String> {
+    match crate::view::split(path) {
+        ("view.device", args) => args.into_iter().next().filter(|page| page_name(page)),
+        _ => None,
     }
-    changed
+}
+
+pub fn follow_watched(paths: &BTreeSet<String>) {
+    let mut feed = lock();
+    feed.watched = paths.iter().filter_map(|path| watched_page(path)).collect();
+    let origin = feed.origin();
+    let generation = feed.generation;
+    let starts: Vec<String> = feed
+        .watched
+        .iter()
+        .filter(|page| {
+            !origin.is_empty() && !feed.pages.get(*page).is_some_and(|held| held.following)
+        })
+        .cloned()
+        .collect();
+    starts
+        .iter()
+        .for_each(|page| feed.pages.entry(page.clone()).or_default().following = true);
+    drop(feed);
+    starts.into_iter().for_each(|page| {
+        let followed = page.clone();
+        let origin = origin.clone();
+        if crate::background::spawn("groundstation-device-view", move || {
+            follow(origin, generation, followed)
+        })
+        .is_err()
+        {
+            lock().stopped(generation, &page);
+        }
+    });
 }
 
 pub fn owns(path: &str) -> bool {
@@ -204,31 +221,18 @@ fn page_view(page: &str) -> Value {
     if !page_name(page) {
         return json!({ "kind": "refused", "reason": "view.device takes the name of an Aircast device page, as view.device(aircraft)" });
     }
-    let now = crate::hub::now_ms();
-    let mut feed = lock();
+    let feed = lock();
     let origin = feed.origin();
-    let generation = feed.generation;
-    let held = feed.pages.entry(page.to_string()).or_default();
-    held.read_ms = now;
-    let start = !origin.is_empty() && !held.following;
-    held.following = held.following || start;
-    let shown = json!({ "kind": "object", "class": "DeviceView", "page": page, "origin": origin, "host": host_of(&origin), "answered": !held.view.is_null(), "view": held.view });
-    drop(feed);
-    let followed = page.to_string();
-    if start
-        && crate::background::spawn("groundstation-device-view", move || {
-            follow(origin, generation, followed)
-        })
-        .is_err()
-    {
-        lock().stopped(generation, page);
-    }
-    shown
+    let view = feed
+        .pages
+        .get(page)
+        .map_or(Value::Null, |held| held.view.clone());
+    json!({ "kind": "object", "class": "DeviceView", "page": page, "origin": origin, "host": host_of(&origin), "answered": !view.is_null(), "view": view })
 }
 
 fn take_views(lines: impl Iterator<Item = String>, generation: u64, page: &str) -> usize {
     lines
-        .take_while(|_| lock().wanted(generation, page, crate::hub::now_ms()))
+        .take_while(|_| lock().wanted(generation, page))
         .filter_map(|line| event_view(&line))
         .map(|view| lock().receive(generation, page, view))
         .count()
@@ -243,7 +247,7 @@ fn follow(origin: String, generation: u64, page: String) {
         .build()
         .into();
     let url = events_url(&origin, &page);
-    let wanted = || lock().wanted(generation, &page, crate::hub::now_ms());
+    let wanted = || lock().wanted(generation, &page);
     while wanted() {
         let heard = agent
             .get(&url)
@@ -269,7 +273,7 @@ fn follow(origin: String, generation: u64, page: String) {
 fn follow(origin: String, generation: u64, page: String) {
     wasm_bindgen_futures::spawn_local(async move {
         let url = events_url(&origin, &page);
-        let wanted = || lock().wanted(generation, &page, crate::hub::now_ms());
+        let wanted = || lock().wanted(generation, &page);
         while wanted() {
             let _ = crate::http::stream_lines(&url, MAX_VIEW_BYTES, |line| {
                 if let Some(view) = event_view(line) {
@@ -669,9 +673,35 @@ mod tests {
     }
 
     #[test]
-    fn a_page_nobody_reads_stops_being_followed() {
-        assert!(still_read(1_000, 1_000 + IDLE_MS - 1));
-        assert!(!still_read(1_000, 1_000 + IDLE_MS));
+    fn a_page_is_followed_only_while_a_head_watches_it() {
+        let _one = ONE_AT_A_TIME.lock().unwrap_or_else(PoisonError::into_inner);
+        let generation = {
+            let mut feed = lock();
+            feed.retarget("");
+            feed.generation
+        };
+        let watched = |paths: &[&str]| {
+            paths
+                .iter()
+                .map(|path| path.to_string())
+                .collect::<BTreeSet<String>>()
+        };
+        follow_watched(&watched(&[
+            "view.device(telemetry)",
+            "view.device(../x)",
+            "view.battery",
+        ]));
+        assert!(lock().wanted(generation, "telemetry"));
+        assert!(!lock().wanted(generation, "../x") && !lock().wanted(generation, "battery"));
+        assert!(
+            !lock().pages.contains_key("telemetry"),
+            "with no device connected nothing is followed"
+        );
+        follow_watched(&watched(&[]));
+        assert!(
+            !lock().wanted(generation, "telemetry"),
+            "a page nobody watches stops being followed"
+        );
     }
 
     #[test]
@@ -790,11 +820,11 @@ mod tests {
             feed.pages.insert(
                 "telemetry".into(),
                 Page {
-                    read_ms: crate::hub::now_ms(),
                     following: true,
                     ..Page::default()
                 },
             );
+            feed.watched.insert("telemetry".into());
             feed.generation
         };
         take_changed();

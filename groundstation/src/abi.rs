@@ -485,6 +485,7 @@ pub(crate) fn pump_once() {
                 .iter()
                 .for_each(|(path, json)| announce(path, json));
         }
+        crate::deviceviews::follow_watched(&CORE.watched());
         if crate::deviceviews::take_changed() {
             CORE.on_event(crate::deviceviews::VIEWS_CHANGED, "null")
                 .iter()

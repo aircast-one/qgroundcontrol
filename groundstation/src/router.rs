@@ -146,6 +146,10 @@ impl<B: Backend> Core<B> {
         }
     }
 
+    pub fn watched(&self) -> BTreeSet<String> {
+        self.watching.lock().unwrap().asked()
+    }
+
     pub fn watch(&self, client: &str, paths: &[String]) {
         let (asked, fresh): (BTreeSet<String>, Vec<String>) = {
             let mut watching = self.watching.lock().unwrap();
