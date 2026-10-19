@@ -16,7 +16,7 @@ const test = base.extend<{ device: Page }>({
     const errors: string[] = [];
     page.on('pageerror', (error) => errors.push(error.message));
     await page.addLocatorHandler(page.getByRole('dialog').filter({ hasText: 'did not respond to request for parameters' }), (dialog) => dialog.getByRole('button', { name: 'OK' }).click());
-    await page.goto(`${DEVICE}/fly/`);
+    await page.goto(`${DEVICE}/`);
     await expect(page.getByRole('region', { name: 'Map' })).toBeVisible({ timeout: 60_000 });
     await expect(page.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
     await use(page);
@@ -204,15 +204,15 @@ hosted('an app served elsewhere moves to the https address the device names, so 
 });
 
 base('a page the device served over http moves to its https address and flies from there', async ({ page }) => {
-  await page.goto(`http://${UPGRADING}/fly/?from=e2e`);
-  await page.waitForURL(`https://${SECURE}/fly/?from=e2e`, { timeout: 60_000 });
+  await page.goto(`http://${UPGRADING}/?from=e2e`);
+  await page.waitForURL(`https://${SECURE}/?from=e2e`, { timeout: 60_000 });
   await expect(page.getByRole('region', { name: 'Map' })).toBeVisible({ timeout: 60_000 });
   await expect(page.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
 });
 
 base('a page the device served stays on http when its https name never answers, as it must once the cloud is gone', async ({ page }) => {
   const started = Date.now();
-  await page.goto('http://localhost:18787/fly/');
+  await page.goto('http://localhost:18787/');
   await expect(page.getByRole('region', { name: 'Map' })).toBeVisible({ timeout: 60_000 });
   await expect(page.getByRole('button', { name: /Change flight mode/ }).first()).toBeVisible({ timeout: 60_000 });
   expect(new URL(page.url()).origin).toBe('http://localhost:18787');

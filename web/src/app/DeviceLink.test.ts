@@ -2,15 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { deviceBase, deviceCameras, deviceLinkName, deviceSocket, firstAnswered, secureOrigins, securePage, typedOrigin } from './DeviceLink';
 
 describe('the link to the device serving this page', () => {
-  it('reaches telemetry beside the page, on the address the browser already used', () => {
-    expect(deviceSocket('http://falcon.local/fly/')).toBe('ws://falcon.local/fly/mavlink');
-    expect(deviceSocket('http://192.168.1.100/fly/index.html?x=1#y')).toBe('ws://192.168.1.100/fly/mavlink');
-    expect(deviceSocket('https://falcon.tail.ts.net/fly/')).toBe('wss://falcon.tail.ts.net/fly/mavlink');
+  it('reaches telemetry on the device that served the page, on the address the browser already used', () => {
+    expect(deviceSocket('http://falcon.local/')).toBe('ws://falcon.local/fly/mavlink');
+    expect(deviceSocket('http://192.168.1.100/index.html?x=1#y')).toBe('ws://192.168.1.100/fly/mavlink');
+    expect(deviceSocket('https://falcon-gb3v.d.aircast.one/')).toBe('wss://falcon-gb3v.d.aircast.one/fly/mavlink');
   });
 
-  it('pairs the core with the folder the device served the page from', () => {
-    expect(deviceBase('http://falcon.local/fly/')).toBe('http://falcon.local/fly/');
-    expect(deviceBase('http://192.168.1.100/fly/index.html?x=1#y')).toBe('http://192.168.1.100/fly/');
+  it('pairs the core with the endpoints under /fly/ on the device that served the page', () => {
+    expect(deviceBase('http://falcon.local/')).toBe('http://falcon.local/fly/');
+    expect(deviceBase('http://192.168.1.100/index.html?x=1#y')).toBe('http://192.168.1.100/fly/');
   });
 
   it('is named after the device, or the address when the device has no name', () => {

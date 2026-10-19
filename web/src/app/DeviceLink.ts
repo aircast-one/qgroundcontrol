@@ -3,7 +3,7 @@ import { isJson, optText } from '@/bridge/Json';
 import { Qgc, refusal } from '@/bridge/Qgc';
 import { mutableStateOf } from '@/kotlin/State';
 import { REACH_TIMEOUT_MS } from '@/ui/DeviceConnect';
-import { DEVICE_CONNECT, DEVICE_DISCONNECT, deviceInvoke, deviceRead, deviceReading, deviceViewPath, resolveDeviceUrl } from '@/ui/DeviceView';
+import { DEVICE_CONNECT, DEVICE_DISCONNECT, deviceInvoke, deviceRead, deviceReading, deviceViewPath } from '@/ui/DeviceView';
 
 type Device = { name?: string; cameras?: { name: string; url: string }[] };
 
@@ -12,12 +12,12 @@ const DEVICE_JSON = '/fly/device.json';
 const DEVICE_SUBJECT = 'The device';
 
 export const deviceSocket = (page: string): string => {
-  const url = new URL('mavlink', page);
+  const url = new URL('/fly/mavlink', page);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
   return url.href;
 };
 
-export const deviceBase = (page: string): string => new URL('.', page).href;
+export const deviceBase = (page: string): string => new URL('/fly/', page).href;
 
 export const securePage = (page: string, secureOrigin: string): string | null => {
   const at = new URL(page);
@@ -31,7 +31,7 @@ export const deviceCameras = (device: Device): [string, string][] => (device.cam
 export const deviceServed = mutableStateOf(false);
 
 const readServed = async (): Promise<Device | null> => {
-  const response = await fetch('device.json', { cache: 'no-store' }).catch(() => null);
+  const response = await fetch(DEVICE_JSON, { cache: 'no-store' }).catch(() => null);
   return response?.ok && response.headers.get('content-type')?.startsWith('application/json') ? ((await response.json()) as Device) : null;
 };
 
@@ -92,7 +92,7 @@ const linkDevice = async (): Promise<void> => {
   const host = new URL(origin).hostname;
   await Promise.all([
     CameraCommands.adoptDevice(host, deviceCameras(device)),
-    LinkCommands.createWebSocket(deviceLinkName(device, host), deviceSocket(resolveDeviceUrl(origin, '/fly/'))),
+    LinkCommands.createWebSocket(deviceLinkName(device, host), deviceSocket(origin)),
   ]);
 };
 

@@ -135,7 +135,7 @@ const AIRCRAFT = {
 };
 
 const app = (request: IncomingMessage, response: ServerResponse) => {
-  const path = request.url?.startsWith('/fly/') && !request.url.startsWith('/fly/src/') ? '/' : (request.url ?? '/');
+  const path = request.url ?? '/';
   const upstream = forward({ host: 'localhost', port: VITE, path, method: request.method, headers: { ...request.headers, host: `localhost:${VITE}` } }, (answer) => {
     response.writeHead(answer.statusCode ?? 502, answer.headers);
     answer.pipe(response);
