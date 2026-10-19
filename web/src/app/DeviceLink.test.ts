@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { deviceBase, deviceCameras, deviceLinkName, deviceSocket, securePage, typedOrigin } from './DeviceLink';
+import { deviceBase, deviceCameras, deviceLinkName, deviceSocket, secureOrigins, securePage, typedOrigin } from './DeviceLink';
 
 describe('the link to the device serving this page', () => {
   it('reaches telemetry beside the page, on the address the browser already used', () => {
@@ -35,6 +35,14 @@ describe('the link to the device serving this page', () => {
     expect(typedOrigin('https://192-168-1-100.a.d.aircast.one')).toBeNull();
     expect(typedOrigin('')).toBeNull();
     expect(typedOrigin('not a host at all/')).toBeNull();
+  });
+
+  it('tries the name the device goes by first, then the name for the address it was reached on', () => {
+    expect(secureOrigins({ origin: 'https://falcon-k3q7.d.aircast.one', fallback: 'https://192-168-1-100.falcon-k3q7.d.aircast.one' })).toEqual(['https://falcon-k3q7.d.aircast.one', 'https://192-168-1-100.falcon-k3q7.d.aircast.one']);
+    expect(secureOrigins({ origin: 'https://100-64-0-5.falcon-k3q7.d.aircast.one' })).toEqual(['https://100-64-0-5.falcon-k3q7.d.aircast.one']);
+    expect(secureOrigins({ origin: '' })).toEqual([]);
+    expect(secureOrigins({ origin: 'http://192.168.1.100' })).toEqual([]);
+    expect(secureOrigins(null)).toEqual([]);
   });
 
   it('hands the core each camera as a name and the WHEP address the device gave', () => {

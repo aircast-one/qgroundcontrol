@@ -47,20 +47,29 @@ export const typedOrigin = (address: string): string | null => {
   }
 };
 
-const secureOriginAt = async (page: string): Promise<string> => {
-  const answer: unknown = await fetch(new URL('/api/tls', page), { cache: 'no-store', signal: AbortSignal.timeout(REACH_TIMEOUT_MS) })
-    .then((response) => (response.ok ? response.json() : null))
-    .catch(() => null);
-  const named = optText(isJson(answer) ? answer : null, 'origin');
-  return named.startsWith('https://') ? named : '';
+export const secureOrigins = (answer: unknown): string[] => {
+  const json = isJson(answer) ? answer : null;
+  return [optText(json, 'origin'), optText(json, 'fallback')].filter((origin) => origin.startsWith('https://'));
 };
+
+const secureOriginsAt = async (page: string): Promise<string[]> =>
+  secureOrigins(
+    await fetch(new URL('/api/tls', page), { cache: 'no-store', signal: AbortSignal.timeout(REACH_TIMEOUT_MS) })
+      .then((response) => (response.ok ? response.json() : null))
+      .catch(() => null),
+  );
+
+const firstConnected = (origins: readonly string[]): Promise<boolean> =>
+  origins.reduce<Promise<boolean>>(async (done, origin) => (await done) || refusal(await deviceInvoke(DEVICE_CONNECT, origin), DEVICE_SUBJECT) === null, Promise.resolve(false));
 
 const connectSecurelyFirst = async (address: string): Promise<string | null> => {
   const origin = typedOrigin(address);
-  const secure = origin === null ? '' : await secureOriginAt(origin);
-  if (secure !== '' && refusal(await deviceInvoke(DEVICE_CONNECT, secure), DEVICE_SUBJECT) === null) return null;
+  if (await firstConnected(origin === null ? [] : await secureOriginsAt(origin))) return null;
   return refusal(await deviceInvoke(DEVICE_CONNECT, address), DEVICE_SUBJECT);
 };
+
+const firstReachablePage = (pages: readonly string[]): Promise<string | null> =>
+  pages.reduce<Promise<string | null>>(async (found, page) => (await found) ?? ((await reachable(page)) ? page : null), Promise.resolve(null));
 
 const reachable = (page: string): Promise<boolean> =>
   fetch(new URL('/api/tls', page), { mode: 'no-cors', cache: 'no-store', signal: AbortSignal.timeout(REACH_TIMEOUT_MS) }).then(
@@ -70,8 +79,7 @@ const reachable = (page: string): Promise<boolean> =>
 
 const upgradeRemembered = async (): Promise<void> => {
   const { origin } = deviceReading(await Qgc.get(deviceViewPath('aircraft')));
-  const secure = origin.startsWith('http://') ? await secureOriginAt(origin) : '';
-  if (secure !== '') await deviceInvoke(DEVICE_CONNECT, secure);
+  await firstConnected(origin.startsWith('http://') ? await secureOriginsAt(origin) : []);
 };
 
 const linkDevice = async (): Promise<void> => {
@@ -92,8 +100,8 @@ export const DeviceLink = {
       await upgradeRemembered();
       return linkDevice();
     }
-    const secure = securePage(location.href, await secureOriginAt(location.href));
-    if (secure !== null && (await reachable(secure))) return location.replace(secure);
+    const secure = await firstReachablePage((await secureOriginsAt(location.href)).flatMap((origin) => securePage(location.href, origin) ?? []));
+    if (secure !== null) return location.replace(secure);
     deviceServed.value = true;
     await Promise.all([
       DeviceCommands.pair(deviceBase(location.href)),

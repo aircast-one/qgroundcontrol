@@ -18,6 +18,7 @@ export const TCP_VEHICLE_PORT = 18784;
 export const DEVICE_TLS_PORT = 18785;
 export const UPGRADING_PORT = 18786;
 const SECURE_ORIGIN = `https://localhost:${DEVICE_TLS_PORT}`;
+const UNANSWERED_NAME = 'https://localhost:1';
 const VITE = Number(process.env.E2E_PORT ?? 8800);
 const HOME = { lat: 47.3977, lon: 8.5456 };
 const TICK_MS = 250;
@@ -142,10 +143,10 @@ const app = (request: IncomingMessage, response: ServerResponse) => {
   request.pipe(upstream);
 };
 
-const device = (secureOrigin: string, secure: boolean) => (request: IncomingMessage, response: ServerResponse) => {
+const device = (named: { origin: string; fallback?: string }, secure: boolean) => (request: IncomingMessage, response: ServerResponse) => {
   const url = new URL(request.url ?? '/', `http://localhost:${DEVICE_PORT}`);
   if (secure) seen.secure = [...seen.secure, url.pathname];
-  if (url.pathname === '/api/tls') return json(response, 200, { origin: secureOrigin });
+  if (url.pathname === '/api/tls') return json(response, 200, named);
   if (url.pathname === '/fly/device.json') return json(response, 200, { name: 'e2e-device', cameras: [{ name: 'e2e', url: 'http://localhost:18889/e2e/whep' }] });
   const streamed = /^\/api\/streams\/(e2e|lens)\/detections\/stream$/.exec(url.pathname);
   if (streamed !== null) return detections(response, streamed[1]);
@@ -175,9 +176,9 @@ const certificate = (): { key: Buffer; cert: Buffer } => {
   return { key: readFileSync(join(dir, 'key.pem')), cert: readFileSync(join(dir, 'cert.pem')) };
 };
 
-const http = createServer(device('', false));
-const upgrading = createServer(device(SECURE_ORIGIN, false));
-const https = createSecureServer(certificate(), device(SECURE_ORIGIN, true));
+const http = createServer(device({ origin: '' }, false));
+const upgrading = createServer(device({ origin: UNANSWERED_NAME, fallback: SECURE_ORIGIN }, false));
+const https = createSecureServer(certificate(), device({ origin: SECURE_ORIGIN }, true));
 
 const pipeTcp = (socket: WebSocket, address: string) => {
   const [host, port] = [address.slice(0, address.lastIndexOf(':')).replace(/^\[|\]$/g, ''), Number(address.slice(address.lastIndexOf(':') + 1))];
