@@ -3,7 +3,6 @@ import { expect, openAircraftSetup, openApp, test } from './fixtures';
 import { moveSticks, plugInRadio, type Sticks } from './radio';
 import { type Sitl, startSitl } from './sitl';
 
-const LEAVE_GRACE_MS = 1_000;
 const CENTRE: Sticks = { roll: 0, pitch: 0, throttle: 0, yaw: 0 };
 const IDLE: Sticks = { ...CENTRE, throttle: -1 };
 
@@ -42,6 +41,9 @@ const running = (): Sitl => {
 };
 
 const channel = (index: number) => () => running().heard.rc[index] ?? 0;
+
+const calibration = (page: Page) =>
+  page.evaluate(async (module) => (await ((await import(module)) as { Qgc: { get: (path: string) => Promise<{ calibration?: unknown }> } }).Qgc.get('view.joystick')).calibration ?? null, '/src/bridge/Qgc.ts');
 
 const connectSitl = async (page: Page) => {
   await page.getByRole('button', { name: /How to connect/ }).click();
@@ -92,7 +94,6 @@ const calibrate = async (page: Page) => {
 test('a roll stick pushed the wrong way is flagged before saving, and leaving the page drops the unsaved calibration', async ({ page }) => {
   test.setTimeout(300_000);
   await page.context().route((url) => !['localhost', '127.0.0.1'].includes(url.hostname), (route) => route.abort());
-  await page.clock.install();
   await plugInRadio(page);
   await openApp(page);
   await connectSitl(page);
@@ -100,7 +101,7 @@ test('a roll stick pushed the wrong way is flagged before saving, and leaving th
   await captureSticks(page, -1);
   await expect(page.getByText(/^Roll moved the opposite way to yaw/)).toBeVisible();
   await page.getByRole('button', { name: 'Close settings' }).click();
-  await page.clock.fastForward(LEAVE_GRACE_MS);
+  await expect.poll(() => calibration(page)).toBeNull();
   await openAircraftSetup(page);
   await page.getByRole('button', { name: /^Joystick.*axes/ }).click();
   await expect(page.getByText('Calibrate before enabling')).toBeVisible();

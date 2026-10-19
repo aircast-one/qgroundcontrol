@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { type Json, type JsonArray, isNull, jsonObjects, jsonStrings, opt, optBoolean, optDouble, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 import { type FactSlider, Qgc } from '@/bridge/Qgc';
-import { useKeyedState, useTicker } from '@/kotlin/Compose';
+import { useQgcDerived } from '@/bridge/QgcState';
+import { useKeyedState } from '@/kotlin/Compose';
 import { AlertDialog, Button, Checkbox, DropdownMenu, DropdownMenuItem, LinearProgressIndicator, OutlinedButton, OutlinedTextField, RadioButton, Switch, Text, TextButton } from '@/m3';
 import { toDoubleOrNull } from '@/map/AltitudeEntry';
 import { md } from '@/theme/Colors';
@@ -10,6 +11,7 @@ import { FieldSlider } from '@/ui/SettingsScreen';
 import { EmptyState, SectionHeader } from '@/ui/SetupRow';
 
 export const JOYSTICK_VIEW = 'view.joystick';
+export const JOYSTICK_SETUP_VIEW = 'view.joystickSetup';
 export const JOYSTICK_SCREEN = 'joystick';
 export const JOYSTICK_SELECT = 'joystick.select';
 export const JOYSTICK_ENABLE = 'joystick.enable';
@@ -18,12 +20,11 @@ export const JOYSTICK_CALIBRATION = 'joystick.calibration';
 export const JOYSTICK_BUTTON_ACTION = 'joystick.buttonAction';
 export const JOYSTICK_BUTTON_REPEAT = 'joystick.buttonRepeat';
 export const NO_ACTION = 'No Action';
-const JOYSTICK_POLL_MS = 100;
 const AXIS_RANGE = 32767;
 
 export type JoystickSetting = { name: string; type: string; label: string; units: string; value: unknown; slider: FactSlider | null };
 
-export type JoystickAxis = { index: number; raw: number | null; function: string };
+export type JoystickAxis = { index: number; raw: number | null; label: string };
 
 export type JoystickButton = { index: number; action: string; repeat: boolean; pressed: boolean };
 
@@ -33,7 +34,7 @@ export type StickValues = { roll: number; pitch: number; yaw: number; throttle: 
 
 export type JoystickCalibration = {
   calibrating: boolean;
-  statusText: string;
+  status: StatusLines;
   nextText: string;
   nextEnabled: boolean;
   cancelEnabled: boolean;
@@ -47,10 +48,9 @@ export type JoystickCalibration = {
   warning: string | null;
   live: StickValues;
   livePositions: readonly number[];
-  captured: readonly (string | null)[];
 };
 
-type CalibrationExtras = 'stickPositions' | 'singleStick' | 'step' | 'steps' | 'holding' | 'checking' | 'warning' | 'live' | 'livePositions' | 'captured';
+type CalibrationExtras = 'stickPositions' | 'singleStick' | 'step' | 'steps' | 'holding' | 'checking' | 'warning' | 'live' | 'livePositions';
 
 export const JoystickCalibration = (fields: Omit<JoystickCalibration, CalibrationExtras> & Partial<Pick<JoystickCalibration, CalibrationExtras>>): JoystickCalibration => ({
   stickPositions: [0, 0, 0, 0],
@@ -62,9 +62,12 @@ export const JoystickCalibration = (fields: Omit<JoystickCalibration, Calibratio
   warning: null,
   live: { roll: 0, pitch: 0, yaw: 0, throttle: 0 },
   livePositions: [0, 0, 0, 0],
-  captured: [],
   ...fields,
 });
+
+export type StatusLines = { bullets: boolean; lines: readonly string[] };
+
+export const statusLines = (json: Json | null): StatusLines => ({ bullets: optBoolean(json, 'bullets'), lines: jsonStrings(optJSONArray(json, 'lines')) });
 
 const intAt = (array: JsonArray, index: number): number => optInt({ value: array[index] }, 'value');
 
@@ -80,7 +83,7 @@ export const joystickCalibration = (json: Json | null): JoystickCalibration => {
   const livePositions = optJSONArray(json, 'livePositions');
   return JoystickCalibration({
     calibrating: optBoolean(json, 'calibrating'),
-    statusText: optText(json, 'statusText'),
+    status: statusLines(optJSONObject(json, 'status')),
     nextText: blankToNull(optText(json, 'nextText')) ?? 'Calibrate',
     nextEnabled: optBoolean(json, 'nextEnabled', true),
     cancelEnabled: optBoolean(json, 'cancelEnabled'),
@@ -94,7 +97,6 @@ export const joystickCalibration = (json: Json | null): JoystickCalibration => {
     warning: blankToNull(optText(json, 'warning')),
     live: { roll: optDouble(live, 'roll', 0), pitch: optDouble(live, 'pitch', 0), yaw: optDouble(live, 'yaw', 0), throttle: optDouble(live, 'throttle', 0) },
     livePositions: livePositions === null ? [0, 0, 0, 0] : [0, 1, 2, 3].map((at) => numberAt(livePositions, at)),
-    captured: jsonObjects(optJSONArray(json, 'channels')).map((channel) => blankToNull(optText(channel, 'function'))),
   });
 };
 
@@ -102,56 +104,7 @@ const FUNCTION_LABELS: Record<string, string> = { roll: 'Roll', pitch: 'Pitch', 
 
 export const functionLabel = (id: string): string => FUNCTION_LABELS[id] ?? id;
 
-export const axisLabel = (axis: JoystickAxis, calibration: JoystickCalibration): string => {
-  const known = calibration.calibrating ? (calibration.captured[axis.index] ?? '') : axis.function;
-  return known.trim() === '' ? `Axis ${axis.index + 1}` : functionLabel(known);
-};
-
-export const MODE_STICKS: Record<number, string> = {
-  1: 'Pitch and yaw on the left stick, throttle and roll on the right',
-  2: 'Throttle and yaw on the left stick, pitch and roll on the right',
-  3: 'Pitch and roll on the left stick, throttle and yaw on the right',
-  4: 'Throttle and roll on the left stick, pitch and yaw on the right',
-};
-
 const thisSite = (): string => (typeof location === 'undefined' ? 'this site' : location.host);
-
-const NOT_SENDING: Record<string, string> = {
-  notPolling: 'Not sending: no aircraft is connected',
-  configuring: 'Not sending while calibrating',
-  notCalibrated: 'Not sending: calibrate first',
-  mappingIncomplete: 'Not sending: a stick has no axis. Calibrate again',
-  invalidCalibration: 'Not sending: the calibration is not usable. Calibrate again',
-  noSample: 'Not sending: no input from the radio. Check its cable and move a stick',
-  missingAxisData: 'Not sending: the radio stopped reporting a stick',
-};
-
-const LEAVE_GRACE_MS = 1000;
-
-const shown = { pages: 0 };
-
-const cancelIfLeft = async () => {
-  if (shown.pages > 0) return;
-  if (optBoolean(await Qgc.get(JOYSTICK_VIEW), 'vehicle')) await Qgc.call(JOYSTICK_CALIBRATION, 'cancel');
-};
-
-const useCancelWhenLeft = () =>
-  useEffect(() => {
-    shown.pages += 1;
-    return () => {
-      shown.pages -= 1;
-      setTimeout(() => void cancelIfLeft(), LEAVE_GRACE_MS);
-    };
-  }, []);
-
-export const sendingText = (page: Pick<JoystickPage, 'enabled' | 'commanding' | 'notCommandingReason'>): string | null =>
-  !page.enabled ? null : page.commanding ? 'Sending your sticks to the aircraft' : (NOT_SENDING[page.notCommandingReason ?? ''] ?? 'Not sending your sticks to the aircraft');
-
-export const statusLines = (text: string): { bullets: boolean; lines: readonly string[] } => {
-  const lines = text.split('\n').filter((it) => it.trim() !== '');
-  const bullets = lines.length > 0 && lines.every((it) => it.startsWith('* '));
-  return { bullets, lines: bullets ? lines.map((it) => it.slice(2)) : [lines.join(' ')] };
-};
 
 export type JoystickPage = {
   names: readonly string[];
@@ -164,8 +117,9 @@ export type JoystickPage = {
   armed: boolean;
   calibration: JoystickCalibration;
   commanding: boolean;
-  notCommandingReason: string | null;
+  sendingText: string | null;
   transmitterMode: number;
+  transmitterModeText: string | null;
   buttons: readonly JoystickButton[];
   actions: readonly AssignableAction[];
   standbyText: string | null;
@@ -186,12 +140,13 @@ export const joystickPage = (view: Json | null): JoystickPage | null => {
         const range = optJSONObject(s, 'slider');
         return { name: optText(s, 'name'), type: optText(s, 'type'), label: optText(s, 'label'), units: optText(s, 'units'), value: opt(s, 'value'), slider: range === null ? null : factSlider(range, '') };
       }),
-    axes: jsonObjects(optJSONArray(state, 'axes')).map((a) => ({ index: optInt(a, 'index'), raw: isNull(a, 'raw') ? null : optInt(a, 'raw'), function: optText(a, 'function') })),
+    axes: jsonObjects(optJSONArray(state, 'axes')).map((a) => ({ index: optInt(a, 'index'), raw: isNull(a, 'raw') ? null : optInt(a, 'raw'), label: optText(a, 'label') })),
     armed: optBoolean(view, 'armed'),
     calibration: joystickCalibration(optJSONObject(view, 'calibration')),
     commanding: optBoolean(state, 'commanding'),
-    notCommandingReason: blankToNull(optText(state, 'notCommandingReason')),
+    sendingText: blankToNull(optText(view, 'sendingText')),
     transmitterMode: optInt(view, 'transmitterMode', 2),
+    transmitterModeText: blankToNull(optText(view, 'transmitterModeText')),
     buttons: jsonObjects(optJSONArray(state, 'buttons')).map((b) => {
       const event = optText(b, 'event');
       return { index: optInt(b, 'index'), action: isNull(b, 'action') ? NO_ACTION : optText(b, 'action'), repeat: optBoolean(b, 'repeat'), pressed: event === 'down' || event === 'repeat' };
@@ -208,13 +163,10 @@ const EXTENSION_LABELS = ['Pitch', 'Roll'];
 const ADDITIONAL_SETTINGS = [1, 2, 3, 4, 5, 6].map((it) => `enableAdditionalAxis${it}`);
 
 export const JoystickScreen = ({ className }: { className?: string }) => {
-  const [page, setPage] = useState<JoystickPage | null>(null);
+  const page = useQgcDerived(JOYSTICK_SETUP_VIEW, joystickPage);
   const [refusal, setRefusal] = useState<string | null>(null);
   const [advanced, setAdvanced] = useState(false);
   const [offerEnable, setOfferEnable] = useState<string | null>(null);
-
-  useTicker(JOYSTICK_POLL_MS, [], async () => setPage(joystickPage(await Qgc.get(JOYSTICK_VIEW))));
-  useCancelWhenLeft();
 
   const act = (path: string, ...args: unknown[]) =>
     void (async () => {
@@ -231,7 +183,6 @@ export const JoystickScreen = ({ className }: { className?: string }) => {
   const additionalAxes = setting('additionalAxesFunction');
   const viaRc = additionalAxes === null || (typeof additionalAxes.value === 'number' && Math.trunc(additionalAxes.value) === 1);
   const calibrating = read.calibration.calibrating;
-  const sending = sendingText(read);
   const step = (op: string) =>
     void (async () => {
       const answer = await Qgc.call(JOYSTICK_CALIBRATION, op);
@@ -249,13 +200,13 @@ export const JoystickScreen = ({ className }: { className?: string }) => {
           {!read.vehicle ? <Text color={md('onSurfaceVariant')}>Not currently available</Text> : null}
         </div>
         <Text color={read.calibrated ? md('onSurface') : md('error')}>{read.calibrated ? `Calibrated · saved in this browser for ${thisSite()}` : 'Calibrate before enabling'}</Text>
-        {sending !== null ? <Text color={read.commanding ? md('primary') : md('error')}>{sending}</Text> : null}
+        {read.sendingText !== null ? <Text color={read.commanding ? md('primary') : md('error')}>{read.sendingText}</Text> : null}
         {refusal !== null ? <Text color={md('error')}>{refusal}</Text> : null}
 
         {!read.armed ? (
           <>
             <SectionHeader text="Calibration" />
-            {!calibrating ? <TransmitterModeRow mode={read.transmitterMode} onPick={(it) => act(JOYSTICK_SETTING, 'transmitterMode', it)} /> : null}
+            {!calibrating ? <TransmitterModeRow mode={read.transmitterMode} text={read.transmitterModeText} onPick={(it) => act(JOYSTICK_SETTING, 'transmitterMode', it)} /> : null}
             <CalibrationPanel page={read} onStep={step} />
           </>
         ) : null}
@@ -265,7 +216,7 @@ export const JoystickScreen = ({ className }: { className?: string }) => {
             <SectionHeader text="Axis monitor" />
             {read.axes.map((axis) => (
               <div key={axis.index} className="flex items-center gap-2">
-                <Text className="w-24 shrink-0">{axisLabel(axis, read.calibration)}</Text>
+                <Text className="w-24 shrink-0">{axis.label}</Text>
                 <LinearProgressIndicator progress={((axis.raw ?? 0) / AXIS_RANGE + 1) / 2} className="flex-1" />
               </div>
             ))}
@@ -379,9 +330,9 @@ const ButtonRow = ({ button, actions, calibrated, onAction, onRepeat }: { button
   );
 };
 
-const StatusText = ({ text }: { text: string }) => {
-  const { bullets, lines } = statusLines(text);
-  if (lines.length === 0 || lines.every((it) => it.trim() === '')) return null;
+const StatusText = ({ status }: { status: StatusLines }) => {
+  const { bullets, lines } = status;
+  if (lines.length === 0) return null;
   return bullets ? (
     <ul className="flex list-disc flex-col gap-1 ps-5">
       {lines.map((line) => (
@@ -391,7 +342,7 @@ const StatusText = ({ text }: { text: string }) => {
       ))}
     </ul>
   ) : (
-    <Text typography="bodyMedium">{lines[0]}</Text>
+    <Text typography="bodyMedium">{lines.join(' ')}</Text>
   );
 };
 
@@ -436,7 +387,7 @@ const CalibrationPanel = ({ page, onStep }: { page: JoystickPage; onStep: (op: s
           </Text>
         </>
       ) : null}
-      <StatusText text={cal.statusText} />
+      <StatusText status={cal.status} />
       {cal.holding !== null ? (
         <div className="flex items-center gap-2">
           <LinearProgressIndicator progress={cal.holding} className="w-40" label="Holding the stick" />
@@ -465,14 +416,14 @@ const CalibrationPanel = ({ page, onStep }: { page: JoystickPage; onStep: (op: s
   );
 };
 
-const TransmitterModeRow = ({ mode, onPick }: { mode: number; onPick: (mode: number) => void }) => {
+const TransmitterModeRow = ({ mode, text, onPick }: { mode: number; text: string | null; onPick: (mode: number) => void }) => {
   const [open, setOpen] = useState(false);
   return (
     <div className="flex items-center gap-3">
       <div className="flex min-w-0 flex-1 flex-col">
         <Text>Stick mode</Text>
         <Text typography="bodySmall" color={md('onSurfaceVariant')}>
-          {MODE_STICKS[mode] ?? ''}
+          {text ?? ''}
         </Text>
       </div>
       <div className="relative">

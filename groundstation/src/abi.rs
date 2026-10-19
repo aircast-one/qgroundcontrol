@@ -455,7 +455,7 @@ pub(crate) fn pump_once() {
             );
             crate::forwarding::maintain();
             crate::ntrip::sync();
-            crate::joystickhost::tick(crate::hub::now_ms());
+            crate::joystickhost::tick(crate::hub::now_ms(), &CORE.watched());
             crate::wfbhost::tick(crate::hub::now_ms());
             crate::camsettings::tick(crate::hub::now_ms());
             crate::followme::tick(

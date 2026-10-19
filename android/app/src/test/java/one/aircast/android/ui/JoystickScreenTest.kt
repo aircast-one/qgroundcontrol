@@ -28,10 +28,10 @@ class JoystickScreenTest {
         assertNull(joystickPage(JSONObject("""{"available":false}""")))
         val page = joystickPage(JSONObject("""{"available":true,"names":["Pad"],"active":"Pad","vehicle":true,"enabled":false,"calibrated":false,
             "settings":[{"name":"useDeadband","type":"bool","label":"Use deadband","units":"","value":true}],
-            "state":{"axes":[{"index":0,"raw":1200,"function":"roll"}]}}"""))!!
+            "state":{"axes":[{"index":0,"raw":1200,"function":"roll","label":"Roll"}]}}"""))!!
         assertEquals("Pad", page.active)
         assertEquals(true, page.settings.single().value)
-        assertEquals(JoystickAxis(0, 1200, "roll"), page.axes.single())
+        assertEquals(JoystickAxis(0, 1200, "Roll"), page.axes.single())
     }
 
     @Test
@@ -47,8 +47,8 @@ class JoystickScreenTest {
     fun the_calibration_panel_reads_the_core_wizard() {
         val idle = joystickCalibration(null)
         assertEquals("Calibrate", idle.nextText)
-        val step = joystickCalibration(JSONObject("""{"calibrating":true,"statusText":"Move the Throttle stick","nextText":"Next","nextEnabled":false,"cancelEnabled":true,"oneSidedVisible":true}"""))
-        assertEquals(JoystickCalibration(true, "Move the Throttle stick", "Next", false, true, true), step)
+        val step = joystickCalibration(JSONObject("""{"calibrating":true,"status":{"bullets":false,"lines":["Move the Throttle stick"]},"nextText":"Next","nextEnabled":false,"cancelEnabled":true,"oneSidedVisible":true}"""))
+        assertEquals(JoystickCalibration(true, StatusLines(false, listOf("Move the Throttle stick")), "Next", false, true, true), step)
     }
 
     @Test
@@ -70,46 +70,28 @@ class JoystickScreenTest {
     @Test
     fun `calibration reads the step count, the held stick, the live sticks and the check warning`() {
         val cal = joystickCalibration(JSONObject("""{"calibrating":true,"step":4,"steps":10,"holding":0.5,"checking":true,"warning":"Roll moved the opposite way to yaw.",
-            "live":{"roll":-0.9,"pitch":0.1,"yaw":0,"throttle":-1},"livePositions":[0,-1,-0.9,0.1],
-            "channels":[{"index":0,"raw":0,"function":"roll"},{"index":1,"raw":0,"function":null}]}"""))
+            "live":{"roll":-0.9,"pitch":0.1,"yaw":0,"throttle":-1},"livePositions":[0,-1,-0.9,0.1]}"""))
         assertEquals(listOf(4, 10, 0.5, true, "Roll moved the opposite way to yaw."), listOf(cal.step, cal.steps, cal.holding, cal.checking, cal.warning))
         assertEquals(mapOf("roll" to -0.9, "pitch" to 0.1, "yaw" to 0.0, "throttle" to -1.0), cal.live)
         assertEquals(listOf(0.0, -1.0, -0.9, 0.1), cal.livePositions)
-        assertEquals(listOf("roll", null), cal.captured)
         val idle = joystickCalibration(null)
         assertEquals(listOf(null, null, null, false), listOf(idle.step, idle.holding, idle.warning, idle.checking))
     }
 
     @Test
-    fun `axes are named by what calibration has captured so far, then by the saved mapping`() {
-        val calibrating = JoystickCalibration(true, "", "Next", false, true, false, captured = listOf("throttle", null))
-        assertEquals("Throttle", axisLabel(JoystickAxis(0, 0, "roll"), calibrating))
-        assertEquals("Axis 2", axisLabel(JoystickAxis(1, 0, "pitch"), calibrating))
-        assertEquals("Pitch", axisLabel(JoystickAxis(1, 0, "pitch"), joystickCalibration(null)))
-        assertEquals("Axis 6", axisLabel(JoystickAxis(5, 0, ""), joystickCalibration(null)))
+    fun `the stick mode and whether the sticks reach the aircraft are worded by the core`() {
+        val page = joystickPage(JSONObject("""{"available":true,"names":["Pad"],"active":"Pad","enabled":true,"transmitterMode":2,"transmitterModeText":"Throttle and yaw on the left stick, pitch and roll on the right",
+            "sendingText":"Not sending: no input from the radio. Check its cable and move a stick","state":{"commanding":false,"notCommandingReason":"noSample"}}"""))!!
+        assertEquals("Throttle and yaw on the left stick, pitch and roll on the right", page.transmitterModeText)
+        assertEquals(listOf(false, "Not sending: no input from the radio. Check its cable and move a stick"), listOf(page.commanding, page.sendingText))
+        assertNull(joystickPage(JSONObject("""{"available":true,"names":["Pad"],"active":"Pad","enabled":false,"sendingText":null}"""))!!.sendingText)
     }
 
     @Test
-    fun `each stick mode says which stick carries the throttle`() {
-        assertEquals("Throttle and yaw on the left stick, pitch and roll on the right", MODE_STICKS[2])
-        assertEquals(listOf(1, 2, 3, 4), MODE_STICKS.keys.toList())
-    }
-
-    @Test
-    fun `an enabled joystick says whether its sticks reach the aircraft, and why not`() {
-        val page = joystickPage(JSONObject("""{"available":true,"names":["Pad"],"active":"Pad","enabled":true,"state":{"commanding":false,"notCommandingReason":"noSample"}}"""))!!
-        assertEquals(listOf(false, "noSample"), listOf(page.commanding, page.notCommandingReason))
-        assertEquals("Not sending: no input from the radio. Check its cable and move a stick", sendingText(page))
-        assertEquals("Sending your sticks to the aircraft", sendingText(page.copy(commanding = true, notCommandingReason = null)))
-        assertNull(sendingText(page.copy(enabled = false, notCommandingReason = "notPolling")))
-        assertEquals("Not sending your sticks to the aircraft", sendingText(page.copy(notCommandingReason = "somethingNew")))
-    }
-
-    @Test
-    fun `a step written as bullets is shown as a list`() {
-        assertEquals(StatusLines(true, listOf("Center all sticks.", "Click Next to continue")), statusLines("* Center all sticks.\n* Click Next to continue"))
-        assertEquals(StatusLines(false, listOf("Move the Roll stick all the way to the right")), statusLines("Move the Roll stick all the way to the right"))
-        assertEquals(StatusLines(false, listOf("")), statusLines(""))
+    fun `a step the core hands as a list is read as one`() {
+        assertEquals(StatusLines(true, listOf("Center all sticks.", "Click Next to continue")), statusLines(JSONObject("""{"bullets":true,"lines":["Center all sticks.","Click Next to continue"]}""")))
+        assertEquals(StatusLines(false, listOf("Move the Roll stick all the way to the right")), statusLines(JSONObject("""{"bullets":false,"lines":["Move the Roll stick all the way to the right"]}""")))
+        assertEquals(StatusLines(false, emptyList()), joystickCalibration(null).status)
     }
 
     @Test

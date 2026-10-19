@@ -24,10 +24,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -48,13 +45,14 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import one.aircast.android.bridge.Qgc
-import one.aircast.android.bridge.offMainInOrder
+import one.aircast.android.bridge.qgcDerived
 import one.aircast.android.openApp
 import one.aircast.android.stopApp
 import one.aircast.map.optText
 import org.json.JSONObject
 
 internal const val JOYSTICK_VIEW = "view.joystick"
+internal const val JOYSTICK_SETUP_VIEW = "view.joystickSetup"
 internal const val JOYSTICK_SCREEN = "joystick"
 internal const val JOYSTICK_SELECT = "joystick.select"
 internal const val JOYSTICK_ENABLE = "joystick.enable"
@@ -66,13 +64,11 @@ internal const val JOYSTICK_BUILT_IN_STICKS = "joystick.builtInSticks"
 private const val TAKE_OVER_TRIES = 10
 private const val TAKE_OVER_RETRY_MS = 200L
 internal const val NO_ACTION = "No Action"
-private const val JOYSTICK_POLL_MS = 100L
 private const val AXIS_RANGE = 32767f
-private const val LEAVE_GRACE_MS = 1000L
 
 internal data class JoystickSetting(val name: String, val type: String, val label: String, val units: String, val value: Any?, val slider: one.aircast.android.bridge.FactSlider? = null)
 
-internal data class JoystickAxis(val index: Int, val raw: Int?, val function: String)
+internal data class JoystickAxis(val index: Int, val raw: Int?, val label: String)
 
 internal data class JoystickButton(val index: Int, val action: String, val repeat: Boolean, val pressed: Boolean)
 
@@ -94,7 +90,7 @@ internal fun builtInSticksText(sticks: BuiltInSticks): String = when {
 
 internal data class JoystickCalibration(
     val calibrating: Boolean,
-    val statusText: String,
+    val status: StatusLines,
     val nextText: String,
     val nextEnabled: Boolean,
     val cancelEnabled: Boolean,
@@ -108,14 +104,13 @@ internal data class JoystickCalibration(
     val warning: String? = null,
     val live: Map<String, Double> = FUNCTION_LABELS.keys.associateWith { 0.0 },
     val livePositions: List<Double> = List(4) { 0.0 },
-    val captured: List<String?> = emptyList(),
 )
 
 private val FUNCTION_LABELS = mapOf("roll" to "Roll", "pitch" to "Pitch", "yaw" to "Yaw", "throttle" to "Throttle")
 
 internal fun joystickCalibration(json: JSONObject?): JoystickCalibration = JoystickCalibration(
     calibrating = json?.optBoolean("calibrating") == true,
-    statusText = json?.optText("statusText").orEmpty(),
+    status = statusLines(json?.optJSONObject("status")),
     nextText = json?.optText("nextText")?.ifBlank { null } ?: "Calibrate",
     nextEnabled = json?.optBoolean("nextEnabled", true) ?: true,
     cancelEnabled = json?.optBoolean("cancelEnabled") == true,
@@ -129,50 +124,14 @@ internal fun joystickCalibration(json: JSONObject?): JoystickCalibration = Joyst
     warning = json?.optText("warning")?.ifBlank { null },
     live = json?.optJSONObject("live").let { live -> FUNCTION_LABELS.keys.associateWith { live?.optDouble(it, 0.0) ?: 0.0 } },
     livePositions = json?.optJSONArray("livePositions")?.let { a -> (0 until 4).map { a.optDouble(it, 0.0) } } ?: List(4) { 0.0 },
-    captured = json?.optJSONArray("channels")?.let { a -> (0 until a.length()).mapNotNull { a.optJSONObject(it) }.map { c -> c.optText("function").ifBlank { null } } }.orEmpty(),
 )
 
 internal fun functionLabel(id: String): String = FUNCTION_LABELS[id] ?: id
 
-internal fun axisLabel(axis: JoystickAxis, calibration: JoystickCalibration): String =
-    (if (calibration.calibrating) calibration.captured.getOrNull(axis.index).orEmpty() else axis.function).ifBlank { null }?.let(::functionLabel) ?: "Axis ${axis.index + 1}"
-
-internal val MODE_STICKS = mapOf(
-    1 to "Pitch and yaw on the left stick, throttle and roll on the right",
-    2 to "Throttle and yaw on the left stick, pitch and roll on the right",
-    3 to "Pitch and roll on the left stick, throttle and yaw on the right",
-    4 to "Throttle and roll on the left stick, pitch and yaw on the right",
-)
-
-private val NOT_SENDING = mapOf(
-    "notPolling" to "Not sending: no aircraft is connected",
-    "configuring" to "Not sending while calibrating",
-    "notCalibrated" to "Not sending: calibrate first",
-    "mappingIncomplete" to "Not sending: a stick has no axis. Calibrate again",
-    "invalidCalibration" to "Not sending: the calibration is not usable. Calibrate again",
-    "noSample" to "Not sending: no input from the radio. Check its cable and move a stick",
-    "missingAxisData" to "Not sending: the radio stopped reporting a stick",
-)
-
-private val shownJoystickPages = java.util.concurrent.atomic.AtomicInteger()
-
-private fun cancelIfLeft() {
-    if (shownJoystickPages.get() == 0 && Qgc.get(JOYSTICK_VIEW)?.optBoolean("vehicle") == true) Qgc.call(JOYSTICK_CALIBRATION, "cancel")
-}
-
-internal fun sendingText(page: JoystickPage): String? = when {
-    !page.enabled -> null
-    page.commanding -> "Sending your sticks to the aircraft"
-    else -> NOT_SENDING[page.notCommandingReason] ?: "Not sending your sticks to the aircraft"
-}
-
 internal data class StatusLines(val bullets: Boolean, val lines: List<String>)
 
-internal fun statusLines(text: String): StatusLines {
-    val lines = text.split("\n").filter { it.isNotBlank() }
-    val bullets = lines.isNotEmpty() && lines.all { it.startsWith("* ") }
-    return StatusLines(bullets, if (bullets) lines.map { it.removePrefix("* ") } else listOf(lines.joinToString(" ")))
-}
+internal fun statusLines(json: JSONObject?): StatusLines =
+    StatusLines(json?.optBoolean("bullets") == true, json?.optJSONArray("lines")?.let { a -> (0 until a.length()).map { a.optText(it) } }.orEmpty())
 
 internal data class JoystickPage(
     val names: List<String>,
@@ -185,8 +144,9 @@ internal data class JoystickPage(
     val armed: Boolean = false,
     val calibration: JoystickCalibration = joystickCalibration(null),
     val commanding: Boolean = false,
-    val notCommandingReason: String? = null,
+    val sendingText: String? = null,
     val transmitterMode: Int = 2,
+    val transmitterModeText: String? = null,
     val buttons: List<JoystickButton> = emptyList(),
     val actions: List<AssignableAction> = emptyList(),
     val builtInSticks: BuiltInSticks? = null,
@@ -207,13 +167,14 @@ internal fun joystickPage(view: JSONObject?): JoystickPage? = view?.takeIf { it.
             settings!!.optJSONObject(at)?.takeIf { s -> s.optBoolean("visible", true) }?.let { s -> JoystickSetting(s.optText("name"), s.optText("type"), s.optText("label"), s.optText("units"), s.opt("value"), s.optJSONObject("slider")?.let { range -> factSlider(range, "") }) }
         },
         axes = (0 until (axes?.length() ?: 0)).mapNotNull { at ->
-            axes!!.optJSONObject(at)?.let { a -> JoystickAxis(a.optInt("index"), if (a.isNull("raw")) null else a.optInt("raw"), a.optText("function")) }
+            axes!!.optJSONObject(at)?.let { a -> JoystickAxis(a.optInt("index"), if (a.isNull("raw")) null else a.optInt("raw"), a.optText("label")) }
         },
         armed = it.optBoolean("armed"),
         calibration = joystickCalibration(it.optJSONObject("calibration")),
         commanding = it.optJSONObject("state")?.optBoolean("commanding") == true,
-        notCommandingReason = it.optJSONObject("state")?.optText("notCommandingReason")?.ifBlank { null },
+        sendingText = it.optText("sendingText").ifBlank { null },
         transmitterMode = it.optInt("transmitterMode", 2),
+        transmitterModeText = it.optText("transmitterModeText").ifBlank { null },
         buttons = it.optJSONObject("state")?.optJSONArray("buttons")?.let { list ->
             (0 until list.length()).mapNotNull { at ->
                 list.optJSONObject(at)?.let { b -> JoystickButton(b.optInt("index"), if (b.isNull("action")) NO_ACTION else b.optText("action"), b.optBoolean("repeat"), b.optText("event").let { e -> e == "down" || e == "repeat" }) }
@@ -234,27 +195,13 @@ private val ADDITIONAL_SETTINGS = (1..6).map { "enableAdditionalAxis$it" }
 
 @Composable
 fun JoystickScreen(modifier: Modifier = Modifier) {
-    var revision by remember { mutableIntStateOf(0) }
-    var page by remember { mutableStateOf<JoystickPage?>(null) }
+    val page by qgcDerived(JOYSTICK_SETUP_VIEW, ::joystickPage)
     var refusal by remember { mutableStateOf<String?>(null) }
     var advanced by remember { mutableStateOf(false) }
     var offerEnable by remember { mutableStateOf<String?>(null) }
     var confirmTakeOver by remember { mutableStateOf<String?>(null) }
     var stoppedOwner by remember { mutableStateOf<String?>(null) }
     val scope = rememberCoroutineScope()
-
-    LaunchedEffect(revision) {
-        page = withContext(Dispatchers.Default) { joystickPage(Qgc.get(JOYSTICK_VIEW)) }
-        delay(JOYSTICK_POLL_MS)
-        revision++
-    }
-    DisposableEffect(Unit) {
-        shownJoystickPages.incrementAndGet()
-        onDispose {
-            shownJoystickPages.decrementAndGet()
-            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({ offMainInOrder(::cancelIfLeft) }, LEAVE_GRACE_MS)
-        }
-    }
 
     fun act(path: String, vararg args: Any) {
         scope.launch { refusal = withContext(Dispatchers.Default) { Qgc.refusalOf(path, *args) } }
@@ -312,12 +259,12 @@ fun JoystickScreen(modifier: Modifier = Modifier) {
             if (!read.vehicle) Text("Not currently available", color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Text(if (read.calibrated) "Calibrated · saved on this device" else "Calibrate before enabling", color = if (read.calibrated) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error)
-        sendingText(read)?.let { Text(it, color = if (read.commanding) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error) }
+        read.sendingText?.let { Text(it, color = if (read.commanding) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error) }
         refusal?.let { Text(it, color = MaterialTheme.colorScheme.error) }
 
         if (!read.armed) {
             SectionHeader("Calibration")
-            if (!read.calibration.calibrating) TransmitterModeRow(read.transmitterMode) { act(JOYSTICK_SETTING, "transmitterMode", it) }
+            if (!read.calibration.calibrating) TransmitterModeRow(read.transmitterMode, read.transmitterModeText) { act(JOYSTICK_SETTING, "transmitterMode", it) }
             CalibrationPanel(read) { op ->
                 scope.launch {
                     val answer = withContext(Dispatchers.Default) { Qgc.call(JOYSTICK_CALIBRATION, op) }
@@ -331,7 +278,7 @@ fun JoystickScreen(modifier: Modifier = Modifier) {
         SectionHeader("Axis monitor")
         read.axes.forEach { axis ->
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(axisLabel(axis, read.calibration), modifier = Modifier.width(96.dp))
+                Text(axis.label, modifier = Modifier.width(96.dp))
                 LinearProgressIndicator(progress = { ((axis.raw ?: 0) / AXIS_RANGE + 1f) / 2f }, modifier = Modifier.weight(1f))
             }
         }
@@ -435,10 +382,10 @@ private fun ButtonRow(button: JoystickButton, actions: List<AssignableAction>, c
 }
 
 @Composable
-private fun StatusText(text: String) {
-    val (bullets, lines) = statusLines(text)
+private fun StatusText(status: StatusLines) {
+    val (bullets, lines) = status
     when {
-        lines.all { it.isBlank() } -> Unit
+        lines.isEmpty() -> Unit
         bullets -> Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
             lines.map { line ->
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -447,7 +394,7 @@ private fun StatusText(text: String) {
                 }
             }
         }
-        else -> Text(lines.first(), style = MaterialTheme.typography.bodyMedium)
+        else -> Text(lines.joinToString(" "), style = MaterialTheme.typography.bodyMedium)
     }
 }
 
@@ -477,7 +424,7 @@ private fun CalibrationPanel(page: JoystickPage, onStep: (String) -> Unit) {
         StickDiagram(cal.stickPositions, cal.singleStick, cal.livePositions)
         Text("Ring: where to move the stick. Dot: where your stick is.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
-    StatusText(cal.statusText)
+    StatusText(cal.status)
     cal.holding?.let { held ->
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             LinearProgressIndicator(progress = { held.toFloat() }, modifier = Modifier.width(160.dp).semantics { contentDescription = "Holding the stick" })
@@ -495,12 +442,12 @@ private fun CalibrationPanel(page: JoystickPage, onStep: (String) -> Unit) {
 }
 
 @Composable
-private fun TransmitterModeRow(mode: Int, onPick: (Int) -> Unit) {
+private fun TransmitterModeRow(mode: Int, text: String?, onPick: (Int) -> Unit) {
     var open by remember { mutableStateOf(false) }
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Column(Modifier.weight(1f)) {
             Text("Stick mode")
-            Text(MODE_STICKS[mode].orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Text(text.orEmpty(), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Box {
             OutlinedButton(onClick = { open = true }) { Text("Mode $mode") }

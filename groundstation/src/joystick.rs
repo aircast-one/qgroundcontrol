@@ -150,6 +150,18 @@ pub const TRANSMITTER_MODES: [[Function; 4]; 4] = [
     ],
 ];
 
+pub fn transmitter_mode_text(mode: u8) -> Option<String> {
+    let [left_x, left_y, right_x, right_y] =
+        TRANSMITTER_MODES.get(usize::from(mode).checked_sub(1)?)?;
+    Some(format!(
+        "{} and {} on the left stick, {} and {} on the right",
+        left_y.label(),
+        left_x.label().to_lowercase(),
+        right_y.label().to_lowercase(),
+        right_x.label().to_lowercase()
+    ))
+}
+
 impl Function {
     pub fn id(self) -> &'static str {
         FUNCTIONS
@@ -168,6 +180,23 @@ impl Function {
 
     pub fn index(self) -> usize {
         FUNCTIONS.iter().position(|(f, _)| *f == self).unwrap_or(0)
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Function::Roll => "Roll",
+            Function::Pitch => "Pitch",
+            Function::Yaw => "Yaw",
+            Function::Throttle => "Throttle",
+            Function::PitchExtension => "Pitch extension",
+            Function::RollExtension => "Roll extension",
+            Function::Additional1 => "Aux 1",
+            Function::Additional2 => "Aux 2",
+            Function::Additional3 => "Aux 3",
+            Function::Additional4 => "Aux 4",
+            Function::Additional5 => "Aux 5",
+            Function::Additional6 => "Aux 6",
+        }
     }
 
     pub fn extension_bit(self) -> Option<usize> {
@@ -1451,6 +1480,7 @@ impl Joystick {
                     "index": axis,
                     "raw": raw,
                     "function": self.function_for(axis).map(Function::id),
+                    "label": self.function_for(axis).map_or_else(|| format!("Axis {}", axis + 1), |function| function.label().to_string()),
                     "shaped": raw.map(|value| adjust_range(value, &calibration, deadband)),
                     "valid": calibration.valid(),
                     "invalidReason": calibration.fault(),
@@ -3658,6 +3688,35 @@ mod tests {
             state["axes"][4]["shaped"], state["axes"][0]["shaped"],
             "an identical reading on an identical range renders identically whether or not a function is assigned, or the trace jumps the instant the operator picks one and reads as a broken axis"
         );
+    }
+
+    #[test]
+    fn axes_are_named_by_the_function_mapped_to_them() {
+        let mut stick = mapped();
+        stick.set_axis_function(Function::Additional1, 5);
+        let state = stick.snapshot(&flying(), Support::default(), 0);
+        let labels: Vec<&Value> = (0..6).map(|axis| &state["axes"][axis]["label"]).collect();
+        assert_eq!(
+            labels,
+            ["Roll", "Pitch", "Yaw", "Throttle", "Axis 5", "Aux 1"]
+        );
+    }
+
+    #[test]
+    fn each_stick_mode_says_which_stick_carries_the_throttle() {
+        assert_eq!(
+            (1..=4)
+                .filter_map(transmitter_mode_text)
+                .collect::<Vec<_>>(),
+            [
+                "Pitch and yaw on the left stick, throttle and roll on the right",
+                "Throttle and yaw on the left stick, pitch and roll on the right",
+                "Pitch and roll on the left stick, throttle and yaw on the right",
+                "Throttle and roll on the left stick, pitch and yaw on the right",
+            ]
+        );
+        assert_eq!(transmitter_mode_text(0), None);
+        assert_eq!(transmitter_mode_text(5), None);
     }
 
     #[test]

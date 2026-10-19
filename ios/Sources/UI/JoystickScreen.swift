@@ -1,6 +1,7 @@
 import SwiftUI
 
 let JOYSTICK_VIEW = "view.joystick"
+let JOYSTICK_SETUP_VIEW = "view.joystickSetup"
 let JOYSTICK_SCREEN = "joystick"
 let JOYSTICK_SELECT = "joystick.select"
 let JOYSTICK_ENABLE = "joystick.enable"
@@ -9,7 +10,6 @@ let JOYSTICK_CALIBRATION = "joystick.calibration"
 let JOYSTICK_BUTTON_ACTION = "joystick.buttonAction"
 let JOYSTICK_BUTTON_REPEAT = "joystick.buttonRepeat"
 let NO_ACTION = "No Action"
-private let JOYSTICK_POLL_MS = 100
 private let AXIS_RANGE: Float = 32767
 
 struct JoystickSetting: Equatable {
@@ -24,7 +24,7 @@ struct JoystickSetting: Equatable {
 struct JoystickAxis: Equatable {
     let index: Int
     let raw: Int?
-    let function: String
+    let label: String
 }
 
 struct JoystickButton: Equatable {
@@ -39,9 +39,18 @@ struct AssignableAction: Equatable {
     let canRepeat: Bool
 }
 
+struct StatusLines: Equatable {
+    let bullets: Bool
+    let lines: [String]
+}
+
+func statusLines(_ json: JSON?) -> StatusLines {
+    StatusLines(bullets: json?["bullets"].bool == true, lines: json?["lines"].strings ?? [])
+}
+
 struct JoystickCalibration: Equatable {
     let calibrating: Bool
-    let statusText: String
+    let status: StatusLines
     let nextText: String
     let nextEnabled: Bool
     let cancelEnabled: Bool
@@ -54,7 +63,7 @@ func joystickCalibration(_ json: JSON?) -> JoystickCalibration {
     let positions = json?["stickPositions"]
     return JoystickCalibration(
         calibrating: json?["calibrating"].bool == true,
-        statusText: json?["statusText"].string ?? "",
+        status: statusLines(json?["status"]),
         nextText: (json?["nextText"].string ?? "").ifBlank("Calibrate"),
         nextEnabled: json?["nextEnabled"].bool(true) ?? true,
         cancelEnabled: json?["cancelEnabled"].bool == true,
@@ -94,7 +103,7 @@ func joystickPage(_ view: JSON?) -> JoystickPage? {
                 ? JoystickSetting(name: s["name"].string, type: s["type"].string, label: s["label"].string, units: s["units"].string, value: s["value"], slider: s["slider"].object != nil ? factSlider(s["slider"], "") : nil)
                 : nil
         },
-        axes: state["axes"].objects.compactMap { a in JoystickAxis(index: a["index"].int(0), raw: a["raw"].isNull ? nil : a["raw"].int(0), function: a["function"].string) },
+        axes: state["axes"].objects.compactMap { a in JoystickAxis(index: a["index"].int(0), raw: a["raw"].isNull ? nil : a["raw"].int(0), label: a["label"].string) },
         armed: it["armed"].bool,
         calibration: joystickCalibration(it["calibration"].objectOrNil),
         transmitterMode: it["transmitterMode"].int(2),
@@ -113,8 +122,7 @@ private let ADDITIONAL_SETTINGS = (1...6).map { "enableAdditionalAxis\($0)" }
 
 struct JoystickScreen: View {
     @Environment(\.theme) private var theme
-    @State private var revision = 0
-    @State private var page: JoystickPage?
+    @QgcPath(JOYSTICK_SETUP_VIEW) private var view
     @State private var refusal: String?
     @State private var advanced = false
     @State private var offerEnable: String?
@@ -122,19 +130,13 @@ struct JoystickScreen: View {
     var body: some View {
         ZStack(alignment: .topLeading) {
             Color.clear
-            if let read = page {
+            if let read = joystickPage(view) {
                 if read.names.isEmpty || read.active == nil {
                     EmptyState(icon: .gamepad, title: "No joystick", text: "No joysticks or gamepads detected. Pair one over Bluetooth or plug it in over USB.")
                 } else {
                     screen(read)
                 }
             }
-        }
-        .task(id: revision) {
-            let read = await offMain { joystickPage(Qgc.get(JOYSTICK_VIEW)) }
-            page = read
-            try? await Task.sleep(for: .milliseconds(JOYSTICK_POLL_MS))
-            if !Task.isCancelled { revision += 1 }
         }
         .alert("Enable joystick", isPresented: Binding(get: { offerEnable != nil }, set: { if !$0 { offerEnable = nil } }), presenting: offerEnable) { _ in
             Button("Yes") {
@@ -179,7 +181,7 @@ struct JoystickScreen: View {
                 SectionHeader(text: "Axis monitor")
                 ForEach(read.axes, id: \.index) { axis in
                     HStack(spacing: 8) {
-                        Text(axis.function.ifBlank("Axis \(axis.index + 1)")).frame(width: 96, alignment: .leading)
+                        Text(axis.label).frame(width: 96, alignment: .leading)
                         ProgressView(value: Double(min(max((Float(axis.raw ?? 0) / AXIS_RANGE + 1) / 2, 0), 1)))
                             .frame(maxWidth: .infinity)
                     }
@@ -292,8 +294,8 @@ private struct CalibrationPanel: View {
             if cal.calibrating {
                 StickDiagram(positions: cal.stickPositions, single: cal.singleStick)
             }
-            if !cal.statusText.isBlank {
-                Text(cal.statusText).font(.bodyMedium)
+            ForEach(Array(cal.status.lines.enumerated()), id: \.offset) { _, line in
+                Text(cal.status.bullets ? "• \(line)" : line).font(.bodyMedium)
             }
             HStack(spacing: 8) {
                 Button("Cancel") { onStep("cancel") }.buttonStyle(.bordered).disabled(!cal.cancelEnabled)

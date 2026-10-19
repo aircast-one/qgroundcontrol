@@ -828,6 +828,11 @@ pub const VIEWS: &[View] = &[
         compute: joystickhost::joystick_state_view,
     },
     View {
+        path: joystickhost::SETUP_VIEW,
+        deps: joystickhost::DEPS,
+        compute: joystickhost::joystick_state_view,
+    },
+    View {
         path: "view.usbRadio",
         deps: &[],
         compute: crate::usbradio::indicator_view,
@@ -1054,6 +1059,7 @@ pub const MOTION_VIEWS: &[&str] = &[
     "view.attitude",
     "view.videoAr",
     "view.gimbal",
+    joystickhost::SETUP_VIEW,
 ];
 
 pub fn moves(path: &str) -> bool {

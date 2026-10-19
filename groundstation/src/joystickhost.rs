@@ -1,11 +1,13 @@
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 use std::sync::{LazyLock, Mutex, MutexGuard, PoisonError};
 
 use serde_json::{Value, json};
 
 use crate::joystick::{
-    ACTION_NONE, ACTIONS, AdditionalAxes, AxisCalibration, ButtonEvent, FUNCTIONS, Input, Joystick,
-    Out, Polling, Settings, Support, ThrottleMode,
+    ACTION_NONE, ACTIONS, AdditionalAxes, AxisCalibration, BLOCKED_CONFIGURING,
+    BLOCKED_INVALID_CALIBRATION, BLOCKED_MAPPING_INCOMPLETE, BLOCKED_MISSING_AXIS_DATA,
+    BLOCKED_NO_SAMPLE, BLOCKED_NOT_CALIBRATED, BLOCKED_NOT_POLLING, ButtonEvent, FUNCTIONS, Input,
+    Joystick, Out, Polling, Settings, Support, ThrottleMode,
 };
 use crate::mavout::Outbound;
 use crate::router::Backend;
@@ -23,6 +25,8 @@ pub const CALIBRATION: &str = "joystick.calibration";
 pub const BUTTON_ACTION: &str = "joystick.buttonAction";
 pub const BUTTON_REPEAT: &str = "joystick.buttonRepeat";
 pub const BUILT_IN_STICKS: &str = "joystick.builtInSticks";
+pub const SETUP_VIEW: &str = "view.joystickSetup";
+const SETUP_LEAVE_GRACE_MS: u64 = 1000;
 const BUTTON_GROUP: &str = "JoystickButtonActionSettingsArray";
 const STEP_THROTTLE_MS: u64 = 40;
 const CAMERA_CHANGE_THROTTLE_MS: u64 = 1000;
@@ -327,6 +331,7 @@ struct Host {
     calibration: Option<(String, StickCal)>,
     setup_state: Option<(Option<String>, bool)>,
     driven: Option<(u8, u32)>,
+    setup_left_ms: Option<u64>,
 }
 
 fn axis_group(joystick: &str) -> String {
@@ -877,6 +882,51 @@ pub fn standby_text(
     }
 }
 
+fn sending_text(enabled: bool, commanding: bool, reason: Option<&str>) -> Option<&'static str> {
+    match (enabled, commanding, reason) {
+        (false, ..) => None,
+        (true, true, _) => Some("Sending your sticks to the aircraft"),
+        (true, false, Some(BLOCKED_NOT_POLLING)) => Some("Not sending: no aircraft is connected"),
+        (true, false, Some(BLOCKED_CONFIGURING)) => Some("Not sending while calibrating"),
+        (true, false, Some(BLOCKED_NOT_CALIBRATED)) => Some("Not sending: calibrate first"),
+        (true, false, Some(BLOCKED_MAPPING_INCOMPLETE)) => {
+            Some("Not sending: a stick has no axis. Calibrate again")
+        }
+        (true, false, Some(BLOCKED_INVALID_CALIBRATION)) => {
+            Some("Not sending: the calibration is not usable. Calibrate again")
+        }
+        (true, false, Some(BLOCKED_NO_SAMPLE)) => {
+            Some("Not sending: no input from the radio. Check its cable and move a stick")
+        }
+        (true, false, Some(BLOCKED_MISSING_AXIS_DATA)) => {
+            Some("Not sending: the radio stopped reporting a stick")
+        }
+        (true, false, _) => Some("Not sending your sticks to the aircraft"),
+    }
+}
+
+fn setup_left(
+    left_ms: Option<u64>,
+    shown: bool,
+    vehicle: bool,
+    now_ms: u64,
+) -> (Option<u64>, bool) {
+    let left_ms = (!shown).then(|| left_ms.unwrap_or(now_ms));
+    let cancel =
+        vehicle && left_ms.is_some_and(|at| now_ms.saturating_sub(at) >= SETUP_LEAVE_GRACE_MS);
+    (left_ms, cancel)
+}
+
+fn cancel_when_setup_left(shown: bool, now_ms: u64) {
+    let vehicle = active_vehicle().is_some();
+    let mut host = host();
+    let (left_ms, cancel) = setup_left(host.setup_left_ms, shown, vehicle, now_ms);
+    host.setup_left_ms = left_ms;
+    if cancel {
+        host.calibration = None;
+    }
+}
+
 fn hand_back(name: &str) {
     let released = host()
         .joysticks
@@ -1356,7 +1406,8 @@ pub fn owns(path: &str) -> bool {
     .contains(&path)
 }
 
-pub fn tick(now_ms: u64) {
+pub fn tick(now_ms: u64, watched: &BTreeSet<String>) {
+    cancel_when_setup_left(watched.contains(SETUP_VIEW), now_ms);
     sync_polling(now_ms);
 }
 
@@ -1457,6 +1508,7 @@ pub fn joystick_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
             .get(name)
             .map(|j| j.snapshot(&settings_for(name), support, now_ms))
     });
+    let commanding = state.as_ref().is_some_and(|s| s["commanding"] == true);
     let assigned: Vec<String> = active
         .as_ref()
         .and_then(|name| host.joysticks.get(name))
@@ -1498,6 +1550,8 @@ pub fn joystick_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "state": state,
         "calibration": host.calibration.as_ref().filter(|(name, _)| Some(name) == active.as_ref()).map(|(name, cal)| cal.json(crate::hub::now_ms(), transmitter_mode(name))),
         "transmitterMode": active.as_ref().map(|name| transmitter_mode(name)),
+        "transmitterModeText": active.as_ref().and_then(|name| crate::joystick::transmitter_mode_text(transmitter_mode(name))),
+        "sendingText": sending_text(enabled, commanding, state.as_ref().and_then(|s| s["notCommandingReason"].as_str())),
         "assignableActions": assignable,
         "builtInSticks": built_in,
         "standby": {
@@ -1505,7 +1559,7 @@ pub fn joystick_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
             "enabled": active.as_ref().is_some_and(|name| settings_for(name).standby),
             "text": standby_text(
                 support.standby && active.as_ref().is_some_and(|name| settings_for(name).standby),
-                state.as_ref().is_some_and(|s| s["commanding"] == true),
+                commanding,
                 standby_heard,
                 now_ms,
             ),
@@ -1528,6 +1582,54 @@ mod tests {
             "a primary-link failover keeps flying the same vehicle, throttle and all"
         );
         assert_eq!(left_vehicle(None, Some((1, 7))), None);
+    }
+
+    #[test]
+    fn an_enabled_joystick_says_whether_its_sticks_reach_the_aircraft_and_why_not() {
+        assert_eq!(
+            sending_text(true, false, Some(BLOCKED_NO_SAMPLE)),
+            Some("Not sending: no input from the radio. Check its cable and move a stick")
+        );
+        assert_eq!(
+            sending_text(true, true, None),
+            Some("Sending your sticks to the aircraft")
+        );
+        assert_eq!(
+            sending_text(false, false, Some(BLOCKED_NOT_POLLING)),
+            None,
+            "a joystick that is off says nothing about sending"
+        );
+        assert_eq!(
+            sending_text(true, false, Some("somethingNew")),
+            Some("Not sending your sticks to the aircraft")
+        );
+        assert_eq!(
+            sending_text(true, false, Some(BLOCKED_CONFIGURING)),
+            Some("Not sending while calibrating")
+        );
+    }
+
+    #[test]
+    fn leaving_the_joystick_page_cancels_its_unsaved_calibration_after_a_grace() {
+        assert_eq!(setup_left(None, true, true, 0), (None, false));
+        let (left, cancel) = setup_left(None, false, true, 5_000);
+        assert_eq!((left, cancel), (Some(5_000), false));
+        assert_eq!(
+            setup_left(left, false, true, 5_999),
+            (Some(5_000), false),
+            "a pane move in Setup remounts the page within the grace"
+        );
+        assert_eq!(
+            setup_left(left, true, true, 5_500),
+            (None, false),
+            "back within a second, the steps already done are kept"
+        );
+        assert_eq!(setup_left(left, false, true, 6_000), (Some(5_000), true));
+        assert_eq!(
+            setup_left(left, false, false, 9_000),
+            (Some(5_000), false),
+            "with no aircraft connected the calibration blocks no sticks, so it is kept"
+        );
     }
     use crate::joystick::{Function, OPTIONAL};
 

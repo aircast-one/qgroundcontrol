@@ -13,12 +13,12 @@ final class JoystickScreenTests: XCTestCase {
         let page = try XCTUnwrap(joystickPage(JSON.parse(#"""
             {"available":true,"names":["Pad"],"active":"Pad","vehicle":true,"enabled":false,"calibrated":false,
             "settings":[{"name":"useDeadband","type":"bool","label":"Use deadband","units":"","value":true}],
-            "state":{"axes":[{"index":0,"raw":1200,"function":"roll"}]}}
+            "state":{"axes":[{"index":0,"raw":1200,"function":"roll","label":"Roll"}]}}
             """#)))
         XCTAssertEqual(page.active, "Pad")
         XCTAssertEqual(page.settings.count, 1)
         XCTAssertEqual(page.settings.first?.value, .bool(true))
-        XCTAssertEqual(page.axes, [JoystickAxis(index: 0, raw: 1200, function: "roll")])
+        XCTAssertEqual(page.axes, [JoystickAxis(index: 0, raw: 1200, label: "Roll")])
     }
 
     func testGamepadValuesScaleToTheCoreRangeAndTheDpadBecomesHatBits() {
@@ -32,8 +32,13 @@ final class JoystickScreenTests: XCTestCase {
     func testTheCalibrationPanelReadsTheCoreWizard() {
         let idle = joystickCalibration(nil)
         XCTAssertEqual(idle.nextText, "Calibrate")
-        let step = joystickCalibration(JSON.parse(#"{"calibrating":true,"statusText":"Move the Throttle stick","nextText":"Next","nextEnabled":false,"cancelEnabled":true,"oneSidedVisible":true}"#))
-        XCTAssertEqual(step, JoystickCalibration(calibrating: true, statusText: "Move the Throttle stick", nextText: "Next", nextEnabled: false, cancelEnabled: true, oneSidedVisible: true))
+        let step = joystickCalibration(JSON.parse(#"{"calibrating":true,"status":{"bullets":false,"lines":["Move the Throttle stick"]},"nextText":"Next","nextEnabled":false,"cancelEnabled":true,"oneSidedVisible":true}"#))
+        XCTAssertEqual(step, JoystickCalibration(calibrating: true, status: StatusLines(bullets: false, lines: ["Move the Throttle stick"]), nextText: "Next", nextEnabled: false, cancelEnabled: true, oneSidedVisible: true))
+    }
+
+    func testAStepTheCoreHandsAsAListIsReadAsOne() {
+        XCTAssertEqual(statusLines(JSON.parse(#"{"bullets":true,"lines":["Center all sticks.","Click Next to continue"]}"#)), StatusLines(bullets: true, lines: ["Center all sticks.", "Click Next to continue"]))
+        XCTAssertEqual(joystickCalibration(nil).status, StatusLines(bullets: false, lines: []))
     }
 
     func testButtonsShowTheirActionAndWhetherTheyAreHeld() throws {

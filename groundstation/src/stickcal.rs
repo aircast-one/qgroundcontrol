@@ -256,21 +256,29 @@ fn extension_name(function: Function) -> &'static str {
     }
 }
 
-fn text(step: &Step) -> String {
+fn text(step: &Step) -> Vec<String> {
     let name = step.function.map(extension_name).unwrap_or("Unknown");
     match step.message {
-        Message::Neutral => "* Center all sticks as shown in diagram.\n* Make sure any additional axes are at a neutral position.\n* Please ensure all motor power is disconnected from the vehicle.\n* Click Next to continue".to_string(),
-        Message::ThrottleUp => "Move the Throttle stick all the way up and hold it there...".to_string(),
-        Message::ThrottleDown => "Move the Throttle stick all the way down and leave it there...".to_string(),
-        Message::YawRight => "Move the Yaw stick all the way to the right and hold it there...".to_string(),
-        Message::YawLeft => "Move the Yaw stick all the way to the left and hold it there...".to_string(),
-        Message::RollRight => "Move the Roll stick all the way to the right and hold it there...".to_string(),
-        Message::RollLeft => "Move the Roll stick all the way to the left and hold it there...".to_string(),
-        Message::PitchUp => "Move the Pitch stick all the way up and hold it there...".to_string(),
-        Message::PitchDown => "Move the Pitch stick all the way down and hold it there...".to_string(),
-        Message::ExtensionHigh => format!("Move the {name} Extension stick to its high value position and hold it there..."),
-        Message::ExtensionLow => format!("* Move the {name} Extension stick to its low value position and hold it there...\n* Select 'One-Sided' for controls like gamepad triggers."),
-        Message::Complete => "All sticks are captured. Push each one and check its bar moves the same way, then save.".to_string(),
+        Message::Neutral => vec![
+            "Center all sticks as shown in diagram.".into(),
+            "Make sure any additional axes are at a neutral position.".into(),
+            "Please ensure all motor power is disconnected from the vehicle.".into(),
+            "Click Next to continue".into(),
+        ],
+        Message::ThrottleUp => vec!["Move the Throttle stick all the way up and hold it there...".into()],
+        Message::ThrottleDown => vec!["Move the Throttle stick all the way down and leave it there...".into()],
+        Message::YawRight => vec!["Move the Yaw stick all the way to the right and hold it there...".into()],
+        Message::YawLeft => vec!["Move the Yaw stick all the way to the left and hold it there...".into()],
+        Message::RollRight => vec!["Move the Roll stick all the way to the right and hold it there...".into()],
+        Message::RollLeft => vec!["Move the Roll stick all the way to the left and hold it there...".into()],
+        Message::PitchUp => vec!["Move the Pitch stick all the way up and hold it there...".into()],
+        Message::PitchDown => vec!["Move the Pitch stick all the way down and hold it there...".into()],
+        Message::ExtensionHigh => vec![format!("Move the {name} Extension stick to its high value position and hold it there...")],
+        Message::ExtensionLow => vec![
+            format!("Move the {name} Extension stick to its low value position and hold it there..."),
+            "Select 'One-Sided' for controls like gamepad triggers.".into(),
+        ],
+        Message::Complete => vec!["All sticks are captured. Push each one and check its bar moves the same way, then save.".into()],
     }
 }
 
@@ -303,7 +311,6 @@ pub struct StickCal {
     detect_value: i32,
     settle_since: Option<u64>,
     next_enabled: bool,
-    status: String,
 }
 
 fn function_slot(function: Function) -> usize {
@@ -332,7 +339,6 @@ impl StickCal {
             detect_value: 0,
             settle_since: None,
             next_enabled: true,
-            status: String::new(),
         }
     }
 
@@ -379,7 +385,6 @@ impl StickCal {
 
     fn stop(&mut self) {
         self.step = None;
-        self.status.clear();
         self.next_enabled = true;
     }
 
@@ -403,7 +408,6 @@ impl StickCal {
         {
             return self.advance();
         }
-        self.status = text(step);
         self.detect = None;
         self.settle_since = None;
         self.saved = self.raw.clone();
@@ -668,9 +672,10 @@ impl StickCal {
 
     pub fn json(&self, now_ms: u64, transmitter_mode: u8) -> Value {
         let progress = self.progress();
+        let status = self.current().map(text).unwrap_or_default();
         json!({
             "calibrating": self.calibrating(),
-            "statusText": self.status,
+            "status": { "bullets": status.len() > 1, "lines": status },
             "nextText": match (self.calibrating(), self.checking()) { (false, _) => "Calibrate", (true, true) => "Save", (true, false) => "Next" },
             "step": progress.map(|(at, _)| at),
             "steps": progress.map(|(_, of)| of),
@@ -732,7 +737,7 @@ mod tests {
         );
         cal.next();
         assert!(
-            cal.json(0, 2)["statusText"]
+            cal.json(0, 2)["status"]["lines"][0]
                 .as_str()
                 .unwrap()
                 .starts_with("Move the Throttle stick all the way up")
@@ -746,7 +751,7 @@ mod tests {
         let at = hold(&mut cal, [0, 0, 0, -32000], at);
         hold(&mut cal, [0, 0, 0, 32000], at);
         assert!(
-            cal.json(0, 2)["statusText"]
+            cal.json(0, 2)["status"]["lines"][0]
                 .as_str()
                 .unwrap()
                 .starts_with("All sticks are captured")
@@ -769,6 +774,33 @@ mod tests {
             "throttle up read negative, so that axis is reversed"
         );
         assert!(!cal.calibrating());
+    }
+
+    #[test]
+    fn a_step_with_several_instructions_is_handed_as_a_list() {
+        let mut cal = StickCal::new(JOYSTICK, 4, [false; 8]);
+        assert_eq!(
+            cal.json(0, 2)["status"],
+            json!({ "bullets": false, "lines": [] })
+        );
+        cal.next();
+        assert_eq!(
+            cal.json(0, 2)["status"],
+            json!({ "bullets": true, "lines": [
+                "Center all sticks as shown in diagram.",
+                "Make sure any additional axes are at a neutral position.",
+                "Please ensure all motor power is disconnected from the vehicle.",
+                "Click Next to continue",
+            ] })
+        );
+        cal.channel_values(&[0, 0, 0, 0], 0);
+        cal.next();
+        assert_eq!(
+            cal.json(0, 2)["status"],
+            json!({ "bullets": false, "lines": ["Move the Throttle stick all the way up and hold it there..."] })
+        );
+        cal.cancel();
+        assert_eq!(cal.json(0, 2)["status"]["lines"], json!([]));
     }
 
     #[test]
@@ -876,7 +908,7 @@ mod tests {
         aux.step = Some(13);
         aux.setup();
         assert!(
-            aux.json(0, 2)["statusText"]
+            aux.json(0, 2)["status"]["lines"][0]
                 .as_str()
                 .unwrap()
                 .contains("Aux 1")
@@ -890,7 +922,7 @@ mod tests {
         );
         aux.one_sided();
         assert_eq!(
-            aux.json(0, 2)["statusText"]
+            aux.json(0, 2)["status"]["lines"][0]
                 .as_str()
                 .unwrap()
                 .starts_with("All sticks"),
