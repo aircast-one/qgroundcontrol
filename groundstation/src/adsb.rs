@@ -682,6 +682,9 @@ impl Traffic {
 }
 
 pub static TRAFFIC: LazyLock<Mutex<Traffic>> = LazyLock::new(|| Mutex::new(Traffic::default()));
+
+#[cfg(test)]
+pub(crate) static TEST_FEED: Mutex<()> = Mutex::new(());
 pub static ON_CHANGE: Mutex<Option<Arc<dyn Fn() + Send + Sync>>> = Mutex::new(None);
 
 pub fn lock() -> MutexGuard<'static, Traffic> {
@@ -2282,6 +2285,7 @@ mod tests {
 
     #[test]
     fn the_view_reads_the_server_the_operator_configured_and_the_position_it_is_measured_from() {
+        let _feed = TEST_FEED.lock().unwrap_or_else(PoisonError::into_inner);
         let settings = Settings {
             enabled: json!(false),
             host: json!("adsb.example"),
@@ -2454,6 +2458,7 @@ mod tests {
 
     #[test]
     fn the_push_spells_the_units_the_view_last_read() {
+        let _feed = TEST_FEED.lock().unwrap_or_else(PoisonError::into_inner);
         struct Imperial;
         impl Backend for Imperial {
             fn get(&self, p: &str) -> String {
@@ -2517,6 +2522,7 @@ mod tests {
 
     #[test]
     fn a_browser_on_the_device_reads_the_sbs1_server_through_its_relay() {
+        let _feed = TEST_FEED.lock().unwrap_or_else(PoisonError::into_inner);
         let _host = crate::hostsocket::fake::install();
         let _pairing = crate::device::TEST_PAIRING
             .lock()
@@ -2557,6 +2563,7 @@ mod tests {
 
     #[test]
     fn a_browser_without_a_device_shows_why_in_the_traffic_view_without_a_popup() {
+        let _feed = TEST_FEED.lock().unwrap_or_else(PoisonError::into_inner);
         let _host = crate::hostsocket::fake::install();
         let _pairing = crate::device::TEST_PAIRING
             .lock()

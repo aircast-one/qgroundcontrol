@@ -15917,6 +15917,9 @@ mod tests {
         use mavlink::dialects::ardupilotmega::{
             ADSB_VEHICLE_DATA, AdsbAltitudeType, AdsbEmitterType, AdsbFlags,
         };
+        let _feed = crate::adsb::TEST_FEED
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
         *crate::adsb::lock() = crate::adsb::Traffic::default();
         let mut hub = Hub::default();
         let relayed = MavMessage::ADSB_VEHICLE(ADSB_VEHICLE_DATA {
