@@ -331,7 +331,7 @@ fn work(job: Job, fetcher: &dyn Fetcher) -> Done {
             let built = want.build(fetcher);
             let error = match &built {
                 Built::Heights(_, Err(error))
-                | Built::Houses(_, Err(error))
+                | Built::Houses(_, _, Err(error))
                 | Built::Terrain {
                     mesh: Err(error), ..
                 } => Some(format!("{what}: {error}")),
@@ -1234,6 +1234,7 @@ impl Session {
                             ground,
                             target.latitude,
                             target.longitude,
+                            (target.home_latitude, target.home_longitude),
                             detail,
                             room,
                             now,
@@ -1289,6 +1290,7 @@ impl Session {
                     ground,
                     target.latitude,
                     target.longitude,
+                    (target.home_latitude, target.home_longitude),
                     detail,
                     room,
                     now,
