@@ -113,12 +113,13 @@
         </Grid>
 
         <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Margin="0,0,8,0">
-            <Border x:Name="LinkPill" Style="{StaticResource Pill}">
+            <Button x:Name="LinkPill" Style="{StaticResource PillButton}" Click="OnLinkClick"
+                    AutomationProperties.Name="Connections" ToolTipService.ToolTip="Connections">
                 <StackPanel Orientation="Horizontal" Spacing="6">
                     <FontIcon x:Name="LinkIcon" Glyph="&#xE71B;" Style="{StaticResource PillIcon}" />
                     <TextBlock x:Name="LinkText" Style="{StaticResource PillText}" />
                 </StackPanel>
-            </Border>
+            </Button>
 
             <StackPanel x:Name="Readings" Orientation="Horizontal" Spacing="4">
                 <Button x:Name="ModePill" Style="{StaticResource PillButton}" Click="OnModeClick"

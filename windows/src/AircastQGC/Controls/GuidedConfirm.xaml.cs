@@ -21,6 +21,7 @@ public sealed partial class GuidedConfirm : UserControl
     private const string Unanswered = "The vehicle has not reported what this action would send.";
     private const string Refused = "The vehicle was not sent the command.";
 
+    private GuidedAsk? _ask;
     private GuidedOffer? _pending;
     private GuidedRange? _range;
     private double? _grabbedAt;
@@ -29,7 +30,7 @@ public sealed partial class GuidedConfirm : UserControl
     public event EventHandler<string>? Failed;
 
     public GuidedOffer? Pending => _pending;
-    public bool IsOpen => _pending != null;
+    public bool IsOpen => _ask != null;
 
     public GuidedConfirm()
     {
@@ -46,48 +47,63 @@ public sealed partial class GuidedConfirm : UserControl
             Failed?.Invoke(this, $"{offer.Title} needs a range the vehicle has not reported.");
             return false;
         }
-        _pending = offer;
-        _range = range;
-        Present(offer, range);
-        BridgeWatch.Watch(WatchClient, new[] { GuidedOffer.ViewPath }, OnGuided);
+        Open(new GuidedAsk(offer.Title, offer.Prompt, () => Execute(offer, _range?.Clamped(ValueSlider.Value)))
+        {
+            Destructive = offer.Destructive,
+            WatchPath = GuidedOffer.ViewPath,
+            StillOffered = view => GuidedOffer.List(view).Any(o => o.Id == offer.Id && o.Ready),
+        }, offer, range);
         if (!offer.Confirm) Confirm();
         return true;
     }
 
+    public void Ask(GuidedAsk ask) => Open(ask, null, null);
+
     public void Confirm()
     {
-        if (_pending is not GuidedOffer offer) return;
-        var failure = Execute(offer, _range?.Clamped(ValueSlider.Value));
-        if (failure == null)
+        if (_ask is not GuidedAsk ask) return;
+        var offer = _pending;
+        var failure = ask.Send();
+        if (failure != null)
         {
-            Close();
-            Sent?.Invoke(this, offer);
+            Refuse(failure);
             return;
         }
-        ErrorText.Text = failure;
-        ErrorText.Visibility = Visibility.Visible;
-        Failed?.Invoke(this, failure);
+        Close();
+        if (offer != null) Sent?.Invoke(this, offer);
     }
 
     public void Cancel() => Close();
 
     public void Hide() => Close();
 
-    private void Present(GuidedOffer offer, GuidedRange? range)
+    private void Open(GuidedAsk ask, GuidedOffer? offer, GuidedRange? range)
     {
-        TitleText.Text = offer.Title;
-        TitleText.Style = Styled(offer.Destructive ? "ConfirmTitleDestructive" : "ConfirmTitle");
-        PromptText.Text = offer.Prompt;
-        Knob.Style = Styled(offer.Destructive ? "KnobDestructiveStyle" : "KnobStyle");
-        SlideText.Text = $"Slide to {offer.Title.ToLower(CultureInfo.CurrentCulture)}";
-        OptionCheck.Content = offer.Option;
+        _ask = ask;
+        _pending = offer;
+        _range = range;
+        TitleText.Text = ask.Title;
+        TitleText.Style = Styled(ask.Destructive ? "ConfirmTitleDestructive" : "ConfirmTitle");
+        PromptText.Text = ask.Prompt;
+        WarningText.Text = ask.Warning;
+        WarningText.Visibility = Seen(ask.Warning.Length > 0);
+        FieldsHost.Content = ask.Fields;
+        FieldsHost.Visibility = Seen(ask.Fields != null);
+        DetailText.Text = ask.Detail;
+        DetailText.Visibility = Seen(ask.Detail.Length > 0);
+        AlternativeButton.Content = ask.Alternative?.Title;
+        AlternativeButton.Visibility = Seen(ask.Alternative != null);
+        Knob.Style = Styled(ask.Destructive ? "KnobDestructiveStyle" : "KnobStyle");
+        SlideText.Text = $"Slide to {ask.Title.ToLower(CultureInfo.CurrentCulture)}";
+        OptionCheck.Content = offer?.Option ?? "";
         OptionCheck.IsChecked = false;
-        OptionCheck.Visibility = Seen(offer.Option.Length > 0);
+        OptionCheck.Visibility = Seen(offer?.Option.Length > 0);
         ErrorText.Visibility = Visibility.Collapsed;
         ValuePanel.Visibility = Seen(range != null);
         if (range != null) PresentRange(range);
         ReleaseKnob();
         Root.Visibility = Visibility.Visible;
+        BridgeWatch.Watch(WatchClient, ask.WatchPath.Length > 0 ? new[] { ask.WatchPath } : Array.Empty<string>(), OnWatched);
     }
 
     private void PresentRange(GuidedRange range)
@@ -104,16 +120,25 @@ public sealed partial class GuidedConfirm : UserControl
 
     private void Close()
     {
+        _ask = null;
         _pending = null;
         _range = null;
+        FieldsHost.Content = null;
         ReleaseKnob();
         Root.Visibility = Visibility.Collapsed;
         BridgeWatch.Stop(WatchClient);
     }
 
-    private void OnGuided(JsonObject view)
+    private void Refuse(string failure)
     {
-        if (_pending is GuidedOffer pending && !GuidedOffer.List(view).Any(o => o.Id == pending.Id && o.Ready)) Close();
+        ErrorText.Text = failure;
+        ErrorText.Visibility = Visibility.Visible;
+        Failed?.Invoke(this, failure);
+    }
+
+    private void OnWatched(JsonObject view)
+    {
+        if (_ask is GuidedAsk ask && !ask.StillOffered(view)) Close();
     }
 
     private string? Execute(GuidedOffer offer, double? chosen) => offer.Id switch
@@ -236,6 +261,13 @@ public sealed partial class GuidedConfirm : UserControl
     }
 
     private void CancelButton_Click(object sender, RoutedEventArgs e) => Cancel();
+
+    private void AlternativeButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_ask?.Alternative is not { } alternative) return;
+        if (alternative.Send() is string failure) Refuse(failure);
+        else Close();
+    }
 
     private Style Styled(string key) => (Style)Resources[key];
 

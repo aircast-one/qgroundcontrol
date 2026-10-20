@@ -75,8 +75,10 @@ public sealed partial class FlightModeMenu : UserControl
     private string _confirming = "";
     private string _error = "";
     private bool _showFolded;
+    private long? _ackBefore;
 
     public event EventHandler<string>? ModeChanged;
+    public event EventHandler<string>? Refused;
     public event EventHandler? StateChanged;
 
     public bool Available => Flag(_view["available"]);
@@ -134,10 +136,23 @@ public sealed partial class FlightModeMenu : UserControl
     private void Apply(JsonObject view)
     {
         _view = view;
-        if (Pending && Current != _askedFrom) Settle();
+        var rejection = Pending ? Rejection(view["modeAck"]) : null;
+        if (Pending && (Current != _askedFrom || rejection != null)) Settle();
         Render();
         StateChanged?.Invoke(this, EventArgs.Empty);
+        if (rejection != null) Refused?.Invoke(this, rejection);
     }
+
+    private string? Rejection(JsonNode? ack) =>
+        ack is JsonObject answer && Serial(answer) != _ackBefore && !Flag(answer["accepted"]) && Current != Requested
+            ? $"Flight mode change to {Requested} {Wording(answer)}."
+            : null;
+
+    private static string Wording(JsonObject ack) =>
+        Text(ack["wording"]) is { Length: > 0 } wording ? wording : "refused";
+
+    private static long? Serial(JsonNode? ack) =>
+        ack is JsonObject answer && answer["serial"] is JsonValue value && value.TryGetValue<long>(out var serial) ? serial : null;
 
     private void Settle()
     {
@@ -243,12 +258,14 @@ public sealed partial class FlightModeMenu : UserControl
     private void Send(string name)
     {
         _confirming = "";
+        var ackBefore = Serial(Read()["modeAck"]);
         var answer = Write(name);
         var ok = Flag(answer["ok"]);
         _error = ok ? "" : Refusal(Text(answer["reason"]));
         if (ok && !Flag(answer["unchanged"]))
         {
             _askedFrom = Current;
+            _ackBefore = ackBefore;
             Requested = name;
             _timeout.Stop();
             _timeout.Start();

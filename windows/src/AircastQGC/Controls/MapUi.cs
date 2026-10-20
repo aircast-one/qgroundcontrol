@@ -12,18 +12,6 @@ public sealed class MapPointEventArgs(double latitude, double longitude) : Event
     public double Longitude { get; } = longitude;
 }
 
-public sealed class MapClickActionEventArgs(MapClickAction action, double latitude, double longitude) : EventArgs
-{
-    public string Kind { get; } = action.Kind;
-    public string Path { get; } = action.Path;
-    public string Title { get; } = action.Title;
-    public string Message { get; } = action.Message;
-    public bool Confirm { get; } = action.Confirm;
-    public double Latitude { get; } = latitude;
-    public double Longitude { get; } = longitude;
-    public bool Handled { get; set; }
-}
-
 public sealed record MapClickAction(string Kind, string Path, string Label, string Title, string Message, bool Confirm)
 {
     public string Glyph => Kind switch

@@ -3,8 +3,20 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text.Json.Nodes;
+using Microsoft.UI.Xaml;
 
 namespace AircastQGC.Controls;
+
+public sealed record GuidedAsk(string Title, string Prompt, Func<string?> Send)
+{
+    public string Detail { get; init; } = "";
+    public string Warning { get; init; } = "";
+    public bool Destructive { get; init; }
+    public UIElement? Fields { get; init; }
+    public (string Title, Func<string?> Send)? Alternative { get; init; }
+    public string WatchPath { get; init; } = "";
+    public Func<JsonObject, bool> StillOffered { get; init; } = _ => true;
+}
 
 public sealed record GuidedOffer(
     string Id,

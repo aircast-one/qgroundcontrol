@@ -16,6 +16,7 @@ public sealed partial class MainWindow : Window
     private readonly FlightModeMenu _modes;
     private ImmutableStack<string> _history = ImmutableStack<string>.Empty;
     private string _page = NavPane.Fly;
+    private ImmutableDictionary<string, UIElement> _pages = ImmutableDictionary<string, UIElement>.Empty;
     private bool _videoMain;
 
     public MainWindow()
@@ -26,11 +27,17 @@ public sealed partial class MainWindow : Window
         ExtendsContentIntoTitleBar = true;
         AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Tall;
         SetTitleBar(Shell.DragRegion);
-        Shell.Loaded += (_, _) => Shell.CaptionInset = AppWindow.TitleBar.RightInset / Shell.XamlRoot.RasterizationScale;
+        Shell.Loaded += (_, _) =>
+        {
+            FitCaption();
+            Shell.XamlRoot.Changed += (_, _) => FitCaption();
+        };
+        Shell.LinkRequested += (_, _) => Go(NavPane.Settings);
 
         _modes = new FlightModeMenu();
         Shell.FlightModeRequested += (_, anchor) => _modes.Show(anchor);
         _modes.StateChanged += (_, _) => Shell.PendingMode = _modes.Requested;
+        _modes.Refused += (_, reason) => Warn(reason);
 
         Nav.NavigationRequested += (_, page) => Go(page);
         Nav.BackRequested += (_, _) => GoBack();
@@ -42,10 +49,21 @@ public sealed partial class MainWindow : Window
         MapButtons.ZoomOutRequested += (_, _) => Map.ZoomOut();
         MapButtons.CenterOnVehicleRequested += (_, _) => Map.CenterOnVehicle();
         Map.MapRightTapped += (latitude, longitude, at) =>
-            MapMenu.Show(latitude, longitude, Map.TransformToVisual(FlyContent).TransformPoint(at));
+        {
+            if (MapMenu.Show(latitude, longitude, Map.TransformToVisual(FlyContent).TransformPoint(at)))
+                Map.ShowClickMarker(latitude, longitude);
+        };
+        MapMenu.OpenChanged += (_, _) =>
+        {
+            if (MapMenu.Target == null) Map.HideClickMarker();
+        };
+        MapMenu.ConfirmRequested += (_, ask) => GuidedCard.Ask(ask);
 
         GuidedStrip.ActionRequested += (_, offer) => GuidedCard.Show(offer);
-        GuidedCard.Failed += (_, reason) => Warn(reason);
+        GuidedCard.Failed += (_, reason) =>
+        {
+            if (!GuidedCard.IsOpen) Warn(reason);
+        };
 
         VideoTile.SwapRequested += (_, _) => SwapVideo(!_videoMain);
         CameraPanel.CameraPresentChanged += (_, _) => CameraButton.Visibility = Shown(CameraPanel.CameraPresent);
@@ -54,6 +72,9 @@ public sealed partial class MainWindow : Window
         Checklist.StateChanged += (_, _) => PaintChecklistButton();
         ChecklistButton.Click += (_, _) => ToggleChecklist();
     }
+
+    private void FitCaption() =>
+        Shell.CaptionInset = AppWindow.TitleBar.RightInset / Shell.XamlRoot.RasterizationScale;
 
     private void Go(string page)
     {
@@ -74,9 +95,20 @@ public sealed partial class MainWindow : Window
         _page = page;
         Nav.SelectedPage = page;
         Nav.CanGoBack = !_history.IsEmpty;
+        var hosted = page == NavPane.Fly ? null : HostedPage(page);
         FlyContent.Visibility = Shown(page == NavPane.Fly);
-        PagePlaceholder.Visibility = Shown(page != NavPane.Fly);
+        PageHost.Content = hosted;
+        PageHost.Visibility = Shown(hosted != null);
+        PagePlaceholder.Visibility = Shown(page != NavPane.Fly && hosted == null);
         PageTitle.Text = page;
+    }
+
+    private UIElement? HostedPage(string page)
+    {
+        if (_pages.TryGetValue(page, out var built)) return built;
+        var created = Pages.PageRegistry.Create(page);
+        if (created != null) _pages = _pages.SetItem(page, created);
+        return created;
     }
 
     private void ShowVehicleOverlays(bool present)
@@ -89,7 +121,6 @@ public sealed partial class MainWindow : Window
 
     private void Warn(string reason)
     {
-        if (GuidedCard.IsOpen) return;
         Notice.Message = reason;
         Notice.IsOpen = true;
     }

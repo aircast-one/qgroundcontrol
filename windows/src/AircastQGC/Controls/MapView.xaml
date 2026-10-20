@@ -11,10 +11,124 @@
             <Setter Property="BorderThickness" Value="0.5" />
             <Setter Property="BorderBrush" Value="{ThemeResource DividerBrush}" />
         </Style>
+
+        <Style x:Key="RouteLine" TargetType="Polyline">
+            <Setter Property="Stroke" Value="{ThemeResource MapPathBrush}" />
+            <Setter Property="StrokeThickness" Value="3" />
+            <Setter Property="StrokeLineJoin" Value="Round" />
+            <Setter Property="StrokeStartLineCap" Value="Round" />
+            <Setter Property="StrokeEndLineCap" Value="Round" />
+        </Style>
+
+        <Style x:Key="TrackLine" TargetType="Polyline" BasedOn="{StaticResource RouteLine}">
+            <Setter Property="Stroke" Value="{ThemeResource CriticalBrush}" />
+            <Setter Property="StrokeThickness" Value="2" />
+            <Setter Property="Opacity" Value="0.85" />
+        </Style>
+
+        <Style x:Key="KeepInEdge" TargetType="Polygon">
+            <Setter Property="Stroke" Value="{ThemeResource CautionBrush}" />
+            <Setter Property="StrokeThickness" Value="2" />
+            <Setter Property="StrokeLineJoin" Value="Round" />
+        </Style>
+
+        <Style x:Key="KeepOutEdge" TargetType="Polygon" BasedOn="{StaticResource KeepInEdge}">
+            <Setter Property="Stroke" Value="{ThemeResource CriticalBrush}" />
+        </Style>
+
+        <Style x:Key="OrbitEdge" TargetType="Polygon" BasedOn="{StaticResource KeepInEdge}">
+            <Setter Property="Stroke" Value="{ThemeResource TextPrimaryBrush}" />
+        </Style>
+
+        <Style x:Key="LoiterEdge" TargetType="Polygon" BasedOn="{StaticResource KeepInEdge}">
+            <Setter Property="Stroke" Value="{ThemeResource SuccessBrush}" />
+        </Style>
+
+        <Style x:Key="PinDisc" TargetType="Ellipse">
+            <Setter Property="Stroke" Value="{ThemeResource CardStrokeBrush}" />
+            <Setter Property="StrokeThickness" Value="2" />
+        </Style>
+
+        <Style x:Key="CurrentPinDisc" TargetType="Ellipse" BasedOn="{StaticResource PinDisc}">
+            <Setter Property="Stroke" Value="{ThemeResource TextPrimaryBrush}" />
+            <Setter Property="StrokeThickness" Value="3" />
+        </Style>
+
+        <Style x:Key="DotPinDisc" TargetType="Ellipse" BasedOn="{StaticResource PinDisc}">
+            <Setter Property="StrokeThickness" Value="1" />
+        </Style>
+
+        <Style x:Key="RallyDisc" TargetType="Ellipse" BasedOn="{StaticResource PinDisc}">
+            <Setter Property="Fill" Value="{ThemeResource SuccessBrush}" />
+        </Style>
+
+        <Style x:Key="GoToDisc" TargetType="Ellipse">
+            <Setter Property="Fill" Value="{ThemeResource SuccessBrush}" />
+            <Setter Property="Stroke" Value="{ThemeResource TextPrimaryBrush}" />
+            <Setter Property="StrokeThickness" Value="2" />
+        </Style>
+
+        <Style x:Key="RoiDisc" TargetType="Ellipse" BasedOn="{StaticResource GoToDisc}">
+            <Setter Property="Fill" Value="{ThemeResource CautionBrush}" />
+        </Style>
+
+        <Style x:Key="OrbitDisc" TargetType="Ellipse">
+            <Setter Property="Fill" Value="{ThemeResource TextPrimaryBrush}" />
+            <Setter Property="Stroke" Value="{ThemeResource AccentOnBrush}" />
+            <Setter Property="StrokeThickness" Value="2" />
+        </Style>
+
+        <Style x:Key="MarkHalo" TargetType="Ellipse">
+            <Setter Property="Stroke" Value="{ThemeResource AccentOnBrush}" />
+            <Setter Property="StrokeThickness" Value="4" />
+            <Setter Property="Opacity" Value="0.6" />
+        </Style>
+
+        <Style x:Key="MarkRing" TargetType="Ellipse">
+            <Setter Property="Stroke" Value="{ThemeResource TextPrimaryBrush}" />
+            <Setter Property="StrokeThickness" Value="2" />
+        </Style>
+
+        <Style x:Key="MarkDot" TargetType="Ellipse">
+            <Setter Property="Fill" Value="{ThemeResource TextPrimaryBrush}" />
+            <Setter Property="Width" Value="4" />
+            <Setter Property="Height" Value="4" />
+        </Style>
+
+        <Style x:Key="TrafficGlyph" TargetType="Polygon">
+            <Setter Property="Fill" Value="{ThemeResource TextPrimaryBrush}" />
+            <Setter Property="Stroke" Value="{ThemeResource AccentOnBrush}" />
+            <Setter Property="StrokeThickness" Value="1.5" />
+            <Setter Property="StrokeLineJoin" Value="Round" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <Style x:Key="AlertTrafficGlyph" TargetType="Polygon" BasedOn="{StaticResource TrafficGlyph}">
+            <Setter Property="Fill" Value="{ThemeResource CriticalBrush}" />
+        </Style>
+
+        <Style x:Key="PinLabel" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="{ThemeResource AppFontFamily}" />
+            <Setter Property="FontSize" Value="{StaticResource FontSizeCaption}" />
+            <Setter Property="FontWeight" Value="SemiBold" />
+            <Setter Property="Foreground" Value="{ThemeResource AccentOnBrush}" />
+            <Setter Property="HorizontalAlignment" Value="Center" />
+            <Setter Property="VerticalAlignment" Value="Center" />
+        </Style>
+
+        <Style x:Key="MapLabel" TargetType="TextBlock">
+            <Setter Property="FontFamily" Value="{ThemeResource AppFontFamily}" />
+            <Setter Property="FontSize" Value="{StaticResource FontSizeCaption}" />
+            <Setter Property="Foreground" Value="{ThemeResource TextPrimaryBrush}" />
+            <Setter Property="TextAlignment" Value="Center" />
+        </Style>
     </UserControl.Resources>
 
     <Grid x:Name="Surface"
           Background="{ThemeResource MapLandBrush}"
+          ManipulationMode="Scale"
+          ManipulationDelta="OnManipulationDelta"
           PointerPressed="OnPointerPressed"
           PointerMoved="OnPointerMoved"
           PointerReleased="OnPointerReleased"
@@ -26,6 +140,16 @@
           SizeChanged="OnSizeChanged">
 
         <Canvas x:Name="TileLayer" IsHitTestVisible="False" />
+
+        <Canvas x:Name="FenceLayer" IsHitTestVisible="False" />
+
+        <Canvas x:Name="TrackLayer" IsHitTestVisible="False" />
+
+        <Canvas x:Name="MissionLayer" IsHitTestVisible="False" />
+
+        <Canvas x:Name="TrafficLayer" IsHitTestVisible="False" />
+
+        <Canvas x:Name="GuideLayer" IsHitTestVisible="False" />
 
         <Canvas x:Name="MarkerLayer" IsHitTestVisible="False">
             <Grid x:Name="HomeMarker" Width="28" Height="28" Visibility="Collapsed">
@@ -50,5 +174,30 @@
                 </Path>
             </Grid>
         </Canvas>
+
+        <Border x:Name="ScaleBar"
+                Visibility="Collapsed"
+                IsHitTestVisible="False"
+                HorizontalAlignment="Left"
+                VerticalAlignment="Top"
+                Margin="16"
+                Padding="8,4,8,6"
+                Background="{ThemeResource CardBrush}"
+                BorderBrush="{ThemeResource CardStrokeBrush}"
+                BorderThickness="1"
+                CornerRadius="{StaticResource RadiusControl}">
+            <StackPanel Spacing="{StaticResource SpaceXs}">
+                <TextBlock x:Name="ScaleText"
+                           FontFamily="{ThemeResource AppFontFamily}"
+                           FontSize="{StaticResource FontSizeCaption}"
+                           Foreground="{ThemeResource TextPrimaryBrush}" />
+                <Rectangle x:Name="ScaleLine"
+                           Height="4"
+                           HorizontalAlignment="Left"
+                           RadiusX="2"
+                           RadiusY="2"
+                           Fill="{ThemeResource TextPrimaryBrush}" />
+            </StackPanel>
+        </Border>
     </Grid>
 </UserControl>

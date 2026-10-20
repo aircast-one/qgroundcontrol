@@ -66,6 +66,10 @@
                 <controls:MapContextMenu x:Name="MapMenu" />
             </Grid>
 
+            <ContentControl x:Name="PageHost" Grid.Column="1" Visibility="Collapsed"
+                            HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
+                            Background="{ThemeResource BgBaseBrush}" />
+
             <Grid x:Name="PagePlaceholder" Grid.Column="1" Visibility="Collapsed" Background="{ThemeResource BgBaseBrush}">
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{StaticResource SpaceSm}">
                     <TextBlock x:Name="PageTitle" HorizontalAlignment="Center"

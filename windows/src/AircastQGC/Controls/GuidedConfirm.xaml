@@ -85,6 +85,15 @@
                 TextAlignment="Center"
                 TextWrapping="Wrap" />
 
+            <TextBlock
+                x:Name="WarningText"
+                Visibility="Collapsed"
+                FontSize="{ThemeResource FontSizeBody}"
+                Foreground="{ThemeResource CautionBrush}"
+                HorizontalAlignment="Center"
+                TextAlignment="Center"
+                TextWrapping="Wrap" />
+
             <StackPanel x:Name="ValuePanel" Spacing="4" Visibility="Collapsed">
                 <Grid>
                     <TextBlock x:Name="ValueLabel" Style="{StaticResource ConfirmCaption}" />
@@ -106,6 +115,11 @@
                 </Grid>
             </StackPanel>
 
+            <ContentPresenter x:Name="FieldsHost" Visibility="Collapsed" HorizontalContentAlignment="Stretch" />
+
+            <TextBlock x:Name="DetailText" Visibility="Collapsed" Style="{StaticResource ConfirmCaption}"
+                       HorizontalAlignment="Center" IsTextSelectionEnabled="True" />
+
             <CheckBox
                 x:Name="OptionCheck"
                 Visibility="Collapsed"
@@ -119,6 +133,14 @@
                 HorizontalAlignment="Center"
                 TextAlignment="Center"
                 TextWrapping="Wrap" />
+
+            <Button
+                x:Name="AlternativeButton"
+                Visibility="Collapsed"
+                HorizontalAlignment="Stretch"
+                CornerRadius="{ThemeResource RadiusControl}"
+                BorderThickness="1"
+                Click="AlternativeButton_Click" />
 
             <Border
                 CornerRadius="21"

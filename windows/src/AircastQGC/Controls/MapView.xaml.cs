@@ -12,6 +12,7 @@ using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
+using Microsoft.UI.Xaml.Shapes;
 using Windows.Foundation;
 
 namespace AircastQGC.Controls;
@@ -26,15 +27,71 @@ public sealed partial class MapView : UserControl
     private const int MaxParentDepth = 4;
     private const double MaxLatitude = 85.05112878;
     private const string FollowSetting = "view.control(settings.flyViewSettings.keepMapCenteredOnVehicle)";
+    private const string FlyMissionPath = "view.flyMissionItems";
+    private const string FlyFencesPath = "view.flyFences";
+    private const string TrackPath = "view.track";
+    private const string TrafficPath = "view.adsbTraffic";
+    private const string OrbitPath = "view.orbit";
+    private const string MapClickPath = "view.mapClick";
+    private const string GuidedPath = "view.guidedActions";
+    private const string WatchPrefix = "mapview.";
+    private const string RallyLabel = "R";
+    private const string RoiLabel = "Looking here";
+    private const int ReturnToLaunch = 20;
+    private const double EquatorMetres = 40_075_016.686;
+    private const double ScalePixels = 100;
+    private const double FenceFillOpacity = 0.12;
+    private const double StaleOpacity = 0.5;
+    private const double PinSize = 24;
+    private const double CurrentPinSize = 30;
+    private const double DotPinSize = 8;
+    private const double RallySize = 22;
+    private const double MarkSize = 18;
+    private const double OrbitDotSize = 10;
+    private const double GlyphSize = 32;
+    private const double LabelBoxWidth = 120;
+    private const double LabelBoxHeight = 112;
+    private const double LabelGap = 2;
+    private const double SideGap = 4;
+    private const double SideLabelHalfHeight = 8;
+    private static readonly string[] WatchedPaths = [TrackPath, TrafficPath, OrbitPath, MapClickPath, GuidedPath];
     private static readonly TimeSpan PanSuspension = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(500);
+    private static readonly TimeSpan PlanPollInterval = TimeSpan.FromSeconds(2);
+    private static readonly (double X, double Y)[] AircraftOutline =
+    [
+        (0.5, 0.06), (0.58, 0.42), (0.94, 0.58), (0.58, 0.6), (0.56, 0.82), (0.7, 0.92),
+        (0.3, 0.92), (0.44, 0.82), (0.42, 0.6), (0.06, 0.58), (0.42, 0.42),
+    ];
 
-    private readonly record struct Geo(double Latitude, double Longitude);
     private readonly record struct Tile(int X, int Y, int Z);
     private sealed record Cell(Canvas View, CancellationTokenSource Cancel);
+    private sealed record Drawn(UIElement View, Action<Func<Geo, Point>> Place);
+
+    private sealed class Overlay(Canvas canvas)
+    {
+        private List<Action<Func<Geo, Point>>> _placers = [];
+
+        public void Draw(IEnumerable<Drawn> drawn, Func<Geo, Point> project)
+        {
+            var shown = drawn.ToList();
+            canvas.Children.Clear();
+            shown.ForEach(item => canvas.Children.Add(item.View));
+            _placers = shown.Select(item => item.Place).ToList();
+            Place(project);
+        }
+
+        public void Place(Func<Geo, Point> project) => _placers.ForEach(place => place(project));
+    }
 
     private readonly Dictionary<Tile, Cell> _cells = new();
+    private readonly Overlay _fenceLayer;
+    private readonly Overlay _trackLayer;
+    private readonly Overlay _missionLayer;
+    private readonly Overlay _trafficLayer;
+    private readonly Overlay _guideLayer;
     private DispatcherQueueTimer? _poll;
+    private DispatcherQueueTimer? _planPoll;
     private Geo _center = new(0, 0);
     private double _zoom = 3;
     private string _mapType = string.Empty;
@@ -45,10 +102,21 @@ public sealed partial class MapView : UserControl
     private bool _framed;
     private DateTime? _pannedAt;
     private Point? _dragFrom;
+    private CircleMark? _goTo;
+    private CircleMark? _orbit;
+    private Geo? _roi;
+    private Geo? _clickMark;
+    private double _scaleAcross = double.NaN;
+    private MapScale? _scale;
 
     public MapView()
     {
         InitializeComponent();
+        _fenceLayer = new Overlay(FenceLayer);
+        _trackLayer = new Overlay(TrackLayer);
+        _missionLayer = new Overlay(MissionLayer);
+        _trafficLayer = new Overlay(TrafficLayer);
+        _guideLayer = new Overlay(GuideLayer);
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
     }
@@ -89,26 +157,46 @@ public sealed partial class MapView : UserControl
 
     public void ZoomOut() => ZoomAround(Middle, -1);
 
+    public void ShowClickMarker(double latitude, double longitude)
+    {
+        _clickMark = Valid(latitude, longitude);
+        DrawGuides();
+    }
+
+    public void HideClickMarker()
+    {
+        _clickMark = null;
+        DrawGuides();
+    }
+
     private Point Middle => new(Surface.ActualWidth / 2, Surface.ActualHeight / 2);
+
+    private IEnumerable<Overlay> Layers => [_fenceLayer, _trackLayer, _missionLayer, _trafficLayer, _guideLayer];
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        _poll ??= CreatePoll();
+        _poll ??= CreatePoll(PollInterval, Refresh);
+        _planPoll ??= CreatePoll(PlanPollInterval, RefreshPlan);
         _poll.Start();
+        _planPoll.Start();
         Refresh();
+        RefreshPlan();
+        StartWatching();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
     {
         _poll?.Stop();
+        _planPoll?.Stop();
+        WatchedPaths.ToList().ForEach(path => BridgeWatch.Stop(WatchPrefix + path));
         _cells.Keys.ToList().ForEach(Drop);
     }
 
-    private DispatcherQueueTimer CreatePoll()
+    private DispatcherQueueTimer CreatePoll(TimeSpan interval, Action tick)
     {
         var timer = DispatcherQueue.CreateTimer();
-        timer.Interval = PollInterval;
-        timer.Tick += (_, _) => Refresh();
+        timer.Interval = interval;
+        timer.Tick += (_, _) => tick();
         return timer;
     }
 
@@ -130,6 +218,42 @@ public sealed partial class MapView : UserControl
 
         Track();
         Render();
+    }
+
+    private void RefreshPlan()
+    {
+        _missionLayer.Draw(MissionDrawing(MapOverlayJson.Mission(Read(FlyMissionPath))), ToScreen);
+        _fenceLayer.Draw(FenceDrawing(MapOverlayJson.Fences(Read(FlyFencesPath))), ToScreen);
+        _scaleAcross = double.NaN;
+        PlaceScale();
+    }
+
+    private void StartWatching()
+    {
+        Watch(TrackPath, view => _trackLayer.Draw(TrackDrawing(MapOverlayJson.Track(view)), ToScreen));
+        Watch(TrafficPath, view => _trafficLayer.Draw(MapOverlayJson.Traffic(view).Select(TrafficDrawing), ToScreen));
+        Watch(OrbitPath, view =>
+        {
+            _orbit = MapOverlayJson.Orbit(view);
+            DrawGuides();
+        });
+        Watch(MapClickPath, view =>
+        {
+            _goTo = MapOverlayJson.GoTo(view);
+            DrawGuides();
+        });
+        Watch(GuidedPath, view =>
+        {
+            _roi = MapOverlayJson.Roi(view);
+            DrawGuides();
+        });
+    }
+
+    private static void Watch(string path, Action<JsonObject> apply)
+    {
+        try { BridgeWatch.Watch(WatchPrefix + path, new[] { path }, apply); }
+        catch (Exception) { }
+        apply(Read(path));
     }
 
     private void Track()
@@ -193,6 +317,8 @@ public sealed partial class MapView : UserControl
         _cells.ToList().ForEach(entry => PlaceCell(entry.Value.View, entry.Key, originX, originY, size));
 
         PlaceMarkers();
+        Layers.ToList().ForEach(layer => layer.Place(ToScreen));
+        PlaceScale();
     }
 
     private void Add(Tile slot)
@@ -203,7 +329,7 @@ public sealed partial class MapView : UserControl
             Height = TileSize,
             Clip = new RectangleGeometry { Rect = new Rect(0, 0, TileSize, TileSize) },
             RenderTransform = new ScaleTransform(),
-            Children = { new Border { Style = (Style)Resources["TileFrame"] } },
+            Children = { new Border { Style = Styled("TileFrame") } },
         }, new CancellationTokenSource());
         _cells[slot] = cell;
         TileLayer.Children.Add(cell.View);
@@ -323,6 +449,171 @@ public sealed partial class MapView : UserControl
         Canvas.SetTop(marker, point.Y - marker.Height / 2);
     }
 
+    private void PlaceScale()
+    {
+        var across = Math.Round(EquatorMetres * Math.Cos(_center.Latitude * Math.PI / 180) / (TileSize * Math.Pow(2, _zoom)) * ScalePixels);
+        if (across != _scaleAcross)
+        {
+            _scaleAcross = across;
+            _scale = across > 0 ? MapOverlayJson.Scale(Read(FormattableString.Invariant($"view.mapScale({across:F0})"))) : null;
+        }
+        ScaleBar.Visibility = _scale != null && Surface.ActualWidth > ScalePixels ? Visibility.Visible : Visibility.Collapsed;
+        ScaleText.Text = _scale?.Text ?? string.Empty;
+        ScaleLine.Width = (_scale?.Fraction ?? 0) * ScalePixels;
+    }
+
+    private IEnumerable<Drawn> MissionDrawing(FlownMission mission) =>
+        mission.Route.Select(line => Line(line, "RouteLine"))
+            .Concat(mission.Pins.OrderBy(pin => pin.Current).Select(pin => Pin(pin.At, MissionPinView(pin))));
+
+    private IEnumerable<Drawn> FenceDrawing(FlownFences fences) =>
+        fences.Areas
+            .Select(area => Area(area.Ring, area.KeepIn ? "KeepInEdge" : "KeepOutEdge", Tint(area.KeepIn ? "CautionBrush" : "CriticalBrush")))
+            .Append(Area(fences.Enforced, "KeepInEdge", dashed: true))
+            .Concat(fences.Rally.Select(at => Pin(at, Disc("RallyDisc", RallySize, RallyLabel))));
+
+    private IEnumerable<Drawn> TrackDrawing(IReadOnlyList<Geo> track) =>
+        track.Count > 1 ? [Line(track, "TrackLine")] : [];
+
+    private Drawn TrafficDrawing(TrafficMark mark)
+    {
+        var glyph = new Polygon
+        {
+            Style = Styled(mark.Alert ? "AlertTrafficGlyph" : "TrafficGlyph"),
+            Width = GlyphSize,
+            Height = GlyphSize,
+            Points = Collect(AircraftOutline.Select(at => new Point(at.X * GlyphSize, at.Y * GlyphSize))),
+            RenderTransform = new RotateTransform { Angle = mark.Heading ?? 0, CenterX = GlyphSize / 2, CenterY = GlyphSize / 2 },
+        };
+        var view = Labelled(glyph, GlyphSize, mark.Label);
+        view.Opacity = mark.Stale ? StaleOpacity : 1;
+        return Pin(mark.At, view);
+    }
+
+    private void DrawGuides() => _guideLayer.Draw(Guides(), ToScreen);
+
+    private IEnumerable<Drawn> Guides()
+    {
+        IEnumerable<Drawn> orbit = _orbit is { } circle
+            ? [Area(circle.Ring, "OrbitEdge"), Pin(circle.Centre, Disc("OrbitDisc", OrbitDotSize))]
+            : [];
+        IEnumerable<Drawn> going = _goTo is { } destination
+            ? [Area(destination.Ring, "LoiterEdge", dashed: true), Pin(destination.Centre, Disc("GoToDisc", MarkSize))]
+            : [];
+        IEnumerable<Drawn> looking = _roi is { } roi
+            ? [Pin(roi, Labelled(Disc("RoiDisc", MarkSize), MarkSize, RoiLabel))]
+            : [];
+        IEnumerable<Drawn> clicked = _clickMark is { } click ? [Pin(click, ClickMark())] : [];
+        return orbit.Concat(going).Concat(looking).Concat(clicked);
+    }
+
+    private Drawn Line(IEnumerable<Geo> points, string style)
+    {
+        var line = new Polyline { Style = Styled(style) };
+        return new Drawn(line, project => line.Points = Collect(points.Select(project)));
+    }
+
+    private Drawn Area(IReadOnlyList<Geo> ring, string style, Brush? fill = null, bool dashed = false)
+    {
+        var area = new Polygon { Style = Styled(style), Fill = fill };
+        if (dashed) area.StrokeDashArray = Dashes();
+        return new Drawn(area, project => area.Points = Collect(ring.Select(project)));
+    }
+
+    private static Drawn Pin(Geo at, FrameworkElement view) =>
+        new(view, project =>
+        {
+            var point = project(at);
+            Canvas.SetLeft(view, point.X - view.Width / 2);
+            Canvas.SetTop(view, point.Y - view.Height / 2);
+        });
+
+    private FrameworkElement MissionPinView(MissionPin pin)
+    {
+        var size = pin.Current ? CurrentPinSize : pin.Dot ? DotPinSize : PinSize;
+        var side = new TextBlock { Style = Styled("MapLabel"), Text = pin.Side };
+        Canvas.SetLeft(side, size + SideGap);
+        Canvas.SetTop(side, size / 2 - SideLabelHalfHeight);
+        return new Grid
+        {
+            Width = size,
+            Height = size,
+            Children =
+            {
+                new Ellipse { Style = Styled(pin.Current ? "CurrentPinDisc" : pin.Dot ? "DotPinDisc" : "PinDisc"), Fill = Token(MissionTone(pin)) },
+                new TextBlock { Style = Styled("PinLabel"), Text = pin.Label },
+                new Canvas { Children = { side } },
+            },
+        };
+    }
+
+    private static string MissionTone(MissionPin pin) => (pin.Kind, pin.Command) switch
+    {
+        ("takeoff", _) => "SuccessBrush",
+        ("land", _) or (_, ReturnToLaunch) => "CriticalBrush",
+        _ => "MapPathBrush",
+    };
+
+    private FrameworkElement Disc(string style, double size, string label = "") => new Grid
+    {
+        Width = size,
+        Height = size,
+        Children =
+        {
+            new Ellipse { Style = Styled(style) },
+            new TextBlock { Style = Styled("PinLabel"), Text = label },
+        },
+    };
+
+    private FrameworkElement Labelled(FrameworkElement glyph, double glyphSize, string label) => new Grid
+    {
+        Width = LabelBoxWidth,
+        Height = LabelBoxHeight,
+        Children =
+        {
+            glyph,
+            new TextBlock
+            {
+                Style = Styled("MapLabel"),
+                Text = label,
+                HorizontalAlignment = HorizontalAlignment.Center,
+                VerticalAlignment = VerticalAlignment.Top,
+                Margin = new Thickness(0, LabelBoxHeight / 2 + glyphSize / 2 + LabelGap, 0, 0),
+            },
+        },
+    };
+
+    private FrameworkElement ClickMark() => new Grid
+    {
+        Width = MarkSize,
+        Height = MarkSize,
+        Children =
+        {
+            new Ellipse { Style = Styled("MarkHalo") },
+            new Ellipse { Style = Styled("MarkRing") },
+            new Ellipse { Style = Styled("MarkDot") },
+        },
+    };
+
+    private Style Styled(string key) => (Style)Resources[key];
+
+    private static Brush Token(string key) => (Brush)Application.Current.Resources[key];
+
+    private static Brush Tint(string key) =>
+        new SolidColorBrush(((SolidColorBrush)Token(key)).Color) { Opacity = FenceFillOpacity };
+
+    private static DoubleCollection Dashes() => new() { 4, 3 };
+
+    private static PointCollection Collect(IEnumerable<Point> points)
+    {
+        var collection = new PointCollection();
+        points.ToList().ForEach(collection.Add);
+        return collection;
+    }
+
+    private static Geo? Valid(double latitude, double longitude) =>
+        double.IsFinite(latitude) && double.IsFinite(longitude) ? new Geo(latitude, longitude) : null;
+
     private void Pan(double dx, double dy)
     {
         var centre = Project(_center, _zoom);
@@ -417,6 +708,11 @@ public sealed partial class MapView : UserControl
     {
         var point = e.GetCurrentPoint(Surface);
         if (point.Properties.IsRightButtonPressed) return;
+        if (_dragFrom.HasValue)
+        {
+            _dragFrom = null;
+            return;
+        }
         _dragFrom = point.Position;
         Surface.CapturePointer(e.Pointer);
     }
@@ -443,6 +739,16 @@ public sealed partial class MapView : UserControl
         var point = e.GetCurrentPoint(Surface);
         if (point.Properties.IsHorizontalMouseWheel) return;
         ZoomAround(point.Position, point.Properties.MouseWheelDelta / 120.0 * WheelStep);
+        e.Handled = true;
+    }
+
+    private void OnManipulationDelta(object sender, ManipulationDeltaRoutedEventArgs e)
+    {
+        var scale = e.Delta.Scale;
+        if (scale <= 0 || scale == 1) return;
+        _dragFrom = null;
+        _pannedAt = DateTime.UtcNow;
+        ZoomAround(e.Position, Math.Log2(scale));
         e.Handled = true;
     }
 

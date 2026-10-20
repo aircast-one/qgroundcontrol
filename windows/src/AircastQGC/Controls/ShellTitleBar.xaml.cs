@@ -20,6 +20,7 @@ public sealed partial class ShellTitleBar : UserControl
     private const string ArmedGlyph = "";
     private const string DisarmedGlyph = "";
     private const double StaleOpacity = 0.45;
+    private const string NotAvailable = "n/a";
 
     private static readonly string[] Watched = { FlyStatePath, VehicleLinksPath, FlightModesPath, BatteryPath, GpsPath };
     private static readonly string[] KnownStates = { "notConnected", "contactLost", "flying", "landing", "armed", "disarmed" };
@@ -38,6 +39,8 @@ public sealed partial class ShellTitleBar : UserControl
     }
 
     public event EventHandler<FrameworkElement>? FlightModeRequested;
+
+    public event EventHandler? LinkRequested;
 
     public FrameworkElement DragRegion => DragArea;
 
@@ -77,6 +80,8 @@ public sealed partial class ShellTitleBar : UserControl
     }
 
     private void OnModeClick(object sender, RoutedEventArgs e) => FlightModeRequested?.Invoke(this, ModePill);
+
+    private void OnLinkClick(object sender, RoutedEventArgs e) => LinkRequested?.Invoke(this, EventArgs.Empty);
 
     private JsonObject View(string path) => _views.TryGetValue(path, out var view) ? view : new JsonObject();
 
@@ -147,7 +152,9 @@ public sealed partial class ShellTitleBar : UserControl
         var first = view["packs"] is JsonArray { Count: > 0 } packs ? packs[0] as JsonObject : null;
         var main = first is null ? "" : Text(first, "text");
         var secondary = first is null ? "" : Text(first, "secondaryText");
-        var text = main.Length == 0 ? "—" : secondary.Length == 0 || secondary == main ? main : $"{main} · {secondary}";
+        var text = main.Length == 0 ? "—"
+            : secondary.Length == 0 || secondary == main || secondary == NotAvailable ? main
+            : $"{main} · {secondary}";
         var tone = Text(view, "level") switch
         {
             "normal" => Tone.Good,
@@ -176,7 +183,7 @@ public sealed partial class ShellTitleBar : UserControl
         return (text, tone);
     }
 
-    private static void Paint(Border pill, FontIcon icon, Tone tone)
+    private static void Paint(FrameworkElement pill, FontIcon icon, Tone tone)
     {
         icon.Foreground = Token(tone switch
         {
@@ -185,12 +192,12 @@ public sealed partial class ShellTitleBar : UserControl
             Tone.Critical => "CriticalBrush",
             _ => "TextTertiaryBrush",
         });
-        pill.Background = Token(tone switch
+        pill.SetValue(pill is Control ? Control.BackgroundProperty : Border.BackgroundProperty, Token(tone switch
         {
             Tone.Caution => "CautionBgBrush",
             Tone.Critical => "CriticalBgBrush",
             _ => "ControlBrush",
-        });
+        }));
     }
 
     private static Brush Token(string key) =>

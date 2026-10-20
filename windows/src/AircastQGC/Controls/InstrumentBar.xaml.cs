@@ -6,6 +6,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using AircastQGC.Core;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 
@@ -21,6 +22,9 @@ public sealed partial class InstrumentBar : UserControl
     private const string Client = "controls.instrumentBar";
     private const string NoticeClient = "controls.instrumentBar.notice";
     private const double StaleOpacity = 0.55;
+    private static readonly TimeSpan RereadInterval = TimeSpan.FromMilliseconds(500);
+
+    private readonly DispatcherQueueTimer _reread;
 
     private IReadOnlyList<InstrumentSelection> _selections = InstrumentSelectionStore.Load();
     private IReadOnlyList<InstrumentValue> _values = Array.Empty<InstrumentValue>();
@@ -29,6 +33,9 @@ public sealed partial class InstrumentBar : UserControl
     public InstrumentBar()
     {
         InitializeComponent();
+        _reread = DispatcherQueue.CreateTimer();
+        _reread.Interval = RereadInterval;
+        _reread.Tick += (_, _) => Refresh();
         Loaded += (_, _) => Start();
         Unloaded += (_, _) => Stop();
     }
@@ -125,10 +132,12 @@ public sealed partial class InstrumentBar : UserControl
         Watch();
         Guard(() => BridgeWatch.Watch(NoticeClient, new[] { FlyStateView }, view => OnUi(() => ApplyNotice(view))));
         Refresh();
+        _reread.Start();
     }
 
     private void Stop()
     {
+        _reread.Stop();
         Guard(() => BridgeWatch.Stop(Client));
         Guard(() => BridgeWatch.Stop(NoticeClient));
     }
