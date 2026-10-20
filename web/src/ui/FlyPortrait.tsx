@@ -55,7 +55,6 @@ import {
   sideways,
   useRememberCameraStepper,
   useRememberVideoFrame,
-  verticalSwipe,
   videoFrame,
   videoGestures,
   videoSwipe,
@@ -235,11 +234,14 @@ export const FlyPortrait = ({ view, onView, status, video, map, keyRow, rail, ov
             <AnimatedVisibility visible={split} className={`absolute inset-x-0 top-0 ${PASS_THROUGH}`}>
               <div className="flex w-full flex-col" style={{ paddingTop: videoTop, height: videoTop + videoHeight }}>
                 <LocalFlyOsd.Provider value>
-                  <div className="flex items-center gap-2 overflow-x-auto p-2">
-                    <LayoutWidget widgetKey="cameraSwitch" movable={false}>
-                      <CameraSwitch splitRoom />
-                    </LayoutWidget>
-                    {keyRow}
+                  <div className="flex items-center justify-between gap-2 p-2">
+                    <div className="flex min-w-0 items-center gap-2 overflow-x-auto">
+                      <LayoutWidget widgetKey="cameraSwitch" movable={false}>
+                        <CameraSwitch splitRoom />
+                      </LayoutWidget>
+                      {keyRow}
+                    </div>
+                    {split ? rail(true) : null}
                   </div>
                 </LocalFlyOsd.Provider>
                 <div className="relative min-h-0 w-full flex-1">
@@ -279,7 +281,7 @@ export const FlyPortrait = ({ view, onView, status, video, map, keyRow, rail, ov
                     >
                       <MapButtons view={view} split={split} hasVideo={hasVideo} onView={onView} />
                       <div className="flex-1" />
-                      <div className="pt-2">{rail(split)}</div>
+                      {split ? null : <div className="pt-2">{rail(false)}</div>}
                     </div>
                   </div>
                 </div>
@@ -410,16 +412,9 @@ const VideoTab = ({ showSwipe, onShow }: { showSwipe: VideoSwipe; onShow: () => 
 };
 
 const TelemetryOsd = ({ onSmaller, onFullScreen }: { onSmaller: () => void; onFullScreen: () => void }) => {
-  const latest = useUpdatedRef({ onSmaller, onFullScreen });
-  const swipes = useMemo(() => verticalSwipe(VIDEO_SWIPE_DISTANCE, (swipe: VideoSwipe) => (swipe === VideoSwipe.Up ? latest.current.onSmaller() : latest.current.onFullScreen())), []);
   const hasVehicle = useHasVehicle();
   return (
-    <div
-      {...swipes}
-      data-gesture
-      className="flex w-full items-center gap-3 px-3 py-2"
-      style={{ background: `linear-gradient(to bottom, transparent, ${withAlpha(Color.Black, SCRIM_ALPHA)})`, touchAction: 'none' }}
-    >
+    <div className="flex w-full items-center gap-3 px-3 py-2" style={{ background: `linear-gradient(to bottom, transparent, ${withAlpha(Color.Black, SCRIM_ALPHA)})` }}>
       <OsdCompassDial size={PORTRAIT_OSD_DIAL} />
       <div className={`flex min-w-0 flex-1 items-center overflow-hidden ${osdShadow()}`}>
         <LocalFlyOsd.Provider value>{hasVehicle ? <TelemetryRow valuesShown chooser={false} compact stacked /> : <TelemetryPlaceholder />}</LocalFlyOsd.Provider>

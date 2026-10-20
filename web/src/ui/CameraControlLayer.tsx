@@ -234,7 +234,7 @@ export const BesideAnchor = {
   }),
 };
 
-const BesidePopup = ({ anchor, onDismissRequest, children }: { anchor: HTMLElement; onDismissRequest: () => void; children: ReactNode }) => {
+export const BesidePopup = ({ anchor, onDismissRequest, children }: { anchor: HTMLElement; onDismissRequest: () => void; children: ReactNode }) => {
   const [popup, setPopup] = useState<HTMLDivElement | null>(null);
   const [offset, setOffset] = useState<PopupOffset | null>(null);
   const dismiss = useUpdatedRef(onDismissRequest);

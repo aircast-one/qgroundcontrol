@@ -6,12 +6,12 @@ import { VideoCommands } from '@/bridge/BridgeCommands';
 import { settingControl, useQgcBool, useQgcPath, useQgcValue } from '@/bridge/QgcState';
 import { useKeyedState, useLaunchedEffect } from '@/kotlin/Compose';
 import { coerceIn, delay } from '@/kotlin/Std';
-import { FilterChip, Text, TextButton } from '@/m3';
+import { FilterChip, Surface, Text, TextButton } from '@/m3';
 import { AircastSheet } from '@/map/AircastSheet';
 import { VEHICLES_VIEW } from '@/map/VehiclePicker';
 import { Color, md, withAlpha } from '@/theme/Colors';
 import { activeVehicleId } from '@/ui/ActiveVehicle';
-import { VIDEO_RECORDING_STATE } from '@/ui/CameraControlLayer';
+import { BesidePopup, VIDEO_RECORDING_STATE } from '@/ui/CameraControlLayer';
 import { OpenOnRequest } from '@/ui/FlyScreenState';
 import { useHasVehicle } from '@/ui/FlyState';
 import { GimbalSettings, GimbalVideoMode, type GimbalIndicatorState, gimbalIndicator, gimbalRefusal } from '@/ui/GimbalIndicator';
@@ -143,6 +143,7 @@ const GIMBAL_IDLE_MS = 3000;
 const GIMBAL_TRACK_ALPHA = 0.8;
 const GIMBAL_REST_ALPHA = 0.25;
 const TILT_IDLE_ALPHA = 0.45;
+const TILT_POPUP_ALPHA = 0.55;
 
 const TILT_COLORS: RailSliderColors = {
   thumb: Color.White,
@@ -159,40 +160,65 @@ const TiltSlider = ({ pitch, onRecenter, slider, onTilt }: { pitch: number | nul
   const shown = dragging ?? coerceIn(pitch ?? 0, GIMBAL_TILT_MIN, GIMBAL_TILT_MAX);
   const [active, setActive] = useState(true);
   const [wake, setWake] = useState(0);
+  const [opener, setOpener] = useState<HTMLDivElement | null>(null);
+  const [open, setOpen] = useState(false);
   useLaunchedEffect([shown, dragging, wake], async (scope) => {
     setActive(true);
     if (dragging === null) {
       await delay(GIMBAL_IDLE_MS);
-      if (scope.isActive()) setActive(false);
+      if (scope.isActive()) {
+        setActive(false);
+        setOpen(false);
+      }
     }
   });
+  const rail = (
+    <RailSlider
+      value={shown}
+      onValueChange={(next) => {
+        dragged.current = next;
+        setDragging(next);
+        const now = performance.now();
+        if (rcSendDue(now, lastSent.current, false)) {
+          lastSent.current = now;
+          onTilt(next);
+        }
+      }}
+      onValueChangeFinished={() => {
+        if (dragged.current !== null) onTilt(dragged.current);
+        dragged.current = null;
+        setDragging(null);
+      }}
+      valueRange={[GIMBAL_TILT_MIN, GIMBAL_TILT_MAX]}
+      colors={TILT_COLORS}
+      label="Camera tilt"
+      style={{ opacity: active ? 1 : TILT_IDLE_ALPHA }}
+    />
+  );
+  if (slider)
+    return (
+      <div className="flex min-h-0 flex-col items-center">
+        <TiltReadout degrees={shown} onRecenter={onRecenter} onTap={() => setWake((it) => it + 1)} tapLabel="Tilt the camera" />
+        <RailSlot>{rail}</RailSlot>
+      </div>
+    );
   return (
-    <div className="flex min-h-0 flex-col items-center">
-      <TiltReadout degrees={shown} onRecenter={onRecenter} onTap={slider ? () => setWake((it) => it + 1) : null} tapLabel="Tilt the camera" />
-      {slider ? (
-        <RailSlot>
-          <RailSlider
-            value={shown}
-            onValueChange={(next) => {
-              dragged.current = next;
-              setDragging(next);
-              const now = performance.now();
-              if (rcSendDue(now, lastSent.current, false)) {
-                lastSent.current = now;
-                onTilt(next);
-              }
-            }}
-            onValueChangeFinished={() => {
-              if (dragged.current !== null) onTilt(dragged.current);
-              dragged.current = null;
-              setDragging(null);
-            }}
-            valueRange={[GIMBAL_TILT_MIN, GIMBAL_TILT_MAX]}
-            colors={TILT_COLORS}
-            label="Camera tilt"
-            style={{ opacity: active ? 1 : TILT_IDLE_ALPHA }}
-          />
-        </RailSlot>
+    <div ref={setOpener}>
+      <TiltReadout
+        degrees={shown}
+        onRecenter={null}
+        onTap={() => {
+          setOpen(!open);
+          setWake((it) => it + 1);
+        }}
+        tapLabel="Tilt the camera"
+      />
+      {open && opener !== null ? (
+        <BesidePopup anchor={opener} onDismissRequest={() => setOpen(false)}>
+          <Surface shape="full" color={withAlpha(Color.Black, TILT_POPUP_ALPHA)} className="p-1">
+            <div style={{ height: RAIL_SLIDER_LENGTH }}>{rail}</div>
+          </Surface>
+        </BesidePopup>
       ) : null}
     </div>
   );

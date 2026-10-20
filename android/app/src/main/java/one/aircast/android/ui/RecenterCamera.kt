@@ -35,7 +35,7 @@ private const val GIMBAL_CENTER = "gimbal.center"
 private const val OFF_CENTRE_DEG = 2.0
 private const val RECENTER_SCRIM_ALPHA = 0.55f
 private val TILT_READOUT_WIDTH = 64.dp
-private val TILT_READOUT_HEIGHT = 32.dp
+private val TILT_READOUT_HEIGHT = 44.dp
 private val RECENTER_GLYPH = 14.dp
 private val TILT_READOUT_PADDING = 8.dp
 

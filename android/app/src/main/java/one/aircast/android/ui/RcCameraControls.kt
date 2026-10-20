@@ -2,7 +2,12 @@ package one.aircast.android.ui
 
 import android.os.SystemClock
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material3.Surface
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Column
@@ -131,6 +136,7 @@ private const val GIMBAL_IDLE_MS = 3000L
 private const val GIMBAL_TRACK_ALPHA = 0.8f
 private const val GIMBAL_REST_ALPHA = 0.25f
 private const val TILT_IDLE_ALPHA = 0.45f
+private const val TILT_POPUP_ALPHA = 0.55f
 
 private fun aimSynthetic(tilt: Float, pan: Double) = offMainInOrder { Qgc.invoke(SYNTHETIC_AIM, tilt.toDouble(), pan) }
 
@@ -141,16 +147,16 @@ private fun TiltSlider(pitch: Double?, onRecenter: (() -> Unit)?, slider: Boolea
     val shown = dragging ?: (pitch?.toFloat() ?: 0f).coerceIn(GIMBAL_TILT_MIN, GIMBAL_TILT_MAX)
     var active by remember { mutableStateOf(true) }
     var wake by remember { mutableIntStateOf(0) }
+    var open by remember { mutableStateOf(false) }
     LaunchedEffect(shown, dragging, wake) {
         active = true
         if (dragging == null) {
             kotlinx.coroutines.delay(GIMBAL_IDLE_MS)
             active = false
+            open = false
         }
     }
-    Column(horizontalAlignment = Alignment.CenterHorizontally) {
-        TiltReadout(shown.toDouble(), onRecenter, onTap = { wake += 1 }.takeIf { slider }, tapLabel = "Tilt the camera")
-        if (slider) RailSlot {
+    val rail: @Composable () -> Unit = {
         Slider(
             value = shown,
             onValueChange = { next ->
@@ -173,6 +179,18 @@ private fun TiltSlider(pitch: Double?, onRecenter: (() -> Unit)?, slider: Boolea
             ),
             modifier = Modifier.railSlider().alpha(if (active) 1f else TILT_IDLE_ALPHA).semantics { contentDescription = "Camera tilt" },
         )
+    }
+    if (slider) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            TiltReadout(shown.toDouble(), onRecenter, onTap = { wake += 1 }, tapLabel = "Tilt the camera")
+            RailSlot { rail() }
+        }
+    } else {
+        Box {
+            TiltReadout(shown.toDouble(), null, onTap = { open = !open; wake += 1 }, tapLabel = "Tilt the camera")
+            if (open) Popup(popupPositionProvider = BesideAnchor, onDismissRequest = { open = false }, properties = PopupProperties(focusable = false)) {
+                Surface(shape = CircleShape, color = Color.Black.copy(alpha = TILT_POPUP_ALPHA)) { Box(Modifier.padding(4.dp)) { rail() } }
+            }
         }
     }
 }

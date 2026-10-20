@@ -257,19 +257,25 @@ internal fun FlyPortrait(
                 Column(Modifier.padding(top = videoTop).fillMaxWidth().height(videoHeight)) {
                     CompositionLocalProvider(LocalFlyOsd provides true) {
                         Row(
-                            Modifier.padding(AircastSpace.s2).horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
+                            Modifier.fillMaxWidth().padding(AircastSpace.s2),
+                            horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            LayoutWidget("cameraSwitch", movable = false) { CameraSwitch(splitRoom = true) }
-                            keyRow()
+                            Row(
+                                Modifier.weight(1f, fill = false).horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
+                                verticalAlignment = Alignment.CenterVertically,
+                            ) {
+                                LayoutWidget("cameraSwitch", movable = false) { CameraSwitch(splitRoom = true) }
+                                keyRow()
+                            }
+                            if (split) rail(true)
                         }
                     }
                     Box(Modifier.fillMaxWidth().weight(1f)) {
                         if (reading?.decoding != true) Box(Modifier.matchParentSize().osdShadow()) { FlyNoVideoMessage() }
                     }
                     TelemetryOsd(
-                        swipeDistance,
                         onSmaller = { flyScreen.videoTucked = false; onView(FlyView.Map) },
                         onFullScreen = onFullScreen,
                     )
@@ -296,7 +302,7 @@ internal fun FlyPortrait(
                         ) {
                             MapButtons(view = view, split = split, hasVideo = hasVideo, onView = onView, modifier = Modifier)
                             Spacer(Modifier.weight(1f))
-                            Box(Modifier.padding(top = AircastSpace.s2)) { rail(split) }
+                            if (!split) Box(Modifier.padding(top = AircastSpace.s2)) { rail(false) }
                         }
                     }
                 },
@@ -421,12 +427,11 @@ private fun VideoTab(swipeDistance: Float, showSwipe: VideoSwipe, onShow: () -> 
 }
 
 @Composable
-private fun TelemetryOsd(swipeDistance: Float, onSmaller: () -> Unit, onFullScreen: () -> Unit) {
+private fun TelemetryOsd(onSmaller: () -> Unit, onFullScreen: () -> Unit) {
     Row(
         Modifier
             .fillMaxWidth()
             .background(Brush.verticalGradient(listOf(Color.Transparent, Color.Black.copy(alpha = SCRIM_ALPHA))))
-            .verticalSwipe(swipeDistance) { swipe -> if (swipe == VideoSwipe.Up) onSmaller() else onFullScreen() }
             .semantics {
                 customActions = listOf(
                     CustomAccessibilityAction("Make the video small") { onSmaller(); true },
