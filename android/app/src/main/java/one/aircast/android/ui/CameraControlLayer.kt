@@ -33,7 +33,6 @@ import one.aircast.map.AircastSheet
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.ui.graphics.Color
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
@@ -441,7 +440,6 @@ private fun TrackingToggle(reading: TrackingReading, modifier: Modifier = Modifi
             }
         },
         modifier = modifier,
-        colors = ButtonDefaults.textButtonColors(contentColor = MaterialTheme.aircast.outdoorForeground),
     ) { Text(trackingToggleLabel(reading), style = MaterialTheme.typography.labelLarge, maxLines = 1) }
 }
 
