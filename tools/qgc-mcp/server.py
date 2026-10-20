@@ -7,14 +7,20 @@
 import json
 import os
 import pathlib
+import plistlib
+import queue
+import signal
 import socket
 import subprocess
+import threading
 import time
 import urllib.error
 import urllib.request
+import uuid
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from typing import Literal
-from urllib.parse import quote, urlencode
+from typing import Literal, cast
+from urllib.parse import parse_qsl, quote, urlencode
 
 from mcp.server.fastmcp import FastMCP, Image
 
@@ -32,6 +38,16 @@ DEVICE_API_PORT = 8777
 CORE = REPO / "groundstation"
 COREHOST = CORE / "target/debug/corehost"
 ACTUATOR_GUARD = "QGC_DEBUG_API_ALLOW_ACTUATORS"
+MACOS_PROJECT = REPO / "macos"
+MACOS_APP = REPO / "build-macos/dd/Build/Products/Debug/AircastCore.app/Contents/MacOS/AircastCore"
+IOS_PROJECT = REPO / "ios"
+IOS_BUILD = REPO / "build-ios/mcp"
+IOS_SIMULATOR = "Aircast MCP"
+WEB_PORT = 8800
+WEB_ORIGIN = f"http://localhost:{WEB_PORT}"
+CHROME = "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome"
+RELAY_CALLS = {"/bridge/get": "get", "/bridge/set": "set", "/bridge/invoke": "invoke"}
+MOCK_KEYS = {"arducopter": "apmCopter", "px4": "px4"}
 RUNNING: dict = {}
 
 mcp = FastMCP("aircast-qgc")
@@ -154,8 +170,46 @@ def mock_vehicle(
       wind="<m/s>,<from degrees>"     endurance="<minutes>" home="<lat>,<lon>"
       silent="1"|"0" (telemetry stops: contact lost)
     On start, options also take camera="1", gimbal="1", video="h264"|"rtsp"|..., add="1" for a
-    second vehicle."""
+    second vehicle. On the web app only the plain start is available."""
     return _api(f"/links/mocklink?{_query({'autopilot': autopilot, **(options or {})})}")
+
+
+def _env(actuators: bool, **extra: str) -> dict:
+    kept = {k: v for k, v in os.environ.items() if k != ACTUATOR_GUARD}
+    return kept | ({ACTUATOR_GUARD: "1"} if actuators else {}) | extra
+
+
+def _stop(name: str) -> bool:
+    process = RUNNING.pop(name, None)
+    if process is None or process.poll() is not None:
+        return False
+    os.killpg(process.pid, signal.SIGTERM)
+    try:
+        process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        os.killpg(process.pid, signal.SIGKILL)
+    return True
+
+
+def _start(name: str, argv: list[str], env: dict, log: Path, port: int, timeout_s: int = 60) -> str:
+    global API_PORT
+    _stop(name)
+    log.parent.mkdir(parents=True, exist_ok=True)
+    with open(log, "w") as out:
+        RUNNING[name] = subprocess.Popen(
+            argv, env=env, stdout=out, stderr=out, start_new_session=True
+        )
+    RUNNING["log"] = log
+    API_PORT = port
+    if not _wait_for_api(RUNNING[name], timeout_s):
+        return f"{name} did not answer on 127.0.0.1:{port}; log at {log}"
+    return f"{name} running, debug api on 127.0.0.1:{port}, tools attached; log at {log}"
+
+
+def _failed(result: subprocess.CompletedProcess) -> str:
+    output = result.stdout + result.stderr
+    errors = [line for line in output.splitlines() if "error:" in line or "FAILED" in line]
+    return "\n".join(errors[-20:]) or output[-3000:]
 
 
 def _wait_for_api(process: subprocess.Popen | None = None, timeout_s: int = 60) -> bool:
@@ -177,7 +231,6 @@ def run_corehost(actuators: bool = False) -> str:
     mock_vehicle() for a simulated one, connect_vehicle() for a SITL.
 
     actuators=True lets write/invoke act on a real (non-mock) vehicle: SITL only, props off."""
-    global API_PORT
     stop_corehost()
     built = subprocess.run(
         ["cargo", "build", "--bin", "corehost", "--features", "native-host"],
@@ -190,43 +243,415 @@ def run_corehost(actuators: bool = False) -> str:
         return f"build failed:\n{built.stderr[-3000:]}"
     port = _free_port()
     home = Path(TMP_DIR) / f"qgc-corehost-{port}"
-    home.mkdir(parents=True, exist_ok=True)
-    env = {k: v for k, v in os.environ.items() if k != ACTUATOR_GUARD} | (
-        {ACTUATOR_GUARD: "1"} if actuators else {}
-    )
-    with open(home / "corehost.log", "w") as log:
-        RUNNING["corehost"] = subprocess.Popen(
-            [
-                str(COREHOST),
-                "--port",
-                str(port),
-                "--settings",
-                str(home / "settings.ini"),
-                "--app-name",
-                f"corehost-{port}",
-                "--map-cache",
-                str(home / "maps"),
-            ],
-            env=env,
-            stdout=log,
-            stderr=log,
-            start_new_session=True,
-        )
-    API_PORT = port
-    if not _wait_for_api(RUNNING["corehost"]):
-        return f"corehost did not come up; log at {home / 'corehost.log'}"
-    return f"core running on 127.0.0.1:{port}, tools attached; log at {home / 'corehost.log'}"
+    argv = [
+        str(COREHOST),
+        "--port",
+        str(port),
+        "--settings",
+        str(home / "settings.ini"),
+        "--app-name",
+        f"corehost-{port}",
+        "--map-cache",
+        str(home / "maps"),
+    ]
+    return _start("corehost", argv, _env(actuators), home / "corehost.log", port)
 
 
 @mcp.tool()
 def stop_corehost() -> str:
     """Stop the core started by run_corehost."""
-    process = RUNNING.pop("corehost", None)
-    if process is None or process.poll() is not None:
+    return "stopped" if _stop("corehost") else "was not running"
+
+
+@mcp.tool()
+def run_app_macos(actuators: bool = False) -> str:
+    """Build and (re)start the Qt-free macOS app (Swift over the Rust core, Xcode target
+    AircastCore) on a free debug port and attach every tool to it. It keeps its own settings
+    ("Aircast QGC MCP"), so the operator's links and preferences are untouched. Needs
+    macos/Local.xcconfig, which one `just xcode` writes.
+
+    actuators=True lets write/invoke act on a real (non-mock) vehicle: SITL only, props off."""
+    if not (MACOS_PROJECT / "Local.xcconfig").exists():
+        return "macos/Local.xcconfig is missing; run `just xcode` once"
+    generated = subprocess.run(
+        ["xcodegen", "generate", "--quiet"],
+        cwd=MACOS_PROJECT,
+        env=os.environ | {"QGC_ROOT": str(REPO)},
+        capture_output=True,
+        text=True,
+    )
+    if generated.returncode != 0:
+        return f"xcodegen failed:\n{_failed(generated)}"
+    built = subprocess.run(
+        [
+            "xcodebuild",
+            "-project",
+            "AircastQGC.xcodeproj",
+            "-scheme",
+            "AircastCore",
+            "-configuration",
+            "Debug",
+            "-derivedDataPath",
+            str(REPO / "build-macos/dd"),
+            "build",
+        ],
+        cwd=MACOS_PROJECT,
+        capture_output=True,
+        text=True,
+        timeout=3600,
+    )
+    if built.returncode != 0:
+        return f"build failed:\n{_failed(built)}"
+    port = _free_port()
+    argv = [str(MACOS_APP), "--app-name", "Aircast QGC MCP", "--debug-build"]
+    log = Path(TMP_DIR) / "qgc-macos.log"
+    return _start("macos", argv, _env(actuators, QGC_DEBUG_API_PORT=str(port)), log, port)
+
+
+@mcp.tool()
+def stop_app_macos() -> str:
+    """Stop the macOS app started by run_app_macos."""
+    return "stopped" if _stop("macos") else "was not running"
+
+
+def _runtime_version(runtime: str) -> tuple[int, ...]:
+    return tuple(int(part) for part in runtime.rsplit("iOS-", 1)[-1].split("-") if part.isdigit())
+
+
+def _simulator() -> str:
+    listed = json.loads(
+        subprocess.run(
+            ["xcrun", "simctl", "list", "devices", "available", "-j"],
+            capture_output=True,
+            text=True,
+            check=True,
+        ).stdout
+    )["devices"]
+    mine = [d["udid"] for devices in listed.values() for d in devices if d["name"] == IOS_SIMULATOR]
+    if mine:
+        return mine[0]
+    runtime = max(
+        (r for r, devices in listed.items() if ".iOS-" in r and devices),
+        key=_runtime_version,
+    )
+    phone = next(d for d in listed[runtime] if d["name"].startswith("iPhone"))
+    created = subprocess.run(
+        [
+            "xcrun",
+            "simctl",
+            "create",
+            IOS_SIMULATOR,
+            phone["deviceTypeIdentifier"],
+            runtime,
+        ],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    return created.stdout.strip()
+
+
+@mcp.tool()
+def run_app_ios(actuators: bool = False) -> str:
+    """Build the iOS app for a simulator of its own ("Aircast MCP", made on first use so other
+    sessions' simulators and their debug ports are never touched), install it, (re)start it
+    with the debug API on a free port and attach every tool to it. `open -a Simulator` shows it.
+
+    actuators=True lets write/invoke act on a real (non-mock) vehicle: SITL only, props off."""
+    steps = [
+        ([str(IOS_PROJECT / "fetch-deps.sh")], REPO),
+        (["xcodegen", "generate", "--quiet"], IOS_PROJECT),
+    ]
+    failed = next(
+        (
+            r
+            for r in (subprocess.run(a, cwd=c, capture_output=True, text=True) for a, c in steps)
+            if r.returncode
+        ),
+        None,
+    )
+    if failed is not None:
+        return f"preparing the project failed:\n{_failed(failed)}"
+    udid = _simulator()
+    subprocess.run(["xcrun", "simctl", "bootstatus", udid, "-b"], capture_output=True, text=True)
+    built = subprocess.run(
+        [
+            "xcodebuild",
+            "-project",
+            "Aircast.xcodeproj",
+            "-scheme",
+            "Aircast",
+            "-configuration",
+            "Debug",
+            "-destination",
+            f"id={udid}",
+            "-derivedDataPath",
+            str(IOS_BUILD),
+            "build",
+        ],
+        cwd=IOS_PROJECT,
+        capture_output=True,
+        text=True,
+        timeout=3600,
+    )
+    if built.returncode != 0:
+        return f"build failed:\n{_failed(built)}"
+    app = IOS_BUILD / "Build/Products/Debug-iphonesimulator/Aircast.app"
+    bundle = plistlib.loads((app / "Info.plist").read_bytes())["CFBundleIdentifier"]
+    installed = subprocess.run(
+        ["xcrun", "simctl", "install", udid, str(app)], capture_output=True, text=True
+    )
+    if installed.returncode != 0:
+        return f"install failed: {installed.stderr.strip()}"
+    port = _free_port()
+    log = Path(TMP_DIR) / "qgc-ios.log"
+    child = {
+        f"SIMCTL_CHILD_{k}": v
+        for k, v in _env(actuators, QGC_DEBUG_API_PORT=str(port)).items()
+        if k in (ACTUATOR_GUARD, "QGC_DEBUG_API_PORT")
+    }
+    launched = subprocess.run(
+        [
+            "xcrun",
+            "simctl",
+            "launch",
+            "--terminate-running-process",
+            f"--stdout={log}",
+            f"--stderr={log}",
+            udid,
+            bundle,
+        ],
+        env=os.environ | child,
+        capture_output=True,
+        text=True,
+    )
+    if launched.returncode != 0:
+        return f"launch failed: {launched.stderr.strip()}"
+    RUNNING["ios"] = (udid, bundle)
+    RUNNING["log"] = log
+    return _attach_and_wait(port, f"iOS app on simulator {udid}", log)
+
+
+def _attach_and_wait(port: int, what: str, log: Path) -> str:
+    global API_PORT
+    API_PORT = port
+    if not _wait_for_api(timeout_s=60):
+        return f"{what} did not answer on 127.0.0.1:{port}; log at {log}"
+    return f"{what} running, debug api on 127.0.0.1:{port}, tools attached; log at {log}"
+
+
+@mcp.tool()
+def stop_app_ios() -> str:
+    """Stop the iOS app started by run_app_ios; the simulator stays booted."""
+    started = RUNNING.pop("ios", None)
+    if started is None:
         return "was not running"
-    process.terminate()
-    process.wait(timeout=10)
+    subprocess.run(["xcrun", "simctl", "terminate", *started], capture_output=True)
     return "stopped"
+
+
+def _literal(raw: str):
+    if raw == "":
+        return None
+    try:
+        return json.loads(raw)
+    except ValueError:
+        return raw
+
+
+class _Relay(ThreadingHTTPServer):
+    daemon_threads = True
+
+    def __init__(self, actuators: bool):
+        super().__init__(("127.0.0.1", 0), _RelayHandler)
+        self.actuators = actuators
+        self.requests: queue.Queue = queue.Queue()
+        self.waiting: dict = {}
+
+    @property
+    def port(self) -> int:
+        return self.server_address[1]
+
+    def ask(self, call: str, path: str, payload: str, timeout_s: float = 15) -> str | None:
+        ident = uuid.uuid4().hex
+        waiter = {"done": threading.Event(), "body": None}
+        self.waiting[ident] = waiter
+        self.requests.put({"id": ident, "call": call, "path": path, "payload": payload})
+        answered = waiter["done"].wait(timeout_s)
+        self.waiting.pop(ident, None)
+        return waiter["body"] if answered else None
+
+    def answered(self, ident: str, body: str) -> None:
+        waiter = self.waiting.get(ident)
+        if waiter is not None:
+            waiter["body"] = body
+            waiter["done"].set()
+
+    def next_request(self, timeout_s: float = 20) -> dict | None:
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            try:
+                request = self.requests.get(timeout=max(0.0, deadline - time.monotonic()))
+            except queue.Empty:
+                return None
+            if request["id"] in self.waiting:
+                return request
+        return None
+
+    def real_vehicle_heard(self) -> bool:
+        links = json.loads(self.ask("get", "links.linkConfigurations", "") or "{}")
+        return any(
+            link.get("heardVehicle") and link.get("class") != "MockConfiguration"
+            for link in links.get("elements", [])
+        )
+
+    def handle(self, route: str, pairs: dict) -> tuple[int, dict]:
+        if route == "/links/mocklink" and pairs.get("autopilot", "").lower() in MOCK_KEYS:
+            route, pairs = (
+                "/bridge/invoke",
+                {
+                    "path": "links.startMockLink",
+                    "args": json.dumps([MOCK_KEYS[pairs["autopilot"].lower()]]),
+                },
+            )
+        call = RELAY_CALLS.get(route)
+        if call is None:
+            return 404, {
+                "error": f"{route} is not served by the web app; it answers {', '.join(RELAY_CALLS)}"
+            }
+        path = pairs.get("path", "")
+        if not path:
+            return 400, {"error": "path is required, e.g. path=settings.appSettings"}
+        if call == "set" and "value" not in pairs:
+            return 400, {"error": "value is required"}
+        if call != "get" and not self.actuators and self.real_vehicle_heard():
+            return 400, {
+                "error": "bridge writes disabled while a real vehicle is connected; "
+                "start it with run_web(actuators=True) (props off!)"
+            }
+        payload = (
+            json.dumps({"value": _literal(pairs["value"])})
+            if call == "set"
+            else pairs.get("args") or "[]"
+        )
+        answer = self.ask(call, path, payload)
+        if answer is None:
+            return 503, {
+                "error": "the web app did not answer; is its page still open?",
+                "retry": True,
+            }
+        try:
+            return 200, json.loads(answer)
+        except ValueError:
+            return 200, {"raw": answer}
+
+
+class _RelayHandler(BaseHTTPRequestHandler):
+    def log_message(self, format, *args):
+        pass
+
+    @property
+    def relay(self) -> _Relay:
+        return cast("_Relay", self.server)
+
+    def _send(self, status: int, body: dict | None) -> None:
+        text = b"" if body is None else json.dumps(body).encode()
+        self.send_response(status)
+        self.send_header("Access-Control-Allow-Origin", WEB_ORIGIN)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(text)))
+        self.end_headers()
+        self.wfile.write(text)
+
+    def do_GET(self):
+        route, _, query = self.path.partition("?")
+        if route == "/poll":
+            if self.headers.get("Origin") != WEB_ORIGIN:
+                return self._send(403, {"error": "only the web app's page may poll"})
+            request = self.relay.next_request()
+            return self._send(204, None) if request is None else self._send(200, request)
+        if self.headers.get("X-QGC-Debug-Api") is None:
+            return self._send(403, {"error": "missing X-QGC-Debug-Api header"})
+        return self._send(*self.relay.handle(route, dict(parse_qsl(query, keep_blank_values=True))))
+
+    def do_POST(self):
+        if self.path != "/reply" or self.headers.get("Origin") != WEB_ORIGIN:
+            return self._send(403, {"error": "only the web app's page may reply"})
+        reply = json.loads(self.rfile.read(int(self.headers.get("Content-Length", "0"))) or "{}")
+        self.relay.answered(str(reply.get("id", "")), str(reply.get("body", "")))
+        return self._send(204, None)
+
+
+def _listening(port: int) -> bool:
+    try:
+        socket.create_connection(("localhost", port), timeout=1).close()
+        return True
+    except OSError:
+        return False
+
+
+@mcp.tool()
+def run_web(headless: bool = True, actuators: bool = False) -> str:
+    """Open the web app (the core compiled to wasm, running in the browser) and attach every
+    tool to it. Uses the dev server on localhost:8800, starting `just web` when none is
+    running (the first wasm build takes minutes), then opens Chrome on a throwaway profile at
+    ?debug=<port>. The page relays read/write/invoke to its core through that port; dev builds
+    only, as on the native apps. mock_vehicle() starts a simulated vehicle; the debug routes
+    for links, missions and mock conditions are native-only.
+
+    headless=False shows the Chrome window. actuators=True lets write/invoke act on a real
+    (non-mock) vehicle: SITL only, props off."""
+    stop_web()
+    if not _listening(WEB_PORT):
+        log = Path(TMP_DIR) / "qgc-web-dev.log"
+        with open(log, "w") as out:
+            RUNNING["vite"] = subprocess.Popen(
+                ["just", "web"],
+                cwd=REPO,
+                stdout=out,
+                stderr=out,
+                start_new_session=True,
+            )
+        deadline = time.monotonic() + 1800
+        while (
+            not _listening(WEB_PORT)
+            and RUNNING["vite"].poll() is None
+            and time.monotonic() < deadline
+        ):
+            time.sleep(2)
+        if not _listening(WEB_PORT):
+            return f"the web dev server did not start; log at {log}"
+    relay = _Relay(actuators)
+    threading.Thread(target=relay.serve_forever, daemon=True).start()
+    RUNNING["relay"] = relay
+    profile = Path(TMP_DIR) / f"qgc-web-{relay.port}"
+    argv = [
+        CHROME,
+        f"--user-data-dir={profile}",
+        "--no-first-run",
+        "--no-default-browser-check",
+        *(["--headless=new"] if headless else []),
+        f"{WEB_ORIGIN}/?debug={relay.port}",
+    ]
+    return _start(
+        "web",
+        argv,
+        os.environ.copy(),
+        profile / "chrome.log",
+        relay.port,
+        timeout_s=180,
+    )
+
+
+@mcp.tool()
+def stop_web() -> str:
+    """Close the browser run_web opened, its relay, and the dev server if run_web started it."""
+    closed = _stop("web")
+    relay = RUNNING.pop("relay", None)
+    if relay is not None:
+        relay.shutdown()
+        relay.server_close()
+    return "stopped" if closed | _stop("vite") | (relay is not None) else "was not running"
 
 
 @mcp.tool()
@@ -847,23 +1272,33 @@ def bridge_stats() -> dict:
 
 
 @mcp.tool()
-def run_app() -> str:
-    """(Re)start the release app with the debug API and video-manager logging enabled."""
-    subprocess.run(["pkill", "-9", "-x", "AircastQGC"], capture_output=True)
-    env = os.environ | {
-        "QGC_DEBUG_API_PORT": str(API_PORT),
-        "QT_LOGGING_RULES": "qgc.videomanager.videomanager.debug=true",
-    }
-    with open(LOG_FILE, "w") as log:
-        subprocess.Popen([str(APP)], env=env, stdout=log, stderr=log, start_new_session=True)
-    return f"started; debug api on 127.0.0.1:{API_PORT}, log at {LOG_FILE}"
+def run_app(native_window: bool = False, actuators: bool = False) -> str:
+    """(Re)start the desktop Qt app (build-aircast Release, else build-test Debug) with the
+    debug API on a free port and attach every tool to it. Only the copy this tool started is
+    restarted; the operator's own app keeps running. native_window=True opens the native
+    macOS windows instead of the Qt ones.
+
+    actuators=True lets write/invoke act on a real (non-mock) vehicle: SITL only, props off."""
+    if not APP.exists():
+        return f"no Qt app at {RELEASE_APP} or {TEST_APP}; build one first (just configure && just build)"
+    port = _free_port()
+    argv = [
+        str(APP),
+        "--allow-multiple",
+        *(["--native-window"] if native_window else []),
+    ]
+    env = _env(
+        actuators,
+        QGC_DEBUG_API_PORT=str(port),
+        QT_LOGGING_RULES="qgc.videomanager.videomanager.debug=true",
+    )
+    return _start("qt", argv, env, LOG_FILE, port)
 
 
 @mcp.tool()
 def stop_app() -> str:
-    """Stop the running app."""
-    result = subprocess.run(["pkill", "-9", "-x", "AircastQGC"], capture_output=True)
-    return "stopped" if result.returncode == 0 else "was not running"
+    """Stop the Qt app started by run_app."""
+    return "stopped" if _stop("qt") else "was not running"
 
 
 def _adb(serial: str) -> list[str]:
@@ -914,11 +1349,12 @@ def stop_app_android(serial: str = "", package: str = ANDROID_PKG) -> str:
 
 @mcp.tool()
 def logs(pattern: str = "", lines: int = 50) -> str:
-    """Tail the app log started by run_app, optionally filtered by a substring."""
-    if not LOG_FILE.exists():
-        return "no log file; start the app with run_app first"
-    with open(LOG_FILE, "rb") as f:
-        f.seek(max(0, LOG_FILE.stat().st_size - 512 * 1024))
+    """Tail the log of the app the last run_* tool started, optionally filtered by a substring."""
+    log = RUNNING.get("log", LOG_FILE)
+    if not log.exists():
+        return "no log file; start an app with a run_* tool first"
+    with open(log, "rb") as f:
+        f.seek(max(0, log.stat().st_size - 512 * 1024))
         content = f.read().decode(errors="replace").splitlines()
     if pattern:
         content = [line for line in content if pattern in line]

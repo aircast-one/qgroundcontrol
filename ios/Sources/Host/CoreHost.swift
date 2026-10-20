@@ -4,7 +4,7 @@ import QGCCore
 enum CoreHost {
     private static let organization = "Aircast"
     private static let defaultApplication = "Aircast QGC"
-    private static let debugApiPort = "8799"
+    private static let defaultDebugApiPort = "8799"
     private(set) static var started = false
 
     static func start() {
@@ -52,6 +52,10 @@ enum CoreHost {
         GcsLocation.stop()
         SpeechOut.stop()
         qgc_shutdown()
+    }
+
+    private static var debugApiPort: String {
+        ProcessInfo.processInfo.environment["QGC_DEBUG_API_PORT"] ?? defaultDebugApiPort
     }
 
     static var isDebugBuild: Bool {

@@ -8,6 +8,8 @@ import importlib.util
 import json
 import sys
 import threading
+import urllib.error
+import urllib.request
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 
@@ -79,6 +81,98 @@ def check(condition: bool, label: str, detail: str = ""):
 
 def last_request() -> str:
     return REQUESTS[-1]
+
+
+def _page(relay_port: int, origin: str, core: dict, stop: threading.Event) -> None:
+    base = f"http://127.0.0.1:{relay_port}"
+    while not stop.is_set():
+        with urllib.request.urlopen(
+            urllib.request.Request(f"{base}/poll", headers={"Origin": origin})
+        ) as polled:
+            if polled.status != 200:
+                continue
+            request = json.load(polled)
+        core["seen"].append(request)
+        body = json.dumps(core["answers"].get(request["path"], {"ok": True}))
+        reply = json.dumps({"id": request["id"], "body": body}).encode()
+        urllib.request.urlopen(
+            urllib.request.Request(f"{base}/reply", data=reply, headers={"Origin": origin})
+        )
+
+
+def _relay_checks(module) -> None:
+    print("web relay")
+    relay = module._Relay(actuators=False)
+    threading.Thread(target=relay.serve_forever, daemon=True).start()
+    core = {
+        "seen": [],
+        "answers": {
+            "view.flyState": {"state": "flying"},
+            "links.linkConfigurations": {
+                "elements": [{"class": "MockConfiguration", "heardVehicle": True}]
+            },
+        },
+    }
+    stop = threading.Event()
+    threading.Thread(
+        target=_page, args=(relay.port, module.WEB_ORIGIN, core, stop), daemon=True
+    ).start()
+    module.API_PORT = relay.port
+
+    state = _tool(module, "read")("view.flyState")
+    check(state == {"state": "flying"}, "a read comes back from the page's core", json.dumps(state))
+
+    _tool(module, "write")("vehicle.flightMode", "Guided")
+    written = core["seen"][-1]
+    check(
+        written["call"] == "set" and json.loads(written["payload"]) == {"value": "Guided"},
+        "a write reaches the core wrapped as the bridge expects",
+        json.dumps(written),
+    )
+    _tool(module, "invoke")("vehicle.guidedModeTakeoff", [10])
+    check(
+        core["seen"][-1]["payload"] == "[10]",
+        "invoke args pass through",
+        json.dumps(core["seen"][-1]),
+    )
+
+    _tool(module, "mock_vehicle")("arducopter")
+    started = core["seen"][-1]
+    check(
+        started["path"] == "links.startMockLink" and started["payload"] == '["apmCopter"]',
+        "mock_vehicle starts the core's own mock link",
+        json.dumps(started),
+    )
+
+    core["answers"]["links.linkConfigurations"] = {
+        "elements": [{"class": "TcpConfiguration", "heardVehicle": True}]
+    }
+    try:
+        _tool(module, "write")("vehicle.armed", True)
+        check(False, "writes refused while a real vehicle is heard")
+    except RuntimeError as error:
+        check(
+            "real vehicle" in str(error), "writes refused while a real vehicle is heard", str(error)
+        )
+
+    try:
+        module._api("/links/connect?host=1.2.3.4&port=5760")
+        check(False, "native-only routes refused")
+    except RuntimeError as error:
+        check("404" in str(error), "native-only routes refused", str(error))
+
+    stolen = urllib.request.Request(
+        f"http://127.0.0.1:{relay.port}/poll", headers={"Origin": "http://evil.example"}
+    )
+    try:
+        urllib.request.urlopen(stolen)
+        check(False, "another origin cannot take requests")
+    except urllib.error.HTTPError as error:
+        check(error.code == 403, "another origin cannot take requests", str(error.code))
+
+    stop.set()
+    relay.shutdown()
+    relay.server_close()
 
 
 def main() -> int:
@@ -227,6 +321,8 @@ def main() -> int:
         check(False, "http error becomes RuntimeError")
     except RuntimeError as error:
         check("400" in str(error), "http error becomes RuntimeError", str(error))
+
+    _relay_checks(module)
 
     server.shutdown()
     print()
