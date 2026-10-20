@@ -28,7 +28,9 @@ internal static class SettingsBodies
     private static readonly string[] PresetUnits = ["horizontalDistanceUnits", "verticalDistanceUnits", "areaUnits", "speedUnits", "temperatureUnits"];
 
     public static UIElement Body(SettingsEntry page, SettingsNav nav) =>
-        page.ShowsLinks ? new LinksPanel(nav, Form(page, nav))
+        page.Title == SettingsCatalog.DevicePage ? Device.DeviceScreens.Home(nav)
+        : page.Pilot is { } group ? Scrolled(PilotSettings.Tab(group, nav.Open))
+        : page.ShowsLinks ? new LinksPanel(nav, Form(page, nav))
         : page.ShowsAbout ? Scrolled(About(page.HelpLinks))
         : page.ShowsConsole ? new AppLogPanel()
         : page.ShowsPx4Logs ? new Border { Padding = new Thickness(16, 0, 16, 0), Child = new Px4LogTransfer() }
@@ -56,6 +58,7 @@ internal static class SettingsBodies
     public static UIElement Search(string query, IReadOnlyList<SettingsEntry> pages, Action<string> open)
     {
         var pageHits = pages.Where(p => p.Matches(query)).ToList();
+        var pilotHits = PilotSettings.SearchHits(query);
         var searched = pages.Where(p => p.SectionCount > 0).Select(p => p.Title).ToList();
         var form = new FormView(
             () => new JsonObject
@@ -70,11 +73,12 @@ internal static class SettingsBodies
                 .ToList())
         {
             LoadingText = "Searching settings.",
-            Empty = () => pageHits.Count > 0 ? new Border() : FormLook.Footnote($"No settings match “{query.Trim()}”."),
+            Empty = () => pageHits.Count > 0 || pilotHits.Count > 0 ? new Border() : FormLook.Footnote($"No settings match “{query.Trim()}”."),
         };
         return Scrolled(FormLook.Stack(0,
             pageHits.Count > 0 ? FormLook.Heading("Pages") : null,
             pageHits.Count > 0 ? FormLook.Card(pageHits.Select(p => PageRow(p, open))) : null,
+            pilotHits.Count > 0 ? new PilotSettingsPanel(pilotHits, open) : null,
             form));
     }
 

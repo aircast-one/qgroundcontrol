@@ -20,6 +20,7 @@ public sealed partial class InstrumentBar : UserControl
     public const int MaximumSlots = 10;
 
     private const string Client = "controls.instrumentBar";
+    private const string GenericClass = "generic";
     private const string NoticeClient = "controls.instrumentBar.notice";
     private const double StaleOpacity = 0.55;
     private static readonly TimeSpan RereadInterval = TimeSpan.FromMilliseconds(500);
@@ -29,6 +30,8 @@ public sealed partial class InstrumentBar : UserControl
     private IReadOnlyList<InstrumentSelection> _selections = InstrumentSelectionStore.Load();
     private IReadOnlyList<InstrumentValue> _values = Array.Empty<InstrumentValue>();
     private IReadOnlyList<Reading> _readings = Array.Empty<Reading>();
+    private string _vehicleClass = GenericClass;
+    private IReadOnlyDictionary<string, ValueDisplay> _displays = InstrumentDisplayStore.Load(GenericClass);
 
     public InstrumentBar()
     {
@@ -83,7 +86,40 @@ public sealed partial class InstrumentBar : UserControl
     public void Assign(int slot, InstrumentSelection selection)
     {
         if (slot < 0 || slot >= _selections.Count) return;
+        if (_displays.TryGetValue(_selections[slot].Id, out var carried) && !_displays.ContainsKey(selection.Id)) Restyle(selection.Id, carried);
         Select(_selections.Select((s, i) => i == slot ? selection : s).ToList());
+    }
+
+    public void MoveSlot(int slot, int by)
+    {
+        var to = slot + by;
+        if (slot < 0 || slot >= _selections.Count || to < 0 || to >= _selections.Count) return;
+        Select(_selections.Select((s, i) => i == slot ? _selections[to] : i == to ? _selections[slot] : s).ToList());
+    }
+
+    public ValueDisplay DisplayOf(InstrumentValue value) =>
+        _displays.TryGetValue(value.Id, out var display) ? display : new ValueDisplay { Icon = value.DefaultIcon };
+
+    public void Restyle(string id, ValueDisplay display)
+    {
+        InstrumentDisplayStore.Save(_vehicleClass, id, display);
+        _displays = InstrumentDisplayStore.Load(_vehicleClass);
+        Render();
+    }
+
+    public async Task StyleSlotAsync(int slot)
+    {
+        if (slot < 0 || slot >= _values.Count || XamlRoot is null) return;
+        var value = _values[slot];
+        var at = _selections.ToList().FindIndex(s => s.Id == value.Id);
+        var extra = new (bool Shown, string Label, Action Then)[]
+        {
+            (at >= 0, "Change reading", () => _ = EditSlotAsync(at)),
+            (at > 0, "Move left", () => MoveSlot(at, -1)),
+            (at >= 0 && at < _selections.Count - 1, "Move right", () => MoveSlot(at, 1)),
+            (at >= 0 && CanRemove, "Remove", () => RemoveSlot(at)),
+        }.Where(entry => entry.Shown).Select(entry => (entry.Label, entry.Then)).ToList();
+        if (await DisplayEditor.Ask(XamlRoot, value.Label, DisplayOf(value), extra) is { } chosen) Restyle(value.Id, chosen);
     }
 
     public async Task EditSlotAsync(int slot)
@@ -96,7 +132,7 @@ public sealed partial class InstrumentBar : UserControl
         {
             XamlRoot = XamlRoot,
             Style = Styled("EditorDialog"),
-            RequestedTheme = ElementTheme.Dark,
+            RequestedTheme = (XamlRoot.Content as FrameworkElement)?.ActualTheme ?? ElementTheme.Default,
             Title = "Change reading",
             CloseButtonText = "Cancel",
             Content = EditorFrame(EditingLabel(slot), groupList, factList),
@@ -156,6 +192,13 @@ public sealed partial class InstrumentBar : UserControl
 
     private void Apply(JsonObject view)
     {
+        var vehicleClass = InstrumentJson.Text(view, "vehicleClass") is { Length: > 0 } named ? named : _vehicleClass;
+        if (vehicleClass != _vehicleClass)
+        {
+            _vehicleClass = vehicleClass;
+            _displays = InstrumentDisplayStore.Load(vehicleClass);
+            _values = Array.Empty<InstrumentValue>();
+        }
         var read = InstrumentValue.List(view["items"]);
         if (read.SequenceEqual(_values)) return;
         _values = read;
@@ -174,13 +217,13 @@ public sealed partial class InstrumentBar : UserControl
     private void Render()
     {
         _readings = _readings.Count == _values.Count ? _readings : Rebuild(_values.Count);
-        _readings.Zip(_values).ToList().ForEach(pair => pair.First.Show(pair.Second));
+        _readings.Zip(_values).ToList().ForEach(pair => pair.First.Show(pair.Second, DisplayOf(pair.Second)));
         Card.Visibility = _values.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
     }
 
     private IReadOnlyList<Reading> Rebuild(int count)
     {
-        var built = Enumerable.Range(0, count).Select(slot => new Reading(Styled, Menu(slot))).ToList();
+        var built = Enumerable.Range(0, count).Select(slot => new Reading(Styled, Menu(slot), () => _ = StyleSlotAsync(slot))).ToList();
         Readings.Children.Clear();
         built.ForEach(r => Readings.Children.Add(r.Root));
         return built;
@@ -197,6 +240,7 @@ public sealed partial class InstrumentBar : UserControl
         new MenuFlyoutItemBase[]
         {
             Item("Change reading…", "", async () => await EditSlotAsync(slot)),
+            Item("Telemetry display…", "\uE790", async () => await StyleSlotAsync(slot)),
             add,
             remove,
             new MenuFlyoutSeparator(),
@@ -307,13 +351,16 @@ public sealed partial class InstrumentBar : UserControl
     private sealed class Reading
     {
         private readonly TextBlock _label;
+        private readonly Image _icon = new() { Width = 16, Height = 16, Stretch = Microsoft.UI.Xaml.Media.Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Left, Visibility = Visibility.Collapsed };
         private readonly TextBlock _value;
         private readonly TextBlock _units;
         private readonly TextBlock _absent;
         private readonly Style? _present;
         private readonly Style? _missing;
 
-        public Reading(Func<string, Style?> styled, MenuFlyout menu)
+        private string _iconKey = "";
+
+        public Reading(Func<string, Style?> styled, MenuFlyout menu, Action open)
         {
             _present = styled("ReadingValue");
             _missing = styled("ReadingMissing");
@@ -331,21 +378,53 @@ public sealed partial class InstrumentBar : UserControl
             figure.Children.Add(_units);
             var column = new StackPanel { Spacing = 2 };
             column.Children.Add(_label);
+            column.Children.Add(_icon);
             column.Children.Add(figure);
             column.Children.Add(_absent);
-            Root = new Border { Style = styled("ReadingCell"), Child = column, ContextFlyout = menu };
+            Root = new Button
+            {
+                Padding = new Thickness(0),
+                HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                Content = new Border { Style = styled("ReadingCell"), Child = column },
+                ContextFlyout = menu,
+            };
+            Forms.FormLook.Paint(Root, Forms.ButtonLook.Subtle);
+            Root.Click += (_, _) => open();
         }
 
-        public Border Root { get; }
+        public Button Root { get; }
 
-        public void Show(InstrumentValue value)
+        public void Show(InstrumentValue value, ValueDisplay display)
         {
-            _label.Text = value.Label.ToUpperInvariant();
+            var colour = value.Missing ? null : InstrumentDisplays.Colour(display, value.Raw);
+            var icon = InstrumentDisplays.IconOf(display, value.Raw);
+            _label.Text = display.Text.Length > 0 ? display.Text : value.Label.ToUpperInvariant();
+            _label.Visibility = icon is null && !InstrumentDisplays.IconShown(display) ? Visibility.Visible : Visibility.Collapsed;
+            _label.Opacity = _icon.Opacity = InstrumentDisplays.Opacity(display, value.Raw);
+            Paint(_label, colour);
+            Paint(_value, colour);
+            ShowIcon(icon, colour is { } tint ? InstrumentDisplays.Hex(tint) : Forms.AssetImages.Hex("TextSecondaryBrush"));
             _value.Text = value.Value;
             _value.Style = value.Missing ? _missing : _present;
             _units.Text = value.Units;
-            _units.Visibility = value.Units.Length == 0 ? Visibility.Collapsed : Visibility.Visible;
+            _units.Visibility = value.Units.Length == 0 || !display.ShowUnits ? Visibility.Collapsed : Visibility.Visible;
             _absent.Visibility = value.AbsentHere ? Visibility.Visible : Visibility.Collapsed;
+            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(Root, $"{value.Label} {value.Value} {value.Units}".Trim());
+        }
+
+        private static void Paint(TextBlock text, long? colour)
+        {
+            if (colour is { } argb) text.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(InstrumentDisplays.ColorOf(argb));
+            else text.ClearValue(TextBlock.ForegroundProperty);
+        }
+
+        private void ShowIcon(string? icon, string tint)
+        {
+            _icon.Visibility = icon is null ? Visibility.Collapsed : Visibility.Visible;
+            var key = icon is null ? "" : $"{icon}|{tint}";
+            if (icon is null || key == _iconKey) return;
+            _iconKey = key;
+            InstrumentIcons.Load(_icon, icon, tint);
         }
     }
 }

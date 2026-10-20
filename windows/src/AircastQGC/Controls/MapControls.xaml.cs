@@ -13,6 +13,7 @@ public sealed partial class MapControls : UserControl
     private const string Client = "mapui.controls";
     private const string CoordinatePath = "vehicle.coordinate";
     private const string MapTypesPath = "view.mapTypes";
+    private const string ObstacleSetting = "settings.flyViewSettings.showObstacleDistanceOverlay";
 
     public event EventHandler? ZoomInRequested;
     public event EventHandler? ZoomOutRequested;
@@ -55,8 +56,16 @@ public sealed partial class MapControls : UserControl
         var items = types.Count == 0 || path.Length == 0
             ? new List<MenuFlyoutItemBase> { new MenuFlyoutItem { Text = "No map types for this provider", IsEnabled = false, FontFamily = FontFamily } }
             : types.Select(type => TypeItem(type, type == current, path)).ToList();
+        var obstacles = new ToggleMenuFlyoutItem
+        {
+            Text = "Obstacle distance",
+            IsChecked = MapUiJson.Flag(Bridge.Get(ObstacleSetting)["value"]),
+            FontFamily = FontFamily,
+        };
+        ToolTipService.SetToolTip(obstacles, "Proximity sensor readings around the vehicle");
+        obstacles.Click += (_, _) => Bridge.Set(ObstacleSetting, JsonValue.Create(obstacles.IsChecked));
         LayersMenu.Items.Clear();
-        items.ForEach(LayersMenu.Items.Add);
+        items.Concat(new MenuFlyoutItemBase[] { new MenuFlyoutSeparator(), obstacles }).ToList().ForEach(LayersMenu.Items.Add);
     }
 
     private MenuFlyoutItemBase TypeItem(string type, bool current, string path)

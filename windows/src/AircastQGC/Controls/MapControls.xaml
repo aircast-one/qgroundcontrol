@@ -7,7 +7,6 @@
 
     <UserControl.Resources>
         <Style x:Key="MapTypeMenuPresenter" TargetType="MenuFlyoutPresenter">
-            <Setter Property="RequestedTheme" Value="Dark" />
             <Setter Property="Background" Value="{ThemeResource CardBrush}" />
             <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeBrush}" />
             <Setter Property="BorderThickness" Value="1" />
@@ -15,7 +14,7 @@
         </Style>
     </UserControl.Resources>
 
-    <StackPanel Spacing="{StaticResource SpaceXs}" RequestedTheme="Dark">
+    <StackPanel Spacing="{StaticResource SpaceXs}">
         <Button x:Name="ZoomInButton"
                 Style="{StaticResource MapControl}"
                 Content="&#xE710;"
@@ -38,8 +37,8 @@
         <Button x:Name="LayersButton"
                 Style="{StaticResource MapControl}"
                 Content="&#xE81E;"
-                ToolTipService.ToolTip="Map type"
-                AutomationProperties.Name="Map type">
+                ToolTipService.ToolTip="Map layers"
+                AutomationProperties.Name="Map layers">
             <Button.Flyout>
                 <MenuFlyout x:Name="LayersMenu"
                             Placement="LeftEdgeAlignedTop"

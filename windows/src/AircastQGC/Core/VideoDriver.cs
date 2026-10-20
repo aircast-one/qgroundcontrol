@@ -10,7 +10,9 @@ public static class VideoDriver
 {
     private const string VideoView = "view.video";
     private static readonly TimeSpan Interval = TimeSpan.FromMilliseconds(500);
-    private static readonly ImmutableArray<int> Channels = ImmutableArray.Create(VideoNative.Main, VideoNative.Pip);
+    private const string PreviewsPath = "video.previews";
+    private const int FirstPreview = 2;
+    private static readonly ImmutableArray<int> Channels = ImmutableArray.Create(VideoNative.Main, VideoNative.Pip, 2, 3, 4, 5);
 
     private static CancellationTokenSource? _stop;
     private static Thread? _thread;
@@ -39,8 +41,7 @@ public static class VideoDriver
         _stop?.Cancel();
         _thread.Join();
         _thread = null;
-        VideoNative.qgc_video_stop(VideoNative.Main);
-        VideoNative.qgc_video_stop(VideoNative.Pip);
+        Channels.ToList().ForEach(VideoNative.qgc_video_stop);
     }
 
     private static void Run(CancellationToken stop)
@@ -52,7 +53,13 @@ public static class VideoDriver
     private static State Step(State state)
     {
         var view = Bridge.Get(VideoView);
-        var wanted = Channels.ToImmutableDictionary(ch => ch, ch => Pipeline(view, ch == VideoNative.Main ? "nativePipeline" : "pipPipeline"));
+        var previews = Bridge.Get(PreviewsPath)["value"] as JsonArray;
+        var wanted = Channels.ToImmutableDictionary(ch => ch, ch => ch switch
+        {
+            VideoNative.Main => Pipeline(view, "nativePipeline"),
+            VideoNative.Pip => Pipeline(view, "pipPipeline"),
+            _ => previews?.ElementAtOrDefault(ch - FirstPreview) is JsonObject preview ? Pipeline(preview, "pipeline") : null,
+        });
         var stopped = Channels.Aggregate(state.Channels, (played, ch) => StopChanged(played, ch, wanted[ch]));
         var started = Channels.Aggregate(stopped, (played, ch) => StartWanted(played, ch, wanted[ch]));
         var recorded = Record(state, view["nativeRecording"] as JsonObject);

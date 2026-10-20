@@ -37,6 +37,7 @@
     <Content Include="Assets\Airframe\*.svg" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\SetupSections\*.svg" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Calibration\*.png" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\InstrumentValueIcons\*.svg" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="Assets\Voice\*.m4a" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 

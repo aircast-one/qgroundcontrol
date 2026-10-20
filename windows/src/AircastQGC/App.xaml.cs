@@ -23,14 +23,22 @@ public partial class App : Application
     private static void Record(Exception ex) =>
         File.AppendAllText(CrashLog, $"{DateTime.Now:o} {ex}\n\n");
 
-    protected override void OnLaunched(LaunchActivatedEventArgs args)
+    protected override async void OnLaunched(LaunchActivatedEventArgs args)
     {
         try
         {
+            var link = DeepLinks.In(Environment.CommandLine);
+            if (await DeepLinks.Forwarded(link, Arrived))
+            {
+                Exit();
+                return;
+            }
+            if (Environment.ProcessPath is { } exe) DeepLinks.Register(exe);
             Directory.CreateDirectory(MapCache);
             CoreHost.Start("AircastQGC", "--no-autoconnect", "--save-path", SavePath,
                 "--settings", Path.Combine(AppData, "Aircast QGC.ini"), "--map-cache", Path.Combine(MapCache, "qgcMapCache.db"),
                 "--position-source", GcsLocation.SourceToken);
+            if (link is not null) DeepLinks.Handle(link);
             GcsLocation.Start();
             VideoDriver.Start();
             _window = new MainWindow();
@@ -47,5 +55,11 @@ public partial class App : Application
             Record(ex);
             throw;
         }
+    }
+
+    private void Arrived(string link)
+    {
+        DeepLinks.Handle(link);
+        if (_window is { } window) window.DispatcherQueue.TryEnqueue(() => window.Activate());
     }
 }

@@ -21,6 +21,7 @@ internal static class FlyRequests
     public static event Action<string>? Settings;
     public static event Action? Messages;
     public static event Action? Connections;
+    public static event Action? Fly;
 
     public static void AskGuided(string offer) => Guided?.Invoke(offer);
 
@@ -31,6 +32,8 @@ internal static class FlyRequests
     public static void OpenMessages() => Messages?.Invoke();
 
     public static void OpenConnections() => Connections?.Invoke();
+
+    public static void OpenFly() => Fly?.Invoke();
 }
 
 internal sealed record StatusPill(Button Button, FontIcon Icon, TextBlock Label);

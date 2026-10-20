@@ -12,7 +12,7 @@
         <KeyboardAccelerator Key="Escape" Invoked="OnEscape" />
     </UserControl.KeyboardAccelerators>
 
-    <Grid RequestedTheme="Dark">
+    <Grid>
         <Border Background="Transparent" Tapped="OnScrimTapped" RightTapped="OnScrimRightTapped" />
         <Canvas>
             <Border x:Name="Card"

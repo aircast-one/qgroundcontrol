@@ -31,11 +31,17 @@
 
                 <controls:MapPayloadLayer x:Name="MapPayload" />
 
+                <controls:ObstacleMapLayer x:Name="ObstacleOnMap" />
+
                 <controls:BatteryReturnBar />
 
                 <controls:VideoThumbnail x:Name="VideoTile"
                                          Width="260" Height="150" Margin="16"
                                          HorizontalAlignment="Right" VerticalAlignment="Top" />
+
+                <controls:VideoMarks x:Name="Marks"
+                                     Width="260" Height="150" Margin="16"
+                                     HorizontalAlignment="Right" VerticalAlignment="Top" />
 
                 <controls:VideoPayloadLayer x:Name="VideoLayer"
                                             Width="260" Height="150" Margin="16"
@@ -46,14 +52,21 @@
 
                 <StackPanel HorizontalAlignment="Center" VerticalAlignment="Top" Margin="16"
                             Spacing="{StaticResource SpaceSm}">
+                    <controls:HeadingTape HorizontalAlignment="Center" />
                     <controls:GuidedBar x:Name="GuidedStrip" HorizontalAlignment="Center" />
+                    <controls:ControlRequestPrompt HorizontalAlignment="Center" />
                     <controls:MissionProgressCard x:Name="MissionProgress" HorizontalAlignment="Center" />
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="{StaticResource SpaceSm}">
+                        <controls:ObstacleArc VerticalAlignment="Center" />
+                        <controls:ObstacleReadout VerticalAlignment="Center" />
+                    </StackPanel>
                     <controls:OrbitReadout HorizontalAlignment="Center" />
                     <InfoBar x:Name="Notice" Severity="Error" IsClosable="True" IsOpen="False"
                              HorizontalAlignment="Center" MaxWidth="480" />
                     <controls:TrafficBanner HorizontalAlignment="Center" />
                     <controls:VehicleMessageBanner x:Name="MessageBanner" HorizontalAlignment="Center" />
                     <controls:TerrainDataWarning x:Name="TerrainWarning" HorizontalAlignment="Center" />
+                    <controls:DeviceStatusChip HorizontalAlignment="Center" />
                 </StackPanel>
 
                 <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center" Margin="16"
@@ -62,6 +75,9 @@
                     <Button x:Name="CameraButton" Style="{StaticResource MapControl}" Content="&#xE722;"
                             Visibility="Collapsed"
                             ToolTipService.ToolTip="Camera" AutomationProperties.Name="Camera" />
+                    <Button x:Name="FullScreenButton" Style="{StaticResource MapControl}" Content="&#xE740;"
+                            Visibility="Collapsed"
+                            ToolTipService.ToolTip="Full-screen video (F11)" AutomationProperties.Name="Full-screen video" />
                     <Button x:Name="ChecklistButton" Style="{StaticResource MapControl}" Content="&#xE9D5;"
                             IsEnabled="False"
                             ToolTipService.ToolTip="Pre-flight checklist" AutomationProperties.Name="Pre-flight checklist" />
@@ -80,6 +96,8 @@
                                          HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="16,16,16,124" />
 
                 <controls:RcControlsLayer HorizontalAlignment="Left" VerticalAlignment="Center" Margin="16" />
+
+                <controls:VirtualJoystick Margin="16,16,280,160" />
 
                 <controls:CameraOverlay x:Name="CameraPanel"
                                         HorizontalAlignment="Right" VerticalAlignment="Top" Margin="16,182,68,16"
@@ -125,5 +143,7 @@
 
             <controls:NoticeLayer x:Name="Notices" Grid.Column="1" />
         </Grid>
+
+        <controls:DeepLinkSetupPrompt Grid.RowSpan="2" />
     </Grid>
 </Window>

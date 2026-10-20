@@ -27,7 +27,7 @@ internal sealed class PlanDialogs(FrameworkElement owner)
         Content = content,
         CloseButtonText = close,
         Style = owner.Resources.TryGetValue("PlanDialog", out var style) ? (Style)style : null,
-        RequestedTheme = ElementTheme.Dark,
+        RequestedTheme = (owner.XamlRoot?.Content as FrameworkElement)?.ActualTheme ?? ElementTheme.Default,
         DefaultButton = ContentDialogButton.Primary,
     };
 

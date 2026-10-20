@@ -125,6 +125,10 @@
             <StackPanel x:Name="Readings" Orientation="Horizontal" Spacing="4">
                 <local:VehiclePickerButton x:Name="VehicleSwitch" />
 
+                <local:OperatorControlButton />
+
+                <local:VtolStateCell />
+
                 <Button x:Name="ModePill" Style="{StaticResource PillButton}" Click="OnModeClick"
                         AutomationProperties.Name="Flight mode" ToolTipService.ToolTip="Flight mode">
                     <StackPanel Orientation="Horizontal" Spacing="6">

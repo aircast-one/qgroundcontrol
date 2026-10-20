@@ -31,6 +31,7 @@ Boot: `qgc_start(argc, argv)` spawns the core pump thread and returns; the UI ne
 - [x] Fly view composed from core-driven controls (map, instruments, guided, video/camera, flight modes, checklist, no-vehicle), verified on `winvm` against a mock ArduCopter
 - [x] Every nav page hosted (`Pages/PageRegistry`): Fly, Plan, Analyze, Vehicle Setup, Settings. Merged build smoke on `winvm` (2026-10-20): each page opens with no vehicle, the mock ArduCopter and the mock PX4; a plan uploaded from Plan shows on Fly with the vehicle and traffic; a PX4 calibration still blocks the nav pane and Back
 - [x] Second merged build (2026-10-20, video, settings, plan and setup work plus the core fixes below) smoke-tested on `winvm`: every page opens with no vehicle, the mock ArduCopter and the mock PX4; PiP and the camera swap, Video sources add, the Fly RC layer, the offline map picker, the Plan mid-leg +, Follow vehicle and presets, live parameter rows and a UI Automation tuning write, the power calculator and the Add link type list all work together
+- [x] Third merged build (2026-10-20, round 5: Aircast device, Aircast Cloud and deep links, video overlays, Fly controls, settings depth) smoke-tested on `winvm`: every page opens with no vehicle, the mock ArduCopter and the mock PX4; Settings > Aircast device against the aircastd fake-device harness (home, checks, link and health charts, all 10 page rows, the Telemetry page, Disconnect); Add link offers Aircast Cloud with its inline errors; all 17 APM and 10 PX4 setup components open from the core's `page` fields; the map layers flyout writes the obstacle-distance toggle; grid lines on a UDP H.264 stream; full-screen video from the rail button and with real F11/Escape keys; real mouse drags on the on-screen sticks climb the mock ArduCopter 11 → 18.6 m in 3 s and fly it 12.5 m/s north; Aircraft safety writes `RTL_ALT_M` (15 → 25 → 15) and shows PX4's rows; the light palette switches the running app on Fly, Settings and Vehicle Setup
 
 ## Screens (Penpot "06 Screens", 54 boards @ 1440×900)
 
@@ -41,6 +42,7 @@ Status: ▢ todo · ◐ in progress · ✓ done
 - ✓ fly · ◐ fly — flight mode (refused-change notice untested: the mock accepts every mode) · ◐ fly — camera (frames ✓, picture-in-picture ✓, video fit ✓; WHEP not seen in the shipped build: `build-whep.ps1` put `gstwebrtchttp.dll` in `C:\gstreamer`, but the stage's bundled runtime predates it until `build-video.ps1` is rerun) · ✓ fly — map context menu
 - ✓ fly — armed, confirm return · ✓ fly — checklist · ✓ fly — no vehicle
 - ✓ fly — host notices, message banner and sheet, voice alerts, disarm toast · ✓ fly — status strip and detail sheets · ✓ fly — multi-vehicle, operator position, Follow Me · ✓ fly — prompts (enforced checklist, mission popups, mission complete, close guard, connecting card, mission progress, set waypoint, resume failed, first run) · ✓ fly — payload (gimbal pill and sheet, map wedge, beam and radar, record shutter, gripper bays, camera details); details and gaps in the parity backlog below
+- ✓ fly — on-screen sticks · ✓ fly — heading tape, guided presets and quick picks, mission identity card, ROI pin sheet · ◐ fly — operator control and VTOL cell (synthetic views only) · ✓ fly — video grid lines, full screen, detection boxes · ◐ fly — obstacle arc, readout and map overlay, AR marks (constructed payloads only) · ✓ fly — Aircast device status chip
 
 Driven through the UI on `winvm` against the mock ArduCopter (2026-10-20): slide-to-confirm with real mouse input, arm, disarm,
 takeoff to a chosen height, change altitude, title-bar mode change, ROI + cancel ROI, go-to, set heading, RTL, land to
@@ -66,9 +68,32 @@ On-screen RC controls (`Controls/RcControlsLayer`, on Fly while connected) from 
 channels: slider, button, three-way switch and momentary controls plus Tilt/Pan/Zoom sliders, Record, Light, Recenter and Give back. It
 sends `vehicle.setRcChannelOverride` at most every 100 ms with a final send. Against the mock ArduCopter a UI Automation slider set gave
 pwm 1800 held in `view.rcControls`, `vehicle.rcChannelOverrides` `{6:1800}` and `rcOverride` true; Give back emptied the overrides. Not
-driven: holding a Momentary control and pointer slider drags. Overrides stay held when you leave Fly (FlyContent is collapsed, not
-unloaded); Android releases them when the layer leaves composition. Android's gimbal-manager controls in RcCameraControls are not ported
-(the gimbal pill and sheet now cover acquire control, tilt and centre).
+driven: holding a Momentary control and pointer slider drags. Overrides are released when you leave Fly as well as on unload
+(`Controls/Presence.OnHidden` watches the ancestors' Visibility), as Android releases them when the layer leaves composition; verified
+`{6:1800}` → `{}` on switching to Settings. Android's gimbal-manager controls in RcCameraControls are not ported (the gimbal pill and sheet
+now cover acquire control, tilt and centre).
+
+On-screen sticks (`Controls/VirtualJoystick`) follow `view.virtualJoystick`: two thumbpads, left-handed mode, the throttle parked at idle on
+the ground, auto-centre. `StickSender` sends `vehicle.virtualTabletJoystickValue` every `periodMs` or on a move from a background loop, with
+the touch age, while enabled and sending; leaving Fly lets the sticks go. In the merged build, real mouse drags on `winvm` held the left stick
+up for 3 s in Loiter (mock ArduCopter 11.1 → 18.6 m, 22.8 m after release) and the right stick forward (12.5 m/s, latitude rising); the core's
+sticks log read 204–209 sends per 9 s, none refused. The mock PX4 shows the pads with the throttle parked.
+
+Heading tape (`view.attitude`) above the guided bar. The guided confirm card has takeoff presets and change-altitude quick picks, a mission
+identity card on Start/Continue Mission and a FROM altitude tile on Land. Tapping the ROI pin opens Edit ROI position / Cancel ROI (the hit
+test and card were driven in-process, not a real map tap). The title bar has a VTOL state cell and an operator-control pill and flyout, and
+Fly has the control-request prompt; the mocks send no CONTROL_STATUS or VTOL state, so these were checked with synthetic views only.
+
+Video overlays (`Controls/VideoMarks`, `ObstacleArc`, `ObstacleReadout`, `ObstacleMapLayer`, `LensSection`): grid lines; full-screen video
+from the rail button or F11 (AppWindow FullScreen presenter, title bar and nav hidden; Escape, the Exit button, the video stopping or leaving
+Fly exit it), checked in the merged build with real keys; detection boxes from the aircastd SSE feed (checked against an SSE stub, with the
+stale and refused states); AR marks and obstacle rings on the video; the map layers flyout with the obstacle-distance toggle and the map
+obstacle overlay; the obstacle arc and readout; lens measure and forget in the camera panel. Obstacle and AR drawing were checked only from
+constructed `view.obstacle`/`view.videoAr` payloads (the mock has no OBSTACLE_DISTANCE; the core's `synthview.rs overlays()` returns no home or
+waypoints with coreplan). Mouse-wheel zoom calls `stepZoom`, but the mock camera's zoom never changes, so no effect was seen; touch pinch was
+not driven. `SwapVideo` now docks the payload and marks layers with the video tile, so the payload layer takes input when the video is main.
+`VideoDriver` also plays the core's preview channels 2..5 (`video.previews`) for device camera previews; no frames seen yet (needs a WHEP-serving
+device).
 
 ### Plan
 
@@ -84,6 +109,11 @@ toggle; defaults and transform; save, open, export KML and import boundary throu
 connected and disconnected prompts; replace, clear and upload-warning dialogs (firmware mismatch, far from aircraft); upload to the green
 Fly pill and on to Fly, which still draws the vehicle, the uploaded route, pins and live ADS-B traffic. Not driven: map tap, pin and handle
 drags, terrain-chart marker taps.
+
+The item editor has the waypoint camera section (`Pages/Plan/PlanCamera`, `view.itemCamera`): action, time or distance interval, camera mode,
+gimbal pitch and yaw sliders and the notes, at the top for simple items and inside the editor for mission start. Surveys have the camera-calc
+block: brand and model pickers, read-only sensor facts, overlaps, the altitude (distance) mode and Set by altitude or ground resolution.
+Checked on the mock PX4 in the depth slot (2026-10-20). Not driven: typing into the Time/Distance/Pitch/Yaw boxes (sliders and combos were).
 
 Added and driven on `winvm` (2026-10-20): a mid-leg + on the leg into the selected item inserts a waypoint at its midpoint (UIA Invoke;
 re-checked in the merged build against the mock PX4). The landing pattern is drawn (approach path, loiter ring), with Approach/Touchdown
@@ -126,8 +156,9 @@ the shared VM), Sub/Rover-only pages. Visible parameter rows, form sliders and t
 (re-checked in the merged build: ATC_RAT_RLL_P 0.135 → 0.15 → 0.135 pushed through the debug API showed in the row). Sliders write on
 pointer release, on key up, or 400 ms after a UI Automation `RangeValue` set, one write per settled value (counted on the MAVLink
 inspector; in the merged build a set to 0.26 wrote ATC_RAT_RLL_P). Setup form controls (`vehicleConfig(...)`) cannot be read back from the
-core, so their sliders watch `FormControl.LivePath`, the underlying parameter. The core now names each component's `page` and `screen` in
-`view.setup` (PX4 Airframe → Frame/px4Airframe, PID Tuning → Tuning/px4Tuning), but `SetupModel` still uses its own name table.
+core, so their sliders watch `FormControl.LivePath`, the underlying parameter. `SetupModel` reads each component's `page` and `screen` from
+`view.setup` (PX4 Airframe → Frame/px4Airframe, PID Tuning → Tuning/px4Tuning); its own name table is gone. In the round-5 merged build all
+17 APM and 10 PX4 mock components opened from their rows.
 
 ### Analyze
 
@@ -153,7 +184,8 @@ Not checked: flashing (no USB board on the VM), a message-rate change taking eff
 
 - ✓ settings · ✓ settings — general · ✓ settings — fly view (on-screen RC controls editor; the Fly layer is described under Fly) · ✓ settings — plan view
 - ✓ settings — video · ✓ settings — maps (Add new set opens a map picker; dragging its handles was not driven: no pointer input on the shared VM) · ✓ settings — connections
-- ◐ settings — add link (Wi-Fi or network, USB telemetry radio, Network server (TCP), Replay a flight log and Simulated vehicle are offered and the 19 Windows baud rates listed; no COM port seen: the VM has none; Bluetooth is not offered: no Windows Bluetooth host; Aircast Cloud is in `linkTypeIds` but the head never offers it)
+- ◐ settings — add link (Wi-Fi or network, USB telemetry radio, Aircast Cloud, Network server (TCP), Replay a flight log and Simulated vehicle are offered and the 19 Windows baud rates listed; no COM port seen: the VM has none; Bluetooth is not offered: no Windows Bluetooth host)
+- ✓ settings — aircast device (aircastd) · ✓ settings — aircraft safety and aircraft limits (pilot rows) · ◐ settings — appearance (light palette live; font size live for XAML-built UI only)
 - ✓ settings — comm links · ◐ settings — mavlink (signing Disable not seen: the mock never completes signing) · ✓ settings — flight modes · ✓ settings — adsb server
 - ◐ settings — packet radio (no Wi-Fi adapter on the VM: only "Unavailable" and the Automatic adapter seen) · ✓ settings — remote id (GCS position block seen with an NMEA fix; the VM's own Windows fix is too coarse) · ✓ settings — rtk gps
 - ◐ settings — firmware upgrade (Analyze's FirmwareTool; flashing not checked, no USB board on the VM) · ✓ settings — 3d viewer · ✓ settings — about
@@ -185,6 +217,29 @@ view, zoom previews and the live estimate; it starts on the vehicle, then this c
 memory only). About's Open waits for `Launcher.LaunchUriAsync` and shows a red caption if Windows refuses; one link opened the default
 browser. Disabled Accent buttons (`PreflightLook`) now use Fluent's AccentFillColorDisabled and TextOnAccentFillColorDisabled colours.
 
+Aircast device (`Pages/Device`, Settings > Device > Aircast device): connect by address with the core's refusals, the device home (headline,
+Before you fly checks, link and health charts, the page list, This app with Disconnect) and the 11 native device pages over one keyed
+reconcile kit (`DeviceTree`), so live SSE pushes keep typed text and focus; the Wi-Fi and camera wizards; the Fly status chip
+(`Controls/DeviceStatusChip`) when the device is not ready. Checked on `winvm` against the aircastd fake-device harness relayed onto
+192.168.105.1 (device slot: every page, writes read back on the harness, QR, flight lanes and zoom, both wizards, setup steps; merged build:
+home, all 10 page rows and the Telemetry page). Not seen: camera preview frames, file-picker uploads, pointer-only lane gestures, several
+harness-unreachable states (wizard steps 2–3, Cloudflare and account stages, Tailscale sign-in).
+
+Add link offers Aircast Cloud (`Pages/Settings/AircastCloud`): device-code sign-in with the browser opened by `Windows.System.Launcher`, the
+drone picker, sign out and cancel, then `links.createAircastCloudLink`; checked against a stub account server, not a real account. The title
+bar has the USB-radio cell (only the stopped state seen, with a forced port) and the support-forwarding cell. `aircast-qgc://` links are
+registered per user under HKCU; a second launch carrying a link hands it to the running instance and exits, and the "Set up from this
+device?" prompt follows (warm and cold launches checked; accepting reaches the core only, no device to fetch from).
+
+Aircraft safety and Aircraft limits (`Pages/Settings/PilotSettings`) are Android's Safety and Control tab homes: return-home altitude, max
+altitude and distance, the signal/RC/battery failsafes and max speeds built from the firmware's parameters, with offline and loading states,
+the sensor checks from `view.calibration`, Calibrate sensors and More failsafe settings into Vehicle Setup, and search hits. Checked on both
+mocks; the merged build wrote `RTL_ALT_M` 15 → 25 → 15 through UI Automation. Appearance: `Theme/Appearance` applies
+`indoorPalette` (dark, light, follow Windows) and `appFontPointSize` live; Light values live in `Theme/Tokens.xaml`. Code-built panels pick up
+a new font size on their next render, and at 125% and above the title bar crowds the app title. Fly readings open a telemetry display editor
+(`Controls/InstrumentDisplay`: icon or text label, units, colour/opacity/icon ranges, stored per vehicle class in
+`%LOCALAPPDATA%\AircastQGC\instrument-displays.json`); its right-click menu entry was not driven.
+
 Add link and the power calculator need the core fixes built into `C:\aircast-core\groundstation.dll` (serial ports and baud rates on
 Windows, `links` fields kept when the native host answers null, mock battery ids 0/1, `page`/`screen` per setup component). They are not
 yet landed in `groundstation`.
@@ -197,10 +252,12 @@ editor, video fit, the RC controls layer and editor, the offline map picker, pat
 handles, Follow vehicle, the `view.missionItems` poll moved off the UI thread, live parameter rows, and in core the Windows serial ports and
 `linkTypeIds`, the mock battery ids and `page`/`screen` per setup component.
 
-Status marks below (✓ done · ◐ partial · unmarked open) come from round 4 (2026-10-20): five areas (notices, prompts, indicators, fleet,
-payload) each verified in its own VM slot against the mock ArduCopter and PX4, then merged into this tree and smoke-tested together on
-`winvm` (no vehicle, mock ArduCopter, mock PX4, two ArduCopter mocks, a UDP H.264 test stream). Pointer-only gestures (slides, map and
-video taps, drags) were driven through in-process hooks or UI Automation, not a real mouse.
+Status marks below (✓ done · ◐ partial · unmarked open) come from rounds 4 and 5 (2026-10-20). Round 4: notices, prompts, indicators, fleet,
+payload. Round 5: Aircast device, Aircast Cloud and deep links, video overlays, Fly controls, settings depth. Each area was verified in its own
+VM slot against the mock ArduCopter and PX4 (and stubs where named), then merged into this tree and smoke-tested together on `winvm` (no
+vehicle, mock ArduCopter, mock PX4, two ArduCopter mocks, a UDP H.264 test stream, the aircastd fake-device harness). Pointer-only gestures
+were mostly driven through in-process hooks or UI Automation; the round-5 merge smoke used a real mouse for the sticks and real keys for
+full screen.
 
 ### P0: bugs and real-use blockers
 
@@ -232,34 +289,44 @@ video taps, drags) were driven through in-process hooks or UI Automation, not a 
   video is main swaps back instead).
 - Video: WHEP in the shipped runtime (rerun `build-video.ps1`, then check against a SFU) · ◐ gimbal indicator and control sheet (tilt,
   centre, point home, retract, yaw lock, acquire control, settings form verified; the take-control dialog was never triggered).
-- Settings and Plan: pilot settings rows built from parameters (S–M); waypoint camera section from `view.itemCamera` (S–M).
-- Aircast device (aircastd): device home and the 11 device pages over `view.device` (L).
+- Settings and Plan: ✓ pilot settings rows built from parameters (Settings > Aircraft safety and Aircraft limits) · ✓ waypoint camera
+  section from `view.itemCamera`.
+- ✓ Aircast device (aircastd): device home, the 11 device pages, the Wi-Fi and camera wizards and the Fly status chip, against the fake-device
+  harness. ◐ Device camera previews: `VideoDriver` starts the WHEP pipelines on channels 2..5, but no frames were seen (no WHEP-serving device).
 
 ### P2: advanced and secondary
 
 - Platform: ✓ ground-station position (`--position-source internalGps`, `Core/GcsLocation` feeds Geolocator fixes; operator dot, map
   framing without a vehicle, Remote ID GCS block, compass GCS bearing — proven with the core's NMEA source because the VM's Windows fix is
   10 km and refused) · ✓ Follow Me readout · ◐ GCS battery cell (built; the VM has no battery) · ✓ keep-display-awake (`powercfg
-  /requests` lists the app while connected) · Aircast Cloud link and sign-in (M).
+  /requests` lists the app while connected) · ✓ Aircast Cloud link and sign-in (stub account server; no real account used).
 - Fly overlays: ✓ ESC and Remote ID cells (self-ID, emergency label) · ◐ GPS resilience, RTK (survey-in, base Save), Aircast link and
-  joystick cells (built, no mock source) · VTOL cell · ✓ gripper panel with bays, problems and fix button (Payload tile in the deck) ·
-  ◐ orbit readout (built; the PX4 mock never reports orbiting) · ✓ proximity radar on the video and map · obstacle arc and map layer ·
-  ✓ gimbal wedge and camera beam · ◐ gimbal on-screen aim (mode switch verified; tap, drag and hold sends not driven) · virtual joystick ·
-  operator-control prompt · ◐ terrain-data warning (built; the stalled state cannot be driven) · ✓ offline status sheet · ✓ resume-failed
-  prompt (shows on any page; Android only on Fly) · ✓ disarm and landed summary toast · ✓ first-run dialog.
-- Video: grid lines, aspect ratio, full-screen and zoom gestures · ◐ camera details (camera and stream choice, time lapse and interval,
-  tracking toggle and box, reset and format verified; thermal untested, tap-to-track not driven) · ✓ video stats pill (merged build:
-  "31 fps · 720p" on the full-size video) · AR overlay · detection boxes from aircastd · synthetic view (needs a Windows attach in the
-  core's wgpu renderer; L).
-- Settings: app font size and the light palette (M); SD-card flasher (needs a Windows raw-disk backend in core; L).
-- Plan: survey camera-calc block (brand/model, overlap, distance mode; S); the remaining ~240 ms core rebuild of `view.missionItems` on
-  the UI thread after each edit on large surveys.
+  joystick cells (built, no mock source) · ◐ VTOL cell (synthetic views only; no VTOL mock) · ✓ gripper panel with bays, problems and fix
+  button (Payload tile in the deck) · ◐ orbit readout (built; the PX4 mock never reports orbiting) · ✓ proximity radar on the video and map ·
+  ◐ obstacle arc, readout and map layer (constructed `view.obstacle` only; the layers toggle is live) · ✓ gimbal wedge and camera beam ·
+  ◐ gimbal on-screen aim (mode switch verified; tap, drag and hold sends not driven) · ✓ virtual joystick (real mouse drags fly the mock) ·
+  ◐ operator-control prompt and allow-takeover (synthetic views; the takeover setting and request invoke reach the core) · ◐ terrain-data
+  warning (built; the stalled state cannot be driven) · ✓ offline status sheet · ✓ resume-failed prompt (shows on any page; Android only on
+  Fly) · ✓ disarm and landed summary toast · ✓ first-run dialog.
+- Video: ✓ grid lines and full-screen video (rail button, F11, Escape) · ◐ zoom (wheel and pinch call `stepZoom`; no zoom effect on the mock,
+  pinch not driven; full screen is not entered by double-tap as on Android) · aspect ratio · ◐ camera details (camera and stream choice, time
+  lapse and interval, tracking toggle and box, reset and format verified; thermal untested, tap-to-track not driven) · ✓ video stats pill
+  (merged build: "31 fps · 720p" on the full-size video) · ◐ AR overlay (draws from an injected payload; live home and waypoints blocked by the
+  core's `synthview.rs overlays()`) · ✓ detection boxes from aircastd (SSE stub) · synthetic view (needs a Windows attach in the core's wgpu
+  renderer; L).
+- Settings: ✓ the light palette · ◐ app font size (XAML-built UI rescales live, code-built panels on their next render; the title bar crowds
+  at 125% and above) · SD-card flasher (needs a Windows raw-disk backend in core; L).
+- Plan: ✓ survey camera-calc block (brand/model, overlap, distance mode, set by altitude or ground resolution); the remaining ~240 ms core
+  rebuild of `view.missionItems` on the UI thread after each edit on large surveys.
 
 ### P3: polish or low value on desktop
 
-- 3D viewer as a Fly view (L), overlay layout editing, telemetry display editor (M each).
-- Heading tape, guided-value presets, mission identity confirm, ROI tap sheet, lens measure, USB-radio indicator, support-forwarding
-  cell, `aircast://` deep-link prompt, Plan double-click zoom, sensor-check and setup rows in the Settings tabs (S each).
+- 3D viewer as a Fly view (L), overlay layout editing (M) · ✓ telemetry display editor (right-click entry not driven).
+- ✓ Heading tape · ✓ guided-value presets and quick picks (Android's −/+ stepper and probe sentence not ported) · ✓ mission identity confirm ·
+  ✓ ROI tap sheet (map tap driven in-process) · ◐ lens measure (forget and the refusal seen; a successful measurement not seen) · ◐ USB-radio
+  indicator (only the stopped state, with a forced port) · ✓ support-forwarding cell · ✓ deep-link prompt (`aircast-qgc://`, registered per
+  user, single-instance redirect) · Plan double-click zoom · ✓ sensor-check and setup rows in the Settings tabs (on the Aircraft safety and
+  Aircraft limits pages).
 
 Not applicable on Windows: the phone Wi-Fi SSID, RadioMaster AX12 built-in sticks, portrait Fly, the notification permission, the
 Android foreground service and the phone camera as a video source.

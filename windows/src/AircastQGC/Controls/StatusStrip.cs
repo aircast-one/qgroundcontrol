@@ -119,7 +119,7 @@ public sealed class StatusStrip : UserControl
             Orientation = Orientation.Horizontal,
             Spacing = 4,
             VerticalAlignment = VerticalAlignment.Center,
-            Children = { _vehicleCells, _rtk.Button, _gcsBattery.Button },
+            Children = { _vehicleCells, new UsbRadioCell(), _rtk.Button, _gcsBattery.Button, new SupportForwardingCell() },
         };
 
         _tick.Tick += (_, _) => Tick();

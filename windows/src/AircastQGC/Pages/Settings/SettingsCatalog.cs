@@ -7,7 +7,7 @@ using AircastQGC.Forms;
 
 namespace AircastQGC.Pages.Settings;
 
-internal enum SettingsGroup { General, Safety, Control, Camera, Transmission }
+internal enum SettingsGroup { General, Safety, Control, Camera, Transmission, Device }
 
 internal sealed record HelpLink(string Name, string Url, string Host);
 
@@ -24,7 +24,8 @@ internal sealed record SettingsEntry(
     bool ShowsPx4Logs,
     int SectionCount,
     IReadOnlyList<HelpLink> HelpLinks,
-    string Keywords)
+    string Keywords,
+    SettingsGroup? Pilot = null)
 {
     public string Shown => SettingsCatalog.PageTitle(Title);
 
@@ -51,6 +52,10 @@ internal static class SettingsCatalog
     public const string SigningAfterBlock = "Ground Station";
     public const string GcsLocationBlock = "Ground Station Location";
     public const string MountpointBlock = "Mountpoint";
+    public const string DevicePage = Device.DeviceLink.Page;
+
+    private static readonly SettingsEntry DeviceEntry = new(DevicePage, false, false, false, false, false, false, false, 0, [],
+        "aircast device aircastd companion raspberry pi camera cameras wi-fi network tailscale recordings flight log telemetry engineering setup");
 
     public static readonly IReadOnlySet<string> GroupsWithAHeadEditor = new HashSet<string> { FlyViewGroup };
 
@@ -62,8 +67,10 @@ internal static class SettingsCatalog
         ("App Logging", new PageLook(SettingsGroup.General, "")),
         ("Console", new PageLook(SettingsGroup.General, "")),
         ("About", new PageLook(SettingsGroup.General, "")),
+        (PilotSettings.SafetyPage, new PageLook(SettingsGroup.Safety, "\uE80F")),
         ("ADSB Server", new PageLook(SettingsGroup.Safety, "")),
         ("Remote ID", new PageLook(SettingsGroup.Safety, "")),
+        (PilotSettings.LimitsPage, new PageLook(SettingsGroup.Control, "\uEC4A")),
         ("Fly View", new PageLook(SettingsGroup.Control, "")),
         ("Flight Modes", new PageLook(SettingsGroup.Control, "")),
         ("Plan View", new PageLook(SettingsGroup.Control, "")),
@@ -76,6 +83,7 @@ internal static class SettingsCatalog
         ("Packet Radio", new PageLook(SettingsGroup.Transmission, "")),
         ("RTK GPS", new PageLook(SettingsGroup.Transmission, "")),
         ("NTRIP / RTK", new PageLook(SettingsGroup.Transmission, "")),
+        (DevicePage, new PageLook(SettingsGroup.Device, "")),
     ];
 
     private static readonly IReadOnlyDictionary<string, string> Titles = new Dictionary<string, string>
@@ -98,6 +106,15 @@ internal static class SettingsCatalog
             .Select(Entry)
             .Where(page => page.Title.Length > 0)
             .Where(page => page.SectionCount > 0 || page.ShowsLinks || page.ShowsAbout || page.ShowsConsole || page.ShowsPx4Logs || page.ShowsVideoSources)
+            .ToList() is { Count: > 0 } served
+            ? Ordered(served.Concat(PilotSettings.Pages.Select(Pilot)).Append(DeviceEntry))
+            : [];
+
+    private static SettingsEntry Pilot((string Title, SettingsGroup Group) page) =>
+        new(page.Title, false, false, false, false, false, false, false, 0, [], PilotSettings.Keywords(page.Group), page.Group);
+
+    private static IReadOnlyList<SettingsEntry> Ordered(IEnumerable<SettingsEntry> pages) =>
+        pages
             .OrderBy(page => page.Look.Group)
             .ThenBy(page => Order(page.Title))
             .ToList();

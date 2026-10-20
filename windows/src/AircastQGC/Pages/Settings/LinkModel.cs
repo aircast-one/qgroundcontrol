@@ -75,7 +75,9 @@ internal sealed record LinkDraft(
     bool HighLatency = false,
     BluetoothDevice? Device = null,
     string ReplayLog = "",
-    MockChoices? Mock = null)
+    MockChoices? Mock = null,
+    string ApiBase = "",
+    string DeviceId = "")
 {
     public IReadOnlyList<string> Servers { get; init; } = [];
     public SerialFraming Framing { get; init; } = new();
@@ -213,12 +215,14 @@ internal static class LinkModel
     public static IReadOnlySet<LinkType> Served(JsonObject view) =>
         (view["linkTypeIds"] as JsonArray ?? []).Select(id => Type(MapUiJson.Text(id))).ToHashSet();
 
-    public static IReadOnlyList<LinkType> Addable(JsonObject view) =>
-        view["linkTypeIds"] is not JsonArray ? Creatable : Offered(Served(view), Bluetooth(view).Available);
+    public static IReadOnlyList<LinkType> Addable(JsonObject view, bool cloud) =>
+        view["linkTypeIds"] is not JsonArray ? Creatable : Offered(Served(view), Bluetooth(view).Available, cloud);
 
-    private static IReadOnlyList<LinkType> Offered(IReadOnlySet<LinkType> served, bool bluetooth) =>
+    private static IReadOnlyList<LinkType> Offered(IReadOnlySet<LinkType> served, bool bluetooth, bool cloud) =>
         OrAll(Creatable.Where(served.Contains).ToList())
-            .Concat(new[] { LinkType.Bluetooth }.Where(t => bluetooth && served.Contains(t)))
+            .Concat(new[] { (Type: LinkType.Bluetooth, Usable: bluetooth), (Type: LinkType.AircastCloud, Usable: cloud) }
+                .Where(t => t.Usable && served.Contains(t.Type))
+                .Select(t => t.Type))
             .Concat(ToolOrder.Where(served.Contains))
             .ToList();
 
@@ -290,6 +294,7 @@ internal static class LinkModel
     {
         LinkType.Serial => SerialName(PortLabel(ports, draft.PortName)),
         LinkType.LogReplay => ReplayName,
+        LinkType.AircastCloud => AircastCloud.LinkName,
         LinkType.Bluetooth => draft.Device?.Name ?? "",
         _ => AutoLinkName(draft.Type, draft.Host, draft.ShownPort(udpDefault)),
     };
@@ -315,6 +320,7 @@ internal static class LinkModel
     public static string? DraftError(LinkDraft draft, string udpDefault, IReadOnlyList<string> taken, bool anyPorts) => draft.Type switch
     {
         LinkType.Mock => null,
+        LinkType.AircastCloud => AircastCloud.Valid(draft.ApiBase, draft.DeviceId) ? null : "",
         LinkType.Bluetooth => draft.Device is null ? "Pick a Bluetooth device." : null,
         LinkType.LogReplay => draft.ReplayLog.Length == 0 ? "Choose a log file to replay." : null,
         LinkType.Serial => SerialError(draft.PortName, draft.Baud, taken, draft.Name, anyPorts),
@@ -417,6 +423,7 @@ internal static class LinkCommands
     public static bool Create(LinkDraft draft, string name, int port) => draft.Type switch
     {
         LinkType.Mock => FormWrites.ResultTrue(LinkModel.StartMock, draft.Choices.Arguments),
+        LinkType.AircastCloud => AircastCloud.Create(name, draft.ApiBase, draft.DeviceId),
         LinkType.LogReplay => FormWrites.ResultTrue(LinkModel.CreateReplay, name, draft.ReplayLog) && ConnectNamed(name),
         LinkType.Bluetooth => draft.Device is { } device && FormWrites.ResultTrue(LinkModel.CreateBluetooth, name, device.Name, device.Address),
         LinkType.Serial => FormWrites.ResultTrue(LinkModel.CreateSerial, name, draft.PortName, draft.Baud) && WriteFraming(name, draft.Framing) && ConnectNamed(name),

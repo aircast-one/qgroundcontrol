@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Immutable;
 using System.Linq;
 using AircastQGC.Controls;
@@ -5,6 +6,8 @@ using AircastQGC.Core;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Input;
+using Windows.System;
 
 namespace AircastQGC;
 
@@ -13,17 +16,22 @@ public sealed partial class MainWindow : Window
     private const double TileWidth = 260;
     private const double TileHeight = 150;
     private const double TileMargin = 16;
+    private const int FullScreenLayer = 100;
 
     private readonly FlightModeMenu _modes;
     private ImmutableStack<string> _history = ImmutableStack<string>.Empty;
     private string _page = NavPane.Fly;
     private ImmutableDictionary<string, UIElement> _pages = ImmutableDictionary<string, UIElement>.Empty;
     private bool _videoMain;
+    private bool _fullScreen;
+    private AppWindowPresenter? _windowed;
 
     public MainWindow()
     {
+        Theme.Appearance.Prepare();
         InitializeComponent();
         BridgeWatch.BindDispatcher(DispatcherQueue);
+        Theme.Appearance.Attach((FrameworkElement)Content, AppWindow);
         Pages.Setup.GamepadInput.Start();
         ScreenWake.Start();
 
@@ -40,6 +48,7 @@ public sealed partial class MainWindow : Window
         FlyRequests.Setup += OpenSetup;
         FlyRequests.Guided += AskGuided;
         FlyRequests.Messages += OpenMessages;
+        FlyRequests.Fly += () => Go(NavPane.Fly);
 
         _modes = new FlightModeMenu();
         Shell.FlightModeRequested += (_, anchor) => _modes.Show(anchor);
@@ -91,9 +100,22 @@ public sealed partial class MainWindow : Window
         CameraButton.Click += (_, _) => ToggleCamera();
         MapPayload.Attach(Map);
         VideoLayer.SwapRequested += (_, _) => SwapVideo(!_videoMain);
+        ObstacleOnMap.Attach(Map);
+        Marks.ZoomFrom(FlyContent, VideoTile, VideoLayer);
+        Marks.DecodingChanged += (_, _) =>
+        {
+            if (!Marks.Decoding) FullScreen(false);
+            PaintFullScreen();
+        };
+        Marks.ExitFullScreenRequested += (_, _) => FullScreen(false);
+        FullScreenButton.Click += (_, _) => FullScreen(true);
+        FlyContent.KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden;
+        FlyContent.KeyboardAccelerators.Add(Accelerator(VirtualKey.F11, () => true, () => FullScreen(!_fullScreen)));
+        FlyContent.KeyboardAccelerators.Add(Accelerator(VirtualKey.Escape, () => _fullScreen, () => FullScreen(false)));
         Map.MapTapped += (_, _, at) =>
         {
             if (_videoMain) SwapVideo(false);
+            else if (RoiTap.At(Map, at) is { } roi) GuidedCard.Ask(RoiTap.Ask(roi));
             else if (SetWaypoint.PinAt(Map, at) is { } sequence) GuidedCard.Ask(SetWaypoint.Ask(sequence));
         };
         MissionProgress.SkipRequested += (_, next) => GuidedCard.Ask(SetWaypoint.Ask(next));
@@ -163,6 +185,7 @@ public sealed partial class MainWindow : Window
 
     private void ShowPage(string page)
     {
+        if (page != NavPane.Fly) FullScreen(false);
         _page = page;
         Nav.SelectedPage = page;
         Nav.CanGoBack = !_history.IsEmpty;
@@ -209,12 +232,52 @@ public sealed partial class MainWindow : Window
 
     private void SwapVideo(bool videoMain)
     {
+        if (!videoMain) FullScreen(false);
         _videoMain = videoMain;
         VideoTile.Expanded = videoMain;
-        Dock(VideoTile, videoMain);
-        Dock(Map, !videoMain);
-        Canvas.SetZIndex(VideoTile, videoMain ? -1 : 0);
+        Marks.Expanded = videoMain;
+        VideoLayer.Expanded = videoMain;
+        new FrameworkElement[] { VideoTile, Marks, VideoLayer }.ToList().ForEach(view =>
+        {
+            Dock(view, videoMain);
+            Canvas.SetZIndex(view, videoMain ? -1 : 0);
+        });
+        new FrameworkElement[] { Map, MapPayload, ObstacleOnMap }.ToList().ForEach(view => Dock(view, !videoMain));
+        ObstacleOnMap.ShowText = !videoMain;
         VideoStats.Expanded = videoMain;
+        PaintFullScreen();
+    }
+
+    private void FullScreen(bool on)
+    {
+        var shown = on && _videoMain && Marks.Decoding && _page == NavPane.Fly;
+        if (shown == _fullScreen) return;
+        _fullScreen = shown;
+        _windowed = shown ? AppWindow.Presenter : _windowed;
+        if (shown) AppWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
+        else if (_windowed is not null) AppWindow.SetPresenter(_windowed);
+        Shell.Visibility = Shown(!shown);
+        Nav.Visibility = Shown(!shown);
+        Grid.SetRowSpan(FlyContent, shown ? 2 : 1);
+        Canvas.SetZIndex(FlyContent, shown ? 1 : 0);
+        new FrameworkElement[] { VideoTile, Marks, VideoLayer }.Select((view, at) => (view, at)).ToList()
+            .ForEach(entry => Canvas.SetZIndex(entry.view, shown ? FullScreenLayer + entry.at : _videoMain ? -1 : 0));
+        Marks.FullScreen = shown;
+        PaintFullScreen();
+    }
+
+    private void PaintFullScreen() =>
+        FullScreenButton.Visibility = Shown(_videoMain && Marks.Decoding && !_fullScreen);
+
+    private static KeyboardAccelerator Accelerator(VirtualKey key, Func<bool> owns, Action act)
+    {
+        var accelerator = new KeyboardAccelerator { Key = key };
+        accelerator.Invoked += (_, e) =>
+        {
+            e.Handled = owns();
+            act();
+        };
+        return accelerator;
     }
 
     private static void Dock(FrameworkElement view, bool full)

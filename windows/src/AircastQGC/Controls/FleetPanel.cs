@@ -46,7 +46,6 @@ internal static class FleetLook
             new Setter(Control.CornerRadiusProperty, Application.Current.Resources["RadiusOverlay"]),
             new Setter(Control.PaddingProperty, new Thickness(0)),
             new Setter(FrameworkElement.MaxWidthProperty, maxWidth),
-            new Setter(FrameworkElement.RequestedThemeProperty, ElementTheme.Dark),
         },
     };
 }

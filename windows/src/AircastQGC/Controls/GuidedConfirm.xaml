@@ -113,6 +113,7 @@
                     <TextBlock x:Name="MinimumText" Style="{StaticResource ConfirmCaption}" />
                     <TextBlock x:Name="MaximumText" Style="{StaticResource ConfirmCaption}" HorizontalAlignment="Right" />
                 </Grid>
+                <StackPanel x:Name="PicksRow" Orientation="Horizontal" Spacing="8" Margin="0,4,0,0" Visibility="Collapsed" />
             </StackPanel>
 
             <ContentPresenter x:Name="FieldsHost" Visibility="Collapsed" HorizontalContentAlignment="Stretch" />

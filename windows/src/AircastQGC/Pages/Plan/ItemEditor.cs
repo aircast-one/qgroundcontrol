@@ -90,7 +90,8 @@ internal sealed class ItemEditor : UserControl
             : null;
         var speed = view["speedSection"] is JsonObject section && MapUiJson.Flag(section["available"]) ? Speed(section) : null;
         var mode = item.Altitude != null && globalFrame != RelativeFrame ? AltitudeMode(item, globalFrame) : null;
-        return new[] { altitude, speed, mode }.OfType<UIElement>();
+        var camera = MapUiJson.Flag(view["simple"]) ? ItemCamera.Section(_index, Wrote) : [];
+        return new[] { altitude, speed, mode }.OfType<UIElement>().Concat(camera);
     }
 
     private FrameworkElement Speed(JsonObject section)
@@ -187,6 +188,7 @@ internal sealed class ItemEditor : UserControl
             help.Length > 0 ? [PlanFacts.Text(help, "TextSecondaryBrush")] : [],
             presetsFirst ? presets : [],
             help.Length == 0 && wizard.Count == 0 ? Fields(fields, relative) : [],
+            help.Length == 0 && wizard.Count == 0 && !MapUiJson.Flag(view["simple"]) ? ItemCamera.Section(_index, Wrote) : [],
             help.Length == 0 && wizard.Count == 0 ? Camera(view["camera"] as JsonObject) : [],
             MapUiJson.Text(view["gridNote"]) is { Length: > 0 } grid ? [PlanFacts.Note(grid)] : [],
             view["entryPoint"] is JsonObject entry && MapUiJson.Text(entry["path"]).Length > 0 ? [EntryPoint(entry)] : [],
@@ -409,8 +411,8 @@ internal sealed class ItemEditor : UserControl
         });
 
     private IEnumerable<UIElement> Camera(JsonObject? camera) =>
-        MapUiJson.Objects(camera?["facts"]) is { Count: > 0 } facts
-            ? new UIElement[] { PlanFacts.Heading("Camera") }.Concat(facts.Select(FactRow))
+        CameraCalc.Parse(camera) is { } block
+            ? CameraCalc.Header(block, (path, value) => Wrote(Write(path, value))).Concat(CameraCalc.ShownFacts(block).Select(FactRow))
             : [];
 
     private UIElement EntryPoint(JsonObject entry)

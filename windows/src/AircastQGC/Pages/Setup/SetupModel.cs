@@ -9,7 +9,7 @@ using AircastQGC.Forms;
 
 namespace AircastQGC.Pages.Setup;
 
-internal sealed record SetupComponent(int Index, string Name, string? Known, string ClassName, bool NeedsAttention, string? BlockedReason, string? Prerequisite);
+internal sealed record SetupComponent(int Index, string Name, string? Known, string ClassName, bool NeedsAttention, string? BlockedReason, string? Prerequisite, string? Page, string? Screen);
 
 internal sealed record SetupPageInfo(string Name, bool ParameterSections, string Screen);
 
@@ -54,19 +54,6 @@ internal static partial class SetupModel
     public const string FlightModes = "Flight Modes";
 
     private const string GlanceSeparator = " · ";
-
-    private static readonly IReadOnlyDictionary<string, string> KnownPages = new Dictionary<string, string>
-    {
-        ["sensors"] = Sensors,
-        ["radio"] = Radio,
-        ["flightModes"] = FlightModes,
-    };
-
-    private static readonly IReadOnlyDictionary<string, string> PageNames = new Dictionary<string, string>
-    {
-        ["Airframe"] = "Frame",
-        ["PID Tuning"] = "Tuning",
-    };
 
     private static readonly IReadOnlySet<string> OwnScreenHeads = new HashSet<string> { Sensors, Radio, RemoteSupport, Motors, FlightModes };
 
@@ -178,13 +165,11 @@ internal static partial class SetupModel
         search.Trim() is var query && (query.Length == 0
             || section.Keywords.Prepend(section.Title).Any(word => word.Contains(query, StringComparison.OrdinalIgnoreCase)));
 
-    public static string HeadPage(SetupComponent component) =>
-        component.Known is { } known && KnownPages.TryGetValue(known, out var page) ? page : component.Name;
+    public static bool OwnScreen(SetupComponent component) => component.Page is { } page && OwnScreenHeads.Contains(page);
 
-    public static bool OwnScreen(SetupComponent component) => OwnScreenHeads.Contains(HeadPage(component));
-
-    public static bool CanOpen(SetupPageInfo? page, string name) =>
-        page is not null && (new[] { Sensors, Radio, RemoteSupport, Motors }.Contains(name) || page.ParameterSections || Screens.ContainsKey(page.Screen));
+    public static bool CanOpen(SetupComponent component, SetupPageInfo? page) =>
+        page is not null
+        && (new[] { Sensors, Radio, RemoteSupport, Motors }.Contains(page.Name) || page.ParameterSections || Screens.ContainsKey(component.Screen ?? ""));
 
     public static bool ReportsOpening(string? prerequisite, SetupPageInfo? page) =>
         prerequisite is not null || (page?.ParameterSections != true && page?.Screen != "notSupported");
@@ -194,13 +179,12 @@ internal static partial class SetupModel
 
     public static DetailKind Kind(SetupComponent component, SetupPageInfo? page) =>
         component.Prerequisite is not null ? DetailKind.Prerequisite
-        : HeadPage(component) == Sensors ? DetailKind.Sensors
-        : HeadPage(component) == Radio ? DetailKind.Radio
-        : HeadPage(component) == RemoteSupport ? DetailKind.RemoteSupport
-        : page?.Screen == "apmSubMotors" ? DetailKind.SubMotors
-        : HeadPage(component) == Motors ? DetailKind.Motors
-        : HeadPage(component) == FlightModes ? DetailKind.FlightModes
-        : page is not null && Screens.TryGetValue(page.Screen, out var screen) ? screen
+        : component.Screen is { } screen && Screens.TryGetValue(screen, out var own) ? own
+        : component.Page == Sensors ? DetailKind.Sensors
+        : component.Page == Radio ? DetailKind.Radio
+        : component.Page == RemoteSupport ? DetailKind.RemoteSupport
+        : component.Page == Motors ? DetailKind.Motors
+        : component.Page == FlightModes ? DetailKind.FlightModes
         : page?.ParameterSections == true ? DetailKind.Form
         : DetailKind.Desktop;
 
@@ -221,7 +205,9 @@ internal static partial class SetupModel
                 MapUiJson.Text(c.Element["className"]),
                 MapUiJson.Flag(c.Element["needsAttention"]),
                 Optional(c.Element["blockedReason"]),
-                Optional(c.Element["prerequisite"])))
+                Optional(c.Element["prerequisite"]),
+                Optional(c.Element["page"]),
+                Optional(c.Element["screen"])))
             .ToList();
 
     public static IReadOnlyList<SetupPageInfo> Pages(JsonObject view) =>
@@ -230,9 +216,8 @@ internal static partial class SetupModel
             .Select(page => new SetupPageInfo(MapUiJson.Text(page["name"]), MapUiJson.Flag(page["parameterSections"]), MapUiJson.Text(page["screen"])))
             .ToList();
 
-    public static SetupPageInfo? Page(JsonObject view, string name) =>
-        Pages(view).FirstOrDefault(p => p.Name == name)
-        ?? (PageNames.TryGetValue(name, out var page) ? Pages(view).FirstOrDefault(p => p.Name == page) : null);
+    public static SetupPageInfo? Page(JsonObject view, SetupComponent component) =>
+        component.Page is { } page ? Pages(view).FirstOrDefault(p => p.Name == page) : null;
 
     public static SetupReadiness Readiness(JsonObject view) => new(
         view["setupComplete"] is JsonValue complete && complete.TryGetValue<bool>(out var done) ? done : null,

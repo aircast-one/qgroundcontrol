@@ -95,7 +95,8 @@ public sealed record InstrumentGroup(string Group, string Title, IReadOnlyList<I
 }
 
 public sealed record InstrumentValue(
-    string Id, string Group, string Name, string Label, string Value, string Units, bool Missing, string MissingReason)
+    string Id, string Group, string Name, string Label, string Value, string Units, bool Missing, string MissingReason,
+    double? Raw = null, string DefaultIcon = "")
 {
     public const string AbsentText = "not on this aircraft";
 
@@ -110,7 +111,8 @@ public sealed record InstrumentValue(
             : new InstrumentValue(id, InstrumentJson.Text(json, "group"), name,
                 InstrumentJson.Text(json, "label"), InstrumentJson.Text(json, "value"),
                 InstrumentJson.Text(json, "units"), InstrumentJson.Flag(json, "missing"),
-                InstrumentJson.Text(json, "missingReason"));
+                InstrumentJson.Text(json, "missingReason"), InstrumentJson.Number(json, "raw"),
+                InstrumentJson.Text(json, "defaultIcon"));
     }
 
     public static IReadOnlyList<InstrumentValue> List(JsonNode? json) =>

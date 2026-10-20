@@ -117,7 +117,7 @@ public sealed partial class SetupPage : UserControl
 
     private IReadOnlyList<SetupComponent> Components => SetupModel.Components(_setup);
 
-    private SetupPageInfo? PageOf(string name) => SetupModel.Page(_setup, name);
+    private SetupPageInfo? PageOf(SetupComponent component) => SetupModel.Page(_setup, component);
 
     private void Render()
     {
@@ -210,7 +210,7 @@ public sealed partial class SetupPage : UserControl
             _picked = true;
             return;
         }
-        if (Components.FirstOrDefault(c => c.Name == request.Page) is { } component)
+        if (Components.FirstOrDefault(c => c.Name == request.Page || c.Page == request.Page) is { } component)
         {
             _parametersOpen = false;
             _opened = (component.Name, null);
@@ -260,7 +260,7 @@ public sealed partial class SetupPage : UserControl
     {
         if (_parametersOpen) return;
         if (_opened is { } open && Components.Any(c => c.Name == open.Name)) return;
-        _opened = SetupModel.FirstToOpen(Components, c => SetupModel.CanOpen(PageOf(c.Name), c.Name)) is { } first ? (first.Name, null) : null;
+        _opened = SetupModel.FirstToOpen(Components, c => SetupModel.CanOpen(c, PageOf(c))) is { } first ? (first.Name, null) : null;
     }
 
     private void Select(SetupComponent component, string? section)
@@ -295,10 +295,10 @@ public sealed partial class SetupPage : UserControl
         var search = SearchBox.Text;
         var pages = search.Trim().Length == 0
             ? []
-            : Components.Where(c => PageOf(c.Name)?.ParameterSections == true && !SetupModel.OwnScreen(c)).Select(c => c.Name).ToList();
+            : Components.Where(c => PageOf(c)?.ParameterSections == true && !SetupModel.OwnScreen(c)).Select(c => (c.Name, Page: PageOf(c)!.Name)).ToList();
         var hits = await Task.Run(() => pages.ToDictionary(
-            page => page,
-            page => (IReadOnlyList<string>)FormParse.SetupSections(Bridge.Get($"view.setup({page})"))
+            page => page.Name,
+            page => (IReadOnlyList<string>)FormParse.SetupSections(Bridge.Get($"view.setup({page.Page})"))
                 .Where(section => SetupModel.SectionMatches(section, search))
                 .Select(section => section.Title)
                 .ToList()));
@@ -313,7 +313,7 @@ public sealed partial class SetupPage : UserControl
         var components = Components;
         var search = SearchBox.Text;
         bool Hit(SetupComponent c) => SetupModel.Matches(c.Name, search) || HitsOf(c).Count > 0;
-        bool Opens(SetupComponent c) => SetupModel.CanOpen(PageOf(c.Name), SetupModel.HeadPage(c));
+        bool Opens(SetupComponent c) => SetupModel.CanOpen(c, PageOf(c));
         var attention = components.Where(c => c.NeedsAttention && Hit(c)).ToList();
         var remaining = components.Where(c => !c.NeedsAttention && Hit(c)).ToList();
         var usable = remaining.Where(Opens).ToList();
@@ -353,7 +353,7 @@ public sealed partial class SetupPage : UserControl
             MapUiJson.SentenceCase(component.Name),
             component.BlockedReason is { } blocked ? $"Not while {blocked}" : SetupModel.AttentionAction(component.ClassName),
             component.BlockedReason is null ? SetupState.NeedsAttention : SetupState.Unavailable,
-            SetupModel.CanOpen(PageOf(component.Name), component.Name) ? () => Select(component, null) : null,
+            SetupModel.CanOpen(component, PageOf(component)) ? () => Select(component, null) : null,
             SummaryOf(component),
             SetupModel.Glyph(component.Known, component.ClassName),
             SubtitleOf(component),
@@ -361,7 +361,7 @@ public sealed partial class SetupPage : UserControl
 
     private IEnumerable<UIElement> ReadyRows(SetupComponent component)
     {
-        var openable = SetupModel.CanOpen(PageOf(component.Name), SetupModel.HeadPage(component));
+        var openable = SetupModel.CanOpen(component, PageOf(component));
         var blocked = component.BlockedReason;
         return HitRows(component).Prepend(SetupUi.Row(
             MapUiJson.SentenceCase(component.Name),
@@ -402,7 +402,7 @@ public sealed partial class SetupPage : UserControl
     private void RenderDetail()
     {
         var open = _opened is { } wanted ? Components.FirstOrDefault(c => c.Name == wanted.Name) : null;
-        var page = open is null ? null : PageOf(open.Name);
+        var page = open is null ? null : PageOf(open);
         var kind = open is null ? DetailKind.Desktop : SetupModel.Kind(open, page);
         var section = _opened?.Section;
         var vehicle = MapUiJson.Number(_setup["vehicleId"]);
@@ -450,7 +450,7 @@ public sealed partial class SetupPage : UserControl
         DetailKind.ApmAirframe => new ApmAirframePanel(),
         DetailKind.OpticalFlow => new OpticalFlowPanel(),
         DetailKind.NotSupported => SetupUi.Notice("Not supported"),
-        DetailKind.Form => SetupForms.Page(component.Name, section, component.Known == "power"),
+        DetailKind.Form => SetupForms.Page(component.Page ?? component.Name, section, component.Known == "power"),
         _ => SetupUi.Notice($"{component.Name} cannot be set up in this app yet."),
     };
 

@@ -225,6 +225,8 @@
 
                     <local:CameraDetails />
 
+                    <local:LensSection />
+
                     <StackPanel x:Name="SettingsSection" Spacing="{ThemeResource SpaceSm}" Visibility="Collapsed">
                         <TextBlock Text="SETTINGS" Style="{StaticResource StatLabel}" />
                         <TextBlock x:Name="SettingsState" Style="{StaticResource CameraNote}" Visibility="Collapsed" />

@@ -257,14 +257,17 @@ public sealed class RcControlsLayer : UserControl
             _channels = _channels.SetItem(channel.Name, RcControls.Channel(view));
             Render();
         }));
-        Unloaded += (_, _) =>
-        {
-            _custom.ReleaseAll();
-            _camera.ReleaseAll();
-        };
+        Unloaded += (_, _) => Release();
+        Presence.OnHidden(this, Release);
     }
 
     private RcCameraChannels Camera => RcCameraChannels.Of(_channels);
+
+    private void Release()
+    {
+        _custom.ReleaseAll();
+        _camera.ReleaseAll();
+    }
 
     private void Render()
     {
@@ -438,7 +441,7 @@ public sealed class RcControlsLayer : UserControl
         return FormLook.Line(8, text, control);
     }
 
-    private sealed class Chip
+    internal sealed class Chip
     {
         private bool _applying;
 

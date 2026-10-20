@@ -144,7 +144,7 @@ internal sealed class AddLinkPage : UserControl
     public AddLinkPage(SettingsNav nav)
     {
         var view = Bridge.Group(LinkModel.View);
-        var offered = LinkModel.Addable(view);
+        var offered = LinkModel.Addable(view, AircastCloud.Offered());
         var pilot = LinkModel.PilotKinds(offered, LinkModel.Ports(view).Count > 0);
         var tools = LinkModel.ToolKinds(offered);
         UIElement KindRow(LinkType type) => FormLook.Stretched(
@@ -172,6 +172,7 @@ internal sealed class LinkDetails : UserControl
     private readonly TextBlock _portError = FormLook.Caption("", "CriticalBrush");
     private readonly TextBox _name = FormLook.Field("", "Name");
     private readonly Button _connect;
+    private readonly AircastCloudFields? _cloud;
     private LinkDraft _draft;
     private JsonObject _view;
 
@@ -186,6 +187,9 @@ internal sealed class LinkDetails : UserControl
         _connect.HorizontalAlignment = HorizontalAlignment.Stretch;
         _connect.MinHeight = 40;
         _name.TextChanged += (_, _) => Change(_draft with { Name = _name.Text });
+        _cloud = type == LinkType.AircastCloud
+            ? new AircastCloudFields(_draft.ApiBase, _draft.DeviceId, api => Change(_draft with { ApiBase = api }), id => Change(_draft with { DeviceId = id }))
+            : null;
         Content = SettingsBodies.Scrolled(FormLook.Stack(12,
             FormLook.Text(LinkModel.Kind(type).About, "FontSizeBody", "TextSecondaryBrush"),
             Fields(),
@@ -212,6 +216,7 @@ internal sealed class LinkDetails : UserControl
         LinkType.Mock => LinkForms.Mock(_draft.Choices, choices => Change(_draft with { Mock = choices })),
         LinkType.LogReplay => LinkForms.LogPicker(this, "Choose a log file", path => Change(_draft with { ReplayLog = path })),
         LinkType.Bluetooth => new BluetoothPicker(device => Change(_draft with { Device = device })),
+        LinkType.AircastCloud when _cloud is not null => _cloud,
         LinkType.Serial when Ports.Count == 0 => FormLook.Text("Nothing is plugged in. Connect a radio over USB and it will appear here.", "FontSizeBody", "TextSecondaryBrush"),
         LinkType.Serial => LinkForms.Serial(Ports, LinkModel.Bauds(_view), _draft.PortName, _draft.Baud, true,
             port => Change(_draft with { PortName = port }), baud => Change(_draft with { Baud = baud })),
@@ -249,6 +254,7 @@ internal sealed class LinkDetails : UserControl
     {
         var taken = LinkModel.Rows(_view).Select(r => r.Name).ToList();
         var draft = _draft;
+        _cloud?.ShowErrors();
         var invalid = LinkModel.DraftError(draft, _udpDefault, taken, Ports.Count > 0);
         var field = _type is LinkType.Udp or LinkType.Tcp ? LinkModel.ErrorField(_type, draft.Host, draft.ShownPort(_udpDefault), _udpDefault) : null;
         FormLook.Say(_hostError, field == "host" ? invalid : null);

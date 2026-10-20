@@ -1,8 +1,10 @@
 using System;
+using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text.Json.Nodes;
 using AircastQGC.Core;
+using AircastQGC.Forms;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
@@ -25,6 +27,7 @@ public sealed partial class GuidedConfirm : UserControl
     private GuidedOffer? _pending;
     private GuidedRange? _range;
     private double? _grabbedAt;
+    private IReadOnlyList<(GuidedPick Pick, Action<bool> Mark, UIElement View)> _picks = [];
 
     public event EventHandler<GuidedOffer>? Sent;
     public event EventHandler<string>? Failed;
@@ -50,6 +53,7 @@ public sealed partial class GuidedConfirm : UserControl
         Open(new GuidedAsk(offer.Title, offer.Prompt, () => Execute(offer, _range?.Clamped(ValueSlider.Value)))
         {
             Destructive = offer.Destructive,
+            Fields = GuidedExtras.For(offer.Id),
             WatchPath = GuidedOffer.ViewPath,
             StillOffered = view => GuidedOffer.List(view).Any(o => o.Id == offer.Id && o.Ready),
         }, offer, range);
@@ -116,6 +120,38 @@ public sealed partial class GuidedConfirm : UserControl
         ValueSlider.Minimum = range.Minimum;
         ValueSlider.Value = range.Initial;
         ValueText.Text = range.Text(range.Initial);
+        BuildPicks(range);
+    }
+
+    private void BuildPicks(GuidedRange range)
+    {
+        _picks = GuidedPicks.For(_pending?.Id ?? "", range).Select(pick => Pick(pick, range)).ToList();
+        FormLook.Fill(PicksRow, _picks.Select(pick => pick.View));
+        PicksRow.Visibility = Seen(_picks.Count > 0);
+        PaintPicks();
+    }
+
+    private (GuidedPick, Action<bool>, UIElement) Pick(GuidedPick pick, GuidedRange range)
+    {
+        void Choose()
+        {
+            ValueSlider.Value = range.Clamped(pick.Target(ValueSlider.Value));
+            PaintPicks();
+        }
+        if (!pick.Preset)
+        {
+            var step = FormLook.Button(pick.Label, Choose);
+            return (pick, same => step.IsEnabled = !same, step);
+        }
+        var chip = new RcControlsLayer.Chip(pick.Label, _ => Choose());
+        return (pick, chip.Set, chip.View);
+    }
+
+    private void PaintPicks()
+    {
+        if (_range is not { } range) return;
+        var value = ValueSlider.Value;
+        _picks.ToList().ForEach(pick => pick.Mark(GuidedPicks.Same(pick.Pick.Target(value), value, range.Unit)));
     }
 
     private void Close()
@@ -123,6 +159,8 @@ public sealed partial class GuidedConfirm : UserControl
         _ask = null;
         _pending = null;
         _range = null;
+        _picks = [];
+        PicksRow.Children.Clear();
         FieldsHost.Content = null;
         ReleaseKnob();
         Root.Visibility = Visibility.Collapsed;
@@ -257,7 +295,9 @@ public sealed partial class GuidedConfirm : UserControl
 
     private void ValueSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
-        if (_range != null) ValueText.Text = _range.Text(e.NewValue);
+        if (_range == null) return;
+        ValueText.Text = _range.Text(e.NewValue);
+        PaintPicks();
     }
 
     private void CancelButton_Click(object sender, RoutedEventArgs e) => Cancel();
