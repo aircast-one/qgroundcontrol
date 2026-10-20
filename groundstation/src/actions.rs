@@ -172,6 +172,7 @@ pub const OWNED: &[&str] = &[
     GUIDED_ALTITUDE,
     PAUSE_VEHICLE,
     GRIPPER,
+    AUTO_INTERCEPT_DROP,
     FIX_PAYLOAD,
     RESUME_MISSION,
     PLAN_SEND,
@@ -2466,6 +2467,12 @@ mod tests {
         assert!(owns("mission.insert"));
         assert!(!owns("plan.missionController.insertSimpleMissionItem"));
         assert!(!owns("mission.insertion"));
+        assert!(
+            owns(AUTO_INTERCEPT_DROP),
+            "a path matched in run()'s table but missing from OWNED falls through to the host \
+             and answers \"no host\" instead of ever reaching the handler - this caught exactly \
+             that for vehicle.autoInterceptDrop once already"
+        );
         assert_eq!(
             run(&Plan::new(flying_mission()), "mission.remove", "[]")["ok"],
             false
