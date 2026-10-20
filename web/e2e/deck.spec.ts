@@ -73,7 +73,7 @@ const flyWithFourBays = async (app: Page): Promise<Locator> => {
 
 const targets = (actions: Locator): Promise<readonly Target[]> =>
   actions.getByRole('button').evaluateAll((buttons) =>
-    buttons.map((button) => {
+    buttons.filter((it) => it instanceof HTMLElement).map((button) => {
       const box = button.getBoundingClientRect();
       const blocks = [button, ...button.querySelectorAll('*')].filter((it) => it instanceof HTMLElement && getComputedStyle(it).display !== 'inline');
       return {
