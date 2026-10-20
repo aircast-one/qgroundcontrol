@@ -5,9 +5,14 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     xmlns:local="using:AircastQGC.Controls"
     FontFamily="{ThemeResource AppFontFamily}"
+    KeyboardAcceleratorPlacementMode="Hidden"
     Visibility="Collapsed">
 
-    <Grid RequestedTheme="Dark" KeyDown="OnMenuKeyDown">
+    <UserControl.KeyboardAccelerators>
+        <KeyboardAccelerator Key="Escape" Invoked="OnEscape" />
+    </UserControl.KeyboardAccelerators>
+
+    <Grid RequestedTheme="Dark">
         <Border Background="Transparent" Tapped="OnScrimTapped" RightTapped="OnScrimRightTapped" />
         <Canvas>
             <Border x:Name="Card"

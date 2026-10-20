@@ -8,7 +8,6 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Windows.Foundation;
-using Windows.System;
 
 namespace AircastQGC.Controls;
 
@@ -153,10 +152,9 @@ public sealed partial class MapContextMenu : UserControl
 
     private void OnScrimRightTapped(object sender, RightTappedRoutedEventArgs e) => Hide();
 
-    private void OnMenuKeyDown(object sender, KeyRoutedEventArgs e)
+    private void OnEscape(KeyboardAccelerator sender, KeyboardAcceleratorInvokedEventArgs args)
     {
-        if (e.Key != VirtualKey.Escape) return;
-        e.Handled = true;
+        args.Handled = true;
         Hide();
     }
 

@@ -35,8 +35,13 @@ Status: ▢ todo · ◐ in progress · ✓ done
 
 ### Fly
 
-- ✓ fly · ✓ fly — flight mode · ◐ fly — camera (no video frames: no Windows decoder yet) · ✓ fly — map context menu
+- ✓ fly · ◐ fly — flight mode (refused-change notice untested: the mock accepts every mode) · ◐ fly — camera (no video frames: no Windows decoder yet) · ✓ fly — map context menu
 - ✓ fly — armed, confirm return · ✓ fly — checklist · ✓ fly — no vehicle
+
+Driven through the UI on `winvm` against the mock ArduCopter (2026-10-20): slide-to-confirm with real mouse input, arm, disarm,
+takeoff to a chosen height, change altitude, title-bar mode change, ROI + cancel ROI, go-to, set heading, RTL, land to
+auto-disarm; the context menu and the confirm card close on Escape and the menu on an outside click. Orbit is not offered
+for ArduCopter by the core.
 
 ### Plan
 
