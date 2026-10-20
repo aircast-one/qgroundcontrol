@@ -101,6 +101,23 @@ pub fn run(backend: &dyn Backend, args: &str) -> Value {
     }
 
     let started = Instant::now();
+    // A guided goto takes a moment to actually move the vehicle. Checking dropLead's
+    // constant-velocity release math before the drone is up to speed reads a near-zero
+    // velocity and solves a nonsense (usually immediate) release - this is the exact bug
+    // that fired the gripper on the very first attempt testing this live.
+    while started.elapsed().as_secs_f64() < MAX_RUN_S {
+        if CANCELLED.load(Ordering::Relaxed) {
+            return json!({ "ok": false, "reason": "cancelled" });
+        }
+        let speed = release_state(backend)
+            .map(|(_, _, v, _)| v.north_mps.hypot(v.east_mps))
+            .unwrap_or(0.0);
+        if speed >= 0.8 * CRUISE_MPS {
+            break;
+        }
+        thread::sleep(Duration::from_millis(AUTODROP_TICK_MS));
+    }
+
     loop {
         if CANCELLED.load(Ordering::Relaxed) {
             return json!({ "ok": false, "reason": "cancelled" });
