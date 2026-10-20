@@ -131,12 +131,17 @@ impl GuidedState {
         })
     }
 
+    fn bays_left(&self) -> usize {
+        (1..=self.payload_bays)
+            .filter(|bay| !self.empty_bays.contains(bay))
+            .count()
+    }
+
     pub fn drop_label(&self) -> String {
-        match self.next_bay() {
-            Some(bay) if self.empty_bays.contains(&bay) => format!("Drop {bay} · empty"),
-            Some(bay) => format!("Drop {bay}"),
-            None => Action::Release.title().to_string(),
-        }
+        self.next_bay().map_or_else(
+            || Action::Release.title().to_string(),
+            |bay| format!("Drop bay {bay} · {} left", self.bays_left()),
+        )
     }
 
     pub fn can_resume(&self) -> bool {
@@ -1870,7 +1875,7 @@ mod tests {
     }
 
     #[test]
-    fn a_basket_names_the_bay_it_drops_and_says_when_that_bay_is_counted_empty() {
+    fn a_basket_names_the_bay_it_drops_and_how_many_are_still_loaded() {
         let basket = GuidedState {
             has_gripper: true,
             payload_bays: 4,
@@ -1887,7 +1892,7 @@ mod tests {
             (
                 "Drop bay 2",
                 "Open the gripper and drop the payload.",
-                "Drop 2".to_string()
+                "Drop bay 2 · 2 left".to_string()
             )
         );
         let emptied = GuidedState {
@@ -1904,9 +1909,9 @@ mod tests {
             (
                 "Drop bay 1",
                 "Bay 1 is counted empty. Drop it only if you reloaded it.",
-                "Drop 1 · empty".to_string()
+                "Drop bay 1 · 0 left".to_string()
             ),
-            "every bay dropped: the deck still offers bay 1, but says it is counted empty"
+            "every bay dropped: the deck still offers bay 1, and says none are left"
         );
         let single = GuidedState {
             has_gripper: true,
