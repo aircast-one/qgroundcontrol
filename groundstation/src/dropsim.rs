@@ -22,6 +22,12 @@ pub struct Release {
     pub position: Point,
     pub altitude_agl_m: f64,
     pub velocity: Velocity,
+    pub climb_mps: f64,
+}
+
+fn fall_time_s(altitude_agl_m: f64, climb_mps: f64) -> f64 {
+    let h = altitude_agl_m.max(0.0);
+    (climb_mps + (climb_mps * climb_mps + 2.0 * GRAVITY_MPS2 * h).sqrt()) / GRAVITY_MPS2
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -54,7 +60,7 @@ impl Drop {
 }
 
 pub fn simulate(release: Release, target: Target) -> Drop {
-    let fall_s = (2.0 * release.altitude_agl_m.max(0.0) / GRAVITY_MPS2).sqrt();
+    let fall_s = fall_time_s(release.altitude_agl_m, release.climb_mps);
     let origin = (release.position.lat, release.position.lon, 0.0);
 
     let impact_north_m = release.velocity.north_mps * fall_s;
@@ -110,7 +116,7 @@ impl Lead {
 }
 
 pub fn lead(release: Release, target: Target) -> Lead {
-    let fall_s = (2.0 * release.altitude_agl_m.max(0.0) / GRAVITY_MPS2).sqrt();
+    let fall_s = fall_time_s(release.altitude_agl_m, release.climb_mps);
     let origin = (release.position.lat, release.position.lon, 0.0);
 
     let (target_north0_m, target_east0_m, _) =
@@ -158,13 +164,10 @@ fn numbers(args: &[String], count: usize) -> Option<Vec<f64>> {
     (parsed.len() == count).then_some(parsed)
 }
 
-pub fn drop_sim_view(_backend: &dyn Backend, args: &[String]) -> Value {
-    let Some(v) = numbers(args, 9) else {
-        return crate::read::refused(
-            "this needs nine numbers: release latitude, longitude, altitude AGL, north speed, east speed, then target latitude, longitude, north speed and east speed",
-        );
-    };
-    simulate(
+const VIEW_USAGE: &str = "this needs ten numbers: release latitude, longitude, altitude AGL, north speed, east speed and climb speed (positive is up), then target latitude, longitude, north speed and east speed";
+
+fn release_and_target(v: &[f64]) -> (Release, Target) {
+    (
         Release {
             position: Point {
                 lat: v[0],
@@ -175,51 +178,35 @@ pub fn drop_sim_view(_backend: &dyn Backend, args: &[String]) -> Value {
                 north_mps: v[3],
                 east_mps: v[4],
             },
+            climb_mps: v[5],
         },
         Target {
             position: Point {
-                lat: v[5],
-                lon: v[6],
+                lat: v[6],
+                lon: v[7],
             },
             velocity: Velocity {
-                north_mps: v[7],
-                east_mps: v[8],
+                north_mps: v[8],
+                east_mps: v[9],
             },
         },
     )
-    .json()
+}
+
+pub fn drop_sim_view(_backend: &dyn Backend, args: &[String]) -> Value {
+    let Some(v) = numbers(args, 10) else {
+        return crate::read::refused(VIEW_USAGE);
+    };
+    let (release, target) = release_and_target(&v);
+    simulate(release, target).json()
 }
 
 pub fn drop_lead_view(_backend: &dyn Backend, args: &[String]) -> Value {
-    let Some(v) = numbers(args, 9) else {
-        return crate::read::refused(
-            "this needs nine numbers: release latitude, longitude, altitude AGL, north speed, east speed, then target latitude, longitude, north speed and east speed",
-        );
+    let Some(v) = numbers(args, 10) else {
+        return crate::read::refused(VIEW_USAGE);
     };
-    lead(
-        Release {
-            position: Point {
-                lat: v[0],
-                lon: v[1],
-            },
-            altitude_agl_m: v[2],
-            velocity: Velocity {
-                north_mps: v[3],
-                east_mps: v[4],
-            },
-        },
-        Target {
-            position: Point {
-                lat: v[5],
-                lon: v[6],
-            },
-            velocity: Velocity {
-                north_mps: v[7],
-                east_mps: v[8],
-            },
-        },
-    )
-    .json()
+    let (release, target) = release_and_target(&v);
+    lead(release, target).json()
 }
 
 #[cfg(test)]
@@ -240,6 +227,7 @@ mod tests {
                 lon: origin.1,
             },
             altitude_agl_m: 19.6133,
+            climb_mps: 0.0,
             velocity: Velocity {
                 north_mps: 10.0,
                 east_mps: 0.0,
@@ -273,6 +261,7 @@ mod tests {
                 lon: origin.1,
             },
             altitude_agl_m: 19.6133,
+            climb_mps: 0.0,
             velocity: Velocity {
                 north_mps: 10.0,
                 east_mps: 0.0,
@@ -304,6 +293,7 @@ mod tests {
                 lon: origin.1,
             },
             altitude_agl_m: 19.6133,
+            climb_mps: 0.0,
             velocity: Velocity {
                 north_mps: 10.0,
                 east_mps: 0.0,
@@ -337,6 +327,7 @@ mod tests {
                 lon: origin.1,
             },
             altitude_agl_m: 19.6133,
+            climb_mps: 0.0,
             velocity: Velocity {
                 north_mps: 10.0,
                 east_mps: 0.0,
@@ -373,6 +364,7 @@ mod tests {
                 lon: origin.1,
             },
             altitude_agl_m: 19.6133,
+            climb_mps: 0.0,
             velocity: Velocity {
                 north_mps: 10.0,
                 east_mps: 0.0,
@@ -400,6 +392,64 @@ mod tests {
         );
     }
 
+    #[test]
+    fn the_fall_time_satisfies_the_height_equation_whether_climbing_or_descending() {
+        for (h, climb) in [(50.0, 8.0), (50.0, -8.0), (20.0, 0.0), (0.0, 12.0)] {
+            let t = fall_time_s(h, climb);
+            let height_at_landing = h + climb * t - 0.5 * GRAVITY_MPS2 * t * t;
+            assert!(
+                height_at_landing.abs() < 1e-6,
+                "h={h} climb={climb}: at t={t}s the kinematic height should be ~0, got {height_at_landing}"
+            );
+        }
+    }
+
+    #[test]
+    fn climbing_at_release_takes_longer_to_land_than_descending_from_the_same_height() {
+        let level = fall_time_s(50.0, 0.0);
+        let climbing = fall_time_s(50.0, 8.0);
+        let descending = fall_time_s(50.0, -8.0);
+        assert!(
+            climbing > level,
+            "a payload released while climbing should hang longer, got {climbing} vs level {level}"
+        );
+        assert!(
+            descending < level,
+            "a payload released while descending should land sooner, got {descending} vs level {level}"
+        );
+    }
+
+    #[test]
+    fn simulate_wires_the_release_climb_rate_into_the_fall_time() {
+        let origin = (47.0, 8.0);
+        let level = Release {
+            position: Point {
+                lat: origin.0,
+                lon: origin.1,
+            },
+            altitude_agl_m: 50.0,
+            velocity: Velocity::default(),
+            climb_mps: 0.0,
+        };
+        let climbing = Release {
+            climb_mps: 8.0,
+            ..level
+        };
+        let target = Target {
+            position: offset(origin, 0.0, 0.0),
+            velocity: Velocity::default(),
+        };
+
+        assert!(
+            (simulate(climbing, target).fall_s - fall_time_s(50.0, 8.0)).abs() < 1e-9,
+            "simulate() should use the same fall time a direct call to fall_time_s computes"
+        );
+        assert!(
+            simulate(level, target).fall_s < simulate(climbing, target).fall_s,
+            "a climbing release should fall for longer than a level one from the same altitude"
+        );
+    }
+
     struct NoBackend;
     impl Backend for NoBackend {
         fn get(&self, _p: &str) -> String {
@@ -418,10 +468,10 @@ mod tests {
     }
 
     #[test]
-    fn the_view_refuses_anything_other_than_nine_numbers() {
+    fn the_view_refuses_anything_other_than_ten_numbers() {
         let answer = drop_sim_view(&NoBackend, &["1".to_string(), "2".to_string()]);
         assert_eq!(answer["kind"], "null");
-        assert!(answer["reason"].as_str().unwrap().contains("nine numbers"));
+        assert!(answer["reason"].as_str().unwrap().contains("ten numbers"));
     }
 
     #[test]
@@ -429,7 +479,7 @@ mod tests {
         let origin = (47.0, 8.0);
         let target = offset(origin, 20.0, 0.0);
         let args: Vec<String> = [
-            origin.0, origin.1, 19.6133, 10.0, 0.0, target.lat, target.lon, 0.0, 5.0,
+            origin.0, origin.1, 19.6133, 10.0, 0.0, 0.0, target.lat, target.lon, 0.0, 5.0,
         ]
         .iter()
         .map(|n| n.to_string())

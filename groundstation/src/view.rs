@@ -187,11 +187,11 @@ pub const ARGUMENT_MODES: &[(&str, &str)] = &[
     ("view.terrainTile", "<file path>,<latitude>,<longitude>"),
     (
         "view.dropSim",
-        "<lat>,<lon>,<altAgl>,<northSpeed>,<eastSpeed>,<targetLat>,<targetLon>,<targetNorthSpeed>,<targetEastSpeed>",
+        "<lat>,<lon>,<altAgl>,<northSpeed>,<eastSpeed>,<climbSpeed>,<targetLat>,<targetLon>,<targetNorthSpeed>,<targetEastSpeed>",
     ),
     (
         "view.dropLead",
-        "<lat>,<lon>,<altAgl>,<northSpeed>,<eastSpeed>,<targetLat>,<targetLon>,<targetNorthSpeed>,<targetEastSpeed>",
+        "<lat>,<lon>,<altAgl>,<northSpeed>,<eastSpeed>,<climbSpeed>,<targetLat>,<targetLon>,<targetNorthSpeed>,<targetEastSpeed>",
     ),
     (
         "view.gimbalGroundPoint",
@@ -199,7 +199,7 @@ pub const ARGUMENT_MODES: &[(&str, &str)] = &[
     ),
     (
         "view.gimbalDropLead",
-        "<lat>,<lon>,<altAgl>,<northSpeed>,<eastSpeed>,<gimbalYaw>,<gimbalPitch>",
+        "<lat>,<lon>,<altAgl>,<northSpeed>,<eastSpeed>,<climbSpeed>,<gimbalYaw>,<gimbalPitch>",
     ),
     (
         "view.geoToNed",

@@ -97,16 +97,16 @@ pub fn gimbal_ground_point_view(_backend: &dyn Backend, args: &[String]) -> Valu
 }
 
 pub fn gimbal_drop_lead_view(_backend: &dyn Backend, args: &[String]) -> Value {
-    let Some(v) = numbers(args, 7) else {
+    let Some(v) = numbers(args, 8) else {
         return crate::read::refused(
-            "this needs seven numbers: vehicle latitude, longitude, altitude AGL, north speed, east speed, gimbal yaw and gimbal pitch (negative is down)",
+            "this needs eight numbers: vehicle latitude, longitude, altitude AGL, north speed, east speed, climb speed (positive is up), gimbal yaw and gimbal pitch (negative is down)",
         );
     };
     let vehicle = Point {
         lat: v[0],
         lon: v[1],
     };
-    let Some(target) = track(vehicle, v[2], v[5], v[6], crate::hub::now_ms()) else {
+    let Some(target) = track(vehicle, v[2], v[6], v[7], crate::hub::now_ms()) else {
         return crate::read::refused(NO_GROUND);
     };
     crate::dropsim::lead(
@@ -117,6 +117,7 @@ pub fn gimbal_drop_lead_view(_backend: &dyn Backend, args: &[String]) -> Value {
                 north_mps: v[3],
                 east_mps: v[4],
             },
+            climb_mps: v[5],
         },
         target,
     )
