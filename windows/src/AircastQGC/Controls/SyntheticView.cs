@@ -47,7 +47,6 @@ public sealed partial class SyntheticView : UserControl
     private const string GimbalView = "view.gimbal";
     private const string AimPath = "syntheticView.aim";
     private const string GimbalAimPath = "gimbal.aim";
-    private const string GimbalCenterPath = "gimbal.center";
     private const string Drawn = "drawn";
     private const string Failed = "failed";
     private const string LoadingNote = "Loading 3D view…";
@@ -151,7 +150,6 @@ public sealed partial class SyntheticView : UserControl
         _root.PointerReleased += OnReleased;
         _root.PointerCanceled += (_, _) => EndDrag();
         _root.PointerCaptureLost += (_, _) => _drag = null;
-        _root.DoubleTapped += OnDoubleTapped;
         Content = _root;
         Visibility = Visibility.Collapsed;
         AutomationProperties.SetName(this, "Synthetic view");
@@ -361,13 +359,6 @@ public sealed partial class SyntheticView : UserControl
         e.Handled = true;
         if (drag.Gimbal && drag.Last != drag.Start) AimGimbal(GimbalTarget(drag));
         EndDrag();
-    }
-
-    private void OnDoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
-    {
-        if (CanAim) SendAim((SyntheticAim.DefaultTilt, 0));
-        else if (SteersGimbal) GimbalCalls.Call(GimbalCenterPath);
-        e.Handled = CanAim || SteersGimbal;
     }
 
     private void EndDrag()

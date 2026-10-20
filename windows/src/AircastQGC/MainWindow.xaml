@@ -28,6 +28,8 @@
 
             <controls:ObstacleMapLayer x:Name="ObstacleOnMap" />
 
+            <controls:Viewer3DView x:Name="Viewer" />
+
             <Button x:Name="PipFrame" Style="{StaticResource PipFrame}" Visibility="Collapsed"
                     AutomationProperties.Name="Show the map" ToolTipService.ToolTip="Show the map" />
 

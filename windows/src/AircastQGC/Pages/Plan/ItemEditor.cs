@@ -61,14 +61,18 @@ internal sealed class ItemEditor : UserControl
 
     private string Item(string property) => $"{PlanCalls.ItemRoot}.{_index}.{property}";
 
-    private async void Wrote(string? refusal)
+    private async void Wrote(Task<string?> write)
     {
-        _refusal = refusal;
+        _refusal = await write;
         await _changed();
         Render();
     }
 
-    private static string? Write(string path, JsonNode? value) => PlanCalls.Refusal(PlanCalls.Set(path, value));
+    private static Task<string?> Refused(string reason) => Task.FromResult<string?>(reason);
+
+    private static string? Refusal(string path, JsonNode? value) => PlanCalls.Refusal(PlanCalls.Set(path, value));
+
+    private static Task<string?> Write(string path, JsonNode? value) => PlanCalls.Queued(() => Refusal(path, value));
 
     private IEnumerable<UIElement> Sections(JsonObject view)
     {
@@ -87,7 +91,7 @@ internal sealed class ItemEditor : UserControl
         var altitude = item.Altitude is double shown
             ? PlanFacts.Stepper("Altitude", shown, item.AltitudeUnits.Length > 0 ? item.AltitudeUnits : "m", AltitudeStep,
                 item.FrameText.Length > 0 ? item.FrameText : null,
-                wanted => Wrote(PlanCalls.Refusal(PlanCalls.SetAltitude(_index, wanted))))
+                wanted => Wrote(PlanCalls.Refused(() => PlanCalls.SetAltitude(_index, wanted))))
             : null;
         var speed = view["speedSection"] is JsonObject section && MapUiJson.Flag(section["available"]) ? Speed(section) : null;
         var mode = item.Altitude != null && globalFrame != RelativeFrame ? AltitudeMode(item, globalFrame) : null;
@@ -103,7 +107,7 @@ internal sealed class ItemEditor : UserControl
         var auto = specified ? PlanFacts.Action("Auto", () => Wrote(Write(specify, false))) : null;
         return PlanFacts.Stepper("Speed", MapUiJson.Number(section["value"]), MapUiJson.Text(section["units"]), SpeedStep,
             specified ? null : "Mission speed",
-            wanted => Wrote(Write(specify, true) ?? Write(path, wanted)),
+            wanted => Wrote(PlanCalls.Queued(() => Refusal(specify, true) ?? Refusal(path, wanted))),
             auto);
     }
 
@@ -114,7 +118,7 @@ internal sealed class ItemEditor : UserControl
         var offers = MapUiJson.Objects(view["modes"]).Where(offer => (int)(MapUiJson.Number(offer["raw"]) ?? -1) != MixedFrame).ToList();
         var live = (globalFrame == null || globalFrame == MixedFrame) && offers.Count(offer => MapUiJson.Flag(offer["enabled"])) > 1;
         if (offers.Count == 0) return PlanFacts.Pair(PlanFacts.Text("Altitude mode"), PlanFacts.Note(item.FrameText.Length > 0 ? item.FrameText : "Frame"));
-        var picker = OfferBox(offers, live, raw => Wrote(PlanCalls.Refusal(PlanCalls.SetAltitudeMode(_index, raw))));
+        var picker = OfferBox(offers, live, raw => Wrote(PlanCalls.Refused(() => PlanCalls.SetAltitudeMode(_index, raw))));
         var notes = live
             ? offers.Where(offer => !MapUiJson.Flag(offer["current"]) && !MapUiJson.Flag(offer["enabled"]) && MapUiJson.Text(offer["reason"]).Length > 0)
                 .Select(offer => (UIElement)PlanFacts.Note($"{MapUiJson.Text(offer["title"])}: {MapUiJson.Text(offer["reason"])}"))
@@ -210,20 +214,20 @@ internal sealed class ItemEditor : UserControl
         picker.SelectionChanged += (_, _) => _preset = picker.SelectedItem as string;
         var apply = PlanFacts.Action("Apply preset", () =>
         {
-            if (_preset is { } name) Wrote(PlanCalls.Refusal(PlanCalls.Invoke(ApplyPreset, _index, name)));
+            if (_preset is { } name) Wrote(PlanCalls.Refused(() => PlanCalls.Invoke(ApplyPreset, _index, name)));
         });
         var delete = PlanFacts.Action("Delete preset", async () =>
         {
             if (_preset is { } name && await _dialogs.Confirm("Delete preset", $"Are you sure you want to delete '{name}' preset?", "OK"))
-                Wrote(PlanCalls.Refusal(PlanCalls.Invoke(DeletePreset, kind, name)));
+                Wrote(PlanCalls.Refused(() => PlanCalls.Invoke(DeletePreset, kind, name)));
         });
         apply.IsEnabled = delete.IsEnabled = names.Count > 0;
         var save = PlanFacts.Action("Save settings as new preset", async () =>
         {
             if (await _dialogs.Ask("Save preset", "Save the current settings as a named preset.", "Preset name", "Enter preset name", "Save", PresetNameProblem) is not { } name) return;
-            var refusal = PlanCalls.Refusal(PlanCalls.Invoke(SavePreset, _index, name));
+            var refusal = await PlanCalls.Refused(() => PlanCalls.Invoke(SavePreset, _index, name));
             if (refusal == null) _preset = name;
-            Wrote(refusal);
+            Wrote(Task.FromResult(refusal));
         });
         return [PlanFacts.Heading("Presets"), PlanFacts.Pair(PlanFacts.Text("Preset"), picker), PlanFacts.Row(apply, delete), save];
     }
@@ -248,7 +252,8 @@ internal sealed class ItemEditor : UserControl
     private Action ChangeCommand(string category) => async () =>
     {
         if (await _dialogs.PickCommand(category.Length > 0 ? category : null) is not int command) return;
-        if (_mapCentre() is { } centre) PlanCalls.Invoke(Item("setMapCenterHintForCommandChange"), PlanCalls.Coordinate(centre));
+        var hint = Item("setMapCenterHintForCommandChange");
+        if (_mapCentre() is { } centre) _ = PlanCalls.Queued(() => PlanCalls.Invoke(hint, PlanCalls.Coordinate(centre)));
         Wrote(Write(Item("command"), command));
     };
 
@@ -265,7 +270,9 @@ internal sealed class ItemEditor : UserControl
             return entry;
         }
         void MoveTo(Geo? target) =>
-            Wrote(target is { } at && PlanCalls.Move(_index, at) ? null : "The item could not be moved there.");
+            Wrote(target is { } at
+                ? PlanCalls.Queued<string?>(() => PlanCalls.Move(_index, at) ? null : "The item could not be moved there.")
+                : Refused("The item could not be moved there."));
         async void Edit()
         {
             if (start is not { } from) return;
@@ -306,7 +313,7 @@ internal sealed class ItemEditor : UserControl
         var button = PlanFacts.Action("Set to map center", () =>
         {
             if (_mapCentre() is not { } centre) return;
-            Wrote(PlanCalls.Move(PlanRules.HomeItem, centre) ? null : "The launch position could not be moved there.");
+            Wrote(PlanCalls.Queued<string?>(() => PlanCalls.Move(PlanRules.HomeItem, centre) ? null : "The launch position could not be moved there."));
         });
         button.IsEnabled = _mapCentre() != null;
         return button;
@@ -352,7 +359,7 @@ internal sealed class ItemEditor : UserControl
     private UIElement RawToggle(bool on, bool friendlyAllowed)
     {
         var toggle = new ToggleSwitch { IsOn = on, OnContent = string.Empty, OffContent = string.Empty, MinWidth = 0 };
-        toggle.Toggled += (_, _) => Wrote(on && !friendlyAllowed ? RawEditStuck : Write(Item("rawEdit"), toggle.IsOn));
+        toggle.Toggled += (_, _) => Wrote(on && !friendlyAllowed ? Refused(RawEditStuck) : Write(Item("rawEdit"), toggle.IsOn));
         return PlanFacts.Pair(PlanFacts.Text("Show all values"), toggle);
     }
 
@@ -360,11 +367,11 @@ internal sealed class ItemEditor : UserControl
         PlanFacts.Action("Set to vehicle heading", () =>
             Wrote(MapUiJson.Number(PlanCalls.Read("vehicle.heading")["value"]) is double heading
                 ? Write(Item("landingHeading"), heading)
-                : "The vehicle has not reported its heading.")),
+                : Refused("The vehicle has not reported its heading."))),
         PlanFacts.Action("Set to vehicle location", () =>
             Wrote(PlanCalls.VehiclePosition() is { } at
                 ? Write(Item("landingCoordinate"), PlanCalls.Coordinate(at))
-                : "The vehicle has no position yet.")));
+                : Refused("The vehicle has no position yet."))));
 
     private IEnumerable<UIElement> Fields(IReadOnlyList<JsonObject> fields, bool? relative)
     {
@@ -424,7 +431,8 @@ internal sealed class ItemEditor : UserControl
             HorizontalContentAlignment = HorizontalAlignment.Stretch,
             Content = PlanFacts.Pair(PlanFacts.Text(MapUiJson.Text(entry["label"])), PlanFacts.Text(MapUiJson.Text(entry["value"]), "TextSecondaryBrush")),
         };
-        button.Click += (_, _) => Wrote(PlanCalls.Refusal(PlanCalls.Invoke(MapUiJson.Text(entry["path"]))));
+        var path = MapUiJson.Text(entry["path"]);
+        button.Click += (_, _) => Wrote(PlanCalls.Refused(() => PlanCalls.Invoke(path)));
         return button;
     }
 

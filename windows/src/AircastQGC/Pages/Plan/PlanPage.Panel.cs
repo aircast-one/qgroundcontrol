@@ -126,22 +126,27 @@ public sealed partial class PlanPage
         var polygon = RailButton("", "Polygon", () =>
         {
             var next = _fences.Polygons.Count;
-            Bridged("Adding fence", () => PlaceAt() is { } at && PlanRules.FenceWindow(Visible(), at) is var window && PlanCalls.AddPolygon(window.TopLeft, window.BottomRight),
+            var window = FenceWindow();
+            Bridged("Adding fence", () => window is { } corners && PlanCalls.AddPolygon(corners.TopLeft, corners.BottomRight),
                 () => Select(new FenceVertexHit(next, 0), true));
         }, enabled: _status.AddFence);
         var circle = RailButton("", "Circle", () =>
         {
             var next = _fences.Circles.Count;
-            Bridged("Adding circle", () => PlaceAt() is { } at && PlanRules.FenceWindow(Visible(), at) is var window && PlanCalls.AddCircle(window.TopLeft, window.BottomRight),
+            var window = FenceWindow();
+            Bridged("Adding circle", () => window is { } corners && PlanCalls.AddCircle(corners.TopLeft, corners.BottomRight),
                 () => Select(new CircleHit(next), true));
         }, enabled: _status.AddFence);
         var breach = RailButton("", "Breach", () =>
         {
+            var place = PlaceAt();
             if (_fences.Breach != null) Select(new BreachHit(), true);
-            else Bridged("Adding breach return point", () => PlaceAt() is { } at && PlanCalls.SetBreach(at));
+            else Bridged("Adding breach return point", () => place is { } at && PlanCalls.SetBreach(at));
         }, enabled: _status.AddFence, chosen: _fences.Breach != null);
         return [polygon, circle, breach];
     }
+
+    private (Geo TopLeft, Geo BottomRight)? FenceWindow() => PlaceAt() is { } at ? PlanRules.FenceWindow(Visible(), at) : null;
 
     private async void PickPattern(IReadOnlyList<MissionKind> patterns)
     {
@@ -234,9 +239,10 @@ public sealed partial class PlanPage
         return setting["value"] is not JsonValue value || !value.TryGetValue<bool>(out var shown) || shown;
     }
 
-    private void OnProfileToggled(object sender, RoutedEventArgs e)
+    private async void OnProfileToggled(object sender, RoutedEventArgs e)
     {
-        PlanCalls.Set(PlanCalls.ShowStatusSetting, !ProfileShown());
+        var shown = !ProfileShown();
+        await PlanCalls.Queued(() => PlanCalls.Set(PlanCalls.ShowStatusSetting, shown));
         RenderPanel();
     }
 
@@ -510,7 +516,11 @@ public sealed partial class PlanPage
                 : new[] { ("Rectangle", (Func<IReadOnlyList<Geo>>)(() => PlanShapes.Rectangle(visible))), ("Circle", () => PlanShapes.Circle(visible)) })
             .Select(shape =>
             {
-                var button = PlanFacts.Action(shape.Item1, () => Bridged($"Drawing {shape.Item1.ToLowerInvariant()}", () => PlanShapes.Replace(path, shape.Item2(), line), reselect));
+                var button = PlanFacts.Action(shape.Item1, () =>
+                {
+                    var vertices = shape.Item2();
+                    Bridged($"Drawing {shape.Item1.ToLowerInvariant()}", () => PlanShapes.Replace(path, vertices, line), reselect);
+                });
                 button.IsEnabled = visible.Count == 4;
                 return (UIElement)button;
             });
@@ -532,9 +542,9 @@ public sealed partial class PlanPage
         if (_editable?.Caption is { Length: > 0 } caption) panel.Children.Add(PlanFacts.Note(caption));
         panel.Children.Add(row);
         panel.Children.Add(ShapeButtons(path, shape.Line, () => Select(new WaypointHit(item.Index), true)));
-        panel.Children.Add(PlanFacts.Action($"Delete {PatternName(item.Index)}", () =>
+        panel.Children.Add(PlanFacts.Action($"Delete {PatternName(item.Index)}", async () =>
         {
-            var refusal = PlanCalls.Refusal(PlanCalls.Remove(item.Index));
+            var refusal = await PlanCalls.Refused(() => PlanCalls.Remove(item.Index));
             if (refusal != null) Say(refusal);
             Select(null, false);
             Changed();
@@ -648,27 +658,25 @@ public sealed partial class PlanPage
         if (defaults["altitude"] is JsonObject altitude && MapUiJson.Text(altitude["path"]) is { Length: > 0 } path)
             panel.Children.Add(PlanFacts.Stepper("Altitude", MapUiJson.Number(altitude["value"]) ?? PlanRules.TypedNumber(MapUiJson.Text(altitude["valueString"])),
                 MapUiJson.Text(altitude["units"]), 1, "New waypoints use this",
-                wanted => RouteWrite(PlanCalls.Set(path, wanted))));
+                wanted => RouteWrite(() => PlanCalls.Set(path, wanted))));
         if (defaults["flightSpeed"] is JsonObject speed && MapUiJson.Flag(speed["available"]))
         {
             var specified = MapUiJson.Flag(speed["specified"]);
             var specify = MapUiJson.Text(speed["specifyPath"]);
-            var auto = specified ? PlanFacts.Action("Auto", () => RouteWrite(PlanCalls.Set(specify, false))) : null;
+            var speedPath = MapUiJson.Text(speed["path"]);
+            var auto = specified ? PlanFacts.Action("Auto", () => RouteWrite(() => PlanCalls.Set(specify, false))) : null;
             panel.Children.Add(PlanFacts.Stepper("Speed", MapUiJson.Number(speed["value"]), MapUiJson.Text(speed["units"]), 0.5,
                 specified ? null : "Vehicle default",
-                wanted =>
-                {
-                    var on = PlanCalls.Set(specify, true);
-                    RouteWrite(on.Ok ? PlanCalls.Set(MapUiJson.Text(speed["path"]), wanted) : on);
-                }, auto));
+                wanted => RouteWrite(() => PlanCalls.Set(specify, true) is { Ok: false } refused ? refused : PlanCalls.Set(speedPath, wanted)), auto));
         }
         if (panel.Children.Count == 0) return null;
         panel.Children.Insert(0, PlanFacts.Heading("Route"));
         return panel;
     }
 
-    private void RouteWrite(Outcome outcome)
+    private async void RouteWrite(Func<Outcome> write)
     {
+        var outcome = await PlanCalls.Queued(write);
         if (!outcome.Ok) Say(outcome.Reason);
         RebuildEditor(true);
     }

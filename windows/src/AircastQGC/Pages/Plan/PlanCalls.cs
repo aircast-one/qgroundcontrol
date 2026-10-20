@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Nodes;
+using System.Threading;
+using System.Threading.Tasks;
 using AircastQGC.Controls;
 using AircastQGC.Core;
 
@@ -32,6 +34,25 @@ internal static class PlanCalls
     internal const string ShowStatusSetting = "settings.planViewSettings.showMissionItemStatus";
     internal const string GlobalAltitudeMode = "plan.missionController.globalAltitudeMode";
     internal const string RepositionMission = "plan.missionController.repositionMission";
+    private static readonly Lock LaneGate = new();
+    private static Task _lane = Task.CompletedTask;
+
+    internal static Task Pending
+    {
+        get { lock (LaneGate) return _lane; }
+    }
+
+    internal static Task<T> Queued<T>(Func<T> work)
+    {
+        lock (LaneGate)
+        {
+            var queued = _lane.ContinueWith(_ => work(), CancellationToken.None, TaskContinuationOptions.DenyChildAttach, TaskScheduler.Default);
+            _lane = queued;
+            return queued;
+        }
+    }
+
+    internal static Task<string?> Refused(Func<Outcome> write) => Queued(() => Refusal(write()));
 
     internal static JsonObject Read(string path)
     {
@@ -72,6 +93,20 @@ internal static class PlanCalls
 
     internal static Outcome Insert(string kind, Geo at, int index) =>
         Invoke("mission.insert", kind, at.Latitude, at.Longitude, index);
+
+    internal static Outcome InsertPlaced(string kind, Geo at, int index)
+    {
+        var outcome = Insert(kind, at, index);
+        if (outcome is { Ok: true, Index: int added }) Place(kind, added, at);
+        return outcome;
+    }
+
+    private static bool Place(string kind, int index, Geo at) => kind switch
+    {
+        "land" => PlaceLandingIfUnplaced(index, at),
+        "takeoff" => PlaceTakeoff(index, at),
+        _ => false,
+    };
 
     internal static Outcome Remove(int index) => Invoke("mission.remove", index);
 

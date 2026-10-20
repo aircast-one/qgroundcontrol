@@ -43,8 +43,8 @@ Status: ▢ todo · ◐ in progress · ✓ done
 - ✓ fly · ◐ fly — flight mode (refused-change notice untested: the mock accepts every mode) · ◐ fly — camera (frames ✓, picture-in-picture ✓, video fit ✓; WHEP not seen in the shipped build: `build-whep.ps1` put `gstwebrtchttp.dll` in `C:\gstreamer`, but the stage's bundled runtime predates it until `build-video.ps1` is rerun) · ✓ fly — map context menu
 - ✓ fly — armed, confirm return · ✓ fly — checklist · ✓ fly — no vehicle
 - ✓ fly — host notices, message banner and sheet, voice alerts, disarm toast · ✓ fly — status strip and detail sheets · ✓ fly — multi-vehicle, operator position, Follow Me · ✓ fly — prompts (enforced checklist, mission popups, mission complete, close guard, connecting card, mission progress, set waypoint, resume failed, first run) · ✓ fly — payload (gimbal pill and sheet, map wedge, beam and radar, record shutter, gripper bays, camera details); details and gaps in the parity backlog below
-- ✓ fly — on-screen sticks · ✓ fly — heading tape, guided presets and quick picks, mission identity card, ROI pin sheet · ◐ fly — operator control and VTOL cell (synthetic views only) · ✓ fly — video grid lines, full screen, detection boxes · ◐ fly — obstacle arc, readout and map overlay, AR marks (constructed payloads only) · ✓ fly — Aircast device status chip
-- ✓ fly — title bar fit and All status sheet · ◐ fly — overlay layout editing (widget drags driven in-process only) · ✓ fly — short-window layout · ◐ fly — synthetic view (drag and double-click aim not driven)
+- ✓ fly — on-screen sticks · ✓ fly — heading tape, guided presets and quick picks, mission identity card, ROI pin sheet · ◐ fly — operator control and VTOL cell (synthetic views only) · ✓ fly — video grid lines, full screen (rail, F11, Escape, double-click), aspect ratio, detection boxes · ◐ fly — obstacle arc, readout and map overlay, AR marks (constructed payloads only) · ✓ fly — Aircast device status chip
+- ✓ fly — title bar fit and All status sheet · ◐ fly — overlay layout editing (widget drags driven in-process only) · ✓ fly — short-window layout · ◐ fly — synthetic view (drag aim not driven) · ◐ fly — 3D view (core reports the vehicle at 0 m facing north and no route segments)
 
 Title bar (`Controls/StatusRow`, round 6): the status cells that fit sit next to the fixed link, picker, mode and armed pills; the rest go
 behind an All status chevron tinted by the worst hidden cell, and its Status sheet lists every cell in the user's order (Android's compact
@@ -68,8 +68,8 @@ the tile, full size and the picture-in-picture tile, aims with the tilt slider a
 gimbal steers it, and releases its surface when Fly is hidden or the window is minimized; "Synthetic View" is a camera source on Windows.
 Slot: WARP adapter, mock ArduCopter, PX4 and gimbal, PiP as a second surface. Merged build: with the WHEP source unreachable, the tile and
 the swapped full-size view drew 3D buildings over imagery ("Connecting to WHEP · showing synthetic view", `present=mailbox`) on the mock
-ArduCopter, and the tile drew on the mock PX4. Not driven: drag and double-click aim (no pointer input then). Full screen still needs decoded
-video. An occluded window drops the view to about 1 fps.
+ArduCopter, and the tile drew on the mock PX4. Not driven: drag aim (no pointer input then). Full screen also works over the synthetic view since round 9,
+and its double-tap recentre gave way to double-click full screen, as on Android. An occluded window drops the view to about 1 fps.
 
 Driven through the UI on `winvm` against the mock ArduCopter (2026-10-20): slide-to-confirm with real mouse input, arm, disarm,
 takeoff to a chosen height, change altitude, title-bar mode change, ROI + cancel ROI, go-to, set heading, RTL, land to
@@ -159,8 +159,52 @@ back. Side by side with Android: `~/.claude/jobs/6037fcd4/tmp/design/round8-comp
 Still different from Android: the status strip and rail are acrylic chips and circles, not bare text and icons (the Windows material
 choice). There are no on-screen sticks over the video (only on touch). The PiP is web desktop's 320×180, not the phone's small square.
 The camera switch chip, tilt readout and gimbal controls need a camera, and the mock has none. D.OP is missing (it needs a
-ground-station position). Double-click does not enter full screen. A WHEP pill sits in the centre while Android names the source in its
+ground-station position). A WHEP pill sits in the centre while Android names the source in its
 camera chip. The synthetic view draws grey extruded buildings, not photoreal tiles.
+
+### Fly 3D view (round 9)
+
+`Controls/Viewer3DView` is Fly's 3D main view, like Android's MapLibre viewer: OSM buildings from `view.viewer3d` over the core's map
+tiles, the quad frame from `view.viewer3dVehicle`, mission markers and labels from `view.viewer3dPath`, and the flown track from
+`view.track` draped on the ground. A cube button under Map layers (`MapControls.ThreeD`, tooltip "Show the 3D view") appears when the
+3D viewer setting is on and turns into Show the map while 3D shows. Zoom in/out and Center on vehicle drive the 3D camera while it
+shows, the video thumb still swaps, and turning the setting off falls back to the 2D map. The camera starts like Android (zoom 16,
+pitch 60) and follows the vehicle. Left-drag orbits and tilts, the wheel zooms, right-drag or Ctrl/Shift-drag pans and stops
+following, Home or Center on vehicle resumes, and arrows and +/- work. A tap on a mission marker turns it yellow. WinUI has no 3D
+control and no new packages were allowed, so `Viewer3DRaster` is a CPU rasteriser with a 1/z depth buffer into a WriteableBitmap, and
+`Viewer3DScene` holds the geometry. Twelve `Viewer3D*Brush` tokens are in both palettes.
+
+Merged build (2026-10-21, scratch variant, mock ArduCopter flying a five-item mission over the core's Zurich test OSM file, 1440×900
+and 1024×700): buildings over Bing tiles, labels 2/3/R/5 and the flown track; orbit, zoom and follow; swap to video and back to 3D;
+Show the map back to 2D. Frame cost at 2427×1518 px: median 2.8 ms, p95 3.4 ms on a quiet VM (88 buildings, 768 faces). The slot
+measured median 4.5–4.8 ms with a 4,370-building extract.
+Screenshots: `~/.claude/jobs/6037fcd4/tmp/design/round9-merge/shot-fly1-3d-flying.jpg`, `shot-fly1-1024-3d.jpg`.
+
+Still open: the core's `view.viewer3dVehicle` always reports altitude 0 and heading 0, so the drone is drawn on the ground facing north
+(Android shares it). `view.viewer3dPath` returns no segments for a normal uploaded mission, because the takeoff item has no coordinate,
+so no route line or T marker shows on any head. Real mouse, wheel and keys were not driven: the camera was moved through the same
+methods in-process. The chosen view is not saved across restarts (Android saves it). Switching OSM files builds the faces on the UI
+thread (about 100 ms for 4,370 buildings).
+
+### Video gestures and aspect ratio (round 9)
+
+Double-click or double-tap on the main video enters or leaves full screen through the same path as the rail button, F11 and Escape
+(`VideoMarks.FullScreenToggled`). It toggles only when both presses landed on the main picture and not on a focusable control. A single
+click still does nothing, the thumb only swaps, and the exit button and aim pill keep their own clicks. Full screen and its rail button
+follow `VideoThumbnail.Picture` (decoded video or the synthetic view), Android's `videoDecoding || syntheticOnScreen`. The picture and
+its overlays use Android's aspect rule: the decoded size wins, then `aspectRatio` if above 0, then fill the box. Settings > Video >
+Advanced shows Aspect ratio as W:H and accepts W:H or a number.
+
+Merged build (2026-10-21, mock ArduCopter, synthetic view as the picture): double-click full screen both ways at 1440×900 and
+1024×700, also after swapping from the 3D view; a double-click on the thumb only swaps; the in-process aspect check gives 1589×894 for
+16:9, 1192×894 for 4:3 and fill for 0 without a source size, and 1589×894 for every setting with a 640×360 source. The slot also ran it
+over a live 640×360 WHEP stream.
+Screenshots: `~/.claude/jobs/6037fcd4/tmp/design/round9-merge/shot-fly1-dbl-full.jpg`, `shot-fly1-1024-dbl-full.jpg`.
+
+Still open: no real mouse or touch double-click was sent; the hook did WinUI's real hit test, then called the handlers. F11 and Escape
+were not pressed. The WHEP stream did not connect in the merged variant (its runtime predates the WHEP plugins, see Fly), so live video
+was not re-run after the merge. With a live stream the aspect setting does not change the frame, by design. Over the synthetic view,
+full screen shows a black strip for 1–2 s while the renderer resizes.
 
 ### Plan
 
@@ -190,7 +234,8 @@ handle. Each handle's drop handler was driven in-process and its write read back
 `core.plan.savePreset`/`applyPreset`/`deletePreset` and `view.patternPresets`. Centre > Follow vehicle follows the flying mock and any
 re-centre turns it off. Delete, Escape, Ctrl+Z/Y/S/O were sent as window messages posted to the app's own input window, and are ignored
 while a dialog is open. Not driven: map tap, real pointer drags, terrain-chart marker taps. Not ported: Centre > My location (Windows has
-no ground-station position source). In plan mode a double-click adds a waypoint instead of zooming. Landing handles appear only while that
+no ground-station position source). A double-click zooms in one level at the point, and a single tap adds its waypoint after the
+system double-click time (500 ms), as on Android (round 9). Landing handles appear only while that
 landing is selected (Android draws them always). The centre handle moves a shape by its vertex average, not Android's area centroid.
 `view.missionItems` is still polled every 700 ms, as on Android, but off the UI thread; it skips parse and redraw when the payload is
 unchanged, and the overlay re-projects only when the map view moves (`MapView.ViewChanged` now fires only on a real change). With a
@@ -206,9 +251,31 @@ block fell from 16–22 ms to 0 ms, and the worst stall per grid-angle edit fell
 (2026-10-21, ~3,900 items, mock ArduCopter flying): three grid-angle edits applied (folded commands 3,919 → 4,063 → 4,053 → 3,919),
 and two back-to-back taps after waypoint #2 landed at indexes 3 and 4 with #4 selected. A tap with an item selected deselects it,
 and the next tap appends and selects the new item. Two undos removed the tapped waypoint and then both inserted ones; redo restored
-both. A drag kept the item selected with the panel open, and delete left #3 selected. The core write itself (for example `gridAngle`,
-which regenerates the survey) still runs on the UI thread: 69–147 ms, with one 832 ms stall seen in the merged smoke. A pin press is
+both. A drag kept the item selected with the panel open, and delete left #3 selected. Round 9 moved the core write itself off the UI thread too (next section). A pin press is
 not gated, because drags must stay live, so during a refresh of roughly 10–20 ms a press can hit a pin from the old scene.
+
+### Plan writes on a background lane (round 9)
+
+Every Plan write runs on one serial background lane (`PlanCalls.Queued`), awaited by its caller: insert, remove, undo and redo, select,
+fence, rally, breach, vertex and circle edits, editor fields and route defaults, the survey camera block, presets, load, save, KML,
+import, templates, download, upload, transform, map type and the undo flag. UI values (map centre, bounds, toggles) are read before a
+job is queued. The post-edit refresh and the two reads that gate an action (upload and save status) go through the lane too. Drags lost
+the 120 ms throttle: each handle has one write in flight and one pending position, and the drop writes the final one in lane order.
+`Settled` waits until the lane, the refresh and the page's current edit are idle, so a fast second tap inserts in the right place.
+
+Slot (4,033–4,105-item hover survey, 16 ms heartbeat): the `gridAngle` write left the UI thread (it took 103–187 ms there), and the
+worst UI gap per edit fell from 108–199 ms (median about 168) to 40–126 ms (median about 65). What remains is the redraw of the survey.
+40 vertex moves in 1.5 s became 12 lane writes, and the vertex ended at the drop point. Save and open through the real pickers worked.
+
+Merged build (2026-10-21, scratch variant, mock ArduCopter connected, 4,033-item survey): six Angle edits applied with worst UI gaps
+of 74–121 ms (median about 105). The rail Waypoint after selected #2 inserted at 3 and selected it. Two back-to-back taps kept their
+order in 3 of 3 rounds. Undo (hook, then toolbar) and Redo applied in order. A waypoint drag through OnDragged/OnDropped ended at the
+drop point with "Moved #2". Delete kept the next item selected. 40 survey-vertex moves in 1.8 s moved the corner.
+Screenshots: `~/.claude/jobs/6037fcd4/tmp/design/round9-merge/shot-plan1-edits.jpg`, `shot-plan1-dragv.jpg`.
+
+Still open: every bridge call first takes the core's plan mutex (`poll_host` → `held()`), so a UI-thread read during a lane write can
+wait 13–44 ms. Not driven on the lane: the fence-circle, rally, landing and takeoff drag handles, Upload, the vehicle-change and
+altitude prompts, Transform, KML/SHP import and templates. Real pointer drags were not driven.
 
 ### Vehicle setup
 
@@ -408,24 +475,24 @@ full screen, and the round-6 merge smoke real mouse slides for arm, takeoff, cha
   warning (built; the stalled state cannot be driven) · ✓ offline status sheet · ✓ resume-failed prompt (only on Fly, as on Android;
   hidden elsewhere without being dismissed) · ✓ disarm and landed summary toast · ✓ first-run dialog.
 - Video: ✓ grid lines and full-screen video (rail button, F11, Escape) · ◐ zoom (wheel and pinch call `stepZoom`; no zoom effect on the mock,
-  pinch not driven; full screen is not entered by double-tap as on Android) · aspect ratio · ◐ camera details (camera and stream choice, time
+  pinch not driven) · ✓ double-click full screen · ✓ aspect ratio · ◐ camera details (camera and stream choice, time
   lapse and interval, tracking toggle and box, reset and format verified; thermal untested, tap-to-track not driven) · ✓ video stats pill
   (merged build: "31 fps · 720p" on the full-size video) · ◐ AR overlay (draws from an injected payload; live home and waypoints blocked by the
   core's `synthview.rs overlays()`) · ✓ detection boxes from aircastd (SSE stub) · ◐ synthetic view (DX12 SwapChainPanel; drag and
-  double-click aim not driven; see Fly).
+  drag aim not driven; see Fly).
 - Settings: ✓ the light palette · ◐ app font size (XAML-built UI rescales live, code-built panels on their next render) · SD-card flasher (needs a Windows raw-disk backend in core; L).
-- Plan: ✓ survey camera-calc block (brand/model, overlap, distance mode, set by altitude or ground resolution); the remaining ~240 ms core
-  rebuild of `view.missionItems` on the UI thread after each edit on large surveys.
+- Plan: ✓ survey camera-calc block (brand/model, overlap, distance mode, set by altitude or ground resolution) · ✓ writes on a background lane; a big-survey edit still stalls
+  the UI for the redraw (74–126 ms).
 
 ### P3: polish or low value on desktop
 
-- 3D viewer as a Fly view (L) · ◐ overlay layout editing (see Fly) · ✓ telemetry display editor (right-click entry not driven).
+- ◐ 3D viewer as a Fly view (core: vehicle at 0 m facing north, no route segments) · ◐ overlay layout editing (see Fly) · ✓ telemetry display editor (right-click entry not driven).
 - ✓ Heading tape · ✓ guided-value presets and quick picks · ✓ Android's −/+ stepper, tap-to-type and probe sentence (merged build on the mock
   ArduCopter at 10 m: "already at 10.0 m and will not move", + three times "climb 3.0 m to 13.0 m", − "12.0 m", typed 25 "climb 15.0 m to
   25.0 m", and the slide flew it to 25 m) · ✓ mission identity confirm ·
   ✓ ROI tap sheet (map tap driven in-process) · ◐ lens measure (forget and the refusal seen; a successful measurement not seen) · ◐ USB-radio
   indicator (only the stopped state, with a forced port) · ✓ support-forwarding cell · ✓ deep-link prompt (`aircast-qgc://`, registered per
-  user, single-instance redirect) · Plan double-click zoom · ✓ sensor-check and setup rows in the Settings tabs (on the Aircraft safety and
+  user, single-instance redirect) · ✓ Plan double-click zoom · ✓ sensor-check and setup rows in the Settings tabs (on the Aircraft safety and
   Aircraft limits pages).
 
 Not applicable on Windows: the phone Wi-Fi SSID, RadioMaster AX12 built-in sticks, portrait Fly, the notification permission, the

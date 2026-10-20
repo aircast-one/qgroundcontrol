@@ -6,7 +6,6 @@ using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using AircastQGC.Core;
 using AircastQGC.Forms;
-using Microsoft.UI;
 using Microsoft.UI.Input;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
@@ -56,6 +55,7 @@ public sealed partial class VideoMarks : UserControl
     private Detections? _detections;
     private (double Width, double Height) _shown;
     private int _fit = VideoSurface.FitHeight;
+    private double? _aspectSetting;
     private bool _gridOn;
     private bool _zoomable;
     private bool _expanded;
@@ -65,6 +65,7 @@ public sealed partial class VideoMarks : UserControl
     private ImmutableDictionary<uint, Point> _touches = ImmutableDictionary<uint, Point>.Empty;
     private double _pinchScale = 1;
     private int _pinchSent;
+    private (bool Before, bool Last) _pressedOnPicture;
 
     public VideoMarks()
     {
@@ -90,17 +91,12 @@ public sealed partial class VideoMarks : UserControl
         _root.Children.Add(_trouble);
         _root.Children.Add(_exit);
         _root.SizeChanged += (_, _) => Place();
-        _root.DoubleTapped += (_, e) =>
-        {
-            if (!_fullScreen) return;
-            e.Handled = true;
-            ExitFullScreenRequested?.Invoke(this, EventArgs.Empty);
-        };
         Content = _root;
         AutomationProperties.SetName(this, "Video marks");
 
         Live.Watch(this, VideoView, TakeVideo);
         Live.Watch(this, FitView, view => Take(() => _fit = VideoJson.Number(view["value"]) is double mode ? (int)mode : VideoSurface.FitHeight, Place));
+        Live.Watch(this, VideoSurface.AspectView, view => Take(() => _aspectSetting = VideoJson.Number(view["value"]), Place));
         Live.Watch(this, GridView, view => Take(() => _gridOn = VideoJson.Flag(view, "value"), DrawGrid));
         Live.Watch(this, CameraView, view => _zoomable = VideoJson.Flag(view, "hasZoom"));
         Live.Watch(this, VideoMarksModel.ArView, view => Take(() => _arReading = VideoMarksModel.Ar(view), DrawAr));
@@ -108,11 +104,9 @@ public sealed partial class VideoMarks : UserControl
         Live.Watch(this, VideoMarksModel.DetectionsView, view => Take(() => _detections = VideoMarksModel.Read(view), DrawBoxes));
     }
 
-    public event EventHandler? DecodingChanged;
-
     public event EventHandler? ExitFullScreenRequested;
 
-    public bool Decoding { get; private set; }
+    public event EventHandler? FullScreenToggled;
 
     public bool Expanded
     {
@@ -130,7 +124,6 @@ public sealed partial class VideoMarks : UserControl
         set
         {
             _fullScreen = value;
-            _root.Background = value ? new SolidColorBrush(Colors.Transparent) : null;
             _exit.Visibility = FormLook.Shown(value);
             DrawGrid();
         }
@@ -146,7 +139,11 @@ public sealed partial class VideoMarks : UserControl
         area.AddHandler(PointerReleasedEvent, new PointerEventHandler(OnTouchUp), true);
         area.AddHandler(PointerCanceledEvent, new PointerEventHandler(OnTouchUp), true);
         area.AddHandler(PointerCaptureLostEvent, new PointerEventHandler(OnTouchUp), true);
+        area.AddHandler(PointerPressedEvent, new PointerEventHandler(OnPress), true);
+        area.AddHandler(DoubleTappedEvent, new DoubleTappedEventHandler(OnDoubleTap), true);
     }
+
+    private bool Decoding { get; set; }
 
     private bool Zooms => _expanded && Decoding && _zoomable;
 
@@ -159,17 +156,11 @@ public sealed partial class VideoMarks : UserControl
     private void TakeVideo(JsonObject view)
     {
         _video = view;
-        var decoding = VideoJson.Flag(view, "decoding");
-        var changed = decoding != Decoding;
-        Decoding = decoding;
+        Decoding = VideoJson.Flag(view, "decoding");
         Place();
-        if (changed) DecodingChanged?.Invoke(this, EventArgs.Empty);
     }
 
-    private double Aspect =>
-        _video["sourceSize"] is JsonObject size && VideoJson.Number(size["width"]) is > 0 and double width && VideoJson.Number(size["height"]) is > 0 and double height
-            ? width / height
-            : 0;
+    private double Aspect => VideoSurface.PictureAspect(_video, _aspectSetting);
 
     private void Place()
     {
@@ -303,10 +294,24 @@ public sealed partial class VideoMarks : UserControl
         return [frame, tag];
     }
 
-    private bool OverVideo(object source) => Within(source as DependencyObject);
+    private bool OverVideo(object source) => Lineage(source as DependencyObject).Any(IsVideoPart);
 
-    private bool Within(DependencyObject? node) =>
-        node is not null && (node is UIElement element && _videoParts.Contains(element) || Within(VisualTreeHelper.GetParent(node)));
+    private bool OnPicture(object source) =>
+        _expanded && OverVideo(source) && !Lineage(source as DependencyObject).TakeWhile(node => !IsVideoPart(node)).Any(node => node is Control { IsTabStop: true });
+
+    private bool IsVideoPart(DependencyObject node) => node is UIElement element && _videoParts.Contains(element);
+
+    private static IEnumerable<DependencyObject> Lineage(DependencyObject? node) =>
+        node is null ? [] : Lineage(VisualTreeHelper.GetParent(node)).Prepend(node);
+
+    private void OnPress(object sender, PointerRoutedEventArgs e) => _pressedOnPicture = (_pressedOnPicture.Last, OnPicture(e.OriginalSource));
+
+    private void OnDoubleTap(object sender, DoubleTappedRoutedEventArgs e)
+    {
+        if (_pressedOnPicture != (true, true)) return;
+        e.Handled = true;
+        FullScreenToggled?.Invoke(this, EventArgs.Empty);
+    }
 
     private static void Zoom(int step) => Task.Run(() => Bridge.Invoke(StepZoom, new JsonArray(step)));
 

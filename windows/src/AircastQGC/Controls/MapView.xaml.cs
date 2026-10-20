@@ -94,6 +94,8 @@ public sealed partial class MapView : UserControl
     private readonly MapFleet _fleet;
     private DispatcherQueueTimer? _poll;
     private DispatcherQueueTimer? _planPoll;
+    private DispatcherQueueTimer? _tapWait;
+    private (Geo Geo, Point At)? _pendingTap;
     private Geo _center = new(0, 0);
     private double _zoom = 3;
     private string _mapType = string.Empty;
@@ -834,7 +836,8 @@ public sealed partial class MapView : UserControl
 
     private void OnDoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
-        if (_planMode) return;
+        _tapWait?.Stop();
+        _pendingTap = null;
         ZoomAround(e.GetPosition(Surface), 1);
         e.Handled = true;
     }
@@ -847,8 +850,23 @@ public sealed partial class MapView : UserControl
             VehicleTapped?.Invoke(vehicle);
             return;
         }
-        var geo = ToGeo(at);
-        MapTapped?.Invoke(geo.Latitude, geo.Longitude, at);
+        _pendingTap = (ToGeo(at), at);
+        if (!_planMode)
+        {
+            ReleaseTap();
+            return;
+        }
+        _tapWait ??= CreatePoll(TimeSpan.FromMilliseconds(new Windows.UI.ViewManagement.UISettings().DoubleClickTime), ReleaseTap);
+        _tapWait.Stop();
+        _tapWait.Start();
+    }
+
+    private void ReleaseTap()
+    {
+        _tapWait?.Stop();
+        if (_pendingTap is not { } tap) return;
+        _pendingTap = null;
+        MapTapped?.Invoke(tap.Geo.Latitude, tap.Geo.Longitude, tap.At);
     }
 
     private void OnRightTapped(object sender, RightTappedRoutedEventArgs e)

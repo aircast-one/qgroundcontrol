@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text.Json.Nodes;
+using System.Threading.Tasks;
 using AircastQGC.Controls;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
@@ -94,7 +95,7 @@ internal static class PlanFacts
         return box;
     }
 
-    internal static FrameworkElement Row(JsonObject control, Func<string, JsonNode?, string?> write, Action written)
+    internal static FrameworkElement Row(JsonObject control, Func<string, JsonNode?, Task<string?>> write, Action written)
     {
         var path = MapUiJson.Text(control["path"]);
         var kind = MapUiJson.Text(control["control"]);
@@ -106,9 +107,9 @@ internal static class PlanFacts
         var refusal = Error(string.Empty);
         refusal.Visibility = Visibility.Collapsed;
 
-        void Write(string target, JsonNode? value)
+        async void Write(string target, JsonNode? value)
         {
-            var refused = write(target, value);
+            var refused = await write(target, value);
             refusal.Text = refused ?? string.Empty;
             refusal.Visibility = refused == null ? Visibility.Collapsed : Visibility.Visible;
             if (refused == null) written();

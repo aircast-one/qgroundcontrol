@@ -73,7 +73,7 @@ public sealed partial class PlanPage
             Say(refusal);
             return;
         }
-        var fresh = PlanStatus.From(PlanCalls.Read(PlanCalls.PlanView));
+        var fresh = await FreshStatus();
         switch (PlanRules.Step(fresh))
         {
             case RefuseStep refuse:
@@ -82,10 +82,10 @@ public sealed partial class PlanPage
                 break;
             case ConfirmStep { Gate: var gate }:
                 if (await _dialogs.Confirm(UploadHeading(gate), gate.Refusal, gate.ProceedTitle.Length > 0 ? gate.ProceedTitle : "Upload"))
-                    Send(gate.PausesFirst);
+                    await Send(gate.PausesFirst);
                 break;
             default:
-                Send(false);
+                await Send(false);
                 break;
         }
     }
@@ -103,10 +103,14 @@ public sealed partial class PlanPage
         return target == null ? asked : asked.EndsWith('?') ? $"{asked[..^1]} to {target}?" : $"{asked} to {target}";
     }
 
-    private void Send(bool pauseFirst)
+    private async Task Send(bool pauseFirst)
     {
-        if (pauseFirst) PlanCalls.Invoke("vehicle.pauseVehicle");
-        Say(PlanCalls.Invoke($"{PlanRoot}.sendToVehicle").Ok ? "Upload sent to vehicle" : "Upload did not start");
+        var sent = await PlanCalls.Queued(() =>
+        {
+            if (pauseFirst) PlanCalls.Invoke("vehicle.pauseVehicle");
+            return PlanCalls.Invoke($"{PlanRoot}.sendToVehicle").Ok;
+        });
+        Say(sent ? "Upload sent to vehicle" : "Upload did not start");
     }
 
     private async void OnEmptyDownload(object sender, RoutedEventArgs e)
@@ -141,9 +145,9 @@ public sealed partial class PlanPage
         return _dialogs.Confirm(copy.Title, copy.Body, copy.Confirm, "Keep editing", copy.Destructive);
     }
 
-    private void Discard(string method, string success, string failure, bool fit = false)
+    private async void Discard(string method, string success, string failure, bool fit = false)
     {
-        var done = PlanCalls.Invoke($"{PlanRoot}.{method}").Ok;
+        var done = (await PlanCalls.Queued(() => PlanCalls.Invoke($"{PlanRoot}.{method}"))).Ok;
         if (done && fit) _fitWait = (DateTime.UtcNow, false);
         Say(done ? success : failure);
         Changed();
@@ -181,7 +185,7 @@ public sealed partial class PlanPage
         StartPlan(picked.Name);
     }
 
-    private void StartPlan(string? template)
+    private async void StartPlan(string? template)
     {
         if (template == null)
         {
@@ -194,7 +198,7 @@ public sealed partial class PlanPage
             Say("The map has not reported its centre yet.");
             return;
         }
-        var outcome = PlanCalls.Invoke(CreateFromTemplate, template, centre.Latitude, centre.Longitude);
+        var outcome = await PlanCalls.Queued(() => PlanCalls.Invoke(CreateFromTemplate, template, centre.Latitude, centre.Longitude));
         if (!outcome.Ok)
         {
             Say(outcome.Reason);
@@ -211,7 +215,7 @@ public sealed partial class PlanPage
     {
         if (!_status.CanOpen || (_status.Dirty && !await Confirmed(PlanConfirm.Open))) return;
         if (await PickOpen(OpenTypes) is not { } path) return;
-        var outcome = PlanCalls.Invoke($"{PlanRoot}.loadFromFile", path);
+        var outcome = await PlanCalls.Queued(() => PlanCalls.Invoke($"{PlanRoot}.loadFromFile", path));
         if (!outcome.Ok)
         {
             Say(outcome.Reason);
@@ -232,7 +236,7 @@ public sealed partial class PlanPage
         if (!_status.CanSave) return;
         Guarded(async () =>
         {
-            if (KnownPlanFile() is { } path) WriteTo(path);
+            if (KnownPlanFile() is { } path) await WriteTo(path);
             else await SaveAs();
         });
     }
@@ -243,24 +247,27 @@ public sealed partial class PlanPage
     private async Task SaveAs()
     {
         var title = PlanRules.PlanTitle(_status.File);
-        if (await PickSave("Plan", PlanExtension, title == Untitled ? DefaultName : title) is { } path) WriteTo(path);
+        if (await PickSave("Plan", PlanExtension, title == Untitled ? DefaultName : title) is { } path) await WriteTo(path);
     }
 
-    private void WriteTo(string path) =>
-        Say(PlanCalls.Invoke($"{PlanRoot}.saveToFile", path).Ok ? "Plan saved." : "The plan could not be saved.");
+    private async Task WriteTo(string path) =>
+        Say((await PlanCalls.Queued(() => PlanCalls.Invoke($"{PlanRoot}.saveToFile", path))).Ok ? "Plan saved." : "The plan could not be saved.");
 
     private void OnExportKml(object sender, RoutedEventArgs e) => Guarded(async () =>
     {
         if (await PickSave("KML", KmlExtension, DefaultName) is not { } path) return;
         var before = File.Exists(path) ? File.GetLastWriteTimeUtc(path) : DateTime.MinValue;
-        PlanCalls.Invoke($"{PlanRoot}.saveToKml", path);
+        await PlanCalls.Queued(() => PlanCalls.Invoke($"{PlanRoot}.saveToKml", path));
         var written = new FileInfo(path);
         Say(written.Exists && written.Length > 0 && written.LastWriteTimeUtc > before ? "KML exported." : "The plan could not be exported.");
     });
 
+    private static async Task<PlanStatus> FreshStatus() =>
+        PlanStatus.From(await PlanCalls.Queued(() => PlanCalls.Read(PlanCalls.PlanView)));
+
     private async void Guarded(Func<Task> action)
     {
-        var fresh = PlanStatus.From(PlanCalls.Read(PlanCalls.PlanView));
+        var fresh = await FreshStatus();
         if (fresh.NotReady is { } blocked)
         {
             FocusNotReady(fresh);
@@ -286,19 +293,24 @@ public sealed partial class PlanPage
         if (pattern != null) ImportFrom(paths, pattern);
     }
 
-    private void ImportFrom(IReadOnlyList<string> paths, string pattern)
+    private async void ImportFrom(IReadOnlyList<string> paths, string pattern)
     {
         var main = paths.FirstOrDefault(path => path.EndsWith(".shp", StringComparison.OrdinalIgnoreCase))
             ?? paths.FirstOrDefault(path => path.EndsWith(KmlExtension, StringComparison.OrdinalIgnoreCase))
             ?? paths[0];
+        Say(await PlanCalls.Queued(() => Imported(main, pattern)));
+        Changed();
+    }
+
+    private static string Imported(string main, string pattern)
+    {
         var label = Path.GetFileName(main);
         var before = VisualItems().Count;
         PlanCalls.Invoke($"{MissionRoot}.insertComplexMissionItemFromKMLOrSHP", pattern, main, before, true);
         var after = VisualItems();
         var empty = after.Count > before && MapUiJson.Number(after[^1]["patternDistance"]) is not > 0;
         if (empty) PlanCalls.Invoke($"{MissionRoot}.removeVisualItem", after.Count - 1);
-        Say(after.Count <= before ? $"{label} added nothing to the plan." : empty ? $"{label} holds no area for a {pattern}." : "Boundary imported.");
-        Changed();
+        return after.Count <= before ? $"{label} added nothing to the plan." : empty ? $"{label} holds no area for a {pattern}." : "Boundary imported.";
     }
 
     private static IReadOnlyList<JsonObject> VisualItems() => MapUiJson.Objects(PlanCalls.Read(MissionItemsView)["items"]);
@@ -344,7 +356,7 @@ public sealed partial class PlanPage
 
     private async void Prompts()
     {
-        if (_dialogs.Showing || XamlRoot == null) return;
+        if (_dialogs.Showing || _answering || XamlRoot == null) return;
         if (_status.VehiclePrompt is { } prompt)
         {
             if (await _dialogs.Choose(prompt.Title, prompt.Text, prompt.Primary, prompt.Secondary, dismissable: false) is not bool primary) return;
@@ -355,10 +367,15 @@ public sealed partial class PlanPage
         Answered(await _dialogs.Confirm(MapUiJson.SentenceCase(asked.Title), asked.Text, "Yes", "No") ? ApplyDefaultAltitude : DismissAltitudePrompt);
     }
 
-    private void Answered(string invoke)
+    private async void Answered(string invoke)
     {
-        PlanCalls.Invoke(invoke);
-        _status = PlanStatus.From(PlanCalls.Read(PlanCalls.PlanView));
+        _answering = true;
+        _status = PlanStatus.From(await PlanCalls.Queued(() =>
+        {
+            PlanCalls.Invoke(invoke);
+            return PlanCalls.Read(PlanCalls.PlanView);
+        }));
+        _answering = false;
         Changed();
     }
 
@@ -433,9 +450,9 @@ public sealed partial class PlanPage
         types.Select(type =>
             {
                 var entry = new ToggleMenuFlyoutItem { Text = type, IsChecked = type == current, IsEnabled = path.Length > 0 };
-                entry.Click += (_, _) =>
+                entry.Click += async (_, _) =>
                 {
-                    if (PlanCalls.Refusal(PlanCalls.Set(path, type)) is { } refused) Say(refused);
+                    if (await PlanCalls.Refused(() => PlanCalls.Set(path, type)) is { } refused) Say(refused);
                 };
                 return (MenuFlyoutItemBase)entry;
             })
@@ -477,7 +494,7 @@ public sealed partial class PlanPage
     }
 
     private static UIElement DefaultRow(JsonObject control) =>
-        PlanFacts.Row(control, (path, value) => PlanCalls.Refusal(PlanCalls.Set(path, value)), () => { });
+        PlanFacts.Row(control, (path, value) => PlanCalls.Refused(() => PlanCalls.Set(path, value)), () => { });
 
     private static JsonObject Disabled(JsonObject control, string reason)
     {
@@ -498,9 +515,12 @@ public sealed partial class PlanPage
         }
         Show(null);
         var toggle = new ToggleSwitch { IsOn = specified, OnContent = string.Empty, OffContent = string.Empty, MinWidth = 0 };
-        toggle.Toggled += (_, _) =>
+        var specifyPath = MapUiJson.Text(speed["specifyPath"]);
+        var speedPath = MapUiJson.Text(speed["path"]);
+        toggle.Toggled += async (_, _) =>
         {
-            var refused = PlanCalls.Refusal(PlanCalls.Set(MapUiJson.Text(speed["specifyPath"]), toggle.IsOn));
+            var on = toggle.IsOn;
+            var refused = await PlanCalls.Refused(() => PlanCalls.Set(specifyPath, on));
             if (refused == null) refill();
             else Show(refused);
         };
@@ -508,8 +528,8 @@ public sealed partial class PlanPage
         if (specified)
         {
             var shown = MapUiJson.Number(speed["value"]) is double value ? PlanRules.Plain(Math.Round(value, 2)) : string.Empty;
-            var entry = PlanFacts.Entry(shown, typed =>
-                Show(PlanRules.TypedNumber(typed) is double wanted ? PlanCalls.Refusal(PlanCalls.Set(MapUiJson.Text(speed["path"]), wanted)) : "Not a speed"), 110);
+            var entry = PlanFacts.Entry(shown, async typed =>
+                Show(PlanRules.TypedNumber(typed) is double wanted ? await PlanCalls.Refused(() => PlanCalls.Set(speedPath, wanted)) : "Not a speed"), 110);
             rows.Children.Add(PlanFacts.Pair(PlanFacts.Text(string.Join(' ', new[] { "Speed", MapUiJson.Text(speed["units"]) }.Where(text => text.Length > 0))), entry));
         }
         rows.Children.Add(refusal);
@@ -528,7 +548,7 @@ public sealed partial class PlanPage
         }), "Close");
         if (!repositioning || home is not { } from) return;
         if (await _dialogs.EditPosition(from, PlanCalls.HasVehicle(), "Reposition mission", "Move to Position", "Move to Vehicle Position") is not { } to) return;
-        var outcome = PlanCalls.Invoke(PlanCalls.RepositionMission, PlanCalls.Coordinate(to));
+        var outcome = await PlanCalls.Queued(() => PlanCalls.Invoke(PlanCalls.RepositionMission, PlanCalls.Coordinate(to)));
         Say(outcome.Ok ? "Mission moved" : outcome.Reason);
         Changed();
     }
@@ -538,9 +558,10 @@ public sealed partial class PlanPage
         var horizontal = Unit(view, "horizontal");
         var vertical = Unit(view, "vertical");
         var refusal = PlanFacts.Error(string.Empty);
-        void Apply(string path, IEnumerable<JsonNode?> args)
+        async void Apply(string path, IEnumerable<JsonNode?> args)
         {
-            var outcome = PlanCalls.Invoke(path, args.ToArray());
+            var values = args.ToArray();
+            var outcome = await PlanCalls.Queued(() => PlanCalls.Invoke(path, values));
             refusal.Text = outcome.Ok ? string.Empty : outcome.Reason;
             Changed();
         }

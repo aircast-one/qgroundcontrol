@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Nodes;
+using System.Threading.Tasks;
 using AircastQGC.Controls;
 using AircastQGC.Forms;
 using Microsoft.UI.Xaml;
@@ -87,12 +88,11 @@ internal static class ItemCamera
 
     public static string? TextBeside(JsonObject? view, string? pickerLabel) => Text(view) is { } text && text != pickerLabel ? text : null;
 
-    public static IEnumerable<UIElement> Section(int index, Action<string?> wrote)
+    public static IEnumerable<UIElement> Section(int index, Action<Task<string?>> wrote)
     {
         var view = PlanCalls.Read(ViewPath(index));
         if (Choices(view) is not { } choices) return [];
-        string? Set(string member, JsonNode? value) => PlanCalls.Refusal(PlanCalls.Set(MemberPath(index, member), value));
-        void Write(string member, JsonNode? value) => wrote(Set(member, value));
+        void Write(string member, JsonNode? value) => wrote(PlanCalls.Refused(() => PlanCalls.Set(MemberPath(index, member), value)));
         var picked = choices.Chosen >= 0 && choices.Chosen < choices.Labels.Count ? choices.Labels[choices.Chosen] : null;
         var action = new ComboBox { MinWidth = 200, ItemsSource = choices.Labels.ToList(), SelectedIndex = choices.Chosen, PlaceholderText = "…" };
         AutomationProperties.SetName(action, "Camera action");

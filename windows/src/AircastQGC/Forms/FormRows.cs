@@ -37,6 +37,7 @@ internal sealed partial class FormRows(FormView host)
         { ReadOnly: true } => ValueRow(c, block, ""),
         { IsChoice: true } => ChoiceRow(c, block),
         { IsBitmask: true } => BitsRow(c, block),
+        { Name: AspectRatioText.Setting } => TextRow(c, block, AspectRatioText.Shown(c), AspectRatioText.Stored),
         { IsText: true } => TextRow(c, block),
         { Number: null, ValueString.Length: > 0 } => TextRow(c, block),
         _ => NumberRow(c, block),
@@ -141,13 +142,15 @@ internal sealed partial class FormRows(FormView host)
         return FormLook.Row(left, FormLook.Line(8, box, Units(c)));
     }
 
-    private FrameworkElement TextRow(FormControl c, FormBlock block)
+    private FrameworkElement TextRow(FormControl c, FormBlock block) => TextRow(c, block, c.ValueString, typed => typed);
+
+    private FrameworkElement TextRow(FormControl c, FormBlock block, string shown, Func<string, string> stored)
     {
         var (left, refusal, _) = Describe(c, block);
-        var held = new Held(c.ValueString);
+        var held = new Held(shown);
         Control input = c.Secret
-            ? new PasswordBox { Password = c.ValueString, PasswordRevealMode = PasswordRevealMode.Peek }
-            : FormLook.Field(c.ValueString);
+            ? new PasswordBox { Password = shown, PasswordRevealMode = PasswordRevealMode.Peek }
+            : FormLook.Field(shown);
         input.IsEnabled = c.AcceptsWrite;
         string Typed() => input is PasswordBox secret ? secret.Password : ((TextBox)input).Text.Replace("\n", "");
         void Save()
@@ -155,7 +158,7 @@ internal sealed partial class FormRows(FormView host)
             var typed = Typed();
             if (typed == held.Text) return;
             held.Text = typed;
-            Commit(c, refusal, () => FormWrites.Text(c, typed), () => held.Text = c.ValueString);
+            Commit(c, refusal, () => FormWrites.Text(c, stored(typed)), () => held.Text = shown);
         }
         input.LostFocus += (_, _) => Save();
         input.KeyDown += (_, e) =>
@@ -259,6 +262,24 @@ internal sealed partial class FormRows(FormView host)
     {
         public string Text { get; set; } = text;
     }
+}
+
+internal static class AspectRatioText
+{
+    public const string Setting = "aspectRatio";
+
+    private const double Tolerance = 0.005;
+    private static readonly (int Width, int Height)[] Common = [(16, 9), (4, 3), (21, 9), (16, 10), (3, 2), (5, 4), (1, 1)];
+
+    public static string Shown(FormControl c) =>
+        Common.Where(r => c.Number is double value && Math.Abs((double)r.Width / r.Height - value) < Tolerance)
+            .Select(r => $"{r.Width}:{r.Height}")
+            .FirstOrDefault() ?? c.ValueString;
+
+    public static string Stored(string typed) =>
+        typed.Split(':') is [var width, var height] && FormText.Parse(width) is double w and > 0 && FormText.Parse(height) is double h and > 0
+            ? (w / h).ToString("F6", CultureInfo.InvariantCulture)
+            : typed;
 }
 
 internal sealed class SliderCommit

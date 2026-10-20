@@ -54,6 +54,7 @@ public sealed partial class VideoPayloadLayer : UserControl
     private Gesture? _gesture;
     private bool _expanded;
     private int _fit = VideoSurface.FitHeight;
+    private double? _aspectSetting;
 
     public VideoPayloadLayer()
     {
@@ -112,9 +113,8 @@ public sealed partial class VideoPayloadLayer : UserControl
 
     private bool TakesInput => _expanded && Decoding && (_tracking?.CanAim == true || _gimbal is not null);
 
-    private Painted Picture => PayloadJson.Aspect(_video) is double aspect
-        ? PayloadJson.Centred(_root.ActualWidth, _root.ActualHeight, VideoSurface.ContentSize(_root.ActualWidth, _root.ActualHeight, aspect, _fit))
-        : new Painted(0, 0, _root.ActualWidth, _root.ActualHeight);
+    private Painted Picture => PayloadJson.Centred(_root.ActualWidth, _root.ActualHeight,
+        VideoSurface.ContentSize(_root.ActualWidth, _root.ActualHeight, VideoSurface.PictureAspect(_video, _aspectSetting), _fit));
 
     private void Start()
     {
@@ -123,6 +123,7 @@ public sealed partial class VideoPayloadLayer : UserControl
         Watch("gimbal", GimbalCalls.View, view => _gimbal = PayloadJson.Gimbal(view));
         Watch("radar", RadarView, view => _radar = PayloadJson.Radar(view));
         Watch("fit", FitView, view => _fit = VideoJson.Number(view["value"]) is double mode ? (int)mode : VideoSurface.FitHeight);
+        Watch("aspect", VideoSurface.AspectView, view => _aspectSetting = VideoJson.Number(view["value"]));
     }
 
     private void Watch(string name, string path, Action<JsonObject> take)
@@ -139,7 +140,7 @@ public sealed partial class VideoPayloadLayer : UserControl
     private void Halt()
     {
         if (IsLoaded) return;
-        new[] { "video", "camera", "gimbal", "radar", "fit" }.ToList().ForEach(name => BridgeWatch.Stop($"{_client}.{name}"));
+        new[] { "video", "camera", "gimbal", "radar", "fit", "aspect" }.ToList().ForEach(name => BridgeWatch.Stop($"{_client}.{name}"));
         EndGesture();
     }
 

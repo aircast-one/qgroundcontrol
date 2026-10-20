@@ -37,7 +37,6 @@ public sealed partial class PlanPage : UserControl
     private const double ClearInset = 64;
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(700);
     private static readonly TimeSpan NoticeTime = TimeSpan.FromMilliseconds(2500);
-    private static readonly TimeSpan DragWriteInterval = TimeSpan.FromMilliseconds(120);
 
     private readonly PlanCanvas _canvas;
     private readonly PlanDialogs _dialogs;
@@ -48,6 +47,7 @@ public sealed partial class PlanPage : UserControl
     private int _reads;
     private bool _polling;
     private Task _refresh = Task.CompletedTask;
+    private Task _edit = Task.CompletedTask;
     private bool _refreshAgain;
     private IReadOnlyList<PlanItem> _items = [];
     private IReadOnlyList<LandingPattern> _landings = [];
@@ -67,7 +67,9 @@ public sealed partial class PlanPage : UserControl
     private int? _newPattern;
     private int? _sentSequence;
     private EditableShape? _editable;
-    private DateTime _lastDragWrite = DateTime.MinValue;
+    private readonly Dictionary<Hit, Geo> _moves = [];
+    private readonly HashSet<Hit> _moving = [];
+    private bool _answering;
     private string _editorIdentity = string.Empty;
     private string _editorStamp = string.Empty;
     private bool _placeable;
@@ -98,7 +100,7 @@ public sealed partial class PlanPage : UserControl
 
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
-        PlanCalls.Set(UndoTracking, true);
+        PlanCalls.Queued(() => PlanCalls.Set(UndoTracking, true));
         Watch(PlanCalls.PlanView, view =>
         {
             _status = PlanStatus.From(view);
@@ -135,7 +137,7 @@ public sealed partial class PlanPage : UserControl
         _poll?.Stop();
         new[] { PlanCalls.PlanView, PlanCalls.KindsView, PlanCalls.SummaryView, PlanCalls.TerrainView }.ToList()
             .ForEach(path => BridgeWatch.Stop(Client + path));
-        PlanCalls.Set(UndoTracking, false);
+        PlanCalls.Queued(() => PlanCalls.Set(UndoTracking, false));
     }
 
     private DispatcherQueueTimer Timer(TimeSpan interval, Action tick)
@@ -186,7 +188,7 @@ public sealed partial class PlanPage : UserControl
         _polling = true;
         var reads = _reads;
         var (items, fences) = (_itemsRaw, _fencesRaw);
-        var data = await Task.Run(() => Fetch(items, fences));
+        var data = await PlanCalls.Queued(() => Fetch(items, fences));
         _polling = false;
         if (data != null && reads == _reads) Apply(data);
     }
@@ -221,14 +223,21 @@ public sealed partial class PlanPage : UserControl
     {
         _refreshAgain = false;
         var fences = _fencesRaw;
-        if (await Task.Run(() => Fetch(string.Empty, fences)) is { } data) Apply(data);
+        if (await PlanCalls.Queued(() => Fetch(string.Empty, fences)) is { } data) Apply(data);
         if (_refreshAgain) await Refreshed();
     }
 
     private async void Settled(Action act)
     {
+        if (PlanCalls.Pending.IsCompleted && _refresh.IsCompleted && _edit.IsCompleted)
+        {
+            act();
+            return;
+        }
+        await PlanCalls.Pending;
         await _refresh;
-        act();
+        await _edit;
+        Settled(act);
     }
 
     private bool Survives(Hit? hit) => hit switch
@@ -277,7 +286,7 @@ public sealed partial class PlanPage : UserControl
             : _selected == null ? PlanRules.AppendSequence(_items) : (int?)null;
         if (sequence is not int wanted || wanted == _sentSequence) return;
         _sentSequence = wanted;
-        PlanCalls.SelectSequence(wanted);
+        PlanCalls.Queued(() => PlanCalls.SelectSequence(wanted));
     }
 
     private void FocusItem(int index)
@@ -337,7 +346,10 @@ public sealed partial class PlanPage : UserControl
         }
     }
 
-    private async void AddMissionItem(string kind, string label, Geo? at, int index, bool openPanel)
+    private void AddMissionItem(string kind, string label, Geo? at, int index, bool openPanel) =>
+        _edit = Inserting(kind, label, at, index, openPanel);
+
+    private async Task Inserting(string kind, string label, Geo? at, int index, bool openPanel)
     {
         if (at is not { } where)
         {
@@ -345,7 +357,7 @@ public sealed partial class PlanPage : UserControl
             return;
         }
         Busy(label);
-        var outcome = PlanCalls.Insert(kind, where, index);
+        var outcome = await PlanCalls.Queued(() => PlanCalls.InsertPlaced(kind, where, index));
         if (!outcome.Ok)
         {
             Say(outcome.Reason);
@@ -354,8 +366,6 @@ public sealed partial class PlanPage : UserControl
         Busy(null);
         if (outcome.Index is int added)
         {
-            if (kind == "land") PlanCalls.PlaceLandingIfUnplaced(added, where);
-            else if (kind == "takeoff") PlanCalls.PlaceTakeoff(added, where);
             if (PlanRules.IsPattern(kind)) _newPattern = added;
             await Changed();
             Select(new WaypointHit(added), openPanel);
@@ -370,11 +380,13 @@ public sealed partial class PlanPage : UserControl
         Bridged("Adding rally", () => PlanCalls.AddRally(at), () => Select(new RallyHit(next), true));
     }
 
-    private async void RemoveItem(PlanItem item)
+    private void RemoveItem(PlanItem item) => _edit = Removing(item);
+
+    private async Task Removing(PlanItem item)
     {
         Busy($"Removing #{item.Sequence}");
         var count = _items.Count;
-        var outcome = PlanCalls.Remove(item.Index);
+        var outcome = await PlanCalls.Queued(() => PlanCalls.Remove(item.Index));
         if (!outcome.Ok)
         {
             Say(outcome.Reason);
@@ -395,8 +407,13 @@ public sealed partial class PlanPage : UserControl
             : _items.ElementAtOrDefault(wanted) is { Shape: not null } item ? item : null;
         var visible = Visible();
         if (target?.Shape is not { } shape || visible.Count != 4) return;
-        PlanShapes.Replace(PlanCalls.ShapePath(target), shape.Line ? PlanShapes.Line(visible) : PlanShapes.Rectangle(visible), shape.Line);
-        _itemsRaw = string.Empty;
+        Resize(PlanCalls.ShapePath(target), shape.Line ? PlanShapes.Line(visible) : PlanShapes.Rectangle(visible), shape.Line);
+    }
+
+    private async void Resize(string path, IReadOnlyList<Geo> vertices, bool line)
+    {
+        await PlanCalls.Queued(() => PlanShapes.Replace(path, vertices, line));
+        Changed();
     }
 
     private void FitOnEntry()
@@ -459,33 +476,41 @@ public sealed partial class PlanPage : UserControl
 
     private void OnDragged(Hit hit, Geo at)
     {
-        var now = DateTime.UtcNow;
-        if (now - _lastDragWrite < DragWriteInterval) return;
-        _lastDragWrite = now;
-        if (ApplyMove(hit, at)) Changed();
+        _moves[hit] = at;
+        if (_moving.Add(hit)) Moving(hit);
+    }
+
+    private async void Moving(Hit hit)
+    {
+        if (!_moves.Remove(hit, out var at))
+        {
+            _moving.Remove(hit);
+            return;
+        }
+        if (await PlanCalls.Queued(Mover(hit, at))) Changed();
+        Moving(hit);
     }
 
     private async void OnDropped(Hit hit, Geo at)
     {
-        _lastDragWrite = DateTime.MinValue;
-        if (ApplyMove(hit, at)) Say(MovedText(hit));
-        else Say("That did not work");
+        _moves.Remove(hit);
+        Say(await PlanCalls.Queued(Mover(hit, at)) ? MovedText(hit) : "That did not work");
         await Changed();
         RebuildEditor(true);
     }
 
-    private bool ApplyMove(Hit hit, Geo at) => hit switch
+    private Func<bool> Mover(Hit hit, Geo at) => hit switch
     {
-        WaypointHit w => PlanCalls.Move(w.Index, at),
-        FenceVertexHit f => PlanCalls.AdjustVertex(PlanCalls.FencePath(f.Polygon), f.Vertex, at),
-        SurveyVertexHit s => _items.ElementAtOrDefault(s.Item) is { Shape: not null } item && PlanCalls.AdjustVertex(PlanCalls.ShapePath(item), s.Vertex, at),
-        RallyHit r => PlanCalls.MoveRally(r.Index, at, _fences.Rally.FirstOrDefault(point => point.Index == r.Index)?.AltitudeMetres ?? 0),
-        CircleHit c => PlanCalls.MoveCircle(c.Index, at),
-        BreachHit => PlanCalls.SetBreach(at),
-        LandingHit l => PlanCalls.MoveLanding(l.Index, l.Place, at),
-        CircleRadiusHit r => _fences.Circles.FirstOrDefault(circle => circle.Index == r.Index) is { } circle && PlanCalls.SetCircleRadius(r.Index, PlanRules.DraggedRadius(circle, at)),
-        ShapeCentreHit s => CentreTarget(s) is { } target && PlanShapes.Replace(target.Path, PlanShapes.MovedTo(target.Vertices, at), false),
-        _ => false,
+        WaypointHit w => () => PlanCalls.Move(w.Index, at),
+        FenceVertexHit f => () => PlanCalls.AdjustVertex(PlanCalls.FencePath(f.Polygon), f.Vertex, at),
+        SurveyVertexHit s when _items.ElementAtOrDefault(s.Item) is { Shape: not null } item => () => PlanCalls.AdjustVertex(PlanCalls.ShapePath(item), s.Vertex, at),
+        RallyHit r when (_fences.Rally.FirstOrDefault(point => point.Index == r.Index)?.AltitudeMetres ?? 0) is var metres => () => PlanCalls.MoveRally(r.Index, at, metres),
+        CircleHit c => () => PlanCalls.MoveCircle(c.Index, at),
+        BreachHit => () => PlanCalls.SetBreach(at),
+        LandingHit l => () => PlanCalls.MoveLanding(l.Index, l.Place, at),
+        CircleRadiusHit r when _fences.Circles.FirstOrDefault(circle => circle.Index == r.Index) is { } circle && PlanRules.DraggedRadius(circle, at) is var radius => () => PlanCalls.SetCircleRadius(r.Index, radius),
+        ShapeCentreHit s when CentreTarget(s) is { } target && PlanShapes.MovedTo(target.Vertices, at) is var moved => () => PlanShapes.Replace(target.Path, moved, false),
+        _ => () => false,
     };
 
     private (string Path, IReadOnlyList<Geo> Vertices)? CentreTarget(ShapeCentreHit hit) => hit.Fence
@@ -525,10 +550,13 @@ public sealed partial class PlanPage : UserControl
             : null;
     }
 
-    private void Bridged(string? label, Func<bool> work, Action? then = null, string? done = null)
+    private void Bridged(string? label, Func<bool> work, Action? then = null, string? done = null) =>
+        _edit = Bridging(label, work, then, done);
+
+    private async Task Bridging(string? label, Func<bool> work, Action? then, string? done)
     {
         Busy(label);
-        if (!work())
+        if (!await PlanCalls.Queued(work))
         {
             Say($"{label ?? "That"} did not work");
             return;

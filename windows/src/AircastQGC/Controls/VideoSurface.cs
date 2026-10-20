@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices.WindowsRuntime;
+using System.Text.Json.Nodes;
 using AircastQGC.Core;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml.Controls;
@@ -15,6 +16,7 @@ public sealed partial class VideoSurface : UserControl
     public const int FitHeight = 1;
     public const int Fill = 2;
     public const int NoCrop = 3;
+    public const string AspectView = "view.control(settings.videoSettings.aspectRatio)";
 
     private static readonly TimeSpan Tick = TimeSpan.FromMilliseconds(33);
 
@@ -25,6 +27,7 @@ public sealed partial class VideoSurface : UserControl
     private byte[] _scratch = Array.Empty<byte>();
     private long _shown = -1;
     private int _fit = NoCrop;
+    private double? _aspect;
 
     public VideoSurface()
     {
@@ -46,6 +49,19 @@ public sealed partial class VideoSurface : UserControl
             Place();
         }
     }
+
+    public double? Aspect
+    {
+        get => _aspect;
+        set
+        {
+            _aspect = value;
+            Place();
+        }
+    }
+
+    internal static double PictureAspect(JsonObject video, double? setting) =>
+        PayloadJson.Aspect(video) ?? (setting is double chosen and > 0 ? chosen : 0);
 
     internal static (double Width, double Height) ContentSize(double width, double height, double aspect, int fit)
     {
@@ -76,7 +92,7 @@ public sealed partial class VideoSurface : UserControl
         var (width, height) = (ActualWidth, ActualHeight);
         _canvas.Clip = new RectangleGeometry { Rect = new Rect(0, 0, Math.Max(width, 0), Math.Max(height, 0)) };
         if (_bitmap is not { } bitmap || width <= 0 || height <= 0) return;
-        var (shownWidth, shownHeight) = ContentSize(width, height, (double)bitmap.PixelWidth / bitmap.PixelHeight, _fit);
+        var (shownWidth, shownHeight) = ContentSize(width, height, _aspect ?? (double)bitmap.PixelWidth / bitmap.PixelHeight, _fit);
         _image.Width = shownWidth;
         _image.Height = shownHeight;
         Canvas.SetLeft(_image, (width - shownWidth) / 2);

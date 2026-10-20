@@ -14,11 +14,16 @@ public sealed partial class MapControls : UserControl
     private const string CoordinatePath = "vehicle.coordinate";
     private const string MapTypesPath = "view.mapTypes";
     private const string ObstacleSetting = "settings.flyViewSettings.showObstacleDistanceOverlay";
+    private const string ThreeDGlyph = "\uF158";
+    private const string MapGlyph = "\uE800";
+    private const string ShowThreeD = "Show the 3D view";
+    private const string ShowMap = "Show the map";
 
     public event EventHandler? ZoomInRequested;
     public event EventHandler? ZoomOutRequested;
     public event EventHandler<MapPointEventArgs>? CenterOnVehicleRequested;
     public event EventHandler<string>? MapTypeChanged;
+    public event EventHandler? ThreeDRequested;
 
     public MapControls()
     {
@@ -46,6 +51,16 @@ public sealed partial class MapControls : UserControl
         if (MapUiJson.VehiclePosition() is not { } at) return;
         CenterOnVehicleRequested?.Invoke(this, new MapPointEventArgs(at.Latitude, at.Longitude));
     }
+
+    public void ThreeD(bool offered, bool shown)
+    {
+        ThreeDButton.Visibility = offered ? Visibility.Visible : Visibility.Collapsed;
+        ThreeDButton.Content = shown ? MapGlyph : ThreeDGlyph;
+        ToolTipService.SetToolTip(ThreeDButton, shown ? ShowMap : ShowThreeD);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(ThreeDButton, shown ? ShowMap : ShowThreeD);
+    }
+
+    private void OnThreeD(object sender, RoutedEventArgs e) => ThreeDRequested?.Invoke(this, EventArgs.Empty);
 
     private void OnLayersOpening(object sender, object e)
     {

@@ -30,6 +30,7 @@ public sealed partial class MainWindow : Window
     private string _page = NavPane.Fly;
     private ImmutableDictionary<string, UIElement> _pages = ImmutableDictionary<string, UIElement>.Empty;
     private bool _videoMain;
+    private bool _threeD;
     private bool _fullScreen;
     private AppWindowPresenter? _windowed;
 
@@ -71,9 +72,23 @@ public sealed partial class MainWindow : Window
         NoVehicle.VehiclePresenceChanged += (_, present) => ShowVehicleOverlays(present);
         NoVehicle.OpenConnectionsRequested += (_, _) => OpenLinks();
 
-        MapButtons.ZoomInRequested += (_, _) => Map.ZoomIn();
-        MapButtons.ZoomOutRequested += (_, _) => Map.ZoomOut();
-        MapButtons.CenterOnVehicleRequested += (_, _) => Map.CenterOnVehicle();
+        MapButtons.ZoomInRequested += (_, _) =>
+        {
+            if (_threeD) Viewer.ZoomIn();
+            else Map.ZoomIn();
+        };
+        MapButtons.ZoomOutRequested += (_, _) =>
+        {
+            if (_threeD) Viewer.ZoomOut();
+            else Map.ZoomOut();
+        };
+        MapButtons.CenterOnVehicleRequested += (_, _) =>
+        {
+            if (_threeD) Viewer.FollowVehicle();
+            else Map.CenterOnVehicle();
+        };
+        MapButtons.ThreeDRequested += (_, _) => ShowThreeD(!_threeD);
+        Viewer.EnabledChanged += (_, _) => ShowThreeD(_threeD && Viewer.Enabled);
         Map.MapRightTapped += (latitude, longitude, at) =>
         {
             if (MapMenu.Show(latitude, longitude, Map.TransformToVisual(MapMenu).TransformPoint(at)))
@@ -118,12 +133,13 @@ public sealed partial class MainWindow : Window
         MapPayload.Attach(Map);
         ObstacleOnMap.Attach(Map);
         Marks.ZoomFrom(FlyContent, VideoTile, VideoLayer);
-        Marks.DecodingChanged += (_, _) =>
+        VideoTile.PictureChanged += (_, _) =>
         {
-            if (!Marks.Decoding) FullScreen(false);
+            if (!VideoTile.Picture) FullScreen(false);
             PaintFullScreen();
         };
         Marks.ExitFullScreenRequested += (_, _) => FullScreen(false);
+        Marks.FullScreenToggled += (_, _) => FullScreen(!_fullScreen);
         FullScreenButton.Click += (_, _) => FullScreen(true);
         FlyContent.KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden;
         FlyContent.KeyboardAccelerators.Add(Accelerator(VirtualKey.F11, () => true, () => FullScreen(!_fullScreen)));
@@ -330,11 +346,19 @@ public sealed partial class MainWindow : Window
         VideoStats.Expanded = videoMain;
         Tape.OverVideo = videoMain;
         PaintFullScreen();
+        ShowThreeD(_threeD);
+    }
+
+    private void ShowThreeD(bool on)
+    {
+        _threeD = on;
+        Viewer.Visibility = Shown(on && !_videoMain);
+        MapButtons.ThreeD(Viewer.Enabled, on);
     }
 
     private void FullScreen(bool on)
     {
-        var shown = on && _videoMain && Marks.Decoding && _page == NavPane.Fly;
+        var shown = on && _videoMain && VideoTile.Picture && _page == NavPane.Fly;
         if (shown == _fullScreen) return;
         _fullScreen = shown;
         _windowed = shown ? AppWindow.Presenter : _windowed;
@@ -352,7 +376,7 @@ public sealed partial class MainWindow : Window
     }
 
     private void PaintFullScreen() =>
-        FullScreenButton.Visibility = Shown(_videoMain && Marks.Decoding && !_fullScreen);
+        FullScreenButton.Visibility = Shown(_videoMain && VideoTile.Picture && !_fullScreen);
 
     private static KeyboardAccelerator Accelerator(VirtualKey key, Func<bool> owns, Action act)
     {

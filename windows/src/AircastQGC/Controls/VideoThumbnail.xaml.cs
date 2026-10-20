@@ -14,6 +14,7 @@ public sealed partial class VideoThumbnail : UserControl
     private const string VideoView = "view.video";
     private const string FitClient = "video-thumbnail.fit";
     private const string FitView = "view.control(settings.videoSettings.videoFit)";
+    private const string AspectClient = "video-thumbnail.aspect";
     private const string MainName = "Video";
 
     private readonly CornerRadius _radius;
@@ -26,6 +27,8 @@ public sealed partial class VideoThumbnail : UserControl
     private string _headline = "No video";
     private string _detail = "";
     private NoVideoPill? _pill;
+    private JsonObject _video = new();
+    private double? _aspectSetting;
 
     public VideoThumbnail()
     {
@@ -34,14 +37,22 @@ public sealed partial class VideoThumbnail : UserControl
         _border = Tile.BorderThickness;
         _tip = ToolTipService.GetToolTip(Tile);
         _swapName = AutomationProperties.GetName(Tile);
-        Synthetic.Changed += (_, _) => PaintPlaceholder();
+        Synthetic.Changed += (_, _) =>
+        {
+            PaintPlaceholder();
+            PaintPicture();
+        };
         Loaded += (_, _) => Start();
         Unloaded += (_, _) => Stop();
     }
 
     public event EventHandler? SwapRequested;
 
+    public event EventHandler? PictureChanged;
+
     public bool IsLive { get; private set; }
+
+    public bool Picture { get; private set; }
 
     public FrameworkElement AimRail => Synthetic.AimRail;
 
@@ -81,8 +92,10 @@ public sealed partial class VideoThumbnail : UserControl
     {
         BridgeWatch.Watch(Client, new[] { VideoView }, Render);
         BridgeWatch.Watch(FitClient, new[] { FitView }, RenderFit);
+        BridgeWatch.Watch(AspectClient, new[] { VideoSurface.AspectView }, RenderAspect);
         Render(Bridge.Get(VideoView));
         RenderFit(Bridge.Get(FitView));
+        RenderAspect(Bridge.Get(VideoSurface.AspectView));
     }
 
     private void Stop()
@@ -90,10 +103,19 @@ public sealed partial class VideoThumbnail : UserControl
         if (IsLoaded) return;
         BridgeWatch.Stop(Client);
         BridgeWatch.Stop(FitClient);
+        BridgeWatch.Stop(AspectClient);
     }
 
     private void RenderFit(JsonObject fit) =>
         Surface.Fit = VideoJson.Number(fit["value"]) is double mode ? (int)mode : VideoSurface.FitHeight;
+
+    private void RenderAspect(JsonObject aspect)
+    {
+        _aspectSetting = VideoJson.Number(aspect["value"]);
+        PaintAspect();
+    }
+
+    private void PaintAspect() => Surface.Aspect = VideoSurface.PictureAspect(_video, _aspectSetting);
 
     private void Render(JsonObject video)
     {
@@ -107,6 +129,8 @@ public sealed partial class VideoThumbnail : UserControl
         var missing = VideoJson.Flag(video, "sourceChosen") ? VideoJson.Text(video, "noVideoText") : "";
 
         IsLive = live;
+        _video = video;
+        PaintAspect();
         _title = VideoJson.Or(camera is null ? "" : VideoJson.Text(camera, "title"), "Video");
         _standIn = VideoJson.Text(video, "standIn");
         Synthetic.Wanted = !live;
@@ -119,6 +143,15 @@ public sealed partial class VideoThumbnail : UserControl
             : "Video off";
         _detail = live ? "" : VideoJson.Or(VideoJson.Text(video, "noVideoReason"), missing);
         PaintPlaceholder();
+        PaintPicture();
+    }
+
+    private void PaintPicture()
+    {
+        var picture = IsLive || Synthetic.Showing;
+        if (picture == Picture) return;
+        Picture = picture;
+        PictureChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void PaintPlaceholder()

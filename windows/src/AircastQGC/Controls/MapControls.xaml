@@ -41,5 +41,13 @@
                             Opening="OnLayersOpening" />
             </Button.Flyout>
         </Button>
+        <Button x:Name="ThreeDButton"
+                Style="{StaticResource FlyRailButton}"
+                HorizontalAlignment="Center"
+                Content="&#xF158;"
+                Click="OnThreeD"
+                Visibility="Collapsed"
+                ToolTipService.ToolTip="Show the 3D view"
+                AutomationProperties.Name="Show the 3D view" />
     </StackPanel>
 </UserControl>

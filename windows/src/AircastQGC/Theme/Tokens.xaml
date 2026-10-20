@@ -45,6 +45,18 @@
             <SolidColorBrush x:Key="ObstacleMidBrush" Color="#FFA300" />
             <SolidColorBrush x:Key="ObstacleFarBrush" Color="#00FF00" />
             <SolidColorBrush x:Key="RecordBrush" Color="#E53935" />
+            <SolidColorBrush x:Key="Viewer3DSkyBrush" Color="#2A343C" />
+            <SolidColorBrush x:Key="Viewer3DGridBrush" Color="#6B7780" />
+            <SolidColorBrush x:Key="Viewer3DBuildingBrush" Color="#9AA7AE" />
+            <SolidColorBrush x:Key="Viewer3DPathBrush" Color="#FF9800" />
+            <SolidColorBrush x:Key="Viewer3DReturnBrush" Color="#E53935" />
+            <SolidColorBrush x:Key="Viewer3DTakeoffBrush" Color="#43A047" />
+            <SolidColorBrush x:Key="Viewer3DWaypointBrush" Color="#ECEFF1" />
+            <SolidColorBrush x:Key="Viewer3DSelectedBrush" Color="#FFFF00" />
+            <SolidColorBrush x:Key="Viewer3DFrontArmBrush" Color="#E53935" />
+            <SolidColorBrush x:Key="Viewer3DRearArmBrush" Color="#ECEFF1" />
+            <SolidColorBrush x:Key="Viewer3DRotorBrush" Color="#37474F" />
+            <SolidColorBrush x:Key="Viewer3DHubBrush" Color="#90A4AE" />
             <AcrylicBrush x:Key="ChipBrush" TintColor="#202020" TintOpacity="0.5" TintLuminosityOpacity="0.8" FallbackColor="#2C2C2C" />
             <SolidColorBrush x:Key="OsdTextBrush" Color="#FFFFFF" />
             <SolidColorBrush x:Key="OsdLabelBrush" Color="#BFFFFFFF" />
@@ -99,6 +111,18 @@
             <SolidColorBrush x:Key="ObstacleMidBrush" Color="#FFA300" />
             <SolidColorBrush x:Key="ObstacleFarBrush" Color="#00FF00" />
             <SolidColorBrush x:Key="RecordBrush" Color="#E53935" />
+            <SolidColorBrush x:Key="Viewer3DSkyBrush" Color="#D6E2EA" />
+            <SolidColorBrush x:Key="Viewer3DGridBrush" Color="#8E9AA1" />
+            <SolidColorBrush x:Key="Viewer3DBuildingBrush" Color="#B0BEC5" />
+            <SolidColorBrush x:Key="Viewer3DPathBrush" Color="#FF9800" />
+            <SolidColorBrush x:Key="Viewer3DReturnBrush" Color="#E53935" />
+            <SolidColorBrush x:Key="Viewer3DTakeoffBrush" Color="#43A047" />
+            <SolidColorBrush x:Key="Viewer3DWaypointBrush" Color="#212121" />
+            <SolidColorBrush x:Key="Viewer3DSelectedBrush" Color="#FFFF00" />
+            <SolidColorBrush x:Key="Viewer3DFrontArmBrush" Color="#E53935" />
+            <SolidColorBrush x:Key="Viewer3DRearArmBrush" Color="#ECEFF1" />
+            <SolidColorBrush x:Key="Viewer3DRotorBrush" Color="#37474F" />
+            <SolidColorBrush x:Key="Viewer3DHubBrush" Color="#90A4AE" />
             <AcrylicBrush x:Key="ChipBrush" TintColor="#FCFCFC" TintOpacity="0.5" TintLuminosityOpacity="0.85" FallbackColor="#F9F9F9" />
             <SolidColorBrush x:Key="OsdTextBrush" Color="#FFFFFF" />
             <SolidColorBrush x:Key="OsdLabelBrush" Color="#BFFFFFFF" />
