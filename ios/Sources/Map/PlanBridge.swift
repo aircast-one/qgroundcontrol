@@ -116,6 +116,7 @@ struct MissionItem: Equatable {
     var closesRoute: Bool = false
     var legBroken: Bool = false
     var abbreviation: String = ""
+    var dropsPayload: Bool = false
     var drops: Bool = false
 
     static func == (lhs: MissionItem, rhs: MissionItem) -> Bool {
@@ -132,7 +133,8 @@ struct MissionItem: Equatable {
             && lhs.altitudeFrameText == rhs.altitudeFrameText && lhs.altitudeMode == rhs.altitudeMode
             && lhs.altitudeEditUnits == rhs.altitudeEditUnits && lhs.complexPattern == rhs.complexPattern
             && lhs.terrainCollision == rhs.terrainCollision && lhs.closesRoute == rhs.closesRoute
-            && lhs.legBroken == rhs.legBroken && lhs.abbreviation == rhs.abbreviation && lhs.drops == rhs.drops
+            && lhs.legBroken == rhs.legBroken && lhs.abbreviation == rhs.abbreviation && lhs.dropsPayload == rhs.dropsPayload
+            && lhs.drops == rhs.drops
     }
 
     private var doubles: [Double] {
@@ -217,7 +219,8 @@ func allMissionItems(_ json: JSON?) -> [MissionItem] {
             gimbalYaw: element["gimbalYaw"].double(.nan),
             closesRoute: element["closesRoute"].bool,
             legBroken: broken.contains(index),
-            abbreviation: element["abbreviation"].string
+            abbreviation: element["abbreviation"].string,
+            dropsPayload: element["dropsPayload"].bool
         )
     })
 }

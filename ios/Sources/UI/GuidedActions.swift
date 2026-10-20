@@ -50,6 +50,33 @@ func payloadNextBay(_ view: JSON?) -> Int { view?["payload"]["next"].int(0) ?? 0
 
 func payloadDropLabel(_ view: JSON?) -> String { view?["payload"]["label"].string ?? "" }
 
+struct PayloadBays: Equatable {
+    var bays: Int
+    var empty: [Int]
+    var outputs: [Int]
+
+    var multiBay: Bool { bays > 1 || !outputs.isEmpty }
+
+    var numbers: [Int] { Array(1...max(bays, 1)) }
+
+    func output(of bay: Int) -> String {
+        outputs.indices.contains(bay - 1) ? "Bay \(bay) · output \(outputs[bay - 1])" : ""
+    }
+
+    func dropText(_ bay: Int) -> String {
+        empty.contains(bay) ? "Bay \(bay) empty, hold to drop" : "Drop bay \(bay)"
+    }
+}
+
+func payloadBays(_ view: JSON?) -> PayloadBays {
+    let payload = view?["payload"]
+    return PayloadBays(
+        bays: max(payload?["bays"].int(1) ?? 1, 1),
+        empty: (payload?["empty"].arrayOrNil ?? []).map { $0.int(0) },
+        outputs: (payload?["outputs"].arrayOrNil ?? []).map { $0.int(0) }
+    )
+}
+
 func payloadProblem(_ json: JSON) -> PayloadProblem {
     PayloadProblem(code: json["code"].string, text: json["text"].string, blocking: json["blocking"].bool, fix: json["fix"].string)
 }

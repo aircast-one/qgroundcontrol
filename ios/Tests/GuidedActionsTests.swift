@@ -55,4 +55,12 @@ final class GuidedActionsTests: XCTestCase {
         XCTAssertEqual(payloadDropLabel(JSON.parse(#"{"payload":{"bays":4,"next":1,"label":"Drop 1 · empty"}}"#)), "Drop 1 · empty")
         XCTAssertEqual(payloadDropLabel(nil), "")
     }
+
+    func testAServoPerBayNamesEachBayByItsOutputEvenASingleBay() {
+        let one = payloadBays(JSON.parse(#"{"payload":{"bays":1,"empty":[],"next":null,"outputs":[9]}}"#))
+        XCTAssertEqual([one.multiBay, payloadBays(nil).multiBay], [true, false])
+        let four = payloadBays(JSON.parse(#"{"payload":{"bays":4,"empty":[3],"next":1,"outputs":[9,10,11,12]}}"#))
+        XCTAssertEqual([four.output(of: 2), payloadBays(nil).output(of: 2)], ["Bay 2 · output 10", ""])
+        XCTAssertEqual([four.dropText(1), four.dropText(3)], ["Drop bay 1", "Bay 3 empty, hold to drop"])
+    }
 }

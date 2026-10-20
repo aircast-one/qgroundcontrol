@@ -180,12 +180,11 @@ private func landingMarkers(_ item: MissionItem, _ pattern: LandingPattern) -> [
 }
 
 let HOME_SEAL = "H"
-let DROP_COMMAND = 211
 let DROP_SIDE = "Drop"
 
 func dropsAt(_ items: [MissionItem], _ item: MissionItem) -> Bool {
     guard let start = items.firstIndex(where: { $0.index == item.index }) else { return false }
-    return items[(start + 1)...].prefix { !$0.specifiesCoordinate && !$0.complexPattern }.contains { $0.commandId == DROP_COMMAND }
+    return items[(start + 1)...].prefix { !$0.specifiesCoordinate && !$0.complexPattern }.contains { $0.dropsPayload }
 }
 
 func withDrops(_ items: [MissionItem]) -> [MissionItem] {

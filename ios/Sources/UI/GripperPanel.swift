@@ -77,9 +77,12 @@ struct PayloadFixButton: View {
 struct GripperPanel: View {
     let offers: [GuidedOffer]
     let problems: [PayloadProblem]
+    let bays: PayloadBays
     let onDismiss: () -> Void
     @State private var refusal: String?
     @Environment(\.theme) private var theme
+
+    private func ready(_ id: String) -> Bool { offers.contains { $0.id == id && $0.ready } }
 
     private func ask(_ call: @escaping @Sendable () -> String?, dismissing: Bool) {
         Task {
@@ -104,10 +107,28 @@ struct GripperPanel: View {
                 if let refusal {
                     Text(refusal).font(.bodyMedium).foregroundStyle(theme.colors.error).frame(maxWidth: .infinity, alignment: .leading)
                 }
-                ForEach(offers, id: \.id) { offer in
-                    HoldToConfirmButton(text: offer.title, enabled: offer.ready) {
-                        let action = GRIPPER_CODES[offer.id] ?? 0
-                        ask({ VehicleCommands.gripperRefusal(action) }, dismissing: true)
+                if bays.multiBay {
+                    ForEach(bays.numbers, id: \.self) { bay in
+                        VStack(alignment: .leading, spacing: Space.s1) {
+                            if !bays.output(of: bay).isEmpty {
+                                Text(bays.output(of: bay)).font(.labelMedium).foregroundStyle(theme.colors.onSurfaceVariant)
+                            }
+                            HStack(spacing: Space.s2) {
+                                HoldToConfirmButton(text: bays.dropText(bay), enabled: ready("release")) {
+                                    ask({ VehicleCommands.gripperRefusal(GRIPPER_CODES["release"] ?? 0, bay: bay) }, dismissing: false)
+                                }
+                                Button("Grab") { ask({ VehicleCommands.gripperRefusal(GRIPPER_CODES["grab"] ?? 1, bay: bay) }, dismissing: false) }
+                                    .buttonStyle(.bordered)
+                                    .disabled(!ready("grab"))
+                            }
+                        }
+                    }
+                } else {
+                    ForEach(offers, id: \.id) { offer in
+                        HoldToConfirmButton(text: offer.title, enabled: offer.ready) {
+                            let action = GRIPPER_CODES[offer.id] ?? 0
+                            ask({ VehicleCommands.gripperRefusal(action) }, dismissing: true)
+                        }
                     }
                 }
             }
