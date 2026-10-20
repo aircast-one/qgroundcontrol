@@ -15,7 +15,7 @@ use crate::mockfailsafe::{Alarm, Situation, Watch};
 use crate::mockfence::Zone;
 use crate::mockgimbal::Gimbal;
 use crate::mocklog::Logs;
-use crate::mockmission::{Act, Guidance, Photos, Runner, lands, loiters};
+use crate::mockmission::{Act, Guidance, Photos, Runner, lands, loiters, returns};
 use crate::mocktuning::{Failsafes, Fence, Reaction, Tuning};
 use crate::transport::{Owner, Registry};
 
@@ -1864,10 +1864,7 @@ impl Sim {
                 self.fly_to(Target::at(place.lat, place.lon, self.alt))
             }
             MavCmd::MAV_CMD_NAV_DELAY => self.fly_to(Target::at(self.lat, self.lon, self.alt)),
-            MavCmd::MAV_CMD_NAV_RETURN_TO_LAUNCH => {
-                self.phase = Phase::Returning;
-                self.mission.complete();
-            }
+            MavCmd::MAV_CMD_NAV_RETURN_TO_LAUNCH => self.phase = Phase::Returning,
             _ => self.fly_to(place),
         }
     }
@@ -1908,6 +1905,13 @@ impl Sim {
                 seq: self.mission.current,
             }),
         )
+    }
+
+    fn finish_item(&mut self, ends: impl Fn(MavCmd) -> bool) {
+        if self.mission.active() && self.current_item().is_some_and(|item| ends(item.command)) {
+            self.outbox.push(self.item_reached());
+            self.mission.complete();
+        }
     }
 
     fn progress(&mut self) {
@@ -2296,9 +2300,18 @@ impl Sim {
         let px4_takeoff = self.options.vehicle == Vehicle::Px4
             && self.custom_mode == px4_mode(PX4_AUTO, PX4_TAKEOFF);
         match self.phase {
+            Phase::Returning
+                if self.options.vehicle == Vehicle::Plane
+                    && self.metres_to(self.home) <= self.tuning.arrive =>
+            {
+                self.finish_item(returns)
+            }
             Phase::Returning if arrived && home_leg => match self.options.vehicle {
                 Vehicle::Plane => {}
-                Vehicle::Rover => self.phase = Phase::Holding,
+                Vehicle::Rover => {
+                    self.phase = Phase::Holding;
+                    self.finish_item(returns);
+                }
                 _ => self.phase = Phase::Landing,
             },
             Phase::Landing if !self.airborne() => {
@@ -2306,12 +2319,7 @@ impl Sim {
                 self.armed = false;
                 self.target = None;
                 self.phase = Phase::Holding;
-                if self.mission.active()
-                    && self.current_item().is_some_and(|item| lands(item.command))
-                {
-                    self.outbox.push(self.item_reached());
-                    self.mission.complete();
-                }
+                self.finish_item(|command| lands(command) || returns(command));
             }
             Phase::Holding if arrived && px4_takeoff => {
                 self.custom_mode = px4_mode(PX4_AUTO, PX4_LOITER)
@@ -4189,23 +4197,25 @@ mod tests {
         );
     }
 
-    #[test]
-    fn a_mission_that_lands_completes_at_touchdown_not_when_the_descent_starts() {
-        let mut sim = Sim::new(options(Vehicle::Copter), 128, None);
+    fn fly_a_mission_ending_in(
+        sim: &mut Sim,
+        last: MavCmd,
+        seconds: u64,
+    ) -> Vec<(f64, bool, MissionState, Vec<u16>)> {
         let (lat, lon) = (sim.home.0 + 0.0003, sim.home.1);
         upload(
-            &mut sim,
+            sim,
             &[
                 item(0, MavCmd::MAV_CMD_NAV_WAYPOINT, None, 0.0),
                 item(1, MavCmd::MAV_CMD_NAV_TAKEOFF, None, 10.0),
                 item(2, MavCmd::MAV_CMD_NAV_WAYPOINT, Some((lat, lon)), 10.0),
-                item(3, MavCmd::MAV_CMD_NAV_LAND, None, 0.0),
+                item(3, last, None, 0.0),
             ],
         );
-        mode(&mut sim, 4);
-        arm(&mut sim);
-        command(&mut sim, MavCmd::MAV_CMD_MISSION_START, [0.0; 7]);
-        let log: Vec<(f64, bool, MissionState, Vec<u16>)> = (0..60 * TICKS_PER_SECOND)
+        mode(sim, 4);
+        arm(sim);
+        command(sim, MavCmd::MAV_CMD_MISSION_START, [0.0; 7]);
+        (0..seconds * TICKS_PER_SECOND)
             .map(|_| {
                 let at = sim.ticks * 100;
                 let sent: Vec<MavMessage> = sim
@@ -4216,7 +4226,13 @@ mod tests {
                     .collect();
                 (sim.alt, sim.armed, sim.mission.state, reached(&sent))
             })
-            .collect();
+            .collect()
+    }
+
+    #[test]
+    fn a_mission_that_lands_completes_at_touchdown_not_when_the_descent_starts() {
+        let mut sim = Sim::new(options(Vehicle::Copter), 128, None);
+        let log = fly_a_mission_ending_in(&mut sim, MavCmd::MAV_CMD_NAV_LAND, 60);
         let over_land = log
             .iter()
             .position(|(.., seqs)| seqs.contains(&2))
@@ -4241,6 +4257,41 @@ mod tests {
             (log[touchdown].0, log[touchdown].1, log[touchdown].2),
             (0.0, false, MissionState::MISSION_STATE_COMPLETE),
             "ArduPilot reaches the landing item and completes the mission once it has landed and disarmed"
+        );
+    }
+
+    #[test]
+    fn a_mission_that_returns_home_completes_once_it_has_landed_there() {
+        let mut sim = Sim::new(options(Vehicle::Copter), 128, None);
+        let log = fly_a_mission_ending_in(&mut sim, MavCmd::MAV_CMD_NAV_RETURN_TO_LAUNCH, 120);
+        let turned_back = log
+            .iter()
+            .position(|(.., seqs)| seqs.contains(&2))
+            .expect("it reaches the waypoint before turning for home");
+        let touchdown = log
+            .iter()
+            .position(|(.., seqs)| seqs.contains(&3))
+            .expect("the return item is reached");
+        assert!(
+            log[turned_back..touchdown]
+                .iter()
+                .any(|(alt, armed, ..)| *armed && *alt > 1.0),
+            "it flies home before touching down"
+        );
+        assert!(
+            log[..touchdown]
+                .iter()
+                .all(|(_, _, state, _)| *state == MissionState::MISSION_STATE_ACTIVE),
+            "the mission stays active through the whole return"
+        );
+        assert_eq!(
+            (log[touchdown].0, log[touchdown].1, log[touchdown].2),
+            (0.0, false, MissionState::MISSION_STATE_COMPLETE),
+            "ArduCopter verifies RTL only once it has landed, then completes the mission and disarms"
+        );
+        assert!(
+            sim.metres_to(sim.home) < sim.tuning.arrive,
+            "it landed at home"
         );
     }
 

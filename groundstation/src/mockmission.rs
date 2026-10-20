@@ -222,6 +222,10 @@ pub fn lands(command: MavCmd) -> bool {
     )
 }
 
+pub fn returns(command: MavCmd) -> bool {
+    command == MavCmd::MAV_CMD_NAV_RETURN_TO_LAUNCH
+}
+
 pub fn flies(command: MavCmd) -> bool {
     matches!(
         command,
