@@ -1,6 +1,7 @@
 # Aircast QGC — Windows head
 
-WinUI 3 (C#, .NET 9) UI over the Rust `groundstation` core, ARM-native (`win-arm64` + `aarch64-pc-windows-msvc`).
+WinUI 3 (C#, .NET 9) UI over the Rust `groundstation` core, built for `win-arm64` (`aarch64-pc-windows-msvc`) and
+`win-x64` (`x86_64-pc-windows-msvc`).
 Feature parity target: the Android head. See `NATIVE_WINDOWS_REWRITE.md`.
 
 ## Build (on the Windows ARM64 box)
@@ -12,28 +13,27 @@ Feature parity target: the Android head. See `NATIVE_WINDOWS_REWRITE.md`.
 # video DLL + bundled GStreamer runtime only
 .\build-video.ps1 -OutDir C:\aircast-head\AircastQGC\runtime
 
-# core + video + head (stages to a local dir, dodging the VirtioFS share)
-.\build-app.ps1
+# core + video + head (stages to a local dir, dodging the VirtioFS share); -Arch x64 on an x64 box
+.\build-app.ps1 -Arch arm64
 ```
 
 Requirements (all present on the `winvm` build box): Rust `1.95.0-aarch64-pc-windows-msvc`,
-VS 2022 with the VC ARM64 toolset, LLVM/clang (a core C dep needs it), .NET SDK 9,
-GStreamer MSVC arm64 at the version `.github/build-config.json` pins (`gstreamer.version.windows`).
+VS 2022 with the VC ARM64 (or x64) toolset, LLVM/clang (a core C dep needs it), the .NET SDK `global.json` pins,
+GStreamer MSVC arm64 (or x86_64) at the version `.github/build-config.json` pins (`gstreamer.version.windows`).
 The Windows App SDK is pulled from NuGet on first restore.
 
-GStreamer install (elevated, silent; `C:\gstreamer` keeps `GSTREAMER_1_0_ROOT_MSVC_ARM64` valid):
+GStreamer install (elevated, silent): `install-gstreamer.ps1` downloads the pinned installer (S3 mirror as fallback),
+checks it against the build-config checksum, installs it and prints the SDK root:
 
 ```powershell
-$v = '1.28.4'
-Invoke-WebRequest "https://gstreamer.freedesktop.org/data/pkg/windows/$v/msvc/gstreamer-1.0-msvc-arm64-$v.exe" -OutFile gst.exe
-(Get-FileHash gst.exe).Hash   # must equal checksums."1.28.4".windows_msvc_arm64 in build-config.json
-.\gst.exe /VERYSILENT /SUPPRESSMSGBOXES /SP- /NORESTART /ALLUSERS /TYPE=devel /DIR=C:\gstreamer
+.\install-gstreamer.ps1 -Arch arm64 -Dir C:\gstreamer   # C:\gstreamer keeps GSTREAMER_1_0_ROOT_MSVC_ARM64 valid
 ```
 
 Every 1.28.x arm64 installer shares one AppId: uninstall a different version (`C:\gstreamer\unins000.exe /VERYSILENT`)
 first. `build-video.ps1` refuses to build against any version other than the pin.
 
-The arm64 SDK ships no gst-plugins-rs, so `whepsrc` (WHEP video) is built from source once per box, elevated:
+The arm64 SDK ships no gst-plugins-rs (the x64 SDK does), so on arm64 `whepsrc` (WHEP video) is built from source once
+per box, elevated:
 
 ```powershell
 .\build-whep.ps1        # add -Jobs 2 on a shared box
@@ -49,10 +49,12 @@ build-config plugin list, so `build-video.ps1` bundles it with its `webrtc`/`nic
 
 ```text
 windows/
-  build-core.ps1          groundstation -> groundstation.dll (aarch64)
-  build-video.ps1         ../src/Bridge/QGCVideoC.cc -> qgc_video.dll (arm64) + the GStreamer runtime it needs
+  global.json             .NET SDK pin
+  install-gstreamer.ps1   pinned, checksum-verified GStreamer MSVC SDK install
+  build-core.ps1          groundstation -> groundstation.dll (-Target)
+  build-video.ps1         ../src/Bridge/QGCVideoC.cc -> qgc_video.dll (-Arch) + the GStreamer runtime it needs
   build-whep.ps1          gst-plugins-rs webrtchttp -> gstwebrtchttp.dll (whepsrc) in the GStreamer root
-  build-app.ps1           core + video + dotnet build, staged locally
+  build-app.ps1           core + video + dotnet build for -Arch arm64|x64, staged locally
   src/AircastQGC/
     Core/                 NativeMethods, CoreHost, Bridge, BridgeWatch  (the core binding)
                           VideoNative, VideoDriver                      (the video binding)
@@ -60,6 +62,12 @@ windows/
     MainWindow.xaml(.cs)  shell: title bar, nav pane, Fly view composed from Controls/
     Controls/             one UserControl per Fly surface, each watching its own view.* paths
 ```
+
+## Release builds
+
+`.github/workflows/windows-native.yml` builds both architectures (`windows-11-arm`, `windows-2022`), boots each app to
+an idle window and uploads `AircastQGCNative-<version>-windows-<arch>.zip`. `aircast-release.yml` calls it for every
+release tag; it can also be run by hand (`gh workflow run windows-native.yml -f ref=main`).
 
 ## Notes
 

@@ -1,0 +1,119 @@
+name: Windows Native
+
+permissions:
+  contents: read
+
+on:
+  workflow_call:
+    inputs:
+      ref:
+        description: "Git ref to build"
+        required: true
+        type: string
+      short_version:
+        description: "Version string used in the artifact names"
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "Git ref to build"
+        required: false
+        default: main
+        type: string
+      short_version:
+        description: "Version string used in the artifact names"
+        required: false
+        default: dev
+        type: string
+
+jobs:
+  build:
+    name: Windows native (${{ matrix.arch }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: windows-11-arm
+            target: aarch64-pc-windows-msvc
+          - arch: x64
+            runner: windows-2022
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      ARCH: ${{ matrix.arch }}
+      SHORT: ${{ inputs.short_version }}
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.ref }}
+          persist-credentials: false
+
+      - name: Rust toolchain
+        uses: ./.github/actions/rust-toolchain  # zizmor: ignore[self-repository]
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: .NET SDK
+        uses: actions/setup-dotnet@v6
+        with:
+          global-json-file: windows/global.json
+
+      - name: ArduPilot parameter metadata
+        run: git clone --depth 1 https://github.com/ArduPilot/ParameterRepository .cache/CPM/ardupilotparams/main
+
+      - name: GStreamer SDK
+        id: gst
+        run: |
+          $root = & ./windows/install-gstreamer.ps1 -Arch $env:ARCH -Dir (Join-Path $env:RUNNER_TEMP "gstreamer")
+          "root=$root" >> $env:GITHUB_OUTPUT
+
+      - name: WHEP plugin
+        if: matrix.arch == 'arm64'
+        env:
+          GST_ROOT: ${{ steps.gst.outputs.root }}
+        run: ./windows/build-whep.ps1 -GstRoot $env:GST_ROOT -Work (Join-Path $env:RUNNER_TEMP "whep")
+
+      - name: Build
+        id: build
+        env:
+          GST_ROOT: ${{ steps.gst.outputs.root }}
+        run: |
+          $stage = Join-Path $env:RUNNER_TEMP "aircast-head\AircastQGC"
+          ./windows/build-app.ps1 -Arch $env:ARCH -Stage $stage -GstRoot $env:GST_ROOT
+          "dir=$(Join-Path $stage "bin\Release\net9.0-windows10.0.22621.0\win-$env:ARCH")" >> $env:GITHUB_OUTPUT
+
+      - name: Boot test
+        env:
+          APP_DIR: ${{ steps.build.outputs.dir }}
+        run: |
+          $crash = Join-Path $env:TEMP "aircast-crash.log"
+          Remove-Item $crash -ErrorAction SilentlyContinue
+          $app = Start-Process (Join-Path $env:APP_DIR "AircastQGC.exe") -PassThru
+          $idle = try { $app.WaitForInputIdle(120000) } catch { $false }
+          $alive = -not $app.HasExited
+          if ($alive) { Stop-Process -Id $app.Id -Force }
+          if (Test-Path $crash) { Get-Content $crash }
+          if (-not ($idle -and $alive) -or (Test-Path $crash)) { throw "AircastQGC did not reach an idle window (idle=$idle alive=$alive)" }
+          "AircastQGC $env:ARCH booted to an idle window"
+
+      - name: Package
+        env:
+          APP_DIR: ${{ steps.build.outputs.dir }}
+        run: |
+          Get-ChildItem $env:APP_DIR -Recurse -Filter *.pdb | Remove-Item
+          New-Item -ItemType Directory -Force -Path out | Out-Null
+          Compress-Archive -Path (Join-Path $env:APP_DIR "*") -DestinationPath "out/AircastQGCNative-$env:SHORT-windows-$env:ARCH.zip"
+          Get-ChildItem out
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: qgc-windows-native-${{ matrix.arch }}
+          path: out/*.zip
+          if-no-files-found: error

@@ -727,6 +727,13 @@ jobs:
           path: out/*.exe
           if-no-files-found: error
 
+  build-windows-native:
+    needs: setup
+    uses: ./.github/workflows/windows-native.yml  # zizmor: ignore[self-repository]
+    with:
+      ref: ${{ needs.setup.outputs.version }}
+      short_version: ${{ needs.setup.outputs.short_version }}
+
   build-linux:
     needs: setup
     runs-on: ubuntu-24.04
@@ -876,7 +883,7 @@ jobs:
                 -d @-
 
   publish:
-    needs: [setup, build-android, build-macos, build-windows, build-linux, build-web]
+    needs: [setup, build-android, build-macos, build-windows, build-windows-native, build-linux, build-web]
     if: always() && needs.setup.result == 'success'
     runs-on: ubuntu-latest
     steps:
@@ -895,6 +902,7 @@ jobs:
             Android ${{ needs.build-android.result }}
             macOS ${{ needs.build-macos.result }}
             Windows ${{ needs.build-windows.result }}
+            Windows-native ${{ needs.build-windows-native.result }}
             Linux ${{ needs.build-linux.result }}
         run: |
           MISSING=$(echo "$RESULTS" | awk 'NF && $2 != "success" { printf "%s%s", sep, $1; sep=", " }')
@@ -919,7 +927,7 @@ jobs:
       - name: Checksums
         run: |
           cd assets
-          for f in *.apk *.dmg *.exe *.AppImage *.tar.gz; do
+          for f in *.apk *.dmg *.exe *.zip *.AppImage *.tar.gz; do
             [ -f "$f" ] && sha256sum "$f" > "$f.sha256"
           done || true
           ls -la
@@ -1028,7 +1036,7 @@ jobs:
           fi
 
   notify:
-    needs: [setup, build-android, build-ios, build-macos, build-windows, build-windows-arm64, build-linux, build-web, publish, cleanup-old-releases]
+    needs: [setup, build-android, build-ios, build-macos, build-windows, build-windows-arm64, build-windows-native, build-linux, build-web, publish, cleanup-old-releases]
     if: always()
     runs-on: ubuntu-latest
     steps:
@@ -1040,6 +1048,7 @@ jobs:
           MACOS: ${{ needs.build-macos.result }}
           WINDOWS: ${{ needs.build-windows.result }}
           WINDOWS_ARM64: ${{ needs.build-windows-arm64.result }}
+          WINDOWS_NATIVE: ${{ needs.build-windows-native.result }}
           LINUX: ${{ needs.build-linux.result }}
           WEB: ${{ needs.build-web.result }}
           REPO: ${{ github.repository }}
@@ -1052,6 +1061,7 @@ jobs:
             echo "- **macOS:** $MACOS"
             echo "- **Windows:** $WINDOWS"
             echo "- **Windows ARM64:** $WINDOWS_ARM64 (non-blocking)"
+            echo "- **Windows native (WinUI, arm64 + x64):** $WINDOWS_NATIVE"
             echo "- **Linux:** $LINUX"
             echo "- **Web:** $WEB"
             echo "- **Release:** https://github.com/$REPO/releases/tag/$VERSION"

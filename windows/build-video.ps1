@@ -1,11 +1,17 @@
 #Requires -Version 5
 param(
-  [string]$GstRoot = [Environment]::GetEnvironmentVariable("GSTREAMER_1_0_ROOT_MSVC_ARM64", "Machine"),
+  [ValidateSet("arm64", "x64")] [string]$Arch = "arm64",
+  [string]$GstRoot = [Environment]::GetEnvironmentVariable(@{ arm64 = "GSTREAMER_1_0_ROOT_MSVC_ARM64"; x64 = "GSTREAMER_1_0_ROOT_MSVC_X86_64" }[$Arch], "Machine"),
   [string]$OutDir = (Join-Path $PSScriptRoot "src\AircastQGC\runtime"),
   [string]$Source = (Join-Path $PSScriptRoot "..\src\Bridge"),
   [string]$Config = (Join-Path $PSScriptRoot "..\.github\build-config.json")
 )
 $ErrorActionPreference = "Stop"
+
+$tools = @{
+  arm64 = @{ Component = "Microsoft.VisualStudio.Component.VC.Tools.ARM64"; VcVars = "vcvarsarm64.bat"; Machine = 'AA64 machine \(ARM64\)' }
+  x64   = @{ Component = "Microsoft.VisualStudio.Component.VC.Tools.x86.x64"; VcVars = "vcvars64.bat"; Machine = '8664 machine \(x64\)' }
+}[$Arch]
 
 $pins = Get-Content $Config -Raw | ConvertFrom-Json
 $pin = $pins.gstreamer.version.windows
@@ -13,8 +19,8 @@ $found = (Select-String -Path (Join-Path $GstRoot "lib\pkgconfig\gstreamer-1.0.p
 if ($found -ne $pin) { throw "GStreamer at $GstRoot is $found, the repo pins $pin (.github/build-config.json)" }
 
 $vs = & "${env:ProgramFiles(x86)}\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * `
-  -requires Microsoft.VisualStudio.Component.VC.Tools.ARM64 -property installationPath
-if (-not $vs) { throw "no Visual Studio with the ARM64 C++ tools" }
+  -requires $tools.Component -property installationPath
+if (-not $vs) { throw "no Visual Studio with the $Arch C++ tools" }
 
 $tmp = Join-Path $env:TEMP "qgc-video-build"
 New-Item -ItemType Directory -Force -Path $tmp, $OutDir | Out-Null
@@ -27,10 +33,10 @@ $includes = "include\gstreamer-1.0", "include\glib-2.0", "lib\glib-2.0\include" 
 $libs = "gstreamer-1.0.lib gstapp-1.0.lib gstvideo-1.0.lib gobject-2.0.lib glib-2.0.lib"
 $cl = "cl /nologo /LD /O2 /MD /EHsc /std:c++20 /utf-8 /W3 /DQGC_GST_STREAMING /I`"$tmp`" $($includes -join ' ') " +
   "`"$tmp\QGCVideoC.cc`" /Fo`"$tmp\\`" /Fe`"$dll`" /link /IMPLIB:`"$tmp\qgc_video.lib`" /LIBPATH:`"$GstRoot\lib`" $libs $($exports -join ' ')"
-$vcvars = Join-Path $vs "VC\Auxiliary\Build\vcvarsarm64.bat"
+$vcvars = Join-Path $vs "VC\Auxiliary\Build\$($tools.VcVars)"
 cmd /c "call `"$vcvars`" >nul && $cl && dumpbin /nologo /headers `"$dll`" | findstr /c:`"machine`"" | Tee-Object -Variable built
 if ($LASTEXITCODE -ne 0) { throw "qgc_video.dll build failed ($LASTEXITCODE)" }
-if (-not ($built -match 'AA64 machine \(ARM64\)')) { throw "qgc_video.dll is not ARM64" }
+if (-not ($built -match $tools.Machine)) { throw "qgc_video.dll is not $Arch" }
 
 $gst = Join-Path $OutDir "gstreamer"
 robocopy (Join-Path $GstRoot "bin") (Join-Path $gst "bin") *.dll /R:2 /W:1 /NFL /NDL /NP /NJH /NJS | Out-Null
