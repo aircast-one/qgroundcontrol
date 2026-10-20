@@ -149,7 +149,7 @@
         },
         {
             "name": "payloadRelease",
-            "shortDesc": "How the bays release",
+            "shortDesc": "One gripper opens and closes for every bay, or each bay has its own servo",
             "longDesc": "One gripper sends the gripper command, and ArduPilot has a single gripper. A servo per bay moves each bay's own servo output with DO_SET_SERVO, so several grippers drop one at a time. ArduPilot only: PX4 does not take DO_SET_SERVO.",
             "type": "uint32",
             "enumStrings": "One gripper,A servo per bay",
@@ -160,7 +160,7 @@
         },
         {
             "name": "payloadBay1Output",
-            "shortDesc": "Bay 1 servo output",
+            "shortDesc": "The flight controller output bay 1's servo is on (SERVO9 = 9)",
             "longDesc": "The servo output (SERVOn) that bay 1's own servo is wired to. 0 leaves the bay without an output.",
             "type": "uint32",
             "min": 0,
@@ -195,7 +195,7 @@
         },
         {
             "name": "payloadBay2Output",
-            "shortDesc": "Bay 2 servo output",
+            "shortDesc": "The flight controller output bay 2's servo is on (SERVO9 = 9)",
             "longDesc": "The servo output (SERVOn) that bay 2's own servo is wired to. 0 leaves the bay without an output.",
             "type": "uint32",
             "min": 0,
@@ -230,7 +230,7 @@
         },
         {
             "name": "payloadBay3Output",
-            "shortDesc": "Bay 3 servo output",
+            "shortDesc": "The flight controller output bay 3's servo is on (SERVO9 = 9)",
             "longDesc": "The servo output (SERVOn) that bay 3's own servo is wired to. 0 leaves the bay without an output.",
             "type": "uint32",
             "min": 0,
@@ -265,7 +265,7 @@
         },
         {
             "name": "payloadBay4Output",
-            "shortDesc": "Bay 4 servo output",
+            "shortDesc": "The flight controller output bay 4's servo is on (SERVO9 = 9)",
             "longDesc": "The servo output (SERVOn) that bay 4's own servo is wired to. 0 leaves the bay without an output.",
             "type": "uint32",
             "min": 0,
@@ -300,7 +300,7 @@
         },
         {
             "name": "payloadBay5Output",
-            "shortDesc": "Bay 5 servo output",
+            "shortDesc": "The flight controller output bay 5's servo is on (SERVO9 = 9)",
             "longDesc": "The servo output (SERVOn) that bay 5's own servo is wired to. 0 leaves the bay without an output.",
             "type": "uint32",
             "min": 0,
@@ -335,7 +335,7 @@
         },
         {
             "name": "payloadBay6Output",
-            "shortDesc": "Bay 6 servo output",
+            "shortDesc": "The flight controller output bay 6's servo is on (SERVO9 = 9)",
             "longDesc": "The servo output (SERVOn) that bay 6's own servo is wired to. 0 leaves the bay without an output.",
             "type": "uint32",
             "min": 0,
