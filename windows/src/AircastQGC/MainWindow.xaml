@@ -15,12 +15,16 @@
         <controls:ShellTitleBar x:Name="Shell" />
 
         <Grid Grid.Row="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
 
-            <controls:NavPane x:Name="Nav" />
+            <controls:NavPane x:Name="Nav" Grid.RowSpan="2" />
 
             <Grid x:Name="FlyContent" Grid.Column="1">
                 <controls:MapView x:Name="Map" />
@@ -80,6 +84,8 @@
                                Foreground="{ThemeResource TextSecondaryBrush}" />
                 </StackPanel>
             </Grid>
+
+            <controls:LogReplayBar Grid.Row="1" Grid.Column="1" />
         </Grid>
     </Grid>
 </Window>

@@ -69,7 +69,9 @@ windows/
 - `deploy-vm.sh` never rebuilds the native DLLs: it keeps the stage's `runtime\`. Run `build-video.ps1` (or `build-app.ps1`)
   after changing `QGCVideoC.cc` or the GStreamer pin.
 - The app passes `--save-path Documents\Aircast QGC` (as iOS does); without it the core finds no save folder on Windows
-  (it looks for `HOME`) and refuses to record.
+  (it looks for `HOME`) and refuses to record. It also passes `--settings %LOCALAPPDATA%\Aircast\Aircast QGC.ini` and
+  `--map-cache %LOCALAPPDATA%\Aircast\QGCMapCache\qgcMapCache.db`: without them the settings land under the launch folder and there is
+  no tile cache, so offline maps are unavailable.
 - WHEP (cloud/SFU video) cannot play on Windows ARM64 yet: the official SDK ships no gst-plugins-rs (`whepsrc`), an
   upstream known issue. RTP/UDP H.264 is verified on the VM; RTSP, H.265 and MPEG-TS plugins are bundled but
   untested. The VM has no DXVA, so it decodes with `avdec_*`.

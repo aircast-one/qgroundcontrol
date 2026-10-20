@@ -64,7 +64,6 @@ public sealed partial class NavPane : UserControl
     private void OnNavigate(object sender, RoutedEventArgs e)
     {
         if (sender is not Button { Tag: string page }) return;
-        SelectedPage = page;
         NavigationRequested?.Invoke(this, page);
     }
 

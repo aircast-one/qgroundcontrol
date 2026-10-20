@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="utf-8"?>
+<UserControl
+    x:Class="AircastQGC.Pages.Analyze.AnalyzePage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <Grid Background="{ThemeResource BgBaseBrush}">
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition x:Name="ListColumn" Width="360" />
+            <ColumnDefinition x:Name="DetailColumn" Width="*" />
+        </Grid.ColumnDefinitions>
+
+        <Border x:Name="ListPane"
+                Background="{ThemeResource BgSecondaryBrush}"
+                BorderBrush="{ThemeResource DividerBrush}"
+                BorderThickness="0,0,1,0">
+            <ScrollViewer HorizontalScrollBarVisibility="Disabled">
+                <StackPanel Padding="0,0,0,16">
+                    <StackPanel Padding="16,20,16,8" Spacing="{StaticResource SpaceXs}">
+                        <TextBlock Text="Analyze"
+                                   FontFamily="{ThemeResource AppFontFamily}"
+                                   FontSize="{ThemeResource FontSizeTitle}"
+                                   FontWeight="SemiBold"
+                                   Foreground="{ThemeResource TextPrimaryBrush}" />
+                        <TextBlock Text="Logs and tools for the connected vehicle"
+                                   TextWrapping="Wrap"
+                                   FontFamily="{ThemeResource AppFontFamily}"
+                                   FontSize="{ThemeResource FontSizeBody}"
+                                   Foreground="{ThemeResource TextSecondaryBrush}" />
+                    </StackPanel>
+                    <ItemsControl x:Name="ToolList" IsTabStop="False" />
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+
+        <Grid x:Name="DetailPane" Grid.Column="1">
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+            </Grid.RowDefinitions>
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" MaxWidth="720" />
+            </Grid.ColumnDefinitions>
+
+            <Border x:Name="TitleBar" MinHeight="64" Padding="24,0" Visibility="Collapsed">
+                <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceXs}">
+                    <Button x:Name="BackButton"
+                            Width="36" Height="36" Padding="0"
+                            VerticalAlignment="Center"
+                            FontFamily="Segoe Fluent Icons" FontSize="16"
+                            Content="&#xE72B;"
+                            Visibility="Collapsed"
+                            AutomationProperties.Name="Back to Analyze"
+                            ToolTipService.ToolTip="Back to Analyze" />
+                    <TextBlock x:Name="ToolTitle"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"
+                               FontFamily="{ThemeResource AppFontFamily}"
+                               FontSize="{ThemeResource FontSizeSubtitle}"
+                               FontWeight="SemiBold"
+                               Foreground="{ThemeResource TextPrimaryBrush}" />
+                </StackPanel>
+            </Border>
+
+            <ContentControl x:Name="ToolHost"
+                            Grid.Row="1"
+                            IsTabStop="False"
+                            HorizontalContentAlignment="Stretch"
+                            VerticalContentAlignment="Stretch" />
+        </Grid>
+
+        <InfoBar x:Name="Notice"
+                 Grid.ColumnSpan="2"
+                 Severity="Warning"
+                 IsClosable="True"
+                 IsOpen="False"
+                 MaxWidth="480"
+                 Margin="16"
+                 HorizontalAlignment="Center"
+                 VerticalAlignment="Top" />
+    </Grid>
+</UserControl>

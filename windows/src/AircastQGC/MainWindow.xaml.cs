@@ -32,7 +32,7 @@ public sealed partial class MainWindow : Window
             FitCaption();
             Shell.XamlRoot.Changed += (_, _) => FitCaption();
         };
-        Shell.LinkRequested += (_, _) => Go(NavPane.Settings);
+        Shell.LinkRequested += (_, _) => OpenLinks();
 
         _modes = new FlightModeMenu();
         Shell.FlightModeRequested += (_, anchor) => _modes.Show(anchor);
@@ -43,7 +43,7 @@ public sealed partial class MainWindow : Window
         Nav.BackRequested += (_, _) => GoBack();
 
         NoVehicle.VehiclePresenceChanged += (_, present) => ShowVehicleOverlays(present);
-        NoVehicle.OpenConnectionsRequested += (_, _) => Go(NavPane.Settings);
+        NoVehicle.OpenConnectionsRequested += (_, _) => OpenLinks();
 
         MapButtons.ZoomInRequested += (_, _) => Map.ZoomIn();
         MapButtons.ZoomOutRequested += (_, _) => Map.ZoomOut();
@@ -78,14 +78,21 @@ public sealed partial class MainWindow : Window
 
     private void Go(string page)
     {
-        if (page == _page) return;
+        if (page == _page || !Pages.NavigationLock.Allows()) return;
         _history = _history.Push(_page);
         ShowPage(page);
     }
 
+    private void OpenLinks()
+    {
+        Go(NavPane.Settings);
+        if (_page == NavPane.Settings)
+            (HostedPage(NavPane.Settings) as Pages.Settings.SettingsPage)?.Open(Pages.Settings.SettingsPage.ConnectionsPage);
+    }
+
     private void GoBack()
     {
-        if (_history.IsEmpty) return;
+        if (_history.IsEmpty || !Pages.NavigationLock.Allows()) return;
         _history = _history.Pop(out var previous);
         ShowPage(previous);
     }
