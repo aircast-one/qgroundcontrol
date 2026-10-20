@@ -36,6 +36,7 @@ impl Click {
 pub const DEPS: &[&str] = &[
     "vehicles.activeVehicleAvailable",
     "vehicle.flying",
+    "vehicle.rover",
     "vehicle.armed",
     "vehicle.flightMode",
     "vehicle.sensorsPresentBits",
@@ -356,17 +357,19 @@ pub fn map_click_view(backend: &dyn Backend, _args: &[String]) -> Value {
 struct Aircraft {
     connected: bool,
     flying: bool,
+    rover: bool,
     roi: bool,
     heading: bool,
     gps: bool,
 }
 
 fn aircraft(backend: &dyn Backend) -> Aircraft {
-    let vehicle = backend.value_fields("vehicle", "flying,sensorsPresentBits");
+    let vehicle = backend.value_fields("vehicle", "flying,sensorsPresentBits,rover");
     let supports = backend.value_fields("vehicle.supports", "roiMode,changeHeading");
     Aircraft {
         connected: vehicle.get("kind").and_then(Value::as_str) == Some("object"),
         flying: flag(&vehicle, "flying"),
+        rover: flag(&vehicle, "rover"),
         roi: flag(&supports, "roiMode"),
         heading: flag(&supports, "changeHeading"),
         gps: integer(&vehicle, "sensorsPresentBits").unwrap_or(GPS_SENSOR_BIT) & GPS_SENSOR_BIT
@@ -377,7 +380,7 @@ fn aircraft(backend: &dyn Backend) -> Aircraft {
 fn click_refusal(click: Click, a: Aircraft) -> Option<(&'static str, &'static str)> {
     match click {
         _ if !a.connected => Some(("noVehicle", "No vehicle is connected.")),
-        Click::GoTo | Click::Roi | Click::Heading if !a.flying => {
+        Click::GoTo | Click::Roi | Click::Heading if !a.flying && !a.rover => {
             Some(("grounded", "The vehicle has to be flying for that."))
         }
         Click::Roi | Click::HomeRoi if !a.roi => {
@@ -538,6 +541,7 @@ mod tests {
         let flying = Aircraft {
             connected: true,
             flying: true,
+            rover: false,
             roi: true,
             heading: true,
             gps: true,
@@ -553,6 +557,18 @@ mod tests {
             )
             .map(|r| r.0),
             Some("grounded")
+        );
+        assert_eq!(
+            click_refusal(
+                Click::GoTo,
+                Aircraft {
+                    flying: false,
+                    rover: true,
+                    ..flying
+                }
+            ),
+            None,
+            "a rover drives to a clicked point without ever reporting flying"
         );
         assert_eq!(
             click_refusal(
