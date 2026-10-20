@@ -42,6 +42,17 @@ pub fn target_of(id: u8) -> Option<Target> {
         .map(|fix| fix.target())
 }
 
+/// The one other vehicle this one is tracking, for auto-intercept's no-explicit-source
+/// fallback. `None` when there isn't exactly one - zero others leaves nothing to track, and two
+/// or more makes "the" tracked vehicle ambiguous, so the fallback moves on to the gimbal rather
+/// than guessing which one was meant.
+pub fn only_other(self_id: u8) -> Option<u8> {
+    let fixes = FIXES.lock().unwrap_or_else(PoisonError::into_inner);
+    let mut others = fixes.keys().filter(|&&id| id != self_id);
+    let first = *others.next()?;
+    others.next().is_none().then_some(first)
+}
+
 fn numbers(args: &[String], count: usize) -> Option<Vec<f64>> {
     let parsed: Vec<f64> = args
         .iter()
@@ -84,6 +95,12 @@ pub fn drop_lead_from_vehicle_view(_backend: &dyn Backend, args: &[String]) -> V
     .json()
 }
 
+/// `FIXES` is one global static, so tests that `refresh` it race each other under cargo's
+/// default parallel test runner - same shape as `device::TEST_PAIRING`. Every test in this
+/// module (and `autodrop`'s, which also calls `refresh`) locks this for its duration.
+#[cfg(test)]
+pub(crate) static TEST_FIXES: Mutex<()> = Mutex::new(());
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -124,6 +141,7 @@ mod tests {
 
     #[test]
     fn refresh_then_target_of_round_trips_and_an_unknown_id_answers_none() {
+        let _fixes_lock = TEST_FIXES.lock().unwrap_or_else(PoisonError::into_inner);
         let mut fixes = BTreeMap::new();
         fixes.insert(
             129,
@@ -136,11 +154,36 @@ mod tests {
                 heading_deg: 0.0,
             },
         );
-        refresh(fixes);
+        refresh(fixes.clone());
         assert!(target_of(129).is_some());
         assert!(
             target_of(250).is_none(),
             "a vehicle id the snapshot never carried answers None, not a stale fix from a previous test"
+        );
+        assert_eq!(
+            only_other(7),
+            Some(129),
+            "self isn't counted, and the lone other fix is unambiguous"
+        );
+        assert_eq!(
+            only_other(129),
+            None,
+            "self is the only fix - nothing to track"
+        );
+
+        fixes.insert(
+            130,
+            Fix {
+                position: Point { lat: 0.0, lon: 0.0 },
+                ground_speed_mps: 0.0,
+                heading_deg: 0.0,
+            },
+        );
+        refresh(fixes);
+        assert_eq!(
+            only_other(7),
+            None,
+            "two other vehicles is ambiguous - no single tracked vehicle to fall back to"
         );
     }
 
@@ -170,6 +213,7 @@ mod tests {
 
     #[test]
     fn the_view_reports_a_real_target_s_fix_against_an_explicit_release() {
+        let _fixes_lock = TEST_FIXES.lock().unwrap_or_else(PoisonError::into_inner);
         let mut fixes = BTreeMap::new();
         fixes.insert(
             7,
@@ -198,6 +242,7 @@ mod tests {
 
     #[test]
     fn the_view_refuses_a_vehicle_id_with_no_recorded_fix() {
+        let _fixes_lock = TEST_FIXES.lock().unwrap_or_else(PoisonError::into_inner);
         refresh(BTreeMap::new());
         let args: Vec<String> = ["47.0", "8.0", "20.0", "0", "0", "0", "99"]
             .iter()

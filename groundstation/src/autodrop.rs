@@ -53,6 +53,30 @@ impl TargetSource {
             TargetSource::Manual => json!("manual"),
         }
     }
+
+    /// The `args`-array shape `of` parses back - used to hand a source already resolved by
+    /// `run`'s fallback chain down to `hub.rs`'s mission handler without it re-guessing.
+    fn args(self) -> Value {
+        match self {
+            TargetSource::Gimbal => json!(["gimbal"]),
+            TargetSource::Vehicle(id) => json!(["vehicle", id]),
+            TargetSource::Manual => json!(["manual"]),
+        }
+    }
+
+    /// The order an auto-intercept trigger with no explicit source falls back through: a
+    /// manually-marked point first (the operator just set it on purpose), then whichever other
+    /// vehicle this one alone is tracking, then the gimbal - refusing only once none of the
+    /// three actually produces a target.
+    fn fallback_order(self_id: Option<u8>) -> impl Iterator<Item = TargetSource> {
+        std::iter::once(TargetSource::Manual)
+            .chain(
+                self_id
+                    .and_then(gpstarget::only_other)
+                    .map(TargetSource::Vehicle),
+            )
+            .chain(std::iter::once(TargetSource::Gimbal))
+    }
 }
 
 /// Lives on `hub::Vehicle`, advanced one tick at a time by `Vehicle::tick_autodrop` - no
@@ -167,8 +191,10 @@ fn target_from(
 /// after that - waiting to reach cruise speed, polling the release window, firing the gripper -
 /// happens tick by tick inside the core (`hub::Vehicle::tick_autodrop`), re-reading the same
 /// source fresh each tick, not in this function. `args == ["stop"]` cancels a run in flight.
-/// `args[0]` picks the source: omitted or `"gimbal"`, `"manual"`, or `"vehicle"` with the target
-/// vehicle's id as `args[1]`.
+/// `args[0]` picks the source: `"gimbal"`, `"manual"`, or `"vehicle"` with the target vehicle's
+/// id as `args[1]`. Omitted, it falls back through `TargetSource::fallback_order` instead of
+/// assuming the gimbal - an explicit choice is still honored exactly, refusing if that one
+/// source alone can't be read.
 pub fn run(backend: &dyn Backend, args: &str) -> Value {
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
     let Some(id) = vehicle_id(backend) else {
@@ -181,9 +207,6 @@ pub fn run(backend: &dyn Backend, args: &str) -> Value {
             None => json!({ "ok": false, "reason": "this build has no core vehicle to stop" }),
         };
     }
-    let Some(source) = TargetSource::of(&given) else {
-        return json!({ "ok": false, "reason": "the target source must be gimbal, manual, or vehicle with an id" });
-    };
 
     // ponytail: checks only bay 0, the one every drop this app has ever used in practice.
     // A multi-bay rig with bay 0 empty but another bay still loaded would wrongly refuse here;
@@ -199,10 +222,27 @@ pub fn run(backend: &dyn Backend, args: &str) -> Value {
     let Some((position, altitude_agl_m)) = release_position(backend) else {
         return json!({ "ok": false, "reason": "no vehicle position yet" });
     };
-    let target = match target_from(backend, source, position, altitude_agl_m) {
-        Ok(target) => target,
-        Err(reason) => return json!({ "ok": false, "reason": reason }),
+
+    let (source, target) = if given.get(0).and_then(Value::as_str).is_some() {
+        let Some(source) = TargetSource::of(&given) else {
+            return json!({ "ok": false, "reason": "the target source must be gimbal, manual, or vehicle with an id" });
+        };
+        match target_from(backend, source, position, altitude_agl_m) {
+            Ok(target) => (source, target),
+            Err(reason) => return json!({ "ok": false, "reason": reason }),
+        }
+    } else {
+        let self_id = id.as_u64().and_then(|n| u8::try_from(n).ok());
+        let Some(resolved) = TargetSource::fallback_order(self_id).find_map(|source| {
+            target_from(backend, source, position, altitude_agl_m)
+                .ok()
+                .map(|target| (source, target))
+        }) else {
+            return json!({ "ok": false, "reason": "no manually-marked target, tracked vehicle, or gimbal is available to aim with" });
+        };
+        resolved
     };
+
     let Some(solved) = dropsim::intercept(position, CRUISE_MPS, target) else {
         return json!({ "ok": false, "reason": "the target cannot be intercepted at this speed on this heading" });
     };
@@ -213,7 +253,7 @@ pub fn run(backend: &dyn Backend, args: &str) -> Value {
         "latitude": aim_at.lat,
         "longitude": aim_at.lon,
         "autodrop": true,
-        "targetSource": given,
+        "targetSource": source.args(),
         "vehicle": id,
     })) {
         Some(Ok(())) => json!({ "ok": true, "started": true }),
@@ -314,6 +354,9 @@ mod tests {
 
     #[test]
     fn a_vehicle_source_reads_the_live_fix_and_a_manual_source_reads_the_marked_point() {
+        let _fixes_lock = gpstarget::TEST_FIXES
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
         let mut fixes = std::collections::BTreeMap::new();
         fixes.insert(
             129,
@@ -397,6 +440,122 @@ mod tests {
             (answer["ok"].as_bool(), answer["reason"].as_str()),
             (Some(false), Some("the payload bay is already empty")),
             "an empty bay should refuse before ever steering the vehicle, not fly the course and fire nothing: {answer}"
+        );
+    }
+
+    #[test]
+    fn the_fallback_order_prefers_manual_then_a_lone_tracked_vehicle_then_the_gimbal() {
+        let _fixes_lock = gpstarget::TEST_FIXES
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        gpstarget::refresh(std::collections::BTreeMap::new());
+        assert_eq!(
+            TargetSource::fallback_order(Some(7)).collect::<Vec<_>>(),
+            vec![TargetSource::Manual, TargetSource::Gimbal],
+            "no other vehicle is tracked - the chain skips straight from manual to gimbal"
+        );
+
+        let mut fixes = std::collections::BTreeMap::new();
+        fixes.insert(
+            129,
+            gpstarget::Fix {
+                position: Point {
+                    lat: 47.4,
+                    lon: 8.5,
+                },
+                ground_speed_mps: 5.0,
+                heading_deg: 0.0,
+            },
+        );
+        gpstarget::refresh(fixes.clone());
+        assert_eq!(
+            TargetSource::fallback_order(Some(7)).collect::<Vec<_>>(),
+            vec![
+                TargetSource::Manual,
+                TargetSource::Vehicle(129),
+                TargetSource::Gimbal
+            ]
+        );
+
+        fixes.insert(
+            130,
+            gpstarget::Fix {
+                position: Point { lat: 0.0, lon: 0.0 },
+                ground_speed_mps: 0.0,
+                heading_deg: 0.0,
+            },
+        );
+        gpstarget::refresh(fixes);
+        assert_eq!(
+            TargetSource::fallback_order(Some(7)).collect::<Vec<_>>(),
+            vec![TargetSource::Manual, TargetSource::Gimbal],
+            "two other vehicles is ambiguous, so the vehicle step drops out entirely"
+        );
+    }
+
+    struct FakeBackend {
+        manual_target: Option<(f64, f64)>,
+    }
+
+    impl Backend for FakeBackend {
+        fn get(&self, path: &str) -> String {
+            match path {
+                "vehicle.id" => "{\"value\": 7}".to_string(),
+                "vehicle.coordinate" => "{\"latitude\": 47.0, \"longitude\": 8.0}".to_string(),
+                "vehicle.altitudeRelative" => "{\"rawValue\": 20.0}".to_string(),
+                "vehicle.manualTarget" => self
+                    .manual_target
+                    .map(|(lat, lon)| json!({ "latitude": lat, "longitude": lon }).to_string())
+                    .unwrap_or_default(),
+                _ => String::new(),
+            }
+        }
+        fn get_fields(&self, _p: &str, _f: &str) -> String {
+            String::new()
+        }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            String::new()
+        }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn triggering_with_no_source_refuses_only_once_manual_vehicle_and_gimbal_all_fail() {
+        let _fixes_lock = gpstarget::TEST_FIXES
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        gpstarget::refresh(std::collections::BTreeMap::new());
+        let answer = run(
+            &FakeBackend {
+                manual_target: None,
+            },
+            "[]",
+        );
+        assert_eq!(answer["ok"], false);
+        assert_eq!(
+            answer["reason"],
+            "no manually-marked target, tracked vehicle, or gimbal is available to aim with"
+        );
+    }
+
+    #[test]
+    fn a_manually_marked_target_lets_a_no_source_trigger_run_with_no_gimbal_at_all() {
+        let _fixes_lock = gpstarget::TEST_FIXES
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        gpstarget::refresh(std::collections::BTreeMap::new());
+        let answer = run(
+            &FakeBackend {
+                manual_target: Some((47.001, 8.0)),
+            },
+            "[]",
+        );
+        assert_eq!(
+            answer["reason"], "this build has no core vehicle to steer",
+            "it must have resolved a target and reached the core_guided call, not been refused for lack of a gimbal: {answer}"
         );
     }
 }
