@@ -47,6 +47,8 @@ public sealed partial class PlanPage : UserControl
     private string _fencesRaw = string.Empty;
     private int _reads;
     private bool _polling;
+    private Task _refresh = Task.CompletedTask;
+    private bool _refreshAgain;
     private IReadOnlyList<PlanItem> _items = [];
     private IReadOnlyList<LandingPattern> _landings = [];
     private IReadOnlyList<IReadOnlyList<Geo>> _route = [];
@@ -76,7 +78,7 @@ public sealed partial class PlanPage : UserControl
         _canvas = new PlanCanvas(Overlay, Map);
         _dialogs = new PlanDialogs(this);
         Map.PlanMode = true;
-        Map.MapTapped += OnMapTapped;
+        Map.MapTapped += (latitude, longitude, point) => Settled(() => OnMapTapped(latitude, longitude, point));
         Map.ViewChanged += (_, _) =>
         {
             _canvas.Place();
@@ -86,7 +88,7 @@ public sealed partial class PlanPage : UserControl
         _canvas.Pressed += hit => Select(SelectionOf(hit), true);
         _canvas.Dragged += OnDragged;
         _canvas.Dropped += OnDropped;
-        _canvas.SplitClicked += OnSplit;
+        _canvas.SplitClicked += split => Settled(() => OnSplit(split));
         Accelerators();
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
@@ -125,7 +127,7 @@ public sealed partial class PlanPage : UserControl
         });
         _poll ??= Timer(PollInterval, Poll);
         _poll.Start();
-        Refresh();
+        Changed();
     }
 
     private void OnUnloaded(object sender, RoutedEventArgs e)
@@ -177,17 +179,10 @@ public sealed partial class PlanPage : UserControl
         return new PlanData(itemsRaw, fencesRaw, items, MapOverlayJson.Mission(view).Route, PlanJson.Fences(Parse(fencesRaw)), landings);
     }
 
-    private void Refresh()
-    {
-        _reads++;
-        Prompts();
-        if (Fetch(_itemsRaw, _fencesRaw) is { } data) Apply(data);
-    }
-
     private async void Poll()
     {
         Prompts();
-        if (_polling) return;
+        if (_polling || !_refresh.IsCompleted) return;
         _polling = true;
         var reads = _reads;
         var (items, fences) = (_itemsRaw, _fencesRaw);
@@ -214,10 +209,26 @@ public sealed partial class PlanPage : UserControl
         Render();
     }
 
-    private void Changed()
+    private Task Changed()
     {
-        _itemsRaw = string.Empty;
-        Refresh();
+        _reads++;
+        Prompts();
+        _refreshAgain = !_refresh.IsCompleted;
+        return _refreshAgain ? _refresh : _refresh = Refreshed();
+    }
+
+    private async Task Refreshed()
+    {
+        _refreshAgain = false;
+        var fences = _fencesRaw;
+        if (await Task.Run(() => Fetch(string.Empty, fences)) is { } data) Apply(data);
+        if (_refreshAgain) await Refreshed();
+    }
+
+    private async void Settled(Action act)
+    {
+        await _refresh;
+        act();
     }
 
     private bool Survives(Hit? hit) => hit switch
@@ -326,7 +337,7 @@ public sealed partial class PlanPage : UserControl
         }
     }
 
-    private void AddMissionItem(string kind, string label, Geo? at, int index, bool openPanel)
+    private async void AddMissionItem(string kind, string label, Geo? at, int index, bool openPanel)
     {
         if (at is not { } where)
         {
@@ -346,8 +357,7 @@ public sealed partial class PlanPage : UserControl
             if (kind == "land") PlanCalls.PlaceLandingIfUnplaced(added, where);
             else if (kind == "takeoff") PlanCalls.PlaceTakeoff(added, where);
             if (PlanRules.IsPattern(kind)) _newPattern = added;
-            _itemsRaw = string.Empty;
-            Refresh();
+            await Changed();
             Select(new WaypointHit(added), openPanel);
             return;
         }
@@ -360,7 +370,7 @@ public sealed partial class PlanPage : UserControl
         Bridged("Adding rally", () => PlanCalls.AddRally(at), () => Select(new RallyHit(next), true));
     }
 
-    private void RemoveItem(PlanItem item)
+    private async void RemoveItem(PlanItem item)
     {
         Busy($"Removing #{item.Sequence}");
         var count = _items.Count;
@@ -371,7 +381,7 @@ public sealed partial class PlanPage : UserControl
             return;
         }
         Busy(null);
-        Changed();
+        await Changed();
         Select(PlanRules.AfterRemove(item.Index, count), _panelOpen);
         RebuildEditor(true);
     }
@@ -455,12 +465,12 @@ public sealed partial class PlanPage : UserControl
         if (ApplyMove(hit, at)) Changed();
     }
 
-    private void OnDropped(Hit hit, Geo at)
+    private async void OnDropped(Hit hit, Geo at)
     {
         _lastDragWrite = DateTime.MinValue;
         if (ApplyMove(hit, at)) Say(MovedText(hit));
         else Say("That did not work");
-        Changed();
+        await Changed();
         RebuildEditor(true);
     }
 
@@ -556,7 +566,7 @@ public sealed partial class PlanPage : UserControl
             {
                 if (_dialogs.Showing || (XamlRoot != null && FocusManager.GetFocusedElement(XamlRoot) is TextBox)) return;
                 e.Handled = true;
-                act();
+                Settled(act);
             };
             KeyboardAccelerators.Add(accelerator);
         }

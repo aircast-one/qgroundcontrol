@@ -218,7 +218,7 @@ public sealed partial class PlanPage
             return;
         }
         Select(null, false);
-        Changed();
+        await Changed();
         Fit(AllPoints());
         Say("Plan opened.");
     }

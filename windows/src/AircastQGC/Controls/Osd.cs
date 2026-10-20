@@ -1,5 +1,7 @@
+using System;
 using System.Collections.Generic;
 using System.Numerics;
+using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
@@ -39,7 +41,17 @@ internal static class Osd
 
     public static bool IsSpeed(string label, string name) => Speeds.Contains(Label(label, name));
 
-    public static Grid Shadowed(TextBlock text)
+    public static Grid Shadowed(TextBlock text) => Under(text, _ => text.GetAlphaMask());
+
+    public static Grid Shadowed(FrameworkElement drawing, Vector2 size) => Under(drawing, compositor =>
+    {
+        var surface = compositor.CreateVisualSurface();
+        surface.SourceVisual = ElementCompositionPreview.GetElementVisual(drawing);
+        surface.SourceSize = size;
+        return compositor.CreateSurfaceBrush(surface);
+    });
+
+    private static Grid Under(UIElement content, Func<Compositor, CompositionBrush> mask)
     {
         var host = new Border();
         var compositor = ElementCompositionPreview.GetElementVisual(host).Compositor;
@@ -47,11 +59,11 @@ internal static class Osd
         shadow.BlurRadius = ShadowBlur;
         shadow.Offset = new Vector3(0, ShadowDrop, 0);
         shadow.Color = (Color)Application.Current.Resources["OsdShadowColor"];
-        shadow.Mask = text.GetAlphaMask();
+        shadow.Mask = mask(compositor);
         var sprite = compositor.CreateSpriteVisual();
         sprite.Shadow = shadow;
         sprite.RelativeSizeAdjustment = Vector2.One;
         ElementCompositionPreview.SetElementChildVisual(host, sprite);
-        return new Grid { Children = { host, text } };
+        return new Grid { Children = { host, content } };
     }
 }

@@ -48,6 +48,7 @@
             <AcrylicBrush x:Key="ChipBrush" TintColor="#202020" TintOpacity="0.5" TintLuminosityOpacity="0.8" FallbackColor="#2C2C2C" />
             <SolidColorBrush x:Key="OsdTextBrush" Color="#FFFFFF" />
             <SolidColorBrush x:Key="OsdLabelBrush" Color="#BFFFFFFF" />
+            <SolidColorBrush x:Key="OsdBackdropBrush" Color="#59000000" />
             <AcrylicBrush x:Key="ChipHoverBrush" TintColor="#2D2D2D" TintOpacity="0.5" TintLuminosityOpacity="0.85" FallbackColor="#323232" />
             <AcrylicBrush x:Key="StopBrush" TintColor="#C42B1C" TintOpacity="0.75" TintLuminosityOpacity="0.85" FallbackColor="#A72618" />
             <AcrylicBrush x:Key="StopHoverBrush" TintColor="#D13438" TintOpacity="0.85" TintLuminosityOpacity="0.9" FallbackColor="#C42B1C" />
@@ -101,6 +102,7 @@
             <AcrylicBrush x:Key="ChipBrush" TintColor="#FCFCFC" TintOpacity="0.5" TintLuminosityOpacity="0.85" FallbackColor="#F9F9F9" />
             <SolidColorBrush x:Key="OsdTextBrush" Color="#FFFFFF" />
             <SolidColorBrush x:Key="OsdLabelBrush" Color="#BFFFFFFF" />
+            <SolidColorBrush x:Key="OsdBackdropBrush" Color="#59000000" />
             <AcrylicBrush x:Key="ChipHoverBrush" TintColor="#FFFFFF" TintOpacity="0.6" TintLuminosityOpacity="0.9" FallbackColor="#FFFFFF" />
             <AcrylicBrush x:Key="StopBrush" TintColor="#C42B1C" TintOpacity="0.8" TintLuminosityOpacity="0.9" FallbackColor="#C42B1C" />
             <AcrylicBrush x:Key="StopHoverBrush" TintColor="#A72618" TintOpacity="0.85" TintLuminosityOpacity="0.9" FallbackColor="#A72618" />
@@ -121,6 +123,7 @@
     <x:Double x:Key="FontSizeBody">14</x:Double>
     <x:Double x:Key="FontSizeBodyLarge">18</x:Double>
     <x:Double x:Key="FontSizeSubtitle">20</x:Double>
+    <x:Double x:Key="FontSizeOsdValue">22</x:Double>
     <x:Double x:Key="FontSizeTitle">28</x:Double>
     <x:Double x:Key="FontSizeTitleLarge">40</x:Double>
 

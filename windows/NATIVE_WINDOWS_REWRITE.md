@@ -32,6 +32,7 @@ Boot: `qgc_start(argc, argv)` spawns the core pump thread and returns; the UI ne
 - [x] Every nav page hosted (`Pages/PageRegistry`): Fly, Plan, Analyze, Vehicle Setup, Settings. Merged build smoke on `winvm` (2026-10-20): each page opens with no vehicle, the mock ArduCopter and the mock PX4; a plan uploaded from Plan shows on Fly with the vehicle and traffic; a PX4 calibration still blocks the nav pane and Back
 - [x] Second merged build (2026-10-20, video, settings, plan and setup work plus the core fixes below) smoke-tested on `winvm`: every page opens with no vehicle, the mock ArduCopter and the mock PX4; PiP and the camera swap, Video sources add, the Fly RC layer, the offline map picker, the Plan mid-leg +, Follow vehicle and presets, live parameter rows and a UI Automation tuning write, the power calculator and the Add link type list all work together
 - [x] Third merged build (2026-10-20, round 5: Aircast device, Aircast Cloud and deep links, video overlays, Fly controls, settings depth) smoke-tested on `winvm`: every page opens with no vehicle, the mock ArduCopter and the mock PX4; Settings > Aircast device against the aircastd fake-device harness (home, checks, link and health charts, all 10 page rows, the Telemetry page, Disconnect); Add link offers Aircast Cloud with its inline errors; all 17 APM and 10 PX4 setup components open from the core's `page` fields; the map layers flyout writes the obstacle-distance toggle; grid lines on a UDP H.264 stream; full-screen video from the rail button and with real F11/Escape keys; real mouse drags on the on-screen sticks climb the mock ArduCopter 11 → 18.6 m in 3 s and fly it 12.5 m/s north; Aircraft safety writes `RTL_ALT_M` (15 → 25 → 15) and shows PX4's rows; the light palette switches the running app on Fly, Settings and Vehicle Setup
+- [x] Fourth merged build (2026-10-21, round 8: Fly polish and the off-thread Plan refresh) smoke-tested on `winvm`: Fly with no vehicle and the mock ArduCopter on the ground and flying at 1440×900 and 1024×700 (rail, thumb swap, OSD readings, map corner); Plan on a ~3,900-item hover-capture survey (grid-angle edits, insert-then-select, delete, undo/redo, drag)
 
 ## Screens (Penpot "06 Screens", 54 boards @ 1440×900)
 
@@ -132,12 +133,12 @@ light). Only layout and look changed; the core calls are the same.
 | --- | --- | --- |
 | Navigation | ☰ MenuFlyout in the title bar (Fly, Plan, Analyze, Vehicle Setup, Settings with icons) | permanent nav pane |
 | Status | transparent title bar over the view: vehicle, mode, armed, compact cells, All status sheet for the overflow | pill chips on Mica |
-| Actions | `GuidedBar` is a vertical rail of 48 px icon buttons in `LeftRail`, centred between the status row and the PiP: Checklist, then Takeoff (or Arm) on the ground, or Pause, Return, Land and Payload in flight; ⋮ holds the rest; Emergency stop sits 24 px below in red acrylic (`StopBrush`), hold 1.5 s to cut or click for the slide card | labelled toolbar top-centre |
+| Actions | `GuidedBar` is a vertical rail of 48 px icon buttons in `LeftRail`, centred between the status row and the PiP: Checklist (on the ground only, as on Android), then Takeoff (or Arm) on the ground, or Pause, Return, Land and Payload in flight; ⋮ holds the rest; Emergency stop sits 24 px below in red acrylic (`StopBrush`), hold 1.5 s to cut or click for the slide card | labelled toolbar top-centre |
 | Confirm card | opens beside the rail | under the toolbar |
-| PiP | bottom-left, 320×180 (web `DESKTOP_PIP`), 2 px frame, map clipped round when the video is main, `PipFrame` swaps back; the second-camera `PipTile` stacks above it | top-right tile |
-| Telemetry | `InstrumentBar` as OSD text beside the PiP (small H.S/V.S row, big H/D row, white with a composition shadow); compass/attitude card off by default, shown from the chooser | boxed bar and compass card |
+| PiP | bottom-left, 320×180 (web `DESKTOP_PIP`), 2 px frame, map clipped round when the video is main, `PipFrame` swaps back; tapping the main video (or a still tap on the gimbal-drag layer) does nothing, only the thumb swaps; the second-camera `PipTile` stacks above it | top-right tile |
+| Telemetry | `InstrumentBar` as OSD text beside the PiP (small H.S/V.S row, big H/D row, white with a composition shadow, Android's sizes 12/14/22 via `FontSizeOsdValue`, no space before the unit); default readings are Android's D, H, H.S, V.S plus A.S for fixed wing, VTOL and airship until the user picks their own; compass/attitude card off by default, shown from the chooser | boxed bar and compass card |
 | Camera | right edge, centred: `CameraSwitch` chip (cameras and Picture in picture), tilt readout and slider, shutter, Camera, Full screen | tile buttons and a separate shutter |
-| Map controls | `MapCorner` bottom-right on the map only: zoom, centre on vehicle, 48 px layers button, scale bar under them | right column |
+| Map controls | `MapCorner` bottom-right on the map only: zoom, centre on vehicle, 48 px layers button, scale bar under them; the scale bar hides while the map is the PiP | right column |
 | No video | `NoVideoPill` in `CenterMessage`, above the No vehicle card when both show | text inside the tile |
 
 Merged build on `winvm` (1440×900, 1200×800, 1024×700, scratch variant with the mock ArduCopter): no vehicle, on the ground and flying, map
@@ -145,6 +146,21 @@ main and video main, light palette once. Every page opened from ☰; the rail's 
 Altitude, Change Max Ground Speed and Emergency stop cards opened and cancelled, Payload opened the gripper panel, and hold-to-cut disarmed
 the flying mock; the All status sheet, the Telemetry display editor, the camera switch menu and the map layers menu opened. Side by side
 with Android: `~/.claude/jobs/6037fcd4/tmp/design/round7-compare/`.
+
+### Fly polish (round 8)
+
+The `HeadingTape` has no box over the main video (white ticks and numbers under the OSD shadow) and keeps Android's 35% black box
+(`OsdBackdropBrush`) over the main map. The OSD, scale bar, main-video tap and checklist changes are in the table above. Merged build on
+`winvm` (2026-10-21, scratch variant with the mock ArduCopter, 1440×900 and 1024×700): with no vehicle, then on the ground, then flying
+at 10 m/s after a debug-API takeoff and go-to. The automation tree lists exactly Ground Speed, Climb Rate, Distance to Home and
+Alt (Rel). The checklist shows on the ground and is gone in flight. Invoking the main video leaves it main, and Show the map swaps
+back. Side by side with Android: `~/.claude/jobs/6037fcd4/tmp/design/round8-compare/android-vs-windows.png`.
+
+Still different from Android: the status strip and rail are acrylic chips and circles, not bare text and icons (the Windows material
+choice). There are no on-screen sticks over the video (only on touch). The PiP is web desktop's 320×180, not the phone's small square.
+The camera switch chip, tilt readout and gimbal controls need a camera, and the mock has none. D.OP is missing (it needs a
+ground-station position). Double-click does not enter full screen. A WHEP pill sits in the centre while Android names the source in its
+camera chip. The synthetic view draws grey extruded buildings, not photoreal tiles.
 
 ### Plan
 
@@ -178,8 +194,21 @@ no ground-station position source). In plan mode a double-click adds a waypoint 
 landing is selected (Android draws them always). The centre handle moves a shape by its vertex average, not Android's area centroid.
 `view.missionItems` is still polled every 700 ms, as on Android, but off the UI thread; it skips parse and redraw when the payload is
 unchanged, and the overlay re-projects only when the map view moves (`MapView.ViewChanged` now fires only on a real change). With a
-~4,200-item hover-capture survey (140 KB), the worst idle UI stall fell from 51 to 28 ms and opening the plan menu from 242 to 94 ms. The
-core still needs ~240 ms to rebuild that view after each edit, and that rebuild runs on the UI thread for user edits.
+~4,200-item hover-capture survey (140 KB), the worst idle UI stall fell from 51 to 28 ms and opening the plan menu from 242 to 94 ms.
+
+### Plan refresh off the UI thread (round 8)
+
+After an edit, `Changed()` returns at once. The fetch and parse of `view.missionItems` run on a thread-pool thread, one at a time,
+and edits made meanwhile fold into one more fetch. Only `Apply` (rendering) runs on the UI thread. Insert-then-select, remove, drop,
+open-plan and the item editor await the refresh before their next step. Map taps, split handles, rail buttons and keyboard shortcuts
+wait for a pending refresh (`Settled`), so a quick second input still sees fresh `_items`. On a ~4,000-item survey the post-edit UI
+block fell from 16–22 ms to 0 ms, and the worst stall per grid-angle edit fell from a median of 159 ms to 121 ms. Merged build
+(2026-10-21, ~3,900 items, mock ArduCopter flying): three grid-angle edits applied (folded commands 3,919 → 4,063 → 4,053 → 3,919),
+and two back-to-back taps after waypoint #2 landed at indexes 3 and 4 with #4 selected. A tap with an item selected deselects it,
+and the next tap appends and selects the new item. Two undos removed the tapped waypoint and then both inserted ones; redo restored
+both. A drag kept the item selected with the panel open, and delete left #3 selected. The core write itself (for example `gridAngle`,
+which regenerates the survey) still runs on the UI thread: 69–147 ms, with one 832 ms stall seen in the merged smoke. A pin press is
+not gated, because drags must stay live, so during a refresh of roughly 10–20 ms a press can hit a pin from the old scene.
 
 ### Vehicle setup
 

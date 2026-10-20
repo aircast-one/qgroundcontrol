@@ -3,6 +3,7 @@ using System.Linq;
 using System.Text.Json.Nodes;
 using AircastQGC.Core;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 
 namespace AircastQGC.Controls;
@@ -13,10 +14,12 @@ public sealed partial class VideoThumbnail : UserControl
     private const string VideoView = "view.video";
     private const string FitClient = "video-thumbnail.fit";
     private const string FitView = "view.control(settings.videoSettings.videoFit)";
+    private const string MainName = "Video";
 
     private readonly CornerRadius _radius;
     private readonly Thickness _border;
     private readonly object _tip;
+    private readonly string _swapName;
     private bool _expanded;
     private string _standIn = "";
     private string _title = "Video";
@@ -30,6 +33,7 @@ public sealed partial class VideoThumbnail : UserControl
         _radius = Tile.CornerRadius;
         _border = Tile.BorderThickness;
         _tip = ToolTipService.GetToolTip(Tile);
+        _swapName = AutomationProperties.GetName(Tile);
         Synthetic.Changed += (_, _) => PaintPlaceholder();
         Loaded += (_, _) => Start();
         Unloaded += (_, _) => Stop();
@@ -61,6 +65,8 @@ public sealed partial class VideoThumbnail : UserControl
             Tile.BorderThickness = value ? new Thickness(0) : _border;
             CaptionPill.Visibility = VideoJson.Shown(!value);
             ToolTipService.SetToolTip(Tile, value ? null : _tip);
+            AutomationProperties.SetName(Tile, value ? MainName : _swapName);
+            Tile.IsTabStop = !value;
             Synthetic.Aimable = value;
             Synthetic.StandIn = value ? _standIn : null;
             PaintPlaceholder();
@@ -131,5 +137,8 @@ public sealed partial class VideoThumbnail : UserControl
         else _pill?.Say(headline, waiting ? SyntheticView.WaitingDetail : _detail);
     }
 
-    private void OnTileClick(object sender, RoutedEventArgs e) => SwapRequested?.Invoke(this, EventArgs.Empty);
+    private void OnTileClick(object sender, RoutedEventArgs e)
+    {
+        if (!_expanded) SwapRequested?.Invoke(this, EventArgs.Empty);
+    }
 }

@@ -7,6 +7,7 @@ using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using AircastQGC.Core;
 using Microsoft.UI.Dispatching;
+using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -31,7 +32,7 @@ public sealed partial class InstrumentBar : UserControl
 
     private readonly DispatcherQueueTimer _reread;
 
-    private IReadOnlyList<InstrumentSelection> _selections = InstrumentSelectionStore.Load();
+    private IReadOnlyList<InstrumentSelection>? _chosen = InstrumentSelectionStore.Load();
     private IReadOnlyList<InstrumentValue> _values = Array.Empty<InstrumentValue>();
     private IReadOnlyList<Reading> _readings = Array.Empty<Reading>();
     private string _vehicleClass = GenericClass;
@@ -58,15 +59,15 @@ public sealed partial class InstrumentBar : UserControl
 
     public IReadOnlyList<InstrumentValue> Values => _values;
 
-    public IReadOnlyList<InstrumentSelection> Selections => _selections;
+    public IReadOnlyList<InstrumentSelection> Selections => _chosen ?? InstrumentSelection.DefaultsFor(_vehicleClass);
 
     public string Notice => NoticeText.Text;
 
-    public bool CanAdd => _selections.Count < MaximumSlots;
+    public bool CanAdd => Selections.Count < MaximumSlots;
 
-    public bool CanRemove => _selections.Count > 1;
+    public bool CanRemove => Selections.Count > 1;
 
-    public string InstrumentsPath => $"{InstrumentsView}({string.Join(",", _selections.Select(s => s.Stored))})";
+    public string InstrumentsPath => $"{InstrumentsView}({string.Join(",", Selections.Select(s => s.Stored))})";
 
     public void Show() => Visibility = Visibility.Visible;
 
@@ -81,16 +82,16 @@ public sealed partial class InstrumentBar : UserControl
     public void AddSlot()
     {
         if (!CanAdd) return;
-        Select(_selections.Append(InstrumentSelection.FirstUnused(_selections)).ToList());
+        Select(Selections.Append(InstrumentSelection.FirstUnused(Selections)).ToList());
     }
 
     public void RemoveSlot(int slot)
     {
-        if (!CanRemove || slot < 0 || slot >= _selections.Count) return;
-        Select(_selections.Where((_, i) => i != slot).ToList());
+        if (!CanRemove || slot < 0 || slot >= Selections.Count) return;
+        Select(Selections.Where((_, i) => i != slot).ToList());
     }
 
-    public void ResetSlots() => Select(InstrumentSelection.Defaults);
+    public void ResetSlots() => Select(null);
 
     public void ShowAttitude(bool shown)
     {
@@ -101,16 +102,16 @@ public sealed partial class InstrumentBar : UserControl
 
     public void Assign(int slot, InstrumentSelection selection)
     {
-        if (slot < 0 || slot >= _selections.Count) return;
-        if (_displays.TryGetValue(_selections[slot].Id, out var carried) && !_displays.ContainsKey(selection.Id)) Restyle(selection.Id, carried);
-        Select(_selections.Select((s, i) => i == slot ? selection : s).ToList());
+        if (slot < 0 || slot >= Selections.Count) return;
+        if (_displays.TryGetValue(Selections[slot].Id, out var carried) && !_displays.ContainsKey(selection.Id)) Restyle(selection.Id, carried);
+        Select(Selections.Select((s, i) => i == slot ? selection : s).ToList());
     }
 
     public void MoveSlot(int slot, int by)
     {
         var to = slot + by;
-        if (slot < 0 || slot >= _selections.Count || to < 0 || to >= _selections.Count) return;
-        Select(_selections.Select((s, i) => i == slot ? _selections[to] : i == to ? _selections[slot] : s).ToList());
+        if (slot < 0 || slot >= Selections.Count || to < 0 || to >= Selections.Count) return;
+        Select(Selections.Select((s, i) => i == slot ? Selections[to] : i == to ? Selections[slot] : s).ToList());
     }
 
     public ValueDisplay DisplayOf(InstrumentValue value) =>
@@ -127,12 +128,12 @@ public sealed partial class InstrumentBar : UserControl
     {
         if (slot < 0 || slot >= _values.Count || XamlRoot is null) return;
         var value = _values[slot];
-        var at = _selections.ToList().FindIndex(s => s.Id == value.Id);
+        var at = Selections.ToList().FindIndex(s => s.Id == value.Id);
         var extra = new (bool Shown, string Label, Action Then)[]
         {
             (at >= 0, "Change reading", () => _ = EditSlotAsync(at)),
             (at > 0, "Move left", () => MoveSlot(at, -1)),
-            (at >= 0 && at < _selections.Count - 1, "Move right", () => MoveSlot(at, 1)),
+            (at >= 0 && at < Selections.Count - 1, "Move right", () => MoveSlot(at, 1)),
             (at >= 0 && CanRemove, "Remove", () => RemoveSlot(at)),
             (true, AttitudeShown ? "Hide compass" : "Show compass", () => ShowAttitude(!AttitudeShown)),
         }.Where(entry => entry.Shown).Select(entry => (entry.Label, entry.Then)).ToList();
@@ -141,7 +142,7 @@ public sealed partial class InstrumentBar : UserControl
 
     public async Task EditSlotAsync(int slot)
     {
-        if (slot < 0 || slot >= _selections.Count || XamlRoot is null) return;
+        if (slot < 0 || slot >= Selections.Count || XamlRoot is null) return;
         var groups = InstrumentGroup.Discovered(Read(GroupsView));
         var groupList = new StackPanel();
         var factList = new StackPanel();
@@ -170,7 +171,7 @@ public sealed partial class InstrumentBar : UserControl
             Fill(factList, facts.Length == 0 ? new[] { (UIElement)empty } : facts);
         }
 
-        Choose(_selections[slot].Group);
+        Choose(Selections[slot].Group);
         try
         {
             await dialog.ShowAsync();
@@ -198,10 +199,10 @@ public sealed partial class InstrumentBar : UserControl
     private void Watch() =>
         Guard(() => BridgeWatch.Watch(Client, new[] { InstrumentsPath }, view => OnUi(() => Apply(view))));
 
-    private void Select(IReadOnlyList<InstrumentSelection> chosen)
+    private void Select(IReadOnlyList<InstrumentSelection>? chosen)
     {
-        _selections = chosen;
-        InstrumentSelectionStore.Save(chosen);
+        _chosen = chosen;
+        InstrumentSelectionStore.Save(chosen ?? []);
         Watch();
         Apply(Read(InstrumentsPath));
         SelectionsChanged?.Invoke(this, EventArgs.Empty);
@@ -212,9 +213,16 @@ public sealed partial class InstrumentBar : UserControl
         var vehicleClass = InstrumentJson.Text(view, "vehicleClass") is { Length: > 0 } named ? named : _vehicleClass;
         if (vehicleClass != _vehicleClass)
         {
+            var path = InstrumentsPath;
             _vehicleClass = vehicleClass;
             _displays = InstrumentDisplayStore.Load(vehicleClass);
             _values = Array.Empty<InstrumentValue>();
+            if (InstrumentsPath != path)
+            {
+                Watch();
+                Apply(Read(InstrumentsPath));
+                return;
+            }
         }
         var read = InstrumentValue.List(view["items"]);
         if (read.SequenceEqual(_values)) return;
@@ -422,6 +430,7 @@ public sealed partial class InstrumentBar : UserControl
             _text.Style = _styled(Osd.IsSpeed(value.Label, value.Name) ? "OsdSpeed" : "OsdPlace");
             _label.Text = label;
             _label.FontSize = PreflightLook.Size("FontSizeCaption");
+            _label.FontWeight = FontWeights.Medium;
             _label.Foreground = PreflightLook.Token("OsdLabelBrush");
             _gap.Text = label.Length > 0 ? " " : "";
             _value.Text = display.ShowUnits ? value.Value + value.Units : value.Value;

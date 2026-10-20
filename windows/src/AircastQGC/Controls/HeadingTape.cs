@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Numerics;
 using System.Text.Json.Nodes;
 using AircastQGC.Forms;
 using Microsoft.UI.Text;
@@ -77,9 +78,13 @@ public sealed class HeadingTape : UserControl
     private const double Gap = 2;
     private const double HomeRadius = 6;
     private const double EdgeFade = 0.6;
-    private const double BackdropOpacity = 0.65;
 
     private readonly Canvas _canvas = new() { Width = TapeWidth, Height = TapeHeight, IsHitTestVisible = false };
+    private readonly Border _backdrop = new()
+    {
+        Background = FormLook.Brush("OsdBackdropBrush"),
+        CornerRadius = FormLook.Radius("RadiusControl"),
+    };
 
     public HeadingTape()
     {
@@ -87,20 +92,17 @@ public sealed class HeadingTape : UserControl
         {
             Width = TapeWidth,
             Height = TapeHeight,
-            Children =
-            {
-                new Border
-                {
-                    Background = FormLook.Brush("BgSecondaryBrush"),
-                    Opacity = BackdropOpacity,
-                    CornerRadius = FormLook.Radius("RadiusControl"),
-                },
-                _canvas,
-            },
+            Children = { _backdrop, Osd.Shadowed(_canvas, new Vector2((float)TapeWidth, (float)TapeHeight)) },
         };
         IsHitTestVisible = false;
         Visibility = Visibility.Collapsed;
         Live.Watch(this, TelemetryPanel.AttitudeView, view => Draw(TapeReading.Of(view)));
+    }
+
+    public bool OverVideo
+    {
+        get => _backdrop.Visibility == Visibility.Collapsed;
+        set => _backdrop.Visibility = FormLook.Shown(!value);
     }
 
     private void Draw(TapeReading? reading)
@@ -111,7 +113,7 @@ public sealed class HeadingTape : UserControl
         AutomationProperties.SetName(this, $"Heading {readout}");
         var line = Pointer + Gap;
         var labelTop = line + LabelTick + Gap;
-        var ink = FormLook.Brush("TextPrimaryBrush");
+        var ink = FormLook.Brush("OsdTextBrush");
         var ticks = TapeMath.Ticks(reading.Heading).SelectMany(degrees =>
         {
             var relative = TapeMath.Relative(degrees, reading.Heading);

@@ -36,7 +36,11 @@ public sealed partial class GuidedBar : UserControl
 
     public event EventHandler? PayloadRequested;
 
+    public event EventHandler? DeckChanged;
+
     public IReadOnlyList<GuidedOffer> Offers => _offers;
+
+    public bool OnFlyingDeck { get; private set; }
 
     public GuidedBar()
     {
@@ -96,6 +100,9 @@ public sealed partial class GuidedBar : UserControl
         MoreButton.Visibility = Seen(MoreMenu.Items.Count > 0);
         PaintStop(offers.FirstOrDefault(o => o.Id == EmergencyStop));
         Root.Visibility = Seen(deck.Count > 0 || payloadOnRail || MoreMenu.Items.Count > 0 || _stop != null);
+        if (OnFlyingDeck == Flying(shown)) return;
+        OnFlyingDeck = Flying(shown);
+        DeckChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void PaintStop(GuidedOffer? stop)

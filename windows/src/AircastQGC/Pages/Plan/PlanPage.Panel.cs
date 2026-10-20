@@ -172,7 +172,7 @@ public sealed partial class PlanPage
         };
         ToolTipService.SetToolTip(button, label);
         AutomationProperties(button, label);
-        button.Click += (_, _) => click();
+        button.Click += (_, _) => Settled(click);
         return button;
     }
 

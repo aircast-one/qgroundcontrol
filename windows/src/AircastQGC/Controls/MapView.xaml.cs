@@ -110,6 +110,7 @@ public sealed partial class MapView : UserControl
     private Geo? _clickMark;
     private double _scaleAcross = double.NaN;
     private MapScale? _scale;
+    private bool _scaleHidden;
     private bool _planMode;
     private (Geo Centre, double Zoom, double Width, double Height) _shown;
 
@@ -165,6 +166,16 @@ public sealed partial class MapView : UserControl
         {
             ScaleBar.HorizontalAlignment = value ? HorizontalAlignment.Right : HorizontalAlignment.Left;
             ScaleBar.VerticalAlignment = value ? VerticalAlignment.Bottom : VerticalAlignment.Top;
+        }
+    }
+
+    public bool ScaleHidden
+    {
+        get => _scaleHidden;
+        set
+        {
+            _scaleHidden = value;
+            PlaceScale();
         }
     }
 
@@ -526,7 +537,7 @@ public sealed partial class MapView : UserControl
             _scaleAcross = across;
             _scale = across > 0 ? MapOverlayJson.Scale(Read(FormattableString.Invariant($"view.mapScale({across:F0})"))) : null;
         }
-        ScaleBar.Visibility = _scale != null && Surface.ActualWidth > ScalePixels ? Visibility.Visible : Visibility.Collapsed;
+        ScaleBar.Visibility = !_scaleHidden && _scale != null && Surface.ActualWidth > ScalePixels ? Visibility.Visible : Visibility.Collapsed;
         ScaleText.Text = _scale?.Text ?? string.Empty;
         ScaleLine.Width = (_scale?.Fraction ?? 0) * ScalePixels;
     }

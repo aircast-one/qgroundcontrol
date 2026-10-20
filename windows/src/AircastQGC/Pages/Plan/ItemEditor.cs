@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Nodes;
+using System.Threading.Tasks;
 using AircastQGC.Controls;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -31,14 +32,14 @@ internal sealed class ItemEditor : UserControl
     private readonly Func<PlanStatus> _status;
     private readonly Func<Geo?> _mapCentre;
     private readonly PlanDialogs _dialogs;
-    private readonly Action _changed;
+    private readonly Func<Task> _changed;
     private readonly Action? _remove;
     private readonly StackPanel _root = new() { Spacing = 10 };
     private bool _advanced;
     private string? _refusal;
     private string? _preset;
 
-    public ItemEditor(int index, Func<PlanItem?> item, Func<PlanStatus> status, Func<Geo?> mapCentre, PlanDialogs dialogs, Action changed, Action? remove)
+    public ItemEditor(int index, Func<PlanItem?> item, Func<PlanStatus> status, Func<Geo?> mapCentre, PlanDialogs dialogs, Func<Task> changed, Action? remove)
     {
         _index = index;
         _item = item;
@@ -60,10 +61,10 @@ internal sealed class ItemEditor : UserControl
 
     private string Item(string property) => $"{PlanCalls.ItemRoot}.{_index}.{property}";
 
-    private void Wrote(string? refusal)
+    private async void Wrote(string? refusal)
     {
         _refusal = refusal;
-        _changed();
+        await _changed();
         Render();
     }
 

@@ -116,7 +116,6 @@ public sealed partial class MainWindow : Window
         CameraPanel.CameraPresentChanged += (_, _) => CameraButton.Visibility = Shown(CameraPanel.CameraPresent);
         CameraButton.Click += (_, _) => ToggleCamera();
         MapPayload.Attach(Map);
-        VideoLayer.SwapRequested += (_, _) => SwapVideo(!_videoMain);
         ObstacleOnMap.Attach(Map);
         Marks.ZoomFrom(FlyContent, VideoTile, VideoLayer);
         Marks.DecodingChanged += (_, _) =>
@@ -154,6 +153,7 @@ public sealed partial class MainWindow : Window
         GuidedStrip.PayloadRequested += (_, _) => ToggleGripper();
 
         Checklist.StateChanged += (_, _) => PaintChecklistButton();
+        GuidedStrip.DeckChanged += (_, _) => PaintChecklistButton();
         ChecklistButton.Click += (_, _) => ToggleChecklist();
         Checklist.RegisterPropertyChangedCallback(UIElement.VisibilityProperty, (_, _) => FleetColumn.Visibility = Shown(!Checklist.IsOpen));
 
@@ -277,6 +277,7 @@ public sealed partial class MainWindow : Window
         BottomLeft.Margin = new Thickness(BottomLeft.Margin.Left, BottomLeft.Margin.Top,
             attitude ? TelemetryCard.ActualWidth + TileMargin * 2 : CornerRoom, BottomLeft.Margin.Bottom);
         Map.ScaleInCorner = !_videoMain;
+        Map.ScaleHidden = _videoMain;
         Map.ScaleMargin = new Thickness(TileMargin, TileMargin, TileMargin, _videoMain ? TileMargin : corner);
         MapCorner.Margin = new Thickness(TileMargin, TileMargin, TileMargin, corner + ScaleRoom);
         LayoutBar.Margin = new Thickness(TileMargin, TileMargin, TileMargin, bar);
@@ -327,6 +328,7 @@ public sealed partial class MainWindow : Window
         MapCorner.Visibility = Shown(!videoMain);
         Clearances();
         VideoStats.Expanded = videoMain;
+        Tape.OverVideo = videoMain;
         PaintFullScreen();
     }
 
@@ -410,7 +412,7 @@ public sealed partial class MainWindow : Window
 
     private void PaintChecklistButton()
     {
-        ChecklistButton.Visibility = Shown(Checklist.HasVehicle);
+        ChecklistButton.Visibility = Shown(Checklist.HasVehicle && !GuidedStrip.OnFlyingDeck);
         ToolTipService.SetToolTip(ChecklistButton,
             Checklist.Ready ? "Pre-flight checklist · Ready" : $"Pre-flight checklist · {Checklist.Progress}");
     }

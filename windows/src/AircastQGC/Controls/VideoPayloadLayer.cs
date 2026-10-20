@@ -97,8 +97,6 @@ public sealed partial class VideoPayloadLayer : UserControl
         Unloaded += (_, _) => Halt();
     }
 
-    public event EventHandler? SwapRequested;
-
     public bool Expanded
     {
         get => _expanded;
@@ -265,9 +263,6 @@ public sealed partial class VideoPayloadLayer : UserControl
                 break;
             case Kind.Drag when finished.Moved:
                 SendDrag(finished);
-                break;
-            case Kind.Drag:
-                SwapRequested?.Invoke(this, EventArgs.Empty);
                 break;
         }
     }

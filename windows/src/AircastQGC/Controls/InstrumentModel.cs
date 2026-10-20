@@ -35,13 +35,16 @@ public sealed record InstrumentSelection(string Group, string FactName)
 
     public static readonly IReadOnlyList<InstrumentSelection> Defaults = new[]
     {
+        Vehicle("distanceToHome"),
         Vehicle("altitudeRelative"),
         Vehicle("groundSpeed"),
         Vehicle("climbRate"),
-        Vehicle("distanceToHome"),
-        Vehicle("heading"),
-        Vehicle("altitudeAMSL"),
     };
+
+    private static readonly IReadOnlySet<string> ForwardFlight = new HashSet<string> { "fixedWing", "vtol", "airship" };
+
+    public static IReadOnlyList<InstrumentSelection> DefaultsFor(string vehicleClass) =>
+        ForwardFlight.Contains(vehicleClass) ? [.. Defaults, Vehicle("airSpeed")] : Defaults;
 
     public static InstrumentSelection? Decode(string stored)
     {
@@ -50,10 +53,10 @@ public sealed record InstrumentSelection(string Group, string FactName)
         return factName.Length == 0 ? null : new InstrumentSelection(stored[..slash], factName);
     }
 
-    public static IReadOnlyList<InstrumentSelection> Restore(IEnumerable<string>? stored)
+    public static IReadOnlyList<InstrumentSelection>? Restore(IEnumerable<string>? stored)
     {
         var listed = (stored ?? Enumerable.Empty<string>()).Select(Decode).OfType<InstrumentSelection>().ToList();
-        return listed.Count == 0 ? Defaults : listed;
+        return listed.Count == 0 ? null : listed;
     }
 
     public static InstrumentSelection FirstUnused(IEnumerable<InstrumentSelection> used)
@@ -128,7 +131,7 @@ internal static class InstrumentSelectionStore
     internal static bool Recoverable(Exception e) =>
         e is IOException or UnauthorizedAccessException or JsonException or NotSupportedException;
 
-    public static IReadOnlyList<InstrumentSelection> Load()
+    public static IReadOnlyList<InstrumentSelection>? Load()
     {
         try
         {
@@ -137,7 +140,7 @@ internal static class InstrumentSelectionStore
         }
         catch (Exception e) when (Recoverable(e))
         {
-            return InstrumentSelection.Defaults;
+            return null;
         }
     }
 

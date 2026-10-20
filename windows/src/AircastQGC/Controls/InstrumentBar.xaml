@@ -7,7 +7,7 @@
     <UserControl.Resources>
         <Style x:Key="OsdPlace" TargetType="TextBlock">
             <Setter Property="FontFamily" Value="{ThemeResource AppFontFamily}" />
-            <Setter Property="FontSize" Value="{ThemeResource FontSizeSubtitle}" />
+            <Setter Property="FontSize" Value="{ThemeResource FontSizeOsdValue}" />
             <Setter Property="Foreground" Value="{ThemeResource OsdTextBrush}" />
             <Setter Property="TextWrapping" Value="NoWrap" />
             <Setter Property="MaxLines" Value="1" />
