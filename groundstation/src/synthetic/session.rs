@@ -78,6 +78,7 @@ pub struct Target {
     pub response: Response,
     pub round_trip: Option<Duration>,
     pub bottles: Vec<Bottle>,
+    pub locked: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -197,6 +198,10 @@ impl Target {
                 .and_then(serde_json::Value::as_u64)
                 .map(Duration::from_millis),
             bottles: Bottle::listed(view),
+            locked: view
+                .get("locksOnTarget")
+                .and_then(serde_json::Value::as_bool)
+                == Some(true),
         })
     }
 }
@@ -439,18 +444,40 @@ pub struct Frame {
     pub under_ground: Option<f64>,
     pub bottles: Vec<Bottle>,
     pub changed: bool,
+    pub locked: bool,
     pub reading_age: Duration,
     pub stick_to_frame: Option<Duration>,
 }
 
 impl Frame {
+    pub fn aimed(&self, overlays: Option<&Overlays>, now: Instant) -> Pose {
+        overlays
+            .and_then(|overlays| overlays.tracked.as_ref())
+            .zip(self.home_ground)
+            .filter(|_| self.locked)
+            .map(|(tracked, ground)| {
+                let (latitude, longitude) = tracked.at(now);
+                let (heading, pitch) = crate::synthview::aim_at(
+                    (self.pose.latitude, self.pose.longitude, self.pose.height),
+                    (latitude, longitude, ground + tracked.spot.above_home),
+                );
+                Pose {
+                    heading,
+                    pitch,
+                    roll: 0.0,
+                    ..self.pose
+                }
+            })
+            .unwrap_or(self.pose)
+    }
+
     pub fn view(
         &self,
         overlays: Option<&Overlays>,
         width: u32,
         height: u32,
     ) -> (Camera, Vec<Arc<Mesh>>) {
-        let camera = Camera::new(&self.pose, width, height);
+        let camera = Camera::new(&self.aimed(overlays, Instant::now()), width, height);
         let marks = overlays
             .zip(self.home_ground)
             .map(|(overlays, ground)| overlay::meshes(overlays, ground, &camera))
@@ -1526,6 +1553,7 @@ impl Session {
             under_ground,
             bottles,
             changed: moving || fresh || reselected,
+            locked: target.locked,
             reading_age: now.saturating_duration_since(telemetry.1),
             stick_to_frame: touched.map(|at| now.saturating_duration_since(at)),
         })
@@ -1584,6 +1612,7 @@ mod tests {
             response: Response::default(),
             round_trip: None,
             bottles: Vec::new(),
+            locked: false,
         }
     }
 
@@ -1617,6 +1646,52 @@ mod tests {
             heading: degrees,
             pitch: -15.0,
         }
+    }
+
+    #[test]
+    fn a_view_locked_on_a_tracked_target_looks_straight_at_it_every_frame() {
+        let overlays = Overlays::from_view(&serde_json::json!({
+            "fenceTop": 50.0,
+            "target": { "latitude": -35.3615, "longitude": 149.1652, "aboveHome": 0.0, "northSpeed": 8.0, "eastSpeed": 0.0, "ageMs": 0 }
+        }))
+        .unwrap();
+        let frame = |locked: bool| Frame {
+            pose: Pose {
+                latitude: -35.3620,
+                longitude: 149.1652,
+                height: 620.0,
+                heading: 90.0,
+                pitch: -15.0,
+                roll: 3.0,
+                fov: 70.0,
+            },
+            ground: Vec::new(),
+            backfill: Vec::new(),
+            warm: Vec::new(),
+            home_ground: Some(600.0),
+            under_ground: None,
+            bottles: Vec::new(),
+            changed: false,
+            locked,
+            reading_age: Duration::ZERO,
+            stick_to_frame: None,
+        };
+        let tracked = overlays.tracked.clone().unwrap();
+        let later = tracked.seen + Duration::from_millis(400);
+        let aimed = frame(true).aimed(Some(&overlays), later);
+        let target = tracked.at(later);
+        let expected =
+            crate::synthview::aim_at((-35.3620, 149.1652, 620.0), (target.0, target.1, 600.0));
+        assert!(
+            (aimed.heading - expected.0).abs() < 1e-9 && (aimed.pitch - expected.1).abs() < 1e-9
+        );
+        assert!(aimed.heading.abs() < 1e-6, "the target is due north");
+        assert_eq!(aimed.roll, 0.0);
+        assert_eq!(
+            frame(false).aimed(Some(&overlays), later),
+            frame(false).pose,
+            "an unlocked view keeps its own aim"
+        );
     }
 
     #[test]

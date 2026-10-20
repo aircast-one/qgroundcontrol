@@ -242,9 +242,15 @@ pub fn synthetic(backend: &dyn Backend, gimbals: &Value, aim: (f64, f64)) -> Val
     else {
         return json!({ "kind": "object", "class": "SyntheticView", "available": false, "native": native(), "draw": drawn() });
     };
-    let gimbal = gimbal_aim(gimbals).or_else(|| {
-        tracked_from_home(backend).map(|target| aim_at((latitude, longitude, above_home), target))
-    });
+    let device = gimbal_aim(gimbals);
+    let locked = device
+        .is_none()
+        .then(|| {
+            tracked_from_home(backend)
+                .map(|target| aim_at((latitude, longitude, above_home), target))
+        })
+        .flatten();
+    let gimbal = device.or(locked);
     let free = gimbal.is_none();
     let (tilt, pan) = aim;
     let reading = |path: &str| raw(backend, path).unwrap_or(0.0);
@@ -294,6 +300,7 @@ pub fn synthetic(backend: &dyn Backend, gimbals: &Value, aim: (f64, f64)) -> Val
         "pitch": pitch,
         "roll": roll,
         "aimable": free,
+        "locksOnTarget": locked.is_some(),
         "pan": if free { pan } else { 0.0 },
         "tilt": if free { tilt } else { 0.0 },
         "fov": CAMERA_FOV_DEG,
@@ -606,8 +613,13 @@ mod tests {
             view["aimable"], false,
             "while it tracks, a drag does not take the view off the target"
         );
+        assert_eq!(
+            view["locksOnTarget"], true,
+            "and the renderer keeps it on the target between readings"
+        );
         let untracked = synthetic(&flying(&[]), &no_gimbal(), DEFAULT_AIM);
         assert_eq!(untracked["aimable"], true);
+        assert_eq!(untracked["locksOnTarget"], false);
     }
 
     #[test]

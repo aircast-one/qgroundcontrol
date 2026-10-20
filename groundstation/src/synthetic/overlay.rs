@@ -1,5 +1,6 @@
 use std::sync::Arc;
-use std::time::{Duration, Instant};
+use std::time::Duration;
+use web_time::Instant;
 
 use glam::{DMat3, DMat4, DVec3};
 use serde_json::Value;
