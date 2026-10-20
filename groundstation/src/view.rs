@@ -27,6 +27,7 @@ use crate::debugapi;
 use crate::detections;
 use crate::deviceflights;
 use crate::deviceviews;
+use crate::dropsim;
 use crate::escal;
 use crate::escview;
 use crate::espbridge;
@@ -43,6 +44,7 @@ use crate::gcsposition;
 use crate::geo;
 use crate::geotag;
 use crate::gimbal;
+use crate::gimbalgeo;
 use crate::gimbalindicator;
 use crate::gpsresilience;
 use crate::gpsrtk;
@@ -183,6 +185,22 @@ pub const ARGUMENT_MODES: &[(&str, &str)] = &[
     ("view.areaFile", "<file path>"),
     ("view.lineFile", "<file path>"),
     ("view.terrainTile", "<file path>,<latitude>,<longitude>"),
+    (
+        "view.dropSim",
+        "<lat>,<lon>,<altAgl>,<northSpeed>,<eastSpeed>,<targetLat>,<targetLon>,<targetNorthSpeed>,<targetEastSpeed>",
+    ),
+    (
+        "view.dropLead",
+        "<lat>,<lon>,<altAgl>,<northSpeed>,<eastSpeed>,<targetLat>,<targetLon>,<targetNorthSpeed>,<targetEastSpeed>",
+    ),
+    (
+        "view.gimbalGroundPoint",
+        "<lat>,<lon>,<altAgl>,<gimbalYaw>,<gimbalPitch>",
+    ),
+    (
+        "view.gimbalDropLead",
+        "<lat>,<lon>,<altAgl>,<northSpeed>,<eastSpeed>,<gimbalYaw>,<gimbalPitch>",
+    ),
     (
         "view.geoToNed",
         "<lat>,<lon>,<alt>,<originLat>,<originLon>,<originAlt>",
@@ -1006,6 +1024,26 @@ pub const VIEWS: &[View] = &[
         compute: shp::line_file_view,
     },
     View {
+        path: "view.dropSim",
+        deps: &[],
+        compute: dropsim::drop_sim_view,
+    },
+    View {
+        path: "view.dropLead",
+        deps: &[],
+        compute: dropsim::drop_lead_view,
+    },
+    View {
+        path: "view.gimbalGroundPoint",
+        deps: &[],
+        compute: gimbalgeo::gimbal_ground_point_view,
+    },
+    View {
+        path: "view.gimbalDropLead",
+        deps: &[],
+        compute: gimbalgeo::gimbal_drop_lead_view,
+    },
+    View {
         path: "view.geoToNed",
         deps: geo::DEPS,
         compute: geo::geo_to_ned_view,
@@ -1351,6 +1389,7 @@ mod deps_cover_reads {
         ("geotagcontroller", include_str!("geotagcontroller.rs")),
         ("geotagjob", include_str!("geotagjob.rs")),
         ("gimbal", include_str!("gimbal.rs")),
+        ("gimbalgeo", include_str!("gimbalgeo.rs")),
         ("gpsfacts", include_str!("gpsfacts.rs")),
         ("gpsrtk", include_str!("gpsrtk.rs")),
         ("gpsview", include_str!("gpsview.rs")),
@@ -1415,6 +1454,7 @@ mod deps_cover_reads {
         ("deviceviews", include_str!("deviceviews.rs")),
         ("deviceforms", include_str!("deviceforms.rs")),
         ("devicewizard", include_str!("devicewizard.rs")),
+        ("dropsim", include_str!("dropsim.rs")),
         ("pumpguard", include_str!("pumpguard.rs")),
         ("advancedui", include_str!("advancedui.rs")),
         ("applog", include_str!("applog.rs")),

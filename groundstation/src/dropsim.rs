@@ -1,0 +1,445 @@
+use serde_json::{Value, json};
+
+use crate::geo::{geo_to_ned, ned_to_geo};
+use crate::router::Backend;
+
+const GRAVITY_MPS2: f64 = 9.81;
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Point {
+    pub lat: f64,
+    pub lon: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Velocity {
+    pub north_mps: f64,
+    pub east_mps: f64,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Release {
+    pub position: Point,
+    pub altitude_agl_m: f64,
+    pub velocity: Velocity,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Target {
+    pub position: Point,
+    pub velocity: Velocity,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Drop {
+    pub fall_s: f64,
+    pub impact: Point,
+    pub target_at_impact: Point,
+    pub miss_north_m: f64,
+    pub miss_east_m: f64,
+    pub miss_m: f64,
+}
+
+impl Drop {
+    pub fn json(&self) -> Value {
+        json!({
+            "fallSeconds": self.fall_s,
+            "impact": {"lat": self.impact.lat, "lon": self.impact.lon},
+            "targetAtImpact": {"lat": self.target_at_impact.lat, "lon": self.target_at_impact.lon},
+            "missNorthMeters": self.miss_north_m,
+            "missEastMeters": self.miss_east_m,
+            "missMeters": self.miss_m,
+        })
+    }
+}
+
+pub fn simulate(release: Release, target: Target) -> Drop {
+    let fall_s = (2.0 * release.altitude_agl_m.max(0.0) / GRAVITY_MPS2).sqrt();
+    let origin = (release.position.lat, release.position.lon, 0.0);
+
+    let impact_north_m = release.velocity.north_mps * fall_s;
+    let impact_east_m = release.velocity.east_mps * fall_s;
+    let (impact_lat, impact_lon, _) = ned_to_geo(impact_north_m, impact_east_m, 0.0, origin);
+
+    let (target_north0_m, target_east0_m, _) =
+        geo_to_ned(target.position.lat, target.position.lon, 0.0, origin);
+    let target_north_m = target_north0_m + target.velocity.north_mps * fall_s;
+    let target_east_m = target_east0_m + target.velocity.east_mps * fall_s;
+    let (target_lat, target_lon, _) = ned_to_geo(target_north_m, target_east_m, 0.0, origin);
+
+    let miss_north_m = target_north_m - impact_north_m;
+    let miss_east_m = target_east_m - impact_east_m;
+
+    Drop {
+        fall_s,
+        impact: Point {
+            lat: impact_lat,
+            lon: impact_lon,
+        },
+        target_at_impact: Point {
+            lat: target_lat,
+            lon: target_lon,
+        },
+        miss_north_m,
+        miss_east_m,
+        miss_m: miss_north_m.hypot(miss_east_m),
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Lead {
+    pub release_in_s: f64,
+    pub fall_s: f64,
+    pub miss_m: f64,
+    pub release_point: Point,
+    pub impact: Point,
+    pub target_at_impact: Point,
+}
+
+impl Lead {
+    pub fn json(&self) -> Value {
+        json!({
+            "releaseInSeconds": self.release_in_s,
+            "fallSeconds": self.fall_s,
+            "missMeters": self.miss_m,
+            "releasePoint": {"lat": self.release_point.lat, "lon": self.release_point.lon},
+            "impact": {"lat": self.impact.lat, "lon": self.impact.lon},
+            "targetAtImpact": {"lat": self.target_at_impact.lat, "lon": self.target_at_impact.lon},
+        })
+    }
+}
+
+pub fn lead(release: Release, target: Target) -> Lead {
+    let fall_s = (2.0 * release.altitude_agl_m.max(0.0) / GRAVITY_MPS2).sqrt();
+    let origin = (release.position.lat, release.position.lon, 0.0);
+
+    let (target_north0_m, target_east0_m, _) =
+        geo_to_ned(target.position.lat, target.position.lon, 0.0, origin);
+    let d = (target_north0_m, target_east0_m);
+    let v_d = (release.velocity.north_mps, release.velocity.east_mps);
+    let v_t = (target.velocity.north_mps, target.velocity.east_mps);
+    let w = (v_t.0 - v_d.0, v_t.1 - v_d.1);
+    let w_dot_w = w.0 * w.0 + w.1 * w.1;
+    let d_dot_w = d.0 * w.0 + d.1 * w.1;
+    let s = if w_dot_w > 1e-9 {
+        -d_dot_w / w_dot_w
+    } else {
+        0.0
+    };
+
+    let release_in_s = s - fall_s;
+    let miss = (d.0 + w.0 * s, d.1 + w.1 * s);
+    let release_offset = (v_d.0 * release_in_s, v_d.1 * release_in_s);
+    let impact_offset = (v_d.0 * s, v_d.1 * s);
+    let target_offset = (target_north0_m + v_t.0 * s, target_east0_m + v_t.1 * s);
+
+    let point = |offset: (f64, f64)| {
+        let (lat, lon, _) = ned_to_geo(offset.0, offset.1, 0.0, origin);
+        Point { lat, lon }
+    };
+
+    Lead {
+        release_in_s,
+        fall_s,
+        miss_m: miss.0.hypot(miss.1),
+        release_point: point(release_offset),
+        impact: point(impact_offset),
+        target_at_impact: point(target_offset),
+    }
+}
+
+fn numbers(args: &[String], count: usize) -> Option<Vec<f64>> {
+    let parsed: Vec<f64> = args
+        .iter()
+        .take(count)
+        .filter_map(|a| a.parse::<f64>().ok())
+        .filter(|v| v.is_finite())
+        .collect();
+    (parsed.len() == count).then_some(parsed)
+}
+
+pub fn drop_sim_view(_backend: &dyn Backend, args: &[String]) -> Value {
+    let Some(v) = numbers(args, 9) else {
+        return crate::read::refused(
+            "this needs nine numbers: release latitude, longitude, altitude AGL, north speed, east speed, then target latitude, longitude, north speed and east speed",
+        );
+    };
+    simulate(
+        Release {
+            position: Point {
+                lat: v[0],
+                lon: v[1],
+            },
+            altitude_agl_m: v[2],
+            velocity: Velocity {
+                north_mps: v[3],
+                east_mps: v[4],
+            },
+        },
+        Target {
+            position: Point {
+                lat: v[5],
+                lon: v[6],
+            },
+            velocity: Velocity {
+                north_mps: v[7],
+                east_mps: v[8],
+            },
+        },
+    )
+    .json()
+}
+
+pub fn drop_lead_view(_backend: &dyn Backend, args: &[String]) -> Value {
+    let Some(v) = numbers(args, 9) else {
+        return crate::read::refused(
+            "this needs nine numbers: release latitude, longitude, altitude AGL, north speed, east speed, then target latitude, longitude, north speed and east speed",
+        );
+    };
+    lead(
+        Release {
+            position: Point {
+                lat: v[0],
+                lon: v[1],
+            },
+            altitude_agl_m: v[2],
+            velocity: Velocity {
+                north_mps: v[3],
+                east_mps: v[4],
+            },
+        },
+        Target {
+            position: Point {
+                lat: v[5],
+                lon: v[6],
+            },
+            velocity: Velocity {
+                north_mps: v[7],
+                east_mps: v[8],
+            },
+        },
+    )
+    .json()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn offset(origin: (f64, f64), north_m: f64, east_m: f64) -> Point {
+        let (lat, lon, _) = ned_to_geo(north_m, east_m, 0.0, (origin.0, origin.1, 0.0));
+        Point { lat, lon }
+    }
+
+    #[test]
+    fn a_stationary_target_already_at_the_impact_point_is_hit() {
+        let origin = (47.0, 8.0);
+        let release = Release {
+            position: Point {
+                lat: origin.0,
+                lon: origin.1,
+            },
+            altitude_agl_m: 19.6133,
+            velocity: Velocity {
+                north_mps: 10.0,
+                east_mps: 0.0,
+            },
+        };
+        let target = Target {
+            position: offset(origin, 20.0, 0.0),
+            velocity: Velocity::default(),
+        };
+
+        let drop = simulate(release, target);
+
+        assert!(
+            (drop.fall_s - 2.0).abs() < 1e-3,
+            "a 19.6133m drop should take ~2s to fall, got {}",
+            drop.fall_s
+        );
+        assert!(
+            drop.miss_m < 0.01,
+            "a target sitting exactly at the impact point should show near-zero miss, got {}",
+            drop.miss_m
+        );
+    }
+
+    #[test]
+    fn a_target_drifting_sideways_during_the_fall_is_missed_by_its_own_drift() {
+        let origin = (47.0, 8.0);
+        let release = Release {
+            position: Point {
+                lat: origin.0,
+                lon: origin.1,
+            },
+            altitude_agl_m: 19.6133,
+            velocity: Velocity {
+                north_mps: 10.0,
+                east_mps: 0.0,
+            },
+        };
+        let target = Target {
+            position: offset(origin, 20.0, 0.0),
+            velocity: Velocity {
+                north_mps: 0.0,
+                east_mps: 5.0,
+            },
+        };
+
+        let drop = simulate(release, target);
+
+        assert!(
+            (drop.miss_m - 10.0).abs() < 0.01,
+            "5 m/s of crosswise target drift over a 2s fall should miss by 10m, got {}",
+            drop.miss_m
+        );
+    }
+
+    #[test]
+    fn flying_straight_at_a_stationary_target_finds_the_release_time_that_hits_it() {
+        let origin = (47.0, 8.0);
+        let release = Release {
+            position: Point {
+                lat: origin.0,
+                lon: origin.1,
+            },
+            altitude_agl_m: 19.6133,
+            velocity: Velocity {
+                north_mps: 10.0,
+                east_mps: 0.0,
+            },
+        };
+        let target = Target {
+            position: offset(origin, 100.0, 0.0),
+            velocity: Velocity::default(),
+        };
+
+        let solved = lead(release, target);
+
+        assert!(
+            (solved.release_in_s - 8.0).abs() < 1e-3,
+            "100m at 10 m/s minus the 2s fall is 8s out, got {}",
+            solved.release_in_s
+        );
+        assert!(
+            solved.miss_m < 1e-3,
+            "flying straight at a stationary target has an exact solution, got {}",
+            solved.miss_m
+        );
+    }
+
+    #[test]
+    fn a_crossing_target_is_missed_by_the_closest_this_heading_can_manage() {
+        let origin = (47.0, 8.0);
+        let release = Release {
+            position: Point {
+                lat: origin.0,
+                lon: origin.1,
+            },
+            altitude_agl_m: 19.6133,
+            velocity: Velocity {
+                north_mps: 10.0,
+                east_mps: 0.0,
+            },
+        };
+        let target = Target {
+            position: offset(origin, 100.0, 0.0),
+            velocity: Velocity {
+                north_mps: 0.0,
+                east_mps: 5.0,
+            },
+        };
+
+        let solved = lead(release, target);
+
+        assert!(
+            (solved.release_in_s - 6.0).abs() < 1e-3,
+            "got {}",
+            solved.release_in_s
+        );
+        assert!(
+            (solved.miss_m - 2000f64.sqrt()).abs() < 1e-2,
+            "a due-north course can't converge on an eastbound target; this is the closest point of approach, got {}",
+            solved.miss_m
+        );
+    }
+
+    #[test]
+    fn two_courses_at_the_same_velocity_never_converge_so_now_is_as_good_as_any_time() {
+        let origin = (47.0, 8.0);
+        let release = Release {
+            position: Point {
+                lat: origin.0,
+                lon: origin.1,
+            },
+            altitude_agl_m: 19.6133,
+            velocity: Velocity {
+                north_mps: 10.0,
+                east_mps: 0.0,
+            },
+        };
+        let target = Target {
+            position: offset(origin, 0.0, 30.0),
+            velocity: Velocity {
+                north_mps: 10.0,
+                east_mps: 0.0,
+            },
+        };
+
+        let solved = lead(release, target);
+
+        assert!(
+            (solved.release_in_s - (-solved.fall_s)).abs() < 1e-9,
+            "with matched velocities the gap never closes, so there is no better time than now minus the time already spent falling, got {}",
+            solved.release_in_s
+        );
+        assert!(
+            (solved.miss_m - 30.0).abs() < 1e-6,
+            "the separation this course started with is the separation it keeps, got {}",
+            solved.miss_m
+        );
+    }
+
+    struct NoBackend;
+    impl Backend for NoBackend {
+        fn get(&self, _p: &str) -> String {
+            String::new()
+        }
+        fn get_fields(&self, _p: &str, _f: &str) -> String {
+            String::new()
+        }
+        fn set(&self, _p: &str, _v: &str) -> String {
+            String::new()
+        }
+        fn invoke(&self, _p: &str, _a: &str) -> String {
+            String::new()
+        }
+        fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn the_view_refuses_anything_other_than_nine_numbers() {
+        let answer = drop_sim_view(&NoBackend, &["1".to_string(), "2".to_string()]);
+        assert_eq!(answer["kind"], "null");
+        assert!(answer["reason"].as_str().unwrap().contains("nine numbers"));
+    }
+
+    #[test]
+    fn the_view_reports_the_same_miss_as_calling_simulate_directly() {
+        let origin = (47.0, 8.0);
+        let target = offset(origin, 20.0, 0.0);
+        let args: Vec<String> = [
+            origin.0, origin.1, 19.6133, 10.0, 0.0, target.lat, target.lon, 0.0, 5.0,
+        ]
+        .iter()
+        .map(|n| n.to_string())
+        .collect();
+
+        let answer = drop_sim_view(&NoBackend, &args);
+
+        assert!(
+            (answer["missMeters"].as_f64().unwrap() - 10.0).abs() < 0.01,
+            "{answer}"
+        );
+    }
+}
