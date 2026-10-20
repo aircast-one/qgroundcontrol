@@ -41,7 +41,7 @@ class PayloadStatusTest {
     @Test
     fun `the payload carries what would stop it dropping and how to fix it`() {
         val view = JSONObject(
-            """{"payload":{"bays":4,"empty":[1],"next":2,"problems":[
+            """{"payload":{"bays":4,"empty":[1],"next":2,"label":"Drop 2","problems":[
                 {"code":"staysOpen","text":"The gripper stays open after the first drop.","blocking":true,"fix":"Turn on auto-close"},
                 {"code":"noGripper","text":"No gripper.","blocking":true,"fix":""}]}}""",
         )
@@ -54,6 +54,7 @@ class PayloadStatusTest {
                     PayloadProblem("staysOpen", "The gripper stays open after the first drop.", blocking = true, fix = "Turn on auto-close"),
                     PayloadProblem("noGripper", "No gripper.", blocking = true, fix = ""),
                 ),
+                "Drop 2",
             ),
             payloadOf(view),
         )

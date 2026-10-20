@@ -48,6 +48,8 @@ struct PayloadProblem: Equatable {
 
 func payloadNextBay(_ view: JSON?) -> Int { view?["payload"]["next"].int(0) ?? 0 }
 
+func payloadDropLabel(_ view: JSON?) -> String { view?["payload"]["label"].string ?? "" }
+
 func payloadProblems(_ view: JSON?) -> [PayloadProblem] {
     (view?["payload"]["problems"].arrayOrNil ?? []).filter { $0.object != nil }.map {
         PayloadProblem(code: $0["code"].string, text: $0["text"].string, blocking: $0["blocking"].bool, fix: $0["fix"].string)

@@ -8,6 +8,7 @@ import type { GuidedValueKind } from './GuidedValueFlow';
 import { PAUSE } from './MoreActions';
 import {
   FlightDeckContext,
+  type GuidedAction,
   Instrument,
   checklistStateValue,
   flightDeckEntries,
@@ -27,12 +28,12 @@ describe('FlightDeckEntriesTest', () => {
 
   const deck = (
     offers: readonly GuidedOffer[],
-    { armed = false, openChecklist = null, openValue = () => undefined, readiness = null, payload = SINGLE_GRIPPER }: { armed?: boolean; openChecklist?: (() => void) | null; openValue?: (kind: GuidedValueKind) => void; readiness?: Readiness | null; payload?: Payload } = {},
+    { armed = false, openChecklist = null, openValue = () => undefined, readiness = null, payload = SINGLE_GRIPPER, confirm = () => undefined }: { armed?: boolean; openChecklist?: (() => void) | null; openValue?: (kind: GuidedValueKind) => void; readiness?: Readiness | null; payload?: Payload; confirm?: (action: GuidedAction) => void } = {},
   ) =>
     FlightDeckContext({
       offers: new Map(offers.map((it) => [it.id, it] as const)),
       armed,
-      confirm: () => undefined,
+      confirm,
       openValue,
       report: () => undefined,
       openChecklist,
@@ -40,11 +41,15 @@ describe('FlightDeckEntriesTest', () => {
       payload,
     });
 
-  it('a basket drops its next loaded bay from the deck and says which', () => {
-    const drop = (empty: readonly number[], next: number | null) =>
-      flightDeckEntries(deck([{ ...offer('release'), title: 'Drop' }], { payload: { bays: 3, empty, next, problems: [] } })).find((it) => it.id === 'release');
-    expect([drop([], 1)?.label, drop([1], 2)?.label]).toEqual(['Slide to drop 1', 'Slide to drop 2']);
-    expect([drop([1, 2, 3], 1)?.label, drop([1, 2, 3], 1)?.enabled]).toEqual(['Slide to drop 1', true]);
+  it('a basket drops its next loaded bay from the deck and says which, and when the core counts it empty', () => {
+    const confirmed = vi.fn((action: GuidedAction) => action);
+    const drop = (empty: readonly number[], next: number, label: string, title: string) =>
+      flightDeckEntries(deck([{ ...offer('release'), title }], { confirm: confirmed, payload: { bays: 3, empty, next, label, problems: [] } })).find((it) => it.id === 'release');
+    expect([drop([], 1, 'Drop 1', 'Drop bay 1')?.label, drop([1], 2, 'Drop 2', 'Drop bay 2')?.label]).toEqual(['Slide to drop 1', 'Slide to drop 2']);
+    const emptied = drop([1, 2, 3], 1, 'Drop 1 · empty', 'Drop bay 1');
+    expect([emptied?.label, emptied?.enabled]).toEqual(['Slide to drop 1 · empty', true]);
+    emptied?.onClick();
+    expect(confirmed.mock.results.at(-1)?.value.name, 'the confirm sheet names the bay as the Payload sheet does').toBe('Drop bay 1');
   });
 
   it('a vehicle with a gripper gets a drop on the deck that lands on a hold, like land', () => {

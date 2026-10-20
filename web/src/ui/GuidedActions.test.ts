@@ -44,7 +44,7 @@ describe('GuidedActionsTest', () => {
 
   it('the payload carries what would stop it dropping and how to fix it', () => {
     const payload = payloadOf(
-      json(`{"payload":{"bays":4,"empty":[1],"next":2,"problems":[
+      json(`{"payload":{"bays":4,"empty":[1],"next":2,"label":"Drop 2","problems":[
         {"code":"staysOpen","text":"The gripper stays open after the first drop.","blocking":true,"fix":"Turn on auto-close"},
         {"code":"noGripper","text":"No gripper.","blocking":true,"fix":""}]}}`),
     );
@@ -52,6 +52,7 @@ describe('GuidedActionsTest', () => {
       bays: 4,
       empty: [1],
       next: 2,
+      label: 'Drop 2',
       problems: [
         { code: 'staysOpen', text: 'The gripper stays open after the first drop.', blocking: true, fix: 'Turn on auto-close' },
         { code: 'noGripper', text: 'No gripper.', blocking: true, fix: '' },

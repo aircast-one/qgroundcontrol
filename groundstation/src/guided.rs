@@ -131,6 +131,14 @@ impl GuidedState {
         })
     }
 
+    pub fn drop_label(&self) -> String {
+        match self.next_bay() {
+            Some(bay) if self.empty_bays.contains(&bay) => format!("Drop {bay} · empty"),
+            Some(bay) => format!("Drop {bay}"),
+            None => Action::Release.title().to_string(),
+        }
+    }
+
     pub fn can_resume(&self) -> bool {
         !self.armed
             && self.was_flying
@@ -192,8 +200,8 @@ pub const ACTIONS: &[Action] = &[
 #[serde(rename_all = "camelCase")]
 pub struct Offer {
     pub id: Action,
-    pub title: &'static str,
-    pub prompt: &'static str,
+    pub title: String,
+    pub prompt: String,
     pub offer: &'static str,
     pub reason: &'static str,
     pub reason_code: &'static str,
@@ -345,13 +353,19 @@ impl Action {
         };
         Offer {
             id: self,
-            title: match (self, s.fixed_wing || s.vtol_in_fwd_flight) {
-                (Action::ChangeSpeed, true) => "Change Airspeed",
-                _ => self.title(),
+            title: match (self, s.fixed_wing || s.vtol_in_fwd_flight, s.next_bay()) {
+                (Action::ChangeSpeed, true, _) => "Change Airspeed".to_string(),
+                (Action::Release, _, Some(bay)) => format!("Drop bay {bay}"),
+                _ => self.title().to_string(),
             },
-            prompt: match (self, s.fixed_wing || s.vtol_in_fwd_flight) {
-                (Action::ChangeSpeed, true) => "Change the equivalent airspeed setpoint",
-                _ => self.prompt(),
+            prompt: match (self, s.fixed_wing || s.vtol_in_fwd_flight, s.next_bay()) {
+                (Action::ChangeSpeed, true, _) => {
+                    "Change the equivalent airspeed setpoint".to_string()
+                }
+                (Action::Release, _, Some(bay)) if s.empty_bays.contains(&bay) => {
+                    format!("Bay {bay} is counted empty. Drop it only if you reloaded it.")
+                }
+                _ => self.prompt().to_string(),
             },
             offer,
             reason,
@@ -393,7 +407,7 @@ pub fn guided_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "flying": state.flying,
         "gotoLoiterRadius": state.goto_loiter_radius,
         "actions": offers,
-        "payload": { "bays": state.payload_bays.max(1), "empty": state.empty_bays, "next": state.next_bay(), "problems": crate::payloadcheck::problems_json(&state.payload, state.payload_bays) },
+        "payload": { "bays": state.payload_bays.max(1), "empty": state.empty_bays, "next": state.next_bay(), "label": state.drop_label(), "problems": crate::payloadcheck::problems_json(&state.payload, state.payload_bays) },
     })
 }
 
@@ -591,7 +605,7 @@ fn invoke_refusal(offered: &[Action], s: &GuidedState) -> Option<(&'static str, 
             "notOffered",
             format!(
                 "{} is not available right now.",
-                offers.first().map_or("That action", |o| o.title)
+                offers.first().map_or("That action", |o| o.title.as_str())
             ),
         )),
     }
@@ -1856,6 +1870,56 @@ mod tests {
     }
 
     #[test]
+    fn a_basket_names_the_bay_it_drops_and_says_when_that_bay_is_counted_empty() {
+        let basket = GuidedState {
+            has_gripper: true,
+            payload_bays: 4,
+            empty_bays: vec![1, 3],
+            ..ready_on_ground()
+        };
+        let drop = Action::Release.offer(&basket);
+        assert_eq!(
+            (
+                drop.title.as_str(),
+                drop.prompt.as_str(),
+                basket.drop_label()
+            ),
+            (
+                "Drop bay 2",
+                "Open the gripper and drop the payload.",
+                "Drop 2".to_string()
+            )
+        );
+        let emptied = GuidedState {
+            empty_bays: vec![1, 2, 3, 4],
+            ..basket.clone()
+        };
+        let again = Action::Release.offer(&emptied);
+        assert_eq!(
+            (
+                again.title.as_str(),
+                again.prompt.as_str(),
+                emptied.drop_label()
+            ),
+            (
+                "Drop bay 1",
+                "Bay 1 is counted empty. Drop it only if you reloaded it.",
+                "Drop 1 · empty".to_string()
+            ),
+            "every bay dropped: the deck still offers bay 1, but says it is counted empty"
+        );
+        let single = GuidedState {
+            has_gripper: true,
+            ..ready_on_ground()
+        };
+        assert_eq!(
+            (Action::Release.offer(&single).title, single.drop_label()),
+            ("Drop".to_string(), "Drop".to_string()),
+            "a single gripper has no bay to name"
+        );
+    }
+
+    #[test]
     fn the_payload_state_tells_the_pilot_what_the_flight_controller_said() {
         let none = std::collections::BTreeSet::new();
         let sent = GripperState::sent(GRIPPER_RELEASE, 0, 1_000);
@@ -2131,6 +2195,10 @@ mod tests {
         );
         assert_eq!(view["actions"][1]["carriesValue"], true);
         assert!(view["actions"][1].get("carries_value").is_none());
+        assert_eq!(
+            view["payload"]["label"], "Drop",
+            "every head reads the deck's drop label from the view"
+        );
     }
 
     #[test]

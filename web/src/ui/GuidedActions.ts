@@ -63,9 +63,9 @@ export const guidedOffers = (view: Json | null): ReadonlyMap<string, GuidedOffer
 
 export type PayloadProblem = { readonly code: string; readonly text: string; readonly blocking: boolean; readonly fix: string };
 
-export type Payload = { readonly bays: number; readonly empty: readonly number[]; readonly next: number | null; readonly problems: readonly PayloadProblem[] };
+export type Payload = { readonly bays: number; readonly empty: readonly number[]; readonly next: number | null; readonly label: string; readonly problems: readonly PayloadProblem[] };
 
-export const SINGLE_GRIPPER: Payload = { bays: 1, empty: [], next: null, problems: [] };
+export const SINGLE_GRIPPER: Payload = { bays: 1, empty: [], next: null, label: '', problems: [] };
 
 const problemOf = (json: Json): PayloadProblem => ({ code: optText(json, 'code'), text: optText(json, 'text'), blocking: optBoolean(json, 'blocking'), fix: optText(json, 'fix') });
 
@@ -77,6 +77,7 @@ export const payloadOf = (view: Json | null): Payload => {
     bays,
     empty: (optJSONArray(payload, 'empty') ?? []).filter((it): it is number => typeof it === 'number'),
     next: isNull(payload, 'next') ? null : optInt(payload, 'next'),
+    label: optText(payload, 'label'),
     problems: jsonObjects(optJSONArray(payload, 'problems')).map(problemOf),
   };
 };

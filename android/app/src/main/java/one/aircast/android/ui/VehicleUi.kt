@@ -987,8 +987,7 @@ internal class FlightDeckContext(
     val payload: Payload = SINGLE_GRIPPER,
 )
 
-private fun dropLabel(title: String, payload: Payload): String =
-    holdLabel(payload.next?.takeIf { payload.multiBay }?.let { "$title $it" } ?: title)
+private fun dropLabel(title: String, payload: Payload): String = holdLabel(payload.label.ifBlank { title })
 
 internal fun flightDeckEntries(deck: FlightDeckContext): List<DeckEntry> = with(deck) {
     val armAction = offers[if (armed) "disarm" else "arm"]
@@ -1097,10 +1096,9 @@ internal fun flightDeckEntries(deck: FlightDeckContext): List<DeckEntry> = with(
             },
         ) {
             val bay = payload.next ?: 0
-            val title = offers[RELEASE]?.title ?: "Drop"
             confirm(GuidedAction(
                 offerId = RELEASE,
-                name = if (payload.multiBay) "$title $bay" else title,
+                name = offers[RELEASE]?.title ?: "Drop",
                 confirm = offers[RELEASE]?.prompt?.ifBlank { null } ?: "Open the gripper and drop the payload.",
                 destructive = false,
             ) {

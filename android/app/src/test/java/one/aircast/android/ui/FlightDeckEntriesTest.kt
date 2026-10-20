@@ -9,12 +9,12 @@ class FlightDeckEntriesTest {
     private fun offer(id: String, state: String = "ready", carriesValue: Boolean = true) =
         GuidedOffer(id = id, title = "", offer = state, reason = "", prompt = "", destructive = false, carriesValue = carriesValue)
 
-    private fun deck(offers: List<GuidedOffer>, armed: Boolean = false, openChecklist: (() -> Unit)? = null, opened: MutableList<String> = mutableListOf(), readiness: Readiness? = null, payload: Payload = SINGLE_GRIPPER) =
+    private fun deck(offers: List<GuidedOffer>, armed: Boolean = false, openChecklist: (() -> Unit)? = null, opened: MutableList<String> = mutableListOf(), readiness: Readiness? = null, payload: Payload = SINGLE_GRIPPER, confirmed: MutableList<GuidedAction> = mutableListOf()) =
         FlightDeckContext(
             offers = offers.associateBy { it.id },
             armed = armed,
             scope = CoroutineScope(EmptyCoroutineContext),
-            confirm = {},
+            confirm = { confirmed += it },
             openValue = { opened += it.offerId },
             report = {},
             openChecklist = openChecklist,
@@ -41,11 +41,15 @@ class FlightDeckEntriesTest {
     }
 
     @Test
-    fun `a basket drops its next loaded bay from the deck and says which`() {
-        fun drop(empty: List<Int>, next: Int?) =
-            flightDeckEntries(deck(listOf(offer(RELEASE).copy(title = "Drop")), payload = Payload(3, empty, next))).first { it.id == RELEASE }
-        assertEquals(listOf("Slide to drop 1", "Slide to drop 2"), listOf(drop(emptyList(), 1).label, drop(listOf(1), 2).label))
-        assertEquals("Slide to drop 1" to true, drop(listOf(1, 2, 3), 1).let { it.label to it.enabled })
+    fun `a basket drops its next loaded bay from the deck and says which, and when the core counts it empty`() {
+        val confirmed = mutableListOf<GuidedAction>()
+        fun drop(empty: List<Int>, next: Int, label: String, title: String) =
+            flightDeckEntries(deck(listOf(offer(RELEASE).copy(title = title)), payload = Payload(3, empty, next, label = label), confirmed = confirmed)).first { it.id == RELEASE }
+        assertEquals(listOf("Slide to drop 1", "Slide to drop 2"), listOf(drop(emptyList(), 1, "Drop 1", "Drop bay 1").label, drop(listOf(1), 2, "Drop 2", "Drop bay 2").label))
+        val emptied = drop(listOf(1, 2, 3), 1, "Drop 1 · empty", "Drop bay 1")
+        assertEquals("Slide to drop 1 · empty" to true, emptied.label to emptied.enabled)
+        emptied.onClick()
+        assertEquals("the confirm sheet names the bay as the Payload sheet does", "Drop bay 1", confirmed.last().name)
     }
 
     @Test

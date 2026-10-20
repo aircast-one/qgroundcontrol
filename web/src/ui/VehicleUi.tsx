@@ -24,7 +24,7 @@ import { LocalFlyScreenState, OpenOnRequest } from './FlyScreenState';
 import { AnimatedVisibility } from './FlyShell';
 import { FLY_STATE, type Readiness, flyState, guidedReadiness, readinessWarning, useHasVehicle, vehicleSubtitle } from './FlyState';
 import { GRIPPER_ACTIONS, GripperPanel, gripperOffers } from './GripperPanel';
-import { GUIDED_ACTIONS, type GuidedOffer, type Payload, SINGLE_GRIPPER, guidedOffers, multiBay, payloadOf, resumeFromSequence } from './GuidedActions';
+import { GUIDED_ACTIONS, type GuidedOffer, type Payload, SINGLE_GRIPPER, guidedOffers, payloadOf, resumeFromSequence } from './GuidedActions';
 import { GUIDED_TAKEOFF, guidedTakeoff, guidedTakeoffPath } from './GuidedTakeoff';
 import { type GuidedValueKind, GuidedValueFlow, type OpenGuidedValue, altitudeValue, openGuidedValue, speedValue, takeoffValue } from './GuidedValueFlow';
 import { holdLabel } from './HoldToConfirm';
@@ -1102,7 +1102,7 @@ export const FlightDeckContext = (fields: Omit<FlightDeckContext, 'readiness' | 
 });
 
 
-const dropLabel = (title: string, payload: Payload): string => holdLabel(multiBay(payload) && payload.next !== null ? `${title} ${payload.next}` : title);
+const dropLabel = (title: string, payload: Payload): string => holdLabel(payload.label.trim() === '' ? title : payload.label);
 
 const promptOr = (offer: GuidedOffer | undefined, fallback: string): string => {
   const prompt = offer?.prompt ?? '';
@@ -1222,7 +1222,7 @@ export const flightDeckEntries = (deck: FlightDeckContext): readonly DeckEntry[]
             confirm(
               GuidedAction({
                 offerId: RELEASE,
-                name: multiBay(payload) ? `${release.title} ${dropBay}` : release.title,
+                name: release.title,
                 confirm: promptOr(release, 'Open the gripper and drop the payload.'),
                 destructive: false,
                 run: () => void VehicleCommands.gripperRefusal(GRIPPER_RELEASE, dropBay).then(report),

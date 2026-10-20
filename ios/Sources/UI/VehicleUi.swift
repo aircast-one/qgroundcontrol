@@ -487,7 +487,8 @@ struct FlightActions<Center: View>: View {
             report: { flyScreen.refusal = $0 },
             openChecklist: preflightOffered(preflightJson) ? { checklist.open() } : nil,
             readiness: readiness,
-            dropBay: payloadNextBay(actionsJson)
+            dropBay: payloadNextBay(actionsJson),
+            dropLabel: payloadDropLabel(actionsJson)
         ))
     }
 
@@ -1113,8 +1114,9 @@ final class FlightDeckContext {
     let openChecklist: (() -> Void)?
     let readiness: Readiness?
     let dropBay: Int
+    let dropLabel: String
 
-    init(offers: [String: GuidedOffer], armed: Bool, scope: ViewScope = ViewScope(), confirm: @escaping (GuidedAction) -> Void, openValue: @escaping (GuidedValueKind) -> Void, report: @escaping (String?) -> Void, openChecklist: (() -> Void)?, readiness: Readiness? = nil, dropBay: Int = 0) {
+    init(offers: [String: GuidedOffer], armed: Bool, scope: ViewScope = ViewScope(), confirm: @escaping (GuidedAction) -> Void, openValue: @escaping (GuidedValueKind) -> Void, report: @escaping (String?) -> Void, openChecklist: (() -> Void)?, readiness: Readiness? = nil, dropBay: Int = 0, dropLabel: String = "") {
         self.offers = offers
         self.armed = armed
         self.scope = scope
@@ -1124,6 +1126,7 @@ final class FlightDeckContext {
         self.openChecklist = openChecklist
         self.readiness = readiness
         self.dropBay = dropBay
+        self.dropLabel = dropLabel
     }
 }
 
@@ -1225,13 +1228,13 @@ func flightDeckEntries(_ deck: FlightDeckContext) -> [DeckEntry] {
         }) : nil,
         release?.shown == true ? DeckEntry(
             id: RELEASE,
-            label: holdLabel(bay > 0 ? "\(dropTitle) \(bay)" : dropTitle),
+            label: holdLabel(deck.dropLabel.nonBlank ?? dropTitle),
             icon: .planDrop,
             enabled: release?.ready == true,
             onHold: drop,
             onClick: {
                 deck.confirm(GuidedAction(
-                    name: bay > 0 ? "\(dropTitle) \(bay)" : dropTitle,
+                    name: dropTitle,
                     confirm: release?.prompt.nonBlank ?? "Open the gripper and drop the payload.",
                     destructive: false,
                     offerId: RELEASE,

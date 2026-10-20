@@ -50,4 +50,9 @@ final class GuidedActionsTests: XCTestCase {
         XCTAssertEqual(payloadProblems(JSON.parse(#"{"payload":{"bays":1}}"#)), [])
         XCTAssertEqual(payloadProblems(nil), [])
     }
+
+    func testTheDeckReadsItsDropLabelFromTheCore() {
+        XCTAssertEqual(payloadDropLabel(JSON.parse(#"{"payload":{"bays":4,"next":1,"label":"Drop 1 · empty"}}"#)), "Drop 1 · empty")
+        XCTAssertEqual(payloadDropLabel(nil), "")
+    }
 }

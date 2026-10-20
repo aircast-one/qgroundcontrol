@@ -11,16 +11,17 @@ final class FlightDeckEntriesTests: XCTestCase {
         var ids: [String] = []
     }
 
-    private func deck(_ offers: [GuidedOffer], armed: Bool = false, openChecklist: (() -> Void)? = nil, opened: Opened = Opened(), readiness: Readiness? = nil, dropBay: Int = 0) -> FlightDeckContext {
+    private func deck(_ offers: [GuidedOffer], armed: Bool = false, openChecklist: (() -> Void)? = nil, opened: Opened = Opened(), readiness: Readiness? = nil, dropBay: Int = 0, dropLabel: String = "", confirm: @escaping (GuidedAction) -> Void = { _ in }) -> FlightDeckContext {
         FlightDeckContext(
             offers: Dictionary(offers.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last }),
             armed: armed,
-            confirm: { _ in },
+            confirm: confirm,
             openValue: { opened.ids.append($0.offerId) },
             report: { _ in },
             openChecklist: openChecklist,
             readiness: readiness,
-            dropBay: dropBay
+            dropBay: dropBay,
+            dropLabel: dropLabel
         )
     }
 
@@ -29,7 +30,19 @@ final class FlightDeckEntriesTests: XCTestCase {
         let single = try XCTUnwrap(flightDeckEntries(deck([release], armed: true)).first { $0.id == RELEASE })
         XCTAssertEqual(single.label, holdLabel("Drop"))
         XCTAssertTrue(single.onHold != nil && single.enabled)
-        XCTAssertEqual(flightDeckEntries(deck([release], armed: true, dropBay: 2)).first { $0.id == RELEASE }?.label, holdLabel("Drop 2"))
+        let bay2 = GuidedOffer(id: RELEASE, title: "Drop bay 2", offer: "ready", reason: "", prompt: "", destructive: false, carriesValue: false)
+        XCTAssertEqual(flightDeckEntries(deck([bay2], armed: true, dropBay: 2, dropLabel: "Drop 2")).first { $0.id == RELEASE }?.label, holdLabel("Drop 2"))
+    }
+
+    func testEveryBayDroppedTheDeckStillOffersBayOneButSaysTheCoreCountsItEmpty() throws {
+        let release = GuidedOffer(id: RELEASE, title: "Drop bay 1", offer: "ready", reason: "", prompt: "Bay 1 is counted empty. Drop it only if you reloaded it.", destructive: false, carriesValue: false)
+        var confirmed: [GuidedAction] = []
+        let emptied = try XCTUnwrap(flightDeckEntries(deck([release], armed: true, dropBay: 1, dropLabel: "Drop 1 · empty", confirm: { confirmed.append($0) })).first { $0.id == RELEASE })
+        XCTAssertEqual(emptied.label, "Slide to drop 1 · empty")
+        XCTAssertTrue(emptied.enabled)
+        emptied.onClick()
+        XCTAssertEqual(confirmed.first?.name, "Drop bay 1")
+        XCTAssertEqual(confirmed.first?.confirm, "Bay 1 is counted empty. Drop it only if you reloaded it.")
     }
 
     func testTheDeckShowsTheOffersTheVehicleShowsAndTheChecklistOnlyOnTheGroundWhenOffered() {
