@@ -79,7 +79,7 @@ public sealed partial class GimbalIndicator : UserControl
             CornerRadius = new CornerRadius(14),
             Content = FormLook.Line(6, FormLook.Glyph(GimbalGlyph, 12, "TextTertiaryBrush"), _pillText),
         };
-        PreflightLook.Standard(_pill);
+        PreflightLook.Chip(_pill);
         AutomationProperties.SetName(_pill, "Gimbal");
 
         _yawLock = Wide("Yaw lock", () => Act("gimbal.yawLock", !(_state?.YawLocked ?? false)));

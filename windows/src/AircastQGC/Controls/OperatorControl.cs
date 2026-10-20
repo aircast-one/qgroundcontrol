@@ -292,7 +292,7 @@ public sealed class OperatorControlButton : UserControl
             Flyout = _sheet,
             Content = FormLook.Line(6, _icon, _label),
         };
-        FormLook.Paint(_pill, ButtonLook.Standard);
+        PreflightLook.Chip(_pill);
         AutomationProperties.SetName(_pill, "Vehicle control");
         Content = _pill;
         Visibility = Visibility.Collapsed;

@@ -27,6 +27,8 @@ public sealed class VehiclePickerButton : UserControl
     private readonly ToggleSwitch _panelToggle = new() { OnContent = "", OffContent = "", MinWidth = 0 };
     private readonly Grid _panelRow;
     private VehicleChoices? _last;
+    private VehicleChoices? _shown;
+    private bool _named;
     private bool _painting;
 
     public VehiclePickerButton()
@@ -59,6 +61,7 @@ public sealed class VehiclePickerButton : UserControl
                 Children = { Ui.Glyph(FlightGlyph, 12, "AccentBrush"), _name, _trailing },
             },
         }, Look.Standard, () => { }).Named("Choose which vehicle to fly");
+        PreflightLook.Chip(_pill);
         _panelToggle.Named("Enable multi-vehicle panel");
         _panelToggle.Toggled += (_, _) =>
         {
@@ -79,6 +82,16 @@ public sealed class VehiclePickerButton : UserControl
     }
 
     public event EventHandler<GuidedAsk>? ConfirmRequested;
+
+    public bool Named
+    {
+        get => _named;
+        set
+        {
+            _named = value;
+            Visibility = Ui.Shown(_shown is { } now && Wanted(now));
+        }
+    }
 
     public event EventHandler? ConnectRequested;
 
@@ -133,7 +146,8 @@ public sealed class VehiclePickerButton : UserControl
         if (VehicleChoices.ActiveChanged(_last, now)) FleetBridge.Forget();
         _last = VehicleChoices.Remembered(_last, now);
 
-        Visibility = Ui.Shown(now.Ambiguous);
+        _shown = now;
+        Visibility = Ui.Shown(Wanted(now));
         var lost = now.LostText;
         _name.Text = now.Active?.Name ?? "No vehicle chosen";
         _trailing.Glyph = lost == null ? ChevronGlyph : WarningGlyph;
@@ -142,6 +156,8 @@ public sealed class VehiclePickerButton : UserControl
         _title.Text = lost ?? VehicleChoices.ChooserTitle;
         if (notice != null) HandedOver?.Invoke(this, notice);
     }
+
+    private bool Wanted(VehicleChoices now) => now.Ambiguous || (_named && now.Active is not null);
 
     private void Opened()
     {

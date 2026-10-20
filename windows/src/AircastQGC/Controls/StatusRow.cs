@@ -140,7 +140,7 @@ internal sealed class StatusRow
             VerticalAlignment = VerticalAlignment.Center,
             Content = _moreIcon,
         }.Named("All status");
-        PreflightLook.Standard(_more);
+        PreflightLook.Chip(_more);
         ToolTipService.SetToolTip(_more, "All status");
         _all = new Sheet("Status", () => null, () => [list(), new Border { Height = 1, Background = Ui.Token("DividerBrush"), Margin = new Thickness(0, 4, 0, 4) }, new LayoutControls()]);
         _more.Click += (_, _) => _all.ShowAt(_more);

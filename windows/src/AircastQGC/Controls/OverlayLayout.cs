@@ -250,7 +250,7 @@ public class LayoutSlot : Grid
 
     private static FrameworkElement? Ancestor(FrameworkElement from, FrameworkElement root) =>
         VisualTreeHelper.GetParent(from) is FrameworkElement up
-            ? up is Grid { Name: "FlyContent" } || up == root ? up : Ancestor(up, root)
+            ? up is Grid { Name: "FlyChrome" } || up == root ? up : Ancestor(up, root)
             : null;
 
     private IEnumerable<UIElement> Content => Children.Where(child => child != _outline && child != _grip && child != _badge);

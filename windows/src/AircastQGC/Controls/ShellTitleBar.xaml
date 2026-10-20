@@ -20,15 +20,6 @@
             <Setter Property="Foreground" Value="{ThemeResource TextTertiaryBrush}" />
         </Style>
 
-        <Style x:Key="Pill" TargetType="Border">
-            <Setter Property="Height" Value="28" />
-            <Setter Property="Padding" Value="10,0" />
-            <Setter Property="CornerRadius" Value="14" />
-            <Setter Property="Background" Value="{ThemeResource ControlBrush}" />
-            <Setter Property="BorderBrush" Value="{ThemeResource ControlStrokeBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-        </Style>
-
         <Style x:Key="PillIcon" TargetType="FontIcon">
             <Setter Property="FontSize" Value="12" />
             <Setter Property="Foreground" Value="{ThemeResource TextTertiaryBrush}" />
@@ -47,7 +38,7 @@
             <Setter Property="Height" Value="28" />
             <Setter Property="Padding" Value="10,0" />
             <Setter Property="CornerRadius" Value="14" />
-            <Setter Property="Background" Value="{ThemeResource ControlBrush}" />
+            <Setter Property="Background" Value="{ThemeResource ChipBrush}" />
             <Setter Property="BorderBrush" Value="{ThemeResource ControlStrokeBrush}" />
             <Setter Property="BorderThickness" Value="1" />
             <Setter Property="Foreground" Value="{ThemeResource TextPrimaryBrush}" />
@@ -73,7 +64,7 @@
                                     <VisualState x:Name="Normal" />
                                     <VisualState x:Name="PointerOver">
                                         <VisualState.Setters>
-                                            <Setter Target="ContentPresenter.Background" Value="{ThemeResource ControlHoverBrush}" />
+                                            <Setter Target="ContentPresenter.Background" Value="{ThemeResource ChipHoverBrush}" />
                                         </VisualState.Setters>
                                     </VisualState>
                                     <VisualState x:Name="Pressed">
@@ -92,20 +83,64 @@
         </Style>
     </UserControl.Resources>
 
-    <Grid x:Name="Bar" Background="{ThemeResource BgSecondaryBrush}">
+    <Grid x:Name="Bar" Background="Transparent">
         <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
             <ColumnDefinition Width="*" />
             <ColumnDefinition Width="Auto" />
             <ColumnDefinition x:Name="CaptionColumn" Width="138" />
         </Grid.ColumnDefinitions>
 
-        <Grid x:Name="DragArea" Background="Transparent" Padding="16,0,8,0" ColumnSpacing="12">
+        <StackPanel x:Name="Lead" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Margin="8,0,0,0"
+                    Visibility="Collapsed">
+            <Button x:Name="MenuButton" Style="{StaticResource FlyRoundButton}" Content="&#xE700;" Margin="0,0,4,0"
+                    AutomationProperties.Name="Menu" ToolTipService.ToolTip="Menu">
+                <Button.Flyout>
+                    <MenuFlyout x:Name="PageMenu" Placement="BottomEdgeAlignedLeft">
+                        <MenuFlyoutItem x:Name="BackItem" Text="Back" Click="OnBack">
+                            <MenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE72B;" />
+                            </MenuFlyoutItem.Icon>
+                        </MenuFlyoutItem>
+                        <MenuFlyoutSeparator x:Name="BackSeparator" />
+                        <RadioMenuFlyoutItem Text="Fly" Tag="Fly" GroupName="Pages" Click="OnPage">
+                            <RadioMenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE709;" />
+                            </RadioMenuFlyoutItem.Icon>
+                        </RadioMenuFlyoutItem>
+                        <RadioMenuFlyoutItem Text="Plan" Tag="Plan" GroupName="Pages" Click="OnPage">
+                            <RadioMenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE707;" />
+                            </RadioMenuFlyoutItem.Icon>
+                        </RadioMenuFlyoutItem>
+                        <RadioMenuFlyoutItem Text="Analyze" Tag="Analyze" GroupName="Pages" Click="OnPage">
+                            <RadioMenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE9D9;" />
+                            </RadioMenuFlyoutItem.Icon>
+                        </RadioMenuFlyoutItem>
+                        <RadioMenuFlyoutItem Text="Vehicle Setup" Tag="Vehicle Setup" GroupName="Pages" Click="OnPage">
+                            <RadioMenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE90F;" />
+                            </RadioMenuFlyoutItem.Icon>
+                        </RadioMenuFlyoutItem>
+                        <MenuFlyoutSeparator />
+                        <RadioMenuFlyoutItem Text="Settings" Tag="Settings" GroupName="Pages" Click="OnPage">
+                            <RadioMenuFlyoutItem.Icon>
+                                <FontIcon Glyph="&#xE713;" />
+                            </RadioMenuFlyoutItem.Icon>
+                        </RadioMenuFlyoutItem>
+                    </MenuFlyout>
+                </Button.Flyout>
+            </Button>
+        </StackPanel>
+
+        <Grid x:Name="DragArea" Grid.Column="1" Background="Transparent" Padding="16,0,8,0" ColumnSpacing="12">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="Auto" />
                 <ColumnDefinition Width="*" />
             </Grid.ColumnDefinitions>
-            <Border Width="20" Height="20" VerticalAlignment="Center"
+            <Border x:Name="Logo" Width="20" Height="20" VerticalAlignment="Center"
                     CornerRadius="{StaticResource RadiusControl}" Background="{ThemeResource AccentBrush}">
                 <FontIcon Glyph="&#xE709;" FontSize="12" Foreground="{ThemeResource AccentOnBrush}" />
             </Border>
@@ -113,7 +148,7 @@
             <TextBlock x:Name="Subtitle" Grid.Column="2" Style="{StaticResource SubtitleText}" />
         </Grid>
 
-        <StackPanel x:Name="RightGroup" Grid.Column="1" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Margin="0,0,8,0">
+        <StackPanel x:Name="RightGroup" Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center" Margin="0,0,8,0">
             <StackPanel x:Name="Fixed" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
                 <Button x:Name="LinkPill" Style="{StaticResource PillButton}" Click="OnLinkClick"
                         AutomationProperties.Name="Connections" ToolTipService.ToolTip="Connections">
@@ -153,6 +188,9 @@
             </StackPanel>
 
             <local:StatusStrip x:Name="Strip" />
+
+            <Button x:Name="MoreButton" Style="{StaticResource FlyRoundButton}" Content="&#xE712;" Click="OnMore"
+                    Visibility="Collapsed" AutomationProperties.Name="Settings" ToolTipService.ToolTip="Settings" />
         </StackPanel>
     </Grid>
 </UserControl>

@@ -44,6 +44,12 @@
             <SolidColorBrush x:Key="ObstacleNearBrush" Color="#FF0000" />
             <SolidColorBrush x:Key="ObstacleMidBrush" Color="#FFA300" />
             <SolidColorBrush x:Key="ObstacleFarBrush" Color="#00FF00" />
+            <AcrylicBrush x:Key="ChipBrush" TintColor="#202020" TintOpacity="0.5" TintLuminosityOpacity="0.8" FallbackColor="#2C2C2C" />
+            <AcrylicBrush x:Key="ChipHoverBrush" TintColor="#2D2D2D" TintOpacity="0.5" TintLuminosityOpacity="0.85" FallbackColor="#323232" />
+            <LinearGradientBrush x:Key="FlyScrimBrush" StartPoint="0,0" EndPoint="0,1">
+                <GradientStop Color="#99000000" Offset="0" />
+                <GradientStop Color="#00000000" Offset="1" />
+            </LinearGradientBrush>
         </ResourceDictionary>
 
         <ResourceDictionary x:Key="Light">
@@ -85,6 +91,12 @@
             <SolidColorBrush x:Key="ObstacleNearBrush" Color="#FF0000" />
             <SolidColorBrush x:Key="ObstacleMidBrush" Color="#FFA300" />
             <SolidColorBrush x:Key="ObstacleFarBrush" Color="#00FF00" />
+            <AcrylicBrush x:Key="ChipBrush" TintColor="#FCFCFC" TintOpacity="0.5" TintLuminosityOpacity="0.85" FallbackColor="#F9F9F9" />
+            <AcrylicBrush x:Key="ChipHoverBrush" TintColor="#FFFFFF" TintOpacity="0.6" TintLuminosityOpacity="0.9" FallbackColor="#FFFFFF" />
+            <LinearGradientBrush x:Key="FlyScrimBrush" StartPoint="0,0" EndPoint="0,1">
+                <GradientStop Color="#99000000" Offset="0" />
+                <GradientStop Color="#00000000" Offset="1" />
+            </LinearGradientBrush>
         </ResourceDictionary>
 
     </ResourceDictionary.ThemeDictionaries>
@@ -111,6 +123,7 @@
     <x:Double x:Key="SizeControl">32</x:Double>
     <x:Double x:Key="SizeNavItem">36</x:Double>
     <x:Double x:Key="SizeTitlebar">48</x:Double>
+    <x:Double x:Key="SizeFlyScrim">96</x:Double>
     <x:Double x:Key="SizeNavPane">280</x:Double>
 
     <x:Double x:Key="StrokeDefault">1</x:Double>

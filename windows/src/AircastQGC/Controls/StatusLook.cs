@@ -63,7 +63,7 @@ internal static class StatusLook
     {
         StatusTone.Caution => "CautionBgBrush",
         StatusTone.Critical => "CriticalBgBrush",
-        _ => "ControlBrush",
+        _ => "ChipBrush",
     });
 
     public static StatusPill Pill(string name, string glyph)
@@ -88,7 +88,7 @@ internal static class StatusLook
             VerticalAlignment = VerticalAlignment.Center,
             Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Children = { icon, label } },
         }.Named(name);
-        PreflightLook.Standard(button);
+        PreflightLook.Chip(button);
         ToolTipService.SetToolTip(button, name);
         return new StatusPill(button, icon, label);
     }

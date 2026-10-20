@@ -40,7 +40,7 @@ public sealed class VtolStateCell : UserControl
             BorderThickness = new Thickness(1),
             Content = _label,
         };
-        FormLook.Paint(_pill, ButtonLook.Standard);
+        PreflightLook.Chip(_pill);
         _pill.Click += (_, _) =>
         {
             if (_state is { } state) FlyRequests.AskGuided(state.Transition);

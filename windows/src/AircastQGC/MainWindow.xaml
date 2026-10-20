@@ -6,53 +6,46 @@
     xmlns:controls="using:AircastQGC.Controls"
     Title="Aircast QGC">
 
-    <Grid Background="{ThemeResource BgBaseBrush}">
+    <Window.SystemBackdrop>
+        <MicaBackdrop />
+    </Window.SystemBackdrop>
+
+    <Grid x:Name="Root">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="Auto" />
+            <ColumnDefinition Width="*" />
+        </Grid.ColumnDefinitions>
 
-        <controls:ShellTitleBar x:Name="Shell" />
+        <Grid x:Name="FlyContent" Grid.RowSpan="2" Grid.ColumnSpan="2">
+            <controls:MapView x:Name="Map" />
 
-        <Grid Grid.Row="1">
-            <Grid.RowDefinitions>
-                <RowDefinition Height="*" />
-                <RowDefinition Height="Auto" />
-            </Grid.RowDefinitions>
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="Auto" />
-                <ColumnDefinition Width="*" />
-            </Grid.ColumnDefinitions>
+            <controls:MapPayloadLayer x:Name="MapPayload" />
 
-            <controls:NavPane x:Name="Nav" Grid.RowSpan="2" />
+            <controls:ObstacleMapLayer x:Name="ObstacleOnMap" />
 
-            <Grid x:Name="FlyContent" Grid.Column="1">
-                <controls:MapView x:Name="Map" />
+            <Border x:Name="TopScrim" Height="{StaticResource SizeFlyScrim}" VerticalAlignment="Top"
+                    IsHitTestVisible="False" Background="{ThemeResource FlyScrimBrush}" />
 
-                <controls:MapPayloadLayer x:Name="MapPayload" />
+            <controls:VideoThumbnail x:Name="VideoTile" />
 
-                <controls:ObstacleMapLayer x:Name="ObstacleOnMap" />
+            <controls:VideoMarks x:Name="Marks" />
 
-                <controls:BatteryReturnBar />
+            <controls:VideoPayloadLayer x:Name="VideoLayer" />
 
-                <controls:VideoThumbnail x:Name="VideoTile"
-                                         Width="260" Height="150" Margin="16"
-                                         HorizontalAlignment="Right" VerticalAlignment="Top" />
+            <controls:BatteryReturnBar x:Name="ReturnBar" />
+        </Grid>
 
-                <controls:VideoMarks x:Name="Marks"
-                                     Width="260" Height="150" Margin="16"
-                                     HorizontalAlignment="Right" VerticalAlignment="Top" />
-
-                <controls:VideoPayloadLayer x:Name="VideoLayer"
-                                            Width="260" Height="150" Margin="16"
-                                            HorizontalAlignment="Right" VerticalAlignment="Top" />
-
-                <controls:PipTile Width="160" Height="90" Margin="16,16,292,16"
-                                  HorizontalAlignment="Right" VerticalAlignment="Top" />
-
-                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Top" Margin="16"
-                            Spacing="{StaticResource SpaceSm}">
-                    <controls:HeadingTape HorizontalAlignment="Center" />
+        <Grid x:Name="FlyChrome" Grid.Row="1" Grid.ColumnSpan="2">
+            <StackPanel x:Name="TopArea" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="16,4,16,16"
+                        Spacing="{StaticResource SpaceSm}">
+                <controls:HeadingTape HorizontalAlignment="Center" />
+                <controls:TrafficBanner HorizontalAlignment="Center" />
+                <StackPanel x:Name="Overlays" Spacing="{StaticResource SpaceSm}">
                     <controls:GuidedBar x:Name="GuidedStrip" HorizontalAlignment="Center" />
                     <controls:ControlRequestPrompt HorizontalAlignment="Center" />
                     <controls:LayoutSlot Key="missionProgress" Label="Mission progress" HorizontalAlignment="Center">
@@ -67,7 +60,6 @@
                     <controls:OrbitReadout HorizontalAlignment="Center" />
                     <InfoBar x:Name="Notice" Severity="Error" IsClosable="True" IsOpen="False"
                              HorizontalAlignment="Center" MaxWidth="480" />
-                    <controls:TrafficBanner HorizontalAlignment="Center" />
                     <controls:LayoutSlot Key="messageBanner" Label="Vehicle messages" Hideable="False" HorizontalAlignment="Center">
                         <controls:VehicleMessageBanner x:Name="MessageBanner" HorizontalAlignment="Center" />
                     </controls:LayoutSlot>
@@ -76,9 +68,25 @@
                     </controls:LayoutSlot>
                     <controls:DeviceStatusChip HorizontalAlignment="Center" />
                 </StackPanel>
+            </StackPanel>
 
-                <ScrollViewer x:Name="RightColumn" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="16"
-                              HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+            <StackPanel x:Name="LeftRail" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="16"
+                        Spacing="{StaticResource SpaceSm}" />
+
+            <Grid x:Name="BottomLeft" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="16,16,280,16"
+                  ColumnSpacing="{StaticResource SpaceLg}">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Border x:Name="PipSlot" Width="260" Height="150" IsHitTestVisible="False" />
+                <Grid x:Name="OsdSlot" Grid.Column="1" VerticalAlignment="Bottom">
+                    <controls:InstrumentBar x:Name="ReadingsBar" HorizontalAlignment="Left" VerticalAlignment="Bottom" />
+                </Grid>
+            </Grid>
+
+            <ScrollViewer x:Name="RightColumn" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="16"
+                          HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
                 <StackPanel Spacing="{StaticResource SpaceXs}">
                     <controls:MapControls x:Name="MapButtons" />
                     <Button x:Name="CameraButton" Style="{StaticResource MapControl}" Content="&#xE722;"
@@ -91,82 +99,88 @@
                             IsEnabled="False"
                             ToolTipService.ToolTip="Pre-flight checklist" AutomationProperties.Name="Pre-flight checklist" />
                 </StackPanel>
+            </ScrollViewer>
+
+            <controls:StreamShutter x:Name="Shutter"
+                                    HorizontalAlignment="Right" VerticalAlignment="Center" Margin="16,16,68,16" />
+
+            <Grid x:Name="MapCorner" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="16" />
+
+            <Grid x:Name="CenterMessage" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="16" />
+
+            <controls:PipTile Width="160" Height="90" Margin="16"
+                              HorizontalAlignment="Right" VerticalAlignment="Top" />
+
+            <controls:TelemetryPanel x:Name="TelemetryCard"
+                                     HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="16" />
+
+            <controls:VideoStatsPill x:Name="VideoStats"
+                                     HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="16,16,16,124" />
+
+            <Grid x:Name="LeftColumn" HorizontalAlignment="Left" Margin="16,96,16,124" RowSpacing="{StaticResource SpaceSm}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <ScrollViewer x:Name="FleetScroll" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                    <StackPanel x:Name="FleetColumn" Spacing="{StaticResource SpaceSm}">
+                        <controls:FollowMeReadout x:Name="FollowMe" />
+                        <controls:LayoutSlot Key="fleet" Label="Fleet">
+                            <controls:FleetCard x:Name="FleetPanel" />
+                        </controls:LayoutSlot>
+                    </StackPanel>
                 </ScrollViewer>
-
-                <controls:StreamShutter x:Name="Shutter"
-                                        HorizontalAlignment="Right" VerticalAlignment="Center" Margin="16,16,68,16" />
-
-                <controls:InstrumentBar x:Name="ReadingsBar"
-                                        HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="16,16,280,16" />
-
-                <controls:TelemetryPanel x:Name="TelemetryCard"
-                                         HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="16" />
-
-                <controls:VideoStatsPill x:Name="VideoStats"
-                                         HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="16,16,16,124" />
-
-                <Grid x:Name="LeftColumn" HorizontalAlignment="Left" Margin="16,96,16,124" RowSpacing="{StaticResource SpaceSm}">
-                    <Grid.RowDefinitions>
-                        <RowDefinition Height="Auto" />
-                        <RowDefinition Height="*" />
-                    </Grid.RowDefinitions>
-                    <ScrollViewer x:Name="FleetScroll" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-                        <StackPanel x:Name="FleetColumn" Spacing="{StaticResource SpaceSm}">
-                            <controls:FollowMeReadout x:Name="FollowMe" />
-                            <controls:LayoutSlot Key="fleet" Label="Fleet">
-                                <controls:FleetCard x:Name="FleetPanel" />
-                            </controls:LayoutSlot>
-                        </StackPanel>
-                    </ScrollViewer>
-                    <ScrollViewer Grid.Row="1" VerticalAlignment="Center"
-                                  HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-                        <controls:RcControlsLayer x:Name="RcLayer" />
-                    </ScrollViewer>
-                </Grid>
-
-                <controls:VirtualJoystick Margin="16,16,280,160" />
-
-                <controls:CameraOverlay x:Name="CameraPanel"
-                                        HorizontalAlignment="Right" VerticalAlignment="Top" Margin="16,182,68,16"
-                                        Visibility="Collapsed" />
-
-                <controls:GripperPanel x:Name="Gripper"
-                                       HorizontalAlignment="Right" VerticalAlignment="Top" Margin="16,182,68,16" />
-
-                <controls:PreflightChecklist x:Name="Checklist"
-                                             HorizontalAlignment="Left" VerticalAlignment="Top" Margin="16" />
-
-                <controls:NoVehicleState x:Name="NoVehicle" />
-
-                <controls:ConnectingCard />
-
-                <controls:LayoutEditBar x:Name="LayoutBar" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="16,16,16,124" />
-
-                <controls:GuidedConfirm x:Name="GuidedCard" />
-
-                <controls:MapContextMenu x:Name="MapMenu" />
+                <ScrollViewer Grid.Row="1" VerticalAlignment="Center"
+                              HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                    <controls:RcControlsLayer x:Name="RcLayer" />
+                </ScrollViewer>
             </Grid>
 
-            <ContentControl x:Name="PageHost" Grid.Column="1" Visibility="Collapsed"
-                            HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch"
-                            Background="{ThemeResource BgBaseBrush}" />
+            <controls:VirtualJoystick Margin="16,16,280,160" />
 
-            <Grid x:Name="PagePlaceholder" Grid.Column="1" Visibility="Collapsed" Background="{ThemeResource BgBaseBrush}">
-                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{StaticResource SpaceSm}">
-                    <TextBlock x:Name="PageTitle" HorizontalAlignment="Center"
-                               FontFamily="{ThemeResource AppFontFamily}" FontSize="{ThemeResource FontSizeTitle}"
-                               FontWeight="SemiBold" Foreground="{ThemeResource TextPrimaryBrush}" />
-                    <TextBlock Text="This page is not in the Windows head yet." HorizontalAlignment="Center"
-                               FontFamily="{ThemeResource AppFontFamily}" FontSize="{ThemeResource FontSizeBody}"
-                               Foreground="{ThemeResource TextSecondaryBrush}" />
-                </StackPanel>
-            </Grid>
+            <controls:CameraOverlay x:Name="CameraPanel"
+                                    HorizontalAlignment="Right" VerticalAlignment="Top" Margin="16,182,68,16"
+                                    Visibility="Collapsed" />
 
-            <controls:LogReplayBar Grid.Row="1" Grid.Column="1" />
+            <controls:GripperPanel x:Name="Gripper"
+                                   HorizontalAlignment="Right" VerticalAlignment="Top" Margin="16,182,68,16" />
 
-            <controls:NoticeLayer x:Name="Notices" Grid.Column="1" />
+            <controls:PreflightChecklist x:Name="Checklist"
+                                         HorizontalAlignment="Left" VerticalAlignment="Top" Margin="16" />
+
+            <controls:NoVehicleState x:Name="NoVehicle" />
+
+            <controls:ConnectingCard />
+
+            <controls:LayoutEditBar x:Name="LayoutBar" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="16,16,16,124" />
+
+            <controls:GuidedConfirm x:Name="GuidedCard" />
+
+            <controls:MapContextMenu x:Name="MapMenu" />
         </Grid>
 
-        <controls:DeepLinkSetupPrompt Grid.RowSpan="2" />
+        <controls:ShellTitleBar x:Name="Shell" Grid.ColumnSpan="2" />
+
+        <controls:NavPane x:Name="Nav" Grid.Row="1" Grid.RowSpan="2" Visibility="Collapsed" />
+
+        <ContentControl x:Name="PageHost" Grid.Row="1" Grid.Column="1" Visibility="Collapsed"
+                        HorizontalContentAlignment="Stretch" VerticalContentAlignment="Stretch" />
+
+        <Grid x:Name="PagePlaceholder" Grid.Row="1" Grid.Column="1" Visibility="Collapsed">
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="{StaticResource SpaceSm}">
+                <TextBlock x:Name="PageTitle" HorizontalAlignment="Center"
+                           FontFamily="{ThemeResource AppFontFamily}" FontSize="{ThemeResource FontSizeTitle}"
+                           FontWeight="SemiBold" Foreground="{ThemeResource TextPrimaryBrush}" />
+                <TextBlock Text="This page is not in the Windows head yet." HorizontalAlignment="Center"
+                           FontFamily="{ThemeResource AppFontFamily}" FontSize="{ThemeResource FontSizeBody}"
+                           Foreground="{ThemeResource TextSecondaryBrush}" />
+            </StackPanel>
+        </Grid>
+
+        <controls:LogReplayBar Grid.Row="2" Grid.Column="1" />
+
+        <controls:NoticeLayer x:Name="Notices" Grid.Row="1" Grid.Column="1" />
+
+        <controls:DeepLinkSetupPrompt Grid.RowSpan="3" Grid.ColumnSpan="2" />
     </Grid>
 </Window>

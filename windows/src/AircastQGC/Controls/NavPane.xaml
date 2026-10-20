@@ -77,7 +77,7 @@
         </Style>
     </UserControl.Resources>
 
-    <Grid x:Name="Root" Background="{ThemeResource BgSecondaryBrush}" Padding="4">
+    <Grid x:Name="Root" Background="Transparent" Padding="4">
         <Grid.RowDefinitions>
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />

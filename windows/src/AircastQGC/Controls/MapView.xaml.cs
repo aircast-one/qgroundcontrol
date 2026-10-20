@@ -152,6 +152,12 @@ public sealed partial class MapView : UserControl
 
     public Thickness FollowInsets { get; set; } = new(24, 56, 352, 40);
 
+    public Thickness ScaleMargin
+    {
+        get => ScaleBar.Margin;
+        set => ScaleBar.Margin = value;
+    }
+
     public string? TileType { get; set; }
 
     internal static (Geo Centre, double Zoom)? FlightCamera { get; private set; }

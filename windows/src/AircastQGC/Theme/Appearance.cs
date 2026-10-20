@@ -30,11 +30,15 @@ internal static class Appearance
     private static readonly string[] FontTokens = ["FontSizeCaption", "FontSizeBody", "FontSizeBodyLarge", "FontSizeSubtitle", "FontSizeTitle", "FontSizeTitleLarge"];
     private static readonly UISettings SystemColours = new();
 
+    private sealed record Acrylic(Color Tint, Color Fallback, double Opacity, double? Luminosity);
+
     private static IReadOnlyDictionary<string, Color> _darkColors = new Dictionary<string, Color>();
+    private static IReadOnlyDictionary<string, Acrylic> _darkAcrylics = new Dictionary<string, Acrylic>();
     private static IReadOnlyDictionary<string, double> _baseSizes = new Dictionary<string, double>();
     private static FrameworkElement? _root;
     private static AppWindow? _window;
     private static bool _dark = true;
+    private static bool _overVideo;
     private static double _scale = 1;
 
     public static bool Dark => _dark;
@@ -61,6 +65,15 @@ internal static class Appearance
     private static IEnumerable<(string Key, SolidColorBrush Brush)> Brushes(ResourceDictionary? theme) =>
         theme is null ? [] : theme.Where(pair => pair.Key is string && pair.Value is SolidColorBrush).Select(pair => ((string)pair.Key, (SolidColorBrush)pair.Value));
 
+    private static IReadOnlyDictionary<string, Acrylic> Acrylics(ResourceDictionary? theme) =>
+        theme is null
+            ? new Dictionary<string, Acrylic>()
+            : theme.Where(pair => pair.Key is string && pair.Value is AcrylicBrush)
+                .ToDictionary(pair => (string)pair.Key, pair => Snapshot((AcrylicBrush)pair.Value));
+
+    private static Acrylic Snapshot(AcrylicBrush brush) =>
+        new(brush.TintColor, brush.FallbackColor, brush.TintOpacity, brush.TintLuminosityOpacity);
+
     private static ResourceDictionary? ThemeDictionary(string key) =>
         Tokens is { } tokens && tokens.ThemeDictionaries.TryGetValue(key, out var theme) ? theme as ResourceDictionary : null;
 
@@ -76,6 +89,7 @@ internal static class Appearance
     public static void Prepare()
     {
         _darkColors = Brushes(ThemeDictionary(DefaultKey)).ToDictionary(pair => pair.Key, pair => pair.Brush.Color);
+        _darkAcrylics = Acrylics(ThemeDictionary(DefaultKey));
         _baseSizes = Tokens is { } tokens
             ? FontTokens.Where(tokens.ContainsKey).ToDictionary(key => key, key => (double)tokens[key])
             : new Dictionary<string, double>();
@@ -111,6 +125,25 @@ internal static class Appearance
             .Where(pair => (dark ? _darkColors : light).ContainsKey(pair.Key))
             .ToList()
             .ForEach(pair => pair.Brush.Color = (dark ? _darkColors : light)[pair.Key]);
+        var looks = dark ? _darkAcrylics : Acrylics(ThemeDictionary(LightKey));
+        ThemeDictionary(DefaultKey)?
+            .Where(pair => pair.Key is string key && pair.Value is AcrylicBrush && looks.ContainsKey(key))
+            .ToList()
+            .ForEach(pair =>
+            {
+                var brush = (AcrylicBrush)pair.Value;
+                var look = looks[(string)pair.Key];
+                brush.TintColor = look.Tint;
+                brush.FallbackColor = look.Fallback;
+                brush.TintOpacity = look.Opacity;
+                brush.TintLuminosityOpacity = look.Luminosity;
+            });
+    }
+
+    public static void OverVideo(bool on)
+    {
+        _overVideo = on;
+        Caption(_dark);
     }
 
     private static void Size(double scale)
@@ -130,10 +163,12 @@ internal static class Appearance
     private static void Caption(bool dark)
     {
         if (_window?.TitleBar is not { } bar) return;
-        Color? Token(string key) => dark ? null : ThemeDictionary(LightKey)?[key] is SolidColorBrush brush ? brush.Color : null;
-        Color? clear = dark ? null : Colors.Transparent;
-        bar.ButtonBackgroundColor = clear;
-        bar.ButtonInactiveBackgroundColor = clear;
+        var palette = !dark && !_overVideo
+            ? Brushes(ThemeDictionary(LightKey)).ToDictionary(pair => pair.Key, pair => pair.Brush.Color)
+            : _darkColors;
+        Color? Token(string key) => palette.TryGetValue(key, out var color) ? color : null;
+        bar.ButtonBackgroundColor = Colors.Transparent;
+        bar.ButtonInactiveBackgroundColor = Colors.Transparent;
         bar.ButtonForegroundColor = Token("TextPrimaryBrush");
         bar.ButtonHoverForegroundColor = Token("TextPrimaryBrush");
         bar.ButtonPressedForegroundColor = Token("TextPrimaryBrush");

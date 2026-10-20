@@ -21,6 +21,7 @@ public sealed partial class ShellTitleBar : UserControl
     private const double LogoWidth = 20;
     private const double SubtitleRoom = 96;
     private const double StripFloor = 200;
+    private const double DragFloor = 64;
 
     private static readonly string[] Watched = { FlyStatePath, VehicleLinksPath, FlightModesPath };
     private static readonly string[] KnownStates = { "notConnected", "contactLost", "flying", "landing", "armed", "disarmed" };
@@ -28,6 +29,7 @@ public sealed partial class ShellTitleBar : UserControl
     private readonly Dictionary<string, JsonObject> _views = new();
     private readonly VehicleStatusSheet _status = new();
     private string _pendingMode = "";
+    private bool _onFly;
 
     private enum Tone { Good, Caution, Critical, Unknown }
 
@@ -37,11 +39,19 @@ public sealed partial class ShellTitleBar : UserControl
         Loaded += (_, _) => Start();
         Bar.SizeChanged += (_, _) => Fit();
         Fixed.SizeChanged += (_, _) => Fit();
+        Lead.SizeChanged += (_, _) => Fit();
+        MoreButton.SizeChanged += (_, _) => Fit();
+        PageMenu.Opening += (_, _) => PageMenu.Items.OfType<RadioMenuFlyoutItem>().ToList()
+            .ForEach(item => item.IsChecked = item.Tag as string == CurrentPage);
         Unloaded += (_, _) => Array.ForEach(Watched, path => BridgeWatch.Stop(Client(path)));
         Render();
     }
 
     public event EventHandler<FrameworkElement>? FlightModeRequested;
+
+    public event EventHandler<string>? PageRequested;
+
+    public event EventHandler? BackRequested;
 
     public FrameworkElement DragRegion => DragArea;
 
@@ -55,6 +65,36 @@ public sealed partial class ShellTitleBar : UserControl
         set
         {
             CaptionColumn.Width = new GridLength(Math.Max(0, value));
+            Fit();
+        }
+    }
+
+    public string CurrentPage { get; set; } = NavPane.Fly;
+
+    public bool CanGoBack
+    {
+        get => BackItem.Visibility == Visibility.Visible;
+        set
+        {
+            BackItem.Visibility = Shown(value);
+            BackSeparator.Visibility = Shown(value);
+        }
+    }
+
+    public bool OnFly
+    {
+        get => _onFly;
+        set
+        {
+            _onFly = value;
+            var (from, to) = value ? (Fixed, Lead) : (Lead, Fixed);
+            if (from.Children.Remove(Readings)) to.Children.Add(Readings);
+            Lead.Visibility = Shown(value);
+            MoreButton.Visibility = Shown(value);
+            Logo.Visibility = Shown(!value);
+            Subtitle.Visibility = Shown(!value);
+            VehicleSwitch.Named = value;
+            Render();
             Fit();
         }
     }
@@ -76,9 +116,11 @@ public sealed partial class ShellTitleBar : UserControl
         var probe = new TextBlock { Text = AppTitle.Text, FontFamily = AppTitle.FontFamily, FontSize = AppTitle.FontSize };
         probe.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
         var title = probe.DesiredSize.Width + DragArea.ColumnSpacing;
-        var room = Bar.ActualWidth - CaptionColumn.Width.Value - RightGroup.Margin.Right - RightGroup.Spacing - Fixed.ActualWidth
-            - DragArea.Padding.Left - DragArea.Padding.Right - LogoWidth - DragArea.ColumnSpacing - SubtitleRoom;
-        var titled = room - title >= StripFloor;
+        var brand = _onFly
+            ? Lead.Margin.Left + Lead.ActualWidth + MoreButton.ActualWidth + RightGroup.Spacing + DragFloor
+            : DragArea.Padding.Left + DragArea.Padding.Right + LogoWidth + DragArea.ColumnSpacing + SubtitleRoom;
+        var room = Bar.ActualWidth - CaptionColumn.Width.Value - RightGroup.Margin.Right - RightGroup.Spacing - Fixed.ActualWidth - brand;
+        var titled = !_onFly && room - title >= StripFloor;
         AppTitle.Visibility = Shown(titled);
         Strip.MaxWidth = Math.Max(0, room - (titled ? title : 0));
     }
@@ -104,6 +146,15 @@ public sealed partial class ShellTitleBar : UserControl
 
     private void OnStatusClick(object sender, RoutedEventArgs e) => _status.ShowAt(ArmedPill);
 
+    private void OnPage(object sender, RoutedEventArgs e)
+    {
+        if (sender is MenuFlyoutItem { Tag: string page }) PageRequested?.Invoke(this, page);
+    }
+
+    private void OnBack(object sender, RoutedEventArgs e) => BackRequested?.Invoke(this, EventArgs.Empty);
+
+    private void OnMore(object sender, RoutedEventArgs e) => PageRequested?.Invoke(this, NavPane.Settings);
+
     private JsonObject View(string path) => _views.TryGetValue(path, out var view) ? view : new JsonObject();
 
     private void Render()
@@ -127,7 +178,9 @@ public sealed partial class ShellTitleBar : UserControl
         var mode = Text(state, "mode");
         var pending = _pendingMode.Length > 0;
         var offersModes = View(FlightModesPath)["modes"] is JsonArray { Count: > 0 };
-        ModeText.Text = pending ? _pendingMode : mode.Length == 0 ? "Mode unknown" : mode;
+        var named = mode.Length == 0 ? "Mode unknown" : mode;
+        ModeText.Text = pending ? _pendingMode : _onFly && stateText.Length > 0 ? $"{named} · {stateText}" : named;
+        ModeText.Foreground = Token(_onFly && alarming ? "CriticalBrush" : "TextPrimaryBrush");
         ModePill.IsEnabled = offersModes;
         ModeChevron.Visibility = Shown(offersModes && !pending);
         ModePending.Visibility = Shown(pending);
@@ -169,7 +222,7 @@ public sealed partial class ShellTitleBar : UserControl
         {
             Tone.Caution => "CautionBgBrush",
             Tone.Critical => "CriticalBgBrush",
-            _ => "ControlBrush",
+            _ => "ChipBrush",
         }));
     }
 

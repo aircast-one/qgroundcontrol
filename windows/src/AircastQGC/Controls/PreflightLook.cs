@@ -23,6 +23,11 @@ internal static class PreflightLook
             Token("TextPrimaryBrush"), Token("ControlStrokeBrush"),
             Token("ControlBrush"), Token("TextDisabledBrush"), Token("ControlStrokeBrush"));
 
+    public static void Chip(Button button) =>
+        Paint(button, Token("ChipBrush"), Token("ChipHoverBrush"), Token("SubtleSelectedBrush"),
+            Token("TextPrimaryBrush"), Token("ControlStrokeBrush"),
+            Token("ChipBrush"), Token("TextDisabledBrush"), Token("ControlStrokeBrush"));
+
     public static void Subtle(Button button) =>
         Paint(button, Clear, Token("SubtleHoverBrush"), Token("SubtleSelectedBrush"),
             Token("TextPrimaryBrush"), Clear,

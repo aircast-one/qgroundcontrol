@@ -13,8 +13,6 @@ namespace AircastQGC;
 
 public sealed partial class MainWindow : Window
 {
-    private const double TileWidth = 260;
-    private const double TileHeight = 150;
     private const double TileMargin = 16;
     private const int FullScreenLayer = 100;
     private const double LeftTop = 96;
@@ -62,6 +60,8 @@ public sealed partial class MainWindow : Window
 
         Nav.NavigationRequested += (_, page) => Go(page);
         Nav.BackRequested += (_, _) => GoBack();
+        Shell.PageRequested += (_, page) => Go(page);
+        Shell.BackRequested += (_, _) => GoBack();
         Notices.NavigateRequested += (_, page) => Go(page);
 
         NoVehicle.VehiclePresenceChanged += (_, present) => ShowVehicleOverlays(present);
@@ -72,7 +72,7 @@ public sealed partial class MainWindow : Window
         MapButtons.CenterOnVehicleRequested += (_, _) => Map.CenterOnVehicle();
         Map.MapRightTapped += (latitude, longitude, at) =>
         {
-            if (MapMenu.Show(latitude, longitude, Map.TransformToVisual(FlyContent).TransformPoint(at)))
+            if (MapMenu.Show(latitude, longitude, Map.TransformToVisual(MapMenu).TransformPoint(at)))
                 Map.ShowClickMarker(latitude, longitude);
         };
         MapMenu.OpenChanged += (_, _) =>
@@ -121,10 +121,11 @@ public sealed partial class MainWindow : Window
             if (_fullScreen) FullScreen(false);
             else OverlayLayout.StopEditing();
         }));
-        ReadingsBar.SizeChanged += (_, _) => Clearances();
+        BottomLeft.SizeChanged += (_, _) => Clearances();
+        LeftRail.SizeChanged += (_, _) => Clearances();
         TelemetryCard.SizeChanged += (_, _) => Clearances();
-        FlyContent.Loaded += (_, _) => Clearances();
-        FlyContent.SizeChanged += (_, _) => Clearances();
+        FlyChrome.Loaded += (_, _) => Clearances();
+        FlyChrome.SizeChanged += (_, _) => Clearances();
         GuidedStrip.SizeChanged += (_, _) => Clearances();
         LeftColumn.SizeChanged += (_, _) => Clearances();
         RcLayer.RegisterPropertyChangedCallback(UIElement.VisibilityProperty, (_, _) => Clearances());
@@ -149,10 +150,16 @@ public sealed partial class MainWindow : Window
         _ = new ResumeFailedPrompt(FlyContent);
         _ = new FirstRunDialog(root);
         _ = new CloseGuard(this);
+        new FrameworkElement[] { VideoTile, Marks, VideoLayer }.ToList().ForEach(view => Dock(view, false));
+        Map.FollowInsets = new Thickness(Map.FollowInsets.Left, Map.FollowInsets.Top + Shell.Height, Map.FollowInsets.Right, Map.FollowInsets.Bottom);
+        ShowPage(NavPane.Fly);
     }
 
-    private void FitCaption() =>
+    private void FitCaption()
+    {
         Shell.CaptionInset = AppWindow.TitleBar.RightInset / Shell.XamlRoot.RasterizationScale;
+        ReturnBar.Margin = new Thickness(0, 0, Shell.CaptionInset, 0);
+    }
 
     private void Go(string page)
     {
@@ -201,12 +208,19 @@ public sealed partial class MainWindow : Window
 
     private void ShowPage(string page)
     {
-        if (page != NavPane.Fly) FullScreen(false);
+        var fly = page == NavPane.Fly;
+        if (!fly) FullScreen(false);
         _page = page;
         Nav.SelectedPage = page;
         Nav.CanGoBack = !_history.IsEmpty;
-        var hosted = page == NavPane.Fly ? null : HostedPage(page);
-        FlyContent.Visibility = Shown(page == NavPane.Fly);
+        Nav.Visibility = Shown(!fly);
+        Shell.CurrentPage = page;
+        Shell.CanGoBack = !_history.IsEmpty;
+        Shell.OnFly = fly;
+        Theme.Appearance.OverVideo(fly);
+        var hosted = fly ? null : HostedPage(page);
+        FlyContent.Visibility = Shown(fly);
+        FlyChrome.Visibility = Shown(fly);
         PageHost.Content = hosted;
         PageHost.Visibility = Shown(hosted != null);
         PagePlaceholder.Visibility = Shown(page != NavPane.Fly && hosted == null);
@@ -235,23 +249,26 @@ public sealed partial class MainWindow : Window
 
     private void Clearances()
     {
-        var bar = ReadingsBar.Visibility == Visibility.Visible ? ReadingsBar.ActualHeight + BottomGap : TileMargin;
+        var bar = BottomLeft.ActualHeight > 0 ? BottomLeft.ActualHeight + BottomGap : TileMargin;
+        var rail = LeftRail.ActualWidth > 0 ? LeftRail.ActualWidth + TileMargin : 0;
         var guided = GuidedStrip.Visibility == Visibility.Visible && GuidedStrip.ActualWidth > 0
-            ? GuidedStrip.TransformToVisual(FlyContent).TransformBounds(new Windows.Foundation.Rect(0, 0, GuidedStrip.ActualWidth, GuidedStrip.ActualHeight))
+            ? GuidedStrip.TransformToVisual(FlyChrome).TransformBounds(new Windows.Foundation.Rect(0, 0, GuidedStrip.ActualWidth, GuidedStrip.ActualHeight))
             : Windows.Foundation.Rect.Empty;
-        var underGuided = !guided.IsEmpty && guided.Left < TileMargin + LeftColumn.ActualWidth + TileMargin;
+        var underGuided = !guided.IsEmpty && guided.Left < TileMargin + rail + LeftColumn.ActualWidth + TileMargin;
         var leftTop = underGuided ? Math.Max(LeftTop, guided.Bottom + TileMargin) : LeftTop;
-        LeftColumn.Margin = new Thickness(TileMargin, leftTop, TileMargin, bar + StatsRoom);
+        LeftColumn.Margin = new Thickness(TileMargin + rail, leftTop, TileMargin, bar + StatsRoom);
         FleetScroll.MaxHeight = RcLayer.Visibility == Visibility.Visible
-            ? Math.Max(FleetFloor, (FlyContent.ActualHeight - leftTop - bar - StatsRoom) / 2)
+            ? Math.Max(FleetFloor, (FlyChrome.ActualHeight - leftTop - bar - StatsRoom) / 2)
             : double.PositiveInfinity;
-        Checklist.Margin = new Thickness(TileMargin, TileMargin, TileMargin, bar);
+        Checklist.Margin = new Thickness(TileMargin + rail, TileMargin, TileMargin, bar);
+        Map.ScaleMargin = _videoMain
+            ? new Thickness(TileMargin)
+            : new Thickness(TileMargin + rail, Shell.ActualHeight + TileMargin, TileMargin, TileMargin);
         LayoutBar.Margin = new Thickness(TileMargin, TileMargin, TileMargin, bar);
         VideoStats.Margin = new Thickness(TileMargin, TileMargin, TileMargin, bar);
-        var top = TileMargin + TileHeight + TileMargin;
         var right = TelemetryCard.Visibility == Visibility.Visible ? TelemetryCard.ActualHeight + BottomGap : TileMargin;
-        RightColumn.Margin = new Thickness(TileMargin, top, TileMargin, right);
-        Shutter.Margin = new Thickness(TileMargin, top, ShutterInset, right);
+        RightColumn.Margin = new Thickness(TileMargin, TileMargin, TileMargin, right);
+        Shutter.Margin = new Thickness(TileMargin, TileMargin, ShutterInset, right);
     }
 
     private void Warn(string reason)
@@ -282,6 +299,8 @@ public sealed partial class MainWindow : Window
         });
         new FrameworkElement[] { Map, MapPayload, ObstacleOnMap }.ToList().ForEach(view => Dock(view, !videoMain));
         ObstacleOnMap.ShowText = !videoMain;
+        MapCorner.Visibility = Shown(!videoMain);
+        Clearances();
         VideoStats.Expanded = videoMain;
         PaintFullScreen();
     }
@@ -295,8 +314,8 @@ public sealed partial class MainWindow : Window
         if (shown) AppWindow.SetPresenter(AppWindowPresenterKind.FullScreen);
         else if (_windowed is not null) AppWindow.SetPresenter(_windowed);
         Shell.Visibility = Shown(!shown);
-        Nav.Visibility = Shown(!shown);
-        Grid.SetRowSpan(FlyContent, shown ? 2 : 1);
+        TopScrim.Visibility = Shown(!shown);
+        Grid.SetRowSpan(FlyContent, shown ? 3 : 2);
         Canvas.SetZIndex(FlyContent, shown ? 1 : 0);
         new FrameworkElement[] { VideoTile, Marks, VideoLayer }.Select((view, at) => (view, at)).ToList()
             .ForEach(entry => Canvas.SetZIndex(entry.view, shown ? FullScreenLayer + entry.at : _videoMain ? -1 : 0));
@@ -318,13 +337,13 @@ public sealed partial class MainWindow : Window
         return accelerator;
     }
 
-    private static void Dock(FrameworkElement view, bool full)
+    private void Dock(FrameworkElement view, bool full)
     {
-        view.Width = full ? double.NaN : TileWidth;
-        view.Height = full ? double.NaN : TileHeight;
-        view.Margin = new Thickness(full ? 0 : TileMargin);
-        view.HorizontalAlignment = full ? HorizontalAlignment.Stretch : HorizontalAlignment.Right;
-        view.VerticalAlignment = full ? VerticalAlignment.Stretch : VerticalAlignment.Top;
+        view.Width = full ? double.NaN : PipSlot.Width;
+        view.Height = full ? double.NaN : PipSlot.Height;
+        view.Margin = full ? new Thickness(0) : new Thickness(BottomLeft.Margin.Left, 0, 0, BottomLeft.Margin.Bottom);
+        view.HorizontalAlignment = full ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
+        view.VerticalAlignment = full ? VerticalAlignment.Stretch : VerticalAlignment.Bottom;
     }
 
     private void ToggleCamera()
