@@ -215,7 +215,7 @@
                 <StackPanel Spacing="2">
                     <Button x:Name="UndoButton" Style="{StaticResource RailIcon}" Content="&#xE7A7;" Click="OnUndo"
                             ToolTipService.ToolTip="Undo" AutomationProperties.Name="Undo" />
-                    <Button Style="{StaticResource RailIcon}" Content="&#xE81D;"
+                    <Button x:Name="CentreButton" Style="{StaticResource RailIcon}" Content="&#xE81D;"
                             ToolTipService.ToolTip="Centre" AutomationProperties.Name="Centre">
                         <Button.Flyout>
                             <MenuFlyout x:Name="CentreMenu" Placement="LeftEdgeAlignedTop" Opening="OnCentreOpening"

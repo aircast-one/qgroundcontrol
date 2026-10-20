@@ -17,6 +17,8 @@ public sealed partial class SetupPage : UserControl
     private static readonly TimeSpan SummaryEvery = TimeSpan.FromSeconds(2);
     private static readonly TimeSpan SearchSettle = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan NoticeFor = TimeSpan.FromSeconds(3);
+    private const double TwoPaneMinWidth = 840;
+    private const double ListWidth = 360;
     private static readonly IReadOnlyDictionary<string, IReadOnlyList<SummaryLine>> NoSummaries = new Dictionary<string, IReadOnlyList<SummaryLine>>();
     private static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> NoHits = new Dictionary<string, IReadOnlyList<string>>();
 
@@ -25,6 +27,8 @@ public sealed partial class SetupPage : UserControl
     private JsonObject _setup = new();
     private JsonObject _firmware = new();
     private bool _advanced = true;
+    private bool _wide = true;
+    private bool _picked;
     private (string Name, string? Section)? _opened;
     private bool _parametersOpen;
     private string _parametersSearch = "";
@@ -45,6 +49,15 @@ public sealed partial class SetupPage : UserControl
     {
         InitializeComponent();
         AutomationProperties.SetName(SearchBox, "Search setup");
+        FormLook.Paint(BackButton, ButtonLook.Subtle);
+        BackButton.Click += (_, _) => Back();
+        SizeChanged += (_, size) =>
+        {
+            var wide = size.NewSize.Width >= TwoPaneMinWidth;
+            if (wide == _wide) return;
+            _wide = wide;
+            Arrange();
+        };
         SearchBox.TextChanged += (_, _) =>
         {
             _settle.Stop();
@@ -112,6 +125,7 @@ public sealed partial class SetupPage : UserControl
         {
             _opened = null;
             _parametersOpen = false;
+            _picked = false;
             _summaries = NoSummaries;
             _summarySignature = "";
             _summaryOpened = false;
@@ -134,6 +148,25 @@ public sealed partial class SetupPage : UserControl
         EnsureOpened();
         RenderList();
         RenderDetail();
+        Arrange();
+    }
+
+    private void Arrange()
+    {
+        var list = _wide || !_picked;
+        var detail = _wide || _picked;
+        ListPane.Visibility = FormLook.Shown(list);
+        DetailPane.Visibility = FormLook.Shown(detail);
+        ListColumn.Width = _wide ? new GridLength(ListWidth) : list ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+        DetailColumn.Width = detail ? new GridLength(1, GridUnitType.Star) : new GridLength(0);
+        BackButton.Visibility = FormLook.Shown(!_wide);
+    }
+
+    private void Back()
+    {
+        if (!NavigationLock.Allows()) return;
+        _picked = false;
+        Arrange();
     }
 
     private void ShowState(string key, Func<UIElement> build)
@@ -174,12 +207,14 @@ public sealed partial class SetupPage : UserControl
             _parametersSearch = request.Search;
             _opened = null;
             _parametersOpen = true;
+            _picked = true;
             return;
         }
         if (Components.FirstOrDefault(c => c.Name == request.Page) is { } component)
         {
             _parametersOpen = false;
             _opened = (component.Name, null);
+            _picked = true;
         }
     }
 
@@ -233,8 +268,10 @@ public sealed partial class SetupPage : UserControl
         if (!NavigationLock.Allows()) return;
         _parametersOpen = false;
         _opened = (component.Name, section);
+        _picked = true;
         RenderList();
         RenderDetail();
+        Arrange();
     }
 
     private void OpenParameters(string search)
@@ -243,8 +280,10 @@ public sealed partial class SetupPage : UserControl
         _parametersSearch = search;
         _opened = null;
         _parametersOpen = true;
+        _picked = true;
         RenderList();
         RenderDetail();
+        Arrange();
     }
 
     private IReadOnlyList<string> HitsOf(SetupComponent component) =>

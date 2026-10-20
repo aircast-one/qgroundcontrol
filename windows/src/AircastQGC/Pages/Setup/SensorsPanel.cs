@@ -99,6 +99,16 @@ internal sealed record CalibrationState(
         _ => "Pending",
     };
 
+    public static string SideImage(string key, bool rotating) => key switch
+    {
+        "UpsideDown" => "cal_vehicle_upside_down",
+        "Left" => "cal_vehicle_left",
+        "Right" => "cal_vehicle_right",
+        "NoseDown" => "cal_vehicle_nose_down",
+        "TailDown" => "cal_vehicle_tail_down",
+        _ => "cal_vehicle_down",
+    } + (rotating ? "_rotate.png" : ".png");
+
     public static string RunningTitle(string name) => name.Trim().Length > 0 ? $"Calibrating {name.Trim()}" : "Calibration in progress";
 
     private static bool GcsValid(JsonObject fast) => MapUiJson.Flag(fast["gcsPosition"]?["valid"]);
@@ -195,15 +205,15 @@ internal sealed class SensorsPanel : UserControl
             FormLook.Text(CalibrationState.RunningTitle(_runningName), "FontSizeSubtitle", "TextPrimaryBrush", true),
             FormLook.Text(state.HelpText, "FontSizeBody", "TextSecondaryBrush"),
             dial,
-            state.ShowsSides ? Sides(state.Sides) : null,
+            state.ShowsSides ? Sides(state.Sides, state.Px4) : null,
             FormLook.Text(state.StatusText, "FontSizeBody", "TextSecondaryBrush"),
             buttons,
             state.WaitingForCancel ? FormLook.Text(CancelWaitTitle, "FontSizeBody", "TextPrimaryBrush", true) : null,
             state.WaitingForCancel ? FormLook.Text(CancelWaitText, "FontSizeBody", "TextSecondaryBrush") : null);
     }
 
-    private static UIElement Sides(IReadOnlyList<CalibrationSide> sides) =>
-        FormLook.Fill(new VariableSizedWrapGrid { Orientation = Orientation.Horizontal, ItemWidth = 120, ItemHeight = 76 }, sides.Where(s => s.Visible).Select(side =>
+    private static UIElement Sides(IReadOnlyList<CalibrationSide> sides, bool px4) =>
+        FormLook.Fill(new VariableSizedWrapGrid { Orientation = Orientation.Horizontal, ItemWidth = 124, ItemHeight = 148 }, sides.Where(s => s.Visible).Select(side =>
         {
             var current = side.Stage == "inProgress";
             var done = side.Stage == "done";
@@ -217,6 +227,7 @@ internal sealed class SensorsPanel : UserControl
                 CornerRadius = FormLook.Radius("RadiusControl"),
                 Background = FormLook.Brush("CardBrush"),
                 Child = FormLook.Stack(4,
+                    AssetImages.Png(AssetImages.Calibration, CalibrationState.SideImage(side.Key, px4 && current && side.Rotate), 72),
                     FormLook.Text(side.Title, "FontSizeCaption", "TextPrimaryBrush"),
                     FormLook.Text(CalibrationState.SideState(side), "FontSizeBody", tint, current)),
             };

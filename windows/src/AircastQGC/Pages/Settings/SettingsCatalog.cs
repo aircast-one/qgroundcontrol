@@ -52,11 +52,6 @@ internal static class SettingsCatalog
     public const string GcsLocationBlock = "Ground Station Location";
     public const string MountpointBlock = "Mountpoint";
 
-    public static readonly IReadOnlyDictionary<string, string> WithoutAScreen = new Dictionary<string, string>
-    {
-        ["Video sources"] = "the camera list editor is not built for Windows yet",
-    };
-
     public static readonly IReadOnlySet<string> GroupsWithAHeadEditor = new HashSet<string> { FlyViewGroup };
 
     public static readonly IReadOnlyList<(string Title, PageLook Look)> Looks =
@@ -76,6 +71,7 @@ internal static class SettingsCatalog
         ("3D Viewer", new PageLook(SettingsGroup.Control, "")),
         ("Video", new PageLook(SettingsGroup.Camera, "")),
         ("Connections", new PageLook(SettingsGroup.Transmission, "")),
+        ("Video sources", new PageLook(SettingsGroup.Transmission, "")),
         ("MAVLink", new PageLook(SettingsGroup.Transmission, "")),
         ("Packet Radio", new PageLook(SettingsGroup.Transmission, "")),
         ("RTK GPS", new PageLook(SettingsGroup.Transmission, "")),
@@ -100,8 +96,8 @@ internal static class SettingsCatalog
     public static IReadOnlyList<SettingsEntry> Pages(JsonObject view) =>
         MapUiJson.Objects(view["pages"])
             .Select(Entry)
-            .Where(page => page.Title.Length > 0 && !WithoutAScreen.ContainsKey(page.Title))
-            .Where(page => page.SectionCount > 0 || page.ShowsLinks || page.ShowsAbout || page.ShowsConsole || page.ShowsPx4Logs)
+            .Where(page => page.Title.Length > 0)
+            .Where(page => page.SectionCount > 0 || page.ShowsLinks || page.ShowsAbout || page.ShowsConsole || page.ShowsPx4Logs || page.ShowsVideoSources)
             .OrderBy(page => page.Look.Group)
             .ThenBy(page => Order(page.Title))
             .ToList();

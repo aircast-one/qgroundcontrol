@@ -19,6 +19,10 @@ internal sealed class ItemEditor : UserControl
     private const int RelativeFrame = 1;
     private const double AltitudeStep = 1;
     private const double SpeedStep = 0.5;
+    private const string SavePreset = "core.plan.savePreset";
+    private const string ApplyPreset = "core.plan.applyPreset";
+    private const string DeletePreset = "core.plan.deletePreset";
+    private const string PresetsFirstSetting = "settings.planViewSettings.displayPresetsTabFirst.rawValue";
     private static readonly (string Name, string Label)[] OfflineClasses =
         [("offlineEditingFirmwareClass", "Firmware"), ("offlineEditingVehicleClass", "Vehicle")];
 
@@ -32,6 +36,7 @@ internal sealed class ItemEditor : UserControl
     private readonly StackPanel _root = new() { Spacing = 10 };
     private bool _advanced;
     private string? _refusal;
+    private string? _preset;
 
     public ItemEditor(int index, Func<PlanItem?> item, Func<PlanStatus> status, Func<Geo?> mapCentre, PlanDialogs dialogs, Action changed, Action? remove)
     {
@@ -162,6 +167,9 @@ internal sealed class ItemEditor : UserControl
         var raw = MapUiJson.Flag(view["simple"]) ? (On: MapUiJson.Flag(view["rawEdit"]), Friendly: MapUiJson.Flag(view["friendlyEditAllowed"])) : ((bool On, bool Friendly)?)null;
         var note = raw is { On: true } ? RawEditNote : MapUiJson.Text(view["commandDescription"]);
         var connected = PlanCalls.HasVehicle();
+        var presetKind = MapUiJson.Text(view["presetKind"]);
+        var presets = help.Length == 0 && wizard.Count == 0 && presetKind.Length > 0 ? Presets(presetKind) : [];
+        var presetsFirst = presets.Count > 0 && MapUiJson.Flag(PlanCalls.Read(PresetsFirstSetting)["value"]);
         var relative = view["altitudesAreRelative"] is JsonValue flag && flag.TryGetValue<bool>(out var on) ? on : (bool?)null;
         var parts = new IEnumerable<UIElement>[]
         {
@@ -177,15 +185,50 @@ internal sealed class ItemEditor : UserControl
             MapUiJson.Flag(view["landing"]) && connected && wizard.Count == 0 ? [LandingButtons()] : [],
             wizard.Count == 0 ? MapUiJson.Texts(view["landingNotes"]).Select(text => (UIElement)PlanFacts.Warning(text)) : [],
             help.Length > 0 ? [PlanFacts.Text(help, "TextSecondaryBrush")] : [],
+            presetsFirst ? presets : [],
             help.Length == 0 && wizard.Count == 0 ? Fields(fields, relative) : [],
             help.Length == 0 && wizard.Count == 0 ? Camera(view["camera"] as JsonObject) : [],
             MapUiJson.Text(view["gridNote"]) is { Length: > 0 } grid ? [PlanFacts.Note(grid)] : [],
             view["entryPoint"] is JsonObject entry && MapUiJson.Text(entry["path"]).Length > 0 ? [EntryPoint(entry)] : [],
             item is { Complex: true } ? Statistics() : [],
+            presetsFirst ? [] : presets,
             _remove != null && _index > PlanRules.HomeItem ? [PlanFacts.Action("Delete from the plan", _remove, critical: true)] : [],
         };
         return parts.SelectMany(part => part);
     }
+
+    private IReadOnlyList<UIElement> Presets(string kind)
+    {
+        var names = MapUiJson.Texts(PlanCalls.Read($"view.patternPresets({kind})")["names"]);
+        _preset = _preset != null && names.Contains(_preset) ? _preset : names.FirstOrDefault();
+        var picker = new ComboBox { MinWidth = 180, IsEnabled = names.Count > 0, PlaceholderText = "None" };
+        names.ToList().ForEach(picker.Items.Add);
+        picker.SelectedItem = _preset;
+        picker.SelectionChanged += (_, _) => _preset = picker.SelectedItem as string;
+        var apply = PlanFacts.Action("Apply preset", () =>
+        {
+            if (_preset is { } name) Wrote(PlanCalls.Refusal(PlanCalls.Invoke(ApplyPreset, _index, name)));
+        });
+        var delete = PlanFacts.Action("Delete preset", async () =>
+        {
+            if (_preset is { } name && await _dialogs.Confirm("Delete preset", $"Are you sure you want to delete '{name}' preset?", "OK"))
+                Wrote(PlanCalls.Refusal(PlanCalls.Invoke(DeletePreset, kind, name)));
+        });
+        apply.IsEnabled = delete.IsEnabled = names.Count > 0;
+        var save = PlanFacts.Action("Save settings as new preset", async () =>
+        {
+            if (await _dialogs.Ask("Save preset", "Save the current settings as a named preset.", "Preset name", "Enter preset name", "Save", PresetNameProblem) is not { } name) return;
+            var refusal = PlanCalls.Refusal(PlanCalls.Invoke(SavePreset, _index, name));
+            if (refusal == null) _preset = name;
+            Wrote(refusal);
+        });
+        return [PlanFacts.Heading("Presets"), PlanFacts.Pair(PlanFacts.Text("Preset"), picker), PlanFacts.Row(apply, delete), save];
+    }
+
+    private static string? PresetNameProblem(string typed) =>
+        typed.Trim().Length == 0 ? "Preset name cannot be blank."
+        : typed.Contains('/') ? "Preset name cannot include the \"/\" character."
+        : null;
 
     private static bool AdvancedUi() => MapUiJson.Flag(PlanCalls.Read("view.advancedUi")["shown"], true);
 

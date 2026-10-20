@@ -90,10 +90,13 @@ internal static class PlanCalls
     {
         var view = Read($"view.landingPattern({index})");
         var placed = MapUiJson.Text(view["kind"]) != "null" && view["reason"] == null && MapOverlayJson.Plottable(view["landing"]) != null;
-        if (placed || !Set($"{ItemRoot}.{index}.landingCoordinate", Coordinate(at)).Ok) return false;
+        if (placed || !MoveLanding(index, LandingPlace.Touchdown, at)) return false;
         Invoke($"{ItemRoot}.{index}.setLandingHeadingToTakeoffHeading");
         return Set($"{ItemRoot}.{index}.wizardMode", false).Ok;
     }
+
+    internal static bool MoveLanding(int index, LandingPlace place, Geo at) =>
+        Set($"{ItemRoot}.{index}.{(place == LandingPlace.Approach ? "finalApproachCoordinate" : "landingCoordinate")}", Coordinate(at)).Ok;
 
     internal static bool MoveRally(int index, Geo at, double altitudeMetres) =>
         Set($"{RallyRoot}.points.{index}.coordinate", Coordinate(at, altitudeMetres)).Ok;

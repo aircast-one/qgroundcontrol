@@ -60,7 +60,7 @@ public sealed partial class PlanPage
                 PlanRules.StartsFromAircraft(metres, MapUiJson.Flag(_summary["imperial"])),
                 PlanRules.FarFromAircraftText, "Move it to the aircraft", "Upload anyway");
             if (move == true)
-                Bridged("Moving the route to the aircraft", () => PlanCalls.Reposition(at), () => Map.CenterOn(at.Latitude, at.Longitude), "Route moved to the aircraft");
+                Bridged("Moving the route to the aircraft", () => PlanCalls.Reposition(at), () => Recentre(at), "Route moved to the aircraft");
             if (move != false) return;
         }
         await SendUpload();
@@ -395,6 +395,9 @@ public sealed partial class PlanPage
         var launch = _items.FirstOrDefault(item => item.Sequence == 0)?.At;
         var vehicle = PlanCalls.VehiclePosition();
         CentreMenu.Items.Clear();
+        var follow = new ToggleMenuFlyoutItem { Text = "Follow vehicle", IsChecked = Map.Follow, IsEnabled = vehicle != null || Map.Follow };
+        follow.Click += (_, _) => Follow(follow.IsChecked);
+        CentreMenu.Items.Add(follow);
         new (string Label, bool Enabled, Action Act)[]
         {
             ("Mission", MissionPoints().Any(), () => Fit(MissionPoints())),
@@ -414,7 +417,7 @@ public sealed partial class PlanPage
 
     private void CentreOn(Geo? at)
     {
-        if (at is { } point) Map.CenterOn(point.Latitude, point.Longitude, Math.Max(Map.Zoom, FieldZoom));
+        if (at is { } point) Recentre(point, Math.Max(Map.Zoom, FieldZoom));
     }
 
     private async void AskCoordinates() =>

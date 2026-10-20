@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Threading.Tasks;
 using AircastQGC.Controls;
 using AircastQGC.Core;
 using Microsoft.UI.Dispatching;
@@ -28,6 +29,8 @@ public sealed partial class PlanPage : UserControl
     private const double HandleSize = 14;
     private const double RallySize = 22;
     private const double CircleHandleSize = 18;
+    private const string LegSplitLabel = "Add a waypoint here";
+    private const string CornerSplitLabel = "Add a corner here";
     private const double SameSpotDegrees = 1e-6;
     private const double FieldZoom = 16;
     private const double FitPadding = 96;
@@ -42,7 +45,10 @@ public sealed partial class PlanPage : UserControl
     private DispatcherQueueTimer? _noticeTimer;
     private string _itemsRaw = string.Empty;
     private string _fencesRaw = string.Empty;
+    private int _reads;
+    private bool _polling;
     private IReadOnlyList<PlanItem> _items = [];
+    private IReadOnlyList<LandingPattern> _landings = [];
     private IReadOnlyList<IReadOnlyList<Geo>> _route = [];
     private PlanFences _fences = PlanFences.None;
     private PlanStatus _status = PlanStatus.Empty;
@@ -77,7 +83,7 @@ public sealed partial class PlanPage : UserControl
             if ((PlaceAt() != null) != _placeable) RenderRail();
         };
         Overlay.SizeChanged += (_, e) => Overlay.Clip = new RectangleGeometry { Rect = new Rect(0, 0, e.NewSize.Width, e.NewSize.Height) };
-        _canvas.Pressed += hit => Select(hit, true);
+        _canvas.Pressed += hit => Select(SelectionOf(hit), true);
         _canvas.Dragged += OnDragged;
         _canvas.Dropped += OnDropped;
         _canvas.SplitClicked += OnSplit;
@@ -117,7 +123,7 @@ public sealed partial class PlanPage : UserControl
             _terrainChecking = MapUiJson.Flag(view["checking"]);
             Render();
         });
-        _poll ??= Timer(PollInterval, Refresh);
+        _poll ??= Timer(PollInterval, Poll);
         _poll.Start();
         Refresh();
     }
@@ -152,18 +158,52 @@ public sealed partial class PlanPage : UserControl
         catch (JsonException) { return new JsonObject(); }
     }
 
-    private void Refresh()
+    private sealed record PlanData(
+        string ItemsRaw, string FencesRaw, IReadOnlyList<PlanItem> Items, IReadOnlyList<IReadOnlyList<Geo>> Route,
+        PlanFences Fences, IReadOnlyList<LandingPattern> Landings);
+
+    private static PlanData? Fetch(string knownItems, string knownFences)
     {
-        Prompts();
         var itemsRaw = PlanCalls.Raw(PlanCalls.ItemsView);
         var fencesRaw = PlanCalls.Raw(PlanCalls.FencesView);
-        if (itemsRaw == _itemsRaw && fencesRaw == _fencesRaw) return;
-        _itemsRaw = itemsRaw;
-        _fencesRaw = fencesRaw;
-        var items = Parse(itemsRaw);
-        _items = PlanJson.Items(items);
-        _route = MapOverlayJson.Mission(items).Route;
-        _fences = PlanJson.Fences(Parse(fencesRaw));
+        if (itemsRaw == knownItems && fencesRaw == knownFences) return null;
+        var view = Parse(itemsRaw);
+        var items = PlanJson.Items(view);
+        var landings = items
+            .Where(item => item.Kind == "land")
+            .Select(item => PlanJson.Landing(item.Index, PlanCalls.Read($"view.landingPattern({item.Index})")))
+            .OfType<LandingPattern>()
+            .ToList();
+        return new PlanData(itemsRaw, fencesRaw, items, MapOverlayJson.Mission(view).Route, PlanJson.Fences(Parse(fencesRaw)), landings);
+    }
+
+    private void Refresh()
+    {
+        _reads++;
+        Prompts();
+        if (Fetch(_itemsRaw, _fencesRaw) is { } data) Apply(data);
+    }
+
+    private async void Poll()
+    {
+        Prompts();
+        if (_polling) return;
+        _polling = true;
+        var reads = _reads;
+        var (items, fences) = (_itemsRaw, _fencesRaw);
+        var data = await Task.Run(() => Fetch(items, fences));
+        _polling = false;
+        if (data != null && reads == _reads) Apply(data);
+    }
+
+    private void Apply(PlanData data)
+    {
+        _itemsRaw = data.ItemsRaw;
+        _fencesRaw = data.FencesRaw;
+        _items = data.Items;
+        _route = data.Route;
+        _fences = data.Fences;
+        _landings = data.Landings;
         if (!Survives(_selected)) _selected = null;
         _editable = EditableFor(_selected);
         SizeNewPattern();
@@ -200,6 +240,15 @@ public sealed partial class PlanPage : UserControl
         _ => null,
     };
 
+    private Hit SelectionOf(Hit hit) => hit switch
+    {
+        LandingHit landing => new WaypointHit(landing.Index),
+        CircleRadiusHit radius => new CircleHit(radius.Index),
+        ShapeCentreHit { Fence: true } centre => _selected is FenceVertexHit corner && corner.Polygon == centre.Owner ? corner : new FenceVertexHit(centre.Owner, 0),
+        ShapeCentreHit centre => _selected is { } chosen && PlanRules.MissionIndex(chosen) == centre.Owner ? chosen : new WaypointHit(centre.Owner),
+        _ => hit,
+    };
+
     private void Select(Hit? hit, bool openPanel)
     {
         _selected = hit;
@@ -223,7 +272,7 @@ public sealed partial class PlanPage : UserControl
     private void FocusItem(int index)
     {
         Select(new WaypointHit(index), true);
-        if (_items.ElementAtOrDefault(index)?.At is { } at) Map.CenterOn(at.Latitude, at.Longitude);
+        if (_items.ElementAtOrDefault(index)?.At is { } at) Recentre(at);
     }
 
     private void FocusNotReady(PlanStatus status)
@@ -362,7 +411,7 @@ public sealed partial class PlanPage : UserControl
         if (listed.Count == 0) return;
         if (listed.Count == 1)
         {
-            Map.CenterOn(listed[0].Latitude, listed[0].Longitude, FieldZoom);
+            Recentre(listed[0], FieldZoom);
             return;
         }
         var world = listed.Select(World).ToList();
@@ -372,7 +421,21 @@ public sealed partial class PlanPage : UserControl
         var height = Math.Max(Map.ActualHeight - FitPadding * 2, 64);
         var zoom = Math.Log2(Math.Min(width / Math.Max(maxX - minX, 1e-9), height / Math.Max(maxY - minY, 1e-9)));
         var centre = Unworld((minX + maxX) / 2, (minY + maxY) / 2);
-        Map.CenterOn(centre.Latitude, centre.Longitude, Math.Clamp(zoom, 2, FieldZoom + 2));
+        Recentre(centre, Math.Clamp(zoom, 2, FieldZoom + 2));
+    }
+
+    private void Recentre(Geo at, double? zoom = null)
+    {
+        Follow(false);
+        Map.CenterOn(at.Latitude, at.Longitude, zoom);
+    }
+
+    private void Follow(bool on)
+    {
+        Map.Follow = on;
+        if (on) Map.CenterOnVehicle();
+        CentreButton.Background = on ? Token("SubtleSelectedBrush") : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        CentreButton.Foreground = Token(on ? "AccentTextBrush" : "TextPrimaryBrush");
     }
 
     private static Point World(Geo at)
@@ -409,8 +472,15 @@ public sealed partial class PlanPage : UserControl
         RallyHit r => PlanCalls.MoveRally(r.Index, at, _fences.Rally.FirstOrDefault(point => point.Index == r.Index)?.AltitudeMetres ?? 0),
         CircleHit c => PlanCalls.MoveCircle(c.Index, at),
         BreachHit => PlanCalls.SetBreach(at),
+        LandingHit l => PlanCalls.MoveLanding(l.Index, l.Place, at),
+        CircleRadiusHit r => _fences.Circles.FirstOrDefault(circle => circle.Index == r.Index) is { } circle && PlanCalls.SetCircleRadius(r.Index, PlanRules.DraggedRadius(circle, at)),
+        ShapeCentreHit s => CentreTarget(s) is { } target && PlanShapes.Replace(target.Path, PlanShapes.MovedTo(target.Vertices, at), false),
         _ => false,
     };
+
+    private (string Path, IReadOnlyList<Geo> Vertices)? CentreTarget(ShapeCentreHit hit) => hit.Fence
+        ? _fences.Polygons.FirstOrDefault(polygon => polygon.Index == hit.Owner) is { } polygon ? (PlanCalls.FencePath(polygon.Index), polygon.Vertices) : null
+        : _items.ElementAtOrDefault(hit.Owner) is { Shape: { Line: false } shape } item ? (PlanCalls.ShapePath(item), shape.Vertices) : null;
 
     private string MovedText(Hit hit) => hit switch
     {
@@ -420,11 +490,30 @@ public sealed partial class PlanPage : UserControl
         RallyHit => "Moved a rally point",
         CircleHit => "Moved a fence circle",
         BreachHit => "Moved the breach return point",
+        LandingHit { Place: LandingPlace.Approach } => "Moved the final approach",
+        LandingHit => "Moved the touchdown",
+        CircleRadiusHit => "Changed a fence radius",
+        ShapeCentreHit { Fence: true } => "Moved a fence",
+        ShapeCentreHit => "Moved a survey area",
         _ => "Moved",
     };
 
-    private void OnSplit(SplitHandle split) =>
-        Bridged("Adding a corner", () => PlanCalls.Invoke($"{split.Path}.{split.Invokable}", split.Segment).Ok, () => _editable = EditableFor(_selected));
+    private void OnSplit(SplitHandle split)
+    {
+        if (split.Path == MissionRoot) AddMissionItem("waypoint", "Adding a waypoint", split.At, split.Segment, _panelOpen);
+        else Bridged("Adding a corner", () => PlanCalls.Invoke($"{split.Path}.{split.Invokable}", split.Segment).Ok, () => _editable = EditableFor(_selected));
+    }
+
+    private SplitHandle? LegSplit()
+    {
+        if (_selected is not WaypointHit chosen || _items.ElementAtOrDefault(chosen.Index) is not { Routed: true, At: { } to } current) return null;
+        var previous = _items
+            .Where(item => item.Index > PlanRules.HomeItem && item.Index < current.Index && item.Routed && item.At != null)
+            .MaxBy(item => item.Index);
+        return (previous?.Exit ?? previous?.At) is { } from
+            ? new SplitHandle(MissionRoot, string.Empty, current.Index, PlanShapes.Centre([from, to]), LegSplitLabel)
+            : null;
+    }
 
     private void Bridged(string? label, Func<bool> work, Action? then = null, string? done = null)
     {
@@ -465,7 +554,7 @@ public sealed partial class PlanPage : UserControl
             var accelerator = new KeyboardAccelerator { Key = key, Modifiers = modifiers };
             accelerator.Invoked += (_, e) =>
             {
-                if (XamlRoot != null && FocusManager.GetFocusedElement(XamlRoot) is TextBox) return;
+                if (_dialogs.Showing || (XamlRoot != null && FocusManager.GetFocusedElement(XamlRoot) is TextBox)) return;
                 e.Handled = true;
                 act();
             };
@@ -524,6 +613,7 @@ public sealed partial class PlanPage : UserControl
             .Concat(_fences.Circles.Select(circle => new Trace(MapOverlayJson.Ring(circle.Centre, circle.RadiusMetres), circle.Inclusion ? Ink.KeepIn : Ink.KeepOut, Closed: true, Filled: true, Thickness: 2)))
             .Concat(_fences.Firmware.Count > 0 ? [new Trace(_fences.Firmware, Ink.KeepIn, Closed: true, Dashed: true, Thickness: 2)] : [])
             .Concat(_collisionLegs.Select(leg => new Trace([leg.From, leg.To], Ink.Collision, Thickness: 4)))
+            .Concat(_landings.SelectMany(LandingTraces))
             .ToList();
 
         var missionPins = _items
@@ -552,15 +642,45 @@ public sealed partial class PlanPage : UserControl
             ? new[] { new Pin(new BreachHit(), point.At, string.Empty, string.Empty, Ink.Breach, RallySize, _selected is BreachHit, fence, Glyph: "") }
             : [];
 
-        var splits = _editable is { } shape && shape.SplitInvokable.Length > 0
-            ? shape.Midpoints.Select((at, segment) => new SplitHandle(shape.Path, shape.SplitInvokable, segment, at))
+        var landingHandles = _landings
+            .Where(landing => landing.Index == selectedItem)
+            .SelectMany(landing => new[] { (LandingPlace.Approach, landing.Approach, "Approach"), (LandingPlace.Touchdown, landing.Landing, "Touchdown") }
+                .Where(place => place.Item2 != null)
+                .Select(place => new Pin(new LandingHit(landing.Index, place.Item1), place.Item2!.Value, string.Empty, place.Item3, Ink.Handle, HandleSize, false, mission)));
+
+        var radiusHandles = _fences.Circles
+            .Where(circle => fence && _selected == new CircleHit(circle.Index))
+            .Select(circle => new Pin(new CircleRadiusHit(circle.Index), MapOverlayJson.PointAt(circle.Centre, circle.RadiusMetres, 90), string.Empty, "Radius",
+                Ink.Handle, HandleSize, false, true));
+
+        var fenceCentres = fence
+            ? _fences.Polygons.Select(polygon => new Pin(new ShapeCentreHit(true, polygon.Index), PlanShapes.Centre(polygon.Vertices), string.Empty, "Move", Ink.Handle, HandleSize, false, true))
             : [];
+
+        var surveyCentre = selectedItem is int owner && _items.ElementAtOrDefault(owner)?.Shape is { Line: false, Vertices.Count: >= 3 } area
+            ? new[] { new Pin(new ShapeCentreHit(false, owner), PlanShapes.Centre(area.Vertices), string.Empty, "Move", Ink.Handle, HandleSize, false, mission) }
+            : [];
+
+        var splits = (_editable is { } shape && shape.SplitInvokable.Length > 0
+                ? shape.Midpoints.Select((at, segment) => new SplitHandle(shape.Path, shape.SplitInvokable, segment, at, CornerSplitLabel))
+                : [])
+            .Concat(mission && LegSplit() is { } leg ? [leg] : []);
 
         var pins = missionPins.Concat(surveyHandles).Concat(fenceHandles).Concat(circleHandles).Concat(rally).Concat(breach)
             .OrderBy(pin => pin.Selected)
+            .Concat(fenceCentres).Concat(surveyCentre).Concat(radiusHandles).Concat(landingHandles)
             .ToList();
         return new Scene(traces, pins, splits.ToList());
     }
+
+    private static IEnumerable<Trace> LandingTraces(LandingPattern landing) =>
+        new[]
+        {
+            new[] { landing.Approach, landing.SlopeStart, landing.Landing }.OfType<Geo>().ToList() is { Count: >= 2 } path ? new Trace(path, Ink.Land, Thickness: 2) : null,
+            landing is { LoiterToAltitude: true, Approach: { } centre, LoiterRadiusMetres: double radius }
+                ? new Trace(MapOverlayJson.Ring(centre, radius), Ink.Land, Closed: true, Dashed: true, Thickness: 2)
+                : null,
+        }.OfType<Trace>();
 
     private static IEnumerable<Trace> ShapeTraces(ItemShape shape) =>
         new[]

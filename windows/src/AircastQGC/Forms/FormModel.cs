@@ -79,6 +79,10 @@ public sealed record FormControl
 
     public double? Number => FormText.Parse(ValueString) ?? MapUiJson.Number(Value);
 
+    public string LivePath => Path.StartsWith("vehicleConfig(", StringComparison.Ordinal) && Name.Length > 0
+        ? $"vehicle.parameterManager.getParameter(-1,{Name})"
+        : Path;
+
     public long BitsValue => (long)(MapUiJson.Number(Value) ?? FormText.Parse(ValueString) ?? 0);
 
     public int Decimals => ValueString.Trim().Split('.').Skip(1).FirstOrDefault()?.TakeWhile(char.IsDigit).Count() ?? 0;

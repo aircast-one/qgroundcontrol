@@ -3,6 +3,7 @@ using System.Linq;
 using System.Text.Json.Nodes;
 using AircastQGC.Core;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 
 namespace AircastQGC.Controls;
@@ -12,10 +13,16 @@ public sealed partial class VideoThumbnail : UserControl
     private const string Client = "video-thumbnail";
     private const string VideoView = "view.video";
     private const string SwitchSourceAction = "video.switchActiveVideoSource";
+    private const string FitClient = "video-thumbnail.fit";
+    private const string FitView = "view.control(settings.videoSettings.videoFit)";
+    private const string CamerasClient = "video-thumbnail.cameras";
+    private const string MultiViewSetting = "settings.videoSettings.multiViewEnabled";
 
     private readonly CornerRadius _radius;
     private readonly Thickness _border;
     private bool _expanded;
+    private bool _streamOn = true;
+    private CameraList? _cameras;
 
     public VideoThumbnail()
     {
@@ -48,12 +55,38 @@ public sealed partial class VideoThumbnail : UserControl
     private void Start()
     {
         BridgeWatch.Watch(Client, new[] { VideoView }, Render);
+        BridgeWatch.Watch(FitClient, new[] { FitView }, RenderFit);
+        BridgeWatch.Watch(CamerasClient, new[] { CameraList.View }, RenderCameras);
         Render(Bridge.Get(VideoView));
+        RenderFit(Bridge.Get(FitView));
+        RenderCameras(Bridge.Get(CameraList.View));
     }
 
     private void Stop()
     {
-        if (!IsLoaded) BridgeWatch.Stop(Client);
+        if (IsLoaded) return;
+        BridgeWatch.Stop(Client);
+        BridgeWatch.Stop(FitClient);
+        BridgeWatch.Stop(CamerasClient);
+    }
+
+    private void RenderFit(JsonObject fit) =>
+        Surface.Fit = VideoJson.Number(fit["value"]) is double mode ? (int)mode : VideoSurface.FitHeight;
+
+    private void RenderCameras(JsonObject view)
+    {
+        _cameras = CameraList.Parse(view);
+        PaintPip();
+    }
+
+    private void PaintPip()
+    {
+        var on = _cameras?.PipEnabled == true;
+        var tip = on ? "Hide the second camera" : "Show the second camera in a small picture";
+        PipToggle.Visibility = VideoJson.Shown(_streamOn && _cameras?.PipSlot is not null);
+        PipGlyph.Foreground = PreflightLook.Token(on ? "AccentBrush" : "TextPrimaryBrush");
+        AutomationProperties.SetItemStatus(PipToggle, on ? "On" : "Off");
+        ToolTipService.SetToolTip(PipToggle, tip);
     }
 
     private void Render(JsonObject video)
@@ -80,9 +113,17 @@ public sealed partial class VideoThumbnail : UserControl
         Detail.Visibility = VideoJson.Shown(Detail.Text.Length > 0);
         SourceTitle.Text = title;
         SwitchSource.Visibility = VideoJson.Shown(VideoJson.Flag(video, "multipleSources") && camera is not null);
+        _streamOn = VideoJson.Flag(video, "streamEnabled", true);
+        PaintPip();
     }
 
     private void OnTileClick(object sender, RoutedEventArgs e) => SwapRequested?.Invoke(this, EventArgs.Empty);
+
+    private void OnPipToggle(object sender, RoutedEventArgs e)
+    {
+        Bridge.Set(MultiViewSetting, _cameras?.PipEnabled != true);
+        RenderCameras(Bridge.Get(CameraList.View));
+    }
 
     private void OnSwitchSource(object sender, RoutedEventArgs e)
     {

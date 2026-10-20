@@ -33,6 +33,9 @@
                                          Width="260" Height="150" Margin="16"
                                          HorizontalAlignment="Right" VerticalAlignment="Top" />
 
+                <controls:PipTile Width="160" Height="90" Margin="16,16,292,16"
+                                  HorizontalAlignment="Right" VerticalAlignment="Top" />
+
                 <controls:GuidedBar x:Name="GuidedStrip"
                                     HorizontalAlignment="Center" VerticalAlignment="Top" Margin="16" />
 
@@ -52,6 +55,8 @@
 
                 <controls:TelemetryPanel x:Name="TelemetryCard"
                                          HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="16" />
+
+                <controls:RcControlsLayer HorizontalAlignment="Left" VerticalAlignment="Center" Margin="16" />
 
                 <controls:CameraOverlay x:Name="CameraPanel"
                                         HorizontalAlignment="Right" VerticalAlignment="Top" Margin="16,182,68,16"

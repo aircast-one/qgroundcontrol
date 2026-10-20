@@ -25,7 +25,7 @@ internal static class PlanShapes
 
     private static double Half(double metres) => Math.Min(metres * ShapeFraction, ShapeMaxMetres) / 2;
 
-    private static Geo Centre(IReadOnlyList<Geo> view) => new(view.Average(at => at.Latitude), view.Average(at => at.Longitude));
+    internal static Geo Centre(IReadOnlyList<Geo> view) => new(view.Average(at => at.Latitude), view.Average(at => at.Longitude));
 
     internal static IReadOnlyList<Geo> Rectangle(IReadOnlyList<Geo> view) =>
         HalfExtents(view) is { } half
@@ -54,6 +54,12 @@ internal static class PlanShapes
         var latitude = corners.Average(at => at.Latitude);
         var longitude = corners.Average(at => at.Longitude);
         return corners.Select(at => new Geo(latitude + (at.Latitude - latitude) * fraction, longitude + (at.Longitude - longitude) * fraction)).ToList();
+    }
+
+    internal static IReadOnlyList<Geo> MovedTo(IReadOnlyList<Geo> vertices, Geo centre)
+    {
+        var from = Centre(vertices);
+        return vertices.Select(at => new Geo(at.Latitude + centre.Latitude - from.Latitude, at.Longitude + centre.Longitude - from.Longitude)).ToList();
     }
 
     internal static bool Replace(string path, IReadOnlyList<Geo> vertices, bool line) =>

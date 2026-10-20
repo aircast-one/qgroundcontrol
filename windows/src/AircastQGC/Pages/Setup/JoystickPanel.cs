@@ -33,7 +33,7 @@ internal sealed class JoystickPanel : UserControl
 
     private readonly Dictionary<int, ProgressBar> _axisBars = [];
     private readonly Dictionary<int, TextBlock> _buttonLabels = [];
-    private readonly ContentControl _live = new() { HorizontalContentAlignment = HorizontalAlignment.Stretch, IsTabStop = false };
+    private ContentControl _live = LiveHost();
     private JsonObject _view = new();
     private string _shape = "";
     private string? _refusal;
@@ -130,7 +130,7 @@ internal sealed class JoystickPanel : UserControl
 
     private UIElement CalibrationPanel()
     {
-        if (_live.Parent is Panel parent) parent.Children.Remove(_live);
+        _live = LiveHost();
         var calibrating = MapUiJson.Flag(Cal["calibrating"]);
         var step = MapUiJson.Number(Cal["step"]);
         var steps = MapUiJson.Number(Cal["steps"]);
@@ -256,7 +256,7 @@ internal sealed class JoystickPanel : UserControl
             Margin = new Thickness(16, 0, 16, 8),
         };
         AutomationProperties.SetName(bar, title);
-        bar.AddHandler(PointerReleasedEvent, new Microsoft.UI.Xaml.Input.PointerEventHandler((_, _) => Act(Setting, name, Math.Round(bar.Value, Math.Clamp(slider.Decimals, 0, 6)))), true);
+        _ = new SliderCommit(bar, v => Math.Round(v, Math.Clamp(slider.Decimals, 0, 6)), (chosen, _) => Act(Setting, name, chosen));
         return FormLook.Stack(0, entry, bar);
     }
 
@@ -317,6 +317,8 @@ internal sealed class JoystickPanel : UserControl
                 return (UIElement)grid;
             })) : null);
     }
+
+    private static ContentControl LiveHost() => new() { HorizontalContentAlignment = HorizontalAlignment.Stretch, IsTabStop = false };
 
     private static T Sized<T>(T element, double width) where T : FrameworkElement
     {

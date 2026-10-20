@@ -207,6 +207,22 @@ internal sealed class PlanDialogs(FrameworkElement owner)
         return await Show(dialog) == ContentDialogResult.Primary ? result : null;
     }
 
+    public async Task<string?> Ask(string title, string body, string header, string placeholder, string confirm, Func<string, string?> problem)
+    {
+        var box = new TextBox { Header = header, PlaceholderText = placeholder };
+        var error = PlanFacts.Error(string.Empty);
+        var dialog = Dialog(title, new StackPanel { Spacing = 8, MinWidth = 360, Children = { PlanFacts.Text(body, "TextSecondaryBrush"), box, error } }, "Cancel");
+        dialog.PrimaryButtonText = confirm;
+        void Check()
+        {
+            error.Text = problem(box.Text) ?? string.Empty;
+            dialog.IsPrimaryButtonEnabled = error.Text.Length == 0;
+        }
+        box.TextChanged += (_, _) => Check();
+        Check();
+        return await Show(dialog) == ContentDialogResult.Primary ? box.Text.Trim() : null;
+    }
+
     public async Task Content(string title, Func<Action, UIElement> build, string close = "Done")
     {
         var dialog = Dialog(title, null!, close);

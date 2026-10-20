@@ -161,11 +161,20 @@ public sealed class FormView : UserControl
                 ? [Advanced(section, block), Hooks.AfterBlock?.Invoke(this, section, block)]
                 :
                 [
-                    FormLook.Heading(MapUiJson.SentenceCase(BlockHeading(section, block))),
+                    Heading(MapUiJson.SentenceCase(BlockHeading(section, block)), first ? section.Image : ""),
                     NotesFirst && first ? FormLook.Margined(FormLook.Caption(section.Note), new Thickness(0, 0, 0, 8)) : null,
                     BlockCard(block),
                     Hooks.AfterBlock?.Invoke(this, section, block),
                 ];
+
+    private static UIElement Heading(string text, string image)
+    {
+        if (text.Length == 0 || image.Length == 0) return FormLook.Heading(text);
+        var title = FormLook.Text(text, "FontSizeBody", "TextPrimaryBrush", true);
+        title.VerticalAlignment = VerticalAlignment.Center;
+        var picture = AssetImages.Svg(AssetImages.SetupSections, image, 24, AssetImages.Hex("TextPrimaryBrush"), 48);
+        return FormLook.Margined(FormLook.Lead(12, picture, title), new Thickness(0, 20, 0, 8));
+    }
 
     private string BlockHeading(FormSection section, FormBlock block) =>
         block.Title.Length > 0 ? block.Title

@@ -109,6 +109,7 @@ public sealed partial class MapView : UserControl
     private double _scaleAcross = double.NaN;
     private MapScale? _scale;
     private bool _planMode;
+    private (Geo Centre, double Zoom, double Width, double Height) _shown;
 
     public MapView()
     {
@@ -145,6 +146,12 @@ public sealed partial class MapView : UserControl
     internal Geo GeoOf(Point screen) => ToGeo(screen);
 
     public Thickness FollowInsets { get; set; } = new(24, 56, 352, 40);
+
+    public string? TileType { get; set; }
+
+    internal static (Geo Centre, double Zoom)? FlightCamera { get; private set; }
+
+    public bool Follow { get; set; }
 
     public double Latitude => _center.Latitude;
 
@@ -224,7 +231,7 @@ public sealed partial class MapView : UserControl
 
     private void Refresh()
     {
-        var type = MapNative.CurrentType();
+        var type = TileType ?? MapNative.CurrentType();
         if (type != _mapType)
         {
             _mapType = type;
@@ -288,9 +295,9 @@ public sealed partial class MapView : UserControl
             _center = vehicle;
             return;
         }
-        if (_planMode) return;
+        if (_planMode && !Follow) return;
         if (_pannedAt is { } at && DateTime.UtcNow - at < PanSuspension) return;
-        if (_keepCentered)
+        if (_keepCentered || Follow)
         {
             _center = vehicle;
             return;
@@ -342,6 +349,10 @@ public sealed partial class MapView : UserControl
         PlaceMarkers();
         Layers.ToList().ForEach(layer => layer.Place(ToScreen));
         PlaceScale();
+        if (!_planMode && (_framed || _pannedAt.HasValue)) FlightCamera = (_center, _zoom);
+        var shown = (_center, _zoom, width, height);
+        if (shown == _shown) return;
+        _shown = shown;
         ViewChanged?.Invoke(this, EventArgs.Empty);
     }
 

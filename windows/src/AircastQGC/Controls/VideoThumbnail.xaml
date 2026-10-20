@@ -81,26 +81,43 @@
             </Grid>
         </Button>
 
-        <Button x:Name="SwitchSource"
-                Click="OnSwitchSource"
-                HorizontalAlignment="Right"
-                VerticalAlignment="Top"
-                Margin="8"
-                Padding="8,0"
-                Height="24"
-                MinHeight="0"
-                Background="{ThemeResource LayerBrush}"
-                BorderBrush="{ThemeResource ControlStrokeBrush}"
-                BorderThickness="1"
-                CornerRadius="12"
-                Foreground="{ThemeResource TextPrimaryBrush}"
-                Visibility="Collapsed"
-                AutomationProperties.Name="Show the next camera"
-                ToolTipService.ToolTip="Show the next camera">
-            <StackPanel Orientation="Horizontal" Spacing="{ThemeResource SpaceXs}">
-                <FontIcon Glyph="&#xE8AB;" FontSize="12" />
-                <TextBlock x:Name="SourceTitle" Style="{StaticResource VideoCaption}" MaxWidth="120" />
-            </StackPanel>
-        </Button>
+        <StackPanel HorizontalAlignment="Right"
+                    VerticalAlignment="Top"
+                    Margin="8"
+                    Orientation="Horizontal"
+                    Spacing="{ThemeResource SpaceXs}">
+            <Button x:Name="PipToggle"
+                    Click="OnPipToggle"
+                    Padding="8,0"
+                    Height="24"
+                    MinHeight="0"
+                    Background="{ThemeResource LayerBrush}"
+                    BorderBrush="{ThemeResource ControlStrokeBrush}"
+                    BorderThickness="1"
+                    CornerRadius="12"
+                    Foreground="{ThemeResource TextPrimaryBrush}"
+                    Visibility="Collapsed"
+                    AutomationProperties.Name="Picture in picture">
+                <FontIcon x:Name="PipGlyph" Glyph="&#xEE49;" FontSize="12" />
+            </Button>
+            <Button x:Name="SwitchSource"
+                    Click="OnSwitchSource"
+                    Padding="8,0"
+                    Height="24"
+                    MinHeight="0"
+                    Background="{ThemeResource LayerBrush}"
+                    BorderBrush="{ThemeResource ControlStrokeBrush}"
+                    BorderThickness="1"
+                    CornerRadius="12"
+                    Foreground="{ThemeResource TextPrimaryBrush}"
+                    Visibility="Collapsed"
+                    AutomationProperties.Name="Show the next camera"
+                    ToolTipService.ToolTip="Show the next camera">
+                <StackPanel Orientation="Horizontal" Spacing="{ThemeResource SpaceXs}">
+                    <FontIcon Glyph="&#xE8AB;" FontSize="12" />
+                    <TextBlock x:Name="SourceTitle" Style="{StaticResource VideoCaption}" MaxWidth="120" />
+                </StackPanel>
+            </Button>
+        </StackPanel>
     </Grid>
 </UserControl>

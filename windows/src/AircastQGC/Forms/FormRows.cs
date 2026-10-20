@@ -208,17 +208,14 @@ internal sealed partial class FormRows(FormView host)
             Math.Round(bar.Value, decimals).ToString($"F{decimals}", CultureInfo.InvariantCulture),
             c.UnitsShown,
         }.Where(part => part.Length > 0)));
-        void Save()
-        {
-            var chosen = Math.Round(bar.Value, decimals);
-            var before = MapUiJson.Number(c.Value) ?? c.Number;
-            if (before is { } held && Same(held, chosen)) return;
-            Commit(c, refusal, () => FormWrites.Set(c.Path, chosen), () => bar.Value = before ?? slider.From);
-        }
+        var commit = new SliderCommit(bar, v => Math.Round(v, decimals), (chosen, revert) =>
+            Commit(c, refusal, () => FormWrites.Set(c.Path, chosen), revert));
         Show();
         bar.ValueChanged += (_, _) => Show();
-        bar.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler((_, _) => Save()), true);
-        bar.KeyUp += (_, _) => Save();
+        Live.Watch(bar, c.LivePath, view =>
+        {
+            if ((MapUiJson.Number(view["value"]) ?? FormText.Parse(FormJson.Shown(view["valueString"]))) is { } pushed) commit.Show(pushed);
+        });
         return FormLook.Row(left, value, FormLook.Stack(4, bar, FormLook.Caption(c.Description)));
     }
 
@@ -261,5 +258,67 @@ internal sealed partial class FormRows(FormView host)
     private sealed class Held(string text)
     {
         public string Text { get; set; } = text;
+    }
+}
+
+internal sealed class SliderCommit
+{
+    private static readonly TimeSpan Settle = TimeSpan.FromMilliseconds(400);
+
+    private readonly Slider _slider;
+    private readonly Func<double, double> _round;
+    private readonly Action<double, Action> _write;
+    private readonly DispatcherTimer _settle = new() { Interval = Settle };
+    private double _known;
+    private bool _pressed;
+    private bool _quiet;
+
+    public SliderCommit(Slider slider, Func<double, double> round, Action<double, Action> write)
+    {
+        _slider = slider;
+        _round = round;
+        _write = write;
+        _known = round(slider.Value);
+        slider.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, _) => _pressed = true), true);
+        new[] { UIElement.PointerReleasedEvent, UIElement.PointerCaptureLostEvent, UIElement.PointerCanceledEvent }.ToList()
+            .ForEach(routed => slider.AddHandler(routed, new PointerEventHandler((_, _) => Release()), true));
+        slider.KeyUp += (_, _) => Commit();
+        slider.ValueChanged += (_, _) =>
+        {
+            if (_quiet || _pressed) return;
+            _settle.Stop();
+            _settle.Start();
+        };
+        _settle.Tick += (_, _) => Commit();
+        slider.Unloaded += (_, _) =>
+        {
+            if (_settle.IsEnabled) Commit();
+        };
+    }
+
+    public void Show(double value)
+    {
+        if (_pressed || _settle.IsEnabled) return;
+        _quiet = true;
+        _slider.Value = Math.Clamp(value, _slider.Minimum, _slider.Maximum);
+        _quiet = false;
+        _known = _round(_slider.Value);
+    }
+
+    private void Release()
+    {
+        if (!_pressed) return;
+        _pressed = false;
+        Commit();
+    }
+
+    private void Commit()
+    {
+        _settle.Stop();
+        var chosen = _round(_slider.Value);
+        if (Math.Abs(chosen - _known) <= 1e-9 * Math.Max(1, Math.Abs(chosen))) return;
+        var previous = _known;
+        _known = chosen;
+        _write(chosen, () => Show(previous));
     }
 }

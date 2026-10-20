@@ -15,32 +15,36 @@ internal static class PreflightLook
 
     public static void Accent(Button button) =>
         Paint(button, Token("AccentBrush"), Token("AccentHoverBrush"), Token("AccentBrush"),
-            Token("AccentOnBrush"), Token("AccentBrush"));
+            Token("AccentOnBrush"), Token("AccentBrush"),
+            Token("AccentFillColorDisabledBrush"), Token("TextOnAccentFillColorDisabledBrush"), Clear);
 
     public static void Standard(Button button) =>
         Paint(button, Token("ControlBrush"), Token("ControlHoverBrush"), Token("SubtleSelectedBrush"),
-            Token("TextPrimaryBrush"), Token("ControlStrokeBrush"));
+            Token("TextPrimaryBrush"), Token("ControlStrokeBrush"),
+            Token("ControlBrush"), Token("TextDisabledBrush"), Token("ControlStrokeBrush"));
 
     public static void Subtle(Button button) =>
         Paint(button, Clear, Token("SubtleHoverBrush"), Token("SubtleSelectedBrush"),
-            Token("TextPrimaryBrush"), Clear);
+            Token("TextPrimaryBrush"), Clear,
+            Clear, Token("TextDisabledBrush"), Clear);
 
     private static Brush Clear => new SolidColorBrush(Colors.Transparent);
 
-    private static void Paint(Button button, Brush rest, Brush hover, Brush pressed, Brush text, Brush stroke) =>
+    private static void Paint(Button button, Brush rest, Brush hover, Brush pressed, Brush text, Brush stroke,
+        Brush disabled, Brush disabledText, Brush disabledStroke) =>
         button.Resources = new ResourceDictionary
         {
             ["ButtonBackground"] = rest,
             ["ButtonBackgroundPointerOver"] = hover,
             ["ButtonBackgroundPressed"] = pressed,
-            ["ButtonBackgroundDisabled"] = rest,
+            ["ButtonBackgroundDisabled"] = disabled,
             ["ButtonForeground"] = text,
             ["ButtonForegroundPointerOver"] = text,
             ["ButtonForegroundPressed"] = text,
-            ["ButtonForegroundDisabled"] = Token("TextDisabledBrush"),
+            ["ButtonForegroundDisabled"] = disabledText,
             ["ButtonBorderBrush"] = stroke,
             ["ButtonBorderBrushPointerOver"] = stroke,
             ["ButtonBorderBrushPressed"] = stroke,
-            ["ButtonBorderBrushDisabled"] = stroke,
+            ["ButtonBorderBrushDisabled"] = disabledStroke,
         };
 }

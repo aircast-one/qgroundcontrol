@@ -7,11 +7,12 @@
     <Grid Background="{ThemeResource BgBaseBrush}">
         <Grid x:Name="TwoPane" Visibility="Collapsed">
             <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="360" />
-                <ColumnDefinition Width="*" />
+                <ColumnDefinition x:Name="ListColumn" Width="360" />
+                <ColumnDefinition x:Name="DetailColumn" Width="*" />
             </Grid.ColumnDefinitions>
 
-            <Border Background="{ThemeResource BgSecondaryBrush}"
+            <Border x:Name="ListPane"
+                    Background="{ThemeResource BgSecondaryBrush}"
                     BorderBrush="{ThemeResource DividerBrush}"
                     BorderThickness="0,0,1,0">
                 <Grid>
@@ -55,7 +56,7 @@
                 </Grid>
             </Border>
 
-            <Grid Grid.Column="1">
+            <Grid x:Name="DetailPane" Grid.Column="1">
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="*" MaxWidth="760" />
                 </Grid.ColumnDefinitions>
@@ -65,13 +66,28 @@
                     <RowDefinition Height="*" />
                 </Grid.RowDefinitions>
 
-                <TextBlock x:Name="DetailTitle"
-                           Margin="24,20,24,12"
-                           TextTrimming="CharacterEllipsis"
-                           FontFamily="{ThemeResource AppFontFamily}"
-                           FontSize="{ThemeResource FontSizeSubtitle}"
-                           FontWeight="SemiBold"
-                           Foreground="{ThemeResource TextPrimaryBrush}" />
+                <Grid x:Name="DetailHeader" ColumnSpacing="8" Margin="24,20,24,12">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                    </Grid.ColumnDefinitions>
+                    <Button x:Name="BackButton"
+                            Width="36" Height="36" Padding="0"
+                            VerticalAlignment="Center"
+                            FontFamily="Segoe Fluent Icons" FontSize="16"
+                            Content="&#xE72B;"
+                            Visibility="Collapsed"
+                            AutomationProperties.Name="Back to Aircraft setup"
+                            ToolTipService.ToolTip="Back to Aircraft setup" />
+                    <TextBlock x:Name="DetailTitle"
+                               Grid.Column="1"
+                               VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis"
+                               FontFamily="{ThemeResource AppFontFamily}"
+                               FontSize="{ThemeResource FontSizeSubtitle}"
+                               FontWeight="SemiBold"
+                               Foreground="{ThemeResource TextPrimaryBrush}" />
+                </Grid>
 
                 <TextBlock x:Name="BlockedText"
                            Grid.Row="1"

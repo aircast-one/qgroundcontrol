@@ -24,6 +24,16 @@ internal sealed record SurveyVertexHit(int Item, int Vertex) : Hit;
 
 internal sealed record BreachHit : Hit;
 
+internal enum LandingPlace { Approach, Touchdown }
+
+internal sealed record LandingHit(int Index, LandingPlace Place) : Hit;
+
+internal sealed record CircleRadiusHit(int Index) : Hit;
+
+internal sealed record ShapeCentreHit(bool Fence, int Owner) : Hit;
+
+internal sealed record LandingPattern(int Index, Geo? Landing, Geo? SlopeStart, Geo? Approach, double? LoiterRadiusMetres, bool LoiterToAltitude);
+
 internal sealed record ItemShape(
     string Shape, string Property, IReadOnlyList<Geo> Vertices, IReadOnlyList<Geo> Transects,
     IReadOnlyList<Geo> Outline, IReadOnlyList<Geo> FlightLoop)
@@ -36,7 +46,7 @@ internal sealed record PlanItem(
     double? Altitude, string AltitudeText, string AltitudeBand, string FrameText, int? AltitudeMode, string AltitudeUnits,
     bool SpecifiesCoordinate, bool Complex, bool Ready, string BlockedReason, int CameraShots, double ExtraSeconds,
     string SpeedText, string Abbreviation, bool AfterRouteEnds, string DistanceText, string AzimuthText,
-    string HeadingText, string AltitudeChangeText, string GradientText, ItemShape? Shape);
+    string HeadingText, string AltitudeChangeText, string GradientText, ItemShape? Shape, bool Routed);
 
 internal sealed record FencePolygon(int Index, bool Inclusion, IReadOnlyList<Geo> Vertices, string Title, string Detail);
 
@@ -168,6 +178,7 @@ internal static class PlanJson
     {
         var elements = (view["items"] as JsonArray ?? new JsonArray()).Select(node => node as JsonObject ?? new JsonObject()).ToList();
         var endsAfter = elements.FindIndex(e => MapUiJson.Flag(e["endsRoute"]) && Command(e) == PlanRules.ReturnToLaunch);
+        var routeEnd = endsAfter < 0 ? int.MaxValue : endsAfter;
         return elements.Select((element, index) =>
         {
             var at = MapOverlayJson.Plottable(element["coordinate"]);
@@ -201,8 +212,23 @@ internal static class PlanJson
                 MapUiJson.Text(element["headingText"]),
                 MapUiJson.Text(element["altitudeChangeText"]),
                 MapUiJson.Text(element["gradientText"]),
-                Shape(element["geometry"] as JsonObject));
+                Shape(element["geometry"] as JsonObject),
+                MapUiJson.Flag(element["flownLeg"]) && index <= routeEnd);
         }).ToList();
+    }
+
+    internal static LandingPattern? Landing(int index, JsonObject view)
+    {
+        var pattern = new LandingPattern(
+            index,
+            MapOverlayJson.Plottable(view["landing"]),
+            MapOverlayJson.Plottable(view["slopeStart"]),
+            MapOverlayJson.Plottable(view["finalApproach"]),
+            MapUiJson.Number(view["loiterRadiusMetres"]),
+            MapUiJson.Flag(view["loiterToAltitude"]));
+        return MapUiJson.Text(view["kind"]) != "object" || view["reason"] != null || pattern is { Landing: null, SlopeStart: null, Approach: null }
+            ? null
+            : pattern;
     }
 
     private static ItemShape? Shape(JsonObject? geometry) =>
@@ -330,6 +356,7 @@ internal static class PlanRules
     internal const string FarFromAircraftText = "The aircraft is not where this route begins. Move the route so it starts at the aircraft, or upload it as it is.";
     internal const string TerrainConflictHere = "Too close to the terrain here";
     private const double FarFromAircraftMetres = 1000;
+    private const double MinimumCircleMetres = 0.1;
     private const double EarthRadiusMetres = 6_371_000;
     private static readonly HashSet<string> DrawnKinds = ["settings", "takeoff", "land", "waypoint", "command", "altitude", "roi", "survey", "corridor", "structure"];
     private static readonly HashSet<string> PatternKinds = ["survey", "corridor", "structure"];
@@ -586,6 +613,12 @@ internal static class PlanRules
         circle.Minimum is { } floor
             ? circle.Radius <= floor ? null : Math.Max(circle.Radius / 1.5, floor)
             : circle.Radius / 1.5 is var wanted && wanted > 0 ? wanted : null;
+
+    internal static double DraggedRadius(FenceCircle circle, Geo to)
+    {
+        var shownPerMetre = circle.RadiusMetres > 0 ? circle.Radius / circle.RadiusMetres : 1;
+        return Math.Min(Math.Max(Metres(circle.Centre, to) * shownPerMetre, circle.Minimum ?? MinimumCircleMetres * shownPerMetre), circle.Maximum ?? double.MaxValue);
+    }
 
     internal static double? TypedRadius(string text, FenceCircle circle) =>
         TypedNumber(text) is double wanted && wanted > 0

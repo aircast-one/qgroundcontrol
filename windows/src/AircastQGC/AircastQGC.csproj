@@ -35,6 +35,8 @@
 
   <ItemGroup>
     <Content Include="Assets\Airframe\*.svg" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\SetupSections\*.svg" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="Assets\Calibration\*.png" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>

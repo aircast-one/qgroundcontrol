@@ -28,17 +28,18 @@ internal static class SettingsBodies
     private static readonly string[] PresetUnits = ["horizontalDistanceUnits", "verticalDistanceUnits", "areaUnits", "speedUnits", "temperatureUnits"];
 
     public static UIElement Body(SettingsEntry page, SettingsNav nav) =>
-        page.ShowsLinks ? new LinksPanel(nav, Form(page))
+        page.ShowsLinks ? new LinksPanel(nav, Form(page, nav))
         : page.ShowsAbout ? Scrolled(About(page.HelpLinks))
         : page.ShowsConsole ? new AppLogPanel()
         : page.ShowsPx4Logs ? new Border { Padding = new Thickness(16, 0, 16, 0), Child = new Px4LogTransfer() }
+        : page.ShowsVideoSources ? Scrolled(new CamerasPanel())
         : page.Title == SettingsCatalog.FirmwareUpgrade ? new Analyze.FirmwareTool()
-        : Scrolled(Form(page));
+        : Scrolled(Form(page, nav));
 
-    public static FormView Form(SettingsEntry page) => new(() => Bridge.Get(SettingsCatalog.PagePath(page.Title)), SettingsCatalog.Sections)
+    public static FormView Form(SettingsEntry page, SettingsNav nav) => new(() => Bridge.Get(SettingsCatalog.PagePath(page.Title)), SettingsCatalog.Sections)
     {
         PageTitle = page.Title,
-        Hooks = Hooks(page),
+        Hooks = Hooks(page, nav),
     };
 
     public static ScrollViewer Scrolled(UIElement content) => new()
@@ -92,7 +93,7 @@ internal static class SettingsBodies
         return row;
     }
 
-    private static FormHooks Hooks(SettingsEntry page) => new()
+    private static FormHooks Hooks(SettingsEntry page, SettingsNav nav) => new()
     {
         Top = form => page.ShowsNtrip ? new NtripStatusPanel(form.Reload)
             : page.ShowsPacketRadio ? new PacketRadioPanel(form.Reload)
@@ -110,8 +111,9 @@ internal static class SettingsBodies
             : null,
         AfterSection = (form, section) => section.Group switch
         {
+            SettingsCatalog.FlyViewGroup => new RcControlsEditor(),
             SettingsCatalog.Viewer3DGroup => OsmPicker(form),
-            SettingsCatalog.OfflineMapsGroup => new OfflineMapsPanel(),
+            SettingsCatalog.OfflineMapsGroup => new OfflineMapsPanel(nav),
             SettingsCatalog.MavlinkGroup => new LinkStatusPanel(),
             _ => null,
         },
@@ -176,13 +178,29 @@ internal static class SettingsBodies
         AutomationProperties.SetName(versionRow, $"Aircast version {shown}");
         versionRow.Click += (_, _) => FormWrites.Off(() =>
             FormWrites.Ok(SetAdvancedUi, !MapUiJson.Flag(Bridge.Get(AdvancedUiView)["shown"], true)));
+        var refusal = FormLook.Caption("", "CriticalBrush");
         return FormLook.Stack(0,
             FormLook.Heading("About"),
             FormLook.Card(versionRow),
             FormLook.Heading("Support"),
             FormLook.Card(links.Select(link => (UIElement)FormLook.Row(
                 FormLook.Stack(2, FormLook.Text(link.Name), FormLook.Caption(link.Host, "AccentTextBrush")),
-                FormLook.Button("Open", () => _ = Windows.System.Launcher.LaunchUriAsync(new Uri(link.Url)))))));
+                OpenButton(link, refusal)))),
+            FormLook.Margined(refusal, new Thickness(4, 8, 4, 0)));
+    }
+
+    private static Button OpenButton(HelpLink link, TextBlock refusal)
+    {
+        var button = FormLook.Button("Open", async () => FormLook.Say(refusal, await Launch(link)));
+        AutomationProperties.SetName(button, $"Open {link.Name}");
+        return button;
+    }
+
+    private static async System.Threading.Tasks.Task<string?> Launch(HelpLink link)
+    {
+        if (!Uri.TryCreate(link.Url, UriKind.Absolute, out var uri)) return $"{link.Name} has no address to open.";
+        try { return await Windows.System.Launcher.LaunchUriAsync(uri) ? null : $"Windows could not open {link.Host}."; }
+        catch (Exception error) { return $"Windows could not open {link.Host}: {error.Message}"; }
     }
 }
 

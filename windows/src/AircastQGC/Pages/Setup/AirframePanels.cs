@@ -1,9 +1,6 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Runtime.InteropServices;
-using System.Runtime.InteropServices.WindowsRuntime;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using AircastQGC.Controls;
@@ -14,39 +11,8 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Media.Imaging;
-using Windows.Storage.Streams;
 
 namespace AircastQGC.Pages.Setup;
-
-internal static class AirframeImages
-{
-    public static string Folder => Path.Combine(AppContext.BaseDirectory, "Assets", "Airframe");
-
-    public static Image Of(string file, double height)
-    {
-        var image = new Image { Height = height, Stretch = Microsoft.UI.Xaml.Media.Stretch.Uniform, Visibility = Visibility.Collapsed };
-        Load(image, file);
-        return image;
-    }
-
-    private static async void Load(Image image, string file)
-    {
-        var path = Path.Combine(Folder, Path.GetFileName(file.EndsWith(".svg", StringComparison.OrdinalIgnoreCase) ? file : $"{file}.svg"));
-        if (file.Trim().Length == 0 || !File.Exists(path)) return;
-        try
-        {
-            var bytes = await File.ReadAllBytesAsync(path);
-            using var stream = new InMemoryRandomAccessStream();
-            await stream.WriteAsync(bytes.AsBuffer());
-            stream.Seek(0);
-            var svg = new SvgImageSource();
-            if (await svg.SetSourceAsync(stream) != SvgImageSourceLoadStatus.Success) return;
-            image.Source = svg;
-            image.Visibility = Visibility.Visible;
-        }
-        catch (Exception error) when (error is IOException or COMException or UnauthorizedAccessException) { }
-    }
-}
 
 internal sealed class ApmAirframePanel : UserControl
 {
@@ -112,7 +78,7 @@ internal sealed class ApmAirframePanel : UserControl
         var valid = MapUiJson.Flag(card["valid"], true);
         var name = MapUiJson.Text(card["name"]);
         var value = (int)(MapUiJson.Number(card["value"]) ?? 0);
-        var image = AirframeImages.Of(MapUiJson.Text(card["image"]), 88);
+        var image = AssetImages.Svg(AssetImages.Airframe, MapUiJson.Text(card["image"]), 88);
         var label = FormLook.Text(name, "FontSizeBody", "TextPrimaryBrush", true);
         label.HorizontalAlignment = HorizontalAlignment.Center;
         var body = FormLook.Stack(4, image, label);
@@ -226,7 +192,7 @@ internal sealed class Px4AirframePanel : UserControl
         grid.Children.Add(radio);
         var right = FormLook.Stack(4,
             FormLook.Text(name, "FontSizeBody", "TextPrimaryBrush", true),
-            MapUiJson.Text(group["image"]) is { Length: > 0 } image ? AirframeImages.Of(image, 96) : null,
+            MapUiJson.Text(group["image"]) is { Length: > 0 } image ? AssetImages.Svg(AssetImages.Airframe, image, 96) : null,
             combo);
         Grid.SetColumn(right, 1);
         grid.Children.Add(right);

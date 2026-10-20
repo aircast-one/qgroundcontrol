@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
-using System.Globalization;
 using System.Linq;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
@@ -55,47 +54,17 @@ internal sealed record OfflineSet(
         MapUiJson.Flag(set["canDelete"]));
 }
 
-internal sealed record OfflineRegion(double West, double North, double East, double South)
-{
-    private const double KmPerDegree = 111.32;
-    private const double MaxLatitude = 85;
-
-    public static OfflineRegion? Around(double latitude, double longitude, double km) =>
-        double.IsFinite(latitude) && double.IsFinite(longitude) && km > 0 && Math.Abs(latitude) <= MaxLatitude && Math.Abs(longitude) <= 180
-            ? Square(latitude, longitude, km / 2 / KmPerDegree)
-            : null;
-
-    private static OfflineRegion Square(double latitude, double longitude, double halfLatitude) =>
-        Spanned(latitude, longitude, halfLatitude, halfLatitude / Math.Cos(latitude * Math.PI / 180));
-
-    private static OfflineRegion Spanned(double latitude, double longitude, double halfLatitude, double halfLongitude) => new(
-        longitude - halfLongitude,
-        Math.Min(latitude + halfLatitude, MaxLatitude),
-        longitude + halfLongitude,
-        Math.Max(latitude - halfLatitude, -MaxLatitude));
-
-    public string Args => string.Join(",", new[] { West, North, East, South }.Select(c => c.ToString("F7", CultureInfo.InvariantCulture)));
-}
-
 internal sealed class OfflineMapsPanel : UserControl
 {
     public const string View = "view.offlineMaps";
-    private const string Start = "offlineMaps.startDownload";
     private const string Resume = "offlineMaps.resume";
     private const string Cancel = "offlineMaps.cancel";
     private const string Delete = "offlineMaps.delete";
     private const string Rename = "offlineMaps.rename";
     private const string ExportSets = "offlineMaps.export";
     private const string ImportSets = "offlineMaps.import";
-    private const string MinZoomSetting = "settings.offlineMapsSettings.minZoomLevelDownload";
-    private const string MaxZoomSetting = "settings.offlineMapsSettings.maxZoomLevelDownload";
     private const string Subject = "The tile cache";
     private const string Extension = ".qgctiledb";
-    private const int DefaultMinZoom = 13;
-    private const int DefaultMaxZoom = 19;
-    private const int LowestZoom = 1;
-    private const int HighestZoom = 20;
-    private const double DefaultAreaKm = 2;
 
     private readonly StackPanel _sets = new();
     private readonly StackPanel _available = new();
@@ -106,13 +75,15 @@ internal sealed class OfflineMapsPanel : UserControl
     private readonly Button _import;
     private readonly Button _export;
     private readonly Poller _poll;
+    private readonly SettingsNav _nav;
     private IReadOnlyList<OfflineSet> _read = [];
     private ImmutableDictionary<long, Button> _rows = ImmutableDictionary<long, Button>.Empty;
     private string? _order;
     private Action<OfflineSet>? _refreshShown;
 
-    public OfflineMapsPanel()
+    public OfflineMapsPanel(SettingsNav nav)
     {
+        _nav = nav;
         Margin = new Thickness(0, 12, 0, 0);
         _import = FormLook.Button("Import…", ImportTiles);
         _export = FormLook.Button("Export…", ExportTiles);
@@ -225,100 +196,12 @@ internal sealed class OfflineMapsPanel : UserControl
 
     private async void AddSet()
     {
-        if (XamlRoot is null) return;
-        var seed = await FormWrites.Off(() => (
-            View: Bridge.Get(View),
-            MapType: MapNative.CurrentType(),
-            Min: (int)(MapUiJson.Number(Bridge.Get(MinZoomSetting)["value"]) ?? DefaultMinZoom),
-            Max: (int)(MapUiJson.Number(Bridge.Get(MaxZoomSetting)["value"]) ?? DefaultMaxZoom),
-            Centre: MapUiJson.VehiclePosition() ?? GcsCentre()));
-        var maps = MapUiJson.Texts(seed.View["mapList"]);
-        var name = FormLook.Field(MapUiJson.Text(seed.View["uniqueName"]), "Name");
-        var mapType = FormLook.Combo(maps, maps.ToList().IndexOf(seed.MapType), 280, seed.MapType);
-        var latitude = Number("Centre latitude", seed.Centre?.Latitude ?? double.NaN, -85, 85, 0.001);
-        var longitude = Number("Centre longitude", seed.Centre?.Longitude ?? double.NaN, -180, 180, 0.001);
-        var area = Number("Area width (km)", DefaultAreaKm, 0.1, 100, 0.5);
-        var minZoom = Number("Min zoom", Math.Clamp(seed.Min, LowestZoom, HighestZoom), LowestZoom, HighestZoom, 1);
-        var maxZoom = Number("Max zoom", Math.Clamp(seed.Max, LowestZoom, HighestZoom), LowestZoom, HighestZoom, 1);
-        var elevation = new CheckBox { Content = "Fetch elevation data", IsChecked = true, FontFamily = PreflightLook.Font };
-        var estimate = new StackPanel { Spacing = 4 };
-        var error = FormLook.Caption("", "CriticalBrush");
-        AutomationProperties.SetName(mapType, "Map type");
-        var dialog = FormLook.Dialog(XamlRoot, "Add new set", new ScrollViewer
+        var seed = await FormWrites.Off(OfflineSeed.Read);
+        _nav.Push("Add new set", new OfflineSetEditor(seed, () =>
         {
-            MaxHeight = 560,
-            Content = FormLook.Stack(10,
-                name,
-                FormLook.Line(12, FormLook.Margined(FormLook.Text("Map type"), new Thickness(0, 6, 0, 0)), mapType),
-                FormLook.Caption("The set covers a square around this point. It starts on the vehicle, or on this computer's position when no vehicle is connected."),
-                FormLook.Line(12, latitude, longitude),
-                area,
-                FormLook.Line(12, minZoom, maxZoom),
-                elevation,
-                estimate,
-                error),
-        }, "Download");
-        var version = 0;
-        var taken = MapUiJson.Texts(seed.View["takenNames"]);
-        int Zoom(NumberBox box) => (int)Math.Round(double.IsNaN(box.Value) ? LowestZoom : box.Value);
-        string Chosen() => mapType.SelectedIndex >= 0 ? maps[mapType.SelectedIndex] : seed.MapType;
-        OfflineRegion? Region() => OfflineRegion.Around(latitude.Value, longitude.Value, area.Value);
-        async void Estimate()
-        {
-            var at = ++version;
-            var (type, region, low, high, fetch) = (Chosen(), Region(), Math.Min(Zoom(minZoom), Zoom(maxZoom)), Math.Max(Zoom(minZoom), Zoom(maxZoom)), elevation.IsChecked == true);
-            var read = region is null ? null : await FormWrites.Off(() =>
-                Bridge.Get($"{View}({type},{region.Args},{low},{high},{(fetch ? "true" : "false")})")["estimate"] as JsonObject);
-            if (at != version) return;
-            var nameTaken = taken.Contains(name.Text.Trim());
-            var tooMany = MapUiJson.Flag(read?["tooMany"]);
-            FormLook.Fill(estimate,
-            [
-                region is null ? FormLook.Caption("Enter the centre of the area to download.", "CautionBrush") : null,
-                read is null ? null : FormLook.Pair("Tile count", MapUiJson.Text(read["tileCountText"])),
-                read is null ? null : FormLook.Pair("Est size", MapUiJson.Text(read["tileSizeText"])),
-                tooMany ? FormLook.Caption("Too many tiles", "CriticalBrush") : null,
-                nameTaken ? FormLook.Caption("Tile set with this name already exists", "CriticalBrush") : null,
-            ]);
-            dialog.IsPrimaryButtonEnabled = region is not null && read is not null && !tooMany && !nameTaken && name.Text.Trim().Length > 0;
-        }
-        void Zooms()
-        {
-            var (low, high) = (Zoom(minZoom), Zoom(maxZoom));
-            FormWrites.Off(() =>
-            {
-                FormWrites.Set(MinZoomSetting, Math.Min(low, high));
-                FormWrites.Set(MaxZoomSetting, Math.Max(low, high));
-            });
-            Estimate();
-        }
-        name.TextChanged += (_, _) => Estimate();
-        mapType.SelectionChanged += (_, _) => Estimate();
-        latitude.ValueChanged += (_, _) => Estimate();
-        longitude.ValueChanged += (_, _) => Estimate();
-        area.ValueChanged += (_, _) => Estimate();
-        minZoom.ValueChanged += (_, _) => Zooms();
-        maxZoom.ValueChanged += (_, _) => Zooms();
-        FormLook.Toggled(elevation, _ => Estimate());
-        dialog.PrimaryButtonClick += async (_, args) =>
-        {
-            if (Region() is not { } region)
-            {
-                args.Cancel = true;
-                return;
-            }
-            var deferral = args.GetDeferral();
-            var (typed, type, low, high, fetch) = (name.Text.Trim(), Chosen(), Math.Min(Zoom(minZoom), Zoom(maxZoom)), Math.Max(Zoom(minZoom), Zoom(maxZoom)), elevation.IsChecked == true);
-            var refused = await FormWrites.Off(() => FormWrites.Call(Start, Subject,
-                typed, type, region.West, region.North, region.East, region.South, low, high, fetch));
-            FormLook.Say(error, refused);
-            args.Cancel = refused is not null;
-            deferral.Complete();
-        };
-        dialog.IsPrimaryButtonEnabled = false;
-        Estimate();
-        await FormLook.Show(dialog);
-        _poll.Now();
+            _nav.Pop();
+            _poll.Now();
+        }));
     }
 
     private async void ExportTiles()
@@ -355,36 +238,6 @@ internal sealed class OfflineMapsPanel : UserControl
         _import.IsEnabled = true;
         _export.IsEnabled = true;
         _poll.Now();
-    }
-
-    private static (double Latitude, double Longitude)? GcsCentre()
-    {
-        var position = Bridge.Get(GcsPositionPanel.Position);
-        var coordinate = position["value"] as JsonObject ?? position;
-        return MapUiJson.Flag(coordinate["valid"])
-            && MapUiJson.Number(coordinate["latitude"]) is { } latitude
-            && MapUiJson.Number(coordinate["longitude"]) is { } longitude
-                ? (latitude, longitude)
-                : null;
-    }
-
-    private static NumberBox Number(string header, double value, double minimum, double maximum, double step)
-    {
-        var box = new NumberBox
-        {
-            Header = header,
-            Value = value,
-            Minimum = minimum,
-            Maximum = maximum,
-            SmallChange = step,
-            LargeChange = step * 10,
-            SpinButtonPlacementMode = NumberBoxSpinButtonPlacementMode.Compact,
-            ValidationMode = NumberBoxValidationMode.InvalidInputOverwritten,
-            Width = 200,
-            FontFamily = PreflightLook.Font,
-        };
-        AutomationProperties.SetName(box, header);
-        return box;
     }
 
     private sealed class Holder<T>(T value)

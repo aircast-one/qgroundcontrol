@@ -381,20 +381,18 @@ internal sealed class TuningPanel : UserControl
         };
         var title = MapUiJson.SentenceCase(MapUiJson.Text(parameter["title"]));
         AutomationProperties.SetName(slider, title);
-        void Save()
-        {
-            var chosen = slider.Value;
-            if (Math.Abs(chosen - current) < 1e-12) return;
-            SetupUi.Run(() => SetupUi.Write(path, chosen), refused =>
-            {
-                _refusal = refused;
-                Refresh();
-            });
-        }
-        slider.AddHandler(PointerReleasedEvent, new Microsoft.UI.Xaml.Input.PointerEventHandler((_, _) => Save()), true);
-        slider.KeyUp += (_, _) => Save();
         var value = FormLook.Text(FormJson.Shown(fact["valueString"]), "FontSizeBody", "TextSecondaryBrush");
         value.VerticalAlignment = VerticalAlignment.Center;
+        var commit = new SliderCommit(slider, chosen => chosen, (chosen, _) => SetupUi.Run(() => SetupUi.Write(path, chosen), refused =>
+        {
+            _refusal = refused;
+            Refresh();
+        }));
+        Live.Watch(slider, path, view =>
+        {
+            FormLook.Say(value, FormJson.Shown(view["valueString"]));
+            if ((MapUiJson.Number(view["value"]) ?? FormText.Parse(FormJson.Shown(view["valueString"]))) is { } pushed) commit.Show(pushed);
+        });
         var row = new Grid { ColumnSpacing = 8, ColumnDefinitions = { new ColumnDefinition(), new ColumnDefinition { Width = GridLength.Auto } } };
         row.Children.Add(slider);
         Grid.SetColumn(value, 1);

@@ -17,7 +17,7 @@ internal sealed record Pin(Hit Hit, Geo At, string Label, string Side, Ink Ink, 
 
 internal sealed record Trace(IReadOnlyList<Geo> Points, Ink Ink, bool Closed = false, bool Dashed = false, bool Filled = false, double Thickness = 3);
 
-internal sealed record SplitHandle(string Path, string Invokable, int Segment, Geo At);
+internal sealed record SplitHandle(string Path, string Invokable, int Segment, Geo At, string Label);
 
 internal sealed record Scene(IReadOnlyList<Trace> Traces, IReadOnlyList<Pin> Pins, IReadOnlyList<SplitHandle> Splits);
 
@@ -151,34 +151,31 @@ internal sealed class PlanCanvas
 
     private Placed SplitView(SplitHandle split)
     {
-        var view = new Grid
+        var view = new Button
         {
             Width = SplitSize,
             Height = SplitSize,
-            Children =
+            MinWidth = 0,
+            MinHeight = 0,
+            Padding = new Thickness(0),
+            BorderThickness = new Thickness(0),
+            CornerRadius = new CornerRadius(SplitSize / 2),
+            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
+            IsTabStop = false,
+            Content = new Grid
             {
-                new Ellipse { Fill = Token("CardBrush"), Stroke = Token("TextPrimaryBrush"), StrokeThickness = 1.5 },
-                new FontIcon { Glyph = "", FontSize = 8, Foreground = Token("TextPrimaryBrush"), IsHitTestVisible = false },
+                Width = SplitSize,
+                Height = SplitSize,
+                Children =
+                {
+                    new Ellipse { Fill = Token("CardBrush"), Stroke = Token("TextPrimaryBrush"), StrokeThickness = 1.5 },
+                    new FontIcon { Glyph = "", FontSize = 8, Foreground = Token("TextPrimaryBrush"), IsHitTestVisible = false },
+                },
             },
         };
-        ToolTipService.SetToolTip(view, "Add a corner here");
-        var downAt = default(Point?);
-        view.PointerPressed += (_, e) =>
-        {
-            if (!e.GetCurrentPoint(view).Properties.IsLeftButtonPressed) return;
-            downAt = e.GetCurrentPoint(_pins).Position;
-            view.CapturePointer(e.Pointer);
-            e.Handled = true;
-        };
-        view.PointerReleased += (_, e) =>
-        {
-            var at = e.GetCurrentPoint(_pins).Position;
-            var clicked = downAt is { } from && !Far(from, at);
-            downAt = null;
-            view.ReleasePointerCapture(e.Pointer);
-            e.Handled = true;
-            if (clicked) SplitClicked?.Invoke(split);
-        };
+        ToolTipService.SetToolTip(view, split.Label);
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(view, split.Label);
+        view.Click += (_, _) => SplitClicked?.Invoke(split);
         return new Placed(view, () => Centre(view, split.At, SplitSize));
     }
 

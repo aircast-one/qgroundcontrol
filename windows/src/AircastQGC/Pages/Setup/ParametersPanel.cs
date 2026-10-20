@@ -31,6 +31,10 @@ internal sealed class ParametersPanel : UserControl
     private readonly StackPanel _toolbar;
     private readonly ListView _list;
     private readonly DispatcherTimer _settle = new() { Interval = Settle };
+    private readonly DispatcherTimer _rewatch = new() { Interval = Settle };
+    private readonly Dictionary<SelectorItem, string> _realized = [];
+    private readonly string _client = Live.Client("parameterRows");
+    private IReadOnlyDictionary<string, string> _watched = new Dictionary<string, string>();
     private readonly ParameterTools _tools;
     private IReadOnlyList<ParamEntry> _entries = [];
     private ObservableCollection<ParamEntry> _shown = [];
@@ -61,7 +65,11 @@ internal sealed class ParametersPanel : UserControl
         };
         _list.ContainerContentChanging += (_, args) =>
         {
-            if (args.ItemContainer.ContentTemplateRoot is not Grid { Children: [StackPanel { Children: [TextBlock name, TextBlock description] }, TextBlock value] } || args.Item is not ParamEntry entry) return;
+            if (args.InRecycleQueue) _realized.Remove(args.ItemContainer);
+            else if (args.Item is ParamEntry realized) _realized[args.ItemContainer] = realized.Key;
+            _rewatch.Stop();
+            _rewatch.Start();
+            if (args.InRecycleQueue || args.ItemContainer.ContentTemplateRoot is not Grid { Children: [StackPanel { Children: [TextBlock name, TextBlock description] }, TextBlock value] } || args.Item is not ParamEntry entry) return;
             Paint(name, entry.Name, "FontSizeBody", "TextPrimaryBrush");
             Paint(description, entry.Description, "FontSizeCaption", "TextSecondaryBrush");
             description.Visibility = FormLook.Shown(entry.Description.Length > 0);
@@ -96,6 +104,17 @@ internal sealed class ParametersPanel : UserControl
         {
             _settle.Stop();
             Refilter();
+        };
+        _rewatch.Tick += (_, _) =>
+        {
+            _rewatch.Stop();
+            WatchRows(_realized.Values.ToHashSet());
+        };
+        Loaded += (_, _) => _rewatch.Start();
+        Unloaded += (_, _) =>
+        {
+            _rewatch.Stop();
+            WatchRows(new HashSet<string>());
         };
         _toolbar = FormLook.Line(8, _all, _changed, _tools.Button);
         _toolbar.VerticalAlignment = VerticalAlignment.Center;
@@ -215,6 +234,22 @@ internal sealed class ParametersPanel : UserControl
             .ToList()
             .ForEach(pair => _shown[pair.At] = pair.Entry);
     }
+
+    private void WatchRows(IReadOnlySet<string> keys)
+    {
+        _watched.Where(pair => !keys.Contains(pair.Key)).ToList().ForEach(pair => BridgeWatch.Stop(pair.Value));
+        var added = keys.Where(key => !_watched.ContainsKey(key)).ToDictionary(key => key, key => $"{_client}.{key}");
+        added.ToList().ForEach(pair => BridgeWatch.Watch(pair.Value, [ParameterModel.PathOf(pair.Key)], _ => Pushed(pair.Key)));
+        _watched = _watched.Where(pair => keys.Contains(pair.Key)).Concat(added).ToDictionary(pair => pair.Key, pair => pair.Value);
+    }
+
+    private void Pushed(string key) => SetupUi.Run(() => ParameterModel.Read(key), updated =>
+    {
+        if (updated is null || _entries.FirstOrDefault(e => e.Key == key) is not { } held || held == updated) return;
+        _entries = _entries.Select(e => e.Key == key ? updated : e).ToList();
+        _shown.Select((entry, at) => (Entry: entry, At: at)).Where(pair => pair.Entry.Key == key).ToList().ForEach(pair => _shown[pair.At] = updated);
+        _count.Text = ParameterModel.CountLine(_shown.Count, _entries.Count(e => e.Changed));
+    });
 
     private void Edit(ParamEntry entry) =>
         ParameterEditor.Show(XamlRoot, entry.Key, _px4 && !entry.ReadOnly && !entry.Key.Contains(':'), () =>

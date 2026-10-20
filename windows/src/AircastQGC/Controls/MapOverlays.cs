@@ -191,7 +191,7 @@ internal static class MapOverlayJson
     private static IReadOnlyList<Geo> Points(JsonNode? node) =>
         MapUiJson.Objects(node).Select(Plottable).OfType<Geo>().ToList();
 
-    private static Geo PointAt(Geo centre, double metres, double bearingDegrees)
+    internal static Geo PointAt(Geo centre, double metres, double bearingDegrees)
     {
         var angular = metres / EarthRadiusMetres;
         var latitude = Radians(centre.Latitude);
