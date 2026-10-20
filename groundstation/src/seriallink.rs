@@ -170,6 +170,23 @@ const MACOS_BAUD_RATES: [u32; 25] = [
     38400, 57600, 76800, 115200, 230400, 460800, 500000, 921600,
 ];
 
+const WINDOWS_BAUD_RATES: [u32; 19] = [
+    110, 300, 600, 1200, 2400, 4800, 9600, 14400, 19200, 38400, 56000, 57600, 115200, 128000,
+    230400, 256000, 460800, 500000, 921600,
+];
+
+fn baud_rates(os: &str) -> Option<&'static [u32]> {
+    match os {
+        "macos" => Some(&MACOS_BAUD_RATES),
+        "windows" => Some(&WINDOWS_BAUD_RATES),
+        _ => None,
+    }
+}
+
+fn lists_ports(os: &str) -> bool {
+    baud_rates(os).is_some()
+}
+
 pub fn visible_ports(system_locations: &[String]) -> Vec<String> {
     system_locations
         .iter()
@@ -184,7 +201,7 @@ pub fn visible_ports(system_locations: &[String]) -> Vec<String> {
 
 pub fn links_field(field: &str) -> Option<serde_json::Value> {
     let ports = || -> Option<Vec<String>> {
-        cfg!(target_os = "macos").then_some(())?;
+        lists_ports(std::env::consts::OS).then_some(())?;
         Some(visible_ports(
             &serialport::available_ports()
                 .ok()?
@@ -195,8 +212,8 @@ pub fn links_field(field: &str) -> Option<serde_json::Value> {
     };
     Some(match field {
         "linkTypeStrings" | "linkTypeIds" => crate::linkconfig::link_type_field(field)?,
-        "serialBaudRates" if cfg!(target_os = "macos") => serde_json::json!(
-            MACOS_BAUD_RATES
+        "serialBaudRates" => serde_json::json!(
+            baud_rates(std::env::consts::OS)?
                 .iter()
                 .map(u32::to_string)
                 .collect::<Vec<_>>()
@@ -236,6 +253,28 @@ mod tests {
         assert_eq!(
             crate::linkconfig::port_display_name("/dev/cu.SpeedyBeeF405Wing-SPP"),
             "cu.SpeedyBeeF405Wing-SPP"
+        );
+    }
+
+    #[test]
+    fn windows_lists_its_com_ports_with_the_rates_qgc_offers_there() {
+        assert!(lists_ports("windows") && lists_ports("macos") && !lists_ports("linux"));
+        assert_eq!(
+            visible_ports(&["COM3".to_string()]),
+            vec!["COM3"],
+            "QGCSerialPortInfo::isSystemPort hides ports on macOS only"
+        );
+        assert_eq!(crate::linkconfig::port_display_name("COM3"), "COM3");
+        let rates = baud_rates("windows").unwrap();
+        assert!(
+            [14400, 56000, 57600, 128000, 256000, 921600]
+                .iter()
+                .all(|rate| rates.contains(rate)),
+            "SerialConfiguration::supportedBaudRates adds the Q_OS_WIN rates to QSerialPortInfo::standardBaudRates"
+        );
+        assert!(
+            !rates.contains(&50) && rates.is_sorted(),
+            "the Q_OS_UNIX rates are not offered on Windows"
         );
     }
 

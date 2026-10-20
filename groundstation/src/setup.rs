@@ -53,11 +53,6 @@ const APM_ONLY: &[&str] = &[
     "Remote Support",
 ];
 
-/// Which component backs each page. The join is on the KnownVehicleComponent enum where the
-/// firmware declares one and on the C++ class name otherwise - both untranslated, where the
-/// component's own name is tr() wrapped and would gate in English only. Pages with no
-/// component are named so that adding one without deciding fails the test below rather than
-/// silently reading as never blocked.
 const PAGE_COMPONENTS: &[(&str, &[&str])] = &[
     ("Summary", &[]),
     ("Parameters", &[]),
@@ -96,6 +91,13 @@ const PAGE_COMPONENTS: &[(&str, &[&str])] = &[
     ("Syslink", &["SyslinkComponent"]),
 ];
 
+fn backs(keys: &[&str], component: &Component) -> bool {
+    keys.iter().any(|key| match key.strip_prefix("known:") {
+        Some(known) => component.known.as_deref() == Some(known),
+        None => component.class_name == *key,
+    })
+}
+
 fn page_block(page: &str, components: &[Component]) -> Option<&'static str> {
     let keys = PAGE_COMPONENTS
         .iter()
@@ -103,13 +105,15 @@ fn page_block(page: &str, components: &[Component]) -> Option<&'static str> {
         .map(|(_, keys)| *keys)?;
     components
         .iter()
-        .find(|c| {
-            keys.iter().any(|key| match key.strip_prefix("known:") {
-                Some(known) => c.known.as_deref() == Some(known),
-                None => c.class_name == *key,
-            })
-        })
+        .find(|c| backs(keys, c))
         .and_then(|c| c.blocked_reason)
+}
+
+fn component_page(component: &Component, px4: bool) -> Option<&'static str> {
+    PAGE_COMPONENTS
+        .iter()
+        .find(|(page, keys)| page_exists(page, px4) && backs(keys, component))
+        .map(|(page, _)| *page)
 }
 
 pub fn page_exists(page: &str, px4: bool) -> bool {
@@ -699,6 +703,15 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
             .active_id()
             .is_some_and(|id| crate::flowimage::image_index(id) > 0);
     let components: Vec<Component> = if incomplete { Vec::new() } else { components };
+    let screen_of = |page: &str| match (sub_frame, page) {
+        (_, page) if safety_unsupported && SAFETY_PAGES.contains(&page) => {
+            Some(NOT_SUPPORTED_SCREEN)
+        }
+        (true, "Frame") => Some(crate::apmsubframe::SUB_FRAME_SCREEN),
+        (true, "Motors") => Some(crate::apmsubmotors::SUB_MOTORS_SCREEN),
+        (_, "Optical Flow") => Some(crate::flowimage::OPTICAL_FLOW_SCREEN),
+        _ => screen_for(page, px4),
+    };
     json!({
         "kind": "object",
         "class": "VehicleSetup",
@@ -720,18 +733,14 @@ fn overview(backend: &dyn Backend, connected: bool, px4: bool) -> Value {
             "openable": c.blocked_reason.is_none(),
             "blockedReason": c.blocked_reason,
             "prerequisite": prerequisite(c, &components, rc_in_mode),
+            "page": component_page(c, px4),
+            "screen": component_page(c, px4).and_then(screen_of),
         })).collect::<Vec<_>>(),
         "groups": PAGES.iter().map(|(title, pages)| json!({
             "title": title,
             "pages": pages.iter().filter(|p| page_exists(p, px4) && (!incomplete || INCOMPLETE_PAGES.contains(p))).chain((*title == "Setup" && flow_images).then_some(&"Optical Flow")).map(|p| {
                 let blocked = page_block(p, &components);
-                let screen = match (sub_frame, *p) {
-                    (_, page) if safety_unsupported && SAFETY_PAGES.contains(&page) => Some(NOT_SUPPORTED_SCREEN),
-                    (true, "Frame") => Some(crate::apmsubframe::SUB_FRAME_SCREEN),
-                    (true, "Motors") => Some(crate::apmsubmotors::SUB_MOTORS_SCREEN),
-                    (_, "Optical Flow") => Some(crate::flowimage::OPTICAL_FLOW_SCREEN),
-                    _ => screen_for(p, px4),
-                };
+                let screen = screen_of(p);
                 json!({ "name": p, "parameterSections": screen.is_none() && (sections_for(p, px4).is_some() || crate::vehicleconfig::has(p, px4)), "screen": screen, "openable": blocked.is_none(), "blockedReason": blocked })
             }).collect::<Vec<_>>(),
             "omitted": pages.iter().filter(|p| !page_exists(p, px4)).map(|p| json!({ "name": p, "reason": page_absence(px4) })).collect::<Vec<_>>(),
@@ -1616,6 +1625,46 @@ mod components {
             (read[3].name.as_str(), read[3].needs_attention),
             ("Camera", false),
             "a component that does not require setup is never outstanding"
+        );
+    }
+
+    #[test]
+    fn each_component_names_the_page_and_screen_that_set_it_up() {
+        let part = |name: &str, class: &str, known: &str| json!({ "kind": "object", "name": name, "class": class, "KnownVehicleComponent": known });
+        let view = setup_view(
+            &Vehicle {
+                components: vec![
+                    part("Airframe", "AirframeComponent", "UnknownVehicleComponent"),
+                    part(
+                        "PID Tuning",
+                        "PX4TuningComponent",
+                        "UnknownVehicleComponent",
+                    ),
+                    part(
+                        "Sensoren",
+                        "SensorsComponent",
+                        "KnownSensorsVehicleComponent",
+                    ),
+                    part("Camera", "CameraComponent", "UnknownVehicleComponent"),
+                ],
+            },
+            &[],
+        );
+        let named: Vec<(Value, Value)> = view["components"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|c| (c["page"].clone(), c["screen"].clone()))
+            .collect();
+        assert_eq!(
+            named,
+            vec![
+                (json!("Frame"), json!("px4Airframe")),
+                (json!("Tuning"), json!("px4Tuning")),
+                (json!("Sensors"), Value::Null),
+                (Value::Null, Value::Null),
+            ],
+            "PX4 names its components Airframe and PID Tuning while the pages are Frame and Tuning, so a head joining on the name never reached either"
         );
     }
 

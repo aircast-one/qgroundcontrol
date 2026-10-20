@@ -701,6 +701,13 @@ fn links_field(name: &str) -> Option<Value> {
     }
 }
 
+fn links_host(host: Value) -> Value {
+    match host["kind"] == "object" {
+        true => host,
+        false => json!({ "kind": "object" }),
+    }
+}
+
 fn video_camera_name(index: i64) -> String {
     let name = usize::try_from(index)
         .ok()
@@ -3357,7 +3364,10 @@ impl<B: Backend> Backend for Facade<B> {
                 .collect::<Vec<_>>()
                 .join(",");
             fell_through("fields", &format!("links [{asked}]"));
-            return merged(answered, self.0.value_fields(asked_path, &asked));
+            return merged(
+                answered,
+                links_host(self.0.value_fields(asked_path, &asked)),
+            );
         }
         let resolved = resolved(asked_path);
         let path = resolved
@@ -4687,6 +4697,17 @@ mod tests {
             ),
             json!({ "kind": "null" }),
             "a host with no such object keeps its answer"
+        );
+        assert_eq!(
+            merged(
+                json!({ "linkTypeIds": ["serial", "udp"] })
+                    .as_object()
+                    .unwrap()
+                    .clone(),
+                links_host(json!({ "kind": "null" }))
+            ),
+            json!({ "kind": "object", "linkTypeIds": ["serial", "udp"] }),
+            "the core owns the links object, so a field it cannot answer does not throw away the ones it did"
         );
         assert_eq!(
             answer_fields("planFly.missionController", "containsItems", &known)

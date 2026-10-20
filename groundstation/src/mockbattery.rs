@@ -71,7 +71,7 @@ impl Battery {
             id,
             battery_function: MavBatteryFunction::MAV_BATTERY_FUNCTION_ALL,
             mavtype: MavBatteryType::MAV_BATTERY_TYPE_LIPO,
-            temperature: if id == 1 { 2100 } else { i16::MAX },
+            temperature: if id == 0 { 2100 } else { i16::MAX },
             voltages: std::array::from_fn(|cell| {
                 if cell < (cells as usize).min(MAX_CELLS) {
                     cell_mv
@@ -123,7 +123,7 @@ mod tests {
                     < 13.3,
             "a full 4S rests at 16.8 V and an empty one at 13.2 V"
         );
-        let status = half.status(1, 5000.0, 4.0, 10.0);
+        let status = half.status(0, 5000.0, 4.0, 10.0);
         assert_eq!(
             (
                 status.voltages[3],

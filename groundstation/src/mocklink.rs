@@ -2511,7 +2511,7 @@ impl Sim {
                     &format!("PreArm: {reason}"),
                 )
             });
-        let core = vec![vibration(), self.battery_status(1), self.battery_status(2)]
+        let core = vec![vibration(), self.battery_status(0), self.battery_status(1)]
             .into_iter()
             .chain(named_values(elapsed_ms))
             .chain([self.sys_status()])
@@ -2608,7 +2608,7 @@ impl Sim {
     }
 
     fn battery_status(&self, id: u8) -> Out {
-        let battery = self.batteries[usize::from(id - 1)];
+        let battery = self.batteries[usize::from(id)];
         (
             AUTOPILOT,
             MavMessage::BATTERY_STATUS(battery.status(
@@ -4537,6 +4537,33 @@ mod tests {
             .find(|frame| matches!(&frame.message, MavMessage::STATUSTEXT(t) if text_of(&t.text) == "PreArm: Compass not calibrated"));
         link.close();
         assert!(found.is_some());
+    }
+
+    #[test]
+    fn the_packs_report_the_battery_status_ids_the_firmware_sends() {
+        let ids = |vehicle| {
+            Sim::new(options(vehicle), 128, None)
+                .once_a_second(1_000)
+                .into_iter()
+                .filter_map(|(_, m)| match m {
+                    MavMessage::BATTERY_STATUS(status) => Some((status.id, status.temperature)),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+        };
+        assert_eq!(
+            ids(Vehicle::Copter),
+            vec![(0, 2100), (1, i16::MAX)],
+            "ArduPilot sends its battery instance as the id, so BATT is id 0 and BATT2 is id 1, as the power calculators read them"
+        );
+        assert_eq!(
+            ids(Vehicle::Px4)
+                .iter()
+                .map(|(id, _)| *id)
+                .collect::<Vec<_>>(),
+            vec![0, 1],
+            "PX4 sends battery_status.id - 1"
+        );
     }
 
     #[test]
