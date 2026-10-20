@@ -222,6 +222,7 @@ fun VehicleMap(
     traceLine: Boolean = false,
     roi: TrackPoint? = null,
     onRoiClick: ((TrackPoint) -> Unit)? = null,
+    autodropTarget: TrackPoint? = null,
     goto: GotoLocation? = null,
     clickMarker: TrackPoint? = null,
     collisionLegs: List<Pair<TrackPoint, TrackPoint>> = emptyList(),
@@ -401,6 +402,7 @@ fun VehicleMap(
                 installFenceHandleLayer(loadedStyle)
                 installTrafficLayer(loadedStyle)
                 installRoiLayer(loadedStyle)
+                installAutodropTargetLayer(loadedStyle)
                 installGotoLayer(loadedStyle)
                 installClickMarker(loadedStyle)
                 installOrbitLayer(loadedStyle)
@@ -455,6 +457,10 @@ fun VehicleMap(
     LaunchedEffect(style, roi) {
         val roiStyle = style ?: return@LaunchedEffect
         renderRoi(roiStyle, roi)
+    }
+    LaunchedEffect(style, autodropTarget) {
+        val targetStyle = style ?: return@LaunchedEffect
+        renderAutodropTarget(targetStyle, autodropTarget)
     }
 
     LaunchedEffect(style, tracePoints, traceLine) {

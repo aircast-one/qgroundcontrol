@@ -3167,7 +3167,7 @@ impl Vehicle {
 
     /// Advances an in-flight `autodropStart` by one tick: no blocking, no sleeping - just
     /// "is it due yet, and if so what's the next state". Mirrors `tick_rc_override`'s shape.
-    fn target_for_autodrop(
+    pub(crate) fn target_for_autodrop(
         &self,
         source: crate::autodrop::TargetSource,
         position: crate::dropsim::Point,
@@ -10485,6 +10485,22 @@ mod tests {
             "no MAVLink command backs this action, so there is nothing to send"
         );
         assert_eq!(hub.active().unwrap().manual_target, Some((47.4, 8.5)));
+        assert_eq!(
+            hub.active().unwrap().target_for_autodrop(
+                crate::autodrop::TargetSource::Manual,
+                crate::dropsim::Point { lat: 0.0, lon: 0.0 },
+                0.0,
+                0,
+            ),
+            Some(crate::dropsim::Target {
+                position: crate::dropsim::Point {
+                    lat: 47.4,
+                    lon: 8.5
+                },
+                velocity: crate::dropsim::Velocity::default(),
+            }),
+            "the map marker reads the same marked target through this, not a parallel copy of it"
+        );
     }
 
     #[test]
