@@ -319,7 +319,7 @@ describe('DropMarkerTest', () => {
     const plan = allMissionItems(
       json(`{"kind":"object","items":[
         {"sequence":1,"name":"Waypoint","command":16,"specifiesCoordinate":true,"coordinate":{"latitude":47.0,"longitude":8.0}},
-        {"sequence":2,"name":"Gripper Action","command":211}]}`),
+        {"sequence":2,"name":"Drop payload","command":211,"dropsPayload":true}]}`),
     );
 
     expect(plan.filter((it) => it.placed).map((it) => it.drops)).toEqual([true]);

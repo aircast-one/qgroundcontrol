@@ -122,6 +122,7 @@ export type MissionItem = {
   closesRoute: boolean;
   legBroken: boolean;
   abbreviation: string;
+  dropsPayload: boolean;
   drops: boolean;
 };
 
@@ -162,6 +163,7 @@ export const MissionItem = (fields: MissionItemRequired & Partial<MissionItem>):
   closesRoute: false,
   legBroken: false,
   abbreviation: '',
+  dropsPayload: false,
   drops: false,
   ...fields,
 });
@@ -232,6 +234,7 @@ export const allMissionItems = (json: Json | null): readonly MissionItem[] => {
         closesRoute: optBoolean(element, 'closesRoute'),
         legBroken: broken.has(index),
         abbreviation: optText(element, 'abbreviation'),
+        dropsPayload: optBoolean(element, 'dropsPayload'),
         routed: optBoolean(element, 'flownLeg') && index <= endsAfter,
         afterRouteEnds: index > endsAfter,
         placed: at !== null,

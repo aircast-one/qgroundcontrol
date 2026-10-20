@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { type Json, parseJson } from '@/bridge/Json';
-import { SINGLE_GRIPPER, guidedOffers, payloadOf } from './GuidedActions';
+import { SINGLE_GRIPPER, bayOutput, guidedOffers, multiBay, payloadOf } from './GuidedActions';
 import { GuidedAction, needsConfirm } from './VehicleUi';
 
 const json = (text: string): Json => parseJson(text) ?? {};
@@ -53,12 +53,20 @@ describe('GuidedActionsTest', () => {
       empty: [1],
       next: 2,
       label: 'Drop 2',
+      outputs: [],
       problems: [
         { code: 'staysOpen', text: 'The gripper stays open after the first drop.', blocking: true, fix: 'Turn on auto-close' },
         { code: 'noGripper', text: 'No gripper.', blocking: true, fix: '' },
       ],
     });
     expect(payloadOf(json('{"payload":{"bays":1,"empty":[],"next":null}}'))).toEqual(SINGLE_GRIPPER);
+  });
+
+  it('a servo per bay names each bay by its output, even a single bay', () => {
+    const one = payloadOf(json('{"payload":{"bays":1,"empty":[],"next":null,"label":"Drop","outputs":[9],"problems":[]}}'));
+    expect([multiBay(one), multiBay(SINGLE_GRIPPER)]).toEqual([true, false]);
+    const four = payloadOf(json('{"payload":{"bays":4,"empty":[],"next":1,"label":"Drop 1","outputs":[9,10,11,12],"problems":[]}}'));
+    expect([bayOutput(2, four), bayOutput(2, SINGLE_GRIPPER)]).toEqual(['Bay 2 · output 10', '']);
   });
 
   it('no view is no offers rather than a crash', () => {

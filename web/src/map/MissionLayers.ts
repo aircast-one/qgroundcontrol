@@ -173,7 +173,6 @@ export const markerStroke = (crowded: boolean, selected: boolean): number => (se
 
 type Marker = { item: MissionItem; at: TrackPoint; sequence: number; exit: boolean; side: string | null };
 
-export const DROP_COMMAND = 211;
 export const DROP_SIDE = 'Drop';
 
 export const dropsAt = (items: readonly MissionItem[], item: MissionItem): boolean => {
@@ -181,7 +180,7 @@ export const dropsAt = (items: readonly MissionItem[], item: MissionItem): boole
   if (start < 0) return false;
   const following = items.slice(start + 1);
   const next = following.findIndex((it) => it.specifiesCoordinate || it.complexPattern);
-  return following.slice(0, next < 0 ? following.length : next).some((it) => it.commandId === DROP_COMMAND);
+  return following.slice(0, next < 0 ? following.length : next).some((it) => it.dropsPayload);
 };
 
 export const withDrops = (items: readonly MissionItem[]): readonly MissionItem[] => items.map((it) => ({ ...it, drops: dropsAt(items, it) }));

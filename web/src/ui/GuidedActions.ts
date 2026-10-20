@@ -63,9 +63,9 @@ export const guidedOffers = (view: Json | null): ReadonlyMap<string, GuidedOffer
 
 export type PayloadProblem = { readonly code: string; readonly text: string; readonly blocking: boolean; readonly fix: string };
 
-export type Payload = { readonly bays: number; readonly empty: readonly number[]; readonly next: number | null; readonly label: string; readonly problems: readonly PayloadProblem[] };
+export type Payload = { readonly bays: number; readonly empty: readonly number[]; readonly next: number | null; readonly label: string; readonly outputs: readonly number[]; readonly problems: readonly PayloadProblem[] };
 
-export const SINGLE_GRIPPER: Payload = { bays: 1, empty: [], next: null, label: '', problems: [] };
+export const SINGLE_GRIPPER: Payload = { bays: 1, empty: [], next: null, label: '', outputs: [], problems: [] };
 
 export const payloadProblem = (json: Json): PayloadProblem => ({ code: optText(json, 'code'), text: optText(json, 'text'), blocking: optBoolean(json, 'blocking'), fix: optText(json, 'fix') });
 
@@ -78,11 +78,17 @@ export const payloadOf = (view: Json | null): Payload => {
     empty: (optJSONArray(payload, 'empty') ?? []).filter((it): it is number => typeof it === 'number'),
     next: isNull(payload, 'next') ? null : optInt(payload, 'next'),
     label: optText(payload, 'label'),
+    outputs: (optJSONArray(payload, 'outputs') ?? []).filter((it): it is number => typeof it === 'number'),
     problems: jsonObjects(optJSONArray(payload, 'problems')).map(payloadProblem),
   };
 };
 
-export const multiBay = (payload: Payload): boolean => payload.bays > 1;
+export const multiBay = (payload: Payload): boolean => payload.bays > 1 || payload.outputs.length > 0;
+
+export const bayOutput = (bay: number, payload: Payload): string => {
+  const output = payload.outputs[bay - 1];
+  return output === undefined ? '' : `Bay ${bay} · output ${output}`;
+};
 
 export const bayNumbers = (payload: Payload): readonly number[] => Array.from({ length: payload.bays }, (_, index) => index + 1);
 

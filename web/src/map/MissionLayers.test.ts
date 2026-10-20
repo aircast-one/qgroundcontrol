@@ -513,12 +513,19 @@ describe('MarkerLabelTest', () => {
 
   it('a waypoint followed by a gripper release is marked as the drop point', () => {
     const waypoint = (index: number) => MissionItem({ index, sequence: index, latitude: 47 + index, longitude: 8, command: 'Waypoint', selected: false, commandId: 16, specifiesCoordinate: true });
-    const drop = (index: number) => MissionItem({ index, sequence: index, latitude: NaN, longitude: NaN, command: 'Gripper Action', selected: false, commandId: 211, placed: false, specifiesCoordinate: false });
+    const drop = (index: number) => MissionItem({ index, sequence: index, latitude: NaN, longitude: NaN, command: 'Gripper Action', selected: false, commandId: 211, dropsPayload: true, placed: false, specifiesCoordinate: false });
     const items = [waypoint(1), drop(2), waypoint(3), MissionItem({ index: 4, sequence: 4, latitude: NaN, longitude: NaN, command: 'Change Speed', selected: false, commandId: 178, placed: false }), waypoint(5)];
     expect(items.map((it) => dropsAt(items, it))).toEqual([true, false, false, false, false]);
     const sides = missionFeatures(withDrops(items).filter((it) => it.placed)).features.map((it) => [it.properties?.[WAYPOINT_ID_PROPERTY], it.properties?.[WAYPOINT_SIDE_LABEL_PROPERTY]]);
     expect(sides.find(([id]) => id === 1)?.[1]).toBe(DROP_SIDE);
     expect(sides.find(([id]) => id === 3)?.[1]).toBe('');
+  });
+
+  it('a bay servo drop marks its waypoint, and a servo that drops nothing does not', () => {
+    const waypoint = (index: number) => MissionItem({ index, sequence: index, latitude: 47 + index, longitude: 8, command: 'Waypoint', selected: false, commandId: 16, specifiesCoordinate: true });
+    const servo = (index: number, dropsPayload: boolean) => MissionItem({ index, sequence: index, latitude: NaN, longitude: NaN, command: dropsPayload ? 'Drop bay 1' : 'Set Servo', selected: false, commandId: 183, dropsPayload, placed: false });
+    const items = [waypoint(1), servo(2, true), waypoint(3), servo(4, false), waypoint(5)];
+    expect(items.map((it) => dropsAt(items, it))).toEqual([true, false, false, false, false]);
   });
 });
 

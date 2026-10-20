@@ -1,4 +1,5 @@
-import { connectMock, expect, flightMode, itemCount, openPlanAtVehicle, slideAcross, takeOff, tapPlanMission, test, vehicleStatus } from './fixtures';
+import type { Page } from '@playwright/test';
+import { connectMock, expect, flightMode, itemCount, openAircraftSetup, openPlanAtVehicle, slideAcross, takeOff, tapPlanMission, test, vehicleStatus } from './fixtures';
 
 test.describe.configure({ timeout: 180_000 });
 
@@ -99,4 +100,81 @@ test('a pilot flying by hand drops from the deck, and a drop that cannot fall sa
   await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to drop' }));
   await expect(vehicle.getByText('The gripper is still open from the last drop, so nothing would fall. Grab first, or turn on auto-close.')).toBeVisible({ timeout: 30_000 });
   expect(await vehicle.getByText('Sent · Drop').count(), 'a refused drop shows only the refusal').toBe(0);
+});
+
+const BAY_OUTPUTS = [9, 10, 11, 12] as const;
+const GRIP_RELEASE_PWM = '1100';
+
+const fourServoBays = async (page: Page) => {
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByPlaceholder('Search settings').fill('bay');
+  const bays = page.getByRole('textbox', { name: /^How many payload bays/ });
+  await bays.fill('4');
+  await bays.press('Enter');
+  await page.getByRole('radio', { name: 'A servo per bay' }).click();
+  await expect(page.getByText('Bay 4 output', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Close settings' }).click();
+};
+
+const servoPwm = (page: Page, output: number) => page.getByRole('progressbar', { name: `Servo ${output} position` }).locator('..');
+
+const expectBaysReleased = async (page: Page) => {
+  await openAircraftSetup(page);
+  await page.getByRole('button', { name: /^Servo outputs/ }).click();
+  await BAY_OUTPUTS.reduce(async (previous, output) => {
+    await previous;
+    await expect(servoPwm(page, output)).toContainText(GRIP_RELEASE_PWM, { timeout: 15_000 });
+  }, Promise.resolve());
+};
+
+test('four bays on their own servos drop one after another by hand, each from its own output', async ({ app: vehicle }) => {
+  await connectMock(vehicle, [], 'APM ArduCopter Vehicle');
+  await fourServoBays(vehicle);
+  await takeOff(vehicle, '10 m');
+  await expect(vehicle.getByRole('button', { name: 'Slide to land' })).toBeVisible({ timeout: 60_000 });
+  await vehicle.getByRole('button', { name: 'Change flight mode', exact: true }).click();
+  await vehicle.getByRole('menu').getByRole('menuitem', { name: 'Loiter' }).click();
+  await expect(flightMode(vehicle)).toHaveAccessibleName(/^Loiter/);
+  await vehicle.getByRole('button', { name: 'More', exact: true }).click();
+  await vehicle.getByRole('dialog').getByText('Payload').click();
+  const sheet = vehicle.getByRole('dialog');
+  await expect(sheet.getByText('Bay 2 · output 10', { exact: true })).toBeVisible();
+  await [1, 2, 3, 4].reduce(async (previous, bay) => {
+    await previous;
+    await slideAcross(vehicle, sheet.getByRole('button', { name: `Slide to drop bay ${bay}` }));
+    await expect(sheet.getByText(new RegExp(`^Bay ${bay} dropped \\d+ s ago$`))).toBeVisible({ timeout: 30_000 });
+  }, Promise.resolve());
+  await expect(sheet.getByText(/still open/)).toBeHidden();
+  await vehicle.keyboard.press('Escape');
+  await expectBaysReleased(vehicle);
+});
+
+test('a planned four-drop mission on servo bays uploads, flies and drops each bay once', async ({ app: vehicle }) => {
+  await connectMock(vehicle, [], 'APM ArduCopter Vehicle');
+  await fourServoBays(vehicle);
+  await openPlanAtVehicle(vehicle);
+  await tapPlanMission(vehicle);
+  await vehicle.getByRole('button', { name: 'Done' }).click();
+  await vehicle.getByRole('button', { name: 'Waypoint 2' }).first().click();
+  const drop = vehicle.getByRole('button', { name: 'Drop', exact: true });
+  await [1, 2, 3, 4].reduce(async (previous) => {
+    await previous;
+    const before = await itemCount(vehicle);
+    await drop.click();
+    await expect.poll(() => itemCount(vehicle), { timeout: 30_000 }).toBe(before + 1);
+  }, Promise.resolve());
+  await expect(vehicle.getByText('Drop bay 4').first()).toBeVisible();
+  await vehicle.getByRole('button', { name: 'Upload', exact: true }).click();
+  await expect(vehicle.getByRole('button', { name: 'Upload', exact: true })).toBeHidden({ timeout: 30_000 });
+  await vehicle.getByRole('button', { name: 'Fly', exact: true }).last().click();
+  await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to start mission' }));
+  await vehicle.getByRole('button', { name: 'More', exact: true }).click();
+  await vehicle.getByRole('dialog').getByText('Payload').click();
+  const sheet = vehicle.getByRole('dialog');
+  await [1, 2, 3, 4].reduce(async (previous, bay) => {
+    await previous;
+    await expect(sheet.getByRole('button', { name: `Bay ${bay} empty, slide to drop` })).toBeVisible({ timeout: 120_000 });
+  }, Promise.resolve());
+  await vehicle.keyboard.press('Escape');
+  await expectBaysReleased(vehicle);
 });

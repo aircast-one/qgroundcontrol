@@ -6,7 +6,7 @@ import { useTicker } from '@/kotlin/Compose';
 import { OutlinedButton, Text } from '@/m3';
 import { AircastSheet } from '@/map/AircastSheet';
 import { md } from '@/theme/Colors';
-import { type GuidedOffer, type Payload, type PayloadProblem, bayNumbers, multiBay } from './GuidedActions';
+import { type GuidedOffer, type Payload, type PayloadProblem, bayNumbers, bayOutput, multiBay } from './GuidedActions';
 import { HoldToConfirm, holdLabel } from './HoldToConfirm';
 import { GRIPPER_GRAB, GRIPPER_HOLD, GRIPPER_RELEASE } from './MoreActions';
 
@@ -35,7 +35,7 @@ export const payloadStatus = (json: Json | null, nowMs: number): PayloadStatus |
   const action = optText(json, 'action');
   const bay = optInt(json, 'bay');
   const [plainVerb, plainDone] = verbs(action);
-  const [verb, done] = bay > 0 ? [`${plainVerb} ${bay}`, `Bay ${bay} ${plainDone.toLowerCase()}`] : [plainVerb, plainDone];
+  const [verb, done] = bay > 0 ? [`${plainVerb} bay ${bay}`, `Bay ${bay} ${plainDone.toLowerCase()}`] : [plainVerb, plainDone];
   const ago = agoText(optInt(json, 'atMs'), nowMs);
   switch (optText(json, 'outcome')) {
     case 'sent':
@@ -79,11 +79,18 @@ const SingleGripper = ({ offers, onRefused }: { offers: readonly GuidedOffer[]; 
 const Bays = ({ offers, payload, onRefused }: { offers: readonly GuidedOffer[]; payload: Payload; onRefused: Refused }) => (
   <>
     {bayNumbers(payload).map((bay) => (
-      <div key={bay} className="flex items-center gap-2">
-        <HoldToConfirm className="flex-1" label={bayLabel(bay, payload)} enabled={offerReady(offers, 'release')} onConfirm={() => send(GRIPPER_RELEASE, bay, onRefused)} />
-        <OutlinedButton enabled={offerReady(offers, 'grab')} label={`Grab bay ${bay}`} onClick={() => send(GRIPPER_GRAB, bay, onRefused)}>
-          Grab
-        </OutlinedButton>
+      <div key={bay} className="flex flex-col gap-1">
+        {bayOutput(bay, payload) === '' ? null : (
+          <Text typography="labelMedium" color={md('onSurfaceVariant')}>
+            {bayOutput(bay, payload)}
+          </Text>
+        )}
+        <div className="flex items-center gap-2">
+          <HoldToConfirm className="flex-1" label={bayLabel(bay, payload)} enabled={offerReady(offers, 'release')} onConfirm={() => send(GRIPPER_RELEASE, bay, onRefused)} />
+          <OutlinedButton enabled={offerReady(offers, 'grab')} label={`Grab bay ${bay}`} onClick={() => send(GRIPPER_GRAB, bay, onRefused)}>
+            Grab
+          </OutlinedButton>
+        </div>
       </div>
     ))}
   </>

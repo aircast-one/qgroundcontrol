@@ -45,7 +45,7 @@ describe('FlightDeckEntriesTest', () => {
   it('a basket drops its next loaded bay from the deck and says which, and when the core counts it empty', () => {
     const confirmed = vi.fn((action: GuidedAction) => action);
     const drop = (empty: readonly number[], next: number, label: string, title: string) =>
-      flightDeckEntries(deck([{ ...offer('release'), title }], { confirm: confirmed, payload: { bays: 3, empty, next, label, problems: [] } })).find((it) => it.id === 'release');
+      flightDeckEntries(deck([{ ...offer('release'), title }], { confirm: confirmed, payload: { bays: 3, empty, next, label, outputs: [], problems: [] } })).find((it) => it.id === 'release');
     expect([drop([], 1, 'Drop 1', 'Drop bay 1')?.label, drop([1], 2, 'Drop 2', 'Drop bay 2')?.label]).toEqual(['Slide to drop 1', 'Slide to drop 2']);
     const emptied = drop([1, 2, 3], 1, 'Drop 1 · empty', 'Drop bay 1');
     expect([emptied?.label, emptied?.enabled]).toEqual(['Slide to drop 1 · empty', true]);
@@ -57,7 +57,7 @@ describe('FlightDeckEntriesTest', () => {
     const refusal = 'The gripper is still open from the last drop. It closes in 1 s.';
     const asked = vi.spyOn(VehicleCommands, 'gripperRefusal').mockResolvedValue(refusal);
     const confirmed = vi.fn((action: GuidedAction) => action);
-    flightDeckEntries(deck([{ ...offer('release'), title: 'Drop bay 4' }], { confirm: confirmed, payload: { bays: 4, empty: [1, 2, 3], next: 4, label: 'Drop 4', problems: [] } }))
+    flightDeckEntries(deck([{ ...offer('release'), title: 'Drop bay 4' }], { confirm: confirmed, payload: { bays: 4, empty: [1, 2, 3], next: 4, label: 'Drop 4', outputs: [], problems: [] } }))
       .find((it) => it.id === 'release')
       ?.onClick();
     const action = confirmed.mock.results[0]?.value as GuidedAction;
