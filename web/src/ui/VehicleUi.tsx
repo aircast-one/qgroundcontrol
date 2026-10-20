@@ -19,9 +19,9 @@ import { LocalAppNavigation } from './AppNavigation';
 import { ConfirmTrack, SENT_SHOWN_MS, SentNotice, sentIsStillShowing, sentUnlessRefused } from './ConfirmTrack';
 import { armedStopOffer, emergencyStopAction } from './EmergencyStop';
 import { FLIGHT_MODES, type FlightModeOption, flightModesView, modeAck, modeHeading, modeOutcome, pinsAfter, startsSection } from './FlightModes';
-import { CHECKLIST, DeckButton, DeckEntry, FlyDeckLayout, MoreActionsSheet, MoreTile, NO_SIGNAL_CODE, RailDeckButton, TAKE_OFF, deckIds, guidedIcon, holdTakeoffHeight, takeoffLabel } from './FlyDeck';
+import { CHECKLIST, DeckButton, DeckEntry, type DeckIds, FlyDeckLayout, MoreActionsSheet, MoreTile, NO_SIGNAL_CODE, RailDeckButton, TAKE_OFF, bottomDeck, deckIds, guidedIcon, holdTakeoffHeight, railDeck, takeoffLabel } from './FlyDeck';
 import { LocalFlyScreenState, OpenOnRequest } from './FlyScreenState';
-import { AnimatedVisibility } from './FlyShell';
+import { AnimatedVisibility, useElementSize } from './FlyShell';
 import { FLY_STATE, type Readiness, flyState, guidedReadiness, readinessWarning, useHasVehicle, vehicleSubtitle } from './FlyState';
 import { GRIPPER_ACTIONS, GripperPanel, gripperOffers } from './GripperPanel';
 import { GUIDED_ACTIONS, type GuidedOffer, type Payload, SINGLE_GRIPPER, guidedOffers, payloadOf, resumeFromSequence } from './GuidedActions';
@@ -491,9 +491,14 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
       payload,
     }),
   );
-  const deck = deckIds(new Set(entries.map((it) => it.id)), armed);
+  const rail = layout === FlyDeckLayout.Rail;
+  const room = useElementSize();
+  const centre = useElementSize();
+  const offered = deckIds(new Set(entries.map((it) => it.id)), armed);
+  const railFit = railDeck(offered, room.size.height);
+  const bottomFit = bottomDeck(offered, room.size.width, centre.size.width);
+  const deck = rail ? railFit.deck : bottomFit.deck;
   const deckRest = entries.filter((entry) => !deck.some(([id]) => id === entry.id));
-  const deckShown: ReadonlySet<string> = new Set(deck.map(([id]) => id));
   const showingSent = sentIsStillShowing(sentName, sentSnapshot, liveActions);
 
   useLaunchedEffect([sentName, available], async (scope) => {
@@ -530,8 +535,6 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
     if (available && gripper.length === 0) setShowGripper(false);
   }, [gripper.length === 0, available]);
 
-  const rail = layout === FlyDeckLayout.Rail;
-
   if (!available) {
     return (
       <>
@@ -544,6 +547,11 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
   const deciding = pending !== null || guidedValue !== null || editingLoiter !== null;
   const confirming = pending;
   const more = DeckEntry({ id: 'more', label: 'More', icon: 'ic_more_vert', enabled: true, onClick: () => setShowMore(true) });
+  const centreBox = (
+    <div ref={centre.ref} className="shrink-0 self-center empty:hidden">
+      {center}
+    </div>
+  );
   const confirmTrack =
     confirming !== null ? (
       <ConfirmTrack
@@ -577,12 +585,14 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
   const body = rail ? (
     <div className={`relative size-full ${className ?? ''}`}>
       {pending === null && guidedValue === null && editingLoiter === null ? (
-        <div className="absolute left-0 top-1/2 flex -translate-y-1/2 flex-col items-center gap-2" style={{ paddingLeft: 12, paddingBottom: RAIL_LIFT }}>
-          {deck.flatMap(([id, primary]) => {
-            const entry = entries.find((it) => it.id === id);
-            return entry === undefined ? [] : [<RailDeckButton key={id} entry={entry} primary={primary} labelled={armed} />];
-          })}
-          <RailDeckButton entry={more} primary={false} />
+        <div className="absolute inset-y-0 left-0 flex flex-col" style={{ paddingLeft: 12, paddingBottom: RAIL_LIFT }}>
+          <div ref={room.ref} role="group" aria-label={FLIGHT_ACTIONS} className="flex min-h-0 flex-1 flex-col items-center justify-center gap-2">
+            {deck.flatMap(([id, primary]) => {
+              const entry = entries.find((it) => it.id === id);
+              return entry === undefined ? [] : [<RailDeckButton key={id} entry={entry} primary={primary} labelled={armed && railFit.labelled} />];
+            })}
+            <RailDeckButton entry={more} primary={false} />
+          </div>
         </div>
       ) : null}
       {refusal !== null || confirming !== null || showingSent ? (
@@ -610,7 +620,12 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
           </div>
         ) : null}
         {!deciding && readiness !== null ? <DeckReadiness readiness={readiness} /> : null}
-        {pending === null ? <DeckRow deck={deck} entries={entries} more={more} center={center} /> : null}
+        {pending === null ? (
+          <div ref={room.ref} className="flex flex-col gap-3">
+            {bottomFit.centreInline ? null : centreBox}
+            <DeckRow deck={deck} entries={entries} more={more} center={bottomFit.centreInline ? centreBox : null} />
+          </div>
+        ) : null}
       </div>
       {decisions}
     </>
@@ -635,7 +650,7 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
         }),
         ...(!armed ? [MoreTile({ label: 'Edit layout', icon: 'ic_edit', enabled: true, onClick: () => flyScreen.layout.startEditing() })] : []),
         ...extras
-          .filter((it) => !deckShown.has(it.id) && !GRIPPER_ACTIONS.includes(it.id))
+          .filter((it) => !entries.some((entry) => entry.id === it.id) && !GRIPPER_ACTIONS.includes(it.id))
           .map((offer) =>
             MoreTile({
               label: offer.title,
@@ -669,7 +684,7 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
   );
 };
 
-const DeckRow = ({ deck, entries, more, center }: { deck: readonly (readonly [string, boolean])[]; entries: readonly DeckEntry[]; more: DeckEntry; center: ReactNode }) => {
+const DeckRow = ({ deck, entries, more, center }: { deck: DeckIds; entries: readonly DeckEntry[]; more: DeckEntry; center: ReactNode }) => {
   const buttons: readonly (readonly [DeckEntry, boolean])[] = [
     ...deck.flatMap(([id, primary]) => {
       const entry = entries.find((it) => it.id === id);
@@ -682,7 +697,7 @@ const DeckRow = ({ deck, entries, more, center }: { deck: readonly (readonly [st
     <DeckButton key={entry.id} entry={entry} primary={primary} buttons={buttons.length} className={entry === more && deck.length > 0 ? 'w-16 shrink-0' : 'min-w-0 flex-1'} />
   );
   return (
-    <div className="flex items-center gap-[10px]">
+    <div role="group" aria-label={FLIGHT_ACTIONS} className="flex items-center gap-[10px]">
       {buttons.slice(0, leading).map(button)}
       {center}
       {buttons.slice(leading).map(button)}
@@ -723,6 +738,7 @@ export const LocalDeckTelemetry = createContext(true);
 const DECISION_CARD_WIDTH = 460;
 const OSD_LABEL_ALPHA = 0.75;
 export const STOP_MOTORS = 'Stop motors';
+const FLIGHT_ACTIONS = 'Flight actions';
 const RAIL_LIFT = 56;
 
 const OSD_LABELS: ReadonlyMap<string, string> = new Map([

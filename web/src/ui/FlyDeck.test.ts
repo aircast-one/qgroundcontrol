@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { CHECKLIST, deckIds, deckLabel, railLabel, slideProgress } from './FlyDeck';
+import { CHECKLIST, type DeckIds, bottomDeck, deckIds, deckLabel, railDeck, railLabel, slideProgress } from './FlyDeck';
 import { PAUSE, RELEASE } from './MoreActions';
 
 describe('FlyDeckTest', () => {
@@ -54,5 +54,42 @@ describe('RailLabelTest', () => {
 
   it('rail labels drop the hold instruction', () => {
     expect(['Slide to land', 'Return', 'Slide to take off'].map(railLabel)).toEqual(['Land', 'Return', 'Take off']);
+  });
+});
+
+describe('DeckFitTest', () => {
+  const flying = deckIds(new Set(['arm', PAUSE, 'rtl', 'land', RELEASE]), true);
+  const ids = (deck: DeckIds) => deck.map(([id]) => id);
+
+  it('on a phone every flight action stays on the deck and the camera moves above it', () => {
+    expect([358, 328].map((width) => bottomDeck(flying, width, 112))).toEqual([
+      { deck: flying, centreInline: false },
+      { deck: flying, centreInline: false },
+    ]);
+  });
+
+  it('a deck with room keeps the camera between the actions', () => {
+    expect(bottomDeck(flying, 700, 112)).toEqual({ deck: flying, centreInline: true });
+    expect(bottomDeck(flying, 328, 0)).toEqual({ deck: flying, centreInline: true });
+  });
+
+  it('when the actions run out of room the least critical move into More first', () => {
+    expect([288, 222, 156, 90, 40].map((width) => ids(bottomDeck(flying, width, 112).deck))).toEqual([['rtl', 'land', RELEASE], ['rtl', 'land'], ['rtl'], [], []]);
+  });
+
+  it('the ground deck gives up the checklist before taking off', () => {
+    expect(ids(bottomDeck(deckIds(new Set([CHECKLIST, 'arm', 'takeoff']), false), 140, 0).deck)).toEqual(['takeoff']);
+  });
+
+  it('a deck not measured yet shows every action', () => {
+    expect(bottomDeck(flying, 0, 112)).toEqual({ deck: flying, centreInline: true });
+    expect(railDeck(flying, 0)).toEqual({ deck: flying, labelled: true });
+  });
+
+  it('a sideways phone drops the rail labels before it drops an action', () => {
+    const noDrop = flying.filter(([id]) => id !== RELEASE);
+    expect(railDeck(flying, 286)).toEqual({ deck: flying, labelled: false });
+    expect(railDeck(noDrop, 286)).toEqual({ deck: noDrop, labelled: true });
+    expect(ids(railDeck(flying, 271).deck)).toEqual(['rtl', 'land', RELEASE]);
   });
 });

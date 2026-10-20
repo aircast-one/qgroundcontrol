@@ -22,7 +22,12 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material3.Surface
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntSize
 import one.aircast.map.AircastSpace
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
@@ -382,7 +387,6 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     var showMore by remember { mutableStateOf(false) }
     var showGripper by remember { mutableStateOf(false) }
     var deckRest by remember { mutableStateOf<List<DeckEntry>>(emptyList()) }
-    var deckShown by remember { mutableStateOf<Set<String>>(emptySet()) }
     var editingLoiter by remember { mutableStateOf<LoiterOffer?>(null) }
     val mapClickJson by qgcPath(MAP_CLICK_PATH)
     val loiter = remember(mapClickJson) { loiterOffer(mapClickJson) }
@@ -485,9 +489,15 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             payload = payload,
         ),
     )
-    val deck = deckIds(entries.map { it.id }.toSet(), armed)
+    val density = LocalDensity.current
+    var room by remember { mutableStateOf(IntSize.Zero) }
+    var centre by remember { mutableIntStateOf(0) }
+    val centreWidth = with(density) { centre.toDp() }
+    val offered = deckIds(entries.map { it.id }.toSet(), armed)
+    val railFit = with(density) { railDeck(offered, room.height.toDp()) }
+    val bottomFit = with(density) { bottomDeck(offered, room.width.toDp(), centreWidth) }
+    val deck = if (layout == FlyDeckLayout.Rail) railFit.deck else bottomFit.deck
     deckRest = entries.filter { entry -> deck.none { it.first == entry.id } }
-    deckShown = deck.map { it.first }.toSet()
     LaunchedEffect(flyScreen.deckRequest) {
         when (val asked = flyScreen.deckRequest) {
             null -> Unit
@@ -507,12 +517,12 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
         Box(modifier.fillMaxSize()) {
             if (pending == null && guidedValue == null && editingLoiter == null) {
                 Column(
-                    Modifier.align(Alignment.CenterStart).padding(start = AircastSpace.s3, bottom = RAIL_LIFT),
-                    verticalArrangement = Arrangement.spacedBy(AircastSpace.s2),
+                    Modifier.fillMaxHeight().padding(start = AircastSpace.s3, bottom = RAIL_LIFT).onSizeChanged { room = it },
+                    verticalArrangement = Arrangement.spacedBy(AircastSpace.s2, Alignment.CenterVertically),
                     horizontalAlignment = Alignment.CenterHorizontally,
                 ) {
                     deck.map { (id, primary) ->
-                        entries.firstOrNull { it.id == id }?.let { entry -> RailDeckButton(entry, primary, labelled = armed) }
+                        entries.firstOrNull { it.id == id }?.let { entry -> RailDeckButton(entry, primary, labelled = armed && railFit.labelled) }
                     }
                     RailDeckButton(DeckEntry("more", "More", R.drawable.ic_more_vert, true) { showMore = true }, primary = false)
                 }
@@ -566,13 +576,18 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             val more = DeckEntry("more", "More", R.drawable.ic_more_vert, true) { showMore = true }
             val buttons = deck.mapNotNull { (id, primary) -> entries.firstOrNull { it.id == id }?.let { it to primary } } + (more to false)
             val leading = (buttons.size + 1) / 2
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                val button: @Composable (Pair<DeckEntry, Boolean>) -> Unit = { (entry, primary) ->
-                    DeckButton(entry, primary, if (entry === more && deck.isNotEmpty()) Modifier.width(64.dp) else Modifier.weight(1f), buttons = buttons.size)
+            val inline = bottomFit.centreInline && centre > 0
+            val centreBox: @Composable () -> Unit = { Box(Modifier.onSizeChanged { centre = it.width }) { center() } }
+            Column(Modifier.fillMaxWidth().onSizeChanged { room = it }, horizontalAlignment = Alignment.CenterHorizontally) {
+                if (!inline) Box(Modifier.padding(bottom = if (centre > 0) 12.dp else 0.dp)) { centreBox() }
+                Row(horizontalArrangement = Arrangement.spacedBy(DECK_GAP), verticalAlignment = Alignment.CenterVertically) {
+                    val button: @Composable (Pair<DeckEntry, Boolean>) -> Unit = { (entry, primary) ->
+                        DeckButton(entry, primary, if (entry === more && deck.isNotEmpty()) Modifier.width(DECK_MORE_WIDTH) else Modifier.weight(1f), buttons = buttons.size)
+                    }
+                    buttons.take(leading).map { button(it) }
+                    if (inline) centreBox()
+                    buttons.drop(leading).map { button(it) }
                 }
-                buttons.take(leading).map { button(it) }
-                center()
-                buttons.drop(leading).map { button(it) }
             }
         }
     }
@@ -600,7 +615,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                     MoreTile("Choose readings", R.drawable.ic_tune, true) { flyScreen.choosingReadings = true },
                     MoreTile("Edit layout", R.drawable.ic_edit, true) { flyScreen.layout.startEditing() }.takeIf { !armed },
                 ) +
-                extras.filter { it.id !in deckShown && it.id !in GRIPPER_ACTIONS }.map { offer ->
+                extras.filter { offer -> entries.none { it.id == offer.id } && offer.id !in GRIPPER_ACTIONS }.map { offer ->
                     MoreTile(offer.title, guidedIcon(offer.id), offer.ready, offer.destructive) {
                         if (offer.id == PAUSE) {
                             openAltitude(true)

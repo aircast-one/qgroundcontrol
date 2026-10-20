@@ -418,6 +418,8 @@ struct FlightActions<Center: View>: View {
     @QgcPath(PREFLIGHT) private var preflightJson
     @QgcPath(GUIDED_ACTIONS) private var actionsJson
     @QgcBool(settingControl("settings.flyViewSettings.enableAutomaticMissionPopups")) private var automaticMissionPopups
+    @State private var room: CGSize = .zero
+    @State private var centre: CGFloat = 0
 
     private var actions: FlightActionsState { flyScreen.flightActions }
     private var checklist: PreflightChecklistState { flyScreen.checklist }
@@ -588,8 +590,9 @@ struct FlightActions<Center: View>: View {
     private func moreTiles() -> [MoreTile] {
         let actions = actions
         let deckEntries = entries()
-        let deck = deckIds(Set(deckEntries.map(\.id)), armed)
-        let deckShown = Set(deck.map(\.0))
+        let fits = fit(deckEntries)
+        let deck = layout == .Rail ? fits.rail.deck : fits.bottom.deck
+        let entryIds = Set(deckEntries.map(\.id))
         let deckRest = deckEntries.filter { entry in !deck.contains { $0.0 == entry.id } }
         let extras = moreActions(offers)
         let gripper = gripperOffers(extras)
@@ -606,7 +609,7 @@ struct FlightActions<Center: View>: View {
             MoreTile(label: "Choose readings", icon: .tune, enabled: true, onClick: { flyScreen.choosingReadings = true }),
             armed ? nil : MoreTile(label: "Edit layout", icon: .edit, enabled: true, onClick: { flyScreen.layout.startEditing() }),
         ].compactMap { $0 }
-        let offered = extras.filter { !deckShown.contains($0.id) && !GRIPPER_ACTIONS.contains($0.id) }.map { offer in
+        let offered = extras.filter { !entryIds.contains($0.id) && !GRIPPER_ACTIONS.contains($0.id) }.map { offer in
             MoreTile(label: offer.title, icon: guidedIcon(offer.id), enabled: offer.ready, warning: offer.destructive, onClick: {
                 if offer.id == PAUSE {
                     openValue(altitudeValue(true))
@@ -621,7 +624,7 @@ struct FlightActions<Center: View>: View {
     @ViewBuilder
     private var deck: some View {
         let deckEntries = entries()
-        let deck = deckIds(Set(deckEntries.map(\.id)), armed)
+        let fits = fit(deckEntries)
         let liveActions = actionsJson?.text
         let showingSent = sentIsStillShowing(actions.sentName, actions.sentSnapshot, liveActions)
         let deciding = actions.deciding
@@ -629,13 +632,12 @@ struct FlightActions<Center: View>: View {
         if layout == .Rail {
             ZStack {
                 if !deciding {
-                    ViewThatFits(in: .vertical) {
-                        railColumn(deck, deckEntries, more, labelled: armed)
-                        railColumn(deck, deckEntries, more, labelled: false)
-                    }
-                    .padding(.leading, Space.s3)
-                    .padding(.bottom, max(RAIL_LIFT, railFloor))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                    railColumn(fits.rail.deck, deckEntries, more, labelled: armed && fits.rail.labelled)
+                        .frame(maxHeight: .infinity)
+                        .onGeometryChange(for: CGSize.self) { $0.size } action: { room = $0 }
+                        .padding(.leading, Space.s3)
+                        .padding(.bottom, max(RAIL_LIFT, railFloor))
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
                 }
                 if flyScreen.refusal != nil || actions.pending != nil || showingSent {
                     VStack(alignment: .leading, spacing: Space.s3) {
@@ -666,17 +668,28 @@ struct FlightActions<Center: View>: View {
                     DeckReadiness(readiness: readiness)
                 }
                 if actions.pending == nil {
+                    let deck = fits.bottom.deck
                     let buttons = deck.compactMap { id, primary in deckEntries.first { $0.id == id }.map { ($0, primary) } } + [(more, false)]
                     let leading = (buttons.count + 1) / 2
-                    HStack(spacing: 10) {
-                        ForEach(Array(buttons.prefix(leading).enumerated()), id: \.offset) { _, button in
-                            deckButton(button.0, button.1, deck.isEmpty)
+                    let inline = fits.bottom.centreInline && centre > 0
+                    VStack(spacing: 0) {
+                        if !inline {
+                            centreBox.padding(.bottom, centre > 0 ? Space.s3 : 0)
                         }
-                        center()
-                        ForEach(Array(buttons.dropFirst(leading).enumerated()), id: \.offset) { _, button in
-                            deckButton(button.0, button.1, deck.isEmpty)
+                        HStack(spacing: DECK_GAP) {
+                            ForEach(Array(buttons.prefix(leading).enumerated()), id: \.offset) { _, button in
+                                deckButton(button.0, button.1, deck.isEmpty, buttons.count)
+                            }
+                            if inline {
+                                centreBox
+                            }
+                            ForEach(Array(buttons.dropFirst(leading).enumerated()), id: \.offset) { _, button in
+                                deckButton(button.0, button.1, deck.isEmpty, buttons.count)
+                            }
                         }
                     }
+                    .frame(maxWidth: .infinity)
+                    .onGeometryChange(for: CGSize.self) { $0.size } action: { room = $0 }
                 }
             }
             .padding(Space.s4)
@@ -694,12 +707,23 @@ struct FlightActions<Center: View>: View {
         }
     }
 
+    private func fit(_ deckEntries: [DeckEntry]) -> (rail: RailDeck, bottom: BottomDeck) {
+        let offered = deckIds(Set(deckEntries.map(\.id)), armed)
+        return (railDeck(offered, room.height), bottomDeck(offered, room.width, centre))
+    }
+
+    private var centreBox: some View {
+        center()
+            .fixedSize()
+            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { centre = $0 }
+    }
+
     @ViewBuilder
-    private func deckButton(_ entry: DeckEntry, _ primary: Bool, _ deckEmpty: Bool) -> some View {
+    private func deckButton(_ entry: DeckEntry, _ primary: Bool, _ deckEmpty: Bool, _ buttons: Int) -> some View {
         if entry.id == "more" && !deckEmpty {
-            DeckButton(entry: entry, primary: primary).frame(width: 64)
+            DeckButton(entry: entry, primary: primary, buttons: buttons).frame(width: DECK_MORE_WIDTH)
         } else {
-            DeckButton(entry: entry, primary: primary).frame(maxWidth: .infinity)
+            DeckButton(entry: entry, primary: primary, buttons: buttons).frame(maxWidth: .infinity)
         }
     }
 

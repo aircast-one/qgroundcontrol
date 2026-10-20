@@ -54,6 +54,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import one.aircast.map.AircastSpace
 
@@ -178,6 +179,34 @@ internal fun deckIds(shown: Set<String>, armed: Boolean): List<Pair<String, Bool
     return chosen.map { it to (it == primary) }
 }
 
+internal val DECK_GAP = 10.dp
+internal val DECK_MORE_WIDTH = 64.dp
+private val DECK_MIN_WIDTH = 56.dp
+private val RAIL_LABEL_HEIGHT = 16.dp
+private val DECK_PRIORITY = listOf("rtl", "land", "takeoff", "arm", RELEASE, PAUSE, CHECKLIST)
+
+private fun priority(id: String): Int = DECK_PRIORITY.indexOf(id).takeIf { it >= 0 } ?: DECK_PRIORITY.size
+
+private fun fitting(deck: List<Pair<String, Boolean>>, room: Dp, slot: Dp, fixed: Dp): List<Pair<String, Boolean>> {
+    if (room <= 0.dp) return deck
+    val kept = deck.map { it.first }.sortedBy(::priority).take(((room - fixed) / slot).toInt().coerceAtLeast(0)).toSet()
+    return deck.filter { it.first in kept }
+}
+
+internal data class BottomDeck(val deck: List<Pair<String, Boolean>>, val centreInline: Boolean)
+
+internal fun bottomDeck(deck: List<Pair<String, Boolean>>, width: Dp, centre: Dp): BottomDeck {
+    val centreInline = width <= 0.dp || centre <= 0.dp || (DECK_MIN_WIDTH + DECK_GAP) * deck.size + DECK_MORE_WIDTH + centre + DECK_GAP <= width
+    return BottomDeck(fitting(deck, width, DECK_MIN_WIDTH + DECK_GAP, DECK_MORE_WIDTH + if (centreInline && centre > 0.dp) centre + DECK_GAP else 0.dp), centreInline)
+}
+
+internal data class RailDeck(val deck: List<Pair<String, Boolean>>, val labelled: Boolean)
+
+internal fun railDeck(deck: List<Pair<String, Boolean>>, height: Dp): RailDeck {
+    val labelled = height <= 0.dp || (RAIL_BUTTON_SIZE + RAIL_LABEL_HEIGHT + AircastSpace.s2) * deck.size + RAIL_BUTTON_SIZE <= height
+    return RailDeck(fitting(deck, height, RAIL_BUTTON_SIZE + (if (labelled) RAIL_LABEL_HEIGHT else 0.dp) + AircastSpace.s2, RAIL_BUTTON_SIZE), labelled)
+}
+
 internal const val CROWDED_DECK = 5
 
 internal fun deckLabel(label: String, buttons: Int): String = if (buttons >= CROWDED_DECK) railLabel(label) else label
@@ -196,11 +225,12 @@ internal fun DeckButton(entry: DeckEntry, primary: Boolean, modifier: Modifier =
     ) {
         DeckPress(entry) {
             Column(
+                Modifier.padding(horizontal = AircastSpace.s1),
                 verticalArrangement = Arrangement.spacedBy(AircastSpace.s1, Alignment.CenterVertically),
                 horizontalAlignment = Alignment.CenterHorizontally,
             ) {
                 Icon(painterResource(entry.icon), null, Modifier.size(DECK_ICON_SIZE))
-                Text(deckLabel(entry.label, buttons), style = MaterialTheme.typography.labelLarge, maxLines = 1)
+                Text(deckLabel(entry.label, buttons), style = MaterialTheme.typography.labelLarge, maxLines = 2, textAlign = TextAlign.Center)
             }
         }
     }

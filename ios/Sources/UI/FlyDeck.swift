@@ -194,9 +194,48 @@ func deckIds(_ shown: Set<String>, _ armed: Bool) -> [(String, Bool)] {
     return chosen.map { ($0, $0 == primary) }
 }
 
+let DECK_GAP: CGFloat = 10
+let DECK_MORE_WIDTH: CGFloat = 64
+private let DECK_MIN_WIDTH: CGFloat = 56
+private let RAIL_LABEL_HEIGHT: CGFloat = 16
+private let DECK_PRIORITY = ["rtl", "land", "takeoff", "arm", RELEASE, PAUSE, CHECKLIST]
+
+private func priority(_ id: String) -> Int { DECK_PRIORITY.firstIndex(of: id) ?? DECK_PRIORITY.count }
+
+private func fitting(_ deck: [(String, Bool)], _ room: CGFloat, _ slot: CGFloat, _ fixed: CGFloat) -> [(String, Bool)] {
+    guard room > 0 else { return deck }
+    let kept = Set(deck.map(\.0).sorted { priority($0) < priority($1) }.prefix(max(0, Int(((room - fixed) / slot).rounded(.down)))))
+    return deck.filter { kept.contains($0.0) }
+}
+
+struct BottomDeck {
+    let deck: [(String, Bool)]
+    let centreInline: Bool
+}
+
+func bottomDeck(_ deck: [(String, Bool)], _ width: CGFloat, _ centre: CGFloat) -> BottomDeck {
+    let centreInline = width <= 0 || centre <= 0 || CGFloat(deck.count) * (DECK_MIN_WIDTH + DECK_GAP) + DECK_MORE_WIDTH + centre + DECK_GAP <= width
+    return BottomDeck(deck: fitting(deck, width, DECK_MIN_WIDTH + DECK_GAP, DECK_MORE_WIDTH + (centreInline && centre > 0 ? centre + DECK_GAP : 0)), centreInline: centreInline)
+}
+
+struct RailDeck {
+    let deck: [(String, Bool)]
+    let labelled: Bool
+}
+
+func railDeck(_ deck: [(String, Bool)], _ height: CGFloat) -> RailDeck {
+    let labelled = height <= 0 || CGFloat(deck.count) * (RAIL_BUTTON_SIZE + RAIL_LABEL_HEIGHT + Space.s2) + RAIL_BUTTON_SIZE <= height
+    return RailDeck(deck: fitting(deck, height, RAIL_BUTTON_SIZE + (labelled ? RAIL_LABEL_HEIGHT : 0) + Space.s2, RAIL_BUTTON_SIZE), labelled: labelled)
+}
+
+let CROWDED_DECK = 5
+
+func deckLabel(_ label: String, _ buttons: Int) -> String { buttons >= CROWDED_DECK ? railLabel(label) : label }
+
 struct DeckButton: View {
     let entry: DeckEntry
     let primary: Bool
+    var buttons: Int = 0
     @Environment(\.theme) private var theme
 
     var body: some View {
@@ -208,8 +247,9 @@ struct DeckButton: View {
                 Image(entry.icon)
                     .font(.system(size: DECK_ICON_SIZE * GLYPH_TO_FRAME))
                     .frame(width: DECK_ICON_SIZE, height: DECK_ICON_SIZE)
-                Text(entry.label).font(.labelLarge).lineLimit(1)
+                Text(deckLabel(entry.label, buttons)).font(.labelLarge).lineLimit(2).multilineTextAlignment(.center)
             }
+            .padding(.horizontal, Space.s1)
         }
         .foregroundStyle(content)
         .frame(height: DECK_BUTTON_HEIGHT)

@@ -198,13 +198,44 @@ const DeckPress = ({ entry, children }: { entry: DeckEntry; children: ReactNode 
   );
 };
 
-export const deckIds = (shown: ReadonlySet<string>, armed: boolean): readonly (readonly [string, boolean])[] => {
+export type DeckIds = readonly (readonly [string, boolean])[];
+
+export const deckIds = (shown: ReadonlySet<string>, armed: boolean): DeckIds => {
   const flying = armed && (shown.has('rtl') || shown.has('land'));
   const ground = [CHECKLIST, shown.has('takeoff') ? 'takeoff' : 'arm'];
   const flown = (flying ? [PAUSE, 'rtl', 'land'] : ground).filter((it) => shown.has(it));
   const primary = flying ? (flown.includes('rtl') ? 'rtl' : null) : (flown[flown.length - 1] ?? null);
   const chosen = flying && shown.has(RELEASE) ? [...flown, RELEASE] : flown;
   return chosen.map((it) => [it, it === primary] as const);
+};
+
+const DECK_GAP = 10;
+const DECK_MORE_WIDTH = 64;
+const DECK_MIN_WIDTH = 56;
+const RAIL_GAP = 8;
+const RAIL_LABEL_HEIGHT = 16;
+const DECK_PRIORITY: readonly string[] = ['rtl', 'land', 'takeoff', 'arm', RELEASE, PAUSE, CHECKLIST];
+
+const priority = (id: string): number => (DECK_PRIORITY.includes(id) ? DECK_PRIORITY.indexOf(id) : DECK_PRIORITY.length);
+
+const fitting = (deck: DeckIds, room: number, slot: number, fixed: number): DeckIds => {
+  const kept = new Set(
+    deck
+      .map(([id]) => id)
+      .toSorted((a, b) => priority(a) - priority(b))
+      .slice(0, Math.max(0, Math.floor((room - fixed) / slot))),
+  );
+  return room <= 0 ? deck : deck.filter(([id]) => kept.has(id));
+};
+
+export const bottomDeck = (deck: DeckIds, width: number, centre: number): { deck: DeckIds; centreInline: boolean } => {
+  const centreInline = width <= 0 || centre <= 0 || deck.length * (DECK_MIN_WIDTH + DECK_GAP) + DECK_MORE_WIDTH + centre + DECK_GAP <= width;
+  return { deck: fitting(deck, width, DECK_MIN_WIDTH + DECK_GAP, DECK_MORE_WIDTH + (centreInline && centre > 0 ? centre + DECK_GAP : 0)), centreInline };
+};
+
+export const railDeck = (deck: DeckIds, height: number): { deck: DeckIds; labelled: boolean } => {
+  const labelled = height <= 0 || deck.length * (RAIL_BUTTON_SIZE + RAIL_LABEL_HEIGHT + RAIL_GAP) + RAIL_BUTTON_SIZE <= height;
+  return { deck: fitting(deck, height, RAIL_BUTTON_SIZE + (labelled ? RAIL_LABEL_HEIGHT : 0) + RAIL_GAP, RAIL_BUTTON_SIZE), labelled };
 };
 
 export const CROWDED_DECK = 5;
@@ -220,9 +251,9 @@ export const DeckButton = ({ entry, primary, className, buttons = 0 }: { entry: 
     style={{ height: DECK_BUTTON_HEIGHT }}
   >
     <DeckPress entry={entry}>
-      <div className="flex flex-col items-center justify-center gap-1">
+      <div className="flex min-w-0 flex-col items-center justify-center gap-1 px-1">
         <Drawable name={entry.icon} size={DECK_ICON_SIZE} />
-        <Text typography="labelLarge" maxLines={1}>
+        <Text typography="labelLarge" maxLines={2} textAlign="center">
           {deckLabel(entry.label, buttons)}
         </Text>
       </div>
