@@ -23,6 +23,7 @@ pub(crate) fn kind(settings_url: &str) -> &'static str {
         "LogReplaySettings.qml" => "logReplay",
         "MockLinkSettings.qml" => "mock",
         "WebSocketSettings.qml" => "websocket",
+        "AircastCloudSettings.qml" => "aircastCloud",
         _ => "other",
     }
 }
@@ -399,6 +400,30 @@ mod tests {
             String::new()
         }
         fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn every_settings_page_the_core_writes_names_a_link_kind() {
+        let pages = [
+            "TcpSettings.qml",
+            "UdpSettings.qml",
+            "SerialSettings.qml",
+            "LogReplaySettings.qml",
+            "AircastCloudSettings.qml",
+            "WebSocketSettings.qml",
+            "BluetoothSettings.qml",
+            "MockLinkSettings.qml",
+        ];
+        let unnamed: Vec<_> = pages.iter().filter(|page| kind(page) == "other").collect();
+        assert!(
+            unnamed.is_empty(),
+            "corelinks.rs writes each of these as a link's settingsURL, and the heads pick the row icon and editor from view.links type, so {unnamed:?} showed as a generic link"
+        );
+        assert_eq!(
+            kind("AircastCloudSettings.qml"),
+            "aircastCloud",
+            "Android LinksScreen.kt, iOS LinksScreen.swift and the Windows LinkModel all key the cloud row on aircastCloud"
+        );
     }
 
     #[test]
