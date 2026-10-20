@@ -208,14 +208,13 @@ fun homeCovered(items: List<MissionItem>): Boolean {
     return items.any { it.index != HOME_ITEM && it.placed && kotlin.math.abs(it.latitude - home.latitude) < SAME_SPOT_DEGREES && kotlin.math.abs(it.longitude - home.longitude) < SAME_SPOT_DEGREES }
 }
 
-const val DROP_COMMAND = 211
 const val DROP_SIDE = "Drop"
 
 fun dropsAt(items: List<MissionItem>, item: MissionItem): Boolean {
     val start = items.indexOfFirst { it.index == item.index }
     if (start < 0) return false
     val following = items.drop(start + 1)
-    return following.takeWhile { !it.specifiesCoordinate && !it.complexPattern }.any { it.commandId == DROP_COMMAND }
+    return following.takeWhile { !it.specifiesCoordinate && !it.complexPattern }.any { it.dropsPayload }
 }
 
 fun withDrops(items: List<MissionItem>): List<MissionItem> = items.map { it.copy(drops = dropsAt(items, it)) }

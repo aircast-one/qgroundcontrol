@@ -7,7 +7,7 @@ import org.junit.Test
 class DropMarkerTest {
     private fun waypoint(index: Int) = MissionItem(index, index, 47.0 + index, 8.0, "Waypoint", false, commandId = 16, specifiesCoordinate = true)
 
-    private fun drop(index: Int) = MissionItem(index, index, Double.NaN, Double.NaN, "Gripper Action", false, commandId = DROP_COMMAND, placed = false)
+    private fun drop(index: Int) = MissionItem(index, index, Double.NaN, Double.NaN, "Gripper Action", false, commandId = 211, dropsPayload = true, placed = false)
 
     @Test
     fun `a waypoint followed by a gripper release is marked as the drop point`() {
@@ -19,12 +19,19 @@ class DropMarkerTest {
     }
 
     @Test
+    fun `a bay servo drop marks its waypoint, and a servo that drops nothing does not`() {
+        fun servo(index: Int, drops: Boolean) = MissionItem(index, index, Double.NaN, Double.NaN, "Set Servo", false, commandId = 183, dropsPayload = drops, placed = false)
+        val items = listOf(waypoint(1), servo(2, true), waypoint(3), servo(4, false), waypoint(5))
+        assertEquals(listOf(true, false, false, false, false), items.map { dropsAt(items, it) })
+    }
+
+    @Test
     fun `the plan map read marks the waypoint before a drop, though the drop itself has no place`() {
         val plan = allMissionItems(
             JSONObject(
                 """{"kind":"object","items":[
                      {"sequence":1,"name":"Waypoint","command":16,"specifiesCoordinate":true,"coordinate":{"latitude":47.0,"longitude":8.0}},
-                     {"sequence":2,"name":"Gripper Action","command":211}]}""",
+                     {"sequence":2,"name":"Drop payload","command":211,"dropsPayload":true}]}""",
             ),
         )
 

@@ -62,6 +62,16 @@ class PayloadStatusTest {
     }
 
     @Test
+    fun `a servo per bay names each bay by its output, even a single bay`() {
+        val one = payloadOf(JSONObject("""{"payload":{"bays":1,"empty":[],"next":null,"label":"Drop","outputs":[9],"problems":[]}}"""))
+        assertEquals(listOf(true, false), listOf(one.multiBay, SINGLE_GRIPPER.multiBay))
+        val four = payloadOf(JSONObject("""{"payload":{"bays":4,"empty":[],"next":1,"label":"Drop 1","outputs":[9,10,11,12],"problems":[]}}"""))
+        assertEquals(listOf("Bay 2 · output 10", ""), listOf(bayOutput(2, four), bayOutput(2, SINGLE_GRIPPER)))
+        val refused = JSONObject(mapOf("action" to "release", "bay" to 3, "outcome" to "refused", "atMs" to at))
+        assertEquals(PayloadStatus("Drop bay 3 refused by the flight controller 0 s ago", warning = true), payloadStatus(refused, at))
+    }
+
+    @Test
     fun `time since is coarse and never negative`() {
         assertEquals(listOf("0 s ago", "59 s ago", "1 h ago"), listOf(agoText(at, at - 5_000), agoText(at, at + 59_999), agoText(at, at + 3_600_000)))
     }

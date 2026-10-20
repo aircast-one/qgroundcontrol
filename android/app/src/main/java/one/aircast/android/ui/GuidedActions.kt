@@ -48,7 +48,7 @@ internal fun guidedOffers(view: JSONObject?): Map<String, GuidedOffer> {
 
 internal data class PayloadProblem(val code: String, val text: String, val blocking: Boolean, val fix: String)
 
-internal data class Payload(val bays: Int, val empty: List<Int>, val next: Int?, val problems: List<PayloadProblem> = emptyList(), val label: String = "")
+internal data class Payload(val bays: Int, val empty: List<Int>, val next: Int?, val problems: List<PayloadProblem> = emptyList(), val label: String = "", val outputs: List<Int> = emptyList())
 
 internal val SINGLE_GRIPPER = Payload(bays = 1, empty = emptyList(), next = null)
 
@@ -61,10 +61,13 @@ internal fun payloadOf(view: JSONObject?): Payload {
     val problems = payload.optJSONArray("problems")?.let { array ->
         (0 until array.length()).mapNotNull { array.optJSONObject(it) }.map(::payloadProblem)
     }.orEmpty()
-    return Payload(bays = payload.optInt("bays", 1).coerceAtLeast(1), empty = empty, next = payload.takeUnless { it.isNull("next") }?.optInt("next"), problems = problems, label = payload.optText("label"))
+    val outputs = payload.optJSONArray("outputs")?.let { array -> (0 until array.length()).map { array.optInt(it) } }.orEmpty()
+    return Payload(bays = payload.optInt("bays", 1).coerceAtLeast(1), empty = empty, next = payload.takeUnless { it.isNull("next") }?.optInt("next"), problems = problems, label = payload.optText("label"), outputs = outputs)
 }
 
-internal val Payload.multiBay: Boolean get() = bays > 1
+internal val Payload.multiBay: Boolean get() = bays > 1 || outputs.isNotEmpty()
+
+internal fun bayOutput(bay: Int, payload: Payload): String = payload.outputs.getOrNull(bay - 1)?.let { "Bay $bay · output $it" }.orEmpty()
 
 internal val Payload.bayNumbers: List<Int> get() = (1..bays).toList()
 

@@ -56,7 +56,7 @@ internal fun payloadStatus(json: JSONObject?, nowMs: Long): PayloadStatus? {
     val action = state.optString("action")
     val bay = state.optInt("bay")
     val (plainVerb, plainDone) = verbs(action)
-    val verb = if (bay > 0) "$plainVerb $bay" else plainVerb
+    val verb = if (bay > 0) "$plainVerb bay $bay" else plainVerb
     val done = if (bay > 0) "Bay $bay ${plainDone.lowercase()}" else plainDone
     val ago = agoText(state.optLong("atMs"), nowMs)
     return when (state.optString("outcome")) {
@@ -95,11 +95,16 @@ private fun SingleGripper(offers: List<GuidedOffer>, ask: Ask) {
 @Composable
 private fun Bays(offers: List<GuidedOffer>, payload: Payload, ask: Ask) {
     payload.bayNumbers.forEach { bay ->
-        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            HoldToConfirm(bayLabel(bay, payload), Modifier.weight(1f), enabled = offers.ready(RELEASE)) {
-                ask { VehicleCommands.gripperRefusal(GRIPPER_RELEASE, bay) }
+        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            bayOutput(bay, payload).takeIf { it.isNotEmpty() }?.let { caption ->
+                Text(caption, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
-            OutlinedButton(onClick = { ask { VehicleCommands.gripperRefusal(GRIPPER_GRAB, bay) } }, enabled = offers.ready("grab")) { Text("Grab") }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                HoldToConfirm(bayLabel(bay, payload), Modifier.weight(1f), enabled = offers.ready(RELEASE)) {
+                    ask { VehicleCommands.gripperRefusal(GRIPPER_RELEASE, bay) }
+                }
+                OutlinedButton(onClick = { ask { VehicleCommands.gripperRefusal(GRIPPER_GRAB, bay) } }, enabled = offers.ready("grab")) { Text("Grab") }
+            }
         }
     }
 }

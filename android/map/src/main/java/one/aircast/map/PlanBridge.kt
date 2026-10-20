@@ -125,6 +125,7 @@ data class MissionItem(
     val closesRoute: Boolean = false,
     val legBroken: Boolean = false,
     val abbreviation: String = "",
+    val dropsPayload: Boolean = false,
     val drops: Boolean = false,
 )
 
@@ -193,6 +194,7 @@ fun allMissionItems(json: JSONObject?): List<MissionItem> {
             closesRoute = element.optBoolean("closesRoute"),
             legBroken = index in broken,
             abbreviation = element.optText("abbreviation"),
+            dropsPayload = element.optBoolean("dropsPayload"),
             routed = element.optBoolean("flownLeg") && index <= endsAfter,
             afterRouteEnds = index > endsAfter,
             placed = at != null,
