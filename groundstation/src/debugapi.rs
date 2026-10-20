@@ -77,6 +77,7 @@ pub enum Route {
     MissionUpload,
     MissionDownload,
     Logging,
+    Sticks,
 }
 
 pub const ROUTES: &[(&str, Route, &str)] = &[
@@ -94,6 +95,7 @@ pub const ROUTES: &[(&str, Route, &str)] = &[
     ("/mission/upload", Route::MissionUpload, "file"),
     ("/mission/download", Route::MissionDownload, "file"),
     ("/logging", Route::Logging, "rules"),
+    ("/control/sticks", Route::Sticks, "roll,pitch,yaw,thrust,ms"),
 ];
 
 pub fn route_of(path: &str) -> Option<Route> {
@@ -171,6 +173,7 @@ pub trait Host {
     fn mock_link_present(&self) -> bool;
     fn silence_mock_links(&self, silent: bool) -> usize;
     fn change_mock_conditions(&self, changes: &[crate::mocklink::Change]) -> usize;
+    fn hold_sticks(&self, axes: [f64; 4], for_ms: u64);
     fn vehicle_connected(&self) -> bool;
 }
 
@@ -343,6 +346,42 @@ fn real_vehicle_heard(host: &dyn Host) -> bool {
         .any(|link| link["type"] != "mock" && link["heardVehicle"] == true)
 }
 
+fn write_refusal(host: &dyn Host) -> Option<Response> {
+    match (
+        host.bridge_writes_allowed(),
+        host.mock_links_available(),
+        real_vehicle_heard(host),
+    ) {
+        (true, _, _) | (false, true, false) => None,
+        (false, true, true) => Some(refuse(format!(
+            "bridge writes disabled while a real vehicle is connected; set {BRIDGE_WRITE_GUARD}=1 (props off!)"
+        ))),
+        (false, false, _) => Some(refuse(format!(
+            "bridge writes disabled; set {BRIDGE_WRITE_GUARD}=1 (props off!)"
+        ))),
+    }
+}
+
+const STICKS_USAGE: &str = "roll, pitch and yaw run from -1 to 1 and thrust from 0 (idle) to 1 (full) with 0.5 holding height; ms is how long the sticks are held, 0 lets go";
+const STICKS_HELD_MS: u64 = 1000;
+
+fn stick(pairs: &[(String, String)], key: &str, centre: f64, low: f64) -> Result<f64, String> {
+    numbers(pairs, key, &[1], STICKS_USAGE)?.map_or(Ok(centre), |value| {
+        (low..=1.0)
+            .contains(&value[0])
+            .then_some(value[0])
+            .ok_or_else(|| STICKS_USAGE.to_string())
+    })
+}
+
+fn held_for(pairs: &[(String, String)]) -> Result<u64, String> {
+    numbers(pairs, "ms", &[1], STICKS_USAGE)?.map_or(Ok(STICKS_HELD_MS), |ms| {
+        (ms[0] >= 0.0 && ms[0].fract() == 0.0)
+            .then_some(ms[0] as u64)
+            .ok_or_else(|| STICKS_USAGE.to_string())
+    })
+}
+
 fn configured_links(host: &dyn Host) -> Vec<Value> {
     host.link_configurations()
         .get("elements")
@@ -485,6 +524,7 @@ impl DebugApi {
             Route::MissionUpload => self.mission_upload(host, pairs),
             Route::MissionDownload => self.mission_download(host, pairs),
             Route::Logging => self.logging(host, pairs),
+            Route::Sticks => self.sticks(host, pairs),
         }
     }
 
@@ -501,20 +541,8 @@ impl DebugApi {
         if route == Route::BridgeGet {
             return ok(bridge_body(host.bridge_get(target)));
         }
-        if !host.bridge_writes_allowed() {
-            match (host.mock_links_available(), real_vehicle_heard(host)) {
-                (true, false) => {}
-                (true, true) => {
-                    return refuse(format!(
-                        "bridge writes disabled while a real vehicle is connected; set {BRIDGE_WRITE_GUARD}=1 (props off!)"
-                    ));
-                }
-                (false, _) => {
-                    return refuse(format!(
-                        "bridge writes disabled; set {BRIDGE_WRITE_GUARD}=1 (props off!)"
-                    ));
-                }
-            }
+        if let Some(refused) = write_refusal(host) {
+            return refused;
         }
         match route {
             Route::BridgeSet => match first(pairs, "value")
@@ -761,6 +789,35 @@ impl DebugApi {
         host.set_logging_rules(&rules.replace(';', "\n"));
         ok(json!({ "rules": rules }))
     }
+
+    fn sticks(&self, host: &dyn Host, pairs: &[(String, String)]) -> Response {
+        if let Some(refused) = write_refusal(host) {
+            return refused;
+        }
+        let asked = (
+            stick(pairs, "roll", 0.0, -1.0),
+            stick(pairs, "pitch", 0.0, -1.0),
+            stick(pairs, "yaw", 0.0, -1.0),
+            stick(pairs, "thrust", 0.5, 0.0),
+            held_for(pairs),
+        );
+        let (Ok(roll), Ok(pitch), Ok(yaw), Ok(thrust), Ok(ms)) = asked else {
+            return refuse(STICKS_USAGE);
+        };
+        let axes = [roll, pitch, yaw, thrust];
+        host.hold_sticks(axes, ms);
+        match ms {
+            0 => ok(json!({ "released": true })),
+            _ => ok(json!({
+                "held": { "roll": roll, "pitch": pitch, "yaw": yaw, "thrust": thrust },
+                "ms": ms,
+                "sent": bridge_body(host.bridge_invoke(
+                    crate::virtualjoystick::JOYSTICK_VALUE,
+                    &json!(axes).to_string(),
+                )),
+            })),
+        }
+    }
 }
 
 pub const DEPS: &[&str] = &[];
@@ -873,6 +930,9 @@ mod tests {
         fn change_mock_conditions(&self, changes: &[crate::mocklink::Change]) -> usize {
             self.note(format!("conditions {changes:?}"));
             usize::from(self.mock_present)
+        }
+        fn hold_sticks(&self, axes: [f64; 4], for_ms: u64) {
+            self.note(format!("hold {axes:?} {for_ms}"));
         }
         fn vehicle_connected(&self) -> bool {
             self.vehicle
@@ -1060,6 +1120,55 @@ mod tests {
             ],
             "a number stays a number, bare text becomes a string, an empty value is the null the C++ sent rather than an empty string that retypes the Fact, and an absent args list is the empty list"
         );
+    }
+
+    #[test]
+    fn held_sticks_default_to_centred_are_sent_at_once_and_ms_zero_lets_go() {
+        let api = DebugApi::new();
+        let shut = Fake::default();
+        assert!(
+            get(&api, &shut, "/control/sticks", "thrust=1").body["error"]
+                .as_str()
+                .unwrap()
+                .contains(BRIDGE_WRITE_GUARD),
+            "sticks fly the vehicle, so they sit behind the same guard as every bridge write"
+        );
+        assert!(shut.calls().is_empty());
+        let host = Fake {
+            writes_allowed: true,
+            ..Fake::default()
+        };
+        let climb = get(&api, &host, "/control/sticks", "thrust=1&ms=3000");
+        assert_eq!(
+            (
+                climb.status,
+                climb.body["ms"].clone(),
+                climb.body["sent"]["ok"].clone()
+            ),
+            (STATUS_OK, json!(3000), json!(true))
+        );
+        get(&api, &host, "/control/sticks", "pitch=-0.5");
+        get(&api, &host, "/control/sticks", "ms=0");
+        assert_eq!(
+            host.calls(),
+            vec![
+                "hold [0.0, 0.0, 0.0, 1.0] 3000".to_string(),
+                "invoke vehicle.virtualTabletJoystickValue [0.0,0.0,0.0,1.0]".to_string(),
+                "hold [0.0, -0.5, 0.0, 0.5] 1000".to_string(),
+                "invoke vehicle.virtualTabletJoystickValue [0.0,-0.5,0.0,0.5]".to_string(),
+                "hold [0.0, 0.0, 0.0, 0.5] 0".to_string(),
+            ],
+            "an axis left out is centred, a hold lasts a second unless told otherwise, and letting go sends nothing"
+        );
+        ["thrust=-0.1", "roll=1.5", "ms=-1", "ms=0.5", "yaw=x"]
+            .iter()
+            .for_each(|query| {
+                assert_eq!(
+                    get(&api, &host, "/control/sticks", query).body["error"],
+                    STICKS_USAGE,
+                    "{query}"
+                )
+            });
     }
 
     #[test]
@@ -1961,6 +2070,7 @@ mod tests {
         fn change_mock_conditions(&self, _changes: &[crate::mocklink::Change]) -> usize {
             0
         }
+        fn hold_sticks(&self, _axes: [f64; 4], _for_ms: u64) {}
         fn vehicle_connected(&self) -> bool {
             false
         }
@@ -1992,10 +2102,10 @@ mod tests {
         let core = crate::router::Core::new(Bare);
         let table: Value = serde_json::from_str(&core.get("view.debugApi")).unwrap();
         assert_eq!(
-            table["count"], 10,
-            "the ten routes the core serves, written out rather than compared with the list they came from"
+            table["count"], 11,
+            "the eleven routes the core serves, written out rather than compared with the list they came from"
         );
-        assert_eq!(ROUTES.len(), 10);
+        assert_eq!(ROUTES.len(), 11);
         assert!(
             table["hostRoutes"]
                 .as_array()

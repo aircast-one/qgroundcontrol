@@ -438,6 +438,9 @@ impl Host for CoreOnly {
     fn change_mock_conditions(&self, changes: &[crate::mocklink::Change]) -> usize {
         crate::linkhost::change_mock_conditions(&crate::linkhost::TRANSPORTS, changes)
     }
+    fn hold_sticks(&self, axes: [f64; 4], for_ms: u64) {
+        crate::virtualjoystick::hold(axes, for_ms);
+    }
     fn vehicle_connected(&self) -> bool {
         serde_json::from_str::<Value>(&self.bridge_get("vehicles.activeVehicleAvailable"))
             .ok()

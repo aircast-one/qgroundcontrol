@@ -268,6 +268,30 @@ impl StickSample {
 }
 
 static SENT: Mutex<Vec<StickSample>> = Mutex::new(Vec::new());
+static HELD: Mutex<Option<([f64; 4], Instant)>> = Mutex::new(None);
+
+pub fn hold(axes: [f64; 4], for_ms: u64) {
+    *HELD.lock().unwrap_or_else(PoisonError::into_inner) =
+        Some((axes, Instant::now() + Duration::from_millis(for_ms)));
+}
+
+fn take_hold(touched: bool) -> Option<([f64; 4], Instant)> {
+    let mut held = HELD.lock().unwrap_or_else(PoisonError::into_inner);
+    match touched {
+        true => held.take(),
+        false => *held,
+    }
+}
+
+fn steered(
+    given: [f64; 4],
+    held: Option<([f64; 4], Instant)>,
+    now: Instant,
+    touched: bool,
+) -> [f64; 4] {
+    held.filter(|(_, until)| !touched && now < *until)
+        .map_or(given, |(axes, _)| axes)
+}
 
 pub fn remembered(kept: &[StickSample], sample: StickSample) -> Vec<StickSample> {
     kept.iter()
@@ -477,6 +501,13 @@ pub fn send(backend: &dyn Backend, args: &str) -> Value {
             touch_age_ms,
         );
     };
+    let touched = touch_age_ms.is_some();
+    let [roll, pitch, yaw, thrust] = steered(
+        [roll, pitch, yaw, thrust],
+        take_hold(touched),
+        entered,
+        touched,
+    );
     if !sending(backend) {
         return refused(
             entered,
@@ -960,5 +991,27 @@ mod tests {
         assert_eq!(send(&down, "[0, 0, 0, 0]")["ok"], json!(false));
         assert!(down.invoked.borrow().is_empty());
         assert_eq!(send(&up, "[0, 0]")["ok"], json!(false));
+    }
+
+    #[test]
+    fn a_held_stick_replaces_what_the_screen_streams_until_the_hold_runs_out() {
+        let now = Instant::now();
+        let later = |ms: u64| now + Duration::from_millis(ms);
+        let parked = [0.0, 0.0, 0.0, 0.0];
+        let climb = [0.0, 0.0, 0.0, 1.0];
+        let held = Some((climb, later(500)));
+        assert_eq!(
+            steered(parked, held, now, false),
+            climb,
+            "on the ground the head streams a parked throttle 25 times a second, and it used to overwrite every held sample"
+        );
+        assert_eq!(steered(parked, held, later(500), false), parked);
+        assert_eq!(steered(parked, None, now, false), parked);
+        let thumb = [0.4, 0.0, 0.0, 0.5];
+        assert_eq!(
+            steered(thumb, held, now, true),
+            thumb,
+            "a finger on the screen always wins over a held stick"
+        );
     }
 }
