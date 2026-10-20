@@ -233,11 +233,13 @@ pub fn virtual_joystick_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let left_handed = setting(backend, "virtualJoystickLeftHandedMode");
     let enabled = setting(backend, "virtualJoystick");
     let sending = sending(backend);
+    let active = crate::hub::lock().active_id();
+    let radio_flies = active.is_some_and(crate::usbradio::flies);
     json!({
         "kind": "object",
         "class": "VirtualJoystick",
         "enabled": enabled,
-        "show": enabled && sending && mode.is_none_or(|custom| flown_by_sticks(frame, custom, takeover)),
+        "show": enabled && sending && !radio_flies && mode.is_none_or(|custom| flown_by_sticks(frame, custom, takeover)),
         "sending": sending,
         "autoCenterThrottle": !mode.is_some_and(|custom| throttle_free(frame, custom, driven)),
         "softened": mode.is_some_and(|custom| rate_mode(frame, custom)),
@@ -530,6 +532,14 @@ pub fn send(backend: &dyn Backend, args: &str) -> Value {
             entered,
             "joystick_active",
             "A joystick is enabled for this vehicle, so the on-screen sticks do not send.",
+            touch_age_ms,
+        );
+    }
+    if active.is_some_and(crate::usbradio::flies) {
+        return refused(
+            entered,
+            "usb_radio_active",
+            "The radio on USB flies this vehicle, so the on-screen sticks do not send.",
             touch_age_ms,
         );
     }

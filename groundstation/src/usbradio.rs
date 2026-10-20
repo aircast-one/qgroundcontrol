@@ -88,6 +88,10 @@ impl Radio {
             .is_some_and(|(_, at)| now_ms.saturating_sub(at) <= STALE_AFTER_MS)
     }
 
+    pub fn flies(&self, vehicle: u8) -> bool {
+        self.holding.is_some_and(|(id, _)| id == vehicle)
+    }
+
     pub fn step(&mut self, now_ms: u64, target: Option<Target>, fresh: Option<Frame>) -> Step {
         if let Some(frame) = fresh {
             self.latest = Some((frame, now_ms));
@@ -260,6 +264,10 @@ static RADIO: Mutex<Radio> = Mutex::new(Radio {
 
 fn radio() -> MutexGuard<'static, Radio> {
     RADIO.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
+pub fn flies(vehicle: u8) -> bool {
+    radio().flies(vehicle)
 }
 
 #[derive(Default)]
@@ -883,6 +891,10 @@ mod tests {
             vec![((1, 7), sticks)]
         );
         assert!(
+            radio.flies(1) && !radio.flies(2),
+            "the on-screen sticks give way while the radio holds the vehicle"
+        );
+        assert!(
             radio.step(20, vehicle, Some(sticks)).sends.is_empty(),
             "a script streaming faster than the send period is thinned"
         );
@@ -897,6 +909,7 @@ mod tests {
         );
         let quiet = radio.step(SEND_EVERY_MS + STALE_AFTER_MS + 1, vehicle, None);
         assert_eq!(quiet.handed_back, Some((1, 7)));
+        assert!(!radio.flies(1), "a quiet radio gives the sticks back");
         assert_eq!(
             quiet.sends,
             vec![((1, 7), released()); RELEASE_FRAMES],

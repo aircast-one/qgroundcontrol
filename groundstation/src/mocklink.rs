@@ -532,6 +532,23 @@ impl Sticks {
         }
     }
 
+    fn from_override(m: &RC_CHANNELS_OVERRIDE_DATA) -> Sticks {
+        let pwm = |raw: u16| (800..=2200).contains(&raw).then_some(i32::from(raw));
+        let stick = |raw: u16, sign: i32| {
+            pwm(raw).map_or(i16::MAX, |p| {
+                (sign * (p - 1500) * 2).clamp(-1000, 1000) as i16
+            })
+        };
+        Sticks::from(&MANUAL_CONTROL_DATA {
+            x: stick(m.chan2_raw, -1),
+            y: stick(m.chan1_raw, 1),
+            z: pwm(m.chan3_raw).map_or(i16::MAX, |p| (p - 1000).clamp(0, 1000) as i16),
+            r: stick(m.chan4_raw, 1),
+            target: m.target_system,
+            ..Default::default()
+        })
+    }
+
     fn centred(&self) -> bool {
         *self == Sticks::default()
     }
@@ -1086,6 +1103,13 @@ impl Sim {
             }
             MavMessage::MANUAL_CONTROL(m) if self.mine(m.target) => {
                 self.sticks = Some((Sticks::from(m), self.ticks));
+                Vec::new()
+            }
+            MavMessage::RC_CHANNELS_OVERRIDE(m)
+                if self.mine(m.target_system)
+                    && [0, crate::hub::COMP_AUTOPILOT1].contains(&m.target_component) =>
+            {
+                self.sticks = Some((Sticks::from_override(m), self.ticks));
                 Vec::new()
             }
             MavMessage::COMMAND_LONG(m) if self.mine(m.target_system) => {
@@ -4171,6 +4195,24 @@ mod tests {
         });
     }
 
+    fn radio(sim: &mut Sim, [roll, pitch, throttle, yaw]: [u16; 4], component: u8, seconds: u64) {
+        (0..seconds * TICKS_PER_SECOND).for_each(|n| {
+            sim.receive(
+                gcs(),
+                &MavMessage::RC_CHANNELS_OVERRIDE(RC_CHANNELS_OVERRIDE_DATA {
+                    chan1_raw: roll,
+                    chan2_raw: pitch,
+                    chan3_raw: throttle,
+                    chan4_raw: yaw,
+                    target_system: 128,
+                    target_component: component,
+                    ..Default::default()
+                }),
+            );
+            sim.tick(n * 100);
+        });
+    }
+
     fn metres_to(sim: &Sim, lat: f64, lon: f64) -> f64 {
         let (north, east) = sim.offset(Target::at(lat, lon, sim.alt));
         north.hypot(east)
@@ -4380,6 +4422,36 @@ mod tests {
             sim.armed
                 && (sim.alt - 8.0).abs() < 0.1
                 && metres_to(&sim, lat, lon) < sim.tuning.arrive
+        );
+    }
+
+    #[test]
+    fn a_radio_on_usb_flies_a_copter_in_loiter_through_rc_overrides_on_channels_1_to_4() {
+        let mut sim = Sim::new(options(Vehicle::Copter), 128, None);
+        mode(&mut sim, 5);
+        arm(&mut sim);
+        radio(&mut sim, [1500, 1500, 2000, 1500], 1, 2);
+        assert!(
+            (sim.alt - 2.0 * sim.tuning.pilot_climb).abs() < 0.1,
+            "full throttle on CH3 climbs like a full MANUAL_CONTROL z: {}",
+            sim.alt
+        );
+        radio(&mut sim, [1500, 1000, 1500, 1500], 1, 3);
+        let (forward, right) = world_to_body(sim.velocity, sim.heading);
+        assert!(
+            forward > 5.0 && right.abs() < 0.1,
+            "CH2 low is pitch forward, as ArduPilot reads it: {forward} forward, {right} right"
+        );
+        let held = sim.alt;
+        radio(
+            &mut sim,
+            [1500, 1500, 2000, 1500],
+            crate::joystickhost::STANDBY_COMPONENT,
+            2,
+        );
+        assert!(
+            (sim.alt - held).abs() < 0.1,
+            "an override for another component (4G standby's aircraft computer) is not the autopilot's"
         );
     }
 
