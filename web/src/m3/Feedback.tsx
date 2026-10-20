@@ -7,7 +7,7 @@ type Shown = { message: string; actionLabel: string | null; settle: (result: Sna
 
 export type SnackbarHostState = {
   current: Shown | null;
-  showSnackbar: (message: string, actionLabel?: string | null, duration?: SnackbarDuration) => Promise<SnackbarResult>;
+  showSnackbar: (message: string, actionLabel?: string | null, duration?: SnackbarDuration, signal?: AbortSignal) => Promise<SnackbarResult>;
 };
 
 const DURATION_MS: Record<SnackbarDuration, number | null> = { Short: 4000, Long: 10000, Indefinite: null };
@@ -16,7 +16,8 @@ export const useSnackbarHostState = (): SnackbarHostState => {
   const [current, setCurrent] = useState<Shown | null>(null);
   const queue = useRef<Promise<unknown>>(Promise.resolve());
   return useMemo(() => {
-    const display = (message: string, actionLabel: string | null, duration: SnackbarDuration) => new Promise<SnackbarResult>((resolve) => {
+    const display = (message: string, actionLabel: string | null, duration: SnackbarDuration, signal: AbortSignal | undefined) => new Promise<SnackbarResult>((resolve) => {
+      if (signal?.aborted === true) return resolve('Dismissed');
       const id = Date.now() + Math.random();
       const settled = { done: false };
       const settle = (result: SnackbarResult) => {
@@ -28,11 +29,12 @@ export const useSnackbarHostState = (): SnackbarHostState => {
       setCurrent({ message, actionLabel, settle, id });
       const timeout = DURATION_MS[duration];
       if (timeout !== null) setTimeout(() => settle('Dismissed'), timeout);
+      signal?.addEventListener('abort', () => settle('Dismissed'), { once: true });
     });
     return {
       current,
-      showSnackbar: (message, actionLabel = null, duration = actionLabel ? 'Indefinite' : 'Short') => {
-        const shown = queue.current.then(() => display(message, actionLabel, duration));
+      showSnackbar: (message, actionLabel = null, duration = actionLabel ? 'Indefinite' : 'Short', signal) => {
+        const shown = queue.current.then(() => display(message, actionLabel, duration, signal));
         queue.current = shown.catch(() => undefined);
         return shown;
       },

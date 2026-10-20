@@ -7,6 +7,7 @@ pub const NOTICES_CHANGED: &str = "core.notices@changed";
 pub const MESSAGE: &str = "message";
 pub const VEHICLE_ERROR: &str = "vehicleError";
 pub const BRIEF: &str = "brief";
+pub const PAYLOAD: &str = "payload";
 pub const REBOOT_VEHICLE_TEXT: &str = "Reboot vehicle for changes to take effect.";
 pub const RESTART_APPLICATION_TEXT: &str = "Restart application for changes to take effect.";
 const REBOOT_DEBOUNCE_MS: i64 = 2 * 60 * 1000;
@@ -39,6 +40,13 @@ pub const KINDS: [&str; 3] = ["message", "vehicleError", "navigation"];
 const MAX_NOTICES: usize = 64;
 const KEEP_OLDEST: usize = 8;
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Lane {
+    Ordinary,
+    Brief,
+    Payload,
+}
+
 #[derive(Debug, Clone, PartialEq)]
 struct Notice {
     id: i64,
@@ -48,7 +56,7 @@ struct Notice {
     repeated: i64,
     at: i64,
     last_at: i64,
-    brief: bool,
+    lane: Lane,
 }
 
 #[derive(Debug)]
@@ -70,7 +78,7 @@ impl Default for Board {
 
 impl Board {
     pub fn post(&mut self, kind: &str, title: &str, text: &str, now_ms: i64) -> bool {
-        self.post_with(kind, title, text, false, now_ms)
+        self.post_with(kind, title, text, Lane::Ordinary, now_ms)
     }
 
     pub fn post_with(
@@ -78,17 +86,15 @@ impl Board {
         kind: &str,
         title: &str,
         text: &str,
-        brief: bool,
+        lane: Lane,
         now_ms: i64,
     ) -> bool {
         if !KINDS.contains(&kind) {
             return false;
         }
-        if let Some(newest) = self
-            .notices
-            .last_mut()
-            .filter(|n| n.kind == kind && n.title == title && n.text == text)
-        {
+        if let Some(newest) = self.notices.last_mut().filter(|n| {
+            lane != Lane::Payload && n.kind == kind && n.title == title && n.text == text
+        }) {
             newest.repeated += 1;
             newest.last_at = now_ms;
             return true;
@@ -105,7 +111,7 @@ impl Board {
             repeated: 0,
             at: now_ms,
             last_at: now_ms,
-            brief,
+            lane,
         });
         self.next_id += 1;
         true
@@ -127,7 +133,7 @@ impl Board {
         let notices: Vec<Value> = self
             .notices
             .iter()
-            .map(|n| json!({ "id": n.id, "kind": n.kind, "repeated": n.repeated, "title": n.title, "text": n.text, "at": n.at, "lastAt": n.last_at, "brief": n.brief }))
+            .map(|n| json!({ "id": n.id, "kind": n.kind, "repeated": n.repeated, "title": n.title, "text": n.text, "at": n.at, "lastAt": n.last_at, "brief": n.lane != Lane::Ordinary, "payload": n.lane == Lane::Payload }))
             .collect();
         json!({ "kind": "object", "notices": notices, "count": self.notices.len(), "dropped": self.dropped, "order": "oldestFirst" })
     }
@@ -162,10 +168,10 @@ pub fn post_from_vehicle(kind: &str, text: &str) -> bool {
     let title = application_name();
     !crate::qthost::present()
         && !silenced(kind, text)
-        && if kind == BRIEF {
-            post_with(MESSAGE, &title, text, true)
-        } else {
-            post(kind, &title, text)
+        && match kind {
+            BRIEF => post_with(MESSAGE, &title, text, Lane::Brief),
+            PAYLOAD => post_with(MESSAGE, &title, text, Lane::Payload),
+            _ => post(kind, &title, text),
         }
 }
 
@@ -182,15 +188,15 @@ pub fn take_changed() -> bool {
 }
 
 pub fn post(kind: &str, title: &str, text: &str) -> bool {
-    post_with(kind, title, text, false)
+    post_with(kind, title, text, Lane::Ordinary)
 }
 
-fn post_with(kind: &str, title: &str, text: &str, brief: bool) -> bool {
+fn post_with(kind: &str, title: &str, text: &str, lane: Lane) -> bool {
     let posted = lock().post_with(
         kind,
         title,
         text,
-        brief,
+        lane,
         chrono::Utc::now().timestamp_millis(),
     );
     if posted {
@@ -257,6 +263,23 @@ mod tests {
         assert!(
             !silenced(VEHICLE_ERROR, "Vehicle 2: PreArm: RC not calibrated"),
             "QGCApplication checks the text after Vehicle has prefixed it"
+        );
+    }
+
+    #[test]
+    fn a_payload_result_is_a_new_brief_notice_even_when_it_reads_like_the_last() {
+        let mut board = Board::default();
+        assert!(board.post_with(MESSAGE, "", "Payload dropped", Lane::Payload, 10));
+        assert!(board.post_with(MESSAGE, "", "Payload dropped", Lane::Payload, 20));
+        let listed = board.object();
+        assert_eq!(
+            (
+                listed["count"].as_i64(),
+                listed["notices"][1]["brief"].as_bool(),
+                listed["notices"][1]["payload"].as_bool()
+            ),
+            (Some(2), Some(true), Some(true)),
+            "a second drop is a second result the pilot has to see"
         );
     }
 

@@ -1,11 +1,61 @@
 package one.aircast.android.ui
 
+import androidx.compose.material3.SnackbarHostState
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.yield
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
+private suspend fun settle(left: Int = 100) {
+    if (left == 0) return
+    yield()
+    settle(left - 1)
+}
+
+private val SnackbarHostState.message: String? get() = currentSnackbarData?.visuals?.message
+
 class HostNoticesTest {
+    @Test
+    fun `the newest payload result comes apart from the queued banners, and a blank one only clears`() {
+        val batch = { payload: String -> noticeBatch(JSONObject("""{"unseen":[{"id":3,"kind":"message"}],"banners":[],"payload":$payload}""")) }
+        assertEquals("Bay 2 dropped", batch("\"Bay 2 dropped\"")?.payload)
+        assertEquals("", batch("\"\"")?.payload)
+        assertNull(batch("null")?.payload)
+    }
+
+    @Test
+    fun `a newer payload result takes the snackbar at once, and a blank one only clears it`() = runBlocking<Unit> {
+        val host = SnackbarHostState()
+        val show: suspend (String) -> Unit = { host.showSnackbar(it) }
+        val first = showLatest(this, null, "Bay 1 dropped", show)
+        settle()
+        assertEquals("Bay 1 dropped", host.message)
+        val second = showLatest(this, first, "Bay 2 dropped", show)
+        settle()
+        assertEquals("Bay 2 dropped", host.message)
+        assertNull(showLatest(this, second, "", show))
+        settle()
+        assertNull(host.message)
+    }
+
+    @Test
+    fun `a payload result still waiting behind another notice is dropped for a newer one, and the other keeps its turn`() = runBlocking<Unit> {
+        val host = SnackbarHostState()
+        val show: suspend (String) -> Unit = { host.showSnackbar(it) }
+        launch { host.showSnackbar("Sticks took over: Loiter") }
+        settle()
+        val second = showLatest(this, showLatest(this, null, "Bay 1 dropped", show), "Bay 2 dropped", show)
+        settle()
+        assertEquals("Sticks took over: Loiter", host.message)
+        host.currentSnackbarData?.dismiss()
+        settle()
+        assertEquals("Bay 2 dropped", host.message)
+        second?.cancel()
+    }
+
     private fun view(unseen: String, destination: String? = null, banners: String = "") = JSONObject(
         """{"unseen":[$unseen],"destination":${destination?.let { "\"$it\"" } ?: "null"},"banners":[$banners]}""",
     )

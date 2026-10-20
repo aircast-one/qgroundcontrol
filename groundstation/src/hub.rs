@@ -3731,7 +3731,8 @@ impl Vehicle {
             None => self.empty_bays.clone(),
         };
         if let Some(text) = answered.notice() {
-            self.pending_notices.push((crate::noticeboard::BRIEF, text));
+            self.pending_notices
+                .push((crate::noticeboard::PAYLOAD, text));
         }
     }
 
@@ -10148,7 +10149,7 @@ mod tests {
             hub.active()
                 .unwrap()
                 .pending_notices
-                .contains(&(crate::noticeboard::BRIEF, "Payload dropped".to_string()))
+                .contains(&(crate::noticeboard::PAYLOAD, "Payload dropped".to_string()))
         );
         hub.guided(
             None,
@@ -10165,7 +10166,7 @@ mod tests {
         );
         assert_eq!(outcome(&hub), Some(crate::guided::GripperOutcome::Refused));
         assert!(hub.active().unwrap().pending_notices.contains(&(
-            crate::noticeboard::BRIEF,
+            crate::noticeboard::PAYLOAD,
             "Grab refused by the flight controller".to_string()
         )));
         hub.guided(
@@ -10182,7 +10183,7 @@ mod tests {
         );
         let notices = &hub.active().unwrap().pending_notices;
         assert!(notices.contains(&(
-            crate::noticeboard::BRIEF,
+            crate::noticeboard::PAYLOAD,
             "Drop not confirmed. It may have dropped, check before dropping again.".to_string()
         )));
         assert!(
@@ -10238,7 +10239,7 @@ mod tests {
             hub.active()
                 .unwrap()
                 .pending_notices
-                .contains(&(crate::noticeboard::BRIEF, "Bay 2 dropped".to_string()))
+                .contains(&(crate::noticeboard::PAYLOAD, "Bay 2 dropped".to_string()))
         );
         hub.guided(
             None,
@@ -10700,7 +10701,8 @@ mod tests {
                 0,
             );
             assert!(
-                notices(&hub).contains(&(crate::noticeboard::BRIEF, format!("Bay {bay} dropped")))
+                notices(&hub)
+                    .contains(&(crate::noticeboard::PAYLOAD, format!("Bay {bay} dropped")))
             );
         });
         assert_eq!(empty(&hub), [1, 2, 3, 4]);

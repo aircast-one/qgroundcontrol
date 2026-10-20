@@ -9,6 +9,7 @@ struct NoticeBatch: Equatable {
     var unknownKinds: [String]
     var errorBanners: [String]
     var dialogs: [AppMessage] = []
+    var payload: String? = nil
 }
 
 struct AppMessage: Equatable, Hashable, Identifiable {
@@ -46,8 +47,15 @@ func noticeBatch(_ view: JSON?) -> NoticeBatch? {
         dialogs: view["dialogs"].objects.map { dialog in
             let action = dialog["action"].string
             return AppMessage(title: dialog["title"].string, text: dialog["text"].string, action: action.isBlank ? nil : action)
-        }
+        },
+        payload: view["payload"].textOrNil
     )
+}
+
+@MainActor
+func showLatest(_ showing: Task<Void, Never>?, _ text: String, show: @escaping @MainActor (String) async -> Void) -> Task<Void, Never>? {
+    showing?.cancel()
+    return text.isBlank ? nil : Task { await show(text) }
 }
 
 let REPEAT_QUIET_MS: Int64 = 30_000

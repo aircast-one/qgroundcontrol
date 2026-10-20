@@ -4,6 +4,9 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.launch
 import org.json.JSONObject
 import one.aircast.android.bridge.Qgc
 import one.aircast.android.bridge.offMainDetached
@@ -18,6 +21,7 @@ internal data class NoticeBatch(
     val unknownKinds: List<String>,
     val errorBanners: List<String>,
     val dialogs: List<AppMessage> = emptyList(),
+    val payload: String? = null,
 )
 
 internal data class AppMessage(val title: String, val text: String, val action: String? = null)
@@ -39,7 +43,13 @@ internal fun noticeBatch(view: JSONObject?): NoticeBatch? {
         unknownKinds = notices.filter { !it.optBoolean("known", true) }.map { it.optText("kind") },
         errorBanners = notices.filter { it.optText("kind") == VEHICLE_ERROR_KIND }.map { it.optText("banner") }.filter { it.isNotBlank() }.distinct(),
         dialogs = view.optJSONArray("dialogs")?.let { listed -> (0 until listed.length()).mapNotNull { listed.optJSONObject(it) }.map { AppMessage(it.optText("title"), it.optText("text"), it.optText("action").ifBlank { null }) } }.orEmpty(),
+        payload = if (view.isNull("payload")) null else view.optString("payload"),
     )
+}
+
+internal fun showLatest(scope: CoroutineScope, showing: Job?, text: String, show: suspend (String) -> Unit): Job? {
+    showing?.cancel()
+    return text.takeIf { it.isNotBlank() }?.let { scope.launch { show(it) } }
 }
 
 const val REPEAT_QUIET_MS = 30_000L

@@ -353,6 +353,7 @@ fun AircastShell(hostView: android.view.View?) {
     val noticeScope = rememberCoroutineScope()
     var shownAt by remember { mutableStateOf(emptyMap<String, Long>()) }
     var appMessages by remember { mutableStateOf(emptyList<one.aircast.android.ui.AppMessage>()) }
+    var payloadShowing by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
     val refusalScope = rememberCoroutineScope()
     val refuseNavigation: () -> Boolean = {
@@ -375,6 +376,9 @@ fun AircastShell(hostView: android.view.View?) {
         val banners = one.aircast.android.ui.quietBanners(batch.banners, shownAt, now)
         shownAt = shownAt + banners.associateWith { now }
         appMessages = (appMessages + batch.dialogs).distinct()
+        batch.payload?.let { payload ->
+            payloadShowing = one.aircast.android.ui.showLatest(noticeScope, payloadShowing, payload) { snackbars.showSnackbar(it) }
+        }
         noticeScope.launch {
             withContext(Dispatchers.Default) {
                 AppCommands.acknowledgeNoticesThrough(batch.through)

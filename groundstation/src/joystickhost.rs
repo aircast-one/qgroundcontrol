@@ -495,6 +495,13 @@ fn stops_rates(action: &Value) -> bool {
     action.get("op").and_then(Value::as_str) == Some("rates") && still("pitch") && still("yaw")
 }
 
+fn refusal_kind(action: &Value) -> &'static str {
+    match action.get("action").and_then(Value::as_str) {
+        Some("gripper") => crate::noticeboard::PAYLOAD,
+        _ => crate::noticeboard::BRIEF,
+    }
+}
+
 fn guided(id: u8, action: Value) {
     let sent = crate::hub::lock().guided(Some(id), &action, crate::hub::now_ms());
     match sent {
@@ -509,7 +516,7 @@ fn guided(id: u8, action: Value) {
         Err(reason) if reason == crate::gimbal::REASON_OTHERS_HAVE_CONTROL => {}
         Err(reason) => {
             log::warn!("joystick action {action} was refused: {reason}");
-            crate::noticeboard::post_from_vehicle(crate::noticeboard::BRIEF, &reason);
+            crate::noticeboard::post_from_vehicle(refusal_kind(&action), &reason);
         }
     }
 }
@@ -1571,6 +1578,18 @@ pub fn joystick_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_refused_gripper_button_replaces_the_payload_notice_and_other_refusals_queue() {
+        assert_eq!(
+            refusal_kind(&json!({ "action": "gripper", "gripAction": 0 })),
+            crate::noticeboard::PAYLOAD
+        );
+        assert_eq!(
+            refusal_kind(&json!({ "action": "rtl" })),
+            crate::noticeboard::BRIEF
+        );
+    }
 
     #[test]
     fn the_joystick_lets_go_of_a_vehicle_it_leaves_but_not_of_one_whose_link_fails_over() {

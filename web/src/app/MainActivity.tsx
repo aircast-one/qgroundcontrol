@@ -45,7 +45,7 @@ import { FleetCard, FlyScreen, FlyTabMenu, FlyView, MAP_LAYERS_CLEARANCE, type M
 import { FLY_STATE, VEHICLE_FLIGHT_DISTANCE, disarmNotice, flownDistanceText, flyState, landedSummary, useHasVehicle } from '@/ui/FlyState';
 import { FollowMeReadout } from '@/ui/FollowMeReadout';
 import { GimbalTakeControlDialog } from '@/ui/GimbalIndicator';
-import { type AppMessage, AppMessageDialog, type NoticeBatch, RESET_ERROR_LEVEL_MESSAGES, criticalBanner, hostNoticesPath, noticeBatch, quietBanners } from '@/ui/HostNotices';
+import { type AppMessage, AppMessageDialog, type NoticeBatch, RESET_ERROR_LEVEL_MESSAGES, criticalBanner, hostNoticesPath, noticeBatch, quietBanners, showLatest } from '@/ui/HostNotices';
 import { LogReplayBar } from '@/ui/LogReplayBar';
 import { MapClickMenu, MapHoldHint, type MapPoint, RoiSheet, SetWaypointSheet, mapHoldHintText } from '@/ui/MapClickMenu';
 import { useDesktopLayout } from '@/ui/DesktopLayout';
@@ -381,6 +381,7 @@ export const AircastShell = () => {
   const acknowledged = useRef(-1);
   const notices = useQgcPath(hostNoticesPath(acknowledgedThrough));
   const shownAt = useRef<ReadonlyMap<string, number>>(new Map());
+  const payloadShowing = useRef<AbortController | null>(null);
   const [appMessages, setAppMessages] = useState<readonly AppMessage[]>([]);
 
   const refuseNavigation = (): boolean => {
@@ -419,6 +420,7 @@ export const AircastShell = () => {
     const banners = quietBanners(batch.banners, shownAt.current, now);
     shownAt.current = new Map([...shownAt.current, ...banners.map((it): [string, number] => [it, now])]);
     setAppMessages((messages) => distinctMessages([...messages, ...batch.dialogs]));
+    if (batch.payload !== null) payloadShowing.current = showLatest(snackbars, payloadShowing.current, batch.payload);
     void announce(batch, banners);
   }, [notices]);
 

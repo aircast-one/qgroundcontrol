@@ -675,7 +675,12 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
             crate::guided::invoke_valued(backend, crate::guided::Valued::Pause, path, args)
         }
         GRIPPER => {
-            crate::guided::invoke_valued(backend, crate::guided::Valued::Gripper, path, args)
+            let answer =
+                crate::guided::invoke_valued(backend, crate::guided::Valued::Gripper, path, args);
+            if answer["ok"] != true {
+                crate::noticeboard::post_from_vehicle(crate::noticeboard::PAYLOAD, "");
+            }
+            answer
         }
         FIX_PAYLOAD => crate::guided::fix_payload(backend, path, args),
         RESUME_MISSION => {

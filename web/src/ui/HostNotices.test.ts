@@ -1,6 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { parseJson } from '@/bridge/Json';
-import { ADDITIONAL_ERRORS, AppMessage, REBOOT_VEHICLE_ACTION, REPEAT_QUIET_MS, criticalBanner, hostNoticesPath, noticeBatch, quietBanners } from './HostNotices';
+import type { SnackbarDuration, SnackbarResult } from '@/m3';
+import { ADDITIONAL_ERRORS, AppMessage, REBOOT_VEHICLE_ACTION, REPEAT_QUIET_MS, criticalBanner, hostNoticesPath, noticeBatch, quietBanners, showLatest } from './HostNotices';
 
 const view = (unseen: string, destination: string | null = null, banners = '') =>
   parseJson(`{"unseen":[${unseen}],"destination":${destination === null ? 'null' : `"${destination}"`},"banners":[${banners}]}`);
@@ -32,6 +33,13 @@ describe('HostNoticesTest', () => {
     expect(batch?.dialogs).toEqual([AppMessage({ title: 'Aircast QGC', text: 'Parameters missing' }), AppMessage({ title: 'Aircast QGC', text: 'Reboot', action: REBOOT_VEHICLE_ACTION })]);
   });
 
+  it('the newest payload result comes apart from the queued banners, and a blank one only clears', () => {
+    const batch = (payload: string) => noticeBatch(parseJson(`{"unseen":[{"id":3,"kind":"message"}],"banners":[],"payload":${payload}}`));
+    expect(batch('"Bay 2 dropped"')?.payload).toBe('Bay 2 dropped');
+    expect(batch('""')?.payload).toBe('');
+    expect(batch('null')?.payload).toBeNull();
+  });
+
   it('a second error in one batch is still critical and says more arrived', () => {
     expect(criticalBanner([])).toBeNull();
     expect(criticalBanner(['EKF failure'])).toBe('EKF failure');
@@ -58,5 +66,28 @@ describe('BannersToShowTest', () => {
 
   it('one message being held back does not hold back a different one', () => {
     expect(quietBanners([missing, ekf], new Map([[missing, now - 1_000]]), now)).toEqual([ekf]);
+  });
+});
+
+describe('PayloadNoticeTest', () => {
+  const host = () => ({ showSnackbar: vi.fn((_message: string, _actionLabel?: string | null, _duration?: SnackbarDuration, _signal?: AbortSignal) => Promise.resolve<SnackbarResult>('Dismissed')) });
+
+  it('a newer payload result withdraws the one showing or queued and is shown in its place', () => {
+    const snackbars = host();
+    const first = showLatest(snackbars, null, 'Bay 1 dropped');
+    const second = showLatest(snackbars, first, 'Bay 2 dropped');
+    expect([first.signal.aborted, second.signal.aborted]).toEqual([true, false]);
+    expect(snackbars.showSnackbar.mock.calls.map(([message, , , signal]) => [message, signal === second.signal])).toEqual([
+      ['Bay 1 dropped', false],
+      ['Bay 2 dropped', true],
+    ]);
+  });
+
+  it('a blank payload notice clears the one showing and shows nothing', () => {
+    const snackbars = host();
+    const dropped = showLatest(snackbars, null, 'Payload dropped');
+    showLatest(snackbars, dropped, '');
+    expect(dropped.signal.aborted).toBe(true);
+    expect(snackbars.showSnackbar).toHaveBeenCalledTimes(1);
   });
 });

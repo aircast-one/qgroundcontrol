@@ -1,6 +1,6 @@
-import { type Json, jsonObjects, jsonStrings, optBoolean, optInt, optJSONArray, optText } from '@/bridge/Json';
+import { type Json, isNull, jsonObjects, jsonStrings, optBoolean, optInt, optJSONArray, optText } from '@/bridge/Json';
 import { Qgc } from '@/bridge/Qgc';
-import { AlertDialog, TextButton } from '@/m3';
+import { AlertDialog, type SnackbarHostState, TextButton } from '@/m3';
 import { REBOOT_VEHICLE } from '@/ui/CalibrationView';
 
 export const hostNoticesPath = (acknowledgedThrough: number): string => `view.hostNotices(${acknowledgedThrough})`;
@@ -16,9 +16,10 @@ export type NoticeBatch = {
   unknownKinds: readonly string[];
   errorBanners: readonly string[];
   dialogs: readonly AppMessage[];
+  payload: string | null;
 };
 
-export const NoticeBatch = (fields: Omit<NoticeBatch, 'dialogs'> & { dialogs?: readonly AppMessage[] }): NoticeBatch => ({ dialogs: [], ...fields });
+export const NoticeBatch = (fields: Omit<NoticeBatch, 'dialogs' | 'payload'> & { dialogs?: readonly AppMessage[]; payload?: string | null }): NoticeBatch => ({ dialogs: [], payload: null, ...fields });
 
 export const REBOOT_VEHICLE_ACTION = 'rebootVehicle';
 export const OPEN_SETUP_ACTION = 'openSetup';
@@ -41,7 +42,15 @@ export const noticeBatch = (view: Json | null): NoticeBatch | null => {
     unknownKinds: notices.filter((it) => !optBoolean(it, 'known', true)).map((it) => optText(it, 'kind')),
     errorBanners: distinct(notices.filter((it) => optText(it, 'kind') === VEHICLE_ERROR_KIND).map((it) => optText(it, 'banner')).filter((it) => it.trim() !== '')),
     dialogs: jsonObjects(optJSONArray(view, 'dialogs')).map((it) => AppMessage({ title: optText(it, 'title'), text: optText(it, 'text'), action: blankToNull(optText(it, 'action')) })),
+    payload: isNull(view, 'payload') ? null : optText(view, 'payload'),
   });
+};
+
+export const showLatest = (host: Pick<SnackbarHostState, 'showSnackbar'>, showing: AbortController | null, text: string): AbortController => {
+  showing?.abort();
+  const latest = new AbortController();
+  if (text.trim() !== '') void host.showSnackbar(text, null, 'Short', latest.signal);
+  return latest;
 };
 
 export const REPEAT_QUIET_MS = 30_000;

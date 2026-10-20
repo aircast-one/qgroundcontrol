@@ -40,6 +40,7 @@ pub fn host_notices_view(backend: &dyn Backend, args: &[String]) -> Value {
                     Some(json!({
                         "id": id,
                         "brief": n.get("brief").and_then(Value::as_bool).unwrap_or(false),
+                        "payload": n.get("payload").and_then(Value::as_bool).unwrap_or(false),
                         "kind": kind,
                         "known": crate::contract::NOTICE_KINDS.contains(&kind.as_str()),
                         "title": text("title"),
@@ -64,6 +65,7 @@ pub fn host_notices_view(backend: &dyn Backend, args: &[String]) -> Value {
         .iter()
         .filter(|n| {
             n["kind"] != NAVIGATION_NOTICE
+                && n["payload"] != true
                 && (n["kind"] != crate::noticeboard::MESSAGE || n["brief"] == true)
         })
         .filter_map(|n| n["banner"].as_str())
@@ -77,6 +79,11 @@ pub fn host_notices_view(backend: &dyn Backend, args: &[String]) -> Value {
                     .collect()
             }
         });
+    let payload = after
+        .iter()
+        .rev()
+        .find(|n| n["payload"] == true)
+        .map(|n| n["text"].clone());
     let dialogs: Vec<Value> = after
         .iter()
         .filter(|n| n["kind"] == crate::noticeboard::MESSAGE && n["brief"] != true)
@@ -103,6 +110,7 @@ pub fn host_notices_view(backend: &dyn Backend, args: &[String]) -> Value {
         "unseen": after,
         "destination": destination,
         "banners": banners,
+        "payload": payload,
         "dialogs": dialogs,
     })
 }
@@ -223,6 +231,37 @@ mod tests {
             view["dialogs"].as_array().unwrap().len(),
             1,
             "an ordinary app message stays a dialog"
+        );
+    }
+
+    #[test]
+    fn only_the_newest_payload_result_is_shown_and_a_blank_one_clears_it() {
+        let host = Host(json!({ "kind": "object", "dropped": 0, "notices": [
+            { "id": 1, "kind": "message", "title": "", "text": "Bay 1 dropped", "brief": true, "payload": true },
+            { "id": 2, "kind": "message", "title": "", "text": "Sticks took over: Loiter", "brief": true },
+            { "id": 3, "kind": "message", "title": "", "text": "Bay 2 dropped", "brief": true, "payload": true },
+            { "id": 4, "kind": "message", "title": "", "text": "", "brief": true, "payload": true },
+        ] }));
+        let view = |through: &str| host_notices_view(&host, &[through.to_string()]);
+        assert_eq!(
+            (&view("2")["payload"], &view("2")["banners"]),
+            (&json!(""), &json!([])),
+            "a refused drop leaves nothing about an earlier drop on screen"
+        );
+        assert_eq!(
+            (&view("0")["payload"], &view("0")["banners"]),
+            (&json!(""), &json!(["Sticks took over: Loiter"])),
+            "payload results are not queued with the other banners"
+        );
+        let landed = Host(json!({ "kind": "object", "dropped": 0, "notices": [
+            { "id": 1, "kind": "message", "title": "", "text": "Bay 1 dropped", "brief": true, "payload": true },
+            { "id": 2, "kind": "message", "title": "", "text": "Bay 2 dropped", "brief": true, "payload": true },
+        ] }));
+        assert_eq!(host_notices_view(&landed, &[])["payload"], "Bay 2 dropped");
+        assert_eq!(
+            view("4")["payload"],
+            Value::Null,
+            "nothing new for the payload"
         );
     }
 

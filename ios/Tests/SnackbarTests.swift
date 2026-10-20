@@ -64,6 +64,32 @@ final class SnackbarTests: XCTestCase {
         _ = await next.value
     }
 
+    func testANewerPayloadResultTakesTheSnackbarAtOnceAndABlankOneOnlyClearsIt() async throws {
+        let host = SnackbarHostState()
+        let show: @MainActor (String) async -> Void = { await host.showSnackbar($0) }
+        let first = showLatest(nil, "Bay 1 dropped", show: show)
+        _ = try await shown(host, "Bay 1 dropped")
+        let second = showLatest(first, "Bay 2 dropped", show: show)
+        _ = try await shown(host, "Bay 2 dropped")
+        XCTAssertNil(showLatest(second, "", show: show))
+        await settle { host.currentSnackbarData == nil }
+        XCTAssertNil(host.currentSnackbarData)
+    }
+
+    func testAPayloadResultStillWaitingBehindAnotherNoticeIsDroppedForANewerOne() async throws {
+        let host = SnackbarHostState()
+        let show: @MainActor (String) async -> Void = { await host.showSnackbar($0) }
+        let other = Task { await host.showSnackbar("Sticks took over: Loiter", duration: .Indefinite) }
+        let otherShown = try await shown(host, "Sticks took over: Loiter")
+        let second = showLatest(showLatest(nil, "Bay 1 dropped", show: show), "Bay 2 dropped", show: show)
+        await settle { false }
+        XCTAssertTrue(host.currentSnackbarData === otherShown)
+        otherShown.dismiss()
+        _ = await other.value
+        _ = try await shown(host, "Bay 2 dropped")
+        second?.cancel()
+    }
+
     func testCancellingAQueuedCallerDropsItWithoutHoldingTheHost() async throws {
         let host = SnackbarHostState()
         let current = Task { await host.showSnackbar("current", duration: .Indefinite) }

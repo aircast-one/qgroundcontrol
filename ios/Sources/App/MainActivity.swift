@@ -131,6 +131,7 @@ struct AircastShell: View {
     @State private var alerts = SnackbarHostState()
     @State private var acknowledgedThrough: Int64 = -1
     @State private var shownAt: [String: Int64] = [:]
+    @State private var payloadShowing: Task<Void, Never>?
     @State private var wasArmed = false
     @State private var flewWhileArmed = false
     @State private var armedBattery: Int?
@@ -431,6 +432,9 @@ struct AircastShell: View {
         let ordinary = banners.filter { !batch.errorBanners.contains($0) }
         let alertHost = alerts
         let bannerHost = snackbars
+        if let payload = batch.payload {
+            payloadShowing = showLatest(payloadShowing, payload) { await bannerHost.showSnackbar($0) }
+        }
         Task {
             _ = await offMain { AppCommands.acknowledgeNoticesThrough(through) }
             if let critical {
