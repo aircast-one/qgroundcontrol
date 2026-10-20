@@ -49,3 +49,12 @@ internal fun OpenOnRequest(name: String, open: () -> Unit) {
         }
     }
 }
+
+@androidx.compose.runtime.Composable
+internal fun HoldsDecision() {
+    val flyScreen = LocalFlyScreenState.current
+    androidx.compose.runtime.DisposableEffect(flyScreen) {
+        flyScreen.guidedPanels++
+        onDispose { flyScreen.guidedPanels-- }
+    }
+}

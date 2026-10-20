@@ -535,6 +535,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                     shape = MaterialTheme.shapes.extraLarge,
                     color = MaterialTheme.colorScheme.surfaceContainerLow,
                 ) {
+                    HoldsDecision()
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         refusal?.let { message -> RefusalLine(message) { refusal = null } }
                         if (confirming != null) {

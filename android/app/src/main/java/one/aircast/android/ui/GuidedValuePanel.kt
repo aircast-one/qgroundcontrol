@@ -29,7 +29,6 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -60,7 +59,6 @@ internal fun GuidedValuePanel(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
-    val flyScreen = LocalFlyScreenState.current
     val portrait = flyIsPortrait()
     BoxWithConstraints(modifier.fillMaxWidth()) {
     CompositionLocalProvider(LocalGuidedCompact provides guidedCompact(portrait, maxHeight)) {
@@ -69,10 +67,7 @@ internal fun GuidedValuePanel(
         color = MaterialTheme.colorScheme.surfaceContainerLow,
         shape = MaterialTheme.shapes.extraLarge,
     ) {
-        DisposableEffect(Unit) {
-            flyScreen.guidedPanels++
-            onDispose { flyScreen.guidedPanels-- }
-        }
+        HoldsDecision()
         val flyJson by one.aircast.android.bridge.qgcPath(FLY_STATE)
         val readiness = remember(flyJson) { guidedReadiness(flyState(flyJson)) }
         val vehiclesJson by one.aircast.android.bridge.qgcPath(one.aircast.map.VEHICLES_VIEW)
