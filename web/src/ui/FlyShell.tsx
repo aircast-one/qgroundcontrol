@@ -580,7 +580,7 @@ export const FleetCard = () => {
   const deciding = useValue(flyScreen.guidedPanels) > 0;
   const screen = useScreenSize();
   const backdrop = useOsdBackdrop(md('surfaceContainer'));
-  if (screen.width < FLEET_CARD_MIN_SCREEN_DP || deciding) return null;
+  if (Math.min(screen.width, screen.height) < FLEET_CARD_MIN_SCREEN_DP || deciding) return null;
   return (
     <Surface shape="large" color={backdrop} contentColor={md('onSurface')} className="overflow-hidden" style={{ maxWidth: FLEET_CARD_MAX_WIDTH, maxHeight: FLEET_CARD_MAX_HEIGHT }}>
       <FleetPanel className="max-h-[320px] overflow-y-auto py-2" />

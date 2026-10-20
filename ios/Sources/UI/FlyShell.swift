@@ -520,7 +520,7 @@ struct FleetCard: View {
     @State private var top: CGFloat = 0
 
     var body: some View {
-        if root.width >= FLEET_CARD_MIN_SCREEN, !flyScreen.guidedPanelOpen,
+        if min(root.width, root.height) >= FLEET_CARD_MIN_SCREEN, !flyScreen.guidedPanelOpen,
            fleetPanelShown(vehicleChoices(vehiclesJson).choices.count, multiVehiclePanelEnabled(panelJson)) {
             ScrollView {
                 FleetPanel()
