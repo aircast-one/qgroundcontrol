@@ -11,6 +11,8 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace AircastQGC.Controls;
 
+internal sealed record BlockingCheck(VehicleMessage Message, string Description);
+
 internal static class VehicleMessageRules
 {
     internal const string WarningsPath = "view.warnings";
@@ -28,19 +30,18 @@ internal static class VehicleMessageRules
             ? worst
             : $"{shown.Count} message{(shown.Count == 1 ? "" : "s")} from the vehicle";
 
-    internal static IReadOnlyList<VehicleMessage> Blocking(JsonObject warnings)
+    internal static IReadOnlyList<BlockingCheck> Blocking(JsonObject warnings)
     {
         var checks = MapUiJson.Objects(warnings["armingChecks"])
             .Where(check => MapUiJson.Text(check["message"]).Trim().Length > 0)
-            .Select(check => new VehicleMessage("",
-                MapUiJson.Text(check["severity"]) == "error" ? "error" : "warning",
-                string.Join("\n", new[] { MapUiJson.Text(check["message"]), ActuatorFacts.Plain(MapUiJson.Text(check["description"])).Trim() }
-                    .Where(part => part.Length > 0))))
+            .Select(check => new BlockingCheck(
+                new VehicleMessage("", MapUiJson.Text(check["severity"]) == "error" ? "error" : "warning", MapUiJson.Text(check["message"])),
+                MapUiJson.Text(check["description"]).Trim()))
             .ToList();
         return checks.Count > 0
             ? checks
             : MapUiJson.Text(warnings["armingBlocker"]).Trim() is { Length: > 0 } blocker
-                ? [new VehicleMessage("", "error", blocker)]
+                ? [new BlockingCheck(new VehicleMessage("", "error", blocker), "")]
                 : [];
     }
 }
@@ -56,6 +57,7 @@ public sealed class VehicleMessageBanner : UserControl
     private ItemsControl? _sheetLines;
     private TextBlock? _sheetSummary;
     private JsonObject _warnings = new();
+    private string? _editing;
 
     public VehicleMessageBanner()
     {
@@ -156,7 +158,19 @@ public sealed class VehicleMessageBanner : UserControl
         _sheet = null;
         _sheetLines = null;
         _sheetSummary = null;
+        if (_editing is not { } name) return;
+        _editing = null;
+        ParameterEditor.Show(root, name, false, OpenSheet);
     }
+
+    private void EditParameter(string name)
+    {
+        _editing = name;
+        _sheet?.Hide();
+    }
+
+    private UIElement CheckLine(BlockingCheck check) =>
+        MessagesTool.Line(check.Message, check.Description.Length > 0 ? ParameterLinks.Text(check.Description, EditParameter) : new Border());
 
     private void RenderSheet()
     {
@@ -167,6 +181,6 @@ public sealed class VehicleMessageBanner : UserControl
         _sheetSummary.Text = MessagesTool.Summary(lines);
         _sheetLines.Fill(lines.Count == 0 && blocking.Count == 0
             ? [Ui.Text("The vehicle has not said anything yet.", brush: "TextSecondaryBrush")]
-            : blocking.Concat(lines).Select(MessagesTool.Line));
+            : blocking.Select(CheckLine).Concat(lines.Select(MessagesTool.Line)));
     }
 }

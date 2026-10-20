@@ -14,6 +14,7 @@ public sealed partial class PipTile : UserControl
     private const string SetActiveSource = "video.setActiveVideoSource";
 
     private readonly VideoSurface _surface = new() { Channel = VideoNative.Pip };
+    private readonly SyntheticView _synthetic = new();
     private readonly TextBlock _waiting = new()
     {
         HorizontalAlignment = HorizontalAlignment.Center,
@@ -63,7 +64,7 @@ public sealed partial class PipTile : UserControl
             BorderBrush = PreflightLook.Token("CardStrokeBrush"),
             BorderThickness = new Thickness(1),
             CornerRadius = (CornerRadius)Application.Current.Resources["RadiusOverlay"],
-            Content = new Grid { Children = { _surface, _cover, pill } },
+            Content = new Grid { Children = { _surface, _synthetic, _cover, pill } },
         };
         _tile.Click += (_, _) => Swap();
         Content = _tile;
@@ -89,6 +90,9 @@ public sealed partial class PipTile : UserControl
     {
         var camera = CameraList.Parse(view)?.PipCamera;
         _slot = camera?.Slot;
+        var synthetic = camera?.Source == CameraList.SyntheticSource;
+        _synthetic.Wanted = synthetic;
+        _surface.Visibility = VideoJson.Shown(!synthetic);
         Visibility = VideoJson.Shown(camera is not null);
         Report(camera is not null);
         if (camera is null) return;

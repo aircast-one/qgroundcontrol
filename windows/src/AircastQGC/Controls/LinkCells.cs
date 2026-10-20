@@ -57,11 +57,12 @@ public sealed class SupportForwardingCell : UserControl
     private const string HostSetting = "view.control(settings.mavlinkSettings.forwardMavlinkAPMSupportHostName)";
 
     private readonly StatusPill _pill = StatusLook.Pill("Support", "");
+    private readonly Sheet _sheet;
     private string _host = "";
 
     public SupportForwardingCell()
     {
-        var sheet = new Sheet("Support forwarding",
+        _sheet = new Sheet("Support forwarding",
             () => Ui.Column([
                 StatusLook.Line("Mavlink traffic is being forwarded to a support server"),
                 StatusLook.Line($"Server name:  {_host}"),
@@ -69,10 +70,12 @@ public sealed class SupportForwardingCell : UserControl
             opened: () => _host = FormJson.Shown(Bridge.Get(HostSetting)["valueString"]));
         StatusLook.Paint(_pill, "Support", StatusTone.Good);
         _pill.Label.Foreground = Ui.Token("SuccessBrush");
-        _pill.Button.Click += (_, _) => sheet.ShowAt(_pill.Button);
+        _pill.Button.Click += (_, _) => _sheet.ShowAt(_pill.Button);
         Content = _pill.Button;
         Visibility = Visibility.Collapsed;
         VerticalAlignment = VerticalAlignment.Center;
         Live.Watch(this, LinksView, view => Visibility = Ui.Shown(MapUiJson.Flag(view["supportForwarding"])));
     }
+
+    public void ShowSheetAt(FrameworkElement anchor) => _sheet.ShowAt(anchor);
 }

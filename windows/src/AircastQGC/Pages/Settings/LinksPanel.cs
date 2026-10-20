@@ -517,9 +517,11 @@ internal static class LinkForms
 
 internal sealed class BluetoothPicker : UserControl
 {
+    private const string ScanRefused = "Bluetooth could not start scanning.";
     private readonly Action<BluetoothDevice> _picked;
     private readonly StackPanel _devices = new() { Spacing = 4 };
     private readonly TextBlock _chosen = FormLook.Caption("");
+    private readonly TextBlock _radio = FormLook.Caption("", "CriticalBrush");
     private readonly Button _scan;
     private readonly Button _stop;
     private BluetoothState _state = new(false, false, []);
@@ -528,17 +530,28 @@ internal sealed class BluetoothPicker : UserControl
     public BluetoothPicker(Action<BluetoothDevice> picked)
     {
         _picked = picked;
-        _scan = FormLook.Button("Scan", () => FormWrites.Off(() => LinkCommands.ScanBluetooth(true)));
+        _scan = FormLook.Button("Scan", Scan);
         _stop = FormLook.Button("Stop", () => FormWrites.Off(() => LinkCommands.ScanBluetooth(false)));
-        Content = FormLook.Stack(8, _chosen, FormLook.Text("Bluetooth devices", "FontSizeBody", "TextPrimaryBrush", true), _devices, FormLook.Line(8, _scan, _stop));
+        Content = FormLook.Stack(8, _chosen, FormLook.Text("Bluetooth devices", "FontSizeBody", "TextPrimaryBrush", true), _devices, _radio, FormLook.Line(8, _scan, _stop));
         Live.Poll(this, TimeSpan.FromSeconds(1), () => LinkModel.Bluetooth(Bridge.Get(LinkModel.View)), state =>
         {
-            if (state == _state) return;
+            if (Same(state, _state)) return;
             _state = state;
             Render();
         });
+        Loaded += async (_, _) => FormLook.Say(_radio, await FormWrites.Off(BluetoothHost.Unusable));
         Render();
     }
+
+    private async void Scan()
+    {
+        FormLook.Say(_radio, null);
+        var started = await FormWrites.Off(() => LinkCommands.ScanBluetooth(true));
+        FormLook.Say(_radio, started ? null : await FormWrites.Off(BluetoothHost.Unusable) ?? ScanRefused);
+    }
+
+    private static bool Same(BluetoothState a, BluetoothState b) =>
+        a.Available == b.Available && a.Scanning == b.Scanning && a.Devices.SequenceEqual(b.Devices);
 
     private void Render()
     {
@@ -550,6 +563,7 @@ internal sealed class BluetoothPicker : UserControl
             : _state.Devices.Select(device =>
             {
                 var choice = new RadioButton { Content = device.Name, IsChecked = device == _device, GroupName = "bluetooth" };
+                AutomationProperties.SetName(choice, device.Name == device.Address ? device.Name : $"{device.Name} {device.Address}");
                 choice.Checked += (_, _) =>
                 {
                     _device = device;

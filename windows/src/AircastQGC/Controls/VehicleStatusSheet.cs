@@ -5,6 +5,7 @@ using System.Text.Json.Nodes;
 using AircastQGC.Core;
 using AircastQGC.Forms;
 using AircastQGC.Pages.Analyze;
+using AircastQGC.Pages.Setup;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -34,13 +35,23 @@ internal sealed class VehicleStatusSheet
     private bool _forceOpen;
     private bool _showAllSensors;
     private bool _messagesShown;
+    private FrameworkElement? _anchor;
 
     public VehicleStatusSheet()
     {
         _sheet = new Sheet("Vehicle status", Body, Fixed, Opened, Closed, Key);
     }
 
-    public void ShowAt(FrameworkElement anchor) => _sheet.ShowAt(anchor);
+    public void ShowAt(FrameworkElement anchor)
+    {
+        _anchor = anchor;
+        _sheet.ShowAt(anchor);
+    }
+
+    private void EditParameter(string name) => Close(() =>
+    {
+        if (_anchor is { } anchor) ParameterEditor.Show(anchor.XamlRoot, name, false, () => _sheet.ShowAt(anchor));
+    });
 
     private JsonObject View(string path) => _views.TryGetValue(path, out var view) ? view : new JsonObject();
 
@@ -167,8 +178,8 @@ internal sealed class VehicleStatusSheet
                 var open = _expanded.Contains(index);
                 var body = Ui.Column(
                 [
-                    StatusLook.Line(check.Message, check.Tone),
-                    open ? StatusLook.Line(check.Description, StatusTone.Muted, small: true) : null,
+                    ParameterLinks.Fill(StatusLook.Line("", check.Tone), check.Message, EditParameter),
+                    open ? ParameterLinks.Fill(StatusLook.Line("", StatusTone.Muted, small: true), check.Description, EditParameter) : null,
                 ], 2);
                 return check.Description.Trim().Length == 0
                     ? body

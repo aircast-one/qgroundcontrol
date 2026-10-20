@@ -25,6 +25,10 @@ internal static class SettingsBodies
     private const string SetAdvancedUi = "advancedUi.set";
 
     private static readonly string[] UnitSystems = ["Metric", "Imperial", "Custom"];
+    private static readonly (string Title, string Page, string Keywords)[] HeadEditors =
+    [
+        ("On-screen RC controls", "Fly View", "on-screen onscreen rc controls remote channel override slider button switch momentary"),
+    ];
     private static readonly string[] PresetUnits = ["horizontalDistanceUnits", "verticalDistanceUnits", "areaUnits", "speedUnits", "temperatureUnits"];
 
     public static UIElement Body(SettingsEntry page, SettingsNav nav) =>
@@ -58,6 +62,7 @@ internal static class SettingsBodies
     public static UIElement Search(string query, IReadOnlyList<SettingsEntry> pages, Action<string> open)
     {
         var pageHits = pages.Where(p => p.Matches(query)).ToList();
+        var editorHits = EditorHits(query, pages);
         var pilotHits = PilotSettings.SearchHits(query);
         var searched = pages.Where(p => p.SectionCount > 0).Select(p => p.Title).ToList();
         var form = new FormView(
@@ -73,13 +78,38 @@ internal static class SettingsBodies
                 .ToList())
         {
             LoadingText = "Searching settings.",
-            Empty = () => pageHits.Count > 0 || pilotHits.Count > 0 ? new Border() : FormLook.Footnote($"No settings match “{query.Trim()}”."),
+            Empty = () => pageHits.Count > 0 || pilotHits.Count > 0 || editorHits.Count > 0 ? new Border() : FormLook.Footnote($"No settings match “{query.Trim()}”."),
         };
         return Scrolled(FormLook.Stack(0,
             pageHits.Count > 0 ? FormLook.Heading("Pages") : null,
             pageHits.Count > 0 ? FormLook.Card(pageHits.Select(p => PageRow(p, open))) : null,
             pilotHits.Count > 0 ? new PilotSettingsPanel(pilotHits, open) : null,
+            editorHits.Count > 0 ? FormLook.Heading("Editors") : null,
+            editorHits.Count > 0 ? FormLook.Card(editorHits.Select(hit => EditorRow(hit.Title, hit.Page, open))) : null,
             form));
+    }
+
+    private static IReadOnlyList<(string Title, SettingsEntry Page)> EditorHits(string query, IReadOnlyList<SettingsEntry> pages) =>
+        query.Trim().ToLowerInvariant() is not { Length: > 0 } wanted
+            ? []
+            : HeadEditors
+                .Where(editor => editor.Title.ToLowerInvariant().Contains(wanted) || editor.Keywords.Contains(wanted))
+                .SelectMany(editor => pages.Where(page => page.Title == editor.Page).Select(page => (editor.Title, page)))
+                .ToList();
+
+    private static UIElement EditorRow(string title, SettingsEntry page, Action<string> open)
+    {
+        var row = new Button
+        {
+            HorizontalAlignment = HorizontalAlignment.Stretch,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            Padding = new Thickness(0),
+            Content = FormLook.Row(FormLook.Line(12, FormLook.Glyph(page.Look.Glyph, 16), FormLook.Stack(0, FormLook.Text(title), FormLook.Caption(page.Shown))), FormLook.Glyph("\uE76C", 12)),
+        };
+        FormLook.Paint(row, ButtonLook.Subtle);
+        AutomationProperties.SetName(row, title);
+        row.Click += (_, _) => open(page.Title);
+        return row;
     }
 
     private static UIElement PageRow(SettingsEntry page, Action<string> open)

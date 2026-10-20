@@ -71,9 +71,11 @@ internal sealed class SpeechOut
         Flush();
     }
 
+    internal bool Audible => _after != null && !_muted;
+
     internal void Say(string text, string clip)
     {
-        if (_after != null && !_muted) Speak([new SpokenLine(0, text, clip, 1)]);
+        if (Audible) Speak([new SpokenLine(0, text, clip, 1)]);
     }
 
     private void Poll()

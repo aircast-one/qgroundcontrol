@@ -95,14 +95,59 @@
                 TextWrapping="Wrap" />
 
             <StackPanel x:Name="ValuePanel" Spacing="4" Visibility="Collapsed">
-                <Grid>
-                    <TextBlock x:Name="ValueLabel" Style="{StaticResource ConfirmCaption}" />
-                    <TextBlock
-                        x:Name="ValueText"
-                        HorizontalAlignment="Right"
-                        FontSize="{ThemeResource FontSizeBodyLarge}"
-                        FontWeight="SemiBold"
-                        Foreground="{ThemeResource TextPrimaryBrush}" />
+                <Grid ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <StackPanel VerticalAlignment="Center">
+                        <Button
+                            x:Name="ValueButton"
+                            Padding="0"
+                            Background="Transparent"
+                            BorderThickness="0"
+                            AutomationProperties.Name="Type a value"
+                            Click="ValueButton_Click">
+                            <TextBlock
+                                x:Name="ValueText"
+                                FontSize="{ThemeResource FontSizeTitle}"
+                                FontWeight="SemiBold"
+                                Foreground="{ThemeResource TextPrimaryBrush}" />
+                        </Button>
+                        <TextBox
+                            x:Name="ValueEntry"
+                            Visibility="Collapsed"
+                            Width="140"
+                            HorizontalAlignment="Left"
+                            InputScope="Number"
+                            AutomationProperties.Name="Value"
+                            TextChanged="ValueEntry_TextChanged"
+                            KeyDown="ValueEntry_KeyDown"
+                            LostFocus="ValueEntry_LostFocus" />
+                        <TextBlock x:Name="ValueLabel" Style="{StaticResource ConfirmCaption}" />
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                        <Button
+                            Content="&#x2212;"
+                            Width="40"
+                            Height="40"
+                            Padding="0"
+                            FontSize="{ThemeResource FontSizeSubtitle}"
+                            CornerRadius="{ThemeResource RadiusPill}"
+                            BorderThickness="1"
+                            AutomationProperties.Name="Decrease"
+                            Click="StepDown_Click" />
+                        <Button
+                            Content="+"
+                            Width="40"
+                            Height="40"
+                            Padding="0"
+                            FontSize="{ThemeResource FontSizeSubtitle}"
+                            CornerRadius="{ThemeResource RadiusPill}"
+                            BorderThickness="1"
+                            AutomationProperties.Name="Increase"
+                            Click="StepUp_Click" />
+                    </StackPanel>
                 </Grid>
                 <Slider
                     x:Name="ValueSlider"

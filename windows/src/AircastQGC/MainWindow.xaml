@@ -55,22 +55,31 @@
                     <controls:HeadingTape HorizontalAlignment="Center" />
                     <controls:GuidedBar x:Name="GuidedStrip" HorizontalAlignment="Center" />
                     <controls:ControlRequestPrompt HorizontalAlignment="Center" />
-                    <controls:MissionProgressCard x:Name="MissionProgress" HorizontalAlignment="Center" />
+                    <controls:LayoutSlot Key="missionProgress" Label="Mission progress" HorizontalAlignment="Center">
+                        <controls:MissionProgressCard x:Name="MissionProgress" HorizontalAlignment="Center" />
+                    </controls:LayoutSlot>
                     <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Spacing="{StaticResource SpaceSm}">
                         <controls:ObstacleArc VerticalAlignment="Center" />
-                        <controls:ObstacleReadout VerticalAlignment="Center" />
+                        <controls:LayoutSlot Key="obstacleReadout" Label="Obstacle distance" VerticalAlignment="Center">
+                            <controls:ObstacleReadout VerticalAlignment="Center" />
+                        </controls:LayoutSlot>
                     </StackPanel>
                     <controls:OrbitReadout HorizontalAlignment="Center" />
                     <InfoBar x:Name="Notice" Severity="Error" IsClosable="True" IsOpen="False"
                              HorizontalAlignment="Center" MaxWidth="480" />
                     <controls:TrafficBanner HorizontalAlignment="Center" />
-                    <controls:VehicleMessageBanner x:Name="MessageBanner" HorizontalAlignment="Center" />
-                    <controls:TerrainDataWarning x:Name="TerrainWarning" HorizontalAlignment="Center" />
+                    <controls:LayoutSlot Key="messageBanner" Label="Vehicle messages" Hideable="False" HorizontalAlignment="Center">
+                        <controls:VehicleMessageBanner x:Name="MessageBanner" HorizontalAlignment="Center" />
+                    </controls:LayoutSlot>
+                    <controls:LayoutSlot Key="terrainData" Label="Terrain data warning" HorizontalAlignment="Center">
+                        <controls:TerrainDataWarning x:Name="TerrainWarning" HorizontalAlignment="Center" />
+                    </controls:LayoutSlot>
                     <controls:DeviceStatusChip HorizontalAlignment="Center" />
                 </StackPanel>
 
-                <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center" Margin="16"
-                            Spacing="{StaticResource SpaceXs}">
+                <ScrollViewer x:Name="RightColumn" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="16"
+                              HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                <StackPanel Spacing="{StaticResource SpaceXs}">
                     <controls:MapControls x:Name="MapButtons" />
                     <Button x:Name="CameraButton" Style="{StaticResource MapControl}" Content="&#xE722;"
                             Visibility="Collapsed"
@@ -82,6 +91,7 @@
                             IsEnabled="False"
                             ToolTipService.ToolTip="Pre-flight checklist" AutomationProperties.Name="Pre-flight checklist" />
                 </StackPanel>
+                </ScrollViewer>
 
                 <controls:StreamShutter x:Name="Shutter"
                                         HorizontalAlignment="Right" VerticalAlignment="Center" Margin="16,16,68,16" />
@@ -95,7 +105,24 @@
                 <controls:VideoStatsPill x:Name="VideoStats"
                                          HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="16,16,16,124" />
 
-                <controls:RcControlsLayer HorizontalAlignment="Left" VerticalAlignment="Center" Margin="16" />
+                <Grid x:Name="LeftColumn" HorizontalAlignment="Left" Margin="16,96,16,124" RowSpacing="{StaticResource SpaceSm}">
+                    <Grid.RowDefinitions>
+                        <RowDefinition Height="Auto" />
+                        <RowDefinition Height="*" />
+                    </Grid.RowDefinitions>
+                    <ScrollViewer x:Name="FleetScroll" HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                        <StackPanel x:Name="FleetColumn" Spacing="{StaticResource SpaceSm}">
+                            <controls:FollowMeReadout x:Name="FollowMe" />
+                            <controls:LayoutSlot Key="fleet" Label="Fleet">
+                                <controls:FleetCard x:Name="FleetPanel" />
+                            </controls:LayoutSlot>
+                        </StackPanel>
+                    </ScrollViewer>
+                    <ScrollViewer Grid.Row="1" VerticalAlignment="Center"
+                                  HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
+                        <controls:RcControlsLayer x:Name="RcLayer" />
+                    </ScrollViewer>
+                </Grid>
 
                 <controls:VirtualJoystick Margin="16,16,280,160" />
 
@@ -106,18 +133,14 @@
                 <controls:GripperPanel x:Name="Gripper"
                                        HorizontalAlignment="Right" VerticalAlignment="Top" Margin="16,182,68,16" />
 
-                <StackPanel x:Name="FleetColumn" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="16,96,16,16"
-                            Spacing="{StaticResource SpaceSm}">
-                    <controls:FollowMeReadout x:Name="FollowMe" />
-                    <controls:FleetCard x:Name="FleetPanel" />
-                </StackPanel>
-
                 <controls:PreflightChecklist x:Name="Checklist"
                                              HorizontalAlignment="Left" VerticalAlignment="Top" Margin="16" />
 
                 <controls:NoVehicleState x:Name="NoVehicle" />
 
                 <controls:ConnectingCard />
+
+                <controls:LayoutEditBar x:Name="LayoutBar" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="16,16,16,124" />
 
                 <controls:GuidedConfirm x:Name="GuidedCard" />
 

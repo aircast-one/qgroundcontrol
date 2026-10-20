@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text.Json.Nodes;
+using System.Threading.Tasks;
 using AircastQGC.Core;
 using AircastQGC.Forms;
 using Microsoft.UI.Xaml;
@@ -22,6 +23,11 @@ public sealed partial class GuidedConfirm : UserControl
     private const double ReachSlack = 0.5;
     private const string Unanswered = "The vehicle has not reported what this action would send.";
     private const string Refused = "The vehicle was not sent the command.";
+    private static readonly TimeSpan ProbeSettle = TimeSpan.FromMilliseconds(150);
+    private static readonly IReadOnlySet<string> Probed = new HashSet<string> { "changeAltitude", "pause", "changeSpeed" };
+    private static readonly IReadOnlySet<string> SentenceOnly = new HashSet<string> { "changeAltitude", "pause" };
+
+    private readonly DispatcherTimer _settle = new() { Interval = ProbeSettle };
 
     private GuidedAsk? _ask;
     private GuidedOffer? _pending;
@@ -38,7 +44,12 @@ public sealed partial class GuidedConfirm : UserControl
     public GuidedConfirm()
     {
         InitializeComponent();
-        Unloaded += (_, _) => BridgeWatch.Stop(WatchClient);
+        _settle.Tick += (_, _) => Probe();
+        Unloaded += (_, _) =>
+        {
+            BridgeWatch.Stop(WatchClient);
+            _settle.Stop();
+        };
     }
 
     public bool Show(GuidedOffer offer)
@@ -88,7 +99,7 @@ public sealed partial class GuidedConfirm : UserControl
         _range = range;
         TitleText.Text = ask.Title;
         TitleText.Style = Styled(ask.Destructive ? "ConfirmTitleDestructive" : "ConfirmTitle");
-        PromptText.Text = ask.Prompt;
+        PromptText.Text = SentenceOnly.Contains(offer?.Id ?? "") && range != null ? "" : ask.Prompt;
         WarningText.Text = ask.Warning;
         WarningText.Visibility = Seen(ask.Warning.Length > 0);
         FieldsHost.Content = ask.Fields;
@@ -104,7 +115,10 @@ public sealed partial class GuidedConfirm : UserControl
         OptionCheck.Visibility = Seen(offer?.Option.Length > 0);
         ErrorText.Visibility = Visibility.Collapsed;
         ValuePanel.Visibility = Seen(range != null);
+        EndTyping();
+        Sendable(!Probed.Contains(offer?.Id ?? "") || range == null);
         if (range != null) PresentRange(range);
+        if (range != null) Probe();
         ReleaseKnob();
         Root.Visibility = Visibility.Visible;
         BridgeWatch.Watch(WatchClient, ask.WatchPath.Length > 0 ? new[] { ask.WatchPath } : Array.Empty<string>(), OnWatched);
@@ -119,7 +133,7 @@ public sealed partial class GuidedConfirm : UserControl
         ValueSlider.Maximum = range.Maximum;
         ValueSlider.Minimum = range.Minimum;
         ValueSlider.Value = range.Initial;
-        ValueText.Text = range.Text(range.Initial);
+        ValueText.Text = GuidedPicks.Reading(range.Initial, range.Unit);
         BuildPicks(range);
     }
 
@@ -160,6 +174,8 @@ public sealed partial class GuidedConfirm : UserControl
         _pending = null;
         _range = null;
         _picks = [];
+        _settle.Stop();
+        EndTyping();
         PicksRow.Children.Clear();
         FieldsHost.Content = null;
         ReleaseKnob();
@@ -296,8 +312,66 @@ public sealed partial class GuidedConfirm : UserControl
     private void ValueSlider_ValueChanged(object sender, RangeBaseValueChangedEventArgs e)
     {
         if (_range == null) return;
-        ValueText.Text = _range.Text(e.NewValue);
+        ValueText.Text = GuidedPicks.Reading(e.NewValue, _range.Unit);
         PaintPicks();
+        if (Probed.Contains(_pending?.Id ?? "")) _settle.Start();
+    }
+
+    private async void Probe()
+    {
+        _settle.Stop();
+        if (_pending is not { } offer || _ask is not { } ask || _range == null || !Probed.Contains(offer.Id)) return;
+        var at = ValueSlider.Value;
+        var view = await Task.Run(() => ValueView(offer.Id, at));
+        if (_pending != offer || ValueSlider.Value != at) return;
+        PromptText.Text = string.Join("\n", new[] { SentenceOnly.Contains(offer.Id) ? "" : ask.Prompt, GuidedJson.Text(view, "sentence") }.Where(part => part.Length > 0));
+        Sendable(offer.Id == "changeSpeed" ? GuidedJson.Text(view, "command").Length > 0 : GuidedJson.Flag(view, "sends", false));
+    }
+
+    private void Sendable(bool sendable)
+    {
+        Knob.IsHitTestVisible = sendable;
+        SlideTrack.Opacity = sendable ? 1 : 0.4;
+    }
+
+    private void Step(int delta)
+    {
+        if (_range is { } range) ValueSlider.Value = GuidedPicks.Stepped(ValueSlider.Value, delta, range);
+    }
+
+    private void StepDown_Click(object sender, RoutedEventArgs e) => Step(-1);
+
+    private void StepUp_Click(object sender, RoutedEventArgs e) => Step(1);
+
+    private void ValueButton_Click(object sender, RoutedEventArgs e)
+    {
+        if (_range is not { } range) return;
+        ValueEntry.Text = GuidedPicks.Number(ValueSlider.Value, range.Unit);
+        ValueButton.Visibility = Visibility.Collapsed;
+        ValueEntry.Visibility = Visibility.Visible;
+        ValueEntry.Focus(FocusState.Programmatic);
+        ValueEntry.SelectAll();
+    }
+
+    private void ValueEntry_TextChanged(object sender, TextChangedEventArgs e)
+    {
+        if (ValueEntry.Visibility == Visibility.Visible && _range is { } range && GuidedPicks.Typed(ValueEntry.Text, range) is double typed)
+            ValueSlider.Value = typed;
+    }
+
+    private void ValueEntry_KeyDown(object sender, KeyRoutedEventArgs e)
+    {
+        if (e.Key != Windows.System.VirtualKey.Enter) return;
+        e.Handled = true;
+        EndTyping();
+    }
+
+    private void ValueEntry_LostFocus(object sender, RoutedEventArgs e) => EndTyping();
+
+    private void EndTyping()
+    {
+        ValueEntry.Visibility = Visibility.Collapsed;
+        ValueButton.Visibility = Visibility.Visible;
     }
 
     private void CancelButton_Click(object sender, RoutedEventArgs e) => Cancel();

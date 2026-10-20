@@ -89,7 +89,10 @@
         </StackPanel>
         <Border x:Name="Card" Background="{ThemeResource CardBrush}" BorderBrush="{ThemeResource CardStrokeBrush}"
                 BorderThickness="1" CornerRadius="{StaticResource RadiusOverlay}" Padding="8" Visibility="Collapsed">
-            <StackPanel x:Name="Readings" Orientation="Horizontal" Spacing="{StaticResource SpaceMd}" />
+            <ScrollViewer HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Enabled"
+                          VerticalScrollBarVisibility="Disabled" VerticalScrollMode="Disabled">
+                <StackPanel x:Name="Readings" Orientation="Horizontal" Spacing="{StaticResource SpaceMd}" />
+            </ScrollViewer>
         </Border>
     </StackPanel>
 </UserControl>

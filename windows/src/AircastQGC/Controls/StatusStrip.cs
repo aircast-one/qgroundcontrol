@@ -39,12 +39,24 @@ public sealed class StatusStrip : UserControl
     private const string RemoteIdSettingsPage = "Remote ID";
     private const double StaleOpacity = 0.45;
 
+    private const string SupportLinksPath = "view.links";
+
     private static readonly string[] Watched = [FlyStatePath, BatteryPath, GpsPath, LinksPath, EscPath, RemoteIdPath, ResiliencePath, AircastLinkPath, JoystickPath];
+    private static readonly string[] ListedWatched = [.. Watched, GimbalCalls.View, UsbRadio.View, SupportLinksPath];
     private static readonly string[] BatteryDisplayFacts = ["valueDisplay", "threshold1", "threshold2"];
 
     private readonly string _client = $"statusStrip.{Guid.NewGuid():N}";
     private readonly DispatcherTimer _tick = new() { Interval = TimeSpan.FromSeconds(1) };
-    private readonly ItemsControl _vehicleCells;
+    private readonly StatusStrip? _owner;
+    private readonly IReadOnlyList<StatusCell> _cells;
+    private readonly StatusRow? _row;
+    private readonly IReadOnlyDictionary<string, Action<FrameworkElement>> _opens;
+    private readonly GimbalIndicator? _gimbal;
+    private readonly SupportForwardingCell? _support;
+    private readonly StatusPill _gimbalPill = StatusLook.Pill("Gimbal", "");
+    private readonly StatusPill _usbPill = StatusLook.Pill("USB radio", "");
+    private readonly StatusPill _supportPill = StatusLook.Pill("Support", "");
+    private ImmutableDictionary<FrameworkElement, StatusTone> _tones = ImmutableDictionary<FrameworkElement, StatusTone>.Empty;
     private readonly StatusPill _battery = StatusLook.Pill("Battery", "");
     private readonly StatusPill _flightTime = StatusLook.Pill("Flight time", "");
     private readonly StatusPill _gps = StatusLook.Pill("GPS", "");
@@ -80,9 +92,15 @@ public sealed class StatusStrip : UserControl
     private (UIElement Row, Button Save)? _base;
 
     public StatusStrip()
+        : this(null)
     {
+    }
+
+    private StatusStrip(StatusStrip? owner)
+    {
+        _owner = owner;
         _batterySheet = new Sheet("Battery", () => null, BatteryParts, closed: () => _batteryParts = null, refreshed: BatteryRefresh);
-        _gpsSheet = new Sheet("Vehicle GPS status", GpsBody, () => [StatusLook.Link("RTK GPS settings", () => Then(_gpsSheet, () => _rtkSettingsSheet.ShowAt(_gps.Button))), StatusLook.Footnote(StatusText.Footnote)]);
+        _gpsSheet = new Sheet("Vehicle GPS status", GpsBody, () => [StatusLook.Link("RTK GPS settings", () => Then(_gpsSheet, () => _rtkSettingsSheet.ShowAt(Anchor(StatusKeys.Gps)))), StatusLook.Footnote(StatusText.Footnote)]);
         _linksSheet = new Sheet("Links to this aircraft", LinksBody, () => [StatusLook.Footnote(StatusText.Footnote), StatusLook.Action("Connection settings", () => Then(_linksSheet, FlyRequests.OpenConnections))]);
         _offlineSheet = new Sheet("Connect a vehicle", OfflineBody, OfflineFooter, opened: () => _offlineView = Bridge.Get(OfflinePath), key: () => _offlineView.ToJsonString());
         var rcSheet = new Sheet("RC RSSI status", () => Detail(Fly.RcRows), Footnote);
@@ -97,30 +115,56 @@ public sealed class StatusStrip : UserControl
         var gcsSheet = new Sheet("Ground Station", GcsBody);
         _sheets = [_batterySheet, _gpsSheet, _linksSheet, _offlineSheet, _rtkSettingsSheet, rcSheet, telemetrySheet, escSheet, _remoteIdSheet, resilienceSheet, rtkSheet, aircastSheet, joystickSheet, gcsSheet];
 
-        Opens(_battery, _batterySheet);
-        Opens(_gps, _gpsSheet);
-        Opens(_rc, rcSheet);
-        Opens(_telemetry, telemetrySheet);
-        Opens(_aircastLink, aircastSheet);
-        Opens(_esc, escSheet);
-        Opens(_joystick, joystickSheet);
-        Opens(_remoteId, _remoteIdSheet);
-        Opens(_resilience, resilienceSheet);
-        Opens(_rtk, rtkSheet);
-        Opens(_gcsBattery, gcsSheet);
-        _override.Button.Click += (_, _) => Bridge.Invoke(ClearOverrides);
-        ToolTipService.SetToolTip(_override.Button, "RC override active. Click to release every overridden channel.");
-        _flightTime.Button.IsHitTestVisible = false;
-        _flightTime.Button.IsTabStop = false;
-
-        _vehicleCells = Ui.Line(new[] { _battery, _flightTime, _gps, _rc, _override, _telemetry, _aircastLink, _esc, _joystick, _remoteId, _resilience }.Select(p => p.Button), 4);
-        Content = new StackPanel
+        _gimbal = owner is null ? new GimbalIndicator() : null;
+        _support = owner is null ? new SupportForwardingCell() : null;
+        _opens = new Dictionary<string, Action<FrameworkElement>>
         {
-            Orientation = Orientation.Horizontal,
-            Spacing = 4,
-            VerticalAlignment = VerticalAlignment.Center,
-            Children = { _vehicleCells, new UsbRadioCell(), _rtk.Button, _gcsBattery.Button, new SupportForwardingCell() },
+            [StatusKeys.Battery] = _batterySheet.ShowAt,
+            [StatusKeys.Gps] = _gpsSheet.ShowAt,
+            [StatusKeys.Rc] = rcSheet.ShowAt,
+            [StatusKeys.RcOverride] = _ => Bridge.Invoke(ClearOverrides),
+            [StatusKeys.Telemetry] = telemetrySheet.ShowAt,
+            [StatusKeys.AircastLink] = aircastSheet.ShowAt,
+            [StatusKeys.Esc] = escSheet.ShowAt,
+            [StatusKeys.Joystick] = joystickSheet.ShowAt,
+            [StatusKeys.RemoteId] = _remoteIdSheet.ShowAt,
+            [StatusKeys.GpsResilience] = resilienceSheet.ShowAt,
+            [StatusKeys.Rtk] = rtkSheet.ShowAt,
+            [StatusKeys.GcsBattery] = gcsSheet.ShowAt,
+            [StatusKeys.Gimbal] = anchor => _gimbal?.ShowSheetAt(anchor),
+            [StatusKeys.SupportForwarding] = anchor => _support?.ShowSheetAt(anchor),
         };
+        ToolTipService.SetToolTip(_override.Button, "RC override active. Click to release every overridden channel.");
+        new[] { _flightTime, _usbPill }.ToList().ForEach(pill =>
+        {
+            pill.Button.IsHitTestVisible = false;
+            pill.Button.IsTabStop = false;
+        });
+
+        _cells =
+        [
+            new(StatusKeys.Battery, "Battery", _battery.Button, true),
+            new(StatusKeys.FlightTime, "Flight time", _flightTime.Button, true),
+            new(StatusKeys.Gps, "GPS", _gps.Button, true),
+            new(StatusKeys.Rc, "RC signal", _rc.Button, true),
+            new(StatusKeys.RcOverride, "RC override", _override.Button, true),
+            new(StatusKeys.Telemetry, "Telemetry RSSI", _telemetry.Button, true),
+            new(StatusKeys.AircastLink, "Cellular link", _aircastLink.Button, true),
+            new(StatusKeys.Esc, "ESC status", _esc.Button, true),
+            new(StatusKeys.Joystick, "Joystick", _joystick.Button, true),
+            new(StatusKeys.UsbRadio, "USB radio", owner is null ? new UsbRadioCell() : _usbPill.Button, false),
+            new(StatusKeys.RemoteId, "Remote ID", _remoteId.Button, true),
+            new(StatusKeys.GpsResilience, "GPS resilience", _resilience.Button, true),
+            new(StatusKeys.Rtk, "RTK GPS", _rtk.Button, false),
+            new(StatusKeys.GcsBattery, "Ground station battery", _gcsBattery.Button, false),
+            new(StatusKeys.Gimbal, "Gimbal", (FrameworkElement?)_gimbal ?? _gimbalPill.Button, true),
+            new(StatusKeys.SupportForwarding, "Support forwarding", (FrameworkElement?)_support ?? _supportPill.Button, false),
+        ];
+        _cells.Where(cell => cell.Cell is Button && _opens.ContainsKey(cell.Key)).ToList()
+            .ForEach(cell => ((Button)cell.Cell).Click += (_, _) => Open(cell.Key, cell.Cell));
+        _row = owner is null ? new StatusRow(_cells, cell => _tones.GetValueOrDefault(cell, StatusTone.Normal), () => new StatusStrip(this)) : null;
+        Content = _row?.View ?? new StatusList(_cells).View;
+        VerticalAlignment = VerticalAlignment.Center;
 
         _tick.Tick += (_, _) => Tick();
         Loaded += (_, _) => Start();
@@ -129,6 +173,29 @@ public sealed class StatusStrip : UserControl
     }
 
     public void ShowLinks(FrameworkElement anchor) => (Fly.Connected ? _linksSheet : _offlineSheet).ShowAt(anchor);
+
+    private IReadOnlyList<string> Paths => _owner is null ? Watched : ListedWatched;
+
+    private void Open(string key, FrameworkElement from)
+    {
+        if (_owner is { } owner) owner.OpenFromList(key);
+        else if (_opens.TryGetValue(key, out var open)) open(from);
+    }
+
+    private void OpenFromList(string key)
+    {
+        _row?.HideAll();
+        DispatcherQueue.TryEnqueue(() =>
+        {
+            if (_opens.TryGetValue(key, out var open)) open(Anchor(key));
+        });
+    }
+
+    private FrameworkElement Anchor(string key)
+    {
+        var cell = _cells.First(c => c.Key == key).Cell;
+        return _row is { } row && !row.Shows(cell) ? row.Anchor : cell;
+    }
 
     private FlyStatus Fly => FlyStatus.Parse(View(FlyStatePath));
 
@@ -144,8 +211,8 @@ public sealed class StatusStrip : UserControl
     {
         if (!CoreHost.Started || _started) return;
         _started = true;
-        _views = Watched.ToImmutableDictionary(path => path, Bridge.Get);
-        Watched.ToList().ForEach(path => BridgeWatch.Watch(Client(path), [path], view =>
+        _views = Paths.ToImmutableDictionary(path => path, Bridge.Get);
+        Paths.ToList().ForEach(path => BridgeWatch.Watch(Client(path), [path], view =>
         {
             _views = _views.SetItem(path, view);
             Render();
@@ -161,7 +228,7 @@ public sealed class StatusStrip : UserControl
         _started = false;
         _tick.Stop();
         _aggregate.ReportUpdated -= OnGcsBattery;
-        Watched.ToList().ForEach(path => BridgeWatch.Stop(Client(path)));
+        Paths.ToList().ForEach(path => BridgeWatch.Stop(Client(path)));
     }
 
     private void OnGcsBattery(WinBattery sender, object args) => DispatcherQueue.TryEnqueue(() =>
@@ -187,6 +254,7 @@ public sealed class StatusStrip : UserControl
         _rtkView = Bridge.Get(RtkPath);
         _flownSeconds = Fly.Connected ? StatusJson.Number(Bridge.Get(FlightTimePath)["value"]) : null;
         if (_offlineSheet.IsOpen) _offlineView = Bridge.Get(OfflinePath);
+        _row?.Refit();
         Render();
     }
 
@@ -197,41 +265,41 @@ public sealed class StatusStrip : UserControl
         _lostSince = lost ? _lostSince ?? DateTime.UtcNow : null;
         if (fly.Connected && _offlineSheet.IsOpen) _offlineSheet.Hide();
 
-        _vehicleCells.Visibility = Ui.Shown(fly.Connected);
-        _vehicleCells.Opacity = fly.Stale ? StaleOpacity : 1;
+        _cells.Where(c => c.Vehicle).ToList().ForEach(c => c.Cell.Opacity = fly.Stale ? StaleOpacity : 1);
+        if (_owner is null) OverlayLayout.LockWhileArmed(fly.Connected && fly.Armed);
 
         var packs = BatteryModel.Packs(View(BatteryPath));
         var headline = BatteryHeadline.Parse(View(BatteryPath));
         var extras = packs.Count == 0 ? [] : new[] { headline?.TimeLeft ?? "", BatteryModel.TotalCurrent(View(BatteryPath)) ?? "" }.Where(t => t.Length > 0);
-        Show(_battery, packs.Count > 0,
+        Show(_battery, fly.Connected && packs.Count > 0,
             string.Join("  ", packs.Select(p => FormText.Spaced(p.Text, BatteryModel.CountText(p.Packs))).Concat(extras)),
             BatteryModel.Worst(packs));
 
         Show(_flightTime, fly.Connected, StatusText.FlightTime(_flownSeconds), StatusTone.Normal);
 
         var gps = GpsStatus.Parse(View(GpsPath));
-        Show(_gps, gps is not null, gps?.CellText ?? "", gps?.Tone ?? StatusTone.Normal);
+        Show(_gps, fly.Connected && gps is not null, gps?.CellText ?? "", gps?.Tone ?? StatusTone.Normal);
 
         var rc = fly.RcCell;
-        Show(_rc, rc is not null, rc?.Text ?? "", rc?.Lost == true ? StatusTone.Critical : StatusTone.Normal);
-        Show(_override, fly.OverrideShown, "RC override", StatusTone.Caution);
-        Show(_telemetry, fly.Telemetry is not null, fly.Telemetry?.CellText ?? "", StatusTone.Normal);
+        Show(_rc, fly.Connected && rc is not null, rc?.Text ?? "", rc?.Lost == true ? StatusTone.Critical : StatusTone.Normal);
+        Show(_override, fly.Connected && fly.OverrideShown, "RC override", StatusTone.Caution);
+        Show(_telemetry, fly.Connected && fly.Telemetry is not null, fly.Telemetry?.CellText ?? "", StatusTone.Normal);
 
         var cellular = AircastLink.Parse(View(AircastLinkPath));
-        Show(_aircastLink, cellular is not null, cellular?.CellText ?? "", StatusTone.Normal);
+        Show(_aircastLink, fly.Connected && cellular is not null, cellular?.CellText ?? "", StatusTone.Normal);
 
         var esc = EscSummary.Parse(View(EscPath));
-        Show(_esc, esc is not null, esc?.CellText ?? "", esc?.Healthy == true ? StatusTone.Good : StatusTone.Critical);
+        Show(_esc, fly.Connected && esc is not null, esc?.CellText ?? "", esc?.Healthy == true ? StatusTone.Good : StatusTone.Critical);
 
         var joystick = JoystickBadge.Parse(View(JoystickPath));
-        Show(_joystick, joystick is not null, "Joystick", joystick?.Warn == true ? StatusTone.Caution : StatusTone.Normal);
+        Show(_joystick, fly.Connected && joystick is not null, "Joystick", joystick?.Warn == true ? StatusTone.Caution : StatusTone.Normal);
 
         var remoteId = RemoteId;
-        Show(_remoteId, remoteId is not null, "RID", remoteId?.Tone ?? StatusTone.Muted);
+        Show(_remoteId, fly.Connected && remoteId is not null, "RID", remoteId?.Tone ?? StatusTone.Muted);
         if (_emergency is not null) _emergency.Label.Text = remoteId?.EmergencyButton ?? "";
 
         var resilience = GpsResilience.Parse(View(ResiliencePath));
-        Show(_resilience, resilience is not null && (resilience.Interference.Shown || resilience.Authentication.Shown),
+        Show(_resilience, fly.Connected && resilience is not null && (resilience.Interference.Shown || resilience.Authentication.Shown),
             string.Join(" ", new[] { resilience?.Interference.Shown == true ? "RF" : "", resilience?.Authentication.Shown == true ? "AUTH" : "" }.Where(t => t.Length > 0)),
             new[] { resilience?.Interference, resilience?.Authentication }.Where(m => m?.Shown == true).Select(m => m!.Tone).DefaultIfEmpty(StatusTone.Muted).Max());
 
@@ -239,16 +307,25 @@ public sealed class StatusStrip : UserControl
         Show(_gcsBattery, _gcs is not null, _gcs?.LevelText ?? "", _gcs?.Tone ?? StatusTone.Normal);
         AutomationProperties.SetName(_gcsBattery.Button, _gcs is null ? "Ground station battery" : $"{_gcs.Title} {_gcs.LevelText}");
 
+        if (_owner is not null)
+        {
+            var gimbal = PayloadJson.Gimbal(View(GimbalCalls.View));
+            Show(_gimbalPill, fly.Connected && gimbal is not null, gimbal is { CellText.Length: > 0 } shown ? shown.CellText : "Gimbal", StatusTone.Normal);
+            var usb = UsbRadio.Badge(View(UsbRadio.View));
+            Show(_usbPill, usb is not null, usb?.Text ?? "", usb is null ? StatusTone.Normal : UsbRadio.Tone(usb.State));
+            Show(_supportPill, MapUiJson.Flag(View(SupportLinksPath)["supportForwarding"]), "Support", StatusTone.Good);
+        }
+
         _sheets.ToList().ForEach(sheet => sheet.Refresh());
+        _row?.Paint();
     }
 
-    private static void Show(StatusPill pill, bool shown, string text, StatusTone tone)
+    private void Show(StatusPill pill, bool shown, string text, StatusTone tone)
     {
         pill.Button.Visibility = Ui.Shown(shown);
+        _tones = _tones.SetItem(pill.Button, shown ? tone : StatusTone.Normal);
         if (shown) StatusLook.Paint(pill, text, tone);
     }
-
-    private static void Opens(StatusPill pill, Sheet sheet) => pill.Button.Click += (_, _) => sheet.ShowAt(pill.Button);
 
     private void Then(Sheet? open, Action next)
     {
@@ -305,8 +382,8 @@ public sealed class StatusStrip : UserControl
             parts.Headline,
             parts.Return,
             parts.Rows,
-            StatusLook.Link("Battery failsafes", () => Then(_batterySheet, () => BatteryFailsafes().ShowAt(_battery.Button))),
-            StatusLook.Link("Battery display", () => Then(_batterySheet, () => BatteryDisplay().ShowAt(_battery.Button))),
+            StatusLook.Link("Battery failsafes", () => Then(_batterySheet, () => BatteryFailsafes().ShowAt(Anchor(StatusKeys.Battery)))),
+            StatusLook.Link("Battery display", () => Then(_batterySheet, () => BatteryDisplay().ShowAt(Anchor(StatusKeys.Battery)))),
             advanced && power ? StatusLook.Link("Power setup", () => Then(_batterySheet, () => FlyRequests.OpenSetup(PowerSetupPage))) : null,
             StatusLook.Footnote(StatusText.Footnote),
         ];

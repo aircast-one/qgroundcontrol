@@ -18,6 +18,9 @@ public sealed partial class ShellTitleBar : UserControl
     private const string ArmedGlyph = "";
     private const string DisarmedGlyph = "";
     private const double StaleOpacity = 0.45;
+    private const double LogoWidth = 20;
+    private const double SubtitleRoom = 96;
+    private const double StripFloor = 200;
 
     private static readonly string[] Watched = { FlyStatePath, VehicleLinksPath, FlightModesPath };
     private static readonly string[] KnownStates = { "notConnected", "contactLost", "flying", "landing", "armed", "disarmed" };
@@ -32,6 +35,8 @@ public sealed partial class ShellTitleBar : UserControl
     {
         InitializeComponent();
         Loaded += (_, _) => Start();
+        Bar.SizeChanged += (_, _) => Fit();
+        Fixed.SizeChanged += (_, _) => Fit();
         Unloaded += (_, _) => Array.ForEach(Watched, path => BridgeWatch.Stop(Client(path)));
         Render();
     }
@@ -47,7 +52,11 @@ public sealed partial class ShellTitleBar : UserControl
     public double CaptionInset
     {
         get => CaptionColumn.Width.Value;
-        set => CaptionColumn.Width = new GridLength(Math.Max(0, value));
+        set
+        {
+            CaptionColumn.Width = new GridLength(Math.Max(0, value));
+            Fit();
+        }
     }
 
     public string PendingMode
@@ -61,6 +70,18 @@ public sealed partial class ShellTitleBar : UserControl
     }
 
     private static string Client(string path) => $"shellTitleBar.{path}";
+
+    private void Fit()
+    {
+        var probe = new TextBlock { Text = AppTitle.Text, FontFamily = AppTitle.FontFamily, FontSize = AppTitle.FontSize };
+        probe.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+        var title = probe.DesiredSize.Width + DragArea.ColumnSpacing;
+        var room = Bar.ActualWidth - CaptionColumn.Width.Value - RightGroup.Margin.Right - RightGroup.Spacing - Fixed.ActualWidth
+            - DragArea.Padding.Left - DragArea.Padding.Right - LogoWidth - DragArea.ColumnSpacing - SubtitleRoom;
+        var titled = room - title >= StripFloor;
+        AppTitle.Visibility = Shown(titled);
+        Strip.MaxWidth = Math.Max(0, room - (titled ? title : 0));
+    }
 
     private void Start()
     {

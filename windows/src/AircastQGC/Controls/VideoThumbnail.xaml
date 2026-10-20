@@ -57,6 +57,7 @@
                 ToolTipService.ToolTip="Swap video and map">
             <Grid>
                 <local:VideoSurface x:Name="Surface" Channel="0" Visibility="Collapsed" />
+                <local:SyntheticView x:Name="Synthetic" />
                 <StackPanel x:Name="Placeholder"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"

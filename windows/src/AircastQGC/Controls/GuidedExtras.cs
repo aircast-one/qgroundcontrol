@@ -45,6 +45,19 @@ internal static class GuidedPicks
 
     public static bool Same(double a, double b, string unit) => Rounded(a, unit) == Rounded(b, unit);
 
+    public static string Reading(double value, string unit) => unit.Length == 0 ? Number(value, unit) : $"{Number(value, unit)} {unit}";
+
+    public static double Stepped(double value, int delta, GuidedRange range) =>
+        Rounded(Math.Clamp(value + delta, range.Minimum, range.Maximum), range.Unit);
+
+    public static double? Typed(string text, GuidedRange range) =>
+        text.Trim() is var typed
+        && typed.Count(c => c == ',') <= 1
+        && !(typed.Contains(',') && typed.Contains('.'))
+        && FormText.Parse(typed.Replace(',', '.')) is double number
+            ? Rounded(Math.Clamp(number, range.Minimum, range.Maximum), range.Unit)
+            : null;
+
     private static string Plain(double value, string unit)
     {
         var text = Number(value, unit);

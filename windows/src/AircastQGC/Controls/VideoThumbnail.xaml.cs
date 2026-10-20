@@ -22,6 +22,7 @@ public sealed partial class VideoThumbnail : UserControl
     private readonly Thickness _border;
     private bool _expanded;
     private bool _streamOn = true;
+    private string _standIn = "";
     private CameraList? _cameras;
 
     public VideoThumbnail()
@@ -29,6 +30,7 @@ public sealed partial class VideoThumbnail : UserControl
         InitializeComponent();
         _radius = Tile.CornerRadius;
         _border = Tile.BorderThickness;
+        Synthetic.Changed += (_, _) => PaintPlaceholder();
         Loaded += (_, _) => Start();
         Unloaded += (_, _) => Stop();
     }
@@ -45,6 +47,8 @@ public sealed partial class VideoThumbnail : UserControl
             _expanded = value;
             Tile.CornerRadius = value ? new CornerRadius(0) : _radius;
             Tile.BorderThickness = value ? new Thickness(0) : _border;
+            Synthetic.Aimable = value;
+            Synthetic.StandIn = value ? _standIn : null;
         }
     }
 
@@ -102,8 +106,10 @@ public sealed partial class VideoThumbnail : UserControl
         var missing = VideoJson.Flag(video, "sourceChosen") ? VideoJson.Text(video, "noVideoText") : "";
 
         IsLive = live;
+        _standIn = VideoJson.Text(video, "standIn");
+        Synthetic.Wanted = !live;
+        Synthetic.StandIn = _expanded ? _standIn : null;
         Surface.Visibility = VideoJson.Shown(live);
-        Placeholder.Visibility = VideoJson.Shown(!live);
         Caption.Text = live || status.Length == 0 ? title : $"{title} · {status}";
         Dot.Style = (Style)Resources[live ? "VideoDotLive" : connecting ? "VideoDotConnecting" : "VideoDotIdle"];
         Headline.Text = VideoJson.Flag(video, "streamEnabled", true)
@@ -115,6 +121,20 @@ public sealed partial class VideoThumbnail : UserControl
         SwitchSource.Visibility = VideoJson.Shown(VideoJson.Flag(video, "multipleSources") && camera is not null);
         _streamOn = VideoJson.Flag(video, "streamEnabled", true);
         PaintPip();
+        PaintPlaceholder();
+    }
+
+    private void PaintPlaceholder()
+    {
+        var shown = IsLive || Synthetic.Showing;
+        Placeholder.Visibility = VideoJson.Shown(!shown);
+        if (!Synthetic.Chosen) return;
+        Caption.Text = SourceTitle.Text;
+        Dot.Style = (Style)Resources[shown ? "VideoDotLive" : "VideoDotIdle"];
+        if (shown) return;
+        Headline.Text = SyntheticView.WaitingHeadline;
+        Detail.Text = SyntheticView.WaitingDetail;
+        Detail.Visibility = Visibility.Visible;
     }
 
     private void OnTileClick(object sender, RoutedEventArgs e) => SwapRequested?.Invoke(this, EventArgs.Empty);

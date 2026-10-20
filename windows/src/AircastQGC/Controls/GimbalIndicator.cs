@@ -120,6 +120,8 @@ public sealed partial class GimbalIndicator : UserControl
         Unloaded += (_, _) => Halt();
     }
 
+    public void ShowSheetAt(FrameworkElement anchor) => _flyout.ShowAt(anchor);
+
     private void Start()
     {
         GimbalCalls.AsksForControl -= OnAsked;

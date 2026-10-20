@@ -19,6 +19,7 @@ public sealed partial class SetupPage : UserControl
     private static readonly TimeSpan NoticeFor = TimeSpan.FromSeconds(3);
     private const double TwoPaneMinWidth = 840;
     private const double ListWidth = 360;
+    private const string OverviewGlyph = "\uE90F";
     private static readonly IReadOnlyDictionary<string, IReadOnlyList<SummaryLine>> NoSummaries = new Dictionary<string, IReadOnlyList<SummaryLine>>();
     private static readonly IReadOnlyDictionary<string, IReadOnlyList<string>> NoHits = new Dictionary<string, IReadOnlyList<string>>();
 
@@ -29,6 +30,7 @@ public sealed partial class SetupPage : UserControl
     private bool _advanced = true;
     private bool _wide = true;
     private bool _picked;
+    private bool _overview;
     private (string Name, string? Section)? _opened;
     private bool _parametersOpen;
     private string _parametersSearch = "";
@@ -125,6 +127,7 @@ public sealed partial class SetupPage : UserControl
         {
             _opened = null;
             _parametersOpen = false;
+            _overview = false;
             _picked = false;
             _summaries = NoSummaries;
             _summarySignature = "";
@@ -202,6 +205,14 @@ public sealed partial class SetupPage : UserControl
     {
         if (_requested is not { } request || Components.Count == 0) return;
         _requested = null;
+        if (request.Page.Length == 0)
+        {
+            _parametersOpen = false;
+            _opened = null;
+            _overview = true;
+            _picked = false;
+            return;
+        }
         if (request.Page == SetupModel.ParametersPage)
         {
             _parametersSearch = request.Search;
@@ -258,7 +269,7 @@ public sealed partial class SetupPage : UserControl
 
     private void EnsureOpened()
     {
-        if (_parametersOpen) return;
+        if (_parametersOpen || _overview) return;
         if (_opened is { } open && Components.Any(c => c.Name == open.Name)) return;
         _opened = SetupModel.FirstToOpen(Components, c => SetupModel.CanOpen(c, PageOf(c))) is { } first ? (first.Name, null) : null;
     }
@@ -267,6 +278,7 @@ public sealed partial class SetupPage : UserControl
     {
         if (!NavigationLock.Allows()) return;
         _parametersOpen = false;
+        _overview = false;
         _opened = (component.Name, section);
         _picked = true;
         RenderList();
@@ -279,6 +291,7 @@ public sealed partial class SetupPage : UserControl
         if (!NavigationLock.Allows()) return;
         _parametersSearch = search;
         _opened = null;
+        _overview = false;
         _parametersOpen = true;
         _picked = true;
         RenderList();
@@ -407,7 +420,7 @@ public sealed partial class SetupPage : UserControl
         var section = _opened?.Section;
         var vehicle = MapUiJson.Number(_setup["vehicleId"]);
         var key = _parametersOpen ? $"{vehicle}|parameters|{_parametersSearch}"
-            : open is null ? "none"
+            : open is null ? $"none|{string.Join(",", Components.Where(c => c.NeedsAttention).Select(c => c.Name))}"
             : $"{vehicle}|{open.Name}|{kind}|{open.Prerequisite}|{section}|{page?.Screen}";
         var blocked = _parametersOpen ? null : open?.BlockedReason;
         if (key != _detailKey)
@@ -415,7 +428,7 @@ public sealed partial class SetupPage : UserControl
             _detailKey = key;
             DetailTitle.Text = _parametersOpen ? SetupModel.ParametersPage : open is null ? "" : MapUiJson.SentenceCase(open.Name);
             DetailHost.Content = _parametersOpen ? new ParametersPanel(_parametersSearch)
-                : open is null ? FormLook.Empty("", SetupModel.AircraftSetup, "Choose a component on the left.")
+                : open is null ? Overview()
                 : Body(open, kind, section);
             if (open is not null && !_parametersOpen && SetupModel.ReportsOpening(open.Prerequisite, page))
             {
@@ -426,6 +439,14 @@ public sealed partial class SetupPage : UserControl
         FormLook.Say(BlockedText, blocked is null ? null : SetupModel.DisabledWhile(blocked));
         DetailHost.IsEnabled = blocked is null;
         DetailHost.Opacity = blocked is null ? 1 : 0.5;
+    }
+
+    private UIElement Overview()
+    {
+        var attention = Components.Where(c => c.NeedsAttention).Select(c => MapUiJson.SentenceCase(c.Name)).ToList();
+        return FormLook.Empty(OverviewGlyph, SetupModel.AircraftSetup, attention.Count == 0
+            ? "Choose a component on the left."
+            : $"Needs attention: {string.Join(", ", attention)}. Choose a component on the left.");
     }
 
     private UIElement Body(SetupComponent component, DetailKind kind, string? section) => kind switch

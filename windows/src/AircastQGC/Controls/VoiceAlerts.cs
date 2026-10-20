@@ -54,7 +54,10 @@ internal sealed partial class VoiceAlerts(SpeechOut speech)
         _heardLost = lost;
     }
 
-    private static void Cue(bool lost) => MessageBeep(lost ? LostSound : RegainedSound);
+    private void Cue(bool lost)
+    {
+        if (speech.Audible) MessageBeep(lost ? LostSound : RegainedSound);
+    }
 
     [LibraryImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

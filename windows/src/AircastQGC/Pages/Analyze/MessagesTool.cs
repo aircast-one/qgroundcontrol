@@ -81,7 +81,9 @@ internal sealed class MessagesTool : UserControl
     private static string Time(string served) =>
         Regex.Match(served.Trim(), @"^(\d{1,2}:\d{2}:\d{2})\.\d+$") is { Success: true } clock ? clock.Groups[1].Value : served;
 
-    internal static UIElement Line(VehicleMessage message) => new Grid
+    internal static UIElement Line(VehicleMessage message) => Line(message, new Border());
+
+    internal static UIElement Line(VehicleMessage message, UIElement detail) => new Grid
     {
         ColumnSpacing = 16,
         Padding = new Thickness(0, 10, 0, 10),
@@ -101,6 +103,7 @@ internal sealed class MessagesTool : UserControl
                 {
                     Ui.Caption(message.Time, "TextTertiaryBrush").With(time => time.Visibility = Ui.Shown(message.Time.Length > 0)),
                     Ui.Text(message.Text),
+                    detail,
                 },
             }.With(panel => Grid.SetColumn(panel, 1)),
         },

@@ -13,6 +13,7 @@ public static class CoreHost
     public static int Start(params string[] args)
     {
         if (_started) return 0;
+        BluetoothHost.Start();
         var argv = args.Select(Marshal.StringToCoTaskMemUTF8).ToArray();
         var table = Marshal.AllocCoTaskMem(IntPtr.Size * argv.Length);
         try
@@ -32,6 +33,7 @@ public static class CoreHost
     public static void Shutdown()
     {
         if (!_started) return;
+        BluetoothHost.Stop();
         NativeMethods.qgc_request_quit();
         NativeMethods.qgc_shutdown();
         _started = false;

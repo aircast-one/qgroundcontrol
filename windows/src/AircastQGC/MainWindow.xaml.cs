@@ -17,6 +17,11 @@ public sealed partial class MainWindow : Window
     private const double TileHeight = 150;
     private const double TileMargin = 16;
     private const int FullScreenLayer = 100;
+    private const double LeftTop = 96;
+    private const double BottomGap = 24;
+    private const double StatsRoom = 40;
+    private const double ShutterInset = 68;
+    private const double FleetFloor = 120;
 
     private readonly FlightModeMenu _modes;
     private ImmutableStack<string> _history = ImmutableStack<string>.Empty;
@@ -111,7 +116,18 @@ public sealed partial class MainWindow : Window
         FullScreenButton.Click += (_, _) => FullScreen(true);
         FlyContent.KeyboardAcceleratorPlacementMode = KeyboardAcceleratorPlacementMode.Hidden;
         FlyContent.KeyboardAccelerators.Add(Accelerator(VirtualKey.F11, () => true, () => FullScreen(!_fullScreen)));
-        FlyContent.KeyboardAccelerators.Add(Accelerator(VirtualKey.Escape, () => _fullScreen, () => FullScreen(false)));
+        FlyContent.KeyboardAccelerators.Add(Accelerator(VirtualKey.Escape, () => _fullScreen || OverlayLayout.Editing, () =>
+        {
+            if (_fullScreen) FullScreen(false);
+            else OverlayLayout.StopEditing();
+        }));
+        ReadingsBar.SizeChanged += (_, _) => Clearances();
+        TelemetryCard.SizeChanged += (_, _) => Clearances();
+        FlyContent.Loaded += (_, _) => Clearances();
+        FlyContent.SizeChanged += (_, _) => Clearances();
+        GuidedStrip.SizeChanged += (_, _) => Clearances();
+        LeftColumn.SizeChanged += (_, _) => Clearances();
+        RcLayer.RegisterPropertyChangedCallback(UIElement.VisibilityProperty, (_, _) => Clearances());
         Map.MapTapped += (_, _, at) =>
         {
             if (_videoMain) SwapVideo(false);
@@ -130,7 +146,7 @@ public sealed partial class MainWindow : Window
         _ = new ChecklistGate(Checklist, () => GuidedCard.IsOpen || MapMenu.Target != null);
         _ = new MissionPopups(GuidedCard);
         _ = new MissionCompleteDialog(root);
-        _ = new ResumeFailedPrompt(root);
+        _ = new ResumeFailedPrompt(FlyContent);
         _ = new FirstRunDialog(root);
         _ = new CloseGuard(this);
     }
@@ -214,6 +230,28 @@ public sealed partial class MainWindow : Window
         TelemetryCard.Visibility = Shown(present);
         GuidedStrip.Visibility = Shown(present);
         if (!present && Checklist.IsOpen) Checklist.Hide();
+        Clearances();
+    }
+
+    private void Clearances()
+    {
+        var bar = ReadingsBar.Visibility == Visibility.Visible ? ReadingsBar.ActualHeight + BottomGap : TileMargin;
+        var guided = GuidedStrip.Visibility == Visibility.Visible && GuidedStrip.ActualWidth > 0
+            ? GuidedStrip.TransformToVisual(FlyContent).TransformBounds(new Windows.Foundation.Rect(0, 0, GuidedStrip.ActualWidth, GuidedStrip.ActualHeight))
+            : Windows.Foundation.Rect.Empty;
+        var underGuided = !guided.IsEmpty && guided.Left < TileMargin + LeftColumn.ActualWidth + TileMargin;
+        var leftTop = underGuided ? Math.Max(LeftTop, guided.Bottom + TileMargin) : LeftTop;
+        LeftColumn.Margin = new Thickness(TileMargin, leftTop, TileMargin, bar + StatsRoom);
+        FleetScroll.MaxHeight = RcLayer.Visibility == Visibility.Visible
+            ? Math.Max(FleetFloor, (FlyContent.ActualHeight - leftTop - bar - StatsRoom) / 2)
+            : double.PositiveInfinity;
+        Checklist.Margin = new Thickness(TileMargin, TileMargin, TileMargin, bar);
+        LayoutBar.Margin = new Thickness(TileMargin, TileMargin, TileMargin, bar);
+        VideoStats.Margin = new Thickness(TileMargin, TileMargin, TileMargin, bar);
+        var top = TileMargin + TileHeight + TileMargin;
+        var right = TelemetryCard.Visibility == Visibility.Visible ? TelemetryCard.ActualHeight + BottomGap : TileMargin;
+        RightColumn.Margin = new Thickness(TileMargin, top, TileMargin, right);
+        Shutter.Margin = new Thickness(TileMargin, top, ShutterInset, right);
     }
 
     private void Warn(string reason)

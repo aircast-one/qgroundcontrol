@@ -187,6 +187,9 @@ internal static class FleetBridge
             "mvStartMission" => targets.Where(target => ArmedAt(target.Path))
                 .Select(target => Still(target, path => Ok(Bridge.Invoke($"{path}.startMission"))))
                 .ToList(),
+            "mvRtl" => targets.Where(target => ArmedAt(target.Path))
+                .Select(target => Still(target, path => Ok(Bridge.Invoke($"{path}.guidedModeRTL", new JsonArray(false)))))
+                .ToList(),
             _ => [],
         };
         return sent.Count > 0 && sent.All(ok => ok);
