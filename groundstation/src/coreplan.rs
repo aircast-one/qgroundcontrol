@@ -978,15 +978,18 @@ fn load_text_mission(text: &str) -> Result<Document, String> {
         plandoc::load_text_mission(&plan, offline_type("offlineEditingVehicleClass"))
             .map_err(|e| format!("Mission: {e}"))?,
     );
-    let vehicle_home = crate::hub::lock()
-        .active()
-        .and_then(|v| v.home)
-        .map(|(latitude, longitude, altitude)| [latitude, longitude, altitude]);
     Ok(placed_text_mission(
         document,
         file.home.is_some(),
-        vehicle_home,
+        active_vehicle_home(),
     ))
+}
+
+fn active_vehicle_home() -> Option<[f64; 3]> {
+    crate::hub::lock()
+        .active()
+        .and_then(|v| v.home)
+        .map(|(latitude, longitude, altitude)| [latitude, longitude, altitude])
 }
 
 fn placed_text_mission(
@@ -2427,17 +2430,20 @@ fn insert_kind(backend: &dyn Backend, args: &str) -> Value {
         .get(1)
         .and_then(Value::as_f64)
         .zip(given.get(2).and_then(Value::as_f64));
-    let placed_home = clicked.is_some_and(|(latitude, longitude)| {
+    let launches = kind == "takeoff" || (kind == "waypoint" && takeoff_required_first());
+    let vehicle_home = launches.then(active_vehicle_home).flatten();
+    let placed_home = (clicked.is_some() || vehicle_home.is_some()) && {
         let mut state = held();
         let homeless = state.document.as_ref().is_some_and(|d| d.home.is_none());
         state.document = state.document.take().map(|d| Document {
             home: d
                 .home
-                .or_else(|| plandoc::home_from_first_coordinate(&d, Some((latitude, longitude)))),
+                .or(vehicle_home)
+                .or_else(|| plandoc::home_from_first_coordinate(&d, clicked)),
             ..d
         });
         homeless
-    });
+    };
     if placed_home {
         settle_home_on_terrain(None);
     }
