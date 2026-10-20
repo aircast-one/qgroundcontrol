@@ -2980,6 +2980,12 @@ mod tests {
             "Logging.SettingsUI.json section keywords reach its controls"
         );
         assert!(fact_keywords("viewer3DSettings", "buildingLevelHeight").contains("openstreetmap"));
+        assert!(
+            ["gripper", "drop", "release", "bay"]
+                .iter()
+                .all(|word| fact_keywords("flyViewSettings", "payloadBays").contains(word)),
+            "operators call the payload a gripper, a drop or a release"
+        );
     }
 
     #[test]

@@ -40,6 +40,16 @@ test('settings search finds a setting by name', async ({ app }) => {
   await expect(app.getByText('Mute all audio output')).toBeVisible();
 });
 
+test('settings search finds the payload bays by what operators call a drop', async ({ app }) => {
+  await app.getByRole('button', { name: 'Settings', exact: true }).click();
+  const search = app.getByPlaceholder('Search settings');
+  await ['gripper', 'drop', 'release'].reduce(async (previous, word) => {
+    await previous;
+    await search.fill(word);
+    await expect(app.getByText('Payload bays', { exact: true })).toBeVisible();
+  }, Promise.resolve());
+});
+
 test('turning on the ADS-B server connection keeps the core running', async ({ app }) => {
   await app.getByRole('button', { name: 'Settings', exact: true }).click();
   await app.getByPlaceholder('Search settings').fill('ADS-B');
