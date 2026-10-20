@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-const GRAVITY: f64 = 9.80665;
+const GRAVITY_MPS2: f64 = 9.81;
 const LYING_DEG: f64 = 90.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -22,7 +22,8 @@ impl Release {
 
     pub fn falls_for_s(&self) -> f64 {
         let climb = self.velocity.2;
-        (climb + (climb * climb + 2.0 * GRAVITY * (self.height() - self.ground)).sqrt()) / GRAVITY
+        (climb + (climb * climb + 2.0 * GRAVITY_MPS2 * (self.height() - self.ground)).sqrt())
+            / GRAVITY_MPS2
     }
 
     pub fn at(&self, now_ms: i64) -> Value {
@@ -40,7 +41,7 @@ impl Release {
             "bay": self.bay,
             "latitude": latitude,
             "longitude": longitude,
-            "aboveHome": if landed { self.ground } else { self.height() + climb * t - GRAVITY * t * t / 2.0 },
+            "aboveHome": if landed { self.ground } else { self.height() + climb * t - GRAVITY_MPS2 * t * t / 2.0 },
             "heading": self.heading,
             "tilt": if landed { LYING_DEG } else { LYING_DEG * t / falls_for },
             "landed": landed,
@@ -78,7 +79,7 @@ mod tests {
     #[test]
     fn a_bottle_dropped_moving_lands_where_the_ballistic_flight_takes_it() {
         let release = released(20.0, (5.0, -2.0, 0.0), 0.0);
-        let falls_for = (2.0 * 20.0 / GRAVITY).sqrt();
+        let falls_for = (2.0 * 20.0 / GRAVITY_MPS2).sqrt();
         assert!((release.falls_for_s() - falls_for).abs() < 1e-9);
         let landed = release.at(1_000 + (falls_for * 1000.0).ceil() as i64);
         assert_eq!(landed["landed"], true);
@@ -96,7 +97,8 @@ mod tests {
         let half_second = release.at(1_500);
         assert_eq!(half_second["landed"], false);
         assert!(
-            (half_second["aboveHome"].as_f64().unwrap() - (20.0 + 2.0 * 0.5 - GRAVITY * 0.125))
+            (half_second["aboveHome"].as_f64().unwrap()
+                - (20.0 + 2.0 * 0.5 - GRAVITY_MPS2 * 0.125))
                 .abs()
                 < 1e-9,
             "a climbing drone throws the bottle up before it falls"
@@ -113,7 +115,7 @@ mod tests {
     #[test]
     fn the_ground_it_lands_on_is_the_terrain_under_the_drone_not_home() {
         let release = released(20.0, (0.0, 0.0, 0.0), 6.0);
-        assert!((release.falls_for_s() - (2.0 * 14.0 / GRAVITY).sqrt()).abs() < 1e-9);
+        assert!((release.falls_for_s() - (2.0 * 14.0 / GRAVITY_MPS2).sqrt()).abs() < 1e-9);
         assert_eq!(release.at(60_000)["aboveHome"].as_f64(), Some(6.0));
         let below = released(3.0, (0.0, 0.0, 0.0), 6.0);
         assert_eq!(
