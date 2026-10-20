@@ -398,6 +398,8 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     val extras = remember(offers) { moreActions(offers) }
     val gripper = remember(extras) { gripperOffers(extras) }
     val resumeFrom = remember(actionsJson) { resumeFromSequence(actionsJson) }
+    val autodropJson by qgcPath(AUTODROP_STATUS)
+    val autodropWaiting = autodropJson?.optText("state") == "waiting"
     val payload = remember(actionsJson) { payloadOf(actionsJson) }
     val automaticMissionPopups by qgcBool(settingControl("settings.flyViewSettings.enableAutomaticMissionPopups"))
     var missionReady by remember { mutableStateOf<Set<String>?>(null) }
@@ -614,6 +616,9 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                     MoreTile("Payload", R.drawable.ic_payload, gripper.any { it.ready }) { showGripper = true }.takeIf { gripper.isNotEmpty() },
                     MoreTile("Choose readings", R.drawable.ic_tune, true) { flyScreen.choosingReadings = true },
                     MoreTile("Edit layout", R.drawable.ic_edit, true) { flyScreen.layout.startEditing() }.takeIf { !armed },
+                    MoreTile(if (autodropWaiting) "Stop Auto Intercept" else "Auto Intercept", R.drawable.ic_drop, true) {
+                        if (autodropWaiting) VehicleCommands.stopAutoInterceptDrop() else VehicleCommands.startAutoInterceptDrop()
+                    },
                 ) +
                 extras.filter { offer -> entries.none { it.id == offer.id } && offer.id !in GRIPPER_ACTIONS }.map { offer ->
                     MoreTile(offer.title, guidedIcon(offer.id), offer.ready, offer.destructive) {

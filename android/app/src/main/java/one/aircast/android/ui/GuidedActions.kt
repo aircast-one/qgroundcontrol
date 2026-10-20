@@ -4,6 +4,7 @@ import org.json.JSONObject
 import one.aircast.map.optText
 
 internal const val GUIDED_ACTIONS = "view.guidedActions"
+internal const val AUTODROP_STATUS = "view.autodropStatus"
 
 internal data class GuidedOffer(
     val id: String,
