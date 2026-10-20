@@ -318,6 +318,7 @@ fn offers(backend: &dyn Backend) -> Vec<Offer> {
         (true, Offer { id: "SetHome", path: "vehicle.doSetHome", label: "Set home here", title: "Set Home", message: "Set vehicle home as the specified location. This will affect Return to Home position", confirm: true }),
         (flying, Offer { id: "Heading", path: "vehicle.guidedModeChangeHeading", label: "Set Heading", title: "Change Heading", message: "Set the vehicle heading towards the specified location", confirm: true }),
         (!gps, Offer { id: "EstimatorOrigin", path: "vehicle.setEstimatorOrigin", label: "Set Estimator Origin", title: "Set Estimator Origin", message: "Make the specified location the estimator origin", confirm: true }),
+        (true, Offer { id: "MarkTarget", path: "vehicle.markTarget", label: "Mark as target", title: "Mark Target", message: "Mark the specified location as the manual target for Auto Intercept", confirm: false }),
     ]
     .into_iter()
     .filter_map(|(shown, offer)| shown.then_some(offer))
@@ -724,7 +725,8 @@ mod tests {
                 "Go to location",
                 "ROI at location",
                 "Set home here",
-                "Set Heading"
+                "Set Heading",
+                "Mark as target"
             ]
         );
         assert_eq!(
@@ -732,8 +734,8 @@ mod tests {
                 flying: false,
                 ..flying
             }),
-            ["Set home here"],
-            "on the ground only home can be moved"
+            ["Set home here", "Mark as target"],
+            "on the ground only home can be moved, but a target can always be marked"
         );
         assert_eq!(
             labels(&Offered {
@@ -741,7 +743,7 @@ mod tests {
                 sensors: 0,
                 ..flying
             }),
-            ["Set home here", "Set Estimator Origin"],
+            ["Set home here", "Set Estimator Origin", "Mark as target"],
             "a vehicle without GPS is offered an origin"
         );
         let actions = |b: &Offered| map_click_view(b, &[])["actions"].clone();
