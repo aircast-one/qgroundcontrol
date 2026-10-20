@@ -310,8 +310,21 @@ def main() -> int:
     RESPONSES["/links/mocklink"] = {"started": True}
     _tool(module, "mock_vehicle")("px4", {"wind": "8,270"})
     check(
-        "autopilot=px4" in last_request() and "wind=8%2C270" in last_request(),
-        "passes autopilot and conditions",
+        "autopilot=px4" in last_request()
+        and "wind=8%2C270" in last_request()
+        and "vehicle=copter" in last_request(),
+        "passes autopilot and conditions, and defaults to a copter",
+        last_request(),
+    )
+    _tool(module, "mock_vehicle")("arducopter", None, "rover")
+    check("vehicle=rover" in last_request(), "asks for a rover instead", last_request())
+
+    print("sticks")
+    RESPONSES["/control/sticks"] = {"ms": 4000, "sent": {"ok": True}}
+    _tool(module, "sticks")(thrust=1, ms=4000)
+    check(
+        last_request() == "/control/sticks?roll=0.0&pitch=0.0&yaw=0.0&thrust=1&ms=4000",
+        "every axis goes, centred unless given",
         last_request(),
     )
 

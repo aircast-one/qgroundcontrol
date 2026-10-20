@@ -135,6 +135,22 @@ def invoke(path: str, args: list | None = None) -> dict:
 
 
 @mcp.tool()
+def sticks(
+    roll: float = 0.0, pitch: float = 0.0, yaw: float = 0.0, thrust: float = 0.5, ms: int = 1000
+) -> dict:
+    """Fly by hand: hold the on-screen sticks at these values for `ms`, as if a thumb held them.
+    roll, pitch (1 = forward) and yaw run -1..1; thrust runs 0 (idle) to 1 (full), 0.5 holds height.
+      sticks(thrust=1, ms=4000)    climb ~10 m from the ground in Loiter
+      sticks(pitch=1, ms=5000)     fly forward at the pilot speed
+      sticks(ms=0)                 let go now
+    Needs a stick mode (Loiter, AltHold, Stabilize...) and the virtual joystick enabled; a finger
+    on the screen or a hardware joystick always wins. Same write guard as write()."""
+    return _api(
+        f"/control/sticks?{_query({'roll': roll, 'pitch': pitch, 'yaw': yaw, 'thrust': thrust, 'ms': ms})}"
+    )
+
+
+@mcp.tool()
 def views(filter: str = "") -> list[dict]:
     """Every view the QGC core serves, with the argument shape of those that take arguments.
     `filter` substring-matches the path (case-insensitive). Read one with read()."""
@@ -161,7 +177,9 @@ def attach(port: int) -> dict:
 
 @mcp.tool()
 def mock_vehicle(
-    autopilot: Literal["arducopter", "px4"] = "arducopter", options: dict[str, str] | None = None
+    autopilot: Literal["arducopter", "px4"] = "arducopter",
+    options: dict[str, str] | None = None,
+    vehicle: Literal["copter", "rover"] = "copter",
 ) -> dict:
     """Connect a simulated vehicle inside the app (corehost and debug builds) - no SITL, and
     write/invoke are allowed against it. Calling it again while one is connected changes its
@@ -170,8 +188,12 @@ def mock_vehicle(
       wind="<m/s>,<from degrees>"     endurance="<minutes>" home="<lat>,<lon>"
       silent="1"|"0" (telemetry stops: contact lost)
     On start, options also take camera="1", gimbal="1", video="h264"|"rtsp"|..., add="1" for a
-    second vehicle. On the web app only the plain start is available."""
-    return _api(f"/links/mocklink?{_query({'autopilot': autopilot, **(options or {})})}")
+    second vehicle. `vehicle="rover"` simulates a ground vehicle instead of a copter - useful as
+    a moving target for a second mock_vehicle(add="1") to chase. On the web app only the plain
+    start is available."""
+    return _api(
+        f"/links/mocklink?{_query({'autopilot': autopilot, 'vehicle': vehicle, **(options or {})})}"
+    )
 
 
 def _env(actuators: bool, **extra: str) -> dict:
