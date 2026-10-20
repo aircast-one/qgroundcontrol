@@ -28,4 +28,12 @@ class MockLinkFieldsTest {
         assertEquals(listOf("px4", "apmCopter", "apmPlane", "apmSub", "apmRover", "generic"), MOCK_VEHICLES.map { it.first })
         assertEquals(6, MOCK_VIDEO_STREAMS.size)
     }
+
+    @Test
+    fun `a new simulated vehicle starts on the vehicle the core picked from the preferred firmware`() {
+        fun picked(view: JSONObject?) = MOCK_VEHICLES[preferredMockChoices(view).vehicle].second
+        assertEquals("APM ArduCopter Vehicle", picked(JSONObject("""{"mockVehicle":"apmCopter"}""")))
+        assertEquals("APM ArduPlane Vehicle", picked(JSONObject("""{"mockVehicle":"apmPlane"}""")))
+        assertEquals(List(3) { "PX4 Vehicle" }, listOf(picked(JSONObject("""{"mockVehicle":"px4"}""")), picked(null), picked(JSONObject("{}"))))
+    }
 }

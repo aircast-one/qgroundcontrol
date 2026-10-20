@@ -21,6 +21,10 @@ struct MockLinkChoices: Equatable {
     var videoStream = 0
 }
 
+func preferredMockChoices(_ linksView: JSON?) -> MockLinkChoices {
+    MockLinkChoices(vehicle: MOCK_VEHICLES.firstIndex { $0.0 == linksView?["mockVehicle"].string } ?? 0)
+}
+
 func mockVehicleIsApm(_ choices: MockLinkChoices) -> Bool { MOCK_VEHICLES[choices.vehicle].0.hasPrefix("apm") }
 
 func mockLinkArguments(_ choices: MockLinkChoices) -> [Any] {

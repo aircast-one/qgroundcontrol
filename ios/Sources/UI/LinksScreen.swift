@@ -900,7 +900,7 @@ private struct AddLinkPage: View {
     var body: some View {
         Group {
             if let chosen = type {
-                AddLinkDetails(type: chosen, onBack: { type = nil }, onAdded: { if type == chosen { onAdded() } })
+                AddLinkDetails(type: chosen, mock: preferredMockChoices(linksJson), onBack: { type = nil }, onAdded: { if type == chosen { onAdded() } })
                     .id(picks)
             } else {
                 picker
@@ -1015,11 +1015,11 @@ private struct AddLinkDetails: View {
     @QgcValue(UDP_LISTEN_PORT) private var udpListen
     @Environment(\.theme) private var theme
 
-    init(type: LinkType, onBack: @escaping () -> Void, onAdded: @escaping () -> Void) {
+    init(type: LinkType, mock: MockLinkChoices, onBack: @escaping () -> Void, onAdded: @escaping () -> Void) {
         self.type = type
         self.onBack = onBack
         self.onAdded = onAdded
-        _typed = State(initialValue: LinkDraft(type: type, port: portFor(type, DEFAULT_PORT)))
+        _typed = State(initialValue: LinkDraft(type: type, port: portFor(type, DEFAULT_PORT), mock: mock))
     }
 
     private var ports: [SerialPortChoice] { serialPortChoices(linksJson) }

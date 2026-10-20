@@ -19,4 +19,11 @@ final class MockLinkFieldsTests: XCTestCase {
         XCTAssertEqual(MOCK_VEHICLES.map(\.0), ["px4", "apmCopter", "apmPlane", "apmSub", "apmRover", "generic"])
         XCTAssertEqual(MOCK_VIDEO_STREAMS.count, 6)
     }
+
+    func testANewSimulatedVehicleStartsOnTheVehicleTheCorePickedFromThePreferredFirmware() {
+        let picked = { (view: JSON?) in MOCK_VEHICLES[preferredMockChoices(view).vehicle].1 }
+        XCTAssertEqual(picked(JSON.parse(#"{"mockVehicle":"apmCopter"}"#)), "APM ArduCopter Vehicle")
+        XCTAssertEqual(picked(JSON.parse(#"{"mockVehicle":"apmPlane"}"#)), "APM ArduPlane Vehicle")
+        XCTAssertEqual([picked(JSON.parse(#"{"mockVehicle":"px4"}"#)), picked(nil), picked(JSON.parse("{}"))], ["PX4 Vehicle", "PX4 Vehicle", "PX4 Vehicle"])
+    }
 }

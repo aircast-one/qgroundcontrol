@@ -981,7 +981,7 @@ private fun AddLinkDetails(type: LinkType, onBack: () -> Unit, onAdded: () -> Un
     val taken = remember(linksJson) { linkRows(linksJson).map { it.name } }
     val udpListen by one.aircast.android.bridge.qgcValue(UDP_LISTEN_PORT)
     val udpDefault = (udpListen as? Number)?.toInt()?.takeIf { it in 1..65535 }?.toString() ?: DEFAULT_PORT
-    var typed by remember { mutableStateOf(LinkDraft(type, port = portFor(type, udpDefault))) }
+    var typed by remember { mutableStateOf(LinkDraft(type, port = portFor(type, udpDefault), mock = preferredMockChoices(linksJson))) }
     val draft = typed.withPluggedPort(ports)
     var advanced by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }

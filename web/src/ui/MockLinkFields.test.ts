@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { type Json, parseJson } from '@/bridge/Json';
 import { LinkType, addableLinkTypes } from './LinksScreen';
-import { MOCK_VEHICLES, MOCK_VIDEO_STREAMS, MockLinkChoices, mockLinkArguments, withMockVehicle } from './MockLinkFields';
+import { MOCK_VEHICLES, MOCK_VIDEO_STREAMS, MockLinkChoices, mockLinkArguments, preferredMockChoices, withMockVehicle } from './MockLinkFields';
 import { settingsPages } from './SettingsScreen';
 
 const json = (text: string): Json => parseJson(text) ?? {};
@@ -24,5 +24,12 @@ describe('MockLinkFieldsTest', () => {
     expect(withMockVehicle(MockLinkChoices({ freshParams: true, vehicle: 1 }), 0).freshParams).toBe(false);
     expect(MOCK_VEHICLES.map((it) => it[0])).toEqual(['px4', 'apmCopter', 'apmPlane', 'apmSub', 'apmRover', 'generic']);
     expect(MOCK_VIDEO_STREAMS).toHaveLength(6);
+  });
+
+  it('a new simulated vehicle starts on the vehicle the core picked from the preferred firmware', () => {
+    const picked = (view: Json | null) => MOCK_VEHICLES[preferredMockChoices(view).vehicle]?.[1];
+    expect(picked(json('{"mockVehicle":"apmCopter"}'))).toBe('APM ArduCopter Vehicle');
+    expect(picked(json('{"mockVehicle":"apmPlane"}'))).toBe('APM ArduPlane Vehicle');
+    expect([picked(json('{"mockVehicle":"px4"}')), picked(null), picked(json('{}'))]).toEqual(['PX4 Vehicle', 'PX4 Vehicle', 'PX4 Vehicle']);
   });
 });

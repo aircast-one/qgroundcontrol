@@ -14,6 +14,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.unit.dp
+import one.aircast.map.optText
+import org.json.JSONObject
 
 internal val MOCK_VEHICLES = listOf(
     "px4" to "PX4 Vehicle",
@@ -35,6 +37,9 @@ internal data class MockLinkChoices(
     val vehicle: Int = 0,
     val videoStream: Int = 0,
 )
+
+internal fun preferredMockChoices(linksView: JSONObject?): MockLinkChoices =
+    MockLinkChoices(vehicle = MOCK_VEHICLES.indexOfFirst { it.first == linksView?.optText("mockVehicle") }.coerceAtLeast(0))
 
 internal fun mockVehicleIsApm(choices: MockLinkChoices): Boolean = MOCK_VEHICLES[choices.vehicle].first.startsWith("apm")
 

@@ -1,3 +1,4 @@
+import { type Json, optText } from '@/bridge/Json';
 import { Checkbox, Text } from '@/m3';
 import { ChoiceField } from '@/ui/SettingsScreen';
 
@@ -32,6 +33,9 @@ export const MockLinkChoices = (fields: Partial<MockLinkChoices> = {}): MockLink
   videoStream: 0,
   ...fields,
 });
+
+export const preferredMockChoices = (linksView: Json | null): MockLinkChoices =>
+  MockLinkChoices({ vehicle: Math.max(0, MOCK_VEHICLES.findIndex(([key]) => key === optText(linksView, 'mockVehicle'))) });
 
 const vehicleKey = (choices: MockLinkChoices): string => MOCK_VEHICLES[choices.vehicle]?.[0] ?? '';
 

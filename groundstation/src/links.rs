@@ -10,6 +10,8 @@ pub const DEPS: &[&str] = &[
     "vehicle.vehicleLinkManager.linkStatuses",
     "links.serialPorts",
     "links.serialPortStrings",
+    "settings.appSettings.preferredFirmwareClass",
+    "settings.appSettings.preferredVehicleClass",
 ];
 
 pub(crate) fn kind(settings_url: &str) -> &'static str {
@@ -233,8 +235,20 @@ pub fn links_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "serialPorts": serial_ports(root.get("serialPorts"), root.get("serialPortStrings")),
         "bluetooth": crate::platformbluetooth::state(),
         "throughDevice": cfg!(target_family = "wasm") && crate::device::paired(),
+        "mockVehicle": preferred_mock_vehicle(backend),
         "baudRates": root.get("serialBaudRates").and_then(Value::as_array).map(|a| a.iter().filter_map(|v| v.as_str().and_then(|s| s.parse::<i64>().ok())).collect::<Vec<_>>()).unwrap_or_default(),
     })
+}
+
+fn preferred_mock_vehicle(backend: &dyn Backend) -> &'static str {
+    let class = |path: &str| {
+        crate::read::value_number(&backend.value(path)).map_or(0, |class| class as i64)
+    };
+    crate::mocklink::Vehicle::preferred(
+        class("settings.appSettings.preferredFirmwareClass.rawValue"),
+        class("settings.appSettings.preferredVehicleClass.rawValue"),
+    )
+    .key()
 }
 
 pub(crate) fn serial_baud_rates(backend: &dyn Backend) -> Vec<i64> {
@@ -678,6 +692,41 @@ mod tests {
             "a link with no error has no remedy to offer, and a stale remedy beside an empty error would draw a fix-this prompt on a working link"
         );
         assert_eq!(healthy["lastError"], "");
+    }
+
+    #[test]
+    fn a_new_simulated_vehicle_starts_on_the_preferred_firmware_and_vehicle() {
+        struct Preferred(i64, i64);
+        impl Backend for Preferred {
+            fn get(&self, p: &str) -> String {
+                self.get_fields(p, "")
+            }
+            fn get_fields(&self, path: &str, _f: &str) -> String {
+                match path {
+                    "settings.appSettings.preferredFirmwareClass.rawValue" => {
+                        json!({ "kind": "value", "value": self.0 })
+                    }
+                    "settings.appSettings.preferredVehicleClass.rawValue" => {
+                        json!({ "kind": "value", "value": self.1 })
+                    }
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        assert_eq!(
+            [(3, 2), (3, 1), (3, 10), (3, 12), (12, 2), (0, 0)].map(|(firmware, vehicle)| {
+                links_view(&Preferred(firmware, vehicle), &[])["mockVehicle"].clone()
+            }),
+            ["apmCopter", "apmPlane", "apmRover", "apmSub", "px4", "px4"].map(Value::from)
+        );
     }
 
     #[test]

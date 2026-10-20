@@ -194,6 +194,24 @@ impl Vehicle {
             .map(|(v, _, _)| *v)
     }
 
+    pub fn key(self) -> &'static str {
+        VEHICLES
+            .iter()
+            .find(|(v, _, _)| *v == self)
+            .map_or("px4", |(_, key, _)| key)
+    }
+
+    pub fn preferred(firmware: i64, vehicle_class: i64) -> Vehicle {
+        let apm = firmware == MavAutopilot::MAV_AUTOPILOT_ARDUPILOTMEGA as i64;
+        match u8::try_from(vehicle_class).map(crate::modes::vehicle_class) {
+            _ if !apm => Vehicle::Px4,
+            Ok(crate::modes::VehicleClass::FixedWing) => Vehicle::Plane,
+            Ok(crate::modes::VehicleClass::Rover) => Vehicle::Rover,
+            Ok(crate::modes::VehicleClass::Sub) => Vehicle::Sub,
+            _ => Vehicle::Copter,
+        }
+    }
+
     pub fn link_name(self) -> &'static str {
         match self {
             Vehicle::Px4 => "PX4 MultiRotor MockLink",
@@ -3198,6 +3216,38 @@ mod tests {
             "and it is heard again when the radio comes back"
         );
         link.close();
+    }
+
+    #[test]
+    fn a_simulated_vehicle_flies_the_firmware_and_frame_the_pilot_prefers() {
+        let ardupilot = MavAutopilot::MAV_AUTOPILOT_ARDUPILOTMEGA as i64;
+        let px4 = MavAutopilot::MAV_AUTOPILOT_PX4 as i64;
+        assert_eq!(
+            [
+                (ardupilot, 2),
+                (ardupilot, 1),
+                (ardupilot, 20),
+                (ardupilot, 10),
+                (ardupilot, 12),
+                (ardupilot, 0)
+            ]
+            .map(|(firmware, class)| Vehicle::preferred(firmware, class).key()),
+            [
+                "apmCopter",
+                "apmPlane",
+                "apmPlane",
+                "apmRover",
+                "apmSub",
+                "apmCopter"
+            ],
+            "an ArduPilot VTOL is a QuadPlane, so it runs ArduPlane"
+        );
+        assert_eq!(
+            [(px4, 1), (px4, 2), (0, 0), (0, 2)]
+                .map(|(firmware, class)| Vehicle::preferred(firmware, class)),
+            [Vehicle::Px4; 4],
+            "PX4, or no firmware preference, keeps the PX4 vehicle"
+        );
     }
 
     fn options(vehicle: Vehicle) -> Options {
