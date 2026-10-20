@@ -190,7 +190,7 @@ export const allMissionItems = (json: Json | null): readonly MissionItem[] => {
   if (items === null) return [];
   const endsAfter = routeEndsAfter(items);
   const broken = legsAfterLanding(items);
-  return indices(items).flatMap((index) => {
+  return withDrops(indices(items).flatMap((index) => {
     const element = arrayJSONObject(items, index);
     if (element === null) return [];
     const at = placed(element, 'coordinate');
@@ -238,10 +238,10 @@ export const allMissionItems = (json: Json | null): readonly MissionItem[] => {
         exit: exit !== null && (at === null || exit.latitude !== at.latitude || exit.longitude !== at.longitude) ? exit : null,
       }),
     ];
-  });
+  }));
 };
 
-export const missionItems = (json: Json | null): readonly MissionItem[] => withDrops(allMissionItems(json)).filter((it) => it.placed);
+export const missionItems = (json: Json | null): readonly MissionItem[] => allMissionItems(json).filter((it) => it.placed);
 
 export const PlanBridge = {
   rawItems: (): Promise<Json | null> => MapBridge.read(PLAN_VIEW),

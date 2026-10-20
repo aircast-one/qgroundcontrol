@@ -313,3 +313,15 @@ describe('ComplexPatternTest', () => {
     expect(plan[0]!.complexPattern, 'a corridor inherits cameraCalc from TransectStyleComplexItem, so gating on the survey type hides camera work it really did').toBe(true);
   });
 });
+
+describe('DropMarkerTest', () => {
+  it('the plan map read marks the waypoint before a drop, though the drop itself has no place', () => {
+    const plan = allMissionItems(
+      json(`{"kind":"object","items":[
+        {"sequence":1,"name":"Waypoint","command":16,"specifiesCoordinate":true,"coordinate":{"latitude":47.0,"longitude":8.0}},
+        {"sequence":2,"name":"Gripper Action","command":211}]}`),
+    );
+
+    expect(plan.filter((it) => it.placed).map((it) => it.drops)).toEqual([true]);
+  });
+});

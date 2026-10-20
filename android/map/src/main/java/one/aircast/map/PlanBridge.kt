@@ -153,7 +153,7 @@ fun allMissionItems(json: JSONObject?): List<MissionItem> {
     val items = planItems(json) ?: return emptyList()
     val endsAfter = routeEndsAfter(items)
     val broken = legsAfterLanding(items)
-    return (0 until items.length()).mapNotNull { index ->
+    return withDrops((0 until items.length()).mapNotNull { index ->
         val element = items.optJSONObject(index) ?: return@mapNotNull null
         val at = placed(element, "coordinate")
 
@@ -199,10 +199,10 @@ fun allMissionItems(json: JSONObject?): List<MissionItem> {
             exit = placed(element, "exitCoordinate")
                 ?.takeIf { at == null || it.latitude != at.latitude || it.longitude != at.longitude },
         )
-    }
+    })
 }
 
-fun missionItems(json: JSONObject?): List<MissionItem> = withDrops(allMissionItems(json)).filter { it.placed }
+fun missionItems(json: JSONObject?): List<MissionItem> = allMissionItems(json).filter { it.placed }
 
 object PlanBridge {
     fun rawItems(): JSONObject? =

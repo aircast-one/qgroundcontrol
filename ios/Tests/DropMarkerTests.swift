@@ -17,4 +17,9 @@ final class DropMarkerTests: XCTestCase {
         XCTAssertEqual(sides[1], DROP_SIDE)
         XCTAssertEqual(sides[3], "")
     }
+
+    func testThePlanMapReadMarksTheWaypointBeforeADropThoughTheDropItselfHasNoPlace() {
+        let plan = allMissionItems(JSON.parse(#"{"kind":"object","items":[{"sequence":1,"name":"Waypoint","command":16,"specifiesCoordinate":true,"coordinate":{"latitude":47.0,"longitude":8.0}},{"sequence":2,"name":"Gripper Action","command":211}]}"#))
+        XCTAssertEqual(plan.filter(\.placed).map(\.drops), [true])
+    }
 }

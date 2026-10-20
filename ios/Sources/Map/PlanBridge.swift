@@ -172,7 +172,7 @@ func allMissionItems(_ json: JSON?) -> [MissionItem] {
     guard let items = planItems(json) else { return [] }
     let endsAfter = routeEndsAfter(items)
     let broken = legsAfterLanding(items)
-    return items.enumerated().compactMap { index, element in
+    return withDrops(items.enumerated().compactMap { index, element in
         guard element.object != nil else { return nil }
         let at = placed(element, "coordinate")
         let exit = placed(element, "exitCoordinate").flatMap { out in
@@ -219,10 +219,10 @@ func allMissionItems(_ json: JSON?) -> [MissionItem] {
             legBroken: broken.contains(index),
             abbreviation: element["abbreviation"].string
         )
-    }
+    })
 }
 
-func missionItems(_ json: JSON?) -> [MissionItem] { withDrops(allMissionItems(json)).filter(\.placed) }
+func missionItems(_ json: JSON?) -> [MissionItem] { allMissionItems(json).filter(\.placed) }
 
 enum PlanBridge {
     static func rawItems() -> JSON? { MapBridge.read(PLAN_VIEW) }

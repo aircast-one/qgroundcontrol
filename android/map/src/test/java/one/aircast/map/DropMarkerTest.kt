@@ -1,5 +1,6 @@
 package one.aircast.map
 
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Test
 
@@ -15,5 +16,18 @@ class DropMarkerTest {
         val sides = missionFeatures(withDrops(items).filter { it.placed }).features().orEmpty().associate { it.getNumberProperty(WAYPOINT_ID_PROPERTY).toInt() to it.getStringProperty(WAYPOINT_SIDE_LABEL_PROPERTY) }
         assertEquals(DROP_SIDE, sides[1])
         assertEquals("", sides[3])
+    }
+
+    @Test
+    fun `the plan map read marks the waypoint before a drop, though the drop itself has no place`() {
+        val plan = allMissionItems(
+            JSONObject(
+                """{"kind":"object","items":[
+                     {"sequence":1,"name":"Waypoint","command":16,"specifiesCoordinate":true,"coordinate":{"latitude":47.0,"longitude":8.0}},
+                     {"sequence":2,"name":"Gripper Action","command":211}]}""",
+            ),
+        )
+
+        assertEquals(listOf(true), plan.filter { it.placed }.map { it.drops })
     }
 }
