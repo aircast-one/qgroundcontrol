@@ -50,5 +50,5 @@ test('all status lists the gimbal and Tilt 90 points it as far down as it goes',
   expect(Math.abs((await left(app.getByText(/^ESC \d+ OK$/))) - (await left(gimbal)))).toBeLessThan(2);
   await gimbal.click();
   await app.getByRole('button', { name: 'Tilt 90' }).click();
-  await expect(app.getByRole('button', { name: /· P: -45\.0 ·/ })).toBeVisible({ timeout: 30_000 });
+  await expect(app.getByRole('button', { name: /· P: -90\.0 ·/ })).toBeVisible({ timeout: 30_000 });
 });
