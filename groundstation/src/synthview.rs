@@ -452,17 +452,17 @@ pub fn overlays(
     let items = mission["items"].as_array().cloned().unwrap_or_default();
     let home = items
         .iter()
-        .find(|item| item["homePosition"] == true)
+        .find(|item| item["kind"] == "settings")
         .and_then(|item| located(&item["coordinate"]));
     let placed = |item: &Value| {
         Some((
             located(&item["coordinate"])?,
-            item["amslEntryAlt"].as_f64().filter(|a| a.is_finite())? - home_amsl?,
+            item["altitudeAmsl"].as_f64().filter(|a| a.is_finite())? - home_amsl?,
         ))
     };
     let flown: Vec<(Value, (f64, f64), f64)> = items
         .iter()
-        .filter(|item| item["homePosition"] != true)
+        .filter(|item| item["kind"] != "settings")
         .filter_map(|item| placed(item).map(|(at, above)| (item.clone(), at, above)))
         .collect();
     let starts_home = mission["linksStartToHome"] == true;
@@ -1013,10 +1013,10 @@ mod tests {
     #[test]
     fn the_plan_is_placed_in_the_view_at_its_height_above_home() {
         let mission = json!({ "linksStartToHome": true, "items": [
-            { "index": 0, "homePosition": true, "coordinate": { "latitude": -35.363, "longitude": 149.165, "valid": true }, "amslEntryAlt": 584.0 },
-            { "index": 1, "sequence": 1, "flownLeg": true, "coordinate": { "latitude": -35.362, "longitude": 149.166, "valid": true }, "amslEntryAlt": 614.0 },
-            { "index": 2, "sequence": 2, "flownLeg": false, "coordinate": { "latitude": -35.361, "longitude": 149.167, "valid": true }, "amslEntryAlt": 634.0 },
-            { "index": 3, "sequence": 3, "coordinate": { "latitude": 0.0, "longitude": 0.0, "valid": false }, "amslEntryAlt": 600.0 },
+            { "index": 0, "kind": "settings", "coordinate": { "latitude": -35.363, "longitude": 149.165, "valid": true }, "altitudeAmsl": 584.0 },
+            { "index": 1, "sequence": 1, "kind": "waypoint", "flownLeg": true, "coordinate": { "latitude": -35.362, "longitude": 149.166, "valid": true }, "altitudeAmsl": 614.0 },
+            { "index": 2, "sequence": 2, "kind": "waypoint", "flownLeg": false, "coordinate": { "latitude": -35.361, "longitude": 149.167, "valid": true }, "altitudeAmsl": 634.0 },
+            { "index": 3, "sequence": 3, "kind": "waypoint", "coordinate": { "latitude": 0.0, "longitude": 0.0, "valid": false }, "altitudeAmsl": 600.0 },
         ] });
         let fences = json!({
             "polygons": [{ "inclusion": true, "vertices": [{ "latitude": 1.0, "longitude": 2.0 }, { "latitude": 1.0, "longitude": 2.1 }, { "latitude": 1.1, "longitude": 2.0 }] }],
