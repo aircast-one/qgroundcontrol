@@ -7,6 +7,7 @@ pub const WAITING_TIMEOUT_MS: u64 = 3000;
 pub const MAX_INITIAL_REQUEST_LIST_RETRY: u32 = 4;
 const MAX_INITIAL_LOAD_RETRY_SINGLE_PARAM: u32 = 5;
 const MAX_READ_WRITE_RETRY: u32 = 2;
+const MAX_WRITES_IN_FLIGHT: usize = 4;
 pub const VALUE_ACK_TIMEOUT_MS: u64 = 1000;
 pub const HASH_CHECK_TIMEOUT_MS: u64 = 1000;
 const PARAM_ERROR_DOES_NOT_EXIST: u8 = 1;
@@ -631,24 +632,34 @@ impl Params {
     }
 
     pub fn write(&mut self, component: u8, name: &str, value: ParamValue) -> Vec<Action> {
-        let (fresh, send) = self.ask(
+        let key = (component, Asked::Write(name.to_string()));
+        let held = !self.requests.get(&key).is_some_and(|r| r.sends > 0)
+            && self.writes_in_flight() >= MAX_WRITES_IN_FLIGHT;
+        let send = Action::Set {
             component,
-            Asked::Write(name.to_string()),
-            Action::Set {
-                component,
-                name: name.to_string(),
-                value,
-            },
-            false,
-        );
+            name: name.to_string(),
+            value,
+        };
+        let fresh = self
+            .requests
+            .insert(
+                key,
+                Request {
+                    sends: u32::from(!held),
+                    due: None,
+                    send: send.clone(),
+                    quiet: false,
+                },
+            )
+            .is_none();
         self.write_batch += usize::from(fresh);
         let changed = self
             .facts
             .get_mut(&component)
             .and_then(|facts| facts.get_mut(name))
             .is_some_and(|known| std::mem::replace(known, value) != value);
-        [self.progress(), send]
-            .into_iter()
+        std::iter::once(self.progress())
+            .chain((!held).then_some(send))
             .chain(changed.then(|| Action::Changed {
                 component,
                 name: name.to_string(),
@@ -656,10 +667,36 @@ impl Params {
             .collect()
     }
 
+    fn writes_in_flight(&self) -> usize {
+        self.requests
+            .iter()
+            .filter(|((_, asked), request)| matches!(asked, Asked::Write(_)) && request.sends > 0)
+            .count()
+    }
+
+    fn release_writes(&mut self) -> Vec<Action> {
+        let room = MAX_WRITES_IN_FLIGHT.saturating_sub(self.writes_in_flight());
+        let held: Vec<(u8, Asked)> = self
+            .requests
+            .iter()
+            .filter(|(_, request)| request.sends == 0)
+            .map(|(key, _)| key.clone())
+            .take(room)
+            .collect();
+        held.into_iter()
+            .filter_map(|key| {
+                self.requests.get_mut(&key).map(|request| {
+                    request.sends = 1;
+                    request.send.clone()
+                })
+            })
+            .collect()
+    }
+
     pub fn schedule(&mut self, now_ms: u64) {
         self.requests
             .values_mut()
-            .filter(|request| request.due.is_none())
+            .filter(|request| request.due.is_none() && request.sends > 0)
             .for_each(|request| request.due = Some(now_ms + VALUE_ACK_TIMEOUT_MS));
     }
 
@@ -720,7 +757,10 @@ impl Params {
             .chain(self.refresh(component, &name))
             .collect(),
         };
-        std::iter::once(progress).chain(failure).collect()
+        std::iter::once(progress)
+            .chain(failure)
+            .chain(self.release_writes())
+            .collect()
     }
 
     fn progress(&mut self) -> Action {
@@ -755,7 +795,13 @@ impl Params {
         Action::Progress(0.0)
     }
 
-    pub fn answer_requests(&mut self, component: u8, name: &str, index: u16, value: ParamValue) {
+    pub fn answer_requests(
+        &mut self,
+        component: u8,
+        name: &str,
+        index: u16,
+        value: ParamValue,
+    ) -> Vec<Action> {
         self.requests.retain(|(asked_of, asked), request| {
             *asked_of != component
                 || match asked {
@@ -764,6 +810,7 @@ impl Params {
                     Asked::Write(asked_name) => asked_name != name || !matches!(request.send, Action::Set { value: written, .. } if acknowledges(written, value)),
                 }
         });
+        self.release_writes()
     }
 
     pub fn on_param_value(
@@ -774,7 +821,21 @@ impl Params {
         index: u16,
         value: ParamValue,
     ) -> Vec<Action> {
-        self.answer_requests(component, name, index, value);
+        let released = self.answer_requests(component, name, index, value);
+        released
+            .into_iter()
+            .chain(self.took_value(component, name, count, index, value))
+            .collect()
+    }
+
+    fn took_value(
+        &mut self,
+        component: u8,
+        name: &str,
+        count: u16,
+        index: u16,
+        value: ParamValue,
+    ) -> Vec<Action> {
         if self.px4 && name == HASH_CHECK {
             return self.hash_answered(component, value);
         }
@@ -911,6 +972,7 @@ impl Params {
         failed.iter().for_each(|(key, _)| {
             self.requests.remove(key);
         });
+        let released = self.release_writes();
         failed
             .into_iter()
             .flat_map(|((component, asked), request)| match asked {
@@ -937,6 +999,7 @@ impl Params {
                     .collect()
                 }
             })
+            .chain(released)
             .collect()
     }
 
@@ -1732,8 +1795,8 @@ mod tests {
                 .iter()
                 .filter(|a| matches!(a, Action::Set { .. }))
                 .count(),
-            15,
-            "no batch-of-10 cap: each state machine resends on its own"
+            MAX_WRITES_IN_FLIGHT,
+            "only the writes in flight resend; the rest wait their turn"
         );
         let mut reads = Params::new(1, false);
         reads.start();
@@ -1751,6 +1814,55 @@ mod tests {
                 name: "P4".into()
             }),
             "a pending write no longer holds back read retries"
+        );
+    }
+
+    #[test]
+    fn a_burst_of_writes_keeps_four_in_flight_so_ardupilot_has_room_for_every_ack() {
+        let mut params = Params::new(1, false);
+        params.start();
+        let names: Vec<String> = (0..10).map(|i| format!("P{i}")).collect();
+        let refs: Vec<&str> = names.iter().map(String::as_str).collect();
+        deliver(&mut params, &refs, &[]);
+        let sent = |actions: &[Action]| -> Vec<String> {
+            actions
+                .iter()
+                .filter_map(|a| match a {
+                    Action::Set { name, .. } => Some(name.clone()),
+                    _ => None,
+                })
+                .collect()
+        };
+        let first: Vec<String> = names
+            .iter()
+            .flat_map(|name| sent(&params.write(1, name, ParamValue::I32(-1))))
+            .collect();
+        assert_eq!(first, ["P0", "P1", "P2", "P3"]);
+        assert!(params.writing(1, "P9"), "a held write is still pending");
+        assert_eq!(
+            sent(&params.on_param_value(1, "P0", 10, NO_INDEX, ParamValue::I32(-1))),
+            ["P4"],
+            "an ack frees a slot"
+        );
+        assert!(
+            sent(&params.on_param_value(1, "P1", 10, NO_INDEX, ParamValue::I32(5))).is_empty(),
+            "an echo of another value is no ack"
+        );
+        assert_eq!(sent(&expire(&mut params)), ["P1", "P2", "P3", "P4"]);
+        assert_eq!(sent(&expire(&mut params)), ["P1", "P2", "P3", "P4"]);
+        let given_up = expire(&mut params);
+        assert_eq!(
+            given_up
+                .iter()
+                .filter(|a| matches!(a, Action::WriteFailed { .. }))
+                .count(),
+            4
+        );
+        assert_eq!(sent(&given_up), ["P5", "P6", "P7", "P8"]);
+        assert_eq!(
+            sent(&params.on_param_error(1, "P5", -1, 2)),
+            ["P9"],
+            "a PARAM_ERROR frees a slot too"
         );
     }
 

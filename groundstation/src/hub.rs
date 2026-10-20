@@ -6419,9 +6419,13 @@ impl Vehicle {
                     && !self.replay
                     && !self.params.initial_complete()
                 {
-                    self.params
-                        .answer_requests(header.component_id, &name, p.param_index, value);
-                    return Vec::new();
+                    let actions = self.params.answer_requests(
+                        header.component_id,
+                        &name,
+                        p.param_index,
+                        value,
+                    );
+                    return self.follow_params(actions, now_ms);
                 }
                 let actions = self.params.on_param_value(
                     header.component_id,
