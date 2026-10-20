@@ -21,11 +21,13 @@ import {
 } from '@/ui/SyntheticView';
 
 describe('SyntheticViewTest', () => {
-  it('the synthetic view says which camera it stands in for once it has drawn', () => {
+  it('the synthetic view says which camera it stands in for once it has drawn, then steps off the aim point to the edge', () => {
     const standIn = 'No video from SITL camera · showing synthetic view';
-    expect(shownNote(SyntheticDraw.Loading, standIn)).toBe('Loading 3D view…');
-    expect(shownNote(SyntheticDraw.Drawn, standIn)).toBe(standIn);
-    expect(shownNote(SyntheticDraw.Drawn, null), 'the synthetic view chosen as the camera says nothing').toBeNull();
+    expect(shownNote(SyntheticDraw.Loading, standIn, true), 'an empty pane has no aim point to cover').toEqual({ text: 'Loading 3D view…', atEdge: false });
+    expect(shownNote(SyntheticDraw.Failed, standIn, true)).toEqual({ text: '3D view failed to start', atEdge: false });
+    expect(shownNote(SyntheticDraw.Drawn, standIn, false), 'the fallback is announced in the middle first').toEqual({ text: standIn, atEdge: false });
+    expect(shownNote(SyntheticDraw.Drawn, standIn, true), 'once announced it leaves the middle, where the camera points, clear').toEqual({ text: standIn, atEdge: true });
+    expect(shownNote(SyntheticDraw.Drawn, null, false), 'the synthetic view chosen as the camera says nothing').toBeNull();
   });
 
   it('the view is drawn only when the core can place the camera', () => {

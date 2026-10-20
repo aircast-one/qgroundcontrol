@@ -2,11 +2,11 @@ import { type SyntheticEvent, useEffect, useMemo, useRef, useState } from 'react
 import { Qgc } from '@/bridge/Qgc';
 import { useQgcDerived, useQgcPath } from '@/bridge/QgcState';
 import { type Json, isNull, jsonObjects, optBoolean, optDouble, optJSONArray } from '@/bridge/Json';
-import { useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
-import { coerceAtLeast, coerceIn } from '@/kotlin/Std';
+import { useLaunchedEffect, useProduceState, useUpdatedRef } from '@/kotlin/Compose';
+import { coerceAtLeast, coerceIn, delay } from '@/kotlin/Std';
 import { mutableStateMapOf, useValue } from '@/kotlin/State';
 import { CircularProgressIndicator, Text } from '@/m3';
-import { aircast } from '@/theme/Colors';
+import { Color, aircast, withAlpha } from '@/theme/Colors';
 import { CAMERAS_VIEW, type CameraEntry, CameraStatus, type CamerasReading, camerasReading } from '@/ui/Cameras';
 import { gimbalRefusal } from '@/ui/GimbalIndicator';
 import { osdShadow } from '@/ui/Osd';
@@ -27,6 +27,9 @@ const SYNTHETIC_TILES = '/assets/synthetic/tiles';
 const SYNTHETIC_HOST = 'aircastHost';
 const NOTE_SPINNER = 16;
 const NOTE_SPINNER_STROKE = 2;
+const STAND_IN_ANNOUNCED_MS = 4000;
+const EDGE_NOTE_SCRIM_ALPHA = 0.35;
+const EDGE_NOTE_TEXT_ALPHA = 0.75;
 
 export type SyntheticDraw = { readonly name: 'Loading' | 'Drawn' | 'Failed'; readonly ordinal: number; readonly note: string | null };
 
@@ -155,11 +158,10 @@ const SyntheticPage = ({ view, standIn }: { view: Json | null; standIn: string |
     page.aircastHost = { placed: () => setDraw(SyntheticDraw.Drawn), failed: () => setDraw(SyntheticDraw.Failed) };
     setLoaded(true);
   };
-  const note = shownNote(draw, standIn);
   return (
     <>
       {served ? <iframe ref={frame} src={SYNTHETIC_PAGE} title={SYNTHETIC_LABEL} onLoad={onLoad} className="pointer-events-none absolute inset-0 size-full border-0 bg-black" /> : <div className="absolute inset-0 bg-black" />}
-      {note !== null ? <SyntheticNote note={note} loading={draw === SyntheticDraw.Loading} /> : null}
+      <SyntheticNote draw={draw} standIn={standIn} />
     </>
   );
 };
@@ -167,16 +169,18 @@ const SyntheticPage = ({ view, standIn }: { view: Json | null; standIn: string |
 const NativePage = ({ view, standIn }: { view: Json | null; standIn: string | null }) => {
   const draw = nativeDraw(view);
   useRegisteredPage(draw);
-  const note = shownNote(draw, standIn);
   return (
     <>
       <SyntheticSurface className="absolute inset-0 size-full" />
-      {note !== null ? <SyntheticNote note={note} loading={draw === SyntheticDraw.Loading} /> : null}
+      <SyntheticNote draw={draw} standIn={standIn} />
     </>
   );
 };
 
-export const shownNote = (draw: SyntheticDraw, standIn: string | null): string | null => draw.note ?? standIn;
+export type ShownNote = { readonly text: string; readonly atEdge: boolean };
+
+export const shownNote = (draw: SyntheticDraw, standIn: string | null, announced: boolean): ShownNote | null =>
+  draw.note !== null ? { text: draw.note, atEdge: false } : standIn !== null ? { text: standIn, atEdge: announced } : null;
 
 export const gimbalAimsSynthetic = (view: Json | null, aimable: boolean): boolean => aimable && syntheticAvailable(view) && view !== null && !optBoolean(view, 'aimable', true);
 
@@ -278,13 +282,34 @@ export const SyntheticView = ({
   );
 };
 
-const SyntheticNote = ({ note, loading }: { note: string; loading: boolean }) => (
-  <div className={`pointer-events-none absolute inset-0 flex items-center justify-center px-4 select-none ${osdShadow()}`}>
-    <div className="flex items-center gap-2">
-      {loading ? <CircularProgressIndicator size={NOTE_SPINNER} strokeWidth={NOTE_SPINNER_STROKE} color={aircast('outdoorForeground')} /> : null}
-      <Text typography="labelLarge" color={aircast('outdoorForeground')} textAlign="center" maxLines={2}>
-        {note}
+const SyntheticNote = ({ draw, standIn }: { draw: SyntheticDraw; standIn: string | null }) => {
+  const standingIn = draw.note === null && standIn !== null;
+  const announced = useProduceState(false, [standingIn], async (set) => {
+    set(false);
+    if (!standingIn) return;
+    await delay(STAND_IN_ANNOUNCED_MS);
+    set(true);
+  });
+  const note = shownNote(draw, standIn, announced);
+  return note === null ? null : note.atEdge ? (
+    <div
+      role="status"
+      aria-label={note.text}
+      className="pointer-events-none absolute end-3 bottom-3 rounded-full px-2 py-0.5 select-none"
+      style={{ background: withAlpha(Color.Black, EDGE_NOTE_SCRIM_ALPHA) }}
+    >
+      <Text typography="labelSmall" color={withAlpha(aircast('outdoorForeground'), EDGE_NOTE_TEXT_ALPHA)} maxLines={1}>
+        {SYNTHETIC_LABEL}
       </Text>
     </div>
-  </div>
-);
+  ) : (
+    <div className={`pointer-events-none absolute inset-0 flex items-center justify-center px-4 select-none ${osdShadow()}`}>
+      <div role="status" aria-label={note.text} className="flex items-center gap-2">
+        {draw === SyntheticDraw.Loading ? <CircularProgressIndicator size={NOTE_SPINNER} strokeWidth={NOTE_SPINNER_STROKE} color={aircast('outdoorForeground')} /> : null}
+        <Text typography="labelLarge" color={aircast('outdoorForeground')} textAlign="center" maxLines={2}>
+          {note.text}
+        </Text>
+      </div>
+    </div>
+  );
+};

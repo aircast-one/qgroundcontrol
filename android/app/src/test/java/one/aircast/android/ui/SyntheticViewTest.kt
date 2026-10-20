@@ -9,11 +9,13 @@ import org.junit.Test
 
 class SyntheticViewTest {
     @Test
-    fun `the synthetic view says which camera it stands in for once it has drawn`() {
+    fun `the synthetic view says which camera it stands in for once it has drawn, then steps off the aim point to the edge`() {
         val standIn = "No video from SITL camera · showing synthetic view"
-        assertEquals("Loading 3D view…", shownNote(SyntheticDraw.Loading, standIn))
-        assertEquals(standIn, shownNote(SyntheticDraw.Drawn, standIn))
-        assertNull("the synthetic view chosen as the camera says nothing", shownNote(SyntheticDraw.Drawn, null))
+        assertEquals("an empty pane has no aim point to cover", ShownNote("Loading 3D view…", atEdge = false), shownNote(SyntheticDraw.Loading, standIn, announced = true))
+        assertEquals(ShownNote("3D view failed to start", atEdge = false), shownNote(SyntheticDraw.Failed, standIn, announced = true))
+        assertEquals("the fallback is announced in the middle first", ShownNote(standIn, atEdge = false), shownNote(SyntheticDraw.Drawn, standIn, announced = false))
+        assertEquals("once announced it leaves the middle, where the camera points, clear", ShownNote(standIn, atEdge = true), shownNote(SyntheticDraw.Drawn, standIn, announced = true))
+        assertNull("the synthetic view chosen as the camera says nothing", shownNote(SyntheticDraw.Drawn, null, announced = false))
     }
 
     @Test

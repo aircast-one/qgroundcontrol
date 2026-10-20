@@ -82,7 +82,7 @@ test('with a gimbal, a drag on the picked synthetic view turns the view and leav
 
 test('with a gimbal and the synthetic view standing in for the camera, the tilt slider takes the drag: pulled down, the camera tilts down', async ({ app }) => {
   await connectMock(app, ['Enable camera', 'Enable gimbal']);
-  const notice = app.getByText(/showing synthetic view$/);
+  const notice = app.getByRole('status', { name: /showing synthetic view$/ });
   await expect(notice).toBeVisible({ timeout: 30_000 });
   const tilt = app.getByRole('slider', { name: 'Camera tilt' });
   const thumb = tilt.locator('..');
@@ -97,6 +97,33 @@ test('with a gimbal and the synthetic view standing in for the camera, the tilt 
   await expect.poll(async () => Number(await tilt.getAttribute('aria-valuenow')), { timeout: 10_000 }).toBeLessThan(before - 10);
   await expect(notice).toHaveCSS('user-select', 'none');
 });
+
+const NO_VIDEO = 'No video from MockCam 1 · Stream 1-1 · showing synthetic view';
+
+[
+  { screen: 'desktop', viewport: { width: 1280, height: 800 }, hasTouch: false },
+  { screen: 'phone held upright', viewport: { width: 390, height: 844 }, hasTouch: true },
+  { screen: 'phone held sideways', viewport: { width: 844, height: 390 }, hasTouch: true },
+].forEach(({ screen, viewport, hasTouch }) =>
+  test.describe(screen, () => {
+    test.use({ viewport, hasTouch });
+
+    test(`on a ${screen} the no-video notice steps off the middle of the picture, where the camera points, and keeps its words`, async ({ app }, testInfo) => {
+      await connectMock(app, ['Enable camera', 'Enable gimbal'], 'APM ArduCopter Vehicle');
+      const notice = app.getByRole('status', { name: NO_VIDEO, exact: true });
+      await expect(notice).toBeVisible({ timeout: 30_000 });
+      const picture = await syntheticCanvas(app);
+      const [x, y] = [picture.x + picture.width / 2, picture.y + picture.height / 2];
+      const coversAimPoint = async () => {
+        const box = (await notice.boundingBox())!;
+        return box.x <= x && x <= box.x + box.width && box.y <= y && y <= box.y + box.height;
+      };
+      await expect.poll(coversAimPoint, { timeout: 15_000 }).toBe(false);
+      await expect(notice).toBeVisible();
+      await app.screenshot({ path: testInfo.outputPath(`no-video-notice-${viewport.width}x${viewport.height}.png`) });
+    });
+  }),
+);
 
 type Bottle = { latitude: number; longitude: number; aboveHome: number; landed: boolean };
 

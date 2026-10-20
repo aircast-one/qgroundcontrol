@@ -7,6 +7,7 @@ import android.webkit.JavascriptInterface
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebView
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxScope
@@ -14,6 +15,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -24,6 +26,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.setValue
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.foundation.gestures.detectDragGestures
@@ -36,6 +39,10 @@ import one.aircast.android.bridge.offMainInOrder
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.semantics.LiveRegionMode
+import androidx.compose.ui.semantics.clearAndSetSemantics
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import one.aircast.map.AircastSpace
@@ -48,6 +55,7 @@ import one.aircast.android.BuildConfig
 import one.aircast.android.bridge.qgcPath
 import one.aircast.map.coreTile
 import one.aircast.map.tileMimeType
+import kotlinx.coroutines.delay
 import org.json.JSONObject
 
 internal const val SYNTHETIC_VIEW = "view.syntheticView"
@@ -63,6 +71,10 @@ private const val SYNTHETIC_TILES = "/assets/synthetic/tiles"
 private const val SYNTHETIC_HOST = "aircastHost"
 private val NOTE_SPINNER = 16.dp
 private val NOTE_SPINNER_STROKE = 2.dp
+private const val STAND_IN_ANNOUNCED_MS = 4000L
+private const val EDGE_NOTE_SCRIM_ALPHA = 0.35f
+private const val EDGE_NOTE_TEXT_ALPHA = 0.75f
+private val EDGE_NOTE_PAD_VERTICAL = 2.dp
 
 internal enum class SyntheticDraw(val note: String?) {
     Loading("Loading 3D view…"),
@@ -164,7 +176,7 @@ private fun BoxScope.SyntheticPage(view: JSONObject?, standIn: String?) {
     LaunchedEffect(view, loaded) { view?.takeIf { loaded }?.let { web.evaluateJavascript(syntheticPoseScript(it), null) } }
     LaunchedEffect(overlays, loaded) { overlays?.takeIf { loaded }?.let { web.evaluateJavascript(syntheticOverlaysScript(it), null) } }
     AndroidView({ web }, Modifier.fillMaxSize())
-    shownNote(draw, standIn)?.let { note -> SyntheticNote(note, loading = draw == SyntheticDraw.Loading, Modifier.align(Alignment.Center)) }
+    SyntheticNote(draw, standIn)
 }
 
 @Composable
@@ -176,10 +188,13 @@ private fun BoxScope.NativePage(view: JSONObject?, standIn: String?) {
         onDispose { pages.remove(shown) }
     }
     SyntheticSurface(Modifier.fillMaxSize())
-    shownNote(draw, standIn)?.let { note -> SyntheticNote(note, loading = draw == SyntheticDraw.Loading, Modifier.align(Alignment.Center)) }
+    SyntheticNote(draw, standIn)
 }
 
-internal fun shownNote(draw: SyntheticDraw, standIn: String?): String? = draw.note ?: standIn
+internal data class ShownNote(val text: String, val atEdge: Boolean)
+
+internal fun shownNote(draw: SyntheticDraw, standIn: String?, announced: Boolean): ShownNote? =
+    draw.note?.let { ShownNote(it, atEdge = false) } ?: standIn?.let { ShownNote(it, atEdge = announced) }
 
 internal fun gimbalAimsSynthetic(view: JSONObject?, aimable: Boolean): Boolean =
     aimable && syntheticAvailable(view) && view?.optBoolean("aimable", true) == false
@@ -266,9 +281,39 @@ internal fun SyntheticView(modifier: Modifier = Modifier, aimable: Boolean = fal
 }
 
 @Composable
-private fun SyntheticNote(note: String, loading: Boolean, modifier: Modifier) {
-    Row(modifier.padding(horizontal = AircastSpace.s4).osdShadow(), horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2), verticalAlignment = Alignment.CenterVertically) {
-        if (loading) CircularProgressIndicator(Modifier.size(NOTE_SPINNER), color = MaterialTheme.aircast.outdoorForeground, strokeWidth = NOTE_SPINNER_STROKE)
-        Text(note, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.aircast.outdoorForeground, textAlign = TextAlign.Center, maxLines = 2)
+private fun BoxScope.SyntheticNote(draw: SyntheticDraw, standIn: String?) {
+    val standingIn = draw.note == null && standIn != null
+    val announced by produceState(false, standingIn) {
+        value = false
+        if (standingIn) {
+            delay(STAND_IN_ANNOUNCED_MS)
+            value = true
+        }
+    }
+    val note = shownNote(draw, standIn, announced) ?: return
+    val announcement = Modifier.clearAndSetSemantics {
+        contentDescription = note.text
+        liveRegion = LiveRegionMode.Polite
+    }
+    if (note.atEdge) {
+        Text(
+            SYNTHETIC_LABEL,
+            Modifier.align(Alignment.BottomEnd).padding(AircastSpace.s3)
+                .background(Color.Black.copy(alpha = EDGE_NOTE_SCRIM_ALPHA), CircleShape)
+                .padding(horizontal = AircastSpace.s2, vertical = EDGE_NOTE_PAD_VERTICAL)
+                .then(announcement),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.aircast.outdoorForeground.copy(alpha = EDGE_NOTE_TEXT_ALPHA),
+            maxLines = 1,
+        )
+    } else {
+        Row(
+            Modifier.align(Alignment.Center).padding(horizontal = AircastSpace.s4).osdShadow().then(announcement),
+            horizontalArrangement = Arrangement.spacedBy(AircastSpace.s2),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (draw == SyntheticDraw.Loading) CircularProgressIndicator(Modifier.size(NOTE_SPINNER), color = MaterialTheme.aircast.outdoorForeground, strokeWidth = NOTE_SPINNER_STROKE)
+            Text(note.text, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.aircast.outdoorForeground, textAlign = TextAlign.Center, maxLines = 2)
+        }
     }
 }

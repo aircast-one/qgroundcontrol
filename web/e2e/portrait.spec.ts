@@ -22,7 +22,7 @@ test('held upright, a drag up on the camera strip tilts the gimbal down without 
   await openApp(page);
   await connectMock(page, ['Enable camera', 'Enable gimbal'], 'APM ArduCopter Vehicle');
   await takeOff(page, '5 m');
-  await expect(page.getByText(/showing synthetic view$/)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByRole('status', { name: /showing synthetic view$/ })).toBeVisible({ timeout: 30_000 });
   await expect.poll(() => gimbalPitch(page), { timeout: 60_000 }).not.toBeNull();
   const picture = page.locator('canvas:not(.maplibregl-canvas)').filter({ visible: true }).first();
   const strip = (await picture.boundingBox())!;

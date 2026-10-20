@@ -2,11 +2,13 @@ import XCTest
 @testable import Aircast
 
 final class SyntheticViewTests: XCTestCase {
-    func testTheSyntheticViewSaysWhichCameraItStandsInForOnceItHasDrawn() {
+    func testTheSyntheticViewSaysWhichCameraItStandsInForOnceItHasDrawnThenStepsOffTheAimPointToTheEdge() {
         let standIn = "No video from SITL camera · showing synthetic view"
-        XCTAssertEqual(shownNote(.Loading, standIn), "Loading 3D view…")
-        XCTAssertEqual(shownNote(.Drawn, standIn), standIn)
-        XCTAssertNil(shownNote(.Drawn, nil), "the synthetic view chosen as the camera says nothing")
+        XCTAssertEqual(shownNote(.Loading, standIn, announced: true), ShownNote(text: "Loading 3D view…", atEdge: false), "an empty pane has no aim point to cover")
+        XCTAssertEqual(shownNote(.Failed, standIn, announced: true), ShownNote(text: "3D view failed to start", atEdge: false))
+        XCTAssertEqual(shownNote(.Drawn, standIn, announced: false), ShownNote(text: standIn, atEdge: false), "the fallback is announced in the middle first")
+        XCTAssertEqual(shownNote(.Drawn, standIn, announced: true), ShownNote(text: standIn, atEdge: true), "once announced it leaves the middle, where the camera points, clear")
+        XCTAssertNil(shownNote(.Drawn, nil, announced: false), "the synthetic view chosen as the camera says nothing")
     }
 
     func testThePageAsksForTilesBesideItselfAndTheCoreAnswersThem() {

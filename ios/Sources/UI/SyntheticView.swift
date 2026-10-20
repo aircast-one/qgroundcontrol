@@ -18,6 +18,10 @@ private let PAN_SPAN_DEG = 360.0
 private let PNG_SIGNATURE: [UInt8] = [0x89, 0x50, 0x4E, 0x47]
 private let HTTP_OK = 200
 private let HTTP_NOT_FOUND = 404
+private let STAND_IN_ANNOUNCED_MS = 4000
+private let EDGE_NOTE_SCRIM_ALPHA = 0.35
+private let EDGE_NOTE_TEXT_ALPHA = 0.75
+private let EDGE_NOTE_PAD_VERTICAL: CGFloat = 2
 
 enum SyntheticDraw {
     case Loading, Drawn, Failed
@@ -167,8 +171,13 @@ private struct SyntheticWebView: UIViewRepresentable {
     }
 }
 
-func shownNote(_ draw: SyntheticDraw, _ standIn: String?) -> String? {
-    draw.note ?? standIn
+struct ShownNote: Equatable {
+    let text: String
+    let atEdge: Bool
+}
+
+func shownNote(_ draw: SyntheticDraw, _ standIn: String?, announced: Bool) -> ShownNote? {
+    draw.note.map { ShownNote(text: $0, atEdge: false) } ?? standIn.map { ShownNote(text: $0, atEdge: announced) }
 }
 
 private struct NativePage: View {
@@ -179,23 +188,50 @@ private struct NativePage: View {
         let draw = nativeDraw(view)
         ZStack {
             SyntheticSurface()
-            if let note = shownNote(draw, standIn) { SyntheticNote(note: note, loading: draw == .Loading) }
+            SyntheticNote(draw: draw, standIn: standIn)
         }
     }
 }
 
 private struct SyntheticNote: View {
-    let note: String
-    let loading: Bool
+    let draw: SyntheticDraw
+    let standIn: String?
+    @State private var announced = false
     @Environment(\.theme) private var theme
 
+    private var standingIn: Bool { draw.note == nil && standIn != nil }
+
     var body: some View {
-        HStack(spacing: Space.s2) {
-            if loading { ProgressView().controlSize(.small).tint(theme.aircast.outdoorForeground) }
-            Text(note).font(.labelLarge).foregroundStyle(theme.aircast.outdoorForeground).multilineTextAlignment(.center).lineLimit(2)
+        ZStack {
+            Color.clear
+            if let note = shownNote(draw, standIn, announced: announced) {
+                if note.atEdge {
+                    Text(SYNTHETIC_LABEL).font(.labelSmall).foregroundStyle(theme.aircast.outdoorForeground.opacity(EDGE_NOTE_TEXT_ALPHA)).lineLimit(1)
+                        .padding(.horizontal, Space.s2)
+                        .padding(.vertical, EDGE_NOTE_PAD_VERTICAL)
+                        .background(Color.black.opacity(EDGE_NOTE_SCRIM_ALPHA), in: Capsule())
+                        .accessibilityElement(children: .ignore)
+                        .accessibilityLabel(note.text)
+                        .padding(Space.s3)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                } else {
+                    HStack(spacing: Space.s2) {
+                        if draw == .Loading { ProgressView().controlSize(.small).tint(theme.aircast.outdoorForeground) }
+                        Text(note.text).font(.labelLarge).foregroundStyle(theme.aircast.outdoorForeground).multilineTextAlignment(.center).lineLimit(2)
+                    }
+                    .accessibilityElement(children: .ignore)
+                    .accessibilityLabel(note.text)
+                    .padding(.horizontal, Space.s4)
+                    .osdShadow()
+                }
+            }
         }
-        .padding(.horizontal, Space.s4)
-        .osdShadow()
+        .allowsHitTesting(false)
+        .task(id: standingIn) {
+            announced = false
+            guard standingIn, (try? await Task.sleep(for: .milliseconds(STAND_IN_ANNOUNCED_MS))) != nil else { return }
+            announced = true
+        }
     }
 }
 
@@ -216,7 +252,7 @@ struct SyntheticView: View {
                     NativePage(view: view, standIn: standIn)
                 } else {
                     SyntheticWebView(pose: view, overlays: overlays)
-                    if let note = shownNote(.Drawn, standIn) { SyntheticNote(note: note, loading: false) }
+                    SyntheticNote(draw: .Drawn, standIn: standIn)
                 }
             }
             .contentShape(Rectangle())
