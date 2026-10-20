@@ -1310,6 +1310,7 @@ fn current_camera_fields(recording: impl Fn() -> bool) -> Option<serde_json::Map
         recording,
         vehicle.camera_tracking_enabled,
         vehicle.camera_tracking_image.as_ref(),
+        vehicle.camera_tracking_geo.as_ref(),
         crate::hub::now_ms(),
     ))
 }
@@ -1358,6 +1359,7 @@ fn camera_instance(
     recording: bool,
     tracking_enabled: bool,
     tracking_image: Option<&crate::cameratrack::TrackingImage>,
+    tracking_geo: Option<&crate::cameratrack::TrackingGeo>,
     now_ms: u64,
 ) -> serde_json::Map<String, Value> {
     use crate::cameraproto::{
@@ -1504,6 +1506,12 @@ fn camera_instance(
         (
             "trackingImageRadius",
             json!(point.map_or(0.0, |(_, _, radius)| radius)),
+        ),
+        (
+            "trackingGeo",
+            tracking_geo
+                .filter(|_| tracking)
+                .map_or(Value::Null, |geo| geo.json(now_ms)),
         ),
     ]
     .into_iter();

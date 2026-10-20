@@ -685,6 +685,7 @@ fn show(
         }
         let redraw = rekeyed
             || restyled
+            || overlays.value.as_ref().is_some_and(Overlays::animating)
             || frame.as_ref().is_some_and(|frame| frame.changed)
             || frame.is_some() != framed;
         framed = frame.is_some();

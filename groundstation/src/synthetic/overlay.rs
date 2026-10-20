@@ -1,4 +1,5 @@
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use glam::{DMat3, DMat4, DVec3};
 use serde_json::Value;
@@ -80,6 +81,12 @@ const WAYPOINT: [u8; 4] = [255, 255, 255, 255];
 const INCLUSION: [u8; 4] = [0xFF, 0x8A, 0x65, 64];
 const EXCLUSION: [u8; 4] = [0xE5, 0x39, 0x35, 77];
 const MARK_TEXELS: u32 = 32;
+const TRACKED: [u8; 4] = [0x00, 0xE5, 0xFF, 255];
+const TRACKED_PX: f64 = 28.0;
+const TRACKED_M: f64 = 6.0;
+const TRACKED_GLIDE_LIMIT: Duration = Duration::from_secs(2);
+const BRACKET_TEXELS: u32 = 10;
+const BRACKET_THICKNESS: u32 = 3;
 const GLYPHS: &str = "0123456789H";
 const GLYPH_SCALE: u32 = 4;
 const GLYPH_CELL: (u32, u32) = (5, 7);
@@ -111,12 +118,57 @@ pub struct Fence {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct Tracked {
+    pub spot: Spot,
+    pub north_speed: f64,
+    pub east_speed: f64,
+    pub seen: Instant,
+}
+
+impl Tracked {
+    fn from_view(value: &Value, now: Instant) -> Option<Self> {
+        let number = |key: &str| {
+            value
+                .get(key)
+                .and_then(Value::as_f64)
+                .filter(|v| v.is_finite())
+        };
+        let age = Duration::from_millis(number("ageMs").unwrap_or(0.0).max(0.0) as u64);
+        Some(Self {
+            spot: spot(value)?,
+            north_speed: number("northSpeed").unwrap_or(0.0),
+            east_speed: number("eastSpeed").unwrap_or(0.0),
+            seen: now.checked_sub(age).unwrap_or(now),
+        })
+    }
+
+    pub fn moving(&self) -> bool {
+        self.north_speed != 0.0 || self.east_speed != 0.0
+    }
+
+    pub fn at(&self, now: Instant) -> (f64, f64) {
+        let gliding = now
+            .saturating_duration_since(self.seen)
+            .min(TRACKED_GLIDE_LIMIT)
+            .as_secs_f64();
+        let north = self.north_speed * gliding / EARTH_RADIUS_M;
+        let east =
+            self.east_speed * gliding / (EARTH_RADIUS_M * self.spot.latitude.to_radians().cos());
+        (
+            self.spot.latitude + north.to_degrees(),
+            self.spot.longitude + east.to_degrees(),
+        )
+    }
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct Overlays {
     pub home: Option<(f64, f64)>,
     pub route: Vec<Spot>,
     pub waypoints: Vec<(Spot, String)>,
     pub fences: Vec<Fence>,
     pub fence_top: f64,
+    pub tracked: Option<Tracked>,
 }
 
 fn spot(value: &Value) -> Option<Spot> {
@@ -191,7 +243,14 @@ impl Overlays {
                 .collect(),
             fences: polygons.chain(circles).collect(),
             fence_top,
+            tracked: view
+                .get("target")
+                .and_then(|target| Tracked::from_view(target, Instant::now())),
         })
+    }
+
+    pub fn animating(&self) -> bool {
+        self.tracked.as_ref().is_some_and(Tracked::moving)
     }
 }
 
@@ -265,6 +324,19 @@ fn billboard(
         centre + w + h,
         centre - w + h,
     ]
+}
+
+fn brackets(colour: [u8; 4]) -> image::RgbaImage {
+    let last = MARK_TEXELS - 1;
+    image::RgbaImage::from_fn(MARK_TEXELS, MARK_TEXELS, |x, y| {
+        let edge = |v: u32| v < BRACKET_THICKNESS || v > last - BRACKET_THICKNESS;
+        let corner = |v: u32| v < BRACKET_TEXELS || v > last - BRACKET_TEXELS;
+        image::Rgba(if (edge(x) && corner(y)) || (edge(y) && corner(x)) {
+            colour
+        } else {
+            [0, 0, 0, 0]
+        })
+    })
 }
 
 fn disc(colour: [u8; 4]) -> image::RgbaImage {
@@ -342,8 +414,10 @@ fn label(camera: &Camera, at: DVec3, text: &str) -> Vec<([DVec3; 4], [[f32; 2]; 
 const FULL_UV: [[f32; 2]; 4] = [[0.0, 1.0], [1.0, 1.0], [1.0, 0.0], [0.0, 0.0]];
 
 pub fn meshes(overlays: &Overlays, home_ground: f64, camera: &Camera) -> Vec<Arc<Mesh>> {
+    let now = Instant::now();
     let Some((origin_lat, origin_lng)) = overlays
         .home
+        .or_else(|| overlays.tracked.as_ref().map(|tracked| tracked.at(now)))
         .or_else(|| overlays.route.first().map(|s| (s.latitude, s.longitude)))
         .or_else(|| {
             overlays
@@ -408,6 +482,17 @@ pub fn meshes(overlays: &Overlays, home_ground: f64, camera: &Camera) -> Vec<Arc
         quads(&frame, marks, disc(WAYPOINT), Layer::OnTop),
         quads(&frame, home_mark.into_iter(), disc(HOME), Layer::OnTop),
         quads(&frame, labels, atlas(), Layer::OnTop),
+        quads(
+            &frame,
+            overlays.tracked.iter().map(|tracked| {
+                let (lat, lng) = tracked.at(now);
+                let at = ecef(lat, lng, home_ground + tracked.spot.above_home);
+                let size = TRACKED_PX.max(TRACKED_M / metres_per_px(camera, at));
+                (billboard(camera, at, 0.0, size, size), FULL_UV)
+            }),
+            brackets(TRACKED),
+            Layer::OnTop,
+        ),
     ]
     .into_iter()
     .flatten()
@@ -572,6 +657,44 @@ mod tests {
                 .iter()
                 .all(|&i| (i as usize) < mesh.positions.len())
         }));
+    }
+
+    #[test]
+    fn a_tracked_target_draws_on_top_and_glides_on_with_its_speed() {
+        let tracked_view = |age_ms: f64| json!({ "fenceTop": 50.0, "target": { "latitude": -35.362, "longitude": 149.165, "aboveHome": 0.0, "northSpeed": 10.0, "eastSpeed": 0.0, "ageMs": age_ms } });
+        let overlays = Overlays::from_view(&tracked_view(0.0)).expect("overlays");
+        assert!(
+            overlays.animating(),
+            "a moving target keeps the view repainting"
+        );
+        let layers: Vec<(Layer, usize)> = meshes(&overlays, 600.0, &camera())
+            .iter()
+            .map(|mesh| (mesh.layer, mesh.indices.len() / 6))
+            .collect();
+        assert_eq!(
+            layers,
+            vec![(Layer::OnTop, 1)],
+            "one reticle, even with no home or plan"
+        );
+        let tracked = overlays.tracked.expect("tracked");
+        let (later, _) = tracked.at(tracked.seen + Duration::from_millis(500));
+        assert!(
+            ((later - tracked.spot.latitude).to_radians() * EARTH_RADIUS_M - 5.0).abs() < 0.01,
+            "10 m/s north for half a second is 5 m"
+        );
+        let (capped, _) = tracked.at(tracked.seen + Duration::from_secs(60));
+        assert!(
+            ((capped - tracked.spot.latitude).to_radians() * EARTH_RADIUS_M - 20.0).abs() < 0.01,
+            "a target that stops reporting glides no further than two seconds"
+        );
+        let stale = Overlays::from_view(&tracked_view(1500.0))
+            .unwrap()
+            .tracked
+            .unwrap();
+        assert!(
+            Instant::now().duration_since(stale.seen) >= Duration::from_millis(1500),
+            "a report's age counts as glide already done"
+        );
     }
 
     #[test]

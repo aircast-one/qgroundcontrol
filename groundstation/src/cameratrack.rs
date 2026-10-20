@@ -110,6 +110,7 @@ pub const CMD_TRACK_POINT: u16 = 2004;
 pub const CMD_TRACK_RECTANGLE: u16 = 2005;
 pub const CMD_STOP_TRACKING: u16 = 2010;
 pub const MSG_TRACKING_IMAGE_STATUS: f64 = 275.0;
+pub const MSG_TRACKING_GEO_STATUS: f64 = 276.0;
 pub const STATUS_INTERVAL_US: f64 = 500_000.0;
 const STATUS_ACTIVE: u8 = 1;
 const MODE_POINT: u8 = 1;
@@ -149,6 +150,48 @@ impl TrackingImage {
             TrackingImage::Rect { .. } => None,
         }
     }
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TrackingGeo {
+    pub latitude: f64,
+    pub longitude: f64,
+    pub altitude_amsl: f64,
+    pub north_speed: f64,
+    pub east_speed: f64,
+    pub at_ms: u64,
+}
+
+impl TrackingGeo {
+    pub fn json(&self, now_ms: u64) -> Value {
+        json!({
+            "latitude": self.latitude,
+            "longitude": self.longitude,
+            "altitude": self.altitude_amsl,
+            "northSpeed": self.north_speed,
+            "eastSpeed": self.east_speed,
+            "ageMs": now_ms.saturating_sub(self.at_ms),
+        })
+    }
+}
+
+pub fn tracking_geo(
+    status: u8,
+    (lat_e7, lon_e7, altitude): (i32, i32, f32),
+    (north, east): (f32, f32),
+    at_ms: u64,
+    enabled: bool,
+) -> Option<TrackingGeo> {
+    let speed = |v: f32| if v.is_finite() { f64::from(v) } else { 0.0 };
+    (enabled && status & STATUS_ACTIVE != 0 && (lat_e7, lon_e7) != (0, 0) && altitude.is_finite())
+        .then(|| TrackingGeo {
+            latitude: f64::from(lat_e7) / 1e7,
+            longitude: f64::from(lon_e7) / 1e7,
+            altitude_amsl: f64::from(altitude),
+            north_speed: speed(north),
+            east_speed: speed(east),
+            at_ms,
+        })
 }
 
 pub fn tracking_image(
@@ -338,6 +381,61 @@ pub fn select_camera(backend: &dyn Backend, path: &str, value: &str) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_tracked_target_is_placed_only_while_the_camera_reports_it_active() {
+        let geo = tracking_geo(
+            1,
+            (-353_632_610, 1_491_652_300, 584.5),
+            (3.0, f32::NAN),
+            1_000,
+            true,
+        );
+        assert_eq!(
+            geo,
+            Some(TrackingGeo {
+                latitude: -35.363261,
+                longitude: 149.16523,
+                altitude_amsl: 584.5,
+                north_speed: 3.0,
+                east_speed: 0.0,
+                at_ms: 1_000,
+            })
+        );
+        assert_eq!(geo.unwrap().json(1_250)["ageMs"], 250);
+        assert_eq!(
+            tracking_geo(0, (-353_632_610, 1_491_652_300, 584.5), (0.0, 0.0), 0, true),
+            None,
+            "idle"
+        );
+        assert_eq!(
+            tracking_geo(1, (0, 0, 584.5), (0.0, 0.0), 0, true),
+            None,
+            "no fix"
+        );
+        assert_eq!(
+            tracking_geo(
+                1,
+                (-353_632_610, 1_491_652_300, f32::NAN),
+                (0.0, 0.0),
+                0,
+                true
+            ),
+            None,
+            "no altitude"
+        );
+        assert_eq!(
+            tracking_geo(
+                1,
+                (-353_632_610, 1_491_652_300, 584.5),
+                (0.0, 0.0),
+                0,
+                false
+            ),
+            None,
+            "not tracking"
+        );
+    }
 
     #[test]
     fn tracking_status_reads_like_vehicle_camera_control() {

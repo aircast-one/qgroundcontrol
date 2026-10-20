@@ -25,7 +25,14 @@ pub const DEPS: &[&str] = &[
     SYNTHETIC_CHANGED,
 ];
 
-pub const OVERLAY_DEPS: &[&str] = &["vehicle.homePosition", FENCE_TOP_ARDUPILOT, FENCE_TOP_PX4];
+pub const OVERLAY_DEPS: &[&str] = &[
+    "vehicle.homePosition",
+    FENCE_TOP_ARDUPILOT,
+    FENCE_TOP_PX4,
+    TRACKED_TARGET,
+];
+const TRACKED_TARGET: &str = "vehicle.cameraManager.currentCameraInstance.trackingGeo";
+const EARTH_RADIUS_M: f64 = 6_371_000.0;
 const FENCE_TOP_ARDUPILOT: &str = "vehicle.parameterManager.getParameter(-1,FENCE_ALT_MAX)";
 const FENCE_TOP_PX4: &str = "vehicle.parameterManager.getParameter(-1,GF_MAX_VER_DIST)";
 const DEFAULT_FENCE_TOP_M: f64 = 50.0;
@@ -203,6 +210,30 @@ pub fn beam(at: (f64, f64), height: f64, heading: f64, pitch: f64, fov: f64) -> 
     ]
 }
 
+pub fn aim_at(from: (f64, f64, f64), to: (f64, f64, f64)) -> (f64, f64) {
+    let north = (to.0 - from.0).to_radians() * EARTH_RADIUS_M;
+    let east = (to.1 - from.1).to_radians() * EARTH_RADIUS_M * from.0.to_radians().cos();
+    (
+        east.atan2(north).to_degrees().rem_euclid(360.0),
+        (to.2 - from.2).atan2(north.hypot(east)).to_degrees(),
+    )
+}
+
+fn tracked_from_home(backend: &dyn Backend) -> Option<(f64, f64, f64)> {
+    let home = backend
+        .value("vehicle.homePosition")
+        .get("altitude")
+        .and_then(Value::as_f64)
+        .filter(|a| a.is_finite());
+    let target = tracked(home, &backend.value(TRACKED_TARGET)["value"]);
+    let number = |key: &str| target.get(key).and_then(Value::as_f64);
+    Some((
+        number("latitude")?,
+        number("longitude")?,
+        number("aboveHome")?,
+    ))
+}
+
 pub fn synthetic(backend: &dyn Backend, gimbals: &Value, aim: (f64, f64)) -> Value {
     let placed = point(backend, "vehicle.coordinate")
         .zip(point(backend, "vehicle.homePosition"))
@@ -211,7 +242,10 @@ pub fn synthetic(backend: &dyn Backend, gimbals: &Value, aim: (f64, f64)) -> Val
     else {
         return json!({ "kind": "object", "class": "SyntheticView", "available": false, "native": native(), "draw": drawn() });
     };
-    let gimbal = gimbal_aim(gimbals);
+    let gimbal = gimbal_aim(gimbals).or_else(|| {
+        tracked_from_home(backend).map(|target| aim_at((latitude, longitude, above_home), target))
+    });
+    let free = gimbal.is_none();
     let (tilt, pan) = aim;
     let reading = |path: &str| raw(backend, path).unwrap_or(0.0);
     let nose = |offset: f64| (reading("vehicle.heading") + offset).rem_euclid(360.0);
@@ -242,7 +276,7 @@ pub fn synthetic(backend: &dyn Backend, gimbals: &Value, aim: (f64, f64)) -> Val
     );
     let (pitch_rate, roll_rate) = match frame_locked {
         true => (Some(pitch_rate), roll_rate),
-        false => (gimbal.is_none().then_some(0.0), 0.0),
+        false => (free.then_some(0.0), 0.0),
     };
     let provider = crate::read::value_string(
         &backend.value("settings.flightMapSettings.mapProvider.rawValue"),
@@ -259,15 +293,15 @@ pub fn synthetic(backend: &dyn Backend, gimbals: &Value, aim: (f64, f64)) -> Val
         "heading": heading,
         "pitch": pitch,
         "roll": roll,
-        "aimable": gimbal.is_none(),
-        "pan": if gimbal.is_none() { pan } else { 0.0 },
-        "tilt": if gimbal.is_none() { tilt } else { 0.0 },
+        "aimable": free,
+        "pan": if free { pan } else { 0.0 },
+        "tilt": if free { tilt } else { 0.0 },
         "fov": CAMERA_FOV_DEG,
         "imagery": imagery(&provider),
         "northSpeed": reading("vehicle.localPosition.vx"),
         "eastSpeed": reading("vehicle.localPosition.vy"),
         "climbSpeed": -reading("vehicle.localPosition.vz"),
-        "headingRate": (gimbal.is_none() || follows.is_some()).then_some(heading_rate),
+        "headingRate": (free || follows.is_some()).then_some(heading_rate),
         "pitchRate": pitch_rate,
         "rollRate": roll_rate,
         "response": response(backend, &backend.value_fields("vehicle", crate::virtualjoystick::VEHICLE_FIELDS)),
@@ -380,11 +414,33 @@ fn spot(at: (f64, f64), above_home: f64) -> Value {
     json!({ "latitude": at.0, "longitude": at.1, "aboveHome": above_home })
 }
 
+fn tracked(home_amsl: Option<f64>, geo: &Value) -> Value {
+    let number = |key: &str| {
+        geo.get(key)
+            .and_then(Value::as_f64)
+            .filter(|v| v.is_finite())
+    };
+    located(geo).zip(number("altitude").zip(home_amsl)).map_or(
+        Value::Null,
+        |((lat, lon), (altitude, home))| {
+            json!({
+                "latitude": lat,
+                "longitude": lon,
+                "aboveHome": altitude - home,
+                "northSpeed": number("northSpeed").unwrap_or(0.0),
+                "eastSpeed": number("eastSpeed").unwrap_or(0.0),
+                "ageMs": number("ageMs").unwrap_or(0.0),
+            })
+        },
+    )
+}
+
 pub fn overlays(
     home_amsl: Option<f64>,
     mission: &Value,
     fences: &Value,
     fence_top: Option<f64>,
+    target: &Value,
 ) -> Value {
     let items = mission["items"].as_array().cloned().unwrap_or_default();
     let home = items
@@ -441,6 +497,7 @@ pub fn overlays(
         "polygons": polygons,
         "circles": circles,
         "fenceTop": fence_top.unwrap_or(DEFAULT_FENCE_TOP_M),
+        "target": tracked(home_amsl, target),
     })
 }
 
@@ -458,6 +515,7 @@ pub fn overlays_view(backend: &dyn Backend, _args: &[String]) -> Value {
         &crate::missionitems::fly_items_view(backend, &["geometry".to_string()]),
         &crate::fences::fly_fences_view(backend, &[]),
         fence_top,
+        &backend.value(TRACKED_TARGET)["value"],
     )
 }
 
@@ -524,6 +582,39 @@ mod tests {
 
     fn no_gimbal() -> Value {
         json!({ "gimbals": [] })
+    }
+
+    #[test]
+    fn a_free_view_turns_to_a_tracked_target_and_gives_the_aim_back_when_tracking_ends() {
+        let target = json!({ "kind": "value", "value": { "latitude": -35.3602, "longitude": 149.16, "altitude": 584.0, "northSpeed": 0.0, "eastSpeed": 0.0, "ageMs": 0 } });
+        let view = synthetic(
+            &flying(&[(TRACKED_TARGET, target)]),
+            &no_gimbal(),
+            DEFAULT_AIM,
+        );
+        let pitch = view["pitch"].as_f64().unwrap();
+        assert!(
+            view["heading"].as_f64().unwrap().rem_euclid(360.0) > 179.0
+                && view["heading"].as_f64().unwrap() < 181.0,
+            "the target is due south"
+        );
+        assert!(
+            (pitch + 20.0_f64.atan2(22.24).to_degrees()).abs() < 0.2,
+            "and 20 m down over 22 m, not the pilot's tilt: {pitch}"
+        );
+        assert_eq!(
+            view["aimable"], false,
+            "while it tracks, a drag does not take the view off the target"
+        );
+        let untracked = synthetic(&flying(&[]), &no_gimbal(), DEFAULT_AIM);
+        assert_eq!(untracked["aimable"], true);
+    }
+
+    #[test]
+    fn the_aim_at_a_spot_is_its_bearing_and_its_angle_below() {
+        let (heading, pitch) = aim_at((0.0, 0.0, 100.0), (0.0, 0.001, 0.0));
+        assert!((heading - 90.0).abs() < 1e-6);
+        assert!((pitch + 100.0_f64.atan2(111.19).to_degrees()).abs() < 0.01);
     }
 
     #[test]
@@ -919,7 +1010,23 @@ mod tests {
             "polygons": [{ "inclusion": true, "vertices": [{ "latitude": 1.0, "longitude": 2.0 }, { "latitude": 1.0, "longitude": 2.1 }, { "latitude": 1.1, "longitude": 2.0 }] }],
             "circles": [{ "inclusion": false, "centre": { "latitude": 3.0, "longitude": 4.0 }, "radius": 50.0 }, { "centre": null, "radius": 10.0 }],
         });
-        let shown = overlays(Some(584.0), &mission, &fences, Some(100.0));
+        let shown = overlays(Some(584.0), &mission, &fences, Some(100.0), &Value::Null);
+        assert_eq!(
+            shown["target"],
+            Value::Null,
+            "nothing tracked, nothing drawn"
+        );
+        let target = json!({ "latitude": -35.36, "longitude": 149.17, "altitude": 590.0, "northSpeed": 4.0, "eastSpeed": -2.0, "ageMs": 300 });
+        assert_eq!(
+            overlays(Some(584.0), &mission, &fences, Some(100.0), &target)["target"],
+            json!({ "latitude": -35.36, "longitude": 149.17, "aboveHome": 6.0, "northSpeed": 4.0, "eastSpeed": -2.0, "ageMs": 300.0 }),
+            "a tracked target stands at its height above home, with the speed to glide between reports"
+        );
+        assert_eq!(
+            overlays(None, &mission, &fences, None, &target)["target"],
+            Value::Null,
+            "without home's altitude the target cannot be placed"
+        );
         assert_eq!(
             shown["route"].as_array().map(|r| r
                 .iter()
@@ -949,14 +1056,14 @@ mod tests {
         );
         assert_eq!(shown["fenceTop"], 100.0);
         assert_eq!(
-            overlays(None, &mission, &fences, None)["route"]
+            overlays(None, &mission, &fences, None, &Value::Null)["route"]
                 .as_array()
                 .map(Vec::len),
             Some(0),
             "without home's height above sea level there is nothing to measure the plan from"
         );
         assert_eq!(
-            overlays(None, &mission, &fences, None)["fenceTop"],
+            overlays(None, &mission, &fences, None, &Value::Null)["fenceTop"],
             DEFAULT_FENCE_TOP_M
         );
     }

@@ -348,6 +348,7 @@ pub struct Vehicle {
     rccal_open: bool,
     pub camera_tracking_enabled: bool,
     pub camera_tracking_image: Option<crate::cameratrack::TrackingImage>,
+    pub camera_tracking_geo: Option<crate::cameratrack::TrackingGeo>,
     camera_sent: BTreeMap<(u8, u16), f64>,
     pub mission_current: i32,
     pub roi_enabled: bool,
@@ -609,6 +610,7 @@ impl Vehicle {
             rccal_open: false,
             camera_tracking_enabled: false,
             camera_tracking_image: None,
+            camera_tracking_geo: None,
             camera_sent: BTreeMap::new(),
             mission_current: -1,
             roi_enabled: false,
@@ -5295,8 +5297,8 @@ impl Vehicle {
     fn camera_tracking(&mut self, action: &Value) -> Result<Vec<Vec<u8>>, String> {
         use crate::cameraproto::Command;
         use crate::cameratrack::{
-            CMD_STOP_TRACKING, CMD_TRACK_POINT, CMD_TRACK_RECTANGLE, MSG_TRACKING_IMAGE_STATUS,
-            STATUS_INTERVAL_US,
+            CMD_STOP_TRACKING, CMD_TRACK_POINT, CMD_TRACK_RECTANGLE, MSG_TRACKING_GEO_STATUS,
+            MSG_TRACKING_IMAGE_STATUS, STATUS_INTERVAL_US,
         };
         let compid = self
             .cameras
@@ -5309,10 +5311,10 @@ impl Vehicle {
                 .and_then(Value::as_f64)
                 .ok_or(format!("Tracking needs {key}."))
         };
-        let interval = |rate: f64| Command {
+        let interval = |message: f64, rate: f64| Command {
             compid,
             command: crate::mavcmd::CMD_SET_MESSAGE_INTERVAL,
-            params: [MSG_TRACKING_IMAGE_STATUS, rate, 0.0, 0.0, 0.0, 0.0, 0.0],
+            params: [message, rate, 0.0, 0.0, 0.0, 0.0, 0.0],
         };
         let commands = match action.get("op").and_then(Value::as_str) {
             Some("trackRect") => {
@@ -5332,7 +5334,8 @@ impl Vehicle {
                             0.0,
                         ],
                     },
-                    interval(STATUS_INTERVAL_US),
+                    interval(MSG_TRACKING_IMAGE_STATUS, STATUS_INTERVAL_US),
+                    interval(MSG_TRACKING_GEO_STATUS, STATUS_INTERVAL_US),
                 ]
             }
             Some("trackPoint") => {
@@ -5351,18 +5354,21 @@ impl Vehicle {
                             0.0,
                         ],
                     },
-                    interval(STATUS_INTERVAL_US),
+                    interval(MSG_TRACKING_IMAGE_STATUS, STATUS_INTERVAL_US),
+                    interval(MSG_TRACKING_GEO_STATUS, STATUS_INTERVAL_US),
                 ]
             }
             _ => {
                 self.camera_tracking_image = None;
+                self.camera_tracking_geo = None;
                 vec![
                     Command {
                         compid,
                         command: CMD_STOP_TRACKING,
                         params: [0.0; 7],
                     },
-                    interval(-1.0),
+                    interval(MSG_TRACKING_IMAGE_STATUS, -1.0),
+                    interval(MSG_TRACKING_GEO_STATUS, -1.0),
                 ]
             }
         };
@@ -6076,6 +6082,21 @@ impl Vehicle {
                     d.tracking_mode as u8,
                     (d.point_x, d.point_y, d.radius),
                     (d.rec_top_x, d.rec_top_y, d.rec_bottom_x, d.rec_bottom_y),
+                    self.camera_tracking_enabled,
+                );
+                return Vec::new();
+            }
+            MavMessage::CAMERA_TRACKING_GEO_STATUS(d)
+                if self
+                    .cameras
+                    .selected()
+                    .is_some_and(|camera| camera.compid == header.component_id) =>
+            {
+                self.camera_tracking_geo = crate::cameratrack::tracking_geo(
+                    d.tracking_status.bits(),
+                    (d.lat, d.lon, d.alt),
+                    (d.vel_n, d.vel_e),
+                    now_ms,
                     self.camera_tracking_enabled,
                 );
                 return Vec::new();
