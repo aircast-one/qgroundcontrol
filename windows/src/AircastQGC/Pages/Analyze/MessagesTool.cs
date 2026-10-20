@@ -9,7 +9,7 @@ using Microsoft.UI.Xaml.Controls;
 
 namespace AircastQGC.Pages.Analyze;
 
-internal sealed record VehicleMessage(string Time, string Level, string Text);
+internal sealed record VehicleMessage(string Time, string Level, string Text, bool ToldElsewhere = false);
 
 internal sealed class MessagesTool : UserControl
 {
@@ -57,7 +57,7 @@ internal sealed class MessagesTool : UserControl
     internal static IReadOnlyList<VehicleMessage> Parse(JsonObject view)
     {
         var read = MapUiJson.Objects(view["items"])
-            .Select(item => new VehicleMessage(Time(MapUiJson.Text(item["time"])), MapUiJson.Text(item["level"]), MapUiJson.Text(item["text"])))
+            .Select(item => new VehicleMessage(Time(MapUiJson.Text(item["time"])), MapUiJson.Text(item["level"]), MapUiJson.Text(item["text"]), MapUiJson.Flag(item["toldElsewhere"])))
             .Where(message => !string.IsNullOrWhiteSpace(message.Text))
             .ToList();
         return MapUiJson.Text(view["order"]) == "oldestFirst" ? read : read.AsEnumerable().Reverse().ToList();
@@ -81,7 +81,7 @@ internal sealed class MessagesTool : UserControl
     private static string Time(string served) =>
         Regex.Match(served.Trim(), @"^(\d{1,2}:\d{2}:\d{2})\.\d+$") is { Success: true } clock ? clock.Groups[1].Value : served;
 
-    private static UIElement Line(VehicleMessage message) => new Grid
+    internal static UIElement Line(VehicleMessage message) => new Grid
     {
         ColumnSpacing = 16,
         Padding = new Thickness(0, 10, 0, 10),

@@ -9,7 +9,7 @@ namespace AircastQGC.Controls;
 
 internal readonly record struct Geo(double Latitude, double Longitude);
 
-internal sealed record MissionPin(Geo At, string Label, string Side, string Kind, int Command, bool Current, bool Dot);
+internal sealed record MissionPin(Geo At, string Label, string Side, string Kind, int Command, bool Current, bool Dot, int Sequence);
 
 internal sealed record FlownMission(IReadOnlyList<IReadOnlyList<Geo>> Route, IReadOnlyList<MissionPin> Pins)
 {
@@ -115,7 +115,8 @@ internal static class MapOverlayJson
             item.Kind,
             item.Command,
             current,
-            crowded && !current);
+            crowded && !current,
+            sequence);
     }
 
     private static bool EndsRoute(JsonObject element) => MapUiJson.Flag(element["endsRoute"]);

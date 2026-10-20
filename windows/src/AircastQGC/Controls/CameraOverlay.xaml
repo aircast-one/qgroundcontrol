@@ -3,6 +3,7 @@
     x:Class="AircastQGC.Controls.CameraOverlay"
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:AircastQGC.Controls"
     Width="320">
 
     <UserControl.Resources>
@@ -221,6 +222,8 @@
                                 ValueChanged="OnZoomChanged"
                                 AutomationProperties.Name="Zoom" />
                     </StackPanel>
+
+                    <local:CameraDetails />
 
                     <StackPanel x:Name="SettingsSection" Spacing="{ThemeResource SpaceSm}" Visibility="Collapsed">
                         <TextBlock Text="SETTINGS" Style="{StaticResource StatLabel}" />

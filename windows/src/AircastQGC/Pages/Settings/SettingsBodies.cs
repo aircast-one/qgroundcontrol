@@ -120,7 +120,7 @@ internal static class SettingsBodies
         Bottom = _ => page.Title == SettingsCatalog.General ? new ResetAllSettingsRow() : null,
     };
 
-    private static UIElement? Units(FormView form, FormSection section)
+    internal static UIElement? Units(FormView form, FormSection section)
     {
         if (MapUiJson.Number(Bridge.Get(UnitSystemPath)["value"]) is not { } read) return null;
         var system = Math.Clamp((int)read, 0, UnitSystems.Length - 1);

@@ -34,6 +34,7 @@ public sealed partial class MapView : UserControl
     private const string OrbitPath = "view.orbit";
     private const string MapClickPath = "view.mapClick";
     private const string GuidedPath = "view.guidedActions";
+    private const string VehiclesPath = "view.vehicles";
     private const string RallyLabel = "R";
     private const string RoiLabel = "Looking here";
     private const int ReturnToLaunch = 20;
@@ -53,7 +54,7 @@ public sealed partial class MapView : UserControl
     private const double LabelGap = 2;
     private const double SideGap = 4;
     private const double SideLabelHalfHeight = 8;
-    private static readonly string[] WatchedPaths = [TrackPath, TrafficPath, OrbitPath, MapClickPath, GuidedPath];
+    private static readonly string[] WatchedPaths = [TrackPath, TrafficPath, OrbitPath, MapClickPath, GuidedPath, VehiclesPath];
     private static readonly TimeSpan PanSuspension = TimeSpan.FromSeconds(10);
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan PlanPollInterval = TimeSpan.FromSeconds(2);
@@ -90,6 +91,7 @@ public sealed partial class MapView : UserControl
     private readonly Overlay _missionLayer;
     private readonly Overlay _trafficLayer;
     private readonly Overlay _guideLayer;
+    private readonly MapFleet _fleet;
     private DispatcherQueueTimer? _poll;
     private DispatcherQueueTimer? _planPoll;
     private Geo _center = new(0, 0);
@@ -119,6 +121,7 @@ public sealed partial class MapView : UserControl
         _missionLayer = new Overlay(MissionLayer);
         _trafficLayer = new Overlay(TrafficLayer);
         _guideLayer = new Overlay(GuideLayer);
+        _fleet = new MapFleet(FleetLayer);
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
         Surface.Tapped += OnTapped;
@@ -128,6 +131,8 @@ public sealed partial class MapView : UserControl
 
     public event Action<double, double, Point>? MapTapped;
 
+    public event Action<int>? VehicleTapped;
+
     public event EventHandler? ViewChanged;
 
     public bool PlanMode
@@ -136,7 +141,7 @@ public sealed partial class MapView : UserControl
         set
         {
             _planMode = value;
-            new UIElement[] { FenceLayer, TrackLayer, MissionLayer, TrafficLayer, GuideLayer }.ToList()
+            new UIElement[] { FenceLayer, TrackLayer, MissionLayer, TrafficLayer, GuideLayer, FleetLayer }.ToList()
                 .ForEach(layer => layer.Visibility = value ? Visibility.Collapsed : Visibility.Visible);
         }
     }
@@ -160,6 +165,10 @@ public sealed partial class MapView : UserControl
     public double Zoom => _zoom;
 
     public bool HasVehicle => _vehicle.HasValue;
+
+    internal Geo? VehicleAt => _vehicle;
+
+    internal double? VehicleHeading => _heading;
 
     public string MapType => _mapType;
 
@@ -244,6 +253,7 @@ public sealed partial class MapView : UserControl
         _home = live ? Usable(vehicle["homePosition"]) : null;
         _heading = live ? Heading(vehicle["facts"]) : null;
         _keepCentered = Flag(Read(FollowSetting)["value"]);
+        _fleet.Operator(Read(MapFleet.GcsPositionPath), ToScreen);
 
         Track();
         Render();
@@ -271,6 +281,7 @@ public sealed partial class MapView : UserControl
             _goTo = MapOverlayJson.GoTo(view);
             DrawGuides();
         });
+        Watch(VehiclesPath, view => _fleet.Fleet(view, ToScreen));
         Watch(GuidedPath, view =>
         {
             _roi = MapOverlayJson.Roi(view);
@@ -287,6 +298,12 @@ public sealed partial class MapView : UserControl
 
     private void Track()
     {
+        if (_vehicle == null && !_framed && _fleet.OperatorAt is { } operatorAt)
+        {
+            _framed = true;
+            _zoom = Math.Max(_zoom, VehicleZoom);
+            _center = operatorAt;
+        }
         if (_vehicle is not { } vehicle) return;
         if (!_framed)
         {
@@ -348,6 +365,7 @@ public sealed partial class MapView : UserControl
 
         PlaceMarkers();
         Layers.ToList().ForEach(layer => layer.Place(ToScreen));
+        _fleet.Place(ToScreen);
         PlaceScale();
         if (!_planMode && (_framed || _pannedAt.HasValue)) FlightCamera = (_center, _zoom);
         var shown = (_center, _zoom, width, height);
@@ -797,6 +815,11 @@ public sealed partial class MapView : UserControl
     private void OnTapped(object sender, TappedRoutedEventArgs e)
     {
         var at = e.GetPosition(Surface);
+        if (!_planMode && _fleet.VehicleAt(at, ToScreen) is int vehicle)
+        {
+            VehicleTapped?.Invoke(vehicle);
+            return;
+        }
         var geo = ToGeo(at);
         MapTapped?.Invoke(geo.Latitude, geo.Longitude, at);
     }

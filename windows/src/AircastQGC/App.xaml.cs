@@ -29,12 +29,15 @@ public partial class App : Application
         {
             Directory.CreateDirectory(MapCache);
             CoreHost.Start("AircastQGC", "--no-autoconnect", "--save-path", SavePath,
-                "--settings", Path.Combine(AppData, "Aircast QGC.ini"), "--map-cache", Path.Combine(MapCache, "qgcMapCache.db"));
+                "--settings", Path.Combine(AppData, "Aircast QGC.ini"), "--map-cache", Path.Combine(MapCache, "qgcMapCache.db"),
+                "--position-source", GcsLocation.SourceToken);
+            GcsLocation.Start();
             VideoDriver.Start();
             _window = new MainWindow();
             _window.Closed += (_, _) =>
             {
                 VideoDriver.Stop();
+                GcsLocation.Stop();
                 CoreHost.Shutdown();
             };
             _window.Activate();

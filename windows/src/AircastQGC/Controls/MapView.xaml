@@ -151,6 +151,8 @@
 
         <Canvas x:Name="GuideLayer" IsHitTestVisible="False" />
 
+        <Canvas x:Name="FleetLayer" IsHitTestVisible="False" />
+
         <Canvas x:Name="MarkerLayer" IsHitTestVisible="False">
             <Grid x:Name="HomeMarker" Width="28" Height="28" Visibility="Collapsed">
                 <Ellipse Fill="{ThemeResource CardBrush}" Stroke="{ThemeResource TextPrimaryBrush}" StrokeThickness="1.5" />

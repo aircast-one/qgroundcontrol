@@ -18,6 +18,8 @@ public sealed partial class GuidedBar : UserControl
 
     public event EventHandler<GuidedOffer>? ActionRequested;
 
+    public event EventHandler? PayloadRequested;
+
     public IReadOnlyList<GuidedOffer> Offers => _offers;
 
     public GuidedBar()
@@ -40,7 +42,10 @@ public sealed partial class GuidedBar : UserControl
         var offers = GuidedOffer.List(view).Where(o => o.Shown).ToList();
         if (offers.SequenceEqual(_offers)) return;
         _offers = offers;
-        Strip.ItemsSource = offers.Select(Build).ToList();
+        var gripper = offers.Where(o => PayloadJson.GripperIds.Contains(o.Id)).ToList();
+        Strip.ItemsSource = offers.Except(gripper).Select(Build)
+            .Concat(gripper.Count > 0 ? [PayloadTile(gripper.Any(o => o.Ready))] : [])
+            .ToList();
         Root.Visibility = offers.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
@@ -66,6 +71,28 @@ public sealed partial class GuidedBar : UserControl
         AutomationProperties.SetName(button, offer.Title);
         AutomationProperties.SetHelpText(button, offer.Explanation);
         button.Click += (_, _) => ActionRequested?.Invoke(this, offer);
+        return button;
+    }
+
+    private Button PayloadTile(bool ready)
+    {
+        var button = new Button
+        {
+            Style = Styled("GuidedButton"),
+            IsEnabled = ready,
+            Opacity = ready ? 1 : BlockedOpacity,
+            Content = new StackPanel
+            {
+                Spacing = 2,
+                Children =
+                {
+                    new FontIcon { Glyph = "", Style = Styled("GuidedIcon") },
+                    new TextBlock { Text = "Payload", Style = Styled("GuidedLabel") },
+                },
+            },
+        };
+        AutomationProperties.SetName(button, "Payload");
+        button.Click += (_, _) => PayloadRequested?.Invoke(this, EventArgs.Empty);
         return button;
     }
 

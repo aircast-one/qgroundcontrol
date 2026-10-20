@@ -29,15 +29,32 @@
             <Grid x:Name="FlyContent" Grid.Column="1">
                 <controls:MapView x:Name="Map" />
 
+                <controls:MapPayloadLayer x:Name="MapPayload" />
+
+                <controls:BatteryReturnBar />
+
                 <controls:VideoThumbnail x:Name="VideoTile"
                                          Width="260" Height="150" Margin="16"
                                          HorizontalAlignment="Right" VerticalAlignment="Top" />
 
+                <controls:VideoPayloadLayer x:Name="VideoLayer"
+                                            Width="260" Height="150" Margin="16"
+                                            HorizontalAlignment="Right" VerticalAlignment="Top" />
+
                 <controls:PipTile Width="160" Height="90" Margin="16,16,292,16"
                                   HorizontalAlignment="Right" VerticalAlignment="Top" />
 
-                <controls:GuidedBar x:Name="GuidedStrip"
-                                    HorizontalAlignment="Center" VerticalAlignment="Top" Margin="16" />
+                <StackPanel HorizontalAlignment="Center" VerticalAlignment="Top" Margin="16"
+                            Spacing="{StaticResource SpaceSm}">
+                    <controls:GuidedBar x:Name="GuidedStrip" HorizontalAlignment="Center" />
+                    <controls:MissionProgressCard x:Name="MissionProgress" HorizontalAlignment="Center" />
+                    <controls:OrbitReadout HorizontalAlignment="Center" />
+                    <InfoBar x:Name="Notice" Severity="Error" IsClosable="True" IsOpen="False"
+                             HorizontalAlignment="Center" MaxWidth="480" />
+                    <controls:TrafficBanner HorizontalAlignment="Center" />
+                    <controls:VehicleMessageBanner x:Name="MessageBanner" HorizontalAlignment="Center" />
+                    <controls:TerrainDataWarning x:Name="TerrainWarning" HorizontalAlignment="Center" />
+                </StackPanel>
 
                 <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center" Margin="16"
                             Spacing="{StaticResource SpaceXs}">
@@ -50,11 +67,17 @@
                             ToolTipService.ToolTip="Pre-flight checklist" AutomationProperties.Name="Pre-flight checklist" />
                 </StackPanel>
 
+                <controls:StreamShutter x:Name="Shutter"
+                                        HorizontalAlignment="Right" VerticalAlignment="Center" Margin="16,16,68,16" />
+
                 <controls:InstrumentBar x:Name="ReadingsBar"
                                         HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="16,16,280,16" />
 
                 <controls:TelemetryPanel x:Name="TelemetryCard"
                                          HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="16" />
+
+                <controls:VideoStatsPill x:Name="VideoStats"
+                                         HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="16,16,16,124" />
 
                 <controls:RcControlsLayer HorizontalAlignment="Left" VerticalAlignment="Center" Margin="16" />
 
@@ -62,13 +85,21 @@
                                         HorizontalAlignment="Right" VerticalAlignment="Top" Margin="16,182,68,16"
                                         Visibility="Collapsed" />
 
+                <controls:GripperPanel x:Name="Gripper"
+                                       HorizontalAlignment="Right" VerticalAlignment="Top" Margin="16,182,68,16" />
+
+                <StackPanel x:Name="FleetColumn" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="16,96,16,16"
+                            Spacing="{StaticResource SpaceSm}">
+                    <controls:FollowMeReadout x:Name="FollowMe" />
+                    <controls:FleetCard x:Name="FleetPanel" />
+                </StackPanel>
+
                 <controls:PreflightChecklist x:Name="Checklist"
                                              HorizontalAlignment="Left" VerticalAlignment="Top" Margin="16" />
 
                 <controls:NoVehicleState x:Name="NoVehicle" />
 
-                <InfoBar x:Name="Notice" Severity="Error" IsClosable="True" IsOpen="False"
-                         HorizontalAlignment="Center" VerticalAlignment="Top" Margin="16,96,16,16" MaxWidth="480" />
+                <controls:ConnectingCard />
 
                 <controls:GuidedConfirm x:Name="GuidedCard" />
 
@@ -91,6 +122,8 @@
             </Grid>
 
             <controls:LogReplayBar Grid.Row="1" Grid.Column="1" />
+
+            <controls:NoticeLayer x:Name="Notices" Grid.Column="1" />
         </Grid>
     </Grid>
 </Window>

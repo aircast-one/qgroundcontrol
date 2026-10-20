@@ -40,6 +40,7 @@ Status: ▢ todo · ◐ in progress · ✓ done
 
 - ✓ fly · ◐ fly — flight mode (refused-change notice untested: the mock accepts every mode) · ◐ fly — camera (frames ✓, picture-in-picture ✓, video fit ✓; WHEP not seen in the shipped build: `build-whep.ps1` put `gstwebrtchttp.dll` in `C:\gstreamer`, but the stage's bundled runtime predates it until `build-video.ps1` is rerun) · ✓ fly — map context menu
 - ✓ fly — armed, confirm return · ✓ fly — checklist · ✓ fly — no vehicle
+- ✓ fly — host notices, message banner and sheet, voice alerts, disarm toast · ✓ fly — status strip and detail sheets · ✓ fly — multi-vehicle, operator position, Follow Me · ✓ fly — prompts (enforced checklist, mission popups, mission complete, close guard, connecting card, mission progress, set waypoint, resume failed, first run) · ✓ fly — payload (gimbal pill and sheet, map wedge, beam and radar, record shutter, gripper bays, camera details); details and gaps in the parity backlog below
 
 Driven through the UI on `winvm` against the mock ArduCopter (2026-10-20): slide-to-confirm with real mouse input, arm, disarm,
 takeoff to a chosen height, change altitude, title-bar mode change, ROI + cancel ROI, go-to, set heading, RTL, land to
@@ -67,7 +68,7 @@ sends `vehicle.setRcChannelOverride` at most every 100 ms with a final send. Aga
 pwm 1800 held in `view.rcControls`, `vehicle.rcChannelOverrides` `{6:1800}` and `rcOverride` true; Give back emptied the overrides. Not
 driven: holding a Momentary control and pointer slider drags. Overrides stay held when you leave Fly (FlyContent is collapsed, not
 unloaded); Android releases them when the layer leaves composition. Android's gimbal-manager controls in RcCameraControls are not ported
-(no gimbal indicator yet).
+(the gimbal pill and sheet now cover acquire control, tilt and centre).
 
 ### Plan
 
@@ -154,7 +155,7 @@ Not checked: flashing (no USB board on the VM), a message-rate change taking eff
 - ✓ settings — video · ✓ settings — maps (Add new set opens a map picker; dragging its handles was not driven: no pointer input on the shared VM) · ✓ settings — connections
 - ◐ settings — add link (Wi-Fi or network, USB telemetry radio, Network server (TCP), Replay a flight log and Simulated vehicle are offered and the 19 Windows baud rates listed; no COM port seen: the VM has none; Bluetooth is not offered: no Windows Bluetooth host; Aircast Cloud is in `linkTypeIds` but the head never offers it)
 - ✓ settings — comm links · ◐ settings — mavlink (signing Disable not seen: the mock never completes signing) · ✓ settings — flight modes · ✓ settings — adsb server
-- ◐ settings — packet radio (no Wi-Fi adapter on the VM: only "Unavailable" and the Automatic adapter seen) · ◐ settings — remote id (the GCS position block never shows: Windows has no ground-station position source) · ✓ settings — rtk gps
+- ◐ settings — packet radio (no Wi-Fi adapter on the VM: only "Unavailable" and the Automatic adapter seen) · ✓ settings — remote id (GCS position block seen with an NMEA fix; the VM's own Windows fix is too coarse) · ✓ settings — rtk gps
 - ◐ settings — firmware upgrade (Analyze's FirmwareTool; flashing not checked, no USB board on the VM) · ✓ settings — 3d viewer · ✓ settings — about
 
 One root page (`Pages/Settings/SettingsPage`, code-only) over `view.settings`, with the shared form engine in `Forms/` (also exposed as
@@ -196,37 +197,60 @@ editor, video fit, the RC controls layer and editor, the offline map picker, pat
 handles, Follow vehicle, the `view.missionItems` poll moved off the UI thread, live parameter rows, and in core the Windows serial ports and
 `linkTypeIds`, the mock battery ids and `page`/`screen` per setup component.
 
+Status marks below (✓ done · ◐ partial · unmarked open) come from round 4 (2026-10-20): five areas (notices, prompts, indicators, fleet,
+payload) each verified in its own VM slot against the mock ArduCopter and PX4, then merged into this tree and smoke-tested together on
+`winvm` (no vehicle, mock ArduCopter, mock PX4, two ArduCopter mocks, a UDP H.264 test stream). Pointer-only gestures (slides, map and
+video taps, drags) were driven through in-process hooks or UI Automation, not a real mouse.
+
 ### P0: bugs and real-use blockers
 
-- Enforced checklist never passes: Windows never writes `vehicle.checkListState`, so with Enforce checklist on the core refuses Arm
-  forever; the automatic checklist popup is missing too (S).
-- Host notices are never shown: core banners, critical vehicle errors and app dialogs (Reboot vehicle, Open Setup, Use radio) from
-  `view.hostNotices` (M).
-- No vehicle message banner or messages sheet on Fly; messages live only in Analyze (S).
-- No local record button: `video.startRecording` works only through the debug API (S).
+- ✓ Enforced checklist: `ChecklistGate` writes `vehicle.checkListState` 1/2 and the checklist pops up 1 s after connecting when enforced;
+  Arm stays unoffered until it passes (merged build: state 0 → 1 after ticking, Arm offer hidden → ready, slide card opens). The core
+  still accepts a raw `vehicle.armed` debug write with the list unpassed; only the offer is withheld, as on Android.
+- ✓ Host notices (`Controls/NoticeLayer`): banners as 4 s toasts, critical vehicle errors as an InfoBar off Fly with
+  `vehicle.resetErrorLevelMessages` on close, app dialogs (Reboot vehicle, Open Setup, Use radio, plain OK), page navigation,
+  `host.acknowledgeThrough`. Dialogs queue behind any open ContentDialog.
+- ✓ Vehicle message banner and messages sheet on Fly ("Why it will not arm" when pre-arm blocks); the status sheet's Messages row opens it.
+  Not ported: tappable parameter links in the arming-check lines.
+- ✓ Local record button and REC clock (`Controls/StreamShutter`): merged build wrote a 3.1 MB MP4 from the UDP test stream; hidden when a
+  MAVLink camera is present, as on Android.
 - USB/serial links: the core now lists COM ports on Windows, but no real device has been seen; Bluetooth needs a WinRT RFCOMM host (L).
 
 ### P1: core flying parity
 
-- Fly prompts: voice alerts (Android's 92 clips through `MediaPlayer`, `SpeechSynthesis` fallback; M), automatic mission popups,
-  mission-complete dialog, close guard (`view.closeChecks`), connecting card, traffic banner and list (S each).
-- Indicators: clickable battery/GPS/RC/telemetry/link details (M); flight-time, RC-signal, RC-override and RSSI cells (S); vehicle
-  status sheet with hold-to-arm and sensor health (M).
-- Multi-vehicle: fleet card, active-vehicle picker, every vehicle on the map, handover notice (L); mission progress card (S); tap a Fly
-  pin to set the current waypoint (S).
-- Video: WHEP in the shipped runtime (rerun `build-video.ps1`, then check against a SFU); gimbal indicator and control sheet (M).
+- Fly prompts: ◐ voice alerts (92 Android clips via `MediaPlayer`, `SpeechSynthesis` fallback, mute, return-home alert, link-loss
+  `MessageBeep`; player state verified, nobody listened on the VM) · ◐ automatic mission popups (Start Mission verified; Land Abort and
+  Continue Mission share the path but were never triggered) · ✓ mission-complete / mission-interrupted dialog · ✓ close guard
+  (`view.closeChecks`) · ✓ connecting card · ✓ traffic banner and list.
+- Indicators: ✓ battery/GPS/RC/telemetry/link detail sheets (battery packs, return-budget bar plus a Fly top bar, Return, failsafes,
+  display, silence line) · ✓ flight-time, RC-signal, RC-override (click clears) and RSSI cells · ◐ vehicle status sheet from the state
+  chip (summary, Messages, Arm via the slide card, sensors into Setup, inline messages; force arm and Overall status not driven: no mock
+  refuses arming). No overflow handling yet when every cell is present on a narrow window.
+- ✓ Multi-vehicle: fleet card (select, per-vehicle mode, fleet Arm/Disarm/Start/Pause), title-bar "Fly which aircraft?" picker, every
+  vehicle on the map, tap a vehicle to fly it, handover notice. Fleet RTL is missing because the core's `view.vehicles` has no RTL action.
+  ✓ Mission progress card with Skip · ✓ tap a Fly mission pin to set the current waypoint (16 px hit radius; a tap on the map tile while the
+  video is main swaps back instead).
+- Video: WHEP in the shipped runtime (rerun `build-video.ps1`, then check against a SFU) · ◐ gimbal indicator and control sheet (tilt,
+  centre, point home, retract, yaw lock, acquire control, settings form verified; the take-control dialog was never triggered).
 - Settings and Plan: pilot settings rows built from parameters (S–M); waypoint camera section from `view.itemCamera` (S–M).
 - Aircast device (aircastd): device home and the 11 device pages over `view.device` (L).
 
 ### P2: advanced and secondary
 
-- Platform: ground-station position from `Geolocator` (unlocks the operator dot, Remote ID GCS location, Follow Me, Centre > My
-  location; M), Aircast Cloud link and sign-in (M), GCS battery cell and keep-display-awake (S each).
-- Fly overlays: ESC, Remote ID, GPS resilience, RTK, Aircast link and joystick cells; VTOL cell; gripper bays; orbit readout; proximity
-  radar; obstacle arc and map layer; gimbal wedge and camera beam; gimbal on-screen aim; virtual joystick; operator-control prompt;
-  terrain-data warning; offline status sheet; resume-failed prompt; disarm summary toast; first-run dialog (S–M each).
-- Video: grid lines, aspect ratio, full-screen and zoom gestures; camera details (tracking, thermal, photo-lapse, format, stream); video
-  stats pill; AR overlay; detection boxes from aircastd; synthetic view (needs a Windows attach in the core's wgpu renderer; L).
+- Platform: ✓ ground-station position (`--position-source internalGps`, `Core/GcsLocation` feeds Geolocator fixes; operator dot, map
+  framing without a vehicle, Remote ID GCS block, compass GCS bearing — proven with the core's NMEA source because the VM's Windows fix is
+  10 km and refused) · ✓ Follow Me readout · ◐ GCS battery cell (built; the VM has no battery) · ✓ keep-display-awake (`powercfg
+  /requests` lists the app while connected) · Aircast Cloud link and sign-in (M).
+- Fly overlays: ✓ ESC and Remote ID cells (self-ID, emergency label) · ◐ GPS resilience, RTK (survey-in, base Save), Aircast link and
+  joystick cells (built, no mock source) · VTOL cell · ✓ gripper panel with bays, problems and fix button (Payload tile in the deck) ·
+  ◐ orbit readout (built; the PX4 mock never reports orbiting) · ✓ proximity radar on the video and map · obstacle arc and map layer ·
+  ✓ gimbal wedge and camera beam · ◐ gimbal on-screen aim (mode switch verified; tap, drag and hold sends not driven) · virtual joystick ·
+  operator-control prompt · ◐ terrain-data warning (built; the stalled state cannot be driven) · ✓ offline status sheet · ✓ resume-failed
+  prompt (shows on any page; Android only on Fly) · ✓ disarm and landed summary toast · ✓ first-run dialog.
+- Video: grid lines, aspect ratio, full-screen and zoom gestures · ◐ camera details (camera and stream choice, time lapse and interval,
+  tracking toggle and box, reset and format verified; thermal untested, tap-to-track not driven) · ✓ video stats pill (merged build:
+  "31 fps · 720p" on the full-size video) · AR overlay · detection boxes from aircastd · synthetic view (needs a Windows attach in the
+  core's wgpu renderer; L).
 - Settings: app font size and the light palette (M); SD-card flasher (needs a Windows raw-disk backend in core; L).
 - Plan: survey camera-calc block (brand/model, overlap, distance mode; S); the remaining ~240 ms core rebuild of `view.missionItems` on
   the UI thread after each edit on large surveys.

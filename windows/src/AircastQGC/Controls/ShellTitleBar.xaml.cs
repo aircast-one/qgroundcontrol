@@ -15,17 +15,15 @@ public sealed partial class ShellTitleBar : UserControl
     private const string FlyStatePath = "view.flyState";
     private const string VehicleLinksPath = "view.vehicleLinks";
     private const string FlightModesPath = "view.flightModes";
-    private const string BatteryPath = "view.battery";
-    private const string GpsPath = "view.gps";
     private const string ArmedGlyph = "";
     private const string DisarmedGlyph = "";
     private const double StaleOpacity = 0.45;
-    private const string NotAvailable = "n/a";
 
-    private static readonly string[] Watched = { FlyStatePath, VehicleLinksPath, FlightModesPath, BatteryPath, GpsPath };
+    private static readonly string[] Watched = { FlyStatePath, VehicleLinksPath, FlightModesPath };
     private static readonly string[] KnownStates = { "notConnected", "contactLost", "flying", "landing", "armed", "disarmed" };
 
     private readonly Dictionary<string, JsonObject> _views = new();
+    private readonly VehicleStatusSheet _status = new();
     private string _pendingMode = "";
 
     private enum Tone { Good, Caution, Critical, Unknown }
@@ -40,11 +38,11 @@ public sealed partial class ShellTitleBar : UserControl
 
     public event EventHandler<FrameworkElement>? FlightModeRequested;
 
-    public event EventHandler? LinkRequested;
-
     public FrameworkElement DragRegion => DragArea;
 
     public FrameworkElement FlightModeAnchor => ModePill;
+
+    public VehiclePickerButton VehiclePicker => VehicleSwitch;
 
     public double CaptionInset
     {
@@ -81,7 +79,9 @@ public sealed partial class ShellTitleBar : UserControl
 
     private void OnModeClick(object sender, RoutedEventArgs e) => FlightModeRequested?.Invoke(this, ModePill);
 
-    private void OnLinkClick(object sender, RoutedEventArgs e) => LinkRequested?.Invoke(this, EventArgs.Empty);
+    private void OnLinkClick(object sender, RoutedEventArgs e) => Strip.ShowLinks(LinkPill);
+
+    private void OnStatusClick(object sender, RoutedEventArgs e) => _status.ShowAt(ArmedPill);
 
     private JsonObject View(string path) => _views.TryGetValue(path, out var view) ? view : new JsonObject();
 
@@ -116,18 +116,6 @@ public sealed partial class ShellTitleBar : UserControl
         ArmedText.Text = armed ? "Armed" : "Disarmed";
         ArmedIcon.Glyph = armed ? ArmedGlyph : DisarmedGlyph;
         Paint(ArmedPill, ArmedIcon, armed ? Tone.Critical : Tone.Unknown);
-
-        var battery = View(BatteryPath);
-        var (batteryText, batteryTone) = BatteryReading(battery);
-        BatteryPill.Visibility = Shown(Flag(battery, "available") == true);
-        BatteryText.Text = batteryText;
-        Paint(BatteryPill, BatteryIcon, batteryTone);
-
-        var gps = View(GpsPath);
-        var (gpsText, gpsTone) = GpsReading(gps);
-        GpsPill.Visibility = Shown(Flag(gps, "available") == true);
-        GpsText.Text = gpsText;
-        Paint(GpsPill, GpsIcon, gpsTone);
     }
 
     private static (string Label, Tone Level) Link(bool connected, bool? contactLost, JsonObject view)
@@ -145,42 +133,6 @@ public sealed partial class ShellTitleBar : UserControl
             _ when silent == links.Count => ("No link heard", Tone.Critical),
             _ => (silent == 1 ? "1 link lost" : $"{silent} links lost", Tone.Caution),
         };
-    }
-
-    private static (string Label, Tone Level) BatteryReading(JsonObject view)
-    {
-        var first = view["packs"] is JsonArray { Count: > 0 } packs ? packs[0] as JsonObject : null;
-        var main = first is null ? "" : Text(first, "text");
-        var secondary = first is null ? "" : Text(first, "secondaryText");
-        var text = main.Length == 0 ? "—"
-            : secondary.Length == 0 || secondary == main || secondary == NotAvailable ? main
-            : $"{main} · {secondary}";
-        var tone = Text(view, "level") switch
-        {
-            "normal" => Tone.Good,
-            "caution" or "warning" => Tone.Caution,
-            "critical" => Tone.Critical,
-            _ => Tone.Unknown,
-        };
-        return (text, tone);
-    }
-
-    private static (string Label, Tone Level) GpsReading(JsonObject view)
-    {
-        var fixType = Whole(view, "lock");
-        var satellites = Whole(view, "satellites");
-        var fix = Text(view, "lockText");
-        var text = fixType is null ? "—"
-            : satellites is null ? (fix.Length == 0 ? "—" : fix)
-            : fix.Length == 0 ? $"{satellites} sats" : $"{fix} · {satellites} sats";
-        var tone = fixType switch
-        {
-            null => Tone.Unknown,
-            >= 3 => Tone.Good,
-            2 => Tone.Caution,
-            _ => Tone.Critical,
-        };
-        return (text, tone);
     }
 
     private static void Paint(FrameworkElement pill, FontIcon icon, Tone tone)
@@ -210,9 +162,6 @@ public sealed partial class ShellTitleBar : UserControl
 
     private static string Text(JsonObject view, string key) =>
         view[key] is JsonValue value && value.TryGetValue<string>(out var text) ? text ?? "" : "";
-
-    private static int? Whole(JsonObject view, string key) =>
-        view[key] is JsonValue value && value.TryGetValue<double>(out var number) ? (int)number : null;
 
     private static Visibility Shown(bool on) => on ? Visibility.Visible : Visibility.Collapsed;
 }

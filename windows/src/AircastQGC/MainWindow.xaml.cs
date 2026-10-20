@@ -1,4 +1,5 @@
 using System.Collections.Immutable;
+using System.Linq;
 using AircastQGC.Controls;
 using AircastQGC.Core;
 using Microsoft.UI.Windowing;
@@ -24,6 +25,7 @@ public sealed partial class MainWindow : Window
         InitializeComponent();
         BridgeWatch.BindDispatcher(DispatcherQueue);
         Pages.Setup.GamepadInput.Start();
+        ScreenWake.Start();
 
         ExtendsContentIntoTitleBar = true;
         AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Tall;
@@ -33,7 +35,11 @@ public sealed partial class MainWindow : Window
             FitCaption();
             Shell.XamlRoot.Changed += (_, _) => FitCaption();
         };
-        Shell.LinkRequested += (_, _) => OpenLinks();
+        FlyRequests.Connections += OpenLinks;
+        FlyRequests.Settings += OpenSettings;
+        FlyRequests.Setup += OpenSetup;
+        FlyRequests.Guided += AskGuided;
+        FlyRequests.Messages += OpenMessages;
 
         _modes = new FlightModeMenu();
         Shell.FlightModeRequested += (_, anchor) => _modes.Show(anchor);
@@ -42,6 +48,7 @@ public sealed partial class MainWindow : Window
 
         Nav.NavigationRequested += (_, page) => Go(page);
         Nav.BackRequested += (_, _) => GoBack();
+        Notices.NavigateRequested += (_, page) => Go(page);
 
         NoVehicle.VehiclePresenceChanged += (_, present) => ShowVehicleOverlays(present);
         NoVehicle.OpenConnectionsRequested += (_, _) => OpenLinks();
@@ -59,6 +66,19 @@ public sealed partial class MainWindow : Window
             if (MapMenu.Target == null) Map.HideClickMarker();
         };
         MapMenu.ConfirmRequested += (_, ask) => GuidedCard.Ask(ask);
+        Map.VehicleTapped += id =>
+        {
+            if (_videoMain) SwapVideo(false);
+            else if (FleetBridge.AskFor(id) is { } refusal) Warn(refusal);
+        };
+        FleetPanel.ConfirmRequested += (_, ask) => GuidedCard.Ask(ask);
+        Shell.VehiclePicker.ConfirmRequested += (_, ask) =>
+        {
+            Go(NavPane.Fly);
+            if (_page == NavPane.Fly) GuidedCard.Ask(ask);
+        };
+        Shell.VehiclePicker.ConnectRequested += (_, _) => OpenLinks();
+        Shell.VehiclePicker.HandedOver += (_, notice) => Tell(notice);
 
         GuidedStrip.ActionRequested += (_, offer) => GuidedCard.Show(offer);
         GuidedCard.Failed += (_, reason) =>
@@ -69,9 +89,28 @@ public sealed partial class MainWindow : Window
         VideoTile.SwapRequested += (_, _) => SwapVideo(!_videoMain);
         CameraPanel.CameraPresentChanged += (_, _) => CameraButton.Visibility = Shown(CameraPanel.CameraPresent);
         CameraButton.Click += (_, _) => ToggleCamera();
+        MapPayload.Attach(Map);
+        VideoLayer.SwapRequested += (_, _) => SwapVideo(!_videoMain);
+        Map.MapTapped += (_, _, at) =>
+        {
+            if (_videoMain) SwapVideo(false);
+            else if (SetWaypoint.PinAt(Map, at) is { } sequence) GuidedCard.Ask(SetWaypoint.Ask(sequence));
+        };
+        MissionProgress.SkipRequested += (_, next) => GuidedCard.Ask(SetWaypoint.Ask(next));
+        Gripper.ConfirmRequested += (_, ask) => GuidedCard.Ask(ask);
+        GuidedStrip.PayloadRequested += (_, _) => ToggleGripper();
 
         Checklist.StateChanged += (_, _) => PaintChecklistButton();
         ChecklistButton.Click += (_, _) => ToggleChecklist();
+        Checklist.RegisterPropertyChangedCallback(UIElement.VisibilityProperty, (_, _) => FleetColumn.Visibility = Shown(!Checklist.IsOpen));
+
+        var root = (FrameworkElement)Content;
+        _ = new ChecklistGate(Checklist, () => GuidedCard.IsOpen || MapMenu.Target != null);
+        _ = new MissionPopups(GuidedCard);
+        _ = new MissionCompleteDialog(root);
+        _ = new ResumeFailedPrompt(root);
+        _ = new FirstRunDialog(root);
+        _ = new CloseGuard(this);
     }
 
     private void FitCaption() =>
@@ -84,11 +123,35 @@ public sealed partial class MainWindow : Window
         ShowPage(page);
     }
 
-    private void OpenLinks()
+    private void OpenLinks() => OpenSettings(Pages.Settings.SettingsPage.ConnectionsPage);
+
+    private void OpenSettings(string page)
     {
         Go(NavPane.Settings);
         if (_page == NavPane.Settings)
-            (HostedPage(NavPane.Settings) as Pages.Settings.SettingsPage)?.Open(Pages.Settings.SettingsPage.ConnectionsPage);
+            (HostedPage(NavPane.Settings) as Pages.Settings.SettingsPage)?.Open(page);
+    }
+
+    private void OpenSetup(string page)
+    {
+        Go(NavPane.VehicleSetup);
+        if (_page == NavPane.VehicleSetup)
+            (HostedPage(NavPane.VehicleSetup) as Pages.Setup.SetupPage)?.Open(page);
+    }
+
+    private void OpenMessages()
+    {
+        Go(NavPane.Fly);
+        if (_page == NavPane.Fly) MessageBanner.OpenSheet();
+    }
+
+    private void AskGuided(string id)
+    {
+        Go(NavPane.Fly);
+        if (_page != NavPane.Fly) return;
+        var offer = GuidedOffer.List(Bridge.Get(GuidedOffer.ViewPath)).FirstOrDefault(o => o.Id == id);
+        if (offer is { Ready: true }) GuidedCard.Show(offer);
+        else Warn(offer?.Reason is { Length: > 0 } reason ? reason : ArmControls.Unavailable);
     }
 
     private void GoBack()
@@ -109,6 +172,7 @@ public sealed partial class MainWindow : Window
         PageHost.Visibility = Shown(hosted != null);
         PagePlaceholder.Visibility = Shown(page != NavPane.Fly && hosted == null);
         PageTitle.Text = page;
+        Notices.OnFly = page == NavPane.Fly;
     }
 
     private UIElement? HostedPage(string page)
@@ -131,7 +195,15 @@ public sealed partial class MainWindow : Window
 
     private void Warn(string reason)
     {
+        Notice.Severity = InfoBarSeverity.Error;
         Notice.Message = reason;
+        Notice.IsOpen = true;
+    }
+
+    private void Tell(string notice)
+    {
+        Notice.Severity = InfoBarSeverity.Warning;
+        Notice.Message = notice;
         Notice.IsOpen = true;
     }
 
@@ -142,6 +214,7 @@ public sealed partial class MainWindow : Window
         Dock(VideoTile, videoMain);
         Dock(Map, !videoMain);
         Canvas.SetZIndex(VideoTile, videoMain ? -1 : 0);
+        VideoStats.Expanded = videoMain;
     }
 
     private static void Dock(FrameworkElement view, bool full)
@@ -156,7 +229,22 @@ public sealed partial class MainWindow : Window
     private void ToggleCamera()
     {
         if (CameraPanel.Visibility == Visibility.Visible) CameraPanel.Hide();
-        else CameraPanel.Show();
+        else
+        {
+            Gripper.Hide();
+            CameraPanel.Show();
+        }
+    }
+
+    private void ToggleGripper()
+    {
+        if (Gripper.IsOpen)
+        {
+            Gripper.Hide();
+            return;
+        }
+        CameraPanel.Hide();
+        Gripper.Show();
     }
 
     private void ToggleChecklist()
