@@ -6,6 +6,67 @@ use serde_json::Value;
 use super::geo::{Camera, east_north_up, ecef};
 use super::mesh::{Layer, Mesh, solid};
 
+const BOTTLE_SIDES: usize = 12;
+const BOTTLE_LENGTH_M: f64 = 0.32;
+const BOTTLE_RADIUS_M: f64 = 0.045;
+const BOTTLE_PX: f64 = 32.0;
+const BODY: usize = 0;
+const LABEL: usize = 1;
+const CAP: usize = 2;
+const BOTTLE_COLOURS: [[u8; 4]; 3] = [
+    [0xA8, 0xD8, 0xF0, 255],
+    [0xF5, 0xF5, 0xF5, 255],
+    [0x15, 0x65, 0xC0, 255],
+];
+const BOTTLE_PROFILE: [(f64, f64, usize); 12] = [
+    (0.0, 0.0, BODY),
+    (0.040, 0.0, BODY),
+    (BOTTLE_RADIUS_M, 0.012, BODY),
+    (BOTTLE_RADIUS_M, 0.09, LABEL),
+    (BOTTLE_RADIUS_M, 0.17, BODY),
+    (BOTTLE_RADIUS_M, 0.215, BODY),
+    (0.030, 0.255, BODY),
+    (0.015, 0.28, BODY),
+    (0.015, 0.292, CAP),
+    (0.017, 0.292, CAP),
+    (0.017, BOTTLE_LENGTH_M, CAP),
+    (0.0, BOTTLE_LENGTH_M, CAP),
+];
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Bottle {
+    pub latitude: f64,
+    pub longitude: f64,
+    pub above_home: f64,
+    pub heading: f64,
+    pub tilt: f64,
+    pub landed: bool,
+}
+
+impl Bottle {
+    pub fn from_view(value: &Value) -> Option<Self> {
+        let number = |key: &str| value.get(key)?.as_f64().filter(|v| v.is_finite());
+        Some(Self {
+            latitude: number("latitude")?,
+            longitude: number("longitude")?,
+            above_home: number("aboveHome")?,
+            heading: number("heading").unwrap_or(0.0),
+            tilt: number("tilt").unwrap_or(0.0),
+            landed: value
+                .get("landed")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+        })
+    }
+
+    pub fn listed(view: &Value) -> Vec<Self> {
+        listed(view, "bottles")
+            .iter()
+            .filter_map(Self::from_view)
+            .collect()
+    }
+}
+
 const ROUTE_PX: f64 = 3.0;
 const MARK_PX: f64 = 14.0;
 const LABEL_PX: f64 = 18.0;
@@ -353,6 +414,88 @@ pub fn meshes(overlays: &Overlays, home_ground: f64, camera: &Camera) -> Vec<Arc
     .collect()
 }
 
+type Quad = ([DVec3; 4], [DVec3; 4], usize);
+
+fn bottle_quads() -> Vec<Quad> {
+    let middle = BOTTLE_LENGTH_M / 2.0;
+    let turn = |step: usize| (step as f64 / BOTTLE_SIDES as f64 * std::f64::consts::TAU).sin_cos();
+    BOTTLE_PROFILE
+        .windows(2)
+        .flat_map(|pair| {
+            let ((ar, az, colour), (br, bz, _)) = (pair[0], pair[1]);
+            let length = (bz - az).hypot(ar - br);
+            let (nr, nz) = ((bz - az) / length, (ar - br) / length);
+            let at = move |r: f64, z: f64, (sin, cos): (f64, f64)| {
+                DVec3::new(r * cos, r * sin, z - middle)
+            };
+            let facing = move |(sin, cos): (f64, f64)| DVec3::new(nr * cos, nr * sin, nz);
+            (0..BOTTLE_SIDES).map(move |side| {
+                let (from, to) = (turn(side), turn(side + 1));
+                (
+                    [
+                        at(ar, az, from),
+                        at(ar, az, to),
+                        at(br, bz, to),
+                        at(br, bz, from),
+                    ],
+                    [facing(from), facing(to), facing(to), facing(from)],
+                    colour,
+                )
+            })
+        })
+        .collect()
+}
+
+pub fn bottles(bottles: &[Bottle], home_ground: f64, camera: &Camera) -> Option<Arc<Mesh>> {
+    let first = bottles.first()?;
+    let frame = &Frame::at(first.latitude, first.longitude);
+    let shape = &bottle_quads();
+    let rows = BOTTLE_COLOURS.len() as f32;
+    let placed: Vec<([f32; 3], [f32; 3], [f32; 2])> = bottles
+        .iter()
+        .flat_map(|bottle| {
+            let tilt = bottle.tilt.to_radians();
+            let turn = east_north_up(bottle.latitude, bottle.longitude)
+                * DMat3::from_rotation_z(-bottle.heading.to_radians())
+                * DMat3::from_rotation_x(-tilt);
+            let lowest = home_ground + bottle.above_home;
+            let scale = (BOTTLE_PX
+                * metres_per_px(camera, ecef(bottle.latitude, bottle.longitude, lowest))
+                / BOTTLE_LENGTH_M)
+                .max(1.0);
+            let lift =
+                BOTTLE_LENGTH_M / 2.0 * tilt.cos().abs() + BOTTLE_RADIUS_M * tilt.sin().abs();
+            let centre = ecef(bottle.latitude, bottle.longitude, lowest + lift * scale);
+            let to_local = frame.to_local * turn;
+            shape.iter().flat_map(move |(corners, normals, colour)| {
+                corners.iter().zip(normals).map(move |(corner, normal)| {
+                    (
+                        frame.local(centre + turn * (*corner * scale)),
+                        (to_local * *normal).as_vec3().to_array(),
+                        [0.5, (*colour as f32 + 0.5) / rows],
+                    )
+                })
+            })
+        })
+        .collect();
+    let count = (placed.len() / 4) as u32;
+    Some(Arc::new(
+        Mesh::new(
+            frame.to_ecef,
+            placed.iter().map(|vertex| vertex.0).collect(),
+            placed.iter().map(|vertex| vertex.2).collect(),
+            (0..count)
+                .flat_map(|q| [0, 1, 2, 0, 2, 3].map(|i| q * 4 + i))
+                .collect(),
+            image::RgbaImage::from_fn(1, BOTTLE_COLOURS.len() as u32, |_, y| {
+                image::Rgba(BOTTLE_COLOURS[y as usize])
+            }),
+            Layer::Opaque,
+        )
+        .with_normals(placed.iter().map(|vertex| vertex.1).collect()),
+    ))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -467,5 +610,116 @@ mod tests {
         );
         assert_eq!(pixel(1, 1, 1), [0, 0, 0, 255], "its outline");
         assert_eq!(pixel(1, 4, 0), [0, 0, 0, 0], "clear around it");
+    }
+
+    const SPOT: (f64, f64) = (-35.363, 149.165);
+    const GROUND: f64 = 600.0;
+
+    fn looking_down_from(metres: f64) -> Camera {
+        Camera::new(
+            &Pose {
+                latitude: SPOT.0,
+                longitude: SPOT.1,
+                height: GROUND + metres,
+                heading: 0.0,
+                pitch: -90.0,
+                roll: 0.0,
+                fov: 70.0,
+            },
+            1280,
+            720,
+        )
+    }
+
+    fn bottle(tilt: f64) -> Bottle {
+        Bottle {
+            latitude: SPOT.0,
+            longitude: SPOT.1,
+            above_home: 0.0,
+            heading: 90.0,
+            tilt,
+            landed: tilt == 90.0,
+        }
+    }
+
+    fn spans(mesh: &Mesh) -> [(f64, f64); 3] {
+        let axes = east_north_up(SPOT.0, SPOT.1);
+        let ground = ecef(SPOT.0, SPOT.1, GROUND);
+        let points: Vec<DVec3> = mesh
+            .positions
+            .iter()
+            .map(|p| mesh.to_ecef.transform_point3(DVec3::from(p.map(f64::from))) - ground)
+            .collect();
+        [axes.x_axis, axes.y_axis, axes.z_axis].map(|axis| {
+            points.iter().fold((f64::MAX, f64::MIN), |(low, high), p| {
+                (low.min(p.dot(axis)), high.max(p.dot(axis)))
+            })
+        })
+    }
+
+    #[test]
+    fn the_bottles_are_read_from_the_core_view() {
+        let view = json!({ "bottles": [{ "bay": 1, "latitude": -35.36, "longitude": 149.16, "aboveHome": 4.5, "heading": 30.0, "tilt": 45.0, "landed": false }, { "latitude": "?" }] });
+        assert_eq!(
+            Bottle::listed(&view),
+            [Bottle {
+                latitude: -35.36,
+                longitude: 149.16,
+                above_home: 4.5,
+                heading: 30.0,
+                tilt: 45.0,
+                landed: false
+            }]
+        );
+        assert!(Bottle::listed(&json!({})).is_empty());
+    }
+
+    #[test]
+    fn a_landed_bottle_lies_on_the_ground_along_its_heading_cap_first() {
+        let mesh = bottles(&[bottle(90.0)], GROUND, &looking_down_from(2.0)).unwrap();
+        let [east, north, up] = spans(&mesh);
+        assert!(
+            (up.0).abs() < 1e-3,
+            "it rests on the ground, not in it: {up:?}"
+        );
+        assert!((up.1 - 2.0 * BOTTLE_RADIUS_M).abs() < 1e-3);
+        assert!((east.1 - east.0 - BOTTLE_LENGTH_M).abs() < 1e-3, "{east:?}");
+        assert!((north.1 - north.0 - 2.0 * BOTTLE_RADIUS_M).abs() < 1e-3);
+        assert_eq!(mesh.layer, Layer::Opaque);
+        assert_eq!(
+            mesh.normals.len(),
+            mesh.positions.len(),
+            "it is lit by the sun"
+        );
+        assert_eq!(
+            mesh.indices.len(),
+            (BOTTLE_PROFILE.len() - 1) * BOTTLE_SIDES * 6
+        );
+    }
+
+    #[test]
+    fn a_falling_bottle_hangs_cap_up_from_where_it_is() {
+        let mesh = bottles(&[bottle(0.0)], GROUND, &looking_down_from(2.0)).unwrap();
+        let [east, _, up] = spans(&mesh);
+        assert!((up.0).abs() < 1e-3 && (up.1 - BOTTLE_LENGTH_M).abs() < 1e-3);
+        assert!((east.1 - east.0 - 2.0 * BOTTLE_RADIUS_M).abs() < 1e-3);
+    }
+
+    #[test]
+    fn a_far_bottle_is_drawn_big_enough_to_find_and_each_bottle_is_drawn() {
+        let camera = looking_down_from(300.0);
+        let mesh = bottles(&[bottle(90.0), bottle(0.0)], GROUND, &camera).unwrap();
+        assert_eq!(
+            mesh.positions.len(),
+            2 * (BOTTLE_PROFILE.len() - 1) * BOTTLE_SIDES * 4
+        );
+        let alone = bottles(&[bottle(90.0)], GROUND, &camera).unwrap();
+        let [east, _, _] = spans(&alone);
+        let wanted = BOTTLE_PX * metres_per_px(&camera, ecef(SPOT.0, SPOT.1, GROUND));
+        assert!(
+            (east.1 - east.0 - wanted).abs() < 1e-3 * wanted,
+            "{east:?} vs {wanted}"
+        );
+        assert!(bottles(&[], GROUND, &camera).is_none());
     }
 }

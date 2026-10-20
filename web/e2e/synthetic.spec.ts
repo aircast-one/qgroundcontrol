@@ -1,5 +1,5 @@
 import { type Page } from '@playwright/test';
-import { connectMock, expect, flightMode, takeOff, test } from './fixtures';
+import { connectMock, expect, flightMode, slideAcross, takeOff, test } from './fixtures';
 
 test.describe.configure({ timeout: 120_000 });
 
@@ -96,4 +96,42 @@ test('with a gimbal and the synthetic view standing in for the camera, the tilt 
   await app.mouse.up();
   await expect.poll(async () => Number(await tilt.getAttribute('aria-valuenow')), { timeout: 10_000 }).toBeLessThan(before - 10);
   await expect(notice).toHaveCSS('user-select', 'none');
+});
+
+type Bottle = { latitude: number; longitude: number; aboveHome: number; landed: boolean };
+
+test('a dropped water bottle falls from the drone and lies on the ground below the gimbal looking down', async ({ app }, testInfo) => {
+  await connectMock(app, ['Enable gimbal'], 'APM ArduCopter Vehicle');
+  await syntheticCanvas(app);
+  await takeOff(app, '10 m');
+  await expect(app.getByRole('button', { name: 'Slide to land' })).toBeVisible({ timeout: 60_000 });
+  await expect(flightMode(app)).toHaveAccessibleName(/^Guided/, { timeout: 30_000 });
+  await app.evaluate(async (module) => ((await import(module)) as { Qgc: { invoke: (path: string, ...args: unknown[]) => Promise<boolean> } }).Qgc.invoke('gimbal.aim', -90, 0), '/src/bridge/Qgc.ts');
+  const view = async () => (await read(app, 'view.syntheticView')) as { latitude: number; longitude: number; aboveHome: number; pitch: number; bottles?: Bottle[] };
+  await expect.poll(async () => (await view()).pitch, { timeout: 15_000 }).toBeLessThan(-85);
+  await expect.poll(async () => (await view()).aboveHome, { timeout: 30_000 }).toBeGreaterThan(9);
+  expect((await view()).bottles).toEqual([]);
+
+  await slideAcross(app, app.getByRole('button', { name: 'Slide to drop' }));
+  const seen: Bottle[] = [];
+  const watched = async () => {
+    const bottles = (await view()).bottles ?? [];
+    seen.push(...bottles);
+    return bottles;
+  };
+  await expect.poll(async () => (await watched()).some((it) => it.landed || it.aboveHome < 7), { intervals: [25], timeout: 30_000 }).toBe(true);
+  await app.screenshot({ path: testInfo.outputPath('bottle-falling.png') });
+  await expect.poll(async () => (await watched()).map((it) => it.landed), { intervals: [25], timeout: 30_000 }).toEqual([true]);
+  const falling = seen.filter((it) => !it.landed).map((it) => it.aboveHome);
+  expect(falling.length, 'it was seen in the air before it landed').toBeGreaterThan(0);
+  expect(Math.max(...falling), 'it fell from the drone').toBeGreaterThan(Math.min(...falling));
+  await expect(app.getByText('Payload dropped')).toBeVisible();
+
+  const [landed] = (await view()).bottles ?? [];
+  const drone = await view();
+  expect(Math.abs(landed!.latitude - drone.latitude), 'a bottle dropped in a hover lands under the drone').toBeLessThan(2e-5);
+  expect(Math.abs(landed!.longitude - drone.longitude)).toBeLessThan(2e-5);
+  expect(landed!.aboveHome, 'on the ground, not in the air').toBeLessThan(drone.aboveHome - 5);
+  await app.screenshot({ path: testInfo.outputPath('bottle-on-the-ground.png') });
+  expect((await view()).bottles, 'and it stays where it landed').toEqual([landed]);
 });

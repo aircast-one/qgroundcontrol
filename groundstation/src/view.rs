@@ -1316,6 +1316,7 @@ mod deps_cover_reads {
         ("offlinestatus", include_str!("offlinestatus.rs")),
         ("resumemission", include_str!("resumemission.rs")),
         ("payloadcheck", include_str!("payloadcheck.rs")),
+        ("payloadfall", include_str!("payloadfall.rs")),
         ("connectnotices", include_str!("connectnotices.rs")),
         ("inspectorchart", include_str!("inspectorchart.rs")),
         ("rccal", include_str!("rccal.rs")),

@@ -24,6 +24,7 @@ pub struct VehicleFacts {
     pub range_finder_dist: f64,
     pub imu_temp: f64,
     pub coordinate: Option<(f64, f64, f64)>,
+    pub velocity: (f64, f64, f64),
     altitude_message_seen: bool,
     global_position_seen: bool,
     altitude_tuning_offset: Option<f64>,
@@ -178,6 +179,11 @@ impl VehicleFacts {
                     self.altitude_relative = d.relative_alt as f64 / 1000.0;
                     self.altitude_amsl = d.alt as f64 / 1000.0;
                 }
+                self.velocity = (
+                    f64::from(d.vx) / 100.0,
+                    f64::from(d.vy) / 100.0,
+                    -f64::from(d.vz) / 100.0,
+                );
                 if d.lat != 0 || d.lon != 0 {
                     self.global_position_seen = true;
                     self.coordinate = Some((
@@ -406,6 +412,16 @@ mod tests {
             (10.0, 40.0)
         );
         assert!(!facts.apply((1, 1), &MavMessage::HEARTBEAT(Default::default())));
+    }
+
+    #[test]
+    fn the_global_position_carries_the_velocity_as_north_east_and_up() {
+        use mavlink::dialects::ardupilotmega::GLOBAL_POSITION_INT_DATA;
+        let mut facts = VehicleFacts::for_vehicle(1, 1);
+        let mut global = GLOBAL_POSITION_INT_DATA::default();
+        (global.vx, global.vy, global.vz) = (300, -400, -150);
+        facts.apply((1, 1), &MavMessage::GLOBAL_POSITION_INT(global));
+        assert_eq!(facts.velocity, (3.0, -4.0, 1.5));
     }
 
     #[test]

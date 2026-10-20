@@ -14,7 +14,7 @@ use super::geo::{Camera, Pose};
 use super::ground;
 use super::mesh::Mesh;
 use super::open::{Built, OpenScene, Want};
-use super::overlay::{self, Overlays};
+use super::overlay::{self, Bottle, Overlays};
 use super::predict::{self, Gain, Lag, Predicted, Step};
 use super::tileset::{self, GOOGLE_ROOT, ION_GOOGLE_ASSET, Parsed, Request, Selection, Tileset};
 use crate::virtualjoystick::StickSample;
@@ -77,6 +77,7 @@ pub struct Target {
     pub roll_rate: f64,
     pub response: Response,
     pub round_trip: Option<Duration>,
+    pub bottles: Vec<Bottle>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -195,6 +196,7 @@ impl Target {
                 .get("roundTripMs")
                 .and_then(serde_json::Value::as_u64)
                 .map(Duration::from_millis),
+            bottles: Bottle::listed(view),
         })
     }
 }
@@ -434,6 +436,8 @@ pub struct Frame {
     pub backfill: Vec<Arc<Mesh>>,
     pub warm: Vec<Arc<Mesh>>,
     pub home_ground: Option<f64>,
+    pub under_ground: Option<f64>,
+    pub bottles: Vec<Bottle>,
     pub changed: bool,
     pub reading_age: Duration,
     pub stick_to_frame: Option<Duration>,
@@ -451,7 +455,24 @@ impl Frame {
             .zip(self.home_ground)
             .map(|(overlays, ground)| overlay::meshes(overlays, ground, &camera))
             .unwrap_or_default();
-        (camera, self.ground.iter().cloned().chain(marks).collect())
+        let bottles = self
+            .home_ground
+            .and_then(|ground| overlay::bottles(&self.bottles, ground, &camera));
+        (
+            camera,
+            self.ground
+                .iter()
+                .cloned()
+                .chain(marks)
+                .chain(bottles)
+                .collect(),
+        )
+    }
+
+    pub fn ground_above_home(&self) -> Option<f64> {
+        self.under_ground
+            .zip(self.home_ground)
+            .map(|(under, home)| under - home)
     }
 }
 
@@ -479,6 +500,8 @@ pub struct Session {
     spin: f64,
     ground_meshes: Vec<Arc<Mesh>>,
     backfill: Vec<Arc<Mesh>>,
+    bottle_ground: Vec<((f64, f64), f64)>,
+    bottles_probed: Option<Instant>,
     fallback: Option<Fallback>,
     coarsest: f64,
     holes: usize,
@@ -486,6 +509,13 @@ pub struct Session {
     handed_over_after: Option<Duration>,
     warming: Option<usize>,
     root_due: Option<Instant>,
+}
+
+fn ground_at(grounds: &[((f64, f64), f64)], spot: (f64, f64)) -> Option<f64> {
+    grounds
+        .iter()
+        .find(|(at, _)| *at == spot)
+        .map(|(_, height)| *height)
 }
 
 fn wrapped(degrees: f64) -> f64 {
@@ -939,6 +969,8 @@ impl Session {
             spin: 0.0,
             ground_meshes: Vec::new(),
             backfill: Vec::new(),
+            bottle_ground: Vec::new(),
+            bottles_probed: None,
             fallback,
             coarsest: f64::INFINITY,
             holes: 0,
@@ -1323,6 +1355,42 @@ impl Session {
         different
     }
 
+    fn grounded(
+        &mut self,
+        bottles: &[Bottle],
+        home_ground: Option<f64>,
+        now: Instant,
+    ) -> Vec<Bottle> {
+        let due = self
+            .bottles_probed
+            .is_none_or(|at| now.duration_since(at) >= PROBE_EVERY);
+        self.bottles_probed = due.then_some(now).or(self.bottles_probed);
+        let ground: Vec<((f64, f64), f64)> = bottles
+            .iter()
+            .filter(|bottle| bottle.landed)
+            .map(|bottle| (bottle.latitude, bottle.longitude))
+            .filter_map(|spot| {
+                ground_at(&self.bottle_ground, spot)
+                    .filter(|_| !due)
+                    .or_else(|| ground::height_at(&self.ground_meshes, spot.0, spot.1))
+                    .map(|height| (spot, height))
+            })
+            .collect();
+        self.bottle_ground = ground;
+        bottles
+            .iter()
+            .map(|bottle| {
+                let drawn = ground_at(&self.bottle_ground, (bottle.latitude, bottle.longitude))
+                    .filter(|_| bottle.landed)
+                    .zip(home_ground);
+                Bottle {
+                    above_home: drawn.map_or(bottle.above_home, |(height, home)| height - home),
+                    ..bottle.clone()
+                }
+            })
+            .collect()
+    }
+
     pub fn frame(
         &mut self,
         target: Option<&Target>,
@@ -1448,12 +1516,15 @@ impl Session {
             Source::Google(Some(tiles)) => tiles.take_fresh(),
             _ => Vec::new(),
         };
+        let bottles = self.grounded(&target.bottles, home_ground, now);
         Some(Frame {
             pose,
             ground: self.ground_meshes.clone(),
             backfill: self.backfill.clone(),
             warm,
             home_ground,
+            under_ground,
+            bottles,
             changed: moving || fresh || reselected,
             reading_age: now.saturating_duration_since(telemetry.1),
             stick_to_frame: touched.map(|at| now.saturating_duration_since(at)),
@@ -1512,6 +1583,7 @@ mod tests {
             roll_rate: 0.0,
             response: Response::default(),
             round_trip: None,
+            bottles: Vec::new(),
         }
     }
 
@@ -2266,6 +2338,45 @@ mod tests {
                 .any(|error| error.contains("no imagery")),
             "missing imagery is reported, not hidden: {:?}",
             stats.errors
+        );
+    }
+
+    #[test]
+    fn a_frame_draws_the_dropped_bottles_and_knows_the_ground_under_the_drone() {
+        let mut session = Session::new("", Arc::new(Fake)).expect("workers");
+        let bottle = |above_home: f64, landed: bool| Bottle {
+            latitude: -35.36213,
+            longitude: 149.16514,
+            above_home,
+            heading: 0.0,
+            tilt: if landed { 90.0 } else { 30.0 },
+            landed,
+        };
+        let dropped = Target {
+            bottles: vec![bottle(-3.0, true), bottle(5.0, false)],
+            ..target("Bing Satellite")
+        };
+        let frame = settle(&mut session, &dropped, Instant::now()).expect("terrain drawn");
+        let drawn = ground::height_at(&frame.ground, -35.36213, 149.16514).unwrap()
+            - frame.home_ground.unwrap();
+        assert!(
+            (frame.bottles[0].above_home - drawn).abs() < 0.01,
+            "a bottle that landed where the ground is higher than under the drone lies on the drawn ground, not under it: {} vs {drawn}",
+            frame.bottles[0].above_home
+        );
+        assert_eq!(
+            frame.bottles[1],
+            bottle(5.0, false),
+            "a falling bottle keeps its flight"
+        );
+        let (_, meshes) = frame.view(None, 640, 360);
+        assert_eq!(meshes.len(), frame.ground.len() + 1);
+        assert!(
+            frame
+                .ground_above_home()
+                .is_some_and(|metres| metres.abs() < 1.0),
+            "the test terrain is flat: {:?}",
+            frame.ground_above_home()
         );
     }
 

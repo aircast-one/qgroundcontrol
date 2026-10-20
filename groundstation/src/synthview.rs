@@ -21,6 +21,7 @@ pub const DEPS: &[&str] = &[
     crate::cameras::CAMERAS_PATH,
     crate::cameras::ACTIVE_PATH,
     "video.activeVideoSource",
+    "vehicle.bottles",
     SYNTHETIC_CHANGED,
 ];
 
@@ -49,6 +50,22 @@ static AIM: Mutex<(f64, f64)> = Mutex::new(DEFAULT_AIM);
 static CHANGED: AtomicBool = AtomicBool::new(false);
 static DRAW: Mutex<&'static str> = Mutex::new(DRAW_LOADING);
 const DRAW_LOADING: &str = "loading";
+static GROUND: Mutex<Option<(f64, u64)>> = Mutex::new(None);
+const GROUND_KEPT_MS: u64 = 2_000;
+
+pub fn set_ground(above_home: Option<f64>) {
+    *GROUND.lock().unwrap_or_else(PoisonError::into_inner) = above_home
+        .filter(|metres| metres.is_finite())
+        .map(|metres| (metres, crate::hub::now_ms()));
+}
+
+pub fn ground_under(now_ms: u64) -> Option<f64> {
+    GROUND
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .filter(|(_, at)| now_ms.saturating_sub(*at) <= GROUND_KEPT_MS)
+        .map(|(metres, _)| metres)
+}
 
 pub fn take_changed() -> bool {
     CHANGED.swap(false, Ordering::SeqCst)
@@ -257,6 +274,7 @@ pub fn synthetic(backend: &dyn Backend, gimbals: &Value, aim: (f64, f64)) -> Val
         "roundTripMs": crate::linkhealth::recent_round_trip_ms(),
         "native": native(),
         "draw": drawn(),
+        "bottles": backend.value_fields("vehicle", "bottles").get("bottles").cloned().unwrap_or_else(|| json!([])),
         "beam": beam((latitude, longitude), above_home, heading, pitch, CAMERA_FOV_DEG).iter().map(|(lat, lon)| json!({ "latitude": lat, "longitude": lon })).collect::<Vec<_>>(),
     })
 }
@@ -506,6 +524,34 @@ mod tests {
 
     fn no_gimbal() -> Value {
         json!({ "gimbals": [] })
+    }
+
+    #[test]
+    fn the_view_carries_the_bottles_the_vehicle_dropped_and_the_ground_the_renderer_saw() {
+        let bottle = json!({ "bay": 2, "latitude": -35.36, "longitude": 149.16, "aboveHome": 3.0, "heading": 0.0, "tilt": 40.0, "landed": false });
+        let view = synthetic(
+            &flying(&[(
+                "vehicle",
+                json!({ "kind": "object", "bottles": [bottle.clone()] }),
+            )]),
+            &no_gimbal(),
+            DEFAULT_AIM,
+        );
+        assert_eq!(view["bottles"], json!([bottle]));
+        assert_eq!(
+            synthetic(&flying(&[]), &no_gimbal(), DEFAULT_AIM)["bottles"],
+            json!([])
+        );
+        set_ground(Some(4.5));
+        let now = crate::hub::now_ms();
+        assert_eq!(ground_under(now), Some(4.5));
+        assert_eq!(
+            ground_under(now + GROUND_KEPT_MS + 1),
+            None,
+            "a view closed long ago no longer knows the ground under the drone"
+        );
+        set_ground(None);
+        assert_eq!(ground_under(now), None);
     }
 
     #[test]

@@ -26,4 +26,8 @@ impl Feed for CoreFeed {
     fn report(&self, draw: Draw) {
         crate::synthview::set_draw(draw.name());
     }
+
+    fn ground(&self, above_home: Option<f64>) {
+        crate::synthview::set_ground(above_home);
+    }
 }

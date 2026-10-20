@@ -372,6 +372,7 @@ pub struct Vehicle {
     pub gripper: Option<crate::guided::GripperState>,
     pub empty_bays: std::collections::BTreeSet<i64>,
     pub gripper_released_ms: Option<i64>,
+    pub releases: Vec<crate::payloadfall::Release>,
     mission_drop_watch: i32,
     mission_complete: bool,
     mission_running: bool,
@@ -632,6 +633,7 @@ impl Vehicle {
             gripper: None,
             empty_bays: std::collections::BTreeSet::new(),
             gripper_released_ms: None,
+            releases: Vec::new(),
             mission_drop_watch: -1,
             mission_complete: false,
             mission_running: false,
@@ -3700,6 +3702,11 @@ impl Vehicle {
         };
         let answered = sent.answered(accepted, wall_ms());
         self.gripper = Some(answered);
+        if answered.action == crate::guided::GRIPPER_RELEASE
+            && answered.outcome == crate::guided::GripperOutcome::Confirmed
+        {
+            self.releases.extend(self.released(answered.bay));
+        }
         self.gripper_released_ms = match answered.empties() {
             Some(true) => Some(answered.at_ms),
             Some(false) => None,
@@ -5620,12 +5627,36 @@ impl Vehicle {
             .map(|item| crate::payloadcheck::bay_of(item, &servos))
             .collect();
         if !dropped.is_empty() {
-            self.empty_bays = dropped.iter().fold(self.empty_bays.clone(), |empty, bay| {
-                let next = bay.unwrap_or_else(|| (1..).find(|b| !empty.contains(b)).unwrap_or(1));
-                empty.into_iter().chain([next]).collect()
+            let emptied: Vec<i64> = dropped.iter().fold(Vec::new(), |emptied, bay| {
+                let next = bay.unwrap_or_else(|| {
+                    (1..)
+                        .find(|b| !self.empty_bays.contains(b) && !emptied.contains(b))
+                        .unwrap_or(1)
+                });
+                emptied.into_iter().chain([next]).collect()
             });
+            let fallen: Vec<crate::payloadfall::Release> = emptied
+                .iter()
+                .filter_map(|bay| self.released(*bay))
+                .collect();
+            self.releases.extend(fallen);
+            self.empty_bays.extend(emptied);
             self.gripper_released_ms = Some(wall_ms());
         }
+    }
+
+    fn released(&self, bay: i64) -> Option<crate::payloadfall::Release> {
+        let (latitude, longitude, _) = self.facts.coordinate?;
+        Some(crate::payloadfall::Release {
+            bay,
+            at_ms: wall_ms(),
+            latitude,
+            longitude,
+            above_home: self.facts.altitude_relative,
+            velocity: self.facts.velocity,
+            heading: self.facts.heading,
+            ground: crate::synthview::ground_under(now_ms()).unwrap_or(0.0),
+        })
     }
 
     fn gripper_params(&self) -> [Option<f64>; 2] {
@@ -10265,6 +10296,96 @@ mod tests {
     }
 
     #[test]
+    fn every_confirmed_drop_and_no_refused_one_leaves_a_bottle_falling_from_the_drone() {
+        use mavlink::dialects::ardupilotmega::{
+            COMMAND_ACK_DATA, GLOBAL_POSITION_INT_DATA, MavCmd, MavResult,
+        };
+        let mut hub = Hub::default();
+        let header = MavHeader {
+            system_id: 1,
+            component_id: 1,
+            sequence: 0,
+        };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(0, true), 0, 0);
+        let position = MavMessage::GLOBAL_POSITION_INT(GLOBAL_POSITION_INT_DATA {
+            lat: -353_630_000,
+            lon: 1_491_650_000,
+            relative_alt: 20_000,
+            vx: 300,
+            vy: -400,
+            vz: -100,
+            ..Default::default()
+        });
+        hub.on_frame(origin(0), &header, &position, 0, 0);
+        let ack = |result| {
+            MavMessage::COMMAND_ACK(COMMAND_ACK_DATA {
+                command: MavCmd::MAV_CMD_DO_GRIPPER,
+                result,
+                ..Default::default()
+            })
+        };
+        let drop = |hub: &mut Hub, bay: i64, result, at: u64| {
+            hub.guided(
+                None,
+                &json!({ "action": "gripper", "gripAction": 0, "bay": bay }),
+                at,
+            )
+            .unwrap();
+            hub.on_frame(origin(0), &header, &ack(result), at + 1, 0);
+        };
+        drop(&mut hub, 1, MavResult::MAV_RESULT_ACCEPTED, 10);
+        let releases = hub.active().unwrap().releases.clone();
+        assert_eq!(releases.len(), 1);
+        let release = releases[0];
+        assert_eq!(
+            (
+                release.bay,
+                release.latitude,
+                release.longitude,
+                release.above_home,
+                release.velocity
+            ),
+            (1, -35.363, 149.165, 20.0, (3.0, -4.0, 1.0)),
+            "it leaves from where the drone is, moving as the drone moves"
+        );
+        drop(&mut hub, 2, MavResult::MAV_RESULT_FAILED, 10_000);
+        assert_eq!(
+            hub.active().unwrap().releases.len(),
+            1,
+            "a refused drop dropped nothing"
+        );
+        hub.guided(
+            None,
+            &json!({ "action": "gripper", "gripAction": 1, "bay": 1 }),
+            20_000,
+        )
+        .unwrap();
+        hub.on_frame(
+            origin(0),
+            &header,
+            &ack(MavResult::MAV_RESULT_ACCEPTED),
+            20_001,
+            0,
+        );
+        assert_eq!(
+            hub.active().unwrap().releases.len(),
+            1,
+            "a grab drops nothing"
+        );
+        drop(&mut hub, 2, MavResult::MAV_RESULT_ACCEPTED, 30_000);
+        assert_eq!(
+            hub.active()
+                .unwrap()
+                .releases
+                .iter()
+                .map(|r| r.bay)
+                .collect::<Vec<_>>(),
+            [1, 2],
+            "a second bay is a second bottle, and the first one stays"
+        );
+    }
+
+    #[test]
     fn a_drop_the_gripper_cannot_make_is_refused_in_any_mode() {
         const STABILIZE: u32 = 0;
         let mut hub = Hub::default();
@@ -10435,6 +10556,20 @@ mod tests {
             params: [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 10.0],
         };
         hub.on_frame(origin(0), &header, &copter_heartbeat(AUTO, false), 0, 0);
+        hub.on_frame(
+            origin(0),
+            &header,
+            &MavMessage::GLOBAL_POSITION_INT(
+                mavlink::dialects::ardupilotmega::GLOBAL_POSITION_INT_DATA {
+                    lat: -353_630_000,
+                    lon: 1_491_650_000,
+                    relative_alt: 10_000,
+                    ..Default::default()
+                },
+            ),
+            0,
+            0,
+        );
         hub.vehicles.get_mut(&1).unwrap().plans[PLAN_MISSION as usize]
             .transfer
             .items = vec![
@@ -10479,6 +10614,16 @@ mod tests {
             empty(&hub),
             [1, 2, 3, 4],
             "a gap in what was heard still counts the drops in it"
+        );
+        assert_eq!(
+            hub.active()
+                .unwrap()
+                .releases
+                .iter()
+                .map(|r| (r.bay, r.above_home))
+                .collect::<Vec<_>>(),
+            [(1, 10.0), (3, 10.0), (4, 10.0)],
+            "each drop the mission flew past leaves a bottle from where the drone was"
         );
         hub.on_frame(origin(0), &header, &copter_heartbeat(AUTO, false), 6, 0);
         hub.on_frame(origin(0), &header, &copter_heartbeat(AUTO, true), 7, 0);

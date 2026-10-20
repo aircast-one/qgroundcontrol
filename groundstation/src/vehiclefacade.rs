@@ -943,6 +943,7 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         "hasGripper": !v.payload_servos().is_empty() || has_gripper(v.autopilot, |name| v.parameter(v.component, name).map(|p| p.as_f64())),
         "gripper": v.gripper.map(|g| g.json(&v.empty_bays)),
         "payloadSetup": json!({ "setup": v.payload_setup().json(), "empty": v.empty_bays }),
+        "bottles": v.releases.iter().map(|release| release.at(crate::hub::wall_ms())).collect::<Vec<_>>(),
         "readyToFlyAvailable": v.status_bits.ready_to_fly_available,
         "readyToFly": v.status_bits.ready_to_fly,
         "allSensorsHealthy": v.status_bits.all_healthy,

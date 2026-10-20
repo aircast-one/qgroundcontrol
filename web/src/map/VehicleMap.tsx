@@ -6,6 +6,7 @@ import { useLaunchedEffect, useUpdatedRef } from '@/kotlin/Compose';
 import { coerceAtLeast, coerceIn, delay } from '@/kotlin/Std';
 import { useValue } from '@/kotlin/State';
 import { SYNTHETIC_VIEW_PATH, cameraBeam, installCameraBeamLayer, renderCameraBeam } from './CameraBeam';
+import { installBottleLayer, landedBottles, renderBottles } from './DroppedBottles';
 import { type FenceCircle, type FencePolygon, type FirmwareFence, type RallyPoint, circlesAsPolygons } from './FenceBridge';
 import { LocalFlyMapEdits } from './FlyMapEdits';
 import { type GimbalAzimuth, installGimbalLayer, renderGimbals } from './GimbalWedge';
@@ -578,6 +579,13 @@ export const VehicleMap = ({
     renderCameraBeam(loaded, beam);
   }, [style, beam]);
 
+  const bottles = useMemo(() => landedBottles(syntheticJson), [syntheticJson]);
+  useEffect(() => {
+    const loaded = style?.map;
+    if (loaded === undefined) return;
+    renderBottles(loaded, bottles);
+  }, [style, bottles]);
+
   useEffect(() => {
     const loaded = style?.map;
     if (loaded === undefined) return;
@@ -825,6 +833,7 @@ const applyPip = (style: MapLibreMap, pip: boolean): void => {
 
 const installVehicleLayer = (style: MapLibreMap): void => {
   installCameraBeamLayer(style);
+  installBottleLayer(style);
   installProximityRadarLayer(style);
   installGimbalLayer(style);
   if (style.getSource(VEHICLE_SOURCE) !== undefined) return;

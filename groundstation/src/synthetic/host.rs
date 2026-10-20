@@ -41,6 +41,7 @@ pub trait Feed: Send + Sync {
     fn token(&self) -> String;
     fn sticks(&self) -> Vec<crate::virtualjoystick::StickSample>;
     fn report(&self, draw: Draw);
+    fn ground(&self, above_home: Option<f64>);
 }
 
 enum Command {
@@ -675,6 +676,7 @@ fn show(
                 session.frame(target.as_ref(), &sticks, largest.0, largest.1, now)
             });
         summary.frame_ms.push(millis(building.elapsed()));
+        feed.ground(frame.as_ref().and_then(Frame::ground_above_home));
         if let Some((frame, session)) = frame.as_mut().zip(session.as_mut()) {
             session.warmed(
                 gpu.renderer

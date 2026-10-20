@@ -457,6 +457,7 @@ impl World {
             .as_mut()
             .filter(|_| largest.0 > 0 && largest.1 > 0)
             .and_then(|session| session.frame(target.as_ref(), &sticks, largest.0, largest.1, now));
+        crate::synthview::set_ground(frame.as_ref().and_then(Frame::ground_above_home));
         if let Some((frame, session)) = frame.as_mut().zip(self.session.as_mut()) {
             session.warmed(
                 self.gpu
