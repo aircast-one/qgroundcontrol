@@ -169,7 +169,7 @@ pub fn link_json_with(index: usize, element: &Value, quiet: &[String]) -> Value 
         "flowControl": number("flowControl"),
         "hostList": element.get("hostList").filter(|list| list.is_array()).cloned().unwrap_or(Value::Null),
         "filename": filename,
-        "logFileName": filename.rsplit('/').next().unwrap_or("").to_string(),
+        "logFileName": filename.rsplit(['/', '\\']).next().unwrap_or("").to_string(),
         "lastError": last_error.clone(),
         "errorRemedy": match (last_error.is_empty(), number("lastErrorRemedy")) {
             (true, _) => Value::Null,
@@ -652,6 +652,14 @@ mod tests {
             &json!({ "name": "Replay", "settingsURL": "LogReplaySettings.qml", "filename": "/tmp/flight.tlog", "children": [] }),
         );
         assert_eq!(replay["logFileName"], "flight.tlog");
+        let windows_replay = link_json(
+            4,
+            &json!({ "name": "Replay", "settingsURL": "LogReplaySettings.qml", "filename": "C:\\Logs\\flight.tlog", "children": [] }),
+        );
+        assert_eq!(
+            windows_replay["logFileName"], "flight.tlog",
+            "a log picked on Windows arrives as a backslash path"
+        );
 
         assert_eq!(
             udp["baud"],

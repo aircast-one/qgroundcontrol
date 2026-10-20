@@ -254,7 +254,7 @@ pub fn plan_view(backend: &dyn Backend, _args: &[String]) -> Value {
         .unwrap_or("")
         .to_string();
     let file = core.as_ref().map_or(qt_file.as_str(), |c| c.file.as_str());
-    let name = file.rsplit('/').next().filter(|n| !n.is_empty());
+    let name = file.rsplit(['/', '\\']).next().filter(|n| !n.is_empty());
     let (fences, rally) = (
         capability(backend, "geoFenceController"),
         capability(backend, "rallyPointController"),
@@ -886,6 +886,17 @@ mod tests {
         assert_eq!(
             view["filePath"], "/plans/ridge.plan",
             "saving back needs the whole path, which a head had been reading raw"
+        );
+        let windows = fake(
+            json!({ "kind": "object", "syncInProgress": false, "offline": false, "dirty": false, "containsItems": true, "currentPlanFile": "C:\\Users\\pilot\\Missions\\ridge.plan" }),
+            true,
+            json!({ "ok": true, "result": 0 }),
+            json!({ "ok": true, "result": 0 }),
+        );
+        assert_eq!(
+            plan_view(&windows, &[])["file"],
+            "ridge.plan",
+            "the Windows file picker hands back a backslash path, and splitting on / alone left the whole path as the plan's name"
         );
 
         let syncing = fake(
