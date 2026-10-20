@@ -253,7 +253,6 @@ pub enum Want {
     Houses {
         key: TileKey,
         patch: Patch,
-        home: Option<(f64, f64)>,
     },
 }
 
@@ -265,7 +264,7 @@ pub enum Built {
         zoom: u32,
         mesh: Result<(Mesh, bool), String>,
     },
-    Houses(TileKey, Option<(f64, f64)>, Result<Option<Mesh>, String>),
+    Houses(TileKey, Result<Option<Mesh>, String>),
 }
 
 impl Want {
@@ -282,7 +281,7 @@ impl Want {
                 zoom: patch.zoom,
                 mesh: Err(reason.to_string()),
             },
-            Want::Houses { key, home, .. } => Built::Houses(*key, *home, Err(reason.to_string())),
+            Want::Houses { key, .. } => Built::Houses(*key, Err(reason.to_string())),
         }
     }
 
@@ -311,12 +310,11 @@ impl Want {
                     )),
                 }
             }
-            Want::Houses { key, patch, home } => Built::Houses(
+            Want::Houses { key, patch } => Built::Houses(
                 key,
-                home,
                 fetcher
                     .map(BUILDINGS, key.z, key.x, key.y)
-                    .map(|json| building_mesh(key, &json, Some(&patch), home)),
+                    .map(|json| building_mesh(key, &json, Some(&patch))),
             ),
         }
     }
@@ -421,21 +419,6 @@ struct HouseEntry {
     used: Instant,
 }
 
-fn holds(key: TileKey, rings: &[Vec<(f64, f64)>], spot: (f64, f64)) -> bool {
-    rings
-        .iter()
-        .filter(|ring| {
-            let corners: Vec<(f64, f64)> = ring
-                .iter()
-                .map(|&(u, v)| (key.latitude(v), key.longitude(u)))
-                .collect();
-            crate::mappolygon::contains(&corners, spot)
-        })
-        .count()
-        % 2
-        == 1
-}
-
 struct Sight<'a> {
     camera: &'a Camera,
     planes: [DVec4; 5],
@@ -445,7 +428,6 @@ struct Sight<'a> {
 
 pub struct OpenScene {
     imagery: String,
-    home: Option<(f64, f64)>,
     heights: Store<Heights>,
     terrain: HashMap<TileKey, TerrainEntry>,
     houses: HashMap<TileKey, HouseEntry>,
@@ -631,12 +613,7 @@ fn roof(rings: &[Vec<DVec3>], height: f64) -> Part {
     }
 }
 
-fn building_mesh(
-    key: TileKey,
-    json: &[u8],
-    patch: Option<&Patch>,
-    home: Option<(f64, f64)>,
-) -> Option<Mesh> {
+fn building_mesh(key: TileKey, json: &[u8], patch: Option<&Patch>) -> Option<Mesh> {
     let tile: serde_json::Value = serde_json::from_slice(json).ok()?;
     let extent = tile
         .get("extent")
@@ -664,8 +641,6 @@ fn building_mesh(
                         .collect()
                 })
                 .collect();
-            home.is_none_or(|spot| !holds(key, &rings, spot))
-                .then_some(())?;
             let outline = rings.first().filter(|ring| ring.len() >= 3)?;
             let top = building.get("height").and_then(serde_json::Value::as_f64)?;
             let base = building
@@ -715,7 +690,6 @@ impl OpenScene {
     pub fn new() -> Self {
         Self {
             imagery: String::new(),
-            home: None,
             heights: Store::new(),
             terrain: HashMap::new(),
             houses: HashMap::new(),
@@ -743,7 +717,7 @@ impl OpenScene {
                 );
             }
             Built::Terrain { .. } => {}
-            Built::Houses(key, home, Ok(mesh)) if home == self.home => {
+            Built::Houses(key, Ok(mesh)) => {
                 self.houses.insert(
                     key,
                     HouseEntry {
@@ -955,11 +929,7 @@ impl OpenScene {
             && idle
             && let Some(patch) = self.patch(key, wanted, now)
         {
-            wanted.push(Want::Houses {
-                key,
-                patch,
-                home: self.home,
-            });
+            wanted.push(Want::Houses { key, patch });
         }
         self.houses.get(&key).and_then(|entry| entry.mesh.clone())
     }
@@ -1009,15 +979,10 @@ impl OpenScene {
         ground: f64,
         latitude: f64,
         longitude: f64,
-        home: (f64, f64),
         detail: f64,
         budget: usize,
         now: Instant,
     ) -> (Vec<Arc<Mesh>>, Vec<Want>) {
-        if self.home != Some(home) {
-            self.home = Some(home);
-            self.houses.clear();
-        }
         self.pick(
             camera,
             imagery,
@@ -1144,7 +1109,6 @@ mod tests {
                     300.0,
                     -35.36213,
                     149.16514,
-                    (-35.36213, 149.16514),
                     1.0,
                     24,
                     now,
@@ -1206,7 +1170,6 @@ mod tests {
                 ground,
                 -35.36213,
                 149.16514,
-                (-35.36213, 149.16514),
                 detail,
                 24,
                 now,
@@ -1252,7 +1215,6 @@ mod tests {
             ground,
             -35.36213,
             149.16514,
-            (-35.36213, 149.16514),
             1.0,
             24,
             now,
@@ -1598,7 +1560,7 @@ mod tests {
             span: 1.0,
         };
         let json = serde_json::json!({ "extent": 4096, "buildings": [{ "rings": [[1000, 1000, 3000, 1000, 3000, 3000, 1000, 3000]], "height": 9.0 }] });
-        let house = building_mesh(key, &serde_json::to_vec(&json).unwrap(), Some(&patch), None)
+        let house = building_mesh(key, &serde_json::to_vec(&json).unwrap(), Some(&patch))
             .expect("a building");
         scene.houses.insert(
             key,
@@ -1626,96 +1588,6 @@ mod tests {
         );
     }
 
-    struct Winterthurerstrasse;
-
-    impl Fetcher for Winterthurerstrasse {
-        fn url(&self, _: &url::Url) -> Result<Vec<u8>, String> {
-            Err("offline".into())
-        }
-        fn map(&self, provider: &str, z: u32, x: u32, y: u32) -> Result<Vec<u8>, String> {
-            match (provider, z, x, y) {
-                (BUILDINGS, 14, 8580, 5736) => serde_json::to_vec(&serde_json::json!({ "extent": 4096, "buildings": [
-                    { "rings": [[3744, 347, 3767, 351, 3758, 411, 3735, 407, 3738, 387, 3734, 383, 3739, 378]], "height": 5.0, "base": 0.0 },
-                    { "rings": [[1000, 1000, 3000, 1000, 3000, 3000, 1000, 3000]], "height": 9.0, "base": 0.0 },
-                ] }))
-                .map_err(|e| e.to_string()),
-                _ => Served.map(provider, z, x, y),
-            }
-        }
-    }
-
-    #[test]
-    fn the_building_the_vehicle_stands_in_at_home_is_not_drawn_so_it_starts_on_the_street() {
-        let key = TileKey {
-            z: BUILDING_ZOOM,
-            x: 8580,
-            y: 5736,
-        };
-        let mock_home = (47.397, 8.5455);
-        let other_house = (key.latitude(0.5), key.longitude(0.5));
-        let street = 130.0 * 256.0 + 92.0 - 32_768.0;
-        let start = Instant::now();
-        let at = |round: u64| start + Duration::from_millis(round * 100);
-        let mut scene = OpenScene::new();
-        let settle = |scene: &mut OpenScene, home: (f64, f64), from: u64| {
-            let camera = Camera::new(
-                &Pose {
-                    latitude: home.0,
-                    longitude: home.1,
-                    height: street + 2.0,
-                    heading: 0.0,
-                    pitch: -10.0,
-                    roll: 0.0,
-                    fov: 70.0,
-                },
-                1280,
-                720,
-            );
-            (from..from + 5).for_each(|round| {
-                let (_, wanted) = scene.select(
-                    &camera,
-                    "Bing Satellite",
-                    street,
-                    home.0,
-                    home.1,
-                    home,
-                    1.0,
-                    10_000,
-                    at(round),
-                );
-                wanted
-                    .into_iter()
-                    .filter(|want| !matches!(want, Want::Terrain { .. }))
-                    .map(|want| want.build(&Winterthurerstrasse))
-                    .for_each(|built| scene.deliver(built, at(round)));
-            });
-        };
-        let ground = |scene: &mut OpenScene, (latitude, longitude): (f64, f64)| {
-            scene
-                .ground(latitude, longitude, 0, at(20))
-                .0
-                .expect("a height")
-        };
-        settle(&mut scene, mock_home, 0);
-        assert!(
-            (ground(&mut scene, mock_home) - street).abs() < 0.1,
-            "the mock vehicle's home is inside the 5 m Winterthurerstrasse 175 footprint, yet it starts on the street, not on a roof"
-        );
-        assert!(
-            (ground(&mut scene, other_house) - (street + 9.0)).abs() < 0.1,
-            "a building away from home still stands and is still stood on"
-        );
-        settle(&mut scene, other_house, 10);
-        assert!(
-            (ground(&mut scene, mock_home) - (street + 5.0)).abs() < 0.1,
-            "once home moves away, the building at the old home is drawn again"
-        );
-        assert!(
-            (ground(&mut scene, other_house) - street).abs() < 0.1,
-            "and the one at the new home is the one left out"
-        );
-    }
-
     #[test]
     fn a_square_building_gets_four_walls_and_a_two_triangle_roof() {
         let json = serde_json::json!({ "extent": 4096, "buildings": [{ "rings": [[1000, 1000, 1100, 1000, 1100, 1100, 1000, 1100]], "height": 9.0, "base": 0.0 }] });
@@ -1726,7 +1598,6 @@ mod tests {
                 y: 9903,
             },
             &serde_json::to_vec(&json).unwrap(),
-            None,
             None,
         )
         .expect("a building");
@@ -1781,7 +1652,6 @@ mod tests {
                 y: 9903,
             },
             &serde_json::to_vec(&json).unwrap(),
-            None,
             None,
         )
         .expect("buildings");
