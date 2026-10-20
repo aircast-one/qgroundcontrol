@@ -25,6 +25,7 @@ pub const DEPS: &[&str] = &[
 ];
 
 const FIELDS: &str = "id,flightMode,followFlightMode,apmFirmware,homePosition";
+const LEAD_SYSTEM_PARAM: &str = "FOLL_SYSID";
 const WATCHED_PER_FOLLOWED: [&str; 2] = ["flightMode", "homePosition"];
 static VEHICLES_SEEN: AtomicUsize = AtomicUsize::new(0);
 
@@ -127,6 +128,7 @@ pub struct Target {
     pub follow_flight_mode: String,
     pub apm: bool,
     pub home_altitude_amsl_m: Option<f64>,
+    pub lead_system: Option<i64>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -150,6 +152,7 @@ pub enum Refusal {
     ModeNever,
     FollowModeUnsupported,
     NotInFollowMode,
+    FollowsAnotherSystem,
     HomePositionUnknown,
 }
 
@@ -160,6 +163,7 @@ impl Refusal {
             Refusal::ModeNever => "modeNever",
             Refusal::FollowModeUnsupported => "followModeUnsupported",
             Refusal::NotInFollowMode => "notInFollowMode",
+            Refusal::FollowsAnotherSystem => "followsAnotherSystem",
             Refusal::HomePositionUnknown => "homePositionUnknown",
         }
     }
@@ -265,12 +269,19 @@ pub fn in_follow_mode(target: &Target) -> bool {
     !target.follow_flight_mode.is_empty() && target.flight_mode == target.follow_flight_mode
 }
 
+pub fn follows_gcs(target: &Target) -> bool {
+    target
+        .lead_system
+        .is_none_or(|lead| lead == i64::from(crate::mavout::gcs_system()))
+}
+
 pub fn receives(mode: Mode, target: &Target) -> bool {
-    match mode {
-        Mode::Never => false,
-        Mode::Always => true,
-        Mode::FollowMe => in_follow_mode(target),
-    }
+    follows_gcs(target)
+        && match mode {
+            Mode::Never => false,
+            Mode::Always => true,
+            Mode::FollowMe => in_follow_mode(target),
+        }
 }
 
 pub fn enabled(mode: Option<Mode>, fleet: &[Target]) -> bool {
@@ -281,6 +292,7 @@ pub fn stream(mode: Option<Mode>, target: &Target) -> Result<Stream, Refusal> {
     match mode {
         None => Err(Refusal::ModeUnknown),
         Some(Mode::Never) => Err(Refusal::ModeNever),
+        Some(_) if !follows_gcs(target) => Err(Refusal::FollowsAnotherSystem),
         Some(Mode::FollowMe) if target.follow_flight_mode.is_empty() => {
             Err(Refusal::FollowModeUnsupported)
         }
@@ -457,7 +469,16 @@ fn target_of(read: &Value) -> Option<Target> {
         follow_flight_mode: text(read, "followFlightMode"),
         apm: flag(read, "apmFirmware"),
         home_altitude_amsl_m: home_altitude(read),
+        lead_system: None,
     })
+}
+
+fn lead_system(hub: &crate::hub::Hub, id: i64) -> Option<i64> {
+    let vehicle = hub.vehicle(u8::try_from(id).ok()?)?;
+    let lead = vehicle
+        .parameter(vehicle.component, LEAD_SYSTEM_PARAM)?
+        .encode_cast() as i64;
+    (lead != 0).then_some(lead)
 }
 
 pub fn outbound(
@@ -595,9 +616,17 @@ pub fn fleet_of(backend: &dyn Backend) -> Vec<Target> {
         .unwrap_or(0)
         .max(0);
     VEHICLES_SEEN.store(usize::try_from(count).unwrap_or(0), Ordering::Relaxed);
-    (0..count)
+    let targets: Vec<Target> = (0..count)
         .filter_map(|index| {
             target_of(&backend.value_fields(&format!("vehicles.vehicles.{index}"), FIELDS))
+        })
+        .collect();
+    let hub = crate::hub::lock();
+    targets
+        .into_iter()
+        .map(|target| Target {
+            lead_system: lead_system(&hub, target.id),
+            ..target
         })
         .collect()
 }
@@ -640,6 +669,7 @@ mod tests {
             follow_flight_mode: "Follow Me".to_string(),
             apm,
             home_altitude_amsl_m: Some(500.0),
+            lead_system: None,
         }
     }
 
@@ -838,6 +868,33 @@ mod tests {
             missing["modeRaw"],
             Value::Null,
             "and a setting the core could not read at all has no raw value to show"
+        );
+    }
+
+    #[test]
+    fn a_copter_chasing_another_aircraft_is_not_following_the_phone() {
+        let chasing = Target {
+            lead_system: Some(2),
+            ..follower("Follow Me", true)
+        };
+        let view = snapshot(FOLLOW_ME, std::slice::from_ref(&chasing), Some(&fix()));
+        assert_eq!(view["reason"].as_str(), Some("noVehicleInFollowMode"));
+        assert_eq!(view["wouldSend"], json!(false));
+        assert_eq!(
+            view["vehicles"][0]["refusal"].as_str(),
+            Some("followsAnotherSystem")
+        );
+        assert_eq!(
+            stream(Mode::from_setting(ALWAYS), &chasing),
+            Err(Refusal::FollowsAnotherSystem)
+        );
+        let following_us = Target {
+            lead_system: Some(i64::from(crate::mavout::gcs_system())),
+            ..follower("Follow Me", true)
+        };
+        assert_eq!(
+            snapshot(FOLLOW_ME, &[following_us], Some(&fix()))["wouldSend"],
+            json!(true)
         );
     }
 
