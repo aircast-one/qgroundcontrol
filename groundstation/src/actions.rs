@@ -123,6 +123,7 @@ const POINT_AT: &str = "vehicle.guidedModeROI";
 const SET_HOME: &str = "vehicle.doSetHome";
 const FACE_POINT: &str = "vehicle.guidedModeChangeHeading";
 const ESTIMATOR_ORIGIN: &str = "vehicle.setEstimatorOrigin";
+const MARK_TARGET: &str = "vehicle.markTarget";
 
 pub const OWNED: &[&str] = &[
     INSERT,
@@ -228,6 +229,7 @@ pub const OWNED: &[&str] = &[
     FACE_POINT,
     ESTIMATOR_ORIGIN,
     crate::videoar::GROUND_AT,
+    MARK_TARGET,
 ];
 
 pub fn owns(path: &str) -> bool {
@@ -578,7 +580,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         COMMIT_LINKS => crate::linkconnect::commit(backend, path),
         GROUND_SPEED | AIRSPEED => crate::speed::change(backend, path, args),
         crate::videoar::GROUND_AT => crate::videoar::ground_at(backend, args),
-        GOTO_LOCATION | POINT_AT | SET_HOME | FACE_POINT | ESTIMATOR_ORIGIN => {
+        GOTO_LOCATION | POINT_AT | SET_HOME | FACE_POINT | ESTIMATOR_ORIGIN | MARK_TARGET => {
             match crate::mapclick::Click::of(path) {
                 Some(click) => crate::mapclick::send(backend, click, path, args),
                 None => {
@@ -2472,6 +2474,10 @@ mod tests {
             "a path matched in run()'s table but missing from OWNED falls through to the host \
              and answers \"no host\" instead of ever reaching the handler - this caught exactly \
              that for vehicle.autoInterceptDrop once already"
+        );
+        assert!(
+            owns(MARK_TARGET),
+            "same bug class - vehicle.markTarget is matched in run()'s table and has to be in OWNED too"
         );
         assert_eq!(
             run(&Plan::new(flying_mission()), "mission.remove", "[]")["ok"],

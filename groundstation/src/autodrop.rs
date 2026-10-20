@@ -1,8 +1,9 @@
 use serde_json::{Value, json};
 
-use crate::dropsim::{self, Point};
+use crate::dropsim::{self, Point, Target, Velocity};
 use crate::geo::{geo_to_ned, ned_to_geo};
 use crate::gimbalgeo;
+use crate::gpstarget;
 use crate::read::flag;
 use crate::router::Backend;
 
@@ -22,6 +23,38 @@ pub enum Phase {
     WaitingForRelease,
 }
 
+/// Where the tracked target's position+velocity comes from, each tick. Chosen once when the
+/// run is triggered, carried in `State::Waiting` for the whole run.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum TargetSource {
+    Gimbal,
+    Vehicle(u8),
+    Manual,
+}
+
+impl TargetSource {
+    pub fn of(args: &Value) -> Option<TargetSource> {
+        match args.get(0).and_then(Value::as_str) {
+            None | Some("gimbal") => Some(TargetSource::Gimbal),
+            Some("manual") => Some(TargetSource::Manual),
+            Some("vehicle") => args
+                .get(1)
+                .and_then(Value::as_u64)
+                .and_then(|id| u8::try_from(id).ok())
+                .map(TargetSource::Vehicle),
+            Some(_) => None,
+        }
+    }
+
+    fn json(self) -> Value {
+        match self {
+            TargetSource::Gimbal => json!("gimbal"),
+            TargetSource::Vehicle(id) => json!({ "vehicle": id }),
+            TargetSource::Manual => json!("manual"),
+        }
+    }
+}
+
 /// Lives on `hub::Vehicle`, advanced one tick at a time by `Vehicle::tick_autodrop` - no
 /// blocking sleeps anywhere, same shape as the `rc_due`/`gimbal_rate_due` repeating behaviours
 /// already in `hub.rs`. `None` means idle (never run, or its last result already read).
@@ -29,6 +62,7 @@ pub enum Phase {
 pub enum State {
     Waiting {
         phase: Phase,
+        source: TargetSource,
         started_ms: u64,
         due_ms: u64,
     },
@@ -45,12 +79,13 @@ pub enum State {
 impl State {
     pub fn json(&self) -> Value {
         match self {
-            State::Waiting { phase, .. } => json!({
+            State::Waiting { phase, source, .. } => json!({
                 "state": "waiting",
                 "phase": match phase {
                     Phase::WaitingForCruise => "waitingForCruise",
                     Phase::WaitingForRelease => "waitingForRelease",
                 },
+                "source": source.json(),
             }),
             State::Fired {
                 predicted_miss_m,
@@ -97,11 +132,43 @@ fn vehicle_id(backend: &dyn Backend) -> Option<Value> {
         .filter(Value::is_u64)
 }
 
-/// Aim the camera at the target, call this, and the drone flies the intercept and drops the
-/// payload on its own: no further input. One snapshot of the live gimbal aim decides the
-/// heading to fly; everything after that - waiting to reach cruise speed, polling the release
-/// window, firing the gripper - happens tick by tick inside the core (`hub::Vehicle::tick_autodrop`),
-/// not in this function. `args == ["stop"]` cancels a run in flight.
+fn manual_target(backend: &dyn Backend) -> Option<Target> {
+    let (lat, lon) = backend.point("vehicle.manualTarget")?;
+    Some(Target {
+        position: Point { lat, lon },
+        velocity: Velocity::default(),
+    })
+}
+
+fn target_from(
+    backend: &dyn Backend,
+    source: TargetSource,
+    position: Point,
+    altitude_agl_m: f64,
+) -> Result<Target, &'static str> {
+    match source {
+        TargetSource::Gimbal => {
+            let (pitch, yaw) = active_gimbal(backend).ok_or("no gimbal to aim with")?;
+            gimbalgeo::track(position, altitude_agl_m, yaw, pitch, crate::hub::now_ms())
+                .ok_or("the gimbal is not looking far enough below the horizon to reach the ground")
+        }
+        TargetSource::Vehicle(id) => {
+            gpstarget::target_of(id).ok_or("no live telemetry recorded yet for that vehicle id")
+        }
+        TargetSource::Manual => {
+            manual_target(backend).ok_or("no target has been marked on the map yet")
+        }
+    }
+}
+
+/// Designate a target - aim the camera at it, track another connected vehicle, or mark a point
+/// on the map - call this, and the drone flies the intercept and drops the payload on its own:
+/// no further input. One snapshot of the chosen source decides the heading to fly; everything
+/// after that - waiting to reach cruise speed, polling the release window, firing the gripper -
+/// happens tick by tick inside the core (`hub::Vehicle::tick_autodrop`), re-reading the same
+/// source fresh each tick, not in this function. `args == ["stop"]` cancels a run in flight.
+/// `args[0]` picks the source: omitted or `"gimbal"`, `"manual"`, or `"vehicle"` with the target
+/// vehicle's id as `args[1]`.
 pub fn run(backend: &dyn Backend, args: &str) -> Value {
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
     let Some(id) = vehicle_id(backend) else {
@@ -114,16 +181,16 @@ pub fn run(backend: &dyn Backend, args: &str) -> Value {
             None => json!({ "ok": false, "reason": "this build has no core vehicle to stop" }),
         };
     }
+    let Some(source) = TargetSource::of(&given) else {
+        return json!({ "ok": false, "reason": "the target source must be gimbal, manual, or vehicle with an id" });
+    };
 
     let Some((position, altitude_agl_m)) = release_position(backend) else {
         return json!({ "ok": false, "reason": "no vehicle position yet" });
     };
-    let Some((pitch, yaw)) = active_gimbal(backend) else {
-        return json!({ "ok": false, "reason": "no gimbal to aim with" });
-    };
-    let Some(target) = gimbalgeo::track(position, altitude_agl_m, yaw, pitch, crate::hub::now_ms())
-    else {
-        return json!({ "ok": false, "reason": "the gimbal is not looking far enough below the horizon to reach the ground" });
+    let target = match target_from(backend, source, position, altitude_agl_m) {
+        Ok(target) => target,
+        Err(reason) => return json!({ "ok": false, "reason": reason }),
     };
     let Some(solved) = dropsim::intercept(position, CRUISE_MPS, target) else {
         return json!({ "ok": false, "reason": "the target cannot be intercepted at this speed on this heading" });
@@ -135,6 +202,7 @@ pub fn run(backend: &dyn Backend, args: &str) -> Value {
         "latitude": aim_at.lat,
         "longitude": aim_at.lon,
         "autodrop": true,
+        "targetSource": given,
         "vehicle": id,
     })) {
         Some(Ok(())) => json!({ "ok": true, "started": true }),
@@ -185,6 +253,7 @@ mod tests {
         assert_eq!(
             State::Waiting {
                 phase: Phase::WaitingForCruise,
+                source: TargetSource::Gimbal,
                 started_ms: 0,
                 due_ms: 0
             }
@@ -206,6 +275,86 @@ mod tests {
             }
             .json()["reason"],
             "too far"
+        );
+    }
+
+    #[test]
+    fn target_source_defaults_to_gimbal_and_reads_a_vehicle_id() {
+        assert_eq!(TargetSource::of(&json!([])), Some(TargetSource::Gimbal));
+        assert_eq!(
+            TargetSource::of(&json!(["gimbal"])),
+            Some(TargetSource::Gimbal)
+        );
+        assert_eq!(
+            TargetSource::of(&json!(["manual"])),
+            Some(TargetSource::Manual)
+        );
+        assert_eq!(
+            TargetSource::of(&json!(["vehicle", 129])),
+            Some(TargetSource::Vehicle(129))
+        );
+        assert_eq!(
+            TargetSource::of(&json!(["vehicle"])),
+            None,
+            "vehicle needs an id"
+        );
+        assert_eq!(TargetSource::of(&json!(["vacuum"])), None);
+    }
+
+    #[test]
+    fn a_vehicle_source_reads_the_live_fix_and_a_manual_source_reads_the_marked_point() {
+        let mut fixes = std::collections::BTreeMap::new();
+        fixes.insert(
+            129,
+            gpstarget::Fix {
+                position: Point {
+                    lat: 47.4,
+                    lon: 8.5,
+                },
+                ground_speed_mps: 5.0,
+                heading_deg: 0.0,
+            },
+        );
+        gpstarget::refresh(fixes);
+
+        struct NoBackend;
+        impl Backend for NoBackend {
+            fn get(&self, _p: &str) -> String {
+                String::new()
+            }
+            fn get_fields(&self, _p: &str, _f: &str) -> String {
+                String::new()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, _p: &str, _a: &str) -> String {
+                String::new()
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+
+        let here = Point {
+            lat: 47.0,
+            lon: 8.0,
+        };
+        let from_vehicle = target_from(&NoBackend, TargetSource::Vehicle(129), here, 10.0);
+        assert_eq!(
+            from_vehicle.map(|t| t.position),
+            Ok(Point {
+                lat: 47.4,
+                lon: 8.5
+            })
+        );
+        assert_eq!(
+            target_from(&NoBackend, TargetSource::Vehicle(250), here, 10.0),
+            Err("no live telemetry recorded yet for that vehicle id"),
+            "an id the snapshot never carried is refused by name, not silently answered as 129's"
+        );
+        assert_eq!(
+            target_from(&NoBackend, TargetSource::Manual, here, 10.0),
+            Err("no target has been marked on the map yet"),
+            "NoBackend reports no vehicle.manualTarget fact"
         );
     }
 }

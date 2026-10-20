@@ -109,6 +109,7 @@ pub mod gimbalindicator;
 pub mod gpsfacts;
 pub mod gpsresilience;
 pub mod gpsrtk;
+pub mod gpstarget;
 pub mod gpsview;
 pub mod guided;
 pub mod guidedcmd;

@@ -18,6 +18,7 @@ pub enum Click {
     SetHome,
     Heading,
     EstimatorOrigin,
+    MarkTarget,
 }
 
 impl Click {
@@ -28,6 +29,7 @@ impl Click {
             "vehicle.doSetHome" => Some(Click::SetHome),
             "vehicle.guidedModeChangeHeading" => Some(Click::Heading),
             "vehicle.setEstimatorOrigin" => Some(Click::EstimatorOrigin),
+            "vehicle.markTarget" => Some(Click::MarkTarget),
             _ => None,
         }
     }
@@ -475,6 +477,9 @@ pub fn send(backend: &dyn Backend, click: Click, path: &str, args: &str) -> Valu
             longitude,
             at.get("altitude").and_then(Value::as_f64).unwrap_or(0.0),
         )),
+        Click::MarkTarget => {
+            Some(json!({ "action": "markTarget", "latitude": latitude, "longitude": longitude }))
+        }
     };
     let sent = crate::guided::dispatch(
         backend,
@@ -569,6 +574,18 @@ mod tests {
             ),
             None,
             "a rover drives to a clicked point without ever reporting flying"
+        );
+        assert_eq!(
+            click_refusal(
+                Click::MarkTarget,
+                Aircraft {
+                    flying: false,
+                    rover: false,
+                    ..flying
+                }
+            ),
+            None,
+            "marking a target on the map needs no flight state at all - autodrop reads it later, whenever it runs"
         );
         assert_eq!(
             click_refusal(

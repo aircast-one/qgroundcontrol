@@ -186,6 +186,7 @@ struct Known {
     lost: bool,
     home: Option<(f64, f64, f64)>,
     roi: Option<(f64, f64, f64)>,
+    manual_target: Option<(f64, f64)>,
     remote: Value,
     coordinate: Option<(f64, f64, f64)>,
     batteries: Vec<(u8, crate::batteryfacts::BatteryFacts)>,
@@ -1045,6 +1046,7 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         lost: v.connection_lost,
         home: v.home,
         roi: v.roi_coord,
+        manual_target: v.manual_target,
         remote: v.remote_snapshot(),
         coordinate: v.facts.coordinate,
         batteries: v
@@ -2321,6 +2323,14 @@ fn answer_get(path: &str, known: &Known) -> Option<Value> {
             };
             return Some(
                 json!({ "kind": "coordinate", "latitude": latitude, "longitude": longitude, "altitude": altitude, "valid": true }),
+            );
+        }
+        "vehicle.manualTarget" => {
+            let Some((latitude, longitude)) = known.manual_target else {
+                return (!crate::qthost::present()).then(|| json!({ "kind": "coordinate", "valid": false, "latitude": null, "longitude": null }));
+            };
+            return Some(
+                json!({ "kind": "coordinate", "latitude": latitude, "longitude": longitude, "valid": true }),
             );
         }
         "vehicle.homePosition" => {
@@ -4640,6 +4650,7 @@ mod tests {
             lost: false,
             home: None,
             roi: None,
+            manual_target: None,
             remote: Value::Null,
             coordinate: None,
             batteries: Vec::new(),

@@ -385,6 +385,7 @@ pub struct Vehicle {
     calibration_left_behind: bool,
     rc_due: Option<u64>,
     pub autodrop: Option<crate::autodrop::State>,
+    pub manual_target: Option<(f64, f64)>,
     pub temperature: TemperatureFacts,
     pub vibration: crate::vehiclefact::VibrationFacts,
     pub radio: crate::vehiclefact::RadioStatusFacts,
@@ -658,6 +659,7 @@ impl Vehicle {
             autotune_sent_ms: 0,
             rc_due: None,
             autodrop: None,
+            manual_target: None,
             temperature: TemperatureFacts::default(),
             vibration: crate::vehiclefact::VibrationFacts::default(),
             radio: crate::vehiclefact::RadioStatusFacts::default(),
@@ -2664,6 +2666,9 @@ impl Vehicle {
                 number("longitude"),
                 action.get("terrain").and_then(Value::as_f64),
             ),
+            // Pure local bookkeeping for autodrop's manual target source - no vehicle command,
+            // nothing to send, so an empty step list that still succeeds (not Refused).
+            "markTarget" => Plan::Steps(vec![]),
             "roi" => guidedcmd::roi(
                 &state,
                 number("latitude"),
@@ -3162,9 +3167,43 @@ impl Vehicle {
 
     /// Advances an in-flight `autodropStart` by one tick: no blocking, no sleeping - just
     /// "is it due yet, and if so what's the next state". Mirrors `tick_rc_override`'s shape.
+    fn target_for_autodrop(
+        &self,
+        source: crate::autodrop::TargetSource,
+        position: crate::dropsim::Point,
+        altitude_agl_m: f64,
+        now_ms: u64,
+    ) -> Option<crate::dropsim::Target> {
+        match source {
+            crate::autodrop::TargetSource::Gimbal => {
+                let aimed = self
+                    .gimbals
+                    .active()
+                    .and_then(|pair| self.gimbals.get(pair))
+                    .and_then(|g| g.attitude)?;
+                crate::gimbalgeo::track(
+                    position,
+                    altitude_agl_m,
+                    f64::from(aimed.absolute_yaw),
+                    f64::from(aimed.pitch),
+                    now_ms,
+                )
+            }
+            crate::autodrop::TargetSource::Vehicle(id) => crate::gpstarget::target_of(id),
+            crate::autodrop::TargetSource::Manual => {
+                let (lat, lon) = self.manual_target?;
+                Some(crate::dropsim::Target {
+                    position: crate::dropsim::Point { lat, lon },
+                    velocity: crate::dropsim::Velocity::default(),
+                })
+            }
+        }
+    }
+
     fn tick_autodrop(&mut self, now_ms: u64) -> Vec<Vec<u8>> {
         let Some(crate::autodrop::State::Waiting {
             phase,
+            source,
             started_ms,
             due_ms,
         }) = self.autodrop
@@ -3191,6 +3230,7 @@ impl Vehicle {
                     } else {
                         phase
                     },
+                    source,
                     started_ms,
                     due_ms: if ready { now_ms } else { retry_due },
                 });
@@ -3204,29 +3244,18 @@ impl Vehicle {
                 else {
                     self.autodrop = Some(crate::autodrop::State::Waiting {
                         phase,
+                        source,
                         started_ms,
                         due_ms: retry_due,
                     });
                     return Vec::new();
                 };
                 let altitude_agl_m = self.facts.altitude_relative;
-                let aimed = self
-                    .gimbals
-                    .active()
-                    .and_then(|pair| self.gimbals.get(pair))
-                    .and_then(|g| g.attitude);
-                let target = aimed.and_then(|a| {
-                    crate::gimbalgeo::track(
-                        position,
-                        altitude_agl_m,
-                        f64::from(a.absolute_yaw),
-                        f64::from(a.pitch),
-                        now_ms,
-                    )
-                });
+                let target = self.target_for_autodrop(source, position, altitude_agl_m, now_ms);
                 let Some(target) = target else {
                     self.autodrop = Some(crate::autodrop::State::Waiting {
                         phase,
+                        source,
                         started_ms,
                         due_ms: retry_due,
                     });
@@ -3250,6 +3279,7 @@ impl Vehicle {
                         ((plan.release_in_s - crate::autodrop::COMMAND_LATENCY_S) * 1000.0) as u64;
                     self.autodrop = Some(crate::autodrop::State::Waiting {
                         phase,
+                        source,
                         started_ms,
                         due_ms: now_ms + wait_ms.min(crate::autodrop::AUTODROP_TICK_MS),
                     });
@@ -3787,8 +3817,13 @@ impl Vehicle {
                     && action.get("autodrop") == Some(&Value::Bool(true))
                     && !steps.is_empty()
                 {
+                    let source = action
+                        .get("targetSource")
+                        .and_then(crate::autodrop::TargetSource::of)
+                        .unwrap_or(crate::autodrop::TargetSource::Gimbal);
                     self.autodrop = Some(crate::autodrop::State::Waiting {
                         phase: crate::autodrop::Phase::WaitingForCruise,
+                        source,
                         started_ms: now_ms,
                         due_ms: now_ms,
                     });
@@ -3799,6 +3834,11 @@ impl Vehicle {
                         |key: &str| action.get(key).and_then(Value::as_f64).unwrap_or(f64::NAN);
                     self.roi_coord =
                         Some((number("latitude"), number("longitude"), number("altitude")));
+                }
+                if action.get("action").and_then(Value::as_str) == Some("markTarget") {
+                    let number =
+                        |key: &str| action.get(key).and_then(Value::as_f64).unwrap_or(f64::NAN);
+                    self.manual_target = Some((number("latitude"), number("longitude")));
                 }
                 let emits = self.guided.start(steps, &self.observed(), now_ms);
                 Ok(self.carry(emits, now_ms))
@@ -7530,6 +7570,25 @@ impl Hub {
     }
 
     pub fn tick_with(&mut self, now_ms: u64, now_s: u64) -> Vec<(LinkId, Vec<u8>)> {
+        // A snapshot taken before the mutable vehicle loop below, so autodrop's GPS-telemetry
+        // target source can read another vehicle's live position+velocity without reaching back
+        // into this same Hub while its lock is held (that would deadlock crate::hub::lock()).
+        crate::gpstarget::refresh(
+            self.vehicles
+                .iter()
+                .filter_map(|(id, vehicle)| {
+                    let (lat, lon, _) = vehicle.facts.coordinate?;
+                    Some((
+                        *id,
+                        crate::gpstarget::Fix {
+                            position: crate::dropsim::Point { lat, lon },
+                            ground_speed_mps: vehicle.facts.ground_speed,
+                            heading_deg: vehicle.facts.heading,
+                        },
+                    ))
+                })
+                .collect(),
+        );
         let count = self.vehicles.len();
         self.vehicles.values_mut().for_each(|vehicle| {
             let prefix = crate::speech::vehicle_prefix(vehicle.id, count);
@@ -9144,6 +9203,7 @@ mod tests {
         let mut vehicle = Vehicle::heard(1);
         vehicle.autodrop = Some(crate::autodrop::State::Waiting {
             phase: crate::autodrop::Phase::WaitingForCruise,
+            source: crate::autodrop::TargetSource::Gimbal,
             started_ms: 0,
             due_ms: 0,
         });
@@ -9153,6 +9213,7 @@ mod tests {
             vehicle.autodrop,
             Some(crate::autodrop::State::Waiting {
                 phase: crate::autodrop::Phase::WaitingForCruise,
+                source: crate::autodrop::TargetSource::Gimbal,
                 started_ms: 0,
                 due_ms: crate::autodrop::AUTODROP_TICK_MS,
             }),
@@ -9165,6 +9226,7 @@ mod tests {
             vehicle.autodrop,
             Some(crate::autodrop::State::Waiting {
                 phase: crate::autodrop::Phase::WaitingForRelease,
+                source: crate::autodrop::TargetSource::Gimbal,
                 started_ms: 0,
                 due_ms: crate::autodrop::AUTODROP_TICK_MS,
             }),
@@ -9173,10 +9235,68 @@ mod tests {
     }
 
     #[test]
+    fn target_for_autodrop_reads_whichever_source_the_run_picked() {
+        let mut vehicle = Vehicle::heard(1);
+        let here = crate::dropsim::Point {
+            lat: 47.0,
+            lon: 8.0,
+        };
+
+        assert_eq!(
+            vehicle.target_for_autodrop(crate::autodrop::TargetSource::Manual, here, 10.0, 0),
+            None,
+            "no point has been marked yet"
+        );
+        vehicle.manual_target = Some((47.4, 8.5));
+        assert_eq!(
+            vehicle
+                .target_for_autodrop(crate::autodrop::TargetSource::Manual, here, 10.0, 0)
+                .map(|t| t.position),
+            Some(crate::dropsim::Point {
+                lat: 47.4,
+                lon: 8.5
+            })
+        );
+
+        assert_eq!(
+            vehicle.target_for_autodrop(crate::autodrop::TargetSource::Vehicle(129), here, 10.0, 0),
+            None,
+            "no live fix recorded for vehicle 129 yet"
+        );
+        let mut fixes = std::collections::BTreeMap::new();
+        fixes.insert(
+            129,
+            crate::gpstarget::Fix {
+                position: crate::dropsim::Point {
+                    lat: 47.9,
+                    lon: 8.9,
+                },
+                ground_speed_mps: 3.0,
+                heading_deg: 90.0,
+            },
+        );
+        crate::gpstarget::refresh(fixes);
+        let from_vehicle =
+            vehicle.target_for_autodrop(crate::autodrop::TargetSource::Vehicle(129), here, 10.0, 0);
+        assert_eq!(
+            from_vehicle.map(|t| (t.position, t.velocity.east_mps)),
+            Some((
+                crate::dropsim::Point {
+                    lat: 47.9,
+                    lon: 8.9
+                },
+                3.0
+            )),
+            "heading 90 (east) at 3 m/s is all east velocity, no north"
+        );
+    }
+
+    #[test]
     fn tick_autodrop_keeps_retrying_without_a_gimbal_aimed_at_the_ground() {
         let mut vehicle = Vehicle::heard(1);
         vehicle.autodrop = Some(crate::autodrop::State::Waiting {
             phase: crate::autodrop::Phase::WaitingForRelease,
+            source: crate::autodrop::TargetSource::Gimbal,
             started_ms: 0,
             due_ms: 0,
         });
@@ -9189,6 +9309,7 @@ mod tests {
             vehicle.autodrop,
             Some(crate::autodrop::State::Waiting {
                 phase: crate::autodrop::Phase::WaitingForRelease,
+                source: crate::autodrop::TargetSource::Gimbal,
                 started_ms: 0,
                 due_ms: crate::autodrop::AUTODROP_TICK_MS,
             }),
@@ -9201,6 +9322,7 @@ mod tests {
         let mut vehicle = Vehicle::heard(1);
         vehicle.autodrop = Some(crate::autodrop::State::Waiting {
             phase: crate::autodrop::Phase::WaitingForRelease,
+            source: crate::autodrop::TargetSource::Gimbal,
             started_ms: 0,
             due_ms: 0,
         });
@@ -10340,6 +10462,29 @@ mod tests {
             None,
             "an accepted ROI_NONE clears the point, as Vehicle::_handleCommandAck does"
         );
+    }
+
+    #[test]
+    fn a_marked_target_is_remembered_immediately_with_no_command_or_ack_at_all() {
+        let mut hub = Hub::default();
+        let header = MavHeader {
+            system_id: 1,
+            component_id: 1,
+            sequence: 0,
+        };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(0, false), 0, 0);
+        assert_eq!(hub.active().unwrap().manual_target, None);
+
+        assert_eq!(
+            hub.guided(
+                None,
+                &json!({ "action": "markTarget", "latitude": 47.4, "longitude": 8.5 }),
+                0
+            ),
+            Ok(Vec::new()),
+            "no MAVLink command backs this action, so there is nothing to send"
+        );
+        assert_eq!(hub.active().unwrap().manual_target, Some((47.4, 8.5)));
     }
 
     #[test]

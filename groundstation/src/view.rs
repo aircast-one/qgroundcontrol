@@ -49,6 +49,7 @@ use crate::gimbalgeo;
 use crate::gimbalindicator;
 use crate::gpsresilience;
 use crate::gpsrtk;
+use crate::gpstarget;
 use crate::gpsview;
 use crate::guided;
 use crate::hostnoticeview;
@@ -205,6 +206,10 @@ pub const ARGUMENT_MODES: &[(&str, &str)] = &[
     (
         "view.gimbalDropLead",
         "<lat>,<lon>,<altAgl>,<northSpeed>,<eastSpeed>,<climbSpeed>,<gimbalYaw>,<gimbalPitch>",
+    ),
+    (
+        "view.dropLeadFromVehicle",
+        "<lat>,<lon>,<altAgl>,<northSpeed>,<eastSpeed>,<climbSpeed>,<targetVehicleId>",
     ),
     (
         "view.geoToNed",
@@ -1054,6 +1059,11 @@ pub const VIEWS: &[View] = &[
         compute: gimbalgeo::gimbal_drop_lead_view,
     },
     View {
+        path: "view.dropLeadFromVehicle",
+        deps: &[],
+        compute: gpstarget::drop_lead_from_vehicle_view,
+    },
+    View {
         path: "view.autodropStatus",
         deps: &[],
         compute: autodrop::status_view,
@@ -1408,6 +1418,7 @@ mod deps_cover_reads {
         ("gimbalgeo", include_str!("gimbalgeo.rs")),
         ("gpsfacts", include_str!("gpsfacts.rs")),
         ("gpsrtk", include_str!("gpsrtk.rs")),
+        ("gpstarget", include_str!("gpstarget.rs")),
         ("gpsview", include_str!("gpsview.rs")),
         ("guided", include_str!("guided.rs")),
         ("guidedcmd", include_str!("guidedcmd.rs")),
