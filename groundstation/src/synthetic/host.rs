@@ -306,7 +306,7 @@ struct Gpu {
 impl Gpu {
     fn new(first: &Window) -> Result<(Self, wgpu::Surface<'static>), String> {
         let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::PRIMARY | wgpu::Backends::GL,
+            backends: super::window::BACKENDS,
             ..wgpu::InstanceDescriptor::new_without_display_handle()
         });
         let surface = surface_for(&instance, first)?;

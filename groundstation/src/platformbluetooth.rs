@@ -16,8 +16,18 @@ pub struct Hooks {
 
 type Receiver = Arc<dyn Fn(Event) + Send + Sync>;
 
+struct Hosted {
+    devices: Vec<String>,
+    scanning: bool,
+}
+
 static HOOKS: OnceLock<Hooks> = OnceLock::new();
 static RECEIVERS: Mutex<BTreeMap<u32, Receiver>> = Mutex::new(BTreeMap::new());
+static HOSTED: Mutex<Hosted> = Mutex::new(Hosted {
+    devices: Vec::new(),
+    scanning: false,
+});
+static REFUSALS: Mutex<BTreeMap<u32, String>> = Mutex::new(BTreeMap::new());
 pub const SCAN: &str = "links.bluetoothScan";
 
 pub fn install(hooks: Hooks) {
@@ -26,6 +36,53 @@ pub fn install(hooks: Hooks) {
 
 pub fn available() -> bool {
     HOOKS.get().is_some()
+}
+
+pub fn host_devices(lines: &str) {
+    HOSTED
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .devices = lines.lines().map(str::to_string).collect();
+}
+
+pub fn hosted_devices() -> Vec<String> {
+    HOSTED
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .devices
+        .clone()
+}
+
+pub fn host_scanning(scanning: bool) {
+    HOSTED
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .scanning = scanning;
+}
+
+pub fn hosted_scanning() -> bool {
+    HOSTED
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .scanning
+}
+
+pub fn refused(id: u32, reason: &str) {
+    let reason = reason.trim();
+    if !reason.is_empty() {
+        REFUSALS
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .insert(id, reason.to_string());
+    }
+}
+
+fn refusal(id: u32, address: &str) -> String {
+    REFUSALS
+        .lock()
+        .unwrap_or_else(PoisonError::into_inner)
+        .remove(&id)
+        .unwrap_or_else(|| format!("Bluetooth device {address} could not be connected"))
 }
 
 pub fn device_from_info(info: &str) -> Option<(String, String)> {
@@ -116,14 +173,16 @@ impl PlatformBluetooth {
             .lock()
             .unwrap_or_else(PoisonError::into_inner)
             .insert(id, Arc::new(on_event));
-        match (hooks.open)(id, address) {
+        let opened = (hooks.open)(id, address);
+        let refusal = refusal(id, address);
+        match opened {
             true => Ok(PlatformBluetooth { id }),
             false => {
                 RECEIVERS
                     .lock()
                     .unwrap_or_else(PoisonError::into_inner)
                     .remove(&id);
-                Err(format!("Bluetooth device {address} could not be connected"))
+                Err(refusal)
             }
         }
     }
@@ -165,5 +224,49 @@ mod tests {
         );
         assert_eq!(device_from_info("no address\t"), None);
         assert_eq!(device_from_info("garbage"), None);
+    }
+
+    #[test]
+    fn a_native_host_pushes_the_devices_it_found_and_whether_it_is_scanning() {
+        host_devices("HC-05\t98:D3:31:F6:12:34\n\tAA:BB:CC:DD:EE:FF\nnot a device");
+        host_scanning(true);
+        assert_eq!(
+            hosted_devices()
+                .iter()
+                .filter_map(|info| device_from_info(info))
+                .collect::<Vec<_>>(),
+            [
+                ("HC-05".to_string(), "98:D3:31:F6:12:34".to_string()),
+                (
+                    "AA:BB:CC:DD:EE:FF".to_string(),
+                    "AA:BB:CC:DD:EE:FF".to_string()
+                ),
+            ],
+            "one name<TAB>address line per device, as BluetoothLinks.devicesInfo answers on Android"
+        );
+        assert!(hosted_scanning());
+        host_devices("");
+        host_scanning(false);
+        assert!(hosted_devices().is_empty() && !hosted_scanning());
+    }
+
+    #[test]
+    fn a_refused_open_says_why_once_and_falls_back_to_the_plain_message() {
+        refused(9001, "  This PC has no Bluetooth radio.  ");
+        refused(9002, "   ");
+        assert_eq!(
+            refusal(9001, "98:D3:31:F6:12:34"),
+            "This PC has no Bluetooth radio."
+        );
+        assert_eq!(
+            refusal(9001, "98:D3:31:F6:12:34"),
+            "Bluetooth device 98:D3:31:F6:12:34 could not be connected",
+            "a reason is used for the open that reported it, not for the next one"
+        );
+        assert_eq!(
+            refusal(9002, "AA:BB:CC:DD:EE:FF"),
+            "Bluetooth device AA:BB:CC:DD:EE:FF could not be connected",
+            "a blank reason keeps the plain message, as Android's host never gives one"
+        );
     }
 }

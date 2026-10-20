@@ -55,6 +55,9 @@ enum FleetBridge {
         case "mvStartMission":
             let sent = targets.filter { armedAt($0.path) }.map { target in still(target) { invokeOk("\($0).startMission") } }
             return !sent.isEmpty && sent.allSatisfy { $0 }
+        case "mvRtl":
+            let sent = targets.filter { armedAt($0.path) }.map { target in still(target) { invokeOk("\($0).guidedModeRTL", false) } }
+            return !sent.isEmpty && sent.allSatisfy { $0 }
         default:
             return false
         }

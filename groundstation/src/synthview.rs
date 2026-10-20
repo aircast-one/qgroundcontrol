@@ -98,6 +98,13 @@ fn aimed() -> (f64, f64) {
     *AIM.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
+pub fn surface_size(width: i32, height: i32) -> (u32, u32) {
+    (
+        u32::try_from(width).unwrap_or(0),
+        u32::try_from(height).unwrap_or(0),
+    )
+}
+
 pub fn wrapped(degrees: f64) -> f64 {
     let turned = (degrees + 180.0).rem_euclid(360.0) - 180.0;
     if turned == -180.0 { 180.0 } else { turned }
@@ -975,6 +982,17 @@ mod tests {
             SYNTHETIC_AIM,
             &format!("[{}, {}]", DEFAULT_AIM.0, DEFAULT_AIM.1),
         );
+    }
+
+    #[test]
+    fn a_head_hands_over_its_surface_size_and_a_negative_side_is_no_size() {
+        assert_eq!(surface_size(1280, 720), (1280, 720));
+        assert_eq!(
+            surface_size(-1, 720),
+            (0, 720),
+            "the renderer waits for a real size instead of drawing into a wrapped huge one"
+        );
+        assert_eq!(surface_size(0, 0), (0, 0));
     }
 
     #[test]

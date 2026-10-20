@@ -11,7 +11,7 @@ pub const DEPS: &[&str] = &[
     "vehicle.id",
 ];
 
-const FIELDS: &str = "id,vehicleTypeString,firmwareTypeString,armed,flying,flightMode,missionFlightMode,coordinate,homePosition,fixedWing,vtol,airship,flightModes,flightModeSetAvailable";
+const FIELDS: &str = "id,vehicleTypeString,firmwareTypeString,armed,flying,flightMode,missionFlightMode,rtlFlightMode,smartRTLFlightMode,coordinate,homePosition,fixedWing,vtol,airship,flightModes,flightModeSetAvailable";
 const WATCHED_PER_VEHICLE: [&str; 9] = [
     "armed",
     "flying",
@@ -107,7 +107,7 @@ fn per_vehicle_paths() -> Vec<String> {
         .collect()
 }
 
-const MV_ACTIONS: [(&str, &str, &str, &str); 4] = [
+const MV_ACTIONS: [(&str, &str, &str, &str); 5] = [
     ("mvArm", "Arm", "Arm (MV)", "Arm selected vehicles."),
     (
         "mvDisarm",
@@ -126,6 +126,12 @@ const MV_ACTIONS: [(&str, &str, &str, &str); 4] = [
         "Pause",
         "Pause (MV)",
         "Pause selected vehicles at their current position",
+    ),
+    (
+        "mvRtl",
+        "Return",
+        "Return (MV)",
+        "Return selected vehicles to their launch positions",
     ),
 ];
 
@@ -154,7 +160,7 @@ fn mv_refusal(id: &str, chosen: &[&Value]) -> Option<&'static str> {
             .iter()
             .all(|v| v["armed"] == json!(true))
             .then_some("Every selected vehicle is already armed."),
-        (false, "mvDisarm" | "mvStartMission" | "mvPause") if armed.is_empty() => {
+        (false, "mvDisarm" | "mvStartMission" | "mvPause" | "mvRtl") if armed.is_empty() => {
             Some("No selected vehicle is armed.")
         }
         (false, "mvDisarm") => None,
@@ -166,6 +172,10 @@ fn mv_refusal(id: &str, chosen: &[&Value]) -> Option<&'static str> {
             .iter()
             .all(|v| v["pauseSupported"] != json!(true))
             .then_some("No selected vehicle supports being paused."),
+        (false, "mvRtl") => armed
+            .iter()
+            .all(|v| v["returning"] == json!(true))
+            .then_some("Every armed selection is already returning."),
         (false, _) => Some("The core does not know this action."),
     }
 }
@@ -220,6 +230,7 @@ pub fn vehicles_view(backend: &dyn Backend, _args: &[String]) -> Value {
                 "flying": flag(&read, "flying"),
                 "flightMode": text(&read, "flightMode"),
                 "missionFlightMode": text(&read, "missionFlightMode"),
+                "returning": returning(&read),
                 "pauseSupported": flag(&supports, "pauseVehicle"),
                 "selected": id.is_some_and(|id| chosen_ids.contains(&id)),
                 "proximity": proximity(backend, index),
@@ -241,6 +252,14 @@ pub fn vehicles_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "actions": mv_actions(&listed),
         "vehicles": listed,
     })
+}
+
+fn returning(read: &Value) -> bool {
+    let mode = text(read, "flightMode");
+    !mode.is_empty()
+        && ["rtlFlightMode", "smartRTLFlightMode"]
+            .iter()
+            .any(|field| text(read, field) == mode)
 }
 
 fn name_of(read: &Value, id: Option<i64>) -> String {
@@ -469,7 +488,7 @@ mod tests {
     }
 
     fn aircraft(id: i64, kind: &str, link: &str) -> Value {
-        json!({ "kind": "object", "id": id, "vehicleTypeString": kind, "firmwareTypeString": "ArduPilot", "armed": false, "flying": false, "flightMode": "Loiter", "missionFlightMode": "Auto", "pauseVehicleSupported": true, "link": link, "quiet": false,
+        json!({ "kind": "object", "id": id, "vehicleTypeString": kind, "firmwareTypeString": "ArduPilot", "armed": false, "flying": false, "flightMode": "Loiter", "missionFlightMode": "Auto", "rtlFlightMode": "RTL", "smartRTLFlightMode": "Smart RTL", "pauseVehicleSupported": true, "link": link, "quiet": false,
                 "coordinate": { "valid": true, "latitude": 47.397, "longitude": 8.546, "altitude": 12.0 } })
     }
 
@@ -531,6 +550,7 @@ mod tests {
                 "Disarm selected vehicles.",
                 "Takeoff and start the current mission for selected vehicles",
                 "Pause selected vehicles at their current position",
+                "Return selected vehicles to their launch positions",
             ]
         );
     }
@@ -571,6 +591,11 @@ mod tests {
             offer_of(&disarmed, "mvPause").1,
             "No selected vehicle is armed."
         );
+        assert_eq!(
+            offer_of(&disarmed, "mvRtl").1,
+            "No selected vehicle is armed.",
+            "a disarmed vehicle sitting on the ground has nowhere to return from"
+        );
 
         let armed = chosen(true, "Loiter", true);
         assert_eq!(
@@ -583,6 +608,20 @@ mod tests {
         assert_eq!(offer_of(&armed, "mvDisarm").0, "ready");
         assert_eq!(offer_of(&armed, "mvStartMission").0, "ready");
         assert_eq!(offer_of(&armed, "mvPause").0, "ready");
+        assert_eq!(offer_of(&armed, "mvRtl").0, "ready");
+        assert_eq!(armed["vehicles"][0]["returning"], json!(false));
+        ["RTL", "Smart RTL"].iter().for_each(|mode| {
+            let home = chosen(true, mode, true);
+            assert_eq!(home["vehicles"][0]["returning"], json!(true));
+            assert_eq!(
+                offer_of(&home, "mvRtl"),
+                (
+                    "blocked".to_string(),
+                    "Every armed selection is already returning.".to_string()
+                ),
+                "_vehicleInRTLMode matches either the vehicle's rtlFlightMode or its smartRTLFlightMode"
+            );
+        });
 
         assert_eq!(
             offer_of(&chosen(true, "Auto", true), "mvStartMission"),

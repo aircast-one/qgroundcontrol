@@ -106,6 +106,10 @@ export const FleetBridge = {
         const sent = await inOrder(await armedTargets(targets), (it) => still(it, (path) => invokeOk(`${path}.startMission`)));
         return sent.length > 0 && sent.every((it) => it);
       }
+      case 'mvRtl': {
+        const sent = await inOrder(await armedTargets(targets), (it) => still(it, (path) => invokeOk(`${path}.guidedModeRTL`, '[false]')));
+        return sent.length > 0 && sent.every((it) => it);
+      }
       default: return false;
     }
   },

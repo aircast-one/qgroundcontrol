@@ -1522,9 +1522,12 @@ const PLATFORM_CAMERAS: &[&str] = &[
 const PLATFORM_CAMERAS: &[&str] = &[crate::videostate::SOURCE_SYNTHETIC];
 #[cfg(all(target_family = "wasm", feature = "synthetic"))]
 const PLATFORM_CAMERAS: &[&str] = &[crate::videostate::SOURCE_SYNTHETIC];
+#[cfg(all(target_os = "windows", native_synthetic))]
+const PLATFORM_CAMERAS: &[&str] = &[crate::videostate::SOURCE_SYNTHETIC];
 #[cfg(not(any(
     target_os = "android",
     target_os = "ios",
+    all(target_os = "windows", native_synthetic),
     all(target_family = "wasm", feature = "synthetic")
 )))]
 const PLATFORM_CAMERAS: &[&str] = &[];

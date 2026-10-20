@@ -3,9 +3,15 @@ use std::ptr::NonNull;
 
 pub struct Window {
     handle: NonNull<c_void>,
-    #[cfg(target_os = "ios")]
+    #[cfg(any(target_os = "ios", target_os = "windows"))]
     size: (u32, u32),
 }
+
+#[cfg(not(target_os = "windows"))]
+pub const BACKENDS: wgpu::Backends = wgpu::Backends::PRIMARY.union(wgpu::Backends::GL);
+
+#[cfg(target_os = "windows")]
+pub const BACKENDS: wgpu::Backends = wgpu::Backends::DX12;
 
 unsafe impl Send for Window {}
 
@@ -97,5 +103,20 @@ impl Window {
 impl Drop for Window {
     fn drop(&mut self) {
         unsafe { CFRelease(self.handle.as_ptr()) }
+    }
+}
+
+#[cfg(target_os = "windows")]
+impl Window {
+    pub fn from_composition_surface(surface: *mut c_void, size: (u32, u32)) -> Option<Self> {
+        NonNull::new(surface).map(|handle| Self { handle, size })
+    }
+
+    pub fn size(&self) -> (u32, u32) {
+        self.size
+    }
+
+    pub fn target(&self) -> wgpu::SurfaceTargetUnsafe {
+        wgpu::SurfaceTargetUnsafe::SurfaceHandle(self.handle.as_ptr())
     }
 }

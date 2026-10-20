@@ -3,9 +3,6 @@ use serde_json::{Value, json};
 use crate::read::{flag, integer, object};
 use crate::router::Backend;
 
-// MultiVehicleManager::deselectAllVehicles clears the list and returns void, so the bridge answered
-// ok for an empty selection it did nothing to and for a clear it could not confirm alike. The
-// selection count is read before and after; ok means the selection is empty now.
 const SELECTED_COUNT: &str = "vehicles.selectedVehicles.count";
 
 fn selected(backend: &dyn Backend) -> i64 {
@@ -29,17 +26,13 @@ pub fn deselect_all(backend: &dyn Backend, path: &str) -> Value {
     })
 }
 
-// The fleet picker sends pauseVehicle and startMission to each selected vehicle by its position in
-// selectedVehicles. Vehicle::pauseVehicle on a vehicle that cannot pause, and startMission on one
-// that is disarmed or already flying its mission, went out as asked. These are the rules view.vehicles
-// applies to the whole selection, applied to the one vehicle the path names; the answer carries its
-// id so the head can confirm the command landed on the vehicle it meant.
 const FLEET_SELECTION: &str = "vehicles.selectedVehicles.";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum FleetCommand {
     Pause,
     StartMission,
+    Return,
 }
 
 pub fn fleet_target(path: &str) -> Option<(usize, FleetCommand)> {
@@ -47,6 +40,7 @@ pub fn fleet_target(path: &str) -> Option<(usize, FleetCommand)> {
     let command = match member {
         "pauseVehicle" => FleetCommand::Pause,
         "startMission" => FleetCommand::StartMission,
+        "guidedModeRTL" => FleetCommand::Return,
         _ => return None,
     };
     Some((index.parse().ok()?, command))
@@ -61,7 +55,7 @@ fn fleet_refusal(
         _ if vehicle.get("kind").and_then(Value::as_str) != Some("object") => {
             Some(("noSuchVehicle", "No vehicle is selected at that position."))
         }
-        FleetCommand::StartMission if !flag(vehicle, "armed") => {
+        FleetCommand::StartMission | FleetCommand::Return if !flag(vehicle, "armed") => {
             Some(("disarmed", "That vehicle is not armed."))
         }
         FleetCommand::Pause if !pause_supported => {
@@ -87,13 +81,15 @@ pub fn fleet_command(backend: &dyn Backend, path: &str) -> Value {
     if let Some((token, reason)) = fleet_refusal(command, &vehicle, pause_supported) {
         return json!({ "ok": false, "refusal": token, "reason": reason, "vehicle": id });
     }
-    let core = match command {
-        FleetCommand::Pause => json!({ "action": "pause" }),
-        FleetCommand::StartMission => {
-            json!({ "action": "startMission", "flying": flag(&vehicle, "flying") })
-        }
+    let (core, args) = match command {
+        FleetCommand::Pause => (json!({ "action": "pause" }), "[]"),
+        FleetCommand::StartMission => (
+            json!({ "action": "startMission", "flying": flag(&vehicle, "flying") }),
+            "[]",
+        ),
+        FleetCommand::Return => (json!({ "action": "rtl", "smart": false }), "[false]"),
     };
-    let answer = crate::guided::dispatch(backend, Some(core), id, path, "[]");
+    let answer = crate::guided::dispatch(backend, Some(core), id, path, args);
     let dispatched = flag(&answer, "ok");
     json!({ "ok": dispatched, "refusal": Value::Null, "vehicle": id, "reason": match dispatched { true => Value::Null, false => answer.get("reason").cloned().unwrap_or_else(|| json!("The vehicle was not sent the command.")) } })
 }
@@ -314,5 +310,58 @@ mod tests {
             "noSuchVehicle"
         );
         assert_eq!(*one.0.borrow(), 1);
+    }
+
+    #[test]
+    fn a_fleet_return_reaches_an_armed_vehicle_with_smart_return_off() {
+        assert_eq!(
+            fleet_target("vehicles.selectedVehicles.1.guidedModeRTL"),
+            Some((1, FleetCommand::Return))
+        );
+        assert_eq!(
+            fleet_refusal(
+                FleetCommand::Return,
+                &json!({ "kind": "object", "armed": false }),
+                true
+            )
+            .map(|r| r.0),
+            Some("disarmed"),
+            "a vehicle sitting disarmed on the ground has nowhere to return from"
+        );
+
+        struct Armed(RefCell<Vec<(String, String)>>);
+        impl Backend for Armed {
+            fn get(&self, p: &str) -> String {
+                self.get_fields(p, "")
+            }
+            fn get_fields(&self, p: &str, _f: &str) -> String {
+                match p {
+                    "vehicles.selectedVehicles.0" => {
+                        json!({ "kind": "object", "id": 4, "armed": true, "flying": true })
+                    }
+                    _ => json!({ "kind": "null" }),
+                }
+                .to_string()
+            }
+            fn set(&self, _p: &str, _v: &str) -> String {
+                String::new()
+            }
+            fn invoke(&self, p: &str, a: &str) -> String {
+                self.0.borrow_mut().push((p.to_string(), a.to_string()));
+                json!({ "ok": true }).to_string()
+            }
+            fn watch(&self, _p: &[String]) {}
+        }
+        let armed = Armed(RefCell::new(Vec::new()));
+        let sent = fleet_command(&armed, "vehicles.selectedVehicles.0.guidedModeRTL");
+        assert_eq!((&sent["ok"], &sent["vehicle"]), (&json!(true), &json!(4)));
+        assert_eq!(
+            *armed.0.borrow(),
+            vec![(
+                "vehicles.selectedVehicles.0.guidedModeRTL".to_string(),
+                "[false]".to_string()
+            )],
+            "Vehicle::guidedModeRTL(bool) has no default, so an empty argument list would never reach the vehicle"
+        );
     }
 }

@@ -119,6 +119,89 @@ pub unsafe extern "C" fn qgc_links_create(
     c_int::from(config.is_some_and(|config| crate::corelinks::add(config)))
 }
 
+#[repr(C)]
+#[derive(Clone, Copy)]
+pub struct NativeBluetoothHooks {
+    open: Option<unsafe extern "C" fn(u32, *const c_char) -> c_int>,
+    write: Option<unsafe extern "C" fn(u32, *const u8, usize) -> c_int>,
+    close: Option<unsafe extern "C" fn(u32)>,
+    scan: Option<unsafe extern "C" fn(c_int) -> c_int>,
+}
+
+static BLUETOOTH_HOOKS: OnceLock<NativeBluetoothHooks> = OnceLock::new();
+
+fn bluetooth_open(id: u32, address: &str) -> bool {
+    BLUETOOTH_HOOKS
+        .get()
+        .and_then(|hooks| hooks.open)
+        .is_some_and(|open| unsafe { open(id, text(address).as_ptr()) } != 0)
+}
+
+fn bluetooth_write(id: u32, bytes: &[u8]) -> bool {
+    BLUETOOTH_HOOKS
+        .get()
+        .and_then(|hooks| hooks.write)
+        .is_some_and(|write| unsafe { write(id, bytes.as_ptr(), bytes.len()) } != 0)
+}
+
+fn bluetooth_close(id: u32) {
+    if let Some(close) = BLUETOOTH_HOOKS.get().and_then(|hooks| hooks.close) {
+        unsafe { close(id) };
+    }
+}
+
+fn bluetooth_scan(start: bool) -> bool {
+    BLUETOOTH_HOOKS
+        .get()
+        .and_then(|hooks| hooks.scan)
+        .is_some_and(|scan| unsafe { scan(c_int::from(start)) } != 0)
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qgc_bluetooth_install(hooks: *const NativeBluetoothHooks) {
+    if hooks.is_null() || BLUETOOTH_HOOKS.set(unsafe { *hooks }).is_err() {
+        return;
+    }
+    crate::platformbluetooth::install(crate::platformbluetooth::Hooks {
+        open: bluetooth_open,
+        write: bluetooth_write,
+        close: bluetooth_close,
+        devices: crate::platformbluetooth::hosted_devices,
+        scan: bluetooth_scan,
+        scanning: crate::platformbluetooth::hosted_scanning,
+    });
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qgc_bluetooth_set_devices(lines: *const c_char) {
+    crate::platformbluetooth::host_devices(&read(lines));
+}
+
+#[unsafe(no_mangle)]
+pub extern "C" fn qgc_bluetooth_set_scanning(scanning: c_int) {
+    crate::platformbluetooth::host_scanning(scanning != 0);
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qgc_bluetooth_received(id: u32, bytes: *const u8, length: usize) {
+    if !bytes.is_null() && length > 0 {
+        crate::platformbluetooth::received(
+            id,
+            unsafe { std::slice::from_raw_parts(bytes, length) }.to_vec(),
+        );
+    }
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qgc_bluetooth_closed(id: u32, reason: *const c_char) {
+    crate::platformbluetooth::closed(id, &read(reason));
+}
+
+#[unsafe(no_mangle)]
+pub unsafe extern "C" fn qgc_bluetooth_refused(id: u32, reason: *const c_char) {
+    crate::platformbluetooth::refused(id, &read(reason));
+}
+
 #[unsafe(no_mangle)]
 pub extern "C" fn qgc_core_headless() -> c_int {
     1
@@ -347,6 +430,39 @@ pub extern "C" fn qgc_synthetic_release(layer: *mut c_void) {
     crate::synthetic::host::release(layer as usize);
     #[cfg(not(native_synthetic))]
     let _ = layer;
+}
+
+#[cfg(target_os = "windows")]
+#[unsafe(no_mangle)]
+pub extern "C" fn qgc_synthetic_attach(surface: *mut c_void, width: c_int, height: c_int) -> c_int {
+    #[cfg(native_synthetic)]
+    return match crate::synthetic::window::Window::from_composition_surface(
+        surface,
+        crate::synthview::surface_size(width, height),
+    ) {
+        Some(window) => c_int::from(crate::synthetic::host::attach(
+            window,
+            std::sync::Arc::new(crate::synthetic::corefeed::CoreFeed),
+        )),
+        None => {
+            log::error!(target: "synthetic", "event=attach_failed reason=\"no composition surface\"");
+            0
+        }
+    };
+    #[cfg(not(native_synthetic))]
+    {
+        let _ = (surface, width, height);
+        0
+    }
+}
+
+#[cfg(target_os = "windows")]
+#[unsafe(no_mangle)]
+pub extern "C" fn qgc_synthetic_release(surface: *mut c_void) {
+    #[cfg(native_synthetic)]
+    crate::synthetic::host::release(surface as usize);
+    #[cfg(not(native_synthetic))]
+    let _ = surface;
 }
 
 static TILE_WORKERS: once_cell::sync::OnceCell<crate::maptiles::TileWorkers> =

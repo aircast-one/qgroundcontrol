@@ -49,6 +49,10 @@ object FleetBridge {
                 // qtpaths: vehicles.selectedVehicles.0.startMission
                 .map { still(it) { invokeOk("$it.startMission") } }
                 .let { sent -> sent.isNotEmpty() && sent.all { it } }
+            action == "mvRtl" -> targets.filter { (path, _) -> armedAt(path) }
+                // qtpaths: vehicles.selectedVehicles.0.guidedModeRTL
+                .map { still(it) { invokeOk("$it.guidedModeRTL", "[false]") } }
+                .let { sent -> sent.isNotEmpty() && sent.all { it } }
             else -> false
         }
     }
@@ -210,4 +214,3 @@ fun rememberedChoices(previous: VehicleChoices?, now: VehicleChoices): VehicleCh
     now.active != null -> now
     else -> previous
 }
-
