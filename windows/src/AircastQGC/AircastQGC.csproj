@@ -33,4 +33,8 @@
     </None>
   </ItemGroup>
 
+  <ItemGroup>
+    <Content Include="Assets\Airframe\*.svg" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>

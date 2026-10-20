@@ -29,6 +29,7 @@ Boot: `qgc_start(argc, argv)` spawns the core pump thread and returns; the UI ne
 - [x] Deploy loop: `scp` files → `buildrun.ps1` (kill-before-build) on `winvm`
 - [x] Shared components as UserControls in `Controls/` — `ShellTitleBar`, `NavPane`; MainWindow only composes and wires them
 - [x] Fly view composed from core-driven controls (map, instruments, guided, video/camera, flight modes, checklist, no-vehicle), verified on `winvm` against a mock ArduCopter
+- [x] Every nav page hosted (`Pages/PageRegistry`): Fly, Plan, Analyze, Vehicle Setup, Settings. Merged build smoke on `winvm` (2026-10-20): each page opens with no vehicle, the mock ArduCopter and the mock PX4; a plan uploaded from Plan shows on Fly with the vehicle and traffic; a PX4 calibration still blocks the nav pane and Back
 
 ## Screens (Penpot "06 Screens", 54 boards @ 1440×900)
 
@@ -54,15 +55,44 @@ thumbnail and, after the swap, in the full-size view. Killing the sender showed 
 
 ### Plan
 
-- ▢ plan · ▢ plan — replace plan · ▢ plan — upload warning · ▢ plan — terrain profile
-- ▢ plan — fence & rally · ▢ plan — item editor · ▢ plan — command picker
+- ◐ plan (map tap-to-add and pin/handle drags not driven: no pointer input on the shared VM) · ✓ plan — replace plan · ✓ plan — upload warning · ✓ plan — terrain profile
+- ✓ plan — fence & rally · ✓ plan — item editor · ✓ plan — command picker
+
+One root page (`Pages/Plan/PlanPage`) on a second `MapView` in plan mode. Every `MapView` now owns its BridgeWatch ids
+(`mapview.<guid>.<path>`) and stops them on Unloaded, so the Plan map cannot take over or stop the Fly map's watches. Driven on `winvm`
+with no vehicle, the mock PX4 and the mock ArduCopter (2026-10-20) through UI Automation and the debug API: add (rail, centre, debug
+`mission.insert`), select, edit altitude, change command, edit position, delete and undo items; survey template, size to view and hover
+capture; fence polygon, circle, breach point, corner edit, remove vertex and undo; rally add, edit and remove; terrain profile and its
+toggle; defaults and transform; save, open, export KML and import boundary through the WinAppSDK 1.8 pickers (unpackaged); the vehicle
+connected and disconnected prompts; replace, clear and upload-warning dialogs (firmware mismatch, far from aircraft); upload to the green
+Fly pill and on to Fly, which still draws the vehicle, the uploaded route, pins and live ADS-B traffic. Not driven: map tap, pin and handle
+drags, terrain-chart marker taps, the Delete/Escape/Ctrl+Z/Y/S/O shortcuts. Not ported: the leg-split '+' that inserts mid-leg, drag
+handles for landing approach/touchdown, fence circle radius and pattern centre, pattern presets, Centre > Follow vehicle / My location;
+in plan mode a double-click adds a waypoint instead of zooming. The page polls `view.missionItems` every 700 ms (as Android); a
+~3700-item hover-capture survey makes that ~140 KB per poll and the plan menu then took over 1 s to open.
 
 ### Vehicle setup
 
-- ▢ vehicle-setup · ▢ setup — sensors calibration · ▢ setup — radio · ▢ setup — flight modes
-- ▢ setup — power · ▢ setup — safety · ▢ setup — motors · ▢ setup — frame
-- ▢ setup — parameters · ▢ setup — parameter editor · ▢ setup — flight behavior
-- ▢ setup — remote support · ▢ setup — camera · ▢ setup — lights · ▢ setup — tuning
+- ✓ vehicle-setup · ◐ setup — sensors calibration (compass, CompassMot and ESC calibration not run) · ◐ setup — radio (calibration started and cancelled, not run to the end; Spektrum/CRSF bind not run) · ✓ setup — flight modes
+- ◐ setup — power (the voltage/amps calculator never gets a reading on the mock: the core's powercalc looks for battery id 0, the mock reports 1 and 2) · ✓ setup — safety · ✓ setup — motors · ✓ setup — frame
+- ✓ setup — parameters · ✓ setup — parameter editor · ✓ setup — flight behavior
+- ✓ setup — remote support · ▢ setup — camera (the mocks expose no camera setup page) · ▢ setup — lights (the mocks expose no lights component) · ✓ setup — tuning
+
+One root page (`Pages/Setup/SetupPage`, two-pane only) over `view.setup`, reusing the `Forms/` engine (which now raises `Rejected` so
+the parameter editor can offer "Force save (dangerous!)" after a refused write, as Android does). Airframe pictures ship as
+`Assets/Airframe/*.svg`. Driven on `winvm` with no vehicle, the mock ArduCopter and the mock PX4 (2026-10-20) through UI Automation and
+the debug API: the no-vehicle state and "Set up connection" to Settings > Links; the summary with each component's line; parameters by
+group, search, the "Changed" filter (PX4), edit and read back, range refusal then force save, manual entry for an option list, Tools
+(Refresh, Reset all confirmation cancelled); APM accelerometer calibration run to "YOU MUST REBOOT"; PX4 gyro calibration started, the
+nav pane, Back and the setup list refused with "Complete or cancel the current calibration first" until the link dropped (the PX4 mock
+never answers a cancel); radio Mode 1/2 and the calibration start/cancel; flight mode, battery capacity, RTL altitude, frame class/type,
+servo range, PX4 return altitude and responsiveness edits, each read back and restored; motor test gates (props-off switch, refused
+while armed); PX4 Airframe Apply confirmation (cancelled); APM basic/advanced tuning with restore from clipboard, PX4 PID tuning. Not
+checked: PX4 Actuators (no ActuatorComponent on the mock), ESC/compass calibration, parameter file load/save, RC-to-param, joystick with
+a real gamepad, Sub/Rover-only pages. The parameter list does not live-update from vehicle pushes (it refreshes after an edit and on
+Tools > Refresh). Form and tuning sliders write only on pointer release or key up, so a UI Automation `RangeValue.SetValue` moves a slider
+without writing. PX4 Airframe and PID tuning reach their pages through a two-entry name table in `SetupModel` (`Airframe` → Frame,
+`PID Tuning` → Tuning); the core should name the page per component in `view.setup`.
 
 ### Analyze
 

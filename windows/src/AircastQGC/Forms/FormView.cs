@@ -56,6 +56,8 @@ public sealed class FormView : UserControl
 
     public event EventHandler<FormCalculatorRequest>? CalculatorRequested;
 
+    public event EventHandler<FormControl>? Rejected;
+
     public FormHooks Hooks { get; init; } = new();
     public string PageTitle { get; init; } = "";
     public string LoadingText { get; init; } = "Reading settings.";
@@ -116,6 +118,8 @@ public sealed class FormView : UserControl
     }
 
     internal void RequestDialog(FormControl control) => DialogRequested?.Invoke(this, control);
+
+    internal void Refused(FormControl control) => Rejected?.Invoke(this, control);
 
     internal void RequestCalculator(FormControl control, JsonObject calculator) =>
         CalculatorRequested?.Invoke(this, new FormCalculatorRequest(control, calculator));

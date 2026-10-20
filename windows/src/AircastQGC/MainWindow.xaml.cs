@@ -23,6 +23,7 @@ public sealed partial class MainWindow : Window
     {
         InitializeComponent();
         BridgeWatch.BindDispatcher(DispatcherQueue);
+        Pages.Setup.GamepadInput.Start();
 
         ExtendsContentIntoTitleBar = true;
         AppWindow.TitleBar.PreferredHeightOption = TitleBarHeightOption.Tall;
@@ -114,6 +115,8 @@ public sealed partial class MainWindow : Window
     {
         if (_pages.TryGetValue(page, out var built)) return built;
         var created = Pages.PageRegistry.Create(page);
+        if (created is Pages.Plan.PlanPage plan) plan.FlyRequested += (_, _) => Go(NavPane.Fly);
+        if (created is Pages.Setup.SetupPage setup) setup.OpenConnectionsRequested += (_, _) => OpenLinks();
         if (created != null) _pages = _pages.SetItem(page, created);
         return created;
     }

@@ -68,6 +68,7 @@ internal sealed partial class FormRows(FormView host)
             return;
         }
         FormLook.Say(refusal, refused);
+        host.Refused(c);
         revert();
     }
 

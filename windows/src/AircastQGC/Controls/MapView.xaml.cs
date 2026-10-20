@@ -34,7 +34,6 @@ public sealed partial class MapView : UserControl
     private const string OrbitPath = "view.orbit";
     private const string MapClickPath = "view.mapClick";
     private const string GuidedPath = "view.guidedActions";
-    private const string WatchPrefix = "mapview.";
     private const string RallyLabel = "R";
     private const string RoiLabel = "Looking here";
     private const int ReturnToLaunch = 20;
@@ -84,6 +83,7 @@ public sealed partial class MapView : UserControl
         public void Place(Func<Geo, Point> project) => _placers.ForEach(place => place(project));
     }
 
+    private readonly string _watchPrefix = $"mapview.{Guid.NewGuid():N}.";
     private readonly Dictionary<Tile, Cell> _cells = new();
     private readonly Overlay _fenceLayer;
     private readonly Overlay _trackLayer;
@@ -108,6 +108,7 @@ public sealed partial class MapView : UserControl
     private Geo? _clickMark;
     private double _scaleAcross = double.NaN;
     private MapScale? _scale;
+    private bool _planMode;
 
     public MapView()
     {
@@ -119,9 +120,29 @@ public sealed partial class MapView : UserControl
         _guideLayer = new Overlay(GuideLayer);
         Loaded += OnLoaded;
         Unloaded += OnUnloaded;
+        Surface.Tapped += OnTapped;
     }
 
     public event Action<double, double, Point>? MapRightTapped;
+
+    public event Action<double, double, Point>? MapTapped;
+
+    public event EventHandler? ViewChanged;
+
+    public bool PlanMode
+    {
+        get => _planMode;
+        set
+        {
+            _planMode = value;
+            new UIElement[] { FenceLayer, TrackLayer, MissionLayer, TrafficLayer, GuideLayer }.ToList()
+                .ForEach(layer => layer.Visibility = value ? Visibility.Collapsed : Visibility.Visible);
+        }
+    }
+
+    internal Point ScreenOf(Geo geo) => ToScreen(geo);
+
+    internal Geo GeoOf(Point screen) => ToGeo(screen);
 
     public Thickness FollowInsets { get; set; } = new(24, 56, 352, 40);
 
@@ -178,8 +199,9 @@ public sealed partial class MapView : UserControl
         _poll ??= CreatePoll(PollInterval, Refresh);
         _planPoll ??= CreatePoll(PlanPollInterval, RefreshPlan);
         _poll.Start();
-        _planPoll.Start();
         Refresh();
+        if (_planMode) return;
+        _planPoll.Start();
         RefreshPlan();
         StartWatching();
     }
@@ -188,7 +210,7 @@ public sealed partial class MapView : UserControl
     {
         _poll?.Stop();
         _planPoll?.Stop();
-        WatchedPaths.ToList().ForEach(path => BridgeWatch.Stop(WatchPrefix + path));
+        WatchedPaths.ToList().ForEach(path => BridgeWatch.Stop(_watchPrefix + path));
         _cells.Keys.ToList().ForEach(Drop);
     }
 
@@ -249,9 +271,9 @@ public sealed partial class MapView : UserControl
         });
     }
 
-    private static void Watch(string path, Action<JsonObject> apply)
+    private void Watch(string path, Action<JsonObject> apply)
     {
-        try { BridgeWatch.Watch(WatchPrefix + path, new[] { path }, apply); }
+        try { BridgeWatch.Watch(_watchPrefix + path, new[] { path }, apply); }
         catch (Exception) { }
         apply(Read(path));
     }
@@ -266,6 +288,7 @@ public sealed partial class MapView : UserControl
             _center = vehicle;
             return;
         }
+        if (_planMode) return;
         if (_pannedAt is { } at && DateTime.UtcNow - at < PanSuspension) return;
         if (_keepCentered)
         {
@@ -319,6 +342,7 @@ public sealed partial class MapView : UserControl
         PlaceMarkers();
         Layers.ToList().ForEach(layer => layer.Place(ToScreen));
         PlaceScale();
+        ViewChanged?.Invoke(this, EventArgs.Empty);
     }
 
     private void Add(Tile slot)
@@ -754,8 +778,16 @@ public sealed partial class MapView : UserControl
 
     private void OnDoubleTapped(object sender, DoubleTappedRoutedEventArgs e)
     {
+        if (_planMode) return;
         ZoomAround(e.GetPosition(Surface), 1);
         e.Handled = true;
+    }
+
+    private void OnTapped(object sender, TappedRoutedEventArgs e)
+    {
+        var at = e.GetPosition(Surface);
+        var geo = ToGeo(at);
+        MapTapped?.Invoke(geo.Latitude, geo.Longitude, at);
     }
 
     private void OnRightTapped(object sender, RightTappedRoutedEventArgs e)
