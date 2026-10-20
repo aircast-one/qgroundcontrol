@@ -15,6 +15,8 @@ export const sentIsStillShowing = (name: string | null, snapshotAtSend: string |
 
 export const sentText = (name: string): string => `Sent · ${name}`;
 
+export const sentUnlessRefused = (name: string, refusal: string | null): string | null => (refusal === null ? name : null);
+
 export const SENT_SHOWN_MS = 3_000;
 
 export const LAND_FROM = 'view.instruments(altitudeRelative)';

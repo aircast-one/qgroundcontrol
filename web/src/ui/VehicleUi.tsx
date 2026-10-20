@@ -16,7 +16,7 @@ import { aircast, argb, md, withAlpha } from '@/theme/Colors';
 import { useRememberActiveVehicleId } from './ActiveVehicle';
 import { useAdvancedUiShown } from './AdvancedUi';
 import { LocalAppNavigation } from './AppNavigation';
-import { ConfirmTrack, SENT_SHOWN_MS, SentNotice, sentIsStillShowing } from './ConfirmTrack';
+import { ConfirmTrack, SENT_SHOWN_MS, SentNotice, sentIsStillShowing, sentUnlessRefused } from './ConfirmTrack';
 import { armedStopOffer, emergencyStopAction } from './EmergencyStop';
 import { FLIGHT_MODES, type FlightModeOption, flightModesView, modeAck, modeHeading, modeOutcome, pinsAfter, startsSection } from './FlightModes';
 import { CHECKLIST, DeckButton, DeckEntry, FlyDeckLayout, MoreActionsSheet, MoreTile, NO_SIGNAL_CODE, RailDeckButton, TAKE_OFF, deckIds, guidedIcon, holdTakeoffHeight, takeoffLabel } from './FlyDeck';
@@ -77,12 +77,15 @@ export type GuidedAction = {
   readonly destructive: boolean;
   readonly option: ConfirmOption | null;
   readonly offerId: string | null;
+  readonly answer: (() => Promise<string | null>) | null;
   readonly run: () => void;
 };
 
-export const GuidedAction = (fields: { name: string; confirm: string; destructive: boolean; option?: ConfirmOption | null; offerId?: string | null; run: () => void }): GuidedAction => ({
+export const GuidedAction = (fields: { name: string; confirm: string; destructive: boolean; option?: ConfirmOption | null; offerId?: string | null; answer?: (() => Promise<string | null>) | null; run?: () => void }): GuidedAction => ({
   option: null,
   offerId: null,
+  answer: null,
+  run: () => undefined,
   ...fields,
 });
 
@@ -431,13 +434,24 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
 
   const latestOffers = useUpdatedRef(offers);
   const latestPending = useUpdatedRef(pending);
+  const sent = (action: GuidedAction) => {
+    const snapshot = liveActions;
+    const shown = (name: string | null) => {
+      setSentName(name);
+      setSentSnapshot(snapshot);
+    };
+    if (action.answer === null) return shown(action.name);
+    void action.answer().then((refused) => {
+      setRefusal(refused);
+      shown(sentUnlessRefused(action.name, refused));
+    });
+  };
   const ask = (action: GuidedAction) => {
     if (needsConfirm(action, latestOffers.current)) {
       setPending(action);
     } else {
       action.run();
-      setSentName(action.name);
-      setSentSnapshot(liveActions);
+      sent(action);
     }
   };
   const offerAction = (offer: GuidedOffer, command: () => void): GuidedAction =>
@@ -535,8 +549,7 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
       <ConfirmTrack
         action={confirming}
         onSent={() => {
-          setSentName(confirming.name);
-          setSentSnapshot(liveActions);
+          sent(confirming);
           setPending(null);
         }}
         onCancel={() => setPending(null)}
@@ -1225,7 +1238,7 @@ export const flightDeckEntries = (deck: FlightDeckContext): readonly DeckEntry[]
                 name: release.title,
                 confirm: promptOr(release, 'Open the gripper and drop the payload.'),
                 destructive: false,
-                run: () => void VehicleCommands.gripperRefusal(GRIPPER_RELEASE, dropBay).then(report),
+                answer: () => VehicleCommands.gripperRefusal(GRIPPER_RELEASE, dropBay),
               }),
             ),
         })

@@ -41,6 +41,13 @@ class FlightDeckEntriesTest {
     }
 
     @Test
+    fun `a drop confirmed from the deck waits for the core to answer, so a refused drop is never reported as sent`() {
+        val confirmed = mutableListOf<GuidedAction>()
+        flightDeckEntries(deck(listOf(offer(RELEASE).copy(title = "Drop")), confirmed = confirmed)).first { it.id == RELEASE }.onClick()
+        assertEquals(true, confirmed.single().answer != null)
+    }
+
+    @Test
     fun `a basket drops its next loaded bay from the deck and says which, and when the core counts it empty`() {
         val confirmed = mutableListOf<GuidedAction>()
         fun drop(empty: List<Int>, next: Int, label: String, title: String) =

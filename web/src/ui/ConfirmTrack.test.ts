@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { holdLabel } from './HoldToConfirm';
-import { MISSION_ACTIONS, MISSION_ON_DRONE, MissionIdentity, landFrom, missionIdentity, sentIsStillShowing, sentText } from './ConfirmTrack';
+import { MISSION_ACTIONS, MISSION_ON_DRONE, MissionIdentity, landFrom, missionIdentity, sentIsStillShowing, sentText, sentUnlessRefused } from './ConfirmTrack';
 
 describe('ConfirmTrackTest', () => {
   it('sent stands until the served actions change', () => {
@@ -23,6 +23,11 @@ describe('ConfirmTrackTest', () => {
   it('the notice names the action that was sent', () => {
     expect(sentText('Return')).toBe('Sent · Return');
     expect(sentText('Emergency Stop')).toBe('Sent · Emergency Stop');
+  });
+
+  it('an action the core refuses shows only the refusal, never sent', () => {
+    expect(sentUnlessRefused('Drop bay 4', 'The gripper is still open from the last drop. It closes in 1 s.')).toBeNull();
+    expect(sentUnlessRefused('Drop bay 4', null)).toBe('Drop bay 4');
   });
 
   it('the land confirm reads the height it lands from, and nothing when the vehicle has not said', () => {

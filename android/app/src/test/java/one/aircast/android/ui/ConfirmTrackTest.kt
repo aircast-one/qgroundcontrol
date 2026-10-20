@@ -41,6 +41,12 @@ class ConfirmTrackTest {
         assertEquals("Sent · Emergency Stop", sentText("Emergency Stop"))
     }
 
+    @Test
+    fun `an action the core refuses shows only the refusal, never sent`() {
+        assertEquals(null, sentUnlessRefused("Drop bay 4", "The gripper is still open from the last drop. It closes in 1 s."))
+        assertEquals("Drop bay 4", sentUnlessRefused("Drop bay 4", null))
+    }
+
     @org.junit.Test
     fun `the land confirm reads the height it lands from, and nothing when the vehicle has not said`() {
         org.junit.Assert.assertEquals("42.0" to "m", landFrom(org.json.JSONObject("""{"items":[{"missing":false,"value":"42.0","units":"m"}]}""")))

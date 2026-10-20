@@ -75,4 +75,5 @@ test('a pilot flying by hand drops from the deck, and a drop that cannot fall sa
   await drop.click();
   await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to drop' }));
   await expect(vehicle.getByText('The gripper is still open from the last drop, so nothing would fall. Grab first, or turn on auto-close.')).toBeVisible({ timeout: 30_000 });
+  expect(await vehicle.getByText('Sent · Drop').count(), 'a refused drop shows only the refusal').toBe(0);
 });

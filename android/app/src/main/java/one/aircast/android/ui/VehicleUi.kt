@@ -104,7 +104,8 @@ internal data class GuidedAction(
     val destructive: Boolean,
     val option: ConfirmOption? = null,
     val offerId: String? = null,
-    val run: () -> Unit,
+    val answer: (suspend () -> String?)? = null,
+    val run: () -> Unit = {},
 )
 
 internal fun needsConfirm(action: GuidedAction, offers: Map<String, GuidedOffer>): Boolean =
@@ -407,13 +408,26 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     }
 
     val latestOffers by rememberUpdatedState(offers)
+    val sent: (GuidedAction) -> Unit = { action ->
+        val snapshot = actionsJson?.toString()
+        val shown: (String?) -> Unit = { name ->
+            sentName = name
+            sentSnapshot = snapshot
+        }
+        action.answer?.let { answer ->
+            scope.launch {
+                val refused = answer()
+                refusal = refused
+                shown(sentUnlessRefused(action.name, refused))
+            }
+        } ?: shown(action.name)
+    }
     val ask: (GuidedAction) -> Unit = { action ->
         if (needsConfirm(action, latestOffers)) {
             pending = action
         } else {
             action.run()
-            sentName = action.name
-            sentSnapshot = actionsJson?.toString()
+            sent(action)
         }
     }
     LaunchedEffect(popupDue) {
@@ -515,8 +529,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                             ConfirmTrack(
                                 action = confirming,
                                 onSent = {
-                                    sentName = confirming.name
-                                    sentSnapshot = liveActions
+                                    sent(confirming)
                                     pending = null
                                 },
                                 onCancel = { pending = null },
@@ -536,8 +549,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             ConfirmTrack(
                 action = confirming,
                 onSent = {
-                    sentName = confirming.name
-                    sentSnapshot = liveActions
+                    sent(confirming)
                     pending = null
                 },
                 onCancel = { pending = null },
@@ -1101,9 +1113,8 @@ internal fun flightDeckEntries(deck: FlightDeckContext): List<DeckEntry> = with(
                 name = offers[RELEASE]?.title ?: "Drop",
                 confirm = offers[RELEASE]?.prompt?.ifBlank { null } ?: "Open the gripper and drop the payload.",
                 destructive = false,
-            ) {
-                scope.launch { report(withContext(Dispatchers.Default) { VehicleCommands.gripperRefusal(GRIPPER_RELEASE, bay) }) }
-            })
+                answer = { withContext(Dispatchers.Default) { VehicleCommands.gripperRefusal(GRIPPER_RELEASE, bay) } },
+            ))
         }.takeIf { offers[RELEASE]?.shown == true },
         DeckEntry(CHECKLIST, "Checklist", R.drawable.ic_check_circle, true) {
             openChecklist?.invoke()

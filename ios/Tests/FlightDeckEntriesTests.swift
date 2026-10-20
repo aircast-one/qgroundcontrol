@@ -25,6 +25,13 @@ final class FlightDeckEntriesTests: XCTestCase {
         )
     }
 
+    func testADropConfirmedFromTheDeckWaitsForTheCoreToAnswerSoARefusedDropIsNeverReportedAsSent() throws {
+        let release = GuidedOffer(id: RELEASE, title: "Drop", offer: "ready", reason: "", prompt: "", destructive: false, carriesValue: false)
+        var confirmed: [GuidedAction] = []
+        try XCTUnwrap(flightDeckEntries(deck([release], armed: true, confirm: { confirmed.append($0) })).first { $0.id == RELEASE }).onClick()
+        XCTAssertNotNil(confirmed.first?.answer)
+    }
+
     func testAGripperGetsADropOnTheDeckThatLandsOnAHoldAndNamesTheBay() throws {
         let release = GuidedOffer(id: RELEASE, title: "Drop", offer: "ready", reason: "", prompt: "", destructive: false, carriesValue: false)
         let single = try XCTUnwrap(flightDeckEntries(deck([release], armed: true)).first { $0.id == RELEASE })

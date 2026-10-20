@@ -14,7 +14,8 @@ struct GuidedAction {
     let destructive: Bool
     var option: ConfirmOption? = nil
     var offerId: String? = nil
-    let run: () -> Void
+    var answer: (() async -> String?)? = nil
+    var run: () -> Void = {}
 }
 
 let CHECKLIST_PASSED = 1
@@ -500,13 +501,28 @@ struct FlightActions<Center: View>: View {
         }
     }
 
+    private func sent(_ action: GuidedAction) {
+        let actions = actions
+        let snapshot = actionsJson?.text
+        guard let answer = action.answer else {
+            actions.sentName = action.name
+            actions.sentSnapshot = snapshot
+            return
+        }
+        actions.scope.launch {
+            let refused = await answer()
+            flyScreen.refusal = refused
+            actions.sentName = sentUnlessRefused(action.name, refused)
+            actions.sentSnapshot = snapshot
+        }
+    }
+
     private func ask(_ action: GuidedAction) {
         if needsConfirm(action, offers) {
             actions.pending = action
         } else {
             action.run()
-            actions.sentName = action.name
-            actions.sentSnapshot = actionsJson?.text
+            sent(action)
         }
     }
 
@@ -626,7 +642,7 @@ struct FlightActions<Center: View>: View {
                         if let message = flyScreen.refusal {
                             Text(message).font(.bodyMedium).foregroundStyle(theme.colors.error)
                         }
-                        decision(showingSent, liveActions)
+                        decision(showingSent)
                     }
                     .padding(Space.s4)
                     .background(theme.colors.surfaceContainerLow, in: RoundedRectangle(cornerRadius: Corner.extraLarge))
@@ -643,7 +659,7 @@ struct FlightActions<Center: View>: View {
                         .foregroundStyle(theme.colors.error)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
-                decision(showingSent, liveActions)
+                decision(showingSent)
                 TelemetryRow(valuesShown: true, chooser: false, compact: true)
                     .frame(maxWidth: .infinity)
                 if !deciding, let readiness {
@@ -688,15 +704,14 @@ struct FlightActions<Center: View>: View {
     }
 
     @ViewBuilder
-    private func decision(_ showingSent: Bool, _ liveActions: String?) -> some View {
+    private func decision(_ showingSent: Bool) -> some View {
         let actions = actions
         if let confirming = actions.pending {
             ConfirmTrack(
                 action: confirming,
                 optionChecked: Binding(get: { actions.optionChecked }, set: { actions.optionChecked = $0 }),
                 onSent: {
-                    actions.sentName = confirming.name
-                    actions.sentSnapshot = liveActions
+                    sent(confirming)
                     actions.pending = nil
                 },
                 onCancel: { actions.pending = nil }
@@ -1144,7 +1159,7 @@ func flightDeckEntries(_ deck: FlightDeckContext) -> [DeckEntry] {
     let release = offers[RELEASE]
     let dropTitle = release?.title.nonBlank ?? "Drop"
     let bay = deck.dropBay
-    let drop: () -> Void = { deck.scope.launch { deck.report(await offMain { VehicleCommands.gripperRefusal(GRIPPER_RELEASE, bay: bay) }) } }
+    let refusal: () async -> String? = { await offMain { VehicleCommands.gripperRefusal(GRIPPER_RELEASE, bay: bay) } }
     let entries: [DeckEntry?] = [
         armAction?.shown == true ? DeckEntry(id: "arm", label: armTitle, icon: .bolt, enabled: armAction?.ready == true, warning: armed, onClick: {
             deck.confirm(GuidedAction(
@@ -1231,14 +1246,14 @@ func flightDeckEntries(_ deck: FlightDeckContext) -> [DeckEntry] {
             label: holdLabel(deck.dropLabel.nonBlank ?? dropTitle),
             icon: .planDrop,
             enabled: release?.ready == true,
-            onHold: drop,
+            onHold: { deck.scope.launch { deck.report(await refusal()) } },
             onClick: {
                 deck.confirm(GuidedAction(
                     name: dropTitle,
                     confirm: release?.prompt.nonBlank ?? "Open the gripper and drop the payload.",
                     destructive: false,
                     offerId: RELEASE,
-                    run: drop
+                    answer: refusal
                 ))
             }
         ) : nil,

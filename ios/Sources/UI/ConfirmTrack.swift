@@ -6,6 +6,8 @@ func sentIsStillShowing(_ name: String?, _ snapshotAtSend: String?, _ live: Stri
 
 func sentText(_ name: String) -> String { "Sent \u{00B7} \(name)" }
 
+func sentUnlessRefused(_ name: String, _ refusal: String?) -> String? { refusal == nil ? name : nil }
+
 let SENT_SHOWN_MS = 3_000
 
 let LAND_FROM = "view.instruments(altitudeRelative)"

@@ -21,6 +21,11 @@ final class ConfirmTrackTests: XCTestCase {
         XCTAssertEqual(sentText("Emergency Stop"), "Sent · Emergency Stop")
     }
 
+    func testAnActionTheCoreRefusesShowsOnlyTheRefusalNeverSent() {
+        XCTAssertNil(sentUnlessRefused("Drop bay 4", "The gripper is still open from the last drop. It closes in 1 s."))
+        XCTAssertEqual(sentUnlessRefused("Drop bay 4", nil), "Drop bay 4")
+    }
+
     func testTheLandConfirmReadsTheHeightItLandsFromAndNothingWhenTheVehicleHasNotSaid() {
         let from = landFrom(JSON.parse(#"{"items":[{"missing":false,"value":"42.0","units":"m"}]}"#))
         XCTAssertEqual(from?.0, "42.0")

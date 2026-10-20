@@ -1,5 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { type Json, parseJson } from '@/bridge/Json';
+import { VehicleCommands } from '@/bridge/VehicleCommands';
 import { multiVehiclePanelEnabled, osdModeText, osdStatusNote } from './ActiveVehicle';
 import { CHECKLIST, HOLD_TO_TAKE_OFF, TAKE_OFF } from './FlyDeck';
 import { Readiness } from './FlyState';
@@ -50,6 +51,21 @@ describe('FlightDeckEntriesTest', () => {
     expect([emptied?.label, emptied?.enabled]).toEqual(['Slide to drop 1 · empty', true]);
     emptied?.onClick();
     expect(confirmed.mock.results.at(-1)?.value.name, 'the confirm sheet names the bay as the Payload sheet does').toBe('Drop bay 1');
+  });
+
+  it('a drop confirmed from the deck waits for the core to answer, so a refused drop is never reported as sent', async () => {
+    const refusal = 'The gripper is still open from the last drop. It closes in 1 s.';
+    const asked = vi.spyOn(VehicleCommands, 'gripperRefusal').mockResolvedValue(refusal);
+    const confirmed = vi.fn((action: GuidedAction) => action);
+    flightDeckEntries(deck([{ ...offer('release'), title: 'Drop bay 4' }], { confirm: confirmed, payload: { bays: 4, empty: [1, 2, 3], next: 4, label: 'Drop 4', problems: [] } }))
+      .find((it) => it.id === 'release')
+      ?.onClick();
+    const action = confirmed.mock.results[0]?.value as GuidedAction;
+    action.run();
+    expect(asked).not.toHaveBeenCalled();
+    expect(await action.answer?.()).toBe(refusal);
+    expect(asked).toHaveBeenCalledWith(0, 4);
+    asked.mockRestore();
   });
 
   it('a vehicle with a gripper gets a drop on the deck that lands on a hold, like land', () => {

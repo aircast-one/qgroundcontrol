@@ -28,6 +28,8 @@ internal fun sentIsStillShowing(name: String?, snapshotAtSend: String?, live: St
 
 internal fun sentText(name: String): String = "Sent · $name"
 
+internal fun sentUnlessRefused(name: String, refusal: String?): String? = name.takeIf { refusal == null }
+
 internal const val SENT_SHOWN_MS = 3_000L
 
 internal const val LAND_FROM = "view.instruments(altitudeRelative)"
