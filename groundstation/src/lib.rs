@@ -24,6 +24,7 @@ pub mod applog;
 pub mod ashtechbase;
 pub mod attitude;
 pub mod autoconnect;
+pub mod autodrop;
 pub mod autotune;
 pub mod background;
 pub mod battery;

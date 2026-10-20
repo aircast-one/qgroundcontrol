@@ -56,6 +56,7 @@ const GUIDED_TAKEOFF: &str = "vehicle.guidedModeTakeoff";
 const GUIDED_ALTITUDE: &str = "vehicle.guidedModeChangeAltitude";
 const PAUSE_VEHICLE: &str = "vehicle.pauseVehicle";
 const GRIPPER: &str = "vehicle.sendGripperAction";
+const AUTO_INTERCEPT_DROP: &str = "vehicle.autoInterceptDrop";
 const FIX_PAYLOAD: &str = "vehicle.fixPayload";
 const RESUME_MISSION: &str = "planFly.missionController.resumeMission";
 const PLAN_SEND: &str = "plan.sendToVehicle";
@@ -682,6 +683,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
             }
             answer
         }
+        AUTO_INTERCEPT_DROP => crate::autodrop::run(backend, args),
         FIX_PAYLOAD => crate::guided::fix_payload(backend, path, args),
         RESUME_MISSION => {
             crate::guided::invoke_valued(backend, crate::guided::Valued::Resume, path, args)

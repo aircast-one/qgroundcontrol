@@ -194,6 +194,10 @@ pub const ARGUMENT_MODES: &[(&str, &str)] = &[
         "<lat>,<lon>,<altAgl>,<northSpeed>,<eastSpeed>,<climbSpeed>,<targetLat>,<targetLon>,<targetNorthSpeed>,<targetEastSpeed>",
     ),
     (
+        "view.dropIntercept",
+        "<lat>,<lon>,<speed>,<targetLat>,<targetLon>,<targetNorthSpeed>,<targetEastSpeed>",
+    ),
+    (
         "view.gimbalGroundPoint",
         "<lat>,<lon>,<altAgl>,<gimbalYaw>,<gimbalPitch>",
     ),
@@ -1034,6 +1038,11 @@ pub const VIEWS: &[View] = &[
         compute: dropsim::drop_lead_view,
     },
     View {
+        path: "view.dropIntercept",
+        deps: &[],
+        compute: dropsim::intercept_view,
+    },
+    View {
         path: "view.gimbalGroundPoint",
         deps: &[],
         compute: gimbalgeo::gimbal_ground_point_view,
@@ -1327,6 +1336,7 @@ mod deps_cover_reads {
         ("altitudemodes", include_str!("altitudemodes.rs")),
         ("apmmeta", include_str!("apmmeta.rs")),
         ("autoconnect", include_str!("autoconnect.rs")),
+        ("autodrop", include_str!("autodrop.rs")),
         ("battery", include_str!("battery.rs")),
         ("batteryfacts", include_str!("batteryfacts.rs")),
         ("buildings", include_str!("buildings.rs")),

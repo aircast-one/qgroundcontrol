@@ -154,6 +154,74 @@ pub fn lead(release: Release, target: Target) -> Lead {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Intercept {
+    pub heading_deg: f64,
+    pub speed_mps: f64,
+    pub time_to_intercept_s: f64,
+    pub lead_point: Point,
+}
+
+impl Intercept {
+    pub fn json(&self) -> Value {
+        json!({
+            "headingDegrees": self.heading_deg,
+            "speedMetersPerSecond": self.speed_mps,
+            "timeToInterceptSeconds": self.time_to_intercept_s,
+            "leadPoint": {"lat": self.lead_point.lat, "lon": self.lead_point.lon},
+        })
+    }
+}
+
+/// The heading a fixed-speed course has to fly to meet a moving target, by the classic
+/// pursuit-intercept quadratic: the smallest non-negative T where the target's future
+/// position is exactly `speed_mps * T` away from the drone. None if no such T exists
+/// (the target is outrunning this speed on a course that never closes).
+pub fn intercept(drone_position: Point, speed_mps: f64, target: Target) -> Option<Intercept> {
+    let origin = (drone_position.lat, drone_position.lon, 0.0);
+    let (dn, de, _) = geo_to_ned(target.position.lat, target.position.lon, 0.0, origin);
+    let (vn, ve) = (target.velocity.north_mps, target.velocity.east_mps);
+
+    let a = vn * vn + ve * ve - speed_mps * speed_mps;
+    let b = 2.0 * (dn * vn + de * ve);
+    let c = dn * dn + de * de;
+
+    let t = if a.abs() > 1e-9 {
+        let disc = b * b - 4.0 * a * c;
+        if disc < 0.0 {
+            return None;
+        }
+        let sq = disc.sqrt();
+        [(-b + sq) / (2.0 * a), (-b - sq) / (2.0 * a)]
+            .into_iter()
+            .filter(|t| *t >= 0.0)
+            .fold(f64::INFINITY, f64::min)
+    } else if b.abs() > 1e-9 {
+        -c / b
+    } else if c < 1e-9 {
+        0.0
+    } else {
+        f64::INFINITY
+    };
+    if !t.is_finite() {
+        return None;
+    }
+
+    let lead_n = dn + vn * t;
+    let lead_e = de + ve * t;
+    let (lead_lat, lead_lon, _) = ned_to_geo(lead_n, lead_e, 0.0, origin);
+
+    Some(Intercept {
+        heading_deg: lead_e.atan2(lead_n).to_degrees().rem_euclid(360.0),
+        speed_mps,
+        time_to_intercept_s: t,
+        lead_point: Point {
+            lat: lead_lat,
+            lon: lead_lon,
+        },
+    })
+}
+
 fn numbers(args: &[String], count: usize) -> Option<Vec<f64>> {
     let parsed: Vec<f64> = args
         .iter()
@@ -207,6 +275,34 @@ pub fn drop_lead_view(_backend: &dyn Backend, args: &[String]) -> Value {
     };
     let (release, target) = release_and_target(&v);
     lead(release, target).json()
+}
+
+pub fn intercept_view(_backend: &dyn Backend, args: &[String]) -> Value {
+    let Some(v) = numbers(args, 7) else {
+        return crate::read::refused(
+            "this needs seven numbers: drone latitude, longitude, speed, then target latitude, longitude, north speed and east speed",
+        );
+    };
+    let drone = Point {
+        lat: v[0],
+        lon: v[1],
+    };
+    let target = Target {
+        position: Point {
+            lat: v[3],
+            lon: v[4],
+        },
+        velocity: Velocity {
+            north_mps: v[5],
+            east_mps: v[6],
+        },
+    };
+    match intercept(drone, v[2], target) {
+        Some(solved) => solved.json(),
+        None => {
+            json!({ "kind": "object", "reachable": false, "reason": "the target cannot be intercepted at this speed on this heading" })
+        }
+    }
 }
 
 #[cfg(test)]
@@ -447,6 +543,122 @@ mod tests {
         assert!(
             simulate(level, target).fall_s < simulate(climbing, target).fall_s,
             "a climbing release should fall for longer than a level one from the same altitude"
+        );
+    }
+
+    #[test]
+    fn a_stationary_drone_leads_a_target_moving_directly_away_within_reach() {
+        let origin = (47.0, 8.0);
+        let drone = Point {
+            lat: origin.0,
+            lon: origin.1,
+        };
+        let target = Target {
+            position: offset(origin, 100.0, 0.0),
+            velocity: Velocity {
+                north_mps: 3.0,
+                east_mps: 0.0,
+            },
+        };
+
+        let solved = intercept(drone, 10.0, target).expect("3 m/s is outrun by a 10 m/s chaser");
+
+        assert!(
+            (solved.time_to_intercept_s - 100.0 / 7.0).abs() < 1e-6,
+            "closing speed is 10-3=7 m/s over the initial 100m gap, got {}",
+            solved.time_to_intercept_s
+        );
+        assert!(
+            solved.heading_deg.min(360.0 - solved.heading_deg) < 1e-6,
+            "the target never leaves the north line, so the lead point is still due north, got {}",
+            solved.heading_deg
+        );
+        let closing = solved.speed_mps * solved.time_to_intercept_s;
+        let (lead_n, _, _) = geo_to_ned(
+            solved.lead_point.lat,
+            solved.lead_point.lon,
+            0.0,
+            (origin.0, origin.1, 0.0),
+        );
+        assert!(
+            (closing - lead_n).abs() < 1e-6,
+            "flying speed_mps for time_to_intercept_s should land exactly on the lead point"
+        );
+    }
+
+    #[test]
+    fn a_target_outrunning_the_chase_speed_while_moving_away_has_no_intercept() {
+        let origin = (47.0, 8.0);
+        let drone = Point {
+            lat: origin.0,
+            lon: origin.1,
+        };
+        let target = Target {
+            position: offset(origin, 100.0, 0.0),
+            velocity: Velocity {
+                north_mps: 15.0,
+                east_mps: 0.0,
+            },
+        };
+
+        assert!(
+            intercept(drone, 10.0, target).is_none(),
+            "a target already ahead and faster than the chaser can never be caught"
+        );
+    }
+
+    #[test]
+    fn a_target_already_at_the_drone_is_intercepted_instantly() {
+        let origin = (47.0, 8.0);
+        let drone = Point {
+            lat: origin.0,
+            lon: origin.1,
+        };
+        let target = Target {
+            position: drone,
+            velocity: Velocity {
+                north_mps: 4.0,
+                east_mps: 0.0,
+            },
+        };
+
+        let solved = intercept(drone, 10.0, target).expect("already there");
+        assert!(solved.time_to_intercept_s.abs() < 1e-9);
+    }
+
+    #[test]
+    fn a_crossing_target_is_led_to_a_point_off_its_current_bearing() {
+        let origin = (47.0, 8.0);
+        let drone = Point {
+            lat: origin.0,
+            lon: origin.1,
+        };
+        let target = Target {
+            position: offset(origin, 100.0, 0.0),
+            velocity: Velocity {
+                north_mps: 0.0,
+                east_mps: 5.0,
+            },
+        };
+
+        let solved = intercept(drone, 10.0, target)
+            .expect("5 m/s crossing is within a 10 m/s chaser's reach");
+
+        assert!(
+            solved.heading_deg > 1.0,
+            "a target crossing east of a straight-north bearing has to be led east of it, got {}",
+            solved.heading_deg
+        );
+        let closing = solved.speed_mps * solved.time_to_intercept_s;
+        let (lead_n, lead_e, _) = geo_to_ned(
+            solved.lead_point.lat,
+            solved.lead_point.lon,
+            0.0,
+            (origin.0, origin.1, 0.0),
+        );
+        assert!(
+            (closing - lead_n.hypot(lead_e)).abs() < 1e-6,
+            "flying speed_mps for time_to_intercept_s should land exactly on the lead point"
         );
     }
 
