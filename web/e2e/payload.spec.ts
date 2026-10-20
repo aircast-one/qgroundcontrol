@@ -34,6 +34,25 @@ test('a mission whose second drop would not fall says why and turns on auto-clos
   await expect(vehicle.getByText('Start mission', { exact: true })).toBeVisible({ timeout: 30_000 });
 });
 
+test('a drop after the last waypoint falls and ends the mission', async ({ app: vehicle }) => {
+  test.setTimeout(300_000);
+  await connectMock(vehicle, [], 'APM ArduCopter Vehicle');
+  await openPlanAtVehicle(vehicle);
+  await tapPlanMission(vehicle);
+  await vehicle.getByRole('button', { name: 'Drop', exact: true }).click();
+  await vehicle.getByRole('button', { name: 'Upload', exact: true }).click();
+  await expect(vehicle.getByRole('button', { name: 'Upload', exact: true })).toBeHidden({ timeout: 30_000 });
+  await vehicle.getByRole('button', { name: 'Fly', exact: true }).last().click();
+  await slideAcross(vehicle, vehicle.getByRole('button', { name: 'Slide to start mission' }));
+  const progress = vehicle.getByText(/^To waypoint \d+ of \d+/);
+  await expect(progress).toBeVisible({ timeout: 30_000 });
+  await expect(progress).toBeHidden({ timeout: 240_000 });
+  await vehicle.getByRole('button', { name: 'More', exact: true }).click();
+  await vehicle.getByRole('dialog').getByText('Payload').click();
+  await slideAcross(vehicle, vehicle.getByRole('dialog').getByRole('button', { name: 'Slide to drop' }));
+  await expect(vehicle.getByText('The gripper is still open from the last drop, so nothing would fall. Grab first, or turn on auto-close.')).toBeVisible();
+});
+
 test('a second drop while the gripper is still open is refused rather than counted', async ({ app: vehicle }) => {
   await connectMock(vehicle, [], 'APM ArduCopter Vehicle');
   await vehicle.getByRole('button', { name: 'More', exact: true }).click();

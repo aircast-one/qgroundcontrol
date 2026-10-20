@@ -1,4 +1,4 @@
-use mavlink::dialects::ardupilotmega::MavMessage;
+use mavlink::dialects::ardupilotmega::{MavMessage, MissionState};
 use mavlink::{MavHeader, Message};
 use serde_json::{Value, json};
 use std::collections::BTreeMap;
@@ -373,6 +373,7 @@ pub struct Vehicle {
     pub empty_bays: std::collections::BTreeSet<i64>,
     pub gripper_released_ms: Option<i64>,
     mission_drop_watch: i32,
+    mission_complete: bool,
     mission_running: bool,
     mission_interrupted: bool,
     pub trigger_points: Vec<(f64, f64, f64)>,
@@ -632,6 +633,7 @@ impl Vehicle {
             empty_bays: std::collections::BTreeSet::new(),
             gripper_released_ms: None,
             mission_drop_watch: -1,
+            mission_complete: false,
             mission_running: false,
             mission_interrupted: false,
             trigger_points: Vec::new(),
@@ -1224,7 +1226,8 @@ impl Vehicle {
                                 self.mission_last_current,
                                 self.mission_drop_watch,
                                 self.mission_interrupted,
-                            ) = (-1, -1, -1, false);
+                                self.mission_complete,
+                            ) = (-1, -1, -1, false, false);
                         }
                     }
                     self.plans[plan].due = None;
@@ -1391,7 +1394,8 @@ impl Vehicle {
                         self.mission_last_current,
                         self.mission_drop_watch,
                         self.mission_interrupted,
-                    ) = (-1, -1, -1, false);
+                        self.mission_complete,
+                    ) = (-1, -1, -1, false, false);
                 }
                 let outs = self.plans[kind as usize].transfer.remove_all();
                 Ok(self.follow_plan(kind, outs, now_ms))
@@ -5522,7 +5526,10 @@ impl Vehicle {
     #[allow(deprecated)]
     fn note_mission_index(&mut self, message: &MavMessage) {
         let index = match message {
-            MavMessage::MISSION_CURRENT(d) => i32::from(d.seq),
+            MavMessage::MISSION_CURRENT(d) => {
+                self.mission_complete = d.mission_state == MissionState::MISSION_STATE_COMPLETE;
+                i32::from(d.seq)
+            }
             MavMessage::HIGH_LATENCY(d) => i32::from(d.wp_num),
             MavMessage::HIGH_LATENCY2(d) => i32::from(d.wp_num),
             MavMessage::HEARTBEAT(_) => {
@@ -5549,7 +5556,10 @@ impl Vehicle {
             }
             _ => return,
         };
-        self.note_mission_drops(index);
+        self.note_mission_drops(match self.mission_complete {
+            true => self.mission_items().len() as i32,
+            false => index,
+        });
         self.mission_current = index;
         if self.mission_current != self.mission_last_current
             && self.mission_cached_last != self.mission_current
@@ -5624,10 +5634,16 @@ impl Vehicle {
     }
 
     pub fn current_mission_index(&self) -> i32 {
-        self.mission_current + i32::from(!self.sends_home())
+        match self.mission_complete {
+            true => self.fly_items() as i32,
+            false => self.mission_current + i32::from(!self.sends_home()),
+        }
     }
 
     pub fn resume_mission_index(&self) -> i32 {
+        if self.mission_complete {
+            return 0;
+        }
         let resume = self.mission_last_current + i32::from(!self.sends_home());
         let last_sequence = self.fly_items() as i32 - 1;
         if resume > 1 && resume != last_sequence {
@@ -10429,6 +10445,77 @@ mod tests {
             "arming again to resume the sortie does not reload the bays; only a grab does"
         );
         assert_eq!(hub.active().unwrap().payload_setup().drops, 3);
+    }
+
+    #[test]
+    fn a_completed_mission_counts_the_drop_after_its_last_waypoint_and_has_nothing_left_to_fly() {
+        use mavlink::dialects::ardupilotmega::MISSION_CURRENT_DATA;
+        const AUTO: u32 = 3;
+        let mut hub = Hub::default();
+        let header = MavHeader {
+            system_id: 1,
+            component_id: 1,
+            sequence: 0,
+        };
+        let current = |mission_state| {
+            MavMessage::MISSION_CURRENT(MISSION_CURRENT_DATA {
+                seq: 3,
+                mission_state,
+                ..Default::default()
+            })
+        };
+        let item = |seq: u16, command: u16| plantransfer::Item {
+            seq,
+            frame: 3,
+            command,
+            current: false,
+            auto_continue: true,
+            params: [1.0, 0.0, 0.0, 0.0, 0.0, 0.0, 10.0],
+        };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(AUTO, true), 0, 0);
+        hub.vehicles.get_mut(&1).unwrap().plans[PLAN_MISSION as usize]
+            .transfer
+            .items = vec![
+            item(0, 16),
+            item(1, 22),
+            item(2, 16),
+            item(3, 16),
+            item(4, 211),
+        ];
+        let state = |hub: &Hub| {
+            let vehicle = hub.active().unwrap();
+            (
+                vehicle.empty_bays.len(),
+                vehicle.current_mission_index(),
+                vehicle.resume_mission_index(),
+            )
+        };
+        hub.on_frame(
+            origin(0),
+            &header,
+            &current(MissionState::MISSION_STATE_ACTIVE),
+            1,
+            0,
+        );
+        hub.on_frame(origin(0), &header, &copter_heartbeat(AUTO, true), 2, 0);
+        assert_eq!(
+            state(&hub),
+            (0, 3, 2),
+            "on its way to the last waypoint the drop after it is still to come"
+        );
+        hub.on_frame(
+            origin(0),
+            &header,
+            &current(MissionState::MISSION_STATE_COMPLETE),
+            3,
+            0,
+        );
+        hub.on_frame(origin(0), &header, &copter_heartbeat(AUTO, true), 4, 0);
+        assert_eq!(
+            state(&hub),
+            (1, 5, 0),
+            "ArduPilot still names the last waypoint once done, so completion is what passes the drop, leaves no waypoint to fly to and nothing to resume"
+        );
     }
 
     #[test]
