@@ -3,16 +3,6 @@
 # requires-python = ">=3.10"
 # dependencies = ["mcp<2"]
 # ///
-"""Tests for the MCP tool layer, run against a stub debug API rather than a running app.
-
-What breaks here is URL construction, quoting and response parsing - not QGC. A stub makes those
-assertable without a build, and records the exact paths requested, which is the only way to catch
-a tool that asks the right question with the wrong URL. The comma in a multi-property read was
-exactly that: percent-encoded, it became one property with a very strange name, and every value
-the caller wanted came back as an error.
-
-    uv run tools/qgc-mcp/test_server.py
-"""
 
 import importlib.util
 import json
@@ -28,7 +18,7 @@ RESPONSES: dict[str, dict] = {}
 
 
 class _Stub(BaseHTTPRequestHandler):
-    def log_message(self, *args):  # keep the test output readable
+    def log_message(self, *args):
         pass
 
     def do_GET(self):
@@ -103,7 +93,6 @@ def main() -> int:
 
     print("ui_prop")
     result = _tool(module, "ui_prop")("pill", ["width", "height"])
-    # The separator has to survive quoting or the endpoint sees one impossibly named property.
     check("property=width,height" in last_request(), "commas survive quoting", last_request())
     check(result["values"]["width"] == 10, "parses values")
     try:
@@ -119,24 +108,37 @@ def main() -> int:
     print("ui_set_prop")
     _tool(module, "ui_set_prop")("pill", "caption", "two words&more")
     request = last_request()
-    check("property=caption" in request and "value=two%20words%26more" in request,
-          "writes are encoded", request)
+    check(
+        "property=caption" in request and "value=two%20words%26more" in request,
+        "writes are encoded",
+        request,
+    )
 
     print("ui_at")
     _tool(module, "ui_at")(12.5, 34)
-    check("x=12.5" in last_request() and "y=34" in last_request(), "passes coordinates", last_request())
+    check(
+        "x=12.5" in last_request() and "y=34" in last_request(),
+        "passes coordinates",
+        last_request(),
+    )
 
     print("ui_tree")
     _tool(module, "ui_tree")(filter="Batt")
     check("all=1" not in last_request(), "all omitted by default", last_request())
     _tool(module, "ui_tree")(filter="Batt", all=True, visible_only=True)
-    check("all=1" in last_request() and "visible=1" in last_request(), "all/visible passed", last_request())
+    check(
+        "all=1" in last_request() and "visible=1" in last_request(),
+        "all/visible passed",
+        last_request(),
+    )
 
     print("ui_watch")
     watched = _tool(module, "ui_watch")("pill", ["width"], frames=4, interval_ms=5, timeout_s=5)
     check(watched["count"] == 4, "parses every ndjson sample", json.dumps(watched))
-    check(all("t" in s and "frame" in s for s in watched["samples"]),
-          "samples carry timestamp and frame")
+    check(
+        all("t" in s and "frame" in s for s in watched["samples"]),
+        "samples carry timestamp and frame",
+    )
     try:
         _tool(module, "ui_watch")("pill", [], timeout_s=2)
         check(False, "empty watch property list rejected")
@@ -153,6 +155,71 @@ def main() -> int:
         check(False, "raises on timeout")
     except RuntimeError:
         check(True, "raises on timeout")
+
+    print("read")
+    RESPONSES["/bridge/get"] = {"kind": "object", "state": "flying"}
+    _tool(module, "read")("vehicle.parameterManager.getParameter(-1,RTL_ALT_M)")
+    check(
+        "path=vehicle.parameterManager.getParameter%28-1%2CRTL_ALT_M%29" in last_request(),
+        "core path is percent-encoded",
+        last_request(),
+    )
+
+    print("write")
+    RESPONSES["/bridge/set"] = {"ok": True}
+    _tool(module, "write")("vehicle.flightMode", "Position Hold")
+    check(
+        "value=Position%20Hold" in last_request(),
+        "spaces survive every head's decoder",
+        last_request(),
+    )
+    _tool(module, "write")("vehicle.armed", True)
+    check("value=true" in last_request(), "booleans go as JSON", last_request())
+    _tool(module, "write")("vehicle.parameterManager.getParameter(-1,RTL_ALT_M)", 20)
+    check("value=20" in last_request(), "numbers go as JSON", last_request())
+
+    print("invoke")
+    RESPONSES["/bridge/invoke"] = {"ok": True}
+    _tool(module, "invoke")(
+        "vehicle.guidedModeGotoLocation", [{"latitude": 47.5, "longitude": 8.5}]
+    )
+    check(
+        "args=%5B%7B%22latitude%22%3A47.5%2C%22longitude%22%3A8.5%7D%5D" in last_request(),
+        "args go as one JSON array",
+        last_request(),
+    )
+    _tool(module, "invoke")("vehicle.guidedModeLand")
+    check("args=%5B%5D" in last_request(), "no args is an empty array", last_request())
+
+    print("views")
+    RESPONSES["/bridge/get"] = {
+        "views": [
+            {"path": "view.flyState", "deps": []},
+            {"path": "view.coreParameter", "deps": []},
+        ],
+        "argumentModes": [{"path": "view.coreParameter", "arguments": "<vehicle id>,<name>"}],
+    }
+    listed = _tool(module, "views")("param")
+    check("path=view.dependencies" in last_request(), "reads the view catalog", last_request())
+    check(
+        listed == [{"path": "view.coreParameter", "arguments": "<vehicle id>,<name>"}],
+        "filters and carries argument shapes",
+        json.dumps(listed),
+    )
+
+    print("wait_until on a core path")
+    RESPONSES["/bridge/get"] = {"kind": "object", "state": "flying"}
+    _tool(module, "wait_until")("state", "flying", timeout_s=2, endpoint="view.flyState")
+    check("/bridge/get?path=view.flyState" in last_request(), "polls the core path", last_request())
+
+    print("mock_vehicle")
+    RESPONSES["/links/mocklink"] = {"started": True}
+    _tool(module, "mock_vehicle")("px4", {"wind": "8,270"})
+    check(
+        "autopilot=px4" in last_request() and "wind=8%2C270" in last_request(),
+        "passes autopilot and conditions",
+        last_request(),
+    )
 
     print("error mapping")
     try:

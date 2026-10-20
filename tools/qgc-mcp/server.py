@@ -3,18 +3,10 @@
 # requires-python = ">=3.10"
 # dependencies = ["mcp<2"]
 # ///
-"""MCP server for building, running and driving AircastQGC.
-
-App-control tools talk to the localhost debug API that AircastQGC exposes.
-On desktop, run_app launches it with QGC_DEBUG_API_PORT set. On Android,
-run_app_android launches it, enables the debug API via the aircast-qgc:// deep
-link, and adb-forwards the port to localhost so the same tools apply.
-"""
 
 import json
 import os
 import pathlib
-from urllib.parse import quote
 import socket
 import subprocess
 import time
@@ -22,9 +14,9 @@ import urllib.error
 import urllib.request
 from pathlib import Path
 from typing import Literal
+from urllib.parse import quote, urlencode
 
-from mcp.server.fastmcp import FastMCP
-from mcp.server.fastmcp import Image
+from mcp.server.fastmcp import FastMCP, Image
 
 REPO = Path(__file__).resolve().parents[2]
 RELEASE_BUILD = REPO / "build-aircast"
@@ -33,9 +25,14 @@ RELEASE_APP = RELEASE_BUILD / "Release/AircastQGC.app/Contents/MacOS/AircastQGC"
 TEST_APP = TEST_BUILD / "Debug/AircastQGC.app/Contents/MacOS/AircastQGC"
 APP = RELEASE_APP if RELEASE_APP.exists() else TEST_APP
 LOG_FILE = Path("/tmp/aircast-qgc-mcp.log")
-API_PORT = 8777
+API_PORT = int(os.environ.get("QGC_DEBUG_API_PORT", "8777"))
 TMP_DIR = os.environ.get("TMPDIR", "/tmp")
-ANDROID_PKG = "org.mavlink.qgroundcontrol"
+ANDROID_PKG = "one.aircast.app.core"
+DEVICE_API_PORT = 8777
+CORE = REPO / "groundstation"
+COREHOST = CORE / "target/debug/corehost"
+ACTUATOR_GUARD = "QGC_DEBUG_API_ALLOW_ACTUATORS"
+RUNNING: dict = {}
 
 mcp = FastMCP("aircast-qgc")
 
@@ -52,7 +49,184 @@ def _api(path: str) -> dict:
         detail = exc.read().decode(errors="replace")
         raise RuntimeError(f"debug api returned {exc.code}: {detail}") from exc
     except OSError as exc:
-        raise RuntimeError(f"debug api unreachable ({exc}); start the app with run_app (desktop) or run_app_android") from exc
+        raise RuntimeError(
+            f"debug api unreachable ({exc}); start the app with run_app (desktop) or run_app_android"
+        ) from exc
+
+
+def _free_port() -> int:
+    with socket.socket() as probe:
+        probe.bind(("127.0.0.1", 0))
+        return probe.getsockname()[1]
+
+
+def _query(pairs: dict) -> str:
+    return urlencode(pairs, quote_via=quote)
+
+
+def _endpoint_url(endpoint: str) -> str:
+    return endpoint if endpoint.startswith("/") else f"/bridge/get?path={quote(endpoint)}"
+
+
+@mcp.tool()
+def read(path: str) -> dict:
+    """Read anything the QGC core serves - the same API every app (macOS, iOS, Android, corehost)
+    is built on. Works on whichever app the tools are attached to.
+
+    `view.*` paths are typed, ready-made state for one concern; list them with views():
+      read("view.flyState")       connected, armed, flying, mode, readyToFly, state
+      read("view.guidedActions")  which flight actions are offered now, and why the rest are not
+      read("view.battery"), read("view.preflight"), read("view.messages"), read("view.links")
+    Views with arguments are called like view.coreParameter(1,RTL_ALT_M).
+
+    Other paths are the raw objects and facts behind them:
+      read("vehicle.flightMode"), read("settings.appSettings"),
+      read("vehicle.parameterManager.getParameter(-1,RTL_ALT_M)")"""
+    return _api(f"/bridge/get?path={quote(path)}")
+
+
+@mcp.tool()
+def write(path: str, value: str | float | bool) -> dict:
+    """Write a fact or setting through the QGC core. Strings are JSON (true, 15, "Guided");
+    bare text is taken as a string. Answers {ok, reason}.
+      write("vehicle.flightMode", "Guided")
+      write("vehicle.armed", True)
+      write("vehicle.parameterManager.getParameter(-1,RTL_ALT_M)", 20)
+      write("settings.appSettings.audioMuted", True)
+
+    Refused while a real vehicle is connected unless the app was started with
+    QGC_DEBUG_API_ALLOW_ACTUATORS=1 (run_corehost(actuators=True)) - SITL only, props off.
+    A mock_vehicle() never needs it."""
+    raw = value if isinstance(value, str) else json.dumps(value)
+    return _api(f"/bridge/set?{_query({'path': path, 'value': raw})}")
+
+
+@mcp.tool()
+def invoke(path: str, args: list | None = None) -> dict:
+    """Run an action through the QGC core. Answers {ok, reason, refusal, result}; a refused
+    action says why in plain words (not armed, too far, another action still running - in that
+    case wait_until the state settles and retry).
+      vehicle.guidedModeTakeoff [metres]        vehicle.guidedModeLand []
+      vehicle.guidedModeRTL [smart]             vehicle.pauseVehicle []
+      vehicle.guidedModeChangeAltitude [delta metres, pause]
+      vehicle.guidedModeGotoLocation [{"latitude": 47.39, "longitude": 8.54}]
+      vehicle.startMission []                   vehicle.emergencyStop []
+      vehicle.parameterManager.parameterNames [-1]
+    Arm and change mode with write(). Same write guard as write()."""
+    return _api(
+        f"/bridge/invoke?{_query({'path': path, 'args': json.dumps(args or [], separators=(',', ':'))})}"
+    )
+
+
+@mcp.tool()
+def views(filter: str = "") -> list[dict]:
+    """Every view the QGC core serves, with the argument shape of those that take arguments.
+    `filter` substring-matches the path (case-insensitive). Read one with read()."""
+    catalog = _api("/bridge/get?path=view.dependencies")
+    shapes = {mode["path"]: mode["arguments"] for mode in catalog.get("argumentModes", [])}
+    return [
+        {
+            "path": view["path"],
+            **({"arguments": shapes[view["path"]]} if view["path"] in shapes else {}),
+        }
+        for view in catalog.get("views", [])
+        if filter.lower() in view["path"].lower()
+    ]
+
+
+@mcp.tool()
+def attach(port: int) -> dict:
+    """Point every tool at the debug API on another local port: an iOS simulator (8799), an
+    adb-forwarded phone, a second app started with QGC_DEBUG_API_PORT. Answers its view.flyState."""
+    global API_PORT
+    API_PORT = port
+    return _api("/bridge/get?path=view.flyState")
+
+
+@mcp.tool()
+def mock_vehicle(
+    autopilot: Literal["arducopter", "px4"] = "arducopter", options: dict[str, str] | None = None
+) -> dict:
+    """Connect a simulated vehicle inside the app (corehost and debug builds) - no SITL, and
+    write/invoke are allowed against it. Calling it again while one is connected changes its
+    conditions instead, through `options`:
+      prearm="<reason>" ("" clears)   gps="lost"|"ok"      motor="failed"|"ok"
+      wind="<m/s>,<from degrees>"     endurance="<minutes>" home="<lat>,<lon>"
+      silent="1"|"0" (telemetry stops: contact lost)
+    On start, options also take camera="1", gimbal="1", video="h264"|"rtsp"|..., add="1" for a
+    second vehicle."""
+    return _api(f"/links/mocklink?{_query({'autopilot': autopilot, **(options or {})})}")
+
+
+def _wait_for_api(process: subprocess.Popen | None = None, timeout_s: int = 60) -> bool:
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline and (process is None or process.poll() is None):
+        try:
+            _api("/bridge/get?path=view.flyState")
+            return True
+        except RuntimeError:
+            time.sleep(0.5)
+    return False
+
+
+@mcp.tool()
+def run_corehost(actuators: bool = False) -> str:
+    """Start the QGC core with no UI at all and attach every tool to it - the fastest way for
+    an agent to fly. Builds it first (incremental), runs it on a free port with throwaway
+    settings, so the operator's own settings and apps are untouched. Next, connect a vehicle:
+    mock_vehicle() for a simulated one, connect_vehicle() for a SITL.
+
+    actuators=True lets write/invoke act on a real (non-mock) vehicle: SITL only, props off."""
+    global API_PORT
+    stop_corehost()
+    built = subprocess.run(
+        ["cargo", "build", "--bin", "corehost", "--features", "native-host"],
+        cwd=CORE,
+        capture_output=True,
+        text=True,
+        timeout=1800,
+    )
+    if built.returncode != 0:
+        return f"build failed:\n{built.stderr[-3000:]}"
+    port = _free_port()
+    home = Path(TMP_DIR) / f"qgc-corehost-{port}"
+    home.mkdir(parents=True, exist_ok=True)
+    env = {k: v for k, v in os.environ.items() if k != ACTUATOR_GUARD} | (
+        {ACTUATOR_GUARD: "1"} if actuators else {}
+    )
+    with open(home / "corehost.log", "w") as log:
+        RUNNING["corehost"] = subprocess.Popen(
+            [
+                str(COREHOST),
+                "--port",
+                str(port),
+                "--settings",
+                str(home / "settings.ini"),
+                "--app-name",
+                f"corehost-{port}",
+                "--map-cache",
+                str(home / "maps"),
+            ],
+            env=env,
+            stdout=log,
+            stderr=log,
+            start_new_session=True,
+        )
+    API_PORT = port
+    if not _wait_for_api(RUNNING["corehost"]):
+        return f"corehost did not come up; log at {home / 'corehost.log'}"
+    return f"core running on 127.0.0.1:{port}, tools attached; log at {home / 'corehost.log'}"
+
+
+@mcp.tool()
+def stop_corehost() -> str:
+    """Stop the core started by run_corehost."""
+    process = RUNNING.pop("corehost", None)
+    if process is None or process.poll() is not None:
+        return "was not running"
+    process.terminate()
+    process.wait(timeout=10)
+    return "stopped"
 
 
 @mcp.tool()
@@ -95,12 +269,14 @@ def record(on: bool) -> dict:
 
 
 @mcp.tool()
-def wait_until(path: str, equals: str, timeout_s: int = 30, endpoint: str = "/status",
-               object_name: str = "") -> dict:
+def wait_until(
+    path: str, equals: str, timeout_s: int = 30, endpoint: str = "/status", object_name: str = ""
+) -> dict:
     """Poll until a value stringifies to `equals` (case-insensitive), or fail after timeout_s.
 
     By default polls an endpoint ("/status" or "/vehicle") for a dotted path such as
-    "cameras.1.receiving", or "connected" with endpoint="/vehicle".
+    "cameras.1.receiving", or "connected" with endpoint="/vehicle". The endpoint can also be a
+    core path read through read(): wait_until("state", "flying", endpoint="view.flyState").
 
     With object_name set, polls a QML property on that item instead and `path` is the property
     name - so waiting for a panel to finish opening is wait_until("_morph", "1",
@@ -117,7 +293,7 @@ def wait_until(path: str, equals: str, timeout_s: int = 30, endpoint: str = "/st
                 raise RuntimeError(f"timeout: {object_name}.{path} is {value!r}, wanted {equals!r}")
             time.sleep(poll)
             continue
-        status = _api(endpoint)
+        status = _api(_endpoint_url(endpoint))
         value = status
         try:
             for key in path.split("."):
@@ -157,7 +333,9 @@ def ui_prop(object_name: str, properties: list[str]) -> dict:
     disagreeing when they do not."""
     if not properties:
         raise ValueError("at least one property required")
-    return _api(f"/ui/prop?name={quote(object_name)}&property={quote(','.join(properties), safe=',')}")
+    return _api(
+        f"/ui/prop?name={quote(object_name)}&property={quote(','.join(properties), safe=',')}"
+    )
 
 
 @mcp.tool()
@@ -167,7 +345,9 @@ def ui_set_prop(object_name: str, property: str, value: str) -> dict:
     Use it to put the UI into a state that would otherwise take a scripted sequence of gestures
     to reach. Fails rather than guessing if the value will not convert or the property is
     read-only."""
-    return _api(f"/ui/setprop?name={quote(object_name)}&property={quote(property)}&value={quote(value)}")
+    return _api(
+        f"/ui/setprop?name={quote(object_name)}&property={quote(property)}&value={quote(value)}"
+    )
 
 
 @mcp.tool()
@@ -182,8 +362,13 @@ def ui_at(x: float, y: float) -> dict:
 
 
 @mcp.tool()
-def ui_watch(object_name: str, properties: list[str], frames: int = 60,
-             interval_ms: int = 8, timeout_s: int = 15) -> dict:
+def ui_watch(
+    object_name: str,
+    properties: list[str],
+    frames: int = 60,
+    interval_ms: int = 8,
+    timeout_s: int = 15,
+) -> dict:
     """Stream property samples while the UI changes, and return them as a list.
 
     Each sample carries the app's own timestamp and the frame number, and all the properties
@@ -192,9 +377,11 @@ def ui_watch(object_name: str, properties: list[str], frames: int = 60,
     and report motion that is really measurement error."""
     if not properties:
         raise ValueError("at least one property required")
-    request = (f"GET /ui/watch?name={quote(object_name)}&property={quote(','.join(properties), safe=',')}"
-               f"&frames={frames}&interval={interval_ms} HTTP/1.1\r\n"
-               f"Host: localhost\r\nX-QGC-Debug-Api: 1\r\n\r\n")
+    request = (
+        f"GET /ui/watch?name={quote(object_name)}&property={quote(','.join(properties), safe=',')}"
+        f"&frames={frames}&interval={interval_ms} HTTP/1.1\r\n"
+        f"Host: localhost\r\nX-QGC-Debug-Api: 1\r\n\r\n"
+    )
     try:
         connection = socket.create_connection(("127.0.0.1", API_PORT), timeout=5)
     except OSError as exc:
@@ -210,7 +397,7 @@ def ui_watch(object_name: str, properties: list[str], frames: int = 60,
         while time.monotonic() < deadline:
             try:
                 chunk = connection.recv(65536)
-            except socket.timeout:
+            except TimeoutError:
                 continue
             except OSError:
                 break
@@ -230,8 +417,12 @@ def ui_watch(object_name: str, properties: list[str], frames: int = 60,
 
 
 @mcp.tool()
-def click(object_name: str = "", x: float | None = None, y: float | None = None,
-          button: Literal["left", "right"] = "left") -> dict:
+def click(
+    object_name: str = "",
+    x: float | None = None,
+    y: float | None = None,
+    button: Literal["left", "right"] = "left",
+) -> dict:
     """Click a QML item by objectName (its visible instance, at its center), or raw scene
     coordinates when x/y are given instead. Right-click opens context actions such as the
     telemetry bar's edit mode."""
@@ -264,8 +455,14 @@ def hover(object_name: str = "", x: float | None = None, y: float | None = None)
 
 
 @mcp.tool()
-def drag(from_object: str = "", from_x: float | None = None, from_y: float | None = None,
-         to_x: float = 0, to_y: float = 0, steps: int = 10) -> dict:
+def drag(
+    from_object: str = "",
+    from_x: float | None = None,
+    from_y: float | None = None,
+    to_x: float = 0,
+    to_y: float = 0,
+    steps: int = 10,
+) -> dict:
     """Press-move-release drag from an item's center (or from_x/from_y) to scene
     coordinates to_x/to_y. Drives the draggable PIP, tiles and panels."""
     if from_object:
@@ -357,7 +554,9 @@ def params_diff(file: str) -> dict:
             preset[parts[2]] = parts[3]
     result = _api("/vehicle/params?limit=10000")
     if result.get("truncated"):
-        raise RuntimeError(f"vehicle reports {result['matched']} params, above the 10000 fetch limit; diff would be incomplete")
+        raise RuntimeError(
+            f"vehicle reports {result['matched']} params, above the 10000 fetch limit; diff would be incomplete"
+        )
     current = result["params"]
     changed = {}
     for name, value in preset.items():
@@ -370,8 +569,13 @@ def params_diff(file: str) -> dict:
                 changed[name] = {"preset": value, "current": current[name]}
     missing = sorted(set(preset) - set(current))
     extra = sorted(set(current) - set(preset))
-    return {"changed": changed, "missingOnVehicle": missing, "notInPreset": extra,
-            "presetCount": len(preset), "vehicleCount": len(current)}
+    return {
+        "changed": changed,
+        "missingOnVehicle": missing,
+        "notInPreset": extra,
+        "presetCount": len(preset),
+        "vehicleCount": len(current),
+    }
 
 
 SAFETY_CHECKS = [
@@ -457,17 +661,21 @@ def discover_device_cameras(host: str) -> dict:
     cameras = []
     for path, entry in (config.get("paths") or {}).items():
         if entry and entry.get("source"):
-            cameras.append({
-                "path": path,
-                "deviceSource": entry["source"],
-                "rtsp": f"rtsp://{host}:8554/{path}",
-                "whep": f"http://{host}:8889/{path}/whep",
-            })
+            cameras.append(
+                {
+                    "path": path,
+                    "deviceSource": entry["source"],
+                    "rtsp": f"rtsp://{host}:8554/{path}",
+                    "whep": f"http://{host}:8889/{path}/whep",
+                }
+            )
     return {"host": host, "cameras": cameras}
 
 
 @mcp.tool()
-def configure_cameras(host: str, paths: list[str] | None = None, names: list[str] | None = None) -> dict:
+def configure_cameras(
+    host: str, paths: list[str] | None = None, names: list[str] | None = None
+) -> dict:
     """Configure QGC's cameras from an aircast device: camera 1 = RTSP, extras = WHEP.
     With no `paths`, discovers the device's cameras via its /api/stream/config."""
     if not paths:
@@ -476,16 +684,22 @@ def configure_cameras(host: str, paths: list[str] | None = None, names: list[str
         raise ValueError(f"no cameras found on {host}")
     names = names or [f"{p} ({host})" for p in paths]
     result = {}
-    result["primary"] = _api(f"/video/setting?fact=rtspUrl&value={quote(f'rtsp://{host}:8554/{paths[0]}')}")
+    result["primary"] = _api(
+        f"/video/setting?fact=rtspUrl&value={quote(f'rtsp://{host}:8554/{paths[0]}')}"
+    )
     _api(f"/video/setting?fact=videoSource&value={quote('RTSP Video Stream')}")
     _api(f"/video/setting?fact=primaryCameraName&value={quote(names[0])}")
     extras = [
-        {"name": names[i] if i < len(names) else paths[i],
-         "source": "WebRTC (WHEP) Video Stream",
-         "url": f"http://{host}:8889/{paths[i]}/whep"}
+        {
+            "name": names[i] if i < len(names) else paths[i],
+            "source": "WebRTC (WHEP) Video Stream",
+            "url": f"http://{host}:8889/{paths[i]}/whep",
+        }
         for i in range(1, len(paths))
     ]
-    result["extras"] = _api(f"/video/setting?fact=extraVideoSources&value={quote(json.dumps(extras))}")
+    result["extras"] = _api(
+        f"/video/setting?fact=extraVideoSources&value={quote(json.dumps(extras))}"
+    )
     return result
 
 
@@ -510,14 +724,14 @@ def set_video_setting(fact: str, value: str) -> dict:
     return _api(f"/video/setting?fact={fact}&value={quote(value)}")
 
 
-@mcp.tool()
 def _signing_identity() -> str:
     override = os.environ.get("QGC_DEV_SIGNING_IDENTITY", "").strip()
     if override:
         return override
     found = subprocess.run(
         ["security", "find-identity", "-v", "-p", "codesigning"],
-        capture_output=True, text=True,
+        capture_output=True,
+        text=True,
     )
     quoted = [line.split('"')[1] for line in found.stdout.splitlines() if '"' in line]
     return next((name for name in quoted if name.startswith("Apple Develop")), "")
@@ -529,7 +743,9 @@ def _sign(bundle: pathlib.Path) -> str:
         return " (unsigned: no codesigning identity)" if bundle.is_dir() else ""
     signed = subprocess.run(
         ["codesign", "--force", "--deep", "--sign", identity, str(bundle)],
-        capture_output=True, text=True, timeout=600,
+        capture_output=True,
+        text=True,
+        timeout=600,
     )
     if signed.returncode != 0:
         return f" (signing failed: {signed.stderr.strip()[-200:]})"
@@ -544,7 +760,9 @@ def build(target: str = "release") -> str:
     if result.returncode == 0:
         return "build ok" + _sign((RELEASE_APP if target == "release" else TEST_APP).parents[2])
     output = result.stdout + result.stderr
-    errors = "\n".join(line for line in output.splitlines() if "error" in line.lower() or "FAILED" in line)
+    errors = "\n".join(
+        line for line in output.splitlines() if "error" in line.lower() or "FAILED" in line
+    )
     return f"build failed:\n{errors or output[-2000:]}"
 
 
@@ -653,40 +871,44 @@ def _adb(serial: str) -> list[str]:
 
 
 @mcp.tool()
-def run_app_android(serial: str = "") -> str:
-    """Launch AircastQGC on an adb-connected Android device, enable its debug API via deep
-    link, and forward it to localhost so every other tool works against the device.
+def run_app_android(serial: str = "", package: str = ANDROID_PKG) -> str:
+    """Launch Aircast QGC on an adb-connected Android device, enable its debug API via deep
+    link (debug builds only), forward it to a free local port and attach every tool to it.
 
     serial: adb device serial (e.g. 192.168.0.112:5555); empty uses the only device."""
+    global API_PORT
     adb = _adb(serial)
-    deeplink = f"aircast-qgc://debug?debug={API_PORT}"
+    deeplink = f"aircast-qgc://debug?debug={DEVICE_API_PORT}"
     launch = subprocess.run(
-        [*adb, "shell", f"am start -a android.intent.action.VIEW -d '{deeplink}'"],
-        capture_output=True, text=True)
+        [*adb, "shell", f"am start -a android.intent.action.VIEW -p {package} -d '{deeplink}'"],
+        capture_output=True,
+        text=True,
+    )
     if launch.returncode != 0:
         return f"launch failed: {launch.stderr or launch.stdout}"
 
+    port = _free_port()
     forward = subprocess.run(
-        [*adb, "forward", f"tcp:{API_PORT}", f"tcp:{API_PORT}"], capture_output=True, text=True)
+        [*adb, "forward", f"tcp:{port}", f"tcp:{DEVICE_API_PORT}"], capture_output=True, text=True
+    )
     if forward.returncode != 0:
         return f"adb forward failed: {forward.stderr or forward.stdout}"
+    RUNNING[f"android:{serial}"] = port
+    API_PORT = port
 
-    deadline = time.monotonic() + 30
-    while time.monotonic() < deadline:
-        try:
-            _api("/status")
-            return f"started on {serial or 'device'}; debug api forwarded to 127.0.0.1:{API_PORT}"
-        except RuntimeError:
-            time.sleep(1)
+    if _wait_for_api(timeout_s=30):
+        return f"started on {serial or 'device'}; debug api forwarded to 127.0.0.1:{port}, tools attached"
     return "app launched and forwarded, but debug api did not come up within 30s"
 
 
 @mcp.tool()
-def stop_app_android(serial: str = "") -> str:
-    """Stop AircastQGC on the Android device and remove the port forward."""
+def stop_app_android(serial: str = "", package: str = ANDROID_PKG) -> str:
+    """Stop Aircast QGC on the Android device and remove the port forward run_app_android made."""
     adb = _adb(serial)
-    subprocess.run([*adb, "shell", "am", "force-stop", ANDROID_PKG], capture_output=True)
-    subprocess.run([*adb, "forward", "--remove", f"tcp:{API_PORT}"], capture_output=True)
+    subprocess.run([*adb, "shell", "am", "force-stop", package], capture_output=True)
+    port = RUNNING.pop(f"android:{serial}", None)
+    if port is not None:
+        subprocess.run([*adb, "forward", "--remove", f"tcp:{port}"], capture_output=True)
     return "stopped"
 
 
