@@ -84,10 +84,10 @@ pub fn quaternion_to_euler([a, b, c, d]: [f64; 4]) -> (f64, f64, f64) {
             (a2 - b2 - c2 + d2) as f32,
         ],
     ];
-    let theta = (-dcm[2][0]).asin();
+    let theta = (-dcm[2][0]).clamp(-1.0, 1.0).asin();
     let gimbal_lock = (theta.abs() - FRAC_PI_2 as f32).abs() < 1.0e-3;
     let (phi, psi) = if gimbal_lock {
-        (0.0f32, (dcm[1][2] - dcm[0][1]).atan2(dcm[0][2] + dcm[1][1]))
+        (0.0f32, (-dcm[0][1]).atan2(dcm[1][1]))
     } else {
         (dcm[2][1].atan2(dcm[2][2]), dcm[1][0].atan2(dcm[0][0]))
     };
@@ -287,6 +287,33 @@ mod tests {
 
     fn near(a: f64, b: f64) -> bool {
         (a - b).abs() < 1e-4
+    }
+
+    #[test]
+    fn looking_straight_down_or_up_keeps_the_yaw_and_reads_no_roll() {
+        let yawed_then_pitched = |pitch: f64, yaw: f64| {
+            let (pitch, yaw) = (pitch.to_radians() / 2.0, yaw.to_radians() / 2.0);
+            [
+                pitch.cos() * yaw.cos(),
+                -pitch.sin() * yaw.sin(),
+                pitch.sin() * yaw.cos(),
+                pitch.cos() * yaw.sin(),
+            ]
+        };
+        [(-90.0, 20.0), (90.0, 20.0), (-90.0, -135.0), (90.0, 170.0)]
+            .into_iter()
+            .for_each(|(pitch, yaw)| {
+                let (roll, read_pitch, read_yaw) =
+                    quaternion_to_euler(yawed_then_pitched(pitch, yaw));
+                assert!(
+                    roll == 0.0
+                        && (read_pitch.to_degrees() - pitch).abs() < 0.1
+                        && (read_yaw.to_degrees() - yaw).abs() < 0.01,
+                    "pitch {pitch} yaw {yaw} read back as {roll} {} {}",
+                    read_pitch.to_degrees(),
+                    read_yaw.to_degrees()
+                );
+            });
     }
 
     #[test]
