@@ -30,8 +30,8 @@ const ROVER_PARAMS: &str = include_str!("../../src/FirmwarePlugin/APM/Rover.Offl
 pub const AUTOPILOT: u8 = 1;
 const REMOTE_ID: u8 = 236;
 const FIRST_SYSTEM_ID: u8 = 128;
-const HOME_LAT: f64 = 47.397;
-const HOME_LON: f64 = 8.5455;
+const HOME_LAT: f64 = 47.3977419;
+const HOME_LON: f64 = 8.5455938;
 const HOME_ALT_M: f64 = 488.056;
 const SYSTEM_SPACING_DEG: f64 = 0.0001;
 const TICK: Duration = Duration::from_millis(100);
@@ -3279,6 +3279,54 @@ impl MockLink {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_default_home_is_open_ground_in_irchelpark_and_not_inside_a_building() {
+        let raw = std::fs::read(format!(
+            "{}/../test/Bridge/fixtures/openfreemap-14-8580-5736-buildings-around-mock-home.pbf",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .expect("the recorded buildings around the mock home");
+        let tile: serde_json::Value =
+            serde_json::from_slice(&crate::buildings::tile_json(&raw).expect("a vector tile"))
+                .expect("JSON");
+        let zoom = f64::from(1u32 << 14);
+        let corner = |x: f64, y: f64| {
+            (
+                (std::f64::consts::PI * (1.0 - 2.0 * (5736.0 + y / 4096.0) / zoom))
+                    .sinh()
+                    .atan()
+                    .to_degrees(),
+                (8580.0 + x / 4096.0) / zoom * 360.0 - 180.0,
+            )
+        };
+        let outlines: Vec<Vec<(f64, f64)>> = tile["buildings"]
+            .as_array()
+            .expect("buildings")
+            .iter()
+            .map(|building| {
+                building["rings"][0]
+                    .as_array()
+                    .expect("an outline")
+                    .chunks_exact(2)
+                    .filter_map(|point| Some(corner(point[0].as_f64()?, point[1].as_f64()?)))
+                    .collect()
+            })
+            .collect();
+        let inside = |spot: (f64, f64)| {
+            outlines
+                .iter()
+                .any(|outline| crate::mappolygon::contains(outline, spot))
+        };
+        assert!(
+            inside((47.397, 8.5455)),
+            "the old rounded home sat inside Winterthurerstrasse 175, so every rehearsal started on its roof"
+        );
+        assert!(
+            !inside((HOME_LAT, HOME_LON)),
+            "PX4's default home is open grass"
+        );
+    }
 
     #[test]
     fn a_silent_mock_sends_nothing_until_it_is_heard_again() {
