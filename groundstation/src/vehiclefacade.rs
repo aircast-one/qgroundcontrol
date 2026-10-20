@@ -951,6 +951,7 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         "gripper": v.gripper.map(|g| g.json(&v.empty_bays)),
         "payloadSetup": json!({ "setup": v.payload_setup().json(), "empty": v.empty_bays }),
         "bottles": v.releases.iter().map(|release| release.at(crate::hub::wall_ms())).collect::<Vec<_>>(),
+        "autodrop": v.autodrop.as_ref().map(crate::autodrop::State::json),
         "readyToFlyAvailable": v.status_bits.ready_to_fly_available,
         "readyToFly": v.status_bits.ready_to_fly,
         "allSensorsHealthy": v.status_bits.all_healthy,

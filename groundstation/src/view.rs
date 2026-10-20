@@ -14,6 +14,7 @@ use crate::apmsubframe;
 use crate::apmsubmotors;
 use crate::applog;
 use crate::attitude;
+use crate::autodrop;
 use crate::autotune;
 use crate::battery;
 use crate::calibration;
@@ -1051,6 +1052,11 @@ pub const VIEWS: &[View] = &[
         path: "view.gimbalDropLead",
         deps: &[],
         compute: gimbalgeo::gimbal_drop_lead_view,
+    },
+    View {
+        path: "view.autodropStatus",
+        deps: &[],
+        compute: autodrop::status_view,
     },
     View {
         path: "view.geoToNed",
