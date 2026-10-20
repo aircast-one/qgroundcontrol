@@ -9,6 +9,10 @@ local CONFIRM_TICKS = 300
 local SAME_PRESS_TICKS = 20
 local BAR_MAX_W = 50
 local COLUMN_ROWS = 12
+local LVGL_HEADER_H = 50
+local LVGL_ROWS_TOP = 46
+local LVGL_ROW_H = 22
+local LVGL_LINE_H = 16
 local EXIT_HINT = "RTN: stop sending sticks and exit"
 local CONFIRM_HINT = "Stop sending sticks? RTN again to exit"
 local NO_CABLE = "USB cable not connected"
@@ -160,8 +164,8 @@ local function channelText(i)
   return string.format("CH%-2d %-5s %-6s %4d", i, role(i) or mixesInfo[i].src, mixesInfo[i].name, pwm(i))
 end
 
-local function place(slot)
-  return (slot <= COLUMN_ROWS) and 1 or 2, (slot <= COLUMN_ROWS) and slot or (slot - COLUMN_ROWS)
+local function place(slot, rows)
+  return (slot <= rows) and 1 or 2, (slot <= rows) and slot or (slot - rows)
 end
 
 local function unusedText()
@@ -211,7 +215,7 @@ local function drawLarge()
   lcd.drawText(270, 42, nextStep(), SMLSIZE + color.warning)
   for slot = 1, #used do
     local i = used[slot]
-    local column, row = place(slot)
+    local column, row = place(slot, COLUMN_ROWS)
     local colBase = column == 1 and 10 or 245
     local y = 50 + row * 16
     lcd.drawText(colBase, y, channelText(i), SMLSIZE + color.foreground)
@@ -235,13 +239,16 @@ local function buildLvglUI()
   pg:label({ x = 330, y = 0, font = MIDSIZE,
     text = function() return string.format("%.1fV", battVolt) end,
   })
-  pg:label({ x = 0, y = 30, font = SMLSIZE, color = color.warning, text = nextStep })
+  pg:label({ x = 0, y = 28, font = SMLSIZE, color = color.warning, text = nextStep })
 
+  local hintY = LCD_H - LVGL_HEADER_H - LVGL_LINE_H
+  local rows = math.max(1, math.ceil(#used / 2))
+  local rowH = math.min(LVGL_ROW_H, math.floor((hintY - LVGL_ROWS_TOP) / rows))
   for slot = 1, #used do
     local i = used[slot]
-    local column, row = place(slot)
+    local column, row = place(slot, rows)
     local colBase = column == 1 and 0 or 235
-    local yOfs = 30 + row * 22
+    local yOfs = LVGL_ROWS_TOP + (row - 1) * rowH
 
     pg:label({ x = colBase, y = yOfs, font = SMLSIZE,
       text = function() return channelText(i) end,
@@ -256,9 +263,8 @@ local function buildLvglUI()
       end,
     })
   end
-  local column, row = place(#used + 1)
-  pg:label({ x = column == 1 and 0 or 235, y = 30 + row * 22, font = SMLSIZE, color = color.muted, text = unusedText() })
-  pg:label({ x = 0, y = 30 + (COLUMN_ROWS + 2) * 22, font = SMLSIZE, text = hint })
+  pg:label({ x = 0, y = hintY, font = SMLSIZE, text = hint })
+  pg:label({ x = 300, y = hintY, font = SMLSIZE, color = color.muted, text = unusedText() })
 end
 
 local function init()

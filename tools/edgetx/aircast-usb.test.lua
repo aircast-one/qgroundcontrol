@@ -36,7 +36,7 @@ local function radio(screen)
       pages[#pages + 1] = page
       drawn[#drawn + 1] = { "page", page.title }
       return setmetatable({}, { __index = function(_, name) return function(_, spec)
-        drawn[#drawn + 1] = { name, spec.text }
+        drawn[#drawn + 1] = { name, spec.text, spec.y }
         if spec.size then spec.size() end
       end end })
     end }
@@ -96,6 +96,15 @@ end
 local full = radio({ w = 480, h = 272, mixes = 24 })
 full.script.run(0)
 assert(shows(full, "CH24 src23 m23    1500") and not shows(full, "+0 unused channels"), "a model mixing all 24 channels shows every one")
+
+for _, mixes in ipairs({ 7, 24 }) do
+  local tx16s = radio({ w = 480, h = 272, lvgl = true, mixes = mixes })
+  tx16s.script.run(0)
+  assert(shows(tx16s, string.format("CH%-2d %-5s %-6s %4d", mixes, "src" .. (mixes - 1), "m" .. (mixes - 1), 1500)))
+  for _, call in ipairs(tx16s.drawn) do
+    assert((call[3] or 0) <= 272 - 50 - 16, "a TX16S shows all " .. mixes .. " channels and the way out without scrolling")
+  end
+end
 
 local labelled = radio({ w = 480, h = 272 })
 labelled.hear("@F,1,C,2,1,3,4\n")
