@@ -2420,6 +2420,11 @@ impl Vehicle {
                     self.params_progress = 1.0;
                     let gripper = self.gripper_params();
                     self.gripper_at_load.get_or_insert(gripper);
+                    if self.autopilot == crate::modes::AUTOPILOT_ARDUPILOT {
+                        crate::payloadcheck::seed_pwm_defaults(|name| {
+                            self.parameter(self.component, name).map(|p| p.as_f64())
+                        });
+                    }
                     if missing {
                         self.note("Some parameters were not received from the vehicle.".to_string());
                         let app = Some(crate::noticeboard::application_name()).filter(|n| !n.is_empty()).unwrap_or_else(|| "QGroundControl".to_string());
@@ -2611,6 +2616,16 @@ impl Vehicle {
             "startMission" => guidedcmd::start_mission(&state, flag("flying")),
             "emergencyStop" => guidedcmd::emergency_stop(),
             "abortLanding" => guidedcmd::abort_landing(number("climbOut")),
+            "gripper" if !self.payload_servos().is_empty() => {
+                match crate::payloadcheck::servo_command(
+                    &self.payload_servos(),
+                    number("gripAction"),
+                    action.get("bay").and_then(Value::as_i64).unwrap_or(0),
+                ) {
+                    Ok((output, pwm)) => guidedcmd::set_servo(output, pwm),
+                    Err(reason) => Plan::Refused(reason),
+                }
+            }
             "gripper" if number("gripAction") == GRIPPER_RELEASE_ACTION => {
                 match crate::payloadcheck::release_refusal(
                     &self.payload_setup(),
@@ -3496,6 +3511,7 @@ impl Vehicle {
                     usize::try_from(on_vehicle.max(0)).unwrap_or(0),
                     self.sends_home(),
                     |command| crate::resumemission::shape(&commands, command),
+                    &self.payload_servos(),
                 )
                 .inspect_err(|refusal| {
                     crate::noticeboard::post(crate::noticeboard::MESSAGE, "", refusal);
@@ -3617,6 +3633,7 @@ impl Vehicle {
         if self.guided.running() {
             return Err("A guided action is still running.".to_string());
         }
+        let action = &self.with_drop_bay(action);
         match self.plan(action) {
             Plan::Refused(reason) => Err(reason),
             Plan::Steps(steps) => {
@@ -3651,6 +3668,25 @@ impl Vehicle {
                 }
                 let emits = self.guided.start(steps, &self.observed(), now_ms);
                 Ok(self.carry(emits, now_ms))
+            }
+        }
+    }
+
+    fn with_drop_bay(&self, action: &Value) -> Value {
+        let bays = self.payload_servos().len() as i64;
+        let unnamed = action.get("bay").and_then(Value::as_i64).unwrap_or(0) < 1;
+        match action.get("action").and_then(Value::as_str) == Some("gripper") && bays > 0 && unnamed
+        {
+            false => action.clone(),
+            true => {
+                let releasing = action.get("gripAction").and_then(Value::as_f64)
+                    == Some(GRIPPER_RELEASE_ACTION);
+                let bay = (1..=bays)
+                    .find(|bay| self.empty_bays.contains(bay) != releasing)
+                    .unwrap_or(1);
+                let mut named = action.clone();
+                named["bay"] = json!(bay);
+                named
             }
         }
     }
@@ -4072,7 +4108,7 @@ impl Vehicle {
                     Vec::new()
                 }
                 Out::Result {
-                    command: guidedcmd::CMD_DO_GRIPPER,
+                    command: guidedcmd::CMD_DO_GRIPPER | guidedcmd::CMD_DO_SET_SERVO,
                     result,
                     failure,
                     ..
@@ -5573,20 +5609,21 @@ impl Vehicle {
         if from < 0 || index <= from || !self.armed_now {
             return;
         }
-        let dropped = self
+        let servos = self.payload_servos();
+        let dropped: Vec<Option<i64>> = self
             .mission_items()
             .iter()
             .filter(|item| {
                 (from + 1..index).contains(&i32::from(item.seq))
-                    && crate::payloadcheck::is_release(item)
+                    && crate::payloadcheck::is_release(item, &servos)
             })
-            .count();
-        if dropped > 0 {
-            self.empty_bays = (1..)
-                .filter(|bay| !self.empty_bays.contains(bay))
-                .take(dropped)
-                .chain(self.empty_bays.iter().copied())
-                .collect();
+            .map(|item| crate::payloadcheck::bay_of(item, &servos))
+            .collect();
+        if !dropped.is_empty() {
+            self.empty_bays = dropped.iter().fold(self.empty_bays.clone(), |empty, bay| {
+                let next = bay.unwrap_or_else(|| (1..).find(|b| !empty.contains(b)).unwrap_or(1));
+                empty.into_iter().chain([next]).collect()
+            });
             self.gripper_released_ms = Some(wall_ms());
         }
     }
@@ -5596,15 +5633,21 @@ impl Vehicle {
             .map(|name| self.parameter(self.component, name).map(|p| p.as_f64()))
     }
 
+    pub fn payload_servos(&self) -> Vec<crate::payloadcheck::Servo> {
+        crate::payloadcheck::servo_bays(self.autopilot == crate::modes::AUTOPILOT_ARDUPILOT)
+    }
+
     pub fn payload_setup(&self) -> crate::payloadcheck::Setup {
         let parameter = |name: &str| self.parameter(self.component, name).map(|p| p.as_f64());
         let enabled = crate::vehiclefacade::has_gripper(self.autopilot, parameter);
+        let servos = self.payload_servos();
         let read = crate::payloadcheck::Setup::read(
             self.autopilot == crate::modes::AUTOPILOT_ARDUPILOT,
             enabled,
             parameter,
-            crate::payloadcheck::drops_in(self.mission_items()),
-            crate::payloadcheck::early_drops_in(self.mission_items(), self.sends_home()),
+            &servos,
+            crate::payloadcheck::drops_in(self.mission_items(), &servos),
+            crate::payloadcheck::early_drops_in(self.mission_items(), self.sends_home(), &servos),
         );
         crate::payloadcheck::Setup {
             stale: self
@@ -10445,6 +10488,195 @@ mod tests {
             "arming again to resume the sortie does not reload the bays; only a grab does"
         );
         assert_eq!(hub.active().unwrap().payload_setup().drops, 3);
+    }
+
+    fn four_servo_bays() {
+        crate::payloadcheck::CONFIGURED.set(Some(
+            (9..=12)
+                .map(|output| crate::payloadcheck::Servo {
+                    output,
+                    release: 1900.0,
+                    hold: 1100.0,
+                })
+                .collect(),
+        ));
+    }
+
+    #[test]
+    fn each_servo_bay_drops_from_its_own_output_one_after_another() {
+        use mavlink::dialects::ardupilotmega::{COMMAND_ACK_DATA, MavCmd, MavResult};
+        four_servo_bays();
+        let mut hub = Hub::default();
+        let header = MavHeader {
+            system_id: 1,
+            component_id: 1,
+            sequence: 0,
+        };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(5, true), 0, 0);
+        let ack = |result| {
+            MavMessage::COMMAND_ACK(COMMAND_ACK_DATA {
+                command: MavCmd::MAV_CMD_DO_SET_SERVO,
+                result,
+                ..Default::default()
+            })
+        };
+        let servo = |frames: &[(LinkId, Vec<u8>)]| {
+            frames.iter().find_map(|(_, bytes)| match decode(bytes) {
+                MavMessage::COMMAND_LONG(c) if c.command == MavCmd::MAV_CMD_DO_SET_SERVO => {
+                    Some((c.param1, c.param2))
+                }
+                _ => None,
+            })
+        };
+        let empty = |hub: &Hub| {
+            hub.active()
+                .unwrap()
+                .empty_bays
+                .iter()
+                .copied()
+                .collect::<Vec<i64>>()
+        };
+        let notices = |hub: &Hub| hub.active().unwrap().pending_notices.clone();
+        (1..=4).for_each(|bay: i64| {
+            let at = bay as u64 * 1_000;
+            let sent = hub
+                .guided(
+                    None,
+                    &json!({ "action": "gripper", "gripAction": 0, "bay": bay }),
+                    at,
+                )
+                .expect("no bay waits for another to close");
+            assert_eq!(servo(&sent), Some((8.0 + bay as f32, 1900.0)));
+            hub.on_frame(
+                origin(0),
+                &header,
+                &ack(MavResult::MAV_RESULT_ACCEPTED),
+                at + 1,
+                0,
+            );
+            assert!(
+                notices(&hub).contains(&(crate::noticeboard::BRIEF, format!("Bay {bay} dropped")))
+            );
+        });
+        assert_eq!(empty(&hub), [1, 2, 3, 4]);
+        let grab = hub
+            .guided(
+                None,
+                &json!({ "action": "gripper", "gripAction": 1, "bay": 3 }),
+                10_000,
+            )
+            .unwrap();
+        assert_eq!(
+            servo(&grab),
+            Some((11.0, 1100.0)),
+            "a grab sends the hold PWM"
+        );
+        hub.on_frame(
+            origin(0),
+            &header,
+            &ack(MavResult::MAV_RESULT_ACCEPTED),
+            10_001,
+            0,
+        );
+        assert_eq!(empty(&hub), [1, 2, 4]);
+        let unnamed = hub
+            .guided(
+                None,
+                &json!({ "action": "gripper", "gripAction": 0 }),
+                20_000,
+            )
+            .unwrap();
+        assert_eq!(
+            servo(&unnamed),
+            Some((11.0, 1900.0)),
+            "a gamepad's Gripper Release names no bay, so the next loaded one drops"
+        );
+        hub.on_frame(
+            origin(0),
+            &header,
+            &ack(MavResult::MAV_RESULT_FAILED),
+            20_001,
+            0,
+        );
+        assert_eq!(
+            hub.active().unwrap().gripper.map(|g| (g.bay, g.outcome)),
+            Some((3, crate::guided::GripperOutcome::Refused))
+        );
+        assert_eq!(
+            empty(&hub),
+            [1, 2, 4],
+            "a refused drop leaves the bay loaded"
+        );
+        hub.guided(
+            None,
+            &json!({ "action": "gripper", "gripAction": 0, "bay": 2 }),
+            30_000,
+        )
+        .unwrap();
+        hub.tick(30_000 + crate::mavcmd::ACK_TIMEOUT_MS + 1);
+        assert_eq!(
+            hub.active().unwrap().gripper.map(|g| g.outcome),
+            Some(crate::guided::GripperOutcome::Unanswered)
+        );
+        assert_eq!(
+            empty(&hub),
+            [2],
+            "a lost ack may still have dropped, and dropping a bay counted empty means the pilot reloaded"
+        );
+        crate::payloadcheck::CONFIGURED.set(None);
+    }
+
+    #[test]
+    fn a_mission_flying_past_a_servo_drop_empties_that_bay() {
+        use mavlink::dialects::ardupilotmega::MISSION_CURRENT_DATA;
+        const AUTO: u32 = 3;
+        four_servo_bays();
+        let mut hub = Hub::default();
+        let header = MavHeader {
+            system_id: 1,
+            component_id: 1,
+            sequence: 0,
+        };
+        let current = |seq: u16| {
+            MavMessage::MISSION_CURRENT(MISSION_CURRENT_DATA {
+                seq,
+                ..Default::default()
+            })
+        };
+        let item = |seq: u16, command: u16, output: f64| plantransfer::Item {
+            seq,
+            frame: 3,
+            command,
+            current: false,
+            auto_continue: true,
+            params: [output, 1900.0, 0.0, 0.0, 0.0, 0.0, 10.0],
+        };
+        hub.on_frame(origin(0), &header, &copter_heartbeat(AUTO, true), 0, 0);
+        hub.vehicles.get_mut(&1).unwrap().plans[PLAN_MISSION as usize]
+            .transfer
+            .items = vec![
+            item(0, 16, 0.0),
+            item(1, 22, 0.0),
+            item(2, 16, 0.0),
+            item(3, 183, 11.0),
+            item(4, 16, 0.0),
+            item(5, 183, 5.0),
+            item(6, 20, 0.0),
+        ];
+        hub.on_frame(origin(0), &header, &current(2), 1, 0);
+        hub.on_frame(origin(0), &header, &current(6), 2, 0);
+        assert_eq!(
+            hub.active()
+                .unwrap()
+                .empty_bays
+                .iter()
+                .copied()
+                .collect::<Vec<i64>>(),
+            [3],
+            "output 11 is bay 3; a servo on output 5 is no bay's"
+        );
+        assert_eq!(hub.active().unwrap().payload_setup().drops, 1);
+        crate::payloadcheck::CONFIGURED.set(None);
     }
 
     #[test]

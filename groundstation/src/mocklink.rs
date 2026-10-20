@@ -644,6 +644,7 @@ pub struct Sim {
     outbox: Vec<Out>,
     greeted: bool,
     ticks: u64,
+    servos: [u16; crate::apmservos::MAX_SERVOS],
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -688,6 +689,9 @@ impl Sim {
         let home = (HOME_LAT + offset, HOME_LON + offset);
         let tuning = crate::mocktuning::tuning(&lookup(&params), options.vehicle);
         let failsafes = crate::mocktuning::failsafes(&lookup(&params), options.vehicle);
+        let servos = std::array::from_fn(|at| {
+            lookup(&params)(&format!("SERVO{}_TRIM", at + 1)).map_or(0, |trim| trim as u16)
+        });
         Sim {
             system,
             options,
@@ -744,6 +748,7 @@ impl Sim {
             outbox: Vec::new(),
             greeted: false,
             ticks: 0,
+            servos,
         }
     }
 
@@ -804,6 +809,44 @@ impl Sim {
             })
             .collect();
         self.retune();
+    }
+
+    fn set_servo(&mut self, output: f32, pwm: f32) -> bool {
+        let at = output as usize;
+        let free = (1..=crate::apmservos::MAX_SERVOS).contains(&at)
+            && lookup(&self.params)(&format!("SERVO{at}_FUNCTION"))
+                .is_some_and(|function| crate::payloadcheck::takes_set_servo(function as i64));
+        if free {
+            self.servos[at - 1] = pwm as u16;
+        }
+        free
+    }
+
+    fn servo_output_raw(&self, elapsed_ms: u64) -> Out {
+        let s = self.servos;
+        (
+            AUTOPILOT,
+            MavMessage::SERVO_OUTPUT_RAW(SERVO_OUTPUT_RAW_DATA {
+                time_usec: (elapsed_ms * 1000) as u32,
+                servo1_raw: s[0],
+                servo2_raw: s[1],
+                servo3_raw: s[2],
+                servo4_raw: s[3],
+                servo5_raw: s[4],
+                servo6_raw: s[5],
+                servo7_raw: s[6],
+                servo8_raw: s[7],
+                servo9_raw: s[8],
+                servo10_raw: s[9],
+                servo11_raw: s[10],
+                servo12_raw: s[11],
+                servo13_raw: s[12],
+                servo14_raw: s[13],
+                servo15_raw: s[14],
+                servo16_raw: s[15],
+                port: 0,
+            }),
+        )
     }
 
     fn bytewise(&self) -> bool {
@@ -1376,6 +1419,21 @@ impl Sim {
             MavCmd::MAV_CMD_DO_ORBIT if self.options.vehicle == Vehicle::Px4 => {
                 (MavResult::MAV_RESULT_TEMPORARILY_REJECTED, Vec::new())
             }
+            MavCmd::MAV_CMD_DO_SET_SERVO if self.options.vehicle.apm() => {
+                match self.set_servo(params[0], params[1]) {
+                    true => accepted(Vec::new()),
+                    false => (
+                        MavResult::MAV_RESULT_FAILED,
+                        vec![said(
+                            MavSeverity::MAV_SEVERITY_INFO,
+                            &format!(
+                                "ServoRelayEvent: Channel {} is already in use",
+                                params[0] as i64
+                            ),
+                        )],
+                    ),
+                }
+            }
             MavCmd::MAV_CMD_DO_CHANGE_ALTITUDE => {
                 let current = self
                     .target
@@ -1706,6 +1764,9 @@ impl Sim {
                     "Gripper load grabbed"
                 },
             )),
+            MavCmd::MAV_CMD_DO_SET_SERVO if self.options.vehicle.apm() => {
+                self.set_servo(params[0], params[1]);
+            }
             MavCmd::MAV_CMD_DO_DIGICAM_CONTROL if params[4] == DIGICAM_SHOOT => self.photograph(),
             MavCmd::MAV_CMD_DO_SET_CAM_TRIGG_DIST => {
                 self.photos = self.photos.every_metres(f64::from(params[0]));
@@ -2469,7 +2530,16 @@ impl Sim {
             self.extended_state(),
             self.mission_current(),
         ];
-        core.chain(gimbal).chain(cameras).chain(rest).collect()
+        let servos = self
+            .options
+            .vehicle
+            .apm()
+            .then(|| self.servo_output_raw(elapsed_ms));
+        core.chain(gimbal)
+            .chain(cameras)
+            .chain(rest)
+            .chain(servos)
+            .collect()
     }
 
     fn heartbeat(&self) -> Out {
@@ -3420,6 +3490,58 @@ mod tests {
             ),
             (Some(1.0), Some(0.0), Some(28.0)),
             "the gripper is set up as a real copter is after its reboot: a servo on output 9 that stays open until told"
+        );
+    }
+
+    #[test]
+    fn four_bay_servos_answer_do_set_servo_and_report_their_pwm() {
+        let mut sim = Sim::new(options(Vehicle::Copter), 128, None);
+        let result = |replies: &[Out]| {
+            replies.iter().find_map(|(_, m)| match m {
+                MavMessage::COMMAND_ACK(ack) => Some(ack.result),
+                _ => None,
+            })
+        };
+        (9..=12).for_each(|output| {
+            let replies = command(
+                &mut sim,
+                MavCmd::MAV_CMD_DO_SET_SERVO,
+                [output as f32, 1100.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            );
+            assert_eq!(
+                result(&replies),
+                Some(MavResult::MAV_RESULT_ACCEPTED),
+                "output {output} is free or the gripper's, which ArduPilot lets DO_SET_SERVO move"
+            );
+        });
+        let motor = command(
+            &mut sim,
+            MavCmd::MAV_CMD_DO_SET_SERVO,
+            [1.0, 1100.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        );
+        assert_eq!(result(&motor), Some(MavResult::MAV_RESULT_FAILED));
+        assert!(
+            texts(&motor.into_iter().map(|(_, m)| m).collect::<Vec<_>>())
+                .contains(&"ServoRelayEvent: Channel 1 is already in use".to_string())
+        );
+        let raw = sim
+            .once_a_second(1_000)
+            .into_iter()
+            .find_map(|(_, m)| match m {
+                MavMessage::SERVO_OUTPUT_RAW(raw) => Some(raw),
+                _ => None,
+            })
+            .expect("an ArduPilot mock streams SERVO_OUTPUT_RAW");
+        assert_eq!(
+            (
+                raw.servo1_raw,
+                raw.servo9_raw,
+                raw.servo10_raw,
+                raw.servo11_raw,
+                raw.servo12_raw
+            ),
+            (1500, 1100, 1100, 1100, 1100),
+            "the motor kept its trim and each bay's output moved"
         );
     }
 
@@ -4548,7 +4670,8 @@ mod tests {
                     [0.0, 0.0, 0.0, 0.0],
                 ),
                 set(8, MavCmd::MAV_CMD_DO_GRIPPER, [1.0, 0.0, 0.0, 0.0]),
-                item(9, MavCmd::MAV_CMD_NAV_LAND, None, 0.0),
+                set(9, MavCmd::MAV_CMD_DO_SET_SERVO, [10.0, 1900.0, 0.0, 0.0]),
+                item(10, MavCmd::MAV_CMD_NAV_LAND, None, 0.0),
             ],
         );
         mode(&mut sim, 4);
@@ -4568,7 +4691,7 @@ mod tests {
             .collect();
         assert_eq!(
             reached(&heard),
-            [1, 4, 5, 4, 5, 9],
+            [1, 4, 5, 4, 5, 10],
             "DO_JUMP repeats the out-and-back leg once"
         );
         assert!(
@@ -4585,6 +4708,10 @@ mod tests {
             "a photo every 10 m over four 55 m legs, got {photos}"
         );
         assert!(texts(&heard).contains(&"Gripper load released".to_string()));
+        assert_eq!(
+            sim.servos[9], 1900,
+            "a planned DO_SET_SERVO moves its output"
+        );
         assert!(!sim.armed && sim.mission.state == MissionState::MISSION_STATE_COMPLETE);
     }
 

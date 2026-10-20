@@ -7,6 +7,7 @@ pub const CMD_DO_REPOSITION: u16 = 192;
 pub const CMD_DO_GO_AROUND: u16 = 191;
 pub const CMD_DO_SET_ROI_NONE: u16 = 197;
 pub const CMD_DO_GRIPPER: u16 = 211;
+pub const CMD_DO_SET_SERVO: u16 = 183;
 pub const CMD_MISSION_START: u16 = 300;
 pub const CMD_DO_VTOL_TRANSITION: u16 = 3000;
 pub const CMD_DO_DIGICAM_CONTROL: u16 = 203;
@@ -834,6 +835,16 @@ pub fn gripper(action: f64, bay: f64) -> Plan {
         }
         _ => Plan::Refused("The gripper is sent 1 to grab, 0 to release or 2 to hold.".into()),
     }
+}
+
+pub fn set_servo(output: f64, pwm: f64) -> Plan {
+    Plan::Steps(vec![Step::Command {
+        command: CMD_DO_SET_SERVO,
+        params: [output, pwm, 0.0, 0.0, 0.0, 0.0, 0.0],
+        command_int: false,
+        frame: FRAME_GLOBAL,
+        show_error: false,
+    }])
 }
 
 pub const CMD_AIRFRAME_CONFIGURATION: u16 = 2520;

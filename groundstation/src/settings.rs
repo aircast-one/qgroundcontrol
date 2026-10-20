@@ -938,6 +938,44 @@ const GATED_VALUE: &[(&str, &str, i64, bool, &str)] = &[
     ),
 ];
 
+const PAYLOAD_ROWS: [&str; 20] = [
+    "payloadBays",
+    "payloadRelease",
+    "payloadBay1Output",
+    "payloadBay1ReleasePwm",
+    "payloadBay1HoldPwm",
+    "payloadBay2Output",
+    "payloadBay2ReleasePwm",
+    "payloadBay2HoldPwm",
+    "payloadBay3Output",
+    "payloadBay3ReleasePwm",
+    "payloadBay3HoldPwm",
+    "payloadBay4Output",
+    "payloadBay4ReleasePwm",
+    "payloadBay4HoldPwm",
+    "payloadBay5Output",
+    "payloadBay5ReleasePwm",
+    "payloadBay5HoldPwm",
+    "payloadBay6Output",
+    "payloadBay6ReleasePwm",
+    "payloadBay6HoldPwm",
+];
+
+pub fn payload_row_shown(name: &str, release: Option<i64>, bays: Option<i64>, px4: bool) -> bool {
+    let bay = name
+        .strip_prefix("payloadBay")
+        .and_then(|rest| rest.get(..1))
+        .and_then(|digit| digit.parse::<i64>().ok());
+    match (name, bay) {
+        ("payloadRelease", _) => !px4,
+        (_, Some(bay)) => {
+            !px4 && release == Some(crate::payloadcheck::SERVO_PER_BAY as i64)
+                && bays.unwrap_or(1) >= bay
+        }
+        _ => true,
+    }
+}
+
 const HIDDEN_WHEN: &[(&str, &str, bool)] = &[
     ("surveyInAccuracyLimit", "useFixedBasePosition", true),
     (
@@ -1246,7 +1284,7 @@ const SUBSECTIONS: &[(&str, &[(&str, &[&str])])] = &[
                     "cameraRecordChannel",
                 ],
             ),
-            ("Payload", &["payloadBays"]),
+            ("Payload", &PAYLOAD_ROWS),
             (
                 "Sharing control",
                 &["requestControlAllowTakeover", "requestControlTimeout"],
@@ -1480,6 +1518,11 @@ fn section_json(title: &str, slice: &str, backend: Option<&dyn Backend>) -> Valu
             "isStreamSource",
         )
     });
+    let px4 = group == "flyViewSettings"
+        && flag(
+            &backend.value_fields("vehicle", "px4Firmware"),
+            "px4Firmware",
+        );
     let persistence_off = group == "mavlinkSettings"
         && backend
             .value(PERSISTENCE_OFF)
@@ -1525,6 +1568,14 @@ fn section_json(title: &str, slice: &str, backend: Option<&dyn Backend>) -> Valu
                         .and_then(crate::read::switch_on)
                         == Some(*when)
             })
+        })
+        .filter(|f| {
+            payload_row_shown(
+                f.get("name").and_then(Value::as_str).unwrap_or_default(),
+                number_of(&facts, "payloadRelease"),
+                number_of(&facts, "payloadBays"),
+                px4,
+            )
         })
         .filter(|f| {
             let named = f.get("name").and_then(Value::as_str).unwrap_or_default();
@@ -2468,6 +2519,23 @@ mod tests {
             String::new()
         }
         fn watch(&self, _p: &[String]) {}
+    }
+
+    #[test]
+    fn bay_servo_rows_show_for_a_servo_per_bay_and_only_the_bays_in_use() {
+        use super::payload_row_shown as shown;
+        assert!(shown("payloadRelease", Some(0), Some(4), false));
+        assert!(
+            !shown("payloadRelease", Some(1), Some(4), true),
+            "PX4 does not take DO_SET_SERVO, so a servo per bay is not offered"
+        );
+        assert!(
+            !shown("payloadBay1Output", Some(0), Some(4), false),
+            "one gripper has no output per bay"
+        );
+        assert!(shown("payloadBay4HoldPwm", Some(1), Some(4), false));
+        assert!(!shown("payloadBay5Output", Some(1), Some(4), false));
+        assert!(shown("payloadBays", Some(1), Some(4), true));
     }
 
     #[test]

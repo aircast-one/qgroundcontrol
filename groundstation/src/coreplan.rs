@@ -532,9 +532,6 @@ fn insert_roi(backend: &dyn Backend, args: &str) -> Value {
     })
 }
 
-const CMD_DO_GRIPPER: i64 = 211;
-const DROP_NEEDS_A_WAYPOINT: &str = "Add a waypoint before the drop. A drop falls where the drone is when it reaches the item before it, so after takeoff it would fall over the launch point.";
-
 fn insert_drop(backend: &dyn Backend, args: &str) -> Value {
     let given: Value = serde_json::from_str(args).unwrap_or(Value::Null);
     let index = given.get(2).and_then(Value::as_i64).unwrap_or(-1);
@@ -542,18 +539,14 @@ fn insert_drop(backend: &dyn Backend, args: &str) -> Value {
         return refused("The default mission item altitude is not known.");
     };
     edit(|doc| {
-        let at = usize::try_from(index - 1)
-            .ok()
-            .filter(|i| *i <= doc.items.len())
-            .unwrap_or(doc.items.len());
-        if !plandoc::drop_has_a_place(doc, at) {
-            return Err(DROP_NEEDS_A_WAYPOINT.to_string());
-        }
-        Ok(plandoc::hold_before_drop(
-            &plandoc::insert_simple(doc, CMD_DO_GRIPPER, 0.0, 0.0, index, &defaults),
-            at,
-            crate::payloadcheck::DROP_HOLD_SECONDS,
-        ))
+        plandoc::insert_drop(
+            doc,
+            index,
+            &defaults,
+            &crate::payloadcheck::servo_bays(
+                plandoc::firmware(doc.firmware_type) == crate::cmdinfo::Firmware::ArduPilot,
+            ),
+        )
     })
 }
 
@@ -5395,8 +5388,15 @@ pub fn item_facts(backend: &dyn Backend, index: usize) -> Value {
                     .chain([("launchAltitude".to_string(), launch.unwrap_or(Value::Null))])
                     .chain([(
                         "drop".to_string(),
-                        plandoc::drop_after(&document, index)
-                            .map_or(Value::Null, |drop| json!({ "index": drop })),
+                        plandoc::drop_after(
+                            &document,
+                            index,
+                            &crate::payloadcheck::servo_bays(
+                                plandoc::firmware(document.firmware_type)
+                                    == crate::cmdinfo::Firmware::ArduPilot,
+                            ),
+                        )
+                        .map_or(Value::Null, |drop| json!({ "index": drop })),
                     )])
                     .chain(crate::itemfacts::command_info(&read))
                     .chain(wizard_rows)

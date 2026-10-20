@@ -160,10 +160,12 @@ fn resume_summary(offer: i64) -> Option<(usize, usize)> {
         crate::plandoc::firmware(i64::from(vehicle.autopilot)),
         crate::plandoc::vehicle_class(i64::from(vehicle.vehicle_type)),
     );
-    let (first, drops) =
-        crate::resumemission::resume_summary(vehicle.mission_items(), asked, |command| {
-            crate::resumemission::shape(&commands, command)
-        });
+    let (first, drops) = crate::resumemission::resume_summary(
+        vehicle.mission_items(),
+        asked,
+        |command| crate::resumemission::shape(&commands, command),
+        &vehicle.payload_servos(),
+    );
     Some((first + usize::try_from(shift).unwrap_or(0), drops))
 }
 

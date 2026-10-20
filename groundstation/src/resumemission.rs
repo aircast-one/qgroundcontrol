@@ -1,3 +1,4 @@
+use crate::payloadcheck::{Servo, is_release};
 use crate::plantransfer::Item;
 
 pub const JUMP_REFUSAL: &str = "Unable to generate resume mission due to MAV_CMD_DO_JUMP command.";
@@ -90,6 +91,7 @@ pub fn resume_summary(
     items: &[Item],
     asked: usize,
     shape_of: impl Fn(u16) -> Shape,
+    servos: &[Servo],
 ) -> (usize, usize) {
     let first = if items.is_empty() {
         0
@@ -99,7 +101,7 @@ pub fn resume_summary(
     let left = items
         .iter()
         .enumerate()
-        .filter(|(at, item)| *at > asked && crate::payloadcheck::is_release(item))
+        .filter(|(at, item)| *at > asked && is_release(item, servos))
         .count();
     (first, left)
 }
@@ -109,6 +111,7 @@ pub fn resume_items(
     asked: usize,
     sends_home: bool,
     shape_of: impl Fn(u16) -> Shape,
+    servos: &[Servo],
 ) -> Result<Vec<Item>, &'static str> {
     if items.iter().any(|item| item.command == CMD_DO_JUMP) {
         return Err(JUMP_REFUSAL);
@@ -126,9 +129,7 @@ pub fn resume_items(
                 || CARRIED_FORWARD.contains(&item.command)
                 || shape_of(item.command).takeoff
         })
-        .filter(|(i, item)| {
-            !(crate::payloadcheck::is_release(item) && (resume..=asked).contains(i))
-        })
+        .filter(|(i, item)| !(is_release(item, servos) && (resume..=asked).contains(i)))
         .collect();
     let prefix = picked.iter().filter(|(i, _)| *i < resume).count();
     let mut seen = Seen::default();
@@ -192,7 +193,7 @@ mod tests {
             item(6, NAV_WAYPOINT),
             item(7, NAV_WAYPOINT),
         ];
-        let resumed = resume_items(&mission, 6, true, shape_of).unwrap();
+        let resumed = resume_items(&mission, 6, true, shape_of, &[]).unwrap();
         let commands: Vec<u16> = resumed.iter().map(|i| i.command).collect();
         assert_eq!(
             commands,
@@ -226,7 +227,7 @@ mod tests {
             item(2, CMD_DO_CHANGE_SPEED),
             item(3, NAV_WAYPOINT),
         ];
-        let resumed = resume_items(&mission, 2, false, shape_of).unwrap();
+        let resumed = resume_items(&mission, 2, false, shape_of, &[]).unwrap();
         assert_eq!(
             resumed.iter().map(|i| i.params[4]).collect::<Vec<_>>(),
             [1.0, 2.0, 3.0]
@@ -251,13 +252,8 @@ mod tests {
             release(7),
             item(8, NAV_WAYPOINT),
         ];
-        let resumed = resume_items(&mission, 5, true, shape_of).unwrap();
-        let drops = |items: &[Item]| {
-            items
-                .iter()
-                .filter(|i| crate::payloadcheck::is_release(i))
-                .count()
-        };
+        let resumed = resume_items(&mission, 5, true, shape_of, &[]).unwrap();
+        let drops = |items: &[Item]| items.iter().filter(|i| is_release(i, &[])).count();
         assert_eq!(
             resumed.iter().map(|i| i.command).collect::<Vec<_>>(),
             [
@@ -272,12 +268,12 @@ mod tests {
         );
         assert_eq!(drops(&resumed), 1, "only the drop still to come");
         assert_eq!(
-            drops(&resume_items(&mission, 3, true, shape_of).unwrap()),
+            drops(&resume_items(&mission, 3, true, shape_of, &[]).unwrap()),
             2,
             "heading to 4, the drop at 3 already fell"
         );
         assert_eq!(
-            drops(&resume_items(&mission, 2, true, shape_of).unwrap()),
+            drops(&resume_items(&mission, 2, true, shape_of, &[]).unwrap()),
             3,
             "resuming at the waypoint before a drop keeps that drop"
         );
@@ -302,12 +298,48 @@ mod tests {
             release(9),
         ];
         assert_eq!(
-            resume_summary(&mission, 5, shape_of),
+            resume_summary(&mission, 5, shape_of, &[]),
             (4, 2),
             "asked at the drop of waypoint 4, it flies 4 again and two drops are left"
         );
-        assert_eq!(resume_summary(&mission, 2, shape_of), (2, 4));
-        assert_eq!(resume_summary(&[], 3, shape_of), (0, 0));
+        assert_eq!(resume_summary(&mission, 2, shape_of, &[]), (2, 4));
+        assert_eq!(resume_summary(&[], 3, shape_of, &[]), (0, 0));
+    }
+
+    #[test]
+    fn a_servo_bay_dropped_on_the_leg_flown_again_is_not_dropped_twice() {
+        let servos: Vec<Servo> = (9..=11)
+            .map(|output| Servo {
+                output,
+                release: 1900.0,
+                hold: 1100.0,
+            })
+            .collect();
+        let release = |seq: u16, output: f64| Item {
+            params: [output, 1900.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            ..item(seq, crate::payloadcheck::CMD_DO_SET_SERVO)
+        };
+        let mission = [
+            item(0, NAV_WAYPOINT),
+            item(1, NAV_TAKEOFF),
+            item(2, NAV_WAYPOINT),
+            release(3, 9.0),
+            item(4, NAV_WAYPOINT),
+            release(5, 10.0),
+            item(6, NAV_WAYPOINT),
+            release(7, 11.0),
+            item(8, NAV_WAYPOINT),
+        ];
+        let resumed = resume_items(&mission, 5, true, shape_of, &servos).unwrap();
+        assert_eq!(
+            resumed
+                .iter()
+                .filter_map(|i| crate::payloadcheck::bay_of(i, &servos))
+                .collect::<Vec<_>>(),
+            [3],
+            "heading to 6, it flies 4 again, but bay 2 at 5 already fell"
+        );
+        assert_eq!(resume_summary(&mission, 5, shape_of, &servos), (4, 1));
     }
 
     #[test]
@@ -321,7 +353,7 @@ mod tests {
             item(3, CMD_DO_SET_CAM_TRIGG_DIST),
             item(4, NAV_WAYPOINT),
         ];
-        let commands: Vec<u16> = resume_items(&mission, 4, true, shape_of)
+        let commands: Vec<u16> = resume_items(&mission, 4, true, shape_of, &[])
             .unwrap()
             .iter()
             .map(|i| i.command)
@@ -336,7 +368,8 @@ mod tests {
                 &[item(0, NAV_WAYPOINT), item(1, CMD_DO_JUMP)],
                 0,
                 true,
-                shape_of
+                shape_of,
+                &[]
             ),
             Err(JUMP_REFUSAL)
         );

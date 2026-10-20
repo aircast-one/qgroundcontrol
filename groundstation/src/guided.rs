@@ -407,7 +407,7 @@ pub fn guided_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "flying": state.flying,
         "gotoLoiterRadius": state.goto_loiter_radius,
         "actions": offers,
-        "payload": { "bays": state.payload_bays.max(1), "empty": state.empty_bays, "next": state.next_bay(), "label": state.drop_label(), "problems": crate::payloadcheck::problems_json(&state.payload, state.payload_bays) },
+        "payload": { "bays": state.payload_bays.max(1), "empty": state.empty_bays, "next": state.next_bay(), "label": state.drop_label(), "outputs": state.payload.servos.iter().map(|bay| bay.output).collect::<Vec<_>>(), "problems": crate::payloadcheck::problems_json(&state.payload, state.payload_bays) },
     })
 }
 
@@ -799,7 +799,7 @@ impl GripperState {
             "Payload".to_string()
         };
         let verb = if self.bay > 0 {
-            format!("{} {}", self.verb(), self.bay)
+            format!("{} bay {}", self.verb(), self.bay)
         } else {
             self.verb().to_string()
         };
@@ -1975,7 +1975,7 @@ mod tests {
             ),
             (
                 Some("Bay 2 dropped"),
-                Some("Drop 2 not confirmed. It may have dropped, check before dropping again.")
+                Some("Drop bay 2 not confirmed. It may have dropped, check before dropping again.")
             )
         );
         assert_eq!(

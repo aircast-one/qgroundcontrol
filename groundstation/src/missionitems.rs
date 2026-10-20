@@ -21,7 +21,7 @@ const LOITER_TIME: i64 = 19;
 const LOITER_TO_ALT: i64 = 31;
 const VTOL_TAKEOFF: i64 = 84;
 
-const FIELDS: &str = "lastSequenceNumber,specifiedFlightSpeed,additionalTimeDelay,minAMSLAltitude,maxAMSLAltitude,sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeFrame,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude,cameraShots,complexDistance,plannedHomePositionAltitude,missionVehicleYaw,showLoiterRadius,loiterRadius,missionGimbalYaw";
+const FIELDS: &str = "lastSequenceNumber,specifiedFlightSpeed,additionalTimeDelay,minAMSLAltitude,maxAMSLAltitude,sequenceNumber,abbreviation,commandName,commandDescription,isCurrentItem,specifiesCoordinate,isStandaloneCoordinate,specifiesAltitudeOnly,isSimpleItem,isTakeoffItem,isLandCommand,isSurveyItem,homePosition,coordinate,amslEntryAlt,altDifference,azimuth,distance,distanceFromStart,readyForSaveState,readyForSaveMessage,dirty,altitude,altitudeFrame,altitudeMode,isIncomplete,exitCoordinate,exitCoordinateSameAsEntry,commandName,command,category,specifiesAltitude,cameraShots,complexDistance,plannedHomePositionAltitude,missionVehicleYaw,showLoiterRadius,loiterRadius,missionGimbalYaw,dropsPayload";
 
 const READY_TO_SAVE: i64 = 0;
 const AWAITING_TERRAIN: i64 = 1;
@@ -139,8 +139,6 @@ pub fn items_view(backend: &dyn Backend, args: &[String]) -> Value {
 
 const SETTINGS_NAME: &str = "Initial Camera Settings";
 
-const CMD_DO_GRIPPER: i64 = 211;
-const GRIPPER_RELEASE_ACTION: f64 = 0.0;
 const DROP_PAYLOAD: &str = "Drop payload";
 
 fn abbreviation(command: i64) -> &'static str {
@@ -950,6 +948,7 @@ pub fn document_reads(doc: &crate::plandoc::Document, selected: i64) -> Result<V
         })
         .collect::<Result<_, _>>()?;
     let firmware = crate::plandoc::firmware(doc.firmware_type);
+    let servos = crate::payloadcheck::servo_bays(firmware == crate::cmdinfo::Firmware::ArduPilot);
     let commands = crate::cmdinfo::tree(firmware, crate::plandoc::vehicle_class(doc.vehicle_type));
     let vtol_trees = (crate::plandoc::vehicle_class(doc.vehicle_type)
         == crate::cmdinfo::VehicleClass::Vtol)
@@ -1073,7 +1072,12 @@ pub fn document_reads(doc: &crate::plandoc::Document, selected: i64) -> Result<V
                 "sequenceNumber": seq,
                 "lastSequenceNumber": seq + s.sections.len(),
                 "abbreviation": abbreviation(s.command),
-                "commandName": if s.command == CMD_DO_GRIPPER && s.params[1] == Some(GRIPPER_RELEASE_ACTION) { DROP_PAYLOAD.to_string() } else { info.map(|c| c.friendly_name.clone()).unwrap_or_default() },
+                "commandName": match (crate::plandoc::servo_drop_bay(item, &servos), crate::plandoc::is_drop(item, &servos)) {
+                    (Some(bay), _) => format!("Drop bay {bay}"),
+                    (None, true) => DROP_PAYLOAD.to_string(),
+                    (None, false) => info.map(|c| c.friendly_name.clone()).unwrap_or_default(),
+                },
+                "dropsPayload": crate::plandoc::is_drop(item, &servos),
                 "commandDescription": info.map(|c| c.description.clone()).unwrap_or_default(),
                 "category": info.map(|c| c.category.clone()).unwrap_or_default(),
                 "command": s.command,
@@ -1358,6 +1362,7 @@ fn item(read: &Value, index: i64, vertical: &Unit, horizontal: &Unit, speed: &Un
         "incomplete": flag(read, "isIncomplete"),
         "endsRoute": flag(read, "isLandCommand") || integer(read, "command") == Some(RETURN_TO_LAUNCH),
         "command": integer(read, "command"),
+        "dropsPayload": flag(read, "dropsPayload"),
         "flownLeg": flag(read, "specifiesCoordinate") && !flag(read, "isStandaloneCoordinate") && !flag(read, "isIncomplete"),
         "loiterRadius": flag(read, "showLoiterRadius").then(|| number(read, "loiterRadius")).flatten().filter(|radius| radius.is_finite()),
         "movable": coordinate.is_some(),
@@ -1800,6 +1805,36 @@ mod from_the_document {
             "a release is what a pilot plans as a drop; a grab keeps the generic name"
         );
         assert_eq!(reads[3]["specifiesCoordinate"], false);
+    }
+
+    #[test]
+    fn a_servo_drop_reads_as_its_bays_drop_and_another_servo_does_not() {
+        crate::payloadcheck::CONFIGURED.set(Some(
+            (9..=12)
+                .map(|output| crate::payloadcheck::Servo {
+                    output,
+                    release: 1900.0,
+                    hold: 1100.0,
+                })
+                .collect(),
+        ));
+        let plan = json!({ "fileType": "Plan", "version": 1, "groundStation": "QGroundControl", "geoFence": { "version": 2, "circles": [], "polygons": [] }, "rallyPoints": { "version": 2, "points": [] }, "mission": { "firmwareType": 3, "vehicleType": 2, "plannedHomePosition": [47.0, 8.0, 0], "items": [
+            { "type": "SimpleItem", "autoContinue": true, "command": 22, "frame": 3, "doJumpId": 1, "params": [0, 0, 0, 0, 0, 0, 30] },
+            { "type": "SimpleItem", "autoContinue": true, "command": 16, "frame": 3, "doJumpId": 2, "params": [0, 0, 0, 0, 47.02, 8.0, 30] },
+            { "type": "SimpleItem", "autoContinue": true, "command": 183, "frame": 2, "doJumpId": 3, "params": [10, 1900, 0, 0, 0, 0, 0] },
+            { "type": "SimpleItem", "autoContinue": true, "command": 183, "frame": 2, "doJumpId": 4, "params": [5, 1900, 0, 0, 0, 0, 0] },
+        ] } }).to_string();
+        let reads = document_reads(&crate::plandoc::load(&plan, 2).unwrap(), 0).unwrap();
+        crate::payloadcheck::CONFIGURED.set(None);
+        assert_eq!(
+            (
+                reads[3]["commandName"].as_str(),
+                reads[3]["dropsPayload"].as_bool(),
+                reads[4]["dropsPayload"].as_bool()
+            ),
+            (Some("Drop bay 2"), Some(true), Some(false)),
+            "output 10 is bay 2; a servo on output 5 is a light or a camera, not a drop"
+        );
     }
 
     #[test]

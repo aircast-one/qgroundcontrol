@@ -1,9 +1,13 @@
+use std::ops::RangeInclusive;
+
 use serde_json::{Value, json};
 
 use crate::plantransfer::Item;
 
 pub const CMD_DO_GRIPPER: u16 = 211;
+pub const CMD_DO_SET_SERVO: u16 = 183;
 const GRIPPER_RELEASE: f64 = 0.0;
+const GRIPPER_GRAB: f64 = 1.0;
 const GRIPPER_FUNCTION: f64 = 28.0;
 const SERVO_OUTPUTS: usize = 32;
 const GRIPPER_TYPE_NONE: f64 = 0.0;
@@ -13,24 +17,155 @@ pub const DROP_HOLD_SECONDS: f64 = 2.0;
 const CONTINUE_AUTO_ON_GCS_FAILSAFE: i64 = 2;
 const RELEASE_GRIPPER_ON_FAILSAFE: i64 = 32;
 const DEFAULT_GCS_TIMEOUT_SECONDS: f64 = 5.0;
+pub const SERVO_PER_BAY: f64 = 1.0;
+pub const MAX_BAYS: i64 = 6;
+const DEFAULT_RELEASE_PWM: f64 = 1900.0;
+const DEFAULT_HOLD_PWM: f64 = 1100.0;
+const FREE_FUNCTION: f64 = 0.0;
+const SETTINGS: &str = "settings.flyViewSettings";
+const SET_IN_SETTINGS: &str = "Set one in Settings, Fly View, Payload.";
+const SERVO_SET_FUNCTIONS: [RangeInclusive<i64>; 5] = [0..=1, 22..=23, 28..=28, 51..=66, 140..=155];
+const ACCESSORY_FUNCTIONS: [RangeInclusive<i64>; 6] =
+    [5..=15, 88..=88, 90..=109, 120..=123, 129..=136, 138..=139];
 
-pub fn is_release(item: &Item) -> bool {
-    item.command == CMD_DO_GRIPPER && item.params[1] == GRIPPER_RELEASE
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Servo {
+    pub output: i64,
+    pub release: f64,
+    pub hold: f64,
 }
 
-pub fn drops_in(items: &[Item]) -> usize {
-    items.iter().filter(|item| is_release(item)).count()
+#[cfg(test)]
+thread_local! {
+    pub static CONFIGURED: std::cell::RefCell<Option<Vec<Servo>>> = const { std::cell::RefCell::new(None) };
+}
+
+fn setting(name: &str) -> Option<f64> {
+    crate::settingsstore::raw_setting(&format!("{SETTINGS}.{name}")).and_then(|v| v.as_f64())
+}
+
+pub fn servo_bays(ardupilot: bool) -> Vec<Servo> {
+    #[cfg(test)]
+    if let Some(servos) = CONFIGURED.with_borrow(Clone::clone) {
+        return servos.into_iter().filter(|_| ardupilot).collect();
+    }
+    let bays = setting("payloadBays")
+        .map_or(1, |bays| bays as i64)
+        .clamp(1, MAX_BAYS);
+    match ardupilot && setting("payloadRelease") == Some(SERVO_PER_BAY) {
+        false => Vec::new(),
+        true => (1..=bays)
+            .map(|bay| Servo {
+                output: setting(&format!("payloadBay{bay}Output")).map_or(0, |o| o as i64),
+                release: setting(&format!("payloadBay{bay}ReleasePwm"))
+                    .unwrap_or(DEFAULT_RELEASE_PWM),
+                hold: setting(&format!("payloadBay{bay}HoldPwm")).unwrap_or(DEFAULT_HOLD_PWM),
+            })
+            .collect(),
+    }
+}
+
+pub fn seed_pwm_defaults(parameter: impl Fn(&str) -> Option<f64>) {
+    let seeds: Vec<(String, Value)> = [("GRIP_RELEASE", "ReleasePwm"), ("GRIP_GRAB", "HoldPwm")]
+        .into_iter()
+        .filter_map(|(name, suffix)| parameter(name).map(|pwm| (suffix, pwm)))
+        .flat_map(|(suffix, pwm)| {
+            (1..=MAX_BAYS)
+                .map(move |bay| (format!("{SETTINGS}.payloadBay{bay}{suffix}"), json!(pwm)))
+        })
+        .filter(|(path, _)| !crate::settingsstore::is_stored(path))
+        .collect();
+    crate::settingsstore::set_raw_together(
+        &seeds
+            .iter()
+            .map(|(path, pwm)| (path.as_str(), pwm.clone()))
+            .collect::<Vec<_>>(),
+    );
+}
+
+pub fn servo_drop_bay(command: i64, output: f64, pwm: f64, servos: &[Servo]) -> Option<i64> {
+    (command == i64::from(CMD_DO_SET_SERVO)).then_some(())?;
+    servos
+        .iter()
+        .position(|servo| servo.output as f64 == output && servo.release == pwm)
+        .map(|at| at as i64 + 1)
+}
+
+pub fn drops(command: i64, first: f64, second: f64, servos: &[Servo]) -> bool {
+    (command == i64::from(CMD_DO_GRIPPER) && second == GRIPPER_RELEASE)
+        || servo_drop_bay(command, first, second, servos).is_some()
+}
+
+pub fn is_release(item: &Item, servos: &[Servo]) -> bool {
+    drops(
+        i64::from(item.command),
+        item.params[0],
+        item.params[1],
+        servos,
+    )
+}
+
+pub fn bay_of(item: &Item, servos: &[Servo]) -> Option<i64> {
+    servo_drop_bay(
+        i64::from(item.command),
+        item.params[0],
+        item.params[1],
+        servos,
+    )
+}
+
+pub fn drops_in(items: &[Item], servos: &[Servo]) -> usize {
+    items.iter().filter(|item| is_release(item, servos)).count()
 }
 
 const PLACES: [u16; 6] = [16, 17, 18, 19, 31, 82];
 
-pub fn early_drops_in(items: &[Item], sends_home: bool) -> usize {
+pub fn early_drops_in(items: &[Item], sends_home: bool, servos: &[Servo]) -> usize {
     items
         .iter()
         .skip(usize::from(sends_home))
         .take_while(|item| !PLACES.contains(&item.command))
-        .filter(|item| is_release(item))
+        .filter(|item| is_release(item, servos))
         .count()
+}
+
+pub fn servo_command(servos: &[Servo], action: f64, bay: i64) -> Result<(f64, f64), String> {
+    let servo = usize::try_from(bay - 1)
+        .ok()
+        .and_then(|at| servos.get(at))
+        .ok_or_else(|| {
+            format!(
+                "There is no bay {bay}. This drone has {} bays.",
+                servos.len()
+            )
+        })?;
+    let pwm = match action {
+        GRIPPER_RELEASE => servo.release,
+        GRIPPER_GRAB => servo.hold,
+        _ => return Err("A bay with its own servo only drops and grabs.".to_string()),
+    };
+    match servo.output > 0 {
+        true => Ok((servo.output as f64, pwm)),
+        false => Err(format!("Bay {bay} has no servo output. {SET_IN_SETTINGS}")),
+    }
+}
+
+pub fn takes_set_servo(function: i64) -> bool {
+    SERVO_SET_FUNCTIONS
+        .iter()
+        .any(|range| range.contains(&function))
+}
+
+fn freeable(function: i64) -> bool {
+    ACCESSORY_FUNCTIONS
+        .iter()
+        .any(|range| range.contains(&function))
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct ServoBay {
+    pub output: i64,
+    pub function: Option<i64>,
 }
 
 #[derive(Debug, Clone, PartialEq, Default)]
@@ -47,6 +182,7 @@ pub struct Setup {
     pub gcs_timeout_s: f64,
     pub drops: usize,
     pub early_drops: usize,
+    pub servos: Vec<ServoBay>,
 }
 
 impl Setup {
@@ -54,6 +190,7 @@ impl Setup {
         ardupilot: bool,
         enabled: bool,
         parameter: impl Fn(&str) -> Option<f64>,
+        servos: &[Servo],
         drops: usize,
         early_drops: usize,
     ) -> Setup {
@@ -73,6 +210,14 @@ impl Setup {
             gcs_timeout_s: parameter("FS_GCS_TIMEOUT").unwrap_or(DEFAULT_GCS_TIMEOUT_SECONDS),
             drops,
             early_drops,
+            servos: servos
+                .iter()
+                .map(|servo| ServoBay {
+                    output: servo.output,
+                    function: parameter(&format!("SERVO{}_FUNCTION", servo.output))
+                        .map(|f| f as i64),
+                })
+                .collect(),
         }
     }
 
@@ -90,6 +235,7 @@ impl Setup {
             "gcsTimeoutSeconds": self.gcs_timeout_s,
             "drops": self.drops,
             "earlyDrops": self.early_drops,
+            "servos": self.servos.iter().map(|bay| json!({ "output": bay.output, "function": bay.function })).collect::<Vec<_>>(),
         })
     }
 
@@ -109,11 +255,61 @@ impl Setup {
             gcs_timeout_s: number("gcsTimeoutSeconds"),
             drops: number("drops") as usize,
             early_drops: number("earlyDrops") as usize,
+            servos: value
+                .get("servos")
+                .and_then(Value::as_array)
+                .map(|bays| {
+                    bays.iter()
+                        .map(|bay| ServoBay {
+                            output: bay.get("output").and_then(Value::as_i64).unwrap_or(0),
+                            function: bay.get("function").and_then(Value::as_i64),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
         }
     }
 
     pub fn stays_open(&self) -> bool {
         self.ardupilot && self.auto_close_s <= 0.0
+    }
+
+    pub fn servo(&self) -> bool {
+        !self.servos.is_empty()
+    }
+
+    fn numbered(&self) -> impl Iterator<Item = (i64, &ServoBay)> {
+        (1..).zip(self.servos.iter())
+    }
+
+    fn unset_bay(&self) -> Option<i64> {
+        self.numbered()
+            .find(|(_, bay)| bay.output < 1)
+            .map(|(number, _)| number)
+    }
+
+    fn shared_output(&self) -> Option<(i64, i64, i64)> {
+        self.numbered()
+            .filter(|(_, bay)| bay.output > 0)
+            .find_map(|(first, bay)| {
+                self.numbered()
+                    .find(|(second, other)| *second > first && other.output == bay.output)
+                    .map(|(second, _)| (first, second, bay.output))
+            })
+    }
+
+    fn busy_output(&self) -> Option<(i64, i64, i64)> {
+        self.numbered().find_map(|(number, bay)| {
+            bay.function
+                .filter(|function| !takes_set_servo(*function))
+                .map(|function| (number, bay.output, function))
+        })
+    }
+
+    fn gripper_on_a_bay(&self) -> bool {
+        self.servos
+            .iter()
+            .any(|bay| bay.function == Some(GRIPPER_FUNCTION as i64))
     }
 }
 
@@ -125,17 +321,25 @@ pub enum Problem {
     NoType,
     NoOutput,
     StaysOpen,
+    NoBayOutput,
+    SharedOutput,
+    OutputInUse,
+    TooManyDrops,
     FailsafeDrops,
     LinkLossSkipsDrops,
 }
 
-const PROBLEMS: [Problem; 8] = [
+const PROBLEMS: [Problem; 12] = [
     Problem::DropAtLaunch,
     Problem::NoGripper,
     Problem::NeedsReboot,
     Problem::NoType,
     Problem::NoOutput,
     Problem::StaysOpen,
+    Problem::NoBayOutput,
+    Problem::SharedOutput,
+    Problem::OutputInUse,
+    Problem::TooManyDrops,
     Problem::FailsafeDrops,
     Problem::LinkLossSkipsDrops,
 ];
@@ -149,6 +353,10 @@ impl Problem {
             Problem::NoType => "noType",
             Problem::NoOutput => "noOutput",
             Problem::StaysOpen => "staysOpen",
+            Problem::NoBayOutput => "noBayOutput",
+            Problem::SharedOutput => "sharedOutput",
+            Problem::OutputInUse => "outputInUse",
+            Problem::TooManyDrops => "tooManyDrops",
             Problem::FailsafeDrops => "failsafeDrops",
             Problem::LinkLossSkipsDrops => "linkLossSkipsDrops",
         }
@@ -159,28 +367,32 @@ impl Problem {
     }
 
     pub fn blocks(self) -> bool {
-        matches!(
-            self,
-            Problem::DropAtLaunch
-                | Problem::NoGripper
-                | Problem::NeedsReboot
-                | Problem::NoType
-                | Problem::NoOutput
-                | Problem::StaysOpen
-        )
+        !matches!(self, Problem::FailsafeDrops | Problem::LinkLossSkipsDrops)
     }
 
     fn applies(self, s: &Setup, bays: i64) -> bool {
         let releases = s.drops.max(usize::try_from(bays).unwrap_or(0));
+        let gripper = !s.servo();
         match self {
             Problem::DropAtLaunch => s.early_drops > 0,
-            Problem::NoGripper => s.drops > 0 && !s.enabled,
-            Problem::NeedsReboot => s.ardupilot && s.enabled && (!s.loaded || s.stale),
-            Problem::NoType => s.ardupilot && s.enabled && s.loaded && !s.stale && !s.typed,
-            Problem::NoOutput => s.ardupilot && s.enabled && s.loaded && !s.output,
-            Problem::StaysOpen => s.enabled && s.loaded && s.stays_open() && releases > 1,
+            Problem::NoGripper => gripper && s.drops > 0 && !s.enabled,
+            Problem::NeedsReboot => gripper && s.ardupilot && s.enabled && (!s.loaded || s.stale),
+            Problem::NoType => {
+                gripper && s.ardupilot && s.enabled && s.loaded && !s.stale && !s.typed
+            }
+            Problem::NoOutput => gripper && s.ardupilot && s.enabled && s.loaded && !s.output,
+            Problem::StaysOpen => {
+                gripper && s.enabled && s.loaded && s.stays_open() && releases > 1
+            }
+            Problem::NoBayOutput => s.unset_bay().is_some(),
+            Problem::SharedOutput => s.shared_output().is_some(),
+            Problem::OutputInUse => s.busy_output().is_some(),
+            Problem::TooManyDrops => s.servo() && s.drops > s.servos.len(),
             Problem::FailsafeDrops => {
-                s.ardupilot && s.enabled && s.fs_options & RELEASE_GRIPPER_ON_FAILSAFE != 0
+                s.ardupilot
+                    && s.enabled
+                    && s.fs_options & RELEASE_GRIPPER_ON_FAILSAFE != 0
+                    && (gripper || s.gripper_on_a_bay())
             }
             Problem::LinkLossSkipsDrops => {
                 s.ardupilot
@@ -204,39 +416,70 @@ impl Problem {
                 1 => "The gripper stays open after the first drop, so the second drop releases nothing. Turn on auto-close so it closes after each drop.".to_string(),
                 more => format!("The gripper stays open after the first drop, so the other {more} drops release nothing. Turn on auto-close so it closes after each drop."),
             },
+            Problem::NoBayOutput => format!("Bay {} has no servo output, so it cannot drop. {SET_IN_SETTINGS}", s.unset_bay().unwrap_or_default()),
+            Problem::SharedOutput => {
+                let (first, second, output) = s.shared_output().unwrap_or_default();
+                format!("Bays {first} and {second} both use output {output}, so dropping one drops both. Give each bay its own output.")
+            }
+            Problem::OutputInUse => {
+                let (bay, output, function) = s.busy_output().unwrap_or_default();
+                let named = format!("ArduPilot will not move output {output} for bay {bay}: SERVO{output}_FUNCTION is {function}, so the output already has a job.");
+                match freeable(function) {
+                    true => named,
+                    false => format!("{named} Choose another output for bay {bay}."),
+                }
+            }
+            Problem::TooManyDrops => format!("The mission drops {} times but there are {} bays, so a bay would drop twice.", s.drops, s.servos.len()),
             Problem::FailsafeDrops => "Any failsafe opens the gripper and drops the payload wherever the drone is (FS_OPTIONS Release Gripper).".to_string(),
             Problem::LinkLossSkipsDrops => format!("If the link drops for {} s, the drone flies home and skips the drops still to come.", s.gcs_timeout_s),
         }
     }
 
-    pub fn fix_label(self) -> &'static str {
+    pub fn fix_label(self, s: &Setup) -> String {
         match self {
-            Problem::DropAtLaunch => "",
-            Problem::NeedsReboot => "Reboot the flight controller",
-            Problem::NoType => "Make it a servo gripper",
-            Problem::StaysOpen => "Turn on auto-close",
-            Problem::FailsafeDrops => "Keep the payload on failsafe",
-            Problem::LinkLossSkipsDrops => "Keep flying the mission",
-            Problem::NoGripper | Problem::NoOutput => "",
+            Problem::NeedsReboot => "Reboot the flight controller".to_string(),
+            Problem::NoType => "Make it a servo gripper".to_string(),
+            Problem::StaysOpen => "Turn on auto-close".to_string(),
+            Problem::FailsafeDrops => "Keep the payload on failsafe".to_string(),
+            Problem::LinkLossSkipsDrops => "Keep flying the mission".to_string(),
+            Problem::OutputInUse => self
+                .fix(s)
+                .and(s.busy_output())
+                .map_or(String::new(), |(_, output, _)| {
+                    format!("Free output {output}")
+                }),
+            Problem::DropAtLaunch
+            | Problem::NoGripper
+            | Problem::NoOutput
+            | Problem::NoBayOutput
+            | Problem::SharedOutput
+            | Problem::TooManyDrops => String::new(),
         }
     }
 
-    pub fn fix(self, s: &Setup) -> Option<(&'static str, f64)> {
+    pub fn fix(self, s: &Setup) -> Option<(String, f64)> {
         match self {
-            Problem::StaysOpen => Some(("GRIP_AUTOCLOSE", AUTO_CLOSE_SECONDS)),
-            Problem::NoType => Some(("GRIP_TYPE", GRIPPER_TYPE_SERVO)),
+            Problem::StaysOpen => Some(("GRIP_AUTOCLOSE".to_string(), AUTO_CLOSE_SECONDS)),
+            Problem::NoType => Some(("GRIP_TYPE".to_string(), GRIPPER_TYPE_SERVO)),
             Problem::FailsafeDrops => Some((
-                "FS_OPTIONS",
+                "FS_OPTIONS".to_string(),
                 (s.fs_options & !RELEASE_GRIPPER_ON_FAILSAFE) as f64,
             )),
             Problem::LinkLossSkipsDrops => Some((
-                "FS_OPTIONS",
+                "FS_OPTIONS".to_string(),
                 (s.fs_options | CONTINUE_AUTO_ON_GCS_FAILSAFE) as f64,
             )),
+            Problem::OutputInUse => s
+                .busy_output()
+                .filter(|(_, _, function)| freeable(*function))
+                .map(|(_, output, _)| (format!("SERVO{output}_FUNCTION"), FREE_FUNCTION)),
             Problem::DropAtLaunch
             | Problem::NoGripper
             | Problem::NeedsReboot
-            | Problem::NoOutput => None,
+            | Problem::NoOutput
+            | Problem::NoBayOutput
+            | Problem::SharedOutput
+            | Problem::TooManyDrops => None,
         }
     }
 }
@@ -256,7 +499,7 @@ pub fn blocking(s: &Setup, bays: i64) -> Option<String> {
 }
 
 pub fn problem_json(p: Problem, s: &Setup, bays: i64) -> Value {
-    json!({ "code": p.code(), "text": p.text(s, bays), "blocking": p.blocks(), "fix": p.fix_label() })
+    json!({ "code": p.code(), "text": p.text(s, bays), "blocking": p.blocks(), "fix": p.fix_label(s) })
 }
 
 pub fn problems_json(s: &Setup, bays: i64) -> Value {
@@ -317,6 +560,7 @@ mod tests {
             gcs_timeout_s: 5.0,
             drops,
             early_drops: 0,
+            servos: Vec::new(),
         }
     }
 
@@ -330,7 +574,7 @@ mod tests {
             item(4, 20, 0.0),
         ];
         assert_eq!(
-            drops_in(&items),
+            drops_in(&items, &[]),
             2,
             "a grab is not a drop, and a waypoint's param2 is not a gripper action"
         );
@@ -348,11 +592,15 @@ mod tests {
             item(5, CMD_DO_GRIPPER, 0.0),
         ];
         assert_eq!(
-            early_drops_in(&mission, true),
+            early_drops_in(&mission, true, &[]),
             2,
             "home is not a waypoint, and neither is the takeoff"
         );
-        assert_eq!(early_drops_in(&mission[1..], false), 2, "PX4 sends no home");
+        assert_eq!(
+            early_drops_in(&mission[1..], false, &[]),
+            2,
+            "PX4 sends no home"
+        );
         assert_eq!(
             early_drops_in(
                 &[
@@ -361,7 +609,8 @@ mod tests {
                     item(2, 16, 0.0),
                     item(3, CMD_DO_GRIPPER, 0.0)
                 ],
-                true
+                true,
+                &[]
             ),
             0
         );
@@ -407,7 +656,7 @@ mod tests {
         );
         assert_eq!(
             Problem::StaysOpen.fix(&copter(4)),
-            Some(("GRIP_AUTOCLOSE", AUTO_CLOSE_SECONDS))
+            Some(("GRIP_AUTOCLOSE".to_string(), AUTO_CLOSE_SECONDS))
         );
     }
 
@@ -461,13 +710,13 @@ mod tests {
         );
         assert_eq!(
             (
-                Problem::NeedsReboot.fix_label(),
+                Problem::NeedsReboot.fix_label(&fresh),
                 Problem::NeedsReboot.blocks()
             ),
-            ("Reboot the flight controller", true)
+            ("Reboot the flight controller".to_string(), true)
         );
         assert!(
-            !Setup::read(true, true, |_| None, 0, 0).loaded,
+            !Setup::read(true, true, |_| None, &[], 0, 0).loaded,
             "GRIP_TYPE appears only after the reboot"
         );
     }
@@ -484,7 +733,10 @@ mod tests {
             "ArduPilot makes no gripper of type None, so every drop would do nothing"
         );
         assert!(Problem::NoType.blocks());
-        assert_eq!(Problem::NoType.fix(&untyped), Some(("GRIP_TYPE", 1.0)));
+        assert_eq!(
+            Problem::NoType.fix(&untyped),
+            Some(("GRIP_TYPE".to_string(), 1.0))
+        );
         let changed = Setup {
             stale: true,
             ..copter(1)
@@ -504,6 +756,7 @@ mod tests {
                 true,
                 true,
                 |name| (name == "GRIP_TYPE").then_some(0.0),
+                &[],
                 0,
                 0
             )
@@ -512,6 +765,7 @@ mod tests {
                     true,
                     true,
                     |name| (name == "GRIP_TYPE").then_some(0.0),
+                    &[],
                     0,
                     0
                 )
@@ -585,7 +839,7 @@ mod tests {
         assert_eq!(problems(&releasing, 1), vec![Problem::FailsafeDrops]);
         assert_eq!(
             Problem::FailsafeDrops.fix(&releasing),
-            Some(("FS_OPTIONS", 8.0)),
+            Some(("FS_OPTIONS".to_string(), 8.0)),
             "only the Release Gripper bit is cleared"
         );
         let homing = Setup {
@@ -605,7 +859,7 @@ mod tests {
         );
         assert_eq!(
             Problem::LinkLossSkipsDrops.fix(&homing),
-            Some(("FS_OPTIONS", 3.0))
+            Some(("FS_OPTIONS".to_string(), 3.0))
         );
         assert!(
             !Problem::LinkLossSkipsDrops.blocks(),
@@ -639,6 +893,7 @@ mod tests {
             gcs_timeout_s: 5.0,
             drops: 4,
             early_drops: 0,
+            servos: Vec::new(),
         };
         assert_eq!(problems(&px4, 4), vec![]);
         assert_eq!(
@@ -663,7 +918,7 @@ mod tests {
             "FS_GCS_ENABLE" => Some(1.0),
             _ => None,
         };
-        let read = Setup::read(true, true, params, 3, 0);
+        let read = Setup::read(true, true, params, &[], 3, 0);
         assert_eq!(
             read,
             Setup {
@@ -678,7 +933,8 @@ mod tests {
                 gcs_failsafe: true,
                 gcs_timeout_s: 5.0,
                 drops: 3,
-                early_drops: 0
+                early_drops: 0,
+                servos: Vec::new(),
             }
         );
         assert_eq!(Setup::from_json(&read.json()), read);
@@ -687,6 +943,7 @@ mod tests {
                 true,
                 true,
                 |name| (name == "GRIP_TYPE").then_some(1.0),
+                &[],
                 0,
                 0
             )
@@ -698,6 +955,7 @@ mod tests {
                 true,
                 true,
                 |name| (name == "GRIP_TYPE").then_some(2.0),
+                &[],
                 0,
                 0
             )
@@ -739,5 +997,219 @@ mod tests {
             None,
             "PX4 grippers are not modelled"
         );
+    }
+
+    fn four_servos() -> Vec<Servo> {
+        (9..=12)
+            .map(|output| Servo {
+                output,
+                release: 1900.0,
+                hold: 1100.0,
+            })
+            .collect()
+    }
+
+    fn servo_copter(functions: [Option<i64>; 4], drops: usize) -> Setup {
+        Setup {
+            servos: (9..=12)
+                .zip(functions)
+                .map(|(output, function)| ServoBay { output, function })
+                .collect(),
+            ..copter(drops)
+        }
+    }
+
+    #[test]
+    fn a_servo_drop_is_the_release_pwm_on_a_bays_own_output() {
+        let servos = four_servos();
+        let set = |output: f64, pwm: f64| Item {
+            params: [output, pwm, 0.0, 0.0, 0.0, 0.0, 0.0],
+            ..item(3, CMD_DO_SET_SERVO, 0.0)
+        };
+        assert_eq!(bay_of(&set(10.0, 1900.0), &servos), Some(2));
+        assert!(
+            !is_release(&set(10.0, 1100.0), &servos),
+            "the hold PWM closes the bay, it drops nothing"
+        );
+        assert!(
+            !is_release(&set(5.0, 1900.0), &servos),
+            "an output no bay uses is someone else's servo, a light or a camera"
+        );
+        assert!(
+            !is_release(&set(10.0, 1900.0), &[]),
+            "with one gripper a DO_SET_SERVO is never a drop"
+        );
+        let mission = [
+            item(0, 16, 0.0),
+            item(1, 16, 0.0),
+            set(9.0, 1900.0),
+            item(3, 16, 0.0),
+            set(10.0, 1900.0),
+            item(5, CMD_DO_GRIPPER, 0.0),
+        ];
+        assert_eq!(
+            drops_in(&mission, &servos),
+            3,
+            "a gripper release still drops"
+        );
+        assert_eq!(
+            early_drops_in(&[item(0, 16, 0.0), set(9.0, 1900.0)], true, &servos),
+            1
+        );
+    }
+
+    #[test]
+    fn a_hand_drop_on_a_servo_bay_sends_that_bays_output_and_pwm() {
+        let servos = four_servos();
+        assert_eq!(servo_command(&servos, 0.0, 2), Ok((10.0, 1900.0)));
+        assert_eq!(
+            servo_command(&servos, 1.0, 4),
+            Ok((12.0, 1100.0)),
+            "a grab sends the hold PWM"
+        );
+        assert!(
+            servo_command(&servos, 2.0, 1).is_err(),
+            "a servo has no hold-in-place"
+        );
+        assert_eq!(
+            servo_command(&servos, 0.0, 5).unwrap_err(),
+            "There is no bay 5. This drone has 4 bays."
+        );
+        let unset = [Servo {
+            output: 0,
+            ..servos[0]
+        }];
+        assert!(
+            servo_command(&unset, 0.0, 1)
+                .is_err_and(|e| e.starts_with("Bay 1 has no servo output"))
+        );
+    }
+
+    #[test]
+    fn servo_bays_skip_the_gripper_checks_and_check_their_own_outputs() {
+        let free = servo_copter([Some(0), Some(0), Some(0), Some(0)], 4);
+        assert_eq!(
+            problems(
+                &Setup {
+                    auto_close_s: 0.0,
+                    typed: false,
+                    enabled: false,
+                    ..free.clone()
+                },
+                4
+            ),
+            vec![],
+            "no GRIP_ENABLE, GRIP_TYPE or auto-close matters when each bay has its own servo"
+        );
+        assert_eq!(
+            problems(
+                &Setup {
+                    drops: 5,
+                    ..free.clone()
+                },
+                4
+            ),
+            vec![Problem::TooManyDrops]
+        );
+        let unset = Setup {
+            servos: vec![ServoBay {
+                output: 0,
+                function: None,
+            }],
+            ..free.clone()
+        };
+        assert_eq!(
+            problems(&unset, 1),
+            vec![Problem::NoBayOutput, Problem::TooManyDrops]
+        );
+        let shared = Setup {
+            servos: [9, 10, 10, 12]
+                .map(|output| ServoBay {
+                    output,
+                    function: Some(0),
+                })
+                .to_vec(),
+            ..free.clone()
+        };
+        assert_eq!(
+            Problem::SharedOutput.text(&shared, 4),
+            "Bays 2 and 3 both use output 10, so dropping one drops both. Give each bay its own output."
+        );
+        assert!(
+            problems(&shared, 4).contains(&Problem::SharedOutput) && Problem::SharedOutput.blocks()
+        );
+    }
+
+    #[test]
+    fn an_output_busy_with_an_accessory_is_freed_in_one_tap_but_a_motor_never_is() {
+        let camera = servo_copter([Some(0), Some(10), Some(0), Some(1)], 2);
+        assert_eq!(problems(&camera, 4), vec![Problem::OutputInUse]);
+        assert!(Problem::OutputInUse.blocks());
+        assert_eq!(
+            Problem::OutputInUse.fix(&camera),
+            Some(("SERVO10_FUNCTION".to_string(), 0.0))
+        );
+        assert_eq!(Problem::OutputInUse.fix_label(&camera), "Free output 10");
+        let motor = servo_copter([Some(0), Some(0), Some(37), Some(0)], 2);
+        assert_eq!(
+            Problem::OutputInUse.fix(&motor),
+            None,
+            "freeing a motor output grounds the drone"
+        );
+        assert_eq!(Problem::OutputInUse.fix_label(&motor), "");
+        assert!(
+            Problem::OutputInUse
+                .text(&motor, 4)
+                .ends_with("Choose another output for bay 3.")
+        );
+        assert_eq!(
+            problems(
+                &servo_copter([Some(28), Some(51), Some(140), Some(1)], 2),
+                4
+            ),
+            vec![],
+            "ArduPilot's do_set_servo moves Disabled, RCPassThru, RCIN, RCIN mapped and Gripper outputs"
+        );
+    }
+
+    #[test]
+    fn a_failsafe_drops_a_servo_bay_only_when_that_bay_is_on_the_gripper_function() {
+        let releasing = |functions| Setup {
+            fs_options: 32,
+            ..servo_copter(functions, 1)
+        };
+        assert_eq!(
+            problems(&releasing([Some(0), Some(0), Some(0), Some(0)]), 4),
+            vec![]
+        );
+        assert_eq!(
+            problems(&releasing([Some(28), Some(0), Some(0), Some(0)]), 4),
+            vec![Problem::FailsafeDrops],
+            "a failsafe calls the gripper's release, which moves every output on function 28"
+        );
+    }
+
+    #[test]
+    fn the_setup_reads_each_bays_output_function() {
+        let params = |name: &str| match name {
+            "SERVO9_FUNCTION" => Some(0.0),
+            "SERVO10_FUNCTION" => Some(33.0),
+            _ => None,
+        };
+        let read = Setup::read(true, false, params, &four_servos()[..2], 2, 0);
+        assert_eq!(
+            read.servos,
+            vec![
+                ServoBay {
+                    output: 9,
+                    function: Some(0)
+                },
+                ServoBay {
+                    output: 10,
+                    function: Some(33)
+                }
+            ]
+        );
+        assert_eq!(Setup::from_json(&read.json()), read);
     }
 }

@@ -1229,11 +1229,36 @@ pub fn awaiting_terrain(doc: &Document) -> bool {
     doc.items.iter().any(|item| matches!(item, Item::Simple(Simple { altitude: Some(held), .. }) if held.mode == crate::altitudemodes::CALC_ABOVE_TERRAIN && !held.amsl_above_terrain.is_some_and(f64::is_finite)))
 }
 
-fn is_drop(item: &Item) -> bool {
-    matches!(item, Item::Simple(s) if s.command == CMD_DO_GRIPPER_ITEM && s.params[1] == Some(0.0))
+pub fn servo_drop_bay(item: &Item, servos: &[crate::payloadcheck::Servo]) -> Option<i64> {
+    match item {
+        Item::Simple(s) => crate::payloadcheck::servo_drop_bay(
+            s.command,
+            s.params[0].unwrap_or(f64::NAN),
+            s.params[1].unwrap_or(f64::NAN),
+            servos,
+        ),
+        _ => None,
+    }
 }
 
-pub fn drop_after(doc: &Document, visual_index: usize) -> Option<Option<usize>> {
+pub fn is_drop(item: &Item, servos: &[crate::payloadcheck::Servo]) -> bool {
+    matches!(item, Item::Simple(s) if crate::payloadcheck::drops(s.command, s.params[0].unwrap_or(f64::NAN), s.params[1].unwrap_or(f64::NAN), servos))
+}
+
+pub fn free_bay(doc: &Document, servos: &[crate::payloadcheck::Servo]) -> Option<i64> {
+    let used: Vec<i64> = doc
+        .items
+        .iter()
+        .filter_map(|item| servo_drop_bay(item, servos))
+        .collect();
+    (1..=servos.len() as i64).find(|bay| !used.contains(bay))
+}
+
+pub fn drop_after(
+    doc: &Document,
+    visual_index: usize,
+    servos: &[crate::payloadcheck::Servo],
+) -> Option<Option<usize>> {
     let at = visual_index.checked_sub(1)?;
     matches!(doc.items.get(at)?, Item::Simple(s) if s.command == CMD_NAV_WAYPOINT).then_some(())?;
     let following = doc.items.get(at + 1..).unwrap_or_default();
@@ -1244,9 +1269,58 @@ pub fn drop_after(doc: &Document, visual_index: usize) -> Option<Option<usize>> 
     Some(
         following[..unplaced]
             .iter()
-            .position(is_drop)
+            .position(|item| is_drop(item, servos))
             .map(|offset| visual_index + 1 + offset),
     )
+}
+
+const DROP_NEEDS_A_WAYPOINT: &str = "Add a waypoint before the drop. A drop falls where the drone is when it reaches the item before it, so after takeoff it would fall over the launch point.";
+const EVERY_BAY_DROPS: &str = "Every bay already drops in this mission. Add a bay in Settings, Fly View, Payload, or remove a drop.";
+
+pub fn insert_drop(
+    doc: &Document,
+    visual_index: i64,
+    defaults: &EditDefaults,
+    servos: &[crate::payloadcheck::Servo],
+) -> Result<Document, String> {
+    let at = usize::try_from(visual_index - 1)
+        .ok()
+        .filter(|i| *i <= doc.items.len())
+        .unwrap_or(doc.items.len());
+    if !drop_has_a_place(doc, at) {
+        return Err(DROP_NEEDS_A_WAYPOINT.to_string());
+    }
+    let dropped = match servos.is_empty() {
+        true => insert_simple(
+            doc,
+            i64::from(crate::payloadcheck::CMD_DO_GRIPPER),
+            0.0,
+            0.0,
+            visual_index,
+            defaults,
+        ),
+        false => {
+            let servo = free_bay(doc, servos)
+                .and_then(|bay| servos.get(usize::try_from(bay - 1).ok()?))
+                .ok_or_else(|| EVERY_BAY_DROPS.to_string())?;
+            let placed = insert_simple(
+                doc,
+                i64::from(crate::payloadcheck::CMD_DO_SET_SERVO),
+                0.0,
+                0.0,
+                visual_index,
+                defaults,
+            );
+            set_param(&placed, at + 1, 1, servo.output as f64)
+                .and_then(|output| set_param(&output, at + 1, 2, servo.release))
+                .unwrap_or(placed)
+        }
+    };
+    Ok(hold_before_drop(
+        &dropped,
+        at,
+        crate::payloadcheck::DROP_HOLD_SECONDS,
+    ))
 }
 
 pub fn drop_has_a_place(doc: &Document, drop_at: usize) -> bool {
@@ -1258,8 +1332,6 @@ pub fn drop_has_a_place(doc: &Document, drop_at: usize) -> bool {
         .rposition(|item| !matches!(item, Item::Simple(s) if s.altitude.is_none()));
     last_place.is_some_and(|at| !matches!(&doc.items[at], Item::Simple(s) if s.command == CMD_NAV_TAKEOFF || s.command == CMD_NAV_VTOL_TAKEOFF))
 }
-
-const CMD_DO_GRIPPER_ITEM: i64 = 211;
 
 pub fn hold_before_drop(doc: &Document, drop_at: usize, seconds: f64) -> Document {
     let last_place = doc
@@ -2645,6 +2717,91 @@ mod tests {
     }
 
     #[test]
+    fn with_a_servo_per_bay_each_drop_moves_the_next_bays_output_and_survives_a_save() {
+        let servos: Vec<crate::payloadcheck::Servo> = (9..=12)
+            .map(|output| crate::payloadcheck::Servo {
+                output,
+                release: 1100.0,
+                hold: 1900.0,
+            })
+            .collect();
+        let copter = Document {
+            firmware_type: 3,
+            vehicle_type: 2,
+            items: Vec::new(),
+            ..section()
+        };
+        let takeoff = insert_simple(&copter, CMD_NAV_TAKEOFF, 47.63, -122.08, 1, &QT_DEFAULTS);
+        let waypoints = (0..4).fold(takeoff, |doc, n| {
+            insert_simple(
+                &doc,
+                CMD_NAV_WAYPOINT,
+                47.631 + f64::from(n) * 0.001,
+                -122.08,
+                -1,
+                &QT_DEFAULTS,
+            )
+        });
+        let dropped = [6, 5, 4, 3].iter().fold(waypoints, |doc, at| {
+            insert_drop(&doc, *at, &QT_DEFAULTS, &servos)
+                .expect("a waypoint stands before each drop")
+        });
+        let set_servos: Vec<(f64, f64)> = dropped
+            .items
+            .iter()
+            .filter_map(|item| match item {
+                Item::Simple(s)
+                    if s.command == i64::from(crate::payloadcheck::CMD_DO_SET_SERVO) =>
+                {
+                    Some((
+                        s.params[0].unwrap_or_default(),
+                        s.params[1].unwrap_or_default(),
+                    ))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(
+            set_servos,
+            [
+                (12.0, 1100.0),
+                (11.0, 1100.0),
+                (10.0, 1100.0),
+                (9.0, 1100.0)
+            ],
+            "each drop takes the lowest bay no drop uses yet, at its release PWM"
+        );
+        assert_eq!(
+            drop_after(&dropped, 2, &servos),
+            Some(Some(3)),
+            "the map's Drop label finds a servo drop"
+        );
+        assert_eq!(
+            drop_after(&dropped, 2, &[]),
+            Some(None),
+            "with one gripper a DO_SET_SERVO is no drop"
+        );
+        assert_eq!(
+            insert_drop(&dropped, -1, &QT_DEFAULTS, &servos).unwrap_err(),
+            EVERY_BAY_DROPS
+        );
+        let saved = load(&save(&dropped).to_string(), 2).expect("a saved plan loads");
+        assert_eq!(
+            saved
+                .items
+                .iter()
+                .filter_map(|item| servo_drop_bay(item, &servos))
+                .collect::<Vec<_>>(),
+            [4, 3, 2, 1],
+            "a .plan keeps output and PWM, so every drop is still its bay's after a reload"
+        );
+        assert!(
+            matches!(&saved.items[1], Item::Simple(s) if s.command == CMD_NAV_WAYPOINT && s.params[0] == Some(crate::payloadcheck::DROP_HOLD_SECONDS)),
+            "a multirotor holds before a servo drop as before a gripper drop"
+        );
+    }
+
+    #[test]
     fn a_waypoint_knows_the_drop_that_follows_it() {
         let copter = Document {
             firmware_type: 3,
@@ -2662,23 +2819,27 @@ mod tests {
             &QT_DEFAULTS,
         );
         assert_eq!(
-            drop_after(&waypoints, 2),
+            drop_after(&waypoints, 2, &[]),
             Some(None),
             "a waypoint with nothing after it offers a drop"
         );
-        assert_eq!(drop_after(&waypoints, 1), None, "the takeoff offers none");
+        assert_eq!(
+            drop_after(&waypoints, 1, &[]),
+            None,
+            "the takeoff offers none"
+        );
         let dropped = insert_simple(&waypoints, 211, 0.0, 0.0, 3, &QT_DEFAULTS);
         assert_eq!(
-            drop_after(&dropped, 2),
+            drop_after(&dropped, 2, &[]),
             Some(Some(3)),
             "the drop at item 3 belongs to waypoint 2"
         );
         assert_eq!(
-            drop_after(&dropped, 4),
+            drop_after(&dropped, 4, &[]),
             Some(None),
             "the next waypoint has its own, not waypoint 2's"
         );
-        assert_eq!(drop_after(&dropped, 9), None);
+        assert_eq!(drop_after(&dropped, 9, &[]), None);
     }
 
     #[test]
