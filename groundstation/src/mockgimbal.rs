@@ -15,7 +15,6 @@ const YAW_LIMIT: f32 = 180.0;
 pub struct Gimbal {
     pitch: f32,
     yaw: f32,
-    manual: bool,
     status_interval_us: i64,
     attitude_interval_us: i64,
     status_sent_ms: Option<u64>,
@@ -29,7 +28,6 @@ impl Default for Gimbal {
         Gimbal {
             pitch: 0.0,
             yaw: 0.0,
-            manual: false,
             status_interval_us: 0,
             attitude_interval_us: 0,
             status_sent_ms: None,
@@ -66,11 +64,6 @@ impl Gimbal {
             self.status()
         });
         let attitude = due(self.attitude_interval_us, self.attitude_sent_ms, now_ms).then(|| {
-            if !self.manual {
-                let seconds = (now_ms / 1000) as f64;
-                self.pitch = (10.0 * (seconds * 0.1).sin()) as f32;
-                self.yaw = (15.0 * (seconds * 0.15).cos()) as f32;
-            }
             self.attitude_sent_ms = Some(now_ms);
             self.attitude()
         });
@@ -116,7 +109,6 @@ impl Gimbal {
                         if !yaw.is_nan() {
                             self.yaw = yaw.clamp(-YAW_LIMIT, YAW_LIMIT);
                         }
-                        self.manual = true;
                         reply(MavResult::MAV_RESULT_ACCEPTED)
                     }
                 }
@@ -203,7 +195,7 @@ mod tests {
     const GCS: (u8, u8) = (255, 190);
 
     #[test]
-    fn status_flows_only_once_an_interval_is_asked_and_a_command_takes_manual_control() {
+    fn status_flows_only_once_an_interval_is_asked_and_a_command_moves_the_gimbal() {
         let mut gimbal = Gimbal::default();
         assert!(gimbal.once_a_second(0).is_empty());
         gimbal
@@ -238,7 +230,7 @@ mod tests {
         assert_eq!(
             (gimbal.pitch, gimbal.yaw),
             (-90.0, 30.0),
-            "manual control holds the commanded angles"
+            "the commanded angles hold"
         );
         assert!(
             gimbal
@@ -250,6 +242,36 @@ mod tests {
                 )
                 .is_none(),
             "other intervals are the autopilot's"
+        );
+    }
+
+    #[test]
+    fn a_gimbal_nobody_commands_holds_still() {
+        let mut gimbal = Gimbal::default();
+        gimbal
+            .command(
+                GCS,
+                1,
+                MavCmd::MAV_CMD_SET_MESSAGE_INTERVAL,
+                [285.0, 0.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+            )
+            .unwrap();
+        let reported: Vec<(f32, f32)> = (0..120)
+            .flat_map(|second| gimbal.once_a_second(second * 1000))
+            .filter_map(|(_, message)| match message {
+                MavMessage::GIMBAL_DEVICE_ATTITUDE_STATUS(a) => {
+                    let (_, pitch, _) = crate::gimbal::euler_degrees(a.q);
+                    Some((pitch, a.delta_yaw))
+                }
+                _ => None,
+            })
+            .collect();
+        assert_eq!(reported.len(), 120);
+        assert!(
+            reported
+                .iter()
+                .all(|(pitch, yaw)| pitch.abs() < 0.01 && yaw.abs() < 0.01),
+            "it stays level and forward over two minutes: {reported:?}"
         );
     }
 
