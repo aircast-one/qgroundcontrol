@@ -48,6 +48,9 @@ const TILT_LAG_S: f64 = 0.3;
 const GRAVITY_MPS2: f64 = 9.81;
 const THROTTLE_DEADBAND: f64 = 0.1;
 const STICK_TIMEOUT_TICKS: u64 = 10;
+const STICK_ARM_TICKS: u64 = 2 * TICKS_PER_SECOND;
+const STICK_LOW: std::ops::RangeInclusive<u16> = 800..=1100;
+const STICK_HIGH: std::ops::RangeInclusive<u16> = 1900..=2200;
 const PLANE_ALT_SLACK_M: f64 = 5.0;
 const PLANE_CLIMBOUT_M: f64 = 5.0;
 const PLANE_ROTATE_FRACTION: f64 = 0.8;
@@ -500,6 +503,13 @@ enum Phase {
     Landing,
 }
 
+#[derive(Debug, Clone, Copy)]
+struct StickArming {
+    arm: bool,
+    since: u64,
+    done: bool,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 struct Sticks {
     forward: f64,
@@ -636,6 +646,8 @@ pub struct Sim {
     yaw_rate: f64,
     tilt: (f64, f64),
     sticks: Option<(Sticks, u64)>,
+    radio: Option<([u16; 16], u64)>,
+    stick_arming: Option<StickArming>,
     target: Option<Target>,
     phase: Phase,
     missions: BTreeMap<u8, Vec<MISSION_ITEM_INT_DATA>>,
@@ -735,6 +747,8 @@ impl Sim {
             yaw_rate: 0.0,
             tilt: (0.0, 0.0),
             sticks: None,
+            radio: None,
+            stick_arming: None,
             target: None,
             phase: Phase::Holding,
             missions: BTreeMap::new(),
@@ -1110,6 +1124,26 @@ impl Sim {
                     && [0, crate::hub::COMP_AUTOPILOT1].contains(&m.target_component) =>
             {
                 self.sticks = Some((Sticks::from_override(m), self.ticks));
+                let channels = [
+                    m.chan1_raw,
+                    m.chan2_raw,
+                    m.chan3_raw,
+                    m.chan4_raw,
+                    m.chan5_raw,
+                    m.chan6_raw,
+                    m.chan7_raw,
+                    m.chan8_raw,
+                    m.chan9_raw,
+                    m.chan10_raw,
+                    m.chan11_raw,
+                    m.chan12_raw,
+                    m.chan13_raw,
+                    m.chan14_raw,
+                    m.chan15_raw,
+                    m.chan16_raw,
+                ];
+                self.radio = Some((channels, self.ticks));
+                self.stick_arm(channels[2], channels[3]);
                 Vec::new()
             }
             MavMessage::COMMAND_LONG(m) if self.mine(m.target_system) => {
@@ -1652,6 +1686,79 @@ impl Sim {
             .clone()
             .or_else(|| self.conditions.gps_lost.then(|| "Need 3D Fix".to_string()))
             .filter(|_| !self.armed)
+    }
+
+    fn stick_arm(&mut self, throttle: u16, yaw: u16) {
+        let gesture = match (
+            STICK_LOW.contains(&throttle),
+            STICK_HIGH.contains(&yaw),
+            STICK_LOW.contains(&yaw),
+        ) {
+            (true, true, _) => Some(true),
+            (true, _, true) => Some(false),
+            _ => None,
+        };
+        let held = gesture.map(|arm| match self.stick_arming {
+            Some(held) if held.arm == arm => held,
+            _ => StickArming {
+                arm,
+                since: self.ticks,
+                done: false,
+            },
+        });
+        let due = held.filter(|h| !h.done && self.ticks.saturating_sub(h.since) >= STICK_ARM_TICKS);
+        self.stick_arming = held.map(|h| StickArming {
+            done: h.done || due.is_some(),
+            ..h
+        });
+        match due.map(|h| h.arm) {
+            Some(true) if !self.armed => match self.refusal() {
+                Some(reason) => {
+                    self.refuse_arming(&reason);
+                }
+                None => self.arm(),
+            },
+            Some(false) if self.armed && !self.airborne() => self.armed = false,
+            _ => {}
+        }
+    }
+
+    fn rc_channels(&self) -> Out {
+        let radio = self
+            .radio
+            .filter(|(_, at)| self.ticks.saturating_sub(*at) <= STICK_TIMEOUT_TICKS)
+            .map(|(channels, _)| channels);
+        let channel = |at: usize| {
+            radio
+                .map(|channels| channels[at])
+                .filter(|pwm| (800..=2200).contains(pwm))
+                .unwrap_or(1500)
+        };
+        (
+            AUTOPILOT,
+            MavMessage::RC_CHANNELS(RC_CHANNELS_DATA {
+                chancount: 16,
+                chan1_raw: channel(0),
+                chan2_raw: channel(1),
+                chan3_raw: channel(2),
+                chan4_raw: channel(3),
+                chan5_raw: channel(4),
+                chan6_raw: channel(5),
+                chan7_raw: channel(6),
+                chan8_raw: channel(7),
+                chan9_raw: channel(8),
+                chan10_raw: channel(9),
+                chan11_raw: channel(10),
+                chan12_raw: channel(11),
+                chan13_raw: channel(12),
+                chan14_raw: channel(13),
+                chan15_raw: channel(14),
+                chan16_raw: channel(15),
+                chan17_raw: u16::MAX,
+                chan18_raw: u16::MAX,
+                ..Default::default()
+            }),
+        )
     }
 
     fn refuse_arming(&mut self, reason: &str) -> (MavResult, Vec<Out>) {
@@ -2564,7 +2671,7 @@ impl Sim {
             .map(Cameras::heartbeats)
             .unwrap_or_default();
         let rest = vec![
-            rc_channels(),
+            self.rc_channels(),
             self.home_position(),
             self.heartbeat(),
             self.gps(elapsed_ms),
@@ -2861,34 +2968,6 @@ fn request_item(to: (u8, u8), kind: MavMissionType, seq: u16) -> Out {
             target_system: to.0,
             target_component: to.1,
             mission_type: kind,
-        }),
-    )
-}
-
-fn rc_channels() -> Out {
-    (
-        AUTOPILOT,
-        MavMessage::RC_CHANNELS(RC_CHANNELS_DATA {
-            chancount: 16,
-            chan1_raw: 1500,
-            chan2_raw: 1500,
-            chan3_raw: 1500,
-            chan4_raw: 1500,
-            chan5_raw: 1500,
-            chan6_raw: 1500,
-            chan7_raw: 1500,
-            chan8_raw: 1500,
-            chan9_raw: 1500,
-            chan10_raw: 1500,
-            chan11_raw: 1500,
-            chan12_raw: 1500,
-            chan13_raw: 1500,
-            chan14_raw: 1500,
-            chan15_raw: 1500,
-            chan16_raw: 1500,
-            chan17_raw: u16::MAX,
-            chan18_raw: u16::MAX,
-            ..Default::default()
         }),
     )
 }
@@ -4422,6 +4501,35 @@ mod tests {
             sim.armed
                 && (sim.alt - 8.0).abs() < 0.1
                 && metres_to(&sim, lat, lon) < sim.tuning.arrive
+        );
+    }
+
+    #[test]
+    fn a_radio_arms_with_throttle_down_and_yaw_right_disarms_with_yaw_left_and_climbs_on_throttle()
+    {
+        let mut sim = Sim::new(options(Vehicle::Copter), 128, None);
+        radio(&mut sim, [1500, 1500, 988, 2012], 1, 1);
+        assert!(!sim.armed, "a second of the gesture is not enough");
+        radio(&mut sim, [1500, 1500, 988, 2012], 1, 2);
+        assert!(
+            sim.armed,
+            "two seconds of throttle down and yaw right arm it, as ArduCopter's rudder arming does"
+        );
+        assert!(
+            matches!(sim.rc_channels(), (_, MavMessage::RC_CHANNELS(c)) if (c.chan3_raw, c.chan4_raw, c.chan5_raw) == (988, 2012, 1500)),
+            "RC_CHANNELS reads back what the radio sends, and 1500 where it sends nothing"
+        );
+        radio(&mut sim, [1500, 1500, 988, 988], 1, 3);
+        assert!(
+            !sim.armed,
+            "throttle down and yaw left disarm it on the ground"
+        );
+        radio(&mut sim, [1500, 1500, 988, 2012], 1, 3);
+        radio(&mut sim, [1500, 1500, 2012, 1500], 1, 2);
+        assert!(
+            sim.armed && sim.alt > 1.0,
+            "armed again from the sticks, full throttle lifts it off: {}",
+            sim.alt
         );
     }
 
