@@ -50,4 +50,25 @@ class GuidedActionsTest {
         assertEquals(emptyMap<String, GuidedOffer>(), guidedOffers(null))
         assertEquals(emptyMap<String, GuidedOffer>(), guidedOffers(JSONObject("{}")))
     }
+
+    @Test
+    fun `auto intercept's status line says what's actually happening, not nothing`() {
+        assertNull("idle has nothing to say", autodropStatusLine(null))
+        assertEquals(
+            "Auto intercept: climbing to speed" to false,
+            autodropStatusLine(JSONObject("""{"state":"waiting","phase":"waitingForCruise"}""")),
+        )
+        assertEquals(
+            "Auto intercept: lining up the shot" to false,
+            autodropStatusLine(JSONObject("""{"state":"waiting","phase":"waitingForRelease"}""")),
+        )
+        assertEquals(
+            "Auto intercept: dropped, missed by about 1.6 m" to false,
+            autodropStatusLine(JSONObject("""{"state":"fired","predictedMissMeters":1.62}""")),
+        )
+        assertEquals(
+            "Auto intercept gave up: no release window opened within the time limit" to true,
+            autodropStatusLine(JSONObject("""{"state":"gaveUp","reason":"no release window opened within the time limit"}""")),
+        )
+    }
 }

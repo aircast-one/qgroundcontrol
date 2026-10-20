@@ -185,6 +185,17 @@ pub fn run(backend: &dyn Backend, args: &str) -> Value {
         return json!({ "ok": false, "reason": "the target source must be gimbal, manual, or vehicle with an id" });
     };
 
+    // ponytail: checks only bay 0, the one every drop this app has ever used in practice.
+    // A multi-bay rig with bay 0 empty but another bay still loaded would wrongly refuse here;
+    // upgrade to checking every bay once a real multi-bay autodrop scenario exists.
+    if backend
+        .value("vehicle.payloadSetup")
+        .get("empty")
+        .and_then(Value::as_array)
+        .is_some_and(|empty| empty.iter().any(|bay| bay.as_i64() == Some(0)))
+    {
+        return json!({ "ok": false, "reason": "the payload bay is already empty" });
+    }
     let Some((position, altitude_agl_m)) = release_position(backend) else {
         return json!({ "ok": false, "reason": "no vehicle position yet" });
     };
@@ -355,6 +366,37 @@ mod tests {
             target_from(&NoBackend, TargetSource::Manual, here, 10.0),
             Err("no target has been marked on the map yet"),
             "NoBackend reports no vehicle.manualTarget fact"
+        );
+    }
+
+    struct EmptyBayBackend;
+    impl Backend for EmptyBayBackend {
+        fn get(&self, path: &str) -> String {
+            match path {
+                "vehicle.id" => json!({"kind": "value", "value": 1}).to_string(),
+                "vehicle.payloadSetup" => json!({"empty": [0]}).to_string(),
+                _ => "{}".to_string(),
+            }
+        }
+        fn get_fields(&self, _path: &str, _fields: &str) -> String {
+            "{}".to_string()
+        }
+        fn set(&self, _path: &str, _value: &str) -> String {
+            "{}".to_string()
+        }
+        fn invoke(&self, _path: &str, _args: &str) -> String {
+            "{}".to_string()
+        }
+        fn watch(&self, _paths: &[String]) {}
+    }
+
+    #[test]
+    fn a_run_is_refused_up_front_when_the_payload_bay_is_already_empty() {
+        let answer = run(&EmptyBayBackend, "[]");
+        assert_eq!(
+            (answer["ok"].as_bool(), answer["reason"].as_str()),
+            (Some(false), Some("the payload bay is already empty")),
+            "an empty bay should refuse before ever steering the vehicle, not fly the course and fire nothing: {answer}"
         );
     }
 }

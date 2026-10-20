@@ -124,6 +124,14 @@ internal fun checklistStateValue(passed: Boolean): Int = if (passed) CHECKLIST_P
 internal fun offerWithdrawn(offerId: String?, offers: Map<String, GuidedOffer>): Boolean =
     offerId != null && offers[offerId]?.shown != true
 
+/** (message, isProblem) for the live auto-intercept run, or null while idle - nothing to say. */
+internal fun autodropStatusLine(json: JSONObject?): Pair<String, Boolean>? = when (json?.optText("state")) {
+    "waiting" -> (if (json.optText("phase") == "waitingForCruise") "Auto intercept: climbing to speed" else "Auto intercept: lining up the shot") to false
+    "fired" -> "Auto intercept: dropped, missed by about %.1f m".format(json.optDouble("predictedMissMeters", 0.0)) to false
+    "gaveUp" -> "Auto intercept gave up: ${json.optText("reason")}" to true
+    else -> null
+}
+
 
 internal data class Instrument(val label: String, val reading: String, val id: String = "", val value: String = reading, val units: String = "", val raw: Double? = null, val defaultIcon: String = "")
 
@@ -400,6 +408,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     val resumeFrom = remember(actionsJson) { resumeFromSequence(actionsJson) }
     val autodropJson by qgcPath(AUTODROP_STATUS)
     val autodropWaiting = autodropJson?.optText("state") == "waiting"
+    val autodropStatus = remember(autodropJson) { autodropStatusLine(autodropJson) }
     val payload = remember(actionsJson) { payloadOf(actionsJson) }
     val automaticMissionPopups by qgcBool(settingControl("settings.flyViewSettings.enableAutomaticMissionPopups"))
     var missionReady by remember { mutableStateOf<Set<String>?>(null) }
@@ -529,7 +538,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                     RailDeckButton(DeckEntry("more", "More", R.drawable.ic_more_vert, true) { showMore = true }, primary = false)
                 }
             }
-            if (refusal != null || confirming != null || showingSent) {
+            if (refusal != null || confirming != null || showingSent || autodropStatus != null) {
                 Surface(
                     Modifier.align(Alignment.Center).widthIn(max = DECISION_CARD_WIDTH).padding(AircastSpace.s3),
                     shape = MaterialTheme.shapes.extraLarge,
@@ -537,6 +546,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                 ) {
                     HoldsDecision()
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                        autodropStatus?.let { (message, isProblem) -> AutodropStatusLine(message, isProblem) }
                         refusal?.let { message -> RefusalLine(message) { refusal = null } }
                         if (confirming != null) {
                             ConfirmTrack(
@@ -556,6 +566,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
         }
     } else Column(modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 
+        autodropStatus?.let { (message, isProblem) -> AutodropStatusLine(message, isProblem) }
         refusal?.let { message -> RefusalLine(message) { refusal = null } }
 
         if (confirming != null) {
@@ -608,7 +619,27 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     if (showMore) {
         val checklistPast = checklistOffered(armed)
         MoreActionsSheet(
-            tiles = listOfNotNull(armedStopOffer(offers, armed)?.let { offer -> MoreTile(STOP_MOTORS, R.drawable.ic_warning, true, warning = true) { pending = emergencyStopAction(offer) } }) +
+            tiles = listOfNotNull(
+                armedStopOffer(offers, armed)?.let { offer -> MoreTile(STOP_MOTORS, R.drawable.ic_warning, true, warning = true) { pending = emergencyStopAction(offer) } },
+                // Grouped with Stop Motors, ahead of passive settings below: this starts an
+                // unsupervised flight-and-release, not a value to tweak, and shouldn't need a
+                // scroll to find.
+                MoreTile(if (autodropWaiting) "Stop Auto Intercept" else "Auto Intercept", R.drawable.ic_search, true) {
+                    if (autodropWaiting) {
+                        VehicleCommands.stopAutoInterceptDrop()
+                    } else {
+                        ask(
+                            GuidedAction(
+                                name = "Auto Intercept",
+                                confirm = "Fly an intercept course toward wherever the camera is aimed, and release the payload automatically once it lines up. The vehicle steers and fires itself - no further input.",
+                                destructive = false,
+                                answer = { withContext(Dispatchers.Default) { VehicleCommands.startAutoInterceptDropRefusal() } },
+                                run = { VehicleCommands.startAutoInterceptDrop() },
+                            ),
+                        )
+                    }
+                },
+            ) +
                 deckRest.filter { it.id != CHECKLIST && it.id != RELEASE }.map { MoreTile(it.label, it.icon, it.enabled, it.warning, it.onClick) } +
                 listOfNotNull(
                     MoreTile("Checklist", R.drawable.ic_check_circle, checklistPast == null) { checklist.open() }
@@ -617,9 +648,6 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                     MoreTile("Payload", R.drawable.ic_payload, gripper.any { it.ready }) { showGripper = true }.takeIf { gripper.isNotEmpty() },
                     MoreTile("Choose readings", R.drawable.ic_tune, true) { flyScreen.choosingReadings = true },
                     MoreTile("Edit layout", R.drawable.ic_edit, true) { flyScreen.layout.startEditing() }.takeIf { !armed },
-                    MoreTile(if (autodropWaiting) "Stop Auto Intercept" else "Auto Intercept", R.drawable.ic_drop, true) {
-                        if (autodropWaiting) VehicleCommands.stopAutoInterceptDrop() else VehicleCommands.startAutoInterceptDrop()
-                    },
                 ) +
                 extras.filter { offer -> entries.none { it.id == offer.id } && offer.id !in GRIPPER_ACTIONS }.map { offer ->
                     MoreTile(offer.title, guidedIcon(offer.id), offer.ready, offer.destructive) {
@@ -737,6 +765,15 @@ private fun RefusalLine(message: String, onDismiss: () -> Unit) {
         Text(message, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.error, modifier = Modifier.weight(1f))
         IconButton(onClick = onDismiss) { Icon(Icons.Filled.Close, contentDescription = "Dismiss") }
     }
+}
+
+@Composable
+private fun AutodropStatusLine(message: String, isProblem: Boolean) {
+    Text(
+        message,
+        style = MaterialTheme.typography.bodyMedium,
+        color = if (isProblem) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+    )
 }
 
 internal const val FLIGHT_MODE_SETTINGS_PAGE = "Flight Mode Settings"

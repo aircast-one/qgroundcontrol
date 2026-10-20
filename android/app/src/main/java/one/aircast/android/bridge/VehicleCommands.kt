@@ -64,5 +64,6 @@ internal object VehicleCommands {
     fun resetAllMessages(): Boolean = Qgc.invoke(VEHICLE_RESET_MESSAGES)
     fun clearMessages(): Boolean = Qgc.invoke(VEHICLE_CLEAR_MESSAGES)
     fun startAutoInterceptDrop(): Boolean = Qgc.invoke(VEHICLE_AUTO_INTERCEPT_DROP)
+    fun startAutoInterceptDropRefusal(): String? = Qgc.refusalOf(VEHICLE_AUTO_INTERCEPT_DROP)
     fun stopAutoInterceptDrop(): Boolean = Qgc.invoke(VEHICLE_AUTO_INTERCEPT_DROP, "stop")
 }
