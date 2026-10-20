@@ -33,12 +33,25 @@ Invoke-WebRequest "https://gstreamer.freedesktop.org/data/pkg/windows/$v/msvc/gs
 Every 1.28.x arm64 installer shares one AppId: uninstall a different version (`C:\gstreamer\unins000.exe /VERYSILENT`)
 first. `build-video.ps1` refuses to build against any version other than the pin.
 
+The arm64 SDK ships no gst-plugins-rs, so `whepsrc` (WHEP video) is built from source once per box, elevated:
+
+```powershell
+.\build-whep.ps1        # add -Jobs 2 on a shared box
+```
+
+It clones gst-plugins-rs at `gstreamer-<pin>` (the tag cerbero ships with that GStreamer; 1.28.4 -> 0.15.2, commit
+`e2e244c3`), builds `gst-plugin-webrtchttp` for `aarch64-pc-windows-msvc` with the `groundstation` Rust pin
+(`cargo build --locked --release -p gst-plugin-webrtchttp`, rustls TLS, no OpenSSL) against the SDK's pkg-config, and
+installs `gstwebrtchttp.dll` into `<GStreamer root>\lib\gstreamer-1.0`, where the x64 SDK keeps it. `webrtchttp` is in the
+build-config plugin list, so `build-video.ps1` bundles it with its `webrtc`/`nice`/`dtls`/`srtp`/`sctp`/`rtpmanager` deps.
+
 ## Layout
 
 ```text
 windows/
   build-core.ps1          groundstation -> groundstation.dll (aarch64)
   build-video.ps1         ../src/Bridge/QGCVideoC.cc -> qgc_video.dll (arm64) + the GStreamer runtime it needs
+  build-whep.ps1          gst-plugins-rs webrtchttp -> gstwebrtchttp.dll (whepsrc) in the GStreamer root
   build-app.ps1           core + video + dotnet build, staged locally
   src/AircastQGC/
     Core/                 NativeMethods, CoreHost, Bridge, BridgeWatch  (the core binding)
@@ -72,8 +85,8 @@ windows/
   (it looks for `HOME`) and refuses to record. It also passes `--settings %LOCALAPPDATA%\Aircast\Aircast QGC.ini` and
   `--map-cache %LOCALAPPDATA%\Aircast\QGCMapCache\qgcMapCache.db`: without them the settings land under the launch folder and there is
   no tile cache, so offline maps are unavailable.
-- WHEP (cloud/SFU video) cannot play on Windows ARM64 yet: the official SDK ships no gst-plugins-rs (`whepsrc`), an
-  upstream known issue. RTP/UDP H.264 is verified on the VM; RTSP, H.265 and MPEG-TS plugins are bundled but
-  untested. The VM has no DXVA, so it decodes with `avdec_*`.
+- WHEP (cloud/SFU video) plays through the `whepsrc` that `build-whep.ps1` builds; verified on the VM against a local
+  MediaMTX. RTP/UDP H.264 is verified on the VM; RTSP, H.265 and MPEG-TS plugins are bundled but untested. The VM has no
+  DXVA, so it decodes with `avdec_*`.
 - Unpackaged, self-contained WinUI 3 (no MSIX yet). MSIX/Store packaging is a later step
   (`../deploy/windows` has the older Qt plan for reference only).
