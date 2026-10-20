@@ -225,6 +225,7 @@ pub const OWNED: &[&str] = &[
     SET_HOME,
     FACE_POINT,
     ESTIMATOR_ORIGIN,
+    crate::videoar::GROUND_AT,
 ];
 
 pub fn owns(path: &str) -> bool {
@@ -574,6 +575,7 @@ pub fn run(backend: &dyn Backend, path: &str, args: &str) -> Value {
         DESELECT_ALL => crate::vehicleselect::deselect_all(backend, path),
         COMMIT_LINKS => crate::linkconnect::commit(backend, path),
         GROUND_SPEED | AIRSPEED => crate::speed::change(backend, path, args),
+        crate::videoar::GROUND_AT => crate::videoar::ground_at(backend, args),
         GOTO_LOCATION | POINT_AT | SET_HOME | FACE_POINT | ESTIMATOR_ORIGIN => {
             match crate::mapclick::Click::of(path) {
                 Some(click) => crate::mapclick::send(backend, click, path, args),

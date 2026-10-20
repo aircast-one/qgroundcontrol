@@ -25,6 +25,10 @@ const EARTH_RADIUS_M: f64 = 6_371_000.0;
 const NEAR_M: f64 = 1.0;
 const HOME_LABEL: &str = "H";
 const CAMERA_HFOV: &str = "settings.gimbalControllerSettings.cameraHFov.rawValue";
+pub const GROUND_AT: &str = "videoAr.groundAt";
+const REACH_M: f64 = 2000.0;
+const STEP_M: f64 = 5.0;
+const PICTURE_ACTIONS: [&str; 4] = ["GoTo", "Orbit", "Roi", "Heading"];
 
 type Space = (f64, f64, f64);
 
@@ -49,7 +53,7 @@ fn offset(from: (f64, f64), to: (f64, f64)) -> (f64, f64) {
     (east, north)
 }
 
-pub fn in_camera(camera: Camera, (east, north, up): Space) -> Space {
+fn axes(camera: Camera) -> [Space; 3] {
     let (heading, pitch, roll) = (
         camera.heading.to_radians(),
         camera.pitch.to_radians(),
@@ -60,19 +64,51 @@ pub fn in_camera(camera: Camera, (east, north, up): Space) -> Space {
         heading.cos() * pitch.cos(),
         pitch.sin(),
     );
-    let right = (heading.cos(), -heading.sin(), 0.0);
-    let upward = (
+    let level = (heading.cos(), -heading.sin(), 0.0);
+    let raised = (
         -heading.sin() * pitch.sin(),
         -heading.cos() * pitch.sin(),
         pitch.cos(),
     );
+    let blend = |a: Space, b: Space, (x, y): (f64, f64)| {
+        (a.0 * x + b.0 * y, a.1 * x + b.1 * y, a.2 * x + b.2 * y)
+    };
+    [
+        blend(level, raised, (roll.cos(), -roll.sin())),
+        blend(raised, level, (roll.cos(), roll.sin())),
+        forward,
+    ]
+}
+
+pub fn in_camera(camera: Camera, (east, north, up): Space) -> Space {
+    let [right, upward, forward] = axes(camera);
     let dot = |axis: Space| east * axis.0 + north * axis.1 + up * axis.2;
-    let (across, above, ahead) = (dot(right), dot(upward), dot(forward));
-    (
-        across * roll.cos() - above * roll.sin(),
-        above * roll.cos() + across * roll.sin(),
-        ahead,
-    )
+    (dot(right), dot(upward), dot(forward))
+}
+
+pub fn out_of_camera(camera: Camera, (across, above, ahead): Space) -> Space {
+    let [right, upward, forward] = axes(camera);
+    let along = |pick: fn(Space) -> f64| {
+        across * pick(right) + above * pick(upward) + ahead * pick(forward)
+    };
+    (along(|a| a.0), along(|a| a.1), along(|a| a.2))
+}
+
+pub fn ground_hit(height: f64, ray: Space, ground: &dyn Fn(f64, f64) -> f64) -> Option<(f64, f64)> {
+    let length = (ray.0.powi(2) + ray.1.powi(2) + ray.2.powi(2)).sqrt();
+    let at = |slant: f64| {
+        let share = slant / length;
+        let (east, north) = (ray.0 * share, ray.1 * share);
+        ((east, north), height + ray.2 * share - ground(east, north))
+    };
+    let path: Vec<(f64, f64)> = (0..=(REACH_M / STEP_M) as usize)
+        .map(|step| step as f64 * STEP_M)
+        .map(|slant| (slant, at(slant).1))
+        .collect();
+    path.windows(2)
+        .filter(|_| length > 0.0)
+        .find(|pair| pair[0].1 > 0.0 && pair[1].1 <= 0.0)
+        .map(|pair| at(pair[0].0 + STEP_M * pair[0].1 / (pair[0].1 - pair[1].1)).0)
 }
 
 fn framed(camera: Camera, (across, above, ahead): Space) -> Value {
@@ -192,6 +228,128 @@ pub fn video_ar(
     let unit = Unit::horizontal(backend);
     let distance = |metres: f64| format_measure(unit.show(metres), &unit.name);
     ar(drone, drone_above, camera, overlays, &distance)
+}
+
+fn half_tan(degrees: f64) -> f64 {
+    (degrees / 2.0).to_radians().tan()
+}
+
+pub fn ground_point(
+    drone: (f64, f64),
+    height: f64,
+    lens: (Camera, Option<f64>),
+    aspect: f64,
+    (pan, tilt): (f64, f64),
+    ground: &dyn Fn((f64, f64)) -> f64,
+) -> Option<(f64, f64)> {
+    let (camera, vertical_fov) = lens;
+    let across = pan * half_tan(camera.fov);
+    let above = tilt * vertical_fov.map_or(half_tan(camera.fov) / aspect, half_tan);
+    let ray = out_of_camera(camera, (across, above, 1.0));
+    let place = |east: f64, north: f64| {
+        crate::surveygrid::at_distance_and_azimuth(
+            drone,
+            east.hypot(north),
+            east.atan2(north).to_degrees().rem_euclid(360.0),
+        )
+    };
+    ground_hit(height, ray, &|east, north| ground(place(east, north)))
+        .map(|(east, north)| place(east, north))
+}
+
+fn shown_lens(backend: &dyn Backend, synthetic: bool) -> Option<(Camera, Option<f64>)> {
+    let angle = |degrees: Option<f64>| degrees.filter(|fov| *fov > 0.0 && *fov < 180.0);
+    match synthetic {
+        true => {
+            let pose = crate::synthview::synthetic_view(backend, &[]);
+            let read = |key: &str| pose[key].as_f64().filter(|v| v.is_finite());
+            Some((
+                Camera {
+                    heading: read("heading")?,
+                    pitch: read("pitch")?,
+                    roll: read("roll")?,
+                    fov: angle(read("fov"))?,
+                },
+                None,
+            ))
+        }
+        false => {
+            let (horizontal, vertical, _) = crate::lens::field_of_view(backend);
+            camera(
+                backend,
+                &crate::gimbal::gimbal_view(backend, &[]),
+                crate::cameras::active_tilt(backend),
+            )
+            .map(|aimed| {
+                (
+                    Camera {
+                        fov: angle(horizontal).unwrap_or(aimed.fov),
+                        ..aimed
+                    },
+                    angle(vertical),
+                )
+            })
+        }
+    }
+}
+
+fn ground_above_home(backend: &dyn Backend) -> impl Fn((f64, f64)) -> f64 {
+    let home = point(backend, "vehicle.homePosition")
+        .and_then(|(latitude, longitude)| crate::terrainservice::height(latitude, longitude));
+    move |(latitude, longitude)| {
+        home.zip(crate::terrainservice::height(latitude, longitude))
+            .map_or(0.0, |(home, here)| here - home)
+    }
+}
+
+pub fn ground_at(backend: &dyn Backend, args: &str) -> Value {
+    let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
+    let number = |index: usize| {
+        given
+            .get(index)
+            .and_then(Value::as_f64)
+            .filter(|v| v.is_finite())
+    };
+    let fraction = |index: usize| number(index).filter(|v| (-1.0..=1.0).contains(v));
+    let refused =
+        |token: &str, reason: String| json!({ "ok": false, "refusal": token, "reason": reason });
+    let Some(((pan, tilt), aspect)) = fraction(0)
+        .zip(fraction(1))
+        .zip(number(2).filter(|aspect| *aspect > 0.0))
+    else {
+        return refused(
+            "badPoint",
+            "Give the point as fractions of the picture from -1 to 1, then the picture's width over its height.".to_string(),
+        );
+    };
+    let synthetic = given.get(3).and_then(Value::as_bool).unwrap_or(false);
+    let placed = point(backend, "vehicle.coordinate").zip(raw(backend, "vehicle.altitudeRelative"));
+    let Some(((drone, height), lens)) = placed.zip(shown_lens(backend, synthetic)) else {
+        return refused(
+            "notPlaced",
+            "Where the aircraft is and where its camera looks are not known yet.".to_string(),
+        );
+    };
+    let unit = Unit::horizontal(backend);
+    match ground_point(
+        drone,
+        height,
+        lens,
+        aspect,
+        (pan, tilt),
+        &ground_above_home(backend),
+    ) {
+        Some((latitude, longitude)) => {
+            json!({ "ok": true, "latitude": latitude, "longitude": longitude, "actions": PICTURE_ACTIONS })
+        }
+        None => refused(
+            "notGround",
+            format!(
+                "That is above the horizon, or farther than {}.",
+                format_measure(unit.show(REACH_M), &unit.name)
+            ),
+        ),
+    }
 }
 
 pub fn video_ar_view(backend: &dyn Backend, _args: &[String]) -> Value {
@@ -477,6 +635,223 @@ mod tests {
             ),
             (Some("H"), Some("100 m")),
             "facing home it is drawn with its distance"
+        );
+    }
+
+    const DRONE: (f64, f64) = (-35.0, 149.0);
+
+    fn flat(_: (f64, f64)) -> f64 {
+        0.0
+    }
+
+    fn looking(heading: f64, pitch: f64, fov: f64) -> (Camera, Option<f64>) {
+        (
+            Camera {
+                heading,
+                pitch,
+                roll: 0.0,
+                fov,
+            },
+            None,
+        )
+    }
+
+    fn ahead_and_across(at: (f64, f64)) -> (f64, f64) {
+        let (east, north) = offset(DRONE, at);
+        (north, east)
+    }
+
+    fn close(found: (f64, f64), wanted: (f64, f64)) -> bool {
+        (found.0 - wanted.0).abs() < 0.05 && (found.1 - wanted.1).abs() < 0.05
+    }
+
+    #[test]
+    fn a_direction_on_the_picture_turns_back_into_the_direction_in_the_world() {
+        let banked = Camera {
+            heading: 130.0,
+            pitch: -35.0,
+            roll: 12.0,
+            fov: 60.0,
+        };
+        let world = (30.0, -45.0, -20.0);
+        let back = out_of_camera(banked, in_camera(banked, world));
+        assert!(
+            (back.0 - world.0).abs() < 1e-9
+                && (back.1 - world.1).abs() < 1e-9
+                && (back.2 - world.2).abs() < 1e-9
+        );
+    }
+
+    #[test]
+    fn the_middle_of_a_picture_looking_45_down_from_20_m_is_20_m_ahead() {
+        let hit = ground_point(
+            DRONE,
+            20.0,
+            looking(0.0, -45.0, 70.0),
+            16.0 / 9.0,
+            (0.0, 0.0),
+            &flat,
+        );
+        assert!(
+            close(ahead_and_across(hit.unwrap()), (20.0, 0.0)),
+            "{:?}",
+            hit.map(ahead_and_across)
+        );
+        let east = ground_point(
+            DRONE,
+            20.0,
+            looking(90.0, -45.0, 70.0),
+            16.0 / 9.0,
+            (0.0, 0.0),
+            &flat,
+        );
+        assert!(
+            close(ahead_and_across(east.unwrap()), (0.0, 20.0)),
+            "turned east it lands 20 m east"
+        );
+    }
+
+    #[test]
+    fn looking_straight_down_the_middle_of_the_picture_is_under_the_drone() {
+        let hit = ground_point(
+            DRONE,
+            20.0,
+            looking(0.0, -90.0, 70.0),
+            16.0 / 9.0,
+            (0.0, 0.0),
+            &flat,
+        );
+        assert!(close(ahead_and_across(hit.unwrap()), (0.0, 0.0)));
+    }
+
+    #[test]
+    fn the_sky_and_ground_past_2_km_are_not_offered_as_a_point() {
+        assert_eq!(
+            ground_point(
+                DRONE,
+                20.0,
+                looking(0.0, 0.0, 70.0),
+                16.0 / 9.0,
+                (0.0, 0.5),
+                &flat
+            ),
+            None,
+            "the upper half of a level picture is sky"
+        );
+        assert_eq!(
+            ground_point(
+                DRONE,
+                20.0,
+                looking(0.0, -0.3, 70.0),
+                16.0 / 9.0,
+                (0.0, 0.0),
+                &flat
+            ),
+            None,
+            "0.3 degrees down from 20 m meets the ground nearly 4 km out"
+        );
+        assert!(
+            ground_point(
+                DRONE,
+                20.0,
+                looking(0.0, -1.0, 70.0),
+                16.0 / 9.0,
+                (0.0, 0.0),
+                &flat
+            )
+            .is_some()
+        );
+    }
+
+    #[test]
+    fn rising_ground_is_met_before_the_flat_ground_would_be() {
+        let hill = |at: (f64, f64)| match ahead_and_across(at).0 > 15.0 {
+            true => 10.0,
+            false => 0.0,
+        };
+        let hit = ground_point(
+            DRONE,
+            20.0,
+            looking(0.0, -30.0, 70.0),
+            16.0 / 9.0,
+            (0.0, 0.0),
+            &hill,
+        );
+        let (ahead, _) = ahead_and_across(hit.unwrap());
+        assert!(
+            (ahead - 10.0 / (30.0f64).to_radians().tan()).abs() < 0.5,
+            "a 10 m rise 15 m out meets the ray 10 m below the drone, at {ahead}"
+        );
+        let valley = ground_point(
+            DRONE,
+            20.0,
+            looking(0.0, -45.0, 70.0),
+            16.0 / 9.0,
+            (0.0, 0.0),
+            &|_| -10.0,
+        );
+        assert!(
+            close(ahead_and_across(valley.unwrap()), (30.0, 0.0)),
+            "ground 10 m below home is 30 m away at 45 degrees"
+        );
+    }
+
+    #[test]
+    fn a_long_press_lands_where_a_tap_would_aim_the_gimbal() {
+        let (pan, tilt, h_fov, v_fov, pitch) = (0.6, -0.4, 60.0, 34.0, -30.0);
+        let (yaw, aimed) = crate::gimbal::aim_through_lens(pan, tilt, h_fov, v_fov, pitch);
+        let hit = ground_point(
+            DRONE,
+            20.0,
+            (
+                Camera {
+                    heading: 0.0,
+                    pitch: f64::from(pitch),
+                    roll: 0.0,
+                    fov: f64::from(h_fov),
+                },
+                Some(f64::from(v_fov)),
+            ),
+            16.0 / 9.0,
+            (f64::from(pan), f64::from(tilt)),
+            &flat,
+        )
+        .unwrap();
+        let (ahead, across) = ahead_and_across(hit);
+        let reach = 20.0 / f64::from(-aimed).to_radians().tan();
+        assert!(
+            (across.atan2(ahead).to_degrees() - f64::from(yaw)).abs() < 0.05
+                && (ahead.hypot(across) - reach).abs() < 0.1,
+            "bearing {} reach {} against the aim's {yaw} and {reach}",
+            across.atan2(ahead).to_degrees(),
+            ahead.hypot(across)
+        );
+    }
+
+    #[test]
+    fn without_a_measured_vertical_field_the_picture_shape_sets_it() {
+        let lens = looking(0.0, -45.0, 90.0);
+        let square = ground_point(DRONE, 20.0, lens, 1.0, (0.0, -1.0), &flat);
+        assert!(
+            close(ahead_and_across(square.unwrap()), (0.0, 0.0)),
+            "the bottom edge of a square 90 degree picture looking 45 down is straight below"
+        );
+        let wide = ground_point(DRONE, 20.0, lens, 2.0, (0.0, -1.0), &flat).map(ahead_and_across);
+        let bottom_edge = (45.0 + 0.5f64.atan().to_degrees()).to_radians();
+        assert!(
+            wide.is_some_and(|(ahead, _)| (ahead - 20.0 / bottom_edge.tan()).abs() < 0.05),
+            "a picture twice as wide as tall spans half the tangent above and below the middle"
+        );
+    }
+
+    #[test]
+    fn a_ground_question_without_a_point_or_an_aircraft_says_why() {
+        let empty = Fake(BTreeMap::new());
+        assert_eq!(ground_at(&empty, "[]")["refusal"], "badPoint");
+        assert_eq!(ground_at(&empty, "[0, 2, 1.7]")["refusal"], "badPoint");
+        assert_eq!(
+            ground_at(&empty, "[0, 0, 1.7, true]")["refusal"],
+            "notPlaced"
         );
     }
 }

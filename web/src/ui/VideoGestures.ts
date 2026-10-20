@@ -79,10 +79,14 @@ const capture = (element: Element | null, pointer: number) => {
 
 const INTERACTIVE = 'button, a, input, textarea, select, [role=button], [role=slider], [role=switch], [role=tab], [data-gesture]';
 
-const onControl = (event: PointerEvent<HTMLElement>): boolean => {
-  const hit = event.target instanceof Element ? event.target.closest(INTERACTIVE) : null;
+const inside = (event: PointerEvent<HTMLElement>, selector: string): boolean => {
+  const hit = event.target instanceof Element ? event.target.closest(selector) : null;
   return hit !== null && hit !== event.currentTarget && event.currentTarget.contains(hit);
 };
+
+const onControl = (event: PointerEvent<HTMLElement>): boolean => inside(event, INTERACTIVE);
+
+const OWNS_HOLD = '[data-hold]';
 
 type Phase = 'idle' | 'ignored' | 'pressing' | 'swiping' | 'holding' | 'waiting' | 'again';
 
@@ -152,10 +156,11 @@ export const videoGestures = (handlers: VideoGestureHandlers, pass: 'Initial' | 
     state.from = at(event);
     state.last = state.from;
     const held = local(event);
+    const holdTaken = inside(event, OWNS_HOLD);
     state.timer = setTimeout(() => {
       if (state.phase !== 'pressing') return;
       state.timer = undefined;
-      if (!handlers.onHold(held)) {
+      if (holdTaken || !handlers.onHold(held)) {
         settle();
         return;
       }

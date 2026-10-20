@@ -16,7 +16,7 @@ import { GamepadInput } from '@/app/GamepadInput';
 import { SpeechOut } from '@/app/SpeechOut';
 import { VehicleLinkKeeper } from '@/app/VehicleLinkService';
 import { LocalImmersive } from '@/map/AircastSheet';
-import { FlyMap } from '@/map/FlyMap';
+import { FlyMap, plainTaps } from '@/map/FlyMap';
 import { LocalFlyMapEdits } from '@/map/FlyMapEdits';
 import { AircastTheme } from '@/map/Theme';
 import type { TrackPoint } from '@/map/VehicleMap';
@@ -67,6 +67,7 @@ import { TerrainDataWarning } from '@/ui/TerrainDataWarning';
 import { AppSnackbar, VehicleMessageBanner } from '@/ui/VehicleMessages';
 import { FlightActions } from '@/ui/VehicleUi';
 import { VIDEO_VIEW, videoReading } from '@/ui/VideoView';
+import { type PicturePress, pictureHoldHintText, usePictureGoTo } from '@/ui/PictureHold';
 import { VideoSurface } from '@/ui/VideoSurface';
 import { VirtualStickSender } from '@/ui/VirtualJoystick';
 import { VoiceAlerts } from '@/ui/VoiceAlerts';
@@ -261,9 +262,14 @@ export const AircastShell = () => {
 
   const [mapClickAt, setMapClickAt] = useState<MapPoint | null>(null);
   const [mapClickAnchor, setMapClickAnchor] = useState<SheetAnchor | undefined>(undefined);
+  const [picturePressed, setPicturePressed] = useState<PicturePress | null>(null);
   const lastPointer = useRef<SheetAnchor>({ x: 0, y: 0 });
+  const closeMapClick = () => {
+    setMapClickAt(null);
+    setPicturePressed(null);
+  };
   useEffect(() => {
-    if (!vehicleNow) setMapClickAt(null);
+    if (!vehicleNow) closeMapClick();
   }, [vehicleNow]);
   useEffect(() => {
     const remember = (event: PointerEvent) => {
@@ -273,6 +279,8 @@ export const AircastShell = () => {
     return () => window.removeEventListener('pointerdown', remember, true);
   }, []);
   const [mapHoldHint, setMapHoldHint] = useState<MapHoldHint>(MapHoldHint.Unseen);
+  const [pictureHoldHint, setPictureHoldHint] = useState<MapHoldHint>(MapHoldHint.Unseen);
+  const pictureGoTo = usePictureGoTo();
   const [waypointTapped, setWaypointTapped] = useState<number | null>(null);
   const [roiTapped, setRoiTapped] = useState<TrackPoint | null>(null);
   const mapInsets = useValue(flyScreen.mapInsets);
@@ -280,9 +288,29 @@ export const AircastShell = () => {
   const mapOwnsInsets = flyView === FlyView.Map || portrait;
 
   const flightActions = (layout: FlyDeckLayout) => <FlightActions layout={layout} center={<CameraShutters />} />;
+  const pressPicture = (press: PicturePress) => {
+    setPictureHoldHint(MapHoldHint.Learned);
+    if (press.point === null) {
+      void snackbars.showSnackbar(press.reason);
+      return;
+    }
+    setMapClickAnchor(lastPointer.current);
+    setMapClickAt(press.point);
+    setPicturePressed(press);
+  };
   const flyVideo = (modifier: ModifierProps, expanded: boolean) => (
     <div {...modifier}>
-      <VideoSurface className="size-full" expanded={expanded} fullScreen={videoFullScreen} onClick={() => setFlyView(flyViewSwapped)} onDoubleTap={() => setVideoFullScreen((shown) => !shown)} />
+      <div className="size-full" {...plainTaps(expanded && pictureGoTo && pictureHoldHint === MapHoldHint.Unseen ? () => setPictureHoldHint(MapHoldHint.Due) : null)}>
+        <VideoSurface
+          className="size-full"
+          expanded={expanded}
+          fullScreen={videoFullScreen}
+          onClick={() => setFlyView(flyViewSwapped)}
+          onDoubleTap={() => setVideoFullScreen((shown) => !shown)}
+          onGround={pictureGoTo ? pressPicture : null}
+          groundSpot={mapClickAt !== null ? (picturePressed?.spot ?? null) : null}
+        />
+      </div>
     </div>
   );
   const flyMap = (modifier: ModifierProps) => (
@@ -298,6 +326,7 @@ export const AircastShell = () => {
           setMapHoldHint(MapHoldHint.Learned);
           setMapClickAnchor(lastPointer.current);
           setMapClickAt({ latitude, longitude });
+          setPicturePressed(null);
         }}
         onPlainTap={() => setMapHoldHint((hint: MapHoldHint) => (hint === MapHoldHint.Unseen && vehicleNow ? MapHoldHint.Due : hint))}
         onMissionItemClick={(sequence: number) => setWaypointTapped(sequence)}
@@ -341,6 +370,11 @@ export const AircastShell = () => {
     if (mapHoldHint !== MapHoldHint.Due) return;
     await snackbars.showSnackbar(mapHoldHintText(desktop));
     if (scope.isActive()) setMapHoldHint(MapHoldHint.Learned);
+  });
+  useLaunchedEffect([pictureHoldHint], async (scope) => {
+    if (pictureHoldHint !== MapHoldHint.Due) return;
+    await snackbars.showSnackbar(pictureHoldHintText(desktop));
+    if (scope.isActive()) setPictureHoldHint(MapHoldHint.Learned);
   });
   const alerts = useSnackbarHostState();
   const [acknowledgedThrough, setAcknowledgedThrough] = useState(-1);
@@ -592,7 +626,7 @@ export const AircastShell = () => {
                 </div>
               ) : null}
 
-              {mapClickAt !== null && onFly ? <MapClickMenu point={mapClickAt} anchor={mapClickAnchor} onDismiss={() => setMapClickAt(null)} /> : null}
+              {mapClickAt !== null && onFly ? <MapClickMenu point={mapClickAt} anchor={mapClickAnchor} only={picturePressed?.actions ?? null} onDismiss={closeMapClick} /> : null}
               {waypointTapped !== null && onFly ? <SetWaypointSheet sequence={waypointTapped} onDismiss={() => setWaypointTapped(null)} /> : null}
               {roiTapped !== null && onFly ? <RoiSheet at={roiTapped} onDismiss={() => setRoiTapped(null)} /> : null}
               {settingsOpen ? (

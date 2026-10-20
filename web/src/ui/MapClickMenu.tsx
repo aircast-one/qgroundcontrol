@@ -142,10 +142,12 @@ export const coordinateLines = (point: MapPoint): readonly string[] => [format('
 const send = (action: MapClickAction, point: MapPoint, orbit: OrbitChoice | null): Promise<string | null> =>
   orbit === null ? Qgc.refusalOf(action.path, { latitude: point.latitude, longitude: point.longitude }) : Qgc.refusalOf(action.path, ...orbitArgs(point, orbit));
 
-export const MapClickMenu = ({ point, anchor, onDismiss }: { point: MapPoint; anchor?: SheetAnchor; onDismiss: () => void }) => {
+export const offeredActions = (view: Json | null, only: readonly string[] | null): readonly MapClickAction[] => mapClickActions(view).filter((it) => only === null || only.includes(it.id));
+
+export const MapClickMenu = ({ point, anchor, only = null, onDismiss }: { point: MapPoint; anchor?: SheetAnchor; only?: readonly string[] | null; onDismiss: () => void }) => {
   const view = useQgcPath(MAP_CLICK_PATH);
   const vehicleCoordinate = useQgcPath('vehicle.coordinate');
-  const actions = useMemo(() => mapClickActions(view), [view]);
+  const actions = useMemo(() => offeredActions(view, only), [view, only]);
   const empty = view !== null && actions.length === 0;
   useLaunchedEffect([point.latitude, point.longitude, empty], () => {
     if (empty) onDismiss();

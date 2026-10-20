@@ -10,6 +10,7 @@ import { aircast } from '@/theme/Colors';
 import { CAMERAS_VIEW, type CameraEntry, CameraStatus, type CamerasReading, camerasReading } from '@/ui/Cameras';
 import { gimbalRefusal } from '@/ui/GimbalIndicator';
 import { osdShadow } from '@/ui/Osd';
+import { type PicturePress, type PictureSpot, PictureMark, usePictureHold } from '@/ui/PictureHold';
 import { SyntheticSurface, nativeChosen, nativeDraw } from '@/ui/SyntheticSurface';
 import { type PointerGestureHandlers, usePointerGestures } from '@/ui/VideoGestures';
 
@@ -196,7 +197,19 @@ export const gimbalAim = (view: Json | null): Aim | null => {
 
 const uptimeMillis = (): number => performance.now();
 
-export const SyntheticView = ({ className, aimable = false, standIn = null }: { className?: string; aimable?: boolean; standIn?: string | null }) => {
+export const SyntheticView = ({
+  className,
+  aimable = false,
+  standIn = null,
+  onGround = null,
+  groundSpot = null,
+}: {
+  className?: string;
+  aimable?: boolean;
+  standIn?: string | null;
+  onGround?: ((press: PicturePress) => void) | null;
+  groundSpot?: PictureSpot | null;
+}) => {
   const view = useQgcPath(SYNTHETIC_VIEW);
   const canAim = aimable && optBoolean(view, 'aimable');
   const aimedTilt = useUpdatedRef(view === null ? DEFAULT_TILT_DEG : optDouble(view, 'tilt', DEFAULT_TILT_DEG));
@@ -254,9 +267,13 @@ export const SyntheticView = ({ className, aimable = false, standIn = null }: { 
         }
       : null;
   const gestures = usePointerGestures(aiming);
+  const hold = usePictureHold(aimable ? onGround : null, true, true);
   return (
-    <div {...gestures} data-gesture={aiming !== null || undefined} className={`overflow-hidden ${aiming !== null ? 'touch-none' : ''} ${className ?? ''}`}>
-      <div className="relative size-full">{nativeChosen(view) ? <NativePage view={view} standIn={standIn} /> : <SyntheticPage view={view} standIn={standIn} />}</div>
+    <div {...gestures} {...hold} data-gesture={aiming !== null || undefined} className={`overflow-hidden ${aiming !== null ? 'touch-none' : ''} ${className ?? ''}`}>
+      <div className="relative size-full">
+        {nativeChosen(view) ? <NativePage view={view} standIn={standIn} /> : <SyntheticPage view={view} standIn={standIn} />}
+        {aimable && groundSpot !== null ? <PictureMark spot={groundSpot} /> : null}
+      </div>
     </div>
   );
 };

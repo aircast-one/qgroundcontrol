@@ -17,9 +17,10 @@ import { CameraStatusDot, showCamera, useShownSecondCamera } from '@/ui/CameraSw
 import { DetectionOverlay } from '@/ui/DetectionOverlay';
 import { Rect, activate, useElementSize } from '@/ui/FlyShell';
 import { useHasVehicle } from '@/ui/FlyState';
-import { GimbalModeSwitch, GimbalScreenControl } from '@/ui/GimbalIndicator';
+import { GIMBAL_INDICATOR_PATH, GimbalModeSwitch, GimbalScreenControl, onScreenGimbal } from '@/ui/GimbalIndicator';
 import { LocalNoVideoSize, NoVideoPanel, NoVideoSize } from '@/ui/NoVideoPanel';
 import { osdShadow } from '@/ui/Osd';
+import { type PicturePress, type PictureSpot, PictureMark, usePictureHold } from '@/ui/PictureHold';
 import { ProximityRadarOverlay } from '@/ui/ProximityRadar';
 import { SYNTHETIC_SOURCE, SyntheticView, shownCameraStatus, useRememberSyntheticAvailable, useRememberSyntheticChosen, useSyntheticPage } from '@/ui/SyntheticView';
 import { TrackingBoxOverlay } from '@/ui/TrackingBoxOverlay';
@@ -158,12 +159,16 @@ export const VideoSurface = ({
   fullScreen = false,
   onClick = () => undefined,
   onDoubleTap = () => undefined,
+  onGround = null,
+  groundSpot = null,
 }: {
   className?: string;
   expanded?: boolean;
   fullScreen?: boolean;
   onClick?: () => void;
   onDoubleTap?: () => void;
+  onGround?: ((press: PicturePress) => void) | null;
+  groundSpot?: PictureSpot | null;
 }) => {
   const videoJson = useQgcPath(VIDEO_VIEW);
   const video = useMemo(() => videoReading(videoJson), [videoJson]);
@@ -172,7 +177,7 @@ export const VideoSurface = ({
 
   if (video?.available === false) {
     if (synthetic && !expanded) return <SyntheticThumb className={className} />;
-    if (synthetic) return <SyntheticView className={`size-full ${className ?? ''}`} aimable />;
+    if (synthetic) return <SyntheticView className={`size-full ${className ?? ''}`} aimable onGround={onGround} groundSpot={groundSpot} />;
     if (!expanded) return null;
     return (
       <Surface className={`size-full ${className ?? ''}`} color={Color.Black}>
@@ -184,7 +189,17 @@ export const VideoSurface = ({
   const second = expanded ? secondCamera : null;
   return (
     <div className={`flex ${className ?? ''}`}>
-      <MainPane video={video} synthetic={synthetic} className="h-full min-w-0 flex-1" expanded={expanded} fullScreen={fullScreen} onClick={onClick} onDoubleTap={onDoubleTap} />
+      <MainPane
+        video={video}
+        synthetic={synthetic}
+        className="h-full min-w-0 flex-1"
+        expanded={expanded}
+        fullScreen={fullScreen}
+        onClick={onClick}
+        onDoubleTap={onDoubleTap}
+        onGround={expanded ? onGround : null}
+        groundSpot={groundSpot}
+      />
       {second !== null ? <SecondPane camera={second} className="h-full min-w-0 flex-1" /> : null}
     </div>
   );
@@ -225,6 +240,8 @@ const MainPane = ({
   fullScreen,
   onClick,
   onDoubleTap,
+  onGround,
+  groundSpot,
 }: {
   video: VideoReading | null;
   synthetic: boolean;
@@ -233,6 +250,8 @@ const MainPane = ({
   fullScreen: boolean;
   onClick: () => void;
   onDoubleTap: () => void;
+  onGround: ((press: PicturePress) => void) | null;
+  groundSpot: PictureSpot | null;
 }) => {
   const cameraJson = useQgcPath(CAMERA_VIEW);
   const zoomable = useMemo(() => cameraReading(cameraJson)?.hasZoom === true, [cameraJson]);
@@ -243,13 +262,19 @@ const MainPane = ({
   const decoding = video?.decoding === true;
   const pinch = usePinchZoom(expanded && zoomable);
   const taps = usePointerGestures(expanded && decoding ? { onDoubleTap } : null);
+  const gimbalJson = useQgcPath(GIMBAL_INDICATOR_PATH);
+  const holdDrives = useMemo(() => {
+    const control = onScreenGimbal(gimbalJson);
+    return control !== null && control.enabled && control.clickAndDrag;
+  }, [gimbalJson]);
+  const hold = usePictureHold(decoding ? onGround : null, false, !holdDrives);
   const { ref, size } = useElementSize();
   const [contentWidth, contentHeight] = videoContentSize(size.width, size.height, aspect, fitOf(fitMode));
   const press: HTMLAttributes<HTMLElement> = expanded ? { ...pinch, ...taps } : { role: 'button', tabIndex: 0, onClick, onKeyDown: activate(onClick) };
 
   return (
     <div ref={ref} {...press} className={`relative flex items-center justify-center overflow-hidden ${expanded ? 'touch-none' : ''} ${className}`}>
-      <div className="relative flex-none" style={{ width: contentWidth, height: contentHeight }}>
+      <div {...hold} className="relative flex-none" style={{ width: contentWidth, height: contentHeight }}>
         <VideoChannelSurface channel={MAIN_VIDEO_CHANNEL} className="absolute inset-0 size-full" />
         {decoding ? (
           <>
@@ -261,6 +286,7 @@ const MainPane = ({
             <DetectionOverlay className="absolute inset-0 size-full" />
             <TrackingBoxOverlay className="absolute inset-0 size-full" />
             {expanded ? <VideoStatsPill className="absolute inset-0 size-full" /> : null}
+            {groundSpot !== null ? <PictureMark spot={groundSpot} /> : null}
           </>
         ) : null}
       </div>
@@ -268,7 +294,7 @@ const MainPane = ({
       {!decoding && synthetic && !expanded ? (
         <SyntheticThumb className="absolute inset-0" />
       ) : !decoding && synthetic ? (
-        <SyntheticView className="absolute inset-0 size-full" aimable standIn={video?.standIn ?? null} />
+        <SyntheticView className="absolute inset-0 size-full" aimable standIn={video?.standIn ?? null} onGround={onGround} groundSpot={groundSpot} />
       ) : !decoding ? (
         <Surface className="absolute inset-0 size-full" color={expanded ? Color.Black : aircast('outdoorBackground')}>
           <NoVideoArea underFlyChrome={expanded && !fullScreen} thumb={!expanded} video={video} />

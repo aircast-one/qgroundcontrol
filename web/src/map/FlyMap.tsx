@@ -323,7 +323,7 @@ export const plainTaps = (onTap: (() => void) | null): Pick<HTMLAttributes<HTMLE
     ? {}
     : {
         onPointerDownCapture: (event) => {
-          if (event.isPrimary) tapStarts.set(event.currentTarget, { pointer: event.pointerId, at: event.timeStamp, x: event.clientX, y: event.clientY });
+          if (event.isPrimary && event.button === 0) tapStarts.set(event.currentTarget, { pointer: event.pointerId, at: event.timeStamp, x: event.clientX, y: event.clientY });
         },
         onPointerUpCapture: (event) => {
           const down = tapStarts.get(event.currentTarget);

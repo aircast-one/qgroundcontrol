@@ -2,10 +2,14 @@ import { connectMock, expect, flightMode, mapMenuAt, showMapFull, slideAcross, t
 
 test.describe.configure({ timeout: 120_000 });
 
-test('on the ground the map menu offers a new home position', async ({ vehicle }) => {
+test('on the ground a click on the map teaches the right-click, and the map menu offers a new home position', async ({ vehicle }) => {
   await showMapFull(vehicle);
+  const box = (await vehicle.getByRole('region', { name: 'Map' }).boundingBox())!;
+  await expect(async () => {
+    await vehicle.mouse.click(box.x + box.width / 2 - 200, box.y + box.height / 2 + 100);
+    await expect(vehicle.getByText('Right-click the map to fly there')).toBeVisible({ timeout: 2_000 });
+  }).toPass({ timeout: 45_000 });
   await mapMenuAt(vehicle, 200, -100);
-  await expect(vehicle.getByText('Right-click the map to fly there')).toBeVisible();
   await expect(vehicle.getByRole('button', { name: 'Set home here' })).toBeVisible();
   await expect(vehicle.getByText(/^Lat: -?\d+\.\d{6}$/)).toBeVisible();
 });
