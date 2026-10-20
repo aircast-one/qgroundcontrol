@@ -125,7 +125,7 @@ internal static class InstrumentSelectionStore
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
         "AircastQGC", "instrument-selections.json");
 
-    private static bool Recoverable(Exception e) =>
+    internal static bool Recoverable(Exception e) =>
         e is IOException or UnauthorizedAccessException or JsonException or NotSupportedException;
 
     public static IReadOnlyList<InstrumentSelection> Load()
@@ -150,6 +150,37 @@ internal static class InstrumentSelectionStore
                 new JsonArray(selections.Select(s => (JsonNode?)JsonValue.Create(s.Stored)).ToArray()).ToJsonString());
         }
         catch (Exception e) when (Recoverable(e))
+        {
+        }
+    }
+}
+
+internal static class AttitudeCardStore
+{
+    private static readonly string StorePath = Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "AircastQGC", "instrument-attitude-card.json");
+
+    public static bool Load()
+    {
+        try
+        {
+            return File.Exists(StorePath) && JsonNode.Parse(File.ReadAllText(StorePath)) is JsonValue v && v.TryGetValue<bool>(out var shown) && shown;
+        }
+        catch (Exception e) when (InstrumentSelectionStore.Recoverable(e))
+        {
+            return false;
+        }
+    }
+
+    public static void Save(bool shown)
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(StorePath)!);
+            File.WriteAllText(StorePath, JsonValue.Create(shown).ToJsonString());
+        }
+        catch (Exception e) when (InstrumentSelectionStore.Recoverable(e))
         {
         }
     }

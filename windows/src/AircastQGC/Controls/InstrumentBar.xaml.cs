@@ -8,7 +8,10 @@ using System.Threading.Tasks;
 using AircastQGC.Core;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Documents;
+using Microsoft.UI.Xaml.Media;
 
 namespace AircastQGC.Controls;
 
@@ -23,6 +26,7 @@ public sealed partial class InstrumentBar : UserControl
     private const string GenericClass = "generic";
     private const string NoticeClient = "controls.instrumentBar.notice";
     private const double StaleOpacity = 0.55;
+    private const string ReadingTip = "Telemetry display. Right-click for more readings";
     private static readonly TimeSpan RereadInterval = TimeSpan.FromMilliseconds(500);
 
     private readonly DispatcherQueueTimer _reread;
@@ -32,6 +36,7 @@ public sealed partial class InstrumentBar : UserControl
     private IReadOnlyList<Reading> _readings = Array.Empty<Reading>();
     private string _vehicleClass = GenericClass;
     private IReadOnlyDictionary<string, ValueDisplay> _displays = InstrumentDisplayStore.Load(GenericClass);
+    private string _rows = "";
 
     public InstrumentBar()
     {
@@ -46,6 +51,10 @@ public sealed partial class InstrumentBar : UserControl
     public event EventHandler? ValuesChanged;
 
     public event EventHandler? SelectionsChanged;
+
+    public event EventHandler? AttitudeChanged;
+
+    public bool AttitudeShown { get; private set; } = AttitudeCardStore.Load();
 
     public IReadOnlyList<InstrumentValue> Values => _values;
 
@@ -83,6 +92,13 @@ public sealed partial class InstrumentBar : UserControl
 
     public void ResetSlots() => Select(InstrumentSelection.Defaults);
 
+    public void ShowAttitude(bool shown)
+    {
+        AttitudeShown = shown;
+        AttitudeCardStore.Save(shown);
+        AttitudeChanged?.Invoke(this, EventArgs.Empty);
+    }
+
     public void Assign(int slot, InstrumentSelection selection)
     {
         if (slot < 0 || slot >= _selections.Count) return;
@@ -118,6 +134,7 @@ public sealed partial class InstrumentBar : UserControl
             (at > 0, "Move left", () => MoveSlot(at, -1)),
             (at >= 0 && at < _selections.Count - 1, "Move right", () => MoveSlot(at, 1)),
             (at >= 0 && CanRemove, "Remove", () => RemoveSlot(at)),
+            (true, AttitudeShown ? "Hide compass" : "Show compass", () => ShowAttitude(!AttitudeShown)),
         }.Where(entry => entry.Shown).Select(entry => (entry.Label, entry.Then)).ToList();
         if (await DisplayEditor.Ask(XamlRoot, value.Label, DisplayOf(value), extra) is { } chosen) Restyle(value.Id, chosen);
     }
@@ -218,15 +235,25 @@ public sealed partial class InstrumentBar : UserControl
     {
         _readings = _readings.Count == _values.Count ? _readings : Rebuild(_values.Count);
         _readings.Zip(_values).ToList().ForEach(pair => pair.First.Show(pair.Second, DisplayOf(pair.Second)));
+        Arrange();
         Card.Visibility = _values.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    private void Arrange()
+    {
+        var speeds = _values.Select(v => Osd.IsSpeed(v.Label, v.Name)).ToList();
+        var rows = string.Concat(speeds.Select(speed => speed ? 'S' : 'P'));
+        if (rows == _rows) return;
+        _rows = rows;
+        SpeedRow.Children.Clear();
+        PlaceRow.Children.Clear();
+        _readings.Zip(speeds).ToList().ForEach(pair => (pair.Second ? SpeedRow : PlaceRow).Children.Add(pair.First.Root));
     }
 
     private IReadOnlyList<Reading> Rebuild(int count)
     {
-        var built = Enumerable.Range(0, count).Select(slot => new Reading(Styled, Menu(slot), () => _ = StyleSlotAsync(slot))).ToList();
-        Readings.Children.Clear();
-        built.ForEach(r => Readings.Children.Add(r.Root));
-        return built;
+        _rows = "";
+        return Enumerable.Range(0, count).Select(slot => new Reading(Styled, Menu(slot), () => _ = StyleSlotAsync(slot))).ToList();
     }
 
     private string EditingLabel(int slot) =>
@@ -236,6 +263,8 @@ public sealed partial class InstrumentBar : UserControl
     {
         var add = Item("Add reading", "", AddSlot);
         var remove = Item("Remove this reading", "", () => RemoveSlot(slot));
+        var attitude = new ToggleMenuFlyoutItem { Text = "Compass and attitude", Icon = new FontIcon { Glyph = "\uE707" } };
+        attitude.Click += (_, _) => ShowAttitude(attitude.IsChecked);
         var menu = new MenuFlyout();
         new MenuFlyoutItemBase[]
         {
@@ -244,12 +273,15 @@ public sealed partial class InstrumentBar : UserControl
             add,
             remove,
             new MenuFlyoutSeparator(),
+            attitude,
+            new MenuFlyoutSeparator(),
             Item("Reset to defaults", "", ResetSlots),
         }.ToList().ForEach(menu.Items.Add);
         menu.Opening += (_, _) =>
         {
             add.IsEnabled = CanAdd;
             remove.IsEnabled = CanRemove;
+            attitude.IsChecked = AttitudeShown;
         };
         return menu;
     }
@@ -350,45 +382,31 @@ public sealed partial class InstrumentBar : UserControl
 
     private sealed class Reading
     {
-        private readonly TextBlock _label;
-        private readonly Image _icon = new() { Width = 16, Height = 16, Stretch = Microsoft.UI.Xaml.Media.Stretch.Uniform, HorizontalAlignment = HorizontalAlignment.Left, Visibility = Visibility.Collapsed };
-        private readonly TextBlock _value;
-        private readonly TextBlock _units;
-        private readonly TextBlock _absent;
-        private readonly Style? _present;
-        private readonly Style? _missing;
+        private readonly Image _icon = new() { Width = 16, Height = 16, Stretch = Stretch.Uniform, VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed };
+        private readonly Run _label = new();
+        private readonly Run _gap = new();
+        private readonly Run _value = new();
+        private readonly Run _absent = new();
+        private readonly TextBlock _text;
+        private readonly Func<string, Style?> _styled;
 
         private string _iconKey = "";
 
         public Reading(Func<string, Style?> styled, MenuFlyout menu, Action open)
         {
-            _present = styled("ReadingValue");
-            _missing = styled("ReadingMissing");
-            _label = new TextBlock { Style = styled("ReadingLabel") };
-            _value = new TextBlock { Style = _present };
-            _units = new TextBlock { Style = styled("ReadingUnits") };
-            _absent = new TextBlock
-            {
-                Style = styled("ReadingAbsent"),
-                Text = InstrumentValue.AbsentText,
-                Visibility = Visibility.Collapsed,
-            };
-            var figure = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
-            figure.Children.Add(_value);
-            figure.Children.Add(_units);
-            var column = new StackPanel { Spacing = 2 };
-            column.Children.Add(_label);
-            column.Children.Add(_icon);
-            column.Children.Add(figure);
-            column.Children.Add(_absent);
+            _styled = styled;
+            _text = new TextBlock { Style = styled("OsdPlace"), Inlines = { _label, _gap, _value, _absent } };
             Root = new Button
             {
-                Padding = new Thickness(0),
-                HorizontalContentAlignment = HorizontalAlignment.Stretch,
-                Content = new Border { Style = styled("ReadingCell"), Child = column },
+                Padding = new Thickness(4, 0, 4, 0),
+                MinHeight = 0,
+                MinWidth = 0,
+                VerticalAlignment = VerticalAlignment.Bottom,
+                Content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Children = { _icon, Osd.Shadowed(_text) } },
                 ContextFlyout = menu,
             };
             Forms.FormLook.Paint(Root, Forms.ButtonLook.Subtle);
+            ToolTipService.SetToolTip(Root, ReadingTip);
             Root.Click += (_, _) => open();
         }
 
@@ -398,24 +416,24 @@ public sealed partial class InstrumentBar : UserControl
         {
             var colour = value.Missing ? null : InstrumentDisplays.Colour(display, value.Raw);
             var icon = InstrumentDisplays.IconOf(display, value.Raw);
-            _label.Text = display.Text.Length > 0 ? display.Text : value.Label.ToUpperInvariant();
-            _label.Visibility = icon is null && !InstrumentDisplays.IconShown(display) ? Visibility.Visible : Visibility.Collapsed;
-            _label.Opacity = _icon.Opacity = InstrumentDisplays.Opacity(display, value.Raw);
-            Paint(_label, colour);
-            Paint(_value, colour);
-            ShowIcon(icon, colour is { } tint ? InstrumentDisplays.Hex(tint) : Forms.AssetImages.Hex("TextSecondaryBrush"));
-            _value.Text = value.Value;
-            _value.Style = value.Missing ? _missing : _present;
-            _units.Text = value.Units;
-            _units.Visibility = value.Units.Length == 0 || !display.ShowUnits ? Visibility.Collapsed : Visibility.Visible;
-            _absent.Visibility = value.AbsentHere ? Visibility.Visible : Visibility.Collapsed;
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(Root, $"{value.Label} {value.Value} {value.Units}".Trim());
-        }
-
-        private static void Paint(TextBlock text, long? colour)
-        {
-            if (colour is { } argb) text.Foreground = new Microsoft.UI.Xaml.Media.SolidColorBrush(InstrumentDisplays.ColorOf(argb));
-            else text.ClearValue(TextBlock.ForegroundProperty);
+            var label = icon is null && !InstrumentDisplays.IconShown(display)
+                ? display.Text.Length > 0 ? display.Text : Osd.Label(value.Label, value.Name)
+                : "";
+            _text.Style = _styled(Osd.IsSpeed(value.Label, value.Name) ? "OsdSpeed" : "OsdPlace");
+            _label.Text = label;
+            _label.FontSize = PreflightLook.Size("FontSizeCaption");
+            _label.Foreground = PreflightLook.Token("OsdLabelBrush");
+            _gap.Text = label.Length > 0 ? " " : "";
+            _value.Text = display.ShowUnits ? value.Value + value.Units : value.Value;
+            _value.Foreground = colour is { } argb
+                ? new SolidColorBrush(InstrumentDisplays.ColorOf(argb))
+                : PreflightLook.Token(value.Missing ? "OsdLabelBrush" : "OsdTextBrush");
+            _absent.Text = value.AbsentHere ? " " + InstrumentValue.AbsentText : "";
+            _absent.FontSize = PreflightLook.Size("FontSizeCaption");
+            _absent.Foreground = PreflightLook.Token("CautionBrush");
+            _icon.Opacity = InstrumentDisplays.Opacity(display, value.Raw);
+            ShowIcon(icon, colour is { } tint ? InstrumentDisplays.Hex(tint) : Forms.AssetImages.Hex("OsdTextBrush"));
+            AutomationProperties.SetName(Root, $"{value.Label} {value.Value} {value.Units}".Trim());
         }
 
         private void ShowIcon(string? icon, string tint)

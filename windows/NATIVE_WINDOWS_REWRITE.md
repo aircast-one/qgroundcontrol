@@ -58,7 +58,7 @@ the message banner, fleet card, mission progress, obstacle readout and terrain w
 armed. Merged build: the sheet's Edit layout showed the move/hide rows and the Fly edit bar (Reset layout, Done editing layout), and Done
 ended editing. Drags went only through an in-process hook in the slot; the right-click and press-and-hold entries were not driven. Not
 ported: Android's value-size toggle, and the cameraSwitch and mapLayers widgets. Short windows: the fleet card and RC controls share a
-scrolling left column below the guided bar, and the checklist, edit bar, right button column and shutter stay clear of the instrument bar and
+scrolling left column beside the action rail, and the checklist, edit bar, right column and map corner stay clear of the PiP, the OSD and the
 telemetry card (slot, 1024×700 at 100 and 150 %).
 
 Synthetic view (`Controls/SyntheticView`, `Core/SyntheticNative`): the core's wgpu renderer draws on DX12 into a SwapChainPanel bound to a
@@ -84,7 +84,7 @@ thumbnail and, after the swap, in the full-size view. Killing the sender showed 
 `video.reportRecording`. Not checked: H.265, RTSP, MPEG-TS, hardware decode (the VM has no DXVA).
 
 Picture-in-picture and video fit on `winvm` (2026-10-20): two UDP H.264 senders on 5711/5712 added as sources through Settings >
-Video sources. The PiP toggle in the video tile writes `multiViewEnabled`. The 160×90 PiP tile (`Controls/PipTile`, channel 1) reports
+Video sources. The Picture in picture item in the camera switch menu writes `multiViewEnabled`. The 160×90 PiP tile (`Controls/PipTile`, channel 1) reports
 `video.setPipShown`, and its frames moved alongside the main channel. Pressing the tile makes that camera the main one
 (`video.setActiveVideoSource`), and the core moves the old main into the PiP. Turning the toggle off clears `pipPipeline`.
 `settings.videoSettings.videoFit` (Fit Width, Fit Height, Fill, No Crop) is applied to the main view as Android `videoContentSize` does,
@@ -105,13 +105,13 @@ the touch age, while enabled and sending; leaving Fly lets the sticks go. In the
 up for 3 s in Loiter (mock ArduCopter 11.1 → 18.6 m, 22.8 m after release) and the right stick forward (12.5 m/s, latitude rising); the core's
 sticks log read 204–209 sends per 9 s, none refused. The mock PX4 shows the pads with the throttle parked.
 
-Heading tape (`view.attitude`) above the guided bar. The guided confirm card has takeoff presets and change-altitude quick picks, a mission
+Heading tape (`view.attitude`) under the status row. The guided confirm card has takeoff presets and change-altitude quick picks, a mission
 identity card on Start/Continue Mission and a FROM altitude tile on Land. Tapping the ROI pin opens Edit ROI position / Cancel ROI (the hit
 test and card were driven in-process, not a real map tap). The title bar has a VTOL state cell and an operator-control pill and flyout, and
 Fly has the control-request prompt; the mocks send no CONTROL_STATUS or VTOL state, so these were checked with synthetic views only.
 
 Video overlays (`Controls/VideoMarks`, `ObstacleArc`, `ObstacleReadout`, `ObstacleMapLayer`, `LensSection`): grid lines; full-screen video
-from the rail button or F11 (AppWindow FullScreen presenter, title bar and nav hidden; Escape, the Exit button, the video stopping or leaving
+from the right column's Full screen button or F11 (AppWindow FullScreen presenter, title bar and nav hidden; Escape, the Exit button, the video stopping or leaving
 Fly exit it), checked in the merged build with real keys; detection boxes from the aircastd SSE feed (checked against an SSE stub, with the
 stale and refused states); AR marks and obstacle rings on the video; the map layers flyout with the obstacle-distance toggle and the map
 obstacle overlay; the obstacle arc and readout; lens measure and forget in the camera panel. Obstacle and AR drawing were checked only from
@@ -120,6 +120,31 @@ waypoints with coreplan). Mouse-wheel zoom calls `stepZoom`, but the mock camera
 not driven. `SwapVideo` now docks the payload and marks layers with the video tile, so the payload layer takes input when the video is main.
 `VideoDriver` also plays the core's preview channels 2..5 (`video.previews`) for device camera previews; no frames seen yet (needs a WHEP-serving
 device).
+
+### Fly layout
+
+Round 7 (2026-10-20) gives Fly the Android/web DJI layout (`android/.../ui/FlyShell.kt`, `web/src/ui/FlyShell.tsx`) while keeping
+Windows materials: Mica window, acrylic circles, chips and flyouts (`ChipBrush`), Segoe Fluent Icons, WinUI MenuFlyout and ContentDialog,
+system caption buttons, keyboard focus and a tooltip on every icon-only control. Every colour is a token in `Theme/Tokens.xaml` (dark and
+light). Only layout and look changed; the core calls are the same.
+
+| Region | Where it is now | Was |
+| --- | --- | --- |
+| Navigation | ☰ MenuFlyout in the title bar (Fly, Plan, Analyze, Vehicle Setup, Settings with icons) | permanent nav pane |
+| Status | transparent title bar over the view: vehicle, mode, armed, compact cells, All status sheet for the overflow | pill chips on Mica |
+| Actions | `GuidedBar` is a vertical rail of 48 px icon buttons in `LeftRail`, centred between the status row and the PiP: Checklist, then Takeoff (or Arm) on the ground, or Pause, Return, Land and Payload in flight; ⋮ holds the rest; Emergency stop sits 24 px below in red acrylic (`StopBrush`), hold 1.5 s to cut or click for the slide card | labelled toolbar top-centre |
+| Confirm card | opens beside the rail | under the toolbar |
+| PiP | bottom-left, 320×180 (web `DESKTOP_PIP`), 2 px frame, map clipped round when the video is main, `PipFrame` swaps back; the second-camera `PipTile` stacks above it | top-right tile |
+| Telemetry | `InstrumentBar` as OSD text beside the PiP (small H.S/V.S row, big H/D row, white with a composition shadow); compass/attitude card off by default, shown from the chooser | boxed bar and compass card |
+| Camera | right edge, centred: `CameraSwitch` chip (cameras and Picture in picture), tilt readout and slider, shutter, Camera, Full screen | tile buttons and a separate shutter |
+| Map controls | `MapCorner` bottom-right on the map only: zoom, centre on vehicle, 48 px layers button, scale bar under them | right column |
+| No video | `NoVideoPill` in `CenterMessage`, above the No vehicle card when both show | text inside the tile |
+
+Merged build on `winvm` (1440×900, 1200×800, 1024×700, scratch variant with the mock ArduCopter): no vehicle, on the ground and flying, map
+main and video main, light palette once. Every page opened from ☰; the rail's Takeoff, Arm, Force Arm, Pause, Return, Land, Change
+Altitude, Change Max Ground Speed and Emergency stop cards opened and cancelled, Payload opened the gripper panel, and hold-to-cut disarmed
+the flying mock; the All status sheet, the Telemetry display editor, the camera switch menu and the map layers menu opened. Side by side
+with Android: `~/.claude/jobs/6037fcd4/tmp/design/round7-compare/`.
 
 ### Plan
 

@@ -1,11 +1,13 @@
 using System;
 using System.Collections.Immutable;
 using System.Linq;
+using System.Numerics;
 using AircastQGC.Controls;
 using AircastQGC.Core;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Input;
 using Windows.System;
 
@@ -18,8 +20,10 @@ public sealed partial class MainWindow : Window
     private const double LeftTop = 96;
     private const double BottomGap = 24;
     private const double StatsRoom = 40;
-    private const double ShutterInset = 68;
+    private const double ScaleRoom = 48;
+    private const double PanelTop = 122;
     private const double FleetFloor = 120;
+    private const double CornerRoom = 80;
 
     private readonly FlightModeMenu _modes;
     private ImmutableStack<string> _history = ImmutableStack<string>.Empty;
@@ -95,12 +99,20 @@ public sealed partial class MainWindow : Window
         Shell.VehiclePicker.HandedOver += (_, notice) => Tell(notice);
 
         GuidedStrip.ActionRequested += (_, offer) => GuidedCard.Show(offer);
+        GuidedStrip.CutRequested += (_, offer) =>
+        {
+            if (GuidedCard.Show(offer)) GuidedCard.Confirm();
+        };
         GuidedCard.Failed += (_, reason) =>
         {
             if (!GuidedCard.IsOpen) Warn(reason);
         };
 
         VideoTile.SwapRequested += (_, _) => SwapVideo(!_videoMain);
+        VideoTile.Pill = NoVideoMessage;
+        AimSlot.Child = VideoTile.AimRail;
+        PipFrame.Click += (_, _) => SwapVideo(false);
+        ReadingsBar.AttitudeChanged += (_, _) => ShowVehicleOverlays(ReadingsBar.Visibility == Visibility.Visible);
         CameraPanel.CameraPresentChanged += (_, _) => CameraButton.Visibility = Shown(CameraPanel.CameraPresent);
         CameraButton.Click += (_, _) => ToggleCamera();
         MapPayload.Attach(Map);
@@ -124,9 +136,11 @@ public sealed partial class MainWindow : Window
         BottomLeft.SizeChanged += (_, _) => Clearances();
         LeftRail.SizeChanged += (_, _) => Clearances();
         TelemetryCard.SizeChanged += (_, _) => Clearances();
+        MapCorner.SizeChanged += (_, _) => Clearances();
+        NoVehicle.SizeChanged += (_, _) => Clearances();
+        RightColumn.SizeChanged += (_, _) => Clearances();
         FlyChrome.Loaded += (_, _) => Clearances();
         FlyChrome.SizeChanged += (_, _) => Clearances();
-        GuidedStrip.SizeChanged += (_, _) => Clearances();
         LeftColumn.SizeChanged += (_, _) => Clearances();
         RcLayer.RegisterPropertyChangedCallback(UIElement.VisibilityProperty, (_, _) => Clearances());
         Map.MapTapped += (_, _, at) =>
@@ -150,7 +164,7 @@ public sealed partial class MainWindow : Window
         _ = new ResumeFailedPrompt(FlyContent);
         _ = new FirstRunDialog(root);
         _ = new CloseGuard(this);
-        new FrameworkElement[] { VideoTile, Marks, VideoLayer }.ToList().ForEach(view => Dock(view, false));
+        new FrameworkElement[] { VideoTile, Marks, VideoLayer, PipFrame }.ToList().ForEach(view => Dock(view, false));
         Map.FollowInsets = new Thickness(Map.FollowInsets.Left, Map.FollowInsets.Top + Shell.Height, Map.FollowInsets.Right, Map.FollowInsets.Bottom);
         ShowPage(NavPane.Fly);
     }
@@ -241,7 +255,7 @@ public sealed partial class MainWindow : Window
     private void ShowVehicleOverlays(bool present)
     {
         ReadingsBar.Visibility = Shown(present);
-        TelemetryCard.Visibility = Shown(present);
+        TelemetryCard.Visibility = Shown(present && ReadingsBar.AttitudeShown);
         GuidedStrip.Visibility = Shown(present);
         if (!present && Checklist.IsOpen) Checklist.Hide();
         Clearances();
@@ -251,24 +265,30 @@ public sealed partial class MainWindow : Window
     {
         var bar = BottomLeft.ActualHeight > 0 ? BottomLeft.ActualHeight + BottomGap : TileMargin;
         var rail = LeftRail.ActualWidth > 0 ? LeftRail.ActualWidth + TileMargin : 0;
-        var guided = GuidedStrip.Visibility == Visibility.Visible && GuidedStrip.ActualWidth > 0
-            ? GuidedStrip.TransformToVisual(FlyChrome).TransformBounds(new Windows.Foundation.Rect(0, 0, GuidedStrip.ActualWidth, GuidedStrip.ActualHeight))
-            : Windows.Foundation.Rect.Empty;
-        var underGuided = !guided.IsEmpty && guided.Left < TileMargin + rail + LeftColumn.ActualWidth + TileMargin;
-        var leftTop = underGuided ? Math.Max(LeftTop, guided.Bottom + TileMargin) : LeftTop;
-        LeftColumn.Margin = new Thickness(TileMargin + rail, leftTop, TileMargin, bar + StatsRoom);
+        LeftRail.Margin = new Thickness(TileMargin, TileMargin, 0, bar);
+        GuidedCard.Margin = new Thickness(TileMargin + rail, TileMargin, TileMargin, bar);
+        LeftColumn.Margin = new Thickness(TileMargin + rail, LeftTop, TileMargin, bar + StatsRoom);
         FleetScroll.MaxHeight = RcLayer.Visibility == Visibility.Visible
-            ? Math.Max(FleetFloor, (FlyChrome.ActualHeight - leftTop - bar - StatsRoom) / 2)
+            ? Math.Max(FleetFloor, (FlyChrome.ActualHeight - LeftTop - bar - StatsRoom) / 2)
             : double.PositiveInfinity;
         Checklist.Margin = new Thickness(TileMargin + rail, TileMargin, TileMargin, bar);
-        Map.ScaleMargin = _videoMain
-            ? new Thickness(TileMargin)
-            : new Thickness(TileMargin + rail, Shell.ActualHeight + TileMargin, TileMargin, TileMargin);
+        var attitude = TelemetryCard.Visibility == Visibility.Visible;
+        var corner = attitude ? TelemetryCard.ActualHeight + BottomGap : TileMargin;
+        BottomLeft.Margin = new Thickness(BottomLeft.Margin.Left, BottomLeft.Margin.Top,
+            attitude ? TelemetryCard.ActualWidth + TileMargin * 2 : CornerRoom, BottomLeft.Margin.Bottom);
+        Map.ScaleInCorner = !_videoMain;
+        Map.ScaleMargin = new Thickness(TileMargin, TileMargin, TileMargin, _videoMain ? TileMargin : corner);
+        MapCorner.Margin = new Thickness(TileMargin, TileMargin, TileMargin, corner + ScaleRoom);
         LayoutBar.Margin = new Thickness(TileMargin, TileMargin, TileMargin, bar);
+        var card = NoVehicle.Visibility == Visibility.Visible && NoVehicle.Content is FrameworkElement shown ? shown.ActualHeight : 0;
+        CenterMessage.VerticalAlignment = card > 0 ? VerticalAlignment.Bottom : VerticalAlignment.Center;
+        CenterMessage.Margin = new Thickness(TileMargin, TileMargin, TileMargin, card > 0 ? (FlyChrome.ActualHeight + card) / 2 + TileMargin : TileMargin);
         VideoStats.Margin = new Thickness(TileMargin, TileMargin, TileMargin, bar);
-        var right = TelemetryCard.Visibility == Visibility.Visible ? TelemetryCard.ActualHeight + BottomGap : TileMargin;
+        var right = MapCorner.Visibility == Visibility.Visible ? MapCorner.Margin.Bottom + MapCorner.ActualHeight + TileMargin : corner;
         RightColumn.Margin = new Thickness(TileMargin, TileMargin, TileMargin, right);
-        Shutter.Margin = new Thickness(TileMargin, TileMargin, ShutterInset, right);
+        var panels = new Thickness(TileMargin, PanelTop, RightColumn.ActualWidth + TileMargin * 2, right);
+        CameraPanel.Margin = panels;
+        Gripper.Margin = panels;
     }
 
     private void Warn(string reason)
@@ -297,8 +317,13 @@ public sealed partial class MainWindow : Window
             Dock(view, videoMain);
             Canvas.SetZIndex(view, videoMain ? -1 : 0);
         });
-        new FrameworkElement[] { Map, MapPayload, ObstacleOnMap }.ToList().ForEach(view => Dock(view, !videoMain));
+        new FrameworkElement[] { Map, MapPayload, ObstacleOnMap }.ToList().ForEach(view =>
+        {
+            Dock(view, !videoMain);
+            RoundPip(view, videoMain);
+        });
         ObstacleOnMap.ShowText = !videoMain;
+        PipFrame.Visibility = Shown(videoMain);
         MapCorner.Visibility = Shown(!videoMain);
         Clearances();
         VideoStats.Expanded = videoMain;
@@ -320,6 +345,7 @@ public sealed partial class MainWindow : Window
         new FrameworkElement[] { VideoTile, Marks, VideoLayer }.Select((view, at) => (view, at)).ToList()
             .ForEach(entry => Canvas.SetZIndex(entry.view, shown ? FullScreenLayer + entry.at : _videoMain ? -1 : 0));
         Marks.FullScreen = shown;
+        PipFrame.Visibility = Shown(_videoMain && !shown);
         PaintFullScreen();
     }
 
@@ -344,6 +370,15 @@ public sealed partial class MainWindow : Window
         view.Margin = full ? new Thickness(0) : new Thickness(BottomLeft.Margin.Left, 0, 0, BottomLeft.Margin.Bottom);
         view.HorizontalAlignment = full ? HorizontalAlignment.Stretch : HorizontalAlignment.Left;
         view.VerticalAlignment = full ? VerticalAlignment.Stretch : VerticalAlignment.Bottom;
+    }
+
+    private void RoundPip(UIElement view, bool docked)
+    {
+        var visual = ElementCompositionPreview.GetElementVisual(view);
+        var shape = visual.Compositor.CreateRoundedRectangleGeometry();
+        shape.Size = new Vector2((float)PipSlot.Width, (float)PipSlot.Height);
+        shape.CornerRadius = new Vector2((float)((CornerRadius)Application.Current.Resources["RadiusOverlay"]).TopLeft);
+        visual.Clip = docked ? visual.Compositor.CreateGeometricClip(shape) : null;
     }
 
     private void ToggleCamera()
@@ -375,7 +410,7 @@ public sealed partial class MainWindow : Window
 
     private void PaintChecklistButton()
     {
-        ChecklistButton.IsEnabled = Checklist.HasVehicle;
+        ChecklistButton.Visibility = Shown(Checklist.HasVehicle);
         ToolTipService.SetToolTip(ChecklistButton,
             Checklist.Ready ? "Pre-flight checklist · Ready" : $"Pre-flight checklist · {Checklist.Progress}");
     }

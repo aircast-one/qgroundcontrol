@@ -102,9 +102,11 @@ public sealed partial class SyntheticView : UserControl
             HorizontalAlignment = HorizontalAlignment.Center,
             VerticalAlignment = VerticalAlignment.Center,
             Margin = new Thickness(16),
-            Padding = new Thickness(12, 6, 12, 6),
-            CornerRadius = new CornerRadius(14),
-            Background = FormLook.Brush("LayerBrush"),
+            Padding = new Thickness(16, 10, 16, 10),
+            CornerRadius = new CornerRadius(20),
+            Background = FormLook.Brush("ChipBrush"),
+            BorderBrush = FormLook.Brush("ControlStrokeBrush"),
+            BorderThickness = new Thickness(1),
             IsHitTestVisible = false,
             Visibility = Visibility.Collapsed,
             Child = FormLook.Line(8, _spinner, _noteText),
@@ -113,12 +115,12 @@ public sealed partial class SyntheticView : UserControl
         _tiltButton = new Button
         {
             Height = 28,
-            Padding = new Thickness(12, 0, 12, 0),
+            Padding = new Thickness(10, 0, 10, 0),
             CornerRadius = new CornerRadius(14),
             HorizontalAlignment = HorizontalAlignment.Center,
             Content = FormLook.Line(4, _recenter, _tiltText),
         };
-        FormLook.Paint(_tiltButton, ButtonLook.Standard);
+        PreflightLook.Chip(_tiltButton);
         _tiltButton.Click += (_, _) => SendAim((SyntheticAim.DefaultTilt, 0));
         _tiltSlider = new Slider
         {
@@ -126,7 +128,7 @@ public sealed partial class SyntheticView : UserControl
             Minimum = SyntheticAim.LowestTilt,
             Maximum = SyntheticAim.HighestTilt,
             StepFrequency = 1,
-            Height = 160,
+            Height = 140,
             HorizontalAlignment = HorizontalAlignment.Center,
         };
         AutomationProperties.SetName(_tiltSlider, "Camera tilt");
@@ -137,15 +139,12 @@ public sealed partial class SyntheticView : UserControl
         _tiltControls = new StackPanel
         {
             Spacing = 8,
-            HorizontalAlignment = HorizontalAlignment.Left,
-            VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(16),
+            HorizontalAlignment = HorizontalAlignment.Center,
             Visibility = Visibility.Collapsed,
             Children = { _tiltButton, _tiltSlider },
         };
         _root.Children.Add(_stage);
         _root.Children.Add(_note);
-        _root.Children.Add(_tiltControls);
         _root.SizeChanged += (_, _) => Fit();
         _root.PointerPressed += OnPressed;
         _root.PointerMoved += OnMoved;
@@ -178,6 +177,8 @@ public sealed partial class SyntheticView : UserControl
     }
 
     public event EventHandler? Changed;
+
+    public FrameworkElement AimRail => _tiltControls;
 
     public bool Showing => _showing;
 

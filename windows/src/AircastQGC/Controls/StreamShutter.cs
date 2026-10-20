@@ -18,9 +18,9 @@ public sealed partial class StreamShutter : UserControl
     private const string StartRecording = "video.startRecording";
     private const string StopRecording = "video.stopRecording";
     private const string Unanswered = "The recording was not started.";
-    private const double Ring = 48;
-    private const double Dot = 22;
-    private const double Stop = 16;
+    private const double Ring = 56;
+    private const double Dot = 26;
+    private const double Stop = 20;
     private static readonly TimeSpan Tick = TimeSpan.FromMilliseconds(500);
     private static readonly TimeSpan RefusalShown = TimeSpan.FromSeconds(4);
 
@@ -41,22 +41,22 @@ public sealed partial class StreamShutter : UserControl
 
     public StreamShutter()
     {
-        _mark = new Border { Background = FormLook.Brush("CriticalBrush"), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
+        _mark = new Border { Background = FormLook.Brush("RecordBrush"), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         _button = new Button
         {
             Width = Ring,
             Height = Ring,
             Padding = new Thickness(0),
             CornerRadius = new CornerRadius(Ring / 2),
-            BorderThickness = new Thickness(3),
+            BorderThickness = new Thickness(4),
             HorizontalAlignment = HorizontalAlignment.Center,
             HorizontalContentAlignment = HorizontalAlignment.Center,
             VerticalContentAlignment = VerticalAlignment.Center,
             Content = _mark,
             Resources = new ResourceDictionary
             {
-                ["ButtonBackground"] = FormLook.Brush("CardBrush"),
-                ["ButtonBackgroundPointerOver"] = FormLook.Brush("ControlHoverBrush"),
+                ["ButtonBackground"] = FormLook.Brush("ChipBrush"),
+                ["ButtonBackgroundPointerOver"] = FormLook.Brush("ChipHoverBrush"),
                 ["ButtonBackgroundPressed"] = FormLook.Brush("SubtleSelectedBrush"),
                 ["ButtonBorderBrush"] = FormLook.Brush("TextPrimaryBrush"),
                 ["ButtonBorderBrushPointerOver"] = FormLook.Brush("TextPrimaryBrush"),
@@ -64,7 +64,7 @@ public sealed partial class StreamShutter : UserControl
             },
         };
         _button.Click += (_, _) => Press();
-        _blink = FormLook.Dot("CriticalBrush");
+        _blink = FormLook.Dot("RecordBrush");
         _clock = FormLook.Caption("", "TextPrimaryBrush");
         _clock.Visibility = Visibility.Visible;
         _readout = new Border
@@ -72,7 +72,7 @@ public sealed partial class StreamShutter : UserControl
             Height = 20,
             Padding = new Thickness(8, 0, 8, 0),
             CornerRadius = new CornerRadius(10),
-            Background = FormLook.Brush("LayerBrush"),
+            Background = FormLook.Brush("ChipBrush"),
             HorizontalAlignment = HorizontalAlignment.Center,
             Visibility = Visibility.Collapsed,
             Child = FormLook.Line(4, _blink, _clock),
@@ -139,7 +139,7 @@ public sealed partial class StreamShutter : UserControl
         ToolTipService.SetToolTip(_button, label);
         _mark.Width = recording ? Stop : Dot;
         _mark.Height = recording ? Stop : Dot;
-        _mark.CornerRadius = new CornerRadius(recording ? 3 : Dot / 2);
+        _mark.CornerRadius = new CornerRadius(recording ? 4 : Dot / 2);
         _readout.Visibility = VideoJson.Shown(recording);
         if (recording && Visibility == Visibility.Visible) _tick.Start(); else _tick.Stop();
         Paint();

@@ -61,8 +61,13 @@ public sealed partial class PipTile : UserControl
             VerticalContentAlignment = VerticalAlignment.Stretch,
             Padding = new Thickness(0),
             Background = new SolidColorBrush(Microsoft.UI.Colors.Black),
-            BorderBrush = PreflightLook.Token("CardStrokeBrush"),
-            BorderThickness = new Thickness(1),
+            BorderBrush = PreflightLook.Token("TextPrimaryBrush"),
+            BorderThickness = new Thickness(2),
+            Resources = new ResourceDictionary
+            {
+                ["ButtonBorderBrushPointerOver"] = PreflightLook.Token("TextPrimaryBrush"),
+                ["ButtonBorderBrushPressed"] = PreflightLook.Token("TextPrimaryBrush"),
+            },
             CornerRadius = (CornerRadius)Application.Current.Resources["RadiusOverlay"],
             Content = new Grid { Children = { _surface, _synthetic, _cover, pill } },
         };

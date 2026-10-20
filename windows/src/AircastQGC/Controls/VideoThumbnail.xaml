@@ -14,14 +14,6 @@
             <Setter Property="TextWrapping" Value="Wrap" />
             <Setter Property="MaxLines" Value="2" />
         </Style>
-        <Style x:Key="VideoDetail" TargetType="TextBlock">
-            <Setter Property="FontFamily" Value="{ThemeResource AppFontFamily}" />
-            <Setter Property="FontSize" Value="{ThemeResource FontSizeCaption}" />
-            <Setter Property="Foreground" Value="{ThemeResource TextTertiaryBrush}" />
-            <Setter Property="TextAlignment" Value="Center" />
-            <Setter Property="TextWrapping" Value="Wrap" />
-            <Setter Property="MaxLines" Value="2" />
-        </Style>
         <Style x:Key="VideoCaption" TargetType="TextBlock">
             <Setter Property="FontFamily" Value="{ThemeResource AppFontFamily}" />
             <Setter Property="FontSize" Value="{ThemeResource FontSizeCaption}" />
@@ -50,30 +42,34 @@
                 VerticalContentAlignment="Stretch"
                 Padding="0"
                 Background="{ThemeResource BgSecondaryBrush}"
-                BorderBrush="{ThemeResource CardStrokeBrush}"
-                BorderThickness="1"
+                BorderBrush="{ThemeResource TextPrimaryBrush}"
+                BorderThickness="2"
                 CornerRadius="{ThemeResource RadiusOverlay}"
                 AutomationProperties.Name="Swap video and map"
                 ToolTipService.ToolTip="Swap video and map">
+            <Button.Resources>
+                <StaticResource x:Key="ButtonBorderBrushPointerOver" ResourceKey="TextPrimaryBrush" />
+                <StaticResource x:Key="ButtonBorderBrushPressed" ResourceKey="TextPrimaryBrush" />
+            </Button.Resources>
             <Grid>
                 <local:VideoSurface x:Name="Surface" Channel="0" Visibility="Collapsed" />
                 <local:SyntheticView x:Name="Synthetic" />
                 <StackPanel x:Name="Placeholder"
                             HorizontalAlignment="Center"
                             VerticalAlignment="Center"
-                            Margin="12,0,12,24"
+                            Margin="12,0,12,28"
                             Spacing="{ThemeResource SpaceXs}">
                     <FontIcon Glyph="&#xE714;" FontSize="24" Foreground="{ThemeResource TextTertiaryBrush}" />
                     <TextBlock x:Name="Headline" Text="No video" Style="{StaticResource VideoHeadline}" />
-                    <TextBlock x:Name="Detail" Style="{StaticResource VideoDetail}" Visibility="Collapsed" />
                 </StackPanel>
-                <Border HorizontalAlignment="Left"
+                <Border x:Name="CaptionPill"
+                        HorizontalAlignment="Left"
                         VerticalAlignment="Bottom"
                         Margin="8"
                         Height="20"
                         Padding="8,0"
                         CornerRadius="10"
-                        Background="{ThemeResource LayerBrush}">
+                        Background="{ThemeResource ChipBrush}">
                     <StackPanel Orientation="Horizontal" Spacing="{ThemeResource SpaceXs}">
                         <Ellipse x:Name="Dot" Width="6" Height="6" VerticalAlignment="Center" Style="{StaticResource VideoDotIdle}" />
                         <TextBlock x:Name="Caption" Text="Video" Style="{StaticResource VideoCaption}" />
@@ -81,44 +77,5 @@
                 </Border>
             </Grid>
         </Button>
-
-        <StackPanel HorizontalAlignment="Right"
-                    VerticalAlignment="Top"
-                    Margin="8"
-                    Orientation="Horizontal"
-                    Spacing="{ThemeResource SpaceXs}">
-            <Button x:Name="PipToggle"
-                    Click="OnPipToggle"
-                    Padding="8,0"
-                    Height="24"
-                    MinHeight="0"
-                    Background="{ThemeResource LayerBrush}"
-                    BorderBrush="{ThemeResource ControlStrokeBrush}"
-                    BorderThickness="1"
-                    CornerRadius="12"
-                    Foreground="{ThemeResource TextPrimaryBrush}"
-                    Visibility="Collapsed"
-                    AutomationProperties.Name="Picture in picture">
-                <FontIcon x:Name="PipGlyph" Glyph="&#xEE49;" FontSize="12" />
-            </Button>
-            <Button x:Name="SwitchSource"
-                    Click="OnSwitchSource"
-                    Padding="8,0"
-                    Height="24"
-                    MinHeight="0"
-                    Background="{ThemeResource LayerBrush}"
-                    BorderBrush="{ThemeResource ControlStrokeBrush}"
-                    BorderThickness="1"
-                    CornerRadius="12"
-                    Foreground="{ThemeResource TextPrimaryBrush}"
-                    Visibility="Collapsed"
-                    AutomationProperties.Name="Show the next camera"
-                    ToolTipService.ToolTip="Show the next camera">
-                <StackPanel Orientation="Horizontal" Spacing="{ThemeResource SpaceXs}">
-                    <FontIcon Glyph="&#xE8AB;" FontSize="12" />
-                    <TextBlock x:Name="SourceTitle" Style="{StaticResource VideoCaption}" MaxWidth="120" />
-                </StackPanel>
-            </Button>
-        </StackPanel>
     </Grid>
 </UserControl>

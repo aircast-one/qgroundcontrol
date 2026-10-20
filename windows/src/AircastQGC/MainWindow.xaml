@@ -28,6 +28,9 @@
 
             <controls:ObstacleMapLayer x:Name="ObstacleOnMap" />
 
+            <Button x:Name="PipFrame" Style="{StaticResource PipFrame}" Visibility="Collapsed"
+                    AutomationProperties.Name="Show the map" ToolTipService.ToolTip="Show the map" />
+
             <Border x:Name="TopScrim" Height="{StaticResource SizeFlyScrim}" VerticalAlignment="Top"
                     IsHitTestVisible="False" Background="{ThemeResource FlyScrimBrush}" />
 
@@ -46,7 +49,6 @@
                 <controls:HeadingTape HorizontalAlignment="Center" />
                 <controls:TrafficBanner HorizontalAlignment="Center" />
                 <StackPanel x:Name="Overlays" Spacing="{StaticResource SpaceSm}">
-                    <controls:GuidedBar x:Name="GuidedStrip" HorizontalAlignment="Center" />
                     <controls:ControlRequestPrompt HorizontalAlignment="Center" />
                     <controls:LayoutSlot Key="missionProgress" Label="Mission progress" HorizontalAlignment="Center">
                         <controls:MissionProgressCard x:Name="MissionProgress" HorizontalAlignment="Center" />
@@ -70,48 +72,57 @@
                 </StackPanel>
             </StackPanel>
 
-            <StackPanel x:Name="LeftRail" HorizontalAlignment="Left" VerticalAlignment="Top" Margin="16"
-                        Spacing="{StaticResource SpaceSm}" />
+            <StackPanel x:Name="LeftRail" HorizontalAlignment="Left" VerticalAlignment="Center" Margin="16"
+                        Spacing="{StaticResource SpaceSm}">
+                <Button x:Name="ChecklistButton" Style="{StaticResource FlyRailButton}" Content="&#xE9D5;"
+                        Visibility="Collapsed" ToolTipService.Placement="Right"
+                        ToolTipService.ToolTip="Pre-flight checklist" AutomationProperties.Name="Pre-flight checklist" />
+                <controls:GuidedBar x:Name="GuidedStrip" />
+            </StackPanel>
 
             <Grid x:Name="BottomLeft" HorizontalAlignment="Left" VerticalAlignment="Bottom" Margin="16,16,280,16"
                   ColumnSpacing="{StaticResource SpaceLg}">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="Auto" />
+                </Grid.RowDefinitions>
                 <Grid.ColumnDefinitions>
                     <ColumnDefinition Width="Auto" />
                     <ColumnDefinition Width="*" />
                 </Grid.ColumnDefinitions>
-                <Border x:Name="PipSlot" Width="260" Height="150" IsHitTestVisible="False" />
-                <Grid x:Name="OsdSlot" Grid.Column="1" VerticalAlignment="Bottom">
+                <controls:PipTile Width="160" Height="90" Margin="0,0,0,8" HorizontalAlignment="Left" />
+                <Border x:Name="PipSlot" Grid.Row="1" Width="320" Height="180" IsHitTestVisible="False" />
+                <Grid x:Name="OsdSlot" Grid.Row="1" Grid.Column="1" VerticalAlignment="Bottom">
                     <controls:InstrumentBar x:Name="ReadingsBar" HorizontalAlignment="Left" VerticalAlignment="Bottom" />
                 </Grid>
             </Grid>
 
             <ScrollViewer x:Name="RightColumn" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="16"
                           HorizontalScrollBarVisibility="Disabled" VerticalScrollBarVisibility="Auto">
-                <StackPanel Spacing="{StaticResource SpaceXs}">
-                    <controls:MapControls x:Name="MapButtons" />
-                    <Button x:Name="CameraButton" Style="{StaticResource MapControl}" Content="&#xE722;"
-                            Visibility="Collapsed"
-                            ToolTipService.ToolTip="Camera" AutomationProperties.Name="Camera" />
-                    <Button x:Name="FullScreenButton" Style="{StaticResource MapControl}" Content="&#xE740;"
-                            Visibility="Collapsed"
-                            ToolTipService.ToolTip="Full-screen video (F11)" AutomationProperties.Name="Full-screen video" />
-                    <Button x:Name="ChecklistButton" Style="{StaticResource MapControl}" Content="&#xE9D5;"
-                            IsEnabled="False"
-                            ToolTipService.ToolTip="Pre-flight checklist" AutomationProperties.Name="Pre-flight checklist" />
+                <StackPanel Orientation="Horizontal" Spacing="{StaticResource SpaceSm}">
+                    <controls:CameraSwitch VerticalAlignment="Top" />
+                    <StackPanel MinWidth="56" Spacing="{StaticResource SpaceMd}">
+                        <Border x:Name="AimSlot" HorizontalAlignment="Center" />
+                        <controls:StreamShutter x:Name="Shutter" HorizontalAlignment="Center" />
+                        <Button x:Name="CameraButton" Style="{StaticResource FlyRoundButton}" Content="&#xE722;"
+                                HorizontalAlignment="Center" Visibility="Collapsed"
+                                ToolTipService.ToolTip="Camera" AutomationProperties.Name="Camera" />
+                        <Button x:Name="FullScreenButton" Style="{StaticResource FlyRoundButton}" Content="&#xE740;"
+                                HorizontalAlignment="Center" Visibility="Collapsed"
+                                ToolTipService.ToolTip="Full-screen video (F11)" AutomationProperties.Name="Full-screen video" />
+                    </StackPanel>
                 </StackPanel>
             </ScrollViewer>
 
-            <controls:StreamShutter x:Name="Shutter"
-                                    HorizontalAlignment="Right" VerticalAlignment="Center" Margin="16,16,68,16" />
+            <Grid x:Name="MapCorner" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="16">
+                <controls:MapControls x:Name="MapButtons" />
+            </Grid>
 
-            <Grid x:Name="MapCorner" HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="16" />
+            <Grid x:Name="CenterMessage" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="16">
+                <controls:NoVideoPill x:Name="NoVideoMessage" />
+            </Grid>
 
-            <Grid x:Name="CenterMessage" HorizontalAlignment="Center" VerticalAlignment="Center" Margin="16" />
-
-            <controls:PipTile Width="160" Height="90" Margin="16"
-                              HorizontalAlignment="Right" VerticalAlignment="Top" />
-
-            <controls:TelemetryPanel x:Name="TelemetryCard"
+            <controls:TelemetryPanel x:Name="TelemetryCard" Visibility="Collapsed"
                                      HorizontalAlignment="Right" VerticalAlignment="Bottom" Margin="16" />
 
             <controls:VideoStatsPill x:Name="VideoStats"
@@ -139,11 +150,11 @@
             <controls:VirtualJoystick Margin="16,16,280,160" />
 
             <controls:CameraOverlay x:Name="CameraPanel"
-                                    HorizontalAlignment="Right" VerticalAlignment="Top" Margin="16,182,68,16"
+                                    HorizontalAlignment="Right" VerticalAlignment="Top" Margin="16"
                                     Visibility="Collapsed" />
 
             <controls:GripperPanel x:Name="Gripper"
-                                   HorizontalAlignment="Right" VerticalAlignment="Top" Margin="16,182,68,16" />
+                                   HorizontalAlignment="Right" VerticalAlignment="Top" Margin="16" />
 
             <controls:PreflightChecklist x:Name="Checklist"
                                          HorizontalAlignment="Left" VerticalAlignment="Top" Margin="16" />
@@ -154,7 +165,7 @@
 
             <controls:LayoutEditBar x:Name="LayoutBar" HorizontalAlignment="Center" VerticalAlignment="Bottom" Margin="16,16,16,124" />
 
-            <controls:GuidedConfirm x:Name="GuidedCard" />
+            <controls:GuidedConfirm x:Name="GuidedCard" HorizontalAlignment="Left" Margin="16" />
 
             <controls:MapContextMenu x:Name="MapMenu" />
         </Grid>

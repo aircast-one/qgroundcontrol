@@ -5,32 +5,16 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
 
     <UserControl.Resources>
-        <Style x:Key="ReadingCell" TargetType="Border">
-            <Setter Property="Padding" Value="8,4" />
-            <Setter Property="MinWidth" Value="64" />
-            <Setter Property="CornerRadius" Value="{StaticResource RadiusControl}" />
-            <Setter Property="Background" Value="Transparent" />
-        </Style>
-        <Style x:Key="ReadingLabel" TargetType="TextBlock" BasedOn="{StaticResource StatLabel}">
-            <Setter Property="MaxLines" Value="1" />
-            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-        </Style>
-        <Style x:Key="ReadingValue" TargetType="TextBlock" BasedOn="{StaticResource StatValue}" />
-        <Style x:Key="ReadingMissing" TargetType="TextBlock" BasedOn="{StaticResource StatValue}">
-            <Setter Property="Foreground" Value="{ThemeResource TextTertiaryBrush}" />
-        </Style>
-        <Style x:Key="ReadingUnits" TargetType="TextBlock">
+        <Style x:Key="OsdPlace" TargetType="TextBlock">
             <Setter Property="FontFamily" Value="{ThemeResource AppFontFamily}" />
-            <Setter Property="FontSize" Value="{ThemeResource FontSizeCaption}" />
-            <Setter Property="Foreground" Value="{ThemeResource TextSecondaryBrush}" />
-            <Setter Property="VerticalAlignment" Value="Bottom" />
-            <Setter Property="Margin" Value="0,0,0,3" />
-        </Style>
-        <Style x:Key="ReadingAbsent" TargetType="TextBlock">
-            <Setter Property="FontFamily" Value="{ThemeResource AppFontFamily}" />
-            <Setter Property="FontSize" Value="{ThemeResource FontSizeCaption}" />
-            <Setter Property="Foreground" Value="{ThemeResource CautionBrush}" />
+            <Setter Property="FontSize" Value="{ThemeResource FontSizeSubtitle}" />
+            <Setter Property="Foreground" Value="{ThemeResource OsdTextBrush}" />
+            <Setter Property="TextWrapping" Value="NoWrap" />
             <Setter Property="MaxLines" Value="1" />
+        </Style>
+        <Style x:Key="OsdSpeed" TargetType="TextBlock" BasedOn="{StaticResource OsdPlace}">
+            <Setter Property="FontSize" Value="{ThemeResource FontSizeBody}" />
+            <Setter Property="FontWeight" Value="Medium" />
         </Style>
 
         <Style x:Key="EditorDialog" TargetType="ContentDialog" BasedOn="{StaticResource DefaultContentDialogStyle}">
@@ -83,16 +67,13 @@
 
     <StackPanel Spacing="{StaticResource SpaceXs}">
         <StackPanel x:Name="NoticeRow" Orientation="Horizontal" Spacing="{StaticResource SpaceXs}" Visibility="Collapsed">
-            <FontIcon Glyph="&#xE7BA;" FontSize="12" Foreground="{ThemeResource CriticalBrush}" />
+            <FontIcon Glyph="&#xE7BA;" FontSize="12" Foreground="{ThemeResource CriticalBrush}" VerticalAlignment="Center" />
             <TextBlock x:Name="NoticeText" FontFamily="{ThemeResource AppFontFamily}"
                        FontSize="{ThemeResource FontSizeCaption}" Foreground="{ThemeResource CriticalBrush}" />
         </StackPanel>
-        <Border x:Name="Card" Background="{ThemeResource CardBrush}" BorderBrush="{ThemeResource CardStrokeBrush}"
-                BorderThickness="1" CornerRadius="{StaticResource RadiusOverlay}" Padding="8" Visibility="Collapsed">
-            <ScrollViewer HorizontalScrollBarVisibility="Auto" HorizontalScrollMode="Enabled"
-                          VerticalScrollBarVisibility="Disabled" VerticalScrollMode="Disabled">
-                <StackPanel x:Name="Readings" Orientation="Horizontal" Spacing="{StaticResource SpaceMd}" />
-            </ScrollViewer>
-        </Border>
+        <StackPanel x:Name="Card" Visibility="Collapsed">
+            <StackPanel x:Name="SpeedRow" Orientation="Horizontal" Spacing="{StaticResource SpaceSm}" />
+            <StackPanel x:Name="PlaceRow" Orientation="Horizontal" Spacing="{StaticResource SpaceSm}" />
+        </StackPanel>
     </StackPanel>
 </UserControl>

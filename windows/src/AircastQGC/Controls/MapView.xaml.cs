@@ -158,6 +158,16 @@ public sealed partial class MapView : UserControl
         set => ScaleBar.Margin = value;
     }
 
+    public bool ScaleInCorner
+    {
+        get => ScaleBar.VerticalAlignment == VerticalAlignment.Bottom;
+        set
+        {
+            ScaleBar.HorizontalAlignment = value ? HorizontalAlignment.Right : HorizontalAlignment.Left;
+            ScaleBar.VerticalAlignment = value ? VerticalAlignment.Bottom : VerticalAlignment.Top;
+        }
+    }
+
     public string? TileType { get; set; }
 
     internal static (Geo Centre, double Zoom)? FlightCamera { get; private set; }

@@ -6,64 +6,94 @@
     FontFamily="{ThemeResource AppFontFamily}">
 
     <UserControl.Resources>
-        <StaticResource x:Key="ButtonBackground" ResourceKey="ControlBrush" />
-        <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="ControlHoverBrush" />
-        <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="ControlBrush" />
-        <StaticResource x:Key="ButtonBackgroundDisabled" ResourceKey="ControlBrush" />
+        <StaticResource x:Key="ButtonBackground" ResourceKey="ChipBrush" />
+        <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="ChipHoverBrush" />
+        <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="SubtleSelectedBrush" />
+        <StaticResource x:Key="ButtonBackgroundDisabled" ResourceKey="ChipBrush" />
+        <StaticResource x:Key="ButtonForeground" ResourceKey="TextPrimaryBrush" />
+        <StaticResource x:Key="ButtonForegroundPointerOver" ResourceKey="TextPrimaryBrush" />
+        <StaticResource x:Key="ButtonForegroundPressed" ResourceKey="TextPrimaryBrush" />
+        <StaticResource x:Key="ButtonForegroundDisabled" ResourceKey="TextDisabledBrush" />
         <StaticResource x:Key="ButtonBorderBrush" ResourceKey="ControlStrokeBrush" />
         <StaticResource x:Key="ButtonBorderBrushPointerOver" ResourceKey="ControlStrokeBrush" />
         <StaticResource x:Key="ButtonBorderBrushPressed" ResourceKey="ControlStrokeBrush" />
         <StaticResource x:Key="ButtonBorderBrushDisabled" ResourceKey="ControlStrokeBrush" />
 
-        <Style x:Key="GuidedButton" TargetType="Button">
-            <Setter Property="MinWidth" Value="72" />
-            <Setter Property="MaxWidth" Value="104" />
-            <Setter Property="Padding" Value="8,6" />
-            <Setter Property="CornerRadius" Value="{ThemeResource RadiusControl}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="HorizontalContentAlignment" Value="Center" />
-            <Setter Property="VerticalAlignment" Value="Stretch" />
+        <Style x:Key="RailIcon" TargetType="FontIcon">
+            <Setter Property="FontFamily" Value="Segoe Fluent Icons" />
+            <Setter Property="FontSize" Value="20" />
         </Style>
 
-        <Style x:Key="GuidedIcon" TargetType="FontIcon">
-            <Setter Property="FontSize" Value="18" />
-            <Setter Property="HorizontalAlignment" Value="Center" />
-            <Setter Property="Foreground" Value="{ThemeResource TextPrimaryBrush}" />
-        </Style>
-
-        <Style x:Key="GuidedIconDestructive" TargetType="FontIcon" BasedOn="{StaticResource GuidedIcon}">
-            <Setter Property="Foreground" Value="{ThemeResource CriticalBrush}" />
-        </Style>
-
-        <Style x:Key="GuidedLabel" TargetType="TextBlock">
-            <Setter Property="FontFamily" Value="{ThemeResource AppFontFamily}" />
-            <Setter Property="FontSize" Value="{ThemeResource FontSizeCaption}" />
-            <Setter Property="Foreground" Value="{ThemeResource TextSecondaryBrush}" />
-            <Setter Property="HorizontalAlignment" Value="Center" />
-            <Setter Property="TextAlignment" Value="Center" />
-            <Setter Property="MaxLines" Value="1" />
-            <Setter Property="TextTrimming" Value="CharacterEllipsis" />
-        </Style>
-
-        <Style x:Key="GuidedLabelDestructive" TargetType="TextBlock" BasedOn="{StaticResource GuidedLabel}">
-            <Setter Property="Foreground" Value="{ThemeResource CriticalBrush}" />
+        <Style x:Key="RailIconPrimary" TargetType="FontIcon" BasedOn="{StaticResource RailIcon}">
+            <Setter Property="FontSize" Value="24" />
         </Style>
     </UserControl.Resources>
 
-    <Border
+    <StackPanel
         x:Name="Root"
         Visibility="Collapsed"
-        Padding="4"
-        Background="{ThemeResource CardBrush}"
-        BorderBrush="{ThemeResource CardStrokeBrush}"
-        BorderThickness="1"
-        CornerRadius="{ThemeResource RadiusOverlay}">
-        <ItemsControl x:Name="Strip" IsTabStop="False">
-            <ItemsControl.ItemsPanel>
-                <ItemsPanelTemplate>
-                    <StackPanel Orientation="Horizontal" Spacing="4" />
-                </ItemsPanelTemplate>
-            </ItemsControl.ItemsPanel>
-        </ItemsControl>
-    </Border>
+        Spacing="{StaticResource SpaceXl}"
+        XYFocusKeyboardNavigation="Enabled">
+        <StackPanel Spacing="{StaticResource SpaceSm}">
+            <ItemsControl x:Name="Strip" IsTabStop="False">
+                <ItemsControl.ItemsPanel>
+                    <ItemsPanelTemplate>
+                        <StackPanel Spacing="{StaticResource SpaceSm}" />
+                    </ItemsPanelTemplate>
+                </ItemsControl.ItemsPanel>
+            </ItemsControl>
+
+            <Button
+                x:Name="MoreButton"
+                Style="{StaticResource FlyRailButton}"
+                AutomationProperties.Name="More actions"
+                ToolTipService.ToolTip="More actions"
+                ToolTipService.Placement="Right">
+                <FontIcon Glyph="&#xE712;" Style="{StaticResource RailIcon}" RenderTransformOrigin="0.5,0.5">
+                    <FontIcon.RenderTransform>
+                        <RotateTransform Angle="90" />
+                    </FontIcon.RenderTransform>
+                </FontIcon>
+                <Button.Flyout>
+                    <MenuFlyout x:Name="MoreMenu" Placement="RightEdgeAlignedTop" />
+                </Button.Flyout>
+            </Button>
+        </StackPanel>
+
+        <Grid x:Name="StopHost" Width="48" Height="48" Visibility="Collapsed">
+            <Button
+                x:Name="StopButton"
+                Style="{StaticResource FlyRailButton}"
+                Background="{ThemeResource StopBrush}"
+                BorderBrush="{ThemeResource StopBrush}"
+                Foreground="{ThemeResource StopOnBrush}"
+                ToolTipService.Placement="Right"
+                Click="StopButton_Click">
+                <Button.Resources>
+                    <StaticResource x:Key="ButtonBackground" ResourceKey="StopBrush" />
+                    <StaticResource x:Key="ButtonBackgroundPointerOver" ResourceKey="StopHoverBrush" />
+                    <StaticResource x:Key="ButtonBackgroundPressed" ResourceKey="StopHoverBrush" />
+                    <StaticResource x:Key="ButtonBackgroundDisabled" ResourceKey="ChipBrush" />
+                    <StaticResource x:Key="ButtonForeground" ResourceKey="StopOnBrush" />
+                    <StaticResource x:Key="ButtonForegroundPointerOver" ResourceKey="StopOnBrush" />
+                    <StaticResource x:Key="ButtonForegroundPressed" ResourceKey="StopOnBrush" />
+                    <StaticResource x:Key="ButtonBorderBrush" ResourceKey="StopBrush" />
+                    <StaticResource x:Key="ButtonBorderBrushPointerOver" ResourceKey="StopBrush" />
+                    <StaticResource x:Key="ButtonBorderBrushPressed" ResourceKey="StopBrush" />
+                </Button.Resources>
+                <FontIcon Glyph="&#xE7BA;" Style="{StaticResource RailIcon}" />
+            </Button>
+            <ProgressRing
+                x:Name="StopHold"
+                Width="48"
+                Height="48"
+                IsIndeterminate="False"
+                IsHitTestVisible="False"
+                Minimum="0"
+                Maximum="1"
+                Value="0"
+                Foreground="{ThemeResource StopOnBrush}"
+                Background="Transparent" />
+        </Grid>
+    </StackPanel>
 </UserControl>

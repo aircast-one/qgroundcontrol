@@ -5,45 +5,40 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
     FontFamily="{ThemeResource AppFontFamily}">
 
-    <UserControl.Resources>
-        <Style x:Key="MapTypeMenuPresenter" TargetType="MenuFlyoutPresenter">
-            <Setter Property="Background" Value="{ThemeResource CardBrush}" />
-            <Setter Property="BorderBrush" Value="{ThemeResource CardStrokeBrush}" />
-            <Setter Property="BorderThickness" Value="1" />
-            <Setter Property="CornerRadius" Value="{StaticResource RadiusOverlay}" />
-        </Style>
-    </UserControl.Resources>
-
-    <StackPanel Spacing="{StaticResource SpaceXs}">
+    <StackPanel Spacing="{StaticResource SpaceSm}">
         <Button x:Name="ZoomInButton"
-                Style="{StaticResource MapControl}"
+                Style="{StaticResource FlyRoundButton}"
+                HorizontalAlignment="Center"
                 Content="&#xE710;"
                 Click="OnZoomIn"
                 ToolTipService.ToolTip="Zoom in"
                 AutomationProperties.Name="Zoom in" />
         <Button x:Name="ZoomOutButton"
-                Style="{StaticResource MapControl}"
+                Style="{StaticResource FlyRoundButton}"
+                HorizontalAlignment="Center"
                 Content="&#xE738;"
                 Click="OnZoomOut"
                 ToolTipService.ToolTip="Zoom out"
                 AutomationProperties.Name="Zoom out" />
         <Button x:Name="CenterButton"
-                Style="{StaticResource MapControl}"
+                Style="{StaticResource FlyRoundButton}"
+                HorizontalAlignment="Center"
                 Content="&#xE81D;"
                 Click="OnCenter"
                 IsEnabled="False"
                 ToolTipService.ToolTip="Center on vehicle"
                 AutomationProperties.Name="Center on vehicle" />
         <Button x:Name="LayersButton"
-                Style="{StaticResource MapControl}"
+                Style="{StaticResource FlyRailButton}"
+                Margin="0,4,0,0"
+                HorizontalAlignment="Center"
                 Content="&#xE81E;"
                 ToolTipService.ToolTip="Map layers"
                 AutomationProperties.Name="Map layers">
             <Button.Flyout>
                 <MenuFlyout x:Name="LayersMenu"
-                            Placement="LeftEdgeAlignedTop"
-                            Opening="OnLayersOpening"
-                            MenuFlyoutPresenterStyle="{StaticResource MapTypeMenuPresenter}" />
+                            Placement="LeftEdgeAlignedBottom"
+                            Opening="OnLayersOpening" />
             </Button.Flyout>
         </Button>
     </StackPanel>
