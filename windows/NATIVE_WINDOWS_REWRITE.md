@@ -14,6 +14,7 @@ app `win-arm64`.
 | Bridge (get/set/invoke) | `Core/Bridge.cs` | macOS `Bridge.swift` |
 | Watch + event dispatch | `Core/BridgeWatch.cs` | macOS `BridgeWatch.swift` |
 | Lifecycle (`qgc_start`/shutdown) | `Core/CoreHost.cs` | `nativehost.rs`, macOS `AppShell` |
+| Video (`qgc_video.dll` from `src/Bridge/QGCVideoC.cc`, GStreamer 1.28.4 arm64) | `Core/VideoNative.cs`, `Core/VideoDriver.cs`, `Controls/VideoSurface.cs` | iOS `VideoDriver`, macOS `NativeVideoView` |
 
 Boot: `qgc_start(argc, argv)` spawns the core pump thread and returns; the UI never calls `qgc_run`
 (headless-only). Data flows through `view.*` paths; writes via `qgc_bridge_set`; actions via
@@ -35,13 +36,21 @@ Status: ▢ todo · ◐ in progress · ✓ done
 
 ### Fly
 
-- ✓ fly · ◐ fly — flight mode (refused-change notice untested: the mock accepts every mode) · ◐ fly — camera (no video frames: no Windows decoder yet) · ✓ fly — map context menu
+- ✓ fly · ◐ fly — flight mode (refused-change notice untested: the mock accepts every mode) · ◐ fly — camera (frames ✓; the PiP tile is not built and WHEP sources cannot play: no `whepsrc` in the arm64 SDK) · ✓ fly — map context menu
 - ✓ fly — armed, confirm return · ✓ fly — checklist · ✓ fly — no vehicle
 
 Driven through the UI on `winvm` against the mock ArduCopter (2026-10-20): slide-to-confirm with real mouse input, arm, disarm,
 takeoff to a chosen height, change altitude, title-bar mode change, ROI + cancel ROI, go-to, set heading, RTL, land to
 auto-disarm; the context menu and the confirm card close on Escape and the menu on an outside click. Orbit is not offered
 for ArduCopter by the core.
+
+Video on `winvm` (2026-10-20): the mock ArduCopter's camera (`camera=1`) advertises `udp://127.0.0.1:5600`, fed by a
+`videotestsrc` → `x264enc` → `rtph264pay` sender. The core's `nativePipeline` played through the bundled GStreamer 1.28.4,
+`view.video` went to decoding at 1280×720 in about 10 s (first plugin scan), and the moving test ball was seen in the
+thumbnail and, after the swap, in the full-size view. Killing the sender showed "Waiting for a stream. The stream from
+127.0.0.1:5600 stopped."; restarting it brought the moving picture back. `video.startRecording` wrote a growing MP4 under
+`Documents\Aircast QGC\Video` (6.9 s, 1280×720 H.264 by `gst-discoverer`) and `view.video.recording` followed
+`video.reportRecording`. Not checked: H.265, RTSP, MPEG-TS, hardware decode (the VM has no DXVA).
 
 ### Plan
 

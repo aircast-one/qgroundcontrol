@@ -25,6 +25,12 @@
     <None Include="runtime\groundstation.dll" Link="groundstation.dll" Condition="Exists('runtime\groundstation.dll')">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <None Include="runtime\qgc_video.dll" Link="qgc_video.dll" Condition="Exists('runtime\qgc_video.dll')">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Include="runtime\gstreamer\**" Link="gstreamer\%(RecursiveDir)%(Filename)%(Extension)">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

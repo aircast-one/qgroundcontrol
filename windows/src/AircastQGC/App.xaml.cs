@@ -8,6 +8,7 @@ namespace AircastQGC;
 public partial class App : Application
 {
     private static readonly string CrashLog = Path.Combine(Path.GetTempPath(), "aircast-crash.log");
+    private static readonly string SavePath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments), "Aircast QGC");
 
     private Window? _window;
 
@@ -24,9 +25,14 @@ public partial class App : Application
     {
         try
         {
-            CoreHost.Start("AircastQGC", "--no-autoconnect");
+            CoreHost.Start("AircastQGC", "--no-autoconnect", "--save-path", SavePath);
+            VideoDriver.Start();
             _window = new MainWindow();
-            _window.Closed += (_, _) => CoreHost.Shutdown();
+            _window.Closed += (_, _) =>
+            {
+                VideoDriver.Stop();
+                CoreHost.Shutdown();
+            };
             _window.Activate();
         }
         catch (Exception ex)

@@ -69,6 +69,8 @@ public sealed partial class VideoThumbnail : UserControl
         var missing = VideoJson.Flag(video, "sourceChosen") ? VideoJson.Text(video, "noVideoText") : "";
 
         IsLive = live;
+        Surface.Visibility = VideoJson.Shown(live);
+        Placeholder.Visibility = VideoJson.Shown(!live);
         Caption.Text = live || status.Length == 0 ? title : $"{title} · {status}";
         Dot.Style = (Style)Resources[live ? "VideoDotLive" : connecting ? "VideoDotConnecting" : "VideoDotIdle"];
         Headline.Text = VideoJson.Flag(video, "streamEnabled", true)

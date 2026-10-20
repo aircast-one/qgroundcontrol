@@ -15,6 +15,9 @@ robocopy $proj $Stage /E /XD bin obj runtime /R:5 /W:2 /NFL /NDL /NP /NJH /NJS |
 "=== build core DLL -> stage runtime ==="
 & (Join-Path $PSScriptRoot "build-core.ps1") -Target $Target -OutDir (Join-Path $Stage "runtime")
 
+"=== build video DLL + GStreamer runtime -> stage runtime ==="
+& (Join-Path $PSScriptRoot "build-video.ps1") -OutDir (Join-Path $Stage "runtime")
+
 "=== dotnet build head ==="
 Push-Location $Stage
 try {

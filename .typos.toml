@@ -17,6 +17,7 @@ QGroundControl = "QGroundControl"
 MAVLink = "MAVLink"
 ArduPilot = "ArduPilot"
 PX4 = "PX4"
+Writeable = "Writeable"
 
 # Common abbreviations in codebase
 Ack = "Ack"
