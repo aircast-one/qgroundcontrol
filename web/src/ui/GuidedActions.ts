@@ -1,6 +1,7 @@
 import { type Json, isNull, jsonObjects, optBoolean, optInt, optJSONArray, optJSONObject, optText } from '@/bridge/Json';
 
 export const GUIDED_ACTIONS = 'view.guidedActions';
+export const AUTODROP_STATUS = 'view.autodropStatus';
 
 export type GuidedOffer = {
   readonly id: string;

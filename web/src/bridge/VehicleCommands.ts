@@ -25,6 +25,7 @@ const VEHICLE_RC_CLEAR = 'vehicle.clearRcChannelOverrides';
 const VEHICLE_REMOTE_ID_EMERGENCY = 'vehicle.remoteIDManager.setEmergency';
 const VEHICLE_RESET_MESSAGES = 'vehicle.resetAllMessages';
 const VEHICLE_CLEAR_MESSAGES = 'vehicle.clearMessages';
+const VEHICLE_AUTO_INTERCEPT_DROP = 'vehicle.autoInterceptDrop';
 
 export const VehicleCommands = {
   setArmed: (armed: boolean): Promise<boolean> => Qgc.set(VEHICLE_ARMED, armed),
@@ -57,4 +58,6 @@ export const VehicleCommands = {
   declareRemoteIdEmergency: (declare: boolean): Promise<boolean> => Qgc.invoke(VEHICLE_REMOTE_ID_EMERGENCY, declare),
   resetAllMessages: (): Promise<boolean> => Qgc.invoke(VEHICLE_RESET_MESSAGES),
   clearMessages: (): Promise<boolean> => Qgc.invoke(VEHICLE_CLEAR_MESSAGES),
+  startAutoInterceptDrop: (): Promise<boolean> => Qgc.invoke(VEHICLE_AUTO_INTERCEPT_DROP),
+  stopAutoInterceptDrop: (): Promise<boolean> => Qgc.invoke(VEHICLE_AUTO_INTERCEPT_DROP, 'stop'),
 };

@@ -24,7 +24,7 @@ import { LocalFlyScreenState, OpenOnRequest } from './FlyScreenState';
 import { AnimatedVisibility, useElementSize } from './FlyShell';
 import { FLY_STATE, type Readiness, flyState, guidedReadiness, readinessWarning, useHasVehicle, vehicleSubtitle } from './FlyState';
 import { GRIPPER_ACTIONS, GripperPanel, gripperOffers } from './GripperPanel';
-import { GUIDED_ACTIONS, type GuidedOffer, type Payload, SINGLE_GRIPPER, guidedOffers, payloadOf, resumeFromSequence } from './GuidedActions';
+import { AUTODROP_STATUS, GUIDED_ACTIONS, type GuidedOffer, type Payload, SINGLE_GRIPPER, guidedOffers, payloadOf, resumeFromSequence } from './GuidedActions';
 import { GUIDED_TAKEOFF, guidedTakeoff, guidedTakeoffPath } from './GuidedTakeoff';
 import { type GuidedValueKind, GuidedValueFlow, type OpenGuidedValue, altitudeValue, openGuidedValue, speedValue, takeoffValue } from './GuidedValueFlow';
 import { holdLabel } from './HoldToConfirm';
@@ -414,6 +414,8 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
   const useChecklist = useMemo(() => preflightOffered(preflightJson), [preflightJson]);
   const actionsJson = useQgcPath(GUIDED_ACTIONS);
   const offers = useMemo(() => guidedOffers(actionsJson), [actionsJson]);
+  const autodropJson = useQgcPath(AUTODROP_STATUS);
+  const autodropWaiting = optText(autodropJson, 'state') === 'waiting';
   const extras = useMemo(() => moreActions(offers), [offers]);
   const gripper = useMemo(() => gripperOffers(extras), [extras]);
   const resumeFrom = useMemo(() => resumeFromSequence(actionsJson), [actionsJson]);
@@ -649,6 +651,12 @@ export const FlightActions = ({ className, layout = FlyDeckLayout.Bottom, center
           },
         }),
         ...(!armed ? [MoreTile({ label: 'Edit layout', icon: 'ic_edit', enabled: true, onClick: () => flyScreen.layout.startEditing() })] : []),
+        MoreTile({
+          label: autodropWaiting ? 'Stop Auto Intercept' : 'Auto Intercept',
+          icon: 'ic_drop',
+          enabled: true,
+          onClick: () => void (autodropWaiting ? VehicleCommands.stopAutoInterceptDrop() : VehicleCommands.startAutoInterceptDrop()),
+        }),
         ...extras
           .filter((it) => !entries.some((entry) => entry.id === it.id) && !GRIPPER_ACTIONS.includes(it.id))
           .map((offer) =>
