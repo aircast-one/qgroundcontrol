@@ -215,6 +215,13 @@ pub fn loiters(command: MavCmd) -> bool {
     )
 }
 
+pub fn lands(command: MavCmd) -> bool {
+    matches!(
+        command,
+        MavCmd::MAV_CMD_NAV_LAND | MavCmd::MAV_CMD_NAV_VTOL_LAND
+    )
+}
+
 pub fn flies(command: MavCmd) -> bool {
     matches!(
         command,
