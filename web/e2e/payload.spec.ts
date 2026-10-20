@@ -23,8 +23,12 @@ test('a mission whose second drop would not fall says why and turns on auto-clos
   await vehicle.getByRole('button', { name: 'More', exact: true }).click();
   await vehicle.getByRole('dialog').getByText('Payload').click();
   const panel = vehicle.getByRole('dialog').filter({ hasText: STAYS_OPEN });
-  await expect(panel).toBeVisible();
-  await panel.getByRole('button', { name: 'Turn on auto-close' }).click();
+  await expect(panel.getByRole('button', { name: 'Turn on auto-close' })).toBeVisible();
+  await vehicle.keyboard.press('Escape');
+  await expect(panel).toBeHidden();
+
+  const sheet = (await vehicleStatus(vehicle)).filter({ hasText: STAYS_OPEN });
+  await sheet.getByRole('button', { name: 'Turn on auto-close' }).click();
   await expect(vehicle.getByText(STAYS_OPEN)).toBeHidden({ timeout: 30_000 });
   await vehicle.keyboard.press('Escape');
   await expect(vehicle.getByText('Start mission', { exact: true })).toBeVisible({ timeout: 30_000 });

@@ -16,6 +16,7 @@ struct FlyState: Equatable {
     var rcOverride: Bool?
     var telemetry: TelemetryLink?
     var summaryDetail: String = ""
+    var summaryProblem: PayloadProblem? = nil
     var nominal: Bool = true
     var fault: Bool = false
     var canArm: Bool = true
@@ -121,6 +122,7 @@ func flyState(_ view: JSON?) -> FlyState? {
         rcOverride: view["rcOverride"].isNull ? nil : view["rcOverride"].bool,
         telemetry: telemetryLink(view),
         summaryDetail: view["summaryDetail"].string,
+        summaryProblem: view["summaryProblem"].objectOrNil.map(payloadProblem),
         nominal: view["nominal"].bool(true),
         fault: view["fault"].bool,
         canArm: view["canArm"].bool(true),

@@ -1,6 +1,8 @@
 package one.aircast.android.ui
 
+import org.json.JSONObject
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class VehicleStatusSheetTest {
@@ -46,5 +48,20 @@ class VehicleStatusSheetTest {
         assertEquals(setOf(0), expandedAfterTap(emptySet(), 0, detailed))
         assertEquals(emptySet<Int>(), expandedAfterTap(setOf(0), 0, detailed))
         assertEquals(emptySet<Int>(), expandedAfterTap(emptySet(), 1, bare))
+    }
+
+    @Test
+    fun `a status line that names a payload problem carries the one-tap fix the payload panel offers for it`() {
+        val open = "The gripper stays open after the first drop, so the other 3 drops release nothing. Turn on auto-close so it closes after each drop."
+        val view = { problem: String ->
+            flyState(JSONObject("""{"class":"FlyState","connected":true,"stateText":"Not Fully Ready","summaryDetail":"$open","summaryProblem":$problem}"""))
+        }
+
+        assertEquals(
+            PayloadProblem("staysOpen", open, blocking = true, fix = "Turn on auto-close"),
+            statusSummary(view("""{"code":"staysOpen","text":"$open","blocking":true,"fix":"Turn on auto-close"}"""))?.problem,
+        )
+        assertEquals(StatusSummaryLines("Not fully ready", open, null), statusSummary(view("null")))
+        assertNull(statusSummary(flyState(JSONObject("""{"class":"FlyState","summaryDetail":""}"""))))
     }
 }

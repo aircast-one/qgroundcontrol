@@ -62,6 +62,18 @@ struct HoldToConfirmButton: View {
     }
 }
 
+struct PayloadFixButton: View {
+    let problem: PayloadProblem
+    let onRefused: (String?) -> Void
+
+    var body: some View {
+        if !problem.fix.isEmpty {
+            let code = problem.code
+            Button(problem.fix) { Task { onRefused(await offMain { VehicleCommands.fixPayloadRefusal(code) }) } }.buttonStyle(.bordered)
+        }
+    }
+}
+
 struct GripperPanel: View {
     let offers: [GuidedOffer]
     let problems: [PayloadProblem]
@@ -86,10 +98,7 @@ struct GripperPanel: View {
                             .font(.bodySmall)
                             .foregroundStyle(problem.blocking ? theme.colors.error : theme.colors.onSurfaceVariant)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                        if !problem.fix.isEmpty {
-                            let code = problem.code
-                            Button(problem.fix) { ask({ VehicleCommands.fixPayloadRefusal(code) }, dismissing: false) }.buttonStyle(.bordered)
-                        }
+                        PayloadFixButton(problem: problem) { refusal = $0 }
                     }
                 }
                 if let refusal {

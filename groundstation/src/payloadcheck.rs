@@ -255,11 +255,17 @@ pub fn blocking(s: &Setup, bays: i64) -> Option<String> {
         .map(|p| p.text(s, bays))
 }
 
+pub fn problem_json(p: Problem, s: &Setup, bays: i64) -> Value {
+    json!({ "code": p.code(), "text": p.text(s, bays), "blocking": p.blocks(), "fix": p.fix_label() })
+}
+
 pub fn problems_json(s: &Setup, bays: i64) -> Value {
-    json!(problems(s, bays)
-        .into_iter()
-        .map(|p| json!({ "code": p.code(), "text": p.text(s, bays), "blocking": p.blocks(), "fix": p.fix_label() }))
-        .collect::<Vec<_>>())
+    json!(
+        problems(s, bays)
+            .into_iter()
+            .map(|p| problem_json(p, s, bays))
+            .collect::<Vec<_>>()
+    )
 }
 
 pub fn release_refusal(s: &Setup, released_at_ms: Option<i64>, now_ms: i64) -> Option<String> {

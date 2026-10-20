@@ -52,11 +52,14 @@ internal data class Payload(val bays: Int, val empty: List<Int>, val next: Int?,
 
 internal val SINGLE_GRIPPER = Payload(bays = 1, empty = emptyList(), next = null)
 
+internal fun payloadProblem(json: JSONObject): PayloadProblem =
+    PayloadProblem(json.optText("code"), json.optText("text"), json.optBoolean("blocking"), json.optText("fix"))
+
 internal fun payloadOf(view: JSONObject?): Payload {
     val payload = view?.optJSONObject("payload") ?: return SINGLE_GRIPPER
     val empty = payload.optJSONArray("empty")?.let { array -> (0 until array.length()).map { array.optInt(it) } }.orEmpty()
     val problems = payload.optJSONArray("problems")?.let { array ->
-        (0 until array.length()).mapNotNull { array.optJSONObject(it) }.map { PayloadProblem(it.optText("code"), it.optText("text"), it.optBoolean("blocking"), it.optText("fix")) }
+        (0 until array.length()).mapNotNull { array.optJSONObject(it) }.map(::payloadProblem)
     }.orEmpty()
     return Payload(bays = payload.optInt("bays", 1).coerceAtLeast(1), empty = empty, next = payload.takeUnless { it.isNull("next") }?.optInt("next"), problems = problems, label = payload.optText("label"))
 }

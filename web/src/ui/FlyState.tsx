@@ -1,6 +1,7 @@
 import { type Json, isNull, optBoolean, optDouble, optInt, optJSONObject, optText } from '@/bridge/Json';
 import { useQgcDerived } from '@/bridge/QgcState';
 import { sentenceCase } from '@/map/SentenceCase';
+import { type PayloadProblem, payloadProblem } from '@/ui/GuidedActions';
 import { flightTimeText } from '@/ui/StatusStrip';
 
 export const FLY_STATE = 'view.flyState';
@@ -19,14 +20,16 @@ export type FlyState = {
   rcOverride: boolean | null;
   telemetry: TelemetryLink | null;
   summaryDetail: string;
+  summaryProblem: PayloadProblem | null;
   nominal: boolean;
   fault: boolean;
   canArm: boolean;
   readyToFly: boolean;
 };
 
-export const FlyState = (fields: Omit<FlyState, 'summaryDetail' | 'nominal' | 'fault' | 'canArm' | 'readyToFly'> & Partial<Pick<FlyState, 'summaryDetail' | 'nominal' | 'fault' | 'canArm' | 'readyToFly'>>): FlyState => ({
+export const FlyState = (fields: Omit<FlyState, 'summaryDetail' | 'summaryProblem' | 'nominal' | 'fault' | 'canArm' | 'readyToFly'> & Partial<Pick<FlyState, 'summaryDetail' | 'summaryProblem' | 'nominal' | 'fault' | 'canArm' | 'readyToFly'>>): FlyState => ({
   summaryDetail: '',
+  summaryProblem: null,
   nominal: true,
   fault: false,
   canArm: true,
@@ -133,6 +136,7 @@ export const telemetryLink = (view: Json | null): TelemetryLink | null => {
 
 export const flyState = (view: Json | null): FlyState | null => {
   if (view === null || optText(view, 'class') !== 'FlyState') return null;
+  const problem = optJSONObject(view, 'summaryProblem');
   return FlyState({
     connected: optBoolean(view, 'connected'),
     armed: optBoolean(view, 'armed'),
@@ -140,6 +144,7 @@ export const flyState = (view: Json | null): FlyState | null => {
     state: optText(view, 'state'),
     stateText: optText(view, 'stateText').split(' · ').map(sentenceCase).join(' · '),
     summaryDetail: optText(view, 'summaryDetail'),
+    summaryProblem: problem === null ? null : payloadProblem(problem),
     nominal: optBoolean(view, 'nominal', true),
     fault: optBoolean(view, 'fault'),
     canArm: optBoolean(view, 'canArm', true),

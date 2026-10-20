@@ -89,6 +89,9 @@ const Bays = ({ offers, payload, onRefused }: { offers: readonly GuidedOffer[]; 
   </>
 );
 
+export const PayloadFixButton = ({ problem, onRefused }: { problem: PayloadProblem; onRefused: Refused }) =>
+  problem.fix === '' ? null : <OutlinedButton onClick={() => void VehicleCommands.fixPayloadRefusal(problem.code).then(onRefused)}>{problem.fix}</OutlinedButton>;
+
 const Problems = ({ problems, onRefused }: { problems: readonly PayloadProblem[]; onRefused: Refused }) => (
   <>
     {problems.map((problem) => (
@@ -96,7 +99,7 @@ const Problems = ({ problems, onRefused }: { problems: readonly PayloadProblem[]
         <Text className="flex-1" typography="bodySmall" color={problem.blocking ? md('error') : md('onSurfaceVariant')}>
           {problem.text}
         </Text>
-        {problem.fix === '' ? null : <OutlinedButton onClick={() => void VehicleCommands.fixPayloadRefusal(problem.code).then(onRefused)}>{problem.fix}</OutlinedButton>}
+        <PayloadFixButton problem={problem} onRefused={onRefused} />
       </div>
     ))}
   </>

@@ -105,7 +105,15 @@ private fun Bays(offers: List<GuidedOffer>, payload: Payload, ask: Ask) {
 }
 
 @Composable
-private fun Problems(problems: List<PayloadProblem>, ask: Ask) {
+internal fun PayloadFixButton(problem: PayloadProblem, onRefused: (String?) -> Unit) {
+    val scope = rememberCoroutineScope()
+    if (problem.fix.isNotEmpty()) {
+        OutlinedButton(onClick = { scope.launch { onRefused(withContext(Dispatchers.Default) { VehicleCommands.fixPayloadRefusal(problem.code) }) } }) { Text(problem.fix) }
+    }
+}
+
+@Composable
+private fun Problems(problems: List<PayloadProblem>, onRefused: (String?) -> Unit) {
     problems.forEach { problem ->
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(
@@ -114,9 +122,7 @@ private fun Problems(problems: List<PayloadProblem>, ask: Ask) {
                 style = MaterialTheme.typography.bodySmall,
                 color = if (problem.blocking) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
             )
-            if (problem.fix.isNotEmpty()) {
-                OutlinedButton(onClick = { ask { VehicleCommands.fixPayloadRefusal(problem.code) } }) { Text(problem.fix) }
-            }
+            PayloadFixButton(problem, onRefused)
         }
     }
 }
@@ -141,7 +147,7 @@ internal fun GripperPanel(offers: List<GuidedOffer>, payload: Payload, onDismiss
             Modifier.fillMaxWidth().padding(horizontal = 20.dp).padding(bottom = 24.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            Problems(payload.problems, ask)
+            Problems(payload.problems) { refusal = it }
             Text(
                 status?.text ?: "No payload command sent yet",
                 style = MaterialTheme.typography.bodyMedium,

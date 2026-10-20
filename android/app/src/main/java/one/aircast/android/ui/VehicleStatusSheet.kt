@@ -186,15 +186,23 @@ private fun OverallStatus() {
     }
 }
 
+internal data class StatusSummaryLines(val title: String, val detail: String, val problem: PayloadProblem?)
+
+internal fun statusSummary(state: FlyState?): StatusSummaryLines? =
+    state?.takeIf { it.summaryDetail.isNotBlank() }?.let { StatusSummaryLines(it.stateText, it.summaryDetail, it.summaryProblem) }
+
 @Composable
 private fun StatusSummary() {
     val stateJson by qgcPath(FLY_STATE)
-    val lines = remember(stateJson) { flyState(stateJson)?.let { it.stateText to it.summaryDetail } }
-    lines?.takeIf { it.second.isNotBlank() }?.let { (title, detail) ->
-        Column(Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium)
-            Text(detail, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    val summary = remember(stateJson) { statusSummary(flyState(stateJson)) } ?: return
+    var refusal by remember { mutableStateOf<String?>(null) }
+    Column(Modifier.padding(horizontal = 20.dp, vertical = 4.dp)) {
+        Text(summary.title, style = MaterialTheme.typography.titleMedium)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(summary.detail, Modifier.weight(1f), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            summary.problem?.let { problem -> PayloadFixButton(problem) { refusal = it } }
         }
+        refusal?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
     }
 }
 

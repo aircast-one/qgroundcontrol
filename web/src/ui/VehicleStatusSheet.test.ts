@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { FlyState } from './FlyState';
+import { parseJson } from '@/bridge/Json';
+import { FlyState, flyState } from './FlyState';
 import { GuidedOffer } from './GuidedActions';
-import { ARM_UNAVAILABLE, ArmControls, armControls, deckRequestRefusal, expandedAfterTap, messagesToggleText, shownSensors } from './VehicleStatusSheet';
+import { ARM_UNAVAILABLE, ArmControls, armControls, deckRequestRefusal, expandedAfterTap, messagesToggleText, shownSensors, statusSummary } from './VehicleStatusSheet';
 import { ArmingCheck } from './VehicleMessages';
 
 describe('VehicleStatusSheetTest', () => {
@@ -58,5 +59,14 @@ describe('VehicleStatusSheetTest', () => {
     expect(expandedAfterTap(new Set(), 0, detailed)).toEqual(new Set([0]));
     expect(expandedAfterTap(new Set([0]), 0, detailed)).toEqual(new Set());
     expect(expandedAfterTap(new Set(), 1, bare)).toEqual(new Set());
+  });
+
+  it('a status line that names a payload problem carries the one-tap fix the payload panel offers for it', () => {
+    const OPEN = 'The gripper stays open after the first drop, so the other 3 drops release nothing. Turn on auto-close so it closes after each drop.';
+    const view = (problem: string) => flyState(parseJson(`{"class":"FlyState","connected":true,"stateText":"Not Fully Ready","summaryDetail":"${OPEN}","summaryProblem":${problem}}`));
+
+    expect(statusSummary(view(`{"code":"staysOpen","text":"${OPEN}","blocking":true,"fix":"Turn on auto-close"}`))?.problem).toEqual({ code: 'staysOpen', text: OPEN, blocking: true, fix: 'Turn on auto-close' });
+    expect(statusSummary(view('null'))).toEqual({ title: 'Not fully ready', detail: OPEN, problem: null });
+    expect(statusSummary(flyState(parseJson('{"class":"FlyState","summaryDetail":""}')))).toBeNull();
   });
 });

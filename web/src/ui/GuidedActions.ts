@@ -67,7 +67,7 @@ export type Payload = { readonly bays: number; readonly empty: readonly number[]
 
 export const SINGLE_GRIPPER: Payload = { bays: 1, empty: [], next: null, label: '', problems: [] };
 
-const problemOf = (json: Json): PayloadProblem => ({ code: optText(json, 'code'), text: optText(json, 'text'), blocking: optBoolean(json, 'blocking'), fix: optText(json, 'fix') });
+export const payloadProblem = (json: Json): PayloadProblem => ({ code: optText(json, 'code'), text: optText(json, 'text'), blocking: optBoolean(json, 'blocking'), fix: optText(json, 'fix') });
 
 export const payloadOf = (view: Json | null): Payload => {
   const payload = optJSONObject(view, 'payload');
@@ -78,7 +78,7 @@ export const payloadOf = (view: Json | null): Payload => {
     empty: (optJSONArray(payload, 'empty') ?? []).filter((it): it is number => typeof it === 'number'),
     next: isNull(payload, 'next') ? null : optInt(payload, 'next'),
     label: optText(payload, 'label'),
-    problems: jsonObjects(optJSONArray(payload, 'problems')).map(problemOf),
+    problems: jsonObjects(optJSONArray(payload, 'problems')).map(payloadProblem),
   };
 };
 

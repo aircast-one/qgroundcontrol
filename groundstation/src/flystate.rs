@@ -212,6 +212,24 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
         .then(|| payload_problem(backend, &vehicle))
         .flatten();
     let nominal = health.nominal() && low_battery.is_none() && payload.is_none();
+    let payload_text = |problem: &Value| {
+        problem
+            .get("text")
+            .and_then(Value::as_str)
+            .map(str::to_string)
+    };
+    let detail = connected.then(|| {
+        summary_detail(
+            flag(&vehicle, "armed"),
+            flag(&vehicle, "flying") || flag(&vehicle, "landing"),
+            health.check_issues,
+            &health.sensors,
+            low_battery.as_deref(),
+            payload.as_ref().and_then(payload_text).as_deref(),
+        )
+    });
+    let summary_problem =
+        payload.filter(|problem| detail.is_some() && detail == payload_text(problem));
     json!({
         "kind": "object",
         "class": "FlyState",
@@ -226,7 +244,8 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "nominal": nominal,
         "fault": health.fault(),
         "canArm": flag(&vehicle, "armed") || health.report.is_none_or(|(can_arm, _)| can_arm),
-        "summaryDetail": connected.then(|| summary_detail(flag(&vehicle, "armed"), flag(&vehicle, "flying") || flag(&vehicle, "landing"), health.check_issues, &health.sensors, low_battery.as_deref(), payload.as_deref())),
+        "summaryDetail": detail,
+        "summaryProblem": summary_problem,
         "staleNotice": if contact_lost { STALE_NOTICE } else { "" },
         "mode": text(&vehicle, "flightMode"),
         "flyingToSequence": flying_to(backend),
@@ -338,14 +357,14 @@ impl Health {
     }
 }
 
-fn payload_problem(backend: &dyn Backend, vehicle: &Value) -> Option<String> {
+fn payload_problem(backend: &dyn Backend, vehicle: &Value) -> Option<Value> {
     let setup = crate::payloadcheck::Setup::from_json(vehicle.get("payloadSetup")?.get("setup")?);
     let bays =
         crate::read::value_number(&backend.value("settings.flyViewSettings.payloadBays.rawValue"))
             .map_or(1, |bays| bays as i64);
     crate::payloadcheck::problems(&setup, bays)
         .first()
-        .map(|problem| problem.text(&setup, bays))
+        .map(|problem| crate::payloadcheck::problem_json(*problem, &setup, bays))
 }
 
 pub fn summary_detail(
@@ -693,6 +712,36 @@ mod tests {
                 .iter()
                 .all(|dep| !dep.ends_with(".voltage") && dep != "vehicle.distanceToHome"),
             "and not on every voltage or position tick"
+        );
+    }
+
+    #[test]
+    fn the_payload_line_carries_its_one_tap_fix_only_while_it_is_the_line_shown() {
+        let parked = |batteries: Value| {
+            let mut vehicle = aloft(false, false, false);
+            vehicle["payloadSetup"] = json!({ "setup": crate::payloadcheck::Setup { ardupilot: true, enabled: true, loaded: true, typed: true, output: true, drops: 4, ..Default::default() }.json() });
+            vehicle["batteries"] = batteries;
+            read(vehicle, false)
+        };
+        let open = parked(json!({}));
+        assert_eq!(
+            (
+                &open["summaryProblem"]["code"],
+                &open["summaryProblem"]["fix"]
+            ),
+            (&json!("staysOpen"), &json!("Turn on auto-close")),
+            "the status sheet named the gripper that stays open and offered nothing to do about it"
+        );
+        assert_eq!(open["summaryDetail"], open["summaryProblem"]["text"]);
+        let flat = parked(json!({
+            "count": { "kind": "fact", "name": "count", "value": 1 },
+            "0.chargeState": { "kind": "fact", "name": "chargeState", "value": 1 },
+            "0.percentRemaining": { "kind": "fact", "name": "percentRemaining", "value": 0.0 },
+        }));
+        assert_eq!(
+            flat["summaryProblem"],
+            Value::Null,
+            "a flat battery is the line shown, so a gripper fix beside it would answer the wrong line"
         );
     }
 

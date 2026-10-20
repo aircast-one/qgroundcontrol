@@ -13,7 +13,8 @@ import { LocalAppNavigation } from './AppNavigation';
 import { SENSOR_HEALTH, sensorHealth } from './CalibrationView';
 import { LocalFlyScreenState } from './FlyScreenState';
 import { FLY_STATE, type FlyState, flyState } from './FlyState';
-import type { GuidedOffer } from './GuidedActions';
+import { PayloadFixButton } from './GripperPanel';
+import type { GuidedOffer, PayloadProblem } from './GuidedActions';
 import { HoldToConfirm } from './HoldToConfirm';
 import { ParameterForm } from './ParameterForm';
 import { EDIT_PARAMETER_TITLE, LinkedText, ParameterEditDialog } from './ParameterLinks';
@@ -224,20 +225,30 @@ const OverallStatus = () => {
   );
 };
 
+export type StatusSummaryLines = { readonly title: string; readonly detail: string; readonly problem: PayloadProblem | null };
+
+export const statusSummary = (state: FlyState | null): StatusSummaryLines | null =>
+  state === null || state.summaryDetail.trim() === '' ? null : { title: state.stateText, detail: state.summaryDetail, problem: state.summaryProblem };
+
 const StatusSummary = () => {
   const stateJson = useQgcPath(FLY_STATE);
-  const lines = useMemo(() => {
-    const state = flyState(stateJson);
-    return state === null ? null : ([state.stateText, state.summaryDetail] as const);
-  }, [stateJson]);
-  if (lines === null || lines[1].trim() === '') return null;
-  const [title, detail] = lines;
+  const summary = useMemo(() => statusSummary(flyState(stateJson)), [stateJson]);
+  const [refusal, setRefusal] = useState<string | null>(null);
+  if (summary === null) return null;
   return (
     <div className="flex flex-col px-sheet py-1">
-      <Text typography="titleMedium">{title}</Text>
-      <Text typography="bodySmall" color={md('onSurfaceVariant')}>
-        {detail}
-      </Text>
+      <Text typography="titleMedium">{summary.title}</Text>
+      <div className="flex items-center gap-2">
+        <Text className="flex-1" typography="bodySmall" color={md('onSurfaceVariant')}>
+          {summary.detail}
+        </Text>
+        {summary.problem === null ? null : <PayloadFixButton problem={summary.problem} onRefused={setRefusal} />}
+      </div>
+      {refusal === null ? null : (
+        <Text typography="bodySmall" color={md('error')}>
+          {refusal}
+        </Text>
+      )}
     </div>
   );
 };

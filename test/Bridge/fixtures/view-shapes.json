@@ -7416,6 +7416,7 @@
         "view.flyState.state",
         "view.flyState.stateText",
         "view.flyState.summaryDetail",
+        "view.flyState.summaryProblem",
         "view.flyState.telemetry",
         "view.flyState.telemetry.errorsFixed",
         "view.flyState.telemetry.localNoise",
@@ -11700,6 +11701,7 @@
         "state": "string",
         "stateText": "string",
         "summaryDetail": "null|string",
+        "summaryProblem": "null",
         "telemetry": {
             "errorsFixed": "number",
             "localNoise": "number",

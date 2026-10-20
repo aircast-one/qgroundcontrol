@@ -42,4 +42,17 @@ final class VehicleStatusSheetTests: XCTestCase {
         XCTAssertEqual(expandedAfterTap([0], 0, detailed), [])
         XCTAssertEqual(expandedAfterTap([], 1, bare), [])
     }
+
+    func testAStatusLineThatNamesAPayloadProblemCarriesTheOneTapFixThePayloadPanelOffersForIt() {
+        let open = "The gripper stays open after the first drop, so the other 3 drops release nothing. Turn on auto-close so it closes after each drop."
+        let view = { (problem: String) in
+            flyState(JSON.parse(#"{"class":"FlyState","connected":true,"stateText":"Not Fully Ready","summaryDetail":"\#(open)","summaryProblem":\#(problem)}"#))
+        }
+        XCTAssertEqual(
+            statusSummary(view(#"{"code":"staysOpen","text":"\#(open)","blocking":true,"fix":"Turn on auto-close"}"#))?.problem,
+            PayloadProblem(code: "staysOpen", text: open, blocking: true, fix: "Turn on auto-close")
+        )
+        XCTAssertEqual(statusSummary(view("null")), StatusSummaryLines(title: "Not fully ready", detail: open, problem: nil))
+        XCTAssertNil(statusSummary(flyState(JSON.parse(#"{"class":"FlyState","summaryDetail":""}"#))))
+    }
 }

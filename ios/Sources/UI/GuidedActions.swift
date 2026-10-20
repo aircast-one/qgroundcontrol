@@ -50,10 +50,12 @@ func payloadNextBay(_ view: JSON?) -> Int { view?["payload"]["next"].int(0) ?? 0
 
 func payloadDropLabel(_ view: JSON?) -> String { view?["payload"]["label"].string ?? "" }
 
+func payloadProblem(_ json: JSON) -> PayloadProblem {
+    PayloadProblem(code: json["code"].string, text: json["text"].string, blocking: json["blocking"].bool, fix: json["fix"].string)
+}
+
 func payloadProblems(_ view: JSON?) -> [PayloadProblem] {
-    (view?["payload"]["problems"].arrayOrNil ?? []).filter { $0.object != nil }.map {
-        PayloadProblem(code: $0["code"].string, text: $0["text"].string, blocking: $0["blocking"].bool, fix: $0["fix"].string)
-    }
+    (view?["payload"]["problems"].arrayOrNil ?? []).filter { $0.object != nil }.map(payloadProblem)
 }
 
 func resumeFromSequence(_ view: JSON?) -> Int? {

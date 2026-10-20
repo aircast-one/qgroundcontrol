@@ -203,15 +203,36 @@ private struct OverallStatus: View {
     }
 }
 
+struct StatusSummaryLines: Equatable {
+    let title: String
+    let detail: String
+    let problem: PayloadProblem?
+}
+
+func statusSummary(_ state: FlyState?) -> StatusSummaryLines? {
+    guard let state, !state.summaryDetail.isBlank else { return nil }
+    return StatusSummaryLines(title: state.stateText, detail: state.summaryDetail, problem: state.summaryProblem)
+}
+
 private struct StatusSummary: View {
     @Environment(\.theme) private var theme
     @QgcPath(FLY_STATE) private var stateJson
+    @State private var refusal: String?
 
     var body: some View {
-        if let state = flyState(stateJson), !state.summaryDetail.isBlank {
+        if let summary = statusSummary(flyState(stateJson)) {
             VStack(alignment: .leading) {
-                Text(state.stateText).font(.titleMedium)
-                Text(state.summaryDetail).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
+                Text(summary.title).font(.titleMedium)
+                HStack(spacing: Space.s2) {
+                    Text(summary.detail).font(.bodySmall).foregroundStyle(theme.colors.onSurfaceVariant)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    if let problem = summary.problem {
+                        PayloadFixButton(problem: problem) { refusal = $0 }
+                    }
+                }
+                if let refusal {
+                    Text(refusal).font(.bodySmall).foregroundStyle(theme.colors.error)
+                }
             }
             .padding(.horizontal, Space.s5)
             .padding(.vertical, Space.s1)
