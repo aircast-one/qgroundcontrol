@@ -417,6 +417,7 @@ struct FlightActions<Center: View>: View {
     @QgcPath(MAP_CLICK_PATH) private var mapClickJson
     @QgcPath(PREFLIGHT) private var preflightJson
     @QgcPath(GUIDED_ACTIONS) private var actionsJson
+    @QgcPath(AUTODROP_STATUS) private var autodropJson
     @QgcBool(settingControl("settings.flyViewSettings.enableAutomaticMissionPopups")) private var automaticMissionPopups
     @State private var room: CGSize = .zero
     @State private var centre: CGFloat = 0
@@ -426,6 +427,7 @@ struct FlightActions<Center: View>: View {
     private var state: FlyState? { flyState(stateJson) }
     private var armed: Bool { state?.armed == true }
     private var offers: [String: GuidedOffer] { guidedOffers(actionsJson) }
+    private var autodropWaiting: Bool { (autodropJson?["state"].string("") ?? "") == "waiting" }
 
     var body: some View {
         flightActions
@@ -608,6 +610,9 @@ struct FlightActions<Center: View>: View {
             gripper.isEmpty ? nil : MoreTile(label: "Gripper", icon: .download, enabled: gripper.contains(where: \.ready), onClick: { actions.showGripper = true }),
             MoreTile(label: "Choose readings", icon: .tune, enabled: true, onClick: { flyScreen.choosingReadings = true }),
             armed ? nil : MoreTile(label: "Edit layout", icon: .edit, enabled: true, onClick: { flyScreen.layout.startEditing() }),
+            MoreTile(label: autodropWaiting ? "Stop Auto Intercept" : "Auto Intercept", icon: .download, enabled: true, onClick: {
+                if autodropWaiting { VehicleCommands.stopAutoInterceptDrop() } else { VehicleCommands.startAutoInterceptDrop() }
+            }),
         ].compactMap { $0 }
         let offered = extras.filter { !entryIds.contains($0.id) && !GRIPPER_ACTIONS.contains($0.id) }.map { offer in
             MoreTile(label: offer.title, icon: guidedIcon(offer.id), enabled: offer.ready, warning: offer.destructive, onClick: {
