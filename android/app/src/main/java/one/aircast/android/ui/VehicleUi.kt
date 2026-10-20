@@ -626,7 +626,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                 // scroll to find.
                 MoreTile(if (autodropWaiting) "Stop Auto Intercept" else "Auto Intercept", R.drawable.ic_search, true) {
                     if (autodropWaiting) {
-                        VehicleCommands.stopAutoInterceptDrop()
+                        offMainDetached { VehicleCommands.stopAutoInterceptDrop() }
                     } else {
                         ask(
                             GuidedAction(
@@ -634,7 +634,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                                 confirm = "Fly an intercept course toward wherever the camera is aimed, and release the payload automatically once it lines up. The vehicle steers and fires itself - no further input.",
                                 destructive = false,
                                 answer = { withContext(Dispatchers.Default) { VehicleCommands.startAutoInterceptDropRefusal() } },
-                                run = { VehicleCommands.startAutoInterceptDrop() },
+                                run = { offMainDetached { VehicleCommands.startAutoInterceptDrop() } },
                             ),
                         )
                     }
