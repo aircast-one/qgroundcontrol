@@ -9,6 +9,7 @@ pub const BRIDGE_WRITE_GUARD: &str = "QGC_DEBUG_API_ALLOW_ACTUATORS";
 pub const AUTOPILOT_PX4: i64 = 12;
 pub const AUTOPILOT_ARDUPILOTMEGA: i64 = 3;
 pub const VEHICLE_TYPE_QUADROTOR: i64 = 2;
+pub const VEHICLE_TYPE_GROUND_ROVER: i64 = 10;
 pub const MOCK_LINK_NAME: &str = "MockLink";
 pub const WHOLE_PLAN: &str = "all";
 pub const STATUS_OK: u16 = 200;
@@ -90,7 +91,7 @@ pub const ROUTES: &[(&str, Route, &str)] = &[
     (
         "/links/mocklink",
         Route::MockLink,
-        "autopilot,add,camera,gimbal,proximity,statustext,video,pattern,silent,prearm,wind,gps,motor,endurance,home",
+        "autopilot,vehicle,add,camera,gimbal,proximity,statustext,video,pattern,silent,prearm,wind,gps,motor,endurance,home",
     ),
     ("/mission/upload", Route::MissionUpload, "file"),
     ("/mission/download", Route::MissionDownload, "file"),
@@ -663,6 +664,11 @@ impl DebugApi {
             "apm" | "arducopter" => AUTOPILOT_ARDUPILOTMEGA,
             other => return refuse(format!("autopilot must be px4 or apm, got: {other}")),
         };
+        let vehicle_type = match given(pairs, "vehicle").unwrap_or("copter") {
+            "copter" => VEHICLE_TYPE_QUADROTOR,
+            "rover" => VEHICLE_TYPE_GROUND_ROVER,
+            other => return refuse(format!("vehicle must be copter or rover, got: {other}")),
+        };
         let pattern = given(pairs, "pattern")
             .unwrap_or(MOCK_VIDEO_PATTERNS[0])
             .to_ascii_lowercase();
@@ -695,7 +701,7 @@ impl DebugApi {
             high_latency: false,
             kind: Kind::Mock {
                 firmware_type: firmware,
-                vehicle_type: VEHICLE_TYPE_QUADROTOR,
+                vehicle_type,
                 send_status_text: switched_on(pairs, "statustext"),
                 increment_vehicle_id: true,
                 failure_mode: 0,
@@ -710,9 +716,13 @@ impl DebugApi {
         request["dynamic"] = json!(true);
         request["viaLinkManager"] = json!(true);
         match host.link_open(&request.to_string()) {
-            Ok(id) => {
-                ok(json!({ "started": true, "existing": false, "autopilot": autopilot, "id": id }))
-            }
+            Ok(id) => ok(json!({
+                "started": true,
+                "existing": false,
+                "autopilot": autopilot,
+                "vehicle": given(pairs, "vehicle").unwrap_or("copter"),
+                "id": id
+            })),
             Err(reason) => refuse(format!("could not start mock link: {reason}")),
         }
     }
@@ -1464,6 +1474,48 @@ mod tests {
             (12, 3, 2),
             "the constants are the MAVLink numbers, pinned here rather than asserted against themselves"
         );
+    }
+
+    #[test]
+    fn a_mock_link_defaults_to_a_copter_and_can_be_asked_for_a_rover_instead() {
+        let api = DebugApi::new();
+        let host = Fake {
+            mock_available: true,
+            ..Fake::default()
+        };
+        let defaulted = get(&api, &host, "/links/mocklink", "autopilot=arducopter");
+        assert_eq!(
+            (
+                defaulted.body["vehicle"].clone(),
+                host.calls()[0].contains("\"vehicleType\":2")
+            ),
+            (json!("copter"), true)
+        );
+        let car = get(
+            &api,
+            &host,
+            "/links/mocklink",
+            "autopilot=arducopter&vehicle=rover&add=1",
+        );
+        assert_eq!(
+            (
+                car.body["vehicle"].clone(),
+                host.calls()[1].contains("\"vehicleType\":10")
+            ),
+            (json!("rover"), true),
+            "MAV_TYPE_GROUND_ROVER = 10"
+        );
+        assert_eq!(
+            get(
+                &api,
+                &host,
+                "/links/mocklink",
+                "autopilot=arducopter&vehicle=boat"
+            )
+            .body["error"],
+            "vehicle must be copter or rover, got: boat"
+        );
+        assert_eq!(VEHICLE_TYPE_GROUND_ROVER, 10);
     }
 
     #[test]
