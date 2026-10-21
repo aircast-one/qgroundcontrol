@@ -8,6 +8,7 @@ CESIUM_SHA256=9ccd426870122cfe8347c2efa339b87728d79937ae1575d4b7f63d647db829c8
 config="$(dirname "$0")/../.github/build-config.json"
 GSTREAMER_VERSION=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["gstreamer"]["version"]["ios"])' "$config")
 GSTREAMER_SHA256=$(python3 -c 'import json,sys; c=json.load(open(sys.argv[1]))["gstreamer"]; print(c["checksums"][c["version"]["ios"]]["ios"])' "$config")
+CA_BUNDLE_DATE=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["gstreamer"]["ca_bundle_date"])' "$config")
 CA_BUNDLE_SHA256=$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["gstreamer"]["ca_bundle_sha256"])' "$config")
 
 vendor="$(cd "$(dirname "$0")" && pwd)/Vendor"
@@ -31,7 +32,7 @@ if [ ! -f "$vendor/MapLibre-$MAPLIBRE_VERSION" ]; then
     touch "$vendor/MapLibre-$MAPLIBRE_VERSION"
 fi
 
-fetch "https://curl.se/ca/cacert.pem" "$vendor/ca-certificates.crt" "$CA_BUNDLE_SHA256"
+fetch "https://curl.se/ca/cacert-$CA_BUNDLE_DATE.pem" "$vendor/ca-certificates.crt" "$CA_BUNDLE_SHA256"
 
 if [ ! -f "$vendor/Cesium-$CESIUM_VERSION" ]; then
     tgz="$cache/cesium-$CESIUM_VERSION.tgz"

@@ -175,9 +175,14 @@
           },
           "additionalProperties": false
         },
+        "ca_bundle_date": {
+          "type": "string",
+          "description": "Date of the curl.se Mozilla CA bundle baked into the iOS app; fetched from https://curl.se/ca/cacert-<date>.pem, which never changes (the undated cacert.pem is replaced on every Mozilla update)",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
         "ca_bundle_sha256": {
           "type": "string",
-          "description": "SHA256 of the curl.se Mozilla CA bundle baked into the iOS app; refresh on intentional bundle bumps (https://curl.se/ca/cacert.pem.sha256)",
+          "description": "SHA256 of cacert-<ca_bundle_date>.pem; change it together with ca_bundle_date on intentional bundle bumps",
           "pattern": "^[a-f0-9]{64}$"
         }
       }
