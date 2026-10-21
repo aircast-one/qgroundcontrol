@@ -7,7 +7,7 @@ use crate::dropsim::Point;
 use crate::hub::{Hub, Origin};
 
 const TICK_US: u64 = 100_000;
-const LINK: u32 = 1;
+const REPLAY_LINK: u32 = 1;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Detection {
@@ -202,7 +202,7 @@ pub fn replay(
     crate::detections::lock().retarget(crate::detections::parse("rtsp://replay/cam0", None));
     let mut hub = Hub::default();
     let origin = Origin {
-        link: LINK,
+        link: REPLAY_LINK,
         replay: true,
         v2: true,
     };
