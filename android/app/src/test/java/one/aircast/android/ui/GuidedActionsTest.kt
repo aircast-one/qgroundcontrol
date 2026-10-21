@@ -72,6 +72,10 @@ class GuidedActionsTest {
             shown("""{"state":"waiting","progress":{"target":"car","holding":"turning","secondsLeft":52}}""")?.text,
         )
         assertEquals(
+            "Holding: waiting to see the car again · 30 s left",
+            shown("""{"state":"waiting","progress":{"target":"car","holding":"unseen","secondsLeft":30}}""")?.text,
+        )
+        assertEquals(
             AutodropShown("Lost the car — tap it to pick it up again · 40 s left", true, listOf(AutodropAction.Stop)),
             shown("""{"state":"waiting","progress":{"target":"car","holding":"searching","searching":true,"secondsLeft":40}}"""),
         )

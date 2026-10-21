@@ -146,6 +146,7 @@ private fun waitingText(progress: JSONObject?): String {
         "searching" -> "Lost the $target — tap it to pick it up again$left"
         "turning" -> "Holding: the $target is turning$left"
         "junction" -> "Holding: junction ahead$left"
+        "unseen" -> "Holding: waiting to see the $target again$left"
         "offTarget" -> "Holding: not lined up yet$left"
         else -> listOfNotNull(
             "Chasing the $target",
