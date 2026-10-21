@@ -32,6 +32,7 @@ pub enum TargetSource {
     Gimbal,
     Vehicle(u8),
     Manual,
+    Tracked,
 }
 
 impl TargetSource {
@@ -39,6 +40,7 @@ impl TargetSource {
         match args.get(0).and_then(Value::as_str) {
             None | Some("gimbal") => Some(TargetSource::Gimbal),
             Some("manual") => Some(TargetSource::Manual),
+            Some("tracked") => Some(TargetSource::Tracked),
             Some("vehicle") => args
                 .get(1)
                 .and_then(Value::as_u64)
@@ -53,6 +55,7 @@ impl TargetSource {
             TargetSource::Gimbal => json!("gimbal"),
             TargetSource::Vehicle(id) => json!({ "vehicle": id }),
             TargetSource::Manual => json!("manual"),
+            TargetSource::Tracked => json!("tracked"),
         }
     }
 
@@ -63,15 +66,13 @@ impl TargetSource {
             TargetSource::Gimbal => json!(["gimbal"]),
             TargetSource::Vehicle(id) => json!(["vehicle", id]),
             TargetSource::Manual => json!(["manual"]),
+            TargetSource::Tracked => json!(["tracked"]),
         }
     }
 
-    /// The order an auto-intercept trigger with no explicit source falls back through: a
-    /// manually-marked point first (the operator just set it on purpose), then whichever other
-    /// vehicle this one alone is tracking, then the gimbal - refusing only once none of the
-    /// three actually produces a target.
     pub(crate) fn fallback_order(self_id: Option<u8>) -> impl Iterator<Item = TargetSource> {
-        std::iter::once(TargetSource::Manual)
+        [TargetSource::Tracked, TargetSource::Manual]
+            .into_iter()
             .chain(
                 self_id
                     .and_then(gpstarget::only_other)
@@ -189,6 +190,17 @@ fn target_from(
         TargetSource::Manual => {
             manual_target(backend).ok_or("no target has been marked on the map yet")
         }
+        TargetSource::Tracked => crate::hub::lock()
+            .active()
+            .and_then(|vehicle| {
+                vehicle.target_for_autodrop(
+                    TargetSource::Tracked,
+                    position,
+                    altitude_agl_m,
+                    crate::hub::now_ms(),
+                )
+            })
+            .ok_or("the camera is not tracking anything"),
     }
 }
 
@@ -245,7 +257,7 @@ pub fn run(backend: &dyn Backend, args: &str) -> Value {
                 .ok()
                 .map(|target| (source, target))
         }) else {
-            return json!({ "ok": false, "reason": "no manually-marked target, tracked vehicle, or gimbal is available to aim with" });
+            return json!({ "ok": false, "reason": "nothing tracked by the camera, and no marked target, other vehicle, or gimbal to aim with" });
         };
         resolved
     };
@@ -338,6 +350,11 @@ mod tests {
     #[test]
     fn target_source_defaults_to_gimbal_and_reads_a_vehicle_id() {
         assert_eq!(TargetSource::of(&json!([])), Some(TargetSource::Gimbal));
+        assert_eq!(
+            TargetSource::of(&TargetSource::Tracked.args()),
+            Some(TargetSource::Tracked),
+            "a run resolved to the camera's tracked object hands the tick the same source"
+        );
         assert_eq!(
             TargetSource::of(&json!(["gimbal"])),
             Some(TargetSource::Gimbal)
@@ -451,15 +468,20 @@ mod tests {
     }
 
     #[test]
-    fn the_fallback_order_prefers_manual_then_a_lone_tracked_vehicle_then_the_gimbal() {
+    fn the_fallback_order_prefers_the_camera_s_tracked_object_then_manual_then_a_lone_vehicle_then_the_gimbal()
+     {
         let _fixes_lock = gpstarget::TEST_FIXES
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         gpstarget::refresh(std::collections::BTreeMap::new());
         assert_eq!(
             TargetSource::fallback_order(Some(7)).collect::<Vec<_>>(),
-            vec![TargetSource::Manual, TargetSource::Gimbal],
-            "no other vehicle is tracked - the chain skips straight from manual to gimbal"
+            vec![
+                TargetSource::Tracked,
+                TargetSource::Manual,
+                TargetSource::Gimbal
+            ],
+            "no other vehicle is known - the chain skips straight from manual to gimbal"
         );
 
         let mut fixes = std::collections::BTreeMap::new();
@@ -479,6 +501,7 @@ mod tests {
         assert_eq!(
             TargetSource::fallback_order(Some(7)).collect::<Vec<_>>(),
             vec![
+                TargetSource::Tracked,
                 TargetSource::Manual,
                 TargetSource::Vehicle(129),
                 TargetSource::Gimbal
@@ -497,7 +520,11 @@ mod tests {
         gpstarget::refresh(fixes);
         assert_eq!(
             TargetSource::fallback_order(Some(7)).collect::<Vec<_>>(),
-            vec![TargetSource::Manual, TargetSource::Gimbal],
+            vec![
+                TargetSource::Tracked,
+                TargetSource::Manual,
+                TargetSource::Gimbal
+            ],
             "two other vehicles is ambiguous, so the vehicle step drops out entirely"
         );
     }
@@ -546,7 +573,7 @@ mod tests {
         assert_eq!(answer["ok"], false);
         assert_eq!(
             answer["reason"],
-            "no manually-marked target, tracked vehicle, or gimbal is available to aim with"
+            "nothing tracked by the camera, and no marked target, other vehicle, or gimbal to aim with"
         );
     }
 

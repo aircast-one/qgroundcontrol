@@ -144,6 +144,18 @@ impl TrackingImage {
         }
     }
 
+    pub fn centre(&self) -> (f64, f64) {
+        match self {
+            TrackingImage::Rect {
+                x,
+                y,
+                width,
+                height,
+            } => (x + width / 2.0, y + height / 2.0),
+            TrackingImage::Point { x, y, .. } => (*x, *y),
+        }
+    }
+
     pub fn point(&self) -> Option<(f64, f64, f64)> {
         match self {
             TrackingImage::Point { x, y, radius } => Some((*x, *y, *radius)),

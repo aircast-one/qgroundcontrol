@@ -22,6 +22,8 @@ const CAMERA_CAPTURE_STATUS: u32 = 262;
 const VIDEO_STREAM_INFORMATION: u32 = 269;
 const VIDEO_STREAM_STATUS: u32 = 270;
 const CAMERA_TRACKING_IMAGE_STATUS: u32 = 275;
+const CAMERA_TRACKING_GEO_STATUS: u32 = 276;
+const LOCK_RADIUS_M: f64 = 30.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum StreamKind {
@@ -97,8 +99,15 @@ pub struct Video {
     pub served: Option<String>,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Locked {
+    Vehicle(u8),
+    Ground(crate::dropsim::Point),
+}
+
 #[derive(Debug, Clone, PartialEq)]
 struct Tracking {
+    locked: Option<Locked>,
     mode: CameraTrackingMode,
     point: (f32, f32, f32),
     rect: (f32, f32, f32, f32),
@@ -111,6 +120,7 @@ struct Tracking {
 impl Tracking {
     fn idle() -> Tracking {
         Tracking {
+            locked: None,
             mode: CameraTrackingMode::CAMERA_TRACKING_MODE_NONE,
             point: (0.0, 0.0, 0.0),
             rect: (0.0, 0.0, 0.0, 0.0),
@@ -215,6 +225,75 @@ pub struct Where {
     pub lat: i32,
     pub lon: i32,
     pub alt_mm: i32,
+    pub above_home_m: f64,
+    pub aim: (f64, f64),
+}
+
+impl Where {
+    fn point(&self) -> crate::dropsim::Point {
+        crate::dropsim::Point {
+            lat: f64::from(self.lat) / 1e7,
+            lon: f64::from(self.lon) / 1e7,
+        }
+    }
+
+    fn ground_alt_m(&self) -> f32 {
+        (f64::from(self.alt_mm) / 1000.0 - self.above_home_m) as f32
+    }
+}
+
+fn lock_on(at: &Where, picked: (f32, f32)) -> Option<Locked> {
+    let ground = crate::gimbalgeo::picture_to_ground(
+        at.point(),
+        at.above_home_m,
+        at.aim,
+        (f64::from(picked.0), f64::from(picked.1)),
+    )?;
+    let distance = |p: crate::dropsim::Point| {
+        crate::track::distance_m((ground.lat, ground.lon), (p.lat, p.lon))
+    };
+    crate::gpstarget::ground_vehicles(None)
+        .into_iter()
+        .map(|(id, car)| (id, distance(car.position)))
+        .filter(|(_, metres)| *metres <= LOCK_RADIUS_M)
+        .min_by(|a, b| a.1.total_cmp(&b.1))
+        .map(|(id, _)| Locked::Vehicle(id))
+        .or(Some(Locked::Ground(ground)))
+}
+
+fn locked_target(locked: Locked) -> Option<crate::dropsim::Target> {
+    match locked {
+        Locked::Vehicle(id) => crate::gpstarget::target_of(id),
+        Locked::Ground(position) => Some(crate::dropsim::Target {
+            position,
+            velocity: crate::dropsim::Velocity::default(),
+        }),
+    }
+}
+
+impl Tracking {
+    fn following(&self, at: &Where) -> Option<(Tracking, crate::dropsim::Target)> {
+        let target = locked_target(self.locked?)?;
+        let (x, y) = crate::gimbalgeo::ground_to_picture(
+            at.point(),
+            at.above_home_m,
+            at.aim,
+            target.position,
+        )?;
+        let (x, y) = (x.clamp(0.0, 1.0) as f32, y.clamp(0.0, 1.0) as f32);
+        let (half_w, half_h) = (
+            (self.rect.2 - self.rect.0) / 2.0,
+            (self.rect.3 - self.rect.1) / 2.0,
+        );
+        Some((
+            Tracking {
+                point: (x, y, self.point.2),
+                rect: (x - half_w, y - half_h, x + half_w, y + half_h),
+                ..self.clone()
+            },
+            target,
+        ))
+    }
 }
 
 fn chars<const N: usize>(text: &str) -> mavlink::types::CharArray<N> {
@@ -230,7 +309,8 @@ impl Cameras {
             | CameraCapFlags::CAMERA_CAP_FLAGS_CAN_CAPTURE_IMAGE_IN_VIDEO_MODE
             | CameraCapFlags::CAMERA_CAP_FLAGS_HAS_BASIC_ZOOM
             | CameraCapFlags::CAMERA_CAP_FLAGS_HAS_TRACKING_POINT
-            | CameraCapFlags::CAMERA_CAP_FLAGS_HAS_TRACKING_RECTANGLE;
+            | CameraCapFlags::CAMERA_CAP_FLAGS_HAS_TRACKING_RECTANGLE
+            | CameraCapFlags::CAMERA_CAP_FLAGS_HAS_TRACKING_GEO_STATUS;
         Cameras {
             cameras: vec![
                 Camera::new(MOCK_CAMERA, full),
@@ -282,13 +362,30 @@ impl Cameras {
                         now_ms.saturating_sub(last)
                             >= (camera.tracking.interval_us as u64).div_ceil(1000)
                     });
+                if camera.tracking.mode != CameraTrackingMode::CAMERA_TRACKING_MODE_NONE
+                    && camera.tracking.locked.is_none()
+                {
+                    camera.tracking.locked = lock_on(at, camera.tracking.anchor);
+                }
                 let tracked = due
-                    .then(|| {
-                        camera.tracking = Tracking {
-                            last_sent_ms: Some(now_ms),
-                            ..camera.tracking.drifted(now_ms)
-                        };
-                        vec![tracking_status(camera)]
+                    .then(|| match camera.tracking.following(at) {
+                        Some((following, target)) => {
+                            camera.tracking = Tracking {
+                                last_sent_ms: Some(now_ms),
+                                ..following
+                            };
+                            vec![
+                                tracking_status(camera),
+                                tracking_geo_status(camera.component, &target, at.ground_alt_m()),
+                            ]
+                        }
+                        None => {
+                            camera.tracking = Tracking {
+                                last_sent_ms: Some(now_ms),
+                                ..camera.tracking.drifted(now_ms)
+                            };
+                            vec![tracking_status(camera)]
+                        }
                     })
                     .unwrap_or_default();
                 shot.into_iter().chain(tracked).collect::<Vec<_>>()
@@ -481,6 +578,7 @@ impl Cameras {
                 match camera.has(CameraCapFlags::CAMERA_CAP_FLAGS_HAS_TRACKING_POINT) {
                     true => {
                         camera.tracking = Tracking {
+                            locked: None,
                             mode: CameraTrackingMode::CAMERA_TRACKING_MODE_POINT,
                             point: (params[0], params[1], params[2]),
                             anchor: (params[0], params[1]),
@@ -496,6 +594,7 @@ impl Cameras {
                 match camera.has(CameraCapFlags::CAMERA_CAP_FLAGS_HAS_TRACKING_RECTANGLE) {
                     true => {
                         camera.tracking = Tracking {
+                            locked: None,
                             mode: CameraTrackingMode::CAMERA_TRACKING_MODE_RECTANGLE,
                             rect: (params[0], params[1], params[2], params[3]),
                             anchor: ((params[0] + params[2]) / 2.0, (params[1] + params[3]) / 2.0),
@@ -509,6 +608,7 @@ impl Cameras {
             }
             MavCmd::MAV_CMD_CAMERA_STOP_TRACKING => {
                 camera.tracking = Tracking {
+                    locked: None,
                     mode: CameraTrackingMode::CAMERA_TRACKING_MODE_NONE,
                     interval_us: DEFAULT_TRACKING_INTERVAL_US,
                     last_sent_ms: None,
@@ -517,7 +617,7 @@ impl Cameras {
                 vec![ack(MavResult::MAV_RESULT_ACCEPTED)]
             }
             MavCmd::MAV_CMD_SET_MESSAGE_INTERVAL => match params[0] as u32 {
-                CAMERA_TRACKING_IMAGE_STATUS => {
+                CAMERA_TRACKING_IMAGE_STATUS | CAMERA_TRACKING_GEO_STATUS => {
                     camera.tracking = Tracking {
                         interval_us: params[1] as i64,
                         last_sent_ms: None,
@@ -683,6 +783,21 @@ fn stream_status(camera: &Camera, video: &Video, stream: u8) -> Out {
     )
 }
 
+fn tracking_geo_status(component: u8, target: &crate::dropsim::Target, alt: f32) -> Out {
+    (
+        component,
+        MavMessage::CAMERA_TRACKING_GEO_STATUS(CAMERA_TRACKING_GEO_STATUS_DATA {
+            lat: (target.position.lat * 1e7) as i32,
+            lon: (target.position.lon * 1e7) as i32,
+            alt,
+            vel_n: target.velocity.north_mps as f32,
+            vel_e: target.velocity.east_mps as f32,
+            tracking_status: CameraTrackingStatusFlags::CAMERA_TRACKING_STATUS_FLAGS_ACTIVE,
+            ..Default::default()
+        }),
+    )
+}
+
 fn tracking_status(camera: &Camera) -> Out {
     let t = &camera.tracking;
     (
@@ -712,6 +827,8 @@ mod tests {
         lat: 1,
         lon: 2,
         alt_mm: 3,
+        above_home_m: 0.0,
+        aim: (0.0, 0.0),
     };
 
     fn cameras(requested: StreamKind, served: Option<&str>) -> Cameras {
@@ -831,6 +948,67 @@ mod tests {
         assert_eq!(both.len(), 3);
         assert!(
             matches!(&both[0], (_, MavMessage::VIDEO_STREAM_INFORMATION(s)) if s.flags.is_empty() && s.uri.to_str().unwrap().trim_end_matches('\0').is_empty())
+        );
+    }
+
+    #[test]
+    fn tracking_locks_onto_the_ground_vehicle_under_the_picked_point_and_reports_where_it_is() {
+        let _fixes = crate::gpstarget::TEST_FIXES
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let north = |metres: f64| 47.0 + metres / 111_320.0;
+        let fix = |metres: f64, on_ground: bool| crate::gpstarget::Fix {
+            position: crate::dropsim::Point {
+                lat: north(metres),
+                lon: 8.0,
+            },
+            ground_speed_mps: 5.0,
+            heading_deg: 0.0,
+            on_ground,
+        };
+        crate::gpstarget::refresh(
+            [
+                (129, fix(38.0, true)),
+                (130, fix(100.0, true)),
+                (131, fix(40.0, false)),
+            ]
+            .into_iter()
+            .collect(),
+        );
+        let above = Where {
+            lat: 470_000_000,
+            lon: 80_000_000,
+            alt_mm: 440_000,
+            above_home_m: 40.0,
+            aim: (0.0, -45.0),
+        };
+        let mut set = cameras(StreamKind::None, None);
+        set.command(
+            0,
+            GCS,
+            MOCK_CAMERA,
+            MavCmd::MAV_CMD_CAMERA_TRACK_POINT,
+            [0.5, 0.5, 0.05, 0.0, 0.0, 0.0, 0.0],
+        );
+        set.command(
+            0,
+            GCS,
+            MOCK_CAMERA,
+            MavCmd::MAV_CMD_SET_MESSAGE_INTERVAL,
+            [276.0, 200_000.0, 0.0, 0.0, 0.0, 0.0, 0.0],
+        );
+        let geo = set
+            .tick(200, &above)
+            .into_iter()
+            .find_map(|(_, message)| match message {
+                MavMessage::CAMERA_TRACKING_GEO_STATUS(geo) => Some(geo),
+                _ => None,
+            })
+            .expect("a locked camera reports where its object is");
+        assert_eq!(
+            (geo.lat, geo.vel_n),
+            ((north(38.0) * 1e7) as i32, 5.0),
+            "the car 2 m from the picked spot, not the one 60 m away nor the drone flying over it"
         );
     }
 

@@ -526,7 +526,7 @@ fn cars(backend: &dyn Backend) -> Value {
         integer(&backend.value_fields("vehicle", "id"), "id").and_then(|id| u8::try_from(id).ok());
     crate::gpstarget::ground_vehicles(active)
         .iter()
-        .map(|car| {
+        .map(|(_, car)| {
             json!({
                 "latitude": car.position.lat,
                 "longitude": car.position.lon,

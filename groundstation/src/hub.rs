@@ -3199,6 +3199,36 @@ impl Vehicle {
                     velocity: crate::dropsim::Velocity::default(),
                 })
             }
+            crate::autodrop::TargetSource::Tracked => {
+                let from_geo =
+                    self.camera_tracking_geo
+                        .as_ref()
+                        .map(|geo| crate::dropsim::Target {
+                            position: crate::dropsim::Point {
+                                lat: geo.latitude,
+                                lon: geo.longitude,
+                            },
+                            velocity: crate::dropsim::Velocity {
+                                north_mps: geo.north_speed,
+                                east_mps: geo.east_speed,
+                            },
+                        });
+                from_geo.or_else(|| {
+                    let centre = self.camera_tracking_image.as_ref()?.centre();
+                    let aimed = self
+                        .gimbals
+                        .active()
+                        .and_then(|pair| self.gimbals.get(pair))
+                        .and_then(|g| g.attitude)?;
+                    crate::gimbalgeo::picture_to_ground(
+                        position,
+                        altitude_agl_m,
+                        (f64::from(aimed.absolute_yaw), f64::from(aimed.pitch)),
+                        centre,
+                    )
+                    .map(|ground| crate::gimbalgeo::track_point(ground, now_ms))
+                })
+            }
         }
     }
 
@@ -9259,6 +9289,105 @@ mod tests {
                 due_ms: crate::autodrop::AUTODROP_TICK_MS,
             }),
             "at cruise speed it moves on, due immediately rather than waiting another tick"
+        );
+    }
+
+    #[test]
+    fn a_tracked_target_comes_from_the_camera_s_geo_report_or_else_its_picture_point() {
+        use mavlink::dialects::ardupilotmega::{
+            GIMBAL_DEVICE_ATTITUDE_STATUS_DATA, GIMBAL_MANAGER_INFORMATION_DATA,
+            GIMBAL_MANAGER_STATUS_DATA,
+        };
+        let mut hub = Hub::default();
+        let from = MavHeader {
+            system_id: 1,
+            component_id: 1,
+            sequence: 0,
+        };
+        hub.on_frame(origin(0), &from, &copter_heartbeat(0, false), 0, 0);
+        hub.vehicles.values_mut().for_each(|v| v.connected = true);
+        hub.on_frame(origin(0), &from, &copter_heartbeat(0, false), 0, 0);
+        hub.on_frame(
+            origin(0),
+            &from,
+            &MavMessage::GIMBAL_MANAGER_INFORMATION(GIMBAL_MANAGER_INFORMATION_DATA {
+                gimbal_device_id: 1,
+                ..Default::default()
+            }),
+            0,
+            0,
+        );
+        hub.on_frame(
+            origin(0),
+            &from,
+            &MavMessage::GIMBAL_MANAGER_STATUS(GIMBAL_MANAGER_STATUS_DATA {
+                gimbal_device_id: 1,
+                ..Default::default()
+            }),
+            0,
+            0,
+        );
+        let half = (-45.0_f32).to_radians() / 2.0;
+        hub.on_frame(
+            origin(0),
+            &from,
+            &MavMessage::GIMBAL_DEVICE_ATTITUDE_STATUS(GIMBAL_DEVICE_ATTITUDE_STATUS_DATA {
+                gimbal_device_id: 1,
+                q: [half.cos(), 0.0, half.sin(), 0.0],
+                ..Default::default()
+            }),
+            0,
+            0,
+        );
+        let here = crate::dropsim::Point {
+            lat: 47.0,
+            lon: 8.0,
+        };
+        let vehicle = hub.vehicles.get_mut(&1).unwrap();
+        let tracked = |v: &Vehicle, now| {
+            v.target_for_autodrop(crate::autodrop::TargetSource::Tracked, here, 40.0, now)
+        };
+        assert_eq!(
+            tracked(vehicle, 0),
+            None,
+            "nothing tracked, nothing to chase"
+        );
+
+        vehicle.camera_tracking_image = Some(crate::cameratrack::TrackingImage::Point {
+            x: 0.5,
+            y: 0.5,
+            radius: 0.05,
+        });
+        let centre = tracked(vehicle, 1_000).expect("the picture centre projects to the ground");
+        let (north, east, _) = crate::geo::geo_to_ned(
+            centre.position.lat,
+            centre.position.lon,
+            0.0,
+            (47.0, 8.0, 0.0),
+        );
+        assert!(
+            (north - 40.0).abs() < 2.0 && east.abs() < 0.5,
+            "centre of a 45° down camera at 40 m is 40 m ahead, got {north} N {east} E"
+        );
+
+        vehicle.camera_tracking_geo = Some(crate::cameratrack::TrackingGeo {
+            latitude: 47.001,
+            longitude: 8.002,
+            altitude_amsl: 400.0,
+            north_speed: 3.0,
+            east_speed: -1.0,
+            at_ms: 1_000,
+        });
+        let reported = tracked(vehicle, 2_000).unwrap();
+        assert_eq!(
+            (
+                reported.position.lat,
+                reported.position.lon,
+                reported.velocity.north_mps,
+                reported.velocity.east_mps
+            ),
+            (47.001, 8.002, 3.0, -1.0),
+            "a camera that reports where the object is beats projecting its picture point"
         );
     }
 

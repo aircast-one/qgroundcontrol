@@ -2600,6 +2600,14 @@ impl Sim {
             lat: e7(self.lat),
             lon: e7(self.lon),
             alt_mm: ((self.home_amsl + self.alt) * 1000.0) as i32,
+            above_home_m: self.alt,
+            aim: self.gimbal.as_ref().map_or(
+                (self.heading, crate::synthview::FIXED_CAMERA_TILT_DEG),
+                |gimbal| {
+                    let (yaw, pitch) = gimbal.aim();
+                    (self.heading + yaw, pitch)
+                },
+            ),
         };
         let fast = vec![
             self.global_position(elapsed_ms),

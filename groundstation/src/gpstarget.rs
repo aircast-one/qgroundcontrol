@@ -54,13 +54,13 @@ pub fn only_other(self_id: u8) -> Option<u8> {
     others.next().is_none().then_some(first)
 }
 
-pub fn ground_vehicles(except: Option<u8>) -> Vec<Target> {
+pub fn ground_vehicles(except: Option<u8>) -> Vec<(u8, Target)> {
     FIXES
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
         .iter()
         .filter(|(id, fix)| fix.on_ground && Some(**id) != except)
-        .map(|(_, fix)| fix.target())
+        .map(|(id, fix)| (*id, fix.target()))
         .collect()
 }
 

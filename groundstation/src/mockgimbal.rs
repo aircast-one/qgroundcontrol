@@ -58,6 +58,10 @@ fn ack(component: u8, from: (u8, u8), command: MavCmd, result: MavResult) -> Out
 }
 
 impl Gimbal {
+    pub fn aim(&self) -> (f64, f64) {
+        (f64::from(self.yaw), f64::from(self.pitch))
+    }
+
     pub fn once_a_second(&mut self, now_ms: u64) -> Vec<Out> {
         let status = due(self.status_interval_us, self.status_sent_ms, now_ms).then(|| {
             self.status_sent_ms = Some(now_ms);

@@ -58,11 +58,63 @@ pub fn track(
     pitch_deg: f64,
     now_ms: u64,
 ) -> Option<Target> {
-    let position = ground_point(vehicle, altitude_agl_m, yaw_deg, pitch_deg)?;
+    ground_point(vehicle, altitude_agl_m, yaw_deg, pitch_deg)
+        .map(|position| track_point(position, now_ms))
+}
+
+pub fn track_point(position: Point, now_ms: u64) -> Target {
     let mut last = LAST_FIX.lock().unwrap_or_else(PoisonError::into_inner);
     let (target, current) = tracked(position, now_ms, *last);
     *last = Some(current);
-    Some(target)
+    target
+}
+
+pub const IMAGE_ASPECT: f64 = 16.0 / 9.0;
+
+pub fn picture_to_ground(
+    vehicle: Point,
+    altitude_agl_m: f64,
+    (yaw_deg, pitch_deg): (f64, f64),
+    (x, y): (f64, f64),
+) -> Option<Point> {
+    let camera = crate::videoar::Camera {
+        heading: yaw_deg,
+        pitch: pitch_deg,
+        roll: 0.0,
+        fov: crate::synthview::CAMERA_FOV_DEG,
+    };
+    crate::videoar::ground_point(
+        (vehicle.lat, vehicle.lon),
+        altitude_agl_m,
+        (camera, None),
+        IMAGE_ASPECT,
+        (2.0 * x - 1.0, 1.0 - 2.0 * y),
+        &|_| 0.0,
+    )
+    .map(|(lat, lon)| Point { lat, lon })
+}
+
+pub fn ground_to_picture(
+    vehicle: Point,
+    altitude_agl_m: f64,
+    (yaw_deg, pitch_deg): (f64, f64),
+    target: Point,
+) -> Option<(f64, f64)> {
+    let camera = crate::videoar::Camera {
+        heading: yaw_deg,
+        pitch: pitch_deg,
+        roll: 0.0,
+        fov: crate::synthview::CAMERA_FOV_DEG,
+    };
+    let (north, east, _) = geo_to_ned(target.lat, target.lon, 0.0, (vehicle.lat, vehicle.lon, 0.0));
+    let (across, above, ahead) = crate::videoar::in_camera(camera, (east, north, -altitude_agl_m));
+    let scale = 0.5 / (crate::synthview::CAMERA_FOV_DEG / 2.0).to_radians().tan();
+    (ahead > 0.0).then(|| {
+        (
+            0.5 + across / ahead * scale,
+            0.5 - above / ahead * scale * IMAGE_ASPECT,
+        )
+    })
 }
 
 fn numbers(args: &[String], count: usize) -> Option<Vec<f64>> {
@@ -127,6 +179,21 @@ pub fn gimbal_drop_lead_view(_backend: &dyn Backend, args: &[String]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_picture_point_and_its_ground_point_map_back_onto_each_other() {
+        let drone = Point {
+            lat: 47.0,
+            lon: 8.0,
+        };
+        let aim = (30.0, -50.0);
+        let ground = picture_to_ground(drone, 40.0, aim, (0.3, 0.7)).expect("below the horizon");
+        let (x, y) = ground_to_picture(drone, 40.0, aim, ground).expect("in front of the camera");
+        assert!(
+            (x - 0.3).abs() < 0.01 && (y - 0.7).abs() < 0.01,
+            "round trip lands back on the picked point, got ({x}, {y})"
+        );
+    }
 
     fn close(a: f64, b: f64, tol: f64) -> bool {
         (a - b).abs() < tol
