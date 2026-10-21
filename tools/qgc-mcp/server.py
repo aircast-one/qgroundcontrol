@@ -187,6 +187,7 @@ def mock_vehicle(
       prearm="<reason>" ("" clears)   gps="lost"|"ok"      motor="failed"|"ok"
       wind="<m/s>,<from degrees>"     endurance="<minutes>" home="<lat>,<lon>"
       silent="1"|"0" (telemetry stops: contact lost)
+      roads="1"|"0" (a rover drives the real streets around it, turning at junctions)
     On start, options also take camera="1", gimbal="1", video="h264"|"rtsp"|..., add="1" for a
     second vehicle. `vehicle="rover"` simulates a ground vehicle instead of a copter - useful as
     a moving target for a second mock_vehicle(add="1") to chase. On the web app only the plain

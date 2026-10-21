@@ -240,6 +240,7 @@ pub mod remoteidview;
 pub mod renamed;
 pub mod replay;
 pub mod resumemission;
+pub mod roads;
 pub mod router;
 pub mod rtcm;
 pub mod rtkbase;

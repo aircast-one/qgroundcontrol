@@ -105,6 +105,8 @@ const PLANE_LOITER: u32 = 12;
 const PLANE_QLAND: u32 = 20;
 const ROVER_HOLD: u32 = 4;
 const ROVER_RTL: u32 = 11;
+const ROVER_GUIDED: u32 = 15;
+const ROADS_RETRY_TICKS: u64 = 10 * TICKS_PER_SECOND;
 const FTP_NAK: u8 = 129;
 const SET_MODE_ID: u32 = 11;
 const SET_MODE_LEN: usize = 6;
@@ -572,6 +574,7 @@ pub struct Conditions {
     pub motor_failed: bool,
     pub endurance_min: Option<f64>,
     pub home: Option<(f64, f64)>,
+    pub roads: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -582,6 +585,7 @@ pub enum Change {
     MotorFailed(bool),
     Endurance(f64),
     Home(f64, f64),
+    Roads(bool),
 }
 
 impl Conditions {
@@ -611,6 +615,10 @@ impl Conditions {
                 },
                 Change::Home(lat, lon) => Conditions {
                     home: Some((*lat, *lon)),
+                    ..conditions
+                },
+                Change::Roads(on) => Conditions {
+                    roads: *on,
                     ..conditions
                 },
             })
@@ -674,6 +682,9 @@ pub struct Sim {
     greeted: bool,
     ticks: u64,
     servos: [u16; crate::apmservos::MAX_SERVOS],
+    drive: Option<(std::sync::Arc<crate::roads::Network>, crate::roads::Drive)>,
+    roads_pending: Option<mpsc::Receiver<crate::roads::Network>>,
+    roads_retry_at: u64,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -685,6 +696,36 @@ struct Adsb {
 }
 
 fn flat(_: f64, _: f64) -> Option<f64> {
+    None
+}
+
+#[cfg(not(target_family = "wasm"))]
+fn fetch_roads(lat: f64, lon: f64) -> Option<mpsc::Receiver<crate::roads::Network>> {
+    let (sender, receiver) = mpsc::channel();
+    std::thread::spawn(move || {
+        let tiles: Vec<(u32, u32, Vec<u8>)> = crate::roads::tiles_around(lat, lon)
+            .into_iter()
+            .filter_map(|(x, y)| {
+                crate::maptiles::fetch(
+                    crate::maptypes::BUILDING_TILES,
+                    i32::try_from(x).ok()?,
+                    i32::try_from(y).ok()?,
+                    i32::try_from(crate::roads::ROAD_TILE_ZOOM).ok()?,
+                    &crate::mapurls::keys_from_settings(),
+                    None,
+                    false,
+                    &crate::maptiles::fetch_over_http,
+                )
+                .map(|raw| (x, y, raw))
+            })
+            .collect();
+        let _ = sender.send(crate::roads::network(&tiles));
+    });
+    Some(receiver)
+}
+
+#[cfg(target_family = "wasm")]
+fn fetch_roads(_: f64, _: f64) -> Option<mpsc::Receiver<crate::roads::Network>> {
     None
 }
 
@@ -780,6 +821,9 @@ impl Sim {
             greeted: false,
             ticks: 0,
             servos,
+            drive: None,
+            roads_pending: None,
+            roads_retry_at: 0,
         }
     }
 
@@ -820,6 +864,57 @@ impl Sim {
         self.conditions = next;
         if let Some(place) = moved {
             self.relocate(place);
+        }
+    }
+
+    fn drive_roads(&mut self) {
+        let wanted = self.conditions.roads && self.options.vehicle == Vehicle::Rover;
+        match (wanted, self.drive.is_some()) {
+            (false, true) => {
+                self.drive = None;
+                self.target = None;
+                self.guidance.speed = None;
+            }
+            (false, false) => self.roads_pending = None,
+            (true, true) => self.steer_roads(),
+            (true, false) => self.await_roads(),
+        }
+    }
+
+    fn await_roads(&mut self) {
+        match self.roads_pending.as_ref().map(mpsc::Receiver::try_recv) {
+            Some(Ok(network)) => {
+                self.roads_pending = None;
+                self.roads_retry_at = self.ticks + ROADS_RETRY_TICKS;
+                self.begin_roads(std::sync::Arc::new(network));
+            }
+            Some(Err(mpsc::TryRecvError::Empty)) => {}
+            _ if self.ticks >= self.roads_retry_at => {
+                self.roads_pending = fetch_roads(self.lat, self.lon);
+                self.roads_retry_at = self.ticks + ROADS_RETRY_TICKS;
+            }
+            _ => {}
+        }
+    }
+
+    fn begin_roads(&mut self, network: std::sync::Arc<crate::roads::Network>) {
+        let seed = (crate::hub::wall_ms() as u64) ^ (u64::from(self.system) << 32) ^ self.ticks;
+        let Some(drive) = crate::roads::Drive::starting(&network, (self.lat, self.lon), seed)
+        else {
+            return;
+        };
+        (self.lat, self.lon) = drive.start_point(&network);
+        self.velocity = (0.0, 0.0);
+        self.switch(ROVER_GUIDED);
+        self.arm();
+        self.drive = Some((network, drive));
+    }
+
+    fn steer_roads(&mut self) {
+        if let Some((network, drive)) = &mut self.drive {
+            let (aim, speed) = drive.steer(network, (self.lat, self.lon), self.tuning.cruise);
+            self.target = Some(Target::at(aim.0, aim.1, self.alt));
+            self.guidance.speed = Some(speed);
         }
     }
 
@@ -2590,6 +2685,7 @@ impl Sim {
     pub fn tick(&mut self, elapsed_ms: u64) -> Vec<Out> {
         let dt = TICK.as_secs_f64();
         self.base_on_terrain();
+        self.drive_roads();
         self.step(dt);
         self.shutter(dt);
         self.drain(dt);
@@ -5791,6 +5887,104 @@ mod tests {
         assert!(px4.armed && !px4.airborne());
         steer(&mut px4, 0, 0, 0, 0, 2);
         assert!(!px4.armed, "COM_DISARM_LAND is 2 s");
+    }
+
+    #[test]
+    fn a_rover_on_the_roads_slows_for_a_right_angle_turn_and_takes_it() {
+        let mut sim = Sim::new(options(Vehicle::Rover), 128, None);
+        let start = (sim.lat, sim.lon);
+        let north = |metres: f64| start.0 + metres / METRES_PER_DEG;
+        let east = |metres: f64| start.1 + metres / (METRES_PER_DEG * start.0.to_radians().cos());
+        let corner = (north(80.0), start.1);
+        let network = std::sync::Arc::new(crate::roads::Network::of(
+            vec![start, corner, (corner.0, east(80.0))],
+            vec![vec![1], vec![2], vec![]],
+        ));
+        sim.conditions.roads = true;
+        sim.begin_roads(network);
+        let speeds: Vec<(f64, f64, (f64, f64))> = (0..300)
+            .map(|_| {
+                sim.tick(100);
+                (
+                    sim.velocity.0.hypot(sim.velocity.1),
+                    metres_to(&sim, corner.0, corner.1),
+                    (sim.lat, sim.lon),
+                )
+            })
+            .collect();
+        let at_corner = speeds
+            .iter()
+            .filter(|(_, from_corner, _)| *from_corner < 6.0)
+            .map(|(speed, _, _)| *speed)
+            .fold(f64::INFINITY, f64::min);
+        assert!(at_corner < 4.0, "took the corner at {at_corner} m/s");
+        assert!(
+            speeds.iter().any(|(speed, _, _)| *speed > 4.9),
+            "full speed on the straight"
+        );
+        assert!(
+            speeds.iter().any(|(_, _, (lat, lon))| *lon > east(40.0)
+                && (lat - corner.0).abs() * METRES_PER_DEG < 4.0),
+            "it turned east onto the second street"
+        );
+    }
+
+    #[test]
+    fn a_rover_on_the_roads_drives_the_streets_without_leaving_them() {
+        let raw = std::fs::read(format!(
+            "{}/../test/Bridge/fixtures/openfreemap-14-8580-5736-roads-around-mock-home.pbf",
+            env!("CARGO_MANIFEST_DIR")
+        ))
+        .expect("the recorded roads around the mock home");
+        let network = std::sync::Arc::new(crate::roads::network(&[(8580, 5736, raw)]));
+        let mut sim = Sim::new(options(Vehicle::Rover), 128, None);
+        sim.conditions.roads = true;
+        sim.begin_roads(network.clone());
+        assert!(sim.armed && sim.custom_mode == ROVER_GUIDED);
+        let off_road = |sim: &Sim| {
+            (0..network.nodes.len())
+                .flat_map(|a| network.next[a].iter().map(move |&b| (a, b)))
+                .map(|(a, b)| {
+                    let here = (sim.lat, sim.lon);
+                    let (an, ae) = crate::roads::offset(here, network.nodes[a]);
+                    let (bn, be) = crate::roads::offset(here, network.nodes[b]);
+                    let (dn, de) = (bn - an, be - ae);
+                    let t = (-(an * dn + ae * de) / (dn * dn + de * de).max(f64::EPSILON))
+                        .clamp(0.0, 1.0);
+                    (an + dn * t).hypot(ae + de * t)
+                })
+                .fold(f64::INFINITY, f64::min)
+        };
+        let samples: Vec<(f64, f64, (f64, f64))> = (0..600)
+            .map(|_| {
+                sim.tick(100);
+                (
+                    sim.velocity.0.hypot(sim.velocity.1),
+                    off_road(&sim),
+                    (sim.lat, sim.lon),
+                )
+            })
+            .collect();
+        let travelled: f64 = samples
+            .windows(2)
+            .map(|pair| {
+                let (n, e) = crate::roads::offset(pair[0].2, pair[1].2);
+                n.hypot(e)
+            })
+            .sum();
+        let worst_off_road = samples.iter().map(|s| s.1).fold(0.0, f64::max);
+        let cruising: Vec<f64> = samples.iter().skip(50).map(|s| s.0).collect();
+        assert!(travelled > 200.0, "it drove {travelled} m in a minute");
+        assert!(
+            worst_off_road < 4.0,
+            "it left the road by {worst_off_road} m"
+        );
+        assert!(
+            cruising
+                .iter()
+                .all(|&speed| speed <= sim.tuning.cruise + 0.01),
+            "never over cruise"
+        );
     }
 
     #[test]

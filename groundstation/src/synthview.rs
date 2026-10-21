@@ -67,6 +67,8 @@ static CHANGED: AtomicBool = AtomicBool::new(false);
 static DRAW: Mutex<&'static str> = Mutex::new(DRAW_LOADING);
 const DRAW_LOADING: &str = "loading";
 static GROUND: Mutex<Option<(f64, u64)>> = Mutex::new(None);
+#[cfg(test)]
+pub(crate) static TEST_GROUND: Mutex<()> = Mutex::new(());
 const GROUND_KEPT_MS: u64 = 2_000;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -754,6 +756,7 @@ mod tests {
             synthetic(&flying(&[]), &no_gimbal(), DEFAULT_AIM)["bottles"],
             json!([])
         );
+        let _ground = TEST_GROUND.lock().unwrap_or_else(PoisonError::into_inner);
         set_ground(Some(4.5));
         let now = crate::hub::now_ms();
         assert_eq!(ground_under(now), Some(4.5));

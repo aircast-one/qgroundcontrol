@@ -1599,6 +1599,7 @@ mod deps_cover_reads {
         ("remoteidview", include_str!("remoteidview.rs")),
         ("renamed", include_str!("renamed.rs")),
         ("replay", include_str!("replay.rs")),
+        ("roads", include_str!("roads.rs")),
         ("router", include_str!("router.rs")),
         ("rtcm", include_str!("rtcm.rs")),
         ("sensorcal", include_str!("sensorcal.rs")),

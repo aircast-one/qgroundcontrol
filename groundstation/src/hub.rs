@@ -3404,7 +3404,8 @@ impl Vehicle {
         let (north_mps, east_mps, _) = self.facts.velocity;
         Some(crate::dropsim::Release {
             position: crate::dropsim::Point { lat, lon },
-            altitude_agl_m: self.facts.altitude_relative,
+            altitude_agl_m: self.facts.altitude_relative
+                - crate::synthview::ground_under(now_ms()).unwrap_or(0.0),
             velocity: crate::dropsim::Velocity {
                 north_mps,
                 east_mps,
@@ -9455,6 +9456,27 @@ mod tests {
             follow_aim(Some((10.0, -85.0)), (190.0, -86.0), Some(10.0), false),
             Some((10.0, -90.0)),
             "before the drop too, straight down holds the yaw it has"
+        );
+    }
+
+    #[test]
+    fn the_release_height_is_measured_from_the_ground_the_bottle_falls_to() {
+        let _ground = crate::synthview::TEST_GROUND
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        let mut vehicle = Vehicle::heard(1);
+        vehicle.facts.coordinate = Some((47.0, 8.0, 0.0));
+        vehicle.facts.altitude_relative = 40.0;
+        crate::synthview::set_ground(Some(6.5));
+        assert_eq!(
+            vehicle.release_now().map(|release| release.altitude_agl_m),
+            Some(33.5),
+            "ground 6.5 m above home leaves a 33.5 m fall, not 40"
+        );
+        crate::synthview::set_ground(None);
+        assert_eq!(
+            vehicle.release_now().map(|release| release.altitude_agl_m),
+            Some(40.0)
         );
     }
 

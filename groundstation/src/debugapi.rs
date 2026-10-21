@@ -218,7 +218,15 @@ fn mock_video_stream(name: &str) -> Option<i64> {
         .map(|(_, kind)| *kind)
 }
 
-const MOCK_CONDITIONS: [&str; 6] = ["prearm", "wind", "gps", "motor", "endurance", "home"];
+const MOCK_CONDITIONS: [&str; 7] = [
+    "prearm",
+    "wind",
+    "gps",
+    "motor",
+    "endurance",
+    "home",
+    "roads",
+];
 
 fn numbers(
     pairs: &[(String, String)],
@@ -296,6 +304,7 @@ fn mock_change(pairs: &[(String, String)]) -> Result<Vec<crate::mocklink::Change
         }),
         either(pairs, "gps", "lost", "ok")?.map(Change::GpsLost),
         either(pairs, "motor", "failed", "ok")?.map(Change::MotorFailed),
+        either(pairs, "roads", "1", "0")?.map(Change::Roads),
         endurance.map(|minutes| Change::Endurance(minutes[0])),
         home.map(|place| Change::Home(place[0], place[1])),
     ]
@@ -315,6 +324,7 @@ fn applied(changes: &[crate::mocklink::Change]) -> Value {
             Change::MotorFailed(failed) => ("motorFailed", json!(failed)),
             Change::Endurance(minutes) => ("enduranceMin", json!(minutes)),
             Change::Home(lat, lon) => ("home", json!([lat, lon])),
+            Change::Roads(on) => ("roads", json!(on)),
         })
         .map(|(key, value)| (key.to_string(), value))
         .collect();
