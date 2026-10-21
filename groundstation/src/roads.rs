@@ -18,6 +18,7 @@ pub const ROAD_TILE_ZOOM: u32 = 14;
 const SNAP_M: f64 = 1.5;
 const METRES_PER_DEG: f64 = 111_320.0;
 const LOOKAHEAD_M: f64 = 10.0;
+const MAX_BRANCHES: usize = 16;
 const PASS_M: f64 = 6.0;
 const HORIZON_M: f64 = 80.0;
 const LATERAL_MPS2: f64 = 2.0;
@@ -607,6 +608,41 @@ impl Network {
         std::iter::once((matched.from, false)).chain(legs).collect()
     }
 
+    fn branch_routes(
+        &self,
+        from: usize,
+        to: usize,
+        travelled: f64,
+        reach_m: f64,
+    ) -> Vec<Vec<(usize, bool)>> {
+        let options: Vec<usize> = self.next[to]
+            .iter()
+            .copied()
+            .filter(|&n| n != from)
+            .collect();
+        let here = (to, options.len() != 1);
+        let travelled = travelled + metres(self.nodes[from], self.nodes[to]);
+        let onward: Vec<Vec<(usize, bool)>> = match travelled < reach_m {
+            true => options
+                .iter()
+                .flat_map(|&next| self.branch_routes(to, next, travelled, reach_m))
+                .take(MAX_BRANCHES)
+                .collect(),
+            false => Vec::new(),
+        };
+        match onward.is_empty() {
+            true => vec![vec![here]],
+            false => onward
+                .into_iter()
+                .map(|rest| std::iter::once(here).chain(rest).collect())
+                .collect(),
+        }
+    }
+
+    fn reach_m(matched: Matched, speed_mps: f64, step_s: f64, steps: usize) -> f64 {
+        matched.along_m + speed_mps * step_s * steps as f64 + 2.0 * LOOKAHEAD_M
+    }
+
     pub fn ahead(
         &self,
         matched: Matched,
@@ -615,8 +651,38 @@ impl Network {
         step_s: f64,
         steps: usize,
     ) -> Vec<Ahead> {
-        let reach = matched.along_m + speed_mps * step_s * steps as f64 + 2.0 * LOOKAHEAD_M;
-        let route = self.route(matched, reach);
+        let route = self.route(matched, Self::reach_m(matched, speed_mps, step_s, steps));
+        self.ahead_on(&route, matched, (speed_mps, lateral_mps2), step_s, steps)
+    }
+
+    pub fn branches(
+        &self,
+        matched: Matched,
+        speed_mps: f64,
+        lateral_mps2: f64,
+        step_s: f64,
+        steps: usize,
+    ) -> Vec<Vec<Ahead>> {
+        let reach = Self::reach_m(matched, speed_mps, step_s, steps);
+        self.branch_routes(matched.from, matched.to, 0.0, reach)
+            .into_iter()
+            .map(|legs| {
+                let route: Vec<(usize, bool)> =
+                    std::iter::once((matched.from, false)).chain(legs).collect();
+                self.ahead_on(&route, matched, (speed_mps, lateral_mps2), step_s, steps)
+            })
+            .collect()
+    }
+
+    fn ahead_on(
+        &self,
+        route: &[(usize, bool)],
+        matched: Matched,
+        (speed_mps, lateral_mps2): (f64, f64),
+        step_s: f64,
+        steps: usize,
+    ) -> Vec<Ahead> {
+        let reach = Self::reach_m(matched, speed_mps, step_s, steps);
         let points: Vec<(f64, f64)> = route.iter().map(|&(node, _)| self.nodes[node]).collect();
         let starts: Vec<f64> = std::iter::once(0.0)
             .chain(points.windows(2).scan(0.0, |total, pair| {

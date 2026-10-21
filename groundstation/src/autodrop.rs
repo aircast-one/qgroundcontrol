@@ -30,6 +30,7 @@ pub const TURN_WINDOW_MS: u64 = 2_000;
 const PLAN_STEP_S: f64 = 0.05;
 const PLAN_HORIZON_S: f64 = 60.0;
 const REFINE_STEPS: i32 = 10;
+const BRANCHES_WITHIN_S: f64 = 1.0;
 
 pub const CORNER_LATERAL_MPS2: f64 = 2.0;
 
@@ -56,38 +57,74 @@ fn steps_for(seconds: f64) -> usize {
     (seconds / PLAN_STEP_S).ceil() as usize + 1
 }
 
-fn road_course(
+fn courses_on_road(
     target: Target,
     roads: Option<&crate::roads::Network>,
     seconds: f64,
-) -> Option<Vec<Course>> {
+    branching: bool,
+) -> Option<Vec<Vec<Course>>> {
     let heading = gimbalgeo::heading_of(target.velocity)?;
     let network = roads?;
     let here = (target.position.lat, target.position.lon);
     let matched = network.matched(here, heading)?;
     let speed = target.velocity.north_mps.hypot(target.velocity.east_mps);
+    let steps = steps_for(seconds);
+    let routes = match branching {
+        true => network.branches(matched, speed, CORNER_LATERAL_MPS2, PLAN_STEP_S, steps),
+        false => vec![network.ahead(matched, speed, CORNER_LATERAL_MPS2, PLAN_STEP_S, steps)],
+    };
     Some(
-        network
-            .ahead(
-                matched,
-                speed,
-                CORNER_LATERAL_MPS2,
-                PLAN_STEP_S,
-                steps_for(seconds),
-            )
+        routes
             .into_iter()
-            .map(|ahead| {
-                let (north_m, east_m, _) =
-                    geo_to_ned(ahead.at.0, ahead.at.1, 0.0, (here.0, here.1, 0.0));
-                Course {
-                    north_m,
-                    east_m,
-                    heading_deg: Some(ahead.heading_deg),
-                    junctions: ahead.junctions,
-                }
+            .map(|route| {
+                route
+                    .into_iter()
+                    .map(|ahead| {
+                        let (north_m, east_m, _) =
+                            geo_to_ned(ahead.at.0, ahead.at.1, 0.0, (here.0, here.1, 0.0));
+                        Course {
+                            north_m,
+                            east_m,
+                            heading_deg: Some(ahead.heading_deg),
+                            junctions: ahead.junctions,
+                        }
+                    })
+                    .collect()
             })
             .collect(),
     )
+}
+
+fn road_course(
+    target: Target,
+    roads: Option<&crate::roads::Network>,
+    seconds: f64,
+) -> Option<Vec<Course>> {
+    courses_on_road(target, roads, seconds, false)?
+        .into_iter()
+        .next()
+}
+
+fn every_branch_hits(
+    target: Target,
+    roads: Option<&crate::roads::Network>,
+    flown_s: f64,
+    drop_offset: (f64, f64),
+) -> bool {
+    courses_on_road(target, roads, flown_s, true).is_some_and(|branches| {
+        branches.iter().all(|branch| {
+            let there = sampled(branch, flown_s);
+            let (miss_n, miss_e) = (drop_offset.0 + there.north_m, drop_offset.1 + there.east_m);
+            let (along_m, across_m, moving) = framed(miss_n, miss_e, there.heading_deg);
+            on_car(
+                along_m,
+                across_m,
+                miss_n.hypot(miss_e),
+                moving,
+                RELEASE_MARGIN_M,
+            )
+        })
+    })
 }
 
 fn course(target: Target, roads: Option<&crate::roads::Network>, seconds: f64) -> Vec<Course> {
@@ -152,13 +189,21 @@ pub fn plan(
     );
     let (along_m, across_m, moving) = framed(miss_n, miss_e, there.heading_deg);
     let (lat, lon, _) = ned_to_geo(north + there.north_m, east + there.east_m, 0.0, origin);
+    let flown = release_in_s + fall;
+    let drop_offset = (
+        north - release.velocity.north_mps * flown,
+        east - release.velocity.east_mps * flown,
+    );
+    let junction = there.junctions > 0
+        && (release_in_s > BRANCHES_WITHIN_S
+            || !every_branch_hits(target, roads, flown, drop_offset));
     Plan {
         release_in_s,
         miss_m: miss_n.hypot(miss_e),
         along_m,
         across_m,
         moving,
-        junction: there.junctions > 0,
+        junction,
         target_at_impact: Point { lat, lon },
     }
 }
@@ -564,6 +609,52 @@ pub fn status_view(backend: &dyn Backend, _args: &[String]) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn near_a_fork_it_releases_when_every_way_the_car_can_go_still_hits() {
+        let north = |metres: f64| crate::geo::ned_to_geo(metres, 0.0, 0.0, (47.0, 8.0, 0.0));
+        let east_of = |n: f64, e: f64| crate::geo::ned_to_geo(n, e, 0.0, (47.0, 8.0, 0.0));
+        let at = |(lat, lon, _): (f64, f64, f64)| (lat, lon);
+        let fork = crate::roads::Network::of(
+            vec![
+                at(north(0.0)),
+                at(north(100.0)),
+                at(north(200.0)),
+                at(east_of(100.0, 100.0)),
+            ],
+            vec![vec![1], vec![2, 3], vec![], vec![]],
+        );
+        let (lat, lon, _) = north(80.0);
+        let car = Target {
+            position: Point { lat, lon },
+            velocity: Velocity {
+                north_mps: 5.0,
+                east_mps: 0.0,
+            },
+        };
+        let straight = |flown_s: f64| {
+            sampled(
+                &road_course(car, Some(&fork), flown_s).expect("on the road"),
+                flown_s,
+            )
+        };
+        let aimed_at = |flown_s: f64| {
+            let there = straight(flown_s);
+            (-there.north_m, -there.east_m)
+        };
+        assert!(
+            straight(2.0).junctions > 0,
+            "10 m from the fork the old gate already held"
+        );
+        assert!(
+            every_branch_hits(car, Some(&fork), 2.0, aimed_at(2.0)),
+            "but the car is still where both roads put it"
+        );
+        assert!(
+            !every_branch_hits(car, Some(&fork), 6.0, aimed_at(6.0)),
+            "past the fork, straight on and the right turn put the car in different places"
+        );
+    }
 
     #[test]
     fn far_point_on_bearing_keeps_the_direction_and_sets_the_distance() {
