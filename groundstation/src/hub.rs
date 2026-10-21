@@ -6297,6 +6297,7 @@ impl Vehicle {
             velocity: self.facts.velocity,
             heading: self.facts.heading,
             ground: crate::synthview::ground_under(now_ms()).unwrap_or(0.0),
+            air: crate::dropsim::falling_air(),
         })
     }
 
@@ -8051,6 +8052,11 @@ impl Hub {
     }
 
     pub fn tick_with(&mut self, now_ms: u64, now_s: u64) -> Vec<(LinkId, Vec<u8>)> {
+        crate::dropsim::report_wind(
+            self.active()
+                .and_then(|vehicle| vehicle.wind.blowing)
+                .unwrap_or_default(),
+        );
         crate::gpstarget::refresh(
             self.vehicles
                 .iter()
@@ -10215,6 +10221,7 @@ mod tests {
             "no bottle yet"
         );
         vehicle.releases.push(crate::payloadfall::Release {
+            air: crate::dropsim::Air::default(),
             bay: 0,
             at_ms: 9_000,
             latitude: 47.0,

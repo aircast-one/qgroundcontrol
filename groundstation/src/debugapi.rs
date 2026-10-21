@@ -218,7 +218,8 @@ fn mock_video_stream(name: &str) -> Option<i64> {
         .map(|(_, kind)| *kind)
 }
 
-const MOCK_CONDITIONS: [&str; 7] = [
+const MOCK_CONDITIONS: [&str; 8] = [
+    "payload",
     "prearm",
     "wind",
     "gps",
@@ -268,13 +269,22 @@ const WIND_USAGE: &str =
     "wind must be speed,from-degrees with a speed of 0 m/s or more, or 0 for calm";
 const ENDURANCE_USAGE: &str = "endurance must be the minutes a full pack hovers for";
 const HOME_USAGE: &str = "home must be latitude,longitude within ±90 and ±180";
+const PAYLOAD_USAGE: &str =
+    "payload must be grams,drag-area-cm2 (drag coefficient times frontal area), both 0 or more";
 
 fn mock_change(pairs: &[(String, String)]) -> Result<Vec<crate::mocklink::Change>, String> {
     use crate::mocklink::Change;
     let wind = numbers(pairs, "wind", &[1, 2], WIND_USAGE)?;
     let endurance = numbers(pairs, "endurance", &[1], ENDURANCE_USAGE)?;
     let home = numbers(pairs, "home", &[2], HOME_USAGE)?;
+    let payload = numbers(pairs, "payload", &[2], PAYLOAD_USAGE)?;
     let checks = [
+        (
+            payload
+                .as_ref()
+                .is_some_and(|values| values.iter().any(|v| *v < 0.0)),
+            PAYLOAD_USAGE,
+        ),
         (
             wind.as_ref().is_some_and(|values| values[0] < 0.0),
             WIND_USAGE,
@@ -307,6 +317,10 @@ fn mock_change(pairs: &[(String, String)]) -> Result<Vec<crate::mocklink::Change
         either(pairs, "roads", "1", "0")?.map(Change::Roads),
         endurance.map(|minutes| Change::Endurance(minutes[0])),
         home.map(|place| Change::Home(place[0], place[1])),
+        payload.map(|values| Change::Payload {
+            mass_g: values[0],
+            drag_area_cm2: values[1],
+        }),
     ]
     .into_iter()
     .flatten()
@@ -325,6 +339,13 @@ fn applied(changes: &[crate::mocklink::Change]) -> Value {
             Change::Endurance(minutes) => ("enduranceMin", json!(minutes)),
             Change::Home(lat, lon) => ("home", json!([lat, lon])),
             Change::Roads(on) => ("roads", json!(on)),
+            Change::Payload {
+                mass_g,
+                drag_area_cm2,
+            } => (
+                "payload",
+                json!({ "massG": mass_g, "dragAreaCm2": drag_area_cm2 }),
+            ),
         })
         .map(|(key, value)| (key.to_string(), value))
         .collect();

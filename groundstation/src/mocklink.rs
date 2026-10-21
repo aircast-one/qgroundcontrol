@@ -586,6 +586,7 @@ pub enum Change {
     Endurance(f64),
     Home(f64, f64),
     Roads(bool),
+    Payload { mass_g: f64, drag_area_cm2: f64 },
 }
 
 impl Conditions {
@@ -621,6 +622,16 @@ impl Conditions {
                     roads: *on,
                     ..conditions
                 },
+                Change::Payload {
+                    mass_g,
+                    drag_area_cm2,
+                } => {
+                    crate::dropsim::set_sim_payload(crate::dropsim::Payload {
+                        mass_kg: mass_g / 1000.0,
+                        drag_area_m2: drag_area_cm2 / 10_000.0,
+                    });
+                    conditions
+                }
             })
     }
 }
@@ -2780,6 +2791,7 @@ impl Sim {
                 Vec::new()
             })
             .chain([esc_info(elapsed_ms), esc_status(elapsed_ms), radio_status()])
+            .chain(self.options.vehicle.apm().then(|| self.wind_report()))
             .chain(reminder);
         let cameras = self
             .cameras
@@ -2920,6 +2932,18 @@ impl Sim {
 
     fn ground_speed(&self) -> f64 {
         self.velocity.0.hypot(self.velocity.1)
+    }
+
+    fn wind_report(&self) -> Out {
+        let (speed, from) = self.conditions.wind;
+        (
+            AUTOPILOT,
+            MavMessage::WIND(WIND_DATA {
+                direction: from as f32,
+                speed: speed as f32,
+                speed_z: 0.0,
+            }),
+        )
     }
 
     fn vfr_hud(&self) -> Out {

@@ -438,6 +438,62 @@
             "label": "Drop release latency in milliseconds"
         },
         {
+            "name": "autodropPayloadMassG",
+            "shortDesc": "Mass of one payload in grams, for the drop's air drag (0 = no drag model)",
+            "type": "uint32",
+            "default": 0,
+            "label": "Payload mass in grams"
+        },
+        {
+            "name": "autodropPayloadDragAreaCm2",
+            "shortDesc": "Drag coefficient times frontal area of one payload in square centimetres, set from calibration drops (0 = no drag model)",
+            "type": "double",
+            "default": 0,
+            "label": "Payload drag area in square centimetres"
+        },
+        {
+            "name": "autodropWindManual",
+            "shortDesc": "Use the wind entered here for drops instead of the autopilot's wind estimate",
+            "type": "bool",
+            "default": false,
+            "label": "Use manual wind for drops"
+        },
+        {
+            "name": "autodropWindSpeedMps",
+            "shortDesc": "Manual wind speed for drops in metres per second",
+            "type": "double",
+            "default": 0,
+            "label": "Manual wind speed (m/s)"
+        },
+        {
+            "name": "autodropWindFromDeg",
+            "shortDesc": "Manual wind direction for drops: degrees the wind comes from",
+            "type": "double",
+            "default": 0,
+            "label": "Manual wind from (degrees)"
+        },
+        {
+            "name": "autodropDropZoneRequired",
+            "shortDesc": "Auto Intercept only starts with a drop zone drawn and never drops outside it (simulated vehicles are exempt)",
+            "type": "bool",
+            "default": true,
+            "label": "Require a drop zone"
+        },
+        {
+            "name": "autodropDropZone",
+            "shortDesc": "Drop zone polygon as a JSON array of [latitude, longitude] corners",
+            "type": "string",
+            "default": "[]",
+            "label": "Drop zone"
+        },
+        {
+            "name": "detectionsRecord",
+            "shortDesc": "Record the detection feed with frame capture times next to the telemetry log, for replaying a flight",
+            "type": "bool",
+            "default": false,
+            "label": "Record detections for replay"
+        },
+        {
             "name": "loginAirLink",
             "shortDesc": "AirLink User Name",
             "type": "string",

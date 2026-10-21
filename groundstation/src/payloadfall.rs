@@ -13,6 +13,7 @@ pub struct Release {
     pub velocity: (f64, f64, f64),
     pub heading: f64,
     pub ground: f64,
+    pub air: crate::dropsim::Air,
 }
 
 impl Release {
@@ -20,28 +21,51 @@ impl Release {
         self.above_home.max(self.ground)
     }
 
+    fn dropped(&self) -> crate::dropsim::Release {
+        crate::dropsim::Release {
+            position: crate::dropsim::Point {
+                lat: self.latitude,
+                lon: self.longitude,
+            },
+            altitude_agl_m: self.height() - self.ground,
+            velocity: crate::dropsim::Velocity {
+                north_mps: self.velocity.0,
+                east_mps: self.velocity.1,
+            },
+            climb_mps: self.velocity.2,
+        }
+    }
+
     pub fn falls_for_s(&self) -> f64 {
-        let climb = self.velocity.2;
-        (climb + (climb * climb + 2.0 * GRAVITY_MPS2 * (self.height() - self.ground)).sqrt())
-            / GRAVITY_MPS2
+        crate::dropsim::fall(self.dropped(), self.air).seconds
+    }
+
+    fn flown(&self, t: f64) -> (f64, f64, f64) {
+        let (north, east, climb) = self.velocity;
+        match self.air.payload.terminal_speed_mps().is_finite() {
+            false => (north * t, east * t, climb * t - GRAVITY_MPS2 * t * t / 2.0),
+            true => crate::dropsim::trajectory(self.velocity, self.air)
+                .find(|(at, _)| *at >= t)
+                .map_or((0.0, 0.0, 0.0), |(_, p)| (p[0], p[1], p[2])),
+        }
     }
 
     pub fn at(&self, now_ms: i64) -> Value {
-        let falls_for = self.falls_for_s();
+        let fall = crate::dropsim::fall(self.dropped(), self.air);
+        let falls_for = fall.seconds;
         let t = ((now_ms - self.at_ms) as f64 / 1000.0).clamp(0.0, falls_for);
         let landed = t >= falls_for;
-        let (north, east, climb) = self.velocity;
-        let (latitude, longitude, _) = crate::geo::ned_to_geo(
-            north * t,
-            east * t,
-            0.0,
-            (self.latitude, self.longitude, 0.0),
-        );
+        let (north, east, up) = match landed {
+            true => (fall.north_m, fall.east_m, self.ground - self.height()),
+            false => self.flown(t),
+        };
+        let (latitude, longitude, _) =
+            crate::geo::ned_to_geo(north, east, 0.0, (self.latitude, self.longitude, 0.0));
         json!({
             "bay": self.bay,
             "latitude": latitude,
             "longitude": longitude,
-            "aboveHome": if landed { self.ground } else { self.height() + climb * t - GRAVITY_MPS2 * t * t / 2.0 },
+            "aboveHome": if landed { self.ground } else { self.height() + up },
             "heading": self.heading,
             "tilt": if landed { LYING_DEG } else { LYING_DEG * t / falls_for },
             "landed": landed,
@@ -55,6 +79,7 @@ mod tests {
 
     fn released(above_home: f64, velocity: (f64, f64, f64), ground: f64) -> Release {
         Release {
+            air: crate::dropsim::Air::default(),
             bay: 1,
             at_ms: 1_000,
             latitude: -35.363,

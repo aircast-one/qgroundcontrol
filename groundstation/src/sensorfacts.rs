@@ -8,6 +8,7 @@ pub struct WindFacts {
     pub speed: f64,
     pub vertical_speed: f64,
     pub seen: [bool; 3],
+    pub blowing: Option<crate::dropsim::Velocity>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq)]
@@ -312,6 +313,10 @@ impl WindFacts {
                     ((d.wind_x as f64).powi(2) + (d.wind_y as f64).powi(2)).sqrt() as f32 as f64;
                 self.vertical_speed = d.wind_z as f64;
                 self.seen = [true; 3];
+                self.blowing = Some(crate::dropsim::Velocity {
+                    north_mps: f64::from(d.wind_x),
+                    east_mps: f64::from(d.wind_y),
+                });
                 true
             }
             MavMessage::HIGH_LATENCY(d) => {
@@ -331,6 +336,10 @@ impl WindFacts {
                 self.speed = d.speed as f64;
                 self.vertical_speed = d.speed_z as f64;
                 self.seen = [true; 3];
+                self.blowing = Some(crate::dropsim::blowing(
+                    f64::from(d.speed),
+                    f64::from(d.direction),
+                ));
                 true
             }
             _ => false,

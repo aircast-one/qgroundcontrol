@@ -4,6 +4,14 @@ use crate::geo::{geo_to_ned, ned_to_geo};
 use crate::router::Backend;
 
 const GRAVITY_MPS2: f64 = 9.81;
+const AIR_DENSITY_KGM3: f64 = 1.225;
+const FALL_STEP_S: f64 = 0.005;
+const FALL_LIMIT_S: f64 = 120.0;
+pub const PAYLOAD_MASS_SETTING: &str = "settings.appSettings.autodropPayloadMassG";
+pub const PAYLOAD_DRAG_AREA_SETTING: &str = "settings.appSettings.autodropPayloadDragAreaCm2";
+pub const WIND_MANUAL_SETTING: &str = "settings.appSettings.autodropWindManual";
+pub const WIND_SPEED_SETTING: &str = "settings.appSettings.autodropWindSpeedMps";
+pub const WIND_FROM_SETTING: &str = "settings.appSettings.autodropWindFromDeg";
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Point {
@@ -28,6 +36,182 @@ pub struct Release {
 pub fn fall_time_s(altitude_agl_m: f64, climb_mps: f64) -> f64 {
     let h = altitude_agl_m.max(0.0);
     (climb_mps + (climb_mps * climb_mps + 2.0 * GRAVITY_MPS2 * h).sqrt()) / GRAVITY_MPS2
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Payload {
+    pub mass_kg: f64,
+    pub drag_area_m2: f64,
+}
+
+impl Payload {
+    fn drag_per_mass(self) -> f64 {
+        match self.mass_kg > 0.0 && self.drag_area_m2 > 0.0 {
+            true => 0.5 * AIR_DENSITY_KGM3 * self.drag_area_m2 / self.mass_kg,
+            false => 0.0,
+        }
+    }
+
+    pub fn terminal_speed_mps(self) -> f64 {
+        match self.drag_per_mass() {
+            0.0 => f64::INFINITY,
+            k => (GRAVITY_MPS2 / k).sqrt(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Default)]
+pub struct Air {
+    pub payload: Payload,
+    pub wind: Velocity,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct Fall {
+    pub seconds: f64,
+    pub north_m: f64,
+    pub east_m: f64,
+}
+
+type State = [f64; 6];
+
+fn slope(s: State, k: f64, wind: Velocity) -> State {
+    let rel = [s[3] - wind.north_mps, s[4] - wind.east_mps, s[5]];
+    let speed = rel.iter().map(|v| v * v).sum::<f64>().sqrt();
+    [
+        s[3],
+        s[4],
+        s[5],
+        -k * speed * rel[0],
+        -k * speed * rel[1],
+        -GRAVITY_MPS2 - k * speed * rel[2],
+    ]
+}
+
+fn stepped(s: State, k: f64, wind: Velocity) -> State {
+    let shifted =
+        |from: State, by: State, h: f64| -> State { std::array::from_fn(|i| from[i] + by[i] * h) };
+    let k1 = slope(s, k, wind);
+    let k2 = slope(shifted(s, k1, FALL_STEP_S / 2.0), k, wind);
+    let k3 = slope(shifted(s, k2, FALL_STEP_S / 2.0), k, wind);
+    let k4 = slope(shifted(s, k3, FALL_STEP_S), k, wind);
+    std::array::from_fn(|i| s[i] + FALL_STEP_S / 6.0 * (k1[i] + 2.0 * k2[i] + 2.0 * k3[i] + k4[i]))
+}
+
+pub fn trajectory(
+    velocity: (f64, f64, f64),
+    air: Air,
+) -> impl Iterator<Item = (f64, [f64; 3])> + Clone {
+    let k = air.payload.drag_per_mass();
+    let start: State = [0.0, 0.0, 0.0, velocity.0, velocity.1, velocity.2];
+    std::iter::successors(Some((0.0, start)), move |&(t, s)| {
+        Some((t + FALL_STEP_S, stepped(s, k, air.wind)))
+    })
+    .take((FALL_LIMIT_S / FALL_STEP_S) as usize)
+    .map(|(t, s)| (t, [s[0], s[1], s[2]]))
+}
+
+pub fn fall(release: Release, air: Air) -> Fall {
+    let drop_m = release.altitude_agl_m.max(0.0);
+    if air.payload.drag_per_mass() == 0.0 {
+        let seconds = fall_time_s(drop_m, release.climb_mps);
+        return Fall {
+            seconds,
+            north_m: release.velocity.north_mps * seconds,
+            east_m: release.velocity.east_mps * seconds,
+        };
+    }
+    let path = trajectory(
+        (
+            release.velocity.north_mps,
+            release.velocity.east_mps,
+            release.climb_mps,
+        ),
+        air,
+    );
+    let ((t0, a), (_, b)) = path
+        .clone()
+        .zip(path.skip(1))
+        .find(|(_, (_, b))| b[2] <= -drop_m)
+        .unwrap_or(((0.0, [0.0; 3]), (0.0, [0.0; 3])));
+    let share = match a[2] - b[2] {
+        0.0 => 0.0,
+        dz => (a[2] + drop_m) / dz,
+    };
+    Fall {
+        seconds: t0 + share * FALL_STEP_S,
+        north_m: a[0] + share * (b[0] - a[0]),
+        east_m: a[1] + share * (b[1] - a[1]),
+    }
+}
+
+fn number_setting(path: &str) -> f64 {
+    crate::settingsstore::raw_setting(path)
+        .and_then(|v| v.as_f64())
+        .filter(|v| v.is_finite())
+        .unwrap_or(0.0)
+}
+
+pub fn calibrated_payload() -> Payload {
+    Payload {
+        mass_kg: number_setting(PAYLOAD_MASS_SETTING) / 1000.0,
+        drag_area_m2: number_setting(PAYLOAD_DRAG_AREA_SETTING) / 10_000.0,
+    }
+}
+
+pub fn blowing(speed_mps: f64, from_deg: f64) -> Velocity {
+    let (sin, cos) = from_deg.to_radians().sin_cos();
+    Velocity {
+        north_mps: -speed_mps * cos,
+        east_mps: -speed_mps * sin,
+    }
+}
+
+static WIND: std::sync::Mutex<Velocity> = std::sync::Mutex::new(Velocity {
+    north_mps: 0.0,
+    east_mps: 0.0,
+});
+
+pub fn report_wind(wind: Velocity) {
+    *WIND
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = wind;
+}
+
+static SIM_PAYLOAD: std::sync::Mutex<Option<Payload>> = std::sync::Mutex::new(None);
+
+pub fn set_sim_payload(payload: Payload) {
+    *SIM_PAYLOAD
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(payload);
+}
+
+pub fn falling_air() -> Air {
+    let sim = *SIM_PAYLOAD
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    Air {
+        payload: sim.unwrap_or_else(calibrated_payload),
+        ..air()
+    }
+}
+
+pub fn air() -> Air {
+    let manual = crate::settingsstore::raw_setting(WIND_MANUAL_SETTING)
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+    Air {
+        payload: calibrated_payload(),
+        wind: match manual {
+            true => blowing(
+                number_setting(WIND_SPEED_SETTING),
+                number_setting(WIND_FROM_SETTING),
+            ),
+            false => *WIND
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner),
+        },
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -60,11 +244,16 @@ impl Drop {
 }
 
 pub fn simulate(release: Release, target: Target) -> Drop {
-    let fall_s = fall_time_s(release.altitude_agl_m, release.climb_mps);
+    simulate_in(release, target, air())
+}
+
+pub fn simulate_in(release: Release, target: Target, air: Air) -> Drop {
+    let carried = fall(release, air);
+    let fall_s = carried.seconds;
     let origin = (release.position.lat, release.position.lon, 0.0);
 
-    let impact_north_m = release.velocity.north_mps * fall_s;
-    let impact_east_m = release.velocity.east_mps * fall_s;
+    let impact_north_m = carried.north_m;
+    let impact_east_m = carried.east_m;
     let (impact_lat, impact_lon, _) = ned_to_geo(impact_north_m, impact_east_m, 0.0, origin);
 
     let (target_north0_m, target_east0_m, _) =
@@ -127,27 +316,35 @@ impl Lead {
 }
 
 pub fn lead(release: Release, target: Target) -> Lead {
-    let fall_s = fall_time_s(release.altitude_agl_m, release.climb_mps);
+    lead_in(release, target, air())
+}
+
+pub fn lead_in(release: Release, target: Target, air: Air) -> Lead {
+    let carried = fall(release, air);
+    let fall_s = carried.seconds;
     let origin = (release.position.lat, release.position.lon, 0.0);
 
     let (target_north0_m, target_east0_m, _) =
         geo_to_ned(target.position.lat, target.position.lon, 0.0, origin);
-    let d = (target_north0_m, target_east0_m);
     let v_d = (release.velocity.north_mps, release.velocity.east_mps);
     let v_t = (target.velocity.north_mps, target.velocity.east_mps);
     let w = (v_t.0 - v_d.0, v_t.1 - v_d.1);
+    let gap = (
+        target_north0_m + v_t.0 * fall_s - carried.north_m,
+        target_east0_m + v_t.1 * fall_s - carried.east_m,
+    );
     let w_dot_w = w.0 * w.0 + w.1 * w.1;
-    let d_dot_w = d.0 * w.0 + d.1 * w.1;
-    let s = if w_dot_w > 1e-9 {
-        -d_dot_w / w_dot_w
-    } else {
-        0.0
+    let release_in_s = match w_dot_w > 1e-9 {
+        true => -(gap.0 * w.0 + gap.1 * w.1) / w_dot_w,
+        false => -fall_s,
     };
-
-    let release_in_s = s - fall_s;
-    let miss = (d.0 + w.0 * s, d.1 + w.1 * s);
+    let s = release_in_s + fall_s;
+    let miss = (gap.0 + w.0 * release_in_s, gap.1 + w.1 * release_in_s);
     let release_offset = (v_d.0 * release_in_s, v_d.1 * release_in_s);
-    let impact_offset = (v_d.0 * s, v_d.1 * s);
+    let impact_offset = (
+        release_offset.0 + carried.north_m,
+        release_offset.1 + carried.east_m,
+    );
     let target_offset = (target_north0_m + v_t.0 * s, target_east0_m + v_t.1 * s);
 
     let point = |offset: (f64, f64)| {
@@ -710,5 +907,117 @@ mod tests {
             (answer["missMeters"].as_f64().unwrap() - 10.0).abs() < 0.01,
             "{answer}"
         );
+    }
+
+    fn released(altitude_agl_m: f64, north_mps: f64, climb_mps: f64) -> Release {
+        Release {
+            position: Point {
+                lat: 47.0,
+                lon: 8.0,
+            },
+            altitude_agl_m,
+            velocity: Velocity {
+                north_mps,
+                east_mps: 0.0,
+            },
+            climb_mps,
+        }
+    }
+
+    fn payload(mass_kg: f64, drag_area_m2: f64) -> Air {
+        Air {
+            payload: Payload {
+                mass_kg,
+                drag_area_m2,
+            },
+            wind: Velocity::default(),
+        }
+    }
+
+    #[test]
+    fn the_integrator_with_next_to_no_drag_lands_where_the_closed_form_does() {
+        let release = released(40.0, 10.0, 1.5);
+        let integrated = fall(release, payload(1000.0, 1e-6));
+        let closed = fall(release, Air::default());
+        assert!(
+            (integrated.north_m - closed.north_m).abs() < 0.01
+                && (integrated.seconds - closed.seconds).abs() < 0.001,
+            "{integrated:?} vs {closed:?}"
+        );
+    }
+
+    #[test]
+    fn a_vertical_drop_with_drag_matches_the_exact_quadratic_drag_solution() {
+        let air = payload(0.5, 0.01);
+        let terminal = air.payload.terminal_speed_mps();
+        let height = 60.0;
+        let exact = terminal / GRAVITY_MPS2
+            * (height * GRAVITY_MPS2 / (terminal * terminal))
+                .exp()
+                .acosh();
+        let integrated = fall(released(height, 0.0, 0.0), air).seconds;
+        assert!(
+            (integrated - exact).abs() < 0.002,
+            "terminal {terminal:.1} m/s: integrated {integrated:.4} s, exact {exact:.4} s"
+        );
+        assert!(
+            integrated > fall_time_s(height, 0.0),
+            "drag lengthens the fall"
+        );
+    }
+
+    #[test]
+    fn drag_shortens_how_far_a_moving_release_carries() {
+        let release = released(40.0, 10.0, 0.0);
+        let dragged = fall(release, payload(0.5, 0.01));
+        assert!(
+            dragged.north_m < 10.0 * fall_time_s(40.0, 0.0) - 1.0,
+            "{dragged:?}"
+        );
+    }
+
+    #[test]
+    fn wind_carries_a_light_payload_with_it_and_barely_moves_a_dense_one() {
+        let windy = |air: Air| Air {
+            wind: blowing(5.0, 270.0),
+            ..air
+        };
+        let release = released(40.0, 0.0, 0.0);
+        let light = windy(payload(0.05, 0.05));
+        let drifted = fall(release, light);
+        assert!(
+            drifted.east_m > 0.8 * 5.0 * drifted.seconds,
+            "a payload with a {:.1} m/s terminal speed rides a 5 m/s west wind east: {drifted:?}",
+            light.payload.terminal_speed_mps()
+        );
+        let dense = fall(release, windy(payload(5.0, 0.002)));
+        assert!(
+            dense.east_m > 0.0 && dense.east_m < 0.1 * 5.0 * dense.seconds,
+            "{dense:?}"
+        );
+    }
+
+    #[test]
+    fn a_lead_with_drag_releases_when_the_carried_impact_meets_the_target() {
+        let release = released(40.0, 10.0, 0.0);
+        let air = payload(0.5, 0.01);
+        let target = Target {
+            position: offset((47.0, 8.0), 120.0, 0.0),
+            velocity: Velocity {
+                north_mps: 5.0,
+                east_mps: 0.0,
+            },
+        };
+        let lead = lead_in(release, target, air);
+        let later = Release {
+            position: offset((47.0, 8.0), 10.0 * lead.release_in_s, 0.0),
+            ..release
+        };
+        let moved = Target {
+            position: offset((47.0, 8.0), 120.0 + 5.0 * lead.release_in_s, 0.0),
+            ..target
+        };
+        assert!(lead.miss_m < 0.01, "{lead:?}");
+        assert!(simulate_in(later, moved, air).miss_m < 0.05);
     }
 }

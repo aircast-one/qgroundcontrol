@@ -265,16 +265,24 @@ pub fn plan(
     target: Target,
     roads: Option<&crate::roads::Network>,
 ) -> Plan {
-    let fall = dropsim::fall_time_s(release.altitude_agl_m, release.climb_mps);
+    let carried = dropsim::fall(release, dropsim::air());
+    let fall = carried.seconds;
     let origin = (release.position.lat, release.position.lon, 0.0);
     let (north, east, _) = geo_to_ned(target.position.lat, target.position.lon, 0.0, origin);
     let course = course(target, roads, PLAN_HORIZON_S + fall);
+    let dropped_from = |release_in_s: f64| {
+        (
+            release.velocity.north_mps * release_in_s + carried.north_m,
+            release.velocity.east_mps * release_in_s + carried.east_m,
+        )
+    };
     let at = |release_in_s: f64| {
         let flown = release_in_s + fall;
         let there = sampled(&course, flown);
+        let landed = dropped_from(release_in_s);
         let miss = (
-            north + there.north_m - release.velocity.north_mps * flown,
-            east + there.east_m - release.velocity.east_mps * flown,
+            north + there.north_m - landed.0,
+            east + there.east_m - landed.1,
         );
         (release_in_s, miss, there)
     };
@@ -294,10 +302,8 @@ pub fn plan(
     let (along_m, across_m, moving) = framed(miss_n, miss_e, there.heading_deg);
     let (lat, lon, _) = ned_to_geo(north + there.north_m, east + there.east_m, 0.0, origin);
     let flown = release_in_s + fall;
-    let drop_offset = (
-        north - release.velocity.north_mps * flown,
-        east - release.velocity.east_mps * flown,
-    );
+    let landed = dropped_from(release_in_s);
+    let drop_offset = (north - landed.0, east - landed.1);
     let junction = there.junctions > 0
         && (release_in_s > BRANCHES_WITHIN_S
             || !every_branch_hits(target, roads, flown, drop_offset));
@@ -338,7 +344,7 @@ pub fn lead_now(
     target: Target,
     roads: Option<&crate::roads::Network>,
 ) -> Point {
-    let fall = dropsim::fall_time_s(release.altitude_agl_m, release.climb_mps);
+    let fall = dropsim::fall(release, dropsim::air()).seconds;
     let there = sampled(&course(target, roads, fall), fall);
     let (lat, lon, _) = ned_to_geo(
         there.north_m,
