@@ -1,2 +1,4 @@
 *.pt
 out/
+*.onnx
+.venv-export/

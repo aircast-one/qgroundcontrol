@@ -7,6 +7,10 @@ import torch
 from ultralytics import YOLO
 
 PINNED = {
+    "visdrone-yolov8s.pt": (
+        "https://huggingface.co/dronefreak/visdrone-yolov8s/resolve/main/best.pt",
+        "29dae68ac5028cedac1f396333ac89cd9c74232691155243d70d9a1c16cdb24e",
+    ),
     "visdrone-yolo11m.pt": (
         "https://huggingface.co/dronefreak/visdrone-yolo11m/resolve/main/best.pt",
         "d29ca86813dbaf7bd1d9d0c1387ce39cc50840635de2696bc4f25dc77ca3769d",
