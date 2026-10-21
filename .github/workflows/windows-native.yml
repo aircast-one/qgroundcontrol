@@ -112,8 +112,25 @@ jobs:
           Compress-Archive -Path (Join-Path $env:APP_DIR "*") -DestinationPath "out/AircastQGCNative-$env:SHORT-windows-$env:ARCH.zip"
           Get-ChildItem out
 
+      - name: NSIS
+        uses: ./.github/actions/install-dependencies  # zizmor: ignore[self-repository]
+        with:
+          gstreamer: 'false'
+          nsis: 'true'
+
+      - name: Installer
+        env:
+          APP_DIR: ${{ steps.build.outputs.dir }}
+        run: |
+          $setup = "out\AircastQGCNative-$env:SHORT-windows-$env:ARCH-setup.exe"
+          & "${env:ProgramFiles(x86)}\NSIS\makensis.exe" /NOCD /V2 "/DARCH=$env:ARCH" "/DVERSION=$($env:SHORT.TrimStart('v'))" "/DPAYLOAD=$env:APP_DIR" "/DOUTFILE=$setup" windows\installer.nsi
+          if ($LASTEXITCODE -ne 0) { throw "makensis failed ($LASTEXITCODE)" }
+          Get-ChildItem out
+
       - uses: actions/upload-artifact@v7
         with:
           name: qgc-windows-native-${{ matrix.arch }}
-          path: out/*.zip
+          path: |
+            out/*.zip
+            out/*-setup.exe
           if-no-files-found: error
