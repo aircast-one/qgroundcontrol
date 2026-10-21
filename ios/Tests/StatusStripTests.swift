@@ -2,9 +2,9 @@ import XCTest
 @testable import Aircast
 
 final class RcSignalTests: XCTestCase {
-    private func state(rcSupported: Bool = true, rcSignal: String = "72", rcSignalText: String = #""72%""#) -> FlyState? {
+    private func state(rcSupported: Bool = true, rcRequired: Bool = true, rcSignal: String = "72", rcSignalText: String = #""72%""#) -> FlyState? {
         flyState(JSON.parse(
-            #"{"kind":"object","class":"FlyState","connected":true,"contactLost":false,"state":"disarmed","stateText":"Disarmed","staleNotice":"","mode":"Stabilize","rcSupported":\#(rcSupported),"rcSignal":\#(rcSignal),"rcSignalText":\#(rcSignalText)}"#
+            #"{"kind":"object","class":"FlyState","connected":true,"contactLost":false,"state":"disarmed","stateText":"Disarmed","staleNotice":"","mode":"Stabilize","rcSupported":\#(rcSupported),"rcRequired":\#(rcRequired),"rcSignal":\#(rcSignal),"rcSignalText":\#(rcSignalText)}"#
         ))
     }
 
@@ -22,6 +22,20 @@ final class RcSignalTests: XCTestCase {
         let cell = try XCTUnwrap(rcCell(state()))
         XCTAssertEqual(cell.text, "72% RC")
         XCTAssertEqual(cell.lost, false)
+    }
+
+    func testAVehicleSetUpToFlyWithoutAReceiverShowsNoRcAsInformationNotADeadLink() throws {
+        let cell = try XCTUnwrap(rcCell(state(rcRequired: false, rcSignal: "0", rcSignalText: #""No signal""#)))
+        XCTAssertEqual(cell.text, "No RC")
+        XCTAssertEqual(cell.lost, false)
+    }
+
+    func testAReceiverThatIsOptionalStillShowsItsReadingWhenItReportsOne() {
+        XCTAssertEqual(rcCell(state(rcRequired: false)), RcCell(text: "72% RC", lost: false))
+    }
+
+    func testACoreThatDoesNotSayWhetherRcIsRequiredIsReadAsRequiringIt() {
+        XCTAssertEqual(flyState(JSON.parse(#"{"kind":"object","class":"FlyState","rcSupported":true,"rcSignal":0,"rcSignalText":"No signal"}"#))?.rcRequired, true)
     }
 
     func testAVehicleWithNoRadioNeverShowsTheCell() {

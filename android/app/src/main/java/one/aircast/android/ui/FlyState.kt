@@ -28,6 +28,7 @@ internal data class FlyState(
     val fault: Boolean = false,
     val canArm: Boolean = true,
     val readyToFly: Boolean = true,
+    val rcRequired: Boolean = true,
 )
 
 internal enum class ChipTone { Error, Neutral, Warning, Success }
@@ -118,6 +119,7 @@ internal fun flyState(view: JSONObject?): FlyState? {
         staleNotice = view.optText("staleNotice"),
         mode = view.optText("mode"),
         rcSupported = view.optBoolean("rcSupported"),
+        rcRequired = view.optBoolean("rcRequired", true),
         rcSignalText = view.optText("rcSignalText"),
         rcSignal = if (view.isNull("rcSignal")) null else view.optInt("rcSignal"),
         rcOverride = if (view.isNull("rcOverride")) null else view.optBoolean("rcOverride"),

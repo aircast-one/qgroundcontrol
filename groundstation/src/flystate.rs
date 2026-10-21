@@ -1,6 +1,6 @@
 use serde_json::{Value, json};
 
-use crate::read::{flag, text};
+use crate::read::{flag, text, value_number};
 use crate::router::Backend;
 
 pub const DEPS: &[&str] = &[
@@ -16,6 +16,11 @@ pub const DEPS: &[&str] = &[
     "planFly.missionController.currentMissionIndex",
     "vehicle.rcRSSI",
     "vehicle.rcChannelOverrideActive",
+    "vehicle.px4Firmware",
+    "vehicle.apmFirmware",
+    "vehicle.parameterManager.parametersReady",
+    PX4_RC_IN_MODE,
+    APM_RC_OPTIONS,
     "vehicle.radioStatus.lrssi",
     "vehicle.radioStatus.rrssi",
     "vehicle.radioStatus.lNoise",
@@ -142,6 +147,33 @@ pub fn state_of(
     }
 }
 
+const PX4_RC_IN_MODE: &str = "vehicle.parameterManager.getParameter(-1,COM_RC_IN_MODE).rawValue";
+const APM_RC_OPTIONS: &str = "vehicle.parameterManager.getParameter(-1,RC_OPTIONS).rawValue";
+const PX4_STICK_INPUT_DISABLED: i64 = 4;
+const APM_IGNORE_RC_RECEIVER: i64 = 1;
+
+fn rc_required(px4_rc_in_mode: Option<i64>, apm_rc_options: Option<i64>) -> bool {
+    let px4_without_rc = px4_rc_in_mode.is_some_and(|mode| {
+        [crate::setup::RC_IN_MODE_NO_RC, PX4_STICK_INPUT_DISABLED].contains(&mode)
+    });
+    let apm_without_rc =
+        apm_rc_options.is_some_and(|options| options & APM_IGNORE_RC_RECEIVER != 0);
+    !(px4_without_rc || apm_without_rc)
+}
+
+fn vehicle_rc_required(backend: &dyn Backend, vehicle: &Value) -> bool {
+    let parameter = |firmware: &str, path: &str| {
+        flag(vehicle, firmware)
+            .then(|| value_number(&backend.value(path)))
+            .flatten()
+            .map(|value| value as i64)
+    };
+    rc_required(
+        parameter("px4Firmware", PX4_RC_IN_MODE),
+        parameter("apmFirmware", APM_RC_OPTIONS),
+    )
+}
+
 fn rc_signal(vehicle: &Value) -> Option<i64> {
     crate::read::fact_property(vehicle, "rcRSSI")
         .and_then(|fact| fact.get("value"))
@@ -180,7 +212,7 @@ fn telemetry(radio: &Value) -> Value {
 pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
     let vehicle = backend.value_fields(
         "vehicle",
-        "armed,flying,landing,flightMode,rcRSSI,rcChannelOverrideActive,payloadSetup",
+        "armed,flying,landing,flightMode,rcRSSI,rcChannelOverrideActive,payloadSetup,px4Firmware,apmFirmware",
     );
     let radio = backend.value_fields(
         "vehicle.radioStatus",
@@ -250,6 +282,7 @@ pub fn fly_state_view(backend: &dyn Backend, _args: &[String]) -> Value {
         "mode": text(&vehicle, "flightMode"),
         "flyingToSequence": flying_to(backend),
         "rcSupported": flag(&backend.value_fields("vehicle.supports", "radio"), "radio"),
+        "rcRequired": vehicle_rc_required(backend, &vehicle),
         "rcSignal": rc_signal(&vehicle),
         "rcSignalText": rc_signal(&vehicle).map(|percent| match percent {
             0 => "No signal".to_string(),
@@ -469,6 +502,7 @@ mod tests {
                 "vehicle.supports" => self.vehicle.get("supports").cloned().unwrap_or_else(|| json!({ "kind": "null" })).to_string(),
                 "planFly.missionController" => json!({ "kind": "object", "currentMissionIndex": self.flying_to }).to_string(),
                 "vehicle.vehicleLinkManager" => json!({ "kind": "object", "communicationLost": self.lost, "communicationLostEnabled": true }).to_string(),
+                parameter if parameter.starts_with("vehicle.parameterManager.getParameter(-1,") => self.vehicle.get("params").and_then(|params| params.get(parameter.trim_start_matches("vehicle.parameterManager.getParameter(-1,").trim_end_matches(").rawValue"))).map(|value| json!({ "kind": "value", "value": value })).unwrap_or_else(|| json!({ "kind": "null" })).to_string(),
                 battery if battery.starts_with("vehicle.batteries.") => self.vehicle["batteries"].get(&battery["vehicle.batteries.".len()..]).cloned().unwrap_or_else(|| json!({ "kind": "null" })).to_string(),
                 _ => json!({ "kind": "null" }).to_string(),
             }
@@ -804,6 +838,62 @@ mod tests {
             "255 is QGC's sentinel for a vehicle that has not reported a strength at all, which is the one case there is nothing to draw"
         );
         assert_eq!(at(255)["rcSignalText"], Value::Null);
+    }
+
+    #[test]
+    fn rc_is_required_unless_the_vehicles_own_parameters_fly_it_without_a_receiver() {
+        let required = |firmware: &str, params: Value| {
+            let mut vehicle = aloft(false, false, false);
+            vehicle[firmware] = json!(true);
+            vehicle["params"] = params;
+            read(vehicle, false)["rcRequired"].clone()
+        };
+        let px4 = |mode: i64| required("px4Firmware", json!({ "COM_RC_IN_MODE": mode }));
+        assert_eq!(
+            (px4(1), px4(4)),
+            (json!(false), json!(false)),
+            "COM_RC_IN_MODE 1 takes sticks over MAVLink only and 4 ignores every stick source, so a missing receiver is the setup, not a fault"
+        );
+        assert!(
+            [0, 2, 3, 5, 6, 7, 8]
+                .iter()
+                .all(|mode| px4(*mode) == json!(true)),
+            "every other mode reads the receiver, alone or alongside MAVLink"
+        );
+        let apm = |options: i64| required("apmFirmware", json!({ "RC_OPTIONS": options }));
+        assert_eq!(
+            (apm(1), apm(1 | 32)),
+            (json!(false), json!(false)),
+            "RC_OPTIONS bit 0 is Ignore RC Receiver, whatever else is set beside it"
+        );
+        assert_eq!((apm(0), apm(2 | 32)), (json!(true), json!(true)));
+        assert_eq!(
+            (
+                required("px4Firmware", json!({})),
+                required("apmFirmware", json!({}))
+            ),
+            (json!(true), json!(true)),
+            "parameters not loaded yet are not evidence the receiver is optional"
+        );
+        assert_eq!(
+            (
+                required("apmFirmware", json!({ "COM_RC_IN_MODE": 1 })),
+                required("px4Firmware", json!({ "RC_OPTIONS": 1 }))
+            ),
+            (json!(true), json!(true)),
+            "only the parameter of the firmware the vehicle runs counts"
+        );
+        assert_eq!(
+            read(json!({ "kind": "null" }), false)["rcRequired"],
+            json!(true),
+            "with no vehicle the safe answer is that RC is needed"
+        );
+        assert!(
+            [PX4_RC_IN_MODE, APM_RC_OPTIONS]
+                .iter()
+                .all(|path| deps().iter().any(|dep| dep == path)),
+            "the view wakes when either parameter changes"
+        );
     }
 
     #[test]

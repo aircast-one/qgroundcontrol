@@ -30,11 +30,11 @@ const json = (text: string): Json => parseJson(text) ?? {};
 const toDoubleOrNaN = (text: string): number => (/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(text.trim()) ? Number(text) : Number.NaN);
 
 describe('RcSignalTest', () => {
-  const state = ({ rcSupported = true, rcSignal = '72', rcSignalText = '"72%"' }: { rcSupported?: boolean; rcSignal?: string; rcSignalText?: string } = {}) =>
+  const state = ({ rcSupported = true, rcRequired = true, rcSignal = '72', rcSignalText = '"72%"' }: { rcSupported?: boolean; rcRequired?: boolean; rcSignal?: string; rcSignalText?: string } = {}) =>
     flyState(
       json(`{"kind":"object","class":"FlyState","connected":true,"contactLost":false,
          "state":"disarmed","stateText":"Disarmed","staleNotice":"","mode":"Stabilize",
-         "rcSupported":${rcSupported},"rcSignal":${rcSignal},"rcSignalText":${rcSignalText}}`),
+         "rcSupported":${rcSupported},"rcRequired":${rcRequired},"rcSignal":${rcSignal},"rcSignalText":${rcSignalText}}`),
     );
 
   it('the sentinel the firmware sends for unknown reaches this head as no text at all', () => {
@@ -53,6 +53,21 @@ describe('RcSignalTest', () => {
 
     expect(cell?.text).toBe('72% RC');
     expect(cell?.lost).toBe(false);
+  });
+
+  it('a vehicle set up to fly without a receiver shows no RC as information, not a dead link', () => {
+    const cell = rcCell(state({ rcRequired: false, rcSignal: '0', rcSignalText: '"No signal"' }));
+
+    expect(cell?.text).toBe('No RC');
+    expect(cell?.lost).toBe(false);
+  });
+
+  it('a receiver that is optional still shows its reading when it reports one', () => {
+    expect(rcCell(state({ rcRequired: false }))).toEqual({ text: '72% RC', lost: false });
+  });
+
+  it('a core that does not say whether RC is required is read as requiring it', () => {
+    expect(flyState(json('{"kind":"object","class":"FlyState","rcSupported":true,"rcSignal":0,"rcSignalText":"No signal"}'))?.rcRequired).toBe(true);
   });
 
   it('a vehicle with no radio never shows the cell', () => {

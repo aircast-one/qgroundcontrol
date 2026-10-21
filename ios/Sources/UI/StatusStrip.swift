@@ -43,6 +43,7 @@ struct RcCell: Equatable {
 
 func rcCell(_ state: FlyState?) -> RcCell? {
     guard let state, state.rcSupported, !state.rcSignalText.isBlank else { return nil }
+    if state.rcSignal == 0 && !state.rcRequired { return RcCell(text: "No RC", lost: false) }
     return RcCell(text: "\(state.rcSignalText) RC", lost: state.rcSignal == 0)
 }
 

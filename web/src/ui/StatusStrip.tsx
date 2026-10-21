@@ -102,7 +102,11 @@ export const batteryReadings = (view: Json | null): readonly BatteryReading[] =>
 export type RcCell = { text: string; lost: boolean };
 
 export const rcCell = (state: FlyState | null): RcCell | null =>
-  state === null || !state.rcSupported || state.rcSignalText.trim() === '' ? null : { text: `${state.rcSignalText} RC`, lost: state.rcSignal === 0 };
+  state === null || !state.rcSupported || state.rcSignalText.trim() === ''
+    ? null
+    : state.rcSignal === 0 && !state.rcRequired
+      ? { text: 'No RC', lost: false }
+      : { text: `${state.rcSignalText} RC`, lost: state.rcSignal === 0 };
 
 export type FixLevel = { readonly name: 'None' | 'TwoD' | 'Good'; readonly ordinal: number };
 export const FixLevel = {

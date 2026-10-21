@@ -9,13 +9,14 @@ class RcSignalTest {
 
     private fun state(
         rcSupported: Boolean = true,
+        rcRequired: Boolean = true,
         rcSignal: String = "72",
         rcSignalText: String = "\"72%\"",
     ) = flyState(
         JSONObject(
             """{"kind":"object","class":"FlyState","connected":true,"contactLost":false,
                "state":"disarmed","stateText":"Disarmed","staleNotice":"","mode":"Stabilize",
-               "rcSupported":$rcSupported,"rcSignal":$rcSignal,"rcSignalText":$rcSignalText}""",
+               "rcSupported":$rcSupported,"rcRequired":$rcRequired,"rcSignal":$rcSignal,"rcSignalText":$rcSignalText}""",
         ),
     )
 
@@ -38,6 +39,24 @@ class RcSignalTest {
 
         assertEquals("72% RC", cell.text)
         assertEquals(false, cell.lost)
+    }
+
+    @Test
+    fun `a vehicle set up to fly without a receiver shows no RC as information, not a dead link`() {
+        val cell = rcCell(state(rcRequired = false, rcSignal = "0", rcSignalText = "\"No signal\""))!!
+
+        assertEquals("No RC", cell.text)
+        assertEquals(false, cell.lost)
+    }
+
+    @Test
+    fun `a receiver that is optional still shows its reading when it reports one`() {
+        assertEquals(RcCell("72% RC", false), rcCell(state(rcRequired = false)))
+    }
+
+    @Test
+    fun `a core that does not say whether RC is required is read as requiring it`() {
+        assertEquals(true, flyState(JSONObject("""{"kind":"object","class":"FlyState","rcSupported":true,"rcSignal":0,"rcSignalText":"No signal"}"""))?.rcRequired)
     }
 
     @Test

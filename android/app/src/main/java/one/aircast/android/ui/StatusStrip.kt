@@ -106,6 +106,7 @@ internal data class RcCell(val text: String, val lost: Boolean)
 
 internal fun rcCell(state: FlyState?): RcCell? {
     if (state == null || !state.rcSupported || state.rcSignalText.isBlank()) return null
+    if (state.rcSignal == 0 && !state.rcRequired) return RcCell("No RC", false)
     return RcCell("${state.rcSignalText} RC", state.rcSignal == 0)
 }
 

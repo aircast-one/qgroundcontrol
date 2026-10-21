@@ -15,6 +15,7 @@ export type FlyState = {
   staleNotice: string;
   mode: string;
   rcSupported: boolean;
+  rcRequired: boolean;
   rcSignalText: string;
   rcSignal: number | null;
   rcOverride: boolean | null;
@@ -27,7 +28,8 @@ export type FlyState = {
   readyToFly: boolean;
 };
 
-export const FlyState = (fields: Omit<FlyState, 'summaryDetail' | 'summaryProblem' | 'nominal' | 'fault' | 'canArm' | 'readyToFly'> & Partial<Pick<FlyState, 'summaryDetail' | 'summaryProblem' | 'nominal' | 'fault' | 'canArm' | 'readyToFly'>>): FlyState => ({
+export const FlyState = (fields: Omit<FlyState, 'summaryDetail' | 'summaryProblem' | 'nominal' | 'fault' | 'canArm' | 'readyToFly' | 'rcRequired'> & Partial<Pick<FlyState, 'summaryDetail' | 'summaryProblem' | 'nominal' | 'fault' | 'canArm' | 'readyToFly' | 'rcRequired'>>): FlyState => ({
+  rcRequired: true,
   summaryDetail: '',
   summaryProblem: null,
   nominal: true,
@@ -152,6 +154,7 @@ export const flyState = (view: Json | null): FlyState | null => {
     staleNotice: optText(view, 'staleNotice'),
     mode: optText(view, 'mode'),
     rcSupported: optBoolean(view, 'rcSupported'),
+    rcRequired: optBoolean(view, 'rcRequired', true),
     rcSignalText: optText(view, 'rcSignalText'),
     rcSignal: intOrNull(view, 'rcSignal'),
     rcOverride: booleanOrNull(view, 'rcOverride'),

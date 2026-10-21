@@ -21,6 +21,7 @@ struct FlyState: Equatable {
     var fault: Bool = false
     var canArm: Bool = true
     var readyToFly: Bool = true
+    var rcRequired: Bool = true
 }
 
 enum ChipTone { case Error, Neutral, Warning, Success }
@@ -126,7 +127,8 @@ func flyState(_ view: JSON?) -> FlyState? {
         nominal: view["nominal"].bool(true),
         fault: view["fault"].bool,
         canArm: view["canArm"].bool(true),
-        readyToFly: view["readyToFly"].bool(true)
+        readyToFly: view["readyToFly"].bool(true),
+        rcRequired: view["rcRequired"].bool(true)
     )
 }
 
