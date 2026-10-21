@@ -3,7 +3,11 @@ project(qgc_video LANGUAGES C CXX)
 
 set(QGC_ROOT "${CMAKE_CURRENT_LIST_DIR}/../..")
 list(APPEND CMAKE_MODULE_PATH "${QGC_ROOT}/cmake" "${QGC_ROOT}/cmake/modules" "${QGC_ROOT}/cmake/find-modules")
-set(CPM_SOURCE_CACHE "${QGC_ROOT}/.cache/CPM" CACHE PATH "CPM source cache directory")
+if(DEFINED ENV{CPM_SOURCE_CACHE} AND NOT "$ENV{CPM_SOURCE_CACHE}" STREQUAL "")
+    set(CPM_SOURCE_CACHE "$ENV{CPM_SOURCE_CACHE}" CACHE PATH "CPM source cache directory")
+else()
+    set(CPM_SOURCE_CACHE "${QGC_ROOT}/.cache/CPM" CACHE PATH "CPM source cache directory")
+endif()
 include(CPM)
 
 file(READ "${QGC_ROOT}/.github/build-config.json" QGC_BUILD_CONFIG_CONTENT)
