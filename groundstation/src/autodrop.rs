@@ -37,6 +37,7 @@ pub const CAR_WIDTH_M: f64 = 1.8;
 pub const RELEASE_MARGIN_M: f64 = 0.5;
 pub const TURNED_DEG: f64 = 15.0;
 pub const FRESH_SIGHTING_MS: u64 = 300;
+pub const MAX_FRESH_SIGHTING_MS: u64 = 700;
 pub const TURN_WINDOW_MS: u64 = 2_000;
 const PLAN_STEP_S: f64 = 0.05;
 const PLAN_HORIZON_S: f64 = 60.0;
@@ -382,8 +383,14 @@ fn on_car(along_m: f64, across_m: f64, miss_m: f64, moving: bool, margin_m: f64)
     }
 }
 
-pub fn sighted(age_ms: Option<u64>) -> bool {
-    age_ms.is_some_and(|age| age <= FRESH_SIGHTING_MS)
+pub fn sighting_window_ms(interval_ms: Option<u64>) -> u64 {
+    interval_ms.map_or(FRESH_SIGHTING_MS, |interval| {
+        (interval * 5 / 2).clamp(FRESH_SIGHTING_MS, MAX_FRESH_SIGHTING_MS)
+    })
+}
+
+pub fn sighted(sighting: Option<(u64, Option<u64>)>) -> bool {
+    sighting.is_some_and(|(age, interval)| age <= sighting_window_ms(interval))
 }
 
 pub fn releasable(plan: Plan, turned_deg: f64) -> bool {
@@ -650,6 +657,20 @@ fn target_from(
     }
 }
 
+pub(crate) fn start_order(self_id: Option<u8>, tracker_locked: bool) -> Vec<TargetSource> {
+    match tracker_locked {
+        true => vec![TargetSource::Tracked],
+        false => TargetSource::fallback_order(self_id).collect(),
+    }
+}
+
+fn tracker_locked() -> bool {
+    crate::devicetrack::locked()
+        || crate::hub::lock().active().is_some_and(|vehicle| {
+            vehicle.camera_tracking_geo.is_some() || vehicle.camera_tracking_image.is_some()
+        })
+}
+
 pub fn run(backend: &dyn Backend, args: &str) -> Value {
     let given = serde_json::from_str::<Value>(args).unwrap_or(Value::Null);
     let Some(id) = vehicle_id(backend) else {
@@ -681,12 +702,16 @@ pub fn run(backend: &dyn Backend, args: &str) -> Value {
         }
     } else {
         let self_id = id.as_u64().and_then(|n| u8::try_from(n).ok());
-        let Some(resolved) = TargetSource::fallback_order(self_id).find_map(|source| {
+        let locked = tracker_locked();
+        let Some(resolved) = start_order(self_id, locked).into_iter().find_map(|source| {
             target_from(backend, source, position, altitude_agl_m)
                 .ok()
                 .map(|target| (source, target))
         }) else {
-            return json!({ "ok": false, "reason": "nothing tracked by the camera, and no marked target, other vehicle, or gimbal to aim with" });
+            return json!({ "ok": false, "reason": match locked {
+                true => "The tracker has a lock but hasn't placed the target on the ground yet. Try again in a moment.",
+                false => "nothing tracked by the camera, and no marked target, other vehicle, or gimbal to aim with",
+            } });
         };
         resolved
     };
@@ -1250,12 +1275,49 @@ mod tests {
     }
 
     #[test]
-    fn a_release_needs_the_target_seen_in_the_last_300_ms() {
-        assert!(sighted(Some(0)) && sighted(Some(FRESH_SIGHTING_MS)));
+    fn while_a_tracker_holds_a_lock_a_run_only_ever_chases_what_it_tracks() {
+        let _fixes = gpstarget::TEST_FIXES
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        gpstarget::refresh(std::collections::BTreeMap::from([(
+            129,
+            gpstarget::Fix {
+                position: Point {
+                    lat: 47.4,
+                    lon: 8.5,
+                },
+                ground_speed_mps: 5.0,
+                heading_deg: 0.0,
+                on_ground: true,
+            },
+        )]));
+        assert_eq!(start_order(Some(7), true), vec![TargetSource::Tracked]);
         assert!(
-            !sighted(Some(FRESH_SIGHTING_MS + 1)),
+            start_order(Some(7), false).contains(&TargetSource::Vehicle(129)),
+            "without a lock the other vehicle stays a fallback"
+        );
+    }
+
+    #[test]
+    fn a_release_needs_the_target_seen_in_the_last_300_ms() {
+        assert!(sighted(Some((0, None))) && sighted(Some((FRESH_SIGHTING_MS, None))));
+        assert!(
+            !sighted(Some((FRESH_SIGHTING_MS + 1, Some(100)))),
             "a 1.5 s coast is a prediction, not a sighting"
         );
         assert!(!sighted(None), "never seen");
+        assert!(
+            sighted(Some((600, Some(250)))) && !sighted(Some((650, Some(250)))),
+            "a 4 frame-a-second detector gets 2.5 frames of slack, 625 ms"
+        );
+        assert!(
+            sighted(Some((300, Some(100)))) && !sighted(Some((320, Some(100)))),
+            "a 10 frame-a-second detector keeps the 300 ms floor"
+        );
+        assert_eq!(
+            sighting_window_ms(Some(1_000)),
+            MAX_FRESH_SIGHTING_MS,
+            "a very slow detector never gets more than 700 ms"
+        );
     }
 }

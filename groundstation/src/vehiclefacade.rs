@@ -887,7 +887,14 @@ fn known_of(v: &crate::hub::Vehicle) -> Known {
         };
         match &v.autodrop {
             Some(crate::autodrop::State::Waiting { source, .. }) => tried(*source),
-            _ => crate::autodrop::TargetSource::fallback_order(Some(v.id)).find_map(tried),
+            _ => crate::autodrop::start_order(
+                Some(v.id),
+                crate::devicetrack::locked()
+                    || v.camera_tracking_geo.is_some()
+                    || v.camera_tracking_image.is_some(),
+            )
+            .into_iter()
+            .find_map(tried),
         }
     });
     let drop_target = picked.map(|(_, target)| target);

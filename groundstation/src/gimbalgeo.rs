@@ -35,6 +35,7 @@ pub const REACQUIRE_MS: u64 = 10_000;
 pub const CONFIRM_FIXES: u8 = 3;
 pub const OBJECT_HALF_HEIGHT_M: f64 = 0.75;
 pub const COAST_MS: u64 = 1_500;
+const ARRIVAL_SAMPLES: usize = 5;
 const SMOOTHING: f64 = 0.75;
 const POSITION_GAIN: f64 = 1.0 - SMOOTHING * SMOOTHING;
 const VELOCITY_GAIN: f64 = (1.0 - SMOOTHING) * (1.0 - SMOOTHING);
@@ -60,6 +61,7 @@ pub struct Track {
     velocity: Velocity,
     at_ms: u64,
     seen_ms: u64,
+    gaps: [u64; ARRIVAL_SAMPLES],
     headings: [Option<(u64, f64)>; HEADING_SAMPLES],
     steady: u8,
 }
@@ -87,6 +89,7 @@ impl Track {
             velocity: velocity.unwrap_or_default(),
             at_ms: fix.at_ms,
             seen_ms: fix.at_ms,
+            gaps: [0; ARRIVAL_SAMPLES],
             headings: [None; HEADING_SAMPLES],
             steady: 0,
         }
@@ -214,13 +217,18 @@ fn followed(
     now_ms: u64,
 ) -> Option<Target> {
     let mut held = slot.lock().unwrap_or_else(PoisonError::into_inner);
-    let before = held.map(|track| (track.at_ms, track.origin));
-    *held = stepped(*held, seen).map(|track| match Some((track.at_ms, track.origin)) != before {
-        true => Track {
+    let before = *held;
+    *held = stepped(*held, seen).map(|track| match before {
+        Some(old) if (old.at_ms, old.origin) == (track.at_ms, track.origin) => track,
+        Some(old) => Track {
+            seen_ms: now_ms,
+            gaps: pushed(old.gaps, now_ms.saturating_sub(old.seen_ms)),
+            ..track
+        },
+        None => Track {
             seen_ms: now_ms,
             ..track
         },
-        false => track,
     });
     held.filter(|track| track.fresh(now_ms))
         .map(|track| track.target(now_ms))
@@ -265,11 +273,25 @@ pub fn associated(seen: &[crate::detections::Seen], at_ms: u64) -> Option<Point>
     }
 }
 
+fn pushed(gaps: [u64; ARRIVAL_SAMPLES], gap: u64) -> [u64; ARRIVAL_SAMPLES] {
+    std::array::from_fn(|i| gaps.get(i + 1).copied().unwrap_or(gap))
+}
+
+fn median_gap(gaps: [u64; ARRIVAL_SAMPLES]) -> Option<u64> {
+    let mut known: Vec<u64> = gaps.into_iter().filter(|gap| *gap > 0).collect();
+    known.sort_unstable();
+    known.get(known.len() / 2).copied()
+}
+
 pub fn tracked_sighting_age_ms(now_ms: u64) -> Option<u64> {
+    tracked_sighting(now_ms).map(|(age, _)| age)
+}
+
+pub fn tracked_sighting(now_ms: u64) -> Option<(u64, Option<u64>)> {
     PICKED_TRACK
         .lock()
         .unwrap_or_else(PoisonError::into_inner)
-        .map(|track| now_ms.saturating_sub(track.seen_ms))
+        .map(|track| (now_ms.saturating_sub(track.seen_ms), median_gap(track.gaps)))
 }
 
 pub fn tracked_turn_deg(now_ms: u64, window_ms: u64) -> Option<f64> {
@@ -757,6 +779,31 @@ mod tests {
                 .all(|step| (step - track.velocity.north_mps * 0.02).abs() < 1e-6),
             "every 20 ms the prediction advances by speed x 20 ms, got {steps:?}"
         );
+    }
+
+    #[test]
+    fn the_detector_s_frame_interval_is_measured_from_accepted_detections() {
+        let _fixes = TEST_FIXES.lock().unwrap_or_else(PoisonError::into_inner);
+        let fed = |every_ms: u64| {
+            forget();
+            (0..8).for_each(|step| {
+                let at = 1_000 + step * every_ms;
+                tracked(
+                    Some((
+                        Sensor::Detector,
+                        Fix {
+                            position: metres_north(step as f64 * 0.5),
+                            at_ms: at,
+                        },
+                        None,
+                    )),
+                    at + 40,
+                );
+            });
+            tracked_sighting(1_000 + 7 * every_ms + 40).map(|(_, interval)| interval)
+        };
+        assert_eq!(fed(100), Some(Some(100)), "10 frames a second");
+        assert_eq!(fed(250), Some(Some(250)), "4 frames a second");
     }
 
     #[test]

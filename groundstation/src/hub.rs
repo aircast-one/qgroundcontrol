@@ -3295,7 +3295,7 @@ impl Vehicle {
     fn seen_lately(&self, source: crate::autodrop::TargetSource, now_ms: u64) -> bool {
         match source {
             crate::autodrop::TargetSource::Tracked => {
-                crate::autodrop::sighted(crate::gimbalgeo::tracked_sighting_age_ms(now_ms))
+                crate::autodrop::sighted(crate::gimbalgeo::tracked_sighting(now_ms))
             }
             _ => true,
         }
@@ -10449,6 +10449,54 @@ mod tests {
         assert_eq!(
             vehicle.autodrop_aimed_ms, 6_000,
             "about a second from release the heading is left alone"
+        );
+    }
+
+    #[test]
+    fn a_tracked_run_whose_detector_stops_never_switches_to_another_vehicle_s_gps() {
+        let _tracks = crate::gimbalgeo::TEST_FIXES
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let _fixes = crate::gpstarget::TEST_FIXES
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        crate::gimbalgeo::forget();
+        crate::gpstarget::refresh(std::collections::BTreeMap::from([(
+            129,
+            crate::gpstarget::Fix {
+                position: crate::dropsim::Point {
+                    lat: 47.0005,
+                    lon: 8.0,
+                },
+                ground_speed_mps: 5.0,
+                heading_deg: 0.0,
+                on_ground: true,
+            },
+        )]));
+        let mut vehicle = Vehicle::heard(1);
+        vehicle.facts.coordinate = Some((47.0, 8.0, 0.0));
+        vehicle.facts.altitude_relative = 40.0;
+        vehicle.facts.velocity = (10.0, 0.0, 0.0);
+        vehicle.facts.ground_speed = 10.0;
+        vehicle.autodrop = Some(crate::autodrop::State::Waiting {
+            phase: crate::autodrop::Phase::WaitingForRelease,
+            source: crate::autodrop::TargetSource::Tracked,
+            started_ms: 0,
+            due_ms: 0,
+        });
+        (1..=40).for_each(|step| {
+            vehicle.tick_autodrop(step * 250);
+        });
+        assert!(
+            matches!(
+                vehicle.autodrop,
+                Some(crate::autodrop::State::Waiting {
+                    source: crate::autodrop::TargetSource::Tracked,
+                    ..
+                })
+            ),
+            "the run holds on its own source and never fires on the other vehicle, got {:?}",
+            vehicle.autodrop
         );
     }
 
