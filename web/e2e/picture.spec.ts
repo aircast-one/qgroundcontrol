@@ -59,6 +59,23 @@ test('a right-click on the camera picture flies the aircraft to the spot it show
   expect(metresApart(arrived, target), 'the aircraft holds over the spot the picture showed').toBeLessThan(5);
 });
 
+test('a long press on the camera picture opens the fly-there menu, never the browser\'s own menu', async ({ app }) => {
+  await connectMock(app, ['Enable gimbal'], 'APM ArduCopter Vehicle');
+  await takeOff(app, '20 m');
+  await expect(flightMode(app)).toHaveAccessibleName(/ Flying /, { timeout: 60_000 });
+  await aimGimbal(app, -45, 0);
+  await expect.poll(() => gimbalPitch(app), { timeout: 30_000 }).toBeLessThan(-44);
+  const centre = await pictureCentre(app);
+  const finger = await app.context().newCDPSession(app);
+  await finger.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [centre] });
+  await expect(app.getByRole('button', { name: 'Go to location' })).toBeVisible();
+  const browserMenu = await app.evaluate(({ x, y }) => document.elementFromPoint(x, y)!.dispatchEvent(new MouseEvent('contextmenu', { bubbles: true, cancelable: true, clientX: x, clientY: y })), centre);
+  await finger.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  expect(browserMenu, 'Windows sends the long press as a contextmenu only after the menu is up, so it lands on the menu, not the picture').toBe(false);
+  await expect(chosenSpot(app)).toBeVisible();
+  await expect(app.getByRole('button', { name: 'Go to location' })).toBeVisible();
+});
+
 test('a click on the picture teaches the right-click, and a right-click on the sky says it is not on the ground', async ({ app }) => {
   await connectMock(app, ['Enable gimbal'], 'APM ArduCopter Vehicle');
   await takeOff(app, '10 m');

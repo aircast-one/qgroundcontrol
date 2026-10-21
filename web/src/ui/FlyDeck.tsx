@@ -139,7 +139,6 @@ export const useRememberHold = (key: unknown, enabled: boolean, onTap: () => voi
       tabIndex: 0,
       'aria-description': label,
       style: { touchAction: 'none' },
-      onContextMenu: (event) => event.preventDefault(),
       onClick: (event) => {
         if (event.detail === 0) tap.current();
       },

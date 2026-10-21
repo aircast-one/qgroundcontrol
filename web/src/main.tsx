@@ -6,6 +6,11 @@ import { Qgc } from '@/bridge/Qgc';
 import { MainActivity } from '@/app/MainActivity';
 import '@/theme/theme.css';
 
+const keepsBrowserMenu = (target: EventTarget | null): boolean => target instanceof Element && target.closest('input, textarea, [contenteditable]') !== null;
+window.addEventListener('contextmenu', (event) => {
+  if (!keepsBrowserMenu(event.target)) event.preventDefault();
+});
+
 Qgc.start();
 void HostPlatform.start();
 if (import.meta.env.DEV) DebugRelay.start(window.location.search);
