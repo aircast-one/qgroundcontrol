@@ -163,6 +163,7 @@ fun VideoSurface(
         if (synthetic) {
             Box(modifier.fillMaxSize()) {
                 SyntheticView(Modifier.fillMaxSize(), aimable = true)
+                DetectionOverlay(Modifier.fillMaxSize())
                 TrackingBoxOverlay(Modifier.fillMaxSize())
             }
             return
@@ -212,6 +213,7 @@ private fun MainPane(video: VideoReading?, synthetic: Boolean, modifier: Modifie
 
         if (video?.decoding != true && synthetic) {
             SyntheticView(Modifier.fillMaxSize(), aimable = expanded, standIn = video?.standIn?.takeIf { expanded })
+            if (expanded) DetectionOverlay(Modifier.fillMaxSize())
             if (expanded) TrackingBoxOverlay(Modifier.fillMaxSize())
         } else if (video?.decoding != true) {
             Surface(

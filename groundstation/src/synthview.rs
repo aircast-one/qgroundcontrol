@@ -524,9 +524,20 @@ pub fn overlays(
 fn cars(backend: &dyn Backend) -> Value {
     let active =
         integer(&backend.value_fields("vehicle", "id"), "id").and_then(|id| u8::try_from(id).ok());
+    let seen = point(backend, "vehicle.coordinate")
+        .zip(raw(backend, "vehicle.altitudeRelative"))
+        .zip(gimbal_aim(&crate::gimbal::gimbal_view(backend, &[])));
     crate::gpstarget::ground_vehicles(active)
         .iter()
         .map(|(_, car)| {
+            let picture = seen.and_then(|(((lat, lon), altitude), aim)| {
+                crate::gimbalgeo::ground_to_picture(
+                    crate::dropsim::Point { lat, lon },
+                    altitude,
+                    aim,
+                    car.position,
+                )
+            });
             json!({
                 "latitude": car.position.lat,
                 "longitude": car.position.lon,
@@ -534,6 +545,7 @@ fn cars(backend: &dyn Backend) -> Value {
                 "northSpeed": car.velocity.north_mps,
                 "eastSpeed": car.velocity.east_mps,
                 "ageMs": 0.0,
+                "picture": picture.map(|(x, y)| json!({ "x": x, "y": y })),
             })
         })
         .collect::<Vec<Value>>()

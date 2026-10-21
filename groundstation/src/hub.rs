@@ -3200,36 +3200,53 @@ impl Vehicle {
                 })
             }
             crate::autodrop::TargetSource::Tracked => {
-                let from_geo =
-                    self.camera_tracking_geo
-                        .as_ref()
-                        .map(|geo| crate::dropsim::Target {
-                            position: crate::dropsim::Point {
-                                lat: geo.latitude,
-                                lon: geo.longitude,
-                            },
-                            velocity: crate::dropsim::Velocity {
-                                north_mps: geo.north_speed,
-                                east_mps: geo.east_speed,
-                            },
-                        });
-                from_geo.or_else(|| {
-                    let centre = self.camera_tracking_image.as_ref()?.centre();
-                    let aimed = self
-                        .gimbals
-                        .active()
-                        .and_then(|pair| self.gimbals.get(pair))
-                        .and_then(|g| g.attitude)?;
-                    crate::gimbalgeo::picture_to_ground(
-                        position,
-                        altitude_agl_m,
-                        (f64::from(aimed.absolute_yaw), f64::from(aimed.pitch)),
-                        centre,
-                    )
-                    .map(|ground| crate::gimbalgeo::track_point(ground, now_ms))
-                })
+                let from_picture = |point: (f64, f64), at_ms: u64| {
+                    self.picture_to_ground(position, altitude_agl_m, point)
+                        .map(|ground| crate::gimbalgeo::track_point(ground, at_ms))
+                };
+                self.camera_tracking_geo
+                    .as_ref()
+                    .map(|geo| crate::dropsim::Target {
+                        position: crate::dropsim::Point {
+                            lat: geo.latitude,
+                            lon: geo.longitude,
+                        },
+                        velocity: crate::dropsim::Velocity {
+                            north_mps: geo.north_speed,
+                            east_mps: geo.east_speed,
+                        },
+                    })
+                    .or_else(|| from_picture(self.camera_tracking_image.as_ref()?.centre(), now_ms))
+                    .or_else(|| {
+                        let (ground, at_ms) = crate::detections::lock().target_ground(now_ms)?;
+                        Some(crate::gimbalgeo::track_point(ground, at_ms))
+                    })
             }
         }
+    }
+
+    pub(crate) fn picture_to_ground(
+        &self,
+        position: crate::dropsim::Point,
+        altitude_agl_m: f64,
+        point: (f64, f64),
+    ) -> Option<crate::dropsim::Point> {
+        let aimed = self
+            .gimbals
+            .active()
+            .and_then(|pair| self.gimbals.get(pair))
+            .and_then(|g| g.attitude)?;
+        crate::gimbalgeo::picture_to_ground(
+            position,
+            altitude_agl_m,
+            (f64::from(aimed.absolute_yaw), f64::from(aimed.pitch)),
+            point,
+        )
+    }
+
+    pub(crate) fn picture_to_ground_now(&self, point: (f64, f64)) -> Option<crate::dropsim::Point> {
+        let release = self.release_now()?;
+        self.picture_to_ground(release.position, release.altitude_agl_m, point)
     }
 
     pub(crate) fn release_now(&self) -> Option<crate::dropsim::Release> {
@@ -3308,7 +3325,9 @@ impl Vehicle {
                     return Vec::new();
                 };
                 let plan = crate::dropsim::lead(release, target);
-                if plan.release_in_s > crate::autodrop::COMMAND_LATENCY_S {
+                let miss_now_m = crate::dropsim::simulate(release, target).miss_m;
+                let due = plan.release_in_s <= crate::autodrop::COMMAND_LATENCY_S;
+                if !due || miss_now_m > crate::autodrop::FIRE_WITHIN_M {
                     let wait_ms =
                         ((plan.release_in_s - crate::autodrop::COMMAND_LATENCY_S) * 1000.0) as u64;
                     self.autodrop = Some(crate::autodrop::State::Waiting {
@@ -3317,7 +3336,8 @@ impl Vehicle {
                         started_ms,
                         due_ms: now_ms + wait_ms.min(crate::autodrop::AUTODROP_TICK_MS),
                     });
-                    let reaim = plan.release_in_s > crate::autodrop::REAIM_UNTIL_S
+                    let off_course = due || plan.miss_m > crate::autodrop::FIRE_WITHIN_M;
+                    let reaim = (plan.release_in_s > crate::autodrop::REAIM_UNTIL_S || off_course)
                         && now_ms.saturating_sub(self.autodrop_aimed_ms)
                             >= crate::autodrop::REAIM_EVERY_MS;
                     let Some(aim_at) = reaim
@@ -3340,7 +3360,7 @@ impl Vehicle {
                 );
                 self.autodrop = Some(match &fired {
                     Ok(_) => crate::autodrop::State::Fired {
-                        predicted_miss_m: plan.miss_m,
+                        predicted_miss_m: miss_now_m,
                         at_ms: now_ms,
                     },
                     Err(reason) => crate::autodrop::State::GaveUp {
@@ -9292,8 +9312,7 @@ mod tests {
         );
     }
 
-    #[test]
-    fn a_tracked_target_comes_from_the_camera_s_geo_report_or_else_its_picture_point() {
+    fn gimbal_looking_45_down() -> Hub {
         use mavlink::dialects::ardupilotmega::{
             GIMBAL_DEVICE_ATTITUDE_STATUS_DATA, GIMBAL_MANAGER_INFORMATION_DATA,
             GIMBAL_MANAGER_STATUS_DATA,
@@ -9339,14 +9358,43 @@ mod tests {
             0,
             0,
         );
-        let here = crate::dropsim::Point {
-            lat: 47.0,
-            lon: 8.0,
-        };
+        hub
+    }
+
+    fn tracked_at(v: &Vehicle, now_ms: u64) -> Option<crate::dropsim::Target> {
+        v.target_for_autodrop(
+            crate::autodrop::TargetSource::Tracked,
+            crate::dropsim::Point {
+                lat: 47.0,
+                lon: 8.0,
+            },
+            40.0,
+            now_ms,
+        )
+    }
+
+    fn metres_from_here(target: crate::dropsim::Target) -> (f64, f64) {
+        let (north, east, _) = crate::geo::geo_to_ned(
+            target.position.lat,
+            target.position.lon,
+            0.0,
+            (47.0, 8.0, 0.0),
+        );
+        (north, east)
+    }
+
+    #[test]
+    fn a_tracked_target_comes_from_the_camera_s_geo_report_or_else_its_picture_point() {
+        let _fixes = crate::gimbalgeo::TEST_FIXES
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let _feed = crate::detections::TEST_FEED
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        crate::detections::show(None);
+        let mut hub = gimbal_looking_45_down();
         let vehicle = hub.vehicles.get_mut(&1).unwrap();
-        let tracked = |v: &Vehicle, now| {
-            v.target_for_autodrop(crate::autodrop::TargetSource::Tracked, here, 40.0, now)
-        };
+        let tracked = tracked_at;
         assert_eq!(
             tracked(vehicle, 0),
             None,
@@ -9359,12 +9407,7 @@ mod tests {
             radius: 0.05,
         });
         let centre = tracked(vehicle, 1_000).expect("the picture centre projects to the ground");
-        let (north, east, _) = crate::geo::geo_to_ned(
-            centre.position.lat,
-            centre.position.lon,
-            0.0,
-            (47.0, 8.0, 0.0),
-        );
+        let (north, east) = metres_from_here(centre);
         assert!(
             (north - 40.0).abs() < 2.0 && east.abs() < 0.5,
             "centre of a 45° down camera at 40 m is 40 m ahead, got {north} N {east} E"
@@ -9389,6 +9432,105 @@ mod tests {
             (47.001, 8.002, 3.0, -1.0),
             "a camera that reports where the object is beats projecting its picture point"
         );
+    }
+
+    #[test]
+    fn a_tracked_target_falls_back_to_the_device_detector_s_target_box() {
+        let _fixes = crate::gimbalgeo::TEST_FIXES
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let _feed = crate::detections::TEST_FEED
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        let mut hub = gimbal_looking_45_down();
+        let vehicle = hub.vehicles.get_mut(&1).unwrap();
+        vehicle.facts.coordinate = Some((47.0, 8.0, 0.0));
+        vehicle.facts.altitude_relative = 40.0;
+        let start_ms = 900_000_000;
+        let shown = |v: &Vehicle, top: f64, at_ms: u64| {
+            crate::detections::show(Some(crate::detections::grounded(
+                crate::detections::frame_from(
+                    &json!({ "boxes": [{ "x": 0.45, "y": top, "w": 0.1, "h": 0.1, "label": "car", "target": true }] }),
+                    at_ms,
+                ),
+                |foot| v.picture_to_ground_now(foot),
+            )))
+        };
+
+        shown(vehicle, 0.4, start_ms);
+        let first = tracked_at(vehicle, start_ms + 100).expect("a fresh target box is a target");
+        let (north, east) = metres_from_here(first);
+        assert!(
+            (north - 40.0).abs() < 2.0 && east.abs() < 0.5,
+            "the box's bottom-centre is the picture centre, 40 m ahead of a 45° down camera at 40 m, got {north} N {east} E"
+        );
+
+        shown(vehicle, 0.35, start_ms + 500);
+        let second = tracked_at(vehicle, start_ms + 600).unwrap();
+        assert!(
+            second.velocity.north_mps > 1.0 && second.velocity.east_mps.abs() < 0.5,
+            "the box rose in the picture over half a second, so the target moved away north: {:?}",
+            second.velocity
+        );
+
+        assert_eq!(
+            tracked_at(vehicle, start_ms + 500 + crate::detections::STALE_MS + 1),
+            None,
+            "a box from a detector that stopped sending is no target"
+        );
+
+        shown(vehicle, 0.35, start_ms + 3_000);
+        vehicle.camera_tracking_image = Some(crate::cameratrack::TrackingImage::Point {
+            x: 0.9,
+            y: 0.5,
+            radius: 0.05,
+        });
+        let (_, east) = metres_from_here(tracked_at(vehicle, start_ms + 3_000).unwrap());
+        assert!(
+            east > 5.0,
+            "the camera's own tracker, off to the right of the picture, wins over the device box: {east} m east"
+        );
+        crate::detections::show(None);
+    }
+
+    #[test]
+    fn tick_autodrop_holds_fire_while_the_predicted_miss_is_wider_than_a_car() {
+        let _fixes = crate::gpstarget::TEST_FIXES
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner);
+        crate::gpstarget::refresh(std::collections::BTreeMap::from([(
+            129,
+            crate::gpstarget::Fix {
+                position: crate::dropsim::Point {
+                    lat: 47.0 + 30.0 / 111_320.0,
+                    lon: 8.0,
+                },
+                ground_speed_mps: 15.0,
+                heading_deg: 0.0,
+                on_ground: true,
+            },
+        )]));
+        let mut vehicle = Vehicle::heard(1);
+        vehicle.facts.coordinate = Some((47.0, 8.0, 0.0));
+        vehicle.facts.altitude_relative = 40.0;
+        vehicle.facts.velocity = (10.0, 0.0, 0.0);
+        let waiting = Some(crate::autodrop::State::Waiting {
+            phase: crate::autodrop::Phase::WaitingForRelease,
+            source: crate::autodrop::TargetSource::Vehicle(129),
+            started_ms: 0,
+            due_ms: 0,
+        });
+        vehicle.autodrop = waiting.clone();
+        vehicle.tick_autodrop(1_000);
+        assert!(
+            matches!(
+                vehicle.autodrop,
+                Some(crate::autodrop::State::Waiting { .. })
+            ),
+            "a car pulling away faster than the drone makes the best release now and tens of metres short - keep chasing instead of dropping: {:?}",
+            vehicle.autodrop
+        );
+        crate::gpstarget::refresh(std::collections::BTreeMap::new());
     }
 
     #[test]

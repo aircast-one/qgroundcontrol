@@ -18,6 +18,7 @@ const GUIDED_GOTO_LIMIT_M: f64 = 950.0;
 pub const CRUISE_MPS: f64 = 10.0;
 pub const REAIM_EVERY_MS: u64 = 1000;
 pub const REAIM_UNTIL_S: f64 = 2.0;
+pub const FIRE_WITHIN_M: f64 = 2.0;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Phase {

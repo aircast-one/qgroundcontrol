@@ -50,6 +50,37 @@ pub struct Frame {
     pub boxes: Vec<Value>,
     pub track: Value,
     pub received_ms: u64,
+    pub target_ground: Option<crate::dropsim::Point>,
+}
+
+impl Frame {
+    pub fn target_foot(&self) -> Option<(f64, f64)> {
+        let target = self.boxes.iter().find(|b| b["target"] == true)?;
+        let number = |key: &str| target[key].as_f64();
+        Some((
+            number("x")? + number("w")? / 2.0,
+            number("y")? + number("h")?,
+        ))
+    }
+}
+
+pub fn grounded(
+    frame: Frame,
+    project: impl FnOnce((f64, f64)) -> Option<crate::dropsim::Point>,
+) -> Frame {
+    let target_ground = frame.target_foot().and_then(project);
+    Frame {
+        target_ground,
+        ..frame
+    }
+}
+
+fn grounded_now(frame: Frame) -> Frame {
+    grounded(frame, |foot| {
+        crate::hub::lock()
+            .active()
+            .and_then(|vehicle| vehicle.picture_to_ground_now(foot))
+    })
 }
 
 #[derive(Debug, Default)]
@@ -109,6 +140,7 @@ pub fn frame_from(payload: &Value, received_ms: u64) -> Frame {
         boxes,
         track: payload.get("track").cloned().unwrap_or(Value::Null),
         received_ms,
+        target_ground: None,
     }
 }
 
@@ -165,6 +197,13 @@ impl Feed {
             .map(|f| (f.boxes.clone(), f.received_ms))
     }
 
+    pub fn target_ground(&self, now_ms: u64) -> Option<(crate::dropsim::Point, u64)> {
+        self.frame
+            .as_ref()
+            .filter(|f| now_ms.saturating_sub(f.received_ms) <= STALE_MS)
+            .and_then(|f| f.target_ground.map(|ground| (ground, f.received_ms)))
+    }
+
     pub fn tracker(&self, now_ms: u64) -> Option<(Source, Option<Value>)> {
         let frame = self
             .frame
@@ -216,7 +255,10 @@ fn follow(source: Source, generation: u64) {
             let followed =
                 crate::http::stream_lines(&source.stream_url(), MAX_EVENT_BYTES, |line| {
                     if let Some(payload) = event_payload(line)
-                        && lock().receive(generation, frame_from(&payload, crate::hub::now_ms()))
+                        && lock().receive(
+                            generation,
+                            grounded_now(frame_from(&payload, crate::hub::now_ms())),
+                        )
                     {
                         changed();
                     }
@@ -252,7 +294,7 @@ fn follow(source: Source, generation: u64) {
                     .take_while(|_| lock().generation == generation)
                     .filter_map(|line| event_payload(&line))
                     .map(|payload| {
-                        let frame = frame_from(&payload, crate::hub::now_ms());
+                        let frame = grounded_now(frame_from(&payload, crate::hub::now_ms()));
                         if lock().receive(generation, frame) {
                             changed();
                         }
@@ -302,8 +344,56 @@ pub fn detections_view(backend: &dyn Backend, _args: &[String]) -> Value {
 }
 
 #[cfg(test)]
+pub(crate) static TEST_FEED: Mutex<()> = Mutex::new(());
+
+#[cfg(test)]
+pub(crate) fn show(frame: Option<Frame>) {
+    lock().frame = frame;
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_target_box_is_grounded_at_its_bottom_centre_while_its_frame_is_fresh() {
+        let spot = crate::dropsim::Point {
+            lat: 47.0,
+            lon: 8.0,
+        };
+        let frame = frame_from(
+            &json!({ "boxes": [
+                { "x": 0.1, "y": 0.1, "w": 0.1, "h": 0.1, "label": "person" },
+                { "x": 0.4, "y": 0.3, "w": 0.2, "h": 0.1, "label": "car", "target": true },
+            ] }),
+            5_000,
+        );
+        let grounded = grounded(frame, |(x, y)| {
+            ((x - 0.5).abs() < 1e-9 && (y - 0.4).abs() < 1e-9).then_some(spot)
+        });
+        let mut feed = Feed::default();
+        assert!(feed.receive(0, grounded));
+        assert_eq!(
+            feed.target_ground(5_400),
+            Some((spot, 5_000)),
+            "the bottom-centre of the target box, projected, stamped with its frame time"
+        );
+        assert_eq!(
+            feed.target_ground(5_000 + STALE_MS + 1),
+            None,
+            "a stale frame is no target"
+        );
+
+        let untargeted = frame_from(
+            &json!({ "boxes": [{ "x": 0.1, "y": 0.1, "w": 0.1, "h": 0.1 }] }),
+            6_000,
+        );
+        assert_eq!(
+            untargeted.target_foot(),
+            None,
+            "boxes, but none marked as the target"
+        );
+    }
 
     #[test]
     fn the_rtsp_url_names_the_host_and_the_camera_as_the_qml_overlay_did() {

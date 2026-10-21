@@ -41,14 +41,31 @@ pub fn velocity_from(previous: Fix, current: Fix) -> Option<Velocity> {
     })
 }
 
-static LAST_FIX: Mutex<Option<Fix>> = Mutex::new(None);
+pub const VELOCITY_WINDOW_MS: u64 = 1000;
 
-pub fn tracked(position: Point, at_ms: u64, last: Option<Fix>) -> (Target, Fix) {
-    let current = Fix { position, at_ms };
-    let velocity = last
-        .and_then(|previous| velocity_from(previous, current))
+static FIXES: Mutex<Vec<Fix>> = Mutex::new(Vec::new());
+
+#[cfg(test)]
+pub(crate) static TEST_FIXES: Mutex<()> = Mutex::new(());
+
+pub fn windowed(fixes: &[Fix], current: Fix) -> (Target, Vec<Fix>) {
+    let kept: Vec<Fix> = fixes
+        .iter()
+        .copied()
+        .filter(|f| f.at_ms < current.at_ms && current.at_ms - f.at_ms <= VELOCITY_WINDOW_MS)
+        .chain(std::iter::once(current))
+        .collect();
+    let velocity = kept
+        .first()
+        .and_then(|oldest| velocity_from(*oldest, current))
         .unwrap_or_default();
-    (Target { position, velocity }, current)
+    (
+        Target {
+            position: current.position,
+            velocity,
+        },
+        kept,
+    )
 }
 
 pub fn track(
@@ -62,10 +79,10 @@ pub fn track(
         .map(|position| track_point(position, now_ms))
 }
 
-pub fn track_point(position: Point, now_ms: u64) -> Target {
-    let mut last = LAST_FIX.lock().unwrap_or_else(PoisonError::into_inner);
-    let (target, current) = tracked(position, now_ms, *last);
-    *last = Some(current);
+pub fn track_point(position: Point, at_ms: u64) -> Target {
+    let mut fixes = FIXES.lock().unwrap_or_else(PoisonError::into_inner);
+    let (target, kept) = windowed(&fixes, Fix { position, at_ms });
+    *fixes = kept;
     target
 }
 
@@ -251,7 +268,13 @@ mod tests {
             lon: 8.0,
         };
         let first = ground_point(vehicle, 50.0, 0.0, -45.0).unwrap();
-        let (target, fix1) = tracked(first, 1_000, None);
+        let (target, fixes) = windowed(
+            &[],
+            Fix {
+                position: first,
+                at_ms: 1_000,
+            },
+        );
         assert_eq!(
             target.velocity,
             Velocity::default(),
@@ -259,16 +282,48 @@ mod tests {
         );
 
         let second = ground_point(vehicle, 50.0, 90.0, -45.0).unwrap();
-        let (target, _fix2) = tracked(second, 3_000, Some(fix1));
+        let (target, fixes) = windowed(
+            &fixes,
+            Fix {
+                position: second,
+                at_ms: 1_800,
+            },
+        );
         assert!(
-            close(target.velocity.north_mps, -25.0, 1e-3),
-            "the ground point swept from 50m north to 50m east over 2s, got {}",
+            close(target.velocity.north_mps, -62.5, 1e-3),
+            "the ground point swept from 50m north to 50m east over 0.8s, got {}",
             target.velocity.north_mps
         );
         assert!(
-            close(target.velocity.east_mps, 25.0, 1e-3),
+            close(target.velocity.east_mps, 62.5, 1e-3),
             "got {}",
             target.velocity.east_mps
+        );
+
+        let (again, _) = windowed(
+            &fixes,
+            Fix {
+                position: second,
+                at_ms: 1_800,
+            },
+        );
+        assert_eq!(
+            again.velocity, target.velocity,
+            "the same frame read twice is the same observation, not a stop"
+        );
+
+        let (late, kept) = windowed(
+            &fixes,
+            Fix {
+                position: second,
+                at_ms: 2_500,
+            },
+        );
+        assert_eq!(kept.len(), 2, "the fix from 1.5 s ago left the window");
+        assert_eq!(
+            late.velocity,
+            Velocity::default(),
+            "sitting still for 0.7 s"
         );
     }
 
