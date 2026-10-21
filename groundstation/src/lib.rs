@@ -72,6 +72,7 @@ pub mod devicesetup;
 pub mod devicetrack;
 pub mod deviceviews;
 pub mod devicewizard;
+pub mod dropcal;
 pub mod dropsim;
 pub mod dropzone;
 pub mod escal;
