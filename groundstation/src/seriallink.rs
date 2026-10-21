@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use serialport::{DataBits, FlowControl, Parity, SerialPort, StopBits};
 
-const READ_TIMEOUT: Duration = Duration::from_millis(200);
+const PORT_TIMEOUT: Duration = Duration::from_millis(200);
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct SerialConfig {
@@ -57,13 +57,72 @@ pub fn flow_control(qt: i64) -> FlowControl {
     }
 }
 
+fn not_found(config: &SerialConfig, error: impl std::fmt::Display) -> io::Error {
+    io::Error::new(
+        io::ErrorKind::NotFound,
+        format!("{}: {}", config.port_name, error),
+    )
+}
+
+#[cfg(windows)]
+const RTS_CONTROL: u32 = 0b11 << 12;
+#[cfg(windows)]
+const RTS_CONTROL_ENABLE: u32 = 0b01 << 12;
+#[cfg(windows)]
+const ABORT_ON_ERROR: u32 = 1 << 14;
+
+#[cfg(windows)]
+fn full_duplex(config: &SerialConfig) -> io::Result<serial2::SerialPort> {
+    let flow = flow_control(config.flow_control);
+    let mut port =
+        serial2::SerialPort::open(&config.port_name, |mut settings: serial2::Settings| {
+            settings.set_raw();
+            settings.set_baud_rate(config.baud)?;
+            settings.set_char_size(match data_bits(config.data_bits) {
+                DataBits::Five => serial2::CharSize::Bits5,
+                DataBits::Six => serial2::CharSize::Bits6,
+                DataBits::Seven => serial2::CharSize::Bits7,
+                DataBits::Eight => serial2::CharSize::Bits8,
+            });
+            settings.set_parity(match parity(config.parity) {
+                Parity::None => serial2::Parity::None,
+                Parity::Odd => serial2::Parity::Odd,
+                Parity::Even => serial2::Parity::Even,
+            });
+            settings.set_stop_bits(match stop_bits(config.stop_bits) {
+                StopBits::One => serial2::StopBits::One,
+                StopBits::Two => serial2::StopBits::Two,
+            });
+            settings.set_flow_control(match flow {
+                FlowControl::None => serial2::FlowControl::None,
+                FlowControl::Software => serial2::FlowControl::XonXoff,
+                FlowControl::Hardware => serial2::FlowControl::RtsCts,
+            });
+            let dcb = settings.as_raw_dbc_mut();
+            dcb.XonChar = 17;
+            dcb.XoffChar = 19;
+            dcb._bitfield = dcb._bitfield & !(ABORT_ON_ERROR | RTS_CONTROL)
+                | if flow == FlowControl::Hardware {
+                    RTS_CONTROL_ENABLE
+                } else {
+                    0
+                };
+            Ok(settings)
+        })?;
+    port.set_read_timeout(PORT_TIMEOUT)?;
+    port.set_write_timeout(PORT_TIMEOUT)?;
+    let _ = port.set_dtr(true);
+    Ok(port)
+}
+
 pub struct SerialLink {
-    port: Arc<Mutex<Box<dyn SerialPort>>>,
+    port: Mutex<Box<dyn Write + Send>>,
     stop: Arc<AtomicBool>,
     reader: Mutex<Option<JoinHandle<()>>>,
 }
 
 impl SerialLink {
+    #[cfg(not(windows))]
     pub fn open(
         config: &SerialConfig,
         sink: impl FnMut(Event) + Send + 'static,
@@ -73,27 +132,39 @@ impl SerialLink {
             .parity(parity(config.parity))
             .stop_bits(stop_bits(config.stop_bits))
             .flow_control(flow_control(config.flow_control))
-            .timeout(READ_TIMEOUT)
+            .timeout(PORT_TIMEOUT)
             .open()
-            .map_err(|e| {
-                io::Error::new(
-                    io::ErrorKind::NotFound,
-                    format!("{}: {}", config.port_name, e),
-                )
-            })?;
+            .map_err(|e| not_found(config, e))?;
         Self::from_port(port, sink)
+    }
+
+    #[cfg(windows)]
+    pub fn open(
+        config: &SerialConfig,
+        sink: impl FnMut(Event) + Send + 'static,
+    ) -> io::Result<SerialLink> {
+        let port = full_duplex(config).map_err(|e| not_found(config, e))?;
+        Self::from_halves(port.try_clone()?, port, sink)
     }
 
     pub fn from_port(
         mut port: Box<dyn SerialPort>,
-        mut sink: impl FnMut(Event) + Send + 'static,
+        sink: impl FnMut(Event) + Send + 'static,
     ) -> io::Result<SerialLink> {
-        port.set_timeout(READ_TIMEOUT)
+        port.set_timeout(PORT_TIMEOUT)
             .map_err(|e| io::Error::other(e.to_string()))?;
         let _ = port.write_data_terminal_ready(true);
-        let mut reader_port = port
+        let reader_port = port
             .try_clone()
             .map_err(|e| io::Error::other(e.to_string()))?;
+        Self::from_halves(reader_port, port, sink)
+    }
+
+    pub fn from_halves(
+        mut reader_port: impl Read + Send + 'static,
+        port: impl Write + Send + 'static,
+        mut sink: impl FnMut(Event) + Send + 'static,
+    ) -> io::Result<SerialLink> {
         let stop = Arc::new(AtomicBool::new(false));
         let reader = {
             let stop = Arc::clone(&stop);
@@ -124,7 +195,7 @@ impl SerialLink {
                 })?
         };
         Ok(SerialLink {
-            port: Arc::new(Mutex::new(port)),
+            port: Mutex::new(Box::new(port)),
             stop,
             reader: Mutex::new(Some(reader)),
         })
@@ -309,5 +380,79 @@ mod tests {
             usb_direct: false,
         };
         assert!(SerialLink::open(&missing, |_| {}).is_err());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn a_write_reaches_the_radio_while_the_reader_waits_for_it_like_qserialport_overlapped_io() {
+        use std::os::windows::fs::OpenOptionsExt;
+        use std::os::windows::io::{FromRawHandle, OwnedHandle};
+        use std::sync::mpsc;
+        use windows_sys::Win32::Foundation::INVALID_HANDLE_VALUE;
+        use windows_sys::Win32::Storage::FileSystem::{FILE_FLAG_OVERLAPPED, PIPE_ACCESS_DUPLEX};
+        use windows_sys::Win32::System::Pipes::{CreateNamedPipeW, PIPE_TYPE_BYTE};
+
+        let name = format!(r"\\.\pipe\qgc-serial-{}", std::process::id());
+        let wide: Vec<u16> = name.encode_utf16().chain(Some(0)).collect();
+        let server = unsafe {
+            CreateNamedPipeW(
+                wide.as_ptr(),
+                PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
+                PIPE_TYPE_BYTE,
+                1,
+                4096,
+                4096,
+                0,
+                std::ptr::null(),
+            )
+        };
+        assert_ne!(server, INVALID_HANDLE_VALUE);
+        let radio = serial2::SerialPort::from(unsafe { OwnedHandle::from_raw_handle(server) });
+        let app = serial2::SerialPort::from(OwnedHandle::from(
+            std::fs::OpenOptions::new()
+                .read(true)
+                .write(true)
+                .custom_flags(FILE_FLAG_OVERLAPPED)
+                .open(&name)
+                .unwrap(),
+        ));
+        let (heard_tx, heard) = mpsc::channel();
+        let link = Arc::new(
+            SerialLink::from_halves(app.try_clone().unwrap(), app, move |event| {
+                let _ = heard_tx.send(event);
+            })
+            .unwrap(),
+        );
+        (&radio).write_all(b"$").unwrap();
+        assert_eq!(
+            heard.recv_timeout(Duration::from_secs(2)),
+            Ok(Event::Bytes(b"$".to_vec()))
+        );
+        let (sent_tx, sent) = mpsc::channel();
+        let writer = Arc::clone(&link);
+        std::thread::spawn(move || sent_tx.send(writer.write(b"rc").is_ok()));
+        let (got_tx, got) = mpsc::channel();
+        let listener = radio.try_clone().unwrap();
+        std::thread::spawn(move || {
+            let mut bytes = [0u8; 2];
+            let _ = got_tx.send(
+                (&listener)
+                    .read_exact(&mut bytes)
+                    .ok()
+                    .map(|_| bytes.to_vec()),
+            );
+        });
+        assert_eq!(
+            got.recv_timeout(Duration::from_secs(2)),
+            Ok(Some(b"rc".to_vec())),
+            "a synchronous COM handle queues WriteFile behind the reader's pending ReadFile, so RC and gimbal writes waited for the next downlink byte"
+        );
+        assert_eq!(sent.recv_timeout(Duration::from_secs(2)), Ok(true));
+        drop(radio);
+        assert!(matches!(
+            heard.recv_timeout(Duration::from_secs(2)),
+            Ok(Event::Disconnected(_))
+        ));
+        link.close();
     }
 }

@@ -1155,7 +1155,7 @@ mod tests {
         );
     }
 
-    #[cfg(not(hosted_serial))]
+    #[cfg(all(unix, not(hosted_serial)))]
     #[test]
     fn a_px4_file_flashes_over_a_real_serial_device_to_a_board_on_the_other_end() {
         use serialport::SerialPort;

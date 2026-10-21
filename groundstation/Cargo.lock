@@ -875,6 +875,7 @@ dependencies = [
  "serde",
  "serde_json",
  "serde_norway",
+ "serial2",
  "serialport",
  "sha1",
  "sha2",
@@ -2282,6 +2283,17 @@ dependencies = [
  "ryu",
  "serde",
  "unsafe-libyaml-norway",
+]
+
+[[package]]
+name = "serial2"
+version = "0.2.38"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b16809bc35793b19ce4e0c53924bc0dce3937f15487997cfdaed936004180730"
+dependencies = [
+ "cfg-if",
+ "libc",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
