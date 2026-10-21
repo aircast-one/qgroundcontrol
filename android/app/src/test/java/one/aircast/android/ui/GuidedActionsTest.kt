@@ -52,35 +52,62 @@ class GuidedActionsTest {
     }
 
     @Test
-    fun `auto intercept's status line says what's actually happening, not nothing`() {
-        assertNull("idle has nothing to say", autodropStatusLine(null))
+    fun `auto intercept says what it chases, why it waits, how it ended and what to do next`() {
+        val shown = { json: String -> autodropShown(JSONObject(json)) }
+        assertNull("idle has nothing to say", autodropShown(null))
         assertEquals(
-            "Auto intercept: climbing to speed" to false,
-            autodropStatusLine(JSONObject("""{"state":"waiting","phase":"waitingForCruise"}""")),
+            AutodropShown("Locked on", false, listOf(AutodropAction.DropOnIt)),
+            autodropShown(JSONObject("""{"state":"idle"}"""), locked = true),
         )
         assertEquals(
-            "Auto intercept: lining up the shot" to false,
-            autodropStatusLine(JSONObject("""{"state":"waiting","phase":"waitingForRelease"}""")),
+            AutodropShown("Chasing the car · 45 m · 5 m/s · release in ~3 s", false, listOf(AutodropAction.Stop)),
+            shown("""{"state":"waiting","progress":{"target":"car","distanceMeters":45.2,"speedMps":5.0,"moving":true,"releaseInSeconds":3.2,"holding":null,"secondsLeft":71}}"""),
         )
         assertEquals(
-            "Auto intercept: dropped, predicted miss 1.6 m" to false,
-            autodropStatusLine(JSONObject("""{"state":"fired","predictedMissMeters":1.62,"impact":"falling"}""")),
+            "Chasing the car · 60 m · 0 m/s · release in ~9 s · not moving — is this the right one?",
+            shown("""{"state":"waiting","progress":{"target":"car","distanceMeters":60,"speedMps":0.1,"moving":false,"releaseInSeconds":9,"secondsLeft":71}}""")?.text,
         )
         assertEquals(
-            "Auto intercept: dropped, predicted miss 0.4 m, estimated miss at impact 0.7 m (on target)" to false,
-            autodropStatusLine(JSONObject("""{"state":"fired","predictedMissMeters":0.42,"impact":"seen","estimatedMissMeters":0.71,"estimatedOnTarget":true}""")),
+            "Holding: the car is turning · 52 s left",
+            shown("""{"state":"waiting","progress":{"target":"car","holding":"turning","secondsLeft":52}}""")?.text,
         )
         assertEquals(
-            "Auto intercept: dropped, predicted miss 0.4 m, estimated miss at impact 2.3 m (off target)" to true,
-            autodropStatusLine(JSONObject("""{"state":"fired","predictedMissMeters":0.42,"impact":"seen","estimatedMissMeters":2.31,"estimatedOnTarget":false}""")),
+            AutodropShown("Lost the car — tap it to pick it up again · 40 s left", true, listOf(AutodropAction.Stop)),
+            shown("""{"state":"waiting","progress":{"target":"car","holding":"searching","searching":true,"secondsLeft":40}}"""),
         )
         assertEquals(
-            "Auto intercept: dropped, predicted miss 0.4 m, target not tracked at impact" to false,
-            autodropStatusLine(JSONObject("""{"state":"fired","predictedMissMeters":0.42,"impact":"unseen"}""")),
+            AutodropShown("Hit the car · 3 left", false, listOf(AutodropAction.DropAgain)),
+            shown("""{"state":"fired","impact":"seen","estimatedMissMeters":0.7,"estimatedOnTarget":true,"progress":{"target":"car"},"payload":{"bays":4,"bay":2,"left":3}}"""),
         )
         assertEquals(
-            "Auto intercept gave up: no release window opened within the time limit" to true,
-            autodropStatusLine(JSONObject("""{"state":"gaveUp","reason":"no release window opened within the time limit"}""")),
+            AutodropShown("Missed by about 3 m · no bottles left", true, emptyList()),
+            shown("""{"state":"fired","impact":"seen","estimatedMissMeters":2.6,"estimatedOnTarget":false,"progress":{"target":"car"},"payload":{"bays":1,"bay":null,"left":0}}"""),
+        )
+        assertEquals(
+            AutodropShown("Couldn't line up a safe drop in 90 s — holding position", true, listOf(AutodropAction.TryAgain, AutodropAction.PickAnother)),
+            shown("""{"state":"gaveUp","reason":"no release window opened within the time limit","timedOut":true}"""),
+        )
+    }
+
+    @Test
+    fun `the auto intercept confirmation names the target and the bay`() {
+        assertEquals(
+            "Chase the car you're tracking (62 m, moving) and drop bay 2 when it lines up · 3 loaded. The drone steers and drops by itself.",
+            autodropConfirm(
+                JSONObject("""{"kind":"value","value":{"label":"car","source":"tracked","speedMps":5.0,"distanceMeters":61.6}}"""),
+                JSONObject("""{"payload":{"bays":4,"bay":2,"left":3}}"""),
+            ),
+        )
+        assertEquals(
+            "Chase the marked point (120 m) and drop the payload when it lines up · 1 loaded. The drone steers and drops by itself.",
+            autodropConfirm(
+                JSONObject("""{"kind":"value","value":{"label":"marked point","source":"manual","speedMps":0,"distanceMeters":120}}"""),
+                JSONObject("""{"payload":{"bays":1,"bay":0,"left":1}}"""),
+            ),
+        )
+        assertEquals(
+            "Nothing to chase yet — track a target with the camera or mark one on the map.",
+            autodropConfirm(JSONObject("""{"kind":"value","value":null}"""), null),
         )
     }
 }

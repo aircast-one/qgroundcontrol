@@ -19,7 +19,7 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
 import one.aircast.android.bridge.qgcPath
 
-private val BOX_COLOUR = Color(0xFF4DD0E1)
+private val BOX_COLOUR = Color(0xFF4DD0E1).copy(alpha = 0.55f)
 private val TARGET_COLOUR = Color(0xFFFFD54F)
 
 @Composable
@@ -47,13 +47,13 @@ fun DetectionOverlay(modifier: Modifier = Modifier) {
                         (box.w * picture.width * scale).toFloat(),
                         (box.h * picture.height * scale).toFloat(),
                     ),
-                    style = Stroke(width = if (box.target) 4f else 2f),
+                    style = Stroke(width = if (box.target) 4f else 1.5f),
                 )
             }
         }
 
         boxes.forEach { box ->
-            val caption = boxCaption(box)
+            val caption = if (box.target) boxCaption(box) else ""
             if (caption.isNotBlank()) {
                 Text(
                     text = caption,

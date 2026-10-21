@@ -124,27 +124,85 @@ internal fun checklistStateValue(passed: Boolean): Int = if (passed) CHECKLIST_P
 internal fun offerWithdrawn(offerId: String?, offers: Map<String, GuidedOffer>): Boolean =
     offerId != null && offers[offerId]?.shown != true
 
-private fun firedLine(json: JSONObject): Pair<String, Boolean> {
-    val predicted = "Auto intercept: dropped, predicted miss %.1f m".format(json.optDouble("predictedMissMeters", 0.0))
-    val onTarget = json.optBoolean("estimatedOnTarget", false)
-    return when (json.optText("impact")) {
-        "seen" -> "%s, estimated miss at impact %.1f m (%s)".format(
-            predicted,
-            json.optDouble("estimatedMissMeters", 0.0),
-            if (onTarget) "on target" else "off target",
-        ) to !onTarget
-        "unseen" -> "$predicted, target not tracked at impact" to false
-        else -> predicted to false
+internal enum class AutodropAction(val label: String) {
+    DropOnIt("Drop on it"),
+    Stop("Stop"),
+    TryAgain("Try again"),
+    PickAnother("Pick another target"),
+    DropAgain("Drop again"),
+}
+
+internal data class AutodropShown(val text: String, val problem: Boolean, val actions: List<AutodropAction>)
+
+internal const val AUTODROP_TARGET = "vehicle.autodropTarget"
+private val FIXED_TARGETS = setOf("marked point", "gimbal point")
+
+private fun waitingText(progress: JSONObject?): String {
+    if (progress == null) return "Auto Intercept starting"
+    val target = progress.optText("target").ifBlank { "target" }
+    val left = " · ${progress.optInt("secondsLeft")} s left"
+    return when (progress.optText("holding")) {
+        "climbing" -> "Chasing the $target · climbing to speed"
+        "searching" -> "Lost the $target — tap it to pick it up again$left"
+        "turning" -> "Holding: the $target is turning$left"
+        "junction" -> "Holding: junction ahead$left"
+        "offTarget" -> "Holding: not lined up yet$left"
+        else -> listOfNotNull(
+            "Chasing the $target",
+            progress.optDouble("distanceMeters").takeIf { !it.isNaN() }?.let { "%.0f m".format(it) },
+            progress.optDouble("speedMps").takeIf { !it.isNaN() }?.let { "%.0f m/s".format(it) },
+            progress.optDouble("releaseInSeconds").takeIf { !it.isNaN() }?.let { "release in ~%.0f s".format(it.coerceAtLeast(1.0)) },
+            "not moving — is this the right one?".takeIf { target !in FIXED_TARGETS && !progress.isNull("moving") && !progress.optBoolean("moving") },
+        ).joinToString(" · ")
     }
 }
 
-internal fun autodropStatusLine(json: JSONObject?): Pair<String, Boolean>? = when (json?.optText("state")) {
-    "waiting" -> (if (json.optText("phase") == "waitingForCruise") "Auto intercept: climbing to speed" else "Auto intercept: lining up the shot") to false
-    "fired" -> firedLine(json)
-    "gaveUp" -> "Auto intercept gave up: ${json.optText("reason")}" to true
-    else -> null
+private fun firedShown(json: JSONObject): AutodropShown {
+    val target = json.optJSONObject("progress")?.optText("target")?.ifBlank { null } ?: "target"
+    val left = json.optJSONObject("payload")?.optInt("left", 0) ?: 0
+    val onTarget = json.optBoolean("estimatedOnTarget", false)
+    val outcome = when (json.optText("impact")) {
+        "seen" -> if (onTarget) "Hit the $target" else "Missed by about %.0f m".format(json.optDouble("estimatedMissMeters", 0.0).coerceAtLeast(1.0))
+        "unseen" -> "Dropped — couldn't see where it landed"
+        else -> "Dropped — falling"
+    }
+    val remaining = if (left > 0) "$left left" else "no bottles left"
+    return AutodropShown("$outcome · $remaining", json.optText("impact") == "seen" && !onTarget, listOfNotNull(AutodropAction.DropAgain.takeIf { left > 0 }))
 }
 
+internal fun autodropShown(json: JSONObject?, locked: Boolean = false): AutodropShown? = when (json?.optText("state")) {
+    "waiting" -> AutodropShown(waitingText(json.optJSONObject("progress")), json.optJSONObject("progress")?.optBoolean("searching") == true, listOf(AutodropAction.Stop))
+    "fired" -> firedShown(json)
+    "gaveUp" -> AutodropShown(
+        if (json.optBoolean("timedOut")) "Couldn't line up a safe drop in 90 s — holding position"
+        else "Auto Intercept stopped: ${json.optText("reason")} — holding position",
+        true,
+        listOf(AutodropAction.TryAgain, AutodropAction.PickAnother),
+    )
+    else -> if (locked) AutodropShown("Locked on", false, listOf(AutodropAction.DropOnIt)) else null
+}
+
+internal fun autodropConfirm(target: JSONObject?, status: JSONObject?): String {
+    val picked = target?.optJSONObject("value") ?: target?.takeIf { it.has("label") }
+    val label = picked?.optText("label")?.ifBlank { null }
+        ?: return "Nothing to chase yet — track a target with the camera or mark one on the map."
+    val what = when (picked.optText("source")) {
+        "tracked" -> "the $label you're tracking"
+        "manual" -> "the marked point"
+        "vehicle" -> label
+        else -> "the point the camera is aimed at"
+    }
+    val moving = picked.optDouble("speedMps", 0.0) >= 1.0
+    val about = listOfNotNull(
+        picked.optDouble("distanceMeters").takeIf { !it.isNaN() }?.let { "%.0f m".format(it) },
+        (if (moving) "moving" else "not moving").takeIf { picked.optText("source") in setOf("tracked", "vehicle") },
+    ).joinToString(", ").let { if (it.isBlank()) "" else " ($it)" }
+    val payload = status?.optJSONObject("payload")
+    val bays = payload?.optInt("bays", 1) ?: 1
+    val drop = if (bays > 1 && payload?.isNull("bay") == false) "bay ${payload.optInt("bay")}" else "the payload"
+    val loaded = payload?.optInt("left", 0)?.let { " · $it loaded" }.orEmpty()
+    return "Chase $what$about and drop $drop when it lines up$loaded. The drone steers and drops by itself."
+}
 
 internal data class Instrument(val label: String, val reading: String, val id: String = "", val value: String = reading, val units: String = "", val raw: Double? = null, val defaultIcon: String = "")
 
@@ -420,8 +478,11 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
     val gripper = remember(extras) { gripperOffers(extras) }
     val resumeFrom = remember(actionsJson) { resumeFromSequence(actionsJson) }
     val autodropJson by qgcPath(AUTODROP_STATUS)
+    val autodropTargetJson by qgcPath(AUTODROP_TARGET)
+    val autodropCameraJson by qgcPath(CAMERA_VIEW)
     val autodropWaiting = autodropJson?.optText("state") == "waiting"
-    val autodropStatus = remember(autodropJson) { autodropStatusLine(autodropJson) }
+    val lockShown = remember(autodropCameraJson) { trackingReading(autodropCameraJson)?.reported == true }
+    val autodropStatus = remember(autodropJson, lockShown) { autodropShown(autodropJson, lockShown) }
     val payload = remember(actionsJson) { payloadOf(actionsJson) }
     val automaticMissionPopups by qgcBool(settingControl("settings.flyViewSettings.enableAutomaticMissionPopups"))
     var missionReady by remember { mutableStateOf<Set<String>?>(null) }
@@ -456,6 +517,23 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
         } else {
             action.run()
             sent(action)
+        }
+    }
+    val autoIntercept = GuidedAction(
+        name = "Auto Intercept",
+        confirm = autodropConfirm(autodropTargetJson, autodropJson),
+        destructive = false,
+        answer = { withContext(Dispatchers.Default) { VehicleCommands.startAutoInterceptDropRefusal() } },
+        run = { offMainDetached { VehicleCommands.startAutoInterceptDrop() } },
+    )
+    val onAutodrop: (AutodropAction) -> Unit = { picked ->
+        when (picked) {
+            AutodropAction.Stop -> offMainDetached { VehicleCommands.stopAutoInterceptDrop() }
+            AutodropAction.PickAnother -> offMainDetached {
+                Qgc.invoke(CAMERA_STOP_TRACKING)
+                Qgc.set(CAMERA_TRACKING_ARMED, true)
+            }
+            AutodropAction.DropOnIt, AutodropAction.TryAgain, AutodropAction.DropAgain -> ask(autoIntercept)
         }
     }
     LaunchedEffect(popupDue) {
@@ -552,13 +630,13 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                 }
             }
             val deciding = refusal != null || confirming != null || showingSent
-            if (!deciding) autodropStatus?.let { (message, isProblem) ->
+            if (!deciding) autodropStatus?.let { shown ->
                 Surface(
                     Modifier.align(Alignment.BottomCenter).widthIn(max = DECISION_CARD_WIDTH).padding(AircastSpace.s3),
                     shape = MaterialTheme.shapes.extraLarge,
                     color = MaterialTheme.colorScheme.surfaceContainerLow,
                 ) {
-                    Box(Modifier.padding(horizontal = 16.dp, vertical = 10.dp)) { AutodropStatusLine(message, isProblem) }
+                    Box(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) { AutodropStatusLine(shown, onAutodrop) }
                 }
             }
             if (deciding) {
@@ -569,7 +647,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
                 ) {
                     HoldsDecision()
                     Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                        autodropStatus?.let { (message, isProblem) -> AutodropStatusLine(message, isProblem) }
+                        autodropStatus?.let { shown -> AutodropStatusLine(shown, onAutodrop) }
                         refusal?.let { message -> RefusalLine(message) { refusal = null } }
                         if (confirming != null) {
                             ConfirmTrack(
@@ -589,7 +667,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
         }
     } else Column(modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
 
-        autodropStatus?.let { (message, isProblem) -> AutodropStatusLine(message, isProblem) }
+        autodropStatus?.let { shown -> AutodropStatusLine(shown, onAutodrop) }
         refusal?.let { message -> RefusalLine(message) { refusal = null } }
 
         if (confirming != null) {
@@ -645,19 +723,7 @@ fun FlightActions(modifier: Modifier = Modifier, layout: FlyDeckLayout = FlyDeck
             tiles = listOfNotNull(
                 armedStopOffer(offers, armed)?.let { offer -> MoreTile(STOP_MOTORS, R.drawable.ic_warning, true, warning = true) { pending = emergencyStopAction(offer) } },
                 MoreTile(if (autodropWaiting) "Stop Auto Intercept" else "Auto Intercept", R.drawable.ic_search, true) {
-                    if (autodropWaiting) {
-                        offMainDetached { VehicleCommands.stopAutoInterceptDrop() }
-                    } else {
-                        ask(
-                            GuidedAction(
-                                name = "Auto Intercept",
-                                confirm = "Fly an intercept course toward wherever the camera is aimed, and release the payload automatically once it lines up. The vehicle steers and fires itself - no further input.",
-                                destructive = false,
-                                answer = { withContext(Dispatchers.Default) { VehicleCommands.startAutoInterceptDropRefusal() } },
-                                run = { offMainDetached { VehicleCommands.startAutoInterceptDrop() } },
-                            ),
-                        )
-                    }
+                    onAutodrop(if (autodropWaiting) AutodropAction.Stop else AutodropAction.DropOnIt)
                 },
             ) +
                 deckRest.filter { it.id != CHECKLIST && it.id != RELEASE }.map { MoreTile(it.label, it.icon, it.enabled, it.warning, it.onClick) } +
@@ -788,12 +854,16 @@ private fun RefusalLine(message: String, onDismiss: () -> Unit) {
 }
 
 @Composable
-private fun AutodropStatusLine(message: String, isProblem: Boolean) {
-    Text(
-        message,
-        style = MaterialTheme.typography.bodyMedium,
-        color = if (isProblem) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
-    )
+private fun AutodropStatusLine(shown: AutodropShown, onAction: (AutodropAction) -> Unit) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Text(
+            shown.text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (shown.problem) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.weight(1f, fill = false),
+        )
+        shown.actions.map { action -> TextButton(onClick = { onAction(action) }) { Text(action.label) } }
+    }
 }
 
 internal const val FLIGHT_MODE_SETTINGS_PAGE = "Flight Mode Settings"

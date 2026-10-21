@@ -35,6 +35,8 @@ fun TrackingBoxOverlay(modifier: Modifier = Modifier) {
     val cameraJson by qgcPath(CAMERA_VIEW)
     val videoJson by qgcPath(VIDEO_VIEW)
     val tracking = remember(cameraJson) { trackingReading(cameraJson) }
+    val autodropJson by qgcPath(AUTODROP_STATUS)
+    val running = autodropJson?.optString("state") == "waiting"
     val source = remember(videoJson) { videoReading(videoJson)?.sourceSize }
     val box = tracking?.box
     val density = LocalDensity.current
@@ -70,7 +72,7 @@ fun TrackingBoxOverlay(modifier: Modifier = Modifier) {
             }
         }
         Box(aim.matchParentSize())
-        trackingHint(tracking)?.let { hint ->
+        trackingHint(tracking)?.takeIf { !running }?.let { hint ->
             Surface(
                 shape = CircleShape,
                 color = Color.Black.copy(alpha = HINT_SCRIM_ALPHA),
